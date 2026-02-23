@@ -2,7 +2,22 @@ cmake_minimum_required(VERSION 3.22)
 
 project(GRAIN_FREEZE VERSION 1.0.0)
 
+include(FetchContent)
+
 add_subdirectory(/home/shamanic/dev/JUCE JUCE)
+
+# --- Lua 5.4 (system) ---
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LUA REQUIRED IMPORTED_TARGET lua)
+
+# --- sol2 (header-only Lua bindings) ---
+FetchContent_Declare(
+    sol2
+    GIT_REPOSITORY https://github.com/ThePhD/sol2.git
+    GIT_TAG        develop
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(sol2)
 
 juce_add_plugin(GrainFreeze
     VERSION 1.0.0
@@ -69,7 +84,11 @@ target_sources(Looper
         looper/primitives/control/ControlServer.h
         looper/primitives/control/ControlServer.cpp
         looper/primitives/ui/Canvas.h
-        looper/primitives/ui/CanvasStyle.h)
+        looper/primitives/ui/CanvasStyle.h
+        looper/primitives/scripting/LuaEngine.h
+        looper/primitives/scripting/LuaEngine.cpp)
+
+target_include_directories(Looper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_compile_definitions(Looper
     PUBLIC
@@ -83,6 +102,8 @@ target_link_libraries(Looper
         juce::juce_audio_utils
         juce::juce_audio_formats
         juce::juce_gui_extra
+        PkgConfig::LUA
+        sol2::sol2
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
