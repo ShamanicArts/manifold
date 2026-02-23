@@ -23,7 +23,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_events/juce_events.h>
 
-#include "LooperProcessor.h"
+#include "../engine/LooperProcessor.h"
 
 #include <csignal>
 #include <cstdio>

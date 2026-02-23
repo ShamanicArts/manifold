@@ -2,9 +2,9 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <algorithm>
-#include "primitives/dsp/CaptureBuffer.h"
-#include "primitives/dsp/LoopBuffer.h"
-#include "primitives/dsp/Playhead.h"
+#include "../primitives/dsp/CaptureBuffer.h"
+#include "../primitives/dsp/LoopBuffer.h"
+#include "../primitives/dsp/Playhead.h"
 
 class LooperLayer {
 public:

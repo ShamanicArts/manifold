@@ -3,10 +3,10 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <atomic>
 #include <vector>
-#include "primitives/dsp/CaptureBuffer.h"
-#include "primitives/dsp/TempoInference.h"
-#include "primitives/dsp/Quantizer.h"
-#include "primitives/control/ControlServer.h"
+#include "../primitives/dsp/CaptureBuffer.h"
+#include "../primitives/dsp/TempoInference.h"
+#include "../primitives/dsp/Quantizer.h"
+#include "../primitives/control/ControlServer.h"
 #include "LooperLayer.h"
 
 enum class RecordMode {

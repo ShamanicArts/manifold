@@ -1,5 +1,5 @@
 #include "LooperProcessor.h"
-#include "LooperEditor.h"
+#include "../ui/LooperEditor.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>

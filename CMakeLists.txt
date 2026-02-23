@@ -56,20 +56,20 @@ juce_add_plugin(Looper
 
 target_sources(Looper
     PRIVATE
-        LooperProcessor.cpp
-        LooperProcessor.h
-        LooperEditor.cpp
-        LooperEditor.h
-        LooperLayer.h
-        primitives/dsp/CaptureBuffer.h
-        primitives/dsp/LoopBuffer.h
-        primitives/dsp/Playhead.h
-        primitives/dsp/TempoInference.h
-        primitives/dsp/Quantizer.h
-        primitives/control/ControlServer.h
-        primitives/control/ControlServer.cpp
-        primitives/ui/Canvas.h
-        primitives/ui/CanvasStyle.h)
+        looper/engine/LooperProcessor.cpp
+        looper/engine/LooperProcessor.h
+        looper/ui/LooperEditor.cpp
+        looper/ui/LooperEditor.h
+        looper/engine/LooperLayer.h
+        looper/primitives/dsp/CaptureBuffer.h
+        looper/primitives/dsp/LoopBuffer.h
+        looper/primitives/dsp/Playhead.h
+        looper/primitives/dsp/TempoInference.h
+        looper/primitives/dsp/Quantizer.h
+        looper/primitives/control/ControlServer.h
+        looper/primitives/control/ControlServer.cpp
+        looper/primitives/ui/Canvas.h
+        looper/primitives/ui/CanvasStyle.h)
 
 target_compile_definitions(Looper
     PUBLIC
@@ -89,7 +89,7 @@ target_link_libraries(Looper
         juce::juce_recommended_warning_flags)
 
 # Headless test harness - no GUI, no audio device, just the processor + ControlServer
-add_executable(LooperHeadless LooperHeadless.cpp)
+add_executable(LooperHeadless looper/headless/LooperHeadless.cpp)
 
 target_include_directories(LooperHeadless
     PRIVATE

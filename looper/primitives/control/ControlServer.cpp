@@ -1,5 +1,5 @@
 #include "ControlServer.h"
-#include "../../LooperProcessor.h"
+#include "../../engine/LooperProcessor.h"
 #include "../dsp/CaptureBuffer.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
