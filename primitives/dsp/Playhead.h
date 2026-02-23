@@ -37,6 +37,7 @@ public:
     }
     
     int getPosition() const { 
+        if (length == 0) return 0;
         int pos = static_cast<int>(position) % length;
         while (pos < 0) pos += length;
         return pos;

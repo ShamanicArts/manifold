@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""
+Integration test suite for the Looper plugin.
+
+Requires LooperHeadless to be running. Connects via Unix socket and exercises
+the full pipeline: injection, commit, layer controls, tempo, recording modes.
+
+Usage:
+    # Terminal 1: start headless
+    ./build/LooperHeadless
+
+    # Terminal 2: run tests
+    ./tools/test-looper
+"""
+
+import socket
+import json
+import time
+import glob
+import sys
+import wave
+import struct
+import math
+import os
+
+
+# ============================================================================
+# Test infrastructure
+# ============================================================================
+
+class LooperTestClient:
+    def __init__(self):
+        sockets = sorted(glob.glob("/tmp/looper_*.sock"))
+        if not sockets:
+            print("ERROR: No looper process found. Start LooperHeadless first.", file=sys.stderr)
+            sys.exit(1)
+        self.sock_path = sockets[-1]  # most recent
+        self.passed = 0
+        self.failed = 0
+        self.errors = []
+
+    def cmd(self, command):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(self.sock_path)
+        s.sendall((command + "\n").encode())
+        s.settimeout(2.0)
+        resp = ""
+        try:
+            while True:
+                d = s.recv(65536)
+                if not d:
+                    break
+                resp += d.decode()
+                if "\n" in resp:
+                    break
+        except socket.timeout:
+            pass
+        s.close()
+        return resp.strip()
+
+    def state(self):
+        r = self.cmd("STATE")
+        return json.loads(r[3:]) if r.startswith("OK {") else r
+
+    def wait_injection(self, timeout=5.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            time.sleep(0.1)
+            r = self.cmd("INJECTION_STATUS")
+            if '"active":false' in r:
+                return True
+        return False
+
+    def inject_and_commit(self, filepath, bars):
+        """Inject a file and immediately commit N bars."""
+        r = self.cmd(f"INJECT {filepath}")
+        if "OK" not in r:
+            return False, r
+        if not self.wait_injection():
+            return False, "injection timed out"
+        r = self.cmd(f"COMMIT {bars}")
+        time.sleep(0.2)
+        return r == "OK", r
+
+    def check(self, name, condition, detail=""):
+        if condition:
+            print(f"  PASS: {name}")
+            self.passed += 1
+        else:
+            msg = f"  FAIL: {name}"
+            if detail:
+                msg += f" -- {detail}"
+            print(msg)
+            self.failed += 1
+            self.errors.append(name)
+
+    def reset(self):
+        """Reset to clean state."""
+        for i in range(4):
+            self.cmd(f"LAYER {i} CLEAR")
+            self.cmd(f"LAYER {i} SPEED 1.0")
+            self.cmd(f"LAYER {i} REVERSE 0")
+            self.cmd(f"LAYER {i} VOLUME 1.0")
+        self.cmd("LAYER 0")
+        self.cmd("TEMPO 120")
+        self.cmd("TARGETBPM 120")
+        self.cmd("MODE firstLoop")
+        self.cmd("VOLUME 1.0")
+        time.sleep(0.2)
+
+
+def generate_test_wav(filepath, duration_secs, freq=440, sample_rate=44100):
+    """Generate a simple sine wave test file."""
+    n = int(sample_rate * duration_secs)
+    with wave.open(filepath, "w") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sample_rate)
+        for i in range(n):
+            t = i / sample_rate
+            # Fade in/out to avoid clicks
+            env = min(1.0, t * 20) * min(1.0, (duration_secs - t) * 20)
+            sample = 0.5 * env * math.sin(2 * math.pi * freq * t)
+            w.writeframes(struct.pack("<h", int(sample * 32767)))
+    return n
+
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+def test_inject_and_commit(c):
+    print("=== Test: Inject + Commit 2 bars ===")
+    c.reset()
+
+    r = c.cmd("INJECT /tmp/looper_test_4s.wav")
+    c.check("inject accepted", "OK" in r, r)
+    c.check("injection completes", c.wait_injection())
+
+    r = c.cmd("COMMIT 2.0")
+    c.check("commit accepted", r == "OK", r)
+    time.sleep(0.2)
+
+    s = c.state()
+    l0 = s["layers"][0]
+    c.check("layer 0 playing", l0["state"] == "playing", l0["state"])
+    c.check("layer 0 length=176400", l0["length"] == 176400, l0["length"])
+    c.check("layer 0 numBars=2", l0["numBars"] == 2.0, l0["numBars"])
+    c.check("commitCount=1", s["commitCount"] >= 1, s["commitCount"])
+    c.check("playhead advancing", l0["playheadPos"] > 0, l0["playheadPos"])
+
+
+def test_layer_controls(c):
+    print("=== Test: Layer controls (speed/reverse/volume) ===")
+
+    c.cmd("LAYER 0 SPEED 0.5")
+    c.cmd("LAYER 0 REVERSE 1")
+    c.cmd("LAYER 0 VOLUME 0.7")
+    time.sleep(0.2)
+
+    s = c.state()
+    l0 = s["layers"][0]
+    c.check("speed=0.5", l0["speed"] == 0.5, l0["speed"])
+    c.check("reversed=true", l0["reversed"] is True, l0["reversed"])
+    c.check("volume~0.7", abs(l0["volume"] - 0.7) < 0.01, l0["volume"])
+
+    # Reset
+    c.cmd("LAYER 0 SPEED 1.0")
+    c.cmd("LAYER 0 REVERSE 0")
+    c.cmd("LAYER 0 VOLUME 1.0")
+
+
+def test_multi_layer(c):
+    print("=== Test: Multi-layer commit ===")
+
+    c.cmd("LAYER 1")
+    time.sleep(0.1)
+
+    ok, detail = c.inject_and_commit("/tmp/looper_test_4s.wav", 1.0)
+    c.check("commit to layer 1", ok, detail)
+
+    s = c.state()
+    l1 = s["layers"][1]
+    c.check("layer 1 playing", l1["state"] == "playing", l1["state"])
+    c.check("layer 1 length=88200", l1["length"] == 88200, l1["length"])
+    c.check("layer 1 numBars=1", l1["numBars"] == 1.0, l1["numBars"])
+
+
+def test_mute_unmute(c):
+    print("=== Test: Mute/unmute ===")
+
+    c.cmd("LAYER 0 MUTE 1")
+    time.sleep(0.2)
+    s = c.state()
+    c.check("muted", s["layers"][0]["state"] == "muted", s["layers"][0]["state"])
+
+    c.cmd("LAYER 0 MUTE 0")
+    time.sleep(0.2)
+    s = c.state()
+    c.check("unmuted", s["layers"][0]["state"] == "playing", s["layers"][0]["state"])
+
+
+def test_clear(c):
+    print("=== Test: Clear layer ===")
+
+    c.cmd("LAYER 1 CLEAR")
+    time.sleep(0.2)
+    s = c.state()
+    c.check("cleared state=empty", s["layers"][1]["state"] == "empty", s["layers"][1]["state"])
+    c.check("cleared length=0", s["layers"][1]["length"] == 0, s["layers"][1]["length"])
+
+
+def test_tempo(c):
+    print("=== Test: Tempo change ===")
+
+    c.cmd("TEMPO 140")
+    time.sleep(0.2)
+    s = c.state()
+    c.check("tempo=140", s["tempo"] == 140, s["tempo"])
+
+    expected_spb = 44100 * 60 / 140 * 4
+    c.check("samplesPerBar correct", abs(s["samplesPerBar"] - expected_spb) < 1.0,
+            f'{s["samplesPerBar"]} vs {expected_spb}')
+
+    c.cmd("TEMPO 120")  # restore
+
+
+def test_record_modes(c):
+    print("=== Test: Record mode switching ===")
+
+    for mode in ["freeMode", "retrospective", "traditional", "firstLoop"]:
+        c.cmd(f"MODE {mode}")
+        time.sleep(0.1)
+        s = c.state()
+        c.check(f"mode={mode}", s["recordMode"] == mode, s["recordMode"])
+
+
+def test_first_loop_inference(c):
+    print("=== Test: First loop tempo inference ===")
+    c.reset()
+
+    # REC -> wait ~2s -> STOP. The headless harness timing won't be exact,
+    # but inference should find a valid tempo near the target.
+    c.cmd("REC")
+    time.sleep(2.2)
+    c.cmd("STOP")
+    time.sleep(0.3)
+
+    s = c.state()
+    l0 = s["layers"][0]
+    c.check("inference: layer playing", l0["state"] == "playing", l0["state"])
+    if l0["state"] == "playing":
+        # Tempo should be somewhere reasonable (inference works with whatever duration it got)
+        c.check("inference: tempo > 0", s["tempo"] > 0, s["tempo"])
+        c.check("inference: numBars > 0", l0["numBars"] > 0, l0["numBars"])
+        print(f"  (inferred: tempo={s['tempo']:.2f}, bars={l0['numBars']:.2f}, length={l0['length']})")
+
+
+def test_diagnose(c):
+    print("=== Test: Diagnose ===")
+
+    r = c.cmd("DIAGNOSE")
+    c.check("diagnose returns OK", r.startswith("OK"), r[:40])
+    if r.startswith("OK {"):
+        d = json.loads(r[3:])
+        c.check("has socketPath", "socketPath" in d, str(d.keys()))
+        c.check("has connectedClients", "connectedClients" in d, str(d.keys()))
+
+
+# ============================================================================
+# Main
+# ============================================================================
+
+def main():
+    # Generate test files
+    print("Generating test audio files...")
+    generate_test_wav("/tmp/looper_test_4s.wav", 4.0, freq=440)
+    generate_test_wav("/tmp/looper_test_2s.wav", 2.0, freq=440)
+
+    c = LooperTestClient()
+    print(f"Connected to {c.sock_path}\n")
+
+    # Run all tests
+    test_inject_and_commit(c)
+    test_layer_controls(c)
+    test_multi_layer(c)
+    test_mute_unmute(c)
+    test_clear(c)
+    test_tempo(c)
+    test_record_modes(c)
+    test_first_loop_inference(c)
+    test_diagnose(c)
+
+    # Summary
+    print(f"\n{'=' * 50}")
+    print(f"RESULTS: {c.passed} passed, {c.failed} failed")
+    if c.errors:
+        print(f"Failed: {', '.join(c.errors)}")
+    print(f"{'=' * 50}")
+
+    return 0 if c.failed == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

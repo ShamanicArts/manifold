@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""
+looper-cli: Command-line client for the Looper plugin's ControlServer.
+
+Connects via Unix socket to observe and control the running looper.
+
+Usage:
+    looper-cli state              Full JSON state snapshot
+    looper-cli watch              Stream events in real-time
+    looper-cli commit <bars>      Retrospective commit N bars
+    looper-cli forward <bars>     Wait N bars, then commit N bars retrospectively
+    looper-cli tempo <bpm>        Set tempo
+    looper-cli rec                Start recording
+    looper-cli overdub [0|1]      Toggle overdub mode (or set explicitly)
+    looper-cli stop               Stop recording
+    looper-cli clear [layer]      Clear layer (or active)
+    looper-cli clearall           Clear all layers
+    looper-cli mode <mode>        Set record mode (firstLoop/freeMode/traditional/retrospective)
+    looper-cli volume <0-1>       Set master volume
+    looper-cli targetbpm <bpm>    Set target BPM for tempo inference
+    looper-cli layer <idx>        Select active layer
+    looper-cli layer <idx> mute <0|1>
+    looper-cli layer <idx> speed <factor>
+    looper-cli layer <idx> reverse <0|1>
+    looper-cli layer <idx> volume <0-1>
+    looper-cli layer <idx> stop
+    looper-cli layer <idx> clear
+    looper-cli diagnose           Diagnostic info
+    looper-cli ping               Health check
+"""
+
+import socket
+import sys
+import json
+import glob
+import argparse
+import select
+import time
+
+
+def find_socket():
+    """Find a running looper's Unix socket."""
+    sockets = sorted(glob.glob("/tmp/looper_*.sock"))
+    if not sockets:
+        print("No looper process found. Is the plugin running?", file=sys.stderr)
+        sys.exit(1)
+    if len(sockets) > 1:
+        print(f"Found {len(sockets)} looper sockets:", file=sys.stderr)
+        for s in sockets:
+            print(f"  {s}", file=sys.stderr)
+        print(f"Using: {sockets[0]}", file=sys.stderr)
+    return sockets[0]
+
+
+def connect(sock_path):
+    """Connect to the looper socket."""
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.connect(sock_path)
+    except (ConnectionRefusedError, FileNotFoundError) as e:
+        print(f"Cannot connect to {sock_path}: {e}", file=sys.stderr)
+        sys.exit(1)
+    return sock
+
+
+def send_command(sock_path, command, watch=False):
+    """Send a command and print the response."""
+    sock = connect(sock_path)
+    sock.sendall((command + "\n").encode())
+
+    if watch:
+        # Continuous event stream
+        print(f"Watching events from {sock_path}...", file=sys.stderr)
+        print("(Press Ctrl+C to stop)", file=sys.stderr)
+        try:
+            buf = ""
+            while True:
+                data = sock.recv(4096)
+                if not data:
+                    print("\nConnection closed.", file=sys.stderr)
+                    break
+                buf += data.decode()
+                while "\n" in buf:
+                    line, buf = buf.split("\n", 1)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # Try to pretty-print EVENT JSON
+                    if line.startswith("EVENT "):
+                        try:
+                            payload = json.loads(line[6:])
+                            ts = time.strftime("%H:%M:%S")
+                            etype = payload.get("type", "?")
+                            detail = json.dumps(payload, separators=(",", ":"))
+                            print(f"[{ts}] {etype}: {detail}")
+                        except json.JSONDecodeError:
+                            print(line)
+                    else:
+                        print(line)
+                    sys.stdout.flush()
+        except KeyboardInterrupt:
+            print("\nStopped.", file=sys.stderr)
+    else:
+        # Single response
+        response = ""
+        sock.settimeout(2.0)
+        try:
+            while True:
+                data = sock.recv(65536)
+                if not data:
+                    break
+                response += data.decode()
+                if "\n" in response:
+                    break
+        except socket.timeout:
+            pass
+
+        response = response.strip()
+
+        # Pretty-print JSON if it looks like OK {...}
+        if response.startswith("OK {"):
+            try:
+                payload = json.loads(response[3:])
+                print(json.dumps(payload, indent=2))
+            except json.JSONDecodeError:
+                print(response)
+        else:
+            print(response)
+
+    sock.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Looper plugin CLI client",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument(
+        "--socket", "-s",
+        help="Socket path (default: auto-detect from /tmp/looper_*.sock)",
+    )
+    parser.add_argument(
+        "command",
+        nargs="*",
+        help="Command to send (default: STATE)",
+    )
+
+    args = parser.parse_args()
+    sock_path = args.socket or find_socket()
+
+    if not args.command:
+        # No command = show state
+        send_command(sock_path, "STATE")
+        return
+
+    verb = args.command[0].upper()
+
+    if verb == "WATCH":
+        send_command(sock_path, "WATCH", watch=True)
+    else:
+        cmd = " ".join(args.command)
+        send_command(sock_path, cmd)
+
+
+if __name__ == "__main__":
+    main()

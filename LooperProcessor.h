@@ -1,9 +1,12 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <atomic>
+#include <vector>
 #include "primitives/dsp/CaptureBuffer.h"
 #include "primitives/dsp/TempoInference.h"
 #include "primitives/dsp/Quantizer.h"
+#include "primitives/control/ControlServer.h"
 #include "LooperLayer.h"
 
 enum class RecordMode {
@@ -49,13 +52,19 @@ public:
     void setActiveLayer(int index);
     
     void startRecording();
+    void startOverdub();
+    void setOverdubEnabled(bool enabled);
     void stopRecording();
     void commitRetrospective(float numBars);
+    void scheduleForwardCommit(float numBars);
+    bool isForwardCommitArmed() const { return forwardCommitArmed.load(std::memory_order_relaxed); }
+    float getForwardCommitBars() const { return forwardCommitBars.load(std::memory_order_relaxed); }
     
     RecordMode getRecordMode() const { return recordMode; }
     void setRecordMode(RecordMode mode) { recordMode = mode; }
     
     bool isRecording() const { return isCurrentlyRecording; }
+    bool isOverdubEnabled() const { return overdubEnabled; }
     bool isPlaying() const;
     
     float getTempo() const { return tempo; }
@@ -73,6 +82,10 @@ public:
     float getSamplesPerBar() const;
     double getSampleRate() const { return currentSampleRate; }
     
+    // Control server access
+    ControlServer& getControlServer() { return controlServer; }
+    bool postControlCommand(ControlCommand::Type type, int intParam = 0, float floatParam = 0.0f);
+    
 private:
     CaptureBuffer captureBuffer;
     LooperLayer layers[MAX_LAYERS];
@@ -83,8 +96,15 @@ private:
     
     RecordMode recordMode = RecordMode::FirstLoop;
     bool isCurrentlyRecording = false;
+    bool overdubEnabled = false;
     double recordStartTime = 0.0;
     double playTime = 0.0;
+
+    // Forward/traditional capture: arm now, capture retrospectively after waiting numBars.
+    std::atomic<bool> forwardCommitArmed{false};
+    std::atomic<float> forwardCommitBars{0.0f};
+    std::atomic<int> forwardCommitLayer{0};
+    std::atomic<double> forwardCommitArmPlayTime{0.0};
     
     float tempo = 120.0f;
     float targetBPM = 120.0f;
@@ -92,8 +112,39 @@ private:
     float masterVolume = 1.0f;
     double currentSampleRate = 44100.0;
     
+    // Control server for IPC observation/control
+    ControlServer controlServer;
+    int commitCount = 0;
+
+    // Scratch buffers reused across processBlock to avoid per-block allocation.
+    std::vector<float> layerMixL;
+    std::vector<float> layerMixR;
+    std::vector<float> tempLayerL;
+    std::vector<float> tempLayerR;
+
+    // Host transport info for sync.
+    bool hostTransportPlaying = false;
+    double hostTimelineSamples = 0.0;
+
     void processFirstLoopStop();
     void processFreeModeStop();
+    void processTraditionalStop();
+    bool shouldOverdubLayer(int layerIndex) const;
+
+    void commitRetrospectiveNow(float numBars, int layerIndex, bool overdub);
+    void maybeFireForwardCommit();
+    void updateTransportState();
+    void syncLayersToTransportIfNeeded();
+    void ensureScratchSize(int numSamples);
+    
+    // Process pending commands from control server (called from audio thread)
+    void processControlCommands();
+    
+    // Update atomic state snapshot (called from audio thread each block)
+    void updateAtomicState(const juce::AudioBuffer<float>& buffer);
+    
+    // Push an event to control server (called from audio thread)
+    void pushEvent(const char* json);
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LooperProcessor)
 };

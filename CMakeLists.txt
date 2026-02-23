@@ -66,6 +66,8 @@ target_sources(Looper
         primitives/dsp/Playhead.h
         primitives/dsp/TempoInference.h
         primitives/dsp/Quantizer.h
+        primitives/control/ControlServer.h
+        primitives/control/ControlServer.cpp
         primitives/ui/Canvas.h
         primitives/ui/CanvasStyle.h)
 
@@ -79,8 +81,31 @@ target_compile_definitions(Looper
 target_link_libraries(Looper
     PRIVATE
         juce::juce_audio_utils
+        juce::juce_audio_formats
         juce::juce_gui_extra
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# Headless test harness - no GUI, no audio device, just the processor + ControlServer
+add_executable(LooperHeadless LooperHeadless.cpp)
+
+target_include_directories(LooperHeadless
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR})
+
+target_link_libraries(LooperHeadless
+    PRIVATE
+        Looper
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra)
+
+target_compile_definitions(LooperHeadless
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0)

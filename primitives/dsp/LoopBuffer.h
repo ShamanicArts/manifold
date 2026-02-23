@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <algorithm>
 #include "CaptureBuffer.h"
 
 class LoopBuffer {
@@ -29,24 +30,43 @@ public:
     
     void overdubFrom(const CaptureBuffer& capture, int captureStartOffset, 
                      int numSamples, float fadeIn = 0.005f) {
+        (void) fadeIn;
+        if (numSamples <= 0 || length <= 0)
+            return;
+
         int capSize = capture.getSize();
+        if (capSize <= 0)
+            return;
+
         auto* capBuf = capture.getRawBuffer();
-        int fadeSamples = static_cast<int>(fadeIn * 44100);
+
+        const int oldLength = length;
+        if (numSamples > oldLength) {
+            juce::AudioBuffer<float> old(buffer);
+            const int channels = buffer.getNumChannels();
+
+            buffer.setSize(channels, numSamples, false, true, false);
+            length = numSamples;
+
+            for (int ch = 0; ch < channels; ++ch) {
+                for (int i = 0; i < length; ++i) {
+                    const float existing = oldLength > 0 ? old.getSample(ch, i % oldLength) : 0.0f;
+                    buffer.setSample(ch, i, existing);
+                }
+            }
+        }
+
+        const int targetLength = length;
+        const int channels = std::min(buffer.getNumChannels(), capBuf->getNumChannels());
         
-        for (int ch = 0; ch < buffer.getNumChannels() && ch < capBuf->getNumChannels(); ++ch) {
-            for (int i = 0; i < numSamples && i < length; ++i) {
-                int srcIdx = (captureStartOffset + i) % capSize;
+        for (int ch = 0; ch < channels; ++ch) {
+            for (int i = 0; i < targetLength; ++i) {
+                int srcIdx = (captureStartOffset + (i % numSamples)) % capSize;
+                while (srcIdx < 0)
+                    srcIdx += capSize;
                 float sample = capBuf->getSample(ch, srcIdx);
-                
-                int dstIdx = i % length;
-                float existing = buffer.getSample(ch, dstIdx);
-                
-                float fade = 1.0f;
-                if (i < fadeSamples) fade = static_cast<float>(i) / fadeSamples;
-                else if (i > numSamples - fadeSamples) 
-                    fade = static_cast<float>(numSamples - i) / fadeSamples;
-                
-                buffer.setSample(ch, dstIdx, existing + sample * fade);
+
+                buffer.addSample(ch, i, sample);
             }
         }
     }
@@ -75,6 +95,7 @@ public:
     
     void clear() {
         buffer.clear();
+        length = 0;
     }
     
     int getLength() const { return length; }

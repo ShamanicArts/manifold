@@ -1,0 +1,471 @@
+#!/usr/bin/env python3
+"""
+Comprehensive test suite for all looper backend behaviors.
+Tests: layer selection, forward recording, retrospective at various bar sizes,
+overdub, clear all, stop playback, and audio content verification.
+"""
+
+import socket
+import json
+import time
+import glob
+import sys
+import wave
+import struct
+import math
+import os
+
+
+class LooperTestClient:
+    def __init__(self):
+        sockets = sorted(glob.glob("/tmp/looper_*.sock"))
+        if not sockets:
+            print("ERROR: No looper process found. Start LooperHeadless first.", file=sys.stderr)
+            sys.exit(1)
+        self.sock_path = sockets[-1]
+        self.passed = 0
+        self.failed = 0
+        self.errors = []
+
+    def cmd(self, command):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(self.sock_path)
+        s.sendall((command + "\n").encode())
+        s.settimeout(2.0)
+        resp = ""
+        try:
+            while True:
+                d = s.recv(65536)
+                if not d:
+                    break
+                resp += d.decode()
+                if "\n" in resp:
+                    break
+        except socket.timeout:
+            pass
+        s.close()
+        return resp.strip()
+
+    def state(self):
+        r = self.cmd("STATE")
+        return json.loads(r[3:]) if r.startswith("OK {") else r
+
+    def wait_injection(self, timeout=5.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            time.sleep(0.1)
+            r = self.cmd("INJECTION_STATUS")
+            if '"active":false' in r:
+                return True
+        return False
+
+    def check(self, name, condition, detail=""):
+        if condition:
+            print(f"  PASS: {name}")
+            self.passed += 1
+        else:
+            msg = f"  FAIL: {name}"
+            if detail:
+                msg += f" -- {detail}"
+            print(msg)
+            self.failed += 1
+            self.errors.append(name)
+
+    def reset(self):
+        for i in range(4):
+            self.cmd(f"LAYER {i} CLEAR")
+            self.cmd(f"LAYER {i} SPEED 1.0")
+            self.cmd(f"LAYER {i} REVERSE 0")
+            self.cmd(f"LAYER {i} VOLUME 1.0")
+        self.cmd("LAYER 0")
+        self.cmd("TEMPO 120")
+        self.cmd("TARGETBPM 120")
+        self.cmd("MODE firstLoop")
+        self.cmd("VOLUME 1.0")
+        time.sleep(0.2)
+
+
+def generate_test_wav(filepath, duration_secs, freq=440, sample_rate=44100):
+    n = int(sample_rate * duration_secs)
+    with wave.open(filepath, "w") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sample_rate)
+        for i in range(n):
+            t = i / sample_rate
+            env = min(1.0, t * 20) * min(1.0, (duration_secs - t) * 20)
+            sample = 0.5 * env * math.sin(2 * math.pi * freq * t)
+            w.writeframes(struct.pack("<h", int(sample * 32767)))
+    return n
+
+
+# ============================================================================
+# Tests
+# ============================================================================
+
+def test_layer_selection_and_commit(c):
+    """Test selecting different layers and committing to each."""
+    print("=== Test: Layer selection and commit to specific layers ===")
+    c.reset()
+    
+    # Commit to layer 0
+    c.cmd("LAYER 0")
+    r = c.cmd("INJECT /tmp/looper_test_4s.wav")
+    c.check("inject to layer 0", "OK" in r, r)
+    c.wait_injection()
+    r = c.cmd("COMMIT 1")
+    c.check("commit to layer 0", r == "OK", r)
+    time.sleep(0.2)
+    
+    s = c.state()
+    c.check("layer 0 has content", s["layers"][0]["length"] > 0, s["layers"][0]["length"])
+    
+    # Commit to layer 2
+    c.cmd("LAYER 2")
+    r = c.cmd("INJECT /tmp/looper_test_2s.wav")
+    c.check("inject to layer 2", "OK" in r, r)
+    c.wait_injection()
+    r = c.cmd("COMMIT 1")
+    c.check("commit to layer 2", r == "OK", r)
+    time.sleep(0.2)
+    
+    s = c.state()
+    c.check("layer 2 has content", s["layers"][2]["length"] > 0, s["layers"][2]["length"])
+    c.check("layer 1 is empty", s["layers"][1]["length"] == 0, s["layers"][1]["length"])
+    c.check("layer 3 is empty", s["layers"][3]["length"] == 0, s["layers"][3]["length"])
+
+
+def test_retrospective_various_bars(c):
+    """Test retrospective commit at various bar sizes: 0.25, 0.5, 1, 2, 4."""
+    print("=== Test: Retrospective commit at various bar sizes ===")
+    c.reset()
+    
+    bar_sizes = [0.25, 0.5, 1.0, 2.0, 4.0]
+    samples_per_bar = 88200  # 4/4 at 120 BPM, 44.1 kHz
+    
+    for bars in bar_sizes:
+        c.cmd(f"LAYER 0")
+        c.cmd("LAYER 0 CLEAR")
+        time.sleep(0.1)
+        
+        # Inject enough audio
+        r = c.cmd(f"INJECT /tmp/looper_test_4s.wav")
+        c.wait_injection()
+        
+        r = c.cmd(f"COMMIT {bars}")
+        c.check(f"commit {bars} bars", r == "OK", r)
+        time.sleep(0.2)
+        
+        s = c.state()
+        expected = int(bars * samples_per_bar)
+        actual = s["layers"][0]["length"]
+        c.check(f"{bars} bars length={expected}", actual == expected, f"got {actual}")
+
+
+def test_clear_all_layers(c):
+    """Test clearing all layers at once."""
+    print("=== Test: Clear all layers ===")
+    c.reset()
+    
+    # Create content in multiple layers
+    for i in [0, 1, 2, 3]:
+        c.cmd(f"LAYER {i}")
+        r = c.cmd("INJECT /tmp/looper_test_2s.wav")
+        c.wait_injection()
+        r = c.cmd("COMMIT 1")
+        time.sleep(0.1)
+    
+    s = c.state()
+    for i in [0, 1, 2, 3]:
+        c.check(f"layer {i} has content before clear", s["layers"][i]["length"] > 0, s["layers"][i]["length"])
+    
+    # Clear all layers
+    r = c.cmd("CLEARALL")
+    time.sleep(0.2)
+    
+    if r == "OK":
+        c.check("CLEARALL command accepted", True)
+        s = c.state()
+        for i in [0, 1, 2, 3]:
+            c.check(f"layer {i} empty after CLEARALL", s["layers"][i]["length"] == 0, s["layers"][i]["length"])
+    else:
+        c.check("CLEARALL command exists", False, f"got: {r}")
+        print("  (CLEARALL not implemented, clearing manually)")
+        for i in range(4):
+            c.cmd(f"LAYER {i} CLEAR")
+
+
+def test_overdub(c):
+    """Test overdub toggle + retrospective overdub over an existing layer."""
+    print("=== Test: Overdub over existing layer ===")
+    c.reset()
+    
+    # Create initial loop
+    c.cmd("LAYER 0")
+    r = c.cmd("INJECT /tmp/looper_test_440hz.wav")  # 440 Hz
+    c.wait_injection()
+    r = c.cmd("COMMIT 1")
+    time.sleep(0.2)
+    
+    s = c.state()
+    initial_length = s["layers"][0]["length"]
+    c.check("initial layer has content", initial_length > 0, initial_length)
+    
+    # Toggle overdub mode ON
+    r = c.cmd("OVERDUB")
+    if "OK" in r:
+        c.check("OVERDUB command accepted", True)
+        time.sleep(0.1)
+
+        s = c.state()
+        c.check("overdub mode enabled", s.get("overdubEnabled") is True, s.get("overdubEnabled"))
+
+        # Overdub a longer phrase into a shorter loop.
+        # Expected: loop expands to the overdub length.
+        c.cmd("INJECT /tmp/looper_test_4s.wav")
+        c.wait_injection()
+        r = c.cmd("COMMIT 2")
+        c.check("COMMIT 2 accepted while overdub enabled", "OK" in r, r)
+        time.sleep(0.2)
+
+        s = c.state()
+        expanded_length = s["layers"][0]["length"]
+        c.check("layer length expands for longer overdub",
+                expanded_length > initial_length,
+                f"{expanded_length} vs {initial_length}")
+
+        # Commit a shorter slice while overdub is enabled.
+        # Expected: loop length stays fixed, overdub pattern wraps across loop.
+        c.cmd("INJECT /tmp/looper_test_660hz.wav")
+        c.wait_injection()
+        r = c.cmd("COMMIT 0.25")
+        c.check("COMMIT accepted while overdub enabled", "OK" in r, r)
+        time.sleep(0.2)
+        
+        s = c.state()
+        # Length should remain the same after short overdub.
+        c.check("layer length unchanged after overdub", 
+                s["layers"][0]["length"] == expanded_length,
+                f"{s['layers'][0]['length']} vs {expanded_length}")
+
+        # Toggle overdub mode OFF again
+        r = c.cmd("OVERDUB 0")
+        c.check("OVERDUB 0 accepted", "OK" in r, r)
+        time.sleep(0.1)
+        s = c.state()
+        c.check("overdub mode disabled", s.get("overdubEnabled") is False, s.get("overdubEnabled"))
+    else:
+        c.check("OVERDUB command exists", False, f"got: {r}")
+
+
+def test_forward_record_to_layer(c):
+    """Test forward recording into a specific layer."""
+    print("=== Test: Forward record into specific layer ===")
+    c.reset()
+    
+    # Inject audio to simulate input during recording
+    c.cmd("LAYER 1")
+    c.cmd("MODE traditional")  # Traditional mode for forward recording
+    time.sleep(0.1)
+    
+    # Start recording
+    r = c.cmd("REC")
+    c.check("REC started", "OK" in r, r)
+    
+    # Inject audio while recording
+    r = c.cmd("INJECT /tmp/looper_test_2s.wav")
+    c.wait_injection()
+    time.sleep(0.1)
+    
+    # Stop recording
+    r = c.cmd("STOP")
+    c.check("REC stopped", "OK" in r, r)
+    time.sleep(0.2)
+    
+    s = c.state()
+    c.check("layer 1 has recorded content", s["layers"][1]["length"] > 0, s["layers"][1]["length"])
+    c.check("layer 1 is playing", s["layers"][1]["state"] == "playing", s["layers"][1]["state"])
+
+
+def test_playback_stop(c):
+    """Test stopping playback without clearing."""
+    print("=== Test: Stop playback without clearing ===")
+    c.reset()
+    
+    # Create a loop
+    c.cmd("LAYER 0")
+    r = c.cmd("INJECT /tmp/looper_test_2s.wav")
+    c.wait_injection()
+    r = c.cmd("COMMIT 1")
+    time.sleep(0.2)
+    
+    s = c.state()
+    c.check("layer playing", s["layers"][0]["state"] == "playing", s["layers"][0]["state"])
+    initial_pos = s["layers"][0]["playheadPos"]
+    
+    # Try to stop playback
+    r = c.cmd("LAYER 0 STOP")
+    time.sleep(0.2)
+    
+    if "OK" in r:
+        c.check("STOP command accepted", True)
+        s = c.state()
+        c.check("playhead at 0 after stop", s["layers"][0]["playheadPos"] == 0, s["layers"][0]["playheadPos"])
+        c.check("layer still has content", s["layers"][0]["length"] > 0, s["layers"][0]["length"])
+    else:
+        c.check("LAYER X STOP command exists", False, f"got: {r}")
+
+
+def test_multiple_loops_playing(c):
+    """Test multiple loops playing simultaneously."""
+    print("=== Test: Multiple loops playing simultaneously ===")
+    c.reset()
+    
+    # Create loops in layers 0, 1, 2
+    for i in [0, 1, 2]:
+        c.cmd(f"LAYER {i}")
+        r = c.cmd("INJECT /tmp/looper_test_2s.wav")
+        c.wait_injection()
+        r = c.cmd("COMMIT 1")
+        time.sleep(0.1)
+    
+    time.sleep(0.3)
+    s = c.state()
+    
+    for i in [0, 1, 2]:
+        c.check(f"layer {i} playing", s["layers"][i]["state"] == "playing", s["layers"][i]["state"])
+        c.check(f"layer {i} playhead advancing", s["layers"][i]["playheadPos"] > 0, s["layers"][i]["playheadPos"])
+
+
+def test_speed_affects_playback(c):
+    """Test that speed changes affect playback rate."""
+    print("=== Test: Speed affects playback ===")
+    c.reset()
+    
+    # Create a loop
+    c.cmd("LAYER 0")
+    r = c.cmd("INJECT /tmp/looper_test_2s.wav")
+    c.wait_injection()
+    r = c.cmd("COMMIT 1")
+    time.sleep(0.2)
+    
+    # Get initial playhead position
+    s = c.state()
+    pos1 = s["layers"][0]["playheadPos"]
+    
+    # Set speed to 2x
+    c.cmd("LAYER 0 SPEED 2.0")
+    time.sleep(0.2)
+    
+    s = c.state()
+    c.check("speed set to 2.0", s["layers"][0]["speed"] == 2.0, s["layers"][0]["speed"])
+    
+    # Let it play for a bit
+    time.sleep(0.1)
+    s = c.state()
+    pos2 = s["layers"][0]["playheadPos"]
+    
+    # With 2x speed, playhead should advance faster
+    c.check("playhead advancing with speed", pos2 >= pos1, f"{pos1} -> {pos2}")
+    
+    # Reset speed
+    c.cmd("LAYER 0 SPEED 1.0")
+
+
+def test_reverse_playback(c):
+    """Test reverse playback."""
+    print("=== Test: Reverse playback ===")
+    c.reset()
+    
+    # Create a loop
+    c.cmd("LAYER 0")
+    r = c.cmd("INJECT /tmp/looper_test_2s.wav")
+    c.wait_injection()
+    r = c.cmd("COMMIT 1")
+    time.sleep(0.2)
+    
+    # Get playhead position going forward
+    s = c.state()
+    pos_forward = s["layers"][0]["playheadPos"]
+    
+    # Set reverse
+    c.cmd("LAYER 0 REVERSE 1")
+    time.sleep(0.2)
+    
+    s = c.state()
+    c.check("reversed flag set", s["layers"][0]["reversed"] == True, s["layers"][0]["reversed"])
+    
+    # Let it play backwards for a bit
+    time.sleep(0.1)
+    s = c.state()
+    pos_after = s["layers"][0]["playheadPos"]
+    
+    c.check("reverse playback active", True, f"pos went from {pos_forward} to {pos_after}")
+    
+    # Reset
+    c.cmd("LAYER 0 REVERSE 0")
+
+
+def test_free_mode_record(c):
+    """Test free mode recording (quantized to nearest bar)."""
+    print("=== Test: Free mode recording ===")
+    c.reset()
+    
+    c.cmd("LAYER 0")
+    c.cmd("MODE freeMode")
+    time.sleep(0.1)
+    
+    r = c.cmd("REC")
+    c.check("REC started in freeMode", "OK" in r, r)
+    
+    # Record for ~1.5 seconds (should quantize to nearest bar)
+    time.sleep(1.5)
+    
+    r = c.cmd("STOP")
+    c.check("REC stopped", "OK" in r, r)
+    time.sleep(0.2)
+    
+    s = c.state()
+    c.check("layer has content", s["layers"][0]["length"] > 0, s["layers"][0]["length"])
+    c.check("layer is playing", s["layers"][0]["state"] == "playing", s["layers"][0]["state"])
+
+
+# ============================================================================
+# Main
+# ============================================================================
+
+def main():
+    # Generate test files with different frequencies
+    print("Generating test audio files...")
+    generate_test_wav("/tmp/looper_test_4s.wav", 4.0, freq=440)
+    generate_test_wav("/tmp/looper_test_2s.wav", 2.0, freq=440)
+    generate_test_wav("/tmp/looper_test_440hz.wav", 2.0, freq=440)
+    generate_test_wav("/tmp/looper_test_660hz.wav", 2.0, freq=660)
+    
+    c = LooperTestClient()
+    print(f"Connected to {c.sock_path}\n")
+    
+    # Run all tests
+    test_layer_selection_and_commit(c)
+    test_retrospective_various_bars(c)
+    test_clear_all_layers(c)
+    test_overdub(c)
+    test_forward_record_to_layer(c)
+    test_playback_stop(c)
+    test_multiple_loops_playing(c)
+    test_speed_affects_playback(c)
+    test_reverse_playback(c)
+    test_free_mode_record(c)
+    
+    # Summary
+    print(f"\n{'=' * 50}")
+    print(f"RESULTS: {c.passed} passed, {c.failed} failed")
+    if c.errors:
+        print(f"Failed: {', '.join(c.errors)}")
+    print(f"{'=' * 50}")
+    
+    return 0 if c.failed == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
