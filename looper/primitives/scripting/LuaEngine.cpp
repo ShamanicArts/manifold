@@ -15,8 +15,14 @@ extern "C" {
 #include "../control/ControlServer.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <cstdio>
+#include <mutex>
 #include <juce_graphics/juce_graphics.h>
+#include <juce_opengl/juce_opengl.h>
+
+using namespace juce::gl;
 
 // ============================================================================
 // pImpl
@@ -46,6 +52,10 @@ struct LuaEngine::Impl {
   // Deferred script switch (to avoid use-after-free when called from Lua
   // callback)
   std::string pendingSwitchPath;
+
+  // Lua VM is touched from message thread and OpenGL render thread.
+  // Serialize all Lua state/function access.
+  std::recursive_mutex luaMutex;
 };
 
 // ============================================================================
@@ -63,6 +73,8 @@ LuaEngine::~LuaEngine() = default;
 void LuaEngine::initialise(LooperProcessor *processor, Canvas *rootCanvas) {
   pImpl->processor = processor;
   pImpl->rootCanvas = rootCanvas;
+
+  const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
 
   auto &lua = pImpl->lua;
   lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string,
@@ -148,9 +160,11 @@ void LuaEngine::registerBindings() {
       "repaint", [](Canvas &c) { c.repaint(); },
 
       "setOnClick",
-      [](Canvas &c, sol::function fn) {
+      [this](Canvas &c, sol::function fn) {
         if (fn.valid()) {
-          c.onClick = [fn]() mutable {
+          auto *impl = pImpl.get();
+          c.onClick = [fn, impl]() mutable {
+            const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
             auto result = fn();
             if (!result.valid()) {
               sol::error err = result;
@@ -163,10 +177,30 @@ void LuaEngine::registerBindings() {
         }
       },
 
-      "setOnMouseDown",
-      [](Canvas &c, sol::function fn) {
+      "setOnDoubleClick",
+      [this](Canvas &c, sol::function fn) {
         if (fn.valid()) {
-          c.onMouseDown = [fn](const juce::MouseEvent &e) mutable {
+          auto *impl = pImpl.get();
+          c.onDoubleClick = [fn, impl]() mutable {
+            const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
+            auto result = fn();
+            if (!result.valid()) {
+              sol::error err = result;
+              std::fprintf(stderr, "LuaEngine: onDoubleClick error: %s\n",
+                           err.what());
+            }
+          };
+        } else {
+          c.onDoubleClick = nullptr;
+        }
+      },
+
+      "setOnMouseDown",
+      [this](Canvas &c, sol::function fn) {
+        if (fn.valid()) {
+          auto *impl = pImpl.get();
+          c.onMouseDown = [fn, impl](const juce::MouseEvent &e) mutable {
+            const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
             auto result = fn(e.x, e.y);
             if (!result.valid()) {
               sol::error err = result;
@@ -180,9 +214,11 @@ void LuaEngine::registerBindings() {
       },
 
       "setOnMouseDrag",
-      [](Canvas &c, sol::function fn) {
+      [this](Canvas &c, sol::function fn) {
         if (fn.valid()) {
-          c.onMouseDrag = [fn](const juce::MouseEvent &e) mutable {
+          auto *impl = pImpl.get();
+          c.onMouseDrag = [fn, impl](const juce::MouseEvent &e) mutable {
+            const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
             auto result = fn(e.x, e.y, e.getDistanceFromDragStartX(),
                              e.getDistanceFromDragStartY());
             if (!result.valid()) {
@@ -197,9 +233,11 @@ void LuaEngine::registerBindings() {
       },
 
       "setOnMouseUp",
-      [](Canvas &c, sol::function fn) {
+      [this](Canvas &c, sol::function fn) {
         if (fn.valid()) {
-          c.onMouseUp = [fn](const juce::MouseEvent &e) mutable {
+          auto *impl = pImpl.get();
+          c.onMouseUp = [fn, impl](const juce::MouseEvent &e) mutable {
+            const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
             auto result = fn(e.x, e.y);
             if (!result.valid()) {
               sol::error err = result;
@@ -217,6 +255,7 @@ void LuaEngine::registerBindings() {
         if (fn.valid()) {
           auto *impl = pImpl.get();
           c.onDraw = [fn, impl](Canvas &self, juce::Graphics &g) mutable {
+            const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
             impl->currentGraphics = &g;
             auto result = fn(std::ref(self));
             if (!result.valid()) {
@@ -227,6 +266,67 @@ void LuaEngine::registerBindings() {
           };
         } else {
           c.onDraw = nullptr;
+        }
+      },
+
+      // ---- OpenGL Support ----
+      "setOpenGLEnabled",
+      [](Canvas &c, bool enabled) { c.setOpenGLEnabled(enabled); },
+
+      "isOpenGLEnabled",
+      [](Canvas &c) { return c.isOpenGLEnabled(); },
+
+      "setOnGLRender",
+      [this](Canvas &c, sol::function fn) {
+        if (fn.valid()) {
+          auto *impl = pImpl.get();
+          c.onGLRender = [fn, impl](Canvas &self) mutable {
+            const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
+            auto result = fn(std::ref(self));
+            if (!result.valid()) {
+              sol::error err = result;
+              std::fprintf(stderr, "LuaEngine: onGLRender error: %s\n",
+                           err.what());
+            }
+          };
+        } else {
+          c.onGLRender = nullptr;
+        }
+      },
+
+      "setOnGLContextCreated",
+      [this](Canvas &c, sol::function fn) {
+        if (fn.valid()) {
+          auto *impl = pImpl.get();
+          c.onGLContextCreated = [fn, impl](Canvas &self) mutable {
+            const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
+            auto result = fn(std::ref(self));
+            if (!result.valid()) {
+              sol::error err = result;
+              std::fprintf(stderr, "LuaEngine: onGLContextCreated error: %s\n",
+                           err.what());
+            }
+          };
+        } else {
+          c.onGLContextCreated = nullptr;
+        }
+      },
+
+      "setOnGLContextClosing",
+      [this](Canvas &c, sol::function fn) {
+        if (fn.valid()) {
+          auto *impl = pImpl.get();
+          c.onGLContextClosing = [fn, impl](Canvas &self) mutable {
+            const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
+            auto result = fn(std::ref(self));
+            if (!result.valid()) {
+              sol::error err = result;
+              std::fprintf(stderr, "LuaEngine: onGLContextClosing error: %s\n",
+                           err.what());
+            }
+          };
+        } else {
+          c.onGLContextClosing = nullptr;
         }
       });
 
@@ -308,6 +408,496 @@ void LuaEngine::registerBindings() {
     if (pImpl->currentGraphics)
       pImpl->currentGraphics->fillAll();
   };
+
+  gfx["drawLine"] = [this](float x1, float y1, float x2, float y2) {
+    if (pImpl->currentGraphics)
+      pImpl->currentGraphics->drawLine(x1, y1, x2, y2);
+  };
+
+  // ---- OpenGL Functions (gl) ----
+  using namespace juce::gl;
+  auto gl = lua.create_named_table("gl");
+
+  gl["clearColor"] = [](float r, float g, float b, float a) {
+    glClearColor(r, g, b, a);
+  };
+
+  gl["clear"] = [](sol::optional<int> mask) {
+    int m = mask.value_or(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(m);
+  };
+
+  gl["viewport"] = [](int x, int y, int w, int h) { glViewport(x, y, w, h); };
+
+  // Enable/disable caps
+  gl["enable"] = [](int cap) { glEnable(cap); };
+  gl["disable"] = [](int cap) { glDisable(cap); };
+
+  // Blending
+  gl["blendFunc"] = [](int sfactor, int dfactor) {
+    glBlendFunc(sfactor, dfactor);
+  };
+
+  // Depth testing
+  gl["depthFunc"] = [](int func) { glDepthFunc(func); };
+  gl["depthMask"] = [](bool flag) { glDepthMask(flag ? GL_TRUE : GL_FALSE); };
+
+  // Matrix operations (legacy style for simplicity)
+  gl["matrixMode"] = [](int mode) { glMatrixMode(mode); };
+  gl["loadIdentity"] = []() { glLoadIdentity(); };
+  gl["pushMatrix"] = []() { glPushMatrix(); };
+  gl["popMatrix"] = []() { glPopMatrix(); };
+  gl["translate"] = [](float x, float y, float z) { glTranslatef(x, y, z); };
+  gl["rotate"] = [](float angle, float x, float y, float z) {
+    glRotatef(angle, x, y, z);
+  };
+  gl["scale"] = [](float x, float y, float z) { glScalef(x, y, z); };
+
+  // Immediate mode drawing (legacy but simple)
+  gl["begin"] = [](int mode) { glBegin(mode); };
+  gl["end"] = []() { glEnd(); };
+  gl["vertex2"] = [](float x, float y) { glVertex2f(x, y); };
+  gl["vertex3"] = [](float x, float y, float z) { glVertex3f(x, y, z); };
+  gl["color3"] = [](float r, float g, float b) { glColor3f(r, g, b); };
+  gl["color4"] = [](float r, float g, float b, float a) { glColor4f(r, g, b, a); };
+  gl["texCoord2"] = [](float s, float t) { glTexCoord2f(s, t); };
+  gl["normal3"] = [](float x, float y, float z) { glNormal3f(x, y, z); };
+
+  // Programmable pipeline support (shaders/programs/buffers)
+  gl["createShader"] = [](int shaderType) -> unsigned int {
+    return static_cast<unsigned int>(glCreateShader((GLenum)shaderType));
+  };
+
+  gl["deleteShader"] = [](unsigned int shaderId) {
+    glDeleteShader(static_cast<GLuint>(shaderId));
+  };
+
+  gl["shaderSource"] = [](unsigned int shaderId, const std::string &source) {
+    const char *src = source.c_str();
+    GLint length = static_cast<GLint>(source.size());
+    glShaderSource(static_cast<GLuint>(shaderId), 1, &src, &length);
+  };
+
+  gl["compileShader"] = [](unsigned int shaderId) {
+    glCompileShader(static_cast<GLuint>(shaderId));
+  };
+
+  gl["getShaderCompileStatus"] = [](unsigned int shaderId) -> bool {
+    GLint status = GL_FALSE;
+    glGetShaderiv(static_cast<GLuint>(shaderId), GL_COMPILE_STATUS, &status);
+    return status == GL_TRUE;
+  };
+
+  gl["getShaderInfoLog"] = [](unsigned int shaderId) -> std::string {
+    GLint length = 0;
+    glGetShaderiv(static_cast<GLuint>(shaderId), GL_INFO_LOG_LENGTH, &length);
+    if (length <= 1)
+      return {};
+
+    std::string log(static_cast<size_t>(length), '\0');
+    GLsizei written = 0;
+    glGetShaderInfoLog(static_cast<GLuint>(shaderId), length, &written,
+                       log.data());
+    if (written > 0 && static_cast<size_t>(written) < log.size())
+      log.resize(static_cast<size_t>(written));
+    return log;
+  };
+
+  gl["createProgram"] = []() -> unsigned int {
+    return static_cast<unsigned int>(glCreateProgram());
+  };
+
+  gl["deleteProgram"] = [](unsigned int programId) {
+    glDeleteProgram(static_cast<GLuint>(programId));
+  };
+
+  gl["attachShader"] = [](unsigned int programId, unsigned int shaderId) {
+    glAttachShader(static_cast<GLuint>(programId), static_cast<GLuint>(shaderId));
+  };
+
+  gl["detachShader"] = [](unsigned int programId, unsigned int shaderId) {
+    glDetachShader(static_cast<GLuint>(programId), static_cast<GLuint>(shaderId));
+  };
+
+  gl["linkProgram"] = [](unsigned int programId) {
+    glLinkProgram(static_cast<GLuint>(programId));
+  };
+
+  gl["useProgram"] = [](unsigned int programId) {
+    glUseProgram(static_cast<GLuint>(programId));
+  };
+
+  gl["getProgramLinkStatus"] = [](unsigned int programId) -> bool {
+    GLint status = GL_FALSE;
+    glGetProgramiv(static_cast<GLuint>(programId), GL_LINK_STATUS, &status);
+    return status == GL_TRUE;
+  };
+
+  gl["getProgramInfoLog"] = [](unsigned int programId) -> std::string {
+    GLint length = 0;
+    glGetProgramiv(static_cast<GLuint>(programId), GL_INFO_LOG_LENGTH, &length);
+    if (length <= 1)
+      return {};
+
+    std::string log(static_cast<size_t>(length), '\0');
+    GLsizei written = 0;
+    glGetProgramInfoLog(static_cast<GLuint>(programId), length, &written,
+                        log.data());
+    if (written > 0 && static_cast<size_t>(written) < log.size())
+      log.resize(static_cast<size_t>(written));
+    return log;
+  };
+
+  gl["getAttribLocation"] = [](unsigned int programId,
+                                const std::string &name) -> int {
+    return glGetAttribLocation(static_cast<GLuint>(programId), name.c_str());
+  };
+
+  gl["getUniformLocation"] = [](unsigned int programId,
+                                 const std::string &name) -> int {
+    return glGetUniformLocation(static_cast<GLuint>(programId), name.c_str());
+  };
+
+  gl["uniform1f"] = [](int location, float v0) { glUniform1f(location, v0); };
+  gl["uniform2f"] = [](int location, float v0, float v1) {
+    glUniform2f(location, v0, v1);
+  };
+  gl["uniform3f"] = [](int location, float v0, float v1, float v2) {
+    glUniform3f(location, v0, v1, v2);
+  };
+  gl["uniform4f"] = [](int location, float v0, float v1, float v2,
+                        float v3) { glUniform4f(location, v0, v1, v2, v3); };
+  gl["uniform1i"] = [](int location, int v0) { glUniform1i(location, v0); };
+  gl["uniformMatrix4"] = [](int location, sol::table values,
+                              sol::optional<bool> transpose) {
+    const bool tx = transpose.value_or(false);
+    const size_t count = values.size();
+    if (count < 16)
+      return;
+
+    std::array<float, 16> matrix{};
+    for (size_t i = 0; i < 16; ++i) {
+      auto value = values.get<sol::optional<float>>(i + 1);
+      matrix[i] = value.value_or(0.0f);
+    }
+
+    glUniformMatrix4fv(location, 1, tx ? GL_TRUE : GL_FALSE, matrix.data());
+  };
+
+  gl["createBuffer"] = []() -> unsigned int {
+    GLuint id = 0;
+    glGenBuffers(1, &id);
+    return static_cast<unsigned int>(id);
+  };
+
+  gl["deleteBuffer"] = [](unsigned int bufferId) {
+    GLuint id = static_cast<GLuint>(bufferId);
+    glDeleteBuffers(1, &id);
+  };
+
+  gl["bindBuffer"] = [](int target, unsigned int bufferId) {
+    glBindBuffer(static_cast<GLenum>(target), static_cast<GLuint>(bufferId));
+  };
+
+  gl["bufferDataFloat"] = [](int target, sol::table values, int usage) {
+    const size_t count = values.size();
+    std::vector<float> data;
+    data.reserve(count);
+    for (size_t i = 1; i <= count; ++i) {
+      auto value = values.get<sol::optional<float>>(i);
+      data.push_back(value.value_or(0.0f));
+    }
+
+    glBufferData(static_cast<GLenum>(target),
+                 static_cast<GLsizeiptr>(data.size() * sizeof(float)),
+                 data.empty() ? nullptr : data.data(),
+                 static_cast<GLenum>(usage));
+  };
+
+  gl["bufferSubDataFloat"] = [](int target, int offsetBytes, sol::table values) {
+    const size_t count = values.size();
+    std::vector<float> data;
+    data.reserve(count);
+    for (size_t i = 1; i <= count; ++i) {
+      auto value = values.get<sol::optional<float>>(i);
+      data.push_back(value.value_or(0.0f));
+    }
+
+    glBufferSubData(static_cast<GLenum>(target),
+                    static_cast<GLintptr>(offsetBytes),
+                    static_cast<GLsizeiptr>(data.size() * sizeof(float)),
+                    data.empty() ? nullptr : data.data());
+  };
+
+  gl["bufferDataUInt16"] = [](int target, sol::table values, int usage) {
+    const size_t count = values.size();
+    std::vector<uint16_t> data;
+    data.reserve(count);
+    for (size_t i = 1; i <= count; ++i) {
+      auto value = values.get<sol::optional<int>>(i);
+      data.push_back(static_cast<uint16_t>(value.value_or(0)));
+    }
+
+    glBufferData(static_cast<GLenum>(target),
+                 static_cast<GLsizeiptr>(data.size() * sizeof(uint16_t)),
+                 data.empty() ? nullptr : data.data(),
+                 static_cast<GLenum>(usage));
+  };
+
+  gl["createVertexArray"] = []() -> unsigned int {
+    GLuint id = 0;
+    glGenVertexArrays(1, &id);
+    return static_cast<unsigned int>(id);
+  };
+
+  gl["bindVertexArray"] = [](unsigned int vaoId) {
+    glBindVertexArray(static_cast<GLuint>(vaoId));
+  };
+
+  gl["deleteVertexArray"] = [](unsigned int vaoId) {
+    GLuint id = static_cast<GLuint>(vaoId);
+    glDeleteVertexArrays(1, &id);
+  };
+
+  gl["enableVertexAttribArray"] = [](unsigned int index) {
+    glEnableVertexAttribArray(static_cast<GLuint>(index));
+  };
+
+  gl["disableVertexAttribArray"] = [](unsigned int index) {
+    glDisableVertexAttribArray(static_cast<GLuint>(index));
+  };
+
+  gl["vertexAttribPointer"] = [](unsigned int index, int size, int type,
+                                  bool normalized, int strideBytes,
+                                  int offsetBytes) {
+    glVertexAttribPointer(
+        static_cast<GLuint>(index), size, static_cast<GLenum>(type),
+        normalized ? GL_TRUE : GL_FALSE, static_cast<GLsizei>(strideBytes),
+        reinterpret_cast<const void *>(static_cast<uintptr_t>(offsetBytes)));
+  };
+
+  gl["drawArrays"] = [](int mode, int first, int count) {
+    glDrawArrays(static_cast<GLenum>(mode), first, count);
+  };
+
+  gl["drawElements"] = [](int mode, int count, int indexType,
+                           int indexOffsetBytes) {
+    glDrawElements(static_cast<GLenum>(mode), count, static_cast<GLenum>(indexType),
+                   reinterpret_cast<const void *>(static_cast<uintptr_t>(indexOffsetBytes)));
+  };
+
+  gl["createTexture"] = []() -> unsigned int {
+    GLuint id = 0;
+    glGenTextures(1, &id);
+    return static_cast<unsigned int>(id);
+  };
+
+  gl["deleteTexture"] = [](unsigned int textureId) {
+    GLuint id = static_cast<GLuint>(textureId);
+    glDeleteTextures(1, &id);
+  };
+
+  gl["activeTexture"] = [](int textureUnit) {
+    glActiveTexture(static_cast<GLenum>(textureUnit));
+  };
+
+  gl["bindTexture"] = [](int target, unsigned int textureId) {
+    glBindTexture(static_cast<GLenum>(target), static_cast<GLuint>(textureId));
+  };
+
+  gl["texParameteri"] = [](int target, int pname, int value) {
+    glTexParameteri(static_cast<GLenum>(target), static_cast<GLenum>(pname), value);
+  };
+
+  gl["texImage2DRGBA"] = [](int target, int level, int width, int height,
+                              sol::optional<sol::table> pixelData) {
+    std::vector<uint8_t> data;
+    const uint8_t *ptr = nullptr;
+
+    if (pixelData.has_value()) {
+      auto table = pixelData.value();
+      const size_t count = table.size();
+      data.reserve(count);
+      for (size_t i = 1; i <= count; ++i) {
+        auto value = table.get<sol::optional<int>>(i);
+        data.push_back(
+            static_cast<uint8_t>(std::clamp(value.value_or(0), 0, 255)));
+      }
+      ptr = data.empty() ? nullptr : data.data();
+    }
+
+    glTexImage2D(static_cast<GLenum>(target), level, GL_RGBA8, width, height, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, ptr);
+  };
+
+  gl["texSubImage2DRGBA"] = [](int target, int level, int xoffset, int yoffset,
+                                 int width, int height, sol::table pixelData) {
+    const size_t count = pixelData.size();
+    std::vector<uint8_t> data;
+    data.reserve(count);
+    for (size_t i = 1; i <= count; ++i) {
+      auto value = pixelData.get<sol::optional<int>>(i);
+      data.push_back(
+          static_cast<uint8_t>(std::clamp(value.value_or(0), 0, 255)));
+    }
+
+    glTexSubImage2D(static_cast<GLenum>(target), level, xoffset, yoffset, width,
+                    height, GL_RGBA, GL_UNSIGNED_BYTE,
+                    data.empty() ? nullptr : data.data());
+  };
+
+  gl["generateMipmap"] = [](int target) {
+    glGenerateMipmap(static_cast<GLenum>(target));
+  };
+
+  gl["createFramebuffer"] = []() -> unsigned int {
+    GLuint id = 0;
+    glGenFramebuffers(1, &id);
+    return static_cast<unsigned int>(id);
+  };
+
+  gl["deleteFramebuffer"] = [](unsigned int framebufferId) {
+    GLuint id = static_cast<GLuint>(framebufferId);
+    glDeleteFramebuffers(1, &id);
+  };
+
+  gl["bindFramebuffer"] = [](int target, unsigned int framebufferId) {
+    glBindFramebuffer(static_cast<GLenum>(target), static_cast<GLuint>(framebufferId));
+  };
+
+  gl["framebufferTexture2D"] = [](int target, int attachment,
+                                   int texTarget, unsigned int textureId,
+                                   int level) {
+    glFramebufferTexture2D(static_cast<GLenum>(target), static_cast<GLenum>(attachment),
+                           static_cast<GLenum>(texTarget),
+                           static_cast<GLuint>(textureId), level);
+  };
+
+  gl["checkFramebufferStatus"] = [](int target) -> int {
+    return static_cast<int>(glCheckFramebufferStatus(static_cast<GLenum>(target)));
+  };
+
+  gl["drawBuffers"] = [](sol::table buffers) {
+    const size_t count = buffers.size();
+    std::vector<GLenum> values;
+    values.reserve(count);
+    for (size_t i = 1; i <= count; ++i)
+      values.push_back(static_cast<GLenum>(buffers.get_or<int>(i, GL_COLOR_ATTACHMENT0)));
+
+    if (!values.empty())
+      glDrawBuffers(static_cast<GLsizei>(values.size()), values.data());
+  };
+
+  gl["createRenderbuffer"] = []() -> unsigned int {
+    GLuint id = 0;
+    glGenRenderbuffers(1, &id);
+    return static_cast<unsigned int>(id);
+  };
+
+  gl["deleteRenderbuffer"] = [](unsigned int renderbufferId) {
+    GLuint id = static_cast<GLuint>(renderbufferId);
+    glDeleteRenderbuffers(1, &id);
+  };
+
+  gl["bindRenderbuffer"] = [](int target, unsigned int renderbufferId) {
+    glBindRenderbuffer(static_cast<GLenum>(target), static_cast<GLuint>(renderbufferId));
+  };
+
+  gl["renderbufferStorage"] = [](int target, int internalFormat, int width,
+                                  int height) {
+    glRenderbufferStorage(static_cast<GLenum>(target),
+                          static_cast<GLenum>(internalFormat), width, height);
+  };
+
+  gl["framebufferRenderbuffer"] = [](int target, int attachment,
+                                      int renderbufferTarget,
+                                      unsigned int renderbufferId) {
+    glFramebufferRenderbuffer(static_cast<GLenum>(target),
+                              static_cast<GLenum>(attachment),
+                              static_cast<GLenum>(renderbufferTarget),
+                              static_cast<GLuint>(renderbufferId));
+  };
+
+  gl["blitFramebuffer"] = [](int srcX0, int srcY0, int srcX1, int srcY1,
+                              int dstX0, int dstY0, int dstX1, int dstY1,
+                              int mask, int filter) {
+    glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1,
+                      static_cast<GLbitfield>(mask),
+                      static_cast<GLenum>(filter));
+  };
+
+  gl["clearDepth"] = [](double depth) { glClearDepth(depth); };
+  gl["blendEquation"] = [](int mode) {
+    glBlendEquation(static_cast<GLenum>(mode));
+  };
+  gl["scissor"] = [](int x, int y, int width, int height) {
+    glScissor(x, y, width, height);
+  };
+  gl["cullFace"] = [](int mode) { glCullFace(static_cast<GLenum>(mode)); };
+
+  gl["lineWidth"] = [](float width) { glLineWidth(width); };
+
+  gl["getError"] = []() -> int { return static_cast<int>(glGetError()); };
+
+  // ---- OpenGL Constants ----
+  lua["GL"] = lua.create_table_with(
+      // Buffer bits
+      "COLOR_BUFFER_BIT", GL_COLOR_BUFFER_BIT, "DEPTH_BUFFER_BIT",
+      GL_DEPTH_BUFFER_BIT, "STENCIL_BUFFER_BIT", GL_STENCIL_BUFFER_BIT,
+      // Primitives
+      "POINTS", GL_POINTS, "LINES", GL_LINES, "LINE_STRIP", GL_LINE_STRIP,
+      "LINE_LOOP", GL_LINE_LOOP, "TRIANGLES", GL_TRIANGLES, "TRIANGLE_STRIP",
+      GL_TRIANGLE_STRIP, "TRIANGLE_FAN", GL_TRIANGLE_FAN, "QUADS", GL_QUADS,
+      "QUAD_STRIP", GL_QUAD_STRIP, "POLYGON", GL_POLYGON,
+      // Capabilities
+      "BLEND", GL_BLEND, "DEPTH_TEST", GL_DEPTH_TEST, "CULL_FACE", GL_CULL_FACE,
+      "LIGHTING", GL_LIGHTING, "LIGHT0", GL_LIGHT0, "LIGHT1", GL_LIGHT1,
+      "TEXTURE_2D", GL_TEXTURE_2D, "SCISSOR_TEST", GL_SCISSOR_TEST,
+      // Blend factors
+      "ZERO", GL_ZERO, "ONE", GL_ONE, "SRC_COLOR", GL_SRC_COLOR,
+      "ONE_MINUS_SRC_COLOR", GL_ONE_MINUS_SRC_COLOR, "SRC_ALPHA", GL_SRC_ALPHA,
+      "ONE_MINUS_SRC_ALPHA", GL_ONE_MINUS_SRC_ALPHA,
+      "DST_ALPHA", GL_DST_ALPHA, "ONE_MINUS_DST_ALPHA", GL_ONE_MINUS_DST_ALPHA,
+      "FUNC_ADD", GL_FUNC_ADD,
+      // Depth functions
+      "NEVER", GL_NEVER, "LESS", GL_LESS, "EQUAL", GL_EQUAL, "LEQUAL", GL_LEQUAL,
+      "GREATER", GL_GREATER, "NOTEQUAL", GL_NOTEQUAL, "GEQUAL", GL_GEQUAL,
+      "ALWAYS", GL_ALWAYS,
+      // Cull modes
+      "FRONT", GL_FRONT, "BACK", GL_BACK, "FRONT_AND_BACK", GL_FRONT_AND_BACK,
+      // Matrix modes
+      "MODELVIEW", GL_MODELVIEW, "PROJECTION", GL_PROJECTION, "TEXTURE",
+      GL_TEXTURE,
+      // Shader/program pipeline
+      "VERTEX_SHADER", GL_VERTEX_SHADER, "FRAGMENT_SHADER", GL_FRAGMENT_SHADER,
+      "COMPILE_STATUS", GL_COMPILE_STATUS, "LINK_STATUS", GL_LINK_STATUS,
+      "INFO_LOG_LENGTH", GL_INFO_LOG_LENGTH,
+      // Buffer API
+      "ARRAY_BUFFER", GL_ARRAY_BUFFER, "ELEMENT_ARRAY_BUFFER",
+      GL_ELEMENT_ARRAY_BUFFER, "STATIC_DRAW", GL_STATIC_DRAW, "DYNAMIC_DRAW",
+      GL_DYNAMIC_DRAW, "STREAM_DRAW", GL_STREAM_DRAW,
+      "READ_FRAMEBUFFER", GL_READ_FRAMEBUFFER, "DRAW_FRAMEBUFFER",
+      GL_DRAW_FRAMEBUFFER,
+      // Framebuffer / renderbuffer
+      "FRAMEBUFFER", GL_FRAMEBUFFER, "RENDERBUFFER", GL_RENDERBUFFER,
+      "FRAMEBUFFER_COMPLETE", GL_FRAMEBUFFER_COMPLETE,
+      "COLOR_ATTACHMENT0", GL_COLOR_ATTACHMENT0, "DEPTH_ATTACHMENT",
+      GL_DEPTH_ATTACHMENT, "DEPTH_STENCIL_ATTACHMENT", GL_DEPTH_STENCIL_ATTACHMENT,
+      "DEPTH24_STENCIL8", GL_DEPTH24_STENCIL8,
+      // Texture API
+      "TEXTURE0", GL_TEXTURE0, "TEXTURE1", GL_TEXTURE1, "TEXTURE2", GL_TEXTURE2,
+      "TEXTURE_MIN_FILTER", GL_TEXTURE_MIN_FILTER, "TEXTURE_MAG_FILTER",
+      GL_TEXTURE_MAG_FILTER, "TEXTURE_WRAP_S", GL_TEXTURE_WRAP_S,
+      "TEXTURE_WRAP_T", GL_TEXTURE_WRAP_T, "CLAMP_TO_EDGE", GL_CLAMP_TO_EDGE,
+      "REPEAT", GL_REPEAT, "LINEAR", GL_LINEAR, "NEAREST", GL_NEAREST,
+      "RGBA", GL_RGBA, "RGBA8", GL_RGBA8,
+      // Types
+      "FLOAT", GL_FLOAT, "UNSIGNED_BYTE", GL_UNSIGNED_BYTE,
+      "UNSIGNED_SHORT", GL_UNSIGNED_SHORT, "UNSIGNED_INT", GL_UNSIGNED_INT,
+      // Error values
+      "NO_ERROR", GL_NO_ERROR, "INVALID_ENUM", GL_INVALID_ENUM,
+      "INVALID_VALUE", GL_INVALID_VALUE, "INVALID_OPERATION",
+      GL_INVALID_OPERATION, "OUT_OF_MEMORY", GL_OUT_OF_MEMORY);
 
   // ---- Justification constants ----
   lua["Justify"] = lua.create_table_with(
@@ -481,6 +1071,7 @@ void LuaEngine::registerBindings() {
 
   // ---- Script management (exposed to Lua) ----
   lua["listUiScripts"] = [this]() -> sol::table {
+    const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
     auto &lua = pImpl->lua;
     auto result = lua.create_table();
     if (!pImpl->currentScriptFile.existsAsFile())
@@ -506,6 +1097,13 @@ void LuaEngine::registerBindings() {
   lua["getCurrentScriptPath"] = [this]() -> std::string {
     return pImpl->currentScriptFile.getFullPathName().toStdString();
   };
+
+  // High-resolution time for animations (seconds since app start)
+  lua["getTime"] = []() -> double {
+    static const auto startTime = juce::Time::getHighResolutionTicks();
+    return juce::Time::highResolutionTicksToSeconds(
+        juce::Time::getHighResolutionTicks() - startTime);
+  };
 }
 
 // ============================================================================
@@ -513,6 +1111,7 @@ void LuaEngine::registerBindings() {
 // ============================================================================
 
 void LuaEngine::pushStateToLua() {
+  const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
   auto &lua = pImpl->lua;
   auto *proc = pImpl->processor;
   if (!proc)
@@ -595,6 +1194,14 @@ void LuaEngine::pushStateToLua() {
   auto &capture = proc->getCaptureBuffer();
   state["captureSize"] = capture.getSize();
 
+  // Spectrum analysis data for visualization
+  auto spectrum = proc->getSpectrumData();
+  sol::table spectrumTable = lua.create_table();
+  for (int i = 0; i < static_cast<int>(spectrum.size()); ++i) {
+    spectrumTable[i + 1] = spectrum[i];  // Lua is 1-indexed
+  }
+  state["spectrum"] = spectrumTable;
+
   lua["state"] = state;
 }
 
@@ -613,11 +1220,17 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
 
   // Set up package.path so require() works from the script's directory
   auto dir = scriptFile.getParentDirectory().getFullPathName().toStdString();
-  pImpl->lua["package"]["path"] = dir + "/?.lua;" + dir + "/?/init.lua";
+  {
+    const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+    pImpl->lua["package"]["path"] = dir + "/?.lua;" + dir + "/?/init.lua";
+  }
 
   try {
-    auto result =
-        pImpl->lua.script_file(scriptFile.getFullPathName().toStdString());
+    sol::protected_function_result result;
+    {
+      const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+      result = pImpl->lua.script_file(scriptFile.getFullPathName().toStdString());
+    }
     if (!result.valid()) {
       sol::error err = result;
       pImpl->lastError = err.what();
@@ -635,13 +1248,21 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
   }
 
   // Call ui_init(root) if defined
-  sol::function uiInit = pImpl->lua["ui_init"];
+  sol::function uiInit;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+    uiInit = pImpl->lua["ui_init"];
+  }
   if (uiInit.valid()) {
     try {
       // Clear existing children
       pImpl->rootCanvas->clearChildren();
 
-      auto result = uiInit(pImpl->rootCanvas);
+      sol::protected_function_result result;
+      {
+        const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+        result = uiInit(pImpl->rootCanvas);
+      }
       if (!result.valid()) {
         sol::error err = result;
         pImpl->lastError = err.what();
@@ -678,10 +1299,18 @@ void LuaEngine::notifyResized(int width, int height) {
   if (!pImpl->scriptLoaded)
     return;
 
-  sol::function fn = pImpl->lua["ui_resized"];
+  sol::function fn;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+    fn = pImpl->lua["ui_resized"];
+  }
   if (fn.valid()) {
     try {
-      auto result = fn(width, height);
+      sol::protected_function_result result;
+      {
+        const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+        result = fn(width, height);
+      }
       if (!result.valid()) {
         sol::error err = result;
         std::fprintf(stderr, "LuaEngine: ui_resized error: %s\n", err.what());
@@ -716,10 +1345,24 @@ void LuaEngine::notifyUpdate() {
 
   pushStateToLua();
 
-  sol::function fn = pImpl->lua["ui_update"];
+  sol::function fn;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+    fn = pImpl->lua["ui_update"];
+  }
   if (fn.valid()) {
     try {
-      auto result = fn(pImpl->lua["state"]);
+      sol::object stateObj;
+      {
+        const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+        stateObj = pImpl->lua["state"];
+      }
+
+      sol::protected_function_result result;
+      {
+        const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+        result = fn(stateObj);
+      }
       if (!result.valid()) {
         sol::error err = result;
         std::fprintf(stderr, "LuaEngine: ui_update error: %s\n", err.what());

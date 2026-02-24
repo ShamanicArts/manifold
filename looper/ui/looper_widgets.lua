@@ -76,6 +76,11 @@ function BaseWidget:bindCallbacks()
         self:onClick() 
     end)
     
+    self.node:setOnDoubleClick(function()
+        if not self._enabled then return end
+        self:onDoubleClick()
+    end)
+    
     self.node:setOnDraw(function(node)
         self._hovered = node:isMouseOver()
         self:onDraw(node:getWidth(), node:getHeight())
@@ -86,6 +91,7 @@ function BaseWidget:onMouseDown(mx, my) end
 function BaseWidget:onMouseDrag(mx, my, dx, dy) end
 function BaseWidget:onMouseUp(mx, my) end
 function BaseWidget:onClick() end
+function BaseWidget:onDoubleClick() end
 function BaseWidget:onDraw(w, h) end
 
 function BaseWidget:setEnabled(enabled)
@@ -167,8 +173,22 @@ function Widgets.Button.new(parent, name, config)
     self._fontSize = config.fontSize or 13.0
     self._radius = config.radius or 7.0
     self._onClick = config.on_click or config.onClick
+    self._onPress = config.on_press or config.onPress
+    self._onRelease = config.on_release or config.onRelease
     
     return self
+end
+
+function Widgets.Button:onMouseDown(mx, my)
+    if self._onPress then
+        self._onPress(mx, my)
+    end
+end
+
+function Widgets.Button:onMouseUp(mx, my)
+    if self._onRelease then
+        self._onRelease(mx, my)
+    end
 end
 
 function Widgets.Button:onClick()
@@ -350,6 +370,15 @@ function Widgets.Slider:onMouseUp(mx, my)
     self._dragging = false
 end
 
+function Widgets.Slider:onDoubleClick()
+    if self._value ~= self._defaultValue then
+        self._value = self._defaultValue
+        if self._onChange then
+            self._onChange(self._value)
+        end
+    end
+end
+
 function Widgets.Slider:valueFromMouse(mx)
     local w = self.node:getWidth()
     local trackW = math.max(1, w - 16)
@@ -511,6 +540,7 @@ function Widgets.Knob.new(parent, name, config)
     self._max = config.max or 1
     self._step = config.step or 0
     self._value = clamp(config.value or self._min, self._min, self._max)
+    self._defaultValue = config.defaultValue or self._value
     self._label = config.label or ""
     self._suffix = config.suffix or ""
     self._colour = colour(config.colour, 0xff22d3ee)
@@ -549,6 +579,15 @@ end
 
 function Widgets.Knob:onMouseUp(mx, my)
     self._dragging = false
+end
+
+function Widgets.Knob:onDoubleClick()
+    if self._value ~= self._defaultValue then
+        self._value = self._defaultValue
+        if self._onChange then
+            self._onChange(self._value)
+        end
+    end
 end
 
 function Widgets.Knob:onDraw(w, h)
@@ -1153,6 +1192,7 @@ function Widgets.NumberBox.new(parent, name, config)
     self._max = config.max or 999
     self._step = config.step or 1
     self._value = clamp(config.value or self._min, self._min, self._max)
+    self._defaultValue = config.defaultValue or self._value
     self._label = config.label or ""
     self._suffix = config.suffix or ""
     self._colour = colour(config.colour, 0xff38bdf8)
@@ -1200,6 +1240,15 @@ end
 
 function Widgets.NumberBox:onMouseUp(mx, my)
     self._dragging = false
+end
+
+function Widgets.NumberBox:onDoubleClick()
+    if self._value ~= self._defaultValue then
+        self._value = self._defaultValue
+        if self._onChange then
+            self._onChange(self._value)
+        end
+    end
 end
 
 function Widgets.NumberBox:_adjust(direction)

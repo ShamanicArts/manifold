@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_dsp/juce_dsp.h>
 #include <atomic>
 #include <vector>
 #include "../primitives/dsp/CaptureBuffer.h"
@@ -89,6 +90,10 @@ public:
     // UI switching (thread-safe) - called by editor to check for UI switch
     std::string getAndClearPendingUISwitch();
     
+    // Spectrum analysis for visualization
+    static constexpr int NUM_SPECTRUM_BANDS = 32;
+    std::array<float, NUM_SPECTRUM_BANDS> getSpectrumData() const;
+    
 private:
     CaptureBuffer captureBuffer;
     LooperLayer layers[MAX_LAYERS];
@@ -148,6 +153,21 @@ private:
     
     // Push an event to control server (called from audio thread)
     void pushEvent(const char* json);
+    
+    // FFT analysis for spectrum visualization
+    static constexpr int FFT_ORDER = 10;  // 1024 samples
+    static constexpr int FFT_SIZE = 1 << FFT_ORDER;
+    
+    std::unique_ptr<juce::dsp::FFT> fft;
+    std::vector<float> fftInput;
+    std::vector<float> fftOutput;
+    int fftInputIndex = 0;
+    
+    // Lock-free spectrum data for UI
+    std::array<std::atomic<float>, NUM_SPECTRUM_BANDS> spectrumBands{};
+    
+    void processFFT(const float* inputData, int numSamples);
+    void updateSpectrumBands();
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LooperProcessor)
 };

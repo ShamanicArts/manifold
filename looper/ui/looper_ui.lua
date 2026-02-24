@@ -10,6 +10,7 @@ local W = require("looper_widgets")
 local current_state = {}
 local MAX_LAYERS = 4
 local ui = {}
+local recButtonLatched = false
 
 -- ============================================================================
 -- Helpers
@@ -213,11 +214,13 @@ function ui_init(root)
         label = "● REC",
         bg = 0xff7f1d1d,
         fontSize = 13.0,
-        on_click = function()
-            if current_state.isRecording then
+        on_press = function()
+            if recButtonLatched then
                 command("STOPREC")
+                recButtonLatched = false
             else
                 command("REC")
+                recButtonLatched = true
             end
         end,
     })
@@ -699,6 +702,7 @@ end
 
 function ui_update(s)
     current_state = s
+    recButtonLatched = s.isRecording or false
     
     -- Header
     if ui.tempoBox then ui.tempoBox:setValue(s.tempo or 120) end

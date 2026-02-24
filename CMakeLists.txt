@@ -84,6 +84,7 @@ target_sources(Looper
         looper/primitives/control/ControlServer.h
         looper/primitives/control/ControlServer.cpp
         looper/primitives/ui/Canvas.h
+        looper/primitives/ui/Canvas.cpp
         looper/primitives/ui/CanvasStyle.h
         looper/primitives/scripting/LuaEngine.h
         looper/primitives/scripting/LuaEngine.cpp)
@@ -101,7 +102,9 @@ target_link_libraries(Looper
     PRIVATE
         juce::juce_audio_utils
         juce::juce_audio_formats
+        juce::juce_dsp
         juce::juce_gui_extra
+        juce::juce_opengl
         PkgConfig::LUA
         sol2::sol2
     PUBLIC

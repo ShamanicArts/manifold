@@ -34,6 +34,13 @@ void LooperProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   state.captureSize.store(captureSamples);
   state.tempo.store(tempo);
   state.samplesPerBar.store(getSamplesPerBar());
+
+  // Initialize FFT for spectrum analysis
+  fft = std::make_unique<juce::dsp::FFT>(FFT_ORDER);
+  fftInput.resize(FFT_SIZE);
+  fftOutput.resize(FFT_SIZE * 2);
+  std::fill(fftInput.begin(), fftInput.end(), 0.0f);
+  fftInputIndex = 0;
 }
 
 void LooperProcessor::releaseResources() { controlServer.stop(); }
@@ -63,6 +70,20 @@ void LooperProcessor::processBlock(juce::AudioBuffer<float> &buffer,
       captureBuffer.write(inputL[i], 0);
       captureBuffer.write(inputR[i], 1);
     }
+  }
+
+  // Process FFT for spectrum visualization (use mixed input)
+  for (int i = 0; i < numSamples; ++i) {
+    float mixedSample = (inputL[i] + inputR[i]) * 0.5f;
+    fftInput[fftInputIndex] = mixedSample;
+    fftInputIndex = (fftInputIndex + 1) % FFT_SIZE;
+  }
+  
+  // Perform FFT every block (can be optimized to every N blocks)
+  if (fft) {
+    std::copy(fftInput.begin(), fftInput.end(), fftOutput.begin());
+    fft->performRealOnlyForwardTransform(fftOutput.data());
+    updateSpectrumBands();
   }
 
   maybeFireForwardCommit();
@@ -607,6 +628,62 @@ void LooperProcessor::updateAtomicState(
 
 void LooperProcessor::pushEvent(const char *json) {
   controlServer.pushEvent(json, (int)std::strlen(json));
+}
+
+// ============================================================================
+// FFT Spectrum Analysis
+// ============================================================================
+
+void LooperProcessor::updateSpectrumBands() {
+  // Map FFT bins to log-spaced frequency bands
+  const float sampleRate = static_cast<float>(currentSampleRate);
+  const float binWidth = sampleRate / FFT_SIZE;
+  
+  // Frequency range: 20Hz to 20kHz
+  const float minFreq = 20.0f;
+  const float maxFreq = 20000.0f;
+  
+  for (int band = 0; band < NUM_SPECTRUM_BANDS; ++band) {
+    // Calculate frequency range for this band (log scale)
+    float bandFreqLow = minFreq * std::pow(maxFreq / minFreq, static_cast<float>(band) / NUM_SPECTRUM_BANDS);
+    float bandFreqHigh = minFreq * std::pow(maxFreq / minFreq, static_cast<float>(band + 1) / NUM_SPECTRUM_BANDS);
+    
+    // Convert to bin indices
+    int binLow = static_cast<int>(bandFreqLow / binWidth);
+    int binHigh = static_cast<int>(bandFreqHigh / binWidth);
+    binLow = std::max(1, std::min(binLow, FFT_SIZE / 2));
+    binHigh = std::max(1, std::min(binHigh, FFT_SIZE / 2));
+    
+    // Calculate average magnitude in this band
+    float magnitude = 0.0f;
+    for (int bin = binLow; bin < binHigh; ++bin) {
+      float real = fftOutput[bin * 2];
+      float imag = fftOutput[bin * 2 + 1];
+      magnitude += std::sqrt(real * real + imag * imag);
+    }
+    
+    if (binHigh > binLow) {
+      magnitude /= (binHigh - binLow);
+    }
+    
+    // Convert to dB and normalize
+    float db = 20.0f * std::log10(magnitude + 1e-10f);
+    float normalized = (db + 60.0f) / 60.0f;  // -60dB to 0dB range
+    normalized = std::max(0.0f, std::min(1.0f, normalized));
+    
+    // Smooth with existing value
+    float current = spectrumBands[band].load(std::memory_order_relaxed);
+    float smoothed = current * 0.7f + normalized * 0.3f;
+    spectrumBands[band].store(smoothed, std::memory_order_relaxed);
+  }
+}
+
+std::array<float, LooperProcessor::NUM_SPECTRUM_BANDS> LooperProcessor::getSpectrumData() const {
+  std::array<float, NUM_SPECTRUM_BANDS> result;
+  for (int i = 0; i < NUM_SPECTRUM_BANDS; ++i) {
+    result[i] = spectrumBands[i].load(std::memory_order_relaxed);
+  }
+  return result;
 }
 
 juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() {
