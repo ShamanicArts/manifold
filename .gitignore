@@ -1,3 +1,4 @@
-build/
+*build/
 *.sock
 *.log
+looper/ui/looper_ui_minimal.lua
