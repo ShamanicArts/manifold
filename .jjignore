@@ -1,3 +1,7 @@
 build/
 *.sock
 *.log
+
+# Clang cache (clangd index files)
+.cache/
+*.idx
