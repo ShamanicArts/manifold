@@ -1,6 +1,9 @@
 #include "OSCQuery.h"
+#include "SHA1.h"
+#include "OSCPacketBuilder.h"
 #include "../../engine/LooperProcessor.h"
 #include <cstring>
+#include <cmath>
 
 // ============================================================================
 // OSCQueryNode - tree building and JSON serialization
@@ -86,7 +89,7 @@ juce::String OSCQueryNode::toJSON(int ind) const {
 }
 
 // ============================================================================
-// OSCQueryServer implementation
+// OSCQueryServer lifecycle
 // ============================================================================
 
 OSCQueryServer::OSCQueryServer() = default;
@@ -114,10 +117,20 @@ void OSCQueryServer::start(LooperProcessor* processor, OSCEndpointRegistry* reg,
 
     running = true;
     httpThread = std::thread(&OSCQueryServer::httpLoop, this);
+    wsBroadcastThread = std::thread(&OSCQueryServer::wsBroadcastLoop, this);
 }
 
 void OSCQueryServer::stop() {
     running = false;
+
+    // Close all WebSocket clients first
+    {
+        std::lock_guard<std::mutex> lock(wsClientsMutex);
+        for (auto& client : wsClients) {
+            client->connected.store(false);
+            if (client->socket) client->socket->close();
+        }
+    }
 
     if (httpSocket) {
         httpSocket->close();
@@ -127,6 +140,16 @@ void OSCQueryServer::stop() {
 
     if (httpThread.joinable()) {
         httpThread.join();
+    }
+
+    if (wsBroadcastThread.joinable()) {
+        wsBroadcastThread.join();
+    }
+
+    // Clean up client threads (after httpThread joined, no new clients arriving)
+    {
+        std::lock_guard<std::mutex> lock(wsClientsMutex);
+        wsClients.clear();  // destructors join readThreads
     }
 }
 
@@ -160,6 +183,10 @@ void OSCQueryServer::buildTree() {
     root = std::move(newRoot);
 }
 
+// ============================================================================
+// HTTP accept loop
+// ============================================================================
+
 void OSCQueryServer::httpLoop() {
     while (running.load()) {
         if (!httpSocket) {
@@ -171,12 +198,86 @@ void OSCQueryServer::httpLoop() {
         if (client) {
             int ready = client->waitUntilReady(true, 1000);
             if (ready > 0) {
-                char buffer[4096];
+                char buffer[8192];
+                int totalRead = 0;
                 int bytesRead = client->read(buffer, sizeof(buffer) - 1, false);
                 if (bytesRead > 0) {
-                    buffer[bytesRead] = '\0';
-                    juce::String request(buffer, bytesRead);
-                    handleHttpRequest(client, request);
+                    totalRead = bytesRead;
+
+                    // Check if we have a Content-Length but body hasn't arrived yet.
+                    // Some HTTP clients (e.g. Python http.client) send headers and body
+                    // as separate TCP writes.
+                    buffer[totalRead] = '\0';
+                    juce::String partial(buffer, totalRead);
+                    int headerEnd = partial.indexOf("\r\n\r\n");
+                    if (headerEnd < 0) headerEnd = partial.indexOf("\n\n");
+
+                    if (headerEnd >= 0) {
+                        // Extract Content-Length from headers
+                        int clPos = partial.indexOfIgnoreCase("Content-Length:");
+                        if (clPos >= 0 && clPos < headerEnd) {
+                            int clEnd = partial.indexOf(clPos, "\r\n");
+                            if (clEnd < 0) clEnd = partial.indexOf(clPos, "\n");
+                            juce::String clVal = partial.substring(clPos + 15, clEnd).trim();
+                            int contentLength = clVal.getIntValue();
+
+                            // How much body do we have so far?
+                            int bodyStart = partial.indexOf("\r\n\r\n");
+                            int bodyOffset = (bodyStart >= 0) ? bodyStart + 4 : partial.indexOf("\n\n") + 2;
+                            int bodyReceived = totalRead - bodyOffset;
+
+                            // Read remaining body bytes if needed
+                            while (bodyReceived < contentLength && totalRead < (int)sizeof(buffer) - 1) {
+                                int readyAgain = client->waitUntilReady(true, 500);
+                                if (readyAgain <= 0) break;
+                                int more = client->read(buffer + totalRead,
+                                                        (int)sizeof(buffer) - 1 - totalRead, false);
+                                if (more <= 0) break;
+                                totalRead += more;
+                                bodyReceived += more;
+                            }
+                        }
+                    }
+
+                    buffer[totalRead] = '\0';
+                    juce::String request(buffer, totalRead);
+
+                    // Extract raw headers for WebSocket upgrade detection
+                    juce::String rawHeaders;
+                    int hdrEnd = request.indexOf("\r\n\r\n");
+                    if (hdrEnd >= 0)
+                        rawHeaders = request.substring(0, hdrEnd);
+                    else {
+                        hdrEnd = request.indexOf("\n\n");
+                        if (hdrEnd >= 0) rawHeaders = request.substring(0, hdrEnd);
+                        else rawHeaders = request;
+                    }
+
+                    // Log ALL incoming requests for debugging
+                    std::cerr << "[OSCQuery] Incoming request (" << totalRead << " bytes):\n"
+                              << rawHeaders.toStdString() << "\n---\n";
+
+                    // Check for WebSocket upgrade BEFORE normal HTTP handling
+                    bool hasUpgrade = rawHeaders.containsIgnoreCase("Upgrade:") &&
+                                     rawHeaders.containsIgnoreCase("websocket");
+                    bool hasConnection = rawHeaders.containsIgnoreCase("Connection:");
+
+                    if (hasUpgrade && hasConnection) {
+                        // This is a WebSocket upgrade request
+                        std::cerr << "[OSCQuery WS] Upgrade request detected\n";
+                        if (performWebSocketUpgrade(client, rawHeaders)) {
+                            std::cerr << "[OSCQuery WS] Upgrade succeeded\n";
+                            // Client was successfully upgraded - don't close/delete it.
+                            // It's now owned by a WebSocketClient in wsClients.
+                            continue;  // skip the close/delete below
+                        }
+                        std::cerr << "[OSCQuery WS] Upgrade FAILED\n";
+                        // Upgrade failed - fall through to close
+                    } else {
+                        if (rawHeaders.containsIgnoreCase("Upgrade:"))
+                            std::cerr << "[OSCQuery] Has Upgrade header but missing websocket/Connection\n";
+                        handleHttpRequest(client, request, rawHeaders);
+                    }
                 }
             }
             client->close();
@@ -187,8 +288,13 @@ void OSCQueryServer::httpLoop() {
     }
 }
 
+// ============================================================================
+// HTTP request handler (non-WebSocket requests)
+// ============================================================================
+
 void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
-                                       const juce::String& request) {
+                                       const juce::String& request,
+                                       const juce::String& /*rawHeaders*/) {
     juce::StringArray lines;
     lines.addLines(request);
     if (lines.isEmpty()) return;
@@ -215,6 +321,13 @@ void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
         if (query == "HOST_INFO") {
             response = buildHostInfo();
         }
+        else if (query.startsWith("LISTEN=")) {
+            // OSCQuery LISTEN extension via HTTP query parameter.
+            // Extract the OSC address and return the current value.
+            juce::String listenAddr = query.fromFirstOccurrenceOf("LISTEN=", false, false);
+            listenAddr = juce::URL::removeEscapeChars(listenAddr);
+            response = queryValue(listenAddr);
+        }
         else if (path == "/info" || path == "/" || path.isEmpty()) {
             response = buildOSCQueryInfo();
         }
@@ -225,7 +338,14 @@ void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
             response = queryValue(oscPath);
         }
         else {
-            response = "{\"error\":\"not found\"}";
+            // Try as an OSCQuery path lookup (some clients query /looper/tempo directly)
+            juce::String oscPath = path;
+            juce::String val = queryValue(oscPath);
+            if (!val.contains("\"error\"")) {
+                response = val;
+            } else {
+                response = "{\"error\":\"not found\"}";
+            }
         }
     }
     else if (method == "POST") {
@@ -253,6 +373,10 @@ void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
     client->write(response.toRawUTF8(), (int)response.getNumBytesAsUTF8());
 }
 
+// ============================================================================
+// OSCQuery tree and host info
+// ============================================================================
+
 juce::String OSCQueryServer::buildOSCQueryInfo() {
     std::lock_guard<std::mutex> lock(treeMutex);
     if (!root) return "{}";
@@ -268,15 +392,20 @@ juce::String OSCQueryServer::buildHostInfo() {
     json += "    \"RANGE\": true,\n";
     json += "    \"DESCRIPTION\": true,\n";
     json += "    \"TAGS\": true,\n";
-    json += "    \"LISTEN\": false,\n";
-    json += "    \"PATH_CHANGED\": false\n";
+    json += "    \"LISTEN\": true,\n";
+    json += "    \"PATH_CHANGED\": true\n";
     json += "  },\n";
     json += "  \"OSC_IP\": \"0.0.0.0\",\n";
     json += "  \"OSC_PORT\": " + juce::String(oscUdpPort) + ",\n";
-    json += "  \"OSC_TRANSPORT\": \"UDP\"\n";
+    json += "  \"OSC_TRANSPORT\": \"UDP\",\n";
+    json += "  \"WS_PORT\": " + juce::String(httpPort) + "\n";
     json += "}\n";
     return json;
 }
+
+// ============================================================================
+// Value queries
+// ============================================================================
 
 juce::String OSCQueryServer::queryValue(const juce::String& oscPath) {
     if (!owner) return "{\"error\":\"no processor\"}";
@@ -406,4 +535,473 @@ juce::String OSCQueryServer::handleTargetsRequest(const juce::String& /*method*/
     }
     json += "]}";
     return json;
+}
+
+// ============================================================================
+// WebSocket upgrade handshake (RFC 6455 section 4.2.2)
+// ============================================================================
+
+juce::String OSCQueryServer::computeAcceptKey(const juce::String& clientKey) {
+    // Concatenate client key with magic GUID
+    juce::String concat = clientKey.trim() + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+    // SHA-1 hash
+    uint8_t hash[20];
+    sha1::compute(concat.toRawUTF8(), concat.getNumBytesAsUTF8(), hash);
+
+    // Base64 encode
+    return juce::Base64::toBase64(hash, 20);
+}
+
+bool OSCQueryServer::performWebSocketUpgrade(juce::StreamingSocket* client,
+                                             const juce::String& rawHeaders) {
+    // Extract Sec-WebSocket-Key from headers
+    juce::String wsKey;
+    juce::String wsVersion;
+    juce::String wsProtocol;
+    juce::StringArray headerLines;
+    headerLines.addTokens(rawHeaders, "\r\n", "");
+
+    for (const auto& line : headerLines) {
+        if (line.startsWithIgnoreCase("Sec-WebSocket-Key:"))
+            wsKey = line.fromFirstOccurrenceOf(":", false, false).trim();
+        else if (line.startsWithIgnoreCase("Sec-WebSocket-Version:"))
+            wsVersion = line.fromFirstOccurrenceOf(":", false, false).trim();
+        else if (line.startsWithIgnoreCase("Sec-WebSocket-Protocol:"))
+            wsProtocol = line.fromFirstOccurrenceOf(":", false, false).trim();
+    }
+
+    std::cerr << "[OSCQuery WS] Key: '" << wsKey.toStdString()
+              << "' Version: '" << wsVersion.toStdString()
+              << "' Protocol: '" << wsProtocol.toStdString() << "'\n";
+
+    if (wsKey.isEmpty()) {
+        std::cerr << "[OSCQuery WS] Missing Sec-WebSocket-Key, sending 400\n";
+        // Missing key - send 400 Bad Request
+        juce::String resp = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
+        client->write(resp.toRawUTF8(), (int)resp.getNumBytesAsUTF8());
+        return false;
+    }
+
+    // Compute accept key
+    juce::String acceptKey = computeAcceptKey(wsKey);
+
+    // Send 101 Switching Protocols
+    juce::String response = "HTTP/1.1 101 Switching Protocols\r\n";
+    response += "Upgrade: websocket\r\n";
+    response += "Connection: Upgrade\r\n";
+    response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n";
+    // Echo back subprotocol if client requested one
+    if (wsProtocol.isNotEmpty())
+        response += "Sec-WebSocket-Protocol: " + wsProtocol + "\r\n";
+    response += "\r\n";
+
+    std::cerr << "[OSCQuery WS] Sending 101 response (" << response.length() << " bytes):\n"
+              << response.toStdString() << "---\n";
+
+    int written = client->write(response.toRawUTF8(), (int)response.getNumBytesAsUTF8());
+    std::cerr << "[OSCQuery WS] write() returned " << written << "\n";
+    if (written <= 0) return false;
+
+    // Create WebSocketClient and transfer socket ownership
+    auto wsClient = std::make_unique<WebSocketClient>();
+    wsClient->socket.reset(client);  // take ownership
+    wsClient->connected.store(true);
+
+    // Start read thread for this client
+    WebSocketClient* rawPtr = wsClient.get();
+    wsClient->readThread = std::thread(&OSCQueryServer::wsClientReadLoop, this, rawPtr);
+
+    {
+        std::lock_guard<std::mutex> lock(wsClientsMutex);
+        wsClients.push_back(std::move(wsClient));
+    }
+
+    return true;
+}
+
+// ============================================================================
+// WebSocket frame I/O (RFC 6455 section 5)
+// ============================================================================
+
+bool OSCQueryServer::readWebSocketFrame(juce::StreamingSocket* sock, WSOpcode& opcode,
+                                        std::vector<uint8_t>& payload) {
+    payload.clear();
+
+    // Read 2-byte header
+    uint8_t header[2];
+    int r = sock->read(header, 2, true);
+    if (r != 2) return false;
+
+    // bool fin = (header[0] & 0x80) != 0;  // FIN bit (unused for now)
+    opcode = static_cast<WSOpcode>(header[0] & 0x0F);
+    bool masked = (header[1] & 0x80) != 0;
+    uint64_t payloadLen = header[1] & 0x7F;
+
+    // Extended payload length
+    if (payloadLen == 126) {
+        uint8_t ext[2];
+        if (sock->read(ext, 2, true) != 2) return false;
+        payloadLen = ((uint64_t)ext[0] << 8) | ext[1];
+    } else if (payloadLen == 127) {
+        uint8_t ext[8];
+        if (sock->read(ext, 8, true) != 8) return false;
+        payloadLen = 0;
+        for (int i = 0; i < 8; i++) {
+            payloadLen = (payloadLen << 8) | ext[i];
+        }
+    }
+
+    // Sanity check - don't allocate more than 1MB for a single frame
+    if (payloadLen > 1048576) return false;
+
+    // Read mask key (4 bytes, only if masked)
+    uint8_t maskKey[4] = {0, 0, 0, 0};
+    if (masked) {
+        if (sock->read(maskKey, 4, true) != 4) return false;
+    }
+
+    // Read payload
+    if (payloadLen > 0) {
+        payload.resize((size_t)payloadLen);
+        size_t totalRead = 0;
+        while (totalRead < (size_t)payloadLen) {
+            int chunk = sock->read(payload.data() + totalRead,
+                                   (int)((size_t)payloadLen - totalRead), true);
+            if (chunk <= 0) return false;
+            totalRead += (size_t)chunk;
+        }
+
+        // Unmask
+        if (masked) {
+            for (size_t i = 0; i < payload.size(); i++) {
+                payload[i] ^= maskKey[i % 4];
+            }
+        }
+    }
+
+    return true;
+}
+
+bool OSCQueryServer::writeWebSocketFrame(juce::StreamingSocket* sock, WSOpcode opcode,
+                                         const void* data, size_t length) {
+    // Server frames are NOT masked (RFC 6455 section 5.1)
+    std::vector<uint8_t> frame;
+    frame.reserve(10 + length);
+
+    // FIN=1, opcode
+    frame.push_back(0x80 | static_cast<uint8_t>(opcode));
+
+    // Payload length (no mask bit for server->client)
+    if (length < 126) {
+        frame.push_back((uint8_t)length);
+    } else if (length < 65536) {
+        frame.push_back(126);
+        frame.push_back((uint8_t)(length >> 8));
+        frame.push_back((uint8_t)(length & 0xFF));
+    } else {
+        frame.push_back(127);
+        for (int i = 7; i >= 0; i--) {
+            frame.push_back((uint8_t)((length >> (i * 8)) & 0xFF));
+        }
+    }
+
+    // Payload
+    if (length > 0 && data) {
+        const uint8_t* bytes = static_cast<const uint8_t*>(data);
+        frame.insert(frame.end(), bytes, bytes + length);
+    }
+
+    int written = sock->write(frame.data(), (int)frame.size());
+    return written == (int)frame.size();
+}
+
+// ============================================================================
+// Per-client WebSocket read loop
+// ============================================================================
+
+void OSCQueryServer::wsClientReadLoop(WebSocketClient* client) {
+    while (client->connected.load() && running.load()) {
+        if (!client->socket || !client->socket->isConnected()) {
+            client->connected.store(false);
+            break;
+        }
+
+        // Wait for data with timeout so we can check connected/running flags
+        int ready = client->socket->waitUntilReady(true, 500);
+        if (ready < 0) {
+            client->connected.store(false);
+            break;
+        }
+        if (ready == 0) continue;  // timeout, check flags again
+
+        WSOpcode opcode;
+        std::vector<uint8_t> payload;
+
+        if (!readWebSocketFrame(client->socket.get(), opcode, payload)) {
+            client->connected.store(false);
+            break;
+        }
+
+        switch (opcode) {
+            case WSOpcode::Text: {
+                // JSON command (LISTEN/IGNORE)
+                juce::String text(reinterpret_cast<const char*>(payload.data()),
+                                  payload.size());
+                handleWSCommand(client, text);
+                break;
+            }
+
+            case WSOpcode::Binary: {
+                // Client sending OSC over WebSocket - we could dispatch it,
+                // but for now this is primarily a server->client streaming protocol.
+                break;
+            }
+
+            case WSOpcode::Ping: {
+                // Respond with Pong (same payload)
+                writeWebSocketFrame(client->socket.get(), WSOpcode::Pong,
+                                    payload.data(), payload.size());
+                break;
+            }
+
+            case WSOpcode::Pong: {
+                // Response to our ping - nothing to do
+                break;
+            }
+
+            case WSOpcode::Close: {
+                // Send close frame back and disconnect
+                writeWebSocketFrame(client->socket.get(), WSOpcode::Close,
+                                    payload.data(), payload.size());
+                client->connected.store(false);
+                break;
+            }
+
+            default:
+                break;
+        }
+    }
+
+    client->connected.store(false);
+}
+
+// ============================================================================
+// WebSocket LISTEN/IGNORE command handling
+// ============================================================================
+
+void OSCQueryServer::handleWSCommand(WebSocketClient* client, const juce::String& jsonText) {
+    // Parse simple JSON: {"COMMAND":"LISTEN","DATA":"/looper/tempo"}
+    // We do minimal parsing since we know the exact format.
+
+    juce::String command;
+    juce::String data;
+
+    // Extract COMMAND
+    int cmdPos = jsonText.indexOf("\"COMMAND\"");
+    if (cmdPos >= 0) {
+        int colonPos = jsonText.indexOf(cmdPos, ":");
+        if (colonPos >= 0) {
+            int firstQuote = jsonText.indexOf(colonPos, "\"");
+            if (firstQuote >= 0) {
+                int secondQuote = jsonText.indexOf(firstQuote + 1, "\"");
+                if (secondQuote >= 0) {
+                    command = jsonText.substring(firstQuote + 1, secondQuote);
+                }
+            }
+        }
+    }
+
+    // Extract DATA
+    int dataPos = jsonText.indexOf("\"DATA\"");
+    if (dataPos >= 0) {
+        int colonPos = jsonText.indexOf(dataPos, ":");
+        if (colonPos >= 0) {
+            int firstQuote = jsonText.indexOf(colonPos, "\"");
+            if (firstQuote >= 0) {
+                int secondQuote = jsonText.indexOf(firstQuote + 1, "\"");
+                if (secondQuote >= 0) {
+                    data = jsonText.substring(firstQuote + 1, secondQuote);
+                }
+            }
+        }
+    }
+
+    if (command == "LISTEN" && data.isNotEmpty()) {
+        client->listenPaths.insert(data);
+    }
+    else if (command == "IGNORE" && data.isNotEmpty()) {
+        client->listenPaths.erase(data);
+    }
+}
+
+// ============================================================================
+// WebSocket broadcast loop - streams values to subscribed clients
+// ============================================================================
+
+void OSCQueryServer::wsBroadcastLoop() {
+    while (running.load()) {
+        // Run at ~30Hz
+        std::this_thread::sleep_for(std::chrono::milliseconds(33));
+
+        if (!owner) continue;
+
+        // Clean up disconnected clients
+        {
+            std::lock_guard<std::mutex> lock(wsClientsMutex);
+            wsClients.erase(
+                std::remove_if(wsClients.begin(), wsClients.end(),
+                    [](const std::unique_ptr<WebSocketClient>& c) {
+                        return !c->connected.load();
+                    }),
+                wsClients.end()
+            );
+
+            if (wsClients.empty()) continue;
+        }
+
+        auto& state = owner->getControlServer().getAtomicState();
+
+        // For each connected client, check subscriptions and send changed values
+        std::lock_guard<std::mutex> lock(wsClientsMutex);
+        for (auto& client : wsClients) {
+            if (!client->connected.load()) continue;
+            if (client->listenPaths.empty()) continue;
+
+            auto& cache = client->cache;
+
+            // --- Global values ---
+
+            if (client->listenPaths.count("/looper/tempo")) {
+                float v = state.tempo.load(std::memory_order_relaxed);
+                if (std::abs(v - cache.tempo) > 0.01f) {
+                    cache.tempo = v;
+                    sendValueToClient(client.get(), "/looper/tempo", { juce::var(v) });
+                }
+            }
+
+            if (client->listenPaths.count("/looper/recording")) {
+                bool v = state.isRecording.load(std::memory_order_relaxed);
+                if (v != cache.isRecording) {
+                    cache.isRecording = v;
+                    sendValueToClient(client.get(), "/looper/recording", { juce::var(v ? 1 : 0) });
+                }
+            }
+
+            if (client->listenPaths.count("/looper/overdub")) {
+                bool v = state.overdubEnabled.load(std::memory_order_relaxed);
+                if (v != cache.overdubEnabled) {
+                    cache.overdubEnabled = v;
+                    sendValueToClient(client.get(), "/looper/overdub", { juce::var(v ? 1 : 0) });
+                }
+            }
+
+            if (client->listenPaths.count("/looper/mode")) {
+                int v = state.recordMode.load(std::memory_order_relaxed);
+                if (v != cache.recordMode) {
+                    cache.recordMode = v;
+                    const char* modeStr = (v == 0) ? "firstLoop" :
+                                          (v == 1) ? "freeMode" :
+                                          (v == 2) ? "traditional" : "retrospective";
+                    sendValueToClient(client.get(), "/looper/mode",
+                                      { juce::var(juce::String(modeStr)) });
+                }
+            }
+
+            if (client->listenPaths.count("/looper/layer")) {
+                int v = state.activeLayer.load(std::memory_order_relaxed);
+                if (v != cache.activeLayer) {
+                    cache.activeLayer = v;
+                    sendValueToClient(client.get(), "/looper/layer", { juce::var(v) });
+                }
+            }
+
+            if (client->listenPaths.count("/looper/volume")) {
+                float v = state.masterVolume.load(std::memory_order_relaxed);
+                if (std::abs(v - cache.masterVolume) > 0.001f) {
+                    cache.masterVolume = v;
+                    sendValueToClient(client.get(), "/looper/volume", { juce::var(v) });
+                }
+            }
+
+            // --- Per-layer values ---
+            for (int i = 0; i < WebSocketClient::StateCache::MAX_LAYERS &&
+                            i < AtomicState::MAX_LAYERS; ++i) {
+                auto& ls = state.layers[i];
+                auto& lc = cache.layers[i];
+                juce::String prefix = "/looper/layer/" + juce::String(i) + "/";
+
+                if (client->listenPaths.count(prefix + "state")) {
+                    int v = ls.state.load(std::memory_order_relaxed);
+                    if (v != lc.state) {
+                        lc.state = v;
+                        const char* stateStr = (v == 0) ? "empty" :
+                                               (v == 1) ? "playing" :
+                                               (v == 2) ? "stopped" :
+                                               (v == 3) ? "paused" :
+                                               (v == 4) ? "muted" :
+                                               (v == 5) ? "recording" : "unknown";
+                        sendValueToClient(client.get(), prefix + "state",
+                                          { juce::var(juce::String(stateStr)) });
+                    }
+                }
+
+                if (client->listenPaths.count(prefix + "speed")) {
+                    float v = ls.speed.load(std::memory_order_relaxed);
+                    if (std::abs(v - lc.speed) > 0.001f) {
+                        lc.speed = v;
+                        sendValueToClient(client.get(), prefix + "speed", { juce::var(v) });
+                    }
+                }
+
+                if (client->listenPaths.count(prefix + "volume")) {
+                    float v = ls.volume.load(std::memory_order_relaxed);
+                    if (std::abs(v - lc.volume) > 0.001f) {
+                        lc.volume = v;
+                        sendValueToClient(client.get(), prefix + "volume", { juce::var(v) });
+                    }
+                }
+
+                if (client->listenPaths.count(prefix + "reverse")) {
+                    bool v = ls.reversed.load(std::memory_order_relaxed);
+                    if (v != lc.reversed) {
+                        lc.reversed = v;
+                        sendValueToClient(client.get(), prefix + "reverse",
+                                          { juce::var(v ? 1 : 0) });
+                    }
+                }
+
+                if (client->listenPaths.count(prefix + "position")) {
+                    int len = ls.length.load(std::memory_order_relaxed);
+                    float v = (len > 0) ? (float)ls.playheadPos.load(std::memory_order_relaxed) / (float)len : 0.0f;
+                    if (std::abs(v - lc.position) > 0.005f) {
+                        lc.position = v;
+                        sendValueToClient(client.get(), prefix + "position", { juce::var(v) });
+                    }
+                }
+
+                if (client->listenPaths.count(prefix + "bars")) {
+                    float v = ls.numBars.load(std::memory_order_relaxed);
+                    if (std::abs(v - lc.bars) > 0.001f) {
+                        lc.bars = v;
+                        sendValueToClient(client.get(), prefix + "bars", { juce::var(v) });
+                    }
+                }
+            }
+        }
+    }
+}
+
+void OSCQueryServer::sendValueToClient(WebSocketClient* client,
+                                       const juce::String& oscPath,
+                                       const std::vector<juce::var>& args) {
+    if (!client->connected.load() || !client->socket) return;
+
+    // Build OSC binary packet and send as WebSocket binary frame
+    auto packet = OSCPacketBuilder::build(oscPath, args);
+
+    if (!writeWebSocketFrame(client->socket.get(), WSOpcode::Binary,
+                             packet.data(), packet.size())) {
+        client->connected.store(false);
+    }
 }

@@ -1,11 +1,13 @@
 #pragma once
 
 #include "OSCEndpointRegistry.h"
+#include "OSCPacketBuilder.h"
 #include <juce_core/juce_core.h>
 #include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -51,10 +53,60 @@ struct OSCQueryNode {
 };
 
 // ============================================================================
-// OSCQueryServer - HTTP server for OSCQuery protocol.
+// WebSocket types for OSCQuery LISTEN/IGNORE protocol (RFC 6455)
+// ============================================================================
+
+struct WebSocketClient {
+    std::unique_ptr<juce::StreamingSocket> socket;
+    std::set<juce::String> listenPaths;   // OSC paths this client is subscribed to
+    std::atomic<bool> connected{true};
+    std::thread readThread;               // reads frames from this client
+
+    // State snapshot for diff-based streaming (per-client)
+    struct StateCache {
+        float tempo = 0.0f;
+        bool isRecording = false;
+        bool overdubEnabled = false;
+        int recordMode = -1;
+        int activeLayer = -1;
+        float masterVolume = -1.0f;
+
+        struct LayerCache {
+            int state = -1;
+            float speed = -999.0f;
+            float volume = -999.0f;
+            bool reversed = false;
+            float position = -1.0f;
+            float bars = -1.0f;
+        };
+        static const int MAX_LAYERS = 4;
+        LayerCache layers[MAX_LAYERS];
+    };
+    StateCache cache;
+
+    ~WebSocketClient() {
+        connected.store(false);
+        if (socket) socket->close();
+        if (readThread.joinable()) readThread.join();
+    }
+};
+
+// WebSocket frame opcodes (RFC 6455 section 5.2)
+enum class WSOpcode : uint8_t {
+    Continuation = 0x0,
+    Text         = 0x1,
+    Binary       = 0x2,
+    Close        = 0x8,
+    Ping         = 0x9,
+    Pong         = 0xA
+};
+
+// ============================================================================
+// OSCQueryServer - HTTP + WebSocket server for OSCQuery protocol.
 //
 // Builds the address tree dynamically from OSCEndpointRegistry, responds to
-// HTTP GET requests with JSON, and queries AtomicState for live VALUES.
+// HTTP GET requests with JSON, queries AtomicState for live VALUES, and
+// maintains WebSocket connections for LISTEN/IGNORE value streaming.
 // ============================================================================
 
 class OSCQueryServer {
@@ -71,17 +123,46 @@ public:
     void rebuildTree();
 
 private:
+    // --- HTTP ---
     void httpLoop();
-    void handleHttpRequest(juce::StreamingSocket* client, const juce::String& request);
+    void handleHttpRequest(juce::StreamingSocket* client, const juce::String& request,
+                           const juce::String& rawHeaders);
 
     juce::String buildOSCQueryInfo();
     juce::String buildHostInfo();
     juce::String queryValue(const juce::String& oscPath);
     juce::String handleTargetsRequest(const juce::String& method, const juce::String& body);
 
-    // Build the tree from the registry
+    // --- WebSocket ---
+    // Upgrade an HTTP connection to WebSocket (RFC 6455 handshake)
+    bool performWebSocketUpgrade(juce::StreamingSocket* client, const juce::String& rawHeaders);
+
+    // Compute Sec-WebSocket-Accept from client key
+    juce::String computeAcceptKey(const juce::String& clientKey);
+
+    // Frame I/O
+    bool readWebSocketFrame(juce::StreamingSocket* sock, WSOpcode& opcode,
+                            std::vector<uint8_t>& payload);
+    bool writeWebSocketFrame(juce::StreamingSocket* sock, WSOpcode opcode,
+                             const void* data, size_t length);
+
+    // Per-client read loop (runs on client's readThread)
+    void wsClientReadLoop(WebSocketClient* client);
+
+    // Handle parsed LISTEN/IGNORE commands
+    void handleWSCommand(WebSocketClient* client, const juce::String& jsonText);
+
+    // Broadcast loop for WebSocket value streaming
+    void wsBroadcastLoop();
+
+    // Send value update to a single client for a single path
+    void sendValueToClient(WebSocketClient* client, const juce::String& oscPath,
+                           const std::vector<juce::var>& args);
+
+    // --- Tree ---
     void buildTree();
 
+    // --- Members ---
     LooperProcessor* owner = nullptr;
     OSCEndpointRegistry* registry = nullptr;
     int oscUdpPort = 9000;
@@ -90,6 +171,11 @@ private:
     int httpPort = 9001;
     std::atomic<bool> running{false};
     std::thread httpThread;
+
+    // WebSocket clients
+    std::vector<std::unique_ptr<WebSocketClient>> wsClients;
+    mutable std::mutex wsClientsMutex;
+    std::thread wsBroadcastThread;
 
     // The address tree
     std::unique_ptr<OSCQueryNode> root;

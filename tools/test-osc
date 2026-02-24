@@ -1,0 +1,1067 @@
+#!/usr/bin/env python3
+"""
+Integration test suite for OSC, OSCQuery HTTP, and OSCQuery WebSocket.
+
+Requires LooperHeadless to be running with OSC (port 9000) and OSCQuery (port 9001).
+
+Usage:
+    # Terminal 1: start headless
+    ./build/LooperHeadless
+
+    # Terminal 2: run tests
+    ./tools/test-osc
+"""
+
+import socket
+import struct
+import json
+import time
+import hashlib
+import base64
+import sys
+import os
+import glob
+import http.client
+import threading
+
+# ============================================================================
+# Test infrastructure
+# ============================================================================
+
+OSC_PORT = 9000
+OSCQUERY_PORT = 9001
+
+class TestRunner:
+    def __init__(self):
+        self.passed = 0
+        self.failed = 0
+        self.errors = []
+
+    def check(self, name, condition, detail=""):
+        if condition:
+            print(f"  PASS: {name}")
+            self.passed += 1
+        else:
+            msg = f"  FAIL: {name}"
+            if detail:
+                msg += f" -- {detail}"
+            print(msg)
+            self.failed += 1
+            self.errors.append(name)
+
+    def summary(self):
+        print(f"\n{'=' * 60}")
+        print(f"RESULTS: {self.passed} passed, {self.failed} failed")
+        if self.errors:
+            print(f"Failed: {', '.join(self.errors)}")
+        print(f"{'=' * 60}")
+        return self.failed == 0
+
+
+# ============================================================================
+# OSC helpers
+# ============================================================================
+
+def pad4(n):
+    """Round up to next multiple of 4."""
+    return n + (4 - n % 4) % 4
+
+def build_osc_message(address, args):
+    """Build a raw OSC binary message.
+    args is a list of (type_char, value) tuples:
+      ('f', 1.0), ('i', 42), ('s', 'hello')
+    """
+    # Address (null-terminated, padded to 4)
+    addr_bytes = address.encode('ascii') + b'\x00'
+    addr_bytes += b'\x00' * (pad4(len(addr_bytes)) - len(addr_bytes))
+
+    # Type tag string
+    type_tag = ',' + ''.join(t for t, v in args)
+    tt_bytes = type_tag.encode('ascii') + b'\x00'
+    tt_bytes += b'\x00' * (pad4(len(tt_bytes)) - len(tt_bytes))
+
+    # Arguments
+    arg_bytes = b''
+    for t, v in args:
+        if t == 'f':
+            arg_bytes += struct.pack('>f', float(v))
+        elif t == 'i':
+            arg_bytes += struct.pack('>i', int(v))
+        elif t == 's':
+            s = v.encode('ascii') + b'\x00'
+            s += b'\x00' * (pad4(len(s)) - len(s))
+            arg_bytes += s
+
+    return addr_bytes + tt_bytes + arg_bytes
+
+def parse_osc_message(data):
+    """Parse an OSC binary message. Returns (address, type_tag, args)."""
+    # Read address
+    end = data.index(b'\x00')
+    address = data[:end].decode('ascii')
+    offset = pad4(end + 1)
+
+    # Read type tag
+    if data[offset:offset+1] != b',':
+        return address, '', []
+    end2 = data.index(b'\x00', offset)
+    type_tag = data[offset+1:end2].decode('ascii')
+    offset = pad4(end2 + 1)
+
+    # Read arguments
+    args = []
+    for t in type_tag:
+        if t == 'f':
+            val = struct.unpack('>f', data[offset:offset+4])[0]
+            args.append(val)
+            offset += 4
+        elif t == 'i':
+            val = struct.unpack('>i', data[offset:offset+4])[0]
+            args.append(val)
+            offset += 4
+        elif t == 's':
+            end3 = data.index(b'\x00', offset)
+            val = data[offset:end3].decode('ascii')
+            offset = pad4(end3 + 1)
+            args.append(val)
+        elif t == 'N':
+            args.append(None)
+
+    return address, type_tag, args
+
+
+def send_osc(address, args, port=OSC_PORT):
+    """Send an OSC message via UDP."""
+    msg = build_osc_message(address, args)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.sendto(msg, ('127.0.0.1', port))
+    sock.close()
+
+
+# ============================================================================
+# HTTP helpers
+# ============================================================================
+
+def http_get(path, port=OSCQUERY_PORT):
+    """Simple HTTP GET, returns (status, body_string)."""
+    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+    conn.request('GET', path)
+    resp = conn.getresponse()
+    body = resp.read().decode('utf-8')
+    status = resp.status
+    conn.close()
+    return status, body
+
+def http_post(path, body, port=OSCQUERY_PORT):
+    """Simple HTTP POST, returns (status, body_string)."""
+    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+    headers = {'Content-Type': 'text/plain', 'Content-Length': str(len(body))}
+    conn.request('POST', path, body=body, headers=headers)
+    resp = conn.getresponse()
+    rbody = resp.read().decode('utf-8')
+    status = resp.status
+    conn.close()
+    return status, rbody
+
+
+# ============================================================================
+# WebSocket helpers (minimal client implementation)
+# ============================================================================
+
+class SimpleWebSocket:
+    """Minimal RFC 6455 WebSocket client for testing."""
+
+    def __init__(self, host='127.0.0.1', port=OSCQUERY_PORT):
+        self.host = host
+        self.port = port
+        self.sock = None
+        self.connected = False
+
+    def connect(self, timeout=5):
+        """Perform WebSocket handshake."""
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.settimeout(timeout)
+        self.sock.connect((self.host, self.port))
+
+        # Generate random key
+        import random
+        key_bytes = bytes(random.getrandbits(8) for _ in range(16))
+        self.ws_key = base64.b64encode(key_bytes).decode('ascii')
+
+        # Send upgrade request
+        request = (
+            f"GET / HTTP/1.1\r\n"
+            f"Host: {self.host}:{self.port}\r\n"
+            f"Upgrade: websocket\r\n"
+            f"Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {self.ws_key}\r\n"
+            f"Sec-WebSocket-Version: 13\r\n"
+            f"\r\n"
+        )
+        self.sock.sendall(request.encode('ascii'))
+
+        # Read response
+        response = b''
+        while b'\r\n\r\n' not in response:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("Connection closed during handshake")
+            response += chunk
+
+        resp_str = response.decode('ascii', errors='replace')
+
+        # Verify 101 Switching Protocols
+        if '101' not in resp_str.split('\r\n')[0]:
+            raise ConnectionError(f"Handshake failed: {resp_str.split(chr(13))[0]}")
+
+        # Verify Sec-WebSocket-Accept
+        expected_accept = self._compute_accept(self.ws_key)
+        if expected_accept not in resp_str:
+            raise ConnectionError(f"Invalid Sec-WebSocket-Accept. Expected: {expected_accept}")
+
+        self.connected = True
+        return resp_str
+
+    def _compute_accept(self, key):
+        """Compute expected Sec-WebSocket-Accept value."""
+        magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        h = hashlib.sha1((key + magic).encode('ascii')).digest()
+        return base64.b64encode(h).decode('ascii')
+
+    def send_text(self, text):
+        """Send a text frame (masked, as client frames must be)."""
+        self._send_frame(0x1, text.encode('utf-8'))
+
+    def send_binary(self, data):
+        """Send a binary frame (masked)."""
+        self._send_frame(0x2, data)
+
+    def send_ping(self, payload=b''):
+        """Send a ping frame."""
+        self._send_frame(0x9, payload)
+
+    def send_close(self, code=1000, reason=''):
+        """Send a close frame."""
+        payload = struct.pack('>H', code) + reason.encode('utf-8')
+        self._send_frame(0x8, payload)
+
+    def _send_frame(self, opcode, payload):
+        """Send a WebSocket frame with masking (client->server must be masked)."""
+        import random
+        frame = bytearray()
+
+        # FIN=1, opcode
+        frame.append(0x80 | opcode)
+
+        # Payload length + mask bit
+        length = len(payload)
+        if length < 126:
+            frame.append(0x80 | length)  # mask bit set
+        elif length < 65536:
+            frame.append(0x80 | 126)
+            frame.extend(struct.pack('>H', length))
+        else:
+            frame.append(0x80 | 127)
+            frame.extend(struct.pack('>Q', length))
+
+        # Mask key (4 random bytes)
+        mask = bytes(random.getrandbits(8) for _ in range(4))
+        frame.extend(mask)
+
+        # Masked payload
+        masked = bytearray(len(payload))
+        for i in range(len(payload)):
+            masked[i] = payload[i] ^ mask[i % 4]
+        frame.extend(masked)
+
+        self.sock.sendall(bytes(frame))
+
+    def recv_frame(self, timeout=5):
+        """Read a single WebSocket frame. Returns (opcode, payload_bytes)."""
+        self.sock.settimeout(timeout)
+
+        # Read 2-byte header
+        header = self._recv_exact(2)
+        opcode = header[0] & 0x0F
+        masked = (header[1] & 0x80) != 0
+        length = header[1] & 0x7F
+
+        if length == 126:
+            ext = self._recv_exact(2)
+            length = struct.unpack('>H', ext)[0]
+        elif length == 127:
+            ext = self._recv_exact(8)
+            length = struct.unpack('>Q', ext)[0]
+
+        mask_key = b''
+        if masked:
+            mask_key = self._recv_exact(4)
+
+        payload = self._recv_exact(length) if length > 0 else b''
+
+        if masked and mask_key:
+            payload = bytearray(payload)
+            for i in range(len(payload)):
+                payload[i] ^= mask_key[i % 4]
+            payload = bytes(payload)
+
+        return opcode, payload
+
+    def _recv_exact(self, n):
+        """Read exactly n bytes."""
+        buf = b''
+        while len(buf) < n:
+            chunk = self.sock.recv(n - len(buf))
+            if not chunk:
+                raise ConnectionError("Connection closed")
+            buf += chunk
+        return buf
+
+    def close(self):
+        if self.sock:
+            try:
+                self.send_close()
+            except:
+                pass
+            try:
+                self.sock.close()
+            except:
+                pass
+        self.connected = False
+
+
+# ============================================================================
+# CLI socket helper (for changing state via the control protocol)
+# ============================================================================
+
+class LooperCLI:
+    """Send commands via the Unix socket control protocol."""
+    def __init__(self):
+        sockets = sorted(glob.glob("/tmp/looper_*.sock"))
+        if not sockets:
+            print("ERROR: No looper process found. Start LooperHeadless first.", file=sys.stderr)
+            sys.exit(1)
+        self.sock_path = sockets[-1]
+
+    def cmd(self, command):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(self.sock_path)
+        s.sendall((command + "\n").encode())
+        s.settimeout(2.0)
+        resp = ""
+        try:
+            while True:
+                d = s.recv(65536)
+                if not d:
+                    break
+                resp += d.decode()
+                if "\n" in resp:
+                    break
+        except socket.timeout:
+            pass
+        s.close()
+        return resp.strip()
+
+
+# ============================================================================
+# Tests: OSC UDP
+# ============================================================================
+
+def test_osc_tempo(t, cli):
+    """Test setting tempo via OSC UDP."""
+    print("=== Test: OSC UDP - Set tempo ===")
+    cli.cmd("TEMPO 120")
+    time.sleep(0.2)
+
+    send_osc('/looper/tempo', [('f', 145.0)])
+    time.sleep(0.3)
+
+    status, body = http_get('/osc/looper/tempo')
+    t.check("http status 200", status == 200, status)
+    data = json.loads(body)
+    t.check("tempo changed to 145", abs(data.get("VALUE", 0) - 145.0) < 0.5,
+            f"got {data.get('VALUE')}")
+
+    # Restore
+    cli.cmd("TEMPO 120")
+    time.sleep(0.2)
+
+
+def test_osc_layer_speed(t, cli):
+    """Test setting layer speed via OSC UDP."""
+    print("=== Test: OSC UDP - Set layer speed ===")
+    cli.cmd("LAYER 0 SPEED 1.0")
+    time.sleep(0.1)
+
+    send_osc('/looper/layer/0/speed', [('f', 0.75)])
+    time.sleep(0.3)
+
+    status, body = http_get('/osc/looper/layer/0/speed')
+    data = json.loads(body)
+    t.check("layer 0 speed set to 0.75", abs(data.get("VALUE", 0) - 0.75) < 0.01,
+            f"got {data.get('VALUE')}")
+
+    cli.cmd("LAYER 0 SPEED 1.0")
+    time.sleep(0.1)
+
+
+def test_osc_layer_volume(t, cli):
+    """Test setting layer volume via OSC UDP."""
+    print("=== Test: OSC UDP - Set layer volume ===")
+    send_osc('/looper/layer/1/volume', [('f', 0.42)])
+    time.sleep(0.3)
+
+    status, body = http_get('/osc/looper/layer/1/volume')
+    data = json.loads(body)
+    t.check("layer 1 volume set to 0.42", abs(data.get("VALUE", 0) - 0.42) < 0.01,
+            f"got {data.get('VALUE')}")
+
+    cli.cmd("LAYER 1 VOLUME 1.0")
+    time.sleep(0.1)
+
+
+def test_osc_layer_mute(t, cli):
+    """Test muting a layer via OSC UDP."""
+    print("=== Test: OSC UDP - Layer mute ===")
+    send_osc('/looper/layer/0/mute', [('i', 1)])
+    time.sleep(0.3)
+
+    status, body = http_get('/osc/looper/layer/0/mute')
+    data = json.loads(body)
+    t.check("layer 0 muted", data.get("VALUE") == 1, f"got {data.get('VALUE')}")
+
+    send_osc('/looper/layer/0/mute', [('i', 0)])
+    time.sleep(0.3)
+
+    status, body = http_get('/osc/looper/layer/0/mute')
+    data = json.loads(body)
+    t.check("layer 0 unmuted", data.get("VALUE") == 0, f"got {data.get('VALUE')}")
+
+
+def test_osc_layer_reverse(t, cli):
+    """Test reverse via OSC UDP."""
+    print("=== Test: OSC UDP - Layer reverse ===")
+    send_osc('/looper/layer/0/reverse', [('i', 1)])
+    time.sleep(0.3)
+
+    status, body = http_get('/osc/looper/layer/0/reverse')
+    data = json.loads(body)
+    t.check("layer 0 reversed", data.get("VALUE") == 1, f"got {data.get('VALUE')}")
+
+    send_osc('/looper/layer/0/reverse', [('i', 0)])
+    time.sleep(0.3)
+
+    status, body = http_get('/osc/looper/layer/0/reverse')
+    data = json.loads(body)
+    t.check("layer 0 un-reversed", data.get("VALUE") == 0, f"got {data.get('VALUE')}")
+
+
+def test_osc_overdub(t, cli):
+    """Test overdub toggle via OSC."""
+    print("=== Test: OSC UDP - Overdub toggle ===")
+    send_osc('/looper/overdub', [('i', 1)])
+    time.sleep(0.3)
+
+    status, body = http_get('/osc/looper/overdub')
+    data = json.loads(body)
+    t.check("overdub enabled", data.get("VALUE") == 1, f"got {data.get('VALUE')}")
+
+    send_osc('/looper/overdub', [('i', 0)])
+    time.sleep(0.3)
+
+    status, body = http_get('/osc/looper/overdub')
+    data = json.loads(body)
+    t.check("overdub disabled", data.get("VALUE") == 0, f"got {data.get('VALUE')}")
+
+
+# ============================================================================
+# Tests: OSCQuery HTTP
+# ============================================================================
+
+def test_host_info(t):
+    """Test ?HOST_INFO response."""
+    print("=== Test: OSCQuery HTTP - HOST_INFO ===")
+    status, body = http_get('/?HOST_INFO')
+    t.check("host_info status 200", status == 200, status)
+
+    data = json.loads(body)
+    t.check("has NAME", "NAME" in data, str(data.keys()))
+    t.check("has EXTENSIONS", "EXTENSIONS" in data, str(data.keys()))
+    t.check("has OSC_PORT", "OSC_PORT" in data, str(data.keys()))
+    t.check("OSC_PORT is 9000", data.get("OSC_PORT") == 9000, data.get("OSC_PORT"))
+    t.check("has WS_PORT", "WS_PORT" in data, str(data.keys()))
+    t.check("WS_PORT is 9001", data.get("WS_PORT") == 9001, data.get("WS_PORT"))
+    t.check("OSC_TRANSPORT is UDP", data.get("OSC_TRANSPORT") == "UDP",
+            data.get("OSC_TRANSPORT"))
+
+    ext = data.get("EXTENSIONS", {})
+    t.check("LISTEN extension", ext.get("LISTEN") is True, ext.get("LISTEN"))
+    t.check("VALUE extension", ext.get("VALUE") is True, ext.get("VALUE"))
+    t.check("ACCESS extension", ext.get("ACCESS") is True, ext.get("ACCESS"))
+    t.check("PATH_CHANGED extension", ext.get("PATH_CHANGED") is True,
+            ext.get("PATH_CHANGED"))
+
+
+def test_oscquery_tree(t):
+    """Test full OSCQuery address tree."""
+    print("=== Test: OSCQuery HTTP - Address tree ===")
+    status, body = http_get('/')
+    t.check("tree status 200", status == 200, status)
+
+    data = json.loads(body)
+    t.check("root has FULL_PATH", data.get("FULL_PATH") == "/", data.get("FULL_PATH"))
+    t.check("root has CONTENTS", "CONTENTS" in data, str(data.keys()))
+
+    contents = data.get("CONTENTS", {})
+    t.check("has looper subtree", "looper" in contents, str(contents.keys()))
+
+    looper = contents.get("looper", {})
+    looper_contents = looper.get("CONTENTS", {})
+    t.check("has tempo", "tempo" in looper_contents, str(looper_contents.keys()))
+    t.check("has layer", "layer" in looper_contents, str(looper_contents.keys()))
+    t.check("has volume", "volume" in looper_contents, str(looper_contents.keys()))
+
+    # Check tempo endpoint metadata
+    tempo = looper_contents.get("tempo", {})
+    t.check("tempo has TYPE", "TYPE" in tempo, str(tempo.keys()))
+    t.check("tempo TYPE is f", tempo.get("TYPE") == "f", tempo.get("TYPE"))
+    t.check("tempo has DESCRIPTION", "DESCRIPTION" in tempo, str(tempo.keys()))
+    t.check("tempo has ACCESS", "ACCESS" in tempo, str(tempo.keys()))
+    t.check("tempo has RANGE", "RANGE" in tempo, str(tempo.keys()))
+
+
+def test_value_queries(t, cli):
+    """Test individual value queries."""
+    print("=== Test: OSCQuery HTTP - Value queries ===")
+    cli.cmd("TEMPO 120")
+    time.sleep(0.2)
+
+    # Query tempo via /osc/ prefix
+    status, body = http_get('/osc/looper/tempo')
+    t.check("value query status 200", status == 200, status)
+    data = json.loads(body)
+    t.check("tempo value correct", abs(data.get("VALUE", 0) - 120.0) < 1.0,
+            f"got {data.get('VALUE')}")
+
+    # Query recording state
+    status, body = http_get('/osc/looper/recording')
+    data = json.loads(body)
+    t.check("recording value present", "VALUE" in data, str(data.keys()))
+
+    # Query mode
+    status, body = http_get('/osc/looper/mode')
+    data = json.loads(body)
+    t.check("mode value present", "VALUE" in data, str(data.keys()))
+    t.check("mode is a string", isinstance(data.get("VALUE"), str), type(data.get("VALUE")))
+
+    # Query layer 0 speed
+    status, body = http_get('/osc/looper/layer/0/speed')
+    data = json.loads(body)
+    t.check("layer 0 speed present", "VALUE" in data, str(data.keys()))
+
+    # Query non-existent path
+    status, body = http_get('/osc/looper/nonexistent')
+    data = json.loads(body)
+    t.check("nonexistent returns error", "error" in data, str(data.keys()))
+
+    # Direct path query (some clients query /looper/tempo directly, not /osc/looper/tempo)
+    status, body = http_get('/looper/tempo')
+    data = json.loads(body)
+    t.check("direct path query works", "VALUE" in data, str(data.keys()))
+
+
+def test_listen_http(t, cli):
+    """Test LISTEN query param (HTTP-based value query)."""
+    print("=== Test: OSCQuery HTTP - LISTEN query param ===")
+    cli.cmd("TEMPO 120")
+    time.sleep(0.2)
+
+    status, body = http_get('/?LISTEN=/looper/tempo')
+    t.check("LISTEN query status 200", status == 200, status)
+    data = json.loads(body)
+    t.check("LISTEN returns VALUE", "VALUE" in data, str(data.keys()))
+    t.check("LISTEN value is numeric", isinstance(data.get("VALUE"), (int, float)),
+            type(data.get("VALUE")))
+
+
+def test_targets_api(t):
+    """Test /api/targets endpoint."""
+    print("=== Test: OSCQuery HTTP - /api/targets ===")
+
+    # List targets (should be empty initially or have whatever's configured)
+    status, body = http_get('/api/targets')
+    # This goes through POST handler for listing... actually GET falls through to the
+    # catch-all. Let me use POST.
+
+    # Add a target
+    status, body = http_post('/api/targets', 'add:127.0.0.1:9999')
+    t.check("add target status 200", status == 200, status)
+    data = json.loads(body)
+    t.check("add target response", data.get("status") == "added", body)
+
+    # Remove the target
+    status, body = http_post('/api/targets', 'remove:127.0.0.1:9999')
+    t.check("remove target status 200", status == 200, status)
+    data = json.loads(body)
+    t.check("remove target response", data.get("status") == "removed", body)
+
+
+# ============================================================================
+# Tests: WebSocket
+# ============================================================================
+
+def test_ws_handshake(t):
+    """Test WebSocket upgrade handshake."""
+    print("=== Test: WebSocket - Handshake ===")
+    ws = SimpleWebSocket()
+    try:
+        resp = ws.connect(timeout=5)
+        t.check("ws handshake 101", "101" in resp, resp.split('\r\n')[0])
+        t.check("ws Upgrade header", "Upgrade: websocket" in resp
+                or "Upgrade: WebSocket" in resp, resp[:200])
+        t.check("ws Sec-WebSocket-Accept present", "Sec-WebSocket-Accept" in resp)
+        t.check("ws connected", ws.connected)
+    except Exception as e:
+        t.check("ws handshake succeeded", False, str(e))
+    finally:
+        ws.close()
+
+
+def test_ws_ping_pong(t):
+    """Test WebSocket ping/pong."""
+    print("=== Test: WebSocket - Ping/Pong ===")
+    ws = SimpleWebSocket()
+    try:
+        ws.connect(timeout=5)
+
+        # Send ping with payload
+        ws.send_ping(b'hello')
+
+        # Expect pong with same payload
+        opcode, payload = ws.recv_frame(timeout=3)
+        t.check("pong received", opcode == 0xA, f"got opcode {opcode:#x}")
+        t.check("pong payload matches", payload == b'hello',
+                f"got {payload!r}")
+    except Exception as e:
+        t.check("ping/pong test", False, str(e))
+    finally:
+        ws.close()
+
+
+def test_ws_close(t):
+    """Test WebSocket graceful close."""
+    print("=== Test: WebSocket - Graceful close ===")
+    ws = SimpleWebSocket()
+    try:
+        ws.connect(timeout=5)
+
+        # Send close frame
+        ws.send_close(1000, 'goodbye')
+
+        # Server should echo close frame
+        opcode, payload = ws.recv_frame(timeout=3)
+        t.check("close frame echoed", opcode == 0x8, f"got opcode {opcode:#x}")
+    except Exception as e:
+        t.check("graceful close test", False, str(e))
+    finally:
+        ws.close()
+
+
+def test_ws_listen_tempo(t, cli):
+    """Test LISTEN command for tempo value streaming."""
+    print("=== Test: WebSocket - LISTEN tempo ===")
+    cli.cmd("TEMPO 120")
+    time.sleep(0.2)
+
+    ws = SimpleWebSocket()
+    try:
+        ws.connect(timeout=5)
+
+        # Subscribe to tempo
+        listen_cmd = json.dumps({"COMMAND": "LISTEN", "DATA": "/looper/tempo"})
+        ws.send_text(listen_cmd)
+        time.sleep(0.2)
+
+        # Change tempo via CLI to trigger a broadcast
+        cli.cmd("TEMPO 133")
+        time.sleep(0.5)  # wait for broadcast cycle (30Hz = ~33ms, give it a few cycles)
+
+        # Read frames - should get a binary OSC packet with tempo value
+        got_tempo = False
+        received_value = None
+        for _ in range(30):  # try reading up to 30 frames
+            try:
+                opcode, payload = ws.recv_frame(timeout=2)
+                if opcode == 0x2:  # binary = OSC packet
+                    addr, type_tag, args = parse_osc_message(payload)
+                    if addr == '/looper/tempo' and len(args) > 0:
+                        received_value = args[0]
+                        if abs(args[0] - 133.0) < 1.0:
+                            got_tempo = True
+                            break
+            except socket.timeout:
+                break
+            except Exception:
+                break
+
+        t.check("received tempo update via WS", got_tempo,
+                f"value={received_value}" if received_value else "no binary frames received")
+
+    except Exception as e:
+        t.check("ws listen tempo test", False, str(e))
+    finally:
+        ws.close()
+        cli.cmd("TEMPO 120")
+        time.sleep(0.1)
+
+
+def test_ws_listen_layer_speed(t, cli):
+    """Test LISTEN command for per-layer speed streaming."""
+    print("=== Test: WebSocket - LISTEN layer/0/speed ===")
+    cli.cmd("LAYER 0 SPEED 1.0")
+    time.sleep(0.2)
+
+    ws = SimpleWebSocket()
+    try:
+        ws.connect(timeout=5)
+
+        listen_cmd = json.dumps({"COMMAND": "LISTEN", "DATA": "/looper/layer/0/speed"})
+        ws.send_text(listen_cmd)
+        time.sleep(0.2)
+
+        # Change speed
+        cli.cmd("LAYER 0 SPEED 0.5")
+        time.sleep(0.5)
+
+        got_speed = False
+        received_value = None
+        for _ in range(30):
+            try:
+                opcode, payload = ws.recv_frame(timeout=2)
+                if opcode == 0x2:
+                    addr, type_tag, args = parse_osc_message(payload)
+                    if addr == '/looper/layer/0/speed' and len(args) > 0:
+                        received_value = args[0]
+                        if abs(args[0] - 0.5) < 0.01:
+                            got_speed = True
+                            break
+            except socket.timeout:
+                break
+            except Exception:
+                break
+
+        t.check("received speed update via WS", got_speed,
+                f"value={received_value}" if received_value else "no frames")
+
+    except Exception as e:
+        t.check("ws listen layer speed test", False, str(e))
+    finally:
+        ws.close()
+        cli.cmd("LAYER 0 SPEED 1.0")
+        time.sleep(0.1)
+
+
+def test_ws_ignore(t, cli):
+    """Test IGNORE command stops streaming."""
+    print("=== Test: WebSocket - IGNORE stops streaming ===")
+    cli.cmd("TEMPO 120")
+    time.sleep(0.2)
+
+    ws = SimpleWebSocket()
+    try:
+        ws.connect(timeout=5)
+
+        # Subscribe
+        ws.send_text(json.dumps({"COMMAND": "LISTEN", "DATA": "/looper/tempo"}))
+        time.sleep(0.1)
+
+        # Change tempo and verify we get updates
+        cli.cmd("TEMPO 130")
+        time.sleep(0.5)
+
+        got_update_before = False
+        for _ in range(30):
+            try:
+                opcode, payload = ws.recv_frame(timeout=2)
+                if opcode == 0x2:
+                    addr, _, args = parse_osc_message(payload)
+                    if addr == '/looper/tempo':
+                        got_update_before = True
+                        break
+            except socket.timeout:
+                break
+            except:
+                break
+
+        t.check("received update before IGNORE", got_update_before)
+
+        # Now IGNORE
+        ws.send_text(json.dumps({"COMMAND": "IGNORE", "DATA": "/looper/tempo"}))
+        time.sleep(0.2)
+
+        # Drain any queued frames
+        for _ in range(10):
+            try:
+                ws.recv_frame(timeout=0.2)
+            except:
+                break
+
+        # Change tempo again
+        cli.cmd("TEMPO 140")
+        time.sleep(0.5)
+
+        # Should NOT receive any more tempo updates
+        got_update_after = False
+        for _ in range(10):
+            try:
+                opcode, payload = ws.recv_frame(timeout=0.5)
+                if opcode == 0x2:
+                    addr, _, args = parse_osc_message(payload)
+                    if addr == '/looper/tempo':
+                        got_update_after = True
+                        break
+            except socket.timeout:
+                break
+            except:
+                break
+
+        t.check("no updates after IGNORE", not got_update_after,
+                "still receiving updates" if got_update_after else "")
+
+    except Exception as e:
+        t.check("ws ignore test", False, str(e))
+    finally:
+        ws.close()
+        cli.cmd("TEMPO 120")
+        time.sleep(0.1)
+
+
+def test_ws_multiple_subscriptions(t, cli):
+    """Test subscribing to multiple paths simultaneously."""
+    print("=== Test: WebSocket - Multiple subscriptions ===")
+    cli.cmd("TEMPO 120")
+    cli.cmd("LAYER 0 SPEED 1.0")
+    time.sleep(0.2)
+
+    ws = SimpleWebSocket()
+    try:
+        ws.connect(timeout=5)
+
+        # Subscribe to both tempo and layer speed
+        ws.send_text(json.dumps({"COMMAND": "LISTEN", "DATA": "/looper/tempo"}))
+        ws.send_text(json.dumps({"COMMAND": "LISTEN", "DATA": "/looper/layer/0/speed"}))
+        time.sleep(0.2)
+
+        # Change both values
+        cli.cmd("TEMPO 155")
+        cli.cmd("LAYER 0 SPEED 2.0")
+        time.sleep(0.5)
+
+        got_tempo = False
+        got_speed = False
+        for _ in range(60):
+            try:
+                opcode, payload = ws.recv_frame(timeout=2)
+                if opcode == 0x2:
+                    addr, _, args = parse_osc_message(payload)
+                    if addr == '/looper/tempo' and len(args) > 0 and abs(args[0] - 155.0) < 1.0:
+                        got_tempo = True
+                    if addr == '/looper/layer/0/speed' and len(args) > 0 and abs(args[0] - 2.0) < 0.01:
+                        got_speed = True
+                    if got_tempo and got_speed:
+                        break
+            except socket.timeout:
+                break
+            except:
+                break
+
+        t.check("received tempo via multi-sub", got_tempo)
+        t.check("received speed via multi-sub", got_speed)
+
+    except Exception as e:
+        t.check("ws multi-sub test", False, str(e))
+    finally:
+        ws.close()
+        cli.cmd("TEMPO 120")
+        cli.cmd("LAYER 0 SPEED 1.0")
+        time.sleep(0.1)
+
+
+def test_ws_multiple_clients(t, cli):
+    """Test multiple WebSocket clients can connect and receive independently."""
+    print("=== Test: WebSocket - Multiple clients ===")
+    cli.cmd("TEMPO 120")
+    time.sleep(0.2)
+
+    ws1 = SimpleWebSocket()
+    ws2 = SimpleWebSocket()
+    try:
+        ws1.connect(timeout=5)
+        ws2.connect(timeout=5)
+
+        t.check("client 1 connected", ws1.connected)
+        t.check("client 2 connected", ws2.connected)
+
+        # Client 1 subscribes to tempo, client 2 to layer speed
+        ws1.send_text(json.dumps({"COMMAND": "LISTEN", "DATA": "/looper/tempo"}))
+        ws2.send_text(json.dumps({"COMMAND": "LISTEN", "DATA": "/looper/layer/0/speed"}))
+        time.sleep(0.2)
+
+        # Change both
+        cli.cmd("TEMPO 160")
+        cli.cmd("LAYER 0 SPEED 0.25")
+        time.sleep(0.5)
+
+        # Client 1 should get tempo, not speed
+        got_tempo_c1 = False
+        for _ in range(30):
+            try:
+                opcode, payload = ws1.recv_frame(timeout=2)
+                if opcode == 0x2:
+                    addr, _, args = parse_osc_message(payload)
+                    if addr == '/looper/tempo' and abs(args[0] - 160.0) < 1.0:
+                        got_tempo_c1 = True
+                        break
+            except:
+                break
+
+        t.check("client 1 got tempo", got_tempo_c1)
+
+        # Client 2 should get speed
+        got_speed_c2 = False
+        for _ in range(30):
+            try:
+                opcode, payload = ws2.recv_frame(timeout=2)
+                if opcode == 0x2:
+                    addr, _, args = parse_osc_message(payload)
+                    if addr == '/looper/layer/0/speed' and abs(args[0] - 0.25) < 0.01:
+                        got_speed_c2 = True
+                        break
+            except:
+                break
+
+        t.check("client 2 got speed", got_speed_c2)
+
+    except Exception as e:
+        t.check("ws multi-client test", False, str(e))
+    finally:
+        ws1.close()
+        ws2.close()
+        cli.cmd("TEMPO 120")
+        cli.cmd("LAYER 0 SPEED 1.0")
+        time.sleep(0.1)
+
+
+def test_ws_binary_osc_format(t, cli):
+    """Verify the binary frames are valid OSC packets."""
+    print("=== Test: WebSocket - Binary OSC format validation ===")
+    cli.cmd("TEMPO 120")
+    time.sleep(0.3)
+
+    ws = SimpleWebSocket()
+    try:
+        ws.connect(timeout=5)
+        ws.send_text(json.dumps({"COMMAND": "LISTEN", "DATA": "/looper/tempo"}))
+
+        # Wait for initial cache diff to flush, then drain any frames
+        time.sleep(0.5)
+        for _ in range(20):
+            try:
+                ws.recv_frame(timeout=0.2)
+            except:
+                break
+
+        # Now change tempo - the next frame we get should be the new value
+        cli.cmd("TEMPO 99")
+        time.sleep(0.5)
+
+        validated = False
+        for _ in range(30):
+            try:
+                opcode, payload = ws.recv_frame(timeout=2)
+                if opcode == 0x2 and len(payload) > 0:
+                    addr, type_tag, args = parse_osc_message(payload)
+                    if addr == '/looper/tempo' and len(args) > 0 and abs(args[0] - 99.0) < 1.0:
+                        t.check("osc address starts with /", addr.startswith('/'))
+                        t.check("osc has type tag", len(type_tag) > 0, type_tag)
+                        t.check("osc type tag is f", type_tag == 'f', type_tag)
+                        t.check("osc arg is float", isinstance(args[0], float),
+                                type(args[0]))
+                        t.check("osc value ~99", abs(args[0] - 99.0) < 1.0,
+                                args[0])
+                        validated = True
+                        break
+            except socket.timeout:
+                break
+            except Exception as e:
+                t.check("osc parse succeeded", False, str(e))
+                break
+
+        if not validated:
+            t.check("received osc binary frame with value 99", False, "timeout or wrong value")
+
+    except Exception as e:
+        t.check("ws binary format test", False, str(e))
+    finally:
+        ws.close()
+        cli.cmd("TEMPO 120")
+        time.sleep(0.1)
+
+
+# ============================================================================
+# Main
+# ============================================================================
+
+def main():
+    print("OSC / OSCQuery / WebSocket Integration Tests")
+    print("=" * 60)
+
+    # Check that ports are reachable
+    try:
+        status, _ = http_get('/?HOST_INFO')
+        if status != 200:
+            print(f"ERROR: OSCQuery server not responding on port {OSCQUERY_PORT}", file=sys.stderr)
+            sys.exit(1)
+    except Exception as e:
+        print(f"ERROR: Cannot reach OSCQuery on port {OSCQUERY_PORT}: {e}", file=sys.stderr)
+        print("Make sure LooperHeadless is running.", file=sys.stderr)
+        sys.exit(1)
+
+    cli = LooperCLI()
+    t = TestRunner()
+    print(f"Control socket: {cli.sock_path}")
+    print(f"OSC UDP port: {OSC_PORT}")
+    print(f"OSCQuery HTTP/WS port: {OSCQUERY_PORT}\n")
+
+    # --- OSC UDP tests ---
+    test_osc_tempo(t, cli)
+    test_osc_layer_speed(t, cli)
+    test_osc_layer_volume(t, cli)
+    test_osc_layer_mute(t, cli)
+    test_osc_layer_reverse(t, cli)
+    test_osc_overdub(t, cli)
+
+    # --- OSCQuery HTTP tests ---
+    test_host_info(t)
+    test_oscquery_tree(t)
+    test_value_queries(t, cli)
+    test_listen_http(t, cli)
+    test_targets_api(t)
+
+    # --- WebSocket tests ---
+    test_ws_handshake(t)
+    test_ws_ping_pong(t)
+    test_ws_close(t)
+    test_ws_listen_tempo(t, cli)
+    test_ws_listen_layer_speed(t, cli)
+    test_ws_ignore(t, cli)
+    test_ws_multiple_subscriptions(t, cli)
+    test_ws_multiple_clients(t, cli)
+    test_ws_binary_osc_format(t, cli)
+
+    ok = t.summary()
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

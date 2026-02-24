@@ -1,9 +1,12 @@
 #include "OSCServer.h"
+#include "OSCPacketBuilder.h"
 #include "../../engine/LooperProcessor.h"
 #include <cstring>
+#include <cmath>
 
 // ============================================================================
 // Byte-order helpers - OSC uses big-endian (network byte order)
+// (Kept for parseArgument which needs beToHost32; sending uses OSCPacketBuilder)
 // ============================================================================
 
 static uint32_t hostToBE32(uint32_t val) {
@@ -47,6 +50,7 @@ void OSCServer::start(LooperProcessor* processor) {
 
     running = true;
     receiveThread = std::thread(&OSCServer::receiveLoop, this);
+    broadcastThread = std::thread(&OSCServer::broadcastLoop, this);
 }
 
 void OSCServer::stop() {
@@ -60,6 +64,10 @@ void OSCServer::stop() {
 
     if (receiveThread.joinable()) {
         receiveThread.join();
+    }
+
+    if (broadcastThread.joinable()) {
+        broadcastThread.join();
     }
 }
 
@@ -91,29 +99,33 @@ OSCSettings OSCServer::getSettings() const {
 
 void OSCServer::addOutTarget(const juce::String& ipPort) {
     std::lock_guard<std::mutex> lock(targetsMutex);
-    if (!pairedTargets.contains(ipPort)) {
-        pairedTargets.add(ipPort);
+    if (!configuredTargets.contains(ipPort)) {
+        configuredTargets.add(ipPort);
     }
 }
 
 void OSCServer::removeOutTarget(const juce::String& ipPort) {
     std::lock_guard<std::mutex> lock(targetsMutex);
-    int idx = pairedTargets.indexOf(ipPort);
-    if (idx >= 0) pairedTargets.remove(idx);
+    int idx = configuredTargets.indexOf(ipPort);
+    if (idx >= 0) configuredTargets.remove(idx);
 }
 
 void OSCServer::clearOutTargets() {
     std::lock_guard<std::mutex> lock(targetsMutex);
-    pairedTargets.clear();
+    configuredTargets.clear();
 }
 
 juce::StringArray OSCServer::getOutTargets() const {
     std::lock_guard<std::mutex> lock(targetsMutex);
-    return pairedTargets;
+    return configuredTargets;
 }
 
 void OSCServer::broadcast(const juce::String& address, const std::vector<juce::var>& args) {
     sendToTargets(address, args);
+}
+
+void OSCServer::setBroadcastRate(int hz) {
+    broadcastRateHz.store(hz);
 }
 
 // ============================================================================
@@ -135,17 +147,140 @@ void OSCServer::receiveLoop() {
 
         if (bytesRead > 0) {
             parseAndDispatch((const char*)buffer, bytesRead, senderIP, senderPort);
-
-            // Auto-pair: add sender as a broadcast target
-            juce::String ipPort = senderIP + ":" + juce::String(senderPort);
-            {
-                std::lock_guard<std::mutex> lock(targetsMutex);
-                if (!pairedTargets.contains(ipPort)) {
-                    pairedTargets.add(ipPort);
-                }
-            }
+            // Note: We do NOT auto-pair the sender's ephemeral port here.
+            // Targets must be explicitly added via addOutTarget() or /api/targets.
+            // The sender's ephemeral UDP port is typically not their listening port.
         } else {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+}
+
+// ============================================================================
+// State-change broadcast loop
+//
+// Runs at broadcastRateHz (default 30Hz). Polls AtomicState, compares to
+// cached snapshot, broadcasts OSC messages for any changed values to all
+// configured targets.
+// ============================================================================
+
+void OSCServer::broadcastLoop() {
+    while (running.load()) {
+        int hz = broadcastRateHz.load();
+        if (hz <= 0 || !owner) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        broadcastStateChanges();
+
+        int sleepMs = 1000 / hz;
+        if (sleepMs < 1) sleepMs = 1;
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+    }
+}
+
+void OSCServer::broadcastStateChanges() {
+    if (!owner) return;
+
+    // Quick check: any targets to send to?
+    {
+        std::lock_guard<std::mutex> lock(targetsMutex);
+        if (configuredTargets.isEmpty()) return;
+    }
+
+    auto& state = owner->getControlServer().getAtomicState();
+
+    // --- Global state diffs ---
+
+    float newTempo = state.tempo.load(std::memory_order_relaxed);
+    if (std::abs(newTempo - cachedState.tempo) > 0.01f) {
+        cachedState.tempo = newTempo;
+        broadcast("/looper/tempo", { juce::var(newTempo) });
+    }
+
+    bool newRec = state.isRecording.load(std::memory_order_relaxed);
+    if (newRec != cachedState.isRecording) {
+        cachedState.isRecording = newRec;
+        broadcast("/looper/recording", { juce::var(newRec ? 1 : 0) });
+    }
+
+    bool newOD = state.overdubEnabled.load(std::memory_order_relaxed);
+    if (newOD != cachedState.overdubEnabled) {
+        cachedState.overdubEnabled = newOD;
+        broadcast("/looper/overdub", { juce::var(newOD ? 1 : 0) });
+    }
+
+    int newMode = state.recordMode.load(std::memory_order_relaxed);
+    if (newMode != cachedState.recordMode) {
+        cachedState.recordMode = newMode;
+        const char* modeStr = (newMode == 0) ? "firstLoop" :
+                              (newMode == 1) ? "freeMode" :
+                              (newMode == 2) ? "traditional" : "retrospective";
+        broadcast("/looper/mode", { juce::var(juce::String(modeStr)) });
+    }
+
+    int newActiveLayer = state.activeLayer.load(std::memory_order_relaxed);
+    if (newActiveLayer != cachedState.activeLayer) {
+        cachedState.activeLayer = newActiveLayer;
+        broadcast("/looper/layer", { juce::var(newActiveLayer) });
+    }
+
+    float newVol = state.masterVolume.load(std::memory_order_relaxed);
+    if (std::abs(newVol - cachedState.masterVolume) > 0.001f) {
+        cachedState.masterVolume = newVol;
+        broadcast("/looper/volume", { juce::var(newVol) });
+    }
+
+    // --- Per-layer state diffs ---
+
+    for (int i = 0; i < OSCStateSnapshot::MAX_LAYERS && i < AtomicState::MAX_LAYERS; ++i) {
+        auto& ls = state.layers[i];
+        auto& cs = cachedState.layers[i];
+        juce::String prefix = "/looper/layer/" + juce::String(i) + "/";
+
+        int newState = ls.state.load(std::memory_order_relaxed);
+        if (newState != cs.state) {
+            cs.state = newState;
+            const char* stateStr = (newState == 0) ? "empty" :
+                                   (newState == 1) ? "playing" :
+                                   (newState == 2) ? "stopped" :
+                                   (newState == 3) ? "paused" :
+                                   (newState == 4) ? "muted" :
+                                   (newState == 5) ? "recording" : "unknown";
+            broadcast(prefix + "state", { juce::var(juce::String(stateStr)) });
+        }
+
+        float newSpeed = ls.speed.load(std::memory_order_relaxed);
+        if (std::abs(newSpeed - cs.speed) > 0.001f) {
+            cs.speed = newSpeed;
+            broadcast(prefix + "speed", { juce::var(newSpeed) });
+        }
+
+        float newLayerVol = ls.volume.load(std::memory_order_relaxed);
+        if (std::abs(newLayerVol - cs.volume) > 0.001f) {
+            cs.volume = newLayerVol;
+            broadcast(prefix + "volume", { juce::var(newLayerVol) });
+        }
+
+        bool newRev = ls.reversed.load(std::memory_order_relaxed);
+        if (newRev != cs.reversed) {
+            cs.reversed = newRev;
+            broadcast(prefix + "reverse", { juce::var(newRev ? 1 : 0) });
+        }
+
+        // Position: normalized 0-1. Only broadcast if layer is playing and position changed meaningfully.
+        int len = ls.length.load(std::memory_order_relaxed);
+        float newPos = (len > 0) ? (float)ls.playheadPos.load(std::memory_order_relaxed) / (float)len : 0.0f;
+        if (std::abs(newPos - cs.position) > 0.005f) {
+            cs.position = newPos;
+            broadcast(prefix + "position", { juce::var(newPos) });
+        }
+
+        float newBars = ls.numBars.load(std::memory_order_relaxed);
+        if (std::abs(newBars - cs.bars) > 0.001f) {
+            cs.bars = newBars;
+            broadcast(prefix + "bars", { juce::var(newBars) });
         }
     }
 }
@@ -292,7 +427,7 @@ void OSCServer::dispatchMessage(const OSCMessage& msg) {
     else if (msg.address == "/looper/overdub") {
         if (msg.args.size() >= 1) {
             cmd.type = ControlCommand::Type::SetOverdubEnabled;
-            cmd.intParam = ((int)msg.args[0]) ? 1 : 0;
+            cmd.floatParam = ((int)msg.args[0]) ? 1.0f : 0.0f;
         } else {
             cmd.type = ControlCommand::Type::ToggleOverdub;
         }
@@ -328,8 +463,8 @@ void OSCServer::dispatchMessage(const OSCMessage& msg) {
 
                 if      (prop == "speed"   && msg.args.size() >= 1) { cmd.type = ControlCommand::Type::LayerSpeed;   cmd.floatParam = (float)msg.args[0]; }
                 else if (prop == "volume"  && msg.args.size() >= 1) { cmd.type = ControlCommand::Type::LayerVolume;  cmd.floatParam = (float)msg.args[0]; }
-                else if (prop == "mute"    && msg.args.size() >= 1) { cmd.type = ControlCommand::Type::LayerMute;    cmd.intParam = ((int)msg.args[0]) ? 1 : 0; }
-                else if (prop == "reverse" && msg.args.size() >= 1) { cmd.type = ControlCommand::Type::LayerReverse; cmd.intParam = ((int)msg.args[0]) ? 1 : 0; }
+                else if (prop == "mute"    && msg.args.size() >= 1) { cmd.type = ControlCommand::Type::LayerMute;    cmd.floatParam = ((int)msg.args[0]) ? 1.0f : 0.0f; }
+                else if (prop == "reverse" && msg.args.size() >= 1) { cmd.type = ControlCommand::Type::LayerReverse; cmd.floatParam = ((int)msg.args[0]) ? 1.0f : 0.0f; }
                 else if (prop == "play")    { cmd.type = ControlCommand::Type::LayerPlay; }
                 else if (prop == "pause")   { cmd.type = ControlCommand::Type::LayerPause; }
                 else if (prop == "stop")    { cmd.type = ControlCommand::Type::LayerStop; }
@@ -353,63 +488,13 @@ void OSCServer::sendToTargets(const juce::String& address,
     juce::StringArray targets;
     {
         std::lock_guard<std::mutex> lock(targetsMutex);
-        targets = pairedTargets;
+        targets = configuredTargets;
     }
 
     if (targets.isEmpty()) return;
 
-    // Build OSC packet
-    std::vector<char> packet;
-
-    // Address string (null-terminated, padded to 4 bytes)
-    for (int i = 0; i < address.length(); i++) {
-        packet.push_back((char)address[i]);
-    }
-    packet.push_back('\0');
-    while (packet.size() % 4 != 0) packet.push_back('\0');
-
-    // Type tag string
-    packet.push_back(',');
-    juce::String typeTag;
-    for (const auto& arg : args) {
-        if (arg.isInt())         typeTag += "i";
-        else if (arg.isDouble()) typeTag += "f";
-        else if (arg.isString()) typeTag += "s";
-        else                     typeTag += "N";
-    }
-    for (int i = 0; i < typeTag.length(); i++) {
-        packet.push_back(typeTag[i]);
-    }
-    packet.push_back('\0');
-    while (packet.size() % 4 != 0) packet.push_back('\0');
-
-    // Arguments (big-endian)
-    for (const auto& arg : args) {
-        if (arg.isInt()) {
-            int32_t val = (int32_t)(int)arg;
-            uint32_t beVal;
-            std::memcpy(&beVal, &val, 4);
-            beVal = hostToBE32(beVal);
-            const char* bytes = reinterpret_cast<const char*>(&beVal);
-            for (int i = 0; i < 4; i++) packet.push_back(bytes[i]);
-        }
-        else if (arg.isDouble()) {
-            float val = (float)(double)arg;
-            uint32_t beVal;
-            std::memcpy(&beVal, &val, 4);
-            beVal = hostToBE32(beVal);
-            const char* bytes = reinterpret_cast<const char*>(&beVal);
-            for (int i = 0; i < 4; i++) packet.push_back(bytes[i]);
-        }
-        else if (arg.isString()) {
-            juce::String str = arg.toString();
-            for (int i = 0; i < str.length(); i++) {
-                packet.push_back((char)str[i]);
-            }
-            packet.push_back('\0');
-            while (packet.size() % 4 != 0) packet.push_back('\0');
-        }
-    }
+    // Build OSC packet using shared builder
+    auto packet = OSCPacketBuilder::build(address, args);
 
     // Send to all targets
     for (int t = 0; t < targets.size(); t++) {
