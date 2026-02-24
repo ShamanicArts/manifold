@@ -11,8 +11,8 @@ extern "C" {
 #include <sol/sol.hpp>
 
 #include "../../engine/LooperProcessor.h"
-#include "../control/ControlServer.h"
 #include "../control/CommandParser.h"
+#include "../control/ControlServer.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -446,24 +446,38 @@ void LuaEngine::registerBindings() {
     auto result = CommandParser::parse(cmdStr);
 
     switch (result.kind) {
-      case ParseResult::Kind::Enqueue:
-        pImpl->processor->postControlCommand(
-            result.command.type, result.command.intParam,
-            result.command.floatParam);
-        break;
-      case ParseResult::Kind::Error:
-        fprintf(stderr, "[LuaEngine] command error: %s (input: %s)\n",
-                result.errorMessage.c_str(), cmdStr.c_str());
-        break;
-      default:
-        // Queries (STATE/PING/DIAGNOSE), WATCH, INJECT, INJECTION_STATUS
-        // are not meaningful from the UI — ignore silently
-        break;
+    case ParseResult::Kind::Enqueue:
+      pImpl->processor->postControlCommand(result.command.type,
+                                           result.command.intParam,
+                                           result.command.floatParam);
+      break;
+    case ParseResult::Kind::Error:
+      fprintf(stderr, "[LuaEngine] command error: %s (input: %s)\n",
+              result.errorMessage.c_str(), cmdStr.c_str());
+      break;
+    default:
+      // Queries (STATE/PING/DIAGNOSE), WATCH, INJECT, INJECTION_STATUS
+      // are not meaningful from the UI — ignore silently
+      break;
     }
   };
 
   // ---- Root canvas accessor ----
   lua["root"] = pImpl->rootCanvas;
+
+  // ---- Direct seek binding (bypasses CommandParser for reliability) ----
+  lua["seekLayer"] = [this](int layerIdx, float normalizedPos) {
+    if (!pImpl->processor)
+      return;
+    if (layerIdx < 0 || layerIdx >= 4)
+      return;
+    ControlCommand cmd;
+    cmd.type = ControlCommand::Type::LayerSeek;
+    cmd.intParam = layerIdx;
+    cmd.floatParam = normalizedPos;
+    pImpl->processor->postControlCommand(cmd.type, cmd.intParam,
+                                         cmd.floatParam);
+  };
 
   // ---- Script management (exposed to Lua) ----
   lua["listUiScripts"] = [this]() -> sol::table {

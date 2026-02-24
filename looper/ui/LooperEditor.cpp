@@ -49,6 +49,18 @@ LooperEditor::LooperEditor(LooperProcessor &p)
 }
 
 void LooperEditor::timerCallback() {
+  // Check for UI switch command from CLI
+  auto pendingPath = processor.getAndClearPendingUISwitch();
+  if (!pendingPath.empty()) {
+    juce::File newScript(pendingPath);
+    if (newScript.existsAsFile()) {
+      std::fprintf(stderr, "LooperEditor: Switching UI to %s\n", pendingPath.c_str());
+      luaEngine.switchScript(newScript);
+    } else {
+      std::fprintf(stderr, "LooperEditor: UI switch failed - file not found: %s\n", pendingPath.c_str());
+    }
+  }
+  
   if (usingLuaUi) {
     luaEngine.notifyUpdate();
     rootCanvas.repaint();

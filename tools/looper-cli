@@ -27,6 +27,7 @@ Usage:
     looper-cli layer <idx> clear
     looper-cli diagnose           Diagnostic info
     looper-cli ping               Health check
+    looper-cli ui <path>          Switch to UI script at path
 """
 
 import socket
@@ -158,6 +159,13 @@ def main():
 
     if verb == "WATCH":
         send_command(sock_path, "WATCH", watch=True)
+    elif verb == "UI":
+        # UI switch command - send UISWITCH with the path
+        if len(args.command) < 2:
+            print("Usage: looper-cli ui <filepath>", file=sys.stderr)
+            sys.exit(1)
+        cmd = "UISWITCH " + " ".join(args.command[1:])
+        send_command(sock_path, cmd)
     else:
         cmd = " ".join(args.command)
         send_command(sock_path, cmd)

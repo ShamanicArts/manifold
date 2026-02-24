@@ -34,10 +34,10 @@ juce_add_plugin(GrainFreeze
 
 target_sources(GrainFreeze
     PRIVATE
-        PluginEditor.cpp
-        PluginProcessor.cpp
-        GranularEngine.h
-        EffectsProcessor.h)
+        GrainFreeze_Prototype/PluginEditor.cpp
+        GrainFreeze_Prototype/PluginProcessor.cpp
+        GrainFreeze_Prototype/GranularEngine.h
+        GrainFreeze_Prototype/EffectsProcessor.h)
 
 target_compile_definitions(GrainFreeze
     PUBLIC

@@ -341,6 +341,13 @@ std::string ControlServer::processCommand(const std::string& cmd) {
             return o.str();
         }
 
+        case ParseResult::Kind::UISwitch: {
+            std::lock_guard<std::mutex> lock(uiSwitchRequest.mutex);
+            uiSwitchRequest.path = result.filepath;
+            uiSwitchRequest.pending.store(true, std::memory_order_release);
+            return "OK UI switch queued";
+        }
+
         case ParseResult::Kind::Error:
             return "ERROR " + result.errorMessage;
     }

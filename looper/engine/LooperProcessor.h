@@ -86,6 +86,9 @@ public:
     ControlServer& getControlServer() { return controlServer; }
     bool postControlCommand(ControlCommand::Type type, int intParam = 0, float floatParam = 0.0f);
     
+    // UI switching (thread-safe) - called by editor to check for UI switch
+    std::string getAndClearPendingUISwitch();
+    
 private:
     CaptureBuffer captureBuffer;
     LooperLayer layers[MAX_LAYERS];

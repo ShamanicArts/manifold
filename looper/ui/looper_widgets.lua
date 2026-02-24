@@ -1,19 +1,133 @@
--- looper_widgets.lua
--- Built-in widget library for the Looper plugin.
--- All widgets are pure Lua composing Canvas nodes.
--- Users can `require("looper_widgets")` and override anything.
+-- looper_widgets_new.lua
+-- New widget library with proper OOP inheritance for user extensibility.
+-- All widgets are classes that users can require and subclass.
+-- 
+-- Usage:
+--   local W = require("looper_widgets_new")
+--   
+--   -- Use built-in slider
+--   local slider = W.Slider.new(parent, "mySlider", {min=0, max=1, value=0.5})
+--   
+--   -- Create custom slider with overridden behavior
+--   local MySlider = W.Slider:extend()
+--   function MySlider:drawTrack(x, y, w, h)
+--     -- Custom track drawing
+--   end
+--   local mySlider = MySlider.new(parent, "custom", {min=0, max=100})
 
 local Widgets = {}
 
 -- ============================================================================
--- Helpers
+-- Base Widget Class - All widgets inherit from this
 -- ============================================================================
 
-local function colour(c, default) return c or default or 0xff333333 end
+local BaseWidget = {}
+BaseWidget.__index = BaseWidget
 
-local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
+function BaseWidget:extend()
+    local cls = {}
+    for k, v in pairs(self) do
+        if k:find("__") == 1 then
+            cls[k] = v
+        end
+    end
+    cls.__index = cls
+    cls.super = self
+    setmetatable(cls, self)
+    return cls
+end
 
-local function lerp(a, b, t) return a + (b - a) * t end
+function BaseWidget.new(parent, name, config)
+    local self = setmetatable({}, BaseWidget)
+    config = config or {}
+    
+    self.node = parent:addChild(name)
+    self.name = name
+    self.config = config
+    self._hovered = false
+    self._pressed = false
+    self._enabled = config.enabled ~= false
+    
+    -- Bind callbacks
+    self:bindCallbacks()
+    
+    return self
+end
+
+function BaseWidget:bindCallbacks()
+    self.node:setOnMouseDown(function(mx, my) 
+        if not self._enabled then return end
+        self._pressed = true
+        self:onMouseDown(mx, my) 
+    end)
+    
+    self.node:setOnMouseDrag(function(mx, my, dx, dy) 
+        if not self._enabled then return end
+        self:onMouseDrag(mx, my, dx, dy) 
+    end)
+    
+    self.node:setOnMouseUp(function(mx, my) 
+        self._pressed = false
+        self:onMouseUp(mx, my) 
+    end)
+    
+    self.node:setOnClick(function() 
+        if not self._enabled then return end
+        self:onClick() 
+    end)
+    
+    self.node:setOnDraw(function(node)
+        self._hovered = node:isMouseOver()
+        self:onDraw(node:getWidth(), node:getHeight())
+    end)
+end
+
+function BaseWidget:onMouseDown(mx, my) end
+function BaseWidget:onMouseDrag(mx, my, dx, dy) end
+function BaseWidget:onMouseUp(mx, my) end
+function BaseWidget:onClick() end
+function BaseWidget:onDraw(w, h) end
+
+function BaseWidget:setEnabled(enabled)
+    self._enabled = enabled
+end
+
+function BaseWidget:isEnabled()
+    return self._enabled
+end
+
+function BaseWidget:isHovered()
+    return self._hovered
+end
+
+function BaseWidget:isPressed()
+    return self._pressed
+end
+
+function BaseWidget:setBounds(x, y, w, h)
+    -- Ensure all values are integers for sol2
+    local ix = math.floor(x + 0.5)
+    local iy = math.floor(y + 0.5)
+    local iw = math.floor(w + 0.5)
+    local ih = math.floor(h + 0.5)
+    self.node:setBounds(ix, iy, iw, ih)
+end
+
+-- ============================================================================
+-- Utility Functions
+-- ============================================================================
+
+local function colour(c, default) 
+    return c or default or 0xff333333 
+end
+
+local function clamp(v, lo, hi) 
+    return math.max(lo, math.min(hi, v)) 
+end
+
+local function lerp(a, b, t) 
+    return a + (b - a) * t 
+end
 
 local function brighten(c, amount)
     local a = (c >> 24) & 0xff
@@ -39,584 +153,1125 @@ local function snapToStep(value, step)
 end
 
 -- ============================================================================
--- Button: clickable pill-shaped button with label and colour
+-- Button Widget
 -- ============================================================================
 
-function Widgets.Button(parent, name, config)
-    config = config or {}
-    local node = parent:addChild(name)
+Widgets.Button = BaseWidget:extend()
 
-    local _label = config.label or ""
-    local _bg = colour(config.bg, 0xff374151)
-    local _textColour = colour(config.textColour, 0xffffffff)
-    local _fontSize = config.fontSize or 13.0
+function Widgets.Button.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.Button)
+    
+    self._label = config.label or ""
+    self._bg = colour(config.bg, 0xff374151)
+    self._textColour = colour(config.textColour, 0xffffffff)
+    self._fontSize = config.fontSize or 13.0
+    self._radius = config.radius or 7.0
+    self._onClick = config.on_click or config.onClick
+    
+    return self
+end
 
-    if config.on_click then node:setOnClick(config.on_click) end
+function Widgets.Button:onClick()
+    if self._onClick then
+        self._onClick()
+    end
+end
 
-    node:setOnDraw(function(self)
-        local w = self:getWidth()
-        local h = self:getHeight()
-        local r = 7.0
-        local bg = self:isMouseOver() and brighten(_bg, 25) or _bg
+function Widgets.Button:drawBackground(w, h)
+    local bg = self._bg
+    if not self:isEnabled() then
+        bg = darken(bg, 40)
+    elseif self:isPressed() then
+        bg = darken(bg, 20)
+    elseif self:isHovered() then
+        bg = brighten(bg, 25)
+    end
+    
+    gfx.setColour(bg)
+    gfx.fillRoundedRect(1, 1, w - 2, h - 2, self._radius)
+    gfx.setColour(brighten(bg, 40))
+    gfx.drawRoundedRect(1, 1, w - 2, h - 2, self._radius, 1.0)
+end
 
-        gfx.setColour(bg)
-        gfx.fillRoundedRect(1, 1, w - 2, h - 2, r)
-        gfx.setColour(brighten(bg, 40))
-        gfx.drawRoundedRect(1, 1, w - 2, h - 2, r, 1.0)
-        gfx.setColour(_textColour)
-        gfx.setFont(_fontSize)
-        gfx.drawText(_label, 0, 0, w, h, Justify.centred)
-    end)
+function Widgets.Button:drawLabel(w, h)
+    gfx.setColour(self._textColour)
+    gfx.setFont(self._fontSize)
+    gfx.drawText(self._label, 0, 0, w, h, Justify.centred)
+end
 
-    return {
-        node = node,
-        setLabel = function(l) _label = l end,
-        getLabel = function() return _label end,
-        setBg = function(c) _bg = c end,
-        setTextColour = function(c) _textColour = c end,
-        setOnClick = function(fn) node:setOnClick(fn) end,
-    }
+function Widgets.Button:onDraw(w, h)
+    self:drawBackground(w, h)
+    self:drawLabel(w, h)
+end
+
+function Widgets.Button:setLabel(label)
+    self._label = label
+end
+
+function Widgets.Button:getLabel()
+    return self._label
+end
+
+function Widgets.Button:setBg(colour)
+    self._bg = colour
+end
+
+function Widgets.Button:setTextColour(colour)
+    self._textColour = colour
 end
 
 -- ============================================================================
--- Label: non-interactive text display
+-- Label Widget
 -- ============================================================================
 
-function Widgets.Label(parent, name, config)
-    config = config or {}
-    local node = parent:addChild(name)
-    node:setInterceptsMouse(false, false)
+Widgets.Label = BaseWidget:extend()
 
-    local _text = config.text or ""
-    local _colour = colour(config.colour, 0xff9ca3af)
-    local _fontSize = config.fontSize or 13.0
-    local _fontName = config.fontName or nil
-    local _fontStyle = config.fontStyle or FontStyle.plain
-    local _justification = config.justification or Justify.centredLeft
+function Widgets.Label.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.Label)
+    
+    self._text = config.text or ""
+    self._colour = colour(config.colour, 0xff9ca3af)
+    self._fontSize = config.fontSize or 13.0
+    self._fontName = config.fontName
+    self._fontStyle = config.fontStyle or FontStyle.plain
+    self._justification = config.justification or Justify.centredLeft
+    
+    self.node:setInterceptsMouse(false, false)
+    
+    return self
+end
 
-    node:setOnDraw(function(self)
-        gfx.setColour(_colour)
-        if _fontName then
-            gfx.setFont(_fontName, _fontSize, _fontStyle)
-        else
-            gfx.setFont(_fontSize)
-        end
-        gfx.drawText(_text, 0, 0, self:getWidth(), self:getHeight(), _justification)
-    end)
+function Widgets.Label:onDraw(w, h)
+    gfx.setColour(self._colour)
+    if self._fontName then
+        gfx.setFont(self._fontName, self._fontSize, self._fontStyle)
+    else
+        gfx.setFont(self._fontSize)
+    end
+    gfx.drawText(self._text, 0, 0, w, h, self._justification)
+end
 
-    return {
-        node = node,
-        setText = function(t) _text = t end,
-        getText = function() return _text end,
-        setColour = function(c) _colour = c end,
-    }
+function Widgets.Label:setText(text)
+    self._text = text
+end
+
+function Widgets.Label:getText()
+    return self._text
+end
+
+function Widgets.Label:setColour(colour)
+    self._colour = colour
 end
 
 -- ============================================================================
--- Panel: styled container with background, border, radius
+-- Panel Widget (Container)
 -- ============================================================================
 
-function Widgets.Panel(parent, name, config)
-    config = config or {}
-    local node = parent:addChild(name)
-    node:setStyle({
-        bg = colour(config.bg, 0x00000000),
-        border = colour(config.border, 0x00000000),
-        borderWidth = config.borderWidth or 0,
-        radius = config.radius or 0,
-        opacity = config.opacity or 1.0,
-    })
+Widgets.Panel = BaseWidget:extend()
 
+function Widgets.Panel.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.Panel)
+    
+    self._bg = colour(config.bg, 0x00000000)
+    self._border = colour(config.border, 0x00000000)
+    self._borderWidth = config.borderWidth or 0
+    self._radius = config.radius or 0
+    self._opacity = config.opacity or 1.0
+    
     if config.interceptsMouse ~= nil then
-        node:setInterceptsMouse(config.interceptsMouse, true)
+        self.node:setInterceptsMouse(config.interceptsMouse, true)
     end
+    
+    return self
+end
 
-    return {
-        node = node,
-        setStyle = function(s) node:setStyle(s) end,
-    }
+function Widgets.Panel:onDraw(w, h)
+    -- Background
+    if (self._bg >> 24) & 0xff > 0 then
+        gfx.setColour(self._bg)
+        gfx.fillRoundedRect(0, 0, w, h, self._radius)
+    end
+    
+    -- Border
+    if self._borderWidth > 0 and (self._border >> 24) & 0xff > 0 then
+        gfx.setColour(self._border)
+        gfx.drawRoundedRect(0, 0, w, h, self._radius, self._borderWidth)
+    end
+end
+
+function Widgets.Panel:setStyle(style)
+    if style.bg then self._bg = style.bg end
+    if style.border then self._border = style.border end
+    if style.borderWidth then self._borderWidth = style.borderWidth end
+    if style.radius then self._radius = style.radius end
+    if style.opacity then self._opacity = style.opacity end
 end
 
 -- ============================================================================
--- Slider: horizontal drag control with value label
+-- Slider Widget (Horizontal)
 -- ============================================================================
--- Usage:
---   local s = Widgets.Slider(parent, "tempo", {
---       min = 40, max = 240, step = 1, value = 120,
---       label = "Tempo", suffix = " BPM",
---       colour = 0xff38bdf8,
---       on_change = function(v) command("TEMPO", tostring(v)) end,
---   })
---   s.setValue(130)
 
-function Widgets.Slider(parent, name, config)
-    config = config or {}
-    local node = parent:addChild(name)
+Widgets.Slider = BaseWidget:extend()
 
-    local _min = config.min or 0
-    local _max = config.max or 1
-    local _step = config.step or 0
-    local _value = clamp(config.value or _min, _min, _max)
-    local _label = config.label or ""
-    local _suffix = config.suffix or ""
-    local _colour = colour(config.colour, 0xff38bdf8)
-    local _bg = colour(config.bg, 0xff1e293b)
-    local _on_change = config.on_change
-    local _dragging = false
-    local _dragStartValue = 0
-
-    node:setOnMouseDown(function(mx, my)
-        _dragging = true
-        _dragStartValue = _value
-    end)
-
-    node:setOnMouseDrag(function(mx, my, dx, dy)
-        if not _dragging then return end
-        local w = node:getWidth()
-        local range = _max - _min
-        local delta = (dx / math.max(1, w - 20)) * range
-        local newVal = clamp(snapToStep(_dragStartValue + delta, _step), _min, _max)
-        if newVal ~= _value then
-            _value = newVal
-            if _on_change then _on_change(_value) end
-        end
-    end)
-
-    node:setOnMouseUp(function(mx, my)
-        _dragging = false
-    end)
-
-    node:setOnDraw(function(self)
-        local w = self:getWidth()
-        local h = self:getHeight()
-
-        -- Track background
-        local trackY = h * 0.5 - 3
-        local trackH = 6
-        local trackR = 3
-        gfx.setColour(_bg)
-        gfx.fillRoundedRect(4, trackY, w - 8, trackH, trackR)
-
-        -- Filled portion
-        local t = (_value - _min) / math.max(0.001, _max - _min)
-        local filledW = t * (w - 8)
-        gfx.setColour(_colour)
-        gfx.fillRoundedRect(4, trackY, filledW, trackH, trackR)
-
-        -- Thumb
-        local thumbX = 4 + filledW - 6
-        local thumbW = 12
-        local thumbH = h * 0.7
-        local thumbY = (h - thumbH) / 2
-        local thumbBg = _dragging and brighten(_colour, 30) or (self:isMouseOver() and brighten(_colour, 15) or _colour)
-        gfx.setColour(thumbBg)
-        gfx.fillRoundedRect(thumbX, thumbY, thumbW, thumbH, 4)
-
-        -- Label
-        gfx.setColour(0xffe2e8f0)
-        gfx.setFont(11.0)
-        gfx.drawText(_label, 6, 1, w * 0.5, h * 0.35, Justify.centredLeft)
-
-        -- Value
-        local valText = string.format("%.2f", _value) .. _suffix
-        if _step >= 1 then valText = string.format("%d", _value) .. _suffix end
-        gfx.setColour(0xffcbd5e1)
-        gfx.setFont(11.0)
-        gfx.drawText(valText, w * 0.5, 1, w * 0.5 - 6, h * 0.35, Justify.centredRight)
-    end)
-
-    return {
-        node = node,
-        getValue = function() return _value end,
-        setValue = function(v) _value = clamp(v, _min, _max) end,
-        setOnChange = function(fn) _on_change = fn end,
-    }
+function Widgets.Slider.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.Slider)
+    
+    self._min = config.min or 0
+    self._max = config.max or 1
+    self._step = config.step or 0
+    self._value = clamp(config.value or self._min, self._min, self._max)
+    self._defaultValue = config.defaultValue or self._value
+    self._label = config.label or ""
+    self._suffix = config.suffix or ""
+    self._colour = colour(config.colour, 0xff38bdf8)
+    self._bg = colour(config.bg, 0xff1e293b)
+    self._onChange = config.on_change or config.onChange
+    self._showValue = config.showValue ~= false
+    self._dragging = false
+    self._dragStartX = 0
+    self._dragStartValue = 0
+    
+    return self
 end
 
--- ============================================================================
--- Knob: rotary control via vertical drag
--- ============================================================================
--- Usage:
---   local k = Widgets.Knob(parent, "speed", {
---       min = 0.25, max = 4.0, value = 1.0,
---       label = "Speed", colour = 0xff22d3ee,
---       on_change = function(v) ... end,
---   })
+function Widgets.Slider:onMouseDown(mx, my)
+    self._dragging = true
+    self._dragStartX = mx
+    self._dragStartValue = self._value
+    self:valueFromMouse(mx)
+end
 
-function Widgets.Knob(parent, name, config)
-    config = config or {}
-    local node = parent:addChild(name)
+function Widgets.Slider:onMouseDrag(mx, my, dx, dy)
+    if not self._dragging then return end
+    self:valueFromMouse(mx)
+end
 
-    local _min = config.min or 0
-    local _max = config.max or 1
-    local _step = config.step or 0
-    local _value = clamp(config.value or _min, _min, _max)
-    local _label = config.label or ""
-    local _colour = colour(config.colour, 0xff22d3ee)
-    local _bg = colour(config.bg, 0xff1e293b)
-    local _on_change = config.on_change
-    local _dragging = false
-    local _dragStartValue = 0
+function Widgets.Slider:onMouseUp(mx, my)
+    self._dragging = false
+end
 
-    -- Arc angles: -135° to +135° (270° total sweep)
-    local startAngle = -135
-    local endAngle = 135
-
-    node:setOnMouseDown(function(mx, my)
-        _dragging = true
-        _dragStartValue = _value
-    end)
-
-    node:setOnMouseDrag(function(mx, my, dx, dy)
-        if not _dragging then return end
-        local range = _max - _min
-        -- Vertical drag: up = increase, sensitivity based on range
-        local delta = (-dy / 150.0) * range
-        local newVal = clamp(snapToStep(_dragStartValue + delta, _step), _min, _max)
-        if newVal ~= _value then
-            _value = newVal
-            if _on_change then _on_change(_value) end
+function Widgets.Slider:valueFromMouse(mx)
+    local w = self.node:getWidth()
+    local trackW = math.max(1, w - 16)
+    local t = clamp((mx - 8) / trackW, 0, 1)
+    local newVal = self._min + t * (self._max - self._min)
+    newVal = snapToStep(newVal, self._step)
+    newVal = clamp(newVal, self._min, self._max)
+    
+    if newVal ~= self._value then
+        self._value = newVal
+        if self._onChange then
+            self._onChange(self._value)
         end
-    end)
+    end
+end
 
-    node:setOnMouseUp(function(mx, my)
-        _dragging = false
-    end)
-
-    node:setOnDraw(function(self)
-        local w = self:getWidth()
-        local h = self:getHeight()
-        local cx = w / 2
-        local cy = h * 0.42
-        local radius = math.min(w, h) * 0.32
-
-        -- Background circle
-        gfx.setColour(_bg)
-        gfx.fillRoundedRect(cx - radius, cy - radius, radius * 2, radius * 2, radius)
-
-        -- Arc: draw filled arc as tick marks
-        local t = (_value - _min) / math.max(0.001, _max - _min)
-        local arcEnd = startAngle + t * (endAngle - startAngle)
-        local numTicks = 32
-        for i = 0, numTicks do
-            local angle = startAngle + (i / numTicks) * (endAngle - startAngle)
-            local rad = math.rad(angle - 90)  -- -90 to orient 0° at top
-            local isFilled = angle <= arcEnd
-            gfx.setColour(isFilled and _colour or darken(_bg, 10))
-            local x1 = cx + math.cos(rad) * (radius * 0.7)
-            local y1 = cy + math.sin(rad) * (radius * 0.7)
-            local x2 = cx + math.cos(rad) * (radius * 0.92)
-            local y2 = cy + math.sin(rad) * (radius * 0.92)
-            -- Draw as small rectangles (JUCE drawLine not exposed, so use fillRect)
-            gfx.fillRect(math.min(x1, x2), math.min(y1, y2),
-                          math.max(2, math.abs(x2 - x1)),
-                          math.max(2, math.abs(y2 - y1)))
-        end
-
-        -- Center dot
-        gfx.setColour(brighten(_bg, 30))
-        gfx.fillRoundedRect(cx - 4, cy - 4, 8, 8, 4)
-
-        -- Pointer needle
-        local pRad = math.rad(arcEnd - 90)
-        local px = cx + math.cos(pRad) * (radius * 0.55)
-        local py = cy + math.sin(pRad) * (radius * 0.55)
-        gfx.setColour(0xffe2e8f0)
-        gfx.fillRoundedRect(px - 2, py - 2, 4, 4, 2)
-
-        -- Value text
+function Widgets.Slider:onDraw(w, h)
+    local trackY = h * 0.5 - 3
+    local trackH = 6
+    local trackR = 3
+    
+    -- Draw track
+    self:drawTrack(8, trackY, w - 16, trackH, trackR)
+    
+    -- Draw thumb
+    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
+    local thumbX = 8 + t * (w - 16) - 6
+    self:drawThumb(thumbX, (h - 20) / 2, 12, 20)
+    
+    -- Draw label (simplified - just value for now)
+    if self._showValue then
         local valText
-        if _step >= 1 then
-            valText = string.format("%d", _value)
+        if self._step >= 1 then
+            valText = self._label .. ": " .. string.format("%d", self._value) .. self._suffix
         else
-            valText = string.format("%.2f", _value)
+            valText = self._label .. ": " .. string.format("%.2f", self._value) .. self._suffix
         end
-        gfx.setColour(0xffcbd5e1)
+        gfx.setColour(0xffe2e8f0)
         gfx.setFont(11.0)
-        gfx.drawText(valText, 0, h * 0.72, w, h * 0.14, Justify.centred)
-
-        -- Label
-        gfx.setColour(0xff94a3b8)
-        gfx.setFont(10.0)
-        gfx.drawText(_label, 0, h * 0.86, w, h * 0.14, Justify.centred)
-    end)
-
-    return {
-        node = node,
-        getValue = function() return _value end,
-        setValue = function(v) _value = clamp(v, _min, _max) end,
-        setOnChange = function(fn) _on_change = fn end,
-    }
-end
-
--- ============================================================================
--- Toggle: on/off switch
--- ============================================================================
--- Usage:
---   local t = Widgets.Toggle(parent, "overdub", {
---       value = false, label = "Overdub",
---       on_change = function(on) command("OVERDUB", on and "1" or "0") end,
---   })
-
-function Widgets.Toggle(parent, name, config)
-    config = config or {}
-    local node = parent:addChild(name)
-
-    local _value = config.value or false
-    local _label = config.label or ""
-    local _onColour = colour(config.onColour, 0xff22c55e)
-    local _offColour = colour(config.offColour, 0xff374151)
-    local _on_change = config.on_change
-
-    node:setOnClick(function()
-        _value = not _value
-        if _on_change then _on_change(_value) end
-    end)
-
-    node:setOnDraw(function(self)
-        local w = self:getWidth()
-        local h = self:getHeight()
-
-        -- Track
-        local trackW = math.min(38, w * 0.5)
-        local trackH = 18
-        local trackX = w - trackW - 6
-        local trackY = (h - trackH) / 2
-        local trackR = trackH / 2
-        local trackCol = _value and _onColour or _offColour
-        if self:isMouseOver() then trackCol = brighten(trackCol, 15) end
-
-        gfx.setColour(trackCol)
-        gfx.fillRoundedRect(trackX, trackY, trackW, trackH, trackR)
-
-        -- Thumb
-        local thumbR = trackH - 4
-        local thumbX = _value and (trackX + trackW - thumbR - 2) or (trackX + 2)
-        local thumbY = trackY + 2
-        gfx.setColour(0xffe2e8f0)
-        gfx.fillRoundedRect(thumbX, thumbY, thumbR, thumbR, thumbR / 2)
-
-        -- Label
-        gfx.setColour(_value and 0xffe2e8f0 or 0xff94a3b8)
-        gfx.setFont(12.0)
-        gfx.drawText(_label, 6, 0, trackX - 10, h, Justify.centredLeft)
-    end)
-
-    return {
-        node = node,
-        getValue = function() return _value end,
-        setValue = function(v) _value = v end,
-        setOnChange = function(fn) _on_change = fn end,
-        setLabel = function(l) _label = l end,
-    }
-end
-
--- ============================================================================
--- Dropdown: click to show options list
--- ============================================================================
--- Usage:
---   local d = Widgets.Dropdown(parent, "mode", {
---       options = {"First Loop", "Free Mode", "Traditional"},
---       selected = 1,
---       on_select = function(idx, label) ... end,
---   })
---   d.setSelected(2)
-
-function Widgets.Dropdown(parent, name, config)
-    config = config or {}
-    local node = parent:addChild(name)
-
-    local _options = config.options or {}
-    local _selected = config.selected or 1
-    local _on_select = config.on_select
-    local _bg = colour(config.bg, 0xff1e293b)
-    local _colour = colour(config.colour, 0xff38bdf8)
-    local _open = false
-    local _overlay = nil
-
-    local function getSelectedLabel()
-        return _options[_selected] or "---"
+        gfx.drawText(valText, 8, 2, w - 16, 20, Justify.centred)
     end
+end
 
-    local function closeDropdown()
-        if _overlay then
-            -- Remove overlay children
-            _overlay:setOnDraw(nil)
-            _overlay:setOnClick(nil)
-            _overlay:setBounds(0, 0, 0, 0)
-            _open = false
+function Widgets.Slider:drawTrack(x, y, w, h, r)
+    -- Background track
+    gfx.setColour(self._bg)
+    gfx.fillRoundedRect(x, y, w, h, r)
+    
+    -- Filled portion
+    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
+    gfx.setColour(self._colour)
+    gfx.fillRoundedRect(x, y, w * t, h, r)
+end
+
+function Widgets.Slider:drawThumb(x, y, w, h)
+    local col = self._colour
+    if self._dragging then
+        col = brighten(col, 30)
+    elseif self:isHovered() then
+        col = brighten(col, 15)
+    end
+    gfx.setColour(col)
+    gfx.fillRoundedRect(x, y, w, h, 4)
+end
+
+function Widgets.Slider:drawLabel(x, y, w, h)
+    gfx.setColour(0xffe2e8f0)
+    gfx.setFont(11.0)
+    gfx.drawText(self._label, x, y, w, h, Justify.centredLeft)
+end
+
+function Widgets.Slider:drawValue(x, y, w, h)
+    local valText
+    if self._step >= 1 then
+        valText = string.format("%d", self._value) .. self._suffix
+    else
+        valText = string.format("%.2f", self._value) .. self._suffix
+    end
+    gfx.setColour(0xffcbd5e1)
+    gfx.setFont(11.0)
+    gfx.drawText(valText, math.floor(x), math.floor(y), math.floor(w), math.floor(h), Justify.centredRight)
+end
+
+function Widgets.Slider:getValue()
+    return self._value
+end
+
+function Widgets.Slider:setValue(v)
+    self._value = clamp(v, self._min, self._max)
+end
+
+function Widgets.Slider:reset()
+    self:setValue(self._defaultValue)
+end
+
+-- ============================================================================
+-- Vertical Slider Widget
+-- ============================================================================
+
+Widgets.VSlider = Widgets.Slider:extend()
+
+function Widgets.VSlider.new(parent, name, config)
+    return setmetatable(Widgets.Slider.new(parent, name, config), Widgets.VSlider)
+end
+
+function Widgets.VSlider:valueFromMouse(mx, my)
+    local h = self.node:getHeight()
+    local trackH = math.max(1, h - 16)
+    local t = 1 - clamp((my - 8) / trackH, 0, 1)  -- Inverted: bottom = min
+    local newVal = self._min + t * (self._max - self._min)
+    newVal = snapToStep(newVal, self._step)
+    newVal = clamp(newVal, self._min, self._max)
+    
+    if newVal ~= self._value then
+        self._value = newVal
+        if self._onChange then
+            self._onChange(self._value)
         end
     end
+end
 
-    local function openDropdown()
-        if _open then closeDropdown(); return end
-        _open = true
-        -- Create overlay as child of the dropdown node
-        if not _overlay then
-            _overlay = node:addChild(name .. "_overlay")
-        end
-        local itemH = 28
-        local overlayH = #_options * itemH + 4
-        _overlay:setBounds(0, node:getHeight(), node:getWidth(), overlayH)
-
-        _overlay:setOnDraw(function(self)
-            local w = self:getWidth()
-            local h = self:getHeight()
-            gfx.setColour(0xff1e293b)
-            gfx.fillRoundedRect(0, 0, w, h, 6)
-            gfx.setColour(0xff334155)
-            gfx.drawRoundedRect(0, 0, w, h, 6, 1)
-
-            for i, opt in ipairs(_options) do
-                local y = 2 + (i - 1) * itemH
-                local isSel = (i == _selected)
-                if isSel then
-                    gfx.setColour(0xff334155)
-                    gfx.fillRect(2, y, w - 4, itemH)
-                end
-                gfx.setColour(isSel and _colour or 0xffe2e8f0)
-                gfx.setFont(12.0)
-                gfx.drawText(opt, 10, y, w - 20, itemH, Justify.centredLeft)
-            end
-        end)
-
-        _overlay:setOnClick(function()
-            -- Approximate which option was clicked based on last mouse position
-            -- Since we don't have mouse position in onClick, we'll use a simple approach
-            -- Close and cycle to next for now — better approach would use onMouseDown
-            closeDropdown()
-        end)
-
-        -- Use onMouseDown for precise item selection
-        _overlay:setOnMouseDown(function(mx, my)
-            local itemH2 = 28
-            local idx = math.floor((my - 2) / itemH2) + 1
-            if idx >= 1 and idx <= #_options then
-                _selected = idx
-                if _on_select then _on_select(_selected, _options[_selected]) end
-            end
-            closeDropdown()
-        end)
+function Widgets.VSlider:onDraw(w, h)
+    local trackX = w * 0.5 - 3
+    local trackW = 6
+    local trackR = 3
+    
+    -- Draw track
+    gfx.setColour(self._bg)
+    gfx.fillRoundedRect(trackX, 8, trackW, h - 16, trackR)
+    
+    -- Filled portion (from bottom up)
+    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
+    local fillH = (h - 16) * t
+    gfx.setColour(self._colour)
+    gfx.fillRoundedRect(trackX, h - 8 - fillH, trackW, fillH, trackR)
+    
+    -- Draw thumb
+    local thumbY = h - 8 - fillH - 6
+    local col = self._colour
+    if self._dragging then
+        col = brighten(col, 30)
+    elseif self:isHovered() then
+        col = brighten(col, 15)
     end
-
-    node:setOnClick(function()
-        openDropdown()
-    end)
-
-    node:setOnDraw(function(self)
-        local w = self:getWidth()
-        local h = self:getHeight()
-        local bg = self:isMouseOver() and brighten(_bg, 15) or _bg
-
-        gfx.setColour(bg)
-        gfx.fillRoundedRect(1, 1, w - 2, h - 2, 6)
-        gfx.setColour(brighten(bg, 30))
-        gfx.drawRoundedRect(1, 1, w - 2, h - 2, 6, 1)
-
-        -- Selected text
-        gfx.setColour(0xffe2e8f0)
-        gfx.setFont(12.0)
-        gfx.drawText(getSelectedLabel(), 10, 0, w - 30, h, Justify.centredLeft)
-
-        -- Arrow indicator
-        gfx.setColour(0xff94a3b8)
-        gfx.setFont(10.0)
-        gfx.drawText(_open and "▲" or "▼", w - 22, 0, 16, h, Justify.centred)
-    end)
-
-    return {
-        node = node,
-        getSelected = function() return _selected end,
-        getSelectedLabel = getSelectedLabel,
-        setSelected = function(idx)
-            _selected = clamp(idx, 1, #_options)
-        end,
-        setOptions = function(opts) _options = opts end,
-        setOnSelect = function(fn) _on_select = fn end,
-    }
+    gfx.setColour(col)
+    gfx.fillRoundedRect((w - 20) / 2, thumbY, 20, 12, 4)
 end
 
 -- ============================================================================
--- WaveformView: reusable peak data visualizer with playhead
+-- Knob Widget (Rotary)
 -- ============================================================================
--- Usage:
---   local wv = Widgets.WaveformView(parent, "waveform", {
---       colour = 0xff22d3ee,
---       bg = 0xff0b1220,
---       mode = "layer",        -- "layer" or "capture"
---   })
---   -- In ui_update:
---   wv.setLayerIndex(0)
---   wv.setPlayheadPos(0.5)  -- 0..1
 
-function Widgets.WaveformView(parent, name, config)
-    config = config or {}
-    local node = parent:addChild(name)
-    node:setInterceptsMouse(false, false)
+Widgets.Knob = BaseWidget:extend()
 
-    local _colour = colour(config.colour, 0xff22d3ee)
-    local _bg = colour(config.bg, 0xff0b1220)
-    local _mode = config.mode or "layer"  -- "layer" or "capture"
-    local _layerIdx = config.layerIndex or 0
-    local _playheadPos = -1  -- -1 = no playhead
-    local _captureStart = 0
-    local _captureEnd = 0
+function Widgets.Knob.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.Knob)
+    
+    self._min = config.min or 0
+    self._max = config.max or 1
+    self._step = config.step or 0
+    self._value = clamp(config.value or self._min, self._min, self._max)
+    self._label = config.label or ""
+    self._suffix = config.suffix or ""
+    self._colour = colour(config.colour, 0xff22d3ee)
+    self._bg = colour(config.bg, 0xff1e293b)
+    self._onChange = config.on_change or config.onChange
+    self._dragging = false
+    self._dragStartY = 0
+    self._dragStartValue = 0
+    
+    -- Arc angles: -135° to +135°
+    self._startAngle = -135
+    self._endAngle = 135
+    
+    return self
+end
 
-    node:setOnDraw(function(self)
-        local w = self:getWidth()
-        local h = self:getHeight()
-        if w < 4 or h < 4 then return end
+function Widgets.Knob:onMouseDown(mx, my)
+    self._dragging = true
+    self._dragStartY = my
+    self._dragStartValue = self._value
+end
 
+function Widgets.Knob:onMouseDrag(mx, my, dx, dy)
+    if not self._dragging then return end
+    local range = self._max - self._min
+    local delta = (-dy / 150.0) * range  -- Vertical drag
+    local newVal = clamp(snapToStep(self._dragStartValue + delta, self._step), self._min, self._max)
+    
+    if newVal ~= self._value then
+        self._value = newVal
+        if self._onChange then
+            self._onChange(self._value)
+        end
+    end
+end
+
+function Widgets.Knob:onMouseUp(mx, my)
+    self._dragging = false
+end
+
+function Widgets.Knob:onDraw(w, h)
+    local cx = w / 2
+    local cy = h * 0.42
+    local radius = math.min(w, h) * 0.32
+    
+    -- Draw background
+    self:drawBackground(cx, cy, radius)
+    
+    -- Draw arc
+    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
+    local arcEnd = self._startAngle + t * (self._endAngle - self._startAngle)
+    self:drawArc(cx, cy, radius, arcEnd)
+    
+    -- Draw pointer
+    self:drawPointer(cx, cy, radius * 0.55, arcEnd)
+    
+    -- Draw value and label
+    self:drawValueText(w, h)
+    self:drawLabelText(w, h)
+end
+
+function Widgets.Knob:drawBackground(cx, cy, radius)
+    gfx.setColour(self._bg)
+    gfx.fillRoundedRect(cx - radius, cy - radius, radius * 2, radius * 2, radius)
+end
+
+function Widgets.Knob:drawArc(cx, cy, radius, endAngle)
+    local numTicks = 32
+    for i = 0, numTicks do
+        local angle = self._startAngle + (i / numTicks) * (self._endAngle - self._startAngle)
+        local rad = math.rad(angle - 90)
+        local isFilled = angle <= endAngle
+        gfx.setColour(isFilled and self._colour or darken(self._bg, 10))
+        local x1 = cx + math.cos(rad) * (radius * 0.7)
+        local y1 = cy + math.sin(rad) * (radius * 0.7)
+        local x2 = cx + math.cos(rad) * (radius * 0.92)
+        local y2 = cy + math.sin(rad) * (radius * 0.92)
+        gfx.fillRect(math.min(x1, x2), math.min(y1, y2),
+                      math.max(2, math.abs(x2 - x1)),
+                      math.max(2, math.abs(y2 - y1)))
+    end
+end
+
+function Widgets.Knob:drawPointer(cx, cy, radius, angle)
+    local rad = math.rad(angle - 90)
+    local px = cx + math.cos(rad) * radius
+    local py = cy + math.sin(rad) * radius
+    gfx.setColour(0xffe2e8f0)
+    gfx.fillRoundedRect(px - 2, py - 2, 4, 4, 2)
+end
+
+function Widgets.Knob:drawValueText(w, h)
+    local valText
+    if self._step >= 1 then
+        valText = string.format("%d", self._value) .. self._suffix
+    else
+        valText = string.format("%.2f", self._value) .. self._suffix
+    end
+    gfx.setColour(0xffcbd5e1)
+    gfx.setFont(11.0)
+    gfx.drawText(valText, 0, math.floor(h * 0.72), w, math.floor(h * 0.14), Justify.centred)
+end
+
+function Widgets.Knob:drawLabelText(w, h)
+    gfx.setColour(0xff94a3b8)
+    gfx.setFont(10.0)
+    gfx.drawText(self._label, 0, math.floor(h * 0.86), w, math.floor(h * 0.14), Justify.centred)
+end
+
+function Widgets.Knob:getValue()
+    return self._value
+end
+
+function Widgets.Knob:setValue(v)
+    self._value = clamp(v, self._min, self._max)
+end
+
+-- ============================================================================
+-- Toggle/Switch Widget
+-- ============================================================================
+
+Widgets.Toggle = BaseWidget:extend()
+
+function Widgets.Toggle.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.Toggle)
+    
+    self._value = config.value or false
+    self._label = config.label or ""
+    self._onColour = colour(config.onColour, 0xff22c55e)
+    self._offColour = colour(config.offColour, 0xff374151)
+    self._onChange = config.on_change or config.onChange
+    
+    return self
+end
+
+function Widgets.Toggle:onClick()
+    self._value = not self._value
+    if self._onChange then
+        self._onChange(self._value)
+    end
+end
+
+function Widgets.Toggle:onDraw(w, h)
+    -- Track
+    local trackW = math.floor(math.min(38, w * 0.5))
+    local trackH = 18
+    local trackX = math.floor(w - trackW - 6)
+    local trackY = math.floor((h - trackH) / 2)
+    local trackR = math.floor(trackH / 2)
+    
+    local trackCol = self._value and self._onColour or self._offColour
+    if self:isHovered() then
+        trackCol = brighten(trackCol, 15)
+    end
+    
+    gfx.setColour(trackCol)
+    gfx.fillRoundedRect(trackX, trackY, trackW, trackH, trackR)
+    
+    -- Thumb
+    local thumbR = trackH - 4
+    local thumbX = math.floor(self._value and (trackX + trackW - thumbR - 2) or (trackX + 2))
+    local thumbY = math.floor(trackY + 2)
+    gfx.setColour(0xffe2e8f0)
+    gfx.fillRoundedRect(thumbX, thumbY, thumbR, thumbR, math.floor(thumbR / 2))
+    
+    -- Label
+    gfx.setColour(self._value and 0xffe2e8f0 or 0xff94a3b8)
+    gfx.setFont(12.0)
+    gfx.drawText(self._label, 6, 0, math.floor(trackX - 10), h, Justify.centredLeft)
+end
+
+function Widgets.Toggle:getValue()
+    return self._value
+end
+
+function Widgets.Toggle:setValue(v)
+    self._value = v
+end
+
+-- ============================================================================
+-- Dropdown Widget
+-- Uses the root canvas for the overlay so it is not clipped by parent bounds.
+-- Pass config.rootNode = <root canvas> to enable proper overlay positioning.
+-- ============================================================================
+
+Widgets.Dropdown = BaseWidget:extend()
+
+function Widgets.Dropdown.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.Dropdown)
+    
+    self._options = config.options or {}
+    self._selected = config.selected or 1
+    self._onSelect = config.on_select or config.onSelect
+    self._bg = colour(config.bg, 0xff1e293b)
+    self._colour = colour(config.colour, 0xff38bdf8)
+    self._open = false
+    self._overlay = nil
+    self._rootNode = config.rootNode  -- root canvas for overlay placement
+    
+    return self
+end
+
+function Widgets.Dropdown:getSelectedLabel()
+    return self._options[self._selected] or "---"
+end
+
+function Widgets.Dropdown:close()
+    if self._overlay then
+        self._overlay:setOnDraw(nil)
+        self._overlay:setOnClick(nil)
+        self._overlay:setOnMouseDown(nil)
+        self._overlay:setBounds(0, 0, 0, 0)
+        self._open = false
+    end
+end
+
+-- Walk up parent chain to compute absolute position of the dropdown node
+function Widgets.Dropdown:_getAbsolutePos()
+    local ax, ay = 0, 0
+    local n = self.node
+    while n do
+        local bx, by, bw, bh = n:getBounds()
+        ax = ax + bx
+        ay = ay + by
+        -- Try to get parent; if getBounds returns 0,0 for root, stop
+        -- We walk until we hit the root canvas (whose parent we can't access from Lua)
+        -- So we use a simple approach: accumulate bounds of self.node only
+        break  -- For now, we store the absolute position from the UI layout
+    end
+    return ax, ay
+end
+
+function Widgets.Dropdown:open()
+    if self._open then
+        self:close()
+        return
+    end
+    
+    self._open = true
+    local overlayParent = self._rootNode or self.node
+    if not self._overlay then
+        self._overlay = overlayParent:addChild(self.name .. "_overlay")
+    end
+    
+    local itemH = 30
+    local overlayH = #self._options * itemH + 4
+    local overlayW = math.max(160, self.node:getWidth())
+    
+    if self._rootNode and self._absX and self._absY then
+        -- Position on root canvas using stored absolute coordinates
+        self._overlay:setBounds(
+            math.floor(self._absX),
+            math.floor(self._absY + self.node:getHeight()),
+            math.floor(overlayW),
+            math.floor(overlayH)
+        )
+    else
+        -- Fallback: child of self (will clip)
+        self._overlay:setBounds(0, self.node:getHeight(), self.node:getWidth(), overlayH)
+    end
+    
+    local dropdown = self
+    self._overlay:setInterceptsMouse(true, true)
+    self._overlay:setOnDraw(function(node)
+        local w = node:getWidth()
+        local h = node:getHeight()
+        -- Drop shadow
+        gfx.setColour(0x40000000)
+        gfx.fillRoundedRect(2, 2, w, h, 6)
         -- Background
-        gfx.setColour(_bg)
-        gfx.fillRoundedRect(0, 0, w, h, 4)
-        gfx.setColour(0x30475569)
-        gfx.drawRoundedRect(0, 0, w, h, 4, 1)
-
-        -- Center line
-        gfx.setColour(0x18ffffff)
-        gfx.drawHorizontalLine(math.floor(h / 2), 2, w - 2)
-
-        -- Peak data
-        local numBuckets = math.min(w - 4, 200)
-        local peaks = nil
-        if _mode == "layer" then
-            peaks = getLayerPeaks(_layerIdx, numBuckets)
-        elseif _mode == "capture" and _captureEnd > _captureStart then
-            peaks = getCapturePeaks(_captureStart, _captureEnd, numBuckets)
-        end
-
-        if peaks and #peaks > 0 then
-            gfx.setColour(_colour)
-            local centerY = h / 2
-            local gain = h * 0.43
-            for x = 1, #peaks do
-                local peak = peaks[x]
-                local ph = peak * gain
-                local px = 2 + (x - 1) * ((w - 4) / #peaks)
-                gfx.drawVerticalLine(math.floor(px), centerY - ph, centerY + ph)
+        gfx.setColour(0xff1e293b)
+        gfx.fillRoundedRect(0, 0, w - 2, h - 2, 6)
+        gfx.setColour(0xff475569)
+        gfx.drawRoundedRect(0, 0, w - 2, h - 2, 6, 1)
+        
+        for i, opt in ipairs(dropdown._options) do
+            local y = 2 + (i - 1) * itemH
+            local isSel = (i == dropdown._selected)
+            if isSel then
+                gfx.setColour(0xff334155)
+                gfx.fillRoundedRect(2, y, w - 6, itemH, 4)
             end
-        end
-
-        -- Playhead
-        if _playheadPos >= 0 and _playheadPos <= 1 then
-            local phX = 2 + math.floor(_playheadPos * (w - 4))
-            gfx.setColour(0xffff4d4d)
-            gfx.drawVerticalLine(phX, 1, h - 1)
+            gfx.setColour(isSel and dropdown._colour or 0xffe2e8f0)
+            gfx.setFont(12.0)
+            gfx.drawText(opt, 12, math.floor(y), w - 24, itemH, Justify.centredLeft)
         end
     end)
-
-    return {
-        node = node,
-        setLayerIndex = function(idx) _layerIdx = idx; _mode = "layer" end,
-        setCaptureRange = function(startAgo, endAgo)
-            _captureStart = startAgo
-            _captureEnd = endAgo
-            _mode = "capture"
-        end,
-        setPlayheadPos = function(p) _playheadPos = p end,
-        setColour = function(c) _colour = c end,
-    }
+    
+    self._overlay:setOnMouseDown(function(mx, my)
+        local idx = math.floor((my - 2) / itemH) + 1
+        if idx >= 1 and idx <= #dropdown._options then
+            dropdown._selected = idx
+            if dropdown._onSelect then
+                dropdown._onSelect(dropdown._selected, dropdown._options[dropdown._selected])
+            end
+        end
+        dropdown:close()
+    end)
 end
+
+function Widgets.Dropdown:onClick()
+    self:open()
+end
+
+function Widgets.Dropdown:onDraw(w, h)
+    local bg = self:isHovered() and brighten(self._bg, 15) or self._bg
+    
+    gfx.setColour(bg)
+    gfx.fillRoundedRect(1, 1, math.floor(w - 2), math.floor(h - 2), 6)
+    gfx.setColour(brighten(bg, 30))
+    gfx.drawRoundedRect(1, 1, math.floor(w - 2), math.floor(h - 2), 6, 1)
+    
+    -- Selected text
+    gfx.setColour(0xffe2e8f0)
+    gfx.setFont(12.0)
+    gfx.drawText(self:getSelectedLabel(), 10, 0, math.floor(w - 30), h, Justify.centredLeft)
+    
+    -- Arrow
+    gfx.setColour(0xff94a3b8)
+    gfx.setFont(10.0)
+    gfx.drawText(self._open and "▲" or "▼", math.floor(w - 22), 0, 16, h, Justify.centred)
+end
+
+function Widgets.Dropdown:getSelected()
+    return self._selected
+end
+
+function Widgets.Dropdown:setSelected(idx)
+    self._selected = clamp(idx, 1, #self._options)
+end
+
+function Widgets.Dropdown:setOptions(opts)
+    self._options = opts
+end
+
+-- Store absolute position for overlay placement (call from ui_resized)
+function Widgets.Dropdown:setAbsolutePos(ax, ay)
+    self._absX = ax
+    self._absY = ay
+end
+
+-- ============================================================================
+-- Waveform View Widget (interactive: click/drag to scrub)
+-- ============================================================================
+
+Widgets.WaveformView = BaseWidget:extend()
+
+function Widgets.WaveformView.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.WaveformView)
+    
+    self._colour = colour(config.colour, 0xff22d3ee)
+    self._bg = colour(config.bg, 0xff0b1220)
+    self._playheadColour = colour(config.playheadColour, 0xffff4d4d)
+    self._mode = config.mode or "layer"  -- "layer" or "capture"
+    self._layerIdx = config.layerIndex or 0
+    self._playheadPos = -1  -- -1 = hidden
+    self._captureStart = 0
+    self._captureEnd = 0
+    self._onScrubStart = config.on_scrub_start or config.onScrubStart
+    self._onScrubSnap = config.on_scrub_snap or config.onScrubSnap
+    self._onScrubSpeed = config.on_scrub_speed or config.onScrubSpeed
+    self._onScrubEnd = config.on_scrub_end or config.onScrubEnd
+    self._scrubbing = false
+    self._lastScrubX = 0
+    
+    -- Enable mouse if any scrub callback is set
+    if self._onScrubStart or self._onScrubSnap then
+        self.node:setInterceptsMouse(true, false)
+    else
+        self.node:setInterceptsMouse(false, false)
+    end
+    
+    -- Rebind mouse callbacks directly to bypass BaseWidget metatable chain
+    local wfSelf = self
+    self.node:setOnMouseDown(function(mx, my)
+        wfSelf._scrubbing = true
+        -- Snap playhead to click position
+        local w = wfSelf.node:getWidth()
+        if w > 4 then
+            local pos = math.max(0, math.min(1, (mx - 2) / (w - 4)))
+            wfSelf._lastScrubPos = pos
+            if wfSelf._onScrubSnap then
+                wfSelf._onScrubSnap(pos, 0)
+            end
+        end
+        if wfSelf._onScrubStart then
+            wfSelf._onScrubStart()
+        end
+    end)
+    
+    self.node:setOnMouseDrag(function(mx, my, dx, dy)
+        if not wfSelf._scrubbing then return end
+        local w = wfSelf.node:getWidth()
+        if w <= 4 then return end
+        local pos = math.max(0, math.min(1, (mx - 2) / (w - 4)))
+        local delta = 0
+        if wfSelf._lastScrubPos then
+            delta = pos - wfSelf._lastScrubPos
+        end
+        wfSelf._lastScrubPos = pos
+        if wfSelf._onScrubSnap then
+            wfSelf._onScrubSnap(pos, delta)
+        end
+    end)
+    
+    self.node:setOnMouseUp(function(mx, my)
+        if wfSelf._scrubbing then
+            wfSelf._scrubbing = false
+            if wfSelf._onScrubEnd then
+                wfSelf._onScrubEnd()
+            end
+        end
+    end)
+    
+    return self
+end
+
+function Widgets.WaveformView:onDraw(w, h)
+    if w < 4 or h < 4 then return end
+    
+    -- Background
+    gfx.setColour(self._bg)
+    gfx.fillRoundedRect(0, 0, w, h, 4)
+    gfx.setColour(self._scrubbing and 0x50475569 or 0x30475569)
+    gfx.drawRoundedRect(0, 0, w, h, 4, self._scrubbing and 2 or 1)
+    
+    -- Center line
+    gfx.setColour(0x18ffffff)
+    gfx.drawHorizontalLine(math.floor(h / 2), 2, w - 2)
+    
+    -- Waveform
+    local numBuckets = math.min(w - 4, 200)
+    local peaks = nil
+    
+    if self._mode == "layer" then
+        peaks = getLayerPeaks(self._layerIdx, numBuckets)
+    elseif self._mode == "capture" and self._captureEnd > self._captureStart then
+        peaks = getCapturePeaks(math.floor(self._captureStart), math.floor(self._captureEnd), numBuckets)
+    end
+    
+    if peaks and #peaks > 0 then
+        gfx.setColour(self._colour)
+        local centerY = h / 2
+        local gain = h * 0.43
+        for x = 1, #peaks do
+            local peak = peaks[x]
+            local ph = peak * gain
+            local px = 2 + (x - 1) * ((w - 4) / #peaks)
+            gfx.drawVerticalLine(math.floor(px), centerY - ph, centerY + ph)
+        end
+    end
+    
+    -- Playhead
+    if self._playheadPos >= 0 and self._playheadPos <= 1 then
+        local phX = 2 + math.floor(self._playheadPos * (w - 4))
+        gfx.setColour(self._scrubbing and 0xffffff00 or self._playheadColour)
+        gfx.drawVerticalLine(phX, 1, h - 1)
+    end
+end
+
+function Widgets.WaveformView:setLayerIndex(idx)
+    self._layerIdx = idx
+    self._mode = "layer"
+end
+
+function Widgets.WaveformView:setCaptureRange(startAgo, endAgo)
+    self._captureStart = startAgo
+    self._captureEnd = endAgo
+    self._mode = "capture"
+end
+
+function Widgets.WaveformView:setPlayheadPos(pos)
+    self._playheadPos = pos
+end
+
+function Widgets.WaveformView:setColour(colour)
+    self._colour = colour
+end
+
+-- ============================================================================
+-- Meter Widget (Level Meter)
+-- ============================================================================
+
+Widgets.Meter = BaseWidget:extend()
+
+function Widgets.Meter.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.Meter)
+    
+    self._value = 0  -- 0 to 1
+    self._peak = 0
+    self._colour = colour(config.colour, 0xff22c55e)
+    self._bg = colour(config.bg, 0xff1e293b)
+    self._orientation = config.orientation or "vertical"  -- "vertical" or "horizontal"
+    self._showPeak = config.showPeak ~= false
+    self._decay = config.decay or 0.9
+    
+    self.node:setInterceptsMouse(false, false)
+    
+    return self
+end
+
+function Widgets.Meter:onDraw(w, h)
+    -- Decay peak
+    self._peak = self._peak * self._decay
+    
+    if self._orientation == "vertical" then
+        -- Background
+        gfx.setColour(self._bg)
+        gfx.fillRoundedRect(0, 0, w, h, 3)
+        
+        -- Level
+        local fillH = h * self._value
+        gfx.setColour(self._colour)
+        gfx.fillRoundedRect(0, h - fillH, w, fillH, 3)
+        
+        -- Peak marker
+        if self._showPeak and self._peak > 0.01 then
+            local peakY = h * (1 - self._peak)
+            gfx.setColour(0xffff0000)
+            gfx.fillRect(0, peakY - 1, w, 2)
+        end
+    else
+        -- Background
+        gfx.setColour(self._bg)
+        gfx.fillRoundedRect(0, 0, w, h, 3)
+        
+        -- Level
+        local fillW = w * self._value
+        gfx.setColour(self._colour)
+        gfx.fillRoundedRect(0, 0, fillW, h, 3)
+        
+        -- Peak marker
+        if self._showPeak and self._peak > 0.01 then
+            local peakX = w * self._peak
+            gfx.setColour(0xffff0000)
+            gfx.fillRect(peakX - 1, 0, 2, h)
+        end
+    end
+end
+
+function Widgets.Meter:setValue(v)
+    self._value = clamp(v, 0, 1)
+    if self._value > self._peak then
+        self._peak = self._value
+    end
+end
+
+-- ============================================================================
+-- Segmented Control (Multi-button selector)
+-- ============================================================================
+
+Widgets.SegmentedControl = BaseWidget:extend()
+
+function Widgets.SegmentedControl.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.SegmentedControl)
+    
+    self._segments = config.segments or {}
+    self._selected = config.selected or 1
+    self._onSelect = config.on_select or config.onSelect
+    self._bg = colour(config.bg, 0xff1e293b)
+    self._selectedBg = colour(config.selectedBg, 0xff38bdf8)
+    self._textColour = colour(config.textColour, 0xffe2e8f0)
+    self._selectedTextColour = colour(config.selectedTextColour, 0xffffffff)
+    
+    return self
+end
+
+function Widgets.SegmentedControl:onMouseDown(mx, my)
+    local w = self.node:getWidth()
+    local h = self.node:getHeight()
+    local segW = w / #self._segments
+    local idx = math.floor(mx / segW) + 1
+    
+    if idx >= 1 and idx <= #self._segments then
+        self._selected = idx
+        if self._onSelect then
+            self._onSelect(idx, self._segments[idx])
+        end
+    end
+end
+
+function Widgets.SegmentedControl:onDraw(w, h)
+    local segW = math.floor(w / #self._segments)
+    local segH = h
+    local r = 6
+    
+    for i, seg in ipairs(self._segments) do
+        local x = math.floor((i - 1) * segW)
+        local isSelected = (i == self._selected)
+        local isHovered = self:isHovered() and math.floor(self.node:getWidth() * 0) == 0
+        -- Simple hover detection
+        
+        local bg = isSelected and self._selectedBg or self._bg
+        if isHovered and not isSelected then
+            bg = brighten(bg, 10)
+        end
+        
+        -- Draw segment with rounded corners on ends only
+        gfx.setColour(bg)
+        if i == 1 then
+            -- Left segment: round left corners
+            gfx.fillRoundedRect(x, 0, segW, segH, r)
+        elseif i == #self._segments then
+            -- Right segment: round right corners  
+            gfx.fillRoundedRect(x, 0, segW, segH, r)
+        else
+            -- Middle: no rounding
+            gfx.fillRect(x, 0, segW, segH)
+        end
+        
+        -- Text
+        gfx.setColour(isSelected and self._selectedTextColour or self._textColour)
+        gfx.setFont(11.0)
+        gfx.drawText(seg, x, 0, segW, segH, Justify.centred)
+    end
+    
+    -- Border around whole control
+    gfx.setColour(brighten(self._bg, 20))
+    gfx.drawRoundedRect(0, 0, w, h, r, 1)
+end
+
+function Widgets.SegmentedControl:getSelected()
+    return self._selected
+end
+
+function Widgets.SegmentedControl:setSelected(idx)
+    self._selected = clamp(idx, 1, #self._segments)
+end
+
+-- ============================================================================
+-- NumberBox Widget (compact numeric value with +/- and drag-to-change)
+-- ============================================================================
+
+Widgets.NumberBox = BaseWidget:extend()
+
+function Widgets.NumberBox.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), Widgets.NumberBox)
+    
+    self._min = config.min or 0
+    self._max = config.max or 999
+    self._step = config.step or 1
+    self._value = clamp(config.value or self._min, self._min, self._max)
+    self._label = config.label or ""
+    self._suffix = config.suffix or ""
+    self._colour = colour(config.colour, 0xff38bdf8)
+    self._bg = colour(config.bg, 0xff1e293b)
+    self._onChange = config.on_change or config.onChange
+    self._dragging = false
+    self._dragStartY = 0
+    self._dragStartValue = 0
+    self._format = config.format or (self._step >= 1 and "%d" or "%.1f")
+    
+    return self
+end
+
+function Widgets.NumberBox:onMouseDown(mx, my)
+    local w = self.node:getWidth()
+    local btnW = math.min(24, w * 0.2)
+    
+    if mx < btnW then
+        -- Minus button
+        self:_adjust(-1)
+    elseif mx > w - btnW then
+        -- Plus button
+        self:_adjust(1)
+    else
+        -- Start drag on the value area
+        self._dragging = true
+        self._dragStartY = my
+        self._dragStartValue = self._value
+    end
+end
+
+function Widgets.NumberBox:onMouseDrag(mx, my, dx, dy)
+    if not self._dragging then return end
+    local range = self._max - self._min
+    local delta = (-dy / 100.0) * range
+    local newVal = clamp(snapToStep(self._dragStartValue + delta, self._step), self._min, self._max)
+    
+    if newVal ~= self._value then
+        self._value = newVal
+        if self._onChange then
+            self._onChange(self._value)
+        end
+    end
+end
+
+function Widgets.NumberBox:onMouseUp(mx, my)
+    self._dragging = false
+end
+
+function Widgets.NumberBox:_adjust(direction)
+    local newVal = clamp(self._value + self._step * direction, self._min, self._max)
+    if newVal ~= self._value then
+        self._value = newVal
+        if self._onChange then
+            self._onChange(self._value)
+        end
+    end
+end
+
+function Widgets.NumberBox:onDraw(w, h)
+    local btnW = math.min(24, math.floor(w * 0.2))
+    local bg = self._bg
+    
+    -- Background
+    gfx.setColour(bg)
+    gfx.fillRoundedRect(0, 0, w, h, 5)
+    gfx.setColour(brighten(bg, 20))
+    gfx.drawRoundedRect(0, 0, w, h, 5, 1)
+    
+    -- Minus button
+    local minusBg = self:isHovered() and brighten(bg, 15) or bg
+    gfx.setColour(minusBg)
+    gfx.fillRoundedRect(1, 1, btnW, h - 2, 4)
+    gfx.setColour(0xff94a3b8)
+    gfx.setFont(14.0)
+    gfx.drawText("−", 0, 0, btnW, h, Justify.centred)
+    
+    -- Plus button
+    local plusBg = self:isHovered() and brighten(bg, 15) or bg
+    gfx.setColour(plusBg)
+    gfx.fillRoundedRect(w - btnW - 1, 1, btnW, h - 2, 4)
+    gfx.setColour(0xff94a3b8)
+    gfx.setFont(14.0)
+    gfx.drawText("+", w - btnW, 0, btnW, h, Justify.centred)
+    
+    -- Separator lines
+    gfx.setColour(brighten(bg, 30))
+    gfx.drawVerticalLine(btnW, 2, h - 2)
+    gfx.drawVerticalLine(w - btnW - 1, 2, h - 2)
+    
+    -- Label (small, above value)
+    if self._label ~= "" then
+        gfx.setColour(0xff94a3b8)
+        gfx.setFont(9.0)
+        gfx.drawText(self._label, btnW + 4, 1, w - btnW * 2 - 8, math.floor(h * 0.4), Justify.centred)
+    end
+    
+    local fmtValue = self._value
+    if self._format == "%d" then fmtValue = math.floor(fmtValue + 0.5) end
+    local valText = string.format(self._format, fmtValue) .. self._suffix
+    gfx.setColour(self._dragging and brighten(self._colour, 30) or self._colour)
+    gfx.setFont(13.0)
+    local valY = self._label ~= "" and math.floor(h * 0.3) or 0
+    local valH = self._label ~= "" and math.floor(h * 0.7) or h
+    gfx.drawText(valText, btnW + 4, valY, w - btnW * 2 - 8, valH, Justify.centred)
+end
+
+function Widgets.NumberBox:getValue()
+    return self._value
+end
+
+function Widgets.NumberBox:setValue(v)
+    self._value = clamp(v, self._min, self._max)
+end
+
+-- ============================================================================
+-- Export the Widgets module with BaseWidget exposed for extension
+-- ============================================================================
+
+Widgets.BaseWidget = BaseWidget
 
 return Widgets
