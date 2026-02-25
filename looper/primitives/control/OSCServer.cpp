@@ -124,6 +124,23 @@ void OSCServer::broadcast(const juce::String& address, const std::vector<juce::v
     sendToTargets(address, args);
 }
 
+void OSCServer::setCustomValue(const juce::String& path,
+                               const std::vector<juce::var>& args) {
+    std::lock_guard<std::mutex> lock(customValuesMutex);
+    customValues[path] = args;
+}
+
+bool OSCServer::getCustomValue(const juce::String& path,
+                               std::vector<juce::var>& outArgs) const {
+    std::lock_guard<std::mutex> lock(customValuesMutex);
+    auto it = customValues.find(path);
+    if (it == customValues.end()) {
+        return false;
+    }
+    outArgs = it->second;
+    return true;
+}
+
 void OSCServer::setBroadcastRate(int hz) {
     broadcastRateHz.store(hz);
 }
@@ -386,6 +403,20 @@ void OSCServer::dispatchMessage(const OSCMessage& msg) {
     if (!owner) return;
 
     auto& cmdQueue = owner->getControlServer().getCommandQueue();
+
+    // Track custom endpoint values for OSCQuery VALUE/LISTEN.
+    // Anything outside /looper/* is considered user/custom namespace.
+    if (!msg.address.startsWith("/looper/") && !msg.args.empty()) {
+        setCustomValue(msg.address, msg.args);
+    }
+
+    // Check for Lua callbacks first (allows Lua to override built-in behavior)
+    if (luaCallback) {
+        if (luaCallback(msg.address, msg.args)) {
+            return;  // Lua handled the message
+        }
+    }
+
     ControlCommand cmd;
 
     if (msg.address == "/looper/tempo" && msg.args.size() >= 1) {

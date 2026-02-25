@@ -1,6 +1,7 @@
 -- looper_ui_experimental.lua
 -- EXPERIMENTAL: Creative UI exploration with particles, effects, and novel interactions
 -- This is a playground for testing what's possible with the Canvas system
+-- Now with OSC integration: XY Pad sends/receives OSC at /experimental/xy
 
 local W = require("looper_widgets")
 
@@ -10,6 +11,15 @@ local W = require("looper_widgets")
 local current_state = {}
 local MAX_LAYERS = 4
 local ui = {}
+
+-- OSC state
+local oscEnabled = false
+local oscSentCount = 0
+local oscRecvCount = 0
+local oscLastSent = "x=0.50 y=0.50"
+local oscLastRecv = "x=0.50 y=0.50"
+local oscLastTxLogTime = 0
+local oscLastRxLogTime = 0
 
 -- Animation state
 local animTime = 0
@@ -816,7 +826,7 @@ local function updateEQBars(dt)
         local target = math.abs(math.sin(timeFactor) * 0.5 + math.sin(timeFactor * 2.3) * 0.3 + math.sin(timeFactor * 0.7) * 0.2)
         
         -- Add some layer influence if available
-        if current_state.layers then
+        if type(current_state.layers) == "table" then
             for _, layer in ipairs(current_state.layers) do
                 if layer.state == "playing" then
                     target = target + 0.3
@@ -890,7 +900,7 @@ local function drawCircularWaveform(cx, cy, radius, time)
         
         -- Get audio data
         local audioSample = 0
-        if current_state and current_state.layers then
+        if current_state and type(current_state.layers) == "table" then
             for _, layer in ipairs(current_state.layers) do
                 if layer.state == "playing" then
                     local phase = time * 5 + angle1 * 3
@@ -949,6 +959,18 @@ function ui_init(root)
         borderWidth = 1,
     })
     
+    -- Register OSC endpoint for XY pad (appears in OSCQuery)
+    -- This needs to happen early so we can show status in header
+    if osc and osc.registerEndpoint then
+        osc.registerEndpoint("/experimental/xy", {
+            type = "ff",  -- two floats
+            range = {0, 1},  -- both values 0-1
+            access = 3,  -- read-write
+            description = "XY Pad control (x, y)"
+        })
+        oscEnabled = true
+    end
+    
     ui.titleLabel = W.Label.new(ui.headerPanel.node, "title", {
         text = "◢ EXPERIMENTAL ◣",
         colour = 0xff22d3ee,
@@ -960,6 +982,17 @@ function ui_init(root)
         text = "Visual Playground",
         colour = 0xff94a3b8,
         fontSize = 11.0,
+    })
+    
+    -- OSC status indicator
+    local oscStatus = "OSC: disabled"
+    if oscEnabled then
+        oscStatus = "OSC: /experimental/xy"
+    end
+    ui.oscLabel = W.Label.new(ui.headerPanel.node, "oscLabel", {
+        text = oscStatus,
+        colour = oscEnabled and 0xff22c55e or 0xff64748b,
+        fontSize = 10.0,
     })
     
     -- Back to standard UI button
@@ -1050,14 +1083,73 @@ function ui_init(root)
         colour = 0xffa78bfa,
         fontSize = 12.0,
     })
+
+    ui.xySentLabel = W.Label.new(ui.xyPanel.node, "xySentLabel", {
+        text = "TX 0 - " .. oscLastSent,
+        colour = 0xff22c55e,
+        fontSize = 10.0,
+    })
+
+    ui.xyRecvLabel = W.Label.new(ui.xyPanel.node, "xyRecvLabel", {
+        text = "RX 0 - " .. oscLastRecv,
+        colour = 0xfff59e0b,
+        fontSize = 10.0,
+    })
     
     ui.xyPad = XYPad.new(ui.xyPanel.node, "xyPad", {
         x = 0.5, y = 0.5,
         on_change = function(x, y)
-            -- Control particle emitter color or other effects
-            -- Could be mapped to filter cutoff, reverb amount, etc.
+            -- Send OSC when XY pad changes
+            if osc.send then
+                osc.send("/experimental/xy", x, y)
+                oscSentCount = oscSentCount + 1
+                oscLastSent = string.format("x=%.2f y=%.2f", x, y)
+                local now = getTime and getTime() or 0
+                if now - oscLastTxLogTime > 0.1 then
+                    print("[OSC TX] /experimental/xy", oscLastSent)
+                    oscLastTxLogTime = now
+                end
+            end
         end,
     })
+
+    -- Receive OSC to update XY pad position
+    if osc and osc.removeHandler then
+        osc.removeHandler("/experimental/xy")
+    end
+    if osc.onMessage then
+        osc.onMessage("/experimental/xy", function(args)
+            if args and #args >= 2 then
+                local x = tonumber(args[1]) or 0.5
+                local y = tonumber(args[2]) or 0.5
+                -- Update XY pad without triggering on_change (to avoid feedback loop)
+                if ui.xyPad then
+                    ui.xyPad._x = math.max(0, math.min(1, x))
+                    ui.xyPad._y = math.max(0, math.min(1, y))
+                end
+                oscRecvCount = oscRecvCount + 1
+                oscLastRecv = string.format("x=%.2f y=%.2f", x, y)
+                local now = getTime and getTime() or 0
+                if now - oscLastRxLogTime > 0.1 then
+                    print("[OSC RX] /experimental/xy", oscLastRecv)
+                    oscLastRxLogTime = now
+                end
+            end
+        end)  -- non-persistent: avoid duplicate handlers on script switches
+    end
+    
+    -- Register looper event listeners for testing
+    if looper and looper.onTempoChanged then
+        looper.onTempoChanged(function(bpm)
+            print("[OSC Test] Tempo changed to:", bpm)
+        end)
+    end
+    
+    if looper and looper.onLayerStateChanged then
+        looper.onLayerStateChanged(function(layer, state)
+            print("[OSC Test] Layer", layer, "state:", state)
+        end)
+    end
     
     -- ==========================================================================
     -- Right Panel: Matrix Rain
@@ -1331,6 +1423,7 @@ function ui_resized(w, h)
     ui.headerPanel:setBounds(margin, margin, math.floor(w - margin * 2), 40)
     ui.titleLabel:setBounds(12, 0, 200, 40)
     ui.subtitleLabel:setBounds(220, 0, 150, 40)
+    ui.oscLabel:setBounds(380, 0, 150, 40)
     ui.backBtn:setBounds(math.floor(w - margin * 2 - 80), 8, 70, 24)
     
     -- Three main panels in a row
@@ -1345,7 +1438,9 @@ function ui_resized(w, h)
     -- Middle: XY Pad
     ui.xyPanel:setBounds(math.floor(margin * 2 + panelW), topY, panelW, mainH)
     ui.xyLabel:setBounds(8, 8, math.floor(panelW - 16), 20)
-    ui.xyPad.node:setBounds(8, 32, math.floor(panelW - 16), math.floor(mainH - 40))
+    ui.xySentLabel:setBounds(8, 28, math.floor(panelW - 16), 16)
+    ui.xyRecvLabel:setBounds(8, 44, math.floor(panelW - 16), 16)
+    ui.xyPad.node:setBounds(8, 64, math.floor(panelW - 16), math.floor(mainH - 72))
     
     -- Right: Matrix Rain
     ui.matrixPanel:setBounds(math.floor(margin * 3 + panelW * 2), topY, panelW, mainH)
@@ -1429,6 +1524,13 @@ function ui_update(state)
     
     -- Update kaleidoscope
     kaleidoscopeAngle = kaleidoscopeAngle + dt * 0.5
+
+    if ui.xySentLabel then
+        ui.xySentLabel:setText("TX " .. tostring(oscSentCount) .. " - " .. oscLastSent)
+    end
+    if ui.xyRecvLabel then
+        ui.xyRecvLabel:setText("RX " .. tostring(oscRecvCount) .. " - " .. oscLastRecv)
+    end
     
     -- Update noise offset
     noiseOffset = noiseOffset + dt * 0.1

@@ -59,6 +59,7 @@ struct OSCQueryNode {
 struct WebSocketClient {
     std::unique_ptr<juce::StreamingSocket> socket;
     std::set<juce::String> listenPaths;   // OSC paths this client is subscribed to
+    mutable std::mutex listenMutex;
     std::atomic<bool> connected{true};
     std::thread readThread;               // reads frames from this client
 
@@ -81,6 +82,10 @@ struct WebSocketClient {
         };
         static const int MAX_LAYERS = 4;
         LayerCache layers[MAX_LAYERS];
+
+        // Signature of last sent custom endpoint values, keyed by path.
+        // Example: "/experimental/xy" -> "0.100000|0.800000"
+        std::map<juce::String, juce::String> customSignatures;
     };
     StateCache cache;
 

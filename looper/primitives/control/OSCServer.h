@@ -2,6 +2,8 @@
 
 #include <array>
 #include <atomic>
+#include <functional>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -74,10 +76,21 @@ public:
     // Broadcast an OSC message to all configured targets
     void broadcast(const juce::String& address, const std::vector<juce::var>& args);
 
+    // Custom endpoint values used by Lua + OSCQuery (thread-safe)
+    void setCustomValue(const juce::String& path, const std::vector<juce::var>& args);
+    bool getCustomValue(const juce::String& path, std::vector<juce::var>& outArgs) const;
+
     bool isRunning() const { return running.load(); }
 
     // Set broadcast rate in Hz (default 30). 0 = disabled.
     void setBroadcastRate(int hz);
+
+    // Callback type for Lua message handlers
+    // Return true if the message was handled (consumed)
+    using LuaCallback = std::function<bool(const juce::String& address, const std::vector<juce::var>& args)>;
+
+    // Set a callback to check for Lua handlers before built-in dispatch
+    void setLuaCallback(LuaCallback callback) { luaCallback = std::move(callback); }
 
 private:
     void receiveLoop();
@@ -110,6 +123,13 @@ private:
 
     // Cached state for diff-based broadcasting
     OSCStateSnapshot cachedState;
+
+    // Last seen custom endpoint values (e.g. /experimental/xy -> [0.1, 0.8])
+    mutable std::mutex customValuesMutex;
+    std::map<juce::String, std::vector<juce::var>> customValues;
+
+    // Lua callback for custom message handling
+    LuaCallback luaCallback;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OSCServer)
 };

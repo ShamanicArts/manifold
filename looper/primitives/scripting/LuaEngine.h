@@ -71,7 +71,19 @@ public:
   /** Get the directory where the current script lives. */
   juce::File getScriptDirectory() const;
 
+  /** Check if there's a Lua callback registered for an OSC address.
+   *  Called by OSCServer before dispatching to built-in handlers.
+   *  Returns true if Lua handled the message.
+   */
+  bool invokeOSCCallback(const juce::String& address,
+                         const std::vector<juce::var>& args);
+
+  /** Clear all non-persistent callbacks (called on script switch). */
+  void clearNonPersistentCallbacks();
+
 private:
+  void invokeEventListeners();
+  void processPendingOSCCallbacks();
   void registerBindings();
   void pushStateToLua();
   void checkHotReload();

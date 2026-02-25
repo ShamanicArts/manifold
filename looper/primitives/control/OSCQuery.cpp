@@ -43,6 +43,70 @@ static juce::String indent(int level) {
     return s;
 }
 
+static juce::String escapeJsonString(const juce::String& s) {
+    juce::String out;
+    for (int i = 0; i < s.length(); ++i) {
+        juce::juce_wchar c = s[i];
+        if (c == '\\') out += "\\\\";
+        else if (c == '"') out += "\\\"";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else if (c == '\t') out += "\\t";
+        else out += juce::String::charToString(c);
+    }
+    return out;
+}
+
+static juce::String varToJsonLiteral(const juce::var& v) {
+    if (v.isString()) {
+        return "\"" + escapeJsonString(v.toString()) + "\"";
+    }
+    if (v.isBool()) {
+        return (bool)v ? "true" : "false";
+    }
+    if (v.isInt()) {
+        return juce::String((int)v);
+    }
+    if (v.isInt64()) {
+        return juce::String((double)v, 0);
+    }
+    if (v.isDouble()) {
+        return juce::String((double)v, 6);
+    }
+    return "null";
+}
+
+static juce::String argsToValueJson(const std::vector<juce::var>& args) {
+    if (args.empty()) {
+        return "null";
+    }
+    if (args.size() == 1) {
+        return varToJsonLiteral(args[0]);
+    }
+
+    juce::String arr = "[";
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (i > 0) arr += ",";
+        arr += varToJsonLiteral(args[i]);
+    }
+    arr += "]";
+    return arr;
+}
+
+static juce::String argsSignature(const std::vector<juce::var>& args) {
+    juce::String sig;
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (i > 0) sig += "|";
+        if (args[i].isString()) sig += "s:" + args[i].toString();
+        else if (args[i].isBool()) sig += juce::String("b:") + ((bool)args[i] ? "1" : "0");
+        else if (args[i].isInt()) sig += "i:" + juce::String((int)args[i]);
+        else if (args[i].isInt64()) sig += "h:" + juce::String((double)args[i], 0);
+        else if (args[i].isDouble()) sig += "f:" + juce::String((double)args[i], 6);
+        else sig += "n:null";
+    }
+    return sig;
+}
+
 juce::String OSCQueryNode::toJSON(int ind) const {
     juce::String json;
     json += indent(ind) + "{\n";
@@ -412,9 +476,10 @@ juce::String OSCQueryServer::queryValue(const juce::String& oscPath) {
 
     auto& state = owner->getControlServer().getAtomicState();
 
-    // Normalize: accept both /tempo and /looper/tempo
+    // Normalize: accept /tempo as /looper/tempo, but keep multi-segment custom paths
+    // like /experimental/xy unchanged.
     juce::String path = oscPath;
-    if (!path.startsWith("/looper/") && path.startsWith("/")) {
+    if (!path.startsWith("/looper/") && path.startsWith("/") && path.indexOfChar(1, '/') < 0) {
         path = "/looper" + path;
     }
 
@@ -504,6 +569,12 @@ juce::String OSCQueryServer::queryValue(const juce::String& oscPath) {
                 return "{\"VALUE\": \"" + juce::String(stateStr) + "\"}";
             }
         }
+    }
+
+    // --- Custom endpoint values (Lua/userland) ---
+    std::vector<juce::var> customArgs;
+    if (owner->getOSCServer().getCustomValue(path, customArgs)) {
+        return "{\"VALUE\": " + argsToValueJson(customArgs) + "}";
     }
 
     return "{\"error\":\"not found\"}";
@@ -828,9 +899,11 @@ void OSCQueryServer::handleWSCommand(WebSocketClient* client, const juce::String
     }
 
     if (command == "LISTEN" && data.isNotEmpty()) {
+        std::lock_guard<std::mutex> pathLock(client->listenMutex);
         client->listenPaths.insert(data);
     }
     else if (command == "IGNORE" && data.isNotEmpty()) {
+        std::lock_guard<std::mutex> pathLock(client->listenMutex);
         client->listenPaths.erase(data);
     }
 }
@@ -866,13 +939,19 @@ void OSCQueryServer::wsBroadcastLoop() {
         std::lock_guard<std::mutex> lock(wsClientsMutex);
         for (auto& client : wsClients) {
             if (!client->connected.load()) continue;
-            if (client->listenPaths.empty()) continue;
+
+            std::set<juce::String> listenPaths;
+            {
+                std::lock_guard<std::mutex> pathLock(client->listenMutex);
+                listenPaths = client->listenPaths;
+            }
+            if (listenPaths.empty()) continue;
 
             auto& cache = client->cache;
 
             // --- Global values ---
 
-            if (client->listenPaths.count("/looper/tempo")) {
+            if (listenPaths.count("/looper/tempo")) {
                 float v = state.tempo.load(std::memory_order_relaxed);
                 if (std::abs(v - cache.tempo) > 0.01f) {
                     cache.tempo = v;
@@ -880,7 +959,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
             }
 
-            if (client->listenPaths.count("/looper/recording")) {
+            if (listenPaths.count("/looper/recording")) {
                 bool v = state.isRecording.load(std::memory_order_relaxed);
                 if (v != cache.isRecording) {
                     cache.isRecording = v;
@@ -888,7 +967,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
             }
 
-            if (client->listenPaths.count("/looper/overdub")) {
+            if (listenPaths.count("/looper/overdub")) {
                 bool v = state.overdubEnabled.load(std::memory_order_relaxed);
                 if (v != cache.overdubEnabled) {
                     cache.overdubEnabled = v;
@@ -896,7 +975,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
             }
 
-            if (client->listenPaths.count("/looper/mode")) {
+            if (listenPaths.count("/looper/mode")) {
                 int v = state.recordMode.load(std::memory_order_relaxed);
                 if (v != cache.recordMode) {
                     cache.recordMode = v;
@@ -908,7 +987,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
             }
 
-            if (client->listenPaths.count("/looper/layer")) {
+            if (listenPaths.count("/looper/layer")) {
                 int v = state.activeLayer.load(std::memory_order_relaxed);
                 if (v != cache.activeLayer) {
                     cache.activeLayer = v;
@@ -916,7 +995,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
             }
 
-            if (client->listenPaths.count("/looper/volume")) {
+            if (listenPaths.count("/looper/volume")) {
                 float v = state.masterVolume.load(std::memory_order_relaxed);
                 if (std::abs(v - cache.masterVolume) > 0.001f) {
                     cache.masterVolume = v;
@@ -931,7 +1010,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 auto& lc = cache.layers[i];
                 juce::String prefix = "/looper/layer/" + juce::String(i) + "/";
 
-                if (client->listenPaths.count(prefix + "state")) {
+                if (listenPaths.count(prefix + "state")) {
                     int v = ls.state.load(std::memory_order_relaxed);
                     if (v != lc.state) {
                         lc.state = v;
@@ -946,7 +1025,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     }
                 }
 
-                if (client->listenPaths.count(prefix + "speed")) {
+                if (listenPaths.count(prefix + "speed")) {
                     float v = ls.speed.load(std::memory_order_relaxed);
                     if (std::abs(v - lc.speed) > 0.001f) {
                         lc.speed = v;
@@ -954,7 +1033,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     }
                 }
 
-                if (client->listenPaths.count(prefix + "volume")) {
+                if (listenPaths.count(prefix + "volume")) {
                     float v = ls.volume.load(std::memory_order_relaxed);
                     if (std::abs(v - lc.volume) > 0.001f) {
                         lc.volume = v;
@@ -962,7 +1041,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     }
                 }
 
-                if (client->listenPaths.count(prefix + "reverse")) {
+                if (listenPaths.count(prefix + "reverse")) {
                     bool v = ls.reversed.load(std::memory_order_relaxed);
                     if (v != lc.reversed) {
                         lc.reversed = v;
@@ -971,7 +1050,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     }
                 }
 
-                if (client->listenPaths.count(prefix + "position")) {
+                if (listenPaths.count(prefix + "position")) {
                     int len = ls.length.load(std::memory_order_relaxed);
                     float v = (len > 0) ? (float)ls.playheadPos.load(std::memory_order_relaxed) / (float)len : 0.0f;
                     if (std::abs(v - lc.position) > 0.005f) {
@@ -980,12 +1059,31 @@ void OSCQueryServer::wsBroadcastLoop() {
                     }
                 }
 
-                if (client->listenPaths.count(prefix + "bars")) {
+                if (listenPaths.count(prefix + "bars")) {
                     float v = ls.numBars.load(std::memory_order_relaxed);
                     if (std::abs(v - lc.bars) > 0.001f) {
                         lc.bars = v;
                         sendValueToClient(client.get(), prefix + "bars", { juce::var(v) });
                     }
+                }
+            }
+
+            // --- Custom (non-/looper) values ---
+            for (const auto& listenPath : listenPaths) {
+                if (listenPath.startsWith("/looper/")) {
+                    continue;
+                }
+
+                std::vector<juce::var> customArgs;
+                if (!owner->getOSCServer().getCustomValue(listenPath, customArgs)) {
+                    continue;
+                }
+
+                juce::String newSig = argsSignature(customArgs);
+                auto it = cache.customSignatures.find(listenPath);
+                if (it == cache.customSignatures.end() || it->second != newSig) {
+                    cache.customSignatures[listenPath] = newSig;
+                    sendValueToClient(client.get(), listenPath, customArgs);
                 }
             }
         }
