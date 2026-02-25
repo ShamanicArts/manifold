@@ -123,6 +123,8 @@ target_link_libraries(Looper
 # Headless test harness - no GUI, no audio device, just the processor + ControlServer
 add_executable(LooperHeadless looper/headless/LooperHeadless.cpp)
 
+add_executable(LuaEngineMockHarness looper/headless/LuaEngineMockHarness.cpp)
+
 target_include_directories(LooperHeadless
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -135,7 +137,22 @@ target_link_libraries(LooperHeadless
         juce::juce_audio_utils
         juce::juce_gui_extra)
 
+target_link_libraries(LuaEngineMockHarness
+    PRIVATE
+        Looper
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra)
+
 target_compile_definitions(LooperHeadless
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0)
+
+target_compile_definitions(LuaEngineMockHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0

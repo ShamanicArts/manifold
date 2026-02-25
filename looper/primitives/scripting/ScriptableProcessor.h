@@ -1,0 +1,68 @@
+#pragma once
+
+#include "../control/ControlServer.h"
+#include <array>
+#include <vector>
+
+class OSCServer;
+class OSCEndpointRegistry;
+class OSCQueryServer;
+
+enum class ScriptableLayerState {
+  Empty = 0,
+  Playing = 1,
+  Recording = 2,
+  Overdubbing = 3,
+  Muted = 4,
+  Stopped = 5,
+  Paused = 6,
+  Unknown = 255,
+};
+
+struct ScriptableLayerSnapshot {
+  int index = 0;
+  int length = 0;
+  int position = 0;
+  float speed = 1.0f;
+  bool reversed = false;
+  float volume = 1.0f;
+  ScriptableLayerState state = ScriptableLayerState::Unknown;
+};
+
+class ScriptableProcessor {
+public:
+  virtual ~ScriptableProcessor() = default;
+
+  // Message/control thread: enqueue command for audio-thread consumption.
+  virtual bool postControlCommand(ControlCommand::Type type, int intParam = 0,
+                                  float floatParam = 0.0f) = 0;
+
+  // Message/control thread: networking/control service access.
+  virtual OSCServer &getOSCServer() = 0;
+  virtual OSCEndpointRegistry &getEndpointRegistry() = 0;
+  virtual OSCQueryServer &getOSCQueryServer() = 0;
+
+  // Snapshot accessors for UI/control-thread reads.
+  virtual int getNumLayers() const = 0;
+  virtual bool getLayerSnapshot(int index,
+                                ScriptableLayerSnapshot &out) const = 0;
+  virtual int getCaptureSize() const = 0;
+  virtual bool computeLayerPeaks(int layerIndex, int numBuckets,
+                                 std::vector<float> &outPeaks) const = 0;
+  virtual bool computeCapturePeaks(int startAgo, int endAgo, int numBuckets,
+                                   std::vector<float> &outPeaks) const = 0;
+
+  virtual float getTempo() const = 0;
+  virtual float getTargetBPM() const = 0;
+  virtual float getSamplesPerBar() const = 0;
+  virtual double getSampleRate() const = 0;
+  virtual float getMasterVolume() const = 0;
+  virtual bool isRecording() const = 0;
+  virtual bool isOverdubEnabled() const = 0;
+  virtual int getActiveLayerIndex() const = 0;
+  virtual bool isForwardCommitArmed() const = 0;
+  virtual float getForwardCommitBars() const = 0;
+  virtual int getRecordModeIndex() const = 0;
+  virtual int getCommitCount() const = 0;
+  virtual std::array<float, 32> getSpectrumData() const = 0;
+};

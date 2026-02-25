@@ -1,0 +1,365 @@
+#!/usr/bin/env python3
+"""
+P0 baseline integration tests for command/OSC/OSCQuery behavior.
+
+Covers:
+- P0.1 IPC legacy command baseline + malformed input behavior
+- P0.2 OSC dispatch baseline + unknown-address non-blocking behavior
+- P0.3 OSCQuery discovery/value baseline + custom-value query baseline
+
+Requires LooperHeadless to be running.
+"""
+
+import glob
+import http.client
+import json
+import os
+import socket
+import struct
+import sys
+import time
+
+
+def pad4(n):
+    return n + (4 - n % 4) % 4
+
+
+def build_osc_message(address, args):
+    addr = address.encode("ascii") + b"\x00"
+    addr += b"\x00" * (pad4(len(addr)) - len(addr))
+
+    type_tag = "," + "".join(t for t, _ in args)
+    tt = type_tag.encode("ascii") + b"\x00"
+    tt += b"\x00" * (pad4(len(tt)) - len(tt))
+
+    payload = b""
+    for t, v in args:
+        if t == "f":
+            payload += struct.pack(">f", float(v))
+        elif t == "i":
+            payload += struct.pack(">i", int(v))
+        elif t == "s":
+            s = str(v).encode("ascii") + b"\x00"
+            s += b"\x00" * (pad4(len(s)) - len(s))
+            payload += s
+        else:
+            raise ValueError(f"unsupported OSC type tag: {t}")
+
+    return addr + tt + payload
+
+
+class Runner:
+    def __init__(self):
+        self.passed = 0
+        self.failed = 0
+        self.errors = []
+
+    def check(self, name, cond, detail=""):
+        if cond:
+            print(f"  PASS: {name}")
+            self.passed += 1
+            return
+
+        msg = f"  FAIL: {name}"
+        if detail:
+            msg += f" -- {detail}"
+        print(msg)
+        self.failed += 1
+        self.errors.append(name)
+
+    def summary(self):
+        print("\n" + "=" * 60)
+        print(f"RESULTS: {self.passed} passed, {self.failed} failed")
+        if self.errors:
+            print("Failed:")
+            for err in self.errors:
+                print(f"  - {err}")
+        print("=" * 60)
+        return self.failed == 0
+
+
+class LooperHarness:
+    def __init__(self):
+        sockets = sorted(glob.glob("/tmp/looper_*.sock"))
+        if not sockets:
+            raise RuntimeError("No /tmp/looper_*.sock found. Start LooperHeadless first.")
+        self.sock_path = sockets[-1]
+
+        settings = self._read_settings()
+        self.osc_port = int(os.environ.get("LOOPER_OSC_PORT", settings.get("inputPort", 9000)))
+        self.oscq_port = int(os.environ.get("LOOPER_OSCQUERY_PORT", settings.get("queryPort", 9001)))
+        self.osc_enabled = bool(settings.get("oscEnabled", True))
+        self.oscq_enabled = bool(settings.get("oscQueryEnabled", True))
+
+    def _read_settings(self):
+        cfg = os.path.expanduser("~/.config/looper/settings.json")
+        if not os.path.exists(cfg):
+            return {}
+        try:
+            with open(cfg, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def cmd(self, command):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(self.sock_path)
+        s.sendall((command + "\n").encode("utf-8"))
+        s.settimeout(2.0)
+        resp = ""
+        try:
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                resp += chunk.decode("utf-8", errors="replace")
+                if "\n" in resp:
+                    break
+        except socket.timeout:
+            pass
+        finally:
+            s.close()
+        return resp.strip()
+
+    def state(self):
+        resp = self.cmd("STATE")
+        if not resp.startswith("OK {"):
+            raise RuntimeError(f"STATE failed: {resp}")
+        return json.loads(resp[3:])
+
+    def http_get(self, path):
+        conn = http.client.HTTPConnection("127.0.0.1", self.oscq_port, timeout=5)
+        conn.request("GET", path)
+        res = conn.getresponse()
+        body = res.read().decode("utf-8")
+        status = res.status
+        conn.close()
+        return status, body
+
+    def send_osc(self, address, args):
+        packet = build_osc_message(address, args)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(packet, ("127.0.0.1", self.osc_port))
+        sock.close()
+
+    def get_value(self, path):
+        status, body = self.http_get(path)
+        if status != 200:
+            raise RuntimeError(f"GET {path} failed: HTTP {status}")
+        return json.loads(body)
+
+
+def wait_for(predicate, timeout=2.0, step=0.05):
+    end = time.time() + timeout
+    last = None
+    while time.time() < end:
+        try:
+            last = predicate()
+            if last:
+                return True
+        except Exception:
+            pass
+        time.sleep(step)
+    return False
+
+
+def near(a, b, eps=0.05):
+    return abs(float(a) - float(b)) <= eps
+
+
+def test_p01_ipc_baseline(t, h):
+    print("=== P0.1: IPC baseline (legacy commands + malformed inputs) ===")
+
+    ping = h.cmd("PING")
+    t.check("PING returns OK PONG", ping == "OK PONG", ping)
+
+    diag = h.cmd("DIAGNOSE")
+    t.check("DIAGNOSE returns JSON", diag.startswith("OK {"), diag)
+    if diag.startswith("OK {"):
+        dj = json.loads(diag[3:])
+        t.check("DIAGNOSE has socketPath", "socketPath" in dj, str(dj.keys()))
+        t.check("DIAGNOSE has connectedClients", "connectedClients" in dj, str(dj.keys()))
+
+    # Legacy command set baseline
+    t.check("TEMPO accepted", h.cmd("TEMPO 132") == "OK")
+    wait_for(lambda: near(h.state()["tempo"], 132.0), timeout=1.5)
+    t.check("TEMPO updates state", near(h.state()["tempo"], 132.0), h.state()["tempo"])
+
+    t.check("MODE accepted", h.cmd("MODE freeMode") == "OK")
+    wait_for(lambda: h.state()["recordMode"] == "freeMode", timeout=1.5)
+    t.check("MODE updates state", h.state()["recordMode"] == "freeMode", h.state()["recordMode"])
+
+    t.check("LAYER select accepted", h.cmd("LAYER 2") == "OK")
+    wait_for(lambda: h.state()["activeLayer"] == 2, timeout=1.5)
+    t.check("LAYER select updates state", h.state()["activeLayer"] == 2, h.state()["activeLayer"])
+
+    t.check("LAYER SPEED accepted", h.cmd("LAYER 2 SPEED 0.75") == "OK")
+    wait_for(lambda: near(h.state()["layers"][2]["speed"], 0.75, 0.01), timeout=1.5)
+    t.check("LAYER SPEED updates state", near(h.state()["layers"][2]["speed"], 0.75, 0.01), h.state()["layers"][2]["speed"])
+
+    t.check("LAYER REVERSE accepted", h.cmd("LAYER 2 REVERSE 1") == "OK")
+    wait_for(lambda: h.state()["layers"][2]["reversed"] is True, timeout=1.5)
+    t.check("LAYER REVERSE updates state", h.state()["layers"][2]["reversed"] is True, h.state()["layers"][2]["reversed"])
+
+    t.check("LAYER VOLUME accepted", h.cmd("LAYER 2 VOLUME 0.35") == "OK")
+    wait_for(lambda: near(h.state()["layers"][2]["volume"], 0.35, 0.01), timeout=1.5)
+    t.check("LAYER VOLUME updates state", near(h.state()["layers"][2]["volume"], 0.35, 0.01), h.state()["layers"][2]["volume"])
+
+    t.check("OVERDUB ON accepted", h.cmd("OVERDUB 1") == "OK")
+    wait_for(lambda: h.state()["overdubEnabled"] is True, timeout=1.5)
+    t.check("OVERDUB ON updates state", h.state()["overdubEnabled"] is True, h.state()["overdubEnabled"])
+
+    t.check("OVERDUB OFF accepted", h.cmd("OVERDUB 0") == "OK")
+    wait_for(lambda: h.state()["overdubEnabled"] is False, timeout=1.5)
+    t.check("OVERDUB OFF updates state", h.state()["overdubEnabled"] is False, h.state()["overdubEnabled"])
+
+    t.check("VOLUME accepted", h.cmd("VOLUME 0.8") == "OK")
+    wait_for(lambda: near(h.state()["masterVolume"], 0.8, 0.01), timeout=1.5)
+    t.check("VOLUME updates state", near(h.state()["masterVolume"], 0.8, 0.01), h.state()["masterVolume"])
+
+    malformed = [
+        ("TEMPO", "ERROR usage: TEMPO <bpm>"),
+        ("TEMPO abc", "ERROR invalid bpm value"),
+        ("COMMIT abc", "ERROR invalid bars value"),
+        ("MODE ???", "ERROR unknown mode: ???"),
+        ("LAYER nope", "ERROR invalid layer index"),
+        ("LAYER 9", "ERROR layer index must be 0-3"),
+        ("LAYER 0 SPEED nope", "ERROR invalid speed value"),
+        ("BOGUS", "ERROR unknown command: BOGUS"),
+    ]
+    for cmd, expected in malformed:
+        got = h.cmd(cmd)
+        t.check(f"malformed '{cmd}'", got == expected, f"got={got}")
+
+
+def test_p02_osc_baseline(t, h):
+    print("=== P0.2: OSC dispatch baseline ===")
+
+    if not h.osc_enabled:
+        raise RuntimeError("OSC is disabled in settings.json (oscEnabled=false)")
+    if not h.oscq_enabled:
+        raise RuntimeError("OSCQuery is disabled in settings.json (oscQueryEnabled=false)")
+
+    # Baseline via IPC first
+    h.cmd("TEMPO 120")
+    h.cmd("LAYER 0 SPEED 1.0")
+    h.cmd("LAYER 0 REVERSE 0")
+    time.sleep(0.2)
+
+    # Known OSC addresses
+    h.send_osc("/looper/tempo", [("f", 147.0)])
+    ok = wait_for(lambda: near(h.get_value("/osc/looper/tempo")["VALUE"], 147.0, 0.5), timeout=2.0)
+    t.check("OSC /looper/tempo updates value", ok)
+
+    h.send_osc("/looper/layer/0/speed", [("f", 0.62)])
+    ok = wait_for(lambda: near(h.get_value("/osc/looper/layer/0/speed")["VALUE"], 0.62, 0.01), timeout=2.0)
+    t.check("OSC /looper/layer/0/speed updates value", ok)
+
+    h.send_osc("/looper/layer/0/reverse", [("i", 1)])
+    ok = wait_for(lambda: int(h.get_value("/osc/looper/layer/0/reverse")["VALUE"]) == 1, timeout=2.0)
+    t.check("OSC /looper/layer/0/reverse=1 updates value", ok)
+
+    h.send_osc("/looper/layer/0/reverse", [("i", 0)])
+    ok = wait_for(lambda: int(h.get_value("/osc/looper/layer/0/reverse")["VALUE"]) == 0, timeout=2.0)
+    t.check("OSC /looper/layer/0/reverse=0 updates value", ok)
+
+    # Unknown addresses should be non-blocking/no-op for known values
+    tempo_before = float(h.get_value("/osc/looper/tempo")["VALUE"])
+    h.send_osc("/looper/does_not_exist", [("i", 1)])
+    h.send_osc("/looper/layer/99/speed", [("f", 3.0)])
+    time.sleep(0.2)
+    tempo_after = float(h.get_value("/osc/looper/tempo")["VALUE"])
+    t.check("unknown OSC paths do not corrupt known state", near(tempo_before, tempo_after, 0.01), f"{tempo_before} -> {tempo_after}")
+
+
+def test_p03_oscquery_baseline(t, h):
+    print("=== P0.3: OSCQuery baseline ===")
+
+    if not h.oscq_enabled:
+        raise RuntimeError("OSCQuery is disabled in settings.json (oscQueryEnabled=false)")
+
+    status, body = h.http_get("/?HOST_INFO")
+    t.check("HOST_INFO HTTP 200", status == 200, status)
+    host = json.loads(body)
+    t.check("HOST_INFO has NAME", "NAME" in host, str(host.keys()))
+    t.check("HOST_INFO has EXTENSIONS", "EXTENSIONS" in host, str(host.keys()))
+    t.check("HOST_INFO VALUE extension true", host.get("EXTENSIONS", {}).get("VALUE") is True, str(host.get("EXTENSIONS", {})))
+
+    status, body = h.http_get("/")
+    t.check("tree HTTP 200", status == 200, status)
+    tree = json.loads(body)
+    t.check("tree FULL_PATH root", tree.get("FULL_PATH") == "/", tree.get("FULL_PATH"))
+    t.check("tree has CONTENTS", "CONTENTS" in tree, str(tree.keys()))
+
+    looper_node = tree.get("CONTENTS", {}).get("looper", {})
+    looper_contents = looper_node.get("CONTENTS", {})
+    t.check("tree has /looper/tempo", "tempo" in looper_contents, str(looper_contents.keys()))
+    t.check("tree has /looper/layer", "layer" in looper_contents, str(looper_contents.keys()))
+
+    val = h.get_value("/osc/looper/tempo")
+    t.check("/osc/looper/tempo has VALUE", "VALUE" in val, str(val))
+    t.check("/osc/looper/tempo value numeric", isinstance(val.get("VALUE"), (int, float)), type(val.get("VALUE")))
+
+    direct = h.get_value("/looper/tempo")
+    t.check("direct /looper/tempo has VALUE", "VALUE" in direct, str(direct))
+
+    missing = h.get_value("/osc/looper/not_real")
+    t.check("unknown path returns error", "error" in missing, str(missing))
+
+    # Custom-value baseline: non-/looper OSC message should be queryable.
+    h.send_osc("/baseline/custom", [("f", 0.456), ("i", 3)])
+
+    def custom_ready():
+        val = h.get_value("/osc/baseline/custom").get("VALUE")
+        return (
+            isinstance(val, list)
+            and len(val) == 2
+            and near(val[0], 0.456, 0.02)
+            and int(val[1]) == 3
+        )
+
+    ok = wait_for(custom_ready, timeout=2.0)
+    t.check("custom non-/looper path query baseline", ok)
+
+
+def main():
+    print("P0 Baseline Test Suite")
+    print("=" * 60)
+    try:
+        h = LooperHarness()
+    except Exception as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+    print(f"Control socket: {h.sock_path}")
+    print(f"OSC port: {h.osc_port} (enabled={h.osc_enabled})")
+    print(f"OSCQuery port: {h.oscq_port} (enabled={h.oscq_enabled})\n")
+
+    # Preflight OSCQuery availability for OSC/OSCQuery phases
+    try:
+        status, _ = h.http_get("/?HOST_INFO")
+        if status != 200:
+            print(
+                f"ERROR: OSCQuery not reachable on port {h.oscq_port} (HTTP {status}).",
+                file=sys.stderr,
+            )
+            return 1
+    except Exception as e:
+        print(
+            f"ERROR: OSCQuery not reachable on port {h.oscq_port}: {e}",
+            file=sys.stderr,
+        )
+        return 1
+
+    t = Runner()
+
+    test_p01_ipc_baseline(t, h)
+    test_p02_osc_baseline(t, h)
+    test_p03_oscquery_baseline(t, h)
+
+    ok = t.summary()
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

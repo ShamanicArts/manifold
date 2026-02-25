@@ -714,6 +714,122 @@ void LooperProcessor::updateSpectrumBands() {
   }
 }
 
+bool LooperProcessor::getLayerSnapshot(int index,
+                                       ScriptableLayerSnapshot &out) const {
+  if (index < 0 || index >= MAX_LAYERS) {
+    return false;
+  }
+
+  const auto &layer = layers[index];
+  out.index = index;
+  out.length = layer.getLength();
+  out.position = layer.getPosition();
+  out.speed = layer.getSpeed();
+  out.reversed = layer.isReversed();
+  out.volume = layer.getVolume();
+  out.state = static_cast<ScriptableLayerState>(layer.getState());
+  return true;
+}
+
+bool LooperProcessor::computeLayerPeaks(int layerIndex, int numBuckets,
+                                        std::vector<float> &outPeaks) const {
+  outPeaks.clear();
+  if (layerIndex < 0 || layerIndex >= MAX_LAYERS || numBuckets <= 0) {
+    return false;
+  }
+
+  const auto &layer = layers[layerIndex];
+  const int length = layer.getLength();
+  if (length <= 0) {
+    return false;
+  }
+
+  const auto *raw = layer.getBuffer().getRawBuffer();
+  if (raw == nullptr || raw->getNumSamples() <= 0) {
+    return false;
+  }
+
+  outPeaks.resize(static_cast<size_t>(numBuckets), 0.0f);
+  const int bucketSize = std::max(1, length / numBuckets);
+  float highest = 0.0f;
+
+  for (int x = 0; x < numBuckets; ++x) {
+    const int start = std::min(length - 1, x * bucketSize);
+    const int count = std::min(bucketSize, length - start);
+    float peak = 0.0f;
+    for (int i = 0; i < count; ++i) {
+      const int idx = start + i;
+      const float left = std::abs(raw->getSample(0, idx));
+      float right = left;
+      if (raw->getNumChannels() > 1) {
+        right = std::abs(raw->getSample(1, idx));
+      }
+      peak = std::max(peak, std::max(left, right));
+    }
+    outPeaks[static_cast<size_t>(x)] = peak;
+    highest = std::max(highest, peak);
+  }
+
+  const float rescale =
+      highest > 0.0f ? std::min(8.0f, std::max(1.0f, 1.0f / highest)) : 1.0f;
+  for (auto &peak : outPeaks) {
+    peak = std::min(1.0f, peak * rescale);
+  }
+  return true;
+}
+
+bool LooperProcessor::computeCapturePeaks(int startAgo, int endAgo,
+                                          int numBuckets,
+                                          std::vector<float> &outPeaks) const {
+  outPeaks.clear();
+  if (numBuckets <= 0) {
+    return false;
+  }
+
+  const int captureSize = captureBuffer.getSize();
+  if (captureSize <= 0) {
+    return false;
+  }
+
+  const int start = std::max(0, std::min(captureSize, startAgo));
+  const int end = std::max(0, std::min(captureSize, endAgo));
+  if (end <= start) {
+    return false;
+  }
+
+  const int viewSamples = end - start;
+  const int bucketSize = std::max(1, viewSamples / numBuckets);
+  outPeaks.resize(static_cast<size_t>(numBuckets), 0.0f);
+
+  float highest = 0.0f;
+  for (int x = 0; x < numBuckets; ++x) {
+    const float t = numBuckets > 1
+                        ? static_cast<float>(numBuckets - 1 - x) /
+                              static_cast<float>(numBuckets - 1)
+                        : 0.0f;
+    const int firstAgo =
+        start + static_cast<int>(std::round(t * static_cast<float>(viewSamples - 1)));
+    if (firstAgo >= captureSize) {
+      continue;
+    }
+
+    float peak = 0.0f;
+    const int bucket = std::min(bucketSize, captureSize - firstAgo);
+    for (int i = 0; i < bucket; ++i) {
+      peak = std::max(peak, std::abs(captureBuffer.getSample(firstAgo + i, 0)));
+    }
+    outPeaks[static_cast<size_t>(x)] = peak;
+    highest = std::max(highest, peak);
+  }
+
+  const float rescale =
+      highest > 0.0f ? std::min(10.0f, std::max(1.0f, 1.0f / highest)) : 1.0f;
+  for (auto &peak : outPeaks) {
+    peak = std::min(1.0f, peak * rescale);
+  }
+  return true;
+}
+
 std::array<float, LooperProcessor::NUM_SPECTRUM_BANDS> LooperProcessor::getSpectrumData() const {
   std::array<float, NUM_SPECTRUM_BANDS> result;
   for (int i = 0; i < NUM_SPECTRUM_BANDS; ++i) {

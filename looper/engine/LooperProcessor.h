@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <atomic>
 #include <vector>
+#include "../primitives/scripting/ScriptableProcessor.h"
 #include "../primitives/dsp/CaptureBuffer.h"
 #include "../primitives/dsp/TempoInference.h"
 #include "../primitives/dsp/Quantizer.h"
@@ -20,7 +21,7 @@ enum class RecordMode {
     Retrospective
 };
 
-class LooperProcessor : public juce::AudioProcessor {
+class LooperProcessor : public juce::AudioProcessor, public ScriptableProcessor {
 public:
     static const int MAX_LAYERS = 4;
     static const int CAPTURE_SECONDS = 32;
@@ -52,7 +53,14 @@ public:
     
     CaptureBuffer& getCaptureBuffer() { return captureBuffer; }
     LooperLayer& getLayer(int index) { return layers[index]; }
-    int getActiveLayerIndex() const { return activeLayerIndex; }
+    int getNumLayers() const override { return MAX_LAYERS; }
+    bool getLayerSnapshot(int index, ScriptableLayerSnapshot& out) const override;
+    int getCaptureSize() const override { return captureBuffer.getSize(); }
+    bool computeLayerPeaks(int layerIndex, int numBuckets,
+                           std::vector<float>& outPeaks) const override;
+    bool computeCapturePeaks(int startAgo, int endAgo, int numBuckets,
+                             std::vector<float>& outPeaks) const override;
+    int getActiveLayerIndex() const override { return activeLayerIndex; }
     void setActiveLayer(int index);
     
     void startRecording();
@@ -61,44 +69,46 @@ public:
     void stopRecording();
     void commitRetrospective(float numBars);
     void scheduleForwardCommit(float numBars);
-    bool isForwardCommitArmed() const { return forwardCommitArmed.load(std::memory_order_relaxed); }
-    float getForwardCommitBars() const { return forwardCommitBars.load(std::memory_order_relaxed); }
+    bool isForwardCommitArmed() const override { return forwardCommitArmed.load(std::memory_order_relaxed); }
+    float getForwardCommitBars() const override { return forwardCommitBars.load(std::memory_order_relaxed); }
     
     RecordMode getRecordMode() const { return recordMode; }
+    int getRecordModeIndex() const override { return static_cast<int>(recordMode); }
     void setRecordMode(RecordMode mode) { recordMode = mode; }
     
-    bool isRecording() const { return isCurrentlyRecording; }
-    bool isOverdubEnabled() const { return overdubEnabled; }
+    bool isRecording() const override { return isCurrentlyRecording; }
+    bool isOverdubEnabled() const override { return overdubEnabled; }
     bool isPlaying() const;
     
-    float getTempo() const { return tempo; }
+    float getTempo() const override { return tempo; }
     void setTempo(float bpm);
     
-    float getTargetBPM() const { return targetBPM; }
+    float getTargetBPM() const override { return targetBPM; }
     void setTargetBPM(float bpm) { targetBPM = bpm; }
     
     bool getInferTempo() const { return inferTempo; }
     void setInferTempo(bool infer) { inferTempo = infer; }
     
-    float getMasterVolume() const { return masterVolume; }
+    float getMasterVolume() const override { return masterVolume; }
     void setMasterVolume(float vol) { masterVolume = vol; }
     
-    float getSamplesPerBar() const;
-    double getSampleRate() const { return currentSampleRate; }
+    float getSamplesPerBar() const override;
+    double getSampleRate() const override { return currentSampleRate; }
+    int getCommitCount() const override { return commitCount; }
     
     // Control server access
     ControlServer& getControlServer() { return controlServer; }
-    OSCServer& getOSCServer() { return oscServer; }
-    OSCEndpointRegistry& getEndpointRegistry() { return endpointRegistry; }
-    OSCQueryServer& getOSCQueryServer() { return oscQueryServer; }
-    bool postControlCommand(ControlCommand::Type type, int intParam = 0, float floatParam = 0.0f);
+    OSCServer& getOSCServer() override { return oscServer; }
+    OSCEndpointRegistry& getEndpointRegistry() override { return endpointRegistry; }
+    OSCQueryServer& getOSCQueryServer() override { return oscQueryServer; }
+    bool postControlCommand(ControlCommand::Type type, int intParam = 0, float floatParam = 0.0f) override;
     
     // UI switching (thread-safe) - called by editor to check for UI switch
     std::string getAndClearPendingUISwitch();
     
     // Spectrum analysis for visualization
     static constexpr int NUM_SPECTRUM_BANDS = 32;
-    std::array<float, NUM_SPECTRUM_BANDS> getSpectrumData() const;
+    std::array<float, NUM_SPECTRUM_BANDS> getSpectrumData() const override;
     
 private:
     CaptureBuffer captureBuffer;

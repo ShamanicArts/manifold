@@ -10,12 +10,13 @@ extern "C" {
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
-#include "../../engine/LooperProcessor.h"
+#include "ScriptableProcessor.h"
 #include "../control/CommandParser.h"
 #include "../control/ControlServer.h"
 #include "../control/OSCPacketBuilder.h"
 #include "../control/OSCSettingsPersistence.h"
 #include "../control/OSCEndpointRegistry.h"
+#include "../control/OSCQuery.h"
 
 #include <algorithm>
 #include <array>
@@ -28,13 +29,38 @@ extern "C" {
 
 using namespace juce::gl;
 
+namespace {
+
+const char *toLayerStateString(ScriptableLayerState state) {
+  switch (state) {
+  case ScriptableLayerState::Empty:
+    return "empty";
+  case ScriptableLayerState::Playing:
+    return "playing";
+  case ScriptableLayerState::Recording:
+    return "recording";
+  case ScriptableLayerState::Overdubbing:
+    return "overdubbing";
+  case ScriptableLayerState::Muted:
+    return "muted";
+  case ScriptableLayerState::Stopped:
+    return "stopped";
+  case ScriptableLayerState::Paused:
+    return "paused";
+  default:
+    return "unknown";
+  }
+}
+
+} // namespace
+
 // ============================================================================
 // pImpl
 // ============================================================================
 
 struct LuaEngine::Impl {
   sol::state lua;
-  LooperProcessor *processor = nullptr;
+  ScriptableProcessor *processor = nullptr;
   Canvas *rootCanvas = nullptr;
   bool scriptLoaded = false;
   std::string lastError;
@@ -105,7 +131,7 @@ struct LuaEngine::Impl {
   // Last known state for diff detection
   float lastTempo = 0.0f;
   bool lastRecording = false;
-  std::array<int, 4> lastLayerStates = {0, 0, 0, 0};
+  std::vector<int> lastLayerStates;
   int lastCommitCount = 0;
 };
 
@@ -126,9 +152,12 @@ LuaEngine::~LuaEngine() {
 // Initialisation
 // ============================================================================
 
-void LuaEngine::initialise(LooperProcessor *processor, Canvas *rootCanvas) {
+void LuaEngine::initialise(ScriptableProcessor *processor, Canvas *rootCanvas) {
   pImpl->processor = processor;
   pImpl->rootCanvas = rootCanvas;
+  pImpl->lastLayerStates.assign(
+      processor ? std::max(0, processor->getNumLayers()) : 0,
+      static_cast<int>(ScriptableLayerState::Unknown));
 
   const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
 
@@ -983,47 +1012,16 @@ void LuaEngine::registerBindings() {
   lua["getLayerPeaks"] = [this](int layerIdx, int numBuckets) -> sol::table {
     auto &lua = pImpl->lua;
     auto result = lua.create_table();
-    if (!pImpl->processor || layerIdx < 0 ||
-        layerIdx >= LooperProcessor::MAX_LAYERS || numBuckets <= 0)
+    if (!pImpl->processor || numBuckets <= 0)
       return result;
 
-    auto &layer = pImpl->processor->getLayer(layerIdx);
-    int length = layer.getLength();
-    if (length <= 0)
+    std::vector<float> peaks;
+    if (!pImpl->processor->computeLayerPeaks(layerIdx, numBuckets, peaks)) {
       return result;
-
-    const auto *raw = layer.getBuffer().getRawBuffer();
-    if (!raw || raw->getNumSamples() <= 0)
-      return result;
-
-    int bucketSize = std::max(1, length / numBuckets);
-    float highest = 0.0f;
-    std::vector<float> peaks((size_t)numBuckets, 0.0f);
-
-    for (int x = 0; x < numBuckets; ++x) {
-      int start = std::min(length - 1, x * bucketSize);
-      int count = std::min(bucketSize, length - start);
-      float peak = 0.0f;
-      for (int i = 0; i < count; ++i) {
-        int idx = start + i;
-        float l = std::abs(raw->getSample(0, idx));
-        float r = l;
-        if (raw->getNumChannels() > 1)
-          r = std::abs(raw->getSample(1, idx));
-        float v = std::max(l, r);
-        if (v > peak)
-          peak = v;
-      }
-      peaks[(size_t)x] = peak;
-      if (peak > highest)
-        highest = peak;
     }
+    for (size_t i = 0; i < peaks.size(); ++i)
+      result[i + 1] = peaks[i];
 
-    float rescale =
-        highest > 0.0f ? std::min(8.0f, std::max(1.0f, 1.0f / highest)) : 1.0f;
-    for (int x = 0; x < numBuckets; ++x) {
-      result[x + 1] = std::min(1.0f, peaks[(size_t)x] * rescale);
-    }
     return result;
   };
 
@@ -1036,47 +1034,14 @@ void LuaEngine::registerBindings() {
     if (!pImpl->processor || numBuckets <= 0)
       return result;
 
-    auto &capture = pImpl->processor->getCaptureBuffer();
-    int captureSize = capture.getSize();
-    if (captureSize <= 0)
+    std::vector<float> peaks;
+    if (!pImpl->processor->computeCapturePeaks(startAgo, endAgo, numBuckets,
+                                               peaks)) {
       return result;
-
-    int start = std::max(0, std::min(captureSize, startAgo));
-    int end = std::max(0, std::min(captureSize, endAgo));
-    if (end <= start)
-      return result;
-
-    int viewSamples = end - start;
-    int bucketSize = std::max(1, viewSamples / numBuckets);
-    float highest = 0.0f;
-    std::vector<float> peaks((size_t)numBuckets, 0.0f);
-
-    for (int x = 0; x < numBuckets; ++x) {
-      // Map x position: left = older, right = now
-      float t = numBuckets > 1
-                    ? (float)(numBuckets - 1 - x) / (float)(numBuckets - 1)
-                    : 0.0f;
-      int firstAgo = start + (int)std::round(t * (float)(viewSamples - 1));
-      if (firstAgo >= captureSize)
-        continue;
-
-      float peak = 0.0f;
-      int bucket = std::min(bucketSize, captureSize - firstAgo);
-      for (int i = 0; i < bucket; ++i) {
-        float sample = std::abs(capture.getSample(firstAgo + i, 0));
-        if (sample > peak)
-          peak = sample;
-      }
-      peaks[(size_t)x] = peak;
-      if (peak > highest)
-        highest = peak;
     }
+    for (size_t i = 0; i < peaks.size(); ++i)
+      result[i + 1] = peaks[i];
 
-    float rescale =
-        highest > 0.0f ? std::min(10.0f, std::max(1.0f, 1.0f / highest)) : 1.0f;
-    for (int x = 0; x < numBuckets; ++x) {
-      result[x + 1] = std::min(1.0f, peaks[(size_t)x] * rescale);
-    }
     return result;
   };
 
@@ -1636,69 +1601,53 @@ void LuaEngine::pushStateToLua() {
   state["forwardArmed"] = proc->isForwardCommitArmed();
   state["forwardBars"] = proc->getForwardCommitBars();
 
+  int recordModeIndex = proc->getRecordModeIndex();
+
   // Record mode as string
-  switch (proc->getRecordMode()) {
-  case RecordMode::FirstLoop:
+  switch (recordModeIndex) {
+  case 0:
     state["recordMode"] = "firstLoop";
     break;
-  case RecordMode::FreeMode:
+  case 1:
     state["recordMode"] = "freeMode";
     break;
-  case RecordMode::Traditional:
+  case 2:
     state["recordMode"] = "traditional";
     break;
-  case RecordMode::Retrospective:
+  case 3:
     state["recordMode"] = "retrospective";
+    break;
+  default:
+    state["recordMode"] = "firstLoop";
     break;
   }
 
   // Record mode as int for cycling
-  state["recordModeInt"] = static_cast<int>(proc->getRecordMode());
+  state["recordModeInt"] = recordModeIndex;
 
   // Layers
   auto layers = lua.create_table();
-  for (int i = 0; i < LooperProcessor::MAX_LAYERS; ++i) {
-    auto &layer = proc->getLayer(i);
+  for (int i = 0; i < proc->getNumLayers(); ++i) {
+    ScriptableLayerSnapshot layer;
+    if (!proc->getLayerSnapshot(i, layer)) {
+      continue;
+    }
+
     auto lt = lua.create_table();
     lt["index"] = i;
-    lt["length"] = layer.getLength();
-    lt["position"] = layer.getPosition();
-    lt["speed"] = layer.getSpeed();
-    lt["reversed"] = layer.isReversed();
-    lt["volume"] = layer.getVolume();
-
-    // State as string
-    switch (layer.getState()) {
-    case LooperLayer::State::Empty:
-      lt["state"] = "empty";
-      break;
-    case LooperLayer::State::Playing:
-      lt["state"] = "playing";
-      break;
-    case LooperLayer::State::Recording:
-      lt["state"] = "recording";
-      break;
-    case LooperLayer::State::Overdubbing:
-      lt["state"] = "overdubbing";
-      break;
-    case LooperLayer::State::Muted:
-      lt["state"] = "muted";
-      break;
-    case LooperLayer::State::Stopped:
-      lt["state"] = "stopped";
-      break;
-    case LooperLayer::State::Paused:
-      lt["state"] = "paused";
-      break;
-    }
+    lt["length"] = layer.length;
+    lt["position"] = layer.position;
+    lt["speed"] = layer.speed;
+    lt["reversed"] = layer.reversed;
+    lt["volume"] = layer.volume;
+    lt["state"] = toLayerStateString(layer.state);
 
     layers[i + 1] = lt; // Lua is 1-indexed
   }
   state["layers"] = layers;
 
   // Capture buffer info
-  auto &capture = proc->getCaptureBuffer();
-  state["captureSize"] = capture.getSize();
+  state["captureSize"] = proc->getCaptureSize();
 
   // Spectrum analysis data for visualization
   auto spectrum = proc->getSpectrumData();
@@ -2130,23 +2079,33 @@ void LuaEngine::invokeEventListeners() {
     return;
 
   auto* proc = pImpl->processor;
-  auto& atomicState = proc->getControlServer().getAtomicState();
+  const int numLayers = std::max(0, proc->getNumLayers());
+  if (static_cast<int>(pImpl->lastLayerStates.size()) != numLayers) {
+    pImpl->lastLayerStates.assign(
+        numLayers, static_cast<int>(ScriptableLayerState::Unknown));
+  }
 
   // Get current state for diff detection
   float currentTempo = proc->getTempo();
   bool currentRecording = proc->isRecording();
-  int currentCommitCount = atomicState.commitCount.load(std::memory_order_relaxed);
-  std::array<int, 4> currentLayerStates;
-  for (int i = 0; i < 4; ++i) {
-    currentLayerStates[i] = static_cast<int>(proc->getLayer(i).getState());
+  int currentCommitCount = proc->getCommitCount();
+  std::vector<int> currentLayerStates(static_cast<size_t>(numLayers),
+                                      static_cast<int>(ScriptableLayerState::Unknown));
+  for (int i = 0; i < numLayers; ++i) {
+    ScriptableLayerSnapshot layer;
+    if (proc->getLayerSnapshot(i, layer)) {
+      currentLayerStates[static_cast<size_t>(i)] = static_cast<int>(layer.state);
+    }
   }
 
   const bool tempoChanged = std::abs(currentTempo - pImpl->lastTempo) > 0.01f;
   const bool recordingChanged = currentRecording != pImpl->lastRecording;
   const bool commitChanged = currentCommitCount != pImpl->lastCommitCount;
-  std::array<bool, 4> layerChanged = {false, false, false, false};
-  for (int i = 0; i < 4; ++i) {
-    layerChanged[i] = currentLayerStates[i] != pImpl->lastLayerStates[i];
+  std::vector<bool> layerChanged(static_cast<size_t>(numLayers), false);
+  for (int i = 0; i < numLayers; ++i) {
+    layerChanged[static_cast<size_t>(i)] =
+        currentLayerStates[static_cast<size_t>(i)] !=
+        pImpl->lastLayerStates[static_cast<size_t>(i)];
   }
 
   const std::lock_guard<std::recursive_mutex> luaLock(pImpl->luaMutex);
@@ -2195,21 +2154,11 @@ void LuaEngine::invokeEventListeners() {
   }
 
   // Layer state changes
-  for (int i = 0; i < 4; ++i) {
-    if (layerChanged[i]) {
-
-      // Convert state int to string
-      std::string stateStr;
-      switch (currentLayerStates[i]) {
-        case 0: stateStr = "empty"; break;
-        case 1: stateStr = "playing"; break;
-        case 2: stateStr = "recording"; break;
-        case 3: stateStr = "overdubbing"; break;
-        case 4: stateStr = "muted"; break;
-        case 5: stateStr = "stopped"; break;
-        case 6: stateStr = "paused"; break;
-        default: stateStr = "unknown"; break;
-      }
+  for (int i = 0; i < numLayers; ++i) {
+    if (layerChanged[static_cast<size_t>(i)]) {
+      const auto state =
+          static_cast<ScriptableLayerState>(currentLayerStates[static_cast<size_t>(i)]);
+      const char *stateStr = toLayerStateString(state);
 
       for (const auto& listener : pImpl->layerStateChangedListeners) {
         if (listener.func.valid()) {
@@ -2221,7 +2170,8 @@ void LuaEngine::invokeEventListeners() {
         }
       }
 
-      pImpl->lastLayerStates[i] = currentLayerStates[i];
+      pImpl->lastLayerStates[static_cast<size_t>(i)] =
+          currentLayerStates[static_cast<size_t>(i)];
     }
   }
 
@@ -2242,8 +2192,8 @@ void LuaEngine::invokeEventListeners() {
       changedTable["commit"] = true;
       anyChanged = true;
     }
-    for (int i = 0; i < 4; ++i) {
-      if (layerChanged[i]) {
+    for (int i = 0; i < numLayers; ++i) {
+      if (layerChanged[static_cast<size_t>(i)]) {
         changedTable["layer" + std::to_string(i)] = true;
         anyChanged = true;
       }

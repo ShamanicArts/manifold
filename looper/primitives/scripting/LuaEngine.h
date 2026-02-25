@@ -13,7 +13,7 @@ namespace sol {
 class state;
 }
 
-class LooperProcessor;
+class ScriptableProcessor;
 
 /**
  * LuaEngine: hosts a Lua VM on the JUCE message thread.
@@ -33,12 +33,12 @@ public:
   ~LuaEngine();
 
   /** Initialise the Lua VM and register all bindings.
-   *  @param processor  The audio processor (for command posting and state
-   * reading).
+   *  @param processor  Scriptable processor seam (for command posting and
+   * state reads).
    *  @param rootCanvas The root Canvas node that Lua will populate with
    * children.
    */
-  void initialise(LooperProcessor *processor, Canvas *rootCanvas);
+  void initialise(ScriptableProcessor *processor, Canvas *rootCanvas);
 
   /** Load and execute a script file.  Calls ui_init(root) in the script. */
   bool loadScript(const juce::File &scriptFile);
