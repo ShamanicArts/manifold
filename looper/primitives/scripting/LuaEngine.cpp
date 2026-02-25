@@ -13,6 +13,7 @@ extern "C" {
 #include "../../engine/LooperProcessor.h"
 #include "../control/CommandParser.h"
 #include "../control/ControlServer.h"
+#include "../control/OSCSettingsPersistence.h"
 
 #include <algorithm>
 #include <array>
@@ -1104,6 +1105,117 @@ void LuaEngine::registerBindings() {
     return juce::Time::highResolutionTicksToSeconds(
         juce::Time::getHighResolutionTicks() - startTime);
   };
+
+  // ---- OSC Settings API ----
+  auto oscTable = lua.create_table();
+
+  // Get current settings as Lua table
+  oscTable["getSettings"] = [this]() -> sol::table {
+    const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+    auto& lua = pImpl->lua;
+    auto result = lua.create_table();
+
+    if (!pImpl->processor)
+      return result;
+
+    auto& oscServer = pImpl->processor->getOSCServer();
+    auto settings = oscServer.getSettings();
+
+    result["inputPort"] = settings.inputPort;
+    result["queryPort"] = settings.queryPort;
+    result["oscEnabled"] = settings.oscEnabled;
+    result["oscQueryEnabled"] = settings.oscQueryEnabled;
+
+    auto targets = lua.create_table();
+    for (int i = 0; i < settings.outTargets.size(); ++i) {
+      targets[i + 1] = settings.outTargets[i].toStdString();
+    }
+    result["outTargets"] = targets;
+
+    return result;
+  };
+
+  // Apply new settings from Lua table
+  oscTable["setSettings"] = [this](sol::table settingsTable) -> bool {
+    if (!pImpl->processor)
+      return false;
+
+    OSCSettings settings;
+
+    if (settingsTable["inputPort"].valid()) {
+      settings.inputPort = settingsTable["inputPort"].get<int>();
+    }
+    if (settingsTable["queryPort"].valid()) {
+      settings.queryPort = settingsTable["queryPort"].get<int>();
+    }
+    if (settingsTable["oscEnabled"].valid()) {
+      settings.oscEnabled = settingsTable["oscEnabled"].get<bool>();
+    }
+    if (settingsTable["oscQueryEnabled"].valid()) {
+      settings.oscQueryEnabled = settingsTable["oscQueryEnabled"].get<bool>();
+    }
+    if (settingsTable["outTargets"].valid()) {
+      sol::table targetsTable = settingsTable["outTargets"];
+      for (int i = 1; ; ++i) {
+        auto val = targetsTable.get<sol::optional<std::string>>(i);
+        if (!val.has_value()) break;
+        settings.outTargets.add(juce::String(val.value()));
+      }
+    }
+
+    // Save to file
+    if (!OSCSettingsPersistence::save(settings)) {
+      return false;
+    }
+
+    // Apply to running server
+    pImpl->processor->getOSCServer().setSettings(settings);
+    return true;
+  };
+
+  // Get server status string
+  oscTable["getStatus"] = [this]() -> std::string {
+    if (!pImpl->processor)
+      return "no processor";
+
+    auto& oscServer = pImpl->processor->getOSCServer();
+
+    if (!oscServer.isRunning()) {
+      return "stopped";
+    }
+
+    return "running";
+  };
+
+  // Add a target
+  oscTable["addTarget"] = [this](const std::string& ipPort) -> bool {
+    if (!pImpl->processor)
+      return false;
+
+    pImpl->processor->getOSCServer().addOutTarget(juce::String(ipPort));
+
+    // Save updated settings
+    auto settings = pImpl->processor->getOSCServer().getSettings();
+    OSCSettingsPersistence::save(settings);
+
+    return true;
+  };
+
+  // Remove a target
+  oscTable["removeTarget"] = [this](const std::string& ipPort) -> bool {
+    if (!pImpl->processor)
+      return false;
+
+    pImpl->processor->getOSCServer().removeOutTarget(juce::String(ipPort));
+
+    // Save updated settings
+    auto settings = pImpl->processor->getOSCServer().getSettings();
+    OSCSettingsPersistence::save(settings);
+
+    return true;
+  };
+
+  lua["osc"] = oscTable;
 }
 
 // ============================================================================

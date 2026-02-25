@@ -1,6 +1,7 @@
 #include "LooperProcessor.h"
 #include "../ui/LooperEditor.h"
 #include "../primitives/control/OSCServer.h"
+#include "../primitives/control/OSCSettingsPersistence.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -38,12 +39,20 @@ void LooperProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   endpointRegistry.setNumLayers(MAX_LAYERS);
   endpointRegistry.rebuild();
 
-  // Start OSC server (UDP)
-  OSCSettings oscSettings;
-  oscSettings.oscEnabled = true;
-  oscSettings.oscQueryEnabled = true;
-  oscSettings.inputPort = 9000;
-  oscSettings.queryPort = 9001;
+  // Load OSC settings from file (or create defaults)
+  OSCSettings oscSettings = OSCSettingsPersistence::load();
+  
+  // If no settings file existed, save defaults for next time
+  auto settingsFile = OSCSettingsPersistence::getSettingsFile();
+  if (!settingsFile.existsAsFile()) {
+      // Set up reasonable defaults
+      oscSettings.oscEnabled = true;
+      oscSettings.oscQueryEnabled = true;
+      oscSettings.inputPort = 9000;
+      oscSettings.queryPort = 9001;
+      OSCSettingsPersistence::save(oscSettings);
+  }
+  
   oscServer.setSettings(oscSettings);
   oscServer.start(this);
 

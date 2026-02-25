@@ -93,7 +93,9 @@ target_sources(Looper
         looper/primitives/ui/Canvas.cpp
         looper/primitives/ui/CanvasStyle.h
         looper/primitives/scripting/LuaEngine.h
-        looper/primitives/scripting/LuaEngine.cpp)
+        looper/primitives/scripting/LuaEngine.cpp
+        looper/primitives/control/OSCSettingsPersistence.h
+        looper/primitives/control/OSCSettingsPersistence.cpp)
 
 target_include_directories(Looper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
