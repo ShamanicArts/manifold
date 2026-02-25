@@ -1,0 +1,52 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/build/GrainFreeze_artefacts/JuceLibraryCode",
+                "/home/shamanic/dev/JUCE/modules",
+                "/home/shamanic/dev/JUCE/modules/juce_audio_processors_headless/format_types/VST3_SDK",
+                "/home/shamanic/dev/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK",
+                "/home/shamanic/dev/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK/lv2",
+                "/home/shamanic/dev/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK/serd",
+                "/home/shamanic/dev/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK/sord",
+                "/home/shamanic/dev/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK/sord/src",
+                "/home/shamanic/dev/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK/sratom",
+                "/home/shamanic/dev/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK/lilv",
+                "/home/shamanic/dev/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK/lilv/src",
+                "/usr/include/freetype2",
+                "/usr/include/libpng16",
+                "/usr/include"
+            ],
+            "defines": [
+                "JUCE_DISPLAY_SPLASH_SCREEN=0",
+                "JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1",
+                "JUCE_MODULE_AVAILABLE_juce_audio_basics=1",
+                "JUCE_MODULE_AVAILABLE_juce_audio_devices=1",
+                "JUCE_MODULE_AVAILABLE_juce_audio_formats=1",
+                "JUCE_MODULE_AVAILABLE_juce_audio_plugin_client=1",
+                "JUCE_MODULE_AVAILABLE_juce_audio_processors=1",
+                "JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1",
+                "JUCE_MODULE_AVAILABLE_juce_audio_utils=1",
+                "JUCE_MODULE_AVAILABLE_juce_core=1",
+                "JUCE_MODULE_AVAILABLE_juce_data_structures=1",
+                "JUCE_MODULE_AVAILABLE_juce_dsp=1",
+                "JUCE_MODULE_AVAILABLE_juce_events=1",
+                "JUCE_MODULE_AVAILABLE_juce_graphics=1",
+                "JUCE_MODULE_AVAILABLE_juce_gui_basics=1",
+                "JUCE_MODULE_AVAILABLE_juce_gui_extra=1",
+                "JUCE_SHARED_CODE=1",
+                "LINUX=1",
+                "NDEBUG=1",
+                "_NDEBUG=1"
+            ],
+            "compilerPath": "/usr/bin/c++",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compileCommands": "${workspaceFolder}/compile_commands.json"
+        }
+    ],
+    "version": 4
+}
