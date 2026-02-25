@@ -501,38 +501,40 @@ Expose settings through the existing `command()` function and new Lua globals:
 
 **Files to modify:** `OSCServer.h/cpp`, `LooperProcessor.h/cpp`, `LuaEngine.cpp`, `ControlServer.cpp`, `looper_ui.lua`
 
-### Phase 4: Lua Integration (Priority: MEDIUM)
+### Phase 4: Lua Integration (Priority: MEDIUM) ⚠️ IN PROGRESS (2026-02-25)
 
 Full Lua scripting access to OSC — send messages, receive callbacks, register custom endpoints that appear in OSCQuery discovery.
 
 **4.1 `osc` Global in LuaEngine**
 
-- [ ] Register `osc` table in `LuaEngine::setupLooperBindings()`
-- [ ] `osc.send(address, ...)` — build OSC packet and send to all targets via `OSCServer::broadcast()`
+- [x] Register/extend `osc` table in `LuaEngine` bindings
+- [x] `osc.send(address, ...)` — send to all targets via `OSCServer::broadcast()`
   - Supports float, int, string arguments
   - Example: `osc.send("/my/param", 0.5)`
-- [ ] `osc.sendTo(ip, port, address, ...)` — send to specific target (not broadcast)
-- [ ] `osc.onMessage(address, callback)` — register Lua callback for incoming OSC
+- [x] `osc.sendTo(ip, port, address, ...)` — send to specific target (not broadcast)
+- [x] `osc.onMessage(address, callback)` — register Lua callback for incoming OSC
   - `OSCServer::dispatchMessage()` checks registered Lua callbacks before built-in dispatch
   - Callback receives args table: `function(args) print(args[1]) end`
   - Multiple callbacks per address allowed (call all in order)
-- [ ] `osc.removeHandler(address)` — remove Lua callback for an address
-- [ ] `osc.registerEndpoint(path, options)` — add custom endpoint to OSCQuery registry
+- [x] `osc.removeHandler(address)` — remove Lua callback for an address
+- [x] `osc.registerEndpoint(path, options)` — add custom endpoint to OSCQuery registry
   - Options: `{type="f", range={0,1}, access=3, description="My param"}`
   - Calls `OSCEndpointRegistry::registerCustomEndpoint()` (already exists)
   - Triggers `OSCQueryServer::rebuildTree()` so it appears in `/info` immediately
-- [ ] `osc.removeEndpoint(path)` — remove custom endpoint
+- [x] `osc.removeEndpoint(path)` — remove custom endpoint
   - Calls `OSCEndpointRegistry::unregisterCustomEndpoint()` (already exists)
+- [x] `osc.setValue(path, value)` / `osc.getValue(path)` — custom endpoint value storage and retrieval
+- [x] `osc.onQuery(path, callback)` — register dynamic query handler hook (Lua side registration complete)
 
 **4.2 Looper Event Listeners**
 
-- [ ] `looper.onTempoChanged(callback)` — fires when tempo changes
-- [ ] `looper.onCommit(callback)` — fires on layer commit (args: layer, bars, tempo)
-- [ ] `looper.onRecordingChanged(callback)` — fires when recording starts/stops
-- [ ] `looper.onLayerStateChanged(callback)` — fires when any layer state changes (args: layer, state)
-- [ ] `looper.onStateChanged(callback)` — general state change (30Hz like broadcast thread)
+- [x] `looper.onTempoChanged(callback)` — fires when tempo changes
+- [ ] `looper.onCommit(callback)` — fires on layer commit (args: layer, bars, tempo) **(remaining)**
+- [x] `looper.onRecordingChanged(callback)` — fires when recording starts/stops
+- [x] `looper.onLayerStateChanged(callback)` — fires when any layer state changes (args: layer, state)
+- [x] `looper.onStateChanged(callback)` — general state change callback
 
-Implementation: LuaEngine polls EventRing in `timerCallback()`, dispatches to registered Lua callbacks. Thread-safe via the existing `std::recursive_mutex` on the Lua VM.
+Implementation (current): LuaEngine performs state-diff checks in `notifyUpdate()` and dispatches registered callbacks. Incoming OSC callbacks are now queued from OSC thread and executed on message thread for thread safety.
 
 **4.3 Custom Endpoint Wiring**
 
@@ -551,13 +553,27 @@ end)
 
 **4.4 Testing**
 
+- [x] Manual/interactive validation in standalone UI (`looper_ui_experimental.lua`) with `/experimental/xy`
+- [x] Custom endpoint appears in OSCQuery `/info`
+- [x] OSCQuery HTTP value query works for custom endpoints (`/experimental/xy`)
+- [x] OSCQuery WebSocket LISTEN streams custom endpoint changes
 - [ ] Add Lua integration tests to `tools/test-osc`:
   - Send OSC to custom endpoint → verify Lua callback fires (check via CLI STATE or side-effect)
   - Verify custom endpoints appear in `/info`
   - `osc.send()` → verify packet arrives at test listener
 - [ ] Test with Open Stage Control or TouchOSC as real-world validation
 
-**Files to create/modify:** `LuaEngine.cpp` (main changes), `OSCServer.cpp` (callback dispatch hook), `tools/test-osc`
+**4.5 Stability Fixes (2026-02-25)**
+
+- [x] Fixed crash from cross-thread Lua callback execution:
+  - `osc.onMessage` callbacks now queue on OSC thread and execute on message thread
+- [x] Fixed WebSocket LISTEN race:
+  - Added per-client mutex for subscription set (`listenPaths`)
+- [x] Fixed custom endpoint bidirectional OSCQuery behavior:
+  - Custom values tracked in `OSCServer`
+  - Exposed through OSCQuery HTTP `VALUE` and WebSocket LISTEN streaming
+
+**Files modified (Phase 4 so far):** `LuaEngine.cpp/h`, `OSCServer.cpp/h`, `OSCQuery.cpp/h`, `looper_ui_experimental.lua`
 
 ### Phase 5: Polish (Priority: MEDIUM)
 
