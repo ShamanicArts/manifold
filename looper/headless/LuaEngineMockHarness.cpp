@@ -149,6 +149,20 @@ int main() {
   const juce::String scriptSource = juce::String(R"(
 sent = false
 
+local function nearly(a, b)
+  if a == nil or b == nil then
+    return false
+  end
+  return math.abs(a - b) < 0.0001
+end
+
+local function bool01(v)
+  if v then
+    return 1
+  end
+  return 0
+end
+
 function ui_init(root)
 end
 
@@ -157,14 +171,80 @@ function ui_update(state)
     return
   end
 
-  if state and state.tempo and state.tempo > 119 and state.tempo < 121 and
-     state.layers and state.layers[1] and state.layers[1].index == 0 then
+  if not (state and state.params and state.layers and state.voices and state.numVoices == 4) then
+    return
+  end
+
+  if #state.layers ~= state.numVoices or #state.voices ~= state.numVoices then
+    return
+  end
+
+  local ok = true
+  ok = ok and nearly(state.params["/looper/tempo"], state.tempo)
+  ok = ok and nearly(state.params["/looper/targetbpm"], state.targetBPM)
+  ok = ok and nearly(state.params["/looper/samplesPerBar"], state.samplesPerBar)
+  ok = ok and nearly(state.params["/looper/sampleRate"], state.sampleRate)
+  ok = ok and nearly(state.params["/looper/captureSize"], state.captureSize)
+  ok = ok and nearly(state.params["/looper/volume"], state.masterVolume)
+  ok = ok and state.params["/looper/recording"] == bool01(state.isRecording)
+  ok = ok and state.params["/looper/overdub"] == bool01(state.overdubEnabled)
+  ok = ok and state.params["/looper/mode"] == state.recordMode
+  ok = ok and state.params["/looper/layer"] == state.activeLayer
+  ok = ok and state.params["/looper/forwardArmed"] == bool01(state.forwardArmed)
+  ok = ok and nearly(state.params["/looper/forwardBars"], state.forwardBars)
+
+  for i = 1, state.numVoices do
+    local layer = state.layers[i]
+    local voice = state.voices[i]
+    if not (layer and voice) then
+      ok = false
+      break
+    end
+
+    local layerIndex = i - 1
+    local layerPrefix = string.format("/looper/layer/%d", layerIndex)
+    local positionNorm = 0
+    if layer.length and layer.length > 0 then
+      positionNorm = (layer.position or 0) / layer.length
+    end
+
+    ok = ok and layer.index == layerIndex
+    ok = ok and voice.id == layerIndex
+    ok = ok and voice.path == layerPrefix
+    ok = ok and voice.state == layer.state
+    ok = ok and nearly(voice.length, layer.length)
+    ok = ok and nearly(voice.position, layer.position)
+    ok = ok and nearly(voice.positionNorm, positionNorm)
+    ok = ok and nearly(voice.speed, layer.speed)
+    ok = ok and voice.reversed == layer.reversed
+    ok = ok and nearly(voice.volume, layer.volume)
+    ok = ok and nearly(voice.bars, state.params[layerPrefix .. "/bars"])
+
+    local voiceParams = voice.params
+    ok = ok and voiceParams ~= nil
+    ok = ok and nearly(voiceParams.speed, layer.speed)
+    ok = ok and nearly(voiceParams.volume, layer.volume)
+    ok = ok and voiceParams.reverse == bool01(layer.reversed)
+    ok = ok and nearly(voiceParams.length, layer.length)
+    ok = ok and nearly(voiceParams.position, positionNorm)
+    ok = ok and nearly(voiceParams.bars, state.params[layerPrefix .. "/bars"])
+    ok = ok and voiceParams.state == layer.state
+
+    ok = ok and nearly(state.params[layerPrefix .. "/speed"], layer.speed)
+    ok = ok and nearly(state.params[layerPrefix .. "/volume"], layer.volume)
+    ok = ok and state.params[layerPrefix .. "/reverse"] == bool01(layer.reversed)
+    ok = ok and nearly(state.params[layerPrefix .. "/length"], layer.length)
+    ok = ok and nearly(state.params[layerPrefix .. "/position"], positionNorm)
+    ok = ok and state.params[layerPrefix .. "/state"] == layer.state
+  end
+
+  if ok then
     command("SET", "/looper/tempo", 130)
     sent = true
   end
 end
 )" )
-                                     .trimStart();
+                                      .trimStart();
 
   if (!script.replaceWithText(scriptSource)) {
     std::fprintf(stderr, "LuaEngineMockHarness: failed to write temp script\n");

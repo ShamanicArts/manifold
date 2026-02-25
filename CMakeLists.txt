@@ -133,6 +133,8 @@ add_executable(ControlCommandQueueHarness looper/headless/ControlCommandQueueHar
 
 add_executable(CanonicalCommandHarness looper/headless/CanonicalCommandHarness.cpp)
 
+add_executable(StateProjectionHarness looper/headless/StateProjectionHarness.cpp)
+
 target_include_directories(LooperHeadless
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -177,6 +179,14 @@ target_link_libraries(CanonicalCommandHarness
         juce::juce_audio_utils
         juce::juce_gui_extra)
 
+target_link_libraries(StateProjectionHarness
+    PRIVATE
+        Looper
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra)
+
 target_compile_definitions(LooperHeadless
     PRIVATE
         JUCE_WEB_BROWSER=0
@@ -206,6 +216,13 @@ target_compile_definitions(ControlCommandQueueHarness
         JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 target_compile_definitions(CanonicalCommandHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0)
+
+target_compile_definitions(StateProjectionHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0

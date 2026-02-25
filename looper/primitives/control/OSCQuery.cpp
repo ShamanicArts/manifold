@@ -499,6 +499,10 @@ juce::String OSCQueryServer::queryValue(const juce::String& oscPath) {
     if (path == "/looper/volume") {
         return "{\"VALUE\": " + juce::String(state.masterVolume.load(), 3) + "}";
     }
+    if (path == "/looper/state") {
+        const std::string snapshot = owner->getControlServer().getStateJson();
+        return "{\"VALUE\": " + juce::String(snapshot) + "}";
+    }
 
     // --- Per-layer values ---
     if (path.startsWith("/looper/layer/")) {

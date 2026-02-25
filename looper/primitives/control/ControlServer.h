@@ -242,6 +242,9 @@ public:
   // Get socket path (for logging/debugging)
   const std::string &getSocketPath() const { return socketPath; }
 
+  // Snapshot JSON used by IPC/OSCQuery state queries.
+  std::string getStateJson();
+
   // UI switch request access
   UISwitchRequest &getUISwitchRequest() { return uiSwitchRequest; }
 
