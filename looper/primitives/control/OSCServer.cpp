@@ -145,6 +145,25 @@ void OSCServer::setBroadcastRate(int hz) {
     broadcastRateHz.store(hz);
 }
 
+void OSCServer::setLuaCallback(LuaCallback callback) {
+    std::lock_guard<std::mutex> lock(luaCallbackMutex);
+    luaCallback = std::move(callback);
+}
+
+void OSCServer::setLuaQueryCallback(LuaQueryCallback callback) {
+    std::lock_guard<std::mutex> lock(luaQueryCallbackMutex);
+    luaQueryCallback = std::move(callback);
+}
+
+bool OSCServer::invokeLuaQueryCallback(const juce::String& path,
+                                       std::vector<juce::var>& outArgs) const {
+    std::lock_guard<std::mutex> lock(luaQueryCallbackMutex);
+    if (!luaQueryCallback) {
+        return false;
+    }
+    return luaQueryCallback(path, outArgs);
+}
+
 // ============================================================================
 // UDP receive loop
 // ============================================================================
@@ -261,10 +280,11 @@ void OSCServer::broadcastStateChanges() {
             cs.state = newState;
             const char* stateStr = (newState == 0) ? "empty" :
                                    (newState == 1) ? "playing" :
-                                   (newState == 2) ? "stopped" :
-                                   (newState == 3) ? "paused" :
+                                   (newState == 2) ? "recording" :
+                                   (newState == 3) ? "overdubbing" :
                                    (newState == 4) ? "muted" :
-                                   (newState == 5) ? "recording" : "unknown";
+                                   (newState == 5) ? "stopped" :
+                                   (newState == 6) ? "paused" : "unknown";
             broadcast(prefix + "state", { juce::var(juce::String(stateStr)) });
         }
 
@@ -411,8 +431,9 @@ void OSCServer::dispatchMessage(const OSCMessage& msg) {
     }
 
     // Check for Lua callbacks first (allows Lua to override built-in behavior)
-    if (luaCallback) {
-        if (luaCallback(msg.address, msg.args)) {
+    {
+        std::lock_guard<std::mutex> lock(luaCallbackMutex);
+        if (luaCallback && luaCallback(msg.address, msg.args)) {
             return;  // Lua handled the message
         }
     }

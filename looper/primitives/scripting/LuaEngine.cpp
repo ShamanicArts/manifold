@@ -80,14 +80,12 @@ struct LuaEngine::Impl {
   std::vector<PendingOSCMessage> pendingOSCMessages;
   std::mutex pendingOSCMessagesMutex;
 
-  // ============================================================================
-  // Custom Endpoint Value Storage (for OSCQuery GET requests)
-  // ============================================================================
-  std::map<juce::String, juce::var> endpointValues;
-  std::mutex endpointValuesMutex;
-
-  std::map<juce::String, sol::function> endpointQueryHandlers;
-  std::mutex endpointQueryHandlersMutex;
+  struct OSCQueryHandler {
+    sol::function func;
+    bool persistent;
+  };
+  std::map<juce::String, OSCQueryHandler> oscQueryHandlers;
+  std::mutex oscQueryHandlersMutex;
 
   // ============================================================================
   // Looper Event Listeners
@@ -108,6 +106,7 @@ struct LuaEngine::Impl {
   float lastTempo = 0.0f;
   bool lastRecording = false;
   std::array<int, 4> lastLayerStates = {0, 0, 0, 0};
+  int lastCommitCount = 0;
 };
 
 // ============================================================================
@@ -116,7 +115,12 @@ struct LuaEngine::Impl {
 
 LuaEngine::LuaEngine() : pImpl(std::make_unique<Impl>()) {}
 
-LuaEngine::~LuaEngine() = default;
+LuaEngine::~LuaEngine() {
+  if (pImpl && pImpl->processor) {
+    pImpl->processor->getOSCServer().setLuaCallback({});
+    pImpl->processor->getOSCServer().setLuaQueryCallback({});
+  }
+}
 
 // ============================================================================
 // Initialisation
@@ -139,6 +143,10 @@ void LuaEngine::initialise(LooperProcessor *processor, Canvas *rootCanvas) {
     pImpl->processor->getOSCServer().setLuaCallback(
         [this](const juce::String& address, const std::vector<juce::var>& args) -> bool {
           return this->invokeOSCCallback(address, args);
+        });
+    pImpl->processor->getOSCServer().setLuaQueryCallback(
+        [this](const juce::String& path, std::vector<juce::var>& outArgs) -> bool {
+          return this->invokeOSCQueryCallback(path, outArgs);
         });
   }
 }
@@ -1507,17 +1515,20 @@ void LuaEngine::registerBindings() {
     return sol::make_object(pImpl->lua, t);
   };
 
-  // Register a dynamic query handler for custom endpoints
+  // Register a dynamic query handler for OSCQuery VALUE requests
   oscTable["onQuery"] = [this](const std::string& path,
-                                sol::function callback) -> bool {
+                                sol::function callback,
+                                sol::optional<bool> persistent) -> bool {
     const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
-
     if (!callback.valid()) {
       return false;
     }
 
-    std::lock_guard<std::mutex> lock2(pImpl->endpointQueryHandlersMutex);
-    pImpl->endpointQueryHandlers[juce::String(path.c_str())] = callback;
+    std::lock_guard<std::mutex> lock2(pImpl->oscQueryHandlersMutex);
+    Impl::OSCQueryHandler handler;
+    handler.func = callback;
+    handler.persistent = persistent.value_or(false);
+    pImpl->oscQueryHandlers[juce::String(path.c_str())] = std::move(handler);
     return true;
   };
 
@@ -1979,6 +1990,78 @@ bool LuaEngine::invokeOSCCallback(const juce::String& address,
   return true;
 }
 
+bool LuaEngine::invokeOSCQueryCallback(const juce::String& path,
+                                       std::vector<juce::var>& outArgs) {
+  Impl::OSCQueryHandler handler;
+  {
+    std::lock_guard<std::mutex> mapLock(pImpl->oscQueryHandlersMutex);
+    auto it = pImpl->oscQueryHandlers.find(path);
+    if (it == pImpl->oscQueryHandlers.end() || !it->second.func.valid()) {
+      return false;
+    }
+    handler = it->second;
+  }
+
+  const std::lock_guard<std::recursive_mutex> luaLock(pImpl->luaMutex);
+
+  try {
+    sol::protected_function_result result = handler.func(path.toStdString());
+    if (!result.valid()) {
+      sol::error err = result;
+      std::fprintf(stderr, "LuaEngine: OSC query callback error for %s: %s\n",
+                   path.toRawUTF8(), err.what());
+      return false;
+    }
+
+    sol::object value = result.get<sol::object>();
+    if (!value.valid() || value.get_type() == sol::type::nil) {
+      return false;
+    }
+
+    outArgs.clear();
+    if (value.is<bool>()) {
+      outArgs.emplace_back(value.as<bool>() ? 1 : 0);
+      return true;
+    }
+    if (value.is<int>()) {
+      outArgs.emplace_back(value.as<int>());
+      return true;
+    }
+    if (value.is<float>()) {
+      outArgs.emplace_back(value.as<float>());
+      return true;
+    }
+    if (value.is<double>()) {
+      outArgs.emplace_back(static_cast<float>(value.as<double>()));
+      return true;
+    }
+    if (value.is<std::string>()) {
+      outArgs.emplace_back(juce::String(value.as<std::string>().c_str()));
+      return true;
+    }
+    if (value.get_type() == sol::type::table) {
+      sol::table tbl = value;
+      for (int i = 1;; ++i) {
+        sol::object item = tbl[i];
+        if (!item.valid() || item.get_type() == sol::type::nil) {
+          break;
+        }
+        if (item.is<bool>()) outArgs.emplace_back(item.as<bool>() ? 1 : 0);
+        else if (item.is<int>()) outArgs.emplace_back(item.as<int>());
+        else if (item.is<float>()) outArgs.emplace_back(item.as<float>());
+        else if (item.is<double>()) outArgs.emplace_back(static_cast<float>(item.as<double>()));
+        else if (item.is<std::string>()) outArgs.emplace_back(juce::String(item.as<std::string>().c_str()));
+      }
+      return !outArgs.empty();
+    }
+  } catch (const sol::error& e) {
+    std::fprintf(stderr, "LuaEngine: OSC query callback exception for %s: %s\n",
+                 path.toRawUTF8(), e.what());
+  }
+
+  return false;
+}
+
 void LuaEngine::processPendingOSCCallbacks() {
   std::vector<Impl::PendingOSCMessage> messages;
   {
@@ -2047,21 +2130,30 @@ void LuaEngine::invokeEventListeners() {
     return;
 
   auto* proc = pImpl->processor;
+  auto& atomicState = proc->getControlServer().getAtomicState();
 
   // Get current state for diff detection
   float currentTempo = proc->getTempo();
   bool currentRecording = proc->isRecording();
+  int currentCommitCount = atomicState.commitCount.load(std::memory_order_relaxed);
   std::array<int, 4> currentLayerStates;
   for (int i = 0; i < 4; ++i) {
     currentLayerStates[i] = static_cast<int>(proc->getLayer(i).getState());
+  }
+
+  const bool tempoChanged = std::abs(currentTempo - pImpl->lastTempo) > 0.01f;
+  const bool recordingChanged = currentRecording != pImpl->lastRecording;
+  const bool commitChanged = currentCommitCount != pImpl->lastCommitCount;
+  std::array<bool, 4> layerChanged = {false, false, false, false};
+  for (int i = 0; i < 4; ++i) {
+    layerChanged[i] = currentLayerStates[i] != pImpl->lastLayerStates[i];
   }
 
   const std::lock_guard<std::recursive_mutex> luaLock(pImpl->luaMutex);
   std::lock_guard<std::mutex> lock(pImpl->eventListenersMutex);
 
   // Tempo changed
-  if (std::abs(currentTempo - pImpl->lastTempo) > 0.01f) {
-    pImpl->lastTempo = currentTempo;
+  if (tempoChanged) {
     for (const auto& listener : pImpl->tempoChangedListeners) {
       if (listener.func.valid()) {
         try {
@@ -2071,11 +2163,25 @@ void LuaEngine::invokeEventListeners() {
         }
       }
     }
+    pImpl->lastTempo = currentTempo;
+  }
+
+  // Commit count changed
+  if (commitChanged) {
+    for (const auto& listener : pImpl->commitListeners) {
+      if (listener.func.valid()) {
+        try {
+          listener.func(currentCommitCount);
+        } catch (const sol::error& e) {
+          std::fprintf(stderr, "LuaEngine: onCommit error: %s\n", e.what());
+        }
+      }
+    }
+    pImpl->lastCommitCount = currentCommitCount;
   }
 
   // Recording state changed
-  if (currentRecording != pImpl->lastRecording) {
-    pImpl->lastRecording = currentRecording;
+  if (recordingChanged) {
     for (const auto& listener : pImpl->recordingChangedListeners) {
       if (listener.func.valid()) {
         try {
@@ -2085,22 +2191,23 @@ void LuaEngine::invokeEventListeners() {
         }
       }
     }
+    pImpl->lastRecording = currentRecording;
   }
 
   // Layer state changes
   for (int i = 0; i < 4; ++i) {
-    if (currentLayerStates[i] != pImpl->lastLayerStates[i]) {
-      pImpl->lastLayerStates[i] = currentLayerStates[i];
+    if (layerChanged[i]) {
 
       // Convert state int to string
       std::string stateStr;
       switch (currentLayerStates[i]) {
         case 0: stateStr = "empty"; break;
         case 1: stateStr = "playing"; break;
-        case 2: stateStr = "stopped"; break;
-        case 3: stateStr = "paused"; break;
+        case 2: stateStr = "recording"; break;
+        case 3: stateStr = "overdubbing"; break;
         case 4: stateStr = "muted"; break;
-        case 5: stateStr = "recording"; break;
+        case 5: stateStr = "stopped"; break;
+        case 6: stateStr = "paused"; break;
         default: stateStr = "unknown"; break;
       }
 
@@ -2113,6 +2220,8 @@ void LuaEngine::invokeEventListeners() {
           }
         }
       }
+
+      pImpl->lastLayerStates[i] = currentLayerStates[i];
     }
   }
 
@@ -2121,16 +2230,20 @@ void LuaEngine::invokeEventListeners() {
     auto changedTable = pImpl->lua.create_table();
     bool anyChanged = false;
 
-    if (std::abs(currentTempo - pImpl->lastTempo) > 0.01f) {
+    if (tempoChanged) {
       changedTable["tempo"] = true;
       anyChanged = true;
     }
-    if (currentRecording != pImpl->lastRecording) {
+    if (recordingChanged) {
       changedTable["recording"] = true;
       anyChanged = true;
     }
+    if (commitChanged) {
+      changedTable["commit"] = true;
+      anyChanged = true;
+    }
     for (int i = 0; i < 4; ++i) {
-      if (currentLayerStates[i] != pImpl->lastLayerStates[i]) {
+      if (layerChanged[i]) {
         changedTable["layer" + std::to_string(i)] = true;
         anyChanged = true;
       }
@@ -2157,7 +2270,7 @@ void LuaEngine::invokeEventListeners() {
 void LuaEngine::clearNonPersistentCallbacks() {
   std::lock_guard<std::mutex> lock1(pImpl->oscCallbacksMutex);
   std::lock_guard<std::mutex> lock2(pImpl->eventListenersMutex);
-  std::lock_guard<std::mutex> lock3(pImpl->endpointQueryHandlersMutex);
+  std::lock_guard<std::mutex> lock3(pImpl->oscQueryHandlersMutex);
 
   // Clear non-persistent OSC callbacks
   for (auto& [address, callbacks] : pImpl->oscCallbacks) {
@@ -2190,10 +2303,13 @@ void LuaEngine::clearNonPersistentCallbacks() {
   clearNonPersistent(pImpl->layerStateChangedListeners);
   clearNonPersistent(pImpl->stateChangedListeners);
 
-  // Clear non-persistent query handlers
-  for (auto it = pImpl->endpointQueryHandlers.begin();
-       it != pImpl->endpointQueryHandlers.end();) {
-    // Query handlers don't have persistent flag, assume non-persistent
-    it = pImpl->endpointQueryHandlers.erase(it);
+  for (auto it = pImpl->oscQueryHandlers.begin();
+       it != pImpl->oscQueryHandlers.end();) {
+    if (!it->second.persistent) {
+      it = pImpl->oscQueryHandlers.erase(it);
+    } else {
+      ++it;
+    }
   }
+
 }

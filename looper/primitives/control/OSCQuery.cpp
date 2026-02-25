@@ -187,15 +187,6 @@ void OSCQueryServer::start(LooperProcessor* processor, OSCEndpointRegistry* reg,
 void OSCQueryServer::stop() {
     running = false;
 
-    // Close all WebSocket clients first
-    {
-        std::lock_guard<std::mutex> lock(wsClientsMutex);
-        for (auto& client : wsClients) {
-            client->connected.store(false);
-            if (client->socket) client->socket->close();
-        }
-    }
-
     if (httpSocket) {
         httpSocket->close();
         delete httpSocket;
@@ -210,9 +201,13 @@ void OSCQueryServer::stop() {
         wsBroadcastThread.join();
     }
 
-    // Clean up client threads (after httpThread joined, no new clients arriving)
+    // Clean up client threads (after http/ws threads joined, no concurrent sends)
     {
         std::lock_guard<std::mutex> lock(wsClientsMutex);
+        for (auto& client : wsClients) {
+            client->connected.store(false);
+            if (client->socket) client->socket->close();
+        }
         wsClients.clear();  // destructors join readThreads
     }
 }
@@ -317,10 +312,6 @@ void OSCQueryServer::httpLoop() {
                         else rawHeaders = request;
                     }
 
-                    // Log ALL incoming requests for debugging
-                    std::cerr << "[OSCQuery] Incoming request (" << totalRead << " bytes):\n"
-                              << rawHeaders.toStdString() << "\n---\n";
-
                     // Check for WebSocket upgrade BEFORE normal HTTP handling
                     bool hasUpgrade = rawHeaders.containsIgnoreCase("Upgrade:") &&
                                      rawHeaders.containsIgnoreCase("websocket");
@@ -328,18 +319,13 @@ void OSCQueryServer::httpLoop() {
 
                     if (hasUpgrade && hasConnection) {
                         // This is a WebSocket upgrade request
-                        std::cerr << "[OSCQuery WS] Upgrade request detected\n";
                         if (performWebSocketUpgrade(client, rawHeaders)) {
-                            std::cerr << "[OSCQuery WS] Upgrade succeeded\n";
                             // Client was successfully upgraded - don't close/delete it.
                             // It's now owned by a WebSocketClient in wsClients.
                             continue;  // skip the close/delete below
                         }
-                        std::cerr << "[OSCQuery WS] Upgrade FAILED\n";
                         // Upgrade failed - fall through to close
                     } else {
-                        if (rawHeaders.containsIgnoreCase("Upgrade:"))
-                            std::cerr << "[OSCQuery] Has Upgrade header but missing websocket/Connection\n";
                         handleHttpRequest(client, request, rawHeaders);
                     }
                 }
@@ -476,11 +462,14 @@ juce::String OSCQueryServer::queryValue(const juce::String& oscPath) {
 
     auto& state = owner->getControlServer().getAtomicState();
 
-    // Normalize: accept /tempo as /looper/tempo, but keep multi-segment custom paths
-    // like /experimental/xy unchanged.
+    // Normalize short built-in aliases like /tempo to /looper/tempo.
+    // Leave custom paths untouched.
     juce::String path = oscPath;
     if (!path.startsWith("/looper/") && path.startsWith("/") && path.indexOfChar(1, '/') < 0) {
-        path = "/looper" + path;
+        if (path == "/tempo" || path == "/recording" || path == "/overdub" ||
+            path == "/mode" || path == "/layer" || path == "/volume") {
+            path = "/looper" + path;
+        }
     }
 
     // --- Global values ---
@@ -547,10 +536,11 @@ juce::String OSCQueryServer::queryValue(const juce::String& oscPath) {
                     int s = ls.state.load();
                     const char* stateStr = (s == 0) ? "empty" :
                                            (s == 1) ? "playing" :
-                                           (s == 2) ? "stopped" :
-                                           (s == 3) ? "paused" :
+                                           (s == 2) ? "recording" :
+                                           (s == 3) ? "overdubbing" :
                                            (s == 4) ? "muted" :
-                                           (s == 5) ? "recording" : "unknown";
+                                           (s == 5) ? "stopped" :
+                                           (s == 6) ? "paused" : "unknown";
                     return "{\"VALUE\": \"" + juce::String(stateStr) + "\"}";
                 }
             }
@@ -563,12 +553,20 @@ juce::String OSCQueryServer::queryValue(const juce::String& oscPath) {
                 int s = ls.state.load();
                 const char* stateStr = (s == 0) ? "empty" :
                                        (s == 1) ? "playing" :
-                                       (s == 2) ? "stopped" :
-                                       (s == 3) ? "paused" :
-                                       (s == 4) ? "muted" : "unknown";
+                                       (s == 2) ? "recording" :
+                                       (s == 3) ? "overdubbing" :
+                                       (s == 4) ? "muted" :
+                                       (s == 5) ? "stopped" :
+                                       (s == 6) ? "paused" : "unknown";
                 return "{\"VALUE\": \"" + juce::String(stateStr) + "\"}";
             }
         }
+    }
+
+    // --- Dynamic Lua query callback (if registered) ---
+    std::vector<juce::var> queryArgs;
+    if (owner->getOSCServer().invokeLuaQueryCallback(path, queryArgs)) {
+        return "{\"VALUE\": " + argsToValueJson(queryArgs) + "}";
     }
 
     // --- Custom endpoint values (Lua/userland) ---
@@ -642,12 +640,7 @@ bool OSCQueryServer::performWebSocketUpgrade(juce::StreamingSocket* client,
             wsProtocol = line.fromFirstOccurrenceOf(":", false, false).trim();
     }
 
-    std::cerr << "[OSCQuery WS] Key: '" << wsKey.toStdString()
-              << "' Version: '" << wsVersion.toStdString()
-              << "' Protocol: '" << wsProtocol.toStdString() << "'\n";
-
     if (wsKey.isEmpty()) {
-        std::cerr << "[OSCQuery WS] Missing Sec-WebSocket-Key, sending 400\n";
         // Missing key - send 400 Bad Request
         juce::String resp = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
         client->write(resp.toRawUTF8(), (int)resp.getNumBytesAsUTF8());
@@ -667,11 +660,7 @@ bool OSCQueryServer::performWebSocketUpgrade(juce::StreamingSocket* client,
         response += "Sec-WebSocket-Protocol: " + wsProtocol + "\r\n";
     response += "\r\n";
 
-    std::cerr << "[OSCQuery WS] Sending 101 response (" << response.length() << " bytes):\n"
-              << response.toStdString() << "---\n";
-
     int written = client->write(response.toRawUTF8(), (int)response.getNumBytesAsUTF8());
-    std::cerr << "[OSCQuery WS] write() returned " << written << "\n";
     if (written <= 0) return false;
 
     // Create WebSocketClient and transfer socket ownership
@@ -935,10 +924,19 @@ void OSCQueryServer::wsBroadcastLoop() {
 
         auto& state = owner->getControlServer().getAtomicState();
 
+        // Snapshot connected clients, then send outside wsClientsMutex.
+        std::vector<WebSocketClient*> clients;
+        {
+            std::lock_guard<std::mutex> lock(wsClientsMutex);
+            clients.reserve(wsClients.size());
+            for (auto& c : wsClients) {
+                clients.push_back(c.get());
+            }
+        }
+
         // For each connected client, check subscriptions and send changed values
-        std::lock_guard<std::mutex> lock(wsClientsMutex);
-        for (auto& client : wsClients) {
-            if (!client->connected.load()) continue;
+        for (auto* client : clients) {
+            if (!client || !client->connected.load()) continue;
 
             std::set<juce::String> listenPaths;
             {
@@ -955,7 +953,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 float v = state.tempo.load(std::memory_order_relaxed);
                 if (std::abs(v - cache.tempo) > 0.01f) {
                     cache.tempo = v;
-                    sendValueToClient(client.get(), "/looper/tempo", { juce::var(v) });
+                    sendValueToClient(client, "/looper/tempo", { juce::var(v) });
                 }
             }
 
@@ -963,7 +961,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 bool v = state.isRecording.load(std::memory_order_relaxed);
                 if (v != cache.isRecording) {
                     cache.isRecording = v;
-                    sendValueToClient(client.get(), "/looper/recording", { juce::var(v ? 1 : 0) });
+                    sendValueToClient(client, "/looper/recording", { juce::var(v ? 1 : 0) });
                 }
             }
 
@@ -971,7 +969,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 bool v = state.overdubEnabled.load(std::memory_order_relaxed);
                 if (v != cache.overdubEnabled) {
                     cache.overdubEnabled = v;
-                    sendValueToClient(client.get(), "/looper/overdub", { juce::var(v ? 1 : 0) });
+                    sendValueToClient(client, "/looper/overdub", { juce::var(v ? 1 : 0) });
                 }
             }
 
@@ -982,7 +980,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     const char* modeStr = (v == 0) ? "firstLoop" :
                                           (v == 1) ? "freeMode" :
                                           (v == 2) ? "traditional" : "retrospective";
-                    sendValueToClient(client.get(), "/looper/mode",
+                    sendValueToClient(client, "/looper/mode",
                                       { juce::var(juce::String(modeStr)) });
                 }
             }
@@ -991,7 +989,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 int v = state.activeLayer.load(std::memory_order_relaxed);
                 if (v != cache.activeLayer) {
                     cache.activeLayer = v;
-                    sendValueToClient(client.get(), "/looper/layer", { juce::var(v) });
+                    sendValueToClient(client, "/looper/layer", { juce::var(v) });
                 }
             }
 
@@ -999,7 +997,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 float v = state.masterVolume.load(std::memory_order_relaxed);
                 if (std::abs(v - cache.masterVolume) > 0.001f) {
                     cache.masterVolume = v;
-                    sendValueToClient(client.get(), "/looper/volume", { juce::var(v) });
+                    sendValueToClient(client, "/looper/volume", { juce::var(v) });
                 }
             }
 
@@ -1016,11 +1014,12 @@ void OSCQueryServer::wsBroadcastLoop() {
                         lc.state = v;
                         const char* stateStr = (v == 0) ? "empty" :
                                                (v == 1) ? "playing" :
-                                               (v == 2) ? "stopped" :
-                                               (v == 3) ? "paused" :
+                                               (v == 2) ? "recording" :
+                                               (v == 3) ? "overdubbing" :
                                                (v == 4) ? "muted" :
-                                               (v == 5) ? "recording" : "unknown";
-                        sendValueToClient(client.get(), prefix + "state",
+                                               (v == 5) ? "stopped" :
+                                               (v == 6) ? "paused" : "unknown";
+                        sendValueToClient(client, prefix + "state",
                                           { juce::var(juce::String(stateStr)) });
                     }
                 }
@@ -1029,7 +1028,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     float v = ls.speed.load(std::memory_order_relaxed);
                     if (std::abs(v - lc.speed) > 0.001f) {
                         lc.speed = v;
-                        sendValueToClient(client.get(), prefix + "speed", { juce::var(v) });
+                        sendValueToClient(client, prefix + "speed", { juce::var(v) });
                     }
                 }
 
@@ -1037,7 +1036,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     float v = ls.volume.load(std::memory_order_relaxed);
                     if (std::abs(v - lc.volume) > 0.001f) {
                         lc.volume = v;
-                        sendValueToClient(client.get(), prefix + "volume", { juce::var(v) });
+                        sendValueToClient(client, prefix + "volume", { juce::var(v) });
                     }
                 }
 
@@ -1045,7 +1044,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     bool v = ls.reversed.load(std::memory_order_relaxed);
                     if (v != lc.reversed) {
                         lc.reversed = v;
-                        sendValueToClient(client.get(), prefix + "reverse",
+                        sendValueToClient(client, prefix + "reverse",
                                           { juce::var(v ? 1 : 0) });
                     }
                 }
@@ -1055,7 +1054,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     float v = (len > 0) ? (float)ls.playheadPos.load(std::memory_order_relaxed) / (float)len : 0.0f;
                     if (std::abs(v - lc.position) > 0.005f) {
                         lc.position = v;
-                        sendValueToClient(client.get(), prefix + "position", { juce::var(v) });
+                        sendValueToClient(client, prefix + "position", { juce::var(v) });
                     }
                 }
 
@@ -1063,7 +1062,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                     float v = ls.numBars.load(std::memory_order_relaxed);
                     if (std::abs(v - lc.bars) > 0.001f) {
                         lc.bars = v;
-                        sendValueToClient(client.get(), prefix + "bars", { juce::var(v) });
+                        sendValueToClient(client, prefix + "bars", { juce::var(v) });
                     }
                 }
             }
@@ -1083,7 +1082,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 auto it = cache.customSignatures.find(listenPath);
                 if (it == cache.customSignatures.end() || it->second != newSig) {
                     cache.customSignatures[listenPath] = newSig;
-                    sendValueToClient(client.get(), listenPath, customArgs);
+                    sendValueToClient(client, listenPath, customArgs);
                 }
             }
         }

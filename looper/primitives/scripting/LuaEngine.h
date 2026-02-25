@@ -78,6 +78,12 @@ public:
   bool invokeOSCCallback(const juce::String& address,
                          const std::vector<juce::var>& args);
 
+  /** Resolve a dynamic OSCQuery VALUE request via Lua callback.
+   *  Returns true and fills outArgs when handled.
+   */
+  bool invokeOSCQueryCallback(const juce::String& path,
+                              std::vector<juce::var>& outArgs);
+
   /** Clear all non-persistent callbacks (called on script switch). */
   void clearNonPersistentCallbacks();
 

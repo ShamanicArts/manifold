@@ -88,9 +88,14 @@ public:
     // Callback type for Lua message handlers
     // Return true if the message was handled (consumed)
     using LuaCallback = std::function<bool(const juce::String& address, const std::vector<juce::var>& args)>;
+    using LuaQueryCallback = std::function<bool(const juce::String& path, std::vector<juce::var>& outArgs)>;
 
     // Set a callback to check for Lua handlers before built-in dispatch
-    void setLuaCallback(LuaCallback callback) { luaCallback = std::move(callback); }
+    void setLuaCallback(LuaCallback callback);
+
+    // Set/query callback for dynamic OSCQuery VALUE requests
+    void setLuaQueryCallback(LuaQueryCallback callback);
+    bool invokeLuaQueryCallback(const juce::String& path, std::vector<juce::var>& outArgs) const;
 
 private:
     void receiveLoop();
@@ -129,7 +134,12 @@ private:
     std::map<juce::String, std::vector<juce::var>> customValues;
 
     // Lua callback for custom message handling
+    mutable std::mutex luaCallbackMutex;
     LuaCallback luaCallback;
+
+    // Lua callback for dynamic OSCQuery value resolution
+    mutable std::mutex luaQueryCallbackMutex;
+    LuaQueryCallback luaQueryCallback;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OSCServer)
 };
