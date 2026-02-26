@@ -169,11 +169,38 @@ local function layerStateName(state)
     return names[state] or ""
 end
 
+local function isDeprecatedUiScript(path, currentPath)
+    if type(path) ~= "string" then
+        return false
+    end
+    if path:match("/wiring_demo%.lua$") and path ~= currentPath then
+        return true
+    end
+    return false
+end
+
+local function getVisibleUiScripts(currentPath)
+    local listed = listUiScripts() or {}
+    local visible = {}
+    for i = 1, #listed do
+        local s = listed[i]
+        if type(s) == "table" and type(s.path) == "string" then
+            if not isDeprecatedUiScript(s.path, currentPath) then
+                visible[#visible + 1] = s
+            end
+        end
+    end
+    return visible
+end
+
 -- ============================================================================
 -- UI Initialization
 -- ============================================================================
 
 function ui_init(root)
+    -- Normal looper UI should always start with graph processing disabled.
+    setParam("/looper/graph/enabled", 0.0)
+
     -- Root panel with dark background
     ui.rootPanel = W.Panel.new(root, "rootPanel", {
         bg = 0xff0a0f1a,
@@ -251,8 +278,8 @@ function ui_init(root)
         on_click = function()
             _settingsOpen = not _settingsOpen
             if _settingsOpen then
-                local scripts = listUiScripts()
                 local currentPath = getCurrentScriptPath()
+                local scripts = getVisibleUiScripts(currentPath)
                 
                 if _scriptOverlay then
                     _scriptOverlay:setOnDraw(nil)

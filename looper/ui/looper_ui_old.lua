@@ -75,6 +75,30 @@ local function modeIndexFromString(mode)
     return 0
 end
 
+local function isDeprecatedUiScript(path, currentPath)
+    if type(path) ~= "string" then
+        return false
+    end
+    if path:match("/wiring_demo%.lua$") and path ~= currentPath then
+        return true
+    end
+    return false
+end
+
+local function getVisibleUiScripts(currentPath)
+    local listed = listUiScripts() or {}
+    local visible = {}
+    for i = 1, #listed do
+        local s = listed[i]
+        if type(s) == "table" and type(s.path) == "string" then
+            if not isDeprecatedUiScript(s.path, currentPath) then
+                visible[#visible + 1] = s
+            end
+        end
+    end
+    return visible
+end
+
 local function normalizeState(state)
     if type(state) ~= "table" then
         return {}
@@ -188,8 +212,8 @@ function ui_init(root)
             _settingsOpen = not _settingsOpen
             if _settingsOpen then
                 -- Populate overlay with available scripts
-                local scripts = listUiScripts()
                 local currentPath = getCurrentScriptPath()
+                local scripts = getVisibleUiScripts(currentPath)
                 if _scriptOverlay then
                     _scriptOverlay:setOnDraw(nil)
                     _scriptOverlay:setOnMouseDown(nil)
@@ -241,7 +265,7 @@ function ui_init(root)
                 end)
 
                 _scriptOverlay:setOnMouseDown(function(mx, my)
-                    local scripts2 = listUiScripts()
+                    local scripts2 = getVisibleUiScripts(currentPath)
                     local idx = math.floor((my - itemH) / itemH) + 1
                     if idx >= 1 and idx <= #scripts2 then
                         _settingsOpen = false

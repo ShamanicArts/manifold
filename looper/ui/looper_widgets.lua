@@ -302,6 +302,12 @@ function Widgets.Panel.new(parent, name, config)
         self.node:setInterceptsMouse(config.interceptsMouse, true)
     end
     
+    if config.on_wheel then
+        self.node:setOnMouseWheel(function(x, y, deltaY)
+            config.on_wheel(x, y, deltaY)
+        end)
+    end
+    
     return self
 end
 
@@ -350,6 +356,8 @@ function Widgets.Slider.new(parent, name, config)
     self._dragging = false
     self._dragStartX = 0
     self._dragStartValue = 0
+    
+    self.node:setInterceptsMouse(true, false)
     
     return self
 end
@@ -484,7 +492,20 @@ function Widgets.VSlider.new(parent, name, config)
     return setmetatable(Widgets.Slider.new(parent, name, config), Widgets.VSlider)
 end
 
+function Widgets.VSlider:onMouseDown(mx, my)
+    self._dragging = true
+    self:valueFromMouse(mx, my)
+end
+
+function Widgets.VSlider:onMouseDrag(mx, my, dx, dy)
+    if not self._dragging then return end
+    self:valueFromMouse(mx, my)
+end
+
 function Widgets.VSlider:valueFromMouse(mx, my)
+    if my == nil then
+        return
+    end
     local h = self.node:getHeight()
     local trackH = math.max(1, h - 16)
     local t = 1 - clamp((my - 8) / trackH, 0, 1)  -- Inverted: bottom = min
@@ -501,22 +522,26 @@ function Widgets.VSlider:valueFromMouse(mx, my)
 end
 
 function Widgets.VSlider:onDraw(w, h)
-    local trackX = w * 0.5 - 3
-    local trackW = 6
-    local trackR = 3
+    local trackX = 2
+    local trackW = w - 4
+    local trackY = 4
+    local trackH = h - 8
+    local trackR = trackW / 2
     
-    -- Draw track
+    -- Draw track (subtle background)
     gfx.setColour(self._bg)
-    gfx.fillRoundedRect(trackX, 8, trackW, h - 16, trackR)
+    gfx.fillRoundedRect(trackX, trackY, trackW, trackH, trackR)
     
-    -- Filled portion (from bottom up)
+    -- Calculate thumb position based on value
     local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
-    local fillH = (h - 16) * t
-    gfx.setColour(self._colour)
-    gfx.fillRoundedRect(trackX, h - 8 - fillH, trackW, fillH, trackR)
     
-    -- Draw thumb
-    local thumbY = h - 8 - fillH - 6
+    -- Browser-style scroll pill: thumb represents viewport
+    local thumbH = math.max(30, trackH * 0.3)  -- Minimum 30px or 30% of track
+    local thumbW = trackW
+    local maxThumbY = trackY + trackH - thumbH
+    local thumbY = trackY + maxThumbY * (1 - t)
+    
+    -- Draw thumb (scroll pill)
     local col = self._colour
     if self._dragging then
         col = brighten(col, 30)
@@ -524,7 +549,7 @@ function Widgets.VSlider:onDraw(w, h)
         col = brighten(col, 15)
     end
     gfx.setColour(col)
-    gfx.fillRoundedRect((w - 20) / 2, thumbY, 20, 12, 4)
+    gfx.fillRoundedRect(trackX, thumbY, thumbW, thumbH, trackR)
 end
 
 -- ============================================================================

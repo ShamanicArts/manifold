@@ -117,6 +117,9 @@ void Canvas::openGLContextClosing() {
 }
 
 void Canvas::mouseDown(const juce::MouseEvent& e) {
+    if (getWantsKeyboardFocus()) {
+        grabKeyboardFocus();
+    }
     if (onMouseDown) onMouseDown(e);
 }
 
@@ -135,6 +138,21 @@ void Canvas::mouseUp(const juce::MouseEvent& e) {
 
 void Canvas::mouseMove(const juce::MouseEvent& e) {
     if (onMouseMove) onMouseMove(e);
+}
+
+void Canvas::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
+    if (onMouseWheel) {
+        onMouseWheel(e, wheel);
+    } else if (getParentComponent()) {
+        getParentComponent()->mouseWheelMove(e, wheel);
+    }
+}
+
+bool Canvas::keyPressed(const juce::KeyPress& key) {
+    if (onKeyPress) {
+        return onKeyPress(key);
+    }
+    return juce::Component::keyPressed(key);
 }
 
 void Canvas::setStyle(const CanvasStyle& s) {

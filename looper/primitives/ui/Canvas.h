@@ -26,10 +26,15 @@ public:
     std::function<void(const juce::MouseEvent&)> onMouseDrag;
     std::function<void(const juce::MouseEvent&)> onMouseUp;
     std::function<void(const juce::MouseEvent&)> onMouseMove;
+    std::function<void(const juce::MouseEvent&, const juce::MouseWheelDetails&)> onMouseWheel;
+    std::function<bool(const juce::KeyPress&)> onKeyPress;
     std::function<void()> onClick;
     std::function<void()> onDoubleClick;
     std::function<void(float)> onValueChanged;
     std::function<void(bool)> onToggled;
+    
+    // Input setter methods (callable from Lua)
+    void setOnMouseWheel(std::function<void(const juce::MouseEvent&, const juce::MouseWheelDetails&)> fn) { onMouseWheel = fn; }
     
     // Enable/disable OpenGL rendering
     void setOpenGLEnabled(bool enabled);
@@ -51,6 +56,8 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseMove(const juce::MouseEvent& e) override;
+    void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
+    bool keyPressed(const juce::KeyPress& key) override;
     
     // Component lifecycle
     void visibilityChanged() override;
