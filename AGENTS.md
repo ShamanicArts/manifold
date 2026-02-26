@@ -188,6 +188,56 @@ cp looper/ui/*.lua build/Looper_artefacts/Release/Standalone/
 
 Or restart the plugin which auto-loads from the source directory.
 
+### Tmux Workflow (Long-running Processes)
+
+Use **tmux session 0** with **windows 1 and 2** for all long-running commands:
+
+```bash
+# Check current sessions
+ls -t /tmp/looper_*.sock
+
+# Capture pane output (before/after commands)
+tmux capture-pane -p -t 0:1
+tmux capture-pane -p -t 0:2
+
+# Send commands to windows
+tmux send-keys -t 0:1 'command here' Enter
+tmux send-keys -t 0:2 'make -j$(nproc)' Enter
+
+# Kill/restart standalone
+tmux send-keys -t 0:1 C-c
+sleep 2
+tmux send-keys -t 0:1 './Looper_artefacts/Release/Standalone/Looper 2>&1' Enter
+```
+
+**Window assignments:**
+- **Window 1 (0:1)**: Looper standalone process
+- **Window 2 (0:2)**: Build commands, tests, other processes
+
+**Never use head/tail** on tmux capture output - it obfuscates the shell state.
+
+### JJ Version Control Workflow
+
+This project uses **Jujutsu (jj)** for version control. Always split changes into logical commits:
+
+```bash
+# Check status
+jj st
+
+# Split feature changes into new commit after parent
+jj split -r @ -A <parent_commit> -m "feat(scope): description" <files...>
+
+# Example: Split UI changes from backend changes
+jj split -r @ -A nsvttowq -m "feat(ui): add new control" looper/ui/*.lua
+jj split -r @ -A yqmsuuzt -m "feat(engine): backend support" looper/engine/*.cpp
+```
+
+**Key points:**
+- Use `-A <parent>` to specify where the new commit branches from
+- The working copy (`@`) becomes an empty merge commit preserving both lineages
+- Prefer small, focused commits over large mixed ones
+- JJ auto-rebases descendants when you modify history
+
 ## Socket Location
 
 The ControlServer creates a Unix socket at `/tmp/looper.sock`. If the process crashes, you may need to manually remove stale sockets:
