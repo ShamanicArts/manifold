@@ -2,6 +2,8 @@
 #include "../ui/LooperEditor.h"
 #include "../primitives/control/OSCServer.h"
 #include "../primitives/control/OSCSettingsPersistence.h"
+#include "../primitives/control/CommandParser.h"
+#include "../primitives/control/EndpointResolver.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -480,6 +482,81 @@ bool LooperProcessor::postControlCommand(ControlCommand::Type type,
   cmd.intParam = intParam;
   cmd.floatParam = floatParam;
   return postControlCommandPayload(cmd);
+}
+
+bool LooperProcessor::setParamByPath(const std::string &path, float value) {
+  ParseResult result = CommandParser::buildResolverSetCommand(
+      &endpointRegistry, juce::String(path), juce::var(value));
+
+  if (result.kind != ParseResult::Kind::Enqueue) {
+    return false;
+  }
+
+  return postControlCommandPayload(result.command);
+}
+
+float LooperProcessor::getParamByPath(const std::string &path) const {
+  EndpointResolver resolver(const_cast<OSCEndpointRegistry *>(&endpointRegistry));
+  ResolvedEndpoint endpoint;
+  if (!resolver.resolve(juce::String(path), endpoint)) {
+    return 0.0f;
+  }
+
+  auto validation = resolver.validateRead(endpoint);
+  if (!validation.accepted) {
+    return 0.0f;
+  }
+
+  // Map paths to direct accessor reads
+  if (path == "/looper/tempo") return getTempo();
+  if (path == "/looper/targetbpm") return getTargetBPM();
+  if (path == "/looper/volume") return getMasterVolume();
+  if (path == "/looper/inputVolume") return getInputVolume();
+  if (path == "/looper/passthrough") return isPassthroughEnabled() ? 1.0f : 0.0f;
+  if (path == "/looper/recording") return isRecording() ? 1.0f : 0.0f;
+  if (path == "/looper/overdub") return isOverdubEnabled() ? 1.0f : 0.0f;
+  if (path == "/looper/layer") return static_cast<float>(getActiveLayerIndex());
+  if (path == "/looper/forwardArmed") return isForwardCommitArmed() ? 1.0f : 0.0f;
+  if (path == "/looper/forwardBars") return getForwardCommitBars();
+  if (path == "/looper/samplesPerBar") return getSamplesPerBar();
+  if (path == "/looper/sampleRate") return static_cast<float>(getSampleRate());
+  if (path == "/looper/captureSize") return static_cast<float>(getCaptureSize());
+  if (path == "/looper/mode") return static_cast<float>(getRecordModeIndex());
+  if (path == "/looper/commitCount") return static_cast<float>(getCommitCount());
+
+  // Layer paths
+  if (path.find("/looper/layer/") == 0) {
+    int layerIdx = -1;
+    std::string rest;
+    if (sscanf(path.c_str(), "/looper/layer/%d/", &layerIdx) == 1 && layerIdx >= 0 && layerIdx < MAX_LAYERS) {
+      size_t slashPos = path.find('/', 14);
+      if (slashPos != std::string::npos) {
+        rest = path.substr(slashPos + 1);
+        ScriptableLayerSnapshot snap;
+        if (getLayerSnapshot(layerIdx, snap)) {
+          if (rest == "speed") return snap.speed;
+          if (rest == "volume") return snap.volume;
+          if (rest == "mute") return (snap.state == ScriptableLayerState::Muted) ? 1.0f : 0.0f;
+          if (rest == "reverse") return snap.reversed ? 1.0f : 0.0f;
+          if (rest == "length") return static_cast<float>(snap.length);
+          if (rest == "position") {
+            return (snap.length > 0) ? static_cast<float>(snap.position) / static_cast<float>(snap.length) : 0.0f;
+          }
+          if (rest == "bars") {
+            float spb = getSamplesPerBar();
+            return (spb > 0.0f) ? static_cast<float>(snap.length) / spb : 0.0f;
+          }
+        }
+      }
+    }
+  }
+
+  return 0.0f;
+}
+
+bool LooperProcessor::hasEndpoint(const std::string &path) const {
+  OSCEndpoint endpoint = endpointRegistry.findEndpoint(juce::String(path));
+  return endpoint.path.isNotEmpty();
 }
 
 namespace {

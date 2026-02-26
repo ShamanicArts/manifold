@@ -109,6 +109,11 @@ public:
     OSCQueryServer& getOSCQueryServer() override { return oscQueryServer; }
     bool postControlCommandPayload(const ControlCommand &command);
     bool postControlCommand(ControlCommand::Type type, int intParam = 0, float floatParam = 0.0f) override;
+
+    // Generic path-based parameter access
+    bool setParamByPath(const std::string &path, float value) override;
+    float getParamByPath(const std::string &path) const override;
+    bool hasEndpoint(const std::string &path) const override;
     
     // UI switching (thread-safe) - called by editor to check for UI switch
     std::string getAndClearPendingUISwitch();
