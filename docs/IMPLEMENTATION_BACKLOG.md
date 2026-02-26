@@ -1,7 +1,7 @@
 # Generic Framework Implementation Backlog
 
 Status: Living tracker for execution work tied to `docs/GENERIC_PLUGIN_FRAMEWORK_SPEC.md`.
-Last updated: 2026-02-25
+Last updated: 2026-02-26
 
 ## Operator Authority and Execution Safety (Mandatory)
 
@@ -375,18 +375,19 @@ Immediate start set (in-progress ready): none (phase complete).
 ### Ticket P3.3
 - `ID`: P3.3
 - `Phase`: P3
-- `Task`: Keep legacy state mirror during migration window.
+- `Task`: Close migration window and remove legacy state mirror keys.
 - `Subtasks`:
-  - Preserve old state keys for existing scripts.
-  - Add parity assertions in tests.
+  - Migrate shipped Lua UIs to read projected `params`/`voices` fields.
+  - Remove legacy mirror fields (`state.layers`, top-level legacy aliases) from Lua and control JSON state payloads.
+  - Update parity/assertion harnesses for projection-only contract.
 - `Dependencies`: P3.2
 - `Priority`: high
 - `Owner`: Lua/UI Compatibility Engineer (suggested)
 - `Status`: done
 - `ETA`: TBD
 - `Artifacts`: Lua state push path/tests
-- `Acceptance`: Existing looper UI script behavior remains unchanged.
-- `Last Updated`: 2026-02-25 (legacy mirror window validated: legacy keys retained, projected parity assertions expanded in Lua + state JSON harnesses)
+- `Acceptance`: Shipped UIs behave correctly with projection-only state contract (`params`, `voices`, metadata).
+- `Last Updated`: 2026-02-26 (legacy mirror window closed: shipped UIs consume projected state; legacy Lua/control JSON mirror keys removed; projection harnesses updated and passing)
 
 ## P4 - Registry-driven OSC and OSCQuery
 
@@ -580,3 +581,5 @@ Use this section for short updates between spec revisions.
 - P6.1 readiness gate is satisfied and P6.2 follow-up landed: legacy parser execution branches were removed, and deprecated legacy verbs now return explicit deprecation errors with canonical guidance while still incrementing telemetry counters.
 - Updated baseline to canonical command coverage with explicit deprecated-command rejection checks and expanded malformed canonical command assertions.
 - Validation in tmux for P6.2: full build passes (`Looper_Standalone` included), harness suite passes (`EndpointResolverHarness` 30 checks, `CanonicalCommandHarness` 27 checks, `LuaEngineMockHarness`, `StateProjectionHarness` 88 checks), baseline suite passes (65/0), readiness probe passes (canonical delta `0`, deprecated verb deltas as expected), and standalone smoke launch logs clean UI load.
+- Closed P3 migration mirror window after command migration parity: removed legacy mirror state fields from Lua/control JSON emission, updated shipped UI scripts to projection-first reads, and updated projection harness expectations.
+- Projection-only validation refresh: `StateProjectionHarness` pass (107 checks), baseline suite `tools/test-baseline-p0` pass (65/0), readiness probe pass (canonical delta `0`), standalone smoke launch clean.
