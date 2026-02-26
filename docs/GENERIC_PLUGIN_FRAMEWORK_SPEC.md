@@ -1,7 +1,7 @@
 # Generic Plugin Framework Refactor Spec and Execution Plan (Living Draft)
 
 Status: Ready to begin implementation, expected to evolve during implementation.
-Last updated: 2026-02-25
+Last updated: 2026-02-26
 Primary product target: Looper (flagship), generalized architecture under it.
 
 ## Operator Authority and Execution Safety (Mandatory)
@@ -231,8 +231,9 @@ Dual model:
 
 Transition behavior:
 
-- preserve current legacy state keys while adding generic projection fields
-- migrate consumers progressively
+- migration window used legacy mirror keys only temporarily
+- end-state contract is projection-only state (`projectionVersion`, `numVoices`, `params`, `voices`, optional computed tables like `spectrum`)
+- shipped consumers must read projected fields only
 
 ## 6.5 Type/coercion contract
 
@@ -322,7 +323,7 @@ Non-goals:
 ## 7.3 Lua engine responsibilities (post-refactor)
 
 - run scripts on message thread only
-- expose canonical command API and compatibility shim
+- expose canonical command API
 - push projected state into Lua
 - invoke callbacks safely on allowed threads
 
@@ -477,10 +478,11 @@ Acceptance:
 
 - [x] Preserve legacy state keys during migration window.
 - [x] Add parity tests ensuring legacy and projected values align.
+- [x] Close migration window by removing legacy mirror keys after consumer migration.
 
 Acceptance:
 
-- [x] Existing looper UI remains functional.
+- [x] Existing looper UI remains functional on projection-only state.
 
 ## Phase 4 - Registry-driven OSC and OSCQuery
 
