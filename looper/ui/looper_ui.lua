@@ -35,11 +35,93 @@ local function layerPath(layerIndex, suffix)
     return string.format("/looper/layer/%d/%s", layerIndex, suffix)
 end
 
+local function sanitizeSpeed(value)
+    local speed = math.abs(tonumber(value) or 1.0)
+    if speed < 0.1 then speed = 0.1 end
+    if speed > 4.0 then speed = 4.0 end
+    return speed
+end
+
 local function modeText(mode)
     for i, k in ipairs(kModeKeys) do
         if k == mode then return kModeNames[i] end
     end
     return "Mode"
+end
+
+local function readParam(params, path, fallback)
+    if type(params) ~= "table" then
+        return fallback
+    end
+    local value = params[path]
+    if value == nil then
+        return fallback
+    end
+    return value
+end
+
+local function readBoolParam(params, path, fallback)
+    local raw = readParam(params, path, fallback and 1 or 0)
+    if raw == nil then
+        return fallback
+    end
+    return raw == true or raw == 1
+end
+
+local function modeIndexFromString(mode)
+    if mode == "firstLoop" then return 0 end
+    if mode == "freeMode" then return 1 end
+    if mode == "traditional" then return 2 end
+    if mode == "retrospective" then return 3 end
+    return 0
+end
+
+local function normalizeState(state)
+    if type(state) ~= "table" then
+        return {}
+    end
+
+    local params = state.params or {}
+    local voices = state.voices or {}
+    local normalized = {
+        projectionVersion = state.projectionVersion or 0,
+        numVoices = state.numVoices or #voices,
+        params = params,
+        voices = voices,
+        tempo = readParam(params, "/looper/tempo", 120),
+        targetBPM = readParam(params, "/looper/targetbpm", 120),
+        samplesPerBar = readParam(params, "/looper/samplesPerBar", 88200),
+        sampleRate = readParam(params, "/looper/sampleRate", 44100),
+        captureSize = readParam(params, "/looper/captureSize", 0),
+        masterVolume = readParam(params, "/looper/volume", 0.8),
+        isRecording = readBoolParam(params, "/looper/recording", false),
+        overdubEnabled = readBoolParam(params, "/looper/overdub", false),
+        recordMode = readParam(params, "/looper/mode", "firstLoop"),
+        activeLayer = readParam(params, "/looper/layer", 0),
+        forwardArmed = readBoolParam(params, "/looper/forwardArmed", false),
+        forwardBars = readParam(params, "/looper/forwardBars", 0),
+        spectrum = state.spectrum,
+        layers = {},
+    }
+    normalized.recordModeInt = modeIndexFromString(normalized.recordMode)
+
+    for i, voice in ipairs(voices) do
+        if type(voice) == "table" then
+            normalized.layers[i] = {
+                index = voice.id or (i - 1),
+                length = voice.length or 0,
+                position = voice.position or 0,
+                speed = voice.speed or 1,
+                reversed = voice.reversed or false,
+                volume = voice.volume or 1,
+                state = voice.state or "empty",
+                numBars = voice.bars or 0,
+                bars = voice.bars or 0,
+            }
+        end
+    end
+
+    return normalized
 end
 
 local function layerStateColour(state)
@@ -466,14 +548,14 @@ function ui_init(root)
                     local sr = current_state.sampleRate or 44100
                     local samplesPerFrame = sr / 60
                     local speed = (delta * length) / samplesPerFrame
-                    local absSpeed = math.abs(speed)
+                    local absSpeed = sanitizeSpeed(speed)
                     commandSet(layerPath(layerIdx, "speed"), absSpeed)
                     commandSet(layerPath(layerIdx, "reverse"), speed < 0 and 1 or 0)
                 end
             end,
             -- Release: restore pre-scrub speed and direction
             on_scrub_end = function()
-                commandSet(layerPath(layerIdx, "speed"), preScrubSpeed)
+                commandSet(layerPath(layerIdx, "speed"), sanitizeSpeed(preScrubSpeed))
                 commandSet(layerPath(layerIdx, "reverse"), preScrubReversed and 1 or 0)
                 commandTrigger(layerPath(layerIdx, "play"))
             end,
@@ -494,7 +576,7 @@ function ui_init(root)
             min = -4.0, max = 4.0, step = 0.01, value = 1.0,
             label = "Speed", colour = 0xff22d3ee,
             on_change = function(v)
-                local absSpeed = math.abs(v)
+                local absSpeed = sanitizeSpeed(v)
                 local rev = v < 0
                 commandSet(layerPath(layerIdx, "speed"), absSpeed)
                 commandSet(layerPath(layerIdx, "reverse"), rev and 1 or 0)
@@ -713,18 +795,19 @@ end
 -- ============================================================================
 
 function ui_update(s)
-    current_state = s
-    recButtonLatched = s.isRecording or false
+    current_state = normalizeState(s)
+    local state = current_state
+    recButtonLatched = state.isRecording or false
     
     -- Header
-    if ui.tempoBox then ui.tempoBox:setValue(s.tempo or 120) end
-    if ui.targetBpmBox then ui.targetBpmBox:setValue(s.targetBPM or 120) end
-    if ui.masterVolKnob then ui.masterVolKnob:setValue(s.masterVolume or 0.8) end
+    if ui.tempoBox then ui.tempoBox:setValue(state.tempo or 120) end
+    if ui.targetBpmBox then ui.targetBpmBox:setValue(state.targetBPM or 120) end
+    if ui.masterVolKnob then ui.masterVolKnob:setValue(state.masterVolume or 0.8) end
     
     -- Transport
     if ui.modeDropdown then
         -- Map mode index: 0=FirstLoop, 1=Free, 2=Traditional (skip 3=Retrospective)
-        local modeInt = s.recordModeInt or 0
+        local modeInt = state.recordModeInt or 0
         if modeInt <= 2 then
             ui.modeDropdown:setSelected(modeInt + 1)
         else
@@ -734,7 +817,7 @@ function ui_update(s)
     end
     
     if ui.recBtn then
-        if s.isRecording then
+        if state.isRecording then
             ui.recBtn:setBg(0xffdc2626)
             ui.recBtn:setLabel("● REC*")
         else
@@ -745,8 +828,8 @@ function ui_update(s)
     
     if ui.playPauseBtn then
         local anyPlaying = false
-        if s.layers then
-            for _, layer in ipairs(s.layers) do
+        if state.layers then
+            for _, layer in ipairs(state.layers) do
                 if layer.state == "playing" then anyPlaying = true end
             end
         end
@@ -760,13 +843,13 @@ function ui_update(s)
     end
     
     if ui.overdubToggle then
-        ui.overdubToggle:setValue(s.overdubEnabled or false)
+        ui.overdubToggle:setValue(state.overdubEnabled or false)
     end
     
     -- Layers
     for i, layer in ipairs(ui.layerPanels) do
-        local layerData = s.layers and s.layers[i] or {}
-        local isActive = (s.activeLayer or 0) == layer.layerIdx
+        local layerData = state.layers and state.layers[i] or {}
+        local isActive = (state.activeLayer or 0) == layer.layerIdx
         local state = layerData.state or "empty"
         
         -- Panel style
@@ -819,15 +902,15 @@ function ui_update(s)
     
     -- Status bar
     if ui.statusLabel then
-        local sr = math.max(1, s.sampleRate or 44100)
-        local spb = s.samplesPerBar or 88200
+        local sr = math.max(1, state.sampleRate or 44100)
+        local spb = state.samplesPerBar or 88200
         local barSecs = spb / sr
         ui.statusLabel:setText(string.format(
             "%.1f BPM  |  %.2fs/bar  |  Master: %.0f%%  |  Mode: %s",
-            s.tempo or 120,
+            state.tempo or 120,
             barSecs,
-            (s.masterVolume or 1) * 100,
-            modeText(s.recordMode or "firstLoop")
+            (state.masterVolume or 1) * 100,
+            modeText(state.recordMode or "firstLoop")
         ))
     end
 end

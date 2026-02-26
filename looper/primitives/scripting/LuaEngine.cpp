@@ -1629,17 +1629,6 @@ void LuaEngine::pushStateToLua() {
   const int captureSize = proc->getCaptureSize();
   const char *recordModeString = "firstLoop";
 
-  state["tempo"] = tempo;
-  state["targetBPM"] = targetBPM;
-  state["samplesPerBar"] = samplesPerBar;
-  state["sampleRate"] = sampleRate;
-  state["masterVolume"] = masterVolume;
-  state["isRecording"] = isRecording;
-  state["overdubEnabled"] = isOverdubEnabled;
-  state["activeLayer"] = activeLayerIndex;
-  state["forwardArmed"] = forwardCommitArmed;
-  state["forwardBars"] = forwardCommitBars;
-
   // Record mode as string
   switch (recordModeIndex) {
   case 0:
@@ -1658,13 +1647,7 @@ void LuaEngine::pushStateToLua() {
     recordModeString = "firstLoop";
     break;
   }
-  state["recordMode"] = recordModeString;
-
-  // Record mode as int for cycling
-  state["recordModeInt"] = recordModeIndex;
-
-  // Generic projected state model (P3.1): params + voices.
-  state["projectionVersion"] = 1;
+  state["projectionVersion"] = 2;
   state["numVoices"] = numLayers;
 
   auto params = lua.create_table();
@@ -1681,8 +1664,6 @@ void LuaEngine::pushStateToLua() {
   params["/looper/forwardArmed"] = forwardCommitArmed ? 1 : 0;
   params["/looper/forwardBars"] = forwardCommitBars;
 
-  // Layers
-  auto layers = lua.create_table();
   auto voices = lua.create_table();
   for (int i = 0; i < numLayers; ++i) {
     ScriptableLayerSnapshot layer;
@@ -1699,27 +1680,18 @@ void LuaEngine::pushStateToLua() {
         (samplesPerBar > 0.0f)
             ? static_cast<float>(layer.length) / samplesPerBar
             : 0.0f;
+    const bool muted = layer.state == ScriptableLayerState::Muted;
 
     const std::string layerPrefix =
         "/looper/layer/" + std::to_string(i);
     params[layerPrefix + "/speed"] = layer.speed;
     params[layerPrefix + "/volume"] = layer.volume;
+    params[layerPrefix + "/mute"] = muted ? 1 : 0;
     params[layerPrefix + "/reverse"] = layer.reversed ? 1 : 0;
     params[layerPrefix + "/length"] = layer.length;
     params[layerPrefix + "/position"] = normalizedPosition;
     params[layerPrefix + "/bars"] = bars;
     params[layerPrefix + "/state"] = layerStateString;
-
-    auto lt = lua.create_table();
-    lt["index"] = i;
-    lt["length"] = layer.length;
-    lt["position"] = layer.position;
-    lt["speed"] = layer.speed;
-    lt["reversed"] = layer.reversed;
-    lt["volume"] = layer.volume;
-    lt["state"] = layerStateString;
-
-    layers[i + 1] = lt; // Lua is 1-indexed
 
     auto voice = lua.create_table();
     voice["id"] = i;
@@ -1736,6 +1708,7 @@ void LuaEngine::pushStateToLua() {
     auto voiceParams = lua.create_table();
     voiceParams["speed"] = layer.speed;
     voiceParams["volume"] = layer.volume;
+    voiceParams["mute"] = muted ? 1 : 0;
     voiceParams["reverse"] = layer.reversed ? 1 : 0;
     voiceParams["length"] = layer.length;
     voiceParams["position"] = normalizedPosition;
@@ -1745,12 +1718,8 @@ void LuaEngine::pushStateToLua() {
 
     voices[i + 1] = voice;
   }
-  state["layers"] = layers;
   state["params"] = params;
   state["voices"] = voices;
-
-  // Capture buffer info
-  state["captureSize"] = captureSize;
 
   // Spectrum analysis data for visualization
   auto spectrum = proc->getSpectrumData();

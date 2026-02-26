@@ -120,35 +120,6 @@ static juce::String normalizeQueryPath(const juce::String& oscPath) {
     return path;
 }
 
-static bool tryGetLayerStateString(const juce::var& stateBundle,
-                                   int layerIndex,
-                                   juce::String& outState) {
-    auto* rootObject = stateBundle.getDynamicObject();
-    if (!rootObject) {
-        return false;
-    }
-
-    const juce::var layersVar = rootObject->getProperty("layers");
-    auto* layersArray = layersVar.getArray();
-    if (!layersArray || layerIndex < 0 || layerIndex >= static_cast<int>(layersArray->size())) {
-        return false;
-    }
-
-    const juce::var& layerVar = (*layersArray)[layerIndex];
-    auto* layerObject = layerVar.getDynamicObject();
-    if (!layerObject) {
-        return false;
-    }
-
-    const juce::var stateValue = layerObject->getProperty("state");
-    if (!stateValue.isString()) {
-        return false;
-    }
-
-    outState = stateValue.toString();
-    return true;
-}
-
 static bool tryReadProjectedValue(const juce::var& stateBundle,
                                   const juce::String& path,
                                   juce::var& outValue) {
@@ -165,44 +136,6 @@ static bool tryReadProjectedValue(const juce::var& stateBundle,
             return true;
         }
     }
-
-    if (!path.startsWith("/looper/layer/")) {
-        return false;
-    }
-
-    const juce::String rest = path.fromFirstOccurrenceOf("/looper/layer/", false, false);
-    const int slashPos = rest.indexOf("/");
-
-    juce::String layerIndexText = rest;
-    juce::String property;
-    if (slashPos >= 0) {
-        layerIndexText = rest.substring(0, slashPos);
-        property = rest.substring(slashPos + 1);
-    }
-
-    if (layerIndexText.isEmpty() || !layerIndexText.containsOnly("0123456789")) {
-        return false;
-    }
-
-    const int layerIndex = layerIndexText.getIntValue();
-
-    if (property.isEmpty()) {
-        juce::String layerState;
-        if (tryGetLayerStateString(stateBundle, layerIndex, layerState)) {
-            outValue = juce::var(layerState);
-            return true;
-        }
-        return false;
-    }
-
-    if (property == "mute") {
-        juce::String layerState;
-        if (tryGetLayerStateString(stateBundle, layerIndex, layerState)) {
-            outValue = juce::var(layerState == "muted" ? 1 : 0);
-            return true;
-        }
-    }
-
     return false;
 }
 

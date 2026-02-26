@@ -65,7 +65,11 @@ void LooperProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   auto &state = controlServer.getAtomicState();
   state.captureSize.store(captureSamples);
   state.tempo.store(tempo);
+  state.targetBPM.store(targetBPM);
   state.samplesPerBar.store(getSamplesPerBar());
+  state.sampleRate.store(sampleRate);
+  state.forwardArmed.store(forwardCommitArmed.load(std::memory_order_relaxed));
+  state.forwardBars.store(forwardCommitBars.load(std::memory_order_relaxed));
 
   // Initialize FFT for spectrum analysis
   fft = std::make_unique<juce::dsp::FFT>(FFT_ORDER);
@@ -669,11 +673,17 @@ void LooperProcessor::updateAtomicState(
   auto &state = controlServer.getAtomicState();
 
   state.tempo.store(tempo, std::memory_order_relaxed);
+  state.targetBPM.store(targetBPM, std::memory_order_relaxed);
   state.samplesPerBar.store(getSamplesPerBar(), std::memory_order_relaxed);
+  state.sampleRate.store(currentSampleRate, std::memory_order_relaxed);
   state.captureWritePos.store(captureBuffer.getOffsetToNow(),
                               std::memory_order_relaxed);
   state.isRecording.store(isCurrentlyRecording, std::memory_order_relaxed);
   state.overdubEnabled.store(overdubEnabled, std::memory_order_relaxed);
+  state.forwardArmed.store(forwardCommitArmed.load(std::memory_order_relaxed),
+                           std::memory_order_relaxed);
+  state.forwardBars.store(forwardCommitBars.load(std::memory_order_relaxed),
+                          std::memory_order_relaxed);
   state.recordMode.store(static_cast<int>(recordMode),
                          std::memory_order_relaxed);
   state.activeLayer.store(activeLayerIndex, std::memory_order_relaxed);

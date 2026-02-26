@@ -41,12 +41,17 @@ int main() {
   auto &state = server.getAtomicState();
 
   state.tempo.store(133.5f);
+  state.targetBPM.store(128.25f);
   state.samplesPerBar.store(88200.0f);
+  state.sampleRate.store(48000.0);
+  state.captureSize.store(2048);
   state.masterVolume.store(0.73f);
   state.activeLayer.store(2);
   state.recordMode.store(1);
   state.isRecording.store(true);
   state.overdubEnabled.store(false);
+  state.forwardArmed.store(true);
+  state.forwardBars.store(1.5f);
 
   for (int index = 0; index < AtomicState::MAX_LAYERS; ++index) {
     auto &layer = state.layers[index];
@@ -75,59 +80,72 @@ int main() {
     }
   };
 
-  check(getNumberProperty(parsed, "projectionVersion") == 1.0,
-        "projectionVersion is 1");
+  check(getNumberProperty(parsed, "projectionVersion") == 2.0,
+        "projectionVersion is 2");
   check(getNumberProperty(parsed, "numVoices") == AtomicState::MAX_LAYERS,
         "numVoices matches layer count");
 
   const auto *rootObject = parsed.getDynamicObject();
   check(rootObject != nullptr, "root object exists");
 
+  check(rootObject->getProperty("tempo").isVoid(),
+        "legacy top-level tempo removed");
+  check(rootObject->getProperty("masterVolume").isVoid(),
+        "legacy top-level masterVolume removed");
+  check(rootObject->getProperty("activeLayer").isVoid(),
+        "legacy top-level activeLayer removed");
+  check(rootObject->getProperty("recordMode").isVoid(),
+        "legacy top-level recordMode removed");
+  check(rootObject->getProperty("layers").isVoid(),
+        "legacy layers array removed");
+
   const juce::var paramsVar = rootObject->getProperty("params");
-  const juce::var layersVar = rootObject->getProperty("layers");
   const juce::var voicesVar = rootObject->getProperty("voices");
   const auto *paramsObject = paramsVar.getDynamicObject();
-  auto *layersArray = layersVar.getArray();
   auto *voicesArray = voicesVar.getArray();
 
   check(paramsObject != nullptr, "params object exists");
-  check(layersArray != nullptr, "layers array exists");
   check(voicesArray != nullptr, "voices array exists");
-  check(static_cast<int>(layersArray->size()) == AtomicState::MAX_LAYERS,
-        "layers array has expected entries");
   check(static_cast<int>(voicesArray->size()) == AtomicState::MAX_LAYERS,
         "voices array has expected entries");
 
-  check(nearlyEqual(getNumberProperty(parsed, "tempo"),
-                    static_cast<double>(paramsObject->getProperty("/looper/tempo"))),
-        "top-level tempo matches params tempo");
-  check(nearlyEqual(getNumberProperty(parsed, "samplesPerBar"),
-                    static_cast<double>(paramsObject->getProperty("/looper/samplesPerBar"))),
-        "top-level samplesPerBar matches params samplesPerBar");
-  check(getNumberProperty(parsed, "captureSize") ==
-            static_cast<double>(paramsObject->getProperty("/looper/captureSize")),
-        "top-level captureSize matches params captureSize");
-  check(getNumberProperty(parsed, "isRecording") ==
-            static_cast<double>(paramsObject->getProperty("/looper/recording")),
-        "top-level isRecording matches params recording");
-  check(getNumberProperty(parsed, "overdubEnabled") ==
-            static_cast<double>(paramsObject->getProperty("/looper/overdub")),
-        "top-level overdubEnabled matches params overdub");
-  check(getStringProperty(parsed, "recordMode") ==
-            paramsObject->getProperty("/looper/mode").toString(),
-        "top-level recordMode matches params mode");
-  check(nearlyEqual(getNumberProperty(parsed, "masterVolume"),
-                    static_cast<double>(paramsObject->getProperty("/looper/volume"))),
-        "top-level masterVolume matches params volume");
-  check(getNumberProperty(parsed, "activeLayer") ==
-            static_cast<double>(paramsObject->getProperty("/looper/layer")),
-        "top-level activeLayer matches params layer");
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/tempo")),
+                    133.5),
+        "params tempo matches atomic tempo");
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/targetbpm")),
+                    128.25),
+        "params targetbpm matches atomic targetBPM");
+  check(nearlyEqual(
+            static_cast<double>(paramsObject->getProperty("/looper/samplesPerBar")),
+            88200.0),
+        "params samplesPerBar matches atomic samplesPerBar");
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/sampleRate")),
+                    48000.0),
+        "params sampleRate matches atomic sampleRate");
+  check(static_cast<int>(paramsObject->getProperty("/looper/captureSize")) == 2048,
+        "params captureSize matches atomic captureSize");
+  check(static_cast<int>(paramsObject->getProperty("/looper/recording")) == 1,
+        "params recording matches atomic recording");
+  check(static_cast<int>(paramsObject->getProperty("/looper/overdub")) == 0,
+        "params overdub matches atomic overdub");
+  check(paramsObject->getProperty("/looper/mode").toString() == "freeMode",
+        "params mode matches atomic record mode");
+  check(static_cast<int>(paramsObject->getProperty("/looper/layer")) == 2,
+        "params layer matches atomic activeLayer");
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/volume")),
+                    0.73),
+        "params volume matches atomic masterVolume");
+  check(static_cast<int>(paramsObject->getProperty("/looper/forwardArmed")) == 1,
+        "params forwardArmed matches atomic forwardArmed");
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/forwardBars")),
+                    1.5),
+        "params forwardBars matches atomic forwardBars");
 
   for (int index = 0; index < AtomicState::MAX_LAYERS; ++index) {
-    const juce::var &layerVar = (*layersArray)[index];
     const juce::var &voiceVar = (*voicesArray)[index];
 
     const juce::String prefix = "/looper/layer/" + juce::String(index);
+    const juce::Identifier muteKey(prefix + "/mute");
     const juce::Identifier volumeKey(prefix + "/volume");
     const juce::Identifier reverseKey(prefix + "/reverse");
     const juce::Identifier lengthKey(prefix + "/length");
@@ -136,60 +154,73 @@ int main() {
     const juce::Identifier speedKey(prefix + "/speed");
     const juce::Identifier stateKey(prefix + "/state");
 
-    const double legacyLength = getNumberProperty(layerVar, "length");
-    const double legacyPosition = getNumberProperty(layerVar, "playheadPos");
-    const double legacySpeed = getNumberProperty(layerVar, "speed");
-    const double legacyVolume = getNumberProperty(layerVar, "volume");
-    const double legacyReverse = getNumberProperty(layerVar, "reversed");
-    const double legacyBars = getNumberProperty(layerVar, "numBars");
-    const juce::String legacyState = getStringProperty(layerVar, "state");
-
+    const double voiceLength = getNumberProperty(voiceVar, "length");
+    const double voicePosition = getNumberProperty(voiceVar, "position");
     const double expectedPositionNorm =
-        (legacyLength > 0.0) ? (legacyPosition / legacyLength) : 0.0;
+        (voiceLength > 0.0) ? (voicePosition / voiceLength) : 0.0;
+    const auto *voiceObject = voiceVar.getDynamicObject();
+    check(voiceObject != nullptr, "voice object exists");
+    const juce::var voiceParamsVar = voiceObject->getProperty("params");
 
-    check(getNumberProperty(layerVar, "index") == index,
-          "legacy layer index matches slot");
     check(getNumberProperty(voiceVar, "id") == index,
           "voice id matches slot");
     check(getStringProperty(voiceVar, "path") == prefix,
           "voice path matches layer prefix");
+    check(nearlyEqual(getNumberProperty(voiceVar, "positionNorm"),
+                      expectedPositionNorm),
+          "voice positionNorm matches normalized voice position");
 
-    check(nearlyEqual(legacySpeed, getNumberProperty(voiceVar, "speed")),
-          "voice speed matches layer speed");
-    check(nearlyEqual(legacySpeed,
+    check(nearlyEqual(getNumberProperty(voiceVar, "speed"),
                       static_cast<double>(paramsObject->getProperty(speedKey))),
-          "params speed matches layer speed");
-    check(nearlyEqual(legacyVolume, getNumberProperty(voiceVar, "volume")),
-          "voice volume matches layer volume");
-    check(nearlyEqual(legacyVolume,
+          "params speed matches voice speed");
+    check(nearlyEqual(getNumberProperty(voiceVar, "volume"),
                       static_cast<double>(paramsObject->getProperty(volumeKey))),
-          "params volume matches layer volume");
-    check(legacyReverse == getNumberProperty(voiceVar, "reversed"),
-          "voice reversed matches layer reversed");
-    check(legacyReverse == static_cast<double>(paramsObject->getProperty(reverseKey)),
-          "params reverse matches layer reversed");
-    check(nearlyEqual(legacyLength, getNumberProperty(voiceVar, "length")),
-          "voice length matches layer length");
-    check(nearlyEqual(legacyLength,
+          "params volume matches voice volume");
+    check(getNumberProperty(voiceVar, "reversed") ==
+              static_cast<double>(paramsObject->getProperty(reverseKey)),
+          "params reverse matches voice reversed");
+    check(nearlyEqual(voiceLength,
                       static_cast<double>(paramsObject->getProperty(lengthKey))),
-          "params length matches layer length");
-    check(nearlyEqual(legacyPosition, getNumberProperty(voiceVar, "position")),
-          "voice position matches layer playheadPos");
-    check(nearlyEqual(expectedPositionNorm, getNumberProperty(voiceVar, "positionNorm")),
-          "voice positionNorm matches normalized layer position");
+          "params length matches voice length");
     check(nearlyEqual(expectedPositionNorm,
                       static_cast<double>(paramsObject->getProperty(positionKey))),
-          "params position matches normalized layer position");
-    check(nearlyEqual(legacyBars, getNumberProperty(voiceVar, "bars")),
-          "voice bars matches layer numBars");
-    check(nearlyEqual(legacyBars,
+          "params position matches voice positionNorm");
+    check(nearlyEqual(getNumberProperty(voiceVar, "bars"),
                       static_cast<double>(paramsObject->getProperty(barsKey))),
-          "params bars matches layer numBars");
+          "params bars matches voice bars");
+    check(getStringProperty(voiceVar, "state") ==
+              paramsObject->getProperty(stateKey).toString(),
+          "params state matches voice state");
 
-    check(legacyState == getStringProperty(voiceVar, "state"),
-          "voice state matches layer state");
-    check(legacyState == paramsObject->getProperty(stateKey).toString(),
-          "params state matches layer state");
+    const int expectedMute = getStringProperty(voiceVar, "state") == "muted" ? 1 : 0;
+    check(static_cast<int>(paramsObject->getProperty(muteKey)) == expectedMute,
+          "params mute matches voice state");
+
+    const auto *voiceParamsObject = voiceParamsVar.getDynamicObject();
+    check(voiceParamsObject != nullptr, "voice.params exists");
+    check(nearlyEqual(static_cast<double>(voiceParamsObject->getProperty("speed")),
+                      getNumberProperty(voiceVar, "speed")),
+          "voice.params speed matches voice speed");
+    check(nearlyEqual(static_cast<double>(voiceParamsObject->getProperty("volume")),
+                      getNumberProperty(voiceVar, "volume")),
+          "voice.params volume matches voice volume");
+    check(static_cast<int>(voiceParamsObject->getProperty("mute")) == expectedMute,
+          "voice.params mute matches voice state");
+    check(static_cast<int>(voiceParamsObject->getProperty("reverse")) ==
+              static_cast<int>(getNumberProperty(voiceVar, "reversed")),
+          "voice.params reverse matches voice reversed");
+    check(nearlyEqual(static_cast<double>(voiceParamsObject->getProperty("length")),
+                      voiceLength),
+          "voice.params length matches voice length");
+    check(nearlyEqual(static_cast<double>(voiceParamsObject->getProperty("position")),
+                      expectedPositionNorm),
+          "voice.params position matches voice positionNorm");
+    check(nearlyEqual(static_cast<double>(voiceParamsObject->getProperty("bars")),
+                      getNumberProperty(voiceVar, "bars")),
+          "voice.params bars matches voice bars");
+    check(voiceParamsObject->getProperty("state").toString() ==
+              getStringProperty(voiceVar, "state"),
+          "voice.params state matches voice state");
   }
 
   std::fprintf(stdout, "StateProjectionHarness: PASS (%d checks)\n", checks);

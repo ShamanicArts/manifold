@@ -171,32 +171,32 @@ function ui_update(state)
     return
   end
 
-  if not (state and state.params and state.layers and state.voices and state.numVoices == 4) then
+  if not (state and state.params and state.voices and state.numVoices == 4) then
     return
   end
 
-  if #state.layers ~= state.numVoices or #state.voices ~= state.numVoices then
+  if #state.voices ~= state.numVoices then
     return
   end
 
+  local params = state.params
   local ok = true
-  ok = ok and nearly(state.params["/looper/tempo"], state.tempo)
-  ok = ok and nearly(state.params["/looper/targetbpm"], state.targetBPM)
-  ok = ok and nearly(state.params["/looper/samplesPerBar"], state.samplesPerBar)
-  ok = ok and nearly(state.params["/looper/sampleRate"], state.sampleRate)
-  ok = ok and nearly(state.params["/looper/captureSize"], state.captureSize)
-  ok = ok and nearly(state.params["/looper/volume"], state.masterVolume)
-  ok = ok and state.params["/looper/recording"] == bool01(state.isRecording)
-  ok = ok and state.params["/looper/overdub"] == bool01(state.overdubEnabled)
-  ok = ok and state.params["/looper/mode"] == state.recordMode
-  ok = ok and state.params["/looper/layer"] == state.activeLayer
-  ok = ok and state.params["/looper/forwardArmed"] == bool01(state.forwardArmed)
-  ok = ok and nearly(state.params["/looper/forwardBars"], state.forwardBars)
+  ok = ok and nearly(params["/looper/tempo"], 120)
+  ok = ok and nearly(params["/looper/targetbpm"], 120)
+  ok = ok and nearly(params["/looper/samplesPerBar"], 88200)
+  ok = ok and nearly(params["/looper/sampleRate"], 44100)
+  ok = ok and nearly(params["/looper/captureSize"], 512)
+  ok = ok and nearly(params["/looper/volume"], 1.0)
+  ok = ok and params["/looper/recording"] == 0
+  ok = ok and params["/looper/overdub"] == 0
+  ok = ok and params["/looper/mode"] == "firstLoop"
+  ok = ok and params["/looper/layer"] == 0
+  ok = ok and params["/looper/forwardArmed"] == 0
+  ok = ok and nearly(params["/looper/forwardBars"], 0)
 
   for i = 1, state.numVoices do
-    local layer = state.layers[i]
     local voice = state.voices[i]
-    if not (layer and voice) then
+    if not voice then
       ok = false
       break
     end
@@ -204,38 +204,36 @@ function ui_update(state)
     local layerIndex = i - 1
     local layerPrefix = string.format("/looper/layer/%d", layerIndex)
     local positionNorm = 0
-    if layer.length and layer.length > 0 then
-      positionNorm = (layer.position or 0) / layer.length
+    if voice.length and voice.length > 0 then
+      positionNorm = (voice.position or 0) / voice.length
     end
 
-    ok = ok and layer.index == layerIndex
     ok = ok and voice.id == layerIndex
     ok = ok and voice.path == layerPrefix
-    ok = ok and voice.state == layer.state
-    ok = ok and nearly(voice.length, layer.length)
-    ok = ok and nearly(voice.position, layer.position)
+    ok = ok and voice.state ~= nil
     ok = ok and nearly(voice.positionNorm, positionNorm)
-    ok = ok and nearly(voice.speed, layer.speed)
-    ok = ok and voice.reversed == layer.reversed
-    ok = ok and nearly(voice.volume, layer.volume)
-    ok = ok and nearly(voice.bars, state.params[layerPrefix .. "/bars"])
 
     local voiceParams = voice.params
     ok = ok and voiceParams ~= nil
-    ok = ok and nearly(voiceParams.speed, layer.speed)
-    ok = ok and nearly(voiceParams.volume, layer.volume)
-    ok = ok and voiceParams.reverse == bool01(layer.reversed)
-    ok = ok and nearly(voiceParams.length, layer.length)
+    ok = ok and nearly(voiceParams.speed, voice.speed)
+    ok = ok and nearly(voiceParams.volume, voice.volume)
+    ok = ok and voiceParams.mute == params[layerPrefix .. "/mute"]
+    ok = ok and voiceParams.reverse == bool01(voice.reversed)
+    ok = ok and nearly(voiceParams.length, voice.length)
     ok = ok and nearly(voiceParams.position, positionNorm)
-    ok = ok and nearly(voiceParams.bars, state.params[layerPrefix .. "/bars"])
-    ok = ok and voiceParams.state == layer.state
+    ok = ok and nearly(voiceParams.bars, params[layerPrefix .. "/bars"])
+    ok = ok and voiceParams.state == voice.state
 
-    ok = ok and nearly(state.params[layerPrefix .. "/speed"], layer.speed)
-    ok = ok and nearly(state.params[layerPrefix .. "/volume"], layer.volume)
-    ok = ok and state.params[layerPrefix .. "/reverse"] == bool01(layer.reversed)
-    ok = ok and nearly(state.params[layerPrefix .. "/length"], layer.length)
-    ok = ok and nearly(state.params[layerPrefix .. "/position"], positionNorm)
-    ok = ok and state.params[layerPrefix .. "/state"] == layer.state
+    ok = ok and nearly(params[layerPrefix .. "/speed"], voice.speed)
+    ok = ok and nearly(params[layerPrefix .. "/volume"], voice.volume)
+    ok = ok and params[layerPrefix .. "/mute"] == bool01(voice.state == "muted")
+    ok = ok and params[layerPrefix .. "/reverse"] == bool01(voice.reversed)
+    ok = ok and nearly(params[layerPrefix .. "/length"], voice.length)
+    ok = ok and nearly(params[layerPrefix .. "/position"], positionNorm)
+    ok = ok and nearly(params[layerPrefix .. "/bars"], voice.bars)
+    ok = ok and params[layerPrefix .. "/state"] == voice.state
+    ok = ok and nearly(voice.bars, params[layerPrefix .. "/bars"])
+    ok = ok and nearly(voice.positionNorm, positionNorm)
   end
 
   if ok then

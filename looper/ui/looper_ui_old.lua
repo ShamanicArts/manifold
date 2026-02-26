@@ -48,6 +48,81 @@ local function sendTrigger(path)
     command("TRIGGER", path)
 end
 
+local function readParam(params, path, fallback)
+    if type(params) ~= "table" then
+        return fallback
+    end
+    local value = params[path]
+    if value == nil then
+        return fallback
+    end
+    return value
+end
+
+local function readBoolParam(params, path, fallback)
+    local raw = readParam(params, path, fallback and 1 or 0)
+    if raw == nil then
+        return fallback
+    end
+    return raw == true or raw == 1
+end
+
+local function modeIndexFromString(mode)
+    if mode == "firstLoop" then return 0 end
+    if mode == "freeMode" then return 1 end
+    if mode == "traditional" then return 2 end
+    if mode == "retrospective" then return 3 end
+    return 0
+end
+
+local function normalizeState(state)
+    if type(state) ~= "table" then
+        return {}
+    end
+
+    local params = state.params or {}
+    local voices = state.voices or {}
+    local normalized = {
+        projectionVersion = state.projectionVersion or 0,
+        numVoices = state.numVoices or #voices,
+        params = params,
+        voices = voices,
+        tempo = readParam(params, "/looper/tempo", 120),
+        targetBPM = readParam(params, "/looper/targetbpm", 120),
+        samplesPerBar = readParam(params, "/looper/samplesPerBar", 88200),
+        sampleRate = readParam(params, "/looper/sampleRate", 44100),
+        captureSize = readParam(params, "/looper/captureSize", 0),
+        masterVolume = readParam(params, "/looper/volume", 1),
+        isRecording = readBoolParam(params, "/looper/recording", false),
+        overdubEnabled = readBoolParam(params, "/looper/overdub", false),
+        recordMode = readParam(params, "/looper/mode", "firstLoop"),
+        activeLayer = readParam(params, "/looper/layer", 0),
+        forwardArmed = readBoolParam(params, "/looper/forwardArmed", false),
+        forwardBars = readParam(params, "/looper/forwardBars", 0),
+        spectrum = state.spectrum,
+        layers = {},
+    }
+    normalized.recordModeInt = modeIndexFromString(normalized.recordMode)
+
+    for i, voice in ipairs(voices) do
+        if type(voice) == "table" then
+            normalized.layers[i] = {
+                index = voice.id or (i - 1),
+                length = voice.length or 0,
+                position = voice.position or 0,
+                speed = voice.speed or 1,
+                reversed = voice.reversed or false,
+                volume = voice.volume or 1,
+                state = voice.state or "empty",
+                numBars = voice.bars or 0,
+                bars = voice.bars or 0,
+            }
+        end
+    end
+
+    return normalized
+end
+
 -- Record mode cycling
 local kModeNames = {"First Loop", "Free Mode", "Traditional", "Retrospective"}
 local kModeKeys  = {"firstLoop", "freeMode", "traditional", "retrospective"}
@@ -765,11 +840,12 @@ end
 -- ============================================================================
 
 function ui_update(s)
-    current_state = s
+    current_state = normalizeState(s)
+    local state = current_state
 
     -- Update button labels/colours based on state
     if ui.recBtn then
-        if s.isRecording then
+        if state.isRecording then
             ui.recBtn.setLabel("REC*")
             ui.recBtn.setBg(0xffdc2626)
         else
@@ -779,7 +855,7 @@ function ui_update(s)
     end
 
     if ui.overdubBtn then
-        if s.overdubEnabled then
+        if state.overdubEnabled then
             ui.overdubBtn.setLabel("OVERDUB*")
             ui.overdubBtn.setBg(0xfff59e0b)
         else
@@ -792,8 +868,8 @@ function ui_update(s)
     if ui.playPauseBtn then
         local anyPlaying = false
         local anyPaused = false
-        if s.layers then
-            for _, layer in ipairs(s.layers) do
+        if state.layers then
+            for _, layer in ipairs(state.layers) do
                 if layer.state == "playing" then anyPlaying = true end
                 if layer.state == "paused" then anyPaused = true end
             end
@@ -808,12 +884,12 @@ function ui_update(s)
     end
 
     if ui.modeBtn then
-        ui.modeBtn.setLabel(recordModeText(s.recordMode or "firstLoop"))
+        ui.modeBtn.setLabel(recordModeText(state.recordMode or "firstLoop"))
     end
 
     -- Update layer action button colours
     for _, lr in ipairs(ui.layerRows) do
-        local layer = s.layers and s.layers[lr.layerIdx + 1] or {}
+        local layer = state.layers and state.layers[lr.layerIdx + 1] or {}
 
         -- Mute button colour
         if lr.actions.mute then

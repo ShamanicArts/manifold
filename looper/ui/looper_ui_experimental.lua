@@ -94,6 +94,56 @@ local function randomRange(min, max)
     return min + math.random() * (max - min)
 end
 
+local function readParam(params, path, fallback)
+    if type(params) ~= "table" then
+        return fallback
+    end
+    local value = params[path]
+    if value == nil then
+        return fallback
+    end
+    return value
+end
+
+local function readBoolParam(params, path, fallback)
+    local raw = readParam(params, path, fallback and 1 or 0)
+    if raw == nil then
+        return fallback
+    end
+    return raw == true or raw == 1
+end
+
+local function normalizeState(state)
+    if type(state) ~= "table" then
+        return {}
+    end
+
+    local params = state.params or {}
+    local voices = state.voices or {}
+    local normalized = {
+        params = params,
+        voices = voices,
+        spectrum = state.spectrum,
+        isRecording = readBoolParam(params, "/looper/recording", false),
+        recordMode = readParam(params, "/looper/mode", "firstLoop"),
+        layers = {},
+    }
+
+    for i, voice in ipairs(voices) do
+        if type(voice) == "table" then
+            normalized.layers[i] = {
+                index = voice.id or (i - 1),
+                state = voice.state or "empty",
+                speed = voice.speed or 1,
+                volume = voice.volume or 1,
+                reversed = voice.reversed or false,
+            }
+        end
+    end
+
+    return normalized
+end
+
 local function releaseGLResources()
     if glState.depthRbo and glState.depthRbo ~= 0 then
         gl.deleteRenderbuffer(glState.depthRbo)
@@ -1487,7 +1537,8 @@ end
 -- ============================================================================
 
 function ui_update(state)
-    current_state = state
+    current_state = normalizeState(state)
+    local viewState = current_state
     
     local now = getTime()
     local dt = now - lastFrameTime
@@ -1507,12 +1558,12 @@ function ui_update(state)
     ui.matrixRain2:update(dt * 0.7)
     
     -- Update EQ with real spectrum data
-    if state.spectrum then
+    if viewState.spectrum then
         for i = 1, spectrumBands do
             if not eqBars[i] then
                 eqBars[i] = {height = 0, velocity = 0}
             end
-            local target = state.spectrum[i] or 0
+            local target = viewState.spectrum[i] or 0
             -- Fast attack, slow decay
             if target > eqBars[i].height then
                 eqBars[i].height = eqBars[i].height + (target - eqBars[i].height) * 0.3
@@ -1549,9 +1600,9 @@ function ui_update(state)
     end
     
     -- Update layer indicator colors
-    if state.layers then
+    if viewState.layers then
         for i = 1, MAX_LAYERS do
-            local layer = state.layers[i]
+            local layer = viewState.layers[i]
             if layer then
                 local color = 0xff1e293b
                 if layer.state == "playing" then

@@ -19,12 +19,12 @@ LooperEditor::LooperEditor(LooperProcessor &p)
   auto candidate3 =
       juce::File("/home/shamanic/dev/my-plugin/looper/ui/looper_ui.lua");
 
-  if (candidate1.existsAsFile())
+  if (candidate3.existsAsFile())
+    scriptFile = candidate3;
+  else if (candidate1.existsAsFile())
     scriptFile = candidate1;
   else if (candidate2.existsAsFile())
     scriptFile = candidate2;
-  else if (candidate3.existsAsFile())
-    scriptFile = candidate3;
 
   if (scriptFile.existsAsFile()) {
     usingLuaUi = luaEngine.loadScript(scriptFile);

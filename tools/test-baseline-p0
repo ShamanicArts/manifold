@@ -167,6 +167,22 @@ def near(a, b, eps=0.05):
     return abs(float(a) - float(b)) <= eps
 
 
+def state_param(state, path, fallback=None):
+    params = state.get("params")
+    if isinstance(params, dict):
+        return params.get(path, fallback)
+    return fallback
+
+
+def state_voice(state, index):
+    voices = state.get("voices")
+    if isinstance(voices, list) and 0 <= index < len(voices):
+        voice = voices[index]
+        if isinstance(voice, dict):
+            return voice
+    return {}
+
+
 def test_p01_ipc_baseline(t, h):
     print("=== P0.1: IPC baseline (canonical commands + malformed/deprecated inputs) ===")
 
@@ -186,40 +202,40 @@ def test_p01_ipc_baseline(t, h):
 
     # Canonical command set baseline
     t.check("SET tempo accepted", h.cmd("SET /looper/tempo 132") == "OK")
-    wait_for(lambda: near(h.state()["tempo"], 132.0), timeout=1.5)
-    t.check("SET tempo updates state", near(h.state()["tempo"], 132.0), h.state()["tempo"])
+    wait_for(lambda: near(state_param(h.state(), "/looper/tempo", 0), 132.0), timeout=1.5)
+    t.check("SET tempo updates state", near(state_param(h.state(), "/looper/tempo", 0), 132.0), state_param(h.state(), "/looper/tempo", None))
 
     t.check("SET mode accepted", h.cmd("SET /looper/mode freeMode") == "OK")
-    wait_for(lambda: h.state()["recordMode"] == "freeMode", timeout=2.0)
-    t.check("SET mode updates state", h.state()["recordMode"] == "freeMode", h.state()["recordMode"])
+    wait_for(lambda: state_param(h.state(), "/looper/mode", "") == "freeMode", timeout=2.0)
+    t.check("SET mode updates state", state_param(h.state(), "/looper/mode", "") == "freeMode", state_param(h.state(), "/looper/mode", None))
 
     t.check("SET active layer accepted", h.cmd("SET /looper/layer 2") == "OK")
-    wait_for(lambda: h.state()["activeLayer"] == 2, timeout=1.5)
-    t.check("SET active layer updates state", h.state()["activeLayer"] == 2, h.state()["activeLayer"])
+    wait_for(lambda: int(state_param(h.state(), "/looper/layer", -1)) == 2, timeout=1.5)
+    t.check("SET active layer updates state", int(state_param(h.state(), "/looper/layer", -1)) == 2, state_param(h.state(), "/looper/layer", None))
 
     t.check("SET layer speed accepted", h.cmd("SET /looper/layer/2/speed 0.75") == "OK")
-    wait_for(lambda: near(h.state()["layers"][2]["speed"], 0.75, 0.01), timeout=1.5)
-    t.check("SET layer speed updates state", near(h.state()["layers"][2]["speed"], 0.75, 0.01), h.state()["layers"][2]["speed"])
+    wait_for(lambda: near(float(state_voice(h.state(), 2).get("speed", 0.0)), 0.75, 0.01), timeout=1.5)
+    t.check("SET layer speed updates state", near(float(state_voice(h.state(), 2).get("speed", 0.0)), 0.75, 0.01), state_voice(h.state(), 2).get("speed"))
 
     t.check("SET layer reverse accepted", h.cmd("SET /looper/layer/2/reverse 1") == "OK")
-    wait_for(lambda: h.state()["layers"][2]["reversed"] is True, timeout=1.5)
-    t.check("SET layer reverse updates state", h.state()["layers"][2]["reversed"] is True, h.state()["layers"][2]["reversed"])
+    wait_for(lambda: bool(state_voice(h.state(), 2).get("reversed", False)) is True, timeout=1.5)
+    t.check("SET layer reverse updates state", bool(state_voice(h.state(), 2).get("reversed", False)) is True, state_voice(h.state(), 2).get("reversed"))
 
     t.check("SET layer volume accepted", h.cmd("SET /looper/layer/2/volume 0.35") == "OK")
-    wait_for(lambda: near(h.state()["layers"][2]["volume"], 0.35, 0.01), timeout=1.5)
-    t.check("SET layer volume updates state", near(h.state()["layers"][2]["volume"], 0.35, 0.01), h.state()["layers"][2]["volume"])
+    wait_for(lambda: near(float(state_voice(h.state(), 2).get("volume", 0.0)), 0.35, 0.01), timeout=1.5)
+    t.check("SET layer volume updates state", near(float(state_voice(h.state(), 2).get("volume", 0.0)), 0.35, 0.01), state_voice(h.state(), 2).get("volume"))
 
     t.check("SET overdub ON accepted", h.cmd("SET /looper/overdub 1") == "OK")
-    wait_for(lambda: h.state()["overdubEnabled"] is True, timeout=1.5)
-    t.check("SET overdub ON updates state", h.state()["overdubEnabled"] is True, h.state()["overdubEnabled"])
+    wait_for(lambda: int(state_param(h.state(), "/looper/overdub", 0)) == 1, timeout=1.5)
+    t.check("SET overdub ON updates state", int(state_param(h.state(), "/looper/overdub", 0)) == 1, state_param(h.state(), "/looper/overdub", None))
 
     t.check("SET overdub OFF accepted", h.cmd("SET /looper/overdub 0") == "OK")
-    wait_for(lambda: h.state()["overdubEnabled"] is False, timeout=1.5)
-    t.check("SET overdub OFF updates state", h.state()["overdubEnabled"] is False, h.state()["overdubEnabled"])
+    wait_for(lambda: int(state_param(h.state(), "/looper/overdub", 1)) == 0, timeout=1.5)
+    t.check("SET overdub OFF updates state", int(state_param(h.state(), "/looper/overdub", 1)) == 0, state_param(h.state(), "/looper/overdub", None))
 
     t.check("SET volume accepted", h.cmd("SET /looper/volume 0.8") == "OK")
-    wait_for(lambda: near(h.state()["masterVolume"], 0.8, 0.01), timeout=1.5)
-    t.check("SET volume updates state", near(h.state()["masterVolume"], 0.8, 0.01), h.state()["masterVolume"])
+    wait_for(lambda: near(state_param(h.state(), "/looper/volume", 0), 0.8, 0.01), timeout=1.5)
+    t.check("SET volume updates state", near(state_param(h.state(), "/looper/volume", 0), 0.8, 0.01), state_param(h.state(), "/looper/volume", None))
 
     deprecated = [
         ("TEMPO 120", "ERROR legacy command removed: TEMPO. Use SET/GET/TRIGGER /path syntax."),

@@ -174,12 +174,16 @@ struct AtomicState {
   static const int MAX_LAYERS = 4;
 
   std::atomic<float> tempo{120.0f};
+  std::atomic<float> targetBPM{120.0f};
   std::atomic<float> samplesPerBar{0.0f};
+  std::atomic<double> sampleRate{44100.0};
   std::atomic<int> captureSize{0};
   std::atomic<int> captureWritePos{0};
   std::atomic<float> captureLevel{0.0f};
   std::atomic<bool> isRecording{false};
   std::atomic<bool> overdubEnabled{false};
+  std::atomic<bool> forwardArmed{false};
+  std::atomic<float> forwardBars{0.0f};
   std::atomic<int> recordMode{0};
   std::atomic<int> activeLayer{0};
   std::atomic<float> masterVolume{1.0f};
@@ -297,7 +301,6 @@ private:
   // Stats
   std::atomic<int> commandsProcessed{0};
   std::atomic<int> eventsDropped{0};
-  std::atomic<int> legacySyntaxCommands{0};
 
   // UI switch request (set by server thread, read by audio thread)
   UISwitchRequest uiSwitchRequest;

@@ -375,15 +375,6 @@ inline void attachCoercionWarning(ParseResult &result,
   }
 }
 
-inline ParseResult markLegacySyntax(ParseResult result,
-                                    const std::string &legacyVerb) {
-  result.usedLegacySyntax = true;
-  result.legacyVerb = legacyVerb;
-  recordLegacyVerb(legacyVerb);
-  recordWarningCode("W_PATH_DEPRECATED");
-  return result;
-}
-
 inline bool isDeprecatedLegacyVerb(const std::string &verb) {
   return verb == "COMMIT" || verb == "FORWARD" || verb == "TEMPO" ||
          verb == "REC" || verb == "OVERDUB" || verb == "STOP" ||

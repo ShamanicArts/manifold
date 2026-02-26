@@ -296,15 +296,6 @@ std::string ControlServer::processCommand(const std::string& cmd) {
         cmd,
         owner ? &owner->getEndpointRegistry() : nullptr);
 
-    if (result.usedLegacySyntax) {
-        const int count = legacySyntaxCommands.fetch_add(1, std::memory_order_relaxed) + 1;
-        if (count <= 5 || (count % 100) == 0) {
-            DBG("ControlServer: deprecated legacy command syntax '" << result.legacyVerb
-                << "' used (count=" << count
-                << "). Prefer canonical SET/GET/TRIGGER paths.");
-        }
-    }
-
     if (!result.warningCode.empty()) {
         static std::atomic<int> parserWarnings{0};
         const int count = parserWarnings.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -391,37 +382,36 @@ std::string ControlServer::buildStateJson() {
     auto& s = atomicState;
     std::ostringstream o;
     o << "{";
-    o << jsonNum("tempo", s.tempo.load()) << ",";
-    o << jsonNum("samplesPerBar", s.samplesPerBar.load()) << ",";
-    o << jsonNum("captureSize", s.captureSize.load()) << ",";
+    o << jsonNum("projectionVersion", 2) << ",";
+    o << jsonNum("numVoices", AtomicState::MAX_LAYERS) << ",";
     o << jsonNum("captureWritePos", s.captureWritePos.load()) << ",";
     o << jsonNum("captureLevel", s.captureLevel.load()) << ",";
-    o << jsonBool("isRecording", s.isRecording.load()) << ",";
-    o << jsonBool("overdubEnabled", s.overdubEnabled.load()) << ",";
-    o << jsonStr("recordMode", recordModeToString(s.recordMode.load())) << ",";
-    o << jsonNum("activeLayer", s.activeLayer.load()) << ",";
-    o << jsonNum("masterVolume", s.masterVolume.load()) << ",";
     o << jsonNum("playTime", s.playTime.load()) << ",";
     o << jsonNum("commitCount", s.commitCount.load()) << ",";
     o << jsonNum("uptimeSeconds", s.uptimeSeconds.load()) << ",";
-    o << jsonNum("projectionVersion", 1) << ",";
-    o << jsonNum("numVoices", AtomicState::MAX_LAYERS) << ",";
 
     o << "\"params\":{";
     o << jsonNum("/looper/tempo", s.tempo.load()) << ",";
+    o << jsonNum("/looper/targetbpm", s.targetBPM.load()) << ",";
     o << jsonNum("/looper/samplesPerBar", s.samplesPerBar.load()) << ",";
+    o << jsonNum("/looper/sampleRate", s.sampleRate.load()) << ",";
     o << jsonNum("/looper/captureSize", s.captureSize.load()) << ",";
-    o << jsonBool("/looper/recording", s.isRecording.load()) << ",";
-    o << jsonBool("/looper/overdub", s.overdubEnabled.load()) << ",";
+    o << jsonNum("/looper/recording", s.isRecording.load() ? 1 : 0) << ",";
+    o << jsonNum("/looper/overdub", s.overdubEnabled.load() ? 1 : 0) << ",";
     o << jsonStr("/looper/mode", recordModeToString(s.recordMode.load())) << ",";
     o << jsonNum("/looper/layer", s.activeLayer.load()) << ",";
-    o << jsonNum("/looper/volume", s.masterVolume.load());
+    o << jsonNum("/looper/volume", s.masterVolume.load()) << ",";
+    o << jsonNum("/looper/forwardArmed", s.forwardArmed.load() ? 1 : 0) << ",";
+    o << jsonNum("/looper/forwardBars", s.forwardBars.load());
 
     for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
         auto& layer = s.layers[i];
         const std::string prefix = "/looper/layer/" + std::to_string(i);
+        const int stateValue = layer.state.load();
+        const bool muted = stateValue == 4;
         o << "," << jsonNum(prefix + "/speed", layer.speed.load());
         o << "," << jsonNum(prefix + "/volume", layer.volume.load());
+        o << "," << jsonNum(prefix + "/mute", muted ? 1 : 0);
         o << "," << jsonBool(prefix + "/reverse", layer.reversed.load());
         o << "," << jsonNum(prefix + "/length", layer.length.load());
 
@@ -432,26 +422,9 @@ std::string ControlServer::buildStateJson() {
                          : 0.0f;
         o << "," << jsonNum(prefix + "/position", positionNorm);
         o << "," << jsonNum(prefix + "/bars", layer.numBars.load());
-        o << "," << jsonStr(prefix + "/state", layerStateToString(layer.state.load()));
+        o << "," << jsonStr(prefix + "/state", layerStateToString(stateValue));
     }
     o << "},";
-
-    o << "\"layers\":[";
-    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
-        auto& l = s.layers[i];
-        if (i > 0) o << ",";
-        o << "{";
-        o << jsonNum("index", i) << ",";
-        o << jsonStr("state", layerStateToString(l.state.load())) << ",";
-        o << jsonNum("length", l.length.load()) << ",";
-        o << jsonNum("playheadPos", l.playheadPos.load()) << ",";
-        o << jsonNum("speed", l.speed.load()) << ",";
-        o << jsonBool("reversed", l.reversed.load()) << ",";
-        o << jsonNum("volume", l.volume.load()) << ",";
-        o << jsonNum("numBars", l.numBars.load());
-        o << "}";
-    }
-    o << "],";
 
     o << "\"voices\":[";
     for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
@@ -460,21 +433,34 @@ std::string ControlServer::buildStateJson() {
 
         const int length = layer.length.load();
         const int position = layer.playheadPos.load();
+        const int stateValue = layer.state.load();
+        const bool muted = stateValue == 4;
         const float positionNorm =
             (length > 0) ? static_cast<float>(position) / static_cast<float>(length)
                          : 0.0f;
+        const float bars = layer.numBars.load();
 
         o << "{";
         o << jsonNum("id", i) << ",";
         o << jsonStr("path", "/looper/layer/" + std::to_string(i)) << ",";
-        o << jsonStr("state", layerStateToString(layer.state.load())) << ",";
+        o << jsonStr("state", layerStateToString(stateValue)) << ",";
         o << jsonNum("length", length) << ",";
         o << jsonNum("position", position) << ",";
         o << jsonNum("positionNorm", positionNorm) << ",";
         o << jsonNum("speed", layer.speed.load()) << ",";
         o << jsonBool("reversed", layer.reversed.load()) << ",";
         o << jsonNum("volume", layer.volume.load()) << ",";
-        o << jsonNum("bars", layer.numBars.load());
+        o << jsonNum("bars", bars) << ",";
+        o << "\"params\":{";
+        o << jsonNum("speed", layer.speed.load()) << ",";
+        o << jsonNum("volume", layer.volume.load()) << ",";
+        o << jsonNum("mute", muted ? 1 : 0) << ",";
+        o << jsonNum("reverse", layer.reversed.load() ? 1 : 0) << ",";
+        o << jsonNum("length", length) << ",";
+        o << jsonNum("position", positionNorm) << ",";
+        o << jsonNum("bars", bars) << ",";
+        o << jsonStr("state", layerStateToString(stateValue));
+        o << "}";
         o << "}";
     }
     o << "]}";
@@ -497,7 +483,6 @@ std::string ControlServer::buildDiagnoseJson() {
     o << jsonNum("captureWritePos", s.captureWritePos.load()) << ",";
     o << jsonNum("captureSize", s.captureSize.load()) << ",";
     o << jsonNum("commandsProcessed", commandsProcessed.load()) << ",";
-    o << jsonNum("legacySyntaxCommands", legacySyntaxCommands.load()) << ",";
     o << jsonNum("eventsDropped", eventsDropped.load()) << ",";
     o << jsonNum("warningsTotal", parserDiagnostics.warningsTotal) << ",";
     o << jsonNum("errorsTotal", parserDiagnostics.errorsTotal) << ",";
