@@ -32,7 +32,7 @@ This document outlines the phased implementation needed to enable Lua scripting 
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | Generic ScriptableProcessor Interface | ✅ **Done** |
-| 2 | Primitive Factory Bindings | Not started |
+| 2 | Primitive Factory Bindings | ✅ **Done** |
 | 3 | Primitive Wiring System | Not started |
 | 4 | Audio Thread Graph Execution | Not started |
 | 5 | Lua Script API | Not started |
