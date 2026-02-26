@@ -44,19 +44,28 @@ Control Thread (UI/CLI)          Audio Thread
 ## Build Commands
 
 ```bash
-cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
+# IMPORTANT: For fast iteration, use the dev build directory.
+# It avoids LTO/IPO link-time overhead and is dramatically faster.
+
+# Dev (fast iteration)
+cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build-dev --target Looper_Standalone
+
+# Release-style (slow clean links due to LTO)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target Looper_Standalone
 ```
 
 ## Running
 
 ### Standalone Looper
 ```bash
-./build/Looper_artefacts/Release/Standalone/Looper
+./build-dev/Looper_artefacts/RelWithDebInfo/Standalone/Looper
 ```
 
 ### VST3
 ```bash
-./build/Looper_artefacts/Release/VST3/Looper.vst3
+./build-dev/Looper_artefacts/RelWithDebInfo/VST3/Looper.vst3
 ```
 
 ## UI System
@@ -237,6 +246,12 @@ jj split -r @ -A yqmsuuzt -m "feat(engine): backend support" looper/engine/*.cpp
 - The working copy (`@`) becomes an empty merge commit preserving both lineages
 - Prefer small, focused commits over large mixed ones
 - JJ auto-rebases descendants when you modify history
+
+## Testing Rules
+
+**NEVER create standalone test harness binaries** (e.g. `DspScriptHostHarness.cpp`, `GraphSwapHarness.cpp`). These pollute the build, test things in unrealistic environments, and waste time debugging red herrings. Use `LooperHeadless` + `looper-cli` for all integration testing. This is a hard rule.
+
+**Existing harnesses** (`LuaEngineMockHarness`, `EndpointResolverHarness`, etc.) test isolated subsystems without the full processor — these are acceptable. The distinction: unit-testing a parser or resolver in isolation is fine; creating a fake "mini-processor" that partially recreates `LooperProcessor` is not.
 
 ## Socket Location
 
