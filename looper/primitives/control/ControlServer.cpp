@@ -401,6 +401,8 @@ std::string ControlServer::buildStateJson() {
     o << jsonStr("/looper/mode", recordModeToString(s.recordMode.load())) << ",";
     o << jsonNum("/looper/layer", s.activeLayer.load()) << ",";
     o << jsonNum("/looper/volume", s.masterVolume.load()) << ",";
+    o << jsonNum("/looper/inputVolume", s.inputVolume.load()) << ",";
+    o << jsonNum("/looper/passthrough", s.passthroughEnabled.load() ? 1 : 0) << ",";
     o << jsonNum("/looper/forwardArmed", s.forwardArmed.load() ? 1 : 0) << ",";
     o << jsonNum("/looper/forwardBars", s.forwardBars.load());
 

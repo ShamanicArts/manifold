@@ -114,6 +114,8 @@ local function normalizeState(state)
         sampleRate = readParam(params, "/looper/sampleRate", 44100),
         captureSize = readParam(params, "/looper/captureSize", 0),
         masterVolume = readParam(params, "/looper/volume", 0.8),
+        inputVolume = readParam(params, "/looper/inputVolume", 1.0),
+        passthroughEnabled = readBoolParam(params, "/looper/passthrough", true),
         isRecording = readBoolParam(params, "/looper/recording", false),
         overdubEnabled = readBoolParam(params, "/looper/overdub", false),
         recordMode = readParam(params, "/looper/mode", "firstLoop"),
@@ -217,7 +219,26 @@ function ui_init(root)
         colour = 0xffa78bfa,
         on_change = function(v) commandSet("/looper/volume", v) end,
     })
-    
+
+    -- Input volume knob
+    ui.inputVolKnob = W.Knob.new(ui.headerPanel.node, "inputVol", {
+        min = 0, max = 2, step = 0.01, value = 1.0,
+        label = "Input", suffix = "",
+        colour = 0xfff59e0b,
+        on_change = function(v) commandSet("/looper/inputVolume", v) end,
+    })
+
+    -- Passthrough toggle
+    ui.passthroughToggle = W.Toggle.new(ui.headerPanel.node, "passthrough", {
+        label = "Input",
+        onColour = 0xff34d399,
+        offColour = 0xff475569,
+        value = true,
+        on_change = function(on) 
+            commandSet("/looper/passthrough", on and 1 or 0)
+        end,
+    })
+
     -- Settings button with dropdown menu
     local _settingsOpen = false
     local _scriptOverlay = nil
@@ -705,7 +726,13 @@ function ui_resized(w, h)
     
     ui.masterVolKnob:setBounds(hRight - knobW, 2, knobW, headerH - 4)
     hRight = hRight - knobW - hGap
-    
+
+    ui.inputVolKnob:setBounds(hRight - knobW, 2, knobW, headerH - 4)
+    hRight = hRight - knobW - hGap
+
+    ui.passthroughToggle:setBounds(hRight - 80, 6, 80, headerH - 12)
+    hRight = hRight - 80 - hGap
+
     ui.targetBpmBox:setBounds(hRight - boxW, 6, boxW, headerH - 12)
     hRight = hRight - boxW - hGap
     
@@ -831,7 +858,9 @@ function ui_update(s)
     if ui.tempoBox then ui.tempoBox:setValue(state.tempo or 120) end
     if ui.targetBpmBox then ui.targetBpmBox:setValue(state.targetBPM or 120) end
     if ui.masterVolKnob then ui.masterVolKnob:setValue(state.masterVolume or 0.8) end
-    
+    if ui.inputVolKnob then ui.inputVolKnob:setValue(state.inputVolume or 1.0) end
+    if ui.passthroughToggle then ui.passthroughToggle:setValue(state.passthroughEnabled) end
+
     -- Transport
     if ui.modeDropdown then
         -- Map mode index: 0=FirstLoop, 1=Free, 2=Traditional (skip 3=Retrospective)

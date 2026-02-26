@@ -92,6 +92,12 @@ public:
     float getMasterVolume() const override { return masterVolume; }
     void setMasterVolume(float vol) { masterVolume = vol; }
     
+    float getInputVolume() const { return inputVolume; }
+    void setInputVolume(float vol) { inputVolume = vol; }
+    
+    bool isPassthroughEnabled() const { return passthroughEnabled; }
+    void setPassthroughEnabled(bool enabled) { passthroughEnabled = enabled; }
+    
     float getSamplesPerBar() const override;
     double getSampleRate() const override { return currentSampleRate; }
     int getCommitCount() const override { return commitCount; }
@@ -135,6 +141,8 @@ private:
     float targetBPM = 120.0f;
     bool inferTempo = true;
     float masterVolume = 1.0f;
+    float inputVolume = 1.0f;
+    bool passthroughEnabled = true;
     double currentSampleRate = 44100.0;
     
     // Control server for IPC observation/control

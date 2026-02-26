@@ -143,10 +143,11 @@ void LooperProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     }
   }
 
-  // Output: dry input + wet layers
+  // Output: dry input (with passthrough toggle and input volume) + wet layers
+  float dryGain = passthroughEnabled ? inputVolume * 0.7f : 0.0f;
   for (int i = 0; i < numSamples; ++i) {
-    inputL[i] = inputL[i] * 0.7f + layerMixL[i] * masterVolume;
-    inputR[i] = inputR[i] * 0.7f + layerMixR[i] * masterVolume;
+    inputL[i] = inputL[i] * dryGain + layerMixL[i] * masterVolume;
+    inputR[i] = inputR[i] * dryGain + layerMixR[i] * masterVolume;
   }
 
   if (hostTransportPlaying) {
@@ -646,6 +647,14 @@ void LooperProcessor::processControlCommands() {
       masterVolume = juce::jlimit(0.0f, 2.0f, cmd.floatParam);
       break;
 
+    case ControlCommand::Type::SetInputVolume:
+      inputVolume = juce::jlimit(0.0f, 2.0f, cmd.floatParam);
+      break;
+
+    case ControlCommand::Type::SetPassthroughEnabled:
+      passthroughEnabled = cmd.floatParam > 0.5f;
+      break;
+
     case ControlCommand::Type::SetTargetBPM:
       targetBPM = cmd.floatParam;
       break;
@@ -688,6 +697,8 @@ void LooperProcessor::updateAtomicState(
                          std::memory_order_relaxed);
   state.activeLayer.store(activeLayerIndex, std::memory_order_relaxed);
   state.masterVolume.store(masterVolume, std::memory_order_relaxed);
+  state.inputVolume.store(inputVolume, std::memory_order_relaxed);
+  state.passthroughEnabled.store(passthroughEnabled, std::memory_order_relaxed);
   state.playTime.store(playTime, std::memory_order_relaxed);
   state.commitCount.store(commitCount, std::memory_order_relaxed);
   state.uptimeSeconds.store(playTime / currentSampleRate,

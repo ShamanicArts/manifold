@@ -98,6 +98,8 @@ public:
   float getSamplesPerBar() const override { return samplesPerBar; }
   double getSampleRate() const override { return sampleRate; }
   float getMasterVolume() const override { return masterVolume; }
+  float getInputVolume() const override { return inputVolume; }
+  bool isPassthroughEnabled() const override { return passthroughEnabled; }
   bool isRecording() const override { return isRecordingFlag; }
   bool isOverdubEnabled() const override { return overdubEnabled; }
   int getActiveLayerIndex() const override { return activeLayer; }
@@ -123,6 +125,8 @@ private:
   float samplesPerBar = 88200.0f;
   double sampleRate = 44100.0;
   float masterVolume = 1.0f;
+  float inputVolume = 1.0f;
+  bool passthroughEnabled = true;
   bool isRecordingFlag = false;
   bool overdubEnabled = false;
   int activeLayer = 0;

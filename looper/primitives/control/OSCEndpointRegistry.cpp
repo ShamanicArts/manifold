@@ -27,6 +27,8 @@ static const EndpointTemplate kEndpointTemplates[] = {
     { ControlCommand::Type::SetRecordMode,    "mode",       "s",  0.0f,  0.0f,   3, "Record mode (firstLoop/freeMode/traditional/retrospective)", false },
     { ControlCommand::Type::SetActiveLayer,   "layer",      "i",  0.0f,  3.0f,   3, "Active layer index (0-3)",      false },
     { ControlCommand::Type::SetMasterVolume,  "volume",     "f",  0.0f,  2.0f,   3, "Master volume",                 false },
+    { ControlCommand::Type::SetInputVolume,   "inputVolume", "f", 0.0f,  2.0f,   3, "Input volume",                  false },
+    { ControlCommand::Type::SetPassthroughEnabled, "passthrough", "i", 0.0f, 1.0f, 3, "Input passthrough (0/1)",      false },
     { ControlCommand::Type::ClearAllLayers,   "clear",      "N",  0.0f,  0.0f,   2, "Clear all layers",              false },
 
     // --- Per-layer commands ---

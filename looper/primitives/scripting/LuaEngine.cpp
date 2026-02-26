@@ -1619,6 +1619,8 @@ void LuaEngine::pushStateToLua() {
   const float samplesPerBar = proc->getSamplesPerBar();
   const double sampleRate = proc->getSampleRate();
   const float masterVolume = proc->getMasterVolume();
+  const float inputVolume = proc->getInputVolume();
+  const bool passthroughEnabled = proc->isPassthroughEnabled();
   const bool isRecording = proc->isRecording();
   const bool isOverdubEnabled = proc->isOverdubEnabled();
   const int activeLayerIndex = proc->getActiveLayerIndex();
@@ -1657,6 +1659,8 @@ void LuaEngine::pushStateToLua() {
   params["/looper/sampleRate"] = sampleRate;
   params["/looper/captureSize"] = captureSize;
   params["/looper/volume"] = masterVolume;
+  params["/looper/inputVolume"] = inputVolume;
+  params["/looper/passthrough"] = passthroughEnabled ? 1 : 0;
   params["/looper/recording"] = isRecording ? 1 : 0;
   params["/looper/overdub"] = isOverdubEnabled ? 1 : 0;
   params["/looper/mode"] = recordModeString;

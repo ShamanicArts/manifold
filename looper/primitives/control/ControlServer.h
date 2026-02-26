@@ -71,9 +71,11 @@ struct ControlCommand {
     LayerSeek, // seek layer playhead (floatParam = normalized 0-1 position)
     ClearAllLayers,  // clear all layers
     SetRecordMode,   // set record mode
-    SetMasterVolume, // set master volume
-    SetTargetBPM,    // set target BPM
-    UISwitch,        // switch UI script (path in stringParam)
+    SetMasterVolume,    // set master volume
+    SetInputVolume,     // set input volume
+    SetPassthroughEnabled, // toggle input passthrough
+    SetTargetBPM,       // set target BPM
+    UISwitch,           // switch UI script (path in stringParam)
   };
 
   // New resolver-oriented internal payload shape.
@@ -187,6 +189,8 @@ struct AtomicState {
   std::atomic<int> recordMode{0};
   std::atomic<int> activeLayer{0};
   std::atomic<float> masterVolume{1.0f};
+  std::atomic<float> inputVolume{1.0f};
+  std::atomic<bool> passthroughEnabled{true};
   std::atomic<double> playTime{0.0};
   std::atomic<int> commitCount{0};
   std::atomic<double> uptimeSeconds{0.0};

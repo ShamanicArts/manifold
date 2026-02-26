@@ -60,6 +60,8 @@ public:
   virtual float getSamplesPerBar() const = 0;
   virtual double getSampleRate() const = 0;
   virtual float getMasterVolume() const = 0;
+  virtual float getInputVolume() const = 0;
+  virtual bool isPassthroughEnabled() const = 0;
   virtual bool isRecording() const = 0;
   virtual bool isOverdubEnabled() const = 0;
   virtual int getActiveLayerIndex() const = 0;
