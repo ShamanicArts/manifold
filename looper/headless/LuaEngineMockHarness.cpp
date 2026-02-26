@@ -319,6 +319,24 @@ function ui_update(state)
     local setFail = setParam("/nonexistent/path", 1.0)
     ok = ok and setFail == false
 
+    -- Test Primitives factories exist (Phase 2)
+    -- Note: Methods require full usertype registration - just verify factories work
+    local LoopBuffer = Primitives.LoopBuffer
+    local buf = LoopBuffer.new(44100, 2)
+    ok = ok and buf ~= nil
+
+    local Playhead = Primitives.Playhead
+    local ph = Playhead.new(44100)
+    ok = ok and ph ~= nil
+
+    local CaptureBuffer = Primitives.CaptureBuffer
+    local cap = CaptureBuffer.new(88200, 2)
+    ok = ok and cap ~= nil
+
+    local Quantizer = Primitives.Quantizer
+    local q = Quantizer.new(48000)
+    ok = ok and q ~= nil
+
     sent = true
   end
 end
