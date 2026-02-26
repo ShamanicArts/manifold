@@ -88,11 +88,12 @@ local function formatBars(bars)
         if math.abs(bars - 0.5) < 0.001 then return "1/2 bar" end
         return string.format("%.2f bars", bars)
     end
-    -- Whole bars
-    if bars == 1 then
+    -- Whole bars (round to nearest to handle floating-point errors like 3.999)
+    local rounded = math.floor(bars + 0.5)
+    if rounded == 1 then
         return "1 bar"
     else
-        return string.format("%d bars", math.floor(bars))
+        return string.format("%d bars", rounded)
     end
 end
 
