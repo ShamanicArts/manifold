@@ -3,12 +3,15 @@
 #include "../primitives/control/OSCEndpointRegistry.h"
 #include "../primitives/control/OSCQuery.h"
 #include "../primitives/control/OSCServer.h"
+#include "../primitives/control/EndpointResolver.h"
+#include "../primitives/control/CommandParser.h"
 #include "../primitives/dsp/CaptureBuffer.h"
 #include "../engine/LooperLayer.h"
 
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 class MockScriptableProcessor : public ScriptableProcessor {
@@ -52,6 +55,62 @@ public:
   OSCServer &getOSCServer() override { return oscServer; }
   OSCEndpointRegistry &getEndpointRegistry() override { return endpointRegistry; }
   OSCQueryServer &getOSCQueryServer() override { return oscQueryServer; }
+
+  // Generic path-based parameter access
+  bool setParamByPath(const std::string &path, float value) override {
+    ParseResult result = CommandParser::buildResolverSetCommand(
+        &endpointRegistry, juce::String(path), juce::var(value));
+    if (result.kind != ParseResult::Kind::Enqueue) {
+      return false;
+    }
+    return postControlCommandPayload(result.command);
+  }
+
+  float getParamByPath(const std::string &path) const override {
+    if (path == "/looper/tempo") return tempo;
+    if (path == "/looper/targetbpm") return targetBPM;
+    if (path == "/looper/volume") return masterVolume;
+    if (path == "/looper/inputVolume") return inputVolume;
+    if (path == "/looper/passthrough") return passthroughEnabled ? 1.0f : 0.0f;
+    if (path == "/looper/recording") return isRecordingFlag ? 1.0f : 0.0f;
+    if (path == "/looper/overdub") return overdubEnabled ? 1.0f : 0.0f;
+    if (path == "/looper/layer") return static_cast<float>(activeLayer);
+    if (path == "/looper/forwardArmed") return forwardArmed ? 1.0f : 0.0f;
+    if (path == "/looper/forwardBars") return forwardBars;
+    if (path == "/looper/samplesPerBar") return samplesPerBar;
+    if (path == "/looper/sampleRate") return static_cast<float>(sampleRate);
+    if (path == "/looper/captureSize") return static_cast<float>(capture.getSize());
+    if (path == "/looper/mode") return static_cast<float>(recordModeIndex);
+    if (path == "/looper/commitCount") return static_cast<float>(commitCount);
+
+    // Layer paths
+    if (path.find("/looper/layer/") == 0) {
+      int layerIdx = -1;
+      if (sscanf(path.c_str(), "/looper/layer/%d/", &layerIdx) == 1 &&
+          layerIdx >= 0 && layerIdx < getNumLayers()) {
+        size_t slashPos = path.find('/', 14);
+        if (slashPos != std::string::npos) {
+          std::string rest = path.substr(slashPos + 1);
+          const auto &layer = layers[(size_t)layerIdx];
+          if (rest == "speed") return layer.getSpeed();
+          if (rest == "volume") return layer.getVolume();
+          if (rest == "reverse") return layer.isReversed() ? 1.0f : 0.0f;
+          if (rest == "length") return static_cast<float>(layer.getLength());
+          if (rest == "position") {
+            int len = layer.getLength();
+            return (len > 0) ? static_cast<float>(layer.getPosition()) / static_cast<float>(len) : 0.0f;
+          }
+        }
+      }
+    }
+
+    return 0.0f;
+  }
+
+  bool hasEndpoint(const std::string &path) const override {
+    OSCEndpoint endpoint = endpointRegistry.findEndpoint(juce::String(path));
+    return endpoint.path.isNotEmpty();
+  }
 
   int getNumLayers() const override { return 4; }
   bool getLayerSnapshot(int index, ScriptableLayerSnapshot &out) const override {
@@ -198,6 +257,17 @@ function ui_update(state)
   ok = ok and params["/looper/forwardArmed"] == 0
   ok = ok and nearly(params["/looper/forwardBars"], 0)
 
+  -- Test hasEndpoint
+  ok = ok and hasEndpoint("/looper/tempo") == true
+  ok = ok and hasEndpoint("/looper/layer/0/speed") == true
+  ok = ok and hasEndpoint("/nonexistent/path") == false
+
+  -- Test getParam
+  ok = ok and nearly(getParam("/looper/tempo"), 120)
+  ok = ok and nearly(getParam("/looper/volume"), 1.0)
+  ok = ok and nearly(getParam("/looper/layer/0/speed"), 1.0)
+  ok = ok and nearly(getParam("/nonexistent/path"), 0.0)
+
   for i = 1, state.numVoices do
     local voice = state.voices[i]
     if not voice then
@@ -241,7 +311,14 @@ function ui_update(state)
   end
 
   if ok then
-    command("SET", "/looper/tempo", 130)
+    -- Test setParam
+    local setOk = setParam("/looper/tempo", 135.5)
+    ok = ok and setOk == true
+
+    -- Test setParam with invalid path
+    local setFail = setParam("/nonexistent/path", 1.0)
+    ok = ok and setFail == false
+
     sent = true
   end
 end
@@ -277,9 +354,10 @@ end
     return 5;
   }
 
-  if (std::abs(first.floatParam - 130.0f) > 0.1f) {
+  // setParam was called with 135.5
+  if (std::abs(first.floatParam - 135.5f) > 0.1f) {
     std::fprintf(stderr,
-                 "LuaEngineMockHarness: expected tempo 130, got %.3f\n",
+                 "LuaEngineMockHarness: expected tempo 135.5, got %.3f\n",
                  first.floatParam);
     return 6;
   }
@@ -352,7 +430,7 @@ end
   }
 
   std::fprintf(stdout,
-               "LuaEngineMockHarness: PASS (commands=%zu, first=SetTempo %.1f)\n",
+               "LuaEngineMockHarness: PASS (commands=%zu, first=SetTempo %.1f via setParam)\n",
                commands.size(), first.floatParam);
 
   return 0;

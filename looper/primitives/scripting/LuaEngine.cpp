@@ -1126,6 +1126,25 @@ void LuaEngine::registerBindings() {
     pImpl->processor->postControlCommandPayload(cmd);
   };
 
+  // ---- Generic path-based parameter access (Phase 1 DSP scripting) ----
+  lua["setParam"] = [this](const std::string &path, float value) -> bool {
+    if (!pImpl->processor)
+      return false;
+    return pImpl->processor->setParamByPath(path, value);
+  };
+
+  lua["getParam"] = [this](const std::string &path) -> float {
+    if (!pImpl->processor)
+      return 0.0f;
+    return pImpl->processor->getParamByPath(path);
+  };
+
+  lua["hasEndpoint"] = [this](const std::string &path) -> bool {
+    if (!pImpl->processor)
+      return false;
+    return pImpl->processor->hasEndpoint(path);
+  };
+
   // ---- Script management (exposed to Lua) ----
   lua["listUiScripts"] = [this]() -> sol::table {
     const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
