@@ -168,7 +168,6 @@ Existing scripts become shell-mounted views, not shell owners.
 
 - `looper/ui/dsp_live_scripting.lua`
 - `looper/ui/looper_ui.lua`
-- `looper/ui/looper_ui_old.lua` (if retained as legacy view)
 - `looper/ui/looper_widgets.lua`
 - `looper/ui/wiring_demo.lua` (likely fully deprecated)
 - new shell/editor modules under `looper/ui/`

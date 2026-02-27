@@ -73,7 +73,6 @@ cmake --build build --target Looper_Standalone
 The UI is entirely Lua-based with two main files:
 
 - `looper/ui/looper_ui.lua` - **Default UI** (minimal, modern)
-- `looper/ui/looper_ui_old.lua` - Original full-featured UI (reference)
 
 ### Widget Library (`looper_widgets.lua`)
 
@@ -173,7 +172,6 @@ looper/
 ├── ui/              # Editor + Lua scripts
 │   ├── LooperEditor.cpp/h
 │   ├── looper_ui.lua          # Default UI
-│   ├── looper_ui_old.lua      # Original UI
 │   └── looper_widgets.lua     # Widget library
 ├── primitives/
 │   ├── control/     # ControlServer, CommandParser

@@ -4,7 +4,6 @@ This checklist maps `looper/ui/looper_ui.lua` expectations to the primitive-back
 
 Scope:
 - UI target: `looper/ui/looper_ui.lua`
-- Primitive parity target UI: `looper/ui/looper_ui_new.lua`
 - Primitive script: `looper/dsp/looper_primitives_dsp.lua`
 - Compatibility router: `looper/primitives/control/ControlServer.cpp`
 
@@ -32,7 +31,7 @@ The original UI reads values from `state.params[...]` in `normalizeState`.
 | `/looper/passthrough` | Existing host-provided default path in state projection | Verified |
 
 Notes:
-- `looper_ui_new.lua` keeps visual/layout code from `looper_ui.lua` and only adds normalization fallbacks where primitive state is numeric or missing `voices`.
+- `looper_ui.lua` now includes primitive-compat normalization fallbacks where primitive state is numeric or missing `voices`.
 - The traditional-mode regression (forward length hanging) was fixed by relying on explicit `/forwardArmed` + `/forwardBars` state and clearing them on commit/stoprec paths.
 
 ## 2. UI Write/Trigger Contract Parity
@@ -70,7 +69,7 @@ The original UI issues `SET`/`TRIGGER` commands on these paths.
 - Symptom: after closing loop/commit in traditional mode, forward-length indicator remained armed.
 - Root cause: fallback inferred armed state from `/looper/forward` command value.
 - Fixes:
-  - `looper/ui/looper_ui_new.lua`: removed fallback inference from `/forward`.
+  - `looper/ui/looper_ui.lua`: removed fallback inference from `/forward`.
   - `looper/dsp/looper_primitives_dsp.lua`: added explicit `/forwardArmed` and `/forwardBars` params.
   - `looper/primitives/control/ControlServer.cpp`: added sync/clear logic on forward set, commit, stoprec, and forwardFire.
 
