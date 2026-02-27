@@ -227,25 +227,39 @@ tmux send-keys -t 0:1 './Looper_artefacts/Release/Standalone/Looper 2>&1' Enter
 
 ### JJ Version Control Workflow
 
-This project uses **Jujutsu (jj)** for version control. Always split changes into logical commits:
+This project uses **Jujutsu (jj)** for version control. The working copy is often a merge commit; preserve that shape and split changes out of `@` with `-A`.
 
 ```bash
-# Check status
+# 1) Inspect state before rewriting
+jj st
+jj diff --name-only
+jj obslog -r @ --limit 20
+
+# 2) Remove build noise first (if present)
+jj file untrack build-dev
+
+# 3) Split docs onto docs lineage, code onto code lineage
+jj split -r @ -A <docs_parent> -m "docs(scope): description" <docs files...>
+jj split -r @ -A <code_parent> -m "feat(scope): description" <code files...>
+
+# 4) Keep splitting @ until only intended remainder (often empty merge)
+jj split -r @ -A <latest_code_commit> -m "feat(scope): next chunk" <files...>
+
+# 5) Verify each split and final graph
+jj show --name-only <change_id>
+jj log -r "@ | @- | @-- | bookmarks()" --limit 20
 jj st
 
-# Split feature changes into new commit after parent
-jj split -r @ -A <parent_commit> -m "feat(scope): description" <files...>
-
-# Example: Split UI changes from backend changes
-jj split -r @ -A nsvttowq -m "feat(ui): add new control" looper/ui/*.lua
-jj split -r @ -A yqmsuuzt -m "feat(engine): backend support" looper/engine/*.cpp
+# 6) Move docs bookmark when docs split advances
+jj bookmark move agent-docs --to <docs_change_id>
 ```
 
 **Key points:**
-- Use `-A <parent>` to specify where the new commit branches from
-- The working copy (`@`) becomes an empty merge commit preserving both lineages
-- Prefer small, focused commits over large mixed ones
-- JJ auto-rebases descendants when you modify history
+- Use `jj obslog -r @` to understand operation history before and after big rewrites
+- Use `jj split -r @ -A <parent>` to insert commits without collapsing the merge working head
+- For docs streams, split after docs parent and move `agent-docs` bookmark to the new docs commit
+- Validate file grouping with `jj show --name-only <change_id>` after each split
+- Recovery is cheap: `jj undo` reverts the last operation safely
 
 ## Testing Rules
 
