@@ -1,0 +1,17 @@
+#pragma once
+
+#include "dsp/core/nodes/PlayheadNode.h"
+#include "dsp/core/nodes/PassthroughNode.h"
+#include "dsp/core/nodes/GainNode.h"
+#include "dsp/core/nodes/LoopPlaybackNode.h"
+#include "dsp/core/nodes/PlaybackStateGateNode.h"
+#include "dsp/core/nodes/RetrospectiveCaptureNode.h"
+#include "dsp/core/nodes/RecordStateNode.h"
+#include "dsp/core/nodes/QuantizerNode.h"
+#include "dsp/core/nodes/RecordModePolicyNode.h"
+#include "dsp/core/nodes/ForwardCommitSchedulerNode.h"
+#include "dsp/core/nodes/TransportStateNode.h"
+#include "dsp/core/nodes/OscillatorNode.h"
+#include "dsp/core/nodes/ReverbNode.h"
+#include "dsp/core/nodes/FilterNode.h"
+#include "dsp/core/nodes/DistortionNode.h"

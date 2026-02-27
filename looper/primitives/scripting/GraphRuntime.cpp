@@ -162,11 +162,11 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer) {
             hasIncoming = true;
         }
 
-        // If node expects input but nothing connected, only PassthroughNode
-        // receives host input implicitly. Other DSP nodes stay silent unless
+        // If node expects input but nothing connected, only nodes that opt in
+        // receive host input implicitly. Other DSP nodes stay silent unless
         // explicitly wired, which avoids stale/ghost FX when scripts change.
         if (!hasIncoming && compiled.inputCount > 0 &&
-            dynamic_cast<PassthroughNode*>(compiled.node.get()) != nullptr) {
+            compiled.node->acceptsHostInputWhenUnconnected()) {
             for (int ch = 0; ch < numChannels_; ++ch) {
                 inputAccumulator_.copyFrom(ch, 0, buffer, ch, 0, numSamples);
             }

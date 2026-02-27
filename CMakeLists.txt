@@ -102,6 +102,38 @@ target_sources(Looper
         looper/primitives/scripting/PrimitiveGraph.cpp
         looper/primitives/scripting/GraphRuntime.h
         looper/primitives/scripting/GraphRuntime.cpp
+        dsp/core/graph/PrimitiveNode.h
+        dsp/core/nodes/PrimitiveNodes.h
+        dsp/core/nodes/PlayheadNode.h
+        dsp/core/nodes/PlayheadNode.cpp
+        dsp/core/nodes/PassthroughNode.h
+        dsp/core/nodes/PassthroughNode.cpp
+        dsp/core/nodes/GainNode.h
+        dsp/core/nodes/GainNode.cpp
+        dsp/core/nodes/LoopPlaybackNode.h
+        dsp/core/nodes/LoopPlaybackNode.cpp
+        dsp/core/nodes/PlaybackStateGateNode.h
+        dsp/core/nodes/PlaybackStateGateNode.cpp
+        dsp/core/nodes/RetrospectiveCaptureNode.h
+        dsp/core/nodes/RetrospectiveCaptureNode.cpp
+        dsp/core/nodes/RecordStateNode.h
+        dsp/core/nodes/RecordStateNode.cpp
+        dsp/core/nodes/QuantizerNode.h
+        dsp/core/nodes/QuantizerNode.cpp
+        dsp/core/nodes/RecordModePolicyNode.h
+        dsp/core/nodes/RecordModePolicyNode.cpp
+        dsp/core/nodes/ForwardCommitSchedulerNode.h
+        dsp/core/nodes/ForwardCommitSchedulerNode.cpp
+        dsp/core/nodes/TransportStateNode.h
+        dsp/core/nodes/TransportStateNode.cpp
+        dsp/core/nodes/OscillatorNode.h
+        dsp/core/nodes/OscillatorNode.cpp
+        dsp/core/nodes/ReverbNode.h
+        dsp/core/nodes/ReverbNode.cpp
+        dsp/core/nodes/FilterNode.h
+        dsp/core/nodes/FilterNode.cpp
+        dsp/core/nodes/DistortionNode.h
+        dsp/core/nodes/DistortionNode.cpp
         looper/primitives/control/OSCSettingsPersistence.h
         looper/primitives/control/OSCSettingsPersistence.cpp)
 
@@ -234,5 +266,3 @@ target_compile_definitions(StateProjectionHarness
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0)
-
-
