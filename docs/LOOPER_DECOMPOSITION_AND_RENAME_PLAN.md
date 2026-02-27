@@ -9,6 +9,10 @@ Define a practical roadmap to:
 
 This document is intentionally implementation-focused and should be used as the execution baseline for this track.
 
+Companion inventory:
+
+- `docs/LOOPER_PROCESSOR_HOST_BEHAVIOR_INVENTORY.md` provides a line-item host-vs-behavior split of `LooperProcessor` and is the migration checklist for removing looper policy from monolith processor paths.
+
 ## Why This Track Matters
 
 - The runtime graph path is now real-time safe and hot-swappable, but core looper behavior still lives in legacy engine glue.
@@ -40,6 +44,34 @@ This document is intentionally implementation-focused and should be used as the 
 - A script-defined default looper patch with parity to current behavior.
 - Internal codebase naming shifted to framework-centric terms.
 - Product-facing identities can still ship as "Looper" where desired.
+
+## Architectural Boundary (Mandatory)
+
+The migration target is a strict split between host-runtime concerns and looper behavior concerns.
+
+### Host Runtime (C++, stays in processor-side runtime)
+
+- JUCE processor lifecycle and audio callback orchestration.
+- Endpoint registry plumbing and command ingress/dispatch.
+- Atomic state projection and event surfaces.
+- DSP script host lifecycle (load/reload/swap) and RT-safe graph runtime execution.
+
+These are plugin-framework responsibilities and should be renamed/moved toward neutral runtime naming.
+
+### Looper Behavior (Lua + isolated primitives)
+
+- Record/stop-record semantics.
+- Commit/forward policy.
+- Quantization/mode policy.
+- Layer behavior policy (play/pause/stop/mute/seek/speed/reverse).
+
+These are product behavior rules and should not remain monolith logic in `LooperProcessor`.
+
+### Primitive Modules (C++, reusable)
+
+- Low-level DSP/state building blocks used by Lua behavior.
+- Small, isolated modules with explicit RT contracts.
+- No looper-policy orchestration hidden inside host-runtime classes.
 
 ## Workstream A: Behavior Decomposition
 
@@ -101,6 +133,11 @@ Adopt "shadow mode" first:
 - legacy engine remains active default,
 - scripted looper can be enabled for parity verification and iterative hardening.
 
+Endpoint contract rule for this phase:
+
+- Prefer defining canonical `/looper/*` endpoints directly in the Lua behavior script (`ctx.params.register`) when possible.
+- Keep C++ endpoint alias/remap logic only as a temporary compatibility bridge while behavior migrates.
+
 ### A5. Cutover Plan
 
 Only cut default behavior once parity gates pass consistently.
@@ -108,6 +145,10 @@ Only cut default behavior once parity gates pass consistently.
 Fallback requirement:
 
 - one switch to return to legacy behavior until parity confidence is sustained.
+
+Final cutover condition:
+
+- Looper policy logic is removed from the monolith processor path and owned by scripted behavior + primitives.
 
 ## Workstream B: Naming and Structure Migration
 
@@ -140,9 +181,10 @@ Current `/looper/*` paths are valid and widely used.
 
 Recommended approach:
 
-- keep `/looper/*` as compatibility namespace,
-- introduce neutral aliases when ready,
-- define deprecation policy only after client migration support exists.
+- keep `/looper/*` as the canonical product namespace for looper behavior,
+- define those endpoints in Lua behavior script where feasible,
+- use C++ aliases/remaps only during migration and remove once script-defined contract is stable,
+- introduce neutral framework namespaces only for non-product host/runtime surfaces.
 
 ## Phased Plan
 
@@ -170,6 +212,10 @@ Recommended approach:
 - Add A/B execution and parity assertion tooling.
 - Iterate until parity matrix passes.
 
+Additional required outcome:
+
+- Move remaining looper policy branches out of `LooperProcessor` and into scripted behavior.
+
 ### Phase 4 - Naming Migration Completion
 
 - Move core files to new naming/paths.
@@ -181,6 +227,8 @@ Recommended approach:
 - Make scripted primitive composition default behavior path.
 - Keep rollback switch for one release window.
 - Close parity and migration checklist.
+
+At this point, processor-side code should be host-runtime-oriented rather than looper-policy-oriented.
 
 ## Core Files and Areas Expected to Change
 

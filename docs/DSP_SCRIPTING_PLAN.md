@@ -119,6 +119,15 @@ Phase 4 replaces the audio callback path with an immutable `GraphRuntime` and a 
 - Implementation intent for that track:
   - looper behaviors should be decomposed into focused primitive units, each in its own file/module where practical.
 
+### Migration Clarification (Current Direction)
+
+The active migration direction is:
+
+- keep host runtime responsibilities in C++ (`prepare/process`, script host lifecycle, endpoint plumbing, RT-safe runtime swap),
+- move looper behavior policy into scripted composition + primitive modules,
+- define `/looper/*` behavior endpoints directly in Lua where possible,
+- keep C++ remap/alias logic only as transitional compatibility until scripted endpoint contract is complete.
+
 ### Remaining for Phase 5
 
 1. **Script editor UX polish**: quality-of-life improvements (richer errors, optional graph navigation, tighter clipping cues).

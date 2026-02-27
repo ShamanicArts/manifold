@@ -11,6 +11,19 @@ This roadmap intentionally prioritizes:
 3. looper decomposition into primitives,
 4. editor plan completion after decomposition parity.
 
+Detailed host-vs-behavior migration inventory:
+
+- `docs/LOOPER_PROCESSOR_HOST_BEHAVIOR_INVENTORY.md`
+
+## Runtime vs Behavior Split (Clarification)
+
+This roadmap assumes a strict ownership split:
+
+- C++ host/runtime owns plugin lifecycle, audio callback orchestration, endpoint plumbing, state projection, and graph runtime swap safety.
+- Looper behavior policy (record/commit/forward/mode/quantization/layer semantics) moves to Lua behavior scripts + isolated primitives.
+
+The purpose of decomposition is not to delete all C++ processor code; it is to remove looper-policy logic from monolith processor paths.
+
 ## Agreed Order of Work
 
 ## Phase 1 - Shared Parent UI Shell Baseline
@@ -55,6 +68,11 @@ Scope:
 - Recreate current looper behavior from primitive composition.
 - Keep parity checklist and behavior gates active during migration.
 
+Endpoint rule in this phase:
+
+- Define `/looper/*` behavior endpoints directly in Lua (`ctx.params.register`) where possible.
+- Keep C++ alias/remap handling as temporary migration scaffolding only.
+
 This phase follows `docs/LOOPER_DECOMPOSITION_AND_RENAME_PLAN.md` as the detailed execution guide.
 
 ## Phase 4 - Standalone Validation With User
@@ -76,6 +94,14 @@ After decomposition reaches parity:
 - progress round-trip and persistence goals.
 
 This phase follows `docs/EDITOR_PARENT_UI_DEVELOPMENT_PLAN.md`.
+
+## Cutover Completion Criteria Addendum
+
+Before considering the decomposition track complete:
+
+- Legacy looper policy branches in processor monolith paths are removed or bypassed.
+- Host runtime remains in C++ but is product-neutral in naming/responsibility.
+- Script-defined looper behavior is the default behavior source of truth.
 
 ## Mandatory Testing and Debugging Protocol
 
