@@ -169,30 +169,6 @@ local function layerStateName(state)
     return names[state] or ""
 end
 
-local function isDeprecatedUiScript(path, currentPath)
-    if type(path) ~= "string" then
-        return false
-    end
-    if path:match("/wiring_demo%.lua$") and path ~= currentPath then
-        return true
-    end
-    return false
-end
-
-local function getVisibleUiScripts(currentPath)
-    local listed = listUiScripts() or {}
-    local visible = {}
-    for i = 1, #listed do
-        local s = listed[i]
-        if type(s) == "table" and type(s.path) == "string" then
-            if not isDeprecatedUiScript(s.path, currentPath) then
-                visible[#visible + 1] = s
-            end
-        end
-    end
-    return visible
-end
-
 -- ============================================================================
 -- UI Initialization
 -- ============================================================================
@@ -205,25 +181,17 @@ function ui_init(root)
     ui.rootPanel = W.Panel.new(root, "rootPanel", {
         bg = 0xff0a0f1a,
     })
-    
+
     -- ==========================================================================
-    -- Header Bar: Title | Tempo | Target BPM | Master Vol | Settings
+    -- Transport Controls
     -- ==========================================================================
-    ui.headerPanel = W.Panel.new(ui.rootPanel.node, "header", {
-        bg = 0xff111827,
-        border = 0xff1f2937,
-        borderWidth = 1,
+    ui.transportPanel = W.Panel.new(ui.rootPanel.node, "transport", {
+        bg = 0xff141a24,
+        radius = 8,
     })
-    
-    ui.titleLabel = W.Label.new(ui.headerPanel.node, "title", {
-        text = "LOOPER",
-        colour = 0xff7dd3fc,
-        fontSize = 22.0,
-        fontStyle = FontStyle.bold,
-    })
-    
-    -- Tempo number box
-    ui.tempoBox = W.NumberBox.new(ui.headerPanel.node, "tempo", {
+
+    -- Tempo number box (moved to transport row)
+    ui.tempoBox = W.NumberBox.new(ui.transportPanel.node, "tempo", {
         min = 40, max = 240, step = 1, value = 120,
         label = "BPM", suffix = "",
         colour = 0xff38bdf8,
@@ -231,133 +199,13 @@ function ui_init(root)
         on_change = function(v) commandSet("/looper/tempo", v) end,
     })
     
-    -- Target BPM number box
-    ui.targetBpmBox = W.NumberBox.new(ui.headerPanel.node, "targetBpm", {
+    -- Target BPM number box (moved to transport row)
+    ui.targetBpmBox = W.NumberBox.new(ui.transportPanel.node, "targetBpm", {
         min = 40, max = 240, step = 1, value = 120,
         label = "Target", suffix = "",
         colour = 0xff22d3ee,
         format = "%d",
         on_change = function(v) commandSet("/looper/targetbpm", v) end,
-    })
-    
-    -- Master volume knob
-    ui.masterVolKnob = W.Knob.new(ui.headerPanel.node, "masterVol", {
-        min = 0, max = 1, step = 0.01, value = 0.8,
-        label = "Master", suffix = "",
-        colour = 0xffa78bfa,
-        on_change = function(v) commandSet("/looper/volume", v) end,
-    })
-
-    -- Input volume knob
-    ui.inputVolKnob = W.Knob.new(ui.headerPanel.node, "inputVol", {
-        min = 0, max = 2, step = 0.01, value = 1.0,
-        label = "Input", suffix = "",
-        colour = 0xfff59e0b,
-        on_change = function(v) commandSet("/looper/inputVolume", v) end,
-    })
-
-    -- Passthrough toggle
-    ui.passthroughToggle = W.Toggle.new(ui.headerPanel.node, "passthrough", {
-        label = "Input",
-        onColour = 0xff34d399,
-        offColour = 0xff475569,
-        value = true,
-        on_change = function(on) 
-            commandSet("/looper/passthrough", on and 1 or 0)
-        end,
-    })
-
-    -- Settings button with dropdown menu
-    local _settingsOpen = false
-    local _scriptOverlay = nil
-    
-    ui.settingsBtn = W.Button.new(ui.headerPanel.node, "settings", {
-        label = "⚙",
-        bg = 0xff1e293b,
-        fontSize = 16.0,
-        on_click = function()
-            _settingsOpen = not _settingsOpen
-            if _settingsOpen then
-                local currentPath = getCurrentScriptPath()
-                local scripts = getVisibleUiScripts(currentPath)
-                
-                if _scriptOverlay then
-                    _scriptOverlay:setOnDraw(nil)
-                    _scriptOverlay:setOnMouseDown(nil)
-                end
-                if not _scriptOverlay then
-                    _scriptOverlay = root:addChild("script_overlay")
-                end
-                
-                local itemH = 28
-                local headerH = 26
-                local overlayH = math.min(300, headerH + #scripts * itemH + 8)
-                local overlayW = 220
-                local btnX, btnY = ui.settingsBtn.node:getBounds()
-                _scriptOverlay:setBounds(btnX - overlayW + 36, btnY + 32, overlayW, overlayH)
-                
-                _scriptOverlay:setOnDraw(function(self)
-                    local w = self:getWidth()
-                    local h = self:getHeight()
-                    -- Drop shadow
-                    gfx.setColour(0x40000000)
-                    gfx.fillRoundedRect(2, 2, w, h, 6)
-                    -- Background
-                    gfx.setColour(0xff1e293b)
-                    gfx.fillRoundedRect(0, 0, w - 2, h - 2, 6)
-                    gfx.setColour(0xff475569)
-                    gfx.drawRoundedRect(0, 0, w - 2, h - 2, 6, 1)
-                    
-                    -- Header
-                    gfx.setColour(0xff94a3b8)
-                    gfx.setFont(10.0)
-                    gfx.drawText("UI Scripts", 10, 4, w - 20, headerH - 4, Justify.centredLeft)
-                    
-                    -- Items
-                    for i, s in ipairs(scripts) do
-                        local y = headerH + (i - 1) * itemH
-                        local isCurrent = (s.path == currentPath)
-                        if isCurrent then
-                            gfx.setColour(0xff334155)
-                            gfx.fillRoundedRect(4, y, w - 10, itemH - 2, 4)
-                        end
-                        gfx.setColour(isCurrent and 0xff38bdf8 or 0xffe2e8f0)
-                        gfx.setFont(11.0)
-                        gfx.drawText(s.name, 12, y, w - 28, itemH - 2, Justify.centredLeft)
-                    end
-                end)
-                
-                _scriptOverlay:setOnMouseDown(function(mx, my)
-                    if my < headerH then
-                        _settingsOpen = false
-                        _scriptOverlay:setBounds(0, 0, 0, 0)
-                        return
-                    end
-                    local idx = math.floor((my - headerH) / itemH) + 1
-                    if idx >= 1 and idx <= #scripts then
-                        _settingsOpen = false
-                        if scripts[idx].path ~= currentPath then
-                            switchUiScript(scripts[idx].path)
-                        end
-                    else
-                        _settingsOpen = false
-                        _scriptOverlay:setBounds(0, 0, 0, 0)
-                    end
-                end)
-            else
-                if _scriptOverlay then
-                    _scriptOverlay:setBounds(0, 0, 0, 0)
-                end
-            end
-        end,
-    })
-    
-    -- ==========================================================================
-    -- Transport Controls
-    -- ==========================================================================
-    ui.transportPanel = W.Panel.new(ui.rootPanel.node, "transport", {
-        bg = 0xff141a24,
-        radius = 8,
     })
     
     -- Mode dropdown (3 modes only, overlay on root)
@@ -732,50 +580,24 @@ function ui_resized(w, h)
     if not ui.rootPanel then return end
     
     ui.rootPanel:setBounds(0, 0, w, h)
+    local contentX, contentY, contentW, contentH = 10, 10, w - 20, h - 20
     
-    local pad = 10
+    local pad = contentX
     local gap = 6
-    local headerH = 44
     local transportH = 48
     local captureH = 130
     local statusH = 26
-    
-    -- Header bar
-    ui.headerPanel:setBounds(pad, pad, w - pad * 2, headerH)
-    ui.titleLabel:setBounds(10, 0, 100, headerH)
-    
-    local hRight = w - pad * 2 - 10
-    local boxW = 100
-    local knobW = headerH - 4
-    local hGap = 8
-    
-    ui.settingsBtn:setBounds(hRight - 34, 6, 32, headerH - 12)
-    hRight = hRight - 34 - hGap
-    
-    ui.masterVolKnob:setBounds(hRight - knobW, 2, knobW, headerH - 4)
-    hRight = hRight - knobW - hGap
 
-    ui.inputVolKnob:setBounds(hRight - knobW, 2, knobW, headerH - 4)
-    hRight = hRight - knobW - hGap
-
-    ui.passthroughToggle:setBounds(hRight - 80, 6, 80, headerH - 12)
-    hRight = hRight - 80 - hGap
-
-    ui.targetBpmBox:setBounds(hRight - boxW, 6, boxW, headerH - 12)
-    hRight = hRight - boxW - hGap
-    
-    ui.tempoBox:setBounds(hRight - boxW, 6, boxW, headerH - 12)
-    
     -- Transport bar
-    local ty = pad + headerH + gap
-    ui.transportPanel:setBounds(pad, ty, w - pad * 2, transportH)
+    local ty = contentY
+    ui.transportPanel:setBounds(contentX, ty, contentW, transportH)
     
     local tPad = 6
     local tH = transportH - tPad * 2
     local tx = tPad
     
     ui.modeDropdown:setBounds(tx, tPad, 130, tH)
-    ui.modeDropdown:setAbsolutePos(pad + tx, ty + tPad)
+    ui.modeDropdown:setAbsolutePos(contentX + tx, ty + tPad)
     tx = tx + 130 + 8
     
     local btnW = 80
@@ -790,10 +612,17 @@ function ui_resized(w, h)
     tx = tx + 110 + 12
     
     ui.clearAllBtn:setBounds(tx, tPad, 70, tH)
+
+    local tRight = contentW - tPad
+    local boxW = 96
+    local boxGap = 8
+    ui.targetBpmBox:setBounds(tRight - boxW, tPad, boxW, tH)
+    tRight = tRight - boxW - boxGap
+    ui.tempoBox:setBounds(tRight - boxW, tPad, boxW, tH)
     
     -- Capture plane
     local cy = ty + transportH + gap
-    ui.capturePanel:setBounds(pad, cy, w - pad * 2, captureH)
+    ui.capturePanel:setBounds(contentX, cy, contentW, captureH)
     
     local caption = "Click segment to COMMIT"
     if current_state.forwardArmed then
@@ -802,9 +631,9 @@ function ui_resized(w, h)
         caption = "Click segment to arm FORWARD"
     end
     ui.captureTitle:setText(caption)
-    ui.captureTitle:setBounds(10, 4, w - pad * 2 - 20, 18)
+    ui.captureTitle:setBounds(10, 4, contentW - 20, 18)
     
-    local captureArea = {x = 10, y = 24, w = w - pad * 2 - 20, h = captureH - 34}
+    local captureArea = {x = 10, y = 24, w = contentW - 20, h = captureH - 34}
     local slotCount = #kSegmentBars
     local slotWidth = math.max(1, math.floor(captureArea.w / slotCount))
     local totalStripW = slotWidth * slotCount
@@ -832,7 +661,7 @@ function ui_resized(w, h)
     
     for i, layer in ipairs(ui.layerPanels) do
         local y = layerY + (i - 1) * (rowH + gap)
-        layer.panel:setBounds(pad, y, w - pad * 2, rowH)
+        layer.panel:setBounds(contentX, y, contentW, rowH)
         
         local lPad = 6
         local lh = rowH - lPad * 2
@@ -844,7 +673,7 @@ function ui_resized(w, h)
         layer.barsLabel:setBounds(lPad, lPad + math.floor(lh * 0.7), 50, math.floor(lh * 0.25))
         
         -- Knobs on the right
-        local rightEdge = w - pad * 2 - lPad
+        local rightEdge = contentW - lPad
         local kGap = 4
         
         -- Clear button (far right)
@@ -885,9 +714,6 @@ function ui_update(s)
     -- Header
     if ui.tempoBox then ui.tempoBox:setValue(state.tempo or 120) end
     if ui.targetBpmBox then ui.targetBpmBox:setValue(state.targetBPM or 120) end
-    if ui.masterVolKnob then ui.masterVolKnob:setValue(state.masterVolume or 0.8) end
-    if ui.inputVolKnob then ui.inputVolKnob:setValue(state.inputVolume or 1.0) end
-    if ui.passthroughToggle then ui.passthroughToggle:setValue(state.passthroughEnabled) end
 
     -- Transport
     if ui.modeDropdown then

@@ -75,30 +75,6 @@ local function modeIndexFromString(mode)
     return 0
 end
 
-local function isDeprecatedUiScript(path, currentPath)
-    if type(path) ~= "string" then
-        return false
-    end
-    if path:match("/wiring_demo%.lua$") and path ~= currentPath then
-        return true
-    end
-    return false
-end
-
-local function getVisibleUiScripts(currentPath)
-    local listed = listUiScripts() or {}
-    local visible = {}
-    for i = 1, #listed do
-        local s = listed[i]
-        if type(s) == "table" and type(s.path) == "string" then
-            if not isDeprecatedUiScript(s.path, currentPath) then
-                visible[#visible + 1] = s
-            end
-        end
-    end
-    return visible
-end
-
 local function normalizeState(state)
     if type(state) ~= "table" then
         return {}
@@ -200,87 +176,6 @@ function ui_init(root)
         fontName = "Avenir Next",
         fontStyle = FontStyle.bold,
         justification = Justify.centredLeft,
-    })
-
-    -- Settings / UI switcher button (⚙)
-    local _settingsOpen = false
-    local _scriptOverlay = nil
-
-    ui.settingsBtn = W.Button(root, "settings_btn", {
-        label = "⚙", bg = 0xff1e293b, fontSize = 18.0,
-        on_click = function()
-            _settingsOpen = not _settingsOpen
-            if _settingsOpen then
-                -- Populate overlay with available scripts
-                local currentPath = getCurrentScriptPath()
-                local scripts = getVisibleUiScripts(currentPath)
-                if _scriptOverlay then
-                    _scriptOverlay:setOnDraw(nil)
-                    _scriptOverlay:setOnMouseDown(nil)
-                end
-                if not _scriptOverlay then
-                    _scriptOverlay = root:addChild("script_overlay")
-                end
-
-                local itemH = 30
-                local overlayH = (#scripts + 1) * itemH + 8  -- +1 for header
-                local overlayW = 260
-                local btnX, btnY = ui.settingsBtn.node:getBounds()
-                _scriptOverlay:setBounds(btnX + 44 - overlayW, btnY + 40, overlayW, overlayH)
-
-                _scriptOverlay:setOnDraw(function(self)
-                    local w = self:getWidth()
-                    local h = self:getHeight()
-                    -- Drop shadow
-                    gfx.setColour(0x40000000)
-                    gfx.fillRoundedRect(2, 2, w, h, 8)
-                    -- Background
-                    gfx.setColour(0xff1e293b)
-                    gfx.fillRoundedRect(0, 0, w - 2, h - 2, 8)
-                    gfx.setColour(0xff475569)
-                    gfx.drawRoundedRect(0, 0, w - 2, h - 2, 8, 1)
-
-                    -- Header
-                    gfx.setColour(0xff94a3b8)
-                    gfx.setFont("Avenir Next", 11.0, FontStyle.bold)
-                    gfx.drawText("Switch UI Script", 12, 4, w - 24, itemH - 4, Justify.centredLeft)
-
-                    -- Items
-                    for i, s in ipairs(scripts) do
-                        local y = itemH + (i - 1) * itemH
-                        local isCurrent = (s.path == currentPath)
-                        if isCurrent then
-                            gfx.setColour(0xff334155)
-                            gfx.fillRect(4, y, w - 10, itemH)
-                        end
-                        gfx.setColour(isCurrent and 0xff38bdf8 or 0xffe2e8f0)
-                        gfx.setFont("Avenir Next", 12.0, FontStyle.plain)
-                        gfx.drawText(s.name, 14, y, w - 28, itemH, Justify.centredLeft)
-                        if isCurrent then
-                            gfx.setColour(0xff38bdf8)
-                            gfx.setFont(10.0)
-                            gfx.drawText("●", w - 24, y, 12, itemH, Justify.centred)
-                        end
-                    end
-                end)
-
-                _scriptOverlay:setOnMouseDown(function(mx, my)
-                    local scripts2 = getVisibleUiScripts(currentPath)
-                    local idx = math.floor((my - itemH) / itemH) + 1
-                    if idx >= 1 and idx <= #scripts2 then
-                        _settingsOpen = false
-                        switchUiScript(scripts2[idx].path)
-                    else
-                        _settingsOpen = false
-                        _scriptOverlay:setBounds(0, 0, 0, 0)
-                    end
-                end)
-            else
-                if _scriptOverlay then
-                    _scriptOverlay:setBounds(0, 0, 0, 0)
-                end
-            end
-        end,
     })
 
     -- Controls panel
@@ -769,10 +664,7 @@ function ui_resized(w, h)
     if not ui.title then return end
 
     -- Title
-    ui.title.node:setBounds(0, 0, w - 52, 44)
-    if ui.settingsBtn then
-        ui.settingsBtn.node:setBounds(w - 44, 4, 40, 36)
-    end
+    ui.title.node:setBounds(0, 0, w, 44)
 
     -- Controls panel
     local ctlY = 52

@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""
+UI shell smoke/regression checks via IPC.
+
+Validates:
+- Shared shell observability is present and active
+- UISWITCH works across core/legacy scripts
+- Shared shell remains active/content-bounded after switches
+- Graph is reset to disabled on view switch unless explicitly re-enabled
+
+Usage:
+  tools/test-ui-shell-smoke
+  tools/test-ui-shell-smoke --socket /tmp/looper_123.sock
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import os
+import socket
+import sys
+import time
+from pathlib import Path
+
+
+def find_socket() -> str:
+    sockets = sorted(glob.glob("/tmp/looper_*.sock"), key=os.path.getmtime, reverse=True)
+    if not sockets:
+        raise RuntimeError("No /tmp/looper_*.sock found")
+
+    live: list[str] = []
+    for path in sockets:
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        probe.settimeout(0.2)
+        try:
+            probe.connect(path)
+            live.append(path)
+        except (ConnectionRefusedError, FileNotFoundError, OSError):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        finally:
+            probe.close()
+
+    if not live:
+        raise RuntimeError("No live looper sockets found")
+    return live[0]
+
+
+class Client:
+    def __init__(self, sock_path: str):
+        self.sock_path = sock_path
+
+    def cmd(self, command: str) -> str:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(self.sock_path)
+        s.sendall((command + "\n").encode("utf-8"))
+        s.settimeout(2.0)
+        response = ""
+        try:
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                response += chunk.decode("utf-8", errors="replace")
+                if "\n" in response:
+                    break
+        except socket.timeout:
+            pass
+        finally:
+            s.close()
+        return response.strip()
+
+    def get_value(self, path: str):
+        resp = self.cmd(f"GET {path}")
+        if not resp.startswith("OK "):
+            raise RuntimeError(f"GET {path} failed: {resp}")
+        payload = json.loads(resp[3:])
+        if not isinstance(payload, dict) or "VALUE" not in payload:
+            raise RuntimeError(f"GET {path} malformed payload: {resp}")
+        return payload["VALUE"]
+
+
+class Runner:
+    def __init__(self):
+        self.passed = 0
+        self.failed = 0
+
+    def check(self, label: str, cond: bool, detail: str = ""):
+        if cond:
+            self.passed += 1
+            print(f"PASS: {label}")
+        else:
+            self.failed += 1
+            suffix = f" -- {detail}" if detail else ""
+            print(f"FAIL: {label}{suffix}")
+
+    def summary(self) -> bool:
+        print(f"\nRESULT: {self.passed} passed, {self.failed} failed")
+        return self.failed == 0
+
+
+def wait_for(predicate, timeout: float = 1.5, step: float = 0.05) -> bool:
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            if predicate():
+                return True
+        except Exception:
+            pass
+        time.sleep(step)
+    return False
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="UI shell smoke tests")
+    parser.add_argument("--socket", "-s", help="Socket path to use")
+    args = parser.parse_args()
+
+    try:
+        sock = args.socket or find_socket()
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    repo_root = Path(__file__).resolve().parents[1]
+    scripts = [
+        repo_root / "looper/ui/looper_ui.lua",
+        repo_root / "looper/ui/dsp_live_scripting.lua",
+        repo_root / "looper/ui/looper_ui_old.lua",
+        repo_root / "looper/ui/wiring_demo.lua",
+        repo_root / "looper/ui/looper_settings_ui.lua",
+        repo_root / "looper/ui/looper_ui_experimental.lua",
+    ]
+
+    cli = Client(sock)
+    t = Runner()
+
+    try:
+        active = int(cli.get_value("/ui/shell/active"))
+        req_ok = int(cli.get_value("/ui/shell/require_ok"))
+        create_ok = int(cli.get_value("/ui/shell/create_ok"))
+        content_w = int(cli.get_value("/ui/shell/content_w"))
+        content_h = int(cli.get_value("/ui/shell/content_h"))
+    except Exception as e:
+        print(f"ERROR: shell observability unavailable: {e}", file=sys.stderr)
+        return 3
+
+    t.check("shell active", active == 1, str(active))
+    t.check("shell require ok", req_ok == 1, str(req_ok))
+    t.check("shell create ok", create_ok == 1, str(create_ok))
+    t.check("shell content width > 0", content_w > 0, str(content_w))
+    t.check("shell content height > 0", content_h > 0, str(content_h))
+
+    load_count_before = int(cli.get_value("/ui/shell/script_load_count"))
+
+    for script in scripts:
+        t.check(f"script exists {script.name}", script.exists(), str(script))
+        if not script.exists():
+            continue
+
+        resp = cli.cmd(f"UISWITCH {script}")
+        t.check(f"UISWITCH {script.name}", resp.startswith("OK"), resp)
+        if not resp.startswith("OK"):
+            continue
+
+        switched = wait_for(
+            lambda: str(cli.get_value("/ui/shell/current_script")) == str(script),
+            timeout=2.0,
+        )
+        t.check(f"current script is {script.name}", switched)
+
+        shell_still_active = wait_for(
+            lambda: int(cli.get_value("/ui/shell/active")) == 1,
+            timeout=1.0,
+        )
+        t.check(f"shell active after {script.name}", shell_still_active)
+
+        bounds_ok = wait_for(
+            lambda: int(cli.get_value("/ui/shell/content_w")) > 0
+            and int(cli.get_value("/ui/shell/content_h")) > 0,
+            timeout=1.0,
+        )
+        t.check(f"content bounds valid after {script.name}", bounds_ok)
+
+    load_count_after = int(cli.get_value("/ui/shell/script_load_count"))
+    t.check("script load count increased", load_count_after > load_count_before,
+            f"before={load_count_before}, after={load_count_after}")
+
+    # Graph lifecycle smoke: enable graph, switch view, verify auto-reset to 0.
+    enable_resp = cli.cmd("SET /looper/graph/enabled 1")
+    t.check("enable graph for switch test", enable_resp == "OK", enable_resp)
+    switch_resp = cli.cmd(f"UISWITCH {repo_root / 'looper/ui/looper_ui.lua'}")
+    t.check("switch to looper_ui after graph=1", switch_resp.startswith("OK"), switch_resp)
+
+    graph_reset = wait_for(
+        lambda: float(cli.get_value("/looper/graph/enabled")) < 0.5,
+        timeout=2.0,
+    )
+    t.check("graph reset to disabled on UISWITCH", graph_reset)
+
+    return 0 if t.summary() else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1057,21 +1057,6 @@ local function stopEditorScript()
     end
 end
 
-local function switchBackToMainUi()
-    setParam("/looper/graph/enabled", 0.0)
-    local currentPath = getCurrentScriptPath()
-    if type(currentPath) ~= "string" or currentPath == "" then
-        setStatus("cannot resolve current script path")
-        return
-    end
-    local dir = currentPath:match("(.+)/[^/]+$")
-    if not dir then
-        setStatus("cannot resolve script directory")
-        return
-    end
-    switchUiScript(dir .. "/looper_ui.lua")
-end
-
 local function insertTextAtCursor(textToInsert)
     replaceSelection(textToInsert)
 end
@@ -1319,39 +1304,42 @@ local function relayout()
 
     ui.rootPanel:setBounds(0, 0, w, h)
 
-    local leftW = math.floor(w * 0.56)
-    local rightX = leftW + pad
-    local rightW = w - rightX - pad
+    local contentX, contentY, contentW, contentH = 0, 0, w, h
 
-    local controlsX = pad + 92
+    local leftW = math.floor(contentW * 0.56)
+    local leftX = contentX
+    local rightX = leftX + leftW + pad
+    local rightW = contentX + contentW - rightX
+    local topY = contentY
+
+    local controlsX = leftX + pad
     local buttonW = 84
     local buttonGap = 6
     local buttonCount = 4
     local buttonsTotalW = buttonW * buttonCount + buttonGap * (buttonCount - 1)
-    local buttonRowX = leftW - pad - buttonsTotalW
+    local buttonRowX = leftX + leftW - pad - buttonsTotalW
 
-    ui.backButton:setBounds(pad, pad, 84, headerH)
     ui.presetDropdown:setBounds(
         controlsX,
-        pad,
+        topY,
         math.max(80, buttonRowX - controlsX - 8),
         headerH
     )
-    ui.loadPresetButton:setBounds(buttonRowX, pad, buttonW, headerH)
-    ui.runButton:setBounds(buttonRowX + (buttonW + buttonGap), pad, buttonW, headerH)
-    ui.stopButton:setBounds(buttonRowX + (buttonW + buttonGap) * 2, pad, buttonW, headerH)
-    ui.reloadButton:setBounds(buttonRowX + (buttonW + buttonGap) * 3, pad, buttonW, headerH)
+    ui.loadPresetButton:setBounds(buttonRowX, topY, buttonW, headerH)
+    ui.runButton:setBounds(buttonRowX + (buttonW + buttonGap), topY, buttonW, headerH)
+    ui.stopButton:setBounds(buttonRowX + (buttonW + buttonGap) * 2, topY, buttonW, headerH)
+    ui.reloadButton:setBounds(buttonRowX + (buttonW + buttonGap) * 3, topY, buttonW, headerH)
 
-    ui.editor:setBounds(pad, pad + headerH + 8, leftW - pad * 2, h - (pad * 2 + headerH + 8))
+    ui.editor:setBounds(leftX + pad, topY + headerH + 8, leftW - pad * 2, contentH - (headerH + 8))
 
-    ui.graphTitle:setBounds(rightX, pad, rightW, 20)
-    local graphY = pad + 24
-    local rightAvailH = h - graphY - pad
+    ui.graphTitle:setBounds(rightX, topY, rightW, 20)
+    local graphY = topY + 24
+    local rightAvailH = contentY + contentH - graphY
     local graphH = math.floor(rightAvailH * 0.46)
     ui.graphCanvas:setBounds(rightX, graphY, rightW, graphH)
 
     local paramsY = graphY + graphH + 8
-    local paramsH = h - paramsY - pad
+    local paramsH = contentY + contentH - paramsY
     ui.paramsTitle:setBounds(rightX, paramsY, rightW, 20)
     ui.paramsPanel:setBounds(rightX, paramsY + 22, rightW, paramsH - 22)
 
@@ -1594,12 +1582,6 @@ function ui_init(rootNode)
 
     ui.rootPanel = W.Panel.new(root, "root", { bg = 0xff0f172a })
 
-    ui.backButton = W.Button.new(ui.rootPanel.node, "back", {
-        label = "Back",
-        bg = 0xff334155,
-        on_click = switchBackToMainUi,
-    })
-
     ui.presetDropdown = W.Dropdown.new(ui.rootPanel.node, "preset", {
         options = { presets[1].name, presets[2].name, presets[3].name, presets[4].name },
         selected = state.selectedPreset,
@@ -1841,8 +1823,6 @@ function ui_init(rootNode)
 end
 
 function ui_update(engineState)
-    local _ = engineState
-
     if ui.rootPanel and root then
         local w = math.floor(root:getWidth())
         local h = math.floor(root:getHeight())

@@ -1045,18 +1045,6 @@ function ui_init(root)
         fontSize = 10.0,
     })
     
-    -- Back to standard UI button
-    ui.backBtn = W.Button.new(ui.headerPanel.node, "back", {
-        label = "← Back",
-        bg = 0xff1e293b,
-        on_click = function()
-            -- Get the directory of current script and load looper_ui.lua from there
-            local currentPath = getCurrentScriptPath()
-            local dir = currentPath:match("(.+)/[^/]+$") or "."
-            switchUiScript(dir .. "/looper_ui.lua")
-        end,
-    })
-    
     -- ==========================================================================
     -- Left Panel: Particle System Emitter
     -- ==========================================================================
@@ -1473,8 +1461,7 @@ function ui_resized(w, h)
     ui.headerPanel:setBounds(margin, margin, math.floor(w - margin * 2), 40)
     ui.titleLabel:setBounds(12, 0, 200, 40)
     ui.subtitleLabel:setBounds(220, 0, 150, 40)
-    ui.oscLabel:setBounds(380, 0, 150, 40)
-    ui.backBtn:setBounds(math.floor(w - margin * 2 - 80), 8, 70, 24)
+    ui.oscLabel:setBounds(380, 0, math.floor(w - margin * 2 - 392), 40)
     
     -- Three main panels in a row
     local panelW = math.floor((w - margin * 4) / 3)

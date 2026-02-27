@@ -12,6 +12,7 @@ extern "C" {
 
 #include "ScriptableProcessor.h"
 #include "PrimitiveGraph.h"
+#include "dsp/core/nodes/PrimitiveNodes.h"
 #include "../../engine/LooperProcessor.h"
 #include "../control/CommandParser.h"
 #include "../control/ControlServer.h"
@@ -27,6 +28,7 @@ extern "C" {
 #include <cstdio>
 #include <map>
 #include <mutex>
+#include <tuple>
 #include <juce_graphics/juce_graphics.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_opengl/juce_opengl.h>
@@ -148,6 +150,20 @@ struct LuaEngine::Impl {
   // Deferred script switch (to avoid use-after-free when called from Lua
   // callback)
   std::string pendingSwitchPath;
+
+  // Shared parent shell and script content mount point
+  std::string sharedUiDir;
+  Canvas *scriptContentRoot = nullptr;
+  sol::table sharedShell;
+  bool hasSharedShell = false;
+  bool sharedShellRequireOk = false;
+  bool sharedShellCreateOk = false;
+  int sharedContentX = 0;
+  int sharedContentY = 0;
+  int sharedContentW = 0;
+  int sharedContentH = 0;
+  int uiScriptLoadCount = 0;
+  std::string currentUiScriptPath;
   
   // Primitive graph for Phase 3 wiring
   std::shared_ptr<dsp_primitives::PrimitiveGraph> primitiveGraph;
@@ -2209,9 +2225,17 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
 
   // Set up package.path so require() works from the script's directory
   auto dir = scriptFile.getParentDirectory().getFullPathName().toStdString();
+  if (pImpl->sharedUiDir.empty()) {
+    pImpl->sharedUiDir = dir;
+  }
   {
     const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
-    pImpl->lua["package"]["path"] = dir + "/?.lua;" + dir + "/?/init.lua";
+    auto packagePath = dir + "/?.lua;" + dir + "/?/init.lua";
+    if (!pImpl->sharedUiDir.empty() && pImpl->sharedUiDir != dir) {
+      packagePath += ";" + pImpl->sharedUiDir + "/?.lua;" +
+                     pImpl->sharedUiDir + "/?/init.lua";
+    }
+    pImpl->lua["package"]["path"] = packagePath;
   }
 
   try {
@@ -2253,13 +2277,101 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
   }
   if (uiInit.valid()) {
     try {
-      // Clear existing children
+      // Build persistent parent-shell frame + a dedicated content mount root.
       pImpl->rootCanvas->clearChildren();
+      pImpl->scriptContentRoot = pImpl->rootCanvas->addChild("script_content_root");
+
+      {
+        const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+        pImpl->hasSharedShell = false;
+        pImpl->sharedShellRequireOk = false;
+        pImpl->sharedShellCreateOk = false;
+        pImpl->sharedContentX = 0;
+        pImpl->sharedContentY = 0;
+        pImpl->sharedContentW = 0;
+        pImpl->sharedContentH = 0;
+
+        sol::protected_function requireFn = pImpl->lua["require"];
+        if (requireFn.valid()) {
+          sol::protected_function_result reqRes = requireFn("ui_shell");
+          if (reqRes.valid()) {
+            pImpl->sharedShellRequireOk = true;
+            sol::table shellModule = reqRes;
+            sol::protected_function createFn = shellModule["create"];
+            if (createFn.valid()) {
+              sol::table opts = pImpl->lua.create_table();
+              opts["title"] = "LOOPER";
+              sol::protected_function_result shellRes =
+                  createFn(pImpl->rootCanvas, opts);
+              if (shellRes.valid()) {
+                pImpl->sharedShell = shellRes.get<sol::table>();
+                pImpl->hasSharedShell = true;
+                pImpl->sharedShellCreateOk = true;
+              } else {
+                sol::error err = shellRes;
+                std::fprintf(stderr,
+                             "LuaEngine: shared shell create failed: %s\n",
+                             err.what());
+              }
+            }
+          } else {
+            sol::error err = reqRes;
+            std::fprintf(stderr, "LuaEngine: shared shell require failed: %s\n",
+                         err.what());
+          }
+        }
+      }
+
+      int contentX = 0;
+      int contentY = 0;
+      int contentW = pImpl->lastWidth > 0 ? pImpl->lastWidth : pImpl->rootCanvas->getWidth();
+      int contentH = pImpl->lastHeight > 0 ? pImpl->lastHeight : pImpl->rootCanvas->getHeight();
+
+      {
+        const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+        if (pImpl->hasSharedShell) {
+          sol::table shell = pImpl->sharedShell;
+          sol::protected_function layoutFn = shell["layout"];
+          if (layoutFn.valid()) {
+            layoutFn(shell, contentW, contentH);
+          }
+          sol::protected_function boundsFn = shell["getContentBounds"];
+          if (boundsFn.valid()) {
+            sol::protected_function_result boundsRes = boundsFn(shell, contentW, contentH);
+            if (boundsRes.valid()) {
+              auto bounds = boundsRes.get<std::tuple<int, int, int, int>>();
+              contentX = std::get<0>(bounds);
+              contentY = std::get<1>(bounds);
+              contentW = std::get<2>(bounds);
+              contentH = std::get<3>(bounds);
+            }
+          }
+        }
+      }
+
+      pImpl->sharedContentX = contentX;
+      pImpl->sharedContentY = contentY;
+      pImpl->sharedContentW = contentW;
+      pImpl->sharedContentH = contentH;
+
+      pImpl->scriptContentRoot->setBounds(contentX, contentY, contentW, contentH);
+
+      if (pImpl->processor) {
+        auto& osc = pImpl->processor->getOSCServer();
+        osc.setCustomValue("/ui/shell/active", { juce::var(pImpl->hasSharedShell ? 1 : 0) });
+        osc.setCustomValue("/ui/shell/require_ok", { juce::var(pImpl->sharedShellRequireOk ? 1 : 0) });
+        osc.setCustomValue("/ui/shell/create_ok", { juce::var(pImpl->sharedShellCreateOk ? 1 : 0) });
+        osc.setCustomValue("/ui/shell/content_x", { juce::var(contentX) });
+        osc.setCustomValue("/ui/shell/content_y", { juce::var(contentY) });
+        osc.setCustomValue("/ui/shell/content_w", { juce::var(contentW) });
+        osc.setCustomValue("/ui/shell/content_h", { juce::var(contentH) });
+      }
 
       sol::protected_function_result result;
       {
         const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
-        result = uiInit(pImpl->rootCanvas);
+        result = uiInit(pImpl->scriptContentRoot != nullptr ? pImpl->scriptContentRoot
+                                                            : pImpl->rootCanvas);
       }
       if (!result.valid()) {
         sol::error err = result;
@@ -2281,6 +2393,18 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
   pImpl->scriptLoaded = true;
   pImpl->lastError.clear();
   pImpl->lastModTime = scriptFile.getLastModificationTime();
+  pImpl->uiScriptLoadCount += 1;
+  pImpl->currentUiScriptPath = scriptFile.getFullPathName().toStdString();
+
+  if (pImpl->processor) {
+    auto& osc = pImpl->processor->getOSCServer();
+    osc.setCustomValue("/ui/shell/current_script",
+                       { juce::var(pImpl->currentUiScriptPath) });
+    osc.setCustomValue("/ui/shell/script_load_count",
+                       { juce::var(pImpl->uiScriptLoadCount) });
+    osc.setCustomValue("/ui/shell/last_error", { juce::var("") });
+  }
+
   std::fprintf(stderr, "LuaEngine: loaded script: %s\n",
                scriptFile.getFullPathName().toRawUTF8());
   return true;
@@ -2293,6 +2417,59 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
 void LuaEngine::notifyResized(int width, int height) {
   pImpl->lastWidth = width;
   pImpl->lastHeight = height;
+
+  int contentX = 0;
+  int contentY = 0;
+  int contentW = width;
+  int contentH = height;
+
+  {
+    const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+    if (pImpl->hasSharedShell) {
+      sol::table shell = pImpl->sharedShell;
+      sol::protected_function layoutFn = shell["layout"];
+      if (layoutFn.valid()) {
+        sol::protected_function_result layoutRes = layoutFn(shell, width, height);
+        if (!layoutRes.valid()) {
+          sol::error err = layoutRes;
+          std::fprintf(stderr, "LuaEngine: shell layout error: %s\n", err.what());
+        }
+      }
+
+      sol::protected_function boundsFn = shell["getContentBounds"];
+      if (boundsFn.valid()) {
+        sol::protected_function_result boundsRes = boundsFn(shell, width, height);
+        if (boundsRes.valid()) {
+          auto bounds = boundsRes.get<std::tuple<int, int, int, int>>();
+          contentX = std::get<0>(bounds);
+          contentY = std::get<1>(bounds);
+          contentW = std::get<2>(bounds);
+          contentH = std::get<3>(bounds);
+        } else {
+          sol::error err = boundsRes;
+          std::fprintf(stderr, "LuaEngine: shell bounds error: %s\n", err.what());
+        }
+      }
+    }
+  }
+
+  if (pImpl->scriptContentRoot != nullptr) {
+    pImpl->scriptContentRoot->setBounds(contentX, contentY, contentW, contentH);
+  }
+
+  pImpl->sharedContentX = contentX;
+  pImpl->sharedContentY = contentY;
+  pImpl->sharedContentW = contentW;
+  pImpl->sharedContentH = contentH;
+
+  if (pImpl->processor) {
+    auto& osc = pImpl->processor->getOSCServer();
+    osc.setCustomValue("/ui/shell/active", { juce::var(pImpl->hasSharedShell ? 1 : 0) });
+    osc.setCustomValue("/ui/shell/content_x", { juce::var(contentX) });
+    osc.setCustomValue("/ui/shell/content_y", { juce::var(contentY) });
+    osc.setCustomValue("/ui/shell/content_w", { juce::var(contentW) });
+    osc.setCustomValue("/ui/shell/content_h", { juce::var(contentH) });
+  }
 
   if (!pImpl->scriptLoaded)
     return;
@@ -2307,7 +2484,7 @@ void LuaEngine::notifyResized(int width, int height) {
       sol::protected_function_result result;
       {
         const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
-        result = fn(width, height);
+        result = fn(contentW, contentH);
       }
       if (!result.valid()) {
         sol::error err = result;
@@ -2327,6 +2504,13 @@ void LuaEngine::notifyUpdate() {
   if (!pImpl->pendingSwitchPath.empty()) {
     auto path = pImpl->pendingSwitchPath;
     pImpl->pendingSwitchPath.clear();
+
+    // Default-safe switch behavior: views start with graph disabled unless
+    // they explicitly enable/take over graph processing.
+    if (pImpl->processor) {
+      pImpl->processor->setParamByPath("/looper/graph/enabled", 0.0f);
+    }
+
     auto file = juce::File(path);
     if (file.existsAsFile()) {
       switchScript(file);
@@ -2360,6 +2544,18 @@ void LuaEngine::notifyUpdate() {
       {
         const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
         stateObj = pImpl->lua["state"];
+
+        if (pImpl->hasSharedShell) {
+          sol::table shell = pImpl->sharedShell;
+          sol::protected_function shellUpdate = shell["updateFromState"];
+          if (shellUpdate.valid()) {
+            sol::protected_function_result shellRes = shellUpdate(shell, stateObj);
+            if (!shellRes.valid()) {
+              sol::error err = shellRes;
+              std::fprintf(stderr, "LuaEngine: shell update error: %s\n", err.what());
+            }
+          }
+        }
       }
 
       sol::protected_function_result result;

@@ -35,27 +35,14 @@ function ui_init(root)
     })
     
     -- ==========================================================================
-    -- Header: Back button + Title
+    -- Header: Title
     -- ==========================================================================
     ui.headerPanel = W.Panel.new(ui.rootPanel.node, "header", {
         bg = 0xff111827,
         border = 0xff1f2937,
         borderWidth = 1,
     })
-    
-    ui.backBtn = W.Button.new(ui.headerPanel.node, "back", {
-        label = "← Back",
-        bg = 0xff1e293b,
-        fontSize = 13.0,
-        on_click = function()
-            -- Return to main UI - derive directory from current script path
-            local currentPath = getCurrentScriptPath()
-            local dir = currentPath:match("(.+)/[^/]+$") or "."
-            local mainScript = dir .. "/looper_ui.lua"
-            switchUiScript(mainScript)
-        end,
-    })
-    
+
     ui.titleLabel = W.Label.new(ui.headerPanel.node, "title", {
         text = "OSC SETTINGS",
         colour = 0xff7dd3fc,
@@ -252,8 +239,7 @@ function ui_resized(w, h)
     
     -- Header
     ui.headerPanel.node:setBounds(margin, margin, panelW, 44)
-    ui.backBtn.node:setBounds(8, 8, 80, 28)
-    ui.titleLabel.node:setBounds(100, 10, panelW - 110, 24)
+    ui.titleLabel.node:setBounds(12, 10, panelW - 24, 24)
     
     local y = margin + 44 + sectionSpacing
     

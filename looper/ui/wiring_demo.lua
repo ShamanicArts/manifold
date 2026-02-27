@@ -120,8 +120,6 @@ ctx.params.bind("/test/cutoff1", filt1, "setCutoff")
 ]],
 }
 
-local scriptNames = {}
-local scriptPaths = {}
 local currentCode = exampleScripts[1]
 
 local function safeCall(fn, default)
@@ -515,25 +513,6 @@ local function runSmokeTest()
     end
 end
 
-local function loadScriptList()
-    scriptNames = {}
-    scriptPaths = {}
-
-    local scripts = safeCall(listUiScripts, {})
-    for i = 1, #scripts do
-        local s = scripts[i]
-        if s and s.name and s.path then
-            scriptNames[#scriptNames + 1] = s.name
-            scriptPaths[#scriptPaths + 1] = s.path
-        end
-    end
-
-    if #scriptNames == 0 then
-        scriptNames = { "wiring_demo" }
-        scriptPaths = { safeCall(getCurrentScriptPath, "") }
-    end
-end
-
 local function setScrollNorm(v)
     state.scrollNorm = math.max(0.0, math.min(1.0, v))
     if ui.scrollSlider then
@@ -619,21 +598,6 @@ local function buildUI(root)
         text = "Patch not applied: click Build + Enable Graph",
         colour = 0xfffca5a5,
         fontSize = 11.0,
-    })
-
-    loadScriptList()
-    ui.scriptDropdown = W.Dropdown.new(ui.headerPanel.node, "scriptDropdown", {
-        options = scriptNames,
-        selected = 1,
-        bg = 0xff1e293b,
-        colour = 0xff7dd3fc,
-        rootNode = root,
-        on_select = function(idx)
-            local p = scriptPaths[idx]
-            if p and p ~= "" then
-                switchUiScript(p)
-            end
-        end,
     })
 
     ui.leftPanel = W.Panel.new(ui.rootPanel.node, "leftPanel", {
@@ -1094,10 +1058,8 @@ function ui_resized(w, h)
     ui.headerPanel:setBounds(pad, pad, w - pad * 2, headerH)
 
     ui.titleLabel:setBounds(10, 0, 220, headerH)
-    ui.statusLabel:setBounds(230, 0, math.max(160, w - 460), 24)
-    ui.patchHint:setBounds(230, 22, math.max(160, w - 460), 22)
-    ui.scriptDropdown:setBounds(w - pad * 2 - 190, 8, 180, headerH - 16)
-    ui.scriptDropdown:setAbsolutePos(pad + (w - pad * 2 - 190), pad + 8)
+    ui.statusLabel:setBounds(230, 0, math.max(160, w - 270), 24)
+    ui.patchHint:setBounds(230, 22, math.max(160, w - 270), 22)
 
     ui.leftPanel:setBounds(pad, contentY, leftW, contentH)
     ui.rightPanel:setBounds(pad * 2 + leftW, contentY, rightW, contentH)
