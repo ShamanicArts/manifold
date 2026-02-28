@@ -2492,7 +2492,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
             sol::protected_function createFn = shellModule["create"];
             if (createFn.valid()) {
               sol::table opts = pImpl->lua.create_table();
-              opts["title"] = "LOOPER";
+              opts["title"] = "MANIFOLD";
               sol::protected_function_result shellRes =
                   createFn(pImpl->rootCanvas, opts);
               if (shellRes.valid()) {
