@@ -214,7 +214,11 @@ struct LuaEngine::Impl {
 // Construction / Destruction
 // ============================================================================
 
-LuaEngine::LuaEngine() : pImpl(std::make_unique<Impl>()) {}
+LuaEngine::LuaEngine() : pImpl(std::make_unique<Impl>()) {
+  // CRITICAL DEBUG: This should ALWAYS print
+  fprintf(stderr, "!!! LUAENGINE CONSTRUCTOR !!!\n");
+  fflush(stderr);
+}
 
 LuaEngine::~LuaEngine() {
   if (pImpl && pImpl->processor) {
@@ -228,6 +232,10 @@ LuaEngine::~LuaEngine() {
 // ============================================================================
 
 void LuaEngine::initialise(ScriptableProcessor *processor, Canvas *rootCanvas) {
+  // CRITICAL DEBUG
+  fprintf(stderr, "!!! LUAENGINE INITIALISE !!!\n");
+  fflush(stderr);
+  
   pImpl->processor = processor;
   pImpl->rootCanvas = rootCanvas;
   pImpl->lastLayerStates.assign(
@@ -235,12 +243,15 @@ void LuaEngine::initialise(ScriptableProcessor *processor, Canvas *rootCanvas) {
       static_cast<int>(ScriptableLayerState::Unknown));
 
   // Initialize core engine (VM lifecycle only)
+  std::fprintf(stderr, "[LuaEngine] Initializing core engine...\n");
   coreEngine_.initialize();
 
   // Lock Core's mutex and get reference to its Lua state
   const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
 
+  std::fprintf(stderr, "[LuaEngine] Calling registerBindings...\n");
   registerBindings();
+  std::fprintf(stderr, "[LuaEngine] registerBindings returned\n");
 
   // Register OSC callback to allow Lua to handle incoming OSC messages
   if (pImpl->processor) {
@@ -260,11 +271,15 @@ void LuaEngine::initialise(ScriptableProcessor *processor, Canvas *rootCanvas) {
 // ============================================================================
 
 void LuaEngine::registerBindings() {
+  std::fprintf(stderr, "[LuaEngine] registerBindings called\n");
+  
   // Register Canvas, Graphics, and OpenGL bindings via LuaUIBindings module
   LuaUIBindings::registerBindings(coreEngine_, pImpl->rootCanvas);
 
   // Register control bindings (commands, OSC, events, Link, etc.)
+  std::fprintf(stderr, "[LuaEngine] Calling LuaControlBindings::registerBindings...\n");
   LuaControlBindings::registerBindings(coreEngine_, *this);
+  std::fprintf(stderr, "[LuaEngine] LuaControlBindings::registerBindings returned\n");
 
   auto &lua = coreEngine_.getLuaState();
 
@@ -1254,4 +1269,89 @@ void LuaEngine::withLuaState(std::function<void(sol::state&)> callback) {
 void LuaEngine::withLuaState(std::function<void(const sol::state&)> callback) const {
   const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
   callback(coreEngine_.getLuaState());
+}
+
+// ============================================================================
+// File chooser (async directory browser)
+// ============================================================================
+
+void LuaEngine::showDirectoryChooser(const std::string& title,
+                                       const std::string& initialPath,
+                                       sol::function callback) {
+  std::fprintf(stderr, "[FileChooser] showDirectoryChooser called: title='%s', initialPath='%s'\n",
+               title.c_str(), initialPath.c_str());
+  
+  // Must run on message thread
+  if (!juce::MessageManager::getInstance()->isThisTheMessageThread()) {
+    std::fprintf(stderr, "[FileChooser] ERROR: not on message thread!\n");
+    // Invoke callback with empty path to indicate error
+    juce::MessageManager::callAsync([callback]() mutable {
+      if (callback.valid()) {
+        try { callback(""); } catch (...) {}
+      }
+    });
+    return;
+  }
+
+  juce::File initialDir(initialPath);
+  std::fprintf(stderr, "[FileChooser] initialDir exists=%d, isDirectory=%d, path='%s'\n",
+               initialDir.exists() ? 1 : 0,
+               initialDir.isDirectory() ? 1 : 0,
+               initialDir.getFullPathName().toRawUTF8());
+  
+  if (!initialDir.isDirectory()) {
+    initialDir = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
+    std::fprintf(stderr, "[FileChooser] Using home directory instead: '%s'\n",
+                 initialDir.getFullPathName().toRawUTF8());
+  }
+
+  std::fprintf(stderr, "[FileChooser] Creating FileChooser...\n");
+  auto chooser = std::make_unique<juce::FileChooser>(
+      juce::String(title),
+      initialDir,
+      "*",
+      true,  // useOSNativeDialog
+      false  // treatFilePackagesAsDirs
+  );
+  std::fprintf(stderr, "[FileChooser] FileChooser created, launching async...\n");
+
+  // Store callback in a shared_ptr to keep it alive
+  auto cb = std::make_shared<sol::function>(callback);
+
+  chooser->launchAsync(
+      juce::FileBrowserComponent::canSelectDirectories
+          | juce::FileBrowserComponent::openMode,
+      [cb, chooserPtr = chooser.get()](const juce::FileChooser& fc) mutable {
+        juce::File result = fc.getResult();
+        std::string path = result.exists() ? result.getFullPathName().toStdString() : "";
+        std::fprintf(stderr, "[FileChooser] User selected: '%s'\n", path.c_str());
+
+        // Invoke Lua callback on message thread
+        juce::MessageManager::callAsync([cb, path]() mutable {
+          if (cb && cb->valid()) {
+            try {
+              std::fprintf(stderr, "[FileChooser] Invoking Lua callback with path: '%s'\n", path.c_str());
+              auto result = (*cb)(path);
+              if (!result.valid()) {
+                sol::error err = result;
+                std::fprintf(stderr, "[FileChooser] Lua callback error: %s\n", err.what());
+              } else {
+                std::fprintf(stderr, "[FileChooser] Lua callback succeeded\n");
+              }
+            } catch (const sol::error& e) {
+              std::fprintf(stderr, "[FileChooser] Lua callback exception: %s\n", e.what());
+            }
+          } else {
+            std::fprintf(stderr, "[FileChooser] ERROR: callback invalid\n");
+          }
+        });
+
+        // chooser will be auto-deleted when unique_ptr goes out of scope
+      }
+  );
+  
+  std::fprintf(stderr, "[FileChooser] launchAsync called, releasing ownership\n");
+  // Release ownership - FileChooser manages its own lifetime after launchAsync
+  chooser.release();
+  std::fprintf(stderr, "[FileChooser] Done\n");
 }

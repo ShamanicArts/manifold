@@ -21,6 +21,7 @@ extern "C" {
 #include "../../control/OSCPacketBuilder.h"
 #include "../../control/OSCSettingsPersistence.h"
 #include "../../control/OSCQuery.h"
+#include "../../core/Settings.h"
 
 #include <juce_core/juce_core.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -31,6 +32,7 @@ extern "C" {
 #include <vector>
 #include <atomic>
 #include <unordered_set>
+#include <set>
 
 // ============================================================================
 // Binding Registration
@@ -948,6 +950,8 @@ void LuaControlBindings::registerLinkBindings(sol::state& lua,
 
 void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                                                  ILuaControlState& state) {
+    std::fprintf(stderr, "[LuaControlBindings] registerUtilityBindings called\n");
+    
     lua["getTime"] = []() -> double {
         static const auto startTime = juce::Time::getHighResolutionTicks();
         return juce::Time::highResolutionTicksToSeconds(
@@ -956,31 +960,56 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
 
     lua["listUiScripts"] = [&state, &lua]() -> sol::table {
         auto result = sol::table(lua, sol::create);
-        juce::File currentFile = state.getCurrentScriptFile();
-        if (!currentFile.existsAsFile()) return result;
-
-        auto dir = currentFile.getParentDirectory();
-        auto scripts = dir.findChildFiles(juce::File::findFiles, false, "*.lua");
+        std::set<std::string> seenNames;
         int index = 1;
-        for (const auto& script : scripts) {
-            auto name = script.getFileNameWithoutExtension().toStdString();
-            
-            // Skip library/infrastructure files that aren't user-facing UI scripts
-            if (name == "looper_widgets" || name == "ui_shell") {
-                continue;
+        
+        auto addScriptsFromDir = [&](const juce::File& dir) {
+            if (!dir.isDirectory()) return;
+            auto scripts = dir.findChildFiles(juce::File::findFiles, false, "*.lua");
+            for (const auto& script : scripts) {
+                auto name = script.getFileNameWithoutExtension().toStdString();
+                
+                // Skip duplicates
+                if (seenNames.count(name) > 0) continue;
+                
+                // Skip library/infrastructure files
+                if (name == "looper_widgets" || name == "ui_shell") {
+                    continue;
+                }
+                
+                // Only include files that look like UI scripts (contain ui_init function)
+                auto content = script.loadFileAsString();
+                if (!content.contains("function ui_init")) {
+                    continue;
+                }
+                
+                seenNames.insert(name);
+                auto entry = sol::table(lua, sol::create);
+                entry["name"] = name;
+                entry["path"] = script.getFullPathName().toStdString();
+                result[index++] = entry;
             }
-            
-            // Only include files that look like UI scripts (contain ui_init function)
-            auto content = script.loadFileAsString();
-            if (!content.contains("function ui_init")) {
-                continue;
-            }
-            
-            auto entry = sol::table(lua, sol::create);
-            entry["name"] = name;
-            entry["path"] = script.getFullPathName().toStdString();
-            result[index++] = entry;
+        };
+        
+        // Priority 1: Current script directory
+        juce::File currentFile = state.getCurrentScriptFile();
+        if (currentFile.existsAsFile()) {
+            addScriptsFromDir(currentFile.getParentDirectory());
         }
+        
+        // Priority 2: Dev scripts directory from settings
+        auto& settings = Settings::getInstance();
+        auto devDir = settings.getDevScriptsDir();
+        if (devDir.isNotEmpty()) {
+            addScriptsFromDir(juce::File(devDir));
+        }
+        
+        // Priority 3: User scripts directory from settings
+        auto userDir = settings.getUserScriptsDir();
+        if (userDir.isNotEmpty()) {
+            addScriptsFromDir(juce::File(userDir));
+        }
+        
         return result;
     };
 
@@ -1006,4 +1035,158 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         juce::File outFile(path);
         return outFile.replaceWithText(juce::String(text), false, false, "\n");
     };
+
+    lua["readTextFile"] = [](const std::string& path) -> std::string {
+        juce::File inFile(path);
+        if (!inFile.existsAsFile()) {
+            return "";
+        }
+        return inFile.loadFileAsString().toStdString();
+    };
+
+    lua["listDspScripts"] = [&lua]() -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        std::set<std::string> seenNames;
+        int index = 1;
+
+        auto addScriptsFromDir = [&](const juce::File& dir) {
+            if (!dir.isDirectory()) return;
+            auto scripts = dir.findChildFiles(juce::File::findFiles, false, "*.lua");
+            for (const auto& script : scripts) {
+                auto name = script.getFileNameWithoutExtension().toStdString();
+
+                // Skip duplicates
+                if (seenNames.count(name) > 0) continue;
+
+                // Only include files that look like DSP scripts (contain buildPlugin function)
+                auto content = script.loadFileAsString();
+                if (!content.contains("function buildPlugin")) {
+                    continue;
+                }
+
+                seenNames.insert(name);
+                auto entry = sol::table(lua, sol::create);
+                entry["name"] = name;
+                entry["path"] = script.getFullPathName().toStdString();
+                entry["code"] = content.toStdString();
+                result[index++] = entry;
+            }
+        };
+
+        // Priority 1: Dev DSP scripts directory from settings
+        auto& settings = Settings::getInstance();
+        auto devDir = settings.getDevScriptsDir();
+        if (devDir.isNotEmpty()) {
+            addScriptsFromDir(juce::File(devDir).getChildFile("dsp/scripts"));
+        }
+        // Fallback to hardcoded dev path
+        addScriptsFromDir(juce::File("/home/shamanic/dev/my-plugin/looper/dsp/scripts"));
+
+        // Priority 2: User DSP scripts directory from settings
+        auto userDir = settings.getDspScriptsDir();
+        if (userDir.isNotEmpty()) {
+            addScriptsFromDir(juce::File(userDir));
+        }
+
+        return result;
+    };
+
+    // Settings table - persistent configuration
+    auto settingsTable = lua.create_table();
+    
+    settingsTable["getUserScriptsDir"] = []() -> std::string {
+        return Settings::getInstance().getUserScriptsDir().toStdString();
+    };
+    
+    settingsTable["setUserScriptsDir"] = [](const std::string& path) {
+        Settings::getInstance().setUserScriptsDir(juce::String(path));
+        Settings::getInstance().save();
+    };
+    
+    settingsTable["getDevScriptsDir"] = []() -> std::string {
+        return Settings::getInstance().getDevScriptsDir().toStdString();
+    };
+    
+    settingsTable["setDevScriptsDir"] = [](const std::string& path) {
+        Settings::getInstance().setDevScriptsDir(juce::String(path));
+        Settings::getInstance().save();
+    };
+    
+    settingsTable["getOscPort"] = []() -> int {
+        return Settings::getInstance().getOscPort();
+    };
+    
+    settingsTable["setOscPort"] = [](int port) {
+        Settings::getInstance().setOscPort(port);
+        Settings::getInstance().save();
+    };
+    
+    settingsTable["getOscQueryPort"] = []() -> int {
+        return Settings::getInstance().getOscQueryPort();
+    };
+    
+    settingsTable["setOscQueryPort"] = [](int port) {
+        Settings::getInstance().setOscQueryPort(port);
+        Settings::getInstance().save();
+    };
+    
+    settingsTable["save"] = []() {
+        Settings::getInstance().save();
+    };
+    
+    settingsTable["getConfigPath"] = []() -> std::string {
+        auto& s = Settings::getInstance();
+        // Access private method through a workaround - actually just return the path
+        return "~/.config/Manifold/settings.json or .manifold.settings.json";
+    };
+    
+    // Async directory chooser - calls callback(path) when user selects
+    settingsTable["browseForUserScriptsDir"] = [&state](sol::function callback) {
+        std::fprintf(stderr, "[LuaSettings] browseForUserScriptsDir called\n");
+        auto currentDir = Settings::getInstance().getUserScriptsDir();
+        std::fprintf(stderr, "[LuaSettings] currentDir='%s'\n", currentDir.toRawUTF8());
+        if (currentDir.isEmpty()) {
+            currentDir = juce::File::getSpecialLocation(juce::File::userHomeDirectory).getFullPathName();
+            std::fprintf(stderr, "[LuaSettings] using home dir: '%s'\n", currentDir.toRawUTF8());
+        }
+        std::fprintf(stderr, "[LuaSettings] calling showDirectoryChooser...\n");
+        state.showDirectoryChooser("Select User Scripts Directory", 
+                                    currentDir.toStdString(), 
+                                    callback);
+        std::fprintf(stderr, "[LuaSettings] showDirectoryChooser returned\n");
+    };
+    
+    // DSP scripts directory
+    settingsTable["getDspScriptsDir"] = []() -> std::string {
+        return Settings::getInstance().getDspScriptsDir().toStdString();
+    };
+    
+    settingsTable["setDspScriptsDir"] = [](const std::string& path) {
+        Settings::getInstance().setDspScriptsDir(juce::String(path));
+        Settings::getInstance().save();
+    };
+    
+    settingsTable["browseForDspScriptsDir"] = [&state](sol::function callback) {
+        auto currentDir = Settings::getInstance().getDspScriptsDir();
+        if (currentDir.isEmpty()) {
+            currentDir = juce::File::getSpecialLocation(juce::File::userHomeDirectory).getFullPathName();
+        }
+        state.showDirectoryChooser("Select DSP Scripts Directory", 
+                                    currentDir.toStdString(), 
+                                    callback);
+    };
+    
+    std::fprintf(stderr, "[LuaControlBindings] About to set lua['settings']...\n");
+    lua["settings"] = settingsTable;
+    
+    // Debug: verify settings table was created properly
+    std::fprintf(stderr, "[LuaSettings] Registered settings table with %zu entries\n", 
+                 settingsTable.size());
+    std::fprintf(stderr, "[LuaSettings] browseForUserScriptsDir valid: %d\n", 
+                 settingsTable["browseForUserScriptsDir"].valid() ? 1 : 0);
+    
+    // Verify it was actually set
+    auto verifyTable = lua["settings"];
+    std::fprintf(stderr, "[LuaSettings] Verification - lua['settings'] type: %s\n", 
+                 verifyTable.get_type() == sol::type::table ? "table" : "not table");
 }

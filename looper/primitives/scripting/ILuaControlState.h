@@ -99,4 +99,11 @@ public:
     // ============================================================================
     virtual void withLuaState(std::function<void(sol::state&)> callback) = 0;
     virtual void withLuaState(std::function<void(const sol::state&)> callback) const = 0;
+
+    // ============================================================================
+    // File chooser (async, calls callback with selected path or empty string)
+    // ============================================================================
+    virtual void showDirectoryChooser(const std::string& title, 
+                                       const std::string& initialPath,
+                                       sol::function callback) = 0;
 };

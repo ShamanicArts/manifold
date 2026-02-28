@@ -125,6 +125,10 @@ public:
   void withLuaState(std::function<void(sol::state&)> callback) override;
   void withLuaState(std::function<void(const sol::state&)> callback) const override;
 
+  void showDirectoryChooser(const std::string& title, 
+                            const std::string& initialPath,
+                            sol::function callback) override;
+
 private:
   void invokeEventListeners();
   void processPendingOSCCallbacks();
