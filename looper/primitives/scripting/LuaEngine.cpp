@@ -2781,7 +2781,7 @@ bool LuaEngine::switchScript(const juce::File &scriptFile) {
   // in BehaviorCore where the looper IS the graph. In legacy LooperProcessor
   // this was safe because loops lived in C++ LooperLayer objects independent
   // of the graph. Must not disable here.
-  // See: docs/PERSISTENT_GRAPH_ARCHITECTURE.md
+  // See: agent-docs/PERSISTENT_GRAPH_ARCHITECTURE.md
   //
   // if (pImpl->processor) {
   //   pImpl->processor->setGraphProcessingEnabled(false);
