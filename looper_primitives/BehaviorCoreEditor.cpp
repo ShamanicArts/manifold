@@ -1,5 +1,6 @@
 #include "BehaviorCoreEditor.h"
 #include "BehaviorCoreProcessor.h"
+#include "../looper/primitives/core/Settings.h"
 
 #include <cstdio>
 
@@ -10,25 +11,61 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
     addAndMakeVisible(rootCanvas);
     luaEngine.initialise(&processorRef, &rootCanvas);
 
-    juce::File scriptFile;
-    auto binaryDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                         .getParentDirectory();
-    auto candidate1 = binaryDir.getChildFile("looper_ui.lua");
-    auto candidate2 = binaryDir.getParentDirectory().getChildFile("looper_ui.lua");
-    auto candidate3 = juce::File("/home/shamanic/dev/my-plugin/looper/ui/looper_ui.lua");
+    // Load settings
+    auto& settings = Settings::getInstance();
 
-    if (candidate3.existsAsFile())
-        scriptFile = candidate3;
-    else if (candidate1.existsAsFile())
-        scriptFile = candidate1;
-    else if (candidate2.existsAsFile())
-        scriptFile = candidate2;
+    juce::File scriptFile;
+    
+    // Priority 1: Settings default UI script
+    auto settingsScript = settings.getDefaultUiScript();
+    if (settingsScript.isNotEmpty()) {
+        juce::File f(settingsScript);
+        if (f.existsAsFile()) {
+            scriptFile = f;
+        }
+    }
+    
+    // Priority 2: Bundled with binary (VST3/Standalone)
+    if (!scriptFile.existsAsFile()) {
+        auto binaryDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                             .getParentDirectory();
+        auto bundled = binaryDir.getChildFile("looper_ui.lua");
+        if (bundled.existsAsFile()) {
+            scriptFile = bundled;
+        }
+    }
+    
+    // Priority 3: Development paths
+    if (!scriptFile.existsAsFile()) {
+        auto binaryDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                             .getParentDirectory();
+        auto parentDir = binaryDir.getParentDirectory().getChildFile("looper_ui.lua");
+        if (parentDir.existsAsFile()) {
+            scriptFile = parentDir;
+        }
+    }
+    
+    // Priority 4: Hardcoded dev path
+    if (!scriptFile.existsAsFile()) {
+        auto devPath = juce::File("/home/shamanic/dev/my-plugin/looper/ui/looper_ui.lua");
+        if (devPath.existsAsFile()) {
+            scriptFile = devPath;
+        }
+    }
 
     if (scriptFile.existsAsFile()) {
         usingLuaUi = luaEngine.loadScript(scriptFile);
         if (usingLuaUi) {
             std::fprintf(stderr, "BehaviorCoreEditor: Using Lua UI from %s\n",
                          scriptFile.getFullPathName().toRawUTF8());
+            // Only save to settings if it's a dev path (not build directory)
+            auto pathStr = scriptFile.getFullPathName();
+            if (!pathStr.contains("build-dev") && !pathStr.contains("build/")) {
+                if (settings.getDefaultUiScript() != pathStr) {
+                    settings.setDefaultUiScript(pathStr);
+                    settings.save();
+                }
+            }
         } else {
             std::fprintf(stderr, "BehaviorCoreEditor: Lua script failed: %s\n",
                          luaEngine.getLastError().c_str());
