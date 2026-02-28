@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -119,10 +120,16 @@ public:
         std::unique_ptr<dsp_primitives::GraphRuntime> runtime) override;
 
     bool loadDspScript(const juce::File&) override;
+    bool loadDspScript(const juce::File&, const std::string& slot) override;
     bool loadDspScriptFromString(const std::string&,
                                  const std::string&) override;
+    bool loadDspScriptFromString(const std::string&, const std::string&,
+                                 const std::string& slot) override;
     bool reloadDspScript() override;
+    bool reloadDspScript(const std::string& slot) override;
+    bool unloadDspSlot(const std::string& slot) override;
     bool isDspScriptLoaded() const override;
+    bool isDspSlotLoaded(const std::string& slot) const override;
     const std::string& getDspScriptLastError() const override;
     void drainRetiredGraphRuntimes() override;
 
@@ -136,6 +143,9 @@ public:
     int getCaptureSize() const override;
     bool computeLayerPeaks(int layerIndex, int numBuckets,
                            std::vector<float>& outPeaks) const override;
+    bool computeLayerPeaksForPath(const std::string& pathBase,
+                                  int layerIndex, int numBuckets,
+                                  std::vector<float>& outPeaks) const override;
     bool computeCapturePeaks(int startAgo, int endAgo, int numBuckets,
                              std::vector<float>& outPeaks) const override;
 
@@ -159,6 +169,10 @@ public:
     std::array<float, 32> getSpectrumData() const override;
 
     std::string getAndClearPendingUISwitch();
+
+public:
+    // Destroy deferred DSP slot hosts (safe boundary, not inside Lua call stacks)
+    void drainPendingSlotDestroy();
 
 private:
     bool applyParamPath(const std::string& path, float value);
@@ -194,7 +208,11 @@ private:
         "DSP script host is not wired in BehaviorCore bootstrap yet";
 
     std::shared_ptr<dsp_primitives::PrimitiveGraph> primitiveGraph;
-    std::unique_ptr<DSPPluginScriptHost> dspScriptHost;
+    std::unique_ptr<DSPPluginScriptHost> dspScriptHost; // "default" slot (legacy compat)
+    std::unordered_map<std::string, std::unique_ptr<DSPPluginScriptHost>> dspSlots;
+    // Hosts moved here for deferred destruction (can't destroy sol::state from Lua callback)
+    std::vector<std::unique_ptr<DSPPluginScriptHost>> pendingSlotDestroy;
+    DSPPluginScriptHost& getOrCreateSlot(const std::string& slot);
 
     ControlServer controlServer;
     OSCServer oscServer;

@@ -25,21 +25,43 @@ LoopPlaybackNode::LoopPlaybackNode(int numChannels) : numChannels_(numChannels) 
 
 void LoopPlaybackNode::prepare(double sampleRate, int maxBlockSize) {
     (void)maxBlockSize;
-    sampleRate_ = sampleRate > 0.0 ? sampleRate : 44100.0;
-    maxLoopSamples_ = juce::jmax(1, static_cast<int>(sampleRate_ * 30.0));
-    loopBufferA_.setSize(numChannels_, maxLoopSamples_, false, true, true);
-    loopBufferB_.setSize(numChannels_, maxLoopSamples_, false, true, true);
-    loopBufferA_.clear();
-    loopBufferB_.clear();
-    activeLoopBufferIndex_.store(0, std::memory_order_release);
+
+    const double newSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    const int newMaxLoopSamples = juce::jmax(1, static_cast<int>(newSampleRate * 30.0));
+
+    const bool needsReallocate =
+        loopBufferA_.getNumChannels() != numChannels_ ||
+        loopBufferA_.getNumSamples() != newMaxLoopSamples ||
+        loopBufferB_.getNumChannels() != numChannels_ ||
+        loopBufferB_.getNumSamples() != newMaxLoopSamples;
+
+    sampleRate_ = newSampleRate;
+    maxLoopSamples_ = newMaxLoopSamples;
+
+    if (needsReallocate) {
+        // Reallocation is destructive (e.g. sample-rate change). Preserve behavior
+        // for normal graph recompiles by avoiding this path when sizes match.
+        loopBufferA_.setSize(numChannels_, maxLoopSamples_, false, true, true);
+        loopBufferB_.setSize(numChannels_, maxLoopSamples_, false, true, true);
+        loopBufferA_.clear();
+        loopBufferB_.clear();
+        activeLoopBufferIndex_.store(0, std::memory_order_release);
+        readPosition_ = 0.0;
+        lastPosition_.store(0, std::memory_order_release);
+    } else {
+        // Preserve existing loop audio and playback position across runtime
+        // recompiles / UI script switches.
+        const int loopLengthNow = juce::jlimit(1, maxLoopSamples_,
+            loopLength_.load(std::memory_order_acquire));
+        readPosition_ = wrapPosition(readPosition_, loopLengthNow);
+        lastPosition_.store(static_cast<int>(readPosition_), std::memory_order_release);
+    }
 
     int loopLength = juce::jlimit(1, maxLoopSamples_, loopLength_.load(std::memory_order_acquire));
     loopLength_.store(loopLength, std::memory_order_release);
-    readPosition_ = 0.0;
     seekCrossfadeRemaining_ = 0;
     seekCrossfadeTotal_ = 0;
-    seekCrossfadeSourcePosition_ = 0.0;
-    lastPosition_.store(0, std::memory_order_release);
+    seekCrossfadeSourcePosition_ = readPosition_;
 }
 
 void LoopPlaybackNode::process(const std::vector<AudioBufferView>& inputs,

@@ -38,10 +38,35 @@ local function setBehaviorParam(path, value)
     return ok and handled == true
 end
 
+local DONUT_SLOT = "donut"
+
 local function ensureDonutDemoGraphLoaded()
     local loaded = false
 
-    if type(loadDspScript) == "function" then
+    -- Do not reload if this slot is already alive; reloading would wipe donut
+    -- loop content and break cross-UI persistence.
+    if type(isDspSlotLoaded) == "function" then
+        local ok, alive = pcall(isDspSlotLoaded, DONUT_SLOT)
+        if ok and alive == true then
+            ui.dspLoaded = true
+            ui.graphEnabled = true
+            return true
+        end
+    end
+
+    -- Use slotted API so the donut DSP coexists alongside the default looper
+    -- DSP in the same persistent graph. Both produce audio simultaneously.
+    if type(loadDspScriptInSlot) == "function" then
+        for _, p in ipairs(DONUT_DSP_PATH_CANDIDATES) do
+            local ok, result = pcall(loadDspScriptInSlot, p, DONUT_SLOT)
+            if ok and result then
+                loaded = true
+                ui.loadedDspPath = p
+                break
+            end
+        end
+    elseif type(loadDspScript) == "function" then
+        -- Fallback for legacy hosts without slot support
         for _, p in ipairs(DONUT_DSP_PATH_CANDIDATES) do
             local ok, result = pcall(loadDspScript, p)
             if ok and result then
@@ -57,20 +82,11 @@ local function ensureDonutDemoGraphLoaded()
         if ok then ui.dspLoadError = err end
     end
 
-    local graphEnabled = false
-    if loaded then
-        if type(setGraphProcessingEnabled) == "function" then
-            local ok, result = pcall(setGraphProcessingEnabled, true)
-            graphEnabled = ok and result and true or false
-        end
-        if not graphEnabled then
-            graphEnabled = setBehaviorParam("/core/behavior/graph/enabled", 1.0)
-        end
-    end
-
+    -- Graph should already be enabled in the persistent graph architecture.
+    -- No need to toggle setGraphProcessingEnabled.
     ui.dspLoaded = loaded
-    ui.graphEnabled = graphEnabled
-    return loaded and graphEnabled
+    ui.graphEnabled = loaded
+    return loaded
 end
 
 local function readParam(params, path, fallback)
@@ -83,7 +99,7 @@ end
 local function readLiveParam(path, fallback)
     if type(getParam) == "function" then
         local ok, value = pcall(getParam, path)
-        if ok and type(value) == "number" then
+        if ok and value ~= nil then
             return value
         end
     end
@@ -97,34 +113,64 @@ local function readBool(params, path, fallback)
 end
 
 local function layerPath(i, suffix)
-    return string.format("/core/behavior/layer/%d/%s", i, suffix)
+    return string.format("/core/slots/donut/layer/%d/%s", i, suffix)
+end
+
+local function toPositionNorm(position, length)
+    local p = tonumber(position) or 0.0
+    local len = tonumber(length) or 0.0
+
+    -- New slot endpoints expose normalized position already; keep backwards
+    -- compatibility in case an implementation returns absolute samples.
+    if len > 1.0 and p > 1.0 then
+        p = p / len
+    end
+
+    return clamp(p, 0.0, 1.0)
 end
 
 local function normalizeState(s)
     local st = s or {}
     local params = st.params or {}
-    local voices = st.voices or {}
 
     local out = {
-        tempo = tonumber(readParam(params, "/core/behavior/tempo", 96)) or 96,
-        recording = readBool(params, "/core/behavior/recording", false),
-        activeLayer = tonumber(readParam(params, "/core/behavior/activeLayer", readParam(params, "/core/behavior/layer", 0))) or 0,
+        tempo = tonumber(readLiveParam("/core/slots/donut/tempo", readParam(params, "/core/slots/donut/tempo", 96))) or 96,
+        recording = (readLiveParam("/core/slots/donut/recording", readParam(params, "/core/slots/donut/recording", 0)) or 0) > 0.5,
+        activeLayer = tonumber(readLiveParam("/core/slots/donut/activeLayer", readParam(params, "/core/slots/donut/activeLayer", readParam(params, "/core/slots/donut/layer", 0)))) or 0,
         wet = 0.35,
         room = 0.65,
         layers = {},
     }
 
     for i = 0, MAX_LAYERS - 1 do
-        local voice = voices[i + 1] or {}
-        local length = tonumber(voice.length or readParam(params, layerPath(i, "length"), 0)) or 0
-        local position = tonumber(voice.position or 0) or 0
-        local stateName = voice.state or readParam(params, layerPath(i, "state"), "stopped")
-        local muted = readBool(params, layerPath(i, "mute"), false)
+        local length = tonumber(readLiveParam(layerPath(i, "length"), readParam(params, layerPath(i, "length"), 0))) or 0
+        local rawPosition = tonumber(readLiveParam(layerPath(i, "position"), readParam(params, layerPath(i, "position"), 0))) or 0
+        local positionNorm = toPositionNorm(rawPosition, length)
+        local volume = tonumber(readLiveParam(layerPath(i, "volume"), readParam(params, layerPath(i, "volume"), 0.85))) or 0.85
+
+        local stateName = readParam(params, layerPath(i, "state"), "stopped")
+        local stateLive = readLiveParam(layerPath(i, "state"), nil)
+        if type(stateLive) == "string" then
+            stateName = stateLive
+        elseif type(stateLive) == "number" then
+            if stateLive > 0.5 then
+                stateName = "playing"
+            elseif length > 0 then
+                stateName = "stopped"
+            else
+                stateName = "empty"
+            end
+        elseif length <= 0 then
+            stateName = "empty"
+        end
+        local muted = (readLiveParam(layerPath(i, "mute"), readParam(params, layerPath(i, "mute"), 0)) or 0) > 0.5
 
         out.layers[i + 1] = {
             index = i,
             length = length,
-            position = position,
+            position = rawPosition,
+            positionNorm = positionNorm,
+            volume = volume,
             state = stateName,
             muted = muted,
         }
@@ -156,22 +202,94 @@ local function drawCircle(cx, cy, r, colour, segs)
     end
 end
 
+local function easedLayerBounce(layerIdx, target)
+    if type(ui.layerBounce) ~= "table" then
+        ui.layerBounce = {}
+    end
+
+    local key = layerIdx + 1
+    local prev = ui.layerBounce[key] or 0.0
+    local nextV = prev * 0.84 + target * 0.16
+    ui.layerBounce[key] = nextV
+    return nextV
+end
+
 local function drawDonutWave(layerIdx, layerData, w, h)
     local cx, cy = w * 0.5, h * 0.5
-    local radius = math.max(20, math.min(w, h) * 0.34)
-    local inner = radius * 0.60
+    local baseRadius = math.max(20, math.min(w, h) * 0.34)
+    local baseInner = baseRadius * 0.60
+    local posNorm = clamp(tonumber(layerData.positionNorm) or 0.0, 0.0, 1.0)
+
+    local peaks = nil
+    if type(getLayerPeaksForPath) == "function" then
+        peaks = getLayerPeaksForPath("/core/slots/donut", layerIdx, 96)
+    else
+        peaks = getLayerPeaks(layerIdx, 96)
+    end
+
+    local playheadIdx = 1
+
+    -- Keep the original subtle donut radius bounce.
+    local bounceTarget = 0.0
+    if peaks and #peaks > 0 then
+        playheadIdx = math.floor(posNorm * #peaks) + 1
+        if playheadIdx < 1 then playheadIdx = 1 end
+        if playheadIdx > #peaks then playheadIdx = #peaks end
+
+        local sum = 0.0
+        local count = 0
+        for k = -1, 1 do
+            local j = playheadIdx + k
+            if j >= 1 and j <= #peaks then
+                sum = sum + clamp(peaks[j] or 0.0, 0.0, 1.0)
+                count = count + 1
+            end
+        end
+        local localLevel = count > 0 and (sum / count) or 0.0
+
+        local vol = clamp(tonumber(layerData.volume) or 1.0, 0.0, 1.5)
+        local active = (layerData.state == "playing" or layerData.state == "recording" or layerData.state == "overdubbing")
+        if active and not layerData.muted then
+            bounceTarget = localLevel * vol
+        end
+    end
+
+    local bounce = easedLayerBounce(layerIdx, bounceTarget)
+    local radius = baseRadius + bounce * 2.4
+    local inner = baseInner + bounce * 1.2
 
     drawCircle(cx, cy, radius, 0x22475a75, 72)
     drawCircle(cx, cy, inner, 0x22475a75, 72)
 
-    local peaks = getLayerPeaks(layerIdx, 96)
     if peaks and #peaks > 0 then
         gfx.setColour(layerColor(layerData.state))
+
+        -- Grow/shrink waveform lines around the moving playhead.
+        local window = 10
+        local emphasisAmount = 2.6 * bounce
+
         for i = 1, #peaks do
             local p = clamp(peaks[i] or 0.0, 0.0, 1.0)
+
+            local d = math.abs(i - playheadIdx)
+            d = math.min(d, #peaks - d)
+
+            local influence = 0.0
+            if d <= window then
+                influence = 1.0 - (d / window)
+                influence = influence * influence
+            end
+
+            local shaped = clamp(
+                p * (1.0 + emphasisAmount * influence) +
+                    (0.14 * bounce * influence),
+                0.0,
+                1.0
+            )
+
             local a = ((i - 1) / #peaks) * math.pi * 2.0 - math.pi * 0.5
             local r1 = inner
-            local r2 = inner + p * (radius - inner)
+            local r2 = inner + shaped * (radius - inner)
             local x1 = cx + math.cos(a) * r1
             local y1 = cy + math.sin(a) * r1
             local x2 = cx + math.cos(a) * r2
@@ -180,8 +298,7 @@ local function drawDonutWave(layerIdx, layerData, w, h)
         end
     end
 
-    if layerData.length and layerData.length > 0 then
-        local posNorm = clamp((layerData.position or 0) / math.max(1, layerData.length), 0.0, 1.0)
+    if (layerData.length or 0) > 0 then
         local a = posNorm * math.pi * 2.0 - math.pi * 0.5
         local x1 = cx + math.cos(a) * (inner - 3)
         local y1 = cy + math.sin(a) * (inner - 3)
@@ -201,13 +318,14 @@ local function seekFromMouse(layerIdx, node, mx, my)
     if norm < 0.0 then norm = norm + 1.0 end
     if norm >= 1.0 then norm = norm - 1.0 end
 
-    setBehaviorParam("/core/behavior/activeLayer", layerIdx)
+    setBehaviorParam("/core/slots/donut/activeLayer", layerIdx)
     setBehaviorParam(layerPath(layerIdx, "seek"), norm)
 end
 
 function ui_init(root)
     ui.root = W.Panel.new(root, "donutRoot", { bg = 0xff060b16 })
     ui.header = W.Panel.new(ui.root.node, "header", { bg = 0xff111827, radius = 8 })
+    ui.layerBounce = {}
 
     ui.title = W.Label.new(ui.header.node, "title", {
         text = "Donut Looper Demo",
@@ -226,54 +344,54 @@ function ui_init(root)
         label = "● REC",
         bg = 0xff7f1d1d,
         on_click = function()
-            setBehaviorParam("/core/behavior/recording", recLatched and 0.0 or 1.0)
+            setBehaviorParam("/core/slots/donut/recording", recLatched and 0.0 or 1.0)
         end,
     })
 
     ui.playBtn = W.Button.new(ui.header.node, "play", {
         label = "▶", bg = 0xff14532d,
-        on_click = function() setBehaviorParam("/core/behavior/transport", 1.0) end,
+        on_click = function() setBehaviorParam("/core/slots/donut/transport", 1.0) end,
     })
 
     ui.pauseBtn = W.Button.new(ui.header.node, "pause", {
         label = "⏸", bg = 0xff78350f,
-        on_click = function() setBehaviorParam("/core/behavior/transport", 2.0) end,
+        on_click = function() setBehaviorParam("/core/slots/donut/transport", 2.0) end,
     })
 
     ui.stopBtn = W.Button.new(ui.header.node, "stop", {
         label = "⏹", bg = 0xff334155,
-        on_click = function() setBehaviorParam("/core/behavior/transport", 0.0) end,
+        on_click = function() setBehaviorParam("/core/slots/donut/transport", 0.0) end,
     })
 
     ui.commitBtn = W.Button.new(ui.header.node, "commit", {
         label = "Commit 1", bg = 0xff1d4ed8,
-        on_click = function() setBehaviorParam("/core/behavior/commit", 1.0) end,
+        on_click = function() setBehaviorParam("/core/slots/donut/commit", 1.0) end,
     })
 
     ui.nextLayerBtn = W.Button.new(ui.header.node, "next", {
         label = "Next Layer", bg = 0xff374151,
         on_click = function()
             local nextIdx = (math.floor(current_state.activeLayer or 0) + 1) % MAX_LAYERS
-            setBehaviorParam("/core/behavior/activeLayer", nextIdx)
+            setBehaviorParam("/core/slots/donut/activeLayer", nextIdx)
         end,
     })
 
     ui.tempo = W.NumberBox.new(ui.header.node, "tempo", {
         min = 40, max = 220, step = 1, value = 96,
         label = "BPM", colour = 0xff0ea5e9, format = "%d",
-        on_change = function(v) setBehaviorParam("/core/behavior/tempo", v) end,
+        on_change = function(v) setBehaviorParam("/core/slots/donut/tempo", v) end,
     })
 
     ui.wet = W.Knob.new(ui.header.node, "wet", {
         min = 0.0, max = 1.0, step = 0.01, value = 0.35,
         label = "Rev Wet", colour = 0xff22d3ee,
-        on_change = function(v) setBehaviorParam("/core/behavior/fx/reverb/wet", v) end,
+        on_change = function(v) setBehaviorParam("/core/slots/donut/fx/reverb/wet", v) end,
     })
 
     ui.room = W.Knob.new(ui.header.node, "room", {
         min = 0.0, max = 1.0, step = 0.01, value = 0.65,
         label = "Room", colour = 0xffa78bfa,
-        on_change = function(v) setBehaviorParam("/core/behavior/fx/reverb/room", v) end,
+        on_change = function(v) setBehaviorParam("/core/slots/donut/fx/reverb/room", v) end,
     })
 
     ui.layers = {}
@@ -282,7 +400,7 @@ function ui_init(root)
             bg = 0xff0f172a, border = 0xff1f2937, borderWidth = 1, radius = 8,
         })
         panel.node:setOnClick(function()
-            setBehaviorParam("/core/behavior/activeLayer", i)
+            setBehaviorParam("/core/slots/donut/activeLayer", i)
         end)
 
         local title = W.Label.new(panel.node, "title" .. i, {
@@ -303,7 +421,7 @@ function ui_init(root)
         local play = W.Button.new(panel.node, "play" .. i, {
             label = "Play", bg = 0xff14532d,
             on_click = function()
-                setBehaviorParam("/core/behavior/activeLayer", i)
+                setBehaviorParam("/core/slots/donut/activeLayer", i)
                 setBehaviorParam(layerPath(i, "play"), 1.0)
             end,
         })
@@ -311,7 +429,7 @@ function ui_init(root)
         local clear = W.Button.new(panel.node, "clear" .. i, {
             label = "Clear", bg = 0xff7f1d1d,
             on_click = function()
-                setBehaviorParam("/core/behavior/activeLayer", i)
+                setBehaviorParam("/core/slots/donut/activeLayer", i)
                 setBehaviorParam(layerPath(i, "clear"), 1.0)
             end,
         })
@@ -320,7 +438,7 @@ function ui_init(root)
             label = "Mute", bg = 0xff475569,
             on_click = function()
                 local layer = current_state.layers and current_state.layers[i + 1] or {}
-                setBehaviorParam("/core/behavior/activeLayer", i)
+                setBehaviorParam("/core/slots/donut/activeLayer", i)
                 setBehaviorParam(layerPath(i, "mute"), layer.muted and 0.0 or 1.0)
             end,
         })
@@ -395,8 +513,8 @@ function ui_update(s)
     current_state = normalizeState(s)
     recLatched = current_state.recording
 
-    local wetLive = readLiveParam("/core/behavior/fx/reverb/wet", current_state.wet or 0.35)
-    local roomLive = readLiveParam("/core/behavior/fx/reverb/room", current_state.room or 0.65)
+    local wetLive = readLiveParam("/core/slots/donut/fx/reverb/wet", current_state.wet or 0.35)
+    local roomLive = readLiveParam("/core/slots/donut/fx/reverb/room", current_state.room or 0.65)
     current_state.wet = wetLive
     current_state.room = roomLive
 
@@ -432,14 +550,14 @@ function ui_update(s)
             layer.play:setLabel("Pause")
             layer.play:setBg(0xffb45309)
             layer.play._onClick = function()
-                setBehaviorParam("/core/behavior/activeLayer", layer.index)
+                setBehaviorParam("/core/slots/donut/activeLayer", layer.index)
                 setBehaviorParam(layerPath(layer.index, "pause"), 1.0)
             end
         else
             layer.play:setLabel("Play")
             layer.play:setBg(0xff14532d)
             layer.play._onClick = function()
-                setBehaviorParam("/core/behavior/activeLayer", layer.index)
+                setBehaviorParam("/core/slots/donut/activeLayer", layer.index)
                 setBehaviorParam(layerPath(layer.index, "play"), 1.0)
             end
         end
@@ -454,7 +572,7 @@ function ui_update(s)
     end
 
     if ui.status then
-        local dspReady = endpointExists("/core/behavior/fx/reverb/wet")
+        local dspReady = endpointExists("/core/slots/donut/fx/reverb/wet")
         local loadState = (ui.dspLoaded and ui.graphEnabled and dspReady) and "DSP ready" or "DSP not ready"
         local err = ui.dspLoadError
         if type(err) == "string" and #err > 0 then
@@ -471,4 +589,10 @@ function ui_update(s)
             loadState
         ))
     end
+end
+
+function ui_cleanup()
+    -- Keep donut slot alive across UI switches.
+    -- Composable architecture requirement: loops from this slot must continue
+    -- playing when switching to other UIs (including live DSP scripting UI).
 end

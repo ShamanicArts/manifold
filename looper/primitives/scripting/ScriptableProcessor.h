@@ -65,11 +65,19 @@ public:
   virtual void requestGraphRuntimeSwap(
       std::unique_ptr<dsp_primitives::GraphRuntime>) {}
   virtual bool loadDspScript(const juce::File &) { return false; }
+  virtual bool loadDspScript(const juce::File &, const std::string &/*slot*/) { return false; }
   virtual bool loadDspScriptFromString(const std::string &, const std::string &) {
     return false;
   }
+  virtual bool loadDspScriptFromString(const std::string &, const std::string &,
+                                       const std::string &/*slot*/) {
+    return false;
+  }
   virtual bool reloadDspScript() { return false; }
+  virtual bool reloadDspScript(const std::string &/*slot*/) { return false; }
+  virtual bool unloadDspSlot(const std::string &/*slot*/) { return false; }
   virtual bool isDspScriptLoaded() const { return false; }
+  virtual bool isDspSlotLoaded(const std::string &/*slot*/) const { return false; }
   virtual const std::string &getDspScriptLastError() const {
     static const std::string empty;
     return empty;
@@ -101,6 +109,16 @@ public:
   virtual int getCaptureSize() const = 0;
   virtual bool computeLayerPeaks(int layerIndex, int numBuckets,
                                  std::vector<float> &outPeaks) const = 0;
+
+  // Optional slot/path-aware waveform query.
+  // Default keeps legacy behavior and forwards to computeLayerPeaks().
+  virtual bool computeLayerPeaksForPath(const std::string &pathBase,
+                                        int layerIndex, int numBuckets,
+                                        std::vector<float> &outPeaks) const {
+    (void)pathBase;
+    return computeLayerPeaks(layerIndex, numBuckets, outPeaks);
+  }
+
   virtual bool computeCapturePeaks(int startAgo, int endAgo, int numBuckets,
                                    std::vector<float> &outPeaks) const = 0;
 

@@ -78,7 +78,7 @@ BehaviorCoreProcessor::BehaviorCoreProcessor()
       primitiveGraph(std::make_shared<dsp_primitives::PrimitiveGraph>()),
       dspScriptHost(std::make_unique<DSPPluginScriptHost>()) {
     if (dspScriptHost) {
-        dspScriptHost->initialise(this);
+        dspScriptHost->initialise(this, "/core/behavior");
     }
     endpointRegistry.setNumLayers(MAX_LAYERS);
     endpointRegistry.rebuild();
@@ -348,12 +348,30 @@ void BehaviorCoreProcessor::requestGraphRuntimeSwap(
     }
 }
 
+DSPPluginScriptHost& BehaviorCoreProcessor::getOrCreateSlot(const std::string& slot) {
+    // "default" slot uses the legacy dspScriptHost pointer so all existing
+    // param routing, layer peaks, etc. keep working without changes.
+    if (slot == "default") {
+        return *dspScriptHost;
+    }
+    auto it = dspSlots.find(slot);
+    if (it != dspSlots.end()) {
+        return *it->second;
+    }
+    auto host = std::make_unique<DSPPluginScriptHost>();
+    host->initialise(this, "/core/slots/" + slot);
+    auto& ref = *host;
+    dspSlots[slot] = std::move(host);
+    return ref;
+}
+
+// --- Default slot (legacy compat) ---
+
 bool BehaviorCoreProcessor::loadDspScript(const juce::File& scriptFile) {
     if (!dspScriptHost) {
         dspScriptLastError = "DSP script host unavailable";
         return false;
     }
-
     const bool ok = dspScriptHost->loadScript(scriptFile);
     if (!ok) {
         dspScriptLastError = dspScriptHost->getLastError();
@@ -367,7 +385,6 @@ bool BehaviorCoreProcessor::loadDspScriptFromString(const std::string& luaCode,
         dspScriptLastError = "DSP script host unavailable";
         return false;
     }
-
     const bool ok = dspScriptHost->loadScriptFromString(luaCode, sourceName);
     if (!ok) {
         dspScriptLastError = dspScriptHost->getLastError();
@@ -380,7 +397,6 @@ bool BehaviorCoreProcessor::reloadDspScript() {
         dspScriptLastError = "DSP script host unavailable";
         return false;
     }
-
     const bool ok = dspScriptHost->reloadCurrentScript();
     if (!ok) {
         dspScriptLastError = dspScriptHost->getLastError();
@@ -390,6 +406,71 @@ bool BehaviorCoreProcessor::reloadDspScript() {
 
 bool BehaviorCoreProcessor::isDspScriptLoaded() const {
     return dspScriptHost && dspScriptHost->isLoaded();
+}
+
+// --- Named slot API ---
+
+bool BehaviorCoreProcessor::loadDspScript(const juce::File& scriptFile,
+                                          const std::string& slot) {
+    if (slot == "default") return loadDspScript(scriptFile);
+    auto& host = getOrCreateSlot(slot);
+    const bool ok = host.loadScript(scriptFile);
+    if (!ok) {
+        dspScriptLastError = host.getLastError();
+    }
+    return ok;
+}
+
+bool BehaviorCoreProcessor::loadDspScriptFromString(const std::string& luaCode,
+                                                    const std::string& sourceName,
+                                                    const std::string& slot) {
+    if (slot == "default") return loadDspScriptFromString(luaCode, sourceName);
+    auto& host = getOrCreateSlot(slot);
+    const bool ok = host.loadScriptFromString(luaCode, sourceName);
+    if (!ok) {
+        dspScriptLastError = host.getLastError();
+    }
+    return ok;
+}
+
+bool BehaviorCoreProcessor::reloadDspScript(const std::string& slot) {
+    if (slot == "default") return reloadDspScript();
+    auto it = dspSlots.find(slot);
+    if (it == dspSlots.end()) {
+        dspScriptLastError = "no script loaded in slot: " + slot;
+        return false;
+    }
+    const bool ok = it->second->reloadCurrentScript();
+    if (!ok) {
+        dspScriptLastError = it->second->getLastError();
+    }
+    return ok;
+}
+
+bool BehaviorCoreProcessor::unloadDspSlot(const std::string& slot) {
+    if (slot == "default") {
+        return false;
+    }
+    auto it = dspSlots.find(slot);
+    if (it == dspSlots.end()) {
+        return false;
+    }
+
+    // Do not destroy slot hosts during runtime UI/DSP transitions.
+    // Tearing down Lua VMs has repeatedly caused crashes. Keep the host alive
+    // and unload only its nodes by loading an empty script.
+    return it->second->loadScriptFromString(
+        "function buildPlugin(ctx) return {} end", "unload:" + slot);
+}
+
+void BehaviorCoreProcessor::drainPendingSlotDestroy() {
+    // Intentionally no-op for now; slot hosts are kept alive for stability.
+}
+
+bool BehaviorCoreProcessor::isDspSlotLoaded(const std::string& slot) const {
+    if (slot == "default") return isDspScriptLoaded();
+    auto it = dspSlots.find(slot);
+    return it != dspSlots.end() && it->second->isLoaded();
 }
 
 const std::string& BehaviorCoreProcessor::getDspScriptLastError() const {
@@ -726,6 +807,13 @@ bool BehaviorCoreProcessor::setParamByPath(const std::string& path, float value)
         handled = dspScriptHost->setParam(path, value) || handled;
     }
 
+    for (auto& entry : dspSlots) {
+        auto* host = entry.second.get();
+        if (host != nullptr && host->hasParam(path)) {
+            handled = host->setParam(path, value) || handled;
+        }
+    }
+
     if (applyParamPath(path, value)) {
         handled = true;
     }
@@ -830,6 +918,13 @@ float BehaviorCoreProcessor::getParamByPath(const std::string& path) const {
         return dspScriptHost->getParam(path);
     }
 
+    for (const auto& entry : dspSlots) {
+        const auto* host = entry.second.get();
+        if (host != nullptr && host->hasParam(path)) {
+            return host->getParam(path);
+        }
+    }
+
     return 0.0f;
 }
 
@@ -842,6 +937,13 @@ bool BehaviorCoreProcessor::hasEndpoint(const std::string& path) const {
 
     if (dspScriptHost && dspScriptHost->hasParam(path)) {
         return true;
+    }
+
+    for (const auto& entry : dspSlots) {
+        const auto* host = entry.second.get();
+        if (host != nullptr && host->hasParam(path)) {
+            return true;
+        }
     }
 
     const auto endpoint = endpointRegistry.findEndpoint(juce::String(path));
@@ -881,6 +983,47 @@ bool BehaviorCoreProcessor::computeLayerPeaks(int layerIndex, int numBuckets,
     }
 
     return false;
+}
+
+bool BehaviorCoreProcessor::computeLayerPeaksForPath(const std::string& pathBase,
+                                                     int layerIndex,
+                                                     int numBuckets,
+                                                     std::vector<float>& outPeaks) const {
+    outPeaks.clear();
+    if (layerIndex < 0 || layerIndex >= MAX_LAYERS || numBuckets <= 0) {
+        return false;
+    }
+
+    const juce::String base(pathBase);
+    if (base.isEmpty() ||
+        base == "/looper" || base == "/dsp/looper" || base == "/core/behavior" ||
+        base.startsWith("/looper/") || base.startsWith("/dsp/looper/") ||
+        base.startsWith("/core/behavior/")) {
+        return computeLayerPeaks(layerIndex, numBuckets, outPeaks);
+    }
+
+    if (base.startsWith("/core/slots/")) {
+        juce::String rest = base.substring(12); // after "/core/slots/"
+        if (rest.isEmpty()) {
+            return false;
+        }
+
+        const int slash = rest.indexOfChar('/');
+        const juce::String slot = (slash >= 0) ? rest.substring(0, slash) : rest;
+        if (slot.isEmpty()) {
+            return false;
+        }
+
+        const auto it = dspSlots.find(slot.toStdString());
+        if (it == dspSlots.end() || it->second == nullptr) {
+            return false;
+        }
+
+        return it->second->computeLayerPeaks(layerIndex, numBuckets, outPeaks);
+    }
+
+    // Unknown base: preserve legacy behavior.
+    return computeLayerPeaks(layerIndex, numBuckets, outPeaks);
 }
 
 bool BehaviorCoreProcessor::computeCapturePeaks(int startAgo, int endAgo,

@@ -1185,6 +1185,28 @@ void LuaEngine::registerBindings() {
     return result;
   };
 
+  // Slot/path-aware waveform query. Example path bases:
+  //   /core/behavior
+  //   /core/slots/donut
+  lua["getLayerPeaksForPath"] =
+      [this](const std::string &pathBase, int layerIdx,
+             int numBuckets) -> sol::table {
+    auto &lua = pImpl->lua;
+    auto result = lua.create_table();
+    if (!pImpl->processor || numBuckets <= 0)
+      return result;
+
+    std::vector<float> peaks;
+    if (!pImpl->processor->computeLayerPeaksForPath(pathBase, layerIdx,
+                                                    numBuckets, peaks)) {
+      return result;
+    }
+    for (size_t i = 0; i < peaks.size(); ++i)
+      result[i + 1] = peaks[i];
+
+    return result;
+  };
+
   // Returns a Lua table of peak values for a capture buffer window
   // startAgo/endAgo are in samples-ago (0 = now, larger = older)
   lua["getCapturePeaks"] = [this](int startAgo, int endAgo,
@@ -1316,11 +1338,36 @@ void LuaEngine::registerBindings() {
     return pImpl->processor->loadDspScript(juce::File(path));
   };
 
+  // Load a DSP script into a named slot. Multiple slots coexist in the same
+  // persistent graph — their nodes all produce audio simultaneously.
+  lua["loadDspScriptInSlot"] =
+      [this](const std::string &path, const std::string &slot) -> bool {
+    if (!pImpl->processor)
+      return false;
+    return pImpl->processor->loadDspScript(juce::File(path), slot);
+  };
+
   lua["loadDspScriptFromString"] =
       [this](const std::string &code, const std::string &sourceName) -> bool {
     if (!pImpl->processor)
       return false;
     return pImpl->processor->loadDspScriptFromString(code, sourceName);
+  };
+
+  // Load DSP script from string into a named slot.
+  lua["loadDspScriptFromStringInSlot"] =
+      [this](const std::string &code, const std::string &sourceName,
+             const std::string &slot) -> bool {
+    if (!pImpl->processor)
+      return false;
+    return pImpl->processor->loadDspScriptFromString(code, sourceName, slot);
+  };
+
+  // Remove a named DSP slot and its nodes from the graph.
+  lua["unloadDspSlot"] = [this](const std::string &slot) -> bool {
+    if (!pImpl->processor)
+      return false;
+    return pImpl->processor->unloadDspSlot(slot);
   };
 
   // Debug helper: write text buffers to disk (used by live DSP editor)
@@ -1343,6 +1390,12 @@ void LuaEngine::registerBindings() {
     if (!pImpl->processor)
       return false;
     return pImpl->processor->isDspScriptLoaded();
+  };
+
+  lua["isDspSlotLoaded"] = [this](const std::string &slot) -> bool {
+    if (!pImpl->processor)
+      return false;
+    return pImpl->processor->isDspSlotLoaded(slot);
   };
 
   lua["getDspScriptLastError"] = [this]() -> std::string {
@@ -2495,11 +2548,8 @@ void LuaEngine::notifyUpdate() {
     auto path = pImpl->pendingSwitchPath;
     pImpl->pendingSwitchPath.clear();
 
-    // Default-safe switch behavior: views start with graph disabled unless
-    // they explicitly enable/take over graph processing.
-    if (pImpl->processor) {
-      pImpl->processor->setParamByPath("/looper/graph/enabled", 0.0f);
-    }
+    // In BehaviorCore, graph processing is the audio engine and must remain
+    // enabled across UI switches.
 
     auto file = juce::File(path);
     if (file.existsAsFile()) {
@@ -2578,10 +2628,30 @@ juce::File LuaEngine::getScriptDirectory() const {
 // ============================================================================
 
 bool LuaEngine::switchScript(const juce::File &scriptFile) {
-  // UI scripts should not inherit an active DSP graph implicitly.
-  // If a script wants graph processing, it can re-enable explicitly.
-  if (pImpl->processor) {
-    pImpl->processor->setGraphProcessingEnabled(false);
+  // BUG: This disables the graph on every UI switch, which kills all audio
+  // in BehaviorCore where the looper IS the graph. In legacy LooperProcessor
+  // this was safe because loops lived in C++ LooperLayer objects independent
+  // of the graph. Must not disable here.
+  // See: docs/PERSISTENT_GRAPH_ARCHITECTURE.md
+  //
+  // if (pImpl->processor) {
+  //   pImpl->processor->setGraphProcessingEnabled(false);
+  // }
+
+  // Give the outgoing script a chance to clean up (e.g. unload DSP slots).
+  {
+    sol::protected_function cleanup = pImpl->lua["ui_cleanup"];
+    if (cleanup.valid()) {
+      try {
+        auto result = cleanup();
+        if (!result.valid()) {
+          sol::error err = result;
+          std::fprintf(stderr, "LuaEngine: ui_cleanup error: %s\n", err.what());
+        }
+      } catch (const std::exception &e) {
+        std::fprintf(stderr, "LuaEngine: ui_cleanup exception: %s\n", e.what());
+      }
+    }
   }
 
   // Clear the current UI

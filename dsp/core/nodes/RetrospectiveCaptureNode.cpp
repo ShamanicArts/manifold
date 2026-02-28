@@ -7,9 +7,19 @@ RetrospectiveCaptureNode::RetrospectiveCaptureNode(int numChannels)
 
 void RetrospectiveCaptureNode::prepare(double sampleRate, int maxBlockSize) {
     (void)maxBlockSize;
-    sampleRate_ = sampleRate > 1.0 ? sampleRate : 44100.0;
+    const float newRate = sampleRate > 1.0 ? static_cast<float>(sampleRate) : 44100.0f;
+
+    const int oldSize = captureSize_;
+    const int oldChannels = captureBuffer_.getNumChannels();
+
+    sampleRate_ = newRate;
     ensureBuffer(sampleRate_);
-    writeOffset_.store(0, std::memory_order_release);
+
+    const bool recreated = (captureSize_ != oldSize) ||
+                           (captureBuffer_.getNumChannels() != oldChannels);
+    if (recreated) {
+        writeOffset_.store(0, std::memory_order_release);
+    }
 }
 
 void RetrospectiveCaptureNode::process(const std::vector<AudioBufferView>& inputs,

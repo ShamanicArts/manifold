@@ -13,7 +13,8 @@ public:
   DSPPluginScriptHost();
   ~DSPPluginScriptHost();
 
-  void initialise(ScriptableProcessor *processor);
+  void initialise(ScriptableProcessor *processor,
+                  const std::string &namespaceBase = "/core/behavior");
 
   bool loadScript(const juce::File &scriptFile);
   bool loadScriptFromString(const std::string &luaCode,

@@ -1017,43 +1017,47 @@ local function runEditorScript()
         textHash32(state.scriptText)
     )
 
-    local ok = loadDspScriptFromString(state.scriptText, sourceName)
+    local LIVE_SLOT = "live_editor"
+    local ok = false
+    if type(loadDspScriptFromStringInSlot) == "function" then
+        ok = loadDspScriptFromStringInSlot(state.scriptText, sourceName, LIVE_SLOT)
+    else
+        ok = loadDspScriptFromString(state.scriptText, sourceName)
+    end
     if not ok then
-        setStatus("load failed")
+        local err = ""
+        if type(getDspScriptLastError) == "function" then
+            local eok, eval = pcall(getDspScriptLastError)
+            if eok and type(eval) == "string" then
+                err = eval
+            end
+        end
+        if #err > 0 then
+            setStatus("load failed: " .. err)
+        else
+            setStatus("load failed")
+        end
         return
     end
 
-    local graphOk = false
-    if type(setGraphProcessingEnabled) == "function" then
-        graphOk = setGraphProcessingEnabled(true)
-    else
-        graphOk = setParam("/looper/graph/enabled", 1.0)
-    end
-
+    -- Graph is always enabled in persistent graph architecture.
     state.graphModel = parseGraph(state.scriptText)
     rebuildParamControls()
     relayoutParams()
     refreshParamControlState()
 
-    if graphOk then
-        setStatus("script loaded from editor + graph ON (" .. sourceName .. ") -> " .. dumpPath)
-    else
-        setStatus("script loaded from editor, graph enable failed (" .. sourceName .. ") -> " .. dumpPath)
-    end
+    setStatus("script loaded in slot '" .. LIVE_SLOT .. "' (" .. sourceName .. ") -> " .. dumpPath)
 end
 
 local function stopEditorScript()
-    local ok = false
-    if type(setGraphProcessingEnabled) == "function" then
-        ok = setGraphProcessingEnabled(false)
+    -- Unload the live editor slot to remove its nodes from the graph.
+    -- The default looper slot's nodes are untouched.
+    local LIVE_SLOT = "live_editor"
+    if type(unloadDspSlot) == "function" then
+        unloadDspSlot(LIVE_SLOT)
+        setStatus("live editor slot unloaded")
     else
-        ok = setParam("/looper/graph/enabled", 0.0)
-    end
-
-    if ok then
-        setStatus("graph processing stopped")
-    else
-        setStatus("failed to stop graph processing")
+        setStatus("unloadDspSlot not available")
     end
 end
 
@@ -1618,11 +1622,8 @@ function ui_init(rootNode)
         label = "Reload",
         bg = 0xff334155,
         on_click = function()
-            if reloadDspScript() then
-                setStatus("reloaded active script")
-            else
-                setStatus("reload failed")
-            end
+            -- Reload the live-editor slot by re-running current editor code.
+            runEditorScript()
         end,
     })
 

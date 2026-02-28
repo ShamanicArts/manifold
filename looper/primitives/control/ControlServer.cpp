@@ -485,11 +485,13 @@ std::string ControlServer::processCommand(const std::string& cmd) {
                     handledMappedTrigger = true;
                 }
 
-                const bool inRegistry = !owner->getEndpointRegistry()
-                                              .findEndpoint(juce::String(mappedPath))
-                                              .path
-                                              .isEmpty();
-                const bool canHandleDirectly = handledMappedTrigger || !inRegistry;
+                const auto endpoint = owner->getEndpointRegistry()
+                                           .findEndpoint(juce::String(mappedPath));
+                const bool inRegistry = endpoint.path.isNotEmpty();
+                const bool isDirectValueEndpoint =
+                    inRegistry && endpoint.commandType == ControlCommand::Type::None;
+                const bool canHandleDirectly =
+                    handledMappedTrigger || !inRegistry || isDirectValueEndpoint;
 
                 if (canHandleDirectly && owner->setParamByPath(mappedPath, mappedValue)) {
                     const auto base = baseForPath(mappedPath);
@@ -539,8 +541,13 @@ std::string ControlServer::processCommand(const std::string& cmd) {
 
                 // Try script/direct path handler first; if it declines the path,
                 // fall through to parser/endpoint command handling.
+                const auto endpoint = owner->getEndpointRegistry().findEndpoint(juce::String(path));
+                const bool inRegistry = endpoint.path.isNotEmpty();
+                const bool isDirectValueEndpoint =
+                    inRegistry && endpoint.commandType == ControlCommand::Type::None;
+
                 if ((parsedNumeric || path.find("/mode") != std::string::npos) &&
-                    owner->getEndpointRegistry().findEndpoint(juce::String(path)).path.isEmpty() &&
+                    (!inRegistry || isDirectValueEndpoint) &&
                     owner->setParamByPath(path, value)) {
                     const auto base = baseForPath(path);
                     if (!base.empty()) {

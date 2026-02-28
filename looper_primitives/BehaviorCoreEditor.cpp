@@ -59,6 +59,10 @@ void BehaviorCoreEditor::timerCallback() {
         }
     }
 
+    // Drain any deferred DSP-slot host destruction after UI switch/update.
+    // This avoids destroying slot Lua VMs from inside ui_cleanup call stacks.
+    processorRef.drainPendingSlotDestroy();
+
     if (usingLuaUi) {
         luaEngine.notifyUpdate();
         rootCanvas.repaint();

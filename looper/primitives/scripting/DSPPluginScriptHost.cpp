@@ -76,8 +76,16 @@ struct DSPPluginScriptHost::Impl {
   std::unordered_map<std::string, DspParamSpec> paramSpecs;
   std::unordered_map<std::string, float> paramValues;
   std::unordered_map<std::string, std::function<void(float)>> paramBindings;
+  std::unordered_map<std::string, std::string> externalToInternalPath;
+  std::unordered_map<std::string, std::string> internalToExternalPath;
   std::vector<juce::String> registeredEndpoints;
   std::vector<std::weak_ptr<dsp_primitives::LoopPlaybackNode>> layerPlaybackNodes;
+  std::vector<std::shared_ptr<dsp_primitives::IPrimitiveNode>> ownedNodes;
+
+  // Keep old Lua VMs alive to avoid tearing down a VM during nested Lua call stacks.
+  std::vector<sol::state> retiredLuaStates;
+
+  std::string namespaceBase{"/core/behavior"};
 
   bool loaded = false;
   std::string lastError;
@@ -89,10 +97,24 @@ struct DSPPluginScriptHost::Impl {
 
 DSPPluginScriptHost::DSPPluginScriptHost() : pImpl(std::make_unique<Impl>()) {}
 
-DSPPluginScriptHost::~DSPPluginScriptHost() = default;
+DSPPluginScriptHost::~DSPPluginScriptHost() {
+  if (pImpl->processor) {
+    if (auto graph = pImpl->processor->getPrimitiveGraph()) {
+      for (auto &node : pImpl->ownedNodes) {
+        graph->unregisterNode(node);
+      }
+    }
+  }
+  pImpl->ownedNodes.clear();
+  pImpl->retiredLuaStates.clear();
+}
 
-void DSPPluginScriptHost::initialise(ScriptableProcessor *processor) {
+void DSPPluginScriptHost::initialise(ScriptableProcessor *processor,
+                                     const std::string &namespaceBase) {
   pImpl->processor = processor;
+  if (!namespaceBase.empty()) {
+    pImpl->namespaceBase = sanitizePath(namespaceBase).toStdString();
+  }
 }
 
 bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
@@ -104,7 +126,17 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     return false;
   }
 
-  auto graph = std::make_shared<dsp_primitives::PrimitiveGraph>();
+  auto graph = impl->processor->getPrimitiveGraph();
+  if (!graph) {
+    impl->lastError = "processor has no primitive graph";
+    return false;
+  }
+
+  // Remove nodes previously owned by this script slot before loading replacement.
+  for (auto &node : impl->ownedNodes) {
+    graph->unregisterNode(node);
+  }
+  impl->ownedNodes.clear();
 
   sol::state newLua;
   newLua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string,
@@ -113,8 +145,74 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   std::unordered_map<std::string, DspParamSpec> newParamSpecs;
   std::unordered_map<std::string, float> newParamValues;
   std::unordered_map<std::string, std::function<void(float)>> newParamBindings;
+  std::unordered_map<std::string, std::string> newExternalToInternalPath;
+  std::unordered_map<std::string, std::string> newInternalToExternalPath;
   std::vector<std::weak_ptr<dsp_primitives::LoopPlaybackNode>> newLayerPlaybackNodes;
+  auto newOwnedNodes = std::make_shared<std::vector<std::shared_ptr<dsp_primitives::IPrimitiveNode>>>();
   sol::function newOnParamChange;
+
+  auto mapInternalToExternal = [impl](const std::string &rawPath) {
+    juce::String internal = sanitizePath(rawPath);
+
+    // Canonicalize alias families to /core/behavior/* for script internals.
+    if (internal == "/looper") {
+      internal = "/core/behavior";
+    } else if (internal.startsWith("/looper/")) {
+      internal = "/core/behavior" + internal.substring(7);
+    } else if (internal == "/dsp/looper") {
+      internal = "/core/behavior";
+    } else if (internal.startsWith("/dsp/looper/")) {
+      internal = "/core/behavior" + internal.substring(11);
+    }
+
+    if (impl->namespaceBase == "/core/behavior") {
+      return internal.toStdString();
+    }
+
+    juce::String base(impl->namespaceBase);
+    if (internal == "/core/behavior") {
+      return base.toStdString();
+    }
+    if (internal.startsWith("/core/behavior/")) {
+      return (base + internal.substring(14)).toStdString();
+    }
+
+    return internal.toStdString();
+  };
+
+  auto mapExternalToInternal = [impl](const std::string &rawPath) {
+    juce::String external = sanitizePath(rawPath);
+    juce::String base(impl->namespaceBase);
+
+    if (impl->namespaceBase != "/core/behavior") {
+      if (external == base) {
+        return std::string("/core/behavior");
+      }
+      if (external.startsWith(base + "/")) {
+        return (juce::String("/core/behavior") + external.substring(base.length())).toStdString();
+      }
+    }
+
+    if (external == "/looper") {
+      return std::string("/core/behavior");
+    }
+    if (external.startsWith("/looper/")) {
+      return (juce::String("/core/behavior") + external.substring(7)).toStdString();
+    }
+    if (external == "/dsp/looper") {
+      return std::string("/core/behavior");
+    }
+    if (external.startsWith("/dsp/looper/")) {
+      return (juce::String("/core/behavior") + external.substring(11)).toStdString();
+    }
+
+    return external.toStdString();
+  };
+
+  auto trackNode = [graph, newOwnedNodes](std::shared_ptr<dsp_primitives::IPrimitiveNode> node) {
+    graph->registerNode(node);
+    newOwnedNodes->push_back(node);
+  };
 
   newLua.new_usertype<dsp_primitives::PlayheadNode>(
       "PlayheadNode",
@@ -383,9 +481,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   auto primitives = newLua.create_table();
   {
     auto playheadApi = newLua.create_table();
-    playheadApi["new"] = [graph, &newLua]() {
+    playheadApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::PlayheadNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setLoopLength"] = [](sol::table self, int v) {
@@ -454,9 +552,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto passthroughApi = newLua.create_table();
-    passthroughApi["new"] = [graph, &newLua](int numChannels) {
+    passthroughApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::PassthroughNode>(numChannels);
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         return t;
@@ -465,9 +563,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto gainApi = newLua.create_table();
-    gainApi["new"] = [graph, &newLua](int numChannels) {
+    gainApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::GainNode>(numChannels);
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setGain"] = [](sol::table self, float v) {
@@ -498,9 +596,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto loopPlaybackApi = newLua.create_table();
-    loopPlaybackApi["new"] = [graph, &newLua](int numChannels) {
+    loopPlaybackApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::LoopPlaybackNode>(numChannels);
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setLoopLength"] = [](sol::table self, int v) {
@@ -556,9 +654,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto gateApi = newLua.create_table();
-    gateApi["new"] = [graph, &newLua](int numChannels) {
+    gateApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::PlaybackStateGateNode>(numChannels);
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["play"] = [](sol::table self) {
@@ -604,9 +702,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto captureApi = newLua.create_table();
-    captureApi["new"] = [graph, &newLua](int numChannels) {
+    captureApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::RetrospectiveCaptureNode>(numChannels);
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setCaptureSeconds"] = [](sol::table self, float v) {
@@ -637,9 +735,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto recordStateApi = newLua.create_table();
-    recordStateApi["new"] = [graph, &newLua]() {
+    recordStateApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::RecordStateNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["startRecording"] = [](sol::table self) {
@@ -675,9 +773,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto quantizerApi = newLua.create_table();
-    quantizerApi["new"] = [graph, &newLua]() {
+    quantizerApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::QuantizerNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setTempo"] = [](sol::table self, float v) {
@@ -714,9 +812,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto modeApi = newLua.create_table();
-    modeApi["new"] = [graph, &newLua]() {
+    modeApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::RecordModePolicyNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setMode"] = [](sol::table self, int v) {
@@ -748,9 +846,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto forwardApi = newLua.create_table();
-    forwardApi["new"] = [graph, &newLua]() {
+    forwardApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::ForwardCommitSchedulerNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["arm"] = [](sol::table self, float bars, int layerIndex, double currentSamples, float samplesPerBar) {
@@ -793,9 +891,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto transportApi = newLua.create_table();
-    transportApi["new"] = [graph, &newLua]() {
+    transportApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::TransportStateNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["play"] = [](sol::table self) {
@@ -836,9 +934,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto oscApi = newLua.create_table();
-    oscApi["new"] = [graph, &newLua]() {
+    oscApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::OscillatorNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setFrequency"] = [](sol::table self, float v) {
@@ -867,9 +965,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto reverbApi = newLua.create_table();
-    reverbApi["new"] = [graph, &newLua]() {
+    reverbApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::ReverbNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setRoomSize"] = [](sol::table self, float v) {
@@ -903,9 +1001,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto filterApi = newLua.create_table();
-    filterApi["new"] = [graph, &newLua]() {
+    filterApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::FilterNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setCutoff"] = [](sol::table self, float v) {
@@ -929,9 +1027,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   {
     auto distApi = newLua.create_table();
-    distApi["new"] = [graph, &newLua]() {
+    distApi["new"] = [graph, &newLua, &trackNode]() {
         auto node = std::make_shared<dsp_primitives::DistortionNode>();
-        graph->registerNode(node);
+        trackNode(node);
         auto t = newLua.create_table();
         t["__node"] = node;
         t["setDrive"] = [](sol::table self, float v) {
@@ -984,9 +1082,12 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
   auto paramsTable = newLua.create_table();
   paramsTable["register"] =
-      [&newParamSpecs, &newParamValues](const std::string &rawPath,
-                                        sol::table options) {
-        const juce::String path = sanitizePath(rawPath);
+      [&newParamSpecs, &newParamValues, &newExternalToInternalPath,
+       &newInternalToExternalPath, &mapInternalToExternal,
+       &mapExternalToInternal](const std::string &rawPath,
+                               sol::table options) {
+        const std::string externalPath = mapInternalToExternal(rawPath);
+        const std::string internalPath = mapExternalToInternal(externalPath);
         DspParamSpec spec;
 
         if (options.valid()) {
@@ -1012,15 +1113,17 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
 
         spec.defaultValue = clampParamValue(spec, spec.defaultValue);
-        newParamSpecs[path.toStdString()] = spec;
-        newParamValues[path.toStdString()] = spec.defaultValue;
+        newParamSpecs[externalPath] = spec;
+        newParamValues[externalPath] = spec.defaultValue;
+        newExternalToInternalPath[externalPath] = internalPath;
+        newInternalToExternalPath[internalPath] = externalPath;
       };
 
   paramsTable["bind"] =
-      [&newParamBindings, toPrimitiveNode](const std::string &rawPath,
-                                           const sol::object &nodeObj,
-                                           const std::string &method) {
-        const std::string path = sanitizePath(rawPath).toStdString();
+      [&newParamBindings, toPrimitiveNode, &mapInternalToExternal](
+          const std::string &rawPath, const sol::object &nodeObj,
+          const std::string &method) {
+        const std::string path = mapInternalToExternal(rawPath);
         auto node = toPrimitiveNode(nodeObj);
         if (!node) {
           return false;
@@ -1234,7 +1337,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   auto bundles = newLua.create_table();
   {
     auto loopLayerApi = newLua.create_table();
-    loopLayerApi["new"] = [graph, &newLua, &newLayerPlaybackNodes](sol::optional<sol::table> options) {
+    loopLayerApi["new"] = [graph, &newLua, &newLayerPlaybackNodes, &trackNode](sol::optional<sol::table> options) {
       int numChannels = 2;
       if (options.has_value()) {
         sol::table opts = options.value();
@@ -1261,16 +1364,16 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       gate->stop();
       transport->stop();
 
-      graph->registerNode(input);
-      graph->registerNode(capture);
-      graph->registerNode(playback);
-      graph->registerNode(gate);
-      graph->registerNode(gain);
-      graph->registerNode(recordState);
-      graph->registerNode(quantizer);
-      graph->registerNode(mode);
-      graph->registerNode(forward);
-      graph->registerNode(transport);
+      trackNode(input);
+      trackNode(capture);
+      trackNode(playback);
+      trackNode(gate);
+      trackNode(gain);
+      trackNode(recordState);
+      trackNode(quantizer);
+      trackNode(mode);
+      trackNode(forward);
+      trackNode(transport);
 
       graph->connect(input, 0, capture, 0);
       graph->connect(capture, 0, playback, 0);
@@ -1589,17 +1692,20 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   hostApi["getPlayTimeSamples"] = [impl]() {
     return impl->processor ? impl->processor->getPlayTimeSamples() : 0.0;
   };
-  hostApi["setParam"] = [impl](const std::string &path, float value) {
+  hostApi["setParam"] = [impl, mapInternalToExternal](const std::string &path,
+                                                        float value) {
     if (!impl->processor) {
       return false;
     }
-    return impl->processor->setParamByPath(path, value);
+    const std::string externalPath = mapInternalToExternal(path);
+    return impl->processor->setParamByPath(externalPath, value);
   };
-  hostApi["getParam"] = [impl](const std::string &path) {
+  hostApi["getParam"] = [impl, mapInternalToExternal](const std::string &path) {
     if (!impl->processor) {
       return 0.0f;
     }
-    return impl->processor->getParamByPath(path);
+    const std::string externalPath = mapInternalToExternal(path);
+    return impl->processor->getParamByPath(externalPath);
   };
 
   auto ctx = newLua.create_table();
@@ -1673,8 +1779,14 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     }
 
     if (newOnParamChange.valid()) {
+      std::string internalPath = entry.first;
+      const auto mapIt = newExternalToInternalPath.find(entry.first);
+      if (mapIt != newExternalToInternalPath.end()) {
+        internalPath = mapIt->second;
+      }
+
       sol::protected_function_result applyResult =
-          newOnParamChange(entry.first, entry.second);
+          newOnParamChange(internalPath, entry.second);
       if (!applyResult.valid()) {
         sol::error err = applyResult;
         impl->lastError = "onParamChange default apply failed: " +
@@ -1748,14 +1860,18 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
   {
     const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
-    // Replace Lua-owned references before swapping the underlying sol::state.
-    // Otherwise old sol::function teardown can unref against a dead lua_State.
+    // Keep old Lua VM alive to avoid destroying it during nested Lua call stacks.
+    impl->retiredLuaStates.push_back(std::move(impl->lua));
+
     impl->onParamChange = std::move(newOnParamChange);
     impl->lua = std::move(newLua);
     impl->paramSpecs = std::move(newParamSpecs);
     impl->paramValues = std::move(newParamValues);
     impl->paramBindings = std::move(newParamBindings);
+    impl->externalToInternalPath = std::move(newExternalToInternalPath);
+    impl->internalToExternalPath = std::move(newInternalToExternalPath);
     impl->layerPlaybackNodes = std::move(newLayerPlaybackNodes);
+    impl->ownedNodes = std::move(*newOwnedNodes);
     impl->currentScriptFile = scriptFile != nullptr ? *scriptFile : juce::File();
     impl->currentScriptSourceName = sourceName;
     impl->currentScriptCode = scriptCode != nullptr ? *scriptCode : std::string();
@@ -1820,7 +1936,27 @@ juce::File DSPPluginScriptHost::getCurrentScriptFile() const {
 
 bool DSPPluginScriptHost::hasParam(const std::string &path) const {
   const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
-  return pImpl->paramSpecs.find(path) != pImpl->paramSpecs.end();
+  if (pImpl->paramSpecs.find(path) != pImpl->paramSpecs.end()) {
+    return true;
+  }
+
+  // Synthetic per-slot layer telemetry endpoints.
+  if (pImpl->namespaceBase != "/core/behavior") {
+    const juce::String p = sanitizePath(path);
+    const juce::String prefix = juce::String(pImpl->namespaceBase) + "/layer/";
+    if (p.startsWith(prefix)) {
+      const juce::String rest = p.substring(prefix.length());
+      const int slash = rest.indexOfChar('/');
+      if (slash > 0) {
+        const juce::String suffix = rest.substring(slash + 1);
+        if (suffix == "length" || suffix == "position" || suffix == "state") {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
 }
 
 bool DSPPluginScriptHost::setParam(const std::string &path, float value) {
@@ -1839,7 +1975,13 @@ bool DSPPluginScriptHost::setParam(const std::string &path, float value) {
   }
 
   if (pImpl->onParamChange.valid()) {
-    sol::protected_function_result result = pImpl->onParamChange(path, normalized);
+    std::string internalPath = path;
+    const auto mapIt = pImpl->externalToInternalPath.find(path);
+    if (mapIt != pImpl->externalToInternalPath.end()) {
+      internalPath = mapIt->second;
+    }
+
+    sol::protected_function_result result = pImpl->onParamChange(internalPath, normalized);
     if (!result.valid()) {
       sol::error err = result;
       pImpl->lastError = "onParamChange failed: " + std::string(err.what());
@@ -1859,10 +2001,39 @@ bool DSPPluginScriptHost::setParam(const std::string &path, float value) {
 float DSPPluginScriptHost::getParam(const std::string &path) const {
   const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
   const auto it = pImpl->paramValues.find(path);
-  if (it == pImpl->paramValues.end()) {
-    return 0.0f;
+  if (it != pImpl->paramValues.end()) {
+    return it->second;
   }
-  return it->second;
+
+  // Synthetic per-slot layer telemetry endpoints.
+  if (pImpl->namespaceBase != "/core/behavior") {
+    const juce::String p = sanitizePath(path);
+    const juce::String prefix = juce::String(pImpl->namespaceBase) + "/layer/";
+    if (p.startsWith(prefix)) {
+      const juce::String rest = p.substring(prefix.length());
+      const int slash = rest.indexOfChar('/');
+      if (slash > 0) {
+        const int idx = rest.substring(0, slash).getIntValue();
+        const juce::String suffix = rest.substring(slash + 1);
+        if (idx >= 0 && idx < static_cast<int>(pImpl->layerPlaybackNodes.size())) {
+          auto playback = pImpl->layerPlaybackNodes[static_cast<size_t>(idx)].lock();
+          if (playback) {
+            if (suffix == "length") {
+              return static_cast<float>(juce::jmax(0, playback->getLoopLength()));
+            }
+            if (suffix == "position") {
+              return playback->getNormalizedPosition();
+            }
+            if (suffix == "state") {
+              return playback->isPlaying() ? 1.0f : 0.0f;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return 0.0f;
 }
 
 int DSPPluginScriptHost::getLayerLoopLength(int layerIndex) const {

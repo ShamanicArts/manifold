@@ -260,7 +260,9 @@ end
 -- ============================================================================
 
 function ui_init(root)
-    -- Primitives runtime is graph-driven; keep graph active on startup.
+    -- The looper's DSP lives in the "default" slot, loaded once at startup.
+    -- Other UIs (donut demo, live scripting) use named slots so the looper's
+    -- nodes are never removed. No reload needed here.
 
     -- Root panel with dark background
     ui.rootPanel = W.Panel.new(root, "rootPanel", {
