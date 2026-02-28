@@ -1,278 +1,184 @@
-# Persistent Graph Architecture
+# Persistent Graph Architecture (Current Implementation)
 
-## Status: DESIGN DOCUMENT — Blocking issue for BehaviorCore parity
+## Status: Implemented baseline + explicit cleanup backlog
 
-This document replaces `docs/EXPLICIT_GRAPH_LIFECYCLE_DESIGN.md` as the canonical design for graph lifecycle. The previous document proposed script-level lifecycle management; this document proposes the correct architecture: a single persistent graph that owns everything.
+_Last updated: 2026-03-01_
 
-## Problem
+This document describes the **actual** architecture currently running in `BehaviorCoreProcessor`, not the earlier target-only design notes.
 
-BehaviorCoreProcessor has no native C++ loop engine. All looper audio lives inside the DSP graph runtime. The current `loadDspScript` path creates a **throwaway graph**, compiles it into a runtime, and **swaps out the old runtime** — destroying any live audio (loops, effects, everything).
+---
 
-This means:
-- Switching to DSP live scripting UI kills your loops
-- Switching to the donut demo UI kills your loops
-- Switching back doesn't restore them (the graph data is deleted)
-- `setGraphProcessingEnabled(false)` on UI exit disables everything with no way back
+## 1) Core model in production today
 
-In the legacy `LooperProcessor`, this wasn't a problem because loop audio lived in C++ `LooperLayer` objects that were permanent members of the processor. The graph runtime was an optional add-on. In BehaviorCore, the graph IS the audio engine.
+`LooperPrimitives` uses a **single processor-owned `PrimitiveGraph`** and compiles immutable `GraphRuntime` snapshots from that graph.
 
-## Architecture: One Persistent Graph
+### Processor ownership
 
-### Core Principle
-
-There is **one graph**. It lives on the processor. It never gets cleared, replaced, or disabled. It is always processing. Everything that produces or transforms audio — loop layers, effects, input routing, experimental scripts — lives as nodes inside this single graph.
-
-### What Changes
-
-| Current (broken) | Target |
-|---|---|
-| `loadDspScript` creates a local throwaway graph | Scripts add/remove nodes in the persistent graph |
-| Runtime swap replaces the entire graph | Runtime recompile adds new nodes, preserves existing ones |
-| `setGraphProcessingEnabled(false)` kills all audio | Graph is always enabled; individual node groups can be muted/bypassed |
-| Each DSP script owns its own isolated graph | All scripts operate on the same shared graph |
-| UI switch can destroy audio state | UI switch only changes what's displayed, never touches audio state |
-
-### Processor Ownership
-
-```
+```text
 BehaviorCoreProcessor
-  └── persistentGraph (PrimitiveGraph)
-        ├── InputNode (passthrough, always present)
-        ├── CaptureNode (retrospective capture, always present)
-        ├── LoopLayer 0 (PlaybackNode + GainNode + GateNode + ...)
-        ├── LoopLayer 1
-        ├── LoopLayer 2
-        ├── LoopLayer 3
-        ├── [live scripting nodes, added/removed dynamically]
-        ├── [donut demo reverb, added dynamically]
-        └── OutputMix (sum of all sink nodes)
+  ├── primitiveGraph (shared_ptr<PrimitiveGraph>)          [persistent]
+  ├── dspScriptHost                                        [default slot, /core/behavior]
+  ├── dspSlots[slotName] -> DSPPluginScriptHost            [named slots, /core/slots/<slot>]
+  ├── activeRuntime (audio thread pointer)
+  ├── pendingRuntime (atomic handoff)
+  └── retireQueue (deferred delete off audio thread)
 ```
 
-### Runtime Recompilation
+### Important consequence
 
-When the graph topology changes (nodes added or removed), recompile the runtime:
+- Runtime snapshots are replaced.
+- Node objects in `primitiveGraph` are shared and can survive recompiles.
+- Loop/state persistence depends on whether a slot removes/replaces its owned nodes.
 
-1. Take a snapshot of the current persistent graph (nodes + connections)
-2. Compile a new `GraphRuntime` from the snapshot
-3. Publish via `requestGraphRuntimeSwap()` (existing crossfade mechanism)
-4. Old runtime is retired and deleted (but the NODES still live in the persistent graph)
+---
 
-**Key insight:** The `GraphRuntime` is a compiled snapshot. The nodes themselves (and their internal state — loop audio buffers, playhead positions, gain values) are owned by the persistent graph via `shared_ptr`. When a new runtime is compiled from the same graph, it references the same node objects. The audio data survives.
+## 2) Runtime swap behavior (what actually happens)
 
-### Node Lifetime
+`requestGraphRuntimeSwap()` publishes a compiled runtime pointer through `pendingRuntime`.
 
-Nodes live as long as they're registered in the persistent graph:
+`checkGraphRuntimeSwap()` (audio thread):
+1. Promotes `pendingRuntime` to `activeRuntime` immediately.
+2. Pushes old runtime to retire queue for safe deferred deletion.
 
-```
-shared_ptr<LoopPlaybackNode> layer0Playback;
-//   ↑ owned by persistentGraph (via registerNode)
-//   ↑ also referenced by compiled GraphRuntime
-//   ↑ audio data inside the node survives runtime recompilation
-```
+### Current behavior note
 
-When a script wants to remove nodes (e.g., live scripting clears its experiment):
-1. Unregister the nodes from the graph
-2. Recompile runtime
-3. Old runtime retires (releases its shared_ptr references)
-4. If no other references exist, nodes are destroyed
+- **No crossfade path** is currently used in `BehaviorCoreProcessor` runtime swaps.
+- Swap is immediate pointer promotion.
 
-### What Scripts Do
+---
 
-Scripts no longer create graphs. They add nodes to THE graph:
+## 3) Script host lifecycle (slot-based)
 
-```lua
--- DSP behavior script (e.g., looper_primitives_dsp.lua)
-function buildPlugin(ctx)
-  -- ctx.graph IS the persistent graph, not a throwaway
-  
-  -- Create layers and register them in the persistent graph
-  for i = 1, 4 do
-    local layer = ctx.bundles.LoopLayer.new({ channels = 2 })
-    -- LoopLayer.new() internally calls ctx.graph.registerNode() for each sub-node
-    state.layers[i] = layer
-  end
-  
-  -- Return behavior callbacks
-  return {
-    onParamChange = function(path, value) ... end,
-    
-    -- Called when this behavior script is being replaced
-    onUnload = function()
-      -- Remove our nodes from the graph
-      for i = 1, 4 do
-        state.layers[i]:removeFromGraph()
-      end
-      -- Graph recompiles automatically after node removal
-    end
-  }
-end
-```
+Each `DSPPluginScriptHost` owns a script slot (`default` or named slot).
 
-### What UI Scripts Do
+### Load flow (`DSPPluginScriptHost::loadScriptImpl`)
 
-UI scripts NEVER touch the graph. They send commands and read state:
+1. Obtain processor persistent graph (`getPrimitiveGraph()`).
+2. Unregister previously owned nodes for this slot.
+3. Execute `buildPlugin(ctx)` in a fresh Lua state.
+4. Register new nodes into the shared graph (`trackNode`).
+5. Compile runtime from the **full** graph.
+6. Publish runtime swap.
+7. Refresh endpoint/OSCQuery metadata and activate new slot Lua state.
 
-```lua
--- looper_primitives_ui.lua
-function ui_init()
-  -- Just build UI widgets
-  -- Read state via getParam() / state.params
-  -- Send commands via command("SET", path, value)
-  -- NEVER call loadDspScript, setGraphProcessingEnabled, or graph operations
-end
-```
+### Cleanup behavior in current code
 
-### What Live Scripting Does
+- Slot replacement uses **owned-node unregister** (not global graph clear).
+- There is currently **no DSP `onUnload` callback contract** in the host.
+- `unloadDspSlot(slot)` does **not destroy** slot hosts; it loads an empty script to remove nodes.
+  - Rationale: avoid Lua VM teardown crashes during transitions.
 
-Live scripting adds experimental nodes to the persistent graph alongside everything else:
+---
 
-```lua
--- User types in live editor:
-function buildPlugin(ctx)
-  -- Add an oscillator to the existing graph (loops keep playing)
-  local osc = ctx.primitives.OscillatorNode.new()
-  osc:setFrequency(440)
-  -- osc is now in the same graph as the loop layers
-  
-  return {
-    onParamChange = function(path, value) ... end,
-    onUnload = function()
-      -- Remove just the oscillator, loops stay
-      ctx.graph.unregisterNode(osc)
-    end
-  }
-end
-```
+## 4) UI switch + slot persistence policy
 
-### What the Donut Demo Does
+`LuaEngine::switchScript()` currently does:
 
-The donut demo should be ONE of:
+1. Call outgoing UI `ui_cleanup()` if present.
+2. Apply DSP slot lifecycle policy:
+   - managed named slots are unloaded on UI switch,
+   - except slots explicitly marked persistent.
+3. Clear current UI canvas.
+4. Clear non-persistent Lua callbacks/listeners.
+5. Clear custom endpoints/custom OSC values and rebuild OSCQuery tree.
+6. Load new UI script in the same Lua VM.
 
-**Option A: Different UI, same DSP** (simplest)
-- `looper_donut_demo_ui.lua` is just an alternate view of the same loop layers
-- No DSP script loading, just different visual rendering
-- Loop data is shared because it's the same nodes
+### Slot policy API exposed to Lua
 
-**Option B: Additional DSP alongside existing** (what was intended)
-- `looper_donut_demo_dsp.lua` adds a reverb node and additional behavior to the existing graph
-- Does NOT clear or replace existing loop layers
-- When unloaded, removes only its own nodes
-- Loop layers from the main looper script survive
+- `setDspSlotPersistOnUiSwitch(slot, bool)`
+- `isDspSlotPersistOnUiSwitch(slot)`
 
-**Option C: Separate layer set** (if you want isolation)
-- Donut demo creates its OWN 4 layers in the same graph
-- Both sets of layers coexist and produce audio
-- Each UI renders its own layer set
+Default slot (`default`) is not managed by this policy.
 
-## Implementation Approach
+### Current script behavior examples
 
-### Step 1: Make the graph persistent on the processor
+- `looper_donut_demo_ui.lua`
+  - pins `donut` slot persistent.
+- `dsp_live_scripting.lua`
+  - marks `live_editor` transient and unloads on cleanup.
 
-```cpp
-// BehaviorCoreProcessor.h
-class BehaviorCoreProcessor {
-    // This graph is created once and NEVER replaced or cleared
-    std::shared_ptr<dsp_primitives::PrimitiveGraph> persistentGraph;
-};
-```
+---
 
-### Step 2: Change DSPPluginScriptHost to operate on the persistent graph
+## 5) Audio/input routing semantics (current)
 
-Instead of creating a local throwaway graph:
+`BehaviorCoreProcessor::processBlock()` now has two host-input planes:
 
-```cpp
-bool DSPPluginScriptHost::loadInternal(...) {
-  // BEFORE (broken):
-  // auto graph = std::make_shared<PrimitiveGraph>();  // throwaway
-  
-  // AFTER:
-  auto graph = impl->processor->getPrimitiveGraph();  // the persistent one
-  
-  // If previous script had an onUnload, call it
-  // (it removes its own nodes from the persistent graph)
-  if (impl->onUnloadCallback.valid()) {
-    impl->onUnloadCallback();
-  }
-  
-  // Script adds nodes to the persistent graph
-  // ...
-  
-  // Recompile runtime from the persistent graph (now includes new + existing nodes)
-  auto runtime = graph->compileRuntime(sampleRate, blockSize, numChannels);
-  impl->processor->requestGraphRuntimeSwap(std::move(runtime));
-}
-```
+1. **Monitor-controlled host input**
+   - scaled by shared input contract (`passthrough * inputVolume * 0.7`).
+   - fed to graph wet path (`graphWetBuffer`) and dry output mix.
 
-### Step 3: Add node group tracking to DSPPluginScriptHost
+2. **Raw host input**
+   - original incoming block passed to runtime for nodes that explicitly request raw capture semantics.
 
-Track which nodes were added by each script so they can be cleaned up:
+### Node-level input opt-in
 
-```cpp
-struct DSPPluginScriptHost::Impl {
-  // Nodes added by the current script (for cleanup on unload)
-  std::vector<std::shared_ptr<IPrimitiveNode>> ownedNodes;
-  
-  sol::protected_function onUnloadCallback;
-};
-```
+`GraphRuntime` supports unconnected host-input injection only for nodes that opt in:
 
-### Step 4: Remove setGraphProcessingEnabled(false) from UI switch path
+- `acceptsHostInputWhenUnconnected()`
+- `wantsRawHostInputWhenUnconnected()`
 
-Already partially done. But more importantly, with a persistent graph there's no reason to ever disable graph processing — the graph IS the audio engine.
+`PassthroughNode` supports:
+- `MonitorControlled`
+- `RawCapture`
 
-### Step 5: Remove graph.clear() from DSPPluginScriptHost
+`LoopLayer` bundle input node is created as `RawCapture` so capture-plane behavior can use raw input while monitor path remains globally controlled.
 
-My earlier "fix" added `sharedGraph->clear()` before loading scripts. This is wrong for the persistent graph model. Each script should clean up its own nodes via `onUnload`, not nuke the entire graph.
+---
 
-### Step 6: Recompile trigger
+## 6) Donut persistence vs donut input-FX non-persistence
 
-After any topology change (node add/remove), the graph needs recompilation:
+Current donut implementation separates loop persistence from live-input FX persistence:
 
-```cpp
-void BehaviorCoreProcessor::recompileGraph() {
-  auto runtime = persistentGraph->compileRuntime(sampleRate, blockSize, channels);
-  if (runtime) {
-    requestGraphRuntimeSwap(std::move(runtime));
-  }
-}
-```
+- Donut slot is pinned persistent (`setDspSlotPersistOnUiSwitch("donut", true)`).
+- Donut DSP script adds `/core/slots/donut/input/monitor` (via slot namespace mapping).
+- UI enables this monitor while donut UI is active.
+- `ui_cleanup()` disables monitor, so donut input FX route does not leak into other UIs.
 
-This could be called:
-- After `buildPlugin()` returns
-- After `onUnload()` removes nodes
-- After live scripting adds/removes nodes
-- Debounced if multiple changes happen quickly
+This keeps donut loop content alive while preventing unintended persistent mic FX routing.
 
-## What This Enables
+---
 
-1. **Record loop → switch UI → switch back → loops still playing** ✅
-2. **Record loop → open live scripting → add oscillator → loops + oscillator both audible** ✅
-3. **Record loop → switch to donut demo → donut adds reverb → loops + reverb both audible** ✅
-4. **Multiple behavior scripts coexisting** ✅
-5. **Clean removal of experimental nodes without affecting loops** ✅
-6. **Infinite loopers in infinite combinations** ✅
+## 7) Endpoint namespace model in current runtime
 
-## What Needs to Happen
+- Canonical behavior family: `/core/behavior/*`
+- Compatibility aliases: `/looper/*`, `/dsp/looper/*` (for migration parity)
+- Named slot family: `/core/slots/<slot>/*`
 
-1. Revert my broken "fixes" (the `graph->clear()` in DSPPluginScriptHost and the commented-out `setGraphProcessingEnabled`)
-2. Make `DSPPluginScriptHost::loadInternal` use the persistent graph instead of a throwaway
-3. Add `onUnload` callback support so scripts clean up their own nodes
-4. Add node ownership tracking per script
-5. Update `looper_donut_demo_ui.lua` to either be UI-only or use additive scripting
-6. Update `dsp_live_scripting.lua` to add nodes additively and clean up via onUnload
-7. Remove `setGraphProcessingEnabled(false)` from all UI exit paths
-8. Graph is always enabled in BehaviorCore — remove the toggle entirely or make it debug-only
+`DSPPluginScriptHost` maps internal behavior paths to slot namespace when a named slot is used.
 
-## Risks
+---
 
-- **Recompilation cost**: Compiling a large graph takes time. Need to profile and potentially debounce.
-- **Node cleanup correctness**: If a script's `onUnload` fails or misses nodes, orphaned nodes accumulate. May need a fallback sweep.
-- **Shared state between scripts**: Two scripts might try to control the same node (e.g., both setting layer 0 volume). Need clear ownership rules.
-- **Thread safety of graph mutation**: `PrimitiveGraph` currently uses a recursive mutex for node registration. Adding/removing nodes from scripts while the audio thread reads topology needs the existing compile-then-swap pattern to remain safe.
+## 8) Known gaps / cleanup items
+
+These are real, current-state items (not hypothetical):
+
+1. `graph enabled` endpoint still exists as a compatibility/debug surface (`/core/behavior/graph/enabled` + aliases). In BehaviorCore product path, graph should be treated as always-on.
+2. Script-side graph mutation helpers still include broad operations (e.g. `graph.clear`). This can violate persistence policy if used incorrectly.
+3. Runtime swap currently has no crossfade in `BehaviorCoreProcessor`.
+4. Slot hosts are intentionally retained; lifecycle/memory profile should be reviewed after stabilization.
+5. Slot persistence policy is processor-level managed-slot tracking; if stricter per-UI ownership is desired, add explicit ownership metadata.
+6. `onUnload`-style scripted lifecycle hook is not implemented in DSP host.
+
+---
+
+## 9) Invariants to preserve
+
+1. No Lua execution in audio thread.
+2. No locks/alloc/logging/string work in audio hot path.
+3. Graph recompilation occurs off audio thread; audio thread only swaps immutable runtime pointers.
+4. Persistent slot content must never be removed implicitly.
+5. Input monitor policy must remain explicit and testable per slot.
+
+---
 
 ## References
 
-- Legacy behavior: `looper/engine/LooperProcessor.cpp::processBlock` — layers process independently of graph
-- Graph runtime: `looper/primitives/scripting/GraphRuntime.h/cpp` — compiled snapshot of graph
-- Current broken path: `looper/primitives/scripting/DSPPluginScriptHost.cpp::loadInternal` — throwaway graph
-- Crossfade swap: `BehaviorCoreProcessor::checkGraphRuntimeSwap` — 30ms crossfade, already works
+- `looper_primitives/BehaviorCoreProcessor.cpp`
+- `looper/primitives/scripting/DSPPluginScriptHost.cpp`
+- `looper/primitives/scripting/GraphRuntime.h/.cpp`
+- `dsp/core/graph/PrimitiveNode.h`
+- `dsp/core/nodes/PassthroughNode.h/.cpp`
+- `looper/primitives/scripting/LuaEngine.cpp`
+- `looper/ui/looper_donut_demo_ui.lua`
+- `looper/dsp/looper_donut_demo_dsp.lua`
+- `looper/ui/dsp_live_scripting.lua`

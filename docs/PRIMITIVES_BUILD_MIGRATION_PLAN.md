@@ -56,6 +56,146 @@ This plan is the canonical execution checklist. It is written to be followed ste
 - Phase 8 parity harness (`tools/test-primitives-parity`) across legacy vs primitives sockets.
 - Phase 9 artifact cutover + stabilization + explicit legacy retirement sign-off.
 
+### Audit Findings Snapshot (2026-03-01)
+
+This snapshot reflects a parallel codebase diagnostic pass (build topology, graph lifecycle surfaces, Lua API usage, deprecation inventory, harness/test coverage, and slot/runtime lifecycle).
+
+#### 1) Parity/qualification blockers still open
+
+- Phase 6 still has unresolved closure items:
+  - traditional stop/commit edge behavior final pass,
+  - host transport sync parity,
+  - per-mode parity matrix automation + manual mode session sign-off.
+- Phase 8 harness `tools/test-primitives-parity` is still missing.
+
+#### 2) Persistent-graph cleanup surfaces still exposed
+
+- `BehaviorCoreProcessor` still exposes `/looper|/dsp/looper|/core/behavior/graph/enabled` compatibility paths.
+- `LuaEngine` still binds `clearGraph` and `setGraphProcessingEnabled`.
+- `looper/ui/looper_ui.lua` still writes `setParam("/looper/graph/enabled", 0.0)` on init.
+
+These are migration-era surfaces and should be explicitly retained-as-debug-only or removed during cleanup.
+
+#### 3) Slot lifecycle policy is now implemented, but needs explicit validation
+
+- Runtime policy exists via Lua APIs:
+  - `setDspSlotPersistOnUiSwitch(slot, bool)`
+  - `isDspSlotPersistOnUiSwitch(slot)`
+- `LuaEngine::switchScript()` unloads managed named slots unless pinned persistent.
+- Current script usage:
+  - donut slot pinned persistent,
+  - `live_editor` slot transient/unloaded on cleanup.
+
+Missing: dedicated automated checks that prove this behavior across repeated UI switches.
+
+#### 4) Input-path persistence policy status
+
+- Input path now supports two semantics:
+  - monitor-controlled host input,
+  - raw capture host input (opt-in by node).
+- Donut now has explicit input-monitor gating endpoint (`/core/slots/donut/input/monitor`) so donut input FX can be disabled on UI exit while donut loop audio stays persistent.
+
+Missing: automated regression checks for "persistent loop audio + non-persistent donut input FX".
+
+#### 5) Lua parameter API contract remains mixed (Phase 10.2 debt)
+
+- Canonical `command("SET"/"TRIGGER", ...)` is used in main looper UIs and shell.
+- Direct `setParam(...)` writes remain in some scripts (e.g., graph toggles and live-scripting control paths).
+
+This should be unified under the canonical contract in Phase 10.2.
+
+#### 6) Namespace/alias debt is still high
+
+- `BehaviorCoreProcessor` contains broad alias branching for `/core/behavior/*`, `/looper/*`, and `/dsp/looper/*` across set/get/has paths.
+
+This is expected during migration, but should be consolidated once final namespace policy is chosen (Phase 10.4).
+
+#### 7) Deprecation/removal candidates confirmed present
+
+- `looper/ui/looper_widgets_old.lua`
+- `looper/ui/wiring_demo.lua` (already marked deprecated)
+- `looper/ui/looper_ui_experimental.lua` (active experiment; needs explicit keep/remove decision)
+
+#### 8) Minor cleanup debt surfaced
+
+- `ControlServer.cpp` still has TODO for injection resampling.
+- stale/legacy BUG commentary around graph disable path in `LuaEngine` should be rewritten to current-state wording during cleanup.
+
+---
+
+## Bug Findings (2026-03-01 Deep Audit)
+
+This section documents bugs discovered during the deep diagnostic pass. Each finding includes location, severity, and description.
+
+### CRITICAL BUGS
+
+| # | Category | Description | Location |
+|---|----------|-------------|----------|
+| C1 | Input Path | `/core/slots/donut/input/monitor` path transformation failure - DSP never receives the parameter because DSPPluginScriptHost doesn't map `/core/slots/*` → `/core/behavior/*`. Monitor is always at default (0.0). | `DSPPluginScriptHost.cpp:172-180` |
+| C2 | OSC | Double precision loss - doubles serialized as floats (only 4 bytes sent). Type tag says 'f' but semantics expect 'd'. | `OSCPacketBuilder.h:38-44, 61-68` |
+| C3 | Layer Control | Speed = 0 causes permanent stop - playhead increment becomes 0, no way to restart except explicit seek. | `LoopPlaybackNode.cpp:105-110` |
+| C4 | Layer Control | Non-atomic `readPosition_` in LoopPlaybackNode - data race between audio thread writes and potential control thread reads. | `LoopPlaybackNode.h:57` |
+
+### HIGH PRIORITY BUGS
+
+| # | Category | Description | Location |
+|---|----------|-------------|----------|
+| H1 | Slot Lifecycle | Failed slot unload leaves stale entries in `managedDspSlots` - slot stays forever, repeated error logs. | `LuaEngine.cpp:2738` |
+| H2 | Slot Lifecycle | Persistent slot state leaks between scripts - `persistentDspSlots` never cleared between scripts, wrong loops persist. | `LuaEngine.cpp:2714-2727` |
+| H3 | Command | UISwitch path traversal vulnerability - no validation of filepath, allows `../../../etc/passwd` style escapes. | `ControlServer.cpp:671-676` |
+| H4 | Transport Sync | BehaviorCoreProcessor has NO host transport sync - completely decoupled while LooperProcessor syncs to host. | `BehaviorCoreProcessor.cpp:171-321` |
+| H5 | State Projection | `numBars` not updated on commit - JSON state queries return stale bar counts. | `BehaviorCoreProcessor.cpp:679-685` |
+
+### MEDIUM PRIORITY BUGS
+
+| # | Category | Description | Location |
+|---|----------|-------------|----------|
+| M1 | Legacy Graph | `hasEndpoint()` missing `/looper/graph/enabled` - inconsistent with SET/GET which handle it. | `BehaviorCoreProcessor.cpp:936-956` |
+| M2 | Lua API | `setParam()` bypasses path aliasing that `command("SET")` does - inconsistent success values between APIs. | Multiple call sites |
+| M3 | Layer Control | Layer mute is immediate (no fade) - causes click/pop artifacts. | `LooperLayer.h:28-33` |
+| M4 | Layer Control | Layer mixing has no clipping protection - 4 layers at full volume can overflow. | `LooperProcessor.cpp:196-203` |
+| M5 | Layer Control | `clearLoop()` doesn't reset `playing_` flag - shows "Playing" but outputs silence. | `LoopPlaybackNode.cpp:258-266` |
+| M6 | Transport | Race condition on host stop - `playTime` not reset when host stops, causes drift. | `LooperProcessor.cpp:224-228` |
+| M7 | Transport | Tempo change doesn't immediately update `samplesPerBar` - forward commits may fire at wrong time. | `LooperProcessor.cpp:473-477` |
+| M8 | OSC | Socket created per broadcast message - performance issue for multi-target broadcasts. | `OSCServer.cpp:709-713` |
+| M9 | Command | Dual code path for SET/TRIGGER - fast path bypasses parser validation, inconsistent behavior. | `ControlServer.cpp:393-597` |
+
+### LOW PRIORITY ISSUES
+
+| # | Category | Description | Location |
+|---|----------|-------------|----------|
+| L1 | OSC | Silent port binding failures - no logging when port already in use. | `OSCServer.cpp:133-138`, `OSCQuery.cpp:208-213` |
+| L2 | State | Layer position/length race - separate atomic reads can see inconsistent values. | `BehaviorCoreProcessor.cpp:970-977` |
+| L3 | State | Forward commit timing not exposed to UI - cannot show "forward in X seconds" countdown. | `BehaviorCoreProcessor.cpp:196-198` |
+| L4 | Command | Invalid record mode silently accepted - returns "OK" but does nothing. | `CommandParser.h:445-456` |
+| L5 | Command | NoOpWarning returns "OK" - client can't distinguish success from no-op. | `ControlServer.cpp:679` |
+| L6 | Namespace | Performance concern - 60 string comparisons per param access due to if-else chain. | `BehaviorCoreProcessor.cpp:530-934` |
+
+### TEST COVERAGE GAPS
+
+- No slot lifecycle tests
+- No input monitor gating tests
+- No persistent loop + non-persistent FX tests
+- No per-mode parity matrix automation
+- No host transport sync tests
+- No multi-layer clipping tests
+- No UI switch regression tests
+
+### FILES SAFE TO REMOVE
+
+| File | Status |
+|------|--------|
+| `looper/ui/looper_widgets_old.lua` | SAFE TO REMOVE - superseded by OOP reimplementation |
+| `looper/ui/wiring_demo.lua` | SAFE TO REMOVE - explicitly marked deprecated |
+
+### FILES TO PRESERVE (EXTRACT CODE FIRST)
+
+| File | Action |
+|------|--------|
+| `looper/ui/looper_ui_experimental.lua` | PRESERVE - extract XYPad and OSC patterns before cleanup |
+
+---
+
 ## Locked Decisions
 
 1. Migration executes in a **dual-binary track first** (`Looper` + `LooperPrimitives`), then hard cutover.
