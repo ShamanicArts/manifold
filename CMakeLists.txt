@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(GRAIN_FREEZE VERSION 1.0.0)
+project(MANIFOLD VERSION 1.0.0)
 
 include(FetchContent)
 
@@ -56,20 +56,10 @@ target_link_libraries(GrainFreeze
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
-juce_add_plugin(Looper
-    VERSION 1.0.0
-    PLUGIN_MANUFACTURER_CODE Shmc
-    PLUGIN_CODE Lopr
-    FORMATS VST3 Standalone
-    PRODUCT_NAME "Looper"
-    IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
-    NEEDS_MIDI_OUTPUT FALSE
-    IS_MIDI_EFFECT FALSE
-    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD FALSE)
+# --- Manifold (formerly LooperPrimitives) ---
+# BehaviorCore-based looper runtime
 
-set(LOOPER_SHARED_SOURCES
+set(MANIFOLD_DSP_SOURCES
     looper/primitives/dsp/CaptureBuffer.h
     looper/primitives/dsp/LoopBuffer.h
     looper/primitives/dsp/Playhead.h
@@ -112,7 +102,7 @@ set(LOOPER_SHARED_SOURCES
     dsp/core/nodes/DistortionNode.h
     dsp/core/nodes/DistortionNode.cpp)
 
-set(LOOPER_LEGACY_RUNTIME_SOURCES
+set(MANIFOLD_RUNTIME_SOURCES
     looper/engine/LooperLayer.h
     looper/primitives/control/ControlServer.h
     looper/primitives/control/ControlServer.cpp
@@ -134,33 +124,18 @@ set(LOOPER_LEGACY_RUNTIME_SOURCES
     looper/primitives/scripting/DSPPluginScriptHost.h
     looper/primitives/scripting/DSPPluginScriptHost.cpp)
 
-set(LOOPER_LEGACY_SOURCES
-    looper/engine/LooperProcessor.cpp
-    looper/engine/LooperProcessor.h
-    looper/ui/LooperEditor.cpp
-    looper/ui/LooperEditor.h)
-
-set(LOOPER_PRIMITIVES_SOURCES
+set(MANIFOLD_CORE_SOURCES
     looper_primitives/BehaviorCoreProcessor.h
     looper_primitives/BehaviorCoreProcessor.cpp
     looper_primitives/BehaviorCoreEditor.h
     looper_primitives/BehaviorCoreEditor.cpp)
 
-set(LOOPER_PRIMITIVES_RUNTIME_BOOTSTRAP_SOURCES
-    ${LOOPER_LEGACY_RUNTIME_SOURCES})
-
-target_sources(Looper
-    PRIVATE
-        ${LOOPER_SHARED_SOURCES}
-        ${LOOPER_LEGACY_RUNTIME_SOURCES}
-        ${LOOPER_LEGACY_SOURCES})
-
-juce_add_plugin(LooperPrimitives
+juce_add_plugin(Manifold
     VERSION 1.0.0
     PLUGIN_MANUFACTURER_CODE Shmc
-    PLUGIN_CODE Lprm
+    PLUGIN_CODE Mnfd
     FORMATS Standalone
-    PRODUCT_NAME "LooperPrimitives"
+    PRODUCT_NAME "Manifold"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
@@ -168,30 +143,22 @@ juce_add_plugin(LooperPrimitives
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE)
 
-target_sources(LooperPrimitives
+target_sources(Manifold
     PRIVATE
-        ${LOOPER_SHARED_SOURCES}
-        ${LOOPER_PRIMITIVES_RUNTIME_BOOTSTRAP_SOURCES}
-        ${LOOPER_PRIMITIVES_SOURCES})
+        ${MANIFOLD_DSP_SOURCES}
+        ${MANIFOLD_RUNTIME_SOURCES}
+        ${MANIFOLD_CORE_SOURCES})
 
-target_include_directories(Looper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_include_directories(LooperPrimitives PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(Manifold PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_compile_definitions(Looper
+target_compile_definitions(Manifold
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0)
 
-target_compile_definitions(LooperPrimitives
-    PUBLIC
-        JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
-
-target_link_libraries(Looper
+target_link_libraries(Manifold
     PRIVATE
         juce::juce_audio_utils
         juce::juce_audio_formats
@@ -205,24 +172,8 @@ target_link_libraries(Looper
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
-target_link_libraries(LooperPrimitives
-    PRIVATE
-        juce::juce_audio_utils
-        juce::juce_audio_formats
-        juce::juce_dsp
-        juce::juce_gui_extra
-        juce::juce_opengl
-        PkgConfig::LUA
-        sol2::sol2
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags)
-
-# Headless test harness - no GUI, no audio device, just the processor + ControlServer
-add_executable(LooperHeadless looper/headless/LooperHeadless.cpp)
-
-add_executable(LooperPrimitivesHeadless looper/headless/LooperPrimitivesHeadless.cpp)
+# Headless test harnesses
+add_executable(ManifoldHeadless looper/headless/ManifoldHeadless.cpp)
 
 add_executable(LuaEngineMockHarness looper/headless/LuaEngineMockHarness.cpp)
 
@@ -234,25 +185,13 @@ add_executable(CanonicalCommandHarness looper/headless/CanonicalCommandHarness.c
 
 add_executable(StateProjectionHarness looper/headless/StateProjectionHarness.cpp)
 
-target_include_directories(LooperHeadless
+target_include_directories(ManifoldHeadless
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_include_directories(LooperPrimitivesHeadless
+target_link_libraries(ManifoldHeadless
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR})
-
-target_link_libraries(LooperHeadless
-    PRIVATE
-        Looper
-        juce::juce_audio_processors
-        juce::juce_audio_formats
-        juce::juce_audio_utils
-        juce::juce_gui_extra)
-
-target_link_libraries(LooperPrimitivesHeadless
-    PRIVATE
-        LooperPrimitives
+        Manifold
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_audio_utils
@@ -260,7 +199,7 @@ target_link_libraries(LooperPrimitivesHeadless
 
 target_link_libraries(LuaEngineMockHarness
     PRIVATE
-        Looper
+        Manifold
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_audio_utils
@@ -268,7 +207,7 @@ target_link_libraries(LuaEngineMockHarness
 
 target_link_libraries(EndpointResolverHarness
     PRIVATE
-        Looper
+        Manifold
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_audio_utils
@@ -276,7 +215,7 @@ target_link_libraries(EndpointResolverHarness
 
 target_link_libraries(ControlCommandQueueHarness
     PRIVATE
-        Looper
+        Manifold
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_audio_utils
@@ -284,7 +223,7 @@ target_link_libraries(ControlCommandQueueHarness
 
 target_link_libraries(CanonicalCommandHarness
     PRIVATE
-        Looper
+        Manifold
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_audio_utils
@@ -292,20 +231,13 @@ target_link_libraries(CanonicalCommandHarness
 
 target_link_libraries(StateProjectionHarness
     PRIVATE
-        Looper
+        Manifold
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_audio_utils
         juce::juce_gui_extra)
 
-target_compile_definitions(LooperHeadless
-    PRIVATE
-        JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
-
-target_compile_definitions(LooperPrimitivesHeadless
+target_compile_definitions(ManifoldHeadless
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
