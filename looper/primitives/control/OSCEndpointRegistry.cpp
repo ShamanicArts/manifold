@@ -32,7 +32,7 @@ static const EndpointTemplate kEndpointTemplates[] = {
     { ControlCommand::Type::ClearAllLayers,   "clear",      "N",  0.0f,  0.0f,   2, "Clear all layers",              false },
 
     // --- Per-layer commands ---
-    { ControlCommand::Type::LayerSpeed,       "layer/{L}/speed",    "f",  0.1f, 4.0f, 3, "Layer playback speed",     true },
+    { ControlCommand::Type::LayerSpeed,       "layer/{L}/speed",    "f",  0.0f, 4.0f, 3, "Layer playback speed",     true },
     { ControlCommand::Type::LayerVolume,      "layer/{L}/volume",   "f",  0.0f, 2.0f, 3, "Layer volume",             true },
     { ControlCommand::Type::LayerMute,        "layer/{L}/mute",     "i",  0.0f, 1.0f, 3, "Layer mute (0/1)",         true },
     { ControlCommand::Type::LayerReverse,     "layer/{L}/reverse",  "i",  0.0f, 1.0f, 3, "Layer reverse (0/1)",      true },
@@ -73,10 +73,18 @@ void OSCEndpointRegistry::rebuild() {
 void OSCEndpointRegistry::buildBackendEndpoints() {
     backendEndpoints.clear();
 
-    auto expandTemplate = [&](const EndpointTemplate& tmpl, const char* cat) {
+    static const juce::String canonicalPrefix("/core/behavior");
+    static const juce::String compatibilityPrefixes[] = {
+        "/looper",
+        "/dsp/looper",
+    };
+
+    auto expandTemplateForPrefix = [&](const EndpointTemplate& tmpl,
+                                       const juce::String& prefix,
+                                       const char* cat) {
         if (tmpl.perLayer) {
             for (int i = 0; i < numLayers; ++i) {
-                juce::String path = juce::String("/looper/") + tmpl.pathSuffix;
+                juce::String path = prefix + "/" + tmpl.pathSuffix;
                 path = path.replace("{L}", juce::String(i));
 
                 OSCEndpoint ep;
@@ -93,7 +101,7 @@ void OSCEndpointRegistry::buildBackendEndpoints() {
             }
         } else {
             OSCEndpoint ep;
-            ep.path = juce::String("/looper/") + tmpl.pathSuffix;
+            ep.path = prefix + "/" + tmpl.pathSuffix;
             ep.type = tmpl.type;
             ep.rangeMin = tmpl.rangeMin;
             ep.rangeMax = tmpl.rangeMax;
@@ -106,14 +114,22 @@ void OSCEndpointRegistry::buildBackendEndpoints() {
         }
     };
 
-    // Writable backend endpoints
+    // Writable backend endpoints (canonical first, then compatibility aliases).
     for (int i = 0; i < kNumTemplates; ++i) {
-        expandTemplate(kEndpointTemplates[i], "backend");
+        expandTemplateForPrefix(kEndpointTemplates[i], canonicalPrefix, "backend");
+        for (const auto& aliasPrefix : compatibilityPrefixes) {
+            expandTemplateForPrefix(kEndpointTemplates[i], aliasPrefix,
+                                    "backend_alias");
+        }
     }
 
-    // Read-only query endpoints
+    // Read-only query endpoints (canonical first, then compatibility aliases).
     for (int i = 0; i < kNumReadOnly; ++i) {
-        expandTemplate(kReadOnlyTemplates[i], "query");
+        expandTemplateForPrefix(kReadOnlyTemplates[i], canonicalPrefix, "query");
+        for (const auto& aliasPrefix : compatibilityPrefixes) {
+            expandTemplateForPrefix(kReadOnlyTemplates[i], aliasPrefix,
+                                    "query_alias");
+        }
     }
 }
 

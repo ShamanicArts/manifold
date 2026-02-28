@@ -2,7 +2,8 @@
 #include "SHA1.h"
 #include "OSCPacketBuilder.h"
 #include "EndpointResolver.h"
-#include "../../engine/LooperProcessor.h"
+#include "OSCServer.h"
+#include "../scripting/ScriptableProcessor.h"
 #include <cstring>
 #include <cmath>
 
@@ -194,7 +195,7 @@ OSCQueryServer::~OSCQueryServer() {
     stop();
 }
 
-void OSCQueryServer::start(LooperProcessor* processor, OSCEndpointRegistry* reg,
+void OSCQueryServer::start(ScriptableProcessor* processor, OSCEndpointRegistry* reg,
                            int httpPort_, int oscPort_) {
     owner = processor;
     registry = reg;
@@ -498,12 +499,14 @@ juce::String OSCQueryServer::queryValue(const juce::String& oscPath) {
 
     const juce::String path = normalizeQueryPath(oscPath);
 
-    if (path == "/looper/state") {
+    if (path == "/looper/state" || path == "/dsp/looper/state" ||
+        path == "/core/behavior/state") {
         const std::string snapshot = owner->getControlServer().getStateJson();
         return "{\"VALUE\": " + juce::String(snapshot) + "}";
     }
 
-    if (path == "/looper/diagnostics") {
+    if (path == "/looper/diagnostics" || path == "/dsp/looper/diagnostics" ||
+        path == "/core/behavior/diagnostics") {
         const std::string diagnostics = owner->getControlServer().getDiagnosticsJson();
         return "{\"VALUE\": " + juce::String(diagnostics) + "}";
     }
@@ -1035,9 +1038,11 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
             }
 
-            // --- Custom (non-/looper) values ---
+            // --- Custom (non-behavior) values ---
             for (const auto& listenPath : listenPaths) {
-                if (listenPath.startsWith("/looper/")) {
+                if (listenPath.startsWith("/looper/") ||
+                    listenPath.startsWith("/dsp/looper/") ||
+                    listenPath.startsWith("/core/behavior/")) {
                     continue;
                 }
 

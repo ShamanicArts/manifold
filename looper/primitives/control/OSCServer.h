@@ -13,7 +13,7 @@
 
 #include "ControlServer.h"
 
-class LooperProcessor;
+class ScriptableProcessor;
 
 struct OSCSettings {
     int inputPort = 8000;
@@ -61,7 +61,7 @@ public:
     OSCServer();
     ~OSCServer();
 
-    void start(LooperProcessor* processor);
+    void start(ScriptableProcessor* processor);
     void stop();
 
     void setSettings(const OSCSettings& settings);
@@ -111,7 +111,7 @@ private:
     // State-diff broadcaster: reads AtomicState, compares to snapshot, broadcasts changes
     void broadcastStateChanges();
 
-    LooperProcessor* owner = nullptr;
+    ScriptableProcessor* owner = nullptr;
     OSCSettings settings;
     mutable std::mutex settingsMutex;
 

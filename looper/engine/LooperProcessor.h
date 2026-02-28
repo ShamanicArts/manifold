@@ -142,6 +142,7 @@ public:
     
     float getSamplesPerBar() const override;
     double getSampleRate() const override { return currentSampleRate; }
+    double getPlayTimeSamples() const override { return playTime; }
     int getCommitCount() const override { return commitCount; }
     
     // Control server access
@@ -153,6 +154,8 @@ public:
     // DSP primitive graph access
     std::shared_ptr<dsp_primitives::PrimitiveGraph> getPrimitiveGraph() { return primitiveGraph; }
     bool isGraphProcessingEnabled() const { return graphProcessingEnabled; }
+    int getGraphBlockSize() const { return getBlockSize(); }
+    int getGraphOutputChannels() const { return getTotalNumOutputChannels(); }
     void setGraphProcessingEnabled(bool enabled);
     bool loadDspScript(const juce::File &scriptFile);
     bool loadDspScriptFromString(const std::string &luaCode,

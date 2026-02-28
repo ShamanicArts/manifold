@@ -17,7 +17,7 @@
 #include <unistd.h>
 
 // Forward declarations
-class LooperProcessor;
+class ScriptableProcessor;
 class CaptureBuffer;
 
 // ============================================================================
@@ -229,7 +229,7 @@ public:
   ~ControlServer();
 
   // Lifecycle - called from processor
-  void start(LooperProcessor *processor);
+  void start(ScriptableProcessor *processor);
   void stop();
 
   // Audio thread interface - all lock-free
@@ -237,6 +237,7 @@ public:
   bool enqueueCommand(const ControlCommand &command);
   void pushEvent(const char *json, int len) { eventRing.push(json, len); }
   AtomicState &getAtomicState() { return atomicState; }
+  const AtomicState &getAtomicState() const { return atomicState; }
 
   // Audio injection: audio thread calls this each block to drain injected
   // audio into the CaptureBuffer. Returns number of samples injected.
@@ -272,7 +273,7 @@ private:
   // Load a WAV file and prepare injection buffer (called from server thread)
   std::string loadFileForInjection(const std::string &filepath);
 
-  LooperProcessor *owner = nullptr;
+  ScriptableProcessor *owner = nullptr;
   std::string socketPath;
   int serverFd = -1;
   std::atomic<bool> running{false};

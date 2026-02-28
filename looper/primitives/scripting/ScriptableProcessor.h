@@ -2,11 +2,18 @@
 
 #include "../control/ControlServer.h"
 #include <array>
+#include <memory>
+#include <string>
 #include <vector>
 
 class OSCServer;
 class OSCEndpointRegistry;
 class OSCQueryServer;
+
+namespace dsp_primitives {
+class PrimitiveGraph;
+class GraphRuntime;
+}
 
 enum class ScriptableLayerState {
   Empty = 0,
@@ -41,9 +48,33 @@ public:
                                    float floatParam = 0.0f) = 0;
 
   // Message/control thread: networking/control service access.
+  virtual ControlServer &getControlServer() = 0;
   virtual OSCServer &getOSCServer() = 0;
   virtual OSCEndpointRegistry &getEndpointRegistry() = 0;
   virtual OSCQueryServer &getOSCQueryServer() = 0;
+
+  // Optional graph/script host hooks. Defaults are safe no-ops so non-looper
+  // processors can participate in the shared runtime services.
+  virtual std::shared_ptr<dsp_primitives::PrimitiveGraph> getPrimitiveGraph() {
+    return {};
+  }
+  virtual void setGraphProcessingEnabled(bool) {}
+  virtual bool isGraphProcessingEnabled() const { return false; }
+  virtual int getGraphBlockSize() const { return 512; }
+  virtual int getGraphOutputChannels() const { return 2; }
+  virtual void requestGraphRuntimeSwap(
+      std::unique_ptr<dsp_primitives::GraphRuntime>) {}
+  virtual bool loadDspScript(const juce::File &) { return false; }
+  virtual bool loadDspScriptFromString(const std::string &, const std::string &) {
+    return false;
+  }
+  virtual bool reloadDspScript() { return false; }
+  virtual bool isDspScriptLoaded() const { return false; }
+  virtual const std::string &getDspScriptLastError() const {
+    static const std::string empty;
+    return empty;
+  }
+  virtual void drainRetiredGraphRuntimes() {}
 
   // =========================================================================
   // Generic path-based parameter access (Phase 1 of DSP scripting)
@@ -77,6 +108,7 @@ public:
   virtual float getTargetBPM() const = 0;
   virtual float getSamplesPerBar() const = 0;
   virtual double getSampleRate() const = 0;
+  virtual double getPlayTimeSamples() const = 0;
   virtual float getMasterVolume() const = 0;
   virtual float getInputVolume() const = 0;
   virtual bool isPassthroughEnabled() const = 0;

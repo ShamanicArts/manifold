@@ -11,8 +11,10 @@ extern "C" {
 
 #include "GraphRuntime.h"
 #include "PrimitiveGraph.h"
+#include "ScriptableProcessor.h"
 #include "dsp/core/nodes/PrimitiveNodes.h"
-#include "../../engine/LooperProcessor.h"
+#include "../control/OSCQuery.h"
+#include "../control/OSCServer.h"
 #include "../control/OSCEndpointRegistry.h"
 
 #include <map>
@@ -48,6 +50,11 @@ juce::String sanitizePath(const std::string &path) {
   return p;
 }
 
+bool isBehaviorNamespacePath(const juce::String &path) {
+  return path.startsWith("/looper/") || path.startsWith("/dsp/looper/") ||
+         path.startsWith("/core/behavior/");
+}
+
 template <typename NodeT>
 std::shared_ptr<NodeT> tableNode(const sol::table &self) {
   sol::object obj = self["__node"];
@@ -60,7 +67,7 @@ std::shared_ptr<NodeT> tableNode(const sol::table &self) {
 } // namespace
 
 struct DSPPluginScriptHost::Impl {
-  LooperProcessor *processor = nullptr;
+  ScriptableProcessor *processor = nullptr;
 
   mutable std::recursive_mutex luaMutex;
   sol::state lua;
@@ -70,6 +77,7 @@ struct DSPPluginScriptHost::Impl {
   std::unordered_map<std::string, float> paramValues;
   std::unordered_map<std::string, std::function<void(float)>> paramBindings;
   std::vector<juce::String> registeredEndpoints;
+  std::vector<std::weak_ptr<dsp_primitives::LoopPlaybackNode>> layerPlaybackNodes;
 
   bool loaded = false;
   std::string lastError;
@@ -83,7 +91,7 @@ DSPPluginScriptHost::DSPPluginScriptHost() : pImpl(std::make_unique<Impl>()) {}
 
 DSPPluginScriptHost::~DSPPluginScriptHost() = default;
 
-void DSPPluginScriptHost::initialise(LooperProcessor *processor) {
+void DSPPluginScriptHost::initialise(ScriptableProcessor *processor) {
   pImpl->processor = processor;
 }
 
@@ -105,6 +113,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   std::unordered_map<std::string, DspParamSpec> newParamSpecs;
   std::unordered_map<std::string, float> newParamValues;
   std::unordered_map<std::string, std::function<void(float)>> newParamBindings;
+  std::vector<std::weak_ptr<dsp_primitives::LoopPlaybackNode>> newLayerPlaybackNodes;
   sol::function newOnParamChange;
 
   newLua.new_usertype<dsp_primitives::PlayheadNode>(
@@ -169,7 +178,10 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getCaptureSize", &dsp_primitives::RetrospectiveCaptureNode::getCaptureSize,
       "getWriteOffset", &dsp_primitives::RetrospectiveCaptureNode::getWriteOffset,
       "clear", &dsp_primitives::RetrospectiveCaptureNode::clear,
-      "copyRecentToLoop", &dsp_primitives::RetrospectiveCaptureNode::copyRecentToLoop);
+      "copyRecentToLoop",
+      static_cast<bool (dsp_primitives::RetrospectiveCaptureNode::*)(
+          const std::shared_ptr<dsp_primitives::LoopPlaybackNode>&, int, bool)>(
+          &dsp_primitives::RetrospectiveCaptureNode::copyRecentToLoop));
 
   newLua.new_usertype<dsp_primitives::RecordStateNode>(
       "RecordStateNode",
@@ -1222,7 +1234,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   auto bundles = newLua.create_table();
   {
     auto loopLayerApi = newLua.create_table();
-    loopLayerApi["new"] = [graph, &newLua](sol::optional<sol::table> options) {
+    loopLayerApi["new"] = [graph, &newLua, &newLayerPlaybackNodes](sol::optional<sol::table> options) {
       int numChannels = 2;
       if (options.has_value()) {
         sol::table opts = options.value();
@@ -1241,6 +1253,13 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       auto mode = std::make_shared<dsp_primitives::RecordModePolicyNode>();
       auto forward = std::make_shared<dsp_primitives::ForwardCommitSchedulerNode>();
       auto transport = std::make_shared<dsp_primitives::TransportStateNode>();
+
+      newLayerPlaybackNodes.push_back(playback);
+
+      // Default to silent/idle loop layer until explicitly played/committed.
+      playback->stop();
+      gate->stop();
+      transport->stop();
 
       graph->registerNode(input);
       graph->registerNode(capture);
@@ -1271,6 +1290,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       layer["__mode"] = newLua.create_table_with("__node", mode);
       layer["__forward"] = newLua.create_table_with("__node", forward);
       layer["__transport"] = newLua.create_table_with("__node", transport);
+      layer["__overdubLengthPolicy"] = 0;
 
       layer["setVolume"] = [](sol::table self, float v) {
         if (auto n = tableNode<dsp_primitives::GainNode>(self)) {
@@ -1394,6 +1414,18 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         return 120.0f;
       };
+      layer["getSamplesPerBar"] = [](sol::table self) {
+        if (auto n = tableNode<dsp_primitives::QuantizerNode>(self["__quantizer"])) {
+          return n->getSamplesPerBar();
+        }
+        return 0.0f;
+      };
+      layer["quantizeToNearestLegal"] = [](sol::table self, int samples) {
+        if (auto n = tableNode<dsp_primitives::QuantizerNode>(self["__quantizer"])) {
+          return n->quantizeToNearestLegal(samples);
+        }
+        return samples;
+      };
       layer["setMode"] = [](sol::table self, int v) {
         if (auto n = tableNode<dsp_primitives::RecordModePolicyNode>(self["__mode"])) {
           n->setMode(v);
@@ -1437,7 +1469,18 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           n->setCaptureSeconds(v);
         }
       };
-      layer["commit"] = [](sol::table self, sol::optional<float> barsOpt) {
+      layer["setOverdubLengthPolicy"] = [](sol::table self, int v) {
+        self["__overdubLengthPolicy"] = juce::jlimit(0, 1, v);
+      };
+      layer["getOverdubLengthPolicy"] = [](sol::table self) {
+        sol::object policyObj = self["__overdubLengthPolicy"];
+        if (policyObj.valid() && policyObj.is<int>()) {
+          return juce::jlimit(0, 1, policyObj.as<int>());
+        }
+        return 0;
+      };
+      layer["commit"] = [](sol::table self, sol::optional<float> barsOpt,
+                              sol::optional<int> overdubLengthPolicyOpt) {
         auto captureNode = tableNode<dsp_primitives::RetrospectiveCaptureNode>(self["__capture"]);
         auto playbackNode = tableNode<dsp_primitives::LoopPlaybackNode>(self["__playback"]);
         auto quantNode = tableNode<dsp_primitives::QuantizerNode>(self["__quantizer"]);
@@ -1458,13 +1501,28 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           return false;
         }
 
+        int policyValue = 0;
+        if (overdubLengthPolicyOpt.has_value()) {
+          policyValue = juce::jlimit(0, 1, overdubLengthPolicyOpt.value());
+        } else {
+          sol::object policyObj = self["__overdubLengthPolicy"];
+          if (policyObj.valid() && policyObj.is<int>()) {
+            policyValue = juce::jlimit(0, 1, policyObj.as<int>());
+          }
+        }
+
+        const auto overdubLengthPolicy =
+            policyValue == 1
+                ? dsp_primitives::LoopPlaybackNode::OverdubLengthPolicy::CommitLengthWins
+                : dsp_primitives::LoopPlaybackNode::OverdubLengthPolicy::LegacyRepeat;
+
         const bool overdub = recordNode ? recordNode->isOverdub() : false;
-        const bool copied = captureNode->copyRecentToLoop(playbackNode, samplesBack, overdub);
+        const bool copied = captureNode->copyRecentToLoop(playbackNode, samplesBack, overdub,
+                                                          overdubLengthPolicy);
         if (!copied) {
           return false;
         }
 
-        playbackNode->setLoopLength(samplesBack);
         playbackNode->play();
         if (auto n = tableNode<dsp_primitives::PlaybackStateGateNode>(self["__gate"])) {
           n->play();
@@ -1524,11 +1582,32 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     bundles["LoopLayer"] = loopLayerApi;
   }
 
+  auto hostApi = newLua.create_table();
+  hostApi["getSampleRate"] = [impl]() {
+    return impl->processor ? impl->processor->getSampleRate() : 44100.0;
+  };
+  hostApi["getPlayTimeSamples"] = [impl]() {
+    return impl->processor ? impl->processor->getPlayTimeSamples() : 0.0;
+  };
+  hostApi["setParam"] = [impl](const std::string &path, float value) {
+    if (!impl->processor) {
+      return false;
+    }
+    return impl->processor->setParamByPath(path, value);
+  };
+  hostApi["getParam"] = [impl](const std::string &path) {
+    if (!impl->processor) {
+      return 0.0f;
+    }
+    return impl->processor->getParamByPath(path);
+  };
+
   auto ctx = newLua.create_table();
   ctx["primitives"] = primitives;
   ctx["bundles"] = bundles;
   ctx["graph"] = graphTable;
   ctx["params"] = paramsTable;
+  ctx["host"] = hostApi;
 
   newLua["connectNodes"] = [graph, toPrimitiveNode](const sol::object &fromObj,
                                                       const sol::object &toObj) {
@@ -1608,11 +1687,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   const double sampleRate =
       impl->processor->getSampleRate() > 0.0 ? impl->processor->getSampleRate()
                                              : 44100.0;
-  const int blockSize =
-      std::max(1, impl->processor->getBlockSize() > 0
-                      ? impl->processor->getBlockSize()
-                      : 512);
-  const int numChannels = std::max(1, impl->processor->getTotalNumOutputChannels());
+  const int blockSize = std::max(1, impl->processor->getGraphBlockSize());
+  const int numChannels = std::max(1, impl->processor->getGraphOutputChannels());
 
   auto runtime = graph->compileRuntime(sampleRate, blockSize, numChannels);
   if (!runtime) {
@@ -1656,13 +1732,15 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     endpoint.category = "dsp";
     endpoint.commandType = ControlCommand::Type::None;
     endpoint.layerIndex = -1;
-    impl->processor->getEndpointRegistry().registerCustomEndpoint(endpoint);
-    impl->registeredEndpoints.push_back(endpoint.path);
+    if (!isBehaviorNamespacePath(endpoint.path)) {
+      impl->processor->getEndpointRegistry().registerCustomEndpoint(endpoint);
+      impl->registeredEndpoints.push_back(endpoint.path);
 
-    const auto valIt = newParamValues.find(path);
-    if (valIt != newParamValues.end()) {
-      impl->processor->getOSCServer().setCustomValue(endpoint.path,
-                                                     {juce::var(valIt->second)});
+      const auto valIt = newParamValues.find(path);
+      if (valIt != newParamValues.end()) {
+        impl->processor->getOSCServer().setCustomValue(endpoint.path,
+                                                       {juce::var(valIt->second)});
+      }
     }
   }
 
@@ -1670,11 +1748,14 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
   {
     const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
-    impl->lua = std::move(newLua);
+    // Replace Lua-owned references before swapping the underlying sol::state.
+    // Otherwise old sol::function teardown can unref against a dead lua_State.
     impl->onParamChange = std::move(newOnParamChange);
+    impl->lua = std::move(newLua);
     impl->paramSpecs = std::move(newParamSpecs);
     impl->paramValues = std::move(newParamValues);
     impl->paramBindings = std::move(newParamBindings);
+    impl->layerPlaybackNodes = std::move(newLayerPlaybackNodes);
     impl->currentScriptFile = scriptFile != nullptr ? *scriptFile : juce::File();
     impl->currentScriptSourceName = sourceName;
     impl->currentScriptCode = scriptCode != nullptr ? *scriptCode : std::string();
@@ -1766,7 +1847,8 @@ bool DSPPluginScriptHost::setParam(const std::string &path, float value) {
     }
   }
 
-  if (pImpl->processor) {
+  if (pImpl->processor &&
+      !isBehaviorNamespacePath(juce::String(path))) {
     pImpl->processor->getOSCServer().setCustomValue(juce::String(path),
                                                     {juce::var(normalized)});
   }
@@ -1781,4 +1863,42 @@ float DSPPluginScriptHost::getParam(const std::string &path) const {
     return 0.0f;
   }
   return it->second;
+}
+
+int DSPPluginScriptHost::getLayerLoopLength(int layerIndex) const {
+  if (layerIndex < 0) {
+    return 0;
+  }
+
+  const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+  if (layerIndex >= static_cast<int>(pImpl->layerPlaybackNodes.size())) {
+    return 0;
+  }
+
+  auto playback = pImpl->layerPlaybackNodes[static_cast<size_t>(layerIndex)].lock();
+  if (!playback) {
+    return 0;
+  }
+
+  return juce::jmax(0, playback->getLoopLength());
+}
+
+bool DSPPluginScriptHost::computeLayerPeaks(int layerIndex, int numBuckets,
+                                            std::vector<float> &outPeaks) const {
+  outPeaks.clear();
+  if (layerIndex < 0 || numBuckets <= 0) {
+    return false;
+  }
+
+  const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+  if (layerIndex >= static_cast<int>(pImpl->layerPlaybackNodes.size())) {
+    return false;
+  }
+
+  auto playback = pImpl->layerPlaybackNodes[static_cast<size_t>(layerIndex)].lock();
+  if (!playback) {
+    return false;
+  }
+
+  return playback->computePeaks(numBuckets, outPeaks);
 }

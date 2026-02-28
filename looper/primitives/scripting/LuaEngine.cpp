@@ -13,7 +13,6 @@ extern "C" {
 #include "ScriptableProcessor.h"
 #include "PrimitiveGraph.h"
 #include "dsp/core/nodes/PrimitiveNodes.h"
-#include "../../engine/LooperProcessor.h"
 #include "../control/CommandParser.h"
 #include "../control/ControlServer.h"
 #include "../control/OSCPacketBuilder.h"
@@ -1308,29 +1307,20 @@ void LuaEngine::registerBindings() {
   lua["reloadDspScript"] = [this]() -> bool {
     if (!pImpl->processor)
       return false;
-    auto *lp = dynamic_cast<LooperProcessor *>(pImpl->processor);
-    if (!lp)
-      return false;
-    return lp->reloadDspScript();
+    return pImpl->processor->reloadDspScript();
   };
 
   lua["loadDspScript"] = [this](const std::string &path) -> bool {
     if (!pImpl->processor)
       return false;
-    auto *lp = dynamic_cast<LooperProcessor *>(pImpl->processor);
-    if (!lp)
-      return false;
-    return lp->loadDspScript(juce::File(path));
+    return pImpl->processor->loadDspScript(juce::File(path));
   };
 
   lua["loadDspScriptFromString"] =
       [this](const std::string &code, const std::string &sourceName) -> bool {
     if (!pImpl->processor)
       return false;
-    auto *lp = dynamic_cast<LooperProcessor *>(pImpl->processor);
-    if (!lp)
-      return false;
-    return lp->loadDspScriptFromString(code, sourceName);
+    return pImpl->processor->loadDspScriptFromString(code, sourceName);
   };
 
   // Debug helper: write text buffers to disk (used by live DSP editor)
@@ -1352,19 +1342,13 @@ void LuaEngine::registerBindings() {
   lua["isDspScriptLoaded"] = [this]() -> bool {
     if (!pImpl->processor)
       return false;
-    auto *lp = dynamic_cast<LooperProcessor *>(pImpl->processor);
-    if (!lp)
-      return false;
-    return lp->isDspScriptLoaded();
+    return pImpl->processor->isDspScriptLoaded();
   };
 
   lua["getDspScriptLastError"] = [this]() -> std::string {
     if (!pImpl->processor)
       return "";
-    auto *lp = dynamic_cast<LooperProcessor *>(pImpl->processor);
-    if (!lp)
-      return "";
-    return lp->getDspScriptLastError();
+    return pImpl->processor->getDspScriptLastError();
   };
 
   // ---- DSP Primitives factory (Phase 2) ----
@@ -1408,10 +1392,7 @@ void LuaEngine::registerBindings() {
   // Use the graph from LooperProcessor if available
   std::shared_ptr<dsp_primitives::PrimitiveGraph> graph;
   if (pImpl->processor) {
-    auto* lp = dynamic_cast<LooperProcessor*>(pImpl->processor);
-    if (lp) {
-      graph = lp->getPrimitiveGraph();
-    }
+    graph = pImpl->processor->getPrimitiveGraph();
   }
   if (!graph) {
     graph = std::make_shared<dsp_primitives::PrimitiveGraph>();
@@ -1583,21 +1564,13 @@ void LuaEngine::registerBindings() {
   // Enable/disable graph processing
   lua["setGraphProcessingEnabled"] = [this](bool enabled) -> bool {
     if (!pImpl->processor) return false;
-    auto* lp = dynamic_cast<LooperProcessor*>(pImpl->processor);
-    if (lp) {
-      lp->setGraphProcessingEnabled(enabled);
-      return lp->isGraphProcessingEnabled() == enabled;
-    }
-    return false;
+    pImpl->processor->setGraphProcessingEnabled(enabled);
+    return pImpl->processor->isGraphProcessingEnabled() == enabled;
   };
-  
+
   lua["isGraphProcessingEnabled"] = [this]() -> bool {
     if (!pImpl->processor) return false;
-    auto* lp = dynamic_cast<LooperProcessor*>(pImpl->processor);
-    if (lp) {
-      return lp->isGraphProcessingEnabled();
-    }
-    return false;
+    return pImpl->processor->isGraphProcessingEnabled();
   };
 
   // ---- Script management (exposed to Lua) ----
@@ -2127,20 +2100,26 @@ void LuaEngine::pushStateToLua() {
   state["numVoices"] = numLayers;
 
   auto params = lua.create_table();
-  params["/looper/tempo"] = tempo;
-  params["/looper/targetbpm"] = targetBPM;
-  params["/looper/samplesPerBar"] = samplesPerBar;
-  params["/looper/sampleRate"] = sampleRate;
-  params["/looper/captureSize"] = captureSize;
-  params["/looper/volume"] = masterVolume;
-  params["/looper/inputVolume"] = inputVolume;
-  params["/looper/passthrough"] = passthroughEnabled ? 1 : 0;
-  params["/looper/recording"] = isRecording ? 1 : 0;
-  params["/looper/overdub"] = isOverdubEnabled ? 1 : 0;
-  params["/looper/mode"] = recordModeString;
-  params["/looper/layer"] = activeLayerIndex;
-  params["/looper/forwardArmed"] = forwardCommitArmed ? 1 : 0;
-  params["/looper/forwardBars"] = forwardCommitBars;
+  auto setBehaviorParam = [&](const std::string &suffix, const auto &value) {
+    params["/looper" + suffix] = value;
+    params["/core/behavior" + suffix] = value;
+    params["/dsp/looper" + suffix] = value;
+  };
+
+  setBehaviorParam("/tempo", tempo);
+  setBehaviorParam("/targetbpm", targetBPM);
+  setBehaviorParam("/samplesPerBar", samplesPerBar);
+  setBehaviorParam("/sampleRate", sampleRate);
+  setBehaviorParam("/captureSize", captureSize);
+  setBehaviorParam("/volume", masterVolume);
+  setBehaviorParam("/inputVolume", inputVolume);
+  setBehaviorParam("/passthrough", passthroughEnabled ? 1 : 0);
+  setBehaviorParam("/recording", isRecording ? 1 : 0);
+  setBehaviorParam("/overdub", isOverdubEnabled ? 1 : 0);
+  setBehaviorParam("/mode", recordModeString);
+  setBehaviorParam("/layer", activeLayerIndex);
+  setBehaviorParam("/forwardArmed", forwardCommitArmed ? 1 : 0);
+  setBehaviorParam("/forwardBars", forwardCommitBars);
 
   auto voices = lua.create_table();
   for (int i = 0; i < numLayers; ++i) {
@@ -2160,20 +2139,31 @@ void LuaEngine::pushStateToLua() {
             : 0.0f;
     const bool muted = layer.state == ScriptableLayerState::Muted;
 
-    const std::string layerPrefix =
+    const std::string looperLayerPrefix =
         "/looper/layer/" + std::to_string(i);
-    params[layerPrefix + "/speed"] = layer.speed;
-    params[layerPrefix + "/volume"] = layer.volume;
-    params[layerPrefix + "/mute"] = muted ? 1 : 0;
-    params[layerPrefix + "/reverse"] = layer.reversed ? 1 : 0;
-    params[layerPrefix + "/length"] = layer.length;
-    params[layerPrefix + "/position"] = normalizedPosition;
-    params[layerPrefix + "/bars"] = bars;
-    params[layerPrefix + "/state"] = layerStateString;
+    const std::string coreLayerPrefix =
+        "/core/behavior/layer/" + std::to_string(i);
+    const std::string dspLayerPrefix =
+        "/dsp/looper/layer/" + std::to_string(i);
+
+    auto setLayerParam = [&](const std::string &suffix, const auto &value) {
+      params[looperLayerPrefix + suffix] = value;
+      params[coreLayerPrefix + suffix] = value;
+      params[dspLayerPrefix + suffix] = value;
+    };
+
+    setLayerParam("/speed", layer.speed);
+    setLayerParam("/volume", layer.volume);
+    setLayerParam("/mute", muted ? 1 : 0);
+    setLayerParam("/reverse", layer.reversed ? 1 : 0);
+    setLayerParam("/length", layer.length);
+    setLayerParam("/position", normalizedPosition);
+    setLayerParam("/bars", bars);
+    setLayerParam("/state", layerStateString);
 
     auto voice = lua.create_table();
     voice["id"] = i;
-    voice["path"] = layerPrefix;
+    voice["path"] = looperLayerPrefix;
     voice["state"] = layerStateString;
     voice["length"] = layer.length;
     voice["position"] = layer.position;
@@ -2591,9 +2581,7 @@ bool LuaEngine::switchScript(const juce::File &scriptFile) {
   // UI scripts should not inherit an active DSP graph implicitly.
   // If a script wants graph processing, it can re-enable explicitly.
   if (pImpl->processor) {
-    if (auto *lp = dynamic_cast<LooperProcessor *>(pImpl->processor)) {
-      lp->setGraphProcessingEnabled(false);
-    }
+    pImpl->processor->setGraphProcessingEnabled(false);
   }
 
   // Clear the current UI

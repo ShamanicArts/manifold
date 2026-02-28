@@ -1,7 +1,7 @@
 #include "OSCServer.h"
 #include "OSCPacketBuilder.h"
 #include "CommandParser.h"
-#include "../../engine/LooperProcessor.h"
+#include "../scripting/ScriptableProcessor.h"
 #include <cstring>
 #include <cmath>
 
@@ -68,7 +68,7 @@ OSCServer::~OSCServer() {
     stop();
 }
 
-void OSCServer::start(LooperProcessor* processor) {
+void OSCServer::start(ScriptableProcessor* processor) {
     owner = processor;
 
     OSCSettings currentSettings;
@@ -465,9 +465,25 @@ juce::var OSCServer::parseArgument(char tag, const char* data,
 void OSCServer::dispatchMessage(const OSCMessage& msg) {
     if (!owner) return;
 
+    const auto behaviorPrefixForPath = [](const juce::String& path) {
+        if (path.startsWith("/looper/")) {
+            return juce::String("/looper");
+        }
+        if (path.startsWith("/dsp/looper/")) {
+            return juce::String("/dsp/looper");
+        }
+        if (path.startsWith("/core/behavior/")) {
+            return juce::String("/core/behavior");
+        }
+        return juce::String();
+    };
+
+    juce::String path = msg.address;
+    juce::String behaviorPrefix = behaviorPrefixForPath(path);
+
     // Track custom endpoint values for OSCQuery VALUE/LISTEN.
-    // Anything outside /looper/* is considered user/custom namespace.
-    if (!msg.address.startsWith("/looper/") && !msg.args.empty()) {
+    // Anything outside behavior namespaces is considered user/custom.
+    if (behaviorPrefix.isEmpty() && !msg.args.empty()) {
         setCustomValue(msg.address, msg.args);
     }
 
@@ -481,19 +497,19 @@ void OSCServer::dispatchMessage(const OSCMessage& msg) {
 
     auto* endpointRegistry = &owner->getEndpointRegistry();
 
-    juce::String path = msg.address;
-    if (path == "/looper/recstop") {
-        path = "/looper/stoprec";
+    if (!behaviorPrefix.isEmpty() && path == behaviorPrefix + "/recstop") {
+        path = behaviorPrefix + "/stoprec";
     }
 
-    if (path == "/looper/state") {
+    if (!behaviorPrefix.isEmpty() && path == behaviorPrefix + "/state") {
         return;  // read-only query endpoint
     }
 
     ParseResult parsed;
     bool hasCommandCandidate = false;
 
-    if (path == "/looper/rec" && !msg.args.empty()) {
+    if (!behaviorPrefix.isEmpty() && path == behaviorPrefix + "/rec" &&
+        !msg.args.empty()) {
         bool shouldStart = true;
         if (!boolFromOscArg(msg.args.front(), shouldStart)) {
             logDispatchDiagnostic(this->invalidMessages,
@@ -505,10 +521,11 @@ void OSCServer::dispatchMessage(const OSCMessage& msg) {
 
         parsed = CommandParser::buildResolverTriggerCommand(
             endpointRegistry,
-            shouldStart ? juce::String("/looper/rec")
-                        : juce::String("/looper/stoprec"));
+            shouldStart ? (behaviorPrefix + "/rec")
+                        : (behaviorPrefix + "/stoprec"));
         hasCommandCandidate = true;
-    } else if (path == "/looper/overdub" && msg.args.empty()) {
+    } else if (!behaviorPrefix.isEmpty() &&
+               path == behaviorPrefix + "/overdub" && msg.args.empty()) {
         parsed = CommandParser::buildResolverTriggerCommand(
             endpointRegistry,
             path,
@@ -520,7 +537,7 @@ void OSCServer::dispatchMessage(const OSCMessage& msg) {
             path,
             msg.args.front());
         hasCommandCandidate = true;
-    } else if (path.startsWith("/looper/")) {
+    } else if (!behaviorPrefix.isEmpty()) {
         parsed = CommandParser::buildResolverTriggerCommand(endpointRegistry, path);
         hasCommandCandidate = true;
     } else {

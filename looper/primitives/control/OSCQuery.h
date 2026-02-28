@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-class LooperProcessor;
+class ScriptableProcessor;
 
 // ============================================================================
 // OSCQueryNode - a node in the OSCQuery address tree.
@@ -119,7 +119,7 @@ public:
     OSCQueryServer();
     ~OSCQueryServer();
 
-    void start(LooperProcessor* processor, OSCEndpointRegistry* registry, int httpPort, int oscPort);
+    void start(ScriptableProcessor* processor, OSCEndpointRegistry* registry, int httpPort, int oscPort);
     void stop();
 
     bool isRunning() const { return running.load(); }
@@ -171,7 +171,7 @@ private:
     void buildTree();
 
     // --- Members ---
-    LooperProcessor* owner = nullptr;
+    ScriptableProcessor* owner = nullptr;
     OSCEndpointRegistry* registry = nullptr;
     int oscUdpPort = 9000;
 
