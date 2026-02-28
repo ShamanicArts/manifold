@@ -44,28 +44,19 @@ Control Thread (UI/CLI)          Audio Thread
 ## Build Commands
 
 ```bash
-# IMPORTANT: For fast iteration, use the dev build directory.
-# It avoids LTO/IPO link-time overhead and is dramatically faster.
-
-# Dev (fast iteration)
-cmake -S . -B build-dev -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build-dev --target Looper_Standalone
-
-# Release-style (slow clean links due to LTO)
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target Looper_Standalone
+cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
 ```
 
 ## Running
 
 ### Standalone Looper
 ```bash
-./build-dev/Looper_artefacts/RelWithDebInfo/Standalone/Looper
+./build/Looper_artefacts/Release/Standalone/Looper
 ```
 
 ### VST3
 ```bash
-./build-dev/Looper_artefacts/RelWithDebInfo/VST3/Looper.vst3
+./build/Looper_artefacts/Release/VST3/Looper.vst3
 ```
 
 ## UI System
@@ -73,6 +64,7 @@ cmake --build build --target Looper_Standalone
 The UI is entirely Lua-based with two main files:
 
 - `looper/ui/looper_ui.lua` - **Default UI** (minimal, modern)
+- `looper/ui/looper_ui_old.lua` - Original full-featured UI (reference)
 
 ### Widget Library (`looper_widgets.lua`)
 
@@ -172,6 +164,7 @@ looper/
 ├── ui/              # Editor + Lua scripts
 │   ├── LooperEditor.cpp/h
 │   ├── looper_ui.lua          # Default UI
+│   ├── looper_ui_old.lua      # Original UI
 │   └── looper_widgets.lua     # Widget library
 ├── primitives/
 │   ├── control/     # ControlServer, CommandParser
@@ -194,76 +187,6 @@ cp looper/ui/*.lua build/Looper_artefacts/Release/Standalone/
 ```
 
 Or restart the plugin which auto-loads from the source directory.
-
-### Tmux Workflow (Long-running Processes)
-
-Use **tmux session 0** with **windows 1 and 2** for all long-running commands:
-
-```bash
-# Check current sessions
-ls -t /tmp/looper_*.sock
-
-# Capture pane output (before/after commands)
-tmux capture-pane -p -t 0:1
-tmux capture-pane -p -t 0:2
-
-# Send commands to windows
-tmux send-keys -t 0:1 'command here' Enter
-tmux send-keys -t 0:2 'make -j$(nproc)' Enter
-
-# Kill/restart standalone
-tmux send-keys -t 0:1 C-c
-sleep 2
-tmux send-keys -t 0:1 './Looper_artefacts/Release/Standalone/Looper 2>&1' Enter
-```
-
-**Window assignments:**
-- **Window 1 (0:1)**: Looper standalone process
-- **Window 2 (0:2)**: Build commands, tests, other processes
-
-**Never use head/tail** on tmux capture output - it obfuscates the shell state.
-
-### JJ Version Control Workflow
-
-This project uses **Jujutsu (jj)** for version control. The working copy is often a merge commit; preserve that shape and split changes out of `@` with `-A`.
-
-```bash
-# 1) Inspect state before rewriting
-jj st
-jj diff --name-only
-jj obslog -r @ --limit 20
-
-# 2) Remove build noise first (if present)
-jj file untrack build-dev
-
-# 3) Split docs onto docs lineage, code onto code lineage
-jj split -r @ -A <docs_parent> -m "docs(scope): description" <docs files...>
-jj split -r @ -A <code_parent> -m "feat(scope): description" <code files...>
-
-# 4) Keep splitting @ until only intended remainder (often empty merge)
-jj split -r @ -A <latest_code_commit> -m "feat(scope): next chunk" <files...>
-
-# 5) Verify each split and final graph
-jj show --name-only <change_id>
-jj log -r "@ | @- | @-- | bookmarks()" --limit 20
-jj st
-
-# 6) Move docs bookmark when docs split advances
-jj bookmark move agent-docs --to <docs_change_id>
-```
-
-**Key points:**
-- Use `jj obslog -r @` to understand operation history before and after big rewrites
-- Use `jj split -r @ -A <parent>` to insert commits without collapsing the merge working head
-- For docs streams, split after docs parent and move `agent-docs` bookmark to the new docs commit
-- Validate file grouping with `jj show --name-only <change_id>` after each split
-- Recovery is cheap: `jj undo` reverts the last operation safely
-
-## Testing Rules
-
-**NEVER create standalone test harness binaries** (e.g. `DspScriptHostHarness.cpp`, `GraphSwapHarness.cpp`). These pollute the build, test things in unrealistic environments, and waste time debugging red herrings. Use `LooperHeadless` + `looper-cli` for all integration testing. This is a hard rule.
-
-**Existing harnesses** (`LuaEngineMockHarness`, `EndpointResolverHarness`, etc.) test isolated subsystems without the full processor — these are acceptable. The distinction: unit-testing a parser or resolver in isolation is fine; creating a fake "mini-processor" that partially recreates `LooperProcessor` is not.
 
 ## Socket Location
 
