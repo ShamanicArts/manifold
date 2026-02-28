@@ -950,7 +950,14 @@ function Widgets.WaveformView.new(parent, name, config)
     -- Rebind mouse callbacks directly to bypass BaseWidget metatable chain
     local wfSelf = self
     self.node:setOnMouseDown(function(mx, my)
+        if wfSelf._scrubbing and wfSelf._onScrubEnd then
+            wfSelf._onScrubEnd()
+        end
+
         wfSelf._scrubbing = true
+        if wfSelf._onScrubStart then
+            wfSelf._onScrubStart()
+        end
         -- Snap playhead to click position
         local w = wfSelf.node:getWidth()
         if w > 4 then
@@ -959,9 +966,6 @@ function Widgets.WaveformView.new(parent, name, config)
             if wfSelf._onScrubSnap then
                 wfSelf._onScrubSnap(pos, 0)
             end
-        end
-        if wfSelf._onScrubStart then
-            wfSelf._onScrubStart()
         end
     end)
     
@@ -983,6 +987,7 @@ function Widgets.WaveformView.new(parent, name, config)
     self.node:setOnMouseUp(function(mx, my)
         if wfSelf._scrubbing then
             wfSelf._scrubbing = false
+            wfSelf._lastScrubPos = nil
             if wfSelf._onScrubEnd then
                 wfSelf._onScrubEnd()
             end

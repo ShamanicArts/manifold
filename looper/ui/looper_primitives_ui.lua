@@ -1,5 +1,5 @@
--- looper_ui.lua
--- Primitive-compatible default Looper UI.
+-- looper_primitives_ui.lua
+-- Visual clone of looper_ui.lua wired to canonical behavior paths.
 
 local W = require("looper_widgets")
 
@@ -22,12 +22,33 @@ local kModeKeys = {"firstLoop", "freeMode", "traditional"}
 local kSegmentBars = {0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0}
 local kSegmentLabels = {"1/16", "1/8", "1/4", "1/2", "1", "2", "4", "8", "16"}
 
+local function toCanonicalPath(path)
+    if type(path) ~= "string" then
+        return path
+    end
+
+    if path == "/looper" then
+        return "/core/behavior"
+    end
+    if string.sub(path, 1, 8) == "/looper/" then
+        return "/core/behavior/" .. string.sub(path, 9)
+    end
+    if path == "/dsp/looper" then
+        return "/core/behavior"
+    end
+    if string.sub(path, 1, 12) == "/dsp/looper/" then
+        return "/core/behavior/" .. string.sub(path, 13)
+    end
+
+    return path
+end
+
 local function commandSet(path, value)
-    command("SET", path, tostring(value))
+    command("SET", toCanonicalPath(path), tostring(value))
 end
 
 local function commandTrigger(path)
-    command("TRIGGER", path)
+    command("TRIGGER", toCanonicalPath(path))
 end
 
 local function layerPath(layerIndex, suffix)
@@ -39,6 +60,26 @@ local function sanitizeSpeed(value)
     if speed < 0.1 then speed = 0.1 end
     if speed > 4.0 then speed = 4.0 end
     return speed
+end
+
+local function sanitizeScrubSpeed(value)
+    local speed = math.abs(tonumber(value) or 0.0)
+    if speed < 0.0 then speed = 0.0 end
+    if speed > 4.0 then speed = 4.0 end
+    return speed
+end
+
+local function wrap01(v)
+    while v < 0.0 do v = v + 1.0 end
+    while v >= 1.0 do v = v - 1.0 end
+    return v
+end
+
+local function shortestNormDiff(target, current)
+    local d = target - current
+    if d > 0.5 then d = d - 1.0 end
+    if d < -0.5 then d = d + 1.0 end
+    return d
 end
 
 local function modeText(mode)
@@ -56,7 +97,9 @@ local function readParam(params, path, fallback)
     if type(params) ~= "table" then
         return fallback
     end
-    local value = params[path]
+
+    local canonicalPath = toCanonicalPath(path)
+    local value = params[canonicalPath]
     if value == nil then
         return fallback
     end
@@ -73,12 +116,11 @@ end
 
 local function modeIndexFromString(mode)
     if type(mode) == "number" then
-        return math.max(0, math.min(3, math.floor(mode + 0.5)))
+        return math.max(0, math.min(2, math.floor(mode + 0.5)))
     end
     if mode == "firstLoop" then return 0 end
     if mode == "freeMode" then return 1 end
     if mode == "traditional" then return 2 end
-    if mode == "retrospective" then return 3 end
     return 0
 end
 
@@ -218,8 +260,7 @@ end
 -- ============================================================================
 
 function ui_init(root)
-    -- Normal looper UI should always start with graph processing disabled.
-    setParam("/looper/graph/enabled", 0.0)
+    -- Primitives runtime is graph-driven; keep graph active on startup.
 
     -- Root panel with dark background
     ui.rootPanel = W.Panel.new(root, "rootPanel", {
@@ -459,7 +500,7 @@ function ui_init(root)
     -- Layer Panels
     -- ==========================================================================
     ui.layerPanels = {}
-    ui.scrubHoldFrames = {}
+    ui.scrubStateByLayer = {}
     
     for i = 0, MAX_LAYERS - 1 do
         local layerIdx = i
@@ -493,85 +534,93 @@ function ui_init(root)
             fontSize = 10.0,
         })
 
-        -- Waveform view (vinyl-style scrub speed, with safe post-scrub restore)
+        -- Waveform view (vinyl scrub + strict 1:1 mouse->playhead pinning)
         local preScrubSpeed = 1.0
         local preScrubReversed = false
-        local scrubDidMove = false
-        local smoothedSignedSpeed = nil
-        local lastScrubSpeedSent = nil
-        local lastScrubReverseSent = nil
+
+        local scrub = {}
+        ui.scrubStateByLayer[layerIdx + 1] = scrub
+
         local waveform = W.WaveformView.new(panel.node, "wf" .. i, {
             mode = "layer",
             layerIndex = i,
             colour = 0xff22d3ee,
             on_scrub_start = function()
                 local layerData = current_state.layers and current_state.layers[layerIdx + 1] or {}
+                local length = layerData.length or 0
+
                 preScrubSpeed = sanitizeSpeed(layerData.speed or 1.0)
                 preScrubReversed = layerData.reversed or false
-                scrubDidMove = false
-                smoothedSignedSpeed = nil
-                lastScrubSpeedSent = nil
-                lastScrubReverseSent = nil
-                if ui.scrubHoldFrames then
-                    ui.scrubHoldFrames[layerIdx + 1] = 0
-                end
+
+                scrub.cursorPos = length > 0 and wrap01((layerData.position or 0) / math.max(1, length)) or 0.0
+                scrub.lastPinnedPos = nil
+                scrub.lastMotionFrame = ui.frameCounter or 0
+                scrub.smoothedSignedSpeed = 0.0
+                scrub.lastSpeedSent = nil
+                scrub.lastReverseSent = nil
+
+                -- No free-run while held still.
+                commandSet(layerPath(layerIdx, "speed"), 0.0)
+                scrub.lastSpeedSent = 0.0
             end,
             on_scrub_snap = function(pos, delta)
-                local motion = delta ~= nil and math.abs(delta) >= 0.0005
-
-                if not scrubDidMove then
-                    -- Initial pick-up: hard seek to cursor once.
-                    commandSet(layerPath(layerIdx, "seek"), pos)
-                    if not motion then
-                        return
-                    end
-                    scrubDidMove = true
-                end
-
-                if not motion then
-                    return
-                end
-
                 local layerData = current_state.layers and current_state.layers[layerIdx + 1] or {}
                 local length = layerData.length or 0
                 if length <= 0 then
                     return
                 end
 
+                local p = math.max(0.0, math.min(1.0, pos))
+                local prevCursor = scrub.cursorPos or p
+                local deltaNorm = p - prevCursor
+                scrub.cursorPos = p
+
+                -- Pin playhead to cursor (strict 1:1 mapping).
+                if scrub.lastPinnedPos == nil or math.abs(p - scrub.lastPinnedPos) > 0.0005 then
+                    commandSet(layerPath(layerIdx, "seek"), p)
+                    scrub.lastPinnedPos = p
+                end
+
+                local motion = math.abs(deltaNorm) >= 0.0006
+                if not motion then
+                    return
+                end
+
+                scrub.lastMotionFrame = ui.frameCounter or 0
+
+                -- Vinyl-like movement while dragging (smoothed), but cursor remains authoritative.
                 local sr = current_state.sampleRate or 44100
-                local samplesPerFrame = math.max(1.0, sr / 60.0)
-                local targetSignedSpeed = (delta * length) / samplesPerFrame
-                if smoothedSignedSpeed == nil then
-                    smoothedSignedSpeed = targetSignedSpeed
-                else
-                    smoothedSignedSpeed = smoothedSignedSpeed * 0.65 + targetSignedSpeed * 0.35
-                end
+                local samplesPerFrame = math.max(1.0, sr / 70.0)
+                local targetSignedSpeed = (deltaNorm * length) / samplesPerFrame
+                local prev = scrub.smoothedSignedSpeed or 0.0
+                local signedSpeed = prev * 0.6 + targetSignedSpeed * 0.4
+                scrub.smoothedSignedSpeed = signedSpeed
 
-                local signedSpeed = smoothedSignedSpeed
-                local absSpeed = sanitizeSpeed(signedSpeed)
+                local absSpeed = sanitizeScrubSpeed(signedSpeed)
+                local rev = signedSpeed < 0.0
 
-                local rev = preScrubReversed
-                if math.abs(signedSpeed) >= 0.06 then
-                    rev = signedSpeed < 0
-                elseif lastScrubReverseSent ~= nil then
-                    rev = lastScrubReverseSent
-                end
-
-                if lastScrubSpeedSent == nil or math.abs(absSpeed - lastScrubSpeedSent) > 0.02 then
+                if scrub.lastSpeedSent == nil or math.abs(absSpeed - scrub.lastSpeedSent) > 0.01 then
                     commandSet(layerPath(layerIdx, "speed"), absSpeed)
-                    lastScrubSpeedSent = absSpeed
+                    scrub.lastSpeedSent = absSpeed
                 end
-                if lastScrubReverseSent == nil or rev ~= lastScrubReverseSent then
+                if scrub.lastReverseSent == nil or rev ~= scrub.lastReverseSent then
                     commandSet(layerPath(layerIdx, "reverse"), rev and 1 or 0)
-                    lastScrubReverseSent = rev
+                    scrub.lastReverseSent = rev
                 end
             end,
             on_scrub_end = function()
+                if scrub.cursorPos ~= nil then
+                    commandSet(layerPath(layerIdx, "seek"), scrub.cursorPos)
+                end
                 commandSet(layerPath(layerIdx, "speed"), preScrubSpeed)
                 commandSet(layerPath(layerIdx, "reverse"), preScrubReversed and 1 or 0)
-                if ui.scrubHoldFrames then
-                    ui.scrubHoldFrames[layerIdx + 1] = 8
-                end
+
+                scrub.cursorPos = nil
+                scrub.lastPinnedPos = nil
+                scrub.lastMotionFrame = nil
+                scrub.smoothedSignedSpeed = nil
+                scrub.lastSpeedSent = nil
+                scrub.lastReverseSent = nil
             end,
         })
         
@@ -797,6 +846,7 @@ end
 -- ============================================================================
 
 function ui_update(s)
+    ui.frameCounter = (ui.frameCounter or 0) + 1
     current_state = normalizeState(s)
     local state = current_state
     recButtonLatched = state.isRecording or false
@@ -807,14 +857,8 @@ function ui_update(s)
 
     -- Transport
     if ui.modeDropdown then
-        -- Map mode index: 0=FirstLoop, 1=Free, 2=Traditional (skip 3=Retrospective)
         local modeInt = state.recordModeInt or 0
-        if modeInt <= 2 then
-            ui.modeDropdown:setSelected(modeInt + 1)
-        else
-            -- If retrospective is set from the backend, show as first loop
-            ui.modeDropdown:setSelected(1)
-        end
+        ui.modeDropdown:setSelected(math.max(1, math.min(3, modeInt + 1)))
     end
     
     if ui.recBtn then
@@ -880,16 +924,34 @@ function ui_update(s)
             layer.waveform:setPlayheadPos(-1)
         end
         
+        if layer.waveform._scrubbing then
+            local scrub = ui.scrubStateByLayer and ui.scrubStateByLayer[i]
+            if scrub then
+                local pinned = scrub.cursorPos
+                if pinned ~= nil then
+                    local lastPinned = scrub.lastPinnedPos
+                    if lastPinned == nil or math.abs(pinned - lastPinned) > 0.0002 then
+                        commandSet(layerPath(layer.layerIdx, "seek"), pinned)
+                        scrub.lastPinnedPos = pinned
+                    end
+                end
+
+                local lastMotion = scrub.lastMotionFrame or ui.frameCounter
+                if (ui.frameCounter - lastMotion) >= 1 then
+                    local lastSpeed = scrub.lastSpeedSent
+                    if lastSpeed == nil or math.abs(lastSpeed) > 0.0001 then
+                        commandSet(layerPath(layer.layerIdx, "speed"), 0.0)
+                        scrub.lastSpeedSent = 0.0
+                    end
+                end
+            end
+        end
+
         -- Vol knob
         layer.volKnob:setValue(layerData.volume or 1.0)
         
-        -- Speed knob: negative when reversed (suppress during scrub + brief restore hold)
-        local hold = (ui.scrubHoldFrames and ui.scrubHoldFrames[i]) or 0
-        if hold > 0 then
-            if ui.scrubHoldFrames then
-                ui.scrubHoldFrames[i] = hold - 1
-            end
-        elseif not layer.waveform._scrubbing then
+        -- Speed knob: negative when reversed (do not fight while scrubbing)
+        if not layer.waveform._scrubbing then
             local speed = layerData.speed or 1.0
             if layerData.reversed then speed = -speed end
             layer.speedKnob:setValue(speed)
