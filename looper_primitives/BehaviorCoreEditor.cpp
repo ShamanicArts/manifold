@@ -83,7 +83,7 @@ void BehaviorCoreEditor::paint(juce::Graphics& g) {
 }
 
 void BehaviorCoreEditor::resized() {
-    rootCanvas.setBounds(getLocalBounds().reduced(12));
+    rootCanvas.setBounds(getLocalBounds());
     if (usingLuaUi) {
         luaEngine.notifyResized(rootCanvas.getWidth(), rootCanvas.getHeight());
     } else if (errorNode != nullptr) {

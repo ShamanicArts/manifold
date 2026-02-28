@@ -87,8 +87,8 @@ public:
     const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int, const juce::String&) override {}
 
-    void getStateInformation(juce::MemoryBlock&) override {}
-    void setStateInformation(const void*, int) override {}
+    void getStateInformation(juce::MemoryBlock&) override;
+    void setStateInformation(const void*, int) override;
 
     // ScriptableProcessor
     bool postControlCommandPayload(const ControlCommand& command) override;
@@ -186,6 +186,20 @@ public:
     void requestLinkStart() override;
     void requestLinkStop() override;
     void processLinkPendingRequests() override;
+
+    // ========================================================================
+    // IStateSerializer implementation (Looper-specific state schema)
+    // ========================================================================
+    void serializeStateToLua(sol::state& lua) const override;
+    std::string serializeStateToJson() const override;
+    std::vector<StateField> getStateSchema() const override;
+    std::string getValueAtPath(const std::string& path) const override;
+    bool hasPathChanged(const std::string& path) const override;
+    void updateChangeCache() override;
+    void subscribeToPath(const std::string& path, StateChangeCallback callback) override;
+    void unsubscribeFromPath(const std::string& path) override;
+    void clearSubscriptions() override;
+    void processPendingChanges() override;
 
     std::string getAndClearPendingUISwitch();
 

@@ -5,6 +5,8 @@
 #include "../looper/primitives/scripting/DSPPluginScriptHost.h"
 #include "../looper/primitives/scripting/GraphRuntime.h"
 
+#include <sol/sol.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -183,7 +185,7 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     // Process Ableton Link - updates tempo from network if sync enabled
     const int numSamples = buffer.getNumSamples();
     if (linkSync.processAudio(numSamples)) {
-        // Tempo was updated from Link, update atomic state
+        // Tempo was updated from Link, update atomic state and forward to DSP
         auto& state = controlServer.getAtomicState();
         const double linkTempo = linkSync.getTempo();
         state.tempo.store(static_cast<float>(linkTempo), std::memory_order_relaxed);
@@ -191,12 +193,26 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                     static_cast<float>(linkTempo),
                                     currentSampleRate.load(std::memory_order_relaxed)),
                                 std::memory_order_relaxed);
+        // Forward tempo change to DSP script
+        if (dspScriptHost) {
+            (void)dspScriptHost->setParam("/core/behavior/tempo", static_cast<float>(linkTempo));
+        }
+        for (auto& entry : dspSlots) {
+            auto* host = entry.second.get();
+            if (host != nullptr) {
+                (void)host->setParam("/core/behavior/tempo", static_cast<float>(linkTempo));
+            }
+        }
     }
 
-    auto& state = controlServer.getAtomicState();
     const int numChannels = buffer.getNumChannels();
     float* outL = numChannels > 0 ? buffer.getWritePointer(0) : nullptr;
     float* outR = numChannels > 1 ? buffer.getWritePointer(1) : outL;
+
+    auto& state = controlServer.getAtomicState();
+
+    // Input volume controls level going into looper (capture + graph)
+    const float inputVolume = state.inputVolume.load(std::memory_order_relaxed);
 
     // Capture-plane source comes from incoming block before any output scaling.
     // Use the same write pointers legacy uses for in-place host buffers.
@@ -205,22 +221,22 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     // Capture-plane source buffer is always fed from incoming input stream
     // (or injected stream when INJECT is active), before any wet/dry mixing.
+    // Apply inputVolume to capture so input knob controls what goes into looper.
     if (controlServer.isInjecting()) {
-        controlServer.drainInjection(captureBuffer, numSamples);
+        controlServer.drainInjection(captureBuffer, numSamples, inputVolume);
     } else if (captureL != nullptr) {
-        captureBuffer.writeBlock(captureL, numSamples, 0);
+        captureBuffer.writeBlock(captureL, numSamples, 0, inputVolume);
         if (captureR != nullptr) {
-            captureBuffer.writeBlock(captureR, numSamples, 1);
+            captureBuffer.writeBlock(captureR, numSamples, 1, inputVolume);
         }
     }
 
     state.captureSize.store(captureBuffer.getSize(), std::memory_order_relaxed);
     state.captureWritePos.store(captureBuffer.getOffsetToNow(), std::memory_order_relaxed);
-
-    const float dryGain =
-        state.passthroughEnabled.load(std::memory_order_relaxed)
-            ? state.inputVolume.load(std::memory_order_relaxed) * 0.7f
-            : 0.0f;
+    // Dry gain is for monitor passthrough only (controlled by passthrough toggle)
+    const float dryGain = state.passthroughEnabled.load(std::memory_order_relaxed)
+                          ? inputVolume * 0.7f
+                          : 0.0f;
     const float wetGain = state.masterVolume.load(std::memory_order_relaxed);
 
     const bool graphEnabled = graphProcessingEnabled.load(std::memory_order_relaxed);
@@ -233,9 +249,8 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         graphWetBuffer.getNumSamples() >= numSamples;
 
     if (canProcessGraph) {
-        // Build graph input from host input using the same monitor gain contract
-        // as dry passthrough so all UIs/scripts share one input volume + toggle.
-        const float graphInputGain = dryGain;
+        // Graph input uses inputVolume (goes into looper), not dryGain (monitor only)
+        const float graphInputGain = inputVolume;
         for (int ch = 0; ch < numChannels; ++ch) {
             graphWetBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
             graphWetBuffer.applyGain(ch, 0, numSamples, graphInputGain);
@@ -1468,6 +1483,221 @@ void BehaviorCoreProcessor::requestLinkStop() {
 
 void BehaviorCoreProcessor::processLinkPendingRequests() {
     linkSync.processPendingRequests();
+}
+
+// ============================================================================
+// IStateSerializer Implementation (Looper-specific state schema)
+// ============================================================================
+
+namespace {
+
+const char* toLayerStateString(ScriptableLayerState state) {
+    switch (state) {
+        case ScriptableLayerState::Empty: return "empty";
+        case ScriptableLayerState::Playing: return "playing";
+        case ScriptableLayerState::Recording: return "recording";
+        case ScriptableLayerState::Overdubbing: return "overdubbing";
+        case ScriptableLayerState::Muted: return "muted";
+        case ScriptableLayerState::Stopped: return "stopped";
+        case ScriptableLayerState::Paused: return "paused";
+        default: return "unknown";
+    }
+}
+
+const char* toRecordModeString(int mode) {
+    switch (mode) {
+        case 0: return "firstLoop";
+        case 1: return "freeMode";
+        case 2: return "traditional";
+        case 3: return "retrospective";
+        default: return "firstLoop";
+    }
+}
+
+} // namespace
+
+void BehaviorCoreProcessor::serializeStateToLua(sol::state& lua) const {
+    auto state = lua.create_table();
+
+    const float tempo = getTempo();
+    const float targetBPM = getTargetBPM();
+    const float samplesPerBar = getSamplesPerBar();
+    const double sampleRate = getSampleRate();
+    const float masterVolume = getMasterVolume();
+    const float inputVolume = getInputVolume();
+    const bool passthroughEnabled = isPassthroughEnabled();
+    const bool recording = this->isRecording();
+    const bool overdubEnabled = this->isOverdubEnabled();
+    const int activeLayerIndex = getActiveLayerIndex();
+    const bool forwardCommitArmed = isForwardCommitArmed();
+    const float forwardCommitBars = getForwardCommitBars();
+    const int recordModeIndex = getRecordModeIndex();
+    const int numLayers = getNumLayers();
+    const int captureSize = getCaptureSize();
+    const char* recordModeString = toRecordModeString(recordModeIndex);
+
+    state["projectionVersion"] = 2;
+    state["numVoices"] = numLayers;
+
+    auto params = lua.create_table();
+    auto setBehaviorParam = [&](const std::string& suffix, const auto& value) {
+        params["/looper" + suffix] = value;
+        params["/core/behavior" + suffix] = value;
+        params["/dsp/looper" + suffix] = value;
+    };
+
+    setBehaviorParam("/tempo", tempo);
+    setBehaviorParam("/targetbpm", targetBPM);
+    setBehaviorParam("/samplesPerBar", samplesPerBar);
+    setBehaviorParam("/sampleRate", sampleRate);
+    setBehaviorParam("/captureSize", captureSize);
+    setBehaviorParam("/volume", masterVolume);
+    setBehaviorParam("/inputVolume", inputVolume);
+    setBehaviorParam("/passthrough", passthroughEnabled ? 1 : 0);
+    setBehaviorParam("/recording", recording ? 1 : 0);
+    setBehaviorParam("/overdub", overdubEnabled ? 1 : 0);
+    setBehaviorParam("/mode", recordModeString);
+    setBehaviorParam("/layer", activeLayerIndex);
+    setBehaviorParam("/forwardArmed", forwardCommitArmed ? 1 : 0);
+    setBehaviorParam("/forwardBars", forwardCommitBars);
+
+    auto voices = lua.create_table();
+    for (int i = 0; i < numLayers; ++i) {
+        ScriptableLayerSnapshot layer;
+        if (!getLayerSnapshot(i, layer)) {
+            continue;
+        }
+
+        const char* layerStateString = toLayerStateString(layer.state);
+        const float normalizedPosition = (layer.length > 0)
+            ? static_cast<float>(layer.position) / static_cast<float>(layer.length)
+            : 0.0f;
+        const float bars = (samplesPerBar > 0.0f)
+            ? static_cast<float>(layer.length) / samplesPerBar
+            : 0.0f;
+        const bool muted = layer.muted;
+
+        const std::string looperLayerPrefix = "/looper/layer/" + std::to_string(i);
+        const std::string coreLayerPrefix = "/core/behavior/layer/" + std::to_string(i);
+        const std::string dspLayerPrefix = "/dsp/looper/layer/" + std::to_string(i);
+
+        auto setLayerParam = [&](const std::string& suffix, const auto& value) {
+            params[looperLayerPrefix + suffix] = value;
+            params[coreLayerPrefix + suffix] = value;
+            params[dspLayerPrefix + suffix] = value;
+        };
+
+        setLayerParam("/speed", layer.speed);
+        setLayerParam("/volume", layer.volume);
+        setLayerParam("/mute", muted ? 1 : 0);
+        setLayerParam("/reverse", layer.reversed ? 1 : 0);
+        setLayerParam("/length", layer.length);
+        setLayerParam("/position", normalizedPosition);
+        setLayerParam("/bars", bars);
+        setLayerParam("/state", layerStateString);
+
+        auto voice = lua.create_table();
+        voice["id"] = i;
+        voice["path"] = looperLayerPrefix;
+        voice["state"] = layerStateString;
+        voice["length"] = layer.length;
+        voice["position"] = layer.position;
+        voice["positionNorm"] = normalizedPosition;
+        voice["speed"] = layer.speed;
+        voice["reversed"] = layer.reversed;
+        voice["volume"] = layer.volume;
+        voice["bars"] = bars;
+
+        auto voiceParams = lua.create_table();
+        voiceParams["speed"] = layer.speed;
+        voiceParams["volume"] = layer.volume;
+        voiceParams["mute"] = muted ? 1 : 0;
+        voiceParams["reverse"] = layer.reversed ? 1 : 0;
+        voiceParams["length"] = layer.length;
+        voiceParams["position"] = normalizedPosition;
+        voiceParams["bars"] = bars;
+        voiceParams["state"] = layerStateString;
+        voice["params"] = voiceParams;
+
+        voices[i + 1] = voice;
+    }
+
+    state["params"] = params;
+    state["voices"] = voices;
+
+    // Ableton Link state
+    auto linkState = lua.create_table();
+    linkState["enabled"] = isLinkEnabled();
+    linkState["tempoSync"] = isLinkTempoSyncEnabled();
+    linkState["startStopSync"] = isLinkStartStopSyncEnabled();
+    linkState["peers"] = getLinkNumPeers();
+    linkState["playing"] = isLinkPlaying();
+    linkState["beat"] = getLinkBeat();
+    linkState["phase"] = getLinkPhase();
+    state["link"] = linkState;
+
+    // Spectrum analysis data for visualization
+    auto spectrum = getSpectrumData();
+    sol::table spectrumTable = lua.create_table();
+    for (int i = 0; i < static_cast<int>(spectrum.size()); ++i) {
+        spectrumTable[i + 1] = spectrum[i];
+    }
+    state["spectrum"] = spectrumTable;
+
+    lua["state"] = state;
+}
+
+std::string BehaviorCoreProcessor::serializeStateToJson() const {
+    // TODO: Implement JSON serialization matching Lua structure
+    // For now, return minimal JSON (implement when needed for OSCQuery)
+    return "{}";
+}
+
+std::vector<IStateSerializer::StateField> BehaviorCoreProcessor::getStateSchema() const {
+    // TODO: Implement schema describing all looper state paths
+    // For now, return empty (implement when needed for OSCQuery)
+    return {};
+}
+
+std::string BehaviorCoreProcessor::getValueAtPath(const std::string& path) const {
+    // TODO: Implement path-based value queries
+    (void)path;
+    return "";
+}
+
+bool BehaviorCoreProcessor::hasPathChanged(const std::string& path) const {
+    // TODO: Implement change tracking
+    (void)path;
+    return false;
+}
+
+void BehaviorCoreProcessor::updateChangeCache() {
+    // TODO: Implement change cache update
+}
+
+void BehaviorCoreProcessor::subscribeToPath(const std::string& path, StateChangeCallback callback) {
+    // TODO: Implement subscription management
+    (void)path;
+    (void)callback;
+}
+
+void BehaviorCoreProcessor::unsubscribeFromPath(const std::string& path) {
+    // TODO: Implement unsubscription
+    (void)path;
+}
+
+void BehaviorCoreProcessor::clearSubscriptions() {
+    // TODO: Implement subscription clearing
+}
+
+void BehaviorCoreProcessor::processPendingChanges() {
+    // TODO: Implement pending change processing
+}
+
+void BehaviorCoreProcessor::getStateInformation(juce::MemoryBlock&) {
+}
+
+void BehaviorCoreProcessor::setStateInformation(const void*, int) {
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
