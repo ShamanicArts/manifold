@@ -1,0 +1,8 @@
+{
+  "oscPort": 9000,
+  "oscQueryPort": 9001,
+  "defaultUiScript": "/home/shamanic/dev/my-plugin/looper/ui/looper_ui.lua",
+  "devScriptsDir": "/home/shamanic/dev/my-plugin/looper/ui/",
+  "userScriptsDir": "/home/shamanic/dev/my-plugin/UserScripts/UI",
+  "dspScriptsDir": "/home/shamanic/dev/my-plugin/looper/dsp/"
+}

@@ -144,7 +144,9 @@ set(MANIFOLD_RUNTIME_SOURCES
     looper/primitives/scripting/bindings/LuaControlBindings.h
     looper/primitives/scripting/bindings/LuaControlBindings.cpp
     looper/primitives/scripting/DSPPluginScriptHost.h
-    looper/primitives/scripting/DSPPluginScriptHost.cpp)
+    looper/primitives/scripting/DSPPluginScriptHost.cpp
+    looper/primitives/core/Settings.h
+    looper/primitives/core/Settings.cpp)
 
 set(MANIFOLD_CORE_SOURCES
     looper_primitives/BehaviorCoreProcessor.h
@@ -199,6 +201,22 @@ target_link_libraries(Manifold
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# Copy ALL Lua UI files to Manifold Standalone output directory
+add_custom_command(TARGET Manifold POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/looper/ui
+        $<TARGET_FILE_DIR:Manifold>
+    COMMENT "Copying Lua UI files for Manifold Standalone"
+)
+
+# Copy ALL Lua UI files to Manifold VST3 bundle (inside .vst3 next to .so)
+add_custom_command(TARGET Manifold_VST3 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/looper/ui
+        $<TARGET_FILE_DIR:Manifold_VST3>
+    COMMENT "Copying Lua UI files for Manifold VST3"
+)
 
 # Headless test harnesses
 add_executable(ManifoldHeadless looper/headless/ManifoldHeadless.cpp)
@@ -395,3 +413,25 @@ target_link_libraries(Tempus
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# Copy Lua UI files to Tempus Standalone output directory
+add_custom_command(TARGET Tempus POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_plugins/Tempus/firstloop_ui.lua
+        $<TARGET_FILE_DIR:Tempus>/firstloop_ui.lua
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_plugins/Tempus/looper_widgets.lua
+        $<TARGET_FILE_DIR:Tempus>/looper_widgets.lua
+    COMMENT "Copying Lua UI files for Tempus Standalone"
+)
+
+# Copy Lua UI files to Tempus VST3 bundle (inside .vst3 next to .so)
+add_custom_command(TARGET Tempus_VST3 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_plugins/Tempus/firstloop_ui.lua
+        $<TARGET_FILE_DIR:Tempus_VST3>/firstloop_ui.lua
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_plugins/Tempus/looper_widgets.lua
+        $<TARGET_FILE_DIR:Tempus_VST3>/looper_widgets.lua
+    COMMENT "Copying Lua UI files for Tempus VST3"
+)
