@@ -19,6 +19,7 @@ local PARAM_HEADER_H = 98
 local PARAM_SCROLLBAR_W = 12
 local PARAM_SCROLLBAR_GAP = 4
 local PARAM_SCROLL_STEP = 28
+local LIVE_SLOT = "live_editor"
 
 local LUA_KEYWORDS = {
     ["and"] = true,
@@ -801,6 +802,12 @@ local function endpointAvailable(path)
     return true
 end
 
+local function setLiveSlotPersistOnSwitch(persist)
+    if type(setDspSlotPersistOnUiSwitch) == "function" then
+        pcall(setDspSlotPersistOnUiSwitch, LIVE_SLOT, persist and true or false)
+    end
+end
+
 local function setStatus(text)
     state.status = text or ""
     local err = getDspScriptLastError() or ""
@@ -1017,7 +1024,10 @@ local function runEditorScript()
         textHash32(state.scriptText)
     )
 
-    local LIVE_SLOT = "live_editor"
+    -- Live editor input/effect routes are transient by default: they should
+    -- not bleed into other UIs unless a script explicitly opts in.
+    setLiveSlotPersistOnSwitch(false)
+
     local ok = false
     if type(loadDspScriptFromStringInSlot) == "function" then
         ok = loadDspScriptFromStringInSlot(state.scriptText, sourceName, LIVE_SLOT)
@@ -1052,7 +1062,7 @@ end
 local function stopEditorScript()
     -- Unload the live editor slot to remove its nodes from the graph.
     -- The default looper slot's nodes are untouched.
-    local LIVE_SLOT = "live_editor"
+    setLiveSlotPersistOnSwitch(false)
     if type(unloadDspSlot) == "function" then
         unloadDspSlot(LIVE_SLOT)
         setStatus("live editor slot unloaded")
@@ -1814,6 +1824,9 @@ function ui_init(rootNode)
         handleParamScrollWheel(dy)
     end)
 
+    -- Live editor slot should be transient unless explicitly pinned by script.
+    setLiveSlotPersistOnSwitch(false)
+
     applyPresetToEditor(state.selectedPreset)
     relayout()
     state.lastW = math.floor(root:getWidth())
@@ -1836,4 +1849,13 @@ function ui_update(engineState)
 
     refreshMetrics()
     refreshParamControlState()
+end
+
+function ui_cleanup()
+    -- Ensure live-editor input/effect chains do not persist across UI switches
+    -- unless explicitly requested by a script.
+    setLiveSlotPersistOnSwitch(false)
+    if type(unloadDspSlot) == "function" then
+        unloadDspSlot(LIVE_SLOT)
+    end
 end

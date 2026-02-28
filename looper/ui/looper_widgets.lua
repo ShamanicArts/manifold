@@ -950,8 +950,18 @@ function Widgets.WaveformView.new(parent, name, config)
     -- Rebind mouse callbacks directly to bypass BaseWidget metatable chain
     local wfSelf = self
     self.node:setOnMouseDown(function(mx, my)
-        if wfSelf._scrubbing and wfSelf._onScrubEnd then
-            wfSelf._onScrubEnd()
+        -- If already scrubbing, just update position without restart
+        -- This prevents speed capture/restore issues on rapid clicks
+        if wfSelf._scrubbing then
+            local w = wfSelf.node:getWidth()
+            if w > 4 then
+                local pos = math.max(0, math.min(1, (mx - 2) / (w - 4)))
+                wfSelf._lastScrubPos = pos
+                if wfSelf._onScrubSnap then
+                    wfSelf._onScrubSnap(pos, 0)
+                end
+            end
+            return
         end
 
         wfSelf._scrubbing = true
@@ -1232,6 +1242,12 @@ function Widgets.NumberBox.new(parent, name, config)
     self._dragStartY = 0
     self._dragStartValue = 0
     self._format = config.format or (self._step >= 1 and "%d" or "%.1f")
+    self._clickTarget = nil
+    -- Auto-repeat state for +/- buttons
+    self._buttonHeld = nil  -- "minus" or "plus" when held
+    self._repeatDelay = 15  -- frames before auto-repeat starts (~250ms)
+    self._repeatInterval = 3  -- frames between repeats (~50ms)
+    self._repeatCounter = 0
     
     return self
 end
@@ -1242,12 +1258,19 @@ function Widgets.NumberBox:onMouseDown(mx, my)
     
     if mx < btnW then
         -- Minus button
+        self._clickTarget = "minus"
+        self._buttonHeld = "minus"
+        self._repeatCounter = 0
         self:_adjust(-1)
     elseif mx > w - btnW then
         -- Plus button
+        self._clickTarget = "plus"
+        self._buttonHeld = "plus"
+        self._repeatCounter = 0
         self:_adjust(1)
     else
         -- Start drag on the value area
+        self._clickTarget = "value"
         self._dragging = true
         self._dragStartY = my
         self._dragStartValue = self._value
@@ -1273,6 +1296,8 @@ function Widgets.NumberBox:onMouseUp(mx, my)
 end
 
 function Widgets.NumberBox:onDoubleClick()
+    -- Only reset to default if double-click was on the value area, not +/- buttons
+    if self._clickTarget ~= "value" then return end
     if self._value ~= self._defaultValue then
         self._value = self._defaultValue
         if self._onChange then

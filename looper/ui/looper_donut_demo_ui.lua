@@ -40,6 +40,16 @@ end
 
 local DONUT_SLOT = "donut"
 
+local function setDonutSlotPersistOnSwitch(persist)
+    if type(setDspSlotPersistOnUiSwitch) == "function" then
+        pcall(setDspSlotPersistOnUiSwitch, DONUT_SLOT, persist and true or false)
+    end
+end
+
+local function setDonutInputMonitorEnabled(enabled)
+    setBehaviorParam("/core/slots/donut/input/monitor", enabled and 1.0 or 0.0)
+end
+
 local function ensureDonutDemoGraphLoaded()
     local loaded = false
 
@@ -48,6 +58,8 @@ local function ensureDonutDemoGraphLoaded()
     if type(isDspSlotLoaded) == "function" then
         local ok, alive = pcall(isDspSlotLoaded, DONUT_SLOT)
         if ok and alive == true then
+            setDonutSlotPersistOnSwitch(true)
+            setDonutInputMonitorEnabled(true)
             ui.dspLoaded = true
             ui.graphEnabled = true
             return true
@@ -84,6 +96,10 @@ local function ensureDonutDemoGraphLoaded()
 
     -- Graph should already be enabled in the persistent graph architecture.
     -- No need to toggle setGraphProcessingEnabled.
+    if loaded then
+        setDonutSlotPersistOnSwitch(true)
+        setDonutInputMonitorEnabled(true)
+    end
     ui.dspLoaded = loaded
     ui.graphEnabled = loaded
     return loaded
@@ -592,7 +608,10 @@ function ui_update(s)
 end
 
 function ui_cleanup()
-    -- Keep donut slot alive across UI switches.
-    -- Composable architecture requirement: loops from this slot must continue
-    -- playing when switching to other UIs (including live DSP scripting UI).
+    -- Keep donut looper slot alive across UI switches.
+    setDonutSlotPersistOnSwitch(true)
+
+    -- But disable live-input FX routing when this UI is not active so input
+    -- processing does not persist unintentionally across UIs.
+    setDonutInputMonitorEnabled(false)
 end

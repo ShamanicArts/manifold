@@ -24,25 +24,13 @@ local function readBoolParam(params, path, fallback)
     return raw == true or raw == 1
 end
 
-local function isDeprecatedUiScript(path, currentPath)
-    if type(path) ~= "string" then
-        return false
-    end
-    if path:match("/wiring_demo%.lua$") and path ~= currentPath then
-        return true
-    end
-    return false
-end
-
 local function getVisibleUiScripts(currentPath)
     local listed = listUiScripts() or {}
     local visible = {}
     for i = 1, #listed do
         local s = listed[i]
         if type(s) == "table" and type(s.path) == "string" then
-            if not isDeprecatedUiScript(s.path, currentPath) then
-                visible[#visible + 1] = s
-            end
+            visible[#visible + 1] = s
         end
     end
     return visible
@@ -77,7 +65,7 @@ function Shell.create(parentNode, options)
         label = "Master", suffix = "",
         colour = 0xffa78bfa,
         on_change = function(v)
-            command("SET", "/looper/volume", tostring(v))
+            command("SET", "/core/behavior/volume", tostring(v))
         end,
     })
 
@@ -86,7 +74,7 @@ function Shell.create(parentNode, options)
         label = "Input", suffix = "",
         colour = 0xfff59e0b,
         on_change = function(v)
-            command("SET", "/looper/inputVolume", tostring(v))
+            command("SET", "/core/behavior/inputVolume", tostring(v))
         end,
     })
 
@@ -96,7 +84,7 @@ function Shell.create(parentNode, options)
         offColour = 0xff475569,
         value = true,
         on_change = function(on)
-            command("SET", "/looper/passthrough", on and "1" or "0")
+            command("SET", "/core/behavior/passthrough", on and "1" or "0")
         end,
     })
 
@@ -220,9 +208,9 @@ function Shell.create(parentNode, options)
 
     function shell:updateFromState(state)
         local params = state and state.params or state or {}
-        self.masterKnob:setValue(readParam(params, "/looper/volume", 0.8))
-        self.inputKnob:setValue(readParam(params, "/looper/inputVolume", 1.0))
-        self.passthroughToggle:setValue(readBoolParam(params, "/looper/passthrough", true))
+        self.masterKnob:setValue(readParam(params, "/core/behavior/volume", 0.8))
+        self.inputKnob:setValue(readParam(params, "/core/behavior/inputVolume", 1.0))
+        self.passthroughToggle:setValue(readBoolParam(params, "/core/behavior/passthrough", true))
     end
 
     return shell
