@@ -29,8 +29,8 @@ int main() {
   };
 
   ResolvedEndpoint tempo;
-  if (!check(resolver.resolve("/looper/tempo", tempo),
-             "resolve /looper/tempo")) {
+  if (!check(resolver.resolve("/core/behavior/tempo", tempo),
+             "resolve /core/behavior/tempo")) {
     return 2;
   }
   if (!check(tempo.valueType == ResolverValueType::Float,
@@ -53,7 +53,7 @@ int main() {
   }
 
   ResolvedEndpoint recState;
-  if (!check(resolver.resolve("/looper/recording", recState),
+  if (!check(resolver.resolve("/core/behavior/recording", recState),
              "resolve read-only endpoint")) {
     return 7;
   }
@@ -65,7 +65,7 @@ int main() {
   }
 
   ResolvedEndpoint recTrigger;
-  if (!check(resolver.resolve("/looper/rec", recTrigger),
+  if (!check(resolver.resolve("/core/behavior/rec", recTrigger),
              "resolve trigger endpoint")) {
     return 9;
   }
@@ -109,7 +109,7 @@ int main() {
   }
 
   ResolvedEndpoint reverse;
-  if (!check(resolver.resolve("/looper/layer/0/reverse", reverse),
+  if (!check(resolver.resolve("/core/behavior/layer/0/reverse", reverse),
              "resolve layer reverse endpoint")) {
     return 17;
   }
@@ -137,8 +137,8 @@ int main() {
   }
 
   ResolvedEndpoint layerIndex;
-  if (!check(resolver.resolve("/looper/layer", layerIndex),
-             "resolve /looper/layer int endpoint")) {
+  if (!check(resolver.resolve("/core/behavior/layer", layerIndex),
+             "resolve /core/behavior/layer int endpoint")) {
     return 22;
   }
   const auto layerIntExact = resolver.validateWrite(layerIndex, juce::var(2));
@@ -163,8 +163,8 @@ int main() {
   }
 
   ResolvedEndpoint mode;
-  if (!check(resolver.resolve("/looper/mode", mode),
-             "resolve /looper/mode string endpoint")) {
+  if (!check(resolver.resolve("/core/behavior/mode", mode),
+             "resolve /core/behavior/mode string endpoint")) {
     return 26;
   }
   const auto modeExact = resolver.validateWrite(mode, juce::var("freeMode"));
@@ -194,7 +194,7 @@ int main() {
   const int beforeRebuildId = tempo.runtimeId;
   resolver.rebuild();
   ResolvedEndpoint tempoAfter;
-  if (!check(resolver.resolve("/looper/tempo", tempoAfter),
+  if (!check(resolver.resolve("/core/behavior/tempo", tempoAfter),
              "resolve tempo after rebuild")) {
     return 30;
   }

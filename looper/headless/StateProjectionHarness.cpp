@@ -109,42 +109,42 @@ int main() {
   check(static_cast<int>(voicesArray->size()) == AtomicState::MAX_LAYERS,
         "voices array has expected entries");
 
-  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/tempo")),
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/core/behavior/tempo")),
                     133.5),
         "params tempo matches atomic tempo");
-  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/targetbpm")),
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/core/behavior/targetbpm")),
                     128.25),
         "params targetbpm matches atomic targetBPM");
   check(nearlyEqual(
-            static_cast<double>(paramsObject->getProperty("/looper/samplesPerBar")),
+            static_cast<double>(paramsObject->getProperty("/core/behavior/samplesPerBar")),
             88200.0),
         "params samplesPerBar matches atomic samplesPerBar");
-  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/sampleRate")),
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/core/behavior/sampleRate")),
                     48000.0),
         "params sampleRate matches atomic sampleRate");
-  check(static_cast<int>(paramsObject->getProperty("/looper/captureSize")) == 2048,
+  check(static_cast<int>(paramsObject->getProperty("/core/behavior/captureSize")) == 2048,
         "params captureSize matches atomic captureSize");
-  check(static_cast<int>(paramsObject->getProperty("/looper/recording")) == 1,
+  check(static_cast<int>(paramsObject->getProperty("/core/behavior/recording")) == 1,
         "params recording matches atomic recording");
-  check(static_cast<int>(paramsObject->getProperty("/looper/overdub")) == 0,
+  check(static_cast<int>(paramsObject->getProperty("/core/behavior/overdub")) == 0,
         "params overdub matches atomic overdub");
-  check(paramsObject->getProperty("/looper/mode").toString() == "freeMode",
+  check(paramsObject->getProperty("/core/behavior/mode").toString() == "freeMode",
         "params mode matches atomic record mode");
-  check(static_cast<int>(paramsObject->getProperty("/looper/layer")) == 2,
+  check(static_cast<int>(paramsObject->getProperty("/core/behavior/layer")) == 2,
         "params layer matches atomic activeLayer");
-  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/volume")),
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/core/behavior/volume")),
                     0.73),
         "params volume matches atomic masterVolume");
-  check(static_cast<int>(paramsObject->getProperty("/looper/forwardArmed")) == 1,
+  check(static_cast<int>(paramsObject->getProperty("/core/behavior/forwardArmed")) == 1,
         "params forwardArmed matches atomic forwardArmed");
-  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/looper/forwardBars")),
+  check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/core/behavior/forwardBars")),
                     1.5),
         "params forwardBars matches atomic forwardBars");
 
   for (int index = 0; index < AtomicState::MAX_LAYERS; ++index) {
     const juce::var &voiceVar = (*voicesArray)[index];
 
-    const juce::String prefix = "/looper/layer/" + juce::String(index);
+    const juce::String prefix = "/core/behavior/layer/" + juce::String(index);
     const juce::Identifier muteKey(prefix + "/mute");
     const juce::Identifier volumeKey(prefix + "/volume");
     const juce::Identifier reverseKey(prefix + "/reverse");
