@@ -170,6 +170,7 @@ struct AtomicLayerState {
   std::atomic<bool> reversed{false};
   std::atomic<float> volume{1.0f};
   std::atomic<float> numBars{0.0f};
+  std::atomic<bool> muted{false};  // Mute is independent of playback state
 };
 
 struct AtomicState {
@@ -186,6 +187,7 @@ struct AtomicState {
   std::atomic<bool> overdubEnabled{false};
   std::atomic<bool> forwardArmed{false};
   std::atomic<float> forwardBars{0.0f};
+  std::atomic<bool> graphEnabled{false};
   std::atomic<int> recordMode{0};
   std::atomic<int> activeLayer{0};
   std::atomic<float> masterVolume{1.0f};

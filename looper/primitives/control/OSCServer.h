@@ -79,6 +79,7 @@ public:
     // Custom endpoint values used by Lua + OSCQuery (thread-safe)
     void setCustomValue(const juce::String& path, const std::vector<juce::var>& args);
     bool getCustomValue(const juce::String& path, std::vector<juce::var>& outArgs) const;
+    void removeCustomValue(const juce::String& path);
     void clearCustomValues();
 
     bool isRunning() const { return running.load(); }

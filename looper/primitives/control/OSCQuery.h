@@ -18,27 +18,28 @@ class ScriptableProcessor;
 // OSCQueryNode - a node in the OSCQuery address tree.
 //
 // The tree is built dynamically from endpoint paths. For example, endpoints:
-//   /looper/tempo
-//   /looper/layer/0/speed
-//   /looper/layer/0/volume
+//   /core/behavior/tempo
+//   /core/behavior/layer/0/speed
+//   /core/behavior/layer/0/volume
 //
 // Produce the tree:
 //   / (root)
-//     looper/
-//       tempo  [leaf - has endpoint data]
-//       layer/
-//         0/
-//           speed   [leaf]
-//           volume  [leaf]
+//     core/
+//       behavior/
+//         tempo  [leaf - has endpoint data]
+//         layer/
+//           0/
+//             speed   [leaf]
+//             volume  [leaf]
 // ============================================================================
 
 struct OSCQueryNode {
     juce::String name;           // segment name (e.g. "tempo", "0", "layer")
-    juce::String fullPath;       // full OSC path (e.g. "/looper/tempo")
+    juce::String fullPath;       // full OSC path (e.g. "/core/behavior/tempo")
 
     // If this node IS an endpoint, this holds the metadata.
-    // A container node may also be an endpoint (e.g. /looper/layer is both
-    // a container for /looper/layer/0 and an endpoint for SetActiveLayer).
+    // A container node may also be an endpoint (e.g. /core/behavior/layer is both
+    // a container for /core/behavior/layer/0 and an endpoint for SetActiveLayer).
     bool isEndpoint = false;
     OSCEndpoint endpoint;
 

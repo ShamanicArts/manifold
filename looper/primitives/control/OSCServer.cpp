@@ -4,6 +4,7 @@
 #include "../scripting/ScriptableProcessor.h"
 #include <cstring>
 #include <cmath>
+#include <cstdlib>
 
 // ============================================================================
 // Byte-order helpers - OSC uses big-endian (network byte order)
@@ -21,25 +22,49 @@ static uint32_t beToHost32(uint32_t val) {
     return hostToBE32(val);  // same operation (symmetric)
 }
 
-static bool boolFromOscArg(const juce::var& arg, bool& out) {
+static uint64_t hostToBE64(uint64_t val) {
+    return ((val >> 56) & 0x00000000000000FFULL) |
+           ((val >> 40) & 0x000000000000FF00ULL) |
+           ((val >> 24) & 0x0000000000FF0000ULL) |
+           ((val >>  8) & 0x00000000FF000000ULL) |
+           ((val <<  8) & 0x000000FF00000000ULL) |
+           ((val << 24) & 0x0000FF0000000000ULL) |
+           ((val << 40) & 0x00FF000000000000ULL) |
+           ((val << 56) & 0xFF00000000000000ULL);
+}
+
+static uint64_t beToHost64(uint64_t val) {
+    return hostToBE64(val);  // same operation (symmetric)
+}
+
+static bool floatFromOscArg(const juce::var& arg, float& out) {
     if (arg.isBool()) {
-        out = static_cast<bool>(arg);
+        out = static_cast<bool>(arg) ? 1.0f : 0.0f;
         return true;
     }
 
     if (arg.isInt() || arg.isInt64() || arg.isDouble()) {
-        out = static_cast<double>(arg) != 0.0;
+        out = static_cast<float>(static_cast<double>(arg));
         return true;
     }
 
     if (arg.isString()) {
-        const auto text = arg.toString().trim().toLowerCase();
-        if (text == "1" || text == "true" || text == "on") {
-            out = true;
+        const juce::String text = arg.toString().trim();
+        const juce::String lowered = text.toLowerCase();
+        if (lowered == "true" || lowered == "on") {
+            out = 1.0f;
             return true;
         }
-        if (text == "0" || text == "false" || text == "off") {
-            out = false;
+        if (lowered == "false" || lowered == "off") {
+            out = 0.0f;
+            return true;
+        }
+
+        const char* begin = text.toRawUTF8();
+        char* end = nullptr;
+        const double parsed = std::strtod(begin, &end);
+        if (end != begin && *end == '\0') {
+            out = static_cast<float>(parsed);
             return true;
         }
     }
@@ -179,6 +204,11 @@ bool OSCServer::getCustomValue(const juce::String& path,
     return true;
 }
 
+void OSCServer::removeCustomValue(const juce::String& path) {
+    std::lock_guard<std::mutex> lock(customValuesMutex);
+    customValues.erase(path);
+}
+
 void OSCServer::clearCustomValues() {
     std::lock_guard<std::mutex> lock(customValuesMutex);
     customValues.clear();
@@ -275,19 +305,19 @@ void OSCServer::broadcastStateChanges() {
     float newTempo = state.tempo.load(std::memory_order_relaxed);
     if (std::abs(newTempo - cachedState.tempo) > 0.01f) {
         cachedState.tempo = newTempo;
-        broadcast("/looper/tempo", { juce::var(newTempo) });
+        broadcast("/core/behavior/tempo", { juce::var(newTempo) });
     }
 
     bool newRec = state.isRecording.load(std::memory_order_relaxed);
     if (newRec != cachedState.isRecording) {
         cachedState.isRecording = newRec;
-        broadcast("/looper/recording", { juce::var(newRec ? 1 : 0) });
+        broadcast("/core/behavior/recording", { juce::var(newRec ? 1 : 0) });
     }
 
     bool newOD = state.overdubEnabled.load(std::memory_order_relaxed);
     if (newOD != cachedState.overdubEnabled) {
         cachedState.overdubEnabled = newOD;
-        broadcast("/looper/overdub", { juce::var(newOD ? 1 : 0) });
+        broadcast("/core/behavior/overdub", { juce::var(newOD ? 1 : 0) });
     }
 
     int newMode = state.recordMode.load(std::memory_order_relaxed);
@@ -296,19 +326,19 @@ void OSCServer::broadcastStateChanges() {
         const char* modeStr = (newMode == 0) ? "firstLoop" :
                               (newMode == 1) ? "freeMode" :
                               (newMode == 2) ? "traditional" : "retrospective";
-        broadcast("/looper/mode", { juce::var(juce::String(modeStr)) });
+        broadcast("/core/behavior/mode", { juce::var(juce::String(modeStr)) });
     }
 
     int newActiveLayer = state.activeLayer.load(std::memory_order_relaxed);
     if (newActiveLayer != cachedState.activeLayer) {
         cachedState.activeLayer = newActiveLayer;
-        broadcast("/looper/layer", { juce::var(newActiveLayer) });
+        broadcast("/core/behavior/layer", { juce::var(newActiveLayer) });
     }
 
     float newVol = state.masterVolume.load(std::memory_order_relaxed);
     if (std::abs(newVol - cachedState.masterVolume) > 0.001f) {
         cachedState.masterVolume = newVol;
-        broadcast("/looper/volume", { juce::var(newVol) });
+        broadcast("/core/behavior/volume", { juce::var(newVol) });
     }
 
     // --- Per-layer state diffs ---
@@ -316,7 +346,7 @@ void OSCServer::broadcastStateChanges() {
     for (int i = 0; i < OSCStateSnapshot::MAX_LAYERS && i < AtomicState::MAX_LAYERS; ++i) {
         auto& ls = state.layers[i];
         auto& cs = cachedState.layers[i];
-        juce::String prefix = "/looper/layer/" + juce::String(i) + "/";
+        juce::String prefix = "/core/behavior/layer/" + juce::String(i) + "/";
 
         int newState = ls.state.load(std::memory_order_relaxed);
         if (newState != cs.state) {
@@ -407,7 +437,7 @@ bool OSCServer::parseOSCMessage(const char* data, int size, OSCMessage& out) {
 
     out.address = address;
 
-    for (int i = 0; i < typeTag.length() && offset < size; i++) {
+    for (int i = 0; i < typeTag.length(); i++) {
         char tag = typeTag[i];
         juce::var arg = parseArgument(tag, data, size, offset);
         if (!arg.isVoid()) {
@@ -447,12 +477,38 @@ juce::var OSCServer::parseArgument(char tag, const char* data,
         while (offset % 4 != 0) offset++;
         return juce::var(str);
     }
-    else if (tag == 'h' || tag == 'd' || tag == 't') {
-        offset += 8;  // skip 8-byte types
+    else if (tag == 'h' && offset + 8 <= dataLen) {
+        uint64_t beVal = 0;
+        std::memcpy(&beVal, data + offset, 8);
+        const int64_t val = static_cast<int64_t>(beToHost64(beVal));
+        offset += 8;
+        return juce::var(static_cast<double>(val));
+    }
+    else if (tag == 'd' && offset + 8 <= dataLen) {
+        uint64_t beVal = 0;
+        std::memcpy(&beVal, data + offset, 8);
+        const uint64_t hostBits = beToHost64(beVal);
+        double val = 0.0;
+        std::memcpy(&val, &hostBits, 8);
+        offset += 8;
+        return juce::var(val);
+    }
+    else if (tag == 't' && offset + 8 <= dataLen) {
+        // OSC timetag. Preserve as numeric payload.
+        uint64_t beVal = 0;
+        std::memcpy(&beVal, data + offset, 8);
+        const int64_t val = static_cast<int64_t>(beToHost64(beVal));
+        offset += 8;
+        return juce::var(static_cast<double>(val));
+    }
+    else if (tag == 'T') {
+        return juce::var(1);
+    }
+    else if (tag == 'F') {
         return juce::var(0);
     }
-    else if (tag == 'T' || tag == 'F' || tag == 'N' || tag == 'I') {
-        return juce::var();  // no data
+    else if (tag == 'N' || tag == 'I') {
+        return juce::var();  // no payload
     }
 
     return juce::var();
@@ -465,87 +521,78 @@ juce::var OSCServer::parseArgument(char tag, const char* data,
 void OSCServer::dispatchMessage(const OSCMessage& msg) {
     if (!owner) return;
 
-    const auto behaviorPrefixForPath = [](const juce::String& path) {
-        if (path.startsWith("/looper/")) {
-            return juce::String("/looper");
-        }
-        if (path.startsWith("/dsp/looper/")) {
-            return juce::String("/dsp/looper");
-        }
-        if (path.startsWith("/core/behavior/")) {
-            return juce::String("/core/behavior");
-        }
-        return juce::String();
-    };
-
-    juce::String path = msg.address;
-    juce::String behaviorPrefix = behaviorPrefixForPath(path);
+    const juce::String path = msg.address;
+    const bool isBehaviorPath = path.startsWith("/core/behavior/");
 
     // Track custom endpoint values for OSCQuery VALUE/LISTEN.
-    // Anything outside behavior namespaces is considered user/custom.
-    if (behaviorPrefix.isEmpty() && !msg.args.empty()) {
-        setCustomValue(msg.address, msg.args);
+    if (!isBehaviorPath && !msg.args.empty()) {
+        setCustomValue(path, msg.args);
     }
 
-    // Check for Lua callbacks first (allows Lua to override built-in behavior)
+    // Check for Lua callbacks first (allows Lua to override built-in behavior).
     {
         std::lock_guard<std::mutex> lock(luaCallbackMutex);
-        if (luaCallback && luaCallback(msg.address, msg.args)) {
-            return;  // Lua handled the message
+        if (luaCallback && luaCallback(path, msg.args)) {
+            return;
         }
     }
 
     auto* endpointRegistry = &owner->getEndpointRegistry();
-
-    if (!behaviorPrefix.isEmpty() && path == behaviorPrefix + "/recstop") {
-        path = behaviorPrefix + "/stoprec";
-    }
-
-    if (!behaviorPrefix.isEmpty() && path == behaviorPrefix + "/state") {
-        return;  // read-only query endpoint
+    EndpointResolver resolver(endpointRegistry);
+    ResolvedEndpoint endpoint;
+    if (!resolver.resolve(path, endpoint)) {
+        logDispatchDiagnostic(this->unknownPathMessages,
+                              "unknown OSC address",
+                              msg.address,
+                              "not registered");
+        return;
     }
 
     ParseResult parsed;
-    bool hasCommandCandidate = false;
 
-    if (!behaviorPrefix.isEmpty() && path == behaviorPrefix + "/rec" &&
-        !msg.args.empty()) {
-        bool shouldStart = true;
-        if (!boolFromOscArg(msg.args.front(), shouldStart)) {
+    if (msg.args.empty()) {
+        if (endpoint.commandType == ControlCommand::Type::None) {
             logDispatchDiagnostic(this->invalidMessages,
-                                  "invalid OSC argument",
+                                  "rejected OSC message",
                                   msg.address,
-                                  "expected bool-like rec value");
+                                  "missing value for direct endpoint");
             return;
         }
 
-        parsed = CommandParser::buildResolverTriggerCommand(
-            endpointRegistry,
-            shouldStart ? (behaviorPrefix + "/rec")
-                        : (behaviorPrefix + "/stoprec"));
-        hasCommandCandidate = true;
-    } else if (!behaviorPrefix.isEmpty() &&
-               path == behaviorPrefix + "/overdub" && msg.args.empty()) {
-        parsed = CommandParser::buildResolverTriggerCommand(
-            endpointRegistry,
-            path,
-            true /* allow toggle */);
-        hasCommandCandidate = true;
-    } else if (!msg.args.empty()) {
-        parsed = CommandParser::buildResolverSetCommand(
-            endpointRegistry,
-            path,
-            msg.args.front());
-        hasCommandCandidate = true;
-    } else if (!behaviorPrefix.isEmpty()) {
-        parsed = CommandParser::buildResolverTriggerCommand(endpointRegistry, path);
-        hasCommandCandidate = true;
+        parsed = CommandParser::buildResolverTriggerCommand(endpointRegistry, path,
+                                                            true /* allow toggle */);
     } else {
-        return;
-    }
+        const auto validation = resolver.validateWrite(endpoint, msg.args.front());
+        if (!validation.accepted) {
+            logDispatchDiagnostic(this->invalidMessages,
+                                  "rejected OSC message",
+                                  msg.address,
+                                  "write validation failed");
+            return;
+        }
 
-    if (!hasCommandCandidate) {
-        return;
+        if (endpoint.commandType == ControlCommand::Type::None) {
+            float value = 0.0f;
+            if (!floatFromOscArg(validation.normalizedValue, value)) {
+                logDispatchDiagnostic(this->invalidMessages,
+                                      "rejected OSC message",
+                                      msg.address,
+                                      "normalized value is not numeric");
+                return;
+            }
+
+            if (!owner->setParamByPath(path.toStdString(), value)) {
+                logDispatchDiagnostic(this->invalidMessages,
+                                      "rejected OSC message",
+                                      msg.address,
+                                      "direct endpoint handler rejected write");
+            }
+            return;
+        }
+
+        parsed = CommandParser::buildResolverSetCommand(endpointRegistry,
+                                                        path,
+                                                        validation.normalizedValue);
     }
 
     if (!parsed.warningCode.empty()) {
@@ -557,6 +604,11 @@ void OSCServer::dispatchMessage(const OSCMessage& msg) {
     }
 
     if (parsed.kind == ParseResult::Kind::NoOpWarning) {
+        logDispatchDiagnostic(this->invalidMessages,
+                              parsed.warningCode.empty() ? "rejected OSC message"
+                                                         : parsed.warningCode,
+                              msg.address,
+                              parsed.warningMessage);
         return;
     }
 

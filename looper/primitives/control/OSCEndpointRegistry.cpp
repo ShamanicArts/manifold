@@ -29,6 +29,10 @@ static const EndpointTemplate kEndpointTemplates[] = {
     { ControlCommand::Type::SetMasterVolume,  "volume",     "f",  0.0f,  2.0f,   3, "Master volume",                 false },
     { ControlCommand::Type::SetInputVolume,   "inputVolume", "f", 0.0f,  2.0f,   3, "Input volume",                  false },
     { ControlCommand::Type::SetPassthroughEnabled, "passthrough", "i", 0.0f, 1.0f, 3, "Input passthrough (0/1)",      false },
+    { ControlCommand::Type::None,             "forwardBars", "f",  0.0f, 16.0f,  3, "Forward-commit bars (0 disarms)", false },
+    { ControlCommand::Type::None,             "forwardArmed", "i", 0.0f, 1.0f,   3, "Forward-commit armed (0/1)",     false },
+    { ControlCommand::Type::None,             "graph/enabled", "i", 0.0f, 1.0f,  3, "Enable graph processing (0/1)",  false },
+    { ControlCommand::Type::None,             "dsp/reload", "i",  0.0f,  1.0f,   2, "Reload DSP script (write 1)",    false },
     { ControlCommand::Type::ClearAllLayers,   "clear",      "N",  0.0f,  0.0f,   2, "Clear all layers",              false },
 
     // --- Per-layer commands ---
@@ -74,10 +78,6 @@ void OSCEndpointRegistry::buildBackendEndpoints() {
     backendEndpoints.clear();
 
     static const juce::String canonicalPrefix("/core/behavior");
-    static const juce::String compatibilityPrefixes[] = {
-        "/looper",
-        "/dsp/looper",
-    };
 
     auto expandTemplateForPrefix = [&](const EndpointTemplate& tmpl,
                                        const juce::String& prefix,
@@ -114,22 +114,14 @@ void OSCEndpointRegistry::buildBackendEndpoints() {
         }
     };
 
-    // Writable backend endpoints (canonical first, then compatibility aliases).
+    // Writable backend endpoints (canonical namespace only).
     for (int i = 0; i < kNumTemplates; ++i) {
         expandTemplateForPrefix(kEndpointTemplates[i], canonicalPrefix, "backend");
-        for (const auto& aliasPrefix : compatibilityPrefixes) {
-            expandTemplateForPrefix(kEndpointTemplates[i], aliasPrefix,
-                                    "backend_alias");
-        }
     }
 
-    // Read-only query endpoints (canonical first, then compatibility aliases).
+    // Read-only query endpoints (canonical namespace only).
     for (int i = 0; i < kNumReadOnly; ++i) {
         expandTemplateForPrefix(kReadOnlyTemplates[i], canonicalPrefix, "query");
-        for (const auto& aliasPrefix : compatibilityPrefixes) {
-            expandTemplateForPrefix(kReadOnlyTemplates[i], aliasPrefix,
-                                    "query_alias");
-        }
     }
 }
 

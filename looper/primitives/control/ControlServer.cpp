@@ -43,11 +43,6 @@ static std::string toUpper(std::string s) {
     return s;
 }
 
-static std::string toLower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-    return s;
-}
-
 // Simple JSON helpers (no dependency)
 static std::string jsonStr(const std::string& key, const std::string& val) {
     return "\"" + key + "\":\"" + val + "\"";
@@ -64,22 +59,6 @@ static std::string jsonNum(const std::string& key, double val) {
 
 static std::string jsonBool(const std::string& key, bool val) {
     return "\"" + key + "\":" + (val ? "true" : "false");
-}
-
-static std::string argsToValueJson(const std::vector<juce::var>& args) {
-    if (args.empty()) {
-        return "null";
-    }
-
-    if (args.size() == 1) {
-        return juce::JSON::toString(args.front(), false).toStdString();
-    }
-
-    juce::Array<juce::var> arr;
-    for (const auto& v : args) {
-        arr.add(v);
-    }
-    return juce::JSON::toString(juce::var(arr), false).toStdString();
 }
 
 static const char* layerStateToString(int state) {
@@ -388,214 +367,56 @@ std::string ControlServer::processCommand(const std::string& cmd) {
         }
     }
 
-    // Intercept SET/GET commands for DSP and dynamic endpoints before parser rejects them.
-    // DSP params have commandType=None (they're handled via setParamByPath/getParamByPath directly).
+    // Direct-value endpoints (commandType=None) are handled synchronously.
+    // They must be declared in the endpoint registry and pass resolver
+    // validation. Unknown paths are not accepted.
     if (owner && cmd.size() > 4) {
-        const auto baseForPath = [](const std::string& p) -> std::string {
-            if (p == "/looper" || p.rfind("/looper/", 0) == 0) {
-                return "/looper";
-            }
-            if (p == "/dsp/looper" || p.rfind("/dsp/looper/", 0) == 0) {
-                return "/dsp/looper";
-            }
-            if (p == "/core/behavior" || p.rfind("/core/behavior/", 0) == 0) {
-                return "/core/behavior";
-            }
-            return {};
-        };
-
-        const auto syncForwardState = [this](const std::string& base, float bars, bool armed) {
-            if (!owner || base.empty()) {
-                return;
-            }
-            (void) owner->setParamByPath(base + "/forwardBars", bars);
-            (void) owner->setParamByPath(base + "/forwardArmed", armed ? 1.0f : 0.0f);
-            if (!armed) {
-                (void) owner->setParamByPath(base + "/forward", 0.0f);
-            }
-        };
-
-        const auto upperFull = toUpper(cmd);
-        if (upperFull.rfind("TRIGGER ", 0) == 0) {
-            std::istringstream iss(cmd);
-            std::vector<std::string> tokens;
-            std::string tok;
-            while (iss >> tok)
-                tokens.push_back(tok);
-
-            if (tokens.size() >= 2) {
-                std::string mappedPath = tokens[1];
-                float mappedValue = 1.0f;
-                bool handledMappedTrigger = false;
-
-                if (mappedPath == "/looper/rec" || mappedPath == "/dsp/looper/rec" ||
-                    mappedPath == "/core/behavior/rec") {
-                    if (mappedPath.find("/dsp/") == 0) {
-                        mappedPath = "/dsp/looper/recording";
-                    } else if (mappedPath.find("/core/") == 0) {
-                        mappedPath = "/core/behavior/recording";
-                    } else {
-                        mappedPath = "/looper/recording";
-                    }
-                    mappedValue = 1.0f;
-                    handledMappedTrigger = true;
-                } else if (mappedPath == "/looper/stoprec" || mappedPath == "/dsp/looper/stoprec" ||
-                           mappedPath == "/core/behavior/stoprec") {
-                    if (mappedPath.find("/dsp/") == 0) {
-                        mappedPath = "/dsp/looper/recording";
-                    } else if (mappedPath.find("/core/") == 0) {
-                        mappedPath = "/core/behavior/recording";
-                    } else {
-                        mappedPath = "/looper/recording";
-                    }
-                    mappedValue = 0.0f;
-                    handledMappedTrigger = true;
-                } else if (mappedPath == "/looper/play" || mappedPath == "/dsp/looper/play" ||
-                           mappedPath == "/core/behavior/play") {
-                    if (mappedPath.find("/dsp/") == 0) {
-                        mappedPath = "/dsp/looper/transport";
-                    } else if (mappedPath.find("/core/") == 0) {
-                        mappedPath = "/core/behavior/transport";
-                    } else {
-                        mappedPath = "/looper/transport";
-                    }
-                    mappedValue = 1.0f;
-                    handledMappedTrigger = true;
-                } else if (mappedPath == "/looper/pause" || mappedPath == "/dsp/looper/pause" ||
-                           mappedPath == "/core/behavior/pause") {
-                    if (mappedPath.find("/dsp/") == 0) {
-                        mappedPath = "/dsp/looper/transport";
-                    } else if (mappedPath.find("/core/") == 0) {
-                        mappedPath = "/core/behavior/transport";
-                    } else {
-                        mappedPath = "/looper/transport";
-                    }
-                    mappedValue = 2.0f;
-                    handledMappedTrigger = true;
-                } else if (mappedPath == "/looper/stop" || mappedPath == "/dsp/looper/stop" ||
-                           mappedPath == "/core/behavior/stop") {
-                    if (mappedPath.find("/dsp/") == 0) {
-                        mappedPath = "/dsp/looper/transport";
-                    } else if (mappedPath.find("/core/") == 0) {
-                        mappedPath = "/core/behavior/transport";
-                    } else {
-                        mappedPath = "/looper/transport";
-                    }
-                    mappedValue = 0.0f;
-                    handledMappedTrigger = true;
-                }
-
-                const auto endpoint = owner->getEndpointRegistry()
-                                           .findEndpoint(juce::String(mappedPath));
-                const bool inRegistry = endpoint.path.isNotEmpty();
-                const bool isDirectValueEndpoint =
-                    inRegistry && endpoint.commandType == ControlCommand::Type::None;
-                const bool canHandleDirectly =
-                    handledMappedTrigger || !inRegistry || isDirectValueEndpoint;
-
-                if (canHandleDirectly && owner->setParamByPath(mappedPath, mappedValue)) {
-                    const auto base = baseForPath(mappedPath);
-                    if (!base.empty() && mappedPath == (base + "/recording") && mappedValue < 0.5f) {
-                        syncForwardState(base, 0.0f, false);
-                    }
-                    return "OK";
-                }
-            }
+        std::istringstream iss(cmd);
+        std::vector<std::string> tokens;
+        std::string tok;
+        while (iss >> tok) {
+            tokens.push_back(tok);
         }
 
-        auto upper = toUpper(cmd.substr(0, 3));
-        if (upper == "SET") {
-            // Tokenize to extract path and value
-            std::istringstream iss(cmd);
-            std::vector<std::string> tokens;
-            std::string tok;
-            while (iss >> tok)
-                tokens.push_back(tok);
-            
-            if (tokens.size() >= 3) {
-                const std::string& path = tokens[1];
-                // Reconstruct value (may contain spaces if quoted, but for now simple join)
-                std::string valueStr;
-                for (size_t i = 2; i < tokens.size(); ++i) {
-                    if (i > 2) valueStr += " ";
-                    valueStr += tokens[i];
+        if (tokens.size() >= 3 && toUpper(tokens[0]) == "SET") {
+            const juce::String path(tokens[1]);
+
+            EndpointResolver resolver(&owner->getEndpointRegistry());
+            ResolvedEndpoint endpoint;
+            if (resolver.resolve(path, endpoint) &&
+                endpoint.commandType == ControlCommand::Type::None) {
+                std::string rawValue = tokens[2];
+                for (size_t i = 3; i < tokens.size(); ++i) {
+                    rawValue += " ";
+                    rawValue += tokens[i];
                 }
 
-                float value = 0.0f;
-                char* end = nullptr;
-                value = std::strtof(valueStr.c_str(), &end);
-                const bool parsedNumeric = (end != valueStr.c_str());
-
-                if (!parsedNumeric) {
-                    const auto modeToken = toLower(valueStr);
-                    if (modeToken == "firstloop") {
-                        value = 0.0f;
-                    } else if (modeToken == "freemode") {
-                        value = 1.0f;
-                    } else if (modeToken == "traditional") {
-                        value = 2.0f;
-                    } else if (modeToken == "retrospective") {
-                        value = 3.0f;
-                    }
+                const juce::var input = CommandParser::parseCanonicalValueToken(rawValue);
+                const auto validation = resolver.validateWrite(endpoint, input);
+                if (!validation.accepted) {
+                    return "ERROR invalid value for path: " + path.toStdString();
                 }
 
-                // Try script/direct path handler first; if it declines the path,
-                // fall through to parser/endpoint command handling.
-                const auto endpoint = owner->getEndpointRegistry().findEndpoint(juce::String(path));
-                const bool inRegistry = endpoint.path.isNotEmpty();
-                const bool isDirectValueEndpoint =
-                    inRegistry && endpoint.commandType == ControlCommand::Type::None;
-
-                if ((parsedNumeric || path.find("/mode") != std::string::npos) &&
-                    (!inRegistry || isDirectValueEndpoint) &&
-                    owner->setParamByPath(path, value)) {
-                    const auto base = baseForPath(path);
-                    if (!base.empty()) {
-                        if (path == (base + "/forward")) {
-                            syncForwardState(base, juce::jmax(0.0f, value), value > 0.0f);
-                        } else if ((path == (base + "/forwardFire") && value > 0.5f) ||
-                                   path == (base + "/commit") ||
-                                   (path == (base + "/recording") && value < 0.5f)) {
-                            syncForwardState(base, 0.0f, false);
-                        }
-                    }
-                    return "OK";
-                }
-            }
-        }
-        if (upper == "GET") {
-            std::istringstream iss(cmd);
-            std::vector<std::string> tokens;
-            std::string tok;
-            while (iss >> tok) {
-                tokens.push_back(tok);
-            }
-
-            if (tokens.size() >= 2) {
-                const std::string& path = tokens[1];
-                if (owner->getEndpointRegistry()
-                        .findEndpoint(juce::String(path))
-                        .path.isEmpty() &&
-                    owner->hasEndpoint(path)) {
-                    const float value = owner->getParamByPath(path);
-                    std::ostringstream response;
-                    response << "{\"VALUE\":" << value << "}";
-                    return "OK " + response.str();
+                float normalized = 0.0f;
+                const juce::var& value = validation.normalizedValue;
+                if (value.isBool()) {
+                    normalized = static_cast<bool>(value) ? 1.0f : 0.0f;
+                } else if (value.isInt() || value.isInt64() || value.isDouble()) {
+                    normalized = static_cast<float>(static_cast<double>(value));
+                } else {
+                    return "ERROR unsupported direct value type for path: " +
+                           path.toStdString();
                 }
 
-                // Allow querying custom dynamic values (e.g. UI/debug observability)
-                // without requiring endpoint registry wiring. Behavior namespaces
-                // are projection-backed and should never be shadowed by custom values.
-                if (baseForPath(path).empty()) {
-                    std::vector<juce::var> customArgs;
-                    if (owner->getOSCServer().getCustomValue(juce::String(path), customArgs)) {
-                        return "OK {\"VALUE\": " + argsToValueJson(customArgs) + "}";
-                    }
+                if (!owner->setParamByPath(path.toStdString(), normalized)) {
+                    return "ERROR rejected direct endpoint write: " +
+                           path.toStdString();
                 }
+                return "OK";
             }
         }
     }
-    
+
     auto result = CommandParser::parse(
         cmd,
         owner ? &owner->getEndpointRegistry() : nullptr);
@@ -630,13 +451,6 @@ std::string ControlServer::processCommand(const std::string& cmd) {
                     owner->getOSCQueryServer().queryPathValue(
                         juce::String(result.queryPath));
                 if (payload.startsWith("{\"error\"")) {
-                    const std::string queryPath = result.queryPath;
-                    if (owner->hasEndpoint(queryPath)) {
-                        const float value = owner->getParamByPath(queryPath);
-                        std::ostringstream fallback;
-                        fallback << "{\"VALUE\":" << value << "}";
-                        return "OK " + fallback.str();
-                    }
                     return "ERROR " + payload.toStdString();
                 }
                 return "OK " + payload.toStdString();
@@ -676,7 +490,7 @@ std::string ControlServer::processCommand(const std::string& cmd) {
         }
 
         case ParseResult::Kind::NoOpWarning:
-            return "OK";
+            return "ERROR " + result.warningMessage;
 
         case ParseResult::Kind::Error:
             return "ERROR " + result.errorMessage;
@@ -691,6 +505,8 @@ std::string ControlServer::processCommand(const std::string& cmd) {
 
 std::string ControlServer::buildStateJson() {
     auto& s = atomicState;
+    static constexpr const char* kBehaviorBase = "/core/behavior";
+
     std::ostringstream o;
     o << "{";
     o << jsonNum("projectionVersion", 2) << ",";
@@ -702,71 +518,33 @@ std::string ControlServer::buildStateJson() {
     o << jsonNum("uptimeSeconds", s.uptimeSeconds.load()) << ",";
 
     o << "\"params\":{";
-    o << jsonNum("/looper/tempo", s.tempo.load()) << ",";
-    o << jsonNum("/core/behavior/tempo", s.tempo.load()) << ",";
-    o << jsonNum("/dsp/looper/tempo", s.tempo.load()) << ",";
-    o << jsonNum("/looper/targetbpm", s.targetBPM.load()) << ",";
-    o << jsonNum("/core/behavior/targetbpm", s.targetBPM.load()) << ",";
-    o << jsonNum("/dsp/looper/targetbpm", s.targetBPM.load()) << ",";
-    o << jsonNum("/looper/samplesPerBar", s.samplesPerBar.load()) << ",";
-    o << jsonNum("/core/behavior/samplesPerBar", s.samplesPerBar.load()) << ",";
-    o << jsonNum("/dsp/looper/samplesPerBar", s.samplesPerBar.load()) << ",";
-    o << jsonNum("/looper/sampleRate", s.sampleRate.load()) << ",";
-    o << jsonNum("/core/behavior/sampleRate", s.sampleRate.load()) << ",";
-    o << jsonNum("/dsp/looper/sampleRate", s.sampleRate.load()) << ",";
-    o << jsonNum("/looper/captureSize", s.captureSize.load()) << ",";
-    o << jsonNum("/core/behavior/captureSize", s.captureSize.load()) << ",";
-    o << jsonNum("/dsp/looper/captureSize", s.captureSize.load()) << ",";
-    o << jsonNum("/looper/recording", s.isRecording.load() ? 1 : 0) << ",";
-    o << jsonNum("/core/behavior/recording", s.isRecording.load() ? 1 : 0) << ",";
-    o << jsonNum("/dsp/looper/recording", s.isRecording.load() ? 1 : 0) << ",";
-    o << jsonNum("/looper/overdub", s.overdubEnabled.load() ? 1 : 0) << ",";
-    o << jsonNum("/core/behavior/overdub", s.overdubEnabled.load() ? 1 : 0) << ",";
-    o << jsonNum("/dsp/looper/overdub", s.overdubEnabled.load() ? 1 : 0) << ",";
-    o << jsonStr("/looper/mode", recordModeToString(s.recordMode.load())) << ",";
-    o << jsonStr("/core/behavior/mode", recordModeToString(s.recordMode.load())) << ",";
-    o << jsonStr("/dsp/looper/mode", recordModeToString(s.recordMode.load())) << ",";
-    o << jsonNum("/looper/layer", s.activeLayer.load()) << ",";
-    o << jsonNum("/core/behavior/layer", s.activeLayer.load()) << ",";
-    o << jsonNum("/dsp/looper/layer", s.activeLayer.load()) << ",";
-    o << jsonNum("/looper/volume", s.masterVolume.load()) << ",";
-    o << jsonNum("/core/behavior/volume", s.masterVolume.load()) << ",";
-    o << jsonNum("/dsp/looper/volume", s.masterVolume.load()) << ",";
-    o << jsonNum("/looper/inputVolume", s.inputVolume.load()) << ",";
-    o << jsonNum("/core/behavior/inputVolume", s.inputVolume.load()) << ",";
-    o << jsonNum("/dsp/looper/inputVolume", s.inputVolume.load()) << ",";
-    o << jsonNum("/looper/passthrough", s.passthroughEnabled.load() ? 1 : 0) << ",";
-    o << jsonNum("/core/behavior/passthrough", s.passthroughEnabled.load() ? 1 : 0) << ",";
-    o << jsonNum("/dsp/looper/passthrough", s.passthroughEnabled.load() ? 1 : 0) << ",";
-    o << jsonNum("/looper/forwardArmed", s.forwardArmed.load() ? 1 : 0) << ",";
-    o << jsonNum("/core/behavior/forwardArmed", s.forwardArmed.load() ? 1 : 0) << ",";
-    o << jsonNum("/dsp/looper/forwardArmed", s.forwardArmed.load() ? 1 : 0) << ",";
-    o << jsonNum("/looper/forwardBars", s.forwardBars.load());
-    o << "," << jsonNum("/core/behavior/forwardBars", s.forwardBars.load());
-    o << "," << jsonNum("/dsp/looper/forwardBars", s.forwardBars.load());
+    o << jsonNum(std::string(kBehaviorBase) + "/tempo", s.tempo.load()) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/targetbpm", s.targetBPM.load()) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/samplesPerBar", s.samplesPerBar.load()) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/sampleRate", s.sampleRate.load()) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/captureSize", s.captureSize.load()) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/recording", s.isRecording.load() ? 1 : 0) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/overdub", s.overdubEnabled.load() ? 1 : 0) << ",";
+    o << jsonStr(std::string(kBehaviorBase) + "/mode", recordModeToString(s.recordMode.load())) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/layer", s.activeLayer.load()) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/volume", s.masterVolume.load()) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/inputVolume", s.inputVolume.load()) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/passthrough", s.passthroughEnabled.load() ? 1 : 0) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/forwardArmed", s.forwardArmed.load() ? 1 : 0) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/forwardBars", s.forwardBars.load()) << ",";
+    o << jsonNum(std::string(kBehaviorBase) + "/graph/enabled", s.graphEnabled.load() ? 1 : 0);
 
     for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
         auto& layer = s.layers[i];
-        const std::string prefix = "/looper/layer/" + std::to_string(i);
-        const std::string corePrefix = "/core/behavior/layer/" + std::to_string(i);
-        const std::string dspPrefix = "/dsp/looper/layer/" + std::to_string(i);
+        const std::string prefix = std::string(kBehaviorBase) + "/layer/" + std::to_string(i);
         const int stateValue = layer.state.load();
         const bool muted = stateValue == 4;
+
         o << "," << jsonNum(prefix + "/speed", layer.speed.load());
-        o << "," << jsonNum(corePrefix + "/speed", layer.speed.load());
-        o << "," << jsonNum(dspPrefix + "/speed", layer.speed.load());
         o << "," << jsonNum(prefix + "/volume", layer.volume.load());
-        o << "," << jsonNum(corePrefix + "/volume", layer.volume.load());
-        o << "," << jsonNum(dspPrefix + "/volume", layer.volume.load());
         o << "," << jsonNum(prefix + "/mute", muted ? 1 : 0);
-        o << "," << jsonNum(corePrefix + "/mute", muted ? 1 : 0);
-        o << "," << jsonNum(dspPrefix + "/mute", muted ? 1 : 0);
         o << "," << jsonBool(prefix + "/reverse", layer.reversed.load());
-        o << "," << jsonBool(corePrefix + "/reverse", layer.reversed.load());
-        o << "," << jsonBool(dspPrefix + "/reverse", layer.reversed.load());
         o << "," << jsonNum(prefix + "/length", layer.length.load());
-        o << "," << jsonNum(corePrefix + "/length", layer.length.load());
-        o << "," << jsonNum(dspPrefix + "/length", layer.length.load());
 
         const int length = layer.length.load();
         const int position = layer.playheadPos.load();
@@ -774,14 +552,8 @@ std::string ControlServer::buildStateJson() {
             (length > 0) ? static_cast<float>(position) / static_cast<float>(length)
                          : 0.0f;
         o << "," << jsonNum(prefix + "/position", positionNorm);
-        o << "," << jsonNum(corePrefix + "/position", positionNorm);
-        o << "," << jsonNum(dspPrefix + "/position", positionNorm);
         o << "," << jsonNum(prefix + "/bars", layer.numBars.load());
-        o << "," << jsonNum(corePrefix + "/bars", layer.numBars.load());
-        o << "," << jsonNum(dspPrefix + "/bars", layer.numBars.load());
         o << "," << jsonStr(prefix + "/state", layerStateToString(stateValue));
-        o << "," << jsonStr(corePrefix + "/state", layerStateToString(stateValue));
-        o << "," << jsonStr(dspPrefix + "/state", layerStateToString(stateValue));
     }
     o << "},";
 
@@ -801,7 +573,7 @@ std::string ControlServer::buildStateJson() {
 
         o << "{";
         o << jsonNum("id", i) << ",";
-        o << jsonStr("path", "/looper/layer/" + std::to_string(i)) << ",";
+        o << jsonStr("path", std::string(kBehaviorBase) + "/layer/" + std::to_string(i)) << ",";
         o << jsonStr("state", layerStateToString(stateValue)) << ",";
         o << jsonNum("length", length) << ",";
         o << jsonNum("position", position) << ",";

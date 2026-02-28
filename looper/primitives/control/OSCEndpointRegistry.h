@@ -12,7 +12,7 @@
 // ============================================================================
 
 struct OSCEndpoint {
-    juce::String path;           // e.g. "/looper/tempo"
+    juce::String path;           // e.g. "/core/behavior/tempo"
     juce::String type;           // OSC type tags: "f", "i", "s", "N", etc.
     float rangeMin = 0.0f;
     float rangeMax = 1.0f;

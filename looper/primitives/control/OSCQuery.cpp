@@ -110,15 +110,7 @@ static juce::String argsSignature(const std::vector<juce::var>& args) {
 }
 
 static juce::String normalizeQueryPath(const juce::String& oscPath) {
-    juce::String path = oscPath;
-    if (!path.startsWith("/looper/") && path.startsWith("/") &&
-        path.indexOfChar(1, '/') < 0) {
-        if (path == "/tempo" || path == "/recording" || path == "/overdub" ||
-            path == "/mode" || path == "/layer" || path == "/volume") {
-            path = "/looper" + path;
-        }
-    }
-    return path;
+    return oscPath;
 }
 
 static bool tryReadProjectedValue(const juce::var& stateBundle,
@@ -259,7 +251,7 @@ void OSCQueryServer::buildTree() {
     auto endpoints = registry->getAllEndpoints();
 
     for (const auto& ep : endpoints) {
-        // Split path into segments: "/looper/tempo" -> ["looper", "tempo"]
+        // Split path into segments: "/core/behavior/tempo" -> ["core", "behavior", "tempo"]
         juce::String path = ep.path;
         if (path.startsWithChar('/')) path = path.substring(1);
 
@@ -415,13 +407,13 @@ void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
             response = buildOSCQueryInfo();
         }
         else if (path.startsWith("/osc")) {
-            // Value query: /osc/looper/tempo -> query /looper/tempo
+            // Value query: /osc/core/behavior/tempo -> query /core/behavior/tempo
             juce::String oscPath = path.substring(4);
             if (oscPath.isEmpty()) oscPath = "/";
             response = queryValue(oscPath);
         }
         else {
-            // Try as an OSCQuery path lookup (some clients query /looper/tempo directly)
+            // Try as an OSCQuery path lookup (some clients query endpoint paths directly)
             juce::String oscPath = path;
             juce::String val = queryValue(oscPath);
             if (!val.contains("\"error\"")) {
@@ -499,14 +491,12 @@ juce::String OSCQueryServer::queryValue(const juce::String& oscPath) {
 
     const juce::String path = normalizeQueryPath(oscPath);
 
-    if (path == "/looper/state" || path == "/dsp/looper/state" ||
-        path == "/core/behavior/state") {
+    if (path == "/core/behavior/state") {
         const std::string snapshot = owner->getControlServer().getStateJson();
         return "{\"VALUE\": " + juce::String(snapshot) + "}";
     }
 
-    if (path == "/looper/diagnostics" || path == "/dsp/looper/diagnostics" ||
-        path == "/core/behavior/diagnostics") {
+    if (path == "/core/behavior/diagnostics") {
         const std::string diagnostics = owner->getControlServer().getDiagnosticsJson();
         return "{\"VALUE\": " + juce::String(diagnostics) + "}";
     }
@@ -822,7 +812,7 @@ void OSCQueryServer::wsClientReadLoop(WebSocketClient* client) {
 // ============================================================================
 
 void OSCQueryServer::handleWSCommand(WebSocketClient* client, const juce::String& jsonText) {
-    // Parse simple JSON: {"COMMAND":"LISTEN","DATA":"/looper/tempo"}
+    // Parse simple JSON: {"COMMAND":"LISTEN","DATA":"/core/behavior/tempo"}
     // We do minimal parsing since we know the exact format.
 
     juce::String command;
@@ -918,57 +908,93 @@ void OSCQueryServer::wsBroadcastLoop() {
 
             auto& cache = client->cache;
 
+            const auto isBehaviorListened = [&listenPaths](const juce::String& suffix) {
+                return listenPaths.count("/core/behavior" + suffix) > 0;
+            };
+
+            const auto isFastTrackedPath = [](const juce::String& fullPath) {
+                static const juce::String base("/core/behavior");
+                const juce::String globalPaths[] = {
+                    "/tempo", "/recording", "/overdub", "/mode", "/layer", "/volume"
+                };
+                for (const auto& suffix : globalPaths) {
+                    if (fullPath == base + suffix) {
+                        return true;
+                    }
+                }
+
+                const juce::String layerPrefix = base + "/layer/";
+                if (!fullPath.startsWith(layerPrefix)) {
+                    return false;
+                }
+
+                const juce::String rest = fullPath.substring(layerPrefix.length());
+                const int slash = rest.indexOfChar('/');
+                if (slash <= 0) {
+                    return false;
+                }
+
+                const juce::String indexPart = rest.substring(0, slash);
+                if (indexPart.isEmpty() || !indexPart.containsOnly("0123456789")) {
+                    return false;
+                }
+
+                const juce::String suffix = rest.substring(slash + 1);
+                return suffix == "state" || suffix == "speed" || suffix == "volume" ||
+                       suffix == "reverse" || suffix == "position" || suffix == "bars";
+            };
+
             // --- Global values ---
 
-            if (listenPaths.count("/looper/tempo")) {
+            if (isBehaviorListened("/tempo")) {
                 float v = state.tempo.load(std::memory_order_relaxed);
                 if (std::abs(v - cache.tempo) > 0.01f) {
                     cache.tempo = v;
-                    sendValueToClient(client, "/looper/tempo", { juce::var(v) });
+                    sendValueToClient(client, "/core/behavior/tempo", { juce::var(v) });
                 }
             }
 
-            if (listenPaths.count("/looper/recording")) {
+            if (isBehaviorListened("/recording")) {
                 bool v = state.isRecording.load(std::memory_order_relaxed);
                 if (v != cache.isRecording) {
                     cache.isRecording = v;
-                    sendValueToClient(client, "/looper/recording", { juce::var(v ? 1 : 0) });
+                    sendValueToClient(client, "/core/behavior/recording", { juce::var(v ? 1 : 0) });
                 }
             }
 
-            if (listenPaths.count("/looper/overdub")) {
+            if (isBehaviorListened("/overdub")) {
                 bool v = state.overdubEnabled.load(std::memory_order_relaxed);
                 if (v != cache.overdubEnabled) {
                     cache.overdubEnabled = v;
-                    sendValueToClient(client, "/looper/overdub", { juce::var(v ? 1 : 0) });
+                    sendValueToClient(client, "/core/behavior/overdub", { juce::var(v ? 1 : 0) });
                 }
             }
 
-            if (listenPaths.count("/looper/mode")) {
+            if (isBehaviorListened("/mode")) {
                 int v = state.recordMode.load(std::memory_order_relaxed);
                 if (v != cache.recordMode) {
                     cache.recordMode = v;
                     const char* modeStr = (v == 0) ? "firstLoop" :
                                           (v == 1) ? "freeMode" :
                                           (v == 2) ? "traditional" : "retrospective";
-                    sendValueToClient(client, "/looper/mode",
+                    sendValueToClient(client, "/core/behavior/mode",
                                       { juce::var(juce::String(modeStr)) });
                 }
             }
 
-            if (listenPaths.count("/looper/layer")) {
+            if (isBehaviorListened("/layer")) {
                 int v = state.activeLayer.load(std::memory_order_relaxed);
                 if (v != cache.activeLayer) {
                     cache.activeLayer = v;
-                    sendValueToClient(client, "/looper/layer", { juce::var(v) });
+                    sendValueToClient(client, "/core/behavior/layer", { juce::var(v) });
                 }
             }
 
-            if (listenPaths.count("/looper/volume")) {
+            if (isBehaviorListened("/volume")) {
                 float v = state.masterVolume.load(std::memory_order_relaxed);
                 if (std::abs(v - cache.masterVolume) > 0.001f) {
                     cache.masterVolume = v;
-                    sendValueToClient(client, "/looper/volume", { juce::var(v) });
+                    sendValueToClient(client, "/core/behavior/volume", { juce::var(v) });
                 }
             }
 
@@ -977,9 +1003,10 @@ void OSCQueryServer::wsBroadcastLoop() {
                             i < AtomicState::MAX_LAYERS; ++i) {
                 auto& ls = state.layers[i];
                 auto& lc = cache.layers[i];
-                juce::String prefix = "/looper/layer/" + juce::String(i) + "/";
+                const juce::String layerPrefix =
+                    "/core/behavior/layer/" + juce::String(i) + "/";
 
-                if (listenPaths.count(prefix + "state")) {
+                if (listenPaths.count(layerPrefix + "state") > 0) {
                     int v = ls.state.load(std::memory_order_relaxed);
                     if (v != lc.state) {
                         lc.state = v;
@@ -990,72 +1017,98 @@ void OSCQueryServer::wsBroadcastLoop() {
                                                (v == 4) ? "muted" :
                                                (v == 5) ? "stopped" :
                                                (v == 6) ? "paused" : "unknown";
-                        sendValueToClient(client, prefix + "state",
+                        sendValueToClient(client, layerPrefix + "state",
                                           { juce::var(juce::String(stateStr)) });
                     }
                 }
 
-                if (listenPaths.count(prefix + "speed")) {
+                if (listenPaths.count(layerPrefix + "speed") > 0) {
                     float v = ls.speed.load(std::memory_order_relaxed);
                     if (std::abs(v - lc.speed) > 0.001f) {
                         lc.speed = v;
-                        sendValueToClient(client, prefix + "speed", { juce::var(v) });
+                        sendValueToClient(client, layerPrefix + "speed", { juce::var(v) });
                     }
                 }
 
-                if (listenPaths.count(prefix + "volume")) {
+                if (listenPaths.count(layerPrefix + "volume") > 0) {
                     float v = ls.volume.load(std::memory_order_relaxed);
                     if (std::abs(v - lc.volume) > 0.001f) {
                         lc.volume = v;
-                        sendValueToClient(client, prefix + "volume", { juce::var(v) });
+                        sendValueToClient(client, layerPrefix + "volume", { juce::var(v) });
                     }
                 }
 
-                if (listenPaths.count(prefix + "reverse")) {
+                if (listenPaths.count(layerPrefix + "reverse") > 0) {
                     bool v = ls.reversed.load(std::memory_order_relaxed);
                     if (v != lc.reversed) {
                         lc.reversed = v;
-                        sendValueToClient(client, prefix + "reverse",
+                        sendValueToClient(client, layerPrefix + "reverse",
                                           { juce::var(v ? 1 : 0) });
                     }
                 }
 
-                if (listenPaths.count(prefix + "position")) {
+                if (listenPaths.count(layerPrefix + "position") > 0) {
                     int len = ls.length.load(std::memory_order_relaxed);
-                    float v = (len > 0) ? (float)ls.playheadPos.load(std::memory_order_relaxed) / (float)len : 0.0f;
+                    float v = (len > 0)
+                                  ? static_cast<float>(ls.playheadPos.load(std::memory_order_relaxed)) /
+                                        static_cast<float>(len)
+                                  : 0.0f;
                     if (std::abs(v - lc.position) > 0.005f) {
                         lc.position = v;
-                        sendValueToClient(client, prefix + "position", { juce::var(v) });
+                        sendValueToClient(client, layerPrefix + "position", { juce::var(v) });
                     }
                 }
 
-                if (listenPaths.count(prefix + "bars")) {
+                if (listenPaths.count(layerPrefix + "bars") > 0) {
                     float v = ls.numBars.load(std::memory_order_relaxed);
                     if (std::abs(v - lc.bars) > 0.001f) {
                         lc.bars = v;
-                        sendValueToClient(client, prefix + "bars", { juce::var(v) });
+                        sendValueToClient(client, layerPrefix + "bars", { juce::var(v) });
                     }
                 }
             }
 
-            // --- Custom (non-behavior) values ---
+            juce::var projectedStateBundle;
+            bool projectedStateLoaded = false;
+            const auto tryReadProjectedPath = [&](const juce::String& path,
+                                                  juce::var& outValue) {
+                if (!projectedStateLoaded) {
+                    const std::string snapshot = owner->getControlServer().getStateJson();
+                    projectedStateBundle = juce::JSON::parse(juce::String(snapshot));
+                    projectedStateLoaded = true;
+                }
+
+                if (projectedStateBundle.isVoid()) {
+                    return false;
+                }
+                return tryReadProjectedValue(projectedStateBundle, path, outValue);
+            };
+
+            const auto isOscScalar = [](const juce::var& v) {
+                return v.isInt() || v.isInt64() || v.isDouble() || v.isBool() || v.isString();
+            };
+
+            // --- Dynamic/custom values outside fast-tracked behavior paths ---
             for (const auto& listenPath : listenPaths) {
-                if (listenPath.startsWith("/looper/") ||
-                    listenPath.startsWith("/dsp/looper/") ||
-                    listenPath.startsWith("/core/behavior/")) {
+                if (isFastTrackedPath(listenPath)) {
                     continue;
                 }
 
-                std::vector<juce::var> customArgs;
-                if (!owner->getOSCServer().getCustomValue(listenPath, customArgs)) {
-                    continue;
+                std::vector<juce::var> args;
+                if (!owner->getOSCServer().getCustomValue(listenPath, args)) {
+                    juce::var projectedValue;
+                    if (!tryReadProjectedPath(listenPath, projectedValue) ||
+                        !isOscScalar(projectedValue)) {
+                        continue;
+                    }
+                    args.push_back(projectedValue);
                 }
 
-                juce::String newSig = argsSignature(customArgs);
+                juce::String newSig = argsSignature(args);
                 auto it = cache.customSignatures.find(listenPath);
                 if (it == cache.customSignatures.end() || it->second != newSig) {
                     cache.customSignatures[listenPath] = newSig;
-                    sendValueToClient(client, listenPath, customArgs);
+                    sendValueToClient(client, listenPath, args);
                 }
             }
         }
