@@ -69,77 +69,122 @@ juce_add_plugin(Looper
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE)
 
+set(LOOPER_SHARED_SOURCES
+    looper/primitives/dsp/CaptureBuffer.h
+    looper/primitives/dsp/LoopBuffer.h
+    looper/primitives/dsp/Playhead.h
+    looper/primitives/dsp/TempoInference.h
+    looper/primitives/dsp/Quantizer.h
+    looper/primitives/scripting/PrimitiveGraph.h
+    looper/primitives/scripting/PrimitiveGraph.cpp
+    looper/primitives/scripting/GraphRuntime.h
+    looper/primitives/scripting/GraphRuntime.cpp
+    dsp/core/graph/PrimitiveNode.h
+    dsp/core/nodes/PrimitiveNodes.h
+    dsp/core/nodes/PlayheadNode.h
+    dsp/core/nodes/PlayheadNode.cpp
+    dsp/core/nodes/PassthroughNode.h
+    dsp/core/nodes/PassthroughNode.cpp
+    dsp/core/nodes/GainNode.h
+    dsp/core/nodes/GainNode.cpp
+    dsp/core/nodes/LoopPlaybackNode.h
+    dsp/core/nodes/LoopPlaybackNode.cpp
+    dsp/core/nodes/PlaybackStateGateNode.h
+    dsp/core/nodes/PlaybackStateGateNode.cpp
+    dsp/core/nodes/RetrospectiveCaptureNode.h
+    dsp/core/nodes/RetrospectiveCaptureNode.cpp
+    dsp/core/nodes/RecordStateNode.h
+    dsp/core/nodes/RecordStateNode.cpp
+    dsp/core/nodes/QuantizerNode.h
+    dsp/core/nodes/QuantizerNode.cpp
+    dsp/core/nodes/RecordModePolicyNode.h
+    dsp/core/nodes/RecordModePolicyNode.cpp
+    dsp/core/nodes/ForwardCommitSchedulerNode.h
+    dsp/core/nodes/ForwardCommitSchedulerNode.cpp
+    dsp/core/nodes/TransportStateNode.h
+    dsp/core/nodes/TransportStateNode.cpp
+    dsp/core/nodes/OscillatorNode.h
+    dsp/core/nodes/OscillatorNode.cpp
+    dsp/core/nodes/ReverbNode.h
+    dsp/core/nodes/ReverbNode.cpp
+    dsp/core/nodes/FilterNode.h
+    dsp/core/nodes/FilterNode.cpp
+    dsp/core/nodes/DistortionNode.h
+    dsp/core/nodes/DistortionNode.cpp)
+
+set(LOOPER_LEGACY_RUNTIME_SOURCES
+    looper/engine/LooperLayer.h
+    looper/primitives/control/ControlServer.h
+    looper/primitives/control/ControlServer.cpp
+    looper/primitives/control/OSCServer.h
+    looper/primitives/control/OSCServer.cpp
+    looper/primitives/control/OSCEndpointRegistry.h
+    looper/primitives/control/OSCEndpointRegistry.cpp
+    looper/primitives/control/EndpointResolver.h
+    looper/primitives/control/EndpointResolver.cpp
+    looper/primitives/control/OSCQuery.h
+    looper/primitives/control/OSCQuery.cpp
+    looper/primitives/control/OSCSettingsPersistence.h
+    looper/primitives/control/OSCSettingsPersistence.cpp
+    looper/primitives/ui/Canvas.h
+    looper/primitives/ui/Canvas.cpp
+    looper/primitives/ui/CanvasStyle.h
+    looper/primitives/scripting/LuaEngine.h
+    looper/primitives/scripting/LuaEngine.cpp
+    looper/primitives/scripting/DSPPluginScriptHost.h
+    looper/primitives/scripting/DSPPluginScriptHost.cpp)
+
+set(LOOPER_LEGACY_SOURCES
+    looper/engine/LooperProcessor.cpp
+    looper/engine/LooperProcessor.h
+    looper/ui/LooperEditor.cpp
+    looper/ui/LooperEditor.h)
+
+set(LOOPER_PRIMITIVES_SOURCES
+    looper_primitives/BehaviorCoreProcessor.h
+    looper_primitives/BehaviorCoreProcessor.cpp
+    looper_primitives/BehaviorCoreEditor.h
+    looper_primitives/BehaviorCoreEditor.cpp)
+
+set(LOOPER_PRIMITIVES_RUNTIME_BOOTSTRAP_SOURCES
+    ${LOOPER_LEGACY_RUNTIME_SOURCES})
+
 target_sources(Looper
     PRIVATE
-        looper/engine/LooperProcessor.cpp
-        looper/engine/LooperProcessor.h
-        looper/ui/LooperEditor.cpp
-        looper/ui/LooperEditor.h
-        looper/engine/LooperLayer.h
-        looper/primitives/dsp/CaptureBuffer.h
-        looper/primitives/dsp/LoopBuffer.h
-        looper/primitives/dsp/Playhead.h
-        looper/primitives/dsp/TempoInference.h
-        looper/primitives/dsp/Quantizer.h
-        looper/primitives/control/ControlServer.h
-        looper/primitives/control/ControlServer.cpp
-        looper/primitives/control/OSCServer.h
-        looper/primitives/control/OSCServer.cpp
-        looper/primitives/control/OSCEndpointRegistry.h
-        looper/primitives/control/OSCEndpointRegistry.cpp
-        looper/primitives/control/EndpointResolver.h
-        looper/primitives/control/EndpointResolver.cpp
-        looper/primitives/control/OSCQuery.h
-        looper/primitives/control/OSCQuery.cpp
-        looper/primitives/ui/Canvas.h
-        looper/primitives/ui/Canvas.cpp
-        looper/primitives/ui/CanvasStyle.h
-        looper/primitives/scripting/LuaEngine.h
-        looper/primitives/scripting/LuaEngine.cpp
-        looper/primitives/scripting/DSPPluginScriptHost.h
-        looper/primitives/scripting/DSPPluginScriptHost.cpp
-        looper/primitives/scripting/PrimitiveGraph.h
-        looper/primitives/scripting/PrimitiveGraph.cpp
-        looper/primitives/scripting/GraphRuntime.h
-        looper/primitives/scripting/GraphRuntime.cpp
-        dsp/core/graph/PrimitiveNode.h
-        dsp/core/nodes/PrimitiveNodes.h
-        dsp/core/nodes/PlayheadNode.h
-        dsp/core/nodes/PlayheadNode.cpp
-        dsp/core/nodes/PassthroughNode.h
-        dsp/core/nodes/PassthroughNode.cpp
-        dsp/core/nodes/GainNode.h
-        dsp/core/nodes/GainNode.cpp
-        dsp/core/nodes/LoopPlaybackNode.h
-        dsp/core/nodes/LoopPlaybackNode.cpp
-        dsp/core/nodes/PlaybackStateGateNode.h
-        dsp/core/nodes/PlaybackStateGateNode.cpp
-        dsp/core/nodes/RetrospectiveCaptureNode.h
-        dsp/core/nodes/RetrospectiveCaptureNode.cpp
-        dsp/core/nodes/RecordStateNode.h
-        dsp/core/nodes/RecordStateNode.cpp
-        dsp/core/nodes/QuantizerNode.h
-        dsp/core/nodes/QuantizerNode.cpp
-        dsp/core/nodes/RecordModePolicyNode.h
-        dsp/core/nodes/RecordModePolicyNode.cpp
-        dsp/core/nodes/ForwardCommitSchedulerNode.h
-        dsp/core/nodes/ForwardCommitSchedulerNode.cpp
-        dsp/core/nodes/TransportStateNode.h
-        dsp/core/nodes/TransportStateNode.cpp
-        dsp/core/nodes/OscillatorNode.h
-        dsp/core/nodes/OscillatorNode.cpp
-        dsp/core/nodes/ReverbNode.h
-        dsp/core/nodes/ReverbNode.cpp
-        dsp/core/nodes/FilterNode.h
-        dsp/core/nodes/FilterNode.cpp
-        dsp/core/nodes/DistortionNode.h
-        dsp/core/nodes/DistortionNode.cpp
-        looper/primitives/control/OSCSettingsPersistence.h
-        looper/primitives/control/OSCSettingsPersistence.cpp)
+        ${LOOPER_SHARED_SOURCES}
+        ${LOOPER_LEGACY_RUNTIME_SOURCES}
+        ${LOOPER_LEGACY_SOURCES})
+
+juce_add_plugin(LooperPrimitives
+    VERSION 1.0.0
+    PLUGIN_MANUFACTURER_CODE Shmc
+    PLUGIN_CODE Lprm
+    FORMATS Standalone
+    PRODUCT_NAME "LooperPrimitives"
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT FALSE
+    NEEDS_MIDI_OUTPUT FALSE
+    IS_MIDI_EFFECT FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD FALSE)
+
+target_sources(LooperPrimitives
+    PRIVATE
+        ${LOOPER_SHARED_SOURCES}
+        ${LOOPER_PRIMITIVES_RUNTIME_BOOTSTRAP_SOURCES}
+        ${LOOPER_PRIMITIVES_SOURCES})
 
 target_include_directories(Looper PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(LooperPrimitives PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_compile_definitions(Looper
+    PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0)
+
+target_compile_definitions(LooperPrimitives
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
@@ -160,8 +205,24 @@ target_link_libraries(Looper
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
+target_link_libraries(LooperPrimitives
+    PRIVATE
+        juce::juce_audio_utils
+        juce::juce_audio_formats
+        juce::juce_dsp
+        juce::juce_gui_extra
+        juce::juce_opengl
+        PkgConfig::LUA
+        sol2::sol2
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags)
+
 # Headless test harness - no GUI, no audio device, just the processor + ControlServer
 add_executable(LooperHeadless looper/headless/LooperHeadless.cpp)
+
+add_executable(LooperPrimitivesHeadless looper/headless/LooperPrimitivesHeadless.cpp)
 
 add_executable(LuaEngineMockHarness looper/headless/LuaEngineMockHarness.cpp)
 
@@ -177,9 +238,21 @@ target_include_directories(LooperHeadless
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
 
+target_include_directories(LooperPrimitivesHeadless
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR})
+
 target_link_libraries(LooperHeadless
     PRIVATE
         Looper
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra)
+
+target_link_libraries(LooperPrimitivesHeadless
+    PRIVATE
+        LooperPrimitives
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_audio_utils
@@ -226,6 +299,13 @@ target_link_libraries(StateProjectionHarness
         juce::juce_gui_extra)
 
 target_compile_definitions(LooperHeadless
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0)
+
+target_compile_definitions(LooperPrimitivesHeadless
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
