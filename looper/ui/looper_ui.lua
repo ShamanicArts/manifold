@@ -145,6 +145,15 @@ local function normalizeState(state)
         isRecording = readBoolParam(params, "/core/behavior/recording", false),
         overdubEnabled = readBoolParam(params, "/core/behavior/overdub", false),
         recordMode = readParam(params, "/core/behavior/mode", "firstLoop"),
+        link = state.link or {
+            enabled = false,
+            tempoSync = false,
+            startStopSync = false,
+            peers = 0,
+            playing = false,
+            beat = 0,
+            phase = 0,
+        },
         activeLayer = readParam(params, "/core/behavior/activeLayer", readParam(params, "/core/behavior/layer", 0)),
         forwardArmed = readBoolParam(params, "/core/behavior/forwardArmed", false),
         forwardBars = readParam(params, "/core/behavior/forwardBars", 0),
@@ -871,21 +880,21 @@ function ui_update(s)
     if ui.tempoBox then ui.tempoBox:setValue(state.tempo or 120) end
     if ui.targetBpmBox then ui.targetBpmBox:setValue(state.targetBPM or 120) end
 
-    -- Link indicator
+    -- Link indicator with circle (● = enabled, ○ = disabled)
     if ui.linkIndicator then
         local linkState = state.link
         if linkState and linkState.enabled then
             local peers = linkState.peers or 0
             if peers > 0 then
-                ui.linkIndicator:setText("LINK " .. peers)
-                ui.linkIndicator:setColour(0xff4ade80)
+                ui.linkIndicator:setText("● LINK " .. peers)
+                ui.linkIndicator:setColour(0xff4ade80)  -- Green with peers
             else
-                ui.linkIndicator:setText("LINK")
-                ui.linkIndicator:setColour(0xfff59e0b)
+                ui.linkIndicator:setText("● LINK")
+                ui.linkIndicator:setColour(0xfff59e0b)  -- Amber enabled, no peers
             end
         else
-            ui.linkIndicator:setText("link")
-            ui.linkIndicator:setColour(0xff4b5563)
+            ui.linkIndicator:setText("○ link")
+            ui.linkIndicator:setColour(0xff4b5563)  -- Gray disabled
         end
     end
 
