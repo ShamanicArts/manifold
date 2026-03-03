@@ -9,3 +9,6 @@ __pycache__/
 # Clang cache (clangd index files)
 .cache/
 *.idx
+
+# Local runtime settings (keep example tracked)
+.manifold.settings.json
