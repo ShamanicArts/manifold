@@ -46,16 +46,16 @@ target_compile_definitions(${PLUGIN_NAME}
 juce_generate_juce_header(${PLUGIN_NAME})
 
 target_sources(${PLUGIN_NAME} PRIVATE
-    looper/engine/LooperProcessor.cpp
-    looper/engine/LooperProcessor.h
-    looper/engine/LooperLayer.h
-    looper/primitives/dsp/CaptureBuffer.h
-    looper/primitives/dsp/LoopBuffer.h
-    looper/primitives/dsp/Playhead.h
-    looper/primitives/dsp/TempoInference.h
-    looper/primitives/dsp/Quantizer.h
-    looper/primitives/ui/Canvas.h
-    looper/primitives/ui/CanvasStyle.h
+    manifold/engine/LooperProcessor.cpp
+    manifold/engine/LooperProcessor.h
+    manifold/engine/ManifoldLayer.h
+    manifold/primitives/dsp/CaptureBuffer.h
+    manifold/primitives/dsp/LoopBuffer.h
+    manifold/primitives/dsp/Playhead.h
+    manifold/primitives/dsp/TempoInference.h
+    manifold/primitives/dsp/Quantizer.h
+    manifold/primitives/ui/Canvas.h
+    manifold/primitives/ui/CanvasStyle.h
 )
 
 target_link_libraries(${PLUGIN_NAME} PRIVATE

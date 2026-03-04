@@ -161,15 +161,15 @@ target_link_libraries(GrainFreeze
 # BehaviorCore-based looper runtime
 
 set(MANIFOLD_DSP_SOURCES
-    looper/primitives/dsp/CaptureBuffer.h
-    looper/primitives/dsp/LoopBuffer.h
-    looper/primitives/dsp/Playhead.h
-    looper/primitives/dsp/TempoInference.h
-    looper/primitives/dsp/Quantizer.h
-    looper/primitives/scripting/PrimitiveGraph.h
-    looper/primitives/scripting/PrimitiveGraph.cpp
-    looper/primitives/scripting/GraphRuntime.h
-    looper/primitives/scripting/GraphRuntime.cpp
+    manifold/primitives/dsp/CaptureBuffer.h
+    manifold/primitives/dsp/LoopBuffer.h
+    manifold/primitives/dsp/Playhead.h
+    manifold/primitives/dsp/TempoInference.h
+    manifold/primitives/dsp/Quantizer.h
+    manifold/primitives/scripting/PrimitiveGraph.h
+    manifold/primitives/scripting/PrimitiveGraph.cpp
+    manifold/primitives/scripting/GraphRuntime.h
+    manifold/primitives/scripting/GraphRuntime.cpp
     dsp/core/graph/PrimitiveNode.h
     dsp/core/nodes/PrimitiveNodes.h
     dsp/core/nodes/PlayheadNode.h
@@ -204,44 +204,44 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/DistortionNode.cpp)
 
 set(MANIFOLD_RUNTIME_SOURCES
-    looper/engine/LooperLayer.h
-    looper/primitives/sync/LinkSync.h
-    looper/primitives/sync/LinkSync.cpp
-    looper/primitives/control/ControlServer.h
-    looper/primitives/control/ControlServer.cpp
-    looper/primitives/control/OSCServer.h
-    looper/primitives/control/OSCServer.cpp
-    looper/primitives/control/OSCEndpointRegistry.h
-    looper/primitives/control/OSCEndpointRegistry.cpp
-    looper/primitives/control/EndpointResolver.h
-    looper/primitives/control/EndpointResolver.cpp
-    looper/primitives/control/OSCQuery.h
-    looper/primitives/control/OSCQuery.cpp
-    looper/primitives/control/OSCSettingsPersistence.h
-    looper/primitives/control/OSCSettingsPersistence.cpp
-    looper/primitives/ui/Canvas.h
-    looper/primitives/ui/Canvas.cpp
-    looper/primitives/ui/CanvasStyle.h
-    looper/primitives/scripting/LuaEngine.h
-    looper/primitives/scripting/LuaEngine.cpp
-    looper/primitives/scripting/ScriptableProcessor.h
-    looper/primitives/scripting/ScriptableProcessor.cpp
-    looper/primitives/scripting/core/LuaCoreEngine.h
-    looper/primitives/scripting/core/LuaCoreEngine.cpp
-    looper/primitives/scripting/bindings/LuaUIBindings.h
-    looper/primitives/scripting/bindings/LuaUIBindings.cpp
-    looper/primitives/scripting/bindings/LuaControlBindings.h
-    looper/primitives/scripting/bindings/LuaControlBindings.cpp
-    looper/primitives/scripting/DSPPluginScriptHost.h
-    looper/primitives/scripting/DSPPluginScriptHost.cpp
-    looper/primitives/core/Settings.h
-    looper/primitives/core/Settings.cpp)
+    manifold/engine/ManifoldLayer.h
+    manifold/primitives/sync/LinkSync.h
+    manifold/primitives/sync/LinkSync.cpp
+    manifold/primitives/control/ControlServer.h
+    manifold/primitives/control/ControlServer.cpp
+    manifold/primitives/control/OSCServer.h
+    manifold/primitives/control/OSCServer.cpp
+    manifold/primitives/control/OSCEndpointRegistry.h
+    manifold/primitives/control/OSCEndpointRegistry.cpp
+    manifold/primitives/control/EndpointResolver.h
+    manifold/primitives/control/EndpointResolver.cpp
+    manifold/primitives/control/OSCQuery.h
+    manifold/primitives/control/OSCQuery.cpp
+    manifold/primitives/control/OSCSettingsPersistence.h
+    manifold/primitives/control/OSCSettingsPersistence.cpp
+    manifold/primitives/ui/Canvas.h
+    manifold/primitives/ui/Canvas.cpp
+    manifold/primitives/ui/CanvasStyle.h
+    manifold/primitives/scripting/LuaEngine.h
+    manifold/primitives/scripting/LuaEngine.cpp
+    manifold/primitives/scripting/ScriptableProcessor.h
+    manifold/primitives/scripting/ScriptableProcessor.cpp
+    manifold/primitives/scripting/core/LuaCoreEngine.h
+    manifold/primitives/scripting/core/LuaCoreEngine.cpp
+    manifold/primitives/scripting/bindings/LuaUIBindings.h
+    manifold/primitives/scripting/bindings/LuaUIBindings.cpp
+    manifold/primitives/scripting/bindings/LuaControlBindings.h
+    manifold/primitives/scripting/bindings/LuaControlBindings.cpp
+    manifold/primitives/scripting/DSPPluginScriptHost.h
+    manifold/primitives/scripting/DSPPluginScriptHost.cpp
+    manifold/primitives/core/Settings.h
+    manifold/primitives/core/Settings.cpp)
 
 set(MANIFOLD_CORE_SOURCES
-    looper_primitives/BehaviorCoreProcessor.h
-    looper_primitives/BehaviorCoreProcessor.cpp
-    looper_primitives/BehaviorCoreEditor.h
-    looper_primitives/BehaviorCoreEditor.cpp)
+    manifold/core/BehaviorCoreProcessor.h
+    manifold/core/BehaviorCoreProcessor.cpp
+    manifold/core/BehaviorCoreEditor.h
+    manifold/core/BehaviorCoreEditor.cpp)
 
 juce_add_plugin(Manifold
     VERSION 1.0.0
@@ -316,17 +316,17 @@ add_custom_command(TARGET Manifold_VST3 POST_BUILD
 )
 
 # Headless test harnesses
-add_executable(ManifoldHeadless looper/headless/ManifoldHeadless.cpp)
+add_executable(ManifoldHeadless manifold/headless/ManifoldHeadless.cpp)
 
-add_executable(LuaEngineMockHarness looper/headless/LuaEngineMockHarness.cpp)
+add_executable(LuaEngineMockHarness manifold/headless/LuaEngineMockHarness.cpp)
 
-add_executable(EndpointResolverHarness looper/headless/EndpointResolverHarness.cpp)
+add_executable(EndpointResolverHarness manifold/headless/EndpointResolverHarness.cpp)
 
-add_executable(ControlCommandQueueHarness looper/headless/ControlCommandQueueHarness.cpp)
+add_executable(ControlCommandQueueHarness manifold/headless/ControlCommandQueueHarness.cpp)
 
-add_executable(CanonicalCommandHarness looper/headless/CanonicalCommandHarness.cpp)
+add_executable(CanonicalCommandHarness manifold/headless/CanonicalCommandHarness.cpp)
 
-add_executable(StateProjectionHarness looper/headless/StateProjectionHarness.cpp)
+add_executable(StateProjectionHarness manifold/headless/StateProjectionHarness.cpp)
 
 target_include_directories(ManifoldHeadless
     PRIVATE
