@@ -2811,16 +2811,15 @@ function Shell.create(parentNode, options)
                 local contextMatch = scriptMatchesUiContext(name, path, uiContextHints)
 
                 if not scriptLooksSettings(name, path) then
-                    local isDemo = scriptLooksDemo(name, path)
                     if path ~= "" and path == editingPath then
                         include = true
-                    elseif (not isDemo) and scriptLooksGlobal(name, path) then
+                    elseif scriptLooksGlobal(name, path) then
                         include = true
-                    elseif (not isDemo) and contextMatch and slotMatch then
+                    elseif contextMatch and slotMatch then
                         include = true
-                    elseif (not isDemo) and currentUi ~= "" and contextMatch then
+                    elseif currentUi ~= "" and contextMatch then
                         include = true
-                    elseif (not isDemo) and currentUi == "" and slotMatch then
+                    elseif currentUi == "" and slotMatch then
                         include = true
                     end
                 end
