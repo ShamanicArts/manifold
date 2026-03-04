@@ -47,6 +47,10 @@ Control Thread (UI/CLI)          Audio Thread
 cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
 ```
 
+NEVER USE -tail or -head when running build commands  this is non negotiable. 
+
+never use sed -i or awk to edit files - this is non negotiable.
+
 ## Running
 
 ### Standalone Looper
