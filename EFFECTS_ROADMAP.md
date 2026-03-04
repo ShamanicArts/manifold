@@ -541,22 +541,28 @@ void registerSVFNode(sol::state& lua) {
 ### Testing Pattern
 Each effect gets a script in `manifold/dsp/scripts/test_<effect>.lua`:
 ```lua
--- Standard test template
-local ctx = ...
-local osc = ctx.primitives.OscillatorNode.new()
-local effect = ctx.primitives.NewEffect.new()
+-- Standard DSP test template
+function buildPlugin(ctx)
+  local osc = ctx.primitives.OscillatorNode.new()
+  local effect = ctx.primitives.NewEffect.new()
+  local gain = ctx.primitives.GainNode.new(2)
 
-ctx.graph.connect(osc, effect)
-ctx.graph.connect(effect, ctx.graph.getOutput())
+  ctx.graph.connect(osc, effect)
+  ctx.graph.connect(effect, gain)
 
-ctx.params.register("/test/param", {type="f", min=0, max=1, default=0.5})
-ctx.params.bind("/test/param", effect, "setParam")
+  ctx.params.register("/test/param", { type = "f", min = 0, max = 1, default = 0.5 })
+  ctx.params.bind("/test/param", effect, "setParam")
 
-return {
+  return {
     description = "Test new effect",
-    params = {"/test/param"}
-}
+    params = { "/test/param" }
+  }
+end
+
+return buildPlugin
 ```
+
+**Critical:** Do **not** use `ctx.graph.getOutput()` in this host. It is not part of this API and can trigger script-load failures and teardown crashes.
 
 ### Real-Time Safety Checklist
 - [ ] No `new`/`delete` in `process()`
@@ -660,6 +666,27 @@ Add this checklist to every new node PR:
 - [ ] **Parameter bindings added for each settable parameter**
 - [ ] `toPrimitiveNode` updated for `graph.connect()` support
 - [ ] Test script verifies parameter changes affect audio output
+
+---
+
+## Lessons Learned: CompressorNode Script Crash (March 2026)
+
+### What Went Wrong
+Compressor test scripts crashed during script switching/unload, which looked like a compressor DSP bug.
+
+### Root Cause
+The test script used `ctx.graph.getOutput()` (invalid in this host API). Script load failed, and the host then hit a fragile Lua teardown path (`sol::state` cleanup), producing segfaults that looked like node crashes.
+
+### What Actually Worked
+- Use the normal script pattern: `buildPlugin(ctx)` + `return buildPlugin`.
+- Route through real graph nodes (`osc -> compressor -> gain`) rather than an output accessor.
+- Keep CompressorNode integrated through the standard 4-layer pattern (node, usertype, factory, param bindings).
+
+### Prevention
+- [ ] Never use `ctx.graph.getOutput()` in DSP scripts for this host.
+- [ ] Test scripts must end with `return buildPlugin`.
+- [ ] If using `ctx.primitives.<Node>.new()` factory tables, avoid adding redundant `sol::constructors<shared_ptr<...>>()` on the same usertype unless you specifically need direct Lua constructor calls.
+- [ ] Validate by actually loading + switching scripts at runtime (not just compile/build).
 
 ---
 
