@@ -41,10 +41,10 @@ import os
 
 
 def find_socket():
-    """Find a running looper socket, pruning stale entries."""
-    sockets = sorted(glob.glob("/tmp/looper_*.sock"), key=os.path.getmtime, reverse=True)
+    """Find a running Manifold socket, pruning stale entries."""
+    sockets = sorted(glob.glob("/tmp/manifold_*.sock"), key=os.path.getmtime, reverse=True)
     if not sockets:
-        print("No looper process found. Is the plugin running?", file=sys.stderr)
+        print("No Manifold process found. Is the plugin running?", file=sys.stderr)
         sys.exit(1)
 
     connectable = []
@@ -165,7 +165,7 @@ def main():
     )
     parser.add_argument(
         "--socket", "-s",
-        help="Socket path (default: auto-detect from /tmp/looper_*.sock)",
+        help="Socket path (default: auto-detect from /tmp/manifold_*.sock)",
     )
     parser.add_argument(
         "command",

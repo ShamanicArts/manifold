@@ -80,9 +80,9 @@ class Runner:
 
 class LooperHarness:
     def __init__(self):
-        sockets = sorted(glob.glob("/tmp/looper_*.sock"))
+        sockets = sorted(glob.glob("/tmp/manifold_*.sock"))
         if not sockets:
-            raise RuntimeError("No /tmp/looper_*.sock found. Start LooperHeadless first.")
+            raise RuntimeError("No /tmp/manifold_*.sock found. Start ManifoldHeadless first.")
         self.sock_path = sockets[-1]
 
         settings = self._read_settings()
@@ -92,7 +92,7 @@ class LooperHarness:
         self.oscq_enabled = bool(settings.get("oscQueryEnabled", True))
 
     def _read_settings(self):
-        cfg = os.path.expanduser("~/.config/looper/settings.json")
+        cfg = os.path.expanduser("~/.config/Manifold/settings.json")
         if not os.path.exists(cfg):
             return {}
         try:

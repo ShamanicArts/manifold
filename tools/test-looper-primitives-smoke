@@ -4,7 +4,7 @@ Smoke + Phase-3 parity checks for looper primitive-composition DSP runtime.
 
 Usage:
   tools/test-looper-primitives-smoke
-  tools/test-looper-primitives-smoke --socket /tmp/looper_123.sock
+  tools/test-looper-primitives-smoke --socket /tmp/manifold_123.sock
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ ALIASES = ["/core/behavior", "/looper", "/dsp/looper"]
 
 
 def find_socket() -> str:
-    sockets = sorted(glob.glob("/tmp/looper_*.sock"), key=os.path.getmtime, reverse=True)
+    sockets = sorted(glob.glob("/tmp/manifold_*.sock"), key=os.path.getmtime, reverse=True)
     if not sockets:
-        raise RuntimeError("No /tmp/looper_*.sock found")
+        raise RuntimeError("No /tmp/manifold_*.sock found")
 
     for path in sockets:
         probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -47,7 +47,7 @@ def find_socket() -> str:
 
 
 def load_settings() -> dict:
-    cfg = os.path.expanduser("~/.config/looper/settings.json")
+    cfg = os.path.expanduser("~/.config/Manifold/settings.json")
     if not os.path.exists(cfg):
         return {
             "oscEnabled": True,
@@ -219,7 +219,7 @@ def main() -> int:
     oscq_enabled = bool(settings["oscQueryEnabled"])
 
     repo_root = Path(__file__).resolve().parents[1]
-    script_path = repo_root / "looper/dsp/looper_primitives_dsp.lua"
+    script_path = repo_root / "manifold/dsp/looper_primitives_dsp.lua"
     if not script_path.exists():
         print(f"ERROR: missing script {script_path}", file=sys.stderr)
         return 3

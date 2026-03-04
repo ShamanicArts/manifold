@@ -337,7 +337,7 @@ class SimpleWebSocket:
 class LooperCLI:
     """Send commands via the Unix socket control protocol."""
     def __init__(self):
-        sockets = sorted(glob.glob("/tmp/looper_*.sock"))
+        sockets = sorted(glob.glob("/tmp/manifold_*.sock"))
         if not sockets:
             print("ERROR: No looper process found. Start LooperHeadless first.", file=sys.stderr)
             sys.exit(1)

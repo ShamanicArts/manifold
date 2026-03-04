@@ -28,9 +28,9 @@ def query_diagnostics(socket_path: str) -> dict:
 
 
 def main() -> int:
-    sockets = sorted(glob.glob("/tmp/looper_*.sock"))
+    sockets = sorted(glob.glob("/tmp/manifold_*.sock"))
     if not sockets:
-        raise RuntimeError("No /tmp/looper_*.sock sockets found")
+        raise RuntimeError("No /tmp/manifold_*.sock sockets found")
 
     socket_path = sockets[-1]
     print(f"socket: {socket_path}")
