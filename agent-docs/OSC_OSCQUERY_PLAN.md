@@ -486,42 +486,52 @@ end)
 - Chataigne receives live value updates via WebSocket binary frames
 - Full bidirectional control: Chataigne → OSC UDP → Looper, Looper → WebSocket → Chataigne
 
-### Phase 3: Settings UI (Priority: HIGH) ✅ COMPLETE (2026-02-25)
+### Phase 3: Settings UI (Priority: HIGH)
 
-Settings exposed in Lua UI and persisted across sessions. OSC/OSCQuery now user-configurable via UI with JSON persistence.
+Settings need to be exposed in the Lua UI and persisted across sessions. Currently OSC/OSCQuery start with hard-coded ports (9000/9001) and are always enabled. This phase makes everything configurable.
 
-**3.1 Settings Data Model** ✅
+**3.1 Settings Data Model**
 
-- [x] Added `OSCSettingsPersistence` class for JSON load/save (`~/.config/looper/settings.json`)
-- [x] `OSCSettings` struct already in `OSCServer.h` — used as-is (inputPort, queryPort, oscEnabled, oscQueryEnabled, outTargets)
-- [x] Load on startup in `LooperProcessor::prepareToPlay()`, save on any change via Lua API
-- [x] Defaults: port 9000/9001, both enabled
+- [ ] Add `OSCSettings` struct to `ControlServer.h` (already exists in `OSCServer.h` — consolidate)
+  - `oscInputPort` (int, default 9000), `oscQueryPort` (int, default 9001)
+  - `oscEnabled` (bool, default true), `oscQueryEnabled` (bool, default true)
+  - `outTargets` (StringArray)
+- [ ] Add `setOSCSettings()` / `getOSCSettings()` to LooperProcessor
+  - These call through to `OSCServer::setSettings()` and restart servers if ports change
+- [ ] Add settings persistence via JUCE `PropertiesFile` (or `~/.looper/settings.json`)
+  - Load on startup in LooperProcessor constructor
+  - Save on any settings change
 
-**3.2 Lua API for Settings** ✅
+**3.2 Lua API for Settings**
 
-New `osc` global table in Lua:
-- [x] `osc.getSettings()` — returns table with inputPort, queryPort, oscEnabled, oscQueryEnabled, outTargets
-- [x] `osc.setSettings(table)` — apply all settings at once, saves to file, restarts servers
-- [x] `osc.getStatus()` — returns "running" or "stopped"
-- [x] `osc.addTarget("ip:port")` — add broadcast target and save
-- [x] `osc.removeTarget("ip:port")` — remove broadcast target and save
+Expose settings through the existing `command()` function and new Lua globals:
 
-**3.3 Lua UI Panel** ✅
+- [ ] `osc.getSettings()` — returns table with current port/enabled/targets state
+- [ ] `osc.setPort(portNum)` — change OSC UDP port (restarts server)
+- [ ] `osc.setQueryPort(portNum)` — change OSCQuery HTTP/WS port (restarts server)
+- [ ] `osc.setEnabled(bool)` — enable/disable OSC
+- [ ] `osc.setQueryEnabled(bool)` — enable/disable OSCQuery
+- [ ] `osc.getTargets()` — returns list of current out targets
+- [ ] `osc.addTarget("ip:port")` — add broadcast target
+- [ ] `osc.removeTarget("ip:port")` — remove broadcast target
 
-Created `looper_settings_ui.lua`:
-- [x] Casio-style LCD status display at top (shows server status or messages)
-- [x] `NumberBox` widgets for OSC port (9000) and OSCQuery port (9001)
-- [x] `Toggle` widgets for enable/disable
-- [x] Target list display with remove buttons (×)
-- [x] "APPLY SETTINGS" button with validation (ports 1024-65535, must be different)
-- [x] "← Back" button returns to main UI
-- [x] Appears automatically in ⚙ menu as regular UI script
+**3.3 Lua UI Panel**
 
-**3.4 CLI Commands** — Skipped per user direction (not needed for Phase 3)
+- [ ] Add "OSC Settings" section/page to `looper_ui.lua`
+  - `NumberBox` widgets for OSC port and OSCQuery port
+  - `Toggle` widgets for enable/disable
+  - Target list display with add/remove buttons
+  - Status indicator showing server running state
+- [ ] Quick pair button: reads last incoming OSC source IP, adds it as target
+- [ ] Port validation (1024–65535, show error on invalid)
 
-**Files created/modified:** 
-- Created: `OSCSettingsPersistence.h/cpp`, `looper_settings_ui.lua`
-- Modified: `LooperProcessor.cpp`, `LuaEngine.cpp`, `CMakeLists.txt`
+**3.4 CLI Commands**
+
+- [ ] `OSC_PORT <port>`, `OSCQUERY_PORT <port>` commands in ControlServer
+- [ ] `OSC_ENABLE <0|1>`, `OSCQUERY_ENABLE <0|1>` commands
+- [ ] `OSC_TARGETS` (list), `OSC_TARGET_ADD <ip:port>`, `OSC_TARGET_REMOVE <ip:port>`
+
+**Files to modify:** `OSCServer.h/cpp`, `LooperProcessor.h/cpp`, `LuaEngine.cpp`, `ControlServer.cpp`, `looper_ui.lua`
 
 ### Phase 4: Lua Integration (Priority: MEDIUM) ⚠️ IN PROGRESS (2026-02-25)
 
