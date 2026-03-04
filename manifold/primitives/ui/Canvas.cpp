@@ -167,6 +167,19 @@ Canvas* Canvas::addChild(const juce::String& childName) {
     return child;
 }
 
+void Canvas::adoptChild(Canvas* child) {
+    if (child == nullptr) return;
+    
+    // Remove from current parent's children array (but don't delete)
+    if (auto* oldParent = dynamic_cast<Canvas*>(child->getParentComponent())) {
+        oldParent->children.removeObject(child, false);  // false = don't delete
+    }
+    
+    // Add to this canvas
+    children.add(child);
+    addAndMakeVisible(child);
+}
+
 void Canvas::removeChild(Canvas* child) {
     // Ensure OpenGL is disabled before removal to prevent rendering issues
     child->setOpenGLEnabled(false);
@@ -196,4 +209,41 @@ void Canvas::clearChildren() {
     // Now safe to remove all children
     removeAllChildren();
     children.clear();
+}
+
+// ============================================================================
+// User Data Storage
+// ============================================================================
+
+void Canvas::setUserData(const std::string& key, sol::object value) {
+    userData_[key] = value;
+}
+
+sol::object Canvas::getUserData(const std::string& key) const {
+    auto it = userData_.find(key);
+    if (it != userData_.end()) {
+        return it->second;
+    }
+    return sol::lua_nil;
+}
+
+bool Canvas::hasUserData(const std::string& key) const {
+    return userData_.find(key) != userData_.end();
+}
+
+std::vector<std::string> Canvas::getUserDataKeys() const {
+    std::vector<std::string> keys;
+    keys.reserve(userData_.size());
+    for (const auto& pair : userData_) {
+        keys.push_back(pair.first);
+    }
+    return keys;
+}
+
+void Canvas::clearUserData(const std::string& key) {
+    userData_.erase(key);
+}
+
+void Canvas::clearAllUserData() {
+    userData_.clear();
 }

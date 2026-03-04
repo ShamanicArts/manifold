@@ -58,7 +58,7 @@ struct LayerConfig {
     //
     // NOTE: Changing this requires recompiling all components.
     // For runtime-configurable layers, use ScriptableProcessor::getNumLayers()
-    static constexpr int MAX_LAYERS = 4;
+    static constexpr int MAX_LAYERS = 32;
 };
 
 // ============================================================================

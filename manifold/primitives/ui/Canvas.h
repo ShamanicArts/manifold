@@ -5,6 +5,13 @@
 #include "CanvasStyle.h"
 #include <functional>
 #include <memory>
+#include <unordered_map>
+#include <string>
+#include <vector>
+
+// sol2 for Lua userdata storage
+#define SOL_ALL_SAFETIES_ON 1
+#include <sol/sol.hpp>
 
 class Canvas : public juce::Component, public juce::OpenGLRenderer {
 public:
@@ -69,16 +76,28 @@ public:
     void setStyle(const CanvasStyle& s);
     
     Canvas* addChild(const juce::String& childName = "child");
+    void adoptChild(Canvas* child);  // Take ownership from another parent
     void removeChild(Canvas* child);
     void clearChildren();
     
     int getNumChildren() const { return children.size(); }
     Canvas* getChild(int index) { return children[index]; }
     
+    // User data storage for editor metadata and runtime properties
+    void setUserData(const std::string& key, sol::object value);
+    sol::object getUserData(const std::string& key) const;
+    bool hasUserData(const std::string& key) const;
+    std::vector<std::string> getUserDataKeys() const;
+    void clearUserData(const std::string& key);
+    void clearAllUserData();
+    
 private:
     juce::OwnedArray<Canvas> children;
     std::unique_ptr<juce::OpenGLContext> glContext;
     bool openGLEnabled = false;
+    
+    // User data storage (editor metadata, widget properties, etc.)
+    mutable std::unordered_map<std::string, sol::object> userData_;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Canvas)
 };

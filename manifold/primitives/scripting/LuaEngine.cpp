@@ -437,7 +437,10 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
       pImpl->sharedContentW = contentW;
       pImpl->sharedContentH = contentH;
 
-      pImpl->scriptContentRoot->setBounds(contentX, contentY, contentW, contentH);
+      // Only set initial bounds if Shell is NOT managing content
+      if (!pImpl->hasSharedShell) {
+        pImpl->scriptContentRoot->setBounds(contentX, contentY, contentW, contentH);
+      }
 
       if (pImpl->processor) {
         auto& osc = pImpl->processor->getOSCServer();
@@ -536,7 +539,9 @@ void LuaEngine::notifyResized(int width, int height) {
     }
   }
 
-  if (pImpl->scriptContentRoot != nullptr) {
+  // Only position scriptContentRoot if Shell is NOT managing it
+  // When Shell is active, it positions content directly in layout()
+  if (pImpl->scriptContentRoot != nullptr && !pImpl->hasSharedShell) {
     pImpl->scriptContentRoot->setBounds(contentX, contentY, contentW, contentH);
   }
 

@@ -74,6 +74,7 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "clearChildren", &Canvas::clearChildren,
         "getNumChildren", &Canvas::getNumChildren,
         "getChild", &Canvas::getChild,
+        "adoptChild", &Canvas::adoptChild,
 
         "setBounds",
         [](Canvas& c, int x, int y, int w, int h) { c.setBounds(x, y, w, h); },
@@ -86,6 +87,39 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
 
         "getWidth", [](Canvas& c) { return c.getWidth(); },
         "getHeight", [](Canvas& c) { return c.getHeight(); },
+
+        "toFront", [](Canvas& c, bool shouldGrabFocus) { c.toFront(shouldGrabFocus); },
+        "toBack", [](Canvas& c) { c.toBack(); },
+
+        // Transform for zoom/pan in editor
+        "setTransform", [](Canvas& c, float scaleX, float scaleY, float translateX, float translateY) {
+            c.setTransform(juce::AffineTransform::scale(scaleX, scaleY)
+                          .translated(translateX, translateY));
+        },
+        "clearTransform", [](Canvas& c) {
+            c.setTransform(juce::AffineTransform());
+        },
+
+
+
+        // User data storage for editor metadata and widget properties
+        "setUserData",
+        [](Canvas& c, const std::string& key, sol::object value) {
+            c.setUserData(key, value);
+        },
+
+        "getUserData",
+        [](Canvas& c, const std::string& key) -> sol::object {
+            return c.getUserData(key);
+        },
+
+        "hasUserData", &Canvas::hasUserData,
+
+        "getUserDataKeys", &Canvas::getUserDataKeys,
+
+        "clearUserData", &Canvas::clearUserData,
+
+        "clearAllUserData", &Canvas::clearAllUserData,
 
         "setStyle",
         [](Canvas& c, sol::table t) {
@@ -140,7 +174,11 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             if (fn.valid()) {
                 c.onMouseDown = [fn, &engine](const juce::MouseEvent& e) mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
-                    auto result = fn(e.x, e.y);
+                    const auto mods = e.mods;
+                    auto result = fn(e.x, e.y,
+                                     mods.isShiftDown(),
+                                     mods.isCtrlDown() || mods.isCommandDown(),
+                                     mods.isAltDown());
                     if (!result.valid()) {
                         sol::error err = result;
                         std::fprintf(stderr, "LuaUI: onMouseDown error: %s\n", err.what());
@@ -159,8 +197,13 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             if (fn.valid()) {
                 c.onMouseDrag = [fn, &engine](const juce::MouseEvent& e) mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
-                    auto result = fn(e.x, e.y, e.getDistanceFromDragStartX(),
-                                   e.getDistanceFromDragStartY());
+                    const auto mods = e.mods;
+                    auto result = fn(e.x, e.y,
+                                     e.getDistanceFromDragStartX(),
+                                     e.getDistanceFromDragStartY(),
+                                     mods.isShiftDown(),
+                                     mods.isCtrlDown() || mods.isCommandDown(),
+                                     mods.isAltDown());
                     if (!result.valid()) {
                         sol::error err = result;
                         std::fprintf(stderr, "LuaUI: onMouseDrag error: %s\n", err.what());
@@ -179,7 +222,11 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             if (fn.valid()) {
                 c.onMouseUp = [fn, &engine](const juce::MouseEvent& e) mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
-                    auto result = fn(e.x, e.y);
+                    const auto mods = e.mods;
+                    auto result = fn(e.x, e.y,
+                                     mods.isShiftDown(),
+                                     mods.isCtrlDown() || mods.isCommandDown(),
+                                     mods.isAltDown());
                     if (!result.valid()) {
                         sol::error err = result;
                         std::fprintf(stderr, "LuaUI: onMouseUp error: %s\n", err.what());
@@ -218,7 +265,11 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 c.onMouseWheel = [fn, &engine](const juce::MouseEvent& e,
                                       const juce::MouseWheelDetails& wheel) mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
-                    auto result = fn(e.x, e.y, wheel.deltaY);
+                    const auto mods = e.mods;
+                    auto result = fn(e.x, e.y, wheel.deltaY,
+                                     mods.isShiftDown(),
+                                     mods.isCtrlDown() || mods.isCommandDown(),
+                                     mods.isAltDown());
                     if (!result.valid()) {
                         sol::error err = result;
                         std::fprintf(stderr, "LuaUI: onMouseWheel error: %s\n", err.what());
