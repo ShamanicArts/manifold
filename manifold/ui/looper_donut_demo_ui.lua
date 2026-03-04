@@ -209,29 +209,6 @@ local function normalizeState(s)
     return out
 end
 
-local function layerColor(state)
-    if state == "recording" then return 0xffef4444 end
-    if state == "playing" then return 0xff22c55e end
-    if state == "overdubbing" then return 0xfff59e0b end
-    if state == "paused" then return 0xffa78bfa end
-    if state == "muted" then return 0xff64748b end
-    return 0xff38bdf8
-end
-
-local function drawCircle(cx, cy, r, colour, segs)
-    segs = segs or 64
-    gfx.setColour(colour)
-    local px = cx + r
-    local py = cy
-    for i = 1, segs do
-        local t = (i / segs) * math.pi * 2.0
-        local x = cx + math.cos(t) * r
-        local y = cy + math.sin(t) * r
-        gfx.drawLine(px, py, x, y)
-        px, py = x, y
-    end
-end
-
 local function easedLayerBounce(layerIdx, target)
     if type(ui.layerBounce) ~= "table" then
         ui.layerBounce = {}
@@ -242,114 +219,6 @@ local function easedLayerBounce(layerIdx, target)
     local nextV = prev * 0.84 + target * 0.16
     ui.layerBounce[key] = nextV
     return nextV
-end
-
-local function drawDonutWave(layerIdx, layerData, w, h)
-    local cx, cy = w * 0.5, h * 0.5
-    local baseRadius = math.max(20, math.min(w, h) * 0.34)
-    local baseInner = baseRadius * 0.60
-    local posNorm = clamp(tonumber(layerData.positionNorm) or 0.0, 0.0, 1.0)
-
-    local peaks = nil
-    if type(getLayerPeaksForPath) == "function" then
-        peaks = getLayerPeaksForPath("/core/slots/donut", layerIdx, 96)
-    else
-        peaks = getLayerPeaks(layerIdx, 96)
-    end
-
-    local playheadIdx = 1
-
-    -- Keep the original subtle donut radius bounce.
-    local bounceTarget = 0.0
-    if peaks and #peaks > 0 then
-        playheadIdx = math.floor(posNorm * #peaks) + 1
-        if playheadIdx < 1 then playheadIdx = 1 end
-        if playheadIdx > #peaks then playheadIdx = #peaks end
-
-        local sum = 0.0
-        local count = 0
-        for k = -1, 1 do
-            local j = playheadIdx + k
-            if j >= 1 and j <= #peaks then
-                sum = sum + clamp(peaks[j] or 0.0, 0.0, 1.0)
-                count = count + 1
-            end
-        end
-        local localLevel = count > 0 and (sum / count) or 0.0
-
-        local vol = clamp(tonumber(layerData.volume) or 1.0, 0.0, 1.5)
-        local active = (layerData.state == "playing" or layerData.state == "recording" or layerData.state == "overdubbing")
-        if active and not layerData.muted then
-            bounceTarget = localLevel * vol
-        end
-    end
-
-    local bounce = easedLayerBounce(layerIdx, bounceTarget)
-    local radius = baseRadius + bounce * 2.4
-    local inner = baseInner + bounce * 1.2
-
-    drawCircle(cx, cy, radius, 0x22475a75, 72)
-    drawCircle(cx, cy, inner, 0x22475a75, 72)
-
-    if peaks and #peaks > 0 then
-        gfx.setColour(layerColor(layerData.state))
-
-        -- Grow/shrink waveform lines around the moving playhead.
-        local window = 10
-        local emphasisAmount = 2.6 * bounce
-
-        for i = 1, #peaks do
-            local p = clamp(peaks[i] or 0.0, 0.0, 1.0)
-
-            local d = math.abs(i - playheadIdx)
-            d = math.min(d, #peaks - d)
-
-            local influence = 0.0
-            if d <= window then
-                influence = 1.0 - (d / window)
-                influence = influence * influence
-            end
-
-            local shaped = clamp(
-                p * (1.0 + emphasisAmount * influence) +
-                    (0.14 * bounce * influence),
-                0.0,
-                1.0
-            )
-
-            local a = ((i - 1) / #peaks) * math.pi * 2.0 - math.pi * 0.5
-            local r1 = inner
-            local r2 = inner + shaped * (radius - inner)
-            local x1 = cx + math.cos(a) * r1
-            local y1 = cy + math.sin(a) * r1
-            local x2 = cx + math.cos(a) * r2
-            local y2 = cy + math.sin(a) * r2
-            gfx.drawLine(x1, y1, x2, y2)
-        end
-    end
-
-    if (layerData.length or 0) > 0 then
-        local a = posNorm * math.pi * 2.0 - math.pi * 0.5
-        local x1 = cx + math.cos(a) * (inner - 3)
-        local y1 = cy + math.sin(a) * (inner - 3)
-        local x2 = cx + math.cos(a) * (radius + 3)
-        local y2 = cy + math.sin(a) * (radius + 3)
-        gfx.setColour(0xfff8fafc)
-        gfx.drawLine(x1, y1, x2, y2)
-    end
-end
-
-local function seekFromMouse(layerIdx, node, mx, my)
-    local w = node:getWidth()
-    local h = node:getHeight()
-    local cx, cy = w * 0.5, h * 0.5
-    local ang = math.atan(my - cy, mx - cx)
-    local norm = (ang + math.pi * 0.5) / (math.pi * 2.0)
-    if norm < 0.0 then norm = norm + 1.0 end
-    if norm >= 1.0 then norm = norm - 1.0 end
-
-    setBehaviorParam("/core/slots/donut/activeLayer", layerIdx)
-    setBehaviorParam(layerPath(layerIdx, "seek"), norm)
 end
 
 function ui_init(root)
@@ -437,16 +306,13 @@ function ui_init(root)
             text = "Layer " .. tostring(i), colour = 0xffcbd5e1, fontSize = 12.0,
         })
 
-        local donut = W.Panel.new(panel.node, "donut" .. i, {
-            bg = 0x00000000, interceptsMouse = true,
+        local donut = W.DonutWidget.new(panel.node, "donut" .. i, {
+            layerIndex = i,
+            on_seek = function(layerIdx, norm)
+                setBehaviorParam("/core/slots/donut/activeLayer", layerIdx)
+                setBehaviorParam(layerPath(layerIdx, "seek"), norm)
+            end,
         })
-
-        donut.node:setOnDraw(function(node)
-            local layerData = current_state.layers and current_state.layers[i + 1] or {}
-            drawDonutWave(i, layerData, node:getWidth(), node:getHeight())
-        end)
-        donut.node:setOnMouseDown(function(mx, my) seekFromMouse(i, donut.node, mx, my) end)
-        donut.node:setOnMouseDrag(function(mx, my, dx, dy) seekFromMouse(i, donut.node, mx, my) end)
 
         local play = W.Button.new(panel.node, "play" .. i, {
             label = "Play", bg = 0xff14532d,
@@ -565,6 +431,47 @@ function ui_update(s)
     for _, layer in ipairs(ui.layers) do
         local data = current_state.layers and current_state.layers[layer.index + 1] or {}
         local active = (current_state.activeLayer or 0) == layer.index
+
+        -- Push data to donut widget
+        if layer.donut then
+            layer.donut:setLayerData(data)
+            
+            -- Get peaks for this layer
+            local peaks = nil
+            if type(getLayerPeaksForPath) == "function" then
+                peaks = getLayerPeaksForPath("/core/slots/donut", layer.index, 96)
+            else
+                peaks = getLayerPeaks(layer.index, 96)
+            end
+            layer.donut:setPeaks(peaks)
+            
+            -- Calculate bounce based on audio level
+            local bounceTarget = 0.0
+            if peaks and #peaks > 0 then
+                local posNorm = clamp(tonumber(data.positionNorm) or 0.0, 0.0, 1.0)
+                local playheadIdx = math.floor(posNorm * #peaks) + 1
+                if playheadIdx < 1 then playheadIdx = 1 end
+                if playheadIdx > #peaks then playheadIdx = #peaks end
+                
+                local sum = 0.0
+                local count = 0
+                for k = -1, 1 do
+                    local j = playheadIdx + k
+                    if j >= 1 and j <= #peaks then
+                        sum = sum + clamp(peaks[j] or 0.0, 0.0, 1.0)
+                        count = count + 1
+                    end
+                end
+                local localLevel = count > 0 and (sum / count) or 0.0
+                local vol = clamp(tonumber(data.volume) or 1.0, 0.0, 1.5)
+                local isActive = (data.state == "playing" or data.state == "recording" or data.state == "overdubbing")
+                if isActive and not data.muted then
+                    bounceTarget = localLevel * vol
+                end
+            end
+            local bounce = easedLayerBounce(layer.index, bounceTarget)
+            layer.donut:setBounce(bounce)
+        end
 
         layer.panel:setStyle({
             bg = active and 0xff14243a or 0xff0f172a,
