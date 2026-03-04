@@ -52,6 +52,7 @@ public:
     return postControlCommandPayload(cmd);
   }
 
+  ControlServer &getControlServer() override { return controlServer; }
   OSCServer &getOSCServer() override { return oscServer; }
   OSCEndpointRegistry &getEndpointRegistry() override { return endpointRegistry; }
   OSCQueryServer &getOSCQueryServer() override { return oscQueryServer; }
