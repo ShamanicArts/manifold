@@ -209,7 +209,9 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/CompressorNode.h
     dsp/core/nodes/CompressorNode.cpp
     dsp/core/nodes/WaveShaperNode.h
-    dsp/core/nodes/WaveShaperNode.cpp)
+    dsp/core/nodes/WaveShaperNode.cpp
+    dsp/core/nodes/ChorusNode.h
+    dsp/core/nodes/ChorusNode.cpp)
 
 set(MANIFOLD_RUNTIME_SOURCES
     manifold/engine/ManifoldLayer.h

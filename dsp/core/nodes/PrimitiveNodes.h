@@ -19,3 +19,4 @@
 #include "dsp/core/nodes/StereoDelayNode.h"
 #include "dsp/core/nodes/CompressorNode.h"
 #include "dsp/core/nodes/WaveShaperNode.h"
+#include "dsp/core/nodes/ChorusNode.h"

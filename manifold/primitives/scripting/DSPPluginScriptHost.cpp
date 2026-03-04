@@ -443,6 +443,25 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getOversample", &dsp_primitives::WaveShaperNode::getOversample,
       "reset", &dsp_primitives::WaveShaperNode::reset);
 
+  newLua.new_usertype<dsp_primitives::ChorusNode>(
+      "ChorusNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::ChorusNode>()>(),
+      "setRate", &dsp_primitives::ChorusNode::setRate,
+      "setDepth", &dsp_primitives::ChorusNode::setDepth,
+      "setVoices", &dsp_primitives::ChorusNode::setVoices,
+      "setSpread", &dsp_primitives::ChorusNode::setSpread,
+      "setFeedback", &dsp_primitives::ChorusNode::setFeedback,
+      "setWaveform", &dsp_primitives::ChorusNode::setWaveform,
+      "setMix", &dsp_primitives::ChorusNode::setMix,
+      "getRate", &dsp_primitives::ChorusNode::getRate,
+      "getDepth", &dsp_primitives::ChorusNode::getDepth,
+      "getVoices", &dsp_primitives::ChorusNode::getVoices,
+      "getSpread", &dsp_primitives::ChorusNode::getSpread,
+      "getFeedback", &dsp_primitives::ChorusNode::getFeedback,
+      "getWaveform", &dsp_primitives::ChorusNode::getWaveform,
+      "getMix", &dsp_primitives::ChorusNode::getMix,
+      "reset", &dsp_primitives::ChorusNode::reset);
+
   auto toPrimitiveNode = [](const sol::object &obj)
       -> std::shared_ptr<dsp_primitives::IPrimitiveNode> {
     if (obj.is<std::shared_ptr<dsp_primitives::PlayheadNode>>()) {
@@ -501,6 +520,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     }
     if (obj.is<std::shared_ptr<dsp_primitives::WaveShaperNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::WaveShaperNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::ChorusNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::ChorusNode>>();
     }
     if (obj.is<sol::table>()) {
       sol::table table = obj.as<sol::table>();
@@ -562,6 +584,12 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::CompressorNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::CompressorNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::WaveShaperNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::WaveShaperNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::ChorusNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::ChorusNode>>();
         }
       }
     }
@@ -1180,6 +1208,16 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["WaveShaperNode"] = waveShaperApi;
   }
 
+  {
+    auto chorusApi = newLua.create_table();
+    chorusApi["new"] = [graph, &trackNode]() {
+        auto node = std::make_shared<dsp_primitives::ChorusNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["ChorusNode"] = chorusApi;
+  }
+
   auto graphTable = newLua.create_table();
   graphTable["connect"] = sol::overload(
       [graph, toPrimitiveNode](const sol::object &fromObj,
@@ -1586,6 +1624,37 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           }
           if (method == "setOversample") {
             newParamBindings[path] = [ws](float v) { ws->setOversample(static_cast<int>(v)); };
+            return true;
+          }
+        }
+
+        if (auto chorus = std::dynamic_pointer_cast<dsp_primitives::ChorusNode>(node)) {
+          if (method == "setRate") {
+            newParamBindings[path] = [chorus](float v) { chorus->setRate(v); };
+            return true;
+          }
+          if (method == "setDepth") {
+            newParamBindings[path] = [chorus](float v) { chorus->setDepth(v); };
+            return true;
+          }
+          if (method == "setVoices") {
+            newParamBindings[path] = [chorus](float v) { chorus->setVoices(static_cast<int>(v)); };
+            return true;
+          }
+          if (method == "setSpread") {
+            newParamBindings[path] = [chorus](float v) { chorus->setSpread(v); };
+            return true;
+          }
+          if (method == "setFeedback") {
+            newParamBindings[path] = [chorus](float v) { chorus->setFeedback(v); };
+            return true;
+          }
+          if (method == "setWaveform") {
+            newParamBindings[path] = [chorus](float v) { chorus->setWaveform(static_cast<int>(v)); };
+            return true;
+          }
+          if (method == "setMix") {
+            newParamBindings[path] = [chorus](float v) { chorus->setMix(v); };
             return true;
           }
         }
