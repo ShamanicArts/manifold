@@ -352,6 +352,79 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       &dsp_primitives::DistortionNode::getMix, "getOutput",
       &dsp_primitives::DistortionNode::getOutput);
 
+  newLua.new_usertype<dsp_primitives::SVFNode>(
+      "SVFNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::SVFNode>()>(),
+      "setCutoff", &dsp_primitives::SVFNode::setCutoff,
+      "setResonance", &dsp_primitives::SVFNode::setResonance,
+      "setMode", &dsp_primitives::SVFNode::setMode,
+      "setDrive", &dsp_primitives::SVFNode::setDrive,
+      "setMix", &dsp_primitives::SVFNode::setMix,
+      "getCutoff", &dsp_primitives::SVFNode::getCutoff,
+      "getResonance", &dsp_primitives::SVFNode::getResonance,
+      "getMode", &dsp_primitives::SVFNode::getMode,
+      "getDrive", &dsp_primitives::SVFNode::getDrive,
+      "getMix", &dsp_primitives::SVFNode::getMix,
+      "reset", &dsp_primitives::SVFNode::reset);
+
+  newLua.new_usertype<dsp_primitives::StereoDelayNode>(
+      "StereoDelayNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::StereoDelayNode>()>(),
+      "setTimeMode", &dsp_primitives::StereoDelayNode::setTimeMode,
+      "setTimeL", &dsp_primitives::StereoDelayNode::setTimeL,
+      "setTimeR", &dsp_primitives::StereoDelayNode::setTimeR,
+      "setDivisionL", &dsp_primitives::StereoDelayNode::setDivisionL,
+      "setDivisionR", &dsp_primitives::StereoDelayNode::setDivisionR,
+      "setFeedback", &dsp_primitives::StereoDelayNode::setFeedback,
+      "setFeedbackCrossfeed", &dsp_primitives::StereoDelayNode::setFeedbackCrossfeed,
+      "setFilterEnabled", &dsp_primitives::StereoDelayNode::setFilterEnabled,
+      "setFilterCutoff", &dsp_primitives::StereoDelayNode::setFilterCutoff,
+      "setFilterResonance", &dsp_primitives::StereoDelayNode::setFilterResonance,
+      "setMix", &dsp_primitives::StereoDelayNode::setMix,
+      "setPingPong", &dsp_primitives::StereoDelayNode::setPingPong,
+      "setWidth", &dsp_primitives::StereoDelayNode::setWidth,
+      "setFreeze", &dsp_primitives::StereoDelayNode::setFreeze,
+      "setDucking", &dsp_primitives::StereoDelayNode::setDucking,
+      "setTempo", &dsp_primitives::StereoDelayNode::setTempo,
+      "getTimeMode", &dsp_primitives::StereoDelayNode::getTimeMode,
+      "getTimeL", &dsp_primitives::StereoDelayNode::getTimeL,
+      "getTimeR", &dsp_primitives::StereoDelayNode::getTimeR,
+      "getMix", &dsp_primitives::StereoDelayNode::getMix,
+      "getFeedback", &dsp_primitives::StereoDelayNode::getFeedback,
+      "getPingPong", &dsp_primitives::StereoDelayNode::getPingPong,
+      "getFreeze", &dsp_primitives::StereoDelayNode::getFreeze,
+      "reset", &dsp_primitives::StereoDelayNode::reset);
+
+  newLua.new_usertype<dsp_primitives::CompressorNode>(
+      "CompressorNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::CompressorNode>()>(),
+      "setThreshold", &dsp_primitives::CompressorNode::setThreshold,
+      "setRatio", &dsp_primitives::CompressorNode::setRatio,
+      "setMix", &dsp_primitives::CompressorNode::setMix,
+      "getThreshold", &dsp_primitives::CompressorNode::getThreshold,
+      "reset", &dsp_primitives::CompressorNode::reset);
+
+  newLua.new_usertype<dsp_primitives::WaveShaperNode>(
+      "WaveShaperNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::WaveShaperNode>()>(),
+      "setCurve", &dsp_primitives::WaveShaperNode::setCurve,
+      "getCurve", &dsp_primitives::WaveShaperNode::getCurve,
+      "setDrive", &dsp_primitives::WaveShaperNode::setDrive,
+      "getDrive", &dsp_primitives::WaveShaperNode::getDrive,
+      "setOutput", &dsp_primitives::WaveShaperNode::setOutput,
+      "getOutput", &dsp_primitives::WaveShaperNode::getOutput,
+      "setPreFilter", &dsp_primitives::WaveShaperNode::setPreFilter,
+      "getPreFilter", &dsp_primitives::WaveShaperNode::getPreFilter,
+      "setPostFilter", &dsp_primitives::WaveShaperNode::setPostFilter,
+      "getPostFilter", &dsp_primitives::WaveShaperNode::getPostFilter,
+      "setBias", &dsp_primitives::WaveShaperNode::setBias,
+      "getBias", &dsp_primitives::WaveShaperNode::getBias,
+      "setMix", &dsp_primitives::WaveShaperNode::setMix,
+      "getMix", &dsp_primitives::WaveShaperNode::getMix,
+      "setOversample", &dsp_primitives::WaveShaperNode::setOversample,
+      "getOversample", &dsp_primitives::WaveShaperNode::getOversample,
+      "reset", &dsp_primitives::WaveShaperNode::reset);
+
   auto toPrimitiveNode = [](const sol::object &obj)
       -> std::shared_ptr<dsp_primitives::IPrimitiveNode> {
     if (obj.is<std::shared_ptr<dsp_primitives::PlayheadNode>>()) {
@@ -398,6 +471,18 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     }
     if (obj.is<std::shared_ptr<dsp_primitives::DistortionNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::DistortionNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::SVFNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::SVFNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::StereoDelayNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::StereoDelayNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::CompressorNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::CompressorNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::WaveShaperNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::WaveShaperNode>>();
     }
     if (obj.is<sol::table>()) {
       sol::table table = obj.as<sol::table>();
@@ -450,6 +535,15 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::DistortionNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::DistortionNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::SVFNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::SVFNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::StereoDelayNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::StereoDelayNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::CompressorNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::CompressorNode>>();
         }
       }
     }
@@ -1029,6 +1123,44 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       };
     primitives["DistortionNode"] = distApi;
   }
+  {
+    auto svfApi = newLua.create_table();
+    svfApi["new"] = [graph, &trackNode]() {
+        auto node = std::make_shared<dsp_primitives::SVFNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["SVFNode"] = svfApi;
+  }
+  {
+    auto delayApi = newLua.create_table();
+    delayApi["new"] = [graph, &trackNode]() {
+        auto node = std::make_shared<dsp_primitives::StereoDelayNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["StereoDelayNode"] = delayApi;
+  }
+
+  {
+    auto compressorApi = newLua.create_table();
+    compressorApi["new"] = [graph, &trackNode]() {
+        auto node = std::make_shared<dsp_primitives::CompressorNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["CompressorNode"] = compressorApi;
+  }
+
+  {
+    auto waveShaperApi = newLua.create_table();
+    waveShaperApi["new"] = [graph, &trackNode]() {
+        auto node = std::make_shared<dsp_primitives::WaveShaperNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["WaveShaperNode"] = waveShaperApi;
+  }
 
   auto graphTable = newLua.create_table();
   graphTable["connect"] = sol::overload(
@@ -1292,6 +1424,150 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           }
           if (method == "setWidth") {
             newParamBindings[path] = [rev](float v) { rev->setWidth(v); };
+            return true;
+          }
+        }
+
+        if (auto svf = std::dynamic_pointer_cast<dsp_primitives::SVFNode>(node)) {
+          if (method == "setCutoff") {
+            newParamBindings[path] = [svf](float v) { svf->setCutoff(v); };
+            return true;
+          }
+          if (method == "setResonance") {
+            newParamBindings[path] = [svf](float v) { svf->setResonance(v); };
+            return true;
+          }
+          if (method == "setMode") {
+            newParamBindings[path] = [svf](float v) { svf->setMode(static_cast<dsp_primitives::SVFNode::Mode>(static_cast<int>(v))); };
+            return true;
+          }
+          if (method == "setDrive") {
+            newParamBindings[path] = [svf](float v) { svf->setDrive(v); };
+            return true;
+          }
+          if (method == "setMix") {
+            newParamBindings[path] = [svf](float v) { svf->setMix(v); };
+            return true;
+          }
+        }
+
+        if (auto delay = std::dynamic_pointer_cast<dsp_primitives::StereoDelayNode>(node)) {
+          if (method == "setTimeMode") {
+            newParamBindings[path] = [delay](float v) { delay->setTimeMode(static_cast<dsp_primitives::StereoDelayNode::TimeMode>(static_cast<int>(v))); };
+            return true;
+          }
+          if (method == "setTimeL") {
+            newParamBindings[path] = [delay](float v) { delay->setTimeL(v); };
+            return true;
+          }
+          if (method == "setTimeR") {
+            newParamBindings[path] = [delay](float v) { delay->setTimeR(v); };
+            return true;
+          }
+          if (method == "setFeedback") {
+            newParamBindings[path] = [delay](float v) { delay->setFeedback(v); };
+            return true;
+          }
+          if (method == "setPingPong") {
+            newParamBindings[path] = [delay](float v) { delay->setPingPong(v > 0.5f); };
+            return true;
+          }
+          if (method == "setFilterEnabled") {
+            newParamBindings[path] = [delay](float v) { delay->setFilterEnabled(v > 0.5f); };
+            return true;
+          }
+          if (method == "setFilterCutoff") {
+            newParamBindings[path] = [delay](float v) { delay->setFilterCutoff(v); };
+            return true;
+          }
+          if (method == "setMix") {
+            newParamBindings[path] = [delay](float v) { delay->setMix(v); };
+            return true;
+          }
+          if (method == "setFreeze") {
+            newParamBindings[path] = [delay](float v) { delay->setFreeze(v > 0.5f); };
+            return true;
+          }
+        }
+
+        if (auto comp = std::dynamic_pointer_cast<dsp_primitives::CompressorNode>(node)) {
+          if (method == "setThreshold") {
+            newParamBindings[path] = [comp](float v) { comp->setThreshold(v); };
+            return true;
+          }
+          if (method == "setRatio") {
+            newParamBindings[path] = [comp](float v) { comp->setRatio(v); };
+            return true;
+          }
+          if (method == "setAttack") {
+            newParamBindings[path] = [comp](float v) { comp->setAttack(v); };
+            return true;
+          }
+          if (method == "setRelease") {
+            newParamBindings[path] = [comp](float v) { comp->setRelease(v); };
+            return true;
+          }
+          if (method == "setKnee") {
+            newParamBindings[path] = [comp](float v) { comp->setKnee(v); };
+            return true;
+          }
+          if (method == "setMakeup") {
+            newParamBindings[path] = [comp](float v) { comp->setMakeup(v); };
+            return true;
+          }
+          if (method == "setAutoMakeup") {
+            newParamBindings[path] = [comp](float v) { comp->setAutoMakeup(v > 0.5f); };
+            return true;
+          }
+          if (method == "setMode") {
+            newParamBindings[path] = [comp](float v) { comp->setMode(static_cast<int>(v)); };
+            return true;
+          }
+          if (method == "setDetectorMode") {
+            newParamBindings[path] = [comp](float v) { comp->setDetectorMode(static_cast<int>(v)); };
+            return true;
+          }
+          if (method == "setSidechainHPF") {
+            newParamBindings[path] = [comp](float v) { comp->setSidechainHPF(v); };
+            return true;
+          }
+          if (method == "setMix") {
+            newParamBindings[path] = [comp](float v) { comp->setMix(v); };
+            return true;
+          }
+        }
+
+        if (auto ws = std::dynamic_pointer_cast<dsp_primitives::WaveShaperNode>(node)) {
+          if (method == "setCurve") {
+            newParamBindings[path] = [ws](float v) { ws->setCurve(static_cast<int>(v)); };
+            return true;
+          }
+          if (method == "setDrive") {
+            newParamBindings[path] = [ws](float v) { ws->setDrive(v); };
+            return true;
+          }
+          if (method == "setOutput") {
+            newParamBindings[path] = [ws](float v) { ws->setOutput(v); };
+            return true;
+          }
+          if (method == "setPreFilter") {
+            newParamBindings[path] = [ws](float v) { ws->setPreFilter(v); };
+            return true;
+          }
+          if (method == "setPostFilter") {
+            newParamBindings[path] = [ws](float v) { ws->setPostFilter(v); };
+            return true;
+          }
+          if (method == "setBias") {
+            newParamBindings[path] = [ws](float v) { ws->setBias(v); };
+            return true;
+          }
+          if (method == "setMix") {
+            newParamBindings[path] = [ws](float v) { ws->setMix(v); };
+            return true;
+          }
+          if (method == "setOversample") {
+            newParamBindings[path] = [ws](float v) { ws->setOversample(static_cast<int>(v)); };
             return true;
           }
         }

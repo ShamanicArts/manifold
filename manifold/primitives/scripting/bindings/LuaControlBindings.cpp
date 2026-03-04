@@ -401,6 +401,49 @@ void LuaControlBindings::registerGraphBindings(sol::state& lua,
         "getOutput", &dsp_primitives::DistortionNode::getOutput
     );
 
+    lua.new_usertype<dsp_primitives::SVFNode>("SVFNode",
+        sol::constructors<std::shared_ptr<dsp_primitives::SVFNode>()>(),
+        "setCutoff", &dsp_primitives::SVFNode::setCutoff,
+        "setResonance", &dsp_primitives::SVFNode::setResonance,
+        "setMode", &dsp_primitives::SVFNode::setMode,
+        "setDrive", &dsp_primitives::SVFNode::setDrive,
+        "setMix", &dsp_primitives::SVFNode::setMix,
+        "getCutoff", &dsp_primitives::SVFNode::getCutoff,
+        "getResonance", &dsp_primitives::SVFNode::getResonance,
+        "getMode", &dsp_primitives::SVFNode::getMode,
+        "getDrive", &dsp_primitives::SVFNode::getDrive,
+        "getMix", &dsp_primitives::SVFNode::getMix,
+        "reset", &dsp_primitives::SVFNode::reset
+    );
+
+    lua.new_usertype<dsp_primitives::StereoDelayNode>("StereoDelayNode",
+        sol::constructors<std::shared_ptr<dsp_primitives::StereoDelayNode>()>(),
+        "setTimeMode", &dsp_primitives::StereoDelayNode::setTimeMode,
+        "setTimeL", &dsp_primitives::StereoDelayNode::setTimeL,
+        "setTimeR", &dsp_primitives::StereoDelayNode::setTimeR,
+        "setDivisionL", &dsp_primitives::StereoDelayNode::setDivisionL,
+        "setDivisionR", &dsp_primitives::StereoDelayNode::setDivisionR,
+        "setFeedback", &dsp_primitives::StereoDelayNode::setFeedback,
+        "setFeedbackCrossfeed", &dsp_primitives::StereoDelayNode::setFeedbackCrossfeed,
+        "setFilterEnabled", &dsp_primitives::StereoDelayNode::setFilterEnabled,
+        "setFilterCutoff", &dsp_primitives::StereoDelayNode::setFilterCutoff,
+        "setFilterResonance", &dsp_primitives::StereoDelayNode::setFilterResonance,
+        "setMix", &dsp_primitives::StereoDelayNode::setMix,
+        "setPingPong", &dsp_primitives::StereoDelayNode::setPingPong,
+        "setWidth", &dsp_primitives::StereoDelayNode::setWidth,
+        "setFreeze", &dsp_primitives::StereoDelayNode::setFreeze,
+        "setDucking", &dsp_primitives::StereoDelayNode::setDucking,
+        "setTempo", &dsp_primitives::StereoDelayNode::setTempo,
+        "getTimeMode", &dsp_primitives::StereoDelayNode::getTimeMode,
+        "getTimeL", &dsp_primitives::StereoDelayNode::getTimeL,
+        "getTimeR", &dsp_primitives::StereoDelayNode::getTimeR,
+        "getMix", &dsp_primitives::StereoDelayNode::getMix,
+        "getFeedback", &dsp_primitives::StereoDelayNode::getFeedback,
+        "getPingPong", &dsp_primitives::StereoDelayNode::getPingPong,
+        "getFreeze", &dsp_primitives::StereoDelayNode::getFreeze,
+        "reset", &dsp_primitives::StereoDelayNode::reset
+    );
+
     // Node factories
     lua["Primitives"]["PlayheadNode"] = lua.create_table();
     lua["Primitives"]["PlayheadNode"]["new"] = [graph]() {
@@ -444,6 +487,44 @@ void LuaControlBindings::registerGraphBindings(sol::state& lua,
         return node;
     };
 
+    lua["Primitives"]["SVFNode"] = lua.create_table();
+    lua["Primitives"]["SVFNode"]["new"] = [graph]() {
+        auto node = std::make_shared<dsp_primitives::SVFNode>();
+        graph->registerNode(node);
+        return node;
+    };
+    lua["Primitives"]["SVFNode"]["Mode"] = lua.create_table_with(
+        "Lowpass", 0,
+        "Bandpass", 1,
+        "Highpass", 2,
+        "Notch", 3,
+        "Peak", 4
+    );
+
+    lua["Primitives"]["StereoDelayNode"] = lua.create_table();
+    lua["Primitives"]["StereoDelayNode"]["new"] = [graph]() {
+        auto node = std::make_shared<dsp_primitives::StereoDelayNode>();
+        graph->registerNode(node);
+        return node;
+    };
+    lua["Primitives"]["StereoDelayNode"]["TimeMode"] = lua.create_table_with(
+        "Free", 0,
+        "Synced", 1
+    );
+    lua["Primitives"]["StereoDelayNode"]["Division"] = lua.create_table_with(
+        "ThirtySecond", 0,
+        "Sixteenth", 1,
+        "Eighth", 2,
+        "Quarter", 3,
+        "Half", 4,
+        "Whole", 5,
+        "DottedEighth", 6,
+        "DottedQuarter", 7,
+        "TripletSixteenth", 8,
+        "TripletEighth", 9,
+        "TripletQuarter", 10
+    );
+
     // Connection helpers
     auto toPrimitiveNode = [](const sol::object& obj) -> std::shared_ptr<dsp_primitives::IPrimitiveNode> {
         if (obj.is<std::shared_ptr<dsp_primitives::PlayheadNode>>()) {
@@ -463,6 +544,12 @@ void LuaControlBindings::registerGraphBindings(sol::state& lua,
         }
         if (obj.is<std::shared_ptr<dsp_primitives::DistortionNode>>()) {
             return obj.as<std::shared_ptr<dsp_primitives::DistortionNode>>();
+        }
+        if (obj.is<std::shared_ptr<dsp_primitives::SVFNode>>()) {
+            return obj.as<std::shared_ptr<dsp_primitives::SVFNode>>();
+        }
+        if (obj.is<std::shared_ptr<dsp_primitives::StereoDelayNode>>()) {
+            return obj.as<std::shared_ptr<dsp_primitives::StereoDelayNode>>();
         }
         return nullptr;
     };
