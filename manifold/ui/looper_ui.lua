@@ -1,5 +1,6 @@
 -- looper_primitives_ui.lua
 -- Visual clone of looper_ui.lua wired to canonical behavior paths.
+-- Shell is created by C++ (LuaEngine) - this script just provides content.
 
 local W = require("ui_widgets")
 
@@ -10,6 +11,9 @@ local current_state = {}
 local MAX_LAYERS = 4
 local ui = {}
 local recButtonLatched = false
+
+-- Root canvas provided by C++ (already positioned below Shell header)
+local contentRoot = nil
 
 -- ============================================================================
 -- Helpers
@@ -99,6 +103,18 @@ local function modeIndexFromString(mode)
     if mode == "freeMode" then return 1 end
     if mode == "traditional" then return 2 end
     return 0
+end
+
+local function shouldSuspendLiveVisualState()
+    local getter = _G and _G.__manifoldShellGetMode
+    if type(getter) == "function" then
+        local mode, leftPanel = getter()
+        return mode == "edit" and leftPanel == "hierarchy"
+    end
+
+    local mode = _G and _G.__manifoldShellMode or nil
+    local leftPanel = _G and _G.__manifoldShellLeftPanelMode or nil
+    return mode == "edit" and leftPanel == "hierarchy"
 end
 
 local function formatBars(bars)
@@ -248,10 +264,9 @@ end
 -- ============================================================================
 
 function ui_init(root)
-    -- The looper's DSP lives in the "default" slot, loaded once at startup.
-    -- Other UIs (donut demo, live scripting) use named slots so the looper's
-    -- nodes are never removed. No reload needed here.
-
+    -- Store root for later reference (dropdowns need it for overlays)
+    contentRoot = root
+    
     -- Root panel with dark background
     ui.rootPanel = W.Panel.new(root, "rootPanel", {
         bg = 0xff0a0f1a,
@@ -296,7 +311,7 @@ function ui_init(root)
         selected = 1,
         bg = 0xff1f4a7a,
         colour = 0xff7dd3fc,
-        rootNode = root,
+        rootNode = contentRoot,
         on_select = function(idx)
             commandSet("/core/behavior/mode", kModeKeys[idx] or "firstLoop")
         end,
@@ -867,7 +882,11 @@ function ui_update(s)
     current_state = normalizeState(s)
     local state = current_state
     recButtonLatched = state.isRecording or false
-    
+
+    if shouldSuspendLiveVisualState() then
+        return
+    end
+
     -- Header
     if ui.tempoBox then ui.tempoBox:setValue(state.tempo or 120) end
     if ui.targetBpmBox then ui.targetBpmBox:setValue(state.targetBPM or 120) end
