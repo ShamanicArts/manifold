@@ -1,0 +1,2624 @@
+-- Auto-extracted from ui_shell.lua to keep shell composable.
+
+local W = require("ui_widgets")
+
+local Base = require("shell.base_utils")
+local ScriptEditor = require("shell.script_editor_utils")
+local Runtime = require("shell.runtime_script_utils")
+local Inspector = require("shell.inspector_utils")
+
+local readParam = Base.readParam
+local readBoolParam = Base.readBoolParam
+local getVisibleUiScripts = Base.getVisibleUiScripts
+local clamp = Base.clamp
+local nowSeconds = Base.nowSeconds
+local deriveNodeName = Base.deriveNodeName
+local fileStem = Base.fileStem
+
+local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
+local SCRIPT_SYNTAX_COLOUR = ScriptEditor.SCRIPT_SYNTAX_COLOUR
+local seBuildLines = ScriptEditor.seBuildLines
+local seLineColFromPos = ScriptEditor.seLineColFromPos
+local sePosFromLineCol = ScriptEditor.sePosFromLineCol
+local seGetSelectionRange = ScriptEditor.seGetSelectionRange
+local seClearSelection = ScriptEditor.seClearSelection
+local seDeleteSelection = ScriptEditor.seDeleteSelection
+local seReplaceSelection = ScriptEditor.seReplaceSelection
+local seMoveCursor = ScriptEditor.seMoveCursor
+local seVisibleLineCount = ScriptEditor.seVisibleLineCount
+local seMaxCols = ScriptEditor.seMaxCols
+local seIsLetterShortcut = ScriptEditor.seIsLetterShortcut
+local isBacktickOrTildeKey = ScriptEditor.isBacktickOrTildeKey
+local splitConsoleWords = ScriptEditor.splitConsoleWords
+local parseConsoleScalar = ScriptEditor.parseConsoleScalar
+local seTokenizeLuaLineCached = ScriptEditor.seTokenizeLuaLineCached
+
+local RuntimeParamSlider = Runtime.RuntimeParamSlider
+local scriptLooksSettings = Runtime.scriptLooksSettings
+local scriptLooksGlobal = Runtime.scriptLooksGlobal
+local scriptLooksDemo = Runtime.scriptLooksDemo
+local collectActiveSlotHints = Runtime.collectActiveSlotHints
+local scriptMatchesActiveSlot = Runtime.scriptMatchesActiveSlot
+local collectUiContextHints = Runtime.collectUiContextHints
+local scriptMatchesUiContext = Runtime.scriptMatchesUiContext
+local parseDspParamDefsFromCode = Runtime.parseDspParamDefsFromCode
+local parseDspGraphFromCode = Runtime.parseDspGraphFromCode
+local pointInRect = Runtime.pointInRect
+local formatRuntimeValue = Runtime.formatRuntimeValue
+local mapBehaviorPathToSlotPath = Runtime.mapBehaviorPathToSlotPath
+local collectRuntimeParamsForScript = Runtime.collectRuntimeParamsForScript
+
+local walkHierarchy = Inspector.walkHierarchy
+local valueToText = Inspector.valueToText
+local upperFirst = Inspector.upperFirst
+local splitPath = Inspector.splitPath
+local normalizeConfigPath = Inspector.normalizeConfigPath
+local getPathTail = Inspector.getPathTail
+local getConfigValueByPath = Inspector.getConfigValueByPath
+local setConfigValueByPath = Inspector.setConfigValueByPath
+local isPathExposed = Inspector.isPathExposed
+local getInspectorValue = Inspector.getInspectorValue
+local guessEnumOptions = Inspector.guessEnumOptions
+local inferEditorType = Inspector.inferEditorType
+local appendConfigRows = Inspector.appendConfigRows
+local appendSchemaRows = Inspector.appendSchemaRows
+local rectsIntersect = Inspector.rectsIntersect
+local rectContainsRect = Inspector.rectContainsRect
+local computeGridStep = Inspector.computeGridStep
+local normalizeArgbNumber = Inspector.normalizeArgbNumber
+local argbToRgba = Inspector.argbToRgba
+local rgbaToArgb = Inspector.rgbaToArgb
+local shouldSkipFallbackConfigKey = Inspector.shouldSkipFallbackConfigKey
+local deepCopyTable = Inspector.deepCopyTable
+local deepEqual = Inspector.deepEqual
+local collectConfigLeaves = Inspector.collectConfigLeaves
+
+local M = {}
+
+function M.attach(shell)
+    function shell:_isWidgetInTree(canvas)
+        if not canvas then
+            return false
+        end
+        for i = 1, #self.treeRows do
+            if self.treeRows[i].canvas == canvas then
+                return true
+            end
+        end
+        return false
+    end
+
+    function shell:_findTreeRowByCanvas(canvas)
+        if not canvas then
+            return nil
+        end
+        for i = 1, #self.treeRows do
+            if self.treeRows[i].canvas == canvas then
+                return self.treeRows[i]
+            end
+        end
+        return nil
+    end
+
+    function shell:hitTestWidget(designX, designY)
+        for i = #self.treeRows, 1, -1 do
+            local row = self.treeRows[i]
+            if row.depth > 0 and row.w > 0 and row.h > 0 then
+                if designX >= row.x and designX <= (row.x + row.w)
+                    and designY >= row.y and designY <= (row.y + row.h) then
+                    return row.canvas
+                end
+            end
+        end
+        return nil
+    end
+
+    function shell:isCanvasSelected(canvas)
+        if canvas == nil then
+            return false
+        end
+        for i = 1, #self.selectedWidgets do
+            if self.selectedWidgets[i] == canvas then
+                return true
+            end
+        end
+        return false
+    end
+
+    function shell:setSelection(canvases, primary, recordHistory)
+        local beforeSelection = nil
+        if recordHistory ~= false and not self.historyApplying then
+            beforeSelection = self:_captureSelectionState()
+        end
+
+        self.selectedWidgets = {}
+
+        if type(canvases) == "table" then
+            for i = 1, #canvases do
+                local canvas = canvases[i]
+                if canvas ~= nil and self:_isWidgetInTree(canvas) and not self:isCanvasSelected(canvas) then
+                    self.selectedWidgets[#self.selectedWidgets + 1] = canvas
+                end
+            end
+        end
+
+        if #self.selectedWidgets == 0 then
+            self.selectedWidget = nil
+        else
+            if primary ~= nil and self:isCanvasSelected(primary) then
+                self.selectedWidget = primary
+            else
+                self.selectedWidget = self.selectedWidgets[#self.selectedWidgets]
+            end
+        end
+
+        self:_syncInspectorEditors()
+        self:_rebuildInspectorRows()
+        self.treeCanvas:repaint()
+        self.previewOverlay:repaint()
+        self.debugLastIdentifier = self:deriveActiveDebugIdentifier()
+
+        if beforeSelection ~= nil then
+            local afterSelection = self:_captureSelectionState()
+            self:recordHistory("selection", nil, beforeSelection, nil, afterSelection)
+        end
+    end
+
+    function shell:toggleCanvasSelection(canvas)
+        if canvas == nil or not self:_isWidgetInTree(canvas) then
+            return
+        end
+
+        local nextSelection = {}
+        local found = false
+        for i = 1, #self.selectedWidgets do
+            local c = self.selectedWidgets[i]
+            if c == canvas then
+                found = true
+            else
+                nextSelection[#nextSelection + 1] = c
+            end
+        end
+
+        if found then
+            local primary = self.selectedWidget
+            if primary == canvas then
+                primary = nil
+            end
+            self:setSelection(nextSelection, primary)
+        else
+            for i = 1, #self.selectedWidgets do
+                nextSelection[#nextSelection + 1] = self.selectedWidgets[i]
+            end
+            nextSelection[#nextSelection + 1] = canvas
+            self:setSelection(nextSelection, canvas)
+        end
+    end
+
+    function shell:appendConsoleLine(text, colour)
+        local c = self.console
+        c.lines[#c.lines + 1] = {
+            text = tostring(text or ""),
+            colour = colour or 0xffcbd5e1,
+        }
+        while #c.lines > (c.maxLines or 240) do
+            table.remove(c.lines, 1)
+        end
+        c.scrollOffset = 0
+        self.consoleOverlay:repaint()
+    end
+
+    function shell:setConsoleVisible(visible)
+        local c = self.console
+        local nextVisible = visible == true
+        if c.visible == nextVisible then
+            return
+        end
+
+        c.visible = nextVisible
+        if c.visible then
+            local w = self.parentNode:getWidth()
+            local h = self.parentNode:getHeight()
+            self:layout(w, h)
+            self.consoleOverlay:setInterceptsMouse(true, true)
+            self.consoleOverlay:toFront(false)
+            self.consoleOverlay:grabKeyboardFocus()
+            self.consoleOverlay:repaint()
+        else
+            self.consoleOverlay:setInterceptsMouse(false, false)
+            self.consoleOverlay:setBounds(0, 0, 0, 0)
+        end
+    end
+
+    function shell:setDevModeEnabled(enabled)
+        local nextEnabled = enabled == true
+        if self.devModeEnabled == nextEnabled then
+            return
+        end
+
+        self.devModeEnabled = nextEnabled
+
+        local w = self.parentNode:getWidth()
+        local h = self.parentNode:getHeight()
+        self:layout(w, h)
+
+        if self.devModeEnabled then
+            self:appendConsoleLine("Dev mode enabled", 0xff86efac)
+        else
+            self:appendConsoleLine("Dev mode disabled", 0xfffca5a5)
+        end
+    end
+
+    function shell:toggleConsole()
+        self:setConsoleVisible(not (self.console.visible == true))
+    end
+
+    function shell:updateConsoleBounds(totalW, totalH)
+        local c = self.console
+        if c.visible ~= true then
+            self.consoleOverlay:setBounds(0, 0, 0, 0)
+            return
+        end
+
+        local ch = math.max(120, math.floor(totalH * 0.28))
+        local cx = self.pad + 8
+        local cw = totalW - self.pad * 2 - 16
+        local cy = totalH - ch - self.pad - 6
+
+        c.rect = { x = cx, y = cy, w = cw, h = ch }
+        self.consoleOverlay:setBounds(cx, cy, cw, ch)
+        self.consoleOverlay:toFront(false)
+    end
+
+    function shell:deriveActiveDebugIdentifier()
+        local out = {}
+
+        if self.leftPanelMode == "scripts" then
+            local si = self.scriptInspector or {}
+            if si.runtimeInputActive and type(si.runtimeInputEndpointPath) == "string" and si.runtimeInputEndpointPath ~= "" then
+                out[#out + 1] = "param:" .. si.runtimeInputEndpointPath
+            end
+            if type(self.selectedScriptRow) == "table" then
+                out[#out + 1] = "script:" .. tostring(self.selectedScriptRow.path or self.selectedScriptRow.name or "")
+            end
+            if type(self.selectedDspRow) == "table" then
+                out[#out + 1] = "dsp:" .. tostring(self.selectedDspRow.path or "")
+            end
+        end
+
+        local row = self.activeConfigProperty
+        if type(row) == "table" and type(row.path) == "string" then
+            out[#out + 1] = "property:" .. row.path
+        end
+
+        local sel = self.selectedWidget
+        if sel ~= nil then
+            local meta = sel:getUserData("_editorMeta")
+            local nodeType = (type(meta) == "table" and type(meta.type) == "string" and meta.type ~= "") and meta.type or "Canvas"
+            local nodeName = deriveNodeName(meta, nodeType)
+            out[#out + 1] = "widget:" .. tostring(nodeName)
+            out[#out + 1] = "type:" .. tostring(nodeType)
+            out[#out + 1] = "canvas:" .. tostring(sel)
+
+            local row = self:_findTreeRowByCanvas(sel)
+            if row and type(row.path) == "string" then
+                out[#out + 1] = "tree:" .. row.path
+            end
+
+            local cfg = (type(meta) == "table") and meta.config or nil
+            if type(cfg) == "table" and type(cfg.id) == "string" and cfg.id ~= "" then
+                out[#out + 1] = "id:" .. cfg.id
+            end
+
+            if type(meta) == "table" and type(meta.callbacks) == "table" then
+                local cbKeys = {}
+                for k, v in pairs(meta.callbacks) do
+                    if type(v) == "function" then
+                        cbKeys[#cbKeys + 1] = tostring(k)
+                    end
+                end
+                table.sort(cbKeys)
+                if #cbKeys > 0 then
+                    out[#out + 1] = "callbacks:" .. table.concat(cbKeys, ",")
+                end
+            end
+        end
+
+        if #out == 0 then
+            return ""
+        end
+
+        return table.concat(out, " | ")
+    end
+
+    function shell:copyActiveDebugIdentifier()
+        if not self.devModeEnabled then
+            return false
+        end
+
+        local ident = self:deriveActiveDebugIdentifier()
+        if ident == "" then
+            self:appendConsoleLine("No active identifier to copy.", 0xfffca5a5)
+            return false
+        end
+
+        self.debugLastIdentifier = ident
+        if setClipboardText then
+            setClipboardText(ident)
+        end
+        self:appendConsoleLine("copied: " .. ident, 0xff86efac)
+        return true
+    end
+
+    function shell:pasteClipboardIntoConsole()
+        if not self.devModeEnabled then
+            return false
+        end
+        if getClipboardText == nil then
+            return false
+        end
+
+        local text = tostring(getClipboardText() or "")
+        if text == "" then
+            return false
+        end
+
+        self:setConsoleVisible(true)
+        self.console.input = text
+        self.console.historyIndex = 0
+        self.consoleOverlay:repaint()
+        return true
+    end
+
+    function shell:applyWheelListScroll(currentScroll, deltaY, rowHeight, itemCount, viewportH, rowsPerTick)
+        local contentHeight = (itemCount or 0) * (rowHeight or 1)
+        local maxScroll = math.max(0, contentHeight - (viewportH or 0))
+        if maxScroll <= 0 then
+            return currentScroll, false
+        end
+
+        local sign = deltaY > 0 and -1 or 1
+        local ticks = math.max(1, math.floor(math.abs(deltaY) + 0.5))
+        local rows = rowsPerTick or self.listWheelRows or 1
+        local amount = sign * ticks * (rowHeight or 1) * rows
+        local nextScroll = clamp((currentScroll or 0) + amount, 0, maxScroll)
+        return nextScroll, nextScroll ~= currentScroll
+    end
+
+    function shell:executeConsoleCommand(line)
+        local src = tostring(line or "")
+        local trimmed = src:match("^%s*(.-)%s*$") or ""
+        if trimmed == "" then
+            return
+        end
+
+        self.console.history[#self.console.history + 1] = trimmed
+        self.console.historyIndex = 0
+        self:appendConsoleLine("> " .. trimmed, 0xff93c5fd)
+
+        local words = splitConsoleWords(trimmed)
+        local cmd = string.lower(words[1] or "")
+
+        if cmd == "help" then
+            self:appendConsoleLine("help | clear | get <path> | set <path> <value> | trigger <path>")
+            self:appendConsoleLine("undo | redo | sel | copyid | dev [status|on|off|toggle] | ui <scriptPath> | lua <expr>")
+            return
+        elseif cmd == "clear" then
+            self.console.lines = {}
+            self.console.scrollOffset = 0
+            self.consoleOverlay:repaint()
+            return
+        elseif cmd == "get" then
+            local path = words[2]
+            if type(path) ~= "string" or path == "" then
+                self:appendConsoleLine("ERR: get requires path", 0xfffca5a5)
+                return
+            end
+            if type(getParam) == "function" then
+                local value = getParam(path)
+                self:appendConsoleLine(path .. " = " .. valueToText(value), 0xffc4b5fd)
+            else
+                self:appendConsoleLine("ERR: getParam unavailable", 0xfffca5a5)
+            end
+            return
+        elseif cmd == "set" then
+            local path = words[2]
+            local rawValue = words[3]
+            if type(path) ~= "string" or path == "" or rawValue == nil then
+                self:appendConsoleLine("ERR: set <path> <value>", 0xfffca5a5)
+                return
+            end
+            local value = parseConsoleScalar(rawValue)
+            local ok = false
+            if type(setParam) == "function" then
+                ok = setParam(path, value)
+            end
+            if ok then
+                self:appendConsoleLine("ok: " .. path .. " = " .. valueToText(value), 0xff86efac)
+            else
+                self:appendConsoleLine("ERR: set failed for " .. path, 0xfffca5a5)
+            end
+            return
+        elseif cmd == "trigger" then
+            local path = words[2]
+            if type(path) ~= "string" or path == "" then
+                self:appendConsoleLine("ERR: trigger requires path", 0xfffca5a5)
+                return
+            end
+            local ok = false
+            if type(triggerParam) == "function" then
+                ok = triggerParam(path)
+            elseif type(command) == "function" then
+                command("TRIGGER", path)
+                ok = true
+            end
+            if ok then
+                self:appendConsoleLine("ok: trigger " .. path, 0xff86efac)
+            else
+                self:appendConsoleLine("ERR: trigger failed for " .. path, 0xfffca5a5)
+            end
+            return
+        elseif cmd == "undo" then
+            self:undo()
+            self:appendConsoleLine("undo")
+            return
+        elseif cmd == "redo" then
+            self:redo()
+            self:appendConsoleLine("redo")
+            return
+        elseif cmd == "sel" or cmd == "id" then
+            local ident = self:deriveActiveDebugIdentifier()
+            if ident == "" then
+                ident = "(none)"
+            end
+            self:appendConsoleLine(ident, 0xffc4b5fd)
+            return
+        elseif cmd == "copyid" then
+            self:copyActiveDebugIdentifier()
+            return
+        elseif cmd == "dev" then
+            local argRaw = words[2]
+            local arg = string.lower(argRaw or "")
+
+            if arg == "" or arg == "status" then
+                self:appendConsoleLine("dev mode: " .. (self.devModeEnabled and "on" or "off"), 0xff86efac)
+                self:appendConsoleLine("usage: dev on | dev off | dev toggle")
+                return
+            elseif arg == "on" then
+                self:setDevModeEnabled(true)
+            elseif arg == "off" then
+                self:setDevModeEnabled(false)
+            elseif arg == "toggle" then
+                self:setDevModeEnabled(not self.devModeEnabled)
+            else
+                self:appendConsoleLine("ERR: usage dev on|off|toggle", 0xfffca5a5)
+                return
+            end
+
+            self:appendConsoleLine("dev mode: " .. (self.devModeEnabled and "on" or "off"), 0xff86efac)
+            return
+        elseif cmd == "ui" then
+            local target = words[2]
+            if type(target) == "string" and target ~= "" and type(switchUiScript) == "function" then
+                self:stashRestoreStateForScriptSwitch()
+                switchUiScript(target)
+                self:appendConsoleLine("switching ui: " .. target, 0xff86efac)
+            else
+                self:appendConsoleLine("ERR: ui <scriptPath>", 0xfffca5a5)
+            end
+            return
+        elseif cmd == "lua" then
+            local expr = trimmed:match("^%s*lua%s+(.+)$")
+            if type(expr) ~= "string" or expr == "" then
+                self:appendConsoleLine("ERR: lua <expr>", 0xfffca5a5)
+                return
+            end
+            local chunk, loadErr = load("return " .. expr, "console", "t", _ENV)
+            if chunk == nil then
+                chunk, loadErr = load(expr, "console", "t", _ENV)
+            end
+            if chunk == nil then
+                self:appendConsoleLine("ERR: " .. tostring(loadErr), 0xfffca5a5)
+                return
+            end
+            local ok, result = pcall(chunk)
+            if ok then
+                self:appendConsoleLine(valueToText(result), 0xff86efac)
+            else
+                self:appendConsoleLine("ERR: " .. tostring(result), 0xfffca5a5)
+            end
+            return
+        end
+
+        self:appendConsoleLine("ERR: unknown command '" .. cmd .. "'", 0xfffca5a5)
+    end
+
+    function shell:handleConsoleKeyPress(keyCode, charCode, shift, ctrl, alt)
+        local _ = shift
+        _ = alt
+
+        if self.console.visible ~= true then
+            return false
+        end
+
+        local c = self.console
+        local k = keyCode or 0
+        local ch = charCode or 0
+
+        if k == 27 then
+            self:setConsoleVisible(false)
+            return true
+        end
+
+        if ctrl and seIsLetterShortcut(k, ch, "v") and getClipboardText then
+            c.input = c.input .. tostring(getClipboardText() or "")
+            self.consoleOverlay:repaint()
+            return true
+        end
+
+        if k == 13 or k == 10 then
+            local line = c.input
+            c.input = ""
+            self:executeConsoleCommand(line)
+            self.consoleOverlay:repaint()
+            return true
+        end
+
+        if k == 8 then
+            c.input = string.sub(c.input or "", 1, math.max(0, #(c.input or "") - 1))
+            self.consoleOverlay:repaint()
+            return true
+        end
+
+        local isUp = (k == 63232 or k == 30 or k == 38)
+        local isDown = (k == 63233 or k == 31 or k == 40)
+        local isPageUp = (k == 63276 or k == 33)
+        local isPageDown = (k == 63277 or k == 34)
+
+        if isUp then
+            local count = #c.history
+            if count > 0 then
+                if c.historyIndex == 0 then
+                    c.historyIndex = count
+                else
+                    c.historyIndex = math.max(1, c.historyIndex - 1)
+                end
+                c.input = c.history[c.historyIndex] or ""
+                self.consoleOverlay:repaint()
+            end
+            return true
+        elseif isDown then
+            local count = #c.history
+            if count > 0 and c.historyIndex > 0 then
+                c.historyIndex = math.min(count, c.historyIndex + 1)
+                c.input = c.history[c.historyIndex] or ""
+                self.consoleOverlay:repaint()
+            end
+            return true
+        elseif isPageUp then
+            c.scrollOffset = math.min(#c.lines, (c.scrollOffset or 0) + 6)
+            self.consoleOverlay:repaint()
+            return true
+        elseif isPageDown then
+            c.scrollOffset = math.max(0, (c.scrollOffset or 0) - 6)
+            self.consoleOverlay:repaint()
+            return true
+        end
+
+        if ch >= 32 and ch <= 126 then
+            c.input = (c.input or "") .. string.char(ch)
+            self.consoleOverlay:repaint()
+            return true
+        elseif k >= 32 and k <= 126 then
+            c.input = (c.input or "") .. string.char(k)
+            self.consoleOverlay:repaint()
+            return true
+        end
+
+        return false
+    end
+
+    function shell:handleGlobalDevHotkeys(keyCode, charCode, shift, ctrl, alt)
+        if (not ctrl) and (not alt) and isBacktickOrTildeKey(keyCode or 0, charCode or 0) then
+            self:toggleConsole()
+            return true
+        end
+
+        if self.console.visible then
+            return self:handleConsoleKeyPress(keyCode, charCode, shift, ctrl, alt)
+        end
+
+        if not self.devModeEnabled then
+            return false
+        end
+
+        if ctrl and shift and seIsLetterShortcut(keyCode or 0, charCode or 0, "c") then
+            self:copyActiveDebugIdentifier()
+            return true
+        end
+
+        if ctrl and shift and seIsLetterShortcut(keyCode or 0, charCode or 0, "v") then
+            self:pasteClipboardIntoConsole()
+            return true
+        end
+
+        return false
+    end
+
+    function shell:refreshDspRows(params)
+        self.dspRows = {}
+
+        local p = params
+        if type(p) ~= "table" then
+            return
+        end
+
+        local keys = {}
+        for k, _ in pairs(p) do
+            if type(k) == "string" then
+                keys[#keys + 1] = k
+            end
+        end
+        table.sort(keys)
+
+        for i = 1, #keys do
+            local key = keys[i]
+            local value = p[key]
+            local t = type(value)
+            if t == "number" or t == "boolean" or t == "string" then
+                self.dspRows[#self.dspRows + 1] = {
+                    path = key,
+                    value = valueToText(value),
+                }
+            end
+        end
+
+        local maxScroll = math.max(0, #self.dspRows * self.dspRowHeight - self.dspViewportH)
+        self.dspScrollY = clamp(self.dspScrollY, 0, maxScroll)
+    end
+
+    function shell:refreshScriptRows()
+        self.scriptRows = {}
+
+        local currentUi = getCurrentScriptPath and getCurrentScriptPath() or ""
+        local editingPath = self.scriptEditor and self.scriptEditor.path or ""
+
+        self.scriptRows[#self.scriptRows + 1] = { section = true, label = "UI Scripts" }
+        local uiScripts = listUiScripts and listUiScripts() or {}
+        local uiCount = 0
+
+        for i = 1, #uiScripts do
+            local s = uiScripts[i]
+            if type(s) == "table" then
+                local path = s.path or ""
+                local name = s.name or fileStem(path) or "(unnamed)"
+                local include = false
+
+                if not scriptLooksSettings(name, path) then
+                    if path ~= "" and (path == currentUi or path == editingPath) then
+                        include = true
+                    elseif scriptLooksGlobal(name, path) then
+                        include = true
+                    end
+                end
+
+                if include then
+                    self.scriptRows[#self.scriptRows + 1] = {
+                        kind = "ui",
+                        name = name,
+                        path = path,
+                        active = (path == currentUi),
+                    }
+                    uiCount = uiCount + 1
+                end
+            end
+        end
+
+        if uiCount == 0 then
+            self.scriptRows[#self.scriptRows + 1] = {
+                section = false,
+                nonInteractive = true,
+                kind = "hint",
+                name = "No loaded/global UI scripts",
+                path = "",
+                active = false,
+            }
+        end
+
+        self.scriptRows[#self.scriptRows + 1] = { section = true, label = "DSP Scripts" }
+        local dspScripts = listDspScripts and listDspScripts() or {}
+        local activeSlots = collectActiveSlotHints(self.stateParamsCache)
+        local uiContextHints = collectUiContextHints(currentUi)
+        local dspCount = 0
+
+        for i = 1, #dspScripts do
+            local s = dspScripts[i]
+            if type(s) == "table" then
+                local path = s.path or ""
+                local name = s.name or fileStem(path) or "(unnamed)"
+                local include = false
+                local slotMatch = scriptMatchesActiveSlot(name, activeSlots)
+                local contextMatch = scriptMatchesUiContext(name, path, uiContextHints)
+
+                if not scriptLooksSettings(name, path) then
+                    if path ~= "" and path == editingPath then
+                        include = true
+                    elseif scriptLooksGlobal(name, path) then
+                        include = true
+                    elseif contextMatch and slotMatch then
+                        include = true
+                    elseif currentUi ~= "" and contextMatch then
+                        include = true
+                    elseif currentUi == "" and slotMatch then
+                        include = true
+                    end
+                end
+
+                if include then
+                    self.scriptRows[#self.scriptRows + 1] = {
+                        kind = "dsp",
+                        name = name,
+                        path = path,
+                        active = (self.scriptEditor.kind == "dsp" and path == editingPath),
+                    }
+                    dspCount = dspCount + 1
+                end
+            end
+        end
+
+        if dspCount == 0 then
+            self.scriptRows[#self.scriptRows + 1] = {
+                section = false,
+                nonInteractive = true,
+                kind = "hint",
+                name = "No loaded/global DSP scripts",
+                path = "",
+                active = false,
+            }
+        end
+
+        local hasSelected = false
+        if type(self.selectedScriptRow) == "table" then
+            for i = 1, #self.scriptRows do
+                local row = self.scriptRows[i]
+                if not row.section and not row.nonInteractive and row.path == self.selectedScriptRow.path and row.kind == self.selectedScriptRow.kind then
+                    hasSelected = true
+                    break
+                end
+            end
+        end
+        if not hasSelected then
+            self.selectedScriptRow = nil
+            self:refreshScriptInspectorData(nil)
+        end
+
+        local maxScroll = math.max(0, #self.scriptRows * self.scriptRowHeight - self.scriptViewportH)
+        self.scriptScrollY = clamp(self.scriptScrollY, 0, maxScroll)
+        self.scriptRowsLastRefreshAt = nowSeconds()
+    end
+
+    function shell:refreshScriptInspectorData(row)
+        local si = self.scriptInspector
+        if type(row) ~= "table" or row.section or row.nonInteractive then
+            si.kind = ""
+            si.name = ""
+            si.path = ""
+            si.text = ""
+            si.params = {}
+            si.runtimeParams = {}
+            si.graph = { nodes = {}, edges = {} }
+            si.runtimeStatus = ""
+            si.runButtonRect = nil
+            si.stopButtonRect = nil
+            si.runtimeParamRows = {}
+            si.runtimeInputActive = false
+            si.runtimeInputEndpointPath = ""
+            si.runtimeInputText = ""
+            si.runtimeInputMin = nil
+            si.runtimeInputMax = nil
+            si.runtimeSliderDragActive = false
+            si.runtimeSliderDragEndpointPath = ""
+            si.runtimeSliderDragRect = nil
+            si.runtimeSliderDragMin = nil
+            si.runtimeSliderDragMax = nil
+            si.runtimeSliderDragStep = nil
+            si.runtimeSliderDragLastValue = nil
+            si.runtimeSliderDragLastApplyAt = -1
+            si.runtimeSliderDragLastUiRepaintAt = -1
+            si.editorScrollRow = 1
+            si.editorHeaderRect = nil
+            si.editorBodyRect = nil
+            si.graphHeaderRect = nil
+            si.graphBodyRect = nil
+            si.graphDragging = false
+            self.runtimeParamsLastRefreshAt = -1
+            self:hideRuntimeParamControls(1)
+            return
+        end
+
+        local text = ""
+        if readTextFile and type(row.path) == "string" and row.path ~= "" then
+            text = readTextFile(row.path) or ""
+        end
+
+        si.kind = row.kind or ""
+        si.name = row.name or fileStem(row.path or "")
+        si.path = row.path or ""
+        si.text = text
+        si.params = {}
+        si.runtimeParams = {}
+        si.graph = { nodes = {}, edges = {} }
+        si.runtimeStatus = ""
+        si.runButtonRect = nil
+        si.stopButtonRect = nil
+        si.runtimeParamRows = {}
+        si.runtimeInputActive = false
+        si.runtimeInputEndpointPath = ""
+        si.runtimeInputText = ""
+        si.runtimeInputMin = nil
+        si.runtimeInputMax = nil
+        si.runtimeSliderDragActive = false
+        si.runtimeSliderDragEndpointPath = ""
+        si.runtimeSliderDragRect = nil
+        si.runtimeSliderDragMin = nil
+        si.runtimeSliderDragMax = nil
+        si.runtimeSliderDragStep = nil
+        si.runtimeSliderDragLastValue = nil
+        si.runtimeSliderDragLastApplyAt = -1
+        si.runtimeSliderDragLastUiRepaintAt = -1
+        si.editorScrollRow = 1
+        self.runtimeParamsLastRefreshAt = -1
+        self:hideRuntimeParamControls(1)
+
+        if si.kind == "dsp" then
+            si.params = parseDspParamDefsFromCode(text)
+            si.runtimeParams = collectRuntimeParamsForScript(row, self.stateParamsCache, si.params, self.dspPreviewSlotName)
+            si.graph = parseDspGraphFromCode(text)
+        end
+    end
+
+    function shell:refreshScriptInspectorRuntimeParams()
+        local si = self.scriptInspector
+        if type(si) ~= "table" or si.kind ~= "dsp" then
+            return
+        end
+        if type(self.selectedScriptRow) ~= "table" then
+            si.runtimeParams = {}
+            self.runtimeParamsLastRefreshAt = nowSeconds()
+            return
+        end
+        si.runtimeParams = collectRuntimeParamsForScript(self.selectedScriptRow, self.stateParamsCache, si.params, self.dspPreviewSlotName)
+        self.runtimeParamsLastRefreshAt = nowSeconds()
+    end
+
+    function shell:hideRuntimeParamControls(fromIndex)
+        local si = self.scriptInspector
+        local controls = si.runtimeParamControls or {}
+        local first = math.max(1, tonumber(fromIndex) or 1)
+        for i = first, #controls do
+            local c = controls[i]
+            if c then
+                c.row = nil
+                if c.minus and c.minus.node then
+                    c.minus:setEnabled(false)
+                    c.minus.node:setBounds(0, 0, 0, 0)
+                end
+                if c.slider and c.slider.node then
+                    c.slider:setEnabled(false)
+                    c.slider.node:setBounds(0, 0, 0, 0)
+                end
+                if c.plus and c.plus.node then
+                    c.plus:setEnabled(false)
+                    c.plus.node:setBounds(0, 0, 0, 0)
+                end
+            end
+        end
+    end
+
+    function shell:ensureRuntimeParamControlPool(count)
+        local needed = math.max(0, tonumber(count) or 0)
+        local si = self.scriptInspector
+        si.runtimeParamControls = si.runtimeParamControls or {}
+
+        while #si.runtimeParamControls < needed do
+            local idx = #si.runtimeParamControls + 1
+            local control = { row = nil }
+
+            control.minus = W.Button.new(self.inspectorCanvas, "insRtMinus" .. tostring(idx), {
+                label = "-",
+                bg = 0xff1e293b,
+                textColour = 0xffcbd5e1,
+                fontSize = 9.0,
+                radius = 3,
+                on_click = function()
+                    local row = control.row
+                    if row and row.active then
+                        self:nudgeRuntimeParam(row.endpointPath, -1, row.min, row.max, row.step)
+                    end
+                end,
+            })
+
+            control.slider = RuntimeParamSlider.new(self.inspectorCanvas, "insRtSlider" .. tostring(idx), {
+                min = 0,
+                max = 1,
+                value = 0,
+                step = 0,
+                on_change = function(v)
+                    local row = control.row
+                    if not row or not row.active then
+                        return
+                    end
+                    self:setRuntimeParamAbsolute(row.endpointPath, v, row.min, row.max, {
+                        step = row.step,
+                        fast = true,
+                        noRepaint = true,
+                        suppressStatus = true,
+                    })
+                    self.inspectorCanvas:repaint()
+                end,
+                on_ctrl_click = function(v)
+                    local row = control.row
+                    if not row or not row.active then
+                        return
+                    end
+                    si.runtimeInputActive = true
+                    si.runtimeInputEndpointPath = row.endpointPath or ""
+                    si.runtimeInputText = tostring(v or row.value or 0)
+                    si.runtimeInputMin = row.min
+                    si.runtimeInputMax = row.max
+                    self.inspectorCanvas:grabKeyboardFocus()
+                    self.inspectorCanvas:repaint()
+                end,
+                on_drag_state = function(active)
+                    si.runtimeSliderDragActive = active == true
+                    if not si.runtimeSliderDragActive then
+                        self:refreshScriptInspectorRuntimeParams()
+                        self.inspectorCanvas:repaint()
+                    end
+                end,
+            })
+
+            control.plus = W.Button.new(self.inspectorCanvas, "insRtPlus" .. tostring(idx), {
+                label = "+",
+                bg = 0xff1e293b,
+                textColour = 0xffcbd5e1,
+                fontSize = 9.0,
+                radius = 3,
+                on_click = function()
+                    local row = control.row
+                    if row and row.active then
+                        self:nudgeRuntimeParam(row.endpointPath, 1, row.min, row.max, row.step)
+                    end
+                end,
+            })
+
+            control.minus:setEnabled(false)
+            control.slider:setEnabled(false)
+            control.plus:setEnabled(false)
+
+            si.runtimeParamControls[#si.runtimeParamControls + 1] = control
+        end
+    end
+
+    function shell:runSelectedDspScriptForInspector()
+        local row = self.selectedScriptRow
+        local si = self.scriptInspector
+        if type(row) ~= "table" or row.kind ~= "dsp" or (row.path or "") == "" then
+            return
+        end
+
+        local slot = self.dspPreviewSlotName or "editor_preview"
+        local ok = false
+
+        if setDspSlotPersistOnUiSwitch then
+            pcall(setDspSlotPersistOnUiSwitch, slot, false)
+        end
+
+        if loadDspScriptInSlot then
+            ok = loadDspScriptInSlot(row.path, slot)
+        elseif loadDspScript then
+            ok = loadDspScript(row.path)
+        end
+
+        if ok then
+            si.runtimeStatus = "DSP loaded: " .. (row.name or fileStem(row.path))
+        else
+            local err = getDspScriptLastError and getDspScriptLastError() or ""
+            si.runtimeStatus = "DSP load failed" .. ((err ~= "") and (": " .. err) or "")
+        end
+
+        self:refreshScriptInspectorRuntimeParams()
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:stopSelectedDspScriptForInspector()
+        local si = self.scriptInspector
+        local slot = self.dspPreviewSlotName or "editor_preview"
+        local ok = false
+
+        if unloadDspSlot then
+            ok = unloadDspSlot(slot)
+        end
+
+        if ok then
+            si.runtimeStatus = "DSP preview slot unloaded"
+        else
+            si.runtimeStatus = "No preview slot to unload"
+        end
+
+        self:refreshScriptInspectorRuntimeParams()
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:updateRuntimeParamCache(endpointPath, value)
+        local si = self.scriptInspector
+        if type(si) ~= "table" then
+            return
+        end
+
+        for i = 1, #(si.runtimeParams or {}) do
+            local rp = si.runtimeParams[i]
+            if (rp.endpointPath or rp.path) == endpointPath then
+                rp.numericValue = value
+                rp.value = formatRuntimeValue(value)
+                rp.active = true
+            end
+        end
+
+        for i = 1, #(si.runtimeParamRows or {}) do
+            local rr = si.runtimeParamRows[i]
+            if rr.endpointPath == endpointPath then
+                rr.value = value
+                rr.active = true
+            end
+        end
+    end
+
+    function shell:setRuntimeParamAbsolute(endpointPath, value, minV, maxV, opts)
+        if type(endpointPath) ~= "string" or endpointPath == "" then
+            return false
+        end
+        if type(setParam) ~= "function" then
+            return false
+        end
+
+        opts = opts or {}
+
+        local lo = tonumber(minV)
+        local hi = tonumber(maxV)
+        local step = tonumber(opts.step)
+        local nextValue = tonumber(value)
+        if nextValue == nil then
+            self.scriptInspector.runtimeStatus = "Invalid value"
+            return false
+        end
+
+        if step ~= nil and step > 0 then
+            if lo ~= nil then
+                nextValue = lo + math.floor(((nextValue - lo) / step) + 0.5) * step
+            else
+                nextValue = math.floor((nextValue / step) + 0.5) * step
+            end
+        end
+
+        if lo ~= nil and hi ~= nil then
+            nextValue = clamp(nextValue, lo, hi)
+        end
+
+        local ok = setParam(endpointPath, nextValue)
+        if not ok then
+            self.scriptInspector.runtimeStatus = "setParam failed: " .. endpointPath
+            return false
+        end
+
+        if not opts.suppressStatus then
+            self.scriptInspector.runtimeStatus = string.format("set %s = %.4f", endpointPath, nextValue)
+        end
+
+        if opts.fast then
+            self:updateRuntimeParamCache(endpointPath, nextValue)
+        else
+            self:refreshScriptInspectorRuntimeParams()
+        end
+
+        if not opts.noRepaint then
+            self.inspectorCanvas:repaint()
+        end
+
+        return true
+    end
+
+    function shell:nudgeRuntimeParam(endpointPath, delta, minV, maxV, stepV)
+        if type(endpointPath) ~= "string" or endpointPath == "" then
+            return
+        end
+
+        local current = 0.0
+        if type(getParam) == "function" then
+            current = getParam(endpointPath) or 0.0
+        end
+
+        local lo = tonumber(minV)
+        local hi = tonumber(maxV)
+        local step = tonumber(stepV)
+
+        if step == nil or step <= 0 then
+            local span = nil
+            if lo ~= nil and hi ~= nil then
+                span = math.abs(hi - lo)
+            end
+
+            if span ~= nil then
+                if span <= 2.0 then
+                    step = 0.01
+                elseif span <= 20.0 then
+                    step = 0.1
+                else
+                    step = span / 100.0
+                end
+            else
+                step = math.max(0.01, math.abs(current) * 0.05)
+            end
+        end
+
+        local nextValue = current + (delta * step)
+        self:setRuntimeParamAbsolute(endpointPath, nextValue, lo, hi, {
+            step = step,
+            fast = true,
+        })
+    end
+
+    function shell:handleLeftListSelection(kind, row, openFn)
+        if type(row) ~= "table" then
+            return
+        end
+
+        local key = kind .. ":" .. tostring(row.path or row.name or "")
+        local t = nowSeconds()
+        local isDouble = (self.leftListLastClickKey == key) and ((t - self.leftListLastClickAt) <= self.doubleClickWindow)
+        self.leftListLastClickKey = key
+        self.leftListLastClickAt = t
+
+        if kind == "dsp" then
+            self.selectedDspRow = row
+            self.selectedScriptRow = nil
+            self.dspCanvas:repaint()
+            self.scriptCanvas:repaint()
+        elseif kind == "script" then
+            self.selectedScriptRow = row
+            self.selectedDspRow = nil
+            self:refreshScriptInspectorData(row)
+            self.scriptCanvas:repaint()
+            self.dspCanvas:repaint()
+        end
+
+        self:_rebuildInspectorRows()
+        self.debugLastIdentifier = self:deriveActiveDebugIdentifier()
+
+        if isDouble and type(openFn) == "function" then
+            openFn()
+        end
+    end
+
+    function shell:publishUiStateToGlobals()
+        if type(_G) ~= "table" then
+            return
+        end
+        _G.__manifoldShellMode = self.mode
+        _G.__manifoldShellLeftPanelMode = self.leftPanelMode
+        _G.__manifoldShellGetMode = function()
+            return self.mode, self.leftPanelMode
+        end
+    end
+
+    function shell:setLeftPanelMode(mode)
+        if mode ~= "hierarchy" and mode ~= "scripts" then
+            return
+        end
+
+        if self.leftPanelMode == mode then
+            return
+        end
+
+        self.leftPanelMode = mode
+        self:publishUiStateToGlobals()
+
+        if mode == "hierarchy" then
+            self.treeLabel:setText("Hierarchy")
+            self:refreshTree(true)
+            self.editContentMode = "preview"
+            self.scriptEditor.focused = false
+        else
+            self.treeLabel:setText("Scripts")
+            self:refreshScriptRows()
+            self:refreshScriptInspectorData(self.selectedScriptRow)
+        end
+
+        self:_rebuildInspectorRows()
+
+        local w = self.parentNode:getWidth()
+        local h = self.parentNode:getHeight()
+        self:layout(w, h)
+        self.treeCanvas:repaint()
+        self.scriptCanvas:repaint()
+    end
+
+    function shell:_findMainTabById(tabId)
+        for i = 1, #self.mainTabs do
+            local t = self.mainTabs[i]
+            if t.id == tabId then
+                return t, i
+            end
+        end
+        return nil, nil
+    end
+
+    function shell:stashRestoreStateForScriptSwitch()
+        if type(_G) ~= "table" then
+            return
+        end
+        _G.__manifoldShellRestore = {
+            mode = self.mode,
+            leftPanelMode = self.leftPanelMode,
+        }
+    end
+
+    function shell:applyPendingRestoreState()
+        if self.pendingRestoreApplied or self.pendingRestoreMode == nil then
+            return
+        end
+
+        local restoreMode = self.pendingRestoreMode
+        local restorePanel = self.pendingRestoreLeftPanelMode
+
+        self.pendingRestoreApplied = true
+        self.pendingRestoreMode = nil
+        self.pendingRestoreLeftPanelMode = nil
+
+        if restoreMode == "edit" then
+            if self.mode ~= "edit" then
+                self:setMode("edit")
+            end
+
+            if restorePanel == "scripts" then
+                self:setLeftPanelMode("scripts")
+            else
+                self:setLeftPanelMode("hierarchy")
+            end
+        else
+            if self.mode ~= "performance" then
+                self:setMode("performance")
+            end
+        end
+    end
+
+    function shell:refreshMainUiTabs()
+        local previousActive = self.activeMainTabId
+        local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
+        local uiScripts = listUiScripts and listUiScripts() or {}
+
+        local nextTabs = {}
+        local seenUiIds = {}
+
+        for i = 1, #uiScripts do
+            local s = uiScripts[i]
+            if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
+                local tabId = "ui:" .. s.path
+                if not seenUiIds[tabId] then
+                    seenUiIds[tabId] = true
+                    nextTabs[#nextTabs + 1] = {
+                        id = tabId,
+                        title = (s.name and s.name ~= "") and s.name or fileStem(s.path),
+                        kind = "ui-script",
+                        path = s.path,
+                    }
+                end
+            end
+        end
+
+        if #nextTabs == 0 and currentUiPath ~= "" then
+            nextTabs[#nextTabs + 1] = {
+                id = "ui:" .. currentUiPath,
+                title = fileStem(currentUiPath),
+                kind = "ui-script",
+                path = currentUiPath,
+            }
+        end
+
+        self.mainTabs = nextTabs
+
+        local foundPrev = false
+        for i = 1, #self.mainTabs do
+            if self.mainTabs[i].id == previousActive then
+                foundPrev = true
+                break
+            end
+        end
+
+        if foundPrev then
+            self.activeMainTabId = previousActive
+            return
+        end
+
+        local currentId = "ui:" .. currentUiPath
+        for i = 1, #self.mainTabs do
+            if self.mainTabs[i].id == currentId then
+                self.activeMainTabId = currentId
+                return
+            end
+        end
+
+        self.activeMainTabId = (#self.mainTabs > 0) and self.mainTabs[1].id or ""
+    end
+
+    function shell:activateMainTab(tabId)
+        local tab = self:_findMainTabById(tabId)
+        if not tab then
+            return
+        end
+
+        self.activeMainTabId = tabId
+
+        if tab.kind == "ui-script" then
+            self.activeTabContentText = ""
+            self.activeTabContentPath = ""
+            local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
+            if tab.path and tab.path ~= "" and tab.path ~= currentUiPath and switchUiScript then
+                self:stashRestoreStateForScriptSwitch()
+                switchUiScript(tab.path)
+            end
+        else
+            self.activeTabContentText = ""
+            self.activeTabContentPath = ""
+        end
+
+        local w = self.parentNode:getWidth()
+        local h = self.parentNode:getHeight()
+        self:layout(w, h)
+    end
+
+    function shell:ensureScriptEditorCursorVisible()
+        local ed = self.scriptEditor
+        local h = math.floor(self.mainTabContent:getHeight())
+        local lines = seBuildLines(ed.text)
+        local visible = seVisibleLineCount(h)
+        local line = seLineColFromPos(ed.text, ed.cursorPos)
+        local maxScroll = math.max(1, #lines - visible + 1)
+
+        if line < ed.scrollRow then
+            ed.scrollRow = line
+        elseif line >= ed.scrollRow + visible then
+            ed.scrollRow = line - visible + 1
+        end
+
+        ed.scrollRow = clamp(ed.scrollRow, 1, maxScroll)
+    end
+
+    function shell:scriptEditorPosFromPoint(mx, my)
+        local ed = self.scriptEditor
+        local w = math.floor(self.mainTabContent:getWidth())
+        local h = math.floor(self.mainTabContent:getHeight())
+        local lines = seBuildLines(ed.text)
+        local visible = seVisibleLineCount(h)
+        local maxScroll = math.max(1, #lines - visible + 1)
+        ed.scrollRow = clamp(ed.scrollRow, 1, maxScroll)
+
+        local textTop = SCRIPT_EDITOR_STYLE.headerH + SCRIPT_EDITOR_STYLE.pad
+        local lineIdx = ed.scrollRow + math.floor((my - textTop) / SCRIPT_EDITOR_STYLE.lineH)
+        lineIdx = clamp(lineIdx, 1, #lines)
+
+        local textX = SCRIPT_EDITOR_STYLE.gutterW + SCRIPT_EDITOR_STYLE.pad + 4
+        local relativeX = math.max(0, mx - textX)
+        local col = 1 + math.floor((relativeX / SCRIPT_EDITOR_STYLE.charW) + 0.5)
+        local maxCol = #lines[lineIdx] + 1
+        col = clamp(col, 1, maxCol)
+
+        local _ = w
+        return sePosFromLineCol(ed.text, lineIdx, col)
+    end
+
+    function shell:openScriptEditor(row)
+        local path = row and row.path or ""
+        if path == "" then
+            return
+        end
+
+        local text = ""
+        if readTextFile then
+            text = readTextFile(path) or ""
+        end
+
+        self.scriptEditor.kind = row.kind or ""
+        self.scriptEditor.name = row.name or fileStem(path)
+        self:refreshScriptInspectorData(row)
+        self.scriptEditor.path = path
+        self.scriptEditor.text = text
+        self.scriptEditor.cursorPos = 1
+        self.scriptEditor.selectionAnchor = nil
+        self.scriptEditor.dragAnchorPos = nil
+        self.scriptEditor.scrollRow = 1
+        self.scriptEditor.focused = false
+        self.scriptEditor.status = "Loaded " .. (self.scriptEditor.name or fileStem(path))
+        self.scriptEditor.lastClickTime = 0
+        self.scriptEditor.lastClickLine = -1
+        self.scriptEditor.clickStreak = 0
+        self.scriptEditor.dirty = false
+
+        self.editContentMode = "script"
+
+        local w = self.parentNode:getWidth()
+        local h = self.parentNode:getHeight()
+        self:layout(w, h)
+        self.mainTabContent:grabKeyboardFocus()
+        self.scriptEditor.focused = true
+        self.mainTabContent:repaint()
+    end
+
+    function shell:saveScriptEditor()
+        local ed = self.scriptEditor
+        if not ed or ed.path == "" then
+            return
+        end
+
+        if writeTextFile then
+            local ok = writeTextFile(ed.path, ed.text)
+            if ok == false then
+                ed.status = "Save failed"
+                return
+            end
+            ed.dirty = false
+            ed.status = "Saved " .. (ed.name or fileStem(ed.path))
+            self:refreshScriptRows()
+            if self.selectedScriptRow and self.selectedScriptRow.path == ed.path then
+                self:refreshScriptInspectorData(self.selectedScriptRow)
+                self.inspectorCanvas:repaint()
+            end
+            self.scriptCanvas:repaint()
+        else
+            ed.status = "writeTextFile unavailable"
+        end
+    end
+
+    function shell:reloadScriptEditor()
+        local ed = self.scriptEditor
+        if not ed or ed.path == "" then
+            return
+        end
+
+        if readTextFile then
+            ed.text = readTextFile(ed.path) or ""
+            ed.cursorPos = 1
+            ed.selectionAnchor = nil
+            ed.dragAnchorPos = nil
+            ed.scrollRow = 1
+            ed.dirty = false
+            ed.status = "Reloaded from disk"
+            if self.selectedScriptRow and self.selectedScriptRow.path == ed.path then
+                self:refreshScriptInspectorData(self.selectedScriptRow)
+                self.inspectorCanvas:repaint()
+            end
+        else
+            ed.status = "readTextFile unavailable"
+        end
+    end
+
+    function shell:closeScriptEditor()
+        self.editContentMode = "preview"
+        self.scriptEditor.focused = false
+        self.scriptEditor.selectionAnchor = nil
+        self.scriptEditor.dragAnchorPos = nil
+        self.mainTabContent:repaint()
+
+        local w = self.parentNode:getWidth()
+        local h = self.parentNode:getHeight()
+        self:layout(w, h)
+    end
+
+    -- Back-compat wrappers for call-sites that still use tab naming.
+    function shell:openScriptTab(kind, name, path)
+        self:openScriptEditor({ kind = kind, name = name, path = path })
+    end
+
+    function shell:openDspParamTab(path, value)
+        local _ = path
+        _ = value
+        -- DSP path/value popup removed; DSP script editing lives under Scripts panel.
+        self.editContentMode = "preview"
+    end
+
+    function shell:registerPerformanceView(view)
+        self.performanceView = view
+
+        if type(view) == "table" and not self.performanceViewInitialized then
+            if type(view.init) == "function" and self.content ~= nil then
+                view.init(self.content)
+            end
+            self.performanceViewInitialized = true
+        end
+
+        local w = self.parentNode:getWidth()
+        local h = self.parentNode:getHeight()
+        self:layout(w, h)
+    end
+
+    function shell:getSelectionBounds()
+        if #self.selectedWidgets == 0 then
+            return nil
+        end
+
+        local minX, minY, maxX, maxY = nil, nil, nil, nil
+        for i = 1, #self.selectedWidgets do
+            local row = self:_findTreeRowByCanvas(self.selectedWidgets[i])
+            if row then
+                minX = (minX == nil) and row.x or math.min(minX, row.x)
+                minY = (minY == nil) and row.y or math.min(minY, row.y)
+                maxX = (maxX == nil) and (row.x + row.w) or math.max(maxX, row.x + row.w)
+                maxY = (maxY == nil) and (row.y + row.h) or math.max(maxY, row.y + row.h)
+            end
+        end
+
+        if minX == nil then
+            return nil
+        end
+
+        return {
+            x = minX,
+            y = minY,
+            w = math.max(1, maxX - minX),
+            h = math.max(1, maxY - minY),
+        }
+    end
+
+    function shell:getHandleTargetRect()
+        if #self.selectedWidgets > 1 then
+            return self:getSelectionBounds()
+        end
+        if self.selectedWidget ~= nil then
+            return self:_findTreeRowByCanvas(self.selectedWidget)
+        end
+        return nil
+    end
+
+    function shell:previewToDesign(px, py)
+        if self.contentScale <= 0 then
+            return 0, 0
+        end
+        local dx = (px - self.viewOriginX) / self.contentScale
+        local dy = (py - self.viewOriginY) / self.contentScale
+        return dx, dy
+    end
+
+    function shell:designToPreview(dx, dy)
+        local px = self.viewOriginX + dx * self.contentScale
+        local py = self.viewOriginY + dy * self.contentScale
+        return px, py
+    end
+
+    function shell:getSelectionHandleRects(row)
+        if row == nil then
+            return {}
+        end
+
+        local x, y = self:designToPreview(row.x, row.y)
+        local x2, y2 = self:designToPreview(row.x + row.w, row.y + row.h)
+        local w = x2 - x
+        local h = y2 - y
+
+        local hs = self.handleSize
+        local half = hs * 0.5
+        local cx = x + w * 0.5
+        local cy = y + h * 0.5
+
+        return {
+            { id = "nw", x = x - half, y = y - half, w = hs, h = hs },
+            { id = "n", x = cx - half, y = y - half, w = hs, h = hs },
+            { id = "ne", x = x + w - half, y = y - half, w = hs, h = hs },
+            { id = "e", x = x + w - half, y = cy - half, w = hs, h = hs },
+            { id = "se", x = x + w - half, y = y + h - half, w = hs, h = hs },
+            { id = "s", x = cx - half, y = y + h - half, w = hs, h = hs },
+            { id = "sw", x = x - half, y = y + h - half, w = hs, h = hs },
+            { id = "w", x = x - half, y = cy - half, w = hs, h = hs },
+        }
+    end
+
+    function shell:hitTestSelectionHandle(px, py)
+        local row = self:getHandleTargetRect()
+        if not row then
+            return nil
+        end
+
+        local handles = self:getSelectionHandleRects(row)
+        for i = 1, #handles do
+            local h = handles[i]
+            if px >= h.x and px <= (h.x + h.w) and py >= h.y and py <= (h.y + h.h) then
+                return h.id
+            end
+        end
+        return nil
+    end
+
+    function shell:updateSelectedRowBoundsCache()
+        -- For nested widgets, absolute coordinates depend on parent chain.
+        -- Rebuild tree so selection overlay stays correct.
+        self:refreshTree(true)
+    end
+
+    function shell:getWorkspaceDesignRect()
+        return 0, 0, self.designW, self.designH
+    end
+
+    function shell:getViewportDesignRect()
+        return self.viewportDesignX, self.viewportDesignY, self.viewportDesignW, self.viewportDesignH
+    end
+
+    function shell:localToDesign(lx, ly)
+        return (lx or 0) + self.viewportDesignX, (ly or 0) + self.viewportDesignY
+    end
+
+    function shell:designToLocal(dx, dy)
+        return (dx or 0) - self.viewportDesignX, (dy or 0) - self.viewportDesignY
+    end
+
+    function shell:_captureSelectionState()
+        local widgets = {}
+        for i = 1, #self.selectedWidgets do
+            widgets[i] = self.selectedWidgets[i]
+        end
+        return {
+            widgets = widgets,
+            primary = self.selectedWidget,
+        }
+    end
+
+    function shell:_selectionStatesEqual(a, b)
+        if type(a) ~= "table" or type(b) ~= "table" then
+            return false
+        end
+
+        local aw = a.widgets or {}
+        local bw = b.widgets or {}
+        if #aw ~= #bw then
+            return false
+        end
+        for i = 1, #aw do
+            if aw[i] ~= bw[i] then
+                return false
+            end
+        end
+        return a.primary == b.primary
+    end
+
+    function shell:_captureSceneState()
+        local entries = {}
+        for i = 1, #self.treeRows do
+            local row = self.treeRows[i]
+            if row.depth > 0 and row.canvas ~= nil then
+                local bx, by, bw, bh = row.canvas:getBounds()
+                local meta = row.canvas:getUserData("_editorMeta")
+                local cfg = nil
+                if type(meta) == "table" and type(meta.config) == "table" then
+                    cfg = deepCopyTable(meta.config)
+                end
+                entries[#entries + 1] = {
+                    canvas = row.canvas,
+                    x = bx,
+                    y = by,
+                    w = bw,
+                    h = bh,
+                    config = cfg,
+                }
+            end
+        end
+        return entries
+    end
+
+    function shell:_sceneStatesEqual(a, b)
+        if type(a) ~= "table" or type(b) ~= "table" then
+            return false
+        end
+        if #a ~= #b then
+            return false
+        end
+
+        local bMap = {}
+        for i = 1, #b do
+            local e = b[i]
+            if e and e.canvas then
+                bMap[e.canvas] = e
+            end
+        end
+
+        for i = 1, #a do
+            local ea = a[i]
+            local eb = ea and bMap[ea.canvas] or nil
+            if eb == nil then
+                return false
+            end
+            if ea.x ~= eb.x or ea.y ~= eb.y or ea.w ~= eb.w or ea.h ~= eb.h then
+                return false
+            end
+            if not deepEqual(ea.config, eb.config) then
+                return false
+            end
+        end
+
+        return true
+    end
+
+    function shell:_applySceneState(scene)
+        if type(scene) ~= "table" then
+            return
+        end
+
+        for i = 1, #scene do
+            local entry = scene[i]
+            if type(entry) == "table" and entry.canvas ~= nil then
+                entry.canvas:setBounds(entry.x or 0, entry.y or 0, math.max(1, entry.w or 1), math.max(1, entry.h or 1))
+
+                local meta = entry.canvas:getUserData("_editorMeta")
+                if type(meta) == "table" and type(entry.config) == "table" then
+                    meta.config = deepCopyTable(entry.config)
+                    entry.canvas:setUserData("_editorMeta", meta)
+
+                    local leaves = {}
+                    collectConfigLeaves(meta.config, "", leaves, {})
+                    for j = 1, #leaves do
+                        local leaf = leaves[j]
+                        self:_applyWidgetConfigProperty(meta, "config." .. leaf.path, leaf.value)
+                    end
+                end
+            end
+        end
+
+        self:refreshTree(true)
+    end
+
+    function shell:recordHistory(label, beforeScene, beforeSelection, afterScene, afterSelection)
+        if self.historyApplying then
+            return
+        end
+
+        local sceneChanged = false
+        local selectionChanged = false
+
+        if type(beforeScene) == "table" and type(afterScene) == "table" then
+            sceneChanged = not self:_sceneStatesEqual(beforeScene, afterScene)
+        end
+        if type(beforeSelection) == "table" and type(afterSelection) == "table" then
+            selectionChanged = not self:_selectionStatesEqual(beforeSelection, afterSelection)
+        end
+
+        if not sceneChanged and not selectionChanged then
+            return
+        end
+
+        self.undoStack[#self.undoStack + 1] = {
+            label = label or "edit",
+            beforeScene = beforeScene,
+            afterScene = afterScene,
+            beforeSelection = beforeSelection,
+            afterSelection = afterSelection,
+        }
+
+        if #self.undoStack > self.maxHistoryEntries then
+            table.remove(self.undoStack, 1)
+        end
+
+        self.redoStack = {}
+    end
+
+    function shell:undo()
+        if #self.undoStack == 0 then
+            return
+        end
+
+        local entry = table.remove(self.undoStack)
+        self.historyApplying = true
+
+        if type(entry.beforeScene) == "table" then
+            self:_applySceneState(entry.beforeScene)
+        end
+        if type(entry.beforeSelection) == "table" then
+            self:setSelection(entry.beforeSelection.widgets or {}, entry.beforeSelection.primary, false)
+        end
+
+        self.historyApplying = false
+        self.redoStack[#self.redoStack + 1] = entry
+    end
+
+    function shell:redo()
+        if #self.redoStack == 0 then
+            return
+        end
+
+        local entry = table.remove(self.redoStack)
+        self.historyApplying = true
+
+        if type(entry.afterScene) == "table" then
+            self:_applySceneState(entry.afterScene)
+        end
+        if type(entry.afterSelection) == "table" then
+            self:setSelection(entry.afterSelection.widgets or {}, entry.afterSelection.primary, false)
+        end
+
+        self.historyApplying = false
+        self.undoStack[#self.undoStack + 1] = entry
+    end
+
+    function shell:clampPanToWorkspace()
+        if self.mode ~= "edit" then
+            return
+        end
+        if self.previewW <= 0 or self.previewH <= 0 or self.designW <= 0 or self.designH <= 0 then
+            return
+        end
+
+        local scale = self.contentScale > 0 and self.contentScale or clamp(self.currentZoom, self.minZoom, self.maxZoom)
+        local scaledW = self.designW * scale
+        local scaledH = self.designH * scale
+        local margin = self.cameraPanMargin or 0
+
+        local minOriginX = self.previewW - scaledW - margin
+        local maxOriginX = margin
+        local minOriginY = self.previewH - scaledH - margin
+        local maxOriginY = margin
+
+        if scaledW + margin * 2 <= self.previewW then
+            local centered = (self.previewW - scaledW) * 0.5
+            minOriginX = centered
+            maxOriginX = centered
+        end
+
+        if scaledH + margin * 2 <= self.previewH then
+            local centered = (self.previewH - scaledH) * 0.5
+            minOriginY = centered
+            maxOriginY = centered
+        end
+
+        local panMinX = minOriginX + scaledW * 0.5 - self.previewW * 0.5
+        local panMaxX = maxOriginX + scaledW * 0.5 - self.previewW * 0.5
+        local panMinY = minOriginY + scaledH * 0.5 - self.previewH * 0.5
+        local panMaxY = maxOriginY + scaledH * 0.5 - self.previewH * 0.5
+
+        self.panX = clamp(self.panX, panMinX, panMaxX)
+        self.panY = clamp(self.panY, panMinY, panMaxY)
+    end
+
+    function shell:zoomAtPreviewPoint(factor, px, py)
+        if self.mode ~= "edit" then
+            return
+        end
+        if self.designW <= 0 or self.designH <= 0 then
+            return
+        end
+
+        self.autoFit = false
+
+        local currentScale = self.contentScale > 0 and self.contentScale or self.currentZoom
+        local newScale = clamp(currentScale * factor, self.minZoom, self.maxZoom)
+        if math.abs(newScale - currentScale) < 0.0001 then
+            return
+        end
+
+        local designX, designY = self:previewToDesign(px, py)
+
+        self.currentZoom = newScale
+        self.panX = px - (self.previewW * 0.5) + (self.designW * 0.5 - designX) * newScale
+        self.panY = py - (self.previewH * 0.5) + (self.designH * 0.5 - designY) * newScale
+
+        local w = self.parentNode:getWidth()
+        local h = self.parentNode:getHeight()
+        self:layout(w, h)
+    end
+
+    function shell:updateInspectorColorControls(argbValue)
+        local packed = normalizeArgbNumber(argbValue)
+        local r, g, b, a = argbToRgba(packed)
+
+        self.inspectorColorR:setValue(r)
+        self.inspectorColorG:setValue(g)
+        self.inspectorColorB:setValue(b)
+        self.inspectorColorA:setValue(a)
+
+        if self.inspectorColorPreview and self.inspectorColorPreview.setStyle then
+            self.inspectorColorPreview:setStyle({ bg = packed, border = 0xff334155, borderWidth = 1, radius = 3 })
+        end
+
+        if self.inspectorColorHex and self.inspectorColorHex.setText then
+            self.inspectorColorHex:setText(string.format("#%02X%02X%02X%02X", r, g, b, a))
+        end
+    end
+
+    function shell:applyActiveColorComponent(component, value)
+        if self.inspectorUpdating then
+            return
+        end
+
+        local row = self.activeConfigProperty
+        if row == nil or row.editorType ~= "color" then
+            return
+        end
+
+        local packed = normalizeArgbNumber(row.rawValue)
+        local r, g, b, a = argbToRgba(packed)
+        local v = clamp(math.floor((tonumber(value) or 0) + 0.5), 0, 255)
+
+        if component == "r" then
+            r = v
+        elseif component == "g" then
+            g = v
+        elseif component == "b" then
+            b = v
+        elseif component == "a" then
+            a = v
+        else
+            return
+        end
+
+        local nextColour = rgbaToArgb(r, g, b, a)
+        self:applyActiveConfigValue(nextColour)
+    end
+
+    function shell:_showActivePropertyEditor(row)
+        self.activeConfigProperty = row
+        self.activeEnumValues = nil
+
+        if row == nil or row.isConfig ~= true or row.editorType == nil then
+            self.inspectorPropLabel:setText("")
+            self.inspectorPropText:setText("")
+            if self.mode == "edit" then
+                local w = self.parentNode:getWidth()
+                local h = self.parentNode:getHeight()
+                self:layout(w, h)
+            end
+            self.inspectorCanvas:repaint()
+            return
+        end
+
+        local labelText = row.key
+        if row.mixed == true then
+            labelText = labelText .. " (mixed)"
+        end
+        self.inspectorPropLabel:setText(labelText)
+
+        if row.editorType == "number" then
+            self.inspectorPropNumber._label = "Value"
+            local rawNum = tonumber(row.rawValue) or 0
+            if math.floor(rawNum) == rawNum then
+                self.inspectorPropNumber._step = row.step or 1
+                self.inspectorPropNumber._format = row.format or "%d"
+            else
+                self.inspectorPropNumber._step = row.step or 0.01
+                self.inspectorPropNumber._format = row.format or "%.3f"
+            end
+            self.inspectorPropNumber._min = row.min ~= nil and row.min or -2147483647
+            self.inspectorPropNumber._max = row.max ~= nil and row.max or 2147483647
+
+            self.inspectorUpdating = true
+            self.inspectorPropNumber:setValue(tonumber(row.rawValue) or 0)
+            self.inspectorUpdating = false
+        elseif row.editorType == "color" then
+            self.inspectorUpdating = true
+            self:updateInspectorColorControls(row.rawValue)
+            self.inspectorUpdating = false
+        elseif row.editorType == "bool" then
+            local boolLabel = getPathTail(row.path)
+            if row.mixed == true then
+                boolLabel = boolLabel .. " (mixed)"
+            end
+            self.inspectorPropBool._label = boolLabel
+            self.inspectorUpdating = true
+            self.inspectorPropBool:setValue(row.rawValue == true)
+            self.inspectorUpdating = false
+        elseif row.editorType == "enum" and type(row.enumOptions) == "table" then
+            local labels = {}
+            local selected = 1
+            self.activeEnumValues = {}
+
+            if row.mixed == true then
+                labels[#labels + 1] = "<mixed>"
+                self.activeEnumValues[#self.activeEnumValues + 1] = nil
+                selected = 1
+            end
+
+            for i = 1, #row.enumOptions do
+                local option = row.enumOptions[i]
+                labels[#labels + 1] = option.label
+                self.activeEnumValues[#self.activeEnumValues + 1] = option.value
+                if row.mixed ~= true and option.value == row.rawValue then
+                    selected = #labels
+                end
+            end
+            if #labels == 0 then
+                labels = { "-" }
+                self.activeEnumValues = { row.rawValue }
+                selected = 1
+            end
+            self.inspectorPropEnum:setOptions(labels)
+            self.inspectorPropEnum:setSelected(selected)
+        elseif row.editorType == "text" then
+            if row.mixed == true then
+                self.inspectorPropText:setText("<mixed>")
+            else
+                self.inspectorPropText:setText(valueToText(row.rawValue))
+            end
+        end
+
+        if self.mode == "edit" then
+            local w = self.parentNode:getWidth()
+            local h = self.parentNode:getHeight()
+            self:layout(w, h)
+        end
+
+        self.debugLastIdentifier = self:deriveActiveDebugIdentifier()
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:_applyWidgetConfigProperty(meta, path, value)
+        if type(meta) ~= "table" then
+            return
+        end
+
+        local widget = meta.widget
+        if type(widget) ~= "table" then
+            return
+        end
+
+        local key = getPathTail(path)
+
+        -- Check if this is an exposed param - use _setExposed if available
+        if isPathExposed(widget, key) and type(widget._setExposed) == "function" then
+            widget:_setExposed(key, value)
+            return
+        end
+
+        if key == "label" and type(widget.setLabel) == "function" then
+            widget:setLabel(value)
+        elseif key == "text" and type(widget.setText) == "function" then
+            widget:setText(value)
+        elseif key == "value" and type(widget.setValue) == "function" then
+            widget:setValue(value)
+        elseif key == "selected" and type(widget.setSelected) == "function" then
+            widget:setSelected(value)
+        elseif key == "bg" and type(widget.setBg) == "function" then
+            widget:setBg(value)
+        elseif key == "textColour" and type(widget.setTextColour) == "function" then
+            widget:setTextColour(value)
+        elseif key == "colour" and type(widget.setColour) == "function" then
+            widget:setColour(value)
+        elseif (key == "border" or key == "borderWidth" or key == "radius" or key == "opacity") and type(widget.setStyle) == "function" then
+            widget:setStyle({ [key] = value })
+        elseif key == "enabled" and type(widget.setEnabled) == "function" then
+            widget:setEnabled(value == true)
+        else
+            local privateField = "_" .. key
+            if widget[privateField] ~= nil then
+                widget[privateField] = value
+            end
+
+            local setterName = "set" .. upperFirst(key)
+            if type(widget[setterName]) == "function" then
+                widget[setterName](widget, value)
+            end
+        end
+
+        if widget.node then
+            widget.node:repaint()
+        end
+    end
+
+    function shell:applyActiveConfigValue(value)
+        if self.inspectorUpdating then
+            return
+        end
+
+        if #self.selectedWidgets == 0 or self.activeConfigProperty == nil then
+            return
+        end
+
+        local row = self.activeConfigProperty
+        if row.isConfig ~= true or type(row.path) ~= "string" then
+            return
+        end
+
+        local beforeScene = self:_captureSceneState()
+        local beforeSelection = self:_captureSelectionState()
+
+        local baseValue = row.rawValue
+        local typedValue = value
+
+        if row.editorType == "number" then
+            typedValue = tonumber(value) or tonumber(baseValue) or 0
+        elseif row.editorType == "color" then
+            typedValue = normalizeArgbNumber(tonumber(value) or tonumber(baseValue) or 0)
+        elseif row.editorType == "bool" then
+            typedValue = value == true
+        elseif row.editorType == "text" then
+            typedValue = tostring(value or "")
+        end
+
+        local changed = false
+        local selectionCopy = {}
+        for i = 1, #self.selectedWidgets do
+            selectionCopy[i] = self.selectedWidgets[i]
+        end
+        local primary = self.selectedWidget
+
+        for i = 1, #selectionCopy do
+            local canvas = selectionCopy[i]
+            local meta = canvas and canvas:getUserData("_editorMeta") or nil
+            if type(meta) == "table" then
+                -- For exposed params, get value from widget; otherwise from config
+                local widget = meta.widget
+                local pathTail = getPathTail(row.path)
+                local currentValue = nil
+                
+                if isPathExposed(widget, pathTail) then
+                    currentValue = getInspectorValue(widget, meta, pathTail)
+                else
+                    currentValue = getConfigValueByPath(meta.config, row.path)
+                end
+                
+                if currentValue ~= nil and currentValue ~= typedValue then
+                    -- Update config if it exists there
+                    if type(meta.config) == "table" and setConfigValueByPath(meta.config, row.path, typedValue) then
+                        canvas:setUserData("_editorMeta", meta)
+                    end
+                    -- Always apply to widget (handles exposed params)
+                    self:_applyWidgetConfigProperty(meta, row.path, typedValue)
+                    changed = true
+                end
+            end
+        end
+
+        if not changed then
+            return
+        end
+
+        self:refreshTree(true)
+        self:setSelection(selectionCopy, primary)
+
+        for i = 1, #self.inspectorRows do
+            local r = self.inspectorRows[i]
+            if r.isConfig and r.path == row.path then
+                self:_showActivePropertyEditor(r)
+                break
+            end
+        end
+
+        local afterScene = self:_captureSceneState()
+        local afterSelection = self:_captureSelectionState()
+        self:recordHistory("config", beforeScene, beforeSelection, afterScene, afterSelection)
+    end
+
+    function shell:applyActiveConfigEnumChoice(index)
+        if self.activeConfigProperty == nil then
+            return
+        end
+        if type(self.activeEnumValues) ~= "table" then
+            return
+        end
+        local value = self.activeEnumValues[index]
+        if value == nil then
+            return
+        end
+        self:applyActiveConfigValue(value)
+    end
+
+    function shell:copyActiveConfigText()
+        local row = self.activeConfigProperty
+        if row == nil or row.editorType ~= "text" then
+            return
+        end
+        if setClipboardText then
+            setClipboardText(tostring(row.rawValue or ""))
+        end
+    end
+
+    function shell:pasteActiveConfigText()
+        local row = self.activeConfigProperty
+        if row == nil or row.editorType ~= "text" then
+            return
+        end
+        if getClipboardText then
+            local text = getClipboardText()
+            self:applyActiveConfigValue(text)
+        end
+    end
+
+    function shell:_rebuildInspectorRows()
+        local previousPath = self.activeConfigProperty and self.activeConfigProperty.path or nil
+
+        self.inspectorRows = {}
+
+        if self.leftPanelMode == "scripts" then
+            if type(self.selectedScriptRow) == "table" then
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Script", value = self.selectedScriptRow.name or "" }
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Kind", value = self.selectedScriptRow.kind or "" }
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Path", value = self.selectedScriptRow.path or "" }
+
+                local si = self.scriptInspector or {}
+                if self.selectedScriptRow.kind == "dsp" then
+                    local params = si.params or {}
+                    local runtimeParams = si.runtimeParams or {}
+                    local graph = si.graph or { nodes = {}, edges = {} }
+                    self.inspectorRows[#self.inspectorRows + 1] = { key = "Params (static)", value = tostring(#params) }
+                    self.inspectorRows[#self.inspectorRows + 1] = { key = "Params (runtime)", value = tostring(#runtimeParams) }
+                    self.inspectorRows[#self.inspectorRows + 1] = { key = "Graph", value = string.format("%d nodes / %d edges", #(graph.nodes or {}), #(graph.edges or {})) }
+                end
+
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Action", value = "Double-click to open editor" }
+            else
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Scripts", value = "Select a script" }
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Action", value = "Double-click to open editor" }
+            end
+            self.inspectorScrollY = 0
+            self:_showActivePropertyEditor(nil)
+            self.inspectorCanvas:repaint()
+            return
+        end
+
+        local selCount = #self.selectedWidgets
+        if selCount == 0 then
+            self.inspectorRows[#self.inspectorRows + 1] = {
+                key = "Selection",
+                value = "None",
+            }
+            self.inspectorScrollY = 0
+            self:_showActivePropertyEditor(nil)
+            self.inspectorCanvas:repaint()
+            return
+        end
+
+        if selCount == 1 then
+            local canvas = self.selectedWidgets[1]
+            local meta = canvas:getUserData("_editorMeta")
+            local nodeType = (type(meta) == "table" and type(meta.type) == "string") and meta.type or "Canvas"
+            local nodeName = deriveNodeName(meta, nodeType)
+
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Type", value = nodeType }
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Name", value = nodeName }
+
+            local bx, by, bw, bh = canvas:getBounds()
+            local dx, dy = self:localToDesign(bx, by)
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.x", value = valueToText(dx) }
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.y", value = valueToText(dy) }
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.w", value = valueToText(bw) }
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.h", value = valueToText(bh) }
+
+            if type(meta) == "table" and type(meta.config) == "table" then
+                local widget = meta.widget
+                local usedSchema = appendSchemaRows(meta.schema, meta.config, self.inspectorRows, widget, meta)
+                if not usedSchema then
+                    self.inspectorRows[#self.inspectorRows + 1] = { key = "Config", value = "" }
+                    appendConfigRows(meta.config, self.inspectorRows, "config", 0, {})
+                end
+            end
+        else
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Type", value = "Multiple (" .. selCount .. ")" }
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Name", value = selCount .. " widgets selected" }
+
+            local bounds = self:getSelectionBounds()
+            if bounds then
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.x", value = valueToText(bounds.x) }
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.y", value = valueToText(bounds.y) }
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.w", value = valueToText(bounds.w) }
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.h", value = valueToText(bounds.h) }
+            end
+
+            local firstMeta = self.selectedWidgets[1] and self.selectedWidgets[1]:getUserData("_editorMeta") or nil
+            local schema = type(firstMeta) == "table" and firstMeta.schema or nil
+            local addedSharedConfig = false
+
+            if type(schema) == "table" and #schema > 0 then
+                local currentGroup = nil
+                for i = 1, #schema do
+                    local item = schema[i]
+                    if type(item) == "table" and type(item.path) == "string" then
+                        local path = item.path
+                        local allHave = true
+                        local shared = true
+                        local firstValue = nil
+
+                        for s = 1, selCount do
+                            local c = self.selectedWidgets[s]
+                            local m = c and c:getUserData("_editorMeta") or nil
+                            if type(m) ~= "table" or type(m.config) ~= "table" then
+                                allHave = false
+                                break
+                            end
+                            local widget = m.widget
+                            local v = getInspectorValue(widget, m, path)
+                            if v == nil then
+                                v = getConfigValueByPath(m.config, path)
+                            end
+                            if v == nil then
+                                allHave = false
+                                break
+                            end
+                            if firstValue == nil then
+                                firstValue = v
+                            elseif firstValue ~= v then
+                                shared = false
+                            end
+                        end
+
+                        if allHave then
+                            local group = item.group or "Config"
+                            if group ~= currentGroup then
+                                currentGroup = group
+                                self.inspectorRows[#self.inspectorRows + 1] = {
+                                    key = group,
+                                    value = "",
+                                    isConfig = false,
+                                    editorType = nil,
+                                }
+                            end
+
+                            local editorType = item.type
+                            local enumOptions = item.options
+                            if editorType == nil then
+                                editorType, enumOptions = inferEditorType(path, firstValue)
+                            end
+
+                            self.inspectorRows[#self.inspectorRows + 1] = {
+                                key = item.label or path,
+                                value = shared and valueToText(firstValue) or "<mixed>",
+                                rawValue = firstValue,
+                                mixed = not shared,
+                                path = "config." .. path,
+                                isConfig = true,
+                                editorType = editorType,
+                                enumOptions = enumOptions,
+                                min = item.min,
+                                max = item.max,
+                                step = item.step,
+                                format = item.format,
+                            }
+                            addedSharedConfig = true
+                        end
+                    end
+                end
+            end
+
+            if not addedSharedConfig then
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Config", value = "" }
+                self.inspectorRows[#self.inspectorRows + 1] = { key = "Shared Properties", value = "None" }
+            end
+        end
+
+        local maxScroll = math.max(0, #self.inspectorRows * self.inspectorRowHeight - self.inspectorViewportH)
+        self.inspectorScrollY = clamp(self.inspectorScrollY, 0, maxScroll)
+
+        local restored = false
+        if previousPath then
+            for i = 1, #self.inspectorRows do
+                local row = self.inspectorRows[i]
+                if row.isConfig and row.path == previousPath then
+                    self:_showActivePropertyEditor(row)
+                    restored = true
+                    break
+                end
+            end
+        end
+
+        if not restored then
+            self:_showActivePropertyEditor(nil)
+        end
+
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:_syncInspectorEditors()
+        self.inspectorUpdating = true
+
+        if self.leftPanelMode ~= "hierarchy" then
+            self.inspectorX:setValue(0)
+            self.inspectorY:setValue(0)
+            self.inspectorW:setValue(1)
+            self.inspectorH:setValue(1)
+            self.inspectorUpdating = false
+            return
+        end
+
+        local selCount = #self.selectedWidgets
+        if selCount == 0 then
+            self.inspectorX:setValue(0)
+            self.inspectorY:setValue(0)
+            self.inspectorW:setValue(1)
+            self.inspectorH:setValue(1)
+        elseif selCount == 1 then
+            local bx, by, bw, bh = self.selectedWidgets[1]:getBounds()
+            local dx, dy = self:localToDesign(bx, by)
+            self.inspectorX:setValue(dx)
+            self.inspectorY:setValue(dy)
+            self.inspectorW:setValue(math.max(1, bw))
+            self.inspectorH:setValue(math.max(1, bh))
+        else
+            local b = self:getSelectionBounds()
+            if b then
+                self.inspectorX:setValue(b.x)
+                self.inspectorY:setValue(b.y)
+                self.inspectorW:setValue(math.max(1, b.w))
+                self.inspectorH:setValue(math.max(1, b.h))
+            end
+        end
+
+        self.inspectorUpdating = false
+    end
+
+    function shell:applyBoundsEditor(axis, value)
+        if self.inspectorUpdating then
+            return
+        end
+
+        if self.leftPanelMode ~= "hierarchy" then
+            return
+        end
+
+        local selCount = #self.selectedWidgets
+        if selCount == 0 then
+            return
+        end
+
+        local beforeScene = self:_captureSceneState()
+        local beforeSelection = self:_captureSelectionState()
+
+        local iv = math.floor((value or 0) + 0.5)
+
+        if selCount == 1 then
+            local target = self.selectedWidgets[1]
+            local bx, by, bw, bh = target:getBounds()
+
+            if axis == "x" then
+                bx = iv - self.viewportDesignX
+            elseif axis == "y" then
+                by = iv - self.viewportDesignY
+            elseif axis == "w" then
+                bw = math.max(1, iv)
+            elseif axis == "h" then
+                bh = math.max(1, iv)
+            end
+
+            target:setBounds(bx, by, bw, bh)
+            self.treeRefreshPending = true
+            self:refreshTree(true)
+
+            local afterScene = self:_captureSceneState()
+            local afterSelection = self:_captureSelectionState()
+            self:recordHistory("bounds", beforeScene, beforeSelection, afterScene, afterSelection)
+            return
+        end
+
+        local bounds = self:getSelectionBounds()
+        if not bounds then
+            return
+        end
+
+        if axis == "x" or axis == "y" then
+            local delta = (axis == "x") and (iv - bounds.x) or (iv - bounds.y)
+            for i = 1, selCount do
+                local c = self.selectedWidgets[i]
+                local bx, by, bw, bh = c:getBounds()
+                if axis == "x" then
+                    c:setBounds(bx + delta, by, bw, bh)
+                else
+                    c:setBounds(bx, by + delta, bw, bh)
+                end
+            end
+        else
+            local oldSize = (axis == "w") and math.max(1, bounds.w) or math.max(1, bounds.h)
+            local newSize = math.max(self.minWidgetSize, iv)
+            local scale = newSize / oldSize
+
+            for i = 1, selCount do
+                local c = self.selectedWidgets[i]
+                local row = self:_findTreeRowByCanvas(c)
+                if row then
+                    local bx, by, bw, bh = c:getBounds()
+                    if axis == "w" then
+                        local relX = row.x - bounds.x
+                        local nx = bounds.x + relX * scale
+                        local localNX = nx - self.viewportDesignX
+                        local nw = math.max(self.minWidgetSize, bw * scale)
+                        c:setBounds(math.floor(localNX + 0.5), by, math.floor(nw + 0.5), bh)
+                    else
+                        local relY = row.y - bounds.y
+                        local ny = bounds.y + relY * scale
+                        local localNY = ny - self.viewportDesignY
+                        local nh = math.max(self.minWidgetSize, bh * scale)
+                        c:setBounds(bx, math.floor(localNY + 0.5), bw, math.floor(nh + 0.5))
+                    end
+                end
+            end
+        end
+
+        self.treeRefreshPending = true
+        self:refreshTree(true)
+
+        local afterScene = self:_captureSceneState()
+        local afterSelection = self:_captureSelectionState()
+        self:recordHistory("bounds", beforeScene, beforeSelection, afterScene, afterSelection)
+    end
+
+    function shell:selectWidget(canvas, recordHistory)
+        if canvas ~= nil and not self:_isWidgetInTree(canvas) then
+            return
+        end
+
+        if canvas == nil then
+            self:setSelection({}, nil, recordHistory)
+        else
+            self:setSelection({ canvas }, canvas, recordHistory)
+        end
+    end
+
+    function shell:refreshTree(force)
+        if self.mode ~= "edit" and not force then
+            return
+        end
+
+        local now = 0
+        if getTime then
+            now = getTime()
+        elseif os and os.clock then
+            now = os.clock()
+        end
+        if not force and self.treeLastRefreshAt >= 0 and (now - self.treeLastRefreshAt) < 0.12 then
+            self.treeRefreshPending = true
+            return
+        end
+
+        self.treeLastRefreshAt = now
+        self.treeRefreshPending = false
+
+        self.treeRows = {}
+        if self.content ~= nil then
+            local rootOffsetX = (self.mode == "edit") and self.viewportDesignX or 0
+            local rootOffsetY = (self.mode == "edit") and self.viewportDesignY or 0
+            self.treeRoot = walkHierarchy(self.content, 0, self.treeRows, rootOffsetX, rootOffsetY, "", 0)
+        else
+            self.treeRoot = nil
+        end
+
+        local validSelection = {}
+        for i = 1, #self.selectedWidgets do
+            local canvas = self.selectedWidgets[i]
+            if canvas ~= nil and self:_isWidgetInTree(canvas) then
+                validSelection[#validSelection + 1] = canvas
+            end
+        end
+
+        if #validSelection ~= #self.selectedWidgets then
+            local primary = self.selectedWidget
+            if primary ~= nil and not self:_isWidgetInTree(primary) then
+                primary = nil
+            end
+            self:setSelection(validSelection, primary, false)
+        elseif self.selectedWidget ~= nil and not self:_isWidgetInTree(self.selectedWidget) then
+            self:selectWidget(nil, false)
+        elseif self.selectedWidget == nil and #self.treeRows > 0 then
+            local initial = self.treeRows[1].canvas
+            for i = 1, #self.treeRows do
+                if self.treeRows[i].depth > 0 then
+                    initial = self.treeRows[i].canvas
+                    break
+                end
+            end
+            self:selectWidget(initial, false)
+        else
+            self:_syncInspectorEditors()
+            self:_rebuildInspectorRows()
+        end
+
+        local contentHeight = #self.treeRows * self.treeRowHeight
+        local maxScroll = math.max(0, contentHeight - self.treeViewportH)
+        self.treeScrollY = clamp(self.treeScrollY, 0, maxScroll)
+        self.treeCanvas:repaint()
+        self.previewOverlay:repaint()
+    end
+
+
+end
+
+return M

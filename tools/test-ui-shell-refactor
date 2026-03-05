@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""
+UI shell refactor regression checks (file-level, no running app required).
+
+Validates:
+- Monolithic baseline file exists
+- Refactored ui_shell exists and is no longer monolithic
+- Extracted logic blocks (core/bindings/layout) match monolithic baseline content
+  after canonical variable normalization
+- Helper modules exist and still cover monolithic helper symbols
+- All Lua files parse in lua and luajit
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+import subprocess
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+UI_DIR = ROOT / "manifold" / "ui"
+SHELL_DIR = UI_DIR / "shell"
+
+MONO = ROOT / "tools" / "baselines" / "ui_shell_monolithic.lua"
+REFAC = UI_DIR / "ui_shell.lua"
+
+HELPER_MODULES = [
+    SHELL_DIR / "base_utils.lua",
+    SHELL_DIR / "script_editor_utils.lua",
+    SHELL_DIR / "runtime_script_utils.lua",
+    SHELL_DIR / "inspector_utils.lua",
+]
+
+EXTRACTED_MODULES = [
+    SHELL_DIR / "methods_core.lua",
+    SHELL_DIR / "bindings.lua",
+    SHELL_DIR / "methods_layout.lua",
+]
+
+ALL_MODULES = HELPER_MODULES + EXTRACTED_MODULES
+
+
+def fail(msg: str) -> int:
+    print(f"FAIL: {msg}")
+    return 1
+
+
+def run_parse_check(exe: str, path: Path) -> tuple[bool, str]:
+    cmd = [exe, "-e", f"assert(loadfile('{path}'))"]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0:
+        detail = f"{exe} parse failed for {path}\nSTDOUT:\n{p.stdout}\nSTDERR:\n{p.stderr}"
+        return False, detail
+    return True, ""
+
+
+def canonicalize_for_extraction(text: str) -> str:
+    out = text
+    out = out.replace("    local settingsOpen = false\n    local scriptOverlay = nil\n", "")
+    out = re.sub(r"(?<![\\w\\.])settingsOpen(?![\\w])", "shell.settingsOpen", out)
+    out = re.sub(r"(?<![\\w\\.])scriptOverlay(?![\\w])", "shell.scriptOverlay", out)
+    return out
+
+
+def extract_monolith_blocks(text: str) -> tuple[str, str, str]:
+    start_core_marker = "    function shell:_isWidgetInTree(canvas)\n"
+    start_bindings_marker = "    shell.treeCanvas:setOnDraw(function(node)\n"
+    start_layout_marker = "    function shell:setMode(newMode)\n"
+    return_marker = "    return shell\nend\n\nreturn Shell\n"
+
+    s_core = text.find(start_core_marker)
+    s_bind = text.find(start_bindings_marker)
+    s_layout = text.find(start_layout_marker)
+    s_return = text.rfind(return_marker)
+
+    if min(s_core, s_bind, s_layout, s_return) < 0:
+        raise ValueError("failed to locate monolith block markers")
+    if not (s_core < s_bind < s_layout < s_return):
+        raise ValueError("monolith block markers out of order")
+
+    return (
+        text[s_core:s_bind],
+        text[s_bind:s_layout],
+        text[s_layout:s_return],
+    )
+
+
+def extract_module_block(path: Path, start_marker: str) -> str:
+    txt = path.read_text()
+    s = txt.find(start_marker)
+    e = txt.rfind("\nend\n\nreturn M\n")
+    if s < 0 or e < 0 or s >= e:
+        raise ValueError(f"failed to extract attach block from {path}")
+    return txt[s:e]
+
+
+def main() -> int:
+    if not MONO.exists():
+        return fail(f"missing baseline file: {MONO}")
+    if not REFAC.exists():
+        return fail(f"missing refactored file: {REFAC}")
+
+    for mod in ALL_MODULES:
+        if not mod.exists():
+            return fail(f"missing module: {mod}")
+
+    mono_txt = MONO.read_text()
+    refac_txt = REFAC.read_text()
+
+    if len(refac_txt.splitlines()) >= 1200:
+        return fail(f"ui_shell.lua still too large ({len(refac_txt.splitlines())} lines)")
+    print(f"PASS: ui_shell.lua size reduced ({len(refac_txt.splitlines())} lines)")
+
+    for required in (
+        "ShellMethodsCore.attach(shell)",
+        "ShellBindings.attach(shell)",
+        "ShellMethodsLayout.attach(shell)",
+    ):
+        if required not in refac_txt:
+            return fail(f"missing module attach call in ui_shell.lua: {required}")
+    print("PASS: ui_shell.lua composes extracted modules")
+
+    mono_norm = canonicalize_for_extraction(mono_txt)
+    m_core, m_bind, m_layout = extract_monolith_blocks(mono_norm)
+
+    c_core = extract_module_block(EXTRACTED_MODULES[0], "    function shell:_isWidgetInTree(canvas)\n")
+    c_bind = extract_module_block(EXTRACTED_MODULES[1], "    shell.treeCanvas:setOnDraw(function(node)\n")
+    c_layout = extract_module_block(EXTRACTED_MODULES[2], "    function shell:setMode(newMode)\n")
+
+    if c_core != m_core:
+        return fail("methods_core block mismatch vs monolithic baseline")
+    if c_bind != m_bind:
+        return fail("bindings block mismatch vs monolithic baseline")
+    def strip_get_content_bounds_block(src: str) -> str:
+        return re.sub(
+            r"\n    function shell:getContentBounds\(totalW, totalH\)\n.*?\n    end\n\n",
+            "\n",
+            src,
+            flags=re.DOTALL,
+        )
+
+    if strip_get_content_bounds_block(c_layout) != strip_get_content_bounds_block(m_layout):
+        return fail("methods_layout block mismatch vs monolithic baseline (excluding intentional getContentBounds change)")
+
+    required_bounds_logic = [
+        "local tabH = self.mainTabBarH or 0",
+        "local perfY = contentY + tabH",
+        "local perfH = math.max(0, contentH - tabH)",
+        "return self.pad, perfY, contentW, perfH",
+    ]
+    for token in required_bounds_logic:
+        if token not in c_layout:
+            return fail(f"missing performance tab-offset fix in getContentBounds: {token}")
+
+    print("PASS: extracted core/bindings/layout blocks match baseline (with intentional getContentBounds fix)")
+    print(f"INFO: core sha256 {hashlib.sha256(c_core.encode()).hexdigest()}")
+    print(f"INFO: bindings sha256 {hashlib.sha256(c_bind.encode()).hexdigest()}")
+    print(f"INFO: layout sha256 {hashlib.sha256(c_layout.encode()).hexdigest()}")
+
+    needle = "function Shell.create(parentNode, options)"
+    prefix = mono_txt.split(needle, 1)[0]
+    helper_names = set(re.findall(r"local function\s+([A-Za-z0-9_]+)\s*\(", prefix))
+    helper_names.add("RuntimeParamSlider")
+
+    helper_text = "\n".join(m.read_text() for m in HELPER_MODULES)
+    missing: list[str] = []
+    for name in sorted(helper_names):
+        patterns = [
+            rf"function\s+M\.{re.escape(name)}\s*\(",
+            rf"local function\s+{re.escape(name)}\s*\(",
+            rf"local\s+{re.escape(name)}\s*=\s*",
+            rf"function\s+RuntimeParamSlider\.",
+        ]
+        if not any(re.search(p, helper_text) for p in patterns):
+            missing.append(name)
+
+    if missing:
+        return fail("helper extraction coverage gaps: " + ", ".join(missing))
+
+    print(f"PASS: helper coverage ({len(helper_names)} symbols)")
+
+    files = [MONO, REFAC] + ALL_MODULES
+    for file_path in files:
+        for exe in ("lua", "luajit"):
+            ok, detail = run_parse_check(exe, file_path)
+            if not ok:
+                return fail(detail)
+        print(f"PASS: parses in lua+luajit: {file_path.relative_to(ROOT)}")
+
+    print("RESULT: all ui shell refactor file checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
