@@ -36,3 +36,5 @@
 #include "dsp/core/nodes/PitchDetectorNode.h"
 #include "dsp/core/nodes/CrossfaderNode.h"
 #include "dsp/core/nodes/MixerNode.h"
+#include "dsp/core/nodes/NoiseGeneratorNode.h"
+#include "dsp/core/nodes/MSEncoderNode.h"

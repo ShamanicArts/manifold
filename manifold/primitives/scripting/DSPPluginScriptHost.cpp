@@ -705,6 +705,27 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMaster", &dsp_primitives::MixerNode::getMaster,
       "reset", &dsp_primitives::MixerNode::reset);
 
+  newLua.new_usertype<dsp_primitives::NoiseGeneratorNode>(
+      "NoiseGeneratorNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>()>(),
+      "setLevel", &dsp_primitives::NoiseGeneratorNode::setLevel,
+      "setColor", &dsp_primitives::NoiseGeneratorNode::setColor,
+      "getLevel", &dsp_primitives::NoiseGeneratorNode::getLevel,
+      "getColor", &dsp_primitives::NoiseGeneratorNode::getColor,
+      "reset", &dsp_primitives::NoiseGeneratorNode::reset);
+
+  newLua.new_usertype<dsp_primitives::MSEncoderNode>(
+      "MSEncoderNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::MSEncoderNode>()>(),
+      "setWidth", &dsp_primitives::MSEncoderNode::setWidth,
+      "getWidth", &dsp_primitives::MSEncoderNode::getWidth,
+      "reset", &dsp_primitives::MSEncoderNode::reset);
+
+  newLua.new_usertype<dsp_primitives::MSDecoderNode>(
+      "MSDecoderNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::MSDecoderNode>()>(),
+      "reset", &dsp_primitives::MSDecoderNode::reset);
+
   auto toPrimitiveNode = [](const sol::object &obj)
       -> std::shared_ptr<dsp_primitives::IPrimitiveNode> {
     if (obj.is<std::shared_ptr<dsp_primitives::PlayheadNode>>()) {
@@ -814,6 +835,15 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     }
     if (obj.is<std::shared_ptr<dsp_primitives::MixerNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::MixerNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::MSEncoderNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::MSEncoderNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::MSDecoderNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::MSDecoderNode>>();
     }
     if (obj.is<sol::table>()) {
       sol::table table = obj.as<sol::table>();
@@ -929,6 +959,15 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::MixerNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::MixerNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::MSEncoderNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::MSEncoderNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::MSDecoderNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::MSDecoderNode>>();
         }
       }
     }
@@ -1715,6 +1754,36 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         return node;
       };
     primitives["MixerNode"] = mixerApi;
+  }
+
+  {
+    auto noiseApi = newLua.create_table();
+    noiseApi["new"] = [graph, &trackNode]() {
+        auto node = std::make_shared<dsp_primitives::NoiseGeneratorNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["NoiseGeneratorNode"] = noiseApi;
+  }
+
+  {
+    auto msEncApi = newLua.create_table();
+    msEncApi["new"] = [graph, &trackNode]() {
+        auto node = std::make_shared<dsp_primitives::MSEncoderNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["MSEncoderNode"] = msEncApi;
+  }
+
+  {
+    auto msDecApi = newLua.create_table();
+    msDecApi["new"] = [graph, &trackNode]() {
+        auto node = std::make_shared<dsp_primitives::MSDecoderNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["MSDecoderNode"] = msDecApi;
   }
 
   auto graphTable = newLua.create_table();
@@ -2514,6 +2583,24 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           }
           if (method == "setMaster") {
             newParamBindings[path] = [mixer](float v) { mixer->setMaster(v); };
+            return true;
+          }
+        }
+
+        if (auto noise = std::dynamic_pointer_cast<dsp_primitives::NoiseGeneratorNode>(node)) {
+          if (method == "setLevel") {
+            newParamBindings[path] = [noise](float v) { noise->setLevel(v); };
+            return true;
+          }
+          if (method == "setColor") {
+            newParamBindings[path] = [noise](float v) { noise->setColor(v); };
+            return true;
+          }
+        }
+
+        if (auto msEnc = std::dynamic_pointer_cast<dsp_primitives::MSEncoderNode>(node)) {
+          if (method == "setWidth") {
+            newParamBindings[path] = [msEnc](float v) { msEnc->setWidth(v); };
             return true;
           }
         }

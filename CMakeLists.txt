@@ -243,7 +243,11 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/CrossfaderNode.h
     dsp/core/nodes/CrossfaderNode.cpp
     dsp/core/nodes/MixerNode.h
-    dsp/core/nodes/MixerNode.cpp)
+    dsp/core/nodes/MixerNode.cpp
+    dsp/core/nodes/NoiseGeneratorNode.h
+    dsp/core/nodes/NoiseGeneratorNode.cpp
+    dsp/core/nodes/MSEncoderNode.h
+    dsp/core/nodes/MSEncoderNode.cpp)
 
 set(MANIFOLD_RUNTIME_SOURCES
     manifold/engine/ManifoldLayer.h
