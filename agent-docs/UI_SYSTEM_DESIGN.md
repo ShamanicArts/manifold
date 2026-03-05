@@ -60,7 +60,7 @@ However, implementing in Lua provides significant advantages over the C++ approa
 ## File Organization
 
 ```
-looper/ui/
+manifold/ui/
 ├── ui_widgets.lua       -- Widget library (BaseWidget + all widgets)
 ├── ui_styles.lua        -- CSS parser + style resolution
 ├── ui_layout.lua        -- Layout engine (flex/stack/manual)
@@ -400,13 +400,13 @@ local buttonRow = W.Panel.new(mainPanel, "buttons", {class = "row"})
 local recBtn = W.Button.new(buttonRow, "rec", {
     class = "btn btn-danger",
     label = "REC",
-    on_click = function() command("TRIGGER", "/looper/rec") end,
+    on_click = function() command("TRIGGER", "/manifold/rec") end,
 })
 
 local playBtn = W.Button.new(buttonRow, "play", {
     class = "btn btn-primary", 
     label = "PLAY",
-    on_click = function() command("TRIGGER", "/looper/play") end,
+    on_click = function() command("TRIGGER", "/manifold/play") end,
 })
 
 -- Layout is automatic via CSS classes
