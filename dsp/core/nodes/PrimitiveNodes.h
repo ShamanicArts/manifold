@@ -40,3 +40,4 @@
 #include "dsp/core/nodes/MSEncoderNode.h"
 #include "dsp/core/nodes/EQNode.h"
 #include "dsp/core/nodes/LimiterNode.h"
+#include "dsp/core/nodes/SpectrumAnalyzerNode.h"

@@ -765,6 +765,25 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getGainReduction", &dsp_primitives::LimiterNode::getGainReduction,
       "reset", &dsp_primitives::LimiterNode::reset);
 
+  newLua.new_usertype<dsp_primitives::SpectrumAnalyzerNode>(
+      "SpectrumAnalyzerNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::SpectrumAnalyzerNode>()>(),
+      "setSensitivity", &dsp_primitives::SpectrumAnalyzerNode::setSensitivity,
+      "setSmoothing", &dsp_primitives::SpectrumAnalyzerNode::setSmoothing,
+      "setFloor", &dsp_primitives::SpectrumAnalyzerNode::setFloor,
+      "getSensitivity", &dsp_primitives::SpectrumAnalyzerNode::getSensitivity,
+      "getSmoothing", &dsp_primitives::SpectrumAnalyzerNode::getSmoothing,
+      "getFloor", &dsp_primitives::SpectrumAnalyzerNode::getFloor,
+      "getBand1", &dsp_primitives::SpectrumAnalyzerNode::getBand1,
+      "getBand2", &dsp_primitives::SpectrumAnalyzerNode::getBand2,
+      "getBand3", &dsp_primitives::SpectrumAnalyzerNode::getBand3,
+      "getBand4", &dsp_primitives::SpectrumAnalyzerNode::getBand4,
+      "getBand5", &dsp_primitives::SpectrumAnalyzerNode::getBand5,
+      "getBand6", &dsp_primitives::SpectrumAnalyzerNode::getBand6,
+      "getBand7", &dsp_primitives::SpectrumAnalyzerNode::getBand7,
+      "getBand8", &dsp_primitives::SpectrumAnalyzerNode::getBand8,
+      "reset", &dsp_primitives::SpectrumAnalyzerNode::reset);
+
   auto toPrimitiveNode = [](const sol::object &obj)
       -> std::shared_ptr<dsp_primitives::IPrimitiveNode> {
     if (obj.is<std::shared_ptr<dsp_primitives::PlayheadNode>>()) {
@@ -889,6 +908,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     }
     if (obj.is<std::shared_ptr<dsp_primitives::LimiterNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::LimiterNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::SpectrumAnalyzerNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::SpectrumAnalyzerNode>>();
     }
     if (obj.is<sol::table>()) {
       sol::table table = obj.as<sol::table>();
@@ -1019,6 +1041,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::LimiterNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::LimiterNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::SpectrumAnalyzerNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::SpectrumAnalyzerNode>>();
         }
       }
     }
@@ -1855,6 +1880,16 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         return node;
       };
     primitives["LimiterNode"] = limiterApi;
+  }
+
+  {
+    auto spectrumApi = newLua.create_table();
+    spectrumApi["new"] = [graph, &trackNode]() {
+        auto node = std::make_shared<dsp_primitives::SpectrumAnalyzerNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["SpectrumAnalyzerNode"] = spectrumApi;
   }
 
   auto graphTable = newLua.create_table();
@@ -2734,6 +2769,21 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           }
           if (method == "setMix") {
             newParamBindings[path] = [limiter](float v) { limiter->setMix(v); };
+            return true;
+          }
+        }
+
+        if (auto spectrum = std::dynamic_pointer_cast<dsp_primitives::SpectrumAnalyzerNode>(node)) {
+          if (method == "setSensitivity") {
+            newParamBindings[path] = [spectrum](float v) { spectrum->setSensitivity(v); };
+            return true;
+          }
+          if (method == "setSmoothing") {
+            newParamBindings[path] = [spectrum](float v) { spectrum->setSmoothing(v); };
+            return true;
+          }
+          if (method == "setFloor") {
+            newParamBindings[path] = [spectrum](float v) { spectrum->setFloor(v); };
             return true;
           }
         }

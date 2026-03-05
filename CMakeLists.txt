@@ -251,7 +251,9 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/EQNode.h
     dsp/core/nodes/EQNode.cpp
     dsp/core/nodes/LimiterNode.h
-    dsp/core/nodes/LimiterNode.cpp)
+    dsp/core/nodes/LimiterNode.cpp
+    dsp/core/nodes/SpectrumAnalyzerNode.h
+    dsp/core/nodes/SpectrumAnalyzerNode.cpp)
 
 set(MANIFOLD_RUNTIME_SOURCES
     manifold/engine/ManifoldLayer.h
