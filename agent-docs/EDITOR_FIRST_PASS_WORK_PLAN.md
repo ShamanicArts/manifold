@@ -258,6 +258,20 @@ This pass is divided into **7 implementation phases**:
 6. **Add editor support for structured asset editing/saving**
 7. **Validate against legacy behavior and switch active development path**
 
+### Current progress snapshot (2026-03-06)
+- **Phase 1:** complete
+- **Phase 2:** complete
+- **Phase 3:** substantially complete
+- **Phase 4:** substantially complete
+- **Phase 5:** substantially complete
+- **Phase 6:** partial
+- **Phase 7:** in progress
+
+Main remaining first-pass gaps:
+- structured `.ui.lua` save/serializer round-trip
+- explicit editor-owned structured asset save path
+- remaining parity polish / active-path declaration
+
 Each phase has explicit tasks and microtasks below.
 
 ---
@@ -279,43 +293,43 @@ Stop hand-waving. Precisely identify what is being recreated and how current cod
 **Output:** final project root path + final target directory shape
 
 #### Microtasks
-- [ ] Confirm actual configured `UserScriptsDir` root to use for development/testing
-- [ ] Confirm canonical subdirs under it: `projects/`, `ui/`, `dsp/`
-- [ ] Choose the exact project root directory name under `projects/` (`ManifoldDefault` unless changed)
-- [ ] Confirm the exact initial project directory layout to create
-- [ ] Confirm whether `assets/` is included now or deferred until needed
+- [x] Confirm actual configured `UserScriptsDir` root to use for development/testing
+- [x] Confirm canonical subdirs under it: `projects/`, `ui/`, `dsp/`
+- [x] Choose the exact project root directory name under `projects/` (`ManifoldDefault` unless changed)
+- [x] Confirm the exact initial project directory layout to create
+- [x] Confirm whether `assets/` is included now or deferred until needed
 
 ### Task 1.2 — Audit `manifold/ui/looper_ui.lua`
 **Output:** section-by-section migration map
 
 #### Microtasks
-- [ ] Identify root layout sections
-- [ ] Identify transport controls and all contained widgets
-- [ ] Identify capture-plane widgets and interactions
-- [ ] Identify repeated layer-strip structure
-- [ ] Identify helper/state normalization functions
-- [ ] Identify dynamic update logic in `ui_update`
-- [ ] Identify widget-specific callbacks that belong in behavior modules
-- [ ] Identify anything tightly coupled to shell assumptions
+- [x] Identify root layout sections
+- [x] Identify transport controls and all contained widgets
+- [x] Identify capture-plane widgets and interactions
+- [x] Identify repeated layer-strip structure
+- [x] Identify helper/state normalization functions
+- [x] Identify dynamic update logic in `ui_update`
+- [x] Identify widget-specific callbacks that belong in behavior modules
+- [x] Identify anything tightly coupled to shell assumptions
 
 ### Task 1.3 — Audit current default DSP entry
 **Output:** concrete DSP entry path and migration plan
 
 #### Microtasks
-- [ ] Identify the current default DSP script/path used in runtime/settings
-- [ ] Decide what `dsp/main.lua` should point to in the new project
-- [ ] Identify any path assumptions in current DSP loading that must become project-relative
-- [ ] Write down what “DSP works” means for this pass
+- [x] Identify the current default DSP script/path used in runtime/settings
+- [x] Decide what `dsp/main.lua` / manifest DSP entry should point to in the new project
+- [x] Identify any path assumptions in current DSP loading that must become project-relative
+- [x] Write down what “DSP works” means for this pass
 
 ### Task 1.4 — Produce old→new mapping table
 **Output:** one table mapping current code regions to new files
 
 #### Microtasks
-- [ ] Map transport code → `ui/components/transport.ui.lua` + `ui/behaviors/transport.lua`
-- [ ] Map capture-plane code → `ui/components/capture_plane.ui.lua` + `ui/behaviors/capture_plane.lua`
-- [ ] Map layer-strip code → `ui/components/layer_strip.ui.lua` + `ui/behaviors/layer_strip.lua`
-- [ ] Map shared helpers/state normalization → `ui/behaviors/shared_state.lua`
-- [ ] Map current DSP entry → `dsp/main.lua`
+- [x] Map transport code → `ui/components/transport.ui.lua` + `ui/behaviors/transport.lua`
+- [x] Map capture-plane code → `ui/components/capture_plane.ui.lua` + `ui/behaviors/capture_plane.lua`
+- [x] Map layer-strip code → `ui/components/layer_strip.ui.lua` + `ui/behaviors/layer_strip.lua`
+- [x] Map shared helpers/state normalization → `ui/behaviors/shared_state.lua`
+- [x] Map current DSP entry → project DSP resolution / `dsp/main.lua` baseline
 
 ---
 
@@ -336,40 +350,40 @@ Create the real project directory and minimal placeholder files so the new world
 **Output:** actual project folders on disk
 
 #### Microtasks
-- [ ] Create/confirm top-level user roots under `UserScriptsDir`:
-  - [ ] `projects/`
-  - [ ] `ui/`
-  - [ ] `dsp/`
-- [ ] Create project root under `UserScriptsDir/projects`
-- [ ] Create project `ui/`
-- [ ] Create project `ui/components/`
-- [ ] Create project `ui/behaviors/`
-- [ ] Create project `dsp/`
-- [ ] Create project `themes/`
-- [ ] Create project `editor/`
+- [x] Create/confirm top-level user roots under `UserScriptsDir`:
+  - [x] `projects/`
+  - [x] `ui/`
+  - [x] `dsp/`
+- [x] Create project root under `UserScriptsDir/projects`
+- [x] Create project `ui/`
+- [x] Create project `ui/components/`
+- [x] Create project `ui/behaviors/`
+- [x] Create project `dsp/`
+- [x] Create project `themes/`
+- [x] Create project `editor/`
 - [ ] Optionally create project `assets/` if needed immediately
 
 ### Task 2.2 — Create the manifest
 **Output:** minimal valid `manifold.project.json5`
 
 #### Microtasks
-- [ ] Add project name
-- [ ] Add version
-- [ ] Set `ui.root` to `ui/main.ui.lua`
-- [ ] Set `dsp.default` to `dsp/main.lua`
-- [ ] Set `theme` to `themes/dark.lua` if used immediately
-- [ ] Keep manifest thin; do not add speculative fields
+- [x] Add project name
+- [x] Add version
+- [x] Set `ui.root` to `ui/main.ui.lua`
+- [x] Set `dsp.default` to the chosen first-pass DSP entry (currently `system:dsp/looper_primitives_dsp.lua`)
+- [x] Set `theme` to `themes/dark.lua` if used immediately
+- [x] Keep manifest thin; do not add speculative fields
 
 ### Task 2.3 — Create syntactically valid placeholders
 **Output:** every referenced file exists and loads in principle
 
 #### Microtasks
-- [ ] Create stub `ui/main.ui.lua`
-- [ ] Create stub component files
-- [ ] Create stub behavior files returning modules
-- [ ] Create stub `dsp/main.lua`
-- [ ] Create minimal `themes/dark.lua`
-- [ ] Create minimal `editor/workspace.json5`
+- [x] Create stub `ui/main.ui.lua`
+- [x] Create stub component files
+- [x] Create stub behavior files returning modules
+- [x] Create stub `dsp/main.lua`
+- [x] Create minimal `themes/dark.lua`
+- [x] Create minimal `editor/workspace.json5`
 
 ---
 
@@ -400,21 +414,21 @@ Define the exact minimum contracts that runtime/editor code will support in this
 - `behavior`
 
 #### Microtasks
-- [ ] Decide required vs optional fields
-- [ ] Decide allowed widget subset for pass 1
-- [ ] Decide color representation for pass 1 (`{r,g,b,a}` tuples per spec)
-- [ ] Decide whether visibility is in scope now
-- [ ] Decide whether direct declarative `bind` is needed in pass 1 or deferred
+- [x] Decide required vs optional fields
+- [x] Decide allowed widget subset for pass 1
+- [x] Decide concrete color representation for pass 1 (current runtime uses ARGB ints for first pass)
+- [x] Decide whether visibility is in scope now
+- [x] Decide whether direct declarative `bind` is needed in pass 1 or deferred
 
 ### Task 3.2 — Lock component reference semantics
 **Output:** exact first-pass `components = { ... }` contract
 
 #### Microtasks
-- [ ] Decide how `ref` is resolved relative to project root
-- [ ] Decide what per-instance overrides are supported in pass 1
-- [ ] Decide whether `props` injection at instance sites is supported in pass 1
-- [ ] Decide how IDs are prefixed/scoped for instantiated components
-- [ ] Decide whether nested component refs are allowed in pass 1
+- [x] Decide how `ref` is resolved relative to project root
+- [x] Decide what per-instance overrides are supported in pass 1
+- [x] Decide whether `props` injection at instance sites is supported in pass 1
+- [x] Decide how IDs are prefixed/scoped for instantiated components
+- [x] Decide whether nested component refs are allowed in pass 1
 
 ### Task 3.3 — Lock behavior module API
 **Output:** explicit `ctx` contract
@@ -423,28 +437,29 @@ Define the exact minimum contracts that runtime/editor code will support in this
 ```lua
 local M = {}
 function M.init(ctx) end
+function M.resized(ctx, w, h) end
 function M.update(ctx, state) end
 function M.cleanup(ctx) end
 return M
 ```
 
 #### Microtasks
-- [ ] Decide final function names/signatures
-- [ ] Decide `ctx.widgets` shape (flat ID map vs tree)
-- [ ] Decide whether `ctx.project` exists now
-- [ ] Decide whether `ctx.instanceProps` exists now
-- [ ] Decide whether `ctx.command`/helpers are provided directly or via globals
-- [ ] Decide update ordering if multiple behavior modules exist
+- [x] Decide final function names/signatures
+- [x] Decide `ctx.widgets` shape (flat ID map vs tree)
+- [x] Decide whether `ctx.project` exists now
+- [x] Decide whether `ctx.instanceProps` exists now
+- [x] Decide whether `ctx.command`/helpers are provided directly or via globals
+- [x] Decide update ordering if multiple behavior modules exist
 
 ### Task 3.4 — Lock project-relative path semantics
 **Output:** explicit resolution rules
 
 #### Microtasks
-- [ ] UI refs resolve from project root
-- [ ] behavior refs resolve from project root or `ui/`
-- [ ] DSP entry resolves from project root
-- [ ] theme path resolves from project root
-- [ ] document fallback behavior for legacy mode
+- [x] UI refs resolve from project root
+- [x] behavior refs resolve from project root or `ui/`
+- [x] DSP entry resolves from project root / manifest asset refs
+- [x] theme path resolves from project root
+- [x] document fallback behavior for legacy mode
 
 ---
 
@@ -465,83 +480,83 @@ By hand, recreate the default UI in the new structured model so we have a real c
 **Output:** real root structured scene
 
 #### Microtasks
-- [ ] Define root panel
-- [ ] Define root bounds/design size
-- [ ] Add root-level style
-- [ ] Add component refs for transport/capture/layers
-- [ ] Add any root-only children that are not part of reusable components
-- [ ] Keep file pure-data only
+- [x] Define root panel
+- [x] Define root bounds/design size
+- [x] Add root-level style
+- [x] Add component refs for transport/capture/layers
+- [x] Add any root-only children that are not part of reusable components
+- [x] Keep file pure-data only
 
 ### Task 4.2 — Write `ui/components/transport.ui.lua`
 **Output:** structured transport component
 
 #### Microtasks
-- [ ] Create container panel
-- [ ] Add mode control widget(s)
-- [ ] Add rec/play/stop controls
-- [ ] Add overdub/clear controls
-- [ ] Add tempo/target BPM controls
-- [ ] Add link indicator if represented structurally
-- [ ] Ensure IDs are stable and explicit
+- [x] Create container panel
+- [x] Add mode control widget(s)
+- [x] Add rec/play/stop controls
+- [x] Add overdub/clear controls
+- [x] Add tempo/target BPM controls
+- [x] Add link indicator if represented structurally
+- [x] Ensure IDs are stable and explicit
 
 ### Task 4.3 — Write `ui/components/capture_plane.ui.lua`
 **Output:** structured capture-plane component
 
 #### Microtasks
-- [ ] Create container panel
-- [ ] Represent segment strips
-- [ ] Represent segment hit regions if needed structurally
-- [ ] Represent any static labels/containers
-- [ ] Keep dynamic behavior out of the pure-data file
+- [x] Create container panel
+- [x] Represent segment strips
+- [x] Represent segment hit regions if needed structurally
+- [x] Represent any static labels/containers
+- [x] Keep dynamic behavior out of the pure-data file
 
 ### Task 4.4 — Write `ui/components/layer_strip.ui.lua`
 **Output:** reusable structured layer component
 
 #### Microtasks
-- [ ] Create container panel
-- [ ] Add labels/state labels/bars labels
-- [ ] Add waveform widget placeholder/structure
-- [ ] Add volume/speed controls
-- [ ] Add mute/play/clear buttons
-- [ ] Parameterize by `layerIndex` if that is in scope for pass 1
-- [ ] Ensure IDs are stable and instance-safe
+- [x] Create container panel
+- [x] Add labels/state labels/bars labels
+- [x] Add waveform widget placeholder/structure
+- [x] Add volume/speed controls
+- [x] Add mute/play/clear buttons
+- [x] Parameterize by `layerIndex` if that is in scope for pass 1
+- [x] Ensure IDs are stable and instance-safe
 
 ### Task 4.5 — Write `ui/behaviors/shared_state.lua`
 **Output:** shared helper module for migrated behavior
 
 #### Microtasks
-- [ ] Move reusable state normalization/helpers here if needed
-- [ ] Avoid hiding too much in this module; keep responsibilities clear
-- [ ] Keep it handwritten, not editor-owned
+- [x] Move reusable state normalization/helpers here if needed
+- [x] Avoid hiding too much in this module; keep responsibilities clear
+- [x] Keep it handwritten, not editor-owned
 
 ### Task 4.6 — Write `ui/behaviors/transport.lua`
 **Output:** migrated transport logic
 
 #### Microtasks
-- [ ] Move rec latch logic
-- [ ] Move play/pause toggle logic
-- [ ] Move dynamic label/color updates
-- [ ] Wire any mode interactions needed
-- [ ] Confirm transport behavior works against the new structured IDs
+- [x] Move rec latch logic
+- [x] Move play/pause toggle logic
+- [x] Move dynamic label/color updates
+- [x] Wire any mode interactions needed
+- [x] Confirm transport behavior works against the new structured IDs
 
 ### Task 4.7 — Write `ui/behaviors/capture_plane.lua`
 **Output:** migrated capture-plane behavior
 
 #### Microtasks
-- [ ] Move capture-plane state/update logic
-- [ ] Move segment trigger behavior
-- [ ] Move dynamic visual behavior that belongs here
-- [ ] Keep project-relative assumptions clean
+- [x] Move capture-plane state/update logic
+- [x] Move segment trigger behavior
+- [x] Move dynamic visual behavior that belongs here
+- [x] Keep project-relative assumptions clean
 
 ### Task 4.8 — Write `ui/behaviors/layer_strip.lua`
 **Output:** migrated layer behavior
 
 #### Microtasks
-- [ ] Move mute/play/clear logic
-- [ ] Move waveform/playhead state updates
-- [ ] Move scrub behavior if included in this pass
-- [ ] Move dynamic label/state coloring logic
-- [ ] Confirm per-layer behavior scopes correctly by `layerIndex`
+- [x] Move mute/play/clear logic
+- [x] Move waveform/playhead state updates
+- [x] Move scrub behavior if included in this pass
+- [x] Move dynamic label/state coloring logic
+- [x] Confirm per-layer behavior scopes correctly by `layerIndex`
 
 ---
 
@@ -566,71 +581,71 @@ Make the runtime/editor capable of discovering and loading the new project-backe
 **Likely touch points:** settings/project bootstrap/script listing code
 
 #### Microtasks
-- [ ] Enumerate directories under configured `UserScriptsDir/projects`
-- [ ] Detect directories containing `manifold.project.json5`
-- [ ] Classify these as projects
-- [ ] Recognize `UserScriptsDir/ui` as user-global UI root
-- [ ] Recognize `UserScriptsDir/dsp` as user-global DSP root
-- [ ] Continue to classify loose `.lua` files in supported legacy roots as legacy scripts/assets
-- [ ] Surface projects in discovery/listing APIs without conflating them with global assets
+- [x] Enumerate directories under configured `UserScriptsDir/projects`
+- [x] Detect directories containing `manifold.project.json5`
+- [x] Classify these as projects
+- [x] Recognize `UserScriptsDir/ui` as user-global UI root
+- [x] Recognize `UserScriptsDir/dsp` as user-global DSP root
+- [x] Continue to classify loose `.lua` files in supported legacy roots as legacy scripts/assets
+- [x] Surface projects in discovery/listing APIs without conflating them with global assets
 
 ### Task 5.2 — Manifest loader
 **Likely touch points:** C++ runtime + Lua helper exposure
 
 #### Microtasks
-- [ ] Implement JSON5/JSON-ish manifest parsing strategy
-- [ ] Load project metadata
-- [ ] Resolve project root
-- [ ] Expose project metadata/path info where needed
+- [x] Implement JSON5/JSON-ish manifest parsing strategy
+- [x] Load project metadata
+- [x] Resolve project root
+- [x] Expose project metadata/path info where needed
 - [ ] Handle malformed manifests cleanly
 
 ### Task 5.3 — Structured `.ui.lua` loader
 **Likely touch points:** LuaEngine and/or new scene loader module
 
 #### Microtasks
-- [ ] Load `.ui.lua` as table
-- [ ] Validate returned structure for pass-1 schema
-- [ ] Reject unsupported values cleanly
-- [ ] Instantiate supported widget subset
-- [ ] Set bounds/styles/props correctly
-- [ ] Preserve `_editorMeta` and runtime editor introspection
+- [x] Load `.ui.lua` as table
+- [x] Validate returned structure for pass-1 schema
+- [x] Reject unsupported values cleanly
+- [x] Instantiate supported widget subset
+- [x] Set bounds/styles/props correctly
+- [x] Preserve `_editorMeta` and runtime editor introspection
 
 ### Task 5.4 — Component loader
 **Likely touch points:** scene instantiation layer
 
 #### Microtasks
-- [ ] Resolve component refs relative to project root
-- [ ] Load referenced `.ui.lua` component files
-- [ ] Instantiate component contents into parent scene
-- [ ] Apply instance offsets/props according to pass-1 contract
+- [x] Resolve component refs relative to project root
+- [x] Load referenced `.ui.lua` component files
+- [x] Instantiate component contents into parent scene
+- [x] Apply instance offsets/props according to pass-1 contract
 - [ ] Handle bad refs clearly
 
 ### Task 5.5 — Behavior module attachment
 **Likely touch points:** scene instantiation/update pipeline
 
 #### Microtasks
-- [ ] Load referenced behavior modules
-- [ ] Build `ctx.widgets`
-- [ ] Call `init(ctx)` after instantiation
-- [ ] Call `update(ctx, state)` on tick/update
-- [ ] Call `cleanup(ctx)` if scene unloads/switches
+- [x] Load referenced behavior modules
+- [x] Build `ctx.widgets`
+- [x] Call `init(ctx)` after instantiation
+- [x] Call `update(ctx, state)` on tick/update
+- [x] Call `cleanup(ctx)` if scene unloads/switches
 - [ ] Handle behavior errors clearly
 
 ### Task 5.6 — Project-backed DSP resolution
 **Likely touch points:** DSP script loading path
 
 #### Microtasks
-- [ ] Resolve `dsp/main.lua` relative to project root
-- [ ] Ensure runtime can load it as the project DSP entry
-- [ ] Confirm the project-backed UI can interact with it
-- [ ] Preserve existing legacy DSP loading path for non-project cases
+- [x] Resolve the manifest-selected DSP entry for the project (current first pass uses `system:dsp/looper_primitives_dsp.lua`)
+- [x] Ensure runtime can load it as the project DSP entry
+- [x] Confirm the project-backed UI can interact with it
+- [x] Preserve existing legacy DSP loading path for non-project cases
 
 ### Task 5.7 — Legacy coexistence validation in runtime
 
 #### Microtasks
-- [ ] Confirm loose legacy script loading still works
-- [ ] Confirm project-backed and legacy discovery coexist cleanly
-- [ ] Confirm switching between legacy and project-backed UIs does not explode
+- [x] Confirm loose legacy script loading still works
+- [x] Confirm project-backed and legacy discovery coexist cleanly
+- [x] Confirm switching between legacy and project-backed UIs does not explode
 
 ---
 
@@ -649,16 +664,16 @@ Make the new structured project actually editable and saveable through the edito
 ### Task 6.1 — Structured asset detection in editor
 
 #### Microtasks
-- [ ] Distinguish project-backed structured assets from legacy scripts
+- [x] Distinguish project-backed structured assets from legacy scripts
 - [ ] Mark `.ui.lua` files as editor-owned in shell/editor surfaces
 - [ ] Route save behavior accordingly
 
 ### Task 6.2 — Ensure selection/inspector works on structured widgets
 
 #### Microtasks
-- [ ] Confirm structured widgets still populate `_editorMeta`
-- [ ] Confirm tree/hierarchy reflects structured UI correctly
-- [ ] Confirm inspector shows/edit props for structured widgets
+- [x] Confirm structured widgets still populate `_editorMeta`
+- [x] Confirm tree/hierarchy reflects structured UI correctly
+- [x] Confirm inspector shows/edit props for structured widgets
 - [ ] Fix any metadata gaps introduced by structured loading
 
 ### Task 6.3 — Implement `.ui.lua` serializer
@@ -683,9 +698,9 @@ Make the new structured project actually editable and saveable through the edito
 ### Task 6.5 — Script-editor support for behavior modules
 
 #### Microtasks
-- [ ] Expose behavior files in editor script surfaces
-- [ ] Confirm text editing + save works
-- [ ] Confirm manual behavior edits reload correctly
+- [x] Expose behavior files in editor script surfaces
+- [x] Confirm text editing + save works
+- [x] Confirm manual behavior edits reload correctly
 
 ---
 
@@ -704,20 +719,20 @@ Prove the recreated project is real enough to become the canonical first-pass ex
 ### Task 7.1 — Legacy comparison pass
 
 #### Microtasks
-- [ ] Compare transport behavior against legacy `looper_ui.lua`
-- [ ] Compare capture-plane behavior against legacy
-- [ ] Compare layer-strip behavior against legacy
-- [ ] Compare visual/state update correctness
-- [ ] Compare project-backed DSP behavior against current default path
+- [x] Compare transport behavior against legacy `looper_ui.lua`
+- [x] Compare capture-plane behavior against legacy
+- [x] Compare layer-strip behavior against legacy
+- [x] Compare visual/state update correctness
+- [x] Compare project-backed DSP behavior against current default path
 
 ### Task 7.2 — Record pass-1 gaps
 
 #### Microtasks
-- [ ] List missing editor features discovered during manual recreation
-- [ ] List missing runtime features discovered during manual recreation
-- [ ] List schema pain points
-- [ ] List behavior API pain points
-- [ ] List DSP project-model pain points
+- [x] List missing editor features discovered during manual recreation
+- [x] List missing runtime features discovered during manual recreation
+- [x] List schema pain points
+- [x] List behavior API pain points
+- [x] List DSP project-model pain points
 
 ### Task 7.3 — Define what becomes the active development path
 
@@ -761,38 +776,38 @@ This is not exhaustive, but these are likely areas to touch.
 If starting immediately, the order of attack should be:
 
 ## Day/Block A
-- [ ] Phase 1 scope freeze
-- [ ] Phase 1 audit
-- [ ] old→new mapping table
+- [x] Phase 1 scope freeze
+- [x] Phase 1 audit
+- [x] old→new mapping table
 
 ## Day/Block B
-- [ ] Create project skeleton
-- [ ] Create manifest + placeholders
-- [ ] Lock first-pass contracts
+- [x] Create project skeleton
+- [x] Create manifest + placeholders
+- [x] Lock first-pass contracts
 
 ## Day/Block C
-- [ ] Manually write `main.ui.lua`
-- [ ] Manually write `transport.ui.lua`
-- [ ] Manually write `capture_plane.ui.lua`
-- [ ] Manually write `layer_strip.ui.lua`
+- [x] Manually write `main.ui.lua`
+- [x] Manually write `transport.ui.lua`
+- [x] Manually write `capture_plane.ui.lua`
+- [x] Manually write `layer_strip.ui.lua`
 
 ## Day/Block D
-- [ ] Write behavior modules
-- [ ] Set up project-backed DSP entry
+- [x] Write behavior modules
+- [x] Set up project-backed DSP entry
 
 ## Day/Block E
-- [ ] Implement project discovery + manifest loading
-- [ ] Implement structured scene loading + component refs
-- [ ] Implement behavior attachment
+- [x] Implement project discovery + manifest loading
+- [x] Implement structured scene loading + component refs
+- [x] Implement behavior attachment
 
 ## Day/Block F
 - [ ] Implement editor save/load for `.ui.lua`
-- [ ] Validate selection/inspector on structured assets
+- [x] Validate selection/inspector on structured assets
 
 ## Day/Block G
-- [ ] Compare against legacy behavior
+- [x] Compare against legacy behavior
 - [ ] Declare active path for migrated areas
-- [ ] Record phase-2 gaps
+- [x] Record phase-2 gaps
 
 ---
 
@@ -837,36 +852,36 @@ If no, the pass is not complete.
 Use this checklist to decide if first pass is done.
 
 ## Project shape
-- [ ] A real project directory exists under `UserScriptsDir/projects`
-- [ ] top-level user roots exist under `UserScriptsDir` (`projects/`, `ui/`, `dsp/`)
-- [ ] `manifold.project.json5` exists and resolves correctly
-- [ ] project-backed UI and DSP entry are both present
+- [x] A real project directory exists under `UserScriptsDir/projects`
+- [x] top-level user roots exist under `UserScriptsDir` (`projects/`, `ui/`, `dsp/`)
+- [x] `manifold.project.json5` exists and resolves correctly
+- [x] project-backed UI and DSP entry are both present
 
 ## UI recreation
-- [ ] default UI is manually recreated in structured form
-- [ ] transport component works
-- [ ] capture-plane component works
-- [ ] reusable layer strip works
-- [ ] dynamic behavior modules work
+- [x] default UI is manually recreated in structured form
+- [x] transport component works
+- [x] capture-plane component works
+- [x] reusable layer strip works
+- [x] dynamic behavior modules work
 
 ## Runtime
-- [ ] project discovery works
-- [ ] manifest loading works
-- [ ] structured scene loading works
-- [ ] component refs work
-- [ ] behavior modules attach and update
-- [ ] project-backed DSP entry works
-- [ ] legacy scripts still load
+- [x] project discovery works
+- [x] manifest loading works
+- [x] structured scene loading works
+- [x] component refs work
+- [x] behavior modules attach and update
+- [x] project-backed DSP entry works
+- [x] legacy scripts still load
 
 ## Editor
-- [ ] structured widgets are selectable/editable
+- [x] structured widgets are selectable/editable
 - [ ] `.ui.lua` assets save back to source
-- [ ] behavior modules remain text-editable handwritten files
+- [x] behavior modules remain text-editable handwritten files
 - [ ] reloading preserves saved structure edits
 
 ## Validation
-- [ ] recreated project behavior is close enough to legacy baseline
-- [ ] known gaps are documented
+- [x] recreated project behavior is close enough to legacy baseline
+- [x] known gaps are documented
 - [ ] migrated areas have a declared active development path
 
 ---

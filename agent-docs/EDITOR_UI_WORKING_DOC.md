@@ -147,6 +147,53 @@ This is now the working rule for project-backed UIs:
 
 This avoids the exact bug we just tripped over: confusing design-time absolute defaults with runtime responsive layout.
 
+### First-Pass Structured Project Progress (2026-03-06)
+
+The original working doc was heavily shell/editor-centric. First-pass project-format work has now advanced the runtime well beyond that earlier snapshot.
+
+#### What now exists
+- Project discovery under `UserScripts/projects/`
+- First-pass reference project under `UserScripts/projects/ManifoldDefault/`
+- Structured scene loading for `.ui.lua`
+- Component instancing with scoped IDs and per-instance props
+- Behavior lifecycle for structured UI:
+  - `init(ctx)`
+  - `resized(ctx, w, h)`
+  - `update(ctx, state)`
+  - `cleanup(ctx)`
+- Project-backed DSP manifest resolution and load
+- A/B switching between legacy monolithic UI and project-backed UI
+- Shell-level hosted layout contract for performance views
+- Declarative per-node layout infrastructure in the structured loader:
+  - absolute
+  - relative
+  - hybrid
+
+#### Current first-pass reality
+- The project-backed default UI is real, loadable, and resizes correctly through the shell
+- Transport / capture plane / layer strips / scrub path have been manually recreated in the project model
+- Legacy and project-backed UIs both remain first-class and switchable
+- The shell now owns top-level hosting/layout policy; the project loader owns internal node layout resolution
+
+### Sanity Check Against `EDITOR_FIRST_PASS_WORK_PLAN.md`
+
+The first-pass plan, not this older working doc, is the authoritative execution plan for the project-format track.
+
+Current status against that plan is:
+- **Phase 1 — Freeze target + audit current work:** effectively complete
+- **Phase 2 — Create the reference project skeleton:** complete
+- **Phase 3 — Lock first-pass structured UI / behavior / path contracts:** substantially complete for v1 runtime
+- **Phase 4 — Manually recreate the default UI:** substantially complete for first-pass transport/capture/layers/scrub behavior
+- **Phase 5 — Add runtime support:** substantially complete for discovery, manifest loading, structured scene loading, behaviors, project DSP, legacy coexistence
+- **Phase 6 — Add editor support for structured assets:** partial
+  - structured assets load into the hierarchy/inspector path
+  - full structured save/load round-trip still needs explicit completion/verification
+- **Phase 7 — Validation / parity / handoff:** in progress
+
+Practical implication:
+- the older "current priority" list below is still useful for general editor work,
+- but it must not override the first-pass plan for the project-backed UI/DSP track.
+
 ---
 
 ## Priority Reset (Agreed)
@@ -296,6 +343,28 @@ This is the active ordering going forward:
 - [x] Fixed GL constant naming (GL.COLOR_BUFFER_BIT vs gl.COLOR_BUFFER_BIT)
 - [x] Fixed shader compile status checks (getShaderCompileStatus vs getShaderiv)
 
+**Task 5.4: Project-backed structured UI runtime (first-pass)**
+- [x] Discover project manifests under `UserScripts/projects/`
+- [x] Surface project-backed UI entries alongside legacy scripts
+- [x] Load `manifold.project.json5` via runtime bootstrap path
+- [x] Instantiate structured `.ui.lua` scenes and component refs
+- [x] Attach structured behavior modules with `init/resized/update/cleanup`
+- [x] Pass local-root bounds into component `resized(ctx, w, h)`
+- [x] Resolve project/user/system UI and DSP refs
+- [x] Load project-backed DSP from the manifest-resolved entry
+- [x] Keep legacy monolithic UI loading working for A/B switching
+
+**Task 5.5: Shell/layout infrastructure for hosted structured UIs**
+- [x] Shell performance-view registration now supports top-level layout metadata
+- [x] Shell hosting contract distinguishes fill/dynamic vs fixed/design-space views
+- [x] Project loader exposes shell layout info upward (`getLayoutInfo`)
+- [x] Declarative node layout support added to structured loader:
+  - [x] absolute
+  - [x] relative
+  - [x] hybrid
+- [x] Declarative node layout resolves before behavior `resized()`
+- [x] Behavior layout remains the escape hatch for complex/custom cases
+
 ---
 
 ### Phase 6: Mapping + Behavior Authoring (Design-heavy)
@@ -350,8 +419,8 @@ This is the active ordering going forward:
 | 2. Visual Editing Core | ✅ Complete (v1) | Tree, selection, inspector, multi-select editing |
 | 3. Navigation & Workspace | 🔄 In Progress | Zoom/pan working; workspace model needs final pass |
 | 4. Editing Safety | ✅ Partial | Undo/redo core implemented |
-| 5. Dev Console + Exposure Foundation | ✅ Complete | `~` console + parameter exposure + Donut/XYPad/MatrixRain/GLSL widgets |
-| 6. Mapping + Behavior Authoring | ⏳ Next | Widget↔DSP mapping + behavior-linked authoring |
+| 5. Dev Console + Exposure Foundation | ✅ Complete + Expanded | `~` console + parameter exposure + project-backed runtime/layout infrastructure |
+| 6. Mapping + Behavior Authoring | ⏳ Next (general editor track) | Widget↔DSP mapping + behavior-linked authoring |
 | 7. Persistence & Round-Trip | ⏳ Later | Save/load + codegen/round-trip |
 | 8. Runtime Tiering | ⏳ Later | Normal/Dev/Super-Dev gating |
 
