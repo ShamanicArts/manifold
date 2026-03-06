@@ -263,7 +263,11 @@ function M.attach(shell)
                     end
                     gfx.setColour((row.active or selected) and 0xff7dd3fc or 0xffcbd5e1)
                     gfx.setFont(10.0)
-                    gfx.drawText(row.name or "", 12, rowY, w - 24, rowH, Justify.centredLeft)
+                    local label = row.name or ""
+                    if row.dirty then
+                        label = "* " .. label
+                    end
+                    gfx.drawText(label, 12, rowY, w - 24, rowH, Justify.centredLeft)
                 end
             end
         end
@@ -640,6 +644,11 @@ function M.attach(shell)
         end
 
         if shell.editContentMode ~= "script" then
+            if ctrl and seIsLetterShortcut(k, c, "s") and shell:isStructuredProjectActive() then
+                return shell:saveStructuredProjectUi()
+            elseif ctrl and seIsLetterShortcut(k, c, "r") and shell:isStructuredProjectActive() then
+                return shell:reloadStructuredProjectUi()
+            end
             return false
         end
 
@@ -1693,14 +1702,18 @@ function M.attach(shell)
                     local c = shell.selectedWidgets[i]
                     local bx, by, bw, bh = c:getBounds()
                     local row = shell:_findTreeRowByCanvas(c)
+                    local absX = row and row.x or bx
+                    local absY = row and row.y or by
                     targets[#targets + 1] = {
                         canvas = c,
                         x = bx,
                         y = by,
                         w = bw,
                         h = bh,
-                        rowX = row and row.x or bx,
-                        rowY = row and row.y or by,
+                        rowX = absX,
+                        rowY = absY,
+                        parentDesignX = absX - bx,
+                        parentDesignY = absY - by,
                     }
                 end
 
@@ -1749,6 +1762,11 @@ function M.attach(shell)
                 historyBeforeScene = shell:_captureSceneState(),
                 historyBeforeSelection = shell:_captureSelectionState(),
             }
+            shell:setStructuredDragDebug("move-start", {
+                designX = designX,
+                designY = designY,
+                targetCount = #startBounds,
+            })
             return
         end
 
@@ -1802,14 +1820,22 @@ function M.attach(shell)
                 for i = 1, #ds.targets do
                     local t = ds.targets[i]
                     if t.canvas ~= nil then
-                        local nx = math.floor(t.x + ddx + 0.5)
-                        local ny = math.floor(t.y + ddy + 0.5)
+                        local parentDesignX, parentDesignY = shell:getCanvasParentDesignOrigin(t.canvas)
+                        local nx = math.floor((t.x + ddx) + 0.5)
+                        local ny = math.floor((t.y + ddy) + 0.5)
                         t.canvas:setBounds(nx, ny, t.w, t.h)
+                        t.parentDesignX = parentDesignX
+                        t.parentDesignY = parentDesignY
                     end
                 end
             end
             shell:updateSelectedRowBoundsCache()
             shell:_syncInspectorEditors()
+            shell:setStructuredDragDebug("move-drag", {
+                ddx = ddx,
+                ddy = ddy,
+                targetCount = type(ds.targets) == "table" and #ds.targets or 0,
+            })
             shell.previewOverlay:repaint()
             return
         end
@@ -1865,8 +1891,8 @@ function M.attach(shell)
                         local relY = t.rowY - ds.groupY
                         local nx = left + relX * scaleX
                         local ny = top + relY * scaleY
-                        local localNX = nx - shell.viewportDesignX
-                        local localNY = ny - shell.viewportDesignY
+                        local localNX = nx - (t.parentDesignX or 0)
+                        local localNY = ny - (t.parentDesignY or 0)
                         local nw = math.max(shell.minWidgetSize, t.w * scaleX)
                         local nh = math.max(shell.minWidgetSize, t.h * scaleY)
                         t.canvas:setBounds(math.floor(localNX + 0.5), math.floor(localNY + 0.5), math.floor(nw + 0.5), math.floor(nh + 0.5))
@@ -1876,6 +1902,15 @@ function M.attach(shell)
 
             shell:updateSelectedRowBoundsCache()
             shell:_syncInspectorEditors()
+            shell:setStructuredDragDebug("resize-drag", {
+                ddx = ddx,
+                ddy = ddy,
+                left = left,
+                top = top,
+                width = w,
+                height = h,
+                targetCount = type(ds.targets) == "table" and #ds.targets or 0,
+            })
             shell.previewOverlay:repaint()
         end
     end)
@@ -1939,7 +1974,23 @@ function M.attach(shell)
         end
 
         if ds.mode == "move" or ds.mode == "resize" then
-            shell:refreshTree(true)
+            local persisted = {}
+            if type(ds.targets) == "table" then
+                for i = 1, #ds.targets do
+                    local t = ds.targets[i]
+                    if t.canvas ~= nil then
+                        persisted[#persisted + 1] = shell:persistStructuredBoundsForCanvas(t.canvas)
+                    end
+                end
+            end
+            shell:updateSelectedRowBoundsCache()
+            shell:_syncInspectorEditors()
+            shell:_rebuildInspectorRows()
+            shell:refreshProjectScriptRowsIfNeeded()
+            shell:setStructuredDragDebug(ds.mode .. "-end", {
+                persisted = persisted,
+                targetCount = type(ds.targets) == "table" and #ds.targets or 0,
+            })
             local afterScene = shell:_captureSceneState()
             local afterSelection = shell:_captureSelectionState()
             shell:recordHistory(ds.mode, ds.historyBeforeScene, ds.historyBeforeSelection, afterScene, afterSelection)

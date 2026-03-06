@@ -78,41 +78,27 @@ end
 function M.resized(ctx, w, h)
   local widgets = ctx.widgets or {}
   local root = ctx.root
-  if not root then return end
+  local designW, designH = Shared.getDesignSize(ctx, w, h)
+  local ids = {
+    "mode",
+    "rec",
+    "playpause",
+    "stop",
+    "overdub",
+    "clearall",
+    "linkIndicator",
+    "tempo",
+    "targetBpm",
+  }
 
-  local pad = 6
-  local tx = pad
-  local tH = h - pad * 2
-
-  if widgets.mode then
-    widgets.mode:setBounds(tx, pad, 130, tH)
-    if widgets.mode.setAbsolutePos and root.node and root.node.getBounds then
-      local rx, ry = root.node:getBounds()
-      widgets.mode:setAbsolutePos(rx + tx, ry + pad)
-    end
-    tx = tx + 130 + 8
+  for _, id in ipairs(ids) do
+    Shared.applySpecRect(widgets[id], Shared.getChildSpec(ctx, id), w, h, designW, designH)
   end
 
-  local btnW = 80
-  if widgets.rec then widgets.rec:setBounds(tx, pad, btnW, tH) end
-  tx = tx + btnW + 6
-  if widgets.playpause then widgets.playpause:setBounds(tx, pad, btnW, tH) end
-  tx = tx + btnW + 6
-  if widgets.stop then widgets.stop:setBounds(tx, pad, btnW, tH) end
-  tx = tx + btnW + 12
-  if widgets.overdub then widgets.overdub:setBounds(tx, pad, 110, tH) end
-  tx = tx + 110 + 12
-  if widgets.clearall then widgets.clearall:setBounds(tx, pad, 70, tH) end
-
-  local tRight = w - pad
-  local boxW = 96
-  local boxGap = 8
-  if widgets.targetBpm then widgets.targetBpm:setBounds(tRight - boxW, pad, boxW, tH) end
-  tRight = tRight - boxW - boxGap
-  if widgets.tempo then widgets.tempo:setBounds(tRight - boxW, pad, boxW, tH) end
-  tRight = tRight - boxW - boxGap - 4
-  if widgets.linkIndicator and widgets.linkIndicator.node then
-    widgets.linkIndicator.node:setBounds(tRight - 50, pad, 50, tH)
+  if widgets.mode and widgets.mode.setAbsolutePos and root and root.node and root.node.getBounds then
+    local rx, ry = root.node:getBounds()
+    local mx, my = widgets.mode.node:getBounds()
+    widgets.mode:setAbsolutePos(rx + mx, ry + my)
   end
 end
 

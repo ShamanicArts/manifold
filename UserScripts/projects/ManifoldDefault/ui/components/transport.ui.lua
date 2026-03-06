@@ -6,7 +6,7 @@ return {
   w = 1280,
   h = 48,
   style = {
-    bg = 0xff141a24,
+    bg = 4279507492,
     radius = 8,
   },
   children = {
@@ -18,12 +18,16 @@ return {
       w = 130,
       h = 36,
       props = {
-        options = { "First Loop", "Free Mode", "Traditional" },
+        options = {
+          "First Loop",
+          "Free Mode",
+          "Traditional",
+        },
         selected = 1,
       },
       style = {
-        bg = 0xff1f4a7a,
-        colour = 0xff7dd3fc,
+        bg = 4280240762,
+        colour = 4286436348,
       },
     },
     {
@@ -33,8 +37,13 @@ return {
       y = 6,
       w = 80,
       h = 36,
-      props = { label = "● REC" },
-      style = { bg = 0xff7f1d1d, fontSize = 13 },
+      props = {
+        label = "● REC",
+      },
+      style = {
+        bg = 4286520605,
+        fontSize = 13,
+      },
     },
     {
       id = "playpause",
@@ -43,8 +52,13 @@ return {
       y = 6,
       w = 80,
       h = 36,
-      props = { label = "▶ PLAY" },
-      style = { bg = 0xff1f7a3a, fontSize = 13 },
+      props = {
+        label = "▶ PLAY",
+      },
+      style = {
+        bg = 4280252986,
+        fontSize = 13,
+      },
     },
     {
       id = "stop",
@@ -53,8 +67,13 @@ return {
       y = 6,
       w = 80,
       h = 36,
-      props = { label = "⏹ STOP" },
-      style = { bg = 0xff374151, fontSize = 13 },
+      props = {
+        label = "⏹ STOP",
+      },
+      style = {
+        bg = 4281811281,
+        fontSize = 13,
+      },
     },
     {
       id = "overdub",
@@ -63,8 +82,14 @@ return {
       y = 6,
       w = 110,
       h = 36,
-      props = { label = "Overdub", value = false },
-      style = { onColour = 0xfff59e0b, offColour = 0xff374151 },
+      props = {
+        label = "Overdub",
+        value = false,
+      },
+      style = {
+        offColour = 4281811281,
+        onColour = 4294286859,
+      },
     },
     {
       id = "clearall",
@@ -73,8 +98,13 @@ return {
       y = 6,
       w = 70,
       h = 36,
-      props = { label = "Clear All" },
-      style = { bg = 0xff1f2937, fontSize = 12 },
+      props = {
+        label = "Clear All",
+      },
+      style = {
+        bg = 4280232247,
+        fontSize = 12,
+      },
     },
     {
       id = "linkIndicator",
@@ -83,8 +113,13 @@ return {
       y = 6,
       w = 50,
       h = 36,
-      props = { text = "link" },
-      style = { colour = 0xff4b5563, fontSize = 11 },
+      props = {
+        text = "link",
+      },
+      style = {
+        colour = 4283127139,
+        fontSize = 11,
+      },
     },
     {
       id = "tempo",
@@ -94,14 +129,16 @@ return {
       w = 96,
       h = 36,
       props = {
-        min = 40,
+        format = "%d",
+        label = "BPM",
         max = 240,
+        min = 40,
         step = 1,
         value = 120,
-        label = "BPM",
-        format = "%d",
       },
-      style = { colour = 0xff38bdf8 },
+      style = {
+        colour = 4281908728,
+      },
     },
     {
       id = "targetBpm",
@@ -111,14 +148,16 @@ return {
       w = 96,
       h = 36,
       props = {
-        min = 40,
+        format = "%d",
+        label = "Target",
         max = 240,
+        min = 40,
         step = 1,
         value = 120,
-        label = "Target",
-        format = "%d",
       },
-      style = { colour = 0xff22d3ee },
+      style = {
+        colour = 4280472558,
+      },
     },
   },
   components = {},

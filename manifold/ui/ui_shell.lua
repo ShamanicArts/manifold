@@ -246,6 +246,7 @@ function Shell.create(parentNode, options)
         performanceView = nil,
         performanceViewInitialized = false,
         performanceViewLayoutInfo = nil,
+        performanceViewLastResize = nil,
         devModeEnabled = opts.devMode ~= false,
         listWheelRows = 2,
         debugLastIdentifier = "",
@@ -744,6 +745,24 @@ function Shell.create(parentNode, options)
             local w = shell.parentNode:getWidth()
             local h = shell.parentNode:getHeight()
             shell:layout(w, h)
+        end,
+    })
+
+    shell.saveProjectButton = W.Button.new(shell.panel.node, "saveProject", {
+        label = "Save UI",
+        bg = 0xff14532d,
+        fontSize = 10.0,
+        on_click = function()
+            shell:saveStructuredProjectUi()
+        end,
+    })
+
+    shell.reloadProjectButton = W.Button.new(shell.panel.node, "reloadProject", {
+        label = "Reload UI",
+        bg = 0xff1e293b,
+        fontSize = 10.0,
+        on_click = function()
+            shell:reloadStructuredProjectUi()
         end,
     })
 

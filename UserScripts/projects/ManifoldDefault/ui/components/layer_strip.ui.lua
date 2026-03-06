@@ -6,10 +6,10 @@ return {
   w = 1280,
   h = 120,
   style = {
-    bg = 0xff1b2636,
-    radius = 8,
-    border = 0xff334155,
+    bg = 4279969334,
+    border = 4281549141,
     borderWidth = 1,
+    radius = 8,
   },
   children = {
     {
@@ -19,8 +19,14 @@ return {
       y = 6,
       w = 26,
       h = 24,
-      props = { text = "L?" },
-      style = { colour = 0xff94a3b8, fontSize = 15, fontStyle = "bold" },
+      props = {
+        text = "L?",
+      },
+      style = {
+        colour = 4287931320,
+        fontSize = 15,
+        fontStyle = "bold",
+      },
     },
     {
       id = "state",
@@ -29,8 +35,13 @@ return {
       y = 38,
       w = 50,
       h = 20,
-      props = { text = "" },
-      style = { colour = 0xff64748b, fontSize = 11 },
+      props = {
+        text = "",
+      },
+      style = {
+        colour = 4284773515,
+        fontSize = 11,
+      },
     },
     {
       id = "bars",
@@ -39,8 +50,13 @@ return {
       y = 70,
       w = 50,
       h = 16,
-      props = { text = "" },
-      style = { colour = 0xff94a3b8, fontSize = 10 },
+      props = {
+        text = "",
+      },
+      style = {
+        colour = 4287931320,
+        fontSize = 10,
+      },
     },
     {
       id = "waveform",
@@ -49,8 +65,13 @@ return {
       y = 6,
       w = 980,
       h = 108,
-      props = { mode = "layer", layerIndex = 0 },
-      style = { colour = 0xff22d3ee },
+      props = {
+        layerIndex = 0,
+        mode = "layer",
+      },
+      style = {
+        colour = 4280472558,
+      },
     },
     {
       id = "vol",
@@ -60,13 +81,15 @@ return {
       w = 60,
       h = 108,
       props = {
-        min = 0,
+        label = "Vol",
         max = 2,
+        min = 0,
         step = 0.01,
         value = 1.0,
-        label = "Vol",
       },
-      style = { colour = 0xffa78bfa },
+      style = {
+        colour = 4289170426,
+      },
     },
     {
       id = "speed",
@@ -76,13 +99,15 @@ return {
       w = 60,
       h = 108,
       props = {
-        min = -4.0,
+        label = "Speed",
         max = 4.0,
+        min = -4.0,
         step = 0.01,
         value = 1.0,
-        label = "Speed",
       },
-      style = { colour = 0xff22d3ee },
+      style = {
+        colour = 4280472558,
+      },
     },
     {
       id = "mute",
@@ -91,8 +116,13 @@ return {
       y = 6,
       w = 44,
       h = 108,
-      props = { label = "Mute" },
-      style = { bg = 0xff475569, fontSize = 11 },
+      props = {
+        label = "Mute",
+      },
+      style = {
+        bg = 4282865001,
+        fontSize = 11,
+      },
     },
     {
       id = "clear",
@@ -101,8 +131,13 @@ return {
       y = 6,
       w = 28,
       h = 48,
-      props = { label = "✕" },
-      style = { bg = 0xff7f1d1d, fontSize = 11 },
+      props = {
+        label = "✕",
+      },
+      style = {
+        bg = 4286520605,
+        fontSize = 11,
+      },
     },
     {
       id = "play",
@@ -111,8 +146,13 @@ return {
       y = 60,
       w = 28,
       h = 48,
-      props = { label = "▶" },
-      style = { bg = 0xff1f7a3a, fontSize = 13 },
+      props = {
+        label = "▶",
+      },
+      style = {
+        bg = 4280252986,
+        fontSize = 13,
+      },
     },
   },
   components = {},

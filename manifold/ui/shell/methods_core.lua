@@ -683,106 +683,152 @@ function M.attach(shell)
         local currentUi = getCurrentScriptPath and getCurrentScriptPath() or ""
         local editingPath = self.scriptEditor and self.scriptEditor.path or ""
 
-        self.scriptRows[#self.scriptRows + 1] = { section = true, label = "UI Scripts" }
-        local uiScripts = listUiScripts and listUiScripts() or {}
-        local uiCount = 0
-
-        for i = 1, #uiScripts do
-            local s = uiScripts[i]
-            if type(s) == "table" then
-                local path = s.path or ""
-                local name = s.name or fileStem(path) or "(unnamed)"
-                local include = false
-                local sourceKind = s.kind or "script"
-                local sourceScope = s.scope or ""
-
-                if not scriptLooksSettings(name, path) then
-                    if sourceKind == "project" then
-                        include = true
-                    elseif path ~= "" and (path == currentUi or path == editingPath) then
-                        include = true
-                    elseif sourceScope == "user" or sourceScope == "system" or sourceScope == "project" then
-                        include = true
-                    elseif scriptLooksGlobal(name, path) then
-                        include = true
-                    end
-                end
-
-                if include then
-                    self.scriptRows[#self.scriptRows + 1] = {
-                        kind = "ui",
-                        sourceKind = sourceKind,
-                        sourceScope = sourceScope,
-                        name = name,
-                        path = path,
-                        active = (path == currentUi),
-                    }
-                    uiCount = uiCount + 1
-                end
+        local projectFiles = nil
+        if type(getStructuredUiProjectFiles) == "function" then
+            local ok, result = pcall(getStructuredUiProjectFiles)
+            if ok and type(result) == "table" and #result > 0 then
+                projectFiles = result
             end
         end
 
-        if uiCount == 0 then
-            self.scriptRows[#self.scriptRows + 1] = {
-                section = false,
-                nonInteractive = true,
-                kind = "hint",
-                name = "No loaded/global UI scripts",
-                path = "",
-                active = false,
-            }
-        end
-
-        self.scriptRows[#self.scriptRows + 1] = { section = true, label = "DSP Scripts" }
-        local dspScripts = listDspScripts and listDspScripts() or {}
-        local activeSlots = collectActiveSlotHints(self.stateParamsCache)
-        local uiContextHints = collectUiContextHints(currentUi)
-        local dspCount = 0
-
-        for i = 1, #dspScripts do
-            local s = dspScripts[i]
-            if type(s) == "table" then
-                local path = s.path or ""
-                local name = s.name or fileStem(path) or "(unnamed)"
-                local include = false
-                local slotMatch = scriptMatchesActiveSlot(name, activeSlots)
-                local contextMatch = scriptMatchesUiContext(name, path, uiContextHints)
-
-                if not scriptLooksSettings(name, path) then
-                    if path ~= "" and path == editingPath then
-                        include = true
-                    elseif scriptLooksGlobal(name, path) then
-                        include = true
-                    elseif contextMatch and slotMatch then
-                        include = true
-                    elseif currentUi ~= "" and contextMatch then
-                        include = true
-                    elseif currentUi == "" and slotMatch then
-                        include = true
+        if projectFiles ~= nil then
+            local lastGroup = nil
+            for i = 1, #projectFiles do
+                local row = projectFiles[i]
+                if type(row) == "table" then
+                    local group = row.group or "Project Files"
+                    if group ~= lastGroup then
+                        self.scriptRows[#self.scriptRows + 1] = { section = true, label = group }
+                        lastGroup = group
                     end
-                end
 
-                if include then
+                    local path = row.path or ""
+                    local kind = row.kind or "ui"
+                    local name = row.name or fileStem(path) or "(unnamed)"
                     self.scriptRows[#self.scriptRows + 1] = {
-                        kind = "dsp",
+                        kind = kind,
+                        sourceKind = "project-file",
+                        sourceScope = "project",
                         name = name,
                         path = path,
-                        active = (self.scriptEditor.kind == "dsp" and path == editingPath),
+                        dirty = row.dirty == true,
+                        active = (path == currentUi) or (path == editingPath),
                     }
-                    dspCount = dspCount + 1
                 end
             end
-        end
 
-        if dspCount == 0 then
-            self.scriptRows[#self.scriptRows + 1] = {
-                section = false,
-                nonInteractive = true,
-                kind = "hint",
-                name = "No loaded/global DSP scripts",
-                path = "",
-                active = false,
-            }
+            if #self.scriptRows == 0 then
+                self.scriptRows[#self.scriptRows + 1] = {
+                    section = false,
+                    nonInteractive = true,
+                    kind = "hint",
+                    name = "No project files",
+                    path = "",
+                    active = false,
+                }
+            end
+        else
+            self.scriptRows[#self.scriptRows + 1] = { section = true, label = "UI Scripts" }
+            local uiScripts = listUiScripts and listUiScripts() or {}
+            local uiCount = 0
+
+            for i = 1, #uiScripts do
+                local s = uiScripts[i]
+                if type(s) == "table" then
+                    local path = s.path or ""
+                    local name = s.name or fileStem(path) or "(unnamed)"
+                    local include = false
+                    local sourceKind = s.kind or "script"
+                    local sourceScope = s.scope or ""
+
+                    if not scriptLooksSettings(name, path) then
+                        if sourceKind == "project" then
+                            include = true
+                        elseif path ~= "" and (path == currentUi or path == editingPath) then
+                            include = true
+                        elseif sourceScope == "user" or sourceScope == "system" or sourceScope == "project" then
+                            include = true
+                        elseif scriptLooksGlobal(name, path) then
+                            include = true
+                        end
+                    end
+
+                    if include then
+                        self.scriptRows[#self.scriptRows + 1] = {
+                            kind = "ui",
+                            sourceKind = sourceKind,
+                            sourceScope = sourceScope,
+                            name = name,
+                            path = path,
+                            active = (path == currentUi),
+                        }
+                        uiCount = uiCount + 1
+                    end
+                end
+            end
+
+            if uiCount == 0 then
+                self.scriptRows[#self.scriptRows + 1] = {
+                    section = false,
+                    nonInteractive = true,
+                    kind = "hint",
+                    name = "No loaded/global UI scripts",
+                    path = "",
+                    active = false,
+                }
+            end
+
+            self.scriptRows[#self.scriptRows + 1] = { section = true, label = "DSP Scripts" }
+            local dspScripts = listDspScripts and listDspScripts() or {}
+            local activeSlots = collectActiveSlotHints(self.stateParamsCache)
+            local uiContextHints = collectUiContextHints(currentUi)
+            local dspCount = 0
+
+            for i = 1, #dspScripts do
+                local s = dspScripts[i]
+                if type(s) == "table" then
+                    local path = s.path or ""
+                    local name = s.name or fileStem(path) or "(unnamed)"
+                    local include = false
+                    local slotMatch = scriptMatchesActiveSlot(name, activeSlots)
+                    local contextMatch = scriptMatchesUiContext(name, path, uiContextHints)
+
+                    if not scriptLooksSettings(name, path) then
+                        if path ~= "" and path == editingPath then
+                            include = true
+                        elseif scriptLooksGlobal(name, path) then
+                            include = true
+                        elseif contextMatch and slotMatch then
+                            include = true
+                        elseif currentUi ~= "" and contextMatch then
+                            include = true
+                        elseif currentUi == "" and slotMatch then
+                            include = true
+                        end
+                    end
+
+                    if include then
+                        self.scriptRows[#self.scriptRows + 1] = {
+                            kind = "dsp",
+                            name = name,
+                            path = path,
+                            active = (self.scriptEditor.kind == "dsp" and path == editingPath),
+                        }
+                        dspCount = dspCount + 1
+                    end
+                end
+            end
+
+            if dspCount == 0 then
+                self.scriptRows[#self.scriptRows + 1] = {
+                    section = false,
+                    nonInteractive = true,
+                    kind = "hint",
+                    name = "No loaded/global DSP scripts",
+                    path = "",
+                    active = false,
+                }
+            end
         end
 
         local hasSelected = false
@@ -1598,6 +1644,7 @@ function M.attach(shell)
     function shell:registerPerformanceView(view)
         self.performanceView = view
         self.performanceViewLayoutInfo = nil
+        self.performanceViewLastResize = nil
 
         if type(view) == "table" and not self.performanceViewInitialized then
             if type(view.init) == "function" and self.content ~= nil then
@@ -1611,6 +1658,244 @@ function M.attach(shell)
         self:layout(w, h)
     end
 
+    function shell:isStructuredProjectActive()
+        return type(getStructuredUiDocuments) == "function"
+            and type(saveStructuredUiAll) == "function"
+            and type(reloadStructuredUiProject) == "function"
+    end
+
+    function shell:getStructuredSourceForCanvas(canvas, purpose)
+        if canvas == nil or type(canvas.getUserData) ~= "function" then
+            return nil
+        end
+
+        if purpose == "bounds" then
+            local instanceMeta = canvas:getUserData("_structuredInstanceSource")
+            if type(instanceMeta) == "table"
+                and type(instanceMeta.documentPath) == "string"
+                and type(instanceMeta.nodeId) == "string" then
+                return instanceMeta
+            end
+        end
+
+        local sourceMeta = canvas:getUserData("_structuredSource")
+        if type(sourceMeta) == "table"
+            and type(sourceMeta.documentPath) == "string"
+            and type(sourceMeta.nodeId) == "string" then
+            return sourceMeta
+        end
+
+        return nil
+    end
+
+    function shell:getStructuredRuntimeRecord(documentPath, nodeId, globalId)
+        local runtime = rawget(_G, "__manifoldStructuredUiRuntime")
+        if type(runtime) ~= "table" then
+            return nil
+        end
+        if type(globalId) == "string" and globalId ~= "" and type(runtime.getRecordByGlobalId) == "function" then
+            local byGlobal = runtime:getRecordByGlobalId(globalId)
+            if type(byGlobal) == "table" then
+                return byGlobal
+            end
+        end
+        if type(runtime.getRecordBySource) ~= "function" then
+            return nil
+        end
+        return runtime:getRecordBySource(documentPath, nodeId)
+    end
+
+    function shell:getStructuredDesignScaleForCanvas(canvas)
+        local source = self:getStructuredSourceForCanvas(canvas, "bounds")
+        if type(source) ~= "table" then
+            return 1.0, 1.0
+        end
+
+        local record = self:getStructuredRuntimeRecord(source.documentPath, source.nodeId, source.globalId)
+        local parentRecord = record and record.parent or nil
+        if type(parentRecord) ~= "table" then
+            return 1.0, 1.0
+        end
+
+        local designParentW = tonumber(parentRecord.spec and parentRecord.spec.w) or 0
+        local designParentH = tonumber(parentRecord.spec and parentRecord.spec.h) or 0
+        local runtimeParentW = 0
+        local runtimeParentH = 0
+        if parentRecord.widget and parentRecord.widget.node then
+            if parentRecord.widget.node.getWidth then
+                runtimeParentW = tonumber(parentRecord.widget.node:getWidth()) or 0
+            end
+            if parentRecord.widget.node.getHeight then
+                runtimeParentH = tonumber(parentRecord.widget.node:getHeight()) or 0
+            end
+        end
+
+        if designParentW <= 0 or runtimeParentW <= 0 then
+            designParentW = runtimeParentW > 0 and runtimeParentW or 1
+            runtimeParentW = runtimeParentW > 0 and runtimeParentW or 1
+        end
+        if designParentH <= 0 or runtimeParentH <= 0 then
+            designParentH = runtimeParentH > 0 and runtimeParentH or 1
+            runtimeParentH = runtimeParentH > 0 and runtimeParentH or 1
+        end
+
+        return runtimeParentW / designParentW, runtimeParentH / designParentH
+    end
+
+    function shell:persistStructuredBoundsForCanvas(canvas)
+        if type(setStructuredUiNodeValue) ~= "function" then
+            return false
+        end
+
+        local source = self:getStructuredSourceForCanvas(canvas, "bounds")
+        if type(source) ~= "table" then
+            return false
+        end
+
+        local bx, by, bw, bh = canvas:getBounds()
+        local sx, sy = self:getStructuredDesignScaleForCanvas(canvas)
+        sx = (sx ~= 0 and sx) or 1.0
+        sy = (sy ~= 0 and sy) or 1.0
+
+        local authoredX = math.floor((bx / sx) + 0.5)
+        local authoredY = math.floor((by / sy) + 0.5)
+        local authoredW = math.max(1, math.floor((bw / sx) + 0.5))
+        local authoredH = math.max(1, math.floor((bh / sy) + 0.5))
+
+        local docPath = source.documentPath
+        local nodeId = source.nodeId
+
+        local hasLayout = false
+        local layoutMode = ""
+        if type(getStructuredUiNodeValue) == "function" then
+            local okLayout, layout = pcall(getStructuredUiNodeValue, docPath, nodeId, "layout")
+            if okLayout and type(layout) == "table" then
+                hasLayout = true
+                layoutMode = string.lower(tostring(layout.mode or layout.sizing or layout.kind or "absolute"))
+            end
+        end
+
+        if hasLayout and layoutMode ~= "" and layoutMode ~= "absolute" and layoutMode ~= "fixed" and layoutMode ~= "design" then
+            return false
+        end
+
+        local prefix = hasLayout and "layout." or ""
+        local okX = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "x", authoredX)
+        local okY = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "y", authoredY)
+        local okW = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "w", authoredW)
+        local okH = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "h", authoredH)
+        return okX and okY and okW and okH
+    end
+
+    function shell:resolveStructuredConfigDestination(documentPath, nodeId, configPath)
+        local normalized = normalizeConfigPath(configPath)
+        if normalized == "" then
+            return nil
+        end
+
+        local candidates = {
+            "props." .. normalized,
+            "style." .. normalized,
+            normalized,
+        }
+
+        if type(getStructuredUiNodeValue) == "function" then
+            for i = 1, #candidates do
+                local candidate = candidates[i]
+                local ok, value = pcall(getStructuredUiNodeValue, documentPath, nodeId, candidate)
+                if ok and value ~= nil then
+                    return candidate
+                end
+            end
+        end
+
+        return "props." .. normalized
+    end
+
+    function shell:persistStructuredConfigForCanvas(canvas, configPath, value)
+        if type(setStructuredUiNodeValue) ~= "function" then
+            return false
+        end
+
+        local source = self:getStructuredSourceForCanvas(canvas, "config")
+        if type(source) ~= "table" then
+            return false
+        end
+
+        local destination = self:resolveStructuredConfigDestination(source.documentPath, source.nodeId, configPath)
+        if type(destination) ~= "string" or destination == "" then
+            return false
+        end
+
+        local ok = pcall(setStructuredUiNodeValue, source.documentPath, source.nodeId, destination, value)
+        return ok
+    end
+
+    function shell:refreshProjectScriptRowsIfNeeded()
+        if self:isStructuredProjectActive() then
+            self:refreshScriptRows()
+            if self.leftPanelMode == "scripts" then
+                self.scriptCanvas:repaint()
+            end
+        end
+    end
+
+    function shell:saveStructuredProjectUi()
+        if not self:isStructuredProjectActive() then
+            return false
+        end
+        local ok, err = pcall(saveStructuredUiAll)
+        if ok then
+            self:appendConsoleLine("Saved structured UI project", 0xff86efac)
+            self:refreshProjectScriptRowsIfNeeded()
+            return true
+        end
+        self:appendConsoleLine("ERR: " .. tostring(err), 0xfffca5a5)
+        return false
+    end
+
+    function shell:reloadStructuredProjectUi()
+        if not self:isStructuredProjectActive() then
+            return false
+        end
+        local ok, err = pcall(reloadStructuredUiProject)
+        if ok then
+            self:appendConsoleLine("Reloaded structured UI project", 0xff93c5fd)
+            return true
+        end
+        self:appendConsoleLine("ERR: " .. tostring(err), 0xfffca5a5)
+        return false
+    end
+
+    function shell:getCanvasAbsoluteBounds(canvas)
+        if canvas == nil then
+            return nil
+        end
+
+        local row = self:_findTreeRowByCanvas(canvas)
+        if row then
+            return row.x, row.y, row.w, row.h
+        end
+
+        local bx, by, bw, bh = canvas:getBounds()
+        local dx, dy = self:localToDesign(bx, by)
+        return dx, dy, bw, bh
+    end
+
+    function shell:getCanvasParentDesignOrigin(canvas)
+        if canvas == nil then
+            return self.viewportDesignX or 0, self.viewportDesignY or 0
+        end
+
+        local row = self:_findTreeRowByCanvas(canvas)
+        if row then
+            local bx, by = canvas:getBounds()
+            return (row.x or 0) - (bx or 0), (row.y or 0) - (by or 0)
+        end
+
+        return self.viewportDesignX or 0, self.viewportDesignY or 0
+    end
+
     function shell:getSelectionBounds()
         if #self.selectedWidgets == 0 then
             return nil
@@ -1618,12 +1903,12 @@ function M.attach(shell)
 
         local minX, minY, maxX, maxY = nil, nil, nil, nil
         for i = 1, #self.selectedWidgets do
-            local row = self:_findTreeRowByCanvas(self.selectedWidgets[i])
-            if row then
-                minX = (minX == nil) and row.x or math.min(minX, row.x)
-                minY = (minY == nil) and row.y or math.min(minY, row.y)
-                maxX = (maxX == nil) and (row.x + row.w) or math.max(maxX, row.x + row.w)
-                maxY = (maxY == nil) and (row.y + row.h) or math.max(maxY, row.y + row.h)
+            local x, y, w, h = self:getCanvasAbsoluteBounds(self.selectedWidgets[i])
+            if x ~= nil then
+                minX = (minX == nil) and x or math.min(minX, x)
+                minY = (minY == nil) and y or math.min(minY, y)
+                maxX = (maxX == nil) and (x + w) or math.max(maxX, x + w)
+                maxY = (maxY == nil) and (y + h) or math.max(maxY, y + h)
             end
         end
 
@@ -1707,10 +1992,41 @@ function M.attach(shell)
         return nil
     end
 
+    local function refreshRowBoundsSubtree(row, parentAbsX, parentAbsY)
+        if type(row) ~= "table" or row.canvas == nil then
+            return
+        end
+
+        local bx, by, bw, bh = row.canvas:getBounds()
+        local absX = (parentAbsX or 0) + (bx or 0)
+        local absY = (parentAbsY or 0) + (by or 0)
+
+        row.x = absX
+        row.y = absY
+        row.w = bw or 0
+        row.h = bh or 0
+
+        for i = 1, #(row.children or {}) do
+            refreshRowBoundsSubtree(row.children[i], absX, absY)
+        end
+    end
+
     function shell:updateSelectedRowBoundsCache()
-        -- For nested widgets, absolute coordinates depend on parent chain.
-        -- Rebuild tree so selection overlay stays correct.
-        self:refreshTree(true)
+        if self.treeRoot == nil then
+            self:refreshTree(true)
+            return
+        end
+
+        refreshRowBoundsSubtree(self.treeRoot, 0, 0)
+        self.treeCanvas:repaint()
+        self.previewOverlay:repaint()
+    end
+
+    function shell:setStructuredDragDebug(label, payload)
+        _G.__manifoldStructuredDragDebug = {
+            label = tostring(label or ""),
+            payload = payload,
+        }
     end
 
     function shell:getWorkspaceDesignRect()
@@ -2236,6 +2552,7 @@ function M.attach(shell)
                     end
                     -- Always apply to widget (handles exposed params)
                     self:_applyWidgetConfigProperty(meta, row.path, typedValue)
+                    self:persistStructuredConfigForCanvas(canvas, row.path, typedValue)
                     changed = true
                 end
             end
@@ -2247,6 +2564,7 @@ function M.attach(shell)
 
         self:refreshTree(true)
         self:setSelection(selectionCopy, primary)
+        self:refreshProjectScriptRowsIfNeeded()
 
         for i = 1, #self.inspectorRows do
             local r = self.inspectorRows[i]
@@ -2349,12 +2667,11 @@ function M.attach(shell)
             self.inspectorRows[#self.inspectorRows + 1] = { key = "Type", value = nodeType }
             self.inspectorRows[#self.inspectorRows + 1] = { key = "Name", value = nodeName }
 
-            local bx, by, bw, bh = canvas:getBounds()
-            local dx, dy = self:localToDesign(bx, by)
-            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.x", value = valueToText(dx) }
-            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.y", value = valueToText(dy) }
-            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.w", value = valueToText(bw) }
-            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.h", value = valueToText(bh) }
+            local dx, dy, bw, bh = self:getCanvasAbsoluteBounds(canvas)
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.x", value = valueToText(dx or 0) }
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.y", value = valueToText(dy or 0) }
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.w", value = valueToText(bw or 0) }
+            self.inspectorRows[#self.inspectorRows + 1] = { key = "Bounds.h", value = valueToText(bh or 0) }
 
             if type(meta) == "table" and type(meta.config) == "table" then
                 local widget = meta.widget
@@ -2498,12 +2815,11 @@ function M.attach(shell)
             self.inspectorW:setValue(1)
             self.inspectorH:setValue(1)
         elseif selCount == 1 then
-            local bx, by, bw, bh = self.selectedWidgets[1]:getBounds()
-            local dx, dy = self:localToDesign(bx, by)
-            self.inspectorX:setValue(dx)
-            self.inspectorY:setValue(dy)
-            self.inspectorW:setValue(math.max(1, bw))
-            self.inspectorH:setValue(math.max(1, bh))
+            local dx, dy, bw, bh = self:getCanvasAbsoluteBounds(self.selectedWidgets[1])
+            self.inspectorX:setValue(dx or 0)
+            self.inspectorY:setValue(dy or 0)
+            self.inspectorW:setValue(math.max(1, bw or 1))
+            self.inspectorH:setValue(math.max(1, bh or 1))
         else
             local b = self:getSelectionBounds()
             if b then
@@ -2539,11 +2855,12 @@ function M.attach(shell)
         if selCount == 1 then
             local target = self.selectedWidgets[1]
             local bx, by, bw, bh = target:getBounds()
+            local parentDesignX, parentDesignY = self:getCanvasParentDesignOrigin(target)
 
             if axis == "x" then
-                bx = iv - self.viewportDesignX
+                bx = iv - parentDesignX
             elseif axis == "y" then
-                by = iv - self.viewportDesignY
+                by = iv - parentDesignY
             elseif axis == "w" then
                 bw = math.max(1, iv)
             elseif axis == "h" then
@@ -2551,8 +2868,12 @@ function M.attach(shell)
             end
 
             target:setBounds(bx, by, bw, bh)
+            self:persistStructuredBoundsForCanvas(target)
             self.treeRefreshPending = true
-            self:refreshTree(true)
+            self:updateSelectedRowBoundsCache()
+            self:_syncInspectorEditors()
+            self:_rebuildInspectorRows()
+            self:refreshProjectScriptRowsIfNeeded()
 
             local afterScene = self:_captureSceneState()
             local afterSelection = self:_captureSelectionState()
@@ -2589,13 +2910,15 @@ function M.attach(shell)
                     if axis == "w" then
                         local relX = row.x - bounds.x
                         local nx = bounds.x + relX * scale
-                        local localNX = nx - self.viewportDesignX
+                        local parentDesignX = row.x - bx
+                        local localNX = nx - parentDesignX
                         local nw = math.max(self.minWidgetSize, bw * scale)
                         c:setBounds(math.floor(localNX + 0.5), by, math.floor(nw + 0.5), bh)
                     else
                         local relY = row.y - bounds.y
                         local ny = bounds.y + relY * scale
-                        local localNY = ny - self.viewportDesignY
+                        local parentDesignY = row.y - by
+                        local localNY = ny - parentDesignY
                         local nh = math.max(self.minWidgetSize, bh * scale)
                         c:setBounds(bx, math.floor(localNY + 0.5), bw, math.floor(nh + 0.5))
                     end
@@ -2603,8 +2926,14 @@ function M.attach(shell)
             end
         end
 
+        for i = 1, selCount do
+            self:persistStructuredBoundsForCanvas(self.selectedWidgets[i])
+        end
         self.treeRefreshPending = true
-        self:refreshTree(true)
+        self:updateSelectedRowBoundsCache()
+        self:_syncInspectorEditors()
+        self:_rebuildInspectorRows()
+        self:refreshProjectScriptRowsIfNeeded()
 
         local afterScene = self:_captureSceneState()
         local afterSelection = self:_captureSelectionState()

@@ -1235,6 +1235,27 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         return inFile.loadFileAsString().toStdString();
     };
 
+    lua["listFilesRecursive"] = [&lua](const std::string& rootPath) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        juce::File root(rootPath);
+        if (!root.isDirectory()) {
+            return result;
+        }
+
+        auto files = root.findChildFiles(juce::File::findFiles, true);
+        files.sort();
+
+        int index = 1;
+        for (const auto& file : files) {
+            const auto ext = file.getFileExtension();
+            if (ext != ".lua" && ext != ".json5") {
+                continue;
+            }
+            result[index++] = file.getFullPathName().toStdString();
+        }
+        return result;
+    };
+
     lua["listDspScripts"] = [&lua]() -> sol::table {
         auto result = sol::table(lua, sol::create);
         std::set<std::string> seenNames;

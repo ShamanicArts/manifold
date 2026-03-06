@@ -242,4 +242,63 @@ function M.segmentRangeForBars(bars)
   return 0, bars, tostring(bars)
 end
 
+local function findById(items, id)
+  if type(items) ~= "table" or type(id) ~= "string" or id == "" then
+    return nil
+  end
+  for _, item in ipairs(items) do
+    if type(item) == "table" and item.id == id then
+      return item
+    end
+  end
+  return nil
+end
+
+function M.getChildSpec(ctx, id)
+  local spec = ctx and ctx.spec or nil
+  if type(spec) ~= "table" then
+    return nil
+  end
+  return findById(spec.children, id)
+end
+
+function M.getComponentSpec(ctx, id)
+  local spec = ctx and ctx.spec or nil
+  if type(spec) ~= "table" then
+    return nil
+  end
+  return findById(spec.components, id)
+end
+
+function M.getDesignSize(ctx, fallbackW, fallbackH)
+  local spec = ctx and ctx.spec or {}
+  local designW = tonumber(spec.w) or tonumber(fallbackW) or 1
+  local designH = tonumber(spec.h) or tonumber(fallbackH) or 1
+  if designW <= 0 then designW = tonumber(fallbackW) or 1 end
+  if designH <= 0 then designH = tonumber(fallbackH) or 1 end
+  return designW, designH
+end
+
+function M.applySpecRect(widget, nodeSpec, parentW, parentH, designW, designH)
+  if not widget or not nodeSpec or not widget.setBounds then
+    return false
+  end
+
+  local x = tonumber(nodeSpec.x) or 0
+  local y = tonumber(nodeSpec.y) or 0
+  local w = tonumber(nodeSpec.w) or 0
+  local h = tonumber(nodeSpec.h) or 0
+
+  local sx = (tonumber(parentW) or designW or 1) / math.max(1, tonumber(designW) or 1)
+  local sy = (tonumber(parentH) or designH or 1) / math.max(1, tonumber(designH) or 1)
+
+  widget:setBounds(
+    math.floor(x * sx + 0.5),
+    math.floor(y * sy + 0.5),
+    math.max(1, math.floor(w * sx + 0.5)),
+    math.max(1, math.floor(h * sy + 0.5))
+  )
+  return true
+end
+
 return M

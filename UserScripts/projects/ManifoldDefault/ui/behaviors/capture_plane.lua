@@ -126,26 +126,20 @@ end
 
 function M.resized(ctx, w, h)
   local widgets = ctx.widgets or {}
+  local designW, designH = Shared.getDesignSize(ctx, w, h)
+
   if widgets.captureTitle then
-    widgets.captureTitle:setBounds(0, 0, 0, 0)
+    Shared.applySpecRect(widgets.captureTitle, Shared.getChildSpec(ctx, "captureTitle"), w, h, designW, designH)
   end
 
-  local captureY = 4
-  local captureH = h - 8
-  local slotCount = #Shared.kSegmentBars
-  local slotWidth = math.max(1, math.floor(w / slotCount))
-  local totalStripW = slotWidth * slotCount
-  local x0 = w - totalStripW
-
-  for _, strip in ipairs(ctx._strips or {}) do
-    strip.widget:setBounds(x0 + (strip.slot - 1) * slotWidth, captureY, slotWidth, captureH)
+  for slot = 1, #Shared.kSegmentBars do
+    local stripId = "strip_" .. tostring(slot)
+    Shared.applySpecRect(widgets[stripId], Shared.getChildSpec(ctx, stripId), w, h, designW, designH)
   end
 
-  for _, seg in ipairs(ctx._segments or {}) do
-    local i = seg.index
-    local sx = x0 + (slotCount - i) * slotWidth
-    local sw = i * slotWidth
-    seg.widget:setBounds(sx, captureY, sw, captureH)
+  for i = 1, #Shared.kSegmentBars do
+    local segId = "segment_hit_" .. tostring(i)
+    Shared.applySpecRect(widgets[segId], Shared.getChildSpec(ctx, segId), w, h, designW, designH)
   end
 end
 

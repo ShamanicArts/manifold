@@ -64,11 +64,128 @@ local function floorInt(v)
   return math.floor((tonumber(v) or 0) + 0.5)
 end
 
+local function numberOrNil(v)
+  if v == nil then
+    return nil
+  end
+  return tonumber(v)
+end
+
+local function lowerString(v)
+  return string.lower(tostring(v or ""))
+end
+
+local function clampNumber(v, minV, maxV)
+  local n = tonumber(v) or 0
+  if minV ~= nil and n < minV then
+    n = minV
+  end
+  if maxV ~= nil and n > maxV then
+    n = maxV
+  end
+  return n
+end
+
 local function getBounds(spec, fallback)
   return floorInt(spec.x or (fallback and fallback.x) or 0),
          floorInt(spec.y or (fallback and fallback.y) or 0),
          floorInt(spec.w or (fallback and fallback.w) or 0),
          floorInt(spec.h or (fallback and fallback.h) or 0)
+end
+
+local function mergeLayout(baseLayout, overrideLayout)
+  local layout = deepCopy(baseLayout or {})
+  mergeInto(layout, overrideLayout or {})
+  if next(layout) == nil then
+    return nil
+  end
+  return layout
+end
+
+local function resolveAbsoluteBounds(spec, layout, fallback)
+  local x = numberOrNil(layout.x) or numberOrNil(layout.left) or spec.x or (fallback and fallback.x) or 0
+  local y = numberOrNil(layout.y) or numberOrNil(layout.top) or spec.y or (fallback and fallback.y) or 0
+  local w = numberOrNil(layout.w) or numberOrNil(layout.width) or spec.w or (fallback and fallback.w) or 0
+  local h = numberOrNil(layout.h) or numberOrNil(layout.height) or spec.h or (fallback and fallback.h) or 0
+  return x, y, w, h
+end
+
+local function resolveRelativeBounds(spec, layout, parentW, parentH, fallback)
+  local x = (numberOrNil(layout.x) or 0.0) * parentW
+  local y = (numberOrNil(layout.y) or 0.0) * parentH
+  local w = (numberOrNil(layout.w) or numberOrNil(layout.width) or 1.0) * parentW
+  local h = (numberOrNil(layout.h) or numberOrNil(layout.height) or 1.0) * parentH
+
+  if layout.left ~= nil and layout.right ~= nil then
+    local left = numberOrNil(layout.left) or 0.0
+    local right = numberOrNil(layout.right) or 0.0
+    x = left * parentW
+    w = parentW - (left + right) * parentW
+  end
+  if layout.top ~= nil and layout.bottom ~= nil then
+    local top = numberOrNil(layout.top) or 0.0
+    local bottom = numberOrNil(layout.bottom) or 0.0
+    y = top * parentH
+    h = parentH - (top + bottom) * parentH
+  end
+
+  if fallback then
+    if layout.x == nil and layout.left == nil then x = fallback.x or x end
+    if layout.y == nil and layout.top == nil then y = fallback.y or y end
+  end
+
+  return x, y, w, h
+end
+
+local function resolveHybridAxis(layout, parentSize, basePos, baseSize, startKey, endKey, sizeKey, altSizeKey)
+  local startInset = numberOrNil(layout[startKey])
+  local endInset = numberOrNil(layout[endKey])
+  local size = numberOrNil(layout[sizeKey]) or numberOrNil(layout[altSizeKey]) or numberOrNil(baseSize) or 0
+  local pos = numberOrNil(layout[startKey == "left" and "x" or "y"]) or numberOrNil(basePos) or 0
+
+  if startInset ~= nil then
+    pos = startInset
+  end
+
+  if startInset ~= nil and endInset ~= nil and layout[sizeKey] == nil and layout[altSizeKey] == nil then
+    size = parentSize - startInset - endInset
+  elseif startInset == nil and endInset ~= nil then
+    pos = parentSize - endInset - size
+  end
+
+  return pos, size
+end
+
+local function applySizeClamp(layout, w, h)
+  w = clampNumber(w,
+    numberOrNil(layout.minW) or numberOrNil(layout.minWidth),
+    numberOrNil(layout.maxW) or numberOrNil(layout.maxWidth))
+  h = clampNumber(h,
+    numberOrNil(layout.minH) or numberOrNil(layout.minHeight),
+    numberOrNil(layout.maxH) or numberOrNil(layout.maxHeight))
+  return w, h
+end
+
+local function resolveLayoutBounds(spec, parentW, parentH, fallback)
+  local layout = spec.layout
+  if type(layout) ~= "table" then
+    return getBounds(spec, fallback)
+  end
+
+  local mode = lowerString(layout.mode or layout.sizing or layout.kind or "absolute")
+  local x, y, w, h
+
+  if mode == "relative" or mode == "fill" or mode == "responsive" then
+    x, y, w, h = resolveRelativeBounds(spec, layout, parentW, parentH, fallback)
+  elseif mode == "hybrid" or mode == "anchored" or mode == "inset" then
+    x, w = resolveHybridAxis(layout, parentW, spec.x or (fallback and fallback.x), spec.w or (fallback and fallback.w), "left", "right", "width", "w")
+    y, h = resolveHybridAxis(layout, parentH, spec.y or (fallback and fallback.y), spec.h or (fallback and fallback.h), "top", "bottom", "height", "h")
+  else
+    x, y, w, h = resolveAbsoluteBounds(spec, layout, fallback)
+  end
+
+  w, h = applySizeClamp(layout, w, h)
+  return floorInt(x), floorInt(y), floorInt(math.max(0, w)), floorInt(math.max(0, h))
 end
 
 local function validateValue(value, path, visited)
@@ -154,6 +271,200 @@ local function resolveAssetPath(runtime, ref)
   return runtime.projectRoot .. "/" .. ref
 end
 
+local function splitPath(path)
+  local parts = {}
+  if type(path) ~= "string" or path == "" then
+    return parts
+  end
+  for part in string.gmatch(path, "[^%.]+") do
+    parts[#parts + 1] = part
+  end
+  return parts
+end
+
+local function getValueByPath(root, path)
+  if type(root) ~= "table" then
+    return nil
+  end
+  if type(path) ~= "string" or path == "" then
+    return root
+  end
+  local current = root
+  for _, part in ipairs(splitPath(path)) do
+    if type(current) ~= "table" then
+      return nil
+    end
+    current = current[part]
+  end
+  return current
+end
+
+local function setValueByPath(root, path, value)
+  if type(root) ~= "table" or type(path) ~= "string" or path == "" then
+    return false
+  end
+  local parts = splitPath(path)
+  if #parts == 0 then
+    return false
+  end
+  local current = root
+  for i = 1, #parts - 1 do
+    local part = parts[i]
+    if type(current[part]) ~= "table" then
+      current[part] = {}
+    end
+    current = current[part]
+  end
+  current[parts[#parts]] = value
+  return true
+end
+
+local function removeValueByPath(root, path)
+  if type(root) ~= "table" or type(path) ~= "string" or path == "" then
+    return false
+  end
+  local parts = splitPath(path)
+  if #parts == 0 then
+    return false
+  end
+  local current = root
+  for i = 1, #parts - 1 do
+    current = current[parts[i]]
+    if type(current) ~= "table" then
+      return false
+    end
+  end
+  current[parts[#parts]] = nil
+  return true
+end
+
+local function isArrayTable(value)
+  if type(value) ~= "table" then
+    return false, 0
+  end
+  local maxIndex = 0
+  local count = 0
+  for k, _ in pairs(value) do
+    if type(k) ~= "number" or k < 1 or math.floor(k) ~= k then
+      return false, 0
+    end
+    if k > maxIndex then
+      maxIndex = k
+    end
+    count = count + 1
+  end
+  if count == 0 then
+    return true, 0
+  end
+  if maxIndex ~= count then
+    return false, 0
+  end
+  return true, count
+end
+
+local function escapeLuaString(text)
+  return string.format("%q", tostring(text or ""))
+end
+
+local function pathStartsWith(text, prefix)
+  return type(text) == "string" and type(prefix) == "string" and text:sub(1, #prefix) == prefix
+end
+
+local function pathRelativeToRoot(absPath, root)
+  if type(absPath) ~= "string" or absPath == "" then
+    return absPath or ""
+  end
+  if type(root) ~= "string" or root == "" then
+    return absPath
+  end
+  local normalizedRoot = root
+  if normalizedRoot:sub(-1) ~= "/" then
+    normalizedRoot = normalizedRoot .. "/"
+  end
+  if pathStartsWith(absPath, normalizedRoot) then
+    return absPath:sub(#normalizedRoot + 1)
+  end
+  return absPath
+end
+
+local NODE_KEY_ORDER = {
+  "id", "type", "x", "y", "w", "h", "layout", "shellLayout",
+  "props", "style", "bind", "behavior", "children", "components", "ref",
+}
+
+local function orderedKeys(value)
+  local used = {}
+  local keys = {}
+  for _, key in ipairs(NODE_KEY_ORDER) do
+    if value[key] ~= nil then
+      keys[#keys + 1] = key
+      used[key] = true
+    end
+  end
+
+  local rest = {}
+  for k, _ in pairs(value) do
+    if type(k) == "string" and not used[k] then
+      rest[#rest + 1] = k
+    end
+  end
+  table.sort(rest)
+  for _, key in ipairs(rest) do
+    keys[#keys + 1] = key
+  end
+  return keys
+end
+
+local function serializeLuaValue(value, indent)
+  local t = type(value)
+  indent = indent or ""
+
+  if t == "nil" then
+    return "nil"
+  end
+  if t == "number" or t == "boolean" then
+    return tostring(value)
+  end
+  if t == "string" then
+    return escapeLuaString(value)
+  end
+  if t ~= "table" then
+    error("cannot serialize structured UI value of type: " .. t)
+  end
+
+  local isArray, count = isArrayTable(value)
+  local nextIndent = indent .. "  "
+
+  if isArray then
+    if count == 0 then
+      return "{}"
+    end
+    local out = {"{"}
+    for i = 1, count do
+      out[#out + 1] = nextIndent .. serializeLuaValue(value[i], nextIndent) .. ","
+    end
+    out[#out + 1] = indent .. "}"
+    return table.concat(out, "\n")
+  end
+
+  local keys = orderedKeys(value)
+  if #keys == 0 then
+    return "{}"
+  end
+
+  local out = {"{"}
+  for _, key in ipairs(keys) do
+    out[#out + 1] = nextIndent .. key .. " = " .. serializeLuaValue(value[key], nextIndent) .. ","
+  end
+  out[#out + 1] = indent .. "}"
+  return table.concat(out, "\n")
+end
+
+local function serializeStructuredDocument(value)
+  validateValue(value, "serializedDocument", {})
+  return "return " .. serializeLuaValue(value, "") .. "\n"
+end
+
 local function buildBehaviorContext(runtime, opts)
   return {
     project = {
@@ -192,6 +503,11 @@ function Runtime.new(opts)
   self.sceneSpec = nil
   self.widgets = {}
   self.behaviors = {}
+  self.layoutTree = nil
+  self.documents = {}
+  self.documentOrder = {}
+  self.recordsBySourceKey = {}
+  self.recordsByGlobalId = {}
   return self
 end
 
@@ -202,6 +518,352 @@ function Runtime:registerWidget(globalId, localWidgets, localId, widget)
   if type(localWidgets) == "table" and type(localId) == "string" and localId ~= "" then
     localWidgets[localId] = widget
   end
+end
+
+function Runtime:_appendRecordForSource(documentPath, nodeId, record)
+  if type(documentPath) ~= "string" or documentPath == "" then
+    return
+  end
+  if type(nodeId) ~= "string" or nodeId == "" then
+    return
+  end
+  if type(record) ~= "table" then
+    return
+  end
+
+  local key = documentPath .. "::" .. nodeId
+  local list = self.recordsBySourceKey[key]
+  if type(list) ~= "table" then
+    list = {}
+    self.recordsBySourceKey[key] = list
+  end
+  list[#list + 1] = record
+end
+
+function Runtime:registerRecord(record)
+  if type(record) ~= "table" then
+    return
+  end
+
+  local sourcePath = record.sourceDocumentPath
+  local nodeId = nil
+  if type(record.spec) == "table" then
+    nodeId = record.spec.id
+  end
+
+  if type(record.globalId) == "string" and record.globalId ~= "" then
+    self.recordsByGlobalId[record.globalId] = record
+  end
+  self:_appendRecordForSource(sourcePath, nodeId, record)
+end
+
+function Runtime:registerRecordAlias(documentPath, nodeId, record)
+  self:_appendRecordForSource(documentPath, nodeId, record)
+end
+
+function Runtime:getRecordsBySource(documentPath, nodeId)
+  if type(documentPath) ~= "string" or documentPath == "" then
+    return nil
+  end
+  if type(nodeId) ~= "string" or nodeId == "" then
+    return nil
+  end
+  return self.recordsBySourceKey[documentPath .. "::" .. nodeId]
+end
+
+function Runtime:getRecordBySource(documentPath, nodeId)
+  local list = self:getRecordsBySource(documentPath, nodeId)
+  if type(list) ~= "table" or #list == 0 then
+    return nil
+  end
+  return list[1]
+end
+
+function Runtime:getRecordByGlobalId(globalId)
+  if type(globalId) ~= "string" or globalId == "" then
+    return nil
+  end
+  return self.recordsByGlobalId[globalId]
+end
+
+function Runtime:loadDocument(absPath, kind)
+  local existing = self.documents[absPath]
+  if existing then
+    return existing
+  end
+
+  local model = loadStructuredTable(absPath, tostring(kind or "structured") .. ":" .. absPath)
+  local document = {
+    path = absPath,
+    kind = kind or "structured",
+    model = model,
+    dirty = false,
+  }
+  self.documents[absPath] = document
+  self.documentOrder[#self.documentOrder + 1] = absPath
+  return document
+end
+
+function Runtime:findNodeById(root, nodeId)
+  if type(root) ~= "table" or type(nodeId) ~= "string" or nodeId == "" then
+    return nil
+  end
+
+  if root.id == nodeId then
+    return root
+  end
+
+  for _, child in ipairs(root.children or {}) do
+    local match = self:findNodeById(child, nodeId)
+    if match then
+      return match
+    end
+  end
+
+  for _, comp in ipairs(root.components or {}) do
+    if type(comp) == "table" then
+      if comp.id == nodeId then
+        return comp
+      end
+      local match = self:findNodeById(comp, nodeId)
+      if match then
+        return match
+      end
+    end
+  end
+
+  return nil
+end
+
+function Runtime:getDocument(absPath)
+  return self.documents[absPath]
+end
+
+function Runtime:listDocuments()
+  local out = {}
+  for _, path in ipairs(self.documentOrder or {}) do
+    local doc = self.documents[path]
+    if doc then
+      out[#out + 1] = {
+        path = doc.path,
+        kind = doc.kind,
+        dirty = doc.dirty == true,
+      }
+    end
+  end
+  return out
+end
+
+function Runtime:collectBehaviorRefs(spec, out, seen)
+  if type(spec) ~= "table" then
+    return
+  end
+
+  if type(spec.behavior) == "string" and spec.behavior ~= "" then
+    local absPath = resolveAssetPath(self, spec.behavior)
+    if not seen[absPath] then
+      seen[absPath] = true
+      out[#out + 1] = absPath
+    end
+  end
+
+  for _, child in ipairs(spec.children or {}) do
+    self:collectBehaviorRefs(child, out, seen)
+  end
+  for _, component in ipairs(spec.components or {}) do
+    self:collectBehaviorRefs(component, out, seen)
+  end
+end
+
+function Runtime:listProjectFiles()
+  local out = {}
+  local projectRoot = self.projectRoot or ""
+  local seen = {}
+
+  local function addFile(path, kind, group, dirty)
+    if type(path) ~= "string" or path == "" or seen[path] then
+      return
+    end
+    seen[path] = true
+    out[#out + 1] = {
+      kind = kind or "file",
+      group = group or "Project Files",
+      name = pathRelativeToRoot(path, projectRoot),
+      path = path,
+      dirty = dirty == true,
+    }
+  end
+
+  if type(self.manifestPath) == "string" and self.manifestPath ~= "" then
+    addFile(self.manifestPath, "manifest", "Project", false)
+  end
+
+  for _, path in ipairs(self.documentOrder or {}) do
+    local doc = self.documents[path]
+    if doc then
+      local group = (doc.kind == "component") and "UI Components" or "UI Scene"
+      addFile(doc.path, "ui", group, doc.dirty == true)
+    end
+  end
+
+  if type(listFilesRecursive) == "function" and projectRoot ~= "" then
+    local ok, files = pcall(listFilesRecursive, projectRoot)
+    if ok and type(files) == "table" then
+      for _, path in ipairs(files) do
+        local rel = pathRelativeToRoot(path, projectRoot)
+        local kind = "file"
+        local group = "Project Files"
+        if rel == "manifold.project.json5" then
+          kind = "manifest"
+          group = "Project"
+        elseif pathStartsWith(rel, "ui/components/") then
+          kind = "ui"
+          group = "UI Components"
+        elseif pathStartsWith(rel, "ui/behaviors/") then
+          kind = "behavior"
+          group = "Behaviors"
+        elseif pathStartsWith(rel, "ui/") then
+          kind = "ui"
+          group = "UI Scene"
+        elseif pathStartsWith(rel, "dsp/") then
+          kind = "dsp"
+          group = "DSP"
+        elseif pathStartsWith(rel, "themes/") then
+          kind = "theme"
+          group = "Themes"
+        elseif pathStartsWith(rel, "editor/") then
+          kind = "editor"
+          group = "Editor"
+        end
+
+        local doc = self.documents[path]
+        addFile(path, kind, group, doc and doc.dirty == true)
+      end
+    end
+  end
+
+  local groupOrder = {
+    ["Project"] = 1,
+    ["UI Scene"] = 2,
+    ["UI Components"] = 3,
+    ["Behaviors"] = 4,
+    ["DSP"] = 5,
+    ["Themes"] = 6,
+    ["Editor"] = 7,
+    ["Project Files"] = 99,
+  }
+  table.sort(out, function(a, b)
+    local ga = groupOrder[a.group or ""] or 50
+    local gb = groupOrder[b.group or ""] or 50
+    if ga ~= gb then
+      return ga < gb
+    end
+    if (a.group or "") ~= (b.group or "") then
+      return (a.group or "") < (b.group or "")
+    end
+    return (a.name or "") < (b.name or "")
+  end)
+
+  return out
+end
+
+function Runtime:getNodeValue(absPath, nodeId, path)
+  local doc = self.documents[absPath]
+  if not doc then
+    return nil, "unknown document: " .. tostring(absPath)
+  end
+  local node = self:findNodeById(doc.model, nodeId)
+  if not node then
+    return nil, "unknown node id: " .. tostring(nodeId)
+  end
+  return getValueByPath(node, path), nil
+end
+
+function Runtime:setNodeValue(absPath, nodeId, path, value)
+  local doc = self.documents[absPath]
+  if not doc then
+    return false, "unknown document: " .. tostring(absPath)
+  end
+  local node = self:findNodeById(doc.model, nodeId)
+  if not node then
+    return false, "unknown node id: " .. tostring(nodeId)
+  end
+  if type(path) ~= "string" or path == "" then
+    return false, "missing node path"
+  end
+  local ok = setValueByPath(node, path, value)
+  if not ok then
+    return false, "failed to set path: " .. tostring(path)
+  end
+
+  local records = self:getRecordsBySource(absPath, nodeId)
+  if type(records) == "table" then
+    for i = 1, #records do
+      local record = records[i]
+      if type(record) == "table" and type(record.spec) == "table" then
+        setValueByPath(record.spec, path, value)
+      end
+    end
+  end
+
+  doc.dirty = true
+  return true, nil
+end
+
+function Runtime:removeNodeValue(absPath, nodeId, path)
+  local doc = self.documents[absPath]
+  if not doc then
+    return false, "unknown document: " .. tostring(absPath)
+  end
+  local node = self:findNodeById(doc.model, nodeId)
+  if not node then
+    return false, "unknown node id: " .. tostring(nodeId)
+  end
+  local ok = removeValueByPath(node, path)
+  if not ok then
+    return false, "failed to remove path: " .. tostring(path)
+  end
+
+  local records = self:getRecordsBySource(absPath, nodeId)
+  if type(records) == "table" then
+    for i = 1, #records do
+      local record = records[i]
+      if type(record) == "table" and type(record.spec) == "table" then
+        removeValueByPath(record.spec, path)
+      end
+    end
+  end
+
+  doc.dirty = true
+  return true, nil
+end
+
+function Runtime:saveDocument(absPath)
+  local doc = self.documents[absPath]
+  if not doc then
+    return false, "unknown document: " .. tostring(absPath)
+  end
+  if type(writeTextFile) ~= "function" then
+    return false, "writeTextFile unavailable"
+  end
+
+  local source = serializeStructuredDocument(doc.model)
+  local ok = writeTextFile(absPath, source)
+  if ok == false then
+    return false, "writeTextFile failed: " .. tostring(absPath)
+  end
+  doc.dirty = false
+  return true, nil
+end
+
+function Runtime:saveAllDocuments()
+  for _, path in ipairs(self.documentOrder or {}) do
+    local ok, err = self:saveDocument(path)
+    if not ok then
+      return false, err
+    end
+  end
+  return true, nil
 end
 
 function Runtime:instantiateSpec(parentNode, spec, opts)
@@ -225,31 +887,57 @@ function Runtime:instantiateSpec(parentNode, spec, opts)
     widget.node:setBounds(x, y, w, h)
   end
 
+  if widget.node and widget.node.setUserData then
+    widget.node:setUserData("_structuredSource", {
+      documentPath = opts.sourceDocumentPath,
+      nodeId = spec.id,
+      globalId = globalId,
+      kind = opts.sourceKind or "node",
+    })
+  end
+
+  local record = {
+    widget = widget,
+    spec = spec,
+    globalId = globalId,
+    children = {},
+    parent = opts.parentRecord,
+    sourceDocumentPath = opts.sourceDocumentPath,
+    sourceKind = opts.sourceKind or "node",
+  }
+
   self:registerWidget(globalId, opts.localWidgets, localId, widget)
+  self:registerRecord(record)
   if opts.localWidgets and opts.localWidgets.root == nil and opts.isRoot then
     opts.localWidgets.root = widget
   end
 
   local childPrefix = globalId
   for _, child in ipairs(spec.children or {}) do
-    self:instantiateSpec(widget.node, child, {
+    local _, _, childRecord = self:instantiateSpec(widget.node, child, {
       idPrefix = childPrefix,
       localWidgets = opts.localWidgets,
       extraProps = nil,
       isRoot = false,
+      parentRecord = record,
+      sourceDocumentPath = opts.sourceDocumentPath,
+      sourceKind = "node",
     })
+    record.children[#record.children + 1] = childRecord
   end
 
   for _, componentInstance in ipairs(spec.components or {}) do
-    self:instantiateComponent(widget.node, componentInstance, childPrefix)
+    local _, _, componentRecord = self:instantiateComponent(widget.node, componentInstance, childPrefix, opts.sourceDocumentPath, record)
+    record.children[#record.children + 1] = componentRecord
   end
 
-  return widget, globalId
+  return widget, globalId, record
 end
 
-function Runtime:instantiateComponent(parentNode, instanceSpec, parentPrefix)
+function Runtime:instantiateComponent(parentNode, instanceSpec, parentPrefix, ownerDocumentPath, parentRecord)
   local absRef = resolveAssetPath(self, instanceSpec.ref)
-  local componentSpec = deepCopy(loadStructuredTable(absRef, "component:" .. absRef))
+  local componentDoc = self:loadDocument(absRef, "component")
+  local componentSpec = deepCopy(componentDoc.model)
 
   componentSpec.id = instanceSpec.id or componentSpec.id or "component"
   componentSpec.props = mergeInto(componentSpec.props or {}, instanceSpec.props or {})
@@ -257,14 +945,29 @@ function Runtime:instantiateComponent(parentNode, instanceSpec, parentPrefix)
   componentSpec.y = instanceSpec.y or componentSpec.y or 0
   componentSpec.w = instanceSpec.w or componentSpec.w or 0
   componentSpec.h = instanceSpec.h or componentSpec.h or 0
+  componentSpec.layout = mergeLayout(componentSpec.layout, instanceSpec.layout)
 
   local localWidgets = {}
-  local rootWidget, componentGlobalId = self:instantiateSpec(parentNode, componentSpec, {
+  local rootWidget, componentGlobalId, componentRecord = self:instantiateSpec(parentNode, componentSpec, {
     idPrefix = parentPrefix,
     localWidgets = localWidgets,
     extraProps = nil,
     isRoot = true,
+    parentRecord = parentRecord,
+    sourceDocumentPath = componentDoc.path,
+    sourceKind = "component_node",
   })
+
+  if rootWidget and rootWidget.node and rootWidget.node.setUserData and type(ownerDocumentPath) == "string" and ownerDocumentPath ~= "" then
+    local instanceNodeId = instanceSpec.id or componentSpec.id
+    rootWidget.node:setUserData("_structuredInstanceSource", {
+      documentPath = ownerDocumentPath,
+      nodeId = instanceNodeId,
+      globalId = componentGlobalId,
+      kind = "component_instance",
+    })
+    self:registerRecordAlias(ownerDocumentPath, instanceNodeId, componentRecord)
+  end
 
   if type(instanceSpec.behavior) == "string" and instanceSpec.behavior ~= "" then
     local behaviorPath = resolveAssetPath(self, instanceSpec.behavior)
@@ -281,10 +984,11 @@ function Runtime:instantiateComponent(parentNode, instanceSpec, parentPrefix)
       ctx = ctx,
       path = behaviorPath,
       id = componentGlobalId,
+      record = componentRecord,
     }
   end
 
-  return rootWidget, componentGlobalId
+  return rootWidget, componentGlobalId, componentRecord
 end
 
 function Runtime:getLayoutInfo(fallbackW, fallbackH)
@@ -302,18 +1006,70 @@ function Runtime:getLayoutInfo(fallbackW, fallbackH)
   }
 end
 
+function Runtime:applyRecordBounds(record, x, y, w, h)
+  local widget = record and record.widget or nil
+  if widget and widget.setBounds then
+    widget:setBounds(x, y, w, h)
+  elseif widget and widget.node and widget.node.setBounds then
+    widget.node:setBounds(x, y, w, h)
+  end
+end
+
+function Runtime:applyLayoutSubtree(record, parentW, parentH, skipSelf)
+  if type(record) ~= "table" or record.widget == nil then
+    return
+  end
+
+  local currentW = tonumber(parentW)
+  local currentH = tonumber(parentH)
+
+  if not skipSelf then
+    local x, y, w, h = resolveLayoutBounds(record.spec or {}, currentW or 0, currentH or 0)
+    self:applyRecordBounds(record, x, y, w, h)
+    currentW = w
+    currentH = h
+  else
+    if (currentW == nil or currentH == nil) and record.widget.node then
+      if currentW == nil and record.widget.node.getWidth then
+        currentW = record.widget.node:getWidth()
+      end
+      if currentH == nil and record.widget.node.getHeight then
+        currentH = record.widget.node:getHeight()
+      end
+    end
+  end
+
+  currentW = tonumber(currentW) or 0
+  currentH = tonumber(currentH) or 0
+
+  for _, childRecord in ipairs(record.children or {}) do
+    local x, y, w, h = resolveLayoutBounds(childRecord.spec or {}, currentW, currentH)
+    self:applyRecordBounds(childRecord, x, y, w, h)
+    self:applyLayoutSubtree(childRecord, w, h, true)
+  end
+end
+
 function Runtime:init(rootNode)
   self.rootNode = rootNode
-  self.sceneSpec = deepCopy(loadStructuredTable(self.uiRoot, "scene:" .. self.uiRoot))
   self.widgets = {}
   self.behaviors = {}
+  self.layoutTree = nil
+  self.documents = {}
+  self.documentOrder = {}
+  self.recordsBySourceKey = {}
+  self.recordsByGlobalId = {}
+
+  local sceneDoc = self:loadDocument(self.uiRoot, "scene")
+  self.sceneSpec = sceneDoc.model
 
   local localWidgets = {}
-  self.rootWidget = self:instantiateSpec(rootNode, self.sceneSpec, {
+  self.rootWidget, _, self.layoutTree = self:instantiateSpec(rootNode, self.sceneSpec, {
     idPrefix = "",
     localWidgets = localWidgets,
     extraProps = nil,
     isRoot = true,
+    sourceDocumentPath = sceneDoc.path,
+    sourceKind = "scene_node",
   })
 
   if type(self.sceneSpec.behavior) == "string" and self.sceneSpec.behavior ~= "" then
@@ -330,6 +1086,7 @@ function Runtime:init(rootNode)
       }),
       path = behaviorPath,
       id = self.sceneSpec.id or "root",
+      record = self.layoutTree,
     })
   end
 
@@ -345,19 +1102,28 @@ function Runtime:resized(w, h)
     self.rootWidget:setBounds(0, 0, w, h)
   end
 
+  if self.layoutTree then
+    self:applyLayoutSubtree(self.layoutTree, w, h, true)
+  end
+
   for _, entry in ipairs(self.behaviors) do
-    if type(entry.module.resized) == "function" then
-      local bw = w
-      local bh = h
-      local rootWidget = entry.ctx and entry.ctx.root or nil
-      if rootWidget and rootWidget.node then
-        if rootWidget.node.getWidth then
-          bw = rootWidget.node:getWidth()
-        end
-        if rootWidget.node.getHeight then
-          bh = rootWidget.node:getHeight()
-        end
+    local bw = w
+    local bh = h
+    local rootWidget = entry.ctx and entry.ctx.root or nil
+    if rootWidget and rootWidget.node then
+      if rootWidget.node.getWidth then
+        bw = rootWidget.node:getWidth()
       end
+      if rootWidget.node.getHeight then
+        bh = rootWidget.node:getHeight()
+      end
+    end
+
+    if entry.record and entry.record ~= self.layoutTree then
+      self:applyLayoutSubtree(entry.record, bw, bh, true)
+    end
+
+    if type(entry.module.resized) == "function" then
       entry.module.resized(entry.ctx, bw, bh)
     end
   end
@@ -380,13 +1146,89 @@ function Runtime:cleanup()
   end
   self.behaviors = {}
   self.widgets = {}
+  self.layoutTree = nil
+  self.documents = {}
+  self.documentOrder = {}
+  self.recordsBySourceKey = {}
+  self.recordsByGlobalId = {}
 end
 
 function M.install(opts)
   local runtime = Runtime.new(opts or {})
   local usingShellPerformanceView = false
 
+  local function publishRuntimeGlobals(active)
+    if active then
+      _G.__manifoldStructuredUiRuntime = runtime
+      _G.getStructuredUiDocuments = function()
+        return runtime:listDocuments()
+      end
+      _G.getStructuredUiProjectFiles = function()
+        return runtime:listProjectFiles()
+      end
+      _G.getStructuredUiNodeValue = function(documentPath, nodeId, path)
+        local value, err = runtime:getNodeValue(documentPath, nodeId, path)
+        if err then
+          error(err)
+        end
+        return value
+      end
+      _G.setStructuredUiNodeValue = function(documentPath, nodeId, path, value)
+        local ok, err = runtime:setNodeValue(documentPath, nodeId, path, value)
+        if not ok then
+          error(err)
+        end
+        return true
+      end
+      _G.removeStructuredUiNodeValue = function(documentPath, nodeId, path)
+        local ok, err = runtime:removeNodeValue(documentPath, nodeId, path)
+        if not ok then
+          error(err)
+        end
+        return true
+      end
+      _G.saveStructuredUiDocument = function(documentPath)
+        local ok, err = runtime:saveDocument(documentPath)
+        if not ok then
+          error(err)
+        end
+        return true
+      end
+      _G.saveStructuredUiAll = function()
+        local ok, err = runtime:saveAllDocuments()
+        if not ok then
+          error(err)
+        end
+        return true
+      end
+      _G.reloadStructuredUiProject = function()
+        local currentPath = getCurrentScriptPath and getCurrentScriptPath() or runtime.requestedPath or runtime.manifestPath
+        if type(currentPath) ~= "string" or currentPath == "" then
+          error("no current structured UI project path")
+        end
+        if type(switchUiScript) ~= "function" then
+          error("switchUiScript unavailable")
+        end
+        switchUiScript(currentPath)
+        return true
+      end
+    else
+      if _G.__manifoldStructuredUiRuntime == runtime then
+        _G.__manifoldStructuredUiRuntime = nil
+        _G.getStructuredUiDocuments = nil
+        _G.getStructuredUiProjectFiles = nil
+        _G.getStructuredUiNodeValue = nil
+        _G.setStructuredUiNodeValue = nil
+        _G.removeStructuredUiNodeValue = nil
+        _G.saveStructuredUiDocument = nil
+        _G.saveStructuredUiAll = nil
+        _G.reloadStructuredUiProject = nil
+      end
+    end
+  end
+
   function ui_init(root)
+    publishRuntimeGlobals(true)
     if shell and type(shell.registerPerformanceView) == "function" then
       usingShellPerformanceView = true
       shell:registerPerformanceView({
@@ -426,6 +1268,7 @@ function M.install(opts)
   end
 
   function ui_cleanup()
+    publishRuntimeGlobals(false)
     runtime:cleanup()
   end
 

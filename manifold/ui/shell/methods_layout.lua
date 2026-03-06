@@ -152,6 +152,17 @@ function M.attach(shell)
             self.editButton:setBg(0xff38bdf8)
         end
 
+        local showStructuredControls = self.mode == "edit" and self:isStructuredProjectActive()
+        if showStructuredControls then
+            self.reloadProjectButton:setBounds(right - 68, 8, 66, self.height - 16)
+            right = right - 68 - 4
+            self.saveProjectButton:setBounds(right - 58, 8, 56, self.height - 16)
+            right = right - 58 - 8
+        else
+            self.saveProjectButton:setBounds(0, 0, 0, 0)
+            self.reloadProjectButton:setBounds(0, 0, 0, 0)
+        end
+
         -- Edit navigation controls
         self.zoomInButton:setBounds(right - 24, 8, 22, self.height - 16)
         right = right - 24 - 2
@@ -238,6 +249,8 @@ function M.attach(shell)
             self.zoomInButton:setBounds(0, 0, 0, 0)
             self.zoomFitButton:setBounds(0, 0, 0, 0)
             self.panModeButton:setBounds(0, 0, 0, 0)
+            self.saveProjectButton:setBounds(0, 0, 0, 0)
+            self.reloadProjectButton:setBounds(0, 0, 0, 0)
             self.zoomLabel:setBounds(0, 0, 0, 0)
 
             local activeViewportW = math.max(1, contentW)
@@ -287,7 +300,15 @@ function M.attach(shell)
             end
 
             if self.performanceView and type(self.performanceView.resized) == "function" then
-                self.performanceView.resized(0, 0, math.floor(viewportDesignW), math.floor(viewportDesignH))
+                local rx = 0
+                local ry = 0
+                local rw = math.floor(viewportDesignW)
+                local rh = math.floor(viewportDesignH)
+                local last = self.performanceViewLastResize
+                if type(last) ~= "table" or last.x ~= rx or last.y ~= ry or last.w ~= rw or last.h ~= rh then
+                    self.performanceView.resized(rx, ry, rw, rh)
+                    self.performanceViewLastResize = { x = rx, y = ry, w = rw, h = rh }
+                end
             end
         else
             -- Edit mode: tree | content (scaled) | inspector
@@ -578,12 +599,15 @@ function M.attach(shell)
             end
 
             if self.performanceView and type(self.performanceView.resized) == "function" then
-                self.performanceView.resized(
-                    math.floor(self.viewportDesignX),
-                    math.floor(self.viewportDesignY),
-                    math.floor(self.viewportDesignW),
-                    math.floor(self.viewportDesignH)
-                )
+                local rx = math.floor(self.viewportDesignX)
+                local ry = math.floor(self.viewportDesignY)
+                local rw = math.floor(self.viewportDesignW)
+                local rh = math.floor(self.viewportDesignH)
+                local last = self.performanceViewLastResize
+                if type(last) ~= "table" or last.x ~= rx or last.y ~= ry or last.w ~= rw or last.h ~= rh then
+                    self.performanceView.resized(rx, ry, rw, rh)
+                    self.performanceViewLastResize = { x = rx, y = ry, w = rw, h = rh }
+                end
             end
 
             if self.editContentMode == "preview" then

@@ -162,28 +162,22 @@ end
 
 function M.resized(ctx, w, h)
   local widgets = ctx.widgets or {}
-  local pad = 6
-  local gap = 4
-  local innerH = h - pad * 2
-  local knobSize = math.min(innerH, 60)
+  local designW, designH = Shared.getDesignSize(ctx, w, h)
+  local ids = {
+    "label",
+    "state",
+    "bars",
+    "waveform",
+    "vol",
+    "speed",
+    "mute",
+    "clear",
+    "play",
+  }
 
-  if widgets.label then widgets.label:setBounds(pad, pad, 26, math.floor(innerH * 0.4)) end
-  if widgets.state then widgets.state:setBounds(pad, pad + math.floor(innerH * 0.35), 50, math.floor(innerH * 0.35)) end
-  if widgets.bars then widgets.bars:setBounds(pad, pad + math.floor(innerH * 0.7), 50, math.floor(innerH * 0.25)) end
-
-  local rightEdge = w - pad
-  if widgets.clear then widgets.clear:setBounds(rightEdge - 30, pad, 28, math.floor(innerH * 0.45)) end
-  if widgets.play then widgets.play:setBounds(rightEdge - 30, pad + math.floor(innerH * 0.5), 28, math.floor(innerH * 0.45)) end
-  if widgets.mute then widgets.mute:setBounds(rightEdge - 30 - 44 - gap, pad, 44, innerH) end
-
-  local speedX = rightEdge - 30 - 44 - gap - knobSize - gap
-  if widgets.speed then widgets.speed:setBounds(speedX, pad, knobSize, innerH) end
-  local volX = speedX - knobSize - gap
-  if widgets.vol then widgets.vol:setBounds(volX, pad, knobSize, innerH) end
-
-  local wfX = 56
-  local wfW = volX - wfX - gap
-  if widgets.waveform then widgets.waveform:setBounds(wfX, pad, math.max(40, wfW), innerH) end
+  for _, id in ipairs(ids) do
+    Shared.applySpecRect(widgets[id], Shared.getChildSpec(ctx, id), w, h, designW, designH)
+  end
 end
 
 function M.update(ctx, rawState)
