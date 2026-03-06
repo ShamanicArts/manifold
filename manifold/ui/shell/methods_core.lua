@@ -693,9 +693,15 @@ function M.attach(shell)
                 local path = s.path or ""
                 local name = s.name or fileStem(path) or "(unnamed)"
                 local include = false
+                local sourceKind = s.kind or "script"
+                local sourceScope = s.scope or ""
 
                 if not scriptLooksSettings(name, path) then
-                    if path ~= "" and (path == currentUi or path == editingPath) then
+                    if sourceKind == "project" then
+                        include = true
+                    elseif path ~= "" and (path == currentUi or path == editingPath) then
+                        include = true
+                    elseif sourceScope == "user" or sourceScope == "system" or sourceScope == "project" then
                         include = true
                     elseif scriptLooksGlobal(name, path) then
                         include = true
@@ -705,6 +711,8 @@ function M.attach(shell)
                 if include then
                     self.scriptRows[#self.scriptRows + 1] = {
                         kind = "ui",
+                        sourceKind = sourceKind,
+                        sourceScope = sourceScope,
                         name = name,
                         path = path,
                         active = (path == currentUi),
@@ -1526,8 +1534,70 @@ function M.attach(shell)
         self.editContentMode = "preview"
     end
 
+    function shell:getPerformanceViewLayoutInfo(contentW, contentH)
+        local fallbackW = math.max(1, math.floor(tonumber(contentW) or 0))
+        local fallbackH = math.max(1, math.floor(tonumber(contentH) or 0))
+        local raw = nil
+
+        if type(self.performanceView) == "table" then
+            if type(self.performanceView.getLayoutInfo) == "function" then
+                raw = self.performanceView.getLayoutInfo(fallbackW, fallbackH)
+            elseif type(self.performanceView.layoutInfo) == "table" then
+                raw = self.performanceView.layoutInfo
+            end
+        end
+
+        local mode = "fill"
+        local designW = fallbackW
+        local designH = fallbackH
+        local scaleMode = "stretch"
+        local alignX = 0.5
+        local alignY = 0.5
+
+        if type(raw) == "table" then
+            local rawMode = string.lower(tostring(raw.mode or raw.sizing or raw.viewportMode or raw.layoutMode or "fill"))
+            if rawMode == "relative" or rawMode == "responsive" or rawMode == "fill-parent" or rawMode == "fill" or rawMode == "dynamic" then
+                mode = "fill"
+            elseif rawMode == "absolute" or rawMode == "fixed" or rawMode == "fixed-design" or rawMode == "design" then
+                mode = "fixed"
+            else
+                mode = "fill"
+            end
+
+            if mode == "fixed" then
+                designW = math.max(1, math.floor(tonumber(raw.designW or raw.w or raw.width) or designW))
+                designH = math.max(1, math.floor(tonumber(raw.designH or raw.h or raw.height) or designH))
+            else
+                designW = fallbackW
+                designH = fallbackH
+            end
+
+            local rawScaleMode = string.lower(tostring(raw.scaleMode or raw.presentation or raw.scale or ((mode == "fixed") and "fit" or "stretch")))
+            if rawScaleMode == "none" or rawScaleMode == "fit" then
+                scaleMode = rawScaleMode
+            else
+                scaleMode = (mode == "fixed") and "fit" or "stretch"
+            end
+
+            alignX = clamp(tonumber(raw.alignX or raw.anchorX or raw.pivotX) or alignX, 0.0, 1.0)
+            alignY = clamp(tonumber(raw.alignY or raw.anchorY or raw.pivotY) or alignY, 0.0, 1.0)
+        end
+
+        local info = {
+            mode = mode,
+            designW = designW,
+            designH = designH,
+            scaleMode = scaleMode,
+            alignX = alignX,
+            alignY = alignY,
+        }
+        self.performanceViewLayoutInfo = info
+        return info
+    end
+
     function shell:registerPerformanceView(view)
         self.performanceView = view
+        self.performanceViewLayoutInfo = nil
 
         if type(view) == "table" and not self.performanceViewInitialized then
             if type(view.init) == "function" and self.content ~= nil then

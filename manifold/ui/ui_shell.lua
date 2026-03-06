@@ -245,6 +245,7 @@ function Shell.create(parentNode, options)
         historyApplying = false,
         performanceView = nil,
         performanceViewInitialized = false,
+        performanceViewLayoutInfo = nil,
         devModeEnabled = opts.devMode ~= false,
         listWheelRows = 2,
         debugLastIdentifier = "",

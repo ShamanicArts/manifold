@@ -186,9 +186,11 @@ function M.attach(shell)
         local isUiTab = activeTab ~= nil and activeTab.kind == "ui-script"
         local tabH = self.mainTabBarH
 
-        -- Runtime viewport (performance dimensions)
-        local viewportDesignW = contentW
-        local viewportDesignH = contentH
+        -- Runtime viewport/layout contract comes from the shell-hosted performance view.
+        -- Default is dynamic fill-parent; fixed-design views can opt in via getLayoutInfo().
+        local perfLayout = self:getPerformanceViewLayoutInfo(contentW, contentH)
+        local viewportDesignW = perfLayout.designW
+        local viewportDesignH = perfLayout.designH
 
         -- Edit workspace extends beyond runtime viewport
         local workspacePad = math.max(0, self.workspacePad or 0)
@@ -238,6 +240,7 @@ function M.attach(shell)
             self.panModeButton:setBounds(0, 0, 0, 0)
             self.zoomLabel:setBounds(0, 0, 0, 0)
 
+            local activeViewportW = math.max(1, contentW)
             local activeViewportH = math.max(1, perfBodyH)
 
             self.contentScale = 1.0
@@ -250,21 +253,41 @@ function M.attach(shell)
             self.previewW = 0
             self.previewH = 0
             self.designW = viewportDesignW
-            self.designH = activeViewportH
+            self.designH = viewportDesignH
             self.viewportDesignX = 0
             self.viewportDesignY = 0
             self.viewportDesignW = viewportDesignW
-            self.viewportDesignH = activeViewportH
+            self.viewportDesignH = viewportDesignH
             self.dragState = nil
 
-            -- Content fills the area at full size
             if self.content then
-                self.content:setBounds(0, math.floor(perfBodyY), math.floor(viewportDesignW), math.floor(activeViewportH))
-                self.content:clearTransform()
+                if perfLayout.mode == "fixed" then
+                    local scale = 1.0
+                    if perfLayout.scaleMode == "fit" then
+                        scale = math.min(
+                            activeViewportW / math.max(1, viewportDesignW),
+                            activeViewportH / math.max(1, viewportDesignH)
+                        )
+                    end
+
+                    local drawW = viewportDesignW * scale
+                    local drawH = viewportDesignH * scale
+                    local tx = (activeViewportW - drawW) * perfLayout.alignX
+                    local ty = perfBodyY + (activeViewportH - drawH) * perfLayout.alignY
+
+                    self.contentScale = scale
+                    self.contentTx = tx
+                    self.contentTy = ty
+                    self.content:setBounds(0, 0, math.floor(viewportDesignW), math.floor(viewportDesignH))
+                    self.content:setTransform(scale, scale, tx, ty)
+                else
+                    self.content:setBounds(0, math.floor(perfBodyY), math.floor(activeViewportW), math.floor(activeViewportH))
+                    self.content:clearTransform()
+                end
             end
 
             if self.performanceView and type(self.performanceView.resized) == "function" then
-                self.performanceView.resized(0, 0, math.floor(viewportDesignW), math.floor(activeViewportH))
+                self.performanceView.resized(0, 0, math.floor(viewportDesignW), math.floor(viewportDesignH))
             end
         else
             -- Edit mode: tree | content (scaled) | inspector

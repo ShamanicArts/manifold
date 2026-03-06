@@ -21,6 +21,7 @@ extern "C" {
 #include "../control/OSCSettingsPersistence.h"
 #include "../control/OSCEndpointRegistry.h"
 #include "../control/OSCQuery.h"
+#include "../core/Settings.h"
 
 #include <algorithm>
 #include <array>
@@ -159,6 +160,198 @@ std::string luaEvalResultToString(const sol::object &value) {
   }
 
   return "[value]";
+}
+
+bool isProjectManifestFile(const juce::File& file) {
+  return file.existsAsFile() &&
+         file.getFileName().equalsIgnoreCase("manifold.project.json5");
+}
+
+bool isStructuredUiFile(const juce::File& file) {
+  return file.existsAsFile() &&
+         file.getFileName().endsWithIgnoreCase(".ui.lua");
+}
+
+struct UiLoadTarget {
+  juce::File requestedPath;
+  juce::File bootstrapPath;
+  juce::File projectRoot;
+  juce::File manifestFile;
+  juce::File structuredUiRoot;
+  juce::File dspDefaultFile;
+  juce::String displayName;
+  bool isProject = false;
+  bool isStructured = false;
+  std::string error;
+};
+
+juce::String escapeLuaString(const juce::String& text) {
+  auto s = text.replace("\\", "\\\\");
+  s = s.replace("\"", "\\\"");
+  s = s.replace("\n", "\\n");
+  s = s.replace("\r", "\\r");
+  return s;
+}
+
+juce::File resolveSystemUiDir() {
+  auto& settings = Settings::getInstance();
+  auto devDir = settings.getDevScriptsDir();
+  if (devDir.isNotEmpty()) {
+    juce::File dir(devDir);
+    if (dir.isDirectory()) {
+      return dir;
+    }
+  }
+
+  auto defaultUiScript = settings.getDefaultUiScript();
+  if (defaultUiScript.isNotEmpty()) {
+    juce::File script(defaultUiScript);
+    if (script.existsAsFile()) {
+      return script.getParentDirectory();
+    }
+  }
+
+  return {};
+}
+
+juce::File resolveProjectAssetRef(const juce::File& projectRoot,
+                                  const juce::String& ref) {
+  if (ref.isEmpty()) {
+    return {};
+  }
+
+  juce::File absoluteCandidate(ref);
+  if (juce::File::isAbsolutePath(ref)) {
+    return absoluteCandidate;
+  }
+
+  auto& settings = Settings::getInstance();
+  juce::File userRoot(settings.getUserScriptsDir());
+  juce::File systemUiRoot = resolveSystemUiDir();
+  juce::File systemDspRoot(settings.getDspScriptsDir());
+
+  if (ref.startsWith("user:ui/")) {
+    return userRoot.getChildFile("ui").getChildFile(ref.fromFirstOccurrenceOf("user:ui/", false, false));
+  }
+  if (ref.startsWith("user:dsp/")) {
+    return userRoot.getChildFile("dsp").getChildFile(ref.fromFirstOccurrenceOf("user:dsp/", false, false));
+  }
+  if (ref.startsWith("system:ui/")) {
+    return systemUiRoot.getChildFile(ref.fromFirstOccurrenceOf("system:ui/", false, false));
+  }
+  if (ref.startsWith("system:dsp/")) {
+    return systemDspRoot.getChildFile(ref.fromFirstOccurrenceOf("system:dsp/", false, false));
+  }
+
+  return projectRoot.getChildFile(ref);
+}
+
+UiLoadTarget resolveUiLoadTarget(const juce::File& requestedPath) {
+  UiLoadTarget target;
+  target.requestedPath = requestedPath;
+
+  if (isProjectManifestFile(requestedPath)) {
+    auto json = juce::JSON::parse(requestedPath);
+    if (!json.isObject()) {
+      target.error = "project manifest is not valid JSON/JSON5 subset";
+      return target;
+    }
+
+    auto* obj = json.getDynamicObject();
+    if (obj == nullptr || !obj->hasProperty("ui")) {
+      target.error = "project manifest missing ui section";
+      return target;
+    }
+
+    auto uiVar = obj->getProperty("ui");
+    if (!uiVar.isObject()) {
+      target.error = "project manifest ui section is not an object";
+      return target;
+    }
+
+    auto* uiObj = uiVar.getDynamicObject();
+    if (uiObj == nullptr || !uiObj->hasProperty("root")) {
+      target.error = "project manifest missing ui.root";
+      return target;
+    }
+
+    auto rootRel = uiObj->getProperty("root").toString();
+    if (rootRel.isEmpty()) {
+      target.error = "project manifest ui.root is empty";
+      return target;
+    }
+
+    const auto projectRoot = requestedPath.getParentDirectory();
+    const auto uiRoot = resolveProjectAssetRef(projectRoot, rootRel);
+    if (!uiRoot.existsAsFile()) {
+      target.error = "project ui root does not exist: " + uiRoot.getFullPathName().toStdString();
+      return target;
+    }
+
+    if (obj->hasProperty("dsp")) {
+      auto dspVar = obj->getProperty("dsp");
+      if (dspVar.isObject()) {
+        auto* dspObj = dspVar.getDynamicObject();
+        if (dspObj != nullptr && dspObj->hasProperty("default")) {
+          auto dspRef = dspObj->getProperty("default").toString();
+          if (dspRef.isNotEmpty()) {
+            target.dspDefaultFile = resolveProjectAssetRef(projectRoot, dspRef);
+          }
+        }
+      }
+    }
+
+    target.projectRoot = projectRoot;
+    target.manifestFile = requestedPath;
+    target.structuredUiRoot = uiRoot;
+    target.bootstrapPath = uiRoot;
+    target.displayName = obj->hasProperty("name")
+                             ? obj->getProperty("name").toString()
+                             : projectRoot.getFileName();
+    if (target.displayName.isEmpty()) {
+      target.displayName = projectRoot.getFileName();
+    }
+    target.isProject = true;
+    target.isStructured = isStructuredUiFile(uiRoot);
+    return target;
+  }
+
+  if (isStructuredUiFile(requestedPath)) {
+    target.structuredUiRoot = requestedPath;
+    target.bootstrapPath = requestedPath;
+    target.projectRoot = requestedPath.getParentDirectory();
+    target.displayName = requestedPath.getFileNameWithoutExtension();
+    target.isStructured = true;
+    return target;
+  }
+
+  target.bootstrapPath = requestedPath;
+  target.displayName = requestedPath.getFileNameWithoutExtension();
+  return target;
+}
+
+std::string makeStructuredUiBootstrap(const UiLoadTarget& target,
+                                      const juce::File& userScriptsRoot,
+                                      const juce::File& systemUiDir,
+                                      const juce::File& systemDspDir) {
+  std::ostringstream code;
+  code << "local loader = require(\"project_loader\")\n";
+  code << "loader.install({\n";
+  code << "  requestedPath = \"" << escapeLuaString(target.requestedPath.getFullPathName()).toStdString() << "\",\n";
+  code << "  projectRoot = \"" << escapeLuaString(target.projectRoot.getFullPathName()).toStdString() << "\",\n";
+  code << "  manifestPath = \"" << escapeLuaString(target.manifestFile.getFullPathName()).toStdString() << "\",\n";
+  code << "  uiRoot = \"" << escapeLuaString(target.structuredUiRoot.getFullPathName()).toStdString() << "\",\n";
+  code << "  displayName = \"" << escapeLuaString(target.displayName).toStdString() << "\",\n";
+  code << "  userScriptsRoot = \"" << escapeLuaString(userScriptsRoot.getFullPathName()).toStdString() << "\",\n";
+  code << "  systemUiRoot = \"" << escapeLuaString(systemUiDir.getFullPathName()).toStdString() << "\",\n";
+  code << "  systemDspRoot = \"" << escapeLuaString(systemDspDir.getFullPathName()).toStdString() << "\",\n";
+  code << "})\n";
+  if (target.dspDefaultFile.existsAsFile()) {
+    code << "if loadDspScript then loadDspScript(\""
+         << escapeLuaString(target.dspDefaultFile.getFullPathName()).toStdString()
+         << "\") end\n";
+  }
+  return code.str();
 }
 
 } // namespace
@@ -352,26 +545,46 @@ void LuaEngine::pushStateToLua() {
 // ============================================================================
 
 bool LuaEngine::loadScript(const juce::File &scriptFile) {
-  if (!scriptFile.existsAsFile()) {
+  if (!scriptFile.exists()) {
     pImpl->lastError =
         "Script file not found: " + scriptFile.getFullPathName().toStdString();
     return false;
   }
 
+  const auto target = resolveUiLoadTarget(scriptFile);
+  if (!target.error.empty()) {
+    pImpl->lastError = target.error;
+    std::fprintf(stderr, "LuaEngine: ui target resolve error: %s\n",
+                 pImpl->lastError.c_str());
+    pImpl->scriptLoaded = false;
+    return false;
+  }
+
   pImpl->currentScriptFile = scriptFile;
 
-  // Sync with core engine
-  coreEngine_.setPackagePath(scriptFile.getParentDirectory().getFullPathName().toStdString());
+  const auto packageDir = target.isStructured
+                              ? target.structuredUiRoot.getParentDirectory()
+                              : target.bootstrapPath.getParentDirectory();
+  const auto systemUiDir = resolveSystemUiDir();
 
-  // Set up package.path so require() works from the script's directory
-  auto dir = scriptFile.getParentDirectory().getFullPathName().toStdString();
+  coreEngine_.setPackagePath(packageDir.getFullPathName().toStdString());
+
+  auto dir = packageDir.getFullPathName().toStdString();
   if (pImpl->sharedUiDir.empty()) {
-    pImpl->sharedUiDir = dir;
+    pImpl->sharedUiDir = systemUiDir.isDirectory()
+                             ? systemUiDir.getFullPathName().toStdString()
+                             : dir;
   }
   {
     const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
     auto packagePath = dir + "/?.lua;" + dir + "/?/init.lua";
-    if (!pImpl->sharedUiDir.empty() && pImpl->sharedUiDir != dir) {
+    const auto systemUiDirPath = systemUiDir.getFullPathName().toStdString();
+    if (!systemUiDirPath.empty() && systemUiDirPath != dir) {
+      packagePath += ";" + systemUiDirPath + "/?.lua;" +
+                     systemUiDirPath + "/?/init.lua";
+    }
+    if (!pImpl->sharedUiDir.empty() && pImpl->sharedUiDir != dir &&
+        pImpl->sharedUiDir != systemUiDirPath) {
       packagePath += ";" + pImpl->sharedUiDir + "/?.lua;" +
                      pImpl->sharedUiDir + "/?/init.lua";
     }
@@ -384,11 +597,47 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
     coreEngine_.getLuaState()["ui_init"] = sol::nil;
     coreEngine_.getLuaState()["ui_update"] = sol::nil;
     coreEngine_.getLuaState()["ui_resized"] = sol::nil;
+    coreEngine_.getLuaState()["ui_cleanup"] = sol::nil;
     coreEngine_.getLuaState()["shell"] = sol::nil;
+    coreEngine_.getLuaState()["__manifoldProjectRoot"] = sol::nil;
+    coreEngine_.getLuaState()["__manifoldProjectManifest"] = sol::nil;
+    coreEngine_.getLuaState()["__manifoldStructuredUiRoot"] = sol::nil;
+    coreEngine_.getLuaState()["__manifoldUserScriptsRoot"] = sol::nil;
+    coreEngine_.getLuaState()["__manifoldSystemUiRoot"] = sol::nil;
+    coreEngine_.getLuaState()["__manifoldSystemDspRoot"] = sol::nil;
   }
 
-  // Delegate script execution to Core Engine
-  if (!coreEngine_.loadScript(scriptFile)) {
+  bool loaded = false;
+  if (target.isStructured) {
+    const auto userScriptsRoot = juce::File(Settings::getInstance().getUserScriptsDir());
+    const auto systemDspDir = juce::File(Settings::getInstance().getDspScriptsDir());
+    const auto bootstrap = makeStructuredUiBootstrap(target, userScriptsRoot,
+                                                     systemUiDir, systemDspDir);
+
+    {
+      const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+      coreEngine_.getLuaState()["__manifoldProjectRoot"] =
+          target.projectRoot.getFullPathName().toStdString();
+      coreEngine_.getLuaState()["__manifoldProjectManifest"] =
+          target.manifestFile.getFullPathName().toStdString();
+      coreEngine_.getLuaState()["__manifoldStructuredUiRoot"] =
+          target.structuredUiRoot.getFullPathName().toStdString();
+      coreEngine_.getLuaState()["__manifoldUserScriptsRoot"] =
+          userScriptsRoot.getFullPathName().toStdString();
+      coreEngine_.getLuaState()["__manifoldSystemUiRoot"] =
+          systemUiDir.getFullPathName().toStdString();
+      coreEngine_.getLuaState()["__manifoldSystemDspRoot"] =
+          systemDspDir.getFullPathName().toStdString();
+    }
+
+    loaded = coreEngine_.loadScriptFromString(
+        bootstrap,
+        target.structuredUiRoot.getFileName().toStdString());
+  } else {
+    loaded = coreEngine_.loadScript(target.bootstrapPath);
+  }
+
+  if (!loaded) {
     pImpl->lastError = coreEngine_.getLastError();
     std::fprintf(stderr, "LuaEngine: script load error: %s\n",
                  pImpl->lastError.c_str());
@@ -877,18 +1126,13 @@ bool LuaEngine::switchScript(const juce::File &scriptFile) {
 }
 
 bool LuaEngine::reloadCurrentScript() {
-  // Delegate to core engine for hot reload check
-  if (!coreEngine_.reloadCurrentScript()) {
+  if (!pImpl->currentScriptFile.exists()) {
     return false;
   }
-  // If core reloaded successfully, sync our state
-  if (coreEngine_.isScriptLoaded()) {
-    std::fprintf(stderr, "LuaEngine: hot-reloaded %s\n",
-                 coreEngine_.getCurrentScriptFile().getFileName().toRawUTF8());
-    // Re-run the ui_init setup logic
-    return switchScript(coreEngine_.getCurrentScriptFile());
-  }
-  return true; // No change needed
+
+  std::fprintf(stderr, "LuaEngine: hot-reloading %s\n",
+               pImpl->currentScriptFile.getFullPathName().toRawUTF8());
+  return switchScript(pImpl->currentScriptFile);
 }
 
 std::vector<std::pair<std::string, std::string>>

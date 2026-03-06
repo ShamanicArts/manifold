@@ -34,6 +34,42 @@ extern "C" {
 #include <unordered_set>
 #include <set>
 
+namespace {
+
+bool isUiScriptFile(const juce::File& script) {
+    if (!script.existsAsFile()) return false;
+    auto content = script.loadFileAsString();
+    return content.contains("function ui_init");
+}
+
+bool isProjectManifestFile(const juce::File& file) {
+    return file.existsAsFile() &&
+           file.getFileName().equalsIgnoreCase("manifold.project.json5");
+}
+
+juce::String readProjectDisplayName(const juce::File& manifestFile) {
+    auto json = juce::JSON::parse(manifestFile);
+    if (!json.isObject()) {
+        return manifestFile.getParentDirectory().getFileName();
+    }
+
+    auto* obj = json.getDynamicObject();
+    if (obj == nullptr) {
+        return manifestFile.getParentDirectory().getFileName();
+    }
+
+    if (obj->hasProperty("name")) {
+        auto name = obj->getProperty("name").toString();
+        if (name.isNotEmpty()) {
+            return name;
+        }
+    }
+
+    return manifestFile.getParentDirectory().getFileName();
+}
+
+} // namespace
+
 // ============================================================================
 // Binding Registration
 // ============================================================================
@@ -1091,53 +1127,80 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
 
     lua["listUiScripts"] = [&lua]() -> sol::table {
         auto result = sol::table(lua, sol::create);
-        std::set<std::string> seenNames;
+        std::set<std::string> seenPaths;
         int index = 1;
-        
-        auto addScriptsFromDir = [&](const juce::File& dir) {
+
+        auto addUiScriptEntry = [&](const juce::File& script,
+                                    const juce::String& displayName,
+                                    const juce::String& kind,
+                                    const juce::String& scope) {
+            if (!script.exists()) return;
+            const auto fullPath = script.getFullPathName().toStdString();
+            if (seenPaths.count(fullPath) > 0) return;
+            seenPaths.insert(fullPath);
+
+            auto entry = sol::table(lua, sol::create);
+            entry["name"] = displayName.toStdString();
+            entry["path"] = fullPath;
+            entry["kind"] = kind.toStdString();
+            entry["scope"] = scope.toStdString();
+            result[index++] = entry;
+        };
+
+        auto addLooseUiScriptsFromDir = [&](const juce::File& dir,
+                                            const juce::String& scope) {
             if (!dir.isDirectory()) return;
             auto scripts = dir.findChildFiles(juce::File::findFiles, false, "*.lua");
             for (const auto& script : scripts) {
-                auto name = script.getFileNameWithoutExtension().toStdString();
-                
-                // Skip duplicates
-                if (seenNames.count(name) > 0) continue;
-                
-                // Skip library/infrastructure files
-                if (name == "ui_widgets" || name == "ui_shell") {
+                auto name = script.getFileNameWithoutExtension();
+
+                if (name == "ui_widgets" || name == "ui_shell" ||
+                    name == "project_loader") {
                     continue;
                 }
-                
-                // Only include files that look like UI scripts (contain ui_init function)
-                auto content = script.loadFileAsString();
-                if (!content.contains("function ui_init")) {
+                if (!isUiScriptFile(script)) {
                     continue;
                 }
-                
-                seenNames.insert(name);
-                auto entry = sol::table(lua, sol::create);
-                entry["name"] = name;
-                entry["path"] = script.getFullPathName().toStdString();
-                result[index++] = entry;
+
+                addUiScriptEntry(script, name, "script", scope);
             }
         };
-        
-        // Strict source: configured directories only (no implicit fallbacks)
+
+        auto addProjectsFromDir = [&](const juce::File& dir) {
+            if (!dir.isDirectory()) return;
+            auto entries = dir.findChildFiles(juce::File::findDirectories, false);
+            for (const auto& child : entries) {
+                const auto manifest = child.getChildFile("manifold.project.json5");
+                if (!isProjectManifestFile(manifest)) {
+                    continue;
+                }
+
+                auto name = readProjectDisplayName(manifest);
+                addUiScriptEntry(manifest, name, "project", "project");
+            }
+        };
+
         auto& settings = Settings::getInstance();
 
         auto devDir = settings.getDevScriptsDir();
         if (devDir.isNotEmpty()) {
-            addScriptsFromDir(juce::File(devDir));
+            addLooseUiScriptsFromDir(juce::File(devDir), "system");
         } else {
             std::fprintf(stderr,
                          "[LuaControlBindings] listUiScripts: devScriptsDir is empty\n");
         }
 
-        auto userDir = settings.getUserScriptsDir();
-        if (userDir.isNotEmpty()) {
-            addScriptsFromDir(juce::File(userDir));
+        auto userRoot = settings.getUserScriptsDir();
+        if (userRoot.isNotEmpty()) {
+            juce::File root(userRoot);
+            addProjectsFromDir(root.getChildFile("projects"));
+            addLooseUiScriptsFromDir(root.getChildFile("ui"), "user");
+
+            // Transitional compatibility for older directory naming.
+            addLooseUiScriptsFromDir(root.getChildFile("UI"), "user-legacy");
+            addProjectsFromDir(root);
         }
-        
+
         return result;
     };
 
