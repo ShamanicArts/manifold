@@ -419,11 +419,12 @@ Structured UI assets can reference behavior modules for logic that can't be expr
 
 local M = {}
 
-function M.init(widgets, bindings)
-  -- Complex logic: play/pause toggle depends on layer state
+function M.init(ctx)
+  local widgets = ctx.widgets
+
   widgets.play_btn.onPress = function()
     local anyPlaying = false
-    -- ... check layer states ...
+    -- ... check layer state or plugin state ...
     if anyPlaying then
       command("TRIGGER", "/core/behavior/pause")
     else
@@ -432,8 +433,13 @@ function M.init(widgets, bindings)
   end
 end
 
-function M.update(widgets, state)
-  -- Rec button latch logic, dynamic label changes, etc.
+function M.resized(ctx, w, h)
+  local widgets = ctx.widgets
+  widgets.play_btn:setBounds(92, 6, 80, math.max(24, h - 12))
+end
+
+function M.update(ctx, state)
+  local widgets = ctx.widgets
   if state.isRecording then
     widgets.rec_btn:setBg(0xffdc2626)
     widgets.rec_btn:setLabel("● REC*")
@@ -443,61 +449,73 @@ function M.update(widgets, state)
   end
 end
 
+function M.cleanup(ctx)
+end
+
 return M
 ```
 
-### 4.4 Behavior Module API Contract
+### 4.4 Behavior Module API Contract (v1 Runtime)
 
-Behavior modules need a constrained, well-defined API. Without this, they'll devolve into callback soup. This contract must be defined before implementation, not discovered during it.
+Behavior modules need a constrained, well-defined API. Without this, they'll devolve into callback soup.
 
 #### Module shape
 
-Every behavior module returns a table with well-known lifecycle functions:
+Every behavior module returns a table with optional well-known lifecycle functions:
 
 ```lua
--- behaviors/transport.lua
 local M = {}
 
--- Called once after all widgets in the component are instantiated.
--- `widgets` is a FLAT table keyed by widget ID (component-scoped, no prefix).
--- `context` provides project-level services.
-function M.init(widgets, context)
-  -- Wire up callbacks, set initial state
+-- Called once after the structured scene tree is instantiated.
+function M.init(ctx)
 end
 
--- Called every frame (30Hz) with current plugin state.
--- `widgets` is the same flat table as init.
--- `state` is the normalized plugin state table.
-function M.update(widgets, state)
-  -- Read state, update widget values/labels/colors
+-- Called whenever the behavior root's local bounds change.
+-- `w` and `h` are LOCAL to `ctx.root`, not global window size.
+function M.resized(ctx, w, h)
 end
 
--- Called when the component is being destroyed (script switch, project close).
--- Optional. Clean up any external resources.
-function M.cleanup(widgets)
+-- Called every UI update with normalized plugin state.
+function M.update(ctx, state)
+end
+
+-- Called on teardown / script switch.
+function M.cleanup(ctx)
 end
 
 return M
 ```
 
-#### The `widgets` table
+#### The `ctx` table
 
-- **Flat, keyed by widget ID** — not hierarchical. `widgets.rec_btn`, `widgets.tempo_knob`, etc.
-- **Contains actual widget objects** — the same Lua widget instances that the structured asset instantiated. Full API access (`:setValue()`, `:setBg()`, `:setLabel()`, etc.)
-- **Component-scoped** — a behavior module for `transport.ui.lua` only sees widgets from that component, not the whole tree. It cannot reach into sibling components or the root.
-- **Stable references** — the table is built once at init time. Widget references don't change between frames.
-- **Local variable name is not semantically important** — preserved exported code may call this parameter `ui` instead of `widgets` to minimize churn. The contract is about the table shape, not the identifier spelling.
-
-#### The `context` table
-
-Provides project-level services without giving unrestricted global access:
+The runtime passes one context table per behavior instance:
 
 ```lua
-context = {
-  command = function(action, path, value) ... end,  -- same as global command()
-  state = function() return currentState end,        -- get current state (also passed to update)
-  assets = { loadImage = ..., loadFont = ..., resolve = ... },
-  project = { root = "/path/to/project", name = "My Instrument" },
+ctx = {
+  root = <root widget for this behavior scope>,
+  widgets = {
+    root = <same widget as ctx.root>,
+    rec_btn = <local widget>,
+    play_btn = <local widget>,
+    -- flat component-local widget map
+  },
+  allWidgets = {
+    ["root.transport.rec_btn"] = <global widget>,
+    ["root.layer0.waveform"] = <global widget>,
+    -- global widget map for advanced cases
+  },
+  instanceId = "transport",
+  instanceProps = { layerIndex = 0 },
+  spec = <instantiated structured spec table>,
+  project = {
+    root = "/path/to/project",
+    manifest = "/path/to/manifold.project.json5",
+    uiRoot = "/path/to/ui/main.ui.lua",
+    userScriptsRoot = "/path/to/UserScripts",
+    systemUiRoot = "/path/to/system/ui",
+    systemDspRoot = "/path/to/system/dsp",
+    displayName = "My Instrument",
+  },
 }
 ```
 
@@ -505,18 +523,70 @@ context = {
 
 | Can a behavior module... | Answer |
 |---|---|
-| Access its own component's widgets? | **Yes** — via `widgets` table |
-| Access other components' widgets? | **No** — not directly. Use commands/state for cross-component communication. |
-| Access parent/root widgets? | **No** — component isolation. |
-| Access global Lua state? | **Discouraged** — `context` provides what's needed. Global access works but breaks encapsulation. |
-| Register multiple behavior modules on one component? | **No** — one behavior per component. Complex components should compose internally. |
+| Access its own component's widgets? | **Yes** — via `ctx.widgets` |
+| Access its own root widget? | **Yes** — via `ctx.root` |
+| Access other components' widgets? | **Yes, but only deliberately** — via `ctx.allWidgets`; this is an escape hatch, not the default pattern |
+| Access instance props from the component site? | **Yes** — via `ctx.instanceProps` |
+| Depend on top-level plugin window size directly? | **No** — use local `w, h` from `resized()` |
+| Register multiple behavior modules on one component? | **No** — one behavior per scene root/component instance |
 
-#### Update ordering
+#### Ordering contract
 
-1. All components are instantiated (depth-first)
-2. All `M.init(widgets, context)` calls run (depth-first, children before parents)
-3. Each frame: all `M.update(widgets, state)` calls run (depth-first, children before parents)
-4. On teardown: all `M.cleanup(widgets)` calls run (reverse order)
+Current runtime ordering is:
+
+1. Structured scene tree is instantiated
+2. Component behaviors are discovered during instantiation
+3. Root scene behavior is prepended so it runs first
+4. `init()` runs in final behavior order
+5. `resized()` runs in final behavior order
+6. `update()` runs in final behavior order
+7. `cleanup()` runs in reverse order
+
+This is intentional: the root behavior lays out major regions first, then component behaviors lay out within their own local roots.
+
+#### Layout ownership contract
+
+This is the important part for responsive UIs.
+
+- `x/y/w/h` in `.ui.lua` are **design-time defaults / fallback bounds**
+- They are **not** a promise that runtime layout is permanently absolute
+- A behavior with `resized(ctx, w, h)` may reposition and resize its descendants however it wants
+- For responsive/project-backed UIs, layout should usually be **behavior-owned** at container/component boundaries
+- Child behaviors must treat `w, h` as the size of their own local root, not the shell window and not the project root unless they *are* the root
+
+In practice that gives us this layering:
+- **Root behavior**: lays out major regions against the live viewport
+- **Component behavior**: lays out internal controls relative to its own root bounds
+- **Leaf widgets**: can stay on simple fixed bounds if they do not need responsive behavior
+
+#### Future declarative layout modes
+
+The runtime we have now already supports responsive behavior-owned layout. To support editor-authored layout modes cleanly later, structured nodes will reserve an optional `layout` table.
+
+Planned modes:
+
+```lua
+layout = { mode = "absolute", x = 12, y = 8, w = 80, h = 24 }
+layout = { mode = "relative", x = 0.0, y = 0.0, w = 1.0, h = 0.25 }
+layout = { mode = "hybrid", left = 0, right = 0, top = 54, height = 130, minH = 96 }
+```
+
+Semantics:
+- **absolute** — pixel-local placement
+- **relative** — fractional placement/sizing against parent local bounds
+- **hybrid** — mix fixed insets/sizes with relative fill, plus optional min/max clamps
+
+Rules:
+- All layout values are interpreted in **parent-local space**
+- Top-level `x/y/w/h` remain valid fallback/design fields for backward compatibility
+- Declarative layout, when present, should run **before** behavior `resized()`
+- Behavior `resized()` remains the escape hatch for anything non-trivial or custom
+
+That gives us the long-term model we actually want:
+- **absolute** for simple/static widgets
+- **relative** for responsive proportional widgets
+- **hybrid** for real instrument layouts (fixed bars, fill regions, clamped rows)
+- **behavior-owned** layout for complex/custom cases the schema should not try to fake
 
 #### Where declarative bindings end and behavior begins
 
@@ -528,8 +598,9 @@ Behavior modules are for logic that can't be expressed declaratively:
 - Multi-widget coordination (all layers → play/pause)
 - State-derived visual changes (dynamic labels, colors based on state)
 - Complex input handling (scrub gestures)
+- Responsive/custom layout math in `resized()`
 
-**Rule of thumb:** If you can describe it as "when this widget changes, set this parameter to the widget's value," use a declarative bind. If you need an `if` statement, use a behavior module.
+**Rule of thumb:** If you can describe it as "when this widget changes, set this parameter to the widget's value," use a declarative bind. If you need layout math, gesture logic, or an `if` statement, use a behavior module.
 
 ### 4.5 Editor Read/Write Mechanics
 
