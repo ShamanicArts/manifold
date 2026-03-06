@@ -1,0 +1,27 @@
+return {
+  id = "vocal_root",
+  type = "Panel",
+  x = 8,
+  y = 182,
+  w = 1264,
+  h = 170,
+  style = {
+    bg = 4279300375,
+    border = 4280230199,
+    borderWidth = 1,
+    radius = 8,
+  },
+  children = {
+    { id = "title", type = "Label", x = 8, y = 6, w = 180, h = 16, props = { text = "Vocal Input FX" }, style = { colour = 4287876605, fontSize = 12, fontStyle = "bold" } },
+    { id = "preset", type = "Dropdown", x = 1076, y = 6, w = 180, h = 24, props = { options = { "Bypass" }, selected = 1 }, style = { bg = 4280161083, colour = 4281914872 } },
+    { id = "xMap", type = "Dropdown", x = 8, y = 34, w = 359, h = 24, props = { options = { "Unmapped" }, selected = 1 }, style = { bg = 4280161083, colour = 4281914872 } },
+    { id = "yMap", type = "Dropdown", x = 371, y = 34, w = 360, h = 24, props = { options = { "Unmapped" }, selected = 1 }, style = { bg = 4280161083, colour = 4280474606 } },
+    { id = "xy", type = "XYPadWidget", x = 8, y = 62, w = 723, h = 100, props = { x = 0.5, y = 0.5 }, style = { bgColour = 4278911520, gridColour = 861629314, handleColour = 4294284043 } },
+    { id = "k1Map", type = "Dropdown", x = 743, y = 34, w = 168, h = 24, props = { options = { "Unmapped" }, selected = 1 }, style = { bg = 4280161083, colour = 4281914872 } },
+    { id = "k2Map", type = "Dropdown", x = 915, y = 34, w = 168, h = 24, props = { options = { "Unmapped" }, selected = 1 }, style = { bg = 4280161083, colour = 4280474606 } },
+    { id = "mixMap", type = "Dropdown", x = 1087, y = 34, w = 177, h = 24, props = { options = { "Unmapped" }, selected = 1 }, style = { bg = 4280161083, colour = 4289170426 } },
+    { id = "k1", type = "Knob", x = 743, y = 62, w = 168, h = 100, props = { min = 0, max = 1, step = 0.01, value = 0.5, label = "K1" }, style = { colour = 4280474606 } },
+    { id = "k2", type = "Knob", x = 915, y = 62, w = 168, h = 100, props = { min = 0, max = 1, step = 0.01, value = 0.5, label = "K2" }, style = { colour = 4280474606 } },
+    { id = "mix", type = "Knob", x = 1087, y = 62, w = 177, h = 100, props = { min = 0, max = 1, step = 0.01, value = 0.45, label = "Mix" }, style = { colour = 4289170426 } },
+  },
+}

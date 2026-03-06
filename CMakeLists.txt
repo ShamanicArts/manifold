@@ -284,6 +284,7 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/scripting/bindings/LuaUIBindings.cpp
     manifold/primitives/scripting/bindings/LuaControlBindings.h
     manifold/primitives/scripting/bindings/LuaControlBindings.cpp
+    manifold/primitives/scripting/bindings/LuaMidiBindings.cpp
     manifold/primitives/scripting/DSPPluginScriptHost.h
     manifold/primitives/scripting/DSPPluginScriptHost.cpp
     manifold/primitives/core/Settings.h

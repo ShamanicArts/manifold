@@ -1,4 +1,4 @@
-local Shared = require("behaviors.shared_state")
+local Shared = require("behaviors.looper_shared_state")
 
 local M = {}
 

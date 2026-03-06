@@ -158,6 +158,16 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             c.setInterceptsMouseClicks(clicks, children);
         },
 
+        "setVisible",
+        [](Canvas& c, bool visible) {
+            c.setVisible(visible);
+        },
+
+        "isVisible",
+        [](Canvas& c) {
+            return c.isVisible();
+        },
+
         "isMouseOver", [](Canvas& c) { return c.isMouseOverOrDragging(); },
 
         "repaint", [](Canvas& c) { c.repaint(); },

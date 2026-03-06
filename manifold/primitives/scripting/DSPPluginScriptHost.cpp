@@ -16,6 +16,7 @@ extern "C" {
 #include "../control/OSCQuery.h"
 #include "../control/OSCServer.h"
 #include "../control/OSCEndpointRegistry.h"
+#include "../core/Settings.h"
 
 #include <algorithm>
 #include <map>
@@ -3249,10 +3250,143 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     return graph->connect(from, 0, to, 0);
   };
 
-  if (scriptFile != nullptr) {
-    const auto scriptDir =
-        scriptFile->getParentDirectory().getFullPathName().toStdString();
-    newLua["package"]["path"] = scriptDir + "/?.lua;" + scriptDir + "/?/init.lua";
+  {
+    const auto scriptDir = scriptFile != nullptr
+                               ? scriptFile->getParentDirectory()
+                               : juce::File();
+    auto& settings = Settings::getInstance();
+    juce::File userDspRoot(settings.getUserScriptsDir());
+    if (userDspRoot.isDirectory()) {
+      userDspRoot = userDspRoot.getChildFile("dsp");
+    }
+    juce::File systemDspRoot(settings.getDspScriptsDir());
+
+    std::string packagePath;
+    auto appendPackageRoot = [&packagePath](const juce::File& root) {
+      if (!root.isDirectory()) {
+        return;
+      }
+      const auto base = root.getFullPathName().toStdString();
+      if (!packagePath.empty()) {
+        packagePath += ";";
+      }
+      packagePath += base + "/?.lua;" + base + "/?/init.lua";
+    };
+
+    appendPackageRoot(scriptDir);
+    appendPackageRoot(userDspRoot);
+    appendPackageRoot(systemDspRoot);
+    newLua["package"]["path"] = packagePath;
+
+    newLua["__manifoldDspScriptDir"] = scriptDir.getFullPathName().toStdString();
+    newLua["__manifoldUserDspRoot"] = userDspRoot.getFullPathName().toStdString();
+    newLua["__manifoldSystemDspRoot"] = systemDspRoot.getFullPathName().toStdString();
+
+    sol::protected_function_result helperInit = newLua.script(R"lua(
+__manifoldDspModuleCache = __manifoldDspModuleCache or {}
+
+local function __dirname(path)
+  return (tostring(path or ""):gsub("/+$", ""):match("^(.*)/[^/]+$") or ".")
+end
+
+local function __join(...)
+  local parts = { ... }
+  local out = ""
+  for i = 1, #parts do
+    local part = tostring(parts[i] or "")
+    if part ~= "" then
+      if out == "" then
+        out = part
+      else
+        out = out:gsub("/+$", "") .. "/" .. part:gsub("^/+", "")
+      end
+    end
+  end
+  return out
+end
+
+local function __isAbsolutePath(path)
+  path = tostring(path or "")
+  return path:match("^/") ~= nil or path:match("^[A-Za-z]:[/\\]") ~= nil
+end
+
+local function __resolveDspPath(ref, baseDir)
+  if type(ref) ~= "string" or ref == "" then
+    error("DSP module ref must be a non-empty string")
+  end
+
+  if __isAbsolutePath(ref) then
+    return ref
+  end
+
+  if ref:sub(1, 7) == "system:" then
+    return __join(__manifoldSystemDspRoot or "", ref:sub(8))
+  end
+  if ref:sub(1, 5) == "user:" then
+    return __join(__manifoldUserDspRoot or "", ref:sub(6))
+  end
+  if ref:sub(1, 8) == "project:" then
+    return __join(baseDir or __manifoldDspScriptDir or "", ref:sub(9))
+  end
+  return __join(baseDir or __manifoldDspScriptDir or "", ref)
+end
+
+function resolveDspPath(ref)
+  return __resolveDspPath(ref, __manifoldDspScriptDir)
+end
+
+function __manifoldLoadDspModule(ref, baseDir)
+  local path = __resolveDspPath(ref, baseDir or __manifoldDspScriptDir)
+  local cached = __manifoldDspModuleCache[path]
+  if cached ~= nil then
+    return cached
+  end
+
+  local env = {
+    __dspModulePath = path,
+    __dspModuleDir = __dirname(path),
+  }
+  env.resolveDspPath = function(childRef)
+    return __resolveDspPath(childRef, env.__dspModuleDir)
+  end
+  env.loadDspModule = function(childRef)
+    return __manifoldLoadDspModule(childRef, env.__dspModuleDir)
+  end
+  setmetatable(env, { __index = _G })
+
+  local chunk, err = loadfile(path, "t", env)
+  if not chunk then
+    error("failed to load DSP module '" .. tostring(ref) .. "' (" .. tostring(path) .. "): " .. tostring(err))
+  end
+
+  local result = chunk()
+  local module = result
+  if module == nil then
+    module = rawget(env, "M")
+    if module == nil then
+      module = env
+    end
+  end
+
+  __manifoldDspModuleCache[path] = module
+  return module
+end
+
+function loadDspModule(ref)
+  return __manifoldLoadDspModule(ref, __manifoldDspScriptDir)
+end
+)lua");
+    if (!helperInit.valid()) {
+      sol::error err = helperInit;
+      impl->lastError = err.what();
+      return false;
+    }
+
+    auto pathsTable = newLua.create_table();
+    pathsTable["scriptDir"] = scriptDir.getFullPathName().toStdString();
+    pathsTable["userDspRoot"] = userDspRoot.getFullPathName().toStdString();
+    pathsTable["systemDspRoot"] = systemDspRoot.getFullPathName().toStdString();
+    ctx["paths"] = pathsTable;
   }
 
   if (scriptFile == nullptr && scriptCode == nullptr) {

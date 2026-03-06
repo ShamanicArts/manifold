@@ -246,7 +246,6 @@ function Shell.create(parentNode, options)
         performanceView = nil,
         performanceViewInitialized = false,
         performanceViewLayoutInfo = nil,
-        performanceViewLastResize = nil,
         devModeEnabled = opts.devMode ~= false,
         listWheelRows = 2,
         debugLastIdentifier = "",

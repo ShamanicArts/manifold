@@ -86,6 +86,7 @@ void LuaControlBindings::registerBindings(LuaCoreEngine& engine,
     registerEventBindings(lua, state);
     registerLinkBindings(lua, state);
     registerUtilityBindings(lua, state);
+    registerMidiBindings(lua, state);
 }
 
 void LuaControlBindings::registerCommandBindings(sol::state& lua,

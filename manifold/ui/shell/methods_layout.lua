@@ -300,15 +300,7 @@ function M.attach(shell)
             end
 
             if self.performanceView and type(self.performanceView.resized) == "function" then
-                local rx = 0
-                local ry = 0
-                local rw = math.floor(viewportDesignW)
-                local rh = math.floor(viewportDesignH)
-                local last = self.performanceViewLastResize
-                if type(last) ~= "table" or last.x ~= rx or last.y ~= ry or last.w ~= rw or last.h ~= rh then
-                    self.performanceView.resized(rx, ry, rw, rh)
-                    self.performanceViewLastResize = { x = rx, y = ry, w = rw, h = rh }
-                end
+                self.performanceView.resized(0, 0, math.floor(viewportDesignW), math.floor(viewportDesignH))
             end
         else
             -- Edit mode: tree | content (scaled) | inspector
@@ -599,15 +591,12 @@ function M.attach(shell)
             end
 
             if self.performanceView and type(self.performanceView.resized) == "function" then
-                local rx = math.floor(self.viewportDesignX)
-                local ry = math.floor(self.viewportDesignY)
-                local rw = math.floor(self.viewportDesignW)
-                local rh = math.floor(self.viewportDesignH)
-                local last = self.performanceViewLastResize
-                if type(last) ~= "table" or last.x ~= rx or last.y ~= ry or last.w ~= rw or last.h ~= rh then
-                    self.performanceView.resized(rx, ry, rw, rh)
-                    self.performanceViewLastResize = { x = rx, y = ry, w = rw, h = rh }
-                end
+                self.performanceView.resized(
+                    math.floor(self.viewportDesignX),
+                    math.floor(self.viewportDesignY),
+                    math.floor(self.viewportDesignW),
+                    math.floor(self.viewportDesignH)
+                )
             end
 
             if self.editContentMode == "preview" then

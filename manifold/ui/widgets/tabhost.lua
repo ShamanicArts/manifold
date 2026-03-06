@@ -1,0 +1,251 @@
+local BaseWidget = require("widgets.base")
+local Utils = require("widgets.utils")
+local Schema = require("widgets.schema")
+
+local TabHost = BaseWidget:extend()
+
+local function clampIndex(idx, count)
+    if count <= 0 then
+        return 0
+    end
+    return Utils.clamp(math.floor(tonumber(idx) or 1), 1, count)
+end
+
+local function coerceLabel(value, fallback)
+    local text = tostring(value or "")
+    if text == "" then
+        return fallback or "Tab"
+    end
+    return text
+end
+
+function TabHost.new(parent, name, config)
+    local self = setmetatable(BaseWidget.new(parent, name, config), TabHost)
+
+    self._activeIndex = math.floor(tonumber(config.activeIndex or config.selected or 1) or 1)
+    self._tabBarHeight = math.max(18, math.floor(tonumber(config.tabBarHeight or 26) or 26))
+    self._tabGap = math.max(0, math.floor(tonumber(config.tabGap or 4) or 4))
+    self._tabPadding = math.max(8, math.floor(tonumber(config.tabPadding or 12) or 12))
+    self._bg = Utils.colour(config.bg, 0xff0f172a)
+    self._border = Utils.colour(config.border, 0xff334155)
+    self._borderWidth = math.max(0, tonumber(config.borderWidth or 1) or 1)
+    self._radius = math.max(0, tonumber(config.radius or 8) or 8)
+    self._tabBarBg = Utils.colour(config.tabBarBg, 0xff111827)
+    self._tabBg = Utils.colour(config.tabBg, 0xff1e293b)
+    self._activeTabBg = Utils.colour(config.activeTabBg, 0xff2563eb)
+    self._textColour = Utils.colour(config.textColour, 0xffcbd5e1)
+    self._activeTextColour = Utils.colour(config.activeTextColour, 0xffffffff)
+    self._pages = {}
+    self._tabRects = {}
+    self._onSelect = config.on_select or config.onSelect
+
+    self:_storeEditorMeta("TabHost", {
+        on_select = self._onSelect,
+    }, Schema.buildEditorSchema("TabHost", config))
+
+    return self
+end
+
+function TabHost:_computeTabRects(w)
+    local rects = {}
+    local x = 0
+    local h = self._tabBarHeight
+
+    for i = 1, #self._pages do
+        local page = self._pages[i]
+        local label = coerceLabel(page.title, page.id or ("Tab " .. tostring(i)))
+        local tabW = math.max(72, math.min(220, self._tabPadding * 2 + (#label * 7)))
+        rects[i] = {
+            x = x,
+            y = 0,
+            w = math.min(tabW, math.max(0, w - x)),
+            h = h,
+        }
+        x = x + rects[i].w + self._tabGap
+    end
+
+    return rects
+end
+
+function TabHost:_layoutPages()
+    local w = math.floor(self.node:getWidth() or 0)
+    local h = math.floor(self.node:getHeight() or 0)
+    local contentY = self._tabBarHeight
+    local contentH = math.max(0, h - contentY)
+
+    self._activeIndex = clampIndex(self._activeIndex, #self._pages)
+    self._tabRects = self:_computeTabRects(w)
+
+    for i = 1, #self._pages do
+        local page = self._pages[i]
+        local active = (i == self._activeIndex)
+        if page.widget and type(page.widget.setVisible) == "function" then
+            page.widget:setVisible(active)
+        end
+        if page.widget and type(page.widget.setBounds) == "function" then
+            if active then
+                page.widget:setBounds(0, contentY, w, contentH)
+            else
+                page.widget:setBounds(0, contentY, 0, 0)
+            end
+        end
+    end
+end
+
+function TabHost:addStructuredChild(childRecord)
+    if type(childRecord) ~= "table" or type(childRecord.widget) ~= "table" then
+        return
+    end
+
+    local childWidget = childRecord.widget
+    if type(childWidget.isTabPage) ~= "function" or childWidget:isTabPage() ~= true then
+        return
+    end
+
+    self._pages[#self._pages + 1] = {
+        widget = childWidget,
+        id = childRecord.spec and childRecord.spec.id or ("page_" .. tostring(#self._pages + 1)),
+        title = (type(childWidget.getTabTitle) == "function" and childWidget:getTabTitle()) or (childRecord.spec and childRecord.spec.title) or nil,
+        record = childRecord,
+    }
+    self:_layoutPages()
+end
+
+function TabHost:finalizeStructuredChildren()
+    self:_layoutPages()
+end
+
+function TabHost:setOnSelect(fn)
+    self._onSelect = fn
+end
+
+function TabHost:getActiveIndex()
+    return self._activeIndex
+end
+
+function TabHost:getSelected()
+    return self._activeIndex
+end
+
+function TabHost:getActiveTabId()
+    local page = self._pages[self._activeIndex]
+    return page and page.id or nil
+end
+
+function TabHost:setSelected(idx)
+    self:setActiveIndex(idx)
+end
+
+function TabHost:setActiveTab(idOrIndex)
+    if type(idOrIndex) == "number" then
+        self:setActiveIndex(idOrIndex)
+        return
+    end
+
+    for i = 1, #self._pages do
+        if self._pages[i].id == idOrIndex then
+            self:setActiveIndex(i)
+            return
+        end
+    end
+end
+
+function TabHost:setActiveIndex(idx)
+    local nextIndex = clampIndex(idx, #self._pages)
+    if nextIndex == self._activeIndex then
+        return
+    end
+    self._activeIndex = nextIndex
+    self:_layoutPages()
+    if self._onSelect and nextIndex > 0 then
+        local page = self._pages[nextIndex]
+        self._onSelect(nextIndex, page and page.id or nil, page and page.title or nil)
+    end
+    self.node:repaint()
+end
+
+function TabHost:setTabBarHeight(value)
+    self._tabBarHeight = math.max(18, math.floor(tonumber(value) or self._tabBarHeight))
+    self:_layoutPages()
+    self.node:repaint()
+end
+
+function TabHost:setBg(value)
+    self._bg = value
+    self.node:repaint()
+end
+
+function TabHost:setTextColour(value)
+    self._textColour = value
+    self.node:repaint()
+end
+
+function TabHost:setActiveTextColour(value)
+    self._activeTextColour = value
+    self.node:repaint()
+end
+
+function TabHost:setStyle(style)
+    if style.bg ~= nil then self._bg = style.bg end
+    if style.border ~= nil then self._border = style.border end
+    if style.borderWidth ~= nil then self._borderWidth = style.borderWidth end
+    if style.radius ~= nil then self._radius = style.radius end
+    if style.tabBarBg ~= nil then self._tabBarBg = style.tabBarBg end
+    if style.tabBg ~= nil then self._tabBg = style.tabBg end
+    if style.activeTabBg ~= nil then self._activeTabBg = style.activeTabBg end
+    if style.textColour ~= nil then self._textColour = style.textColour end
+    if style.activeTextColour ~= nil then self._activeTextColour = style.activeTextColour end
+    self.node:repaint()
+end
+
+function TabHost:onMouseDown(mx, my)
+    if my < 0 or my > self._tabBarHeight then
+        return
+    end
+
+    for i = 1, #self._tabRects do
+        local r = self._tabRects[i]
+        if mx >= r.x and mx <= (r.x + r.w) and my >= r.y and my <= (r.y + r.h) then
+            self:setActiveIndex(i)
+            return
+        end
+    end
+end
+
+function TabHost:onDraw(w, h)
+    self:_layoutPages()
+
+    if (self._bg >> 24) & 0xff > 0 then
+        gfx.setColour(self._bg)
+        gfx.fillRoundedRect(0, 0, w, h, self._radius)
+    end
+
+    gfx.setColour(self._tabBarBg)
+    gfx.fillRoundedRect(0, 0, w, self._tabBarHeight, self._radius)
+
+    for i = 1, #self._tabRects do
+        local r = self._tabRects[i]
+        local page = self._pages[i]
+        local label = coerceLabel(page and page.title, page and page.id or ("Tab " .. tostring(i)))
+        local active = (i == self._activeIndex)
+        local bg = active and self._activeTabBg or self._tabBg
+
+        if self:isHovered() and not active then
+            bg = Utils.brighten(bg, 10)
+        end
+
+        gfx.setColour(bg)
+        gfx.fillRoundedRect(r.x, r.y, r.w, math.max(0, r.h - 2), math.max(0, self._radius - 2))
+
+        gfx.setColour(active and self._activeTextColour or self._textColour)
+        gfx.setFont(12.0)
+        gfx.drawText(label, r.x + 6, r.y, math.max(0, r.w - 12), r.h, Justify.centred)
+    end
+
+    if self._borderWidth > 0 and (self._border >> 24) & 0xff > 0 then
+        gfx.setColour(self._border)
+        gfx.drawRoundedRect(0, 0, w, h, self._radius, self._borderWidth)
+    end
+end
+
+return TabHost

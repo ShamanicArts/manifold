@@ -6,11 +6,19 @@ local SUPPORTED_WIDGETS = {
   Panel = W.Panel,
   Button = W.Button,
   Label = W.Label,
+  Slider = W.Slider,
+  VSlider = W.VSlider,
   Dropdown = W.Dropdown,
   Toggle = W.Toggle,
   NumberBox = W.NumberBox,
   Knob = W.Knob,
   WaveformView = W.WaveformView,
+  Meter = W.Meter,
+  SegmentedControl = W.SegmentedControl,
+  DonutWidget = W.DonutWidget,
+  XYPadWidget = W.XYPadWidget,
+  TabHost = W.TabHost,
+  TabPage = W.TabPage,
 }
 
 local FONT_STYLE_MAP = {
@@ -507,7 +515,6 @@ function Runtime.new(opts)
   self.documents = {}
   self.documentOrder = {}
   self.recordsBySourceKey = {}
-  self.recordsByGlobalId = {}
   return self
 end
 
@@ -518,26 +525,6 @@ function Runtime:registerWidget(globalId, localWidgets, localId, widget)
   if type(localWidgets) == "table" and type(localId) == "string" and localId ~= "" then
     localWidgets[localId] = widget
   end
-end
-
-function Runtime:_appendRecordForSource(documentPath, nodeId, record)
-  if type(documentPath) ~= "string" or documentPath == "" then
-    return
-  end
-  if type(nodeId) ~= "string" or nodeId == "" then
-    return
-  end
-  if type(record) ~= "table" then
-    return
-  end
-
-  local key = documentPath .. "::" .. nodeId
-  local list = self.recordsBySourceKey[key]
-  if type(list) ~= "table" then
-    list = {}
-    self.recordsBySourceKey[key] = list
-  end
-  list[#list + 1] = record
 end
 
 function Runtime:registerRecord(record)
@@ -551,17 +538,25 @@ function Runtime:registerRecord(record)
     nodeId = record.spec.id
   end
 
-  if type(record.globalId) == "string" and record.globalId ~= "" then
-    self.recordsByGlobalId[record.globalId] = record
+  if type(sourcePath) == "string" and sourcePath ~= "" and type(nodeId) == "string" and nodeId ~= "" then
+    self.recordsBySourceKey[sourcePath .. "::" .. nodeId] = record
   end
-  self:_appendRecordForSource(sourcePath, nodeId, record)
 end
 
 function Runtime:registerRecordAlias(documentPath, nodeId, record)
-  self:_appendRecordForSource(documentPath, nodeId, record)
+  if type(documentPath) ~= "string" or documentPath == "" then
+    return
+  end
+  if type(nodeId) ~= "string" or nodeId == "" then
+    return
+  end
+  if type(record) ~= "table" then
+    return
+  end
+  self.recordsBySourceKey[documentPath .. "::" .. nodeId] = record
 end
 
-function Runtime:getRecordsBySource(documentPath, nodeId)
+function Runtime:getRecordBySource(documentPath, nodeId)
   if type(documentPath) ~= "string" or documentPath == "" then
     return nil
   end
@@ -569,21 +564,6 @@ function Runtime:getRecordsBySource(documentPath, nodeId)
     return nil
   end
   return self.recordsBySourceKey[documentPath .. "::" .. nodeId]
-end
-
-function Runtime:getRecordBySource(documentPath, nodeId)
-  local list = self:getRecordsBySource(documentPath, nodeId)
-  if type(list) ~= "table" or #list == 0 then
-    return nil
-  end
-  return list[1]
-end
-
-function Runtime:getRecordByGlobalId(globalId)
-  if type(globalId) ~= "string" or globalId == "" then
-    return nil
-  end
-  return self.recordsByGlobalId[globalId]
 end
 
 function Runtime:loadDocument(absPath, kind)
@@ -795,17 +775,6 @@ function Runtime:setNodeValue(absPath, nodeId, path, value)
   if not ok then
     return false, "failed to set path: " .. tostring(path)
   end
-
-  local records = self:getRecordsBySource(absPath, nodeId)
-  if type(records) == "table" then
-    for i = 1, #records do
-      local record = records[i]
-      if type(record) == "table" and type(record.spec) == "table" then
-        setValueByPath(record.spec, path, value)
-      end
-    end
-  end
-
   doc.dirty = true
   return true, nil
 end
@@ -823,17 +792,6 @@ function Runtime:removeNodeValue(absPath, nodeId, path)
   if not ok then
     return false, "failed to remove path: " .. tostring(path)
   end
-
-  local records = self:getRecordsBySource(absPath, nodeId)
-  if type(records) == "table" then
-    for i = 1, #records do
-      local record = records[i]
-      if type(record) == "table" and type(record.spec) == "table" then
-        removeValueByPath(record.spec, path)
-      end
-    end
-  end
-
   doc.dirty = true
   return true, nil
 end
@@ -924,11 +882,21 @@ function Runtime:instantiateSpec(parentNode, spec, opts)
       sourceKind = "node",
     })
     record.children[#record.children + 1] = childRecord
+    if type(widget.addStructuredChild) == "function" then
+      widget:addStructuredChild(childRecord, "node", child)
+    end
   end
 
   for _, componentInstance in ipairs(spec.components or {}) do
     local _, _, componentRecord = self:instantiateComponent(widget.node, componentInstance, childPrefix, opts.sourceDocumentPath, record)
     record.children[#record.children + 1] = componentRecord
+    if type(widget.addStructuredChild) == "function" then
+      widget:addStructuredChild(componentRecord, "component", componentInstance)
+    end
+  end
+
+  if type(widget.finalizeStructuredChildren) == "function" then
+    widget:finalizeStructuredChildren()
   end
 
   return widget, globalId, record
@@ -1057,7 +1025,6 @@ function Runtime:init(rootNode)
   self.documents = {}
   self.documentOrder = {}
   self.recordsBySourceKey = {}
-  self.recordsByGlobalId = {}
 
   local sceneDoc = self:loadDocument(self.uiRoot, "scene")
   self.sceneSpec = sceneDoc.model
@@ -1150,7 +1117,6 @@ function Runtime:cleanup()
   self.documents = {}
   self.documentOrder = {}
   self.recordsBySourceKey = {}
-  self.recordsByGlobalId = {}
 end
 
 function M.install(opts)

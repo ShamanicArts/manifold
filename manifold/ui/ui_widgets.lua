@@ -26,6 +26,8 @@ local DonutWidget = require("widgets.donut")
 local XYPadWidget = require("widgets.xypad")
 local XYPadWithTrails = require("widgets.xypad_trails")
 local GLSLWidget = require("widgets.glsl")
+local TabHost = require("widgets.tabhost")
+local TabPage = require("widgets.tabpage")
 
 -- Export all widgets
 Widgets.BaseWidget = BaseWidget
@@ -45,5 +47,7 @@ Widgets.DonutWidget = DonutWidget
 Widgets.XYPadWidget = XYPadWidget
 Widgets.XYPadWithTrails = XYPadWithTrails
 Widgets.GLSLWidget = GLSLWidget
+Widgets.TabHost = TabHost
+Widgets.TabPage = TabPage
 
 return Widgets

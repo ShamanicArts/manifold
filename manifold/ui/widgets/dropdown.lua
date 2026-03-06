@@ -60,7 +60,16 @@ function Dropdown:open()
     local overlayH = visibleRows * itemH + 4
     local overlayW = math.max(220, self.node:getWidth())
 
-    self._scrollRow = Utils.clamp(self._scrollRow or 1, 1, math.max(1, optionCount - visibleRows + 1))
+    local maxFirst = math.max(1, optionCount - visibleRows + 1)
+    self._scrollRow = Utils.clamp(self._scrollRow or 1, 1, maxFirst)
+    if optionCount > 0 then
+        if self._selected < self._scrollRow then
+            self._scrollRow = self._selected
+        elseif self._selected > (self._scrollRow + visibleRows - 1) then
+            self._scrollRow = self._selected - visibleRows + 1
+        end
+        self._scrollRow = Utils.clamp(self._scrollRow, 1, maxFirst)
+    end
 
     local overlayX, overlayY = 0, self.node:getHeight()
     if self._rootNode and self._absX and self._absY then
@@ -102,7 +111,13 @@ function Dropdown:open()
 
         local first = dropdown._scrollRow
         local last = math.min(optionCount, first + visibleRows - 1)
+        local hasScroll = optionCount > visibleRows
+        local hasMoreAbove = first > 1
+        local hasMoreBelow = last < optionCount
+        local scrollbarW = hasScroll and 14 or 0
+        local textW = w - 24 - scrollbarW
         local row = 0
+
         for i = first, last do
             row = row + 1
             local opt = dropdown._options[i]
@@ -114,13 +129,42 @@ function Dropdown:open()
             end
             gfx.setColour(isSel and dropdown._colour or 0xffe2e8f0)
             gfx.setFont(12.0)
-            gfx.drawText(opt, 12, math.floor(y), w - 24, itemH, Justify.centredLeft)
+            gfx.drawText(opt, 12, math.floor(y), textW, itemH, Justify.centredLeft)
         end
 
-        if optionCount > visibleRows then
-            gfx.setColour(0xff64748b)
-            gfx.setFont(10.0)
-            gfx.drawText("Scroll", w - 56, 2, 52, 12, Justify.centredRight)
+        if hasScroll then
+            local trackX = w - scrollbarW - 6
+            local trackY = 4
+            local trackH = h - 10
+            local thumbTravel = math.max(1, trackH - 28)
+            local thumbH = math.max(18, math.floor((visibleRows / math.max(1, optionCount)) * thumbTravel))
+            local maxScrollRows = math.max(1, optionCount - visibleRows)
+            local scrollT = (dropdown._scrollRow - 1) / maxScrollRows
+            local thumbY = trackY + 14 + math.floor((thumbTravel - thumbH) * scrollT)
+
+            gfx.setColour(0xff0f172a)
+            gfx.fillRoundedRect(trackX, trackY, scrollbarW, trackH, 4)
+            gfx.setColour(0xff334155)
+            gfx.drawRoundedRect(trackX, trackY, scrollbarW, trackH, 4, 1)
+
+            gfx.setColour(hasMoreAbove and 0xffcbd5e1 or 0xff475569)
+            gfx.setFont(9.0)
+            gfx.drawText("▲", trackX, trackY + 1, scrollbarW, 12, Justify.centred)
+
+            gfx.setColour(hasMoreBelow and 0xffcbd5e1 or 0xff475569)
+            gfx.drawText("▼", trackX, trackY + trackH - 13, scrollbarW, 12, Justify.centred)
+
+            gfx.setColour(0xff38bdf8)
+            gfx.fillRoundedRect(trackX + 2, thumbY, math.max(6, scrollbarW - 4), thumbH, 3)
+
+            if hasMoreAbove then
+                gfx.setColour(0x221e40af)
+                gfx.fillRoundedRect(2, 2, w - 6, 12, 3)
+            end
+            if hasMoreBelow then
+                gfx.setColour(0x221e40af)
+                gfx.fillRoundedRect(2, h - 16, w - 6, 12, 3)
+            end
         end
     end)
 

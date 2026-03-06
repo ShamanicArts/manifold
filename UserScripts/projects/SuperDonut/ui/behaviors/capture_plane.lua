@@ -1,10 +1,9 @@
-local Shared = require("behaviors.shared_state")
+local Shared = require("behaviors.super_shared_state")
 
 local M = {}
 
 local function makeStripDraw(ctx, bars, label)
   local rangeStartBars, rangeEndBars = Shared.segmentRangeForBars(bars)
-
   return function(node)
     local state = ctx._state or {}
     local w = node:getWidth()
@@ -22,9 +21,8 @@ local function makeStripDraw(ctx, bars, label)
     local clippedStart = math.max(0, math.min(captureSize, sampleStart))
     local clippedEnd = math.max(0, math.min(captureSize, sampleEnd))
 
-    if clippedEnd > clippedStart and w > 4 then
-      local numBuckets = math.min(w - 4, 128)
-      local peaks = getCapturePeaks(clippedStart, clippedEnd, numBuckets)
+    if clippedEnd > clippedStart and w > 4 and type(getCapturePeaks) == "function" then
+      local peaks = getCapturePeaks(clippedStart, clippedEnd, math.min(w - 4, 128))
       if peaks and #peaks > 0 then
         local centerY = h / 2
         local gain = h * 0.45
@@ -69,8 +67,7 @@ local function makeOverlayDraw(ctx, bars, label)
     end
 
     if hovered or armed then
-      local tc = armed and 0xffd9f99d or 0xffbfdbfe
-      gfx.setColour(tc)
+      gfx.setColour(armed and 0xffd9f99d or 0xffbfdbfe)
       gfx.setFont(12.0)
       gfx.drawText(label .. " bars", 6, 0, w - 12, 20, Justify.topRight)
     end
@@ -79,8 +76,6 @@ end
 
 function M.init(ctx)
   local widgets = ctx.widgets or {}
-  ctx._strips = {}
-  ctx._segments = {}
   ctx._state = {}
 
   if widgets.captureTitle then
@@ -91,26 +86,18 @@ function M.init(ctx)
     local barsIndex = #Shared.kSegmentBars + 1 - slot
     local bars = Shared.kSegmentBars[barsIndex]
     local label = Shared.kSegmentLabels[barsIndex]
-
     local strip = widgets["strip_" .. tostring(slot)]
     if strip and strip.node then
       strip.node:setOnDraw(makeStripDraw(ctx, bars, label))
-      ctx._strips[#ctx._strips + 1] = {
-        widget = strip,
-        slot = slot,
-        barsIndex = barsIndex,
-        bars = bars,
-        label = label,
-      }
     end
   end
 
   for i = #Shared.kSegmentBars, 1, -1 do
-    local widget = widgets["segment_hit_" .. tostring(i)]
-    if widget and widget.node then
-      local bars = Shared.kSegmentBars[i]
-      local label = Shared.kSegmentLabels[i]
-      widget.node:setOnClick(function()
+    local bars = Shared.kSegmentBars[i]
+    local label = Shared.kSegmentLabels[i]
+    local seg = widgets["segment_hit_" .. tostring(i)]
+    if seg and seg.node then
+      seg.node:setOnClick(function()
         local state = ctx._state or {}
         if state.recordMode == "traditional" then
           Shared.commandSet("/core/behavior/forward", bars)
@@ -118,8 +105,7 @@ function M.init(ctx)
           Shared.commandSet("/core/behavior/commit", bars)
         end
       end)
-      widget.node:setOnDraw(makeOverlayDraw(ctx, bars, label))
-      ctx._segments[#ctx._segments + 1] = { widget = widget, bars = bars, label = label, index = i }
+      seg.node:setOnDraw(makeOverlayDraw(ctx, bars, label))
     end
   end
 end
@@ -127,19 +113,10 @@ end
 function M.resized(ctx, w, h)
   local widgets = ctx.widgets or {}
   local designW, designH = Shared.getDesignSize(ctx, w, h)
-
-  if widgets.captureTitle then
-    Shared.applySpecRect(widgets.captureTitle, Shared.getChildSpec(ctx, "captureTitle"), w, h, designW, designH)
-  end
-
-  for slot = 1, #Shared.kSegmentBars do
-    local stripId = "strip_" .. tostring(slot)
-    Shared.applySpecRect(widgets[stripId], Shared.getChildSpec(ctx, stripId), w, h, designW, designH)
-  end
-
-  for i = 1, #Shared.kSegmentBars do
-    local segId = "segment_hit_" .. tostring(i)
-    Shared.applySpecRect(widgets[segId], Shared.getChildSpec(ctx, segId), w, h, designW, designH)
+  Shared.applySpecRect(widgets.captureTitle, Shared.getChildSpec(ctx, "captureTitle"), w, h, designW, designH)
+  for i = 1, 9 do
+    Shared.applySpecRect(widgets["strip_" .. tostring(i)], Shared.getChildSpec(ctx, "strip_" .. tostring(i)), w, h, designW, designH)
+    Shared.applySpecRect(widgets["segment_hit_" .. tostring(i)], Shared.getChildSpec(ctx, "segment_hit_" .. tostring(i)), w, h, designW, designH)
   end
 end
 

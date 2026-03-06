@@ -108,6 +108,27 @@ local kEditorSchemaByWidget = {
         { path = "colour", label = "Colour", type = "color", group = "Style" },
         { path = "bg", label = "Background", type = "color", group = "Style" },
     },
+    TabHost = {
+        { path = "activeIndex", label = "Active Tab", type = "number", min = 1, step = 1, group = "Behavior" },
+        { path = "tabBarHeight", label = "Tab Bar Height", type = "number", min = 18, max = 96, step = 1, group = "Layout" },
+        { path = "bg", label = "Background", type = "color", group = "Style" },
+        { path = "border", label = "Border", type = "color", group = "Style" },
+        { path = "borderWidth", label = "Border Width", type = "number", min = 0, max = 12, step = 1, group = "Style" },
+        { path = "radius", label = "Radius", type = "number", min = 0, max = 24, step = 1, group = "Style" },
+        { path = "tabBarBg", label = "Tab Bar Background", type = "color", group = "Style" },
+        { path = "tabBg", label = "Tab Background", type = "color", group = "Style" },
+        { path = "activeTabBg", label = "Active Tab Background", type = "color", group = "Style" },
+        { path = "textColour", label = "Text Colour", type = "color", group = "Style" },
+        { path = "activeTextColour", label = "Active Text Colour", type = "color", group = "Style" },
+    },
+    TabPage = {
+        { path = "title", label = "Title", type = "text", group = "Behavior" },
+        { path = "bg", label = "Background", type = "color", group = "Style" },
+        { path = "border", label = "Border", type = "color", group = "Style" },
+        { path = "borderWidth", label = "Border Width", type = "number", min = 0, max = 12, step = 1, group = "Style" },
+        { path = "radius", label = "Radius", type = "number", min = 0, max = 24, step = 1, group = "Style" },
+        { path = "opacity", label = "Opacity", type = "number", min = 0, max = 1, step = 0.01, group = "Style" },
+    },
 }
 
 function Schema.buildEditorSchema(widgetType, config)
@@ -121,6 +142,8 @@ function Schema.buildEditorSchema(widgetType, config)
             if item.step == nil then item.step = config.step end
         elseif item.path == "selected" and type(config.options) == "table" then
             item.max = #config.options
+        elseif item.path == "activeIndex" and type(config.pages) == "table" then
+            item.max = #config.pages
         elseif item.path == "fontStyle" then
             item.options = Utils.makeFontStyleOptions()
         elseif item.path == "justification" then

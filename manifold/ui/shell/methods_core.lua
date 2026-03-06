@@ -1644,7 +1644,6 @@ function M.attach(shell)
     function shell:registerPerformanceView(view)
         self.performanceView = view
         self.performanceViewLayoutInfo = nil
-        self.performanceViewLastResize = nil
 
         if type(view) == "table" and not self.performanceViewInitialized then
             if type(view.init) == "function" and self.content ~= nil then
@@ -1688,60 +1687,6 @@ function M.attach(shell)
         return nil
     end
 
-    function shell:getStructuredRuntimeRecord(documentPath, nodeId, globalId)
-        local runtime = rawget(_G, "__manifoldStructuredUiRuntime")
-        if type(runtime) ~= "table" then
-            return nil
-        end
-        if type(globalId) == "string" and globalId ~= "" and type(runtime.getRecordByGlobalId) == "function" then
-            local byGlobal = runtime:getRecordByGlobalId(globalId)
-            if type(byGlobal) == "table" then
-                return byGlobal
-            end
-        end
-        if type(runtime.getRecordBySource) ~= "function" then
-            return nil
-        end
-        return runtime:getRecordBySource(documentPath, nodeId)
-    end
-
-    function shell:getStructuredDesignScaleForCanvas(canvas)
-        local source = self:getStructuredSourceForCanvas(canvas, "bounds")
-        if type(source) ~= "table" then
-            return 1.0, 1.0
-        end
-
-        local record = self:getStructuredRuntimeRecord(source.documentPath, source.nodeId, source.globalId)
-        local parentRecord = record and record.parent or nil
-        if type(parentRecord) ~= "table" then
-            return 1.0, 1.0
-        end
-
-        local designParentW = tonumber(parentRecord.spec and parentRecord.spec.w) or 0
-        local designParentH = tonumber(parentRecord.spec and parentRecord.spec.h) or 0
-        local runtimeParentW = 0
-        local runtimeParentH = 0
-        if parentRecord.widget and parentRecord.widget.node then
-            if parentRecord.widget.node.getWidth then
-                runtimeParentW = tonumber(parentRecord.widget.node:getWidth()) or 0
-            end
-            if parentRecord.widget.node.getHeight then
-                runtimeParentH = tonumber(parentRecord.widget.node:getHeight()) or 0
-            end
-        end
-
-        if designParentW <= 0 or runtimeParentW <= 0 then
-            designParentW = runtimeParentW > 0 and runtimeParentW or 1
-            runtimeParentW = runtimeParentW > 0 and runtimeParentW or 1
-        end
-        if designParentH <= 0 or runtimeParentH <= 0 then
-            designParentH = runtimeParentH > 0 and runtimeParentH or 1
-            runtimeParentH = runtimeParentH > 0 and runtimeParentH or 1
-        end
-
-        return runtimeParentW / designParentW, runtimeParentH / designParentH
-    end
-
     function shell:persistStructuredBoundsForCanvas(canvas)
         if type(setStructuredUiNodeValue) ~= "function" then
             return false
@@ -1753,15 +1698,6 @@ function M.attach(shell)
         end
 
         local bx, by, bw, bh = canvas:getBounds()
-        local sx, sy = self:getStructuredDesignScaleForCanvas(canvas)
-        sx = (sx ~= 0 and sx) or 1.0
-        sy = (sy ~= 0 and sy) or 1.0
-
-        local authoredX = math.floor((bx / sx) + 0.5)
-        local authoredY = math.floor((by / sy) + 0.5)
-        local authoredW = math.max(1, math.floor((bw / sx) + 0.5))
-        local authoredH = math.max(1, math.floor((bh / sy) + 0.5))
-
         local docPath = source.documentPath
         local nodeId = source.nodeId
 
@@ -1780,10 +1716,10 @@ function M.attach(shell)
         end
 
         local prefix = hasLayout and "layout." or ""
-        local okX = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "x", authoredX)
-        local okY = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "y", authoredY)
-        local okW = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "w", authoredW)
-        local okH = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "h", authoredH)
+        local okX = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "x", bx)
+        local okY = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "y", by)
+        local okW = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "w", bw)
+        local okH = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "h", bh)
         return okX and okY and okW and okH
     end
 
@@ -2020,13 +1956,6 @@ function M.attach(shell)
         refreshRowBoundsSubtree(self.treeRoot, 0, 0)
         self.treeCanvas:repaint()
         self.previewOverlay:repaint()
-    end
-
-    function shell:setStructuredDragDebug(label, payload)
-        _G.__manifoldStructuredDragDebug = {
-            label = tostring(label or ""),
-            payload = payload,
-        }
     end
 
     function shell:getWorkspaceDesignRect()

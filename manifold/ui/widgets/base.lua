@@ -92,8 +92,21 @@ function BaseWidget:setEnabled(enabled)
     self._enabled = enabled
 end
 
+function BaseWidget:setVisible(visible)
+    if self.node and self.node.setVisible then
+        self.node:setVisible(visible == true)
+    end
+end
+
 function BaseWidget:isEnabled()
     return self._enabled
+end
+
+function BaseWidget:isVisible()
+    if self.node and self.node.isVisible then
+        return self.node:isVisible()
+    end
+    return true
 end
 
 function BaseWidget:isHovered()

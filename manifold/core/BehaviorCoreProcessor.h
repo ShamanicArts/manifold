@@ -10,12 +10,14 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_audio_devices/juce_audio_devices.h>
 
 #include "../primitives/control/ControlServer.h"
 #include "../primitives/control/OSCEndpointRegistry.h"
 #include "../primitives/control/OSCQuery.h"
 #include "../primitives/control/OSCServer.h"
 #include "../primitives/dsp/CaptureBuffer.h"
+#include "../primitives/midi/MidiRingBuffer.h"
 #include "../primitives/scripting/PrimitiveGraph.h"
 #include "../primitives/scripting/ScriptableProcessor.h"
 #include "../primitives/sync/LinkSync.h"
@@ -77,8 +79,8 @@ public:
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return JucePlugin_Name; }
-    bool acceptsMidi() const override { return false; }
-    bool producesMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
+    bool producesMidi() const override { return true; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
@@ -206,6 +208,24 @@ public:
 
     std::string getAndClearPendingUISwitch();
 
+    // MIDI API
+    bool openMidiInput(int deviceIndex);
+    bool openMidiOutput(int deviceIndex);
+    void closeMidiInput();
+    void closeMidiOutput();
+    void sendMidiMessage(uint8_t status, uint8_t data1, uint8_t data2);
+    void sendMidiNoteOn(int channel, int note, int velocity);
+    void sendMidiNoteOff(int channel, int note);
+    void sendMidiCC(int channel, int cc, int value);
+    void sendMidiPitchBend(int channel, int value);
+    void sendMidiProgramChange(int channel, int program);
+    bool isMidiThruEnabled() const { return midiThruEnabled; }
+    void setMidiThruEnabled(bool enabled) { midiThruEnabled = enabled; }
+    std::vector<std::string> getMidiInputDevices();
+    std::vector<std::string> getMidiOutputDevices();
+    void processMidiInput(const juce::MidiBuffer& midiMessages);
+    void drainMidiOutput(juce::MidiBuffer& outMidi);
+
 public:
     // Destroy deferred DSP slot hosts (safe boundary, not inside Lua call stacks)
     void drainPendingSlotDestroy();
@@ -256,6 +276,13 @@ private:
     OSCQueryServer oscQueryServer;
 
     LinkSync linkSync;
+
+    // MIDI support - using raw pointers since JUCE's unique_ptr types need full includes
+    MidiRingBuffer midiInputRing;  // Audio thread → Control thread
+    MidiRingBuffer midiOutputRing; // Control thread → Audio thread
+    juce::MidiInput* midiInputDevice = nullptr;
+    juce::MidiOutput* midiOutputDevice = nullptr;
+    bool midiThruEnabled = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BehaviorCoreProcessor)
 };

@@ -1,11 +1,11 @@
 {
-  "name": "ManifoldDefault",
+  "name": "Looper_uiproject",
   "version": 1,
   "ui": {
     "root": "ui/main.ui.lua"
   },
   "dsp": {
-    "default": "system:dsp/looper_primitives_dsp.lua"
+    "default": "dsp/main.lua"
   },
   "theme": "themes/dark.lua"
 }
