@@ -130,6 +130,23 @@ parentNode (rootCanvas from C++)
 | `manifold/primitives/scripting/bindings/LuaUIBindings.cpp` | Canvas Lua bindings |
 | `manifold/ui/looper_ui.lua` | Example user UI (unchanged, works in both modes) |
 
+### Structured Project Layout Contract (v1)
+
+This is now the working rule for project-backed UIs:
+
+- Structured `.ui.lua` files may contain `x/y/w/h`, but those are **design defaults**, not a guarantee of fixed runtime size
+- Responsive layout is currently **behavior-owned** via `resized(ctx, w, h)`
+- `w, h` are the **local bounds of that behavior root widget**
+- Root behavior lays out major regions against the live viewport
+- Component behaviors lay out their internals against their own local root bounds
+- This is the foundation for future declarative layout modes:
+  - `absolute`
+  - `relative`
+  - `hybrid`
+- When declarative layout lands, it should run before behavior `resized()`, with behavior remaining the escape hatch for complex/custom layout
+
+This avoids the exact bug we just tripped over: confusing design-time absolute defaults with runtime responsive layout.
+
 ---
 
 ## Priority Reset (Agreed)

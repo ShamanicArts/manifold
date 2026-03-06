@@ -138,43 +138,60 @@ If we cannot manually express the current real UI and DSP sanely in the new mode
 
 # 6. Canonical Location for First Pass Projects
 
-## 6.1 UserScriptsDir is the canonical home for user projects
-The configured **UserScriptsDir** is the canonical home for project directories.
+## 6.1 UserScriptsDir is the canonical root, not a flat project bucket
+The configured **UserScriptsDir** should be treated as the top-level user asset root.
 
-Each project is a subdirectory inside the configured UserScriptsDir.
-
-Example:
+Inside it, first pass should distinguish:
 
 ```text
 <UserScriptsDir>/
-  ManifoldDefault/
-    manifold.project.json5
-    ui/
-    dsp/
-    themes/
-    assets/
-    editor/
+  ui/        # user-global UI assets / loose scripts / reusable widgets/components
+  dsp/       # user-global DSP assets / loose scripts / reusable modules
+  projects/  # actual projects
+    ManifoldDefault/
+      manifold.project.json5
+      ui/
+      dsp/
+      themes/
+      assets/
+      editor/
 ```
 
-This is important because:
-- we already have infrastructure around user script directories,
-- it matches the existing user mental model (“my stuff lives here”),
-- and it gives us a clean place to host project-backed work without inventing a parallel world.
+This is important because it keeps three different things separate instead of muddling them together:
+- user-global UI assets,
+- user-global DSP assets,
+- and actual project directories.
 
-## 6.2 Discovery behavior
-The runtime/editor should scan the configured UserScriptsDir and interpret entries as follows:
+## 6.2 Asset scopes
+The intended model is:
 
-### Project directories
-If a child directory contains `manifold.project.json5`, it is a **project**.
+### Project-local
+Assets inside `projects/<ProjectName>/...`.
+These are the default/primary assets for a given project.
 
-### Legacy loose scripts
-If a child entry is a loose `.lua` file, it is a **legacy script** and should still be supported.
+### User-global
+Assets inside `<UserScriptsDir>/ui` and `<UserScriptsDir>/dsp`.
+These are reusable user-authored assets that may be shared across projects.
 
-That means first pass preserves backward compatibility while establishing the new canonical project model.
+### System-global
+Built-in/manifold-shipped assets from the application/repo itself.
+These are distinct from user-global assets and should not be conflated with them.
 
-## 6.3 Dev usage
+## 6.3 Discovery behavior
+The runtime/editor should scan the configured UserScriptsDir with these categories in mind:
+
+### Projects
+Directories under `<UserScriptsDir>/projects/` containing `manifold.project.json5` are **projects**.
+
+### User-global loose assets
+Loose `.lua` scripts and future reusable assets under `<UserScriptsDir>/ui/` and `<UserScriptsDir>/dsp/` are **user-global assets**.
+
+### Legacy coexistence
+Existing loose scripts should still be supportable during the transition.
+
+## 6.4 Dev usage
 During development, the configured UserScriptsDir may point at a dev/testing directory. That is fine.
-The important thing is that the **project unit** is still a self-contained project subdirectory under the configured UserScriptsDir.
+The important thing is that projects live under `projects/` and not mixed directly into the same bucket as global UI/DSP assets.
 
 ---
 
@@ -186,7 +203,7 @@ We need one real reference project that becomes the first-pass proving target.
 For planning purposes:
 
 ```text
-<UserScriptsDir>/ManifoldDefault/
+<UserScriptsDir>/projects/ManifoldDefault/
 ```
 
 The exact name can change, but there should be one explicit reference project that the first pass targets.
@@ -246,7 +263,7 @@ We are proving coexistence, not replacing everything in one shot.
 
 First pass is complete only when the following concrete deliverables exist.
 
-## Deliverable 1 — A real project-backed directory under UserScriptsDir
+## Deliverable 1 — A real project-backed directory under `UserScriptsDir/projects`
 There must be one actual project directory containing:
 - `manifold.project.json5`
 - `ui/`
@@ -268,7 +285,7 @@ The dynamic logic that should not live in pure-data `.ui.lua` must be separated 
 The project must contain a real DSP entry/configuration path in the new directory model and it must load/work with the recreated UI.
 
 ## Deliverable 6 — Runtime support for project-backed loading
-The runtime must be able to discover the project under UserScriptsDir, load the manifest, resolve the project root, and instantiate the project-backed UI.
+The runtime must be able to discover the project under `UserScriptsDir/projects`, load the manifest, resolve the project root, and instantiate the project-backed UI.
 
 ## Deliverable 7 — Editor support for structured asset save/load
 The editor must be able to load/edit/save the new `.ui.lua` assets directly.
@@ -286,27 +303,31 @@ The result must serve as the first canonical reference for “how to author UI a
 This is the first-pass target layout. Exact filenames can be adjusted, but the shape should remain close.
 
 ```text
-<UserScriptsDir>/ManifoldDefault/
-  manifold.project.json5
+<UserScriptsDir>/
   ui/
-    main.ui.lua
-    components/
-      transport.ui.lua
-      capture_plane.ui.lua
-      layer_strip.ui.lua
-    behaviors/
-      transport.lua
-      capture_plane.lua
-      layer_strip.lua
-      shared_state.lua
   dsp/
-    main.lua
-  themes/
-    dark.lua
-  editor/
-    workspace.json5
-  assets/
-    (optional in first pass; can be mostly empty)
+  projects/
+    ManifoldDefault/
+      manifold.project.json5
+      ui/
+        main.ui.lua
+        components/
+          transport.ui.lua
+          capture_plane.ui.lua
+          layer_strip.ui.lua
+        behaviors/
+          transport.lua
+          capture_plane.lua
+          layer_strip.lua
+          shared_state.lua
+      dsp/
+        main.lua
+      themes/
+        dark.lua
+      editor/
+        workspace.json5
+      assets/
+        (optional in first pass; can be mostly empty)
 ```
 
 ## Notes
@@ -451,11 +472,12 @@ We are proving one canonical path that works with real existing DSP.
 
 First pass should only build the runtime support needed to make the manually recreated project work.
 
-## 15.1 Project discovery under UserScriptsDir
+## 15.1 Project discovery under `UserScriptsDir/projects`
 The runtime must:
-- scan UserScriptsDir,
+- scan `UserScriptsDir/projects`,
 - detect project directories containing `manifold.project.json5`,
-- and still support loose legacy scripts.
+- recognize `UserScriptsDir/ui` and `UserScriptsDir/dsp` as user-global asset roots,
+- and still support loose legacy scripts/assets during the transition.
 
 ## 15.2 Manifest loading
 The runtime must load the thin manifest and resolve:
@@ -552,7 +574,8 @@ This policy should be made explicit to avoid confusion.
 
 ## Workstream A — Freeze first-pass target and scope
 Tasks:
-- choose exact project name/location under UserScriptsDir,
+- choose exact project name/location under `UserScriptsDir/projects`,
+- confirm top-level user roots under `UserScriptsDir` (`projects/`, `ui/`, `dsp/`),
 - list exact scripts/DSP in scope,
 - list exact features that must still work,
 - list exact out-of-scope items.
@@ -583,7 +606,8 @@ Tasks:
 
 ## Workstream E — Runtime support
 Tasks:
-- project discovery under UserScriptsDir,
+- project discovery under `UserScriptsDir/projects`,
+- awareness of user-global roots under `UserScriptsDir/ui` and `UserScriptsDir/dsp`,
 - manifest loading,
 - structured UI loading,
 - component loading,
@@ -641,7 +665,7 @@ This is where the new structure proves whether it is actually viable for ongoing
 First pass is successful only if all of the following are true.
 
 ## 21.1 Project discovery works
-A project directory under the configured UserScriptsDir is detected and loaded correctly.
+A project directory under the configured `UserScriptsDir/projects` is detected and loaded correctly.
 
 ## 21.2 The recreated project loads as a real working UI
 The structured replacement for the current default UI must render and function in practice, not just load partially.
@@ -669,7 +693,7 @@ The first pass should leave us with a concrete list of what phase 2 actually nee
 
 At the end of first pass, we should have:
 
-1. one real project-backed default project under UserScriptsDir,
+1. one real project-backed default project under `UserScriptsDir/projects`,
 2. one real structured recreation of current default UI,
 3. one real project-backed DSP entry setup,
 4. one real runtime path for project-backed loading,
