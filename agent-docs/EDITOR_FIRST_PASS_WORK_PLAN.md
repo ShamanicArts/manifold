@@ -70,7 +70,7 @@ If a task adds complexity but does not unblock the first-pass proof, defer it.
 Use this as the first-pass reference target unless there is a strong reason to rename it:
 
 ```text
-<UserScriptsDir>/projects/ManifoldDefault/
+<UserScriptsDir>/projects/Looper_uiproject/
 ```
 
 ## 3.2 Target layout
@@ -80,7 +80,7 @@ Use this as the first-pass reference target unless there is a strong reason to r
   ui/          # user-global UI assets / loose scripts / reusable pieces
   dsp/         # user-global DSP assets / loose scripts / reusable pieces
   projects/
-    ManifoldDefault/
+    Looper_uiproject/
       manifold.project.json5
       ui/
         main.ui.lua
@@ -123,7 +123,7 @@ These are the concrete findings from the initial audit and should be treated as 
 
 ### Actual target project path for this repo
 ```text
-/home/shamanic/dev/my-plugin/UserScripts/projects/ManifoldDefault/
+/home/shamanic/dev/my-plugin/UserScripts/projects/Looper_uiproject/
 ```
 
 ### Current settings reality
@@ -295,7 +295,7 @@ Stop hand-waving. Precisely identify what is being recreated and how current cod
 #### Microtasks
 - [x] Confirm actual configured `UserScriptsDir` root to use for development/testing
 - [x] Confirm canonical subdirs under it: `projects/`, `ui/`, `dsp/`
-- [x] Choose the exact project root directory name under `projects/` (`ManifoldDefault` unless changed)
+- [x] Choose the exact project root directory name under `projects/` (`Looper_uiproject`)
 - [x] Confirm the exact initial project directory layout to create
 - [x] Confirm whether `assets/` is included now or deferred until needed
 
@@ -767,7 +767,7 @@ This is not exhaustive, but these are likely areas to touch.
 - behavior attachment helper
 
 ## New project files
-- the full `ManifoldDefault/` project tree under `UserScriptsDir/projects`
+- the full `Looper_uiproject/` project tree under `UserScriptsDir/projects`
 
 ---
 

@@ -148,7 +148,7 @@ Inside it, first pass should distinguish:
   ui/        # user-global UI assets / loose scripts / reusable widgets/components
   dsp/       # user-global DSP assets / loose scripts / reusable modules
   projects/  # actual projects
-    ManifoldDefault/
+    Looper_uiproject/
       manifold.project.json5
       ui/
       dsp/
@@ -203,7 +203,7 @@ We need one real reference project that becomes the first-pass proving target.
 For planning purposes:
 
 ```text
-<UserScriptsDir>/projects/ManifoldDefault/
+<UserScriptsDir>/projects/Looper_uiproject/
 ```
 
 The exact name can change, but there should be one explicit reference project that the first pass targets.
@@ -307,7 +307,7 @@ This is the first-pass target layout. Exact filenames can be adjusted, but the s
   ui/
   dsp/
   projects/
-    ManifoldDefault/
+    Looper_uiproject/
       manifold.project.json5
       ui/
         main.ui.lua

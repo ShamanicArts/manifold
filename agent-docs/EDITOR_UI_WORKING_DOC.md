@@ -153,7 +153,7 @@ The original working doc was heavily shell/editor-centric. First-pass project-fo
 
 #### What now exists
 - Project discovery under `UserScripts/projects/`
-- First-pass reference project under `UserScripts/projects/ManifoldDefault/`
+- First-pass reference project under `UserScripts/projects/Looper_uiproject/`
 - Structured scene loading for `.ui.lua`
 - Component instancing with scoped IDs and per-instance props
 - Behavior lifecycle for structured UI:
@@ -174,6 +174,79 @@ The original working doc was heavily shell/editor-centric. First-pass project-fo
 - Transport / capture plane / layer strips / scrub path have been manually recreated in the project model
 - Legacy and project-backed UIs both remain first-class and switchable
 - The shell now owns top-level hosting/layout policy; the project loader owns internal node layout resolution
+
+### Runtime/View Topology Reset (Important)
+
+The current project/runtime model is too flat if it treats every project switch as a full backend swap.
+That is already wrong for the legacy Looper ↔ SuperDonut relationship.
+
+We need to distinguish three separate concerns:
+
+1. **Foundation runtime**
+   - shared looper transport/state
+   - loop buffers/capture/playback state
+   - selected layer / active layer
+   - base input path / any intentionally shared core DSP
+
+2. **Overlay DSP/UI layers**
+   - optional effect layers such as the SuperDonut FX layer
+   - may be activated/deactivated by a view/tab
+   - may be persistent, transient, exclusive, or shared depending on policy
+
+3. **Views**
+   - looper view
+   - donut view
+   - future alternate layouts/edit surfaces
+   - these are presentation layers over a foundation, not necessarily separate instruments
+
+#### Legacy parity rule for Looper + SuperDonut
+
+For the legacy behavior we are trying to preserve:
+- `Looper_uiproject` and `SuperDonut` should share the same **looper foundation state**
+- switching between those two should preserve:
+  - loop state
+  - transport state
+  - selected/active layer state
+- the SuperDonut-specific FX layer may be torn down when leaving the donut view
+- the base looper/input foundation should remain alive
+
+This means the correct model is not:
+- "project = one UI + one exclusive DSP graph"
+
+It is closer to:
+- "project/view = one presentation over a runtime foundation, optionally with overlay DSP layers"
+
+#### Tabs are not just shell chrome
+
+A **Tab widget / tab host** is now an important architectural primitive, not just cosmetic navigation.
+
+We need to distinguish three related but separate concepts:
+
+- **Shell tabs**
+  - the current shell-level tab implementation for top-level UI/editor surfaces
+
+- **User-authored Tab widgets**
+  - widgets users place inside their own structured projects
+  - these should be able to host normal child content/components/pages
+  - they should fit naturally into the directory model (`ui/main.ui.lua`, `ui/components/...`, per-tab content docs/components, behaviors)
+  - users should be able to build tabbed performance/control layouts directly inside their projects
+
+- **Project/view tabs**
+  - tabs inside a runtime family/project that switch between views over the same shared foundation
+  - e.g. Looper view, Donut view, future mixer/advanced views
+  - these may share implementation lineage with a Tab widget, but they are not identical in semantics because view switches may also affect runtime/overlay activation policy
+
+This suggests that a first-class **Tab widget/base widget** is important in its own right, and that the current shell tab implementation may eventually need to be reworked/aligned with that widget rather than remaining a separate one-off implementation.
+
+#### Design direction
+
+The architecture should support all of these topologies explicitly:
+- fully exclusive projects with independent DSP/runtime state
+- shared-foundation projects with multiple views
+- shared-foundation + transient overlay DSP layers
+- combined/nested tabbed layouts inside a project
+
+The immediate practical use-case is Looper + SuperDonut legacy parity, but the model should be general enough for future instruments/layouts instead of hardcoding a donut special case.
 
 ### Sanity Check Against `EDITOR_FIRST_PASS_WORK_PLAN.md`
 
@@ -205,18 +278,25 @@ This is the active ordering going forward:
    - command shortcuts for endpoint inspection (`get/set/trigger`), undo/redo, selection inspection
    - copy/paste workflows for identifiers into console and external chat/docs
 
-2. **Parameter exposure framework (new foundation phase)**
+2. **Runtime/view topology + tabs foundation (new architecture checkpoint)**
+   - stop treating every project switch as an automatic full backend swap
+   - define foundation runtime vs overlay DSP layer vs view ownership
+   - preserve legacy Looper ↔ SuperDonut shared-state semantics intentionally
+   - design first-class project/view tabs over shared foundations
+   - align current shell tabs with a future reusable Tab widget / Tab host
+
+3. **Parameter exposure framework (new foundation phase)**
    - unify what is editable across:
      - widget style params
      - custom canvas-draw style params (e.g. donut ring colours)
      - behavior params (e.g. XY friction/spring/damping)
    - remove "random" inspector feel by making exposure explicit instead of inferred only
 
-3. **Then map/design-heavy work**
+4. **Then map/design-heavy work**
    - Widget ↔ DSP mapping UI
    - Lua behavior authoring linkages
 
-4. **Deeper model work stays later**
+5. **Deeper model work stays later**
    - persistence/save-load
    - codegen/round-trip
 
@@ -312,6 +392,10 @@ This is the active ordering going forward:
 - [x] In Performance mode: tabs consume full content area
 - [x] In Edit mode: tabs are visible in preview workflow, but hidden while script editor surface is open
 - [x] Script/DSP entries open dedicated edit surfaces on double-click
+- [ ] Introduce a first-class reusable **Tab widget / Tab host** instead of keeping shell tabs as a special-case implementation forever
+- [ ] Support user-authored Tab widgets inside structured projects, with tab pages backed by normal child nodes/components/docs in the directory model
+- [ ] Decide how shell tabs and project/view tabs relate so both can align on the same underlying widget model
+- [ ] Support project-native view tabs over shared foundations (e.g. Looper view / Donut view over one looper family runtime)
 
 **Task 5.1: Left Panel Expansion (keep current widget tree intact)**
 - [x] Widget hierarchy tree remains the primary edit tree

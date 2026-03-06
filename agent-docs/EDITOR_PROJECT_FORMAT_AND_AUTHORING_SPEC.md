@@ -294,6 +294,31 @@ The runtime looks for `manifold.project.json5` in:
 2. Parent directories up to a reasonable limit (3 levels)
 3. If not found, the system operates in "legacy mode" — no project, just bare scripts (backward compatible)
 
+### 3.5 First-Pass DSP Entry Rule
+
+For the project-backed path, the manifest should normally point to a **project-local DSP entry**:
+
+```json5
+{
+  dsp: {
+    default: "dsp/main.lua",
+  },
+}
+```
+
+That file may absolutely:
+- wrap system-global built-ins,
+- import user-global DSP helpers,
+- compose reusable project/user/system modules,
+- and extend or override behavior for the specific project.
+
+What should be avoided is a fake project DSP story where:
+- the manifest points straight at a hidden system script,
+- `dsp/main.lua` is only a placeholder,
+- and the real dependency chain is not visible from the project itself.
+
+**Rule of thumb:** the project should always have a real DSP file a user can open and understand as the project's authoritative entry, even if that file is thin.
+
 ---
 
 ## 4. Layer 2: Structured UI Assets (Editor-Owned)
@@ -543,6 +568,17 @@ Current runtime ordering is:
 7. `cleanup()` runs in reverse order
 
 This is intentional: the root behavior lays out major regions first, then component behaviors lay out within their own local roots.
+
+#### Shell hosting / resize contract
+
+For project-backed views, the shell is part of the runtime contract:
+- the shell hosts the loaded project view in design space,
+- the shell may scale/align that hosted view for performance and edit modes,
+- the structured runtime receives `resized()` for the hosted design viewport, not arbitrary editor chrome dimensions.
+
+A critical practical rule: **editor-only shell churn must not spam project `resized()` calls when the hosted viewport rect has not actually changed.**
+
+That distinction matters because legacy and project-backed paths are not hosted identically. If the shell replays redundant resize events during hierarchy/inspector refreshes, project-backed editor edits can be stomped even though legacy editing appears fine.
 
 #### Layout ownership contract
 
@@ -1145,6 +1181,17 @@ The manifest declares DSP entry points:
 }
 ```
 
+For the first real project-backed workflow, `dsp/main.lua` should be treated as the visible project DSP authority, not disposable scaffolding. It may be:
+- a thin wrapper over a system-global built-in,
+- a composition root that imports project/user/system DSP helpers,
+- or a project-specific extension of a reusable looper baseline.
+
+This is the practical middle ground between two bad extremes:
+- **bad extreme 1:** duplicate the entire built-in DSP stack into every project immediately,
+- **bad extreme 2:** hide the real DSP behind a direct manifest pointer to a system script and pretend the project owns it.
+
+The acceptable first-pass middle is: **project owns the entry, shared code lives in reusable libraries, and the dependency chain is explicit.**
+
 ### 7.5 DSP↔UI Binding Contract
 
 The critical seam between UI and DSP is **parameter paths**. Both sides already speak the same language:
@@ -1219,7 +1266,39 @@ return {
 
 **This is NOT required for the initial implementation.** But the directory structure and manifest should be designed so that `.dsp.lua` structured files can exist alongside handwritten DSP scripts, using the same ownership model as UI assets. When the visual graph editor becomes real, this format is the save target.
 
-### 7.8 DSP and Split Export
+### 7.8 Reusable DSP Libraries and Extension Model
+
+The system should explicitly support reusable DSP code at three scopes, mirroring the UI asset story:
+
+1. **project-local DSP** — `projects/<Name>/dsp/...`
+2. **user-global DSP** — `<UserScriptsDir>/dsp/...`
+3. **system-global DSP** — built-in/manifold-shipped DSP libraries
+
+That means first-pass DSP files should be allowed to do things like:
+- import a built-in looper baseline,
+- pull shared helper modules from user-global DSP libraries,
+- extend a provided layer/transport/quantizer helper,
+- and override project-specific behavior locally.
+
+Conceptually, this is the intended shape:
+
+```lua
+-- dsp/main.lua
+local looper = require("system:dsp/lib/looper_primitives")
+local layers = require("user:dsp/lib/layers")
+
+return looper.createProjectGraph {
+  layerFactory = layers.defaultFactory,
+  projectName = "My Looper Instrument",
+}
+```
+
+The exact module API can evolve, but the architectural point should be stable:
+- built-ins and globals are reusable libraries,
+- the project owns the top-level entry,
+- and users can visibly extend/modify the baseline instead of being trapped in a hidden system-script dependency.
+
+### 7.9 DSP and Split Export
 
 The earlier framing here was too weak. DSP should follow the same strategic direction as UI:
 
@@ -1254,7 +1333,7 @@ For heavily behavioral DSP like `looper_primitives_dsp.lua`, the first export ma
 
 #### Important honesty clause
 
-We should not pretend every current DSP script can be perfectly normalized immediately. But we also should not hardcode "DPS behavior scripts are never exportable" into the plan. That's too fucking weak and bakes in the wrong assumption.
+We should not pretend every current DSP script can be perfectly normalized immediately. But we also should not hardcode "DSP behavior scripts are never exportable" into the plan. That's too fucking weak and bakes in the wrong assumption.
 
 The correct stance is:
 - DSP is integral,
@@ -1821,7 +1900,9 @@ These are known unknowns. The worker should implement the system as specced and 
 
 5. **Structured DSP format**: The FX chain pattern (§7.7) could become a structured `.dsp.lua` format with visual graph editing, but this is future work. For now, DSP scripts are primarily handwritten, but the supported DSP contract and split export should preserve/relocate DSP code rather than treating it as permanently opaque.
 
-6. **Source preservation mechanism**: Use explicit region markers, a real Lua parser, or both? Recommendation: region markers for v1 in first-party templates and supported scripts, parser later if needed.
+6. **Reusable DSP module API**: What should the first-party reusable DSP helpers actually look like (`system:dsp/lib/...`, layer factories, transport helpers, quantizer helpers, etc.)? Recommendation: keep the architectural rule stable now — project owns `dsp/main.lua`, shared code lives in reusable modules — and iterate on exact helper APIs from the looper port.
+
+7. **Source preservation mechanism**: Use explicit region markers, a real Lua parser, or both? Recommendation: region markers for v1 in first-party templates and supported scripts, parser later if needed.
 
 ---
 
@@ -1836,6 +1917,8 @@ The system is working when:
 3. **A code-first structured user** can hand-edit `.ui.lua` files in their terminal/IDE, reload in Manifold, and see their changes. The structured format is human-readable and human-writable, not editor-only.
 
 4. **A migrating user** can export their code-first script to a structured project, get clean component files plus preserved behavior/layout/update code, and continue working from the structured version — in the editor OR in a text editor.
+
+5. **A project DSP user** can open `dsp/main.lua` and see the real project DSP entry there — whether it is fully local or a thin explicit wrapper around reusable project/user/system DSP libraries — without having to reverse-engineer a hidden manifest pointer to a system script.
 
 5. **A supported DSP script user** can split/export their DSP project shape without losing their handler logic; registered params are inspectable in the editor, and UI widgets can bind to DSP params with the editor validating that the paths exist.
 
