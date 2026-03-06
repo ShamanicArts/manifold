@@ -70,32 +70,46 @@ If a task adds complexity but does not unblock the first-pass proof, defer it.
 Use this as the first-pass reference target unless there is a strong reason to rename it:
 
 ```text
-<UserScriptsDir>/ManifoldDefault/
+<UserScriptsDir>/projects/ManifoldDefault/
 ```
 
 ## 3.2 Target layout
 
 ```text
-<UserScriptsDir>/ManifoldDefault/
-  manifold.project.json5
-  ui/
-    main.ui.lua
-    components/
-      transport.ui.lua
-      capture_plane.ui.lua
-      layer_strip.ui.lua
-    behaviors/
-      transport.lua
-      capture_plane.lua
-      layer_strip.lua
-      shared_state.lua
-  dsp/
-    main.lua
-  themes/
-    dark.lua
-  editor/
-    workspace.json5
+<UserScriptsDir>/
+  ui/          # user-global UI assets / loose scripts / reusable pieces
+  dsp/         # user-global DSP assets / loose scripts / reusable pieces
+  projects/
+    ManifoldDefault/
+      manifold.project.json5
+      ui/
+        main.ui.lua
+        components/
+          transport.ui.lua
+          capture_plane.ui.lua
+          layer_strip.ui.lua
+        behaviors/
+          transport.lua
+          capture_plane.lua
+          layer_strip.lua
+          shared_state.lua
+      dsp/
+        main.lua
+      themes/
+        dark.lua
+      editor/
+        workspace.json5
 ```
+
+## 3.2.1 Asset scopes for first pass
+We need to keep three different asset scopes distinct:
+
+- **project-local**: assets inside `projects/<ProjectName>/...`
+- **user-global**: assets inside `<UserScriptsDir>/ui` and `<UserScriptsDir>/dsp`
+- **system-global**: built-in/manifold-shipped assets from the app/repo itself
+
+For first pass, project-local assets are the main target.
+User-global and system-global assets should be treated as separate concepts even if the first loader implementation only partially supports them.
 
 ## 3.3 Legacy references during migration
 We will use the existing legacy files as behavioral/visual references during migration, but they are not the source of truth for the new project.
@@ -103,6 +117,95 @@ We will use the existing legacy files as behavioral/visual references during mig
 Primary reference files:
 - `manifold/ui/looper_ui.lua`
 - current default DSP entry path used by existing settings/runtime
+
+## 3.4 Current phase-1 findings (2026-03-06)
+These are the concrete findings from the initial audit and should be treated as the current working assumptions unless replaced by implementation reality.
+
+### Actual target project path for this repo
+```text
+/home/shamanic/dev/my-plugin/UserScripts/projects/ManifoldDefault/
+```
+
+### Current settings reality
+- This repo now has a repo-local `.manifold.settings.json`.
+- It points at this repo for active first-pass work:
+  - `defaultUiScript = /home/shamanic/dev/my-plugin/manifold/ui/looper_ui.lua`
+  - `devScriptsDir = /home/shamanic/dev/my-plugin/manifold/ui/`
+  - `dspScriptsDir = /home/shamanic/dev/my-plugin/manifold/dsp/`
+  - `userScriptsDir = /home/shamanic/dev/my-plugin/UserScripts`
+- There is still a fallback user config at `~/.config/Manifold/settings.json` pointing at `/home/shamanic/dev/my-plugin-experiment/...`, but the repo-local config should now override that when running from this repo.
+
+### Current in-repo directory state
+- `UserScripts/`
+- `UserScripts/projects/`
+- `UserScripts/ui/`
+- `UserScripts/dsp/`
+- legacy transitional dirs currently also exist:
+  - `UserScripts/UI/`
+  - `UserScripts/DSP/`
+- `UserScripts/projects/` is now the canonical first-pass staging root for actual projects in this repo.
+- `UserScripts/ui/` and `UserScripts/dsp/` are reserved for user-global assets.
+
+### Current default DSP entry used by runtime
+- `manifold/core/BehaviorCoreProcessor.cpp` currently auto-loads:
+  - `juce::File(dspScriptsDir).getChildFile("looper_primitives_dsp.lua")`
+- So the effective current default DSP target for first pass is:
+  - `manifold/dsp/looper_primitives_dsp.lua`
+- `manifold/dsp/default_dsp.lua` exists, but it is **not** the runtime default path for the looper behavior stack.
+
+### Current `looper_ui.lua` structure summary
+The current UI monolith breaks down cleanly into these first-pass regions:
+
+1. **Helpers/state normalization**
+   - command helpers
+   - path helpers
+   - speed/scrub helpers
+   - mode formatting
+   - state normalization
+   - layer state label/colour helpers
+
+2. **Transport panel**
+   - `transport` panel
+   - `tempo` number box
+   - `targetBpm` number box
+   - `linkIndicator` label
+   - `mode` dropdown
+   - `rec` button
+   - `playpause` button
+   - `stop` button
+   - `overdub` toggle
+   - `clearall` button
+
+3. **Capture plane**
+   - `capture` panel
+   - `captureTitle` label
+   - 9 visual strip panels (`strip_1` ... `strip_9`)
+   - 9 interactive hit regions (`segment_hit_1` ... `segment_hit_9`)
+   - custom draw logic for strip waveform peaks / hover / armed state
+   - commit-vs-forward click behavior depending on mode
+
+4. **Layer strip rows**
+   - 4 repeated layer panels (`layer0` ... `layer3`)
+   - per-layer labels/state/bars labels
+   - per-layer waveform view with scrub behavior
+   - per-layer speed knob
+   - per-layer volume knob
+   - per-layer mute/play/clear buttons
+   - panel click selects active layer
+
+5. **Layout/update responsibilities**
+   - `ui_resized` owns all geometry/layout math
+   - `ui_update` owns transport state reflection, layer visual state reflection, scrub restoration handling, mute/play label changes, waveform playhead/colour updates
+
+### First-pass old → new mapping baseline
+- transport structure → `ui/components/transport.ui.lua`
+- transport behavior/state reflection → `ui/behaviors/transport.lua`
+- capture structure → `ui/components/capture_plane.ui.lua`
+- capture drawing/interaction behavior → `ui/behaviors/capture_plane.lua`
+- repeated layer row structure → `ui/components/layer_strip.ui.lua`
+- per-layer dynamic behavior/scrub logic → `ui/behaviors/layer_strip.lua`
+- shared helper/state normalization logic → `ui/behaviors/shared_state.lua`
+- project DSP entry → `dsp/main.lua` wrapping or recreating current `looper_primitives_dsp.lua` path
 
 ---
 
@@ -122,7 +225,8 @@ Primary reference files:
 - enough wiring so the project-backed UI works with that DSP entry
 
 ### Editor/runtime
-- project discovery under `UserScriptsDir`
+- project discovery under `UserScriptsDir/projects`
+- awareness of user-global asset roots under `UserScriptsDir/ui` and `UserScriptsDir/dsp`
 - manifest loading
 - structured `.ui.lua` loading
 - component references
@@ -175,9 +279,10 @@ Stop hand-waving. Precisely identify what is being recreated and how current cod
 **Output:** final project root path + final target directory shape
 
 #### Microtasks
-- [ ] Confirm actual configured `UserScriptsDir` to use for development/testing
-- [ ] Choose the exact project root directory name (`ManifoldDefault` unless changed)
-- [ ] Confirm the exact initial directory layout to create
+- [ ] Confirm actual configured `UserScriptsDir` root to use for development/testing
+- [ ] Confirm canonical subdirs under it: `projects/`, `ui/`, `dsp/`
+- [ ] Choose the exact project root directory name under `projects/` (`ManifoldDefault` unless changed)
+- [ ] Confirm the exact initial project directory layout to create
 - [ ] Confirm whether `assets/` is included now or deferred until needed
 
 ### Task 1.2 — Audit `manifold/ui/looper_ui.lua`
@@ -220,8 +325,9 @@ Stop hand-waving. Precisely identify what is being recreated and how current cod
 Create the real project directory and minimal placeholder files so the new world exists concretely on disk.
 
 ## Exit criteria
-- project directory exists under `UserScriptsDir`
-- all top-level files/folders exist
+- project directory exists under `UserScriptsDir/projects`
+- top-level user roots (`projects/`, `ui/`, `dsp/`) exist
+- all project top-level files/folders exist
 - placeholder files are syntactically valid
 
 ## Tasks
@@ -230,14 +336,18 @@ Create the real project directory and minimal placeholder files so the new world
 **Output:** actual project folders on disk
 
 #### Microtasks
-- [ ] Create project root under `UserScriptsDir`
-- [ ] Create `ui/`
-- [ ] Create `ui/components/`
-- [ ] Create `ui/behaviors/`
-- [ ] Create `dsp/`
-- [ ] Create `themes/`
-- [ ] Create `editor/`
-- [ ] Optionally create `assets/` if needed immediately
+- [ ] Create/confirm top-level user roots under `UserScriptsDir`:
+  - [ ] `projects/`
+  - [ ] `ui/`
+  - [ ] `dsp/`
+- [ ] Create project root under `UserScriptsDir/projects`
+- [ ] Create project `ui/`
+- [ ] Create project `ui/components/`
+- [ ] Create project `ui/behaviors/`
+- [ ] Create project `dsp/`
+- [ ] Create project `themes/`
+- [ ] Create project `editor/`
+- [ ] Optionally create project `assets/` if needed immediately
 
 ### Task 2.2 — Create the manifest
 **Output:** minimal valid `manifold.project.json5`
@@ -441,7 +551,8 @@ By hand, recreate the default UI in the new structured model so we have a real c
 Make the runtime/editor capable of discovering and loading the new project-backed assets.
 
 ## Exit criteria
-- project is discoverable under `UserScriptsDir`
+- project is discoverable under `UserScriptsDir/projects`
+- user-global roots under `UserScriptsDir/ui` and `UserScriptsDir/dsp` are recognized as distinct asset scopes
 - manifest is parsed
 - `main.ui.lua` loads
 - components instantiate
@@ -451,15 +562,17 @@ Make the runtime/editor capable of discovering and loading the new project-backe
 
 ## Tasks
 
-### Task 5.1 — Project discovery under `UserScriptsDir`
+### Task 5.1 — Project discovery under `UserScriptsDir/projects`
 **Likely touch points:** settings/project bootstrap/script listing code
 
 #### Microtasks
-- [ ] Enumerate directories under configured `UserScriptsDir`
+- [ ] Enumerate directories under configured `UserScriptsDir/projects`
 - [ ] Detect directories containing `manifold.project.json5`
 - [ ] Classify these as projects
-- [ ] Continue to classify loose `.lua` files as legacy scripts
-- [ ] Surface projects in script discovery/listing APIs
+- [ ] Recognize `UserScriptsDir/ui` as user-global UI root
+- [ ] Recognize `UserScriptsDir/dsp` as user-global DSP root
+- [ ] Continue to classify loose `.lua` files in supported legacy roots as legacy scripts/assets
+- [ ] Surface projects in discovery/listing APIs without conflating them with global assets
 
 ### Task 5.2 — Manifest loader
 **Likely touch points:** C++ runtime + Lua helper exposure
@@ -639,7 +752,7 @@ This is not exhaustive, but these are likely areas to touch.
 - behavior attachment helper
 
 ## New project files
-- the full `ManifoldDefault/` project tree under `UserScriptsDir`
+- the full `ManifoldDefault/` project tree under `UserScriptsDir/projects`
 
 ---
 
@@ -724,7 +837,8 @@ If no, the pass is not complete.
 Use this checklist to decide if first pass is done.
 
 ## Project shape
-- [ ] A real project directory exists under `UserScriptsDir`
+- [ ] A real project directory exists under `UserScriptsDir/projects`
+- [ ] top-level user roots exist under `UserScriptsDir` (`projects/`, `ui/`, `dsp/`)
 - [ ] `manifold.project.json5` exists and resolves correctly
 - [ ] project-backed UI and DSP entry are both present
 
