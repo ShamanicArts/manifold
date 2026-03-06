@@ -691,6 +691,20 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   newLua.new_usertype<dsp_primitives::MixerNode>(
       "MixerNode",
       sol::constructors<std::shared_ptr<dsp_primitives::MixerNode>()>(),
+      "setInputCount", &dsp_primitives::MixerNode::setInputCount,
+      "getInputCount", &dsp_primitives::MixerNode::getInputCount,
+      "setGain", [](dsp_primitives::MixerNode& mixer, int busIndex, float gain) {
+        mixer.setGain(busIndex, gain);
+      },
+      "setPan", [](dsp_primitives::MixerNode& mixer, int busIndex, float pan) {
+        mixer.setPan(busIndex, pan);
+      },
+      "getGain", [](const dsp_primitives::MixerNode& mixer, int busIndex) {
+        return mixer.getGain(busIndex);
+      },
+      "getPan", [](const dsp_primitives::MixerNode& mixer, int busIndex) {
+        return mixer.getPan(busIndex);
+      },
       "setGain1", &dsp_primitives::MixerNode::setGain1,
       "setGain2", &dsp_primitives::MixerNode::setGain2,
       "setGain3", &dsp_primitives::MixerNode::setGain3,

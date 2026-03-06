@@ -15,6 +15,7 @@ extern "C" {
 #include <juce_opengl/juce_opengl.h>
 
 #include <tuple>
+#include <utility>
 
 using namespace juce::gl;
 
@@ -25,6 +26,17 @@ using namespace juce::gl;
 namespace {
     // Current graphics context - only valid during paint callback
     thread_local juce::Graphics* currentGraphics = nullptr;
+
+    template <typename Fn>
+    void callAsyncIfCanvasAlive(Canvas& c, Fn&& fn) {
+        juce::Component::SafePointer<Canvas> safeCanvas(&c);
+        juce::MessageManager::callAsync(
+            [safeCanvas, fn = std::forward<Fn>(fn)]() mutable {
+                if (safeCanvas != nullptr) {
+                    fn(*safeCanvas);
+                }
+            });
+    }
 }
 
 // ============================================================================
@@ -163,8 +175,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onClick = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onClick = nullptr;
                 });
             }
         },
@@ -186,8 +198,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onMouseDown = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onMouseDown = nullptr;
                 });
             }
         },
@@ -211,8 +223,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onMouseDrag = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onMouseDrag = nullptr;
                 });
             }
         },
@@ -234,8 +246,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onMouseUp = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onMouseUp = nullptr;
                 });
             }
         },
@@ -253,8 +265,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onDoubleClick = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onDoubleClick = nullptr;
                 });
             }
         },
@@ -277,8 +289,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onMouseWheel = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onMouseWheel = nullptr;
                 });
             }
         },
@@ -317,8 +329,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 c.setWantsKeyboardFocus(true);
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onKeyPress = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onKeyPress = nullptr;
                 });
             }
         },
@@ -338,8 +350,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onDraw = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onDraw = nullptr;
                 });
             }
         },
@@ -363,8 +375,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onGLRender = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onGLRender = nullptr;
                 });
             }
         },
@@ -382,8 +394,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onGLContextCreated = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onGLContextCreated = nullptr;
                 });
             }
         },
@@ -401,8 +413,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                 };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
-                juce::MessageManager::callAsync([&c]() {
-                    c.onGLContextClosing = nullptr;
+                callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    canvas.onGLContextClosing = nullptr;
                 });
             }
         }

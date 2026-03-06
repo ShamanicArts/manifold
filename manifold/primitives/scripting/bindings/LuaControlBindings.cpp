@@ -128,6 +128,50 @@ void LuaControlBindings::registerCommandBindings(sol::state& lua,
         return processor->hasEndpoint(path);
     };
 
+    lua["listEndpoints"] = [&state, &lua](sol::optional<std::string> prefixOpt,
+                                            sol::optional<bool> writableOnlyOpt,
+                                            sol::optional<bool> numericOnlyOpt) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        if (!processor) return result;
+
+        const std::string prefix = prefixOpt.value_or(std::string());
+        const bool writableOnly = writableOnlyOpt.value_or(false);
+        const bool numericOnly = numericOnlyOpt.value_or(false);
+
+        const auto endpoints = processor->getEndpointRegistry().getAllEndpoints();
+        int outIndex = 1;
+        for (const auto& endpoint : endpoints) {
+            const std::string path = endpoint.path.toStdString();
+            if (!prefix.empty() && path.rfind(prefix, 0) != 0) {
+                continue;
+            }
+            if (writableOnly && endpoint.access < 2) {
+                continue;
+            }
+            if (numericOnly) {
+                const std::string type = endpoint.type.toStdString();
+                const bool numeric = type.find('f') != std::string::npos ||
+                                     type.find('i') != std::string::npos ||
+                                     type.find('d') != std::string::npos;
+                if (!numeric) {
+                    continue;
+                }
+            }
+
+            auto item = sol::table(lua, sol::create);
+            item["path"] = path;
+            item["type"] = endpoint.type.toStdString();
+            item["rangeMin"] = endpoint.rangeMin;
+            item["rangeMax"] = endpoint.rangeMax;
+            item["access"] = endpoint.access;
+            item["description"] = endpoint.description.toStdString();
+            item["category"] = endpoint.category.toStdString();
+            result[outIndex++] = item;
+        }
+        return result;
+    };
+
     lua["seekLayer"] = [&state](int layerIdx, float normalizedPos) {
         auto* processor = state.getProcessor();
         if (!processor) return;

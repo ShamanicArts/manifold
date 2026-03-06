@@ -5,10 +5,16 @@
 namespace dsp_primitives {
 
 namespace {
+    constexpr float kMinStableResonance = 0.06f;
+
     inline float tanh_approx(float x) {
         // Fast tanh approximation: x / (1 + |x| * (1 + |x|/3))
         const float ax = std::abs(x);
         return x / (1.0f + ax * (1.0f + ax * 0.33333333f));
+    }
+
+    inline bool isFinite(float v) {
+        return std::isfinite(v);
     }
 }
 
@@ -76,9 +82,14 @@ void SVFNode::process(const std::vector<AudioBufferView>& inputs,
         currentDrive_ += (targetDrive - currentDrive_) * driveSmoothingCoeff_;
         currentMix_ += (targetMix - currentMix_) * mixSmoothingCoeff_;
 
-        // Calculate filter coefficients from smoothed values
-        const float g = std::tan(3.14159265f * currentCutoff_ / static_cast<float>(sampleRate_));
-        const float k = 1.0f / std::max(0.01f, currentResonance_ * 2.0f);
+        const float safeCutoff = std::max(20.0f, std::min(0.49f * static_cast<float>(sampleRate_), currentCutoff_));
+        const float safeResonance = std::max(kMinStableResonance, std::min(1.0f, currentResonance_));
+
+        // Calculate filter coefficients from smoothed values.
+        // Very low resonance values blow k up hard enough to destabilise this topology,
+        // so clamp to the empirically stable floor.
+        const float g = std::tan(3.14159265f * safeCutoff / static_cast<float>(sampleRate_));
+        const float k = 1.0f / std::max(kMinStableResonance, safeResonance * 2.0f);
 
         for (int ch = 0; ch < numChannels; ++ch) {
             float input = inputs.empty() ? 0.0f : inputs[0].getSample(ch, i);
@@ -100,6 +111,12 @@ void SVFNode::process(const std::vector<AudioBufferView>& inputs,
             const float v1_damped = v1 + g * v3;
             const float v2_damped = v2 + g * v1_damped;
             
+            if (!isFinite(v1_damped) || !isFinite(v2_damped)) {
+                s = ChannelState{};
+                outputs[0].setSample(ch, i, input);
+                continue;
+            }
+
             s.ic1eq = v1_damped;
             s.ic2eq = v2_damped;
             
@@ -126,6 +143,11 @@ void SVFNode::process(const std::vector<AudioBufferView>& inputs,
             // Mix dry/wet
             const float dry = inputs.empty() ? 0.0f : inputs[0].getSample(ch, i);
             output = dry * (1.0f - currentMix_) + output * currentMix_;
+
+            if (!isFinite(output)) {
+                s = ChannelState{};
+                output = dry;
+            }
             
             outputs[0].setSample(ch, i, output);
         }
@@ -137,7 +159,7 @@ void SVFNode::setCutoff(float freq) {
 }
 
 void SVFNode::setResonance(float q) {
-    targetResonance_.store(std::max(0.0f, std::min(1.0f, q)), std::memory_order_release);
+    targetResonance_.store(std::max(kMinStableResonance, std::min(1.0f, q)), std::memory_order_release);
 }
 
 void SVFNode::setMode(Mode mode) {

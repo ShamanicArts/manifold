@@ -43,7 +43,7 @@ function XYPadWidget:_updateFromMouse(mx, my)
     local margin = 20
 
     self._x = Utils.clamp((mx - margin) / (w - margin * 2), 0, 1)
-    self._y = Utils.clamp((my - margin) / (h - margin * 2), 0, 1)
+    self._y = 1.0 - Utils.clamp((my - margin) / (h - margin * 2), 0, 1)
 
     if self._onChange then
         self._onChange(self._x, self._y)
@@ -86,7 +86,7 @@ function XYPadWidget:onDraw(w, h)
 
     -- Current position
     local px = margin + self._x * drawW
-    local py = margin + self._y * drawH
+    local py = margin + (1.0 - self._y) * drawH
 
     -- Glow
     for i = 3, 1, -1 do

@@ -26,10 +26,10 @@ function buildPlugin(ctx)
   
   ctx.params.register("/test/svf/resonance", {
     type = "f",
-    min = 0.0,
+    min = 0.06,
     max = 1.0,
     default = 0.5,
-    description = "Filter resonance/Q"
+    description = "Filter resonance/Q (stable floor at 0.06)"
   })
   ctx.params.bind("/test/svf/resonance", svf, "setResonance")
   

@@ -806,6 +806,13 @@ bool LuaEngine::switchScript(const juce::File &scriptFile) {
     }
   }
 
+  // Clear the current UI before touching transient DSP slots.
+  // Some UI trees keep callbacks/overlays alive long enough that unloading DSP
+  // first can trip use-after-free style crashes during the same switch.
+  if (pImpl->rootCanvas) {
+    pImpl->rootCanvas->clearChildren();
+  }
+
   // Enforce transient-by-default DSP-slot policy.
   // Any managed slot is unloaded on UI switch unless explicitly marked
   // persistent via setDspSlotPersistOnUiSwitch(slot, true).
@@ -838,11 +845,6 @@ bool LuaEngine::switchScript(const juce::File &scriptFile) {
         pImpl->persistentDspSlots.erase(slot);
       }
     }
-  }
-
-  // Clear the current UI
-  if (pImpl->rootCanvas) {
-    pImpl->rootCanvas->clearChildren();
   }
 
   // Clear non-persistent callbacks before switching scripts
