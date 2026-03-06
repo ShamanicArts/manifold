@@ -3,6 +3,7 @@
 #include "OSCEndpointRegistry.h"
 #include "OSCQuery.h"
 #include "OSCServer.h"
+#include "../scripting/LuaEngine.h"
 #include "../scripting/ScriptableProcessor.h"
 #include "../dsp/CaptureBuffer.h"
 
@@ -437,6 +438,9 @@ void ControlServer::clientLoop(int clientFd) {
 // ============================================================================
 
 std::string ControlServer::processCommand(const std::string& cmd) {
+    const std::string trimmedCmd = trim(cmd);
+    const std::string upperTrimmedCmd = toUpper(trimmedCmd);
+
     if (owner) {
         constexpr const char* kDspRunPrefix = "DSPRUN ";
         constexpr size_t kDspRunPrefixLen = 7;
@@ -449,6 +453,45 @@ std::string ControlServer::processCommand(const std::string& cmd) {
             }
             return "ERROR " + owner->getDspScriptLastError();
         }
+    }
+
+    if (upperTrimmedCmd == "PERF RESET") {
+        if (frameTimings != nullptr) {
+            frameTimings->resetPeaks();
+        }
+        return "OK";
+    }
+
+    if (upperTrimmedCmd == "EVAL" || upperTrimmedCmd.rfind("EVAL ", 0) == 0) {
+        if (luaEngine == nullptr) {
+            return "ERROR no lua engine";
+        }
+        if (!luaEngine->isScriptLoaded()) {
+            return "ERROR lua engine not ready";
+        }
+
+        const size_t separatorPos = cmd.find_first_of(" \t");
+        std::string script = separatorPos == std::string::npos ? "" : cmd.substr(separatorPos + 1);
+        juce::String scriptText(script);
+        scriptText = scriptText.replace("\\n", "\n");
+
+        auto request = luaEngine->queueEval(scriptText.toStdString());
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!request->completed.load(std::memory_order_acquire)) {
+            if (std::chrono::steady_clock::now() >= deadline) {
+                return "ERROR eval timeout";
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+
+        std::lock_guard<std::mutex> resultLock(request->resultMutex);
+        if (request->isError) {
+            return "ERROR " + request->result;
+        }
+        if (request->result.empty()) {
+            return "OK";
+        }
+        return "OK " + request->result;
     }
 
     // Direct-value endpoints (commandType=None) are handled synchronously.
@@ -738,6 +781,29 @@ std::string ControlServer::buildDiagnoseJson() {
 
     o << jsonNum("connectedClients", numClients) << ",";
     o << jsonNum("connectedWatchers", numWatchers);
+
+    if (frameTimings != nullptr) {
+        o << ",\"frameTiming\":{";
+        o << jsonNum("frameCount", frameTimings->frameCount.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("totalUs", frameTimings->total.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("pushStateUs", frameTimings->pushState.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("eventListenersUs", frameTimings->eventListeners.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("uiUpdateUs", frameTimings->uiUpdate.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("paintUs", frameTimings->paint.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakTotalUs", frameTimings->total.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakPushStateUs", frameTimings->pushState.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakEventListenersUs", frameTimings->eventListeners.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakUiUpdateUs", frameTimings->uiUpdate.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakPaintUs", frameTimings->paint.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("avgTotalUs", frameTimings->total.getAvgUs()) << ",";
+        o << jsonNum("avgPushStateUs", frameTimings->pushState.getAvgUs()) << ",";
+        o << jsonNum("avgEventListenersUs", frameTimings->eventListeners.getAvgUs()) << ",";
+        o << jsonNum("avgUiUpdateUs", frameTimings->uiUpdate.getAvgUs()) << ",";
+        o << jsonNum("avgPaintUs", frameTimings->paint.getAvgUs()) << ",";
+        o << jsonNum("totalPaintAccumulatedUs", frameTimings->totalPaintAccumulatedUs.load(std::memory_order_relaxed));
+        o << "}";
+    }
+
     o << "}";
     return o.str();
 }

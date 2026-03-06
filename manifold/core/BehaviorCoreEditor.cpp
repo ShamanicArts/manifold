@@ -1,7 +1,9 @@
 #include "BehaviorCoreEditor.h"
 #include "BehaviorCoreProcessor.h"
 #include "../primitives/core/Settings.h"
+#include "../primitives/ui/Canvas.h"
 
+#include <chrono>
 #include <cstdio>
 
 BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
@@ -10,6 +12,8 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
 
     addAndMakeVisible(rootCanvas);
     luaEngine.initialise(&processorRef, &rootCanvas);
+    processorRef.getControlServer().setFrameTimings(&luaEngine.frameTimings);
+    processorRef.getControlServer().setLuaEngine(&luaEngine);
 
     // Load settings
     auto& settings = Settings::getInstance();
@@ -43,13 +47,29 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
         }
     }
 
+    // JUCE Timer at 30Hz - message thread based, reliable timing for UI
+    // (60Hz target is capped to ~30Hz by message queue on Linux anyway)
     startTimerHz(30);
     resized();
 }
 
-BehaviorCoreEditor::~BehaviorCoreEditor() = default;
+BehaviorCoreEditor::~BehaviorCoreEditor() {
+    stopTimer();
+    processorRef.getControlServer().setLuaEngine(nullptr);
+    processorRef.getControlServer().setFrameTimings(nullptr);
+}
 
 void BehaviorCoreEditor::timerCallback() {
+    using Clock = std::chrono::steady_clock;
+    static auto lastCall = Clock::now();
+    const auto now = Clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(now - lastCall).count();
+    lastCall = now;
+    
+    // Always log the actual interval and work time
+    static int logCount = 0;
+    const auto timerStart = Clock::now();
+
     auto pendingPath = processorRef.getAndClearPendingUISwitch();
     if (!pendingPath.empty()) {
         juce::File newScript(pendingPath);
@@ -68,12 +88,31 @@ void BehaviorCoreEditor::timerCallback() {
     processorRef.processLinkPendingRequests();
 
     // Drain any deferred DSP-slot host destruction after UI switch/update.
-    // This avoids destroying slot Lua VMs from inside ui_cleanup call stacks.
     processorRef.drainPendingSlotDestroy();
 
     if (usingLuaUi) {
         luaEngine.notifyUpdate();
         rootCanvas.repaint();
+
+        const int64_t totalUs = std::chrono::duration_cast<std::chrono::microseconds>(
+            Clock::now() - timerStart).count();
+        const int64_t pushStateUs =
+            luaEngine.frameTimings.pushState.currentUs.load(std::memory_order_relaxed);
+        const int64_t eventListenersUs =
+            luaEngine.frameTimings.eventListeners.currentUs.load(std::memory_order_relaxed);
+        const int64_t uiUpdateUs =
+            luaEngine.frameTimings.uiUpdate.currentUs.load(std::memory_order_relaxed);
+        const int64_t paintUs =
+            rootCanvas.lastPaintDurationUs.load(std::memory_order_relaxed);
+
+        luaEngine.frameTimings.update(totalUs, pushStateUs, eventListenersUs,
+                                      uiUpdateUs, paintUs);
+        
+        // Log interval vs work time
+        if (++logCount % 60 == 0) {
+            std::fprintf(stderr, "[TIMER] interval=%.1fms work=%.1fms (%.1f%% occupancy)\n",
+                        elapsed / 1000.0, totalUs / 1000.0, 100.0 * totalUs / elapsed);
+        }
     }
 }
 

@@ -187,10 +187,16 @@ OSCQueryServer::~OSCQueryServer() {
     stop();
 }
 
-void OSCQueryServer::start(ScriptableProcessor* processor, OSCEndpointRegistry* reg,
-                           int httpPort_, int oscPort_) {
+void OSCQueryServer::setContext(ScriptableProcessor* processor,
+                                OSCEndpointRegistry* reg) {
     owner = processor;
     registry = reg;
+    buildTree();
+}
+
+void OSCQueryServer::start(ScriptableProcessor* processor, OSCEndpointRegistry* reg,
+                           int httpPort_, int oscPort_) {
+    setContext(processor, reg);
     httpPort = httpPort_;
     oscUdpPort = oscPort_;
 

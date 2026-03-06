@@ -121,6 +121,7 @@ public:
     OSCQueryServer();
     ~OSCQueryServer();
 
+    void setContext(ScriptableProcessor* processor, OSCEndpointRegistry* registry);
     void start(ScriptableProcessor* processor, OSCEndpointRegistry* registry, int httpPort, int oscPort);
     void stop();
 

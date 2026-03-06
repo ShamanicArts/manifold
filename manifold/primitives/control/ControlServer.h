@@ -19,10 +19,12 @@
 #endif
 
 #include "../scripting/ScriptingConfig.h"
+#include "../ui/FrameTimings.h"
 
 // Forward declarations
 class ScriptableProcessor;
 class CaptureBuffer;
+class LuaEngine;
 
 // ============================================================================
 // Lock-free SPSC command queue: control thread -> audio thread
@@ -261,6 +263,9 @@ public:
   std::string getStateJson();
   std::string getDiagnosticsJson();
 
+  void setFrameTimings(FrameTimings *timings) { frameTimings = timings; }
+  void setLuaEngine(LuaEngine *engine) { luaEngine = engine; }
+
   // UI switch request access
   UISwitchRequest &getUISwitchRequest() { return uiSwitchRequest; }
 
@@ -315,6 +320,9 @@ private:
 
   // UI switch request (set by server thread, read by audio thread)
   UISwitchRequest uiSwitchRequest;
+
+  FrameTimings *frameTimings = nullptr;
+  LuaEngine *luaEngine = nullptr;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ControlServer)
 };

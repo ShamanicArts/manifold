@@ -151,6 +151,7 @@ void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
 
     oscServer.setSettings(oscSettings);
     oscServer.start(this);
+    oscQueryServer.setContext(this, &endpointRegistry);
 
     if (oscSettings.oscQueryEnabled) {
         oscQueryServer.start(this, &endpointRegistry, oscSettings.queryPort,

@@ -4,10 +4,13 @@
 #include "DSPPrimitiveWrappers.h"
 #include "ILuaControlState.h"
 #include "../ui/Canvas.h"
+#include "../ui/FrameTimings.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -90,6 +93,18 @@ public:
   /** Clear all non-persistent callbacks (called on script switch). */
   void clearNonPersistentCallbacks();
 
+  struct EvalRequest {
+    explicit EvalRequest(std::string luaCode) : code(std::move(luaCode)) {}
+
+    std::string code;
+    std::atomic<bool> completed{false};
+    bool isError = false;
+    std::string result;
+    std::mutex resultMutex;
+  };
+
+  std::shared_ptr<EvalRequest> queueEval(const std::string& code);
+
   // ============================================================================
   // ILuaControlState implementation
   // ============================================================================
@@ -129,9 +144,12 @@ public:
                             const std::string& initialPath,
                             sol::function callback) override;
 
+  FrameTimings frameTimings;
+
 private:
   void invokeEventListeners();
   void processPendingOSCCallbacks();
+  void processPendingEvalRequests();
   void registerBindings();
   void pushStateToLua();
   void checkHotReload();

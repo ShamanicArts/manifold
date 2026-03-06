@@ -25,10 +25,12 @@ extern "C" {
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <map>
 #include <mutex>
+#include <sstream>
 #include <tuple>
 #include <unordered_set>
 #include <juce_graphics/juce_graphics.h>
@@ -122,6 +124,43 @@ const char *toLayerStateString(ScriptableLayerState state) {
   }
 }
 
+std::string luaEvalResultToString(const sol::object &value) {
+  if (!value.valid() || value.get_type() == sol::type::nil) {
+    return "";
+  }
+
+  if (value.is<std::string>()) {
+    return value.as<std::string>();
+  }
+  if (value.is<const char *>()) {
+    return std::string(value.as<const char *>());
+  }
+  if (value.is<bool>()) {
+    return value.as<bool>() ? "true" : "false";
+  }
+  if (value.is<int>()) {
+    return std::to_string(value.as<int>());
+  }
+  if (value.is<int64_t>()) {
+    return std::to_string(value.as<int64_t>());
+  }
+  if (value.is<float>()) {
+    std::ostringstream stream;
+    stream << value.as<float>();
+    return stream.str();
+  }
+  if (value.is<double>()) {
+    std::ostringstream stream;
+    stream << value.as<double>();
+    return stream.str();
+  }
+  if (value.get_type() == sol::type::table) {
+    return "[table]";
+  }
+
+  return "[value]";
+}
+
 } // namespace
 
 // ============================================================================
@@ -193,6 +232,9 @@ struct LuaEngine::Impl {
   std::map<juce::String, ILuaControlState::OSCQueryHandler> oscQueryHandlers;
   std::mutex oscQueryHandlersMutex;
 
+  std::vector<std::shared_ptr<LuaEngine::EvalRequest>> pendingEvalRequests;
+  std::mutex pendingEvalRequestsMutex;
+
   // ============================================================================
   // Looper Event Listeners (using interface types for compatibility)
   // ============================================================================
@@ -208,6 +250,7 @@ struct LuaEngine::Impl {
   bool lastRecording = false;
   std::vector<int> lastLayerStates;
   int lastCommitCount = 0;
+  int64_t lastFrameTimingLogCount = -1;
 };
 
 // ============================================================================
@@ -341,6 +384,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
     coreEngine_.getLuaState()["ui_init"] = sol::nil;
     coreEngine_.getLuaState()["ui_update"] = sol::nil;
     coreEngine_.getLuaState()["ui_resized"] = sol::nil;
+    coreEngine_.getLuaState()["shell"] = sol::nil;
   }
 
   // Delegate script execution to Core Engine
@@ -390,6 +434,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
                 pImpl->sharedShell = shellRes.get<sol::table>();
                 pImpl->hasSharedShell = true;
                 pImpl->sharedShellCreateOk = true;
+                coreEngine_.getLuaState()["shell"] = pImpl->sharedShell;
               } else {
                 sol::error err = shellRes;
                 std::fprintf(stderr,
@@ -612,11 +657,35 @@ void LuaEngine::notifyUpdate() {
 
   // Process queued OSC callbacks on message thread
   processPendingOSCCallbacks();
+  processPendingEvalRequests();
 
-  pushStateToLua();
+  using Clock = std::chrono::steady_clock;
 
-  // Invoke event listeners for state changes
-  invokeEventListeners();
+  int64_t pushStateUs = 0;
+  int64_t eventListenersUs = 0;
+  int64_t uiUpdateUs = 0;
+
+  {
+    const auto start = Clock::now();
+    pushStateToLua();
+    pushStateUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                      Clock::now() - start)
+                      .count();
+  }
+
+  {
+    const auto start = Clock::now();
+    invokeEventListeners();
+    eventListenersUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                           Clock::now() - start)
+                           .count();
+  }
+
+  frameTimings.pushState.currentUs.store(pushStateUs, std::memory_order_relaxed);
+  frameTimings.eventListeners.currentUs.store(eventListenersUs,
+                                              std::memory_order_relaxed);
+
+  const auto uiUpdateStart = Clock::now();
 
   sol::function fn;
   {
@@ -656,6 +725,36 @@ void LuaEngine::notifyUpdate() {
       std::fprintf(stderr, "LuaEngine: ui_update exception: %s\n", e.what());
     }
   }
+
+  uiUpdateUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                   Clock::now() - uiUpdateStart)
+                   .count();
+  frameTimings.uiUpdate.currentUs.store(uiUpdateUs, std::memory_order_relaxed);
+
+  const int64_t frameCount =
+      frameTimings.frameCount.load(std::memory_order_relaxed);
+  if (frameCount > 0 && (frameCount % 150) == 0 &&
+      frameCount != pImpl->lastFrameTimingLogCount) {
+    pImpl->lastFrameTimingLogCount = frameCount;
+
+    const int64_t totalUs = frameTimings.total.currentUs.load(std::memory_order_relaxed);
+    const int64_t paintUs = frameTimings.paint.currentUs.load(std::memory_order_relaxed);
+    const int64_t peakUs = frameTimings.total.peakUs.load(std::memory_order_relaxed);
+    const int64_t avgUsX100 = frameTimings.total.avgUsX100.load(std::memory_order_relaxed);
+
+    std::fprintf(stderr,
+                 "FrameTiming[%lld]: total=%lldus pushState=%lldus events=%lldus "
+                 "uiUpdate=%lldus paint=%lldus peak=%lldus avg=%.1fus\n",
+                 static_cast<long long>(frameCount),
+                 static_cast<long long>(totalUs),
+                 static_cast<long long>(pushStateUs),
+                 static_cast<long long>(eventListenersUs),
+                 static_cast<long long>(uiUpdateUs),
+                 static_cast<long long>(paintUs),
+                 static_cast<long long>(peakUs),
+                 static_cast<double>(avgUsX100) / 100.0);
+    std::fflush(stderr);
+  }
 }
 
 bool LuaEngine::isScriptLoaded() const { return coreEngine_.isScriptLoaded(); }
@@ -666,6 +765,14 @@ juce::File LuaEngine::getScriptDirectory() const {
   if (pImpl->currentScriptFile.existsAsFile())
     return pImpl->currentScriptFile.getParentDirectory();
   return {};
+}
+
+std::shared_ptr<LuaEngine::EvalRequest>
+LuaEngine::queueEval(const std::string &code) {
+  auto request = std::make_shared<EvalRequest>(code);
+  std::lock_guard<std::mutex> lock(pImpl->pendingEvalRequestsMutex);
+  pImpl->pendingEvalRequests.push_back(request);
+  return request;
 }
 
 // ============================================================================
@@ -975,6 +1082,54 @@ void LuaEngine::processPendingOSCCallbacks() {
                      message.address.toRawUTF8(), e.what());
       }
     }
+  }
+}
+
+void LuaEngine::processPendingEvalRequests() {
+  std::vector<std::shared_ptr<EvalRequest>> requests;
+  {
+    std::lock_guard<std::mutex> queueLock(pImpl->pendingEvalRequestsMutex);
+    if (pImpl->pendingEvalRequests.empty()) {
+      return;
+    }
+    requests.swap(pImpl->pendingEvalRequests);
+  }
+
+  const std::lock_guard<std::recursive_mutex> luaLock(coreEngine_.getMutex());
+  auto &lua = coreEngine_.getLuaState();
+
+  for (const auto &request : requests) {
+    bool isError = false;
+    std::string result;
+
+    try {
+      sol::load_result loadResult = lua.load(request->code);
+      if (!loadResult.valid()) {
+        sol::error err = loadResult;
+        isError = true;
+        result = err.what();
+      } else {
+        sol::protected_function chunk = loadResult;
+        sol::protected_function_result execResult = chunk();
+        if (!execResult.valid()) {
+          sol::error err = execResult;
+          isError = true;
+          result = err.what();
+        } else if (execResult.return_count() > 0) {
+          result = luaEvalResultToString(execResult.get<sol::object>());
+        }
+      }
+    } catch (const std::exception &e) {
+      isError = true;
+      result = e.what();
+    }
+
+    {
+      std::lock_guard<std::mutex> resultLock(request->resultMutex);
+      request->isError = isError;
+      request->result = result;
+    }
+    request->completed.store(true, std::memory_order_release);
   }
 }
 

@@ -1,6 +1,11 @@
 #include "Canvas.h"
 
+#include <chrono>
+
 using namespace juce::gl;
+
+// Static paint accumulation across all canvases
+std::atomic<int64_t> Canvas::totalPaintAccumulatedUs{0};
 
 Canvas::Canvas(const juce::String& name) 
     : juce::Component(name) 
@@ -58,30 +63,41 @@ void Canvas::parentHierarchyChanged() {
 }
 
 void Canvas::paint(juce::Graphics& g) {
-    // Don't paint background if OpenGL is enabled - it handles its own background
-    if (openGLEnabled)
+    const bool isRootCanvas = dynamic_cast<Canvas*>(getParentComponent()) == nullptr;
+    const auto startTime = std::chrono::steady_clock::now();
+
+    if (openGLEnabled) {
+        const auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - startTime).count();
+        lastPaintDurationUs.store(elapsedUs, std::memory_order_relaxed);
+        totalPaintAccumulatedUs.fetch_add(elapsedUs, std::memory_order_relaxed);
         return;
-    
-    // Standard 2D rendering
-    if (style.opacity < 0.001f) return;
-    
-    auto bounds = getLocalBounds().toFloat();
-    
-    g.setColour(style.background.withMultipliedAlpha(style.opacity));
-    if (style.cornerRadius > 0.001f)
-        g.fillRoundedRectangle(bounds, style.cornerRadius);
-    else
-        g.fillRect(bounds);
-    
-    if (style.borderWidth > 0.001f) {
-        g.setColour(style.border.withMultipliedAlpha(style.opacity));
-        if (style.cornerRadius > 0.001f)
-            g.drawRoundedRectangle(bounds, style.cornerRadius, style.borderWidth);
-        else
-            g.drawRect(bounds, static_cast<int>(style.borderWidth));
     }
-    
+
+    if (style.opacity >= 0.001f) {
+        auto bounds = getLocalBounds().toFloat();
+
+        g.setColour(style.background.withMultipliedAlpha(style.opacity));
+        if (style.cornerRadius > 0.001f)
+            g.fillRoundedRectangle(bounds, style.cornerRadius);
+        else
+            g.fillRect(bounds);
+
+        if (style.borderWidth > 0.001f) {
+            g.setColour(style.border.withMultipliedAlpha(style.opacity));
+            if (style.cornerRadius > 0.001f)
+                g.drawRoundedRectangle(bounds, style.cornerRadius, style.borderWidth);
+            else
+                g.drawRect(bounds, static_cast<int>(style.borderWidth));
+        }
+    }
+
     if (onDraw) onDraw(*this, g);
+
+    const auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - startTime).count();
+    lastPaintDurationUs.store(elapsedUs, std::memory_order_relaxed);
+    totalPaintAccumulatedUs.fetch_add(elapsedUs, std::memory_order_relaxed);
 }
 
 void Canvas::newOpenGLContextCreated() {
@@ -124,7 +140,19 @@ void Canvas::mouseDown(const juce::MouseEvent& e) {
 }
 
 void Canvas::mouseDrag(const juce::MouseEvent& e) {
-    if (onMouseDrag) onMouseDrag(e);
+    if (!onMouseDrag) return;
+    
+    // Throttle to ~60Hz max (16ms interval) to prevent message thread saturation
+    static thread_local auto lastDragTime = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(now - lastDragTime).count();
+    
+    if (elapsed < 16000) {  // Skip if < 16ms since last drag
+        return;
+    }
+    lastDragTime = now;
+    
+    onMouseDrag(e);
 }
 
 void Canvas::mouseUp(const juce::MouseEvent& e) {

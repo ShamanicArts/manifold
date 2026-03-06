@@ -3,6 +3,8 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_opengl/juce_opengl.h>
 #include "CanvasStyle.h"
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -54,6 +56,13 @@ public:
     
     // Standard 2D paint
     void paint(juce::Graphics& g) override;
+
+    std::atomic<int64_t> lastPaintDurationUs{0};
+    
+    // Accumulate paint time from ALL canvases in a frame (not just root)
+    static std::atomic<int64_t> totalPaintAccumulatedUs;
+    static void resetPaintAccumulation() { totalPaintAccumulatedUs.store(0, std::memory_order_relaxed); }
+    static int64_t getAccumulatedPaintUs() { return totalPaintAccumulatedUs.load(std::memory_order_relaxed); }
     
     // OpenGLRenderer callbacks
     void newOpenGLContextCreated() override;
