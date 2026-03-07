@@ -479,15 +479,29 @@ Lua UIs are not limited to “plugin controls.” They can become:
 - diagnostics surfaces
 - script-driven dashboards
 
-### 6. Future round-trip authoring potential
-The current architecture is already pointing toward:
+### 6. Structured project system (implemented)
 
-- stronger visual authoring
-- persistence/save-load
-- code generation or round-trip edits
-- better mapping/wiring tools
+The system now supports structured projects with:
 
-Not all of that is complete, but the shape is there.
+- `manifold.project.json5` manifest
+- `.ui.lua` pure-data scene/component files
+- `behaviors/*.lua` modules with `init/update/resized/cleanup` lifecycle
+- component composition via `ref` + prop merging + ID prefixing
+- declarative layout system
+- full data round-trip (read/edit/save `.ui.lua` files)
+- 4 shipping structured projects (Looper, SuperDonut, LooperTabs, MidiSynth)
+
+**See `EDITOR_PROJECT_FORMAT_AND_AUTHORING_SPEC.md` for the full spec and `EDITOR_WORKING_STATUS.md` for current implementation state.**
+
+### 7. Future work in progress
+
+Still needed:
+- visual move/resize for structured projects (currently broken — see working status)
+- override system for code-first scripts
+- DSP param introspection
+- asset system (images, fonts)
+- split export (code-first → structured)
+- code-first script contract (`Script.define`)
 
 ---
 
@@ -517,12 +531,22 @@ Not all of that is complete, but the shape is there.
 - `manifold/ui/shell/methods_core.lua`
 - `manifold/ui/shell/bindings.lua`
 
+### Structured project system
+- `manifold/ui/project_loader.lua` — Runtime class, scene instantiation, component loading, behavior lifecycle, layout, save/reload, global introspection API (~1500 lines)
+- `manifold/ui/editor_core.lua` — Editor mode layout (hierarchy, preview, inspector panels)
+
 ### User UI + widgets
-- `manifold/ui/looper_ui.lua`
+- `manifold/ui/looper_ui.lua` — code-first monolith UI
 - `manifold/ui/ui_widgets.lua`
 - `manifold/ui/widgets/base.lua`
 - `manifold/ui/widgets/schema.lua`
 - `manifold/ui/widgets/*.lua`
+
+### Structured projects (UserScripts)
+- `UserScripts/projects/Looper_uiproject/` — structured looper
+- `UserScripts/projects/SuperDonut/` — structured donut looper
+- `UserScripts/projects/LooperTabs/` — tabbed multi-looper
+- `UserScripts/projects/MidiSynth_uiproject/` — MIDI synth
 
 ---
 
