@@ -21,6 +21,7 @@ return {
       props = {
         activeIndex = 1,
         tabBarHeight = 34,
+        tabSizing = "fill",
       },
       style = {
         bg = 0xff08111f,

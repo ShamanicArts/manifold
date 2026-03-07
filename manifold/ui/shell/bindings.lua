@@ -264,6 +264,9 @@ function M.attach(shell)
                     gfx.setColour((row.active or selected) and 0xff7dd3fc or 0xffcbd5e1)
                     gfx.setFont(10.0)
                     local label = row.name or ""
+                    if row.ownership == "editor-owned" then
+                        label = label .. " [editor]"
+                    end
                     if row.dirty then
                         label = "* " .. label
                     end
@@ -382,9 +385,35 @@ function M.attach(shell)
         end
 
         if shell.editContentMode ~= "script" then
+            local projectStatus = shell:getStructuredProjectStatus()
             gfx.setColour(0xff64748b)
             gfx.setFont(11.0)
             gfx.drawText("Preview mode", 10, 8, w - 20, 18, Justify.centredLeft)
+
+            if type(projectStatus) == "table" then
+                local dirtyCount = tonumber(projectStatus.dirtyCount) or 0
+                local documentCount = tonumber(projectStatus.documentCount) or 0
+                local summary = string.format("Structured project | %d dirty / %d docs | Ctrl+S Save Project | Ctrl+R Reload Project", dirtyCount, documentCount)
+                gfx.setColour(dirtyCount > 0 and 0xfffbbf24 or 0xff93c5fd)
+                gfx.setFont(10.0)
+                gfx.drawText(summary, 10, 28, w - 20, 16, Justify.centredLeft)
+
+                gfx.setColour(0xff475569)
+                gfx.setFont(9.0)
+                local manifestPath = projectStatus.manifestPath or ""
+                local uiRoot = projectStatus.uiRoot or ""
+                gfx.drawText("Manifest: " .. manifestPath, 10, 46, w - 20, 14, Justify.centredLeft)
+                gfx.drawText("Active UI root: " .. uiRoot, 10, 60, w - 20, 14, Justify.centredLeft)
+
+                local lastError = tostring(projectStatus.lastError or "")
+                local lastOperation = tostring(projectStatus.lastOperation or "")
+                if lastError ~= "" then
+                    gfx.setColour(0xfffca5a5)
+                    gfx.setFont(9.0)
+                    gfx.drawText("Last structured error" .. (lastOperation ~= "" and (" [" .. lastOperation .. "]") or "") .. ": " .. lastError,
+                        10, 76, w - 20, 28, Justify.centredLeft)
+                end
+            end
             return
         end
 
@@ -403,7 +432,11 @@ function M.attach(shell)
 
         gfx.setColour(0xff64748b)
         gfx.setFont(10.0)
-        gfx.drawText(ed.path or "", 10, 18, math.max(40, w - 230), 12, Justify.centredLeft)
+        local pathLine = ed.path or ""
+        if ed.ownership == "editor-owned" then
+            pathLine = pathLine .. "   [editor-owned structured source]"
+        end
+        gfx.drawText(pathLine, 10, 18, math.max(40, w - 230), 12, Justify.centredLeft)
 
         local function drawEditorButton(name, label, x, y, bw, bh)
             gfx.setColour(0xff1e293b)
@@ -532,6 +565,9 @@ function M.attach(shell)
         gfx.setColour(0xff94a3b8)
         gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 10.0, FontStyle.plain)
         local statusText = string.format("Ln %d Col %d | %s | Ctrl+S Save | Ctrl+R Reload | Ctrl+W Close", cursorLine, cursorCol, ed.status or "")
+        if ed.ownership == "editor-owned" then
+            statusText = statusText .. " | visual edits save from Preview mode"
+        end
         gfx.drawText(statusText, 8, h - statusH, w - 16, statusH, Justify.centredLeft)
     end)
 
@@ -791,6 +827,17 @@ function M.attach(shell)
 
             infoRow("Script", si.name or "")
             infoRow("Kind", si.kind or "")
+            if si.ownership and si.ownership ~= "" then
+                infoRow("Ownership", si.ownership)
+                local docStatus = shell:getStructuredDocumentStatus(si.path)
+                if type(docStatus) == "table" then
+                    infoRow("Dirty", docStatus.dirty == true and "yes" or "no")
+                end
+                local projectStatus = shell:getStructuredProjectStatus()
+                if type(projectStatus) == "table" and tostring(projectStatus.lastError or "") ~= "" then
+                    infoRow("Last Error", tostring(projectStatus.lastError or ""))
+                end
+            end
             infoRow("Path", si.path or "")
             if si.kind == "dsp" then
                 local declared = si.params or {}

@@ -142,6 +142,7 @@ function Shell.create(parentNode, options)
         editContentMode = "preview",
         scriptEditor = {
             kind = "",
+            ownership = "",
             name = "",
             path = "",
             text = "",
@@ -158,6 +159,7 @@ function Shell.create(parentNode, options)
         scriptEditorButtonRects = {},
         scriptInspector = {
             kind = "",
+            ownership = "",
             name = "",
             path = "",
             text = "",

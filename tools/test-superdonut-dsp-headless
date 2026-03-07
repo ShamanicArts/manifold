@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""
+Launch an isolated ManifoldHeadless instance, verify its PID/socket pairing,
+load the SuperDonut project DSP, and smoke the core /core/super endpoints.
+
+This avoids stomping on any shared standalone/tmux runtime.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import signal
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def recv_line(sock: socket.socket) -> str:
+    data = b""
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            break
+        data += chunk
+        if b"\n" in chunk:
+            break
+    return data.decode("utf-8", errors="replace").strip()
+
+
+class Client:
+    def __init__(self, sock_path: str):
+        self.sock_path = sock_path
+
+    def cmd(self, text: str) -> str:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(5)
+        s.connect(self.sock_path)
+        s.sendall((text + "\n").encode("utf-8"))
+        try:
+            return recv_line(s)
+        finally:
+            s.close()
+
+    def get_value(self, path: str):
+        raw = self.cmd(f"GET {path}")
+        if not raw.startswith("OK "):
+            raise RuntimeError(f"GET failed for {path}: {raw}")
+        payload = json.loads(raw[3:])
+        return payload["VALUE"]
+
+    def diagnose(self) -> dict:
+        raw = self.cmd("DIAGNOSE")
+        if not raw.startswith("OK "):
+            raise RuntimeError(f"DIAGNOSE failed: {raw}")
+        return json.loads(raw[3:])
+
+
+class Runner:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+    def check(self, label: str, cond: bool, detail: str = "") -> None:
+        if cond:
+            self.passed += 1
+            print(f"PASS: {label}")
+        else:
+            self.failed += 1
+            suffix = f" -- {detail}" if detail else ""
+            print(f"FAIL: {label}{suffix}")
+
+    def expect_ok(self, label: str, raw: str) -> None:
+        self.check(label, raw == "OK", raw)
+
+    def summary(self) -> int:
+        print(f"\nRESULT: {self.passed} passed, {self.failed} failed")
+        return 0 if self.failed == 0 else 1
+
+
+def wait_for_socket(pid: int, timeout: float = 10.0) -> str:
+    sock_path = f"/tmp/manifold_{pid}.sock"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if os.path.exists(sock_path):
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.2)
+            try:
+                s.connect(sock_path)
+                return sock_path
+            except OSError:
+                pass
+            finally:
+                s.close()
+        time.sleep(0.05)
+    raise RuntimeError(f"socket did not become live: {sock_path}")
+
+
+def approx(a, b, eps: float = 1e-4) -> bool:
+    return abs(float(a) - float(b)) <= eps
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="SuperDonut DSP headless smoke")
+    parser.add_argument("--headless", default="build-dev/ManifoldHeadless",
+                        help="Path to ManifoldHeadless executable")
+    parser.add_argument("--duration", type=float, default=120.0,
+                        help="Headless runtime duration in seconds")
+    parser.add_argument("--log", default="/tmp/manifold_headless_superdonut_smoke.log",
+                        help="Log file path")
+    args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[1]
+    headless = (repo_root / args.headless).resolve()
+    dsp_main = repo_root / "UserScripts/projects/SuperDonut/dsp/main.lua"
+    dsp_dir = dsp_main.parent
+
+    if not headless.exists():
+        print(f"ERROR: missing headless executable: {headless}", file=sys.stderr)
+        return 2
+    if not dsp_main.exists():
+        print(f"ERROR: missing DSP entry: {dsp_main}", file=sys.stderr)
+        return 3
+
+    proc = None
+    client = None
+    try:
+        log_handle = open(args.log, "wb", buffering=0)
+        proc = subprocess.Popen(
+            [str(headless), "--duration", str(args.duration)],
+            cwd=str(repo_root),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+        sock_path = wait_for_socket(proc.pid)
+        client = Client(sock_path)
+        t = Runner()
+
+        t.check("PING", client.cmd("PING") == "OK PONG")
+
+        diag = client.diagnose()
+        t.check("DIAGNOSE socketPath matches PID socket",
+                diag.get("socketPath") == sock_path,
+                str(diag))
+
+        dsprun = (
+            f"DSPRUN __manifoldDspScriptDir='{dsp_dir}'; "
+            f"dofile('{dsp_main}')"
+        )
+        t.expect_ok("load SuperDonut project DSP", client.cmd(dsprun))
+
+        t.check("vocal select default is bypass",
+                approx(client.get_value("/core/super/vocal/slot/select"), 0.0))
+        t.expect_ok("set vocal select phaser",
+                    client.cmd("SET /core/super/vocal/slot/select 2"))
+        t.check("vocal select becomes phaser",
+                approx(client.get_value("/core/super/vocal/slot/select"), 2.0))
+        t.check("phaser rate default visible",
+                approx(client.get_value("/core/super/vocal/slot/phaser/rate"), 0.35))
+        t.expect_ok("set phaser rate",
+                    client.cmd("SET /core/super/vocal/slot/phaser/rate 0.47"))
+        t.check("phaser rate write sticks",
+                approx(client.get_value("/core/super/vocal/slot/phaser/rate"), 0.47))
+
+        t.check("layer1 select default is bypass",
+                approx(client.get_value("/core/super/layer/1/fx/select"), 0.0))
+        t.expect_ok("set layer1 reverb",
+                    client.cmd("SET /core/super/layer/1/fx/select 7"))
+        t.check("layer1 select becomes reverb",
+                approx(client.get_value("/core/super/layer/1/fx/select"), 7.0))
+        t.check("layer1 reverb room default visible",
+                approx(client.get_value("/core/super/layer/1/fx/reverb/room"), 0.65))
+        t.expect_ok("set layer1 reverb room",
+                    client.cmd("SET /core/super/layer/1/fx/reverb/room 0.83"))
+        t.check("layer1 reverb room write sticks",
+                approx(client.get_value("/core/super/layer/1/fx/reverb/room"), 0.83))
+
+        t.check("base looper tempo still exposed",
+                approx(client.get_value("/core/behavior/tempo"), 120.0))
+
+        final_diag = client.diagnose()
+        t.check("final DIAGNOSE still reports same socket",
+                final_diag.get("socketPath") == sock_path,
+                str(final_diag))
+
+        print(f"PID: {proc.pid}")
+        print(f"Socket: {sock_path}")
+        print(f"Log: {args.log}")
+        return t.summary()
+    finally:
+        if proc is not None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        try:
+            log_handle.close()
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

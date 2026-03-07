@@ -709,6 +709,7 @@ function M.attach(shell)
                         kind = kind,
                         sourceKind = "project-file",
                         sourceScope = "project",
+                        ownership = (kind == "ui" and string.match(path, "%.ui%.lua$")) and "editor-owned" or "",
                         name = name,
                         path = path,
                         dirty = row.dirty == true,
@@ -857,6 +858,7 @@ function M.attach(shell)
             si.kind = ""
             si.name = ""
             si.path = ""
+            si.ownership = ""
             si.text = ""
             si.params = {}
             si.runtimeParams = {}
@@ -898,6 +900,7 @@ function M.attach(shell)
         si.kind = row.kind or ""
         si.name = row.name or fileStem(row.path or "")
         si.path = row.path or ""
+        si.ownership = row.ownership or ""
         si.text = text
         si.params = {}
         si.runtimeParams = {}
@@ -1483,6 +1486,7 @@ function M.attach(shell)
         end
 
         self.scriptEditor.kind = row.kind or ""
+        self.scriptEditor.ownership = row.ownership or ""
         self.scriptEditor.name = row.name or fileStem(path)
         self:refreshScriptInspectorData(row)
         self.scriptEditor.path = path
@@ -1492,7 +1496,13 @@ function M.attach(shell)
         self.scriptEditor.dragAnchorPos = nil
         self.scriptEditor.scrollRow = 1
         self.scriptEditor.focused = false
-        self.scriptEditor.status = "Loaded " .. (self.scriptEditor.name or fileStem(path))
+        if self.scriptEditor.ownership == "editor-owned" then
+            local docStatus = self:getStructuredDocumentStatus(path)
+            local dirtySuffix = (type(docStatus) == "table" and docStatus.dirty == true) and " | runtime dirty" or ""
+            self.scriptEditor.status = "Loaded editor-owned source" .. dirtySuffix
+        else
+            self.scriptEditor.status = "Loaded " .. (self.scriptEditor.name or fileStem(path))
+        end
         self.scriptEditor.lastClickTime = 0
         self.scriptEditor.lastClickLine = -1
         self.scriptEditor.clickStreak = 0
@@ -1514,6 +1524,27 @@ function M.attach(shell)
             return
         end
 
+        if ed.ownership == "editor-owned" and ed.dirty ~= true and type(saveStructuredUiDocument) == "function" then
+            local ok, err = pcall(saveStructuredUiDocument, ed.path)
+            if not ok then
+                ed.status = "Structured save failed: " .. tostring(err)
+                return
+            end
+            if readTextFile then
+                ed.text = readTextFile(ed.path) or ed.text or ""
+            end
+            ed.dirty = false
+            ed.status = "Saved structured document"
+            self:appendConsoleLine("Saved structured document: " .. tostring(ed.path), 0xff86efac)
+            self:refreshProjectScriptRowsIfNeeded()
+            if self.selectedScriptRow and self.selectedScriptRow.path == ed.path then
+                self:refreshScriptInspectorData(self.selectedScriptRow)
+                self.inspectorCanvas:repaint()
+            end
+            self.scriptCanvas:repaint()
+            return
+        end
+
         if writeTextFile then
             local ok = writeTextFile(ed.path, ed.text)
             if ok == false then
@@ -1521,7 +1552,12 @@ function M.attach(shell)
                 return
             end
             ed.dirty = false
-            ed.status = "Saved " .. (ed.name or fileStem(ed.path))
+            if ed.ownership == "editor-owned" then
+                ed.status = "Saved source; reload/apply project to use changes"
+                self:appendConsoleLine("Saved editor-owned source file: " .. tostring(ed.path), 0xff86efac)
+            else
+                ed.status = "Saved " .. (ed.name or fileStem(ed.path))
+            end
             self:refreshScriptRows()
             if self.selectedScriptRow and self.selectedScriptRow.path == ed.path then
                 self:refreshScriptInspectorData(self.selectedScriptRow)
@@ -1546,7 +1582,13 @@ function M.attach(shell)
             ed.dragAnchorPos = nil
             ed.scrollRow = 1
             ed.dirty = false
-            ed.status = "Reloaded from disk"
+            if ed.ownership == "editor-owned" then
+                local docStatus = self:getStructuredDocumentStatus(ed.path)
+                local dirtySuffix = (type(docStatus) == "table" and docStatus.dirty == true) and " | runtime still dirty" or ""
+                ed.status = "Reloaded source from disk" .. dirtySuffix
+            else
+                ed.status = "Reloaded from disk"
+            end
             if self.selectedScriptRow and self.selectedScriptRow.path == ed.path then
                 self:refreshScriptInspectorData(self.selectedScriptRow)
                 self.inspectorCanvas:repaint()
@@ -1661,6 +1703,35 @@ function M.attach(shell)
         return type(getStructuredUiDocuments) == "function"
             and type(saveStructuredUiAll) == "function"
             and type(reloadStructuredUiProject) == "function"
+    end
+
+    function shell:getStructuredProjectStatus()
+        if type(getStructuredUiProjectStatus) ~= "function" then
+            return nil
+        end
+        local ok, status = pcall(getStructuredUiProjectStatus)
+        if not ok or type(status) ~= "table" then
+            return nil
+        end
+        return status
+    end
+
+    function shell:getStructuredDocumentStatus(path)
+        if type(path) ~= "string" or path == "" then
+            return nil
+        end
+        local status = self:getStructuredProjectStatus()
+        local docs = status and status.documents or nil
+        if type(docs) ~= "table" then
+            return nil
+        end
+        for i = 1, #docs do
+            local doc = docs[i]
+            if type(doc) == "table" and doc.path == path then
+                return doc
+            end
+        end
+        return nil
     end
 
     function shell:getStructuredSourceForCanvas(canvas, purpose)
@@ -1780,13 +1851,24 @@ function M.attach(shell)
         if not self:isStructuredProjectActive() then
             return false
         end
+
+        local before = self:getStructuredProjectStatus()
+        local dirtyBefore = before and tonumber(before.dirtyCount) or 0
         local ok, err = pcall(saveStructuredUiAll)
         if ok then
-            self:appendConsoleLine("Saved structured UI project", 0xff86efac)
+            local after = self:getStructuredProjectStatus()
+            local dirtyAfter = after and tonumber(after.dirtyCount) or 0
+            local manifestPath = (after and after.manifestPath) or (before and before.manifestPath) or ""
+            self:appendConsoleLine(string.format("Saved structured UI project (%d -> %d dirty)%s",
+                dirtyBefore,
+                dirtyAfter,
+                manifestPath ~= "" and (": " .. manifestPath) or ""), 0xff86efac)
             self:refreshProjectScriptRowsIfNeeded()
             return true
         end
-        self:appendConsoleLine("ERR: " .. tostring(err), 0xfffca5a5)
+        local status = self:getStructuredProjectStatus()
+        local op = status and status.lastOperation or ""
+        self:appendConsoleLine("ERR: structured save failed" .. (op ~= "" and (" [" .. tostring(op) .. "]") or "") .. ": " .. tostring(err), 0xfffca5a5)
         return false
     end
 
@@ -1794,12 +1876,16 @@ function M.attach(shell)
         if not self:isStructuredProjectActive() then
             return false
         end
+        local before = self:getStructuredProjectStatus()
+        local manifestPath = (before and before.manifestPath) or ""
         local ok, err = pcall(reloadStructuredUiProject)
         if ok then
-            self:appendConsoleLine("Reloaded structured UI project", 0xff93c5fd)
+            self:appendConsoleLine("Reloaded structured UI project" .. (manifestPath ~= "" and (": " .. manifestPath) or ""), 0xff93c5fd)
             return true
         end
-        self:appendConsoleLine("ERR: " .. tostring(err), 0xfffca5a5)
+        local status = self:getStructuredProjectStatus()
+        local op = status and status.lastOperation or ""
+        self:appendConsoleLine("ERR: structured reload failed" .. (op ~= "" and (" [" .. tostring(op) .. "]") or "") .. ": " .. tostring(err), 0xfffca5a5)
         return false
     end
 

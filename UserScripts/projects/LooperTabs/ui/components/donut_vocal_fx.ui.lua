@@ -1,9 +1,9 @@
 return {
   id = "vocal_root",
   type = "Panel",
-  x = 8,
-  y = 182,
-  w = 1264,
+  x = 0,
+  y = 0,
+  w = 1280,
   h = 170,
   style = {
     bg = 0xff111827,

@@ -515,7 +515,19 @@ function Runtime.new(opts)
   self.documents = {}
   self.documentOrder = {}
   self.recordsBySourceKey = {}
+  self.lastError = ""
+  self.lastOperation = ""
   return self
+end
+
+function Runtime:setLastError(message, operation)
+  self.lastError = tostring(message or "")
+  self.lastOperation = tostring(operation or "")
+end
+
+function Runtime:clearLastError(operation)
+  self.lastError = ""
+  self.lastOperation = tostring(operation or "")
 end
 
 function Runtime:registerWidget(globalId, localWidgets, localId, widget)
@@ -572,6 +584,7 @@ function Runtime:loadDocument(absPath, kind)
     return existing
   end
 
+  self:clearLastError("loadDocument")
   local model = loadStructuredTable(absPath, tostring(kind or "structured") .. ":" .. absPath)
   local document = {
     path = absPath,
@@ -632,6 +645,28 @@ function Runtime:listDocuments()
     end
   end
   return out
+end
+
+function Runtime:getProjectStatus()
+  local docs = self:listDocuments()
+  local dirtyCount = 0
+  for i = 1, #docs do
+    if docs[i].dirty == true then
+      dirtyCount = dirtyCount + 1
+    end
+  end
+
+  return {
+    projectRoot = self.projectRoot or "",
+    manifestPath = self.manifestPath or "",
+    requestedPath = self.requestedPath or "",
+    uiRoot = self.uiRoot or "",
+    documentCount = #docs,
+    dirtyCount = dirtyCount,
+    lastError = self.lastError or "",
+    lastOperation = self.lastOperation or "",
+    documents = docs,
+  }
 end
 
 function Runtime:collectBehaviorRefs(spec, out, seen)
@@ -750,67 +785,95 @@ end
 function Runtime:getNodeValue(absPath, nodeId, path)
   local doc = self.documents[absPath]
   if not doc then
-    return nil, "unknown document: " .. tostring(absPath)
+    local err = "unknown document: " .. tostring(absPath)
+    self:setLastError(err, "getNodeValue")
+    return nil, err
   end
   local node = self:findNodeById(doc.model, nodeId)
   if not node then
-    return nil, "unknown node id: " .. tostring(nodeId)
+    local err = "unknown node id: " .. tostring(nodeId)
+    self:setLastError(err, "getNodeValue")
+    return nil, err
   end
+  self:clearLastError("getNodeValue")
   return getValueByPath(node, path), nil
 end
 
 function Runtime:setNodeValue(absPath, nodeId, path, value)
   local doc = self.documents[absPath]
   if not doc then
-    return false, "unknown document: " .. tostring(absPath)
+    local err = "unknown document: " .. tostring(absPath)
+    self:setLastError(err, "setNodeValue")
+    return false, err
   end
   local node = self:findNodeById(doc.model, nodeId)
   if not node then
-    return false, "unknown node id: " .. tostring(nodeId)
+    local err = "unknown node id: " .. tostring(nodeId)
+    self:setLastError(err, "setNodeValue")
+    return false, err
   end
   if type(path) ~= "string" or path == "" then
-    return false, "missing node path"
+    local err = "missing node path"
+    self:setLastError(err, "setNodeValue")
+    return false, err
   end
   local ok = setValueByPath(node, path, value)
   if not ok then
-    return false, "failed to set path: " .. tostring(path)
+    local err = "failed to set path: " .. tostring(path)
+    self:setLastError(err, "setNodeValue")
+    return false, err
   end
   doc.dirty = true
+  self:clearLastError("setNodeValue")
   return true, nil
 end
 
 function Runtime:removeNodeValue(absPath, nodeId, path)
   local doc = self.documents[absPath]
   if not doc then
-    return false, "unknown document: " .. tostring(absPath)
+    local err = "unknown document: " .. tostring(absPath)
+    self:setLastError(err, "removeNodeValue")
+    return false, err
   end
   local node = self:findNodeById(doc.model, nodeId)
   if not node then
-    return false, "unknown node id: " .. tostring(nodeId)
+    local err = "unknown node id: " .. tostring(nodeId)
+    self:setLastError(err, "removeNodeValue")
+    return false, err
   end
   local ok = removeValueByPath(node, path)
   if not ok then
-    return false, "failed to remove path: " .. tostring(path)
+    local err = "failed to remove path: " .. tostring(path)
+    self:setLastError(err, "removeNodeValue")
+    return false, err
   end
   doc.dirty = true
+  self:clearLastError("removeNodeValue")
   return true, nil
 end
 
 function Runtime:saveDocument(absPath)
   local doc = self.documents[absPath]
   if not doc then
-    return false, "unknown document: " .. tostring(absPath)
+    local err = "unknown document: " .. tostring(absPath)
+    self:setLastError(err, "saveDocument")
+    return false, err
   end
   if type(writeTextFile) ~= "function" then
-    return false, "writeTextFile unavailable"
+    local err = "writeTextFile unavailable"
+    self:setLastError(err, "saveDocument")
+    return false, err
   end
 
   local source = serializeStructuredDocument(doc.model)
   local ok = writeTextFile(absPath, source)
   if ok == false then
-    return false, "writeTextFile failed: " .. tostring(absPath)
+    local err = "writeTextFile failed: " .. tostring(absPath)
+    self:setLastError(err, "saveDocument")
+    return false, err
   end
   doc.dirty = false
+  self:clearLastError("saveDocument")
   return true, nil
 end
 
@@ -818,9 +881,11 @@ function Runtime:saveAllDocuments()
   for _, path in ipairs(self.documentOrder or {}) do
     local ok, err = self:saveDocument(path)
     if not ok then
+      self:setLastError(err, "saveAllDocuments")
       return false, err
     end
   end
+  self:clearLastError("saveAllDocuments")
   return true, nil
 end
 
@@ -1313,49 +1378,65 @@ function M.install(opts)
       _G.getStructuredUiProjectFiles = function()
         return runtime:listProjectFiles()
       end
+      _G.getStructuredUiProjectStatus = function()
+        return runtime:getProjectStatus()
+      end
       _G.getStructuredUiNodeValue = function(documentPath, nodeId, path)
         local value, err = runtime:getNodeValue(documentPath, nodeId, path)
         if err then
+          runtime:setLastError(err, "getStructuredUiNodeValue")
           error(err)
         end
+        runtime:clearLastError("getStructuredUiNodeValue")
         return value
       end
       _G.setStructuredUiNodeValue = function(documentPath, nodeId, path, value)
         local ok, err = runtime:setNodeValue(documentPath, nodeId, path, value)
         if not ok then
+          runtime:setLastError(err, "setStructuredUiNodeValue")
           error(err)
         end
+        runtime:clearLastError("setStructuredUiNodeValue")
         return true
       end
       _G.removeStructuredUiNodeValue = function(documentPath, nodeId, path)
         local ok, err = runtime:removeNodeValue(documentPath, nodeId, path)
         if not ok then
+          runtime:setLastError(err, "removeStructuredUiNodeValue")
           error(err)
         end
+        runtime:clearLastError("removeStructuredUiNodeValue")
         return true
       end
       _G.saveStructuredUiDocument = function(documentPath)
         local ok, err = runtime:saveDocument(documentPath)
         if not ok then
+          runtime:setLastError(err, "saveStructuredUiDocument")
           error(err)
         end
+        runtime:clearLastError("saveStructuredUiDocument")
         return true
       end
       _G.saveStructuredUiAll = function()
         local ok, err = runtime:saveAllDocuments()
         if not ok then
+          runtime:setLastError(err, "saveStructuredUiAll")
           error(err)
         end
+        runtime:clearLastError("saveStructuredUiAll")
         return true
       end
       _G.reloadStructuredUiProject = function()
         local currentPath = getCurrentScriptPath and getCurrentScriptPath() or runtime.requestedPath or runtime.manifestPath
         if type(currentPath) ~= "string" or currentPath == "" then
+          runtime:setLastError("no current structured UI project path", "reloadStructuredUiProject")
           error("no current structured UI project path")
         end
         if type(switchUiScript) ~= "function" then
+          runtime:setLastError("switchUiScript unavailable", "reloadStructuredUiProject")
           error("switchUiScript unavailable")
         end
+        runtime:clearLastError("reloadStructuredUiProject")
         switchUiScript(currentPath)
         return true
       end
@@ -1364,6 +1445,7 @@ function M.install(opts)
         _G.__manifoldStructuredUiRuntime = nil
         _G.getStructuredUiDocuments = nil
         _G.getStructuredUiProjectFiles = nil
+        _G.getStructuredUiProjectStatus = nil
         _G.getStructuredUiNodeValue = nil
         _G.setStructuredUiNodeValue = nil
         _G.removeStructuredUiNodeValue = nil
@@ -1380,7 +1462,14 @@ function M.install(opts)
       usingShellPerformanceView = true
       shell:registerPerformanceView({
         init = function(contentRoot)
-          runtime:init(contentRoot)
+          local ok, err = pcall(function()
+            runtime:init(contentRoot)
+          end)
+          if not ok then
+            runtime:setLastError(err, "ui_init")
+            error(err)
+          end
+          runtime:clearLastError("ui_init")
         end,
         getLayoutInfo = function(fallbackW, fallbackH)
           return runtime:getLayoutInfo(fallbackW, fallbackH)
@@ -1397,7 +1486,14 @@ function M.install(opts)
       return
     end
 
-    runtime:init(root)
+    local ok, err = pcall(function()
+      runtime:init(root)
+    end)
+    if not ok then
+      runtime:setLastError(err, "ui_init")
+      error(err)
+    end
+    runtime:clearLastError("ui_init")
   end
 
   function ui_resized(w, h)

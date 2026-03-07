@@ -110,6 +110,7 @@ local kEditorSchemaByWidget = {
     },
     TabHost = {
         { path = "activeIndex", label = "Active Tab", type = "number", min = 1, step = 1, group = "Behavior" },
+        { path = "tabSizing", label = "Tab Sizing", type = "text", options = { "fill", "content" }, group = "Layout" },
         { path = "tabBarHeight", label = "Tab Bar Height", type = "number", min = 18, max = 96, step = 1, group = "Layout" },
         { path = "bg", label = "Background", type = "color", group = "Style" },
         { path = "border", label = "Border", type = "color", group = "Style" },

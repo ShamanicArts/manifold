@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+"""
+Isolated structured UI save/reload smoke.
+
+Flow:
+- copy the reference Looper_uiproject into /tmp
+- launch an isolated Standalone runtime
+- verify PID -> socket pairing through DIAGNOSE
+- switch to the temp project
+- mutate structured node values through runtime helpers
+- save all structured UI docs
+- reload the project
+- verify runtime values + on-disk files reflect the edits
+
+This directly exercises the current first-pass save path without touching the
+repo-owned project files.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+
+def recv_line(sock: socket.socket) -> str:
+    data = b""
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            break
+        data += chunk
+        if b"\n" in chunk:
+            break
+    return data.decode("utf-8", errors="replace").strip()
+
+
+class Client:
+    def __init__(self, sock_path: str):
+        self.sock_path = sock_path
+
+    def cmd(self, text: str, timeout: float = 8.0) -> str:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(self.sock_path)
+        s.sendall((text + "\n").encode("utf-8"))
+        try:
+            return recv_line(s)
+        finally:
+            s.close()
+
+    def eval(self, text: str, timeout: float = 8.0) -> str:
+        return self.cmd(f"EVAL {text}", timeout=timeout)
+
+    def diagnose(self) -> dict:
+        raw = self.cmd("DIAGNOSE")
+        if not raw.startswith("OK "):
+            raise RuntimeError(f"DIAGNOSE failed: {raw}")
+        return json.loads(raw[3:])
+
+
+def wait_for_eval_ready(sock_path: str, timeout: float = 10.0) -> Client:
+    deadline = time.time() + timeout
+    client = Client(sock_path)
+    while time.time() < deadline:
+        try:
+            if client.eval("return 1", timeout=1.0) == "OK 1":
+                return client
+        except OSError:
+            pass
+        time.sleep(0.05)
+    raise RuntimeError(f"Lua engine did not become ready for {sock_path}")
+
+
+class Runner:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+    def check(self, label: str, cond: bool, detail: str = "") -> None:
+        if cond:
+            self.passed += 1
+            print(f"PASS: {label}")
+        else:
+            self.failed += 1
+            suffix = f" -- {detail}" if detail else ""
+            print(f"FAIL: {label}{suffix}")
+
+    def expect(self, label: str, actual: str, expected: str) -> None:
+        self.check(label, actual == expected, f"actual={actual!r} expected={expected!r}")
+
+    def summary(self) -> int:
+        print(f"\nRESULT: {self.passed} passed, {self.failed} failed")
+        return 0 if self.failed == 0 else 1
+
+
+def wait_for_socket(pid: int, timeout: float = 10.0) -> str:
+    sock_path = f"/tmp/manifold_{pid}.sock"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if os.path.exists(sock_path):
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.2)
+            try:
+                s.connect(sock_path)
+                return sock_path
+            except OSError:
+                pass
+            finally:
+                s.close()
+        time.sleep(0.05)
+    raise RuntimeError(f"socket did not become live: {sock_path}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Structured UI save/reload smoke")
+    parser.add_argument("--standalone", default="build-dev/Manifold_artefacts/RelWithDebInfo/Standalone/Manifold",
+                        help="Path to Standalone executable")
+    parser.add_argument("--template-project", default="UserScripts/projects/Looper_uiproject",
+                        help="Template structured project to copy into /tmp")
+    parser.add_argument("--log", default="/tmp/manifold_structured_ui_save_roundtrip.log",
+                        help="Standalone log path")
+    args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[1]
+    standalone = (repo_root / args.standalone).resolve()
+    template_project = (repo_root / args.template_project).resolve()
+
+    if not standalone.exists():
+        print(f"ERROR: missing Standalone executable: {standalone}", file=sys.stderr)
+        return 2
+    if not template_project.exists():
+        print(f"ERROR: missing template project: {template_project}", file=sys.stderr)
+        return 3
+
+    temp_root = Path(tempfile.mkdtemp(prefix="manifold_save_roundtrip_"))
+    temp_project = temp_root / template_project.name
+    shutil.copytree(template_project, temp_project)
+
+    manifest = temp_project / "manifold.project.json5"
+    main_ui = temp_project / "ui/main.ui.lua"
+    transport_ui = temp_project / "ui/components/transport.ui.lua"
+
+    log_handle = None
+    proc = None
+    try:
+        log_handle = open(args.log, "wb", buffering=0)
+        proc = subprocess.Popen(
+            [str(standalone)],
+            cwd=str(repo_root),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+        sock_path = wait_for_socket(proc.pid)
+        client = wait_for_eval_ready(sock_path)
+        t = Runner()
+
+        t.expect("PING", client.cmd("PING"), "OK PONG")
+        diag = client.diagnose()
+        t.check("DIAGNOSE socketPath matches PID socket",
+                diag.get("socketPath") == sock_path,
+                str(diag))
+
+        t.expect("switch to temp structured project",
+                 client.eval(f"switchUiScript('{manifest}'); return 'ok'", timeout=5.0),
+                 "OK ok")
+        time.sleep(1.0)
+        t.expect("current script is temp manifest",
+                 client.eval("return getCurrentScriptPath()"),
+                 f"OK {manifest}")
+        t.expect("structured runtime published",
+                 client.eval("return tostring(__manifoldStructuredUiRuntime ~= nil)"),
+                 "OK true")
+
+        t.expect("documents discovered",
+                 client.eval("local d=getStructuredUiDocuments() or {}; return tostring(#d)"),
+                 "OK 4")
+        t.expect("project status reports 4 docs / 0 dirty",
+                 client.eval("local s=getStructuredUiProjectStatus() or {}; return tostring(s.documentCount or -1) .. '/' .. tostring(s.dirtyCount or -1)"),
+                 "OK 4/0")
+
+        t.expect("mode width before mutation",
+                 client.eval(f"return tostring(getStructuredUiNodeValue('{transport_ui}','mode','w'))"),
+                 "OK 130")
+        t.expect("layer1 y before mutation",
+                 client.eval(f"return tostring(getStructuredUiNodeValue('{main_ui}','layer1','y'))"),
+                 "OK 316")
+
+        t.expect("set transport mode width",
+                 client.eval(f"setStructuredUiNodeValue('{transport_ui}','mode','w',137); return tostring(getStructuredUiNodeValue('{transport_ui}','mode','w'))"),
+                 "OK 137")
+        t.expect("set layer1 y",
+                 client.eval(f"setStructuredUiNodeValue('{main_ui}','layer1','y',333); return tostring(getStructuredUiNodeValue('{main_ui}','layer1','y'))"),
+                 "OK 333")
+        t.expect("project status reports 2 dirty after mutations",
+                 client.eval("local s=getStructuredUiProjectStatus() or {}; return tostring(s.dirtyCount or -1)"),
+                 "OK 2")
+        t.expect("structured status surfaces last error after invalid save request",
+                 client.eval("local ok, err = pcall(saveStructuredUiDocument, '/definitely/not/a/real/doc.ui.lua'); local s=getStructuredUiProjectStatus() or {}; return tostring(ok) .. '|' .. tostring(s.lastOperation or '') .. '|' .. tostring(s.lastError or '')"),
+                 "OK false|saveStructuredUiDocument|unknown document: /definitely/not/a/real/doc.ui.lua")
+
+        t.expect("save single structured document",
+                 client.eval(f"return tostring(saveStructuredUiDocument('{transport_ui}'))", timeout=5.0),
+                 "OK true")
+        t.expect("project status clears last error after valid single-doc save",
+                 client.eval("local s=getStructuredUiProjectStatus() or {}; return tostring(s.lastOperation or '') .. '|' .. tostring(s.lastError or '')"),
+                 "OK saveStructuredUiDocument|")
+        t.expect("project status reports 1 dirty after single-doc save",
+                 client.eval("local s=getStructuredUiProjectStatus() or {}; return tostring(s.dirtyCount or -1)"),
+                 "OK 1")
+
+        t.expect("set transport width dirty again for shell save-path probe",
+                 client.eval(f"setStructuredUiNodeValue('{transport_ui}','mode','w',141); return tostring(getStructuredUiNodeValue('{transport_ui}','mode','w'))"),
+                 "OK 141")
+        t.expect("shell editor sees editor-owned structured source",
+                 client.eval(
+                     "shell:setMode('edit'); shell:setLeftPanelMode('scripts'); shell:refreshScriptRows(); "
+                     f"local target=nil; for i=1,#(shell.scriptRows or {{}}) do local r=shell.scriptRows[i]; if type(r)=='table' and r.path=='{transport_ui}' then target=r break end end; "
+                     "shell:openScriptEditor(target); "
+                     "return tostring(shell.scriptEditor.ownership or '')"
+                 , timeout=5.0),
+                 "OK editor-owned")
+        t.expect("shell saveScriptEditor uses structured save path when text is clean",
+                 client.eval("shell:saveScriptEditor(); local s=getStructuredUiProjectStatus() or {}; return tostring(s.dirtyCount or -1)", timeout=5.0),
+                 "OK 1")
+
+        t.expect("save structured UI project",
+                 client.eval("return tostring(saveStructuredUiAll())", timeout=5.0),
+                 "OK true")
+        t.expect("project status reports 0 dirty after save-all",
+                 client.eval("local s=getStructuredUiProjectStatus() or {}; return tostring(s.dirtyCount or -1)"),
+                 "OK 0")
+        t.expect("reload structured UI project",
+                 client.eval("return tostring(reloadStructuredUiProject())", timeout=5.0),
+                 "OK true")
+        time.sleep(1.0)
+
+        t.expect("mode width survives reload",
+                 client.eval(f"return tostring(getStructuredUiNodeValue('{transport_ui}','mode','w'))"),
+                 "OK 141")
+        t.expect("layer1 y survives reload",
+                 client.eval(f"return tostring(getStructuredUiNodeValue('{main_ui}','layer1','y'))"),
+                 "OK 333")
+
+        transport_text = transport_ui.read_text(encoding="utf-8")
+        main_text = main_ui.read_text(encoding="utf-8")
+        t.check("transport file written with new width", "w = 141," in transport_text)
+        t.check("main file written with new layer1 y", "y = 333," in main_text)
+
+        print(f"PID: {proc.pid}")
+        print(f"Socket: {sock_path}")
+        print(f"Temp project: {temp_project}")
+        print(f"Log: {args.log}")
+        return t.summary()
+    finally:
+        if proc is not None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        if log_handle is not None:
+            try:
+                log_handle.close()
+            except Exception:
+                pass
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

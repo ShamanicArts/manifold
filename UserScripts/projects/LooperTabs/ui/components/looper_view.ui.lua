@@ -17,8 +17,8 @@ return {
       y = 0,
       w = 1280,
       h = 48,
-      behavior = "ui/behaviors/looper_transport.lua",
-      ref = "ui/components/looper_transport.ui.lua",
+      behavior = "ui/behaviors/shared_transport.lua",
+      ref = "ui/components/shared_transport.ui.lua",
     },
     {
       id = "capture_plane",
@@ -26,8 +26,8 @@ return {
       y = 54,
       w = 1280,
       h = 130,
-      behavior = "ui/behaviors/looper_capture_plane.lua",
-      ref = "ui/components/looper_capture_plane.ui.lua",
+      behavior = "ui/behaviors/shared_capture_plane.lua",
+      ref = "ui/components/shared_capture_plane.ui.lua",
     },
     {
       id = "layer0",

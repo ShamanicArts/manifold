@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""
+Launch an isolated Standalone runtime, load the LooperTabs project, and verify
+that the shared Super slot stays project-owned and functional.
+
+This checks:
+- explicit PID -> socket pairing
+- LooperTabs manifest load
+- project-owned base looper DSP still exposes /core/behavior params
+- shared "super" slot loads through the project-local slot helper
+- shared selections drive the project-owned slot runtime via /select params
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import signal
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def recv_line(sock: socket.socket) -> str:
+    data = b""
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            break
+        data += chunk
+        if b"\n" in chunk:
+            break
+    return data.decode("utf-8", errors="replace").strip()
+
+
+class Client:
+    def __init__(self, sock_path: str):
+        self.sock_path = sock_path
+
+    def cmd(self, text: str, timeout: float = 8.0) -> str:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(self.sock_path)
+        s.sendall((text + "\n").encode("utf-8"))
+        try:
+            return recv_line(s)
+        finally:
+            s.close()
+
+    def eval(self, text: str, timeout: float = 8.0) -> str:
+        return self.cmd(f"EVAL {text}", timeout=timeout)
+
+    def diagnose(self) -> dict:
+        raw = self.cmd("DIAGNOSE")
+        if not raw.startswith("OK "):
+            raise RuntimeError(f"DIAGNOSE failed: {raw}")
+        return json.loads(raw[3:])
+
+    def get_value(self, path: str):
+        raw = self.cmd(f"GET {path}")
+        if not raw.startswith("OK "):
+            raise RuntimeError(f"GET failed for {path}: {raw}")
+        payload = json.loads(raw[3:])
+        return payload["VALUE"]
+
+
+def wait_for_socket(pid: int, timeout: float = 10.0) -> str:
+    sock_path = f"/tmp/manifold_{pid}.sock"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if os.path.exists(sock_path):
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.2)
+            try:
+                s.connect(sock_path)
+                return sock_path
+            except OSError:
+                pass
+            finally:
+                s.close()
+        time.sleep(0.05)
+    raise RuntimeError(f"socket did not become live: {sock_path}")
+
+
+def wait_for_eval_ready(client: Client, timeout: float = 10.0) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if client.eval("return 1", timeout=1.0) == "OK 1":
+                return
+        except OSError:
+            pass
+        time.sleep(0.05)
+    raise RuntimeError("Lua engine did not become ready")
+
+
+class Runner:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+    def check(self, label: str, cond: bool, detail: str = "") -> None:
+        if cond:
+            self.passed += 1
+            print(f"PASS: {label}")
+        else:
+            self.failed += 1
+            suffix = f" -- {detail}" if detail else ""
+            print(f"FAIL: {label}{suffix}")
+
+    def expect(self, label: str, actual: str, expected: str) -> None:
+        self.check(label, actual == expected, f"actual={actual!r} expected={expected!r}")
+
+    def summary(self) -> int:
+        print(f"\nRESULT: {self.passed} passed, {self.failed} failed")
+        return 0 if self.failed == 0 else 1
+
+
+def approx(a, b, eps: float = 1e-4) -> bool:
+    return abs(float(a) - float(b)) <= eps
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="LooperTabs shared Super slot smoke")
+    parser.add_argument("--standalone", default="build-dev/Manifold_artefacts/RelWithDebInfo/Standalone/Manifold",
+                        help="Path to Standalone executable")
+    parser.add_argument("--log", default="/tmp/manifold_loopertabs_shared_super_slot.log",
+                        help="Standalone log path")
+    args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[1]
+    standalone = (repo_root / args.standalone).resolve()
+    manifest = repo_root / "UserScripts/projects/LooperTabs/manifold.project.json5"
+    project_root = manifest.parent
+
+    if not standalone.exists():
+        print(f"ERROR: missing Standalone executable: {standalone}", file=sys.stderr)
+        return 2
+    if not manifest.exists():
+        print(f"ERROR: missing LooperTabs manifest: {manifest}", file=sys.stderr)
+        return 3
+
+    log_handle = None
+    proc = None
+    try:
+        log_handle = open(args.log, "wb", buffering=0)
+        proc = subprocess.Popen(
+            [str(standalone)],
+            cwd=str(repo_root),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+        sock_path = wait_for_socket(proc.pid)
+        client = Client(sock_path)
+        wait_for_eval_ready(client)
+        t = Runner()
+
+        t.expect("PING", client.cmd("PING"), "OK PONG")
+        diag = client.diagnose()
+        t.check("DIAGNOSE socketPath matches PID socket",
+                diag.get("socketPath") == sock_path,
+                str(diag))
+
+        t.expect("switch to LooperTabs project",
+                 client.eval(f"switchUiScript('{manifest}'); return 'ok'", timeout=5.0),
+                 "OK ok")
+        time.sleep(1.0)
+
+        t.expect("current script is LooperTabs manifest",
+                 client.eval("return getCurrentScriptPath()"),
+                 f"OK {manifest}")
+        t.expect("project-owned slot helper file exists",
+                 client.eval(f"local chunk = loadfile('{project_root}/dsp/super_slot.lua'); return tostring(chunk ~= nil)"),
+                 "OK true")
+        t.expect("project-owned slot runtime file exists",
+                 client.eval(f"local chunk = loadfile('{project_root}/dsp/super_slot_runtime.lua'); return tostring(chunk ~= nil)"),
+                 "OK true")
+        t.expect("shared super slot reported healthy",
+                 client.eval("return tostring(__looperTabsSuperSlotState and __looperTabsSuperSlotState.ok == true)"),
+                 "OK true")
+        t.expect("shared super slot error empty",
+                 client.eval("return tostring((__looperTabsSuperSlotState and __looperTabsSuperSlotState.error) or '')"),
+                 "OK")
+        t.expect("super slot loaded",
+                 client.eval("return tostring(isDspSlotLoaded('super'))"),
+                 "OK true")
+
+        t.check("project-owned base looper tempo still exposed",
+                approx(client.get_value("/core/behavior/tempo"), 120.0))
+
+        t.expect("set shared vocal effect to phaser",
+                 client.eval("local Shared=require('behaviors.donut_shared_state'); return tostring(Shared.setVocalEffectByIndex(3))"),
+                 "OK phaser")
+        time.sleep(0.3)
+        t.expect("super slot still loaded after vocal select",
+                 client.eval("return tostring(isDspSlotLoaded('super'))"),
+                 "OK true")
+        t.check("vocal select becomes phaser",
+                approx(client.get_value("/core/super/vocal/slot/select"), 2.0))
+        t.check("vocal phaser rate endpoint visible",
+                approx(client.get_value("/core/super/vocal/slot/phaser/rate"), 0.35))
+
+        t.expect("set shared layer-1 effect to reverb",
+                 client.eval("local Shared=require('behaviors.donut_shared_state'); return tostring(Shared.setLayerEffectByIndex(1, 8))"),
+                 "OK reverb")
+        time.sleep(0.3)
+        t.expect("super slot still loaded after layer select",
+                 client.eval("return tostring(isDspSlotLoaded('super'))"),
+                 "OK true")
+        t.check("layer-1 select becomes reverb",
+                approx(client.get_value("/core/super/layer/1/fx/select"), 7.0))
+        t.check("layer-1 reverb room endpoint visible",
+                approx(client.get_value("/core/super/layer/1/fx/reverb/room"), 0.65))
+
+        t.expect("shared selections reflect project slot state",
+                 client.eval("local Shared=require('behaviors.donut_shared_state'); local s=Shared.getSelections(); return tostring(s.vocal) .. '|' .. tostring(s.layers[2])"),
+                 "OK phaser|reverb")
+
+        final_diag = client.diagnose()
+        t.check("final DIAGNOSE still reports same socket",
+                final_diag.get("socketPath") == sock_path,
+                str(final_diag))
+
+        print(f"PID: {proc.pid}")
+        print(f"Socket: {sock_path}")
+        print(f"Log: {args.log}")
+        return t.summary()
+    finally:
+        if proc is not None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        if log_handle is not None:
+            try:
+                log_handle.close()
+            except Exception:
+                pass
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

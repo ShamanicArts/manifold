@@ -26,6 +26,7 @@ function TabHost.new(parent, name, config)
     self._tabBarHeight = math.max(18, math.floor(tonumber(config.tabBarHeight or 26) or 26))
     self._tabGap = math.max(0, math.floor(tonumber(config.tabGap or 4) or 4))
     self._tabPadding = math.max(8, math.floor(tonumber(config.tabPadding or 12) or 12))
+    self._tabSizing = string.lower(tostring(config.tabSizing or config.tabLayout or config.tabMode or "fill"))
     self._bg = Utils.colour(config.bg, 0xff0f172a)
     self._border = Utils.colour(config.border, 0xff334155)
     self._borderWidth = math.max(0, tonumber(config.borderWidth or 1) or 1)
@@ -74,15 +75,43 @@ function TabHost:_computeTabRects(w)
     local rects = {}
     local x = 0
     local h = self._tabBarHeight
+    local pageCount = #self._pages
 
-    for i = 1, #self._pages do
-        local page = self._pages[i]
-        local label = coerceLabel(page.title, page.id or ("Tab " .. tostring(i)))
-        local tabW = math.max(72, math.min(220, self._tabPadding * 2 + (#label * 7)))
+    if pageCount <= 0 then
+        return rects
+    end
+
+    if self._tabSizing == "fit" or self._tabSizing == "content" then
+        for i = 1, pageCount do
+            local page = self._pages[i]
+            local label = coerceLabel(page.title, page.id or ("Tab " .. tostring(i)))
+            local tabW = math.max(72, math.min(220, self._tabPadding * 2 + (#label * 7)))
+            rects[i] = {
+                x = x,
+                y = 0,
+                w = math.min(tabW, math.max(0, w - x)),
+                h = h,
+            }
+            x = x + rects[i].w + self._tabGap
+        end
+        return rects
+    end
+
+    local totalGap = self._tabGap * math.max(0, pageCount - 1)
+    local availableW = math.max(0, w - totalGap)
+    local baseW = math.floor(availableW / pageCount)
+    local remainder = availableW - baseW * pageCount
+
+    for i = 1, pageCount do
+        local tabW = baseW
+        if remainder > 0 then
+            tabW = tabW + 1
+            remainder = remainder - 1
+        end
         rects[i] = {
             x = x,
             y = 0,
-            w = math.min(tabW, math.max(0, w - x)),
+            w = math.max(0, tabW),
             h = h,
         }
         x = x + rects[i].w + self._tabGap
@@ -253,6 +282,7 @@ function TabHost:setStyle(style)
     if style.activeTabBg ~= nil then self._activeTabBg = style.activeTabBg end
     if style.textColour ~= nil then self._textColour = style.textColour end
     if style.activeTextColour ~= nil then self._activeTextColour = style.activeTextColour end
+    if style.tabSizing ~= nil then self._tabSizing = string.lower(tostring(style.tabSizing)) end
     self.node:repaint()
 end
 

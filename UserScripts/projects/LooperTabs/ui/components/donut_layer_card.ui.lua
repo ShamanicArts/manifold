@@ -3,7 +3,7 @@ return {
   type = "Panel",
   x = 0,
   y = 0,
-  w = 628,
+  w = 636,
   h = 172,
   style = {
     bg = 0xff0b1220,

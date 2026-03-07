@@ -225,6 +225,8 @@ public:
     std::vector<std::string> getMidiOutputDevices();
     void processMidiInput(const juce::MidiBuffer& midiMessages);
     void drainMidiOutput(juce::MidiBuffer& outMidi);
+    void handleIncomingMidiMessage(juce::MidiInput* source,
+                                   const juce::MidiMessage& msg);
 
 public:
     // Destroy deferred DSP slot hosts (safe boundary, not inside Lua call stacks)
