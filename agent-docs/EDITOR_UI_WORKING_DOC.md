@@ -269,6 +269,112 @@ Practical implication:
 
 ---
 
+## SuperDonut / Project DSP Debugging Postmortem (2026-03-06)
+
+This section records the mistakes, the actual causes, and the debugging discipline that should have been used.
+
+### What went wrong
+
+1. **Wrong ownership model in manifest/UI entry**
+   - `UserScripts/projects/SuperDonut/manifold.project.json5` was still pointing at `system:ui/donut_looper_super_ui.lua`.
+   - That was the wrong architectural example and it hid what the project actually owned.
+   - Result: the project looked project-backed on paper while still relying on a system UI root that generated and managed its own DSP slot path.
+
+2. **Wrong DSP composition model**
+   - A bad intermediate attempt treated two full DSP builders as if they were safely composable:
+     - base looper `buildPlugin(ctx)`
+     - super extension `buildPlugin(ctx)`
+   - That was incorrect. Two whole plugin builders on the same `ctx` is not a valid extension seam unless the API explicitly supports that shape.
+   - The correct shape is:
+     - project `dsp/main.lua` owns the single real `buildPlugin(ctx)`
+     - project helper/module attaches or composes extra graph/state within that build
+     - extension module exposes a narrower helper seam (`attach(...)`, etc.), not a second independent plugin build
+
+3. **Invalid project-local DSP code**
+   - The first project-local Super extension copied effect definitions that passed numeric defaults directly into setters with stricter integer/bool expectations.
+   - Concrete failure observed through direct DSP loading:
+     - `setVoices(3.0)` path failed because the binding expected an exact integer-compatible value.
+   - This made the project DSP invalid even before any higher-level UI/runtime claims.
+
+4. **Wrong narrative about crashes**
+   - Saying "the app is unstable" was backwards.
+   - If the host crashes after a project DSP/UI change, that change must be treated as the regression until proven otherwise.
+   - The correct stance is: new crash after new change = assume our bug, isolate it, fix or remove it.
+
+### Why the issues were encountered
+
+The failures were not mysterious. They came from a bad debugging/process sequence:
+
+- too much confidence in architectural reasoning before direct load validation
+- switching full project/UI paths before proving the DSP file itself loads cleanly
+- not using the available direct DSP loading path early enough (`loadDspScript(...)` + `getDspScriptLastError()`)
+- not immediately dropping to proper crash debugging discipline once host crashes appeared
+- not treating the system-UI manifest pointer as a first-order smell early enough
+
+### What actually fixed it
+
+1. **Make the project own the UI root**
+   - `SuperDonut` manifest now points to `ui/main.ui.lua`, not the system donut UI.
+
+2. **Make the project own the DSP composition root**
+   - `UserScripts/projects/SuperDonut/dsp/main.lua` now owns the single real `buildPlugin(ctx)`.
+   - The project-local super module is attached from there instead of pretending a finished system donut script is the project story.
+
+3. **Turn the project-local super module into an extension helper, not a second plugin**
+   - `UserScripts/projects/SuperDonut/dsp/super_extension.lua` now exposes an attach-style seam used by `main.lua`.
+
+4. **Directly validate DSP load before broader UI/runtime claims**
+   - Using `loadDspScript('/home/shamanic/dev/my-plugin/UserScripts/projects/SuperDonut/dsp/main.lua')`
+   - Then checking `getDspScriptLastError()`
+   - This exposed the real invalid setter/type issue immediately.
+
+5. **Coerce effect param application safely for strict bindings**
+   - Project-local Super extension now retries param application using rounded integer / boolean-compatible values where needed.
+   - After this, direct DSP load succeeded and `/core/super/...` endpoints became available.
+
+### Required debugging protocol going forward
+
+This is the minimum acceptable process for project DSP/UI debugging in this repo:
+
+1. **Use the dev build / repo-local runtime first**
+   - use `build-dev`
+   - use the tmux workflow already defined for the project
+
+2. **Validate DSP files directly before switching whole projects**
+   - `loadDspScript(...)`
+   - `isDspScriptLoaded()`
+   - `getDspScriptLastError()`
+   - `listEndpoints(...)`
+   - direct `getParam(...)` probes
+
+3. **Use IPC as first-line observability, not vague inference**
+   - verify current script path
+   - verify endpoint presence
+   - verify actual param values after widget callbacks
+
+4. **If the host crashes, stop calling it ambient instability**
+   - assume the regression is ours
+   - isolate the last bad step
+   - remove or minimize the change
+   - only proceed once the smaller step is proven
+
+5. **Use debugger/backtrace tooling for real crashes**
+   - if a change causes repeatable host death, run under `gdb` and capture the backtrace
+   - do not keep iterating blind while normalizing the crash as background noise
+
+### Current resolved state from this incident
+
+- `SuperDonut` now demonstrates the intended architecture more honestly:
+  - project-owned UI root
+  - project-owned DSP entry/composition root
+  - project-local Super FX extension
+  - system behavior used as reusable foundation, not as the hidden final project authority
+- direct DSP load now succeeds
+- `/core/super/...` endpoints are present
+- project UI behaviors can drive real Super parameters through the integrated project path
+
+---
+
 ## Priority Reset (Agreed)
 
 This is the active ordering going forward:
