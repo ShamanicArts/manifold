@@ -1,6 +1,8 @@
 # Editor Authoring, Source-of-Truth, and Format Strategy Discussion
 
-**Purpose:** capture the full breadth of the current thinking around the Manifold editor system, its current maturity, the long-term vision, the gaps, and—most importantly—the unresolved source-of-truth / authoring-format problem.
+**Status:** This discussion doc has been **largely resolved by implementation.** The structured project system is built and shipping in 4 projects. The strategic questions raised here were answered in `EDITOR_PROJECT_FORMAT_AND_AUTHORING_SPEC.md`. For current implementation state, see `EDITOR_WORKING_STATUS.md`.
+
+**Purpose (historical):** capture the full breadth of the current thinking around the Manifold editor system, its current maturity, the long-term vision, the gaps, and—most importantly—the unresolved source-of-truth / authoring-format problem.
 
 This doc is intentionally detailed and opinionated. It is meant as a handoff artifact for a second opinion, not a polished final spec.
 

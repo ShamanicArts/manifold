@@ -1,9 +1,9 @@
 # Editor Project Format & Authoring System — Implementation Spec
 
-**Status:** Approved strategic direction, ready for implementation planning  
-**Revision:** v2 — incorporates external review feedback (robustness tiers, loading safety, behavior API, component merge semantics, override risk classification, philosophical stance on monolith permanence)  
+**Status:** Approved strategic direction. Core infrastructure substantially implemented. See `EDITOR_WORKING_STATUS.md` for current state and remaining work.  
+**Revision:** v3 — updated to reflect actual implementation state as of 2026-03-06. Phases 1 (foundation) and 3 (structured assets) are mostly complete. 4 shipping structured projects exist.  
 **Audience:** Worker agent implementing the system  
-**Prerequisites:** Read `EDITOR_SYSTEM_OVERVIEW.md` and `EDITOR_AUTHORING_AND_SOURCE_OF_TRUTH_DISCUSSION.md` first  
+**Prerequisites:** Read `EDITOR_WORKING_STATUS.md` first for current state, then this doc for the full strategic spec  
 
 ---
 
@@ -1726,91 +1726,82 @@ This means:
 
 ---
 
-## 12. Implementation Priority
+## 12. Implementation Priority (updated to reflect current state)
 
-### Phase 1: Foundation (do first)
+**See `EDITOR_WORKING_STATUS.md` for the detailed current-state audit.** This section now only lists remaining work.
 
-| Task | Description | Dependencies |
+### Phase 1: Foundation — MOSTLY COMPLETE
+
+| Task | Status | Notes |
 |---|---|---|
-| **1.1 Project directory detection** | Runtime scans for `manifold.project.json5`, sets project root | None |
-| **1.2 Manifest loader** | Parse JSON5 manifest, expose project metadata to Lua | 1.1 |
-| **1.3 Lua table serializer** | Write clean `return { ... }` from Lua tables (for saving structured assets and overrides) | None |
-| **1.4 Lua table scene loader** | Read `.ui.lua` → instantiate widget tree from pure-data tables | None |
-| **1.5 Stable ID registry** | Track all widget IDs at runtime, detect duplicates, support lookup | None |
-| **1.6 Supported UI script contract** | Introduce `Script.define{ build, wire, layout, update, cleanup }` or equivalent canonical contract | None |
-| **1.7 Supported DSP script contract** | Introduce `DspScript.define{ build_graph, register_params, wire_handlers, cleanup }` or equivalent canonical contract | None |
-| **1.8 First-party template files** | Add canonical script templates with explicit phase functions and/or region markers | 1.6, 1.7 |
+| 1.1 Project directory detection | ✅ Done | `project_loader.lua` |
+| 1.2 Manifest loader | ✅ Done | JSON5 parsing, `ui.root`, `dsp.default`, `theme` |
+| 1.3 Lua table serializer | ✅ Done | `serializeStructuredDocument()` |
+| 1.4 Lua table scene loader | ✅ Done | `loadStructuredTable()` with sandboxed `load()` |
+| 1.5 Stable ID registry | ✅ Done | `registerWidget()`, `recordsBySourceKey`, global ID prefixing |
+| **1.6 Supported UI script contract** | ❌ Remaining | `Script.define{ build, wire, layout, update, cleanup }` |
+| **1.7 Supported DSP script contract** | ❌ Remaining | `DspScript.define{ build_graph, register_params, wire_handlers, cleanup }` |
+| **1.8 First-party template files** | ❌ Remaining | Canonical templates with explicit phases / region markers |
 
-### Phase 2: Override System (unblocks monolith editing → save)
+### Phase 2: Override System — NOT STARTED (lower priority now)
 
-Implement in risk order — property overrides first (low risk, high value), additions last (high risk, lower priority).
+The system went straight to structured assets. Override system is still relevant for code-first scripts but deprioritized since 4 structured projects are already shipping.
 
-| Task | Description | Risk | Dependencies |
+| Task | Status | Risk | Dependencies |
 |---|---|---|---|
-| **2.1 Override file reader** | Load `.overrides.lua`, parse structure via sandboxed loader | — | 1.3 |
-| **2.2 Property override application** | Apply position/size/style overrides on top of monolith runtime tree | Low | 2.1, 1.5 |
-| **2.3 Override capture** | Detect visual edits in editor, compute delta vs original, store | Low | 2.2 |
-| **2.4 Override save** | Write override table to `.overrides.lua` on disk | Low | 1.3, 2.3 |
-| **2.5 Orphan detection** | Detect stale overrides, surface to user | Low | 2.2 |
-| **2.6 Auto-ID assignment** | Assign stable IDs to unnamed widgets on first editor interaction | Low | 1.5 |
-| **2.7 Hidden widget support** | Apply visibility overrides, show "hidden by editor" in tree, easy revert | Medium | 2.2 |
-| **2.8 Widget additions** | Attach editor-created widgets to monolith parents, distinct visual treatment, stronger orphan handling | High | 2.2, Phase 3 scene instantiation |
+| **2.1 Override file reader** | ❌ | — | 1.3 |
+| **2.2 Property override application** | ❌ | Low | 2.1, 1.5 |
+| **2.3 Override capture** | ❌ | Low | 2.2 |
+| **2.4 Override save** | ❌ | Low | 1.3, 2.3 |
+| **2.5 Orphan detection** | ❌ | Low | 2.2 |
+| **2.6 Auto-ID assignment** | ❌ | Low | 1.5 |
+| **2.7 Hidden widget support** | ❌ | Medium | 2.2 |
+| **2.8 Widget additions** | ❌ | High | 2.2, Phase 3 |
 
-### Phase 3: Structured Assets (proves full round-trip)
+### Phase 3: Structured Assets — SUBSTANTIALLY COMPLETE
 
-| Task | Description | Dependencies |
+| Task | Status | Notes |
 |---|---|---|
-| **3.1 Scene instantiation** | Full widget tree from `.ui.lua` including nested children | 1.4 |
-| **3.2 Component loading** | Support `components = { { ref = "..." } }` references | 3.1 |
-| **3.3 Behavior module attachment** | Load and wire `behavior = "..."` modules to instantiated widgets | 3.1 |
-| **3.4 Editor round-trip** | Visual edits on structured assets → save back to `.ui.lua` | 1.3, 3.1 |
-| **3.5 Create from editor** | "New Component" action in editor creates blank `.ui.lua` file | 3.1 |
+| 3.1 Scene instantiation | ✅ Done | Full recursive tree, all widget types, TabHost/TabPage support |
+| 3.2 Component loading | ✅ Done | `ref` resolution, prop merging, ID prefixing |
+| 3.3 Behavior module attachment | ✅ Done | `init/update/resized/cleanup` lifecycle, `buildBehaviorContext()` |
+| 3.4 Editor round-trip (data) | ✅ Done | `getNodeValue/setNodeValue/saveDocument/saveAllDocuments` |
+| **3.4b Editor round-trip (visual)** | 🐛 BROKEN | Move/resize in editor does not work for structured projects — see bug below |
+| 3.5 Create from editor | ❓ Partial | Save works, "New Component" UX not clear |
 
-### Phase 4: DSP Integration
+**🐛 KNOWN BUG: Visual move/resize broken for structured projects.** Elements in structured project UIs cannot be moved or resized in the editor's edit mode. The data round-trip works (getNodeValue/setNodeValue/save), but the visual editing affordances (drag to move, drag handles to resize) do not function. This is a blocking issue for the editor's visual authoring promise. See `EDITOR_WORKING_STATUS.md` for details.
 
-| Task | Description | Dependencies |
+### Phase 4: DSP Integration — PARTIAL
+
+| Task | Status | Notes |
 |---|---|---|
-| **4.1 DSP manifest entries** | Manifest declares default DSP script + named FX slots | 1.2 |
-| **4.2 DSP param introspection** | Editor can query registered params from loaded DSP scripts (paths, types, ranges) | 4.1 |
-| **4.3 DSP param browser panel** | Editor panel listing all registered DSP params with current values | 4.2 |
-| **4.4 Binding suggestion** | When creating/editing a widget bind, show available DSP params as candidates | 4.2, Phase 3 |
-| **4.5 Binding validation** | On project load, warn if UI bindings reference params that don't exist in DSP | 4.2, Phase 3 |
-| **4.6 FX slot management** | Editor can browse, assign, and swap FX slot scripts | 4.1 |
+| 4.1 DSP manifest entries | ✅ Partial | Manifest has `dsp.default`, no FX slots yet |
+| **4.2 DSP param introspection** | ❌ Remaining | |
+| **4.3 DSP param browser panel** | ❌ Remaining | |
+| **4.4 Binding suggestion** | ❌ Remaining | |
+| **4.5 Binding validation** | ❌ Remaining | |
+| **4.6 FX slot management** | ❌ Remaining | |
 
-### Phase 5: Asset System
+### Phase 5: Asset System — NOT STARTED
 
-| Task | Description | Dependencies |
-|---|---|---|
-| **5.1 Asset resolution API** | `assets.loadImage()`, `assets.loadFont()`, `assets.resolve()` | 1.1 |
-| **5.2 Image asset support** | Load PNG/JPG, expose to Canvas/gfx for widget skins | 5.1, C++ work |
-| **5.3 Font asset support** | Load TTF/OTF, make available to gfx.setFont() | 5.1, C++ work |
-| **5.4 Asset browser panel** | Editor panel: enumerate, preview, drag-drop assets | 5.1 |
+| Task | Status |
+|---|---|
+| **5.1 Asset resolution API** | ❌ |
+| **5.2 Image asset support** | ❌ |
+| **5.3 Font asset support** | ❌ |
+| **5.4 Asset browser panel** | ❌ |
 
-### Phase 6: Structured Split Export
+### Phase 6: Structured Split Export — NOT STARTED
 
-| Task | Description | Dependencies |
-|---|---|---|
-| **6.1 Tree walker** | Walk runtime widget tree, extract structure as data tables | 1.5 |
-| **6.2 Component grouper** | Detect repeated structures, extract as parameterized components | 6.1 |
-| **6.3 Source region reader** | Read code-first script phase regions/functions from source file | 1.6, 1.8 |
-| **6.4 UI behavior relocation** | Emit preserved `helpers/wire/layout/update` code into behavior modules | 6.3 |
-| **6.5 Explicit binding extraction** | Surface declared simple binds as declarative `bind = { ... }` data | 6.3 |
-| **6.6 Structure emitter** | Generate `.ui.lua` files from extracted runtime structure | 1.3, 6.1, 6.2 |
-| **6.7 DSP split export** | Preserve DSP handler code, surface param metadata, emit manifest updates | 1.7, 4.2 |
-| **6.8 Export orchestrator** | Full export flow: run → extract → relocate → emit → archive original → update manifest | 6.4, 6.5, 6.6, 6.7 |
-| **6.9 Export UX** | Pre-export preview, post-export guidance, file listing | 6.8 |
+| Task | Status |
+|---|---|
+| **6.1–6.9 all tasks** | ❌ |
 
-### Phase 7: Script Contract Adoption & Migration UX
+### Phase 7: Script Contract Adoption & Migration UX — NOT STARTED
 
-| Task | Description | Dependencies |
-|---|---|---|
-| **7.1 First-party UI refactor** | Refactor `looper_ui.lua` and other first-party UIs to explicit `build/wire/layout/update` phases | 1.6 |
-| **7.2 First-party DSP refactor** | Refactor `looper_primitives_dsp.lua` and representative DSP scripts to the supported DSP contract | 1.7 |
-| **7.3 New project wizard** | Choice: blank structured / import code-first script / template | Phase 3 |
-| **7.4 Complexity nudges** | Detect when override files grow large or scripts are off-contract, suggest cleanup/export | Phase 2 |
-| **7.5 Override review panel** | View all overrides, revert individual ones, clean orphans | 2.5 |
-| **7.6 Binding editor** | Visual binding/mapping editor for structured assets | Phase 3 |
-| **7.7 Legacy script warning** | If a script is off-contract (inline callbacks, missing stable names, etc.), show clear export limitations | 1.6, 6.3 |
+| Task | Status |
+|---|---|
+| **7.1–7.7 all tasks** | ❌ |
 
 ---
 
