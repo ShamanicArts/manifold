@@ -1,0 +1,12 @@
+{
+  "name": "MidiSynth_uiproject",
+  "version": 1,
+  "description": "Full-featured polyphonic MIDI synthesizer",
+  "ui": {
+    "root": "ui/main.ui.lua"
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "themes/dark.lua"
+}

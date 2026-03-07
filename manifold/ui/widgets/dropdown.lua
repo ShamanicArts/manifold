@@ -33,6 +33,7 @@ function Dropdown:getSelectedLabel()
 end
 
 function Dropdown:close()
+    print("[Dropdown] close() called")
     if self._overlay then
         self._overlay:setOnDraw(nil)
         self._overlay:setOnClick(nil)
@@ -43,6 +44,11 @@ function Dropdown:close()
 end
 
 function Dropdown:open()
+    print("[Dropdown] open() called, options count: " .. #self._options)
+    for i, opt in ipairs(self._options) do
+        print("[Dropdown]   option[" .. i .. "] = " .. tostring(opt))
+    end
+    
     if self._open then
         self:close()
         return
@@ -95,6 +101,8 @@ function Dropdown:open()
         math.floor(overlayW),
         math.floor(overlayH)
     )
+    
+    print("[Dropdown] Overlay bounds: x=" .. overlayX .. " y=" .. overlayY .. " w=" .. overlayW .. " h=" .. overlayH)
 
     local dropdown = self
     self._overlay:setInterceptsMouse(true, true)
@@ -194,6 +202,7 @@ function Dropdown:open()
 end
 
 function Dropdown:onClick()
+    print("[Dropdown] onClick() called, _open=" .. tostring(self._open))
     self:open()
 end
 
@@ -228,6 +237,7 @@ function Dropdown:setOptions(opts)
     self._options = opts or {}
     self._selected = Utils.clamp(self._selected, 1, math.max(1, #self._options))
     self._scrollRow = 1
+    self.node:repaint()
 end
 
 function Dropdown:setAbsolutePos(ax, ay)
