@@ -737,9 +737,22 @@ Prove the recreated project is real enough to become the canonical first-pass ex
 ### Task 7.3 — Define what becomes the active development path
 
 #### Microtasks
-- [ ] For migrated UI areas, declare the new project-backed path the primary editing target
-- [ ] Identify any remaining legacy-only areas still pending migration
-- [ ] Explicitly note where new features should land going forward
+- [x] For migrated UI areas, declare the new project-backed path the primary editing target
+- [x] Identify any remaining legacy-only areas still pending migration
+- [x] Explicitly note where new features should land going forward
+
+#### Active development path declaration
+
+For the UI areas already migrated in first pass, the active development path is now explicitly:
+- `UserScripts/projects/Looper_uiproject/ui/main.ui.lua`
+- `UserScripts/projects/Looper_uiproject/ui/components/*.ui.lua`
+- `UserScripts/projects/Looper_uiproject/ui/behaviors/*.lua`
+- `UserScripts/projects/Looper_uiproject/dsp/main.lua`
+
+Meaning:
+- new work for migrated transport/capture/layer-strip areas should land in the project-backed files above
+- `manifold/ui/looper_ui.lua` remains the comparison baseline and legacy reference, not the primary editing target for those migrated areas
+- remaining legacy-only areas should be called out explicitly before adding new features there, otherwise work will keep leaking back into the wrong path like idiots
 
 ---
 
@@ -875,14 +888,14 @@ Use this checklist to decide if first pass is done.
 
 ## Editor
 - [x] structured widgets are selectable/editable
-- [ ] `.ui.lua` assets save back to source
+- [x] `.ui.lua` assets save back to source
 - [x] behavior modules remain text-editable handwritten files
-- [ ] reloading preserves saved structure edits
+- [x] reloading preserves saved structure edits
 
 ## Validation
 - [x] recreated project behavior is close enough to legacy baseline
 - [x] known gaps are documented
-- [ ] migrated areas have a declared active development path
+- [x] migrated areas have a declared active development path
 
 ---
 

@@ -373,6 +373,251 @@ This is the minimum acceptable process for project DSP/UI debugging in this repo
 - `/core/super/...` endpoints are present
 - project UI behaviors can drive real Super parameters through the integrated project path
 
+### Follow-up validation / tooling corrections applied
+
+After the debugging-process failure was called out, the follow-up work was corrected to use an isolated, explicit launch-and-verify flow instead of guessing against whatever runtime happened to be around.
+
+#### Correct launch/connect protocol now used
+
+1. launch an isolated runtime ourselves
+2. capture its **PID**
+3. derive the expected socket from the PID:
+   - `/tmp/manifold_<pid>.sock`
+4. wait for that exact socket to become live
+5. verify with `DIAGNOSE` that:
+   - `socketPath` matches the expected PID-derived socket
+6. only then run tests against that exact socket
+
+This avoids accidentally talking to another agent's process or to a stale socket.
+
+#### Headless path used for SuperDonut DSP validation
+
+A dedicated headless smoke path now exists:
+- `tools/test-superdonut-dsp-headless`
+
+What it does:
+- launches `build-dev/ManifoldHeadless`
+- verifies PID ↔ socket pairing explicitly
+- loads the project DSP in isolation
+- checks core SuperDonut endpoints and writes
+- tears the process down when done
+
+Current verified result:
+- `17 passed, 0 failed`
+
+Validated examples in that smoke:
+- vocal select default = bypass
+- vocal select set to phaser
+- phaser rate visible and writable
+- layer FX select default = bypass
+- layer FX set to reverb
+- reverb room visible and writable
+- base looper tempo still exposed alongside SuperDonut endpoints
+
+#### LooperTabs shared-slot verification refresh
+
+A bounded standalone verification was run using an isolated standalone process with explicit PID/socket matching.
+
+What was verified:
+- switched to `UserScripts/projects/LooperTabs/manifold.project.json5`
+- `__looperTabsSuperSlotState.ok == true`
+- `isDspSlotLoaded('super') == true`
+- changing LooperTabs shared selections rebuilt the shared slot and exposed the expected endpoints
+  - vocal phaser endpoint visible
+  - layer-1 reverb endpoint visible
+- shared selection state reported `phaser|reverb` after the rebuild
+
+This gives us a quick proof that the shared-slot story is still intact without turning that area into a new side quest.
+
+#### LooperTabs ownership cleanup
+
+LooperTabs now uses project-local DSP assets for both layers of the story:
+- `dsp/main.lua` composes the project-local `dsp/looper_baseline.lua`
+- the shared Super slot is loaded from a real project DSP file: `dsp/super_slot_runtime.lua`
+- the shared Super graph implementation itself lives in `dsp/super_extension.lua`
+- `dsp/super_slot.lua` is now just the project-owned slot loader/sync layer that loads the runtime file and drives `/core/super/.../select`
+- `ui/behaviors/donut_super_slot.lua` remains a thin bridge that asks the project DSP helper to ensure the shared slot is loaded
+
+This kills the previous generated-string slot hack and keeps the actual shared Super DSP graph in project files.
+
+A dedicated verifier now exists for that path:
+- `tools/test-loopertabs-shared-super-slot`
+
+Current verified result:
+- `20 passed, 0 failed`
+
+#### LooperTabs now shares transport/capture chrome across all three tabs
+
+The Looper, DonutSuper, and FX Sandbox views now all use the same shared top chrome:
+- `ui/components/shared_transport.ui.lua`
+- `ui/behaviors/shared_transport.lua`
+- `ui/components/shared_capture_plane.ui.lua`
+- `ui/behaviors/shared_capture_plane.lua`
+
+This removes the previous discrepancy where the donut tab had its own header/capture treatment even though these views are supposed to be different presentations of the same underlying project/runtime.
+
+#### TabHost now supports fill sizing, and LooperTabs opts into it explicitly
+
+`widgets/tabhost.lua` now supports:
+- `tabSizing = "fill"`
+- `tabSizing = "content"`
+
+Default behavior is now `fill`, and `LooperTabs/ui/main.ui.lua` sets it explicitly so the three tab buttons fill the available width instead of bunching to content width.
+
+#### Structured UI save/reload smoke now exists
+
+To get back to the first-pass editor/save path honestly, a dedicated isolated smoke was added:
+- `tools/test-structured-ui-save-roundtrip`
+
+What it does:
+- copies `UserScripts/projects/Looper_uiproject` to `/tmp`
+- launches isolated standalone
+- verifies PID ↔ socket pairing explicitly
+- switches to the temp structured project
+- mutates structured node values through the runtime helper API
+- saves all structured UI docs
+- reloads the project
+- verifies both runtime values and on-disk `.ui.lua` files preserved the edits
+
+Current verified result:
+- `16 passed, 0 failed`
+
+This proves the current structured serializer/save/reload path is real enough to test against, rather than remaining a hand-waved future item.
+
+#### Structured `.ui.lua` assets are now marked as editor-owned in shell surfaces
+
+The shell/script surfaces now tag project-backed structured `.ui.lua` files as:
+- `editor-owned`
+
+Current UI effect:
+- structured UI rows in the Scripts list render with `[editor]`
+- script inspector shows `Ownership: editor-owned` for those assets
+- script inspector also shows current structured dirty state for those files
+- preview mode now shows the active structured project, dirty-doc count, manifest path, and save/reload hotkeys
+
+This is a small but direct step toward making the structured path visibly distinct from handwritten behavior/DSP files.
+
+#### Explicit editor-managed save path is less muddy now
+
+There are now two clearly different save paths for editor-owned structured files:
+
+1. **Preview mode / visual edits**
+   - `Ctrl+S` saves the active structured project through the structured runtime
+   - console output now includes dirty-count transition and manifest path
+
+2. **Scripts panel / text editor on an editor-owned `.ui.lua`**
+   - if the text buffer is clean, `saveScriptEditor()` routes through `saveStructuredUiDocument(path)`
+   - if the text buffer itself was edited, it writes the raw source file directly and tells you the project must be reloaded/applied to use those changes
+
+This avoids the previous dumb ambiguity where every save looked the same even though structured runtime state and raw file text are not the same thing.
+
+#### Structured errors are surfaced more directly now
+
+The structured runtime now publishes status with:
+- `lastOperation`
+- `lastError`
+
+Current shell effect:
+- preview mode shows the last structured error inline when one exists
+- script inspector for editor-owned assets also exposes the current last error
+- console save/reload failures now include the structured operation name instead of generic mush
+
+This is still first-pass level, but at least the editor is no longer pretending every failure is the same blob of sadness.
+
+#### Active development path is now declared for migrated first-pass UI areas
+
+For the UI areas already migrated in first pass, the active development path is:
+- `UserScripts/projects/Looper_uiproject/ui/main.ui.lua`
+- `UserScripts/projects/Looper_uiproject/ui/components/*.ui.lua`
+- `UserScripts/projects/Looper_uiproject/ui/behaviors/*.lua`
+- `UserScripts/projects/Looper_uiproject/dsp/main.lua`
+
+Rules going forward:
+- new work for migrated transport/capture/layer-strip areas lands in the project-backed files above
+- `manifold/ui/looper_ui.lua` remains the legacy baseline/reference for parity checks, not the primary place to keep adding features for migrated areas
+- if an area is still legacy-only, say so explicitly before shoving new work into it
+
+#### Important headless/runtime lesson discovered
+
+Using raw `DSPRUN dofile('.../SuperDonut/dsp/main.lua')` from the IPC server is **not enough** for project DSPs that use relative `loadDspModule('./super_extension.lua')` imports.
+
+Reason:
+- `DSPRUN` currently loads the provided text with source name `ipc:dsprun`
+- that means relative module resolution defaults to the IPC pseudo-source, not the project DSP directory
+
+For isolated IPC/headless testing, the working pattern is:
+- seed `__manifoldDspScriptDir` to the project DSP directory
+- then `dofile(project_main)`
+
+That is what the new smoke script does.
+
+#### Headless build issue found and fixed while enabling this path
+
+While moving to the proper headless workflow, `ManifoldHeadless` initially failed to build because:
+- `BehaviorCoreProcessor.cpp` defined `handleIncomingMidiMessage(...)`
+- but `BehaviorCoreProcessor.h` did not declare it
+
+That mismatch was fixed so the headless target can be built and used for isolated DSP validation.
+
+### Immediate next body of work
+
+This is the next sensible work block after the current SuperDonut correction.
+
+#### 1. Stabilize the debugging discipline itself
+- Use the **dev build** path only for iteration unless a release-style check is explicitly needed
+- Use the existing **tmux workflow** for the standalone and build/test panes
+- For every DSP change:
+  - direct `loadDspScript(...)`
+  - inspect `getDspScriptLastError()`
+  - verify `listEndpoints(...)`
+  - verify `getParam(...)`
+- For any repeatable crash:
+  - stop feature work immediately
+  - run under **gdb**
+  - capture and record the backtrace before proceeding
+- If an observability/tooling gap remains, implement it rather than hand-waving around it
+
+#### 2. Cleanly prove SuperDonut as the project-owned extension example
+- Verify all core project paths are now fully project-owned:
+  - manifest UI root
+  - `dsp/main.lua`
+  - project-local Super extension module
+  - project-local behavior wiring
+- Audit for any remaining hidden system dependency that still undermines the example
+- Make sure the project example clearly teaches:
+  - system looper baseline is reusable
+  - project composes/extends it locally
+  - UI binds against project-real DSP endpoints
+
+#### 3. Finish SuperDonut control parity
+- Confirm vocal and per-layer preset switching through the project UI
+- Confirm XY / K1 / K2 / Mix controls map to real live endpoints for current effect selections
+- Verify default mapping choices are musically sensible, not merely technically valid
+- Identify any remaining parity gaps vs the legacy donut UI and document them explicitly
+
+#### 4. Reduce duplication / clarify intent in the project-local DSP
+- Now that the project path works, clean up `SuperDonut/dsp/main.lua` and `super_extension.lua`
+- Separate clearly:
+  - reusable looper behavior concerns
+  - project Super-FX attachment logic
+  - effect catalog / parameter binding helpers
+- Keep helper functions if they improve readability, but make authorship and extension intent obvious
+
+#### 5. Feed the lesson back into LooperTabs and the wider project model
+- Reconcile `LooperTabs` with the corrected ownership model
+- Decide whether shared Super behavior should remain slot-driven there or move toward a cleaner project-DSP composition story
+- Remove any stale assumptions based on fake `/select` params, hidden legacy ownership, or system-rooted project examples
+
+#### 6. Return to the official first-pass gaps once the example is solid
+The first-pass work still has official unfinished items unrelated to this incident:
+- structured `.ui.lua` save / serializer round-trip
+- explicit editor-owned structured save path
+- declaration of the active development path for migrated areas
+
+The important rule is:
+- do not let architectural side quests hide these deliverables,
+- but also do not declare the project model healthy until the SuperDonut example is honest and properly debugged.
+
 ---
 
 ## Priority Reset (Agreed)
