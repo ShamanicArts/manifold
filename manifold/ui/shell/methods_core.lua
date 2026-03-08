@@ -49,6 +49,7 @@ local mapBehaviorPathToSlotPath = Runtime.mapBehaviorPathToSlotPath
 local collectRuntimeParamsForScript = Runtime.collectRuntimeParamsForScript
 
 local walkHierarchy = Inspector.walkHierarchy
+local walkStructuredRecords = Inspector.walkStructuredRecords
 local valueToText = Inspector.valueToText
 local upperFirst = Inspector.upperFirst
 local splitPath = Inspector.splitPath
@@ -1744,6 +1745,18 @@ function M.attach(shell)
             if type(instanceMeta) == "table"
                 and type(instanceMeta.documentPath) == "string"
                 and type(instanceMeta.nodeId) == "string" then
+                if type(instanceMeta.childNodeId) == "string"
+                    and instanceMeta.childNodeId ~= ""
+                    and instanceMeta.childNodeId ~= instanceMeta.nodeId then
+                    return {
+                        documentPath = instanceMeta.documentPath,
+                        nodeId = instanceMeta.nodeId,
+                        pathPrefix = "overrides." .. instanceMeta.childNodeId .. ".",
+                        childNodeId = instanceMeta.childNodeId,
+                        globalId = instanceMeta.globalId,
+                        kind = instanceMeta.kind,
+                    }
+                end
                 return instanceMeta
             end
         end
@@ -1786,12 +1799,42 @@ function M.attach(shell)
             return false
         end
 
-        local prefix = hasLayout and "layout." or ""
+        local runtime = (type(_G) == "table") and _G.__manifoldStructuredUiRuntime or nil
+        local row = self:_findTreeRowByCanvas(canvas)
+        local record = row and row.record or nil
+        if record == nil and type(runtime) == "table" and type(runtime.getRecordBySource) == "function" then
+            record = runtime:getRecordBySource(docPath, nodeId)
+        end
+
+        local basePrefix = source.pathPrefix or ""
+        local prefix = basePrefix .. (hasLayout and "layout." or "")
         local okX = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "x", bx)
         local okY = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "y", by)
         local okW = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "w", bw)
         local okH = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "h", bh)
-        return okX and okY and okW and okH
+        local ok = okX and okY and okW and okH
+
+        if type(_G) == "table" then
+            _G.__manifoldLastStructuredPersist = {
+                documentPath = docPath,
+                nodeId = nodeId,
+                x = bx,
+                y = by,
+                w = bw,
+                h = bh,
+                ok = ok,
+            }
+            _G.__manifoldStructuredPersistCount = (_G.__manifoldStructuredPersistCount or 0) + 1
+        end
+
+        if ok and type(runtime) == "table" and type(runtime.notifyRecordHostedResized) == "function" and type(record) == "table" then
+            local refreshRecord = record.parent or record
+            pcall(function()
+                runtime:notifyRecordHostedResized(refreshRecord)
+            end)
+        end
+
+        return ok
     end
 
     function shell:resolveStructuredConfigDestination(documentPath, nodeId, configPath)
@@ -2990,7 +3033,17 @@ function M.attach(shell)
         if self.content ~= nil then
             local rootOffsetX = (self.mode == "edit") and self.viewportDesignX or 0
             local rootOffsetY = (self.mode == "edit") and self.viewportDesignY or 0
-            self.treeRoot = walkHierarchy(self.content, 0, self.treeRows, rootOffsetX, rootOffsetY, "", 0)
+            local structuredRuntime = (type(_G) == "table") and _G.__manifoldStructuredUiRuntime or nil
+            if self:isStructuredProjectActive()
+                and type(structuredRuntime) == "table"
+                and type(structuredRuntime.layoutTree) == "table" then
+                self.treeRoot = walkStructuredRecords(structuredRuntime.layoutTree, 0, self.treeRows, rootOffsetX, rootOffsetY, "", 0, structuredRuntime)
+            else
+                self.treeRoot = walkHierarchy(self.content, 0, self.treeRows, rootOffsetX, rootOffsetY, "", 0, {
+                    structuredOnly = false,
+                    structuredDocumentPath = "",
+                })
+            end
         else
             self.treeRoot = nil
         end

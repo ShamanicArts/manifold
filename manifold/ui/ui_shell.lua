@@ -56,6 +56,7 @@ local mapBehaviorPathToSlotPath = Runtime.mapBehaviorPathToSlotPath
 local collectRuntimeParamsForScript = Runtime.collectRuntimeParamsForScript
 
 local walkHierarchy = Inspector.walkHierarchy
+local walkStructuredRecords = Inspector.walkStructuredRecords
 local valueToText = Inspector.valueToText
 local upperFirst = Inspector.upperFirst
 local splitPath = Inspector.splitPath

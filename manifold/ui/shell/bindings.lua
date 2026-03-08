@@ -1713,6 +1713,13 @@ function M.attach(shell)
             return
         end
 
+        if type(_G) == "table" then
+            _G.__manifoldPreviewDragDebug = _G.__manifoldPreviewDragDebug or { down = 0, drag = 0, up = 0, lastMode = "", lastHit = "" }
+            local dbg = _G.__manifoldPreviewDragDebug
+            dbg.down = (dbg.down or 0) + 1
+            dbg.lastDown = { mx = mx, my = my, shift = shift, ctrl = ctrl, alt = alt }
+        end
+
         shell.previewOverlay:grabKeyboardFocus()
 
         if shell.navMode == "pan" and not shift and not ctrl then
@@ -1781,6 +1788,13 @@ function M.attach(shell)
 
         local hit = shell:hitTestWidget(designX, designY)
 
+        if type(_G) == "table" then
+            local dbg = _G.__manifoldPreviewDragDebug or {}
+            local row = hit and shell:_findTreeRowByCanvas(hit) or nil
+            dbg.lastHit = row and row.path or ""
+            _G.__manifoldPreviewDragDebug = dbg
+        end
+
         if shift and hit ~= nil then
             local targets = {}
             if shell:isCanvasSelected(hit) and #shell.selectedWidgets > 1 then
@@ -1807,6 +1821,12 @@ function M.attach(shell)
                 historyBeforeScene = shell:_captureSceneState(),
                 historyBeforeSelection = shell:_captureSelectionState(),
             }
+            if type(_G) == "table" then
+                local dbg = _G.__manifoldPreviewDragDebug or {}
+                dbg.lastMode = "move"
+                dbg.targets = #targets
+                _G.__manifoldPreviewDragDebug = dbg
+            end
             return
         end
 
@@ -1818,7 +1838,18 @@ function M.attach(shell)
             return
         end
 
+        if type(_G) == "table" then
+            local dbg = _G.__manifoldPreviewDragDebug or {}
+            dbg.drag = (dbg.drag or 0) + 1
+            dbg.lastDrag = { mx = mx, my = my, dx = dx, dy = dy, shift = shift, ctrl = ctrl, alt = alt }
+            _G.__manifoldPreviewDragDebug = dbg
+        end
+
         local ds = shell.dragState
+        local runtime = (type(_G) == "table") and _G.__manifoldStructuredUiRuntime or nil
+        if type(runtime) == "table" and (ds.mode == "move" or ds.mode == "resize") then
+            runtime.suspendLayoutPass = true
+        end
 
         if ds.mode == "pan" then
             shell.autoFit = false
@@ -1862,6 +1893,10 @@ function M.attach(shell)
                     if t.canvas ~= nil then
                         local nx = math.floor(t.x + ddx + 0.5)
                         local ny = math.floor(t.y + ddy + 0.5)
+                        t.lastX = nx
+                        t.lastY = ny
+                        t.lastW = t.w
+                        t.lastH = t.h
                         t.canvas:setBounds(nx, ny, t.w, t.h)
                     end
                 end
@@ -1927,7 +1962,11 @@ function M.attach(shell)
                         local localNY = ny - (t.parentDesignY or 0)
                         local nw = math.max(shell.minWidgetSize, t.w * scaleX)
                         local nh = math.max(shell.minWidgetSize, t.h * scaleY)
-                        t.canvas:setBounds(math.floor(localNX + 0.5), math.floor(localNY + 0.5), math.floor(nw + 0.5), math.floor(nh + 0.5))
+                        t.lastX = math.floor(localNX + 0.5)
+                        t.lastY = math.floor(localNY + 0.5)
+                        t.lastW = math.floor(nw + 0.5)
+                        t.lastH = math.floor(nh + 0.5)
+                        t.canvas:setBounds(t.lastX, t.lastY, t.lastW, t.lastH)
                     end
                 end
             end
@@ -1943,8 +1982,16 @@ function M.attach(shell)
             return
         end
 
+        if type(_G) == "table" then
+            local dbg = _G.__manifoldPreviewDragDebug or {}
+            dbg.up = (dbg.up or 0) + 1
+            dbg.lastUp = { mx = mx, my = my, shift = shift, ctrl = ctrl, alt = alt, mode = shell.dragState and shell.dragState.mode or "" }
+            _G.__manifoldPreviewDragDebug = dbg
+        end
+
         local ds = shell.dragState
         shell.dragState = nil
+        local runtime = (type(_G) == "table") and _G.__manifoldStructuredUiRuntime or nil
 
         if ds.mode == "marqueePending" then
             if ds.pendingHit ~= nil then
@@ -1997,10 +2044,16 @@ function M.attach(shell)
         end
 
         if ds.mode == "move" or ds.mode == "resize" then
+            if type(runtime) == "table" then
+                runtime.suspendLayoutPass = false
+            end
             if type(ds.targets) == "table" then
                 for i = 1, #ds.targets do
                     local t = ds.targets[i]
                     if t.canvas ~= nil then
+                        if t.lastX ~= nil and t.lastY ~= nil and t.lastW ~= nil and t.lastH ~= nil then
+                            t.canvas:setBounds(t.lastX, t.lastY, t.lastW, t.lastH)
+                        end
                         shell:persistStructuredBoundsForCanvas(t.canvas)
                     end
                 end
@@ -2013,6 +2066,10 @@ function M.attach(shell)
             local afterSelection = shell:_captureSelectionState()
             shell:recordHistory(ds.mode, ds.historyBeforeScene, ds.historyBeforeSelection, afterScene, afterSelection)
             return
+        end
+
+        if type(runtime) == "table" then
+            runtime.suspendLayoutPass = false
         end
 
         shell.previewOverlay:repaint()
