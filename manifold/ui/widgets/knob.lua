@@ -184,4 +184,15 @@ function Knob:setValue(v)
     self._value = Utils.clamp(v, self._min, self._max)
 end
 
+function Knob:getLabel()
+    return self._label
+end
+
+function Knob:setLabel(label)
+    self._label = label or ""
+    if self.node and self.node.repaint then
+        self.node:repaint()
+    end
+end
+
 return Knob

@@ -15,6 +15,10 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target Manifold_Standalone
 ```
 
+NEVER USE -tail or -head when running build commands  this is non negotiable. 
+
+never use sed -i or awk to edit files - this is non negotiable.
+
 ## Running
 
 ### Standalone Manifold

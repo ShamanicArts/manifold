@@ -270,13 +270,46 @@ function M.layerFxBasePath(layerIndex)
   return string.format("/core/super/layer/%d/fx", idx)
 end
 
-function M.createMapping(path, label, rangeMin, rangeMax, typeTag)
+local function inferMappingScale(path, label, rangeMin, rangeMax, typeTag)
+  local lo = tonumber(rangeMin) or 0.0
+  local hi = tonumber(rangeMax) or 1.0
+  local text = string.lower(table.concat({ tostring(path or ""), tostring(label or "") }, " "))
+  local isInteger = type(typeTag) == "string" and typeTag:find("i", 1, true) ~= nil
+  if isInteger or lo <= 0.0 or hi <= 0.0 then
+    return "linear"
+  end
+
+  local logHints = {
+    "cutoff",
+    "freq",
+    "frequency",
+    "rate",
+    "time",
+    "window",
+    "grain",
+    "attack",
+    "release",
+    "sidechain",
+    "mono low",
+    "monolow",
+  }
+  for _, hint in ipairs(logHints) do
+    if text:find(hint, 1, true) then
+      return "log"
+    end
+  end
+
+  return "linear"
+end
+
+function M.createMapping(path, label, rangeMin, rangeMax, typeTag, scale)
   return {
     path = path,
     label = label,
     rangeMin = tonumber(rangeMin) or 0.0,
     rangeMax = tonumber(rangeMax) or 1.0,
     type = typeTag or "f",
+    scale = scale or inferMappingScale(path, label, rangeMin, rangeMax, typeTag),
   }
 end
 
@@ -293,7 +326,12 @@ function M.mappingToNormalized(mapping, actual, fallbackNorm)
     return fallbackNorm or 0.5
   end
   local lo, hi = M.mappingRange(mapping)
-  return M.clamp((tonumber(actual) or 0.0 - lo) / (hi - lo), 0.0, 1.0)
+  local value = tonumber(actual) or lo
+  if mapping.scale == "log" and lo > 0.0 and hi > 0.0 then
+    local safe = M.clamp(value, lo, hi)
+    return M.clamp(math.log(safe / lo) / math.log(hi / lo), 0.0, 1.0)
+  end
+  return M.clamp((value - lo) / (hi - lo), 0.0, 1.0)
 end
 
 function M.normalizedToMapping(mapping, norm)
@@ -301,7 +339,11 @@ function M.normalizedToMapping(mapping, norm)
     return 0.0
   end
   local lo, hi = M.mappingRange(mapping)
-  return lo + M.clamp(norm, 0.0, 1.0) * (hi - lo)
+  local t = M.clamp(norm, 0.0, 1.0)
+  if mapping.scale == "log" and lo > 0.0 and hi > 0.0 then
+    return lo * ((hi / lo) ^ t)
+  end
+  return lo + t * (hi - lo)
 end
 
 function M.knobStepForMapping(mapping)
@@ -397,7 +439,7 @@ end
 function M.assignScopeMappingByIndex(scope, key, idx)
   local catalog = scope and scope.catalog or {}
   local item = catalog[idx] or catalog[1]
-  scope.mappings[key] = item and item.path and M.createMapping(item.path, item.label, item.rangeMin, item.rangeMax, item.type) or nil
+  scope.mappings[key] = item and item.path and M.createMapping(item.path, item.label, item.rangeMin, item.rangeMax, item.type, item.scale) or nil
 end
 
 local function preferredIndex(scope, patterns, used)

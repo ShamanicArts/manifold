@@ -19,11 +19,13 @@ extern "C" {
 #include "../core/Settings.h"
 
 #include <algorithm>
+#include <deque>
 #include <map>
 #include <mutex>
 #include <cmath>
 #include <functional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -65,13 +67,24 @@ std::shared_ptr<NodeT> tableNode(const sol::table &self) {
   return obj.as<std::shared_ptr<NodeT>>();
 }
 
+sol::table createTable(sol::this_state ts) {
+  sol::state_view lua(ts);
+  return lua.create_table();
+}
+
+template <typename... Args>
+sol::table createTableWith(sol::this_state ts, Args &&...args) {
+  sol::state_view lua(ts);
+  return lua.create_table_with(std::forward<Args>(args)...);
+}
+
 } // namespace
 
 struct DSPPluginScriptHost::Impl {
   ScriptableProcessor *processor = nullptr;
 
   mutable std::recursive_mutex luaMutex;
-  sol::state lua;
+  std::unique_ptr<sol::state> lua;
   sol::function onParamChange;
 
   std::unordered_map<std::string, DspParamSpec> paramSpecs;
@@ -88,7 +101,10 @@ struct DSPPluginScriptHost::Impl {
   std::vector<std::shared_ptr<dsp_primitives::IPrimitiveNode>> ownedNodes;
 
   // Keep old Lua VMs alive to avoid tearing down a VM during nested Lua call stacks.
-  std::vector<sol::state> retiredLuaStates;
+  // Store owning pointers, not sol::state values: sol::state move semantics are
+  // not trustworthy enough here and can leave the freshly loaded VM getting
+  // destroyed at function exit.
+  std::deque<std::unique_ptr<sol::state>> retiredLuaStates;
 
   std::string namespaceBase{"/core/behavior"};
 
@@ -143,9 +159,10 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   impl->ownedNodes.clear();
 
-  sol::state newLua;
-  newLua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string,
-                        sol::lib::table, sol::lib::package);
+  auto newLua = std::make_unique<sol::state>();
+  auto &lua = *newLua;
+  lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string,
+                     sol::lib::table, sol::lib::package);
 
   std::unordered_map<std::string, DspParamSpec> newParamSpecs;
   std::unordered_map<std::string, float> newParamValues;
@@ -157,7 +174,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   std::vector<std::weak_ptr<dsp_primitives::GainNode>> newLayerOutputNodes;
   std::unordered_map<std::string, std::weak_ptr<dsp_primitives::IPrimitiveNode>>
       newNamedNodes;
-  auto newOwnedNodes = std::make_shared<std::vector<std::shared_ptr<dsp_primitives::IPrimitiveNode>>>();
+  std::vector<std::shared_ptr<dsp_primitives::IPrimitiveNode>> newOwnedNodes;
   sol::function newOnParamChange;
 
   auto mapInternalToExternal = [impl](const std::string &rawPath) {
@@ -194,12 +211,20 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     return external.toStdString();
   };
 
-  auto trackNode = [graph, newOwnedNodes](std::shared_ptr<dsp_primitives::IPrimitiveNode> node) {
-    graph->registerNode(node);
-    newOwnedNodes->push_back(node);
+  auto *newOwnedNodesPtr = &newOwnedNodes;
+  auto trackNode = [impl, newOwnedNodesPtr](std::shared_ptr<dsp_primitives::IPrimitiveNode> node) {
+    if (!impl->processor) {
+      return;
+    }
+    auto currentGraph = impl->processor->getPrimitiveGraph();
+    if (!currentGraph) {
+      return;
+    }
+    currentGraph->registerNode(node);
+    newOwnedNodesPtr->push_back(node);
   };
 
-  newLua.new_usertype<dsp_primitives::PlayheadNode>(
+  lua.new_usertype<dsp_primitives::PlayheadNode>(
       "PlayheadNode",
       sol::constructors<std::shared_ptr<dsp_primitives::PlayheadNode>()>(),
       "setLoopLength", &dsp_primitives::PlayheadNode::setLoopLength,
@@ -214,11 +239,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       &dsp_primitives::PlayheadNode::isPlaying, "getNormalizedPosition",
       &dsp_primitives::PlayheadNode::getNormalizedPosition);
 
-  newLua.new_usertype<dsp_primitives::PassthroughNode>(
+  lua.new_usertype<dsp_primitives::PassthroughNode>(
       "PassthroughNode",
       sol::constructors<std::shared_ptr<dsp_primitives::PassthroughNode>(int)>());
 
-  newLua.new_usertype<dsp_primitives::GainNode>(
+  lua.new_usertype<dsp_primitives::GainNode>(
       "GainNode",
       sol::constructors<std::shared_ptr<dsp_primitives::GainNode>(int)>(),
       "setGain", &dsp_primitives::GainNode::setGain,
@@ -226,7 +251,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "setMuted", &dsp_primitives::GainNode::setMuted,
       "isMuted", &dsp_primitives::GainNode::isMuted);
 
-  newLua.new_usertype<dsp_primitives::LoopPlaybackNode>(
+  lua.new_usertype<dsp_primitives::LoopPlaybackNode>(
       "LoopPlaybackNode",
       sol::constructors<std::shared_ptr<dsp_primitives::LoopPlaybackNode>(int)>(),
       "setLoopLength", &dsp_primitives::LoopPlaybackNode::setLoopLength,
@@ -242,7 +267,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "seek", &dsp_primitives::LoopPlaybackNode::seekNormalized,
       "getNormalizedPosition", &dsp_primitives::LoopPlaybackNode::getNormalizedPosition);
 
-  newLua.new_usertype<dsp_primitives::PlaybackStateGateNode>(
+  lua.new_usertype<dsp_primitives::PlaybackStateGateNode>(
       "PlaybackStateGateNode",
       sol::constructors<std::shared_ptr<dsp_primitives::PlaybackStateGateNode>(int)>(),
       "play", &dsp_primitives::PlaybackStateGateNode::play,
@@ -253,7 +278,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "setMuted", &dsp_primitives::PlaybackStateGateNode::setMuted,
       "isMuted", &dsp_primitives::PlaybackStateGateNode::isMuted);
 
-  newLua.new_usertype<dsp_primitives::RetrospectiveCaptureNode>(
+  lua.new_usertype<dsp_primitives::RetrospectiveCaptureNode>(
       "RetrospectiveCaptureNode",
       sol::constructors<std::shared_ptr<dsp_primitives::RetrospectiveCaptureNode>(int)>(),
       "setCaptureSeconds", &dsp_primitives::RetrospectiveCaptureNode::setCaptureSeconds,
@@ -266,7 +291,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           const std::shared_ptr<dsp_primitives::LoopPlaybackNode>&, int, bool)>(
           &dsp_primitives::RetrospectiveCaptureNode::copyRecentToLoop));
 
-  newLua.new_usertype<dsp_primitives::RecordStateNode>(
+  lua.new_usertype<dsp_primitives::RecordStateNode>(
       "RecordStateNode",
       sol::constructors<std::shared_ptr<dsp_primitives::RecordStateNode>()>(),
       "startRecording", &dsp_primitives::RecordStateNode::startRecording,
@@ -275,7 +300,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "setOverdub", &dsp_primitives::RecordStateNode::setOverdub,
       "isOverdub", &dsp_primitives::RecordStateNode::isOverdub);
 
-  newLua.new_usertype<dsp_primitives::QuantizerNode>(
+  lua.new_usertype<dsp_primitives::QuantizerNode>(
       "QuantizerNode",
       sol::constructors<std::shared_ptr<dsp_primitives::QuantizerNode>()>(),
       "setTempo", &dsp_primitives::QuantizerNode::setTempo,
@@ -285,7 +310,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getSamplesPerBar", &dsp_primitives::QuantizerNode::getSamplesPerBar,
       "quantizeToNearestLegal", &dsp_primitives::QuantizerNode::quantizeToNearestLegal);
 
-  newLua.new_usertype<dsp_primitives::RecordModePolicyNode>(
+  lua.new_usertype<dsp_primitives::RecordModePolicyNode>(
       "RecordModePolicyNode",
       sol::constructors<std::shared_ptr<dsp_primitives::RecordModePolicyNode>()>(),
       "setMode", &dsp_primitives::RecordModePolicyNode::setMode,
@@ -293,7 +318,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "usesRetrospectiveCommit", &dsp_primitives::RecordModePolicyNode::usesRetrospectiveCommit,
       "schedulesForwardCommitWhenIdle", &dsp_primitives::RecordModePolicyNode::schedulesForwardCommitWhenIdle);
 
-  newLua.new_usertype<dsp_primitives::ForwardCommitSchedulerNode>(
+  lua.new_usertype<dsp_primitives::ForwardCommitSchedulerNode>(
       "ForwardCommitSchedulerNode",
       sol::constructors<std::shared_ptr<dsp_primitives::ForwardCommitSchedulerNode>()>(),
       "arm", &dsp_primitives::ForwardCommitSchedulerNode::arm,
@@ -303,7 +328,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getLayerIndex", &dsp_primitives::ForwardCommitSchedulerNode::getLayerIndex,
       "shouldFire", &dsp_primitives::ForwardCommitSchedulerNode::shouldFire);
 
-  newLua.new_usertype<dsp_primitives::TransportStateNode>(
+  lua.new_usertype<dsp_primitives::TransportStateNode>(
       "TransportStateNode",
       sol::constructors<std::shared_ptr<dsp_primitives::TransportStateNode>()>(),
       "play", &dsp_primitives::TransportStateNode::play,
@@ -313,7 +338,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getState", &dsp_primitives::TransportStateNode::getState,
       "isPlaying", &dsp_primitives::TransportStateNode::isPlaying);
 
-  newLua.new_usertype<dsp_primitives::OscillatorNode>(
+  lua.new_usertype<dsp_primitives::OscillatorNode>(
       "OscillatorNode",
       sol::constructors<std::shared_ptr<dsp_primitives::OscillatorNode>()>(),
       "setFrequency", &dsp_primitives::OscillatorNode::setFrequency,
@@ -325,7 +350,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "isEnabled", &dsp_primitives::OscillatorNode::isEnabled,
       "getWaveform", &dsp_primitives::OscillatorNode::getWaveform);
 
-  newLua.new_usertype<dsp_primitives::ReverbNode>(
+  lua.new_usertype<dsp_primitives::ReverbNode>(
       "ReverbNode",
       sol::constructors<std::shared_ptr<dsp_primitives::ReverbNode>()>(),
       "setRoomSize", &dsp_primitives::ReverbNode::setRoomSize, "setDamping",
@@ -339,7 +364,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       &dsp_primitives::ReverbNode::getDryLevel, "getWidth",
       &dsp_primitives::ReverbNode::getWidth);
 
-  newLua.new_usertype<dsp_primitives::FilterNode>(
+  lua.new_usertype<dsp_primitives::FilterNode>(
       "FilterNode",
       sol::constructors<std::shared_ptr<dsp_primitives::FilterNode>()>(),
       "setCutoff", &dsp_primitives::FilterNode::setCutoff, "setResonance",
@@ -349,7 +374,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       &dsp_primitives::FilterNode::getResonance, "getMix",
       &dsp_primitives::FilterNode::getMix);
 
-  newLua.new_usertype<dsp_primitives::DistortionNode>(
+  lua.new_usertype<dsp_primitives::DistortionNode>(
       "DistortionNode",
       sol::constructors<std::shared_ptr<dsp_primitives::DistortionNode>()>(),
       "setDrive", &dsp_primitives::DistortionNode::setDrive, "setMix",
@@ -359,7 +384,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       &dsp_primitives::DistortionNode::getMix, "getOutput",
       &dsp_primitives::DistortionNode::getOutput);
 
-  newLua.new_usertype<dsp_primitives::SVFNode>(
+  lua.new_usertype<dsp_primitives::SVFNode>(
       "SVFNode",
       sol::constructors<std::shared_ptr<dsp_primitives::SVFNode>()>(),
       "setCutoff", &dsp_primitives::SVFNode::setCutoff,
@@ -374,7 +399,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::SVFNode::getMix,
       "reset", &dsp_primitives::SVFNode::reset);
 
-  newLua.new_usertype<dsp_primitives::StereoDelayNode>(
+  lua.new_usertype<dsp_primitives::StereoDelayNode>(
       "StereoDelayNode",
       sol::constructors<std::shared_ptr<dsp_primitives::StereoDelayNode>()>(),
       "setTimeMode", &dsp_primitives::StereoDelayNode::setTimeMode,
@@ -402,7 +427,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getFreeze", &dsp_primitives::StereoDelayNode::getFreeze,
       "reset", &dsp_primitives::StereoDelayNode::reset);
 
-  newLua.new_usertype<dsp_primitives::CompressorNode>(
+  lua.new_usertype<dsp_primitives::CompressorNode>(
       "CompressorNode",
       "setThreshold", &dsp_primitives::CompressorNode::setThreshold,
       "setRatio", &dsp_primitives::CompressorNode::setRatio,
@@ -429,7 +454,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getGainReduction", &dsp_primitives::CompressorNode::getGainReduction,
       "reset", &dsp_primitives::CompressorNode::reset);
 
-  newLua.new_usertype<dsp_primitives::WaveShaperNode>(
+  lua.new_usertype<dsp_primitives::WaveShaperNode>(
       "WaveShaperNode",
       sol::constructors<std::shared_ptr<dsp_primitives::WaveShaperNode>()>(),
       "setCurve", &dsp_primitives::WaveShaperNode::setCurve,
@@ -450,7 +475,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getOversample", &dsp_primitives::WaveShaperNode::getOversample,
       "reset", &dsp_primitives::WaveShaperNode::reset);
 
-  newLua.new_usertype<dsp_primitives::ChorusNode>(
+  lua.new_usertype<dsp_primitives::ChorusNode>(
       "ChorusNode",
       sol::constructors<std::shared_ptr<dsp_primitives::ChorusNode>()>(),
       "setRate", &dsp_primitives::ChorusNode::setRate,
@@ -469,7 +494,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::ChorusNode::getMix,
       "reset", &dsp_primitives::ChorusNode::reset);
 
-  newLua.new_usertype<dsp_primitives::StereoWidenerNode>(
+  lua.new_usertype<dsp_primitives::StereoWidenerNode>(
       "StereoWidenerNode",
       sol::constructors<std::shared_ptr<dsp_primitives::StereoWidenerNode>()>(),
       "setWidth", &dsp_primitives::StereoWidenerNode::setWidth,
@@ -481,7 +506,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getCorrelation", &dsp_primitives::StereoWidenerNode::getCorrelation,
       "reset", &dsp_primitives::StereoWidenerNode::reset);
 
-  newLua.new_usertype<dsp_primitives::PhaserNode>(
+  lua.new_usertype<dsp_primitives::PhaserNode>(
       "PhaserNode",
       sol::constructors<std::shared_ptr<dsp_primitives::PhaserNode>()>(),
       "setRate", &dsp_primitives::PhaserNode::setRate,
@@ -496,7 +521,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getSpread", &dsp_primitives::PhaserNode::getSpread,
       "reset", &dsp_primitives::PhaserNode::reset);
 
-  newLua.new_usertype<dsp_primitives::GranulatorNode>(
+  lua.new_usertype<dsp_primitives::GranulatorNode>(
       "GranulatorNode",
       sol::constructors<std::shared_ptr<dsp_primitives::GranulatorNode>()>(),
       "setGrainSize", &dsp_primitives::GranulatorNode::setGrainSize,
@@ -517,7 +542,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::GranulatorNode::getMix,
       "reset", &dsp_primitives::GranulatorNode::reset);
 
-  newLua.new_usertype<dsp_primitives::StutterNode>(
+  lua.new_usertype<dsp_primitives::StutterNode>(
       "StutterNode",
       sol::constructors<std::shared_ptr<dsp_primitives::StutterNode>()>(),
       "setLength", &dsp_primitives::StutterNode::setLength,
@@ -537,7 +562,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::StutterNode::getMix,
       "reset", &dsp_primitives::StutterNode::reset);
 
-  newLua.new_usertype<dsp_primitives::ShimmerNode>(
+  lua.new_usertype<dsp_primitives::ShimmerNode>(
       "ShimmerNode",
       sol::constructors<std::shared_ptr<dsp_primitives::ShimmerNode>()>(),
       "setSize", &dsp_primitives::ShimmerNode::setSize,
@@ -554,7 +579,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getFilter", &dsp_primitives::ShimmerNode::getFilter,
       "reset", &dsp_primitives::ShimmerNode::reset);
 
-  newLua.new_usertype<dsp_primitives::MultitapDelayNode>(
+  lua.new_usertype<dsp_primitives::MultitapDelayNode>(
       "MultitapDelayNode",
       sol::constructors<std::shared_ptr<dsp_primitives::MultitapDelayNode>()>(),
       "setTapCount", &dsp_primitives::MultitapDelayNode::setTapCount,
@@ -568,7 +593,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::MultitapDelayNode::getMix,
       "reset", &dsp_primitives::MultitapDelayNode::reset);
 
-  newLua.new_usertype<dsp_primitives::PitchShifterNode>(
+  lua.new_usertype<dsp_primitives::PitchShifterNode>(
       "PitchShifterNode",
       sol::constructors<std::shared_ptr<dsp_primitives::PitchShifterNode>()>(),
       "setPitch", &dsp_primitives::PitchShifterNode::setPitch,
@@ -581,7 +606,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::PitchShifterNode::getMix,
       "reset", &dsp_primitives::PitchShifterNode::reset);
 
-  newLua.new_usertype<dsp_primitives::TransientShaperNode>(
+  lua.new_usertype<dsp_primitives::TransientShaperNode>(
       "TransientShaperNode",
       sol::constructors<std::shared_ptr<dsp_primitives::TransientShaperNode>()>(),
       "setAttack", &dsp_primitives::TransientShaperNode::setAttack,
@@ -595,7 +620,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getTransient", &dsp_primitives::TransientShaperNode::getTransient,
       "reset", &dsp_primitives::TransientShaperNode::reset);
 
-  newLua.new_usertype<dsp_primitives::RingModulatorNode>(
+  lua.new_usertype<dsp_primitives::RingModulatorNode>(
       "RingModulatorNode",
       sol::constructors<std::shared_ptr<dsp_primitives::RingModulatorNode>()>(),
       "setFrequency", &dsp_primitives::RingModulatorNode::setFrequency,
@@ -608,7 +633,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getSpread", &dsp_primitives::RingModulatorNode::getSpread,
       "reset", &dsp_primitives::RingModulatorNode::reset);
 
-  newLua.new_usertype<dsp_primitives::BitCrusherNode>(
+  lua.new_usertype<dsp_primitives::BitCrusherNode>(
       "BitCrusherNode",
       sol::constructors<std::shared_ptr<dsp_primitives::BitCrusherNode>()>(),
       "setBits", &dsp_primitives::BitCrusherNode::setBits,
@@ -621,7 +646,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getOutput", &dsp_primitives::BitCrusherNode::getOutput,
       "reset", &dsp_primitives::BitCrusherNode::reset);
 
-  newLua.new_usertype<dsp_primitives::FormantFilterNode>(
+  lua.new_usertype<dsp_primitives::FormantFilterNode>(
       "FormantFilterNode",
       sol::constructors<std::shared_ptr<dsp_primitives::FormantFilterNode>()>(),
       "setVowel", &dsp_primitives::FormantFilterNode::setVowel,
@@ -636,7 +661,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::FormantFilterNode::getMix,
       "reset", &dsp_primitives::FormantFilterNode::reset);
 
-  newLua.new_usertype<dsp_primitives::ReverseDelayNode>(
+  lua.new_usertype<dsp_primitives::ReverseDelayNode>(
       "ReverseDelayNode",
       sol::constructors<std::shared_ptr<dsp_primitives::ReverseDelayNode>()>(),
       "setTime", &dsp_primitives::ReverseDelayNode::setTime,
@@ -649,7 +674,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::ReverseDelayNode::getMix,
       "reset", &dsp_primitives::ReverseDelayNode::reset);
 
-  newLua.new_usertype<dsp_primitives::EnvelopeFollowerNode>(
+  lua.new_usertype<dsp_primitives::EnvelopeFollowerNode>(
       "EnvelopeFollowerNode",
       sol::constructors<std::shared_ptr<dsp_primitives::EnvelopeFollowerNode>()>(),
       "setAttack", &dsp_primitives::EnvelopeFollowerNode::setAttack,
@@ -663,7 +688,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getEnvelope", &dsp_primitives::EnvelopeFollowerNode::getEnvelope,
       "reset", &dsp_primitives::EnvelopeFollowerNode::reset);
 
-  newLua.new_usertype<dsp_primitives::PitchDetectorNode>(
+  lua.new_usertype<dsp_primitives::PitchDetectorNode>(
       "PitchDetectorNode",
       sol::constructors<std::shared_ptr<dsp_primitives::PitchDetectorNode>()>(),
       "setMinFreq", &dsp_primitives::PitchDetectorNode::setMinFreq,
@@ -678,7 +703,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getConfidence", &dsp_primitives::PitchDetectorNode::getConfidence,
       "reset", &dsp_primitives::PitchDetectorNode::reset);
 
-  newLua.new_usertype<dsp_primitives::CrossfaderNode>(
+  lua.new_usertype<dsp_primitives::CrossfaderNode>(
       "CrossfaderNode",
       sol::constructors<std::shared_ptr<dsp_primitives::CrossfaderNode>()>(),
       "setPosition", &dsp_primitives::CrossfaderNode::setPosition,
@@ -689,7 +714,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::CrossfaderNode::getMix,
       "reset", &dsp_primitives::CrossfaderNode::reset);
 
-  newLua.new_usertype<dsp_primitives::MixerNode>(
+  lua.new_usertype<dsp_primitives::MixerNode>(
       "MixerNode",
       sol::constructors<std::shared_ptr<dsp_primitives::MixerNode>()>(),
       "setInputCount", &dsp_primitives::MixerNode::setInputCount,
@@ -726,7 +751,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMaster", &dsp_primitives::MixerNode::getMaster,
       "reset", &dsp_primitives::MixerNode::reset);
 
-  newLua.new_usertype<dsp_primitives::NoiseGeneratorNode>(
+  lua.new_usertype<dsp_primitives::NoiseGeneratorNode>(
       "NoiseGeneratorNode",
       sol::constructors<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>()>(),
       "setLevel", &dsp_primitives::NoiseGeneratorNode::setLevel,
@@ -735,19 +760,19 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getColor", &dsp_primitives::NoiseGeneratorNode::getColor,
       "reset", &dsp_primitives::NoiseGeneratorNode::reset);
 
-  newLua.new_usertype<dsp_primitives::MSEncoderNode>(
+  lua.new_usertype<dsp_primitives::MSEncoderNode>(
       "MSEncoderNode",
       sol::constructors<std::shared_ptr<dsp_primitives::MSEncoderNode>()>(),
       "setWidth", &dsp_primitives::MSEncoderNode::setWidth,
       "getWidth", &dsp_primitives::MSEncoderNode::getWidth,
       "reset", &dsp_primitives::MSEncoderNode::reset);
 
-  newLua.new_usertype<dsp_primitives::MSDecoderNode>(
+  lua.new_usertype<dsp_primitives::MSDecoderNode>(
       "MSDecoderNode",
       sol::constructors<std::shared_ptr<dsp_primitives::MSDecoderNode>()>(),
       "reset", &dsp_primitives::MSDecoderNode::reset);
 
-  newLua.new_usertype<dsp_primitives::EQNode>(
+  lua.new_usertype<dsp_primitives::EQNode>(
       "EQNode",
       sol::constructors<std::shared_ptr<dsp_primitives::EQNode>()>(),
       "setLowGain", &dsp_primitives::EQNode::setLowGain,
@@ -770,7 +795,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::EQNode::getMix,
       "reset", &dsp_primitives::EQNode::reset);
 
-  newLua.new_usertype<dsp_primitives::LimiterNode>(
+  lua.new_usertype<dsp_primitives::LimiterNode>(
       "LimiterNode",
       sol::constructors<std::shared_ptr<dsp_primitives::LimiterNode>()>(),
       "setThreshold", &dsp_primitives::LimiterNode::setThreshold,
@@ -786,7 +811,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getGainReduction", &dsp_primitives::LimiterNode::getGainReduction,
       "reset", &dsp_primitives::LimiterNode::reset);
 
-  newLua.new_usertype<dsp_primitives::SpectrumAnalyzerNode>(
+  lua.new_usertype<dsp_primitives::SpectrumAnalyzerNode>(
       "SpectrumAnalyzerNode",
       sol::constructors<std::shared_ptr<dsp_primitives::SpectrumAnalyzerNode>()>(),
       "setSensitivity", &dsp_primitives::SpectrumAnalyzerNode::setSensitivity,
@@ -1074,13 +1099,13 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     return nullptr;
   };
 
-  auto primitives = newLua.create_table();
+  auto primitives = lua.create_table();
   {
-    auto playheadApi = newLua.create_table();
-    playheadApi["new"] = [graph, &newLua, &trackNode]() {
+    auto playheadApi = lua.create_table();
+    playheadApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::PlayheadNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setLoopLength"] = [](sol::table self, int v) {
           if (auto n = tableNode<dsp_primitives::PlayheadNode>(self)) {
@@ -1147,22 +1172,22 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["PlayheadNode"] = playheadApi;
   }
   {
-    auto passthroughApi = newLua.create_table();
-    passthroughApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto passthroughApi = lua.create_table();
+    passthroughApi["new"] = [trackNode](sol::this_state ts, int numChannels) {
         auto node = std::make_shared<dsp_primitives::PassthroughNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         return t;
       };
     primitives["PassthroughNode"] = passthroughApi;
   }
   {
-    auto gainApi = newLua.create_table();
-    gainApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto gainApi = lua.create_table();
+    gainApi["new"] = [trackNode](sol::this_state ts, int numChannels) {
         auto node = std::make_shared<dsp_primitives::GainNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setGain"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::GainNode>(self)) {
@@ -1191,11 +1216,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["GainNode"] = gainApi;
   }
   {
-    auto loopPlaybackApi = newLua.create_table();
-    loopPlaybackApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto loopPlaybackApi = lua.create_table();
+    loopPlaybackApi["new"] = [trackNode](sol::this_state ts, int numChannels) {
         auto node = std::make_shared<dsp_primitives::LoopPlaybackNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setLoopLength"] = [](sol::table self, int v) {
           if (auto n = tableNode<dsp_primitives::LoopPlaybackNode>(self)) {
@@ -1249,11 +1274,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["LoopPlaybackNode"] = loopPlaybackApi;
   }
   {
-    auto gateApi = newLua.create_table();
-    gateApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto gateApi = lua.create_table();
+    gateApi["new"] = [trackNode](sol::this_state ts, int numChannels) {
         auto node = std::make_shared<dsp_primitives::PlaybackStateGateNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["play"] = [](sol::table self) {
           if (auto n = tableNode<dsp_primitives::PlaybackStateGateNode>(self)) {
@@ -1297,11 +1322,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["PlaybackStateGateNode"] = gateApi;
   }
   {
-    auto captureApi = newLua.create_table();
-    captureApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto captureApi = lua.create_table();
+    captureApi["new"] = [trackNode](sol::this_state ts, int numChannels) {
         auto node = std::make_shared<dsp_primitives::RetrospectiveCaptureNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setCaptureSeconds"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::RetrospectiveCaptureNode>(self)) {
@@ -1330,11 +1355,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["RetrospectiveCaptureNode"] = captureApi;
   }
   {
-    auto recordStateApi = newLua.create_table();
-    recordStateApi["new"] = [graph, &newLua, &trackNode]() {
+    auto recordStateApi = lua.create_table();
+    recordStateApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::RecordStateNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["startRecording"] = [](sol::table self) {
           if (auto n = tableNode<dsp_primitives::RecordStateNode>(self)) {
@@ -1368,11 +1393,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["RecordStateNode"] = recordStateApi;
   }
   {
-    auto quantizerApi = newLua.create_table();
-    quantizerApi["new"] = [graph, &newLua, &trackNode]() {
+    auto quantizerApi = lua.create_table();
+    quantizerApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::QuantizerNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setTempo"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::QuantizerNode>(self)) {
@@ -1407,11 +1432,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["QuantizerNode"] = quantizerApi;
   }
   {
-    auto modeApi = newLua.create_table();
-    modeApi["new"] = [graph, &newLua, &trackNode]() {
+    auto modeApi = lua.create_table();
+    modeApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::RecordModePolicyNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setMode"] = [](sol::table self, int v) {
           if (auto n = tableNode<dsp_primitives::RecordModePolicyNode>(self)) {
@@ -1441,11 +1466,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["RecordModePolicyNode"] = modeApi;
   }
   {
-    auto forwardApi = newLua.create_table();
-    forwardApi["new"] = [graph, &newLua, &trackNode]() {
+    auto forwardApi = lua.create_table();
+    forwardApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::ForwardCommitSchedulerNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["arm"] = [](sol::table self, float bars, int layerIndex, double currentSamples, float samplesPerBar) {
           if (auto n = tableNode<dsp_primitives::ForwardCommitSchedulerNode>(self)) {
@@ -1486,11 +1511,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["ForwardCommitSchedulerNode"] = forwardApi;
   }
   {
-    auto transportApi = newLua.create_table();
-    transportApi["new"] = [graph, &newLua, &trackNode]() {
+    auto transportApi = lua.create_table();
+    transportApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::TransportStateNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["play"] = [](sol::table self) {
           if (auto n = tableNode<dsp_primitives::TransportStateNode>(self)) {
@@ -1529,11 +1554,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["TransportStateNode"] = transportApi;
   }
   {
-    auto oscApi = newLua.create_table();
-    oscApi["new"] = [graph, &newLua, &trackNode]() {
+    auto oscApi = lua.create_table();
+    oscApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::OscillatorNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setFrequency"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::OscillatorNode>(self)) {
@@ -1560,11 +1585,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["OscillatorNode"] = oscApi;
   }
   {
-    auto reverbApi = newLua.create_table();
-    reverbApi["new"] = [graph, &newLua, &trackNode]() {
+    auto reverbApi = lua.create_table();
+    reverbApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::ReverbNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setRoomSize"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::ReverbNode>(self)) {
@@ -1596,11 +1621,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["ReverbNode"] = reverbApi;
   }
   {
-    auto filterApi = newLua.create_table();
-    filterApi["new"] = [graph, &newLua, &trackNode]() {
+    auto filterApi = lua.create_table();
+    filterApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::FilterNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setCutoff"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::FilterNode>(self)) {
@@ -1622,11 +1647,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["FilterNode"] = filterApi;
   }
   {
-    auto distApi = newLua.create_table();
-    distApi["new"] = [graph, &newLua, &trackNode]() {
+    auto distApi = lua.create_table();
+    distApi["new"] = [trackNode](sol::this_state ts) {
         auto node = std::make_shared<dsp_primitives::DistortionNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = createTable(ts);
         t["__node"] = node;
         t["setDrive"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::DistortionNode>(self)) {
@@ -1648,8 +1673,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["DistortionNode"] = distApi;
   }
   {
-    auto svfApi = newLua.create_table();
-    svfApi["new"] = [graph, &trackNode]() {
+    auto svfApi = lua.create_table();
+    svfApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::SVFNode>();
         trackNode(node);
         return node;
@@ -1657,8 +1682,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["SVFNode"] = svfApi;
   }
   {
-    auto delayApi = newLua.create_table();
-    delayApi["new"] = [graph, &trackNode]() {
+    auto delayApi = lua.create_table();
+    delayApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::StereoDelayNode>();
         trackNode(node);
         return node;
@@ -1667,8 +1692,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto compressorApi = newLua.create_table();
-    compressorApi["new"] = [graph, &trackNode]() {
+    auto compressorApi = lua.create_table();
+    compressorApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::CompressorNode>();
         trackNode(node);
         return node;
@@ -1677,8 +1702,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto waveShaperApi = newLua.create_table();
-    waveShaperApi["new"] = [graph, &trackNode]() {
+    auto waveShaperApi = lua.create_table();
+    waveShaperApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::WaveShaperNode>();
         trackNode(node);
         return node;
@@ -1687,8 +1712,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto chorusApi = newLua.create_table();
-    chorusApi["new"] = [graph, &trackNode]() {
+    auto chorusApi = lua.create_table();
+    chorusApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::ChorusNode>();
         trackNode(node);
         return node;
@@ -1697,8 +1722,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto widenerApi = newLua.create_table();
-    widenerApi["new"] = [graph, &trackNode]() {
+    auto widenerApi = lua.create_table();
+    widenerApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::StereoWidenerNode>();
         trackNode(node);
         return node;
@@ -1707,8 +1732,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto phaserApi = newLua.create_table();
-    phaserApi["new"] = [graph, &trackNode]() {
+    auto phaserApi = lua.create_table();
+    phaserApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::PhaserNode>();
         trackNode(node);
         return node;
@@ -1717,8 +1742,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto granulatorApi = newLua.create_table();
-    granulatorApi["new"] = [graph, &trackNode]() {
+    auto granulatorApi = lua.create_table();
+    granulatorApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::GranulatorNode>();
         trackNode(node);
         return node;
@@ -1727,8 +1752,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto stutterApi = newLua.create_table();
-    stutterApi["new"] = [graph, &trackNode]() {
+    auto stutterApi = lua.create_table();
+    stutterApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::StutterNode>();
         trackNode(node);
         return node;
@@ -1737,8 +1762,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto shimmerApi = newLua.create_table();
-    shimmerApi["new"] = [graph, &trackNode]() {
+    auto shimmerApi = lua.create_table();
+    shimmerApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::ShimmerNode>();
         trackNode(node);
         return node;
@@ -1747,8 +1772,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto multitapApi = newLua.create_table();
-    multitapApi["new"] = [graph, &trackNode]() {
+    auto multitapApi = lua.create_table();
+    multitapApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::MultitapDelayNode>();
         trackNode(node);
         return node;
@@ -1757,8 +1782,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto pitchShifterApi = newLua.create_table();
-    pitchShifterApi["new"] = [graph, &trackNode]() {
+    auto pitchShifterApi = lua.create_table();
+    pitchShifterApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::PitchShifterNode>();
         trackNode(node);
         return node;
@@ -1767,8 +1792,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto transientShaperApi = newLua.create_table();
-    transientShaperApi["new"] = [graph, &trackNode]() {
+    auto transientShaperApi = lua.create_table();
+    transientShaperApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::TransientShaperNode>();
         trackNode(node);
         return node;
@@ -1777,8 +1802,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto ringModApi = newLua.create_table();
-    ringModApi["new"] = [graph, &trackNode]() {
+    auto ringModApi = lua.create_table();
+    ringModApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::RingModulatorNode>();
         trackNode(node);
         return node;
@@ -1787,8 +1812,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto bitCrusherApi = newLua.create_table();
-    bitCrusherApi["new"] = [graph, &trackNode]() {
+    auto bitCrusherApi = lua.create_table();
+    bitCrusherApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::BitCrusherNode>();
         trackNode(node);
         return node;
@@ -1797,8 +1822,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto formantApi = newLua.create_table();
-    formantApi["new"] = [graph, &trackNode]() {
+    auto formantApi = lua.create_table();
+    formantApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::FormantFilterNode>();
         trackNode(node);
         return node;
@@ -1807,8 +1832,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto reverseDelayApi = newLua.create_table();
-    reverseDelayApi["new"] = [graph, &trackNode]() {
+    auto reverseDelayApi = lua.create_table();
+    reverseDelayApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::ReverseDelayNode>();
         trackNode(node);
         return node;
@@ -1817,8 +1842,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto envelopeApi = newLua.create_table();
-    envelopeApi["new"] = [graph, &trackNode]() {
+    auto envelopeApi = lua.create_table();
+    envelopeApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::EnvelopeFollowerNode>();
         trackNode(node);
         return node;
@@ -1827,8 +1852,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto pitchDetectorApi = newLua.create_table();
-    pitchDetectorApi["new"] = [graph, &trackNode]() {
+    auto pitchDetectorApi = lua.create_table();
+    pitchDetectorApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::PitchDetectorNode>();
         trackNode(node);
         return node;
@@ -1837,8 +1862,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto crossfaderApi = newLua.create_table();
-    crossfaderApi["new"] = [graph, &trackNode]() {
+    auto crossfaderApi = lua.create_table();
+    crossfaderApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::CrossfaderNode>();
         trackNode(node);
         return node;
@@ -1847,8 +1872,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto mixerApi = newLua.create_table();
-    mixerApi["new"] = [graph, &trackNode]() {
+    auto mixerApi = lua.create_table();
+    mixerApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::MixerNode>();
         trackNode(node);
         return node;
@@ -1857,8 +1882,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto noiseApi = newLua.create_table();
-    noiseApi["new"] = [graph, &trackNode]() {
+    auto noiseApi = lua.create_table();
+    noiseApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::NoiseGeneratorNode>();
         trackNode(node);
         return node;
@@ -1867,8 +1892,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto msEncApi = newLua.create_table();
-    msEncApi["new"] = [graph, &trackNode]() {
+    auto msEncApi = lua.create_table();
+    msEncApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::MSEncoderNode>();
         trackNode(node);
         return node;
@@ -1877,8 +1902,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto msDecApi = newLua.create_table();
-    msDecApi["new"] = [graph, &trackNode]() {
+    auto msDecApi = lua.create_table();
+    msDecApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::MSDecoderNode>();
         trackNode(node);
         return node;
@@ -1887,8 +1912,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto eqApi = newLua.create_table();
-    eqApi["new"] = [graph, &trackNode]() {
+    auto eqApi = lua.create_table();
+    eqApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::EQNode>();
         trackNode(node);
         return node;
@@ -1897,8 +1922,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto limiterApi = newLua.create_table();
-    limiterApi["new"] = [graph, &trackNode]() {
+    auto limiterApi = lua.create_table();
+    limiterApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::LimiterNode>();
         trackNode(node);
         return node;
@@ -1907,8 +1932,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto spectrumApi = newLua.create_table();
-    spectrumApi["new"] = [graph, &trackNode]() {
+    auto spectrumApi = lua.create_table();
+    spectrumApi["new"] = [trackNode]() {
         auto node = std::make_shared<dsp_primitives::SpectrumAnalyzerNode>();
         trackNode(node);
         return node;
@@ -1916,40 +1941,87 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["SpectrumAnalyzerNode"] = spectrumApi;
   }
 
-  auto graphTable = newLua.create_table();
+  auto graphTable = lua.create_table();
   graphTable["connect"] = sol::overload(
-      [graph, toPrimitiveNode](const sol::object &fromObj,
-                               const sol::object &toObj) {
+      [impl, toPrimitiveNode](const sol::object &fromObj,
+                              const sol::object &toObj) {
         auto from = toPrimitiveNode(fromObj);
         auto to = toPrimitiveNode(toObj);
-        if (!from || !to) {
+        if (!from || !to || !impl->processor) {
           return false;
         }
-        return graph->connect(from, 0, to, 0);
+        auto currentGraph = impl->processor->getPrimitiveGraph();
+        if (!currentGraph) {
+          return false;
+        }
+        return currentGraph->connect(from, 0, to, 0);
       },
-      [graph, toPrimitiveNode](const sol::object &fromObj,
-                               const sol::object &toObj, int fromOutput,
-                               int toInput) {
+      [impl, toPrimitiveNode](const sol::object &fromObj,
+                              const sol::object &toObj, int fromOutput,
+                              int toInput) {
         auto from = toPrimitiveNode(fromObj);
         auto to = toPrimitiveNode(toObj);
-        if (!from || !to) {
+        if (!from || !to || !impl->processor) {
           return false;
         }
-        return graph->connect(from, fromOutput, to, toInput);
+        auto currentGraph = impl->processor->getPrimitiveGraph();
+        if (!currentGraph) {
+          return false;
+        }
+        return currentGraph->connect(from, fromOutput, to, toInput);
       });
-  graphTable["clear"] = [graph]() { graph->clear(); };
-  graphTable["hasCycle"] = [graph]() { return graph->hasCycle(); };
-  graphTable["nodeCount"] =
-      [graph]() { return static_cast<int>(graph->getNodeCount()); };
-  graphTable["connectionCount"] =
-      [graph]() { return static_cast<int>(graph->getConnectionCount()); };
+  graphTable["clear"] = [impl]() {
+    if (!impl->processor) {
+      return;
+    }
+    if (auto currentGraph = impl->processor->getPrimitiveGraph()) {
+      currentGraph->clear();
+    }
+  };
+  graphTable["hasCycle"] = [impl]() {
+    if (!impl->processor) {
+      return false;
+    }
+    if (auto currentGraph = impl->processor->getPrimitiveGraph()) {
+      return currentGraph->hasCycle();
+    }
+    return false;
+  };
+  graphTable["nodeCount"] = [impl]() {
+    if (!impl->processor) {
+      return 0;
+    }
+    if (auto currentGraph = impl->processor->getPrimitiveGraph()) {
+      return static_cast<int>(currentGraph->getNodeCount());
+    }
+    return 0;
+  };
+  graphTable["connectionCount"] = [impl]() {
+    if (!impl->processor) {
+      return 0;
+    }
+    if (auto currentGraph = impl->processor->getPrimitiveGraph()) {
+      return static_cast<int>(currentGraph->getConnectionCount());
+    }
+    return 0;
+  };
 
-  auto paramsTable = newLua.create_table();
+  auto paramsTable = lua.create_table();
+  auto *newParamSpecsPtr = &newParamSpecs;
+  auto *newParamValuesPtr = &newParamValues;
+  auto *newParamBindingsPtr = &newParamBindings;
+  auto *newExternalToInternalPathPtr = &newExternalToInternalPath;
+  auto *newInternalToExternalPathPtr = &newInternalToExternalPath;
+  auto *newLayerPlaybackNodesPtr = &newLayerPlaybackNodes;
+  auto *newLayerGateNodesPtr = &newLayerGateNodes;
+  auto *newLayerOutputNodesPtr = &newLayerOutputNodes;
+  auto *newNamedNodesPtr = &newNamedNodes;
+
   paramsTable["register"] =
-      [&newParamSpecs, &newParamValues, &newExternalToInternalPath,
-       &newInternalToExternalPath, &mapInternalToExternal,
-       &mapExternalToInternal](const std::string &rawPath,
-                               sol::table options) {
+      [newParamSpecsPtr, newParamValuesPtr, newExternalToInternalPathPtr,
+       newInternalToExternalPathPtr, mapInternalToExternal,
+       mapExternalToInternal](const std::string &rawPath,
+                              sol::table options) {
         const std::string externalPath = mapInternalToExternal(rawPath);
         const std::string internalPath = mapExternalToInternal(externalPath);
         DspParamSpec spec;
@@ -1977,14 +2049,14 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
 
         spec.defaultValue = clampParamValue(spec, spec.defaultValue);
-        newParamSpecs[externalPath] = spec;
-        newParamValues[externalPath] = spec.defaultValue;
-        newExternalToInternalPath[externalPath] = internalPath;
-        newInternalToExternalPath[internalPath] = externalPath;
+        (*newParamSpecsPtr)[externalPath] = spec;
+        (*newParamValuesPtr)[externalPath] = spec.defaultValue;
+        (*newExternalToInternalPathPtr)[externalPath] = internalPath;
+        (*newInternalToExternalPathPtr)[internalPath] = externalPath;
       };
 
   paramsTable["bind"] =
-      [&newParamBindings, toPrimitiveNode, &mapInternalToExternal](
+      [newParamBindingsPtr, toPrimitiveNode, mapInternalToExternal](
           const std::string &rawPath, const sol::object &nodeObj,
           const std::string &method) {
         const std::string path = mapInternalToExternal(rawPath);
@@ -1995,17 +2067,17 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
         if (auto playhead = std::dynamic_pointer_cast<dsp_primitives::PlayheadNode>(node)) {
           if (method == "setLoopLength") {
-            newParamBindings[path] = [playhead](float v) {
+            (*newParamBindingsPtr)[path] = [playhead](float v) {
               playhead->setLoopLength(static_cast<int>(v));
             };
             return true;
           }
           if (method == "setSpeed") {
-            newParamBindings[path] = [playhead](float v) { playhead->setSpeed(v); };
+            (*newParamBindingsPtr)[path] = [playhead](float v) { playhead->setSpeed(v); };
             return true;
           }
           if (method == "setReversed") {
-            newParamBindings[path] = [playhead](float v) {
+            (*newParamBindingsPtr)[path] = [playhead](float v) {
               playhead->setReversed(v > 0.5f);
             };
             return true;
@@ -2014,61 +2086,61 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
         if (auto gain = std::dynamic_pointer_cast<dsp_primitives::GainNode>(node)) {
           if (method == "setGain") {
-            newParamBindings[path] = [gain](float v) { gain->setGain(v); };
+            (*newParamBindingsPtr)[path] = [gain](float v) { gain->setGain(v); };
             return true;
           }
           if (method == "setMuted") {
-            newParamBindings[path] = [gain](float v) { gain->setMuted(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [gain](float v) { gain->setMuted(v > 0.5f); };
             return true;
           }
         }
 
         if (auto playback = std::dynamic_pointer_cast<dsp_primitives::LoopPlaybackNode>(node)) {
           if (method == "setLoopLength") {
-            newParamBindings[path] = [playback](float v) {
+            (*newParamBindingsPtr)[path] = [playback](float v) {
               playback->setLoopLength(static_cast<int>(v));
             };
             return true;
           }
           if (method == "setSpeed") {
-            newParamBindings[path] = [playback](float v) { playback->setSpeed(v); };
+            (*newParamBindingsPtr)[path] = [playback](float v) { playback->setSpeed(v); };
             return true;
           }
           if (method == "setReversed") {
-            newParamBindings[path] = [playback](float v) { playback->setReversed(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [playback](float v) { playback->setReversed(v > 0.5f); };
             return true;
           }
           if (method == "seek") {
-            newParamBindings[path] = [playback](float v) { playback->seekNormalized(v); };
+            (*newParamBindingsPtr)[path] = [playback](float v) { playback->seekNormalized(v); };
             return true;
           }
         }
 
         if (auto gate = std::dynamic_pointer_cast<dsp_primitives::PlaybackStateGateNode>(node)) {
           if (method == "setMuted") {
-            newParamBindings[path] = [gate](float v) { gate->setMuted(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [gate](float v) { gate->setMuted(v > 0.5f); };
             return true;
           }
           if (method == "setPlaying") {
-            newParamBindings[path] = [gate](float v) { gate->setPlaying(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [gate](float v) { gate->setPlaying(v > 0.5f); };
             return true;
           }
         }
 
         if (auto capture = std::dynamic_pointer_cast<dsp_primitives::RetrospectiveCaptureNode>(node)) {
           if (method == "setCaptureSeconds") {
-            newParamBindings[path] = [capture](float v) { capture->setCaptureSeconds(v); };
+            (*newParamBindingsPtr)[path] = [capture](float v) { capture->setCaptureSeconds(v); };
             return true;
           }
         }
 
         if (auto record = std::dynamic_pointer_cast<dsp_primitives::RecordStateNode>(node)) {
           if (method == "setOverdub") {
-            newParamBindings[path] = [record](float v) { record->setOverdub(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [record](float v) { record->setOverdub(v > 0.5f); };
             return true;
           }
           if (method == "setRecording") {
-            newParamBindings[path] = [record](float v) {
+            (*newParamBindingsPtr)[path] = [record](float v) {
               if (v > 0.5f) {
                 record->startRecording();
               } else {
@@ -2081,18 +2153,18 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
         if (auto quantizer = std::dynamic_pointer_cast<dsp_primitives::QuantizerNode>(node)) {
           if (method == "setTempo") {
-            newParamBindings[path] = [quantizer](float v) { quantizer->setTempo(v); };
+            (*newParamBindingsPtr)[path] = [quantizer](float v) { quantizer->setTempo(v); };
             return true;
           }
           if (method == "setBeatsPerBar") {
-            newParamBindings[path] = [quantizer](float v) { quantizer->setBeatsPerBar(v); };
+            (*newParamBindingsPtr)[path] = [quantizer](float v) { quantizer->setBeatsPerBar(v); };
             return true;
           }
         }
 
         if (auto mode = std::dynamic_pointer_cast<dsp_primitives::RecordModePolicyNode>(node)) {
           if (method == "setMode") {
-            newParamBindings[path] = [mode](float v) {
+            (*newParamBindingsPtr)[path] = [mode](float v) {
               mode->setMode(static_cast<int>(v));
             };
             return true;
@@ -2101,7 +2173,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
         if (auto transport = std::dynamic_pointer_cast<dsp_primitives::TransportStateNode>(node)) {
           if (method == "setState") {
-            newParamBindings[path] = [transport](float v) {
+            (*newParamBindingsPtr)[path] = [transport](float v) {
               transport->setState(static_cast<int>(v));
             };
             return true;
@@ -2110,19 +2182,19 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
         if (auto osc = std::dynamic_pointer_cast<dsp_primitives::OscillatorNode>(node)) {
           if (method == "setFrequency") {
-            newParamBindings[path] = [osc](float v) { osc->setFrequency(v); };
+            (*newParamBindingsPtr)[path] = [osc](float v) { osc->setFrequency(v); };
             return true;
           }
           if (method == "setAmplitude") {
-            newParamBindings[path] = [osc](float v) { osc->setAmplitude(v); };
+            (*newParamBindingsPtr)[path] = [osc](float v) { osc->setAmplitude(v); };
             return true;
           }
           if (method == "setEnabled") {
-            newParamBindings[path] = [osc](float v) { osc->setEnabled(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [osc](float v) { osc->setEnabled(v > 0.5f); };
             return true;
           }
           if (method == "setWaveform") {
-            newParamBindings[path] = [osc](float v) {
+            (*newParamBindingsPtr)[path] = [osc](float v) {
               osc->setWaveform(static_cast<int>(v));
             };
             return true;
@@ -2131,683 +2203,683 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
         if (auto filt = std::dynamic_pointer_cast<dsp_primitives::FilterNode>(node)) {
           if (method == "setCutoff") {
-            newParamBindings[path] = [filt](float v) { filt->setCutoff(v); };
+            (*newParamBindingsPtr)[path] = [filt](float v) { filt->setCutoff(v); };
             return true;
           }
           if (method == "setResonance") {
-            newParamBindings[path] = [filt](float v) { filt->setResonance(v); };
+            (*newParamBindingsPtr)[path] = [filt](float v) { filt->setResonance(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [filt](float v) { filt->setMix(v); };
+            (*newParamBindingsPtr)[path] = [filt](float v) { filt->setMix(v); };
             return true;
           }
         }
 
         if (auto dist = std::dynamic_pointer_cast<dsp_primitives::DistortionNode>(node)) {
           if (method == "setDrive") {
-            newParamBindings[path] = [dist](float v) { dist->setDrive(v); };
+            (*newParamBindingsPtr)[path] = [dist](float v) { dist->setDrive(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [dist](float v) { dist->setMix(v); };
+            (*newParamBindingsPtr)[path] = [dist](float v) { dist->setMix(v); };
             return true;
           }
           if (method == "setOutput") {
-            newParamBindings[path] = [dist](float v) { dist->setOutput(v); };
+            (*newParamBindingsPtr)[path] = [dist](float v) { dist->setOutput(v); };
             return true;
           }
         }
 
         if (auto rev = std::dynamic_pointer_cast<dsp_primitives::ReverbNode>(node)) {
           if (method == "setRoomSize") {
-            newParamBindings[path] = [rev](float v) { rev->setRoomSize(v); };
+            (*newParamBindingsPtr)[path] = [rev](float v) { rev->setRoomSize(v); };
             return true;
           }
           if (method == "setDamping") {
-            newParamBindings[path] = [rev](float v) { rev->setDamping(v); };
+            (*newParamBindingsPtr)[path] = [rev](float v) { rev->setDamping(v); };
             return true;
           }
           if (method == "setWetLevel") {
-            newParamBindings[path] = [rev](float v) { rev->setWetLevel(v); };
+            (*newParamBindingsPtr)[path] = [rev](float v) { rev->setWetLevel(v); };
             return true;
           }
           if (method == "setDryLevel") {
-            newParamBindings[path] = [rev](float v) { rev->setDryLevel(v); };
+            (*newParamBindingsPtr)[path] = [rev](float v) { rev->setDryLevel(v); };
             return true;
           }
           if (method == "setWidth") {
-            newParamBindings[path] = [rev](float v) { rev->setWidth(v); };
+            (*newParamBindingsPtr)[path] = [rev](float v) { rev->setWidth(v); };
             return true;
           }
         }
 
         if (auto svf = std::dynamic_pointer_cast<dsp_primitives::SVFNode>(node)) {
           if (method == "setCutoff") {
-            newParamBindings[path] = [svf](float v) { svf->setCutoff(v); };
+            (*newParamBindingsPtr)[path] = [svf](float v) { svf->setCutoff(v); };
             return true;
           }
           if (method == "setResonance") {
-            newParamBindings[path] = [svf](float v) { svf->setResonance(v); };
+            (*newParamBindingsPtr)[path] = [svf](float v) { svf->setResonance(v); };
             return true;
           }
           if (method == "setMode") {
-            newParamBindings[path] = [svf](float v) { svf->setMode(static_cast<dsp_primitives::SVFNode::Mode>(static_cast<int>(v))); };
+            (*newParamBindingsPtr)[path] = [svf](float v) { svf->setMode(static_cast<dsp_primitives::SVFNode::Mode>(static_cast<int>(v))); };
             return true;
           }
           if (method == "setDrive") {
-            newParamBindings[path] = [svf](float v) { svf->setDrive(v); };
+            (*newParamBindingsPtr)[path] = [svf](float v) { svf->setDrive(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [svf](float v) { svf->setMix(v); };
+            (*newParamBindingsPtr)[path] = [svf](float v) { svf->setMix(v); };
             return true;
           }
         }
 
         if (auto delay = std::dynamic_pointer_cast<dsp_primitives::StereoDelayNode>(node)) {
           if (method == "setTimeMode") {
-            newParamBindings[path] = [delay](float v) { delay->setTimeMode(static_cast<dsp_primitives::StereoDelayNode::TimeMode>(static_cast<int>(v))); };
+            (*newParamBindingsPtr)[path] = [delay](float v) { delay->setTimeMode(static_cast<dsp_primitives::StereoDelayNode::TimeMode>(static_cast<int>(v))); };
             return true;
           }
           if (method == "setTimeL") {
-            newParamBindings[path] = [delay](float v) { delay->setTimeL(v); };
+            (*newParamBindingsPtr)[path] = [delay](float v) { delay->setTimeL(v); };
             return true;
           }
           if (method == "setTimeR") {
-            newParamBindings[path] = [delay](float v) { delay->setTimeR(v); };
+            (*newParamBindingsPtr)[path] = [delay](float v) { delay->setTimeR(v); };
             return true;
           }
           if (method == "setFeedback") {
-            newParamBindings[path] = [delay](float v) { delay->setFeedback(v); };
+            (*newParamBindingsPtr)[path] = [delay](float v) { delay->setFeedback(v); };
             return true;
           }
           if (method == "setPingPong") {
-            newParamBindings[path] = [delay](float v) { delay->setPingPong(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [delay](float v) { delay->setPingPong(v > 0.5f); };
             return true;
           }
           if (method == "setFilterEnabled") {
-            newParamBindings[path] = [delay](float v) { delay->setFilterEnabled(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [delay](float v) { delay->setFilterEnabled(v > 0.5f); };
             return true;
           }
           if (method == "setFilterCutoff") {
-            newParamBindings[path] = [delay](float v) { delay->setFilterCutoff(v); };
+            (*newParamBindingsPtr)[path] = [delay](float v) { delay->setFilterCutoff(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [delay](float v) { delay->setMix(v); };
+            (*newParamBindingsPtr)[path] = [delay](float v) { delay->setMix(v); };
             return true;
           }
           if (method == "setFreeze") {
-            newParamBindings[path] = [delay](float v) { delay->setFreeze(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [delay](float v) { delay->setFreeze(v > 0.5f); };
             return true;
           }
         }
 
         if (auto comp = std::dynamic_pointer_cast<dsp_primitives::CompressorNode>(node)) {
           if (method == "setThreshold") {
-            newParamBindings[path] = [comp](float v) { comp->setThreshold(v); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setThreshold(v); };
             return true;
           }
           if (method == "setRatio") {
-            newParamBindings[path] = [comp](float v) { comp->setRatio(v); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setRatio(v); };
             return true;
           }
           if (method == "setAttack") {
-            newParamBindings[path] = [comp](float v) { comp->setAttack(v); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setAttack(v); };
             return true;
           }
           if (method == "setRelease") {
-            newParamBindings[path] = [comp](float v) { comp->setRelease(v); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setRelease(v); };
             return true;
           }
           if (method == "setKnee") {
-            newParamBindings[path] = [comp](float v) { comp->setKnee(v); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setKnee(v); };
             return true;
           }
           if (method == "setMakeup") {
-            newParamBindings[path] = [comp](float v) { comp->setMakeup(v); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setMakeup(v); };
             return true;
           }
           if (method == "setAutoMakeup") {
-            newParamBindings[path] = [comp](float v) { comp->setAutoMakeup(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setAutoMakeup(v > 0.5f); };
             return true;
           }
           if (method == "setMode") {
-            newParamBindings[path] = [comp](float v) { comp->setMode(static_cast<int>(v)); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setMode(static_cast<int>(v)); };
             return true;
           }
           if (method == "setDetectorMode") {
-            newParamBindings[path] = [comp](float v) { comp->setDetectorMode(static_cast<int>(v)); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setDetectorMode(static_cast<int>(v)); };
             return true;
           }
           if (method == "setSidechainHPF") {
-            newParamBindings[path] = [comp](float v) { comp->setSidechainHPF(v); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setSidechainHPF(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [comp](float v) { comp->setMix(v); };
+            (*newParamBindingsPtr)[path] = [comp](float v) { comp->setMix(v); };
             return true;
           }
         }
 
         if (auto ws = std::dynamic_pointer_cast<dsp_primitives::WaveShaperNode>(node)) {
           if (method == "setCurve") {
-            newParamBindings[path] = [ws](float v) { ws->setCurve(static_cast<int>(v)); };
+            (*newParamBindingsPtr)[path] = [ws](float v) { ws->setCurve(static_cast<int>(v)); };
             return true;
           }
           if (method == "setDrive") {
-            newParamBindings[path] = [ws](float v) { ws->setDrive(v); };
+            (*newParamBindingsPtr)[path] = [ws](float v) { ws->setDrive(v); };
             return true;
           }
           if (method == "setOutput") {
-            newParamBindings[path] = [ws](float v) { ws->setOutput(v); };
+            (*newParamBindingsPtr)[path] = [ws](float v) { ws->setOutput(v); };
             return true;
           }
           if (method == "setPreFilter") {
-            newParamBindings[path] = [ws](float v) { ws->setPreFilter(v); };
+            (*newParamBindingsPtr)[path] = [ws](float v) { ws->setPreFilter(v); };
             return true;
           }
           if (method == "setPostFilter") {
-            newParamBindings[path] = [ws](float v) { ws->setPostFilter(v); };
+            (*newParamBindingsPtr)[path] = [ws](float v) { ws->setPostFilter(v); };
             return true;
           }
           if (method == "setBias") {
-            newParamBindings[path] = [ws](float v) { ws->setBias(v); };
+            (*newParamBindingsPtr)[path] = [ws](float v) { ws->setBias(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [ws](float v) { ws->setMix(v); };
+            (*newParamBindingsPtr)[path] = [ws](float v) { ws->setMix(v); };
             return true;
           }
           if (method == "setOversample") {
-            newParamBindings[path] = [ws](float v) { ws->setOversample(static_cast<int>(v)); };
+            (*newParamBindingsPtr)[path] = [ws](float v) { ws->setOversample(static_cast<int>(v)); };
             return true;
           }
         }
 
         if (auto chorus = std::dynamic_pointer_cast<dsp_primitives::ChorusNode>(node)) {
           if (method == "setRate") {
-            newParamBindings[path] = [chorus](float v) { chorus->setRate(v); };
+            (*newParamBindingsPtr)[path] = [chorus](float v) { chorus->setRate(v); };
             return true;
           }
           if (method == "setDepth") {
-            newParamBindings[path] = [chorus](float v) { chorus->setDepth(v); };
+            (*newParamBindingsPtr)[path] = [chorus](float v) { chorus->setDepth(v); };
             return true;
           }
           if (method == "setVoices") {
-            newParamBindings[path] = [chorus](float v) { chorus->setVoices(static_cast<int>(v)); };
+            (*newParamBindingsPtr)[path] = [chorus](float v) { chorus->setVoices(static_cast<int>(v)); };
             return true;
           }
           if (method == "setSpread") {
-            newParamBindings[path] = [chorus](float v) { chorus->setSpread(v); };
+            (*newParamBindingsPtr)[path] = [chorus](float v) { chorus->setSpread(v); };
             return true;
           }
           if (method == "setFeedback") {
-            newParamBindings[path] = [chorus](float v) { chorus->setFeedback(v); };
+            (*newParamBindingsPtr)[path] = [chorus](float v) { chorus->setFeedback(v); };
             return true;
           }
           if (method == "setWaveform") {
-            newParamBindings[path] = [chorus](float v) { chorus->setWaveform(static_cast<int>(v)); };
+            (*newParamBindingsPtr)[path] = [chorus](float v) { chorus->setWaveform(static_cast<int>(v)); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [chorus](float v) { chorus->setMix(v); };
+            (*newParamBindingsPtr)[path] = [chorus](float v) { chorus->setMix(v); };
             return true;
           }
         }
 
         if (auto widener = std::dynamic_pointer_cast<dsp_primitives::StereoWidenerNode>(node)) {
           if (method == "setWidth") {
-            newParamBindings[path] = [widener](float v) { widener->setWidth(v); };
+            (*newParamBindingsPtr)[path] = [widener](float v) { widener->setWidth(v); };
             return true;
           }
           if (method == "setMonoLowFreq") {
-            newParamBindings[path] = [widener](float v) { widener->setMonoLowFreq(v); };
+            (*newParamBindingsPtr)[path] = [widener](float v) { widener->setMonoLowFreq(v); };
             return true;
           }
           if (method == "setMonoLowEnable") {
-            newParamBindings[path] = [widener](float v) { widener->setMonoLowEnable(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [widener](float v) { widener->setMonoLowEnable(v > 0.5f); };
             return true;
           }
         }
 
         if (auto phaser = std::dynamic_pointer_cast<dsp_primitives::PhaserNode>(node)) {
           if (method == "setRate") {
-            newParamBindings[path] = [phaser](float v) { phaser->setRate(v); };
+            (*newParamBindingsPtr)[path] = [phaser](float v) { phaser->setRate(v); };
             return true;
           }
           if (method == "setDepth") {
-            newParamBindings[path] = [phaser](float v) { phaser->setDepth(v); };
+            (*newParamBindingsPtr)[path] = [phaser](float v) { phaser->setDepth(v); };
             return true;
           }
           if (method == "setStages") {
-            newParamBindings[path] = [phaser](float v) { phaser->setStages(static_cast<int>(v)); };
+            (*newParamBindingsPtr)[path] = [phaser](float v) { phaser->setStages(static_cast<int>(v)); };
             return true;
           }
           if (method == "setFeedback") {
-            newParamBindings[path] = [phaser](float v) { phaser->setFeedback(v); };
+            (*newParamBindingsPtr)[path] = [phaser](float v) { phaser->setFeedback(v); };
             return true;
           }
           if (method == "setSpread") {
-            newParamBindings[path] = [phaser](float v) { phaser->setSpread(v); };
+            (*newParamBindingsPtr)[path] = [phaser](float v) { phaser->setSpread(v); };
             return true;
           }
         }
 
         if (auto gran = std::dynamic_pointer_cast<dsp_primitives::GranulatorNode>(node)) {
           if (method == "setGrainSize") {
-            newParamBindings[path] = [gran](float v) { gran->setGrainSize(v); };
+            (*newParamBindingsPtr)[path] = [gran](float v) { gran->setGrainSize(v); };
             return true;
           }
           if (method == "setDensity") {
-            newParamBindings[path] = [gran](float v) { gran->setDensity(v); };
+            (*newParamBindingsPtr)[path] = [gran](float v) { gran->setDensity(v); };
             return true;
           }
           if (method == "setPosition") {
-            newParamBindings[path] = [gran](float v) { gran->setPosition(v); };
+            (*newParamBindingsPtr)[path] = [gran](float v) { gran->setPosition(v); };
             return true;
           }
           if (method == "setPitch") {
-            newParamBindings[path] = [gran](float v) { gran->setPitch(v); };
+            (*newParamBindingsPtr)[path] = [gran](float v) { gran->setPitch(v); };
             return true;
           }
           if (method == "setSpray") {
-            newParamBindings[path] = [gran](float v) { gran->setSpray(v); };
+            (*newParamBindingsPtr)[path] = [gran](float v) { gran->setSpray(v); };
             return true;
           }
           if (method == "setFreeze") {
-            newParamBindings[path] = [gran](float v) { gran->setFreeze(v > 0.5f); };
+            (*newParamBindingsPtr)[path] = [gran](float v) { gran->setFreeze(v > 0.5f); };
             return true;
           }
           if (method == "setEnvelope") {
-            newParamBindings[path] = [gran](float v) { gran->setEnvelope(static_cast<int>(v)); };
+            (*newParamBindingsPtr)[path] = [gran](float v) { gran->setEnvelope(static_cast<int>(v)); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [gran](float v) { gran->setMix(v); };
+            (*newParamBindingsPtr)[path] = [gran](float v) { gran->setMix(v); };
             return true;
           }
         }
 
         if (auto stutter = std::dynamic_pointer_cast<dsp_primitives::StutterNode>(node)) {
           if (method == "setLength") {
-            newParamBindings[path] = [stutter](float v) { stutter->setLength(v); };
+            (*newParamBindingsPtr)[path] = [stutter](float v) { stutter->setLength(v); };
             return true;
           }
           if (method == "setGate") {
-            newParamBindings[path] = [stutter](float v) { stutter->setGate(v); };
+            (*newParamBindingsPtr)[path] = [stutter](float v) { stutter->setGate(v); };
             return true;
           }
           if (method == "setFilterDecay") {
-            newParamBindings[path] = [stutter](float v) { stutter->setFilterDecay(v); };
+            (*newParamBindingsPtr)[path] = [stutter](float v) { stutter->setFilterDecay(v); };
             return true;
           }
           if (method == "setPitchDecay") {
-            newParamBindings[path] = [stutter](float v) { stutter->setPitchDecay(v); };
+            (*newParamBindingsPtr)[path] = [stutter](float v) { stutter->setPitchDecay(v); };
             return true;
           }
           if (method == "setProbability") {
-            newParamBindings[path] = [stutter](float v) { stutter->setProbability(v); };
+            (*newParamBindingsPtr)[path] = [stutter](float v) { stutter->setProbability(v); };
             return true;
           }
           if (method == "setPattern") {
-            newParamBindings[path] = [stutter](float v) { stutter->setPattern(v); };
+            (*newParamBindingsPtr)[path] = [stutter](float v) { stutter->setPattern(v); };
             return true;
           }
           if (method == "setTempo") {
-            newParamBindings[path] = [stutter](float v) { stutter->setTempo(v); };
+            (*newParamBindingsPtr)[path] = [stutter](float v) { stutter->setTempo(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [stutter](float v) { stutter->setMix(v); };
+            (*newParamBindingsPtr)[path] = [stutter](float v) { stutter->setMix(v); };
             return true;
           }
         }
 
         if (auto shimmer = std::dynamic_pointer_cast<dsp_primitives::ShimmerNode>(node)) {
           if (method == "setSize") {
-            newParamBindings[path] = [shimmer](float v) { shimmer->setSize(v); };
+            (*newParamBindingsPtr)[path] = [shimmer](float v) { shimmer->setSize(v); };
             return true;
           }
           if (method == "setPitch") {
-            newParamBindings[path] = [shimmer](float v) { shimmer->setPitch(v); };
+            (*newParamBindingsPtr)[path] = [shimmer](float v) { shimmer->setPitch(v); };
             return true;
           }
           if (method == "setFeedback") {
-            newParamBindings[path] = [shimmer](float v) { shimmer->setFeedback(v); };
+            (*newParamBindingsPtr)[path] = [shimmer](float v) { shimmer->setFeedback(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [shimmer](float v) { shimmer->setMix(v); };
+            (*newParamBindingsPtr)[path] = [shimmer](float v) { shimmer->setMix(v); };
             return true;
           }
           if (method == "setModulation") {
-            newParamBindings[path] = [shimmer](float v) { shimmer->setModulation(v); };
+            (*newParamBindingsPtr)[path] = [shimmer](float v) { shimmer->setModulation(v); };
             return true;
           }
           if (method == "setFilter") {
-            newParamBindings[path] = [shimmer](float v) { shimmer->setFilter(v); };
+            (*newParamBindingsPtr)[path] = [shimmer](float v) { shimmer->setFilter(v); };
             return true;
           }
         }
 
         if (auto multitap = std::dynamic_pointer_cast<dsp_primitives::MultitapDelayNode>(node)) {
           if (method == "setTapCount") {
-            newParamBindings[path] = [multitap](float v) { multitap->setTapCount(static_cast<int>(v)); };
+            (*newParamBindingsPtr)[path] = [multitap](float v) { multitap->setTapCount(static_cast<int>(v)); };
             return true;
           }
           if (method == "setFeedback") {
-            newParamBindings[path] = [multitap](float v) { multitap->setFeedback(v); };
+            (*newParamBindingsPtr)[path] = [multitap](float v) { multitap->setFeedback(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [multitap](float v) { multitap->setMix(v); };
+            (*newParamBindingsPtr)[path] = [multitap](float v) { multitap->setMix(v); };
             return true;
           }
         }
 
         if (auto pitchShifter = std::dynamic_pointer_cast<dsp_primitives::PitchShifterNode>(node)) {
           if (method == "setPitch") {
-            newParamBindings[path] = [pitchShifter](float v) { pitchShifter->setPitch(v); };
+            (*newParamBindingsPtr)[path] = [pitchShifter](float v) { pitchShifter->setPitch(v); };
             return true;
           }
           if (method == "setWindow") {
-            newParamBindings[path] = [pitchShifter](float v) { pitchShifter->setWindow(v); };
+            (*newParamBindingsPtr)[path] = [pitchShifter](float v) { pitchShifter->setWindow(v); };
             return true;
           }
           if (method == "setFeedback") {
-            newParamBindings[path] = [pitchShifter](float v) { pitchShifter->setFeedback(v); };
+            (*newParamBindingsPtr)[path] = [pitchShifter](float v) { pitchShifter->setFeedback(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [pitchShifter](float v) { pitchShifter->setMix(v); };
+            (*newParamBindingsPtr)[path] = [pitchShifter](float v) { pitchShifter->setMix(v); };
             return true;
           }
         }
 
         if (auto transient = std::dynamic_pointer_cast<dsp_primitives::TransientShaperNode>(node)) {
           if (method == "setAttack") {
-            newParamBindings[path] = [transient](float v) { transient->setAttack(v); };
+            (*newParamBindingsPtr)[path] = [transient](float v) { transient->setAttack(v); };
             return true;
           }
           if (method == "setSustain") {
-            newParamBindings[path] = [transient](float v) { transient->setSustain(v); };
+            (*newParamBindingsPtr)[path] = [transient](float v) { transient->setSustain(v); };
             return true;
           }
           if (method == "setSensitivity") {
-            newParamBindings[path] = [transient](float v) { transient->setSensitivity(v); };
+            (*newParamBindingsPtr)[path] = [transient](float v) { transient->setSensitivity(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [transient](float v) { transient->setMix(v); };
+            (*newParamBindingsPtr)[path] = [transient](float v) { transient->setMix(v); };
             return true;
           }
         }
 
         if (auto ringMod = std::dynamic_pointer_cast<dsp_primitives::RingModulatorNode>(node)) {
           if (method == "setFrequency") {
-            newParamBindings[path] = [ringMod](float v) { ringMod->setFrequency(v); };
+            (*newParamBindingsPtr)[path] = [ringMod](float v) { ringMod->setFrequency(v); };
             return true;
           }
           if (method == "setDepth") {
-            newParamBindings[path] = [ringMod](float v) { ringMod->setDepth(v); };
+            (*newParamBindingsPtr)[path] = [ringMod](float v) { ringMod->setDepth(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [ringMod](float v) { ringMod->setMix(v); };
+            (*newParamBindingsPtr)[path] = [ringMod](float v) { ringMod->setMix(v); };
             return true;
           }
           if (method == "setSpread") {
-            newParamBindings[path] = [ringMod](float v) { ringMod->setSpread(v); };
+            (*newParamBindingsPtr)[path] = [ringMod](float v) { ringMod->setSpread(v); };
             return true;
           }
         }
 
         if (auto crusher = std::dynamic_pointer_cast<dsp_primitives::BitCrusherNode>(node)) {
           if (method == "setBits") {
-            newParamBindings[path] = [crusher](float v) { crusher->setBits(v); };
+            (*newParamBindingsPtr)[path] = [crusher](float v) { crusher->setBits(v); };
             return true;
           }
           if (method == "setRateReduction") {
-            newParamBindings[path] = [crusher](float v) { crusher->setRateReduction(v); };
+            (*newParamBindingsPtr)[path] = [crusher](float v) { crusher->setRateReduction(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [crusher](float v) { crusher->setMix(v); };
+            (*newParamBindingsPtr)[path] = [crusher](float v) { crusher->setMix(v); };
             return true;
           }
           if (method == "setOutput") {
-            newParamBindings[path] = [crusher](float v) { crusher->setOutput(v); };
+            (*newParamBindingsPtr)[path] = [crusher](float v) { crusher->setOutput(v); };
             return true;
           }
         }
 
         if (auto formant = std::dynamic_pointer_cast<dsp_primitives::FormantFilterNode>(node)) {
           if (method == "setVowel") {
-            newParamBindings[path] = [formant](float v) { formant->setVowel(v); };
+            (*newParamBindingsPtr)[path] = [formant](float v) { formant->setVowel(v); };
             return true;
           }
           if (method == "setShift") {
-            newParamBindings[path] = [formant](float v) { formant->setShift(v); };
+            (*newParamBindingsPtr)[path] = [formant](float v) { formant->setShift(v); };
             return true;
           }
           if (method == "setResonance") {
-            newParamBindings[path] = [formant](float v) { formant->setResonance(v); };
+            (*newParamBindingsPtr)[path] = [formant](float v) { formant->setResonance(v); };
             return true;
           }
           if (method == "setDrive") {
-            newParamBindings[path] = [formant](float v) { formant->setDrive(v); };
+            (*newParamBindingsPtr)[path] = [formant](float v) { formant->setDrive(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [formant](float v) { formant->setMix(v); };
+            (*newParamBindingsPtr)[path] = [formant](float v) { formant->setMix(v); };
             return true;
           }
         }
 
         if (auto reverseDelay = std::dynamic_pointer_cast<dsp_primitives::ReverseDelayNode>(node)) {
           if (method == "setTime") {
-            newParamBindings[path] = [reverseDelay](float v) { reverseDelay->setTime(v); };
+            (*newParamBindingsPtr)[path] = [reverseDelay](float v) { reverseDelay->setTime(v); };
             return true;
           }
           if (method == "setWindow") {
-            newParamBindings[path] = [reverseDelay](float v) { reverseDelay->setWindow(v); };
+            (*newParamBindingsPtr)[path] = [reverseDelay](float v) { reverseDelay->setWindow(v); };
             return true;
           }
           if (method == "setFeedback") {
-            newParamBindings[path] = [reverseDelay](float v) { reverseDelay->setFeedback(v); };
+            (*newParamBindingsPtr)[path] = [reverseDelay](float v) { reverseDelay->setFeedback(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [reverseDelay](float v) { reverseDelay->setMix(v); };
+            (*newParamBindingsPtr)[path] = [reverseDelay](float v) { reverseDelay->setMix(v); };
             return true;
           }
         }
 
         if (auto env = std::dynamic_pointer_cast<dsp_primitives::EnvelopeFollowerNode>(node)) {
           if (method == "setAttack") {
-            newParamBindings[path] = [env](float v) { env->setAttack(v); };
+            (*newParamBindingsPtr)[path] = [env](float v) { env->setAttack(v); };
             return true;
           }
           if (method == "setRelease") {
-            newParamBindings[path] = [env](float v) { env->setRelease(v); };
+            (*newParamBindingsPtr)[path] = [env](float v) { env->setRelease(v); };
             return true;
           }
           if (method == "setSensitivity") {
-            newParamBindings[path] = [env](float v) { env->setSensitivity(v); };
+            (*newParamBindingsPtr)[path] = [env](float v) { env->setSensitivity(v); };
             return true;
           }
           if (method == "setHighpass") {
-            newParamBindings[path] = [env](float v) { env->setHighpass(v); };
+            (*newParamBindingsPtr)[path] = [env](float v) { env->setHighpass(v); };
             return true;
           }
         }
 
         if (auto detector = std::dynamic_pointer_cast<dsp_primitives::PitchDetectorNode>(node)) {
           if (method == "setMinFreq") {
-            newParamBindings[path] = [detector](float v) { detector->setMinFreq(v); };
+            (*newParamBindingsPtr)[path] = [detector](float v) { detector->setMinFreq(v); };
             return true;
           }
           if (method == "setMaxFreq") {
-            newParamBindings[path] = [detector](float v) { detector->setMaxFreq(v); };
+            (*newParamBindingsPtr)[path] = [detector](float v) { detector->setMaxFreq(v); };
             return true;
           }
           if (method == "setSensitivity") {
-            newParamBindings[path] = [detector](float v) { detector->setSensitivity(v); };
+            (*newParamBindingsPtr)[path] = [detector](float v) { detector->setSensitivity(v); };
             return true;
           }
           if (method == "setSmoothing") {
-            newParamBindings[path] = [detector](float v) { detector->setSmoothing(v); };
+            (*newParamBindingsPtr)[path] = [detector](float v) { detector->setSmoothing(v); };
             return true;
           }
         }
 
         if (auto cross = std::dynamic_pointer_cast<dsp_primitives::CrossfaderNode>(node)) {
           if (method == "setPosition") {
-            newParamBindings[path] = [cross](float v) { cross->setPosition(v); };
+            (*newParamBindingsPtr)[path] = [cross](float v) { cross->setPosition(v); };
             return true;
           }
           if (method == "setCurve") {
-            newParamBindings[path] = [cross](float v) { cross->setCurve(v); };
+            (*newParamBindingsPtr)[path] = [cross](float v) { cross->setCurve(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [cross](float v) { cross->setMix(v); };
+            (*newParamBindingsPtr)[path] = [cross](float v) { cross->setMix(v); };
             return true;
           }
         }
 
         if (auto mixer = std::dynamic_pointer_cast<dsp_primitives::MixerNode>(node)) {
           if (method == "setGain1") {
-            newParamBindings[path] = [mixer](float v) { mixer->setGain1(v); };
+            (*newParamBindingsPtr)[path] = [mixer](float v) { mixer->setGain1(v); };
             return true;
           }
           if (method == "setGain2") {
-            newParamBindings[path] = [mixer](float v) { mixer->setGain2(v); };
+            (*newParamBindingsPtr)[path] = [mixer](float v) { mixer->setGain2(v); };
             return true;
           }
           if (method == "setGain3") {
-            newParamBindings[path] = [mixer](float v) { mixer->setGain3(v); };
+            (*newParamBindingsPtr)[path] = [mixer](float v) { mixer->setGain3(v); };
             return true;
           }
           if (method == "setGain4") {
-            newParamBindings[path] = [mixer](float v) { mixer->setGain4(v); };
+            (*newParamBindingsPtr)[path] = [mixer](float v) { mixer->setGain4(v); };
             return true;
           }
           if (method == "setPan1") {
-            newParamBindings[path] = [mixer](float v) { mixer->setPan1(v); };
+            (*newParamBindingsPtr)[path] = [mixer](float v) { mixer->setPan1(v); };
             return true;
           }
           if (method == "setPan2") {
-            newParamBindings[path] = [mixer](float v) { mixer->setPan2(v); };
+            (*newParamBindingsPtr)[path] = [mixer](float v) { mixer->setPan2(v); };
             return true;
           }
           if (method == "setPan3") {
-            newParamBindings[path] = [mixer](float v) { mixer->setPan3(v); };
+            (*newParamBindingsPtr)[path] = [mixer](float v) { mixer->setPan3(v); };
             return true;
           }
           if (method == "setPan4") {
-            newParamBindings[path] = [mixer](float v) { mixer->setPan4(v); };
+            (*newParamBindingsPtr)[path] = [mixer](float v) { mixer->setPan4(v); };
             return true;
           }
           if (method == "setMaster") {
-            newParamBindings[path] = [mixer](float v) { mixer->setMaster(v); };
+            (*newParamBindingsPtr)[path] = [mixer](float v) { mixer->setMaster(v); };
             return true;
           }
         }
 
         if (auto noise = std::dynamic_pointer_cast<dsp_primitives::NoiseGeneratorNode>(node)) {
           if (method == "setLevel") {
-            newParamBindings[path] = [noise](float v) { noise->setLevel(v); };
+            (*newParamBindingsPtr)[path] = [noise](float v) { noise->setLevel(v); };
             return true;
           }
           if (method == "setColor") {
-            newParamBindings[path] = [noise](float v) { noise->setColor(v); };
+            (*newParamBindingsPtr)[path] = [noise](float v) { noise->setColor(v); };
             return true;
           }
         }
 
         if (auto msEnc = std::dynamic_pointer_cast<dsp_primitives::MSEncoderNode>(node)) {
           if (method == "setWidth") {
-            newParamBindings[path] = [msEnc](float v) { msEnc->setWidth(v); };
+            (*newParamBindingsPtr)[path] = [msEnc](float v) { msEnc->setWidth(v); };
             return true;
           }
         }
 
         if (auto eq = std::dynamic_pointer_cast<dsp_primitives::EQNode>(node)) {
           if (method == "setLowGain") {
-            newParamBindings[path] = [eq](float v) { eq->setLowGain(v); };
+            (*newParamBindingsPtr)[path] = [eq](float v) { eq->setLowGain(v); };
             return true;
           }
           if (method == "setLowFreq") {
-            newParamBindings[path] = [eq](float v) { eq->setLowFreq(v); };
+            (*newParamBindingsPtr)[path] = [eq](float v) { eq->setLowFreq(v); };
             return true;
           }
           if (method == "setMidGain") {
-            newParamBindings[path] = [eq](float v) { eq->setMidGain(v); };
+            (*newParamBindingsPtr)[path] = [eq](float v) { eq->setMidGain(v); };
             return true;
           }
           if (method == "setMidFreq") {
-            newParamBindings[path] = [eq](float v) { eq->setMidFreq(v); };
+            (*newParamBindingsPtr)[path] = [eq](float v) { eq->setMidFreq(v); };
             return true;
           }
           if (method == "setMidQ") {
-            newParamBindings[path] = [eq](float v) { eq->setMidQ(v); };
+            (*newParamBindingsPtr)[path] = [eq](float v) { eq->setMidQ(v); };
             return true;
           }
           if (method == "setHighGain") {
-            newParamBindings[path] = [eq](float v) { eq->setHighGain(v); };
+            (*newParamBindingsPtr)[path] = [eq](float v) { eq->setHighGain(v); };
             return true;
           }
           if (method == "setHighFreq") {
-            newParamBindings[path] = [eq](float v) { eq->setHighFreq(v); };
+            (*newParamBindingsPtr)[path] = [eq](float v) { eq->setHighFreq(v); };
             return true;
           }
           if (method == "setOutput") {
-            newParamBindings[path] = [eq](float v) { eq->setOutput(v); };
+            (*newParamBindingsPtr)[path] = [eq](float v) { eq->setOutput(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [eq](float v) { eq->setMix(v); };
+            (*newParamBindingsPtr)[path] = [eq](float v) { eq->setMix(v); };
             return true;
           }
         }
 
         if (auto limiter = std::dynamic_pointer_cast<dsp_primitives::LimiterNode>(node)) {
           if (method == "setThreshold") {
-            newParamBindings[path] = [limiter](float v) { limiter->setThreshold(v); };
+            (*newParamBindingsPtr)[path] = [limiter](float v) { limiter->setThreshold(v); };
             return true;
           }
           if (method == "setRelease") {
-            newParamBindings[path] = [limiter](float v) { limiter->setRelease(v); };
+            (*newParamBindingsPtr)[path] = [limiter](float v) { limiter->setRelease(v); };
             return true;
           }
           if (method == "setMakeup") {
-            newParamBindings[path] = [limiter](float v) { limiter->setMakeup(v); };
+            (*newParamBindingsPtr)[path] = [limiter](float v) { limiter->setMakeup(v); };
             return true;
           }
           if (method == "setSoftClip") {
-            newParamBindings[path] = [limiter](float v) { limiter->setSoftClip(v); };
+            (*newParamBindingsPtr)[path] = [limiter](float v) { limiter->setSoftClip(v); };
             return true;
           }
           if (method == "setMix") {
-            newParamBindings[path] = [limiter](float v) { limiter->setMix(v); };
+            (*newParamBindingsPtr)[path] = [limiter](float v) { limiter->setMix(v); };
             return true;
           }
         }
 
         if (auto spectrum = std::dynamic_pointer_cast<dsp_primitives::SpectrumAnalyzerNode>(node)) {
           if (method == "setSensitivity") {
-            newParamBindings[path] = [spectrum](float v) { spectrum->setSensitivity(v); };
+            (*newParamBindingsPtr)[path] = [spectrum](float v) { spectrum->setSensitivity(v); };
             return true;
           }
           if (method == "setSmoothing") {
-            newParamBindings[path] = [spectrum](float v) { spectrum->setSmoothing(v); };
+            (*newParamBindingsPtr)[path] = [spectrum](float v) { spectrum->setSmoothing(v); };
             return true;
           }
           if (method == "setFloor") {
-            newParamBindings[path] = [spectrum](float v) { spectrum->setFloor(v); };
+            (*newParamBindingsPtr)[path] = [spectrum](float v) { spectrum->setFloor(v); };
             return true;
           }
         }
@@ -2817,7 +2889,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           sol::object methodObj = target[method];
           if (methodObj.valid() && methodObj.get_type() == sol::type::function) {
             sol::protected_function fn = methodObj;
-            newParamBindings[path] = [fn, target](float v) mutable {
+            (*newParamBindingsPtr)[path] = [fn, target](float v) mutable {
               sol::protected_function_result result = fn(target, v);
               (void)result;
             };
@@ -2828,10 +2900,14 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         return false;
       };
 
-  auto bundles = newLua.create_table();
+  auto bundles = lua.create_table();
   {
-    auto loopLayerApi = newLua.create_table();
-    loopLayerApi["new"] = [graph, &newLua, &newLayerPlaybackNodes, &newLayerGateNodes, &newLayerOutputNodes, &newNamedNodes, &mapInternalToExternal, &trackNode](sol::optional<sol::table> options) {
+    auto loopLayerApi = lua.create_table();
+    loopLayerApi["new"] = [impl, newLayerPlaybackNodesPtr, newLayerGateNodesPtr,
+                             newLayerOutputNodesPtr, newNamedNodesPtr,
+                             mapInternalToExternal,
+                             trackNode](sol::this_state ts,
+                                        sol::optional<sol::table> options) {
       int numChannels = 2;
       if (options.has_value()) {
         sol::table opts = options.value();
@@ -2853,20 +2929,20 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       auto forward = std::make_shared<dsp_primitives::ForwardCommitSchedulerNode>();
       auto transport = std::make_shared<dsp_primitives::TransportStateNode>();
 
-      newLayerPlaybackNodes.push_back(playback);
-      newLayerGateNodes.push_back(gate);
-      newLayerOutputNodes.push_back(gain);
+      newLayerPlaybackNodesPtr->push_back(playback);
+      newLayerGateNodesPtr->push_back(gate);
+      newLayerOutputNodesPtr->push_back(gain);
 
-      const int layerIndex = static_cast<int>(newLayerOutputNodes.size()) - 1;
+      const int layerIndex = static_cast<int>(newLayerOutputNodesPtr->size()) - 1;
       const std::string layerBase =
           "/core/behavior/layer/" + std::to_string(layerIndex);
-      auto registerNamedNode = [&newNamedNodes, &mapInternalToExternal](
+      auto registerNamedNode = [newNamedNodesPtr, mapInternalToExternal](
                                    const std::string &internalPath,
                                    const std::shared_ptr<dsp_primitives::IPrimitiveNode> &node) {
         if (!node) {
           return;
         }
-        newNamedNodes[mapInternalToExternal(internalPath)] = node;
+        (*newNamedNodesPtr)[mapInternalToExternal(internalPath)] = node;
       };
       registerNamedNode(layerBase + "/input", input);
       registerNamedNode(layerBase + "/output", gain);
@@ -2893,24 +2969,31 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       trackNode(forward);
       trackNode(transport);
 
-      graph->connect(input, 0, capture, 0);
-      graph->connect(capture, 0, playback, 0);
-      graph->connect(playback, 0, gate, 0);
-      graph->connect(gate, 0, gain, 0);
+      if (!impl->processor) {
+        return createTable(ts);
+      }
+      auto currentGraph = impl->processor->getPrimitiveGraph();
+      if (!currentGraph) {
+        return createTable(ts);
+      }
+      currentGraph->connect(input, 0, capture, 0);
+      currentGraph->connect(capture, 0, playback, 0);
+      currentGraph->connect(playback, 0, gate, 0);
+      currentGraph->connect(gate, 0, gain, 0);
 
-      auto layer = newLua.create_table();
+      auto layer = createTable(ts);
       layer["__node"] = gain;
       layer["__inputNode"] = input;
       layer["__outputNode"] = gain;
-      layer["__capture"] = newLua.create_table_with("__node", capture);
-      layer["__playback"] = newLua.create_table_with("__node", playback);
-      layer["__gate"] = newLua.create_table_with("__node", gate);
-      layer["__gain"] = newLua.create_table_with("__node", gain);
-      layer["__record"] = newLua.create_table_with("__node", recordState);
-      layer["__quantizer"] = newLua.create_table_with("__node", quantizer);
-      layer["__mode"] = newLua.create_table_with("__node", mode);
-      layer["__forward"] = newLua.create_table_with("__node", forward);
-      layer["__transport"] = newLua.create_table_with("__node", transport);
+      layer["__capture"] = createTableWith(ts, "__node", capture);
+      layer["__playback"] = createTableWith(ts, "__node", playback);
+      layer["__gate"] = createTableWith(ts, "__node", gate);
+      layer["__gain"] = createTableWith(ts, "__node", gain);
+      layer["__record"] = createTableWith(ts, "__node", recordState);
+      layer["__quantizer"] = createTableWith(ts, "__node", quantizer);
+      layer["__mode"] = createTableWith(ts, "__node", mode);
+      layer["__forward"] = createTableWith(ts, "__node", forward);
+      layer["__transport"] = createTableWith(ts, "__node", transport);
       layer["__overdubLengthPolicy"] = 0;
 
       layer["setVolume"] = [](sol::table self, float v) {
@@ -3186,24 +3269,25 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         return result.get<bool>();
       };
-      layer["parts"] = newLua.create_table_with(
-          "input", newLua.create_table_with("__node", input),
-          "capture", newLua.create_table_with("__node", capture),
-          "record", newLua.create_table_with("__node", recordState),
-          "quantizer", newLua.create_table_with("__node", quantizer),
-          "mode", newLua.create_table_with("__node", mode),
-          "forward", newLua.create_table_with("__node", forward),
-          "transport", newLua.create_table_with("__node", transport),
-          "gain", newLua.create_table_with("__node", gain),
-          "gate", newLua.create_table_with("__node", gate),
-          "playback", newLua.create_table_with("__node", playback));
+      layer["parts"] = createTableWith(
+          ts,
+          "input", createTableWith(ts, "__node", input),
+          "capture", createTableWith(ts, "__node", capture),
+          "record", createTableWith(ts, "__node", recordState),
+          "quantizer", createTableWith(ts, "__node", quantizer),
+          "mode", createTableWith(ts, "__node", mode),
+          "forward", createTableWith(ts, "__node", forward),
+          "transport", createTableWith(ts, "__node", transport),
+          "gain", createTableWith(ts, "__node", gain),
+          "gate", createTableWith(ts, "__node", gate),
+          "playback", createTableWith(ts, "__node", playback));
 
       return layer;
     };
     bundles["LoopLayer"] = loopLayerApi;
   }
 
-  auto hostApi = newLua.create_table();
+  auto hostApi = lua.create_table();
   hostApi["getSampleRate"] = [impl]() {
     return impl->processor ? impl->processor->getSampleRate() : 44100.0;
   };
@@ -3233,21 +3317,25 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     return impl->processor->getGraphNodeByPath(path);
   };
 
-  auto ctx = newLua.create_table();
+  auto ctx = lua.create_table();
   ctx["primitives"] = primitives;
   ctx["bundles"] = bundles;
   ctx["graph"] = graphTable;
   ctx["params"] = paramsTable;
   ctx["host"] = hostApi;
 
-  newLua["connectNodes"] = [graph, toPrimitiveNode](const sol::object &fromObj,
-                                                      const sol::object &toObj) {
+  lua["connectNodes"] = [impl, toPrimitiveNode](const sol::object &fromObj,
+                                                     const sol::object &toObj) {
     auto from = toPrimitiveNode(fromObj);
     auto to = toPrimitiveNode(toObj);
-    if (!from || !to) {
+    if (!from || !to || !impl->processor) {
       return false;
     }
-    return graph->connect(from, 0, to, 0);
+    auto currentGraph = impl->processor->getPrimitiveGraph();
+    if (!currentGraph) {
+      return false;
+    }
+    return currentGraph->connect(from, 0, to, 0);
   };
 
   {
@@ -3276,13 +3364,13 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     appendPackageRoot(scriptDir);
     appendPackageRoot(userDspRoot);
     appendPackageRoot(systemDspRoot);
-    newLua["package"]["path"] = packagePath;
+    lua["package"]["path"] = packagePath;
 
-    newLua["__manifoldDspScriptDir"] = scriptDir.getFullPathName().toStdString();
-    newLua["__manifoldUserDspRoot"] = userDspRoot.getFullPathName().toStdString();
-    newLua["__manifoldSystemDspRoot"] = systemDspRoot.getFullPathName().toStdString();
+    lua["__manifoldDspScriptDir"] = scriptDir.getFullPathName().toStdString();
+    lua["__manifoldUserDspRoot"] = userDspRoot.getFullPathName().toStdString();
+    lua["__manifoldSystemDspRoot"] = systemDspRoot.getFullPathName().toStdString();
 
-    sol::protected_function_result helperInit = newLua.script(R"lua(
+    sol::protected_function_result helperInit = lua.script(R"lua(
 __manifoldDspModuleCache = __manifoldDspModuleCache or {}
 
 local function __dirname(path)
@@ -3382,7 +3470,7 @@ end
       return false;
     }
 
-    auto pathsTable = newLua.create_table();
+    auto pathsTable = lua.create_table();
     pathsTable["scriptDir"] = scriptDir.getFullPathName().toStdString();
     pathsTable["userDspRoot"] = userDspRoot.getFullPathName().toStdString();
     pathsTable["systemDspRoot"] = systemDspRoot.getFullPathName().toStdString();
@@ -3395,17 +3483,17 @@ end
   }
 
   sol::protected_function_result loadResult = (scriptFile != nullptr)
-                                                  ? newLua.script_file(
+                                                  ? lua.script_file(
                                                         scriptFile->getFullPathName()
                                                             .toStdString())
-                                                  : newLua.script(*scriptCode);
+                                                  : lua.script(*scriptCode);
   if (!loadResult.valid()) {
     sol::error err = loadResult;
     impl->lastError = err.what();
     return false;
   }
 
-  sol::object buildFnObj = newLua["buildPlugin"];
+  sol::object buildFnObj = lua["buildPlugin"];
   if (!buildFnObj.valid() || buildFnObj.get_type() != sol::type::function) {
     impl->lastError = "DSP script must define buildPlugin(ctx)";
     return false;
@@ -3530,7 +3618,10 @@ end
   {
     const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
     // Keep old Lua VM alive to avoid destroying it during nested Lua call stacks.
-    impl->retiredLuaStates.push_back(std::move(impl->lua));
+    // retiredLuaStates is intentionally non-relocating; do not switch this back
+    // to vector unless you want reallocation-time VM destruction and more
+    // spectacularly stupid crashes during UI/DSP transitions.
+    impl->retiredLuaStates.emplace_back(std::move(impl->lua));
 
     impl->onParamChange = std::move(newOnParamChange);
     impl->lua = std::move(newLua);
@@ -3543,7 +3634,7 @@ end
     impl->layerGateNodes = std::move(newLayerGateNodes);
     impl->layerOutputNodes = std::move(newLayerOutputNodes);
     impl->namedNodes = std::move(newNamedNodes);
-    impl->ownedNodes = std::move(*newOwnedNodes);
+    impl->ownedNodes = std::move(newOwnedNodes);
     impl->currentScriptFile = scriptFile != nullptr ? *scriptFile : juce::File();
     impl->currentScriptSourceName = sourceName;
     impl->currentScriptCode = scriptCode != nullptr ? *scriptCode : std::string();

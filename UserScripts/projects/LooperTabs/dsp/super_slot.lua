@@ -52,19 +52,11 @@ local function selectionKey(selections)
 end
 
 local function setPath(path, value)
-  if type(setParam) == "function" then
-    local ok, handled = pcall(setParam, path, value)
-    if ok and handled == true then
-      return true
-    end
+  if type(setParam) ~= "function" then
+    return false
   end
-  if type(command) == "function" then
-    local ok = pcall(command, "SET", path, tostring(value))
-    if ok then
-      return true
-    end
-  end
-  return false
+  local ok, handled = pcall(setParam, path, value)
+  return ok and handled == true
 end
 
 local function applySelections(selections)
@@ -107,7 +99,7 @@ function M.ensureLoaded(project, selections, force)
     pcall(setDspSlotPersistOnUiSwitch, DSP_SLOT, false)
   end
 
-  local mustLoad = (not loaded) or M._loadedPath ~= runtimePath
+  local mustLoad = force == true or (not loaded) or M._loadedPath ~= runtimePath
   if mustLoad then
     local ok, result = pcall(loadDspScriptInSlot, runtimePath, DSP_SLOT)
     if not ok then
@@ -117,7 +109,7 @@ function M.ensureLoaded(project, selections, force)
       return false, "slot load failed"
     end
     M._loadedPath = runtimePath
-  elseif force ~= true and M._loadedKey == selectionKey(selections or {}) then
+  elseif M._loadedKey == selectionKey(selections or {}) then
     return true
   end
 
