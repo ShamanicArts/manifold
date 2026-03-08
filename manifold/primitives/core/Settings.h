@@ -55,7 +55,7 @@ private:
     int oscPort_ = 9000;
     int oscQueryPort_ = 9001;
     
-    // Core UI script (looper_ui.lua is core for now)
+    // Core UI script path
     juce::String defaultUiScript_;
     
     // Development paths

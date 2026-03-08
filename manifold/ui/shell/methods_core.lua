@@ -1806,6 +1806,32 @@ function M.attach(shell)
             record = runtime:getRecordBySource(docPath, nodeId)
         end
 
+        if type(record) == "table" and type(record.parent) == "table" then
+            local parentRecord = record.parent
+            local parentWidget = parentRecord.widget
+            local parentCanvas = parentWidget and parentWidget.node or nil
+            local parentSpec = type(parentRecord.spec) == "table" and parentRecord.spec or nil
+            if parentCanvas and parentSpec then
+                local _, _, parentW, parentH = parentCanvas:getBounds()
+                local designW = tonumber(parentSpec.w) or tonumber(parentW) or 0
+                local designH = tonumber(parentSpec.h) or tonumber(parentH) or 0
+                parentW = tonumber(parentW) or 0
+                parentH = tonumber(parentH) or 0
+                if parentW > 0 and designW > 0 then
+                    bx = bx * designW / parentW
+                    bw = bw * designW / parentW
+                end
+                if parentH > 0 and designH > 0 then
+                    by = by * designH / parentH
+                    bh = bh * designH / parentH
+                end
+                bx = math.floor(bx + 0.5)
+                by = math.floor(by + 0.5)
+                bw = math.max(1, math.floor(bw + 0.5))
+                bh = math.max(1, math.floor(bh + 0.5))
+            end
+        end
+
         local basePrefix = source.pathPrefix or ""
         local prefix = basePrefix .. (hasLayout and "layout." or "")
         local okX = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "x", bx)
