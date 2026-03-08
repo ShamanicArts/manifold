@@ -113,13 +113,19 @@ add_library(imgui STATIC
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
     ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp)
+    ${IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp
+    manifold/ui/imgui/ManifoldImGuiGlobals.cpp)
 
 target_include_directories(imgui
     PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
         ${IMGUI_DIR}/misc/cpp)
+
+target_compile_definitions(imgui
+    PUBLIC
+        IMGUI_USER_CONFIG="manifold/ui/imgui/ManifoldImGuiConfig.h")
 
 # --- ImGuiColorTextEdit (pthom fork) ---
 find_package(Boost REQUIRED COMPONENTS regex)
@@ -355,6 +361,13 @@ set(MANIFOLD_CORE_SOURCES
     manifold/core/BehaviorCoreEditor.cpp
     manifold/ui/imgui/ImGuiHost.h
     manifold/ui/imgui/ImGuiHost.cpp
+    manifold/ui/imgui/ImGuiScriptListHost.h
+    manifold/ui/imgui/ImGuiScriptListHost.cpp
+    manifold/ui/imgui/ImGuiHierarchyHost.h
+    manifold/ui/imgui/ImGuiHierarchyHost.cpp
+    manifold/ui/imgui/ImGuiInspectorHost.h
+    manifold/ui/imgui/ImGuiInspectorHost.cpp
+    manifold/ui/imgui/ManifoldImGuiConfig.h
     manifold/ui/imgui/ImGuiOpenGLBackend.cpp)
 
 juce_add_plugin(Manifold

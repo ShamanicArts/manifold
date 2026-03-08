@@ -1118,6 +1118,62 @@ function M.attach(shell)
         self.inspectorCanvas:repaint()
     end
 
+    function shell:setScriptInspectorEditorCollapsed(collapsed)
+        local si = self.scriptInspector
+        if type(si) ~= "table" then
+            return
+        end
+        si.editorCollapsed = collapsed == true
+        if si.editorCollapsed then
+            si.editorBodyRect = nil
+        end
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:setScriptInspectorGraphCollapsed(collapsed)
+        local si = self.scriptInspector
+        if type(si) ~= "table" then
+            return
+        end
+        si.graphCollapsed = collapsed == true
+        if si.graphCollapsed then
+            si.graphDragging = false
+            si.graphBodyRect = nil
+        end
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:setScriptInspectorGraphPan(x, y)
+        local si = self.scriptInspector
+        if type(si) ~= "table" then
+            return
+        end
+        si.graphPanX = math.floor(tonumber(x) or 0)
+        si.graphPanY = math.floor(tonumber(y) or 0)
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:applyScriptInspectorRuntimeParam(endpointPath, value)
+        local si = self.scriptInspector
+        if type(si) ~= "table" or type(endpointPath) ~= "string" or endpointPath == "" then
+            return false
+        end
+
+        local runtimeParams = si.runtimeParams or {}
+        for i = 1, #runtimeParams do
+            local rp = runtimeParams[i]
+            local candidate = rp.endpointPath or rp.path
+            if candidate == endpointPath then
+                return self:setRuntimeParamAbsolute(endpointPath, value, rp.min, rp.max, {
+                    step = rp.step,
+                    fast = true,
+                })
+            end
+        end
+
+        return self:setRuntimeParamAbsolute(endpointPath, value, nil, nil, { fast = true })
+    end
+
     function shell:updateRuntimeParamCache(endpointPath, value)
         local si = self.scriptInspector
         if type(si) ~= "table" then

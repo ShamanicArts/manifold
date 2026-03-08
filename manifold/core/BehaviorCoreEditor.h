@@ -4,6 +4,9 @@
 #include "../primitives/scripting/LuaEngine.h"
 #include "../primitives/ui/Canvas.h"
 #include "../ui/imgui/ImGuiHost.h"
+#include "../ui/imgui/ImGuiScriptListHost.h"
+#include "../ui/imgui/ImGuiHierarchyHost.h"
+#include "../ui/imgui/ImGuiInspectorHost.h"
 
 class BehaviorCoreProcessor;
 
@@ -27,6 +30,10 @@ private:
     Canvas rootCanvas{"root"};
     ImGuiHost mainScriptEditorHost;
     ImGuiHost inlineScriptEditorHost;
+    ImGuiScriptListHost scriptListHost;
+    ImGuiHierarchyHost hierarchyHost;
+    ImGuiInspectorHost inspectorHost;
+    ImGuiInspectorHost scriptInspectorHost;
     Canvas* errorNode = nullptr;
     std::string errorMessage;
 
