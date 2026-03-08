@@ -18,12 +18,16 @@ local fileStem = Base.fileStem
 local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
 local SCRIPT_SYNTAX_COLOUR = ScriptEditor.SCRIPT_SYNTAX_COLOUR
 local seBuildLines = ScriptEditor.seBuildLines
+local seBuildLinesCached = ScriptEditor.seBuildLinesCached
 local seLineColFromPos = ScriptEditor.seLineColFromPos
+local seLineColCached = ScriptEditor.seLineColCached
 local sePosFromLineCol = ScriptEditor.sePosFromLineCol
+local sePosFromLineColCached = ScriptEditor.sePosFromLineColCached
 local seGetSelectionRange = ScriptEditor.seGetSelectionRange
 local seClearSelection = ScriptEditor.seClearSelection
 local seDeleteSelection = ScriptEditor.seDeleteSelection
 local seReplaceSelection = ScriptEditor.seReplaceSelection
+local seInvalidateCache = ScriptEditor.seInvalidateCache
 local seMoveCursor = ScriptEditor.seMoveCursor
 local seVisibleLineCount = ScriptEditor.seVisibleLineCount
 local seMaxCols = ScriptEditor.seMaxCols
@@ -861,6 +865,9 @@ function M.attach(shell)
             si.path = ""
             si.ownership = ""
             si.text = ""
+            si.dirty = false
+            si.syncToken = (tonumber(si.syncToken) or 0) + 1
+            seInvalidateCache(si)
             si.params = {}
             si.runtimeParams = {}
             si.graph = { nodes = {}, edges = {} }
@@ -903,6 +910,9 @@ function M.attach(shell)
         si.path = row.path or ""
         si.ownership = row.ownership or ""
         si.text = text
+        si.dirty = false
+        si.syncToken = (tonumber(si.syncToken) or 0) + 1
+        seInvalidateCache(si)
         si.params = {}
         si.runtimeParams = {}
         si.graph = { nodes = {}, edges = {} }
@@ -1436,11 +1446,12 @@ function M.attach(shell)
     end
 
     function shell:ensureScriptEditorCursorVisible()
+        local perfStart = nowSeconds()
         local ed = self.scriptEditor
         local h = math.floor(self.mainTabContent:getHeight())
-        local lines = seBuildLines(ed.text)
+        local lines = seBuildLinesCached(ed)
         local visible = seVisibleLineCount(h)
-        local line = seLineColFromPos(ed.text, ed.cursorPos)
+        local line = seLineColCached(ed)
         local maxScroll = math.max(1, #lines - visible + 1)
 
         if line < ed.scrollRow then
@@ -1450,13 +1461,20 @@ function M.attach(shell)
         end
 
         ed.scrollRow = clamp(ed.scrollRow, 1, maxScroll)
+        if type(_G) == "table" then
+            local perf = _G.__manifoldEditorPerf or {}
+            perf.lastEnsureVisibleMs = (nowSeconds() - perfStart) * 1000.0
+            perf.peakEnsureVisibleMs = math.max(perf.peakEnsureVisibleMs or 0, perf.lastEnsureVisibleMs or 0)
+            _G.__manifoldEditorPerf = perf
+        end
     end
 
     function shell:scriptEditorPosFromPoint(mx, my)
+        local perfStart = nowSeconds()
         local ed = self.scriptEditor
         local w = math.floor(self.mainTabContent:getWidth())
         local h = math.floor(self.mainTabContent:getHeight())
-        local lines = seBuildLines(ed.text)
+        local lines = seBuildLinesCached(ed)
         local visible = seVisibleLineCount(h)
         local maxScroll = math.max(1, #lines - visible + 1)
         ed.scrollRow = clamp(ed.scrollRow, 1, maxScroll)
@@ -1472,7 +1490,16 @@ function M.attach(shell)
         col = clamp(col, 1, maxCol)
 
         local _ = w
-        return sePosFromLineCol(ed.text, lineIdx, col)
+        local pos = sePosFromLineColCached(ed, lineIdx, col)
+        if type(_G) == "table" then
+            local perf = _G.__manifoldEditorPerf or {}
+            perf.lastPosFromPointMs = (nowSeconds() - perfStart) * 1000.0
+            perf.peakPosFromPointMs = math.max(perf.peakPosFromPointMs or 0, perf.lastPosFromPointMs or 0)
+            perf.lastPointLine = lineIdx
+            perf.lastPointCol = col
+            _G.__manifoldEditorPerf = perf
+        end
+        return pos
     end
 
     function shell:openScriptEditor(row)
@@ -1492,6 +1519,9 @@ function M.attach(shell)
         self:refreshScriptInspectorData(row)
         self.scriptEditor.path = path
         self.scriptEditor.text = text
+        self.scriptEditor.syncToken = (tonumber(self.scriptEditor.syncToken) or 0) + 1
+        self.scriptEditor.bodyRect = nil
+        seInvalidateCache(self.scriptEditor)
         self.scriptEditor.cursorPos = 1
         self.scriptEditor.selectionAnchor = nil
         self.scriptEditor.dragAnchorPos = nil
@@ -1533,8 +1563,10 @@ function M.attach(shell)
             end
             if readTextFile then
                 ed.text = readTextFile(ed.path) or ed.text or ""
+                seInvalidateCache(ed)
             end
             ed.dirty = false
+            ed.syncToken = (tonumber(ed.syncToken) or 0) + 1
             ed.status = "Saved structured document"
             self:appendConsoleLine("Saved structured document: " .. tostring(ed.path), 0xff86efac)
             self:refreshProjectScriptRowsIfNeeded()
@@ -1553,6 +1585,7 @@ function M.attach(shell)
                 return
             end
             ed.dirty = false
+            ed.syncToken = (tonumber(ed.syncToken) or 0) + 1
             if ed.ownership == "editor-owned" then
                 ed.status = "Saved source; reload/apply project to use changes"
                 self:appendConsoleLine("Saved editor-owned source file: " .. tostring(ed.path), 0xff86efac)
@@ -1578,11 +1611,13 @@ function M.attach(shell)
 
         if readTextFile then
             ed.text = readTextFile(ed.path) or ""
+            seInvalidateCache(ed)
             ed.cursorPos = 1
             ed.selectionAnchor = nil
             ed.dragAnchorPos = nil
             ed.scrollRow = 1
             ed.dirty = false
+            ed.syncToken = (tonumber(ed.syncToken) or 0) + 1
             if ed.ownership == "editor-owned" then
                 local docStatus = self:getStructuredDocumentStatus(ed.path)
                 local dirtySuffix = (type(docStatus) == "table" and docStatus.dirty == true) and " | runtime still dirty" or ""
@@ -1604,6 +1639,7 @@ function M.attach(shell)
         self.scriptEditor.focused = false
         self.scriptEditor.selectionAnchor = nil
         self.scriptEditor.dragAnchorPos = nil
+        self.scriptEditor.bodyRect = nil
         self.mainTabContent:repaint()
 
         local w = self.parentNode:getWidth()

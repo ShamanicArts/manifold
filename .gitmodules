@@ -1,3 +1,11 @@
 [submodule "external/JUCE"]
 	path = external/JUCE
 	url = https://github.com/juce-framework/JUCE.git
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui
+	branch = docking
+[submodule "external/ImGuiColorTextEdit"]
+	path = external/ImGuiColorTextEdit
+	url = https://github.com/pthom/ImGuiColorTextEdit.git
+	branch = imgui_bundle

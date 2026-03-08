@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../primitives/scripting/LuaEngine.h"
 #include "../primitives/ui/Canvas.h"
+#include "../ui/imgui/ImGuiHost.h"
 
 class BehaviorCoreProcessor;
 
@@ -16,6 +17,7 @@ public:
 
 private:
     void timerCallback() override;
+    void syncImGuiHostsFromLuaShell();
     void showError(const std::string& message);
 
     BehaviorCoreProcessor& processorRef;
@@ -23,6 +25,8 @@ private:
     bool usingLuaUi = false;
 
     Canvas rootCanvas{"root"};
+    ImGuiHost mainScriptEditorHost;
+    ImGuiHost inlineScriptEditorHost;
     Canvas* errorNode = nullptr;
     std::string errorMessage;
 

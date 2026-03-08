@@ -156,6 +156,9 @@ function Shell.create(parentNode, options)
             lastClickTime = 0,
             lastClickLine = -1,
             clickStreak = 0,
+            dirty = false,
+            syncToken = 0,
+            bodyRect = nil,
         },
         scriptEditorButtonRects = {},
         scriptInspector = {
@@ -164,6 +167,8 @@ function Shell.create(parentNode, options)
             name = "",
             path = "",
             text = "",
+            dirty = false,
+            syncToken = 0,
             params = {},
             runtimeParams = {},
             graph = { nodes = {}, edges = {} },

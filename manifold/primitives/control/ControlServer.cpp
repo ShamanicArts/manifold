@@ -802,6 +802,21 @@ std::string ControlServer::buildDiagnoseJson() {
         o << jsonNum("avgPaintUs", frameTimings->paint.getAvgUs()) << ",";
         o << jsonNum("totalPaintAccumulatedUs", frameTimings->totalPaintAccumulatedUs.load(std::memory_order_relaxed));
         o << "}";
+
+        o << ",\"imgui\":{";
+        o << jsonBool("contextReady", frameTimings->imguiContextReady.load(std::memory_order_relaxed)) << ",";
+        o << jsonBool("testWindowVisible", frameTimings->imguiTestWindowVisible.load(std::memory_order_relaxed)) << ",";
+        o << jsonBool("wantCaptureMouse", frameTimings->imguiWantCaptureMouse.load(std::memory_order_relaxed)) << ",";
+        o << jsonBool("wantCaptureKeyboard", frameTimings->imguiWantCaptureKeyboard.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("frameCount", frameTimings->imguiFrameCount.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("renderUs", frameTimings->imguiRenderUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("vertexCount", frameTimings->imguiVertexCount.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("indexCount", frameTimings->imguiIndexCount.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("buttonClicks", frameTimings->imguiButtonClicks.load(std::memory_order_relaxed)) << ",";
+        o << jsonBool("documentLoaded", frameTimings->imguiDocumentLoaded.load(std::memory_order_relaxed)) << ",";
+        o << jsonBool("documentDirty", frameTimings->imguiDocumentDirty.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("documentLineCount", frameTimings->imguiDocumentLineCount.load(std::memory_order_relaxed));
+        o << "}";
     }
 
     o << "}";

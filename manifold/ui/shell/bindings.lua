@@ -18,12 +18,16 @@ local fileStem = Base.fileStem
 local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
 local SCRIPT_SYNTAX_COLOUR = ScriptEditor.SCRIPT_SYNTAX_COLOUR
 local seBuildLines = ScriptEditor.seBuildLines
+local seBuildLinesCached = ScriptEditor.seBuildLinesCached
 local seLineColFromPos = ScriptEditor.seLineColFromPos
+local seLineColCached = ScriptEditor.seLineColCached
 local sePosFromLineCol = ScriptEditor.sePosFromLineCol
+local sePosFromLineColCached = ScriptEditor.sePosFromLineColCached
 local seGetSelectionRange = ScriptEditor.seGetSelectionRange
 local seClearSelection = ScriptEditor.seClearSelection
 local seDeleteSelection = ScriptEditor.seDeleteSelection
 local seReplaceSelection = ScriptEditor.seReplaceSelection
+local seInvalidateCache = ScriptEditor.seInvalidateCache
 local seMoveCursor = ScriptEditor.seMoveCursor
 local seVisibleLineCount = ScriptEditor.seVisibleLineCount
 local seMaxCols = ScriptEditor.seMaxCols
@@ -471,90 +475,132 @@ function M.attach(shell)
         local statusH = SCRIPT_EDITOR_STYLE.statusH
         local textTop = SCRIPT_EDITOR_STYLE.headerH + pad
         local textX = gutterW + pad + 4
+        local perfStart = nowSeconds()
+        local imguiMainActive = (type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true)
+
+        ed.bodyRect = {
+            x = 0,
+            y = SCRIPT_EDITOR_STYLE.headerH,
+            w = w,
+            h = math.max(0, h - SCRIPT_EDITOR_STYLE.headerH - statusH),
+        }
 
         gfx.setColour(0xff0b1220)
         gfx.fillRect(0, SCRIPT_EDITOR_STYLE.headerH, w, h - SCRIPT_EDITOR_STYLE.headerH)
 
-        gfx.setColour(0xff101a2e)
-        gfx.fillRect(0, SCRIPT_EDITOR_STYLE.headerH, gutterW + pad, h - SCRIPT_EDITOR_STYLE.headerH - statusH)
-        gfx.setColour(0xff25354d)
-        gfx.drawVerticalLine(gutterW + pad, SCRIPT_EDITOR_STYLE.headerH + pad, h - statusH - pad)
+        if not imguiMainActive then
+            gfx.setColour(0xff101a2e)
+            gfx.fillRect(0, SCRIPT_EDITOR_STYLE.headerH, gutterW + pad, h - SCRIPT_EDITOR_STYLE.headerH - statusH)
+            gfx.setColour(0xff25354d)
+            gfx.drawVerticalLine(gutterW + pad, SCRIPT_EDITOR_STYLE.headerH + pad, h - statusH - pad)
+        end
 
-        local lines, starts = seBuildLines(ed.text)
+        local lines, starts = seBuildLinesCached(ed)
+        local lineBuildDone = nowSeconds()
         local visible = seVisibleLineCount(h)
         local maxScroll = math.max(1, #lines - visible + 1)
         ed.scrollRow = clamp(ed.scrollRow, 1, maxScroll)
 
-        local cursorLine, cursorCol = seLineColFromPos(ed.text, ed.cursorPos)
+        local cursorLine, cursorCol = seLineColCached(ed)
+        local cursorDone = nowSeconds()
         local selStart, selEnd = seGetSelectionRange(ed)
         local maxCols = seMaxCols(w)
+        local syntaxDrawCalls = 0
+        local gutterDrawCalls = 0
+        local syntaxSpanCount = 0
 
-        for i = 0, visible - 1 do
-            local lineIdx = ed.scrollRow + i
-            local lineText = lines[lineIdx]
-            local lineStart = starts[lineIdx]
-            if lineText == nil or lineStart == nil then
-                break
-            end
+        if not imguiMainActive then
+            for i = 0, visible - 1 do
+                local lineIdx = ed.scrollRow + i
+                local lineText = lines[lineIdx]
+                local lineStart = starts[lineIdx]
+                if lineText == nil or lineStart == nil then
+                    break
+                end
 
-            local y = textTop + i * lineH
-            if y + lineH > h - statusH then
-                break
-            end
+                local y = textTop + i * lineH
+                if y + lineH > h - statusH then
+                    break
+                end
 
-            if lineIdx == cursorLine then
-                gfx.setColour(0x203b82f6)
-                gfx.fillRect(textX - 2, y, w - textX - pad + 2, lineH)
-            end
+                if lineIdx == cursorLine then
+                    gfx.setColour(0x203b82f6)
+                    gfx.fillRect(textX - 2, y, w - textX - pad + 2, lineH)
+                end
 
-            if selStart ~= nil and selEnd ~= nil then
-                local lineEndExclusive = lineStart + #lineText
-                local overlapStart = math.max(selStart, lineStart)
-                local overlapEnd = math.min(selEnd, lineEndExclusive)
-                if overlapEnd > overlapStart then
-                    local selColStart = overlapStart - lineStart + 1
-                    local selColEnd = overlapEnd - lineStart + 1
-                    local sx = math.floor(textX + (selColStart - 1) * SCRIPT_EDITOR_STYLE.charW + 0.5)
-                    local sw = math.max(1, math.floor((selColEnd - selColStart) * SCRIPT_EDITOR_STYLE.charW + 0.5))
-                    gfx.setColour(0x705892f0)
-                    gfx.fillRect(sx, y, sw, lineH)
+                if selStart ~= nil and selEnd ~= nil then
+                    local lineEndExclusive = lineStart + #lineText
+                    local overlapStart = math.max(selStart, lineStart)
+                    local overlapEnd = math.min(selEnd, lineEndExclusive)
+                    if overlapEnd > overlapStart then
+                        local selColStart = overlapStart - lineStart + 1
+                        local selColEnd = overlapEnd - lineStart + 1
+                        local sx = math.floor(textX + (selColStart - 1) * SCRIPT_EDITOR_STYLE.charW + 0.5)
+                        local sw = math.max(1, math.floor((selColEnd - selColStart) * SCRIPT_EDITOR_STYLE.charW + 0.5))
+                        gfx.setColour(0x705892f0)
+                        gfx.fillRect(sx, y, sw, lineH)
+                    end
+                end
+
+                gfx.setColour(0xff64748b)
+                gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 11.0, FontStyle.plain)
+                gfx.drawText(tostring(lineIdx), 4, y, gutterW - 6, lineH, Justify.centredRight)
+                gutterDrawCalls = gutterDrawCalls + 1
+
+                local display = lineText
+                if #display > maxCols then
+                    display = string.sub(display, 1, maxCols)
+                end
+
+                local spans = seTokenizeLuaLineCached(display)
+                syntaxSpanCount = syntaxSpanCount + #spans
+                local cx = textX
+                local batchText = nil
+                local batchColour = nil
+                local batchLen = 0
+                local batchX = textX
+                gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, SCRIPT_EDITOR_STYLE.fontSize, FontStyle.plain)
+                for s = 1, #spans do
+                    local span = spans[s]
+                    local text = span.text or ""
+                    local spanLen = #text
+                    if spanLen > 0 then
+                        local drawTextValue = string.gsub(text, "\t", " ")
+                        local colour = span.colour or SCRIPT_SYNTAX_COLOUR.text
+                        if batchColour == colour then
+                            batchText = batchText .. drawTextValue
+                            batchLen = batchLen + spanLen
+                        else
+                            if batchText ~= nil and batchLen > 0 then
+                                local drawW = math.max(1, math.floor(batchLen * SCRIPT_EDITOR_STYLE.charW + 2))
+                                gfx.setColour(batchColour)
+                                gfx.drawText(batchText, math.floor(batchX + 0.5), y, drawW, lineH, Justify.centredLeft)
+                                syntaxDrawCalls = syntaxDrawCalls + 1
+                            end
+                            batchText = drawTextValue
+                            batchColour = colour
+                            batchLen = spanLen
+                            batchX = cx
+                        end
+                        cx = cx + spanLen * SCRIPT_EDITOR_STYLE.charW
+                    end
+                end
+                if batchText ~= nil and batchLen > 0 then
+                    local drawW = math.max(1, math.floor(batchLen * SCRIPT_EDITOR_STYLE.charW + 2))
+                    gfx.setColour(batchColour)
+                    gfx.drawText(batchText, math.floor(batchX + 0.5), y, drawW, lineH, Justify.centredLeft)
+                    syntaxDrawCalls = syntaxDrawCalls + 1
                 end
             end
 
-            gfx.setColour(0xff64748b)
-            gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 11.0, FontStyle.plain)
-            gfx.drawText(tostring(lineIdx), 4, y, gutterW - 6, lineH, Justify.centredRight)
-
-            local display = lineText
-            if #display > maxCols then
-                display = string.sub(display, 1, maxCols)
-            end
-
-            local spans = seTokenizeLuaLineCached(display)
-            local cx = textX
-            gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, SCRIPT_EDITOR_STYLE.fontSize, FontStyle.plain)
-            for s = 1, #spans do
-                local span = spans[s]
-                local text = span.text or ""
-                local spanLen = #text
-                if spanLen > 0 then
-                    local drawTextValue = string.gsub(text, "\t", " ")
-                    local drawW = math.max(1, math.floor(spanLen * SCRIPT_EDITOR_STYLE.charW + 2))
-                    gfx.setColour(span.colour or SCRIPT_SYNTAX_COLOUR.text)
-                    gfx.drawText(drawTextValue, math.floor(cx + 0.5), y, drawW, lineH, Justify.centredLeft)
-                    cx = cx + spanLen * SCRIPT_EDITOR_STYLE.charW
+            if ed.focused then
+                local blinkOn = (math.floor(nowSeconds() * 2) % 2) == 0
+                if blinkOn and cursorLine >= ed.scrollRow and cursorLine < ed.scrollRow + visible then
+                    local cx = math.floor(textX + (clamp(cursorCol, 1, maxCols + 1) - 1) * SCRIPT_EDITOR_STYLE.charW + 0.5)
+                    local cy = textTop + (cursorLine - ed.scrollRow) * lineH
+                    gfx.setColour(0xff7dd3fc)
+                    gfx.drawLine(cx, cy + 2, cx, cy + lineH - 2)
                 end
-            end
-        end
-
-        if ed.focused then
-            local blinkOn = (math.floor(nowSeconds() * 2) % 2) == 0
-            if blinkOn and cursorLine >= ed.scrollRow and cursorLine < ed.scrollRow + visible then
-                local caretCol = clamp(cursorCol, 1, maxCols + 1)
-                local cx = math.floor(textX + (caretCol - 1) * SCRIPT_EDITOR_STYLE.charW + 0.5)
-                local cy = textTop + (cursorLine - ed.scrollRow) * lineH
-                gfx.setColour(0xff7dd3fc)
-                gfx.drawLine(cx, cy + 2, cx, cy + lineH - 2)
             end
         end
 
@@ -564,11 +610,34 @@ function M.attach(shell)
         gfx.drawHorizontalLine(h - statusH, 0, w)
         gfx.setColour(0xff94a3b8)
         gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 10.0, FontStyle.plain)
-        local statusText = string.format("Ln %d Col %d | %s | Ctrl+S Save | Ctrl+R Reload | Ctrl+W Close", cursorLine, cursorCol, ed.status or "")
+        local statusText = imguiMainActive
+            and string.format("%s | Ctrl+S Save | Ctrl+R Reload | Ctrl+W Close", ed.status or "")
+            or string.format("Ln %d Col %d | %s | Ctrl+S Save | Ctrl+R Reload | Ctrl+W Close", cursorLine, cursorCol, ed.status or "")
         if ed.ownership == "editor-owned" then
             statusText = statusText .. " | visual edits save from Preview mode"
         end
         gfx.drawText(statusText, 8, h - statusH, w - 16, statusH, Justify.centredLeft)
+
+        if type(_G) == "table" then
+            local perf = _G.__manifoldEditorPerf or {}
+            local drawDone = nowSeconds()
+            perf.drawCount = (perf.drawCount or 0) + 1
+            perf.lastDrawMs = (drawDone - perfStart) * 1000.0
+            perf.peakDrawMs = math.max(perf.peakDrawMs or 0, perf.lastDrawMs or 0)
+            perf.lastLineBuildMs = (lineBuildDone - perfStart) * 1000.0
+            perf.lastCursorLookupMs = (cursorDone - lineBuildDone) * 1000.0
+            perf.lastPostCursorMs = (drawDone - cursorDone) * 1000.0
+            perf.lastVisibleLines = visible
+            perf.lastSyntaxDrawCalls = syntaxDrawCalls
+            perf.lastGutterDrawCalls = gutterDrawCalls
+            perf.lastSyntaxSpanCount = syntaxSpanCount
+            perf.lastTextLen = #(ed.text or "")
+            perf.lastScrollRow = ed.scrollRow or 1
+            perf.lastCursorLine = cursorLine or 1
+            perf.lastCursorCol = cursorCol or 1
+            perf.lastEvent = perf.lastEvent or "draw"
+            _G.__manifoldEditorPerf = perf
+        end
     end)
 
     shell.mainTabContent:setOnMouseDown(function(mx, my)
@@ -595,6 +664,10 @@ function M.attach(shell)
             end
         end
 
+        if type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true then
+            return
+        end
+
         local ed = shell.scriptEditor
         ed.focused = true
         shell.mainTabContent:grabKeyboardFocus()
@@ -611,6 +684,10 @@ function M.attach(shell)
         local _ = dx
         _ = dy
         if shell.mode ~= "edit" or shell.editContentMode ~= "script" then
+            return
+        end
+
+        if type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true then
             return
         end
 
@@ -633,6 +710,9 @@ function M.attach(shell)
         if shell.mode ~= "edit" or shell.editContentMode ~= "script" then
             return
         end
+        if type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true then
+            return
+        end
         shell.scriptEditor.dragAnchorPos = nil
     end)
 
@@ -643,8 +723,13 @@ function M.attach(shell)
             return
         end
 
+        if type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true then
+            return
+        end
+
         local ed = shell.scriptEditor
-        local lines = seBuildLines(ed.text)
+        local wheelPerfStart = nowSeconds()
+        local lines = seBuildLinesCached(ed)
         local visible = seVisibleLineCount(math.floor(shell.mainTabContent:getHeight()))
         local maxScroll = math.max(1, #lines - visible + 1)
         if deltaY > 0 then
@@ -654,6 +739,14 @@ function M.attach(shell)
         end
         ed.scrollRow = clamp(ed.scrollRow, 1, maxScroll)
         shell.mainTabContent:repaint()
+        if type(_G) == "table" then
+            local perf = _G.__manifoldEditorPerf or {}
+            perf.lastWheelMs = (nowSeconds() - wheelPerfStart) * 1000.0
+            perf.peakWheelMs = math.max(perf.peakWheelMs or 0, perf.lastWheelMs or 0)
+            perf.lastWheelDelta = deltaY
+            perf.lastEvent = "wheel"
+            _G.__manifoldEditorPerf = perf
+        end
     end)
 
     shell.mainTabContent:setOnKeyPress(function(keyCode, charCode, shift, ctrl, alt)
@@ -691,6 +784,7 @@ function M.attach(shell)
         local ed = shell.scriptEditor
         local handled = false
         local mutated = false
+        local keyPerfStart = nowSeconds()
 
         if ctrl and seIsLetterShortcut(k, c, "s") then
             shell:saveScriptEditor()
@@ -724,6 +818,7 @@ function M.attach(shell)
                     ed.text = string.sub(src, 1, ed.cursorPos - 2) .. string.sub(src, ed.cursorPos)
                     ed.cursorPos = ed.cursorPos - 1
                     seClearSelection(ed)
+                    seInvalidateCache(ed)
                 end
                 handled = true
                 mutated = true
@@ -732,6 +827,7 @@ function M.attach(shell)
                     local src = ed.text or ""
                     ed.text = string.sub(src, 1, ed.cursorPos - 1) .. string.sub(src, ed.cursorPos + 1)
                     seClearSelection(ed)
+                    seInvalidateCache(ed)
                 end
                 handled = true
                 mutated = true
@@ -750,12 +846,12 @@ function M.attach(shell)
                 seMoveCursor(ed, ed.cursorPos + 1, shift)
                 handled = true
             elseif isUp then
-                local line, col = seLineColFromPos(ed.text, ed.cursorPos)
-                seMoveCursor(ed, sePosFromLineCol(ed.text, line - 1, col), shift)
+                local line, col = seLineColCached(ed)
+                seMoveCursor(ed, sePosFromLineColCached(ed, line - 1, col), shift)
                 handled = true
             elseif isDown then
-                local line, col = seLineColFromPos(ed.text, ed.cursorPos)
-                seMoveCursor(ed, sePosFromLineCol(ed.text, line + 1, col), shift)
+                local line, col = seLineColCached(ed)
+                seMoveCursor(ed, sePosFromLineColCached(ed, line + 1, col), shift)
                 handled = true
             elseif c >= 32 and c <= 126 then
                 seReplaceSelection(ed, string.char(c))
@@ -776,6 +872,16 @@ function M.attach(shell)
         if handled then
             shell:ensureScriptEditorCursorVisible()
             shell.mainTabContent:repaint()
+            if type(_G) == "table" then
+                local perf = _G.__manifoldEditorPerf or {}
+                perf.lastKeypressMs = (nowSeconds() - keyPerfStart) * 1000.0
+                perf.peakKeypressMs = math.max(perf.peakKeypressMs or 0, perf.lastKeypressMs or 0)
+                perf.lastMutated = mutated == true
+                perf.lastKeyCode = k
+                perf.lastCharCode = c
+                perf.lastEvent = "keypress"
+                _G.__manifoldEditorPerf = perf
+            end
             return true
         end
 
@@ -1050,65 +1156,70 @@ function M.attach(shell)
                 gfx.setColour(0xff334155)
                 gfx.drawRoundedRect(si.editorBodyRect.x, si.editorBodyRect.y, si.editorBodyRect.w, si.editorBodyRect.h, 4, 1)
 
-                local lines = seBuildLines(si.text)
-                local lineH = 14
-                local visible = math.max(1, math.floor((bodyH - 8) / lineH))
-                local maxScroll = math.max(1, #lines - visible + 1)
-                si.editorScrollRow = clamp(si.editorScrollRow or 1, 1, maxScroll)
+                local imguiInlineActive = (type(_G) == "table" and _G.__manifoldImguiInlineEditorActive == true)
+                if not imguiInlineActive then
+                    local lines = seBuildLinesCached(si)
+                    local lineH = 14
+                    local visible = math.max(1, math.floor((bodyH - 8) / lineH))
+                    local maxScroll = math.max(1, #lines - visible + 1)
+                    si.editorScrollRow = clamp(si.editorScrollRow or 1, 1, maxScroll)
 
-                for i = 0, visible - 1 do
-                    local idx = si.editorScrollRow + i
-                    local line = lines[idx]
-                    if line == nil then
-                        break
-                    end
-                    local ly = y + 4 + i * lineH
-                    gfx.setColour(0xff475569)
-                    gfx.setFont(9.0)
-                    gfx.drawText(tostring(idx), 10, ly, 26, lineH, Justify.centredRight)
+                    for i = 0, visible - 1 do
+                        local idx = si.editorScrollRow + i
+                        local line = lines[idx]
+                        if line == nil then
+                            break
+                        end
+                        local ly = y + 4 + i * lineH
+                        gfx.setColour(0xff475569)
+                        gfx.setFont(9.0)
+                        gfx.drawText(tostring(idx), 10, ly, 26, lineH, Justify.centredRight)
 
-                    local text = line
-                    if #text > 200 then
-                        text = text:sub(1, 200)
-                    end
+                        local text = line
+                        if #text > 200 then
+                            text = text:sub(1, 200)
+                        end
 
-                    local spans = seTokenizeLuaLineCached(text)
-                    local tx = 40
-                    gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 10.0, FontStyle.plain)
-                    for s = 1, #spans do
-                        local span = spans[s]
-                        local st = span.text or ""
-                        local sl = #st
-                        if sl > 0 then
-                            local remaining = (w - 16) - tx
-                            if remaining <= 0 then
-                                break
-                            end
+                        local spans = seTokenizeLuaLineCached(text)
+                        local tx = 40
+                        gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 10.0, FontStyle.plain)
+                        for s = 1, #spans do
+                            local span = spans[s]
+                            local st = span.text or ""
+                            local sl = #st
+                            if sl > 0 then
+                                local remaining = (w - 16) - tx
+                                if remaining <= 0 then
+                                    break
+                                end
 
-                            local maxChars = math.max(0, math.floor(remaining / 7))
-                            if maxChars <= 0 then
-                                break
-                            end
+                                local maxChars = math.max(0, math.floor(remaining / 7))
+                                if maxChars <= 0 then
+                                    break
+                                end
 
-                            local drawTextValue = st
-                            if sl > maxChars then
-                                drawTextValue = string.sub(st, 1, maxChars)
-                                sl = #drawTextValue
-                            end
+                                local drawTextValue = st
+                                if sl > maxChars then
+                                    drawTextValue = string.sub(st, 1, maxChars)
+                                    sl = #drawTextValue
+                                end
 
-                            drawTextValue = string.gsub(drawTextValue, "\t", " ")
-                            gfx.setColour(span.colour or SCRIPT_SYNTAX_COLOUR.text)
-                            gfx.drawText(drawTextValue, tx, ly, math.max(1, sl * 7 + 2), lineH, Justify.centredLeft)
-                            tx = tx + sl * 7
+                                drawTextValue = string.gsub(drawTextValue, "\t", " ")
+                                gfx.setColour(span.colour or SCRIPT_SYNTAX_COLOUR.text)
+                                gfx.drawText(drawTextValue, tx, ly, math.max(1, sl * 7 + 2), lineH, Justify.centredLeft)
+                                tx = tx + sl * 7
 
-                            if sl < #st then
-                                break
+                                if sl < #st then
+                                    break
+                                end
                             end
                         end
                     end
                 end
 
                 y = y + bodyH + 6
+            else
+                si.editorBodyRect = nil
             end
 
             if si.kind == "dsp" then
@@ -1427,7 +1538,10 @@ function M.attach(shell)
         if shell.leftPanelMode == "scripts" then
             local si = shell.scriptInspector
             if pointInRect(mx, my, si.editorBodyRect) then
-                local lines = seBuildLines(si.text)
+                if type(_G) == "table" and _G.__manifoldImguiInlineEditorActive == true then
+                    return
+                end
+                local lines = seBuildLinesCached(si)
                 local visible = math.max(1, math.floor(((si.editorBodyRect and si.editorBodyRect.h or 80) - 8) / 14))
                 local maxScroll = math.max(1, #lines - visible + 1)
                 local nextRow = clamp((si.editorScrollRow or 1) - deltaY * 2, 1, maxScroll)
