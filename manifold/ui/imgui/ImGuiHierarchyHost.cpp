@@ -1,15 +1,47 @@
 #include "ImGuiHierarchyHost.h"
 
+#include "Theme.h"
+#include "WidgetPrimitives.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 
 #include <algorithm>
+#include <functional>
+#include <thread>
 
 using namespace juce::gl;
 
 namespace {
-std::string buildDisplayLabel(const ImGuiHierarchyHost::TreeRow& row) {
-    return row.type + "  " + row.name;
+size_t traceThreadId() {
+    return std::hash<std::thread::id>{}(std::this_thread::get_id());
+}
+
+void logHierarchyHostEvent(const char* event, ImGuiHierarchyHost* host, juce::OpenGLContext* context = nullptr) {
+    const auto bounds = host->getBounds();
+    const auto scale = context != nullptr && context->isAttached() ? context->getRenderingScale() : 0.0;
+    std::fprintf(stderr,
+                 "[ImGuiHierarchyHost] %s tid=%zu showing=%d visible=%d attached=%d bounds=%d,%d %dx%d scale=%.3f\n",
+                 event,
+                 traceThreadId(),
+                 host->isShowing() ? 1 : 0,
+                 host->isVisible() ? 1 : 0,
+                 context != nullptr && context->isAttached() ? 1 : 0,
+                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(), scale);
+}
+
+void logHierarchyHostMouse(const char* event, ImGuiHierarchyHost* host, const juce::MouseEvent& e) {
+    const auto bounds = host->getBounds();
+    std::fprintf(stderr,
+                 "[ImGuiHierarchyHostMouse] %s tid=%zu pos=%.1f,%.1f showing=%d visible=%d bounds=%d,%d %dx%d clicks=%d dragged=%d\n",
+                 event,
+                 traceThreadId(),
+                 e.position.x,
+                 e.position.y,
+                 host->isShowing() ? 1 : 0,
+                 host->isVisible() ? 1 : 0,
+                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(),
+                 e.getNumberOfClicks(),
+                 e.mouseWasDraggedSinceMouseDown() ? 1 : 0);
 }
 }
 
@@ -44,10 +76,14 @@ void ImGuiHierarchyHost::paint(juce::Graphics& g) {
 }
 
 void ImGuiHierarchyHost::resized() {
+    logHierarchyHostEvent("resized", this, &openGLContext);
+    releaseAllMouseButtons();
+    queueCurrentMousePosition();
     attachContextIfNeeded();
 }
 
 void ImGuiHierarchyHost::visibilityChanged() {
+    logHierarchyHostEvent("visibilityChanged", this, &openGLContext);
     if (!isVisible()) {
         releaseAllMouseButtons();
         queueFocus(false);
@@ -56,30 +92,28 @@ void ImGuiHierarchyHost::visibilityChanged() {
 }
 
 void ImGuiHierarchyHost::mouseMove(const juce::MouseEvent& e) {
+    logHierarchyHostMouse("mouseMove", this, e);
     queueMousePosition(e.position);
 }
 
 void ImGuiHierarchyHost::mouseDrag(const juce::MouseEvent& e) {
+    logHierarchyHostMouse("mouseDrag", this, e);
     queueMousePosition(e.position);
-    syncMouseButtons(e.mods);
 }
 
 void ImGuiHierarchyHost::mouseDown(const juce::MouseEvent& e) {
+    logHierarchyHostMouse("mouseDown", this, e);
     grabKeyboardFocus();
     queueMousePosition(e.position);
-    syncMouseButtons(e.mods);
 }
 
 void ImGuiHierarchyHost::mouseUp(const juce::MouseEvent& e) {
+    logHierarchyHostMouse("mouseUp", this, e);
     queueMousePosition(e.position);
-    syncMouseButtons(e.mods);
-    if (!e.mods.isAnyMouseButtonDown()) {
-        releaseAllMouseButtons();
-    }
 }
 
 void ImGuiHierarchyHost::mouseExit(const juce::MouseEvent& e) {
-    juce::ignoreUnused(e);
+    logHierarchyHostMouse("mouseExit", this, e);
 
     if (leftMouseDown_ || rightMouseDown_ || middleMouseDown_) {
         return;
@@ -118,6 +152,7 @@ void ImGuiHierarchyHost::focusLost(FocusChangeType cause) {
 }
 
 void ImGuiHierarchyHost::newOpenGLContextCreated() {
+    logHierarchyHostEvent("newOpenGLContextCreated", this, &openGLContext);
     IMGUI_CHECKVERSION();
     auto* context = ImGui::CreateContext();
     imguiContext = context;
@@ -126,15 +161,7 @@ void ImGuiHierarchyHost::newOpenGLContextCreated() {
     auto& io = ImGui::GetIO();
     io.BackendPlatformName = "manifold_juce_hierarchy";
 
-    ImGui::StyleColorsDark();
-    auto& style = ImGui::GetStyle();
-    style.WindowRounding = 0.0f;
-    style.WindowBorderSize = 0.0f;
-    style.WindowPadding = ImVec2(0.0f, 0.0f);
-    style.FrameBorderSize = 0.0f;
-    style.ItemSpacing = ImVec2(0.0f, 1.0f);
-    style.ItemInnerSpacing = ImVec2(4.0f, 4.0f);
-    style.IndentSpacing = 14.0f;
+    manifold::ui::imgui::applyToolTheme();
 
     ImGui_ImplOpenGL3_Init("#version 150");
     queueFocus(hasKeyboardFocus(true));
@@ -149,16 +176,25 @@ void ImGuiHierarchyHost::renderOpenGL() {
     ImGui::SetCurrentContext(context);
 
     auto& io = ImGui::GetIO();
-    const auto scale = static_cast<float>(openGLContext.getRenderingScale());
+    const auto rawScale = static_cast<float>(openGLContext.getRenderingScale());
     const auto width = std::max(1, getWidth());
     const auto height = std::max(1, getHeight());
-    const auto framebufferWidth = std::max(1, juce::roundToInt(scale * static_cast<float>(width)));
-    const auto framebufferHeight = std::max(1, juce::roundToInt(scale * static_cast<float>(height)));
+    
+    // Cap framebuffer resolution to prevent GPU overload on high-DPI displays
+    // Max 1920 pixels in either dimension
+    constexpr int maxFramebufferDim = 1920;
+    const auto rawFramebufferWidth = juce::roundToInt(rawScale * static_cast<float>(width));
+    const auto rawFramebufferHeight = juce::roundToInt(rawScale * static_cast<float>(height));
+    const auto maxDim = std::max(rawFramebufferWidth, rawFramebufferHeight);
+    const auto effectiveScale = (maxDim > maxFramebufferDim) 
+        ? rawScale * static_cast<float>(maxFramebufferDim) / static_cast<float>(maxDim)
+        : rawScale;
+    
+    const auto framebufferWidth = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(width)));
+    const auto framebufferHeight = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(height)));
 
     io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
-    io.DisplayFramebufferScale = ImVec2(scale, scale);
-
-    syncMouseButtons(juce::ModifierKeys::getCurrentModifiersRealtime());
+    io.DisplayFramebufferScale = ImVec2(effectiveScale, effectiveScale);
 
     {
         std::lock_guard<std::mutex> lock(inputMutex);
@@ -181,24 +217,29 @@ void ImGuiHierarchyHost::renderOpenGL() {
         pendingEvents.clear();
     }
 
+    syncMouseButtons(juce::ModifierKeys::getCurrentModifiersRealtime());
+
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        for (const auto& event : pendingEvents) {
+            if (event.type == EventType::MouseButton) {
+                io.AddMouseButtonEvent(event.button, event.down);
+            }
+        }
+        pendingEvents.clear();
+    }
+
+    const auto& theme = manifold::ui::imgui::toolTheme();
+
     glViewport(0, 0, framebufferWidth, framebufferHeight);
     glDisable(GL_SCISSOR_TEST);
-    glClearColor(0.06f, 0.09f, 0.13f, 0.98f);
+    glClearColor(theme.panelBg.x, theme.panelBg.y, theme.panelBg.z, theme.panelBg.w);
     glClear(GL_COLOR_BUFFER_BIT);
 
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)), ImGuiCond_Always);
-
-    constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration
-                                           | ImGuiWindowFlags_NoMove
-                                           | ImGuiWindowFlags_NoResize
-                                           | ImGuiWindowFlags_NoSavedSettings
-                                           | ImGuiWindowFlags_NoBringToFrontOnFocus;
-
-    ImGui::Begin("##ManifoldHierarchyHost", nullptr, windowFlags);
+    manifold::ui::imgui::beginFullWindow("##ManifoldHierarchyHost", width, height);
 
     std::vector<TreeRow> rows;
     {
@@ -207,11 +248,9 @@ void ImGuiHierarchyHost::renderOpenGL() {
     }
 
     if (rows.empty()) {
-        ImGui::Dummy(ImVec2(8.0f, 8.0f));
-        ImGui::SetCursorPos(ImVec2(8.0f, 8.0f));
-        ImGui::TextDisabled("No widgets");
+        manifold::ui::imgui::drawEmptyState("Hierarchy", "No widgets");
     } else {
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(rows.size()));
@@ -219,13 +258,15 @@ void ImGuiHierarchyHost::renderOpenGL() {
             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
                 const auto& row = rows[static_cast<size_t>(i)];
                 ImGui::PushID(i);
-                ImGui::Indent(static_cast<float>(std::max(0, row.depth)) * 12.0f);
 
-                if (ImGui::Selectable(buildDisplayLabel(row).c_str(), row.selected, ImGuiSelectableFlags_SpanAllColumns)) {
-                    requestSelectIndex_.store(i + 1, std::memory_order_relaxed);
+                if (manifold::ui::imgui::drawSelectableRow(
+                        { row.name.c_str(), row.type.c_str(), row.selected, false,
+                          static_cast<float>(std::max(0, row.depth)) * manifold::ui::imgui::toolTheme().indentWidth })) {
+                    if (!row.selected) {
+                        requestSelectIndex_.store(i + 1, std::memory_order_relaxed);
+                    }
                 }
 
-                ImGui::Unindent(static_cast<float>(std::max(0, row.depth)) * 12.0f);
                 ImGui::PopID();
             }
         }
@@ -240,6 +281,7 @@ void ImGuiHierarchyHost::renderOpenGL() {
 }
 
 void ImGuiHierarchyHost::openGLContextClosing() {
+    logHierarchyHostEvent("openGLContextClosing", this, &openGLContext);
     auto* context = reinterpret_cast<ImGuiContext*>(imguiContext);
     if (context != nullptr) {
         ImGui::SetCurrentContext(context);
@@ -251,10 +293,15 @@ void ImGuiHierarchyHost::openGLContextClosing() {
 
 void ImGuiHierarchyHost::attachContextIfNeeded() {
     if (!isShowing() || getWidth() <= 0 || getHeight() <= 0) {
+        if (openGLContext.isAttached()) {
+            logHierarchyHostEvent("detachContext", this, &openGLContext);
+            openGLContext.detach();
+        }
         return;
     }
 
     if (!openGLContext.isAttached()) {
+        logHierarchyHostEvent("attachContext", this, &openGLContext);
         openGLContext.attachTo(*this);
     }
 }
@@ -267,6 +314,17 @@ void ImGuiHierarchyHost::queueMousePosition(juce::Point<float> position) {
 
     std::lock_guard<std::mutex> lock(inputMutex);
     pendingEvents.push_back(std::move(event));
+}
+
+void ImGuiHierarchyHost::queueCurrentMousePosition() {
+    if (!isShowing()) {
+        return;
+    }
+
+    const auto screenPos = juce::Desktop::getInstance().getMainMouseSource().getScreenPosition();
+    const juce::Point<int> screenPosInt(juce::roundToInt(screenPos.x), juce::roundToInt(screenPos.y));
+    const auto localPos = getLocalPoint(nullptr, screenPosInt).toFloat();
+    queueMousePosition(localPos);
 }
 
 void ImGuiHierarchyHost::syncMouseButtons(const juce::ModifierKeys& mods) {

@@ -75,11 +75,37 @@ local collectConfigLeaves = Inspector.collectConfigLeaves
 
 local M = {}
 
+local function shellLayoutPerfNowMs()
+    return nowSeconds() * 1000.0
+end
+
+local function shellLayoutPerfTrace(label, startMs, extra)
+    local elapsedMs = shellLayoutPerfNowMs() - startMs
+    if elapsedMs < 8.0 and extra == nil then
+        return elapsedMs
+    end
+    if extra ~= nil and extra ~= "" then
+        print(string.format("[ShellPerf] %s %.3fms %s", label, elapsedMs, extra))
+    else
+        print(string.format("[ShellPerf] %s %.3fms", label, elapsedMs))
+    end
+    return elapsedMs
+end
+
 function M.attach(shell)
     function shell:setMode(newMode)
+        local setModeStartMs = shellLayoutPerfNowMs()
         if self.mode == newMode then return end
+
+        print(string.format("[setMode] START mode=%s -> %s viewport=%dx%d",
+            tostring(self.mode), tostring(newMode),
+            self.parentNode:getWidth(), self.parentNode:getHeight()))
+
         self.mode = newMode
+        local t1 = shellLayoutPerfNowMs()
+
         self:publishUiStateToGlobals()
+        local t2 = shellLayoutPerfNowMs()
 
         if newMode == "performance" then
             self.scriptEditor.focused = false
@@ -93,22 +119,37 @@ function M.attach(shell)
             self.perfButton:setBg(0xff1e293b)
             self.editButton:setBg(0xff38bdf8)
         end
+        local t3 = shellLayoutPerfNowMs()
 
         -- Hide settings overlay if open
         shell.settingsOpen = false
         if shell.scriptOverlay then
             shell.scriptOverlay:setBounds(0, 0, 0, 0)
         end
+        local t4 = shellLayoutPerfNowMs()
 
         -- Trigger layout refresh
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
+        local t5 = shellLayoutPerfNowMs()
+
         self:layout(w, h)
+        local t6 = shellLayoutPerfNowMs()
 
         if newMode == "edit" then
             self.treeRefreshPending = true
             self:refreshTree(true)
         end
+        local t7 = shellLayoutPerfNowMs()
+
+        print(string.format("[setMode] END total=%.1fms publish=%.1fms buttons=%.1fms overlay=%.1fms getWH=%.1fms layout=%.1fms refreshTree=%.1fms",
+            t7 - setModeStartMs,
+            t2 - t1,
+            t3 - t2,
+            t4 - t3,
+            t5 - t4,
+            t6 - t5,
+            t7 - t6))
     end
 
     function shell:setTitle(text)
@@ -116,6 +157,7 @@ function M.attach(shell)
     end
 
     function shell:layout(totalW, totalH)
+        local perfStartMs = shellLayoutPerfNowMs()
         -- Shell header
         self.panel:setBounds(self.pad, self.pad, totalW - self.pad * 2, self.height)
         self.titleLabel:setBounds(10, 0, 130, self.height)
@@ -273,7 +315,12 @@ function M.attach(shell)
             self.viewportDesignH = viewportDesignH
             self.dragState = nil
 
+            self.panel.node:setInterceptsMouse(true, true)
+            self.mainTabBar:setInterceptsMouse(true, true)
+            self.mainTabContent:setInterceptsMouse(true, true)
+
             if self.content then
+                self.content:setInterceptsMouse(true, true)
                 if perfLayout.mode == "fixed" then
                     local scale = 1.0
                     if perfLayout.scaleMode == "fit" then
@@ -578,8 +625,23 @@ function M.attach(shell)
             self.inspectorCanvas:setBounds(6, inspectorContentY, inspectorW - 12, inspectorContentH)
             self.inspectorViewportH = inspectorContentH
 
+            self.panel.node:setInterceptsMouse(true, true)
+            self.mainTabBar:setInterceptsMouse(true, true)
+            self.mainTabContent:setInterceptsMouse(true, true)
+
             -- Content: show live preview only when edit center is in preview mode.
             if self.content then
+                self.content:setInterceptsMouse(false, false)
+                local contentInterceptsSelf, contentInterceptsChildren = self.content:getInterceptsMouse()
+                shellLayoutPerfTrace("contentIntercepts",
+                    nowSeconds() * 1000.0,
+                    string.format("mode=%s self=%s children=%s bounds=%dx%d panel=%s",
+                        tostring(self.mode),
+                        tostring(contentInterceptsSelf),
+                        tostring(contentInterceptsChildren),
+                        math.floor(self.designW or 0),
+                        math.floor(self.designH or 0),
+                        tostring(self.leftPanelMode)))
                 if self.editContentMode == "preview" then
                     self.content:setBounds(0, 0, math.floor(self.designW), math.floor(self.designH))
                     self.content:setTransform(scale, scale, self.contentTx, self.contentTy)
@@ -605,12 +667,14 @@ function M.attach(shell)
                 self.previewOverlay:setBounds(0, 0, 0, 0)
             end
 
-            -- Bring panels to front so they're above the (oversized) content bounds
-            self.treePanel.node:toFront(false)
-            self.inspectorPanel.node:toFront(false)
+            -- Keep preview chrome above content, but keep side panels above any accidental overlap.
+            -- Putting mainTabBar/mainTabContent above treePanel was a stupid move because any transient
+            -- oversized bounds there can steal left-panel clicks before they ever hit the actual tabs.
             self.mainTabContent:toFront(false)
             self.mainTabBar:toFront(false)
             self.previewOverlay:toFront(false)
+            self.treePanel.node:toFront(false)
+            self.inspectorPanel.node:toFront(false)
             if shell.settingsOpen and shell.scriptOverlay then
                 shell.scriptOverlay:toFront(false)
             end
@@ -638,6 +702,16 @@ function M.attach(shell)
         if shell.settingsOpen and shell.scriptOverlay then
             shell.scriptOverlay:toFront(false)
         end
+
+        shellLayoutPerfTrace("layout", perfStartMs,
+            string.format("mode=%s panel=%s size=%dx%d tree=%d scripts=%d tabs=%d",
+                tostring(self.mode),
+                tostring(self.leftPanelMode),
+                totalW,
+                totalH,
+                #self.treeRows,
+                #self.scriptRows,
+                #self.mainTabs))
     end
 
     function shell:getContentBounds(totalW, totalH)
@@ -671,6 +745,13 @@ function M.attach(shell)
     shell:publishUiStateToGlobals()
 
     function shell:updateFromState(state)
+        -- Handle deferred mode switch to avoid blocking GUI thread during OpenGL context creation
+        if self.deferredModeSwitch and self.deferredModeSwitch ~= self.mode then
+            local modeToSwitch = self.deferredModeSwitch
+            self.deferredModeSwitch = nil
+            self:setMode(modeToSwitch)
+        end
+        
         local params = state and state.params or state or {}
         local now = nowSeconds()
         self.stateParamsCache = params
@@ -696,8 +777,9 @@ function M.attach(shell)
         end
 
         if self.mode == "edit" then
-            self.treeRefreshPending = true
-            self:refreshTree(false)
+            if self.treeRefreshPending then
+                self:refreshTree(false)
+            end
             if self.leftPanelMode == "scripts" then
                 local refreshRows = (self.scriptRowsLastRefreshAt < 0) or
                     ((now - self.scriptRowsLastRefreshAt) >= (self.scriptRowsRefreshInterval or 0.25))

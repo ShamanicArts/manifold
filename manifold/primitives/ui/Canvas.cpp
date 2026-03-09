@@ -1,8 +1,71 @@
 #include "Canvas.h"
 
 #include <chrono>
+#include <cstdio>
+#include <cstring>
 
 using namespace juce::gl;
+
+namespace {
+using Clock = std::chrono::steady_clock;
+
+bool isInterestingCanvasName(const juce::String& name) {
+    return name == "treeTabHierarchy"
+        || name == "treeTabScripts"
+        || name == "treePanel"
+        || name == "treeCanvas"
+        || name == "scriptCanvas"
+        || name == "inspectorCanvas"
+        || name == "mainTabBar"
+        || name == "mainTabContent"
+        || name == "script_content_root"
+        || name == "editorPreviewOverlay";
+}
+
+double elapsedMs(Clock::time_point start) {
+    return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+}
+
+void logCanvasInputEvent(const Canvas& canvas,
+                         const char* eventName,
+                         const juce::MouseEvent* mouseEvent,
+                         double callbackMs,
+                         double totalMs) {
+    const auto& name = canvas.getName();
+    const bool interesting = isInterestingCanvasName(name);
+    const double thresholdMs = std::strcmp(eventName, "mouseMove") == 0 ? 8.0 : 2.0;
+    if (!interesting && callbackMs < thresholdMs && totalMs < thresholdMs) {
+        return;
+    }
+
+    const auto* parent = canvas.getParentComponent();
+    const auto bounds = canvas.getBounds();
+    const auto screenBounds = canvas.getScreenBounds();
+    const auto pos = mouseEvent != nullptr ? mouseEvent->getPosition() : juce::Point<int>();
+    const auto screenPos = mouseEvent != nullptr ? mouseEvent->getScreenPosition() : juce::Point<int>();
+    const int clicks = mouseEvent != nullptr ? mouseEvent->getNumberOfClicks() : 0;
+    const int dragged = mouseEvent != nullptr && mouseEvent->mouseWasDraggedSinceMouseDown() ? 1 : 0;
+    const auto scale = juce::Component::getApproximateScaleFactorForComponent(&canvas);
+
+    std::fprintf(stderr,
+                 "[CanvasInput] %s name=%s parent=%s pos=%d,%d screen=%d,%d clicks=%d dragged=%d cb=%.3fms total=%.3fms showing=%d visible=%d bounds=%d,%d %dx%d screenBounds=%d,%d %dx%d scale=%.3f children=%d\n",
+                 eventName,
+                 name.toRawUTF8(),
+                 parent != nullptr ? parent->getName().toRawUTF8() : "",
+                 pos.x, pos.y,
+                 screenPos.x, screenPos.y,
+                 clicks,
+                 dragged,
+                 callbackMs,
+                 totalMs,
+                 canvas.isShowing() ? 1 : 0,
+                 canvas.isVisible() ? 1 : 0,
+                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(),
+                 screenBounds.getX(), screenBounds.getY(), screenBounds.getWidth(), screenBounds.getHeight(),
+                 static_cast<double>(scale),
+                 canvas.getNumChildren());
+}
+}
 
 // Static paint accumulation across all canvases
 std::atomic<int64_t> Canvas::totalPaintAccumulatedUs{0};
@@ -132,47 +195,141 @@ void Canvas::openGLContextClosing() {
         onGLContextClosing(*this);
 }
 
+bool Canvas::hitTest(int x, int y) {
+    const bool result = juce::Component::hitTest(x, y);
+    if (isInterestingCanvasName(getName())) {
+        bool interceptsSelf = false;
+        bool interceptsChildren = false;
+        getInterceptsMouseClicks(interceptsSelf, interceptsChildren);
+        const auto screenBounds = getScreenBounds();
+        const auto scale = juce::Component::getApproximateScaleFactorForComponent(this);
+        std::fprintf(stderr,
+                     "[CanvasHitTest] name=%s point=%d,%d result=%d interceptsSelf=%d interceptsChildren=%d visible=%d bounds=%d,%d %dx%d screenBounds=%d,%d %dx%d scale=%.3f\n",
+                     getName().toRawUTF8(),
+                     x,
+                     y,
+                     result ? 1 : 0,
+                     interceptsSelf ? 1 : 0,
+                     interceptsChildren ? 1 : 0,
+                     isVisible() ? 1 : 0,
+                     getBounds().getX(), getBounds().getY(), getBounds().getWidth(), getBounds().getHeight(),
+                     screenBounds.getX(), screenBounds.getY(), screenBounds.getWidth(), screenBounds.getHeight(),
+                     static_cast<double>(scale));
+    }
+    return result;
+}
+
 void Canvas::mouseDown(const juce::MouseEvent& e) {
+    const auto totalStart = Clock::now();
+
     if (getWantsKeyboardFocus()) {
         grabKeyboardFocus();
     }
-    if (onMouseDown) onMouseDown(e);
+
+    double callbackMs = 0.0;
+    if (onMouseDown) {
+        const auto callbackStart = Clock::now();
+        onMouseDown(e);
+        callbackMs = elapsedMs(callbackStart);
+    }
+
+    logCanvasInputEvent(*this, "mouseDown", &e, callbackMs, elapsedMs(totalStart));
 }
 
 void Canvas::mouseDrag(const juce::MouseEvent& e) {
     if (!onMouseDrag) return;
-    
+
+    const auto totalStart = Clock::now();
+
     // Throttle to ~60Hz max (16ms interval) to prevent message thread saturation
     static thread_local auto lastDragTime = std::chrono::steady_clock::now();
     const auto now = std::chrono::steady_clock::now();
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(now - lastDragTime).count();
-    
+
     if (elapsed < 16000) {  // Skip if < 16ms since last drag
         return;
     }
     lastDragTime = now;
-    
+
+    const auto callbackStart = Clock::now();
     onMouseDrag(e);
+    logCanvasInputEvent(*this, "mouseDrag", &e, elapsedMs(callbackStart), elapsedMs(totalStart));
 }
 
 void Canvas::mouseUp(const juce::MouseEvent& e) {
+    const auto totalStart = Clock::now();
+
     if (e.getNumberOfClicks() >= 2 && onDoubleClick) {
+        const auto callbackStart = Clock::now();
         onDoubleClick();
+        logCanvasInputEvent(*this, "doubleClick", &e, elapsedMs(callbackStart), elapsedMs(totalStart));
     } else if (onClick && !e.mouseWasDraggedSinceMouseDown()) {
+        const auto callbackStart = Clock::now();
         onClick();
+        logCanvasInputEvent(*this, "click", &e, elapsedMs(callbackStart), elapsedMs(totalStart));
     }
-    if (onMouseUp) onMouseUp(e);
+
+    double callbackMs = 0.0;
+    if (onMouseUp) {
+        const auto callbackStart = Clock::now();
+        onMouseUp(e);
+        callbackMs = elapsedMs(callbackStart);
+    }
+
+    logCanvasInputEvent(*this, "mouseUp", &e, callbackMs, elapsedMs(totalStart));
 }
 
 void Canvas::mouseMove(const juce::MouseEvent& e) {
-    if (onMouseMove) onMouseMove(e);
+    const auto totalStart = Clock::now();
+
+    double callbackMs = 0.0;
+    if (onMouseMove) {
+        const auto callbackStart = Clock::now();
+        onMouseMove(e);
+        callbackMs = elapsedMs(callbackStart);
+    }
+
+    if (onMouseMove || isInterestingCanvasName(getName())) {
+        logCanvasInputEvent(*this, "mouseMove", &e, callbackMs, elapsedMs(totalStart));
+    }
+}
+
+void Canvas::mouseEnter(const juce::MouseEvent& e) {
+    const auto totalStart = Clock::now();
+
+    double callbackMs = 0.0;
+    if (onMouseEnter) {
+        const auto callbackStart = Clock::now();
+        onMouseEnter();
+        callbackMs = elapsedMs(callbackStart);
+    }
+
+    logCanvasInputEvent(*this, "mouseEnter", &e, callbackMs, elapsedMs(totalStart));
+}
+
+void Canvas::mouseExit(const juce::MouseEvent& e) {
+    const auto totalStart = Clock::now();
+
+    double callbackMs = 0.0;
+    if (onMouseExit) {
+        const auto callbackStart = Clock::now();
+        onMouseExit();
+        callbackMs = elapsedMs(callbackStart);
+    }
+
+    logCanvasInputEvent(*this, "mouseExit", &e, callbackMs, elapsedMs(totalStart));
 }
 
 void Canvas::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
+    const auto totalStart = Clock::now();
+
     if (onMouseWheel) {
+        const auto callbackStart = Clock::now();
         onMouseWheel(e, wheel);
+        logCanvasInputEvent(*this, "mouseWheel", &e, elapsedMs(callbackStart), elapsedMs(totalStart));
     } else if (getParentComponent()) {
         getParentComponent()->mouseWheelMove(e, wheel);
+        logCanvasInputEvent(*this, "mouseWheelBubble", &e, 0.0, elapsedMs(totalStart));
     }
 }
 

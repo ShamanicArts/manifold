@@ -97,6 +97,12 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             return std::make_tuple(b.getX(), b.getY(), b.getWidth(), b.getHeight());
         },
 
+        "getScreenBounds",
+        [](Canvas& c) {
+            auto b = c.getScreenBounds();
+            return std::make_tuple(b.getX(), b.getY(), b.getWidth(), b.getHeight());
+        },
+
         "getWidth", [](Canvas& c) { return c.getWidth(); },
         "getHeight", [](Canvas& c) { return c.getHeight(); },
 
@@ -156,6 +162,14 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "setInterceptsMouse",
         [](Canvas& c, bool clicks, bool children) {
             c.setInterceptsMouseClicks(clicks, children);
+        },
+
+        "getInterceptsMouse",
+        [](Canvas& c) {
+            bool clicks = false;
+            bool children = false;
+            c.getInterceptsMouseClicks(clicks, children);
+            return std::make_tuple(clicks, children);
         },
 
         "setVisible",

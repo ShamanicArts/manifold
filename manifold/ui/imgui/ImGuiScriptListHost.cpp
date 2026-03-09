@@ -1,13 +1,49 @@
 #include "ImGuiScriptListHost.h"
 
+#include "Theme.h"
+#include "WidgetPrimitives.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 
 #include <algorithm>
+#include <functional>
+#include <thread>
 
 using namespace juce::gl;
 
 namespace {
+size_t traceThreadId() {
+    return std::hash<std::thread::id>{}(std::this_thread::get_id());
+}
+
+void logScriptListHostEvent(const char* event, ImGuiScriptListHost* host, juce::OpenGLContext* context = nullptr) {
+    const auto bounds = host->getBounds();
+    const auto scale = context != nullptr && context->isAttached() ? context->getRenderingScale() : 0.0;
+    std::fprintf(stderr,
+                 "[ImGuiScriptListHost] %s tid=%zu showing=%d visible=%d attached=%d bounds=%d,%d %dx%d scale=%.3f\n",
+                 event,
+                 traceThreadId(),
+                 host->isShowing() ? 1 : 0,
+                 host->isVisible() ? 1 : 0,
+                 context != nullptr && context->isAttached() ? 1 : 0,
+                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(), scale);
+}
+
+void logScriptListHostMouse(const char* event, ImGuiScriptListHost* host, const juce::MouseEvent& e) {
+    const auto bounds = host->getBounds();
+    std::fprintf(stderr,
+                 "[ImGuiScriptListHostMouse] %s tid=%zu pos=%.1f,%.1f showing=%d visible=%d bounds=%d,%d %dx%d clicks=%d dragged=%d\n",
+                 event,
+                 traceThreadId(),
+                 e.position.x,
+                 e.position.y,
+                 host->isShowing() ? 1 : 0,
+                 host->isVisible() ? 1 : 0,
+                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(),
+                 e.getNumberOfClicks(),
+                 e.mouseWasDraggedSinceMouseDown() ? 1 : 0);
+}
+
 std::string buildDisplayLabel(const ImGuiScriptListHost::ScriptRow& row) {
     if (row.section) {
         return row.label;
@@ -62,10 +98,14 @@ void ImGuiScriptListHost::paint(juce::Graphics& g) {
 }
 
 void ImGuiScriptListHost::resized() {
+    logScriptListHostEvent("resized", this, &openGLContext);
+    releaseAllMouseButtons();
+    queueCurrentMousePosition();
     attachContextIfNeeded();
 }
 
 void ImGuiScriptListHost::visibilityChanged() {
+    logScriptListHostEvent("visibilityChanged", this, &openGLContext);
     if (!isVisible()) {
         releaseAllMouseButtons();
         queueFocus(false);
@@ -74,30 +114,28 @@ void ImGuiScriptListHost::visibilityChanged() {
 }
 
 void ImGuiScriptListHost::mouseMove(const juce::MouseEvent& e) {
+    logScriptListHostMouse("mouseMove", this, e);
     queueMousePosition(e.position);
 }
 
 void ImGuiScriptListHost::mouseDrag(const juce::MouseEvent& e) {
+    logScriptListHostMouse("mouseDrag", this, e);
     queueMousePosition(e.position);
-    syncMouseButtons(e.mods);
 }
 
 void ImGuiScriptListHost::mouseDown(const juce::MouseEvent& e) {
+    logScriptListHostMouse("mouseDown", this, e);
     grabKeyboardFocus();
     queueMousePosition(e.position);
-    syncMouseButtons(e.mods);
 }
 
 void ImGuiScriptListHost::mouseUp(const juce::MouseEvent& e) {
+    logScriptListHostMouse("mouseUp", this, e);
     queueMousePosition(e.position);
-    syncMouseButtons(e.mods);
-    if (!e.mods.isAnyMouseButtonDown()) {
-        releaseAllMouseButtons();
-    }
 }
 
 void ImGuiScriptListHost::mouseExit(const juce::MouseEvent& e) {
-    juce::ignoreUnused(e);
+    logScriptListHostMouse("mouseExit", this, e);
 
     if (leftMouseDown_ || rightMouseDown_ || middleMouseDown_) {
         return;
@@ -136,6 +174,7 @@ void ImGuiScriptListHost::focusLost(FocusChangeType cause) {
 }
 
 void ImGuiScriptListHost::newOpenGLContextCreated() {
+    logScriptListHostEvent("newOpenGLContextCreated", this, &openGLContext);
     IMGUI_CHECKVERSION();
     auto* context = ImGui::CreateContext();
     imguiContext = context;
@@ -144,14 +183,7 @@ void ImGuiScriptListHost::newOpenGLContextCreated() {
     auto& io = ImGui::GetIO();
     io.BackendPlatformName = "manifold_juce_scripts";
 
-    ImGui::StyleColorsDark();
-    auto& style = ImGui::GetStyle();
-    style.WindowRounding = 0.0f;
-    style.WindowBorderSize = 0.0f;
-    style.WindowPadding = ImVec2(0.0f, 0.0f);
-    style.FrameBorderSize = 0.0f;
-    style.ItemSpacing = ImVec2(4.0f, 2.0f);
-    style.ItemInnerSpacing = ImVec2(4.0f, 4.0f);
+    manifold::ui::imgui::applyToolTheme();
 
     ImGui_ImplOpenGL3_Init("#version 150");
     queueFocus(hasKeyboardFocus(true));
@@ -166,16 +198,24 @@ void ImGuiScriptListHost::renderOpenGL() {
     ImGui::SetCurrentContext(context);
 
     auto& io = ImGui::GetIO();
-    const auto scale = static_cast<float>(openGLContext.getRenderingScale());
+    const auto rawScale = static_cast<float>(openGLContext.getRenderingScale());
     const auto width = std::max(1, getWidth());
     const auto height = std::max(1, getHeight());
-    const auto framebufferWidth = std::max(1, juce::roundToInt(scale * static_cast<float>(width)));
-    const auto framebufferHeight = std::max(1, juce::roundToInt(scale * static_cast<float>(height)));
+    
+    // Cap framebuffer resolution to prevent GPU overload on high-DPI displays
+    constexpr int maxFramebufferDim = 1920;
+    const auto rawFramebufferWidth = juce::roundToInt(rawScale * static_cast<float>(width));
+    const auto rawFramebufferHeight = juce::roundToInt(rawScale * static_cast<float>(height));
+    const auto maxDim = std::max(rawFramebufferWidth, rawFramebufferHeight);
+    const auto effectiveScale = (maxDim > maxFramebufferDim)
+        ? rawScale * static_cast<float>(maxFramebufferDim) / static_cast<float>(maxDim)
+        : rawScale;
+    
+    const auto framebufferWidth = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(width)));
+    const auto framebufferHeight = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(height)));
 
     io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
-    io.DisplayFramebufferScale = ImVec2(scale, scale);
-
-    syncMouseButtons(juce::ModifierKeys::getCurrentModifiersRealtime());
+    io.DisplayFramebufferScale = ImVec2(effectiveScale, effectiveScale);
 
     {
         std::lock_guard<std::mutex> lock(inputMutex);
@@ -198,24 +238,29 @@ void ImGuiScriptListHost::renderOpenGL() {
         pendingEvents.clear();
     }
 
+    syncMouseButtons(juce::ModifierKeys::getCurrentModifiersRealtime());
+
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        for (const auto& event : pendingEvents) {
+            if (event.type == EventType::MouseButton) {
+                io.AddMouseButtonEvent(event.button, event.down);
+            }
+        }
+        pendingEvents.clear();
+    }
+
+    const auto& theme = manifold::ui::imgui::toolTheme();
+
     glViewport(0, 0, framebufferWidth, framebufferHeight);
     glDisable(GL_SCISSOR_TEST);
-    glClearColor(0.06f, 0.09f, 0.13f, 0.98f);
+    glClearColor(theme.panelBg.x, theme.panelBg.y, theme.panelBg.z, theme.panelBg.w);
     glClear(GL_COLOR_BUFFER_BIT);
 
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)), ImGuiCond_Always);
-
-    constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration
-                                           | ImGuiWindowFlags_NoMove
-                                           | ImGuiWindowFlags_NoResize
-                                           | ImGuiWindowFlags_NoSavedSettings
-                                           | ImGuiWindowFlags_NoBringToFrontOnFocus;
-
-    ImGui::Begin("##ManifoldScriptListHost", nullptr, windowFlags);
+    manifold::ui::imgui::beginFullWindow("##ManifoldScriptListHost", width, height);
 
     std::vector<ScriptRow> rows;
     {
@@ -224,36 +269,32 @@ void ImGuiScriptListHost::renderOpenGL() {
     }
 
     if (rows.empty()) {
-        ImGui::Dummy(ImVec2(8.0f, 8.0f));
-        ImGui::SetCursorPos(ImVec2(8.0f, 8.0f));
-        ImGui::TextDisabled("No scripts");
+        manifold::ui::imgui::drawEmptyState("Scripts", "No scripts");
     } else {
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 1.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(rows.size()));
         while (clipper.Step()) {
             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
                 const auto& row = rows[static_cast<size_t>(i)];
+                const auto label = buildDisplayLabel(row);
                 ImGui::PushID(i);
 
                 if (row.section) {
-                    ImGui::Dummy(ImVec2(0.0f, 2.0f));
-                    ImGui::SeparatorText(buildDisplayLabel(row).c_str());
+                    manifold::ui::imgui::drawSectionHeader(label.c_str());
                     ImGui::PopID();
                     continue;
                 }
 
                 if (row.nonInteractive) {
-                    ImGui::TextDisabled("%s", buildDisplayLabel(row).c_str());
+                    manifold::ui::imgui::drawTextRow({ label.c_str(), nullptr, false, true, 0.0f });
                     ImGui::PopID();
                     continue;
                 }
 
-                const bool selected = row.selected;
-                ImGuiSelectableFlags flags = ImGuiSelectableFlags_SpanAllColumns;
-                const bool activated = ImGui::Selectable(buildDisplayLabel(row).c_str(), selected, flags);
+                const bool activated = manifold::ui::imgui::drawSelectableRow(
+                    { label.c_str(), row.kind.empty() ? nullptr : row.kind.c_str(), row.selected, false, 0.0f });
                 const bool hovered = ImGui::IsItemHovered();
                 const bool doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 
@@ -268,7 +309,7 @@ void ImGuiScriptListHost::renderOpenGL() {
             }
         }
 
-        ImGui::PopStyleVar(2);
+        ImGui::PopStyleVar();
     }
 
     ImGui::End();
@@ -278,6 +319,7 @@ void ImGuiScriptListHost::renderOpenGL() {
 }
 
 void ImGuiScriptListHost::openGLContextClosing() {
+    logScriptListHostEvent("openGLContextClosing", this, &openGLContext);
     auto* context = reinterpret_cast<ImGuiContext*>(imguiContext);
     if (context != nullptr) {
         ImGui::SetCurrentContext(context);
@@ -289,10 +331,15 @@ void ImGuiScriptListHost::openGLContextClosing() {
 
 void ImGuiScriptListHost::attachContextIfNeeded() {
     if (!isShowing() || getWidth() <= 0 || getHeight() <= 0) {
+        if (openGLContext.isAttached()) {
+            logScriptListHostEvent("detachContext", this, &openGLContext);
+            openGLContext.detach();
+        }
         return;
     }
 
     if (!openGLContext.isAttached()) {
+        logScriptListHostEvent("attachContext", this, &openGLContext);
         openGLContext.attachTo(*this);
     }
 }
@@ -305,6 +352,17 @@ void ImGuiScriptListHost::queueMousePosition(juce::Point<float> position) {
 
     std::lock_guard<std::mutex> lock(inputMutex);
     pendingEvents.push_back(std::move(event));
+}
+
+void ImGuiScriptListHost::queueCurrentMousePosition() {
+    if (!isShowing()) {
+        return;
+    }
+
+    const auto screenPos = juce::Desktop::getInstance().getMainMouseSource().getScreenPosition();
+    const juce::Point<int> screenPosInt(juce::roundToInt(screenPos.x), juce::roundToInt(screenPos.y));
+    const auto localPos = getLocalPoint(nullptr, screenPosInt).toFloat();
+    queueMousePosition(localPos);
 }
 
 void ImGuiScriptListHost::syncMouseButtons(const juce::ModifierKeys& mods) {

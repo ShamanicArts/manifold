@@ -7,6 +7,47 @@
 #include <cstdio>
 #include <tuple>
 
+namespace {
+using PerfClock = std::chrono::steady_clock;
+
+struct HostLayoutTraceState {
+    bool initialised = false;
+    bool visible = false;
+    juce::Rectangle<int> bounds;
+};
+
+double perfElapsedMs(PerfClock::time_point start) {
+    return std::chrono::duration<double, std::milli>(PerfClock::now() - start).count();
+}
+
+void logEditorPerf(const char* label, PerfClock::time_point start, const char* extra = nullptr) {
+    const auto elapsedMs = perfElapsedMs(start);
+    // Log all timing for debugging resolution-dependent freeze
+    if (extra != nullptr && extra[0] != '\0') {
+        std::fprintf(stderr, "[BehaviorCoreEditorPerf] %s %.3fms %s\n", label, elapsedMs, extra);
+    } else {
+        std::fprintf(stderr, "[BehaviorCoreEditorPerf] %s %.3fms\n", label, elapsedMs);
+    }
+}
+
+void logEditorHostLayout(const char* name, HostLayoutTraceState& state, bool visible,
+                         const juce::Rectangle<int>& bounds) {
+    if (state.initialised && state.visible == visible && state.bounds == bounds) {
+        return;
+    }
+
+    std::fprintf(stderr,
+                 "[BehaviorCoreEditor] host=%s visible=%d bounds=%d,%d %dx%d\n",
+                 name,
+                 visible ? 1 : 0,
+                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight());
+
+    state.initialised = true;
+    state.visible = visible;
+    state.bounds = bounds;
+}
+}
+
 BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
     : juce::AudioProcessorEditor(&ownerProcessor), processorRef(ownerProcessor) {
     setSize(1000, 640);
@@ -75,6 +116,25 @@ BehaviorCoreEditor::~BehaviorCoreEditor() {
     processorRef.getControlServer().setFrameTimings(nullptr);
 }
 
+void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
+    if (deferredVisibilityChanges.empty()) return;
+    
+    const auto applyStart = PerfClock::now();
+    for (const auto& change : deferredVisibilityChanges) {
+        if (change.host) {
+            change.host->setVisible(change.visible);
+            change.host->setBounds(change.bounds);
+            if (change.visible) {
+                change.host->toFront(false);
+            }
+        }
+    }
+    auto count = deferredVisibilityChanges.size();
+    deferredVisibilityChanges.clear();
+    std::string extra = std::to_string(count) + " hosts";
+    logEditorPerf("applyDeferredVisibilityChanges", applyStart, extra.c_str());
+}
+
 void BehaviorCoreEditor::timerCallback() {
     using Clock = std::chrono::steady_clock;
     static auto lastCall = Clock::now();
@@ -84,6 +144,9 @@ void BehaviorCoreEditor::timerCallback() {
 
     static int logCount = 0;
     const auto timerStart = Clock::now();
+    
+    // Apply any deferred visibility changes first (outside of GUI event handling)
+    applyDeferredVisibilityChanges();
 
     auto pendingPath = processorRef.getAndClearPendingUISwitch();
     if (!pendingPath.empty()) {
@@ -169,6 +232,14 @@ void BehaviorCoreEditor::paint(juce::Graphics& g) {
 }
 
 void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
+    const auto totalStart = PerfClock::now();
+    static HostLayoutTraceState mainScriptHostTrace;
+    static HostLayoutTraceState inlineScriptHostTrace;
+    static HostLayoutTraceState scriptListHostTrace;
+    static HostLayoutTraceState hierarchyHostTrace;
+    static HostLayoutTraceState inspectorHostTrace;
+    static HostLayoutTraceState scriptInspectorHostTrace;
+
     struct HostConfig {
         bool visible = false;
         juce::Rectangle<int> bounds;
@@ -221,6 +292,7 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
     InspectorHostConfig inspectorConfig;
     InspectorHostConfig scriptInspectorConfig;
 
+    const auto luaStateStart = PerfClock::now();
     luaEngine.withLuaState([&](sol::state& lua) {
         auto invokeShellMethod = [&](sol::table& shell, const char* name) {
             sol::protected_function fn = shell[name];
@@ -378,7 +450,8 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
                 if (rowObj.valid() && rowObj.is<sol::table>()) {
                     sol::table row = rowObj.as<sol::table>();
                     sol::object canvasObj = row["canvas"];
-                    if (canvasObj.valid()) {
+                    sol::object selectedCanvasObj = shell["selectedWidget"];
+                    if (canvasObj.valid() && canvasObj != selectedCanvasObj) {
                         sol::protected_function selectWidget = shell["selectWidget"];
                         if (selectWidget.valid()) {
                             sol::protected_function_result result = selectWidget(shell, canvasObj, true);
@@ -1023,86 +1096,111 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
             }
         }
     });
+    logEditorPerf("syncImGuiHostsFromLuaShell.luaState", luaStateStart);
 
+    const auto hostApplyStart = PerfClock::now();
+    logEditorHostLayout("mainScriptEditorHost", mainScriptHostTrace, mainConfig.visible, mainConfig.visible ? mainConfig.bounds : juce::Rectangle<int>());
     if (mainConfig.visible) {
         mainScriptEditorHost.configureDocument(mainConfig.file, mainConfig.text,
                                                mainConfig.syncToken, mainConfig.readOnly);
-        if (!mainScriptEditorHost.isVisible()) {
-            mainScriptEditorHost.setVisible(true);
+        // Queue visibility change to avoid blocking GUI thread during OpenGL context creation
+        if (mainScriptEditorHost.isVisible() != true || mainScriptEditorHost.getBounds() != mainConfig.bounds) {
+            deferredVisibilityChanges.push_back({&mainScriptEditorHost, true, mainConfig.bounds});
         }
-        mainScriptEditorHost.setBounds(mainConfig.bounds);
-        mainScriptEditorHost.toFront(false);
     } else {
-        mainScriptEditorHost.setVisible(false);
-        mainScriptEditorHost.setBounds(0, 0, 0, 0);
+        if (mainScriptEditorHost.isVisible() != false || mainScriptEditorHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
+            deferredVisibilityChanges.push_back({&mainScriptEditorHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
+        }
     }
 
+    logEditorHostLayout("hierarchyHost", hierarchyHostTrace, hierarchyConfig.visible, hierarchyConfig.visible ? hierarchyConfig.bounds : juce::Rectangle<int>());
     if (hierarchyConfig.visible) {
         hierarchyHost.configureRows(hierarchyConfig.rows);
-        if (!hierarchyHost.isVisible()) {
-            hierarchyHost.setVisible(true);
+        if (hierarchyHost.isVisible() != true || hierarchyHost.getBounds() != hierarchyConfig.bounds) {
+            deferredVisibilityChanges.push_back({&hierarchyHost, true, hierarchyConfig.bounds});
         }
-        hierarchyHost.setBounds(hierarchyConfig.bounds);
-        hierarchyHost.toFront(false);
     } else {
-        hierarchyHost.setVisible(false);
-        hierarchyHost.setBounds(0, 0, 0, 0);
+        if (hierarchyHost.isVisible() != false || hierarchyHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
+            deferredVisibilityChanges.push_back({&hierarchyHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
+        }
     }
 
+    logEditorHostLayout("scriptListHost", scriptListHostTrace, scriptListConfig.visible, scriptListConfig.visible ? scriptListConfig.bounds : juce::Rectangle<int>());
     if (scriptListConfig.visible) {
         scriptListHost.configureRows(scriptListConfig.rows);
-        if (!scriptListHost.isVisible()) {
-            scriptListHost.setVisible(true);
+        if (scriptListHost.isVisible() != true || scriptListHost.getBounds() != scriptListConfig.bounds) {
+            deferredVisibilityChanges.push_back({&scriptListHost, true, scriptListConfig.bounds});
         }
-        scriptListHost.setBounds(scriptListConfig.bounds);
-        scriptListHost.toFront(false);
     } else {
-        scriptListHost.setVisible(false);
-        scriptListHost.setBounds(0, 0, 0, 0);
+        if (scriptListHost.isVisible() != false || scriptListHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
+            deferredVisibilityChanges.push_back({&scriptListHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
+        }
     }
 
+    logEditorHostLayout("inspectorHost", inspectorHostTrace, inspectorConfig.visible, inspectorConfig.visible ? inspectorConfig.bounds : juce::Rectangle<int>());
     if (inspectorConfig.visible) {
         inspectorHost.configureData(inspectorConfig.selectionBounds,
                                     inspectorConfig.rows,
                                     inspectorConfig.activeProperty);
-        if (!inspectorHost.isVisible()) {
-            inspectorHost.setVisible(true);
+        if (inspectorHost.isVisible() != true || inspectorHost.getBounds() != inspectorConfig.bounds) {
+            deferredVisibilityChanges.push_back({&inspectorHost, true, inspectorConfig.bounds});
         }
-        inspectorHost.setBounds(inspectorConfig.bounds);
-        inspectorHost.toFront(false);
     } else {
-        inspectorHost.setVisible(false);
-        inspectorHost.setBounds(0, 0, 0, 0);
+        if (inspectorHost.isVisible() != false || inspectorHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
+            deferredVisibilityChanges.push_back({&inspectorHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
+        }
     }
 
+    logEditorHostLayout("scriptInspectorHost", scriptInspectorHostTrace, scriptInspectorConfig.visible, scriptInspectorConfig.visible ? scriptInspectorConfig.bounds : juce::Rectangle<int>());
     if (scriptInspectorConfig.visible) {
         scriptInspectorHost.configureScriptData(scriptInspectorConfig.scriptData);
-        if (!scriptInspectorHost.isVisible()) {
-            scriptInspectorHost.setVisible(true);
+        if (scriptInspectorHost.isVisible() != true || scriptInspectorHost.getBounds() != scriptInspectorConfig.bounds) {
+            deferredVisibilityChanges.push_back({&scriptInspectorHost, true, scriptInspectorConfig.bounds});
         }
-        scriptInspectorHost.setBounds(scriptInspectorConfig.bounds);
-        scriptInspectorHost.toFront(false);
     } else {
-        if (scriptInspectorHost.isVisible()) {
-            scriptInspectorHost.setBounds(0, 0, 0, 0);
+        if (scriptInspectorHost.isVisible() != false || scriptInspectorHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
+            deferredVisibilityChanges.push_back({&scriptInspectorHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
         }
     }
 
+    logEditorHostLayout("inlineScriptEditorHost", inlineScriptHostTrace, inlineConfig.visible, inlineConfig.visible ? inlineConfig.bounds : juce::Rectangle<int>());
     if (inlineConfig.visible) {
         inlineScriptEditorHost.configureDocument(inlineConfig.file, inlineConfig.text,
                                                  inlineConfig.syncToken, inlineConfig.readOnly);
-        if (!inlineScriptEditorHost.isVisible()) {
-            inlineScriptEditorHost.setVisible(true);
+        if (inlineScriptEditorHost.isVisible() != true || inlineScriptEditorHost.getBounds() != inlineConfig.bounds) {
+            deferredVisibilityChanges.push_back({&inlineScriptEditorHost, true, inlineConfig.bounds});
         }
-        inlineScriptEditorHost.setBounds(inlineConfig.bounds);
-        inlineScriptEditorHost.toFront(false);
     } else {
-        inlineScriptEditorHost.setVisible(false);
-        inlineScriptEditorHost.setBounds(0, 0, 0, 0);
+        if (inlineScriptEditorHost.isVisible() != false || inlineScriptEditorHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
+            deferredVisibilityChanges.push_back({&inlineScriptEditorHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
+        }
     }
+
+    logEditorPerf("syncImGuiHostsFromLuaShell.applyHosts", hostApplyStart);
+    logEditorPerf("syncImGuiHostsFromLuaShell.total", totalStart);
 }
 
 void BehaviorCoreEditor::resized() {
+    const auto localBounds = getBounds();
+    const auto screenBounds = getScreenBounds();
+    const auto scale = juce::Component::getApproximateScaleFactorForComponent(this);
+    const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(screenBounds);
+    if (display != nullptr) {
+        std::fprintf(stderr,
+                     "[BehaviorCoreEditor] resized editorBounds=%d,%d %dx%d screenBounds=%d,%d %dx%d scale=%.3f displayScale=%.3f displayTotal=%d,%d %dx%d displayUser=%d,%d %dx%d\n",
+                     localBounds.getX(), localBounds.getY(), localBounds.getWidth(), localBounds.getHeight(),
+                     screenBounds.getX(), screenBounds.getY(), screenBounds.getWidth(), screenBounds.getHeight(),
+                     static_cast<double>(scale),
+                     static_cast<double>(display->scale),
+                     display->totalArea.getX(), display->totalArea.getY(), display->totalArea.getWidth(), display->totalArea.getHeight(),
+                     display->userArea.getX(), display->userArea.getY(), display->userArea.getWidth(), display->userArea.getHeight());
+    } else {
+        std::fprintf(stderr,
+                     "[BehaviorCoreEditor] resized editorBounds=%d,%d %dx%d screenBounds=%d,%d %dx%d scale=%.3f displayScale=none\n",
+                     localBounds.getX(), localBounds.getY(), localBounds.getWidth(), localBounds.getHeight(),
+                     screenBounds.getX(), screenBounds.getY(), screenBounds.getWidth(), screenBounds.getHeight(),
+                     static_cast<double>(scale));
+    }
     rootCanvas.setBounds(getLocalBounds());
 
     if (usingLuaUi) {
@@ -1123,6 +1221,26 @@ void BehaviorCoreEditor::resized() {
         scriptInspectorHost.setVisible(false);
         scriptInspectorHost.setBounds(0, 0, 0, 0);
     }
+}
+
+void BehaviorCoreEditor::mouseMove(const juce::MouseEvent& e) {
+    juce::ignoreUnused(e);
+}
+
+void BehaviorCoreEditor::mouseDown(const juce::MouseEvent& e) {
+    juce::ignoreUnused(e);
+}
+
+void BehaviorCoreEditor::mouseUp(const juce::MouseEvent& e) {
+    juce::ignoreUnused(e);
+}
+
+void BehaviorCoreEditor::mouseEnter(const juce::MouseEvent& e) {
+    juce::ignoreUnused(e);
+}
+
+void BehaviorCoreEditor::mouseExit(const juce::MouseEvent& e) {
+    juce::ignoreUnused(e);
 }
 
 void BehaviorCoreEditor::showError(const std::string& message) {

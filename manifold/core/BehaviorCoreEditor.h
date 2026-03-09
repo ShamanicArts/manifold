@@ -10,7 +10,9 @@
 
 class BehaviorCoreProcessor;
 
-class BehaviorCoreEditor : public juce::AudioProcessorEditor, private juce::Timer {
+class BehaviorCoreEditor : public juce::AudioProcessorEditor,
+                           private juce::Timer,
+                           private juce::MouseListener {
 public:
     explicit BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor);
     ~BehaviorCoreEditor() override;
@@ -20,8 +22,22 @@ public:
 
 private:
     void timerCallback() override;
+    void mouseMove(const juce::MouseEvent& e) override;
+    void mouseDown(const juce::MouseEvent& e) override;
+    void mouseUp(const juce::MouseEvent& e) override;
+    void mouseEnter(const juce::MouseEvent& e) override;
+    void mouseExit(const juce::MouseEvent& e) override;
     void syncImGuiHostsFromLuaShell();
     void showError(const std::string& message);
+    
+    // Deferred visibility changes to avoid blocking GUI thread during OpenGL context creation
+    struct DeferredVisibility {
+        juce::Component* host;
+        bool visible;
+        juce::Rectangle<int> bounds;
+    };
+    std::vector<DeferredVisibility> deferredVisibilityChanges;
+    void applyDeferredVisibilityChanges();
 
     BehaviorCoreProcessor& processorRef;
     LuaEngine luaEngine;

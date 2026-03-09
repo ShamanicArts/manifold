@@ -70,10 +70,13 @@ public:
     void openGLContextClosing() override;
     
     // Input handling
+    bool hitTest(int x, int y) override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseMove(const juce::MouseEvent& e) override;
+    void mouseEnter(const juce::MouseEvent& e) override;
+    void mouseExit(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
     bool keyPressed(const juce::KeyPress& key) override;
     

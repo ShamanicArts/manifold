@@ -7,8 +7,29 @@
 #include <algorithm>
 #include <chrono>
 #include <cfloat>
+#include <functional>
+#include <thread>
 
 using namespace juce::gl;
+
+namespace {
+size_t traceThreadId() {
+    return std::hash<std::thread::id>{}(std::this_thread::get_id());
+}
+
+void logMainImGuiHostEvent(const char* event, ImGuiHost* host, juce::OpenGLContext* context = nullptr) {
+    const auto bounds = host->getBounds();
+    const auto scale = context != nullptr && context->isAttached() ? context->getRenderingScale() : 0.0;
+    std::fprintf(stderr,
+                 "[ImGuiHost] %s tid=%zu showing=%d visible=%d attached=%d bounds=%d,%d %dx%d scale=%.3f\n",
+                 event,
+                 traceThreadId(),
+                 host->isShowing() ? 1 : 0,
+                 host->isVisible() ? 1 : 0,
+                 context != nullptr && context->isAttached() ? 1 : 0,
+                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(), scale);
+}
+}
 
 ImGuiHost::ImGuiHost() {
     setOpaque(true);
@@ -111,10 +132,15 @@ void ImGuiHost::paint(juce::Graphics& g) {
 }
 
 void ImGuiHost::resized() {
+    logMainImGuiHostEvent("resized", this, &openGLContext);
+    releaseAllMouseButtons();
+    syncModifierKeys(juce::ModifierKeys::getCurrentModifiersRealtime());
+    queueCurrentMousePosition();
     attachContextIfNeeded();
 }
 
 void ImGuiHost::visibilityChanged() {
+    logMainImGuiHostEvent("visibilityChanged", this, &openGLContext);
     if (!isVisible()) {
         releaseAllMouseButtons();
         releaseAllActiveKeys();
@@ -131,23 +157,17 @@ void ImGuiHost::mouseMove(const juce::MouseEvent& e) {
 
 void ImGuiHost::mouseDrag(const juce::MouseEvent& e) {
     queueMousePosition(e.position);
-    syncMouseButtons(e.mods);
     syncModifierKeys(e.mods);
 }
 
 void ImGuiHost::mouseDown(const juce::MouseEvent& e) {
     grabKeyboardFocus();
     queueMousePosition(e.position);
-    syncMouseButtons(e.mods);
     syncModifierKeys(e.mods);
 }
 
 void ImGuiHost::mouseUp(const juce::MouseEvent& e) {
     queueMousePosition(e.position);
-    syncMouseButtons(e.mods);
-    if (!e.mods.isAnyMouseButtonDown()) {
-        releaseAllMouseButtons();
-    }
     syncModifierKeys(e.mods);
 }
 
@@ -229,6 +249,7 @@ void ImGuiHost::focusLost(FocusChangeType cause) {
 }
 
 void ImGuiHost::newOpenGLContextCreated() {
+    logMainImGuiHostEvent("newOpenGLContextCreated", this, &openGLContext);
     IMGUI_CHECKVERSION();
     auto* context = ImGui::CreateContext();
     imguiContext = context;
@@ -264,18 +285,24 @@ void ImGuiHost::renderOpenGL() {
     ImGui::SetCurrentContext(context);
 
     auto& io = ImGui::GetIO();
-    const auto scale = static_cast<float>(openGLContext.getRenderingScale());
+    const auto rawScale = static_cast<float>(openGLContext.getRenderingScale());
     const auto width = std::max(1, getWidth());
     const auto height = std::max(1, getHeight());
-    const auto framebufferWidth = std::max(1, juce::roundToInt(scale * static_cast<float>(width)));
-    const auto framebufferHeight = std::max(1, juce::roundToInt(scale * static_cast<float>(height)));
+    
+    // Cap framebuffer resolution to prevent GPU overload on high-DPI displays
+    constexpr int maxFramebufferDim = 1920;
+    const auto rawFramebufferWidth = juce::roundToInt(rawScale * static_cast<float>(width));
+    const auto rawFramebufferHeight = juce::roundToInt(rawScale * static_cast<float>(height));
+    const auto maxDim = std::max(rawFramebufferWidth, rawFramebufferHeight);
+    const auto effectiveScale = (maxDim > maxFramebufferDim)
+        ? rawScale * static_cast<float>(maxFramebufferDim) / static_cast<float>(maxDim)
+        : rawScale;
+    
+    const auto framebufferWidth = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(width)));
+    const auto framebufferHeight = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(height)));
 
     io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
-    io.DisplayFramebufferScale = ImVec2(scale, scale);
-
-    const auto realtimeMods = juce::ModifierKeys::getCurrentModifiersRealtime();
-    syncMouseButtons(realtimeMods);
-    syncModifierKeys(realtimeMods);
+    io.DisplayFramebufferScale = ImVec2(effectiveScale, effectiveScale);
 
     {
         std::lock_guard<std::mutex> lock(inputMutex);
@@ -299,6 +326,18 @@ void ImGuiHost::renderOpenGL() {
                 case EventType::Focus:
                     io.AddFocusEvent(event.focused);
                     break;
+            }
+        }
+        pendingEvents.clear();
+    }
+
+    syncMouseButtons(juce::ModifierKeys::getCurrentModifiersRealtime());
+
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        for (const auto& event : pendingEvents) {
+            if (event.type == EventType::MouseButton) {
+                io.AddMouseButtonEvent(event.button, event.down);
             }
         }
         pendingEvents.clear();
@@ -376,6 +415,7 @@ void ImGuiHost::renderOpenGL() {
 }
 
 void ImGuiHost::openGLContextClosing() {
+    logMainImGuiHostEvent("openGLContextClosing", this, &openGLContext);
     auto* context = reinterpret_cast<ImGuiContext*>(imguiContext);
     if (context != nullptr) {
         ImGui::SetCurrentContext(context);
@@ -391,10 +431,15 @@ void ImGuiHost::openGLContextClosing() {
 
 void ImGuiHost::attachContextIfNeeded() {
     if (!isShowing() || getWidth() <= 0 || getHeight() <= 0) {
+        if (openGLContext.isAttached()) {
+            logMainImGuiHostEvent("detachContext", this, &openGLContext);
+            openGLContext.detach();
+        }
         return;
     }
 
     if (!openGLContext.isAttached()) {
+        logMainImGuiHostEvent("attachContext", this, &openGLContext);
         openGLContext.attachTo(*this);
     }
 }
@@ -407,6 +452,17 @@ void ImGuiHost::queueMousePosition(juce::Point<float> position) {
 
     std::lock_guard<std::mutex> lock(inputMutex);
     pendingEvents.push_back(std::move(event));
+}
+
+void ImGuiHost::queueCurrentMousePosition() {
+    if (!isShowing()) {
+        return;
+    }
+
+    const auto screenPos = juce::Desktop::getInstance().getMainMouseSource().getScreenPosition();
+    const juce::Point<int> screenPosInt(juce::roundToInt(screenPos.x), juce::roundToInt(screenPos.y));
+    const auto localPos = getLocalPoint(nullptr, screenPosInt).toFloat();
+    queueMousePosition(localPos);
 }
 
 void ImGuiHost::syncMouseButtons(const juce::ModifierKeys& mods) {

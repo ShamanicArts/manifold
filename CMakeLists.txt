@@ -361,6 +361,12 @@ set(MANIFOLD_CORE_SOURCES
     manifold/core/BehaviorCoreEditor.cpp
     manifold/ui/imgui/ImGuiHost.h
     manifold/ui/imgui/ImGuiHost.cpp
+    manifold/ui/imgui/Theme.h
+    manifold/ui/imgui/Theme.cpp
+    manifold/ui/imgui/WidgetPrimitives.h
+    manifold/ui/imgui/WidgetPrimitives.cpp
+    manifold/ui/imgui/ToolComponents.h
+    manifold/ui/imgui/ToolComponents.cpp
     manifold/ui/imgui/ImGuiScriptListHost.h
     manifold/ui/imgui/ImGuiScriptListHost.cpp
     manifold/ui/imgui/ImGuiHierarchyHost.h

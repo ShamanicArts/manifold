@@ -64,6 +64,7 @@ private:
 
     void attachContextIfNeeded();
     void queueMousePosition(juce::Point<float> position);
+    void queueCurrentMousePosition();
     void syncMouseButtons(const juce::ModifierKeys& mods);
     void releaseAllMouseButtons();
     void queueFocus(bool focused);
