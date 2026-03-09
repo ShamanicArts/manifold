@@ -423,7 +423,7 @@ function M.attach(shell)
 
         if cmd == "help" then
             self:appendConsoleLine("help | clear | get <path> | set <path> <value> | trigger <path>")
-            self:appendConsoleLine("undo | redo | sel | copyid | dev [status|on|off|toggle] | ui <scriptPath> | lua <expr>")
+            self:appendConsoleLine("undo | redo | sel | copyid | dev [status|on|off|toggle] | perf [on|off|toggle|tab <name>|reset] | ui <scriptPath> | lua <expr>")
             return
         elseif cmd == "clear" then
             self.console.lines = {}
@@ -518,6 +518,48 @@ function M.attach(shell)
             end
 
             self:appendConsoleLine("dev mode: " .. (self.devModeEnabled and "on" or "off"), 0xff86efac)
+            return
+        elseif cmd == "perf" then
+            local arg = string.lower(words[2] or "toggle")
+            local activeTab = string.lower(words[3] or "")
+            self.perfOverlay = self.perfOverlay or { visible = false, activeTab = "frame" }
+
+            if arg == "" or arg == "toggle" then
+                self.perfOverlay.visible = not (self.perfOverlay.visible == true)
+            elseif arg == "on" then
+                self.perfOverlay.visible = true
+            elseif arg == "off" then
+                self.perfOverlay.visible = false
+            elseif arg == "tab" then
+                if activeTab == "frame" or activeTab == "imgui" or activeTab == "editor" or activeTab == "ui" then
+                    self.perfOverlay.activeTab = activeTab
+                    self.perfOverlay.visible = true
+                else
+                    self:appendConsoleLine("ERR: perf tab <frame|imgui|editor|ui>", 0xfffca5a5)
+                    return
+                end
+            elseif arg == "reset" then
+                self.perfOverlay.visible = true
+                if type(command) == "function" then
+                    command("RESET_PEAKS")
+                end
+                if type(_G) == "table" then
+                    local perf = _G.__manifoldEditorPerf or {}
+                    perf.peakDrawMs = 0
+                    perf.peakWheelMs = 0
+                    perf.peakKeypressMs = 0
+                    perf.peakEnsureVisibleMs = 0
+                    perf.peakPosFromPointMs = 0
+                    _G.__manifoldEditorPerf = perf
+                end
+                self:appendConsoleLine("perf peaks reset", 0xff86efac)
+            else
+                self:appendConsoleLine("ERR: perf [on|off|toggle|tab <name>|reset]", 0xfffca5a5)
+                return
+            end
+
+            self.consoleOverlay:repaint()
+            self:appendConsoleLine("perf overlay: " .. (self.perfOverlay.visible and "on" or "off") .. " tab=" .. tostring(self.perfOverlay.activeTab or "frame"), 0xff86efac)
             return
         elseif cmd == "ui" then
             local target = words[2]

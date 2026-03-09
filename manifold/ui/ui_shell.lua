@@ -269,6 +269,10 @@ function Shell.create(parentNode, options)
             maxLines = 240,
             rect = { x = 0, y = 0, w = 0, h = 0 },
         },
+        perfOverlay = {
+            visible = false,
+            activeTab = "frame",
+        },
     }
 
     shell.panel = W.Panel.new(parentNode, "sharedShell", {

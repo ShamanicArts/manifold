@@ -7,6 +7,7 @@
 #include "../ui/imgui/ImGuiScriptListHost.h"
 #include "../ui/imgui/ImGuiHierarchyHost.h"
 #include "../ui/imgui/ImGuiInspectorHost.h"
+#include "../ui/imgui/ImGuiPerfOverlayHost.h"
 
 class BehaviorCoreProcessor;
 
@@ -50,6 +51,7 @@ private:
     ImGuiHierarchyHost hierarchyHost;
     ImGuiInspectorHost inspectorHost;
     ImGuiInspectorHost scriptInspectorHost;
+    ImGuiPerfOverlayHost perfOverlayHost;
     Canvas* errorNode = nullptr;
     std::string errorMessage;
 

@@ -373,6 +373,8 @@ set(MANIFOLD_CORE_SOURCES
     manifold/ui/imgui/ImGuiHierarchyHost.cpp
     manifold/ui/imgui/ImGuiInspectorHost.h
     manifold/ui/imgui/ImGuiInspectorHost.cpp
+    manifold/ui/imgui/ImGuiPerfOverlayHost.h
+    manifold/ui/imgui/ImGuiPerfOverlayHost.cpp
     manifold/ui/imgui/ManifoldImGuiConfig.h
     manifold/ui/imgui/ImGuiOpenGLBackend.cpp)
 

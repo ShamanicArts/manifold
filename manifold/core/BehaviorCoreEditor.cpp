@@ -3,6 +3,8 @@
 #include "../primitives/core/Settings.h"
 #include "../primitives/ui/Canvas.h"
 
+#include <sol/sol.hpp>
+
 #include <chrono>
 #include <cstdio>
 #include <tuple>
@@ -44,18 +46,45 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
     addAndMakeVisible(hierarchyHost);
     addAndMakeVisible(inspectorHost);
     addAndMakeVisible(scriptInspectorHost);
+    addAndMakeVisible(perfOverlayHost);
+    perfOverlayHost.onTabChanged = [this](const std::string& tabId) {
+        luaEngine.withLuaState([tabId](sol::state& L) {
+            auto shell = L["_G"]["shell"];
+            if (!shell.valid()) {
+                return;
+            }
+            auto perfOverlay = shell["perfOverlay"];
+            if (perfOverlay.valid()) {
+                perfOverlay["activeTab"] = tabId;
+            }
+        });
+    };
+    perfOverlayHost.onClosed = [this]() {
+        luaEngine.withLuaState([](sol::state& L) {
+            auto shell = L["_G"]["shell"];
+            if (!shell.valid()) {
+                return;
+            }
+            auto perfOverlay = shell["perfOverlay"];
+            if (perfOverlay.valid()) {
+                perfOverlay["visible"] = false;
+            }
+        });
+    };
     mainScriptEditorHost.setVisible(false);
     inlineScriptEditorHost.setVisible(false);
     scriptListHost.setVisible(false);
     hierarchyHost.setVisible(false);
     inspectorHost.setVisible(false);
     scriptInspectorHost.setVisible(false);
+    perfOverlayHost.setVisible(false);
     mainScriptEditorHost.toFront(false);
     inlineScriptEditorHost.toFront(false);
     scriptListHost.toFront(false);
     hierarchyHost.toFront(false);
     inspectorHost.toFront(false);
     scriptInspectorHost.toFront(false);
+    perfOverlayHost.toFront(false);
 
     luaEngine.initialise(&processorRef, &rootCanvas);
     processorRef.getControlServer().setFrameTimings(&luaEngine.frameTimings);
@@ -253,6 +282,12 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
         ImGuiInspectorHost::ScriptInspectorData scriptData;
     };
 
+    struct PerfOverlayHostConfig {
+        bool visible = false;
+        juce::Rectangle<int> bounds;
+        ImGuiPerfOverlayHost::Snapshot snapshot;
+    };
+
     const auto mainStatsBefore = mainScriptEditorHost.getStatsSnapshot();
     const auto inlineStatsBefore = inlineScriptEditorHost.getStatsSnapshot();
     const auto mainIdentityBefore = mainScriptEditorHost.getDocumentIdentity();
@@ -273,6 +308,7 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
     HierarchyHostConfig hierarchyConfig;
     InspectorHostConfig inspectorConfig;
     InspectorHostConfig scriptInspectorConfig;
+    PerfOverlayHostConfig perfOverlayConfig;
 
     const auto luaStateStart = PerfClock::now();
     luaEngine.withLuaState([&](sol::state& lua) {
@@ -795,6 +831,92 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
             }
         }
 
+        sol::object perfOverlayObj = shell["perfOverlay"];
+        if (perfOverlayObj.valid() && perfOverlayObj.is<sol::table>()) {
+            sol::table perfOverlay = perfOverlayObj.as<sol::table>();
+            perfOverlayConfig.visible = perfOverlay["visible"].get_or(false);
+            perfOverlayConfig.snapshot.title = "Performance Overlay";
+            perfOverlayConfig.snapshot.activeTab = perfOverlay["activeTab"].get_or(std::string{"frame"});
+
+            auto addTab = [&](const std::string& id, const std::string& label) -> ImGuiPerfOverlayHost::TabData& {
+                perfOverlayConfig.snapshot.tabs.push_back(ImGuiPerfOverlayHost::TabData{});
+                auto& tab = perfOverlayConfig.snapshot.tabs.back();
+                tab.id = id;
+                tab.label = label;
+                return tab;
+            };
+            auto addRow = [](ImGuiPerfOverlayHost::TabData& tab, const std::string& label, const std::string& value) {
+                tab.rows.push_back(ImGuiPerfOverlayHost::MetricRow{label, value});
+            };
+            auto boolText = [](bool v) { return v ? std::string{"yes"} : std::string{"no"}; };
+            auto usText = [](int64_t v) { return std::to_string(static_cast<long long>(v)) + " us"; };
+            auto msText = [](double v) {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%.3f ms", v);
+                return std::string(buf);
+            };
+
+            auto& frameTab = addTab("frame", "Frame");
+            addRow(frameTab, "Frame count", std::to_string(static_cast<long long>(luaEngine.frameTimings.frameCount.load(std::memory_order_relaxed))));
+            addRow(frameTab, "Total current", usText(luaEngine.frameTimings.total.currentUs.load(std::memory_order_relaxed)));
+            addRow(frameTab, "Total avg", usText(luaEngine.frameTimings.total.getAvgUs()));
+            addRow(frameTab, "Total peak", usText(luaEngine.frameTimings.total.peakUs.load(std::memory_order_relaxed)));
+            addRow(frameTab, "Push state", usText(luaEngine.frameTimings.pushState.currentUs.load(std::memory_order_relaxed)));
+            addRow(frameTab, "Event listeners", usText(luaEngine.frameTimings.eventListeners.currentUs.load(std::memory_order_relaxed)));
+            addRow(frameTab, "UI update", usText(luaEngine.frameTimings.uiUpdate.currentUs.load(std::memory_order_relaxed)));
+            addRow(frameTab, "Paint", usText(luaEngine.frameTimings.paint.currentUs.load(std::memory_order_relaxed)));
+
+            auto& imguiTab = addTab("imgui", "ImGui");
+            addRow(imguiTab, "Context ready", boolText(luaEngine.frameTimings.imguiContextReady.load(std::memory_order_relaxed)));
+            addRow(imguiTab, "Capture mouse", boolText(luaEngine.frameTimings.imguiWantCaptureMouse.load(std::memory_order_relaxed)));
+            addRow(imguiTab, "Capture keyboard", boolText(luaEngine.frameTimings.imguiWantCaptureKeyboard.load(std::memory_order_relaxed)));
+            addRow(imguiTab, "Render", usText(luaEngine.frameTimings.imguiRenderUs.load(std::memory_order_relaxed)));
+            addRow(imguiTab, "Vertices", std::to_string(static_cast<long long>(luaEngine.frameTimings.imguiVertexCount.load(std::memory_order_relaxed))));
+            addRow(imguiTab, "Indices", std::to_string(static_cast<long long>(luaEngine.frameTimings.imguiIndexCount.load(std::memory_order_relaxed))));
+            addRow(imguiTab, "Document loaded", boolText(luaEngine.frameTimings.imguiDocumentLoaded.load(std::memory_order_relaxed)));
+            addRow(imguiTab, "Document dirty", boolText(luaEngine.frameTimings.imguiDocumentDirty.load(std::memory_order_relaxed)));
+            addRow(imguiTab, "Document lines", std::to_string(static_cast<long long>(luaEngine.frameTimings.imguiDocumentLineCount.load(std::memory_order_relaxed))));
+
+            auto& editorTab = addTab("editor", "Editor");
+            sol::object editorPerfObj = lua["__manifoldEditorPerf"];
+            if (editorPerfObj.valid() && editorPerfObj.is<sol::table>()) {
+                sol::table editorPerf = editorPerfObj.as<sol::table>();
+                addRow(editorTab, "Last event", editorPerf["lastEvent"].get_or(std::string{""}));
+                addRow(editorTab, "Draw", msText(editorPerf["lastDrawMs"].get_or(0.0)));
+                addRow(editorTab, "Draw peak", msText(editorPerf["peakDrawMs"].get_or(0.0)));
+                addRow(editorTab, "Line build", msText(editorPerf["lastLineBuildMs"].get_or(0.0)));
+                addRow(editorTab, "Cursor lookup", msText(editorPerf["lastCursorLookupMs"].get_or(0.0)));
+                addRow(editorTab, "Post cursor", msText(editorPerf["lastPostCursorMs"].get_or(0.0)));
+                addRow(editorTab, "Wheel", msText(editorPerf["lastWheelMs"].get_or(0.0)));
+                addRow(editorTab, "Wheel peak", msText(editorPerf["peakWheelMs"].get_or(0.0)));
+                addRow(editorTab, "Keypress", msText(editorPerf["lastKeypressMs"].get_or(0.0)));
+                addRow(editorTab, "Keypress peak", msText(editorPerf["peakKeypressMs"].get_or(0.0)));
+                addRow(editorTab, "Ensure visible", msText(editorPerf["lastEnsureVisibleMs"].get_or(0.0)));
+                addRow(editorTab, "Ensure visible peak", msText(editorPerf["peakEnsureVisibleMs"].get_or(0.0)));
+                addRow(editorTab, "Pos from point", msText(editorPerf["lastPosFromPointMs"].get_or(0.0)));
+                addRow(editorTab, "Pos from point peak", msText(editorPerf["peakPosFromPointMs"].get_or(0.0)));
+                addRow(editorTab, "Visible lines", std::to_string(editorPerf["lastVisibleLines"].get_or(0)));
+                addRow(editorTab, "Syntax spans", std::to_string(editorPerf["lastSyntaxSpanCount"].get_or(0)));
+                addRow(editorTab, "Syntax draw calls", std::to_string(editorPerf["lastSyntaxDrawCalls"].get_or(0)));
+                addRow(editorTab, "Gutter draw calls", std::to_string(editorPerf["lastGutterDrawCalls"].get_or(0)));
+                addRow(editorTab, "Text length", std::to_string(editorPerf["lastTextLen"].get_or(0)));
+                addRow(editorTab, "Cursor", std::to_string(editorPerf["lastCursorLine"].get_or(0)) + ":" + std::to_string(editorPerf["lastCursorCol"].get_or(0)));
+            } else {
+                addRow(editorTab, "Status", "No editor metrics available");
+            }
+
+            auto& uiTab = addTab("ui", "UI");
+            addRow(uiTab, "Mode", shell["mode"].get_or(std::string{}));
+            addRow(uiTab, "Left panel", shell["leftPanelMode"].get_or(std::string{}));
+            addRow(uiTab, "Edit content", shell["editContentMode"].get_or(std::string{}));
+            addRow(uiTab, "Total paint accumulated", usText(luaEngine.frameTimings.totalPaintAccumulatedUs.load(std::memory_order_relaxed)));
+            addRow(uiTab, "Main editor visible", boolText(mainConfig.visible));
+            addRow(uiTab, "Inline editor visible", boolText(inlineConfig.visible));
+            addRow(uiTab, "Script list visible", boolText(scriptListConfig.visible));
+            addRow(uiTab, "Hierarchy visible", boolText(hierarchyConfig.visible));
+            addRow(uiTab, "Inspector visible", boolText(inspectorConfig.visible));
+        }
+
         if (shellMode == "edit" && leftPanelMode == "scripts") {
             sol::object scriptCanvasObj = shell["scriptCanvas"];
             if (scriptCanvasObj.valid() && scriptCanvasObj.is<Canvas*>()) {
@@ -1156,6 +1278,29 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
     } else {
         if (inlineScriptEditorHost.isVisible() != false || inlineScriptEditorHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
             deferredVisibilityChanges.push_back({&inlineScriptEditorHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
+        }
+    }
+
+    if (perfOverlayConfig.visible) {
+        const auto editorBounds = getLocalBounds();
+        const int panelW = std::min(520, std::max(320, static_cast<int>(editorBounds.getWidth() * 0.42f)));
+        const int panelH = std::min(420, std::max(220, static_cast<int>(editorBounds.getHeight() * 0.55f)));
+        const auto defaultBounds = juce::Rectangle<int>(
+            std::max(0, editorBounds.getWidth() - panelW - 16),
+            16,
+            panelW,
+            panelH);
+        const auto currentBounds = perfOverlayHost.getBounds();
+        perfOverlayConfig.bounds = perfOverlayHost.isVisible() && currentBounds.getWidth() > 0 && currentBounds.getHeight() > 0
+            ? currentBounds
+            : defaultBounds;
+        perfOverlayHost.configureSnapshot(perfOverlayConfig.snapshot);
+        if (perfOverlayHost.isVisible() != true || perfOverlayHost.getBounds() != perfOverlayConfig.bounds) {
+            deferredVisibilityChanges.push_back({&perfOverlayHost, true, perfOverlayConfig.bounds});
+        }
+    } else {
+        if (perfOverlayHost.isVisible() != false || perfOverlayHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
+            deferredVisibilityChanges.push_back({&perfOverlayHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
         }
     }
 
