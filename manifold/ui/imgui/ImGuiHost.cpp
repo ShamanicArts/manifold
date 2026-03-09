@@ -18,16 +18,7 @@ size_t traceThreadId() {
 }
 
 void logMainImGuiHostEvent(const char* event, ImGuiHost* host, juce::OpenGLContext* context = nullptr) {
-    const auto bounds = host->getBounds();
-    const auto scale = context != nullptr && context->isAttached() ? context->getRenderingScale() : 0.0;
-    std::fprintf(stderr,
-                 "[ImGuiHost] %s tid=%zu showing=%d visible=%d attached=%d bounds=%d,%d %dx%d scale=%.3f\n",
-                 event,
-                 traceThreadId(),
-                 host->isShowing() ? 1 : 0,
-                 host->isVisible() ? 1 : 0,
-                 context != nullptr && context->isAttached() ? 1 : 0,
-                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(), scale);
+    juce::ignoreUnused(event, host, context);
 }
 }
 
@@ -285,24 +276,14 @@ void ImGuiHost::renderOpenGL() {
     ImGui::SetCurrentContext(context);
 
     auto& io = ImGui::GetIO();
-    const auto rawScale = static_cast<float>(openGLContext.getRenderingScale());
+    const auto scale = static_cast<float>(openGLContext.getRenderingScale());
     const auto width = std::max(1, getWidth());
     const auto height = std::max(1, getHeight());
-    
-    // Cap framebuffer resolution to prevent GPU overload on high-DPI displays
-    constexpr int maxFramebufferDim = 1920;
-    const auto rawFramebufferWidth = juce::roundToInt(rawScale * static_cast<float>(width));
-    const auto rawFramebufferHeight = juce::roundToInt(rawScale * static_cast<float>(height));
-    const auto maxDim = std::max(rawFramebufferWidth, rawFramebufferHeight);
-    const auto effectiveScale = (maxDim > maxFramebufferDim)
-        ? rawScale * static_cast<float>(maxFramebufferDim) / static_cast<float>(maxDim)
-        : rawScale;
-    
-    const auto framebufferWidth = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(width)));
-    const auto framebufferHeight = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(height)));
+    const auto framebufferWidth = std::max(1, juce::roundToInt(scale * static_cast<float>(width)));
+    const auto framebufferHeight = std::max(1, juce::roundToInt(scale * static_cast<float>(height)));
 
     io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
-    io.DisplayFramebufferScale = ImVec2(effectiveScale, effectiveScale);
+    io.DisplayFramebufferScale = ImVec2(scale, scale);
 
     {
         std::lock_guard<std::mutex> lock(inputMutex);
@@ -358,7 +339,8 @@ void ImGuiHost::renderOpenGL() {
                                            | ImGuiWindowFlags_NoMove
                                            | ImGuiWindowFlags_NoResize
                                            | ImGuiWindowFlags_NoSavedSettings
-                                           | ImGuiWindowFlags_NoBringToFrontOnFocus;
+                                           | ImGuiWindowFlags_NoBringToFrontOnFocus
+                                           | ImGuiWindowFlags_NoBackground;
 
     ImGui::Begin("##ManifoldImGuiEditorHost", nullptr, windowFlags);
 
@@ -377,7 +359,8 @@ void ImGuiHost::renderOpenGL() {
         }
 
         if (documentLoaded_.load(std::memory_order_relaxed) && textEditor_ != nullptr) {
-            textEditor_->Render("##ManifoldCodeEditor", windowFocused, ImVec2(-FLT_MIN, -FLT_MIN), false);
+            const ImVec2 contentSize = ImGui::GetContentRegionAvail();
+            textEditor_->Render("##ManifoldCodeEditor", windowFocused, contentSize, false);
         } else {
             ImGui::Dummy(ImVec2(12.0f, 12.0f));
             ImGui::SetCursorPos(ImVec2(12.0f, 12.0f));

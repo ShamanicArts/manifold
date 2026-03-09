@@ -94,18 +94,9 @@ end
 
 function M.attach(shell)
     function shell:setMode(newMode)
-        local setModeStartMs = shellLayoutPerfNowMs()
         if self.mode == newMode then return end
-
-        print(string.format("[setMode] START mode=%s -> %s viewport=%dx%d",
-            tostring(self.mode), tostring(newMode),
-            self.parentNode:getWidth(), self.parentNode:getHeight()))
-
         self.mode = newMode
-        local t1 = shellLayoutPerfNowMs()
-
         self:publishUiStateToGlobals()
-        local t2 = shellLayoutPerfNowMs()
 
         if newMode == "performance" then
             self.scriptEditor.focused = false
@@ -119,37 +110,22 @@ function M.attach(shell)
             self.perfButton:setBg(0xff1e293b)
             self.editButton:setBg(0xff38bdf8)
         end
-        local t3 = shellLayoutPerfNowMs()
 
         -- Hide settings overlay if open
         shell.settingsOpen = false
         if shell.scriptOverlay then
             shell.scriptOverlay:setBounds(0, 0, 0, 0)
         end
-        local t4 = shellLayoutPerfNowMs()
 
         -- Trigger layout refresh
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
-        local t5 = shellLayoutPerfNowMs()
-
         self:layout(w, h)
-        local t6 = shellLayoutPerfNowMs()
 
         if newMode == "edit" then
             self.treeRefreshPending = true
             self:refreshTree(true)
         end
-        local t7 = shellLayoutPerfNowMs()
-
-        print(string.format("[setMode] END total=%.1fms publish=%.1fms buttons=%.1fms overlay=%.1fms getWH=%.1fms layout=%.1fms refreshTree=%.1fms",
-            t7 - setModeStartMs,
-            t2 - t1,
-            t3 - t2,
-            t4 - t3,
-            t5 - t4,
-            t6 - t5,
-            t7 - t6))
     end
 
     function shell:setTitle(text)

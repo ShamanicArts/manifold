@@ -451,6 +451,7 @@ function M.attach(shell)
 
         local ed = shell.scriptEditor
         shell.scriptEditorButtonRects = {}
+        local imguiMainActive = (type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true)
 
         gfx.setColour(0xff101827)
         gfx.fillRect(0, 0, w, SCRIPT_EDITOR_STYLE.headerH)
@@ -504,13 +505,12 @@ function M.attach(shell)
         local textTop = SCRIPT_EDITOR_STYLE.headerH + pad
         local textX = gutterW + pad + 4
         local perfStart = nowSeconds()
-        local imguiMainActive = (type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true)
 
         ed.bodyRect = {
             x = 0,
             y = SCRIPT_EDITOR_STYLE.headerH,
             w = w,
-            h = math.max(0, h - SCRIPT_EDITOR_STYLE.headerH - statusH),
+            h = math.max(0, h - SCRIPT_EDITOR_STYLE.headerH),
         }
 
         gfx.setColour(0xff0b1220)

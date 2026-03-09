@@ -980,30 +980,7 @@ void LuaEngine::notifyUpdate() {
                    .count();
   frameTimings.uiUpdate.currentUs.store(uiUpdateUs, std::memory_order_relaxed);
 
-  const int64_t frameCount =
-      frameTimings.frameCount.load(std::memory_order_relaxed);
-  if (frameCount > 0 && (frameCount % 150) == 0 &&
-      frameCount != pImpl->lastFrameTimingLogCount) {
-    pImpl->lastFrameTimingLogCount = frameCount;
-
-    const int64_t totalUs = frameTimings.total.currentUs.load(std::memory_order_relaxed);
-    const int64_t paintUs = frameTimings.paint.currentUs.load(std::memory_order_relaxed);
-    const int64_t peakUs = frameTimings.total.peakUs.load(std::memory_order_relaxed);
-    const int64_t avgUsX100 = frameTimings.total.avgUsX100.load(std::memory_order_relaxed);
-
-    std::fprintf(stderr,
-                 "FrameTiming[%lld]: total=%lldus pushState=%lldus events=%lldus "
-                 "uiUpdate=%lldus paint=%lldus peak=%lldus avg=%.1fus\n",
-                 static_cast<long long>(frameCount),
-                 static_cast<long long>(totalUs),
-                 static_cast<long long>(pushStateUs),
-                 static_cast<long long>(eventListenersUs),
-                 static_cast<long long>(uiUpdateUs),
-                 static_cast<long long>(paintUs),
-                 static_cast<long long>(peakUs),
-                 static_cast<double>(avgUsX100) / 100.0);
-    std::fflush(stderr);
-  }
+  juce::ignoreUnused(pushStateUs, eventListenersUs, uiUpdateUs);
 }
 
 bool LuaEngine::isScriptLoaded() const { return coreEngine_.isScriptLoaded(); }

@@ -17,31 +17,11 @@ size_t traceThreadId() {
 }
 
 void logHierarchyHostEvent(const char* event, ImGuiHierarchyHost* host, juce::OpenGLContext* context = nullptr) {
-    const auto bounds = host->getBounds();
-    const auto scale = context != nullptr && context->isAttached() ? context->getRenderingScale() : 0.0;
-    std::fprintf(stderr,
-                 "[ImGuiHierarchyHost] %s tid=%zu showing=%d visible=%d attached=%d bounds=%d,%d %dx%d scale=%.3f\n",
-                 event,
-                 traceThreadId(),
-                 host->isShowing() ? 1 : 0,
-                 host->isVisible() ? 1 : 0,
-                 context != nullptr && context->isAttached() ? 1 : 0,
-                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(), scale);
+    juce::ignoreUnused(event, host, context);
 }
 
 void logHierarchyHostMouse(const char* event, ImGuiHierarchyHost* host, const juce::MouseEvent& e) {
-    const auto bounds = host->getBounds();
-    std::fprintf(stderr,
-                 "[ImGuiHierarchyHostMouse] %s tid=%zu pos=%.1f,%.1f showing=%d visible=%d bounds=%d,%d %dx%d clicks=%d dragged=%d\n",
-                 event,
-                 traceThreadId(),
-                 e.position.x,
-                 e.position.y,
-                 host->isShowing() ? 1 : 0,
-                 host->isVisible() ? 1 : 0,
-                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(),
-                 e.getNumberOfClicks(),
-                 e.mouseWasDraggedSinceMouseDown() ? 1 : 0);
+    juce::ignoreUnused(event, host, e);
 }
 }
 

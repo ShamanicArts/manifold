@@ -31,39 +31,7 @@ void logCanvasInputEvent(const Canvas& canvas,
                          const juce::MouseEvent* mouseEvent,
                          double callbackMs,
                          double totalMs) {
-    const auto& name = canvas.getName();
-    const bool interesting = isInterestingCanvasName(name);
-    const double thresholdMs = std::strcmp(eventName, "mouseMove") == 0 ? 8.0 : 2.0;
-    if (!interesting && callbackMs < thresholdMs && totalMs < thresholdMs) {
-        return;
-    }
-
-    const auto* parent = canvas.getParentComponent();
-    const auto bounds = canvas.getBounds();
-    const auto screenBounds = canvas.getScreenBounds();
-    const auto pos = mouseEvent != nullptr ? mouseEvent->getPosition() : juce::Point<int>();
-    const auto screenPos = mouseEvent != nullptr ? mouseEvent->getScreenPosition() : juce::Point<int>();
-    const int clicks = mouseEvent != nullptr ? mouseEvent->getNumberOfClicks() : 0;
-    const int dragged = mouseEvent != nullptr && mouseEvent->mouseWasDraggedSinceMouseDown() ? 1 : 0;
-    const auto scale = juce::Component::getApproximateScaleFactorForComponent(&canvas);
-
-    std::fprintf(stderr,
-                 "[CanvasInput] %s name=%s parent=%s pos=%d,%d screen=%d,%d clicks=%d dragged=%d cb=%.3fms total=%.3fms showing=%d visible=%d bounds=%d,%d %dx%d screenBounds=%d,%d %dx%d scale=%.3f children=%d\n",
-                 eventName,
-                 name.toRawUTF8(),
-                 parent != nullptr ? parent->getName().toRawUTF8() : "",
-                 pos.x, pos.y,
-                 screenPos.x, screenPos.y,
-                 clicks,
-                 dragged,
-                 callbackMs,
-                 totalMs,
-                 canvas.isShowing() ? 1 : 0,
-                 canvas.isVisible() ? 1 : 0,
-                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(),
-                 screenBounds.getX(), screenBounds.getY(), screenBounds.getWidth(), screenBounds.getHeight(),
-                 static_cast<double>(scale),
-                 canvas.getNumChildren());
+    juce::ignoreUnused(canvas, eventName, mouseEvent, callbackMs, totalMs);
 }
 }
 
@@ -196,27 +164,7 @@ void Canvas::openGLContextClosing() {
 }
 
 bool Canvas::hitTest(int x, int y) {
-    const bool result = juce::Component::hitTest(x, y);
-    if (isInterestingCanvasName(getName())) {
-        bool interceptsSelf = false;
-        bool interceptsChildren = false;
-        getInterceptsMouseClicks(interceptsSelf, interceptsChildren);
-        const auto screenBounds = getScreenBounds();
-        const auto scale = juce::Component::getApproximateScaleFactorForComponent(this);
-        std::fprintf(stderr,
-                     "[CanvasHitTest] name=%s point=%d,%d result=%d interceptsSelf=%d interceptsChildren=%d visible=%d bounds=%d,%d %dx%d screenBounds=%d,%d %dx%d scale=%.3f\n",
-                     getName().toRawUTF8(),
-                     x,
-                     y,
-                     result ? 1 : 0,
-                     interceptsSelf ? 1 : 0,
-                     interceptsChildren ? 1 : 0,
-                     isVisible() ? 1 : 0,
-                     getBounds().getX(), getBounds().getY(), getBounds().getWidth(), getBounds().getHeight(),
-                     screenBounds.getX(), screenBounds.getY(), screenBounds.getWidth(), screenBounds.getHeight(),
-                     static_cast<double>(scale));
-    }
-    return result;
+    return juce::Component::hitTest(x, y);
 }
 
 void Canvas::mouseDown(const juce::MouseEvent& e) {

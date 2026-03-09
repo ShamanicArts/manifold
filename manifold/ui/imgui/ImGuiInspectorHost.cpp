@@ -20,37 +20,11 @@ size_t traceThreadId() {
 }
 
 void logInspectorHostEvent(const char* event, ImGuiInspectorHost* host, juce::OpenGLContext* context = nullptr) {
-    const auto bounds = host->getBounds();
-    const auto scale = context != nullptr && context->isAttached() ? context->getRenderingScale() : 0.0;
-    std::fprintf(stderr,
-                 "[ImGuiInspectorHost] %s tid=%zu showing=%d visible=%d attached=%d bounds=%d,%d %dx%d scale=%.3f\n",
-                 event,
-                 traceThreadId(),
-                 host->isShowing() ? 1 : 0,
-                 host->isVisible() ? 1 : 0,
-                 context != nullptr && context->isAttached() ? 1 : 0,
-                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight(), scale);
+    juce::ignoreUnused(event, host, context);
 }
 
 void logInspectorNextWindowLeakIfNeeded(ImGuiInspectorHost* host, int width, int height) {
-    auto* context = ImGui::GetCurrentContext();
-    if (context == nullptr) {
-        return;
-    }
-
-    const auto flags = context->NextWindowData.HasFlags;
-    if (flags == 0) {
-        return;
-    }
-
-    std::fprintf(stderr,
-                 "[ImGuiInspectorHost] unexpected NextWindowData tid=%zu flags=0x%X width=%d height=%d stack=%d\n",
-                 traceThreadId(),
-                 flags,
-                 width,
-                 height,
-                 context->CurrentWindowStack.Size);
-    juce::ignoreUnused(host);
+    juce::ignoreUnused(host, width, height);
 }
 }
 

@@ -873,12 +873,7 @@ function M.attach(shell)
         local maxScroll = math.max(0, #self.scriptRows * self.scriptRowHeight - self.scriptViewportH)
         self.scriptScrollY = clamp(self.scriptScrollY, 0, maxScroll)
         self.scriptRowsLastRefreshAt = nowSeconds()
-        shellPerfTrace("refreshScriptRows", perfStartMs,
-            string.format("rows=%d projectFiles=%s currentUi=%s editing=%s",
-                #self.scriptRows,
-                tostring(projectFiles ~= nil),
-                tostring(currentUi),
-                tostring(editingPath)))
+        -- Logging removed to reduce console spam
     end
 
     function shell:refreshScriptInspectorData(row)
@@ -922,17 +917,13 @@ function M.attach(shell)
             si.graphDragging = false
             self.runtimeParamsLastRefreshAt = -1
             self:hideRuntimeParamControls(1)
-            shellPerfTrace("refreshScriptInspectorData", perfStartMs, "cleared selection")
             return
         end
 
-        local readStartMs = shellPerfNowMs()
         local text = ""
         if readTextFile and type(row.path) == "string" and row.path ~= "" then
             text = readTextFile(row.path) or ""
         end
-        shellPerfTrace("refreshScriptInspectorData.readTextFile", readStartMs,
-            string.format("path=%s bytes=%d", tostring(row.path), #text))
 
         si.kind = row.kind or ""
         si.name = row.name or fileStem(row.path or "")
@@ -968,26 +959,10 @@ function M.attach(shell)
         self:hideRuntimeParamControls(1)
 
         if si.kind == "dsp" then
-            local parseParamsStartMs = shellPerfNowMs()
             si.params = parseDspParamDefsFromCode(text)
-            shellPerfTrace("refreshScriptInspectorData.parseParams", parseParamsStartMs,
-                string.format("count=%d path=%s", #si.params, tostring(si.path)))
-
-            local runtimeParamsStartMs = shellPerfNowMs()
             si.runtimeParams = collectRuntimeParamsForScript(row, self.stateParamsCache, si.params, self.dspPreviewSlotName)
-            shellPerfTrace("refreshScriptInspectorData.collectRuntimeParams", runtimeParamsStartMs,
-                string.format("count=%d", #si.runtimeParams))
-
-            local parseGraphStartMs = shellPerfNowMs()
             si.graph = parseDspGraphFromCode(text)
-            shellPerfTrace("refreshScriptInspectorData.parseGraph", parseGraphStartMs,
-                string.format("nodes=%d edges=%d",
-                    #(si.graph.nodes or {}),
-                    #(si.graph.edges or {})))
         end
-
-        shellPerfTrace("refreshScriptInspectorData", perfStartMs,
-            string.format("kind=%s path=%s", tostring(si.kind), tostring(si.path)))
     end
 
     function shell:refreshScriptInspectorRuntimeParams()
@@ -1389,66 +1364,28 @@ function M.attach(shell)
             return
         end
 
-        local totalStartMs = shellPerfNowMs()
-        local previousMode = self.leftPanelMode
-
         self.leftPanelMode = mode
-        local phaseStartMs = shellPerfNowMs()
         self:publishUiStateToGlobals()
-        shellPerfTrace("setLeftPanelMode.publishUiStateToGlobals", phaseStartMs,
-            string.format("from=%s to=%s", tostring(previousMode), tostring(mode)))
 
         if mode == "hierarchy" then
-            phaseStartMs = shellPerfNowMs()
             self.treeLabel:setText("Hierarchy")
-            shellPerfTrace("setLeftPanelMode.treeLabel", phaseStartMs, "mode=hierarchy")
-
-            phaseStartMs = shellPerfNowMs()
             self:refreshTree(true)
-            shellPerfTrace("setLeftPanelMode.refreshTree", phaseStartMs,
-                string.format("rows=%d selected=%d", #self.treeRows, #self.selectedWidgets))
-
-            phaseStartMs = shellPerfNowMs()
             self.editContentMode = "preview"
             self.scriptEditor.focused = false
-            shellPerfTrace("setLeftPanelMode.hierarchyState", phaseStartMs,
-                string.format("editContentMode=%s", tostring(self.editContentMode)))
         else
-            phaseStartMs = shellPerfNowMs()
             self.treeLabel:setText("Scripts")
-            shellPerfTrace("setLeftPanelMode.treeLabel", phaseStartMs, "mode=scripts")
-
-            phaseStartMs = shellPerfNowMs()
             self:refreshScriptRows()
-            shellPerfTrace("setLeftPanelMode.refreshScriptRows", phaseStartMs,
-                string.format("rows=%d selected=%s", #self.scriptRows,
-                    tostring(self.selectedScriptRow and self.selectedScriptRow.path or nil)))
-
-            phaseStartMs = shellPerfNowMs()
             self:refreshScriptInspectorData(self.selectedScriptRow)
-            shellPerfTrace("setLeftPanelMode.refreshScriptInspectorData", phaseStartMs,
-                string.format("path=%s", tostring(self.scriptInspector and self.scriptInspector.path or nil)))
         end
 
-        phaseStartMs = shellPerfNowMs()
         self:_rebuildInspectorRows()
-        shellPerfTrace("setLeftPanelMode._rebuildInspectorRows", phaseStartMs,
-            string.format("rows=%d", #self.inspectorRows))
 
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
-        phaseStartMs = shellPerfNowMs()
         self:layout(w, h)
-        shellPerfTrace("setLeftPanelMode.layout", phaseStartMs,
-            string.format("size=%dx%d", w, h))
 
-        phaseStartMs = shellPerfNowMs()
         self.treeCanvas:repaint()
         self.scriptCanvas:repaint()
-        shellPerfTrace("setLeftPanelMode.repaint", phaseStartMs)
-
-        shellPerfTrace("setLeftPanelMode.total", totalStartMs,
-            string.format("from=%s to=%s", tostring(previousMode), tostring(mode)))
     end
 
     function shell:_findMainTabById(tabId)

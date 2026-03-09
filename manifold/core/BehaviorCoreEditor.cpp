@@ -21,27 +21,12 @@ double perfElapsedMs(PerfClock::time_point start) {
 }
 
 void logEditorPerf(const char* label, PerfClock::time_point start, const char* extra = nullptr) {
-    const auto elapsedMs = perfElapsedMs(start);
-    // Log all timing for debugging resolution-dependent freeze
-    if (extra != nullptr && extra[0] != '\0') {
-        std::fprintf(stderr, "[BehaviorCoreEditorPerf] %s %.3fms %s\n", label, elapsedMs, extra);
-    } else {
-        std::fprintf(stderr, "[BehaviorCoreEditorPerf] %s %.3fms\n", label, elapsedMs);
-    }
+    juce::ignoreUnused(label, start, extra);
 }
 
 void logEditorHostLayout(const char* name, HostLayoutTraceState& state, bool visible,
                          const juce::Rectangle<int>& bounds) {
-    if (state.initialised && state.visible == visible && state.bounds == bounds) {
-        return;
-    }
-
-    std::fprintf(stderr,
-                 "[BehaviorCoreEditor] host=%s visible=%d bounds=%d,%d %dx%d\n",
-                 name,
-                 visible ? 1 : 0,
-                 bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight());
-
+    juce::ignoreUnused(name, visible, bounds);
     state.initialised = true;
     state.visible = visible;
     state.bounds = bounds;
@@ -214,10 +199,7 @@ void BehaviorCoreEditor::timerCallback() {
         luaEngine.frameTimings.update(totalUs, pushStateUs, eventListenersUs,
                                       uiUpdateUs, paintUs);
 
-        if (++logCount % 60 == 0) {
-            std::fprintf(stderr, "[TIMER] interval=%.1fms work=%.1fms (%.1f%% occupancy)\n",
-                         elapsed / 1000.0, totalUs / 1000.0, 100.0 * totalUs / elapsed);
-        }
+        juce::ignoreUnused(logCount, elapsed);
     }
 }
 
@@ -594,13 +576,14 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
                     const auto parentBounds = mainTabContent->getBounds();
                     sol::object bodyRectObj = scriptEditor["bodyRect"];
                     int x = parentBounds.getX();
-                    int y = parentBounds.getY() + 32;
+                    int y = parentBounds.getY();
                     int w = parentBounds.getWidth();
-                    int h = std::max(0, parentBounds.getHeight() - 32 - 20);
+                    int h = parentBounds.getHeight();
+
                     if (bodyRectObj.valid() && bodyRectObj.is<sol::table>()) {
                         sol::table bodyRect = bodyRectObj.as<sol::table>();
                         x = parentBounds.getX() + bodyRect["x"].get_or(0);
-                        y = parentBounds.getY() + bodyRect["y"].get_or(32);
+                        y = parentBounds.getY() + bodyRect["y"].get_or(0);
                         w = bodyRect["w"].get_or(w);
                         h = bodyRect["h"].get_or(h);
                     }
