@@ -3,9 +3,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_opengl/juce_opengl.h>
 
+#include <atomic>
 #include <mutex>
 #include <string>
-#include <utility>
 #include <vector>
 
 class ImGuiPerfOverlayHost : public juce::Component, private juce::OpenGLRenderer {
@@ -34,6 +34,7 @@ public:
 
     std::function<void(const std::string& tabId)> onTabChanged;
     std::function<void()> onClosed;
+    std::function<void(const juce::Rectangle<int>& bounds)> onBoundsChanged;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -58,18 +59,23 @@ private:
     Snapshot currentSnapshot() const;
     void setActiveTabLocally(const std::string& tabId);
     void requestClose();
+    void notifyBoundsChanged();
+    void attachContextIfNeeded();
+
     juce::Rectangle<int> titleBarBounds() const;
     juce::Rectangle<int> closeButtonBounds() const;
+    juce::Rectangle<int> tabBoundsForIndex(int index) const;
+    juce::Rectangle<int> contentBounds() const;
 
+    juce::OpenGLContext openGLContext;
     void* imguiContext = nullptr;
 
     mutable std::mutex dataMutex_;
     Snapshot snapshot_;
-    std::vector<std::pair<std::string, juce::Rectangle<int>>> tabHitRegions_;
     bool draggingTitle_ = false;
     juce::Point<int> dragStartScreen_;
     juce::Rectangle<int> dragStartBounds_;
-    int scrollRows_ = 0;
+    std::atomic<int> scrollRows_{0};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImGuiPerfOverlayHost)
 };

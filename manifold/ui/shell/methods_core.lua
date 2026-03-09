@@ -98,6 +98,505 @@ local function shellPerfTrace(label, startMs, extra)
 end
 
 function M.attach(shell)
+    local function cloneRect(bounds)
+        if type(bounds) ~= "table" then
+            return { x = 0, y = 0, w = 0, h = 0 }
+        end
+        return {
+            x = math.floor(tonumber(bounds.x) or 0),
+            y = math.floor(tonumber(bounds.y) or 0),
+            w = math.max(0, math.floor(tonumber(bounds.w) or 0)),
+            h = math.max(0, math.floor(tonumber(bounds.h) or 0)),
+        }
+    end
+
+    local function normalizeSurfaceDescriptor(id, descriptor)
+        local d = type(descriptor) == "table" and descriptor or {}
+        return {
+            id = tostring(d.id or id or ""),
+            kind = tostring(d.kind or "panel"),
+            backend = tostring(d.backend or "lua-canvas"),
+            visible = d.visible == true,
+            bounds = cloneRect(d.bounds),
+            z = math.floor(tonumber(d.z) or 0),
+            mode = tostring(d.mode or "global"),
+            docking = tostring(d.docking or "floating"),
+            interactive = d.interactive ~= false,
+            modal = d.modal == true,
+            payloadKey = tostring(d.payloadKey or id or ""),
+            title = tostring(d.title or id or ""),
+        }
+    end
+
+    function shell:ensureSurfaceRegistry()
+        if type(self.surfaces) ~= "table" then
+            self.surfaces = {}
+        end
+        return self.surfaces
+    end
+
+    function shell:defineSurface(id, descriptor)
+        local key = tostring(id or "")
+        if key == "" then
+            return nil
+        end
+        local surfaces = self:ensureSurfaceRegistry()
+        surfaces[key] = normalizeSurfaceDescriptor(key, descriptor)
+        return surfaces[key]
+    end
+
+    function shell:updateSurface(id, patch)
+        local key = tostring(id or "")
+        if key == "" then
+            return nil
+        end
+        local surfaces = self:ensureSurfaceRegistry()
+        local current = normalizeSurfaceDescriptor(key, surfaces[key] or { id = key })
+        if type(patch) == "table" then
+            for k, v in pairs(patch) do
+                if k == "bounds" then
+                    current.bounds = cloneRect(v)
+                else
+                    current[k] = v
+                end
+            end
+        end
+        surfaces[key] = normalizeSurfaceDescriptor(key, current)
+        return surfaces[key]
+    end
+
+    function shell:getSurface(id)
+        local surfaces = self:ensureSurfaceRegistry()
+        return surfaces[tostring(id or "")]
+    end
+
+    function shell:getSurfaceDescriptors()
+        return self:ensureSurfaceRegistry()
+    end
+
+    function shell:getDefaultPerfOverlayBounds(totalW, totalH)
+        local w = math.max(1, math.floor(tonumber(totalW) or self.parentNode:getWidth() or 0))
+        local h = math.max(1, math.floor(tonumber(totalH) or self.parentNode:getHeight() or 0))
+        local panelW = math.min(520, math.max(320, math.floor(w * 0.42)))
+        local panelH = math.min(420, math.max(220, math.floor(h * 0.55)))
+        return {
+            x = math.max(0, w - panelW - 16),
+            y = 16,
+            w = panelW,
+            h = panelH,
+        }
+    end
+
+    function shell:syncPerfOverlaySurface(totalW, totalH)
+        self.perfOverlay = self.perfOverlay or { visible = false, activeTab = "frame" }
+
+        local bounds = self.perfOverlay.bounds
+        if type(bounds) ~= "table"
+            or (tonumber(bounds.w) or 0) <= 0
+            or (tonumber(bounds.h) or 0) <= 0 then
+            bounds = self:getDefaultPerfOverlayBounds(totalW, totalH)
+            self.perfOverlay.bounds = cloneRect(bounds)
+        else
+            bounds = cloneRect(bounds)
+            self.perfOverlay.bounds = bounds
+        end
+
+        return self:defineSurface("perfOverlay", {
+            id = "perfOverlay",
+            kind = "overlay",
+            backend = "imgui",
+            visible = self.perfOverlay.visible == true,
+            bounds = bounds,
+            z = 100,
+            mode = "global",
+            docking = "floating",
+            interactive = true,
+            modal = false,
+            payloadKey = "perfOverlay",
+            title = "Performance",
+        })
+    end
+
+    function shell:setPerfOverlayVisible(visible)
+        self.perfOverlay = self.perfOverlay or { visible = false, activeTab = "frame" }
+        self.perfOverlay.visible = visible == true
+        self:syncPerfOverlaySurface(self.parentNode:getWidth(), self.parentNode:getHeight())
+    end
+
+    function shell:setPerfOverlayActiveTab(tabId)
+        self.perfOverlay = self.perfOverlay or { visible = false, activeTab = "frame" }
+        if type(tabId) == "string" and tabId ~= "" then
+            self.perfOverlay.activeTab = string.lower(tabId)
+        end
+        self:syncPerfOverlaySurface(self.parentNode:getWidth(), self.parentNode:getHeight())
+    end
+
+    function shell:setPerfOverlayBounds(x, y, w, h)
+        self.perfOverlay = self.perfOverlay or { visible = false, activeTab = "frame" }
+        self.perfOverlay.bounds = {
+            x = math.floor(tonumber(x) or 0),
+            y = math.floor(tonumber(y) or 0),
+            w = math.max(0, math.floor(tonumber(w) or 0)),
+            h = math.max(0, math.floor(tonumber(h) or 0)),
+        }
+        self:syncPerfOverlaySurface(self.parentNode:getWidth(), self.parentNode:getHeight())
+    end
+
+    local function defineHostSurface(shellRef, id, d, visible, bounds)
+        return shellRef:defineSurface(id, {
+            id = id,
+            kind = d.kind or "tool",
+            backend = d.backend or "imgui",
+            visible = visible == true,
+            bounds = bounds,
+            z = math.floor(tonumber(d.z) or 40),
+            mode = d.mode or "edit",
+            docking = d.docking or "docked-left",
+            interactive = d.interactive ~= false,
+            modal = d.modal == true,
+            payloadKey = d.payloadKey or id,
+            title = d.title or id,
+        })
+    end
+
+    function shell:syncHostSurfaceFromCanvas(id, descriptor)
+        local d = type(descriptor) == "table" and descriptor or {}
+        local panelNode = d.panelNode
+        local contentNode = d.contentNode
+        local visible = d.visible == true
+
+        local bounds = { x = 0, y = 0, w = 0, h = 0 }
+        if visible and panelNode ~= nil and contentNode ~= nil and panelNode.getBounds and contentNode.getBounds then
+            local px, py, pw, ph = panelNode:getBounds()
+            local cx, cy, cw, ch = contentNode:getBounds()
+            local _ = pw
+            _ = ph
+            if (tonumber(cw) or 0) > 0 and (tonumber(ch) or 0) > 0 then
+                bounds = {
+                    x = math.floor((tonumber(px) or 0) + (tonumber(cx) or 0)),
+                    y = math.floor((tonumber(py) or 0) + (tonumber(cy) or 0)),
+                    w = math.max(0, math.floor(tonumber(cw) or 0)),
+                    h = math.max(0, math.floor(tonumber(ch) or 0)),
+                }
+            else
+                visible = false
+            end
+        else
+            visible = false
+        end
+
+        return defineHostSurface(self, id, d, visible, bounds)
+    end
+
+    function shell:syncHostSurfaceFromPanelInsets(id, descriptor)
+        local d = type(descriptor) == "table" and descriptor or {}
+        local panelNode = d.panelNode
+        local visible = d.visible == true
+        local bounds = { x = 0, y = 0, w = 0, h = 0 }
+
+        if visible and panelNode ~= nil and panelNode.getBounds then
+            local px, py, pw, ph = panelNode:getBounds()
+            local insetX = math.floor(tonumber(d.insetX) or 0)
+            local insetY = math.floor(tonumber(d.insetY) or 0)
+            local insetW = math.floor(tonumber(d.insetW) or 0)
+            local insetH = math.floor(tonumber(d.insetH) or 0)
+            local bw = math.max(0, math.floor(tonumber(pw) or 0) + insetW)
+            local bh = math.max(0, math.floor(tonumber(ph) or 0) + insetH)
+            if bw > 0 and bh > 0 then
+                bounds = {
+                    x = math.floor((tonumber(px) or 0) + insetX),
+                    y = math.floor((tonumber(py) or 0) + insetY),
+                    w = bw,
+                    h = bh,
+                }
+            else
+                visible = false
+            end
+        else
+            visible = false
+        end
+
+        return defineHostSurface(self, id, d, visible, bounds)
+    end
+
+    function shell:computeMainScriptEditorGeometry()
+        local ed = self.scriptEditor
+        if type(ed) ~= "table" then
+            return
+        end
+
+        ed.bodyRect = nil
+
+        local viewW = 0
+        local viewH = 0
+        if self.mainTabContent and self.mainTabContent.getWidth and self.mainTabContent.getHeight then
+            viewW = math.floor(tonumber(self.mainTabContent:getWidth()) or 0)
+            viewH = math.floor(tonumber(self.mainTabContent:getHeight()) or 0)
+        end
+
+        if self.editContentMode ~= "script"
+            or (ed.path or "") == ""
+            or viewW <= 0
+            or viewH <= 0 then
+            if type(self.syncToolSurfaces) == "function" then
+                self:syncToolSurfaces()
+            end
+            return
+        end
+
+        ed.bodyRect = {
+            x = 0,
+            y = SCRIPT_EDITOR_STYLE.headerH,
+            w = viewW,
+            h = math.max(0, viewH - SCRIPT_EDITOR_STYLE.headerH),
+        }
+
+        if type(self.syncToolSurfaces) == "function" then
+            self:syncToolSurfaces()
+        end
+    end
+
+    function shell:computeScriptInspectorGeometry()
+        local si = self.scriptInspector
+        if type(si) ~= "table" then
+            return
+        end
+
+        si.editorHeaderRect = nil
+        si.editorBodyRect = nil
+        si.graphHeaderRect = nil
+        si.graphBodyRect = nil
+        si.runButtonRect = nil
+        si.stopButtonRect = nil
+
+        local viewW = 0
+        local viewH = 0
+        if self.inspectorCanvas and self.inspectorCanvas.getWidth and self.inspectorCanvas.getHeight then
+            viewW = math.floor(tonumber(self.inspectorCanvas:getWidth()) or 0)
+            viewH = math.floor(tonumber(self.inspectorCanvas:getHeight()) or 0)
+        end
+
+        if self.leftPanelMode ~= "scripts"
+            or (si.path or "") == ""
+            or viewW <= 0
+            or viewH <= 0 then
+            if type(self.syncToolSurfaces) == "function" then
+                self:syncToolSurfaces()
+            end
+            return
+        end
+
+        local y = 6
+        local function advanceInfoRow()
+            y = y + 16
+        end
+
+        advanceInfoRow() -- Script
+        advanceInfoRow() -- Kind
+        if si.ownership and si.ownership ~= "" then
+            advanceInfoRow() -- Ownership
+            local docStatus = self:getStructuredDocumentStatus(si.path)
+            if type(docStatus) == "table" then
+                advanceInfoRow() -- Dirty
+            end
+            local projectStatus = self:getStructuredProjectStatus()
+            if type(projectStatus) == "table" and tostring(projectStatus.lastError or "") ~= "" then
+                advanceInfoRow() -- Last Error
+            end
+        end
+        advanceInfoRow() -- Path
+
+        if si.kind == "dsp" then
+            local declared = si.params or {}
+            local runtimeParams = si.runtimeParams or {}
+
+            advanceInfoRow() -- Params (declared)
+            advanceInfoRow() -- Params (runtime)
+            advanceInfoRow() -- Graph
+
+            local btnW = math.floor((viewW - 24) * 0.5)
+            local btnH = 18
+            si.runButtonRect = { x = 8, y = y, w = btnW, h = btnH }
+            si.stopButtonRect = { x = 12 + btnW, y = y, w = btnW, h = btnH }
+            y = y + btnH + 4
+
+            if si.runtimeStatus and si.runtimeStatus ~= "" then
+                y = y + 14
+            end
+
+            y = y + 14 -- Declared Params header
+            if #declared == 0 then
+                y = y + 14
+            else
+                local maxRows = math.min(6, #declared)
+                y = y + (maxRows * 14)
+                if #declared > maxRows then
+                    y = y + 12
+                end
+            end
+
+            y = y + 14 -- Runtime Params header
+            y = y + 12 -- Runtime params hint text
+            if #runtimeParams == 0 then
+                y = y + 14
+            else
+                local maxRows = math.min(6, #runtimeParams)
+                y = y + (maxRows * 20)
+                if #runtimeParams > maxRows then
+                    y = y + 12
+                end
+            end
+        end
+
+        y = y + 4
+
+        local headerH = 20
+        si.editorHeaderRect = { x = 6, y = y, w = viewW - 12, h = headerH }
+        y = y + headerH + 4
+
+        if si.editorCollapsed ~= true then
+            local bodyH = math.max(80, math.min(180, viewH - y - ((si.kind == "dsp") and 150 or 40)))
+            si.editorBodyRect = { x = 6, y = y, w = viewW - 12, h = bodyH }
+            y = y + bodyH + 6
+        end
+
+        if si.kind == "dsp" then
+            si.graphHeaderRect = { x = 6, y = y, w = viewW - 12, h = headerH }
+            y = y + headerH + 4
+
+            if si.graphCollapsed ~= true then
+                local bodyH = math.max(90, viewH - y - 8)
+                si.graphBodyRect = { x = 6, y = y, w = viewW - 12, h = bodyH }
+            end
+        end
+
+        if type(self.syncToolSurfaces) == "function" then
+            self:syncToolSurfaces()
+        end
+    end
+
+    function shell:syncToolSurfaces()
+        self:syncHostSurfaceFromCanvas("hierarchyTool", {
+            kind = "tool",
+            backend = "imgui",
+            visible = self.mode == "edit" and self.leftPanelMode == "hierarchy",
+            panelNode = self.treePanel and self.treePanel.node or nil,
+            contentNode = self.treeCanvas,
+            z = 40,
+            mode = "edit",
+            docking = "docked-left",
+            payloadKey = "treeRows",
+            title = "Hierarchy",
+        })
+
+        self:syncHostSurfaceFromCanvas("scriptList", {
+            kind = "tool",
+            backend = "imgui",
+            visible = self.mode == "edit" and self.leftPanelMode == "scripts",
+            panelNode = self.treePanel and self.treePanel.node or nil,
+            contentNode = self.scriptCanvas,
+            z = 40,
+            mode = "edit",
+            docking = "docked-left",
+            payloadKey = "scriptRows",
+            title = "Scripts",
+        })
+
+        self:syncHostSurfaceFromPanelInsets("inspectorTool", {
+            kind = "tool",
+            backend = "imgui",
+            visible = self.mode == "edit" and self.leftPanelMode == "hierarchy",
+            panelNode = self.inspectorPanel and self.inspectorPanel.node or nil,
+            insetX = 6,
+            insetY = 30,
+            insetW = -12,
+            insetH = -36,
+            z = 40,
+            mode = "edit",
+            docking = "docked-right",
+            payloadKey = "inspectorRows",
+            title = "Inspector",
+        })
+
+        self:syncHostSurfaceFromCanvas("scriptInspectorTool", {
+            kind = "tool",
+            backend = "imgui",
+            visible = self.mode == "edit" and self.leftPanelMode == "scripts",
+            panelNode = self.inspectorPanel and self.inspectorPanel.node or nil,
+            contentNode = self.inspectorCanvas,
+            z = 40,
+            mode = "edit",
+            docking = "docked-right",
+            payloadKey = "scriptInspector",
+            title = "Script Inspector",
+        })
+
+        local mainEditorVisible = self.mode == "edit"
+            and self.editContentMode == "script"
+            and type(self.scriptEditor) == "table"
+            and type(self.scriptEditor.path) == "string"
+            and self.scriptEditor.path ~= ""
+            and type(self.scriptEditor.bodyRect) == "table"
+            and (tonumber(self.scriptEditor.bodyRect.w) or 0) > 0
+            and (tonumber(self.scriptEditor.bodyRect.h) or 0) > 0
+
+        local mainEditorBounds = { x = 0, y = 0, w = 0, h = 0 }
+        if mainEditorVisible and self.mainTabContent ~= nil and self.mainTabContent.getBounds then
+            local px, py, _, _ = self.mainTabContent:getBounds()
+            local body = self.scriptEditor.bodyRect
+            mainEditorBounds = {
+                x = math.floor((tonumber(px) or 0) + (tonumber(body.x) or 0)),
+                y = math.floor((tonumber(py) or 0) + (tonumber(body.y) or 0)),
+                w = math.max(0, math.floor(tonumber(body.w) or 0)),
+                h = math.max(0, math.floor(tonumber(body.h) or 0)),
+            }
+        end
+        defineHostSurface(self, "mainScriptEditor", {
+            kind = "tool",
+            backend = "imgui",
+            z = 45,
+            mode = "edit",
+            docking = "fill",
+            payloadKey = "scriptEditor",
+            title = "Script Editor",
+        }, mainEditorVisible, mainEditorBounds)
+
+        local si = self.scriptInspector or {}
+        local inlineVisible = self.mode == "edit"
+            and self.leftPanelMode == "scripts"
+            and si.editorCollapsed ~= true
+            and type(si.path) == "string"
+            and si.path ~= ""
+            and type(si.editorBodyRect) == "table"
+            and (tonumber(si.editorBodyRect.w) or 0) > 0
+            and (tonumber(si.editorBodyRect.h) or 0) > 0
+            and self.inspectorPanel ~= nil
+            and self.inspectorPanel.node ~= nil
+            and self.inspectorPanel.node.getBounds ~= nil
+
+        local inlineBounds = { x = 0, y = 0, w = 0, h = 0 }
+        if inlineVisible then
+            local px, py, _, _ = self.inspectorPanel.node:getBounds()
+            local cx, cy, _, _ = self.inspectorCanvas:getBounds()
+            local body = si.editorBodyRect
+            inlineBounds = {
+                x = math.floor((tonumber(px) or 0) + (tonumber(cx) or 0) + (tonumber(body.x) or 0)),
+                y = math.floor((tonumber(py) or 0) + (tonumber(cy) or 0) + (tonumber(body.y) or 0)),
+                w = math.max(0, math.floor(tonumber(body.w) or 0)),
+                h = math.max(0, math.floor(tonumber(body.h) or 0)),
+            }
+        end
+        defineHostSurface(self, "inlineScriptEditor", {
+            kind = "tool",
+            backend = "imgui",
+            z = 46,
+            mode = "edit",
+            docking = "fill",
+            payloadKey = "scriptInspector",
+            title = "Inline Script",
+        }, inlineVisible, inlineBounds)
+    end
+
     function shell:_isWidgetInTree(canvas)
         if not canvas then
             return false
@@ -525,21 +1024,21 @@ function M.attach(shell)
             self.perfOverlay = self.perfOverlay or { visible = false, activeTab = "frame" }
 
             if arg == "" or arg == "toggle" then
-                self.perfOverlay.visible = not (self.perfOverlay.visible == true)
+                self:setPerfOverlayVisible(not (self.perfOverlay.visible == true))
             elseif arg == "on" then
-                self.perfOverlay.visible = true
+                self:setPerfOverlayVisible(true)
             elseif arg == "off" then
-                self.perfOverlay.visible = false
+                self:setPerfOverlayVisible(false)
             elseif arg == "tab" then
                 if activeTab == "frame" or activeTab == "imgui" or activeTab == "editor" or activeTab == "ui" then
-                    self.perfOverlay.activeTab = activeTab
-                    self.perfOverlay.visible = true
+                    self:setPerfOverlayActiveTab(activeTab)
+                    self:setPerfOverlayVisible(true)
                 else
                     self:appendConsoleLine("ERR: perf tab <frame|imgui|editor|ui>", 0xfffca5a5)
                     return
                 end
             elseif arg == "reset" then
-                self.perfOverlay.visible = true
+                self:setPerfOverlayVisible(true)
                 if type(command) == "function" then
                     command("RESET_PEAKS")
                 end
@@ -959,6 +1458,7 @@ function M.attach(shell)
             si.graphDragging = false
             self.runtimeParamsLastRefreshAt = -1
             self:hideRuntimeParamControls(1)
+            self:computeScriptInspectorGeometry()
             return
         end
 
@@ -1005,6 +1505,8 @@ function M.attach(shell)
             si.runtimeParams = collectRuntimeParamsForScript(row, self.stateParamsCache, si.params, self.dspPreviewSlotName)
             si.graph = parseDspGraphFromCode(text)
         end
+
+        self:computeScriptInspectorGeometry()
     end
 
     function shell:refreshScriptInspectorRuntimeParams()
@@ -1015,10 +1517,12 @@ function M.attach(shell)
         if type(self.selectedScriptRow) ~= "table" then
             si.runtimeParams = {}
             self.runtimeParamsLastRefreshAt = nowSeconds()
+            self:computeScriptInspectorGeometry()
             return
         end
         si.runtimeParams = collectRuntimeParamsForScript(self.selectedScriptRow, self.stateParamsCache, si.params, self.dspPreviewSlotName)
         self.runtimeParamsLastRefreshAt = nowSeconds()
+        self:computeScriptInspectorGeometry()
     end
 
     function shell:hideRuntimeParamControls(fromIndex)
@@ -1158,6 +1662,7 @@ function M.attach(shell)
         end
 
         self:refreshScriptInspectorRuntimeParams()
+        self:computeScriptInspectorGeometry()
         self.inspectorCanvas:repaint()
     end
 
@@ -1177,6 +1682,7 @@ function M.attach(shell)
         end
 
         self:refreshScriptInspectorRuntimeParams()
+        self:computeScriptInspectorGeometry()
         self.inspectorCanvas:repaint()
     end
 
@@ -1186,9 +1692,7 @@ function M.attach(shell)
             return
         end
         si.editorCollapsed = collapsed == true
-        if si.editorCollapsed then
-            si.editorBodyRect = nil
-        end
+        self:computeScriptInspectorGeometry()
         self.inspectorCanvas:repaint()
     end
 
@@ -1200,8 +1704,8 @@ function M.attach(shell)
         si.graphCollapsed = collapsed == true
         if si.graphCollapsed then
             si.graphDragging = false
-            si.graphBodyRect = nil
         end
+        self:computeScriptInspectorGeometry()
         self.inspectorCanvas:repaint()
     end
 
@@ -1276,6 +1780,7 @@ function M.attach(shell)
         local nextValue = tonumber(value)
         if nextValue == nil then
             self.scriptInspector.runtimeStatus = "Invalid value"
+            self:computeScriptInspectorGeometry()
             return false
         end
 
@@ -1294,6 +1799,7 @@ function M.attach(shell)
         local ok = setParam(endpointPath, nextValue)
         if not ok then
             self.scriptInspector.runtimeStatus = "setParam failed: " .. endpointPath
+            self:computeScriptInspectorGeometry()
             return false
         end
 
@@ -1306,6 +1812,8 @@ function M.attach(shell)
         else
             self:refreshScriptInspectorRuntimeParams()
         end
+
+        self:computeScriptInspectorGeometry()
 
         if not opts.noRepaint then
             self.inspectorCanvas:repaint()
@@ -1663,6 +2171,7 @@ function M.attach(shell)
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
         self:layout(w, h)
+        self:computeMainScriptEditorGeometry()
         self.mainTabContent:grabKeyboardFocus()
         self.scriptEditor.focused = true
         self.mainTabContent:repaint()
@@ -1764,6 +2273,7 @@ function M.attach(shell)
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
         self:layout(w, h)
+        self:computeMainScriptEditorGeometry()
     end
 
     -- Back-compat wrappers for call-sites that still use tab naming.

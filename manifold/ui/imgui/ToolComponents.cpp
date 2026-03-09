@@ -333,37 +333,6 @@ void drawScriptInspectorDspControls(const ImGuiInspectorHost::ScriptInspectorDat
     endPanel();
 }
 
-void drawInlineEditorSlot(const ImGuiInspectorHost::ScriptInspectorData& scriptData,
-                          ImGuiInspectorHost::LayoutSnapshot& nextLayout,
-                          const ScriptInspectorCallbacks& callbacks) {
-    ImGui::SetNextItemOpen(!scriptData.editorCollapsed, ImGuiCond_Always);
-    const bool editorOpen = ImGui::CollapsingHeader("Inline Script", ImGuiTreeNodeFlags_DefaultOpen);
-    if (editorOpen != !scriptData.editorCollapsed && callbacks.onSetEditorCollapsed) {
-        callbacks.onSetEditorCollapsed(!editorOpen);
-    }
-    if (!editorOpen) {
-        return;
-    }
-
-    float editorHeight = 160.0f;
-    if (scriptData.kind == "dsp" && !scriptData.graphCollapsed) {
-        editorHeight = std::clamp(ImGui::GetContentRegionAvail().y - 180.0f, 80.0f, 180.0f);
-    } else {
-        editorHeight = std::clamp(ImGui::GetContentRegionAvail().y - 24.0f, 80.0f, 180.0f);
-    }
-
-    const ImVec2 editorMin = ImGui::GetCursorScreenPos();
-    const ImVec2 editorSize(std::max(1.0f, ImGui::GetContentRegionAvail().x), editorHeight);
-    ImGui::BeginChild("##InlineScriptHostSlot", editorSize, true,
-                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    ImGui::TextDisabled("Inline editor");
-    ImGui::Spacing();
-    ImGui::TextDisabled("Lua-backed content is mounted here.");
-    ImGui::EndChild();
-    nextLayout.hasInlineEditorRect = true;
-    nextLayout.inlineEditorRect = toLocalRect(editorMin, editorSize);
-}
-
 void drawDspGraphPanel(const ImGuiInspectorHost::ScriptInspectorData& scriptData,
                        const ScriptInspectorCallbacks& callbacks) {
     if (scriptData.kind != "dsp") {

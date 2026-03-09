@@ -343,6 +343,9 @@ function M.attach(shell)
                 self.mainTabBar:setBounds(0, 0, 0, 0)
                 self.mainTabContent:setBounds(math.floor(previewX), math.floor(contentY), math.floor(previewW), math.floor(contentH))
             end
+            if type(self.computeMainScriptEditorGeometry) == "function" then
+                self:computeMainScriptEditorGeometry()
+            end
 
             -- Calculate preview transform (fit/manual zoom + pan)
             local fitScale = math.min(previewW / viewportDesignW, previewH / viewportDesignH)
@@ -600,6 +603,9 @@ function M.attach(shell)
             local inspectorContentH = math.max(0, math.floor(contentH - inspectorContentY - 6))
             self.inspectorCanvas:setBounds(6, inspectorContentY, inspectorW - 12, inspectorContentH)
             self.inspectorViewportH = inspectorContentH
+            if type(self.computeScriptInspectorGeometry) == "function" then
+                self:computeScriptInspectorGeometry()
+            end
 
             self.panel.node:setInterceptsMouse(true, true)
             self.mainTabBar:setInterceptsMouse(true, true)
@@ -677,6 +683,13 @@ function M.attach(shell)
         end
         if shell.settingsOpen and shell.scriptOverlay then
             shell.scriptOverlay:toFront(false)
+        end
+
+        if type(self.syncToolSurfaces) == "function" then
+            self:syncToolSurfaces()
+        end
+        if type(self.syncPerfOverlaySurface) == "function" then
+            self:syncPerfOverlaySurface(totalW, totalH)
         end
 
         shellLayoutPerfTrace("layout", perfStartMs,

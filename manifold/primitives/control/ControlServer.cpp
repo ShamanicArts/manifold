@@ -406,7 +406,7 @@ void ControlServer::clientLoop(int clientFd) {
             response += "\n";
 
             // Send response
-            ssize_t sent = ::write(clientFd, response.c_str(), response.size());
+            ssize_t sent = ::send(clientFd, response.c_str(), response.size(), MSG_NOSIGNAL);
             if (sent < 0) return; // client gone
 
             // If this was a WATCH command, stay in watcher mode
@@ -841,7 +841,7 @@ void ControlServer::broadcastToWatchers(const std::string& msg) {
     std::lock_guard<std::mutex> lock(watchersMutex);
     auto it = watcherFds.begin();
     while (it != watcherFds.end()) {
-        ssize_t n = ::write(*it, msg.c_str(), msg.size());
+        ssize_t n = ::send(*it, msg.c_str(), msg.size(), MSG_NOSIGNAL);
         if (n < 0) {
             // Dead watcher, remove
             ::close(*it);

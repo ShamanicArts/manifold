@@ -33,6 +33,39 @@ void logEditorHostLayout(const char* name, HostLayoutTraceState& state, bool vis
     state.visible = visible;
     state.bounds = bounds;
 }
+
+void readSurfaceDescriptor(sol::object surfacesObj, const char* surfaceId,
+                           bool& visibleOut, juce::Rectangle<int>& boundsOut,
+                           std::string* titleOut = nullptr) {
+    visibleOut = false;
+    boundsOut = juce::Rectangle<int>();
+    if (titleOut != nullptr) {
+        titleOut->clear();
+    }
+    if (!surfacesObj.valid() || !surfacesObj.is<sol::table>()) {
+        return;
+    }
+    sol::table surfaces = surfacesObj.as<sol::table>();
+    sol::object surfaceObj = surfaces[surfaceId];
+    if (!surfaceObj.valid() || !surfaceObj.is<sol::table>()) {
+        return;
+    }
+    sol::table surface = surfaceObj.as<sol::table>();
+    visibleOut = surface["visible"].get_or(false);
+    if (titleOut != nullptr) {
+        *titleOut = surface["title"].get_or(std::string{});
+    }
+    sol::object boundsObj = surface["bounds"];
+    if (!boundsObj.valid() || !boundsObj.is<sol::table>()) {
+        return;
+    }
+    sol::table bounds = boundsObj.as<sol::table>();
+    boundsOut = juce::Rectangle<int>(
+        bounds["x"].get_or(0),
+        bounds["y"].get_or(0),
+        std::max(0, bounds["w"].get_or(0)),
+        std::max(0, bounds["h"].get_or(0)));
+}
 }
 
 BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
@@ -41,7 +74,6 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
 
     addAndMakeVisible(rootCanvas);
     addAndMakeVisible(mainScriptEditorHost);
-    addAndMakeVisible(inlineScriptEditorHost);
     addAndMakeVisible(scriptListHost);
     addAndMakeVisible(hierarchyHost);
     addAndMakeVisible(inspectorHost);
@@ -53,9 +85,9 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
             if (!shell.valid()) {
                 return;
             }
-            auto perfOverlay = shell["perfOverlay"];
-            if (perfOverlay.valid()) {
-                perfOverlay["activeTab"] = tabId;
+            sol::protected_function fn = shell["setPerfOverlayActiveTab"];
+            if (fn.valid()) {
+                fn(shell, tabId);
             }
         });
     };
@@ -65,21 +97,31 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
             if (!shell.valid()) {
                 return;
             }
-            auto perfOverlay = shell["perfOverlay"];
-            if (perfOverlay.valid()) {
-                perfOverlay["visible"] = false;
+            sol::protected_function fn = shell["setPerfOverlayVisible"];
+            if (fn.valid()) {
+                fn(shell, false);
+            }
+        });
+    };
+    perfOverlayHost.onBoundsChanged = [this](const juce::Rectangle<int>& bounds) {
+        luaEngine.withLuaState([bounds](sol::state& L) {
+            auto shell = L["_G"]["shell"];
+            if (!shell.valid()) {
+                return;
+            }
+            sol::protected_function fn = shell["setPerfOverlayBounds"];
+            if (fn.valid()) {
+                fn(shell, bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight());
             }
         });
     };
     mainScriptEditorHost.setVisible(false);
-    inlineScriptEditorHost.setVisible(false);
     scriptListHost.setVisible(false);
     hierarchyHost.setVisible(false);
     inspectorHost.setVisible(false);
     scriptInspectorHost.setVisible(false);
     perfOverlayHost.setVisible(false);
     mainScriptEditorHost.toFront(false);
-    inlineScriptEditorHost.toFront(false);
     scriptListHost.toFront(false);
     hierarchyHost.toFront(false);
     inspectorHost.toFront(false);
@@ -132,14 +174,27 @@ BehaviorCoreEditor::~BehaviorCoreEditor() {
 
 void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
     if (deferredVisibilityChanges.empty()) return;
-    
+
     const auto applyStart = PerfClock::now();
     for (const auto& change : deferredVisibilityChanges) {
-        if (change.host) {
-            change.host->setVisible(change.visible);
-            change.host->setBounds(change.bounds);
-            if (change.visible) {
-                change.host->toFront(false);
+        if (change.host == nullptr) {
+            continue;
+        }
+
+        if (change.visible) {
+            if (change.host->getBounds() != change.bounds) {
+                change.host->setBounds(change.bounds);
+            }
+            if (!change.host->isVisible()) {
+                change.host->setVisible(true);
+            }
+            change.host->toFront(false);
+        } else {
+            if (change.host->isVisible()) {
+                change.host->setVisible(false);
+            }
+            if (change.host->getBounds() != change.bounds) {
+                change.host->setBounds(change.bounds);
             }
         }
     }
@@ -147,6 +202,14 @@ void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
     deferredVisibilityChanges.clear();
     std::string extra = std::to_string(count) + " hosts";
     logEditorPerf("applyDeferredVisibilityChanges", applyStart, extra.c_str());
+}
+
+void BehaviorCoreEditor::queueHostVisibilityChange(juce::Component& host, bool visible,
+                                                 const juce::Rectangle<int>& bounds) {
+    const auto targetBounds = visible ? bounds : juce::Rectangle<int>(0, 0, 0, 0);
+    if (host.isVisible() != visible || host.getBounds() != targetBounds) {
+        deferredVisibilityChanges.push_back({&host, visible, targetBounds});
+    }
 }
 
 void BehaviorCoreEditor::timerCallback() {
@@ -196,9 +259,6 @@ void BehaviorCoreEditor::timerCallback() {
             rootCanvas.lastPaintDurationUs.load(std::memory_order_relaxed);
 
         auto imguiStats = mainScriptEditorHost.getStatsSnapshot();
-        if (!imguiStats.testWindowVisible) {
-            imguiStats = inlineScriptEditorHost.getStatsSnapshot();
-        }
 
         luaEngine.frameTimings.imguiContextReady.store(imguiStats.contextReady,
                                                        std::memory_order_relaxed);
@@ -245,7 +305,6 @@ void BehaviorCoreEditor::paint(juce::Graphics& g) {
 void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
     const auto totalStart = PerfClock::now();
     static HostLayoutTraceState mainScriptHostTrace;
-    static HostLayoutTraceState inlineScriptHostTrace;
     static HostLayoutTraceState scriptListHostTrace;
     static HostLayoutTraceState hierarchyHostTrace;
     static HostLayoutTraceState inspectorHostTrace;
@@ -289,21 +348,15 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
     };
 
     const auto mainStatsBefore = mainScriptEditorHost.getStatsSnapshot();
-    const auto inlineStatsBefore = inlineScriptEditorHost.getStatsSnapshot();
     const auto mainIdentityBefore = mainScriptEditorHost.getDocumentIdentity();
-    const auto inlineIdentityBefore = inlineScriptEditorHost.getDocumentIdentity();
-    const auto scriptInspectorLayoutBefore = scriptInspectorHost.getLayoutSnapshot();
     const auto mainTextBefore = mainScriptEditorHost.getCurrentText();
-    const auto inlineTextBefore = inlineScriptEditorHost.getCurrentText();
     const auto mainActions = mainScriptEditorHost.consumeActionRequests();
-    const auto inlineActions = inlineScriptEditorHost.consumeActionRequests();
     const auto scriptListActions = scriptListHost.consumeActionRequests();
     const auto hierarchyActions = hierarchyHost.consumeActionRequests();
     const auto inspectorActions = inspectorHost.consumeActionRequests();
     const auto scriptInspectorActions = scriptInspectorHost.consumeActionRequests();
 
     HostConfig mainConfig;
-    HostConfig inlineConfig;
     ScriptListHostConfig scriptListConfig;
     HierarchyHostConfig hierarchyConfig;
     InspectorHostConfig inspectorConfig;
@@ -358,8 +411,6 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
             }
         };
 
-        lua["__manifoldImguiMainEditorActive"] = false;
-        lua["__manifoldImguiInlineEditorActive"] = false;
         lua["__manifoldImguiScriptListActive"] = false;
         lua["__manifoldImguiHierarchyActive"] = false;
         lua["__manifoldImguiInspectorActive"] = false;
@@ -386,21 +437,6 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
             }
         }
 
-        if (inlineStatsBefore.testWindowVisible) {
-            sol::object scriptInspectorObj = shell["scriptInspector"];
-            if (scriptInspectorObj.valid() && scriptInspectorObj.is<sol::table>()) {
-                sol::table scriptInspector = scriptInspectorObj.as<sol::table>();
-                const std::string shellPath = scriptInspector["path"].get_or(std::string{});
-                const int64_t shellSyncToken = scriptInspector["syncToken"].get_or(int64_t{-1});
-                if (inlineIdentityBefore.loaded
-                    && inlineIdentityBefore.path == shellPath
-                    && inlineIdentityBefore.syncToken == shellSyncToken) {
-                    scriptInspector["text"] = inlineTextBefore;
-                    scriptInspector["dirty"] = inlineStatsBefore.documentDirty;
-                }
-            }
-        }
-
         if (mainActions.save) {
             invokeShellMethod(shell, "saveScriptEditor");
         }
@@ -409,19 +445,6 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
         }
         if (mainActions.close) {
             invokeShellMethod(shell, "closeScriptEditor");
-        }
-
-        if (inlineActions.reload) {
-            sol::protected_function fn = shell["refreshScriptInspectorData"];
-            if (fn.valid()) {
-                sol::object rowObj = shell["selectedScriptRow"];
-                sol::protected_function_result result = fn(shell, rowObj);
-                if (!result.valid()) {
-                    sol::error err = result;
-                    std::fprintf(stderr, "BehaviorCoreEditor: shell.refreshScriptInspectorData failed: %s\n",
-                                 err.what());
-                }
-            }
         }
 
         if (scriptListActions.selectIndex > 0 || scriptListActions.openIndex > 0) {
@@ -601,242 +624,193 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
 
         const std::string shellMode = shell["mode"].get_or(std::string{});
         const std::string editContentMode = shell["editContentMode"].get_or(std::string{});
-        if (shellMode == "edit" && editContentMode == "script") {
+        sol::object surfacesObj = shell["surfaces"];
+        readSurfaceDescriptor(surfacesObj, "mainScriptEditor", mainConfig.visible, mainConfig.bounds);
+        if (mainConfig.visible && mainConfig.bounds.getWidth() > 0 && mainConfig.bounds.getHeight() > 0) {
             sol::object scriptEditorObj = shell["scriptEditor"];
-            sol::object mainTabContentObj = shell["mainTabContent"];
-            if (scriptEditorObj.valid() && scriptEditorObj.is<sol::table>()
-                && mainTabContentObj.valid() && mainTabContentObj.is<Canvas*>()) {
+            if (scriptEditorObj.valid() && scriptEditorObj.is<sol::table>()) {
                 sol::table scriptEditor = scriptEditorObj.as<sol::table>();
-                auto* mainTabContent = mainTabContentObj.as<Canvas*>();
-                if (mainTabContent != nullptr) {
-                    const auto parentBounds = mainTabContent->getBounds();
-                    sol::object bodyRectObj = scriptEditor["bodyRect"];
-                    int x = parentBounds.getX();
-                    int y = parentBounds.getY();
-                    int w = parentBounds.getWidth();
-                    int h = parentBounds.getHeight();
-
-                    if (bodyRectObj.valid() && bodyRectObj.is<sol::table>()) {
-                        sol::table bodyRect = bodyRectObj.as<sol::table>();
-                        x = parentBounds.getX() + bodyRect["x"].get_or(0);
-                        y = parentBounds.getY() + bodyRect["y"].get_or(0);
-                        w = bodyRect["w"].get_or(w);
-                        h = bodyRect["h"].get_or(h);
-                    }
-
-                    const std::string path = scriptEditor["path"].get_or(std::string{});
-                    if (!path.empty() && w > 0 && h > 0) {
-                        mainConfig.visible = true;
-                        mainConfig.bounds = juce::Rectangle<int>(x, y, w, h);
-                        mainConfig.file = juce::File(path);
-                        mainConfig.text = scriptEditor["text"].get_or(std::string{});
-                        mainConfig.syncToken = scriptEditor["syncToken"].get_or(int64_t{0});
-                        mainConfig.readOnly = false;
-                        lua["__manifoldImguiMainEditorActive"] = true;
-                    }
+                const std::string path = scriptEditor["path"].get_or(std::string{});
+                if (!path.empty()) {
+                    mainConfig.file = juce::File(path);
+                    mainConfig.text = scriptEditor["text"].get_or(std::string{});
+                    mainConfig.syncToken = scriptEditor["syncToken"].get_or(int64_t{0});
+                    mainConfig.readOnly = false;
                 }
             }
         }
 
         const std::string leftPanelMode = shell["leftPanelMode"].get_or(std::string{});
-        sol::object treePanelObj = shell["treePanel"];
-        int treePanelX = 0;
-        int treePanelY = 0;
-        if (treePanelObj.valid() && treePanelObj.is<sol::table>()) {
-            sol::table treePanel = treePanelObj.as<sol::table>();
-            sol::object treePanelNodeObj = treePanel["node"];
-            if (treePanelNodeObj.valid() && treePanelNodeObj.is<Canvas*>()) {
-                auto* treePanelNode = treePanelNodeObj.as<Canvas*>();
-                if (treePanelNode != nullptr) {
-                    const auto panelBounds = treePanelNode->getBounds();
-                    treePanelX = panelBounds.getX();
-                    treePanelY = panelBounds.getY();
+
+        readSurfaceDescriptor(surfacesObj, "hierarchyTool", hierarchyConfig.visible, hierarchyConfig.bounds);
+        if (hierarchyConfig.visible && hierarchyConfig.bounds.getWidth() > 0 && hierarchyConfig.bounds.getHeight() > 0) {
+            sol::object rowsObj = shell["treeRows"];
+            if (rowsObj.valid() && rowsObj.is<sol::table>()) {
+                sol::table treeRows = rowsObj.as<sol::table>();
+                sol::object selectedCanvasObj = shell["selectedWidget"];
+                const auto rowCount = treeRows.size();
+                hierarchyConfig.rows.reserve(rowCount);
+                for (std::size_t i = 1; i <= rowCount; ++i) {
+                    sol::object rowObj = treeRows[i];
+                    if (!rowObj.valid() || !rowObj.is<sol::table>()) {
+                        continue;
+                    }
+                    sol::table row = rowObj.as<sol::table>();
+                    ImGuiHierarchyHost::TreeRow hostRow;
+                    hostRow.depth = row["depth"].get_or(0);
+                    hostRow.type = row["type"].get_or(std::string{});
+                    hostRow.name = row["name"].get_or(std::string{});
+                    hostRow.path = row["path"].get_or(std::string{});
+                    sol::object rowCanvasObj = row["canvas"];
+                    hostRow.selected = selectedCanvasObj.valid() && rowCanvasObj.valid()
+                        && selectedCanvasObj == rowCanvasObj;
+                    hierarchyConfig.rows.push_back(std::move(hostRow));
                 }
             }
-        }
 
-        if (shellMode == "edit" && leftPanelMode == "hierarchy") {
-            sol::object treeCanvasObj = shell["treeCanvas"];
-            if (treeCanvasObj.valid() && treeCanvasObj.is<Canvas*>()) {
-                auto* treeCanvas = treeCanvasObj.as<Canvas*>();
-                if (treeCanvas != nullptr) {
-                    const auto treeCanvasBounds = treeCanvas->getBounds();
-                    if (treeCanvasBounds.getWidth() > 0 && treeCanvasBounds.getHeight() > 0) {
-                        hierarchyConfig.visible = true;
-                        hierarchyConfig.bounds = juce::Rectangle<int>(
-                            treePanelX + treeCanvasBounds.getX(),
-                            treePanelY + treeCanvasBounds.getY(),
-                            treeCanvasBounds.getWidth(),
-                            treeCanvasBounds.getHeight());
-
-                        sol::object rowsObj = shell["treeRows"];
-                        if (rowsObj.valid() && rowsObj.is<sol::table>()) {
-                            sol::table treeRows = rowsObj.as<sol::table>();
-                            sol::object selectedCanvasObj = shell["selectedWidget"];
-                            const auto rowCount = treeRows.size();
-                            hierarchyConfig.rows.reserve(rowCount);
-                            for (std::size_t i = 1; i <= rowCount; ++i) {
-                                sol::object rowObj = treeRows[i];
-                                if (!rowObj.valid() || !rowObj.is<sol::table>()) {
-                                    continue;
-                                }
-                                sol::table row = rowObj.as<sol::table>();
-                                ImGuiHierarchyHost::TreeRow hostRow;
-                                hostRow.depth = row["depth"].get_or(0);
-                                hostRow.type = row["type"].get_or(std::string{});
-                                hostRow.name = row["name"].get_or(std::string{});
-                                hostRow.path = row["path"].get_or(std::string{});
-                                sol::object rowCanvasObj = row["canvas"];
-                                hostRow.selected = selectedCanvasObj.valid() && rowCanvasObj.valid()
-                                    && selectedCanvasObj == rowCanvasObj;
-                                hierarchyConfig.rows.push_back(std::move(hostRow));
-                            }
+            readSurfaceDescriptor(surfacesObj, "inspectorTool", inspectorConfig.visible, inspectorConfig.bounds);
+            if (inspectorConfig.visible && inspectorConfig.bounds.getWidth() > 0 && inspectorConfig.bounds.getHeight() > 0) {
+                sol::protected_function getSelectionBounds = shell["getSelectionBounds"];
+                if (getSelectionBounds.valid()) {
+                    sol::protected_function_result result = getSelectionBounds(shell);
+                    if (result.valid()) {
+                        sol::object boundsObj = result;
+                        if (boundsObj.valid() && boundsObj.is<sol::table>()) {
+                            sol::table selectionBounds = boundsObj.as<sol::table>();
+                            inspectorConfig.selectionBounds.enabled = true;
+                            inspectorConfig.selectionBounds.x = selectionBounds["x"].get_or(0);
+                            inspectorConfig.selectionBounds.y = selectionBounds["y"].get_or(0);
+                            inspectorConfig.selectionBounds.w = selectionBounds["w"].get_or(1);
+                            inspectorConfig.selectionBounds.h = selectionBounds["h"].get_or(1);
                         }
-
-                        sol::object inspectorPanelObj = shell["inspectorPanel"];
-                        if (inspectorPanelObj.valid() && inspectorPanelObj.is<sol::table>()) {
-                            sol::table inspectorPanel = inspectorPanelObj.as<sol::table>();
-                            sol::object inspectorPanelNodeObj = inspectorPanel["node"];
-                            if (inspectorPanelNodeObj.valid() && inspectorPanelNodeObj.is<Canvas*>()) {
-                                auto* inspectorPanelNode = inspectorPanelNodeObj.as<Canvas*>();
-                                if (inspectorPanelNode != nullptr) {
-                                    const auto panelBounds = inspectorPanelNode->getBounds();
-                                    if (panelBounds.getWidth() > 0 && panelBounds.getHeight() > 0) {
-                                        inspectorConfig.visible = true;
-                                        inspectorConfig.bounds = juce::Rectangle<int>(
-                                            panelBounds.getX() + 6,
-                                            panelBounds.getY() + 30,
-                                            std::max(0, panelBounds.getWidth() - 12),
-                                            std::max(0, panelBounds.getHeight() - 36));
-
-                                        sol::protected_function getSelectionBounds = shell["getSelectionBounds"];
-                                        if (getSelectionBounds.valid()) {
-                                            sol::protected_function_result result = getSelectionBounds(shell);
-                                            if (result.valid()) {
-                                                sol::object boundsObj = result;
-                                                if (boundsObj.valid() && boundsObj.is<sol::table>()) {
-                                                    sol::table selectionBounds = boundsObj.as<sol::table>();
-                                                    inspectorConfig.selectionBounds.enabled = true;
-                                                    inspectorConfig.selectionBounds.x = selectionBounds["x"].get_or(0);
-                                                    inspectorConfig.selectionBounds.y = selectionBounds["y"].get_or(0);
-                                                    inspectorConfig.selectionBounds.w = selectionBounds["w"].get_or(1);
-                                                    inspectorConfig.selectionBounds.h = selectionBounds["h"].get_or(1);
-                                                }
-                                            }
-                                        }
-
-                                        sol::object inspectorRowsObj = shell["inspectorRows"];
-                                        sol::object activePropertyObj = shell["activeConfigProperty"];
-                                        std::string activePath;
-                                        if (activePropertyObj.valid() && activePropertyObj.is<sol::table>()) {
-                                            sol::table activeProperty = activePropertyObj.as<sol::table>();
-                                            inspectorConfig.activeProperty.valid = true;
-                                            inspectorConfig.activeProperty.key = activeProperty["key"].get_or(std::string{});
-                                            inspectorConfig.activeProperty.path = activeProperty["path"].get_or(std::string{});
-                                            inspectorConfig.activeProperty.editorType = activeProperty["editorType"].get_or(std::string{});
-                                            inspectorConfig.activeProperty.displayValue = activeProperty["value"].get_or(std::string{});
-                                            inspectorConfig.activeProperty.mixed = activeProperty["mixed"].get_or(false);
-                                            activePath = inspectorConfig.activeProperty.path;
-
-                                            sol::object rawValueObj = activeProperty["rawValue"];
-                                            if (rawValueObj.is<double>()) {
-                                                inspectorConfig.activeProperty.numberValue = rawValueObj.as<double>();
-                                                inspectorConfig.activeProperty.colorValue = static_cast<std::uint32_t>(rawValueObj.as<double>());
-                                            } else if (rawValueObj.is<bool>()) {
-                                                inspectorConfig.activeProperty.boolValue = rawValueObj.as<bool>();
-                                            } else if (rawValueObj.is<std::string>()) {
-                                                inspectorConfig.activeProperty.textValue = rawValueObj.as<std::string>();
-                                            }
-                                            if (inspectorConfig.activeProperty.editorType == "text") {
-                                                inspectorConfig.activeProperty.textValue = rawValueObj.is<std::string>()
-                                                    ? rawValueObj.as<std::string>()
-                                                    : std::string{};
-                                            }
-                                            sol::object minObj = activeProperty["min"];
-                                            sol::object maxObj = activeProperty["max"];
-                                            sol::object stepObj = activeProperty["step"];
-                                            inspectorConfig.activeProperty.hasMin = minObj.valid() && minObj.is<double>();
-                                            inspectorConfig.activeProperty.hasMax = maxObj.valid() && maxObj.is<double>();
-                                            if (inspectorConfig.activeProperty.hasMin) {
-                                                inspectorConfig.activeProperty.minValue = minObj.as<double>();
-                                            }
-                                            if (inspectorConfig.activeProperty.hasMax) {
-                                                inspectorConfig.activeProperty.maxValue = maxObj.as<double>();
-                                            }
-                                            inspectorConfig.activeProperty.stepValue = stepObj.valid() && stepObj.is<double>()
-                                                ? stepObj.as<double>()
-                                                : 0.0;
-
-                                            sol::object enumOptionsObj = activeProperty["enumOptions"];
-                                            if (enumOptionsObj.valid() && enumOptionsObj.is<sol::table>()) {
-                                                sol::table enumOptions = enumOptionsObj.as<sol::table>();
-                                                sol::object rawValue = activeProperty["rawValue"];
-                                                const auto optionCount = enumOptions.size();
-                                                for (std::size_t optionIndex = 1; optionIndex <= optionCount; ++optionIndex) {
-                                                    sol::object optionObj = enumOptions[optionIndex];
-                                                    if (!optionObj.valid() || !optionObj.is<sol::table>()) {
-                                                        continue;
-                                                    }
-                                                    sol::table option = optionObj.as<sol::table>();
-                                                    inspectorConfig.activeProperty.enumLabels.push_back(option["label"].get_or(std::string{}));
-                                                    sol::object optionValue = option["value"];
-                                                    bool matches = false;
-                                                    if (rawValue.get_type() == optionValue.get_type()) {
-                                                        if (rawValue.is<bool>()) {
-                                                            matches = rawValue.as<bool>() == optionValue.as<bool>();
-                                                        } else if (rawValue.is<double>()) {
-                                                            matches = rawValue.as<double>() == optionValue.as<double>();
-                                                        } else if (rawValue.is<std::string>()) {
-                                                            matches = rawValue.as<std::string>() == optionValue.as<std::string>();
-                                                        }
-                                                    }
-                                                    if (matches) {
-                                                        inspectorConfig.activeProperty.enumSelectedIndex = static_cast<int>(optionIndex);
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        if (inspectorRowsObj.valid() && inspectorRowsObj.is<sol::table>()) {
-                                            sol::table inspectorRows = inspectorRowsObj.as<sol::table>();
-                                            const auto inspectorRowCount = inspectorRows.size();
-                                            inspectorConfig.rows.reserve(inspectorRowCount);
-                                            for (std::size_t i = 1; i <= inspectorRowCount; ++i) {
-                                                sol::object rowObj = inspectorRows[i];
-                                                if (!rowObj.valid() || !rowObj.is<sol::table>()) {
-                                                    continue;
-                                                }
-                                                sol::table row = rowObj.as<sol::table>();
-                                                ImGuiInspectorHost::InspectorRow hostRow;
-                                                hostRow.rowIndex = static_cast<int>(i);
-                                                hostRow.section = !row["isConfig"].get_or(false) && row["value"].get_or(std::string{}).empty();
-                                                hostRow.interactive = row["isConfig"].get_or(false);
-                                                hostRow.key = row["key"].get_or(std::string{});
-                                                hostRow.value = row["value"].get_or(std::string{});
-                                                hostRow.selected = hostRow.interactive && !activePath.empty()
-                                                    && row["path"].get_or(std::string{}) == activePath;
-                                                inspectorConfig.rows.push_back(std::move(hostRow));
-                                            }
-                                        }
-
-                                        lua["__manifoldImguiInspectorActive"] = true;
-                                    }
-                                }
-                            }
-                        }
-
-                        lua["__manifoldImguiHierarchyActive"] = true;
                     }
                 }
+
+                sol::object inspectorRowsObj = shell["inspectorRows"];
+                sol::object activePropertyObj = shell["activeConfigProperty"];
+                std::string activePath;
+                if (activePropertyObj.valid() && activePropertyObj.is<sol::table>()) {
+                    sol::table activeProperty = activePropertyObj.as<sol::table>();
+                    inspectorConfig.activeProperty.valid = true;
+                    inspectorConfig.activeProperty.key = activeProperty["key"].get_or(std::string{});
+                    inspectorConfig.activeProperty.path = activeProperty["path"].get_or(std::string{});
+                    inspectorConfig.activeProperty.editorType = activeProperty["editorType"].get_or(std::string{});
+                    inspectorConfig.activeProperty.displayValue = activeProperty["value"].get_or(std::string{});
+                    inspectorConfig.activeProperty.mixed = activeProperty["mixed"].get_or(false);
+                    activePath = inspectorConfig.activeProperty.path;
+
+                    sol::object rawValueObj = activeProperty["rawValue"];
+                    if (rawValueObj.is<double>()) {
+                        inspectorConfig.activeProperty.numberValue = rawValueObj.as<double>();
+                        inspectorConfig.activeProperty.colorValue = static_cast<std::uint32_t>(rawValueObj.as<double>());
+                    } else if (rawValueObj.is<bool>()) {
+                        inspectorConfig.activeProperty.boolValue = rawValueObj.as<bool>();
+                    } else if (rawValueObj.is<std::string>()) {
+                        inspectorConfig.activeProperty.textValue = rawValueObj.as<std::string>();
+                    }
+                    if (inspectorConfig.activeProperty.editorType == "text") {
+                        inspectorConfig.activeProperty.textValue = rawValueObj.is<std::string>()
+                            ? rawValueObj.as<std::string>()
+                            : std::string{};
+                    }
+                    sol::object minObj = activeProperty["min"];
+                    sol::object maxObj = activeProperty["max"];
+                    sol::object stepObj = activeProperty["step"];
+                    inspectorConfig.activeProperty.hasMin = minObj.valid() && minObj.is<double>();
+                    inspectorConfig.activeProperty.hasMax = maxObj.valid() && maxObj.is<double>();
+                    if (inspectorConfig.activeProperty.hasMin) {
+                        inspectorConfig.activeProperty.minValue = minObj.as<double>();
+                    }
+                    if (inspectorConfig.activeProperty.hasMax) {
+                        inspectorConfig.activeProperty.maxValue = maxObj.as<double>();
+                    }
+                    inspectorConfig.activeProperty.stepValue = stepObj.valid() && stepObj.is<double>()
+                        ? stepObj.as<double>()
+                        : 0.0;
+
+                    sol::object enumOptionsObj = activeProperty["enumOptions"];
+                    if (enumOptionsObj.valid() && enumOptionsObj.is<sol::table>()) {
+                        sol::table enumOptions = enumOptionsObj.as<sol::table>();
+                        sol::object rawValue = activeProperty["rawValue"];
+                        const auto optionCount = enumOptions.size();
+                        for (std::size_t optionIndex = 1; optionIndex <= optionCount; ++optionIndex) {
+                            sol::object optionObj = enumOptions[optionIndex];
+                            if (!optionObj.valid() || !optionObj.is<sol::table>()) {
+                                continue;
+                            }
+                            sol::table option = optionObj.as<sol::table>();
+                            inspectorConfig.activeProperty.enumLabels.push_back(option["label"].get_or(std::string{}));
+                            sol::object optionValue = option["value"];
+                            bool matches = false;
+                            if (rawValue.get_type() == optionValue.get_type()) {
+                                if (rawValue.is<bool>()) {
+                                    matches = rawValue.as<bool>() == optionValue.as<bool>();
+                                } else if (rawValue.is<double>()) {
+                                    matches = rawValue.as<double>() == optionValue.as<double>();
+                                } else if (rawValue.is<std::string>()) {
+                                    matches = rawValue.as<std::string>() == optionValue.as<std::string>();
+                                }
+                            }
+                            if (matches) {
+                                inspectorConfig.activeProperty.enumSelectedIndex = static_cast<int>(optionIndex);
+                            }
+                        }
+                    }
+                }
+
+                if (inspectorRowsObj.valid() && inspectorRowsObj.is<sol::table>()) {
+                    sol::table inspectorRows = inspectorRowsObj.as<sol::table>();
+                    const auto inspectorRowCount = inspectorRows.size();
+                    inspectorConfig.rows.reserve(inspectorRowCount);
+                    for (std::size_t i = 1; i <= inspectorRowCount; ++i) {
+                        sol::object rowObj = inspectorRows[i];
+                        if (!rowObj.valid() || !rowObj.is<sol::table>()) {
+                            continue;
+                        }
+                        sol::table row = rowObj.as<sol::table>();
+                        ImGuiInspectorHost::InspectorRow hostRow;
+                        hostRow.rowIndex = static_cast<int>(i);
+                        hostRow.section = !row["isConfig"].get_or(false) && row["value"].get_or(std::string{}).empty();
+                        hostRow.interactive = row["isConfig"].get_or(false);
+                        hostRow.key = row["key"].get_or(std::string{});
+                        hostRow.value = row["value"].get_or(std::string{});
+                        hostRow.selected = hostRow.interactive && !activePath.empty()
+                            && row["path"].get_or(std::string{}) == activePath;
+                        inspectorConfig.rows.push_back(std::move(hostRow));
+                    }
+                }
+
+                lua["__manifoldImguiInspectorActive"] = true;
             }
+
+            lua["__manifoldImguiHierarchyActive"] = true;
         }
 
         sol::object perfOverlayObj = shell["perfOverlay"];
         if (perfOverlayObj.valid() && perfOverlayObj.is<sol::table>()) {
             sol::table perfOverlay = perfOverlayObj.as<sol::table>();
-            perfOverlayConfig.visible = perfOverlay["visible"].get_or(false);
-            perfOverlayConfig.snapshot.title = "Performance Overlay";
             perfOverlayConfig.snapshot.activeTab = perfOverlay["activeTab"].get_or(std::string{"frame"});
+
+            sol::object perfSurfacesObj = shell["surfaces"];
+            if (perfSurfacesObj.valid() && perfSurfacesObj.is<sol::table>()) {
+                sol::table surfaces = perfSurfacesObj.as<sol::table>();
+                sol::object perfSurfaceObj = surfaces["perfOverlay"];
+                if (perfSurfaceObj.valid() && perfSurfaceObj.is<sol::table>()) {
+                    sol::table perfSurface = perfSurfaceObj.as<sol::table>();
+                    perfOverlayConfig.visible = perfSurface["visible"].get_or(false);
+                    perfOverlayConfig.snapshot.title = perfSurface["title"].get_or(std::string{"Performance"});
+
+                    sol::object boundsObj = perfSurface["bounds"];
+                    if (boundsObj.valid() && boundsObj.is<sol::table>()) {
+                        sol::table bounds = boundsObj.as<sol::table>();
+                        perfOverlayConfig.bounds = juce::Rectangle<int>(
+                            bounds["x"].get_or(0),
+                            bounds["y"].get_or(0),
+                            std::max(0, bounds["w"].get_or(0)),
+                            std::max(0, bounds["h"].get_or(0)));
+                    }
+                }
+            }
 
             auto addTab = [&](const std::string& id, const std::string& label) -> ImGuiPerfOverlayHost::TabData& {
                 perfOverlayConfig.snapshot.tabs.push_back(ImGuiPerfOverlayHost::TabData{});
@@ -911,115 +885,80 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
             addRow(uiTab, "Edit content", shell["editContentMode"].get_or(std::string{}));
             addRow(uiTab, "Total paint accumulated", usText(luaEngine.frameTimings.totalPaintAccumulatedUs.load(std::memory_order_relaxed)));
             addRow(uiTab, "Main editor visible", boolText(mainConfig.visible));
-            addRow(uiTab, "Inline editor visible", boolText(inlineConfig.visible));
             addRow(uiTab, "Script list visible", boolText(scriptListConfig.visible));
             addRow(uiTab, "Hierarchy visible", boolText(hierarchyConfig.visible));
             addRow(uiTab, "Inspector visible", boolText(inspectorConfig.visible));
         }
 
-        if (shellMode == "edit" && leftPanelMode == "scripts") {
-            sol::object scriptCanvasObj = shell["scriptCanvas"];
-            if (scriptCanvasObj.valid() && scriptCanvasObj.is<Canvas*>()) {
-                auto* scriptCanvas = scriptCanvasObj.as<Canvas*>();
-                if (scriptCanvas != nullptr) {
-                    const auto scriptCanvasBounds = scriptCanvas->getBounds();
-                    if (scriptCanvasBounds.getWidth() > 0 && scriptCanvasBounds.getHeight() > 0) {
-                        scriptListConfig.visible = true;
-                        scriptListConfig.bounds = juce::Rectangle<int>(
-                            treePanelX + scriptCanvasBounds.getX(),
-                            treePanelY + scriptCanvasBounds.getY(),
-                            scriptCanvasBounds.getWidth(),
-                            scriptCanvasBounds.getHeight());
-
-                        sol::object rowsObj = shell["scriptRows"];
-                        if (rowsObj.valid() && rowsObj.is<sol::table>()) {
-                            sol::table scriptRows = rowsObj.as<sol::table>();
-                            const std::string selectedPath = [&]() {
-                                sol::object selectedObj = shell["selectedScriptRow"];
-                                if (!selectedObj.valid() || !selectedObj.is<sol::table>()) {
-                                    return std::string{};
-                                }
-                                sol::table selectedRow = selectedObj.as<sol::table>();
-                                return selectedRow["path"].get_or(std::string{});
-                            }();
-                            const std::string selectedKind = [&]() {
-                                sol::object selectedObj = shell["selectedScriptRow"];
-                                if (!selectedObj.valid() || !selectedObj.is<sol::table>()) {
-                                    return std::string{};
-                                }
-                                sol::table selectedRow = selectedObj.as<sol::table>();
-                                return selectedRow["kind"].get_or(std::string{});
-                            }();
-
-                            const auto rowCount = scriptRows.size();
-                            scriptListConfig.rows.reserve(rowCount);
-                            for (std::size_t i = 1; i <= rowCount; ++i) {
-                                sol::object rowObj = scriptRows[i];
-                                if (!rowObj.valid() || !rowObj.is<sol::table>()) {
-                                    continue;
-                                }
-                                sol::table row = rowObj.as<sol::table>();
-                                ImGuiScriptListHost::ScriptRow hostRow;
-                                hostRow.section = row["section"].get_or(false);
-                                hostRow.nonInteractive = row["nonInteractive"].get_or(false);
-                                hostRow.active = row["active"].get_or(false);
-                                hostRow.dirty = row["dirty"].get_or(false);
-                                hostRow.kind = row["kind"].get_or(std::string{});
-                                hostRow.ownership = row["ownership"].get_or(std::string{});
-                                hostRow.path = row["path"].get_or(std::string{});
-                                hostRow.name = row["name"].get_or(std::string{});
-                                hostRow.label = row["label"].get_or(std::string{});
-                                hostRow.selected = (!selectedPath.empty()
-                                    && hostRow.path == selectedPath
-                                    && hostRow.kind == selectedKind);
-                                scriptListConfig.rows.push_back(std::move(hostRow));
-                            }
-                        }
-
-                        lua["__manifoldImguiScriptListActive"] = true;
+        readSurfaceDescriptor(surfacesObj, "scriptList", scriptListConfig.visible, scriptListConfig.bounds);
+        if (scriptListConfig.visible && scriptListConfig.bounds.getWidth() > 0 && scriptListConfig.bounds.getHeight() > 0) {
+            sol::object rowsObj = shell["scriptRows"];
+            if (rowsObj.valid() && rowsObj.is<sol::table>()) {
+                sol::table scriptRows = rowsObj.as<sol::table>();
+                const std::string selectedPath = [&]() {
+                    sol::object selectedObj = shell["selectedScriptRow"];
+                    if (!selectedObj.valid() || !selectedObj.is<sol::table>()) {
+                        return std::string{};
                     }
+                    sol::table selectedRow = selectedObj.as<sol::table>();
+                    return selectedRow["path"].get_or(std::string{});
+                }();
+                const std::string selectedKind = [&]() {
+                    sol::object selectedObj = shell["selectedScriptRow"];
+                    if (!selectedObj.valid() || !selectedObj.is<sol::table>()) {
+                        return std::string{};
+                    }
+                    sol::table selectedRow = selectedObj.as<sol::table>();
+                    return selectedRow["kind"].get_or(std::string{});
+                }();
+
+                const auto rowCount = scriptRows.size();
+                scriptListConfig.rows.reserve(rowCount);
+                for (std::size_t i = 1; i <= rowCount; ++i) {
+                    sol::object rowObj = scriptRows[i];
+                    if (!rowObj.valid() || !rowObj.is<sol::table>()) {
+                        continue;
+                    }
+                    sol::table row = rowObj.as<sol::table>();
+                    ImGuiScriptListHost::ScriptRow hostRow;
+                    hostRow.section = row["section"].get_or(false);
+                    hostRow.nonInteractive = row["nonInteractive"].get_or(false);
+                    hostRow.active = row["active"].get_or(false);
+                    hostRow.dirty = row["dirty"].get_or(false);
+                    hostRow.kind = row["kind"].get_or(std::string{});
+                    hostRow.ownership = row["ownership"].get_or(std::string{});
+                    hostRow.path = row["path"].get_or(std::string{});
+                    hostRow.name = row["name"].get_or(std::string{});
+                    hostRow.label = row["label"].get_or(std::string{});
+                    hostRow.selected = (!selectedPath.empty()
+                        && hostRow.path == selectedPath
+                        && hostRow.kind == selectedKind);
+                    scriptListConfig.rows.push_back(std::move(hostRow));
                 }
             }
 
+            lua["__manifoldImguiScriptListActive"] = true;
+        }
+
+        if (shellMode == "edit" && leftPanelMode == "scripts") {
+            readSurfaceDescriptor(surfacesObj, "scriptInspectorTool", scriptInspectorConfig.visible, scriptInspectorConfig.bounds);
             sol::object scriptInspectorObj = shell["scriptInspector"];
-            sol::object inspectorCanvasObj = shell["inspectorCanvas"];
-            sol::object inspectorPanelObj = shell["inspectorPanel"];
-            if (scriptInspectorObj.valid() && scriptInspectorObj.is<sol::table>()
-                && inspectorCanvasObj.valid() && inspectorCanvasObj.is<Canvas*>()) {
+            if (scriptInspectorConfig.visible
+                && scriptInspectorConfig.bounds.getWidth() > 0
+                && scriptInspectorConfig.bounds.getHeight() > 0
+                && scriptInspectorObj.valid() && scriptInspectorObj.is<sol::table>()) {
                 sol::table scriptInspector = scriptInspectorObj.as<sol::table>();
-                auto* inspectorCanvas = inspectorCanvasObj.as<Canvas*>();
-                if (inspectorCanvas != nullptr) {
-                    int panelX = 0;
-                    int panelY = 0;
-                    if (inspectorPanelObj.valid() && inspectorPanelObj.is<sol::table>()) {
-                        sol::table inspectorPanel = inspectorPanelObj.as<sol::table>();
-                        sol::object inspectorPanelNodeObj = inspectorPanel["node"];
-                        if (inspectorPanelNodeObj.valid() && inspectorPanelNodeObj.is<Canvas*>()) {
-                            auto* inspectorPanelNode = inspectorPanelNodeObj.as<Canvas*>();
-                            if (inspectorPanelNode != nullptr) {
-                                const auto panelBounds = inspectorPanelNode->getBounds();
-                                panelX = panelBounds.getX();
-                                panelY = panelBounds.getY();
-                            }
-                        }
-                    }
+                scriptInspectorConfig.scriptMode = true;
 
-                    const auto canvasBounds = inspectorCanvas->getBounds();
-                    if (canvasBounds.getWidth() > 0 && canvasBounds.getHeight() > 0) {
-                        scriptInspectorConfig.visible = true;
-                        scriptInspectorConfig.scriptMode = true;
-                        scriptInspectorConfig.bounds = juce::Rectangle<int>(
-                            panelX + canvasBounds.getX(),
-                            panelY + canvasBounds.getY(),
-                            canvasBounds.getWidth(),
-                            canvasBounds.getHeight());
-
-                        const std::string path = scriptInspector["path"].get_or(std::string{});
+                const std::string path = scriptInspector["path"].get_or(std::string{});
                         scriptInspectorConfig.scriptData.hasSelection = !path.empty();
                         scriptInspectorConfig.scriptData.name = scriptInspector["name"].get_or(std::string{});
                         scriptInspectorConfig.scriptData.kind = scriptInspector["kind"].get_or(std::string{});
                         scriptInspectorConfig.scriptData.ownership = scriptInspector["ownership"].get_or(std::string{});
                         scriptInspectorConfig.scriptData.path = path;
+                        scriptInspectorConfig.scriptData.text = scriptInspector["text"].get_or(std::string{});
+                        scriptInspectorConfig.scriptData.syncToken = scriptInspector["syncToken"].get_or(int64_t{0});
+                        scriptInspectorConfig.scriptData.inlineReadOnly = true;
                         scriptInspectorConfig.scriptData.runtimeStatus = scriptInspector["runtimeStatus"].get_or(std::string{});
                         scriptInspectorConfig.scriptData.editorCollapsed = scriptInspector["editorCollapsed"].get_or(false);
                         scriptInspectorConfig.scriptData.graphCollapsed = scriptInspector["graphCollapsed"].get_or(false);
@@ -1165,39 +1104,6 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
                         }
 
                         lua["__manifoldImguiInspectorActive"] = true;
-
-                        const bool editorCollapsed = scriptInspector["editorCollapsed"].get_or(false);
-                        const int64_t syncToken = scriptInspector["syncToken"].get_or(int64_t{0});
-                        if (!editorCollapsed && !path.empty()) {
-                            juce::Rectangle<int> inlineRect;
-                            if (scriptInspectorLayoutBefore.hasInlineEditorRect) {
-                                inlineRect = scriptInspectorLayoutBefore.inlineEditorRect
-                                    .withPosition(scriptInspectorConfig.bounds.getX() + scriptInspectorLayoutBefore.inlineEditorRect.getX(),
-                                                  scriptInspectorConfig.bounds.getY() + scriptInspectorLayoutBefore.inlineEditorRect.getY());
-                            } else {
-                                sol::object bodyRectObj = scriptInspector["editorBodyRect"];
-                                if (bodyRectObj.valid() && bodyRectObj.is<sol::table>()) {
-                                    sol::table bodyRect = bodyRectObj.as<sol::table>();
-                                    inlineRect = juce::Rectangle<int>(
-                                        scriptInspectorConfig.bounds.getX() + bodyRect["x"].get_or(0),
-                                        scriptInspectorConfig.bounds.getY() + bodyRect["y"].get_or(0),
-                                        bodyRect["w"].get_or(0),
-                                        bodyRect["h"].get_or(0));
-                                }
-                            }
-
-                            if (inlineRect.getWidth() > 0 && inlineRect.getHeight() > 0) {
-                                inlineConfig.visible = true;
-                                inlineConfig.bounds = inlineRect;
-                                inlineConfig.file = juce::File(path);
-                                inlineConfig.text = scriptInspector["text"].get_or(std::string{});
-                                inlineConfig.syncToken = syncToken;
-                                inlineConfig.readOnly = true;
-                                lua["__manifoldImguiInlineEditorActive"] = true;
-                            }
-                        }
-                    }
-                }
             }
         }
     });
@@ -1208,101 +1114,39 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
     if (mainConfig.visible) {
         mainScriptEditorHost.configureDocument(mainConfig.file, mainConfig.text,
                                                mainConfig.syncToken, mainConfig.readOnly);
-        // Queue visibility change to avoid blocking GUI thread during OpenGL context creation
-        if (mainScriptEditorHost.isVisible() != true || mainScriptEditorHost.getBounds() != mainConfig.bounds) {
-            deferredVisibilityChanges.push_back({&mainScriptEditorHost, true, mainConfig.bounds});
-        }
-    } else {
-        if (mainScriptEditorHost.isVisible() != false || mainScriptEditorHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
-            deferredVisibilityChanges.push_back({&mainScriptEditorHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
-        }
     }
+    queueHostVisibilityChange(mainScriptEditorHost, mainConfig.visible, mainConfig.bounds);
 
     logEditorHostLayout("hierarchyHost", hierarchyHostTrace, hierarchyConfig.visible, hierarchyConfig.visible ? hierarchyConfig.bounds : juce::Rectangle<int>());
     if (hierarchyConfig.visible) {
         hierarchyHost.configureRows(hierarchyConfig.rows);
-        if (hierarchyHost.isVisible() != true || hierarchyHost.getBounds() != hierarchyConfig.bounds) {
-            deferredVisibilityChanges.push_back({&hierarchyHost, true, hierarchyConfig.bounds});
-        }
-    } else {
-        if (hierarchyHost.isVisible() != false || hierarchyHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
-            deferredVisibilityChanges.push_back({&hierarchyHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
-        }
     }
+    queueHostVisibilityChange(hierarchyHost, hierarchyConfig.visible, hierarchyConfig.bounds);
 
     logEditorHostLayout("scriptListHost", scriptListHostTrace, scriptListConfig.visible, scriptListConfig.visible ? scriptListConfig.bounds : juce::Rectangle<int>());
     if (scriptListConfig.visible) {
         scriptListHost.configureRows(scriptListConfig.rows);
-        if (scriptListHost.isVisible() != true || scriptListHost.getBounds() != scriptListConfig.bounds) {
-            deferredVisibilityChanges.push_back({&scriptListHost, true, scriptListConfig.bounds});
-        }
-    } else {
-        if (scriptListHost.isVisible() != false || scriptListHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
-            deferredVisibilityChanges.push_back({&scriptListHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
-        }
     }
+    queueHostVisibilityChange(scriptListHost, scriptListConfig.visible, scriptListConfig.bounds);
 
     logEditorHostLayout("inspectorHost", inspectorHostTrace, inspectorConfig.visible, inspectorConfig.visible ? inspectorConfig.bounds : juce::Rectangle<int>());
     if (inspectorConfig.visible) {
         inspectorHost.configureData(inspectorConfig.selectionBounds,
                                     inspectorConfig.rows,
                                     inspectorConfig.activeProperty);
-        if (inspectorHost.isVisible() != true || inspectorHost.getBounds() != inspectorConfig.bounds) {
-            deferredVisibilityChanges.push_back({&inspectorHost, true, inspectorConfig.bounds});
-        }
-    } else {
-        if (inspectorHost.isVisible() != false || inspectorHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
-            deferredVisibilityChanges.push_back({&inspectorHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
-        }
     }
+    queueHostVisibilityChange(inspectorHost, inspectorConfig.visible, inspectorConfig.bounds);
 
     logEditorHostLayout("scriptInspectorHost", scriptInspectorHostTrace, scriptInspectorConfig.visible, scriptInspectorConfig.visible ? scriptInspectorConfig.bounds : juce::Rectangle<int>());
     if (scriptInspectorConfig.visible) {
         scriptInspectorHost.configureScriptData(scriptInspectorConfig.scriptData);
-        if (scriptInspectorHost.isVisible() != true || scriptInspectorHost.getBounds() != scriptInspectorConfig.bounds) {
-            deferredVisibilityChanges.push_back({&scriptInspectorHost, true, scriptInspectorConfig.bounds});
-        }
-    } else {
-        if (scriptInspectorHost.isVisible() != false || scriptInspectorHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
-            deferredVisibilityChanges.push_back({&scriptInspectorHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
-        }
     }
-
-    logEditorHostLayout("inlineScriptEditorHost", inlineScriptHostTrace, inlineConfig.visible, inlineConfig.visible ? inlineConfig.bounds : juce::Rectangle<int>());
-    if (inlineConfig.visible) {
-        inlineScriptEditorHost.configureDocument(inlineConfig.file, inlineConfig.text,
-                                                 inlineConfig.syncToken, inlineConfig.readOnly);
-        if (inlineScriptEditorHost.isVisible() != true || inlineScriptEditorHost.getBounds() != inlineConfig.bounds) {
-            deferredVisibilityChanges.push_back({&inlineScriptEditorHost, true, inlineConfig.bounds});
-        }
-    } else {
-        if (inlineScriptEditorHost.isVisible() != false || inlineScriptEditorHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
-            deferredVisibilityChanges.push_back({&inlineScriptEditorHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
-        }
-    }
+    queueHostVisibilityChange(scriptInspectorHost, scriptInspectorConfig.visible, scriptInspectorConfig.bounds);
 
     if (perfOverlayConfig.visible) {
-        const auto editorBounds = getLocalBounds();
-        const int panelW = std::min(520, std::max(320, static_cast<int>(editorBounds.getWidth() * 0.42f)));
-        const int panelH = std::min(420, std::max(220, static_cast<int>(editorBounds.getHeight() * 0.55f)));
-        const auto defaultBounds = juce::Rectangle<int>(
-            std::max(0, editorBounds.getWidth() - panelW - 16),
-            16,
-            panelW,
-            panelH);
-        const auto currentBounds = perfOverlayHost.getBounds();
-        perfOverlayConfig.bounds = perfOverlayHost.isVisible() && currentBounds.getWidth() > 0 && currentBounds.getHeight() > 0
-            ? currentBounds
-            : defaultBounds;
         perfOverlayHost.configureSnapshot(perfOverlayConfig.snapshot);
-        if (perfOverlayHost.isVisible() != true || perfOverlayHost.getBounds() != perfOverlayConfig.bounds) {
-            deferredVisibilityChanges.push_back({&perfOverlayHost, true, perfOverlayConfig.bounds});
-        }
-    } else {
-        if (perfOverlayHost.isVisible() != false || perfOverlayHost.getBounds() != juce::Rectangle<int>(0, 0, 0, 0)) {
-            deferredVisibilityChanges.push_back({&perfOverlayHost, false, juce::Rectangle<int>(0, 0, 0, 0)});
-        }
     }
+    queueHostVisibilityChange(perfOverlayHost, perfOverlayConfig.visible, perfOverlayConfig.bounds);
 
     logEditorPerf("syncImGuiHostsFromLuaShell.applyHosts", hostApplyStart);
     logEditorPerf("syncImGuiHostsFromLuaShell.total", totalStart);
@@ -1338,8 +1182,6 @@ void BehaviorCoreEditor::resized() {
         errorNode->setBounds(rootCanvas.getLocalBounds());
         mainScriptEditorHost.setVisible(false);
         mainScriptEditorHost.setBounds(0, 0, 0, 0);
-        inlineScriptEditorHost.setVisible(false);
-        inlineScriptEditorHost.setBounds(0, 0, 0, 0);
         scriptListHost.setVisible(false);
         scriptListHost.setBounds(0, 0, 0, 0);
         hierarchyHost.setVisible(false);

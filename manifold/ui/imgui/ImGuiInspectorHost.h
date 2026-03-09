@@ -5,10 +5,13 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+class TextEditor;
 
 class ImGuiInspectorHost : public juce::Component, private juce::OpenGLRenderer {
 public:
@@ -89,6 +92,9 @@ public:
         std::string kind;
         std::string ownership;
         std::string path;
+        std::string text;
+        int64_t syncToken = -1;
+        bool inlineReadOnly = true;
         bool hasStructuredStatus = false;
         bool structuredDirty = false;
         std::string projectLastError;
@@ -101,11 +107,6 @@ public:
         int graphPanY = 0;
         std::vector<GraphNode> graphNodes;
         std::vector<GraphEdge> graphEdges;
-    };
-
-    struct LayoutSnapshot {
-        bool hasInlineEditorRect = false;
-        juce::Rectangle<int> inlineEditorRect;
     };
 
     struct ActionRequests {
@@ -149,7 +150,6 @@ public:
                        const ActiveProperty& activeProperty);
     void configureScriptData(const ScriptInspectorData& scriptData);
     ActionRequests consumeActionRequests();
-    LayoutSnapshot getLayoutSnapshot() const;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -201,6 +201,7 @@ private:
     void releaseInactiveKeys();
     void releaseAllActiveKeys();
     void queueFocus(bool focused);
+    void updateInlineLanguageDefinitionForPathLocked(const juce::File& file);
 
     static int translateKeyCodeToImGuiKey(int keyCode);
 
@@ -219,9 +220,9 @@ private:
     std::string textEditBuffer_;
     std::string textEditPath_;
     std::string textEditLastSourceValue_;
-
-    mutable std::mutex layoutMutex_;
-    LayoutSnapshot layoutSnapshot_;
+    std::unique_ptr<TextEditor> inlineTextEditor_;
+    juce::File inlineDocumentFile_;
+    int64_t inlineAppliedSyncToken_ = -1;
 
     bool leftMouseDown_ = false;
     bool rightMouseDown_ = false;

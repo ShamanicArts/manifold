@@ -38,9 +38,6 @@ void drawInspectorRowsPanel(const std::vector<ImGuiInspectorHost::InspectorRow>&
 void drawScriptInspectorInfo(const ImGuiInspectorHost::ScriptInspectorData& scriptData);
 void drawScriptInspectorDspControls(const ImGuiInspectorHost::ScriptInspectorData& scriptData,
                                     const ScriptInspectorCallbacks& callbacks);
-void drawInlineEditorSlot(const ImGuiInspectorHost::ScriptInspectorData& scriptData,
-                          ImGuiInspectorHost::LayoutSnapshot& nextLayout,
-                          const ScriptInspectorCallbacks& callbacks);
 void drawDspGraphPanel(const ImGuiInspectorHost::ScriptInspectorData& scriptData,
                        const ScriptInspectorCallbacks& callbacks);
 

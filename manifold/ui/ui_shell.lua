@@ -273,6 +273,7 @@ function Shell.create(parentNode, options)
             visible = false,
             activeTab = "frame",
         },
+        surfaces = {},
     }
 
     shell.panel = W.Panel.new(parentNode, "sharedShell", {
@@ -790,6 +791,9 @@ function Shell.create(parentNode, options)
     ShellMethodsCore.attach(shell)
     ShellBindings.attach(shell)
     ShellMethodsLayout.attach(shell)
+
+    shell:syncToolSurfaces()
+    shell:syncPerfOverlaySurface(parentNode:getWidth(), parentNode:getHeight())
 
     return shell
 end

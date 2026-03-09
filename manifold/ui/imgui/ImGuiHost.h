@@ -53,6 +53,8 @@ public:
                            const std::string& text,
                            int64_t syncToken,
                            bool readOnly);
+    void setRenderActive(bool active);
+    bool isRenderActive() const;
 
     std::string getCurrentText() const;
 
@@ -134,6 +136,7 @@ private:
     std::unordered_set<int> activeKeyCodes_;
 
     std::atomic<bool> contextReady_{false};
+    std::atomic<bool> renderActive_{true};
     std::atomic<bool> wantCaptureMouse_{false};
     std::atomic<bool> wantCaptureKeyboard_{false};
     std::atomic<bool> documentLoaded_{false};

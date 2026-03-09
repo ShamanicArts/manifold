@@ -451,7 +451,13 @@ function M.attach(shell)
 
         local ed = shell.scriptEditor
         shell.scriptEditorButtonRects = {}
-        local imguiMainActive = (type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true)
+        local mainEditorSurface = type(shell.surfaces) == "table" and shell.surfaces.mainScriptEditor or nil
+        local imguiMainActive = shell.mode == "edit"
+            and shell.editContentMode == "script"
+            and type(ed.path) == "string"
+            and ed.path ~= ""
+            and type(mainEditorSurface) == "table"
+            and mainEditorSurface.visible == true
 
         gfx.setColour(0xff101827)
         gfx.fillRect(0, 0, w, SCRIPT_EDITOR_STYLE.headerH)
@@ -506,13 +512,6 @@ function M.attach(shell)
         local textX = gutterW + pad + 4
         local perfStart = nowSeconds()
 
-        ed.bodyRect = {
-            x = 0,
-            y = SCRIPT_EDITOR_STYLE.headerH,
-            w = w,
-            h = math.max(0, h - SCRIPT_EDITOR_STYLE.headerH),
-        }
-
         gfx.setColour(0xff0b1220)
         gfx.fillRect(0, SCRIPT_EDITOR_STYLE.headerH, w, h - SCRIPT_EDITOR_STYLE.headerH)
 
@@ -538,98 +537,15 @@ function M.attach(shell)
         local syntaxSpanCount = 0
 
         if not imguiMainActive then
-            for i = 0, visible - 1 do
-                local lineIdx = ed.scrollRow + i
-                local lineText = lines[lineIdx]
-                local lineStart = starts[lineIdx]
-                if lineText == nil or lineStart == nil then
-                    break
-                end
-
-                local y = textTop + i * lineH
-                if y + lineH > h - statusH then
-                    break
-                end
-
-                if lineIdx == cursorLine then
-                    gfx.setColour(0x203b82f6)
-                    gfx.fillRect(textX - 2, y, w - textX - pad + 2, lineH)
-                end
-
-                if selStart ~= nil and selEnd ~= nil then
-                    local lineEndExclusive = lineStart + #lineText
-                    local overlapStart = math.max(selStart, lineStart)
-                    local overlapEnd = math.min(selEnd, lineEndExclusive)
-                    if overlapEnd > overlapStart then
-                        local selColStart = overlapStart - lineStart + 1
-                        local selColEnd = overlapEnd - lineStart + 1
-                        local sx = math.floor(textX + (selColStart - 1) * SCRIPT_EDITOR_STYLE.charW + 0.5)
-                        local sw = math.max(1, math.floor((selColEnd - selColStart) * SCRIPT_EDITOR_STYLE.charW + 0.5))
-                        gfx.setColour(0x705892f0)
-                        gfx.fillRect(sx, y, sw, lineH)
-                    end
-                end
-
-                gfx.setColour(0xff64748b)
-                gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 11.0, FontStyle.plain)
-                gfx.drawText(tostring(lineIdx), 4, y, gutterW - 6, lineH, Justify.centredRight)
-                gutterDrawCalls = gutterDrawCalls + 1
-
-                local display = lineText
-                if #display > maxCols then
-                    display = string.sub(display, 1, maxCols)
-                end
-
-                local spans = seTokenizeLuaLineCached(display)
-                syntaxSpanCount = syntaxSpanCount + #spans
-                local cx = textX
-                local batchText = nil
-                local batchColour = nil
-                local batchLen = 0
-                local batchX = textX
-                gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, SCRIPT_EDITOR_STYLE.fontSize, FontStyle.plain)
-                for s = 1, #spans do
-                    local span = spans[s]
-                    local text = span.text or ""
-                    local spanLen = #text
-                    if spanLen > 0 then
-                        local drawTextValue = string.gsub(text, "\t", " ")
-                        local colour = span.colour or SCRIPT_SYNTAX_COLOUR.text
-                        if batchColour == colour then
-                            batchText = batchText .. drawTextValue
-                            batchLen = batchLen + spanLen
-                        else
-                            if batchText ~= nil and batchLen > 0 then
-                                local drawW = math.max(1, math.floor(batchLen * SCRIPT_EDITOR_STYLE.charW + 2))
-                                gfx.setColour(batchColour)
-                                gfx.drawText(batchText, math.floor(batchX + 0.5), y, drawW, lineH, Justify.centredLeft)
-                                syntaxDrawCalls = syntaxDrawCalls + 1
-                            end
-                            batchText = drawTextValue
-                            batchColour = colour
-                            batchLen = spanLen
-                            batchX = cx
-                        end
-                        cx = cx + spanLen * SCRIPT_EDITOR_STYLE.charW
-                    end
-                end
-                if batchText ~= nil and batchLen > 0 then
-                    local drawW = math.max(1, math.floor(batchLen * SCRIPT_EDITOR_STYLE.charW + 2))
-                    gfx.setColour(batchColour)
-                    gfx.drawText(batchText, math.floor(batchX + 0.5), y, drawW, lineH, Justify.centredLeft)
-                    syntaxDrawCalls = syntaxDrawCalls + 1
-                end
-            end
-
-            if ed.focused then
-                local blinkOn = (math.floor(nowSeconds() * 2) % 2) == 0
-                if blinkOn and cursorLine >= ed.scrollRow and cursorLine < ed.scrollRow + visible then
-                    local cx = math.floor(textX + (clamp(cursorCol, 1, maxCols + 1) - 1) * SCRIPT_EDITOR_STYLE.charW + 0.5)
-                    local cy = textTop + (cursorLine - ed.scrollRow) * lineH
-                    gfx.setColour(0xff7dd3fc)
-                    gfx.drawLine(cx, cy + 2, cx, cy + lineH - 2)
-                end
-            end
+            gfx.setColour(0xff7f1d1d)
+            gfx.fillRoundedRect(12, SCRIPT_EDITOR_STYLE.headerH + 12, math.max(0, w - 24), math.max(0, h - SCRIPT_EDITOR_STYLE.headerH - statusH - 24), 6)
+            gfx.setColour(0xfffecaca)
+            gfx.setFont(12.0)
+            gfx.drawText("ImGui script editor unavailable", 24, SCRIPT_EDITOR_STYLE.headerH + 28, math.max(0, w - 48), 20, Justify.centredLeft)
+            gfx.setColour(0xfffca5a5)
+            gfx.setFont(10.0)
+            gfx.drawText("This path must not silently fall back to the legacy editor.", 24, SCRIPT_EDITOR_STYLE.headerH + 52, math.max(0, w - 48), 16, Justify.centredLeft)
+            gfx.drawText("Fix the ImGui host instead of rendering backup editor UI.", 24, SCRIPT_EDITOR_STYLE.headerH + 68, math.max(0, w - 48), 16, Justify.centredLeft)
         end
 
         gfx.setColour(0xff0f172a)
@@ -640,7 +556,7 @@ function M.attach(shell)
         gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 10.0, FontStyle.plain)
         local statusText = imguiMainActive
             and string.format("%s | Ctrl+S Save | Ctrl+R Reload | Ctrl+W Close", ed.status or "")
-            or string.format("Ln %d Col %d | %s | Ctrl+S Save | Ctrl+R Reload | Ctrl+W Close", cursorLine, cursorCol, ed.status or "")
+            or string.format("ImGui editor unavailable | %s | Ctrl+S Save | Ctrl+R Reload | Ctrl+W Close", ed.status or "")
         if ed.ownership == "editor-owned" then
             statusText = statusText .. " | visual edits save from Preview mode"
         end
@@ -692,7 +608,14 @@ function M.attach(shell)
             end
         end
 
-        if type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true then
+        local mainEditorSurface = type(shell.surfaces) == "table" and shell.surfaces.mainScriptEditor or nil
+        local imguiMainActive = shell.mode == "edit"
+            and shell.editContentMode == "script"
+            and type(shell.scriptEditor.path) == "string"
+            and shell.scriptEditor.path ~= ""
+            and type(mainEditorSurface) == "table"
+            and mainEditorSurface.visible == true
+        if imguiMainActive then
             return
         end
 
@@ -715,7 +638,14 @@ function M.attach(shell)
             return
         end
 
-        if type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true then
+        local mainEditorSurface = type(shell.surfaces) == "table" and shell.surfaces.mainScriptEditor or nil
+        local imguiMainActive = shell.mode == "edit"
+            and shell.editContentMode == "script"
+            and type(shell.scriptEditor.path) == "string"
+            and shell.scriptEditor.path ~= ""
+            and type(mainEditorSurface) == "table"
+            and mainEditorSurface.visible == true
+        if imguiMainActive then
             return
         end
 
@@ -738,7 +668,14 @@ function M.attach(shell)
         if shell.mode ~= "edit" or shell.editContentMode ~= "script" then
             return
         end
-        if type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true then
+        local mainEditorSurface = type(shell.surfaces) == "table" and shell.surfaces.mainScriptEditor or nil
+        local imguiMainActive = shell.mode == "edit"
+            and shell.editContentMode == "script"
+            and type(shell.scriptEditor.path) == "string"
+            and shell.scriptEditor.path ~= ""
+            and type(mainEditorSurface) == "table"
+            and mainEditorSurface.visible == true
+        if imguiMainActive then
             return
         end
         shell.scriptEditor.dragAnchorPos = nil
@@ -751,7 +688,14 @@ function M.attach(shell)
             return
         end
 
-        if type(_G) == "table" and _G.__manifoldImguiMainEditorActive == true then
+        local mainEditorSurface = type(shell.surfaces) == "table" and shell.surfaces.mainScriptEditor or nil
+        local imguiMainActive = shell.mode == "edit"
+            and shell.editContentMode == "script"
+            and type(shell.scriptEditor.path) == "string"
+            and shell.scriptEditor.path ~= ""
+            and type(mainEditorSurface) == "table"
+            and mainEditorSurface.visible == true
+        if imguiMainActive then
             return
         end
 
@@ -941,12 +885,6 @@ function M.attach(shell)
             local si = shell.scriptInspector
             local y = 6
 
-            si.editorHeaderRect = nil
-            si.editorBodyRect = nil
-            si.graphHeaderRect = nil
-            si.graphBodyRect = nil
-            si.runButtonRect = nil
-            si.stopButtonRect = nil
             si.runtimeParamRows = {}
 
             if not si or si.path == "" then
@@ -998,26 +936,25 @@ function M.attach(shell)
                 local graph = si.graph or { nodes = {}, edges = {} }
                 infoRow("Graph", string.format("%d nodes / %d edges", #(graph.nodes or {}), #(graph.edges or {})))
 
-                local btnY = y
-                local btnW = math.floor((w - 24) * 0.5)
                 local btnH = 18
-                si.runButtonRect = { x = 8, y = btnY, w = btnW, h = btnH }
-                si.stopButtonRect = { x = 12 + btnW, y = btnY, w = btnW, h = btnH }
+                if type(si.runButtonRect) == "table" then
+                    gfx.setColour(0xff1e293b)
+                    gfx.fillRoundedRect(si.runButtonRect.x, si.runButtonRect.y, si.runButtonRect.w, si.runButtonRect.h, 4)
+                    gfx.setColour(0xff334155)
+                    gfx.drawRoundedRect(si.runButtonRect.x, si.runButtonRect.y, si.runButtonRect.w, si.runButtonRect.h, 4, 1)
+                    gfx.setColour(0xffcbd5e1)
+                    gfx.setFont(9.0)
+                    gfx.drawText("Run in Preview Slot", si.runButtonRect.x + 4, si.runButtonRect.y, si.runButtonRect.w - 8, si.runButtonRect.h, Justify.centred)
+                end
 
-                gfx.setColour(0xff1e293b)
-                gfx.fillRoundedRect(si.runButtonRect.x, si.runButtonRect.y, si.runButtonRect.w, si.runButtonRect.h, 4)
-                gfx.setColour(0xff334155)
-                gfx.drawRoundedRect(si.runButtonRect.x, si.runButtonRect.y, si.runButtonRect.w, si.runButtonRect.h, 4, 1)
-                gfx.setColour(0xffcbd5e1)
-                gfx.setFont(9.0)
-                gfx.drawText("Run in Preview Slot", si.runButtonRect.x + 4, si.runButtonRect.y, si.runButtonRect.w - 8, si.runButtonRect.h, Justify.centred)
-
-                gfx.setColour(0xff1e293b)
-                gfx.fillRoundedRect(si.stopButtonRect.x, si.stopButtonRect.y, si.stopButtonRect.w, si.stopButtonRect.h, 4)
-                gfx.setColour(0xff334155)
-                gfx.drawRoundedRect(si.stopButtonRect.x, si.stopButtonRect.y, si.stopButtonRect.w, si.stopButtonRect.h, 4, 1)
-                gfx.setColour(0xffcbd5e1)
-                gfx.drawText("Stop Preview Slot", si.stopButtonRect.x + 4, si.stopButtonRect.y, si.stopButtonRect.w - 8, si.stopButtonRect.h, Justify.centred)
+                if type(si.stopButtonRect) == "table" then
+                    gfx.setColour(0xff1e293b)
+                    gfx.fillRoundedRect(si.stopButtonRect.x, si.stopButtonRect.y, si.stopButtonRect.w, si.stopButtonRect.h, 4)
+                    gfx.setColour(0xff334155)
+                    gfx.drawRoundedRect(si.stopButtonRect.x, si.stopButtonRect.y, si.stopButtonRect.w, si.stopButtonRect.h, 4, 1)
+                    gfx.setColour(0xffcbd5e1)
+                    gfx.drawText("Stop Preview Slot", si.stopButtonRect.x + 4, si.stopButtonRect.y, si.stopButtonRect.w - 8, si.stopButtonRect.h, Justify.centred)
+                end
 
                 y = y + btnH + 4
 
@@ -1169,105 +1106,50 @@ function M.attach(shell)
 
             y = y + 4
 
-            local headerH = 20
-            local function drawSectionHeader(text, collapsed, yy)
+            local function drawSectionHeader(text, collapsed, rect)
+                if type(rect) ~= "table" then
+                    return
+                end
                 gfx.setColour(0xff1e293b)
-                gfx.fillRoundedRect(6, yy, w - 12, headerH, 4)
+                gfx.fillRoundedRect(rect.x, rect.y, rect.w, rect.h, 4)
                 gfx.setColour(0xff334155)
-                gfx.drawRoundedRect(6, yy, w - 12, headerH, 4, 1)
+                gfx.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, 4, 1)
                 gfx.setColour(0xff94a3b8)
                 gfx.setFont(10.0)
                 local marker = collapsed and "[+] " or "[-] "
-                gfx.drawText(marker .. text, 12, yy, w - 24, headerH, Justify.centredLeft)
-                return { x = 6, y = yy, w = w - 12, h = headerH }
+                gfx.drawText(marker .. text, rect.x + 6, rect.y, rect.w - 12, rect.h, Justify.centredLeft)
             end
 
-            si.editorHeaderRect = drawSectionHeader("Inline Script", si.editorCollapsed, y)
-            y = y + headerH + 4
+            drawSectionHeader("Inline Script", si.editorCollapsed, si.editorHeaderRect)
 
-            if not si.editorCollapsed then
-                local bodyH = math.max(80, math.min(180, h - y - ((si.kind == "dsp") and 150 or 40)))
-                si.editorBodyRect = { x = 6, y = y, w = w - 12, h = bodyH }
-
+            if type(si.editorBodyRect) == "table" then
                 gfx.setColour(0xff0b1220)
                 gfx.fillRoundedRect(si.editorBodyRect.x, si.editorBodyRect.y, si.editorBodyRect.w, si.editorBodyRect.h, 4)
                 gfx.setColour(0xff334155)
                 gfx.drawRoundedRect(si.editorBodyRect.x, si.editorBodyRect.y, si.editorBodyRect.w, si.editorBodyRect.h, 4, 1)
 
-                local imguiInlineActive = (type(_G) == "table" and _G.__manifoldImguiInlineEditorActive == true)
+                local imguiInlineActive = type(_G) == "table"
+                    and _G.__manifoldImguiInspectorActive == true
+                    and si.editorCollapsed ~= true
+                    and type(si.path) == "string"
+                    and si.path ~= ""
                 if not imguiInlineActive then
-                    local lines = seBuildLinesCached(si)
-                    local lineH = 14
-                    local visible = math.max(1, math.floor((bodyH - 8) / lineH))
-                    local maxScroll = math.max(1, #lines - visible + 1)
-                    si.editorScrollRow = clamp(si.editorScrollRow or 1, 1, maxScroll)
-
-                    for i = 0, visible - 1 do
-                        local idx = si.editorScrollRow + i
-                        local line = lines[idx]
-                        if line == nil then
-                            break
-                        end
-                        local ly = y + 4 + i * lineH
-                        gfx.setColour(0xff475569)
-                        gfx.setFont(9.0)
-                        gfx.drawText(tostring(idx), 10, ly, 26, lineH, Justify.centredRight)
-
-                        local text = line
-                        if #text > 200 then
-                            text = text:sub(1, 200)
-                        end
-
-                        local spans = seTokenizeLuaLineCached(text)
-                        local tx = 40
-                        gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 10.0, FontStyle.plain)
-                        for s = 1, #spans do
-                            local span = spans[s]
-                            local st = span.text or ""
-                            local sl = #st
-                            if sl > 0 then
-                                local remaining = (w - 16) - tx
-                                if remaining <= 0 then
-                                    break
-                                end
-
-                                local maxChars = math.max(0, math.floor(remaining / 7))
-                                if maxChars <= 0 then
-                                    break
-                                end
-
-                                local drawTextValue = st
-                                if sl > maxChars then
-                                    drawTextValue = string.sub(st, 1, maxChars)
-                                    sl = #drawTextValue
-                                end
-
-                                drawTextValue = string.gsub(drawTextValue, "\t", " ")
-                                gfx.setColour(span.colour or SCRIPT_SYNTAX_COLOUR.text)
-                                gfx.drawText(drawTextValue, tx, ly, math.max(1, sl * 7 + 2), lineH, Justify.centredLeft)
-                                tx = tx + sl * 7
-
-                                if sl < #st then
-                                    break
-                                end
-                            end
-                        end
-                    end
+                    gfx.setColour(0xff7f1d1d)
+                    gfx.fillRoundedRect(si.editorBodyRect.x + 6, si.editorBodyRect.y + 6, math.max(0, si.editorBodyRect.w - 12), math.max(0, si.editorBodyRect.h - 12), 4)
+                    gfx.setColour(0xfffecaca)
+                    gfx.setFont(11.0)
+                    gfx.drawText("ImGui inline editor unavailable", si.editorBodyRect.x + 14, si.editorBodyRect.y + 14, math.max(0, si.editorBodyRect.w - 28), 18, Justify.centredLeft)
+                    gfx.setColour(0xfffca5a5)
+                    gfx.setFont(9.0)
+                    gfx.drawText("Legacy inline fallback is disabled.", si.editorBodyRect.x + 14, si.editorBodyRect.y + 34, math.max(0, si.editorBodyRect.w - 28), 14, Justify.centredLeft)
+                    gfx.drawText("Fix the ImGui host instead.", si.editorBodyRect.x + 14, si.editorBodyRect.y + 48, math.max(0, si.editorBodyRect.w - 28), 14, Justify.centredLeft)
                 end
-
-                y = y + bodyH + 6
-            else
-                si.editorBodyRect = nil
             end
 
             if si.kind == "dsp" then
-                si.graphHeaderRect = drawSectionHeader("DSP Graph (drag to pan)", si.graphCollapsed, y)
-                y = y + headerH + 4
+                drawSectionHeader("DSP Graph (drag to pan)", si.graphCollapsed, si.graphHeaderRect)
 
-                if not si.graphCollapsed then
-                    local bodyH = math.max(90, h - y - 8)
-                    si.graphBodyRect = { x = 6, y = y, w = w - 12, h = bodyH }
-
+                if type(si.graphBodyRect) == "table" then
                     gfx.setColour(0xff0b1220)
                     gfx.fillRoundedRect(si.graphBodyRect.x, si.graphBodyRect.y, si.graphBodyRect.w, si.graphBodyRect.h, 4)
                     gfx.setColour(0xff334155)
@@ -1405,13 +1287,11 @@ function M.attach(shell)
             si.runtimeSliderDragLastUiRepaintAt = -1
 
             if pointInRect(mx, my, si.editorHeaderRect) then
-                si.editorCollapsed = not si.editorCollapsed
-                shell.inspectorCanvas:repaint()
+                shell:setScriptInspectorEditorCollapsed(not si.editorCollapsed)
                 return
             end
             if pointInRect(mx, my, si.graphHeaderRect) then
-                si.graphCollapsed = not si.graphCollapsed
-                shell.inspectorCanvas:repaint()
+                shell:setScriptInspectorGraphCollapsed(not si.graphCollapsed)
                 return
             end
             if pointInRect(mx, my, si.graphBodyRect) then
@@ -1592,7 +1472,12 @@ function M.attach(shell)
         if shell.leftPanelMode == "scripts" then
             local si = shell.scriptInspector
             if pointInRect(mx, my, si.editorBodyRect) then
-                if type(_G) == "table" and _G.__manifoldImguiInlineEditorActive == true then
+                local imguiInlineActive = type(_G) == "table"
+                    and _G.__manifoldImguiInspectorActive == true
+                    and si.editorCollapsed ~= true
+                    and type(si.path) == "string"
+                    and si.path ~= ""
+                if imguiInlineActive then
                     return
                 end
                 local lines = seBuildLinesCached(si)

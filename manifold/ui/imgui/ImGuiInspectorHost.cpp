@@ -3,6 +3,7 @@
 #include "Theme.h"
 #include "ToolComponents.h"
 #include "WidgetPrimitives.h"
+#include "TextEditor.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -32,6 +33,15 @@ ImGuiInspectorHost::ImGuiInspectorHost() {
     setOpaque(true);
     setWantsKeyboardFocus(true);
     setMouseClickGrabsKeyboardFocus(true);
+
+    inlineTextEditor_ = std::make_unique<TextEditor>();
+    inlineTextEditor_->SetPalette(TextEditor::PaletteId::Mariana);
+    inlineTextEditor_->SetShowLineNumbersEnabled(true);
+    inlineTextEditor_->SetShowWhitespacesEnabled(false);
+    inlineTextEditor_->SetAutoIndentEnabled(true);
+    inlineTextEditor_->SetTabSize(4);
+    inlineTextEditor_->SetLineSpacing(1.15f);
+    inlineTextEditor_->SetReadOnlyEnabled(true);
 
     openGLContext.setRenderer(this);
     openGLContext.setComponentPaintingEnabled(false);
@@ -72,6 +82,20 @@ void ImGuiInspectorHost::configureScriptData(const ScriptInspectorData& scriptDa
     std::lock_guard<std::mutex> lock(dataMutex_);
     mode_ = Mode::ScriptInspector;
     scriptData_ = scriptData;
+
+    if (inlineTextEditor_ == nullptr || scriptData_.path.empty()) {
+        inlineDocumentFile_ = juce::File();
+        inlineAppliedSyncToken_ = -1;
+        return;
+    }
+
+    inlineTextEditor_->SetReadOnlyEnabled(scriptData_.inlineReadOnly);
+    if (inlineAppliedSyncToken_ != scriptData_.syncToken || inlineDocumentFile_.getFullPathName().toStdString() != scriptData_.path) {
+        inlineDocumentFile_ = juce::File(scriptData_.path);
+        inlineAppliedSyncToken_ = scriptData_.syncToken;
+        updateInlineLanguageDefinitionForPathLocked(inlineDocumentFile_);
+        inlineTextEditor_->SetText(scriptData_.text);
+    }
 }
 
 ImGuiInspectorHost::ActionRequests ImGuiInspectorHost::consumeActionRequests() {
@@ -126,11 +150,6 @@ ImGuiInspectorHost::ActionRequests ImGuiInspectorHost::consumeActionRequests() {
     return requests;
 }
 
-ImGuiInspectorHost::LayoutSnapshot ImGuiInspectorHost::getLayoutSnapshot() const {
-    std::lock_guard<std::mutex> lock(layoutMutex_);
-    return layoutSnapshot_;
-}
-
 void ImGuiInspectorHost::paint(juce::Graphics& g) {
     juce::ignoreUnused(g);
 }
@@ -150,8 +169,6 @@ void ImGuiInspectorHost::visibilityChanged() {
         releaseAllActiveKeys();
         syncModifierKeys(juce::ModifierKeys::noModifiers);
         queueFocus(false);
-        std::lock_guard<std::mutex> lock(layoutMutex_);
-        layoutSnapshot_ = {};
     }
     attachContextIfNeeded();
 }
@@ -278,24 +295,14 @@ void ImGuiInspectorHost::renderOpenGL() {
     ImGui::SetCurrentContext(context);
 
     auto& io = ImGui::GetIO();
-    const auto rawScale = static_cast<float>(openGLContext.getRenderingScale());
+    const auto scale = static_cast<float>(openGLContext.getRenderingScale());
     const auto width = std::max(1, getWidth());
     const auto height = std::max(1, getHeight());
-    
-    // Cap framebuffer resolution to prevent GPU overload on high-DPI displays
-    constexpr int maxFramebufferDim = 1920;
-    const auto rawFramebufferWidth = juce::roundToInt(rawScale * static_cast<float>(width));
-    const auto rawFramebufferHeight = juce::roundToInt(rawScale * static_cast<float>(height));
-    const auto maxDim = std::max(rawFramebufferWidth, rawFramebufferHeight);
-    const auto effectiveScale = (maxDim > maxFramebufferDim)
-        ? rawScale * static_cast<float>(maxFramebufferDim) / static_cast<float>(maxDim)
-        : rawScale;
-    
-    const auto framebufferWidth = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(width)));
-    const auto framebufferHeight = std::max(1, juce::roundToInt(effectiveScale * static_cast<float>(height)));
+    const auto framebufferWidth = std::max(1, juce::roundToInt(scale * static_cast<float>(width)));
+    const auto framebufferHeight = std::max(1, juce::roundToInt(scale * static_cast<float>(height)));
 
     io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
-    io.DisplayFramebufferScale = ImVec2(effectiveScale, effectiveScale);
+    io.DisplayFramebufferScale = ImVec2(scale, scale);
 
     {
         std::lock_guard<std::mutex> lock(inputMutex);
@@ -339,8 +346,6 @@ void ImGuiInspectorHost::renderOpenGL() {
         scriptData = scriptData_;
         textBuffer = textEditBuffer_;
     }
-
-    LayoutSnapshot nextLayout;
 
     const auto& theme = manifold::ui::imgui::toolTheme();
 
@@ -465,17 +470,39 @@ void ImGuiInspectorHost::renderOpenGL() {
             };
 
             manifold::ui::imgui::drawScriptInspectorDspControls(scriptData, scriptCallbacks);
-            manifold::ui::imgui::drawInlineEditorSlot(scriptData, nextLayout, scriptCallbacks);
+
+            ImGui::SetNextItemOpen(!scriptData.editorCollapsed, ImGuiCond_Always);
+            const bool editorOpen = ImGui::CollapsingHeader("Inline Script", ImGuiTreeNodeFlags_DefaultOpen);
+            if (editorOpen != !scriptData.editorCollapsed && scriptCallbacks.onSetEditorCollapsed) {
+                scriptCallbacks.onSetEditorCollapsed(!editorOpen);
+            }
+            if (editorOpen) {
+                float editorHeight = 160.0f;
+                if (scriptData.kind == "dsp" && !scriptData.graphCollapsed) {
+                    editorHeight = std::clamp(ImGui::GetContentRegionAvail().y - 180.0f, 80.0f, 180.0f);
+                } else {
+                    editorHeight = std::clamp(ImGui::GetContentRegionAvail().y - 24.0f, 80.0f, 180.0f);
+                }
+
+                std::lock_guard<std::mutex> lock(dataMutex_);
+                if (inlineTextEditor_ != nullptr) {
+                    const bool windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+                    inlineTextEditor_->Render("##ManifoldInlineCodeEditor", windowFocused,
+                                              ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x), editorHeight),
+                                              true);
+                } else {
+                    ImGui::BeginChild("##InlineScriptMissing", ImVec2(0.0f, editorHeight), true,
+                                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+                    ImGui::TextDisabled("Inline editor unavailable");
+                    ImGui::EndChild();
+                }
+            }
+
             manifold::ui::imgui::drawDspGraphPanel(scriptData, scriptCallbacks);
         }
     }
 
     ImGui::End();
-
-    {
-        std::lock_guard<std::mutex> lock(layoutMutex_);
-        layoutSnapshot_ = nextLayout;
-    }
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -493,17 +520,14 @@ void ImGuiInspectorHost::openGLContextClosing() {
 }
 
 void ImGuiInspectorHost::attachContextIfNeeded() {
-    if (!isShowing() || getWidth() <= 0 || getHeight() <= 0) {
-        if (openGLContext.isAttached()) {
-            logInspectorHostEvent("detachContext", this, &openGLContext);
-            openGLContext.detach();
-        }
+    if (openGLContext.isAttached()) {
         return;
     }
-    if (!openGLContext.isAttached()) {
-        logInspectorHostEvent("attachContext", this, &openGLContext);
-        openGLContext.attachTo(*this);
+    if (!isShowing() || getWidth() <= 0 || getHeight() <= 0) {
+        return;
     }
+    logInspectorHostEvent("attachContext", this, &openGLContext);
+    openGLContext.attachTo(*this);
 }
 
 void ImGuiInspectorHost::queueMousePosition(juce::Point<float> position) {
@@ -637,6 +661,36 @@ void ImGuiInspectorHost::queueFocus(bool focused) {
     event.focused = focused;
     std::lock_guard<std::mutex> lock(inputMutex);
     pendingEvents.push_back(std::move(event));
+}
+
+void ImGuiInspectorHost::updateInlineLanguageDefinitionForPathLocked(const juce::File& file) {
+    if (inlineTextEditor_ == nullptr) {
+        return;
+    }
+
+    const auto extension = file.getFileExtension().toLowerCase();
+    if (extension == ".lua") {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Lua);
+    } else if (extension == ".json" || extension == ".json5") {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Json);
+    } else if (extension == ".sql") {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Sql);
+    } else if (extension == ".glsl") {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Glsl);
+    } else if (extension == ".hlsl") {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Hlsl);
+    } else if (extension == ".py") {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Python);
+    } else if (extension == ".cs") {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Cs);
+    } else if (extension == ".c") {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::C);
+    } else if (extension == ".cpp" || extension == ".cxx" || extension == ".cc"
+               || extension == ".h" || extension == ".hpp" || extension == ".hh") {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Cpp);
+    } else {
+        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::None);
+    }
 }
 
 int ImGuiInspectorHost::translateKeyCodeToImGuiKey(int keyCode) {

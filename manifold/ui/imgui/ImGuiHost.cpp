@@ -23,7 +23,7 @@ void logMainImGuiHostEvent(const char* event, ImGuiHost* host, juce::OpenGLConte
 }
 
 ImGuiHost::ImGuiHost() {
-    setOpaque(true);
+    setOpaque(false);
     setWantsKeyboardFocus(true);
     setMouseClickGrabsKeyboardFocus(true);
     setFocusContainerType(juce::Component::FocusContainerType::focusContainer);
@@ -108,6 +108,18 @@ void ImGuiHost::configureDocument(const juce::File& file,
     }
 
     refreshDocumentStatsLocked();
+}
+
+void ImGuiHost::setRenderActive(bool active) {
+    renderActive_.store(active, std::memory_order_relaxed);
+    if (!active) {
+        wantCaptureMouse_.store(false, std::memory_order_relaxed);
+        wantCaptureKeyboard_.store(false, std::memory_order_relaxed);
+    }
+}
+
+bool ImGuiHost::isRenderActive() const {
+    return renderActive_.load(std::memory_order_relaxed);
 }
 
 std::string ImGuiHost::getCurrentText() const {
@@ -326,6 +338,22 @@ void ImGuiHost::renderOpenGL() {
 
     glViewport(0, 0, framebufferWidth, framebufferHeight);
     glDisable(GL_SCISSOR_TEST);
+
+    if (!renderActive_.load(std::memory_order_relaxed)) {
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        wantCaptureMouse_.store(false, std::memory_order_relaxed);
+        wantCaptureKeyboard_.store(false, std::memory_order_relaxed);
+        lastVertexCount_.store(0, std::memory_order_relaxed);
+        lastIndexCount_.store(0, std::memory_order_relaxed);
+        lastRenderUs_.store(std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - start)
+                                 .count(),
+                             std::memory_order_relaxed);
+        frameCount_.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
     glClearColor(0.07f, 0.09f, 0.13f, 0.96f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -413,18 +441,16 @@ void ImGuiHost::openGLContextClosing() {
 }
 
 void ImGuiHost::attachContextIfNeeded() {
-    if (!isShowing() || getWidth() <= 0 || getHeight() <= 0) {
-        if (openGLContext.isAttached()) {
-            logMainImGuiHostEvent("detachContext", this, &openGLContext);
-            openGLContext.detach();
-        }
+    if (openGLContext.isAttached()) {
         return;
     }
 
-    if (!openGLContext.isAttached()) {
-        logMainImGuiHostEvent("attachContext", this, &openGLContext);
-        openGLContext.attachTo(*this);
+    if (!isShowing() || getWidth() <= 0 || getHeight() <= 0) {
+        return;
     }
+
+    logMainImGuiHostEvent("attachContext", this, &openGLContext);
+    openGLContext.attachTo(*this);
 }
 
 void ImGuiHost::queueMousePosition(juce::Point<float> position) {

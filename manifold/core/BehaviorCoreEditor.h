@@ -39,6 +39,7 @@ private:
     };
     std::vector<DeferredVisibility> deferredVisibilityChanges;
     void applyDeferredVisibilityChanges();
+    void queueHostVisibilityChange(juce::Component& host, bool visible, const juce::Rectangle<int>& bounds);
 
     BehaviorCoreProcessor& processorRef;
     LuaEngine luaEngine;
@@ -46,7 +47,6 @@ private:
 
     Canvas rootCanvas{"root"};
     ImGuiHost mainScriptEditorHost;
-    ImGuiHost inlineScriptEditorHost;
     ImGuiScriptListHost scriptListHost;
     ImGuiHierarchyHost hierarchyHost;
     ImGuiInspectorHost inspectorHost;
