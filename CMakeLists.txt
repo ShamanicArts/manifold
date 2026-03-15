@@ -359,6 +359,15 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/core/Settings.h
     manifold/primitives/core/Settings.cpp)
 
+# --- Platform Detection ---
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(MANIFOLD_PLATFORM_ANDROID ON)
+    message(STATUS "Building for Android")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(MANIFOLD_PLATFORM_IOS ON)
+    message(STATUS "Building for iOS")
+endif()
+
 set(MANIFOLD_CORE_SOURCES
     manifold/core/BehaviorCoreProcessor.h
     manifold/core/BehaviorCoreProcessor.cpp
@@ -441,6 +450,86 @@ target_link_libraries(Manifold
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# --- Android Mobile App ---
+if(MANIFOLD_PLATFORM_ANDROID)
+    message(STATUS "Configuring Android mobile target")
+    
+    # Force Lua build from source for Android
+    set(MANIFOLD_BUILD_LUA ON CACHE BOOL "" FORCE)
+    
+    juce_add_gui_app(ManifoldMobile
+        PRODUCT_NAME "Manifold"
+        VERSION 1.0.0
+        BUNDLE_ID com.yourcompany.manifold
+        ICON_BIG ""
+        NEEDS_WEB_BROWSER FALSE
+    )
+    
+    target_sources(ManifoldMobile
+        PRIVATE
+            ${MANIFOLD_DSP_SOURCES}
+            ${MANIFOLD_RUNTIME_SOURCES}
+            ${MANIFOLD_CORE_SOURCES}
+            manifold/android/AndroidMain.cpp
+    )
+    
+    target_include_directories(ManifoldMobile 
+        PRIVATE 
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${ableton_link_SOURCE_DIR}/include
+            ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include
+    )
+    
+    target_compile_definitions(ManifoldMobile
+        PUBLIC
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_DISPLAY_SPLASH_SCREEN=0
+            ASIO_STANDALONE=1
+            SOL_ALL_SAFETIES_ON=1
+            SOL_SAFE_NUMERICS=0
+            MANIFOLD_PLATFORM_ANDROID=1
+            ${MANIFOLD_LINK_PLATFORM_DEFINE}
+    )
+    
+    target_link_libraries(ManifoldMobile
+        PRIVATE
+            juce::juce_audio_utils
+            juce::juce_audio_formats
+            juce::juce_dsp
+            juce::juce_gui_extra
+            juce::juce_opengl
+            imgui
+            imgui_color_text_edit
+            ${MANIFOLD_LUA_TARGET}
+            sol2::sol2
+        PUBLIC
+            juce::juce_recommended_config_flags
+    )
+    
+    # Android asset bundling
+    set(ANDROID_ASSET_DIR ${CMAKE_CURRENT_BINARY_DIR}/android-assets)
+    
+    add_custom_command(TARGET ManifoldMobile PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${ANDROID_ASSET_DIR}/manifold/ui
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${ANDROID_ASSET_DIR}/manifold/dsp/scripts
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/manifold/ui
+            ${ANDROID_ASSET_DIR}/manifold/ui
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/manifold/dsp/scripts
+            ${ANDROID_ASSET_DIR}/manifold/dsp/scripts
+        COMMENT "Staging Android assets"
+    )
+    
+    set_target_properties(ManifoldMobile PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+    
+    add_custom_target(apk DEPENDS ManifoldMobile)
+endif()
 
 # Copy ALL Lua UI files to Manifold Standalone output directory
 add_custom_command(TARGET Manifold POST_BUILD
