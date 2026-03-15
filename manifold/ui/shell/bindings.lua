@@ -79,9 +79,14 @@ function M.attach(shell)
     shell.treeCanvas:setOnDraw(function(node)
         local w = node:getWidth()
         local h = node:getHeight()
+        local imguiHierarchyActive = (type(_G) == "table" and _G.__manifoldImguiHierarchyActive == true)
 
         gfx.setColour(0xff0f172a)
         gfx.fillRect(0, 0, w, h)
+
+        if imguiHierarchyActive then
+            return
+        end
 
         if #shell.treeRows == 0 then
             gfx.setColour(0xff64748b)
@@ -118,6 +123,9 @@ function M.attach(shell)
     end)
 
     shell.treeCanvas:setOnMouseDown(function(mx, my)
+        if type(_G) == "table" and _G.__manifoldImguiHierarchyActive == true then
+            return
+        end
         shell.treeCanvas:grabKeyboardFocus()
         local row = math.floor((my + shell.treeScrollY) / shell.treeRowHeight) + 1
         if row >= 1 and row <= #shell.treeRows then
@@ -126,6 +134,9 @@ function M.attach(shell)
     end)
 
     shell.treeCanvas:setOnKeyPress(function(keyCode, charCode, shift, ctrl, alt)
+        if type(_G) == "table" and _G.__manifoldImguiHierarchyActive == true then
+            return false
+        end
         if shell:handleGlobalDevHotkeys(keyCode, charCode, shift, ctrl, alt) then
             return true
         end
@@ -133,6 +144,9 @@ function M.attach(shell)
     end)
 
     shell.treeCanvas:setOnMouseWheel(function(mx, my, deltaY)
+        if type(_G) == "table" and _G.__manifoldImguiHierarchyActive == true then
+            return
+        end
         local nextScroll, changed = shell:applyWheelListScroll(
             shell.treeScrollY,
             deltaY,
@@ -225,9 +239,14 @@ function M.attach(shell)
     shell.scriptCanvas:setOnDraw(function(node)
         local w = node:getWidth()
         local h = node:getHeight()
+        local imguiScriptListActive = (type(_G) == "table" and _G.__manifoldImguiScriptListActive == true)
 
         gfx.setColour(0xff0f172a)
         gfx.fillRect(0, 0, w, h)
+
+        if imguiScriptListActive then
+            return
+        end
 
         if #shell.scriptRows == 0 then
             gfx.setColour(0xff64748b)
@@ -277,6 +296,9 @@ function M.attach(shell)
     end)
 
     shell.scriptCanvas:setOnMouseDown(function(mx, my)
+        if type(_G) == "table" and _G.__manifoldImguiScriptListActive == true then
+            return
+        end
         shell.scriptCanvas:grabKeyboardFocus()
         local row = math.floor((my + shell.scriptScrollY) / shell.scriptRowHeight) + 1
         if row < 1 or row > #shell.scriptRows then
@@ -294,6 +316,9 @@ function M.attach(shell)
     end)
 
     shell.scriptCanvas:setOnKeyPress(function(keyCode, charCode, shift, ctrl, alt)
+        if type(_G) == "table" and _G.__manifoldImguiScriptListActive == true then
+            return false
+        end
         if shell:handleGlobalDevHotkeys(keyCode, charCode, shift, ctrl, alt) then
             return true
         end
@@ -301,6 +326,9 @@ function M.attach(shell)
     end)
 
     shell.scriptCanvas:setOnMouseWheel(function(mx, my, deltaY)
+        if type(_G) == "table" and _G.__manifoldImguiScriptListActive == true then
+            return
+        end
         local nextScroll, changed = shell:applyWheelListScroll(
             shell.scriptScrollY,
             deltaY,
