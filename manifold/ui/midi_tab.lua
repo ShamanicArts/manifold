@@ -13,6 +13,17 @@ local selectedInputIdx = 1
 local selectedOutputIdx = 1
 local pendingEventText = nil
 
+local function setWidgetBounds(widget, x, y, w, h)
+    if widget == nil then
+        return
+    end
+    if type(widget.setBounds) == "function" then
+        widget:setBounds(x, y, w, h)
+    elseif widget.node and type(widget.node.setBounds) == "function" then
+        widget.node:setBounds(x, y, w, h)
+    end
+end
+
 -- Check if running as plugin (host MIDI available) or standalone
 local function isPluginMode()
     -- In plugin mode, the host provides MIDI via processBlock
@@ -73,6 +84,12 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
     local margin = 12
     local panelW = w - margin * 2 - 16
     local sectionSpacing = 16
+
+    -- Drop stale widget refs from previous content rebuilds before refreshing.
+    -- Settings UI rebuilds the tab content multiple times during init/resize,
+    -- and refreshDevices() must not touch dead dropdown widgets from the
+    -- previous pass.
+    ui = {}
     
     -- Get fresh device list
     MidiTab.refreshDevices()
@@ -84,7 +101,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.inputPanel.node:setBounds(margin, y, panelW, 100)
+    setWidgetBounds(ui.inputPanel, margin, y, panelW, 100)
     
     ui.inputLabel = W.Label.new(ui.inputPanel.node, "midiInputLabel", {
         text = "MIDI Input Device",
@@ -92,7 +109,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.inputLabel.node:setBounds(12, 8, 200, 18)
+    setWidgetBounds(ui.inputLabel, 12, 8, 200, 18)
     
     -- Device dropdown
     ui.inputDropdown = W.Dropdown.new(ui.inputPanel.node, "midiInputDropdown", {
@@ -123,7 +140,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
             end
         end,
     })
-    ui.inputDropdown.node:setBounds(12, 36, panelW - 100, 36)
+    setWidgetBounds(ui.inputDropdown, 12, 36, panelW - 100, 36)
     
     -- Refresh button
     ui.refreshInputBtn = W.Button.new(ui.inputPanel.node, "refreshInput", {
@@ -135,7 +152,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
             showStatusFn("MIDI devices refreshed")
         end,
     })
-    ui.refreshInputBtn.node:setBounds(panelW - 80, 36, 68, 36)
+    setWidgetBounds(ui.refreshInputBtn, panelW - 80, 36, 68, 36)
     y = y + 100 + sectionSpacing
     
     -- ============================================================================
@@ -145,7 +162,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.outputPanel.node:setBounds(margin, y, panelW, 100)
+    setWidgetBounds(ui.outputPanel, margin, y, panelW, 100)
     
     ui.outputLabel = W.Label.new(ui.outputPanel.node, "midiOutputLabel", {
         text = "MIDI Output Device",
@@ -153,7 +170,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.outputLabel.node:setBounds(12, 8, 200, 18)
+    setWidgetBounds(ui.outputLabel, 12, 8, 200, 18)
     
     -- Output device dropdown
     ui.outputDropdown = W.Dropdown.new(ui.outputPanel.node, "midiOutputDropdown", {
@@ -183,7 +200,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
             end
         end,
     })
-    ui.outputDropdown.node:setBounds(12, 36, panelW - 24, 36)
+    setWidgetBounds(ui.outputDropdown, 12, 36, panelW - 24, 36)
     y = y + 100 + sectionSpacing
     
     -- ============================================================================
@@ -193,7 +210,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.settingsPanel.node:setBounds(margin, y, panelW, 140)
+    setWidgetBounds(ui.settingsPanel, margin, y, panelW, 140)
     
     ui.settingsLabel = W.Label.new(ui.settingsPanel.node, "midiSettingsLabel", {
         text = "MIDI Settings",
@@ -201,7 +218,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.settingsLabel.node:setBounds(12, 8, 120, 18)
+    setWidgetBounds(ui.settingsLabel, 12, 8, 120, 18)
     
     -- Omni Mode Toggle
     ui.omniToggle = W.Toggle.new(ui.settingsPanel.node, "midiOmni", {
@@ -215,7 +232,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
             end
         end,
     })
-    ui.omniToggle.node:setBounds(12, 36, 140, 28)
+    setWidgetBounds(ui.omniToggle, 12, 36, 140, 28)
     
     -- MIDI Thru Toggle
     ui.thruToggle = W.Toggle.new(ui.settingsPanel.node, "midiThru", {
@@ -229,7 +246,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
             end
         end,
     })
-    ui.thruToggle.node:setBounds(160, 36, 140, 28)
+    setWidgetBounds(ui.thruToggle, 160, 36, 140, 28)
     
     -- Test Note Button
     ui.testBtn = W.Button.new(ui.settingsPanel.node, "midiTest", {
@@ -244,7 +261,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
             end
         end,
     })
-    ui.testBtn.node:setBounds(12, 80, 120, 36)
+    setWidgetBounds(ui.testBtn, 12, 80, 120, 36)
     
     -- Panic Button
     ui.panicBtn = W.Button.new(ui.settingsPanel.node, "midiPanic", {
@@ -260,7 +277,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
             end
         end,
     })
-    ui.panicBtn.node:setBounds(140, 80, 120, 36)
+    setWidgetBounds(ui.panicBtn, 140, 80, 120, 36)
     y = y + 140 + sectionSpacing
     
     -- ============================================================================
@@ -272,7 +289,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
         borderWidth = 2,
         radius = 4,
     })
-    ui.monitorPanel.node:setBounds(margin, y, panelW, 80)
+    setWidgetBounds(ui.monitorPanel, margin, y, panelW, 80)
     
     ui.monitorLabel = W.Label.new(ui.monitorPanel.node, "midiMonitorLabel", {
         text = "MIDI Monitor",
@@ -280,13 +297,13 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.monitorLabel.node:setBounds(12, 8, 120, 18)
+    setWidgetBounds(ui.monitorLabel, 12, 8, 120, 18)
     
     ui.activityLed = W.Panel.new(ui.monitorPanel.node, "midiActivityLed", {
         bg = 0xff333333,
         radius = 8,
     })
-    ui.activityLed.node:setBounds(panelW - 40, 12, 16, 16)
+    setWidgetBounds(ui.activityLed, panelW - 40, 12, 16, 16)
     
     ui.eventDisplay = W.Label.new(ui.monitorPanel.node, "midiEventDisplay", {
         text = "Waiting for MIDI...",
@@ -294,7 +311,7 @@ function MidiTab.build(parent, w, h, showStatusFn, rootNode)
         fontSize = 13.0,
         fontStyle = FontStyle.bold,
     })
-    ui.eventDisplay.node:setBounds(12, 40, panelW - 24, 24)
+    setWidgetBounds(ui.eventDisplay, 12, 40, panelW - 24, 24)
     y = y + 80 + sectionSpacing
     
     if Midi and Midi.clearCallbacks then

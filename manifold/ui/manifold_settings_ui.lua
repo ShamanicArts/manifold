@@ -37,6 +37,17 @@ end
 -- Tab Button Creation
 -- ============================================================================
 
+local function setWidgetBounds(widget, x, y, w, h)
+    if widget == nil then
+        return
+    end
+    if type(widget.setBounds) == "function" then
+        widget:setBounds(x, y, w, h)
+    elseif widget.node and type(widget.node.setBounds) == "function" then
+        widget.node:setBounds(x, y, w, h)
+    end
+end
+
 local function createTabButton(parent, id, label, x, y, w, h, onClick)
     local btn = W.Button.new(parent, id, {
         label = label,
@@ -44,8 +55,60 @@ local function createTabButton(parent, id, label, x, y, w, h, onClick)
         fontSize = 12.0,
         on_click = onClick,
     })
-    btn.node:setBounds(x, y, w, h)
+    setWidgetBounds(btn, x, y, w, h)
     return btn
+end
+
+local function syncTabButtonStyles()
+    if ui.oscTabBtn then
+        ui.oscTabBtn:setBg((currentTab == "osc") and 0xff2563eb or 0xff1e293b)
+    end
+    if ui.linkTabBtn then
+        ui.linkTabBtn:setBg((currentTab == "link") and 0xff2563eb or 0xff1e293b)
+    end
+    if ui.midiTabBtn then
+        ui.midiTabBtn:setBg((currentTab == "midi") and 0xff2563eb or 0xff1e293b)
+    end
+    if ui.pathsTabBtn then
+        ui.pathsTabBtn:setBg((currentTab == "paths") and 0xff2563eb or 0xff1e293b)
+    end
+end
+
+local function buildScrollBarDisplayList(viewH, contentH, scrollY)
+    local display = {}
+    if contentH <= viewH or viewH <= 0 then
+        return display
+    end
+
+    display[#display + 1] = {
+        cmd = "fillRoundedRect",
+        x = 0,
+        y = 0,
+        w = 8,
+        h = viewH,
+        radius = 4,
+        color = 0xff1e293b,
+    }
+
+    local thumbH = math.max(30, viewH * (viewH / contentH))
+    local maxScroll = math.max(0, contentH - viewH)
+    local thumbY = 0
+    if maxScroll > 0 then
+        thumbY = (scrollY / maxScroll) * (viewH - thumbH)
+    end
+    thumbY = math.max(0, math.min(viewH - thumbH, thumbY))
+
+    display[#display + 1] = {
+        cmd = "fillRoundedRect",
+        x = 0,
+        y = math.floor(thumbY + 0.5),
+        w = 8,
+        h = math.max(1, math.floor(thumbH + 0.5)),
+        radius = 4,
+        color = 0xff475569,
+    }
+
+    return display
 end
 
 -- ============================================================================
@@ -54,107 +117,83 @@ end
 
 local function setupScrollableContent(contentNode, contentContainer, contentH)
     contentHeights[currentTab] = contentH
-    
-    -- Scrollbar overlay
+
     local scrollBar = contentNode:addChild("scrollBar")
     scrollBar:setBounds(contentNode:getWidth() - 12, 0, 8, contentNode:getHeight())
-    
+    scrollBar:setInterceptsMouse(true, true)
+
+    local function syncScrollBar()
+        local h = contentNode:getHeight()
+        local ch = contentHeights[currentTab] or h
+        scrollBar:setBounds(contentNode:getWidth() - 12, 0, 8, h)
+        scrollBar:setDisplayList(buildScrollBarDisplayList(h, ch, scrollOffsets[currentTab] or 0))
+    end
+
     local function updateScroll()
         local h = contentNode:getHeight()
         local ch = contentHeights[currentTab] or h
         local maxScroll = math.max(0, ch - h)
-        -- Apply scroll offset to content container (negative to move up)
+        scrollOffsets[currentTab] = math.max(0, math.min(maxScroll, scrollOffsets[currentTab] or 0))
         contentContainer:setBounds(0, -math.floor(scrollOffsets[currentTab]), contentNode:getWidth(), math.max(ch, h))
+        syncScrollBar()
     end
-    
-    scrollBar:setOnDraw(function(self)
-        local h = self:getHeight()
-        local ch = contentHeights[currentTab] or h
-        if ch <= h then return end
-        
-        -- Track
-        gfx.setColour(0xff1e293b)
-        gfx.fillRoundedRect(0, 0, 8, h, 4)
-        
-        -- Thumb
-        local thumbH = math.max(30, h * (h / ch))
-        local maxScroll = ch - h
-        local thumbY = 0
-        if maxScroll > 0 then
-            thumbY = (scrollOffsets[currentTab] / maxScroll) * (h - thumbH)
-        end
-        thumbY = math.max(0, math.min(h - thumbH, thumbY))
-        
-        gfx.setColour(0xff475569)
-        gfx.fillRoundedRect(0, thumbY, 8, thumbH, 4)
-    end)
-    
+
     scrollBar:setOnMouseDown(function(mx, my)
+        local _ = mx
         local h = scrollBar:getHeight()
         local ch = contentHeights[currentTab] or h
         if ch <= h then return end
-        
+
         local maxScroll = ch - h
         scrollOffsets[currentTab] = (my / h) * maxScroll
-        scrollOffsets[currentTab] = math.max(0, math.min(maxScroll, scrollOffsets[currentTab]))
         updateScroll()
     end)
-    
-    -- Mouse wheel on scrollbar too (in case it's over the scrollbar area)
+
     scrollBar:setOnMouseWheel(function(mx, my, dy)
         local _ = mx
         _ = my
         local h = contentNode:getHeight()
         local ch = contentHeights[currentTab] or h
         if ch <= h then return end
-        
-        local maxScroll = ch - h
+
         if dy > 0 then
-            scrollOffsets[currentTab] = scrollOffsets[currentTab] - 30
+            scrollOffsets[currentTab] = (scrollOffsets[currentTab] or 0) - 30
         elseif dy < 0 then
-            scrollOffsets[currentTab] = scrollOffsets[currentTab] + 30
+            scrollOffsets[currentTab] = (scrollOffsets[currentTab] or 0) + 30
         end
-        scrollOffsets[currentTab] = math.max(0, math.min(maxScroll, scrollOffsets[currentTab]))
         updateScroll()
     end)
-    
-    -- Mouse wheel support on content node
+
     contentNode:setOnMouseWheel(function(mx, my, dy)
         local _ = mx
         _ = my
         local h = contentNode:getHeight()
         local ch = contentHeights[currentTab] or h
         if ch <= h then return end
-        
-        local maxScroll = ch - h
+
         if dy > 0 then
-            scrollOffsets[currentTab] = scrollOffsets[currentTab] - 30
+            scrollOffsets[currentTab] = (scrollOffsets[currentTab] or 0) - 30
         elseif dy < 0 then
-            scrollOffsets[currentTab] = scrollOffsets[currentTab] + 30
+            scrollOffsets[currentTab] = (scrollOffsets[currentTab] or 0) + 30
         end
-        scrollOffsets[currentTab] = math.max(0, math.min(maxScroll, scrollOffsets[currentTab]))
         updateScroll()
     end)
-    
-    -- Mouse wheel support on content container (the actual content)
+
     contentContainer:setOnMouseWheel(function(mx, my, dy)
         local _ = mx
         _ = my
         local h = contentNode:getHeight()
         local ch = contentHeights[currentTab] or h
         if ch <= h then return end
-        
-        local maxScroll = ch - h
+
         if dy > 0 then
-            scrollOffsets[currentTab] = scrollOffsets[currentTab] - 30
+            scrollOffsets[currentTab] = (scrollOffsets[currentTab] or 0) - 30
         elseif dy < 0 then
-            scrollOffsets[currentTab] = scrollOffsets[currentTab] + 30
+            scrollOffsets[currentTab] = (scrollOffsets[currentTab] or 0) + 30
         end
-        scrollOffsets[currentTab] = math.max(0, math.min(maxScroll, scrollOffsets[currentTab]))
         updateScroll()
     end)
-    
-    -- Initial scroll position
+
     updateScroll()
 end
 
@@ -175,7 +214,7 @@ local function buildOscTab(parent, w, h)
         border = 0xff2d4a2d,
         borderWidth = 2,
     })
-    ui.statusPanel.node:setBounds(margin, y, panelW, 48)
+    setWidgetBounds(ui.statusPanel, margin, y, panelW, 48)
     
     ui.statusDisplay = W.Label.new(ui.statusPanel.node, "statusDisplay", {
         text = "Ready",
@@ -183,7 +222,7 @@ local function buildOscTab(parent, w, h)
         fontSize = 14.0,
         fontStyle = FontStyle.bold,
     })
-    ui.statusDisplay.node:setBounds(12, 14, panelW - 24, 20)
+    setWidgetBounds(ui.statusDisplay, 12, 14, panelW - 24, 20)
     y = y + 48 + sectionSpacing
     
     -- OSC Settings
@@ -191,7 +230,7 @@ local function buildOscTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.oscPanel.node:setBounds(margin, y, panelW, 80)
+    setWidgetBounds(ui.oscPanel, margin, y, panelW, 80)
     
     ui.oscLabel = W.Label.new(ui.oscPanel.node, "oscLabel", {
         text = "OSC (UDP)",
@@ -199,7 +238,7 @@ local function buildOscTab(parent, w, h)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.oscLabel.node:setBounds(12, 8, 150, 18)
+    setWidgetBounds(ui.oscLabel, 12, 8, 150, 18)
     
     ui.oscPortBox = W.NumberBox.new(ui.oscPanel.node, "oscPort", {
         min = 1024, max = 65535, step = 1, value = 9000,
@@ -208,7 +247,7 @@ local function buildOscTab(parent, w, h)
         format = "%d",
         on_change = function(v) end,
     })
-    ui.oscPortBox.node:setBounds(12, 36, 120, 32)
+    setWidgetBounds(ui.oscPortBox, 12, 36, 120, 32)
     
     ui.oscToggle = W.Toggle.new(ui.oscPanel.node, "oscToggle", {
         label = "Enabled",
@@ -217,7 +256,7 @@ local function buildOscTab(parent, w, h)
         bg = 0xff1e293b,
         on_change = function(v) end,
     })
-    ui.oscToggle.node:setBounds(panelW - 100, 36, 88, 32)
+    setWidgetBounds(ui.oscToggle, panelW - 100, 36, 88, 32)
     y = y + 80 + sectionSpacing
     
     -- OSCQuery Settings
@@ -225,7 +264,7 @@ local function buildOscTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.queryPanel.node:setBounds(margin, y, panelW, 80)
+    setWidgetBounds(ui.queryPanel, margin, y, panelW, 80)
     
     ui.queryLabel = W.Label.new(ui.queryPanel.node, "queryLabel", {
         text = "OSCQuery (HTTP)",
@@ -233,7 +272,7 @@ local function buildOscTab(parent, w, h)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.queryLabel.node:setBounds(12, 8, 150, 18)
+    setWidgetBounds(ui.queryLabel, 12, 8, 150, 18)
     
     ui.queryPortBox = W.NumberBox.new(ui.queryPanel.node, "queryPort", {
         min = 1024, max = 65535, step = 1, value = 9001,
@@ -242,7 +281,7 @@ local function buildOscTab(parent, w, h)
         format = "%d",
         on_change = function(v) end,
     })
-    ui.queryPortBox.node:setBounds(12, 36, 120, 32)
+    setWidgetBounds(ui.queryPortBox, 12, 36, 120, 32)
     
     ui.queryToggle = W.Toggle.new(ui.queryPanel.node, "queryToggle", {
         label = "Enabled",
@@ -251,7 +290,7 @@ local function buildOscTab(parent, w, h)
         bg = 0xff1e293b,
         on_change = function(v) end,
     })
-    ui.queryToggle.node:setBounds(panelW - 100, 36, 88, 32)
+    setWidgetBounds(ui.queryToggle, panelW - 100, 36, 88, 32)
     y = y + 80 + sectionSpacing
     
     -- Broadcast Targets
@@ -259,7 +298,7 @@ local function buildOscTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.targetsPanel.node:setBounds(margin, y, panelW, 140)
+    setWidgetBounds(ui.targetsPanel, margin, y, panelW, 140)
     
     ui.targetsLabel = W.Label.new(ui.targetsPanel.node, "targetsLabel", {
         text = "Broadcast Targets",
@@ -267,7 +306,7 @@ local function buildOscTab(parent, w, h)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.targetsLabel.node:setBounds(12, 8, 150, 18)
+    setWidgetBounds(ui.targetsLabel, 12, 8, 150, 18)
     
     ui.addTargetBtn = W.Button.new(ui.targetsPanel.node, "addTarget", {
         label = "+ Add Target",
@@ -277,7 +316,7 @@ local function buildOscTab(parent, w, h)
             showStatus("Use osc.addTarget() in console")
         end,
     })
-    ui.addTargetBtn.node:setBounds(12, 36, 100, 28)
+    setWidgetBounds(ui.addTargetBtn, 12, 36, 100, 28)
     
     ui.targetListOverlay = ui.targetsPanel.node:addChild("targetList")
     setupTargetList(panelW, 140)
@@ -317,7 +356,7 @@ local function buildOscTab(parent, w, h)
             end
         end,
     })
-    ui.applyBtn.node:setBounds(margin, y, panelW, 48)
+    setWidgetBounds(ui.applyBtn, margin, y, panelW, 48)
     y = y + 48 + sectionSpacing
     
     return y
@@ -338,7 +377,7 @@ local function buildLinkTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.linkStatusPanel.node:setBounds(margin, y, panelW, 60)
+    setWidgetBounds(ui.linkStatusPanel, margin, y, panelW, 60)
     
     ui.linkStatusLabel = W.Label.new(ui.linkStatusPanel.node, "linkStatus", {
         text = "Ableton Link",
@@ -346,14 +385,14 @@ local function buildLinkTab(parent, w, h)
         fontSize = 14.0,
         fontStyle = FontStyle.bold,
     })
-    ui.linkStatusLabel.node:setBounds(12, 8, 150, 20)
+    setWidgetBounds(ui.linkStatusLabel, 12, 8, 150, 20)
     
     ui.linkPeersLabel = W.Label.new(ui.linkStatusPanel.node, "linkPeers", {
         text = "0 peers",
         colour = 0xff64748b,
         fontSize = 12.0,
     })
-    ui.linkPeersLabel.node:setBounds(12, 32, 150, 20)
+    setWidgetBounds(ui.linkPeersLabel, 12, 32, 150, 20)
     y = y + 60 + sectionSpacing
     
     -- Link Settings
@@ -361,7 +400,7 @@ local function buildLinkTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.linkPanel.node:setBounds(margin, y, panelW, 140)
+    setWidgetBounds(ui.linkPanel, margin, y, panelW, 140)
     
     ui.linkLabel = W.Label.new(ui.linkPanel.node, "linkLabel", {
         text = "Link Settings",
@@ -369,7 +408,7 @@ local function buildLinkTab(parent, w, h)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.linkLabel.node:setBounds(12, 8, 120, 18)
+    setWidgetBounds(ui.linkLabel, 12, 8, 120, 18)
     
     ui.linkToggle = W.Toggle.new(ui.linkPanel.node, "linkToggle", {
         label = "Link Enabled",
@@ -380,7 +419,7 @@ local function buildLinkTab(parent, w, h)
             if link then link.setEnabled(v) end
         end,
     })
-    ui.linkToggle.node:setBounds(12, 36, 140, 28)
+    setWidgetBounds(ui.linkToggle, 12, 36, 140, 28)
     
     ui.linkTempoToggle = W.Toggle.new(ui.linkPanel.node, "linkTempo", {
         label = "Tempo Sync",
@@ -391,7 +430,7 @@ local function buildLinkTab(parent, w, h)
             if link then link.setTempoSyncEnabled(v) end
         end,
     })
-    ui.linkTempoToggle.node:setBounds(12, 72, 140, 28)
+    setWidgetBounds(ui.linkTempoToggle, 12, 72, 140, 28)
     
     ui.linkStartStopToggle = W.Toggle.new(ui.linkPanel.node, "linkStartStop", {
         label = "Start/Stop Sync",
@@ -402,7 +441,7 @@ local function buildLinkTab(parent, w, h)
             if link then link.setStartStopSyncEnabled(v) end
         end,
     })
-    ui.linkStartStopToggle.node:setBounds(160, 72, 150, 28)
+    setWidgetBounds(ui.linkStartStopToggle, 160, 72, 150, 28)
     y = y + 140 + sectionSpacing
     
     -- Tempo Display
@@ -410,7 +449,7 @@ local function buildLinkTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.tempoPanel.node:setBounds(margin, y, panelW, 80)
+    setWidgetBounds(ui.tempoPanel, margin, y, panelW, 80)
     
     ui.tempoLabel = W.Label.new(ui.tempoPanel.node, "tempoLabel", {
         text = "Current Tempo",
@@ -418,7 +457,7 @@ local function buildLinkTab(parent, w, h)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.tempoLabel.node:setBounds(12, 8, 120, 18)
+    setWidgetBounds(ui.tempoLabel, 12, 8, 120, 18)
     
     ui.tempoDisplay = W.Label.new(ui.tempoPanel.node, "tempoDisplay", {
         text = "120.0 BPM",
@@ -426,7 +465,7 @@ local function buildLinkTab(parent, w, h)
         fontSize = 24.0,
         fontStyle = FontStyle.bold,
     })
-    ui.tempoDisplay.node:setBounds(12, 36, 200, 30)
+    setWidgetBounds(ui.tempoDisplay, 12, 36, 200, 30)
     y = y + 80 + sectionSpacing
     
     return y
@@ -455,7 +494,7 @@ local function buildPathsTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.userDirPanel.node:setBounds(margin, y, panelW, 140)
+    setWidgetBounds(ui.userDirPanel, margin, y, panelW, 140)
     
     ui.userDirLabel = W.Label.new(ui.userDirPanel.node, "userDirLabel", {
         text = "User Scripts Directory",
@@ -463,7 +502,7 @@ local function buildPathsTab(parent, w, h)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.userDirLabel.node:setBounds(12, 8, 200, 18)
+    setWidgetBounds(ui.userDirLabel, 12, 8, 200, 18)
     
     -- Display current path (or "Not set")
     local userDirDisplay = userDir ~= "" and userDir or "Not set (click Browse to configure)"
@@ -472,7 +511,7 @@ local function buildPathsTab(parent, w, h)
         colour = userDir ~= "" and 0xff64748b or 0xff94a3b8,
         fontSize = 10.0,
     })
-    ui.userDirPathLabel.node:setBounds(12, 32, panelW - 24, 40)
+    setWidgetBounds(ui.userDirPathLabel, 12, 32, panelW - 24, 40)
     
     -- Browse button (opens native file chooser)
     ui.browseUserDirBtn = W.Button.new(ui.userDirPanel.node, "browseUserDir", {
@@ -517,7 +556,7 @@ local function buildPathsTab(parent, w, h)
             end
         end,
     })
-    ui.browseUserDirBtn.node:setBounds(12, 95, 100, 28)
+    setWidgetBounds(ui.browseUserDirBtn, 12, 95, 100, 28)
     
     ui.clearUserDirBtn = W.Button.new(ui.userDirPanel.node, "clearUserDir", {
         label = "Clear",
@@ -533,7 +572,7 @@ local function buildPathsTab(parent, w, h)
             end
         end,
     })
-    ui.clearUserDirBtn.node:setBounds(panelW - 92, 95, 80, 28)
+    setWidgetBounds(ui.clearUserDirBtn, panelW - 92, 95, 80, 28)
     y = y + 140 + sectionSpacing
     
     -- Dev Scripts Directory (read-only display)
@@ -541,7 +580,7 @@ local function buildPathsTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.devDirPanel.node:setBounds(margin, y, panelW, 80)
+    setWidgetBounds(ui.devDirPanel, margin, y, panelW, 80)
     
     ui.devDirLabel = W.Label.new(ui.devDirPanel.node, "devDirLabel", {
         text = "Development Scripts Directory",
@@ -549,14 +588,14 @@ local function buildPathsTab(parent, w, h)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.devDirLabel.node:setBounds(12, 8, 250, 18)
+    setWidgetBounds(ui.devDirLabel, 12, 8, 250, 18)
     
     ui.devDirPathLabel = W.Label.new(ui.devDirPanel.node, "devDirPath", {
         text = devDir ~= "" and devDir or "Not configured",
         colour = 0xff64748b,
         fontSize = 10.0,
     })
-    ui.devDirPathLabel.node:setBounds(12, 32, panelW - 24, 40)
+    setWidgetBounds(ui.devDirPathLabel, 12, 32, panelW - 24, 40)
     y = y + 80 + sectionSpacing
     
     -- DSP Scripts Directory
@@ -569,7 +608,7 @@ local function buildPathsTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.dspDirPanel.node:setBounds(margin, y, panelW, 140)
+    setWidgetBounds(ui.dspDirPanel, margin, y, panelW, 140)
     
     ui.dspDirLabel = W.Label.new(ui.dspDirPanel.node, "dspDirLabel", {
         text = "DSP Scripts Directory",
@@ -577,7 +616,7 @@ local function buildPathsTab(parent, w, h)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.dspDirLabel.node:setBounds(12, 8, 200, 18)
+    setWidgetBounds(ui.dspDirLabel, 12, 8, 200, 18)
     
     local dspDirDisplay = dspDir ~= "" and dspDir or "Not set (click Browse to configure)"
     ui.dspDirPathLabel = W.Label.new(ui.dspDirPanel.node, "dspDirPath", {
@@ -585,7 +624,7 @@ local function buildPathsTab(parent, w, h)
         colour = dspDir ~= "" and 0xff64748b or 0xff94a3b8,
         fontSize = 10.0,
     })
-    ui.dspDirPathLabel.node:setBounds(12, 32, panelW - 24, 40)
+    setWidgetBounds(ui.dspDirPathLabel, 12, 32, panelW - 24, 40)
     
     ui.browseDspDirBtn = W.Button.new(ui.dspDirPanel.node, "browseDspDir", {
         label = "Browse...",
@@ -609,7 +648,7 @@ local function buildPathsTab(parent, w, h)
             end
         end,
     })
-    ui.browseDspDirBtn.node:setBounds(12, 95, 100, 28)
+    setWidgetBounds(ui.browseDspDirBtn, 12, 95, 100, 28)
     
     ui.clearDspDirBtn = W.Button.new(ui.dspDirPanel.node, "clearDspDir", {
         label = "Clear",
@@ -624,7 +663,7 @@ local function buildPathsTab(parent, w, h)
             end
         end,
     })
-    ui.clearDspDirBtn.node:setBounds(panelW - 92, 95, 80, 28)
+    setWidgetBounds(ui.clearDspDirBtn, panelW - 92, 95, 80, 28)
     y = y + 140 + sectionSpacing
     
     -- Available Scripts (taller for scrolling)
@@ -632,7 +671,7 @@ local function buildPathsTab(parent, w, h)
         bg = 0xff141a24,
         radius = 8,
     })
-    ui.availablePanel.node:setBounds(margin, y, panelW, 280)
+    setWidgetBounds(ui.availablePanel, margin, y, panelW, 280)
     
     ui.availableLabel = W.Label.new(ui.availablePanel.node, "availableLabel", {
         text = "Available UI Scripts (click to switch)",
@@ -640,7 +679,7 @@ local function buildPathsTab(parent, w, h)
         fontSize = 12.0,
         fontStyle = FontStyle.bold,
     })
-    ui.availableLabel.node:setBounds(12, 8, panelW - 24, 18)
+    setWidgetBounds(ui.availableLabel, 12, 8, panelW - 24, 18)
     
     -- List will be drawn dynamically with its own scroll
     ui.scriptListOverlay = ui.availablePanel.node:addChild("scriptList")
@@ -665,6 +704,146 @@ end
 -- Setup Functions for Dynamic Lists
 -- ============================================================================
 
+local function buildTargetListDisplay(targets, width, height)
+    local display = {}
+    local itemH = 28
+
+    for i, target in ipairs(targets) do
+        local y = (i - 1) * itemH
+        if y >= -itemH and y < height then
+            display[#display + 1] = {
+                cmd = "drawText",
+                x = 8,
+                y = math.floor(y),
+                w = math.max(1, width - 50),
+                h = itemH - 4,
+                color = 0xffe2e8f0,
+                text = target,
+                fontSize = 11.0,
+                align = "left",
+                valign = "middle",
+            }
+            display[#display + 1] = {
+                cmd = "fillRoundedRect",
+                x = math.floor(width - 40),
+                y = math.floor(y + 2),
+                w = 36,
+                h = itemH - 4,
+                radius = 4,
+                color = 0xff7f1d1d,
+            }
+            display[#display + 1] = {
+                cmd = "drawText",
+                x = math.floor(width - 36),
+                y = math.floor(y + 4),
+                w = 28,
+                h = itemH - 8,
+                color = 0xffffffff,
+                text = "×",
+                fontSize = 10.0,
+                align = "center",
+                valign = "middle",
+            }
+        end
+    end
+
+    if #targets == 0 then
+        display[#display + 1] = {
+            cmd = "drawText",
+            x = 8,
+            y = 20,
+            w = math.max(1, width - 16),
+            h = 20,
+            color = 0xff64748b,
+            text = "No targets configured",
+            fontSize = 11.0,
+            align = "center",
+            valign = "middle",
+        }
+    end
+
+    return display
+end
+
+local function buildScriptListDisplay(scripts, width, height, currentPath)
+    local display = {}
+    local itemH = 28
+
+    for i, script in ipairs(scripts) do
+        local y = (i - 1) * itemH
+        if y >= -itemH and y < height then
+            local isCurrent = (script.path == currentPath)
+            if isCurrent then
+                display[#display + 1] = {
+                    cmd = "fillRoundedRect",
+                    x = 4,
+                    y = math.floor(y),
+                    w = math.max(1, width - 8),
+                    h = itemH - 2,
+                    radius = 4,
+                    color = 0xff334155,
+                }
+            end
+
+            display[#display + 1] = {
+                cmd = "drawText",
+                x = 12,
+                y = math.floor(y),
+                w = math.max(1, width - 60),
+                h = math.floor(itemH - 2),
+                color = isCurrent and 0xff38bdf8 or 0xffe2e8f0,
+                text = script.name,
+                fontSize = 11.0,
+                align = "left",
+                valign = "middle",
+            }
+
+            local sourceColor = 0xff64748b
+            local sourceText = "B"
+            if script.path:find("/dev/") or script.path:find("dev%-my%-plugin") then
+                sourceColor = 0xfff59e0b
+                sourceText = "D"
+            elseif script.path:find("/.vst3/") or script.path:find("/VST3/") then
+                sourceColor = 0xff34d399
+                sourceText = "B"
+            elseif script.path:find("/config/") or script.path:find("user") then
+                sourceColor = 0xffa78bfa
+                sourceText = "U"
+            end
+
+            display[#display + 1] = {
+                cmd = "drawText",
+                x = math.floor(width - 40),
+                y = math.floor(y),
+                w = 30,
+                h = math.floor(itemH - 2),
+                color = sourceColor,
+                text = sourceText,
+                fontSize = 9.0,
+                align = "center",
+                valign = "middle",
+            }
+        end
+    end
+
+    if #scripts == 0 then
+        display[#display + 1] = {
+            cmd = "drawText",
+            x = 8,
+            y = 20,
+            w = math.max(1, width - 16),
+            h = 20,
+            color = 0xff64748b,
+            text = "No UI scripts found",
+            fontSize = 11.0,
+            align = "center",
+            valign = "middle",
+        }
+    end
+
+    return display
+end
+
 function setupTargetList(panelW, height)
     local targets = {}
     local current = osc.getSettings()
@@ -675,40 +854,14 @@ function setupTargetList(panelW, height)
     end
 
     ui.targetListOverlay:setBounds(12, 76, panelW - 24, height - 80)
-    ui.targetListOverlay:setOnDraw(function(self)
-        local w = self:getWidth()
-        local h = self:getHeight()
-        local itemH = 28
-        
-        for i, target in ipairs(targets) do
-            local y = (i - 1) * itemH
-            if y >= -itemH and y < h then
-                -- Target text
-                gfx.setColour(0xffe2e8f0)
-                gfx.setFont(11.0)
-                gfx.drawText(target, 8, math.floor(y), w - 50, itemH - 4, Justify.centredLeft)
-                
-                -- Remove button
-                gfx.setColour(0xff7f1d1d)
-                gfx.fillRoundedRect(math.floor(w - 40), math.floor(y + 2), 36, itemH - 4, 4)
-                gfx.setColour(0xffffffff)
-                gfx.setFont(10.0)
-                gfx.drawText("×", math.floor(w - 36), math.floor(y + 4), 28, itemH - 8, Justify.centred)
-            end
-        end
-        
-        if #targets == 0 then
-            gfx.setColour(0xff64748b)
-            gfx.setFont(11.0)
-            gfx.drawText("No targets configured", 8, 20, w - 16, 20, Justify.centred)
-        end
-    end)
+    ui.targetListOverlay:setInterceptsMouse(true, true)
+    ui.targetListOverlay:setDisplayList(buildTargetListDisplay(targets, ui.targetListOverlay:getWidth(), ui.targetListOverlay:getHeight()))
 
     ui.targetListOverlay:setOnMouseDown(function(mx, my)
         local w = ui.targetListOverlay:getWidth()
         local itemH = 28
         local idx = math.floor(my / itemH) + 1
-        
+
         if mx > w - 40 and idx <= #targets then
             local target = targets[idx]
             if target then
@@ -722,61 +875,17 @@ end
 
 function setupScriptList(panelW, height)
     local scripts = listUiScripts and listUiScripts() or {}
-    
+    local currentPath = getCurrentScriptPath and getCurrentScriptPath() or ""
+
     ui.scriptListOverlay:setBounds(12, 32, panelW - 24, height - 40)
-    ui.scriptListOverlay:setOnDraw(function(self)
-        local w = self:getWidth()
-        local h = self:getHeight()
-        local itemH = 28
-        local currentPath = getCurrentScriptPath and getCurrentScriptPath() or ""
-        
-        for i, script in ipairs(scripts) do
-            local y = (i - 1) * itemH
-            if y >= -itemH and y < h then
-                local isCurrent = (script.path == currentPath)
-                
-                -- Background for current
-                if isCurrent then
-                    gfx.setColour(0xff334155)
-                    gfx.fillRoundedRect(4, math.floor(y), w - 8, itemH - 2, 4)
-                end
-                
-                -- Name
-                gfx.setColour(isCurrent and 0xff38bdf8 or 0xffe2e8f0)
-                gfx.setFont(11.0)
-                gfx.drawText(script.name, 12, math.floor(y), w - 60, math.floor(itemH - 2), Justify.centredLeft)
-                
-                -- Source indicator (dev/bundled/user)
-                local sourceColor = 0xff64748b
-                local sourceText = "B"
-                if script.path:find("/dev/") or script.path:find("dev%-my%-plugin") then
-                    sourceColor = 0xfff59e0b
-                    sourceText = "D"
-                elseif script.path:find("/.vst3/") or script.path:find("/VST3/") then
-                    sourceColor = 0xff34d399
-                    sourceText = "B"
-                elseif script.path:find("/config/") or script.path:find("user") then
-                    sourceColor = 0xffa78bfa
-                    sourceText = "U"
-                end
-                
-                gfx.setColour(sourceColor)
-                gfx.setFont(9.0)
-                gfx.drawText(sourceText, math.floor(w - 40), math.floor(y), 30, math.floor(itemH - 2), Justify.centred)
-            end
-        end
-        
-        if #scripts == 0 then
-            gfx.setColour(0xff64748b)
-            gfx.setFont(11.0)
-            gfx.drawText("No UI scripts found", 8, 20, w - 16, 20, Justify.centred)
-        end
-    end)
-    
+    ui.scriptListOverlay:setInterceptsMouse(true, true)
+    ui.scriptListOverlay:setDisplayList(buildScriptListDisplay(scripts, ui.scriptListOverlay:getWidth(), ui.scriptListOverlay:getHeight(), currentPath))
+
     ui.scriptListOverlay:setOnMouseDown(function(mx, my)
+        local _ = mx
         local itemH = 28
         local idx = math.floor(my / itemH) + 1
-        
+
         if idx >= 1 and idx <= #scripts then
             local script = scripts[idx]
             if script and switchUiScript then
@@ -820,6 +929,11 @@ function ui_init(root)
         bg = 0xff0f172a,
     })
     
+    ui.oscTabBtn = createTabButton(ui.tabPanel.node, "osc", "OSC", 0, 0, 0, 0, function() switchTab("osc") end)
+    ui.linkTabBtn = createTabButton(ui.tabPanel.node, "link", "Link", 0, 0, 0, 0, function() switchTab("link") end)
+    ui.midiTabBtn = createTabButton(ui.tabPanel.node, "midi", "MIDI", 0, 0, 0, 0, function() switchTab("midi") end)
+    ui.pathsTabBtn = createTabButton(ui.tabPanel.node, "paths", "Paths", 0, 0, 0, 0, function() switchTab("paths") end)
+
     -- ==========================================================================
     -- Content Panel (scrollable)
     -- ==========================================================================
@@ -855,20 +969,19 @@ end
 -- ============================================================================
 
 function rebuildTabContent()
-    -- Clear existing content
+    -- Clear only the settings content subtree. Do NOT clear the shared shell's
+    -- deferred refresh queue here — that was nuking pending retained updates
+    -- for the shell chrome and causing the hover-heals-it bug.
     ui.contentNode:clearChildren()
-    
+
     local w = ui.contentNode:getWidth()
     local h = ui.contentNode:getHeight()
-    
-    -- Reset scroll
+
     scrollOffsets[currentTab] = 0
-    
-    -- Create a content container that will be scrolled
+
     local contentContainer = ui.contentNode:addChild("contentContainer")
     contentContainer:setBounds(0, 0, w, h)
-    
-    -- Build appropriate tab content inside the container
+
     local contentH = 0
     if currentTab == "osc" then
         contentH = buildOscTab(contentContainer, w, h)
@@ -879,17 +992,20 @@ function rebuildTabContent()
     elseif currentTab == "midi" then
         contentH = buildMidiTab(contentContainer, w, h)
     end
-    
-    -- Setup scrolling with content container
+
     setupScrollableContent(ui.contentNode, contentContainer, contentH)
+
+    local shell = (type(_G) == "table") and _G.shell or nil
+    if type(shell) == "table" and type(shell.flushDeferredRefreshes) == "function" then
+        shell:flushDeferredRefreshes()
+    end
 end
 
 function switchTab(tabId)
     if currentTab == tabId then return end
     currentTab = tabId
+    syncTabButtonStyles()
     rebuildTabContent()
-    -- Force resize to update layouts
-    ui_resized(ui.rootPanel.node:getWidth(), ui.rootPanel.node:getHeight())
 end
 
 -- ============================================================================
@@ -902,50 +1018,29 @@ function ui_resized(w, h)
     local tabH = 40
     
     -- Root fills entire area
-    ui.rootPanel.node:setBounds(0, 0, w, h)
+    setWidgetBounds(ui.rootPanel, 0, 0, w, h)
     
     -- Header
-    ui.headerPanel.node:setBounds(margin, margin, w - margin * 2, headerH)
-    ui.titleLabel.node:setBounds(12, 10, w - 24, 24)
+    setWidgetBounds(ui.headerPanel, margin, margin, w - margin * 2, headerH)
+    setWidgetBounds(ui.titleLabel, 12, 10, w - 24, 24)
     
     -- Tab bar
     local tabY = margin + headerH
-    ui.tabPanel.node:setBounds(margin, tabY, w - margin * 2, tabH)
+    setWidgetBounds(ui.tabPanel, margin, tabY, w - margin * 2, tabH)
     
     -- Tab buttons
     local tabW = math.floor((w - margin * 2 - 12) / 4)
-    createTabButton(ui.tabPanel.node, "osc", "OSC", 4, 4, tabW, tabH - 8, function() switchTab("osc") end)
-    createTabButton(ui.tabPanel.node, "link", "Link", 8 + tabW, 4, tabW, tabH - 8, function() switchTab("link") end)
-    createTabButton(ui.tabPanel.node, "midi", "MIDI", 12 + tabW * 2, 4, tabW, tabH - 8, function() switchTab("midi") end)
-    createTabButton(ui.tabPanel.node, "paths", "Paths", 16 + tabW * 3, 4, tabW, tabH - 8, function() switchTab("paths") end)
-    
-    -- Update tab button colors
-    local children = {}
-    if ui.tabPanel.node.getChildren then
-        children = ui.tabPanel.node:getChildren() or {}
-    end
-    for _, child in ipairs(children) do
-        if child and child.setBackgroundColor then
-            local name = ""
-            if child.getName then
-                name = child:getName() or ""
-            end
-            if name:find("osc") then
-                child:setBackgroundColor((currentTab == "osc") and 0xff2563eb or 0xff1e293b)
-            elseif name:find("link") then
-                child:setBackgroundColor((currentTab == "link") and 0xff2563eb or 0xff1e293b)
-            elseif name:find("midi") then
-                child:setBackgroundColor((currentTab == "midi") and 0xff2563eb or 0xff1e293b)
-            elseif name:find("paths") then
-                child:setBackgroundColor((currentTab == "paths") and 0xff2563eb or 0xff1e293b)
-            end
-        end
-    end
+    setWidgetBounds(ui.oscTabBtn, 4, 4, tabW, tabH - 8)
+    setWidgetBounds(ui.linkTabBtn, 8 + tabW, 4, tabW, tabH - 8)
+    setWidgetBounds(ui.midiTabBtn, 12 + tabW * 2, 4, tabW, tabH - 8)
+    setWidgetBounds(ui.pathsTabBtn, 16 + tabW * 3, 4, tabW, tabH - 8)
+
+    syncTabButtonStyles()
     
     -- Content area (scrollable)
     local contentY = tabY + tabH + 4
     local contentH = h - contentY - margin
-    ui.contentPanel.node:setBounds(margin, contentY, w - margin * 2, contentH)
+    setWidgetBounds(ui.contentPanel, margin, contentY, w - margin * 2, contentH)
     
     -- Rebuild content with new size
     rebuildTabContent()

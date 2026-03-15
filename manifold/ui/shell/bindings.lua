@@ -14,6 +14,18 @@ local clamp = Base.clamp
 local nowSeconds = Base.nowSeconds
 local deriveNodeName = Base.deriveNodeName
 local fileStem = Base.fileStem
+local safeGrabKeyboardFocus = Base.safeGrabKeyboardFocus
+
+local function setWidgetBounds(widget, x, y, w, h)
+    if widget == nil then
+        return
+    end
+    if type(widget.setBounds) == "function" then
+        widget:setBounds(x, y, w, h)
+    elseif widget.node and type(widget.node.setBounds) == "function" then
+        widget.node:setBounds(x, y, w, h)
+    end
+end
 
 local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
 local SCRIPT_SYNTAX_COLOUR = ScriptEditor.SCRIPT_SYNTAX_COLOUR
@@ -80,23 +92,142 @@ local collectConfigLeaves = Inspector.collectConfigLeaves
 local M = {}
 
 function M.attach(shell)
-    shell.treeCanvas:setOnDraw(function(node)
-        local w = node:getWidth()
-        local h = node:getHeight()
-        local imguiHierarchyActive = (type(_G) == "table" and _G.__manifoldImguiHierarchyActive == true)
+    local function setTransparentRetained(node)
+        node:setStyle({ bg = 0x00000000, border = 0x00000000, borderWidth = 0, radius = 0, opacity = 1.0 })
+    end
 
-        gfx.setColour(0xff0f172a)
-        gfx.fillRect(0, 0, w, h)
+    local function clearRetained(node)
+        setTransparentRetained(node)
+        node:clearDisplayList()
+    end
 
-        if imguiHierarchyActive then
+    local function pushFillRect(display, x, y, w, h, color)
+        display[#display + 1] = {
+            cmd = "fillRect",
+            x = math.floor(x),
+            y = math.floor(y),
+            w = math.max(0, math.floor(w)),
+            h = math.max(0, math.floor(h)),
+            color = color,
+        }
+    end
+
+    local function pushDrawRect(display, x, y, w, h, color, thickness, radius)
+        display[#display + 1] = {
+            cmd = (radius ~= nil and radius > 0) and "drawRoundedRect" or "drawRect",
+            x = math.floor(x),
+            y = math.floor(y),
+            w = math.max(0, math.floor(w)),
+            h = math.max(0, math.floor(h)),
+            thickness = thickness or 1,
+            radius = radius or 0,
+            color = color,
+        }
+    end
+
+    local function pushFillRoundedRect(display, x, y, w, h, radius, color)
+        display[#display + 1] = {
+            cmd = "fillRoundedRect",
+            x = math.floor(x),
+            y = math.floor(y),
+            w = math.max(0, math.floor(w)),
+            h = math.max(0, math.floor(h)),
+            radius = radius or 0,
+            color = color,
+        }
+    end
+
+    local function pushText(display, x, y, w, h, color, text, fontSize, align, valign)
+        display[#display + 1] = {
+            cmd = "drawText",
+            x = math.floor(x),
+            y = math.floor(y),
+            w = math.max(0, math.floor(w)),
+            h = math.max(0, math.floor(h)),
+            color = color,
+            text = tostring(text or ""),
+            fontSize = fontSize,
+            align = align or "left",
+            valign = valign or "middle",
+        }
+    end
+
+    local function pushLine(display, x1, y1, x2, y2, color, thickness)
+        display[#display + 1] = {
+            cmd = "drawLine",
+            x1 = x1,
+            y1 = y1,
+            x2 = x2,
+            y2 = y2,
+            color = color,
+            thickness = thickness or 1,
+        }
+    end
+
+    local function displayAlignToJustify(align)
+        if align == "center" then
+            return Justify.centred
+        end
+        if align == "right" then
+            return Justify.centredRight
+        end
+        return Justify.centredLeft
+    end
+
+    local function drawDisplayListImmediate(display)
+        if type(display) ~= "table" then
             return
         end
 
+        for i = 1, #display do
+            local item = display[i]
+            if type(item) == "table" then
+                local cmd = item.cmd
+                local color = item.color
+                if color ~= nil then
+                    gfx.setColour(color)
+                end
+
+                if cmd == "fillRect" then
+                    gfx.fillRect(item.x or 0, item.y or 0, item.w or 0, item.h or 0)
+                elseif cmd == "drawRect" then
+                    gfx.drawRect(item.x or 0, item.y or 0, item.w or 0, item.h or 0, item.thickness or 1)
+                elseif cmd == "fillRoundedRect" then
+                    gfx.fillRoundedRect(item.x or 0, item.y or 0, item.w or 0, item.h or 0, item.radius or 0)
+                elseif cmd == "drawRoundedRect" then
+                    gfx.drawRoundedRect(item.x or 0, item.y or 0, item.w or 0, item.h or 0, item.radius or 0, item.thickness or 1)
+                elseif cmd == "drawLine" then
+                    gfx.drawLine(item.x1 or 0, item.y1 or 0, item.x2 or 0, item.y2 or 0, item.thickness or 1)
+                elseif cmd == "drawText" then
+                    gfx.setFont(item.fontSize or 11.0)
+                    gfx.drawText(
+                        tostring(item.text or ""),
+                        item.x or 0,
+                        item.y or 0,
+                        item.w or 0,
+                        item.h or 0,
+                        displayAlignToJustify(item.align)
+                    )
+                end
+            end
+        end
+    end
+
+    local function buildTreeCanvasDisplayList(node)
+        local w = math.floor(node:getWidth())
+        local h = math.floor(node:getHeight())
+        local imguiHierarchyActive = (type(_G) == "table" and _G.__manifoldImguiHierarchyActive == true)
+        local display = {}
+
+        pushFillRect(display, 0, 0, w, h, 0xff0f172a)
+
+        if imguiHierarchyActive then
+            return display
+        end
+
         if #shell.treeRows == 0 then
-            gfx.setColour(0xff64748b)
-            gfx.setFont(11.0)
-            gfx.drawText("No widgets", 8, 6, w - 16, 20, Justify.centredLeft)
-            return
+            pushText(display, 8, 6, w - 16, 20, 0xff64748b, "No widgets", 11.0, "left", "middle")
+            return display
         end
 
         local rowH = shell.treeRowHeight
@@ -113,24 +244,39 @@ function M.attach(shell)
                 local row = shell.treeRows[i]
                 local isSelected = shell:isCanvasSelected(row.canvas)
                 if isSelected then
-                    gfx.setColour(0xff1e3a5f)
-                    gfx.fillRoundedRect(3, rowY + 1, w - 6, rowH - 2, 4)
+                    pushFillRoundedRect(display, 3, rowY + 1, w - 6, rowH - 2, 4, 0xff1e3a5f)
                 end
 
                 local indent = math.floor(8 + row.depth * shell.treeIndent)
                 local text = row.type .. "  " .. row.name
-                gfx.setColour(isSelected and 0xff7dd3fc or 0xffcbd5e1)
-                gfx.setFont(11.0)
-                gfx.drawText(text, indent, rowY, w - indent - 6, rowH, Justify.centredLeft)
+                pushText(display, indent, rowY, w - indent - 6, rowH, isSelected and 0xff7dd3fc or 0xffcbd5e1, text, 11.0, "left", "middle")
             end
         end
-    end)
+
+        return display
+    end
+
+    shell._syncTreeCanvasRetained = function(self)
+        setTransparentRetained(self.treeCanvas)
+        self.treeCanvas:setDisplayList(buildTreeCanvasDisplayList(self.treeCanvas))
+    end
+
+    shell._syncTreeCanvasRetained(shell)
+
+    if shell.treeCanvas ~= nil and shell.treeCanvas.setOnDraw ~= nil then
+        shell.treeCanvas:setOnDraw(function(node)
+            local display = buildTreeCanvasDisplayList(node)
+            setTransparentRetained(node)
+            node:setDisplayList(display)
+            drawDisplayListImmediate(display)
+        end)
+    end
 
     shell.treeCanvas:setOnMouseDown(function(mx, my)
         if type(_G) == "table" and _G.__manifoldImguiHierarchyActive == true then
             return
         end
-        shell.treeCanvas:grabKeyboardFocus()
+        safeGrabKeyboardFocus(shell.treeCanvas)
         local row = math.floor((my + shell.treeScrollY) / shell.treeRowHeight) + 1
         if row >= 1 and row <= #shell.treeRows then
             shell:selectWidget(shell.treeRows[row].canvas)
@@ -161,22 +307,23 @@ function M.attach(shell)
         )
         if changed then
             shell.treeScrollY = nextScroll
+            if type(shell._syncTreeCanvasRetained) == "function" then
+                shell:_syncTreeCanvasRetained()
+            end
             shell.treeCanvas:repaint()
         end
     end)
 
-    shell.dspCanvas:setOnDraw(function(node)
-        local w = node:getWidth()
-        local h = node:getHeight()
+    local function buildDspCanvasDisplayList(node)
+        local w = math.floor(node:getWidth())
+        local h = math.floor(node:getHeight())
+        local display = {}
 
-        gfx.setColour(0xff0f172a)
-        gfx.fillRect(0, 0, w, h)
+        pushFillRect(display, 0, 0, w, h, 0xff0f172a)
 
         if #shell.dspRows == 0 then
-            gfx.setColour(0xff64748b)
-            gfx.setFont(11.0)
-            gfx.drawText("No DSP params yet", 8, 6, w - 16, 20, Justify.centredLeft)
-            return
+            pushText(display, 8, 6, w - 16, 20, 0xff64748b, "No DSP params yet", 11.0, "left", "middle")
+            return display
         end
 
         local rowH = shell.dspRowHeight
@@ -192,20 +339,32 @@ function M.attach(shell)
                 local row = shell.dspRows[i]
                 local selected = shell.selectedDspRow and shell.selectedDspRow.path == row.path
                 if selected then
-                    gfx.setColour(0xff1e3a5f)
-                    gfx.fillRoundedRect(4, rowY + 1, w - 8, rowH - 2, 4)
+                    pushFillRoundedRect(display, 4, rowY + 1, w - 8, rowH - 2, 4, 0xff1e3a5f)
                 end
 
-                gfx.setColour(selected and 0xff7dd3fc or 0xff8fa6bf)
-                gfx.setFont(10.0)
-                gfx.drawText(row.path or "", 8, rowY, math.floor(w * 0.66), rowH, Justify.centredLeft)
-
-                gfx.setColour(selected and 0xfff8fafc or 0xffcbd5e1)
-                gfx.setFont(10.0)
-                gfx.drawText(row.value or "", math.floor(w * 0.66), rowY, math.floor(w * 0.34) - 8, rowH, Justify.centredRight)
+                pushText(display, 8, rowY, math.floor(w * 0.66), rowH, selected and 0xff7dd3fc or 0xff8fa6bf, row.path or "", 10.0, "left", "middle")
+                pushText(display, math.floor(w * 0.66), rowY, math.floor(w * 0.34) - 8, rowH, selected and 0xfff8fafc or 0xffcbd5e1, row.value or "", 10.0, "right", "middle")
             end
         end
-    end)
+
+        return display
+    end
+
+    shell._syncDspCanvasRetained = function(self)
+        setTransparentRetained(self.dspCanvas)
+        self.dspCanvas:setDisplayList(buildDspCanvasDisplayList(self.dspCanvas))
+    end
+
+    shell._syncDspCanvasRetained(shell)
+
+    if shell.dspCanvas ~= nil and shell.dspCanvas.setOnDraw ~= nil then
+        shell.dspCanvas:setOnDraw(function(node)
+            local display = buildDspCanvasDisplayList(node)
+            setTransparentRetained(node)
+            node:setDisplayList(display)
+            drawDisplayListImmediate(display)
+        end)
+    end
 
     shell.dspCanvas:setOnKeyPress(function(keyCode, charCode, shift, ctrl, alt)
         if shell:handleGlobalDevHotkeys(keyCode, charCode, shift, ctrl, alt) then
@@ -225,12 +384,15 @@ function M.attach(shell)
         )
         if changed then
             shell.dspScrollY = nextScroll
+            if type(shell._syncDspCanvasRetained) == "function" then
+                shell:_syncDspCanvasRetained()
+            end
             shell.dspCanvas:repaint()
         end
     end)
 
     shell.dspCanvas:setOnMouseDown(function(mx, my)
-        shell.dspCanvas:grabKeyboardFocus()
+        safeGrabKeyboardFocus(shell.dspCanvas)
         local row = math.floor((my + shell.dspScrollY) / shell.dspRowHeight) + 1
         if row >= 1 and row <= #shell.dspRows then
             local r = shell.dspRows[row]
@@ -240,23 +402,21 @@ function M.attach(shell)
         end
     end)
 
-    shell.scriptCanvas:setOnDraw(function(node)
-        local w = node:getWidth()
-        local h = node:getHeight()
+    local function buildScriptCanvasDisplayList(node)
+        local w = math.floor(node:getWidth())
+        local h = math.floor(node:getHeight())
         local imguiScriptListActive = (type(_G) == "table" and _G.__manifoldImguiScriptListActive == true)
+        local display = {}
 
-        gfx.setColour(0xff0f172a)
-        gfx.fillRect(0, 0, w, h)
+        pushFillRect(display, 0, 0, w, h, 0xff0f172a)
 
         if imguiScriptListActive then
-            return
+            return display
         end
 
         if #shell.scriptRows == 0 then
-            gfx.setColour(0xff64748b)
-            gfx.setFont(11.0)
-            gfx.drawText("No scripts", 8, 6, w - 16, 20, Justify.centredLeft)
-            return
+            pushText(display, 8, 6, w - 16, 20, 0xff64748b, "No scripts", 11.0, "left", "middle")
+            return display
         end
 
         local rowH = shell.scriptRowHeight
@@ -271,21 +431,14 @@ function M.attach(shell)
             if rowY + rowH >= 0 then
                 local row = shell.scriptRows[i]
                 if row.section then
-                    gfx.setColour(0xff94a3b8)
-                    gfx.setFont(10.0)
-                    gfx.drawText(row.label or "", 8, rowY, w - 16, rowH, Justify.centredLeft)
+                    pushText(display, 8, rowY, w - 16, rowH, 0xff94a3b8, row.label or "", 10.0, "left", "middle")
                 elseif row.nonInteractive then
-                    gfx.setColour(0xff64748b)
-                    gfx.setFont(10.0)
-                    gfx.drawText(row.name or "", 12, rowY, w - 24, rowH, Justify.centredLeft)
+                    pushText(display, 12, rowY, w - 24, rowH, 0xff64748b, row.name or "", 10.0, "left", "middle")
                 else
                     local selected = shell.selectedScriptRow and shell.selectedScriptRow.path == row.path and shell.selectedScriptRow.kind == row.kind
                     if row.active or selected then
-                        gfx.setColour(selected and 0xff274669 or 0xff1e3a5f)
-                        gfx.fillRoundedRect(4, rowY + 1, w - 8, rowH - 2, 4)
+                        pushFillRoundedRect(display, 4, rowY + 1, w - 8, rowH - 2, 4, selected and 0xff274669 or 0xff1e3a5f)
                     end
-                    gfx.setColour((row.active or selected) and 0xff7dd3fc or 0xffcbd5e1)
-                    gfx.setFont(10.0)
                     local label = row.name or ""
                     if row.ownership == "editor-owned" then
                         label = label .. " [editor]"
@@ -293,17 +446,35 @@ function M.attach(shell)
                     if row.dirty then
                         label = "* " .. label
                     end
-                    gfx.drawText(label, 12, rowY, w - 24, rowH, Justify.centredLeft)
+                    pushText(display, 12, rowY, w - 24, rowH, (row.active or selected) and 0xff7dd3fc or 0xffcbd5e1, label, 10.0, "left", "middle")
                 end
             end
         end
-    end)
+
+        return display
+    end
+
+    shell._syncScriptCanvasRetained = function(self)
+        setTransparentRetained(self.scriptCanvas)
+        self.scriptCanvas:setDisplayList(buildScriptCanvasDisplayList(self.scriptCanvas))
+    end
+
+    shell._syncScriptCanvasRetained(shell)
+
+    if shell.scriptCanvas ~= nil and shell.scriptCanvas.setOnDraw ~= nil then
+        shell.scriptCanvas:setOnDraw(function(node)
+            local display = buildScriptCanvasDisplayList(node)
+            setTransparentRetained(node)
+            node:setDisplayList(display)
+            drawDisplayListImmediate(display)
+        end)
+    end
 
     shell.scriptCanvas:setOnMouseDown(function(mx, my)
         if type(_G) == "table" and _G.__manifoldImguiScriptListActive == true then
             return
         end
-        shell.scriptCanvas:grabKeyboardFocus()
+        safeGrabKeyboardFocus(shell.scriptCanvas)
         local row = math.floor((my + shell.scriptScrollY) / shell.scriptRowHeight) + 1
         if row < 1 or row > #shell.scriptRows then
             return
@@ -315,6 +486,9 @@ function M.attach(shell)
 
         shell:handleLeftListSelection("script", r, function()
             shell:openScriptEditor(r)
+            if type(shell._syncMainTabContentRetained) == "function" then
+                shell:_syncMainTabContentRetained()
+            end
             shell.mainTabContent:repaint()
         end)
     end)
@@ -343,18 +517,24 @@ function M.attach(shell)
         )
         if changed then
             shell.scriptScrollY = nextScroll
+            if type(shell._syncScriptCanvasRetained) == "function" then
+                shell:_syncScriptCanvasRetained()
+            end
             shell.scriptCanvas:repaint()
         end
     end)
 
-    shell.mainTabBar:setOnDraw(function(node)
-        local w = node:getWidth()
-        local h = node:getHeight()
+    local function syncMainTabBarRetained(node)
+        if node == nil then
+            return
+        end
 
-        gfx.setColour(0xff0f172a)
-        gfx.fillRect(0, 0, w, h)
-        gfx.setColour(0xff1e293b)
-        gfx.drawRect(0, 0, w, h, 1)
+        local w = math.floor(node:getWidth())
+        local h = math.floor(node:getHeight())
+        local display = {}
+
+        pushFillRect(display, 0, 0, w, h, 0xff0f172a)
+        pushDrawRect(display, 0, 0, w, h, 0xff1e293b, 1)
 
         shell.mainTabRects = {}
 
@@ -372,11 +552,11 @@ function M.attach(shell)
             end
 
             local active = (tab.id == shell.activeMainTabId)
-            gfx.setColour(active and 0xff334155 or 0xff1e293b)
-            gfx.fillRoundedRect(x, 3, tw, h - 6, 4)
-            gfx.setColour(active and 0xff7dd3fc or 0xff94a3b8)
-            gfx.setFont(10.0)
-            gfx.drawText(title, x + 8, 3, tw - 16, h - 6, Justify.centredLeft)
+            local bg = active and 0xff334155 or 0xff1e293b
+            local fg = active and 0xff7dd3fc or 0xff94a3b8
+
+            pushFillRoundedRect(display, x, 3, tw, h - 6, 4, bg)
+            pushText(display, x + 8, 3, tw - 16, h - 6, fg, title, 10.0, "left", "middle")
 
             shell.mainTabRects[#shell.mainTabRects + 1] = { x = x, y = 3, w = tw, h = h - 6, id = tab.id }
             x = x + tw + gap
@@ -384,68 +564,58 @@ function M.attach(shell)
                 break
             end
         end
-    end)
 
-    shell.mainTabBar:setOnMouseDown(function(mx, my)
-        for i = 1, #shell.mainTabRects do
-            local r = shell.mainTabRects[i]
-            if mx >= r.x and mx <= (r.x + r.w) and my >= r.y and my <= (r.y + r.h) then
-                shell:activateMainTab(r.id)
-                shell.mainTabBar:repaint()
-                shell.mainTabContent:repaint()
-                shell.previewOverlay:repaint()
-                return
-            end
+        setTransparentRetained(node)
+        node:setDisplayList(display)
+    end
+
+    local function syncMainTabContentRetained(node)
+        if node == nil then
+            return
         end
-    end)
 
-    shell.mainTabContent:setOnDraw(function(node)
         local w = math.floor(node:getWidth())
         local h = math.floor(node:getHeight())
+        local display = {}
 
-        gfx.setColour(0xff0b1220)
-        gfx.fillRect(0, 0, w, h)
+        pushFillRect(display, 0, 0, w, h, 0xff0b1220)
 
         if shell.mode ~= "edit" then
             local tab = shell:_findMainTabById(shell.activeMainTabId)
             if tab then
-                gfx.setColour(0xff94a3b8)
-                gfx.setFont(11.0)
-                gfx.drawText(tab.title or "Tab", 10, 8, w - 20, 18, Justify.centredLeft)
+                pushText(display, 10, 8, w - 20, 18, 0xff94a3b8, tab.title or "Tab", 11.0, "left", "middle")
             end
+            setTransparentRetained(node)
+            node:setDisplayList(display)
             return
         end
 
         if shell.editContentMode ~= "script" then
             local projectStatus = shell:getStructuredProjectStatus()
-            gfx.setColour(0xff64748b)
-            gfx.setFont(11.0)
-            gfx.drawText("Preview mode", 10, 8, w - 20, 18, Justify.centredLeft)
+            pushText(display, 10, 8, w - 20, 18, 0xff64748b, "Preview mode", 11.0, "left", "middle")
 
             if type(projectStatus) == "table" then
                 local dirtyCount = tonumber(projectStatus.dirtyCount) or 0
                 local documentCount = tonumber(projectStatus.documentCount) or 0
                 local summary = string.format("Structured project | %d dirty / %d docs | Ctrl+S Save Project | Ctrl+R Reload Project", dirtyCount, documentCount)
-                gfx.setColour(dirtyCount > 0 and 0xfffbbf24 or 0xff93c5fd)
-                gfx.setFont(10.0)
-                gfx.drawText(summary, 10, 28, w - 20, 16, Justify.centredLeft)
+                pushText(display, 10, 28, w - 20, 16, dirtyCount > 0 and 0xfffbbf24 or 0xff93c5fd, summary, 10.0, "left", "middle")
 
-                gfx.setColour(0xff475569)
-                gfx.setFont(9.0)
                 local manifestPath = projectStatus.manifestPath or ""
                 local uiRoot = projectStatus.uiRoot or ""
-                gfx.drawText("Manifest: " .. manifestPath, 10, 46, w - 20, 14, Justify.centredLeft)
-                gfx.drawText("Active UI root: " .. uiRoot, 10, 60, w - 20, 14, Justify.centredLeft)
+                pushText(display, 10, 46, w - 20, 14, 0xff475569, "Manifest: " .. manifestPath, 9.0, "left", "middle")
+                pushText(display, 10, 60, w - 20, 14, 0xff475569, "Active UI root: " .. uiRoot, 9.0, "left", "middle")
 
                 local lastError = tostring(projectStatus.lastError or "")
                 local lastOperation = tostring(projectStatus.lastOperation or "")
                 if lastError ~= "" then
-                    gfx.setColour(0xfffca5a5)
-                    gfx.setFont(9.0)
-                    gfx.drawText("Last structured error" .. (lastOperation ~= "" and (" [" .. lastOperation .. "]") or "") .. ": " .. lastError,
-                        10, 76, w - 20, 28, Justify.centredLeft)
+                    pushText(display, 10, 76, w - 20, 28, 0xfffca5a5,
+                        "Last structured error" .. (lastOperation ~= "" and (" [" .. lastOperation .. "]") or "") .. ": " .. lastError,
+                        9.0, "left", "middle")
                 end
             end
+
+            setTransparentRetained(node)
+            node:setDisplayList(display)
             return
         end
 
@@ -459,32 +629,28 @@ function M.attach(shell)
             and type(mainEditorSurface) == "table"
             and mainEditorSurface.visible == true
 
-        gfx.setColour(0xff101827)
-        gfx.fillRect(0, 0, w, SCRIPT_EDITOR_STYLE.headerH)
-        gfx.setColour(0xff25354d)
-        gfx.drawHorizontalLine(SCRIPT_EDITOR_STYLE.headerH - 1, 0, w)
+        local perfStart = nowSeconds()
+        local headerH = SCRIPT_EDITOR_STYLE.headerH
+        local pad = SCRIPT_EDITOR_STYLE.pad
+        local gutterW = SCRIPT_EDITOR_STYLE.gutterW
+        local statusH = SCRIPT_EDITOR_STYLE.statusH
+
+        pushFillRect(display, 0, 0, w, headerH, 0xff101827)
+        pushLine(display, 0, headerH - 1, w, headerH - 1, 0xff25354d, 1)
 
         local title = (ed.name ~= "" and ed.name or "Script") .. ((ed.dirty and " *") or "")
-        gfx.setColour(0xffe2e8f0)
-        gfx.setFont(11.0)
-        gfx.drawText(title, 10, 6, math.max(40, w - 230), 18, Justify.centredLeft)
+        pushText(display, 10, 6, math.max(40, w - 230), 18, 0xffe2e8f0, title, 11.0, "left", "middle")
 
-        gfx.setColour(0xff64748b)
-        gfx.setFont(10.0)
         local pathLine = ed.path or ""
         if ed.ownership == "editor-owned" then
             pathLine = pathLine .. "   [editor-owned structured source]"
         end
-        gfx.drawText(pathLine, 10, 18, math.max(40, w - 230), 12, Justify.centredLeft)
+        pushText(display, 10, 18, math.max(40, w - 230), 12, 0xff64748b, pathLine, 10.0, "left", "middle")
 
-        local function drawEditorButton(name, label, x, y, bw, bh)
-            gfx.setColour(0xff1e293b)
-            gfx.fillRoundedRect(x, y, bw, bh, 4)
-            gfx.setColour(0xff334155)
-            gfx.drawRoundedRect(x, y, bw, bh, 4, 1)
-            gfx.setColour(0xffcbd5e1)
-            gfx.setFont(10.0)
-            gfx.drawText(label, x + 6, y, bw - 12, bh, Justify.centred)
+        local function pushEditorButton(name, label, x, y, bw, bh)
+            pushFillRoundedRect(display, x, y, bw, bh, 4, 0xff1e293b)
+            pushDrawRect(display, x, y, bw, bh, 0xff334155, 1, 4)
+            pushText(display, x + 6, y, bw - 12, bh, 0xffcbd5e1, label, 10.0, "center", "middle")
             shell.scriptEditorButtonRects[#shell.scriptEditorButtonRects + 1] = {
                 name = name,
                 x = x,
@@ -498,31 +664,20 @@ function M.attach(shell)
         local btnH = 20
         local btnGap = 6
         local bx = w - 10 - btnW
-        drawEditorButton("close", "Close", bx, 6, btnW, btnH)
+        pushEditorButton("close", "Close", bx, 6, btnW, btnH)
         bx = bx - btnGap - btnW
-        drawEditorButton("reload", "Reload", bx, 6, btnW, btnH)
+        pushEditorButton("reload", "Reload", bx, 6, btnW, btnH)
         bx = bx - btnGap - btnW
-        drawEditorButton("save", "Save", bx, 6, btnW, btnH)
+        pushEditorButton("save", "Save", bx, 6, btnW, btnH)
 
-        local pad = SCRIPT_EDITOR_STYLE.pad
-        local lineH = SCRIPT_EDITOR_STYLE.lineH
-        local gutterW = SCRIPT_EDITOR_STYLE.gutterW
-        local statusH = SCRIPT_EDITOR_STYLE.statusH
-        local textTop = SCRIPT_EDITOR_STYLE.headerH + pad
-        local textX = gutterW + pad + 4
-        local perfStart = nowSeconds()
-
-        gfx.setColour(0xff0b1220)
-        gfx.fillRect(0, SCRIPT_EDITOR_STYLE.headerH, w, h - SCRIPT_EDITOR_STYLE.headerH)
+        pushFillRect(display, 0, headerH, w, h - headerH, 0xff0b1220)
 
         if not imguiMainActive then
-            gfx.setColour(0xff101a2e)
-            gfx.fillRect(0, SCRIPT_EDITOR_STYLE.headerH, gutterW + pad, h - SCRIPT_EDITOR_STYLE.headerH - statusH)
-            gfx.setColour(0xff25354d)
-            gfx.drawVerticalLine(gutterW + pad, SCRIPT_EDITOR_STYLE.headerH + pad, h - statusH - pad)
+            pushFillRect(display, 0, headerH, gutterW + pad, h - headerH - statusH, 0xff101a2e)
+            pushLine(display, gutterW + pad, headerH + pad, gutterW + pad, h - statusH - pad, 0xff25354d, 1)
         end
 
-        local lines, starts = seBuildLinesCached(ed)
+        local lines = seBuildLinesCached(ed)
         local lineBuildDone = nowSeconds()
         local visible = seVisibleLineCount(h)
         local maxScroll = math.max(1, #lines - visible + 1)
@@ -530,37 +685,26 @@ function M.attach(shell)
 
         local cursorLine, cursorCol = seLineColCached(ed)
         local cursorDone = nowSeconds()
-        local selStart, selEnd = seGetSelectionRange(ed)
-        local maxCols = seMaxCols(w)
         local syntaxDrawCalls = 0
         local gutterDrawCalls = 0
         local syntaxSpanCount = 0
 
         if not imguiMainActive then
-            gfx.setColour(0xff7f1d1d)
-            gfx.fillRoundedRect(12, SCRIPT_EDITOR_STYLE.headerH + 12, math.max(0, w - 24), math.max(0, h - SCRIPT_EDITOR_STYLE.headerH - statusH - 24), 6)
-            gfx.setColour(0xfffecaca)
-            gfx.setFont(12.0)
-            gfx.drawText("ImGui script editor unavailable", 24, SCRIPT_EDITOR_STYLE.headerH + 28, math.max(0, w - 48), 20, Justify.centredLeft)
-            gfx.setColour(0xfffca5a5)
-            gfx.setFont(10.0)
-            gfx.drawText("This path must not silently fall back to the legacy editor.", 24, SCRIPT_EDITOR_STYLE.headerH + 52, math.max(0, w - 48), 16, Justify.centredLeft)
-            gfx.drawText("Fix the ImGui host instead of rendering backup editor UI.", 24, SCRIPT_EDITOR_STYLE.headerH + 68, math.max(0, w - 48), 16, Justify.centredLeft)
+            pushFillRoundedRect(display, 12, headerH + 12, math.max(0, w - 24), math.max(0, h - headerH - statusH - 24), 6, 0xff7f1d1d)
+            pushText(display, 24, headerH + 28, math.max(0, w - 48), 20, 0xfffecaca, "ImGui script editor unavailable", 12.0, "left", "middle")
+            pushText(display, 24, headerH + 52, math.max(0, w - 48), 16, 0xfffca5a5, "This path must not silently fall back to the legacy editor.", 10.0, "left", "middle")
+            pushText(display, 24, headerH + 68, math.max(0, w - 48), 16, 0xfffca5a5, "Fix the ImGui host instead of rendering backup editor UI.", 10.0, "left", "middle")
         end
 
-        gfx.setColour(0xff0f172a)
-        gfx.fillRect(0, h - statusH, w, statusH)
-        gfx.setColour(0xff22324b)
-        gfx.drawHorizontalLine(h - statusH, 0, w)
-        gfx.setColour(0xff94a3b8)
-        gfx.setFont(SCRIPT_EDITOR_STYLE.fontName, 10.0, FontStyle.plain)
+        pushFillRect(display, 0, h - statusH, w, statusH, 0xff0f172a)
+        pushLine(display, 0, h - statusH, w, h - statusH, 0xff22324b, 1)
         local statusText = imguiMainActive
             and string.format("%s | Ctrl+S Save | Ctrl+R Reload | Ctrl+W Close", ed.status or "")
             or string.format("ImGui editor unavailable | %s | Ctrl+S Save | Ctrl+R Reload | Ctrl+W Close", ed.status or "")
         if ed.ownership == "editor-owned" then
             statusText = statusText .. " | visual edits save from Preview mode"
         end
-        gfx.drawText(statusText, 8, h - statusH, w - 16, statusH, Justify.centredLeft)
+        pushText(display, 8, h - statusH, w - 16, statusH, 0xff94a3b8, statusText, 10.0, "left", "middle")
 
         if type(_G) == "table" then
             local perf = _G.__manifoldEditorPerf or {}
@@ -581,6 +725,56 @@ function M.attach(shell)
             perf.lastCursorCol = cursorCol or 1
             perf.lastEvent = perf.lastEvent or "draw"
             _G.__manifoldEditorPerf = perf
+        end
+
+        setTransparentRetained(node)
+        node:setDisplayList(display)
+    end
+
+    shell._syncMainTabBarRetained = function(self)
+        syncMainTabBarRetained(self.mainTabBar)
+    end
+
+    shell._syncMainTabContentRetained = function(self)
+        syncMainTabContentRetained(self.mainTabContent)
+    end
+
+    shell._syncMainTabBarRetained(shell)
+    shell._syncMainTabContentRetained(shell)
+
+    if shell.mainTabBar ~= nil and shell.mainTabBar.setOnDraw ~= nil then
+        shell.mainTabBar:setOnDraw(function(node)
+            syncMainTabBarRetained(node)
+            drawDisplayListImmediate(node:getDisplayList())
+        end)
+    end
+
+    if shell.mainTabContent ~= nil and shell.mainTabContent.setOnDraw ~= nil then
+        shell.mainTabContent:setOnDraw(function(node)
+            syncMainTabContentRetained(node)
+            drawDisplayListImmediate(node:getDisplayList())
+        end)
+    end
+
+    shell.mainTabBar:setOnMouseDown(function(mx, my)
+        for i = 1, #shell.mainTabRects do
+            local r = shell.mainTabRects[i]
+            if mx >= r.x and mx <= (r.x + r.w) and my >= r.y and my <= (r.y + r.h) then
+                shell:activateMainTab(r.id)
+                if type(shell._syncMainTabBarRetained) == "function" then
+                    shell:_syncMainTabBarRetained()
+                end
+                if type(shell._syncMainTabContentRetained) == "function" then
+                    shell:_syncMainTabContentRetained()
+                end
+                if type(shell._syncPreviewOverlayRetained) == "function" then
+                    shell:_syncPreviewOverlayRetained()
+                end
+                shell.mainTabBar:repaint()
+                shell.mainTabContent:repaint()
+                shell.previewOverlay:repaint()
+                return
+            end
         end
     end)
 
@@ -621,7 +815,7 @@ function M.attach(shell)
 
         local ed = shell.scriptEditor
         ed.focused = true
-        shell.mainTabContent:grabKeyboardFocus()
+        safeGrabKeyboardFocus(shell.mainTabContent)
 
         local pos = shell:scriptEditorPosFromPoint(mx, my)
         ed.cursorPos = pos
@@ -860,20 +1054,18 @@ function M.attach(shell)
         return false
     end)
 
-    shell.inspectorCanvas:setOnDraw(function(node)
-        local w = node:getWidth()
-        local h = node:getHeight()
+    local function syncInspectorCanvasRetained(node)
+        local w = math.floor(node:getWidth())
+        local h = math.floor(node:getHeight())
         local imguiInspectorActive = (type(_G) == "table" and _G.__manifoldImguiInspectorActive == true)
+        local display = {}
 
-        gfx.setColour(0xff0f172a)
-        gfx.fillRect(0, 0, w, h)
+        pushFillRect(display, 0, 0, w, h, 0xff0f172a)
 
         if imguiInspectorActive then
-            if shell.leftPanelMode == "scripts" then
-                shell:hideRuntimeParamControls(1)
-            elseif shell.leftPanelMode ~= "scripts" then
-                shell:hideRuntimeParamControls(1)
-            end
+            shell:hideRuntimeParamControls(1)
+            setTransparentRetained(node)
+            node:setDisplayList(display)
             return
         end
 
@@ -884,26 +1076,20 @@ function M.attach(shell)
         if shell.leftPanelMode == "scripts" then
             local si = shell.scriptInspector
             local y = 6
-
             si.runtimeParamRows = {}
 
             if not si or si.path == "" then
                 shell:hideRuntimeParamControls(1)
-                gfx.setColour(0xff64748b)
-                gfx.setFont(11.0)
-                gfx.drawText("Select a script to inspect", 8, 8, w - 16, 20, Justify.centredLeft)
-                gfx.setColour(0xff475569)
-                gfx.setFont(10.0)
-                gfx.drawText("Single-click: inspect | Double-click: open editor", 8, 28, w - 16, 18, Justify.centredLeft)
+                pushText(display, 8, 8, w - 16, 20, 0xff64748b, "Select a script to inspect", 11.0, "left", "middle")
+                pushText(display, 8, 28, w - 16, 18, 0xff475569, "Single-click: inspect | Double-click: open editor", 10.0, "left", "middle")
+                setTransparentRetained(node)
+                node:setDisplayList(display)
                 return
             end
 
             local function infoRow(label, value)
-                gfx.setColour(0xff64748b)
-                gfx.setFont(10.0)
-                gfx.drawText(label, 8, y, math.floor(w * 0.34), 16, Justify.centredLeft)
-                gfx.setColour(0xffcbd5e1)
-                gfx.drawText(value or "", math.floor(w * 0.34), y, math.floor(w * 0.66) - 10, 16, Justify.centredLeft)
+                pushText(display, 8, y, math.floor(w * 0.34), 16, 0xff64748b, label, 10.0, "left", "middle")
+                pushText(display, math.floor(w * 0.34), y, math.floor(w * 0.66) - 10, 16, 0xffcbd5e1, value or "", 10.0, "left", "middle")
                 y = y + 16
             end
 
@@ -921,6 +1107,7 @@ function M.attach(shell)
                 end
             end
             infoRow("Path", si.path or "")
+
             if si.kind == "dsp" then
                 local declared = si.params or {}
                 local runtimeParams = si.runtimeParams or {}
@@ -938,81 +1125,57 @@ function M.attach(shell)
 
                 local btnH = 18
                 if type(si.runButtonRect) == "table" then
-                    gfx.setColour(0xff1e293b)
-                    gfx.fillRoundedRect(si.runButtonRect.x, si.runButtonRect.y, si.runButtonRect.w, si.runButtonRect.h, 4)
-                    gfx.setColour(0xff334155)
-                    gfx.drawRoundedRect(si.runButtonRect.x, si.runButtonRect.y, si.runButtonRect.w, si.runButtonRect.h, 4, 1)
-                    gfx.setColour(0xffcbd5e1)
-                    gfx.setFont(9.0)
-                    gfx.drawText("Run in Preview Slot", si.runButtonRect.x + 4, si.runButtonRect.y, si.runButtonRect.w - 8, si.runButtonRect.h, Justify.centred)
+                    pushFillRoundedRect(display, si.runButtonRect.x, si.runButtonRect.y, si.runButtonRect.w, si.runButtonRect.h, 4, 0xff1e293b)
+                    pushDrawRect(display, si.runButtonRect.x, si.runButtonRect.y, si.runButtonRect.w, si.runButtonRect.h, 0xff334155, 1, 4)
+                    pushText(display, si.runButtonRect.x + 4, si.runButtonRect.y, si.runButtonRect.w - 8, si.runButtonRect.h, 0xffcbd5e1, "Run in Preview Slot", 9.0, "center", "middle")
                 end
 
                 if type(si.stopButtonRect) == "table" then
-                    gfx.setColour(0xff1e293b)
-                    gfx.fillRoundedRect(si.stopButtonRect.x, si.stopButtonRect.y, si.stopButtonRect.w, si.stopButtonRect.h, 4)
-                    gfx.setColour(0xff334155)
-                    gfx.drawRoundedRect(si.stopButtonRect.x, si.stopButtonRect.y, si.stopButtonRect.w, si.stopButtonRect.h, 4, 1)
-                    gfx.setColour(0xffcbd5e1)
-                    gfx.drawText("Stop Preview Slot", si.stopButtonRect.x + 4, si.stopButtonRect.y, si.stopButtonRect.w - 8, si.stopButtonRect.h, Justify.centred)
+                    pushFillRoundedRect(display, si.stopButtonRect.x, si.stopButtonRect.y, si.stopButtonRect.w, si.stopButtonRect.h, 4, 0xff1e293b)
+                    pushDrawRect(display, si.stopButtonRect.x, si.stopButtonRect.y, si.stopButtonRect.w, si.stopButtonRect.h, 0xff334155, 1, 4)
+                    pushText(display, si.stopButtonRect.x + 4, si.stopButtonRect.y, si.stopButtonRect.w - 8, si.stopButtonRect.h, 0xffcbd5e1, "Stop Preview Slot", 9.0, "center", "middle")
                 end
 
                 y = y + btnH + 4
 
                 if si.runtimeStatus and si.runtimeStatus ~= "" then
-                    gfx.setColour(0xff7dd3fc)
-                    gfx.setFont(9.0)
-                    gfx.drawText(si.runtimeStatus, 8, y, w - 16, 14, Justify.centredLeft)
+                    pushText(display, 8, y, w - 16, 14, 0xff7dd3fc, si.runtimeStatus, 9.0, "left", "middle")
                     y = y + 14
                 end
 
-                gfx.setColour(0xff94a3b8)
-                gfx.setFont(10.0)
-                gfx.drawText("Declared Params", 8, y, w - 16, 14, Justify.centredLeft)
+                pushText(display, 8, y, w - 16, 14, 0xff94a3b8, "Declared Params", 10.0, "left", "middle")
                 y = y + 14
 
                 if #declared == 0 then
-                    gfx.setColour(0xff64748b)
-                    gfx.setFont(9.0)
-                    gfx.drawText("No ctx.params.register(...) found", 10, y, w - 20, 14, Justify.centredLeft)
+                    pushText(display, 10, y, w - 20, 14, 0xff64748b, "No ctx.params.register(...) found", 9.0, "left", "middle")
                     y = y + 14
                 else
                     local maxRows = math.min(6, #declared)
                     for i = 1, maxRows do
                         local p = declared[i]
-                        gfx.setColour(0xff64748b)
-                        gfx.setFont(8.5)
-                        gfx.drawText(p.path or "", 10, y, math.floor(w * 0.68), 14, Justify.centredLeft)
                         local rhs = ""
                         if p.default ~= nil then
                             rhs = "d=" .. tostring(p.default)
                         end
-                        gfx.setColour(0xffcbd5e1)
-                        gfx.drawText(rhs, math.floor(w * 0.68), y, math.floor(w * 0.32) - 12, 14, Justify.centredRight)
+                        pushText(display, 10, y, math.floor(w * 0.68), 14, 0xff64748b, p.path or "", 8.5, "left", "middle")
+                        pushText(display, math.floor(w * 0.68), y, math.floor(w * 0.32) - 12, 14, 0xffcbd5e1, rhs, 8.5, "right", "middle")
                         y = y + 14
                     end
                     if #declared > maxRows then
-                        gfx.setColour(0xff475569)
-                        gfx.setFont(8.5)
-                        gfx.drawText("..." .. tostring(#declared - maxRows) .. " more", 10, y, w - 20, 12, Justify.centredLeft)
+                        pushText(display, 10, y, w - 20, 12, 0xff475569, "..." .. tostring(#declared - maxRows) .. " more", 8.5, "left", "middle")
                         y = y + 12
                     end
                 end
 
-                gfx.setColour(0xff94a3b8)
-                gfx.setFont(10.0)
-                gfx.drawText("Runtime Params", 8, y, w - 16, 14, Justify.centredLeft)
+                pushText(display, 8, y, w - 16, 14, 0xff94a3b8, "Runtime Params", 10.0, "left", "middle")
                 y = y + 14
-                gfx.setColour(0xff475569)
-                gfx.setFont(8.0)
-                gfx.drawText("- [ value ] + | drag [value] continuously | Ctrl+click [value] to type", 10, y, w - 20, 12, Justify.centredLeft)
+                pushText(display, 10, y, w - 20, 12, 0xff475569, "- [ value ] + | drag [value] continuously | Ctrl+click [value] to type", 8.0, "left", "middle")
                 y = y + 12
 
                 si.runtimeParamRows = {}
                 if #runtimeParams == 0 then
                     shell:hideRuntimeParamControls(1)
-                    gfx.setColour(0xff64748b)
-                    gfx.setFont(9.0)
-                    gfx.drawText("No runtime params (run script first)", 10, y, w - 20, 14, Justify.centredLeft)
+                    pushText(display, 10, y, w - 20, 14, 0xff64748b, "No runtime params (run script first)", 9.0, "left", "middle")
                     y = y + 14
                 else
                     local maxRows = math.min(6, #runtimeParams)
@@ -1032,9 +1195,7 @@ function M.attach(shell)
                         local sliderRect = { x = clusterX + btnW + ctrlGap, y = y + 2, w = sliderW, h = 16 }
                         local plusRect = { x = sliderRect.x + sliderRect.w + ctrlGap, y = y + 3, w = btnW, h = 14 }
 
-                        gfx.setColour(rp.active and 0xff64748b or 0xff475569)
-                        gfx.setFont(8.5)
-                        gfx.drawText(rp.path or "", pathRect.x, pathRect.y, pathRect.w, pathRect.h, Justify.centredLeft)
+                        pushText(display, pathRect.x, pathRect.y, pathRect.w, pathRect.h, rp.active and 0xff64748b or 0xff475569, rp.path or "", 8.5, "left", "middle")
 
                         local rowValue = (rp.numericValue ~= nil) and rp.numericValue or tonumber(rp.value)
                         local row = {
@@ -1049,9 +1210,9 @@ function M.attach(shell)
                         local control = si.runtimeParamControls[i]
                         if control then
                             control.row = row
-                            control.minus.node:setBounds(minusRect.x, minusRect.y, minusRect.w, minusRect.h)
-                            control.slider.node:setBounds(sliderRect.x, sliderRect.y, sliderRect.w, sliderRect.h)
-                            control.plus.node:setBounds(plusRect.x, plusRect.y, plusRect.w, plusRect.h)
+                            setWidgetBounds(control.minus, minusRect.x, minusRect.y, minusRect.w, minusRect.h)
+                            setWidgetBounds(control.slider, sliderRect.x, sliderRect.y, sliderRect.w, sliderRect.h)
+                            setWidgetBounds(control.plus, plusRect.x, plusRect.y, plusRect.w, plusRect.h)
 
                             control.minus:setEnabled(rp.active)
                             control.slider:setEnabled(rp.active)
@@ -1077,9 +1238,7 @@ function M.attach(shell)
                     shell:hideRuntimeParamControls(maxRows + 1)
 
                     if #runtimeParams > maxRows then
-                        gfx.setColour(0xff475569)
-                        gfx.setFont(8.5)
-                        gfx.drawText("..." .. tostring(#runtimeParams - maxRows) .. " more", 10, y, w - 20, 12, Justify.centredLeft)
+                        pushText(display, 10, y, w - 20, 12, 0xff475569, "..." .. tostring(#runtimeParams - maxRows) .. " more", 8.5, "left", "middle")
                         y = y + 12
                     end
                 end
@@ -1110,23 +1269,17 @@ function M.attach(shell)
                 if type(rect) ~= "table" then
                     return
                 end
-                gfx.setColour(0xff1e293b)
-                gfx.fillRoundedRect(rect.x, rect.y, rect.w, rect.h, 4)
-                gfx.setColour(0xff334155)
-                gfx.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, 4, 1)
-                gfx.setColour(0xff94a3b8)
-                gfx.setFont(10.0)
+                pushFillRoundedRect(display, rect.x, rect.y, rect.w, rect.h, 4, 0xff1e293b)
+                pushDrawRect(display, rect.x, rect.y, rect.w, rect.h, 0xff334155, 1, 4)
                 local marker = collapsed and "[+] " or "[-] "
-                gfx.drawText(marker .. text, rect.x + 6, rect.y, rect.w - 12, rect.h, Justify.centredLeft)
+                pushText(display, rect.x + 6, rect.y, rect.w - 12, rect.h, 0xff94a3b8, marker .. text, 10.0, "left", "middle")
             end
 
             drawSectionHeader("Inline Script", si.editorCollapsed, si.editorHeaderRect)
 
             if type(si.editorBodyRect) == "table" then
-                gfx.setColour(0xff0b1220)
-                gfx.fillRoundedRect(si.editorBodyRect.x, si.editorBodyRect.y, si.editorBodyRect.w, si.editorBodyRect.h, 4)
-                gfx.setColour(0xff334155)
-                gfx.drawRoundedRect(si.editorBodyRect.x, si.editorBodyRect.y, si.editorBodyRect.w, si.editorBodyRect.h, 4, 1)
+                pushFillRoundedRect(display, si.editorBodyRect.x, si.editorBodyRect.y, si.editorBodyRect.w, si.editorBodyRect.h, 4, 0xff0b1220)
+                pushDrawRect(display, si.editorBodyRect.x, si.editorBodyRect.y, si.editorBodyRect.w, si.editorBodyRect.h, 0xff334155, 1, 4)
 
                 local imguiInlineActive = type(_G) == "table"
                     and _G.__manifoldImguiInspectorActive == true
@@ -1134,15 +1287,10 @@ function M.attach(shell)
                     and type(si.path) == "string"
                     and si.path ~= ""
                 if not imguiInlineActive then
-                    gfx.setColour(0xff7f1d1d)
-                    gfx.fillRoundedRect(si.editorBodyRect.x + 6, si.editorBodyRect.y + 6, math.max(0, si.editorBodyRect.w - 12), math.max(0, si.editorBodyRect.h - 12), 4)
-                    gfx.setColour(0xfffecaca)
-                    gfx.setFont(11.0)
-                    gfx.drawText("ImGui inline editor unavailable", si.editorBodyRect.x + 14, si.editorBodyRect.y + 14, math.max(0, si.editorBodyRect.w - 28), 18, Justify.centredLeft)
-                    gfx.setColour(0xfffca5a5)
-                    gfx.setFont(9.0)
-                    gfx.drawText("Legacy inline fallback is disabled.", si.editorBodyRect.x + 14, si.editorBodyRect.y + 34, math.max(0, si.editorBodyRect.w - 28), 14, Justify.centredLeft)
-                    gfx.drawText("Fix the ImGui host instead.", si.editorBodyRect.x + 14, si.editorBodyRect.y + 48, math.max(0, si.editorBodyRect.w - 28), 14, Justify.centredLeft)
+                    pushFillRoundedRect(display, si.editorBodyRect.x + 6, si.editorBodyRect.y + 6, math.max(0, si.editorBodyRect.w - 12), math.max(0, si.editorBodyRect.h - 12), 4, 0xff7f1d1d)
+                    pushText(display, si.editorBodyRect.x + 14, si.editorBodyRect.y + 14, math.max(0, si.editorBodyRect.w - 28), 18, 0xfffecaca, "ImGui inline editor unavailable", 11.0, "left", "middle")
+                    pushText(display, si.editorBodyRect.x + 14, si.editorBodyRect.y + 34, math.max(0, si.editorBodyRect.w - 28), 14, 0xfffca5a5, "Legacy inline fallback is disabled.", 9.0, "left", "middle")
+                    pushText(display, si.editorBodyRect.x + 14, si.editorBodyRect.y + 48, math.max(0, si.editorBodyRect.w - 28), 14, 0xfffca5a5, "Fix the ImGui host instead.", 9.0, "left", "middle")
                 end
             end
 
@@ -1150,19 +1298,15 @@ function M.attach(shell)
                 drawSectionHeader("DSP Graph (drag to pan)", si.graphCollapsed, si.graphHeaderRect)
 
                 if type(si.graphBodyRect) == "table" then
-                    gfx.setColour(0xff0b1220)
-                    gfx.fillRoundedRect(si.graphBodyRect.x, si.graphBodyRect.y, si.graphBodyRect.w, si.graphBodyRect.h, 4)
-                    gfx.setColour(0xff334155)
-                    gfx.drawRoundedRect(si.graphBodyRect.x, si.graphBodyRect.y, si.graphBodyRect.w, si.graphBodyRect.h, 4, 1)
+                    pushFillRoundedRect(display, si.graphBodyRect.x, si.graphBodyRect.y, si.graphBodyRect.w, si.graphBodyRect.h, 4, 0xff0b1220)
+                    pushDrawRect(display, si.graphBodyRect.x, si.graphBodyRect.y, si.graphBodyRect.w, si.graphBodyRect.h, 0xff334155, 1, 4)
 
                     local graph = si.graph or { nodes = {}, edges = {} }
                     local nodes = graph.nodes or {}
                     local edges = graph.edges or {}
 
                     if #nodes == 0 then
-                        gfx.setColour(0xff64748b)
-                        gfx.setFont(10.0)
-                        gfx.drawText("No graph parsed", si.graphBodyRect.x + 8, si.graphBodyRect.y + 8, si.graphBodyRect.w - 16, 16, Justify.centredLeft)
+                        pushText(display, si.graphBodyRect.x + 8, si.graphBodyRect.y + 8, si.graphBodyRect.w - 16, 16, 0xff64748b, "No graph parsed", 10.0, "left", "middle")
                     else
                         local positions = {}
                         local cols = math.max(1, math.ceil(math.sqrt(#nodes)))
@@ -1181,39 +1325,36 @@ function M.attach(shell)
                             positions[i] = { x = x, y = yNode, cx = x + math.floor(nodeW * 0.5), cy = yNode + math.floor(nodeH * 0.5) }
                         end
 
-                        gfx.setColour(0xff475569)
                         for i = 1, #edges do
                             local e = edges[i]
                             local a = positions[e.from]
                             local b = positions[e.to]
                             if a and b then
-                                gfx.drawLine(a.cx, a.cy, b.cx, b.cy)
+                                pushLine(display, a.cx, a.cy, b.cx, b.cy, 0xff475569, 1)
                             end
                         end
 
                         for i = 1, #nodes do
                             local n = nodes[i]
                             local p = positions[i]
-                            gfx.setColour(0xff1e293b)
-                            gfx.fillRoundedRect(p.x, p.y, nodeW, nodeH, 4)
-                            gfx.setColour(0xff38bdf8)
-                            gfx.drawRoundedRect(p.x, p.y, nodeW, nodeH, 4, 1)
-                            gfx.setColour(0xffe2e8f0)
-                            gfx.setFont(9.0)
                             local label = (n.var or "n") .. ":" .. (n.prim or "node")
-                            gfx.drawText(label, p.x + 4, p.y + 3, nodeW - 8, nodeH - 6, Justify.centredLeft)
+                            pushFillRoundedRect(display, p.x, p.y, nodeW, nodeH, 4, 0xff1e293b)
+                            pushDrawRect(display, p.x, p.y, nodeW, nodeH, 0xff38bdf8, 1, 4)
+                            pushText(display, p.x + 4, p.y + 3, nodeW - 8, nodeH - 6, 0xffe2e8f0, label, 9.0, "left", "middle")
                         end
                     end
                 end
             end
 
+            setTransparentRetained(node)
+            node:setDisplayList(display)
             return
         end
 
         if #shell.inspectorRows == 0 then
-            gfx.setColour(0xff64748b)
-            gfx.setFont(11.0)
-            gfx.drawText("No selection", 6, 6, w - 12, 20, Justify.centredLeft)
+            pushText(display, 6, 6, w - 12, 20, 0xff64748b, "No selection", 11.0, "left", "middle")
+            setTransparentRetained(node)
+            node:setDisplayList(display)
             return
         end
 
@@ -1222,36 +1363,44 @@ function M.attach(shell)
         local rowOffset = -(shell.inspectorScrollY % rowH)
 
         for i = startRow, #shell.inspectorRows do
-            local y = math.floor(rowOffset + (i - startRow) * rowH)
-            if y > h then
+            local rowY = math.floor(rowOffset + (i - startRow) * rowH)
+            if rowY > h then
                 break
             end
-            if y + rowH >= 0 then
+            if rowY + rowH >= 0 then
                 local row = shell.inspectorRows[i]
                 local isSection = row.value == ""
                 local isActive = shell.activeConfigProperty ~= nil and row.path ~= nil and shell.activeConfigProperty.path == row.path
 
                 if isActive then
-                    gfx.setColour(0xff1e3a5f)
-                    gfx.fillRoundedRect(2, y + 1, w - 4, rowH - 2, 3)
+                    pushFillRoundedRect(display, 2, rowY + 1, w - 4, rowH - 2, 3, 0xff1e3a5f)
                 end
 
                 if isSection then
-                    gfx.setColour(0xff94a3b8)
-                    gfx.setFont(11.0)
-                    gfx.drawText(row.key, 6, y, w - 12, rowH, Justify.centredLeft)
+                    pushText(display, 6, rowY, w - 12, rowH, 0xff94a3b8, row.key, 11.0, "left", "middle")
                 else
-                    gfx.setColour(isActive and 0xff7dd3fc or 0xff64748b)
-                    gfx.setFont(10.0)
-                    gfx.drawText(row.key, 6, y, math.floor(w * 0.45), rowH, Justify.centredLeft)
-
-                    gfx.setColour(isActive and 0xfff8fafc or 0xffcbd5e1)
-                    gfx.setFont(10.0)
-                    gfx.drawText(row.value, math.floor(w * 0.45), y, math.floor(w * 0.55) - 6, rowH, Justify.centredRight)
+                    pushText(display, 6, rowY, math.floor(w * 0.45), rowH, isActive and 0xff7dd3fc or 0xff64748b, row.key, 10.0, "left", "middle")
+                    pushText(display, math.floor(w * 0.45), rowY, math.floor(w * 0.55) - 6, rowH, isActive and 0xfff8fafc or 0xffcbd5e1, row.value, 10.0, "right", "middle")
                 end
             end
         end
-    end)
+
+        setTransparentRetained(node)
+        node:setDisplayList(display)
+    end
+
+    shell._syncInspectorCanvasRetained = function(self)
+        syncInspectorCanvasRetained(self.inspectorCanvas)
+    end
+
+    shell._syncInspectorCanvasRetained(shell)
+
+    if shell.inspectorCanvas ~= nil and shell.inspectorCanvas.setOnDraw ~= nil then
+        shell.inspectorCanvas:setOnDraw(function(node)
+            syncInspectorCanvasRetained(node)
+            drawDisplayListImmediate(node:getDisplayList())
+        end)
+    end
 
     shell.inspectorCanvas:setOnMouseDown(function(mx, my, shift, ctrl, alt)
         local _ = shift
@@ -1259,7 +1408,7 @@ function M.attach(shell)
         if type(_G) == "table" and _G.__manifoldImguiInspectorActive == true then
             return
         end
-        shell.inspectorCanvas:grabKeyboardFocus()
+        safeGrabKeyboardFocus(shell.inspectorCanvas)
 
         if shell.leftPanelMode == "scripts" then
             local si = shell.scriptInspector
@@ -1507,23 +1656,21 @@ function M.attach(shell)
         end
     end)
 
-    shell.consoleOverlay:setOnDraw(function(node)
+    -- Build the console display list (used by both setOnDraw and _syncConsoleOverlayRetained)
+    local function buildConsoleDisplayList(node)
         if shell.console.visible ~= true then
+            node:setStyle({ bg = 0x00000000, border = 0x00000000, borderWidth = 0, radius = 0, opacity = 1.0 })
+            node:clearDisplayList()
             return
         end
 
         local w = node:getWidth()
         local h = node:getHeight()
+        if w < 4 or h < 4 then
+            node:clearDisplayList()
+            return
+        end
         local c = shell.console
-
-        gfx.setColour(0xdd020617)
-        gfx.fillRoundedRect(0, 0, w, h, 6)
-        gfx.setColour(0xff334155)
-        gfx.drawRoundedRect(0, 0, w, h, 6, 1)
-
-        gfx.setColour(0xff93c5fd)
-        gfx.setFont(11.0)
-        gfx.drawText("Dev Console (~)  |  Ctrl+Shift+C copy id  Ctrl+Shift+V paste", 8, 4, w - 16, 16, Justify.centredLeft)
 
         local inputH = 24
         local bodyY = 22
@@ -1537,30 +1684,119 @@ function M.attach(shell)
         local endIndex = math.max(0, #lines - scroll)
         local startIndex = math.max(1, endIndex - visibleLines + 1)
 
-        gfx.setColour(0x660f172a)
-        gfx.fillRect(6, bodyY, w - 12, bodyH)
+        local display = {
+            {
+                cmd = "fillRoundedRect",
+                x = 0,
+                y = 0,
+                w = w,
+                h = h,
+                radius = 6,
+                color = 0xdd020617,
+            },
+            {
+                cmd = "drawRoundedRect",
+                x = 0,
+                y = 0,
+                w = w,
+                h = h,
+                radius = 6,
+                thickness = 1,
+                color = 0xff334155,
+            },
+            {
+                cmd = "drawText",
+                x = 8,
+                y = 4,
+                w = math.max(0, w - 16),
+                h = 16,
+                color = 0xff93c5fd,
+                text = "Dev Console (~)  |  Ctrl+Shift+C copy id  Ctrl+Shift+V paste",
+                fontSize = 11.0,
+                align = "left",
+                valign = "middle",
+            },
+            {
+                cmd = "fillRect",
+                x = 6,
+                y = bodyY,
+                w = math.max(0, w - 12),
+                h = bodyH,
+                color = 0x660f172a,
+            }
+        }
 
         local y = bodyY
         for i = startIndex, endIndex do
             local ln = lines[i]
             if ln then
-                gfx.setColour(ln.colour or 0xffcbd5e1)
-                gfx.setFont(11.0)
-                gfx.drawText(tostring(ln.text or ""), 10, y, w - 20, lineH, Justify.centredLeft)
+                display[#display + 1] = {
+                    cmd = "drawText",
+                    x = 10,
+                    y = y,
+                    w = math.max(0, w - 20),
+                    h = lineH,
+                    color = ln.colour or 0xffcbd5e1,
+                    text = tostring(ln.text or ""),
+                    fontSize = 11.0,
+                    align = "left",
+                    valign = "middle",
+                }
             end
             y = y + lineH
         end
 
         local inputY = h - inputH - 4
-        gfx.setColour(0xff0f172a)
-        gfx.fillRoundedRect(6, inputY, w - 12, inputH, 4)
-        gfx.setColour(0xff334155)
-        gfx.drawRoundedRect(6, inputY, w - 12, inputH, 4, 1)
-        gfx.setColour(0xffe2e8f0)
-        gfx.setFont(11.0)
         local inputText = "> " .. tostring(c.input or "")
-        gfx.drawText(inputText, 12, inputY + 3, w - 24, inputH - 4, Justify.centredLeft)
-    end)
+
+        display[#display + 1] = {
+            cmd = "fillRoundedRect",
+            x = 6,
+            y = inputY,
+            w = math.max(0, w - 12),
+            h = inputH,
+            radius = 4,
+            color = 0xff0f172a,
+        }
+        display[#display + 1] = {
+            cmd = "drawRoundedRect",
+            x = 6,
+            y = inputY,
+            w = math.max(0, w - 12),
+            h = inputH,
+            radius = 4,
+            thickness = 1,
+            color = 0xff334155,
+        }
+        display[#display + 1] = {
+            cmd = "drawText",
+            x = 12,
+            y = inputY + 3,
+            w = math.max(0, w - 24),
+            h = math.max(0, inputH - 4),
+            color = 0xffe2e8f0,
+            text = inputText,
+            fontSize = 11.0,
+            align = "left",
+            valign = "middle",
+        }
+
+        node:setStyle({ bg = 0x00000000, border = 0x00000000, borderWidth = 0, radius = 0, opacity = 1.0 })
+        node:setDisplayList(display)
+    end
+
+    shell._syncConsoleOverlayRetained = function(self)
+        buildConsoleDisplayList(self.consoleOverlay)
+    end
+
+    shell._syncConsoleOverlayRetained(shell)
+
+    if shell.consoleOverlay ~= nil and shell.consoleOverlay.setOnDraw ~= nil then
+        shell.consoleOverlay:setOnDraw(function(node)
+            buildConsoleDisplayList(node)
+            drawDisplayListImmediate(node:getDisplayList())
+        end)
+    end
 
     shell.consoleOverlay:setOnMouseDown(function(mx, my, shift, ctrl, alt)
         local _ = mx
@@ -1571,7 +1807,7 @@ function M.attach(shell)
         if shell.console.visible ~= true then
             return
         end
-        shell.consoleOverlay:grabKeyboardFocus()
+        safeGrabKeyboardFocus(shell.consoleOverlay)
     end)
 
     shell.consoleOverlay:setOnMouseWheel(function(mx, my, deltaY)
@@ -1588,6 +1824,9 @@ function M.attach(shell)
         else
             c.scrollOffset = math.max(0, (c.scrollOffset or 0) - step)
         end
+        if type(shell._syncConsoleOverlayRetained) == "function" then
+            shell:_syncConsoleOverlayRetained()
+        end
         shell.consoleOverlay:repaint()
     end)
 
@@ -1598,9 +1837,10 @@ function M.attach(shell)
         return false
     end)
 
-    shell.previewOverlay:setOnDraw(function(node)
-        local w = node:getWidth()
-        local h = node:getHeight()
+    local function syncPreviewOverlayRetained(node)
+        local w = math.floor(node:getWidth())
+        local h = math.floor(node:getHeight())
+        local display = {}
 
         local step = computeGridStep(shell.contentScale)
         local d1x, d1y = shell:previewToDesign(0, 0)
@@ -1621,11 +1861,10 @@ function M.attach(shell)
         local startY = math.floor(minDy / step) * step
         local endY = math.ceil(maxDy / step) * step
 
-        gfx.setColour(0x14475b73)
         for gx = startX, endX, step do
             for gy = startY, endY, step do
                 local px, py = shell:designToPreview(gx, gy)
-                gfx.fillRect(math.floor(px), math.floor(py), 1, 1)
+                pushFillRect(display, math.floor(px), math.floor(py), 1, 1, 0x14475b73)
             end
         end
 
@@ -1635,28 +1874,24 @@ function M.attach(shell)
         local majorStartY = math.floor(minDy / majorStep) * majorStep
         local majorEndY = math.ceil(maxDy / majorStep) * majorStep
 
-        gfx.setColour(0x2870849c)
         for gx = majorStartX, majorEndX, majorStep do
             for gy = majorStartY, majorEndY, majorStep do
                 local px, py = shell:designToPreview(gx, gy)
-                gfx.fillRect(math.floor(px), math.floor(py), 2, 2)
+                pushFillRect(display, math.floor(px), math.floor(py), 2, 2, 0x2870849c)
             end
         end
 
-        gfx.setColour(0x18ffffff)
-        gfx.drawRect(0, 0, w, h, 1)
+        pushDrawRect(display, 0, 0, w, h, 0x18ffffff, 1)
 
         local workspaceX, workspaceY, workspaceWDesign, workspaceHDesign = shell:getWorkspaceDesignRect()
         local wx1, wy1 = shell:designToPreview(workspaceX, workspaceY)
         local wx2, wy2 = shell:designToPreview(workspaceX + workspaceWDesign, workspaceY + workspaceHDesign)
-        gfx.setColour(0x35e2e8f0)
-        gfx.drawRect(math.floor(wx1), math.floor(wy1), math.floor(wx2 - wx1), math.floor(wy2 - wy1), 1)
+        pushDrawRect(display, math.floor(wx1), math.floor(wy1), math.floor(wx2 - wx1), math.floor(wy2 - wy1), 0x35e2e8f0, 1)
 
         local viewportDX, viewportDY, viewportDW, viewportDH = shell:getViewportDesignRect()
         local vx1, vy1 = shell:designToPreview(viewportDX, viewportDY)
         local vx2, vy2 = shell:designToPreview(viewportDX + viewportDW, viewportDY + viewportDH)
-        gfx.setColour(0x70ffffff)
-        gfx.drawRect(math.floor(vx1), math.floor(vy1), math.floor(vx2 - vx1), math.floor(vy2 - vy1), 1)
+        pushDrawRect(display, math.floor(vx1), math.floor(vy1), math.floor(vx2 - vx1), math.floor(vy2 - vy1), 0x70ffffff, 1)
 
         local selectedRows = {}
         local minX, minY = nil, nil
@@ -1673,8 +1908,7 @@ function M.attach(shell)
                 local sh = ey - sy
                 if sw > 0 and sh > 0 then
                     local isPrimary = (shell.selectedWidget == row.canvas)
-                    gfx.setColour(isPrimary and 0xb0f59e0b or 0xd060a5fa)
-                    gfx.drawRoundedRect(sx, sy, sw, sh, 4, isPrimary and 2 or 2)
+                    pushDrawRect(display, sx, sy, sw, sh, isPrimary and 0xb0f59e0b or 0xd060a5fa, 2, 4)
 
                     minX = (minX == nil) and sx or math.min(minX, sx)
                     minY = (minY == nil) and sy or math.min(minY, sy)
@@ -1685,17 +1919,15 @@ function M.attach(shell)
         end
 
         if #selectedRows > 1 and minX ~= nil then
-            gfx.setColour(0x8060a5fa)
-            gfx.drawRoundedRect(minX, minY, maxX - minX, maxY - minY, 6, 2)
+            pushDrawRect(display, minX, minY, maxX - minX, maxY - minY, 0x8060a5fa, 2, 6)
         end
 
         local handleRow = shell:getHandleTargetRect()
         if handleRow then
             local handles = shell:getSelectionHandleRects(handleRow)
-            gfx.setColour(0xfff59e0b)
             for i = 1, #handles do
                 local hh = handles[i]
-                gfx.fillRoundedRect(hh.x, hh.y, hh.w, hh.h, 2)
+                pushFillRoundedRect(display, hh.x, hh.y, hh.w, hh.h, 2, 0xfff59e0b)
             end
         end
 
@@ -1704,12 +1936,26 @@ function M.attach(shell)
             local y1 = math.min(shell.dragState.startMy, shell.dragState.currentMy or shell.dragState.startMy)
             local x2 = math.max(shell.dragState.startMx, shell.dragState.currentMx or shell.dragState.startMx)
             local y2 = math.max(shell.dragState.startMy, shell.dragState.currentMy or shell.dragState.startMy)
-            gfx.setColour(0x3360a5fa)
-            gfx.fillRect(x1, y1, x2 - x1, y2 - y1)
-            gfx.setColour(0xff60a5fa)
-            gfx.drawRect(x1, y1, x2 - x1, y2 - y1, 1)
+            pushFillRect(display, x1, y1, x2 - x1, y2 - y1, 0x3360a5fa)
+            pushDrawRect(display, x1, y1, x2 - x1, y2 - y1, 0xff60a5fa, 1)
         end
-    end)
+
+        setTransparentRetained(node)
+        node:setDisplayList(display)
+    end
+
+    shell._syncPreviewOverlayRetained = function(self)
+        syncPreviewOverlayRetained(self.previewOverlay)
+    end
+
+    shell._syncPreviewOverlayRetained(shell)
+
+    if shell.previewOverlay ~= nil and shell.previewOverlay.setOnDraw ~= nil then
+        shell.previewOverlay:setOnDraw(function(node)
+            syncPreviewOverlayRetained(node)
+            drawDisplayListImmediate(node:getDisplayList())
+        end)
+    end
 
     shell.previewOverlay:setWantsKeyboardFocus(true)
     shell.previewOverlay:setOnKeyPress(function(keyCode, textChar, shift, ctrl, alt)
@@ -1773,7 +2019,7 @@ function M.attach(shell)
             dbg.lastDown = { mx = mx, my = my, shift = shift, ctrl = ctrl, alt = alt }
         end
 
-        shell.previewOverlay:grabKeyboardFocus()
+        safeGrabKeyboardFocus(shell.previewOverlay)
 
         if shell.navMode == "pan" and not shift and not ctrl then
             shell.dragState = {

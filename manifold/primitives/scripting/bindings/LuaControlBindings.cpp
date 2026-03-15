@@ -47,6 +47,53 @@ bool isProjectManifestFile(const juce::File& file) {
            file.getFileName().equalsIgnoreCase("manifold.project.json5");
 }
 
+std::string normalizeUIRendererMode(const std::string& raw) {
+    std::string mode;
+    mode.reserve(raw.size());
+    for (char ch : raw) {
+        if (ch >= 'A' && ch <= 'Z') {
+            mode.push_back(static_cast<char>(ch - 'A' + 'a'));
+        } else {
+            mode.push_back(ch == '_' ? '-' : ch);
+        }
+    }
+
+    if (mode == "0" || mode == "off" || mode == "false") {
+        return "canvas";
+    }
+    if (mode == "1" || mode == "on" || mode == "true" || mode == "imgui" || mode == "overlay") {
+        return "imgui-overlay";
+    }
+    if (mode == "full" || mode == "replace" || mode == "imgui-full") {
+        return "imgui-replace";
+    }
+    if (mode == "direct") {
+        return "imgui-direct";
+    }
+    return mode;
+}
+
+bool isValidUIRendererMode(const std::string& mode) {
+    return mode == "canvas"
+        || mode == "imgui-overlay"
+        || mode == "imgui-replace"
+        || mode == "imgui-direct";
+}
+
+const char* uiRendererModeToString(int mode) {
+    switch (mode) {
+        case 1:
+            return "imgui-overlay";
+        case 2:
+            return "imgui-replace";
+        case 3:
+            return "imgui-direct";
+        case 0:
+        default:
+            return "canvas";
+    }
+}
+
 juce::String readProjectDisplayName(const juce::File& manifestFile) {
     auto json = juce::JSON::parse(manifestFile);
     if (!json.isObject()) {
@@ -136,13 +183,17 @@ void LuaControlBindings::registerCommandBindings(sol::state& lua,
         case ParseResult::Kind::Enqueue:
             processor->postControlCommandPayload(result.command);
             break;
+        case ParseResult::Kind::Query:
+        case ParseResult::Kind::Watch:
+        case ParseResult::Kind::Inject:
+        case ParseResult::Kind::InjectionStatus:
+        case ParseResult::Kind::UISwitch:
+        case ParseResult::Kind::UIRenderer:
         case ParseResult::Kind::NoOpWarning:
             break;
         case ParseResult::Kind::Error:
             fprintf(stderr, "[LuaControl] command error: %s (input: %s)\n",
                     result.errorMessage.c_str(), cmdStr.c_str());
-            break;
-        default:
             break;
         }
     };
@@ -1275,6 +1326,32 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
 
     lua["switchUiScript"] = [&state](const std::string& path) {
         state.setPendingSwitchPath(path);
+    };
+
+    lua["setUIRendererMode"] = [&state](const std::string& mode) -> bool {
+        auto* processor = state.getProcessor();
+        if (processor == nullptr) {
+            return false;
+        }
+
+        const std::string normalized = normalizeUIRendererMode(mode);
+        if (!isValidUIRendererMode(normalized)) {
+            return false;
+        }
+
+        auto& request = processor->getControlServer().getUIRendererRequest();
+        std::lock_guard<std::mutex> lock(request.mutex);
+        request.mode = normalized;
+        request.pending.store(true, std::memory_order_release);
+        return true;
+    };
+
+    lua["getUIRendererMode"] = [&state]() -> std::string {
+        auto* processor = state.getProcessor();
+        if (processor == nullptr) {
+            return "canvas";
+        }
+        return uiRendererModeToString(processor->getControlServer().getCurrentUIRendererMode());
     };
 
     lua["getCurrentScriptPath"] = [&state]() -> std::string {

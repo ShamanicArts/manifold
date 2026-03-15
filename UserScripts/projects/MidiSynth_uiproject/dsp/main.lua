@@ -278,13 +278,13 @@ function buildPlugin(ctx)
           node:setTimeR(375)
           node:setFeedback(0.3)
           node:setFeedbackCrossfeed(0.12)
-          node:setFilterEnabled(0)
+          node:setFilterEnabled(false)
           node:setFilterCutoff(4200)
           node:setFilterResonance(0.5)
           node:setMix(1.0)
-          node:setPingPong(1)
+          node:setPingPong(true)
           node:setWidth(1.0)
-          node:setFreeze(0)
+          node:setFreeze(false)
           node:setDucking(0.0)
           return { input = node, output = node, node = node }
         end,
@@ -294,7 +294,7 @@ function buildPlugin(ctx)
           effect.node:setTimeR(baseMs * 1.5)
           effect.node:setFeedback(lerp(0.0, 0.92, p2))
           effect.node:setMix(1.0)
-          effect.node:setPingPong(1)
+          effect.node:setPingPong(true)
           effect.node:setWidth(1.0)
         end,
       },
@@ -560,18 +560,18 @@ function buildPlugin(ctx)
   delay:setTimeR(330)
   delay:setFeedback(0.24)
   delay:setFeedbackCrossfeed(0.12)
-  delay:setFilterEnabled(1)
+  delay:setFilterEnabled(true)
   delay:setFilterCutoff(4200)
   delay:setFilterResonance(0.5)
-  delay:setMix(0.18)
-  delay:setPingPong(1)
+  delay:setMix(0.0)
+  delay:setPingPong(true)
   delay:setWidth(0.8)
-  delay:setFreeze(0)
+  delay:setFreeze(false)
   delay:setDucking(0.0)
 
   reverb:setRoomSize(0.52)
   reverb:setDamping(0.4)
-  reverb:setWetLevel(0.16)
+  reverb:setWetLevel(0.0)
   reverb:setDryLevel(1.0)
   reverb:setWidth(1.0)
 
@@ -772,7 +772,7 @@ function buildPlugin(ctx)
     type = "f",
     min = 0.0,
     max = 1.0,
-    default = 0.18,
+    default = 0.0,
     description = "Delay mix",
   })
   ctx.params.bind(PATHS.delayMix, delay, "setMix")
@@ -781,7 +781,7 @@ function buildPlugin(ctx)
     type = "f",
     min = 0.0,
     max = 1.0,
-    default = 0.16,
+    default = 0.0,
     description = "Reverb wet level",
   })
   ctx.params.bind(PATHS.reverbWet, reverb, "setWetLevel")

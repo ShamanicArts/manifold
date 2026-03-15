@@ -21,6 +21,7 @@ local clamp = Base.clamp
 local nowSeconds = Base.nowSeconds
 local deriveNodeName = Base.deriveNodeName
 local fileStem = Base.fileStem
+local safeToFront = require("shell.base_utils").safeToFront
 
 local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
 local SCRIPT_SYNTAX_COLOUR = ScriptEditor.SCRIPT_SYNTAX_COLOUR
@@ -291,7 +292,7 @@ function Shell.create(parentNode, options)
 
     shell.masterKnob = W.Knob.new(shell.panel.node, "sharedMaster", {
         min = 0, max = 1, step = 0.01, value = 0.8,
-        label = "Master", suffix = "",
+        label = "Out", suffix = "",
         colour = 0xffa78bfa,
         on_change = function(v)
             command("SET", "/core/behavior/volume", tostring(v))
@@ -300,7 +301,7 @@ function Shell.create(parentNode, options)
 
     shell.inputKnob = W.Knob.new(shell.panel.node, "sharedInput", {
         min = 0, max = 2, step = 0.01, value = 1.0,
-        label = "Input", suffix = "",
+        label = "In", suffix = "",
         colour = 0xfff59e0b,
         on_change = function(v)
             command("SET", "/core/behavior/inputVolume", tostring(v))
@@ -348,41 +349,103 @@ function Shell.create(parentNode, options)
 
             shell.scriptOverlay:setBounds(panelX + btnX - overlayW + 84, panelY + btnY + 32, overlayW, overlayH)
             shell.scriptOverlay:setInterceptsMouse(true, true)
-            shell.scriptOverlay:toFront(false)
+            safeToFront(shell.scriptOverlay)
 
-            shell.scriptOverlay:setOnDraw(function(self)
-                local w = self:getWidth()
-                local h = self:getHeight()
-                gfx.setColour(0x50000000)
-                gfx.fillRoundedRect(2, 2, w, h, 6)
-                gfx.setColour(0xff1e293b)
-                gfx.fillRoundedRect(0, 0, w - 2, h - 2, 6)
-                gfx.setColour(0xff475569)
-                gfx.drawRoundedRect(0, 0, w - 2, h - 2, 6, 1)
-
-                gfx.setColour(0xff94a3b8)
-                gfx.setFont(10.0)
-                gfx.drawText("Settings", 10, 4, w - 20, headerH - 4, Justify.centredLeft)
+            local function syncScriptOverlayRetained(node)
+                local w = node:getWidth()
+                local h = node:getHeight()
+                local display = {
+                    { cmd = "fillRoundedRect", x = 2, y = 2, w = w, h = h, radius = 6, color = 0x50000000 },
+                    { cmd = "fillRoundedRect", x = 0, y = 0, w = w - 2, h = h - 2, radius = 6, color = 0xff1e293b },
+                    { cmd = "drawRoundedRect", x = 0, y = 0, w = w - 2, h = h - 2, radius = 6, thickness = 1, color = 0xff475569 },
+                    { cmd = "drawText", x = 10, y = 4, w = w - 20, h = headerH - 4, color = 0xff94a3b8, text = "Settings", fontSize = 10.0, align = "left", valign = "middle" },
+                }
 
                 if #scripts == 0 then
-                    gfx.setColour(0xff64748b)
-                    gfx.setFont(10.0)
-                    gfx.drawText("No settings script", 12, headerH + 4, w - 24, 18, Justify.centredLeft)
+                    display[#display + 1] = {
+                        cmd = "drawText",
+                        x = 12,
+                        y = headerH + 4,
+                        w = w - 24,
+                        h = 18,
+                        color = 0xff64748b,
+                        text = "No settings script",
+                        fontSize = 10.0,
+                        align = "left",
+                        valign = "middle",
+                    }
                 else
                     for i = 1, #scripts do
                         local s = scripts[i]
                         local y = headerH + (i - 1) * itemH
                         local isCurrent = (s.path == currentPath)
                         if isCurrent then
-                            gfx.setColour(0xff334155)
-                            gfx.fillRoundedRect(4, y, w - 10, itemH - 2, 4)
+                            display[#display + 1] = {
+                                cmd = "fillRoundedRect",
+                                x = 4,
+                                y = y,
+                                w = w - 10,
+                                h = itemH - 2,
+                                radius = 4,
+                                color = 0xff334155,
+                            }
                         end
-                        gfx.setColour(isCurrent and 0xff38bdf8 or 0xffe2e8f0)
-                        gfx.setFont(11.0)
-                        gfx.drawText(s.name, 12, y, w - 24, itemH - 2, Justify.centredLeft)
+                        display[#display + 1] = {
+                            cmd = "drawText",
+                            x = 12,
+                            y = y,
+                            w = w - 24,
+                            h = itemH - 2,
+                            color = isCurrent and 0xff38bdf8 or 0xffe2e8f0,
+                            text = s.name,
+                            fontSize = 11.0,
+                            align = "left",
+                            valign = "middle",
+                        }
                     end
                 end
-            end)
+
+                shell.scriptOverlay:setStyle({ bg = 0x00000000, border = 0x00000000, borderWidth = 0, radius = 0, opacity = 1.0 })
+                shell.scriptOverlay:setDisplayList(display)
+            end
+
+            if shell.scriptOverlay.setOnDraw ~= nil and tostring(getUIRendererMode and getUIRendererMode() or "canvas") == "canvas" then
+                shell.scriptOverlay:setOnDraw(function(self)
+                    local w = self:getWidth()
+                    local h = self:getHeight()
+                    gfx.setColour(0x50000000)
+                    gfx.fillRoundedRect(2, 2, w, h, 6)
+                    gfx.setColour(0xff1e293b)
+                    gfx.fillRoundedRect(0, 0, w - 2, h - 2, 6)
+                    gfx.setColour(0xff475569)
+                    gfx.drawRoundedRect(0, 0, w - 2, h - 2, 6, 1)
+
+                    gfx.setColour(0xff94a3b8)
+                    gfx.setFont(10.0)
+                    gfx.drawText("Settings", 10, 4, w - 20, headerH - 4, Justify.centredLeft)
+
+                    if #scripts == 0 then
+                        gfx.setColour(0xff64748b)
+                        gfx.setFont(10.0)
+                        gfx.drawText("No settings script", 12, headerH + 4, w - 24, 18, Justify.centredLeft)
+                    else
+                        for i = 1, #scripts do
+                            local s = scripts[i]
+                            local y = headerH + (i - 1) * itemH
+                            local isCurrent = (s.path == currentPath)
+                            if isCurrent then
+                                gfx.setColour(0xff334155)
+                                gfx.fillRoundedRect(4, y, w - 10, itemH - 2, 4)
+                            end
+                            gfx.setColour(isCurrent and 0xff38bdf8 or 0xffe2e8f0)
+                            gfx.setFont(11.0)
+                            gfx.drawText(s.name, 12, y, w - 24, itemH - 2, Justify.centredLeft)
+                        end
+                    end
+                end)
+            else
+                syncScriptOverlayRetained(shell.scriptOverlay)
+            end
 
             shell.scriptOverlay:setOnMouseDown(function(mx, my)
                 if my < headerH then

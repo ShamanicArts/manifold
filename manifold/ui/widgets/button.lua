@@ -25,6 +25,8 @@ function Button.new(parent, name, config)
         on_release = self._onRelease
     }, Schema.buildEditorSchema("Button", config))
 
+    self:_syncRetained()
+
     return self
 end
 
@@ -73,8 +75,52 @@ function Button:onDraw(w, h)
     self:drawLabel(w, h)
 end
 
+function Button:_syncRetained(w, h)
+    local _, _, bw, bh = self.node:getBounds()
+    w = w or bw or 0
+    h = h or bh or 0
+
+    local bg = self._bg
+    if not self:isEnabled() then
+        bg = Utils.darken(bg, 40)
+    elseif self:isPressed() then
+        bg = Utils.darken(bg, 20)
+    elseif self:isHovered() then
+        bg = Utils.brighten(bg, 25)
+    end
+
+    self.node:setStyle({
+        bg = bg,
+        border = Utils.brighten(bg, 40),
+        borderWidth = 1.0,
+        radius = self._radius,
+        opacity = 1.0
+    })
+
+    self.node:setDisplayList({
+        {
+            cmd = "drawText",
+            x = 0,
+            y = 0,
+            w = w,
+            h = h,
+            color = self._textColour,
+            text = self._label,
+            fontSize = self._fontSize,
+            align = "center",
+            valign = "middle"
+        }
+    })
+end
+
 function Button:setLabel(label)
-    self._label = label
+    local nextLabel = label or ""
+    if self._label == nextLabel then
+        return
+    end
+    self._label = nextLabel
+    self:_syncRetained()
+    self.node:repaint()
 end
 
 function Button:getLabel()
@@ -82,11 +128,21 @@ function Button:getLabel()
 end
 
 function Button:setBg(colour)
+    if self._bg == colour then
+        return
+    end
     self._bg = colour
+    self:_syncRetained()
+    self.node:repaint()
 end
 
 function Button:setTextColour(colour)
+    if self._textColour == colour then
+        return
+    end
     self._textColour = colour
+    self:_syncRetained()
+    self.node:repaint()
 end
 
 return Button

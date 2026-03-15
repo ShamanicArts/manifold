@@ -5,6 +5,145 @@ local BaseWidget = require("widgets.base")
 local Utils = require("widgets.utils")
 local Schema = require("widgets.schema")
 
+local function boundsSize(node)
+    local _, _, w, h = node:getBounds()
+    return w or 0, h or 0
+end
+
+local function setTransparentStyle(node)
+    node:setStyle({
+        bg = 0x00000000,
+        border = 0x00000000,
+        borderWidth = 0,
+        radius = 0,
+        opacity = 1.0,
+    })
+end
+
+local function updateValue(self, newValue)
+    if newValue == self._value then
+        return
+    end
+    self._value = newValue
+    self:_syncRetained()
+    self.node:repaint()
+    if self._onChange then
+        self._onChange(self._value)
+    end
+end
+
+local function buildHorizontalDisplayList(self, w, h)
+    local trackY = h * 0.5 - 3
+    local trackH = 6
+    local trackR = 3
+    local trackX = 8
+    local trackW = math.max(1, w - 16)
+    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
+    local thumbX = trackX + t * trackW - 6
+    local thumbColour = self._colour
+    if self._dragging then
+        thumbColour = Utils.brighten(thumbColour, 30)
+    elseif self:isHovered() then
+        thumbColour = Utils.brighten(thumbColour, 15)
+    end
+
+    local display = {
+        {
+            cmd = "fillRoundedRect",
+            x = trackX,
+            y = trackY,
+            w = trackW,
+            h = trackH,
+            radius = trackR,
+            color = self._bg,
+        },
+        {
+            cmd = "fillRoundedRect",
+            x = trackX,
+            y = trackY,
+            w = math.max(0, math.floor(trackW * t + 0.5)),
+            h = trackH,
+            radius = trackR,
+            color = self._colour,
+        },
+        {
+            cmd = "fillRoundedRect",
+            x = thumbX,
+            y = (h - 20) / 2,
+            w = 12,
+            h = 20,
+            radius = 4,
+            color = thumbColour,
+        },
+    }
+
+    if self._showValue then
+        local v = tonumber(self._value) or 0
+        local valText
+        if self._step >= 1 then
+            valText = self._label .. ": " .. tostring(math.floor(v + 0.5)) .. self._suffix
+        else
+            valText = self._label .. ": " .. string.format("%.2f", v) .. self._suffix
+        end
+        display[#display + 1] = {
+            cmd = "drawText",
+            x = 8,
+            y = 2,
+            w = math.max(0, w - 16),
+            h = 20,
+            color = 0xffe2e8f0,
+            text = valText,
+            fontSize = 11.0,
+            align = "center",
+            valign = "middle",
+        }
+    end
+
+    return display
+end
+
+local function buildVerticalDisplayList(self, w, h)
+    local trackX = 2
+    local trackW = math.max(1, w - 4)
+    local trackY = 4
+    local trackH = math.max(1, h - 8)
+    local trackR = trackW / 2
+    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
+
+    local thumbH = math.max(30, trackH * 0.3)
+    local thumbW = trackW
+    local maxThumbY = trackY + trackH - thumbH
+    local thumbY = trackY + maxThumbY * (1 - t)
+
+    local thumbColour = self._colour
+    if self._dragging then
+        thumbColour = Utils.brighten(thumbColour, 30)
+    elseif self:isHovered() then
+        thumbColour = Utils.brighten(thumbColour, 15)
+    end
+
+    return {
+        {
+            cmd = "fillRoundedRect",
+            x = trackX,
+            y = trackY,
+            w = trackW,
+            h = trackH,
+            radius = trackR,
+            color = self._bg,
+        },
+        {
+            cmd = "fillRoundedRect",
+            x = trackX,
+            y = thumbY,
+            w = thumbW,
+            h = thumbH,
+            radius = trackR,
+            color = thumbColour,
+        }
+    }
+end
+
 -- ============================================================================
 -- Slider (Horizontal)
 -- ============================================================================
@@ -35,6 +174,8 @@ function Slider.new(parent, name, config)
         on_change = self._onChange
     }, Schema.buildEditorSchema("Slider", config))
 
+    self:_syncRetained()
+
     return self
 end
 
@@ -43,6 +184,8 @@ function Slider:onMouseDown(mx, my)
     self._dragStartX = mx
     self._dragStartValue = self._value
     self:valueFromMouse(mx)
+    self:_syncRetained()
+    self.node:repaint()
 end
 
 function Slider:onMouseDrag(mx, my, dx, dy)
@@ -52,47 +195,37 @@ end
 
 function Slider:onMouseUp(mx, my)
     self._dragging = false
+    self:_syncRetained()
+    self.node:repaint()
 end
 
 function Slider:onDoubleClick()
     if self._value ~= self._defaultValue then
-        self._value = self._defaultValue
-        if self._onChange then
-            self._onChange(self._value)
-        end
+        updateValue(self, self._defaultValue)
     end
 end
 
 function Slider:valueFromMouse(mx)
-    local w = self.node:getWidth()
+    local w = select(1, boundsSize(self.node))
     local trackW = math.max(1, w - 16)
     local t = Utils.clamp((mx - 8) / trackW, 0, 1)
     local newVal = self._min + t * (self._max - self._min)
     newVal = Utils.snapToStep(newVal, self._step)
     newVal = Utils.clamp(newVal, self._min, self._max)
-    
-    if newVal ~= self._value then
-        self._value = newVal
-        if self._onChange then
-            self._onChange(self._value)
-        end
-    end
+    updateValue(self, newVal)
 end
 
 function Slider:onDraw(w, h)
     local trackY = h * 0.5 - 3
     local trackH = 6
     local trackR = 3
-    
-    -- Draw track
+
     self:drawTrack(8, trackY, w - 16, trackH, trackR)
-    
-    -- Draw thumb
+
     local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
     local thumbX = 8 + t * (w - 16) - 6
     self:drawThumb(thumbX, (h - 20) / 2, 12, 20)
-    
-    -- Draw label
+
     if self._showValue then
         local valText
         local v = tonumber(self._value) or 0
@@ -109,11 +242,9 @@ function Slider:onDraw(w, h)
 end
 
 function Slider:drawTrack(x, y, w, h, r)
-    -- Background track
     gfx.setColour(self._bg)
     gfx.fillRoundedRect(x, y, w, h, r)
-    
-    -- Filled portion
+
     local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
     gfx.setColour(self._colour)
     gfx.fillRoundedRect(x, y, w * t, h, r)
@@ -130,12 +261,21 @@ function Slider:drawThumb(x, y, w, h)
     gfx.fillRoundedRect(x, y, w, h, 4)
 end
 
+function Slider:_syncRetained(w, h)
+    local bw, bh = boundsSize(self.node)
+    w = w or bw
+    h = h or bh
+    setTransparentStyle(self.node)
+    self.node:setDisplayList(buildHorizontalDisplayList(self, w, h))
+end
+
 function Slider:getValue()
     return self._value
 end
 
 function Slider:setValue(v)
-    self._value = Utils.clamp(v, self._min, self._max)
+    local newValue = Utils.clamp(v, self._min, self._max)
+    updateValue(self, newValue)
 end
 
 function Slider:reset()
@@ -150,16 +290,18 @@ local VSlider = Slider:extend()
 
 function VSlider.new(parent, name, config)
     local self = setmetatable(Slider.new(parent, name, config), VSlider)
-    -- Override the type stored by Slider.new
     self:_storeEditorMeta("VSlider", {
         on_change = self._onChange
     }, Schema.buildEditorSchema("VSlider", config))
+    self:_syncRetained()
     return self
 end
 
 function VSlider:onMouseDown(mx, my)
     self._dragging = true
     self:valueFromMouse(mx, my)
+    self:_syncRetained()
+    self.node:repaint()
 end
 
 function VSlider:onMouseDrag(mx, my, dx, dy)
@@ -171,19 +313,13 @@ function VSlider:valueFromMouse(mx, my)
     if my == nil then
         return
     end
-    local h = self.node:getHeight()
+    local _, _, _, h = self.node:getBounds()
     local trackH = math.max(1, h - 16)
-    local t = 1 - Utils.clamp((my - 8) / trackH, 0, 1)  -- Inverted: bottom = min
+    local t = 1 - Utils.clamp((my - 8) / trackH, 0, 1)
     local newVal = self._min + t * (self._max - self._min)
     newVal = Utils.snapToStep(newVal, self._step)
     newVal = Utils.clamp(newVal, self._min, self._max)
-    
-    if newVal ~= self._value then
-        self._value = newVal
-        if self._onChange then
-            self._onChange(self._value)
-        end
-    end
+    updateValue(self, newVal)
 end
 
 function VSlider:onDraw(w, h)
@@ -192,21 +328,16 @@ function VSlider:onDraw(w, h)
     local trackY = 4
     local trackH = h - 8
     local trackR = trackW / 2
-    
-    -- Draw track (subtle background)
+
     gfx.setColour(self._bg)
     gfx.fillRoundedRect(trackX, trackY, trackW, trackH, trackR)
-    
-    -- Calculate thumb position based on value
+
     local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
-    
-    -- Browser-style scroll pill: thumb represents viewport
-    local thumbH = math.max(30, trackH * 0.3)  -- Minimum 30px or 30% of track
+    local thumbH = math.max(30, trackH * 0.3)
     local thumbW = trackW
     local maxThumbY = trackY + trackH - thumbH
     local thumbY = trackY + maxThumbY * (1 - t)
-    
-    -- Draw thumb (scroll pill)
+
     local col = self._colour
     if self._dragging then
         col = Utils.brighten(col, 30)
@@ -215,6 +346,14 @@ function VSlider:onDraw(w, h)
     end
     gfx.setColour(col)
     gfx.fillRoundedRect(trackX, thumbY, thumbW, thumbH, trackR)
+end
+
+function VSlider:_syncRetained(w, h)
+    local bw, bh = boundsSize(self.node)
+    w = w or bw
+    h = h or bh
+    setTransparentStyle(self.node)
+    self.node:setDisplayList(buildVerticalDisplayList(self, w, h))
 end
 
 return {

@@ -301,10 +301,10 @@ local function saveRuntimeState(state)
     string.format("  fx2Param1 = %.3f,", tonumber(state.fx2Param1) or 0.5),
     string.format("  fx2Param2 = %.3f,", tonumber(state.fx2Param2) or 0.5),
     string.format("  fx2Mix = %.3f,", tonumber(state.fx2Mix) or 0.0),
-    string.format("  delayMix = %.3f,", tonumber(state.delayMix) or 0.18),
+    string.format("  delayMix = %.3f,", tonumber(state.delayMix) or 0.0),
     string.format("  delayTime = %d,", tonumber(state.delayTime) or 220),
     string.format("  delayFeedback = %.3f,", tonumber(state.delayFeedback) or 0.24),
-    string.format("  reverbWet = %.3f,", tonumber(state.reverbWet) or 0.16),
+    string.format("  reverbWet = %.3f,", tonumber(state.reverbWet) or 0.0),
     "}",
   }
   
@@ -625,10 +625,10 @@ local function saveCurrentState(ctx)
     fx2Param1 = readParam(PATHS.fx2Param1, 0.5),
     fx2Param2 = readParam(PATHS.fx2Param2, 0.5),
     fx2Mix = readParam(PATHS.fx2Mix, 0.0),
-    delayMix = readParam(PATHS.delayMix, 0.18),
+    delayMix = readParam(PATHS.delayMix, 0.0),
     delayTime = round(readParam(PATHS.delayTimeL, 220)),
     delayFeedback = readParam(PATHS.delayFeedback, 0.24),
-    reverbWet = readParam(PATHS.reverbWet, 0.16),
+    reverbWet = readParam(PATHS.reverbWet, 0.0),
   }
   
   if saveRuntimeState(state) then
@@ -745,80 +745,116 @@ local function resetToDefaults(ctx)
   setPath(PATHS.fx2Param1, 0.5)
   setPath(PATHS.fx2Param2, 0.5)
   setPath(PATHS.fx2Mix, 0.0)
-  setPath(PATHS.delayMix, 0.18)
+  setPath(PATHS.delayMix, 0.0)
   setPath(PATHS.delayTimeL, 220)
   setPath(PATHS.delayTimeR, 330)
   setPath(PATHS.delayFeedback, 0.24)
-  setPath(PATHS.reverbWet, 0.16)
+  setPath(PATHS.reverbWet, 0.0)
   
   ctx._adsr = { attack = 0.05, decay = 0.2, sustain = 0.7, release = 0.4 }
   ctx._keyboardOctave = 3
   ctx._lastEvent = "Reset to defaults"
 end
 
-local function drawKeyboard(ctx, w, h)
-  if w <= 0 or h <= 0 then return end
-  
-  -- gfx is global in structured UI
-  
-  -- Draw white keys
+local KEYBOARD_WHITE_KEYS = { 0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23 }
+local KEYBOARD_BLACK_KEYS = { 1, 3, 6, 8, 10, 13, 15, 18, 20, 22 }
+local KEYBOARD_BLACK_KEY_POSITIONS = { 1, 2, 3, 4, 5, 8, 9, 10, 11, 12 }
+
+local function isKeyboardNoteActive(ctx, note)
+  for j = 1, VOICE_COUNT do
+    local voice = ctx._voices[j]
+    if voice and voice.active and voice.note == note and voice.gate > 0.5 then
+      return true
+    end
+  end
+  return false
+end
+
+local function buildKeyboardDisplayList(ctx, w, h)
+  local display = {}
+  if w <= 0 or h <= 0 then
+    return display
+  end
+
   local whiteKeyWidth = w / 14
   local blackKeyWidth = whiteKeyWidth * 0.6
   local baseNote = ctx._keyboardOctave * 12
-  
-  local whiteKeys = { 0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23 }
-  local blackKeys = { 1, 3, 6, 8, 10, 13, 15, 18, 20, 22 }
-  local blackKeyPositions = { 1, 2, 3, 4, 5, 8, 9, 10, 11, 12 }
-  
-  -- White keys
-  for i, offset in ipairs(whiteKeys) do
+
+  for i, offset in ipairs(KEYBOARD_WHITE_KEYS) do
     local note = baseNote + offset
     local x = (i - 1) * whiteKeyWidth
-    local isActive = false
-    
-    -- Check if note is active
-    for j = 1, VOICE_COUNT do
-      local voice = ctx._voices[j]
-      if voice and voice.active and voice.note == note and voice.gate > 0.5 then
-        isActive = true
-        break
-      end
-    end
-    
-    if isActive then
-      gfx.setColour(0xff4ade80)
-    else
-      gfx.setColour(0xfff1f5f9)
-    end
-    gfx.fillRoundedRect(x + 2, 2, whiteKeyWidth - 4, h - 4, 4)
-    gfx.setColour(0xff64748b)
-    gfx.drawRoundedRect(x + 2, 2, whiteKeyWidth - 4, h - 4, 4, 1)
+    local isActive = isKeyboardNoteActive(ctx, note)
+    local keyX = math.floor(x + 2)
+    local keyY = 2
+    local keyW = math.max(1, math.floor(whiteKeyWidth - 4))
+    local keyH = math.max(1, math.floor(h - 4))
+
+    display[#display + 1] = {
+      cmd = "fillRoundedRect",
+      x = keyX,
+      y = keyY,
+      w = keyW,
+      h = keyH,
+      radius = 4,
+      color = isActive and 0xff4ade80 or 0xfff1f5f9,
+    }
+    display[#display + 1] = {
+      cmd = "drawRoundedRect",
+      x = keyX,
+      y = keyY,
+      w = keyW,
+      h = keyH,
+      radius = 4,
+      thickness = 1,
+      color = 0xff64748b,
+    }
   end
-  
-  -- Black keys
-  for i, offset in ipairs(blackKeys) do
+
+  for i, offset in ipairs(KEYBOARD_BLACK_KEYS) do
     local note = baseNote + offset
-    local pos = blackKeyPositions[i]
+    local pos = KEYBOARD_BLACK_KEY_POSITIONS[i]
     local x = pos * whiteKeyWidth - blackKeyWidth / 2
-    local isActive = false
-    
-    for j = 1, VOICE_COUNT do
-      local voice = ctx._voices[j]
-      if voice and voice.active and voice.note == note and voice.gate > 0.5 then
-        isActive = true
-        break
-      end
-    end
-    
-    if isActive then
-      gfx.setColour(0xff22d3ee)
-    else
-      gfx.setColour(0xff1e293b)
-    end
-    gfx.fillRoundedRect(x, 2, blackKeyWidth, h * 0.6, 3)
-    gfx.setColour(0xff0f172a)
-    gfx.drawRoundedRect(x, 2, blackKeyWidth, h * 0.6, 3, 1)
+    local isActive = isKeyboardNoteActive(ctx, note)
+    local keyX = math.floor(x)
+    local keyY = 2
+    local keyW = math.max(1, math.floor(blackKeyWidth))
+    local keyH = math.max(1, math.floor(h * 0.6))
+
+    display[#display + 1] = {
+      cmd = "fillRoundedRect",
+      x = keyX,
+      y = keyY,
+      w = keyW,
+      h = keyH,
+      radius = 3,
+      color = isActive and 0xff22d3ee or 0xff1e293b,
+    }
+    display[#display + 1] = {
+      cmd = "drawRoundedRect",
+      x = keyX,
+      y = keyY,
+      w = keyW,
+      h = keyH,
+      radius = 3,
+      thickness = 1,
+      color = 0xff0f172a,
+    }
   end
+
+  return display
+end
+
+local function syncKeyboardDisplay(ctx)
+  local widgets = ctx.widgets or {}
+  local canvas = widgets.keyboardCanvas
+  if not (canvas and canvas.node and canvas.node.setDisplayList) then
+    return
+  end
+
+  local w = canvas.node:getWidth()
+  local h = canvas.node:getHeight()
+  canvas.node:setDisplayList(buildKeyboardDisplayList(ctx, w, h))
+  repaint(canvas)
 end
 
 local function handleKeyboardClick(ctx, x, y, isDown)
@@ -834,9 +870,8 @@ local function handleKeyboardClick(ctx, x, y, isDown)
   -- Simple white key detection
   if y > h * 0.6 then
     local keyIndex = math.floor(x / whiteKeyWidth) + 1
-    local whiteKeys = { 0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23 }
-    if keyIndex >= 1 and keyIndex <= #whiteKeys then
-      local note = baseNote + whiteKeys[keyIndex]
+    if keyIndex >= 1 and keyIndex <= #KEYBOARD_WHITE_KEYS then
+      local note = baseNote + KEYBOARD_WHITE_KEYS[keyIndex]
       if isDown then
         triggerVoice(ctx, note, 100)
         ctx._keyboardNote = note
@@ -1023,6 +1058,7 @@ function M.init(ctx)
     widgets.octaveDown._onClick = function()
       ctx._keyboardOctave = math.max(0, ctx._keyboardOctave - 1)
       syncText(widgets.octaveLabel, getOctaveLabel(ctx._keyboardOctave))
+      syncKeyboardDisplay(ctx)
     end
   end
   
@@ -1030,24 +1066,23 @@ function M.init(ctx)
     widgets.octaveUp._onClick = function()
       ctx._keyboardOctave = math.min(6, ctx._keyboardOctave + 1)
       syncText(widgets.octaveLabel, getOctaveLabel(ctx._keyboardOctave))
+      syncKeyboardDisplay(ctx)
     end
   end
   
-  -- Keyboard canvas - set up custom drawing
+  -- Keyboard canvas - retained display list + input callbacks
   if widgets.keyboardCanvas and widgets.keyboardCanvas.node then
     local canvas = widgets.keyboardCanvas
-    canvas.node:setOnDraw(function(node)
-      local w = node:getWidth()
-      local h = node:getHeight()
-      drawKeyboard(ctx, w, h)
-    end)
     canvas.node:setInterceptsMouse(true, false)
     canvas.node:setOnMouseDown(function(x, y)
       handleKeyboardClick(ctx, x, y, true)
+      syncKeyboardDisplay(ctx)
     end)
     canvas.node:setOnMouseUp(function(x, y)
       handleKeyboardClick(ctx, x, y, false)
+      syncKeyboardDisplay(ctx)
     end)
+    syncKeyboardDisplay(ctx)
   end
   
   -- State buttons
@@ -1077,6 +1112,7 @@ end
 
 function M.resized(ctx, w, h)
   updateDropdownAnchors(ctx.widgets or {})
+  syncKeyboardDisplay(ctx)
 end
 
 function M.update(ctx, rawState)
@@ -1104,8 +1140,8 @@ function M.update(ctx, rawState)
   local fx2Mix = readParam(PATHS.fx2Mix, 0.0)
   local delayTime = readParam(PATHS.delayTimeL, 220)
   local delayFeedback = readParam(PATHS.delayFeedback, 0.24)
-  local delayMix = readParam(PATHS.delayMix, 0.18)
-  local reverbWet = readParam(PATHS.reverbWet, 0.16)
+  local delayMix = readParam(PATHS.delayMix, 0.0)
+  local reverbWet = readParam(PATHS.reverbWet, 0.0)
   local output = readParam(PATHS.output, 0.8)
   local attack = readParam(PATHS.attack, 0.05)
   local decay = readParam(PATHS.decay, 0.2)
@@ -1211,10 +1247,7 @@ function M.update(ctx, rawState)
     fx1Name, fx2Name, delayMix * 100, reverbWet * 100))
   syncText(widgets.deviceValue, "Input: " .. (ctx._selectedMidiInputLabel or "None"))
   
-  -- Keyboard is drawn via setOnDraw callback, just trigger repaint
-  if widgets.keyboardCanvas then
-    repaint(widgets.keyboardCanvas)
-  end
+  syncKeyboardDisplay(ctx)
 end
 
 function M.cleanup(ctx)

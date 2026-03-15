@@ -465,9 +465,17 @@ end
 
 function M.syncScopeDropdown(dropdown, scope, key)
   if not dropdown or not scope then return end
-  dropdown:setOptions(scope.labels or { "(unmapped)" })
+  local labels = scope.labels or { "(unmapped)" }
+  if dropdown._lastScopeLabels ~= labels then
+    dropdown._lastScopeLabels = labels
+    dropdown:setOptions(labels)
+  end
   local mapping = scope.mappings[key]
-  dropdown:setSelected(M.scopeCatalogIndex(scope, mapping and mapping.path or nil))
+  local idx = M.scopeCatalogIndex(scope, mapping and mapping.path or nil)
+  if dropdown._lastScopeSelected ~= idx then
+    dropdown._lastScopeSelected = idx
+    dropdown:setSelected(idx)
+  end
 end
 
 function M.syncMappedKnob(knob, mapping, fallbackLabel, fallbackValue)

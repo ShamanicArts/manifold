@@ -3598,6 +3598,14 @@ bool DSPPluginScriptHost::reloadCurrentScript() {
 
 bool DSPPluginScriptHost::isLoaded() const { return pImpl->loaded; }
 
+void DSPPluginScriptHost::markUnloaded() {
+  pImpl->loaded = false;
+  pImpl->currentScriptFile = juce::File();
+  pImpl->currentScriptSourceName.clear();
+  pImpl->currentScriptCode.clear();
+  pImpl->currentScriptIsInMemory = false;
+}
+
 const std::string &DSPPluginScriptHost::getLastError() const {
   return pImpl->lastError;
 }

@@ -14,6 +14,7 @@ extern "C" {
 #include "PrimitiveGraph.h"
 #include "dsp/core/nodes/PrimitiveNodes.h"
 #include "bindings/LuaUIBindings.h"
+#include "bindings/LuaRuntimeNodeBindings.h"
 #include "bindings/LuaControlBindings.h"
 #include "../control/CommandParser.h"
 #include "../control/ControlServer.h"
@@ -363,6 +364,8 @@ std::string makeStructuredUiBootstrap(const UiLoadTarget& target,
 struct LuaEngine::Impl {
   ScriptableProcessor *processor = nullptr;
   Canvas *rootCanvas = nullptr;
+  RuntimeNode *rootRuntime = nullptr;
+  RootMode rootMode = RootMode::Canvas;
   bool scriptLoaded = false;
   std::string lastError;
   juce::File currentScriptFile;
@@ -382,7 +385,8 @@ struct LuaEngine::Impl {
 
   // Shared parent shell and script content mount point
   std::string sharedUiDir;
-  Canvas *scriptContentRoot = nullptr;
+  Canvas *scriptContentCanvasRoot = nullptr;
+  RuntimeNode *scriptContentRuntimeRoot = nullptr;
   sol::table sharedShell;
   bool hasSharedShell = false;
   bool sharedShellRequireOk = false;
@@ -468,12 +472,28 @@ LuaEngine::~LuaEngine() {
 // ============================================================================
 
 void LuaEngine::initialise(ScriptableProcessor *processor, Canvas *rootCanvas) {
+  initialiseInternal(processor,
+                     rootCanvas,
+                     rootCanvas != nullptr ? rootCanvas->getRuntimeNode() : nullptr,
+                     RootMode::Canvas);
+}
+
+void LuaEngine::initialise(ScriptableProcessor *processor, RuntimeNode *rootRuntime) {
+  initialiseInternal(processor, nullptr, rootRuntime, RootMode::RuntimeNode);
+}
+
+void LuaEngine::initialiseInternal(ScriptableProcessor *processor,
+                                   Canvas *rootCanvas,
+                                   RuntimeNode *rootRuntime,
+                                   RootMode rootMode) {
   // CRITICAL DEBUG
   fprintf(stderr, "!!! LUAENGINE INITIALISE !!!\n");
   fflush(stderr);
-  
+
   pImpl->processor = processor;
   pImpl->rootCanvas = rootCanvas;
+  pImpl->rootRuntime = rootRuntime;
+  pImpl->rootMode = rootMode;
   pImpl->lastLayerStates.assign(
       processor ? std::max(0, processor->getNumLayers()) : 0,
       static_cast<int>(ScriptableLayerState::Unknown));
@@ -508,9 +528,14 @@ void LuaEngine::initialise(ScriptableProcessor *processor, Canvas *rootCanvas) {
 
 void LuaEngine::registerBindings() {
   std::fprintf(stderr, "[LuaEngine] registerBindings called\n");
-  
-  // Register Canvas, Graphics, and OpenGL bindings via LuaUIBindings module
-  LuaUIBindings::registerBindings(coreEngine_, pImpl->rootCanvas);
+
+  // Register RuntimeNode bindings before Canvas so Canvas can hand nodes to Lua.
+  LuaRuntimeNodeBindings::registerBindings(coreEngine_, pImpl->rootRuntime);
+
+  // Register Canvas, Graphics, and OpenGL bindings via LuaUIBindings module.
+  // RuntimeNode-root mode still exposes Canvas bindings, but there is no root Canvas.
+  LuaUIBindings::registerBindings(coreEngine_, pImpl->rootMode == RootMode::Canvas ? pImpl->rootCanvas
+                                                                                    : nullptr);
 
   // Register control bindings (commands, OSC, events, Link, etc.)
   std::fprintf(stderr, "[LuaEngine] Calling LuaControlBindings::registerBindings...\n");
@@ -519,25 +544,34 @@ void LuaEngine::registerBindings() {
 
   auto &lua = coreEngine_.getLuaState();
 
-  // ---- Root canvas accessor ----
-  lua["root"] = pImpl->rootCanvas;
-
+  if (pImpl->rootMode == RootMode::Canvas) {
+    lua["root"] = pImpl->rootCanvas;
+  } else {
+    lua["root"] = pImpl->rootRuntime;
+  }
+  lua["rootRuntime"] = pImpl->rootRuntime;
 }
 
 // ============================================================================
 // State snapshot
 // ============================================================================
 
-void LuaEngine::pushStateToLua() {
+void LuaEngine::pushStateToLuaFull() {
   auto *proc = pImpl->processor;
   if (!proc)
     return;
 
-  // Delegate to IStateSerializer implementation (plugin-specific)
-  // ScriptableProcessor now inherits from IStateSerializer, so each plugin
-  // provides its own state schema (Looper, GrainFreeze, etc.)
   const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
   proc->serializeStateToLua(coreEngine_.getLuaState());
+}
+
+void LuaEngine::pushStateToLuaIncremental(const std::vector<std::string>& changedPaths) {
+  auto *proc = pImpl->processor;
+  if (!proc || changedPaths.empty())
+    return;
+
+  const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+  proc->serializeStateToLuaIncremental(coreEngine_.getLuaState(), changedPaths);
 }
 
 // ============================================================================
@@ -653,9 +687,10 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
   }
   if (uiInit.valid()) {
     try {
-      // Build persistent parent-shell frame + a dedicated content mount root.
-      pImpl->rootCanvas->clearChildren();
-      pImpl->scriptContentRoot = pImpl->rootCanvas->addChild("script_content_root");
+      // Build the script content mount root. Canvas mode keeps the shared shell;
+      // RuntimeNode mode bypasses Canvas entirely.
+      pImpl->scriptContentCanvasRoot = nullptr;
+      pImpl->scriptContentRuntimeRoot = nullptr;
 
       {
         const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
@@ -666,43 +701,100 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
         pImpl->sharedContentY = 0;
         pImpl->sharedContentW = 0;
         pImpl->sharedContentH = 0;
+      }
 
-        sol::protected_function requireFn = coreEngine_.getLuaState()["require"];
-        if (requireFn.valid()) {
-          sol::protected_function_result reqRes = requireFn("ui_shell");
-          if (reqRes.valid()) {
-            pImpl->sharedShellRequireOk = true;
-            sol::table shellModule = reqRes;
-            sol::protected_function createFn = shellModule["create"];
-            if (createFn.valid()) {
-              sol::table opts = coreEngine_.getLuaState().create_table();
-              opts["title"] = "MANIFOLD";
-              sol::protected_function_result shellRes =
-                  createFn(pImpl->rootCanvas, opts);
-              if (shellRes.valid()) {
-                pImpl->sharedShell = shellRes.get<sol::table>();
-                pImpl->hasSharedShell = true;
-                pImpl->sharedShellCreateOk = true;
-                coreEngine_.getLuaState()["shell"] = pImpl->sharedShell;
-              } else {
-                sol::error err = shellRes;
-                std::fprintf(stderr,
-                             "LuaEngine: shared shell create failed: %s\n",
-                             err.what());
+      if (pImpl->rootMode == RootMode::Canvas && pImpl->rootCanvas != nullptr) {
+        pImpl->rootCanvas->clearChildren();
+        pImpl->scriptContentCanvasRoot = pImpl->rootCanvas->addChild("script_content_root");
+        pImpl->scriptContentRuntimeRoot = pImpl->scriptContentCanvasRoot != nullptr
+                                             ? pImpl->scriptContentCanvasRoot->getRuntimeNode()
+                                             : pImpl->rootRuntime;
+
+        {
+          const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+          sol::protected_function requireFn = coreEngine_.getLuaState()["require"];
+          if (requireFn.valid()) {
+            sol::protected_function_result reqRes = requireFn("ui_shell");
+            if (reqRes.valid()) {
+              pImpl->sharedShellRequireOk = true;
+              sol::table shellModule = reqRes;
+              sol::protected_function createFn = shellModule["create"];
+              if (createFn.valid()) {
+                sol::table opts = coreEngine_.getLuaState().create_table();
+                opts["title"] = "MANIFOLD";
+                sol::protected_function_result shellRes =
+                    createFn(pImpl->rootCanvas, opts);
+                if (shellRes.valid()) {
+                  pImpl->sharedShell = shellRes.get<sol::table>();
+                  pImpl->hasSharedShell = true;
+                  pImpl->sharedShellCreateOk = true;
+                  coreEngine_.getLuaState()["shell"] = pImpl->sharedShell;
+                } else {
+                  sol::error err = shellRes;
+                  std::fprintf(stderr,
+                               "LuaEngine: shared shell create failed: %s\n",
+                               err.what());
+                }
               }
+            } else {
+              sol::error err = reqRes;
+              std::fprintf(stderr, "LuaEngine: shared shell require failed: %s\n",
+                           err.what());
             }
-          } else {
-            sol::error err = reqRes;
-            std::fprintf(stderr, "LuaEngine: shared shell require failed: %s\n",
-                         err.what());
+          }
+        }
+      } else if (pImpl->rootRuntime != nullptr) {
+        pImpl->rootRuntime->clearChildren();
+        pImpl->scriptContentRuntimeRoot = pImpl->rootRuntime->createChild("script_content_root");
+
+        // Create shared shell in RuntimeNode mode (same as Canvas mode above)
+        {
+          const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+          sol::protected_function requireFn = coreEngine_.getLuaState()["require"];
+          if (requireFn.valid()) {
+            sol::protected_function_result reqRes = requireFn("ui_shell");
+            if (reqRes.valid()) {
+              pImpl->sharedShellRequireOk = true;
+              sol::table shellModule = reqRes;
+              sol::protected_function createFn = shellModule["create"];
+              if (createFn.valid()) {
+                sol::table opts = coreEngine_.getLuaState().create_table();
+                opts["title"] = "MANIFOLD";
+                sol::protected_function_result shellRes =
+                    createFn(pImpl->rootRuntime, opts);
+                if (shellRes.valid()) {
+                  pImpl->sharedShell = shellRes.get<sol::table>();
+                  pImpl->hasSharedShell = true;
+                  pImpl->sharedShellCreateOk = true;
+                  coreEngine_.getLuaState()["shell"] = pImpl->sharedShell;
+                } else {
+                  sol::error err = shellRes;
+                  std::fprintf(stderr,
+                               "LuaEngine: shared shell create (RuntimeNode) failed: %s\n",
+                               err.what());
+                }
+              }
+            } else {
+              sol::error err = reqRes;
+              std::fprintf(stderr, "LuaEngine: shared shell require (RuntimeNode) failed: %s\n",
+                           err.what());
+            }
           }
         }
       }
 
       int contentX = 0;
       int contentY = 0;
-      int contentW = pImpl->lastWidth > 0 ? pImpl->lastWidth : pImpl->rootCanvas->getWidth();
-      int contentH = pImpl->lastHeight > 0 ? pImpl->lastHeight : pImpl->rootCanvas->getHeight();
+      int contentW = pImpl->lastWidth > 0
+                         ? pImpl->lastWidth
+                         : (pImpl->rootMode == RootMode::Canvas && pImpl->rootCanvas != nullptr
+                                ? pImpl->rootCanvas->getWidth()
+                                : (pImpl->rootRuntime != nullptr ? pImpl->rootRuntime->getBounds().w : 0));
+      int contentH = pImpl->lastHeight > 0
+                         ? pImpl->lastHeight
+                         : (pImpl->rootMode == RootMode::Canvas && pImpl->rootCanvas != nullptr
+                                ? pImpl->rootCanvas->getHeight()
+                                : (pImpl->rootRuntime != nullptr ? pImpl->rootRuntime->getBounds().h : 0));
 
       {
         const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
@@ -731,9 +823,13 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
       pImpl->sharedContentW = contentW;
       pImpl->sharedContentH = contentH;
 
-      // Only set initial bounds if Shell is NOT managing content
+      // Only set initial bounds if Shell is NOT managing content.
       if (!pImpl->hasSharedShell) {
-        pImpl->scriptContentRoot->setBounds(contentX, contentY, contentW, contentH);
+        if (pImpl->scriptContentCanvasRoot != nullptr) {
+          pImpl->scriptContentCanvasRoot->setBounds(contentX, contentY, contentW, contentH);
+        } else if (pImpl->scriptContentRuntimeRoot != nullptr) {
+          pImpl->scriptContentRuntimeRoot->setBounds(contentX, contentY, contentW, contentH);
+        }
       }
 
       if (pImpl->processor) {
@@ -750,8 +846,13 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
       sol::protected_function_result result;
       {
         const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
-        result = uiInit(pImpl->scriptContentRoot != nullptr ? pImpl->scriptContentRoot
-                                                            : pImpl->rootCanvas);
+        if (pImpl->rootMode == RootMode::Canvas) {
+          result = uiInit(pImpl->scriptContentCanvasRoot != nullptr ? pImpl->scriptContentCanvasRoot
+                                                                    : pImpl->rootCanvas);
+        } else {
+          result = uiInit(pImpl->scriptContentRuntimeRoot != nullptr ? pImpl->scriptContentRuntimeRoot
+                                                                     : pImpl->rootRuntime);
+        }
       }
       if (!result.valid()) {
         sol::error err = result;
@@ -767,6 +868,40 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
                    pImpl->lastError.c_str());
       pImpl->scriptLoaded = false;
       return false;
+    }
+  }
+
+  pushStateToLuaFull();
+  {
+    const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+    if (pImpl->hasSharedShell) {
+      sol::table shell = pImpl->sharedShell;
+      sol::protected_function shellStateChanged = shell["onStateChanged"];
+      if (shellStateChanged.valid()) {
+        sol::protected_function_result shellRes = shellStateChanged(shell, sol::nil);
+        if (!shellRes.valid()) {
+          sol::error err = shellRes;
+          std::fprintf(stderr, "LuaEngine: shell onStateChanged init error: %s\n", err.what());
+        }
+      }
+    }
+  }
+  if (pImpl->processor != nullptr) {
+    pImpl->processor->updateChangeCache();
+  }
+
+  {
+    const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+    if (pImpl->hasSharedShell) {
+      sol::table shell = pImpl->sharedShell;
+      sol::protected_function flushDeferredRefreshes = shell["flushDeferredRefreshes"];
+      if (flushDeferredRefreshes.valid()) {
+        sol::protected_function_result flushRes = flushDeferredRefreshes(shell);
+        if (!flushRes.valid()) {
+          sol::error err = flushRes;
+          std::fprintf(stderr, "LuaEngine: shell flushDeferredRefreshes init error: %s\n", err.what());
+        }
+      }
     }
   }
 
@@ -797,6 +932,10 @@ bool LuaEngine::loadScript(const juce::File &scriptFile) {
 void LuaEngine::notifyResized(int width, int height) {
   pImpl->lastWidth = width;
   pImpl->lastHeight = height;
+
+  if (pImpl->rootMode == RootMode::RuntimeNode && pImpl->rootRuntime != nullptr) {
+    pImpl->rootRuntime->setBounds(0, 0, width, height);
+  }
 
   int contentX = 0;
   int contentY = 0;
@@ -833,10 +972,14 @@ void LuaEngine::notifyResized(int width, int height) {
     }
   }
 
-  // Only position scriptContentRoot if Shell is NOT managing it
-  // When Shell is active, it positions content directly in layout()
-  if (pImpl->scriptContentRoot != nullptr && !pImpl->hasSharedShell) {
-    pImpl->scriptContentRoot->setBounds(contentX, contentY, contentW, contentH);
+  // Only position script content if Shell is NOT managing it.
+  // When Shell is active, it positions content directly in layout().
+  if (!pImpl->hasSharedShell) {
+    if (pImpl->scriptContentCanvasRoot != nullptr) {
+      pImpl->scriptContentCanvasRoot->setBounds(contentX, contentY, contentW, contentH);
+    } else if (pImpl->scriptContentRuntimeRoot != nullptr) {
+      pImpl->scriptContentRuntimeRoot->setBounds(contentX, contentY, contentW, contentH);
+    }
   }
 
   pImpl->sharedContentX = contentX;
@@ -914,9 +1057,13 @@ void LuaEngine::notifyUpdate() {
   int64_t eventListenersUs = 0;
   int64_t uiUpdateUs = 0;
 
-  {
+  std::vector<std::string> changedPaths;
+  if (auto* proc = pImpl->processor) {
     const auto start = Clock::now();
-    pushStateToLua();
+    changedPaths = proc->getChangedPathsAndUpdateCache();
+    if (!changedPaths.empty()) {
+      pushStateToLuaIncremental(changedPaths);
+    }
     pushStateUs = std::chrono::duration_cast<std::chrono::microseconds>(
                       Clock::now() - start)
                       .count();
@@ -936,43 +1083,55 @@ void LuaEngine::notifyUpdate() {
 
   const auto uiUpdateStart = Clock::now();
 
-  sol::function fn;
-  {
-    const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
-    fn = coreEngine_.getLuaState()["ui_update"];
-  }
-  if (fn.valid()) {
-    try {
-      sol::object stateObj;
-      {
-        const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
-        stateObj = coreEngine_.getLuaState()["state"];
+  try {
+    if (!changedPaths.empty()) {
+      const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+      auto& lua = coreEngine_.getLuaState();
+      sol::table pathsTable = lua.create_table();
+      for (size_t i = 0; i < changedPaths.size(); ++i) {
+        pathsTable[static_cast<int>(i + 1)] = changedPaths[i];
+      }
 
-        if (pImpl->hasSharedShell) {
-          sol::table shell = pImpl->sharedShell;
-          sol::protected_function shellUpdate = shell["updateFromState"];
-          if (shellUpdate.valid()) {
-            sol::protected_function_result shellRes = shellUpdate(shell, stateObj);
-            if (!shellRes.valid()) {
-              sol::error err = shellRes;
-              std::fprintf(stderr, "LuaEngine: shell update error: %s\n", err.what());
-            }
+      if (pImpl->hasSharedShell) {
+        sol::table shell = pImpl->sharedShell;
+        sol::protected_function shellStateChanged = shell["onStateChanged"];
+        if (shellStateChanged.valid()) {
+          sol::protected_function_result shellRes = shellStateChanged(shell, pathsTable);
+          if (!shellRes.valid()) {
+            sol::error err = shellRes;
+            std::fprintf(stderr, "LuaEngine: shell onStateChanged error: %s\n", err.what());
           }
         }
       }
 
+      sol::protected_function onStateChanged = lua["onStateChanged"];
+      if (onStateChanged.valid()) {
+        sol::protected_function_result stateChangedRes = onStateChanged(pathsTable);
+        if (!stateChangedRes.valid()) {
+          sol::error err = stateChangedRes;
+          std::fprintf(stderr, "LuaEngine: onStateChanged error: %s\n", err.what());
+        }
+      }
+    }
+
+    sol::protected_function fn;
+    {
+      const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+      fn = coreEngine_.getLuaState()["ui_update"];
+    }
+    if (fn.valid()) {
       sol::protected_function_result result;
       {
         const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
-        result = fn(stateObj);
+        result = fn();
       }
       if (!result.valid()) {
         sol::error err = result;
         std::fprintf(stderr, "LuaEngine: ui_update error: %s\n", err.what());
       }
-    } catch (const std::exception &e) {
-      std::fprintf(stderr, "LuaEngine: ui_update exception: %s\n", e.what());
     }
+  } catch (const std::exception &e) {
+    std::fprintf(stderr, "LuaEngine: ui_update exception: %s\n", e.what());
   }
 
   uiUpdateUs = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -1055,11 +1214,30 @@ bool LuaEngine::switchScript(const juce::File &scriptFile) {
     }
   }
 
+  {
+    const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+    if (pImpl->hasSharedShell) {
+      sol::table shell = pImpl->sharedShell;
+      sol::protected_function clearDeferredRefreshes = shell["clearDeferredRefreshes"];
+      if (clearDeferredRefreshes.valid()) {
+        auto clearRes = clearDeferredRefreshes(shell);
+        if (!clearRes.valid()) {
+          sol::error err = clearRes;
+          std::fprintf(stderr, "LuaEngine: shell clearDeferredRefreshes switch error: %s\n", err.what());
+        }
+      }
+    }
+  }
+
   // Clear the current UI before touching transient DSP slots.
   // Some UI trees keep callbacks/overlays alive long enough that unloading DSP
   // first can trip use-after-free style crashes during the same switch.
-  if (pImpl->rootCanvas) {
-    pImpl->rootCanvas->clearChildren();
+  if (pImpl->rootMode == RootMode::Canvas) {
+    if (pImpl->rootCanvas != nullptr) {
+      pImpl->rootCanvas->clearChildren();
+    }
+  } else if (pImpl->rootRuntime != nullptr) {
+    pImpl->rootRuntime->clearChildren();
   }
 
   // Enforce transient-by-default DSP-slot policy.

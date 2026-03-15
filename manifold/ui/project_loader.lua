@@ -1422,10 +1422,63 @@ function Runtime:resized(w, h)
   self:refreshHostedContainers()
 end
 
-function Runtime:update(state)
+local function canonicalStatePath(path)
+  if type(path) ~= "string" or path == "" then
+    return nil
+  end
+  if path:sub(1, 10) == "/manifold/" then
+    return "/core/behavior/" .. path:sub(11)
+  end
+  if path:sub(1, 14) == "/dsp/manifold/" then
+    return "/core/behavior/" .. path:sub(15)
+  end
+  return path
+end
+
+local function buildChangedPathSet(changedPaths)
+  if type(changedPaths) ~= "table" then
+    return nil
+  end
+
+  local set = {}
+  for _, path in ipairs(changedPaths) do
+    if type(path) == "string" and path ~= "" then
+      set[path] = true
+      local canonical = canonicalStatePath(path)
+      if canonical ~= nil then
+        set[canonical] = true
+      end
+    end
+  end
+  return set
+end
+
+function Runtime:update(changedPaths)
+  local state = (type(_G) == "table" and type(_G.state) == "table") and _G.state or nil
+  local changedSet = buildChangedPathSet(changedPaths)
+
   for _, entry in ipairs(self.behaviors) do
     if (entry.record == nil or self:isRecordActive(entry.record)) and type(entry.module.update) == "function" then
-      entry.module.update(entry.ctx, state)
+      local shouldUpdate = true
+
+      if type(entry.module.shouldUpdate) == "function" then
+        shouldUpdate = entry.module.shouldUpdate(entry.ctx, changedPaths, changedSet) == true
+      elseif changedSet ~= nil then
+        local subscriptions = entry.ctx and entry.ctx._subscriptions or nil
+        if type(subscriptions) == "table" and next(subscriptions) ~= nil then
+          shouldUpdate = false
+          for path in pairs(subscriptions) do
+            if changedSet[path] == true then
+              shouldUpdate = true
+              break
+            end
+          end
+        end
+      end
+
+      if shouldUpdate then
+        entry.module.update(entry.ctx, state, changedPaths)
+      end
     end
   end
 end
@@ -1621,6 +1674,7 @@ function M.install(opts)
         init = function(contentRoot)
           local ok, err = pcall(function()
             runtime:init(contentRoot)
+            runtime:update(nil)
           end)
           if not ok then
             runtime:setLastError(err, "ui_init")
@@ -1636,8 +1690,8 @@ function M.install(opts)
           _ = y
           runtime:resized(w, h)
         end,
-        update = function(state)
-          runtime:update(state)
+        update = function(changedPaths)
+          runtime:update(changedPaths)
         end,
       })
       return
@@ -1651,6 +1705,7 @@ function M.install(opts)
       error(err)
     end
     runtime:clearLastError("ui_init")
+    runtime:update(nil)
   end
 
   function ui_resized(w, h)

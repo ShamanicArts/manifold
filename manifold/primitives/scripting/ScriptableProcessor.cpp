@@ -36,6 +36,11 @@ void ScriptableProcessor::serializeStateToLua(sol::state& lua) const {
   lua["state"] = state;
 }
 
+void ScriptableProcessor::serializeStateToLuaIncremental(sol::state& lua,
+                                                         const std::vector<std::string>& /*changedPaths*/) const {
+  serializeStateToLua(lua);
+}
+
 std::string ScriptableProcessor::serializeStateToJson() const {
   // Minimal JSON representation
   return R"({"projectionVersion":1,"numVoices":0,"params":{},"voices":[],"link":{"enabled":false},"spectrum":[]})";
@@ -54,6 +59,11 @@ std::string ScriptableProcessor::getValueAtPath(const std::string& /*path*/) con
 bool ScriptableProcessor::hasPathChanged(const std::string& /*path*/) const {
   // Default: no change tracking
   return false;
+}
+
+std::vector<std::string> ScriptableProcessor::getChangedPathsAndUpdateCache() {
+  // Default: no change tracking
+  return {};
 }
 
 void ScriptableProcessor::updateChangeCache() {

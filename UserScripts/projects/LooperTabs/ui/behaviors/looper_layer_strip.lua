@@ -2,6 +2,22 @@ local Shared = require("behaviors.looper_shared_state")
 
 local M = {}
 
+M.subscriptionPatterns = {
+  "/core/behavior/layer",
+  "/core/behavior/layer/${layerIndex}/speed",
+  "/core/behavior/layer/${layerIndex}/volume",
+  "/core/behavior/layer/${layerIndex}/mute",
+  "/core/behavior/layer/${layerIndex}/reverse",
+  "/core/behavior/layer/${layerIndex}/length",
+  "/core/behavior/layer/${layerIndex}/position",
+  "/core/behavior/layer/${layerIndex}/bars",
+  "/core/behavior/layer/${layerIndex}/state",
+}
+
+local function selectLayer(layerIdx)
+  Shared.commandSet("/core/behavior/layer", layerIdx)
+end
+
 function M.init(ctx)
   local widgets = ctx.widgets or {}
   local layerIdx = tonumber(ctx.instanceProps and ctx.instanceProps.layerIndex) or 0
@@ -12,6 +28,12 @@ function M.init(ctx)
     preScrubReversed = false,
     scrubEndFrame = 0,
   }
+  ctx._subscriptions = {}
+
+  for _, pattern in ipairs(M.subscriptionPatterns) do
+    local path = pattern:gsub("${layerIndex}", tostring(layerIdx))
+    ctx._subscriptions[path] = true
+  end
 
   if widgets.label then
     widgets.label:setText("L" .. tostring(layerIdx))
@@ -22,10 +44,43 @@ function M.init(ctx)
     if widgets.waveform.node and widgets.waveform.node.setInterceptsMouse then
       widgets.waveform.node:setInterceptsMouse(true, false)
     end
+    if widgets.waveform.node and widgets.waveform.node.setOnMouseDown then
+      local existingScrubStart = widgets.waveform._onScrubStart
+      widgets.waveform.node:setOnMouseDown(function(mx, my)
+        selectLayer(layerIdx)
+        if widgets.waveform._scrubbing then
+          local w = widgets.waveform.node:getWidth()
+          if w > 4 then
+            local pos = math.max(0, math.min(1, (mx - 2) / (w - 4)))
+            widgets.waveform._lastScrubPos = pos
+            if widgets.waveform._onScrubSnap then
+              widgets.waveform._onScrubSnap(pos, 0)
+            end
+          end
+          return
+        end
+
+        widgets.waveform._scrubbing = true
+        widgets.waveform:_syncRetained()
+        widgets.waveform.node:repaint()
+        if existingScrubStart then
+          existingScrubStart()
+        end
+        local w = widgets.waveform.node:getWidth()
+        if w > 4 then
+          local pos = math.max(0, math.min(1, (mx - 2) / (w - 4)))
+          widgets.waveform._lastScrubPos = pos
+          if widgets.waveform._onScrubSnap then
+            widgets.waveform._onScrubSnap(pos, 0)
+          end
+        end
+      end)
+    end
   end
 
   if widgets.speed then
     widgets.speed._onChange = function(v)
+      selectLayer(layerIdx)
       local absSpeed = Shared.sanitizeSpeed(v)
       local rev = v < 0
       Shared.commandSet(Shared.layerPath(layerIdx, "speed"), absSpeed)
@@ -35,12 +90,14 @@ function M.init(ctx)
 
   if widgets.vol then
     widgets.vol._onChange = function(v)
+      selectLayer(layerIdx)
       Shared.commandSet(Shared.layerPath(layerIdx, "volume"), v)
     end
   end
 
   if widgets.mute then
     widgets.mute._onClick = function()
+      selectLayer(layerIdx)
       local state = ctx._state or {}
       local layerData = state.layers and state.layers[layerIdx + 1] or {}
       local isMuted = layerData.muted or (layerData.params and layerData.params.mute and layerData.params.mute > 0.5)
@@ -50,6 +107,7 @@ function M.init(ctx)
 
   if widgets.play then
     widgets.play._onClick = function()
+      selectLayer(layerIdx)
       local state = ctx._state or {}
       local layerData = state.layers and state.layers[layerIdx + 1] or {}
       if layerData.state == "playing" then
@@ -62,18 +120,20 @@ function M.init(ctx)
 
   if widgets.clear then
     widgets.clear._onClick = function()
+      selectLayer(layerIdx)
       Shared.commandTrigger(Shared.layerPath(layerIdx, "clear"))
     end
   end
 
   if ctx.root and ctx.root.node then
     ctx.root.node:setOnClick(function()
-      Shared.commandSet("/core/behavior/layer", layerIdx)
+      selectLayer(layerIdx)
     end)
   end
 
   if widgets.waveform then
     widgets.waveform._onScrubStart = function()
+      selectLayer(layerIdx)
       local scrub = ctx._scrub
       local framesSinceLast = (ctx._frameCounter or 0) - (scrub.scrubEndFrame or -10)
       if framesSinceLast < 3 or scrub._active then return end
@@ -180,7 +240,83 @@ function M.resized(ctx, w, h)
   end
 end
 
-function M.update(ctx, rawState)
+local function isLayerPositionPath(layerIdx, path)
+  local suffix = "/layer/" .. tostring(layerIdx) .. "/position"
+  return path == ("/core/behavior" .. suffix)
+      or path == ("/manifold" .. suffix)
+      or path == ("/dsp/manifold" .. suffix)
+end
+
+local function readRawLayerPosition(rawState, layerIdx)
+  if type(rawState) ~= "table" then
+    return 0, 0
+  end
+
+  local voices = rawState.voices
+  local voice = type(voices) == "table" and voices[layerIdx + 1] or nil
+  if type(voice) == "table" then
+    return tonumber(voice.position) or 0, tonumber(voice.length) or 0
+  end
+
+  local params = rawState.params
+  if type(params) == "table" then
+    local length = tonumber(params[Shared.layerPath(layerIdx, "length")]) or 0
+    local positionNorm = tonumber(params[Shared.layerPath(layerIdx, "position")]) or 0
+    return positionNorm * math.max(1, length), length
+  end
+
+  return 0, 0
+end
+
+local function applyPositionOnlyUpdate(ctx, rawState)
+  local widgets = ctx.widgets or {}
+  local layerIdx = ctx._layerIndex or 0
+  local position, length = readRawLayerPosition(rawState, layerIdx)
+
+  if widgets.waveform then
+    if length > 0 then
+      widgets.waveform:setPlayheadPos(position / length)
+    else
+      widgets.waveform:setPlayheadPos(-1)
+    end
+  end
+
+  local state = ctx._state
+  if type(state) == "table" then
+    state.layers = state.layers or {}
+    state.layers[layerIdx + 1] = state.layers[layerIdx + 1] or {}
+    state.layers[layerIdx + 1].position = position
+    state.layers[layerIdx + 1].length = length
+  end
+end
+
+function M.update(ctx, rawState, changedPaths)
+  if type(changedPaths) == "table" then
+    local subscriptions = ctx._subscriptions or {}
+    local hasRelevantChange = false
+    local onlyPositionChanges = true
+    local layerIdx = ctx._layerIndex or 0
+
+    for _, path in ipairs(changedPaths) do
+      if subscriptions[path] then
+        hasRelevantChange = true
+        if not isLayerPositionPath(layerIdx, path) then
+          onlyPositionChanges = false
+        end
+      end
+    end
+
+    if not hasRelevantChange then
+      return
+    end
+
+    if onlyPositionChanges then
+      ctx._frameCounter = (ctx._frameCounter or 0) + 1
+      applyPositionOnlyUpdate(ctx, rawState)
+      return
+    end
+  end
+
   local widgets = ctx.widgets or {}
   local layerIdx = ctx._layerIndex or 0
   local state = Shared.normalizeState(rawState)

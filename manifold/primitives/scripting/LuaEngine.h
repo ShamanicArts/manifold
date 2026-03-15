@@ -38,13 +38,21 @@ public:
   LuaEngine();
   ~LuaEngine() override;
 
-  /** Initialise the Lua VM and register all bindings.
+  /** Initialise the Lua VM and register all bindings for Canvas-backed UI.
    *  @param processor  Scriptable processor seam (for command posting and
    * state reads).
    *  @param rootCanvas The root Canvas node that Lua will populate with
    * children.
    */
   void initialise(ScriptableProcessor *processor, Canvas *rootCanvas);
+
+  /** Initialise the Lua VM and register all bindings for RuntimeNode-backed UI.
+   *  @param processor   Scriptable processor seam (for command posting and
+   * state reads).
+   *  @param rootRuntime The root RuntimeNode that Lua will populate with
+   * children.
+   */
+  void initialise(ScriptableProcessor *processor, RuntimeNode *rootRuntime);
 
   /** Load and execute a script file.  Calls ui_init(root) in the script. */
   bool loadScript(const juce::File &scriptFile);
@@ -64,8 +72,7 @@ public:
   /** Called on editor resize.  Calls ui_resized(w, h) in the script. */
   void notifyResized(int width, int height);
 
-  /** Called at timer rate (~30Hz).  Pushes state and calls ui_update(state).
-   *  Also checks for hot-reload if enough time has elapsed. */
+  /** Called at timer rate (~30Hz). Also checks for hot-reload if enough time has elapsed. */
   void notifyUpdate();
 
   /** Returns true if a script is loaded and running. */
@@ -147,11 +154,21 @@ public:
   FrameTimings frameTimings;
 
 private:
+  enum class RootMode {
+    Canvas,
+    RuntimeNode,
+  };
+
+  void initialiseInternal(ScriptableProcessor *processor,
+                          Canvas *rootCanvas,
+                          RuntimeNode *rootRuntime,
+                          RootMode rootMode);
   void invokeEventListeners();
   void processPendingOSCCallbacks();
   void processPendingEvalRequests();
   void registerBindings();
-  void pushStateToLua();
+  void pushStateToLuaFull();
+  void pushStateToLuaIncremental(const std::vector<std::string>& changedPaths);
   void checkHotReload();
 
   LuaCoreEngine coreEngine_;  // Core VM lifecycle (no UI/Control deps)

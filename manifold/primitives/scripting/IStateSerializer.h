@@ -36,6 +36,11 @@ public:
     //   - Others: plugin-specific structure
     virtual void serializeStateToLua(sol::state& lua) const = 0;
 
+    // Incrementally patch the existing lua["state"] tables for the given paths.
+    // Implementations may fall back to full serialization if no incremental path exists.
+    virtual void serializeStateToLuaIncremental(sol::state& lua,
+                                               const std::vector<std::string>& changedPaths) const = 0;
+
     // Serialize to JSON string for OSCQuery or network transmission.
     // Format matches the Lua table structure as closely as possible.
     virtual std::string serializeStateToJson() const = 0;
@@ -71,6 +76,10 @@ public:
     // Check if a path has changed since last check (for diff-based updates).
     // Returns true if value at path is different from cached value.
     virtual bool hasPathChanged(const std::string& path) const = 0;
+
+    // Return all changed paths and update the internal cache in one pass.
+    // The returned paths should be stable and ordered deterministically.
+    virtual std::vector<std::string> getChangedPathsAndUpdateCache() = 0;
 
     // Update internal cache to current values (call after checking changes).
     virtual void updateChangeCache() = 0;

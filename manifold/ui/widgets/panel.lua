@@ -30,6 +30,8 @@ function Panel.new(parent, name, config)
         on_wheel = config.on_wheel
     }, Schema.buildEditorSchema("Panel", config))
 
+    self:_syncRetained()
+
     return self
 end
 
@@ -47,12 +49,27 @@ function Panel:onDraw(w, h)
     end
 end
 
+function Panel:_syncRetained()
+    self.node:setStyle({
+        bg = self._bg,
+        border = self._border,
+        borderWidth = self._borderWidth,
+        radius = self._radius,
+        opacity = self._opacity
+    })
+    -- Do NOT clearDisplayList here — a behavior's setOnDraw callback may have
+    -- populated it via node:setDisplayList(). Panel background is rendered via
+    -- setStyle(), not via the display list.
+end
+
 function Panel:setStyle(style)
     if style.bg then self._bg = style.bg end
     if style.border then self._border = style.border end
     if style.borderWidth then self._borderWidth = style.borderWidth end
     if style.radius then self._radius = style.radius end
     if style.opacity then self._opacity = style.opacity end
+    self:_syncRetained()
+    self.node:repaint()
 end
 
 return Panel

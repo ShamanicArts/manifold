@@ -3,6 +3,8 @@
 #include "../core/LuaCoreEngine.h"
 #include "../../ui/Canvas.h"
 
+class RuntimeNode;
+
 /**
  * LuaUIBindings: Registers Canvas, Graphics, and OpenGL bindings.
  * 
@@ -25,6 +27,18 @@ public:
      * Called by BehaviorCoreEditor when OSCQueryServer is available.
      */
     static void setDisplayListCallback(std::function<void(const std::string&)> callback);
+
+    /**
+     * Replay a RuntimeNode draw callback into its retained display list.
+     * Used as a legacy fallback for Canvas-style gfx.* drawing in direct mode.
+     */
+    static bool invokeRuntimeNodeDrawForRetained(LuaCoreEngine& engine, RuntimeNode& node);
+
+    /**
+     * Marks that the currently replayed RuntimeNode draw callback explicitly
+     * mutated its display list, so gfx capture should not overwrite it.
+     */
+    static void noteRuntimeNodeDisplayListMutation(RuntimeNode& node);
 
 private:
     // Individual binding groups - engine provides mutex access

@@ -1,0 +1,12 @@
+{
+  "name": "DspLiveScripting",
+  "version": 1,
+  "description": "Live DSP scripting demo project using the structured project runtime, ImGui editor host, retained graph rendering, and widget-based runtime params",
+  "ui": {
+    "root": "ui/main.ui.lua"
+  },
+  "dsp": {
+    "default": "dsp/default_dsp.lua"
+  },
+  "theme": "themes/dark.lua"
+}

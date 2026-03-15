@@ -19,6 +19,106 @@ local function coerceLabel(value, fallback)
     return text
 end
 
+local function refreshRecordRetained(record)
+    if type(record) ~= "table" then
+        return
+    end
+
+    local widget = record.widget
+    if type(widget) == "table" and type(widget.refreshRetained) == "function" then
+        local node = widget.node
+        local w = 0
+        local h = 0
+        if node and node.getWidth and node.getHeight then
+            w = tonumber(node:getWidth()) or 0
+            h = tonumber(node:getHeight()) or 0
+        elseif node and node.getBounds then
+            local _, _, bw, bh = node:getBounds()
+            w = tonumber(bw) or 0
+            h = tonumber(bh) or 0
+        end
+        widget:refreshRetained(w, h)
+    end
+
+    for _, child in ipairs(record.children or {}) do
+        refreshRecordRetained(child)
+    end
+end
+
+local function shouldForceImmediateRefreshFlush()
+    if type(getUIRendererMode) ~= "function" then
+        return false
+    end
+    return tostring(getUIRendererMode() or "") == "canvas"
+end
+
+local function flushDeferredRefreshesNow()
+    if not shouldForceImmediateRefreshFlush() then
+        return
+    end
+    local shell = (type(_G) == "table") and _G.shell or nil
+    if shell and type(shell.flushDeferredRefreshes) == "function" then
+        shell:flushDeferredRefreshes()
+    end
+end
+
+local function setStyleAndDisplay(host, w, h)
+    host.node:setStyle({
+        bg = host._bg,
+        border = host._border,
+        borderWidth = host._borderWidth,
+        radius = host._radius,
+        opacity = 1.0,
+    })
+
+    local display = {
+        {
+            cmd = "fillRoundedRect",
+            x = 0,
+            y = 0,
+            w = w,
+            h = host._tabBarHeight,
+            radius = host._radius,
+            color = host._tabBarBg,
+        }
+    }
+
+    for i = 1, #host._tabRects do
+        local r = host._tabRects[i]
+        local page = host._pages[i]
+        local label = coerceLabel(page and page.title, page and page.id or ("Tab " .. tostring(i)))
+        local active = (i == host._activeIndex)
+        local bg = active and host._activeTabBg or host._tabBg
+        if host:isHovered() and not active then
+            bg = Utils.brighten(bg, 10)
+        end
+
+        display[#display + 1] = {
+            cmd = "fillRoundedRect",
+            x = r.x,
+            y = r.y,
+            w = r.w,
+            h = math.max(0, r.h - 2),
+            radius = math.max(0, host._radius - 2),
+            color = bg,
+        }
+        display[#display + 1] = {
+            cmd = "drawText",
+            x = r.x + 6,
+            y = r.y,
+            w = math.max(0, r.w - 12),
+            h = r.h,
+            color = active and host._activeTextColour or host._textColour,
+            text = label,
+            fontSize = 12.0,
+            align = "center",
+            valign = "middle",
+        }
+    end
+
+    host.node:setDisplayList(display)
+end
+
 function TabHost.new(parent, name, config)
     local self = setmetatable(BaseWidget.new(parent, name, config), TabHost)
 
@@ -50,6 +150,8 @@ function TabHost.new(parent, name, config)
     self:_storeEditorMeta("TabHost", {
         on_select = self._onSelect,
     }, Schema.buildEditorSchema("TabHost", config))
+
+    self:_syncRetained()
 
     return self
 end
@@ -177,11 +279,18 @@ function TabHost:addStructuredChild(childRecord)
     }
     self._layoutDirty = true
     self:_layoutPages(true)
+    self:_syncRetained()
 end
 
 function TabHost:finalizeStructuredChildren()
     self._layoutDirty = true
     self:_layoutPages(true)
+    local activePage = self:getActivePageRecord()
+    if activePage ~= nil then
+        refreshRecordRetained(activePage)
+        flushDeferredRefreshesNow()
+    end
+    self:_syncRetained()
     self:_notifyRuntimeLayoutChanged()
 end
 
@@ -241,6 +350,12 @@ function TabHost:setActiveIndex(idx)
     self._activeIndex = nextIndex
     self._layoutDirty = true
     self:_layoutPages(true)
+    local activePage = self:getActivePageRecord()
+    if activePage ~= nil then
+        refreshRecordRetained(activePage)
+        flushDeferredRefreshesNow()
+    end
+    self:_syncRetained()
     self:_notifyRuntimeLayoutChanged()
     if self._onSelect and nextIndex > 0 then
         local page = self._pages[nextIndex]
@@ -253,22 +368,26 @@ function TabHost:setTabBarHeight(value)
     self._tabBarHeight = math.max(18, math.floor(tonumber(value) or self._tabBarHeight))
     self._layoutDirty = true
     self:_layoutPages(true)
+    self:_syncRetained()
     self:_notifyRuntimeLayoutChanged()
     self.node:repaint()
 end
 
 function TabHost:setBg(value)
     self._bg = value
+    self:_syncRetained()
     self.node:repaint()
 end
 
 function TabHost:setTextColour(value)
     self._textColour = value
+    self:_syncRetained()
     self.node:repaint()
 end
 
 function TabHost:setActiveTextColour(value)
     self._activeTextColour = value
+    self:_syncRetained()
     self.node:repaint()
 end
 
@@ -283,6 +402,7 @@ function TabHost:setStyle(style)
     if style.textColour ~= nil then self._textColour = style.textColour end
     if style.activeTextColour ~= nil then self._activeTextColour = style.activeTextColour end
     if style.tabSizing ~= nil then self._tabSizing = string.lower(tostring(style.tabSizing)) end
+    self:_syncRetained()
     self.node:repaint()
 end
 
@@ -298,6 +418,13 @@ function TabHost:onMouseDown(mx, my)
             return
         end
     end
+end
+
+function TabHost:_syncRetained(w, h)
+    w = math.floor(w or self.node:getWidth() or 0)
+    h = math.floor(h or self.node:getHeight() or 0)
+    self:_layoutPages(false)
+    setStyleAndDisplay(self, w, h)
 end
 
 function TabHost:onDraw(w, h)

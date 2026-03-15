@@ -226,11 +226,11 @@ local function attach(ctx, layers)
           node:setTimeL(250)
           node:setTimeR(375)
           node:setFeedback(0.3)
-          node:setPingPong(0)
-          node:setFilterEnabled(0)
+          node:setPingPong(false)
+          node:setFilterEnabled(false)
           node:setFilterCutoff(4000)
           node:setMix(0.5)
-          node:setFreeze(0)
+          node:setFreeze(false)
           node:setWidth(1.0)
           return { input = node, output = node, node = node }
         end,
@@ -239,11 +239,11 @@ local function attach(ctx, layers)
           { name = "timel", type = "f", min = 10.0, max = 2000.0, default = 250.0, apply = function(e, v) e.node:setTimeL(v) end },
           { name = "timer", type = "f", min = 10.0, max = 2000.0, default = 375.0, apply = function(e, v) e.node:setTimeR(v) end },
           { name = "feedback", type = "f", min = 0.0, max = 1.2, default = 0.3, apply = function(e, v) e.node:setFeedback(v) end },
-          { name = "pingpong", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setPingPong(v) end },
-          { name = "filter", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setFilterEnabled(v) end },
+          { name = "pingpong", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setPingPong(v > 0.5) end },
+          { name = "filter", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setFilterEnabled(v > 0.5) end },
           { name = "filtercutoff", type = "f", min = 200.0, max = 10000.0, default = 4000.0, apply = function(e, v) e.node:setFilterCutoff(v) end },
           { name = "mix", type = "f", min = 0.0, max = 1.0, default = 0.5, apply = function(e, v) e.node:setMix(v) end },
-          { name = "freeze", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setFreeze(v) end },
+          { name = "freeze", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setFreeze(v > 0.5) end },
           { name = "width", type = "f", min = 0.0, max = 2.0, default = 1.0, apply = function(e, v) e.node:setWidth(v) end },
         },
       },
@@ -332,7 +332,7 @@ local function attach(ctx, layers)
           { name = "position", type = "f", min = 0.0, max = 1.0, default = 0.6, apply = function(e, v) e.node:setPosition(v) end },
           { name = "pitch", type = "f", min = -24.0, max = 24.0, default = 0.0, apply = function(e, v) e.node:setPitch(v) end },
           { name = "spray", type = "f", min = 0.0, max = 1.0, default = 0.25, apply = function(e, v) e.node:setSpray(v) end },
-          { name = "freeze", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setFreeze(v) end },
+          { name = "freeze", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setFreeze(v > 0.5) end },
           { name = "envelope", type = "f", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setEnvelope(v) end },
           { name = "mix", type = "f", min = 0.0, max = 1.0, default = 1.0, apply = function(e, v) e.node:setMix(v) end },
         },
@@ -428,7 +428,7 @@ local function attach(ctx, layers)
           { name = "release", type = "f", min = 1.0, max = 1000.0, default = 100.0, apply = function(e, v) e.node:setRelease(v) end },
           { name = "knee", type = "f", min = 0.0, max = 20.0, default = 6.0, apply = function(e, v) e.node:setKnee(v) end },
           { name = "makeup", type = "f", min = 0.0, max = 40.0, default = 0.0, apply = function(e, v) e.node:setMakeup(v) end },
-          { name = "auto_makeup", type = "i", min = 0.0, max = 1.0, default = 1.0, apply = function(e, v) e.node:setAutoMakeup(v) end },
+          { name = "auto_makeup", type = "i", min = 0.0, max = 1.0, default = 1.0, apply = function(e, v) e.node:setAutoMakeup(v > 0.5) end },
           { name = "mode", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setMode(v) end },
           { name = "detector", type = "i", min = 0.0, max = 1.0, default = 0.0, apply = function(e, v) e.node:setDetectorMode(v) end },
           { name = "sidechain_hpf", type = "f", min = 20.0, max = 1000.0, default = 100.0, apply = function(e, v) e.node:setSidechainHPF(v) end },
@@ -490,7 +490,7 @@ local function attach(ctx, layers)
         params = {
           { name = "width", type = "f", min = 0.0, max = 2.0, default = 1.25, apply = function(e, v) e.node:setWidth(v) end },
           { name = "monolowfreq", type = "f", min = 20.0, max = 500.0, default = 140.0, apply = function(e, v) e.node:setMonoLowFreq(v) end },
-          { name = "monolowenable", type = "i", min = 0.0, max = 1.0, default = 1.0, apply = function(e, v) e.node:setMonoLowEnable(v) end },
+          { name = "monolowenable", type = "i", min = 0.0, max = 1.0, default = 1.0, apply = function(e, v) e.node:setMonoLowEnable(v > 0.5) end },
         },
       },
     }

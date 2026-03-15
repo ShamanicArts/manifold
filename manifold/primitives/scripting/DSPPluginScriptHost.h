@@ -27,6 +27,7 @@ public:
   bool reloadCurrentScript();
 
   bool isLoaded() const;
+  void markUnloaded();
   const std::string &getLastError() const;
   juce::File getCurrentScriptFile() const;
 

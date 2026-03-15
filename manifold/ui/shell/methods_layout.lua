@@ -14,6 +14,7 @@ local clamp = Base.clamp
 local nowSeconds = Base.nowSeconds
 local deriveNodeName = Base.deriveNodeName
 local fileStem = Base.fileStem
+local safeToFront = Base.safeToFront
 
 local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
 local SCRIPT_SYNTAX_COLOUR = ScriptEditor.SCRIPT_SYNTAX_COLOUR
@@ -121,6 +122,9 @@ function M.attach(shell)
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
         self:layout(w, h)
+        if type(self.flushDeferredRefreshes) == "function" then
+            self:flushDeferredRefreshes()
+        end
 
         if newMode == "edit" then
             self.treeRefreshPending = true
@@ -627,7 +631,7 @@ function M.attach(shell)
                 if self.editContentMode == "preview" then
                     self.content:setBounds(0, 0, math.floor(self.designW), math.floor(self.designH))
                     self.content:setTransform(scale, scale, self.contentTx, self.contentTy)
-                    self.content:toFront(false)
+                    safeToFront(self.content)
                 else
                     self.content:setBounds(0, 0, 0, 0)
                     self.content:clearTransform()
@@ -652,13 +656,13 @@ function M.attach(shell)
             -- Keep preview chrome above content, but keep side panels above any accidental overlap.
             -- Putting mainTabBar/mainTabContent above treePanel was a stupid move because any transient
             -- oversized bounds there can steal left-panel clicks before they ever hit the actual tabs.
-            self.mainTabContent:toFront(false)
-            self.mainTabBar:toFront(false)
-            self.previewOverlay:toFront(false)
-            self.treePanel.node:toFront(false)
-            self.inspectorPanel.node:toFront(false)
+            safeToFront(self.mainTabContent)
+            safeToFront(self.mainTabBar)
+            safeToFront(self.previewOverlay)
+            safeToFront(self.treePanel.node)
+            safeToFront(self.inspectorPanel.node)
             if shell.settingsOpen and shell.scriptOverlay then
-                shell.scriptOverlay:toFront(false)
+                safeToFront(shell.scriptOverlay)
             end
 
             if self.treeRefreshPending then
@@ -671,18 +675,20 @@ function M.attach(shell)
             self.previewOverlay:repaint()
         end
 
-        self.mainTabContent:toFront(false)
-        self.mainTabBar:toFront(false)
+        if self.mode == "performance" then
+            safeToFront(self.mainTabContent)
+            safeToFront(self.mainTabBar)
+        end
 
         self:updateConsoleBounds(totalW, totalH)
 
         -- Keep shell header above any transformed content.
-        self.panel.node:toFront(false)
+        safeToFront(self.panel.node)
         if self.console.visible then
-            self.consoleOverlay:toFront(false)
+            safeToFront(self.consoleOverlay)
         end
         if shell.settingsOpen and shell.scriptOverlay then
-            shell.scriptOverlay:toFront(false)
+            safeToFront(shell.scriptOverlay)
         end
 
         if type(self.syncToolSurfaces) == "function" then
@@ -690,6 +696,18 @@ function M.attach(shell)
         end
         if type(self.syncPerfOverlaySurface) == "function" then
             self:syncPerfOverlaySurface(totalW, totalH)
+        end
+
+        local rendererMode = type(getUIRendererMode) == "function"
+            and tostring(getUIRendererMode() or "canvas")
+            or "canvas"
+        if rendererMode ~= "canvas" then
+            if type(self._syncMainTabBarRetained) == "function" then
+                self:_syncMainTabBarRetained()
+            end
+            if type(self._syncMainTabContentRetained) == "function" then
+                self:_syncMainTabContentRetained()
+            end
         end
 
         shellLayoutPerfTrace("layout", perfStartMs,
@@ -733,24 +751,69 @@ function M.attach(shell)
 
     shell:publishUiStateToGlobals()
 
-    function shell:updateFromState(state)
+    local function buildChangedPathSet(changedPaths)
+        if type(changedPaths) ~= "table" then
+            return nil
+        end
+        local set = {}
+        for _, path in ipairs(changedPaths) do
+            if type(path) == "string" and path ~= "" then
+                set[path] = true
+            end
+        end
+        return set
+    end
+
+    local function changedAny(changedSet, ...)
+        if changedSet == nil then
+            return true
+        end
+        for i = 1, select("#", ...) do
+            local path = select(i, ...)
+            if changedSet[path] == true then
+                return true
+            end
+        end
+        return false
+    end
+
+    function shell:onStateChanged(changedPaths)
         -- Handle deferred mode switch to avoid blocking GUI thread during OpenGL context creation
         if self.deferredModeSwitch and self.deferredModeSwitch ~= self.mode then
             local modeToSwitch = self.deferredModeSwitch
             self.deferredModeSwitch = nil
             self:setMode(modeToSwitch)
         end
-        
-        local params = state and state.params or state or {}
+
+        local state = (type(_G) == "table" and type(_G.state) == "table") and _G.state or {}
+        local params = state.params or state or {}
+        local changedSet = buildChangedPathSet(changedPaths)
         local now = nowSeconds()
         self.stateParamsCache = params
 
         self:applyPendingRestoreState()
         self:refreshMainUiTabs()
 
-        self.masterKnob:setValue(readParam(params, "/core/behavior/volume", 0.8))
-        self.inputKnob:setValue(readParam(params, "/core/behavior/inputVolume", 1.0))
-        self.passthroughToggle:setValue(readBoolParam(params, "/core/behavior/passthrough", true))
+        if changedAny(changedSet,
+                "/core/behavior/volume",
+                "/manifold/volume",
+                "/dsp/manifold/volume") then
+            self.masterKnob:setValue(readParam(params, "/core/behavior/volume", 0.8))
+        end
+
+        if changedAny(changedSet,
+                "/core/behavior/inputVolume",
+                "/manifold/inputVolume",
+                "/dsp/manifold/inputVolume") then
+            self.inputKnob:setValue(readParam(params, "/core/behavior/inputVolume", 1.0))
+        end
+
+        if changedAny(changedSet,
+                "/core/behavior/passthrough",
+                "/manifold/passthrough",
+                "/dsp/manifold/passthrough") then
+            self.passthroughToggle:setValue(readBoolParam(params, "/core/behavior/passthrough", true))
+        end
 
         local allowLiveViewUpdates = true
         if self.mode == "edit" and self.leftPanelMode == "hierarchy" then
@@ -758,11 +821,11 @@ function M.attach(shell)
         end
 
         if allowLiveViewUpdates and self.performanceView and type(self.performanceView.update) == "function" then
-            self.performanceView.update(state)
+            self.performanceView.update(changedPaths)
         end
 
         if shell.settingsOpen and shell.scriptOverlay then
-            shell.scriptOverlay:toFront(false)
+            safeToFront(shell.scriptOverlay)
         end
 
         if self.mode == "edit" then
@@ -807,8 +870,16 @@ function M.attach(shell)
                 self.uiRepaintLastAt = now
             end
         end
+    end
 
-        -- Content updates handled by C++ calling ui_update directly
+    function shell:updateFromState(stateOrChangedPaths)
+        if type(stateOrChangedPaths) == "table" and stateOrChangedPaths.params ~= nil then
+            if type(_G) == "table" then
+                _G.state = stateOrChangedPaths
+            end
+            return self:onStateChanged(nil)
+        end
+        return self:onStateChanged(stateOrChangedPaths)
     end
 
 

@@ -16,6 +16,7 @@ extern "C" {
 
 #include <tuple>
 #include <utility>
+#include <vector>
 
 using namespace juce::gl;
 
@@ -26,9 +27,80 @@ using namespace juce::gl;
 namespace {
     // Current graphics context - only valid during paint callback
     thread_local juce::Graphics* currentGraphics = nullptr;
-    
+
+    struct RecordedDrawState {
+        uint32_t color = 0xffffffffu;
+        float fontSize = 13.0f;
+    };
+
+    struct RuntimeDrawRecorder {
+        juce::Array<juce::var> commands;
+        RecordedDrawState state;
+        std::vector<RecordedDrawState> stateStack;
+        RuntimeNode* node = nullptr;
+    };
+
+    thread_local RuntimeDrawRecorder* currentRuntimeDrawRecorder = nullptr;
+    thread_local RuntimeNode* currentRuntimeDrawNode = nullptr;
+    thread_local bool currentRuntimeDrawMutatedDisplayList = false;
+
     // Callback for display list broadcasting (set by BehaviorCoreEditor)
     std::function<void(const std::string&)> displayListCallback;
+
+    std::unique_ptr<juce::DynamicObject> makeDisplayListCommand(const juce::String& cmdName) {
+        auto cmd = std::make_unique<juce::DynamicObject>();
+        cmd->setProperty("cmd", cmdName);
+        return cmd;
+    }
+
+    void pushRecordedCommand(std::unique_ptr<juce::DynamicObject> cmd) {
+        if (currentRuntimeDrawRecorder == nullptr || cmd == nullptr) {
+            return;
+        }
+        currentRuntimeDrawRecorder->commands.add(juce::var(cmd.release()));
+    }
+
+    void applyRecordedDrawState(juce::DynamicObject& cmd) {
+        if (currentRuntimeDrawRecorder == nullptr) {
+            return;
+        }
+        cmd.setProperty("color", juce::var(static_cast<juce::int64>(currentRuntimeDrawRecorder->state.color)));
+        cmd.setProperty("fontSize", currentRuntimeDrawRecorder->state.fontSize);
+    }
+
+    std::pair<std::string, std::string> justificationToAlign(int justification) {
+        juce::Justification just(justification);
+
+        std::string align = "left";
+        if (just.testFlags(juce::Justification::horizontallyCentred)) {
+            align = "center";
+        } else if (just.testFlags(juce::Justification::right)) {
+            align = "right";
+        }
+
+        std::string valign = "top";
+        if (just.testFlags(juce::Justification::verticallyCentred)) {
+            valign = "middle";
+        } else if (just.testFlags(juce::Justification::bottom)) {
+            valign = "bottom";
+        }
+
+        return {align, valign};
+    }
+
+    void clearRuntimeCallbackSlot(Canvas& c, const std::function<void(RuntimeNode::CallbackSlots&)>& clearFn) {
+        if (auto* node = c.getRuntimeNode()) {
+            clearFn(node->getCallbacks());
+            node->markPropsDirty();
+        }
+    }
+
+    void setRuntimeCallbackSlot(Canvas& c, const std::function<void(RuntimeNode::CallbackSlots&)>& setFn) {
+        if (auto* node = c.getRuntimeNode()) {
+            setFn(node->getCallbacks());
+            node->markPropsDirty();
+        }
+    }
 
     template <typename Fn>
     void callAsyncIfCanvasAlive(Canvas& c, Fn&& fn) {
@@ -162,6 +234,60 @@ void LuaUIBindings::setDisplayListCallback(std::function<void(const std::string&
     displayListCallback = std::move(callback);
 }
 
+bool LuaUIBindings::invokeRuntimeNodeDrawForRetained(LuaCoreEngine& engine, RuntimeNode& node) {
+    auto& fn = node.getCallbacks().onDraw;
+    if (!fn.valid()) {
+        return false;
+    }
+
+    if (currentRuntimeDrawNode == &node) {
+        return false;
+    }
+
+    const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
+
+    RuntimeDrawRecorder recorder;
+    recorder.node = &node;
+
+    auto* previousRecorder = currentRuntimeDrawRecorder;
+    auto* previousNode = currentRuntimeDrawNode;
+    const bool previousMutationFlag = currentRuntimeDrawMutatedDisplayList;
+    auto* previousGraphics = currentGraphics;
+
+    currentRuntimeDrawRecorder = &recorder;
+    currentRuntimeDrawNode = &node;
+    currentRuntimeDrawMutatedDisplayList = false;
+    currentGraphics = nullptr;
+
+    auto result = fn(std::ref(node));
+
+    currentGraphics = previousGraphics;
+    const bool mutatedDisplayList = currentRuntimeDrawMutatedDisplayList;
+    currentRuntimeDrawMutatedDisplayList = previousMutationFlag;
+    currentRuntimeDrawNode = previousNode;
+    currentRuntimeDrawRecorder = previousRecorder;
+
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "LuaUI: RuntimeNode invokeDrawForRetained error: %s\n", err.what());
+        return false;
+    }
+
+    if (recorder.commands.size() > 0) {
+        node.setDisplayList(juce::var(recorder.commands));
+    } else if (!mutatedDisplayList) {
+        node.clearDisplayList();
+    }
+
+    return recorder.commands.size() > 0 || mutatedDisplayList;
+}
+
+void LuaUIBindings::noteRuntimeNodeDisplayListMutation(RuntimeNode& node) {
+    if (currentRuntimeDrawNode == &node) {
+        currentRuntimeDrawMutatedDisplayList = true;
+    }
+}
+
 void LuaUIBindings::registerBindings(LuaCoreEngine& engine, Canvas* rootCanvas) {
     auto& lua = engine.getLuaState();
     
@@ -228,6 +354,7 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "getNodeId", [](Canvas& c) { return c.getNodeId(); },
         "setWidgetType", [](Canvas& c, const std::string& type) { c.setWidgetType(type); },
         "getWidgetType", [](Canvas& c) { return c.getWidgetType(); },
+        "getRuntimeNode", [](Canvas& c) { return c.getRuntimeNode(); },
         "getInputCapabilities",
         [&lua](Canvas& c) {
             const auto caps = c.getInputCapabilities();
@@ -361,6 +488,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "setOnClick",
         [&engine](Canvas& c, sol::function fn) {
             if (fn.valid()) {
+                setRuntimeCallbackSlot(c, [fn](RuntimeNode::CallbackSlots& slots) mutable {
+                    slots.onClick = fn;
+                });
                 c.onClick = [fn, &engine]() mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
                     auto result = fn();
@@ -373,6 +503,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
                 callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    clearRuntimeCallbackSlot(canvas, [](RuntimeNode::CallbackSlots& slots) {
+                        slots.onClick = sol::lua_nil;
+                    });
                     canvas.onClick = nullptr;
                     canvas.syncInputCapabilities();
                 });
@@ -382,6 +515,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "setOnMouseDown",
         [&engine](Canvas& c, sol::function fn) {
             if (fn.valid()) {
+                setRuntimeCallbackSlot(c, [fn](RuntimeNode::CallbackSlots& slots) mutable {
+                    slots.onMouseDown = fn;
+                });
                 c.onMouseDown = [fn, &engine](const juce::MouseEvent& e) mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
                     const auto mods = e.mods;
@@ -398,6 +534,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
                 callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    clearRuntimeCallbackSlot(canvas, [](RuntimeNode::CallbackSlots& slots) {
+                        slots.onMouseDown = sol::lua_nil;
+                    });
                     canvas.onMouseDown = nullptr;
                     canvas.syncInputCapabilities();
                 });
@@ -407,6 +546,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "setOnMouseDrag",
         [&engine](Canvas& c, sol::function fn) {
             if (fn.valid()) {
+                setRuntimeCallbackSlot(c, [fn](RuntimeNode::CallbackSlots& slots) mutable {
+                    slots.onMouseDrag = fn;
+                });
                 c.onMouseDrag = [fn, &engine](const juce::MouseEvent& e) mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
                     const auto mods = e.mods;
@@ -425,6 +567,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
                 callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    clearRuntimeCallbackSlot(canvas, [](RuntimeNode::CallbackSlots& slots) {
+                        slots.onMouseDrag = sol::lua_nil;
+                    });
                     canvas.onMouseDrag = nullptr;
                     canvas.syncInputCapabilities();
                 });
@@ -434,6 +579,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "setOnMouseUp",
         [&engine](Canvas& c, sol::function fn) {
             if (fn.valid()) {
+                setRuntimeCallbackSlot(c, [fn](RuntimeNode::CallbackSlots& slots) mutable {
+                    slots.onMouseUp = fn;
+                });
                 c.onMouseUp = [fn, &engine](const juce::MouseEvent& e) mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
                     const auto mods = e.mods;
@@ -450,6 +598,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
                 callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    clearRuntimeCallbackSlot(canvas, [](RuntimeNode::CallbackSlots& slots) {
+                        slots.onMouseUp = sol::lua_nil;
+                    });
                     canvas.onMouseUp = nullptr;
                     canvas.syncInputCapabilities();
                 });
@@ -459,6 +610,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "setOnDoubleClick",
         [&engine](Canvas& c, sol::function fn) {
             if (fn.valid()) {
+                setRuntimeCallbackSlot(c, [fn](RuntimeNode::CallbackSlots& slots) mutable {
+                    slots.onDoubleClick = fn;
+                });
                 c.onDoubleClick = [fn, &engine]() mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
                     auto result = fn();
@@ -471,6 +625,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
                 callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    clearRuntimeCallbackSlot(canvas, [](RuntimeNode::CallbackSlots& slots) {
+                        slots.onDoubleClick = sol::lua_nil;
+                    });
                     canvas.onDoubleClick = nullptr;
                     canvas.syncInputCapabilities();
                 });
@@ -480,6 +637,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "setOnMouseWheel",
         [&engine](Canvas& c, sol::function fn) {
             if (fn.valid()) {
+                setRuntimeCallbackSlot(c, [fn](RuntimeNode::CallbackSlots& slots) mutable {
+                    slots.onMouseWheel = fn;
+                });
                 c.onMouseWheel = [fn, &engine](const juce::MouseEvent& e,
                                       const juce::MouseWheelDetails& wheel) mutable {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
@@ -497,6 +657,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
                 callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    clearRuntimeCallbackSlot(canvas, [](RuntimeNode::CallbackSlots& slots) {
+                        slots.onMouseWheel = sol::lua_nil;
+                    });
                     canvas.onMouseWheel = nullptr;
                     canvas.syncInputCapabilities();
                 });
@@ -510,7 +673,12 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         },
 
         "grabKeyboardFocus",
-        [](Canvas& c) { c.grabKeyboardFocus(); },
+        [](Canvas& c) {
+            c.grabKeyboardFocus();
+            if (auto* node = c.getRuntimeNode()) {
+                node->setFocused(true);
+            }
+        },
 
         "hasKeyboardFocus",
         [](Canvas& c) { return c.hasKeyboardFocus(true); },
@@ -518,6 +686,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
         "setOnKeyPress",
         [&engine](Canvas& c, sol::function fn) {
             if (fn.valid()) {
+                setRuntimeCallbackSlot(c, [fn](RuntimeNode::CallbackSlots& slots) mutable {
+                    slots.onKeyPress = fn;
+                });
                 c.onKeyPress = [fn, &engine](const juce::KeyPress& key) mutable -> bool {
                     const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
                     const auto mods = key.getModifiers();
@@ -542,6 +713,9 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
                 callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
+                    clearRuntimeCallbackSlot(canvas, [](RuntimeNode::CallbackSlots& slots) {
+                        slots.onKeyPress = sol::lua_nil;
+                    });
                     canvas.onKeyPress = nullptr;
                     canvas.syncInputCapabilities();
                 });
@@ -561,11 +735,33 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                     }
                     currentGraphics = nullptr;
                 };
+                // Store a wrapper that invokes the Lua draw function without a Graphics context.
+                // gfx.* calls become no-ops (currentGraphics is nullptr), but
+                // node:setDisplayList() still works for retained display list refresh.
+                c.invokeDrawForRetainedFn = [fn, &engine](Canvas& self) mutable {
+                    const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
+                    // currentGraphics is already nullptr — gfx.* calls will be no-ops
+                    auto result = fn(std::ref(self));
+                    if (!result.valid()) {
+                        sol::error err = result;
+                        std::fprintf(stderr, "LuaUI: invokeDrawForRetained error: %s\n", err.what());
+                    }
+                };
             } else {
                 // Defer clearing to avoid destroying the callback while it's running
                 callAsyncIfCanvasAlive(c, [](Canvas& canvas) {
                     canvas.onDraw = nullptr;
+                    canvas.invokeDrawForRetainedFn = nullptr;
                 });
+            }
+        },
+
+        // Invoke the onDraw callback without a Graphics context (for retained display list refresh).
+        // gfx.* calls become no-ops, but node:setDisplayList() still works.
+        "invokeDrawForRetained",
+        [](Canvas& c) {
+            if (c.invokeDrawForRetainedFn) {
+                c.invokeDrawForRetainedFn(c);
             }
         },
 
@@ -641,36 +837,67 @@ void LuaUIBindings::registerGraphicsBindings(sol::state& lua) {
     auto gfx = lua.create_named_table("gfx");
 
     gfx["setColour"] = [](uint32_t argb) {
+        if (currentRuntimeDrawRecorder != nullptr) {
+            currentRuntimeDrawRecorder->state.color = argb;
+        }
         if (currentGraphics)
             currentGraphics->setColour(juce::Colour(argb));
     };
 
     gfx["setFont"] = sol::overload(
         [](float size) {
+            if (currentRuntimeDrawRecorder != nullptr) {
+                currentRuntimeDrawRecorder->state.fontSize = size;
+            }
             if (currentGraphics)
                 currentGraphics->setFont(juce::Font(size));
         },
         [](const std::string& name, float size) {
+            if (currentRuntimeDrawRecorder != nullptr) {
+                currentRuntimeDrawRecorder->state.fontSize = size;
+            }
             if (currentGraphics)
                 currentGraphics->setFont(juce::Font(name, size, juce::Font::plain));
         },
         [](const std::string& name, float size, int flags) {
+            if (currentRuntimeDrawRecorder != nullptr) {
+                currentRuntimeDrawRecorder->state.fontSize = size;
+            }
             if (currentGraphics)
                 currentGraphics->setFont(juce::Font(name, size, flags));
         }
     );
 
     gfx["save"] = []() {
+        if (currentRuntimeDrawRecorder != nullptr) {
+            currentRuntimeDrawRecorder->stateStack.push_back(currentRuntimeDrawRecorder->state);
+            pushRecordedCommand(makeDisplayListCommand("save"));
+        }
         if (currentGraphics)
             currentGraphics->saveState();
     };
 
     gfx["restore"] = []() {
+        if (currentRuntimeDrawRecorder != nullptr) {
+            if (!currentRuntimeDrawRecorder->stateStack.empty()) {
+                currentRuntimeDrawRecorder->state = currentRuntimeDrawRecorder->stateStack.back();
+                currentRuntimeDrawRecorder->stateStack.pop_back();
+            }
+            pushRecordedCommand(makeDisplayListCommand("restore"));
+        }
         if (currentGraphics)
             currentGraphics->restoreState();
     };
 
     gfx["clipRect"] = [](int x, int y, int w, int h) {
+        if (currentRuntimeDrawRecorder != nullptr) {
+            auto cmd = makeDisplayListCommand("clipRect");
+            cmd->setProperty("x", x);
+            cmd->setProperty("y", y);
+            cmd->setProperty("w", w);
+            cmd->setProperty("h", h);
+            pushRecordedCommand(std::move(cmd));
+        }
         if (currentGraphics)
             currentGraphics->reduceClipRegion(juce::Rectangle<int>(x, y, w, h));
     };
@@ -682,8 +909,21 @@ void LuaUIBindings::registerGraphicsBindings(sol::state& lua) {
 
     gfx["drawText"] = [](const std::string& text, int x, int y, int w, int h,
                          sol::optional<int> justification) {
+        const int just = justification.value_or(36);
+        if (currentRuntimeDrawRecorder != nullptr) {
+            auto cmd = makeDisplayListCommand("drawText");
+            cmd->setProperty("x", x);
+            cmd->setProperty("y", y);
+            cmd->setProperty("w", w);
+            cmd->setProperty("h", h);
+            cmd->setProperty("text", juce::String(text));
+            const auto [align, valign] = justificationToAlign(just);
+            cmd->setProperty("align", juce::String(align));
+            cmd->setProperty("valign", juce::String(valign));
+            applyRecordedDrawState(*cmd);
+            pushRecordedCommand(std::move(cmd));
+        }
         if (currentGraphics) {
-            int just = justification.value_or(36);
             currentGraphics->drawText(juce::String(text),
                                       juce::Rectangle<int>(x, y, w, h),
                                       juce::Justification(just));
@@ -691,53 +931,153 @@ void LuaUIBindings::registerGraphicsBindings(sol::state& lua) {
     };
 
     gfx["fillRect"] = [](float x, float y, float w, float h) {
+        if (currentRuntimeDrawRecorder != nullptr) {
+            auto cmd = makeDisplayListCommand("fillRect");
+            cmd->setProperty("x", x);
+            cmd->setProperty("y", y);
+            cmd->setProperty("w", w);
+            cmd->setProperty("h", h);
+            applyRecordedDrawState(*cmd);
+            pushRecordedCommand(std::move(cmd));
+        }
         if (currentGraphics)
             currentGraphics->fillRect(x, y, w, h);
     };
 
     gfx["fillRoundedRect"] = [](float x, float y, float w, float h, float radius) {
+        if (currentRuntimeDrawRecorder != nullptr) {
+            auto cmd = makeDisplayListCommand("fillRoundedRect");
+            cmd->setProperty("x", x);
+            cmd->setProperty("y", y);
+            cmd->setProperty("w", w);
+            cmd->setProperty("h", h);
+            cmd->setProperty("radius", radius);
+            applyRecordedDrawState(*cmd);
+            pushRecordedCommand(std::move(cmd));
+        }
         if (currentGraphics)
             currentGraphics->fillRoundedRectangle(x, y, w, h, radius);
     };
 
     gfx["drawRoundedRect"] = [](float x, float y, float w, float h,
                                 float radius, float lineThickness) {
+        if (currentRuntimeDrawRecorder != nullptr) {
+            auto cmd = makeDisplayListCommand("drawRoundedRect");
+            cmd->setProperty("x", x);
+            cmd->setProperty("y", y);
+            cmd->setProperty("w", w);
+            cmd->setProperty("h", h);
+            cmd->setProperty("radius", radius);
+            cmd->setProperty("thickness", lineThickness);
+            applyRecordedDrawState(*cmd);
+            pushRecordedCommand(std::move(cmd));
+        }
         if (currentGraphics)
             currentGraphics->drawRoundedRectangle(x, y, w, h, radius, lineThickness);
     };
 
     gfx["drawRect"] = sol::overload(
         [](int x, int y, int w, int h) {
+            if (currentRuntimeDrawRecorder != nullptr) {
+                auto cmd = makeDisplayListCommand("drawRect");
+                cmd->setProperty("x", x);
+                cmd->setProperty("y", y);
+                cmd->setProperty("w", w);
+                cmd->setProperty("h", h);
+                cmd->setProperty("thickness", 1);
+                applyRecordedDrawState(*cmd);
+                pushRecordedCommand(std::move(cmd));
+            }
             if (currentGraphics)
                 currentGraphics->drawRect(x, y, w, h);
         },
         [](int x, int y, int w, int h, int lineThickness) {
+            if (currentRuntimeDrawRecorder != nullptr) {
+                auto cmd = makeDisplayListCommand("drawRect");
+                cmd->setProperty("x", x);
+                cmd->setProperty("y", y);
+                cmd->setProperty("w", w);
+                cmd->setProperty("h", h);
+                cmd->setProperty("thickness", lineThickness);
+                applyRecordedDrawState(*cmd);
+                pushRecordedCommand(std::move(cmd));
+            }
             if (currentGraphics)
                 currentGraphics->drawRect(x, y, w, h, lineThickness);
         }
     );
 
     gfx["drawVerticalLine"] = [](int x, float top, float bottom) {
+        if (currentRuntimeDrawRecorder != nullptr) {
+            auto cmd = makeDisplayListCommand("drawLine");
+            cmd->setProperty("x1", x);
+            cmd->setProperty("y1", top);
+            cmd->setProperty("x2", x);
+            cmd->setProperty("y2", bottom);
+            cmd->setProperty("thickness", 1.0);
+            applyRecordedDrawState(*cmd);
+            pushRecordedCommand(std::move(cmd));
+        }
         if (currentGraphics)
             currentGraphics->drawVerticalLine(x, top, bottom);
     };
 
     gfx["drawHorizontalLine"] = [](int y, float left, float right) {
+        if (currentRuntimeDrawRecorder != nullptr) {
+            auto cmd = makeDisplayListCommand("drawLine");
+            cmd->setProperty("x1", left);
+            cmd->setProperty("y1", y);
+            cmd->setProperty("x2", right);
+            cmd->setProperty("y2", y);
+            cmd->setProperty("thickness", 1.0);
+            applyRecordedDrawState(*cmd);
+            pushRecordedCommand(std::move(cmd));
+        }
         if (currentGraphics)
             currentGraphics->drawHorizontalLine(y, left, right);
     };
 
     gfx["fillAll"] = []() {
+        if (currentRuntimeDrawRecorder != nullptr && currentRuntimeDrawRecorder->node != nullptr) {
+            const auto& bounds = currentRuntimeDrawRecorder->node->getBounds();
+            auto cmd = makeDisplayListCommand("fillRect");
+            cmd->setProperty("x", 0);
+            cmd->setProperty("y", 0);
+            cmd->setProperty("w", bounds.w);
+            cmd->setProperty("h", bounds.h);
+            applyRecordedDrawState(*cmd);
+            pushRecordedCommand(std::move(cmd));
+        }
         if (currentGraphics)
             currentGraphics->fillAll();
     };
 
     gfx["drawLine"] = sol::overload(
         [](float x1, float y1, float x2, float y2) {
+            if (currentRuntimeDrawRecorder != nullptr) {
+                auto cmd = makeDisplayListCommand("drawLine");
+                cmd->setProperty("x1", x1);
+                cmd->setProperty("y1", y1);
+                cmd->setProperty("x2", x2);
+                cmd->setProperty("y2", y2);
+                cmd->setProperty("thickness", 1.0);
+                applyRecordedDrawState(*cmd);
+                pushRecordedCommand(std::move(cmd));
+            }
             if (currentGraphics)
                 currentGraphics->drawLine(x1, y1, x2, y2);
         },
         [](float x1, float y1, float x2, float y2, float lineThickness) {
+            if (currentRuntimeDrawRecorder != nullptr) {
+                auto cmd = makeDisplayListCommand("drawLine");
+                cmd->setProperty("x1", x1);
+                cmd->setProperty("y1", y1);
+                cmd->setProperty("x2", x2);
+                cmd->setProperty("y2", y2);
+                cmd->setProperty("thickness", lineThickness);
+                applyRecordedDrawState(*cmd);
+                pushRecordedCommand(std::move(cmd));
+            }
             if (currentGraphics)
                 currentGraphics->drawLine(x1, y1, x2, y2, lineThickness);
         }

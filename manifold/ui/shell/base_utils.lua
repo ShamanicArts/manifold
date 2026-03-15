@@ -86,4 +86,17 @@ function M.fileStem(path)
     return name:gsub("%.lua$", "")
 end
 
+-- Safe wrappers for Canvas-only APIs that may not exist on RuntimeNode
+function M.safeToFront(node)
+    if node ~= nil and type(node.toFront) == "function" then
+        node:toFront(false)
+    end
+end
+
+function M.safeGrabKeyboardFocus(node)
+    if node ~= nil and type(node.grabKeyboardFocus) == "function" then
+        node:grabKeyboardFocus()
+    end
+end
+
 return M

@@ -14,6 +14,8 @@ local clamp = Base.clamp
 local nowSeconds = Base.nowSeconds
 local deriveNodeName = Base.deriveNodeName
 local fileStem = Base.fileStem
+local safeToFront = Base.safeToFront
+local safeGrabKeyboardFocus = Base.safeGrabKeyboardFocus
 
 local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
 local SCRIPT_SYNTAX_COLOUR = ScriptEditor.SCRIPT_SYNTAX_COLOUR
@@ -110,6 +112,160 @@ function M.attach(shell)
         }
     end
 
+    local function currentRendererMode()
+        if type(getUIRendererMode) ~= "function" then
+            return "canvas"
+        end
+        return tostring(getUIRendererMode() or "canvas")
+    end
+
+    local function rendererModeIsCanvas()
+        return currentRendererMode() == "canvas"
+    end
+
+    local function rendererModeIsDirect()
+        return currentRendererMode() == "imgui-direct"
+    end
+
+    local function setWidgetBounds(widget, x, y, w, h)
+        if widget == nil then
+            return
+        end
+        if type(widget.setBounds) == "function" then
+            widget:setBounds(x, y, w, h)
+        elseif widget.node and type(widget.node.setBounds) == "function" then
+            widget.node:setBounds(x, y, w, h)
+        end
+    end
+
+    shell._animatedWidgets = shell._animatedWidgets or {}
+    shell._deferredRefreshes = shell._deferredRefreshes or {}
+    shell._deferredRefreshGeneration = shell._deferredRefreshGeneration or 0
+
+    function shell:registerAnimatedWidget(widget)
+        if type(widget) == "table" then
+            self._animatedWidgets[widget] = true
+        end
+    end
+
+    function shell:unregisterAnimatedWidget(widget)
+        if type(widget) == "table" then
+            self._animatedWidgets[widget] = nil
+        end
+    end
+
+    function shell:tickRetainedAnimations(deltaSeconds)
+        for widget in pairs(self._animatedWidgets) do
+            if type(widget) == "table" and type(widget.tickRetained) == "function" then
+                widget:tickRetained(deltaSeconds)
+            end
+        end
+    end
+
+    function shell:deferRetainedRefresh(fn)
+        if type(fn) == "function" then
+            table.insert(self._deferredRefreshes, fn)
+        end
+    end
+
+    function shell:flushDeferredRefreshes()
+        while #self._deferredRefreshes > 0 do
+            local pending = self._deferredRefreshes
+            self._deferredRefreshes = {}
+            for i = 1, #pending do
+                pending[i]()
+            end
+        end
+    end
+
+    function shell:clearDeferredRefreshes()
+        self._deferredRefreshes = {}
+        self._deferredRefreshGeneration = (tonumber(self._deferredRefreshGeneration) or 0) + 1
+    end
+
+    local function refreshRetainedRecursive(node)
+        if node == nil then
+            return
+        end
+
+        if node.getUserData ~= nil then
+            local meta = node:getUserData("_editorMeta")
+            if type(meta) == "table" then
+                local widget = meta.widget
+                if type(widget) == "table" and type(widget.refreshRetained) == "function" then
+                    local w = 0
+                    local h = 0
+                    if node.getWidth ~= nil and node.getHeight ~= nil then
+                        w = tonumber(node:getWidth()) or 0
+                        h = tonumber(node:getHeight()) or 0
+                    elseif node.getBounds ~= nil then
+                        local _, _, bw, bh = node:getBounds()
+                        w = tonumber(bw) or 0
+                        h = tonumber(bh) or 0
+                    end
+                    widget:refreshRetained(w, h)
+                end
+            end
+        end
+
+        -- imgui-direct must not depend on Canvas-style draw callback replay.
+        -- Standard runtime widgets build retained display lists directly via
+        -- refreshRetained(); only legacy replace/overlay paths should use the
+        -- invokeDrawForRetained compatibility hook.
+        if (not rendererModeIsDirect()) and node.invokeDrawForRetained ~= nil then
+            local ok, err = pcall(function() node:invokeDrawForRetained() end)
+            if not ok and err then
+                -- Silently ignore — some nodes may not support this
+            end
+        end
+
+        if node.getNumChildren ~= nil and node.getChild ~= nil then
+            local childCount = math.max(0, math.floor(tonumber(node:getNumChildren()) or 0))
+            for i = 0, childCount - 1 do
+                local child = node:getChild(i)
+                if child ~= nil then
+                    refreshRetainedRecursive(child)
+                end
+            end
+        end
+    end
+
+    local function tickRetainedRecursive(node, deltaSeconds)
+        if node == nil then
+            return
+        end
+
+        if node.getUserData ~= nil then
+            local meta = node:getUserData("_editorMeta")
+            if type(meta) == "table" then
+                local widget = meta.widget
+                if type(widget) == "table" and type(widget.tickRetained) == "function" then
+                    widget:tickRetained(deltaSeconds)
+                end
+            end
+        end
+
+        -- imgui-direct does not use draw-callback replay in the hot path.
+        -- Dynamic runtime content must update its retained display lists from
+        -- explicit retained sync/tick code instead of Canvas-style onDraw hooks.
+        if (not rendererModeIsDirect()) and node.invokeDrawForRetained ~= nil then
+            local ok, err = pcall(function() node:invokeDrawForRetained() end)
+            if not ok and err then
+                -- silently ignore
+            end
+        end
+
+        if node.getNumChildren ~= nil and node.getChild ~= nil then
+            local childCount = math.max(0, math.floor(tonumber(node:getNumChildren()) or 0))
+            for i = 0, childCount - 1 do
+                local child = node:getChild(i)
+                if child ~= nil then
+                    tickRetainedRecursive(child, deltaSeconds)
+                end
+            end
+        end
+    end
+
     local function normalizeSurfaceDescriptor(id, descriptor)
         local d = type(descriptor) == "table" and descriptor or {}
         return {
@@ -177,8 +333,8 @@ function M.attach(shell)
     function shell:getDefaultPerfOverlayBounds(totalW, totalH)
         local w = math.max(1, math.floor(tonumber(totalW) or self.parentNode:getWidth() or 0))
         local h = math.max(1, math.floor(tonumber(totalH) or self.parentNode:getHeight() or 0))
-        local panelW = math.min(520, math.max(320, math.floor(w * 0.42)))
-        local panelH = math.min(420, math.max(220, math.floor(h * 0.55)))
+        local panelW = math.min(700, math.max(560, math.floor(w * 0.48)))
+        local panelH = math.min(620, math.max(520, math.floor(h * 0.68)))
         return {
             x = math.max(0, w - panelW - 16),
             y = 16,
@@ -198,6 +354,8 @@ function M.attach(shell)
             self.perfOverlay.bounds = cloneRect(bounds)
         else
             bounds = cloneRect(bounds)
+            bounds.w = math.max(560, math.floor(tonumber(bounds.w) or 0))
+            bounds.h = math.max(520, math.floor(tonumber(bounds.h) or 0))
             self.perfOverlay.bounds = bounds
         end
 
@@ -727,14 +885,14 @@ function M.attach(shell)
         end
         c.scrollOffset = 0
         self.consoleOverlay:repaint()
+        if c.visible and type(self._syncConsoleOverlayRetained) == "function" then
+            self:_syncConsoleOverlayRetained()
+        end
     end
 
     function shell:setConsoleVisible(visible)
         local c = self.console
         local nextVisible = visible == true
-        if c.visible == nextVisible then
-            return
-        end
 
         c.visible = nextVisible
         if c.visible then
@@ -742,12 +900,16 @@ function M.attach(shell)
             local h = self.parentNode:getHeight()
             self:layout(w, h)
             self.consoleOverlay:setInterceptsMouse(true, true)
-            self.consoleOverlay:toFront(false)
-            self.consoleOverlay:grabKeyboardFocus()
+            safeToFront(self.consoleOverlay)
+            safeGrabKeyboardFocus(self.consoleOverlay)
+            if type(self._syncConsoleOverlayRetained) == "function" then
+                self:_syncConsoleOverlayRetained()
+            end
             self.consoleOverlay:repaint()
         else
             self.consoleOverlay:setInterceptsMouse(false, false)
             self.consoleOverlay:setBounds(0, 0, 0, 0)
+            self.consoleOverlay:clearDisplayList()
         end
     end
 
@@ -788,7 +950,7 @@ function M.attach(shell)
 
         c.rect = { x = cx, y = cy, w = cw, h = ch }
         self.consoleOverlay:setBounds(cx, cy, cw, ch)
-        self.consoleOverlay:toFront(false)
+        safeToFront(self.consoleOverlay)
     end
 
     function shell:deriveActiveDebugIdentifier()
@@ -887,6 +1049,9 @@ function M.attach(shell)
         self:setConsoleVisible(true)
         self.console.input = text
         self.console.historyIndex = 0
+        if type(self._syncConsoleOverlayRetained) == "function" then
+            self:_syncConsoleOverlayRetained()
+        end
         self.consoleOverlay:repaint()
         return true
     end
@@ -922,11 +1087,15 @@ function M.attach(shell)
 
         if cmd == "help" then
             self:appendConsoleLine("help | clear | get <path> | set <path> <value> | trigger <path>")
-            self:appendConsoleLine("undo | redo | sel | copyid | dev [status|on|off|toggle] | perf [on|off|toggle|tab <name>|reset] | ui <scriptPath> | lua <expr>")
+            self:appendConsoleLine("undo | redo | sel | copyid | dev [status|on|off|toggle] | renderer [status|toggle|imgui-direct|imgui-overlay|imgui-replace]")
+            self:appendConsoleLine("perf [on|off|toggle|tab <name>|reset] | ui <scriptPath> | lua <expr>")
             return
         elseif cmd == "clear" then
             self.console.lines = {}
             self.console.scrollOffset = 0
+            if self.console.visible and type(self._syncConsoleOverlayRetained) == "function" then
+                self:_syncConsoleOverlayRetained()
+            end
             self.consoleOverlay:repaint()
             return
         elseif cmd == "get" then
@@ -1018,6 +1187,52 @@ function M.attach(shell)
 
             self:appendConsoleLine("dev mode: " .. (self.devModeEnabled and "on" or "off"), 0xff86efac)
             return
+        elseif cmd == "renderer" or cmd == "render" or cmd == "imgui" then
+            local argRaw = words[2]
+            local arg = string.lower(argRaw or "")
+            local currentMode = "imgui-direct"
+            if type(getUIRendererMode) == "function" then
+                currentMode = tostring(getUIRendererMode() or "imgui-direct")
+            end
+
+            if arg == "" or arg == "status" then
+                self:appendConsoleLine("renderer: " .. currentMode, 0xff86efac)
+                self:appendConsoleLine("usage: renderer toggle | renderer imgui-direct | renderer imgui-overlay | renderer imgui-replace")
+                self:appendConsoleLine("note: canvas is legacy and slated for removal", 0xfffbbf24)
+                return
+            end
+
+            local targetMode = arg
+            if arg == "toggle" then
+                if currentMode == "imgui-direct" then
+                    targetMode = "imgui-replace"
+                else
+                    targetMode = "imgui-direct"
+                end
+            elseif arg == "direct" then
+                targetMode = "imgui-direct"
+            elseif arg == "overlay" or arg == "imgui" then
+                targetMode = "imgui-overlay"
+            elseif arg == "replace" or arg == "full" then
+                targetMode = "imgui-replace"
+            elseif arg == "canvas" then
+                self:appendConsoleLine("ERR: canvas renderer is deprecated and not a supported shell target", 0xfffca5a5)
+                return
+            end
+
+            if type(setUIRendererMode) ~= "function" then
+                self:appendConsoleLine("ERR: setUIRendererMode unavailable", 0xfffca5a5)
+                return
+            end
+
+            local ok = setUIRendererMode(targetMode)
+            if not ok then
+                self:appendConsoleLine("ERR: renderer [toggle|imgui-direct|imgui-overlay|imgui-replace]", 0xfffca5a5)
+                return
+            end
+
+            self:appendConsoleLine("renderer queued: " .. targetMode, 0xff86efac)
+            return
         elseif cmd == "perf" then
             local arg = string.lower(words[2] or "toggle")
             local activeTab = string.lower(words[3] or "")
@@ -1108,6 +1323,13 @@ function M.attach(shell)
         local k = keyCode or 0
         local ch = charCode or 0
 
+        local function refreshConsole()
+            self.consoleOverlay:repaint()
+            if type(self._syncConsoleOverlayRetained) == "function" then
+                self:_syncConsoleOverlayRetained()
+            end
+        end
+
         if k == 27 then
             self:setConsoleVisible(false)
             return true
@@ -1115,7 +1337,7 @@ function M.attach(shell)
 
         if ctrl and seIsLetterShortcut(k, ch, "v") and getClipboardText then
             c.input = c.input .. tostring(getClipboardText() or "")
-            self.consoleOverlay:repaint()
+            refreshConsole()
             return true
         end
 
@@ -1123,13 +1345,13 @@ function M.attach(shell)
             local line = c.input
             c.input = ""
             self:executeConsoleCommand(line)
-            self.consoleOverlay:repaint()
+            refreshConsole()
             return true
         end
 
         if k == 8 then
             c.input = string.sub(c.input or "", 1, math.max(0, #(c.input or "") - 1))
-            self.consoleOverlay:repaint()
+            refreshConsole()
             return true
         end
 
@@ -1147,7 +1369,7 @@ function M.attach(shell)
                     c.historyIndex = math.max(1, c.historyIndex - 1)
                 end
                 c.input = c.history[c.historyIndex] or ""
-                self.consoleOverlay:repaint()
+                refreshConsole()
             end
             return true
         elseif isDown then
@@ -1155,26 +1377,26 @@ function M.attach(shell)
             if count > 0 and c.historyIndex > 0 then
                 c.historyIndex = math.min(count, c.historyIndex + 1)
                 c.input = c.history[c.historyIndex] or ""
-                self.consoleOverlay:repaint()
+                refreshConsole()
             end
             return true
         elseif isPageUp then
             c.scrollOffset = math.min(#c.lines, (c.scrollOffset or 0) + 6)
-            self.consoleOverlay:repaint()
+            refreshConsole()
             return true
         elseif isPageDown then
             c.scrollOffset = math.max(0, (c.scrollOffset or 0) - 6)
-            self.consoleOverlay:repaint()
+            refreshConsole()
             return true
         end
 
         if ch >= 32 and ch <= 126 then
             c.input = (c.input or "") .. string.char(ch)
-            self.consoleOverlay:repaint()
+            refreshConsole()
             return true
         elseif k >= 32 and k <= 126 then
             c.input = (c.input or "") .. string.char(k)
-            self.consoleOverlay:repaint()
+            refreshConsole()
             return true
         end
 
@@ -1535,15 +1757,15 @@ function M.attach(shell)
                 c.row = nil
                 if c.minus and c.minus.node then
                     c.minus:setEnabled(false)
-                    c.minus.node:setBounds(0, 0, 0, 0)
+                    setWidgetBounds(c.minus, 0, 0, 0, 0)
                 end
                 if c.slider and c.slider.node then
                     c.slider:setEnabled(false)
-                    c.slider.node:setBounds(0, 0, 0, 0)
+                    setWidgetBounds(c.slider, 0, 0, 0, 0)
                 end
                 if c.plus and c.plus.node then
                     c.plus:setEnabled(false)
-                    c.plus.node:setBounds(0, 0, 0, 0)
+                    setWidgetBounds(c.plus, 0, 0, 0, 0)
                 end
             end
         end
@@ -2070,6 +2292,9 @@ function M.attach(shell)
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
         self:layout(w, h)
+        if type(self.flushDeferredRefreshes) == "function" then
+            self:flushDeferredRefreshes()
+        end
     end
 
     function shell:ensureScriptEditorCursorVisible()
