@@ -1,0 +1,8 @@
+{
+  "name": "ExperimentalUI",
+  "version": 1,
+  "description": "First-pass migration of the legacy experimental UI into a structured user project",
+  "ui": {
+    "root": "ui/main.ui.lua"
+  }
+}
