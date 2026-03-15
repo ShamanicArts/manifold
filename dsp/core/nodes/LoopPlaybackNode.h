@@ -38,6 +38,7 @@ public:
     void seekNormalized(float normalized);
     float getNormalizedPosition() const;
     bool computePeaks(int numBuckets, std::vector<float>& outPeaks) const;
+    std::vector<float> getPeaks(int numBuckets) const;
     void clearLoop();
     void copyFromCaptureBuffer(const juce::AudioBuffer<float>& captureBuffer,
                                int captureSize,

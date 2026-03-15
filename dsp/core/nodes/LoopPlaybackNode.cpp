@@ -289,6 +289,12 @@ bool LoopPlaybackNode::computePeaks(int numBuckets, std::vector<float>& outPeaks
     return true;
 }
 
+std::vector<float> LoopPlaybackNode::getPeaks(int numBuckets) const {
+    std::vector<float> peaks;
+    computePeaks(numBuckets, peaks);
+    return peaks;
+}
+
 void LoopPlaybackNode::clearLoop() {
     const int activeIndex = activeLoopBufferIndex_.load(std::memory_order_acquire);
     const int writeIndex = (activeIndex == 0) ? 1 : 0;
