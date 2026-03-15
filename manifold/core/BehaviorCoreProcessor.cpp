@@ -344,6 +344,17 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         // Provide raw host input for capture-plane nodes that explicitly request it.
         activeRuntime->process(wetView, &buffer);
 
+        // Call script process callbacks if available
+        if (dspScriptHost && dspScriptHost->isLoaded()) {
+            dspScriptHost->process(numSamples, currentSampleRate.load());
+        }
+        for (auto& entry : dspSlots) {
+            auto* host = entry.second.get();
+            if (host && host->isLoaded()) {
+                host->process(numSamples, currentSampleRate.load());
+            }
+        }
+
         if (outL == nullptr) {
             buffer.clear();
         } else {

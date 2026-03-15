@@ -43,6 +43,9 @@ public:
   std::shared_ptr<dsp_primitives::IPrimitiveNode>
   getLayerOutputNode(int layerIndex) const;
 
+  // Call the script's process callback (if any) - called from audio thread
+  void process(int blockSize, double sampleRate);
+
 private:
   bool loadScriptImpl(const std::string &sourceName, const juce::File *scriptFile,
                       const std::string *scriptCode);

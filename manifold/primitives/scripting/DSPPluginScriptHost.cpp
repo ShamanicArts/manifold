@@ -13,10 +13,13 @@ extern "C" {
 #include "PrimitiveGraph.h"
 #include "ScriptableProcessor.h"
 #include "dsp/core/nodes/PrimitiveNodes.h"
+#include "dsp/core/nodes/MidiVoiceNode.h"
+#include "dsp/core/nodes/MidiInputNode.h"
 #include "../control/OSCQuery.h"
 #include "../control/OSCServer.h"
 #include "../control/OSCEndpointRegistry.h"
 #include "../core/Settings.h"
+#include "../../core/BehaviorCoreProcessor.h"
 
 #include <algorithm>
 #include <map>
@@ -73,6 +76,7 @@ struct DSPPluginScriptHost::Impl {
   mutable std::recursive_mutex luaMutex;
   sol::state lua;
   sol::function onParamChange;
+  sol::function process;
 
   std::unordered_map<std::string, DspParamSpec> paramSpecs;
   std::unordered_map<std::string, float> paramValues;
@@ -174,6 +178,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       newNamedNodes;
   auto newOwnedNodes = std::make_shared<std::vector<std::shared_ptr<dsp_primitives::IPrimitiveNode>>>();
   sol::function newOnParamChange;
+  sol::function newProcess;
 
   auto mapInternalToExternal = [impl](const std::string &rawPath) {
     juce::String internal = sanitizePath(rawPath);
@@ -552,6 +557,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::StutterNode::getMix,
       "reset", &dsp_primitives::StutterNode::reset);
 
+
+
   newLua.new_usertype<dsp_primitives::ShimmerNode>(
       "ShimmerNode",
       sol::constructors<std::shared_ptr<dsp_primitives::ShimmerNode>()>(),
@@ -762,6 +769,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       sol::constructors<std::shared_ptr<dsp_primitives::MSDecoderNode>()>(),
       "reset", &dsp_primitives::MSDecoderNode::reset);
 
+
+
   newLua.new_usertype<dsp_primitives::EQNode>(
       "EQNode",
       sol::constructors<std::shared_ptr<dsp_primitives::EQNode>()>(),
@@ -942,6 +951,12 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     if (obj.is<std::shared_ptr<dsp_primitives::MSDecoderNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::MSDecoderNode>>();
     }
+    if (obj.is<std::shared_ptr<dsp_primitives::MidiVoiceNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::MidiVoiceNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::MidiInputNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::MidiInputNode>>();
+    }
     if (obj.is<std::shared_ptr<dsp_primitives::EQNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::EQNode>>();
     }
@@ -1074,6 +1089,12 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::MSDecoderNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::MSDecoderNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::MidiVoiceNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::MidiVoiceNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::MidiInputNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::MidiInputNode>>();
         }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::EQNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::EQNode>>();
@@ -3444,6 +3465,10 @@ end
       pluginTable["onParamChange"].get_type() == sol::type::function) {
     newOnParamChange = pluginTable["onParamChange"];
   }
+  if (pluginTable["process"].valid() &&
+      pluginTable["process"].get_type() == sol::type::function) {
+    newProcess = pluginTable["process"];
+  }
 
   for (const auto &entry : newParamValues) {
     const auto bindingIt = newParamBindings.find(entry.first);
@@ -3546,6 +3571,7 @@ end
     const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
 
     impl->onParamChange = std::move(newOnParamChange);
+    impl->process = std::move(newProcess);
     impl->lua = std::move(newLua);
     impl->paramSpecs = std::move(newParamSpecs);
     impl->paramValues = std::move(newParamValues);
@@ -3733,6 +3759,18 @@ float DSPPluginScriptHost::getParam(const std::string &path) const {
   }
 
   return 0.0f;
+}
+
+void DSPPluginScriptHost::process(int blockSize, double sampleRate) {
+  const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+  if (!pImpl->process.valid()) {
+    return;
+  }
+  sol::protected_function_result result = pImpl->process(blockSize, sampleRate);
+  if (!result.valid()) {
+    sol::error err = result;
+    pImpl->lastError = "process failed: " + std::string(err.what());
+  }
 }
 
 int DSPPluginScriptHost::getLayerLoopLength(int layerIndex) const {
