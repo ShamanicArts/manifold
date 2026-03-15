@@ -469,11 +469,14 @@ juce::var OSCServer::parseArgument(char tag, const char* data,
         return juce::var(val);
     }
     else if (tag == 's' || tag == 'S') {
-        juce::String str;
+        const int start = offset;
         while (offset < dataLen && data[offset] != '\0') {
-            str += data[offset++];
+            ++offset;
         }
-        offset++;
+        juce::String str = juce::String::fromUTF8(data + start, offset - start);
+        if (offset < dataLen) {
+            ++offset;
+        }
         while (offset % 4 != 0) offset++;
         return juce::var(str);
     }

@@ -26,12 +26,14 @@ inline std::vector<char> build(const juce::String& address,
     std::vector<char> packet;
     packet.reserve(128);
 
-    // Address string (null-terminated, padded to 4 bytes)
-    for (int i = 0; i < address.length(); i++) {
-        packet.push_back((char)address[i]);
+    // Address string (UTF-8, null-terminated, padded to 4 bytes)
+    {
+        const auto utf8 = address.toRawUTF8();
+        const auto len = std::strlen(utf8);
+        packet.insert(packet.end(), utf8, utf8 + len);
+        packet.push_back('\0');
+        while (packet.size() % 4 != 0) packet.push_back('\0');
     }
-    packet.push_back('\0');
-    while (packet.size() % 4 != 0) packet.push_back('\0');
 
     // Type tag string
     packet.push_back(',');
@@ -68,9 +70,9 @@ inline std::vector<char> build(const juce::String& address,
         }
         else if (arg.isString()) {
             juce::String str = arg.toString();
-            for (int i = 0; i < str.length(); i++) {
-                packet.push_back((char)str[i]);
-            }
+            const auto utf8 = str.toRawUTF8();
+            const auto len = std::strlen(utf8);
+            packet.insert(packet.end(), utf8, utf8 + len);
             packet.push_back('\0');
             while (packet.size() % 4 != 0) packet.push_back('\0');
         }
