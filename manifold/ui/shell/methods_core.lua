@@ -18,12 +18,16 @@ local fileStem = Base.fileStem
 local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
 local SCRIPT_SYNTAX_COLOUR = ScriptEditor.SCRIPT_SYNTAX_COLOUR
 local seBuildLines = ScriptEditor.seBuildLines
+local seBuildLinesCached = ScriptEditor.seBuildLinesCached
 local seLineColFromPos = ScriptEditor.seLineColFromPos
+local seLineColCached = ScriptEditor.seLineColCached
 local sePosFromLineCol = ScriptEditor.sePosFromLineCol
+local sePosFromLineColCached = ScriptEditor.sePosFromLineColCached
 local seGetSelectionRange = ScriptEditor.seGetSelectionRange
 local seClearSelection = ScriptEditor.seClearSelection
 local seDeleteSelection = ScriptEditor.seDeleteSelection
 local seReplaceSelection = ScriptEditor.seReplaceSelection
+local seInvalidateCache = ScriptEditor.seInvalidateCache
 local seMoveCursor = ScriptEditor.seMoveCursor
 local seVisibleLineCount = ScriptEditor.seVisibleLineCount
 local seMaxCols = ScriptEditor.seMaxCols
@@ -49,6 +53,7 @@ local mapBehaviorPathToSlotPath = Runtime.mapBehaviorPathToSlotPath
 local collectRuntimeParamsForScript = Runtime.collectRuntimeParamsForScript
 
 local walkHierarchy = Inspector.walkHierarchy
+local walkStructuredRecords = Inspector.walkStructuredRecords
 local valueToText = Inspector.valueToText
 local upperFirst = Inspector.upperFirst
 local splitPath = Inspector.splitPath
@@ -93,7 +98,6 @@ local function shellPerfTrace(label, startMs, extra)
 end
 
 function M.attach(shell)
-    -- Surface descriptor helpers
     local function cloneRect(bounds)
         if type(bounds) ~= "table" then
             return { x = 0, y = 0, w = 0, h = 0 }
@@ -265,6 +269,8 @@ function M.attach(shell)
         if visible and panelNode ~= nil and contentNode ~= nil and panelNode.getBounds and contentNode.getBounds then
             local px, py, pw, ph = panelNode:getBounds()
             local cx, cy, cw, ch = contentNode:getBounds()
+            local _ = pw
+            _ = ph
             if (tonumber(cw) or 0) > 0 and (tonumber(ch) or 0) > 0 then
                 bounds = {
                     x = math.floor((tonumber(px) or 0) + (tonumber(cx) or 0)),
@@ -294,12 +300,20 @@ function M.attach(shell)
             local insetY = math.floor(tonumber(d.insetY) or 0)
             local insetW = math.floor(tonumber(d.insetW) or 0)
             local insetH = math.floor(tonumber(d.insetH) or 0)
-            bounds = {
-                x = px + insetX,
-                y = py + insetY,
-                w = math.max(0, pw + insetW),
-                h = math.max(0, ph + insetH),
-            }
+            local bw = math.max(0, math.floor(tonumber(pw) or 0) + insetW)
+            local bh = math.max(0, math.floor(tonumber(ph) or 0) + insetH)
+            if bw > 0 and bh > 0 then
+                bounds = {
+                    x = math.floor((tonumber(px) or 0) + insetX),
+                    y = math.floor((tonumber(py) or 0) + insetY),
+                    w = bw,
+                    h = bh,
+                }
+            else
+                visible = false
+            end
+        else
+            visible = false
         end
 
         return defineHostSurface(self, id, d, visible, bounds)
@@ -329,10 +343,6 @@ function M.attach(shell)
             end
             return
         end
-
-        local SCRIPT_EDITOR_STYLE = {
-            headerH = 20,
-        }
 
         ed.bodyRect = {
             x = 0,
@@ -517,11 +527,10 @@ function M.attach(shell)
             z = 40,
             mode = "edit",
             docking = "docked-right",
-            payloadKey = "scriptInspectorRows",
+            payloadKey = "scriptInspector",
             title = "Script Inspector",
         })
 
-        -- Main script editor surface
         local mainEditorVisible = self.mode == "edit"
             and self.editContentMode == "script"
             and type(self.scriptEditor) == "table"
@@ -552,7 +561,6 @@ function M.attach(shell)
             title = "Script Editor",
         }, mainEditorVisible, mainEditorBounds)
 
-        -- Inline script editor surface
         local si = self.scriptInspector or {}
         local inlineVisible = self.mode == "edit"
             and self.leftPanelMode == "scripts"
@@ -914,7 +922,7 @@ function M.attach(shell)
 
         if cmd == "help" then
             self:appendConsoleLine("help | clear | get <path> | set <path> <value> | trigger <path>")
-            self:appendConsoleLine("undo | redo | sel | copyid | dev [status|on|off|toggle] | ui <scriptPath> | lua <expr>")
+            self:appendConsoleLine("undo | redo | sel | copyid | dev [status|on|off|toggle] | perf [on|off|toggle|tab <name>|reset] | ui <scriptPath> | lua <expr>")
             return
         elseif cmd == "clear" then
             self.console.lines = {}
@@ -1009,6 +1017,48 @@ function M.attach(shell)
             end
 
             self:appendConsoleLine("dev mode: " .. (self.devModeEnabled and "on" or "off"), 0xff86efac)
+            return
+        elseif cmd == "perf" then
+            local arg = string.lower(words[2] or "toggle")
+            local activeTab = string.lower(words[3] or "")
+            self.perfOverlay = self.perfOverlay or { visible = false, activeTab = "frame" }
+
+            if arg == "" or arg == "toggle" then
+                self:setPerfOverlayVisible(not (self.perfOverlay.visible == true))
+            elseif arg == "on" then
+                self:setPerfOverlayVisible(true)
+            elseif arg == "off" then
+                self:setPerfOverlayVisible(false)
+            elseif arg == "tab" then
+                if activeTab == "frame" or activeTab == "imgui" or activeTab == "editor" or activeTab == "ui" then
+                    self:setPerfOverlayActiveTab(activeTab)
+                    self:setPerfOverlayVisible(true)
+                else
+                    self:appendConsoleLine("ERR: perf tab <frame|imgui|editor|ui>", 0xfffca5a5)
+                    return
+                end
+            elseif arg == "reset" then
+                self:setPerfOverlayVisible(true)
+                if type(command) == "function" then
+                    command("RESET_PEAKS")
+                end
+                if type(_G) == "table" then
+                    local perf = _G.__manifoldEditorPerf or {}
+                    perf.peakDrawMs = 0
+                    perf.peakWheelMs = 0
+                    perf.peakKeypressMs = 0
+                    perf.peakEnsureVisibleMs = 0
+                    perf.peakPosFromPointMs = 0
+                    _G.__manifoldEditorPerf = perf
+                end
+                self:appendConsoleLine("perf peaks reset", 0xff86efac)
+            else
+                self:appendConsoleLine("ERR: perf [on|off|toggle|tab <name>|reset]", 0xfffca5a5)
+                return
+            end
+
+            self.consoleOverlay:repaint()
+            self:appendConsoleLine("perf overlay: " .. (self.perfOverlay.visible and "on" or "off") .. " tab=" .. tostring(self.perfOverlay.activeTab or "frame"), 0xff86efac)
             return
         elseif cmd == "ui" then
             local target = words[2]
@@ -1191,6 +1241,7 @@ function M.attach(shell)
     end
 
     function shell:refreshScriptRows()
+        local perfStartMs = shellPerfNowMs()
         self.scriptRows = {}
 
         local currentUi = getCurrentScriptPath and getCurrentScriptPath() or ""
@@ -1363,9 +1414,11 @@ function M.attach(shell)
         local maxScroll = math.max(0, #self.scriptRows * self.scriptRowHeight - self.scriptViewportH)
         self.scriptScrollY = clamp(self.scriptScrollY, 0, maxScroll)
         self.scriptRowsLastRefreshAt = nowSeconds()
+        -- Logging removed to reduce console spam
     end
 
     function shell:refreshScriptInspectorData(row)
+        local perfStartMs = shellPerfNowMs()
         local si = self.scriptInspector
         if type(row) ~= "table" or row.section or row.nonInteractive then
             si.kind = ""
@@ -1373,6 +1426,9 @@ function M.attach(shell)
             si.path = ""
             si.ownership = ""
             si.text = ""
+            si.dirty = false
+            si.syncToken = (tonumber(si.syncToken) or 0) + 1
+            seInvalidateCache(si)
             si.params = {}
             si.runtimeParams = {}
             si.graph = { nodes = {}, edges = {} }
@@ -1402,6 +1458,7 @@ function M.attach(shell)
             si.graphDragging = false
             self.runtimeParamsLastRefreshAt = -1
             self:hideRuntimeParamControls(1)
+            self:computeScriptInspectorGeometry()
             return
         end
 
@@ -1415,6 +1472,9 @@ function M.attach(shell)
         si.path = row.path or ""
         si.ownership = row.ownership or ""
         si.text = text
+        si.dirty = false
+        si.syncToken = (tonumber(si.syncToken) or 0) + 1
+        seInvalidateCache(si)
         si.params = {}
         si.runtimeParams = {}
         si.graph = { nodes = {}, edges = {} }
@@ -1445,6 +1505,8 @@ function M.attach(shell)
             si.runtimeParams = collectRuntimeParamsForScript(row, self.stateParamsCache, si.params, self.dspPreviewSlotName)
             si.graph = parseDspGraphFromCode(text)
         end
+
+        self:computeScriptInspectorGeometry()
     end
 
     function shell:refreshScriptInspectorRuntimeParams()
@@ -1455,10 +1517,12 @@ function M.attach(shell)
         if type(self.selectedScriptRow) ~= "table" then
             si.runtimeParams = {}
             self.runtimeParamsLastRefreshAt = nowSeconds()
+            self:computeScriptInspectorGeometry()
             return
         end
         si.runtimeParams = collectRuntimeParamsForScript(self.selectedScriptRow, self.stateParamsCache, si.params, self.dspPreviewSlotName)
         self.runtimeParamsLastRefreshAt = nowSeconds()
+        self:computeScriptInspectorGeometry()
     end
 
     function shell:hideRuntimeParamControls(fromIndex)
@@ -1598,6 +1662,7 @@ function M.attach(shell)
         end
 
         self:refreshScriptInspectorRuntimeParams()
+        self:computeScriptInspectorGeometry()
         self.inspectorCanvas:repaint()
     end
 
@@ -1617,7 +1682,62 @@ function M.attach(shell)
         end
 
         self:refreshScriptInspectorRuntimeParams()
+        self:computeScriptInspectorGeometry()
         self.inspectorCanvas:repaint()
+    end
+
+    function shell:setScriptInspectorEditorCollapsed(collapsed)
+        local si = self.scriptInspector
+        if type(si) ~= "table" then
+            return
+        end
+        si.editorCollapsed = collapsed == true
+        self:computeScriptInspectorGeometry()
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:setScriptInspectorGraphCollapsed(collapsed)
+        local si = self.scriptInspector
+        if type(si) ~= "table" then
+            return
+        end
+        si.graphCollapsed = collapsed == true
+        if si.graphCollapsed then
+            si.graphDragging = false
+        end
+        self:computeScriptInspectorGeometry()
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:setScriptInspectorGraphPan(x, y)
+        local si = self.scriptInspector
+        if type(si) ~= "table" then
+            return
+        end
+        si.graphPanX = math.floor(tonumber(x) or 0)
+        si.graphPanY = math.floor(tonumber(y) or 0)
+        self.inspectorCanvas:repaint()
+    end
+
+    function shell:applyScriptInspectorRuntimeParam(endpointPath, value)
+        local si = self.scriptInspector
+        if type(si) ~= "table" or type(endpointPath) ~= "string" or endpointPath == "" then
+            return false
+        end
+
+        local runtimeParams = si.runtimeParams or {}
+        for i = 1, #runtimeParams do
+            local rp = runtimeParams[i]
+            local candidate = rp.endpointPath or rp.path
+            if candidate == endpointPath then
+                return self:setRuntimeParamAbsolute(endpointPath, value, rp.min, rp.max, {
+                    step = rp.step,
+                    fast = true,
+                })
+            end
+        end
+
+        return self:setRuntimeParamAbsolute(endpointPath, value, nil, nil, { fast = true })
     end
 
     function shell:updateRuntimeParamCache(endpointPath, value)
@@ -1660,6 +1780,7 @@ function M.attach(shell)
         local nextValue = tonumber(value)
         if nextValue == nil then
             self.scriptInspector.runtimeStatus = "Invalid value"
+            self:computeScriptInspectorGeometry()
             return false
         end
 
@@ -1678,6 +1799,7 @@ function M.attach(shell)
         local ok = setParam(endpointPath, nextValue)
         if not ok then
             self.scriptInspector.runtimeStatus = "setParam failed: " .. endpointPath
+            self:computeScriptInspectorGeometry()
             return false
         end
 
@@ -1690,6 +1812,8 @@ function M.attach(shell)
         else
             self:refreshScriptInspectorRuntimeParams()
         end
+
+        self:computeScriptInspectorGeometry()
 
         if not opts.noRepaint then
             self.inspectorCanvas:repaint()
@@ -1809,6 +1933,7 @@ function M.attach(shell)
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
         self:layout(w, h)
+
         self.treeCanvas:repaint()
         self.scriptCanvas:repaint()
     end
@@ -1948,11 +2073,12 @@ function M.attach(shell)
     end
 
     function shell:ensureScriptEditorCursorVisible()
+        local perfStart = nowSeconds()
         local ed = self.scriptEditor
         local h = math.floor(self.mainTabContent:getHeight())
-        local lines = seBuildLines(ed.text)
+        local lines = seBuildLinesCached(ed)
         local visible = seVisibleLineCount(h)
-        local line = seLineColFromPos(ed.text, ed.cursorPos)
+        local line = seLineColCached(ed)
         local maxScroll = math.max(1, #lines - visible + 1)
 
         if line < ed.scrollRow then
@@ -1962,13 +2088,20 @@ function M.attach(shell)
         end
 
         ed.scrollRow = clamp(ed.scrollRow, 1, maxScroll)
+        if type(_G) == "table" then
+            local perf = _G.__manifoldEditorPerf or {}
+            perf.lastEnsureVisibleMs = (nowSeconds() - perfStart) * 1000.0
+            perf.peakEnsureVisibleMs = math.max(perf.peakEnsureVisibleMs or 0, perf.lastEnsureVisibleMs or 0)
+            _G.__manifoldEditorPerf = perf
+        end
     end
 
     function shell:scriptEditorPosFromPoint(mx, my)
+        local perfStart = nowSeconds()
         local ed = self.scriptEditor
         local w = math.floor(self.mainTabContent:getWidth())
         local h = math.floor(self.mainTabContent:getHeight())
-        local lines = seBuildLines(ed.text)
+        local lines = seBuildLinesCached(ed)
         local visible = seVisibleLineCount(h)
         local maxScroll = math.max(1, #lines - visible + 1)
         ed.scrollRow = clamp(ed.scrollRow, 1, maxScroll)
@@ -1984,7 +2117,16 @@ function M.attach(shell)
         col = clamp(col, 1, maxCol)
 
         local _ = w
-        return sePosFromLineCol(ed.text, lineIdx, col)
+        local pos = sePosFromLineColCached(ed, lineIdx, col)
+        if type(_G) == "table" then
+            local perf = _G.__manifoldEditorPerf or {}
+            perf.lastPosFromPointMs = (nowSeconds() - perfStart) * 1000.0
+            perf.peakPosFromPointMs = math.max(perf.peakPosFromPointMs or 0, perf.lastPosFromPointMs or 0)
+            perf.lastPointLine = lineIdx
+            perf.lastPointCol = col
+            _G.__manifoldEditorPerf = perf
+        end
+        return pos
     end
 
     function shell:openScriptEditor(row)
@@ -2004,6 +2146,9 @@ function M.attach(shell)
         self:refreshScriptInspectorData(row)
         self.scriptEditor.path = path
         self.scriptEditor.text = text
+        self.scriptEditor.syncToken = (tonumber(self.scriptEditor.syncToken) or 0) + 1
+        self.scriptEditor.bodyRect = nil
+        seInvalidateCache(self.scriptEditor)
         self.scriptEditor.cursorPos = 1
         self.scriptEditor.selectionAnchor = nil
         self.scriptEditor.dragAnchorPos = nil
@@ -2026,6 +2171,7 @@ function M.attach(shell)
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
         self:layout(w, h)
+        self:computeMainScriptEditorGeometry()
         self.mainTabContent:grabKeyboardFocus()
         self.scriptEditor.focused = true
         self.mainTabContent:repaint()
@@ -2045,8 +2191,10 @@ function M.attach(shell)
             end
             if readTextFile then
                 ed.text = readTextFile(ed.path) or ed.text or ""
+                seInvalidateCache(ed)
             end
             ed.dirty = false
+            ed.syncToken = (tonumber(ed.syncToken) or 0) + 1
             ed.status = "Saved structured document"
             self:appendConsoleLine("Saved structured document: " .. tostring(ed.path), 0xff86efac)
             self:refreshProjectScriptRowsIfNeeded()
@@ -2065,6 +2213,7 @@ function M.attach(shell)
                 return
             end
             ed.dirty = false
+            ed.syncToken = (tonumber(ed.syncToken) or 0) + 1
             if ed.ownership == "editor-owned" then
                 ed.status = "Saved source; reload/apply project to use changes"
                 self:appendConsoleLine("Saved editor-owned source file: " .. tostring(ed.path), 0xff86efac)
@@ -2090,11 +2239,13 @@ function M.attach(shell)
 
         if readTextFile then
             ed.text = readTextFile(ed.path) or ""
+            seInvalidateCache(ed)
             ed.cursorPos = 1
             ed.selectionAnchor = nil
             ed.dragAnchorPos = nil
             ed.scrollRow = 1
             ed.dirty = false
+            ed.syncToken = (tonumber(ed.syncToken) or 0) + 1
             if ed.ownership == "editor-owned" then
                 local docStatus = self:getStructuredDocumentStatus(ed.path)
                 local dirtySuffix = (type(docStatus) == "table" and docStatus.dirty == true) and " | runtime still dirty" or ""
@@ -2116,11 +2267,13 @@ function M.attach(shell)
         self.scriptEditor.focused = false
         self.scriptEditor.selectionAnchor = nil
         self.scriptEditor.dragAnchorPos = nil
+        self.scriptEditor.bodyRect = nil
         self.mainTabContent:repaint()
 
         local w = self.parentNode:getWidth()
         local h = self.parentNode:getHeight()
         self:layout(w, h)
+        self:computeMainScriptEditorGeometry()
     end
 
     -- Back-compat wrappers for call-sites that still use tab naming.
@@ -2257,6 +2410,18 @@ function M.attach(shell)
             if type(instanceMeta) == "table"
                 and type(instanceMeta.documentPath) == "string"
                 and type(instanceMeta.nodeId) == "string" then
+                if type(instanceMeta.childNodeId) == "string"
+                    and instanceMeta.childNodeId ~= ""
+                    and instanceMeta.childNodeId ~= instanceMeta.nodeId then
+                    return {
+                        documentPath = instanceMeta.documentPath,
+                        nodeId = instanceMeta.nodeId,
+                        pathPrefix = "overrides." .. instanceMeta.childNodeId .. ".",
+                        childNodeId = instanceMeta.childNodeId,
+                        globalId = instanceMeta.globalId,
+                        kind = instanceMeta.kind,
+                    }
+                end
                 return instanceMeta
             end
         end
@@ -2299,12 +2464,68 @@ function M.attach(shell)
             return false
         end
 
-        local prefix = hasLayout and "layout." or ""
+        local runtime = (type(_G) == "table") and _G.__manifoldStructuredUiRuntime or nil
+        local row = self:_findTreeRowByCanvas(canvas)
+        local record = row and row.record or nil
+        if record == nil and type(runtime) == "table" and type(runtime.getRecordBySource) == "function" then
+            record = runtime:getRecordBySource(docPath, nodeId)
+        end
+
+        if type(record) == "table" and type(record.parent) == "table" then
+            local parentRecord = record.parent
+            local parentWidget = parentRecord.widget
+            local parentCanvas = parentWidget and parentWidget.node or nil
+            local parentSpec = type(parentRecord.spec) == "table" and parentRecord.spec or nil
+            if parentCanvas and parentSpec then
+                local _, _, parentW, parentH = parentCanvas:getBounds()
+                local designW = tonumber(parentSpec.w) or tonumber(parentW) or 0
+                local designH = tonumber(parentSpec.h) or tonumber(parentH) or 0
+                parentW = tonumber(parentW) or 0
+                parentH = tonumber(parentH) or 0
+                if parentW > 0 and designW > 0 then
+                    bx = bx * designW / parentW
+                    bw = bw * designW / parentW
+                end
+                if parentH > 0 and designH > 0 then
+                    by = by * designH / parentH
+                    bh = bh * designH / parentH
+                end
+                bx = math.floor(bx + 0.5)
+                by = math.floor(by + 0.5)
+                bw = math.max(1, math.floor(bw + 0.5))
+                bh = math.max(1, math.floor(bh + 0.5))
+            end
+        end
+
+        local basePrefix = source.pathPrefix or ""
+        local prefix = basePrefix .. (hasLayout and "layout." or "")
         local okX = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "x", bx)
         local okY = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "y", by)
         local okW = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "w", bw)
         local okH = pcall(setStructuredUiNodeValue, docPath, nodeId, prefix .. "h", bh)
-        return okX and okY and okW and okH
+        local ok = okX and okY and okW and okH
+
+        if type(_G) == "table" then
+            _G.__manifoldLastStructuredPersist = {
+                documentPath = docPath,
+                nodeId = nodeId,
+                x = bx,
+                y = by,
+                w = bw,
+                h = bh,
+                ok = ok,
+            }
+            _G.__manifoldStructuredPersistCount = (_G.__manifoldStructuredPersistCount or 0) + 1
+        end
+
+        if ok and type(runtime) == "table" and type(runtime.notifyRecordHostedResized) == "function" and type(record) == "table" then
+            local refreshRecord = record.parent or record
+            pcall(function()
+                runtime:notifyRecordHostedResized(refreshRecord)
+            end)
+        end
+
+        return ok
     end
 
     function shell:resolveStructuredConfigDestination(documentPath, nodeId, configPath)
@@ -3143,6 +3364,7 @@ function M.attach(shell)
     end
 
     function shell:_rebuildInspectorRows()
+        local perfStartMs = shellPerfNowMs()
         local previousPath = self.activeConfigProperty and self.activeConfigProperty.path or nil
 
         self.inspectorRows = {}
@@ -3171,6 +3393,9 @@ function M.attach(shell)
             self.inspectorScrollY = 0
             self:_showActivePropertyEditor(nil)
             self.inspectorCanvas:repaint()
+            shellPerfTrace("_rebuildInspectorRows", perfStartMs,
+                string.format("mode=scripts rows=%d selected=%s", #self.inspectorRows,
+                    tostring(self.selectedScriptRow and self.selectedScriptRow.path or nil)))
             return
         end
 
@@ -3183,6 +3408,7 @@ function M.attach(shell)
             self.inspectorScrollY = 0
             self:_showActivePropertyEditor(nil)
             self.inspectorCanvas:repaint()
+            shellPerfTrace("_rebuildInspectorRows", perfStartMs, "mode=hierarchy rows=1 selection=none")
             return
         end
 
@@ -3322,6 +3548,11 @@ function M.attach(shell)
         end
 
         self.inspectorCanvas:repaint()
+        shellPerfTrace("_rebuildInspectorRows", perfStartMs,
+            string.format("mode=hierarchy rows=%d selection=%d restored=%s",
+                #self.inspectorRows,
+                selCount,
+                tostring(restored)))
     end
 
     function shell:_syncInspectorEditors()
@@ -3474,13 +3705,22 @@ function M.attach(shell)
         end
 
         if canvas == nil then
+            if #self.selectedWidgets == 0 and self.selectedWidget == nil then
+                return
+            end
             self:setSelection({}, nil, recordHistory)
-        else
-            self:setSelection({ canvas }, canvas, recordHistory)
+            return
         end
+
+        if self.selectedWidget == canvas and #self.selectedWidgets == 1 and self.selectedWidgets[1] == canvas then
+            return
+        end
+
+        self:setSelection({ canvas }, canvas, recordHistory)
     end
 
     function shell:refreshTree(force)
+        local perfStartMs = shellPerfNowMs()
         if self.mode ~= "edit" and not force then
             return
         end
@@ -3493,6 +3733,8 @@ function M.attach(shell)
         end
         if not force and self.treeLastRefreshAt >= 0 and (now - self.treeLastRefreshAt) < 0.12 then
             self.treeRefreshPending = true
+            shellPerfTrace("refreshTree", perfStartMs,
+                string.format("deferred=true rows=%d force=%s", #self.treeRows, tostring(force)))
             return
         end
 
@@ -3503,7 +3745,17 @@ function M.attach(shell)
         if self.content ~= nil then
             local rootOffsetX = (self.mode == "edit") and self.viewportDesignX or 0
             local rootOffsetY = (self.mode == "edit") and self.viewportDesignY or 0
-            self.treeRoot = walkHierarchy(self.content, 0, self.treeRows, rootOffsetX, rootOffsetY, "", 0)
+            local structuredRuntime = (type(_G) == "table") and _G.__manifoldStructuredUiRuntime or nil
+            if self:isStructuredProjectActive()
+                and type(structuredRuntime) == "table"
+                and type(structuredRuntime.layoutTree) == "table" then
+                self.treeRoot = walkStructuredRecords(structuredRuntime.layoutTree, 0, self.treeRows, rootOffsetX, rootOffsetY, "", 0, structuredRuntime)
+            else
+                self.treeRoot = walkHierarchy(self.content, 0, self.treeRows, rootOffsetX, rootOffsetY, "", 0, {
+                    structuredOnly = false,
+                    structuredDocumentPath = "",
+                })
+            end
         else
             self.treeRoot = nil
         end
@@ -3543,6 +3795,12 @@ function M.attach(shell)
         self.treeScrollY = clamp(self.treeScrollY, 0, maxScroll)
         self.treeCanvas:repaint()
         self.previewOverlay:repaint()
+        shellPerfTrace("refreshTree", perfStartMs,
+            string.format("rows=%d selection=%d force=%s scroll=%.1f",
+                #self.treeRows,
+                #self.selectedWidgets,
+                tostring(force),
+                tonumber(self.treeScrollY) or 0))
     end
 
 

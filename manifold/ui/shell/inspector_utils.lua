@@ -7,8 +7,110 @@ local clamp = Base.clamp
 
 local M = {}
 
-function M.walkHierarchy(canvas, depth, flatOut, parentAbsX, parentAbsY, parentPath, childIndex)
+local function structuredSourceMatches(canvas, documentPath)
+    if canvas == nil or type(canvas.getUserData) ~= "function" then
+        return false
+    end
+
+    local function matches(meta)
+        return type(meta) == "table"
+            and type(meta.documentPath) == "string"
+            and type(meta.nodeId) == "string"
+            and (documentPath == nil or documentPath == "" or meta.documentPath == documentPath)
+    end
+
+    local instanceMeta = canvas:getUserData("_structuredInstanceSource")
+    if matches(instanceMeta) then
+        return true
+    end
+
+    local sourceMeta = canvas:getUserData("_structuredSource")
+    if matches(sourceMeta) then
+        return true
+    end
+
+    return false
+end
+
+function M.walkHierarchy(canvas, depth, flatOut, parentAbsX, parentAbsY, parentPath, childIndex, opts)
     if not canvas then
+        return nil
+    end
+
+    opts = opts or {}
+
+    if depth > 0 and type(canvas.isVisible) == "function" and canvas:isVisible() == false then
+        return nil
+    end
+
+    local bx, by, bw, bh = canvas:getBounds()
+    local absX = (parentAbsX or 0) + (bx or 0)
+    local absY = (parentAbsY or 0) + (by or 0)
+
+    local meta = canvas:getUserData("_editorMeta")
+    local nodeType = "Canvas"
+    if type(meta) == "table" and type(meta.type) == "string" and #meta.type > 0 then
+        nodeType = meta.type
+    end
+
+    local fallbackName = depth == 0 and "ContentRoot" or nodeType
+    local nodeName = deriveNodeName(meta, fallbackName)
+
+    local includeNode = true
+    if opts.structuredOnly == true and depth > 0 then
+        includeNode = structuredSourceMatches(canvas, opts.structuredDocumentPath)
+    end
+
+    local basePath = parentPath or ""
+    local indexPart = tostring(childIndex or 0)
+    local thisPath = basePath == "" and (indexPart .. ":" .. nodeName) or (basePath .. "/" .. indexPart .. ":" .. nodeName)
+
+    local node = nil
+    local nextParentPath = basePath
+    if includeNode then
+        node = {
+            name = nodeName,
+            type = nodeType,
+            children = {},
+            canvas = canvas,
+            depth = depth,
+            x = absX,
+            y = absY,
+            w = bw or 0,
+            h = bh or 0,
+            path = thisPath,
+        }
+        flatOut[#flatOut + 1] = node
+        nextParentPath = thisPath
+    end
+
+    local numChildren = canvas:getNumChildren() or 0
+    for i = 0, numChildren - 1 do
+        local child = canvas:getChild(i)
+        if child ~= nil then
+            local childDepth = includeNode and (depth + 1) or depth
+            local childNode = M.walkHierarchy(child, childDepth, flatOut, absX, absY, nextParentPath, i, opts)
+            if childNode ~= nil and node ~= nil then
+                node.children[#node.children + 1] = childNode
+            end
+        end
+    end
+
+    return node
+end
+
+function M.walkStructuredRecords(record, depth, flatOut, parentAbsX, parentAbsY, parentPath, childIndex, runtime)
+    if type(record) ~= "table" then
+        return nil
+    end
+
+    if runtime and type(runtime.isRecordActive) == "function" and runtime:isRecordActive(record) ~= true then
+        return nil
+    end
+
+    local widget = record.widget
+    local canvas = widget and widget.node or nil
+    if canvas == nil then
         return nil
     end
 
@@ -40,18 +142,15 @@ function M.walkHierarchy(canvas, depth, flatOut, parentAbsX, parentAbsY, parentP
         w = bw or 0,
         h = bh or 0,
         path = thisPath,
+        record = record,
     }
 
     flatOut[#flatOut + 1] = node
 
-    local numChildren = canvas:getNumChildren() or 0
-    for i = 0, numChildren - 1 do
-        local child = canvas:getChild(i)
-        if child ~= nil then
-            local childNode = M.walkHierarchy(child, depth + 1, flatOut, absX, absY, thisPath, i)
-            if childNode ~= nil then
-                node.children[#node.children + 1] = childNode
-            end
+    for i, childRecord in ipairs(record.children or {}) do
+        local childNode = M.walkStructuredRecords(childRecord, depth + 1, flatOut, absX, absY, thisPath, i - 1, runtime)
+        if childNode ~= nil then
+            node.children[#node.children + 1] = childNode
         end
     end
 

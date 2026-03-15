@@ -48,6 +48,23 @@ local function mergeInto(dst, src)
   return dst
 end
 
+local function mergeDeepInto(dst, src)
+  if type(dst) ~= "table" or type(src) ~= "table" then
+    return dst
+  end
+  for k, v in pairs(src) do
+    if type(v) == "table" then
+      if type(dst[k]) ~= "table" then
+        dst[k] = {}
+      end
+      mergeDeepInto(dst[k], v)
+    else
+      dst[k] = deepCopy(v)
+    end
+  end
+  return dst
+end
+
 local function normalizeFontStyle(config)
   if type(config.fontStyle) == "string" then
     config.fontStyle = FONT_STYLE_MAP[string.lower(config.fontStyle)] or FontStyle.plain
@@ -515,6 +532,7 @@ function Runtime.new(opts)
   self.documents = {}
   self.documentOrder = {}
   self.recordsBySourceKey = {}
+  self.recordsBySourceLists = {}
   self.lastError = ""
   self.lastOperation = ""
   return self
@@ -551,7 +569,10 @@ function Runtime:registerRecord(record)
   end
 
   if type(sourcePath) == "string" and sourcePath ~= "" and type(nodeId) == "string" and nodeId ~= "" then
-    self.recordsBySourceKey[sourcePath .. "::" .. nodeId] = record
+    local key = sourcePath .. "::" .. nodeId
+    self.recordsBySourceKey[key] = record
+    self.recordsBySourceLists[key] = self.recordsBySourceLists[key] or {}
+    table.insert(self.recordsBySourceLists[key], record)
   end
 end
 
@@ -565,7 +586,10 @@ function Runtime:registerRecordAlias(documentPath, nodeId, record)
   if type(record) ~= "table" then
     return
   end
-  self.recordsBySourceKey[documentPath .. "::" .. nodeId] = record
+  local key = documentPath .. "::" .. nodeId
+  self.recordsBySourceKey[key] = record
+  self.recordsBySourceLists[key] = self.recordsBySourceLists[key] or {}
+  table.insert(self.recordsBySourceLists[key], record)
 end
 
 function Runtime:getRecordBySource(documentPath, nodeId)
@@ -576,6 +600,16 @@ function Runtime:getRecordBySource(documentPath, nodeId)
     return nil
   end
   return self.recordsBySourceKey[documentPath .. "::" .. nodeId]
+end
+
+function Runtime:getRecordsBySource(documentPath, nodeId)
+  if type(documentPath) ~= "string" or documentPath == "" then
+    return {}
+  end
+  if type(nodeId) ~= "string" or nodeId == "" then
+    return {}
+  end
+  return self.recordsBySourceLists[documentPath .. "::" .. nodeId] or {}
 end
 
 function Runtime:loadDocument(absPath, kind)
@@ -645,6 +679,115 @@ function Runtime:listDocuments()
     end
   end
   return out
+end
+
+function Runtime:syncLiveSpecsForNode(absPath, nodeId, path, value, remove)
+  if type(absPath) ~= "string" or absPath == "" then
+    return
+  end
+  if type(nodeId) ~= "string" or nodeId == "" then
+    return
+  end
+  if type(path) ~= "string" or path == "" then
+    return
+  end
+
+  local seenSpecs = {}
+
+  local function syncSpec(spec)
+    if type(spec) ~= "table" or seenSpecs[spec] then
+      return
+    end
+    seenSpecs[spec] = true
+
+    local liveNode = self:findNodeById(spec, nodeId)
+    if type(liveNode) ~= "table" then
+      return
+    end
+
+    if remove then
+      removeValueByPath(liveNode, path)
+    else
+      setValueByPath(liveNode, path, deepCopy(value))
+    end
+  end
+
+  local function visitRecord(record)
+    if type(record) ~= "table" then
+      return
+    end
+
+    if record.sourceDocumentPath == absPath then
+      syncSpec(record.spec)
+    end
+
+    for _, child in ipairs(record.children or {}) do
+      visitRecord(child)
+    end
+  end
+
+  visitRecord(self.layoutTree)
+
+  local overrideNodeId, overridePath = string.match(path, "^overrides%.([^.]+)%.(.+)$")
+  if type(overrideNodeId) == "string" and overrideNodeId ~= "" and type(overridePath) == "string" and overridePath ~= "" then
+    local aliasRecords = self:getRecordsBySource(absPath, nodeId)
+    for _, aliasRecord in ipairs(aliasRecords or {}) do
+      if type(aliasRecord) == "table" and type(aliasRecord.spec) == "table" then
+        local liveNode = self:findNodeById(aliasRecord.spec, overrideNodeId)
+        if type(liveNode) == "table" then
+          if remove then
+            removeValueByPath(liveNode, overridePath)
+          else
+            setValueByPath(liveNode, overridePath, deepCopy(value))
+          end
+        end
+      end
+    end
+  end
+end
+
+function Runtime:applyComponentInstanceOverrides(componentSpec, instanceSpec)
+  local overrides = type(instanceSpec) == "table" and instanceSpec.overrides or nil
+  if type(componentSpec) ~= "table" or type(overrides) ~= "table" then
+    return
+  end
+
+  for childNodeId, overrideSpec in pairs(overrides) do
+    if type(childNodeId) == "string" and childNodeId ~= "" and type(overrideSpec) == "table" then
+      local target = self:findNodeById(componentSpec, childNodeId)
+      if type(target) == "table" then
+        mergeDeepInto(target, overrideSpec)
+      end
+    end
+  end
+end
+
+function Runtime:annotateComponentInstanceRecords(record, ownerDocumentPath, instanceNodeId, sourceDocumentPath)
+  if type(record) ~= "table" or type(ownerDocumentPath) ~= "string" or ownerDocumentPath == "" or type(instanceNodeId) ~= "string" or instanceNodeId == "" then
+    return
+  end
+
+  if type(sourceDocumentPath) == "string" and sourceDocumentPath ~= "" and record.sourceDocumentPath ~= sourceDocumentPath then
+    return
+  end
+
+  local widget = record.widget
+  local node = widget and widget.node or nil
+  if node and node.setUserData then
+    local sourceMeta = node.getUserData and node:getUserData("_structuredSource") or nil
+    local childNodeId = type(sourceMeta) == "table" and type(sourceMeta.nodeId) == "string" and sourceMeta.nodeId or (type(record.spec) == "table" and record.spec.id) or instanceNodeId
+    node:setUserData("_structuredInstanceSource", {
+      documentPath = ownerDocumentPath,
+      nodeId = instanceNodeId,
+      childNodeId = childNodeId,
+      globalId = record.globalId,
+      kind = (childNodeId == instanceNodeId) and "component_instance" or "component_child_instance",
+    })
+  end
+
+  for _, childRecord in ipairs(record.children or {}) do
+    self:annotateComponentInstanceRecords(childRecord, ownerDocumentPath, instanceNodeId, sourceDocumentPath)
+  end
 end
 
 function Runtime:getProjectStatus()
@@ -823,6 +966,9 @@ function Runtime:setNodeValue(absPath, nodeId, path, value)
     self:setLastError(err, "setNodeValue")
     return false, err
   end
+
+  self:syncLiveSpecsForNode(absPath, nodeId, path, value, false)
+
   doc.dirty = true
   self:clearLastError("setNodeValue")
   return true, nil
@@ -847,6 +993,9 @@ function Runtime:removeNodeValue(absPath, nodeId, path)
     self:setLastError(err, "removeNodeValue")
     return false, err
   end
+
+  self:syncLiveSpecsForNode(absPath, nodeId, path, nil, true)
+
   doc.dirty = true
   self:clearLastError("removeNodeValue")
   return true, nil
@@ -986,6 +1135,7 @@ function Runtime:instantiateComponent(parentNode, instanceSpec, parentPrefix, ow
   componentSpec.w = instanceSpec.w or componentSpec.w or 0
   componentSpec.h = instanceSpec.h or componentSpec.h or 0
   componentSpec.layout = mergeLayout(componentSpec.layout, instanceSpec.layout)
+  self:applyComponentInstanceOverrides(componentSpec, instanceSpec)
 
   local behaviorInsertIndex = #self.behaviors + 1
   local localWidgets = {}
@@ -1001,12 +1151,7 @@ function Runtime:instantiateComponent(parentNode, instanceSpec, parentPrefix, ow
 
   if rootWidget and rootWidget.node and rootWidget.node.setUserData and type(ownerDocumentPath) == "string" and ownerDocumentPath ~= "" then
     local instanceNodeId = instanceSpec.id or componentSpec.id
-    rootWidget.node:setUserData("_structuredInstanceSource", {
-      documentPath = ownerDocumentPath,
-      nodeId = instanceNodeId,
-      globalId = componentGlobalId,
-      kind = "component_instance",
-    })
+    self:annotateComponentInstanceRecords(componentRecord, ownerDocumentPath, instanceNodeId, componentDoc.path)
     self:registerRecordAlias(ownerDocumentPath, instanceNodeId, componentRecord)
   end
 
@@ -1192,6 +1337,7 @@ function Runtime:init(rootNode)
   self.documents = {}
   self.documentOrder = {}
   self.recordsBySourceKey = {}
+  self.recordsBySourceLists = {}
 
   local sceneDoc = self:loadDocument(self.uiRoot, "scene")
   self.sceneSpec = sceneDoc.model
@@ -1232,6 +1378,12 @@ function Runtime:init(rootNode)
 end
 
 function Runtime:resized(w, h)
+  if self.suspendLayoutPass == true then
+    self.lastRootWidth = w
+    self.lastRootHeight = h
+    return
+  end
+
   if self.rootWidget and self.rootWidget.setBounds then
     self.rootWidget:setBounds(0, 0, w, h)
   end
@@ -1293,6 +1445,10 @@ end
 function Runtime:notifyRecordHostedResized(record, w, h)
   if type(record) ~= "table" then
     return false
+  end
+
+  if self.suspendLayoutPass == true then
+    return true
   end
 
   local width = tonumber(w)
@@ -1363,6 +1519,7 @@ function Runtime:cleanup()
   self.documents = {}
   self.documentOrder = {}
   self.recordsBySourceKey = {}
+  self.recordsBySourceLists = {}
 end
 
 function M.install(opts)

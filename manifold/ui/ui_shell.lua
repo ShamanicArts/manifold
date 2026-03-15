@@ -56,6 +56,7 @@ local mapBehaviorPathToSlotPath = Runtime.mapBehaviorPathToSlotPath
 local collectRuntimeParamsForScript = Runtime.collectRuntimeParamsForScript
 
 local walkHierarchy = Inspector.walkHierarchy
+local walkStructuredRecords = Inspector.walkStructuredRecords
 local valueToText = Inspector.valueToText
 local upperFirst = Inspector.upperFirst
 local splitPath = Inspector.splitPath
@@ -155,6 +156,9 @@ function Shell.create(parentNode, options)
             lastClickTime = 0,
             lastClickLine = -1,
             clickStreak = 0,
+            dirty = false,
+            syncToken = 0,
+            bodyRect = nil,
         },
         scriptEditorButtonRects = {},
         scriptInspector = {
@@ -163,6 +167,8 @@ function Shell.create(parentNode, options)
             name = "",
             path = "",
             text = "",
+            dirty = false,
+            syncToken = 0,
             params = {},
             runtimeParams = {},
             graph = { nodes = {}, edges = {} },
@@ -683,7 +689,6 @@ function Shell.create(parentNode, options)
         on_click = function()
             if shell.mode ~= "performance" then
                 -- Defer mode switch to next frame to avoid blocking GUI thread
-                -- during OpenGL context creation on high-DPI displays
                 shell.deferredModeSwitch = "performance"
             end
         end,
