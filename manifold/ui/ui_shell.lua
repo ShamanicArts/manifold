@@ -682,7 +682,9 @@ function Shell.create(parentNode, options)
         fontSize = 11.0,
         on_click = function()
             if shell.mode ~= "performance" then
-                shell:setMode("performance")
+                -- Defer mode switch to next frame to avoid blocking GUI thread
+                -- during OpenGL context creation on high-DPI displays
+                shell.deferredModeSwitch = "performance"
             end
         end,
     })
@@ -693,7 +695,9 @@ function Shell.create(parentNode, options)
         fontSize = 11.0,
         on_click = function()
             if shell.mode ~= "edit" then
-                shell:setMode("edit")
+                -- Defer mode switch to next frame to avoid blocking GUI thread
+                -- during OpenGL context creation on high-DPI displays
+                shell.deferredModeSwitch = "edit"
             end
         end,
     })

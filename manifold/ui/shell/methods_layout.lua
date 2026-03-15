@@ -678,6 +678,13 @@ function M.attach(shell)
     shell:publishUiStateToGlobals()
 
     function shell:updateFromState(state)
+        -- Handle deferred mode switch to avoid blocking GUI thread during OpenGL context creation
+        if self.deferredModeSwitch and self.deferredModeSwitch ~= self.mode then
+            local modeToSwitch = self.deferredModeSwitch
+            self.deferredModeSwitch = nil
+            self:setMode(modeToSwitch)
+        end
+        
         local params = state and state.params or state or {}
         local now = nowSeconds()
         self.stateParamsCache = params
