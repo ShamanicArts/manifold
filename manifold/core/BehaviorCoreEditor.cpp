@@ -9,39 +9,13 @@
 #include <cstdio>
 
 namespace {
+using PerfClock = std::chrono::steady_clock;
 
-void readSurfaceDescriptor(sol::object surfacesObj, const char* surfaceId,
-                           bool& visibleOut, juce::Rectangle<int>& boundsOut,
-                           std::string* titleOut = nullptr) {
-    visibleOut = false;
-    boundsOut = juce::Rectangle<int>();
-    if (titleOut != nullptr) {
-        titleOut->clear();
-    }
-    if (!surfacesObj.valid() || !surfacesObj.is<sol::table>()) {
-        return;
-    }
-    sol::table surfaces = surfacesObj.as<sol::table>();
-    sol::object surfaceObj = surfaces[surfaceId];
-    if (!surfaceObj.valid() || !surfaceObj.is<sol::table>()) {
-        return;
-    }
-    sol::table surface = surfaceObj.as<sol::table>();
-    visibleOut = surface["visible"].get_or(false);
-    if (titleOut != nullptr) {
-        *titleOut = surface["title"].get_or(std::string{});
-    }
-    sol::object boundsObj = surface["bounds"];
-    if (!boundsObj.valid() || !boundsObj.is<sol::table>()) {
-        return;
-    }
-    sol::table bounds = boundsObj.as<sol::table>();
-    boundsOut = juce::Rectangle<int>(
-        bounds["x"].get_or(0),
-        bounds["y"].get_or(0),
-        std::max(0, bounds["w"].get_or(0)),
-        std::max(0, bounds["h"].get_or(0)));
-}
+struct HostLayoutTraceState {
+    bool initialised = false;
+    bool visible = false;
+    juce::Rectangle<int> bounds;
+};
 
 struct HostConfig {
     bool visible = false;
@@ -80,9 +54,362 @@ struct PerfOverlayHostConfig {
     ImGuiPerfOverlayHost::Snapshot snapshot;
 };
 
-void buildMainScriptEditorConfig(sol::state& lua, sol::table& shell,
-                               sol::object surfacesObj,
-                               HostConfig& mainConfig) {
+
+double perfElapsedMs(PerfClock::time_point start) {
+    return std::chrono::duration<double, std::milli>(PerfClock::now() - start).count();
+}
+
+void logEditorPerf(const char* label, PerfClock::time_point start, const char* extra = nullptr) {
+    juce::ignoreUnused(label, start, extra);
+}
+
+void logEditorHostLayout(const char* name, HostLayoutTraceState& state, bool visible,
+                         const juce::Rectangle<int>& bounds) {
+    juce::ignoreUnused(name, visible, bounds);
+    state.initialised = true;
+    state.visible = visible;
+    state.bounds = bounds;
+}
+
+void readSurfaceDescriptor(sol::object surfacesObj, const char* surfaceId,
+                           bool& visibleOut, juce::Rectangle<int>& boundsOut,
+                           std::string* titleOut = nullptr) {
+    visibleOut = false;
+    boundsOut = juce::Rectangle<int>();
+    if (titleOut != nullptr) {
+        titleOut->clear();
+    }
+    if (!surfacesObj.valid() || !surfacesObj.is<sol::table>()) {
+        return;
+    }
+    sol::table surfaces = surfacesObj.as<sol::table>();
+    sol::object surfaceObj = surfaces[surfaceId];
+    if (!surfaceObj.valid() || !surfaceObj.is<sol::table>()) {
+        return;
+    }
+    sol::table surface = surfaceObj.as<sol::table>();
+    visibleOut = surface["visible"].get_or(false);
+    if (titleOut != nullptr) {
+        *titleOut = surface["title"].get_or(std::string{});
+    }
+    sol::object boundsObj = surface["bounds"];
+    if (!boundsObj.valid() || !boundsObj.is<sol::table>()) {
+        return;
+    }
+    sol::table bounds = boundsObj.as<sol::table>();
+    boundsOut = juce::Rectangle<int>(
+        bounds["x"].get_or(0),
+        bounds["y"].get_or(0),
+        std::max(0, bounds["w"].get_or(0)),
+        std::max(0, bounds["h"].get_or(0)));
+}
+
+void invokeShellMethod(sol::table& shell, const char* name) {
+    sol::protected_function fn = shell[name];
+    if (!fn.valid()) {
+        return;
+    }
+    sol::protected_function_result result = fn(shell);
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "BehaviorCoreEditor: shell.%s failed: %s\n", name, err.what());
+    }
+}
+
+void invokeShellMethodWithBool(sol::table& shell, const char* name, bool value) {
+    sol::protected_function fn = shell[name];
+    if (!fn.valid()) {
+        return;
+    }
+    sol::protected_function_result result = fn(shell, value);
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "BehaviorCoreEditor: shell.%s failed: %s\n", name, err.what());
+    }
+}
+
+void invokeShellMethodWithInts(sol::table& shell, const char* name, int a, int b) {
+    sol::protected_function fn = shell[name];
+    if (!fn.valid()) {
+        return;
+    }
+    sol::protected_function_result result = fn(shell, a, b);
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "BehaviorCoreEditor: shell.%s failed: %s\n", name, err.what());
+    }
+}
+
+void invokeShellMethodWithStringAndNumber(sol::table& shell, const char* name,
+                                          const std::string& text, double value) {
+    sol::protected_function fn = shell[name];
+    if (!fn.valid()) {
+        return;
+    }
+    sol::protected_function_result result = fn(shell, text, value);
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "BehaviorCoreEditor: shell.%s failed: %s\n", name, err.what());
+    }
+}
+
+void invokeShellMethodWithStringAndInt(sol::table& shell, const char* name,
+                                       const char* text, int value) {
+    sol::protected_function fn = shell[name];
+    if (!fn.valid()) {
+        return;
+    }
+    sol::protected_function_result result = fn(shell, text, value);
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "BehaviorCoreEditor: shell.%s failed: %s\n", name, err.what());
+    }
+}
+
+void applyActiveConfigValue(sol::table& shell, double value, const char* valueKind) {
+    sol::protected_function fn = shell["applyActiveConfigValue"];
+    if (!fn.valid()) {
+        return;
+    }
+    sol::protected_function_result result = fn(shell, value);
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "BehaviorCoreEditor: shell.applyActiveConfigValue(%s) failed: %s\n",
+                     valueKind, err.what());
+    }
+}
+
+void applyActiveConfigValue(sol::table& shell, bool value, const char* valueKind) {
+    sol::protected_function fn = shell["applyActiveConfigValue"];
+    if (!fn.valid()) {
+        return;
+    }
+    sol::protected_function_result result = fn(shell, value);
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "BehaviorCoreEditor: shell.applyActiveConfigValue(%s) failed: %s\n",
+                     valueKind, err.what());
+    }
+}
+
+void applyActiveConfigValue(sol::table& shell, const std::string& value, const char* valueKind) {
+    sol::protected_function fn = shell["applyActiveConfigValue"];
+    if (!fn.valid()) {
+        return;
+    }
+    sol::protected_function_result result = fn(shell, value);
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "BehaviorCoreEditor: shell.applyActiveConfigValue(%s) failed: %s\n",
+                     valueKind, err.what());
+    }
+}
+
+void syncMainEditorBackToShell(sol::table& shell,
+                               const ImGuiHost::StatsSnapshot& stats,
+                               const ImGuiHost::DocumentIdentity& identity,
+                               const std::string& text) {
+    if (!stats.testWindowVisible) {
+        return;
+    }
+
+    sol::object scriptEditorObj = shell["scriptEditor"];
+    if (!scriptEditorObj.valid() || !scriptEditorObj.is<sol::table>()) {
+        return;
+    }
+
+    sol::table scriptEditor = scriptEditorObj.as<sol::table>();
+    const std::string shellPath = scriptEditor["path"].get_or(std::string{});
+    const int64_t shellSyncToken = scriptEditor["syncToken"].get_or(int64_t{-1});
+    if (identity.loaded
+        && identity.path == shellPath
+        && identity.syncToken == shellSyncToken) {
+        scriptEditor["text"] = text;
+        scriptEditor["dirty"] = stats.documentDirty;
+    }
+}
+
+void applyMainEditorActions(sol::table& shell, const ImGuiHost::ActionRequests& actions) {
+    if (actions.save) {
+        invokeShellMethod(shell, "saveScriptEditor");
+    }
+    if (actions.reload) {
+        invokeShellMethod(shell, "reloadScriptEditor");
+    }
+    if (actions.close) {
+        invokeShellMethod(shell, "closeScriptEditor");
+    }
+}
+
+void applyScriptInspectorActions(sol::table& shell,
+                                 const ImGuiInspectorHost::ActionRequests& actions) {
+    if (actions.runPreview) {
+        invokeShellMethod(shell, "runSelectedDspScriptForInspector");
+    }
+    if (actions.stopPreview) {
+        invokeShellMethod(shell, "stopSelectedDspScriptForInspector");
+    }
+    if (actions.setEditorCollapsed) {
+        invokeShellMethodWithBool(shell, "setScriptInspectorEditorCollapsed", actions.editorCollapsed);
+    }
+    if (actions.setGraphCollapsed) {
+        invokeShellMethodWithBool(shell, "setScriptInspectorGraphCollapsed", actions.graphCollapsed);
+    }
+    if (actions.setGraphPan) {
+        invokeShellMethodWithInts(shell, "setScriptInspectorGraphPan",
+                                  actions.graphPanX,
+                                  actions.graphPanY);
+    }
+    if (actions.applyRuntimeParam && !actions.runtimeParamEndpointPath.empty()) {
+        invokeShellMethodWithStringAndNumber(shell, "applyScriptInspectorRuntimeParam",
+                                             actions.runtimeParamEndpointPath,
+                                             actions.runtimeParamValue);
+    }
+}
+
+void applyScriptListActions(sol::table& shell,
+                            const ImGuiScriptListHost::ActionRequests& actions) {
+    if (actions.selectIndex <= 0 && actions.openIndex <= 0) {
+        return;
+    }
+
+    sol::object rowsObj = shell["scriptRows"];
+    if (!rowsObj.valid() || !rowsObj.is<sol::table>()) {
+        return;
+    }
+
+    sol::table scriptRows = rowsObj.as<sol::table>();
+    const int targetIndex = actions.openIndex > 0 ? actions.openIndex : actions.selectIndex;
+    sol::object rowObj = scriptRows[targetIndex];
+    if (!rowObj.valid() || !rowObj.is<sol::table>()) {
+        return;
+    }
+
+    sol::table row = rowObj.as<sol::table>();
+
+    sol::protected_function handleSelection = shell["handleLeftListSelection"];
+    if (handleSelection.valid()) {
+        sol::protected_function_result result = handleSelection(shell, "script", row, sol::lua_nil);
+        if (!result.valid()) {
+            sol::error err = result;
+            std::fprintf(stderr, "BehaviorCoreEditor: shell.handleLeftListSelection failed: %s\n",
+                         err.what());
+        }
+    }
+
+    if (actions.openIndex > 0) {
+        sol::protected_function openEditor = shell["openScriptEditor"];
+        if (openEditor.valid()) {
+            sol::protected_function_result result = openEditor(shell, row);
+            if (!result.valid()) {
+                sol::error err = result;
+                std::fprintf(stderr, "BehaviorCoreEditor: shell.openScriptEditor failed: %s\n",
+                             err.what());
+            }
+        }
+    }
+}
+
+void applyHierarchyActions(sol::table& shell,
+                           const ImGuiHierarchyHost::ActionRequests& actions) {
+    if (actions.selectIndex <= 0) {
+        return;
+    }
+
+    sol::object rowsObj = shell["treeRows"];
+    if (!rowsObj.valid() || !rowsObj.is<sol::table>()) {
+        return;
+    }
+
+    sol::table treeRows = rowsObj.as<sol::table>();
+    sol::object rowObj = treeRows[actions.selectIndex];
+    if (!rowObj.valid() || !rowObj.is<sol::table>()) {
+        return;
+    }
+
+    sol::table row = rowObj.as<sol::table>();
+    sol::object canvasObj = row["canvas"];
+    sol::object selectedCanvasObj = shell["selectedWidget"];
+    if (!canvasObj.valid() || canvasObj == selectedCanvasObj) {
+        return;
+    }
+
+    sol::protected_function selectWidget = shell["selectWidget"];
+    if (!selectWidget.valid()) {
+        return;
+    }
+
+    sol::protected_function_result result = selectWidget(shell, canvasObj, true);
+    if (!result.valid()) {
+        sol::error err = result;
+        std::fprintf(stderr, "BehaviorCoreEditor: shell.selectWidget failed: %s\n",
+                     err.what());
+    }
+}
+
+void applyInspectorActions(sol::table& shell,
+                           const ImGuiInspectorHost::ActionRequests& actions) {
+    if (actions.selectRowIndex > 0) {
+        sol::object rowsObj = shell["inspectorRows"];
+        if (rowsObj.valid() && rowsObj.is<sol::table>()) {
+            sol::table inspectorRows = rowsObj.as<sol::table>();
+            sol::object rowObj = inspectorRows[actions.selectRowIndex];
+            if (rowObj.valid() && rowObj.is<sol::table>()) {
+                sol::table row = rowObj.as<sol::table>();
+                sol::protected_function showEditor = shell["_showActivePropertyEditor"];
+                if (showEditor.valid()) {
+                    sol::protected_function_result result = showEditor(shell, row);
+                    if (!result.valid()) {
+                        sol::error err = result;
+                        std::fprintf(stderr, "BehaviorCoreEditor: shell._showActivePropertyEditor failed: %s\n",
+                                     err.what());
+                    }
+                }
+            }
+        }
+    }
+
+    if (actions.setBoundsX) {
+        invokeShellMethodWithStringAndInt(shell, "applyBoundsEditor", "x", actions.boundsX);
+    }
+    if (actions.setBoundsY) {
+        invokeShellMethodWithStringAndInt(shell, "applyBoundsEditor", "y", actions.boundsY);
+    }
+    if (actions.setBoundsW) {
+        invokeShellMethodWithStringAndInt(shell, "applyBoundsEditor", "w", actions.boundsW);
+    }
+    if (actions.setBoundsH) {
+        invokeShellMethodWithStringAndInt(shell, "applyBoundsEditor", "h", actions.boundsH);
+    }
+
+    if (actions.applyNumber) {
+        applyActiveConfigValue(shell, actions.numberValue, "number");
+    }
+    if (actions.applyBool) {
+        applyActiveConfigValue(shell, actions.boolValue, "bool");
+    }
+    if (actions.applyText) {
+        applyActiveConfigValue(shell, actions.textValue, "text");
+    }
+    if (actions.applyColor) {
+        applyActiveConfigValue(shell, static_cast<double>(actions.colorValue), "color");
+    }
+    if (actions.applyEnumIndex > 0) {
+        sol::protected_function fn = shell["applyActiveConfigEnumChoice"];
+        if (fn.valid()) {
+            sol::protected_function_result result = fn(shell, actions.applyEnumIndex);
+            if (!result.valid()) {
+                sol::error err = result;
+                std::fprintf(stderr, "BehaviorCoreEditor: shell.applyActiveConfigEnumChoice failed: %s\n",
+                             err.what());
+            }
+        }
+    }
+}
+
+void buildMainEditorConfig(sol::table& shell,
+                           sol::object surfacesObj,
+                           HostConfig& mainConfig) {
     readSurfaceDescriptor(surfacesObj, "mainScriptEditor", mainConfig.visible, mainConfig.bounds);
     if (!mainConfig.visible || mainConfig.bounds.getWidth() <= 0 || mainConfig.bounds.getHeight() <= 0) {
         return;
@@ -105,10 +432,11 @@ void buildMainScriptEditorConfig(sol::state& lua, sol::table& shell,
     mainConfig.readOnly = false;
 }
 
-void buildHierarchyAndInspectorConfig(sol::state& lua, sol::table& shell,
-                                    sol::object surfacesObj,
-                                    HierarchyHostConfig& hierarchyConfig,
-                                    InspectorHostConfig& inspectorConfig) {
+void buildHierarchyAndInspectorConfig(sol::state& lua,
+                                      sol::table& shell,
+                                      sol::object surfacesObj,
+                                      HierarchyHostConfig& hierarchyConfig,
+                                      InspectorHostConfig& inspectorConfig) {
     readSurfaceDescriptor(surfacesObj, "hierarchyTool", hierarchyConfig.visible, hierarchyConfig.bounds);
     if (!hierarchyConfig.visible || hierarchyConfig.bounds.getWidth() <= 0 || hierarchyConfig.bounds.getHeight() <= 0) {
         return;
@@ -158,44 +486,108 @@ void buildHierarchyAndInspectorConfig(sol::state& lua, sol::table& shell,
 
         sol::object inspectorRowsObj = shell["inspectorRows"];
         sol::object activePropertyObj = shell["activeConfigProperty"];
+        std::string activePath;
+        if (activePropertyObj.valid() && activePropertyObj.is<sol::table>()) {
+            sol::table activeProperty = activePropertyObj.as<sol::table>();
+            inspectorConfig.activeProperty.valid = true;
+            inspectorConfig.activeProperty.key = activeProperty["key"].get_or(std::string{});
+            inspectorConfig.activeProperty.path = activeProperty["path"].get_or(std::string{});
+            inspectorConfig.activeProperty.editorType = activeProperty["editorType"].get_or(std::string{});
+            inspectorConfig.activeProperty.displayValue = activeProperty["value"].get_or(std::string{});
+            inspectorConfig.activeProperty.mixed = activeProperty["mixed"].get_or(false);
+            activePath = inspectorConfig.activeProperty.path;
+
+            sol::object rawValueObj = activeProperty["rawValue"];
+            if (rawValueObj.is<double>()) {
+                inspectorConfig.activeProperty.numberValue = rawValueObj.as<double>();
+                inspectorConfig.activeProperty.colorValue = static_cast<std::uint32_t>(rawValueObj.as<double>());
+            } else if (rawValueObj.is<bool>()) {
+                inspectorConfig.activeProperty.boolValue = rawValueObj.as<bool>();
+            } else if (rawValueObj.is<std::string>()) {
+                inspectorConfig.activeProperty.textValue = rawValueObj.as<std::string>();
+            }
+            if (inspectorConfig.activeProperty.editorType == "text") {
+                inspectorConfig.activeProperty.textValue = rawValueObj.is<std::string>()
+                    ? rawValueObj.as<std::string>()
+                    : std::string{};
+            }
+            sol::object minObj = activeProperty["min"];
+            sol::object maxObj = activeProperty["max"];
+            sol::object stepObj = activeProperty["step"];
+            inspectorConfig.activeProperty.hasMin = minObj.valid() && minObj.is<double>();
+            inspectorConfig.activeProperty.hasMax = maxObj.valid() && maxObj.is<double>();
+            if (inspectorConfig.activeProperty.hasMin) {
+                inspectorConfig.activeProperty.minValue = minObj.as<double>();
+            }
+            if (inspectorConfig.activeProperty.hasMax) {
+                inspectorConfig.activeProperty.maxValue = maxObj.as<double>();
+            }
+            inspectorConfig.activeProperty.stepValue = stepObj.valid() && stepObj.is<double>()
+                ? stepObj.as<double>()
+                : 0.0;
+
+            sol::object enumOptionsObj = activeProperty["enumOptions"];
+            if (enumOptionsObj.valid() && enumOptionsObj.is<sol::table>()) {
+                sol::table enumOptions = enumOptionsObj.as<sol::table>();
+                sol::object rawValue = activeProperty["rawValue"];
+                const auto optionCount = enumOptions.size();
+                for (std::size_t optionIndex = 1; optionIndex <= optionCount; ++optionIndex) {
+                    sol::object optionObj = enumOptions[optionIndex];
+                    if (!optionObj.valid() || !optionObj.is<sol::table>()) {
+                        continue;
+                    }
+                    sol::table option = optionObj.as<sol::table>();
+                    inspectorConfig.activeProperty.enumLabels.push_back(option["label"].get_or(std::string{}));
+                    sol::object optionValue = option["value"];
+                    bool matches = false;
+                    if (rawValue.get_type() == optionValue.get_type()) {
+                        if (rawValue.is<bool>()) {
+                            matches = rawValue.as<bool>() == optionValue.as<bool>();
+                        } else if (rawValue.is<double>()) {
+                            matches = rawValue.as<double>() == optionValue.as<double>();
+                        } else if (rawValue.is<std::string>()) {
+                            matches = rawValue.as<std::string>() == optionValue.as<std::string>();
+                        }
+                    }
+                    if (matches) {
+                        inspectorConfig.activeProperty.enumSelectedIndex = static_cast<int>(optionIndex);
+                    }
+                }
+            }
+        }
+
         if (inspectorRowsObj.valid() && inspectorRowsObj.is<sol::table>()) {
             sol::table inspectorRows = inspectorRowsObj.as<sol::table>();
-            std::string activePath;
-            if (activePropertyObj.valid() && activePropertyObj.is<sol::table>()) {
-                sol::table activeProperty = activePropertyObj.as<sol::table>();
-                inspectorConfig.activeProperty.valid = true;
-                inspectorConfig.activeProperty.key = activeProperty["key"].get_or(std::string{});
-                inspectorConfig.activeProperty.path = activeProperty["path"].get_or(std::string{});
-                inspectorConfig.activeProperty.editorType = activeProperty["editorType"].get_or(std::string{});
-                inspectorConfig.activeProperty.displayValue = activeProperty["value"].get_or(std::string{});
-                inspectorConfig.activeProperty.mixed = activeProperty["mixed"].get_or(false);
-                activePath = inspectorConfig.activeProperty.path;
-            }
-
-            const auto rowCount = inspectorRows.size();
-            inspectorConfig.rows.reserve(rowCount);
-            for (std::size_t i = 1; i <= rowCount; ++i) {
+            const auto inspectorRowCount = inspectorRows.size();
+            inspectorConfig.rows.reserve(inspectorRowCount);
+            for (std::size_t i = 1; i <= inspectorRowCount; ++i) {
                 sol::object rowObj = inspectorRows[i];
                 if (!rowObj.valid() || !rowObj.is<sol::table>()) {
                     continue;
                 }
                 sol::table row = rowObj.as<sol::table>();
                 ImGuiInspectorHost::InspectorRow hostRow;
-                hostRow.rowIndex = static_cast<int>(i - 1);
+                hostRow.rowIndex = static_cast<int>(i);
+                hostRow.section = !row["isConfig"].get_or(false) && row["value"].get_or(std::string{}).empty();
+                hostRow.interactive = row["isConfig"].get_or(false);
                 hostRow.key = row["key"].get_or(std::string{});
                 hostRow.value = row["value"].get_or(std::string{});
-                hostRow.section = row["section"].get_or(false);
-                hostRow.interactive = row["interactive"].get_or(false);
-                hostRow.selected = (activePath == hostRow.key);
+                hostRow.selected = hostRow.interactive && !activePath.empty()
+                    && row["path"].get_or(std::string{}) == activePath;
                 inspectorConfig.rows.push_back(std::move(hostRow));
             }
         }
+
+        lua["__manifoldImguiInspectorActive"] = true;
     }
+
+    lua["__manifoldImguiHierarchyActive"] = true;
 }
 
-void buildScriptListConfig(sol::state& lua, sol::table& shell,
-                          sol::object surfacesObj,
-                          ScriptListHostConfig& scriptListConfig) {
+void buildScriptListConfig(sol::state& lua,
+                           sol::table& shell,
+                           sol::object surfacesObj,
+                           ScriptListHostConfig& scriptListConfig) {
     readSurfaceDescriptor(surfacesObj, "scriptList", scriptListConfig.visible, scriptListConfig.bounds);
     if (!scriptListConfig.visible || scriptListConfig.bounds.getWidth() <= 0 || scriptListConfig.bounds.getHeight() <= 0) {
         return;
@@ -230,19 +622,35 @@ void buildScriptListConfig(sol::state& lua, sol::table& shell,
             }
             sol::table row = rowObj.as<sol::table>();
             ImGuiScriptListHost::ScriptRow hostRow;
-            hostRow.path = row["path"].get_or(std::string{});
+            hostRow.section = row["section"].get_or(false);
+            hostRow.nonInteractive = row["nonInteractive"].get_or(false);
+            hostRow.active = row["active"].get_or(false);
+            hostRow.dirty = row["dirty"].get_or(false);
             hostRow.kind = row["kind"].get_or(std::string{});
+            hostRow.ownership = row["ownership"].get_or(std::string{});
+            hostRow.path = row["path"].get_or(std::string{});
             hostRow.name = row["name"].get_or(std::string{});
-            hostRow. ownership = row["ownership"].get_or(std::string{});
-            hostRow.selected = (hostRow.path == selectedPath);
+            hostRow.label = row["label"].get_or(std::string{});
+            hostRow.selected = (!selectedPath.empty()
+                && hostRow.path == selectedPath
+                && hostRow.kind == selectedKind);
             scriptListConfig.rows.push_back(std::move(hostRow));
         }
     }
+
+    lua["__manifoldImguiScriptListActive"] = true;
 }
 
-void buildScriptInspectorConfig(sol::state& lua, sol::table& shell,
-                               sol::object surfacesObj,
-                               InspectorHostConfig& scriptInspectorConfig) {
+void buildScriptInspectorConfig(sol::state& lua,
+                                sol::table& shell,
+                                sol::object surfacesObj,
+                                const std::string& shellMode,
+                                const std::string& leftPanelMode,
+                                InspectorHostConfig& scriptInspectorConfig) {
+    if (shellMode != "edit" || leftPanelMode != "scripts") {
+        return;
+    }
+
     readSurfaceDescriptor(surfacesObj, "scriptInspectorTool", scriptInspectorConfig.visible, scriptInspectorConfig.bounds);
     sol::object scriptInspectorObj = shell["scriptInspector"];
     if (!scriptInspectorConfig.visible
@@ -265,47 +673,410 @@ void buildScriptInspectorConfig(sol::state& lua, sol::table& shell,
     scriptInspectorConfig.scriptData.text = scriptInspector["text"].get_or(std::string{});
     scriptInspectorConfig.scriptData.syncToken = scriptInspector["syncToken"].get_or(int64_t{0});
     scriptInspectorConfig.scriptData.inlineReadOnly = true;
+    scriptInspectorConfig.scriptData.runtimeStatus = scriptInspector["runtimeStatus"].get_or(std::string{});
+    scriptInspectorConfig.scriptData.editorCollapsed = scriptInspector["editorCollapsed"].get_or(false);
+    scriptInspectorConfig.scriptData.graphCollapsed = scriptInspector["graphCollapsed"].get_or(false);
+    scriptInspectorConfig.scriptData.graphPanX = scriptInspector["graphPanX"].get_or(0);
+    scriptInspectorConfig.scriptData.graphPanY = scriptInspector["graphPanY"].get_or(0);
+
+    if (!path.empty()) {
+        sol::protected_function getDocumentStatus = shell["getStructuredDocumentStatus"];
+        if (getDocumentStatus.valid()) {
+            sol::protected_function_result result = getDocumentStatus(shell, path);
+            if (result.valid()) {
+                sol::object statusObj = result;
+                if (statusObj.valid() && statusObj.is<sol::table>()) {
+                    sol::table status = statusObj.as<sol::table>();
+                    scriptInspectorConfig.scriptData.hasStructuredStatus = true;
+                    scriptInspectorConfig.scriptData.structuredDirty = status["dirty"].get_or(false);
+                }
+            }
+        }
+    }
+
+    sol::protected_function getProjectStatus = shell["getStructuredProjectStatus"];
+    if (getProjectStatus.valid()) {
+        sol::protected_function_result result = getProjectStatus(shell);
+        if (result.valid()) {
+            sol::object statusObj = result;
+            if (statusObj.valid() && statusObj.is<sol::table>()) {
+                sol::table status = statusObj.as<sol::table>();
+                scriptInspectorConfig.scriptData.projectLastError = status["lastError"].get_or(std::string{});
+            }
+        }
+    }
+
+    sol::object paramsObj = scriptInspector["params"];
+    if (paramsObj.valid() && paramsObj.is<sol::table>()) {
+        sol::table params = paramsObj.as<sol::table>();
+        const auto count = params.size();
+        scriptInspectorConfig.scriptData.declaredParams.reserve(count);
+        for (std::size_t i = 1; i <= count; ++i) {
+            sol::object paramObj = params[i];
+            if (!paramObj.valid() || !paramObj.is<sol::table>()) {
+                continue;
+            }
+            sol::table param = paramObj.as<sol::table>();
+            ImGuiInspectorHost::DeclaredParam hostParam;
+            hostParam.path = param["path"].get_or(std::string{});
+            sol::object defaultObj = param["default"];
+            if (defaultObj.valid()) {
+                if (defaultObj.is<double>()) {
+                    hostParam.defaultValue = juce::String(defaultObj.as<double>()).toStdString();
+                } else if (defaultObj.is<bool>()) {
+                    hostParam.defaultValue = defaultObj.as<bool>() ? "true" : "false";
+                } else if (defaultObj.is<std::string>()) {
+                    hostParam.defaultValue = defaultObj.as<std::string>();
+                }
+            }
+            scriptInspectorConfig.scriptData.declaredParams.push_back(std::move(hostParam));
+        }
+    }
+
+    sol::object runtimeParamsObj = scriptInspector["runtimeParams"];
+    if (runtimeParamsObj.valid() && runtimeParamsObj.is<sol::table>()) {
+        sol::table runtimeParams = runtimeParamsObj.as<sol::table>();
+        const auto count = runtimeParams.size();
+        scriptInspectorConfig.scriptData.runtimeParams.reserve(count);
+        for (std::size_t i = 1; i <= count; ++i) {
+            sol::object paramObj = runtimeParams[i];
+            if (!paramObj.valid() || !paramObj.is<sol::table>()) {
+                continue;
+            }
+            sol::table param = paramObj.as<sol::table>();
+            ImGuiInspectorHost::RuntimeParam hostParam;
+            hostParam.endpointPath = param["endpointPath"].get_or(param["path"].get_or(std::string{}));
+            hostParam.path = param["path"].get_or(std::string{});
+            hostParam.displayValue = param["value"].get_or(std::string{});
+            hostParam.active = param["active"].get_or(false);
+            sol::object numericValueObj = param["numericValue"];
+            if (numericValueObj.valid() && numericValueObj.is<double>()) {
+                hostParam.hasValue = true;
+                hostParam.value = numericValueObj.as<double>();
+            } else {
+                sol::object textValueObj = param["value"];
+                if (textValueObj.valid() && textValueObj.is<std::string>()) {
+                    const auto parsed = juce::String(textValueObj.as<std::string>()).getDoubleValue();
+                    hostParam.value = parsed;
+                }
+            }
+            sol::object minObj = param["min"];
+            sol::object maxObj = param["max"];
+            sol::object stepObj = param["step"];
+            hostParam.hasMin = minObj.valid() && minObj.is<double>();
+            hostParam.hasMax = maxObj.valid() && maxObj.is<double>();
+            if (hostParam.hasMin) {
+                hostParam.minValue = minObj.as<double>();
+            }
+            if (hostParam.hasMax) {
+                hostParam.maxValue = maxObj.as<double>();
+            }
+            if (stepObj.valid() && stepObj.is<double>()) {
+                hostParam.stepValue = stepObj.as<double>();
+            }
+            scriptInspectorConfig.scriptData.runtimeParams.push_back(std::move(hostParam));
+        }
+    }
+
+    sol::object graphObj = scriptInspector["graph"];
+    if (graphObj.valid() && graphObj.is<sol::table>()) {
+        sol::table graph = graphObj.as<sol::table>();
+        sol::object nodesObj = graph["nodes"];
+        sol::object edgesObj = graph["edges"];
+        if (nodesObj.valid() && nodesObj.is<sol::table>()) {
+            sol::table nodes = nodesObj.as<sol::table>();
+            const auto count = nodes.size();
+            scriptInspectorConfig.scriptData.graphNodes.reserve(count);
+            for (std::size_t i = 1; i <= count; ++i) {
+                sol::object nodeObj = nodes[i];
+                if (!nodeObj.valid() || !nodeObj.is<sol::table>()) {
+                    continue;
+                }
+                sol::table node = nodeObj.as<sol::table>();
+                ImGuiInspectorHost::GraphNode hostNode;
+                hostNode.var = node["var"].get_or(std::string{"n"});
+                hostNode.prim = node["prim"].get_or(std::string{"node"});
+                scriptInspectorConfig.scriptData.graphNodes.push_back(std::move(hostNode));
+            }
+        }
+        if (edgesObj.valid() && edgesObj.is<sol::table>()) {
+            sol::table edges = edgesObj.as<sol::table>();
+            const auto count = edges.size();
+            scriptInspectorConfig.scriptData.graphEdges.reserve(count);
+            for (std::size_t i = 1; i <= count; ++i) {
+                sol::object edgeObj = edges[i];
+                if (!edgeObj.valid() || !edgeObj.is<sol::table>()) {
+                    continue;
+                }
+                sol::table edge = edgeObj.as<sol::table>();
+                ImGuiInspectorHost::GraphEdge hostEdge;
+                hostEdge.fromIndex = edge["from"].get_or(0);
+                hostEdge.toIndex = edge["to"].get_or(0);
+                scriptInspectorConfig.scriptData.graphEdges.push_back(std::move(hostEdge));
+            }
+        }
+    }
+
+    lua["__manifoldImguiInspectorActive"] = true;
 }
 
-void buildPerfOverlayConfig(sol::state& lua, sol::table& shell,
-                           PerfOverlayHostConfig& perfOverlayConfig) {
-    sol::object perfSurfacesObj = shell["surfaces"];
-    if (!perfSurfacesObj.valid() || !perfSurfacesObj.is<sol::table>()) {
-        return;
-    }
-    sol::table surfaces = perfSurfacesObj.as<sol::table>();
-    sol::object perfSurfaceObj = surfaces["perfOverlay"];
-    if (!perfSurfaceObj.valid() || !perfSurfaceObj.is<sol::table>()) {
-        return;
-    }
-    sol::table perfSurface = perfSurfaceObj.as<sol::table>();
-    perfOverlayConfig.visible = perfSurface["visible"].get_or(false);
-    perfOverlayConfig.snapshot.title = perfSurface["title"].get_or(std::string{"Performance"});
-
-    sol::object boundsObj = perfSurface["bounds"];
-    if (boundsObj.valid() && boundsObj.is<sol::table>()) {
-        sol::table bounds = boundsObj.as<sol::table>();
-        perfOverlayConfig.bounds = juce::Rectangle<int>(
-            bounds["x"].get_or(0),
-            bounds["y"].get_or(0),
-            std::max(0, bounds["w"].get_or(0)),
-            std::max(0, bounds["h"].get_or(0)));
-    }
-
+void buildPerfOverlayConfig(LuaEngine& luaEngine,
+                            sol::state& lua,
+                            sol::table& shell,
+                            HostConfig const& mainConfig,
+                            ScriptListHostConfig const& scriptListConfig,
+                            HierarchyHostConfig const& hierarchyConfig,
+                            InspectorHostConfig const& inspectorConfig,
+                            PerfOverlayHostConfig& perfOverlayConfig) {
     sol::object perfOverlayObj = shell["perfOverlay"];
-    if (perfOverlayObj.valid() && perfOverlayObj.is<sol::table>()) {
-        sol::table perfOverlay = perfOverlayObj.as<sol::table>();
-        perfOverlayConfig.snapshot.activeTab = perfOverlay["activeTab"].get_or(std::string{"frame"});
+    if (!perfOverlayObj.valid() || !perfOverlayObj.is<sol::table>()) {
+        return;
+    }
+
+    sol::table perfOverlay = perfOverlayObj.as<sol::table>();
+    perfOverlayConfig.snapshot.activeTab = perfOverlay["activeTab"].get_or(std::string{"frame"});
+
+    sol::object perfSurfacesObj = shell["surfaces"];
+    if (perfSurfacesObj.valid() && perfSurfacesObj.is<sol::table>()) {
+        sol::table surfaces = perfSurfacesObj.as<sol::table>();
+        sol::object perfSurfaceObj = surfaces["perfOverlay"];
+        if (perfSurfaceObj.valid() && perfSurfaceObj.is<sol::table>()) {
+            sol::table perfSurface = perfSurfaceObj.as<sol::table>();
+            perfOverlayConfig.visible = perfSurface["visible"].get_or(false);
+            perfOverlayConfig.snapshot.title = perfSurface["title"].get_or(std::string{"Performance"});
+
+            sol::object boundsObj = perfSurface["bounds"];
+            if (boundsObj.valid() && boundsObj.is<sol::table>()) {
+                sol::table bounds = boundsObj.as<sol::table>();
+                perfOverlayConfig.bounds = juce::Rectangle<int>(
+                    bounds["x"].get_or(0),
+                    bounds["y"].get_or(0),
+                    std::max(0, bounds["w"].get_or(0)),
+                    std::max(0, bounds["h"].get_or(0)));
+            }
+        }
+    }
+
+    auto addTab = [&](const std::string& id, const std::string& label) -> ImGuiPerfOverlayHost::TabData& {
+        perfOverlayConfig.snapshot.tabs.push_back(ImGuiPerfOverlayHost::TabData{});
+        auto& tab = perfOverlayConfig.snapshot.tabs.back();
+        tab.id = id;
+        tab.label = label;
+        return tab;
+    };
+    auto addRow = [](ImGuiPerfOverlayHost::TabData& tab, const std::string& label, const std::string& value) {
+        tab.rows.push_back(ImGuiPerfOverlayHost::MetricRow{label, value});
+    };
+    auto boolText = [](bool v) { return v ? std::string{"yes"} : std::string{"no"}; };
+    auto usText = [](int64_t v) { return std::to_string(static_cast<long long>(v)) + " us"; };
+    auto msText = [](double v) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.3f ms", v);
+        return std::string(buf);
+    };
+
+    auto& frameTab = addTab("frame", "Frame");
+    addRow(frameTab, "Frame count", std::to_string(static_cast<long long>(luaEngine.frameTimings.frameCount.load(std::memory_order_relaxed))));
+    addRow(frameTab, "Total current", usText(luaEngine.frameTimings.total.currentUs.load(std::memory_order_relaxed)));
+    addRow(frameTab, "Total avg", usText(luaEngine.frameTimings.total.getAvgUs()));
+    addRow(frameTab, "Total peak", usText(luaEngine.frameTimings.total.peakUs.load(std::memory_order_relaxed)));
+    addRow(frameTab, "Push state", usText(luaEngine.frameTimings.pushState.currentUs.load(std::memory_order_relaxed)));
+    addRow(frameTab, "Event listeners", usText(luaEngine.frameTimings.eventListeners.currentUs.load(std::memory_order_relaxed)));
+    addRow(frameTab, "UI update", usText(luaEngine.frameTimings.uiUpdate.currentUs.load(std::memory_order_relaxed)));
+    addRow(frameTab, "Paint", usText(luaEngine.frameTimings.paint.currentUs.load(std::memory_order_relaxed)));
+
+    auto& imguiTab = addTab("imgui", "ImGui");
+    addRow(imguiTab, "Context ready", boolText(luaEngine.frameTimings.imguiContextReady.load(std::memory_order_relaxed)));
+    addRow(imguiTab, "Capture mouse", boolText(luaEngine.frameTimings.imguiWantCaptureMouse.load(std::memory_order_relaxed)));
+    addRow(imguiTab, "Capture keyboard", boolText(luaEngine.frameTimings.imguiWantCaptureKeyboard.load(std::memory_order_relaxed)));
+    addRow(imguiTab, "Render", usText(luaEngine.frameTimings.imguiRenderUs.load(std::memory_order_relaxed)));
+    addRow(imguiTab, "Vertices", std::to_string(static_cast<long long>(luaEngine.frameTimings.imguiVertexCount.load(std::memory_order_relaxed))));
+    addRow(imguiTab, "Indices", std::to_string(static_cast<long long>(luaEngine.frameTimings.imguiIndexCount.load(std::memory_order_relaxed))));
+    addRow(imguiTab, "Document loaded", boolText(luaEngine.frameTimings.imguiDocumentLoaded.load(std::memory_order_relaxed)));
+    addRow(imguiTab, "Document dirty", boolText(luaEngine.frameTimings.imguiDocumentDirty.load(std::memory_order_relaxed)));
+    addRow(imguiTab, "Document lines", std::to_string(static_cast<long long>(luaEngine.frameTimings.imguiDocumentLineCount.load(std::memory_order_relaxed))));
+
+    auto& editorTab = addTab("editor", "Editor");
+    sol::object editorPerfObj = lua["__manifoldEditorPerf"];
+    if (editorPerfObj.valid() && editorPerfObj.is<sol::table>()) {
+        sol::table editorPerf = editorPerfObj.as<sol::table>();
+        addRow(editorTab, "Last event", editorPerf["lastEvent"].get_or(std::string{""}));
+        addRow(editorTab, "Draw", msText(editorPerf["lastDrawMs"].get_or(0.0)));
+        addRow(editorTab, "Draw peak", msText(editorPerf["peakDrawMs"].get_or(0.0)));
+        addRow(editorTab, "Line build", msText(editorPerf["lastLineBuildMs"].get_or(0.0)));
+        addRow(editorTab, "Cursor lookup", msText(editorPerf["lastCursorLookupMs"].get_or(0.0)));
+        addRow(editorTab, "Post cursor", msText(editorPerf["lastPostCursorMs"].get_or(0.0)));
+        addRow(editorTab, "Wheel", msText(editorPerf["lastWheelMs"].get_or(0.0)));
+        addRow(editorTab, "Wheel peak", msText(editorPerf["peakWheelMs"].get_or(0.0)));
+        addRow(editorTab, "Keypress", msText(editorPerf["lastKeypressMs"].get_or(0.0)));
+        addRow(editorTab, "Keypress peak", msText(editorPerf["peakKeypressMs"].get_or(0.0)));
+        addRow(editorTab, "Ensure visible", msText(editorPerf["lastEnsureVisibleMs"].get_or(0.0)));
+        addRow(editorTab, "Ensure visible peak", msText(editorPerf["peakEnsureVisibleMs"].get_or(0.0)));
+        addRow(editorTab, "Pos from point", msText(editorPerf["lastPosFromPointMs"].get_or(0.0)));
+        addRow(editorTab, "Pos from point peak", msText(editorPerf["peakPosFromPointMs"].get_or(0.0)));
+        addRow(editorTab, "Visible lines", std::to_string(editorPerf["lastVisibleLines"].get_or(0)));
+        addRow(editorTab, "Syntax spans", std::to_string(editorPerf["lastSyntaxSpanCount"].get_or(0)));
+        addRow(editorTab, "Syntax draw calls", std::to_string(editorPerf["lastSyntaxDrawCalls"].get_or(0)));
+        addRow(editorTab, "Gutter draw calls", std::to_string(editorPerf["lastGutterDrawCalls"].get_or(0)));
+        addRow(editorTab, "Text length", std::to_string(editorPerf["lastTextLen"].get_or(0)));
+        addRow(editorTab, "Cursor", std::to_string(editorPerf["lastCursorLine"].get_or(0)) + ":" + std::to_string(editorPerf["lastCursorCol"].get_or(0)));
+    } else {
+        addRow(editorTab, "Status", "No editor metrics available");
+    }
+
+    auto& uiTab = addTab("ui", "UI");
+    addRow(uiTab, "Mode", shell["mode"].get_or(std::string{}));
+    addRow(uiTab, "Left panel", shell["leftPanelMode"].get_or(std::string{}));
+    addRow(uiTab, "Edit content", shell["editContentMode"].get_or(std::string{}));
+    addRow(uiTab, "Total paint accumulated", usText(luaEngine.frameTimings.totalPaintAccumulatedUs.load(std::memory_order_relaxed)));
+    addRow(uiTab, "Main editor visible", boolText(mainConfig.visible));
+    addRow(uiTab, "Script list visible", boolText(scriptListConfig.visible));
+    addRow(uiTab, "Hierarchy visible", boolText(hierarchyConfig.visible));
+    addRow(uiTab, "Inspector visible", boolText(inspectorConfig.visible));
+
+    auto& paintTab = addTab("paint", "Paint");
+    const auto paintProfile = Canvas::getLastFramePaintProfile(8);
+    addRow(paintTab, "Accumulated canvas paint", usText(Canvas::getLastFrameAccumulatedPaintUs()));
+    addRow(paintTab, "Tracked canvases", std::to_string(static_cast<long long>(paintProfile.size())));
+    if (paintProfile.empty()) {
+        addRow(paintTab, "Status", "No canvas paint samples yet");
+    } else {
+        for (std::size_t i = 0; i < paintProfile.size(); ++i) {
+            const auto& sample = paintProfile[i];
+            std::string label = "Hot canvas " + std::to_string(static_cast<long long>(i + 1));
+            std::string value = sample.name;
+            if (!sample.widgetType.empty()) {
+                value += " [" + sample.widgetType + "]";
+            }
+            value += " | total=" + usText(sample.totalUs);
+            value += " last=" + usText(sample.lastUs);
+            value += " paints=" + std::to_string(sample.paintCount);
+            value += " size=" + std::to_string(sample.width) + "x" + std::to_string(sample.height);
+            value += sample.openGL ? " | gl" : " | cpu";
+            addRow(paintTab, label, value);
+        }
     }
 }
 
-} // namespace
+void applyMainEditorHostConfig(HostLayoutTraceState& trace,
+                               ImGuiHost& host,
+                               const HostConfig& config) {
+    logEditorHostLayout("mainScriptEditorHost", trace, config.visible,
+                        config.visible ? config.bounds : juce::Rectangle<int>());
+    if (config.visible) {
+        host.configureDocument(config.file, config.text, config.syncToken, config.readOnly);
+    }
+}
+
+void applyHierarchyHostConfig(HostLayoutTraceState& trace,
+                              ImGuiHierarchyHost& host,
+                              const HierarchyHostConfig& config) {
+    logEditorHostLayout("hierarchyHost", trace, config.visible,
+                        config.visible ? config.bounds : juce::Rectangle<int>());
+    if (config.visible) {
+        host.configureRows(config.rows);
+    }
+}
+
+void applyScriptListHostConfig(HostLayoutTraceState& trace,
+                               ImGuiScriptListHost& host,
+                               const ScriptListHostConfig& config) {
+    logEditorHostLayout("scriptListHost", trace, config.visible,
+                        config.visible ? config.bounds : juce::Rectangle<int>());
+    if (config.visible) {
+        host.configureRows(config.rows);
+    }
+}
+
+void applyInspectorHostConfig(HostLayoutTraceState& trace,
+                              ImGuiInspectorHost& host,
+                              const InspectorHostConfig& config) {
+    logEditorHostLayout("inspectorHost", trace, config.visible,
+                        config.visible ? config.bounds : juce::Rectangle<int>());
+    if (config.visible) {
+        host.configureData(config.selectionBounds, config.rows, config.activeProperty);
+    }
+}
+
+void applyScriptInspectorHostConfig(HostLayoutTraceState& trace,
+                                    ImGuiInspectorHost& host,
+                                    const InspectorHostConfig& config) {
+    logEditorHostLayout("scriptInspectorHost", trace, config.visible,
+                        config.visible ? config.bounds : juce::Rectangle<int>());
+    if (config.visible) {
+        host.configureScriptData(config.scriptData);
+    }
+}
+
+void applyPerfOverlayHostConfig(ImGuiPerfOverlayHost& host,
+                                const PerfOverlayHostConfig& config) {
+    if (config.visible) {
+        host.configureSnapshot(config.snapshot);
+    }
+}
+}
 
 BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor)
     : juce::AudioProcessorEditor(&ownerProcessor), processorRef(ownerProcessor) {
     setSize(1000, 640);
 
     addAndMakeVisible(rootCanvas);
+    addAndMakeVisible(mainScriptEditorHost);
+    addAndMakeVisible(scriptListHost);
+    addAndMakeVisible(hierarchyHost);
+    addAndMakeVisible(inspectorHost);
+    addAndMakeVisible(scriptInspectorHost);
+    addAndMakeVisible(perfOverlayHost);
+
+    perfOverlayHost.onTabChanged = [this](const std::string& tabId) {
+        luaEngine.withLuaState([tabId](sol::state& L) {
+            auto shell = L["_G"]["shell"];
+            if (!shell.valid()) {
+                return;
+            }
+            sol::protected_function fn = shell["setPerfOverlayActiveTab"];
+            if (fn.valid()) {
+                fn(shell, tabId);
+            }
+        });
+    };
+    perfOverlayHost.onClosed = [this]() {
+        luaEngine.withLuaState([](sol::state& L) {
+            auto shell = L["_G"]["shell"];
+            if (!shell.valid()) {
+                return;
+            }
+            sol::protected_function fn = shell["setPerfOverlayVisible"];
+            if (fn.valid()) {
+                fn(shell, false);
+            }
+        });
+    };
+    perfOverlayHost.onBoundsChanged = [this](const juce::Rectangle<int>& bounds) {
+        luaEngine.withLuaState([bounds](sol::state& L) {
+            auto shell = L["_G"]["shell"];
+            if (!shell.valid()) {
+                return;
+            }
+            sol::protected_function fn = shell["setPerfOverlayBounds"];
+            if (fn.valid()) {
+                fn(shell, bounds.getX(), bounds.getY(), bounds.getWidth(), bounds.getHeight());
+            }
+        });
+    };
+    mainScriptEditorHost.setVisible(false);
+    scriptListHost.setVisible(false);
+    hierarchyHost.setVisible(false);
+    inspectorHost.setVisible(false);
+    scriptInspectorHost.setVisible(false);
+    perfOverlayHost.setVisible(false);
+    mainScriptEditorHost.toFront(false);
+    scriptListHost.toFront(false);
+    hierarchyHost.toFront(false);
+    inspectorHost.toFront(false);
+    scriptInspectorHost.toFront(false);
+    perfOverlayHost.toFront(false);
+
     luaEngine.initialise(&processorRef, &rootCanvas);
     processorRef.getControlServer().setFrameTimings(&luaEngine.frameTimings);
     processorRef.getControlServer().setLuaEngine(&luaEngine);
@@ -350,12 +1121,59 @@ BehaviorCoreEditor::~BehaviorCoreEditor() {
     processorRef.getControlServer().setFrameTimings(nullptr);
 }
 
+void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
+    if (deferredVisibilityChanges.empty()) return;
+
+    const auto applyStart = PerfClock::now();
+    for (const auto& change : deferredVisibilityChanges) {
+        if (change.host == nullptr) {
+            continue;
+        }
+
+        if (change.visible) {
+            if (change.host->getBounds() != change.bounds) {
+                change.host->setBounds(change.bounds);
+            }
+            if (!change.host->isVisible()) {
+                change.host->setVisible(true);
+            }
+            change.host->toFront(false);
+        } else {
+            if (change.host->isVisible()) {
+                change.host->setVisible(false);
+            }
+            if (change.host->getBounds() != change.bounds) {
+                change.host->setBounds(change.bounds);
+            }
+        }
+    }
+    auto count = deferredVisibilityChanges.size();
+    deferredVisibilityChanges.clear();
+    std::string extra = std::to_string(count) + " hosts";
+    logEditorPerf("applyDeferredVisibilityChanges", applyStart, extra.c_str());
+}
+
+void BehaviorCoreEditor::queueHostVisibilityChange(juce::Component& host, bool visible,
+                                                 const juce::Rectangle<int>& bounds) {
+    const auto targetBounds = visible ? bounds : juce::Rectangle<int>(0, 0, 0, 0);
+    if (host.isVisible() != visible || host.getBounds() != targetBounds) {
+        deferredVisibilityChanges.push_back({&host, visible, targetBounds});
+    }
+}
+
 void BehaviorCoreEditor::timerCallback() {
     using Clock = std::chrono::steady_clock;
     static auto lastCall = Clock::now();
     const auto now = Clock::now();
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(now - lastCall).count();
     lastCall = now;
+
+    static int logCount = 0;
+    const auto timerStart = Clock::now();
+    
+    // Apply any deferred visibility changes first (outside of GUI event handling)
+    applyDeferredVisibilityChanges();
+    Canvas::finishPaintProfilingFrame();
 
     auto pendingPath = processorRef.getAndClearPendingUISwitch();
     if (!pendingPath.empty()) {
@@ -376,110 +1194,58 @@ void BehaviorCoreEditor::timerCallback() {
 
     if (usingLuaUi) {
         luaEngine.notifyUpdate();
-        rootCanvas.repaint();
         syncImGuiHostsFromLuaShell();
+        rootCanvas.repaint();
+
+        const int64_t totalUs = std::chrono::duration_cast<std::chrono::microseconds>(
+            Clock::now() - timerStart).count();
+        const int64_t pushStateUs =
+            luaEngine.frameTimings.pushState.currentUs.load(std::memory_order_relaxed);
+        const int64_t eventListenersUs =
+            luaEngine.frameTimings.eventListeners.currentUs.load(std::memory_order_relaxed);
+        const int64_t uiUpdateUs =
+            luaEngine.frameTimings.uiUpdate.currentUs.load(std::memory_order_relaxed);
+        const int64_t paintUs = Canvas::getLastFrameAccumulatedPaintUs();
+
+        auto imguiStats = mainScriptEditorHost.getStatsSnapshot();
+
+        luaEngine.frameTimings.imguiContextReady.store(imguiStats.contextReady,
+                                                       std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiTestWindowVisible.store(imguiStats.testWindowVisible,
+                                                            std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiWantCaptureMouse.store(imguiStats.wantCaptureMouse,
+                                                           std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiWantCaptureKeyboard.store(imguiStats.wantCaptureKeyboard,
+                                                              std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiFrameCount.store(imguiStats.frameCount,
+                                                     std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiRenderUs.store(imguiStats.lastRenderUs,
+                                                   std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiVertexCount.store(imguiStats.lastVertexCount,
+                                                      std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiIndexCount.store(imguiStats.lastIndexCount,
+                                                     std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiButtonClicks.store(imguiStats.buttonClicks,
+                                                       std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiDocumentLoaded.store(imguiStats.documentLoaded,
+                                                         std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiDocumentDirty.store(imguiStats.documentDirty,
+                                                        std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiDocumentLineCount.store(imguiStats.documentLineCount,
+                                                            std::memory_order_relaxed);
+        luaEngine.frameTimings.totalPaintAccumulatedUs.store(paintUs,
+                                                             std::memory_order_relaxed);
+
+        luaEngine.frameTimings.update(totalUs, pushStateUs, eventListenersUs,
+                                      uiUpdateUs, paintUs);
+
+        juce::ignoreUnused(logCount, elapsed);
     }
-}
-
-void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
-    luaEngine.withLuaState([this](sol::state& lua) {
-        sol::table shell = lua["shell"].get_or(sol::lua_nil);
-        if (!shell.valid()) {
-            return;
-        }
-
-        sol::object surfacesObj = shell["surfaces"];
-        if (!surfacesObj.valid() || !surfacesObj.is<sol::table>()) {
-            return;
-        }
-
-    // Main script editor
-    HostConfig mainConfig;
-    buildMainScriptEditorConfig(lua, shell, surfacesObj, mainConfig);
-    if (mainConfig.visible && mainConfig.bounds.getWidth() > 0 && mainConfig.bounds.getHeight() > 0) {
-        mainScriptEditorHost.setVisible(true);
-        mainScriptEditorHost.setBounds(mainConfig.bounds);
-        mainScriptEditorHost.configureDocument(mainConfig.file, mainConfig.text, mainConfig.syncToken, mainConfig.readOnly);
-    } else {
-        mainScriptEditorHost.setVisible(false);
-    }
-
-    // Hierarchy and Inspector
-    HierarchyHostConfig hierarchyConfig;
-    InspectorHostConfig inspectorConfig;
-    buildHierarchyAndInspectorConfig(lua, shell, surfacesObj, hierarchyConfig, inspectorConfig);
-
-    if (hierarchyConfig.visible && hierarchyConfig.bounds.getWidth() > 0 && hierarchyConfig.bounds.getHeight() > 0) {
-        hierarchyHost.setVisible(true);
-        hierarchyHost.setBounds(hierarchyConfig.bounds);
-        hierarchyHost.configureRows(hierarchyConfig.rows);
-    } else {
-        hierarchyHost.setVisible(false);
-    }
-
-    if (inspectorConfig.visible && inspectorConfig.bounds.getWidth() > 0 && inspectorConfig.bounds.getHeight() > 0) {
-        inspectorHost.setVisible(true);
-        inspectorHost.setBounds(inspectorConfig.bounds);
-        inspectorHost.configureData(inspectorConfig.selectionBounds, inspectorConfig.rows, inspectorConfig.activeProperty);
-    } else {
-        inspectorHost.setVisible(false);
-    }
-
-    // Script list
-    ScriptListHostConfig scriptListConfig;
-    buildScriptListConfig(lua, shell, surfacesObj, scriptListConfig);
-    if (scriptListConfig.visible && scriptListConfig.bounds.getWidth() > 0 && scriptListConfig.bounds.getHeight() > 0) {
-        scriptListHost.setVisible(true);
-        scriptListHost.setBounds(scriptListConfig.bounds);
-        scriptListHost.configureRows(scriptListConfig.rows);
-    } else {
-        scriptListHost.setVisible(false);
-    }
-
-    // Script inspector
-    InspectorHostConfig scriptInspectorConfig;
-    buildScriptInspectorConfig(lua, shell, surfacesObj, scriptInspectorConfig);
-    if (scriptInspectorConfig.visible && scriptInspectorConfig.bounds.getWidth() > 0 && scriptInspectorConfig.bounds.getHeight() > 0) {
-        scriptInspectorHost.setVisible(true);
-        scriptInspectorHost.setBounds(scriptInspectorConfig.bounds);
-        scriptInspectorHost.configureScriptData(scriptInspectorConfig.scriptData);
-    } else {
-        scriptInspectorHost.setVisible(false);
-    }
-
-    // Performance overlay
-    PerfOverlayHostConfig perfOverlayConfig;
-    buildPerfOverlayConfig(lua, shell, perfOverlayConfig);
-    if (perfOverlayConfig.visible && perfOverlayConfig.bounds.getWidth() > 0 && perfOverlayConfig.bounds.getHeight() > 0) {
-        perfOverlayHost.setVisible(true);
-        perfOverlayHost.setBounds(perfOverlayConfig.bounds);
-        perfOverlayHost.configureSnapshot(perfOverlayConfig.snapshot);
-    } else {
-        perfOverlayHost.setVisible(false);
-    }
-
-    // Apply deferred visibility changes
-    applyDeferredVisibilityChanges();
-    });
-}
-
-void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
-    for (auto& deferred : deferredVisibilityChanges) {
-        if (deferred.host != nullptr) {
-            deferred.host->setVisible(deferred.visible);
-            if (deferred.visible && deferred.bounds.getWidth() > 0 && deferred.bounds.getHeight() > 0) {
-                deferred.host->setBounds(deferred.bounds);
-            }
-        }
-    }
-    deferredVisibilityChanges.clear();
-}
-
-void BehaviorCoreEditor::queueHostVisibilityChange(juce::Component& host, bool visible, const juce::Rectangle<int>& bounds) {
-    deferredVisibilityChanges.push_back({&host, visible, bounds});
 }
 
 void BehaviorCoreEditor::paint(juce::Graphics& g) {
+    juce::ignoreUnused(processorRef);
+
     juce::ColourGradient bg(juce::Colour(0xff161b26), 0.0f, 0.0f,
                             juce::Colour(0xff0c1019), 0.0f, (float)getHeight(), false);
     bg.addColour(0.35, juce::Colour(0xff1e2533));
@@ -487,12 +1253,129 @@ void BehaviorCoreEditor::paint(juce::Graphics& g) {
     g.fillAll();
 }
 
+void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
+    const auto totalStart = PerfClock::now();
+    static HostLayoutTraceState mainScriptHostTrace;
+    static HostLayoutTraceState scriptListHostTrace;
+    static HostLayoutTraceState hierarchyHostTrace;
+    static HostLayoutTraceState inspectorHostTrace;
+    static HostLayoutTraceState scriptInspectorHostTrace;
+
+    const auto mainStatsBefore = mainScriptEditorHost.getStatsSnapshot();
+    const auto mainIdentityBefore = mainScriptEditorHost.getDocumentIdentity();
+    const auto mainTextBefore = mainScriptEditorHost.getCurrentText();
+    const auto mainActions = mainScriptEditorHost.consumeActionRequests();
+    const auto scriptListActions = scriptListHost.consumeActionRequests();
+    const auto hierarchyActions = hierarchyHost.consumeActionRequests();
+    const auto inspectorActions = inspectorHost.consumeActionRequests();
+    const auto scriptInspectorActions = scriptInspectorHost.consumeActionRequests();
+
+    HostConfig mainConfig;
+    ScriptListHostConfig scriptListConfig;
+    HierarchyHostConfig hierarchyConfig;
+    InspectorHostConfig inspectorConfig;
+    InspectorHostConfig scriptInspectorConfig;
+    PerfOverlayHostConfig perfOverlayConfig;
+
+    const auto luaStateStart = PerfClock::now();
+    luaEngine.withLuaState([&](sol::state& lua) {
+        lua["__manifoldImguiScriptListActive"] = false;
+        lua["__manifoldImguiHierarchyActive"] = false;
+        lua["__manifoldImguiInspectorActive"] = false;
+
+        sol::object shellObj = lua["shell"];
+        if (!shellObj.valid() || !shellObj.is<sol::table>()) {
+            return;
+        }
+
+        sol::table shell = shellObj.as<sol::table>();
+
+        syncMainEditorBackToShell(shell, mainStatsBefore, mainIdentityBefore, mainTextBefore);
+        applyMainEditorActions(shell, mainActions);
+
+        applyScriptListActions(shell, scriptListActions);
+        applyHierarchyActions(shell, hierarchyActions);
+
+        applyInspectorActions(shell, inspectorActions);
+        applyScriptInspectorActions(shell, scriptInspectorActions);
+
+        const std::string shellMode = shell["mode"].get_or(std::string{});
+        sol::object surfacesObj = shell["surfaces"];
+        buildMainEditorConfig(shell, surfacesObj, mainConfig);
+
+        const std::string leftPanelMode = shell["leftPanelMode"].get_or(std::string{});
+
+        buildHierarchyAndInspectorConfig(lua, shell, surfacesObj, hierarchyConfig, inspectorConfig);
+        buildScriptListConfig(lua, shell, surfacesObj, scriptListConfig);
+        buildScriptInspectorConfig(lua, shell, surfacesObj, shellMode, leftPanelMode,
+                                   scriptInspectorConfig);
+        buildPerfOverlayConfig(luaEngine, lua, shell,
+                               mainConfig, scriptListConfig, hierarchyConfig, inspectorConfig,
+                               perfOverlayConfig);
+    });
+    logEditorPerf("syncImGuiHostsFromLuaShell.luaState", luaStateStart);
+
+    const auto hostApplyStart = PerfClock::now();
+    applyMainEditorHostConfig(mainScriptHostTrace, mainScriptEditorHost, mainConfig);
+    queueHostVisibilityChange(mainScriptEditorHost, mainConfig.visible, mainConfig.bounds);
+
+    applyHierarchyHostConfig(hierarchyHostTrace, hierarchyHost, hierarchyConfig);
+    queueHostVisibilityChange(hierarchyHost, hierarchyConfig.visible, hierarchyConfig.bounds);
+
+    applyScriptListHostConfig(scriptListHostTrace, scriptListHost, scriptListConfig);
+    queueHostVisibilityChange(scriptListHost, scriptListConfig.visible, scriptListConfig.bounds);
+
+    applyInspectorHostConfig(inspectorHostTrace, inspectorHost, inspectorConfig);
+    queueHostVisibilityChange(inspectorHost, inspectorConfig.visible, inspectorConfig.bounds);
+
+    applyScriptInspectorHostConfig(scriptInspectorHostTrace, scriptInspectorHost, scriptInspectorConfig);
+    queueHostVisibilityChange(scriptInspectorHost, scriptInspectorConfig.visible, scriptInspectorConfig.bounds);
+
+    applyPerfOverlayHostConfig(perfOverlayHost, perfOverlayConfig);
+    queueHostVisibilityChange(perfOverlayHost, perfOverlayConfig.visible, perfOverlayConfig.bounds);
+
+    logEditorPerf("syncImGuiHostsFromLuaShell.applyHosts", hostApplyStart);
+    logEditorPerf("syncImGuiHostsFromLuaShell.total", totalStart);
+}
+
 void BehaviorCoreEditor::resized() {
+    const auto localBounds = getBounds();
+    const auto screenBounds = getScreenBounds();
+    const auto scale = juce::Component::getApproximateScaleFactorForComponent(this);
+    const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(screenBounds);
+    if (display != nullptr) {
+        std::fprintf(stderr,
+                     "[BehaviorCoreEditor] resized editorBounds=%d,%d %dx%d screenBounds=%d,%d %dx%d scale=%.3f displayScale=%.3f displayTotal=%d,%d %dx%d displayUser=%d,%d %dx%d\n",
+                     localBounds.getX(), localBounds.getY(), localBounds.getWidth(), localBounds.getHeight(),
+                     screenBounds.getX(), screenBounds.getY(), screenBounds.getWidth(), screenBounds.getHeight(),
+                     static_cast<double>(scale),
+                     static_cast<double>(display->scale),
+                     display->totalArea.getX(), display->totalArea.getY(), display->totalArea.getWidth(), display->totalArea.getHeight(),
+                     display->userArea.getX(), display->userArea.getY(), display->userArea.getWidth(), display->userArea.getHeight());
+    } else {
+        std::fprintf(stderr,
+                     "[BehaviorCoreEditor] resized editorBounds=%d,%d %dx%d screenBounds=%d,%d %dx%d scale=%.3f displayScale=none\n",
+                     localBounds.getX(), localBounds.getY(), localBounds.getWidth(), localBounds.getHeight(),
+                     screenBounds.getX(), screenBounds.getY(), screenBounds.getWidth(), screenBounds.getHeight(),
+                     static_cast<double>(scale));
+    }
     rootCanvas.setBounds(getLocalBounds());
+
     if (usingLuaUi) {
         luaEngine.notifyResized(rootCanvas.getWidth(), rootCanvas.getHeight());
+        syncImGuiHostsFromLuaShell();
     } else if (errorNode != nullptr) {
         errorNode->setBounds(rootCanvas.getLocalBounds());
+        mainScriptEditorHost.setVisible(false);
+        mainScriptEditorHost.setBounds(0, 0, 0, 0);
+        scriptListHost.setVisible(false);
+        scriptListHost.setBounds(0, 0, 0, 0);
+        hierarchyHost.setVisible(false);
+        hierarchyHost.setBounds(0, 0, 0, 0);
+        inspectorHost.setVisible(false);
+        inspectorHost.setBounds(0, 0, 0, 0);
+        scriptInspectorHost.setVisible(false);
+        scriptInspectorHost.setBounds(0, 0, 0, 0);
     }
 }
 

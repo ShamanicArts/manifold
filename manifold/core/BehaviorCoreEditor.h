@@ -11,8 +11,10 @@
 
 class BehaviorCoreProcessor;
 
-class BehaviorCoreEditor : public juce::AudioProcessorEditor, private juce::Timer {
+class BehaviorCoreEditor : public juce::AudioProcessorEditor,
+                           private juce::Timer {
 public:
+
     explicit BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor);
     ~BehaviorCoreEditor() override;
 
@@ -23,7 +25,7 @@ private:
     void timerCallback() override;
     void syncImGuiHostsFromLuaShell();
     void showError(const std::string& message);
-
+    
     // Deferred visibility changes to avoid blocking GUI thread during OpenGL context creation
     struct DeferredVisibility {
         juce::Component* host;
