@@ -1,0 +1,33 @@
+from .manifold import (
+    ArtifactBundle,
+    HarnessError,
+    LaunchError,
+    ManifoldClient,
+    ManagedManifoldProcess,
+    TestFailure,
+    SkipTest,
+    approx_equal,
+    ensure_repo_on_path,
+    find_live_socket,
+    has_gui_session,
+    repo_root,
+    require_gui_session,
+    wait_for,
+)
+
+__all__ = [
+    "ArtifactBundle",
+    "HarnessError",
+    "LaunchError",
+    "ManifoldClient",
+    "ManagedManifoldProcess",
+    "TestFailure",
+    "SkipTest",
+    "approx_equal",
+    "ensure_repo_on_path",
+    "find_live_socket",
+    "has_gui_session",
+    "repo_root",
+    "require_gui_session",
+    "wait_for",
+]

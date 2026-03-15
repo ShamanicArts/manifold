@@ -88,6 +88,10 @@ int main(int argc, char* argv[]) {
         processor.processBlock(buffer, midi);
         ++blocksProcessed;
 
+        if (testUi) {
+            juce::Timer::callPendingTimersSynchronously();
+        }
+
         if (duration > 0.0) {
             const auto elapsed = std::chrono::steady_clock::now() - startTime;
             const double elapsedSecs = std::chrono::duration<double>(elapsed).count();

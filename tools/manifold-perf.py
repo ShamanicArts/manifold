@@ -1,140 +1,74 @@
 #!/usr/bin/env python3
-import glob
+from __future__ import annotations
+
+import argparse
 import json
-import os
-import socket
 import sys
 import time
+from pathlib import Path
 
-BUDGET_US = 1000000.0 / 30.0
+REPO_ROOT = Path(__file__).resolve().parents[1]
+TESTS_DIR = REPO_ROOT / "tests"
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
+
+from harness import ManifoldClient, TestFailure, find_live_socket  # noqa: E402
+
+
+BUDGET_US = 1_000_000.0 / 30.0
 BAR_WIDTH = 32
 
 
-class PerfError(Exception):
+class PerfError(RuntimeError):
     pass
 
 
-def parse_args(argv):
-    once = False
-    json_mode = False
-    reset = False
-    socket_path = None
-
-    for arg in argv[1:]:
-        if arg == "--once":
-            once = True
-        elif arg == "--json":
-            json_mode = True
-        elif arg == "--reset":
-            reset = True
-        elif arg.startswith("--"):
-            raise PerfError(f"unknown flag: {arg}")
-        elif socket_path is None:
-            socket_path = arg
-        else:
-            raise PerfError(f"unexpected argument: {arg}")
-
-    return once, json_mode, reset, socket_path
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Manifold diagnostics/perf monitor")
+    parser.add_argument("socket", nargs="?", help="Explicit socket path")
+    parser.add_argument("--once", action="store_true", help="Render once and exit")
+    parser.add_argument("--json", action="store_true", help="Emit JSON instead of text")
+    parser.add_argument("--reset", action="store_true", help="Reset perf peaks before reading")
+    return parser.parse_args(argv[1:])
 
 
-def find_socket(explicit_path=None):
-    if explicit_path:
-        if not os.path.exists(explicit_path):
-            raise PerfError(f"socket not found: {explicit_path}")
-        return explicit_path
-
-    candidates = glob.glob("/tmp/manifold_*.sock")
-    if not candidates:
-        raise PerfError(
-            "no manifold socket found in /tmp. Start Manifold or pass an explicit socket path."
-        )
-    return max(candidates, key=os.path.getmtime)
-
-
-class ManifoldPerfClient:
-    def __init__(self, socket_path):
-        self.socket_path = socket_path
-        self.sock = None
-
-    def connect(self):
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.connect(self.socket_path)
-
-    def close(self):
-        if self.sock is not None:
-            try:
-                self.sock.close()
-            except OSError:
-                pass
-            self.sock = None
-
-    def command(self, text):
-        if self.sock is None:
-            raise PerfError("not connected")
-
-        self.sock.sendall((text + "\n").encode("utf-8"))
-        response = bytearray()
-        while True:
-            chunk = self.sock.recv(65536)
-            if not chunk:
-                raise PerfError("socket closed while waiting for response")
-            response.extend(chunk)
-            if response.endswith(b"\n"):
-                break
-        return response[:-1].decode("utf-8", errors="replace")
-
-    def reset_peaks(self):
-        response = self.command("PERF RESET")
-        if response != "OK":
-            raise PerfError(f"PERF RESET failed: {response}")
-
-    def get_frame_timing(self):
-        response = self.command("DIAGNOSE")
-        if not response.startswith("OK "):
-            raise PerfError(f"DIAGNOSE failed: {response}")
-        try:
-            payload = json.loads(response[3:])
-        except json.JSONDecodeError as exc:
-            raise PerfError(f"invalid DIAGNOSE JSON: {exc}") from exc
-
-        frame_timing = payload.get("frameTiming")
-        if frame_timing is None:
-            raise PerfError("DIAGNOSE response does not contain frameTiming")
-        return frame_timing
-
-
-def us_to_ms(value_us):
+def us_to_ms(value_us) -> float:
     return float(value_us) / 1000.0
 
 
-def percent_of_budget(value_us):
+def percent_of_budget(value_us) -> float:
     return max(0.0, (float(value_us) / BUDGET_US) * 100.0)
 
 
-def make_bar(value_us):
+def make_bar(value_us) -> str:
     ratio = min(max(float(value_us) / BUDGET_US, 0.0), 1.0)
     filled = int(round(ratio * BAR_WIDTH))
     filled = max(0, min(BAR_WIDTH, filled))
     return "[" + ("█" * filled) + ("░" * (BAR_WIDTH - filled)) + "]"
 
 
-def format_row(label, value_us):
+def format_row(label: str, value_us) -> str:
     return (
         f"    {label:<15} {us_to_ms(value_us):>5.1f}ms  "
         f"{make_bar(value_us)} {percent_of_budget(value_us):>3.0f}%"
     )
 
 
-def render_snapshot(frame_timing):
-    lines = []
+def render_snapshot(payload: dict) -> str:
+    frame_timing = payload.get("frameTiming")
+    if frame_timing is None:
+        raise PerfError("DIAGNOSE response does not contain frameTiming")
+
+    imgui = payload.get("imgui", {})
     total_us = frame_timing.get("totalUs", 0)
 
-    lines.append("═" * 55)
-    lines.append("  MANIFOLD FRAME PROFILER")
+    lines = []
+    lines.append("═" * 68)
+    lines.append("  MANIFOLD PERF / DIAGNOSTICS")
     lines.append(
-        f"  Frame #{frame_timing.get('frameCount', 0)}  |  Budget: {BUDGET_US / 1000.0:.1f}ms (30Hz)"
+        f"  Renderer: {payload.get('uiRendererMode', 'unknown')}  |  Frame #{frame_timing.get('frameCount', 0)}  |  Budget: {BUDGET_US / 1000.0:.1f}ms (30Hz)"
     )
-    lines.append("═" * 55)
+    lines.append("═" * 68)
     lines.append("")
     lines.append("  CURRENT FRAME:")
     lines.append(format_row("Total:", total_us))
@@ -156,6 +90,15 @@ def render_snapshot(frame_timing):
     lines.append(format_row("eventListeners:", frame_timing.get("peakEventListenersUs", 0)))
     lines.append(format_row("ui_update:", frame_timing.get("peakUiUpdateUs", 0)))
     lines.append(format_row("paint:", frame_timing.get("peakPaintUs", 0)))
+    lines.append("")
+    lines.append("  IMGUI:")
+    lines.append(f"    Context ready     {imgui.get('contextReady', False)}")
+    lines.append(f"    Capture mouse     {imgui.get('wantCaptureMouse', False)}")
+    lines.append(f"    Capture keyboard  {imgui.get('wantCaptureKeyboard', False)}")
+    lines.append(f"    Render            {us_to_ms(imgui.get('renderUs', 0)):>5.1f}ms")
+    lines.append(f"    Vertices          {imgui.get('vertexCount', 0)}")
+    lines.append(f"    Indices           {imgui.get('indexCount', 0)}")
+    lines.append(f"    Frame count       {imgui.get('frameCount', 0)}")
 
     if percent_of_budget(total_us) >= 80.0:
         lines.append("")
@@ -164,44 +107,42 @@ def render_snapshot(frame_timing):
     return "\n".join(lines)
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
+    client = None
     try:
-        once, json_mode, reset, explicit_socket = parse_args(argv)
-        socket_path = find_socket(explicit_socket)
-    except PerfError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
-
-    client = ManifoldPerfClient(socket_path)
-    try:
+        args = parse_args(argv)
+        socket_path = find_live_socket(args.socket)
+        client = ManifoldClient(socket_path)
         client.connect()
-        if reset:
-            client.reset_peaks()
+
+        if args.reset:
+            client.reset_perf()
 
         while True:
-            frame_timing = client.get_frame_timing()
+            payload = client.diagnose_payload()
 
-            if json_mode:
-                print(json.dumps(frame_timing, separators=(",", ":")))
-            elif once:
-                print(render_snapshot(frame_timing))
+            if args.json:
+                print(json.dumps(payload, indent=2, sort_keys=True))
+            elif args.once:
+                print(render_snapshot(payload))
             else:
                 sys.stdout.write("\x1b[2J\x1b[H")
-                sys.stdout.write(render_snapshot(frame_timing))
+                sys.stdout.write(render_snapshot(payload))
                 sys.stdout.write("\n")
                 sys.stdout.flush()
 
-            if once:
+            if args.once:
                 return 0
 
             time.sleep(1.0)
     except KeyboardInterrupt:
         return 0
-    except PerfError as exc:
+    except (PerfError, TestFailure) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     finally:
-        client.close()
+        if client is not None:
+            client.close()
 
 
 if __name__ == "__main__":

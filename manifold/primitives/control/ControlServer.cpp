@@ -6,6 +6,7 @@
 #include "../scripting/LuaEngine.h"
 #include "../scripting/ScriptableProcessor.h"
 #include "../dsp/CaptureBuffer.h"
+#include "../ui/Canvas.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -167,6 +168,39 @@ static const char* recordModeToString(int mode) {
         case 3: return "retrospective";
         default: return "unknown";
     }
+}
+
+static const char* uiRendererModeToString(int mode) {
+    switch (mode) {
+        case 1: return "imgui-overlay";
+        case 2: return "imgui-replace";
+        case 3: return "imgui-direct";
+        case 0:
+        default: return "canvas";
+    }
+}
+
+static std::string normalizeUIRendererModeToken(std::string mode) {
+    std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) {
+        if (c >= 'A' && c <= 'Z') {
+            return static_cast<char>(c - 'A' + 'a');
+        }
+        return c == '_' ? '-' : static_cast<char>(c);
+    });
+
+    if (mode == "0" || mode == "off" || mode == "false") {
+        return "canvas";
+    }
+    if (mode == "1" || mode == "on" || mode == "true" || mode == "imgui" || mode == "overlay") {
+        return "imgui-overlay";
+    }
+    if (mode == "full" || mode == "replace" || mode == "imgui-full") {
+        return "imgui-replace";
+    }
+    if (mode == "direct") {
+        return "imgui-direct";
+    }
+    return mode;
 }
 
 static void pruneStaleManifoldSockets() {
@@ -569,6 +603,11 @@ std::string ControlServer::processCommand(const std::string& cmd) {
             if (result.queryType == "PING")     return "OK PONG";
             if (result.queryType == "DIAGNOSE") return "OK " + buildDiagnoseJson();
             if (result.queryType == "DIAGNOSTICS") return "OK " + buildDiagnoseJson();
+            if (result.queryType == "UIRENDERER") {
+                std::ostringstream o;
+                o << "OK {" << jsonStr("mode", uiRendererModeToString(getCurrentUIRendererMode())) << "}";
+                return o.str();
+            }
             if (result.queryType == "GET") {
                 if (!owner) {
                     return "ERROR no processor";
@@ -616,6 +655,23 @@ std::string ControlServer::processCommand(const std::string& cmd) {
             return "OK UI switch queued";
         }
 
+        case ParseResult::Kind::UIRenderer: {
+            const std::string normalizedMode = normalizeUIRendererModeToken(result.rendererMode);
+            std::lock_guard<std::mutex> lock(uiRendererRequest.mutex);
+            uiRendererRequest.mode = normalizedMode;
+            uiRendererRequest.pending.store(true, std::memory_order_release);
+            if (normalizedMode == "canvas") {
+                setCurrentUIRendererMode(0);
+            } else if (normalizedMode == "imgui-overlay") {
+                setCurrentUIRendererMode(1);
+            } else if (normalizedMode == "imgui-replace") {
+                setCurrentUIRendererMode(2);
+            } else if (normalizedMode == "imgui-direct") {
+                setCurrentUIRendererMode(3);
+            }
+            return "OK UI renderer queued: " + normalizedMode;
+        }
+
         case ParseResult::Kind::NoOpWarning:
             return "ERROR " + result.warningMessage;
 
@@ -643,6 +699,7 @@ std::string ControlServer::buildStateJson() {
     o << jsonNum("playTime", s.playTime.load()) << ",";
     o << jsonNum("commitCount", s.commitCount.load()) << ",";
     o << jsonNum("uptimeSeconds", s.uptimeSeconds.load()) << ",";
+    o << jsonStr("uiRendererMode", uiRendererModeToString(getCurrentUIRendererMode())) << ",";
 
     o << "\"params\":{";
     o << jsonNum(std::string(kBehaviorBase) + "/tempo", s.tempo.load()) << ",";
@@ -780,7 +837,8 @@ std::string ControlServer::buildDiagnoseJson() {
     }
 
     o << jsonNum("connectedClients", numClients) << ",";
-    o << jsonNum("connectedWatchers", numWatchers);
+    o << jsonNum("connectedWatchers", numWatchers) << ",";
+    o << jsonStr("uiRendererMode", uiRendererModeToString(getCurrentUIRendererMode()));
 
     if (frameTimings != nullptr) {
         o << ",\"frameTiming\":{";
@@ -800,8 +858,50 @@ std::string ControlServer::buildDiagnoseJson() {
         o << jsonNum("avgEventListenersUs", frameTimings->eventListeners.getAvgUs()) << ",";
         o << jsonNum("avgUiUpdateUs", frameTimings->uiUpdate.getAvgUs()) << ",";
         o << jsonNum("avgPaintUs", frameTimings->paint.getAvgUs()) << ",";
+        o << jsonNum("animUs", frameTimings->anim.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("renderDispatchUs", frameTimings->renderDispatch.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("syncHostsUs", frameTimings->syncHosts.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("presentUs", frameTimings->present.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("overBudgetUs", frameTimings->overBudget.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("canvasRepaintLeadUs", frameTimings->canvasRepaintLead.currentUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakAnimUs", frameTimings->anim.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakRenderDispatchUs", frameTimings->renderDispatch.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakSyncHostsUs", frameTimings->syncHosts.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakPresentUs", frameTimings->present.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakOverBudgetUs", frameTimings->overBudget.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("peakCanvasRepaintLeadUs", frameTimings->canvasRepaintLead.peakUs.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("avgAnimUs", frameTimings->anim.getAvgUs()) << ",";
+        o << jsonNum("avgRenderDispatchUs", frameTimings->renderDispatch.getAvgUs()) << ",";
+        o << jsonNum("avgSyncHostsUs", frameTimings->syncHosts.getAvgUs()) << ",";
+        o << jsonNum("avgPresentUs", frameTimings->present.getAvgUs()) << ",";
+        o << jsonNum("avgOverBudgetUs", frameTimings->overBudget.getAvgUs()) << ",";
+        o << jsonNum("avgCanvasRepaintLeadUs", frameTimings->canvasRepaintLead.getAvgUs()) << ",";
+        o << jsonNum("overBudgetCount", frameTimings->overBudgetCount.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("editorWidth", frameTimings->editorWidth.load(std::memory_order_relaxed)) << ",";
+        o << jsonNum("editorHeight", frameTimings->editorHeight.load(std::memory_order_relaxed)) << ",";
         o << jsonNum("totalPaintAccumulatedUs", frameTimings->totalPaintAccumulatedUs.load(std::memory_order_relaxed));
         o << "}";
+
+        const auto paintProfile = Canvas::getLastFramePaintProfile(8);
+        o << ",\"canvas\":{";
+        o << jsonNum("accumulatedPaintUs", Canvas::getLastFrameAccumulatedPaintUs()) << ",";
+        o << jsonNum("trackedCanvases", static_cast<long long>(paintProfile.size())) << ",";
+        o << "\"paintProfile\":[";
+        for (std::size_t i = 0; i < paintProfile.size(); ++i) {
+            if (i != 0) o << ",";
+            const auto& sample = paintProfile[i];
+            o << "{";
+            o << jsonStr("name", sample.name) << ",";
+            o << jsonStr("widgetType", sample.widgetType) << ",";
+            o << jsonNum("totalUs", sample.totalUs) << ",";
+            o << jsonNum("lastUs", sample.lastUs) << ",";
+            o << jsonNum("paintCount", sample.paintCount) << ",";
+            o << jsonNum("width", sample.width) << ",";
+            o << jsonNum("height", sample.height) << ",";
+            o << jsonBool("openGL", sample.openGL);
+            o << "}";
+        }
+        o << "]}";
 
         o << ",\"imgui\":{";
         o << jsonBool("contextReady", frameTimings->imguiContextReady.load(std::memory_order_relaxed)) << ",";

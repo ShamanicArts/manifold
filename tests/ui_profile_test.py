@@ -1,144 +1,154 @@
 #!/usr/bin/env python3
-import glob
+from __future__ import annotations
+
+import argparse
 import json
-import os
-import socket
 import sys
 import time
+from pathlib import Path
+
+TESTS_DIR = Path(__file__).resolve().parent
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
+
+from harness import (  # noqa: E402
+    ManagedManifoldProcess,
+    ManifoldClient,
+    SkipTest,
+    TestFailure,
+    find_live_socket,
+    repo_root,
+    require_gui_session,
+    wait_for,
+)
 
 
-class ProfileError(Exception):
+class ProfileError(RuntimeError):
     pass
 
 
-def find_socket(explicit_path=None):
-    if explicit_path:
-        if not os.path.exists(explicit_path):
-            raise ProfileError(f"socket not found: {explicit_path}")
-        return explicit_path
-
-    candidates = glob.glob("/tmp/manifold_*.sock")
-    if not candidates:
-        raise ProfileError(
-            "no manifold socket found in /tmp. Start standalone Manifold or pass an explicit socket path."
-        )
-    return max(candidates, key=os.path.getmtime)
+SCENARIOS = [
+    ("Performance", 'shell:setMode("performance")'),
+    ("Edit + Hierarchy", 'shell:setMode("edit")\\nshell:setLeftPanelMode("hierarchy")'),
+    ("Edit + Scripts", 'shell:setMode("edit")\\nshell:setLeftPanelMode("scripts")'),
+]
 
 
-class Client:
-    def __init__(self, socket_path):
-        self.socket_path = socket_path
-        self.sock = None
-
-    def connect(self):
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.connect(self.socket_path)
-
-    def close(self):
-        if self.sock is not None:
-            try:
-                self.sock.close()
-            except OSError:
-                pass
-            self.sock = None
-
-    def command(self, text):
-        if self.sock is None:
-            raise ProfileError("not connected")
-
-        self.sock.sendall((text + "\n").encode("utf-8"))
-        response = bytearray()
-        while True:
-            chunk = self.sock.recv(65536)
-            if not chunk:
-                raise ProfileError("socket closed while waiting for response")
-            response.extend(chunk)
-            if response.endswith(b"\n"):
-                break
-        return response[:-1].decode("utf-8", errors="replace")
-
-    def eval(self, code):
-        response = self.command(f"EVAL {code}")
-        if response == "ERROR no lua engine":
-            raise ProfileError(
-                "this test requires the standalone with editor/LuaEngine, not headless"
-            )
-        return response
-
-    def reset_perf(self):
-        response = self.command("PERF RESET")
-        if response != "OK":
-            raise ProfileError(f"PERF RESET failed: {response}")
-
-    def diagnose(self):
-        response = self.command("DIAGNOSE")
-        if not response.startswith("OK "):
-            raise ProfileError(f"DIAGNOSE failed: {response}")
-        payload = json.loads(response[3:])
-        frame_timing = payload.get("frameTiming")
-        if frame_timing is None:
-            raise ProfileError("DIAGNOSE response does not contain frameTiming")
-        return frame_timing
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Standalone UI profile capture")
+    parser.add_argument("socket", nargs="?", help="Explicit socket path")
+    parser.add_argument("--launch", help="Launch a standalone executable instead of attaching to an existing socket")
+    parser.add_argument("--json", action="store_true", help="Emit JSON instead of a table")
+    parser.add_argument("--renderer", help="Request UI renderer mode before profiling")
+    parser.add_argument("--settle", type=float, default=3.0, help="Seconds to settle before capture")
+    parser.add_argument("--startup", type=float, default=4.0, help="Seconds to wait after standalone launch")
+    parser.add_argument("--require-gui", action="store_true", help="Skip with code 77 when no desktop GUI session is available")
+    parser.add_argument("--max-avg-paint-us", type=int, help="Fail if any scenario avgPaintUs exceeds this")
+    parser.add_argument("--max-canvas-repaint-lead-us", type=int, help="Fail if any scenario avgCanvasRepaintLeadUs exceeds this")
+    parser.add_argument("--max-imgui-render-us", type=int, help="Fail if any scenario imgui.renderUs exceeds this")
+    parser.add_argument("--max-over-budget-count", type=int, help="Fail if any scenario overBudgetCount exceeds this")
+    return parser.parse_args(argv[1:])
 
 
-def ensure_shell_available(client):
+def ensure_shell_available(client: ManifoldClient) -> None:
     response = client.eval("return type(shell)")
     if response != "OK table":
         raise ProfileError(f"shell global unavailable: {response}")
 
 
-def set_mode(client, lua_code):
+def ensure_renderer(client: ManifoldClient, renderer: str) -> None:
+    response = client.command(f"UIRENDERER {renderer}")
+    if not response.startswith("OK"):
+        raise ProfileError(f"UIRENDERER {renderer} failed: {response}")
+
+    if not wait_for(lambda: client.diagnose_payload().get("uiRendererMode") == renderer, timeout=3.0, step=0.05):
+        payload = client.diagnose_payload()
+        raise ProfileError(
+            f"renderer mode did not become {renderer!r}: {payload.get('uiRendererMode')!r}"
+        )
+
+
+def set_mode(client: ManifoldClient, lua_code: str) -> None:
     response = client.eval(lua_code)
     if not response.startswith("OK"):
         raise ProfileError(f"EVAL failed: {response}")
 
 
-def capture_mode(client, label, lua_code):
+def capture_mode(client: ManifoldClient, label: str, lua_code: str, settle_seconds: float):
     client.reset_perf()
     set_mode(client, lua_code)
-    time.sleep(3.0)
-    snapshot = client.diagnose()
+    time.sleep(settle_seconds)
+    payload = client.diagnose_payload()
+    frame_timing = payload.get("frameTiming")
+    if frame_timing is None:
+        raise ProfileError(f"DIAGNOSE missing frameTiming payload: {payload}")
+    imgui = payload.get("imgui", {})
     return {
         "label": label,
-        "frameCount": snapshot.get("frameCount", 0),
-        "totalUs": snapshot.get("totalUs", 0),
-        "avgTotalUs": snapshot.get("avgTotalUs", 0),
-        "peakTotalUs": snapshot.get("peakTotalUs", 0),
-        "pushStateUs": snapshot.get("avgPushStateUs", 0),
-        "eventUs": snapshot.get("avgEventListenersUs", 0),
-        "uiUpdateUs": snapshot.get("avgUiUpdateUs", 0),
-        "paintUs": snapshot.get("avgPaintUs", 0),
+        "rendererMode": payload.get("uiRendererMode", "unknown"),
+        "frameCount": frame_timing.get("frameCount", 0),
+        "totalUs": frame_timing.get("totalUs", 0),
+        "avgTotalUs": frame_timing.get("avgTotalUs", 0),
+        "peakTotalUs": frame_timing.get("peakTotalUs", 0),
+        "avgPushStateUs": frame_timing.get("avgPushStateUs", 0),
+        "avgEventListenersUs": frame_timing.get("avgEventListenersUs", 0),
+        "avgUiUpdateUs": frame_timing.get("avgUiUpdateUs", 0),
+        "avgPaintUs": frame_timing.get("avgPaintUs", 0),
+        "avgCanvasRepaintLeadUs": frame_timing.get("avgCanvasRepaintLeadUs", 0),
+        "avgRenderDispatchUs": frame_timing.get("avgRenderDispatchUs", 0),
+        "avgPresentUs": frame_timing.get("avgPresentUs", 0),
+        "overBudgetCount": frame_timing.get("overBudgetCount", 0),
+        "editorWidth": frame_timing.get("editorWidth", 0),
+        "editorHeight": frame_timing.get("editorHeight", 0),
+        "totalPaintAccumulatedUs": frame_timing.get("totalPaintAccumulatedUs", 0),
+        "imgui": {
+            "contextReady": imgui.get("contextReady", False),
+            "wantCaptureMouse": imgui.get("wantCaptureMouse", False),
+            "wantCaptureKeyboard": imgui.get("wantCaptureKeyboard", False),
+            "frameCount": imgui.get("frameCount", 0),
+            "renderUs": imgui.get("renderUs", 0),
+            "vertexCount": imgui.get("vertexCount", 0),
+            "indexCount": imgui.get("indexCount", 0),
+        },
     }
 
 
-def format_ms(value_us):
+def format_ms(value_us) -> str:
     return f"{float(value_us) / 1000.0:.2f}ms"
 
 
-def print_table(rows):
+def print_table(rows) -> None:
     headers = [
         "Mode",
+        "Renderer",
         "Frame",
-        "Current Total",
+        "Size",
         "Avg Total",
         "Peak Total",
-        "Avg Push",
-        "Avg Events",
         "Avg UI",
         "Avg Paint",
+        "Canvas Lead",
+        "ImGui Render",
+        "Over Budget",
+        "Vertices",
+        "Indices",
     ]
 
     table_rows = [
         [
             row["label"],
+            row["rendererMode"],
             str(row["frameCount"]),
-            format_ms(row["totalUs"]),
+            f"{row['editorWidth']}x{row['editorHeight']}",
             format_ms(row["avgTotalUs"]),
             format_ms(row["peakTotalUs"]),
-            format_ms(row["pushStateUs"]),
-            format_ms(row["eventUs"]),
-            format_ms(row["uiUpdateUs"]),
-            format_ms(row["paintUs"]),
+            format_ms(row["avgUiUpdateUs"]),
+            format_ms(row["avgPaintUs"]),
+            format_ms(row["avgCanvasRepaintLeadUs"]),
+            format_ms(row["imgui"]["renderUs"]),
+            str(row["overBudgetCount"]),
+            str(row["imgui"]["vertexCount"]),
+            str(row["imgui"]["indexCount"]),
         ]
         for row in rows
     ]
@@ -161,35 +171,88 @@ def print_table(rows):
         print(render_row(row))
 
 
-def main(argv):
+def validate_thresholds(args: argparse.Namespace, rows) -> None:
+    failures = []
+    for row in rows:
+        if args.max_avg_paint_us is not None and float(row["avgPaintUs"]) > float(args.max_avg_paint_us):
+            failures.append(
+                f"{row['label']}: avgPaintUs {row['avgPaintUs']} > {args.max_avg_paint_us}"
+            )
+        if args.max_canvas_repaint_lead_us is not None and float(row["avgCanvasRepaintLeadUs"]) > float(args.max_canvas_repaint_lead_us):
+            failures.append(
+                f"{row['label']}: avgCanvasRepaintLeadUs {row['avgCanvasRepaintLeadUs']} > {args.max_canvas_repaint_lead_us}"
+            )
+        if args.max_imgui_render_us is not None and float(row["imgui"]["renderUs"]) > float(args.max_imgui_render_us):
+            failures.append(
+                f"{row['label']}: imgui.renderUs {row['imgui']['renderUs']} > {args.max_imgui_render_us}"
+            )
+        if args.max_over_budget_count is not None and int(row["overBudgetCount"]) > int(args.max_over_budget_count):
+            failures.append(
+                f"{row['label']}: overBudgetCount {row['overBudgetCount']} > {args.max_over_budget_count}"
+            )
+    if failures:
+        raise TestFailure("; ".join(failures))
+
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    client = None
+    launched = None
     try:
-        socket_path = find_socket(argv[1] if len(argv) > 1 else None)
-        client = Client(socket_path)
+        if args.launch:
+            if args.require_gui:
+                require_gui_session("standalone profile test requires a desktop GUI session")
+            executable = str((repo_root() / args.launch).resolve())
+            env = {}
+            if args.renderer:
+                env["MANIFOLD_RENDERER"] = args.renderer
+            launched = ManagedManifoldProcess(
+                executable,
+                [],
+                cwd=repo_root(),
+                env=env,
+                artifact_name="standalone_ui_profile",
+            )
+            launched.start(timeout=15.0)
+            socket_path = launched.socket_path
+            time.sleep(args.startup)
+        else:
+            socket_path = find_live_socket(args.socket)
+
+        client = ManifoldClient(socket_path)
         client.connect()
         ensure_shell_available(client)
 
-        rows = [
-            capture_mode(client, "Performance", 'shell:setMode("performance")'),
-            capture_mode(
-                client,
-                "Edit + Hierarchy",
-                'shell:setMode("edit")\\nshell:setLeftPanelMode("hierarchy")',
-            ),
-            capture_mode(
-                client,
-                "Edit + Scripts",
-                'shell:setMode("edit")\\nshell:setLeftPanelMode("scripts")',
-            ),
-        ]
+        if args.renderer:
+            ensure_renderer(client, args.renderer)
 
-        print_table(rows)
+        rows = [capture_mode(client, label, code, args.settle) for label, code in SCENARIOS]
+        validate_thresholds(args, rows)
+
+        if args.json:
+            print(json.dumps(rows, indent=2, sort_keys=True))
+        else:
+            print_table(rows)
         return 0
-    except ProfileError as exc:
+    except SkipTest as exc:
+        print(f"SKIP: {exc}", file=sys.stderr)
+        return 77
+    except (ProfileError, TestFailure) as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        if launched is not None:
+            try:
+                launched.artifacts.write_text("failure.txt", str(exc))
+                if client is not None:
+                    launched.artifacts.write_json("diagnose.json", client.diagnose_payload())
+            except Exception:
+                pass
         return 1
     finally:
-        if "client" in locals():
+        if client is not None:
             client.close()
+        if launched is not None:
+            launched.stop()
 
 
 if __name__ == "__main__":

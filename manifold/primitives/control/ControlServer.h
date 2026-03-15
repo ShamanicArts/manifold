@@ -227,6 +227,12 @@ struct UISwitchRequest {
   std::mutex mutex;
 };
 
+struct UIRendererRequest {
+  std::string mode;
+  std::atomic<bool> pending{false};
+  std::mutex mutex;
+};
+
 // ============================================================================
 // ControlServer - Unix socket IPC for observation and control
 // ============================================================================
@@ -266,8 +272,15 @@ public:
   void setFrameTimings(FrameTimings *timings) { frameTimings = timings; }
   void setLuaEngine(LuaEngine *engine) { luaEngine = engine; }
 
-  // UI switch request access
+  // UI switch / renderer request access
   UISwitchRequest &getUISwitchRequest() { return uiSwitchRequest; }
+  UIRendererRequest &getUIRendererRequest() { return uiRendererRequest; }
+  void setCurrentUIRendererMode(int mode) {
+    currentUIRendererMode.store(mode, std::memory_order_relaxed);
+  }
+  int getCurrentUIRendererMode() const {
+    return currentUIRendererMode.load(std::memory_order_relaxed);
+  }
 
 private:
   void acceptLoop();
@@ -318,8 +331,10 @@ private:
   std::atomic<int> commandsProcessed{0};
   std::atomic<int> eventsDropped{0};
 
-  // UI switch request (set by server thread, read by audio thread)
+  // UI switch / renderer requests (set by server thread, read by GUI thread)
   UISwitchRequest uiSwitchRequest;
+  UIRendererRequest uiRendererRequest;
+  std::atomic<int> currentUIRendererMode{3};
 
   FrameTimings *frameTimings = nullptr;
   LuaEngine *luaEngine = nullptr;

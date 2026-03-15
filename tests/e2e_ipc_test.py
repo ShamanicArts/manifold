@@ -1,171 +1,110 @@
 #!/usr/bin/env python3
-import json
-import os
+from __future__ import annotations
+
+import argparse
 import signal
-import socket
-import subprocess
 import sys
 import time
+from pathlib import Path
+
+TESTS_DIR = Path(__file__).resolve().parent
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
+
+from harness import (  # noqa: E402
+    ManagedManifoldProcess,
+    SkipTest,
+    TestFailure,
+    approx_equal,
+    repo_root,
+)
 
 
-class InfrastructureError(Exception):
-    pass
-
-
-class TestFailure(Exception):
-    pass
-
-
-class SkipTest(Exception):
-    pass
-
-
-class ManifoldHeadlessHarness:
-    def __init__(self):
-        self.repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-        self.binary_path = os.path.join(self.repo_root, "build-dev", "ManifoldHeadless")
-        self.log_path = os.path.join("/tmp", f"manifold_headless_e2e_{os.getpid()}.log")
-        self.log_handle = None
-        self.proc = None
-        self.sock_path = None
-        self.sock = None
-
-    def start(self):
-        if not os.path.isfile(self.binary_path):
-            raise InfrastructureError(f"ManifoldHeadless not found: {self.binary_path}")
-
-        print("Starting ManifoldHeadless...")
-        self.log_handle = open(self.log_path, "w+", encoding="utf-8")
-        self.proc = subprocess.Popen(
+class CoreE2EHarness:
+    def __init__(self, headless_path: str, duration: float, sample_rate: float, block_size: int):
+        self.repo_root = repo_root()
+        binary_path = (self.repo_root / headless_path).resolve()
+        self.process = ManagedManifoldProcess(
+            binary_path,
             [
-                self.binary_path,
                 "--duration",
-                "30",
+                str(duration),
                 "--blocksize",
-                "512",
+                str(block_size),
                 "--samplerate",
-                "44100",
+                str(sample_rate),
             ],
             cwd=self.repo_root,
-            stdin=subprocess.DEVNULL,
-            stdout=self.log_handle,
-            stderr=self.log_handle,
-            text=True,
+            artifact_name="headless_core_e2e",
         )
+        self.client = None
 
-        deadline = time.time() + 10.0
-        expected_socket = f"/tmp/manifold_{self.proc.pid}.sock"
-        while time.time() < deadline:
-            if os.path.exists(expected_socket):
-                self.sock_path = expected_socket
-                break
-            if self.proc.poll() is not None:
-                raise InfrastructureError(
-                    f"ManifoldHeadless exited early with code {self.proc.returncode}"
-                )
-            time.sleep(0.05)
+    def start(self) -> None:
+        print("Starting ManifoldHeadless core harness...")
+        self.process.start(timeout=10.0)
+        self.client = self.process.create_client()
+        print(f"Socket found: {self.process.socket_path}")
+        print(f"Artifacts: {self.process.artifacts.base_dir}")
 
-        if not self.sock_path:
-            raise InfrastructureError(f"Timed out waiting for socket: {expected_socket}")
+    def stop(self) -> None:
+        if self.client is not None:
+            self.client.close()
+            self.client = None
+        self.process.stop()
 
-        print(f"Socket found: {self.sock_path}")
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.connect(self.sock_path)
+    def command(self, text: str) -> str:
+        if self.client is None:
+            raise TestFailure("client is not connected")
+        return self.client.command(text)
 
-    def stop(self):
-        if self.sock is not None:
-            try:
-                self.sock.close()
-            except OSError:
-                pass
-            self.sock = None
+    def state(self):
+        if self.client is None:
+            raise TestFailure("client is not connected")
+        return self.client.state()
 
-        if self.proc is not None:
-            if self.proc.poll() is None:
-                try:
-                    self.proc.terminate()
-                    self.proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    self.proc.kill()
-                    self.proc.wait(timeout=5)
-            self.proc = None
+    def diagnose(self):
+        if self.client is None:
+            raise TestFailure("client is not connected")
+        return self.client.diagnose_payload()
 
-        if self.log_handle is not None:
-            try:
-                self.log_handle.close()
-            except OSError:
-                pass
-            self.log_handle = None
+    def get_value(self, path: str):
+        if self.client is None:
+            raise TestFailure("client is not connected")
+        return self.client.get_value(path)
 
-    def send_command(self, command):
-        if self.sock is None:
-            raise InfrastructureError("socket is not connected")
+    def eval(self, code: str) -> str:
+        if self.client is None:
+            raise TestFailure("client is not connected")
+        return self.client.eval(code)
 
-        self.sock.sendall((command + "\n").encode("utf-8"))
-        response = bytearray()
-        while True:
-            chunk = self.sock.recv(65536)
-            if not chunk:
-                raise InfrastructureError("socket closed while waiting for response")
-            response.extend(chunk)
-            if response.endswith(b"\n"):
-                break
-        return response[:-1].decode("utf-8", errors="replace")
-
-    def get_log_tail(self, max_chars=2000):
-        if not os.path.exists(self.log_path):
-            return ""
-        with open(self.log_path, "r", encoding="utf-8", errors="replace") as handle:
-            data = handle.read()
-        return data[-max_chars:]
+    def write_failure_artifacts(self) -> None:
+        try:
+            self.process.artifacts.write_json("diagnose.json", self.diagnose())
+        except Exception:
+            pass
+        try:
+            self.process.artifacts.write_json("state.json", self.state())
+        except Exception:
+            pass
 
 
-def expect_ok(response):
+def expect_ok(response: str) -> str:
     if not response.startswith("OK"):
         raise TestFailure(f"expected OK response, got: {response}")
     return response
 
 
-def expect_error(response):
+def expect_error(response: str) -> str:
     if not response.startswith("ERROR"):
         raise TestFailure(f"expected ERROR response, got: {response}")
     return response
 
 
-def parse_ok_json(response):
-    expect_ok(response)
-    if not response.startswith("OK "):
-        raise TestFailure(f"expected JSON body, got: {response}")
-    body = response[3:]
-    try:
-        return json.loads(body)
-    except json.JSONDecodeError as exc:
-        raise TestFailure(f"invalid JSON response: {exc}: {body}") from exc
-
-
-def parse_ok_body(response):
-    expect_ok(response)
-    return response[3:] if response.startswith("OK ") else ""
-
-
-def approx_equal(actual, expected, tolerance=1e-3):
-    return abs(actual - expected) <= tolerance
-
-
-def fetch_state(harness):
-    return parse_ok_json(harness.send_command("STATE"))
-
-
-def fetch_diagnose(harness):
-    return parse_ok_json(harness.send_command("DIAGNOSE"))
-
-
-def wait_for_param(harness, path, expected, tolerance=None, timeout=1.0):
+def wait_for_param(harness: CoreE2EHarness, path: str, expected, tolerance=None, timeout: float = 1.0):
     deadline = time.time() + timeout
     last_value = None
     while time.time() < deadline:
-        state = fetch_state(harness)
-        params = state.get("params", {})
+        params = harness.state().get("params", {})
         last_value = params.get(path)
         if tolerance is None:
             if last_value == expected:
@@ -180,21 +119,14 @@ def wait_for_param(harness, path, expected, tolerance=None, timeout=1.0):
     raise TestFailure(f"expected {path}={expected!r}, got {last_value!r}")
 
 
-def eval_command(harness, code):
-    response = harness.send_command(f"EVAL {code}")
-    if response == "ERROR no lua engine":
-        raise SkipTest("no lua engine attached (headless mode)")
-    return response
-
-
-def test_ping(harness):
-    response = harness.send_command("PING")
+def test_ping(harness: CoreE2EHarness):
+    response = harness.command("PING")
     if response != "OK PONG":
         raise TestFailure(f"expected OK PONG, got {response}")
 
 
-def test_state_json(harness):
-    payload = fetch_state(harness)
+def test_state_json(harness: CoreE2EHarness):
+    payload = harness.state()
     if payload.get("projectionVersion") != 2:
         raise TestFailure(
             f"expected projectionVersion=2, got {payload.get('projectionVersion')!r}"
@@ -205,85 +137,85 @@ def test_state_json(harness):
         raise TestFailure("expected voices array")
 
 
-def test_diagnose_json(harness):
-    payload = fetch_diagnose(harness)
+def test_diagnose_json(harness: CoreE2EHarness):
+    payload = harness.diagnose()
     if "socketPath" not in payload:
         raise TestFailure("expected socketPath field")
 
 
-def test_set_tempo(harness):
-    expect_ok(harness.send_command("SET /core/behavior/tempo 142.5"))
+def test_set_tempo(harness: CoreE2EHarness):
+    expect_ok(harness.command("SET /core/behavior/tempo 142.5"))
     time.sleep(0.1)
     value = wait_for_param(harness, "/core/behavior/tempo", 142.5, tolerance=1e-3)
     if not approx_equal(float(value), 142.5, 1e-3):
         raise TestFailure(f"expected 142.5, got {value}")
 
 
-def test_set_layer(harness):
-    expect_ok(harness.send_command("SET /core/behavior/layer 2"))
+def test_set_layer(harness: CoreE2EHarness):
+    expect_ok(harness.command("SET /core/behavior/layer 2"))
     time.sleep(0.1)
     value = wait_for_param(harness, "/core/behavior/layer", 2)
     if value != 2:
         raise TestFailure(f"expected 2, got {value}")
 
 
-def test_set_volume(harness):
-    expect_ok(harness.send_command("SET /core/behavior/volume 0.73"))
+def test_set_volume(harness: CoreE2EHarness):
+    expect_ok(harness.command("SET /core/behavior/volume 0.73"))
     time.sleep(0.1)
     value = wait_for_param(harness, "/core/behavior/volume", 0.73, tolerance=1e-3)
     if not approx_equal(float(value), 0.73, 1e-3):
         raise TestFailure(f"expected 0.73, got {value}")
 
 
-def test_set_overdub(harness):
-    expect_ok(harness.send_command("SET /core/behavior/overdub 1"))
+def test_set_overdub(harness: CoreE2EHarness):
+    expect_ok(harness.command("SET /core/behavior/overdub 1"))
     time.sleep(0.1)
     value = wait_for_param(harness, "/core/behavior/overdub", 1)
     if value != 1:
         raise TestFailure(f"expected 1, got {value}")
 
 
-def test_set_mode(harness):
-    expect_ok(harness.send_command("SET /core/behavior/mode freeMode"))
+def test_set_mode(harness: CoreE2EHarness):
+    expect_ok(harness.command("SET /core/behavior/mode freeMode"))
     time.sleep(0.1)
     value = wait_for_param(harness, "/core/behavior/mode", "freeMode")
     if value != "freeMode":
         raise TestFailure(f"expected freeMode, got {value}")
 
 
-def test_trigger_rec(harness):
-    response = harness.send_command("TRIGGER /core/behavior/rec")
+def test_trigger_rec(harness: CoreE2EHarness):
+    response = harness.command("TRIGGER /core/behavior/rec")
     if response != "OK":
         raise TestFailure(f"expected OK, got {response}")
 
 
-def test_unknown_path(harness):
-    expect_error(harness.send_command("SET /core/behavior/nonexistent 42"))
+def test_unknown_path(harness: CoreE2EHarness):
+    expect_error(harness.command("SET /core/behavior/nonexistent 42"))
 
 
-def test_legacy_rejected(harness):
-    expect_error(harness.send_command("TEMPO 120"))
+def test_legacy_rejected(harness: CoreE2EHarness):
+    expect_error(harness.command("TEMPO 120"))
 
 
-def test_bad_coercion(harness):
-    expect_error(harness.send_command("SET /core/behavior/tempo notanumber"))
+def test_bad_coercion(harness: CoreE2EHarness):
+    expect_error(harness.command("SET /core/behavior/tempo notanumber"))
 
 
-def test_get_value(harness):
-    body = parse_ok_body(harness.send_command("GET /core/behavior/tempo"))
-    if not body:
-        raise TestFailure("expected non-empty GET body")
+def test_get_value(harness: CoreE2EHarness):
+    payload = harness.client.command_json("GET /core/behavior/tempo")
+    if "VALUE" not in payload:
+        raise TestFailure(f"expected VALUE field, got {payload}")
 
 
-def test_connection_stability(harness):
+def test_connection_stability(harness: CoreE2EHarness):
     for index in range(10):
-        response = harness.send_command("PING")
+        response = harness.command("PING")
         if response != "OK PONG":
             raise TestFailure(f"iteration {index}: expected OK PONG, got {response}")
 
 
-def test_voices_structure(harness):
-    payload = fetch_state(harness)
+def test_voices_structure(harness: CoreE2EHarness):
+    payload = harness.state()
     voices = payload.get("voices")
     if not isinstance(voices, list):
         raise TestFailure("voices is not a list")
@@ -297,39 +229,39 @@ def test_voices_structure(harness):
         raise TestFailure(f"voices[0] missing keys: {', '.join(missing)}")
 
 
-def test_eval_arithmetic(harness):
-    response = eval_command(harness, "return 1+1")
+def test_eval_arithmetic(harness: CoreE2EHarness):
+    response = harness.eval("return 1+1")
     if response != "OK 2":
         raise TestFailure(f"expected OK 2, got {response}")
 
 
-def test_eval_string(harness):
-    response = eval_command(harness, 'return "hello"')
+def test_eval_string(harness: CoreE2EHarness):
+    response = harness.eval('return "hello"')
     if response != "OK hello":
         raise TestFailure(f"expected OK hello, got {response}")
 
 
-def test_eval_error(harness):
-    response = eval_command(harness, 'error("boom")')
+def test_eval_error(harness: CoreE2EHarness):
+    response = harness.eval('error("boom")')
     if not response.startswith("ERROR"):
         raise TestFailure(f"expected ERROR response, got {response}")
 
 
-def test_eval_nil(harness):
-    response = eval_command(harness, "return nil")
+def test_eval_nil(harness: CoreE2EHarness):
+    response = harness.eval("return nil")
     if response != "OK":
         raise TestFailure(f"expected OK, got {response}")
 
 
-def test_eval_globals(harness):
-    response = eval_command(harness, "return type(state)")
+def test_eval_globals(harness: CoreE2EHarness):
+    response = harness.eval("return type(state)")
     if response != "OK table":
         raise TestFailure(f"expected OK table, got {response}")
 
 
-def test_perf_reset(harness):
-    expect_ok(harness.send_command("PERF RESET"))
-    payload = fetch_diagnose(harness)
+def test_perf_reset(harness: CoreE2EHarness):
+    harness.client.reset_perf()
+    payload = harness.diagnose()
     frame_timing = payload.get("frameTiming")
     if frame_timing is None:
         raise SkipTest("no frame timing available (no editor/frame loop)")
@@ -339,15 +271,6 @@ def test_perf_reset(harness):
         raise TestFailure("frameTiming missing peakTotalUs")
     if int(peak_total) >= 50000:
         raise TestFailure(f"expected peakTotalUs < 50000 after reset, got {peak_total}")
-
-
-def install_signal_handlers(cleanup):
-    def handler(signum, _frame):
-        cleanup()
-        raise KeyboardInterrupt(f"signal {signum}")
-
-    signal.signal(signal.SIGINT, handler)
-    signal.signal(signal.SIGTERM, handler)
 
 
 TESTS = [
@@ -375,8 +298,27 @@ TESTS = [
 ]
 
 
-def main():
-    harness = ManifoldHeadlessHarness()
+def install_signal_handlers(cleanup):
+    def handler(signum, _frame):
+        cleanup()
+        raise KeyboardInterrupt(f"signal {signum}")
+
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Headless IPC core regression suite")
+    parser.add_argument("--headless", default="build-dev/ManifoldHeadless", help="Path to ManifoldHeadless executable")
+    parser.add_argument("--duration", type=float, default=30.0, help="Headless runtime duration in seconds")
+    parser.add_argument("--samplerate", type=float, default=44100.0, help="Sample rate")
+    parser.add_argument("--blocksize", type=int, default=512, help="Block size")
+    return parser.parse_args(argv[1:])
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    harness = CoreE2EHarness(args.headless, args.duration, args.samplerate, args.blocksize)
     install_signal_handlers(harness.stop)
 
     failures = []
@@ -400,29 +342,33 @@ def main():
                 print(f"  FAIL: {name}: {exc}")
 
         print(
-            f"E2E IPC Tests: {passed}/{len(TESTS)} passed, {len(failures)} failed, {len(skipped)} skipped"
+            f"Headless IPC core tests: {passed}/{len(TESTS)} passed, {len(failures)} failed, {len(skipped)} skipped"
         )
 
         if failures:
-            log_tail = harness.get_log_tail()
+            harness.write_failure_artifacts()
+            log_tail = harness.process.get_log_tail()
             if log_tail:
-                print("\nManifoldHeadless stderr (last 2000 chars):")
+                print("\nManifoldHeadless log tail:")
                 print(log_tail)
+            print(f"Artifacts: {harness.process.artifacts.base_dir}")
             return 1
         return 0
     except KeyboardInterrupt:
         print("Interrupted")
         return 2
-    except InfrastructureError as exc:
+    except Exception as exc:
+        harness.write_failure_artifacts()
         print(f"Infrastructure error: {exc}")
-        log_tail = harness.get_log_tail()
+        log_tail = harness.process.get_log_tail()
         if log_tail:
-            print("\nManifoldHeadless stderr (last 2000 chars):")
+            print("\nManifoldHeadless log tail:")
             print(log_tail)
+        print(f"Artifacts: {harness.process.artifacts.base_dir}")
         return 2
     finally:
         harness.stop()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv))

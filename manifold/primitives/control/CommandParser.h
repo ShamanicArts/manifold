@@ -23,6 +23,7 @@ struct ParseResult {
     Inject,          // INJECT <filepath> - handled by server thread
     InjectionStatus, // INJECTION_STATUS query
     UISwitch,        // UISWITCH <filepath> - switch UI script
+    UIRenderer,      // UIRENDERER <mode> - switch debug renderer mode
     NoOpWarning,     // accepted no-op with warning (e.g. impossible coercion)
     Error            // parse error
   };
@@ -31,7 +32,8 @@ struct ParseResult {
   ControlCommand command;   // valid when kind == Enqueue
   std::string queryType;    // "STATE", "PING", "DIAGNOSE" when kind == Query
   std::string queryPath;    // endpoint path when kind == Query and queryType == "GET"
-  std::string filepath;     // valid when kind == Inject
+  std::string filepath;     // valid when kind == Inject / UISwitch
+  std::string rendererMode; // valid when kind == UIRenderer
   std::string errorMessage; // valid when kind == Error
   bool usedLegacySyntax = false;
   std::string legacyVerb;
@@ -690,6 +692,41 @@ inline ParseResult parse(const std::string &cmd,
     ParseResult r;
     r.kind = ParseResult::Kind::UISwitch;
     r.filepath = filepath; // reuse filepath field for UI path
+    return r;
+  }
+
+  // ---- UIRENDERER [mode] ----
+  if (verb == "UIRENDERER") {
+    if (tokens.size() == 1) {
+      return makeQuery("UIRENDERER");
+    }
+
+    const std::string mode = toUpper(tokens[1]);
+    const bool validMode =
+        mode == "CANVAS" ||
+        mode == "OFF" ||
+        mode == "0" ||
+        mode == "IMGUI" ||
+        mode == "OVERLAY" ||
+        mode == "IMGUI-OVERLAY" ||
+        mode == "IMGUI_OVERLAY" ||
+        mode == "REPLACE" ||
+        mode == "FULL" ||
+        mode == "IMGUI-REPLACE" ||
+        mode == "IMGUI_REPLACE" ||
+        mode == "IMGUI-FULL" ||
+        mode == "IMGUI_FULL" ||
+        mode == "DIRECT" ||
+        mode == "IMGUI-DIRECT" ||
+        mode == "IMGUI_DIRECT";
+
+    if (!validMode) {
+      return makeError("usage: UIRENDERER <canvas|imgui-overlay|imgui-replace|imgui-direct>");
+    }
+
+    ParseResult r;
+    r.kind = ParseResult::Kind::UIRenderer;
+    r.rendererMode = tokens[1];
     return r;
   }
 
