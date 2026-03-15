@@ -14,6 +14,8 @@ extern "C" {
 #include "../ScriptableProcessor.h"
 #include "../PrimitiveGraph.h"
 #include "dsp/core/nodes/PrimitiveNodes.h"
+#include "dsp/core/nodes/RetrospectiveCaptureNode.h"
+#include "dsp/core/graph/PrimitiveNode.h"
 #include "../../control/CommandParser.h"
 #include "../../control/ControlServer.h"
 #include "../../control/OSCEndpointRegistry.h"
@@ -34,7 +36,24 @@ extern "C" {
 #include <unordered_set>
 #include <set>
 
+// Forward declarations for node access
+namespace dsp_primitives {
+class RetrospectiveCaptureNode;
+}
+
 namespace {
+
+// Helper to extract C++ node from Lua table's __node field
+template <typename NodeT>
+std::shared_ptr<NodeT> extractNodeFromTable(const sol::table& table) {
+    if (!table.valid()) return {};
+    sol::object nodeObj = table["__node"];
+    if (!nodeObj.valid()) return {};
+    if (nodeObj.is<std::shared_ptr<NodeT>>()) {
+        return nodeObj.as<std::shared_ptr<NodeT>>();
+    }
+    return {};
+}
 
 bool isUiScriptFile(const juce::File& script) {
     if (!script.existsAsFile()) return false;
@@ -317,6 +336,65 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         if (!processor->computeCapturePeaks(startAgo, endAgo, numBuckets, peaks)) {
             return result;
         }
+        for (size_t i = 0; i < peaks.size(); ++i) {
+            result[i + 1] = peaks[i];
+        }
+        return result;
+    };
+
+    // Get capture peaks from a specific RetrospectiveCaptureNode (for wet capture visualization)
+    lua["getNodeCapturePeaks"] = [&lua](sol::table captureNodeTable, int startAgo, int endAgo,
+                                        int numBuckets) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        if (numBuckets <= 0) return result;
+
+        auto node = extractNodeFromTable<dsp_primitives::RetrospectiveCaptureNode>(captureNodeTable);
+        if (!node) return result;
+
+        auto peaks = node->computePeaks(startAgo, endAgo, numBuckets);
+        for (size_t i = 0; i < peaks.size(); ++i) {
+            result[i + 1] = peaks[i];
+        }
+        return result;
+    };
+
+    // Generic access to DSP graph nodes by path from UI context
+    lua["getGraphNodeByPath"] = [&state](const std::string& path) -> sol::table {
+        auto result = sol::table();
+        auto* processor = state.getProcessor();
+        if (!processor || path.empty()) return result;
+
+        auto node = processor->getGraphNodeByPath(path);
+        if (!node) return result;
+
+        // Return table with __node field for use with getNodeCapturePeaks
+        result["__node"] = node;
+        return result;
+    };
+
+    // Generic capture peaks from any capture node path in the DSP graph
+    // This is THE function for visualization - always returns the signal at that point
+    lua["getCapturePeaksAtPath"] = [&state, &lua](const std::string& path, int startAgo, int endAgo,
+                                                   int numBuckets) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        if (!processor || numBuckets <= 0 || path.empty()) return result;
+
+        // Get the node at the specified path
+        auto node = processor->getGraphNodeByPath(path);
+        if (!node) {
+            // Node not found - maybe the graph isn't loaded yet
+            return result;
+        }
+
+        // Cast to capture node and get peaks
+        auto* captureNode = dynamic_cast<dsp_primitives::RetrospectiveCaptureNode*>(node.get());
+        if (!captureNode) {
+            // Not a capture node - can't get peaks
+            return result;
+        }
+
+        auto peaks = captureNode->computePeaks(startAgo, endAgo, numBuckets);
         for (size_t i = 0; i < peaks.size(); ++i) {
             result[i + 1] = peaks[i];
         }

@@ -143,6 +143,21 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   impl->ownedNodes.clear();
 
+  // Retire old Lua state BEFORE creating new one, but DON'T destroy it yet.
+  // Destroying Lua states with active shared_ptr references causes crashes.
+  if (impl->lua.lua_state() != nullptr) {
+    impl->retiredLuaStates.push_back(std::move(impl->lua));
+  }
+  // Limit retired states but destroy them safely
+  while (impl->retiredLuaStates.size() > 4) {
+    // Collect the oldest state with explicit GC to ensure proper cleanup order
+    sol::state& oldState = impl->retiredLuaStates.front();
+    if (oldState.lua_state() != nullptr) {
+      lua_gc(oldState.lua_state(), LUA_GCCOLLECT, 0);
+    }
+    impl->retiredLuaStates.erase(impl->retiredLuaStates.begin());
+  }
+
   sol::state newLua;
   newLua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string,
                         sol::lib::table, sol::lib::package);
@@ -3529,8 +3544,6 @@ end
 
   {
     const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
-    // Keep old Lua VM alive to avoid destroying it during nested Lua call stacks.
-    impl->retiredLuaStates.push_back(std::move(impl->lua));
 
     impl->onParamChange = std::move(newOnParamChange);
     impl->lua = std::move(newLua);

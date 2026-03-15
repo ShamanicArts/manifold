@@ -313,10 +313,6 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     state.captureSize.store(captureBuffer.getSize(), std::memory_order_relaxed);
     state.captureWritePos.store(captureBuffer.getOffsetToNow(), std::memory_order_relaxed);
-    // Dry gain is for monitor passthrough only (controlled by passthrough toggle)
-    const float dryGain = state.passthroughEnabled.load(std::memory_order_relaxed)
-                          ? inputVolume * 0.7f
-                          : 0.0f;
     const float wetGain = state.masterVolume.load(std::memory_order_relaxed);
 
     const bool graphEnabled = graphProcessingEnabled.load(std::memory_order_relaxed);
@@ -329,8 +325,11 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         graphWetBuffer.getNumSamples() >= numSamples;
 
     if (canProcessGraph) {
-        // Graph input uses inputVolume (goes into looper), not dryGain (monitor only)
-        const float graphInputGain = inputVolume;
+        // Passthrough toggle controls whether input enters the DSP chain.
+        // When ON: input goes into DSP at inputVolume level (monitored through DSP).
+        // When OFF: no input into DSP (not monitored), but still recorded to capture buffer.
+        const bool passthroughEnabled = state.passthroughEnabled.load(std::memory_order_relaxed);
+        const float graphInputGain = passthroughEnabled ? inputVolume : 0.0f;
         for (int ch = 0; ch < numChannels; ++ch) {
             graphWetBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
             graphWetBuffer.applyGain(ch, 0, numSamples, graphInputGain);
@@ -354,22 +353,24 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                     : wetL;
 
             for (int i = 0; i < numSamples; ++i) {
-                const float dryL = captureL != nullptr ? captureL[i] : 0.0f;
-                const float dryR = captureR != nullptr ? captureR[i] : dryL;
-                outL[i] = dryL * dryGain + wetL[i] * wetGain;
+                outL[i] = wetL[i] * wetGain;
                 if (outR != nullptr && outR != outL) {
-                    outR[i] = dryR * dryGain + wetR[i] * wetGain;
+                    outR[i] = wetR[i] * wetGain;
                 }
             }
         }
     } else {
+        // No graph enabled - passthrough toggle controls direct input monitoring.
+        // When ON: hear input at inputVolume level. When OFF: silence.
+        const bool passthroughEnabled = state.passthroughEnabled.load(std::memory_order_relaxed);
+        const float passthroughGain = passthroughEnabled ? inputVolume : 0.0f;
         if (outL == nullptr) {
             buffer.clear();
         } else {
             for (int i = 0; i < numSamples; ++i) {
-                outL[i] *= dryGain;
+                outL[i] *= passthroughGain;
                 if (outR != nullptr && outR != outL) {
-                    outR[i] *= dryGain;
+                    outR[i] *= passthroughGain;
                 }
             }
         }
