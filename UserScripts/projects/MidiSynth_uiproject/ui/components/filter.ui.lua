@@ -1,126 +1,14 @@
--- Filter Panel UI
--- Lowpass/Highpass/Bandpass filter with cutoff and resonance
-
 return {
+  id = "filterRoot",
   type = "Panel",
-  style = {
-    bg = 0xFF16213E,
-    border = 0xFF0F3460,
-    borderWidth = 1,
-    radius = 8,
-  },
+  x = 0, y = 0, w = 280, h = 200,
+  style = { bg = 0xff121a2f, border = 0xff1f2b4d, borderWidth = 1, radius = 10 },
   children = {
-    {
-      id = "title",
-      type = "Label",
-      x = 10, y = 8,
-      w = 280, h = 24,
-      text = "FILTER",
-      style = {
-        fontSize = 14,
-        textColor = 0xFFE94560,
-        fontFlags = 1,
-      }
-    },
-    {
-      id = "type_label",
-      type = "Label",
-      x = 10, y = 40,
-      w = 60, h = 20,
-      text = "Type",
-      style = { textColor = 0xFFFFFFFF, fontSize = 12 }
-    },
-    {
-      id = "type_dropdown",
-      type = "Dropdown",
-      x = 80, y = 38,
-      w = 120, h = 24,
-      items = {"Lowpass", "Highpass", "Bandpass"},
-      selected = 0,
-    },
-    {
-      id = "cutoff_label",
-      type = "Label",
-      x = 10, y = 75,
-      w = 80, h = 20,
-      text = "Cutoff",
-      style = { textColor = 0xFFFFFFFF, fontSize = 12 }
-    },
-    {
-      id = "cutoff_slider",
-      type = "Slider",
-      x = 10, y = 95,
-      w = 200, h = 24,
-      min = 20, max = 20000,
-      value = 20000,
-      style = {
-        trackColor = 0xFF0F3460,
-        fillColor = 0xFFE94560,
-      }
-    },
-    {
-      id = "cutoff_value",
-      type = "Label",
-      x = 220, y = 95,
-      w = 70, h = 20,
-      text = "20 kHz",
-      style = { textColor = 0xFFAAAAAA, fontSize = 11 }
-    },
-    {
-      id = "resonance_label",
-      type = "Label",
-      x = 10, y = 130,
-      w = 80, h = 20,
-      text = "Resonance",
-      style = { textColor = 0xFFFFFFFF, fontSize = 12 }
-    },
-    {
-      id = "resonance_knob",
-      type = "Knob",
-      x = 100, y = 125,
-      w = 40, h = 40,
-      min = 0.1, max = 10,
-      value = 0.707,
-      style = {
-        trackColor = 0xFF0F3460,
-        fillColor = 0xFFE94560,
-      }
-    },
-    {
-      id = "resonance_value",
-      type = "Label",
-      x = 150, y = 135,
-      w = 50, h = 20,
-      text = "0.7",
-      style = { textColor = 0xFFAAAAAA, fontSize = 11 }
-    },
-    {
-      id = "env_label",
-      type = "Label",
-      x = 10, y = 170,
-      w = 80, h = 20,
-      text = "Env Amt",
-      style = { textColor = 0xFFFFFFFF, fontSize = 12 }
-    },
-    {
-      id = "env_knob",
-      type = "Knob",
-      x = 100, y = 165,
-      w = 40, h = 40,
-      min = 0, max = 1,
-      value = 0,
-      style = {
-        trackColor = 0xFF0F3460,
-        fillColor = 0xFFE94560,
-      }
-    },
-    {
-      id = "env_value",
-      type = "Label",
-      x = 150, y = 175,
-      w = 50, h = 20,
-      text = "0%",
-      style = { textColor = 0xFFAAAAAA, fontSize = 11 }
-    },
-  }
+    { id = "title", type = "Label", x = 16, y = 8, w = 200, h = 16, props = { text = "FILTER" }, style = { colour = 0xffc084fc, fontSize = 12 } },
+    { id = "filter_graph", type = "Panel", x = 16, y = 30, w = 248, h = 100, style = { bg = 0xff0d1420, border = 0xff1a1a3a, borderWidth = 1, radius = 6 } },
+    { id = "filter_type_label", type = "Label", x = 16, y = 136, w = 60, h = 14, props = { text = "Type" }, style = { colour = 0xff94a3b8, fontSize = 10 } },
+    { id = "filter_type_dropdown", type = "Dropdown", x = 16, y = 152, w = 140, h = 24, props = { options = { "SVF Lowpass", "SVF Bandpass", "SVF Highpass", "SVF Notch" }, selected = 1, max_visible_rows = 4 }, style = { bg = 0xff1e293b, colour = 0xffa78bfa } },
+    { id = "cutoff_knob", type = "Knob", x = 16, y = 182, w = 76, h = 90, props = { min = 80, max = 16000, step = 1, value = 3200, label = "Cutoff" }, style = { colour = 0xffa78bfa } },
+    { id = "resonance_knob", type = "Knob", x = 100, y = 182, w = 76, h = 90, props = { min = 0.1, max = 2.0, step = 0.01, value = 0.75, label = "Reso" }, style = { colour = 0xffd8b4fe } },
+  },
 }
