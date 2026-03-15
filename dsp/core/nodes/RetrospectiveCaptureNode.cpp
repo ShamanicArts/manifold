@@ -1,5 +1,7 @@
 #include "dsp/core/nodes/RetrospectiveCaptureNode.h"
 
+#include <cmath>
+
 namespace dsp_primitives {
 
 RetrospectiveCaptureNode::RetrospectiveCaptureNode(int numChannels)
@@ -9,13 +11,13 @@ void RetrospectiveCaptureNode::prepare(double sampleRate, int maxBlockSize) {
     (void)maxBlockSize;
     const float newRate = sampleRate > 1.0 ? static_cast<float>(sampleRate) : 44100.0f;
 
-    const int oldSize = captureSize_;
+    const int oldSize = captureSize_.load(std::memory_order_acquire);
     const int oldChannels = captureBuffer_.getNumChannels();
 
     sampleRate_ = newRate;
     ensureBuffer(sampleRate_);
 
-    const bool recreated = (captureSize_ != oldSize) ||
+    const bool recreated = (captureSize_.load(std::memory_order_acquire) != oldSize) ||
                            (captureBuffer_.getNumChannels() != oldChannels);
     if (recreated) {
         writeOffset_.store(0, std::memory_order_release);
@@ -30,7 +32,10 @@ void RetrospectiveCaptureNode::process(const std::vector<AudioBufferView>& input
         return;
     }
 
+    // Lock-free: read size once, process all samples, then update write offset
+    const int size = captureSize_.load(std::memory_order_acquire);
     int write = writeOffset_.load(std::memory_order_acquire);
+
     for (int i = 0; i < numSamples; ++i) {
         for (int ch = 0; ch < channels; ++ch) {
             const size_t idx = static_cast<size_t>(ch);
@@ -38,14 +43,13 @@ void RetrospectiveCaptureNode::process(const std::vector<AudioBufferView>& input
             if (ch < static_cast<int>(inputs.size())) {
                 s = inputs[idx].getSample(ch, i);
             }
-            captureBuffer_.setSample(ch, write, s);
+            // Wrap write index within current size
+            const int writeIdx = write % size;
+            captureBuffer_.setSample(ch, writeIdx, s);
             outputs[idx].setSample(ch, i, s);
         }
 
         ++write;
-        if (write >= captureSize_) {
-            write = 0;
-        }
     }
 
     writeOffset_.store(write, std::memory_order_release);
@@ -60,15 +64,8 @@ float RetrospectiveCaptureNode::getCaptureSeconds() const {
     return captureSeconds_.load(std::memory_order_acquire);
 }
 
-int RetrospectiveCaptureNode::getCaptureSize() const {
-    return captureSize_;
-}
-
-int RetrospectiveCaptureNode::getWriteOffset() const {
-    return writeOffset_.load(std::memory_order_acquire);
-}
-
 void RetrospectiveCaptureNode::clear() {
+    std::lock_guard<std::mutex> lock(bufferMutex_);
     captureBuffer_.clear();
     writeOffset_.store(0, std::memory_order_release);
 }
@@ -84,18 +81,22 @@ bool RetrospectiveCaptureNode::copyRecentToLoop(const std::shared_ptr<LoopPlayba
                                                 int samplesBack,
                                                 bool overdub,
                                                 LoopPlaybackNode::OverdubLengthPolicy overdubLengthPolicy) {
-    if (!playback || samplesBack <= 0 || captureSize_ <= 0) {
+    const int size = captureSize_.load(std::memory_order_acquire);
+    if (!playback || samplesBack <= 0 || size <= 0) {
         return false;
     }
 
-    const int clamped = juce::jmin(samplesBack, captureSize_);
+    // Lock during copy to ensure consistent buffer state
+    std::lock_guard<std::mutex> lock(bufferMutex_);
+    const int currentSize = captureSize_.load(std::memory_order_acquire);
+    const int clamped = juce::jmin(samplesBack, currentSize);
     int start = getWriteOffset() - clamped;
     while (start < 0) {
-        start += captureSize_;
+        start += currentSize;
     }
-    start %= captureSize_;
+    start %= currentSize;
 
-    playback->copyFromCaptureBuffer(captureBuffer_, captureSize_, start, clamped,
+    playback->copyFromCaptureBuffer(captureBuffer_, currentSize, start, clamped,
                                     overdub, overdubLengthPolicy);
     return true;
 }
@@ -103,14 +104,66 @@ bool RetrospectiveCaptureNode::copyRecentToLoop(const std::shared_ptr<LoopPlayba
 void RetrospectiveCaptureNode::ensureBuffer(float sampleRate) {
     const float seconds = getCaptureSeconds();
     const int target = juce::jmax(1, static_cast<int>(sampleRate * seconds));
-    if (target == captureSize_ && captureBuffer_.getNumChannels() == numChannels_) {
+    const int currentSize = captureSize_.load(std::memory_order_acquire);
+    if (target == currentSize && captureBuffer_.getNumChannels() == numChannels_) {
         return;
     }
 
-    captureSize_ = target;
-    captureBuffer_.setSize(numChannels_, captureSize_, false, true, true);
+    std::lock_guard<std::mutex> lock(bufferMutex_);
+    captureSize_.store(target, std::memory_order_release);
+    captureBuffer_.setSize(numChannels_, target, false, true, true);
     captureBuffer_.clear();
     writeOffset_.store(0, std::memory_order_release);
+}
+
+std::vector<float> RetrospectiveCaptureNode::computePeaks(int startAgo, int endAgo, int numBuckets) const {
+    std::vector<float> result;
+    // Lock-free: snapshot atomic values, then read without mutex
+    const int size = captureSize_.load(std::memory_order_acquire);
+    if (numBuckets <= 0 || size <= 0) {
+        return result;
+    }
+
+    const int start = juce::jlimit(0, size, startAgo);
+    const int end = juce::jlimit(0, size, endAgo);
+    if (end <= start) {
+        return result;
+    }
+
+    const int viewSamples = end - start;
+    const int bucketSize = juce::jmax(1, viewSamples / numBuckets);
+    result.resize(static_cast<size_t>(numBuckets), 0.0f);
+
+    // Snapshot write position atomically - may be slightly stale but consistent
+    const int writePos = writeOffset_.load(std::memory_order_acquire);
+    const int numCh = captureBuffer_.getNumChannels();
+
+    for (int b = 0; b < numBuckets; ++b) {
+        // Iterate in reverse order to match BehaviorCoreProcessor::computeCapturePeaks
+        // result[0] = newest (end), result[N-1] = oldest (start)
+        const float t = numBuckets > 1
+                            ? static_cast<float>(numBuckets - 1 - b) /
+                                  static_cast<float>(numBuckets - 1)
+                            : 0.0f;
+        const int bucketStart = start + static_cast<int>(std::round(t * static_cast<float>(viewSamples - 1)));
+        const int bucketEnd = juce::jmin(bucketStart + bucketSize, end);
+
+        float peak = 0.0f;
+        for (int s = bucketStart; s < bucketEnd; ++s) {
+            // Calculate actual index in circular buffer using modulo
+            int idx = (writePos - 1 - s) % size;
+            if (idx < 0) idx += size;
+
+            for (int ch = 0; ch < numCh; ++ch) {
+                // Lock-free read - may occasionally be torn during buffer resize,
+                // but that's acceptable for visualization
+                peak = std::max(peak, std::abs(captureBuffer_.getSample(ch, idx)));
+            }
+        }
+        result[static_cast<size_t>(b)] = peak;
+    }
+
+    return result;
 }
 
 } // namespace dsp_primitives
