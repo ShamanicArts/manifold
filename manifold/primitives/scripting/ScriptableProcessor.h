@@ -149,6 +149,18 @@ public:
   virtual bool computeCapturePeaks(int startAgo, int endAgo, int numBuckets,
                                    std::vector<float> &outPeaks) const = 0;
 
+  // Sample synth waveform access
+  virtual bool computeSynthSamplePeaks(int numBuckets,
+                                       std::vector<float> &outPeaks) const {
+    (void)numBuckets;
+    (void)outPeaks;
+    return false;
+  }
+
+  virtual std::vector<float> getVoiceSamplePositions() const {
+    return {};
+  }
+
   virtual float getTempo() const = 0;
   virtual float getTargetBPM() const = 0;
   virtual float getSamplesPerBar() const = 0;

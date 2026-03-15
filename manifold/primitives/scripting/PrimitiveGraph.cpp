@@ -12,6 +12,7 @@ PrimitiveGraph::~PrimitiveGraph() = default;
 void PrimitiveGraph::registerNode(std::shared_ptr<IPrimitiveNode> node) {
     std::lock_guard<std::recursive_mutex> lock(nodesMutex_);
     nodes_.push_back(node);
+    nodeRoles_[node.get()] = NodeRole::Unspecified;
     prepared_ = false;
 }
 
@@ -34,6 +35,7 @@ void PrimitiveGraph::unregisterNode(std::shared_ptr<IPrimitiveNode> node) {
         }
     }
 
+    nodeRoles_.erase(node.get());
     nodes_.erase(std::remove(nodes_.begin(), nodes_.end(), node), nodes_.end());
     prepared_ = false;
 }
@@ -100,12 +102,33 @@ void PrimitiveGraph::disconnectAll(std::shared_ptr<IPrimitiveNode> node) {
     prepared_ = false;
 }
 
+void PrimitiveGraph::setNodeRole(std::shared_ptr<IPrimitiveNode> node, NodeRole role) {
+    std::lock_guard<std::recursive_mutex> lock(nodesMutex_);
+    if (!node) {
+        return;
+    }
+    nodeRoles_[node.get()] = role;
+}
+
+PrimitiveGraph::NodeRole PrimitiveGraph::getNodeRole(std::shared_ptr<IPrimitiveNode> node) const {
+    std::lock_guard<std::recursive_mutex> lock(nodesMutex_);
+    if (!node) {
+        return NodeRole::Unspecified;
+    }
+    auto it = nodeRoles_.find(node.get());
+    if (it == nodeRoles_.end()) {
+        return NodeRole::Unspecified;
+    }
+    return it->second;
+}
+
 void PrimitiveGraph::clear() {
     std::lock_guard<std::recursive_mutex> lock(nodesMutex_);
     for (auto& node : nodes_) {
         node->removeAllConnections();
     }
     nodes_.clear();
+    nodeRoles_.clear();
     workingBuffers_.clear();
     prepared_ = false;
 }

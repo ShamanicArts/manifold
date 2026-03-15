@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -19,6 +20,13 @@ class QuantizerWrapper;
 
 class PrimitiveGraph {
 public:
+    enum class NodeRole {
+        Unspecified = 0,
+        InputDSP = 1,
+        Monitor = 2,
+        OutputDSP = 3,
+    };
+
     PrimitiveGraph();
     ~PrimitiveGraph();
 
@@ -27,6 +35,9 @@ public:
 
     bool connect(std::shared_ptr<IPrimitiveNode> from, int outputIndex,
                  std::shared_ptr<IPrimitiveNode> to, int inputIndex);
+
+    void setNodeRole(std::shared_ptr<IPrimitiveNode> node, NodeRole role);
+    NodeRole getNodeRole(std::shared_ptr<IPrimitiveNode> node) const;
     void disconnect(std::shared_ptr<IPrimitiveNode> from, int outputIndex,
                     std::shared_ptr<IPrimitiveNode> to, int inputIndex);
     void disconnectAll(std::shared_ptr<IPrimitiveNode> node);
@@ -49,6 +60,7 @@ public:
 private:
     std::vector<std::shared_ptr<IPrimitiveNode>> nodes_;
     mutable std::recursive_mutex nodesMutex_;
+    std::unordered_map<IPrimitiveNode*, NodeRole> nodeRoles_;
 
     std::vector<juce::AudioBuffer<float>> workingBuffers_;
     std::vector<std::vector<AudioBufferView>> inputViews_;

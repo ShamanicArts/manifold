@@ -16,6 +16,7 @@ class IPrimitiveNode;
  */
 struct CompiledNode {
     std::shared_ptr<IPrimitiveNode> node;
+    PrimitiveGraph::NodeRole role = PrimitiveGraph::NodeRole::Unspecified;
     int inputCount = 0;
     int outputCount = 0;
 };
@@ -69,6 +70,13 @@ public:
     void process(juce::AudioBuffer<float>& buffer,
                  const juce::AudioBuffer<float>* rawHostInput = nullptr);
 
+    void setMonitorEnabled(bool enabled) noexcept {
+        monitorEnabled_.store(enabled, std::memory_order_relaxed);
+    }
+    bool isMonitorEnabled() const noexcept {
+        return monitorEnabled_.load(std::memory_order_relaxed);
+    }
+
     int getNumChannels() const noexcept { return numChannels_; }
     int getMaxBlockSize() const noexcept { return maxBlockSize_; }
     double getSampleRate() const noexcept { return sampleRate_; }
@@ -90,6 +98,7 @@ private:
     int numChannels_ = 2;
 
     std::atomic<bool> isValid_{false};
+    std::atomic<bool> monitorEnabled_{true};
 
     // Compiled topology (immutable after prepare)
     std::vector<CompiledNode> compiledNodes_;
@@ -97,7 +106,10 @@ private:
 
     // Preallocated scratch buffers for graph execution
     // No allocations in process() - all preallocated here
-    std::vector<juce::AudioBuffer<float>> scratchBuffers_;
+    // - inputScratchBuffers_: outputs of InputDSP role nodes
+    // - outputScratchBuffers_: outputs of Monitor/OutputDSP role nodes
+    std::vector<juce::AudioBuffer<float>> inputScratchBuffers_;
+    std::vector<juce::AudioBuffer<float>> outputScratchBuffers_;
 
     // Preallocated buffers used in process() to avoid per-call heap work.
     juce::AudioBuffer<float> chunkBuffer_;

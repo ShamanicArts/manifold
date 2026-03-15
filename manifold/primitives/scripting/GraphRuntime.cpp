@@ -24,16 +24,21 @@ void GraphRuntime::prepare(double sampleRate, int maxBlockSize, int numChannels)
         return;
     }
 
-    // Allocate scratch buffers: one per node (for simplicity, avoid complex pooling)
+    // Allocate per-domain scratch buffers: one per node.
     const size_t numNodes = compiledNodes_.size();
-    scratchBuffers_.clear();
-    scratchBuffers_.reserve(numNodes);
+    inputScratchBuffers_.clear();
+    outputScratchBuffers_.clear();
+    inputScratchBuffers_.reserve(numNodes);
+    outputScratchBuffers_.reserve(numNodes);
     
     for (size_t i = 0; i < numNodes; ++i) {
-        // Preallocate stereo buffer at maxBlockSize
-        juce::AudioBuffer<float> buf(numChannels_, maxBlockSize_);
-        buf.clear();
-        scratchBuffers_.push_back(std::move(buf));
+        juce::AudioBuffer<float> inBuf(numChannels_, maxBlockSize_);
+        inBuf.clear();
+        inputScratchBuffers_.push_back(std::move(inBuf));
+
+        juce::AudioBuffer<float> outBuf(numChannels_, maxBlockSize_);
+        outBuf.clear();
+        outputScratchBuffers_.push_back(std::move(outBuf));
     }
 
     // Map nodes to their scratch buffer indices
@@ -170,15 +175,25 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    for (auto& scratch : scratchBuffers_) {
+    for (auto& scratch : inputScratchBuffers_) {
         scratch.clear(0, numSamples);
     }
+    for (auto& scratch : outputScratchBuffers_) {
+        scratch.clear(0, numSamples);
+    }
+
+    // Load monitor state once for the entire process block
+    const bool monitorEnabled = monitorEnabled_.load(std::memory_order_relaxed);
 
     // Execute nodes in topological order
     for (size_t nodeIdx = 0; nodeIdx < numNodes; ++nodeIdx) {
         auto& compiled = compiledNodes_[nodeIdx];
         const int scratchIdx = nodeToScratchIndex_[nodeIdx];
-        auto& scratchBuf = scratchBuffers_[scratchIdx];
+        auto& inputScratchBuf = inputScratchBuffers_[scratchIdx];
+        auto& outputScratchBuf = outputScratchBuffers_[scratchIdx];
+        auto& scratchBuf = (compiled.role == PrimitiveGraph::NodeRole::InputDSP)
+                               ? inputScratchBuf
+                               : outputScratchBuf;
         
         // Build per-bus input accumulators for this node (preallocated)
         const int busCount = std::max(0, (compiled.inputCount + numChannels_ - 1) / numChannels_);
@@ -197,8 +212,12 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
                 continue;
             }
 
-            const int srcScratchIdx = nodeToScratchIndex_[static_cast<size_t>(route.sourceNodeIndex)];
-            auto& srcBuf = scratchBuffers_[static_cast<size_t>(srcScratchIdx)];
+            const size_t srcNodeIdx = static_cast<size_t>(route.sourceNodeIndex);
+            const int srcScratchIdx = nodeToScratchIndex_[srcNodeIdx];
+            const auto srcRole = compiledNodes_[srcNodeIdx].role;
+            auto& srcBuf = (srcRole == PrimitiveGraph::NodeRole::InputDSP)
+                               ? inputScratchBuffers_[static_cast<size_t>(srcScratchIdx)]
+                               : outputScratchBuffers_[static_cast<size_t>(srcScratchIdx)];
 
             const int bus = juce::jlimit(0, activeBuses - 1, route.targetInput);
             auto& acc = inputAccumulators_[static_cast<size_t>(bus)];
@@ -247,9 +266,17 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
 
         // Process the node
         compiled.node->process(inputViews_, outputViews_, numSamples);
+
+        // Gate Monitor nodes when monitor is disabled
+        if (compiled.role == PrimitiveGraph::NodeRole::Monitor && !monitorEnabled) {
+            scratchBuf.clear(0, numSamples);
+        }
     }
 
-    // Mix sink nodes (nodes with no outgoing compiled routes) to output
+    // Mix sink nodes to output with explicit role gating:
+    // - OutputDSP sinks: always audible
+    // - Monitor sinks: audible only when monitor enabled
+    // - InputDSP sinks: never directly audible
     buffer.clear();
     
     for (size_t nodeIdx = 0; nodeIdx < numNodes; ++nodeIdx) {
@@ -264,10 +291,22 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
         if (hasOutgoing) {
             continue;
         }
+
+        const auto role = compiledNodes_[nodeIdx].role;
+        const bool roleAllowsOutput =
+            (role == PrimitiveGraph::NodeRole::OutputDSP) ||
+            (role == PrimitiveGraph::NodeRole::Monitor && monitorEnabled) ||
+            // Backward compatibility for unmarked sink nodes.
+            (role == PrimitiveGraph::NodeRole::Unspecified);
+
+        if (!roleAllowsOutput) {
+            continue;
+        }
         
-        // This is a sink - add its output to buffer
         const int scratchIdx = nodeToScratchIndex_[nodeIdx];
-        auto& sinkBuf = scratchBuffers_[scratchIdx];
+        auto& sinkBuf = (role == PrimitiveGraph::NodeRole::InputDSP)
+                            ? inputScratchBuffers_[scratchIdx]
+                            : outputScratchBuffers_[scratchIdx];
         
         for (int ch = 0; ch < numChannels_; ++ch) {
             buffer.addFrom(ch, 0, sinkBuf, ch, 0, numSamples);
@@ -302,6 +341,7 @@ std::unique_ptr<GraphRuntime> compileGraphRuntime(
     for (auto& node : topoOrder) {
         CompiledNode compiled;
         compiled.node = node;
+        compiled.role = graph.getNodeRole(node);
         compiled.inputCount = node->getNumInputs();
         compiled.outputCount = node->getNumOutputs();
         runtime->compiledNodes_.push_back(std::move(compiled));
