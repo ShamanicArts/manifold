@@ -684,13 +684,25 @@ function M.attach(shell)
 
         self:updateConsoleBounds(totalW, totalH)
 
+        -- Settings panel (shell-owned, covers content area below tab bar)
+        if self.settingsPanel and self.settingsPanel.visible then
+            local tabH = self.mainTabBarH or 0
+            local settingsY = self.height + self.gapAfter + tabH
+            local settingsH = totalH - settingsY - self.pad
+            local settingsW = totalW - self.pad * 2
+            self.settingsPanel.root:setBounds(
+                math.floor(self.pad), math.floor(settingsY),
+                math.floor(settingsW), math.floor(settingsH))
+            self.settingsPanel:resized(math.floor(settingsW), math.floor(settingsH))
+            safeToFront(self.settingsPanel.root.node)
+            -- Keep tab bar and header clickable above settings
+            safeToFront(self.mainTabBar.node)
+        end
+
         -- Keep shell header above any transformed content.
         safeToFront(self.panel.node)
         if self.console.visible then
             safeToFront(self.consoleOverlay)
-        end
-        if shell.settingsOpen and shell.scriptOverlay then
-            safeToFront(shell.scriptOverlay)
         end
 
         if type(self.syncToolSurfaces) == "function" then
@@ -871,6 +883,11 @@ function M.attach(shell)
                 self.mainTabContent:repaint()
                 self.uiRepaintLastAt = now
             end
+        end
+
+        -- Update shell-owned settings panel (MIDI monitor, Link status, etc.)
+        if self.settingsPanel and self.settingsPanel.visible then
+            self.settingsPanel:update()
         end
     end
 

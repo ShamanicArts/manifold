@@ -1007,6 +1007,25 @@ function M.attach(shell)
             end
         end
 
+        -- Check ImGui direct host (performance mode) if no Canvas selection
+        if #out == 0 and getDebugSelectedNodeId then
+            local directSelected = getDebugSelectedNodeId()
+            if directSelected and directSelected ~= "" then
+                out[#out + 1] = "widget:" .. directSelected
+                out[#out + 1] = "type:RuntimeNode"
+            end
+        end
+
+        -- Check ImGui direct host hovered node
+        if #out == 0 and getDebugHoveredNodeId then
+            local directHovered = getDebugHoveredNodeId()
+            if directHovered and directHovered ~= "" then
+                out[#out + 1] = "widget:" .. directHovered
+                out[#out + 1] = "type:RuntimeNode"
+                out[#out + 1] = "(hovered)"
+            end
+        end
+
         if #out == 0 then
             return ""
         end
@@ -1087,8 +1106,9 @@ function M.attach(shell)
 
         if cmd == "help" then
             self:appendConsoleLine("help | clear | get <path> | set <path> <value> | trigger <path>")
-            self:appendConsoleLine("undo | redo | sel | copyid | dev [status|on|off|toggle] | renderer [status|toggle|imgui-direct|imgui-overlay|imgui-replace]")
-            self:appendConsoleLine("perf [on|off|toggle|tab <name>|reset] | ui <scriptPath> | lua <expr>")
+            self:appendConsoleLine("undo | redo | sel | copyid [on|off|toggle] | dev [on|off|toggle]")
+            self:appendConsoleLine("renderer [toggle|imgui-direct|imgui-overlay|imgui-replace] | perf [on|off|toggle|tab|reset]")
+            self:appendConsoleLine("ui <scriptPath> | lua <expr>")
             return
         elseif cmd == "clear" then
             self.console.lines = {}
@@ -1164,7 +1184,30 @@ function M.attach(shell)
             self:appendConsoleLine(ident, 0xffc4b5fd)
             return
         elseif cmd == "copyid" then
-            self:copyActiveDebugIdentifier()
+            local argRaw = words[2]
+            local arg = string.lower(argRaw or "")
+
+            if arg == "" or arg == "status" then
+                local enabled = isCopyIdModeEnabled and isCopyIdModeEnabled() or false
+                self:appendConsoleLine("copyid mode: " .. (enabled and "on" or "off"), 0xff86efac)
+                self:appendConsoleLine("usage: copyid on | copyid off | copyid toggle")
+                self:appendConsoleLine("When on: click any widget to copy its ID to clipboard")
+                return
+            elseif arg == "on" then
+                if setCopyIdModeEnabled then setCopyIdModeEnabled(true) end
+                self:appendConsoleLine("copyid mode ON - click any widget to copy its ID", 0xff86efac)
+            elseif arg == "off" then
+                if setCopyIdModeEnabled then setCopyIdModeEnabled(false) end
+                self:appendConsoleLine("copyid mode OFF", 0xfffca5a5)
+            elseif arg == "toggle" then
+                local current = isCopyIdModeEnabled and isCopyIdModeEnabled() or false
+                if setCopyIdModeEnabled then setCopyIdModeEnabled(not current) end
+                local enabled = isCopyIdModeEnabled and isCopyIdModeEnabled() or false
+                self:appendConsoleLine("copyid mode: " .. (enabled and "on" or "off"), enabled and 0xff86efac or 0xfffca5a5)
+            else
+                -- Legacy: just copy current selection
+                self:copyActiveDebugIdentifier()
+            end
             return
         elseif cmd == "dev" then
             local argRaw = words[2]
@@ -1528,16 +1571,15 @@ function M.attach(shell)
                     local sourceKind = s.kind or "script"
                     local sourceScope = s.scope or ""
 
-                    if not scriptLooksSettings(name, path) then
-                        if sourceKind == "project" then
-                            include = true
-                        elseif path ~= "" and (path == currentUi or path == editingPath) then
-                            include = true
-                        elseif sourceScope == "user" or sourceScope == "system" or sourceScope == "project" then
-                            include = true
-                        elseif scriptLooksGlobal(name, path) then
-                            include = true
-                        end
+                    -- Include projects (including Settings), active scripts, and system/user scripts
+                    if sourceKind == "project" then
+                        include = true
+                    elseif path ~= "" and (path == currentUi or path == editingPath) then
+                        include = true
+                    elseif sourceScope == "user" or sourceScope == "system" then
+                        include = true
+                    elseif not scriptLooksSettings(name, path) and scriptLooksGlobal(name, path) then
+                        include = true
                     end
 
                     if include then
@@ -2210,65 +2252,71 @@ function M.attach(shell)
     end
 
     function shell:refreshMainUiTabs()
-        local previousActive = self.activeMainTabId
         local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
         local uiScripts = listUiScripts and listUiScripts() or {}
 
-        local nextTabs = {}
+        -- Build project tab list for ProjectTabHost
+        local projectTabs = {}
         local seenUiIds = {}
 
         for i = 1, #uiScripts do
             local s = uiScripts[i]
             if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
-                local tabId = "ui:" .. s.path
-                if not seenUiIds[tabId] then
-                    seenUiIds[tabId] = true
-                    nextTabs[#nextTabs + 1] = {
-                        id = tabId,
-                        title = (s.name and s.name ~= "") and s.name or fileStem(s.path),
-                        kind = "ui-script",
-                        path = s.path,
-                    }
+                local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
+                -- Skip system overlay projects (Settings etc) - they don't belong in the tab bar
+                if not scriptLooksSettings(name, s.path) then
+                    local tabId = "ui:" .. s.path
+                    if not seenUiIds[tabId] then
+                        seenUiIds[tabId] = true
+                        projectTabs[#projectTabs + 1] = {
+                            id = tabId,
+                            title = name,
+                            kind = "ui-script",
+                            path = s.path,
+                            isSystem = false,
+                        }
+                    end
                 end
             end
         end
 
-        if #nextTabs == 0 and currentUiPath ~= "" then
-            nextTabs[#nextTabs + 1] = {
+        if #projectTabs == 0 and currentUiPath ~= "" then
+            projectTabs[#projectTabs + 1] = {
                 id = "ui:" .. currentUiPath,
                 title = fileStem(currentUiPath),
                 kind = "ui-script",
                 path = currentUiPath,
+                isSystem = false,
             }
         end
 
-        self.mainTabs = nextTabs
-
-        local foundPrev = false
-        for i = 1, #self.mainTabs do
-            if self.mainTabs[i].id == previousActive then
-                foundPrev = true
-                break
+        -- Update ProjectTabHost
+        if self.projectTabHost then
+            self.projectTabHost:setProjectTabs(projectTabs)
+            -- Sync active tab by path
+            if currentUiPath ~= "" then
+                self.projectTabHost:setActiveByPath(currentUiPath)
             end
         end
 
-        if foundPrev then
-            self.activeMainTabId = previousActive
-            return
+        -- Legacy compatibility: maintain mainTabs and activeMainTabId
+        self.mainTabs = projectTabs
+        self.activeMainTabId = self.projectTabHost and self.projectTabHost:getActiveTabId() or ""
+        if self.activeMainTabId == "" and #projectTabs > 0 then
+            self.activeMainTabId = projectTabs[1].id
         end
-
-        local currentId = "ui:" .. currentUiPath
-        for i = 1, #self.mainTabs do
-            if self.mainTabs[i].id == currentId then
-                self.activeMainTabId = currentId
-                return
-            end
-        end
-
-        self.activeMainTabId = (#self.mainTabs > 0) and self.mainTabs[1].id or ""
     end
 
     function shell:activateMainTab(tabId)
+        -- Use ProjectTabHost if available
+        if self.projectTabHost then
+            self.projectTabHost:setActiveTab(tabId)
+            -- Note: setActiveTab triggers switchUiScript which reloads the project
+            -- The activeMainTabId will be synced on the next refreshMainUiTabs() call
+            return
+        end
+
+        -- Legacy fallback (should not be reached)
         local tab = self:_findMainTabById(tabId)
         if not tab then
             return

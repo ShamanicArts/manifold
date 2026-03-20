@@ -28,6 +28,7 @@ local GLSLWidget = require("widgets.glsl")
 local GLSurfaceWidget = require("widgets.gl_surface")
 local TabHost = require("widgets.tabhost")
 local TabPage = require("widgets.tabpage")
+local ProjectTabHost = require("widgets.project_tabhost")
 
 -- Export all widgets
 Widgets.BaseWidget = BaseWidget
@@ -49,5 +50,6 @@ Widgets.GLSLWidget = GLSLWidget
 Widgets.GLSurfaceWidget = GLSurfaceWidget
 Widgets.TabHost = TabHost
 Widgets.TabPage = TabPage
+Widgets.ProjectTabHost = ProjectTabHost
 
 return Widgets

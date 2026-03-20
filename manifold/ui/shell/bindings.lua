@@ -534,6 +534,26 @@ function M.attach(shell)
     end)
 
     local function syncMainTabBarRetained(node)
+        -- If using ProjectTabHost, let it handle its own rendering
+        if shell.projectTabHost then
+            -- ProjectTabHost is a widget that handles its own display
+            -- Just sync legacy mainTabRects for compatibility
+            shell.mainTabRects = {}
+            local tabs = shell.mainTabs or {}
+            local x = 6
+            local gap = 4
+            local h = math.floor(node:getHeight())
+            for i = 1, #tabs do
+                local tab = tabs[i]
+                local title = tab.title or "Tab"
+                local tw = math.max(64, math.min(180, 18 + #title * 7))
+                shell.mainTabRects[#shell.mainTabRects + 1] = { x = x, y = 3, w = tw, h = h - 6, id = tab.id }
+                x = x + tw + gap
+            end
+            return
+        end
+
+        -- Legacy manual tab bar rendering (fallback)
         if node == nil then
             return
         end
@@ -737,7 +757,8 @@ function M.attach(shell)
     shell._syncMainTabBarRetained(shell)
     shell._syncMainTabContentRetained(shell)
 
-    if shell.mainTabBar ~= nil and shell.mainTabBar.setOnDraw ~= nil then
+    -- Only set up manual tab bar drawing if NOT using ProjectTabHost
+    if not shell.projectTabHost and shell.mainTabBar ~= nil and shell.mainTabBar.setOnDraw ~= nil then
         shell.mainTabBar:setOnDraw(function(node)
             syncMainTabBarRetained(node)
             drawDisplayListImmediate(node:getDisplayList())
@@ -751,27 +772,31 @@ function M.attach(shell)
         end)
     end
 
-    shell.mainTabBar:setOnMouseDown(function(mx, my)
-        for i = 1, #shell.mainTabRects do
-            local r = shell.mainTabRects[i]
-            if mx >= r.x and mx <= (r.x + r.w) and my >= r.y and my <= (r.y + r.h) then
-                shell:activateMainTab(r.id)
-                if type(shell._syncMainTabBarRetained) == "function" then
-                    shell:_syncMainTabBarRetained()
+    -- Only set up manual tab bar mouse handling if NOT using ProjectTabHost
+    -- ProjectTabHost handles its own mouse events
+    if not shell.projectTabHost and shell.mainTabBar ~= nil then
+        shell.mainTabBar:setOnMouseDown(function(mx, my)
+            for i = 1, #shell.mainTabRects do
+                local r = shell.mainTabRects[i]
+                if mx >= r.x and mx <= (r.x + r.w) and my >= r.y and my <= (r.y + r.h) then
+                    shell:activateMainTab(r.id)
+                    if type(shell._syncMainTabBarRetained) == "function" then
+                        shell:_syncMainTabBarRetained()
+                    end
+                    if type(shell._syncMainTabContentRetained) == "function" then
+                        shell:_syncMainTabContentRetained()
+                    end
+                    if type(shell._syncPreviewOverlayRetained) == "function" then
+                        shell:_syncPreviewOverlayRetained()
+                    end
+                    shell.mainTabBar:repaint()
+                    shell.mainTabContent:repaint()
+                    shell.previewOverlay:repaint()
+                    return
                 end
-                if type(shell._syncMainTabContentRetained) == "function" then
-                    shell:_syncMainTabContentRetained()
-                end
-                if type(shell._syncPreviewOverlayRetained) == "function" then
-                    shell:_syncPreviewOverlayRetained()
-                end
-                shell.mainTabBar:repaint()
-                shell.mainTabContent:repaint()
-                shell.previewOverlay:repaint()
-                return
             end
-        end
-    end)
+        end)
+    end
 
     shell.mainTabContent:setOnMouseDown(function(mx, my)
         if shell.mode ~= "edit" then
