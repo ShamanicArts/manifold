@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+from manifold_osc import flatten_oscquery_tree, oscquery_tree  # noqa: E402
+
+
+def to_markdown(endpoints, title: str) -> str:
+    lines = [
+        f"# {title}",
+        "",
+        "Generated from live OSCQuery.",
+        "",
+        "| Path | Type | Access | Range | Description |",
+        "|---|---|---:|---|---|",
+    ]
+    for ep in endpoints:
+        if ep.min_value is None and ep.max_value is None:
+            range_text = ""
+        else:
+            range_text = f"{ep.min_value} .. {ep.max_value}"
+        description = (ep.description or "").replace("|", "\\|")
+        lines.append(
+            f"| `{ep.path}` | `{ep.type_tag or ''}` | {ep.access if ep.access is not None else ''} | {range_text} | {description} |"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate live OSC endpoint docs from OSCQuery")
+    parser.add_argument("--base-url", default="http://127.0.0.1:9001", help="OSCQuery HTTP base URL")
+    parser.add_argument("--prefix", default=None, help="Only include endpoints below this path, e.g. /midi/synth")
+    parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
+    parser.add_argument("--title", default="Manifold OSC Endpoints")
+    parser.add_argument("--output", default=None, help="Write to file instead of stdout")
+    args = parser.parse_args()
+
+    tree = oscquery_tree(args.base_url)
+    endpoints = flatten_oscquery_tree(tree)
+    if args.prefix:
+        endpoints = [endpoint for endpoint in endpoints if endpoint.path.startswith(args.prefix)]
+
+    if args.format == "json":
+        payload = [
+            {
+                "path": ep.path,
+                "type": ep.type_tag,
+                "access": ep.access,
+                "min": ep.min_value,
+                "max": ep.max_value,
+                "description": ep.description,
+            }
+            for ep in endpoints
+        ]
+        content = json.dumps(payload, indent=2) + "\n"
+    else:
+        content = to_markdown(endpoints, args.title)
+
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(content, encoding="utf-8")
+    else:
+        sys.stdout.write(content)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

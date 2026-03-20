@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+from manifold_osc import oscquery_get_value, send_float  # noqa: E402
+
+
+TEST_CASES = [
+    ("/midi/synth/waveform", 3.0),
+    ("/midi/synth/osc/mode", 0.0),
+    ("/midi/synth/drive", 8.0),
+    ("/midi/synth/output", 0.61),
+    ("/midi/synth/noise/level", 0.44),
+    ("/midi/synth/noise/color", 0.67),
+    ("/midi/synth/filterType", 2.0),
+    ("/midi/synth/cutoff", 6100.0),
+    ("/midi/synth/resonance", 1.2),
+    ("/midi/synth/adsr/attack", 0.12),
+    ("/midi/synth/adsr/decay", 0.34),
+    ("/midi/synth/adsr/sustain", 0.56),
+    ("/midi/synth/adsr/release", 1.23),
+    ("/midi/synth/fx1/type", 2.0),
+    ("/midi/synth/fx1/mix", 0.25),
+    ("/midi/synth/fx1/p/0", 0.21),
+    ("/midi/synth/fx1/p/1", 0.31),
+    ("/midi/synth/fx1/p/2", 0.41),
+    ("/midi/synth/fx1/p/3", 0.51),
+    ("/midi/synth/fx1/p/4", 0.61),
+    ("/midi/synth/fx2/type", 3.0),
+    ("/midi/synth/fx2/mix", 0.35),
+    ("/midi/synth/fx2/p/0", 0.22),
+    ("/midi/synth/fx2/p/1", 0.32),
+    ("/midi/synth/fx2/p/2", 0.42),
+    ("/midi/synth/fx2/p/3", 0.52),
+    ("/midi/synth/fx2/p/4", 0.62),
+    ("/midi/synth/delay/timeL", 321.0),
+    ("/midi/synth/delay/timeR", 654.0),
+    ("/midi/synth/delay/feedback", 0.36),
+    ("/midi/synth/delay/mix", 0.27),
+    ("/midi/synth/reverb/wet", 0.18),
+    ("/midi/synth/sample/source", 1.0),
+    ("/midi/synth/sample/captureBars", 1.5),
+    ("/midi/synth/sample/rootNote", 69.0),
+    ("/midi/synth/sample/playStart", 0.12),
+    ("/midi/synth/sample/loopStart", 0.23),
+    ("/midi/synth/sample/loopLen", 0.54),
+    ("/midi/synth/sample/crossfade", 0.17),
+    ("/midi/synth/sample/retrigger", 0.0),
+]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Sweep MidiSynth OSC endpoints and verify via OSCQuery")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=9000)
+    parser.add_argument("--query-base", default="http://127.0.0.1:9001")
+    parser.add_argument("--sleep", type=float, default=0.15)
+    parser.add_argument("--epsilon", type=float, default=0.02)
+    parser.add_argument("--json", action="store_true", help="Emit JSON report")
+    parser.add_argument("--keep", action="store_true", help="Keep test values instead of restoring original values")
+    args = parser.parse_args()
+
+    failures = []
+    results = []
+    originals = {}
+
+    for path, target in TEST_CASES:
+        before = oscquery_get_value(path, args.query_base)
+        originals[path] = before
+        send_float(path, target, host=args.host, port=args.port)
+        time.sleep(max(0.0, args.sleep))
+        after = oscquery_get_value(path, args.query_base)
+        ok = after is not None and math.isclose(float(after), float(target), abs_tol=args.epsilon)
+        row = {
+            "path": path,
+            "before": before,
+            "target": target,
+            "after": after,
+            "ok": ok,
+        }
+        results.append(row)
+        if not ok:
+            failures.append(row)
+
+    restored = []
+    if not args.keep:
+        for path, before in originals.items():
+            if before is None:
+                continue
+            send_float(path, before, host=args.host, port=args.port)
+            time.sleep(0.03)
+            restored.append(path)
+
+    if args.json:
+        print(json.dumps({
+            "count_total": len(TEST_CASES),
+            "count_failed": len(failures),
+            "count_restored": len(restored),
+            "failures": failures,
+            "results": results,
+        }, indent=2))
+    else:
+        for row in results:
+            status = "PASS" if row["ok"] else "FAIL"
+            print(f"[{status}] {row['path']} :: before={row['before']} target={row['target']} after={row['after']}")
+        print()
+        print(f"total={len(TEST_CASES)} failed={len(failures)} restored={len(restored)}")
+
+    return 0 if not failures else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

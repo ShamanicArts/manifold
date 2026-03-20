@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import math
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+from manifold_osc import oscquery_get_value, send_float, send_int, send_string  # noqa: E402
+
+
+def send_typed(path: str, value, value_type: str, host: str, port: int) -> None:
+    if value_type == "int":
+        send_int(path, int(value), host=host, port=port)
+    elif value_type == "string":
+        send_string(path, str(value), host=host, port=port)
+    else:
+        send_float(path, float(value), host=host, port=port)
+
+
+def values_match(actual, expected, epsilon: float) -> bool:
+    if isinstance(expected, str):
+        return actual == expected
+    try:
+        return math.isclose(float(actual), float(expected), abs_tol=epsilon)
+    except Exception:
+        return actual == expected
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Write one OSC value and verify via OSCQuery")
+    parser.add_argument("path", help="OSC path, e.g. /midi/synth/drive")
+    parser.add_argument("value", help="Value to send")
+    parser.add_argument("--type", choices=("float", "int", "string"), default="float")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=9000)
+    parser.add_argument("--query-base", default="http://127.0.0.1:9001")
+    parser.add_argument("--sleep", type=float, default=0.2)
+    parser.add_argument("--epsilon", type=float, default=0.02)
+    parser.add_argument("--keep", action="store_true", help="Keep the written value instead of restoring the original")
+    args = parser.parse_args()
+
+    before = oscquery_get_value(args.path, args.query_base)
+
+    if args.type == "int":
+        target = int(args.value)
+    elif args.type == "string":
+        target = args.value
+    else:
+        target = float(args.value)
+
+    send_typed(args.path, target, args.type, args.host, args.port)
+
+    time.sleep(max(0.0, args.sleep))
+    after = oscquery_get_value(args.path, args.query_base)
+    ok = values_match(after, target, args.epsilon)
+
+    restored = None
+    if not args.keep and before is not None:
+        send_typed(args.path, before, args.type, args.host, args.port)
+        time.sleep(max(0.0, args.sleep))
+        restored = oscquery_get_value(args.path, args.query_base)
+
+    print(f"path     : {args.path}")
+    print(f"before   : {before}")
+    print(f"target   : {target}")
+    print(f"after    : {after}")
+    if restored is not None:
+        print(f"restored : {restored}")
+    print(f"result   : {'PASS' if ok else 'FAIL'}")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
