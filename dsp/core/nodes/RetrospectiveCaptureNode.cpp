@@ -101,6 +101,27 @@ bool RetrospectiveCaptureNode::copyRecentToLoop(const std::shared_ptr<LoopPlayba
     return true;
 }
 
+bool RetrospectiveCaptureNode::copyRecentToLoop(const std::shared_ptr<SampleRegionPlaybackNode>& playback,
+                                                int samplesBack,
+                                                bool overdub) {
+    const int size = captureSize_.load(std::memory_order_acquire);
+    if (!playback || samplesBack <= 0 || size <= 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(bufferMutex_);
+    const int currentSize = captureSize_.load(std::memory_order_acquire);
+    const int clamped = juce::jmin(samplesBack, currentSize);
+    int start = getWriteOffset() - clamped;
+    while (start < 0) {
+        start += currentSize;
+    }
+    start %= currentSize;
+
+    playback->copyFromCaptureBuffer(captureBuffer_, currentSize, start, clamped, overdub);
+    return true;
+}
+
 void RetrospectiveCaptureNode::ensureBuffer(float sampleRate) {
     const float seconds = getCaptureSeconds();
     const int target = juce::jmax(1, static_cast<int>(sampleRate * seconds));

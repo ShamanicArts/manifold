@@ -82,14 +82,20 @@ void SVFNode::process(const std::vector<AudioBufferView>& inputs,
         currentDrive_ += (targetDrive - currentDrive_) * driveSmoothingCoeff_;
         currentMix_ += (targetMix - currentMix_) * mixSmoothingCoeff_;
 
-        const float safeCutoff = std::max(20.0f, std::min(0.49f * static_cast<float>(sampleRate_), currentCutoff_));
+        // Clamp cutoff to 0.42 * sr to keep g well-behaved
+        const float sr = static_cast<float>(sampleRate_);
+        const float safeCutoff = std::max(20.0f, std::min(0.42f * sr, currentCutoff_));
         const float safeResonance = std::max(kMinStableResonance, std::min(1.0f, currentResonance_));
 
-        // Calculate filter coefficients from smoothed values.
-        // Very low resonance values blow k up hard enough to destabilise this topology,
-        // so clamp to the empirically stable floor.
-        const float g = std::tan(3.14159265f * safeCutoff / static_cast<float>(sampleRate_));
-        const float k = 1.0f / std::max(kMinStableResonance, safeResonance * 2.0f);
+        // TPT (trapezoidal) SVF - stable at all frequencies unlike Chamberlin.
+        // g = tan(pi * fc / sr), clamped to prevent numerical blowup near Nyquist.
+        const float g = std::min(std::tan(3.14159265f * safeCutoff / sr), 8.0f);
+        // k controls damping: k=2 is no resonance, k→0 is self-oscillation.
+        // Scale so resonance=1.0 gives a strong but non-self-oscillating peak.
+        const float k = 2.0f * (1.0f - safeResonance * 0.85f);  // min k=0.3 at max resonance
+        const float a1 = 1.0f / (1.0f + g * (g + k));
+        const float a2 = g * a1;
+        const float a3 = g * a2;
 
         for (int ch = 0; ch < numChannels; ++ch) {
             float input = inputs.empty() ? 0.0f : inputs[0].getSample(ch, i);
@@ -101,42 +107,37 @@ void SVFNode::process(const std::vector<AudioBufferView>& inputs,
 
             ChannelState& s = state_[ch];
 
-            // State Variable Filter (Chamberlin topology)
-            const float v0 = input;
-            const float v1 = s.ic1eq;
-            const float v2 = s.ic2eq;
-            
-            const float damping = k * v1;
-            const float v3 = v0 - v2 - damping;
-            const float v1_damped = v1 + g * v3;
-            const float v2_damped = v2 + g * v1_damped;
-            
-            if (!isFinite(v1_damped) || !isFinite(v2_damped)) {
+            // TPT SVF (Zavalishin topology) - unconditionally stable
+            const float v3 = input - s.ic2eq;
+            const float v1 = a1 * s.ic1eq + a2 * v3;
+            const float v2 = s.ic2eq + a2 * s.ic1eq + a3 * v3;
+
+            s.ic1eq = 2.0f * v1 - s.ic1eq;
+            s.ic2eq = 2.0f * v2 - s.ic2eq;
+
+            if (!isFinite(s.ic1eq) || !isFinite(s.ic2eq)) {
                 s = ChannelState{};
                 outputs[0].setSample(ch, i, input);
                 continue;
             }
-
-            s.ic1eq = v1_damped;
-            s.ic2eq = v2_damped;
             
             // Output selection based on mode
             float output = 0.0f;
             switch (mode) {
                 case Mode::Lowpass:
-                    output = v2_damped;
+                    output = v2;
                     break;
                 case Mode::Bandpass:
-                    output = v1_damped;
+                    output = v1;
                     break;
                 case Mode::Highpass:
-                    output = v0 - k * v1_damped - v2_damped;
+                    output = input - k * v1 - v2;
                     break;
                 case Mode::Notch:
-                    output = v0 - k * v1_damped;
+                    output = input - k * v1;
                     break;
                 case Mode::Peak:
-                    output = v0 - k * v1_damped - 2.0f * v2_damped;
+                    output = input - k * v1 - 2.0f * v2;
                     break;
             }
 

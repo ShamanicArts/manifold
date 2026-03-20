@@ -27,11 +27,29 @@ public:
     bool isEnabled() const { return enabled_.load(std::memory_order_acquire); }
     int getWaveform() const { return waveform_.load(std::memory_order_acquire); }
 
+    // Pulse width for pulse waveform (0.0 to 1.0, default 0.5 = square)
+    void setPulseWidth(float width) { pulseWidth_.store(juce::jlimit(0.01f, 0.99f, width), std::memory_order_release); }
+    float getPulseWidth() const { return pulseWidth_.load(std::memory_order_acquire); }
+
+    // Unison settings for supersaw and rich tones
+    void setUnison(int voices) { unisonVoices_.store(juce::jlimit(1, 8, voices), std::memory_order_release); }
+    void setDetune(float cents) { detuneCents_.store(juce::jlimit(0.0f, 100.0f, cents), std::memory_order_release); }
+    void setSpread(float amount) { stereoSpread_.store(juce::jlimit(0.0f, 1.0f, amount), std::memory_order_release); }
+    int getUnison() const { return unisonVoices_.load(std::memory_order_acquire); }
+    float getDetune() const { return detuneCents_.load(std::memory_order_acquire); }
+    float getSpread() const { return stereoSpread_.load(std::memory_order_acquire); }
+
 private:
     std::atomic<float> targetFrequency_{440.0f};
     std::atomic<float> targetAmplitude_{0.5f};
     std::atomic<bool> enabled_{true};
     std::atomic<int> waveform_{0};
+
+    // New parameters
+    std::atomic<float> pulseWidth_{0.5f};      // For pulse waveform (0.01-0.99)
+    std::atomic<int> unisonVoices_{1};          // Number of unison voices (1-8)
+    std::atomic<float> detuneCents_{0.0f};      // Detune amount in cents (0-100)
+    std::atomic<float> stereoSpread_{0.0f};     // Stereo spread (0-1)
 
     float currentFrequency_ = 440.0f;
     float currentAmplitude_ = 0.5f;
@@ -40,6 +58,9 @@ private:
 
     double sampleRate_ = 44100.0;
     double phase_ = 0.0;
+
+    // Per-unison-voice phases for supersaw
+    double unisonPhases_[8] = {0.0};
 };
 
 } // namespace dsp_primitives

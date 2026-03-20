@@ -2,6 +2,7 @@
 
 #include "dsp/core/graph/PrimitiveNode.h"
 #include "dsp/core/nodes/LoopPlaybackNode.h"
+#include "dsp/core/nodes/SampleRegionPlaybackNode.h"
 
 #include <atomic>
 #include <memory>
@@ -35,6 +36,9 @@ public:
                           int samplesBack,
                           bool overdub,
                           LoopPlaybackNode::OverdubLengthPolicy overdubLengthPolicy);
+    bool copyRecentToLoop(const std::shared_ptr<SampleRegionPlaybackNode>& playback,
+                          int samplesBack,
+                          bool overdub);
 
     // Compute peaks for visualization (thread-safe, reads from capture buffer)
     // startAgo/endAgo: samples ago from current write position
