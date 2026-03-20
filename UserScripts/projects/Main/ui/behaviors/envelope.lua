@@ -28,16 +28,17 @@ local HIT_RADIUS = 12
 -- Calculate the pixel positions of ADSR control points
 local function calcAdsrPoints(ctx, w, h)
   local pad = 6
+  local headerH = 16  -- Space for title at top
   local graphW = w - pad * 2
-  local graphH = h - pad * 2
+  local graphH = h - pad * 2 - headerH  -- Reduced height for graph content
   local totalTime = ctx.values.attack + ctx.values.decay + 0.5 + ctx.values.release
 
   local attackX = pad + math.floor((ctx.values.attack / totalTime) * graphW)
   local decayX = attackX + math.floor((ctx.values.decay / totalTime) * graphW)
-  local sustainY = pad + math.floor(graphH - (ctx.values.sustain * graphH))
+  local sustainY = pad + headerH + math.floor(graphH - (ctx.values.sustain * graphH))
   local releaseX = decayX + math.floor((0.5 / totalTime) * graphW)
-  local bottomY = pad + graphH
-  local topY = pad
+  local bottomY = pad + headerH + graphH
+  local topY = pad + headerH
 
   return {
     pad = pad,
@@ -56,6 +57,12 @@ local function buildEnvelopeDisplay(ctx, w, h)
   local display = {}
   local pts = calcAdsrPoints(ctx, w, h)
   local activePoint = ctx.dragPoint
+
+  -- Title inside graph (top-left, following Sample/Blend pattern)
+  display[#display + 1] = {
+    cmd = "drawText", x = 4, y = 2, w = w - 8, h = 16,
+    text = "ADSR", color = COLORS.envelope, fontSize = 11, align = "left", valign = "top",
+  }
 
   -- Subtle grid lines
   for i = 1, 3 do
@@ -361,20 +368,11 @@ end
 local function resizeEnvelopeLayout(ctx, w, h)
   local widgets = ctx.widgets
   local pad = 16
-  local titleH = 16
-  local titleY = 8
 
-  -- Title
-  local title = widgets.title
-  if title then
-    if title.setBounds then title:setBounds(pad, titleY, w - pad * 2, titleH)
-    elseif title.node then title.node:setBounds(pad, titleY, w - pad * 2, titleH) end
-  end
-
-  -- Graph fills most of the top
-  local graphY = titleY + titleH + 6
+  -- Graph fills top (title drawn inside)
   local knobH = math.min(70, math.floor(h * 0.36))
-  local graphH = math.max(30, h - graphY - knobH - 8)
+  local graphH = math.max(40, h - pad - knobH - 12)
+  local graphY = pad
   local graph = widgets.adsr_graph
   if graph then
     if graph.setBounds then graph:setBounds(pad, graphY, w - pad * 2, graphH)

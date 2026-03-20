@@ -8,13 +8,27 @@ local FILTER_COLORS = {
   [3] = 0xff4ade80,  -- notch - green
 }
 
-local MIN_FREQ = 20
-local MAX_FREQ = 20000
+local MIN_FREQ = 80
+local MAX_FREQ = 16000
 local LOG_MIN = math.log(MIN_FREQ)
 local LOG_MAX = math.log(MAX_FREQ)
 local MIN_RESO = 0.1
 local MAX_RESO = 2.0
-local DB_RANGE = 36
+local DB_RANGE = 14
+
+-- Attempt 1: Map dB to normalised 0..1 using sqrt scaling.
+-- Small peaks get more visual space, large peaks compressed.
+-- sign preserved so cuts mirror boosts.
+local function dbToNorm(db)
+  local clamped = math.max(-DB_RANGE, math.min(DB_RANGE, db))
+  local sign = clamped >= 0 and 1 or -1
+  local abs = math.abs(clamped) / DB_RANGE        -- 0..1 linear
+  return sign * math.sqrt(abs)                     -- 0..1 sqrt
+end
+
+local function dbToY(db, h)
+  return math.floor(h * 0.5 - dbToNorm(db) * h * 0.5)
+end
 
 local function freqToX(freq, w)
   return math.floor((math.log(math.max(MIN_FREQ, math.min(MAX_FREQ, freq))) - LOG_MIN) / (LOG_MAX - LOG_MIN) * w)
@@ -26,18 +40,31 @@ local function xToFreq(x, w)
 end
 
 local function resoToY(resonance, h)
-  -- Higher resonance = taller peak = higher on screen (lower Y)
   local t = (resonance - MIN_RESO) / (MAX_RESO - MIN_RESO)
-  return math.floor(h * (1 - t) * 0.8 + h * 0.1)
+  t = math.max(0, math.min(1, t))
+  return math.floor(h * (1 - t))
 end
 
 local function yToReso(y, h)
-  local t = 1 - (y - h * 0.1) / (h * 0.8)
-  return MIN_RESO + math.max(0, math.min(1, t)) * (MAX_RESO - MIN_RESO)
+  local t = 1 - math.max(0, math.min(1, y / math.max(1, h)))
+  return MIN_RESO + t * (MAX_RESO - MIN_RESO)
 end
 
 local function svfMagnitude(freq, cutoff, resonance, filterType)
   local w = freq / cutoff
+  -- Early out for extreme frequencies to avoid numerical issues
+  if w < 0.1 then
+    if filterType == 0 then return 1.0 end      -- LP: pass low
+    if filterType == 1 then return 0.0 end      -- BP: reject low
+    if filterType == 2 then return 0.0 end      -- HP: reject low
+    if filterType == 3 then return 1.0 end      -- Notch: pass low
+  end
+  if w > 10 then
+    if filterType == 0 then return 0.0 end      -- LP: reject high
+    if filterType == 1 then return 0.0 end      -- BP: reject high
+    if filterType == 2 then return 1.0 end      -- HP: pass high
+    if filterType == 3 then return 1.0 end      -- Notch: pass high
+  end
   local w2 = w * w
   local Q = math.max(0.5, resonance * 2)
   local denom = (1 - w2) * (1 - w2) + (w / Q) * (w / Q)
@@ -66,6 +93,12 @@ local function buildFilterDisplay(ctx, w, h)
   local colDim = (0x20 << 24) | (col & 0x00ffffff)
   local colMid = (0x60 << 24) | (col & 0x00ffffff)
 
+  -- Title inside graph (top-left)
+  display[#display + 1] = {
+    cmd = "drawText", x = 4, y = 2, w = w - 8, h = 16,
+    text = "FILTER", color = col, fontSize = 11, align = "left", valign = "top",
+  }
+
   -- Frequency grid
   local freqMarks = { 100, 500, 1000, 5000, 10000 }
   for _, f in ipairs(freqMarks) do
@@ -76,14 +109,16 @@ local function buildFilterDisplay(ctx, w, h)
     }
   end
 
-  -- dB grid
+  -- dB grid - clamp to panel bounds so lines don't escape
   local dbMarks = { -24, -12, 0, 12, 24 }
   for _, db in ipairs(dbMarks) do
     local y = math.floor(h * 0.5 - (db / DB_RANGE) * h * 0.45)
-    display[#display + 1] = {
-      cmd = "drawLine", x1 = 0, y1 = y, x2 = w, y2 = y,
-      thickness = 1, color = (db == 0) and 0xff1f2b4d or 0xff1a1a3a,
-    }
+    if y >= 0 and y <= h then
+      display[#display + 1] = {
+        cmd = "drawLine", x1 = 0, y1 = y, x2 = w, y2 = y,
+        thickness = 1, color = (db == 0) and 0xff1f2b4d or 0xff1a1a3a,
+      }
+    end
   end
 
   -- Cutoff indicator line
@@ -101,6 +136,8 @@ local function buildFilterDisplay(ctx, w, h)
   for i = 0, numPoints do
     local t = i / numPoints
     local freq = math.exp(LOG_MIN + t * (LOG_MAX - LOG_MIN))
+    -- Clamp display range to avoid rendering extremes outside filter's effective range
+    freq = math.max(cutoff * 0.25, math.min(cutoff * 4, freq))
     local mag = svfMagnitude(freq, cutoff, resonance, filterType)
     local db = 20 * math.log(mag + 1e-10) / math.log(10)
     db = math.max(-DB_RANGE, math.min(DB_RANGE, db))
@@ -133,7 +170,6 @@ local function buildFilterDisplay(ctx, w, h)
 
   local ptR = dragging and 7 or 5
 
-  -- Glow when dragging
   if dragging then
     display[#display + 1] = {
       cmd = "fillRoundedRect",
@@ -180,7 +216,6 @@ local function setupGraphInteraction(ctx)
       local h = graph.node:getHeight()
       ctx.cutoffHz = xToFreq(mx, w)
       ctx.resonance = yToReso(my, h)
-      -- Sync knobs
       local ck = ctx.widgets.cutoff_knob
       local rk = ctx.widgets.resonance_knob
       if ck then ck:setValue(ctx.cutoffHz) end
@@ -229,50 +264,43 @@ function FilterBehavior.resized(ctx, w, h)
   if not w or w <= 0 then return end
 
   local widgets = ctx.widgets
-  local pad = 16
+  local pad = 10
+  local gap = 6
 
-  local title = widgets.title
-  if title then
-    if title.setBounds then title:setBounds(pad, 8, w - pad * 2, 16)
-    elseif title.node then title.node:setBounds(pad, 8, w - pad * 2, 16) end
-  end
+  -- 50/50 split: Graph on left, controls on right
+  local split = math.floor(w / 2)
+  local leftW = split - pad
+  local rightX = split + gap
+  local rightW = w - rightX - pad
 
-  local graphY = 30
-  local knobH = math.min(90, math.floor(h * 0.36))
-  local dropdownH = 24
-  local labelH = 14
-  local graphH = math.max(30, h - graphY - labelH - 4 - dropdownH - 4 - knobH - 8)
+  -- LEFT: Filter graph fills entire left half (title drawn inside)
   local graph = widgets.filter_graph
   if graph then
-    if graph.setBounds then graph:setBounds(pad, graphY, w - pad * 2, graphH)
-    elseif graph.node then graph.node:setBounds(pad, graphY, w - pad * 2, graphH) end
+    if graph.setBounds then graph:setBounds(pad, pad, leftW, h - pad * 2)
+    elseif graph.node then graph.node:setBounds(pad, pad, leftW, h - pad * 2) end
   end
 
-  local ddY = graphY + graphH + 4
-  local ftLabel = widgets.filter_type_label
-  if ftLabel then
-    if ftLabel.setBounds then ftLabel:setBounds(pad, ddY, 60, labelH)
-    elseif ftLabel.node then ftLabel.node:setBounds(pad, ddY, 60, labelH) end
-  end
-  ddY = ddY + labelH + 2
-  local ftDrop = widgets.filter_type_dropdown
-  if ftDrop then
-    if ftDrop.setBounds then ftDrop:setBounds(pad, ddY, math.floor((w - pad * 2) * 0.55), dropdownH)
-    elseif ftDrop.node then ftDrop.node:setBounds(pad, ddY, math.floor((w - pad * 2) * 0.55), dropdownH) end
+  -- RIGHT: Type dropdown, knobs (title now inside graph)
+  local dd = widgets.filter_type_dropdown
+  if dd then
+    if dd.setBounds then dd:setBounds(rightX, pad, rightW, 20)
+    elseif dd.node then dd.node:setBounds(rightX, pad, rightW, 20) end
   end
 
-  local knobY = ddY + dropdownH + 6
-  local knobW = math.min(76, math.floor((w - pad * 2 - 8) / 2))
+  -- Knobs fill remaining vertical space
+  local knobY = pad + 20 + gap
+  local knobH = h - knobY - pad
+  local knobW = math.floor((rightW - 8) / 2)
 
   local ck = widgets.cutoff_knob
   if ck then
-    if ck.setBounds then ck:setBounds(pad, knobY, knobW, knobH)
-    elseif ck.node then ck.node:setBounds(pad, knobY, knobW, knobH) end
+    if ck.setBounds then ck:setBounds(rightX, knobY, knobW, knobH)
+    elseif ck.node then ck.node:setBounds(rightX, knobY, knobW, knobH) end
   end
   local rk = widgets.resonance_knob
   if rk then
-    if rk.setBounds then rk:setBounds(pad + knobW + 8, knobY, knobW, knobH)
-    elseif rk.node then rk.node:setBounds(pad + knobW + 8, knobY, knobW, knobH) end
+    if rk.setBounds then rk:setBounds(rightX + knobW + 8, knobY, knobW, knobH)
+    elseif rk.node then rk.node:setBounds(rightX + knobW + 8, knobY, knobW, knobH) end
   end
 
   refreshGraph(ctx)

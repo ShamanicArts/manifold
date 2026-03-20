@@ -7,6 +7,9 @@ local WAVEFORM_COLORS = {
   [2] = 0xff22d3ee,  -- square
   [3] = 0xff2dd4bf,  -- triangle
   [4] = 0xffa78bfa,  -- blend
+  [5] = 0xff94a3b8,  -- noise (gray)
+  [6] = 0xfff472b6,  -- pulse (pink)
+  [7] = 0xfffbbf24,  -- supersaw (amber)
 }
 
 local VOICE_COLORS = {
@@ -26,6 +29,19 @@ local function waveformSample(waveType, phase)
     return p < 0.5 and (4 * p - 1) or (3 - 4 * p)
   elseif waveType == 4 then
     return ((2 * p - 1) + math.sin(p * 2 * math.pi)) * 0.5
+  elseif waveType == 5 then
+    -- Noise: return random-ish value based on phase (deterministic for preview)
+    local pseudoRandom = math.sin(p * 43758.5453) % 1.0
+    return (pseudoRandom * 2 - 1) * 0.5
+  elseif waveType == 6 then
+    -- Pulse: default 25% width (narrow pulse)
+    return p < 0.25 and 1 or -1
+  elseif waveType == 7 then
+    -- SuperSaw: 3 detuned saws
+    local s1 = 2 * p - 1
+    local s2 = 2 * ((p * 1.01) % 1.0) - 1
+    local s3 = 2 * ((p * 0.99) % 1.0) - 1
+    return (s1 + s2 * 0.5 + s3 * 0.5) * 0.5
   end
   return 0
 end
@@ -41,13 +57,20 @@ local SAMPLE_COLOR = 0xff22d3ee
 local SAMPLE_DIM = 0x6022d3ee
 
 local function buildSampleWaveform(ctx, w, h, display)
-  local centerY = h / 2
-  local maxAmp = (h / 2) * 0.75
+  -- Reserve bottom space for 2 bars:
+  -- 1) play start
+  -- 2) loop start + loop end + crossfade visualization
+  local barH = 16
+  local barGap = 4
+  local barsHeight = barH * 2 + barGap
+  local waveH = h - barsHeight - 4  -- waveform area above bars
+
+  local centerY = waveH / 2
+  local maxAmp = (waveH / 2) * 0.75
   local numPoints = math.max(48, math.min(w, 200))
   local loopStart = ctx.sampleLoopStart or 0.0
   local loopLen = ctx.sampleLoopLen or 1.0
 
-  -- Get sample peaks from the DSP (cache to avoid re-fetch on range changes)
   local peaks = ctx._cachedPeaks
   if not peaks and type(getSynthSamplePeaks) == "function" then
     peaks = getSynthSamplePeaks(numPoints)
@@ -56,22 +79,19 @@ local function buildSampleWaveform(ctx, w, h, display)
     end
   end
 
-
-
-  -- Sample mode background (full width, static)
+  -- Waveform background (only in wave area)
   display[#display + 1] = {
-    cmd = "fillRect", x = 0, y = 0, w = w, h = h,
+    cmd = "fillRect", x = 0, y = 0, w = w, h = waveH,
     color = 0x20ffffff,
   }
 
-  -- Draw actual sample waveform from peaks
   if peaks and #peaks > 0 then
     local prevX, prevY
     for i = 0, numPoints do
       local t = i / numPoints
       local peakIdx = math.floor(t * (#peaks - 1)) + 1
       local peak = peaks[peakIdx] or 0
-      local s = peak * 2 - 1 -- Convert 0..1 to -1..1
+      local s = peak * 2 - 1
 
       local x = math.floor(t * w)
       local y = math.floor(centerY - s * maxAmp)
@@ -84,23 +104,19 @@ local function buildSampleWaveform(ctx, w, h, display)
       prevX, prevY = x, y
     end
 
-    -- Draw per-voice playheads - line tracks actual waveform height at position
     local samplePositions = {}
     if type(getVoiceSamplePositions) == "function" then
       samplePositions = getVoiceSamplePositions() or {}
     end
-    
-    -- Get voice loop data for mapping positions
+
     local voiceLoops = ctx.voiceLoops or {}
-    
-    -- Draw per-voice playheads - iterate in fixed voice order (1-8) to match ADSR
     local activeVoices = ctx.activeVoices or {}
     local voiceLookup = {}
     for _, v in ipairs(activeVoices) do
       local idx = v.voiceIndex
       if idx then voiceLookup[idx] = v end
     end
-    
+
     for voiceIndex = 1, 8 do
       local voice = voiceLookup[voiceIndex]
       if not voice then goto continue end
@@ -108,116 +124,126 @@ local function buildSampleWaveform(ctx, w, h, display)
       local vcol = VOICE_COLORS[voiceIndex]
       local pos = samplePositions[voiceIndex] or 0
 
-      -- Map playhead to the voice's loop range area
-      local loop = voiceLoops[voiceIndex]
-      local vLoopStart = (loop and loop.start) or loopStart
-      local vLoopLen = (loop and loop.len) or loopLen
-      local playheadX = math.floor((vLoopStart + pos * vLoopLen) * w)
+      -- NOTE: pos from getVoiceSamplePositions() is ALREADY ABSOLUTE (0-1 across full sample).
+      local handleCenterOffset = math.floor(8 / 2)
+      local playheadX = math.floor(pos * w) - handleCenterOffset
 
-      -- Get waveform amplitude at this position from peaks
       local waveY = centerY
       if peaks and #peaks > 0 then
-        local absPos = vLoopStart + pos * vLoopLen
-        local peakIdx = math.floor(absPos * (#peaks - 1)) + 1
+        local peakIdx = math.floor(pos * (#peaks - 1)) + 1
         local peak = peaks[peakIdx] or 0.5
-        local s = peak * 2 - 1  -- Convert 0..1 to -1..1
+        local s = peak * 2 - 1
         waveY = math.floor(centerY - s * maxAmp)
       end
 
-      -- Draw line from bottom up to waveform at this position
+      -- Playhead line stops at waveform bottom
       display[#display + 1] = {
-        cmd = "drawLine", x1 = playheadX, y1 = h - 2, x2 = playheadX, y2 = waveY,
+        cmd = "drawLine", x1 = playheadX, y1 = waveH - 2, x2 = playheadX, y2 = waveY,
         thickness = 3, color = vcol,
       }
       ::continue::
     end
+  end
 
-    -- Draw interactive range bar at bottom
-    local rangeView = ctx.rangeView or "all"
-    local voiceLoops = ctx.voiceLoops or {}
-    local barH = 20
-    local barY = h - barH
-    local handleW = 8
-    local handleH = barH - 4
-    
-    -- Thin divider line between waveform and bar
+  -- 2 HANDLE BARS - simple square handles, no labels
+  local handleW = 8
+  local handleH = barH - 4
+  local playStart = ctx.samplePlayStart or 0.0
+  local loopStartPos = loopStart
+  local loopEndPos = loopStart + loopLen
+  local xfadeNorm = math.max(0.0, math.min(0.5, ctx.sampleCrossfade or 0.1))
+
+  local function drawBarBackground(y)
     display[#display + 1] = {
-      cmd = "drawLine", x1 = 0, y1 = math.floor(barY), x2 = w, y2 = math.floor(barY),
-      thickness = 1, color = 0xff334155,
-    }
-    
-    -- Bar background (neutral, matches sample viewer)
-    display[#display + 1] = {
-      cmd = "fillRect", x = 0, y = math.floor(barY) + 1, w = w, h = barH - 1,
+      cmd = "fillRect", x = 0, y = y, w = w, h = barH,
       color = 0xff0d1420,
     }
-    
-    -- Global loop values for fallback
-    local gStart = loopStart
-    local gEnd = loopStart + loopLen
-    
-    local function drawHandle(x, y, hW, hH, fillColor, borderColor)
-      -- Fill
-      display[#display + 1] = {
-        cmd = "fillRect", x = x, y = y, w = hW, h = hH,
-        color = fillColor,
-      }
-      -- Border
-      display[#display + 1] = {
-        cmd = "drawRect", x = x, y = y, w = hW, h = hH,
-        thickness = 1, color = borderColor,
-      }
-    end
-    
-    if rangeView == "all" then
-      -- Draw all 8 voice handles overlaid
-      for voiceIndex = 1, 8 do
-        local loop = voiceLoops[voiceIndex]
-        local vStart = (loop and loop.start) or gStart
-        local vLen = (loop and loop.len) or (gEnd - gStart)
-        local vEnd = vStart + vLen
-        local startX = math.max(0, math.floor(vStart * w) - math.floor(handleW / 2))
-        local endX = math.min(w - handleW, math.floor(vEnd * w) - math.floor(handleW / 2))
-        local vcol = VOICE_COLORS[voiceIndex]
-        local handleY = math.floor(barY) + 2
-        -- Start handle: voice color with white border
-        drawHandle(startX, handleY, handleW, handleH, vcol, 0xffffffff)
-        -- End handle: voice color with black border
-        drawHandle(endX, handleY, handleW, handleH, vcol, 0xff000000)
-      end
-    elseif rangeView == "global" then
-      -- Draw global handles (gray fill)
-      local startX = math.max(0, math.floor(gStart * w) - math.floor(handleW / 2))
-      local endX = math.min(w - handleW, math.floor(gEnd * w) - math.floor(handleW / 2))
-      local handleY = math.floor(barY) + 2
-      -- Start handle: gray with white border
-      drawHandle(startX, handleY, handleW, handleH, 0xff888888, 0xffffffff)
-      -- End handle: gray with black border
-      drawHandle(endX, handleY, handleW, handleH, 0xff888888, 0xff000000)
-    elseif rangeView:match("^voice%d$") then
-      -- Draw specific voice handles
-      local voiceIndex = tonumber(rangeView:match("%d"))
-      local loop = voiceLoops[voiceIndex]
-      local vStart = (loop and loop.start) or gStart
-      local vEnd = vStart + ((loop and loop.len) or (gEnd - gStart))
-      local startX = math.max(0, math.floor(vStart * w) - math.floor(handleW / 2))
-      local endX = math.min(w - handleW, math.floor(vEnd * w) - math.floor(handleW / 2))
-      local vcol = VOICE_COLORS[voiceIndex]
-      local handleY = math.floor(barY) + 2
-      -- Start handle: voice color with white border
-      drawHandle(startX, handleY, handleW, handleH, vcol, 0xffffffff)
-      -- End handle: voice color with black border
-      drawHandle(endX, handleY, handleW, handleH, vcol, 0xff000000)
-    end
-  else
-    -- No sample captured yet - show placeholder
     display[#display + 1] = {
-      cmd = "drawText", x = 0, y = math.floor(h / 2) - 8, w = w, h = 16,
+      cmd = "drawLine", x1 = 0, y1 = y + barH, x2 = w, y2 = y + barH,
+      thickness = 1, color = 0xff334155,
+    }
+  end
+
+  local function drawHandle(y, pos, color)
+    local hx = math.floor(pos * w) - math.floor(handleW / 2)
+    local hy = y + 2
+    display[#display + 1] = {
+      cmd = "fillRect", x = hx, y = hy, w = handleW, h = handleH,
+      color = color,
+    }
+    display[#display + 1] = {
+      cmd = "drawRect", x = hx, y = hy, w = handleW, h = handleH,
+      thickness = 1, color = 0xffffffff,
+    }
+  end
+
+  -- Bar 1: Play Start (yellow)
+  local bar1Y = waveH + 2
+  drawBarBackground(bar1Y)
+  drawHandle(bar1Y, playStart, 0xffe5e509)
+
+  -- Bar 2: Loop Start + Loop End + explicit crossfade mapping
+  local bar2Y = bar1Y + barH + barGap
+  drawBarBackground(bar2Y)
+
+  -- Main loop span guide
+  display[#display + 1] = {
+    cmd = "drawLine",
+    x1 = math.floor(loopStartPos * w), y1 = bar2Y + math.floor(barH / 2),
+    x2 = math.floor(loopEndPos * w), y2 = bar2Y + math.floor(barH / 2),
+    thickness = 2, color = 0x80cbd5e1,
+  }
+
+  local xfadeLen = xfadeNorm * loopLen
+  local xfadeStart = math.max(loopStartPos, loopEndPos - xfadeLen)
+  local headXfadeEnd = math.min(loopEndPos, loopStartPos + xfadeLen)
+  if xfadeLen > 0.0001 then
+    -- Head fade-in window near loop start
+    display[#display + 1] = {
+      cmd = "fillRect",
+      x = math.floor(loopStartPos * w),
+      y = bar2Y + 2,
+      w = math.max(1, math.floor(headXfadeEnd * w) - math.floor(loopStartPos * w)),
+      h = barH - 4,
+      color = 0x504ade80,
+    }
+
+    -- Tail fade-out window near loop end
+    display[#display + 1] = {
+      cmd = "fillRect",
+      x = math.floor(xfadeStart * w),
+      y = bar2Y + 2,
+      w = math.max(1, math.floor(loopEndPos * w) - math.floor(xfadeStart * w)),
+      h = barH - 4,
+      color = 0x50f87171,
+    }
+
+    -- Explicit seam mapping: head window crossfades into tail window
+    local seamLines = 6
+    for i = 0, seamLines do
+      local t = i / seamLines
+      local srcX = math.floor((loopStartPos + xfadeLen * t) * w)
+      local dstX = math.floor((xfadeStart + xfadeLen * t) * w)
+      display[#display + 1] = {
+        cmd = "drawLine",
+        x1 = srcX, y1 = bar2Y + 3,
+        x2 = dstX, y2 = bar2Y + barH - 3,
+        thickness = 1, color = 0xa0f472b6,
+      }
+    end
+  end
+
+  drawHandle(bar2Y, loopStartPos, 0xff4ade80)
+  drawHandle(bar2Y, loopEndPos, 0xfff87171)
+
+  -- "No sample" message if no peaks
+  if not peaks or #peaks == 0 then
+    display[#display + 1] = {
+      cmd = "drawText", x = 0, y = math.floor(waveH / 2) - 8, w = w, h = 16,
       text = "No sample captured", color = 0xff94a3b8, fontSize = 11, align = "center", valign = "middle",
     }
   end
 
-  -- Draw "SAMPLE" label
   display[#display + 1] = {
     cmd = "drawText", x = 4, y = 2, w = w - 8, h = 16,
     text = "SAMPLE MODE", color = 0xffa78bfa, fontSize = 10, align = "left", valign = "top",
@@ -226,17 +252,43 @@ local function buildSampleWaveform(ctx, w, h, display)
   return display
 end
 
-local function buildOscDisplay(ctx, w, h)
-  local display = {}
+local function sampleAtPeaks(peaks, t)
+  if type(peaks) ~= "table" or #peaks == 0 then
+    return 0.0
+  end
+  local idx = math.floor(math.max(0, math.min(1, t)) * (#peaks - 1)) + 1
+  local peak = peaks[idx] or 0.5
+  return peak * 2.0 - 1.0
+end
+
+local function xorBlendSample(a, b, crush)
+  local bits = math.max(2, math.floor(16 - crush * 14 + 0.5))
+  local levels = 2 ^ (bits - 1)
+  local qa = math.floor((math.max(-1, math.min(1, a)) * levels) + 128)
+  local qb = math.floor((math.max(-1, math.min(1, b)) * levels) + 128)
+  local xv = bit32 and bit32.bxor(qa, qb) or ((qa + qb) % 256)
+  return (xv / 127.5) - 1.0
+end
+
+local function buildBlendDisplay(ctx, w, h, display)
   local waveType = ctx.waveformType or 1
-  local noiseLevel = ctx.noiseLevel or 0
-  local noiseColor = ctx.noiseColor or 0.1
   local drive = math.max(0.1, ctx.driveAmount or 1.8)
+  local blendMode = ctx.blendMode or 0
+  local blendAmount = math.max(0.0, math.min(1.0, ctx.blendAmount or 0.5))
+  local waveToSample = math.max(0.0, math.min(1.0, ctx.waveToSample or 0.5))
+  local sampleToWave = math.max(0.0, math.min(1.0, ctx.sampleToWave or 0.0))
+  local blendModAmount = math.max(0.0, math.min(1.0, ctx.blendModAmount or 0.5))
+  local samplePitch = ctx.blendSamplePitch or 0.0
   local voices = ctx.activeVoices or {}
   local time = ctx.animTime or 0
-  local oscMode = ctx.oscMode or 0
+  local peaks = ctx._cachedPeaks
+  local numPoints = math.max(64, math.min(w, tonumber(ctx.maxPoints) or 200))
+  local centerY = h / 2
+  local maxAmp = (h / 2) * 0.82
+  local modeNames = { [0] = "MIX", [1] = "RING", [2] = "FM", [3] = "SYNC", [4] = "XOR" }
+  local modeColors = { [0] = 0xffa78bfa, [1] = 0xff22d3ee, [2] = 0xfff472b6, [3] = 0xff4ade80, [4] = 0xfffbbf24 }
 
-  -- Grid
+  -- Background grid (like Wave mode)
   for i = 1, 3 do
     display[#display + 1] = {
       cmd = "drawLine", x1 = 0, y1 = math.floor(h * i / 4), x2 = w, y2 = math.floor(h * i / 4),
@@ -248,33 +300,216 @@ local function buildOscDisplay(ctx, w, h)
     thickness = 1, color = 0xff1f2b4d,
   }
 
-  -- Sample mode: render sample-style waveform with loop markers
-  if oscMode == 1 then
-    return buildSampleWaveform(ctx, w, h, display)
+  if not peaks and type(getSynthSamplePeaks) == "function" then
+    peaks = getSynthSamplePeaks(numPoints)
+    if peaks and #peaks > 0 then
+      ctx._cachedPeaks = peaks
+    end
   end
 
+  local hasSample = peaks and #peaks > 0
+  local waveCol = WAVEFORM_COLORS[waveType] or 0xff7dd3fc
+  local sampleCol = 0xff22d3ee
+  local resultCol = modeColors[blendMode] or 0xffa78bfa
+
+  -- Draw source waveforms dimmed in background
+  local prevWaveX, prevWaveY
+  local prevSampleX, prevSampleY
+
+  for i = 0, numPoints do
+    local t = i / numPoints
+    local wave = softClip(waveformSample(waveType, t * 2.0), drive)
+    local sampleT = t * (2.0 ^ (samplePitch / 12.0))
+    local sample = hasSample and sampleAtPeaks(peaks, sampleT % 1.0) or 0
+
+    local x = math.floor(t * w)
+    local waveY = math.floor(centerY - wave * maxAmp * 0.5)
+    local sampleY = math.floor(centerY - sample * maxAmp * 0.5)
+
+    if prevWaveX then
+      -- Dimmed wave and sample in background
+      display[#display + 1] = {
+        cmd = "drawLine", x1 = prevWaveX, y1 = prevWaveY, x2 = x, y2 = waveY,
+        thickness = 1, color = (waveCol & 0x00ffffff) | 0x30000000,
+      }
+      if hasSample then
+        display[#display + 1] = {
+          cmd = "drawLine", x1 = prevSampleX, y1 = prevSampleY, x2 = x, y2 = sampleY,
+          thickness = 1, color = (sampleCol & 0x00ffffff) | 0x30000000,
+        }
+      end
+    end
+
+    prevWaveX, prevWaveY = x, waveY
+    prevSampleX, prevSampleY = x, sampleY
+  end
+
+  -- Animated result waveform (main focus)
+  if #voices > 0 then
+    for vi, voice in ipairs(voices) do
+      local vcol = VOICE_COLORS[((vi - 1) % #VOICE_COLORS) + 1]
+      local freq = voice.freq or 220
+      local amp = voice.amp or 0
+      if amp < 0.001 then goto continue end
+
+      local cyclesInView = 2
+      local phaseOffset = time * freq
+      local vPrevX, vPrevY
+
+      for i = 0, numPoints do
+        local t = i / numPoints
+        local phase = phaseOffset + t * cyclesInView
+        local wave = softClip(waveformSample(waveType, phase), drive)
+        local sampleT = t * (2.0 ^ (samplePitch / 12.0))
+        local sample = hasSample and sampleAtPeaks(peaks, sampleT % 1.0) or 0
+
+        local result = 0.0
+        if blendMode == 0 then
+          result = wave * (1.0 - blendAmount) + sample * blendAmount
+        elseif blendMode == 1 then
+          local ring = wave * sample
+          result = (wave * (1.0 - blendAmount)) + (ring * blendAmount * math.max(0.2, blendModAmount))
+        elseif blendMode == 2 then
+          local fmSample = hasSample and sampleAtPeaks(peaks, (sampleT + wave * waveToSample * blendModAmount * 0.12) % 1.0) or 0
+          result = wave * (1.0 - blendAmount) + fmSample * blendAmount + sample * sampleToWave * 0.15
+        elseif blendMode == 3 then
+          local syncT = ((t * (1.0 + waveToSample * 3.0)) % 1.0)
+          local syncSample = hasSample and sampleAtPeaks(peaks, syncT) or 0
+          result = wave * (1.0 - blendAmount) + syncSample * blendAmount
+        else
+          local x = xorBlendSample(wave, sample, math.max(waveToSample, blendModAmount))
+          result = wave * (1.0 - blendAmount) + x * blendAmount
+        end
+
+        result = result * (amp / 0.5)
+        local x = math.floor(t * w)
+        local y = math.floor(centerY - result * maxAmp)
+
+        if vPrevX then
+          display[#display + 1] = {
+            cmd = "drawLine", x1 = vPrevX, y1 = vPrevY, x2 = x, y2 = y,
+            thickness = 2, color = vcol,
+          }
+        end
+        vPrevX, vPrevY = x, y
+      end
+      ::continue::
+    end
+  else
+    -- Static result preview when no voices active
+    local prevResultX, prevResultY
+    for i = 0, numPoints do
+      local t = i / numPoints
+      local wave = softClip(waveformSample(waveType, t * 2.0), drive)
+      local sampleT = t * (2.0 ^ (samplePitch / 12.0))
+      local sample = hasSample and sampleAtPeaks(peaks, sampleT % 1.0) or 0
+
+      local result = 0.0
+      if blendMode == 0 then
+        result = wave * (1.0 - blendAmount) + sample * blendAmount
+      elseif blendMode == 1 then
+        local ring = wave * sample
+        result = (wave * (1.0 - blendAmount)) + (ring * blendAmount * math.max(0.2, blendModAmount))
+      elseif blendMode == 2 then
+        local fmSample = hasSample and sampleAtPeaks(peaks, (sampleT + wave * waveToSample * blendModAmount * 0.12) % 1.0) or 0
+        result = wave * (1.0 - blendAmount) + fmSample * blendAmount
+      elseif blendMode == 3 then
+        local syncT = ((t * (1.0 + waveToSample * 3.0)) % 1.0)
+        local syncSample = hasSample and sampleAtPeaks(peaks, syncT) or 0
+        result = wave * (1.0 - blendAmount) + syncSample * blendAmount
+      else
+        local x = xorBlendSample(wave, sample, math.max(waveToSample, blendModAmount))
+        result = wave * (1.0 - blendAmount) + x * blendAmount
+      end
+
+      local x = math.floor(t * w)
+      local y = math.floor(centerY - result * maxAmp)
+
+      if prevResultX then
+        display[#display + 1] = {
+          cmd = "drawLine", x1 = prevResultX, y1 = prevResultY, x2 = x, y2 = y,
+          thickness = 2, color = resultCol,
+        }
+      end
+      prevResultX, prevResultY = x, y
+    end
+  end
+
+  -- Mode indicator bar at bottom
+  local modeName = modeNames[blendMode] or "MIX"
+  local barWidth = math.floor(w * blendAmount)
+  display[#display + 1] = {
+    cmd = "fillRect", x = 0, y = h - 4, w = barWidth, h = 4,
+    color = resultCol,
+  }
+  display[#display + 1] = {
+    cmd = "drawRect", x = 0, y = h - 4, w = w, h = 4,
+    thickness = 1, color = 0xff334155,
+  }
+
+  -- Clean mode label
+  display[#display + 1] = {
+    cmd = "drawText", x = 4, y = 2, w = w - 8, h = 16,
+    text = modeName .. " MODE",
+    color = resultCol, fontSize = 11, align = "left", valign = "top",
+  }
+
+  -- Sample status
+  if not hasSample then
+    display[#display + 1] = {
+      cmd = "drawText", x = 0, y = h - 22, w = w, h = 16,
+      text = "No sample - capture in Sample tab", color = 0xff64748b, fontSize = 9, align = "center", valign = "middle",
+    }
+  end
+
+  return display
+end
+
+local function buildOscDisplay(ctx, w, h)
+  local display = {}
+  local waveType = ctx.waveformType or 1
+  local drive = math.max(0.1, ctx.driveAmount or 1.8)
+  local voices = ctx.activeVoices or {}
+  local time = ctx.animTime or 0
+  local oscMode = ctx.oscMode or 0
+
+  for i = 1, 3 do
+    display[#display + 1] = {
+      cmd = "drawLine", x1 = 0, y1 = math.floor(h * i / 4), x2 = w, y2 = math.floor(h * i / 4),
+      thickness = 1, color = 0xff1a1a3a,
+    }
+  end
+  display[#display + 1] = {
+    cmd = "drawLine", x1 = 0, y1 = math.floor(h / 2), x2 = w, y2 = math.floor(h / 2),
+    thickness = 1, color = 0xff1f2b4d,
+  }
+
+  if oscMode == 1 then
+    return buildSampleWaveform(ctx, w, h, display)
+  elseif oscMode == 2 then
+    return buildBlendDisplay(ctx, w, h, display)
+  end
+
+  -- Wave mode title (top-left like Sample/Blend)
+  local waveNames = { [0] = "SINE", [1] = "SAW", [2] = "SQUARE", [3] = "TRIANGLE", [4] = "BLEND", [5] = "NOISE", [6] = "PULSE", [7] = "SUPERSAW" }
+  local waveName = waveNames[waveType] or "WAVE"
   local col = WAVEFORM_COLORS[waveType] or 0xff7dd3fc
+  display[#display + 1] = {
+    cmd = "drawText", x = 4, y = 2, w = w - 8, h = 16,
+    text = waveName .. " MODE", color = col, fontSize = 11, align = "left", valign = "top",
+  }
+  local colDim = (0x40 << 24) | (col & 0x00ffffff)
   local centerY = h / 2
   local maxAmp = (h / 2) * 0.85
   local pointCap = math.max(48, tonumber(ctx.maxPoints) or 200)
   local numPoints = math.max(48, math.min(w, pointCap))
 
-  -- Static waveform shape (dim reference)
   local colStatic = (0x40 << 24) | (col & 0x00ffffff)
   local prevX, prevY
   for i = 0, numPoints do
     local t = i / numPoints
     local s = waveformSample(waveType, t)
     s = softClip(s, drive)
-
-    -- Add noise to static shape
-    if noiseLevel > 0.01 then
-      local hash = math.sin(i * 127.1 + noiseColor * 311.7) * 43758.5453
-      hash = hash - math.floor(hash)
-      local smoothN = math.sin(i * 0.15 + noiseColor * 5) * 0.5
-      local whiteN = (hash - 0.5) * 2
-      s = s + (smoothN * (1 - noiseColor) + whiteN * noiseColor) * noiseLevel * 0.4
-    end
 
     local x = math.floor(t * w)
     local y = math.floor(centerY - s * maxAmp)
@@ -287,7 +522,6 @@ local function buildOscDisplay(ctx, w, h)
     prevX, prevY = x, y
   end
 
-  -- Per-voice animated waveforms
   if #voices > 0 then
     local drawFill = (#voices <= 1)
     for vi, voice in ipairs(voices) do
@@ -297,7 +531,6 @@ local function buildOscDisplay(ctx, w, h)
       local amp = voice.amp or 0
       if amp < 0.001 then goto continue end
 
-      -- Phase offset based on time and frequency — show ~2 cycles in the view
       local cyclesInView = 2
       local phaseOffset = time * freq
       local vPrevX, vPrevY
@@ -308,22 +541,10 @@ local function buildOscDisplay(ctx, w, h)
         local s = waveformSample(waveType, phase)
         s = softClip(s, drive)
 
-        -- Add animated noise
-        if noiseLevel > 0.01 then
-          local noisePhase = phase * 17.3 + time * 3.7
-          local hash = math.sin(noisePhase * 127.1 + noiseColor * 311.7) * 43758.5453
-          hash = hash - math.floor(hash)
-          local smoothN = math.sin(noisePhase * 0.8) * 0.5
-          local whiteN = (hash - 0.5) * 2
-          s = s + (smoothN * (1 - noiseColor) + whiteN * noiseColor) * noiseLevel * 0.4
-        end
-
-        s = s * (amp / 0.5) -- scale by voice amplitude (max 0.5)
+        s = s * (amp / 0.5)
         local x = math.floor(t * w)
         local y = math.floor(centerY - s * maxAmp)
 
-        -- Fill to center (only for single-voice display to keep multi-voice
-        -- interactions responsive)
         if drawFill and i > 0 then
           display[#display + 1] = {
             cmd = "drawLine", x1 = x, y1 = y, x2 = x, y2 = math.floor(centerY),
@@ -344,24 +565,17 @@ local function buildOscDisplay(ctx, w, h)
     end
   end
 
-  -- Noise indicator bar
-  if noiseLevel > 0.01 then
-    display[#display + 1] = {
-      cmd = "fillRect", x = 0, y = h - 3, w = math.floor(w * noiseLevel), h = 3,
-      color = 0x6694a3b8,
-    }
-  end
-
   return display
 end
 
 local function refreshGraph(ctx)
   local graph = ctx.widgets.osc_graph
-  if not graph or not graph.node then return end
+  if not graph or not graph.node then
+    return
+  end
   local w = graph.node:getWidth()
   local h = graph.node:getHeight()
   if w <= 0 or h <= 0 then return end
-  -- Fetch voice loop data from DSP
   if type(getVoiceLoopData) == "function" then
     ctx.voiceLoops = getVoiceLoopData()
   end
@@ -373,22 +587,34 @@ function OscBehavior.init(ctx)
   ctx.waveformType = 1
   ctx.driveAmount = 1.8
   ctx.outputLevel = 0.8
-  ctx.noiseLevel = 0.0
-  ctx.noiseColor = 0.1
   ctx.activeVoices = {}
   ctx.animTime = 0
   ctx.oscMode = 0
   ctx.sampleLoopStart = 0.0
   ctx.sampleLoopLen = 1.0
-  ctx.rangeView = "all"
-  ctx.rangeViewIndex = 1
+  ctx.samplePlayStart = 0.0  -- Yellow flag: where playback starts
+  ctx.sampleCrossfade = 0.1  -- 0-0.5 crossfade amount
+  ctx.blendMode = 0
+  ctx.blendAmount = 0.5
+  ctx.waveToSample = 0.5
+  ctx.sampleToWave = 0.0
+  ctx.blendKeyTrack = true
+  ctx.blendSamplePitch = 0.0
+  ctx.blendModAmount = 0.5
+  ctx.rangeView = "global"  -- FORCED: only global windowing works
+  ctx.rangeViewIndex = 2    -- "global" is index 2 in the views table
   ctx.voiceLoops = {}
 
-  -- Range bar mouse interaction state
   ctx._rangeDrag = {
     active = false,
     dragging = nil,
     voiceIndex = nil,
+    grabOffset = 0,
+  }
+  ctx._flagDrag = {
+    active = false,
+    which = nil,
+    grabOffset = 0,
   }
 
   refreshGraph(ctx)
@@ -402,255 +628,158 @@ function OscBehavior.resized(ctx, w, h)
   if not w or w <= 0 then return end
 
   local widgets = ctx.widgets
-  local pad = 12
-  local gap = 4
-  local contentW = math.max(1, w - pad * 2)
+  local pad = 10
+  local gap = 6
 
-  local title = widgets.title
-  if title then
-    if title.setBounds then title:setBounds(pad, 8, contentW, 16)
-    elseif title.node then title.node:setBounds(pad, 8, contentW, 16) end
-  end
+  -- 50/50 split: Graph on left, TabHost + knobs on right
+  local split = math.floor(w / 2)
+  local leftW = split - pad
+  local rightX = split + gap
+  local rightW = w - rightX - pad
 
-  local graphY = 28
-  local dropdownH = 22
-  local labelH = 12
-  local numberH = 26
-  local toggleH = 22
-  local knobH = math.max(44, math.min(58, math.floor(h * 0.22)))
-
-  local row1H = labelH + 2 + dropdownH
-  local row2H = dropdownH
-  local row3H = numberH
-  local row4H = numberH  -- Start%/Len% boxes
-  local row5H = knobH
-  local controlsH = row1H + gap + row2H + gap + row3H + gap + row4H + gap + row5H
-
-  local graphH = math.max(24, h - graphY - controlsH - 8)
+  -- LEFT: Oscillator graph fills entire left half
   local graph = widgets.osc_graph
   if graph then
-    if graph.setBounds then graph:setBounds(pad, graphY, contentW, graphH)
-    elseif graph.node then graph.node:setBounds(pad, graphY, contentW, graphH) end
-    
+    if graph.setBounds then graph:setBounds(pad, pad, leftW, h - pad * 2)
+    elseif graph.node then graph.node:setBounds(pad, pad, leftW, h - pad * 2) end
+
     -- Set up mouse handlers for range bar (once)
     if graph.node and not ctx._rangeMouseSetup then
       ctx._rangeMouseSetup = true
       graph.node:setInterceptsMouse(true, false)
-      
+
       graph.node:setOnMouseDown(function(mx, my)
         if ctx.oscMode ~= 1 then return end
         local gw = graph.node:getWidth()
         local gh = graph.node:getHeight()
         if gw <= 0 or gh <= 0 then return end
-        
-        local barH = 20
-        local barY = gh - barH
+
+        -- 2 HANDLE BARS - must match buildSampleWaveform() layout exactly
+        local barH = 16
+        local barGap = 4
+        local barsHeight = barH * 2 + barGap
+        local waveH = gh - barsHeight - 4
         local handleW = 8
-        
-        if my < barY or my > barY + barH then return end
-        
-        local rangeView = ctx.rangeView or "all"
-        if rangeView == "all" then return end
-        
-        local voiceLoops = ctx.voiceLoops or {}
+
         local loopStart = ctx.sampleLoopStart or 0.0
         local loopLen = ctx.sampleLoopLen or 1.0
-        local gStart = loopStart
-        local gEnd = loopStart + loopLen
-        
-        local vStart, vEnd
-        if rangeView == "global" then
-          vStart = gStart
-          vEnd = gEnd
-        elseif rangeView:match("^voice%d$") then
-          local voiceIndex = tonumber(rangeView:match("%d"))
-          local loop = voiceLoops[voiceIndex]
-          vStart = (loop and loop.start) or gStart
-          vEnd = vStart + ((loop and loop.len) or (gEnd - gStart))
-        else
-          return
+        local playStart = ctx.samplePlayStart or 0.0
+
+        -- Bar 1: Play Start
+        local bar1Y = waveH + 2
+        if my >= bar1Y and my <= bar1Y + barH then
+          local playHandleX = math.floor(playStart * gw) - math.floor(handleW / 2)
+          if mx >= playHandleX - 2 and mx <= playHandleX + handleW + 2 then
+            ctx._flagDrag = { active = true, which = "play", grabOffset = mx - (playHandleX + handleW / 2) }
+            return
+          end
         end
-        
-        -- Handles are centered on position
-        local startX = math.floor(vStart * gw) - math.floor(handleW / 2)
-        local endX = math.floor(vEnd * gw) - math.floor(handleW / 2)
-        
-        if mx >= startX - 2 and mx <= startX + handleW + 2 then
-          ctx._rangeDrag.active = true
-          ctx._rangeDrag.dragging = "start"
-        elseif mx >= endX - 2 and mx <= endX + handleW + 2 then
-          ctx._rangeDrag.active = true
-          ctx._rangeDrag.dragging = "end"
+
+        -- Bar 2: Loop Start + Loop End on same bar
+        local bar2Y = bar1Y + barH + barGap
+        if my >= bar2Y and my <= bar2Y + barH then
+          local loopHandleX = math.floor(loopStart * gw) - math.floor(handleW / 2)
+          local endHandleX = math.floor((loopStart + loopLen) * gw) - math.floor(handleW / 2)
+          if mx >= loopHandleX - 2 and mx <= loopHandleX + handleW + 2 then
+            ctx._flagDrag = { active = true, which = "loop", grabOffset = mx - (loopHandleX + handleW / 2) }
+            return
+          end
+          if mx >= endHandleX - 2 and mx <= endHandleX + handleW + 2 then
+            ctx._flagDrag = { active = true, which = "end", grabOffset = mx - (endHandleX + handleW / 2) }
+            return
+          end
         end
       end)
-      
+
       graph.node:setOnMouseDrag(function(mx, my)
-        if not ctx._rangeDrag.active then return end
+        if not ctx._flagDrag or not ctx._flagDrag.active then return end
         local gw = graph.node:getWidth()
         if gw <= 4 then return end
-        
-        local pos = math.max(0, math.min(1, mx / gw))
-        local rangeView = ctx.rangeView or "all"
-        local handleW = 8
-        
+
+        local grabOffset = ctx._flagDrag.grabOffset or 0
+        local adjustedMx = mx - grabOffset
+        local pos = math.max(0, math.min(1, adjustedMx / gw))
+
         local loopStart = ctx.sampleLoopStart or 0.0
         local loopLen = ctx.sampleLoopLen or 1.0
-        local voiceLoops = ctx.voiceLoops or {}
-        
-        if ctx._rangeDrag.dragging == "start" then
-          local currentEnd
-          if rangeView == "global" then
-            currentEnd = loopStart + loopLen
-          else
-            local voiceIndex = tonumber(rangeView:match("%d"))
-            local loop = voiceLoops[voiceIndex]
-            currentEnd = (loop and loop.start or loopStart) + (loop and loop.len or loopLen)
+        local loopEnd = loopStart + loopLen
+
+        if ctx._flagDrag.which == "play" then
+          -- Yellow play flag: can be anywhere 0-1
+          ctx.samplePlayStart = pos
+          if ctx._onPlayStartChange then ctx._onPlayStartChange(pos) end
+        elseif ctx._flagDrag.which == "loop" then
+          -- Green loop start: must be before loop end
+          pos = math.min(pos, loopEnd - 0.05)
+          local newLen = loopEnd - pos
+          ctx.sampleLoopStart = pos
+          ctx.sampleLoopLen = newLen
+          if ctx._onRangeChange then
+            ctx._onRangeChange("start", pos)
+            ctx._onRangeChange("len", newLen)
           end
-          pos = math.min(pos, currentEnd - 0.05)
-          local newLen = currentEnd - pos
-          
-          if rangeView == "global" then
-            if ctx._onRangeChange then
-              ctx._onRangeChange("start", pos)
-              ctx._onRangeChange("len", newLen)
-            end
-          else
-            local voiceIndex = tonumber(rangeView:match("%d"))
-            if ctx._onVoiceRangeChange then
-              ctx._onVoiceRangeChange(voiceIndex, "start", pos)
-              ctx._onVoiceRangeChange(voiceIndex, "len", newLen)
-            end
-          end
-        elseif ctx._rangeDrag.dragging == "end" then
-          local currentStart
-          if rangeView == "global" then
-            currentStart = loopStart
-          else
-            local voiceIndex = tonumber(rangeView:match("%d"))
-            local loop = voiceLoops[voiceIndex]
-            currentStart = loop and loop.start or loopStart
-          end
-          pos = math.max(pos, currentStart + 0.05)
-          
-          if rangeView == "global" then
-            if ctx._onRangeChange then ctx._onRangeChange("len", pos - currentStart) end
-          else
-            local voiceIndex = tonumber(rangeView:match("%d"))
-            if ctx._onVoiceRangeChange then ctx._onVoiceRangeChange(voiceIndex, "len", pos - currentStart) end
-          end
+        elseif ctx._flagDrag.which == "end" then
+          -- Red loop end: must be after loop start
+          pos = math.max(pos, loopStart + 0.05)
+          local newLen = pos - loopStart
+          ctx.sampleLoopLen = newLen
+          if ctx._onRangeChange then ctx._onRangeChange("len", newLen) end
         end
-        
+        refreshGraph(ctx)
       end)
-      
+
       graph.node:setOnMouseUp(function()
-        ctx._rangeDrag.active = false
-        ctx._rangeDrag.dragging = nil
+        if ctx._flagDrag then
+          ctx._flagDrag.active = false
+          ctx._flagDrag.which = nil
+          ctx._flagDrag.grabOffset = nil
+        end
       end)
     end
   end
 
-  local y = graphY + graphH + gap
-  local colGap = 8
-  local colW = math.max(60, math.floor((contentW - colGap) * 0.5))
-  local col2X = pad + colW + colGap
+  -- RIGHT: TabHost positioned at top, knobs at bottom
+  local tabHost = widgets.mode_tabs
+  local knobHeight = 70
+  local tabH = h - pad * 2 - knobHeight - gap
 
-  -- Row 1: waveform + mode
-  local wfLabel = widgets.waveform_label
-  if wfLabel then
-    if wfLabel.setBounds then wfLabel:setBounds(pad, y, colW, labelH)
-    elseif wfLabel.node then wfLabel.node:setBounds(pad, y, colW, labelH) end
-  end
-  local modeLabel = widgets.sample_mode_label
-  if modeLabel then
-    if modeLabel.setBounds then modeLabel:setBounds(col2X, y, colW, labelH)
-    elseif modeLabel.node then modeLabel.node:setBounds(col2X, y, colW, labelH) end
-  end
+  if tabHost then
+    if tabHost.setBounds then tabHost:setBounds(rightX, pad, rightW, tabH)
+    elseif tabHost.node then tabHost.node:setBounds(rightX, pad, rightW, tabH) end
 
-  local row1ControlY = y + labelH + 2
-  local wfDrop = widgets.waveform_dropdown
-  if wfDrop then
-    if wfDrop.setBounds then wfDrop:setBounds(pad, row1ControlY, colW, dropdownH)
-    elseif wfDrop.node then wfDrop.node:setBounds(pad, row1ControlY, colW, dropdownH) end
-  end
-  local modeDrop = widgets.sample_mode_dropdown
-  if modeDrop then
-    if modeDrop.setBounds then modeDrop:setBounds(col2X, row1ControlY, colW, dropdownH)
-    elseif modeDrop.node then modeDrop.node:setBounds(col2X, row1ControlY, colW, dropdownH) end
-  end
-
-  -- Row 2: source + capture
-  y = row1ControlY + dropdownH + gap
-  local sourceLabel = widgets.sample_source_label
-  if sourceLabel then
-    if sourceLabel.setBounds then sourceLabel:setBounds(pad, y + 4, 42, labelH)
-    elseif sourceLabel.node then sourceLabel.node:setBounds(pad, y + 4, 42, labelH) end
-  end
-
-  local sourceDrop = widgets.sample_source_dropdown
-  if sourceDrop then
-    local sourceX = pad + 44
-    local sourceW = math.max(44, colW - 44)
-    if sourceDrop.setBounds then sourceDrop:setBounds(sourceX, y, sourceW, dropdownH)
-    elseif sourceDrop.node then sourceDrop.node:setBounds(sourceX, y, sourceW, dropdownH) end
-  end
-
-  local captureBtn = widgets.sample_capture_button
-  if captureBtn then
-    if captureBtn.setBounds then captureBtn:setBounds(col2X, y, colW, dropdownH)
-    elseif captureBtn.node then captureBtn.node:setBounds(col2X, y, colW, dropdownH) end
-  end
-
-  -- Row 3: Bars, Root on left; Range dropdown on right
-  y = y + dropdownH + gap
-  local boxGap = 6
-  local boxW = math.max(42, math.floor((contentW - boxGap * 3) / 4))
-  
-  -- Bars and Root on left
-  local barsBox = widgets.sample_bars_box
-  if barsBox then
-    if barsBox.setBounds then barsBox:setBounds(pad, y, boxW, numberH)
-    elseif barsBox.node then barsBox.node:setBounds(pad, y, boxW, numberH) end
-  end
-  local rootBox = widgets.sample_root_box
-  if rootBox then
-    if rootBox.setBounds then rootBox:setBounds(pad + boxW + boxGap, y, boxW, numberH)
-    elseif rootBox.node then rootBox.node:setBounds(pad + boxW + boxGap, y, boxW, numberH) end
-  end
-  
-  -- Range view dropdown on right (spans 2 box widths)
-  local rangeDrop = widgets.range_view_dropdown
-  if rangeDrop then
-    local dropX = pad + (boxW + boxGap) * 2
-    local dropW = (boxW + boxGap) * 2 - boxGap
-    if rangeDrop.setBounds then rangeDrop:setBounds(dropX, y + 2, dropW, dropdownH)
-    elseif rangeDrop.node then rangeDrop.node:setBounds(dropX, y + 2, dropW, dropdownH) end
-  end
-
-  -- Row 4: Start% and Len% boxes (editable range params)
-  y = y + numberH + gap
-  local startBox = widgets.sample_start_box
-  if startBox then
-    if startBox.setBounds then startBox:setBounds(pad, y, boxW, numberH)
-    elseif startBox.node then startBox.node:setBounds(pad, y, boxW, numberH) end
-  end
-  local lenBox = widgets.sample_len_box
-  if lenBox then
-    if lenBox.setBounds then lenBox:setBounds(pad + boxW + boxGap, y, boxW, numberH)
-    elseif lenBox.node then lenBox.node:setBounds(pad + boxW + boxGap, y, boxW, numberH) end
-  end
-
-  -- Row 5: classic tone knobs
-  y = y + numberH + gap
-  local knobW = math.max(44, math.floor((contentW - 18) / 4))
-  local knobGap = math.max(4, math.floor((contentW - knobW * 4) / 3))
-  local knobs = { "drive_knob", "output_knob", "noise_knob", "noise_color_knob" }
-  for i, id in ipairs(knobs) do
-    local knob = widgets[id]
-    local kx = pad + (i - 1) * (knobW + knobGap)
-    if knob then
-      if knob.setBounds then knob:setBounds(kx, y, knobW, knobH)
-      elseif knob.node then knob.node:setBounds(kx, y, knobW, knobH) end
+    -- Wire up tab switching to change oscMode and refresh graph
+    if not ctx._tabHandlerSet then
+      ctx._tabHandlerSet = true
+      tabHost:setOnSelect(function(idx, id, title)
+        local newMode = 0
+        if idx == 2 then
+          newMode = 1
+        elseif idx == 3 then
+          newMode = 2
+        end
+        ctx.oscMode = newMode
+        -- Update DSP parameter so sync doesn't snap it back
+        if type(setParam) == "function" then
+          setParam("/midi/synth/osc/mode", newMode)
+        elseif type(command) == "function" then
+          command("SET", "/midi/synth/osc/mode", tostring(newMode))
+        end
+        refreshGraph(ctx)
+      end)
     end
+
+    -- Fix dropdown positions for TabHost children (account for tab bar offset)
+
+  end
+
+  -- Output knob always visible at bottom
+  local knobY = pad + tabH + gap
+  local knobW = math.floor((rightW - 16) / 3)
+
+  local outK = widgets.output_knob
+  if outK then
+    if outK.setBounds then outK:setBounds(rightX + knobW + 8, knobY, knobW, knobHeight)
+    elseif outK.node then outK.node:setBounds(rightX + knobW + 8, knobY, knobW, knobHeight) end
   end
 
   refreshGraph(ctx)
@@ -658,6 +787,38 @@ end
 
 function OscBehavior.repaint(ctx)
   refreshGraph(ctx)
+end
+
+-- Update knob visibility and layout based on waveform selection
+-- Pulse (6) shows Width knob, others hide it and center remaining 3
+function OscBehavior.updateKnobLayout(ctx)
+  local widgets = ctx.widgets
+  if not widgets then return end
+
+  local widthKnob = widgets.pulse_width_knob
+  local unisonKnob = widgets.unison_knob
+  local detuneKnob = widgets.detune_knob
+  local spreadKnob = widgets.spread_knob
+
+  local isPulse = (ctx.waveformType == 6)
+
+  if widthKnob and widthKnob.node then
+    widthKnob.node:setVisible(isPulse)
+  end
+
+  -- Bottom row: 44px knobs, 52px spacing, 10px left margin
+  -- 4 knobs: 10, 62, 114, 166 → last ends at 210 (50px right margin, very safe)
+  if isPulse then
+    if widthKnob and widthKnob.node then widthKnob.node:setBounds(10, 58, 44, 44) end
+    if unisonKnob and unisonKnob.node then unisonKnob.node:setBounds(62, 58, 44, 44) end
+    if detuneKnob and detuneKnob.node then detuneKnob.node:setBounds(114, 58, 44, 44) end
+    if spreadKnob and spreadKnob.node then spreadKnob.node:setBounds(166, 58, 44, 44) end
+  else
+    -- Hide Width, center 3 knobs: 34, 98, 162 → last ends at 206 (54px margin)
+    if unisonKnob and unisonKnob.node then unisonKnob.node:setBounds(34, 58, 44, 44) end
+    if detuneKnob and detuneKnob.node then detuneKnob.node:setBounds(98, 58, 44, 44) end
+    if spreadKnob and spreadKnob.node then spreadKnob.node:setBounds(162, 58, 44, 44) end
+  end
 end
 
 return OscBehavior
