@@ -45,7 +45,7 @@ void clearFocusRecursive(RuntimeNode& node) {
     }
 }
 
-manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions makeDirectRenderOptions() {
+manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions makeDirectRenderOptions(bool debugOutlines = false) {
     manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions options;
     options.leftPad = 0.0f;
     options.rightPad = 0.0f;
@@ -55,8 +55,8 @@ manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions makeDirectRenderOptions(
     options.showFallbackBoxes = false;
     options.showNodeLabels = false;
     options.showSurfaceLabels = false;
-    options.showHoveredOutline = false;
-    options.showSelectedOutline = false;
+    options.showHoveredOutline = debugOutlines;
+    options.showSelectedOutline = debugOutlines;
     return options;
 }
 
@@ -735,7 +735,9 @@ void renderLiveNodeRecursive(ImGuiDirectHost& host,
                              const ImGuiDirectHost::PreviewTransform& transform,
                              std::unordered_set<uint64_t>& touchedSurfaceIds,
                              double timeSeconds,
-                             int depth) {
+                             int depth,
+                             uint64_t hoveredStableId,
+                             uint64_t selectedStableId) {
     if (!node.isVisible()) {
         return;
     }
@@ -816,7 +818,17 @@ void renderLiveNodeRecursive(ImGuiDirectHost& host,
                                 transform,
                                 touchedSurfaceIds,
                                 timeSeconds,
-                                depth + 1);
+                                depth + 1,
+                                hoveredStableId,
+                                selectedStableId);
+    }
+
+    // Draw debug outlines on top of children
+    if (options.showHoveredOutline && node.getStableId() == hoveredStableId) {
+        drawList->AddRect(toImVec2(bounds), toImVec2BottomRight(bounds), IM_COL32(255, 255, 255, 180), cornerRadius, 0, 2.0f);
+    }
+    if (options.showSelectedOutline && node.getStableId() == selectedStableId) {
+        drawList->AddRect(toImVec2(bounds), toImVec2BottomRight(bounds), IM_COL32(56, 189, 248, 255), cornerRadius, 0, 3.0f);
     }
 
     if (pushedNodeClip) {
@@ -830,7 +842,9 @@ void renderLiveTree(ImGuiDirectHost& host,
                     const manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions& options,
                     const ImGuiDirectHost::PreviewTransform& transform,
                     std::unordered_set<uint64_t>& touchedSurfaceIds,
-                    double timeSeconds) {
+                    double timeSeconds,
+                    uint64_t hoveredStableId,
+                    uint64_t selectedStableId) {
     renderLiveNodeRecursive(host,
                             root,
                             SceneTransform{},
@@ -839,7 +853,9 @@ void renderLiveTree(ImGuiDirectHost& host,
                             transform,
                             touchedSurfaceIds,
                             timeSeconds,
-                            0);
+                            0,
+                            hoveredStableId,
+                            selectedStableId);
 }
 
 } // namespace
@@ -874,6 +890,16 @@ ImGuiDirectHost::StatsSnapshot ImGuiDirectHost::getStatsSnapshot() const {
     snapshot.lastVertexCount = lastVertexCount_.load(std::memory_order_relaxed);
     snapshot.lastIndexCount = lastIndexCount_.load(std::memory_order_relaxed);
     return snapshot;
+}
+
+std::string ImGuiDirectHost::getHoveredNodeId() const {
+    auto* node = findLiveNodeByStableId(hoveredNodeStableId_);
+    return node ? node->getNodeId() : std::string{};
+}
+
+std::string ImGuiDirectHost::getSelectedNodeId() const {
+    auto* node = findLiveNodeByStableId(pressedNodeStableId_);
+    return node ? node->getNodeId() : std::string{};
 }
 
 bool ImGuiDirectHost::ensureSurfaceQuadGeometry() {
@@ -1233,7 +1259,7 @@ void ImGuiDirectHost::renderNow() {
     using Clock = std::chrono::steady_clock;
     const auto t0 = Clock::now();
 
-    const auto renderOptions = makeDirectRenderOptions();
+    const auto renderOptions = makeDirectRenderOptions(debugOutlinesEnabled_);
     if (liveRoot_ != nullptr) {
         previewTransform_ = renderer_.buildPreviewTransform(*liveRoot_, width, height, renderOptions);
     } else {
@@ -1254,16 +1280,42 @@ void ImGuiDirectHost::renderNow() {
     const auto t2 = Clock::now();
 
     std::unordered_set<uint64_t> touchedSurfaceIds;
+    auto* drawList = ImGui::GetForegroundDrawList();
     if (liveRoot_ != nullptr) {
         renderLiveTree(*this,
                        *liveRoot_,
-                       ImGui::GetForegroundDrawList(),
+                       drawList,
                        renderOptions,
                        previewTransform_,
                        touchedSurfaceIds,
-                       juce::Time::getMillisecondCounterHiRes() * 0.001);
+                       juce::Time::getMillisecondCounterHiRes() * 0.001,
+                       hoveredNodeStableId_,
+                       pressedNodeStableId_);
     }
     pruneShaderSurfaces(touchedSurfaceIds);
+
+    // Draw copyid mode indicator
+    if (copyIdModeEnabled_) {
+        const float margin = 8.0f;
+        const char* label = "COPYID MODE - Click to copy ID";
+        auto* font = ImGui::GetFont();
+        const float fontSize = 14.0f;
+        const ImVec2 textSize = font ? font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, label) : ImVec2(200, 14);
+        const float padX = 12.0f;
+        const float padY = 6.0f;
+        const ImVec2 rectMin(margin, margin);
+        const ImVec2 rectMax(margin + textSize.x + padX * 2, margin + textSize.y + padY * 2);
+        const ImVec2 textPos(margin + padX, margin + padY);
+        
+        // Draw background
+        drawList->AddRectFilled(rectMin, rectMax, IM_COL32(56, 189, 248, 200), 6.0f);
+        // Draw border
+        drawList->AddRect(rectMin, rectMax, IM_COL32(255, 255, 255, 255), 6.0f, 0, 2.0f);
+        // Draw text
+        if (font) {
+            drawList->AddText(font, fontSize, textPos, IM_COL32(255, 255, 255, 255), label);
+        }
+    }
 
     const auto t3 = Clock::now();
 
@@ -1353,10 +1405,103 @@ void ImGuiDirectHost::mouseDown(const juce::MouseEvent& e) {
     auto hit = hitTestLiveTree(e.position, manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer);
     if (hit.node != nullptr) {
         pressedNodeStableId_ = hit.stableId;
-        const auto localPosition = juce::Point<float>(hit.scenePosition.x - static_cast<float>(hit.sceneBounds.getX()),
-                                                      hit.scenePosition.y - static_cast<float>(hit.sceneBounds.getY()));
         grabKeyboardFocus();
         setLiveFocus(hit.stableId);
+
+        // If copyid mode is enabled, copy the node ID to clipboard instead of triggering
+        if (copyIdModeEnabled_) {
+            const std::string nodeId = hit.node->getNodeId();
+            const std::string widgetType = hit.node->getWidgetType();
+            const uint64_t stableId = hit.node->getStableId();
+            
+            // Build comprehensive debug identifier like the old deriveActiveDebugIdentifier
+            std::vector<std::string> parts;
+            
+            // Widget type and name
+            std::string displayName = nodeId;
+            parts.push_back("widget:" + displayName);
+            parts.push_back("type:" + (widgetType.empty() ? std::string("RuntimeNode") : widgetType));
+            parts.push_back("stableId:" + std::to_string(stableId));
+            
+            // Build tree path by walking up the hierarchy
+            std::string treePath;
+            const RuntimeNode* current = hit.node;
+            std::vector<std::string> pathParts;
+            while (current != nullptr) {
+                const RuntimeNode* parent = current->getParent();
+                if (parent) {
+                    // Find index among siblings
+                    int index = -1;
+                    for (int i = 0; i < parent->getNumChildren(); ++i) {
+                        if (parent->getChild(i) == current) {
+                            index = i;
+                            break;
+                        }
+                    }
+                    if (index >= 0) {
+                        pathParts.push_back(std::to_string(index) + ":" + current->getNodeId());
+                    }
+                } else {
+                    pathParts.push_back("0:" + current->getNodeId());
+                }
+                current = parent;
+            }
+            // Reverse to get root-to-leaf order
+            std::reverse(pathParts.begin(), pathParts.end());
+            for (size_t i = 0; i < pathParts.size(); ++i) {
+                if (i > 0) treePath += "/";
+                treePath += pathParts[i];
+            }
+            if (!treePath.empty()) {
+                parts.push_back("tree:" + treePath);
+            }
+            
+            // Collect callback names
+            const auto& callbacks = hit.node->getCallbacks();
+            std::vector<std::string> cbNames;
+            if (callbacks.onMouseDown.valid()) cbNames.push_back("onMouseDown");
+            if (callbacks.onMouseDrag.valid()) cbNames.push_back("onMouseDrag");
+            if (callbacks.onMouseUp.valid()) cbNames.push_back("onMouseUp");
+            if (callbacks.onMouseMove.valid()) cbNames.push_back("onMouseMove");
+            if (callbacks.onMouseWheel.valid()) cbNames.push_back("onMouseWheel");
+            if (callbacks.onKeyPress.valid()) cbNames.push_back("onKeyPress");
+            if (callbacks.onClick.valid()) cbNames.push_back("onClick");
+            if (callbacks.onDoubleClick.valid()) cbNames.push_back("onDoubleClick");
+            if (callbacks.onMouseEnter.valid()) cbNames.push_back("onMouseEnter");
+            if (callbacks.onMouseExit.valid()) cbNames.push_back("onMouseExit");
+            if (callbacks.onValueChanged.valid()) cbNames.push_back("onValueChanged");
+            if (callbacks.onToggled.valid()) cbNames.push_back("onToggled");
+            
+            if (!cbNames.empty()) {
+                std::string cbStr = "callbacks:";
+                for (size_t i = 0; i < cbNames.size(); ++i) {
+                    if (i > 0) cbStr += ",";
+                    cbStr += cbNames[i];
+                }
+                parts.push_back(cbStr);
+            }
+            
+            // Join all parts with " | "
+            std::string fullId;
+            for (size_t i = 0; i < parts.size(); ++i) {
+                if (i > 0) fullId += " | ";
+                fullId += parts[i];
+            }
+            
+            // Copy to clipboard using JUCE
+            juce::SystemClipboard::copyTextToClipboard(juce::String(fullId));
+            
+            // Also call the callback so Lua can show console feedback
+            if (copyIdCallback_) {
+                copyIdCallback_(fullId);
+            }
+            
+            renderNow();
+            return;
+        }
+
+        const auto localPosition = juce::Point<float>(hit.scenePosition.x - static_cast<float>(hit.sceneBounds.getX()),
+                                                      hit.scenePosition.y - static_cast<float>(hit.sceneBounds.getY()));
         if (auto* node = findLiveNodeByStableId(hit.stableId)) {
             invokeLiveMouseDown(*node, localPosition, e.mods);
         }

@@ -37,6 +37,7 @@ public:
     };
 
     using GlobalKeyHandler = std::function<bool(const juce::KeyPress&)>;
+    using CopyIdCallback = std::function<void(const std::string& nodeId)>;
 
     struct PendingDragEvent {
         bool valid = false;
@@ -71,10 +72,22 @@ public:
 
     StatsSnapshot getStatsSnapshot() const;
     void setGlobalKeyHandler(GlobalKeyHandler handler);
+    void setCopyIdCallback(CopyIdCallback callback) { copyIdCallback_ = std::move(callback); }
     void setRootNode(RuntimeNode* root);
     void buildRenderSnapshot();
     void renderNow();
     void shutdown();
+
+    // Debug/inspection API
+    uint64_t getHoveredNodeStableId() const { return hoveredNodeStableId_; }
+    uint64_t getPressedNodeStableId() const { return pressedNodeStableId_; }
+    std::string getHoveredNodeId() const;
+    std::string getSelectedNodeId() const;
+    void setDebugOutlinesEnabled(bool enabled) { debugOutlinesEnabled_ = enabled; }
+    bool areDebugOutlinesEnabled() const { return debugOutlinesEnabled_; }
+    void setCopyIdModeEnabled(bool enabled) { copyIdModeEnabled_ = enabled; }
+    bool isCopyIdModeEnabled() const { return copyIdModeEnabled_; }
+
     std::uintptr_t prepareCustomSurfaceTexture(const RuntimeNode& node,
                                               int width,
                                               int height,
@@ -125,11 +138,14 @@ public:
     uint64_t pressedNodeStableId_ = 0;
     uint64_t hoveredNodeStableId_ = 0;
     uint64_t focusedNodeStableId_ = 0;
+    bool debugOutlinesEnabled_ = false;
+    bool copyIdModeEnabled_ = false;
 
     juce::OpenGLContext openGLContext_;
     void* imguiContext_ = nullptr;
     bool contextReady_ = false;
     GlobalKeyHandler globalKeyHandler_;
+    CopyIdCallback copyIdCallback_;
 
     std::atomic<bool> wantCaptureMouse_{false};
     std::atomic<bool> wantCaptureKeyboard_{false};

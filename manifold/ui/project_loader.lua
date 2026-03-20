@@ -1730,4 +1730,6 @@ function M.install(opts)
   return runtime
 end
 
+M.Runtime = Runtime
+
 return M
