@@ -319,21 +319,25 @@ function Shell.create(parentNode, options)
     })
 
     shell.settingsOpen = false
-    shell.scriptOverlay = nil
+    shell.settingsPanel = nil  -- lazy init
 
     shell.settingsButton = W.Button.new(shell.panel.node, "sharedSettings", {
         label = "Settings",
         bg = 0xff1e293b,
         fontSize = 13.0,
         on_click = function()
-            shell.settingsOpen = not shell.settingsOpen
-            if not shell.settingsOpen then
-                if shell.scriptOverlay then
-                    shell.scriptOverlay:setBounds(0, 0, 0, 0)
-                end
-                return
+            if not shell.settingsPanel then
+                local SettingsPanel = require("shell.settings_panel")
+                shell.settingsPanel = SettingsPanel.create(shell)
             end
+            shell.settingsPanel:toggle()
+            shell.settingsOpen = shell.settingsPanel.visible
+        end,
+    })
 
+    -- Legacy script overlay (kept for backward compat, but Settings no longer uses it)
+    shell.scriptOverlay = nil
+    if false then -- disabled legacy settings dropdown
             local currentPath = getCurrentScriptPath()
             local scripts = getVisibleUiScripts(currentPath)
             if shell.scriptOverlay == nil then
@@ -472,8 +476,8 @@ function Shell.create(parentNode, options)
                     shell.scriptOverlay:setBounds(0, 0, 0, 0)
                 end
             end)
-        end,
-    })
+    end -- if false (legacy settings dropdown)
+    
 
     -- ==========================================================================
     -- MODE TOGGLE (Performance | Edit)
@@ -570,9 +574,32 @@ function Shell.create(parentNode, options)
         end
     end)
 
-    shell.mainTabBar = parentNode:addChild("mainTabBar")
-    shell.mainTabBar:setInterceptsMouse(true, true)
+    -- Project tab host (replaces manual mainTabBar/mainTabContent)
+    shell.projectTabHost = W.ProjectTabHost.new(parentNode, "projectTabHost", {
+        tabBarHeight = 26,
+        tabGap = 4,
+        tabPadding = 12,
+        tabSizing = "fill",  -- Stretch tabs to fill available width
+        bg = 0xff0f172a,
+        tabBarBg = 0xff111827,
+        tabBg = 0xff1e293b,
+        activeTabBg = 0xff334155,
+        textColour = 0xff94a3b8,
+        activeTextColour = 0xff7dd3fc,
+        border = 0xff1e293b,
+        borderWidth = 1,
+        radius = 4,
+        on_before_switch = function(targetPath, currentPath, isSystem)
+            -- Hook called before project switch
+            -- Future: Handle system project overlay behavior here
+            if type(shell.onBeforeSwitch) == "function" then
+                shell.onBeforeSwitch(targetPath, currentPath)
+            end
+        end,
+    })
 
+    -- Legacy compatibility: expose mainTabBar/mainTabContent as widget nodes
+    shell.mainTabBar = shell.projectTabHost.node
     shell.mainTabContent = parentNode:addChild("mainTabContent")
     shell.mainTabContent:setInterceptsMouse(true, true)
     shell.mainTabContent:setWantsKeyboardFocus(true)
