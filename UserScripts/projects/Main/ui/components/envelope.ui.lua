@@ -7,23 +7,19 @@ return {
     borderWidth = 1,
     radius = 10,
   },
+  -- Port definitions for signal routing visualization
+  ports = {
+    outputs = {
+      { id = "cv_out", type = "cv", y = 0.5, label = "ENV" }  -- Center-right
+    }
+  },
   children = {
-    -- Title
-    {
-      id = "title",
-      type = "Label",
-      x = 16, y = 8,
-      w = 248, h = 16,
-      props = { text = "ADSR ENVELOPE" },
-      style = { colour = 0xfffda4af, fontSize = 12 }
-    },
-
-    -- ADSR Graph visualization
+    -- ADSR Graph visualization (title drawn inside graph)
     {
       id = "adsr_graph",
       type = "Panel",
-      x = 16, y = 28,
-      w = 248, h = 90,
+      x = 16, y = 10,
+      w = 248, h = 108,
       style = { bg = 0xff0a0a1a, border = 0xff1f2b4d, borderWidth = 1, radius = 4 }
     },
 
@@ -60,5 +56,10 @@ return {
       props = { min = 1, max = 10000, step = 1, value = 400, label = "Release" },
       style = { colour = 0xfffda4af }
     },
+    
   }
 }
+
+-- Port overlay definitions (rendered by signal router, not as widgets)
+-- CV Output Port: Center-right of component
+-- Position: x = component.w - 4, y = component.h / 2 - 6
