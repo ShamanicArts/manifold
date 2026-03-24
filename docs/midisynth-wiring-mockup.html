@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> MidiSynth Wiring System - Interactive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0b1220;
+            overflow: hidden;
+        }
+        
+        .component {
+            position: absolute;
+            background: linear-gradient(145deg, #11172a 0%, #0d1420 100%);
+            border: 1px solid #1f2b4d;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            cursor: grab;
+            user-select: none;
+            transition: box-shadow 0.2s, border-color 0.2s;
+        }
+        
+        .component:hover {
+            border-color: #334155;
+            box-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+        }
+        
+        .component.dragging {
+            cursor: grabbing;
+            z-index: 100;
+            box-shadow: 0 0 30px rgba(34, 211, 238, 0.3);
+            border-color: #22d3ee;
+        }
+        
+        .component.snapping {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .component.ghost {
+            opacity: 0.3;
+            border-style: dashed;
+        }
+        
+        .snap-indicator {
+            position: absolute;
+            border: 2px dashed #22d3ee;
+            border-radius: 8px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+        
+        .snap-indicator.active {
+            opacity: 0.5;
+        }
+        
+        .snap-zone {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(34, 211, 238, 0.1) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+        
+        .snap-zone.active {
+            opacity: 1;
+        }
+        
+        @keyframes signalFlow {
+            0% { stroke-dashoffset: 100; }
+            100% { stroke-dashoffset: 0; }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 0.9; }
+        }
+        
+        .wire-cv {
+            stroke: #22d3ee;
+            stroke-width: 2;
+            fill: none;
+            filter: drop-shadow(0 0 3px #0891b2);
+        }
+        
+        .wire-audio {
+            stroke: #4ade80;
+            stroke-width: 3;
+            fill: none;
+            filter: drop-shadow(0 0 4px #16a34a);
+        }
+        
+        .wire-animated {
+            stroke-dasharray: 10 5;
+            animation: signalFlow 1s linear infinite;
+        }
+        
+        .port-input {
+            background: #1a1a2a;
+            border: 2px solid currentColor;
+        }
+        
+        .port-output {
+            background: currentColor;
+            border: 2px solid rgba(255,255,255,0.8);
+        }
+        
+        .nodule {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .knob {
+            background: conic-gradient(from 0deg, #22d3ee var(--value, 0%), #1e293b var(--value, 0%));
+        }
+
+        .drag-hint {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(17, 23, 42, 0.9);
+            border: 1px solid #334155;
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: #94a3b8;
+            font-size: 14px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen">
+
+    <!-- SVG Wiring Layer -->
+    <svg id="wiring-layer" class="absolute inset-0 w-full h-full pointer-events-none" style="z-index: 5;">
+        <defs>
+            <filter id="glow-cv">
+                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+            <filter id="glow-audio">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        </defs>
+    </svg>
+
+    <!-- Snap Zones (hidden by default) -->
+    <div id="snap-zones"></div>
+
+    <!-- Components Container -->
+    <div id="components-container"></div>
+
+    <!-- UI Hint -->
+    <div class="drag-hint">
+        Drag components freely • They snap together when near their connections
+    </div>
+
+    <script>
+        // Component definitions
+        const components = [
+            {
+                id: 'adsr',
+                name: 'ADSR',
+                subtitle: 'Envelope',
+                width: 256,
+                height: 160,
+                x: 50,
+                y: 100,
+                ports: [
+                    { id: 'cv_out', type: 'cv', direction: 'output', x: 1, y: 0.5 }
+                ],
+                render: (el) => {
+                    el.innerHTML = `
+                        <div class="flex justify-between items-center mb-3 px-3 pt-3">
+                            <h3 class="text-slate-200 font-medium text-sm">ADSR</h3>
+                            <span class="text-xs text-slate-500">Envelope</span>
+                        </div>
+                        <div class="flex-1 flex items-end gap-1 px-3 pb-3">
+                            <div class="w-1/4 bg-cyan-500/30 rounded-t" style="height: 40%"></div>
+                            <div class="w-1/4 bg-cyan-500/20 rounded-t" style="height: 70%"></div>
+                            <div class="w-1/4 bg-cyan-500/40 rounded-t" style="height: 60%"></div>
+                            <div class="w-1/4 bg-cyan-500/10 rounded-t" style="height: 30%"></div>
+                        </div>
+                        <div class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-20">
+                            <div class="port-output w-3 h-3 rounded-full text-cyan-400"></div>
+                        </div>
+                    `;
+                }
+            },
+            {
+                id: 'oscillator',
+                name: 'Oscillator',
+                subtitle: 'Wave/Sample/Blend',
+                width: 320,
+                height: 160,
+                x: 350,
+                y: 100,
+                ports: [
+                    { id: 'cv_in', type: 'cv', direction: 'input', x: 0, y: 0.3 },
+                    { id: 'audio_out', type: 'audio', direction: 'output', x: 1, y: 0.7 }
+                ],
+                render: (el) => {
+                    el.innerHTML = `
+                        <div class="flex justify-between items-center mb-3 px-3 pt-3">
+                            <h3 class="text-slate-200 font-medium text-sm">Oscillator</h3>
+                            <span class="text-xs text-slate-500">Wave/Sample/Blend</span>
+                        </div>
+                        <div class="flex-1 bg-slate-900/50 rounded mx-3 flex items-center justify-center overflow-hidden">
+                            <svg class="w-full h-16 opacity-60" viewBox="0 0 100 30" preserveAspectRatio="none">
+                                <path d="M0 15 Q 12.5 0, 25 15 T 50 15 T 75 15 T 100 15" 
+                                      stroke="#22d3ee" stroke-width="2" fill="none"/>
+                            </svg>
+                        </div>
+                        <div class="flex justify-center gap-4 mt-2 px-3 pb-3">
+                            <div class="knob w-8 h-8 rounded-full" style="--value: 60%"></div>
+                            <div class="knob w-8 h-8 rounded-full" style="--value: 30%"></div>
+                            <div class="knob w-8 h-8 rounded-full" style="--value: 45%"></div>
+                        </div>
+                        <div class="absolute left-0 top-1/3 -translate-y-1/2 -translate-x-1/2 z-20">
+                            <div class="port-input w-3 h-3 rounded-full text-cyan-400"></div>
+                        </div>
+                        <div class="absolute right-0 top-2/3 -translate-y-1/2 translate-x-1/2 z-20">
+                            <div class="port-output w-3 h-3 rounded-full text-green-400"></div>
+                        </div>
+                    `;
+                }
+            },
+            {
+                id: 'filter',
+                name: 'Filter',
+                subtitle: 'SVF Lowpass',
+                width: 320,
+                height: 160,
+                x: 720,
+                y: 100,
+                ports: [
+                    { id: 'audio_in', type: 'audio', direction: 'input', x: 0, y: 0.5 },
+                    { id: 'audio_out', type: 'audio', direction: 'output', x: 1, y: 0.5 }
+                ],
+                render: (el) => {
+                    el.innerHTML = `
+                        <div class="flex justify-between items-center mb-3 px-3 pt-3">
+                            <h3 class="text-slate-200 font-medium text-sm">Filter</h3>
+                            <span class="text-xs text-slate-500">SVF Lowpass</span>
+                        </div>
+                        <div class="flex-1 bg-slate-900/50 rounded mx-3 relative overflow-hidden">
+                            <svg class="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+                                <path d="M0 80 Q 60 80, 100 20 L 180 0" 
+                                      stroke="#c084fc" stroke-width="2" fill="none"/>
+                            </svg>
+                        </div>
+                        <div class="flex justify-center gap-4 mt-2 px-3 pb-3">
+                            <span class="text-xs text-slate-400">Cutoff</span>
+                            <div class="knob w-8 h-8 rounded-full" style="--value: 70%"></div>
+                            <span class="text-xs text-slate-400">Res</span>
+                            <div class="knob w-8 h-8 rounded-full" style="--value: 40%"></div>
+                        </div>
+                        <div class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-20">
+                            <div class="port-input w-3 h-3 rounded-full text-green-400"></div>
+                        </div>
+                        <div class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-20">
+                            <div class="port-output w-3 h-3 rounded-full text-green-400"></div>
+                        </div>
+                    `;
+                }
+            },
+            {
+                id: 'fx1',
+                name: 'FX1',
+                subtitle: 'Reverb',
+                width: 320,
+                height: 128,
+                x: 200,
+                y: 320,
+                ports: [
+                    { id: 'audio_in', type: 'audio', direction: 'input', x: 0, y: 0.5 },
+                    { id: 'audio_out', type: 'audio', direction: 'output', x: 1, y: 0.5 }
+                ],
+                render: (el) => {
+                    el.innerHTML = `
+                        <div class="flex justify-between items-center mb-2 px-3 pt-3">
+                            <h3 class="text-slate-200 font-medium text-sm">FX1</h3>
+                            <span class="text-xs text-slate-500">Reverb</span>
+                        </div>
+                        <div class="flex-1 flex items-center justify-center gap-6 px-3 pb-3">
+                            <div class="text-center">
+                                <div class="knob w-10 h-10 rounded-full mb-1" style="--value: 55%"></div>
+                                <span class="text-xs text-slate-500">Mix</span>
+                            </div>
+                            <div class="text-center">
+                                <div class="knob w-10 h-10 rounded-full mb-1" style="--value: 30%"></div>
+                                <span class="text-xs text-slate-500">Size</span>
+                            </div>
+                        </div>
+                        <div class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-20">
+                            <div class="port-input w-3 h-3 rounded-full text-green-400"></div>
+                        </div>
+                        <div class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-20">
+                            <div class="port-output w-3 h-3 rounded-full text-green-400"></div>
+                        </div>
+                    `;
+                }
+            },
+            {
+                id: 'fx2',
+                name: 'FX2',
+                subtitle: 'Stereo Delay',
+                width: 320,
+                height: 128,
+                x: 570,
+                y: 320,
+                ports: [
+                    { id: 'audio_in', type: 'audio', direction: 'input', x: 0, y: 0.5 },
+                    { id: 'audio_out', type: 'audio', direction: 'output', x: 1, y: 0.5 }
+                ],
+                render: (el) => {
+                    el.innerHTML = `
+                        <div class="flex justify-between items-center mb-2 px-3 pt-3">
+                            <h3 class="text-slate-200 font-medium text-sm">FX2</h3>
+                            <span class="text-xs text-slate-500">Stereo Delay</span>
+                        </div>
+                        <div class="flex-1 flex items-center justify-center gap-6 px-3 pb-3">
+                            <div class="text-center">
+                                <div class="knob w-10 h-10 rounded-full mb-1" style="--value: 40%"></div>
+                                <span class="text-xs text-slate-500">Time</span>
+                            </div>
+                            <div class="text-center">
+                                <div class="knob w-10 h-10 rounded-full mb-1" style="--value: 25%"></div>
+                                <span class="text-xs text-slate-500">F.Back</span>
+                            </div>
+                        </div>
+                        <div class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-20">
+                            <div class="port-input w-3 h-3 rounded-full text-green-400"></div>
+                        </div>
+                        <div class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-20">
+                            <div class="port-output w-3 h-3 rounded-full text-green-400"></div>
+                        </div>
+                    `;
+                }
+            },
+            {
+                id: 'eq',
+                name: 'EQ',
+                subtitle: '8-Band',
+                width: 256,
+                height: 128,
+                x: 940,
+                y: 320,
+                ports: [
+                    { id: 'audio_in', type: 'audio', direction: 'input', x: 0, y: 0.5 }
+                ],
+                render: (el) => {
+                    el.innerHTML = `
+                        <div class="flex justify-between items-center mb-2 px-3 pt-3">
+                            <h3 class="text-slate-200 font-medium text-sm">EQ</h3>
+                            <span class="text-xs text-slate-500">8-Band</span>
+                        </div>
+                        <div class="flex-1 bg-slate-900/50 rounded mx-3 mb-3 flex items-end px-2 py-1 gap-px">
+                            <div class="flex-1 bg-slate-700/50 rounded-t" style="height: 30%"></div>
+                            <div class="flex-1 bg-slate-700/50 rounded-t" style="height: 50%"></div>
+                            <div class="flex-1 bg-slate-700/50 rounded-t" style="height: 40%"></div>
+                            <div class="flex-1 bg-yellow-500/60 rounded-t" style="height: 80%"></div>
+                            <div class="flex-1 bg-slate-700/50 rounded-t" style="height: 45%"></div>
+                            <div class="flex-1 bg-slate-700/50 rounded-t" style="height: 35%"></div>
+                            <div class="flex-1 bg-slate-700/50 rounded-t" style="height: 25%"></div>
+                            <div class="flex-1 bg-slate-700/50 rounded-t" style="height: 40%"></div>
+                        </div>
+                        <div class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-20">
+                            <div class="port-input w-3 h-3 rounded-full text-green-400"></div>
+                        </div>
+                    `;
+                }
+            }
+        ];
+
+        // Connection graph
+        const connections = [
+            { from: 'adsr.cv_out', to: 'oscillator.cv_in', type: 'cv' },
+            { from: 'oscillator.audio_out', to: 'filter.audio_in', type: 'audio' },
+            { from: 'filter.audio_out', to: 'fx1.audio_in', type: 'audio', vertical: true },
+            { from: 'fx1.audio_out', to: 'fx2.audio_in', type: 'audio' },
+            { from: 'fx2.audio_out', to: 'eq.audio_in', type: 'audio' }
+        ];
+
+        // State
+        let draggedComponent = null;
+        let dragOffset = { x: 0, y: 0 };
+        let snapThreshold = 100;
+        let snapDistance = 12; // gap between snapped components
+
+        // Initialize
+        function init() {
+            const container = document.getElementById('components-container');
+            
+            components.forEach(comp => {
+                const el = document.createElement('div');
+                el.id = comp.id;
+                el.className = 'component rounded-lg flex flex-col';
+                el.style.width = comp.width + 'px';
+                el.style.height = comp.height + 'px';
+                el.style.left = comp.x + 'px';
+                el.style.top = comp.y + 'px';
+                
+                comp.render(el);
+                
+                // Add drag handlers
+                el.addEventListener('mousedown', (e) => startDrag(e, comp));
+                
+                container.appendChild(el);
+                comp.element = el;
+            });
+
+            // Initial wire draw
+            updateWires();
+        }
+
+        function startDrag(e, comp) {
+            if (e.target.closest('.knob')) return; // Don't drag when clicking knobs
+            
+            draggedComponent = comp;
+            const rect = comp.element.getBoundingClientRect();
+            dragOffset.x = e.clientX - rect.left;
+            dragOffset.y = e.clientY - rect.top;
+            
+            comp.element.classList.add('dragging');
+            comp.element.classList.remove('snapping');
+            
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('mouseup', endDrag);
+        }
+
+        function onDrag(e) {
+            if (!draggedComponent) return;
+            
+            const x = e.clientX - dragOffset.x;
+            const y = e.clientY - dragOffset.y;
+            
+            draggedComponent.element.style.left = x + 'px';
+            draggedComponent.element.style.top = y + 'px';
+            draggedComponent.x = x;
+            draggedComponent.y = y;
+            
+            // Check for snap opportunities
+            checkSnap(draggedComponent);
+            
+            // Update wires in real-time
+            updateWires();
+        }
+
+        function checkSnap(comp) {
+            let bestSnap = null;
+            let bestDistance = Infinity;
+            
+            // Find connections where this component is the source
+            connections.forEach(conn => {
+                const fromPort = getPort(conn.from);
+                const toPort = getPort(conn.to);
+                
+                if (fromPort.component.id === comp.id) {
+                    const targetComp = toPort.component;
+                    const snapX = targetComp.x - comp.width - snapDistance;
+                    const snapY = targetComp.y + (targetComp.height - comp.height) / 2;
+                    
+                    const dx = comp.x - snapX;
+                    const dy = comp.y - snapY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < snapThreshold && distance < bestDistance) {
+                        bestDistance = distance;
+                        bestSnap = { x: snapX, y: snapY, target: targetComp };
+                    }
+                }
+                
+                // Also check if this is the target
+                if (toPort.component.id === comp.id) {
+                    const sourceComp = fromPort.component;
+                    const snapX = sourceComp.x + sourceComp.width + snapDistance;
+                    const snapY = sourceComp.y + (sourceComp.height - comp.height) / 2;
+                    
+                    const dx = comp.x - snapX;
+                    const dy = comp.y - snapY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < snapThreshold && distance < bestDistance) {
+                        bestDistance = distance;
+                        bestSnap = { x: snapX, y: snapY, target: sourceComp };
+                    }
+                }
+            });
+            
+            // Apply snap with animation
+            if (bestSnap) {
+                comp.element.classList.add('snapping');
+                comp.element.style.left = bestSnap.x + 'px';
+                comp.element.style.top = bestSnap.y + 'px';
+                comp.x = bestSnap.x;
+                comp.y = bestSnap.y;
+                
+                // Flash effect
+                bestSnap.target.element.style.borderColor = '#22d3ee';
+                setTimeout(() => {
+                    bestSnap.target.element.style.borderColor = '';
+                }, 300);
+            }
+        }
+
+        function endDrag() {
+            if (draggedComponent) {
+                draggedComponent.element.classList.remove('dragging');
+                draggedComponent = null;
+            }
+            document.removeEventListener('mousemove', onDrag);
+            document.removeEventListener('mouseup', endDrag);
+            updateWires();
+        }
+
+        function getPort(portId) {
+            const [compId, portName] = portId.split('.');
+            const comp = components.find(c => c.id === compId);
+            const port = comp.ports.find(p => p.id === portName);
+            return { component: comp, port: port };
+        }
+
+        function updateWires() {
+            const svg = document.getElementById('wiring-layer');
+            svg.innerHTML = `
+                <defs>
+                    <filter id="glow-cv">
+                        <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                        <feMerge>
+                            <feMergeNode in="coloredBlur"/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+                    <filter id="glow-audio">
+                        <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                        <feMerge>
+                            <feMergeNode in="coloredBlur"/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+                </defs>
+            `;
+            
+            connections.forEach(conn => {
+                const from = getPort(conn.from);
+                const to = getPort(conn.to);
+                
+                const x1 = from.component.x + from.port.x * from.component.width;
+                const y1 = from.component.y + from.port.y * from.component.height;
+                const x2 = to.component.x + to.port.x * to.component.width;
+                const y2 = to.component.y + to.port.y * to.component.height;
+                
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // Check if connection is "broken" - target is behind source or too far off-axis
+                // Only use wireless when target is BEHIND source (broken connection)
+                const isWireless = x2 < x1 - 10; // target is clearly to the left of source output
+                
+                if (isWireless) {
+                    // Wireless transmitter mode
+                    drawWireless(svg, x1, y1, x2, y2, conn.type, distance);
+                } else {
+                    // Normal wire mode
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    
+                    // Bezier curve
+                    const cp1x = x1 + (x2 - x1) * 0.5;
+                    const cp1y = y1;
+                    const cp2x = x1 + (x2 - x1) * 0.5;
+                    const cp2y = y2;
+                    
+                    const d = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
+                    
+                    path.setAttribute('d', d);
+                    path.setAttribute('class', conn.type === 'cv' ? 'wire-cv wire-animated' : 'wire-audio wire-animated');
+                    path.setAttribute('filter', conn.type === 'cv' ? 'url(#glow-cv)' : 'url(#glow-audio)');
+                    
+                    svg.appendChild(path);
+                }
+            });
+        }
+
+        function drawWireless(svg, x1, y1, x2, y2, type, distance) {
+            const color = type === 'cv' ? '#22d3ee' : '#4ade80';
+            
+            // Sender - expanding rings with SMIL (larger)
+            for (let i = 0; i < 3; i++) {
+                const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                ring.setAttribute('cx', x1);
+                ring.setAttribute('cy', y1);
+                ring.setAttribute('r', 6);
+                ring.setAttribute('stroke', color);
+                ring.setAttribute('stroke-width', '2');
+                ring.setAttribute('fill', 'none');
+                
+                const animR = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                animR.setAttribute('attributeName', 'r');
+                animR.setAttribute('from', '6');
+                animR.setAttribute('to', '28');
+                animR.setAttribute('dur', '1.5s');
+                animR.setAttribute('repeatCount', 'indefinite');
+                animR.setAttribute('begin', (i * 0.5) + 's');
+                
+                const animO = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                animO.setAttribute('attributeName', 'opacity');
+                animO.setAttribute('from', '0.7');
+                animO.setAttribute('to', '0');
+                animO.setAttribute('dur', '1.5s');
+                animO.setAttribute('repeatCount', 'indefinite');
+                animO.setAttribute('begin', (i * 0.5) + 's');
+                
+                ring.appendChild(animR);
+                ring.appendChild(animO);
+                svg.appendChild(ring);
+            }
+            
+            // Receiver - expanding rings with SMIL (larger)
+            for (let i = 0; i < 3; i++) {
+                const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                ring.setAttribute('cx', x2);
+                ring.setAttribute('cy', y2);
+                ring.setAttribute('r', 6);
+                ring.setAttribute('stroke', color);
+                ring.setAttribute('stroke-width', '2');
+                ring.setAttribute('fill', 'none');
+                
+                const animR = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                animR.setAttribute('attributeName', 'r');
+                animR.setAttribute('from', '6');
+                animR.setAttribute('to', '28');
+                animR.setAttribute('dur', '1.5s');
+                animR.setAttribute('repeatCount', 'indefinite');
+                animR.setAttribute('begin', (i * 0.5 + 0.25) + 's');
+                
+                const animO = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                animO.setAttribute('attributeName', 'opacity');
+                animO.setAttribute('from', '0.7');
+                animO.setAttribute('to', '0');
+                animO.setAttribute('dur', '1.5s');
+                animO.setAttribute('repeatCount', 'indefinite');
+                animO.setAttribute('begin', (i * 0.5 + 0.25) + 's');
+                
+                ring.appendChild(animR);
+                ring.appendChild(animO);
+                svg.appendChild(ring);
+            }
+        }
+
+
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
