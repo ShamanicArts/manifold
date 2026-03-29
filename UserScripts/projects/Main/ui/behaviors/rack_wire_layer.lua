@@ -3,6 +3,8 @@
 -- Interaction lives on the real port widgets; this overlay only draws wires
 -- and drag previews.
 
+local MidiSynthRackSpecs = require("behaviors.rack_midisynth_specs")
+
 local M = {}
 
 local COLORS = {
@@ -79,6 +81,40 @@ local function findScopedWidget(allWidgets, rootId, suffix)
   return bestWidget
 end
 
+local function isWidgetVisible(widget)
+  if widget == nil then
+    return false
+  end
+
+  local function localVisible(w)
+    if w == nil then
+      return true
+    end
+    if w.isVisible then
+      return w:isVisible()
+    end
+    if w.node and w.node.isVisible then
+      return w.node:isVisible()
+    end
+    return true
+  end
+
+  if not localVisible(widget) then
+    return false
+  end
+
+  local record = widget._structuredRecord
+  local current = type(record) == "table" and record.parent or nil
+  while current do
+    if current.widget and not localVisible(current.widget) then
+      return false
+    end
+    current = current.parent
+  end
+
+  return true
+end
+
 local function getLocalBounds(widget)
   local node = widget and widget.node or nil
   if not (node and node.getBounds) then
@@ -133,7 +169,7 @@ local function shallowCopyPortRef(portRef)
   end
   return {
     key = portRef.key,
-    nodeId = portRef.nodeId,
+    moduleId = portRef.moduleId,
     shellId = portRef.shellId,
     portId = portRef.portId,
     direction = portRef.direction,
@@ -147,7 +183,7 @@ local function shallowCopyPortRef(portRef)
 end
 
 local function connectionId(fromRef, toRef)
-  return string.format("wire_%s_%s__%s_%s", tostring(fromRef.nodeId), tostring(fromRef.portId), tostring(toRef.nodeId), tostring(toRef.portId))
+  return string.format("wire_%s_%s__%s_%s", tostring(fromRef.moduleId), tostring(fromRef.portId), tostring(toRef.moduleId), tostring(toRef.portId))
 end
 
 local function portPalette(portType)
@@ -220,7 +256,7 @@ local function getRegistry(ctx)
   return type(registry) == "table" and registry or {}
 end
 
-local function getPortAnchor(ctx, portRef)
+local function getPortAnchor(ctx, portRef, includeHidden)
   if type(portRef) ~= "table" then
     return nil
   end
@@ -231,7 +267,7 @@ local function getPortAnchor(ctx, portRef)
     entry = registry[portRef.key]
   else
     for _, candidate in pairs(registry) do
-      if candidate.nodeId == portRef.nodeId
+      if candidate.moduleId == portRef.moduleId
         and candidate.portId == portRef.portId
         and candidate.direction == portRef.direction then
         entry = candidate
@@ -241,6 +277,9 @@ local function getPortAnchor(ctx, portRef)
   end
 
   if type(entry) ~= "table" then
+    return nil
+  end
+  if not includeHidden and not isWidgetVisible(entry.widget) then
     return nil
   end
 
@@ -294,17 +333,49 @@ local function findSnapTarget(ctx, sourceRef, cursorX, cursorY)
 
   local best = nil
   local bestDist2 = nil
-  local snapRadius = 28
-  local snapRadius2 = snapRadius * snapRadius
+  local bestPriority = nil
 
   for _, entry in pairs(getRegistry(ctx)) do
     if portRefsCompatible(sourceRef, entry) then
       local anchor = getPortAnchor(ctx, entry)
       if anchor then
+        local isRail = tostring(entry.moduleId or "") == "__rackRail"
         local dist2 = distanceSquared(cursorX, cursorY, anchor.x, anchor.y)
-        if dist2 <= snapRadius2 and (bestDist2 == nil or dist2 < bestDist2) then
+        local priority = isRail and 1 or 0
+        local better = false
+
+        if isRail then
+          local halfW = math.max(1, math.floor((tonumber(anchor.w) or 0) * 0.5))
+          local halfH = math.max(1, math.floor((tonumber(anchor.h) or 0) * 0.5))
+          local inside = cursorX >= (anchor.x - halfW)
+            and cursorX <= (anchor.x + halfW)
+            and cursorY >= (anchor.y - halfH)
+            and cursorY <= (anchor.y + halfH)
+          if inside then
+            if best == nil or priority < (bestPriority or priority) then
+              better = true
+            elseif priority == bestPriority and (bestDist2 == nil or dist2 < bestDist2) then
+              better = true
+            end
+          end
+        else
+          local snapRadius = 16
+          local snapRadius2 = snapRadius * snapRadius
+          if dist2 <= snapRadius2 then
+            if best == nil then
+              better = true
+            elseif priority < (bestPriority or priority) then
+              better = true
+            elseif priority == bestPriority and (bestDist2 == nil or dist2 < bestDist2) then
+              better = true
+            end
+          end
+        end
+
+        if better then
           best = shallowCopyPortRef(entry)
           bestDist2 = dist2
+          bestPriority = priority
         end
       end
     end
@@ -411,25 +482,48 @@ local function connectionExists(ctx, fromRef, toRef)
     local from = type(conn.from) == "table" and conn.from or nil
     local to = type(conn.to) == "table" and conn.to or nil
     if from and to
-      and from.nodeId == fromRef.nodeId and from.portId == fromRef.portId
-      and to.nodeId == toRef.nodeId and to.portId == toRef.portId then
+      and from.moduleId == fromRef.moduleId and from.portId == fromRef.portId
+      and to.moduleId == toRef.moduleId and to.portId == toRef.portId then
       return true
     end
   end
   return false
 end
 
-local function getNodeRow(ctx, nodeId)
+local function getModuleRow(ctx, moduleId)
   local rackState = ctx and ctx._rackState or nil
-  local nodes = rackState and rackState.nodes or nil
-  if type(nodes) ~= "table" then
+  local modules = rackState and rackState.modules or nil
+  if type(modules) ~= "table" then
     return nil
   end
-  for i = 1, #nodes do
-    local node = nodes[i]
-    if node and node.id == nodeId then
-      return math.max(0, math.floor(tonumber(node.row) or 0))
+  for i = 1, #modules do
+    local module = modules[i]
+    if module and module.id == moduleId then
+      return math.max(0, math.floor(tonumber(module.row) or 0))
     end
+  end
+  return nil
+end
+
+local function getRailAnchor(ctx, side, row)
+  row = tonumber(row)
+  if row == nil then
+    return nil
+  end
+  if side == "right" then
+    return getPortAnchor(ctx, {
+      key = string.format("rail:right:%d", row),
+      moduleId = "__rackRail",
+      portId = string.format("send_row%d", row + 1),
+      direction = "input",
+    })
+  elseif side == "left" then
+    return getPortAnchor(ctx, {
+      key = string.format("rail:left:%d", row),
+      moduleId = "__rackRail",
+      portId = string.format("recv_row%d", row + 1),
+      direction = "output",
+    })
   end
   return nil
 end
@@ -445,27 +539,39 @@ local function portTouchesConnection(ctx, portRef, conn)
     return false
   end
 
-  if portRef.nodeId == "__rackRail" then
-    local route = type(conn.meta) == "table" and tostring(conn.meta.route or "") or ""
-    if route ~= "relay" then
-      return false
+  if portRef.moduleId == "__rackRail" then
+    if portRef.direction == "output" then
+      if from.moduleId == "__rackRail" and from.portId == portRef.portId then
+        return true
+      end
+    elseif portRef.direction == "input" then
+      if to.moduleId == "__rackRail" and to.portId == portRef.portId then
+        return true
+      end
     end
+
+    local route = type(conn.meta) == "table" and tostring(conn.meta.route or "") or ""
     local row = tonumber(portRef.row)
     if row == nil then
       return false
     end
-    if portRef.side == "right" then
-      return getNodeRow(ctx, from.nodeId) == row
-    elseif portRef.side == "left" then
-      return getNodeRow(ctx, to.nodeId) == row
+    if route == "relay" then
+      if portRef.side == "right" then
+        return getModuleRow(ctx, from.moduleId) == row
+      elseif portRef.side == "left" then
+        return getModuleRow(ctx, to.moduleId) == row
+      end
+      return false
+    elseif route == "output" and portRef.side == "right" then
+      return getModuleRow(ctx, from.moduleId) == row
     end
     return false
   end
 
   if portRef.direction == "output" then
-    return from.nodeId == portRef.nodeId and from.portId == portRef.portId
+    return from.moduleId == portRef.moduleId and from.portId == portRef.portId
   elseif portRef.direction == "input" then
-    return to.nodeId == portRef.nodeId and to.portId == portRef.portId
+    return to.moduleId == portRef.moduleId and to.portId == portRef.portId
   end
   return false
 end
@@ -490,9 +596,38 @@ function M.deleteConnectionsForPort(ctx, portRef)
   if removed > 0 then
     ctx._rackConnections = kept
     _G.__midiSynthRackConnections = ctx._rackConnections
-    M.refreshWires(ctx)
+    if ctx and type(ctx._onRackConnectionsChanged) == "function" then
+      ctx._onRackConnectionsChanged(ctx, "delete")
+    else
+      M.refreshWires(ctx)
+    end
   end
   return removed
+end
+
+function M.spliceNodeForPort(ctx, portRef)
+  if not (ctx and type(portRef) == "table") then
+    return false
+  end
+  local moduleId = tostring(portRef.moduleId or "")
+  if moduleId == "" or moduleId == "__rackRail" or moduleId == "__midiInput" or moduleId == MidiSynthRackSpecs.OUTPUT_NODE_ID then
+    return false
+  end
+
+  local current = ctx._rackConnections or {}
+  local nextConnections = MidiSynthRackSpecs.spliceRackModule(current, ctx._rackState and ctx._rackState.modules, moduleId)
+  if type(nextConnections) ~= "table" then
+    return false
+  end
+
+  ctx._rackConnections = nextConnections
+  _G.__midiSynthRackConnections = ctx._rackConnections
+  if ctx and type(ctx._onRackConnectionsChanged) == "function" then
+    ctx._onRackConnectionsChanged(ctx, "splice")
+  else
+    M.refreshWires(ctx)
+  end
+  return true
 end
 
 function M.generateWireDisplayList(ctx)
@@ -509,37 +644,29 @@ function M.generateWireDisplayList(ctx)
     local to = type(conn.to) == "table" and conn.to or nil
     if from and to then
       local fromAnchor = getPortAnchor(ctx, {
-        nodeId = from.nodeId,
+        moduleId = from.moduleId,
         portId = from.portId,
         direction = "output",
       })
       local toAnchor = getPortAnchor(ctx, {
-        nodeId = to.nodeId,
+        moduleId = to.moduleId,
         portId = to.portId,
         direction = "input",
       })
 
       local basePalette = connectionPalette(conn)
-      local visual = getWireVisualStyle(ctx, false)
+      local routeSelected = tostring(ctx and ctx._rackSelectedRouteId or "") ~= ""
+        and tostring(conn.id or "") == tostring(ctx._rackSelectedRouteId or "")
+      local visual = getWireVisualStyle(ctx, routeSelected)
       local palette = scalePaletteAlpha(basePalette, visual.alpha, visual.tipAlpha)
       local thickness = ((conn.kind == "audio") and 3.8 or 2.8) * visual.thicknessScale
       local route = type(conn.meta) == "table" and tostring(conn.meta.route or "") or ""
 
       if route == "relay" then
-        local fromRow = getNodeRow(ctx, from.nodeId)
-        local toRow = getNodeRow(ctx, to.nodeId)
-        local sendRail = (fromRow ~= nil) and getPortAnchor(ctx, {
-          key = string.format("rail:right:%d", fromRow),
-          nodeId = "__rackRail",
-          portId = string.format("send_row%d", fromRow + 1),
-          direction = "input",
-        }) or nil
-        local recvRail = (toRow ~= nil) and getPortAnchor(ctx, {
-          key = string.format("rail:left:%d", toRow),
-          nodeId = "__rackRail",
-          portId = string.format("recv_row%d", toRow + 1),
-          direction = "output",
-        }) or nil
+        local fromRow = getModuleRow(ctx, from.moduleId)
+        local toRow = getModuleRow(ctx, to.moduleId)
+        local sendRail = getRailAnchor(ctx, "right", fromRow)
+        local recvRail = getRailAnchor(ctx, "left", toRow)
 
         if fromAnchor and sendRail then
           addWire(commands, fromAnchor.x, fromAnchor.y, sendRail.x, sendRail.y, palette, thickness)
@@ -551,10 +678,38 @@ function M.generateWireDisplayList(ctx)
           addGlowDot(commands, recvRail.x, recvRail.y, recvRail.radius or 7, palette.glow, palette.tip)
           addGlowDot(commands, toAnchor.x, toAnchor.y, toAnchor.radius, palette.glow, palette.tip)
         end
+      elseif route == "output" then
+        local fromRow = getModuleRow(ctx, from.moduleId)
+        local sendRail = getRailAnchor(ctx, "right", fromRow)
+
+        if fromAnchor and sendRail then
+          addWire(commands, fromAnchor.x, fromAnchor.y, sendRail.x, sendRail.y, palette, thickness)
+          addGlowDot(commands, fromAnchor.x, fromAnchor.y, fromAnchor.radius, palette.glow, palette.tip)
+          addGlowDot(commands, sendRail.x, sendRail.y, sendRail.radius or 7, palette.glow, palette.tip)
+        end
       elseif fromAnchor and toAnchor then
         addWire(commands, fromAnchor.x, fromAnchor.y, toAnchor.x, toAnchor.y, palette, thickness)
         addGlowDot(commands, fromAnchor.x, fromAnchor.y, fromAnchor.radius, palette.glow, palette.tip)
         addGlowDot(commands, toAnchor.x, toAnchor.y, toAnchor.radius, palette.glow, palette.tip)
+      elseif conn.kind == "audio" then
+        local hiddenFromAnchor = fromAnchor and nil or getPortAnchor(ctx, {
+          moduleId = from.moduleId,
+          portId = from.portId,
+          direction = "output",
+        }, true)
+        local hiddenToAnchor = toAnchor and nil or getPortAnchor(ctx, {
+          moduleId = to.moduleId,
+          portId = to.portId,
+          direction = "input",
+        }, true)
+
+        if fromAnchor and hiddenToAnchor then
+          addWire(commands, fromAnchor.x, fromAnchor.y, hiddenToAnchor.x, hiddenToAnchor.y, palette, thickness)
+          addGlowDot(commands, fromAnchor.x, fromAnchor.y, fromAnchor.radius, palette.glow, palette.tip)
+        elseif hiddenFromAnchor and toAnchor then
+          addWire(commands, hiddenFromAnchor.x, hiddenFromAnchor.y, toAnchor.x, toAnchor.y, palette, thickness)
+          addGlowDot(commands, toAnchor.x, toAnchor.y, toAnchor.radius, palette.glow, palette.tip)
+        end
       end
     end
   end
@@ -658,8 +813,8 @@ function M.finishWireDrag(ctx)
     ctx._rackConnections[#ctx._rackConnections + 1] = {
       id = connectionId(fromRef, toRef),
       kind = tostring(fromRef.portType or "control"),
-      from = { nodeId = fromRef.nodeId, portId = fromRef.portId },
-      to = { nodeId = toRef.nodeId, portId = toRef.portId },
+      from = { moduleId = fromRef.moduleId, portId = fromRef.portId },
+      to = { moduleId = toRef.moduleId, portId = toRef.portId },
       meta = {
         pending = true,
         source = "ui-dummy-wire",
@@ -667,7 +822,11 @@ function M.finishWireDrag(ctx)
     }
   end
 
-  M.refreshWires(ctx)
+  if ctx and type(ctx._onRackConnectionsChanged) == "function" then
+    ctx._onRackConnectionsChanged(ctx, "wire-add")
+  else
+    M.refreshWires(ctx)
+  end
   return true
 end
 

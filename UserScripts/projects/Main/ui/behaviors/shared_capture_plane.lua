@@ -27,6 +27,53 @@ local function refreshDrawEntries(entries)
   end
 end
 
+local function getRenderTimeBucket(rateHz)
+  local hz = math.max(1, tonumber(rateHz) or 1)
+  if type(getTime) ~= "function" then
+    return 0
+  end
+  local now = tonumber(getTime()) or 0
+  return math.floor(now * hz + 0.5)
+end
+
+local function computeStripRenderKey(entry, state)
+  if not entry or not entry.node then
+    return "invalid"
+  end
+
+  local node = entry.node
+  local w = math.floor(tonumber(node:getWidth()) or 0)
+  local h = math.floor(tonumber(node:getHeight()) or 0)
+  local activeLayer = math.floor(tonumber(state.activeLayer) or 0)
+  local captureSize = math.floor(tonumber(state.captureSize) or 0)
+  local samplesPerBar = math.floor(tonumber(state.samplesPerBar) or 0)
+  local bucket = getRenderTimeBucket(30)
+
+  return table.concat({
+    tostring(entry.bars or 0),
+    tostring(w),
+    tostring(h),
+    tostring(activeLayer),
+    tostring(captureSize),
+    tostring(samplesPerBar),
+    tostring(bucket),
+  }, "|")
+end
+
+local function refreshStripEntries(ctx, force)
+  local state = ctx._state or {}
+  for i = 1, #(ctx._strips or {}) do
+    local entry = ctx._strips[i]
+    if entry and entry.node and entry.draw then
+      local renderKey = computeStripRenderKey(entry, state)
+      if force or entry._lastRenderKey ~= renderKey then
+        entry._lastRenderKey = renderKey
+        entry.draw(entry.node)
+      end
+    end
+  end
+end
+
 local function makeStripDraw(ctx, bars, label)
   local rangeStartBars, rangeEndBars = Shared.segmentRangeForBars(bars)
 
@@ -286,21 +333,13 @@ function M.resized(ctx, w, h)
     Shared.applySpecRect(widgets[segId], Shared.getChildSpec(ctx, segId), w, h, designW, designH)
   end
 
-  refreshDrawEntries(ctx._strips)
+  refreshStripEntries(ctx, true)
   refreshDrawEntries(ctx._segments)
 end
 
 function M.update(ctx, rawState)
   ctx._state = Shared.normalizeState(rawState)
-  -- Rate-limit the expensive capture buffer reads + display list rebuilds
-  -- to ~30Hz.  Without this, every onStateChanged (including high-frequency
-  -- knob drags) triggers getCapturePeaksAtPath for each strip/segment.
-  local now = getTime and getTime() or 0
-  if now - (ctx._lastDraw or 0) < 0.033 then
-    return
-  end
-  ctx._lastDraw = now
-  refreshDrawEntries(ctx._strips)
+  refreshStripEntries(ctx, false)
   refreshDrawEntries(ctx._segments)
 end
 

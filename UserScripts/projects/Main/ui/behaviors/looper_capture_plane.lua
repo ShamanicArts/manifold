@@ -2,6 +2,9 @@ local Shared = require("behaviors.looper_shared_state")
 
 local M = {}
 
+local CAPTURE_REDRAW_INTERVAL = 0.10
+local CAPTURE_MAX_BUCKETS = 64
+
 local function setTransparentStyle(node)
   if node and node.setStyle then
     node:setStyle({ bg = 0x00000000, border = 0x00000000, borderWidth = 0, radius = 0, opacity = 1.0 })
@@ -53,7 +56,7 @@ local function makeStripDraw(ctx, bars, label)
     local clippedEnd = math.max(0, math.min(captureSize, sampleEnd))
 
     if clippedEnd > clippedStart and w > 4 and type(getCapturePeaksAtPath) == "function" then
-      local numBuckets = math.min(w - 4, 128)
+      local numBuckets = math.min(w - 4, CAPTURE_MAX_BUCKETS)
       local activeLayer = state.activeLayer or 0
       local capturePath = string.format("/core/behavior/layer/%d/parts/capture", activeLayer)
       local peaks = getCapturePeaksAtPath(capturePath, clippedStart, clippedEnd, numBuckets)
@@ -239,6 +242,14 @@ end
 
 function M.update(ctx, rawState)
   ctx._state = Shared.normalizeState(rawState)
+  -- Rate-limit the expensive capture buffer reads + retained display list rebuilds
+  -- to ~10Hz. Without this, every state update hammers getCapturePeaksAtPath
+  -- across all strip widgets and forces fresh RuntimeNode display-list compilation.
+  local now = getTime and getTime() or 0
+  if now - (ctx._lastDraw or 0) < CAPTURE_REDRAW_INTERVAL then
+    return
+  end
+  ctx._lastDraw = now
   refreshDrawEntries(ctx._strips)
   refreshDrawEntries(ctx._segments)
 end
