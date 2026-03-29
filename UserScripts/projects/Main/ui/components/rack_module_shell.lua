@@ -74,6 +74,7 @@ return function(props)
       layout = { mode = "hybrid", left = 0, top = headerH, right = 0, bottom = 0 },
       behavior = componentBehavior,
       ref = componentRef,
+      props = type(props.componentProps) == "table" and props.componentProps or nil,
       overrides = componentOverrides,
     }
   end
@@ -83,15 +84,26 @@ return function(props)
   table.insert(shell.children, {
     id = "nodeNameLabel",
     type = "Label",
-    x = 4, y = 0,
-    w = math.max(40, w - 32), h = headerH,
-    layout = { mode = "hybrid", left = 4, top = 0, width = math.max(40, w - 32), height = headerH },
+    x = 30, y = 0,
+    w = math.max(40, w - 60), h = headerH,
+    layout = { mode = "hybrid", left = 30, top = 0, width = math.max(40, w - 60), height = headerH },
     props = { text = nodeName },
     style = { 
       colour = 0xffffffff,  -- white for max contrast
       fontSize = 9,
       bg = 0x00000000,     -- transparent
     },
+  })
+
+  -- Delete button (left side of header)
+  table.insert(shell.children, {
+    id = "deleteButton",
+    type = "Button",
+    x = 0, y = 0,
+    w = 24, h = headerH,
+    layout = { mode = "hybrid", left = 0, top = 0, width = 24, height = headerH },
+    style = { bg = 0xff991b1b, hoverBg = 0xffb91c1c, radius = 0 },
+    props = { text = "", interceptsMouse = true },
   })
 
   -- Resize toggle button (right side of header)
@@ -111,7 +123,7 @@ return function(props)
     type = "Panel",
     x = 0, y = 0,
     w = w, h = headerH,
-    layout = { mode = "hybrid", left = 0, top = 0, right = 24, height = headerH },
+    layout = { mode = "hybrid", left = 24, top = 0, right = 24, height = headerH },
     style = { bg = accentColor, radius = 0 },
     props = { interceptsMouse = true },
   })
