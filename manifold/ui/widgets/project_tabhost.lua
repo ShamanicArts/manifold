@@ -20,6 +20,46 @@ local function clampIndex(idx, count)
     return Utils.clamp(math.floor(tonumber(idx) or 1), 1, count)
 end
 
+local function buildProjectPage(projectInfo, fallbackIndex)
+    if type(projectInfo) ~= "table" then
+        return nil
+    end
+
+    local id = projectInfo.id or ("project_" .. tostring(fallbackIndex or 1))
+    local title = projectInfo.title or projectInfo.name or id
+
+    return {
+        id = id,
+        title = title,
+        path = projectInfo.path,
+        isSystem = projectInfo.isSystem == true,
+        isOverlay = projectInfo.isOverlay == true,
+    }
+end
+
+local function projectPagesEqual(lhs, rhs)
+    if #lhs ~= #rhs then
+        return false
+    end
+
+    for i = 1, #lhs do
+        local a = lhs[i]
+        local b = rhs[i]
+        if not a or not b then
+            return false
+        end
+        if a.id ~= b.id
+            or a.title ~= b.title
+            or a.path ~= b.path
+            or a.isSystem ~= b.isSystem
+            or a.isOverlay ~= b.isOverlay then
+            return false
+        end
+    end
+
+    return true
+end
+
 function ProjectTabHost.new(parent, name, config)
     local self = setmetatable(TabHost.new(parent, name, config), ProjectTabHost)
     
@@ -41,27 +81,23 @@ end
 -- Add a project tab with metadata instead of a widget.
 -- projectInfo should contain: {id, title, path, isSystem, isOverlay}
 function ProjectTabHost:addProjectTab(projectInfo)
-    if type(projectInfo) ~= "table" then
+    local page = buildProjectPage(projectInfo, #self._pages + 1)
+    if not page then
         return
     end
-    
-    local id = projectInfo.id or ("project_" .. tostring(#self._pages + 1))
-    local title = projectInfo.title or projectInfo.name or id
-    
-    self._pages[#self._pages + 1] = {
-        id = id,
-        title = title,
-        path = projectInfo.path,
-        isSystem = projectInfo.isSystem == true,
-        isOverlay = projectInfo.isOverlay == true,  -- Overlay projects don't destroy base
-    }
-    
+
+    self._pages[#self._pages + 1] = page
+
     self._layoutDirty = true
     self:_syncRetained()
 end
 
 -- Clear all project tabs.
 function ProjectTabHost:clearProjectTabs()
+    if #self._pages == 0 and self._activeIndex == 0 then
+        return
+    end
+
     self._pages = {}
     self._activeIndex = 0
     self._layoutDirty = true
@@ -71,15 +107,26 @@ end
 -- Replace all tabs from a list of project info tables.
 -- projectList: array of {id, title, path, isSystem}
 function ProjectTabHost:setProjectTabs(projectList)
-    self:clearProjectTabs()
-    
-    if type(projectList) ~= "table" then
+    local nextPages = {}
+
+    if type(projectList) == "table" then
+        for i = 1, #projectList do
+            local page = buildProjectPage(projectList[i], i)
+            if page then
+                nextPages[#nextPages + 1] = page
+            end
+        end
+    end
+
+    if projectPagesEqual(self._pages, nextPages) then
         return
     end
-    
-    for i = 1, #projectList do
-        self:addProjectTab(projectList[i])
-    end
+
+    local nextActiveIndex = clampIndex(self._activeIndex, #nextPages)
+    self._pages = nextPages
+    self._activeIndex = nextActiveIndex
+    self._layoutDirty = true
+    self:_syncRetained()
 end
 
 -- Override: Instead of toggling widget visibility, call switchUiScript.
@@ -207,9 +254,12 @@ function ProjectTabHost:setActiveByPath(path)
     if not path or path == "" then
         return
     end
-    
+
     for i = 1, #self._pages do
         if self._pages[i].path == path then
+            if self._activeIndex == i then
+                return
+            end
             -- Just update the index without triggering a switch
             self._activeIndex = i
             self._layoutDirty = true

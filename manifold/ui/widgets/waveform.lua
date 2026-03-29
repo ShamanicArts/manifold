@@ -7,6 +7,9 @@ local Schema = require("widgets.schema")
 
 local WaveformView = BaseWidget:extend()
 
+local WAVEFORM_REDRAW_INTERVAL = 0.10
+local WAVEFORM_MAX_BUCKETS = 96
+
 local function setTransparentStyle(node)
     node:setStyle({
         bg = 0x00000000,
@@ -27,6 +30,10 @@ local function pushLine(display, x1, y1, x2, y2, colour, thickness)
         thickness = thickness or 1.0,
         color = colour,
     }
+end
+
+local function waveformBucketCount(width)
+    return math.min(math.max(1, width - 4), WAVEFORM_MAX_BUCKETS)
 end
 
 function WaveformView.new(parent, name, config)
@@ -138,7 +145,7 @@ function WaveformView:onDraw(w, h)
     gfx.setColour(0x18ffffff)
     gfx.drawHorizontalLine(math.floor(h / 2), 2, w - 2)
 
-    local numBuckets = math.min(w - 4, 200)
+    local numBuckets = waveformBucketCount(w)
     local peaks = nil
 
     if self._mode == "layer" then
@@ -168,10 +175,15 @@ end
 
 function WaveformView:tickRetained(dt)
     local _ = dt
+    local now = getTime and getTime() or 0
+    if not self._scrubbing and now - (self._lastRetainedSync or 0) < WAVEFORM_REDRAW_INTERVAL then
+        return
+    end
     self:_syncRetained()
 end
 
 function WaveformView:_syncRetained(w, h)
+    self._lastRetainedSync = getTime and getTime() or self._lastRetainedSync or 0
     local _, _, bw, bh = self.node:getBounds()
     w = w or bw or 0
     h = h or bh or 0
@@ -211,7 +223,7 @@ function WaveformView:_syncRetained(w, h)
         }
     }
 
-    local numBuckets = math.min(w - 4, 200)
+    local numBuckets = waveformBucketCount(w)
     local peaks = nil
     if self._mode == "layer" then
         peaks = getLayerPeaks(self._layerIdx, numBuckets)

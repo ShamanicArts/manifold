@@ -62,8 +62,13 @@ local kEditorSchemaByWidget = {
     Toggle = {
         { path = "value", label = "Value", type = "bool", group = "Behavior" },
         { path = "label", label = "Label", type = "text", group = "Behavior" },
+        { path = "onLabel", label = "On Label", type = "text", group = "Behavior" },
+        { path = "offLabel", label = "Off Label", type = "text", group = "Behavior" },
         { path = "onColour", label = "On Colour", type = "color", group = "Style" },
         { path = "offColour", label = "Off Colour", type = "color", group = "Style" },
+        { path = "textColour", label = "Text Colour", type = "color", group = "Style" },
+        { path = "fontSize", label = "Font Size", type = "number", min = 6, max = 64, step = 1, group = "Style" },
+        { path = "radius", label = "Radius", type = "number", min = 0, max = 24, step = 1, group = "Style" },
     },
     Dropdown = {
         { path = "selected", label = "Selected", type = "number", min = 1, step = 1, group = "Behavior" },

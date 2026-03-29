@@ -291,7 +291,7 @@ function Shell.create(parentNode, options)
     })
 
     shell.masterKnob = W.Knob.new(shell.panel.node, "sharedMaster", {
-        min = 0, max = 1, step = 0.01, value = 0.8,
+        min = 0, max = 2, step = 0.01, value = 0.8,
         label = "Out", suffix = "",
         colour = 0xffa78bfa,
         on_change = function(v)

@@ -25,11 +25,56 @@ local function updateValue(self, newValue)
         return
     end
     self._value = newValue
-    self:_syncRetained()
+    if self._runtimeNodeOnly or not self.node or not self.node.setOnDraw then
+        self:_syncRetained()
+    end
     self.node:repaint()
     if self._onChange then
         self._onChange(self._value)
     end
+end
+
+local function colourBlend(a, b, t)
+    t = Utils.clamp(t or 0, 0, 1)
+    local aa = (a >> 24) & 0xff
+    local ar = (a >> 16) & 0xff
+    local ag = (a >> 8) & 0xff
+    local ab = a & 0xff
+    local ba = (b >> 24) & 0xff
+    local br = (b >> 16) & 0xff
+    local bg = (b >> 8) & 0xff
+    local bb = b & 0xff
+    local oa = math.floor(aa + (ba - aa) * t + 0.5)
+    local orr = math.floor(ar + (br - ar) * t + 0.5)
+    local og = math.floor(ag + (bg - ag) * t + 0.5)
+    local ob = math.floor(ab + (bb - ab) * t + 0.5)
+    return (oa << 24) | (orr << 16) | (og << 8) | ob
+end
+
+local function normalizedValue(self, value)
+    local range = math.max(0.001, self._max - self._min)
+    return Utils.clamp(((tonumber(value) or self._min) - self._min) / range, 0, 1)
+end
+
+local function modulationToneColour(self)
+    return colourBlend(self._colour, 0xffffffff, 0.35)
+end
+
+local function modulationState(self)
+    local baseValue = tonumber(self._value)
+    if baseValue == nil then
+        baseValue = self._min
+    end
+    if self._modOverlayEnabled ~= true then
+        return false, baseValue, baseValue, normalizedValue(self, baseValue), normalizedValue(self, baseValue)
+    end
+    local effectiveValue = tonumber(self._modEffectiveValue)
+    if effectiveValue == nil then
+        return false, baseValue, baseValue, normalizedValue(self, baseValue), normalizedValue(self, baseValue)
+    end
+    effectiveValue = Utils.clamp(effectiveValue, self._min, self._max)
+    local active = math.abs(effectiveValue - baseValue) > 0.0001
+    return active, baseValue, effectiveValue, normalizedValue(self, baseValue), normalizedValue(self, effectiveValue)
 end
 
 local function formatValueText(self, value)
@@ -56,15 +101,15 @@ local function formatValueText(self, value)
 end
 
 local function buildCompactDisplayList(self, w, h)
-    -- Compact filled-rectangle slider: bg rect, fill rect, text scrim, label left, value right
-    local range = math.max(0.001, self._max - self._min)
-    local t = (self._value - self._min) / range
+    -- Compact filled-rectangle slider: bg rect, effective shadow, base fill, text scrim.
+    local activeMod, _, _, baseT, effectiveT = modulationState(self)
     local fillColour = self._colour
     if self._dragging then
         fillColour = Utils.brighten(fillColour, 20)
     elseif self:isHovered() then
         fillColour = Utils.brighten(fillColour, 10)
     end
+    local shadowColour = modulationToneColour(self)
 
     local fontSize = math.min(10, math.max(7, h - 4))
     local scrimColour = self:isHovered() and 0x50000000 or 0x44000000
@@ -82,19 +127,40 @@ local function buildCompactDisplayList(self, w, h)
         },
     }
 
+    local miniPad = activeMod and math.max(3, math.floor(h * 0.3 + 0.5)) or 0
+    local miniH = activeMod and math.max(2, h - (miniPad * 2)) or h
+    local miniY = math.floor((h - miniH) * 0.5 + 0.5)
+    local baseFillInsetY = 0
+    local baseFillH = h
+
     if self._bidirectional then
         local midpoint = (self._min + self._max) * 0.5
-        local midT = Utils.clamp((midpoint - self._min) / range, 0, 1)
+        local midT = Utils.clamp((midpoint - self._min) / math.max(0.001, self._max - self._min), 0, 1)
         local centerX = math.floor(w * midT + 0.5)
-        local valueX = math.floor(w * t + 0.5)
-        local fillX = math.min(centerX, valueX)
-        local fillW = math.abs(valueX - centerX)
+        local baseValueX = math.floor(w * baseT + 0.5)
+        local effectiveValueX = math.floor(w * effectiveT + 0.5)
 
-        if fillW > 0 then
+        if activeMod then
+            local shadowX = math.min(centerX, effectiveValueX)
+            local shadowW = math.abs(effectiveValueX - centerX)
+            if shadowW > 0 then
+                display[#display + 1] = {
+                    cmd = "fillRoundedRect",
+                    x = shadowX, y = 0,
+                    w = shadowW, h = h,
+                    radius = 2,
+                    color = shadowColour,
+                }
+            end
+        end
+
+        local baseFillX = math.min(centerX, baseValueX)
+        local baseFillW = math.abs(baseValueX - centerX)
+        if baseFillW > 0 then
             display[#display + 1] = {
                 cmd = "fillRoundedRect",
-                x = fillX, y = 0,
-                w = fillW, h = h,
+                x = baseFillX, y = baseFillInsetY,
+                w = baseFillW, h = baseFillH,
                 radius = 2,
                 color = fillColour,
             }
@@ -106,15 +172,37 @@ local function buildCompactDisplayList(self, w, h)
             w = 2, h = math.max(1, h - 4),
             color = 0x70e2e8f0,
         }
+        if activeMod then
+            display[#display + 1] = {
+                cmd = "fillRect",
+                x = math.max(0, baseValueX - 1), y = 1,
+                w = 2, h = math.max(1, h - 2),
+                color = Utils.brighten(fillColour, 24),
+            }
+        end
     else
-        local fillW = math.max(0, math.floor(w * t + 0.5))
+        local baseFillW = math.max(0, math.floor(w * baseT + 0.5))
+        local effectiveFillW = math.max(0, math.floor(w * effectiveT + 0.5))
+
         display[#display + 1] = {
             cmd = "fillRoundedRect",
             x = 0, y = 0,
-            w = fillW, h = h,
+            w = baseFillW, h = h,
             radius = 2,
             color = fillColour,
         }
+
+        if activeMod then
+            local modX = math.min(baseFillW, effectiveFillW)
+            local modW = math.max(2, math.abs(effectiveFillW - baseFillW))
+            display[#display + 1] = {
+                cmd = "fillRoundedRect",
+                x = modX, y = 0,
+                w = modW, h = h,
+                radius = 2,
+                color = shadowColour,
+            }
+        end
     end
 
     display[#display + 1] = {
@@ -176,19 +264,21 @@ local function buildCompactDisplayList(self, w, h)
 end
 
 local function buildHorizontalDisplayList(self, w, h)
+    local activeMod, _, _, baseT, effectiveT = modulationState(self)
     local trackY = h * 0.5 - 3
     local trackH = 6
     local trackR = 3
     local trackX = 8
     local trackW = math.max(1, w - 16)
-    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
-    local thumbX = trackX + t * trackW - 6
+    local baseThumbX = trackX + baseT * trackW - 6
+    local effectiveThumbX = trackX + effectiveT * trackW - 4
     local thumbColour = self._colour
     if self._dragging then
         thumbColour = Utils.brighten(thumbColour, 30)
     elseif self:isHovered() then
         thumbColour = Utils.brighten(thumbColour, 15)
     end
+    local shadowColour = modulationToneColour(self)
 
     local display = {
         {
@@ -200,24 +290,46 @@ local function buildHorizontalDisplayList(self, w, h)
             radius = trackR,
             color = self._bg,
         },
-        {
+    }
+
+    if activeMod then
+        display[#display + 1] = {
             cmd = "fillRoundedRect",
             x = trackX,
             y = trackY,
-            w = math.max(0, math.floor(trackW * t + 0.5)),
+            w = math.max(0, math.floor(trackW * effectiveT + 0.5)),
             h = trackH,
             radius = trackR,
-            color = self._colour,
-        },
-        {
+            color = shadowColour,
+        }
+        display[#display + 1] = {
             cmd = "fillRoundedRect",
-            x = thumbX,
-            y = (h - 20) / 2,
-            w = 12,
-            h = 20,
-            radius = 4,
-            color = thumbColour,
-        },
+            x = effectiveThumbX,
+            y = (h - 14) / 2,
+            w = 8,
+            h = 14,
+            radius = 3,
+            color = shadowColour,
+        }
+    end
+
+    display[#display + 1] = {
+        cmd = "fillRoundedRect",
+        x = trackX,
+        y = trackY + (activeMod and 1 or 0),
+        w = math.max(0, math.floor(trackW * baseT + 0.5)),
+        h = activeMod and math.max(2, trackH - 2) or trackH,
+        radius = trackR,
+        color = self._colour,
+    }
+    display[#display + 1] = {
+        cmd = "fillRoundedRect",
+        x = baseThumbX,
+        y = (h - 20) / 2,
+        w = 12,
+        h = 20,
+        radius = 4,
+        color = thumbColour,
     }
 
     if self._showValue then
@@ -240,17 +352,18 @@ local function buildHorizontalDisplayList(self, w, h)
 end
 
 local function buildVerticalDisplayList(self, w, h)
+    local activeMod, _, _, baseT, effectiveT = modulationState(self)
     local trackX = 2
     local trackW = math.max(1, w - 4)
     local trackY = 4
     local trackH = math.max(1, h - 8)
     local trackR = trackW / 2
-    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
 
     local thumbH = math.max(30, trackH * 0.3)
     local thumbW = trackW
     local maxThumbY = trackY + trackH - thumbH
-    local thumbY = trackY + maxThumbY * (1 - t)
+    local baseThumbY = trackY + maxThumbY * (1 - baseT)
+    local effectiveThumbY = trackY + maxThumbY * (1 - effectiveT)
 
     local thumbColour = self._colour
     if self._dragging then
@@ -259,7 +372,7 @@ local function buildVerticalDisplayList(self, w, h)
         thumbColour = Utils.brighten(thumbColour, 15)
     end
 
-    return {
+    local display = {
         {
             cmd = "fillRoundedRect",
             x = trackX,
@@ -269,16 +382,30 @@ local function buildVerticalDisplayList(self, w, h)
             radius = trackR,
             color = self._bg,
         },
-        {
+    }
+
+    if activeMod then
+        display[#display + 1] = {
             cmd = "fillRoundedRect",
-            x = trackX,
-            y = thumbY,
-            w = thumbW,
+            x = trackX + 1,
+            y = effectiveThumbY,
+            w = math.max(1, thumbW - 2),
             h = thumbH,
             radius = trackR,
-            color = thumbColour,
+            color = modulationToneColour(self),
         }
+    end
+
+    display[#display + 1] = {
+        cmd = "fillRoundedRect",
+        x = trackX,
+        y = baseThumbY,
+        w = thumbW,
+        h = thumbH,
+        radius = trackR,
+        color = thumbColour,
     }
+    return display
 end
 
 -- ============================================================================
@@ -308,6 +435,8 @@ function Slider.new(parent, name, config)
     self._dragging = false
     self._dragStartX = 0
     self._dragStartValue = 0
+    self._modOverlayEnabled = false
+    self._modEffectiveValue = nil
 
     self.node:setInterceptsMouse(true, false)
 
@@ -366,17 +495,30 @@ function Slider:valueFromMouse(mx)
 end
 
 function Slider:onDraw(w, h)
+    local activeMod, _, _, baseT, effectiveT = modulationState(self)
+
     if self._compact then
-        -- Compact filled rectangle mode
-        local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
-        local fillW = math.max(0, math.floor(w * t + 0.5))
+        local baseFillW = math.max(0, math.floor(w * baseT + 0.5))
+        local effectiveFillW = math.max(0, math.floor(w * effectiveT + 0.5))
         local fillCol = self._colour
         if self._dragging then fillCol = Utils.brighten(fillCol, 20)
         elseif self:isHovered() then fillCol = Utils.brighten(fillCol, 10) end
+
         gfx.setColour(self._bg)
         gfx.fillRoundedRect(0, 0, w, h, 2)
+
         gfx.setColour(fillCol)
-        gfx.fillRoundedRect(0, 0, fillW, h, 2)
+        gfx.fillRoundedRect(0, 0, baseFillW, h, 2)
+
+        if activeMod then
+            local modX = math.min(baseFillW, effectiveFillW)
+            local modW = math.max(2, math.abs(effectiveFillW - baseFillW))
+            local modColour = modulationToneColour(self)
+
+            gfx.setColour(modColour)
+            gfx.fillRoundedRect(modX, 0, modW, h, 2)
+        end
+
         local fontSize = math.min(10, math.max(7, h - 4))
         if self._label and self._label ~= "" then
             gfx.setColour(0xffe2e8f0)
@@ -398,8 +540,13 @@ function Slider:onDraw(w, h)
 
     self:drawTrack(8, trackY, w - 16, trackH, trackR)
 
-    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
-    local thumbX = 8 + t * (w - 16) - 6
+    if activeMod then
+        local effectiveThumbX = 8 + effectiveT * (w - 16) - 4
+        gfx.setColour(modulationToneColour(self))
+        gfx.fillRoundedRect(effectiveThumbX, (h - 14) / 2, 8, 14, 3)
+    end
+
+    local thumbX = 8 + baseT * (w - 16) - 6
     self:drawThumb(thumbX, (h - 20) / 2, 12, 20)
 
     if self._showValue then
@@ -411,12 +558,21 @@ function Slider:onDraw(w, h)
 end
 
 function Slider:drawTrack(x, y, w, h, r)
+    local activeMod, _, _, baseT, effectiveT = modulationState(self)
     gfx.setColour(self._bg)
     gfx.fillRoundedRect(x, y, w, h, r)
 
-    local t = (self._value - self._min) / math.max(0.001, self._max - self._min)
     gfx.setColour(self._colour)
-    gfx.fillRoundedRect(x, y, w * t, h, r)
+    gfx.fillRoundedRect(x, y, w * baseT, h, r)
+
+    if activeMod then
+        local modX = x + math.min(baseT, effectiveT) * w
+        local modW = math.max(2, math.abs(effectiveT - baseT) * w)
+        local modY = y + 1
+        local modH = math.max(2, h - 2)
+        gfx.setColour(modulationToneColour(self))
+        gfx.fillRoundedRect(modX, modY, modW, modH, math.max(1, r - 1))
+    end
 end
 
 function Slider:drawThumb(x, y, w, h)
@@ -457,8 +613,58 @@ end
 
 function Slider:setValueFormatter(formatter)
     self._valueFormatter = formatter
-    self:_syncRetained()
+    if self._runtimeNodeOnly or not self.node or not self.node.setOnDraw then
+        self:_syncRetained()
+    end
     self.node:repaint()
+end
+
+function Slider:setLabel(label)
+    local nextLabel = tostring(label or "")
+    if self._label == nextLabel then
+        return
+    end
+    self._label = nextLabel
+    if self._runtimeNodeOnly or not self.node or not self.node.setOnDraw then
+        self:_syncRetained()
+    end
+    self.node:repaint()
+end
+
+function Slider:getLabel()
+    return self._label
+end
+
+function Slider:setModulationState(_baseValue, effectiveValue, options)
+    options = options or {}
+    local enabled = options.enabled == true
+    local nextEffective = tonumber(effectiveValue)
+    if enabled ~= true or nextEffective == nil then
+        nextEffective = nil
+        enabled = false
+    else
+        nextEffective = Utils.clamp(nextEffective, self._min, self._max)
+    end
+
+    local currentEffective = tonumber(self._modEffectiveValue)
+    if self._modOverlayEnabled == enabled then
+        if enabled ~= true and currentEffective == nil then
+            return nil
+        end
+        if enabled == true and currentEffective ~= nil and math.abs(currentEffective - nextEffective) <= 0.0001 then
+            return nil
+        end
+    end
+
+    self._modOverlayEnabled = enabled
+    self._modEffectiveValue = nextEffective
+    if self.node then
+        self:refreshRetained()
+        if self.node.repaint then
+            self.node:repaint()
+        end
+    end
+    return nil
 end
 
 -- ============================================================================

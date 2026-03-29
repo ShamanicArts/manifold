@@ -1,5 +1,5 @@
 -- toggle.lua
--- Toggle/Switch widget
+-- Toggle button widget - button style with label inside
 
 local BaseWidget = require("widgets.base")
 local Utils = require("widgets.utils")
@@ -12,8 +12,13 @@ function Toggle.new(parent, name, config)
 
     self._value = config.value or false
     self._label = config.label or ""
-    self._onColour = Utils.colour(config.onColour, 0xff22c55e)
-    self._offColour = Utils.colour(config.offColour, 0xff374151)
+    self._onLabel = config.onLabel or config.on_label or self._label
+    self._offLabel = config.offLabel or config.off_label or self._label
+    self._onColour = Utils.colour(config.onColour, 0xff0ea5e9)
+    self._offColour = Utils.colour(config.offColour, 0xff475569)
+    self._textColour = Utils.colour(config.textColour, 0xfff1f5f9)
+    self._fontSize = config.fontSize or 11.0
+    self._radius = config.radius or 4.0
     self._onChange = config.on_change or config.onChange
 
     self:_storeEditorMeta("Toggle", {
@@ -34,33 +39,40 @@ function Toggle:onClick()
     end
 end
 
+function Toggle:_getCurrentLabel()
+    return self._value and self._onLabel or self._offLabel
+end
+
 function Toggle:onDraw(w, h)
-    -- Track
-    local trackW = math.floor(math.min(38, w * 0.5))
-    local trackH = 18
-    local trackX = math.floor(w - trackW - 6)
-    local trackY = math.floor((h - trackH) / 2)
-    local trackR = math.floor(trackH / 2)
+    -- Background fills the entire button area
+    local bg = self._value and self._onColour or self._offColour
     
-    local trackCol = self._value and self._onColour or self._offColour
-    if self:isHovered() then
-        trackCol = Utils.brighten(trackCol, 15)
+    if not self:isEnabled() then
+        bg = Utils.darken(bg, 40)
+    elseif self:isPressed() then
+        bg = Utils.darken(bg, 20)
+    elseif self:isHovered() then
+        bg = Utils.brighten(bg, 25)
     end
     
-    gfx.setColour(trackCol)
-    gfx.fillRoundedRect(trackX, trackY, trackW, trackH, trackR)
+    gfx.setColour(bg)
+    gfx.fillRoundedRect(1, 1, w - 2, h - 2, self._radius)
     
-    -- Thumb
-    local thumbR = trackH - 4
-    local thumbX = math.floor(self._value and (trackX + trackW - thumbR - 2) or (trackX + 2))
-    local thumbY = math.floor(trackY + 2)
-    gfx.setColour(0xffe2e8f0)
-    gfx.fillRoundedRect(thumbX, thumbY, thumbR, thumbR, math.floor(thumbR / 2))
+    -- Border
+    gfx.setColour(Utils.brighten(bg, 40))
+    gfx.drawRoundedRect(1, 1, w - 2, h - 2, self._radius, 1.0)
     
-    -- Label
-    gfx.setColour(self._value and 0xffe2e8f0 or 0xff94a3b8)
-    gfx.setFont(12.0)
-    gfx.drawText(self._label, 6, 0, math.floor(trackX - 10), h, Justify.centredLeft)
+    -- Label centered with shadow for readability
+    local label = self:_getCurrentLabel()
+    gfx.setFont(self._fontSize)
+    
+    -- Text shadow
+    gfx.setColour(0xb0000000)
+    gfx.drawText(label, 1, 1, w, h, Justify.centred)
+    
+    -- Main text
+    gfx.setColour(self._textColour)
+    gfx.drawText(label, 0, 0, w, h, Justify.centred)
 end
 
 function Toggle:_syncRetained(w, h)
@@ -68,58 +80,53 @@ function Toggle:_syncRetained(w, h)
     w = w or bw or 0
     h = h or bh or 0
 
-    local trackW = math.floor(math.min(38, w * 0.5))
-    local trackH = 18
-    local trackX = math.floor(w - trackW - 6)
-    local trackY = math.floor((h - trackH) / 2)
-    local trackR = math.floor(trackH / 2)
-    local trackCol = self._value and self._onColour or self._offColour
-    if self:isHovered() then
-        trackCol = Utils.brighten(trackCol, 15)
+    -- Background color based on state
+    local bg = self._value and self._onColour or self._offColour
+    if not self:isEnabled() then
+        bg = Utils.darken(bg, 40)
+    elseif self:isPressed() then
+        bg = Utils.darken(bg, 20)
+    elseif self:isHovered() then
+        bg = Utils.brighten(bg, 25)
     end
 
-    local thumbR = trackH - 4
-    local thumbX = math.floor(self._value and (trackX + trackW - thumbR - 2) or (trackX + 2))
-    local thumbY = math.floor(trackY + 2)
-
     self.node:setStyle({
-        bg = 0x00000000,
-        border = 0x00000000,
-        borderWidth = 0,
-        radius = 0,
+        bg = bg,
+        border = Utils.brighten(bg, 40),
+        borderWidth = 1.0,
+        radius = self._radius,
         opacity = 1.0
     })
 
+    local label = self:_getCurrentLabel()
+    local textShadow = 0xb0000000
+
     self.node:setDisplayList({
-        {
-            cmd = "fillRoundedRect",
-            x = trackX,
-            y = trackY,
-            w = trackW,
-            h = trackH,
-            radius = trackR,
-            color = trackCol,
-        },
-        {
-            cmd = "fillRoundedRect",
-            x = thumbX,
-            y = thumbY,
-            w = thumbR,
-            h = thumbR,
-            radius = math.floor(thumbR / 2),
-            color = 0xffe2e8f0,
-        },
+        -- Text shadow for readability
         {
             cmd = "drawText",
-            x = 6,
-            y = 0,
-            w = math.max(0, trackX - 10),
+            x = 1,
+            y = 1,
+            w = w,
             h = h,
-            color = self._value and 0xffe2e8f0 or 0xff94a3b8,
-            text = self._label,
-            fontSize = 12.0,
-            align = "left",
-            valign = "middle",
+            color = textShadow,
+            text = label,
+            fontSize = self._fontSize,
+            align = "center",
+            valign = "middle"
+        },
+        -- Main text
+        {
+            cmd = "drawText",
+            x = 0,
+            y = 0,
+            w = w,
+            h = h,
+            color = self._textColour,
+            text = label,
+            fontSize = self._fontSize,
+            align = "center",
+            valign = "middle"
         }
     })
 end
@@ -134,6 +141,78 @@ function Toggle:setValue(v)
         return
     end
     self._value = nextValue
+    self:_syncRetained()
+    self.node:repaint()
+end
+
+function Toggle:setLabel(label)
+    local nextLabel = label or ""
+    if self._label == nextLabel then
+        return
+    end
+    self._label = nextLabel
+    self:_syncRetained()
+    self.node:repaint()
+end
+
+function Toggle:getLabel()
+    return self._label
+end
+
+function Toggle:setOnLabel(label)
+    local nextLabel = label or ""
+    if self._onLabel == nextLabel then
+        return
+    end
+    self._onLabel = nextLabel
+    self:_syncRetained()
+    self.node:repaint()
+end
+
+function Toggle:getOnLabel()
+    return self._onLabel
+end
+
+function Toggle:setOffLabel(label)
+    local nextLabel = label or ""
+    if self._offLabel == nextLabel then
+        return
+    end
+    self._offLabel = nextLabel
+    self:_syncRetained()
+    self.node:repaint()
+end
+
+function Toggle:getOffLabel()
+    return self._offLabel
+end
+
+function Toggle:setOnColour(colour)
+    local newColour = Utils.colour(colour, self._onColour)
+    if self._onColour == newColour then
+        return
+    end
+    self._onColour = newColour
+    self:_syncRetained()
+    self.node:repaint()
+end
+
+function Toggle:setOffColour(colour)
+    local newColour = Utils.colour(colour, self._offColour)
+    if self._offColour == newColour then
+        return
+    end
+    self._offColour = newColour
+    self:_syncRetained()
+    self.node:repaint()
+end
+
+function Toggle:setTextColour(colour)
+    local newColour = Utils.colour(colour, self._textColour)
+    if self._textColour == newColour then
+        return
+    end
+    self._textColour = newColour
     self:_syncRetained()
     self.node:repaint()
 end

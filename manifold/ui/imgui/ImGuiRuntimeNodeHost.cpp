@@ -378,7 +378,8 @@ void ImGuiRuntimeNodeHost::invokeLiveMouseDown(uint64_t stableId,
                       localPosition.y,
                       mods.isShiftDown(),
                       isCtrlLikeDown(mods),
-                      mods.isAltDown());
+                      mods.isAltDown(),
+                      mods.isRightButtonDown());
 }
 
 void ImGuiRuntimeNodeHost::invokeLiveMouseDrag(uint64_t stableId,
@@ -400,7 +401,8 @@ void ImGuiRuntimeNodeHost::invokeLiveMouseDrag(uint64_t stableId,
                       dragDelta.y,
                       mods.isShiftDown(),
                       isCtrlLikeDown(mods),
-                      mods.isAltDown());
+                      mods.isAltDown(),
+                      mods.isRightButtonDown());
 }
 
 void ImGuiRuntimeNodeHost::invokeLiveMouseUp(uint64_t stableId,
@@ -427,7 +429,8 @@ void ImGuiRuntimeNodeHost::invokeLiveMouseUp(uint64_t stableId,
                       localPosition.y,
                       mods.isShiftDown(),
                       isCtrlLikeDown(mods),
-                      mods.isAltDown());
+                      mods.isAltDown(),
+                      mods.isRightButtonDown());
 }
 
 void ImGuiRuntimeNodeHost::invokeLiveMouseMove(uint64_t stableId,
