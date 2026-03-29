@@ -527,30 +527,27 @@ local function attach(ctx, layers)
   end
 
   local function createFxSlot(basePath)
-    register(basePath .. "/select", { type = "f", min = 0.0, max = #effectDefs - 1, default = 0.0 })
+    register(basePath .. "/select", {
+      type = "f",
+      min = 0.0,
+      max = #effectDefs - 1,
+      default = 0.0,
+      deferGraphMutation = true,
+    })
 
     local slot = {
+      input = ctx.primitives.PassthroughNode.new(2),
+      output = ctx.primitives.MixerNode.new(),
       effects = {},
       effectDefs = effectDefs,
+      effectState = {},
       paramBindings = {},
       select = 0,
-      output = nil,
     }
 
-    local gatedOutputs = {}
-
     for idx, def in ipairs(effectDefs) do
-      local effect = def.create()
-      effect.id = def.id
-      effect.label = def.label
-      effect.def = def
-      effect.gate = ctx.primitives.GainNode.new(2)
-      effect.gate:setGain(idx == 1 and 1.0 or 0.0)
-      ctx.graph.connect(effect.output, effect.gate)
-      slot.effects[idx] = effect
-      gatedOutputs[#gatedOutputs + 1] = effect.gate
-
-      for _, param in ipairs(def.params) do
+      local stateForDef = {}
+      for _, param in ipairs(def.params or {}) do
         local path = basePath .. "/" .. def.id .. "/" .. param.name
         register(path, {
           type = param.type or "f",
@@ -558,43 +555,102 @@ local function attach(ctx, layers)
           max = param.max,
           default = param.default,
         })
-        applyEffectParam(param, effect, param.default)
+        stateForDef[param.name] = param.default
         slot.paramBindings[path] = function(value)
-          return applyEffectParam(param, effect, value)
+          local values = slot.effectState[idx] or {}
+          values[param.name] = value
+          slot.effectState[idx] = values
+          local effect = slot.effects[idx]
+          if effect then
+            return applyEffectParam(param, effect, value)
+          end
+          return true
         end
+      end
+      slot.effectState[idx] = stateForDef
+    end
+
+    slot.output:setMaster(1.0)
+
+    slot.applyStoredParams = function(effectIndex)
+      local effect = slot.effects[effectIndex]
+      local def = slot.effectDefs[effectIndex]
+      local values = slot.effectState[effectIndex] or {}
+      if not effect or not def then
+        return
+      end
+
+      for _, param in ipairs(def.params or {}) do
+        local value = values[param.name]
+        if value == nil then
+          value = param.default
+          values[param.name] = value
+        end
+        applyEffectParam(param, effect, value)
       end
     end
 
-    local effectMixer = ctx.primitives.MixerNode.new()
-    effectMixer:setInputCount(#gatedOutputs)
-    effectMixer:setMaster(1.0)
-    for i = 1, #gatedOutputs do
-      effectMixer:setGain(i, 1.0)
-      effectMixer:setPan(i, 0.0)
-      ctx.graph.connect(gatedOutputs[i], effectMixer, 0, i - 1)
+    slot.ensureInstance = function(effectIndex)
+      local existing = slot.effects[effectIndex]
+      if existing then
+        return existing
+      end
+
+      local def = slot.effectDefs[effectIndex]
+      if not def or type(def.create) ~= "function" then
+        return nil
+      end
+
+      local ok, effect = pcall(def.create)
+      if not ok or type(effect) ~= "table" then
+        return nil
+      end
+
+      effect.id = def.id
+      effect.label = def.label
+      effect.def = def
+      effect.gate = ctx.primitives.GainNode.new(2)
+      effect.gate:setGain(0.0)
+
+      ctx.graph.connect(slot.input, effect.input)
+      ctx.graph.connect(effect.output, effect.gate)
+      connectMixerInput(slot.output, effectIndex, effect.gate)
+
+      slot.effects[effectIndex] = effect
+      slot.applyStoredParams(effectIndex)
+      return effect
     end
-    slot.output = effectMixer
 
     slot.connectSource = function(source)
       if not source then return end
-      for i = 1, #slot.effects do
-        ctx.graph.connect(source, slot.effects[i].input)
-      end
+      ctx.graph.connect(source, slot.input)
     end
 
-    slot.applySelection = function()
-      local selected = clamp(math.floor(slot.select + 0.5), 0, #slot.effects - 1)
-      slot.select = selected
-      for i = 1, #slot.effects do
-        slot.effects[i].gate:setGain((i - 1) == selected and 1.0 or 0.0)
+    slot.applySelection = function(value)
+      local numeric = tonumber(value)
+      if numeric == nil then numeric = tonumber(slot.select) or 0.0 end
+      local selected = clamp(math.floor(numeric + 0.5), 0, #slot.effectDefs - 1)
+      local effectIndex = selected + 1
+      local effect = slot.ensureInstance(effectIndex)
+      if not effect then
+        return false
       end
+
+      slot.select = selected
+      for i = 1, #slot.effectDefs do
+        local instance = slot.effects[i]
+        if instance and instance.gate then
+          instance.gate:setGain(i == effectIndex and 1.0 or 0.0)
+        end
+      end
+      slot.applyStoredParams(effectIndex)
+      return true
     end
 
     slot.applyParam = function(path, value)
       if path == basePath .. "/select" then
-        slot.select = value
-        slot.applySelection()
-        return true
+        slot.select = tonumber(value) or 0.0
+        return slot.applySelection(slot.select)
       end
       local fn = slot.paramBindings[path]
       if fn then
@@ -604,7 +660,8 @@ local function attach(ctx, layers)
       return false
     end
 
-    slot.applySelection()
+    slot.ensureInstance(1)
+    slot.applySelection(0)
     return slot
   end
 

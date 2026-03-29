@@ -93,6 +93,13 @@ function buildPlugin(ctx)
       return {}
     end,
 
+    getRackAudioRouteDebug = function()
+      if synth.getRackAudioRouteDebug then
+        return synth.getRackAudioRouteDebug()
+      end
+      return {}
+    end,
+
     process = function(blockSize, sampleRate)
       if synth.process then
         synth.process(blockSize, sampleRate)

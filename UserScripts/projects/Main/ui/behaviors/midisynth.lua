@@ -1,214 +1,30 @@
 local RackLayout = require("behaviors.rack_layout")
 local MidiSynthRackSpecs = require("behaviors.rack_midisynth_specs")
 local RackWireLayer = require("behaviors.rack_wire_layer")
+local FxDefs = require("fx_definitions")
+local ScopedWidget = require("ui.scoped_widget")
+local WidgetSync = require("ui.widget_sync")
+local MidiDevices = require("ui.midi_devices")
+local RackLayoutManager = require("ui.rack_layout_manager")
+local InitBindings = require("ui.init_bindings")
+local InitControls = require("ui.init_controls")
+local PatchbayRuntime = require("ui.patchbay_runtime")
+local RackModPopover = require("ui.rack_mod_popover")
+local ParameterBinder = require("parameter_binder")
+local ModEndpointRegistry = require("modulation.endpoint_registry")
+local ModRouteCompiler = require("modulation.route_compiler")
+local ModRuntime = require("modulation.runtime")
+local RackControlRouter = require("modulation.rack_control_router")
+local MidiParamRack = require("ui.midi_param_rack")
+local RackModuleFactory = require("ui.rack_module_factory")
 
 local M = {}
 
--- Find this behavior's global ID prefix from the runtime behaviors list.
--- In the standalone MidiSynth this is always "root", but when embedded as a
--- component inside Main tabs it becomes something like
--- "root.tabs.midisynth_tab.midisynth_view".
-local function resolveGlobalPrefix(ctx)
-  local runtime = _G.__manifoldStructuredUiRuntime
-  if runtime and runtime.behaviors then
-    for _, b in ipairs(runtime.behaviors) do
-      if b.ctx == ctx then
-        return b.id or "root"
-      end
-    end
-  end
-  return "root"
-end
-
-local function endsWith(text, suffix)
-  if type(text) ~= "string" or type(suffix) ~= "string" then
-    return false
-  end
-  if suffix == "" then
-    return true
-  end
-  return text:sub(-#suffix) == suffix
-end
-
-local function findScopedWidget(allWidgets, rootId, suffix)
-  if type(allWidgets) ~= "table" or type(suffix) ~= "string" or suffix == "" then
-    return nil
-  end
-
-  local exact = nil
-  if type(rootId) == "string" and rootId ~= "" then
-    exact = allWidgets[rootId .. suffix]
-  end
-  if exact ~= nil then
-    return exact
-  end
-
-  local bestKey = nil
-  local bestWidget = nil
-  for key, widget in pairs(allWidgets) do
-    if type(key) == "string" and endsWith(key, suffix) then
-      local rootMatches = type(rootId) ~= "string" or rootId == "" or key:sub(1, #rootId) == rootId
-      if rootMatches then
-        if bestKey == nil or #key < #bestKey then
-          bestKey = key
-          bestWidget = widget
-        end
-      end
-    end
-  end
-  return bestWidget
-end
-
-local function findScopedBehavior(runtime, rootId, suffix)
-  if not (runtime and runtime.behaviors and type(suffix) == "string" and suffix ~= "") then
-    return nil
-  end
-
-  local exactId = nil
-  if type(rootId) == "string" and rootId ~= "" then
-    exactId = rootId .. suffix
-  end
-  if exactId ~= nil then
-    for _, behavior in ipairs(runtime.behaviors) do
-      if behavior.id == exactId then
-        return behavior
-      end
-    end
-  end
-
-  local best = nil
-  for _, behavior in ipairs(runtime.behaviors) do
-    local id = behavior.id
-    if type(id) == "string" and endsWith(id, suffix) then
-      local rootMatches = type(rootId) ~= "string" or rootId == "" or id:sub(1, #rootId) == rootId
-      if rootMatches then
-        if best == nil or #id < #(best.id or "") then
-          best = behavior
-        end
-      end
-    end
-  end
-  return best
-end
-
-local function getScopedWidget(ctx, suffix)
-  if type(ctx) ~= "table" or type(suffix) ~= "string" or suffix == "" then
-    return nil
-  end
-  local cache = ctx._scopedWidgetCache
-  if type(cache) ~= "table" then
-    cache = {}
-    ctx._scopedWidgetCache = cache
-  end
-  local cached = cache[suffix]
-  if cached ~= nil then
-    return cached ~= false and cached or nil
-  end
-  local widget = findScopedWidget(ctx.allWidgets or {}, ctx._globalPrefix or "root", suffix)
-  cache[suffix] = widget or false
-  return widget
-end
-
-local function getScopedBehavior(ctx, suffix)
-  if type(ctx) ~= "table" or type(suffix) ~= "string" or suffix == "" then
-    return nil
-  end
-  local cache = ctx._scopedBehaviorCache
-  if type(cache) ~= "table" then
-    cache = {}
-    ctx._scopedBehaviorCache = cache
-  end
-  local cached = cache[suffix]
-  if cached ~= nil then
-    return cached ~= false and cached or nil
-  end
-  local runtime = _G.__manifoldStructuredUiRuntime
-  local behavior = findScopedBehavior(runtime, ctx._globalPrefix or "root", suffix)
-  cache[suffix] = behavior or false
-  return behavior
-end
-
-local function flushDeferredRefreshesNow()
-  local shell = (type(_G) == "table") and _G.shell or nil
-  if type(shell) == "table" and type(shell.flushDeferredRefreshes) == "function" then
-    pcall(function() shell:flushDeferredRefreshes() end)
-  end
-end
-
-local function refreshRetainedSubtree(node)
-  if node == nil then
-    return
-  end
-
-  if node.getUserData ~= nil then
-    local meta = node:getUserData("_editorMeta")
-    if type(meta) == "table" then
-      local widget = meta.widget
-      if type(widget) == "table" and type(widget.refreshRetained) == "function" then
-        local w = 0
-        local h = 0
-        if node.getWidth ~= nil and node.getHeight ~= nil then
-          w = tonumber(node:getWidth()) or 0
-          h = tonumber(node:getHeight()) or 0
-        elseif node.getBounds ~= nil then
-          local _, _, bw, bh = node:getBounds()
-          w = tonumber(bw) or 0
-          h = tonumber(bh) or 0
-        end
-        pcall(function() widget:refreshRetained(w, h) end)
-      end
-    end
-  end
-
-  if node.getNumChildren ~= nil and node.getChild ~= nil then
-    local childCount = math.max(0, math.floor(tonumber(node:getNumChildren()) or 0))
-    for i = 0, childCount - 1 do
-      local child = node:getChild(i)
-      if child ~= nil then
-        refreshRetainedSubtree(child)
-      end
-    end
-  end
-end
-
-local function forcePatchbayRetainedRefresh(widget, patchbayPanel)
-  if widget and widget.node then
-    refreshRetainedSubtree(widget.node)
-    if widget.node.markRenderDirty then
-      pcall(function() widget.node:markRenderDirty() end)
-    end
-    if widget.node.repaint then
-      pcall(function() widget.node:repaint() end)
-    end
-  end
-
-  if patchbayPanel and patchbayPanel.node then
-    refreshRetainedSubtree(patchbayPanel.node)
-    if patchbayPanel.node.markRenderDirty then
-      pcall(function() patchbayPanel.node:markRenderDirty() end)
-    end
-    if patchbayPanel.node.repaint then
-      pcall(function() patchbayPanel.node:repaint() end)
-    end
-  end
-
-  flushDeferredRefreshesNow()
-end
-
-local function setWidgetValueSilently(widget, value)
-  if not (widget and widget.setValue) then
-    return
-  end
-  local onChange = widget._onChange
-  widget._onChange = nil
-  local ok, err = pcall(function()
-    widget:setValue(value)
-  end)
-  widget._onChange = onChange
-  if not ok then
-    error(err)
-  end
-end
+local resolveGlobalPrefix = ScopedWidget.resolveGlobalPrefix
+local endsWith = ScopedWidget.endsWith
+local getScopedWidget = ScopedWidget.getScopedWidget
+local getScopedBehavior = ScopedWidget.getScopedBehavior
+local setWidgetValueSilently = ScopedWidget.setWidgetValueSilently
 
 local VOICE_COUNT = 8
 local WAVE_OPTIONS = { "Sine", "Saw", "Square", "Triangle", "Blend", "Noise", "Pulse", "SuperSaw" }
@@ -236,44 +52,6 @@ local function sanitizeBlendMode(value)
 end
 
 local FILTER_OPTIONS = { "SVF Lowpass", "SVF Bandpass", "SVF Highpass", "SVF Notch" }
-local FX_OPTIONS = {
-  "Chorus",
-  "Phaser",
-  "WaveShaper",
-  "Compressor",
-  "StereoWidener",
-  "Filter",
-  "SVF Filter",
-  "Reverb",
-  "Stereo Delay",
-  "Multitap",
-  "Pitch Shift",
-  "Granulator",
-  "Ring Mod",
-  "Formant",
-  "EQ",
-  "Limiter",
-  "Transient",
-}
-local FX_PARAM_LABELS = {
-  [0] = { "Rate", "Depth" },
-  [1] = { "Rate", "Depth" },
-  [2] = { "Drive", "Curve" },
-  [3] = { "Thresh", "Ratio" },
-  [4] = { "Width", "MonoLow" },
-  [5] = { "Cutoff", "Reso" },
-  [6] = { "Cutoff", "Reso" },
-  [7] = { "Room", "Damp" },
-  [8] = { "Time", "FBack" },
-  [9] = { "Taps", "FBack" },
-  [10] = { "Pitch", "Window" },
-  [11] = { "Grain", "Dense" },
-  [12] = { "Freq", "Depth" },
-  [13] = { "Vowel", "Shift" },
-  [14] = { "Low", "High" },
-  [15] = { "Thresh", "Drive" },
-  [16] = { "Attack", "Sustain" },
-}
 
 local PATHS = {
   waveform = "/midi/synth/waveform",
@@ -313,7 +91,14 @@ local PATHS = {
   sampleSource = "/midi/synth/sample/source",
   sampleCaptureTrigger = "/midi/synth/sample/captureTrigger",
   sampleCaptureBars = "/midi/synth/sample/captureBars",
+  sampleCaptureMode = "/midi/synth/sample/captureMode",
+  sampleCaptureWriteOffset = "/midi/synth/sample/captureWriteOffset",
+  sampleCaptureStartOffset = "/midi/synth/sample/captureStartOffset",
+  sampleCapturedLengthMs = "/midi/synth/sample/capturedLengthMs",
   samplePitchMapEnabled = "/midi/synth/sample/pitchMapEnabled",
+  samplePitchMode = "/midi/synth/sample/pitchMode",
+  samplePvocFFTOrder = "/midi/synth/sample/pvoc/fftOrder",
+  samplePvocTimeStretch = "/midi/synth/sample/pvoc/timeStretch",
   sampleRootNote = "/midi/synth/sample/rootNote",
   sampleLoopStart = "/midi/synth/sample/loopStart",
   sampleLoopLen = "/midi/synth/sample/loopLen",
@@ -328,11 +113,16 @@ local PATHS = {
   blendKeyTrack = "/midi/synth/blend/keyTrack",
   blendSamplePitch = "/midi/synth/blend/samplePitch",
   blendModAmount = "/midi/synth/blend/modAmount",
+  envFollow = "/midi/synth/blend/envFollow",
   addFlavor = "/midi/synth/blend/addFlavor",
   xorBehavior = "/midi/synth/blend/xorBehavior",
   morphCurve = "/midi/synth/blend/morphCurve",
   morphConvergence = "/midi/synth/blend/morphConvergence",
   morphPhase = "/midi/synth/blend/morphPhase",
+  rackAudioEdgeMask = "/midi/synth/rack/audio/edgeMask",
+  rackAudioStageCount = "/midi/synth/rack/stageCount",
+  rackAudioOutputEnabled = "/midi/synth/rack/outputEnabled",
+  rackAudioSourceCount = "/midi/synth/rack/sourceCount",
   morphSpeed = "/midi/synth/blend/morphSpeed",
   morphContrast = "/midi/synth/blend/morphContrast",
   morphSmooth = "/midi/synth/blend/morphSmooth",
@@ -349,21 +139,9 @@ local OSC_REPAINT_INTERVAL_WHILE_INTERACTING = 1.0 / 20.0
 local ENV_REPAINT_INTERVAL = 1.0 / 60.0
 local ENV_REPAINT_INTERVAL_WHILE_INTERACTING = 1.0 / 30.0
 
--- Lightweight XY pad refresh (no layout rebuild)
-local function refreshFxPad(fxCtx)
-  if not fxCtx then return end
-  local pad = fxCtx.widgets and fxCtx.widgets.xy_pad
-  if not pad or not pad.node then return end
-  local w = pad.node:getWidth()
-  local h = pad.node:getHeight()
-  if w <= 0 or h <= 0 then return end
-  -- Delegate to behavior's refreshPad if available, else just repaint
-  if fxCtx._refreshPad then
-    fxCtx._refreshPad()
-  else
-    pad.node:repaint()
-  end
-end
+_G.__midiSynthRackWireLayer = RackWireLayer
+
+local activeBehaviorCtx = nil
 
 local function fxParamPath(slot, paramIdx)
   return string.format("/midi/synth/fx%d/p/%d", slot, paramIdx - 1)
@@ -401,94 +179,48 @@ local function eq8BandQPath(index)
   return string.format("/midi/synth/eq8/band/%d/q", index)
 end
 
-local function clamp(v, lo, hi)
-  local n = tonumber(v) or 0
-  if n < lo then return lo end
-  if n > hi then return hi end
-  return n
+function M._rackAudioStagePath(index)
+  return string.format("/midi/synth/rack/stage/%d", math.max(1, math.floor(tonumber(index) or 1)))
 end
 
-local function round(v)
-  return math.floor((tonumber(v) or 0) + 0.5)
+function M._rackAudioSourcePath(index)
+  return string.format("/midi/synth/rack/source/%d", math.max(1, math.floor(tonumber(index) or 1)))
 end
 
-local function repaint(widget)
-  if widget and widget.node and widget.node.repaint then
-    widget.node:repaint()
+function M._rackAudioSourceCodeForNodeId(nodeId)
+  local id = tostring(nodeId or "")
+  if id == "oscillator" then
+    return 1
   end
+  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  local entry = type(info) == "table" and info[id] or nil
+  if type(entry) == "table" and tostring(entry.specId or "") == "rack_oscillator" then
+    local slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 0))
+    return 100 + slotIndex
+  end
+  return 0
 end
 
-local function syncValue(widget, value, epsilon)
-  if not (widget and widget.setValue and value ~= nil) then
-    return
-  end
-  -- Never fight direct manipulation (knob drag, slider drag, etc.).
-  if widget._dragging then
-    return
-  end
-  local current = widget.getValue and widget:getValue() or nil
-  local threshold = epsilon or 0.0001
-  if current == nil or math.abs((tonumber(current) or 0) - (tonumber(value) or 0)) > threshold then
-    widget:setValue(value)
-    repaint(widget)
-  end
-end
 
-local function syncToggleValue(widget, value)
-  if not (widget and widget.setValue and value ~= nil) then
-    return
-  end
-  local current = widget.getValue and widget:getValue() or nil
-  local nextValue = value == true
-  if current ~= nextValue then
-    widget:setValue(nextValue)
-    repaint(widget)
-  end
-end
+-- Widget sync functions now in WidgetSync module
+local clamp = WidgetSync.clamp
+local round = WidgetSync.round
+local repaint = WidgetSync.repaint
+local syncValue = WidgetSync.syncValue
+local syncToggleValue = WidgetSync.syncToggleValue
+local syncText = WidgetSync.syncText
+local syncColour = WidgetSync.syncColour
+local syncSelected = WidgetSync.syncSelected
+local syncKnobLabel = WidgetSync.syncKnobLabel
 
-local function syncText(widget, text)
-  if not (widget and widget.setText and text ~= nil) then
-    return
+local function getVoiceStackingLabels(activeTab, oscRenderMode, blendMode)
+  if activeTab == 1 and oscRenderMode == 1 then
+    return "Ensemble", "Width", "Stereo"
   end
-  local current = widget.getText and widget:getText() or nil
-  if current ~= text then
-    widget:setText(text)
-    repaint(widget)
+  if activeTab == 3 and (blendMode == 4 or blendMode == 5) then
+    return "Density", "Diverge", "Stereo"
   end
-end
-
-local function syncColour(widget, colour)
-  if not (widget and widget.setColour and colour ~= nil) then
-    return
-  end
-  widget:setColour(colour)
-  repaint(widget)
-end
-
-local function syncSelected(widget, idx)
-  if not (widget and widget.setSelected and idx ~= nil) then
-    return
-  end
-  -- Don't mutate selection while a dropdown popup is open.
-  if widget._open then
-    return
-  end
-  local current = widget.getSelected and widget:getSelected() or nil
-  if current ~= idx then
-    widget:setSelected(idx)
-    repaint(widget)
-  end
-end
-
-local function syncKnobLabel(widget, label)
-  if not (widget and widget.setLabel and label ~= nil) then
-    return
-  end
-  local current = widget.getLabel and widget:getLabel() or nil
-  if current ~= label then
-    widget:setLabel(label)
-    repaint(widget)
-  end
+  return "Unison", "Detune", "Spread"
 end
 
 local function setWidgetInteractiveState(widget, enabled)
@@ -504,12 +236,26 @@ local function setWidgetInteractiveState(widget, enabled)
   repaint(widget)
 end
 
-local function setPath(path, value)
+local function setPath(path, value, meta)
+  local numericValue = tonumber(value) or 0
+  local writeMeta = type(meta) == "table" and meta or {}
+  local currentCtx = activeBehaviorCtx
+
+  local writeSource = tostring(writeMeta.source or "")
+  if currentCtx ~= nil and writeSource ~= "modulation_runtime" and writeSource ~= "legacy_keyboard_parity" and writeSource ~= "adsr_rackosc_parity" then
+    if currentCtx._rackModRuntime and currentCtx._rackModRuntime.recordAuthoredValue then
+      currentCtx._rackModRuntime:recordAuthoredValue(path, numericValue, writeMeta)
+    end
+    if currentCtx._modRuntime and currentCtx._modRuntime.recordAuthoredValue then
+      currentCtx._modRuntime:recordAuthoredValue(path, numericValue, writeMeta)
+    end
+  end
+
   if type(setParam) == "function" then
-    return setParam(path, tonumber(value) or 0)
+    return setParam(path, numericValue)
   end
   if command then
-    command("SET", path, tostring(value))
+    command("SET", path, tostring(numericValue))
     return true
   end
   return false
@@ -523,6 +269,337 @@ local function readParam(path, fallback)
     end
   end
   return fallback
+end
+
+local function noteToFreq(note)
+  return 440.0 * (2.0 ^ (((tonumber(note) or 69.0) - 69.0) / 12.0))
+end
+
+M._writeVoiceTargetValue = function(ctx, path, value, meta, cacheKey, epsilon)
+  if type(path) ~= "string" or path == "" then
+    return false
+  end
+  local nextValue = tonumber(value) or 0.0
+  local eps = tonumber(epsilon) or 0.0001
+  if type(ctx) == "table" then
+    ctx._voiceTargetWriteCache = ctx._voiceTargetWriteCache or {}
+    local key = tostring(cacheKey or path)
+    local previous = ctx._voiceTargetWriteCache[key]
+    local liveValue = tonumber(readParam(path, nextValue)) or nextValue
+    if previous ~= nil
+      and math.abs((tonumber(previous) or 0.0) - nextValue) <= eps
+      and math.abs(liveValue - nextValue) <= eps then
+      return false
+    end
+    ctx._voiceTargetWriteCache[key] = nextValue
+  end
+  setPath(path, nextValue, meta)
+  return true
+end
+
+local function resolveDynamicVoiceBundleSample(ctx, sourceId, sourceEndpoint, voiceIndex, clampFn)
+  local resolved = require("velocity_mapper_runtime").resolveVoiceBundleSample(ctx, sourceId, sourceEndpoint, voiceIndex, clampFn)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  resolved = require("scale_quantizer_runtime").resolveVoiceBundleSample(ctx, sourceId, sourceEndpoint, voiceIndex, clampFn)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  resolved = require("note_filter_runtime").resolveVoiceBundleSample(ctx, sourceId, sourceEndpoint, voiceIndex, clampFn)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  resolved = require("transpose_runtime").resolveVoiceBundleSample(ctx, sourceId, sourceEndpoint, voiceIndex, clampFn)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  resolved = require("arp_runtime").resolveVoiceBundleSample(ctx, sourceId, sourceEndpoint, voiceIndex, clampFn)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  return require("adsr_runtime").resolveVoiceBundleSample(ctx, sourceId, sourceEndpoint, voiceIndex, clampFn)
+end
+
+local function resolveDynamicVoiceModulationSource(ctx, sourceId, source, voiceCount)
+  local resolved = require("velocity_mapper_runtime").resolveVoiceModulationSource(ctx, sourceId, source, voiceCount)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  resolved = require("scale_quantizer_runtime").resolveVoiceModulationSource(ctx, sourceId, source, voiceCount)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  resolved = require("note_filter_runtime").resolveVoiceModulationSource(ctx, sourceId, source, voiceCount)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  resolved = require("transpose_runtime").resolveVoiceModulationSource(ctx, sourceId, source, voiceCount)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  resolved = require("arp_runtime").resolveVoiceModulationSource(ctx, sourceId, source, voiceCount)
+  if type(resolved) == "table" then
+    return resolved
+  end
+  return require("adsr_runtime").resolveVoiceModulationSource(ctx, sourceId, source, voiceCount)
+end
+
+local function applyControlModulationTarget(ctx, targetId, target, value, meta)
+  local targetMeta = type(target) == "table" and type(target.meta) == "table" and target.meta or {}
+  local moduleId = tostring(targetMeta.moduleId or "")
+  local portId = tostring(targetMeta.portId or "")
+  local dynamicInfo = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  local dynamicEntry = type(dynamicInfo) == "table" and dynamicInfo[moduleId] or nil
+  local specId = tostring((type(dynamicEntry) == "table" and dynamicEntry.specId) or targetMeta.specId or "")
+
+  if specId == "attenuverter_bias" then
+    return require("attenuverter_bias_runtime").applyInputScalar(ctx, moduleId, portId, value, meta) == true
+  end
+  if specId == "lfo" then
+    return require("lfo_runtime").applyInputScalar(ctx, moduleId, portId, value, meta) == true
+  end
+  if specId == "slew" then
+    return require("slew_runtime").applyInputScalar(ctx, moduleId, portId, value, meta) == true
+  end
+  if specId == "sample_hold" then
+    return require("sample_hold_runtime").applyInputScalar(ctx, moduleId, portId, value, meta) == true
+  end
+  if specId == "compare" then
+    return require("compare_runtime").applyInputScalar(ctx, moduleId, portId, value, meta) == true
+  end
+  if specId == "cv_mix" then
+    return require("cv_mix_runtime").applyInputScalar(ctx, moduleId, portId, value, meta) == true
+  end
+  if specId == "range_mapper" then
+    local runtime = require("range_mapper_runtime")
+    if type(runtime.applyInputScalar) == "function" then
+      return runtime.applyInputScalar(ctx, moduleId, portId, value, meta) == true
+    end
+    if type(runtime.processInput) == "function" then
+      return runtime.processInput(ctx, moduleId, portId, value, meta) == true
+    end
+  end
+
+  return false
+end
+
+local function resolveControlModulationSource(ctx, sourceId, source)
+  local sourceMeta = type(source) == "table" and type(source.meta) == "table" and source.meta or {}
+  local sourceKey = tostring(sourceId or "")
+  local moduleId = tostring(sourceMeta.moduleId or (sourceKey:match("^([^.]+)%.") or ""))
+  local dynamicInfo = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  local dynamicEntry = type(dynamicInfo) == "table" and dynamicInfo[moduleId] or nil
+  local specId = tostring((type(dynamicEntry) == "table" and dynamicEntry.specId) or sourceMeta.specId or "")
+
+  local function resolvedValue(runtime)
+    if runtime and type(runtime.resolveScalarModulationSource) == "function" then
+      local resolved = runtime.resolveScalarModulationSource(ctx, sourceId, source)
+      if type(resolved) == "table" then
+        return tonumber(resolved.rawSourceValue) or 0.0
+      end
+    end
+    return nil
+  end
+
+  if specId == "attenuverter_bias" then
+    return resolvedValue(require("attenuverter_bias_runtime"))
+  end
+  if specId == "lfo" then
+    return resolvedValue(require("lfo_runtime"))
+  end
+  if specId == "slew" then
+    return resolvedValue(require("slew_runtime"))
+  end
+  if specId == "sample_hold" then
+    return resolvedValue(require("sample_hold_runtime"))
+  end
+  if specId == "compare" then
+    return resolvedValue(require("compare_runtime"))
+  end
+  if specId == "cv_mix" then
+    return resolvedValue(require("cv_mix_runtime"))
+  end
+  if specId == "range_mapper" then
+    local runtime = require("range_mapper_runtime")
+    local resolved = resolvedValue(runtime)
+    if resolved ~= nil then
+      return resolved
+    end
+    if type(runtime.getOutput) == "function" then
+      return tonumber(runtime.getOutput(ctx, moduleId)) or 0.0
+    end
+  end
+
+  return nil
+end
+local function applyVoiceModulationTarget(ctx, targetId, target, value, meta)
+  local targetMeta = type(target) == "table" and type(target.meta) == "table" and target.meta or {}
+  local moduleId = tostring(targetMeta.moduleId or "")
+  local portId = tostring(targetMeta.portId or "")
+  local dynamicInfo = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  local dynamicEntry = type(dynamicInfo) == "table" and dynamicInfo[moduleId] or nil
+  local specId = tostring((type(dynamicEntry) == "table" and dynamicEntry.specId) or targetMeta.specId or "")
+  local slotIndex = tonumber((type(dynamicEntry) == "table" and dynamicEntry.slotIndex) or targetMeta.slotIndex)
+  local voiceIndex = math.max(1, math.floor(tonumber(type(meta) == "table" and meta.voiceIndex or 1) or 1))
+  local liveVoice = type(ctx) == "table" and type(ctx._voices) == "table" and ctx._voices[voiceIndex] or nil
+  local action = type(meta) == "table" and meta.action or "apply"
+  local routeActive = (tonumber(value) or 0.0) > 0.5 and action ~= "restore"
+  local bundle = type(meta) == "table" and type(meta.bundleSample) == "table" and meta.bundleSample or nil
+
+  if specId == "adsr" and (portId == "midi" or portId == "gate" or portId == "retrig") then
+    return require("adsr_runtime").applyInputVoice(ctx, moduleId, portId, value, meta, VOICE_COUNT, clamp)
+  end
+
+  if specId == "arp" and portId == "voice_in" then
+    return require("arp_runtime").applyInputVoice(ctx, moduleId, portId, value, meta, VOICE_COUNT, clamp)
+  end
+
+  if specId == "transpose" and portId == "voice_in" then
+    return require("transpose_runtime").applyInputVoice(ctx, moduleId, portId, value, meta, VOICE_COUNT, clamp)
+  end
+
+  if specId == "velocity_mapper" and portId == "voice_in" then
+    return require("velocity_mapper_runtime").applyInputVoice(ctx, moduleId, portId, value, meta, VOICE_COUNT, clamp)
+  end
+
+  if specId == "scale_quantizer" and portId == "voice_in" then
+    return require("scale_quantizer_runtime").applyInputVoice(ctx, moduleId, portId, value, meta, VOICE_COUNT, clamp)
+  end
+
+  if specId == "note_filter" and portId == "voice_in" then
+    return require("note_filter_runtime").applyInputVoice(ctx, moduleId, portId, value, meta, VOICE_COUNT, clamp)
+  end
+
+  if specId == "oscillator" and portId == "voice" then
+    bundle = bundle or resolveDynamicVoiceBundleSample(ctx, type(meta) == "table" and meta.bundleSourceId or nil, type(meta) == "table" and meta.bundleSource or nil, voiceIndex, clamp)
+      or {
+      note = clamp(tonumber(liveVoice and liveVoice.note) or 60.0, 0.0, 127.0),
+      gate = ((tonumber(liveVoice and liveVoice.gate) or 0.0) > 0.5) and 1.0 or 0.0,
+      amp = clamp(tonumber(liveVoice and liveVoice.currentAmp) or 0.0, 0.0, 0.40),
+    }
+    local liveFreq = noteToFreq(bundle.note or 60.0)
+    local liveGate = ((tonumber(bundle.noteGate) or tonumber(bundle.gate) or 0.0) > 0.5) and 1.0 or 0.0
+    local liveAmp = clamp(tonumber(bundle.currentAmp) or tonumber(bundle.amp) or tonumber(bundle.targetAmp) or 0.0, 0.0, 0.40)
+    local writeMeta = {
+      source = "modulation_runtime",
+      action = action,
+      target = tostring(targetId or ""),
+      voiceIndex = voiceIndex,
+    }
+    M._writeVoiceTargetValue(ctx, voiceFreqPath(voiceIndex), liveFreq, writeMeta, string.format("osc:%d:freq", voiceIndex), 0.0001)
+    M._writeVoiceTargetValue(ctx, voiceGatePath(voiceIndex), routeActive and liveGate or 0.0, writeMeta, string.format("osc:%d:gate", voiceIndex), 0.0)
+    M._writeVoiceTargetValue(ctx, voiceAmpPath(voiceIndex), routeActive and liveAmp or 0.0, writeMeta, string.format("osc:%d:amp", voiceIndex), 0.0001)
+    return true
+  end
+
+  if specId ~= "rack_oscillator" or slotIndex == nil then
+    return false
+  end
+
+  if portId == "voice" then
+    bundle = bundle or resolveDynamicVoiceBundleSample(ctx, type(meta) == "table" and meta.bundleSourceId or nil, type(meta) == "table" and meta.bundleSource or nil, voiceIndex, clamp)
+      or {
+      note = clamp(tonumber(liveVoice and liveVoice.note) or 60.0, 0.0, 127.0),
+      gate = ((tonumber(liveVoice and liveVoice.gate) or 0.0) > 0.5) and 1.0 or 0.0,
+      amp = clamp(tonumber(liveVoice and liveVoice.currentAmp) or 0.0, 0.0, 0.40),
+    }
+    local liveNote = clamp(tonumber(bundle.note) or 60.0, 0.0, 127.0)
+    local liveAmp = clamp(tonumber(bundle.currentAmp) or tonumber(bundle.amp) or tonumber(bundle.targetAmp) or 0.0, 0.0, 0.40)
+    local writeMeta = {
+      source = "modulation_runtime",
+      action = action,
+      target = tostring(targetId or ""),
+      voiceIndex = voiceIndex,
+    }
+    M._writeVoiceTargetValue(ctx, ParameterBinder.dynamicOscillatorVoiceVOctPath(slotIndex, voiceIndex), liveNote, writeMeta, string.format("rackosc:%d:%d:v_oct", slotIndex, voiceIndex), 0.0001)
+    M._writeVoiceTargetValue(ctx, ParameterBinder.dynamicOscillatorVoiceGatePath(slotIndex, voiceIndex), routeActive and liveAmp or 0.0, writeMeta, string.format("rackosc:%d:%d:gate", slotIndex, voiceIndex), 0.0001)
+    return true
+  end
+
+  local path = nil
+  if portId == "gate" then
+    path = ParameterBinder.dynamicOscillatorVoiceGatePath(slotIndex, voiceIndex)
+  elseif portId == "v_oct" then
+    path = ParameterBinder.dynamicOscillatorVoiceVOctPath(slotIndex, voiceIndex)
+  elseif portId == "fm" then
+    path = ParameterBinder.dynamicOscillatorVoiceFmPath(slotIndex, voiceIndex)
+  elseif portId == "pw_cv" then
+    path = ParameterBinder.dynamicOscillatorVoicePwCvPath(slotIndex, voiceIndex)
+  end
+
+  if type(path) ~= "string" or path == "" then
+    return false
+  end
+
+  M._writeVoiceTargetValue(ctx, path, tonumber(value) or 0.0, {
+    source = "modulation_runtime",
+    action = action,
+    target = tostring(targetId or ""),
+    voiceIndex = voiceIndex,
+  }, string.format("voice-target:%s:%d:%s", tostring(moduleId or ""), voiceIndex, tostring(portId or "")), 0.0001)
+  return true
+end
+
+local function applyImplicitRackOscillatorKeyboardPitch(ctx, voiceIndex, note)
+  local targetVoiceIndex = math.max(1, math.floor(tonumber(voiceIndex) or 1))
+  local targetNote = clamp(tonumber(note) or 60.0, 0.0, 127.0)
+  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  local router = ctx and ctx._rackControlRouter or nil
+  if type(info) ~= "table" then
+    return false
+  end
+
+  local applied = false
+  for moduleId, entry in pairs(info) do
+    if type(entry) == "table"
+      and tostring(entry.specId or "") == "rack_oscillator"
+      and tonumber(entry.slotIndex) ~= nil then
+      local pitchTargetId = string.format("%s.v_oct", tostring(moduleId or ""))
+      local voiceTargetId = string.format("%s.voice", tostring(moduleId or ""))
+      local explicitlyPatched = router and router.isTargetConnected and (router:isTargetConnected(pitchTargetId) or router:isTargetConnected(voiceTargetId)) or false
+      if not explicitlyPatched then
+        setPath(ParameterBinder.dynamicOscillatorVoiceVOctPath(entry.slotIndex, targetVoiceIndex), targetNote, {
+          source = "legacy_keyboard_parity",
+          action = "implicit_pitch",
+          moduleId = tostring(moduleId or ""),
+          voiceIndex = targetVoiceIndex,
+        })
+        setPath(ParameterBinder.dynamicOscillatorManualPitchPath(entry.slotIndex), targetNote, {
+          source = "legacy_keyboard_parity",
+          action = "implicit_manual_pitch",
+          moduleId = tostring(moduleId or ""),
+        })
+        applied = true
+      end
+    end
+  end
+
+  return applied
+end
+
+local function getCombinedModTargetState(ctx, path)
+  local targetPath = tostring(path or "")
+  if targetPath == "" then
+    return nil
+  end
+
+  local runtimes = {
+    ctx and ctx._rackModRuntime or nil,
+    ctx and ctx._modRuntime or nil,
+  }
+
+  for i = 1, #runtimes do
+    local runtime = runtimes[i]
+    if runtime and runtime.getTargetState then
+      local state = runtime:getTargetState(targetPath, readParam)
+      if state ~= nil then
+        return state
+      end
+    end
+  end
+
+  return nil
 end
 
 local SAMPLE_LOOP_MIN_LEN = 0.05
@@ -558,10 +635,6 @@ local function syncLegacyBlendDirectionFromBlend(blendAmount)
   setPath(PATHS.waveToSample, blend)
   setPath(PATHS.sampleToWave, 1.0 - blend)
   return blend, 1.0 - blend
-end
-
-local function noteToFreq(note)
-  return 440.0 * (2.0 ^ ((note - 69) / 12.0))
 end
 
 local function updateDropdownAnchors(ctx)
@@ -672,9 +745,66 @@ saveRuntimeState = function(state)
       if node.sizeKey then
         table.insert(nodeParts, string.format("sizeKey=%q", tostring(node.sizeKey)))
       end
+      local meta = type(node.meta) == "table" and node.meta or nil
+      if meta ~= nil then
+        local metaParts = {}
+        for _, key in ipairs({ "specId", "componentId", "paramBase" }) do
+          if meta[key] ~= nil then
+            metaParts[#metaParts + 1] = string.format("%s=%q", key, tostring(meta[key]))
+          end
+        end
+        if meta.slotIndex ~= nil then
+          metaParts[#metaParts + 1] = string.format("slotIndex=%d", math.max(1, math.floor(tonumber(meta.slotIndex) or 1)))
+        end
+        if meta.spawned ~= nil then
+          metaParts[#metaParts + 1] = string.format("spawned=%s", meta.spawned and "true" or "false")
+        end
+        if #metaParts > 0 then
+          table.insert(nodeParts, "meta={ " .. table.concat(metaParts, ", ") .. " }")
+        end
+      end
       table.insert(parts, "  { " .. table.concat(nodeParts, ", ") .. " },")
     end
     table.insert(parts, "}")
+    return table.concat(parts, "\n")
+  end
+
+  local function serializeConnections(connections)
+    if type(connections) ~= "table" or #connections == 0 then
+      return "{}"
+    end
+    local parts = {"{"}
+    for i, conn in ipairs(connections) do
+      if tostring(conn.kind or "") == "audio" then
+        local from = type(conn.from) == "table" and conn.from or {}
+        local to = type(conn.to) == "table" and conn.to or {}
+        local meta = type(conn.meta) == "table" and conn.meta or {}
+      local metaParts = {}
+      for _, key in ipairs({ "route", "source" }) do
+        if meta[key] ~= nil then
+          metaParts[#metaParts + 1] = string.format("%s=%q", key, tostring(meta[key]))
+        end
+      end
+      if meta.visualOnly ~= nil then
+        metaParts[#metaParts + 1] = string.format("visualOnly=%s", meta.visualOnly and "true" or "false")
+      end
+      if meta.pending ~= nil then
+        metaParts[#metaParts + 1] = string.format("pending=%s", meta.pending and "true" or "false")
+      end
+        local metaText = (#metaParts > 0) and (", meta={ " .. table.concat(metaParts, ", ") .. " }") or ""
+        parts[#parts + 1] = string.format(
+          "  { id=%q, kind=%q, from={ moduleId=%q, portId=%q }, to={ moduleId=%q, portId=%q }%s },",
+          tostring(conn.id or ""),
+          tostring(conn.kind or "audio"),
+          tostring(from.moduleId or ""),
+          tostring(from.portId or ""),
+          tostring(to.moduleId or ""),
+          tostring(to.portId or ""),
+          metaText
+        )
+      end
+    end
+    parts[#parts + 1] = "}"
     return table.concat(parts, "\n")
   end
 
@@ -682,12 +812,14 @@ saveRuntimeState = function(state)
     "return {",
     string.format("  inputDevice = %q,", tostring(state.inputDevice or "")),
     string.format("  keyboardCollapsed = %s,", state.keyboardCollapsed and "true" or "false"),
+    string.format("  keyboardKeyCount = %d,", tonumber(state.keyboardKeyCount) or 14),
     string.format("  utilityDockVisible = %s,", state.utilityDockVisible == false and "false" or "true"),
     string.format("  utilityDockMode = %q,", tostring(state.utilityDockMode or "full_keyboard")),
     string.format("  utilityDockHeightMode = %q,", tostring(state.utilityDockHeightMode or (state.keyboardCollapsed and "collapsed" or "full"))),
     string.format("  rackViewMode = %q,", tostring(rackState.viewMode or "perf")),
     string.format("  rackDensityMode = %q,", tostring(rackState.densityMode or "normal")),
-    "  rackNodes = " .. serializeNodes(rackState.nodes) .. ",",
+    "  rackNodes = " .. serializeNodes(rackState.modules) .. ",",
+    "  rackConnections = " .. serializeConnections(state.rackConnections) .. ",",
     string.format("  waveform = %d,", tonumber(state.waveform) or 1),
     string.format("  filterType = %d,", tonumber(state.filterType) or 0),
     string.format("  cutoff = %.2f,", tonumber(state.cutoff) or 3200),
@@ -708,6 +840,7 @@ saveRuntimeState = function(state)
     string.format("  sampleSource = %d,", tonumber(state.sampleSource) or 0),
     string.format("  sampleCaptureBars = %.4f,", tonumber(state.sampleCaptureBars) or 1.0),
     string.format("  samplePitchMapEnabled = %s,", state.samplePitchMapEnabled and "true" or "false"),
+    string.format("  samplePitchMode = %d,", tonumber(state.samplePitchMode) or 0),
     string.format("  sampleRootNote = %.2f,", tonumber(state.sampleRootNote) or 60.0),
     string.format("  samplePlayStart = %.4f,", tonumber(state.samplePlayStart) or 0.0),
     string.format("  sampleLoopStart = %.4f,", tonumber(state.sampleLoopStart) or 0.0),
@@ -720,6 +853,7 @@ saveRuntimeState = function(state)
     string.format("  blendKeyTrack = %d,", tonumber(state.blendKeyTrack) or 2),
     string.format("  blendSamplePitch = %.2f,", tonumber(state.blendSamplePitch) or 0.0),
     string.format("  blendModAmount = %.3f,", tonumber(state.blendModAmount) or 0.5),
+    string.format("  envFollow = %.3f,", tonumber(state.envFollow) or 1.0),
     string.format("  addFlavor = %d,", tonumber(state.addFlavor) or 0),
     string.format("  xorBehavior = %d,", tonumber(state.xorBehavior) or 0),
     string.format("  delayMix = %.3f,", tonumber(state.delayMix) or 0.0),
@@ -740,247 +874,27 @@ saveRuntimeState = function(state)
   return writeTextFile(path, table.concat(lines, "\n"))
 end
 
-local function isPluginMode()
-  if Audio and Audio.isPlugin then
-    return Audio.isPlugin()
-  end
-  return false
-end
-
-local function buildMidiOptions(ctx)
-  local devices = Midi and Midi.inputDevices and Midi.inputDevices() or {}
-  ctx._midiDevices = devices
-  local noneLabel = isPluginMode() and "Use Host MIDI" or "None (Disabled)"
-  local options = { noneLabel }
-  for _, name in ipairs(devices) do
-    options[#options + 1] = name
-  end
-  return options
-end
-
-local function findOptionIndex(options, label)
-  if type(label) ~= "string" or label == "" then
-    return nil
-  end
-  for i, option in ipairs(options or {}) do
-    if option == label then
-      return i
-    end
-  end
-  return nil
-end
-
-local function getCurrentMidiInputLabel(ctx)
-  if Midi and Midi.currentInputDeviceName then
-    local name = Midi.currentInputDeviceName()
-    if type(name) == "string" and name ~= "" then
-      return name
-    end
-  end
-
-  if Midi and Midi.currentInputDeviceIndex and Midi.isInputOpen and Midi.isInputOpen() then
-    local deviceIndex = tonumber(Midi.currentInputDeviceIndex()) or -1
-    if deviceIndex >= 0 then
-      local devices = ctx and ctx._midiDevices or (Midi.inputDevices and Midi.inputDevices() or {})
-      return devices[deviceIndex + 1]
-    end
-  end
-
-  return nil
-end
-
-local function persistMidiInputSelection(label)
-  local state = loadRuntimeState()
-  state.inputDevice = tostring(label or "")
-  saveRuntimeState(state)
-end
-
-local function applyMidiSelection(ctx, idx, persist)
-  local widgets = ctx.widgets or {}
-  local options = ctx._midiOptions or {}
-  local label = options[idx] or options[1] or "None (Disabled)"
-  
-  ctx._selectedMidiInputIdx = idx
-  ctx._selectedMidiInputLabel = label
-  
-  if idx == 1 then
-    if Midi and Midi.closeInput then
-      Midi.closeInput()
-    end
-    ctx._lastEvent = isPluginMode() and "Using host MIDI" or "MIDI input disabled"
-    syncText(widgets.deviceValue, "Input: " .. label)
-    if persist then
-      persistMidiInputSelection("")
-    end
-    return true
-  end
-  
-  local deviceIndex = idx - 2
-  local success = Midi and Midi.openInput and Midi.openInput(deviceIndex) or false
-  if success then
-    local activeLabel = getCurrentMidiInputLabel(ctx) or label
-    local activeIdx = findOptionIndex(options, activeLabel) or idx
-    ctx._selectedMidiInputIdx = activeIdx
-    ctx._selectedMidiInputLabel = activeLabel
-    ctx._lastEvent = "Opened: " .. activeLabel
-    syncSelected(widgets.midiInputDropdown, activeIdx)
-    syncText(widgets.deviceValue, "Input: " .. activeLabel)
-    if persist then
-      persistMidiInputSelection(activeLabel)
-    end
-    return true
-  end
-  
-  ctx._lastEvent = "Failed: " .. label
-  return false
-end
-
-local function refreshMidiDevices(ctx, restoreSelection)
-  local widgets = ctx.widgets or {}
-  local options = buildMidiOptions(ctx)
-  ctx._midiOptions = options
-  ctx._lastKnownMidiDeviceCount = math.max(0, #options - 1)
-  
-  if widgets.midiInputDropdown then
-    widgets.midiInputDropdown:setOptions(options)
-    repaint(widgets.midiInputDropdown)
-  end
-
-  local activeLabel = getCurrentMidiInputLabel(ctx)
-  local activeIdx = findOptionIndex(options, activeLabel)
-  local idx = activeIdx or 1
-
-  local saved = restoreSelection and loadRuntimeState() or nil
-  if not activeIdx and saved and saved.inputDevice then
-    local savedIdx = findOptionIndex(options, saved.inputDevice)
-    if savedIdx then
-      idx = savedIdx
-    end
-  elseif not activeIdx and ctx._selectedMidiInputLabel then
-    local currentIdx = findOptionIndex(options, ctx._selectedMidiInputLabel)
-    if currentIdx then
-      idx = currentIdx
-    end
-  end
-  
-  syncSelected(widgets.midiInputDropdown, idx)
-  ctx._selectedMidiInputIdx = idx
-  ctx._selectedMidiInputLabel = options[idx] or options[1]
-  
-  if not activeIdx and restoreSelection and idx > 1 then
-    applyMidiSelection(ctx, idx, false)
-  else
-    if activeLabel then
-      ctx._selectedMidiInputLabel = activeLabel
-      ctx._selectedMidiInputIdx = activeIdx or idx
-    end
-    syncText(widgets.deviceValue, "Input: " .. (ctx._selectedMidiInputLabel or options[1] or "None"))
-  end
-end
-
-local function maybeRefreshMidiDevices(ctx, now)
-  if not (Midi and Midi.inputDevices) then
-    return
-  end
-  if (now - (ctx._lastMidiDeviceScanTime or 0)) < 1.0 then
-    return
-  end
-  ctx._lastMidiDeviceScanTime = now
-
-  local devices = Midi.inputDevices() or {}
-  local deviceCount = #devices
-  local activeLabel = getCurrentMidiInputLabel(ctx)
-  local selectedLabel = ctx._selectedMidiInputLabel or ""
-  local options = ctx._midiOptions or {}
-  local dropdownOpen = ctx.widgets and ctx.widgets.midiInputDropdown and ctx.widgets.midiInputDropdown._open
-
-  local shouldRefresh = false
-  if deviceCount ~= (ctx._lastKnownMidiDeviceCount or -1) then
-    shouldRefresh = true
-  elseif deviceCount > 0 and #options <= 1 then
-    shouldRefresh = true
-  elseif activeLabel and activeLabel ~= selectedLabel then
-    shouldRefresh = true
-  elseif deviceCount > 0 and (selectedLabel == "" or selectedLabel == "None (Disabled)" or selectedLabel == "Use Host MIDI") then
-    local saved = loadRuntimeState()
-    if saved and type(saved.inputDevice) == "string" and saved.inputDevice ~= "" then
-      shouldRefresh = true
-    end
-  end
-
-  ctx._lastKnownMidiDeviceCount = deviceCount
-  if shouldRefresh and not dropdownOpen then
-    refreshMidiDevices(ctx, true)
-  end
-end
+-- MIDI device functions now in MidiDevices module
+local isPluginMode = MidiDevices.isPluginMode
+local buildMidiOptions = MidiDevices.buildMidiOptions
+local findOptionIndex = MidiDevices.findOptionIndex
+local getCurrentMidiInputLabel = MidiDevices.getCurrentMidiInputLabel
+local persistMidiInputSelection = MidiDevices.persistMidiInputSelection
+local applyMidiSelection = MidiDevices.applyMidiSelection
+local refreshMidiDevices = MidiDevices.refreshMidiDevices
+local maybeRefreshMidiDevices = MidiDevices.maybeRefreshMidiDevices
 
 -- ADSR envelope calculation
 local function calculateEnvelope(ctx, voiceIndex, dt)
   local voice = ctx._voices[voiceIndex]
   if not voice then return 0 end
-  
-  local adsr = ctx._adsr
-  local gate = voice.gate
-  local level = voice.envelopeLevel or 0
-  local stage = voice.envelopeStage or "idle"
-  
-  if gate > 0.5 then
-    if stage == "idle" or stage == "release" then
-      stage = "attack"
-      voice.envelopeStartLevel = level
-    end
-    
-    if stage == "attack" then
-      local attackTime = math.max(0.001, adsr.attack)
-      local progress = (voice.envelopeTime or 0) / attackTime
-      if progress >= 1 then
-        level = 1
-        stage = "decay"
-        voice.envelopeTime = 0
-        voice.envelopeStartLevel = 1
-      else
-        level = voice.envelopeStartLevel + (1 - voice.envelopeStartLevel) * progress
-      end
-    elseif stage == "decay" then
-      local decayTime = math.max(0.001, adsr.decay)
-      local progress = (voice.envelopeTime or 0) / decayTime
-      local sustainLevel = adsr.sustain
-      if progress >= 1 then
-        level = sustainLevel
-        stage = "sustain"
-      else
-        level = 1 - (1 - sustainLevel) * progress
-      end
-    elseif stage == "sustain" then
-      level = adsr.sustain
-    end
-  else
-    if stage ~= "release" and stage ~= "idle" then
-      stage = "release"
-      voice.envelopeTime = 0
-      voice.envelopeStartLevel = level
-    end
-    
-    if stage == "release" then
-      local releaseTime = math.max(0.001, adsr.release)
-      local progress = (voice.envelopeTime or 0) / releaseTime
-      if progress >= 1 then
-        level = 0
-        stage = "idle"
-      else
-        level = voice.envelopeStartLevel * (1 - progress)
-      end
-    end
-  end
-  
-  voice.envelopeStage = stage
-  voice.envelopeLevel = level
-  voice.envelopeTime = (voice.envelopeTime or 0) + dt
-  
-  return level * voice.targetAmp
+  return require("adsr_runtime").advanceVoice(voice, ctx._adsr, dt)
 end
 
 local function updateEnvelopes(ctx, dt, now)
+  local legacyGateConnected = M._isLegacyOscillatorGateRouteConnected(ctx)
+  local canonicalOscillatorConnected = M._hasCanonicalOscillatorGateRoute(ctx)
+  local rackOscAdsrSlots = M._dynamicRackOscAdsrGateSlots(ctx)
   for i = 1, VOICE_COUNT do
     local voice = ctx._voices[i]
     if voice then
@@ -992,19 +906,40 @@ local function updateEnvelopes(ctx, dt, now)
       local changedEnough = math.abs(amp - sentAmp) >= VOICE_AMP_SEND_EPSILON
       local atRestEdge = (amp <= VOICE_AMP_SEND_EPSILON and sentAmp > VOICE_AMP_SEND_EPSILON)
 
-      if changedEnough and (elapsed >= VOICE_AMP_SEND_INTERVAL or atRestEdge) then
-        voice.sentAmp = amp
+      if legacyGateConnected then
+        if changedEnough and (elapsed >= VOICE_AMP_SEND_INTERVAL or atRestEdge) then
+          voice.sentAmp = amp
+          voice.lastAmpPushTime = now
+          setPath(voiceAmpPath(i), amp)
+        end
+      elseif canonicalOscillatorConnected then
+        voice.sentAmp = 0
         voice.lastAmpPushTime = now
-        setPath(voiceAmpPath(i), amp)
+      else
+        voice.sentAmp = 0
+        voice.lastAmpPushTime = now
+        setPath(voiceAmpPath(i), 0)
+        setPath(voiceGatePath(i), 0)
+      end
+
+      for slotIndex = 1, #rackOscAdsrSlots do
+        local slot = rackOscAdsrSlots[slotIndex]
+        setPath(ParameterBinder.dynamicOscillatorVoiceGatePath(slot.slotIndex, i), amp, {
+          source = "adsr_rackosc_parity",
+          action = "implicit_env",
+          moduleId = slot.moduleId,
+          voiceIndex = i,
+        })
       end
     end
   end
 end
 
 local function chooseVoice(ctx, note, velocity)
+  local midiVoices = ctx._midiVoices or ctx._voices or {}
   -- First, try to find an inactive voice
   for i = 1, VOICE_COUNT do
-    local voice = ctx._voices[i]
+    local voice = midiVoices[i]
     if not voice.active or voice.envelopeStage == "idle" then
       return i
     end
@@ -1017,7 +952,7 @@ local function chooseVoice(ctx, note, velocity)
   local bestReleaseIndex = nil
   local bestReleaseLevel = 999
   for i = 1, VOICE_COUNT do
-    local voice = ctx._voices[i]
+    local voice = midiVoices[i]
     if voice.envelopeStage == "release" then
       if voice.envelopeLevel < bestReleaseLevel then
         bestReleaseLevel = voice.envelopeLevel
@@ -1031,9 +966,9 @@ local function chooseVoice(ctx, note, velocity)
   
   -- Option 2: Steal oldest voice (highest stamp)
   local oldestIndex = 1
-  local oldestStamp = ctx._voices[1].stamp or 0
+  local oldestStamp = midiVoices[1].stamp or 0
   for i = 2, VOICE_COUNT do
-    local stamp = ctx._voices[i].stamp or 0
+    local stamp = midiVoices[i].stamp or 0
     if stamp < oldestStamp then
       oldestStamp = stamp
       oldestIndex = i
@@ -1042,9 +977,106 @@ local function chooseVoice(ctx, note, velocity)
   return oldestIndex
 end
 
+M._isLegacyOscillatorGateRouteConnected = function(ctx)
+  local router = ctx and ctx._rackControlRouter or nil
+  if not (router and router.getRoutesForTarget) then
+    return false
+  end
+
+  local function hasDirectLegacyAdsrSource(targetId)
+    local routes = router:getRoutesForTarget(targetId) or {}
+    for i = 1, #routes do
+      local route = routes[i]
+      local sourceId = tostring(
+        (route and route.source and route.source.id)
+        or (route and route.route and route.route.source)
+        or (route and route.compiled and route.compiled.sourceHandle)
+        or ""
+      )
+      if sourceId == "adsr.voice" or sourceId == "adsr.env" or sourceId == "adsr.inv" then
+        return true
+      end
+    end
+    return false
+  end
+
+  return hasDirectLegacyAdsrSource("oscillator.gate") or hasDirectLegacyAdsrSource("oscillator.voice")
+end
+
+M._hasCanonicalOscillatorGateRoute = function(ctx)
+  local router = ctx and ctx._rackControlRouter or nil
+  if not (router and router.isTargetConnected) then
+    return false
+  end
+  return not not (router:isTargetConnected("oscillator.gate") or router:isTargetConnected("oscillator.voice"))
+end
+
+M._hasAnyOscillatorGateRoute = function(ctx)
+  local router = ctx and ctx._rackControlRouter or nil
+  if not (router and router.isTargetConnected) then
+    return false
+  end
+  if M._hasCanonicalOscillatorGateRoute(ctx) then
+    return true
+  end
+
+  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  if type(info) == "table" then
+    for moduleId, entry in pairs(info) do
+      if type(entry) == "table" and tostring(entry.specId or "") == "rack_oscillator" then
+        if router:isTargetConnected(tostring(moduleId) .. ".gate") or router:isTargetConnected(tostring(moduleId) .. ".voice") then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+M._dynamicRackOscAdsrGateSlots = function(ctx)
+  local out = {}
+  local router = ctx and ctx._rackControlRouter or nil
+  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  if not (router and router.getRoutesForTarget and type(info) == "table") then
+    return out
+  end
+
+  for moduleId, entry in pairs(info) do
+    if type(entry) == "table"
+      and tostring(entry.specId or "") == "rack_oscillator"
+      and tonumber(entry.slotIndex) ~= nil then
+      local routes = router:getRoutesForTarget(tostring(moduleId) .. ".gate") or {}
+      for i = 1, #routes do
+        local route = routes[i]
+        local sourceId = tostring(route and route.source and route.source.id or route and route.route and route.route.source or "")
+        if sourceId == "adsr.env" then
+          out[#out + 1] = {
+            moduleId = tostring(moduleId),
+            slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 1)),
+          }
+          break
+        end
+      end
+    end
+  end
+
+  return out
+end
+
 local function triggerVoice(ctx, note, velocity)
+  local gateConnected = M._hasAnyOscillatorGateRoute(ctx)
+  if not gateConnected then
+    ctx._keyboardDirty = true
+    ctx._triggerBlockedReason = "ADSR → Osc control missing"
+    ctx._lastEvent = "Trigger blocked: ADSR → Osc control missing"
+    return nil
+  end
+
+  ctx._triggerBlockedReason = nil
+
   local index = chooseVoice(ctx, note, velocity)
-  local voice = ctx._voices[index]
+  local midiVoices = ctx._midiVoices or ctx._voices or {}
+  local voice = midiVoices[index]
   
   ctx._voiceStamp = (ctx._voiceStamp or 0) + 1
   
@@ -1063,29 +1095,31 @@ local function triggerVoice(ctx, note, velocity)
   voice.lastAmpPushTime = 0
   voice.freq = noteToFreq(note)
   
-  setPath(voiceFreqPath(index), voice.freq)
-  setPath(voiceGatePath(index), 1)
+  -- Do not directly inject legacy oscillator gate/freq here.
+  -- Explicit rack control routing owns oscillator triggering now.
+  applyImplicitRackOscillatorKeyboardPitch(ctx, index, note)
   ctx._keyboardDirty = true
   
   return index
 end
 
 local function releaseVoice(ctx, note)
+  local midiVoices = ctx._midiVoices or ctx._voices or {}
   for i = 1, VOICE_COUNT do
-    local voice = ctx._voices[i]
+    local voice = midiVoices[i]
     if voice.active and voice.note == note then
       voice.gate = 0
       voice.envelopeStage = "release"
       voice.envelopeTime = 0
       voice.envelopeStartLevel = voice.envelopeLevel or voice.targetAmp
       voice.lastAmpPushTime = 0
-      setPath(voiceGatePath(i), 0)
       ctx._keyboardDirty = true
     end
   end
 end
 
 local function panicVoices(ctx)
+  local midiVoices = ctx._midiVoices or {}
   for i = 1, VOICE_COUNT do
     local voice = ctx._voices[i]
     voice.active = false
@@ -1101,6 +1135,20 @@ local function panicVoices(ctx)
     voice.freq = 220
     setPath(voiceAmpPath(i), 0)
     setPath(voiceGatePath(i), 0)
+    local midiVoice = midiVoices[i]
+    if midiVoice then
+      midiVoice.active = false
+      midiVoice.note = nil
+      midiVoice.stamp = 0
+      midiVoice.gate = 0
+      midiVoice.targetAmp = 0
+      midiVoice.currentAmp = 0
+      midiVoice.sentAmp = 0
+      midiVoice.lastAmpPushTime = 0
+      midiVoice.envelopeStage = "idle"
+      midiVoice.envelopeLevel = 0
+      midiVoice.freq = 220
+    end
   end
   ctx._keyboardDirty = true
 end
@@ -1134,9 +1182,15 @@ local refreshManagedLayoutState
 local syncKeyboardDisplay
 local syncPatchViewMode
 
-local function getOctaveLabel(baseOctave)
+local function getOctaveLabel(baseOctave, ctx)
+  local keyCount = ctx and ctx._keyboardKeyCount or 14
+  local whiteKeysPerOctave = 7
+  local octaves = keyCount / whiteKeysPerOctave
   local startNote = "C" .. baseOctave
-  local endNote = "C" .. (baseOctave + 2)
+  local endOctave = baseOctave + math.floor(octaves)
+  local endNoteIndex = ((keyCount - 1) % 7) + 1
+  local noteNames = {"C", "D", "E", "F", "G", "A", "B"}
+  local endNote = noteNames[endNoteIndex] .. endOctave
   return startNote .. "-" .. endNote
 end
 
@@ -1158,14 +1212,119 @@ end
 local function ensureRackPaginationState(ctx)
   if not ctx._rackPagination then
     ctx._rackPagination = {
-      totalRows = 3,
-      visibleRows = {1, 2},
+      totalRows = 1,
+      rowsPerPage = 1,
+      pageCount = 1,
+      visibleRows = {1},
       viewportOffset = 0,
-      showAll = false,
+      showAll = true,
     }
   end
   _G.__midiSynthRackPagination = ctx._rackPagination
   return ctx._rackPagination
+end
+
+local function getRackNodeRowById(ctx, nodeId)
+  local nodes = ctx and ctx._rackState and ctx._rackState.modules or nil
+  if type(nodes) ~= "table" then
+    return nil
+  end
+  for i = 1, #nodes do
+    local node = nodes[i]
+    if node and tostring(node.id or "") == tostring(nodeId or "") then
+      return math.max(0, math.floor(tonumber(node.row) or 0))
+    end
+  end
+  return nil
+end
+
+local function getRackTotalRows(ctx)
+  local rackState = ctx and ctx._rackState or nil
+  local nodes = rackState and rackState.modules or nil
+  local maxRow = -1
+  if type(nodes) == "table" then
+    for i = 1, #nodes do
+      local node = nodes[i]
+      if node then
+        local row = math.max(0, math.floor(tonumber(node.row) or 0))
+        if row > maxRow then
+          maxRow = row
+        end
+      end
+    end
+  end
+
+  local derivedRows = math.max(1, maxRow + 1)
+  local explicitRows = math.max(0, math.floor(tonumber(rackState and rackState.rowCount) or 0))
+  local totalRows = math.max(3, explicitRows, derivedRows)
+  if rackState then
+    rackState.rowCount = totalRows
+  end
+  return totalRows
+end
+
+local function preferredRackOutputRow(ctx)
+  local nodes = ctx and ctx._rackState and ctx._rackState.modules or nil
+  local connections = ctx and ctx._rackConnections or nil
+  local normalized = MidiSynthRackSpecs.normalizeConnections(connections, nodes)
+  local fallbackRow = getRackTotalRows(ctx)
+
+  for i = 1, #normalized do
+    local conn = normalized[i]
+    local from = conn and conn.from or nil
+    local to = conn and conn.to or nil
+    if tostring(conn and conn.kind or "") == "audio"
+      and type(from) == "table"
+      and type(to) == "table"
+      and tostring(to.moduleId or "") == tostring(MidiSynthRackSpecs.OUTPUT_NODE_ID)
+      and tostring(to.portId or "") == tostring(MidiSynthRackSpecs.OUTPUT_PORT_ID) then
+      local row = getRackNodeRowById(ctx, tostring(from.moduleId or ""))
+      if row ~= nil then
+        return row + 1
+      end
+    end
+  end
+
+  return fallbackRow
+end
+
+local function syncRackPaginationModel(ctx, viewportHeight)
+  local p = ensureRackPaginationState(ctx)
+  local totalRows = getRackTotalRows(ctx)
+  local rackSlotH = tonumber(RackLayoutManager and RackLayoutManager.RACK_SLOT_H) or 220
+  local rowsPerPage = math.max(1, math.floor((tonumber(viewportHeight) or 0) / rackSlotH))
+  rowsPerPage = math.max(1, math.min(totalRows, rowsPerPage))
+
+  local wasShowAll = p.showAll == true
+
+  p.totalRows = totalRows
+  p.rowsPerPage = rowsPerPage
+  p.showAll = rowsPerPage >= totalRows
+
+  local maxOffset = math.max(0, totalRows - rowsPerPage)
+  local nextOffset = math.max(0, math.min(maxOffset, math.floor(tonumber(p.viewportOffset) or 0)))
+  if p.showAll then
+    nextOffset = 0
+  elseif wasShowAll then
+    local outputRow = math.max(1, math.min(totalRows, preferredRackOutputRow(ctx)))
+    nextOffset = math.max(0, math.min(maxOffset, outputRow - rowsPerPage))
+  end
+  p.viewportOffset = nextOffset
+  p.pageCount = p.showAll and totalRows or (maxOffset + 1)
+
+  p.visibleRows = {}
+  if p.showAll then
+    for row = 1, totalRows do
+      p.visibleRows[#p.visibleRows + 1] = row
+    end
+  else
+    for row = 1, rowsPerPage do
+      p.visibleRows[#p.visibleRows + 1] = nextOffset + row
+    end
+  end
+
+  _G.__midiSynthRackPagination = p
+  return p
 end
 
 local function updateRackPaginationDots(ctx)
@@ -1175,12 +1334,24 @@ local function updateRackPaginationDots(ctx)
     local dot = entry.widget
     local i = entry.index
     if dot then
-      local isActive = false
-      for _, r in ipairs(p.visibleRows) do
-        if r == i then isActive = true; break end
+      local isVisible = i <= math.max(0, tonumber(p.totalRows) or 0)
+      if dot.setVisible then
+        dot:setVisible(isVisible)
+      elseif dot.node and dot.node.setVisible then
+        dot.node:setVisible(isVisible)
       end
+
+      local isActive = false
+      if isVisible then
+        for _, rowIndex in ipairs(p.visibleRows or {}) do
+          if rowIndex == i then
+            isActive = true
+            break
+          end
+        end
+      end
+
       local newColour = isActive and 0xffffffff or 0xff475569
-      -- Runtime widgets use _colour directly, not style.colour
       if dot._colour ~= newColour then
         dot._colour = newColour
         if dot._syncRetained then dot:_syncRetained() end
@@ -1190,56 +1361,56 @@ local function updateRackPaginationDots(ctx)
   end
 end
 
-local function setRackViewport(ctx, offset, showAll)
+local function setRackViewport(ctx, offset)
   local p = ensureRackPaginationState(ctx)
-  local rackContainer = ctx.widgets.rackContainer
-  if not rackContainer then return end
-  
-  p.viewportOffset = offset or 0
-  p.showAll = showAll or false
-  
-  if p.showAll then
-    p.visibleRows = {1, 2, 3}
-    rackContainer.h = 684
-    rackContainer.y = 0
-  elseif p.viewportOffset == 0 then
-    p.visibleRows = {1, 2}
-    rackContainer.h = 452
-    rackContainer.y = 0
+  local maxOffset = math.max(0, (tonumber(p.totalRows) or 1) - (tonumber(p.rowsPerPage) or 1))
+  p.viewportOffset = math.max(0, math.min(maxOffset, math.floor(tonumber(offset) or 0)))
+  _G.__midiSynthRackPagination = p
+  if ctx and ctx._lastW and ctx._lastH then
+    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
   else
-    p.visibleRows = {2, 3}
-    rackContainer.h = 452
-    rackContainer.y = -232
+    updateRackPaginationDots(ctx)
   end
-  
-  updateRackPaginationDots(ctx)
 end
 
 local function onRackDotClick(ctx, dotIndex)
   local p = ensureRackPaginationState(ctx)
-  
-  if dotIndex == 1 then
-    setRackViewport(ctx, 0, false)
-  elseif dotIndex == 3 then
-    setRackViewport(ctx, 1, false)
-  else
-    -- Middle dot: toggle between 1-2 and 2-3
-    if p.viewportOffset == 0 then
-      setRackViewport(ctx, 1, false)
-    else
-      setRackViewport(ctx, 0, false)
-    end
+  local targetRow = math.max(1, math.floor(tonumber(dotIndex) or 1))
+  if p.showAll then
+    updateRackPaginationDots(ctx)
+    return
   end
+
+  local firstVisible = tonumber((p.visibleRows or {})[1]) or 1
+  local lastVisible = tonumber((p.visibleRows or {})[#(p.visibleRows or {})]) or firstVisible
+  if targetRow >= firstVisible and targetRow <= lastVisible then
+    updateRackPaginationDots(ctx)
+    return
+  end
+
+  local rowsPerPage = math.max(1, tonumber(p.rowsPerPage) or 1)
+  local maxOffset = math.max(0, (tonumber(p.totalRows) or 1) - rowsPerPage)
+  local targetOffset = tonumber(p.viewportOffset) or 0
+  if targetRow < firstVisible then
+    targetOffset = targetRow - 1
+  elseif targetRow > lastVisible then
+    targetOffset = targetRow - rowsPerPage
+  end
+  targetOffset = math.max(0, math.min(maxOffset, targetOffset))
+  setRackViewport(ctx, targetOffset)
 end
 
-local RACK_SHELL_LAYOUT
+local RACK_MODULE_SHELL_LAYOUT
 
 -- Same-row drag reorder state
 local dragState = {
   active = false,
+  sourceKind = nil,
   shellId = nil,
-  nodeId = nil,
+  moduleId = nil,
   row = nil,
+  paletteEntryId = nil,
+  unregisterOnCancel = false,
   startX = 0,
   startY = 0,
   grabOffsetX = 0,
@@ -1247,8 +1418,11 @@ local dragState = {
   startIndex = nil,
   targetIndex = nil,
   previewIndex = nil,
+  startPlacement = nil,
+  previewPlacement = nil,
   rowSnapshot = nil,
-  baseNodes = nil,
+  baseModules = nil,
+  insertMode = false,
   ghostStartX = 0,
   ghostStartY = 0,
   ghostX = 0,
@@ -1259,12 +1433,15 @@ local dragState = {
 
 local function resetDragState(ctx)
   if ctx then
-    ctx._dragPreviewNodes = nil
+    ctx._dragPreviewModules = nil
   end
   dragState.active = false
+  dragState.sourceKind = nil
   dragState.shellId = nil
-  dragState.nodeId = nil
+  dragState.moduleId = nil
   dragState.row = nil
+  dragState.paletteEntryId = nil
+  dragState.unregisterOnCancel = false
   dragState.startX = 0
   dragState.startY = 0
   dragState.grabOffsetX = 0
@@ -1272,8 +1449,11 @@ local function resetDragState(ctx)
   dragState.startIndex = nil
   dragState.targetIndex = nil
   dragState.previewIndex = nil
+  dragState.startPlacement = nil
+  dragState.previewPlacement = nil
   dragState.rowSnapshot = nil
-  dragState.baseNodes = nil
+  dragState.baseModules = nil
+  dragState.insertMode = false
   dragState.ghostStartX = 0
   dragState.ghostStartY = 0
   dragState.ghostX = 0
@@ -1283,19 +1463,141 @@ local function resetDragState(ctx)
 end
 
 local function getRackShellMetaByNodeId(nodeId)
-  return type(RACK_SHELL_LAYOUT) == "table" and RACK_SHELL_LAYOUT[nodeId] or nil
+  return type(RACK_MODULE_SHELL_LAYOUT) == "table" and RACK_MODULE_SHELL_LAYOUT[nodeId] or nil
 end
 
 local function getRackNodeIdByShellId(shellId)
-  if type(RACK_SHELL_LAYOUT) ~= "table" then
+  if type(RACK_MODULE_SHELL_LAYOUT) ~= "table" then
     return nil, nil
   end
-  for nodeId, meta in pairs(RACK_SHELL_LAYOUT) do
+  for nodeId, meta in pairs(RACK_MODULE_SHELL_LAYOUT) do
     if type(meta) == "table" and meta.shellId == shellId then
       return nodeId, meta
     end
   end
   return nil, nil
+end
+
+function M._ensureDynamicShellForNode(ctx, nodeId)
+  if not (ctx and type(RACK_MODULE_SHELL_LAYOUT) == "table") then
+    return nil
+  end
+  local existing = RACK_MODULE_SHELL_LAYOUT[tostring(nodeId or "")]
+  if existing then
+    return existing
+  end
+
+  local node = nil
+  local sourceNodes = (ctx and ctx._dragPreviewModules) or (ctx and ctx._rackState and ctx._rackState.modules) or {}
+  for i = 1, #sourceNodes do
+    if sourceNodes[i] and tostring(sourceNodes[i].id or "") == tostring(nodeId or "") then
+      node = sourceNodes[i]
+      break
+    end
+  end
+  local spec = ctx._rackModuleSpecs and ctx._rackModuleSpecs[tostring(nodeId or "")] or nil
+  local rackShellHost = getScopedWidget(ctx, ".rackContainer.rackShellHost") or getScopedWidget(ctx, ".rackShellHost")
+  local runtime = _G.__manifoldStructuredUiRuntime
+  if not (node and spec and rackShellHost and rackShellHost.node and runtime and runtime.instantiateSpec) then
+    return nil
+  end
+
+  local RackModuleShell = require("components.rack_module_shell")
+  local shellId = tostring(nodeId) .. "Shell"
+  local slotW = (RackLayoutManager and RackLayoutManager.RACK_SLOT_W) or 236
+  local slotH = (RackLayoutManager and RackLayoutManager.RACK_SLOT_H) or 220
+  local componentId = tostring((spec.meta and spec.meta.componentId) or (node.meta and node.meta.componentId) or "contentComponent")
+  local shellSpec = RackModuleShell({
+    id = shellId,
+    layout = false,
+    x = 0,
+    y = 0,
+    w = math.max(1, tonumber(node.w) or 1) * slotW,
+    h = math.max(1, tonumber(node.h) or 1) * slotH,
+    sizeKey = tostring(node.sizeKey or "1x1"),
+    accentColor = tonumber(spec.accentColor) or 0xff64748b,
+    nodeName = tostring(spec.name or nodeId),
+    componentRef = spec.meta and spec.meta.componentRef or "ui/components/placeholder.ui.lua",
+    componentId = componentId,
+    componentBehavior = spec.meta and spec.meta.behavior or nil,
+    componentProps = {
+      instanceNodeId = tostring(nodeId or ""),
+      paramBase = spec.meta and spec.meta.paramBase or nil,
+      specId = spec.meta and spec.meta.specId or spec.id or nil,
+    },
+    componentOverrides = {
+      [componentId] = {
+        style = { bg = 0x00000000, border = 0x00000000, borderWidth = 0, radius = 0 },
+        props = { interceptsMouse = false },
+      },
+    },
+  })
+
+  local parentRecord = rackShellHost._structuredRecord
+  local parentChildren = parentRecord and parentRecord.children or nil
+  local _, _, record = runtime:instantiateSpec(rackShellHost.node, shellSpec, {
+    idPrefix = parentRecord and parentRecord.globalId or (ctx._globalPrefix or "root") .. ".rackContainer.rackShellHost",
+    localWidgets = ctx.allWidgets or {},
+    extraProps = nil,
+    isRoot = false,
+    parentRecord = parentRecord,
+    sourceDocumentPath = "rack_dynamic_shell",
+    sourceKind = "node",
+  })
+  if type(parentChildren) == "table" and record ~= nil then
+    parentChildren[#parentChildren + 1] = record
+  end
+
+  if ctx then
+    ctx._scopedWidgetCache = {}
+    ctx._scopedBehaviorCache = {}
+  end
+
+  local componentBehavior = getScopedBehavior(ctx, "." .. shellId .. "." .. componentId)
+  if componentBehavior and componentBehavior.ctx then
+    componentBehavior.ctx._instanceNodeId = tostring(nodeId or "")
+    local behaviorRoot = componentBehavior.ctx.root
+    local behaviorNode = behaviorRoot and behaviorRoot.node or nil
+    if behaviorNode and behaviorNode.setUserData then
+      behaviorNode:setUserData("_structuredInstanceSource", {
+        nodeId = tostring(nodeId or ""),
+        shellId = tostring(shellId or ""),
+        componentId = tostring(componentId or ""),
+        globalId = behaviorRoot and behaviorRoot._structuredRecord and behaviorRoot._structuredRecord.globalId or nil,
+      })
+    end
+  end
+  if componentBehavior and componentBehavior.ctx and componentBehavior.module then
+    if componentBehavior.ctx._dynamicInitApplied ~= true and type(componentBehavior.module.init) == "function" then
+      componentBehavior.module.init(componentBehavior.ctx)
+      componentBehavior.ctx._dynamicInitApplied = true
+    end
+    if type(componentBehavior.module.resized) == "function" then
+      componentBehavior.module.resized(componentBehavior.ctx)
+    end
+  end
+
+  local meta = {
+    shellId = shellId,
+    badgeSuffix = "." .. shellId .. ".sizeBadge",
+    row = tonumber(node.row) or 0,
+    accentColor = tonumber(spec.accentColor) or 0xff64748b,
+    specId = tostring(spec.id or nodeId),
+    componentId = componentId,
+    dynamic = true,
+  }
+  RACK_MODULE_SHELL_LAYOUT[tostring(nodeId)] = meta
+  PatchbayRuntime.registerShellMapping(shellId, tostring(nodeId), meta.specId, meta.componentId)
+  if type(M._setupShellDragHandlers) == "function" then
+    M._setupShellDragHandlers(ctx)
+  end
+  if type(M._setupResizeToggleHandlers) == "function" then
+    M._setupResizeToggleHandlers(ctx)
+  end
+  if type(M._setupDeleteButtonHandlers) == "function" then
+    M._setupDeleteButtonHandlers(ctx)
+  end
+  return meta
 end
 
 local function getWidgetBounds(widget)
@@ -1420,8 +1722,183 @@ end
 
 local RACK_COLUMNS_PER_ROW = 5
 
+local PALETTE_SPEC_TEMPLATES = MidiSynthRackSpecs.paletteEntryTemplateById()
+
+local function makePaletteEntry(specId, overrides)
+  local base = PALETTE_SPEC_TEMPLATES[tostring(specId or "")] or {}
+  local entry = {
+    id = tostring(specId or ""),
+    specId = tostring(specId or ""),
+    category = tostring(base.category or "utility"),
+    accentColor = base.accentColor,
+    displayName = tostring(base.displayName or specId or "Module"),
+    description = tostring(base.description or ""),
+    portSummary = tostring(base.portSummary or ""),
+  }
+  if type(overrides) == "table" then
+    for key, value in pairs(overrides) do
+      entry[key] = value
+    end
+  end
+  return entry
+end
+
+M._PALETTE_ENTRIES = {
+  makePaletteEntry("placeholder", {
+    id = "placeholder",
+    cardId = "palettePlaceholderCard",
+    hintId = "palettePlaceholderHint",
+    spawnKind = "dynamic",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1" },
+  }),
+  makePaletteEntry("adsr", {
+    id = "adsr",
+    cardId = "paletteAdsrCard",
+    hintId = "paletteAdsrHint",
+    spawnKind = "adsr-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "envelopeComponent" },
+  }),
+  makePaletteEntry("arp", {
+    id = "arp",
+    cardId = "paletteArpCard",
+    hintId = "paletteArpHint",
+    spawnKind = "arp-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "arpComponent" },
+  }),
+  makePaletteEntry("transpose", {
+    id = "transpose",
+    cardId = "paletteTransposeCard",
+    hintId = "paletteTransposeHint",
+    spawnKind = "transpose-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "transposeComponent" },
+  }),
+  makePaletteEntry("velocity_mapper", {
+    id = "velocity_mapper",
+    cardId = "paletteVelocityMapperCard",
+    hintId = "paletteVelocityMapperHint",
+    spawnKind = "velocity-mapper-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "velocityMapperComponent" },
+  }),
+  makePaletteEntry("scale_quantizer", {
+    id = "scale_quantizer",
+    cardId = "paletteScaleQuantizerCard",
+    hintId = "paletteScaleQuantizerHint",
+    spawnKind = "scale-quantizer-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "scaleQuantizerComponent" },
+  }),
+  makePaletteEntry("note_filter", {
+    id = "note_filter",
+    cardId = "paletteNoteFilterCard",
+    hintId = "paletteNoteFilterHint",
+    spawnKind = "note-filter-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "noteFilterComponent" },
+  }),
+  makePaletteEntry("rack_oscillator", {
+    id = "rack_oscillator",
+    cardId = "paletteRackOscillatorCard",
+    hintId = "paletteRackOscillatorHint",
+    spawnKind = "oscillator-module",
+    defaultNode = { w = 2, h = 1, sizeKey = "1x2", componentId = "rackOscillatorComponent" },
+  }),
+  makePaletteEntry("filter", {
+    id = "filter",
+    cardId = "paletteFilterCard",
+    hintId = "paletteFilterHint",
+    nodeId = "filter",
+    spawnKind = "filter-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "filterComponent" },
+  }),
+  makePaletteEntry("eq", {
+    id = "eq",
+    cardId = "paletteEqCard",
+    hintId = "paletteEqHint",
+    nodeId = "eq",
+    spawnKind = "eq-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "eqComponent" },
+  }),
+  makePaletteEntry("fx", {
+    id = "fx",
+    cardId = "paletteFxCard",
+    hintId = "paletteFxHint",
+    spawnKind = "fx-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "fx1Component" },
+  }),
+  makePaletteEntry("attenuverter_bias", {
+    id = "attenuverter_bias",
+    cardId = "paletteAttenuverterBiasCard",
+    hintId = "paletteAttenuverterBiasHint",
+    spawnKind = "attenuverter-bias-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "attenuverterBiasComponent" },
+  }),
+  makePaletteEntry("lfo", {
+    id = "lfo",
+    cardId = "paletteLfoCard",
+    hintId = "paletteLfoHint",
+    spawnKind = "lfo-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "lfoComponent" },
+  }),
+  makePaletteEntry("slew", {
+    id = "slew",
+    cardId = "paletteSlewCard",
+    hintId = "paletteSlewHint",
+    spawnKind = "slew-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "slewComponent" },
+  }),
+  makePaletteEntry("sample_hold", {
+    id = "sample_hold",
+    cardId = "paletteSampleHoldCard",
+    hintId = "paletteSampleHoldHint",
+    spawnKind = "sample-hold-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "sampleHoldComponent" },
+  }),
+  makePaletteEntry("compare", {
+    id = "compare",
+    cardId = "paletteCompareCard",
+    hintId = "paletteCompareHint",
+    spawnKind = "compare-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "compareComponent" },
+  }),
+  makePaletteEntry("cv_mix", {
+    id = "cv_mix",
+    cardId = "paletteCvMixCard",
+    hintId = "paletteCvMixHint",
+    spawnKind = "cv-mix-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "cvMixComponent" },
+  }),
+  makePaletteEntry("range_mapper", {
+    id = "range_mapper",
+    cardId = "paletteRangeMapperCard",
+    hintId = "paletteRangeMapperHint",
+    spawnKind = "range_mapper-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "rangeMapperComponent" },
+  }),
+}
+
+function M._rackAudioStageCodeForNodeId(nodeId)
+  local id = tostring(nodeId or "")
+  if id == "filter" then return 1 end
+  if id == "fx1" then return 2 end
+  if id == "fx2" then return 3 end
+  if id == "eq" then return 4 end
+  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  local entry = type(info) == "table" and info[id] or nil
+  if type(entry) == "table" and tostring(entry.specId or "") == "eq" then
+    local slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 0))
+    return 100 + slotIndex
+  end
+  if type(entry) == "table" and tostring(entry.specId or "") == "fx" then
+    local slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 0))
+    return 200 + slotIndex
+  end
+  if type(entry) == "table" and tostring(entry.specId or "") == "filter" then
+    local slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 0))
+    return 300 + slotIndex
+  end
+  return 0
+end
+
 local function getActiveRackNodes(ctx)
-  return (ctx and (ctx._dragPreviewNodes or (ctx._rackState and ctx._rackState.nodes))) or {}
+  return (ctx and (ctx._dragPreviewModules or (ctx._rackState and ctx._rackState.modules))) or {}
 end
 
 local function getActiveRackNodeById(ctx, nodeId)
@@ -1434,9 +1911,614 @@ local function getActiveRackNodeById(ctx, nodeId)
   return nil
 end
 
+M._inferredDynamicSpecId = function(node)
+  local meta = type(node) == "table" and type(node.meta) == "table" and node.meta or {}
+  local metaSpecId = tostring(meta.specId or "")
+  if metaSpecId ~= "" and RackModuleFactory.specConfig(metaSpecId) ~= nil then
+    return metaSpecId
+  end
+  local nodeId = tostring(type(node) == "table" and node.id or "")
+  local inferred = nodeId:match("^(.-)_inst_%d+$")
+  if inferred ~= nil and RackModuleFactory.specConfig(inferred) ~= nil then
+    return inferred
+  end
+  return nil
+end
+
+M._rebuildDynamicRackModuleState = function(ctx)
+  if type(ctx) ~= "table" then
+    return 0
+  end
+
+  ctx._rackModuleSpecs = MidiSynthRackSpecs.rackModuleSpecById()
+  _G.__midiSynthDynamicModuleInfo = {}
+  _G.__midiSynthDynamicModuleSpecs = {}
+
+  local slots = RackModuleFactory.ensureDynamicModuleSlots(ctx)
+  for _, bucket in pairs(slots or {}) do
+    if type(bucket) == "table" then
+      for slotIndex in pairs(bucket) do
+        bucket[slotIndex] = nil
+      end
+    end
+  end
+
+  local ensureSlot = type(_G.__midiSynthEnsureDynamicModuleSlot) == "function" and _G.__midiSynthEnsureDynamicModuleSlot or nil
+  local nodes = ctx._rackState and ctx._rackState.modules or {}
+  local restored = 0
+  local maxSerial = 0
+
+  for i = 1, #nodes do
+    local node = nodes[i]
+    local nodeId = tostring(node and node.id or "")
+    local serial = tonumber(nodeId:match("_inst_(%d+)$"))
+    if serial ~= nil and serial > maxSerial then
+      maxSerial = serial
+    end
+
+    local specId = M._inferredDynamicSpecId(node)
+    if specId ~= nil then
+      node.meta = type(node.meta) == "table" and node.meta or {}
+      local slotIndex = tonumber(node.meta.slotIndex)
+      if slotIndex == nil then
+        local paramBase = tostring(node.meta.paramBase or "")
+        slotIndex = tonumber(paramBase:match("/(%d+)$"))
+      end
+      if slotIndex == nil then
+        slotIndex = RackModuleFactory.nextAvailableSlot(ctx, specId)
+      end
+      slotIndex = math.max(1, math.floor(tonumber(slotIndex) or 1))
+
+      if ensureSlot then
+        ensureSlot(specId, slotIndex)
+      end
+
+      local paramBase = RackModuleFactory.buildParamBase(specId, slotIndex)
+      local spec = RackModuleFactory.registerDynamicModuleSpec(ctx, specId, nodeId, {
+        slotIndex = slotIndex,
+        paramBase = paramBase,
+      })
+      if type(spec) == "table" then
+        RackModuleFactory.markSlotOccupied(ctx, specId, slotIndex, nodeId)
+        node.meta.specId = specId
+        node.meta.componentId = tostring(node.meta.componentId or (spec.meta and spec.meta.componentId) or "contentComponent")
+        node.meta.spawned = true
+        node.meta.slotIndex = slotIndex
+        node.meta.paramBase = paramBase
+        restored = restored + 1
+      end
+    end
+  end
+
+  ctx._dynamicNodeSerial = math.max(tonumber(ctx._dynamicNodeSerial) or 0, maxSerial)
+  _G.__midiSynthRackModuleSpecs = ctx._rackModuleSpecs
+  return restored
+end
+
+function M._getPaletteEntry(entryId)
+  local targetId = tostring(entryId or "")
+  for i = 1, #M._PALETTE_ENTRIES do
+    local entry = M._PALETTE_ENTRIES[i]
+    if entry and tostring(entry.id or "") == targetId then
+      return entry
+    end
+  end
+  return nil
+end
+
+function M._selectPaletteEntry(ctx, entryId)
+  local entry = M._getPaletteEntry(entryId)
+  if type(ctx) ~= "table" or type(entry) ~= "table" then
+    return nil
+  end
+  ctx._selectedPaletteEntryId = tostring(entry.id or "")
+  M._ensureSelectedPaletteScrollVisible(ctx)
+  M._requestUtilityBrowserRefresh(ctx)
+  return entry
+end
+
+function M._ensurePaletteSelection(ctx)
+  if type(ctx) ~= "table" then
+    return nil
+  end
+  local selected = M._getPaletteEntry(ctx._selectedPaletteEntryId)
+  if selected then
+    return selected
+  end
+  local fallback = M._PALETTE_ENTRIES[1]
+  if fallback then
+    ctx._selectedPaletteEntryId = tostring(fallback.id or "")
+  end
+  return fallback
+end
+
+function M._requestUtilityBrowserRefresh(ctx)
+  if type(ctx) ~= "table" then
+    return
+  end
+  if ctx._lastW and ctx._lastH then
+    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
+  end
+end
+
+function M._togglePaletteBrowseSection(ctx, sectionId)
+  if type(ctx) ~= "table" then
+    return
+  end
+  ctx._paletteBrowseCollapsed = ctx._paletteBrowseCollapsed or { voice = false, audio = false, fx = false, mod = false }
+  local key = tostring(sectionId or "")
+  if key == "voice" or key == "audio" or key == "fx" or key == "mod" then
+    ctx._paletteBrowseCollapsed[key] = not not (not ctx._paletteBrowseCollapsed[key])
+    M._requestUtilityBrowserRefresh(ctx)
+  end
+end
+
+function M._isPaletteBrowseSectionCollapsed(ctx, sectionId)
+  local collapsed = type(ctx) == "table" and ctx._paletteBrowseCollapsed or nil
+  if type(collapsed) ~= "table" then
+    return false
+  end
+  return collapsed[tostring(sectionId or "")] == true
+end
+
+function M._paletteBrowseEntryButtonMap()
+  return {
+    adsr = "utilityNavVoiceAdsr",
+    arp = "utilityNavVoiceArp",
+    transpose = "utilityNavVoiceTranspose",
+    velocity_mapper = "utilityNavVoiceVelocityMapper",
+    scale_quantizer = "utilityNavVoiceScaleQuantizer",
+    note_filter = "utilityNavVoiceNoteFilter",
+    placeholder = "utilityNavAudioPlaceholder",
+    rack_oscillator = "utilityNavAudioOsc",
+    filter = "utilityNavAudioFilter",
+    eq = "utilityNavFxEq",
+    fx = "utilityNavFxFx",
+    attenuverter_bias = "utilityNavModAttenuverterBias",
+    lfo = "utilityNavModLfo",
+    slew = "utilityNavModSlew",
+    sample_hold = "utilityNavModSampleHold",
+    compare = "utilityNavModCompare",
+    cv_mix = "utilityNavModCvMix",
+    range_mapper = "utilityNavFxRange",
+  }
+end
+
+function M._paletteEntryIndex(entryId)
+  local targetId = tostring(entryId or "")
+  for i = 1, #M._PALETTE_ENTRIES do
+    local entry = M._PALETTE_ENTRIES[i]
+    if entry and tostring(entry.id or "") == targetId then
+      return i
+    end
+  end
+  return nil
+end
+
+function M._paletteCardMetrics()
+  return {
+    w = 102,
+    h = 56,
+    gap = 6,
+    rowGap = 6,
+    pad = 8,
+    step = 62,
+    trackW = 8,
+  }
+end
+
+function M._paletteViewportWidth(ctx)
+  local strip = getScopedWidget(ctx, ".paletteStrip")
+  local m = M._paletteCardMetrics()
+  if strip and strip.node and strip.node.getBounds then
+    local _, _, w, _ = strip.node:getBounds()
+    return math.max(1, math.floor(tonumber(w) or 0) - m.trackW - 6)
+  end
+  return 540
+end
+
+function M._paletteViewportHeight(ctx)
+  local strip = getScopedWidget(ctx, ".paletteStrip")
+  if strip and strip.node and strip.node.getBounds then
+    local _, _, _, h = strip.node:getBounds()
+    return math.max(1, math.floor(tonumber(h) or 0))
+  end
+  return 136
+end
+
+function M._palettePreferredColumnCount(ctx)
+  local _ = ctx
+  return 6
+end
+
+function M._paletteGridColumnCount(ctx)
+  return math.max(1, math.min(M._palettePreferredColumnCount(ctx), #M._PALETTE_ENTRIES > 0 and #M._PALETTE_ENTRIES or 1))
+end
+
+function M._palettePreferredWidth(ctx)
+  local m = M._paletteCardMetrics()
+  local columns = M._paletteGridColumnCount(ctx)
+  return (m.pad * 2) + (columns * m.w) + (math.max(0, columns - 1) * m.gap) + m.trackW + 6
+end
+
+function M._paletteContentHeight(ctx)
+  local m = M._paletteCardMetrics()
+  local columns = M._paletteGridColumnCount(ctx)
+  local rows = math.max(1, math.ceil(#M._PALETTE_ENTRIES / columns))
+  return (m.pad * 2) + (rows * m.h) + (math.max(0, rows - 1) * m.rowGap)
+end
+
+function M._paletteMaxScrollOffset(ctx)
+  local viewportH = M._paletteViewportHeight(ctx)
+  local contentH = M._paletteContentHeight(ctx)
+  return math.max(0, contentH - viewportH)
+end
+
+function M._clampPaletteScrollOffset(ctx)
+  if type(ctx) ~= "table" then
+    return 0
+  end
+  local maxOffset = M._paletteMaxScrollOffset(ctx)
+  local offset = math.max(0, math.floor(tonumber(ctx._paletteScrollOffset) or 0))
+  if offset > maxOffset then
+    offset = maxOffset
+  end
+  ctx._paletteScrollOffset = offset
+  return offset
+end
+
+function M._ensureSelectedPaletteScrollVisible(ctx)
+  if type(ctx) ~= "table" then
+    return
+  end
+  local index = M._paletteEntryIndex(ctx._selectedPaletteEntryId)
+  if not index then
+    return
+  end
+  local m = M._paletteCardMetrics()
+  local columns = M._paletteGridColumnCount(ctx)
+  local viewportH = M._paletteViewportHeight(ctx)
+  local row = math.floor((index - 1) / columns)
+  local itemTop = m.pad + (row * (m.h + m.rowGap))
+  local itemBottom = itemTop + m.h
+  local offset = M._clampPaletteScrollOffset(ctx)
+  local viewTop = offset
+  local viewBottom = offset + viewportH
+  if itemTop < viewTop then
+    ctx._paletteScrollOffset = math.max(0, itemTop - m.pad)
+  elseif itemBottom > viewBottom then
+    ctx._paletteScrollOffset = math.max(0, itemBottom - viewportH + m.pad)
+  end
+  M._clampPaletteScrollOffset(ctx)
+end
+
+function M._nextAvailableCanonicalFilterNodeId(ctx)
+  if getActiveRackNodeById(ctx, "filter") == nil then
+    return "filter"
+  end
+  return nil
+end
+
+function M._nextAvailableCanonicalFxNodeId(ctx)
+  if getActiveRackNodeById(ctx, "fx1") == nil then
+    return "fx1"
+  end
+  if getActiveRackNodeById(ctx, "fx2") == nil then
+    return "fx2"
+  end
+  return nil
+end
+
+function M._canSpawnPaletteEntry(ctx, entry)
+  if type(entry) ~= "table" then
+    return false
+  end
+  local spawnKind = tostring(entry.spawnKind or "dynamic")
+  if spawnKind == "adsr-module" then
+    if getActiveRackNodeById(ctx, "adsr") == nil then
+      return true
+    end
+    return RackModuleFactory.nextAvailableSlot(ctx, "adsr") ~= nil
+  elseif spawnKind == "arp-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "arp") ~= nil
+  elseif spawnKind == "transpose-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "transpose") ~= nil
+  elseif spawnKind == "velocity-mapper-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "velocity_mapper") ~= nil
+  elseif spawnKind == "scale-quantizer-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "scale_quantizer") ~= nil
+  elseif spawnKind == "note-filter-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "note_filter") ~= nil
+  elseif spawnKind == "attenuverter-bias-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "attenuverter_bias") ~= nil
+  elseif spawnKind == "lfo-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "lfo") ~= nil
+  elseif spawnKind == "slew-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "slew") ~= nil
+  elseif spawnKind == "sample-hold-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "sample_hold") ~= nil
+  elseif spawnKind == "compare-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "compare") ~= nil
+  elseif spawnKind == "cv-mix-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "cv_mix") ~= nil
+  elseif spawnKind == "oscillator-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "rack_oscillator") ~= nil
+  elseif spawnKind == "eq-module" then
+    if getActiveRackNodeById(ctx, "eq") == nil then
+      return true
+    end
+    return RackModuleFactory.nextAvailableSlot(ctx, "eq") ~= nil
+  elseif spawnKind == "filter-module" then
+    if M._nextAvailableCanonicalFilterNodeId(ctx) ~= nil then
+      return true
+    end
+    return RackModuleFactory.nextAvailableSlot(ctx, "filter") ~= nil
+  elseif spawnKind == "fx-module" then
+    if M._nextAvailableCanonicalFxNodeId(ctx) ~= nil then
+      return true
+    end
+    return RackModuleFactory.nextAvailableSlot(ctx, "fx") ~= nil
+  elseif spawnKind == "range_mapper-module" then
+    return RackModuleFactory.nextAvailableSlot(ctx, "range_mapper") ~= nil
+  end
+  return true
+end
+
+function M._buildPaletteNodeFromEntry(ctx, entry)
+  if not M._canSpawnPaletteEntry(ctx, entry) then
+    return nil, nil, false
+  end
+
+  local specId = tostring(entry and entry.specId or "")
+  local defaultNode = type(entry) == "table" and entry.defaultNode or nil
+  local width = math.max(1, math.floor(tonumber(defaultNode and defaultNode.w) or 1))
+  local height = math.max(1, math.floor(tonumber(defaultNode and defaultNode.h) or 1))
+  local sizeKey = type(defaultNode and defaultNode.sizeKey) == "string" and defaultNode.sizeKey or string.format("%dx%d", height, width)
+  local spawnKind = tostring(entry and entry.spawnKind or "dynamic")
+
+  if spawnKind == "adsr-module" and getActiveRackNodeById(ctx, "adsr") == nil then
+    local spec = ctx and ctx._rackModuleSpecs and ctx._rackModuleSpecs[specId] or nil
+    if type(spec) ~= "table" then
+      return nil, nil, false
+    end
+    local componentId = type(defaultNode and defaultNode.componentId) == "string" and defaultNode.componentId
+      or type(spec.meta and spec.meta.componentId) == "string" and spec.meta.componentId
+      or "envelopeComponent"
+    local node = RackLayout.makeRackModuleInstance {
+      id = "adsr",
+      row = 0,
+      col = 0,
+      w = width,
+      h = height,
+      sizeKey = sizeKey,
+      meta = {
+        specId = specId,
+        componentId = componentId,
+        spawned = true,
+      },
+    }
+    return "adsr", node, false
+  end
+
+  if spawnKind == "eq-module" and getActiveRackNodeById(ctx, "eq") == nil then
+    local spec = ctx and ctx._rackModuleSpecs and ctx._rackModuleSpecs[specId] or nil
+    if type(spec) ~= "table" then
+      return nil, nil, false
+    end
+    local componentId = type(defaultNode and defaultNode.componentId) == "string" and defaultNode.componentId
+      or type(spec.meta and spec.meta.componentId) == "string" and spec.meta.componentId
+      or "eqComponent"
+    local node = RackLayout.makeRackModuleInstance {
+      id = "eq",
+      row = 0,
+      col = 0,
+      w = width,
+      h = height,
+      sizeKey = sizeKey,
+      meta = {
+        specId = specId,
+        componentId = componentId,
+        spawned = true,
+      },
+    }
+    return "eq", node, false
+  end
+
+  if spawnKind == "filter-module" then
+    local canonicalFilterNodeId = M._nextAvailableCanonicalFilterNodeId(ctx)
+    if canonicalFilterNodeId ~= nil then
+      local canonicalSpec = ctx and ctx._rackModuleSpecs and ctx._rackModuleSpecs[canonicalFilterNodeId] or nil
+      if type(canonicalSpec) ~= "table" then
+        return nil, nil, false
+      end
+      local canonicalComponentId = type(defaultNode and defaultNode.componentId) == "string" and defaultNode.componentId
+        or type(canonicalSpec.meta and canonicalSpec.meta.componentId) == "string" and canonicalSpec.meta.componentId
+        or "filterComponent"
+      local canonicalNode = RackLayout.makeRackModuleInstance {
+        id = canonicalFilterNodeId,
+        row = 0,
+        col = 0,
+        w = width,
+        h = height,
+        sizeKey = sizeKey,
+        meta = {
+          specId = specId,
+          componentId = canonicalComponentId,
+          spawned = true,
+        },
+      }
+      return canonicalFilterNodeId, canonicalNode, false
+    end
+  end
+
+  if spawnKind == "fx-module" then
+    local canonicalFxNodeId = M._nextAvailableCanonicalFxNodeId(ctx)
+    if canonicalFxNodeId ~= nil then
+      local canonicalSpec = ctx and ctx._rackModuleSpecs and ctx._rackModuleSpecs[canonicalFxNodeId] or nil
+      if type(canonicalSpec) ~= "table" then
+        return nil, nil, false
+      end
+      local canonicalComponentId = type(defaultNode and defaultNode.componentId) == "string" and defaultNode.componentId
+        or type(canonicalSpec.meta and canonicalSpec.meta.componentId) == "string" and canonicalSpec.meta.componentId
+        or (canonicalFxNodeId == "fx2" and "fx2Component" or "fx1Component")
+      local canonicalNode = RackLayout.makeRackModuleInstance {
+        id = canonicalFxNodeId,
+        row = 0,
+        col = 0,
+        w = width,
+        h = height,
+        sizeKey = sizeKey,
+        meta = {
+          specId = canonicalFxNodeId,
+          componentId = canonicalComponentId,
+          spawned = true,
+        },
+      }
+      return canonicalFxNodeId, canonicalNode, false
+    end
+  end
+
+  local dynamicMeta = nil
+  if spawnKind == "adsr-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "adsr", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "arp-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "arp", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "transpose-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "transpose", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "velocity-mapper-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "velocity_mapper", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "scale-quantizer-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "scale_quantizer", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "note-filter-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "note_filter", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "attenuverter-bias-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "attenuverter_bias", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "lfo-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "lfo", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "slew-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "slew", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "sample-hold-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "sample_hold", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "compare-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "compare", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "cv-mix-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "cv_mix", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "eq-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "eq", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "oscillator-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "rack_oscillator", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "filter-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "filter", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "fx-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "fx", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "range_mapper-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "range_mapper", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  end
+
+  if spawnKind ~= "dynamic" and dynamicMeta == nil then
+    return nil, nil, false
+  end
+
+  local nodeId = RackModuleFactory.nextDynamicNodeId(ctx, specId)
+  local spec = RackModuleFactory.registerDynamicModuleSpec(ctx, specId, nodeId, dynamicMeta)
+  if type(spec) ~= "table" then
+    RackModuleFactory.releaseDynamicSpawnMeta(ctx, specId, dynamicMeta)
+    return nil, nil, false
+  end
+  if dynamicMeta and dynamicMeta.slotIndex ~= nil then
+    RackModuleFactory.markSlotOccupied(ctx, specId, dynamicMeta.slotIndex, nodeId)
+  end
+
+  local node = RackLayout.makeRackModuleInstance {
+    id = nodeId,
+    row = 0,
+    col = 0,
+    w = width,
+    h = height,
+    sizeKey = sizeKey,
+    meta = {
+      specId = specId,
+      componentId = tostring(spec.meta and spec.meta.componentId or "contentComponent"),
+      spawned = true,
+      slotIndex = dynamicMeta and dynamicMeta.slotIndex or nil,
+      paramBase = dynamicMeta and dynamicMeta.paramBase or nil,
+    },
+  }
+  return nodeId, node, true
+end
+
+function M._buildPaletteNode(ctx, specId)
+  return M._buildPaletteNodeFromEntry(ctx, {
+    id = tostring(specId or ""),
+    specId = tostring(specId or ""),
+    spawnKind = "dynamic",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1" },
+  })
+end
+
+function M._clearPaletteDragPreview(ctx)
+  if ctx then
+    ctx._dragPreviewModules = nil
+  end
+  dragState.previewPlacement = nil
+  dragState.previewIndex = nil
+  dragState.targetIndex = nil
+end
+
 local function collectRackFlowSnapshot(ctx)
   local snapshot = {}
-  local orderedNodes = RackLayout.getFlowNodes(getActiveRackNodes(ctx))
+  local orderedNodes = RackLayout.getFlowModules(getActiveRackNodes(ctx))
   for i = 1, #orderedNodes do
     local node = orderedNodes[i]
     local meta = getRackShellMetaByNodeId(node.id)
@@ -1450,6 +2532,7 @@ local function collectRackFlowSnapshot(ctx)
           col = tonumber(node.col) or 0,
           bounds = bounds,
           index = i,
+          w = tonumber(node.w) or 1,
         }
       end
     end
@@ -1459,7 +2542,7 @@ end
 
 local function collectRackRowBands(ctx, snapshot)
   local rowBands = {}
-  for row = 0, 2 do
+  for row = 0, 7 do
     local rowWidget = getScopedWidget(ctx, ".rackRow" .. tostring(row + 1))
     local visible = rowWidget and rowWidget.isVisible and rowWidget:isVisible()
     if visible ~= false then
@@ -1467,6 +2550,8 @@ local function collectRackRowBands(ctx, snapshot)
       if rowBounds and rowBounds.h > 0 then
         rowBands[#rowBands + 1] = {
           row = row,
+          left = tonumber(rowBounds.x) or 0,
+          right = (tonumber(rowBounds.x) or 0) + (tonumber(rowBounds.w) or 0),
           top = tonumber(rowBounds.y) or 0,
           bottom = (tonumber(rowBounds.y) or 0) + (tonumber(rowBounds.h) or 0),
         }
@@ -1483,10 +2568,14 @@ local function collectRackRowBands(ctx, snapshot)
       local top = tonumber(entry.bounds.y) or 0
       local bottom = top + (tonumber(entry.bounds.h) or 0)
       if not band then
-        byRow[row] = { row = row, top = top, bottom = bottom }
+        byRow[row] = { row = row, left = tonumber(entry.bounds.x) or 0, right = (tonumber(entry.bounds.x) or 0) + (tonumber(entry.bounds.w) or 0), top = top, bottom = bottom }
       else
+        local left = tonumber(entry.bounds.x) or 0
+        local right = left + (tonumber(entry.bounds.w) or 0)
         if top < band.top then band.top = top end
         if bottom > band.bottom then band.bottom = bottom end
+        if left < (band.left or left) then band.left = left end
+        if right > (band.right or right) then band.right = right end
       end
     end
     for _, band in pairs(byRow) do
@@ -1503,7 +2592,27 @@ local function collectRackRowBands(ctx, snapshot)
   return rowBands
 end
 
-local function computeRackFlowTargetIndex(ctx, snapshot, movingNodeId, centerX, centerY)
+function M._pointInsideRackFlowBands(ctx, snapshot, centerX, centerY)
+  local rowBands = collectRackRowBands(ctx, snapshot)
+  if #rowBands == 0 then
+    return false
+  end
+
+  local x = tonumber(centerX) or 0
+  local y = tonumber(centerY) or 0
+  for i = 1, #rowBands do
+    local band = rowBands[i]
+    if x >= (tonumber(band.left) or 0)
+      and x <= (tonumber(band.right) or 0)
+      and y >= (tonumber(band.top) or 0)
+      and y <= (tonumber(band.bottom) or 0) then
+      return true
+    end
+  end
+  return false
+end
+
+local function computeRackFlowTargetPlacement(ctx, snapshot, movingNodeId, centerX, centerY)
   if type(snapshot) ~= "table" or #snapshot == 0 then
     return nil
   end
@@ -1513,12 +2622,14 @@ local function computeRackFlowTargetIndex(ctx, snapshot, movingNodeId, centerX, 
     return nil
   end
 
-  local selectedRow = rowBands[1].row
+  local selectedBand = rowBands[1]
+  local selectedRow = tonumber(selectedBand.row) or 0
   local y = tonumber(centerY) or 0
   for i = 1, #rowBands do
     local band = rowBands[i]
     local nextBand = rowBands[i + 1]
-    selectedRow = band.row
+    selectedBand = band
+    selectedRow = tonumber(band.row) or 0
     if not nextBand then
       break
     end
@@ -1530,10 +2641,11 @@ local function computeRackFlowTargetIndex(ctx, snapshot, movingNodeId, centerX, 
 
   local entriesByRow = {}
   local flowCount = 0
-  local hasMoving = false
+  local movingId = tostring(movingNodeId or "")
+  local hasMoving = movingId == ""
   for i = 1, #snapshot do
     local entry = snapshot[i]
-    if entry.id == movingNodeId then
+    if movingId ~= "" and entry.id == movingId then
       hasMoving = true
     else
       flowCount = flowCount + 1
@@ -1560,6 +2672,49 @@ local function computeRackFlowTargetIndex(ctx, snapshot, movingNodeId, centerX, 
     return tostring(a.id or "") < tostring(b.id or "")
   end)
 
+  local movingWidth = 1
+  local movingHeight = 1
+  for _, sourceNodes in ipairs({ dragState.baseModules, ctx and ctx._dragPreviewModules, ctx and ctx._rackState and ctx._rackState.modules }) do
+    if type(sourceNodes) == "table" then
+      for i = 1, #sourceNodes do
+        local node = sourceNodes[i]
+        if node and tostring(node.id or "") == movingId then
+          movingWidth = math.max(1, tonumber(node.w) or 1)
+          movingHeight = math.max(1, tonumber(node.h) or 1)
+          break
+        end
+      end
+    end
+    if movingWidth ~= 1 or movingHeight ~= 1 then
+      break
+    end
+  end
+
+  local slotW = tonumber(RackLayoutManager and RackLayoutManager.RACK_SLOT_W) or 236
+  local maxCols = math.max(1, tonumber(RACK_COLUMNS_PER_ROW) or 5)
+  local maxStartCol = math.max(0, maxCols - movingWidth)
+  local rowLeft = tonumber(selectedBand.left) or 0
+  local ghostLeft = (tonumber(centerX) or rowLeft) - ((movingWidth * slotW) * 0.5)
+  local targetCol = math.floor(((ghostLeft - rowLeft) / slotW) + 0.5)
+  if targetCol < 0 then
+    targetCol = 0
+  end
+  if targetCol > maxStartCol then
+    targetCol = maxStartCol
+  end
+
+  local sourceNodes = type(dragState.baseModules) == "table"
+      and dragState.baseModules
+      or (ctx and ctx._rackState and ctx._rackState.modules)
+      or {}
+  if RackLayout.isAreaFree(sourceNodes, selectedRow, targetCol, movingWidth, movingHeight, movingId ~= "" and movingId or nil) then
+    return {
+      mode = "slot",
+      row = selectedRow,
+      col = targetCol,
+    }
+  end
+
   local rowTargetIndex = 1
   for i = 1, #rowEntries do
     local midpoint = (tonumber(rowEntries[i].bounds.x) or 0) + ((tonumber(rowEntries[i].bounds.w) or 0) * 0.5)
@@ -1581,66 +2736,232 @@ local function computeRackFlowTargetIndex(ctx, snapshot, movingNodeId, centerX, 
   if targetIndex > (flowCount + 1) then
     targetIndex = flowCount + 1
   end
-  return targetIndex
+
+  return {
+    mode = "flow",
+    row = selectedRow,
+    index = targetIndex,
+  }
 end
 
-local function previewRackDragReorder(ctx, targetIndex)
-  if not dragState.active or not dragState.nodeId then
+local saveCurrentState
+local applyRackConnectionState
+
+local function samePlacement(a, b)
+  return type(a) == "table" and type(b) == "table"
+    and tostring(a.mode or "flow") == tostring(b.mode or "flow")
+    and tonumber(a.row) == tonumber(b.row)
+    and tonumber(a.col) == tonumber(b.col)
+    and tonumber(a.index) == tonumber(b.index)
+end
+
+local function parseSizeKey(sizeKey)
+  local h, w = tostring(sizeKey or ""):match("^(%d+)x(%d+)$")
+  if h == nil or w == nil then
+    return nil, nil
+  end
+  return tonumber(h), tonumber(w)
+end
+
+local function collapseShapeForNode(node, spec)
+  local currentH = math.max(1, tonumber(node and node.h) or 1)
+  local currentW = math.max(1, tonumber(node and node.w) or 1)
+  local validSizes = type(spec and spec.validSizes) == "table" and spec.validSizes or {}
+  local bestH = nil
+  local bestW = nil
+  local bestKey = nil
+
+  for i = 1, #validSizes do
+    local sizeKey = tostring(validSizes[i] or "")
+    local h, w = parseSizeKey(sizeKey)
+    if h ~= nil and w ~= nil and h == currentH and w < currentW then
+      if bestW == nil or w < bestW then
+        bestH = h
+        bestW = w
+        bestKey = sizeKey
+      end
+    end
+  end
+
+  return bestH, bestW, bestKey
+end
+
+local function autoCollapseRowForInsertion(nodes, movingNodeId, targetRow, movingWidth, specsById, maxCols)
+  local working = RackLayout.cloneRackModules(nodes)
+  local target = math.max(0, tonumber(targetRow) or 0)
+  local widthNeeded = math.max(1, tonumber(movingWidth) or 1)
+  local limit = math.max(1, tonumber(maxCols) or RACK_COLUMNS_PER_ROW)
+  local rowTotal = widthNeeded
+  local candidates = {}
+
+  for i = 1, #working do
+    local node = working[i]
+    if node and node.id ~= movingNodeId and math.max(0, tonumber(node.row) or 0) == target then
+      rowTotal = rowTotal + math.max(1, tonumber(node.w) or 1)
+      local spec = type(specsById) == "table" and specsById[node.id] or nil
+      local nextH, nextW, nextKey = collapseShapeForNode(node, spec)
+      if nextW ~= nil and nextW < math.max(1, tonumber(node.w) or 1) then
+        candidates[#candidates + 1] = {
+          node = node,
+          nextH = nextH,
+          nextW = nextW,
+          nextKey = nextKey,
+        }
+      end
+    end
+  end
+
+  table.sort(candidates, function(a, b)
+    local ac = tonumber(a and a.node and a.node.col) or 0
+    local bc = tonumber(b and b.node and b.node.col) or 0
+    return ac > bc
+  end)
+
+  for i = 1, #candidates do
+    if rowTotal <= limit then
+      break
+    end
+    local candidate = candidates[i]
+    local node = candidate.node
+    local currentW = math.max(1, tonumber(node and node.w) or 1)
+    local nextW = math.max(1, tonumber(candidate.nextW) or currentW)
+    if nextW < currentW then
+      rowTotal = rowTotal - (currentW - nextW)
+      node.w = nextW
+      node.h = math.max(1, tonumber(candidate.nextH) or tonumber(node.h) or 1)
+      node.sizeKey = candidate.nextKey or string.format("%dx%d", node.h, node.w)
+    end
+  end
+
+  return working
+end
+
+local function previewRackDragReorder(ctx, targetPlacement)
+  if not dragState.active or not dragState.moduleId then
     return false
   end
-  if type(dragState.baseNodes) ~= "table" then
+  if type(dragState.baseModules) ~= "table" then
     return false
   end
 
-  local nextIndex = tonumber(targetIndex) or dragState.startIndex
-  if not nextIndex then
+  local nextPlacement = type(targetPlacement) == "table" and targetPlacement or dragState.startPlacement
+  if type(nextPlacement) ~= "table" then
     return false
   end
-  if dragState.previewIndex == nextIndex then
+  if samePlacement(dragState.previewPlacement, nextPlacement) then
     return false
   end
 
-  local ok, nextNodes = pcall(RackLayout.moveNodeInFlow, dragState.baseNodes, dragState.nodeId, nextIndex, RACK_COLUMNS_PER_ROW, 0)
+  local movingNode = getActiveRackNodeById({ _dragPreviewModules = nil, _rackState = { modules = dragState.baseModules } }, dragState.moduleId)
+  local movingWidth = math.max(1, tonumber(movingNode and movingNode.w) or 1)
+  local workingNodes = autoCollapseRowForInsertion(
+    dragState.baseModules,
+    dragState.moduleId,
+    nextPlacement.row,
+    movingWidth,
+    ctx and ctx._rackModuleSpecs,
+    RACK_COLUMNS_PER_ROW
+  )
+
+  local ok, nextNodes
+  if tostring(nextPlacement.mode or "flow") == "slot" then
+    local maxRows = math.max(getRackTotalRows(ctx), (tonumber(nextPlacement.row) or 0) + math.max(1, tonumber(movingNode and movingNode.h) or 1) + 1, 8)
+    ok, nextNodes = pcall(RackLayout.moveModuleToSlot, workingNodes, dragState.moduleId, nextPlacement.row, nextPlacement.col, RACK_COLUMNS_PER_ROW, maxRows)
+  else
+    local minRows = {}
+    for i = 1, #(workingNodes or {}) do
+      local node = workingNodes[i]
+      if node and node.id ~= dragState.moduleId then
+        minRows[tostring(node.id or "")] = tonumber(node.row) or 0
+      end
+    end
+    minRows[tostring(dragState.moduleId or "")] = tonumber(nextPlacement.row) or 0
+    ok, nextNodes = pcall(RackLayout.moveModuleInFlowConstrained, workingNodes, dragState.moduleId, nextPlacement.index, RACK_COLUMNS_PER_ROW, 0, minRows)
+  end
   if not ok or type(nextNodes) ~= "table" then
-    print("[Drag] Preview reorder failed for " .. tostring(dragState.nodeId) .. ": " .. tostring(nextNodes))
     return false
   end
 
-  ctx._dragPreviewNodes = nextNodes
-  dragState.previewIndex = nextIndex
-  dragState.targetIndex = nextIndex
+  ctx._dragPreviewModules = nextNodes
+  dragState.previewPlacement = {
+    mode = tostring(nextPlacement.mode or "flow"),
+    row = nextPlacement.row,
+    col = nextPlacement.col,
+    index = nextPlacement.index,
+  }
+  dragState.previewIndex = tonumber(nextPlacement.col or nextPlacement.index)
+  dragState.targetIndex = tonumber(nextPlacement.col or nextPlacement.index)
   refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
   return true
 end
 
 local function finalizeRackDragReorder(ctx)
-  if not dragState.active or not dragState.nodeId then
+  if not dragState.active or not dragState.moduleId then
     return false
   end
 
-  local finalNodes = ctx._dragPreviewNodes or dragState.baseNodes
-  local finalIndex = dragState.previewIndex or dragState.startIndex
-  if type(finalNodes) ~= "table" or not finalIndex then
+  if dragState.sourceKind == "palette" and dragState.previewPlacement == nil then
+    if dragState.unregisterOnCancel then
+      RackModuleFactory.unregisterDynamicModuleSpec(ctx, dragState.moduleId, {
+        setPath = setPath,
+        voiceCount = VOICE_COUNT,
+      })
+    end
+    ctx._dragPreviewModules = nil
+    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
     return false
   end
 
-  ctx._rackState.nodes = RackLayout.cloneNodes(finalNodes)
+  local finalNodes = ctx._dragPreviewModules or dragState.baseModules
+  if type(finalNodes) ~= "table" then
+    return false
+  end
+
+  ctx._rackState.modules = RackLayout.cloneRackModules(finalNodes)
   ctx._rackState.utilityDock = ensureUtilityDockState(ctx)
   _G.__midiSynthRackState = ctx._rackState
-  ctx._dragPreviewNodes = nil
-  if finalIndex ~= dragState.startIndex then
-    ctx._lastEvent = string.format("Rack moved: %s → slot %d", tostring(dragState.nodeId), tonumber(finalIndex) or -1)
+  ctx._dragPreviewModules = nil
+
+  local moved = false
+  local beforeNode = dragState.baseModules and getActiveRackNodeById({ _dragPreviewModules = nil, _rackState = { modules = dragState.baseModules } }, dragState.moduleId) or nil
+  local afterNode = getActiveRackNodeById({ _dragPreviewModules = nil, _rackState = { modules = finalNodes } }, dragState.moduleId) or nil
+  if beforeNode and afterNode then
+    moved = (tonumber(beforeNode.row) ~= tonumber(afterNode.row)) or (tonumber(beforeNode.col) ~= tonumber(afterNode.col))
+  end
+
+  local topologyChanged = dragState.insertMode and moved
+  if topologyChanged then
+    ctx._rackConnections = MidiSynthRackSpecs.insertRackModuleAtVisualSlot(
+      ctx._rackConnections or {},
+      ctx._rackState.modules,
+      dragState.moduleId,
+      dragState.baseModules
+    )
+    _G.__midiSynthRackConnections = ctx._rackConnections
+    local finalNode = afterNode or getActiveRackNodeById(ctx, dragState.moduleId)
+    ctx._lastEvent = string.format("Rack inserted: %s → row %d col %d", tostring(dragState.moduleId), tonumber(finalNode and finalNode.row) or -1, tonumber(finalNode and finalNode.col) or -1)
+    applyRackConnectionState(ctx, "rack-shift-insert")
+  else
+    ctx._rackConnections = MidiSynthRackSpecs.normalizeConnections(ctx._rackConnections or {}, ctx._rackState.modules)
+    _G.__midiSynthRackConnections = ctx._rackConnections
+    if moved then
+      local finalNode = afterNode or getActiveRackNodeById(ctx, dragState.moduleId)
+      ctx._lastEvent = string.format("Rack moved: %s → row %d col %d", tostring(dragState.moduleId), tonumber(finalNode and finalNode.row) or -1, tonumber(finalNode and finalNode.col) or -1)
+    end
   end
   refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
-  return finalIndex ~= dragState.startIndex
+  if not topologyChanged and type(M._refreshRackPresentation) == "function" then
+    M._refreshRackPresentation(ctx)
+  end
+  return moved
 end
 
-local function setupShellDragHandlers(ctx)
-  if type(RACK_SHELL_LAYOUT) ~= "table" then
+M._setupShellDragHandlers = function(ctx)
+  if type(RACK_MODULE_SHELL_LAYOUT) ~= "table" then
     return
   end
 
-  for _, meta in pairs(RACK_SHELL_LAYOUT) do
+  for _, meta in pairs(RACK_MODULE_SHELL_LAYOUT) do
     local shellId = meta.shellId
     local nodeId = getRackNodeIdByShellId(shellId)
     local accent = getScopedWidget(ctx, "." .. shellId .. ".accent")
@@ -1650,32 +2971,45 @@ local function setupShellDragHandlers(ctx)
 
       local isDragging = false
 
-      accent.node:setOnMouseDown(function(x, y)
+      accent.node:setOnMouseDown(function(x, y, shift, ctrl, alt)
         local currentNode = getActiveRackNodeById(ctx, nodeId)
         local snapshot = collectRackFlowSnapshot(ctx)
         local shellWidget = getShellWidget(ctx, nodeId)
         local rootBounds = getWidgetBoundsInRoot(ctx, shellWidget)
         local startCenterX = rootBounds and ((rootBounds.x or 0) + ((rootBounds.w or 0) * 0.5)) or 0
         local startCenterY = rootBounds and ((rootBounds.y or 0) + ((rootBounds.h or 0) * 0.5)) or 0
-        local startIndex = computeRackFlowTargetIndex(ctx, snapshot, nodeId, startCenterX, startCenterY)
-        if not startIndex or not rootBounds then
+        local startPlacement = computeRackFlowTargetPlacement(ctx, snapshot, nodeId, startCenterX, startCenterY)
+        if type(startPlacement) ~= "table" or not rootBounds then
           return
         end
 
         isDragging = true
         dragState.active = true
         dragState.shellId = shellId
-        dragState.nodeId = nodeId
+        dragState.moduleId = nodeId
         dragState.row = currentNode and currentNode.row or tonumber(meta.row) or 0
         dragState.startX = x
         dragState.startY = y
         dragState.grabOffsetX = x
         dragState.grabOffsetY = y
-        dragState.startIndex = startIndex
-        dragState.targetIndex = startIndex
-        dragState.previewIndex = startIndex
+        dragState.startIndex = tonumber(startPlacement.col or startPlacement.index)
+        dragState.targetIndex = tonumber(startPlacement.col or startPlacement.index)
+        dragState.previewIndex = tonumber(startPlacement.col or startPlacement.index)
+        dragState.startPlacement = {
+          mode = tostring(startPlacement.mode or "flow"),
+          row = startPlacement.row,
+          col = startPlacement.col,
+          index = startPlacement.index,
+        }
+        dragState.previewPlacement = {
+          mode = tostring(startPlacement.mode or "flow"),
+          row = startPlacement.row,
+          col = startPlacement.col,
+          index = startPlacement.index,
+        }
         dragState.rowSnapshot = snapshot
-        dragState.baseNodes = RackLayout.cloneNodes((ctx._rackState and ctx._rackState.nodes) or {})
+        dragState.baseModules = RackLayout.cloneRackModules((ctx._rackState and ctx._rackState.modules) or {})
+        dragState.insertMode = shift == true
         dragState.ghostStartX = rootBounds.x or 0
         dragState.ghostStartY = rootBounds.y or 0
         dragState.ghostX = rootBounds.x or 0
@@ -1684,7 +3018,7 @@ local function setupShellDragHandlers(ctx)
         dragState.ghostH = rootBounds.h or 1
 
         local ghost, ghostAccent = ensureDragGhost(ctx)
-        local spec = ctx._rackNodeSpecs and ctx._rackNodeSpecs[nodeId] or nil
+        local spec = ctx._rackModuleSpecs and ctx._rackModuleSpecs[nodeId] or nil
         local ghostAccentColor = (spec and spec.accentColor) or meta.accentColor or 0xff64748b
         if ghostAccent then
           ghostAccent:setStyle({ bg = ghostAccentColor, border = 0x00000000, borderWidth = 0, radius = 0, opacity = 1.0 })
@@ -1704,8 +3038,8 @@ local function setupShellDragHandlers(ctx)
         dragState.rowSnapshot = snapshot
         local ghostCenterX = (dragState.ghostX or 0) + ((dragState.ghostW or 0) * 0.5)
         local ghostCenterY = (dragState.ghostY or 0) + ((dragState.ghostH or 0) * 0.5)
-        local targetIndex = computeRackFlowTargetIndex(ctx, snapshot, nodeId, ghostCenterX, ghostCenterY) or dragState.startIndex
-        previewRackDragReorder(ctx, targetIndex)
+        local targetPlacement = computeRackFlowTargetPlacement(ctx, snapshot, nodeId, ghostCenterX, ghostCenterY) or dragState.startPlacement
+        previewRackDragReorder(ctx, targetPlacement)
         setShellDragPlaceholder(ctx, nodeId, true)
       end)
 
@@ -1714,6 +3048,253 @@ local function setupShellDragHandlers(ctx)
         isDragging = false
         finalizeRackDragReorder(ctx)
         setShellDragPlaceholder(ctx, nodeId, false)
+        hideDragGhost(ctx)
+        resetDragState(ctx)
+      end)
+    end
+  end
+end
+
+function M._setupUtilityPaletteBrowserHandlers(ctx)
+  if type(ctx) ~= "table" or ctx._utilityPaletteBrowserHandlersReady == true then
+    return
+  end
+
+  local function bindButton(suffix, onPress)
+    local widget = getScopedWidget(ctx, suffix)
+    if not (widget and widget.node and onPress) then
+      return
+    end
+    widget.node:setInterceptsMouse(true, true)
+    widget.node:setOnMouseDown(function()
+      onPress()
+      M._requestUtilityBrowserRefresh(ctx)
+    end)
+    if widget.node.setOnMouseWheel then
+      widget.node:setOnMouseWheel(function(mx, my, deltaY)
+        local _ = mx
+        _ = my
+        local sign = (tonumber(deltaY) or 0) > 0 and -1 or 1
+        local step = 24
+        ctx._utilityNavScrollOffset = math.max(0, (tonumber(ctx._utilityNavScrollOffset) or 0) + (sign * step))
+        M._requestUtilityBrowserRefresh(ctx)
+      end)
+    end
+  end
+
+  local utilityNavRail = getScopedWidget(ctx, ".utilityNavRail")
+  if utilityNavRail and utilityNavRail.node and utilityNavRail.node.setOnMouseWheel then
+    utilityNavRail.node:setInterceptsMouse(true, true)
+    utilityNavRail.node:setOnMouseWheel(function(mx, my, deltaY)
+      local _ = mx
+      _ = my
+      local sign = (tonumber(deltaY) or 0) > 0 and -1 or 1
+      local step = 24
+      local nextOffset = math.max(0, (tonumber(ctx._utilityNavScrollOffset) or 0) + (sign * step))
+      ctx._utilityNavScrollOffset = nextOffset
+      M._requestUtilityBrowserRefresh(ctx)
+    end)
+  end
+
+  local paletteStrip = getScopedWidget(ctx, ".paletteStrip")
+  if paletteStrip and paletteStrip.node and paletteStrip.node.setOnMouseWheel then
+    paletteStrip.node:setInterceptsMouse(true, true)
+    paletteStrip.node:setOnMouseWheel(function(mx, my, deltaY)
+      local _ = mx
+      _ = my
+      local sign = (tonumber(deltaY) or 0) > 0 and -1 or 1
+      local step = M._paletteCardMetrics().step
+      local nextOffset = math.max(0, math.min(M._paletteMaxScrollOffset(ctx), (tonumber(ctx._paletteScrollOffset) or 0) + (sign * step)))
+      if nextOffset ~= (tonumber(ctx._paletteScrollOffset) or 0) then
+        ctx._paletteScrollOffset = nextOffset
+        M._requestUtilityBrowserRefresh(ctx)
+      end
+    end)
+  end
+
+  bindButton(".utilityNavVoiceHeader", function()
+    M._togglePaletteBrowseSection(ctx, "voice")
+  end)
+  bindButton(".utilityNavAudioHeader", function()
+    M._togglePaletteBrowseSection(ctx, "audio")
+  end)
+  bindButton(".utilityNavFxHeader", function()
+    M._togglePaletteBrowseSection(ctx, "fx")
+  end)
+  bindButton(".utilityNavModHeader", function()
+    M._togglePaletteBrowseSection(ctx, "mod")
+  end)
+
+  bindButton(".palettePagePrev", function()
+    local step = math.max(M._paletteCardMetrics().step, math.floor(M._paletteViewportHeight(ctx) * 0.75))
+    ctx._paletteScrollOffset = math.max(0, (tonumber(ctx._paletteScrollOffset) or 0) - step)
+    M._requestUtilityBrowserRefresh(ctx)
+  end)
+  bindButton(".palettePageNext", function()
+    local step = math.max(M._paletteCardMetrics().step, math.floor(M._paletteViewportHeight(ctx) * 0.75))
+    ctx._paletteScrollOffset = math.min(M._paletteMaxScrollOffset(ctx), (tonumber(ctx._paletteScrollOffset) or 0) + step)
+    M._requestUtilityBrowserRefresh(ctx)
+  end)
+
+  bindButton(".utilityNavVoiceAdsr", function()
+    M._selectPaletteEntry(ctx, "adsr")
+  end)
+  bindButton(".utilityNavVoiceArp", function()
+    M._selectPaletteEntry(ctx, "arp")
+  end)
+  bindButton(".utilityNavVoiceTranspose", function()
+    M._selectPaletteEntry(ctx, "transpose")
+  end)
+  bindButton(".utilityNavVoiceVelocityMapper", function()
+    M._selectPaletteEntry(ctx, "velocity_mapper")
+  end)
+  bindButton(".utilityNavVoiceScaleQuantizer", function()
+    M._selectPaletteEntry(ctx, "scale_quantizer")
+  end)
+  bindButton(".utilityNavVoiceNoteFilter", function()
+    M._selectPaletteEntry(ctx, "note_filter")
+  end)
+  bindButton(".utilityNavAudioPlaceholder", function()
+    M._selectPaletteEntry(ctx, "placeholder")
+  end)
+  bindButton(".utilityNavAudioOsc", function()
+    M._selectPaletteEntry(ctx, "rack_oscillator")
+  end)
+  bindButton(".utilityNavAudioFilter", function()
+    M._selectPaletteEntry(ctx, "filter")
+  end)
+  bindButton(".utilityNavFxEq", function()
+    M._selectPaletteEntry(ctx, "eq")
+  end)
+  bindButton(".utilityNavFxFx", function()
+    M._selectPaletteEntry(ctx, "fx")
+  end)
+  bindButton(".utilityNavFxRange", function()
+    M._selectPaletteEntry(ctx, "range_mapper")
+  end)
+  bindButton(".utilityNavModAttenuverterBias", function()
+    M._selectPaletteEntry(ctx, "attenuverter_bias")
+  end)
+  bindButton(".utilityNavModLfo", function()
+    M._selectPaletteEntry(ctx, "lfo")
+  end)
+  bindButton(".utilityNavModSlew", function()
+    M._selectPaletteEntry(ctx, "slew")
+  end)
+  bindButton(".utilityNavModSampleHold", function()
+    M._selectPaletteEntry(ctx, "sample_hold")
+  end)
+  bindButton(".utilityNavModCompare", function()
+    M._selectPaletteEntry(ctx, "compare")
+  end)
+  bindButton(".utilityNavModCvMix", function()
+    M._selectPaletteEntry(ctx, "cv_mix")
+  end)
+
+  ctx._utilityPaletteBrowserHandlersReady = true
+end
+
+function M._setupPaletteDragHandlers(ctx)
+  for i = 1, #M._PALETTE_ENTRIES do
+    local entry = M._PALETTE_ENTRIES[i]
+    local paletteCard = getScopedWidget(ctx, "." .. tostring(entry.cardId or ""))
+    if paletteCard and paletteCard.node then
+      paletteCard.node:setInterceptsMouse(true, true)
+      local isDragging = false
+
+      paletteCard.node:setOnMouseDown(function(x, y, shift)
+        M._selectPaletteEntry(ctx, entry.id)
+        local paletteBounds = getWidgetBoundsInRoot(ctx, paletteCard)
+        local nextNodeId, tempNode, unregisterOnCancel = M._buildPaletteNodeFromEntry(ctx, entry)
+        if not paletteBounds or not nextNodeId or not tempNode then
+          return
+        end
+
+        isDragging = true
+        dragState.active = true
+        dragState.sourceKind = "palette"
+        dragState.shellId = nil
+        dragState.moduleId = nextNodeId
+        dragState.row = nil
+        dragState.paletteEntryId = tostring(entry.id or "")
+        dragState.unregisterOnCancel = unregisterOnCancel == true
+        dragState.startX = x
+        dragState.startY = y
+        dragState.grabOffsetX = x
+        dragState.grabOffsetY = y
+        dragState.startIndex = nil
+        dragState.targetIndex = nil
+        dragState.previewIndex = nil
+        dragState.startPlacement = nil
+        dragState.previewPlacement = nil
+        dragState.rowSnapshot = nil
+        dragState.baseModules = RackLayout.cloneRackModules((ctx._rackState and ctx._rackState.modules) or {})
+        dragState.baseModules[#dragState.baseModules + 1] = tempNode
+        dragState.insertMode = shift == true
+        dragState.ghostStartX = paletteBounds.x or 0
+        dragState.ghostStartY = paletteBounds.y or 0
+        dragState.ghostX = paletteBounds.x or 0
+        dragState.ghostY = paletteBounds.y or 0
+        dragState.ghostW = paletteBounds.w or 1
+        dragState.ghostH = paletteBounds.h or 1
+
+        local _, ghostAccent = ensureDragGhost(ctx)
+        local spec = ctx._rackModuleSpecs and (ctx._rackModuleSpecs[nextNodeId] or ctx._rackModuleSpecs[tostring(entry.specId or "")]) or nil
+        local ghostAccentColor = (spec and spec.accentColor) or 0xff64748b
+        if ghostAccent then
+          ghostAccent:setStyle({ bg = ghostAccentColor, border = 0x00000000, borderWidth = 0, radius = 0, opacity = 1.0 })
+        end
+        updateDragGhost(ctx)
+      end)
+
+      if paletteCard.node.setOnMouseWheel then
+        paletteCard.node:setOnMouseWheel(function(mx, my, deltaY)
+          local _ = mx
+          _ = my
+          local sign = (tonumber(deltaY) or 0) > 0 and -1 or 1
+          local step = M._paletteCardMetrics().step
+          ctx._paletteScrollOffset = math.max(0, math.min(M._paletteMaxScrollOffset(ctx), (tonumber(ctx._paletteScrollOffset) or 0) + (sign * step)))
+          M._requestUtilityBrowserRefresh(ctx)
+        end)
+      end
+
+      paletteCard.node:setOnMouseDrag(function(x, y, dx, dy)
+        if not isDragging then return end
+
+        dragState.ghostX = (dragState.ghostStartX or 0) + (tonumber(dx) or 0)
+        dragState.ghostY = (dragState.ghostStartY or 0) + (tonumber(dy) or 0)
+        updateDragGhost(ctx)
+
+        local snapshot = collectRackFlowSnapshot(ctx)
+        local ghostCenterX = (dragState.ghostX or 0) + ((dragState.ghostW or 0) * 0.5)
+        local ghostCenterY = (dragState.ghostY or 0) + ((dragState.ghostH or 0) * 0.5)
+        local movingNodeId = ctx._dragPreviewModules and dragState.moduleId or nil
+
+        if M._pointInsideRackFlowBands(ctx, snapshot, ghostCenterX, ghostCenterY) then
+          local targetPlacement = computeRackFlowTargetPlacement(ctx, snapshot, movingNodeId, ghostCenterX, ghostCenterY)
+          if targetPlacement then
+            if dragState.startPlacement == nil then
+              dragState.startPlacement = {
+                mode = tostring(targetPlacement.mode or "flow"),
+                row = targetPlacement.row,
+                col = targetPlacement.col,
+                index = targetPlacement.index,
+              }
+            end
+            previewRackDragReorder(ctx, targetPlacement)
+          end
+        else
+          if ctx._dragPreviewModules ~= nil or dragState.previewPlacement ~= nil then
+            M._clearPaletteDragPreview(ctx)
+            refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
+          end
+        end
+      end)
+
+      paletteCard.node:setOnMouseUp(function()
+        if not isDragging then return end
+        isDragging = false
+        finalizeRackDragReorder(ctx)
         hideDragGhost(ctx)
         resetDragState(ctx)
       end)
@@ -1732,675 +3313,106 @@ local function utilityDockHasKeyboard(ctx)
   return primary.kind == "keyboard" or (secondary and secondary.kind == "keyboard")
 end
 
--- Patchbay widget generation
--- Uses the patchbay_panel module to generate real interactive widget trees
--- from node specs, with sliders bound to DSP paths.
-local PatchbayPanel = require("components.patchbay_panel")
-
--- Cache of instantiated patchbay widget trees per shell, keyed by shellId.
--- Prevents re-instantiation on every perf/patch toggle.
-local patchbayInstances = {}
-local patchbayPortRegistry = {}
-local onPatchbayPageClick -- forward declare for pagination closures
-
-local function clearPatchbayPortRegistryForShell(shellId, ctx)
-  for key, entry in pairs(patchbayPortRegistry) do
-    if type(entry) == "table" and entry.shellId == shellId then
-      patchbayPortRegistry[key] = nil
-    end
-  end
-  if ctx then
-    ctx._patchbayPortRegistry = patchbayPortRegistry
-  end
-  _G.__midiSynthPatchbayPortRegistry = patchbayPortRegistry
-end
-
-local function registerPatchbayPort(entry, ctx)
-  if type(entry) ~= "table" or type(entry.key) ~= "string" or entry.key == "" then
-    return
-  end
-  patchbayPortRegistry[entry.key] = entry
-  if ctx then
-    ctx._patchbayPortRegistry = patchbayPortRegistry
-  end
-  _G.__midiSynthPatchbayPortRegistry = patchbayPortRegistry
-end
-
-local function bindWirePortWidget(ctx, portWidget, entry)
-  if not (portWidget and portWidget.node and type(entry) == "table") then
-    return
-  end
-
-  entry.widget = portWidget
-  registerPatchbayPort(entry, ctx)
-  portWidget.node:setInterceptsMouse(true, true)
-
-  if portWidget.node.setOnMouseDown then
-    portWidget.node:setOnMouseDown(function(mx, my, shift, ctrl, alt)
-      if (ctrl or alt) and RackWireLayer and RackWireLayer.deleteConnectionsForPort then
-        local removed = RackWireLayer.deleteConnectionsForPort(ctx, entry)
-        if removed > 0 then
-          return
-        end
-      end
-      if RackWireLayer and RackWireLayer.beginWireDrag then
-        RackWireLayer.beginWireDrag(ctx, entry)
-        if RackWireLayer.updateWireDragPointer then
-          RackWireLayer.updateWireDragPointer(ctx, portWidget, mx, my)
-        end
-      end
-    end)
-  end
-
-  if portWidget.node.setOnMouseDrag then
-    portWidget.node:setOnMouseDrag(function(mx, my)
-      if RackWireLayer and RackWireLayer.updateWireDragPointer then
-        RackWireLayer.updateWireDragPointer(ctx, portWidget, mx, my)
-      end
-    end)
-  end
-
-  if portWidget.node.setOnMouseUp then
-    portWidget.node:setOnMouseUp(function(mx, my)
-      if RackWireLayer and RackWireLayer.updateWireDragPointer then
-        RackWireLayer.updateWireDragPointer(ctx, portWidget, mx, my)
-      end
-      if RackWireLayer and RackWireLayer.finishWireDrag then
-        RackWireLayer.finishWireDrag(ctx)
-      end
-    end)
-  end
-end
-
--- Invalidate patchbay cache for a specific node (or all if nodeId is nil).
--- Called when nodes resize so the patchbay regenerates for the new dimensions.
--- ctx is optional — if provided, clears the patchbayPanel's children via getScopedWidget.
 local function cleanupPatchbayFromRuntime(shellId, ctx)
-  clearPatchbayPortRegistryForShell(shellId, ctx)
-
-  local runtime = _G.__manifoldStructuredUiRuntime
-  if not runtime then return end
-
-  -- Invalidate any deferred retained refreshes before tearing down widgets.
-  local shell = (type(_G) == "table") and _G.shell or nil
-  if type(shell) == "table" and type(shell.clearDeferredRefreshes) == "function" then
-    pcall(function() shell:clearDeferredRefreshes() end)
-  end
-
-  if RackWireLayer and RackWireLayer.cancelWireDrag then
-    RackWireLayer.cancelWireDrag(ctx)
-  end
-
-  -- Remove stale widget entries from runtime.widgets for this shell's patchbay
-  if runtime.widgets then
-    local toRemove = {}
-    for k, _ in pairs(runtime.widgets) do
-      if type(k) == "string" and k:find(shellId .. "%.patchbayPanel%.patchbayContent", 1, false) then
-        toRemove[#toRemove + 1] = k
-      end
-    end
-    for _, k in ipairs(toRemove) do
-      runtime.widgets[k] = nil
-    end
-  end
-
-  if ctx then
-    local panel = getScopedWidget(ctx, "." .. shellId .. ".patchbayPanel")
-    if panel and panel._structuredRecord then
-      panel._structuredRecord.children = {}
-    end
-    if panel and panel.node and panel.node.clearChildren then
-      pcall(function() panel.node:clearChildren() end)
-    end
-  end
+  return PatchbayRuntime.cleanupFromRuntime(shellId, ctx, {
+    RackWireLayer = RackWireLayer,
+  })
 end
 
 local function invalidatePatchbay(nodeId, ctx)
-  if nodeId == nil then
-    -- Clear all
-    for shellId, instance in pairs(patchbayInstances) do
-      cleanupPatchbayFromRuntime(shellId, ctx)
-      if ctx then
-        local panel = getScopedWidget(ctx, "." .. shellId .. ".patchbayPanel")
-        if panel and panel.node and panel.node.clearChildren then
-          pcall(function() panel.node:clearChildren() end)
-        end
-      end
-    end
-    patchbayInstances = {}
-    return
-  end
-  -- Find the shellId for this nodeId
-  if type(RACK_SHELL_LAYOUT) == "table" then
-    local meta = RACK_SHELL_LAYOUT[nodeId]
-    if meta then
-      local shellId = meta.shellId
-      if patchbayInstances[shellId] then
-        cleanupPatchbayFromRuntime(shellId, ctx)
-        if ctx then
-          local panel = getScopedWidget(ctx, "." .. shellId .. ".patchbayPanel")
-          if panel and panel.node and panel.node.clearChildren then
-            pcall(function() panel.node:clearChildren() end)
-          end
-        end
-        patchbayInstances[shellId] = nil
-      end
-    end
-  end
+  return PatchbayRuntime.invalidate(nodeId, ctx, {
+    RACK_MODULE_SHELL_LAYOUT = RACK_MODULE_SHELL_LAYOUT,
+    RackWireLayer = RackWireLayer,
+  })
 end
 
-local function setupResizeToggleHandlers(ctx)
-  if type(RACK_SHELL_LAYOUT) ~= "table" then
-    return
-  end
-  for nodeId, meta in pairs(RACK_SHELL_LAYOUT) do
-    local shellId = meta.shellId
-    local toggle = getScopedWidget(ctx, "." .. shellId .. ".resizeToggle")
-    if toggle and toggle.node then
-      toggle.node:setInterceptsMouse(true, true)
-      toggle.node:setOnMouseDown(function(x, y)
-        local rackState = ctx._rackState
-        local nodes = rackState and rackState.nodes or nil
-        if not nodes then return end
-        for i = 1, #nodes do
-          local node = nodes[i]
-          if node and node.id == nodeId then
-            local currentW = tonumber(node.w) or 1
-            local newW = (currentW == 1) and 2 or 1
-            
-            -- If expanding, check for overflow and auto-collapse a neighbor
-            if newW == 2 then
-              local targetRow = tonumber(node.row) or 0
-              local rowTotal = 0
-              local expandableNeighbor = nil
-              
-              -- Calculate current row total and find a collapsible neighbor
-              for j = 1, #nodes do
-                local other = nodes[j]
-                if other and tonumber(other.row) == targetRow then
-                  rowTotal = rowTotal + math.max(1, tonumber(other.w) or 1)
-                  -- Find a 1x2 neighbor that can collapse (not the one we're expanding)
-                  if other.id ~= nodeId and (tonumber(other.w) or 1) == 2 then
-                    expandableNeighbor = other
-                  end
-                end
-              end
-              
-              -- If row would overflow (5 slots is max: 1+2+2 or 2+1+2 etc), collapse neighbor
-              if rowTotal >= 5 and expandableNeighbor then
-                expandableNeighbor.w = 1
-                expandableNeighbor.sizeKey = string.format("%dx%d", math.max(1, tonumber(expandableNeighbor.h) or 1), 1)
-                invalidatePatchbay(expandableNeighbor.id, ctx)
-              end
-            end
-            
-            node.w = newW
-            node.sizeKey = string.format("%dx%d", math.max(1, tonumber(node.h) or 1), newW)
-            -- Invalidate patchbay cache so it regenerates for new size
-            invalidatePatchbay(nodeId, ctx)
-            -- Trigger layout reprojection
-            if ctx._lastW and ctx._lastH then
-              refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
-            end
-            -- If in patch view, immediately regenerate patchbay
-            local viewMode = ctx._rackState and ctx._rackState.viewMode or "perf"
-            if viewMode == "patch" then
-              syncPatchViewMode(ctx)
-            end
-            break
-          end
-        end
-      end)
-    end
-  end
+local function ensurePatchbayWidgets(ctx, shellId, nodeId, specId, currentPage)
+  return PatchbayRuntime.ensureWidgets(ctx, shellId, nodeId, specId, currentPage, {
+    RackWireLayer = RackWireLayer,
+    readParam = readParam,
+    setPath = setPath,
+    setWidgetValueSilently = setWidgetValueSilently,
+    PATHS = PATHS,
+    setSampleLoopStartLinked = setSampleLoopStartLinked,
+    setSampleLoopLenLinked = setSampleLoopLenLinked,
+    syncLegacyBlendDirectionFromBlend = syncLegacyBlendDirectionFromBlend,
+  })
 end
 
-local function ensurePatchbayWidgets(ctx, shellId, specId, currentPage)
-  currentPage = currentPage or 0
-  
-  -- Check if we already have an instance with the same page
-  if patchbayInstances[shellId] and patchbayInstances[shellId].currentPage == currentPage then
-    return patchbayInstances[shellId]
-  end
-  
-  -- If page changed, we need to regenerate
-  if patchbayInstances[shellId] and patchbayInstances[shellId].currentPage ~= currentPage then
-    cleanupPatchbayFromRuntime(shellId, ctx)
-    patchbayInstances[shellId] = nil
-  end
-
-  -- Check again after potential clear
-  if patchbayInstances[shellId] then
-    return patchbayInstances[shellId]
-  end
-
-  local spec = ctx._rackNodeSpecs and ctx._rackNodeSpecs[specId]
-  if not spec then return nil end
-
-  local patchbayPanel = getScopedWidget(ctx, "." .. shellId .. ".patchbayPanel")
-  if not patchbayPanel or not patchbayPanel.node then return nil end
-
-  local runtime = _G.__manifoldStructuredUiRuntime
-  if not runtime or not runtime.instantiateSpec then return nil end
-
-  -- Get the shell bounds first to derive correct patchbay dimensions
-  local shellWidget = getScopedWidget(ctx, "." .. shellId)
-  local shellX, shellY, shellW, shellH = 0, 0, 236, 220
-  if shellWidget and shellWidget.node and shellWidget.node.getBounds then
-    shellX, shellY, shellW, shellH = shellWidget.node:getBounds()
-  end
-  local headerH = 12
-  local pw = math.max(100, math.floor(tonumber(shellW) or 236))
-  local ph = math.max(80, math.floor((tonumber(shellH) or 220) - headerH))
-
-  -- Update patchbayPanel bounds to match shell
-  patchbayPanel.node:setBounds(0, headerH, pw, ph)
-
-  -- Determine node size from shell width (1x1 = 236px, 1x2 = 472px)
-  local nodeSize = (pw >= 400) and "1x2" or "1x1"
-
-  -- Generate the patchbay widget spec from the node spec with pagination
-  local patchbaySpec = PatchbayPanel.generate(spec, pw, ph, nodeSize, currentPage)
-  if not patchbaySpec then return nil end
-
-  -- Build the global ID prefix for scoping
-  local globalPrefix = ctx._globalPrefix or "root"
-  local patchbayPrefix = globalPrefix .. "." .. shellId .. ".patchbayPanel"
-
-  -- Clear any existing display list (from old implementation)
-  patchbayPanel.node:setDisplayList({})
-
-  -- Instantiate the widget tree into the patchbay panel
-  local ok, widget, globalId, record = pcall(function()
-    return runtime:instantiateSpec(patchbayPanel.node, patchbaySpec, {
-      idPrefix = patchbayPrefix,
-      localWidgets = ctx.allWidgets or {},
-      extraProps = nil,
-      isRoot = false,
-      parentRecord = patchbayPanel._structuredRecord,
-      sourceDocumentPath = "patchbay_dynamic",
-      sourceKind = "node",
-    })
-  end)
-
-  if not ok then
-    print("[Patchbay] Failed to instantiate for " .. shellId .. ": " .. tostring(widget))
-    return nil
-  end
-
-  -- Add the new record to the patchbayPanel's structured record children
-  -- so the layout engine can walk and relayout the subtree on resize
-  if record and patchbayPanel._structuredRecord then
-    local parentChildren = patchbayPanel._structuredRecord.children
-    if type(parentChildren) ~= "table" then
-      parentChildren = {}
-      patchbayPanel._structuredRecord.children = parentChildren
-    end
-    parentChildren[#parentChildren + 1] = record
-  end
-
-  -- Ensure the patchbay content widget fills its parent panel
-  if widget and widget.node and widget.node.setBounds then
-    widget.node:setBounds(0, 0, math.floor(pw), math.floor(ph))
-  end
-  -- Trigger layout of the newly instantiated tree — notify both the content
-  -- widget and the patchbayPanel parent so the full subtree gets laid out
-  if widget and widget._structuredRuntime and widget._structuredRecord then
-    pcall(function()
-      widget._structuredRuntime:notifyRecordHostedResized(widget._structuredRecord, pw, ph)
-    end)
-  end
-  if patchbayPanel._structuredRuntime and patchbayPanel._structuredRecord then
-    pcall(function()
-      patchbayPanel._structuredRuntime:notifyRecordHostedResized(patchbayPanel._structuredRecord, pw, ph)
-    end)
-  end
-
-  forcePatchbayRetainedRefresh(widget, patchbayPanel)
-
-  -- Wire up param sliders to DSP paths for the CURRENT page only.
-  -- Use runtime.widgets for lookup since dynamically instantiated widgets
-  -- are registered there, not necessarily in the behavior's ctx.allWidgets.
-  local runtimeWidgets = runtime.widgets or {}
-
-  local function findFirstWidget(searchPaths)
-    for _, searchPath in ipairs(searchPaths or {}) do
-      local candidate = runtimeWidgets[searchPath]
-      if candidate then
-        return candidate, searchPath
-      end
-    end
-    return nil, nil
-  end
-
-
-  local allParams = (spec.ports or {}).params or {}
-  local perPage = (nodeSize == "1x2") and (PatchbayPanel.PARAMS_PER_PAGE_1X2 or 16) or (PatchbayPanel.PARAMS_PER_PAGE_1X1 or 6)
-  local startIdx = currentPage * perPage + 1
-  local endIdx = math.min(#allParams, startIdx + perPage - 1)
-  local currentParams = {}
-  for idx = startIdx, endIdx do
-    currentParams[#currentParams + 1] = allParams[idx]
-  end
-
-  local sliderWidgets = {}
-  local boundCount = 0
-
-  local inputs = (spec.ports or {}).inputs or {}
-  for _, port in ipairs(inputs) do
-    if port.edge == nil then
-      local rowId = "input_" .. tostring(port.id)
-      local widget = runtimeWidgets[patchbayPrefix .. ".patchbayContent.inputsColumn." .. rowId .. "." .. rowId .. "_port"]
-      bindWirePortWidget(ctx, widget, {
-        key = table.concat({ specId, shellId, "input", tostring(port.id) }, ":"),
-        nodeId = specId,
-        shellId = shellId,
-        portId = tostring(port.id),
-        direction = "input",
-        portType = tostring(port.type or "control"),
-        label = port.label or port.id,
-        group = "io",
-      })
-    end
-  end
-
-  local outputs = (spec.ports or {}).outputs or {}
-  for _, port in ipairs(outputs) do
-    if port.edge == nil then
-      local rowId = "output_" .. tostring(port.id)
-      local widget = runtimeWidgets[patchbayPrefix .. ".patchbayContent.outputsColumn." .. rowId .. "." .. rowId .. "_port"]
-      bindWirePortWidget(ctx, widget, {
-        key = table.concat({ specId, shellId, "output", tostring(port.id) }, ":"),
-        nodeId = specId,
-        shellId = shellId,
-        portId = tostring(port.id),
-        direction = "output",
-        portType = tostring(port.type or "audio"),
-        label = port.label or port.id,
-        group = "io",
-      })
-    end
-  end
-
-  for i, param in ipairs(currentParams) do
-    if param then
-      local paramId = tostring(param.id or i)
-      local paramKey = "param_" .. paramId .. "_p" .. currentPage
-
-      local sliderSearchPaths = {
-        -- Single-column layout
-        patchbayPrefix .. ".patchbayContent.paramsColumn." .. paramKey .. "." .. paramKey .. "_slider",
-        patchbayPrefix .. ".patchbayContent.paramsColumn." .. paramKey .. "." .. paramKey .. "_val",
-        -- Multi-column layout (left)
-        patchbayPrefix .. ".patchbayContent.paramsColumn.paramColumns.paramColLeft." .. paramKey .. "." .. paramKey .. "_slider",
-        patchbayPrefix .. ".patchbayContent.paramsColumn.paramColumns.paramColLeft." .. paramKey .. "." .. paramKey .. "_val",
-        -- Multi-column layout (right)
-        patchbayPrefix .. ".patchbayContent.paramsColumn.paramColumns.paramColRight." .. paramKey .. "." .. paramKey .. "_slider",
-        patchbayPrefix .. ".patchbayContent.paramsColumn.paramColumns.paramColRight." .. paramKey .. "." .. paramKey .. "_val",
-      }
-
-      local sliderWidget = findFirstWidget(sliderSearchPaths)
-
-      local inputPortWidget = nil
-      if param.input ~= false then
-        inputPortWidget = findFirstWidget({
-          patchbayPrefix .. ".patchbayContent.paramsColumn." .. paramKey .. "." .. paramKey .. "_in",
-          patchbayPrefix .. ".patchbayContent.paramsColumn.paramColumns.paramColLeft." .. paramKey .. "." .. paramKey .. "_in",
-          patchbayPrefix .. ".patchbayContent.paramsColumn.paramColumns.paramColRight." .. paramKey .. "." .. paramKey .. "_in",
-        })
-      end
-
-      local outputPortWidget = nil
-      if param.output ~= false then
-        outputPortWidget = findFirstWidget({
-          patchbayPrefix .. ".patchbayContent.paramsColumn." .. paramKey .. "." .. paramKey .. "_out",
-          patchbayPrefix .. ".patchbayContent.paramsColumn.paramColumns.paramColLeft." .. paramKey .. "." .. paramKey .. "_out",
-          patchbayPrefix .. ".patchbayContent.paramsColumn.paramColumns.paramColRight." .. paramKey .. "." .. paramKey .. "_out",
-        })
-      end
-
-      bindWirePortWidget(ctx, inputPortWidget, {
-        key = table.concat({ specId, shellId, "input", paramId }, ":"),
-        nodeId = specId,
-        shellId = shellId,
-        portId = paramId,
-        direction = "input",
-        portType = "control",
-        label = param.label or paramId,
-        group = "param",
-        page = currentPage,
-      })
-
-      bindWirePortWidget(ctx, outputPortWidget, {
-        key = table.concat({ specId, shellId, "output", paramId }, ":"),
-        nodeId = specId,
-        shellId = shellId,
-        portId = paramId,
-        direction = "output",
-        portType = "control",
-        label = param.label or paramId,
-        group = "param",
-        page = currentPage,
-      })
-
-      if sliderWidget and param.path then
-        local dspPath = param.path
-        local scale = param.scale
-        local pmin = param.min or 0
-        local pmax = param.max or 1
-        local displayRange = pmax - pmin
-
-        sliderWidget._onChange = function(v)
-          local dspVal = v
-          if scale and displayRange > 0 then
-            local dspMin = scale.dspMin or 0
-            local dspMax = scale.dspMax or 1
-            local dspRange = dspMax - dspMin
-            dspVal = ((v - pmin) / displayRange) * dspRange + dspMin
-          end
-
-          if dspPath == PATHS.sampleLoopStart then
-            setSampleLoopStartLinked(dspVal)
-          elseif dspPath == PATHS.sampleLoopLen then
-            setSampleLoopLenLinked(dspVal)
-          elseif dspPath == PATHS.blendAmount then
-            setPath(dspPath, dspVal)
-            syncLegacyBlendDirectionFromBlend(dspVal)
-          else
-            setPath(dspPath, dspVal)
-          end
-        end
-
-        local dspVal = readParam(dspPath, param.default or 0)
-        local displayVal = dspVal
-        if scale and displayRange > 0 then
-          local dspMin = scale.dspMin or 0
-          local dspMax = scale.dspMax or 1
-          local dspRange = dspMax - dspMin
-          if dspRange > 0 then
-            displayVal = ((dspVal - dspMin) / dspRange) * displayRange + pmin
-          end
-        end
-
-        if sliderWidget.setValue then
-          setWidgetValueSilently(sliderWidget, tonumber(displayVal) or param.default or 0)
-        end
-        sliderWidgets[param.id] = { widget = sliderWidget, path = dspPath, param = param }
-        boundCount = boundCount + 1
-      end
-    end
-  end
-
-  -- Wire up pagination dot click handlers (same pattern as keyboard dots)
-  local numPages = patchbaySpec.props and patchbaySpec.props._numPages or 1
-  if numPages > 1 then
-    for pageIdx = 0, numPages - 1 do
-      local dotPath = patchbayPrefix .. ".patchbayContent.paramsColumn.paramsHeaderRow.pageDots.pageDots_dot" .. (pageIdx + 1)
-      local dotWidget = runtimeWidgets[dotPath]
-      if dotWidget and dotWidget.node and dotWidget.node.setOnClick then
-        dotWidget.node:setInterceptsMouse(true, true)
-        local targetPage = pageIdx
-        local targetShell = shellId
-        dotWidget.node:setOnClick(function()
-          onPatchbayPageClick(ctx, targetShell, targetPage)
-        end)
-      end
-    end
-  end
-
-  local instance = {
-    widget = widget,
-    record = record,
-    sliders = sliderWidgets,
-    specId = specId,
-    currentPage = currentPage,
-    nodeSize = nodeSize,
-    numPages = numPages,
-  }
-  patchbayInstances[shellId] = instance
-  if RackWireLayer and RackWireLayer.refreshWires then
-    RackWireLayer.refreshWires(ctx)
-  end
-  return instance
-end
-
--- Handle pagination dot click in patchbay
--- Called when user clicks a page indicator dot
-onPatchbayPageClick = function(ctx, shellId, pageIndex)
-  if not shellId then return end
-
-  local instance = patchbayInstances[shellId]
-  if instance and instance.numPages and instance.numPages > 1 then
-    ctx._pendingPatchbayPages = ctx._pendingPatchbayPages or {}
-    ctx._pendingPatchbayPages[shellId] = pageIndex
-  end
-end
-
--- Sync patchbay slider values from live DSP state (called in update loop)
--- Converts DSP values to display values using param.scale if present
 local function syncPatchbayValues(ctx)
-  for shellId, instance in pairs(patchbayInstances) do
-    if instance and instance.sliders then
-      for paramId, entry in pairs(instance.sliders) do
-        local widget = entry.widget
-        local path = entry.path
-        local param = entry.param
-        if widget and path and widget.setValue and not widget._dragging then
-          local dspVal = readParam(path, param.default or 0)
-          
-          -- Convert DSP value to display value if scaling is defined
-          local displayVal = dspVal
-          local scale = param.scale
-          if scale then
-            local pmin = param.min or 0
-            local pmax = param.max or 1
-            local displayRange = pmax - pmin
-            local dspMin = scale.dspMin or 0
-            local dspMax = scale.dspMax or 1
-            local dspRange = dspMax - dspMin
-            if displayRange > 0 and dspRange > 0 then
-              displayVal = ((dspVal - dspMin) / dspRange) * displayRange + pmin
-            end
-          end
-          
-          local current = widget.getValue and widget:getValue() or nil
-          local threshold = 0.0001
-          if current == nil or math.abs((tonumber(current) or 0) - (tonumber(displayVal) or 0)) > threshold then
-            setWidgetValueSilently(widget, displayVal)
-            if widget.node and widget.node.repaint then widget.node:repaint() end
-          end
-        end
-      end
-    end
-  end
-end
-
-syncPatchViewMode = function(ctx)
-  local rackState = ctx._rackState
-  if not rackState then return end
-
-  -- Do NOT clear the shell's global deferred refresh queue here.
-  -- That was a fucking stupid hammer: it fixes patchbay bootstrap, but it also
-  -- cancels unrelated retained updates (header/top-bar buttons, labels, etc.)
-  -- during project load. Patchbay teardown already clears deferred refreshes in
-  -- the targeted cleanup path where it's actually needed.
-  local isPatch = (rackState.viewMode or "perf") == "patch"
-  local shellIds = { "adsrShell", "oscillatorShell", "filterShell", "fx1Shell", "fx2Shell", "eqShell", "placeholder1Shell", "placeholder2Shell", "placeholder3Shell" }
-
-  -- Map shell IDs to node specs
-  local shellToSpecId = {
-    adsrShell = "adsr",
-    oscillatorShell = "oscillator",
-    filterShell = "filter",
-    fx1Shell = "fx1",
-    fx2Shell = "fx2",
-    eqShell = "eq",
-  }
-
-  for _, shellId in ipairs(shellIds) do
-    local shell = getScopedWidget(ctx, "." .. shellId)
-    if shell then
-      -- Hide content components in patch view
-      local content = getScopedWidget(ctx, "." .. shellId .. "Content")
-      if content and content.setVisible then
-        content:setVisible(not isPatch)
-      end
-      local compId = shellId:gsub("Shell", "Component")
-      local comp = getScopedWidget(ctx, "." .. shellId .. "." .. compId)
-      if comp and comp.setVisible then
-        comp:setVisible(not isPatch)
-      end
-      local contentPanels = { "envelopeComponent", "oscillatorComponent", "filterComponent", "fx1Component", "fx2Component", "eqComponent", "placeholder1Content", "placeholder2Content", "placeholder3Content" }
-      for _, panelId in ipairs(contentPanels) do
-        local panel = getScopedWidget(ctx, "." .. shellId .. "." .. panelId)
-        if panel and panel.setVisible then
-          panel:setVisible(not isPatch)
-          break
-        end
-      end
-
-      -- Show patchbay panel in patch view, hide in perf view
-      local patchbayPanel = getScopedWidget(ctx, "." .. shellId .. ".patchbayPanel")
-      if patchbayPanel and patchbayPanel.node then
-        patchbayPanel.node:setVisible(isPatch)
-      end
-
-      -- Ensure patchbay widgets are instantiated on first switch to patch mode
-      if isPatch then
-        local specId = shellToSpecId[shellId]
-        if specId then
-          ensurePatchbayWidgets(ctx, shellId, specId)
-        end
-      end
-    end
-  end
-
-  syncRackEdgeTerminals(ctx)
-
-  -- Refresh wire layer
-  if RackWireLayer then
-    RackWireLayer.refreshWires(ctx)
-  end
+  return PatchbayRuntime.syncValues(ctx, {
+    readParam = readParam,
+    setWidgetValueSilently = setWidgetValueSilently,
+    getModTargetState = function(path)
+      return getCombinedModTargetState(ctx, path)
+    end,
+  })
 end
 
 local function findRegisteredPatchbayPort(ctx, nodeId, portId, direction)
-  local registry = ctx and ctx._patchbayPortRegistry or nil
-  if type(registry) ~= "table" then
-    return nil
-  end
-  for _, entry in pairs(registry) do
-    if type(entry) == "table"
-      and entry.nodeId == nodeId
-      and entry.portId == portId
-      and entry.direction == direction
-      and entry.widget ~= nil then
-      return entry
-    end
-  end
-  return nil
+  return PatchbayRuntime.findRegisteredPort(ctx, nodeId, portId, direction)
 end
 
-local function setWidgetVisibleState(widget, visible)
+syncRackEdgeTerminals = function(ctx)
+  return PatchbayRuntime.syncRackEdgeTerminals(ctx, {
+    getScopedWidget = getScopedWidget,
+    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
+    findRegisteredPatchbayPort = findRegisteredPatchbayPort,
+    round = round,
+  })
+end
+
+syncPatchViewMode = function(ctx)
+  local result = PatchbayRuntime.syncPatchViewMode(ctx, {
+    RackWireLayer = RackWireLayer,
+    RackModPopover = RackModPopover,
+    getScopedWidget = getScopedWidget,
+    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
+    findRegisteredPatchbayPort = findRegisteredPatchbayPort,
+    round = round,
+    readParam = readParam,
+    setPath = setPath,
+    setWidgetValueSilently = setWidgetValueSilently,
+    PATHS = PATHS,
+    setSampleLoopStartLinked = setSampleLoopStartLinked,
+    setSampleLoopLenLinked = setSampleLoopLenLinked,
+    syncLegacyBlendDirectionFromBlend = syncLegacyBlendDirectionFromBlend,
+  })
+  RackModPopover.refresh(ctx, {
+    RackWireLayer = RackWireLayer,
+    getScopedWidget = getScopedWidget,
+    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
+  })
+  return result
+end
+
+local function toggleRackNodeWidth(ctx, nodeId)
+  return PatchbayRuntime.toggleNodeWidth(ctx, nodeId, {
+    RACK_MODULE_SHELL_LAYOUT = RACK_MODULE_SHELL_LAYOUT,
+    getScopedWidget = getScopedWidget,
+    invalidatePatchbay = invalidatePatchbay,
+    refreshManagedLayoutState = refreshManagedLayoutState,
+    syncPatchViewMode = syncPatchViewMode,
+    RackLayout = RackLayout,
+    getRackTotalRows = getRackTotalRows,
+    columnsPerRow = RACK_COLUMNS_PER_ROW,
+  })
+end
+
+M._setupResizeToggleHandlers = function(ctx)
+  return PatchbayRuntime.setupResizeToggleHandlers(ctx, {
+    RACK_MODULE_SHELL_LAYOUT = RACK_MODULE_SHELL_LAYOUT,
+    getScopedWidget = getScopedWidget,
+    invalidatePatchbay = invalidatePatchbay,
+    refreshManagedLayoutState = refreshManagedLayoutState,
+    syncPatchViewMode = syncPatchViewMode,
+    RackLayout = RackLayout,
+    getRackTotalRows = getRackTotalRows,
+    columnsPerRow = RACK_COLUMNS_PER_ROW,
+  })
+end
+
+local function setWidgetVisible(widget, visible)
   if widget == nil then
     return
   end
@@ -2411,32 +3423,374 @@ local function setWidgetVisibleState(widget, visible)
   end
 end
 
-syncRackEdgeTerminals = function(ctx)
-  local isPatch = (ctx and ctx._rackState and ctx._rackState.viewMode or "perf") == "patch"
-  local rackContainer = getScopedWidget(ctx, ".rackContainer")
-  local rackBounds = getWidgetBoundsInRoot(ctx, rackContainer)
-
-  local rails = {
-    { suffix = ".rackContainer.rightRailSend1", nodeId = "filter", portId = "out", direction = "output", side = "right", x = 1232 },
-    { suffix = ".rackContainer.leftRailRecv2", nodeId = "fx1", portId = "in", direction = "input", side = "left", x = 6 },
-    { suffix = ".rackContainer.rightRailSend2", nodeId = "eq", portId = "out", direction = "output", side = "right", x = 1232 },
-    { suffix = ".rackContainer.leftRailRecv3", nodeId = "placeholder1", portId = "in", direction = "input", side = "left", x = 6 },
-    { suffix = ".rackContainer.rightRailSend3", nodeId = "placeholder3", portId = "out", direction = "output", side = "right", x = 1232 },
-  }
-
-  for _, rail in ipairs(rails) do
-    local railWidget = getScopedWidget(ctx, rail.suffix)
-    local anchor = isPatch and findRegisteredPatchbayPort(ctx, rail.nodeId, rail.portId, rail.direction) or nil
-    local anchorBounds = anchor and getWidgetBoundsInRoot(ctx, anchor.widget) or nil
-    local visible = isPatch and rackBounds ~= nil and anchorBounds ~= nil
-    setWidgetVisibleState(railWidget, visible)
-
-    if visible and railWidget and railWidget.node and railWidget.node.setBounds then
-      local localX = tonumber(rail.x) or 6
-      local localY = (anchorBounds.y - rackBounds.y) + math.floor((anchorBounds.h - 14) * 0.5)
-      railWidget.node:setBounds(round(localX), round(localY), 14, 14)
+local function buildDeletionMinRows(nodes)
+  local minRows = {}
+  if type(nodes) ~= "table" then
+    return minRows
+  end
+  for i = 1, #nodes do
+    local node = nodes[i]
+    if node then
+      minRows[tostring(node.id or "")] = math.max(0, math.floor(tonumber(node.row) or 0))
     end
   end
+  return minRows
+end
+
+local function spawnPaletteNodeAt(ctx, paletteEntryId, targetRow, targetIndex, insertMode)
+  if not (ctx and ctx._rackState) then
+    return false
+  end
+
+  local entry = M._getPaletteEntry(paletteEntryId)
+  if type(entry) ~= "table" then
+    return false
+  end
+
+  local nodeId, tempNode, unregisterOnFailure = M._buildPaletteNodeFromEntry(ctx, entry)
+  if not nodeId or not tempNode then
+    return false
+  end
+
+  local previousNodes = RackLayout.cloneRackModules(ctx._rackState.modules or {})
+  local previousConnections = MidiSynthRackSpecs.normalizeConnections(ctx._rackConnections or {}, previousNodes)
+  local baseNodes = RackLayout.cloneRackModules(previousNodes)
+  baseNodes[#baseNodes + 1] = tempNode
+
+  local workingNodes = autoCollapseRowForInsertion(
+    baseNodes,
+    nodeId,
+    math.max(0, math.floor(tonumber(targetRow) or 0)),
+    math.max(1, tonumber(tempNode.w) or 1),
+    ctx and ctx._rackModuleSpecs,
+    RACK_COLUMNS_PER_ROW
+  )
+
+  local minRows = buildDeletionMinRows(workingNodes)
+  minRows[tostring(nodeId)] = math.max(0, math.floor(tonumber(targetRow) or 0))
+
+  local targetCol = tonumber(targetIndex)
+  local desiredRow = math.max(0, math.floor(tonumber(targetRow) or 0))
+  local ok, nextNodes
+  local canUseSparseSlot = targetCol ~= nil
+    and targetCol >= 0
+    and targetCol < RACK_COLUMNS_PER_ROW
+    and RackLayout.isAreaFree(workingNodes, desiredRow, math.floor(targetCol), math.max(1, tonumber(tempNode.w) or 1), math.max(1, tonumber(tempNode.h) or 1), nodeId)
+
+  if canUseSparseSlot then
+    local maxRows = math.max(getRackTotalRows(ctx), desiredRow + math.max(1, tonumber(tempNode.h) or 1) + 1, 8)
+    ok, nextNodes = pcall(
+      RackLayout.moveModuleToSlot,
+      workingNodes,
+      nodeId,
+      desiredRow,
+      math.floor(targetCol),
+      RACK_COLUMNS_PER_ROW,
+      maxRows
+    )
+  else
+    ok, nextNodes = pcall(
+      RackLayout.moveModuleInFlowConstrained,
+      workingNodes,
+      nodeId,
+      math.max(1, math.floor(tonumber(targetIndex) or (#workingNodes))),
+      RACK_COLUMNS_PER_ROW,
+      0,
+      minRows
+    )
+  end
+  if not ok or type(nextNodes) ~= "table" then
+    if unregisterOnFailure then
+      RackModuleFactory.unregisterDynamicModuleSpec(ctx, nodeId, {
+        setPath = setPath,
+        voiceCount = VOICE_COUNT,
+      })
+    end
+    return false
+  end
+
+  ctx._rackState.modules = RackLayout.cloneRackModules(nextNodes)
+  ctx._rackState.utilityDock = ensureUtilityDockState(ctx)
+  local shouldInsertWire = (insertMode == true) or (tonumber(insertMode) or 0) > 0.5
+  local nextConnections
+  if shouldInsertWire then
+    nextConnections = MidiSynthRackSpecs.insertRackModuleAtVisualSlot(
+      ctx._rackConnections or {},
+      ctx._rackState.modules,
+      nodeId,
+      baseNodes
+    )
+  else
+    nextConnections = MidiSynthRackSpecs.normalizeConnections(ctx._rackConnections or {}, ctx._rackState.modules)
+  end
+  local topologyChanged = shouldInsertWire or (type(M._rackTopologyChanged) == "function" and M._rackTopologyChanged(previousConnections, previousNodes, nextConnections, ctx._rackState.modules) == true)
+  ctx._rackConnections = nextConnections
+  _G.__midiSynthRackState = ctx._rackState
+  _G.__midiSynthRackConnections = ctx._rackConnections
+
+  if topologyChanged then
+    applyRackConnectionState(ctx, shouldInsertWire and "palette-spawn-insert" or "palette-spawn")
+    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
+  else
+    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
+    if type(M._refreshRackPresentation) == "function" then
+      M._refreshRackPresentation(ctx)
+    end
+  end
+  ctx._lastEvent = string.format("Palette spawned: %s", tostring(nodeId))
+  return true
+end
+
+local function spawnPalettePlaceholderAt(ctx, targetRow, targetIndex)
+  return spawnPaletteNodeAt(ctx, "placeholder", targetRow, targetIndex)
+end
+
+local function deleteRackNode(ctx, nodeId)
+  local targetNodeId = tostring(nodeId or "")
+  if targetNodeId == "" or not (ctx and ctx._rackState) then
+    return false
+  end
+  if not (MidiSynthRackSpecs.isRackModuleDeletable and MidiSynthRackSpecs.isRackModuleDeletable(targetNodeId)) then
+    return false
+  end
+
+  local originalNodes = RackLayout.cloneRackModules(ctx._rackState.modules or {})
+  local previousConnections = MidiSynthRackSpecs.normalizeConnections(ctx._rackConnections or {}, originalNodes)
+  local currentNodes = RackLayout.cloneRackModules(originalNodes)
+  local removeIndex = RackLayout.findRackModuleIndex(currentNodes, targetNodeId)
+  if removeIndex == nil then
+    return false
+  end
+  table.remove(currentNodes, removeIndex)
+
+  local nextNodes = RackLayout.getFlowModules(currentNodes)
+  local nextConnections = ctx._rackConnections or {}
+  if MidiSynthRackSpecs.spliceRackModule then
+    nextConnections = MidiSynthRackSpecs.spliceRackModule(nextConnections, originalNodes, targetNodeId)
+  end
+
+  if dragState and dragState.moduleId == targetNodeId then
+    hideDragGhost(ctx)
+    resetDragState(ctx)
+  end
+  ctx._dragPreviewModules = nil
+
+  if RackWireLayer and RackWireLayer.cancelWireDrag then
+    RackWireLayer.cancelWireDrag(ctx)
+  end
+  if RackModPopover and RackModPopover.close then
+    RackModPopover.close(ctx)
+  end
+
+  local shellMeta = getRackShellMetaByNodeId(targetNodeId)
+  invalidatePatchbay(targetNodeId, ctx)
+  if shellMeta and shellMeta.shellId then
+    cleanupPatchbayFromRuntime(shellMeta.shellId, ctx)
+    local patchbayInstances = PatchbayRuntime.getInstances()
+    if type(patchbayInstances) == "table" then
+      patchbayInstances[shellMeta.shellId] = nil
+    end
+    local portRegistry = ctx._patchbayPortRegistry or _G.__midiSynthPatchbayPortRegistry
+    if type(portRegistry) == "table" then
+      for key, entry in pairs(portRegistry) do
+        if type(entry) == "table"
+          and (tostring(entry.nodeId or "") == targetNodeId or tostring(entry.shellId or "") == tostring(shellMeta.shellId)) then
+          portRegistry[key] = nil
+        end
+      end
+      ctx._patchbayPortRegistry = portRegistry
+      _G.__midiSynthPatchbayPortRegistry = portRegistry
+    end
+  end
+
+  local dynamicSpecs = type(_G) == "table" and _G.__midiSynthDynamicModuleSpecs or nil
+  local dynamicInfo = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  local isDynamicNode = (shellMeta and shellMeta.dynamic == true)
+    or (type(dynamicSpecs) == "table" and dynamicSpecs[targetNodeId] ~= nil)
+    or (type(dynamicInfo) == "table" and dynamicInfo[targetNodeId] ~= nil)
+  if isDynamicNode then
+    RackModuleFactory.unregisterDynamicModuleSpec(ctx, targetNodeId, {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  end
+
+  local normalizedNextConnections = MidiSynthRackSpecs.normalizeConnections(nextConnections, nextNodes)
+  local topologyChanged = true
+  if type(M._rackTopologyChanged) == "function" then
+    topologyChanged = M._rackTopologyChanged(previousConnections, originalNodes, normalizedNextConnections, nextNodes)
+  end
+
+  ctx._rackState.modules = nextNodes
+  ctx._rackState.utilityDock = ensureUtilityDockState(ctx)
+  ctx._rackConnections = normalizedNextConnections
+  _G.__midiSynthRackState = ctx._rackState
+  _G.__midiSynthRackConnections = ctx._rackConnections
+
+  if topologyChanged then
+    applyRackConnectionState(ctx, "rack-delete")
+    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
+  else
+    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
+    if type(M._refreshRackPresentation) == "function" then
+      M._refreshRackPresentation(ctx)
+    end
+  end
+
+  ctx._lastEvent = string.format("Rack deleted: %s", targetNodeId)
+  return true
+end
+
+M._setupDeleteButtonHandlers = function(ctx)
+  if type(RACK_MODULE_SHELL_LAYOUT) ~= "table" then
+    return
+  end
+
+  for nodeId, meta in pairs(RACK_MODULE_SHELL_LAYOUT) do
+    local button = getScopedWidget(ctx, "." .. meta.shellId .. ".deleteButton")
+    if button and button.node then
+      button.node:setInterceptsMouse(true, true)
+      local targetNodeId = nodeId
+      button.node:setOnMouseDown(function()
+        if MidiSynthRackSpecs.isRackModuleDeletable and MidiSynthRackSpecs.isRackModuleDeletable(targetNodeId) then
+          deleteRackNode(ctx, targetNodeId)
+        end
+      end)
+    end
+  end
+end
+
+local function bindWirePortWidget(ctx, portWidget, entry)
+  return PatchbayRuntime.bindWirePortWidget(ctx, portWidget, entry, {
+    RackWireLayer = RackWireLayer,
+    RackModPopover = RackModPopover,
+    getScopedWidget = getScopedWidget,
+    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
+  })
+end
+
+local function ensureRackControlRouting(ctx, reason)
+  ctx._modEndpointRegistry = ctx._modEndpointRegistry or ModEndpointRegistry.new()
+  ctx._modRouteCompiler = ctx._modRouteCompiler or ModRouteCompiler.new()
+  ctx._rackControlRouter = ctx._rackControlRouter or RackControlRouter.new()
+  ctx._rackModRuntime = ctx._rackModRuntime or ModRuntime.new()
+  ctx._modEndpointRegistry:rebuild(ctx, { reason = "rack-control-router" })
+  local snapshot = ctx._rackControlRouter:rebuild(ctx._rackConnections, ctx._modRouteCompiler, ctx._modEndpointRegistry, reason)
+  if ctx._rackModRuntime and ctx._rackModRuntime.setRoutes then
+    ctx._rackModRuntime:setRoutes(ctx._rackControlRouter.routes, ctx._modRouteCompiler, ctx._modEndpointRegistry)
+  end
+  return snapshot
+end
+
+local function syncPrimaryControlRoutes(ctx, reason)
+  local previous = M._hasAnyOscillatorGateRoute(ctx)
+  local previousLegacy = M._isLegacyOscillatorGateRouteConnected(ctx)
+  local snapshot = ensureRackControlRouting(ctx)
+  local connected = M._hasAnyOscillatorGateRoute(ctx)
+  local canonicalConnected = M._hasCanonicalOscillatorGateRoute(ctx)
+  local legacyConnected = M._isLegacyOscillatorGateRouteConnected(ctx)
+
+  ctx._controlRouteState = {
+    adsrToOscillatorGateConnected = connected,
+    adsrToCanonicalOscillatorGateConnected = canonicalConnected,
+    adsrToLegacyOscillatorGateConnected = legacyConnected,
+    lastReason = reason,
+    router = snapshot,
+  }
+
+  if previousLegacy == true and legacyConnected == false and type(ctx) == "table" and type(ctx._voices) == "table" and #ctx._voices > 0 then
+    for i = 1, VOICE_COUNT do
+      local voice = ctx._voices[i]
+      if voice then
+        voice.sentAmp = 0
+      end
+      setPath(voiceAmpPath(i), 0)
+      setPath(voiceGatePath(i), 0)
+    end
+  end
+
+  if previous == true and connected == false and type(ctx) == "table" and type(ctx._voices) == "table" and #ctx._voices > 0 then
+    panicVoices(ctx)
+    ctx._lastEvent = "ADSR → Osc control disconnected"
+  end
+
+  return connected
+end
+
+function M._syncRackAudioStageParams(ctx)
+  local description = MidiSynthRackSpecs.describeAudioStageSequence(ctx and ctx._rackConnections or {}, ctx and ctx._rackState and ctx._rackState.modules)
+  local stages = type(description) == "table" and description.stageNodeIds or {}
+  local sources = type(description) == "table" and description.sourceNodeIds or { "oscillator" }
+  local reachesOutput = type(description) == "table" and description.reachesOutput == true
+  for i = 1, #stages do
+    setPath(M._rackAudioStagePath(i), M._rackAudioStageCodeForNodeId(stages[i]))
+  end
+  for i = 1, #sources do
+    setPath(M._rackAudioSourcePath(i), M._rackAudioSourceCodeForNodeId(sources[i]))
+  end
+  setPath(PATHS.rackAudioStageCount, #stages)
+  setPath(PATHS.rackAudioOutputEnabled, reachesOutput and 1 or 0)
+  setPath(PATHS.rackAudioSourceCount, #sources)
+  ctx._rackAudioStageSequence = stages
+  ctx._rackAudioSourceSequence = sources
+  ctx._rackAudioReachesOutput = reachesOutput
+  return stages
+end
+
+function M._rackTopologySignature(connections, nodes)
+  local normalized = MidiSynthRackSpecs.normalizeConnections(connections, nodes)
+  local parts = {}
+  for i = 1, #normalized do
+    local conn = normalized[i]
+    local fromEndpoint = type(conn and conn.from) == "table" and conn.from or {}
+    local toEndpoint = type(conn and conn.to) == "table" and conn.to or {}
+    parts[#parts + 1] = table.concat({
+      tostring(conn and conn.kind or ""),
+      tostring(fromEndpoint.nodeId or ""),
+      tostring(fromEndpoint.portId or ""),
+      tostring(toEndpoint.nodeId or ""),
+      tostring(toEndpoint.portId or ""),
+    }, "\31")
+  end
+  return table.concat(parts, "\30")
+end
+
+function M._rackTopologyChanged(previousConnections, previousNodes, nextConnections, nextNodes)
+  return M._rackTopologySignature(previousConnections, previousNodes) ~= M._rackTopologySignature(nextConnections, nextNodes)
+end
+
+M._refreshRackPresentation = function(ctx)
+  if ctx and ctx._modEndpointRegistry and ctx._modEndpointRegistry.rebuild then
+    ctx._modEndpointRegistry:rebuild(ctx, { reason = "rack-presentation" })
+  end
+  if ctx and ctx._rackState and (ctx._rackState.viewMode or "perf") == "patch" then
+    syncPatchViewMode(ctx)
+  end
+  if RackWireLayer and RackWireLayer.refreshWires then
+    RackWireLayer.refreshWires(ctx)
+  end
+  RackModPopover.refresh(ctx, {
+    RackWireLayer = RackWireLayer,
+    getScopedWidget = getScopedWidget,
+    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
+  })
+end
+
+applyRackConnectionState = function(ctx, reason)
+  local rackNodes = ctx and ctx._rackState and ctx._rackState.modules or nil
+  ctx._rackConnections = MidiSynthRackSpecs.normalizeConnections(ctx and ctx._rackConnections or nil, rackNodes)
+  _G.__midiSynthRackConnections = ctx._rackConnections
+
+  syncPrimaryControlRoutes(ctx, reason)
+
+  local edgeMask = MidiSynthRackSpecs.audioRouteEdgeMask(ctx._rackConnections)
+  ctx._rackAudioEdgeMask = edgeMask
+  M._syncRackAudioStageParams(ctx)
+  setPath(PATHS.rackAudioEdgeMask, edgeMask)
+
+  M._refreshRackPresentation(ctx)
+
+  return edgeMask
 end
 
 local function isUtilityDockVisible(ctx)
@@ -2455,25 +3809,24 @@ local function syncUtilityDockFromKeyboardCollapsed(ctx)
   if dock.mode == "hidden" then
     dock.mode = "keyboard"
   end
-  -- When uncollapsing, restore previous mode instead of defaulting to full
-  if ctx._keyboardCollapsed then
-    dock.heightMode = "collapsed"
-  else
-    local mode = ctx._dockMode or "compact_collapsed"
-    if mode == "compact_split" then
-      dock.heightMode = "full"
-      dock.layoutMode = "split"
-    elseif mode == "compact_collapsed" then
-      dock.heightMode = "compact"
-      dock.layoutMode = "single"
-    else
-      dock.heightMode = "full"
-      dock.layoutMode = "single"
-    end
-  end
+  dock.layoutMode = "split"
+  dock.secondary = { kind = "utility", variant = "compact" }
   dock.primary = dock.primary or { kind = "keyboard", variant = "full" }
   dock.primary.kind = "keyboard"
-  dock.primary.variant = (dock.heightMode == "compact" or dock.layoutMode == "split") and "compact" or "full"
+
+  if ctx._keyboardCollapsed then
+    dock.heightMode = "collapsed"
+    dock.primary.variant = "compact"
+  else
+    local mode = ctx._dockMode or "compact_split"
+    if mode == "compact_split" then
+      dock.heightMode = "compact"
+      dock.primary.variant = "compact"
+    else
+      dock.heightMode = "full"
+      dock.primary.variant = "full"
+    end
+  end
 end
 
 local function utilityDockPresentationMode(ctx)
@@ -2507,32 +3860,32 @@ local function setUtilityDockMode(ctx, modeKey)
   local dock = ensureUtilityDockState(ctx)
   dock.visible = true
   dock.mode = "keyboard"
+  dock.layoutMode = "split"
   dock.primary = dock.primary or { kind = "keyboard", variant = "full" }
   dock.primary.kind = "keyboard"
+  dock.secondary = { kind = "utility", variant = "compact" }
 
-  if modeKey == "compact_split" then
-    dock.heightMode = "full"
-    dock.layoutMode = "split"
+  local normalizedMode = modeKey == "compact" and "compact_split" or modeKey
+  if normalizedMode == "compact_collapsed" then
+    dock.heightMode = "collapsed"
     dock.primary.variant = "compact"
-    dock.secondary = dock.secondary or { kind = "utility", variant = "compact" }
-  elseif modeKey == "compact_collapsed" or modeKey == "compact" then
+    ctx._keyboardCollapsed = true
+  elseif normalizedMode == "compact_split" then
     dock.heightMode = "compact"
-    dock.layoutMode = "single"
     dock.primary.variant = "compact"
-    dock.secondary = nil
+    ctx._keyboardCollapsed = false
   else
     dock.heightMode = "full"
-    dock.layoutMode = "single"
     dock.primary.variant = "full"
-    dock.secondary = nil
+    ctx._keyboardCollapsed = false
   end
 
   if ctx._rackState then
     ctx._rackState.utilityDock = dock
   end
-  ctx._keyboardCollapsed = false
-  ctx._dockMode = modeKey == "compact" and "compact_collapsed" or modeKey
+  ctx._dockMode = normalizedMode
   syncKeyboardCollapseButton(ctx)
+  MidiParamRack.invalidate(ctx)
   if ctx._lastW and ctx._lastH then
     refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
   end
@@ -2552,12 +3905,13 @@ local function computeKeyboardPanelHeight(ctx, totalH)
   local captureGap = 0
   local contentTop = topPad + captureH + captureGap
   local availableBelow = math.max(220, h - contentTop - bottomPad)
-  local keyboardHeaderH = 44
   local keyboardExpandedH = math.max(148, availableBelow - math.max(180, math.floor(availableBelow * 0.45)) - gap - 6)
-  local compactH = math.max(220, math.min(420, math.floor(keyboardExpandedH * 0.5)))
+  -- Compact/collapsed needs a little more than the old half-height now that it also hosts
+  -- the MIDI rack + grab handle while still reaching the row-3 boundary cleanly.
+  local compactH = math.max(220, math.min(420, math.floor(keyboardExpandedH * 0.5) + 56))
 
   if dock.heightMode == "collapsed" then
-    return keyboardHeaderH
+    return compactH
   end
   if dock.heightMode == "compact" or dock.mode == "compact_keyboard" then
     return compactH
@@ -2639,80 +3993,19 @@ local function setWidgetBounds(widget, x, y, w, h)
   return true
 end
 
-local function relayoutWidgetSubtree(widget, width, height)
-  if widget == nil then
-    return false
-  end
+-- Rack layout functions delegated to RackLayoutManager
+local relayoutWidgetSubtree = RackLayoutManager.relayoutWidgetSubtree
+local updateLayoutChild = RackLayoutManager.updateLayoutChild
+local updateWidgetRectSpec = RackLayoutManager.updateWidgetRectSpec
+local computeProjectedRowWidths = RackLayoutManager.computeProjectedRowWidths
 
-  local runtime = widget._structuredRuntime
-  local record = widget._structuredRecord
-  if type(runtime) ~= "table" or type(runtime.notifyRecordHostedResized) ~= "function" or type(record) ~= "table" then
-    return false
-  end
+local CANONICAL_RACK_HEIGHT = RackLayoutManager.CANONICAL_RACK_HEIGHT
+local RACK_SLOT_W = RackLayoutManager.RACK_SLOT_W
+local RACK_SLOT_H = RackLayoutManager.RACK_SLOT_H
+local RACK_ROW_GAP = RackLayoutManager.RACK_ROW_GAP
+local RACK_ROW_PADDING_X = RackLayoutManager.RACK_ROW_PADDING_X
 
-  local ok = pcall(function()
-    runtime:notifyRecordHostedResized(record, width, height)
-  end)
-  return ok == true
-end
-
-local function updateLayoutChild(widget, values)
-  local record = widget and widget._structuredRecord or nil
-  local spec = record and record.spec or nil
-  if type(spec) ~= "table" then
-    return false
-  end
-
-  local layoutChild = spec.layoutChild
-  if type(layoutChild) ~= "table" then
-    layoutChild = {}
-    spec.layoutChild = layoutChild
-  end
-
-  local changed = false
-  for key, value in pairs(values or {}) do
-    local nextValue = value
-    if type(value) == "number" then
-      nextValue = round(value)
-    end
-    if layoutChild[key] ~= nextValue then
-      layoutChild[key] = nextValue
-      changed = true
-    end
-  end
-  return changed
-end
-
-local function updateWidgetRectSpec(widget, x, y, w, h)
-  local record = widget and widget._structuredRecord or nil
-  local spec = record and record.spec or nil
-  if type(spec) ~= "table" then
-    return false
-  end
-
-  local changed = false
-  local values = {
-    x = round(x or 0),
-    y = round(y or 0),
-    w = math.max(1, round(w or 1)),
-    h = math.max(1, round(h or 1)),
-  }
-  for key, value in pairs(values) do
-    if spec[key] ~= value then
-      spec[key] = value
-      changed = true
-    end
-  end
-  return changed
-end
-
-local CANONICAL_RACK_HEIGHT = 452
-local RACK_SLOT_W = 236  -- 220 + 16px internal padding
-local RACK_SLOT_H = 220
-local RACK_ROW_GAP = 0
-local RACK_ROW_PADDING_X = 0
-
-RACK_SHELL_LAYOUT = {
+RACK_MODULE_SHELL_LAYOUT = {
   adsr = { shellId = "adsrShell", badgeSuffix = ".adsrShell.sizeBadge", row = 0, accentColor = 0xfffda4af },
   oscillator = { shellId = "oscillatorShell", badgeSuffix = ".oscillatorShell.sizeBadge", row = 0, accentColor = 0xff7dd3fc },
   filter = { shellId = "filterShell", badgeSuffix = ".filterShell.sizeBadge", row = 0, accentColor = 0xffa78bfa },
@@ -2725,25 +4018,7 @@ RACK_SHELL_LAYOUT = {
 }
 
 local function computeProjectedRowWidths(nodes, rowBounds)
-  local count = #nodes
-  if count == 0 then
-    return {}
-  end
-
-  -- Fixed sizes only: node.w * RACK_SLOT_W, no stretching
-  local widths = {}
-  for i = 1, count do
-    local widthUnits = math.max(1, tonumber(nodes[i].w) or 1)
-    widths[i] = widthUnits * RACK_SLOT_W
-  end
-
-  return widths
-end
-
-local function shouldShowRackRow3(ctx)
-  local dock = ensureUtilityDockState(ctx)
-  local heightMode = type(dock.heightMode) == "string" and dock.heightMode or "full"
-  return heightMode == "collapsed" or heightMode == "compact"
+  return RackLayoutManager.computeProjectedRowWidths(nodes, rowBounds)
 end
 
 local function syncRackShellLayout(ctx)
@@ -2752,21 +4027,23 @@ local function syncRackShellLayout(ctx)
     viewMode = defaultRackState.viewMode,
     densityMode = defaultRackState.densityMode,
     utilityDock = defaultRackState.utilityDock,
-    nodes = RackLayout.cloneNodes(defaultRackState.nodes),
+    modules = RackLayout.cloneRackModules(defaultRackState.modules),
   }
-  if #(rackState.nodes or {}) == 0 then
-    rackState.nodes = RackLayout.cloneNodes(defaultRackState.nodes)
+  if #(rackState.modules or {}) == 0 then
+    rackState.modules = RackLayout.cloneRackModules(defaultRackState.modules)
   end
   ctx._rackState = rackState
   ctx._utilityDock = rackState.utilityDock or ctx._utilityDock
 
   local rowBoundsByRow = {}
-  for row = 0, 2 do
+  for row = 0, 7 do
     local rowWidget = getScopedWidget(ctx, ".rackRow" .. tostring(row + 1))
-    rowBoundsByRow[row] = getWidgetBounds(rowWidget)
+    if rowWidget then
+      rowBoundsByRow[row] = getWidgetBounds(rowWidget)
+    end
   end
 
-  local layoutNodes = RackLayout.getFlowNodes(ctx._dragPreviewNodes or rackState.nodes or {})
+  local layoutNodes = RackLayout.getFlowModules(ctx._dragPreviewModules or rackState.modules or {})
   local rowBuckets = {}
   for i = 1, #layoutNodes do
     local node = layoutNodes[i]
@@ -2783,22 +4060,22 @@ local function syncRackShellLayout(ctx)
   for row, bucket in pairs(rowBuckets) do
     local rowBounds = rowBoundsByRow[row]
     if rowBounds then
-      local widths = computeProjectedRowWidths(bucket, rowBounds)
-      local nextX = (tonumber(rowBounds.x) or 0) + RACK_ROW_PADDING_X
-      local nextY = tonumber(rowBounds.y) or 0
+      local rowLeft = (tonumber(rowBounds.x) or 0) + RACK_ROW_PADDING_X
+      local rowTop = tonumber(rowBounds.y) or 0
       for i = 1, #bucket do
         local node = bucket[i]
-        local shellMeta = node and RACK_SHELL_LAYOUT[node.id] or nil
+        local shellMeta = node and RACK_MODULE_SHELL_LAYOUT[node.id] or nil
         if shellMeta then
           local shellWidget = getScopedWidget(ctx, "." .. shellMeta.shellId)
-          local width = widths[i] or (math.max(1, tonumber(node.w) or 1) * RACK_SLOT_W)
+          local width = math.max(1, tonumber(node.w) or 1) * RACK_SLOT_W
           local height = math.max(1, tonumber(node.h) or 1) * RACK_SLOT_H
+          local x = rowLeft + (math.max(0, tonumber(node.col) or 0) * (RACK_SLOT_W + RACK_ROW_GAP))
+          local y = rowTop
           if shellWidget then
-            changed = updateWidgetRectSpec(shellWidget, nextX, nextY, width, height) or changed
-            changed = setWidgetBounds(shellWidget, nextX, nextY, width, height) or changed
+            changed = updateWidgetRectSpec(shellWidget, x, y, width, height) or changed
+            changed = setWidgetBounds(shellWidget, x, y, width, height) or changed
             relayoutWidgetSubtree(shellWidget, width, height)
           end
-          nextX = nextX + width + RACK_ROW_GAP
           local badge = getScopedWidget(ctx, shellMeta.badgeSuffix)
           local sizeText = type(node.sizeKey) == "string" and node.sizeKey ~= "" and node.sizeKey or string.format("%dx%d", math.max(1, tonumber(node.h) or 1), math.max(1, tonumber(node.w) or 1))
           syncText(badge, sizeText)
@@ -2812,6 +4089,7 @@ end
 
 refreshManagedLayoutState = function(ctx, w, h)
   local widgets = ctx.widgets or {}
+  M._setupUtilityPaletteBrowserHandlers(ctx)
   local mainStack = widgets.mainStack
   local contentRows = widgets.content_rows
   local topRow = widgets.top_row
@@ -2819,6 +4097,13 @@ refreshManagedLayoutState = function(ctx, w, h)
   local keyboardPanel = widgets.keyboardPanel
   local keyboardBody = widgets.keyboardBody
   local utilitySplitArea = widgets.utilitySplitArea
+  local utilityTopBar = widgets.utilityTopBar
+  local utilityBrowserBody = widgets.utilityBrowserBody
+  local utilityNavRail = widgets.utilityNavRail
+  local paletteStrip = widgets.paletteStrip
+  local utilityDetailPanel = widgets.utilityDetailPanel
+  local keyboardGrabHandle = widgets.keyboardGrabHandle
+  local midiParamRack = widgets.midiParamRack
   local keyboardHeader = widgets.keyboardHeader
   local keyboardCanvas = widgets.keyboardCanvas
   local dockModeDots = widgets.dockModeDots
@@ -2845,39 +4130,16 @@ refreshManagedLayoutState = function(ctx, w, h)
 
   local dockVisible = isUtilityDockVisible(ctx)
   local dock = ensureUtilityDockState(ctx)
-  local isCompactSplit = dock.layoutMode == "split" and dock.primary and dock.primary.kind == "keyboard" and dock.primary.variant == "compact"
-  local bodyVisible = dockVisible and ctx._keyboardCollapsed ~= true
-  local splitVisible = dockVisible and bodyVisible and isCompactSplit
+  local isCollapsedMode = (dock.heightMode == "collapsed") or (ctx._dockMode == "compact_collapsed")
+  local isCompactMode = (dock.heightMode == "compact") and not isCollapsedMode
+  local bodyVisible = dockVisible and not isCollapsedMode
+  local utilityVisible = dockVisible
+  local utilityNavVisible = utilityVisible
+  local utilityDetailVisible = utilityVisible
+  local handleVisible = dockVisible
+  local midiVisible = dockVisible
   local bodyVisibilityChanged = false
 
-  -- Row 3 backplate visibility follows dock state for visual clarity
-  local rackRow3 = getScopedWidget(ctx, ".rackRow3")
-  if rackRow3 and rackRow3.setVisible then
-    local showRow3 = shouldShowRackRow3(ctx)
-    local currentVisible = rackRow3.isVisible and rackRow3:isVisible() or false
-    if currentVisible ~= showRow3 then
-      rackRow3:setVisible(showRow3)
-    end
-  end
-
-  -- Sync rack pagination to actual row visibility
-  local rackRow1 = getScopedWidget(ctx, ".rackRow1")
-  local rackRow2 = getScopedWidget(ctx, ".rackRow2") 
-  local rackRow3 = getScopedWidget(ctx, ".rackRow3")
-  
-  local row1Visible = rackRow1 and rackRow1.isVisible and rackRow1:isVisible()
-  local row2Visible = rackRow2 and rackRow2.isVisible and rackRow2:isVisible()
-  local row3Visible = rackRow3 and rackRow3.isVisible and rackRow3:isVisible()
-  
-  local p = ensureRackPaginationState(ctx)
-  if row3Visible then
-    p.visibleRows = {1, 2, 3}
-  elseif row1Visible and not row3Visible then
-    p.visibleRows = {1, 2}
-  elseif row2Visible and row3Visible then
-    p.visibleRows = {2, 3}
-  end
-  updateRackPaginationDots(ctx)
   if keyboardPanel and keyboardPanel.setVisible then
     local currentVisible = true
     if keyboardPanel.isVisible then
@@ -2913,8 +4175,48 @@ refreshManagedLayoutState = function(ctx, w, h)
     if utilitySplitArea.isVisible then
       currentVisible = utilitySplitArea:isVisible()
     end
-    if currentVisible ~= splitVisible then
-      utilitySplitArea:setVisible(splitVisible)
+    if currentVisible ~= utilityVisible then
+      utilitySplitArea:setVisible(utilityVisible)
+      bodyVisibilityChanged = true
+    end
+  end
+  if utilityNavRail and utilityNavRail.setVisible then
+    local currentVisible = true
+    if utilityNavRail.isVisible then
+      currentVisible = utilityNavRail:isVisible()
+    end
+    if currentVisible ~= utilityNavVisible then
+      utilityNavRail:setVisible(utilityNavVisible)
+      bodyVisibilityChanged = true
+    end
+  end
+  if utilityDetailPanel and utilityDetailPanel.setVisible then
+    local currentVisible = true
+    if utilityDetailPanel.isVisible then
+      currentVisible = utilityDetailPanel:isVisible()
+    end
+    if currentVisible ~= utilityDetailVisible then
+      utilityDetailPanel:setVisible(utilityDetailVisible)
+      bodyVisibilityChanged = true
+    end
+  end
+  if keyboardGrabHandle and keyboardGrabHandle.setVisible then
+    local currentVisible = true
+    if keyboardGrabHandle.isVisible then
+      currentVisible = keyboardGrabHandle:isVisible()
+    end
+    if currentVisible ~= handleVisible then
+      keyboardGrabHandle:setVisible(handleVisible)
+      bodyVisibilityChanged = true
+    end
+  end
+  if midiParamRack and midiParamRack.setVisible then
+    local currentVisible = true
+    if midiParamRack.isVisible then
+      currentVisible = midiParamRack:isVisible()
+    end
+    if currentVisible ~= midiVisible then
+      midiParamRack:setVisible(midiVisible)
       bodyVisibilityChanged = true
     end
   end
@@ -2929,14 +4231,68 @@ refreshManagedLayoutState = function(ctx, w, h)
   local keyboardH = computeKeyboardPanelHeight(ctx, totalH)
   local contentH = math.max(CANONICAL_RACK_HEIGHT, availableBelow - keyboardH - gap)
 
-  local rackChanged = syncRackShellLayout(ctx)
-  syncRackEdgeTerminals(ctx)
-  if rackChanged and RackWireLayer and RackWireLayer.refreshWires then
-    local viewMode = ctx._rackState and ctx._rackState.viewMode or "perf"
-    if viewMode == "patch" then
-      RackWireLayer.refreshWires(ctx)
+  local p = syncRackPaginationModel(ctx, contentH)
+  local visibleRowSet = {}
+  for _, rowIndex in ipairs(p.visibleRows or {}) do
+    visibleRowSet[tonumber(rowIndex)] = true
+  end
+
+  local missingRows = 0
+  for rowIndex = 1, math.max(64, p.totalRows + 4) do
+    local rowWidget = getScopedWidget(ctx, ".rackRow" .. tostring(rowIndex))
+    if rowWidget then
+      missingRows = 0
+      local rowVisible = rowIndex <= p.totalRows and visibleRowSet[rowIndex] == true
+      local slotIndex = p.showAll and rowIndex or (rowIndex - (tonumber(p.viewportOffset) or 0))
+      local targetY = 25 + (math.max(0, slotIndex - 1) * RACK_SLOT_H)
+      local bounds = getWidgetBounds(rowWidget)
+      if bounds then
+        updateWidgetRectSpec(rowWidget, bounds.x, targetY, bounds.w, bounds.h)
+        setWidgetBounds(rowWidget, bounds.x, targetY, bounds.w, bounds.h)
+      end
+      if rowWidget.setVisible then
+        rowWidget:setVisible(rowVisible)
+      elseif rowWidget.node and rowWidget.node.setVisible then
+        rowWidget.node:setVisible(rowVisible)
+      end
+    else
+      missingRows = missingRows + 1
+      if rowIndex > p.totalRows and missingRows >= 4 then
+        break
+      end
     end
   end
+
+  local rackNodes = ctx._rackState and ctx._rackState.modules or {}
+  local activeLayoutNodes = ctx._dragPreviewModules or rackNodes
+  local activeNodesById = {}
+  local createdDynamicShell = false
+  for i = 1, #activeLayoutNodes do
+    local node = activeLayoutNodes[i]
+    if node and node.id then
+      activeNodesById[tostring(node.id)] = node
+      if not RACK_MODULE_SHELL_LAYOUT[tostring(node.id)] then
+        if M._ensureDynamicShellForNode(ctx, node.id) ~= nil then
+          createdDynamicShell = true
+        end
+      end
+    end
+  end
+
+  for nodeId, shellMeta in pairs(RACK_MODULE_SHELL_LAYOUT) do
+    local node = activeNodesById[tostring(nodeId)]
+    local shellWidget = getScopedWidget(ctx, "." .. shellMeta.shellId)
+    local deleteButton = getScopedWidget(ctx, "." .. shellMeta.shellId .. ".deleteButton")
+    local rowIndex = node and math.max(1, math.floor(tonumber(node.row) or 0) + 1) or nil
+    local shellVisible = rowIndex ~= nil and visibleRowSet[rowIndex] == true
+
+    setWidgetVisible(shellWidget, shellVisible)
+    setWidgetVisible(deleteButton, shellVisible and MidiSynthRackSpecs.isRackModuleDeletable and MidiSynthRackSpecs.isRackModuleDeletable(nodeId))
+  end
+
+  updateRackPaginationDots(ctx)
+
+  local rackChanged = syncRackShellLayout(ctx)
   local sizingChanged = false
   sizingChanged = updateLayoutChild(topRow, {
     order = 1,
@@ -2954,30 +4310,81 @@ refreshManagedLayoutState = function(ctx, w, h)
     minH = 220,
     maxH = 220,
   }) or sizingChanged
-  -- Compute compact body height to match compact_collapsed mode sizing
-  -- This mirrors the compactH calculation in computeKeyboardPanelHeight
-  local keyboardHeaderH = 44
-  local keyboardExpandedH = math.max(148, availableBelow - math.max(180, math.floor(availableBelow * 0.45)) - gap - 6)
-  local compactPanelH = math.max(220, math.min(420, math.floor(keyboardExpandedH * 0.5)))
-  local compactBodyH = compactPanelH - keyboardHeaderH
+  local keyboardBodyBasisH = isCollapsedMode and 0 or (isCompactMode and 54 or 150)
+  local keyboardBodyMinH = isCollapsedMode and 0 or (isCompactMode and 46 or 110)
   sizingChanged = updateLayoutChild(utilitySplitArea, {
-    order = splitVisible and 1 or 2,
-    grow = 0,
-    shrink = 1,
-    basisH = splitVisible and 273 or 0,
-    minH = splitVisible and 273 or 0,
-    maxH = splitVisible and 273 or 0,
-  }) or sizingChanged
-  sizingChanged = updateLayoutChild(keyboardBody, {
-    order = splitVisible and 2 or 1,
+    order = 1,
     grow = 1,
     shrink = 1,
-    basisH = splitVisible and 0 or 120,
-    minH = splitVisible and 0 or 80,
+    basisH = isCollapsedMode and 110 or 120,
+    minH = 110,
     maxH = nil,
   }) or sizingChanged
-  sizingChanged = updateLayoutChild(keyboardHeader, {
+  sizingChanged = updateLayoutChild(utilityTopBar, {
+    order = 1,
+    grow = 0,
+    shrink = 0,
+    basisH = 20,
+    minH = 20,
+    maxH = 20,
+  }) or sizingChanged
+  sizingChanged = updateLayoutChild(utilityBrowserBody, {
+    order = 2,
+    grow = 1,
+    shrink = 1,
+    basisH = 136,
+    minH = 96,
+    maxH = nil,
+  }) or sizingChanged
+  local utilityNavW = isCompactMode and 224 or 248
+  local utilityDetailMinW = isCompactMode and 148 or 164
+  local paletteStripW = M._palettePreferredWidth(ctx)
+  sizingChanged = updateLayoutChild(utilityNavRail, {
+    basisW = utilityNavVisible and utilityNavW or 0,
+    minW = utilityNavVisible and utilityNavW or 0,
+    maxW = utilityNavVisible and utilityNavW or 0,
+    shrink = 0,
+  }) or sizingChanged
+  sizingChanged = updateLayoutChild(paletteStrip, {
+    basisW = paletteStripW,
+    minW = paletteStripW,
+    maxW = paletteStripW,
+    grow = 0,
+    shrink = 0,
+  }) or sizingChanged
+  sizingChanged = updateLayoutChild(utilityDetailPanel, {
+    basisW = utilityDetailVisible and utilityDetailMinW or 0,
+    minW = utilityDetailVisible and utilityDetailMinW or 0,
+    maxW = nil,
+    grow = utilityDetailVisible and 1 or 0,
+    shrink = utilityDetailVisible and 1 or 0,
+  }) or sizingChanged
+  sizingChanged = updateLayoutChild(keyboardGrabHandle, {
+    order = 2,
+    grow = 0,
+    shrink = 0,
+    basisH = 8,
+    minH = 8,
+    maxH = 8,
+  }) or sizingChanged
+  sizingChanged = updateLayoutChild(midiParamRack, {
     order = 3,
+    grow = 0,
+    shrink = 0,
+    basisH = 68,
+    minH = 68,
+    maxH = 68,
+  }) or sizingChanged
+  sizingChanged = updateLayoutChild(keyboardBody, {
+    order = 4,
+    grow = 0,
+    shrink = 1,
+    basisH = keyboardBodyBasisH,
+    minH = keyboardBodyMinH,
+    maxH = isCollapsedMode and 0 or keyboardBodyBasisH,
+  }) or sizingChanged
+  sizingChanged = updateLayoutChild(keyboardHeader, {
+    order = 5,
     grow = 0,
     shrink = 0,
     basisH = 42,
@@ -2991,14 +4398,14 @@ refreshManagedLayoutState = function(ctx, w, h)
     maxH = contentH,
   }) or sizingChanged
 
-  -- Rack container always has full height for all rows; viewport controls visibility
+  -- Rack container height follows the visible viewport, not the full logical row count.
   local rackContainer = widgets.rackContainer or getScopedWidget(ctx, ".rackContainer")
   if rackContainer then
-    local fullRackH = 684
+    local visibleRackH = 25 + (math.max(1, tonumber(p.rowsPerPage) or 1) * RACK_SLOT_H)
     sizingChanged = updateLayoutChild(rackContainer, {
-      basisH = fullRackH,
-      minH = fullRackH,
-      maxH = fullRackH,
+      basisH = visibleRackH,
+      minH = visibleRackH,
+      maxH = visibleRackH,
     }) or sizingChanged
   end
   sizingChanged = updateLayoutChild(keyboardPanel, {
@@ -3010,25 +4417,48 @@ refreshManagedLayoutState = function(ctx, w, h)
     maxH = keyboardH,
   }) or sizingChanged
 
-  if stackChanged or bodyVisibilityChanged or sizingChanged or rackChanged then
+  local paletteChanged = M._syncPaletteCardState(ctx) or false
+  local layoutChanged = stackChanged or bodyVisibilityChanged or sizingChanged or rackChanged or paletteChanged
+  if layoutChanged then
     relayoutWidgetSubtree(mainStack, totalW, totalH)
+    M._syncPaletteCardState(ctx)
   end
 
-  if dockModeDots and keyboardPanel and keyboardPanel.node and keyboardPanel.node.getBounds
-      and keyboardBody and keyboardBody.node and keyboardBody.node.getBounds then
+  if createdDynamicShell and ctx._rackState and (ctx._rackState.viewMode or "perf") == "patch" then
+    syncPatchViewMode(ctx)
+  end
+
+  syncRackEdgeTerminals(ctx)
+  if layoutChanged and RackWireLayer and RackWireLayer.refreshWires then
+    local viewMode = ctx._rackState and ctx._rackState.viewMode or "perf"
+    if viewMode == "patch" then
+      RackWireLayer.refreshWires(ctx)
+    end
+  end
+
+  local dotAnchor = nil
+  if bodyVisible and keyboardBody and keyboardBody.node and keyboardBody.node.getBounds then
+    dotAnchor = keyboardBody
+  elseif midiParamRack and midiParamRack.node and midiParamRack.node.getBounds then
+    dotAnchor = midiParamRack
+  end
+  if dockModeDots and keyboardPanel and keyboardPanel.node and keyboardPanel.node.getBounds and dotAnchor and dotAnchor.node and dotAnchor.node.getBounds then
     local _, _, panelW, _ = keyboardPanel.node:getBounds()
-    local bx, by, bw, bh = keyboardBody.node:getBounds()
+    local bx, by, bw, bh = dotAnchor.node:getBounds()
     local dotsH = 46
     local dotsW = 12
-    local bodyRight = (tonumber(bx) or 0) + (tonumber(bw) or 0)
-    local rightPad = math.max(0, (tonumber(panelW) or 0) - bodyRight)
-    local dotX = round(bodyRight + math.max(0, (rightPad - dotsW) * 0.5))
+    local anchorRight = (tonumber(bx) or 0) + (tonumber(bw) or 0)
+    local rightPad = math.max(0, (tonumber(panelW) or 0) - anchorRight)
+    local dotX = round(anchorRight + math.max(0, (rightPad - dotsW) * 0.5))
     local dotY = round(((tonumber(by) or 0) + (tonumber(bh) or 0)) - dotsH - 48)
     setWidgetBounds(dockModeDots, dotX, dotY, dotsW, dotsH)
   end
 
   syncDockModeDots(ctx)
-  syncKeyboardDisplay(ctx)
+  if bodyVisible then
+    syncKeyboardDisplay(ctx)
+  end
+  MidiParamRack.sync(ctx, midiParamRack)
 
   -- Position patchViewToggle flush right within content_rows
   if widgets.patchViewToggle and contentRows and contentRows.node then
@@ -3040,13 +4470,380 @@ refreshManagedLayoutState = function(ctx, w, h)
   end
 end
 
+function M._syncPaletteCardState(ctx)
+  local changed = false
+  local function ellipsize(text, maxChars)
+    local s = tostring(text or "")
+    local n = math.max(1, math.floor(tonumber(maxChars) or 1))
+    if #s <= n then
+      return s
+    end
+    if n <= 1 then
+      return string.sub(s, 1, n)
+    end
+    return string.sub(s, 1, n - 1) .. "…"
+  end
+
+  local function paletteStatusText(entry, paletteAvailable)
+    local id = tostring(entry and entry.id or "")
+    if id == "adsr" then
+      if paletteAvailable and getActiveRackNodeById(ctx, "adsr") == nil then
+        return "Restore ADSR"
+      end
+      return paletteAvailable and "" or "No free ADSR slots"
+    elseif id == "rack_oscillator" then
+      return paletteAvailable and "" or "No free Osc slots"
+    elseif id == "arp" then
+      return paletteAvailable and "" or "No free Arp slots"
+    elseif id == "transpose" then
+      return paletteAvailable and "" or "No free Transpose slots"
+    elseif id == "velocity_mapper" then
+      return paletteAvailable and "" or "No free Velocity slots"
+    elseif id == "scale_quantizer" then
+      return paletteAvailable and "" or "No free Quantizer slots"
+    elseif id == "note_filter" then
+      return paletteAvailable and "" or "No free Note Filter slots"
+    elseif id == "attenuverter_bias" then
+      return paletteAvailable and "" or "No free ATV / Bias slots"
+    elseif id == "lfo" then
+      return paletteAvailable and "" or "No free LFO slots"
+    elseif id == "slew" then
+      return paletteAvailable and "" or "No free Slew slots"
+    elseif id == "sample_hold" then
+      return paletteAvailable and "" or "No free Sample Hold slots"
+    elseif id == "compare" then
+      return paletteAvailable and "" or "No free Compare slots"
+    elseif id == "cv_mix" then
+      return paletteAvailable and "" or "No free CV Mix slots"
+    elseif id == "filter" then
+      local missingCanonicalFilter = M._nextAvailableCanonicalFilterNodeId(ctx)
+      if paletteAvailable and missingCanonicalFilter == "filter" then
+        return "Restore Filter"
+      end
+      return paletteAvailable and "" or "No free Filter slots"
+    elseif id == "eq" then
+      return paletteAvailable and "" or "No free EQ slots"
+    elseif id == "fx" then
+      local missingCanonicalFx = M._nextAvailableCanonicalFxNodeId(ctx)
+      if paletteAvailable and missingCanonicalFx == "fx1" then
+        return "Restore FX1"
+      elseif paletteAvailable and missingCanonicalFx == "fx2" then
+        return "Restore FX2"
+      end
+      return paletteAvailable and "" or "No free FX slots"
+    elseif id == "range_mapper" then
+      return paletteAvailable and "" or "No free Range slots"
+    end
+    return paletteAvailable and "" or "Unavailable"
+  end
+
+  local function syncButtonLabel(widget, text)
+    if widget and widget.setLabel then
+      widget:setLabel(text)
+    elseif widget and widget.setText then
+      widget:setText(text)
+    end
+  end
+
+  local function styleNavButton(widget, selected)
+    if widget and widget.setStyle then
+      widget:setStyle({
+        bg = selected and 0xff16233a or 0x00000000,
+        hoverBg = 0xff16233a,
+        colour = selected and 0xffffffff or 0xff94a3b8,
+        radius = 0,
+        fontSize = 9,
+      })
+    end
+  end
+
+  local selectedEntry = M._ensurePaletteSelection(ctx)
+  M._ensureSelectedPaletteScrollVisible(ctx)
+  local m = M._paletteCardMetrics()
+  local scrollOffset = M._clampPaletteScrollOffset(ctx)
+  local viewportW = M._paletteViewportWidth(ctx)
+  local viewportH = M._paletteViewportHeight(ctx)
+  local columns = M._paletteGridColumnCount(ctx)
+  local visibleFirst = 1
+  local visibleLast = 0
+
+  local paletteStripRow = getScopedWidget(ctx, ".paletteStripRow")
+  local paletteStripContent = getScopedWidget(ctx, ".paletteStripContent")
+  if paletteStripContent then
+    changed = setWidgetBounds(paletteStripContent, 0, 0, viewportW, viewportH) or changed
+  end
+  if paletteStripRow then
+    changed = setWidgetBounds(paletteStripRow, 0, 0, viewportW, viewportH) or changed
+  end
+
+  for i = 1, #M._PALETTE_ENTRIES do
+    local entry = M._PALETTE_ENTRIES[i]
+    local paletteCard = getScopedWidget(ctx, "." .. tostring(entry.cardId or ""))
+    local paletteHint = getScopedWidget(ctx, "." .. tostring(entry.hintId or ""))
+    local palettePorts = getScopedWidget(ctx, "." .. tostring(entry.portsId or ""))
+    local paletteAccent = getScopedWidget(ctx, "." .. tostring(entry.accentId or ""))
+    local paletteAvailable = M._canSpawnPaletteEntry(ctx, entry)
+    local selected = selectedEntry and tostring(selectedEntry.id or "") == tostring(entry.id or "")
+    local statusText = paletteStatusText(entry, paletteAvailable)
+    local row = math.floor((i - 1) / columns)
+    local col = (i - 1) % columns
+    local cardX = m.pad + (col * (m.w + m.gap))
+    local cardY = m.pad + (row * (m.h + m.rowGap)) - scrollOffset
+    local pageVisible = (cardX + m.w) >= 0 and cardX <= viewportW and (cardY + m.h) >= 0 and cardY <= viewportH
+    if pageVisible then
+      if visibleLast == 0 then
+        visibleFirst = i
+      end
+      visibleLast = i
+    end
+    if paletteCard and paletteCard.setStyle then
+      paletteCard:setStyle({
+        bg = selected and 0xff16233a or 0xff121a2f,
+        border = selected and 0xff38bdf8 or (paletteAvailable and 0xff1f2b4d or 0xff1f2937),
+        borderWidth = selected and 2 or 1,
+        radius = 0,
+        opacity = paletteAvailable and 1.0 or 0.45,
+      })
+    end
+    if paletteAccent and paletteAccent.setStyle then
+      local accent = tonumber(entry.accentColor) or 0xff64748b
+      paletteAccent:setStyle({ bg = accent, radius = 0, opacity = paletteAvailable and 1.0 or 0.4 })
+    end
+    if paletteHint then
+      syncText(paletteHint, ellipsize(statusText, 18))
+      syncColour(paletteHint, statusText ~= "" and 0xff64748b or 0x00000000)
+      if paletteHint.setVisible then
+        paletteHint:setVisible(pageVisible and statusText ~= "")
+      end
+    end
+    if palettePorts then
+      syncText(palettePorts, ellipsize(tostring(entry.portSummary or entry.ports or ""), 18))
+      syncColour(palettePorts, selected and 0xffe2e8f0 or 0xff94a3b8)
+    end
+    if paletteCard then
+      changed = setWidgetBounds(paletteCard, math.floor(cardX), math.floor(cardY), m.w, m.h) or changed
+      if paletteCard.setVisible then
+        paletteCard:setVisible(pageVisible)
+      end
+    end
+  end
+
+  local entryButtons = M._paletteBrowseEntryButtonMap()
+  for entryId, buttonId in pairs(entryButtons) do
+    local widget = getScopedWidget(ctx, "." .. tostring(buttonId))
+    local selected = selectedEntry and tostring(selectedEntry.id or "") == tostring(entryId)
+    styleNavButton(widget, selected)
+  end
+
+  local voiceCollapsed = M._isPaletteBrowseSectionCollapsed(ctx, "voice")
+  local audioCollapsed = M._isPaletteBrowseSectionCollapsed(ctx, "audio")
+  local fxCollapsed = M._isPaletteBrowseSectionCollapsed(ctx, "fx")
+  local modCollapsed = M._isPaletteBrowseSectionCollapsed(ctx, "mod")
+
+  local voiceHeader = getScopedWidget(ctx, ".utilityNavVoiceHeader")
+  local audioHeader = getScopedWidget(ctx, ".utilityNavAudioHeader")
+  local fxHeader = getScopedWidget(ctx, ".utilityNavFxHeader")
+  local modHeader = getScopedWidget(ctx, ".utilityNavModHeader")
+  syncButtonLabel(voiceHeader, voiceCollapsed and "Voice ▸" or "Voice ▾")
+  syncButtonLabel(audioHeader, audioCollapsed and "Audio ▸" or "Audio ▾")
+  syncButtonLabel(fxHeader, fxCollapsed and "FX ▸" or "FX ▾")
+  syncButtonLabel(modHeader, modCollapsed and "Mod ▸" or "Mod ▾")
+  local function styleNavHeader(widget)
+    if widget and widget.setStyle then
+      widget:setStyle({
+        bg = 0x00000000,
+        hoverBg = 0xff16233a,
+        colour = 0xffe2e8f0,
+        border = 0x00000000,
+        borderWidth = 0,
+        radius = 0,
+        fontSize = 9,
+      })
+    end
+  end
+  styleNavHeader(voiceHeader)
+  styleNavHeader(audioHeader)
+  styleNavHeader(fxHeader)
+  styleNavHeader(modHeader)
+
+  local searchStub = getScopedWidget(ctx, ".utilitySearchStub")
+  local navRail = getScopedWidget(ctx, ".utilityNavRail")
+  local navBounds = navRail and getWidgetBounds(navRail) or nil
+  local navW = math.max(120, math.floor(tonumber(navBounds and navBounds.w) or 168))
+  local navH = math.max(40, math.floor(tonumber(navBounds and navBounds.h) or 84))
+  if searchStub then
+    changed = setWidgetBounds(searchStub, 8, 6, math.max(72, navW - 16), 20) or changed
+  end
+
+  local navItems = {
+    { widget = voiceHeader, height = 18, visible = true },
+    { widget = getScopedWidget(ctx, ".utilityNavVoiceAdsr"), height = 16, visible = not voiceCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavVoiceArp"), height = 16, visible = not voiceCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavVoiceTranspose"), height = 16, visible = not voiceCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavVoiceVelocityMapper"), height = 16, visible = not voiceCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavVoiceScaleQuantizer"), height = 16, visible = not voiceCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavVoiceNoteFilter"), height = 16, visible = not voiceCollapsed },
+    { widget = audioHeader, height = 18, visible = true },
+    { widget = getScopedWidget(ctx, ".utilityNavAudioPlaceholder"), height = 16, visible = not audioCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavAudioOsc"), height = 16, visible = not audioCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavAudioFilter"), height = 16, visible = not audioCollapsed },
+    { widget = fxHeader, height = 18, visible = true },
+    { widget = getScopedWidget(ctx, ".utilityNavFxEq"), height = 16, visible = not fxCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavFxFx"), height = 16, visible = not fxCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavFxRange"), height = 16, visible = not fxCollapsed },
+    { widget = modHeader, height = 18, visible = true },
+    { widget = getScopedWidget(ctx, ".utilityNavModAttenuverterBias"), height = 16, visible = not modCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavModLfo"), height = 16, visible = not modCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavModSlew"), height = 16, visible = not modCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavModSampleHold"), height = 16, visible = not modCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavModCompare"), height = 16, visible = not modCollapsed },
+    { widget = getScopedWidget(ctx, ".utilityNavModCvMix"), height = 16, visible = not modCollapsed },
+  }
+
+  local navViewportTop = 30
+  local navViewportH = math.max(8, navH - navViewportTop - 6)
+  local navContentH = 0
+  for i = 1, #navItems do
+    local item = navItems[i]
+    if item.visible then
+      navContentH = navContentH + item.height + 2
+    end
+  end
+  local navMaxScroll = math.max(0, navContentH - navViewportH)
+  ctx._utilityNavScrollOffset = math.max(0, math.min(navMaxScroll, math.floor(tonumber(ctx._utilityNavScrollOffset) or 0)))
+  local navY = navViewportTop - (tonumber(ctx._utilityNavScrollOffset) or 0)
+  for i = 1, #navItems do
+    local item = navItems[i]
+    local widget = item.widget
+    if widget then
+      if item.visible then
+        changed = setWidgetBounds(widget, 8, math.floor(navY), math.max(72, navW - 16), item.height) or changed
+        local itemVisible = (navY + item.height) >= navViewportTop and navY <= (navViewportTop + navViewportH)
+        if widget.setVisible then
+          widget:setVisible(itemVisible)
+        end
+        navY = navY + item.height + 2
+      else
+        if widget.setVisible then
+          widget:setVisible(false)
+        end
+      end
+    end
+  end
+
+  local pageLabel = getScopedWidget(ctx, ".palettePageLabel")
+  local pagePrev = getScopedWidget(ctx, ".palettePagePrev")
+  local pageNext = getScopedWidget(ctx, ".palettePageNext")
+  local topBarSelected = getScopedWidget(ctx, ".utilityTopBarSelected")
+  local paletteScrollTrack = getScopedWidget(ctx, ".paletteScrollTrack")
+  local paletteScrollThumb = getScopedWidget(ctx, ".paletteScrollThumb")
+  local navScrollTrack = getScopedWidget(ctx, ".utilityNavScrollTrack")
+  local navScrollThumb = getScopedWidget(ctx, ".utilityNavScrollThumb")
+  local maxOffset = M._paletteMaxScrollOffset(ctx)
+  if visibleLast == 0 then
+    visibleFirst = 0
+  end
+  if pageLabel then
+    syncText(pageLabel, string.format("%d-%d/%d", visibleFirst, visibleLast, #M._PALETTE_ENTRIES))
+  end
+  if pagePrev and pagePrev.setStyle then
+    pagePrev:setStyle({
+      bg = scrollOffset > 0 and 0xff0d1420 or 0xff111827,
+      hoverBg = scrollOffset > 0 and 0xff16233a or 0xff111827,
+      colour = scrollOffset > 0 and 0xffcbd5e1 or 0xff475569,
+      border = 0xff1f2b4d,
+      borderWidth = 1,
+      radius = 0,
+      fontSize = 9,
+    })
+  end
+  if pageNext and pageNext.setStyle then
+    pageNext:setStyle({
+      bg = scrollOffset < maxOffset and 0xff0d1420 or 0xff111827,
+      hoverBg = scrollOffset < maxOffset and 0xff16233a or 0xff111827,
+      colour = scrollOffset < maxOffset and 0xffcbd5e1 or 0xff475569,
+      border = 0xff1f2b4d,
+      borderWidth = 1,
+      radius = 0,
+      fontSize = 9,
+    })
+  end
+  if topBarSelected and selectedEntry then
+    syncText(topBarSelected, ellipsize(tostring(selectedEntry.displayName or selectedEntry.id or ""), 20))
+  end
+
+  if paletteScrollTrack and paletteScrollThumb then
+    local trackBounds = getWidgetBounds(paletteScrollTrack)
+    local trackH = math.max(8, math.floor(tonumber(trackBounds and trackBounds.h) or 0))
+    local contentH = M._paletteContentHeight(ctx)
+    local viewport = math.max(1, viewportH)
+    local thumbH = math.max(18, math.floor((viewport / math.max(viewport, contentH)) * trackH))
+    local thumbTravel = math.max(0, trackH - thumbH)
+    local scrollT = (maxOffset > 0) and ((tonumber(scrollOffset) or 0) / maxOffset) or 0
+    changed = setWidgetBounds(paletteScrollThumb, 0, math.floor(thumbTravel * scrollT), 4, thumbH) or changed
+    if paletteScrollTrack.setVisible then
+      paletteScrollTrack:setVisible(maxOffset > 0)
+    end
+  end
+
+  if navScrollTrack and navScrollThumb then
+    local trackBounds = getWidgetBounds(navScrollTrack)
+    local trackH = math.max(8, math.floor(tonumber(trackBounds and trackBounds.h) or 0))
+    local thumbH = math.max(14, math.floor((navViewportH / math.max(navViewportH, navContentH)) * trackH))
+    local thumbTravel = math.max(0, trackH - thumbH)
+    local navT = (navMaxScroll > 0) and ((tonumber(ctx._utilityNavScrollOffset) or 0) / navMaxScroll) or 0
+    changed = setWidgetBounds(navScrollThumb, 0, math.floor(thumbTravel * navT), 4, thumbH) or changed
+    if navScrollTrack.setVisible then
+      navScrollTrack:setVisible(navMaxScroll > 0)
+    end
+  end
+
+  local detailTitle = getScopedWidget(ctx, ".utilityDetailTitle")
+  local detailSubtitle = getScopedWidget(ctx, ".utilityDetailSubtitle")
+  local detailPorts = getScopedWidget(ctx, ".utilityDetailPorts")
+  local detailStatus = getScopedWidget(ctx, ".utilityDetailStatus")
+  local detailAccent = getScopedWidget(ctx, ".utilityDetailAccent")
+
+  if selectedEntry then
+    local paletteAvailable = M._canSpawnPaletteEntry(ctx, selectedEntry)
+    local statusText = paletteStatusText(selectedEntry, paletteAvailable)
+    if detailTitle then
+      syncText(detailTitle, ellipsize(tostring(selectedEntry.displayName or selectedEntry.id or "Module"), 16))
+    end
+    if detailSubtitle then
+      syncText(detailSubtitle, ellipsize(tostring(selectedEntry.description or ""), 42))
+    end
+    if detailPorts then
+      syncText(detailPorts, ellipsize(tostring(selectedEntry.portSummary or ""), 22))
+    end
+    if detailStatus then
+      syncText(detailStatus, statusText)
+      syncColour(detailStatus, paletteAvailable and 0xff38bdf8 or 0xfff87171)
+      if detailStatus.setVisible then
+        detailStatus:setVisible(statusText ~= "")
+      end
+    end
+    if detailAccent and detailAccent.setStyle then
+      detailAccent:setStyle({ bg = tonumber(selectedEntry.accentColor) or 0xff38bdf8, radius = 0 })
+    end
+  end
+
+  return changed
+end
+
 local function setKeyboardCollapsed(ctx, collapsed)
   ctx._keyboardCollapsed = collapsed == true
+  if ctx._keyboardCollapsed then
+    ctx._dockMode = "compact_collapsed"
+  elseif ctx._dockMode ~= "full" then
+    ctx._dockMode = "compact_split"
+  end
   syncUtilityDockFromKeyboardCollapsed(ctx)
   if ctx._rackState then
     ctx._rackState.utilityDock = ensureUtilityDockState(ctx)
   end
   syncKeyboardCollapseButton(ctx)
+  MidiParamRack.invalidate(ctx)
   if ctx._lastW and ctx._lastH then
     refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
   end
@@ -3063,28 +4860,36 @@ local function persistDockUiState(ctx)
   saveRuntimeState(state)
 end
 
-local function saveCurrentState(ctx)
+saveCurrentState = function(ctx)
   local dock = ensureUtilityDockState(ctx)
   local defaultRackState = MidiSynthRackSpecs.defaultRackState()
   local rackState = ctx._rackState or {
     viewMode = defaultRackState.viewMode,
     densityMode = defaultRackState.densityMode,
     utilityDock = dock,
-    nodes = RackLayout.cloneNodes(defaultRackState.nodes),
+    modules = RackLayout.cloneRackModules(defaultRackState.modules),
   }
-  if #(rackState.nodes or {}) == 0 then
-    rackState.nodes = RackLayout.cloneNodes(defaultRackState.nodes)
+  if #(rackState.modules or {}) == 0 then
+    rackState.modules = RackLayout.cloneRackModules(defaultRackState.modules)
   end
-  rackState.utilityDock = {visible=true,mode="keyboard",heightMode="full",layoutMode="single",primary={kind="keyboard",variant="full"}}
+  rackState.utilityDock = {
+    visible = dock.visible ~= false,
+    mode = dock.mode or "keyboard",
+    heightMode = dock.heightMode or (ctx._keyboardCollapsed and "collapsed" or (ctx._dockMode == "compact_split" and "compact" or "full")),
+    layoutMode = "split",
+    primary = { kind = "keyboard", variant = (ctx._dockMode == "full") and "full" or "compact" },
+    secondary = { kind = "utility", variant = "compact" },
+  }
   local state = {
     inputDevice = ctx._selectedMidiInputLabel or "",
     keyboardCollapsed = ctx._keyboardCollapsed == true,
+    keyboardKeyCount = ctx._keyboardKeyCount or 14,
     utilityDockVisible = dock.visible ~= false,
     utilityDockMode = dock.mode or "full_keyboard",
-    utilityDockHeightMode = dock.heightMode or (ctx._keyboardCollapsed and "collapsed" or "full"),
+    utilityDockHeightMode = dock.heightMode or (ctx._keyboardCollapsed and "collapsed" or (ctx._dockMode == "compact_split" and "compact" or "full")),
     rackViewMode = rackState.viewMode,
     rackDensityMode = rackState.densityMode,
-    rackNodes = RackLayout.cloneNodes(rackState.nodes),
+    rackNodes = RackLayout.cloneRackModules(rackState.modules),
     rackState = rackState,
     waveform = round(readParam(PATHS.waveform, 1)),
     filterType = round(readParam(PATHS.filterType, 0)),
@@ -3106,6 +4911,7 @@ local function saveCurrentState(ctx)
     sampleSource = round(readParam(PATHS.sampleSource, 0)),
     sampleCaptureBars = readParam(PATHS.sampleCaptureBars, 1.0),
     samplePitchMapEnabled = (readParam(PATHS.samplePitchMapEnabled, 0.0) or 0.0) > 0.5,
+    samplePitchMode = round(readParam(PATHS.samplePitchMode, 0)),
     sampleRootNote = readParam(PATHS.sampleRootNote, 60.0),
     samplePlayStart = readParam(PATHS.samplePlayStart, 0.0),
     sampleLoopStart = readParam(PATHS.sampleLoopStart, 0.0),
@@ -3118,6 +4924,7 @@ local function saveCurrentState(ctx)
     blendKeyTrack = round(readParam(PATHS.blendKeyTrack, 2)),
     blendSamplePitch = readParam(PATHS.blendSamplePitch, 0.0),
     blendModAmount = readParam(PATHS.blendModAmount, 0.5),
+    envFollow = readParam(PATHS.envFollow, 1.0),
     addFlavor = round(readParam(PATHS.addFlavor, 0)),
     xorBehavior = round(readParam(PATHS.xorBehavior, 0)),
     delayMix = readParam(PATHS.delayMix, 0.0),
@@ -3151,9 +4958,22 @@ local function saveCurrentState(ctx)
   end
 end
 
+local function cloneConnectionList(connections)
+  local out = {}
+  local source = type(connections) == "table" and connections or {}
+  for i = 1, #source do
+    local conn = source[i]
+    if tostring(conn and conn.kind or "") == "audio" then
+      out[#out + 1] = RackLayout.makeRackConnection(conn)
+    end
+  end
+  return out
+end
+
 local function loadSavedState(ctx)
   local state = loadRuntimeState()
   if not state or not next(state) then
+    applyRackConnectionState(ctx, "load-default")
     ctx._lastEvent = "No saved state"
     return
   end
@@ -3161,10 +4981,10 @@ local function loadSavedState(ctx)
   local defaultRackState = MidiSynthRackSpecs.defaultRackState()
   local restoredRackState = nil
   
-  -- First try to use rackState.nodes if it exists and has content
+  -- First try to use rackState.modules if it exists and has content
   if state.rackState and type(state.rackState) == "table" then
     local rs = state.rackState
-    if rs.nodes and #rs.nodes > 0 then
+    if rs.modules and #rs.modules > 0 then
       restoredRackState = {
         viewMode = rs.viewMode or state.rackViewMode or defaultRackState.viewMode,
         densityMode = rs.densityMode or state.rackDensityMode or defaultRackState.densityMode,
@@ -3173,12 +4993,12 @@ local function loadSavedState(ctx)
           mode = state.utilityDockMode,
           heightMode = state.utilityDockHeightMode,
         },
-        nodes = RackLayout.cloneNodes(rs.nodes),
+        modules = RackLayout.cloneRackModules(rs.modules),
       }
     end
   end
-  
-  -- Fall back to rackNodes if no valid rackState.nodes
+
+  -- Fall back to rackNodes if no valid rackState.modules
   if not restoredRackState then
     local rackNodes = state.rackNodes
     if rackNodes and #rackNodes > 0 then
@@ -3190,7 +5010,7 @@ local function loadSavedState(ctx)
           mode = state.utilityDockMode,
           heightMode = state.utilityDockHeightMode,
         },
-        nodes = RackLayout.cloneNodes(rackNodes),
+        modules = RackLayout.cloneRackModules(rackNodes),
       }
     end
   end
@@ -3205,15 +5025,18 @@ local function loadSavedState(ctx)
         mode = state.utilityDockMode,
         heightMode = state.utilityDockHeightMode,
       },
-      nodes = RackLayout.cloneNodes(defaultRackState.nodes),
+      modules = RackLayout.cloneRackModules(defaultRackState.modules),
     }
   end
   ctx._rackState = restoredRackState
-  ctx._rackNodeSpecs = ctx._rackNodeSpecs or MidiSynthRackSpecs.nodeSpecById()
-  ctx._rackConnections = ctx._rackConnections or MidiSynthRackSpecs.defaultConnections()
+  ctx._rackModuleSpecs = MidiSynthRackSpecs.rackModuleSpecById()
+  ctx._dynamicModuleSlots = RackModuleFactory.ensureDynamicModuleSlots(ctx)
+  M._rebuildDynamicRackModuleState(ctx)
+  local restoredConnections = MidiSynthRackSpecs.defaultConnections(restoredRackState.modules)
+  ctx._rackConnections = MidiSynthRackSpecs.normalizeConnections(restoredConnections, restoredRackState.modules)
   ctx._utilityDock = restoredRackState.utilityDock
   _G.__midiSynthRackState = ctx._rackState
-  _G.__midiSynthRackNodeSpecs = ctx._rackNodeSpecs
+  _G.__midiSynthRackModuleSpecs = ctx._rackModuleSpecs
   _G.__midiSynthRackConnections = ctx._rackConnections
   _G.__midiSynthUtilityDock = ctx._utilityDock
 
@@ -3255,6 +5078,9 @@ local function loadSavedState(ctx)
 
   if state.keyboardCollapsed ~= nil and not hasExplicitDockState then
     setKeyboardCollapsed(ctx, state.keyboardCollapsed == true)
+  end
+  if state.keyboardKeyCount then
+    ctx._keyboardKeyCount = state.keyboardKeyCount
   end
 
   -- Apply all saved parameters
@@ -3325,6 +5151,7 @@ local function loadSavedState(ctx)
   if state.sampleSource ~= nil then setPath(PATHS.sampleSource, state.sampleSource) end
   if state.sampleCaptureBars ~= nil then setPath(PATHS.sampleCaptureBars, state.sampleCaptureBars) end
   if state.samplePitchMapEnabled ~= nil then setPath(PATHS.samplePitchMapEnabled, state.samplePitchMapEnabled and 1 or 0) end
+  if state.samplePitchMode ~= nil then setPath(PATHS.samplePitchMode, state.samplePitchMode) end
   if state.sampleRootNote ~= nil then setPath(PATHS.sampleRootNote, state.sampleRootNote) end
   if state.samplePlayStart ~= nil then setPath(PATHS.samplePlayStart, state.samplePlayStart) end
   if state.sampleLoopStart ~= nil then setPath(PATHS.sampleLoopStart, state.sampleLoopStart) end
@@ -3337,6 +5164,7 @@ local function loadSavedState(ctx)
   if state.blendKeyTrack ~= nil then setPath(PATHS.blendKeyTrack, state.blendKeyTrack) end
   if state.blendSamplePitch ~= nil then setPath(PATHS.blendSamplePitch, state.blendSamplePitch) end
   if state.blendModAmount ~= nil then setPath(PATHS.blendModAmount, state.blendModAmount) end
+  if state.envFollow ~= nil then setPath(PATHS.envFollow, state.envFollow) end
   if state.addFlavor ~= nil then setPath(PATHS.addFlavor, state.addFlavor) end
   if state.xorBehavior ~= nil then setPath(PATHS.xorBehavior, state.xorBehavior) end
   -- New oscillator parameters
@@ -3356,7 +5184,8 @@ local function loadSavedState(ctx)
   ctx._adsr.decay = state.decay or 0.2
   ctx._adsr.sustain = state.sustain or 0.7
   ctx._adsr.release = state.release or 0.4
-  
+
+  applyRackConnectionState(ctx, "load-state")
   ctx._lastEvent = "State loaded"
 end
 
@@ -3379,6 +5208,7 @@ local function resetToDefaults(ctx)
   setPath(PATHS.sampleSource, 0)
   setPath(PATHS.sampleCaptureBars, 1.0)
   setPath(PATHS.samplePitchMapEnabled, 0.0)
+  setPath(PATHS.samplePitchMode, 0.0)
   setPath(PATHS.sampleRootNote, 60.0)
   setPath(PATHS.samplePlayStart, 0.0)
   setPath(PATHS.sampleLoopStart, 0.0)
@@ -3391,6 +5221,7 @@ local function resetToDefaults(ctx)
   setPath(PATHS.blendKeyTrack, 2.0)
   setPath(PATHS.blendSamplePitch, 0.0)
   setPath(PATHS.blendModAmount, 0.5)
+  setPath(PATHS.envFollow, 1.0)
   setPath(PATHS.addFlavor, 0.0)
   setPath(PATHS.xorBehavior, 0.0)
   for i = 0, MAX_FX_PARAMS - 1 do
@@ -3425,17 +5256,52 @@ local function resetToDefaults(ctx)
   
   ctx._adsr = { attack = 0.05, decay = 0.2, sustain = 0.7, release = 0.4 }
   ctx._keyboardOctave = 3
+  ctx._rackConnections = MidiSynthRackSpecs.defaultConnections(ctx._rackState and ctx._rackState.modules)
+  applyRackConnectionState(ctx, "reset")
   setKeyboardCollapsed(ctx, false)
   ctx._lastEvent = "Reset to defaults"
 end
 
-local KEYBOARD_WHITE_KEYS = { 0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23 }
-local KEYBOARD_BLACK_KEYS = { 1, 3, 6, 8, 10, 13, 15, 18, 20, 22 }
-local KEYBOARD_BLACK_KEY_POSITIONS = { 1, 2, 4, 5, 6, 8, 9, 11, 12, 13 }
+local function generateKeyboardKeys(whiteKeyCount)
+  whiteKeyCount = whiteKeyCount or 14
+  local whiteKeys = {}
+  local blackKeys = {}
+  local blackPositions = {}
+  
+  local whitePattern = {0, 2, 4, 5, 7, 9, 11}  -- C, D, E, F, G, A, B
+  local blackPattern = {1, 3, 6, 8, 10}  -- C#, D#, F#, G#, A#
+  local blackPosPattern = {0.5, 1.5, 3.5, 4.5, 5.5}  -- position between white keys
+  
+  for i = 1, whiteKeyCount do
+    local octave = math.floor((i - 1) / 7)
+    local noteInOctave = ((i - 1) % 7) + 1
+    whiteKeys[i] = octave * 12 + whitePattern[noteInOctave]
+  end
+  
+  local blackIndex = 1
+  for i = 1, whiteKeyCount - 1 do
+    local octave = math.floor((i - 1) / 7)
+    local noteInOctave = ((i - 1) % 7) + 1
+    -- C#(1), D#(3) between C-D and D-E, then F#(6), G#(8), A#(10) between F-G, G-A, A-B
+    if noteInOctave == 1 or noteInOctave == 2 or noteInOctave == 4 or noteInOctave == 5 or noteInOctave == 6 then
+      local blackOffset = blackPattern[noteInOctave == 1 and 1 or noteInOctave == 2 and 2 or noteInOctave == 4 and 3 or noteInOctave == 5 and 4 or 5]
+      blackKeys[blackIndex] = octave * 12 + blackOffset
+      blackPositions[blackIndex] = i + blackPosPattern[noteInOctave == 1 and 1 or noteInOctave == 2 and 2 or noteInOctave == 4 and 3 or noteInOctave == 5 and 4 or 5]
+      blackIndex = blackIndex + 1
+    end
+  end
+  
+  return whiteKeys, blackKeys, blackPositions
+end
+
+local function getKeyCountForCtx(ctx)
+  return ctx._keyboardKeyCount or 14
+end
 
 local function isKeyboardNoteActive(ctx, note)
+  local midiVoices = ctx._midiVoices or ctx._voices or {}
   for j = 1, VOICE_COUNT do
-    local voice = ctx._voices[j]
+    local voice = midiVoices[j]
     if voice and voice.active and voice.note == note and voice.gate > 0.5 then
       return true
     end
@@ -3449,11 +5315,13 @@ local function buildKeyboardDisplayList(ctx, w, h)
     return display
   end
 
-  local whiteKeyWidth = w / 14
+  local keyCount = getKeyCountForCtx(ctx)
+  local whiteKeys, blackKeys, blackPositions = generateKeyboardKeys(keyCount)
+  local whiteKeyWidth = w / keyCount
   local blackKeyWidth = whiteKeyWidth * 0.6
   local baseNote = ctx._keyboardOctave * 12
 
-  for i, offset in ipairs(KEYBOARD_WHITE_KEYS) do
+  for i, offset in ipairs(whiteKeys) do
     local note = baseNote + offset
     local x = (i - 1) * whiteKeyWidth
     local isActive = isKeyboardNoteActive(ctx, note)
@@ -3483,9 +5351,9 @@ local function buildKeyboardDisplayList(ctx, w, h)
     }
   end
 
-  for i, offset in ipairs(KEYBOARD_BLACK_KEYS) do
+  for i, offset in ipairs(blackKeys) do
     local note = baseNote + offset
-    local pos = KEYBOARD_BLACK_KEY_POSITIONS[i]
+    local pos = blackPositions[i]
     local x = pos * whiteKeyWidth - blackKeyWidth / 2
     local isActive = isKeyboardNoteActive(ctx, note)
     local keyX = math.floor(x)
@@ -3537,7 +5405,9 @@ local function handleKeyboardClick(ctx, x, y, isDown)
   
   local w = canvas.node:getWidth()
   local h = canvas.node:getHeight()
-  local whiteKeyWidth = w / 14
+  local keyCount = getKeyCountForCtx(ctx)
+  local whiteKeys, blackKeys, blackPositions = generateKeyboardKeys(keyCount)
+  local whiteKeyWidth = w / keyCount
   local baseNote = ctx._keyboardOctave * 12
   
   local blackKeyWidth = whiteKeyWidth * 0.6
@@ -3546,8 +5416,8 @@ local function handleKeyboardClick(ctx, x, y, isDown)
 
   -- Check black keys first (they're on top)
   if y <= blackKeyHeight then
-    for i, offset in ipairs(KEYBOARD_BLACK_KEYS) do
-      local pos = KEYBOARD_BLACK_KEY_POSITIONS[i]
+    for i, offset in ipairs(blackKeys) do
+      local pos = blackPositions[i]
       local kx = pos * whiteKeyWidth - blackKeyWidth / 2
       if x >= kx and x <= kx + blackKeyWidth then
         hitNote = baseNote + offset
@@ -3559,17 +5429,21 @@ local function handleKeyboardClick(ctx, x, y, isDown)
   -- Fall through to white keys if no black key hit
   if not hitNote then
     local keyIndex = math.floor(x / whiteKeyWidth) + 1
-    if keyIndex >= 1 and keyIndex <= #KEYBOARD_WHITE_KEYS then
-      hitNote = baseNote + KEYBOARD_WHITE_KEYS[keyIndex]
+    if keyIndex >= 1 and keyIndex <= #whiteKeys then
+      hitNote = baseNote + whiteKeys[keyIndex]
     end
   end
 
   if hitNote then
     if isDown then
-      triggerVoice(ctx, hitNote, 100)
+      local voiceIndex = triggerVoice(ctx, hitNote, 100)
       ctx._keyboardNote = hitNote
       ctx._currentNote = hitNote
-      ctx._lastEvent = string.format("Note: %s vel 100", noteName(hitNote))
+      if voiceIndex ~= nil then
+        ctx._lastEvent = string.format("Note: %s vel 100", noteName(hitNote))
+      else
+        ctx._lastEvent = string.format("Blocked: %s", tostring(ctx._triggerBlockedReason or "missing trigger path"))
+      end
     else
       releaseVoice(ctx, hitNote)
       if ctx._keyboardNote == hitNote then
@@ -3642,8 +5516,16 @@ local function isUiInteracting(ctx)
     end
   end
 
-  if (ctx._fx1Ctx and ctx._fx1Ctx.dragging) or (ctx._fx2Ctx and ctx._fx2Ctx.dragging) then
-    return true
+  local runtime = _G.__manifoldStructuredUiRuntime
+  if runtime and type(runtime.behaviors) == "table" then
+    for i = 1, #runtime.behaviors do
+      local behavior = runtime.behaviors[i]
+      local path = tostring(behavior and behavior.path or "")
+      local behaviorCtx = behavior and behavior.ctx or nil
+      if endsWith(path, "ui/behaviors/fx_slot.lua") and type(behaviorCtx) == "table" and behaviorCtx.dragging then
+        return true
+      end
+    end
   end
 
   return false
@@ -3653,6 +5535,7 @@ end
 -- Stored as a global so the root behavior can call it every frame,
 -- even when the MidiSynth tab is not active.
 local function backgroundTick(ctx)
+  activeBehaviorCtx = ctx
   local now = getTime and getTime() or 0
   local minInterval = isUiInteracting(ctx) and BG_TICK_INTERVAL_WHILE_INTERACTING or BG_TICK_INTERVAL
   if now - (ctx._lastBackgroundTickTime or 0) < minInterval then
@@ -3672,10 +5555,21 @@ local function backgroundTick(ctx)
       local event = Midi.pollInputEvent()
       if not event then break end
 
+      if ctx._rackModRuntime and ctx._rackModRuntime.onMidiEvent then
+        ctx._rackModRuntime:onMidiEvent(event)
+      end
+      if ctx._modRuntime and ctx._modRuntime.onMidiEvent then
+        ctx._modRuntime:onMidiEvent(event)
+      end
+
       if event.type == Midi.NOTE_ON and event.data2 > 0 then
         ctx._currentNote = event.data1
-        triggerVoice(ctx, event.data1, event.data2)
-        ctx._lastEvent = string.format("Note: %s vel %d", noteName(event.data1), event.data2)
+        local voiceIndex = triggerVoice(ctx, event.data1, event.data2)
+        if voiceIndex ~= nil then
+          ctx._lastEvent = string.format("Note: %s vel %d", noteName(event.data1), event.data2)
+        else
+          ctx._lastEvent = string.format("Blocked: %s", tostring(ctx._triggerBlockedReason or "missing trigger path"))
+        end
       elseif event.type == Midi.NOTE_OFF or (event.type == Midi.NOTE_ON and event.data2 == 0) then
         releaseVoice(ctx, event.data1)
         if ctx._currentNote == event.data1 then
@@ -3683,11 +5577,30 @@ local function backgroundTick(ctx)
         end
       elseif event.type == Midi.CONTROL_CHANGE then
         ctx._lastEvent = string.format("CC %d = %d", event.data1, event.data2)
+        MidiParamRack.onMidiCC(ctx, event.data1, event.data2)
+        MidiParamRack.invalidate(ctx)
+      elseif Midi and event.type == Midi.PITCH_BEND then
+        local bend = event.data1 | (event.data2 << 7)
+        ctx._lastEvent = string.format("Pitch Bend %d", bend)
+      elseif Midi and Midi.CHANNEL_PRESSURE and event.type == Midi.CHANNEL_PRESSURE then
+        ctx._lastEvent = string.format("Pressure %d", event.data1)
       end
     end
   end
 
-  -- Update ADSR envelopes (drives voice amplitude via setParam)
+  if ctx._rackModRuntime and ctx._rackModRuntime.evaluateAndApply then
+    ctx._rackModRuntime:evaluateAndApply(ctx, readParam, setPath)
+  end
+  require("transpose_runtime").updateDynamicModules(ctx, dt, readParam, VOICE_COUNT)
+  require("velocity_mapper_runtime").updateDynamicModules(ctx, dt, readParam, VOICE_COUNT)
+  require("scale_quantizer_runtime").updateDynamicModules(ctx, dt, readParam, VOICE_COUNT)
+  require("note_filter_runtime").updateDynamicModules(ctx, dt, readParam, VOICE_COUNT)
+  require("arp_runtime").updateDynamicModules(ctx, dt, readParam, VOICE_COUNT)
+  if ctx._rackModRuntime and ctx._rackModRuntime.evaluateAndApply then
+    ctx._rackModRuntime:evaluateAndApply(ctx, readParam, setPath)
+  end
+
+  -- Update ADSR envelopes after voice-chain transforms have landed.
   local attack = readParam(PATHS.attack, 0.05)
   local decay = readParam(PATHS.decay, 0.2)
   local sustain = readParam(PATHS.sustain, 0.7)
@@ -3697,28 +5610,64 @@ local function backgroundTick(ctx)
   ctx._adsr.sustain = sustain
   ctx._adsr.release = release
   updateEnvelopes(ctx, dt, now)
+  require("adsr_runtime").updateDynamicModules(ctx, dt, readParam, clamp, VOICE_COUNT)
+  if ctx._rackModRuntime and ctx._rackModRuntime.evaluateAndApply then
+    ctx._rackModRuntime:evaluateAndApply(ctx, readParam, setPath)
+  end
+  if ctx._modRuntime and ctx._modRuntime.evaluateAndApply then
+    ctx._modRuntime:evaluateAndApply(ctx, readParam, setPath)
+  end
+  require("attenuverter_bias_runtime").updateDynamicModules(ctx, dt, readParam)
+  require("lfo_runtime").updateDynamicModules(ctx, dt, readParam)
+  require("slew_runtime").updateDynamicModules(ctx, dt, readParam)
+  require("sample_hold_runtime").updateDynamicModules(ctx, dt, readParam)
+  require("compare_runtime").updateDynamicModules(ctx, dt, readParam)
+  require("cv_mix_runtime").updateDynamicModules(ctx, dt, readParam)
+  require("range_mapper_runtime").updateDynamicModules(ctx, dt, readParam)
 end
 
 function M.init(ctx)
+  activeBehaviorCtx = ctx
   local widgets = ctx.widgets or {}
   ctx._currentNote = nil
   ctx._lastEvent = "No MIDI yet"
   ctx._voiceStamp = 0
   ctx._voices = {}
+  ctx._midiVoices = {}
   ctx._selectedMidiInputIdx = 1
   ctx._selectedMidiInputLabel = "None (Disabled)"
   ctx._adsr = { attack = 0.05, decay = 0.2, sustain = 0.7, release = 0.4 }
   ctx._keyboardOctave = 3
   ctx._rackState = MidiSynthRackSpecs.defaultRackState()
-  ctx._rackNodeSpecs = MidiSynthRackSpecs.nodeSpecById()
-  ctx._rackConnections = MidiSynthRackSpecs.defaultConnections()
+  ctx._utilityViewId = "palette"
+  ctx._selectedPaletteEntryId = "adsr"
+  ctx._paletteScrollOffset = 0
+  ctx._utilityNavScrollOffset = 0
+  ctx._paletteBrowseCollapsed = { voice = false, audio = false, fx = false, mod = false }
+  ctx._rackModuleSpecs = MidiSynthRackSpecs.rackModuleSpecById()
+  ctx._rackConnections = MidiSynthRackSpecs.defaultConnections(ctx._rackState.modules)
+  invalidatePatchbay(nil, ctx)
   ctx._utilityDock = ctx._rackState.utilityDock or RackLayout.defaultUtilityDock()
   ctx._keyboardCollapsed = false
   syncKeyboardCollapsedFromUtilityDock(ctx)
   _G.__midiSynthRackState = ctx._rackState
-  _G.__midiSynthRackNodeSpecs = ctx._rackNodeSpecs
+  _G.__midiSynthRackModuleSpecs = ctx._rackModuleSpecs
   _G.__midiSynthRackConnections = ctx._rackConnections
   _G.__midiSynthUtilityDock = ctx._utilityDock
+  _G.__midiSynthDynamicModuleInfo = {}
+  ctx._dynamicModuleSlots = RackModuleFactory.ensureDynamicModuleSlots(ctx)
+  M._rebuildDynamicRackModuleState(ctx)
+  ctx._applyVoiceModulationTarget = applyVoiceModulationTarget
+  ctx._resolveDynamicVoiceBundleSample = resolveDynamicVoiceBundleSample
+  ctx._applyControlModulationTarget = applyControlModulationTarget
+  ctx._resolveControlModulationSource = resolveControlModulationSource
+  ctx._resolveVoiceModulationSource = function(innerCtx, sourceId, source, voiceCount)
+    return resolveDynamicVoiceModulationSource(innerCtx, sourceId, source, voiceCount)
+  end
+  ctx._onRackConnectionsChanged = function(innerCtx, reason)
+    applyRackConnectionState(innerCtx, reason)
+  end
+  applyRackConnectionState(ctx, "init")
   ctx._keyboardNote = nil
   ctx._keyboardDirty = true
   ctx._lastUpdateTime = getTime and getTime() or 0
@@ -3727,31 +5676,7 @@ function M.init(ctx)
   ctx._lastBackgroundTickTime = 0
   ctx._lastOscRepaintTime = 0
   ctx._lastEnvRepaintTime = 0
-  
-  -- Port specifications for signal routing visualization
-  -- Loaded from component UI files
-  ctx._portSpecs = {
-    envelopeComponent = { outputs = {{ id = "cv_out", type = "cv", y = 0.5 }} },
-    oscillatorComponent = { 
-      inputs = {{ id = "cv_in", type = "cv", y = 0.35 }},
-      outputs = {{ id = "audio_out", type = "audio", y = 0.65 }}
-    },
-    filterComponent = {
-      inputs = {{ id = "audio_in", type = "audio", y = 0.5 }},
-      outputs = {{ id = "audio_out", type = "audio", y = 0.5 }}
-    },
-    fx1Component = {
-      inputs = {{ id = "audio_in", type = "audio", y = 0.5 }},
-      outputs = {{ id = "audio_out", type = "audio", y = 0.5 }}
-    },
-    fx2Component = {
-      inputs = {{ id = "audio_in", type = "audio", y = 0.5 }},
-      outputs = {{ id = "audio_out", type = "audio", y = 0.5 }}
-    },
-    eqComponent = {
-      inputs = {{ id = "audio_in", type = "audio", y = 0.5 }}
-    },
-  }
+  ctx._midiParamRackDisplayDirty = true
   
   for i = 1, VOICE_COUNT do
     ctx._voices[i] = {
@@ -3768,682 +5693,106 @@ function M.init(ctx)
       envelopeLevel = 0,
       envelopeTime = 0,
       envelopeStartLevel = 0,
+      eoc = 0,
+    }
+    ctx._midiVoices[i] = {
+      active = false,
+      note = nil,
+      stamp = 0,
+      gate = 0,
+      targetAmp = 0,
+      currentAmp = 0,
+      sentAmp = 0,
+      lastAmpPushTime = 0,
+      freq = 220,
+      envelopeStage = "idle",
+      envelopeLevel = 0,
+      envelopeTime = 0,
+      envelopeStartLevel = 0,
+      eoc = 0,
     }
   end
+  require("transpose_runtime").publishViewState(ctx)
+  require("velocity_mapper_runtime").publishViewState(ctx)
+  require("scale_quantizer_runtime").publishViewState(ctx)
+  require("note_filter_runtime").publishViewState(ctx)
+  require("arp_runtime").publishViewState(ctx)
+  require("adsr_runtime").publishViewState(ctx)
+  require("attenuverter_bias_runtime").publishViewState(ctx)
+  require("lfo_runtime").publishViewState(ctx)
+  require("slew_runtime").publishViewState(ctx)
+  require("sample_hold_runtime").publishViewState(ctx)
+  require("compare_runtime").publishViewState(ctx)
+  require("cv_mix_runtime").publishViewState(ctx)
+  require("range_mapper_runtime").publishViewState(ctx)
   
   if Midi and Midi.clearCallbacks then
     -- Don't clear callbacks here - we want MIDI to keep working globally
     -- Midi.clearCallbacks()
   end
   
-  -- Wire up component behaviors via allWidgets + runtime.behaviors
-  local all = ctx.allWidgets or {}
   ctx._globalPrefix = resolveGlobalPrefix(ctx)
-  local rootId = ctx._globalPrefix
-  local function scopedBehavior(suffix)
-    return getScopedBehavior(ctx, suffix)
-  end
-  local function scopedWidget(suffix)
-    return getScopedWidget(ctx, suffix)
-  end
-
-  -- Oscillator component → DSP
-  local oscBehavior = scopedBehavior(".oscillatorComponent")
-  local oscCtx = oscBehavior and oscBehavior.ctx or nil
-  local oscModule = oscBehavior and oscBehavior.module or nil
-  ctx._oscCtx = oscCtx
-  ctx._oscModule = oscModule
-
-  local oscWfDrop = scopedWidget(".oscillatorComponent.mode_tabs.wave_tab.waveform_dropdown")
-  local oscRenderModeTabs = scopedWidget(".oscillatorComponent.mode_tabs.wave_tab.render_mode_tabs")
-  local oscSampleSourceDrop = scopedWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_source_dropdown")
-  local oscSamplePitchMapToggle = scopedWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_pitch_map_toggle")
-  local oscSampleCaptureBtn = scopedWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_capture_button")
-  local oscSampleBarsBox = scopedWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_bars_box")
-  local oscSampleRootBox = scopedWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_root_box")
-  local oscSampleXfadeBox = scopedWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_xfade_box")
-  -- NOTE: range_view_dropdown disabled - only global view supported
-  -- local oscRangeViewDrop = all[rootId .. ".oscillatorComponent.mode_tabs.sample_tab.range_view_dropdown"]
-
-  -- Wire up range bar callbacks to DSP (after NumberBoxes are defined)
-  if oscCtx then
-    oscCtx._onRangeChange = function(which, value)
-      if which == "start" then
-        setPath(PATHS.sampleLoopStart, clamp(value, 0.0, 0.95))
-      elseif which == "len" then
-        setPath(PATHS.sampleLoopLen, clamp(value, 0.05, 1.0))
-      end
-    end
-    oscCtx._onPlayStartChange = function(value)
-      setPath(PATHS.samplePlayStart, clamp(value, 0.0, 0.99))
-    end
-    -- NOTE: _onVoiceRangeChange disabled - only global view supported
-    -- oscCtx._onVoiceRangeChange = function(voiceIdx, which, value) ... end
-  end
-
-  local oscDriveModeDrop = scopedWidget(".oscillatorComponent.mode_tabs.wave_tab.drive_mode_dropdown")
-  local oscDrive = scopedWidget(".oscillatorComponent.mode_tabs.wave_tab.drive_knob")
-  local oscDriveBias = scopedWidget(".oscillatorComponent.mode_tabs.wave_tab.drive_bias_knob")
-  local oscAddPartials = scopedWidget(".oscillatorComponent.mode_tabs.wave_tab.add_partials_knob")
-  local oscAddTilt = scopedWidget(".oscillatorComponent.mode_tabs.wave_tab.add_tilt_knob")
-  local oscAddDrift = scopedWidget(".oscillatorComponent.mode_tabs.wave_tab.add_drift_knob")
-  local oscOutput = scopedWidget(".oscillatorComponent.output_knob")
-  -- New oscillator parameter knobs
-  local oscPulseWidth = scopedWidget(".oscillatorComponent.mode_tabs.wave_tab.pulse_width_knob")
-  local oscUnison = scopedWidget(".oscillatorComponent.unison_knob")
-  local oscDetune = scopedWidget(".oscillatorComponent.detune_knob")
-  local oscSpread = scopedWidget(".oscillatorComponent.spread_knob")
-  local oscBlendModeDrop = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_mode_dropdown")
-  local oscBlendKeyTrackRadio = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_key_track_radio")
-  local oscBlendAmount = scopedWidget(".oscillatorComponent.blend_amount_knob")
-  local oscBlendSamplePitch = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_sample_pitch_knob")
-  local oscBlendModAmount = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_mod_amount_knob")
-  local oscAddFlavorToggle = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.add_flavor_toggle")
-  local oscMorphCurve = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_curve")
-  local oscMorphConvergence = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_convergence")
-  local oscMorphPhase = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_phase")
-  local oscMorphSpeed = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_speed")
-  local oscMorphContrast = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_contrast")
-  local oscMorphSmooth = scopedWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_smooth")
-
-  local function refreshOscGraph()
-    if oscCtx and oscModule then oscModule.resized(oscCtx) end
-  end
-
-  if oscSampleSourceDrop and oscSampleSourceDrop.setOptions then
-    oscSampleSourceDrop:setOptions(SAMPLE_SOURCE_OPTIONS)
-  end
-  if oscSampleRootBox and oscSampleRootBox.setValueFormatter then
-    oscSampleRootBox:setValueFormatter(function(v)
-      return formatMidiNoteValue(v)
-    end)
-  end
-  if oscDriveModeDrop and oscDriveModeDrop.setOptions then
-    oscDriveModeDrop:setOptions(DRIVE_SHAPE_OPTIONS)
-  end
-  if oscBlendModeDrop and oscBlendModeDrop.setOptions then
-    oscBlendModeDrop:setOptions(BLEND_MODE_OPTIONS)
-  end
-
-  if oscWfDrop then oscWfDrop._onSelect = function(idx)
-    setPath(PATHS.waveform, idx - 1)
-    if oscCtx then
-      oscCtx.waveformType = idx - 1
-      refreshOscGraph()
-      -- Update knob layout (show/hide Width knob for Pulse)
-      if oscModule and oscModule.updateKnobLayout then
-        oscModule.updateKnobLayout(oscCtx)
-      end
-    end
-  end end
-  if oscRenderModeTabs then oscRenderModeTabs._onSelect = function(idx)
-    local mode = math.max(0, math.min(1, idx - 1))
-    setPath(PATHS.oscRenderMode, mode)
-    if oscCtx then
-      oscCtx.renderMode = mode
-      refreshOscGraph()
-      if oscModule and oscModule.updateKnobLayout then
-        oscModule.updateKnobLayout(oscCtx)
-      end
-    end
-  end end
-  if oscSampleSourceDrop then oscSampleSourceDrop._onSelect = function(idx)
-    setPath(PATHS.sampleSource, idx - 1)
-  end end
-  if oscSamplePitchMapToggle then oscSamplePitchMapToggle._onChange = function(v)
-    setPath(PATHS.samplePitchMapEnabled, v and 1 or 0)
-  end end
-  if oscSampleCaptureBtn then oscSampleCaptureBtn._onClick = function()
-    print("Capture button clicked!")
-    setPath(PATHS.sampleCaptureTrigger, 1)
-    ctx._lastEvent = "Sample captured"
-    if oscCtx then oscCtx._cachedPeaks = nil end
-  end end
-  if oscSampleBarsBox then oscSampleBarsBox._onChange = function(v)
-    setPath(PATHS.sampleCaptureBars, v)
-  end end
-  if oscSampleRootBox then oscSampleRootBox._onChange = function(v)
-    setPath(PATHS.sampleRootNote, round(v))
-  end end
-  if oscSampleXfadeBox then oscSampleXfadeBox._onChange = function(v)
-    setPath(PATHS.sampleCrossfade, clamp(v / 100.0, 0.0, 0.5))
-    if oscCtx then oscCtx.sampleCrossfade = clamp(v / 100.0, 0.0, 0.5); refreshOscGraph() end
-  end end
-
-  -- NOTE: Range view dropdown disabled - only global view supported
-  --[[
-  if oscRangeViewDrop then oscRangeViewDrop._onSelect = function(idx)
-    ...
-  end end
-  --]]
-
-  if oscDriveModeDrop then oscDriveModeDrop._onSelect = function(idx)
-    local shape = math.max(0, math.min(#DRIVE_SHAPE_OPTIONS - 1, idx - 1))
-    setPath(PATHS.driveShape, shape)
-    if oscCtx then oscCtx.driveShape = shape; refreshOscGraph() end
-  end end
-  if oscDrive then oscDrive._onChange = function(v)
-    setPath(PATHS.drive, v)
-    if oscCtx then oscCtx.driveAmount = v; refreshOscGraph() end
-  end end
-  if oscDriveBias then oscDriveBias._onChange = function(v)
-    setPath(PATHS.driveBias, v)
-    if oscCtx then oscCtx.driveBias = v; refreshOscGraph() end
-  end end
-  if oscAddPartials then oscAddPartials._onChange = function(v)
-    local partials = round(v)
-    setPath(PATHS.additivePartials, partials)
-    if oscCtx then oscCtx.additivePartials = partials; refreshOscGraph() end
-  end end
-  if oscAddTilt then oscAddTilt._onChange = function(v)
-    setPath(PATHS.additiveTilt, v)
-    if oscCtx then oscCtx.additiveTilt = v; refreshOscGraph() end
-  end end
-  if oscAddDrift then oscAddDrift._onChange = function(v)
-    setPath(PATHS.additiveDrift, v)
-    if oscCtx then oscCtx.additiveDrift = v; refreshOscGraph() end
-  end end
-  if oscOutput then oscOutput._onChange = function(v)
-    setPath(PATHS.output, v)
-    if oscCtx then oscCtx.outputLevel = v; refreshOscGraph() end
-  end end
-  -- New oscillator parameter handlers
-  if oscPulseWidth then oscPulseWidth._onChange = function(v)
-    setPath(PATHS.pulseWidth, v)
-    if oscCtx then oscCtx.pulseWidth = v; refreshOscGraph() end
-  end end
-  if oscUnison then oscUnison._onChange = function(v)
-    setPath(PATHS.unison, v)
-    if oscCtx then oscCtx.unison = v; refreshOscGraph() end
-  end end
-  if oscDetune then oscDetune._onChange = function(v)
-    setPath(PATHS.detune, v)
-    if oscCtx then oscCtx.detune = v; refreshOscGraph() end
-  end end
-  if oscSpread then oscSpread._onChange = function(v)
-    setPath(PATHS.spread, v)
-    if oscCtx then oscCtx.spread = v; refreshOscGraph() end
-  end end
-  if oscBlendModeDrop then oscBlendModeDrop._onSelect = function(idx)
-    local mode = sanitizeBlendMode(idx - 1)
-    setPath(PATHS.blendMode, mode)
-    local stackingEnabled = mode ~= 4 and mode ~= 5
-    setWidgetInteractiveState(oscUnison, stackingEnabled)
-    setWidgetInteractiveState(oscDetune, stackingEnabled)
-    setWidgetInteractiveState(oscSpread, stackingEnabled)
-    if oscCtx then oscCtx.blendMode = mode; refreshOscGraph() end
-  end end
-  if oscBlendKeyTrackRadio then oscBlendKeyTrackRadio._onChange = function(idx)
-    -- idx: 1=Wave, 2=Sample, 3=Both
-    local val = (idx == 1) and 0 or (idx == 2) and 1 or 2
-    setPath(PATHS.blendKeyTrack, val)
-    if oscCtx then
-      oscCtx.blendKeyTrackMode = val  -- 0=wave, 1=sample, 2=both
-      refreshOscGraph()
-    end
-  end end
-  if oscBlendAmount then oscBlendAmount._onChange = function(v)
-    setPath(PATHS.blendAmount, v)
-    if oscCtx then oscCtx.blendAmount = v; refreshOscGraph() end
-  end end
-  if oscBlendSamplePitch then oscBlendSamplePitch._onChange = function(v)
-    setPath(PATHS.blendSamplePitch, v)
-    if oscCtx then oscCtx.blendSamplePitch = v; refreshOscGraph() end
-  end end
-  if oscBlendModAmount then oscBlendModAmount._onChange = function(v)
-    setPath(PATHS.blendModAmount, v)
-    if oscCtx then oscCtx.blendModAmount = v; refreshOscGraph() end
-  end end
-  if oscAddFlavorToggle then oscAddFlavorToggle._onSelect = function(idx)
-    local flavor = (idx == 2) and 1 or 0
-    setPath(PATHS.addFlavor, flavor)
-    if oscCtx then oscCtx.addFlavor = flavor; refreshOscGraph() end
-  end end
-  if oscMorphCurve then oscMorphCurve._onSelect = function(idx)
-    local curve = math.max(0, math.min(2, idx - 1))
-    setPath(PATHS.morphCurve, curve)
-    if oscCtx then oscCtx.morphCurve = curve; refreshOscGraph() end
-  end end
-  if oscMorphConvergence then oscMorphConvergence._onChange = function(v)
-    local convergence = math.max(0, math.min(1, tonumber(v) or 0))
-    setPath(PATHS.morphConvergence, convergence)
-    if oscCtx then oscCtx.morphStretch = convergence; refreshOscGraph() end
-  end end
-  if oscMorphPhase then oscMorphPhase._onSelect = function(idx)
-    local phase = math.max(0, math.min(2, idx - 1))
-    setPath(PATHS.morphPhase, phase)
-    if oscCtx then oscCtx.morphPhase = phase; refreshOscGraph() end
-  end end
-  if oscMorphSpeed then oscMorphSpeed._onChange = function(v)
-    local speed = math.max(0.1, math.min(4.0, tonumber(v) or 1.0))
-    if PATHS.morphSpeed then setPath(PATHS.morphSpeed, speed) end
-    if oscCtx then oscCtx.morphSpeed = speed; refreshOscGraph() end
-  end end
-  if oscMorphContrast then oscMorphContrast._onChange = function(v)
-    local contrast = math.max(0.0, math.min(2.0, tonumber(v) or 0.5))
-    if PATHS.morphContrast then setPath(PATHS.morphContrast, contrast) end
-    if oscCtx then oscCtx.morphContrast = contrast; refreshOscGraph() end
-  end end
-  if oscMorphSmooth then oscMorphSmooth._onChange = function(v)
-    local smooth = math.max(0.0, math.min(1.0, tonumber(v) or 0.0))
-    if PATHS.morphSmooth then setPath(PATHS.morphSmooth, smooth) end
-    if oscCtx then oscCtx.morphSmooth = smooth; refreshOscGraph() end
-  end end
-
-  -- Filter component → DSP
-  local filterBehavior = scopedBehavior(".filterComponent")
-  local filterCtx = filterBehavior and filterBehavior.ctx or nil
-  local filterModule = filterBehavior and filterBehavior.module or nil
-  ctx._filterCtx = filterCtx
-  ctx._filterModule = filterModule
-
-  local filterTypeDrop = scopedWidget(".filterComponent.filter_type_dropdown")
-  local filterCutoff = scopedWidget(".filterComponent.cutoff_knob")
-  local filterReso = scopedWidget(".filterComponent.resonance_knob")
-
-  local function refreshFilterGraph()
-    if filterCtx and filterModule then filterModule.resized(filterCtx) end
-  end
-
-  if filterTypeDrop then filterTypeDrop._onSelect = function(idx)
-    setPath(PATHS.filterType, idx - 1)
-    if filterCtx then filterCtx.filterType = idx - 1; refreshFilterGraph() end
-  end end
-  if filterCutoff then filterCutoff._onChange = function(v)
-    setPath(PATHS.cutoff, v)
-    if filterCtx then filterCtx.cutoffHz = v; refreshFilterGraph() end
-  end end
-  if filterReso then filterReso._onChange = function(v)
-    setPath(PATHS.resonance, v)
-    if filterCtx then filterCtx.resonance = v; refreshFilterGraph() end
-  end end
-
-  -- Envelope ADSR component → DSP + graph refresh
-  local envBehavior = scopedBehavior(".envelopeComponent")
-  local envCtx = envBehavior and envBehavior.ctx or nil
-  local envModule = envBehavior and envBehavior.module or nil
-  ctx._envCtx = envCtx
-  ctx._envModule = envModule
-
-  local envAttack = scopedWidget(".envelopeComponent.attack_knob")
-  local envDecay = scopedWidget(".envelopeComponent.decay_knob")
-  local envSustain = scopedWidget(".envelopeComponent.sustain_knob")
-  local envRelease = scopedWidget(".envelopeComponent.release_knob")
-  if envAttack then envAttack._onChange = function(v)
-    local s = v / 1000.0; setPath(PATHS.attack, s)
-    if envCtx then envCtx.values.attack = s; envModule.resized(envCtx) end
-  end end
-  if envDecay then envDecay._onChange = function(v)
-    local s = v / 1000.0; setPath(PATHS.decay, s)
-    if envCtx then envCtx.values.decay = s; envModule.resized(envCtx) end
-  end end
-  if envSustain then envSustain._onChange = function(v)
-    local s = v / 100.0; setPath(PATHS.sustain, s)
-    if envCtx then envCtx.values.sustain = s; envModule.resized(envCtx) end
-  end end
-  if envRelease then envRelease._onChange = function(v)
-    local s = v / 1000.0; setPath(PATHS.release, s)
-    if envCtx then envCtx.values.release = s; envModule.resized(envCtx) end
-  end end
-  
-  -- Filter dropdown
-  if widgets.filterTypeDropdown then
-    widgets.filterTypeDropdown._onSelect = function(idx)
-      setPath(PATHS.filterType, idx - 1)
-    end
-  end
-
-  -- Wire up FX components → DSP with individually addressable params
-  local function wireFxComponent(slotNum, prefix)
-    local behavior = scopedBehavior(prefix)
-    local fxCtx = behavior and behavior.ctx or nil
-    local fxModule = behavior and behavior.module or nil
-    ctx["_fx" .. slotNum .. "Ctx"] = fxCtx
-    ctx["_fx" .. slotNum .. "Module"] = fxModule
-
-    local typeDrop = scopedWidget(prefix .. ".type_dropdown")
-    local mixKnob = scopedWidget(prefix .. ".mix_knob")
-    local paramWidgets = {
-      scopedWidget(prefix .. ".param1"),
-      scopedWidget(prefix .. ".param2"),
-      scopedWidget(prefix .. ".param3"),
-      scopedWidget(prefix .. ".param4"),
-      scopedWidget(prefix .. ".param5"),
-    }
-    local typePath = slotNum == 1 and PATHS.fx1Type or PATHS.fx2Type
-    local mixPath = slotNum == 1 and PATHS.fx1Mix or PATHS.fx2Mix
-
-    if typeDrop then typeDrop._onSelect = function(idx)
-      setPath(typePath, idx - 1)
-      if fxCtx then
-        fxCtx.fxType = idx - 1
-        if fxModule and fxModule.onTypeChanged then fxModule.onTypeChanged(fxCtx) end
-      end
-    end end
-
-    if mixKnob then mixKnob._onChange = function(v) setPath(mixPath, v) end end
-
-    for pi = 1, #paramWidgets do
-      local widget = paramWidgets[pi]
-      if widget then
-        widget._onChange = function(v)
-          setPath(fxParamPath(slotNum, pi), v)
-        end
-      end
-    end
-
-    if fxCtx then
-      fxCtx._onXYChanged = function(xVal, yVal)
-        setPath(fxParamPath(slotNum, fxCtx.xyXIdx or 1), xVal)
-        setPath(fxParamPath(slotNum, fxCtx.xyYIdx or 2), yVal)
-      end
-    end
-  end
-
-  wireFxComponent(1, ".fx1Component")
-  wireFxComponent(2, ".fx2Component")
-
-  -- Performance buttons
-  if widgets.testNote then
-    widgets.testNote._onPress = function()
-      triggerVoice(ctx, 60, 100)
-      ctx._lastEvent = "Test: C4"
-    end
-    widgets.testNote._onRelease = function()
-      releaseVoice(ctx, 60)
-    end
-  end
-  
-  if widgets.panic then
-    widgets.panic._onClick = function()
-      panicVoices(ctx)
-      ctx._lastEvent = "Panic: all off"
-    end
-  end
-  
-  -- MIDI controls
-  if widgets.refreshMidi then
-    widgets.refreshMidi._onClick = function()
-      refreshMidiDevices(ctx, false)
-      ctx._lastEvent = "MIDI refreshed"
-    end
-  end
-  
-  if widgets.midiInputDropdown then
-    widgets.midiInputDropdown._onSelect = function(idx)
-      applyMidiSelection(ctx, idx, true)
-      syncSelected(widgets.midiInputDropdown, ctx._selectedMidiInputIdx or idx)
-    end
-  end
-
-  -- Cache dot widgets once; simple click handler
-  ctx._dockDots = {}
-  local dotMap = {
-    { suffix = ".dockModeDots.dockModeDotFull", mode = "full" },
-    { suffix = ".dockModeDots.dockModeDotCompactSplit", mode = "compact_split" },
-    { suffix = ".dockModeDots.dockModeDotCompactCollapsed", mode = "compact_collapsed" },
-  }
-  for _, entry in ipairs(dotMap) do
-    local w = widgets[entry.suffix:match("[^.]+$")] or getScopedWidget(ctx, entry.suffix)
-    if w then
-      ctx._dockDots[#ctx._dockDots + 1] = { widget = w, mode = entry.mode }
-      if w.node and w.node.setOnClick then
-        w.node:setInterceptsMouse(true, true)
-        local mode = entry.mode
-        w.node:setOnClick(function()
-          setUtilityDockMode(ctx, mode)
-          syncDockModeDots(ctx)
-        end)
-      end
-    end
-  end
-  -- Set initial mode from dock state
-  local initDock = ensureUtilityDockState(ctx)
-  if initDock.layoutMode == "split" then
-    ctx._dockMode = "compact_split"
-  elseif initDock.heightMode == "compact" then
-    ctx._dockMode = "compact_collapsed"
-  else
-    ctx._dockMode = "full"
-  end
-  syncDockModeDots(ctx)
-
-  if widgets.keyboardCollapse then
-    widgets.keyboardCollapse._onClick = function()
-      setKeyboardCollapsed(ctx, not ctx._keyboardCollapsed)
-      persistDockUiState(ctx)
-    end
-  end
-
-  -- Patch view toggle button
-  if widgets.patchViewToggle then
-    widgets.patchViewToggle._onClick = function()
-      local currentMode = ctx._rackState and ctx._rackState.viewMode or "perf"
-      local newMode = (currentMode == "perf") and "patch" or "perf"
-      if ctx._rackState then
-        ctx._rackState.viewMode = newMode
-      end
-      -- Update button visual state (show opposite of current mode)
-      local isPatch = newMode == "patch"
-      widgets.patchViewToggle:setLabel(isPatch and "PERF" or "PATCH")
-      -- Apply view mode change (hide/show module content)
-      syncPatchViewMode(ctx)
-      print("[PatchView] Switched to " .. newMode .. " mode")
-    end
-    -- Set initial label based on current mode
-    local isPatch = (ctx._rackState and ctx._rackState.viewMode) == "patch"
-    widgets.patchViewToggle:setLabel(isPatch and "PERF" or "PATCH")
-  end
-
-  -- Octave buttons
-  if widgets.octaveDown then
-    widgets.octaveDown._onClick = function()
-      ctx._keyboardOctave = math.max(0, ctx._keyboardOctave - 1)
-      syncText(widgets.octaveLabel, getOctaveLabel(ctx._keyboardOctave))
-      syncKeyboardDisplay(ctx)
-    end
-  end
-  
-  if widgets.octaveUp then
-    widgets.octaveUp._onClick = function()
-      ctx._keyboardOctave = math.min(6, ctx._keyboardOctave + 1)
-      syncText(widgets.octaveLabel, getOctaveLabel(ctx._keyboardOctave))
-      syncKeyboardDisplay(ctx)
-    end
-  end
-  
-  -- Keyboard canvas - retained display list + input callbacks
-  if widgets.keyboardCanvas and widgets.keyboardCanvas.node then
-    local canvas = widgets.keyboardCanvas
-    canvas.node:setInterceptsMouse(true, false)
-    canvas.node:setOnMouseDown(function(x, y)
-      handleKeyboardClick(ctx, x, y, true)
-      syncKeyboardDisplay(ctx)
-    end)
-    canvas.node:setOnMouseUp(function(x, y)
-      handleKeyboardClick(ctx, x, y, false)
-      syncKeyboardDisplay(ctx)
-    end)
-    syncKeyboardDisplay(ctx)
-  end
-  
-  -- State buttons
-  if widgets.savePreset then
-    widgets.savePreset._onClick = function()
-      saveCurrentState(ctx)
-    end
-  end
-  
-  if widgets.loadPreset then
-    widgets.loadPreset._onClick = function()
-      loadSavedState(ctx)
-    end
-  end
-  
-  if widgets.resetPreset then
-    widgets.resetPreset._onClick = function()
-      resetToDefaults(ctx)
-    end
-  end
-
-  -- Rack pagination dots - use same pattern as dock dots
-  ctx._rackDots = {}
-  for i = 1, 3 do
-    -- Try scoped path first, then direct lookup
-    local dotId = ".rackContainer.rackPaginationDots.rackDot" .. i
-    local w = getScopedWidget(ctx, dotId)
-    if not w then
-      -- Fallback: try flat lookup
-      w = widgets["rackDot" .. i]
-    end
-    if not w then
-      -- Another fallback: lookup via nested container
-      local container = widgets.rackPaginationDots
-      if container and container.children then
-        w = container.children["rackDot" .. i]
-      end
-    end
-    if w and w.node then
-      ctx._rackDots[i] = { widget = w, index = i }
-      w.node:setInterceptsMouse(true, true)
-      local idx = i
-      w.node:setOnClick(function()
-        onRackDotClick(ctx, idx)
-      end)
-    end
-  end
-  ensureRackPaginationState(ctx)
-  updateRackPaginationDots(ctx)
-
-  bindWirePortWidget(ctx, getScopedWidget(ctx, ".rackContainer.rightRailSend1"), {
-    key = "rail:right:0",
-    nodeId = "__rackRail",
-    shellId = "rackContainer",
-    portId = "send_row1",
-    direction = "input",
-    portType = "audio",
-    label = "SEND",
-    group = "rail",
-    side = "right",
-    row = 0,
-  })
-  bindWirePortWidget(ctx, getScopedWidget(ctx, ".rackContainer.rightRailSend2"), {
-    key = "rail:right:1",
-    nodeId = "__rackRail",
-    shellId = "rackContainer",
-    portId = "send_row2",
-    direction = "input",
-    portType = "audio",
-    label = "SEND",
-    group = "rail",
-    side = "right",
-    row = 1,
-  })
-  bindWirePortWidget(ctx, getScopedWidget(ctx, ".rackContainer.rightRailSend3"), {
-    key = "rail:right:2",
-    nodeId = "__rackRail",
-    shellId = "rackContainer",
-    portId = "send_row3",
-    direction = "input",
-    portType = "audio",
-    label = "SEND",
-    group = "rail",
-    side = "right",
-    row = 2,
-  })
-  bindWirePortWidget(ctx, getScopedWidget(ctx, ".rackContainer.leftRailRecv2"), {
-    key = "rail:left:1",
-    nodeId = "__rackRail",
-    shellId = "rackContainer",
-    portId = "recv_row2",
-    direction = "output",
-    portType = "audio",
-    label = "RECV",
-    group = "rail",
-    side = "left",
-    row = 1,
-  })
-  bindWirePortWidget(ctx, getScopedWidget(ctx, ".rackContainer.leftRailRecv3"), {
-    key = "rail:left:2",
-    nodeId = "__rackRail",
-    shellId = "rackContainer",
-    portId = "recv_row3",
-    direction = "output",
-    portType = "audio",
-    label = "RECV",
-    group = "rail",
-    side = "left",
-    row = 2,
+  InitBindings.bindComponents(ctx, {
+    PATHS = PATHS,
+    SAMPLE_SOURCE_OPTIONS = SAMPLE_SOURCE_OPTIONS,
+    DRIVE_SHAPE_OPTIONS = DRIVE_SHAPE_OPTIONS,
+    BLEND_MODE_OPTIONS = BLEND_MODE_OPTIONS,
+    getScopedWidget = getScopedWidget,
+    getScopedBehavior = getScopedBehavior,
+    setPath = setPath,
+    readParam = readParam,
+    clamp = clamp,
+    round = round,
+    sanitizeBlendMode = sanitizeBlendMode,
+    setWidgetInteractiveState = setWidgetInteractiveState,
+    formatMidiNoteValue = formatMidiNoteValue,
+    getTime = getTime,
   })
 
-  -- Wire up shell drag handles for same-row reorder
-  setupShellDragHandlers(ctx)
-  setupResizeToggleHandlers(ctx)
-  print("[Drag] Shell drag handlers setup complete")
-
-  syncKeyboardCollapseButton(ctx)
-  updateDropdownAnchors(ctx)
-  refreshMidiDevices(ctx, true)
-  loadSavedState(ctx)
-  local additiveState = loadRuntimeState() or {}
-  ctx._pendingAdditiveParamSync = {
-    partials = tonumber(additiveState.additivePartials) or 8,
-    tilt = tonumber(additiveState.additiveTilt) or 0.0,
-    drift = tonumber(additiveState.additiveDrift) or 0.0,
-    attempts = 0,
-  }
-  -- Apply initial view mode (patch or perf)
-  syncPatchViewMode(ctx)
-  -- Setup wire layer for patch view
-  if RackWireLayer then
-    RackWireLayer.setupWireLayer(ctx)
-  end
-  -- Sync _dockMode from loaded dock state
-  local loadedDock = ensureUtilityDockState(ctx)
-  if loadedDock.layoutMode == "split" then
-    ctx._dockMode = "compact_split"
-  elseif loadedDock.heightMode == "compact" then
-    ctx._dockMode = "compact_collapsed"
-  elseif loadedDock.heightMode == "collapsed" then
-    ctx._dockMode = "compact_collapsed"
-  else
-    ctx._dockMode = "full"
-  end
-  syncDockModeDots(ctx)
-  refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
-
-  -- Patch view can race structured layout during init; give it a few update
-  -- passes to fully bootstrap labels/params/ports before declaring success.
-  ctx._patchViewBootstrapFrames = 8
-
-  -- Expose background tick so root behavior can drive MIDI + envelopes
-  -- even when the MidiSynth tab is hidden.
-  ctx._backgroundTickHook = function()
-    backgroundTick(ctx)
-  end
-  _G.__midiSynthBackgroundTick = ctx._backgroundTickHook
-
-  -- Expose panic hook so overlays/system views can force note release
-  -- on project transitions to avoid stuck-note edge cases.
-  ctx._panicHook = function()
-    panicVoices(ctx)
-  end
-  _G.__midiSynthPanic = ctx._panicHook
-
-  ctx._getDockPresentationModeHook = function()
-    return ctx._dockMode or "compact_collapsed"
-  end
-  _G.__midiSynthGetDockPresentationMode = ctx._getDockPresentationModeHook
-
-  ctx._setDockPresentationModeHook = function(mode)
-    if mode == "full" or mode == "compact_split" or mode == "compact_collapsed" then
-      setUtilityDockMode(ctx, mode)
-      syncDockModeDots(ctx)
-      return true
-    end
-    return false
-  end
-  _G.__midiSynthSetDockPresentationMode = ctx._setDockPresentationModeHook
+  InitControls.bindControls(ctx, {
+    getScopedWidget = getScopedWidget,
+    triggerVoice = triggerVoice,
+    releaseVoice = releaseVoice,
+    panicVoices = panicVoices,
+    refreshMidiDevices = refreshMidiDevices,
+    applyMidiSelection = applyMidiSelection,
+    syncSelected = syncSelected,
+    setKeyboardCollapsed = setKeyboardCollapsed,
+    persistDockUiState = persistDockUiState,
+    syncText = syncText,
+    getOctaveLabel = getOctaveLabel,
+    syncKeyboardDisplay = syncKeyboardDisplay,
+    handleKeyboardClick = handleKeyboardClick,
+    saveCurrentState = saveCurrentState,
+    loadSavedState = loadSavedState,
+    resetToDefaults = resetToDefaults,
+    updateDropdownAnchors = updateDropdownAnchors,
+    loadRuntimeState = loadRuntimeState,
+    backgroundTick = backgroundTick,
+    setPath = setPath,
+    readParam = readParam,
+    applyRackConnectionState = applyRackConnectionState,
+    deleteRackNode = deleteRackNode,
+    toggleRackNodeWidth = toggleRackNodeWidth,
+    spawnPalettePlaceholderAt = spawnPalettePlaceholderAt,
+    spawnPaletteNodeAt = spawnPaletteNodeAt,
+    setUtilityDockMode = setUtilityDockMode,
+    syncDockModeDots = syncDockModeDots,
+    ensureUtilityDockState = ensureUtilityDockState,
+    syncPatchViewMode = syncPatchViewMode,
+    onRackDotClick = onRackDotClick,
+    ensureRackPaginationState = ensureRackPaginationState,
+    updateRackPaginationDots = updateRackPaginationDots,
+    setRackViewport = setRackViewport,
+    bindWirePortWidget = bindWirePortWidget,
+    setupShellDragHandlers = M._setupShellDragHandlers,
+    setupResizeToggleHandlers = M._setupResizeToggleHandlers,
+    setupDeleteButtonHandlers = M._setupDeleteButtonHandlers,
+    setupPaletteDragHandlers = M._setupPaletteDragHandlers,
+    syncKeyboardCollapseButton = syncKeyboardCollapseButton,
+    RackWireLayer = RackWireLayer,
+    refreshManagedLayoutState = refreshManagedLayoutState,
+  })
 end
 
 function M.resized(ctx, w, h)
@@ -4453,545 +5802,57 @@ function M.resized(ctx, w, h)
   updateDropdownAnchors(ctx)
 end
 function M.update(ctx, rawState)
-  -- backgroundTick is driven by root behavior at ~60Hz.
-  -- Only call here if root hasn't ticked recently (tab was just activated).
-  local now = getTime and getTime() or 0
-  if now - (ctx._lastUpdateTime or 0) > BG_TICK_INTERVAL then
-    backgroundTick(ctx)
-  end
-  
-  -- (debug removed)
-
-  local widgets = ctx.widgets or {}
-  local all = ctx.allWidgets or {}
-  local rootId = ctx._globalPrefix or "root"
-  local uiInteracting = isUiInteracting(ctx)
-
-  -- Compute dt for UI animation
-  local dt = now - (ctx._lastUiUpdateTime or now)
-  ctx._lastUiUpdateTime = now
-
-  maybeRefreshMidiDevices(ctx, now)
-
-  if (ctx._patchViewBootstrapFrames or 0) > 0 then
-    local viewMode = ctx._rackState and ctx._rackState.viewMode or "perf"
-    if viewMode == "patch" then
-      syncPatchViewMode(ctx)
-      if RackWireLayer and RackWireLayer.refreshWires then
-        RackWireLayer.refreshWires(ctx)
-      end
-      local registry = ctx._patchbayPortRegistry or {}
-      local registryCount = 0
-      for _ in pairs(registry) do
-        registryCount = registryCount + 1
-      end
-      if registryCount > 0 then
-        ctx._patchViewBootstrapFrames = ctx._patchViewBootstrapFrames - 1
-      end
-    else
-      ctx._patchViewBootstrapFrames = 0
-    end
-  end
-
-  if ctx._pendingAdditiveParamSync then
-    local pending = ctx._pendingAdditiveParamSync
-    pending.attempts = (pending.attempts or 0) + 1
-    local currentPartials = readParam(PATHS.additivePartials, pending.partials)
-    local currentTilt = readParam(PATHS.additiveTilt, pending.tilt)
-    local currentDrift = readParam(PATHS.additiveDrift, pending.drift)
-    if math.abs((tonumber(currentPartials) or 0) - (tonumber(pending.partials) or 8)) > 0.0001 then
-      setPath(PATHS.additivePartials, pending.partials)
-    end
-    if math.abs((tonumber(currentTilt) or 0) - (tonumber(pending.tilt) or 0.0)) > 0.0001 then
-      setPath(PATHS.additiveTilt, pending.tilt)
-    end
-    if math.abs((tonumber(currentDrift) or 0) - (tonumber(pending.drift) or 0.0)) > 0.0001 then
-      setPath(PATHS.additiveDrift, pending.drift)
-    end
-    if pending.attempts >= 4 then
-      ctx._pendingAdditiveParamSync = nil
-    end
-  end
-
-  -- Read parameters
-  local waveform = round(readParam(PATHS.waveform, 1))
-  local filterType = round(readParam(PATHS.filterType, 0))
-  local cutoff = readParam(PATHS.cutoff, 3200)
-  local resonance = readParam(PATHS.resonance, 0.75)
-  local drive = readParam(PATHS.drive, 0.0)
-  local driveShape = round(readParam(PATHS.driveShape, 0))
-  local driveBias = readParam(PATHS.driveBias, 0.0)
-  local oscRenderMode = round(readParam(PATHS.oscRenderMode, 0))
-  local fx1Type = round(readParam(PATHS.fx1Type, 0))
-  local fx1Mix = readParam(PATHS.fx1Mix, 0.0)
-  local fx2Type = round(readParam(PATHS.fx2Type, 0))
-  local fx2Mix = readParam(PATHS.fx2Mix, 0.0)
-  local delayTime = readParam(PATHS.delayTimeL, 220)
-  local delayFeedback = readParam(PATHS.delayFeedback, 0.24)
-  local delayMix = readParam(PATHS.delayMix, 0.0)
-  local reverbWet = readParam(PATHS.reverbWet, 0.0)
-  local output = readParam(PATHS.output, 0.8)
-  local attack = readParam(PATHS.attack, 0.05)
-  local decay = readParam(PATHS.decay, 0.2)
-  local sustain = readParam(PATHS.sustain, 0.7)
-  local release = readParam(PATHS.release, 0.4)
-
-  local sampleSource = round(readParam(PATHS.sampleSource, 0))
-  local sampleCaptureBars = readParam(PATHS.sampleCaptureBars, 1.0)
-  local samplePitchMapEnabled = (readParam(PATHS.samplePitchMapEnabled, 0.0) or 0.0) > 0.5
-  local sampleRootNote = readParam(PATHS.sampleRootNote, 60.0)
-  local sampleLoopStartPct = readParam(PATHS.sampleLoopStart, 0.0) * 100.0
-  local sampleLoopLenPct = readParam(PATHS.sampleLoopLen, 1.0) * 100.0
-  local sampleRetrigger = readParam(PATHS.sampleRetrigger, 1.0) > 0.5
-  local rawBlendMode = round(readParam(PATHS.blendMode, 0))
-  local blendMode = sanitizeBlendMode(rawBlendMode)
-  if blendMode ~= rawBlendMode then
-    setPath(PATHS.blendMode, blendMode)
-  end
-  local blendAmount = readParam(PATHS.blendAmount, 0.5)
-  local blendKeyTrackMode = round(readParam(PATHS.blendKeyTrack, 2))  -- 0=wave, 1=sample, 2=both
-  local blendSamplePitch = readParam(PATHS.blendSamplePitch, 0.0)
-  local blendModAmount = readParam(PATHS.blendModAmount, 0.5)
-  local addFlavor = round(readParam(PATHS.addFlavor, 0))
-  
-  ctx._adsr.attack = attack
-  ctx._adsr.decay = decay
-  ctx._adsr.sustain = sustain
-  ctx._adsr.release = release
-  
-  -- Find dominant voice for display
-  local maxAmp = 0
-  local dominantFreq = 220
-  for i = 1, VOICE_COUNT do
-    local voice = ctx._voices[i]
-    if voice.currentAmp > maxAmp then
-      maxAmp = voice.currentAmp
-      dominantFreq = voice.freq or dominantFreq
-    end
-  end
-  
-  -- Sync oscillator component
-  local function liveWidget(suffix)
-    return getScopedWidget(ctx, suffix)
-  end
-
-  syncSelected(liveWidget(".oscillatorComponent.mode_tabs.wave_tab.waveform_dropdown"), waveform + 1)
-  syncSelected(liveWidget(".oscillatorComponent.mode_tabs.wave_tab.render_mode_tabs"), oscRenderMode + 1)
-  syncSelected(liveWidget(".oscillatorComponent.mode_tabs.wave_tab.drive_mode_dropdown"), driveShape + 1)
-  syncSelected(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_mode_dropdown"), blendMode + 1)
-  syncSelected(liveWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_source_dropdown"), sampleSource + 1)
-  local samplePitchMapToggle = liveWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_pitch_map_toggle")
-  if samplePitchMapToggle and samplePitchMapToggle.getValue and samplePitchMapToggle.setValue then
-    if samplePitchMapToggle:getValue() ~= samplePitchMapEnabled then
-      samplePitchMapToggle:setValue(samplePitchMapEnabled)
-    end
-  end
-  
-  local tabHost = liveWidget(".oscillatorComponent.mode_tabs")
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_bars_box"), sampleCaptureBars)
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_root_box"), sampleRootNote)
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.sample_tab.sample_xfade_box"), math.floor((readParam(PATHS.sampleCrossfade, 0.1) or 0.1) * 100))
-
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.wave_tab.drive_knob"), drive)
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.wave_tab.drive_bias_knob"), driveBias)
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.wave_tab.add_partials_knob"), round(readParam(PATHS.additivePartials, 8)))
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.wave_tab.add_tilt_knob"), readParam(PATHS.additiveTilt, 0.0))
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.wave_tab.add_drift_knob"), readParam(PATHS.additiveDrift, 0.0))
-  syncValue(liveWidget(".oscillatorComponent.output_knob"), output)
-  -- New oscillator parameters
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.wave_tab.pulse_width_knob"), readParam(PATHS.pulseWidth, 0.5))
-  syncValue(liveWidget(".oscillatorComponent.unison_knob"), readParam(PATHS.unison, 1))
-  syncValue(liveWidget(".oscillatorComponent.detune_knob"), readParam(PATHS.detune, 0))
-  syncValue(liveWidget(".oscillatorComponent.spread_knob"), readParam(PATHS.spread, 0))
-  -- Map DSP value (0=wave, 1=sample, 2=both) to UI index (1, 2, 3)
-  syncSelected(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_key_track_radio"), blendKeyTrackMode + 1)
-  syncValue(liveWidget(".oscillatorComponent.blend_amount_knob"), blendAmount)
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_sample_pitch_knob"), blendSamplePitch)
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_mod_amount_knob"), blendModAmount)
-  syncSelected(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.add_flavor_toggle"), addFlavor + 1)
-
-  -- Flavor toggle: Add only
-  local addFlavorToggle = liveWidget(".oscillatorComponent.mode_tabs.blend_tab.add_flavor_toggle")
-  if addFlavorToggle then
-    local visible = blendMode == 4
-    if addFlavorToggle.setVisible then
-      addFlavorToggle:setVisible(visible)
-    elseif addFlavorToggle.node and addFlavorToggle.node.setVisible then
-      addFlavorToggle.node:setVisible(visible)
-    end
-  end
-
-  local blendSamplePitchWidget = liveWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_sample_pitch_knob")
-  if blendSamplePitchWidget then
-    if blendSamplePitchWidget.setVisible then
-      blendSamplePitchWidget:setVisible(true)
-    elseif blendSamplePitchWidget.node and blendSamplePitchWidget.node.setVisible then
-      blendSamplePitchWidget.node:setVisible(true)
-    end
-  end
-
-  local blendModAmountWidget = liveWidget(".oscillatorComponent.mode_tabs.blend_tab.blend_mod_amount_knob")
-  if blendModAmountWidget then
-    if blendModAmountWidget.setVisible then
-      blendModAmountWidget:setVisible(true)
-    elseif blendModAmountWidget.node and blendModAmountWidget.node.setVisible then
-      blendModAmountWidget.node:setVisible(true)
-    end
-  end
-
-  -- Temporal controls visible for Add and Morph
-  local addActive = blendMode == 4
-  local morphActive = blendMode == 5
-  local temporalActive = addActive or morphActive
-  
-  local phaseWidget = liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_phase")
-  local speedWidget = liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_speed")
-  local contrastWidget = liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_contrast")
-  local smoothWidget = liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_smooth")
-  local stretchWidget = liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_convergence")
-  local curveWidget = liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_curve")
-
-  -- Temporal controls: visible for Add and Morph
-  for _, w in ipairs({ phaseWidget, speedWidget, contrastWidget, smoothWidget, stretchWidget }) do
-    if w then
-      if w.setVisible then w:setVisible(temporalActive)
-      elseif w.node and w.node.setVisible then w.node:setVisible(temporalActive) end
-    end
-  end
-
-  -- Curve: Morph only
-  if curveWidget then
-    if curveWidget.setVisible then curveWidget:setVisible(morphActive)
-    elseif curveWidget.node and curveWidget.node.setVisible then curveWidget.node:setVisible(morphActive) end
-  end
-
-  -- Responsive layout inside the existing tab area. No fake height inflation.
-  local rowX = 10
-  local rowW = 200
-  local rowH = 20
-  local gap = 8
-  local halfW = 96
-  if blendSamplePitchWidget then setWidgetBounds(blendSamplePitchWidget, rowX, 34, rowW, rowH) end
-  if blendModAmountWidget then setWidgetBounds(blendModAmountWidget, rowX, 60, rowW, rowH) end
-
-  if morphActive then
-    if curveWidget then setWidgetBounds(curveWidget, rowX, 86, 74, rowH) end
-    if phaseWidget then setWidgetBounds(phaseWidget, 92, 86, 118, rowH) end
-    if speedWidget then setWidgetBounds(speedWidget, rowX, 112, halfW, rowH) end
-    if contrastWidget then setWidgetBounds(contrastWidget, 114, 112, halfW, rowH) end
-    if smoothWidget then setWidgetBounds(smoothWidget, rowX, 138, halfW, rowH) end
-    if stretchWidget then setWidgetBounds(stretchWidget, 114, 138, halfW, rowH) end
-  elseif addActive then
-    if addFlavorToggle then setWidgetBounds(addFlavorToggle, rowX, 86, 86, rowH) end
-    if phaseWidget then setWidgetBounds(phaseWidget, 104, 86, 106, rowH) end
-    if speedWidget then setWidgetBounds(speedWidget, rowX, 112, halfW, rowH) end
-    if contrastWidget then setWidgetBounds(contrastWidget, 114, 112, halfW, rowH) end
-    if smoothWidget then setWidgetBounds(smoothWidget, rowX, 138, halfW, rowH) end
-    if stretchWidget then setWidgetBounds(stretchWidget, 114, 138, halfW, rowH) end
-  end
-  syncSelected(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_curve"), round(readParam(PATHS.morphCurve, 2)) + 1)
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_convergence"), readParam(PATHS.morphConvergence, 0))
-  syncSelected(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_phase"), round(readParam(PATHS.morphPhase, 0)) + 1)
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_speed"), readParam(PATHS.morphSpeed, 1.0))
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_contrast"), readParam(PATHS.morphContrast, 0.5))
-  syncValue(liveWidget(".oscillatorComponent.mode_tabs.blend_tab.morph_smooth"), readParam(PATHS.morphSmooth, 0.0))
-
-  local stackingEnabled = blendMode ~= 4 and blendMode ~= 5
-  setWidgetInteractiveState(liveWidget(".oscillatorComponent.unison_knob"), stackingEnabled)
-  setWidgetInteractiveState(liveWidget(".oscillatorComponent.detune_knob"), stackingEnabled)
-  setWidgetInteractiveState(liveWidget(".oscillatorComponent.spread_knob"), stackingEnabled)
-
-  -- Sync oscillator graph state + voice playthrough
-  local oscCtx = ctx._oscCtx
-  if oscCtx then
-    oscCtx.waveformType = waveform
-    oscCtx.renderMode = oscRenderMode
-    oscCtx.pulseWidth = readParam(PATHS.pulseWidth, 0.5)
-    oscCtx.unison = readParam(PATHS.unison, 1)
-    oscCtx.detune = readParam(PATHS.detune, 0)
-    oscCtx.spread = readParam(PATHS.spread, 0)
-    oscCtx.additivePartials = round(readParam(PATHS.additivePartials, 8))
-    oscCtx.additiveTilt = readParam(PATHS.additiveTilt, 0.0)
-    oscCtx.additiveDrift = readParam(PATHS.additiveDrift, 0.0)
-    oscCtx.driveAmount = drive
-    oscCtx.driveShape = driveShape
-    oscCtx.driveBias = driveBias
-    oscCtx.driveMix = 1.0
-    oscCtx.outputLevel = output
-    -- Update knob layout based on initial waveform
-    local oscModule = ctx._oscModule
-    if oscModule and oscModule.updateKnobLayout then
-      oscModule.updateKnobLayout(oscCtx)
-    end
-    -- TabHost owns oscMode as UI-only view state now.
-    local currentTab = tabHost and tabHost.getActiveIndex and tabHost:getActiveIndex() or 1
-    oscCtx.oscMode = (currentTab == 2) and 1 or ((currentTab == 3) and 2 or 0)
-    oscCtx.sampleLoopStart = sampleLoopStartPct / 100.0
-    oscCtx.sampleLoopLen = sampleLoopLenPct / 100.0
-    oscCtx.samplePlayStart = (readParam(PATHS.samplePlayStart, 0.0) or 0.0)
-    oscCtx.sampleCrossfade = (readParam(PATHS.sampleCrossfade, 0.1) or 0.1)
-    oscCtx.blendMode = blendMode
-    oscCtx.blendAmount = blendAmount
-    oscCtx.blendKeyTrackMode = blendKeyTrackMode
-    oscCtx.blendSamplePitch = blendSamplePitch
-    oscCtx.blendModAmount = blendModAmount
-    oscCtx.addFlavor = addFlavor
-    oscCtx.morphCurve = round(readParam(PATHS.morphCurve, 2))
-    oscCtx.morphStretch = readParam(PATHS.morphConvergence, 0)
-    oscCtx.morphTilt = round(readParam(PATHS.morphPhase, 0))
-    oscCtx.morphSpeed = readParam(PATHS.morphSpeed, 1.0)
-    oscCtx.morphContrast = readParam(PATHS.morphContrast, 0.5)
-    oscCtx.morphSmooth = readParam(PATHS.morphSmooth, 0.0)
-
-    -- Push active voice data for animated waveform display (reuse tables to
-    -- avoid per-frame GC churn while voices are active).
-    local activeVoices = oscCtx.activeVoices or {}
-    local activeCount = 0
-    local dominantSamplePos = 0
-    local dominantAmpForPos = 0
-    for i = 1, VOICE_COUNT do
-      local voice = ctx._voices[i]
-      if voice and voice.currentAmp > 0.001 then
-        activeCount = activeCount + 1
-        local item = activeVoices[activeCount] or {}
-        item.voiceIndex = i  -- Preserve voice index for consistent coloring
-        item.freq = voice.freq or 220
-        item.amp = voice.currentAmp
-        item.samplePos = voice.samplePos or 0  -- Actual sample playback position
-        activeVoices[activeCount] = item
-        if (voice.currentAmp or 0) > dominantAmpForPos then
-          dominantAmpForPos = voice.currentAmp or 0
-          dominantSamplePos = voice.samplePos or 0
-        end
-      end
-    end
-    for i = activeCount + 1, #activeVoices do
-      activeVoices[i] = nil
-    end
-    oscCtx.activeVoices = activeVoices
-    oscCtx.morphSamplePos = dominantSamplePos
-
-    -- Hint drawing quality to oscillator renderer.
-    if uiInteracting then
-      oscCtx.maxPoints = 72
-    elseif activeCount >= 3 then
-      oscCtx.maxPoints = 96
-    elseif activeCount >= 2 then
-      oscCtx.maxPoints = 120
-    else
-      oscCtx.maxPoints = 180
-    end
-
-    -- Advance animation time
-    oscCtx.animTime = (oscCtx.animTime or 0) + dt
-
-    local oscRepaintInterval = OSC_REPAINT_INTERVAL
-    if uiInteracting then
-      oscRepaintInterval = OSC_REPAINT_INTERVAL_WHILE_INTERACTING
-    elseif activeCount >= 2 then
-      oscRepaintInterval = OSC_REPAINT_INTERVAL_MULTI_VOICE
-    end
-
-    if ctx._oscModule and ctx._oscModule.repaint and now - (ctx._lastOscRepaintTime or 0) >= oscRepaintInterval then
-      ctx._lastOscRepaintTime = now
-      ctx._oscModule.repaint(oscCtx)
-    end
-  end
-
-  -- Sync filter component
-  syncSelected(liveWidget(".filterComponent.filter_type_dropdown"), filterType + 1)
-  syncValue(liveWidget(".filterComponent.cutoff_knob"), cutoff)
-  syncValue(liveWidget(".filterComponent.resonance_knob"), resonance)
-
-  -- Sync filter graph state
-  local filterCtx = ctx._filterCtx
-  if filterCtx then
-    filterCtx.filterType = filterType
-    filterCtx.cutoffHz = cutoff
-    filterCtx.resonance = resonance
-    if ctx._filterModule and ctx._filterModule.repaint then ctx._filterModule.repaint(filterCtx) end
-  end
-
-  -- Sync FX components: read individual DSP params, sync controls (lightweight per-frame)
-  local function syncFxSlot(slotNum, prefix, fxType, fxMix)
-    local fxCtx = ctx["_fx" .. slotNum .. "Ctx"]
-    if not fxCtx then return end
-
-    local typeDrop = liveWidget(prefix .. ".type_dropdown")
-    local xyXDrop = liveWidget(prefix .. ".xy_x_dropdown")
-    local xyYDrop = liveWidget(prefix .. ".xy_y_dropdown")
-    local mixKnob = liveWidget(prefix .. ".mix_knob")
-    local paramWidgets = {
-      liveWidget(prefix .. ".param1"),
-      liveWidget(prefix .. ".param2"),
-      liveWidget(prefix .. ".param3"),
-      liveWidget(prefix .. ".param4"),
-      liveWidget(prefix .. ".param5"),
-    }
-
-    local anyDropdownOpen = (typeDrop and typeDrop._open)
-      or (xyXDrop and xyXDrop._open)
-      or (xyYDrop and xyYDrop._open)
-
-    syncSelected(typeDrop, fxType + 1)
-    if not (mixKnob and mixKnob._dragging) then
-      syncValue(mixKnob, fxMix)
-    end
-
-    if fxCtx.fxType ~= fxType and not anyDropdownOpen then
-      fxCtx.fxType = fxType
-      local fxModule = ctx["_fx" .. slotNum .. "Module"]
-      if fxModule and fxModule.onTypeChanged then fxModule.onTypeChanged(fxCtx) end
-    end
-
-    local pvals = {}
-    for pi = 1, MAX_FX_PARAMS do
-      pvals[pi] = readParam(fxParamPath(slotNum, pi), 0.5)
-    end
-
-    if not fxCtx.dragging then
-      local newX = pvals[fxCtx.xyXIdx or 1] or 0.5
-      local newY = pvals[fxCtx.xyYIdx or 2] or 0.5
-      if newX ~= fxCtx.xyX or newY ~= fxCtx.xyY then
-        fxCtx.xyX = newX
-        fxCtx.xyY = newY
-        refreshFxPad(fxCtx)
-      end
-    end
-
-    for pi = 1, #paramWidgets do
-      local widget = paramWidgets[pi]
-      if widget and not widget._dragging then
-        syncValue(widget, pvals[pi] or 0.5)
-      end
-    end
-  end
-
-  syncFxSlot(1, ".fx1Component", fx1Type, fx1Mix)
-  syncFxSlot(2, ".fx2Component", fx2Type, fx2Mix)
-
-  
-  -- Sync envelope graph: push ADSR values + voice positions each frame
-  local envCtx = ctx._envCtx
-  if envCtx then
-    envCtx.values.attack = attack
-    envCtx.values.decay = decay
-    envCtx.values.sustain = sustain
-    envCtx.values.release = release
-
-    -- Build voice position data for the graph (reuse tables to reduce GC).
-    local voicePositions = envCtx.voicePositions or {}
-    local vpCount = 0
-    for i = 1, VOICE_COUNT do
-      local voice = ctx._voices[i]
-      if voice and voice.envelopeStage and voice.envelopeStage ~= "idle" then
-        vpCount = vpCount + 1
-        local item = voicePositions[vpCount] or {}
-        item.stage = voice.envelopeStage
-        item.level = voice.envelopeLevel or 0
-        item.time = voice.envelopeTime or 0
-        voicePositions[vpCount] = item
-      end
-    end
-    for i = vpCount + 1, #voicePositions do
-      voicePositions[i] = nil
-    end
-    envCtx.voicePositions = voicePositions
-
-    local envRepaintInterval = uiInteracting and ENV_REPAINT_INTERVAL_WHILE_INTERACTING or ENV_REPAINT_INTERVAL
-    if ctx._envModule and ctx._envModule.repaint and now - (ctx._lastEnvRepaintTime or 0) >= envRepaintInterval then
-      ctx._lastEnvRepaintTime = now
-      ctx._envModule.repaint(envCtx)
-    end
-  end
-  
-  -- Sync main ADSR status label
-  syncText(widgets.adsrValue, string.format("ADSR: A %s / D %s / S %.0f%% / R %s",
-    formatTime(attack), formatTime(decay), sustain * 100, formatTime(release)))
-  
-  -- (MIDI polling + envelope updates now run in backgroundTick)
-  
-  -- Update status
-  local activeCount = activeVoiceCount(ctx)
-  local midiStatusText = isPluginMode() and "host" or "waiting"
-  local midiStatusColour = 0xfff59e0b
-  if activeCount > 0 then
-    midiStatusText = "active"
-    midiStatusColour = 0xff4ade80
-  elseif ctx._selectedMidiInputIdx and ctx._selectedMidiInputIdx > 1 then
-    midiStatusText = "armed"
-    midiStatusColour = 0xff38bdf8
-  end
-
-  if widgets.midiState then
-    syncText(widgets.midiState, midiStatusText)
-    syncColour(widgets.midiState, midiStatusColour)
-  end
-  
-  syncText(widgets.voicesValue, "8 voice poly")
-  syncText(widgets.currentNote, "Note: " .. (ctx._currentNote and noteName(ctx._currentNote) or "--"))
-  syncText(widgets.voiceStatus, voiceSummary(ctx))
-  syncText(widgets.midiEvent, ctx._lastEvent)
-  syncText(widgets.freqValue, string.format("Freq: %.2f Hz", dominantFreq))
-  syncText(widgets.ampValue, string.format("Amp: %.3f", maxAmp))
-  local filterName = FILTER_OPTIONS[filterType + 1] or "SVF"
-  syncText(widgets.filterValue, string.format("Filter: %s / %d Hz / Res %.2f", filterName, round(cutoff), resonance))
-  syncText(widgets.adsrValue, string.format("ADSR: A %s / D %s / S %.0f%% / R %s",
-    formatTime(attack), formatTime(decay), sustain * 100, formatTime(release)))
-  local fx1Name = FX_OPTIONS[fx1Type + 1] or "None"
-  local fx2Name = FX_OPTIONS[fx2Type + 1] or "None"
-  syncText(widgets.fxValue, string.format("FX1: %s / FX2: %s / Dly %.0f%% / Verb %.0f%%",
-    fx1Name, fx2Name, delayMix * 100, reverbWet * 100))
-  syncText(widgets.deviceValue, "Input: " .. (ctx._selectedMidiInputLabel or "None"))
-
-  
-
-  -- Update voice note labels (color-coded per voice)
-  for i = 1, 8 do
-    local voiceLabel = widgets["voiceNote" .. i]
-    if voiceLabel then
-      local voice = ctx._voices[i]
-      if voice and voice.active and voice.note and voice.envelopeStage ~= "idle" then
-        syncText(voiceLabel, noteName(voice.note))
-      else
-        syncText(voiceLabel, "--")
-      end
-    end
-  end
-
-  
-
-  if ctx._keyboardDirty then
-    syncKeyboardDisplay(ctx)
-    ctx._keyboardDirty = false
-  end
-
-  -- Apply deferred patchbay page switches safely in update, not inside click callback.
-  if ctx._pendingPatchbayPages and next(ctx._pendingPatchbayPages) ~= nil then
-    for shellId, pageIndex in pairs(ctx._pendingPatchbayPages) do
-      local instance = patchbayInstances[shellId]
-      local specId = instance and instance.specId or nil
-      if specId then
-        cleanupPatchbayFromRuntime(shellId, ctx)
-        patchbayInstances[shellId] = nil
-        ensurePatchbayWidgets(ctx, shellId, specId, pageIndex)
-      end
-      ctx._pendingPatchbayPages[shellId] = nil
-    end
-    if RackWireLayer and RackWireLayer.refreshWires then
-      RackWireLayer.refreshWires(ctx)
-    end
-  end
-
-  -- Sync patchbay slider values from live DSP state (only in patch view)
-  local viewMode = ctx._rackState and ctx._rackState.viewMode or "perf"
-  if viewMode == "patch" then
-    syncPatchbayValues(ctx)
-  end
-
+  activeBehaviorCtx = ctx
+  local UpdateSync = require("ui.update_sync")
+  UpdateSync.update(ctx, {
+    BG_TICK_INTERVAL = BG_TICK_INTERVAL,
+    OSC_REPAINT_INTERVAL = OSC_REPAINT_INTERVAL,
+    OSC_REPAINT_INTERVAL_WHILE_INTERACTING = OSC_REPAINT_INTERVAL_WHILE_INTERACTING,
+    OSC_REPAINT_INTERVAL_MULTI_VOICE = OSC_REPAINT_INTERVAL_MULTI_VOICE,
+    ENV_REPAINT_INTERVAL = ENV_REPAINT_INTERVAL,
+    ENV_REPAINT_INTERVAL_WHILE_INTERACTING = ENV_REPAINT_INTERVAL_WHILE_INTERACTING,
+    MAX_FX_PARAMS = MAX_FX_PARAMS,
+    VOICE_COUNT = VOICE_COUNT,
+    FILTER_OPTIONS = FILTER_OPTIONS,
+    FxDefs = FxDefs,
+    PATHS = PATHS,
+    getTime = getTime,
+    backgroundTick = backgroundTick,
+    isUiInteracting = isUiInteracting,
+    maybeRefreshMidiDevices = maybeRefreshMidiDevices,
+    syncPatchViewMode = syncPatchViewMode,
+    RackWireLayer = RackWireLayer,
+    readParam = readParam,
+    setPath = setPath,
+    sanitizeBlendMode = sanitizeBlendMode,
+    getVoiceStackingLabels = getVoiceStackingLabels,
+    setWidgetInteractiveState = setWidgetInteractiveState,
+    setWidgetBounds = setWidgetBounds,
+    isPluginMode = isPluginMode,
+    activeVoiceCount = activeVoiceCount,
+    voiceSummary = voiceSummary,
+    noteName = noteName,
+    formatTime = formatTime,
+    syncKeyboardDisplay = syncKeyboardDisplay,
+    syncMidiParamRack = function()
+      MidiParamRack.sync(ctx, (ctx.widgets or {}).midiParamRack)
+    end,
+    cleanupPatchbayFromRuntime = cleanupPatchbayFromRuntime,
+    patchbayInstances = PatchbayRuntime.getInstances(),
+    ensurePatchbayWidgets = ensurePatchbayWidgets,
+    syncPatchbayValues = syncPatchbayValues,
+    clamp = clamp,
+    setWidgetValueSilently = setWidgetValueSilently,
+    getModTargetState = function(path)
+      return getCombinedModTargetState(ctx, path)
+    end,
+  })
 end
 
 function M.cleanup(ctx)
+  if activeBehaviorCtx == ctx then
+    activeBehaviorCtx = nil
+  end
   -- Clear exported hooks if they still point at this instance. Leaving stale
   -- ctx-capturing closures alive across project reloads is crash bait.
   if _G.__midiSynthBackgroundTick == ctx._backgroundTickHook then
@@ -5000,11 +5861,72 @@ function M.cleanup(ctx)
   if _G.__midiSynthPanic == ctx._panicHook then
     _G.__midiSynthPanic = nil
   end
+  if _G.__midiSynthTriggerNote == ctx._triggerNoteHook then
+    _G.__midiSynthTriggerNote = nil
+  end
+  if _G.__midiSynthReleaseNote == ctx._releaseNoteHook then
+    _G.__midiSynthReleaseNote = nil
+  end
+  if _G.__midiSynthSetAuthoredParam == ctx._setAuthoredParamHook then
+    _G.__midiSynthSetAuthoredParam = nil
+  end
+  if _G.__midiSynthGetModTargetState == ctx._getModTargetStateHook then
+    _G.__midiSynthGetModTargetState = nil
+  end
   if _G.__midiSynthGetDockPresentationMode == ctx._getDockPresentationModeHook then
     _G.__midiSynthGetDockPresentationMode = nil
   end
   if _G.__midiSynthSetDockPresentationMode == ctx._setDockPresentationModeHook then
     _G.__midiSynthSetDockPresentationMode = nil
+  end
+  if _G.__midiSynthGetRackRouteDebug == ctx._getRackRouteDebugHook then
+    _G.__midiSynthGetRackRouteDebug = nil
+  end
+  if _G.__midiSynthGetModEndpointRegistry == ctx._getModEndpointRegistryHook then
+    _G.__midiSynthGetModEndpointRegistry = nil
+  end
+  if _G.__midiSynthCompileModRoute == ctx._compileModRouteHook then
+    _G.__midiSynthCompileModRoute = nil
+  end
+  if _G.__midiSynthGetModRouteCompilerDebug == ctx._getModRouteCompilerDebugHook then
+    _G.__midiSynthGetModRouteCompilerDebug = nil
+  end
+  if _G.__midiSynthSetGlobalModRoutes == ctx._setGlobalModRoutesHook then
+    _G.__midiSynthSetGlobalModRoutes = nil
+  end
+  if _G.__midiSynthClearGlobalModRoutes == ctx._clearGlobalModRoutesHook then
+    _G.__midiSynthClearGlobalModRoutes = nil
+  end
+  if _G.__midiSynthSetModSourceValue == ctx._setModSourceValueHook then
+    _G.__midiSynthSetModSourceValue = nil
+  end
+  if _G.__midiSynthEvaluateModRuntime == ctx._evaluateModRuntimeHook then
+    _G.__midiSynthEvaluateModRuntime = nil
+  end
+  if _G.__midiSynthGetModRuntimeDebug == ctx._getModRuntimeDebugHook then
+    _G.__midiSynthGetModRuntimeDebug = nil
+  end
+  if _G.__midiSynthResyncRackConnections == ctx._resyncRackConnectionsHook then
+    _G.__midiSynthResyncRackConnections = nil
+  end
+  if _G.__midiSynthDeleteRackNode == ctx._deleteRackNodeHook then
+    _G.__midiSynthDeleteRackNode = nil
+  end
+  if _G.__midiSynthSpawnPalettePlaceholder == ctx._spawnPalettePlaceholderHook then
+    _G.__midiSynthSpawnPalettePlaceholder = nil
+  end
+  if _G.__midiSynthSpawnPaletteNode == ctx._spawnPaletteNodeHook then
+    _G.__midiSynthSpawnPaletteNode = nil
+  end
+  if _G.__midiSynthToggleRackNodeWidth == ctx._toggleRackNodeWidthHook then
+    _G.__midiSynthToggleRackNodeWidth = nil
+  end
+  if _G.__midiSynthSetRackViewport == ctx._setRackViewportHook then
+    _G.__midiSynthSetRackViewport = nil
+  end
+
+  if ctx._onMidiDeviceStateChanged ~= nil then
+    ctx._onMidiDeviceStateChanged = nil
   end
 
   -- Note: Midi.clearCallbacks() is still not called here to keep MIDI alive.
@@ -5016,14 +5938,17 @@ function M.cleanup(ctx)
   if _G.__midiSynthRackState == ctx._rackState then
     _G.__midiSynthRackState = nil
   end
-  if _G.__midiSynthRackNodeSpecs == ctx._rackNodeSpecs then
-    _G.__midiSynthRackNodeSpecs = nil
+  if _G.__midiSynthRackModuleSpecs == ctx._rackModuleSpecs then
+    _G.__midiSynthRackModuleSpecs = nil
   end
   if _G.__midiSynthRackConnections == ctx._rackConnections then
     _G.__midiSynthRackConnections = nil
   end
   if _G.__midiSynthUtilityDock == ctx._utilityDock then
     _G.__midiSynthUtilityDock = nil
+  end
+  if type(_G) == "table" then
+    _G.__midiSynthDynamicModuleInfo = nil
   end
 end
 

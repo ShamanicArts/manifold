@@ -1,5 +1,9 @@
 -- MidiSynth_uiproject DSP entry
 -- 8-voice polysynth with two serial swappable FX slots, ADSR, filter, delay, reverb.
+--
+-- DEPRECATED: This standalone version is outdated and not actively maintained.
+-- The integration version (midisynth_integration.lua) is the source of truth.
+-- Future standalone capability will be achieved by hosting the integration version directly.
 
 local VOICE_COUNT = 8
 
@@ -8,6 +12,8 @@ local PATHS = {
   cutoff = "/midi/synth/cutoff",
   resonance = "/midi/synth/resonance",
   drive = "/midi/synth/drive",
+  driveShape = "/midi/synth/driveShape",
+  driveBias = "/midi/synth/driveBias",
   filterType = "/midi/synth/filterType",
   fx1Type = "/midi/synth/fx1/type",
 
@@ -91,6 +97,9 @@ local FX_OPTIONS = {
   "EQ",
   "Limiter",
   "Transient",
+  "Bitcrusher",
+  "Shimmer",
+  "Reverse Delay",
 }
 
 function buildPlugin(ctx)
@@ -371,6 +380,57 @@ function buildPlugin(ctx)
           { setter = function(n, v) n:setAttack(lerp(-1, 1, v)) end, default = 0.5 },
           { setter = function(n, v) n:setSustain(lerp(-1, 1, v)) end, default = 0.5 },
           { setter = function(n, v) n:setSensitivity(lerp(0.2, 4, v)) end, default = 0.5 },
+        },
+      },
+      { -- 17: Bitcrusher
+        label = "Bitcrusher",
+        create = function()
+          local node = P.BitCrusherNode.new()
+          node:setBits(6)
+          node:setRateReduction(8)
+          node:setMix(1.0)
+          node:setOutput(0.8)
+          return { input = node, output = node, node = node }
+        end,
+        params = {
+          { setter = function(n, v) n:setBits(math.floor(lerp(2, 16, v) + 0.5)) end, default = 0.3 },
+          { setter = function(n, v) n:setRateReduction(math.floor(lerp(1, 64, v) + 0.5)) end, default = 0.12 },
+          { setter = function(n, v) n:setOutput(lerp(0.25, 2, v)) end, default = 0.55 },
+        },
+      },
+      { -- 18: Shimmer
+        label = "Shimmer",
+        create = function()
+          local node = P.ShimmerNode.new()
+          node:setSize(0.65)
+          node:setPitch(12)
+          node:setFeedback(0.7)
+          node:setMix(0.5)
+          node:setModulation(0.25)
+          node:setFilter(5500)
+          return { input = node, output = node, node = node }
+        end,
+        params = {
+          { setter = function(n, v) n:setSize(lerp(0.1, 1.0, v)) end, default = 0.6 },
+          { setter = function(n, v) n:setPitch(lerp(-12, 12, v)) end, default = 0.75 },
+          { setter = function(n, v) n:setFeedback(lerp(0, 0.99, v)) end, default = 0.7 },
+          { setter = function(n, v) n:setFilter(expLerp(100, 12000, v)) end, default = 0.5 },
+        },
+      },
+      { -- 19: Reverse Delay
+        label = "Reverse Delay",
+        create = function()
+          local node = P.ReverseDelayNode.new()
+          node:setTime(420)
+          node:setWindow(120)
+          node:setFeedback(0.45)
+          node:setMix(0.65)
+          return { input = node, output = node, node = node }
+        end,
+        params = {
+          { setter = function(n, v) n:setTime(lerp(50, 2000, v)) end, default = 0.2 },
+          { setter = function(n, v) n:setWindow(lerp(20, 400, v)) end, default = 0.25 },
+          { setter = function(n, v) n:setFeedback(lerp(0, 0.95, v)) end, default = 0.47 },
         },
       },
     }
@@ -657,14 +717,35 @@ function buildPlugin(ctx)
   })
   ctx.params.bind(PATHS.resonance, filt, "setResonance")
 
+  -- Drive parameters - bound to per-voice oscillators (not post-mix distortion)
   addParam(PATHS.drive, {
     type = "f",
     min = 0.0,
     max = 20.0,
-    default = 1.8,
-    description = "Drive amount",
+    default = 0.0,
+    description = "Oscillator drive amount",
   })
-  ctx.params.bind(PATHS.drive, dist, "setDrive")
+  addParam(PATHS.driveShape, {
+    type = "f",
+    min = 0.0,
+    max = 3.0,
+    default = 0.0,
+    description = "Oscillator drive shape (0=Soft,1=Hard,2=Clip,3=Fold)",
+  })
+  addParam(PATHS.driveBias, {
+    type = "f",
+    min = -1.0,
+    max = 1.0,
+    default = 0.0,
+    description = "Oscillator drive bias",
+  })
+
+  -- Bind drive params to each voice's oscillator
+  for i = 1, VOICE_COUNT do
+    ctx.params.bind(PATHS.drive, voices[i].osc, "setDrive")
+    ctx.params.bind(PATHS.driveShape, voices[i].osc, "setDriveShape")
+    ctx.params.bind(PATHS.driveBias, voices[i].osc, "setDriveBias")
+  end
 
   addParam(PATHS.fx1Type, { type = "f", min = 0, max = #FX_OPTIONS - 1, default = 0, description = "FX1 type" })
   addParam(PATHS.fx1Mix, { type = "f", min = 0, max = 1, default = 0, description = "FX1 wet/dry" })
