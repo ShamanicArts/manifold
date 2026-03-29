@@ -67,6 +67,20 @@ public:
                                                  int hopSize = 1024,
                                                  int maxFrames = 128) const;
     TemporalPartialData getLastTemporalPartials() const;
+
+    /// Returns true if temporal (multi-frame) partial data is available.
+    bool hasTemporalPartials() const;
+
+    /// Returns the number of temporal frames available, or 0 if none.
+    int getTemporalFrameCount() const;
+
+    /// Interpolate the temporal partial data at a normalized position (0..1).
+    /// smoothAmount/contrastAmount preserve the original Lua Morph/Add spectral behaviour.
+    /// This is the preferred way to query temporal data from Lua — no caching needed.
+    PartialData getTemporalFrameAtPosition(float normalizedPosition,
+                                           float smoothAmount = 0.0f,
+                                           float contrastAmount = 0.5f) const;
+
     void requestAsyncAnalysis(int maxPartials = PartialData::kMaxPartials,
                               int windowSize = 2048,
                               int hopSize = 1024,
@@ -137,6 +151,8 @@ private:
     mutable SampleAnalysis lastAnalysis_;
     mutable PartialData lastPartials_;
     mutable TemporalPartialData lastTemporalPartials_;
+    mutable std::shared_ptr<const PartialData> lastPartialsSnapshot_;
+    mutable std::shared_ptr<const TemporalPartialData> lastTemporalPartialsSnapshot_;
     std::atomic<std::uint64_t> analysisRequestedGeneration_{0};
     std::atomic<std::uint64_t> analysisCompletedGeneration_{0};
     std::atomic<bool> asyncAnalysisPending_{false};

@@ -45,6 +45,21 @@ juce::ThreadPool& sampleAnalysisPool() {
     return pool;
 }
 
+template <typename T>
+void publishSnapshot(std::shared_ptr<const T>& destination, const T& value) {
+    std::atomic_store_explicit(&destination, std::make_shared<const T>(value), std::memory_order_release);
+}
+
+template <typename T>
+void clearSnapshot(std::shared_ptr<const T>& destination) {
+    std::atomic_store_explicit(&destination, std::shared_ptr<const T>{}, std::memory_order_release);
+}
+
+template <typename T>
+std::shared_ptr<const T> loadSnapshot(const std::shared_ptr<const T>& source) {
+    return std::atomic_load_explicit(&source, std::memory_order_acquire);
+}
+
 class SamplePlaybackAnalysisJob final : public juce::ThreadPoolJob {
 public:
     explicit SamplePlaybackAnalysisJob(AsyncAnalysisSnapshot snapshot)
@@ -584,9 +599,12 @@ SampleAnalysis SampleRegionPlaybackNode::analyzeSample() const {
         analysis.isReliable = false;
         partials.isPercussive = true;
         partials.isReliable = false;
-        std::lock_guard<std::mutex> lock(analysisMutex_);
-        lastAnalysis_ = analysis;
-        lastPartials_ = partials;
+        {
+            std::lock_guard<std::mutex> lock(analysisMutex_);
+            lastAnalysis_ = analysis;
+            lastPartials_ = partials;
+        }
+        publishSnapshot(lastPartialsSnapshot_, partials);
         return analysis;
     }
 
@@ -606,9 +624,12 @@ SampleAnalysis SampleRegionPlaybackNode::analyzeSample() const {
                                                     analysis,
                                                     mono.numChannels);
 
-    std::lock_guard<std::mutex> lock(analysisMutex_);
-    lastAnalysis_ = analysis;
-    lastPartials_ = partials;
+    {
+        std::lock_guard<std::mutex> lock(analysisMutex_);
+        lastAnalysis_ = analysis;
+        lastPartials_ = partials;
+    }
+    publishSnapshot(lastPartialsSnapshot_, partials);
     return analysis;
 }
 
@@ -620,11 +641,17 @@ SampleAnalysis SampleRegionPlaybackNode::getLastAnalysis() const {
 PartialData SampleRegionPlaybackNode::extractPartials() const {
     const SampleAnalysis analysis = analyzeSample();
     (void)analysis;
+    if (const auto snapshot = loadSnapshot(lastPartialsSnapshot_)) {
+        return *snapshot;
+    }
     std::lock_guard<std::mutex> lock(analysisMutex_);
     return lastPartials_;
 }
 
 PartialData SampleRegionPlaybackNode::getLastPartials() const {
+    if (const auto snapshot = loadSnapshot(lastPartialsSnapshot_)) {
+        return *snapshot;
+    }
     std::lock_guard<std::mutex> lock(analysisMutex_);
     return lastPartials_;
 }
@@ -635,8 +662,11 @@ TemporalPartialData SampleRegionPlaybackNode::extractTemporalPartials(
     const int sampleLength = juce::jlimit(0, maxLoopSamples_, loopLength_.load(std::memory_order_acquire));
     if (sampleLength <= 0) {
         TemporalPartialData empty;
-        std::lock_guard<std::mutex> lock(analysisMutex_);
-        lastTemporalPartials_ = empty;
+        {
+            std::lock_guard<std::mutex> lock(analysisMutex_);
+            lastTemporalPartials_ = empty;
+        }
+        publishSnapshot(lastTemporalPartialsSnapshot_, empty);
         return empty;
     }
 
@@ -660,14 +690,46 @@ TemporalPartialData SampleRegionPlaybackNode::extractTemporalPartials(
         hopSize,
         maxFrames);
 
-    std::lock_guard<std::mutex> lock(analysisMutex_);
-    lastTemporalPartials_ = temporal;
+    {
+        std::lock_guard<std::mutex> lock(analysisMutex_);
+        lastTemporalPartials_ = temporal;
+    }
+    publishSnapshot(lastTemporalPartialsSnapshot_, temporal);
     return temporal;
 }
 
 TemporalPartialData SampleRegionPlaybackNode::getLastTemporalPartials() const {
+    if (const auto snapshot = loadSnapshot(lastTemporalPartialsSnapshot_)) {
+        return *snapshot;
+    }
     std::lock_guard<std::mutex> lock(analysisMutex_);
     return lastTemporalPartials_;
+}
+
+bool SampleRegionPlaybackNode::hasTemporalPartials() const {
+    if (const auto snapshot = loadSnapshot(lastTemporalPartialsSnapshot_)) {
+        return snapshot->frameCount > 0;
+    }
+    std::lock_guard<std::mutex> lock(analysisMutex_);
+    return lastTemporalPartials_.frameCount > 0;
+}
+
+int SampleRegionPlaybackNode::getTemporalFrameCount() const {
+    if (const auto snapshot = loadSnapshot(lastTemporalPartialsSnapshot_)) {
+        return snapshot->frameCount;
+    }
+    std::lock_guard<std::mutex> lock(analysisMutex_);
+    return lastTemporalPartials_.frameCount;
+}
+
+PartialData SampleRegionPlaybackNode::getTemporalFrameAtPosition(float normalizedPosition,
+                                                                  float smoothAmount,
+                                                                  float contrastAmount) const {
+    if (const auto snapshot = loadSnapshot(lastTemporalPartialsSnapshot_)) {
+        return snapshot->interpolateAtPosition(normalizedPosition, smoothAmount, contrastAmount);
+    }
+    std::lock_guard<std::mutex> lock(analysisMutex_);
+    return lastTemporalPartials_.interpolateAtPosition(normalizedPosition, smoothAmount, contrastAmount);
 }
 
 void SampleRegionPlaybackNode::requestAsyncAnalysis(int maxPartials,
@@ -725,6 +787,8 @@ void SampleRegionPlaybackNode::publishAsyncAnalysisResult(std::uint64_t generati
         lastPartials_ = partials;
         lastTemporalPartials_ = temporal;
     }
+    publishSnapshot(lastPartialsSnapshot_, partials);
+    publishSnapshot(lastTemporalPartialsSnapshot_, temporal);
 
     analysisCompletedGeneration_.store(generation, std::memory_order_release);
     asyncAnalysisPending_.store(false, std::memory_order_release);
@@ -766,10 +830,14 @@ void SampleRegionPlaybackNode::clearLoop() {
     analysisCompletedGeneration_.store(0, std::memory_order_release);
     asyncAnalysisPending_.store(false, std::memory_order_release);
 
-    std::lock_guard<std::mutex> lock(analysisMutex_);
-    lastAnalysis_ = SampleAnalysis{};
-    lastPartials_ = PartialData{};
-    lastTemporalPartials_ = TemporalPartialData{};
+    {
+        std::lock_guard<std::mutex> lock(analysisMutex_);
+        lastAnalysis_ = SampleAnalysis{};
+        lastPartials_ = PartialData{};
+        lastTemporalPartials_ = TemporalPartialData{};
+    }
+    clearSnapshot(lastPartialsSnapshot_);
+    clearSnapshot(lastTemporalPartialsSnapshot_);
 }
 
 void SampleRegionPlaybackNode::copyFromCaptureBuffer(const juce::AudioBuffer<float>& captureBuffer,
@@ -826,10 +894,11 @@ void SampleRegionPlaybackNode::copyFromCaptureBuffer(const juce::AudioBuffer<flo
     lastPosition_.store(0, std::memory_order_release);
     asyncAnalysisPending_.store(false, std::memory_order_release);
 
-    std::lock_guard<std::mutex> lock(analysisMutex_);
-    lastAnalysis_ = SampleAnalysis{};
-    lastPartials_ = PartialData{};
-    lastTemporalPartials_ = TemporalPartialData{};
+    // Keep the last published analysis/partials alive until replacement analysis finishes.
+    // Add/Morph spectral mode reads directly from this node, so clearing here causes a
+    // dead zone after every capture where switching back into Add/Morph finds no spectral
+    // source data at all. The async analysis request that follows capture will overwrite
+    // these cached results once the new sample has been analyzed.
 }
 
 } // namespace dsp_primitives
