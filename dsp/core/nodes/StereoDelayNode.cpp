@@ -19,6 +19,19 @@ namespace {
         z = y + v;
         return y;
     }
+
+    inline void copyDryToOutput(const AudioBufferView* input,
+                                WritableAudioBufferView& output,
+                                int numSamples) {
+        for (int i = 0; i < numSamples; ++i) {
+            const float inL = input ? input->getSample(0, i) : 0.0f;
+            const float inR = (input && input->numChannels > 1) ? input->getSample(1, i) : inL;
+            output.setSample(0, i, inL);
+            if (output.numChannels > 1) {
+                output.setSample(1, i, inR);
+            }
+        }
+    }
 }
 
 StereoDelayNode::StereoDelayNode() 
@@ -110,6 +123,26 @@ void StereoDelayNode::process(const std::vector<AudioBufferView>& inputs,
     const float targetDucking = clamp(targetDucking_.load(std::memory_order_acquire), 0.0f, 1.0f);
     const float targetFilterCutoff = targetFilterCutoff_.load(std::memory_order_acquire);
     const float targetFilterResonance = targetFilterResonance_.load(std::memory_order_acquire);
+
+    const bool dormant = !freeze
+        && targetMix <= 1.0e-4f
+        && currentMix_ <= 1.0e-4f
+        && targetFeedback <= 1.0e-4f
+        && currentFeedback_ <= 1.0e-4f
+        && targetCrossfeed <= 1.0e-4f
+        && currentFeedbackCrossfeed_ <= 1.0e-4f;
+    if (dormant) {
+        if (!dormantBypass_) {
+            reset();
+            dormantBypass_ = true;
+        }
+        copyDryToOutput(inputs.empty() ? nullptr : &inputs[0], outputs[0], numSamples);
+        return;
+    }
+    if (dormantBypass_) {
+        reset();
+        dormantBypass_ = false;
+    }
 
     for (int i = 0; i < numSamples; ++i) {
         // Smooth parameters toward targets

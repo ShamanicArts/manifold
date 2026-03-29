@@ -151,6 +151,7 @@ private:
     
     double sampleRate_ = 44100.0;
     bool prepared_ = false;
+    bool dormantBypass_ = false;
     
     static constexpr float kMaxDelaySeconds = 5.0f;
     static constexpr int kMaxSamplesPerBlock = 8192;

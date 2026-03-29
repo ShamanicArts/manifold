@@ -4,6 +4,21 @@
 
 namespace dsp_primitives {
 
+namespace {
+inline void copyDryToOutput(const AudioBufferView& input,
+                            WritableAudioBufferView& output,
+                            int numSamples) {
+    for (int i = 0; i < numSamples; ++i) {
+        const float inL = input.getSample(0, i);
+        const float inR = input.numChannels > 1 ? input.getSample(1, i) : inL;
+        output.setSample(0, i, inL);
+        if (output.numChannels > 1) {
+            output.setSample(1, i, inR);
+        }
+    }
+}
+}
+
 MultitapDelayNode::MultitapDelayNode() {
     for (int i = 0; i < kMaxTaps; ++i) {
         targetTapTimeMs_[static_cast<size_t>(i)].store(120.0f * (i + 1), std::memory_order_release);
@@ -75,6 +90,23 @@ void MultitapDelayNode::process(const std::vector<AudioBufferView>& inputs,
     const int tapCount = targetTapCount_.load(std::memory_order_acquire);
     const float tFeedback = targetFeedback_.load(std::memory_order_acquire);
     const float tMix = targetMix_.load(std::memory_order_acquire);
+
+    const bool dormant = tMix <= 1.0e-4f
+        && currentMix_ <= 1.0e-4f
+        && tFeedback <= 1.0e-4f
+        && currentFeedback_ <= 1.0e-4f;
+    if (dormant) {
+        if (!dormantBypass_) {
+            reset();
+            dormantBypass_ = true;
+        }
+        copyDryToOutput(inputs[0], outputs[0], numSamples);
+        return;
+    }
+    if (dormantBypass_) {
+        reset();
+        dormantBypass_ = false;
+    }
 
     for (int i = 0; i < numSamples; ++i) {
         currentFeedback_ += (tFeedback - currentFeedback_) * smooth_;
