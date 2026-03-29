@@ -32,27 +32,48 @@ void RetrospectiveCaptureNode::process(const std::vector<AudioBufferView>& input
         return;
     }
 
-    // Lock-free: read size once, process all samples, then update write offset
+    // Lock-free: read state once, process all samples, then publish updates.
     const int size = captureSize_.load(std::memory_order_acquire);
+    const int peakCapacity = peakBufferSize_.load(std::memory_order_acquire);
     int write = writeOffset_.load(std::memory_order_acquire);
+    int completedBlocks = peakCompletedBlocks_.load(std::memory_order_acquire);
+    int currentPeakSamples = currentPeakBlockSamples_.load(std::memory_order_acquire);
+    float currentPeakMax = currentPeakBlockMax_.load(std::memory_order_acquire);
 
     for (int i = 0; i < numSamples; ++i) {
+        const int writeIdx = write % size;
+        float samplePeak = 0.0f;
+
         for (int ch = 0; ch < channels; ++ch) {
             const size_t idx = static_cast<size_t>(ch);
             float s = 0.0f;
             if (ch < static_cast<int>(inputs.size())) {
                 s = inputs[idx].getSample(ch, i);
             }
-            // Wrap write index within current size
-            const int writeIdx = write % size;
+
+            samplePeak = std::max(samplePeak, std::abs(s));
             captureBuffer_.setSample(ch, writeIdx, s);
             outputs[idx].setSample(ch, i, s);
+        }
+
+        currentPeakMax = std::max(currentPeakMax, samplePeak);
+        ++currentPeakSamples;
+        if (currentPeakSamples >= kPeakBlockSize) {
+            if (peakCapacity > 0 && !peakBuffer_.empty()) {
+                peakBuffer_[static_cast<size_t>(completedBlocks % peakCapacity)] = currentPeakMax;
+            }
+            ++completedBlocks;
+            currentPeakSamples = 0;
+            currentPeakMax = 0.0f;
         }
 
         ++write;
     }
 
     writeOffset_.store(write, std::memory_order_release);
+    peakCompletedBlocks_.store(completedBlocks, std::memory_order_release);
+    currentPeakBlockSamples_.store(currentPeakSamples, std::memory_order_release);
+    currentPeakBlockMax_.store(currentPeakMax, std::memory_order_release);
 }
 
 void RetrospectiveCaptureNode::setCaptureSeconds(float seconds) {
@@ -67,6 +88,7 @@ float RetrospectiveCaptureNode::getCaptureSeconds() const {
 void RetrospectiveCaptureNode::clear() {
     std::lock_guard<std::mutex> lock(bufferMutex_);
     captureBuffer_.clear();
+    resetPeakStateLocked(captureSize_.load(std::memory_order_acquire));
     writeOffset_.store(0, std::memory_order_release);
 }
 
@@ -134,12 +156,21 @@ void RetrospectiveCaptureNode::ensureBuffer(float sampleRate) {
     captureSize_.store(target, std::memory_order_release);
     captureBuffer_.setSize(numChannels_, target, false, true, true);
     captureBuffer_.clear();
+    resetPeakStateLocked(target);
     writeOffset_.store(0, std::memory_order_release);
+}
+
+void RetrospectiveCaptureNode::resetPeakStateLocked(int captureSize) {
+    const int peakCapacity = juce::jmax(1, (captureSize + kPeakBlockSize - 1) / kPeakBlockSize + 2);
+    peakBuffer_.assign(static_cast<size_t>(peakCapacity), 0.0f);
+    peakBufferSize_.store(peakCapacity, std::memory_order_release);
+    peakCompletedBlocks_.store(0, std::memory_order_release);
+    currentPeakBlockSamples_.store(0, std::memory_order_release);
+    currentPeakBlockMax_.store(0.0f, std::memory_order_release);
 }
 
 std::vector<float> RetrospectiveCaptureNode::computePeaks(int startAgo, int endAgo, int numBuckets) const {
     std::vector<float> result;
-    // Lock-free: snapshot atomic values, then read without mutex
     const int size = captureSize_.load(std::memory_order_acquire);
     if (numBuckets <= 0 || size <= 0) {
         return result;
@@ -155,9 +186,47 @@ std::vector<float> RetrospectiveCaptureNode::computePeaks(int startAgo, int endA
     const int bucketSize = juce::jmax(1, viewSamples / numBuckets);
     result.resize(static_cast<size_t>(numBuckets), 0.0f);
 
-    // Snapshot write position atomically - may be slightly stale but consistent
     const int writePos = writeOffset_.load(std::memory_order_acquire);
     const int numCh = captureBuffer_.getNumChannels();
+    const int peakCapacity = peakBufferSize_.load(std::memory_order_acquire);
+    const int completedBlocks = peakCompletedBlocks_.load(std::memory_order_acquire);
+    const int currentPeakSamples = currentPeakBlockSamples_.load(std::memory_order_acquire);
+    const float currentPeakMax = currentPeakBlockMax_.load(std::memory_order_acquire);
+    const bool usePeakBuffer = peakCapacity > 0 && bucketSize >= kPeakBlockSize;
+
+    const auto scanAbsoluteRange = [this, size, numCh](int absStart, int absEnd) -> float {
+        if (absEnd <= absStart || numCh <= 0 || size <= 0) {
+            return 0.0f;
+        }
+
+        absStart = juce::jmax(0, absStart);
+        absEnd = juce::jmax(absStart, absEnd);
+        if (absEnd <= absStart) {
+            return 0.0f;
+        }
+
+        const int length = absEnd - absStart;
+        const int startIdx = absStart % size;
+        float peak = 0.0f;
+
+        const auto scanSegment = [this, numCh, &peak](int segmentStart, int segmentLength) {
+            if (segmentLength <= 0) {
+                return;
+            }
+
+            for (int ch = 0; ch < numCh; ++ch) {
+                const float* channelData = captureBuffer_.getReadPointer(ch);
+                for (int i = 0; i < segmentLength; ++i) {
+                    peak = std::max(peak, std::abs(channelData[segmentStart + i]));
+                }
+            }
+        };
+
+        const int firstLength = juce::jmin(length, size - startIdx);
+        scanSegment(startIdx, firstLength);
+        scanSegment(0, length - firstLength);
+        return peak;
+    };
 
     for (int b = 0; b < numBuckets; ++b) {
         // Iterate in reverse order to match BehaviorCoreProcessor::computeCapturePeaks
@@ -168,19 +237,48 @@ std::vector<float> RetrospectiveCaptureNode::computePeaks(int startAgo, int endA
                             : 0.0f;
         const int bucketStart = start + static_cast<int>(std::round(t * static_cast<float>(viewSamples - 1)));
         const int bucketEnd = juce::jmin(bucketStart + bucketSize, end);
+        if (bucketEnd <= bucketStart) {
+            continue;
+        }
+
+        const int absStart = juce::jmax(0, writePos - bucketEnd);
+        const int absEnd = juce::jmax(0, writePos - bucketStart);
+        if (absEnd <= absStart) {
+            continue;
+        }
 
         float peak = 0.0f;
-        for (int s = bucketStart; s < bucketEnd; ++s) {
-            // Calculate actual index in circular buffer using modulo
-            int idx = (writePos - 1 - s) % size;
-            if (idx < 0) idx += size;
+        if (usePeakBuffer) {
+            const int firstBlock = absStart / kPeakBlockSize;
+            const int lastBlock = (absEnd - 1) / kPeakBlockSize;
 
-            for (int ch = 0; ch < numCh; ++ch) {
-                // Lock-free read - may occasionally be torn during buffer resize,
-                // but that's acceptable for visualization
-                peak = std::max(peak, std::abs(captureBuffer_.getSample(ch, idx)));
+            for (int block = firstBlock; block <= lastBlock; ++block) {
+                const int blockStart = block * kPeakBlockSize;
+                const int blockEnd = blockStart + kPeakBlockSize;
+                const int overlapStart = juce::jmax(absStart, blockStart);
+                const int overlapEnd = juce::jmin(absEnd, blockEnd);
+                if (overlapEnd <= overlapStart) {
+                    continue;
+                }
+
+                const bool fullBlock = overlapStart == blockStart && overlapEnd == blockEnd;
+                if (fullBlock) {
+                    if (block < completedBlocks) {
+                        peak = std::max(peak, peakBuffer_[static_cast<size_t>(block % peakCapacity)]);
+                        continue;
+                    }
+                    if (block == completedBlocks && currentPeakSamples > 0) {
+                        peak = std::max(peak, currentPeakMax);
+                        continue;
+                    }
+                }
+
+                peak = std::max(peak, scanAbsoluteRange(overlapStart, overlapEnd));
             }
+        } else {
+            peak = scanAbsoluteRange(absStart, absEnd);
         }
+
         result[static_cast<size_t>(b)] = peak;
     }
 

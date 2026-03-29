@@ -25,6 +25,7 @@
 #include "dsp/core/nodes/StereoWidenerNode.h"
 #include "dsp/core/nodes/PhaserNode.h"
 #include "dsp/core/nodes/GranulatorNode.h"
+#include "dsp/core/nodes/PhaseVocoderNode.h"
 #include "dsp/core/nodes/StutterNode.h"
 #include "dsp/core/nodes/ShimmerNode.h"
 #include "dsp/core/nodes/MultitapDelayNode.h"

@@ -7,6 +7,8 @@
 
 namespace dsp_primitives {
 
+struct WaveAddTableSet;
+
 // Build partials from waveform recipe for morph mode
 PartialData buildWavePartials(int waveform, float fundamental, int partialCount, float tilt, float drift, float pulseWidth = 0.5f);
 
@@ -35,11 +37,11 @@ public:
     void setDriveMix(float mix) { driveMix_.store(juce::jlimit(0.0f, 1.0f, mix), std::memory_order_release); }
     void setRenderMode(int mode) { renderMode_.store(juce::jlimit(0, 1, mode), std::memory_order_release); }
     int getRenderMode() const { return renderMode_.load(std::memory_order_acquire); }
-    void setAdditivePartials(int count) { additivePartials_.store(juce::jlimit(1, 12, count), std::memory_order_release); }
+    void setAdditivePartials(int count);
     int getAdditivePartials() const { return additivePartials_.load(std::memory_order_acquire); }
-    void setAdditiveTilt(float tilt) { additiveTilt_.store(juce::jlimit(-1.0f, 1.0f, tilt), std::memory_order_release); }
+    void setAdditiveTilt(float tilt);
     float getAdditiveTilt() const { return additiveTilt_.load(std::memory_order_acquire); }
-    void setAdditiveDrift(float drift) { additiveDrift_.store(juce::jlimit(0.0f, 1.0f, drift), std::memory_order_release); }
+    void setAdditiveDrift(float drift);
     float getAdditiveDrift() const { return additiveDrift_.load(std::memory_order_acquire); }
     void setSyncEnabled(bool en) { syncEnabled_.store(en, std::memory_order_release); }
     bool isSyncEnabled() const { return syncEnabled_.load(std::memory_order_acquire); }
@@ -53,11 +55,11 @@ public:
     int getWaveform() const { return waveform_.load(std::memory_order_acquire); }
 
     // Pulse width for pulse waveform (0.0 to 1.0, default 0.5 = square)
-    void setPulseWidth(float width) { pulseWidth_.store(juce::jlimit(0.01f, 0.99f, width), std::memory_order_release); }
+    void setPulseWidth(float width);
     float getPulseWidth() const { return pulseWidth_.load(std::memory_order_acquire); }
 
     // Unison settings for supersaw and rich tones
-    void setUnison(int voices) { unisonVoices_.store(juce::jlimit(1, 8, voices), std::memory_order_release); }
+    void setUnison(int voices);
     void setDetune(float cents) { detuneCents_.store(juce::jlimit(0.0f, 100.0f, cents), std::memory_order_release); }
     void setSpread(float amount) { stereoSpread_.store(juce::jlimit(0.0f, 1.0f, amount), std::memory_order_release); }
     int getUnison() const { return unisonVoices_.load(std::memory_order_acquire); }
@@ -107,6 +109,10 @@ private:
     // Hard-sync
     std::atomic<bool> syncEnabled_{false};
     float prevSyncSample_ = 0.0f;
+
+    std::shared_ptr<const WaveAddTableSet> waveAddTableSet_;
+
+    void refreshWaveAddTableSet();
 };
 
 } // namespace dsp_primitives

@@ -1,3 +1,7 @@
+-- Legacy source panel UI.
+--
+-- Historical note: this file is not oscillator-only. It is the broader
+-- source section UI for wave/sample/blend modes.
 return {
   id = "oscRoot",
   type = "Panel",
@@ -13,7 +17,7 @@ return {
     }
   },
   children = {
-    { id = "title", type = "Label", x = 16, y = 8, w = 200, h = 14, props = { text = "OSCILLATOR" }, style = { colour = 0xff7dd3fc, fontSize = 12 } },
+    { id = "title", type = "Label", x = 16, y = 8, w = 200, h = 14, props = { text = "SOURCE" }, style = { colour = 0xff7dd3fc, fontSize = 12 } },
 
     -- Graph on left (filled by behavior)
     { id = "osc_graph", type = "Panel", x = 10, y = 28, w = 270, h = 164, style = { bg = 0xff0d1420, border = 0xff1a1a3a, borderWidth = 1, radius = 6 } },

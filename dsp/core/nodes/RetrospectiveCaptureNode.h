@@ -7,6 +7,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace dsp_primitives {
 
@@ -46,13 +47,21 @@ public:
     std::vector<float> computePeaks(int startAgo, int endAgo, int numBuckets) const;
 
 private:
+    static constexpr int kPeakBlockSize = 64;
+
     void ensureBuffer(float sampleRate);
+    void resetPeakStateLocked(int captureSize);
 
     int numChannels_ = 2;
     juce::AudioBuffer<float> captureBuffer_;
+    std::vector<float> peakBuffer_;
     mutable std::mutex bufferMutex_;  // Only for allocation/resizing
     std::atomic<int> captureSize_{1};  // Atomic for lock-free reads
+    std::atomic<int> peakBufferSize_{1};
     std::atomic<int> writeOffset_{0};
+    std::atomic<int> peakCompletedBlocks_{0};
+    std::atomic<int> currentPeakBlockSamples_{0};
+    std::atomic<float> currentPeakBlockMax_{0.0f};
     std::atomic<float> captureSeconds_{30.0f};
     double sampleRate_ = 44100.0;
 };

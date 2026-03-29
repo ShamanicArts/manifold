@@ -6,12 +6,19 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <cstdint>
+#include <mutex>
+#include <unordered_map>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
 namespace dsp_primitives {
+
+struct WaveAddTableSet {
+    std::array<std::array<float, 2048 + 1>, 20> bands{};
+};
 
 namespace {
 constexpr int kMaxAdditiveHarmonics = 12;
@@ -51,6 +58,94 @@ constexpr std::array<SuperSawLayer, 5> kSuperSawLayers = {{
     { 8.0f, 0.79f, 0.33 },
     { 19.0f, 0.50f, 0.74 },
 }};
+
+constexpr int kWaveAddTableSize = 2048;
+constexpr int kWaveAddBandCount = 20;
+constexpr int kWaveAddQuantizeScale = 100;
+
+struct WaveAddRecipeKey {
+    int sampleRate = 44100;
+    int waveform = 0;
+    int partialCount = 8;
+    int tiltQ = 0;
+    int driftQ = 0;
+    int pulseWidthQ = 50;
+
+    bool operator==(const WaveAddRecipeKey& other) const {
+        return sampleRate == other.sampleRate
+            && waveform == other.waveform
+            && partialCount == other.partialCount
+            && tiltQ == other.tiltQ
+            && driftQ == other.driftQ
+            && pulseWidthQ == other.pulseWidthQ;
+    }
+};
+
+struct WaveAddRecipeKeyHasher {
+    std::size_t operator()(const WaveAddRecipeKey& key) const noexcept {
+        std::size_t hash = 1469598103934665603ull;
+        auto mix = [&hash](std::uint64_t value) {
+            hash ^= static_cast<std::size_t>(value);
+            hash *= 1099511628211ull;
+        };
+        mix(static_cast<std::uint64_t>(key.sampleRate));
+        mix(static_cast<std::uint64_t>(key.waveform));
+        mix(static_cast<std::uint64_t>(key.partialCount));
+        mix(static_cast<std::uint64_t>(key.tiltQ));
+        mix(static_cast<std::uint64_t>(key.driftQ));
+        mix(static_cast<std::uint64_t>(key.pulseWidthQ));
+        return hash;
+    }
+};
+
+std::mutex gWaveAddTableCacheMutex;
+std::unordered_map<WaveAddRecipeKey, std::weak_ptr<const WaveAddTableSet>, WaveAddRecipeKeyHasher> gWaveAddTableCache;
+
+inline int quantizeWaveAddValue(float value, float minimum, float maximum) {
+    const float clamped = juce::jlimit(minimum, maximum, value);
+    return static_cast<int>(std::lround(clamped * static_cast<float>(kWaveAddQuantizeScale)));
+}
+
+inline float dequantizeWaveAddValue(int value) {
+    return static_cast<float>(value) / static_cast<float>(kWaveAddQuantizeScale);
+}
+
+inline WaveAddRecipeKey makeWaveAddRecipeKey(int waveform,
+                                             int partialCount,
+                                             float tilt,
+                                             float drift,
+                                             float pulseWidth,
+                                             double sampleRate) {
+    WaveAddRecipeKey key;
+    key.sampleRate = static_cast<int>(std::lround(sampleRate > 1.0 ? sampleRate : 44100.0));
+    key.waveform = juce::jlimit(0, 7, waveform);
+    key.partialCount = juce::jlimit(1, kMaxAdditiveHarmonics, partialCount);
+    key.tiltQ = quantizeWaveAddValue(tilt, -1.0f, 1.0f);
+    key.driftQ = quantizeWaveAddValue(drift, 0.0f, 1.0f);
+    key.pulseWidthQ = quantizeWaveAddValue(pulseWidth, 0.01f, 0.99f);
+    return key;
+}
+
+inline int waveAddBandIndexForFrequency(float frequency, double sampleRate) {
+    const float safeFrequency = std::max(1.0f, std::abs(frequency));
+    const float maxRatio = std::max(1.0f, static_cast<float>((sampleRate * 0.475) / safeFrequency));
+    const int ratioBucket = static_cast<int>(std::floor(std::min(maxRatio, static_cast<float>(kWaveAddBandCount))));
+    return juce::jlimit(0, kWaveAddBandCount - 1, ratioBucket - 1);
+}
+
+inline float lookupWaveAddSample(const WaveAddTableSet& tableSet, float phaseNorm, int bandIndex) {
+    const float wrappedPhase = [] (float phase) {
+        const float wrapped = std::fmod(phase, 1.0f);
+        return wrapped < 0.0f ? wrapped + 1.0f : wrapped;
+    }(phaseNorm);
+    const float position = wrappedPhase * static_cast<float>(kWaveAddTableSize);
+    const int index = juce::jlimit(0, kWaveAddTableSize - 1, static_cast<int>(position));
+    const float frac = position - static_cast<float>(index);
+    const auto& band = tableSet.bands[static_cast<std::size_t>(juce::jlimit(0, kWaveAddBandCount - 1, bandIndex))];
+    const float a = band[static_cast<std::size_t>(index)];
+    const float b = band[static_cast<std::size_t>(index + 1)];
+    return a + (b - a) * frac;
+}
 
 inline float foldToUnit(float x) {
     x = juce::jlimit(-32.0f, 32.0f, x);
@@ -297,15 +392,15 @@ inline float additivePulseSample(float phaseNorm, int harmonicLimit, float pulse
     return amplitudeSum > 1.0e-6f ? sum / amplitudeSum : 0.0f;
 }
 
-inline float additiveSuperSawSample(float phaseNorm, float baseFrequency, double sampleRate, const AdditiveShapeControls& controls) {
+inline float additiveSuperSawSampleFromRatioLimit(float phaseNorm, float maxRatio, const AdditiveShapeControls& controls) {
     float sum = 0.0f;
     float amplitudeSum = 0.0f;
     const int layerLimit = juce::jlimit(1, static_cast<int>(kSuperSawLayers.size()), controls.partialCount);
     for (int layerIndex = 0; layerIndex < layerLimit; ++layerIndex) {
         const auto& layer = kSuperSawLayers[static_cast<std::size_t>(layerIndex)];
         const double detuneRatio = std::pow(2.0, static_cast<double>(layer.detuneCents) / 1200.0);
-        const float layerFrequency = baseFrequency * static_cast<float>(detuneRatio);
-        const int harmonicLimit = additiveHarmonicLimit(layerFrequency, sampleRate);
+        const float layerRatioLimit = std::max(1.0f, maxRatio / static_cast<float>(detuneRatio));
+        const int harmonicLimit = juce::jlimit(1, kMaxAdditiveHarmonics, static_cast<int>(std::floor(layerRatioLimit)));
         const float layerPhase = wrapPhase01(phaseNorm * static_cast<float>(detuneRatio)
                                              + static_cast<float>(layer.phaseOffset / kTwoPi));
         const float sample = additiveSawSample(layerPhase, harmonicLimit, controls);
@@ -315,22 +410,12 @@ inline float additiveSuperSawSample(float phaseNorm, float baseFrequency, double
     return amplitudeSum > 1.0e-6f ? sum / amplitudeSum : 0.0f;
 }
 
-inline float additiveRecipeSample(int waveform,
-                                  float phaseNorm,
-                                  float baseFrequency,
-                                  double sampleRate,
-                                  float pulseWidth,
-                                  int partialCount,
-                                  float tilt,
-                                  float drift) {
-    const int harmonicLimit = additiveHarmonicLimit(baseFrequency, sampleRate);
-    const float maxRatio = std::max(1.0f, static_cast<float>((sampleRate * 0.475) / std::max(1.0f, std::abs(baseFrequency))));
-    const AdditiveShapeControls controls {
-        juce::jlimit(1, kMaxAdditiveHarmonics, partialCount),
-        juce::jlimit(-1.0f, 1.0f, tilt),
-        juce::jlimit(0.0f, 1.0f, drift),
-        waveform,
-    };
+inline float additiveRecipeSampleFromRatioLimit(int waveform,
+                                                float phaseNorm,
+                                                float maxRatio,
+                                                float pulseWidth,
+                                                const AdditiveShapeControls& controls) {
+    const int harmonicLimit = juce::jlimit(1, kMaxAdditiveHarmonics, static_cast<int>(std::floor(std::max(1.0f, maxRatio))));
 
     float sample = 0.0f;
     switch (waveform) {
@@ -356,7 +441,7 @@ inline float additiveRecipeSample(int waveform,
             sample = additivePulseSample(phaseNorm, harmonicLimit, pulseWidth, controls);
             break;
         case 7:
-            sample = additiveSuperSawSample(phaseNorm, baseFrequency, sampleRate, controls);
+            sample = additiveSuperSawSampleFromRatioLimit(phaseNorm, maxRatio, controls);
             break;
         default:
             sample = static_cast<float>(std::sin(kTwoPi * static_cast<double>(phaseNorm)));
@@ -367,16 +452,134 @@ inline float additiveRecipeSample(int waveform,
     const float driftComp = 1.0f - controls.drift * 0.08f;
     return juce::jlimit(-1.0f, 1.0f, sample * additiveOutputTrim(waveform) * tiltComp * driftComp);
 }
+
+inline float additiveRecipeSample(int waveform,
+                                  float phaseNorm,
+                                  float baseFrequency,
+                                  double sampleRate,
+                                  float pulseWidth,
+                                  int partialCount,
+                                  float tilt,
+                                  float drift) {
+    const float maxRatio = std::max(1.0f, static_cast<float>((sampleRate * 0.475) / std::max(1.0f, std::abs(baseFrequency))));
+    const AdditiveShapeControls controls {
+        juce::jlimit(1, kMaxAdditiveHarmonics, partialCount),
+        juce::jlimit(-1.0f, 1.0f, tilt),
+        juce::jlimit(0.0f, 1.0f, drift),
+        waveform,
+    };
+    return additiveRecipeSampleFromRatioLimit(waveform, phaseNorm, maxRatio, pulseWidth, controls);
+}
+
+std::shared_ptr<const WaveAddTableSet> buildWaveAddTableSet(const WaveAddRecipeKey& key) {
+    auto tableSet = std::make_shared<WaveAddTableSet>();
+
+    const AdditiveShapeControls controls {
+        juce::jlimit(1, kMaxAdditiveHarmonics, key.partialCount),
+        juce::jlimit(-1.0f, 1.0f, dequantizeWaveAddValue(key.tiltQ)),
+        juce::jlimit(0.0f, 1.0f, dequantizeWaveAddValue(key.driftQ)),
+        key.waveform,
+    };
+    const float pulseWidth = juce::jlimit(0.01f, 0.99f, dequantizeWaveAddValue(key.pulseWidthQ));
+
+    for (int bandIndex = 0; bandIndex < kWaveAddBandCount; ++bandIndex) {
+        const float maxRatio = static_cast<float>(bandIndex + 1);
+        auto& band = tableSet->bands[static_cast<std::size_t>(bandIndex)];
+        for (int sampleIndex = 0; sampleIndex < kWaveAddTableSize; ++sampleIndex) {
+            const float phaseNorm = static_cast<float>(sampleIndex) / static_cast<float>(kWaveAddTableSize);
+            band[static_cast<std::size_t>(sampleIndex)] = additiveRecipeSampleFromRatioLimit(key.waveform,
+                                                                                            phaseNorm,
+                                                                                            maxRatio,
+                                                                                            pulseWidth,
+                                                                                            controls);
+        }
+        band[static_cast<std::size_t>(kWaveAddTableSize)] = band[0];
+    }
+
+    return tableSet;
+}
+
+std::shared_ptr<const WaveAddTableSet> getOrCreateWaveAddTableSet(const WaveAddRecipeKey& key) {
+    {
+        const std::lock_guard<std::mutex> lock(gWaveAddTableCacheMutex);
+        const auto found = gWaveAddTableCache.find(key);
+        if (found != gWaveAddTableCache.end()) {
+            if (auto cached = found->second.lock()) {
+                return cached;
+            }
+        }
+    }
+
+    auto fresh = buildWaveAddTableSet(key);
+
+    const std::lock_guard<std::mutex> lock(gWaveAddTableCacheMutex);
+    const auto found = gWaveAddTableCache.find(key);
+    if (found != gWaveAddTableCache.end()) {
+        if (auto cached = found->second.lock()) {
+            return cached;
+        }
+        found->second = fresh;
+        return fresh;
+    }
+
+    for (auto it = gWaveAddTableCache.begin(); it != gWaveAddTableCache.end(); ) {
+        if (it->second.expired()) {
+            it = gWaveAddTableCache.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    gWaveAddTableCache.emplace(key, fresh);
+    return fresh;
+}
 } // namespace
 
-OscillatorNode::OscillatorNode() = default;
+OscillatorNode::OscillatorNode() {
+    refreshWaveAddTableSet();
+}
 
 void OscillatorNode::setFrequency(float freq) {
     targetFrequency_.store(juce::jlimit(1.0f, 20000.0f, freq), std::memory_order_release);
 }
 
+void OscillatorNode::refreshWaveAddTableSet() {
+    const auto key = makeWaveAddRecipeKey(waveform_.load(std::memory_order_acquire),
+                                          additivePartials_.load(std::memory_order_acquire),
+                                          additiveTilt_.load(std::memory_order_acquire),
+                                          additiveDrift_.load(std::memory_order_acquire),
+                                          pulseWidth_.load(std::memory_order_acquire),
+                                          sampleRate_);
+    auto tableSet = getOrCreateWaveAddTableSet(key);
+    std::atomic_store_explicit(&waveAddTableSet_, std::move(tableSet), std::memory_order_release);
+}
+
 void OscillatorNode::setWaveform(int shape) {
     waveform_.store(juce::jlimit(0, 7, shape), std::memory_order_release);
+    refreshWaveAddTableSet();
+}
+
+void OscillatorNode::setAdditivePartials(int count) {
+    additivePartials_.store(juce::jlimit(1, 12, count), std::memory_order_release);
+    refreshWaveAddTableSet();
+}
+
+void OscillatorNode::setAdditiveTilt(float tilt) {
+    additiveTilt_.store(juce::jlimit(-1.0f, 1.0f, tilt), std::memory_order_release);
+    refreshWaveAddTableSet();
+}
+
+void OscillatorNode::setAdditiveDrift(float drift) {
+    additiveDrift_.store(juce::jlimit(0.0f, 1.0f, drift), std::memory_order_release);
+    refreshWaveAddTableSet();
+}
+
+void OscillatorNode::setPulseWidth(float width) {
+    pulseWidth_.store(juce::jlimit(0.01f, 0.99f, width), std::memory_order_release);
+    refreshWaveAddTableSet();
+}
+
+void OscillatorNode::setUnison(int voices) {
+    unisonVoices_.store(juce::jlimit(1, 8, voices), std::memory_order_release);
 }
 
 void OscillatorNode::resetPhase() {
@@ -418,13 +621,15 @@ void OscillatorNode::prepare(double sampleRate, int maxBlockSize) {
     currentRenderMix_ = renderMode_.load(std::memory_order_acquire) == 1 ? 1.0f : 0.0f;
     currentDetuneCents_ = detuneCents_.load(std::memory_order_acquire);
     currentSpread_ = stereoSpread_.load(std::memory_order_acquire);
+    refreshWaveAddTableSet();
     resetPhase();
 }
 
 void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
                              std::vector<WritableAudioBufferView>& outputs,
                              int numSamples) {
-    if (outputs.empty() || !enabled_.load(std::memory_order_acquire)) {
+    const bool enabled = enabled_.load(std::memory_order_acquire);
+    if (outputs.empty() || !enabled) {
         if (!outputs.empty()) outputs[0].clear();
         return;
     }
@@ -436,9 +641,7 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
     const int wf = waveform_.load(std::memory_order_acquire);
     const float targetRenderMix = renderMode_.load(std::memory_order_acquire) == 1 ? 1.0f : 0.0f;
     const float targetFreq = targetFrequency_.load(std::memory_order_acquire);
-    const float targetAmp = enabled_.load(std::memory_order_acquire)
-                                ? targetAmplitude_.load(std::memory_order_acquire)
-                                : 0.0f;
+    const float targetAmp = enabled ? targetAmplitude_.load(std::memory_order_acquire) : 0.0f;
     const float drive = drive_.load(std::memory_order_acquire);
     const int driveShape = driveShape_.load(std::memory_order_acquire);
     const int additivePartials = additivePartials_.load(std::memory_order_acquire);
@@ -448,16 +651,45 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
     const float driveMix = driveMix_.load(std::memory_order_acquire);
     const float pulseWidthNorm = pulseWidth_.load(std::memory_order_acquire);
     const float pulseWidthPhase = pulseWidthNorm * static_cast<float>(kTwoPi);
-    const int targetUnison = unisonVoices_.load(std::memory_order_acquire);
-    const float targetDetuneCents = detuneCents_.load(std::memory_order_acquire);
-    const float targetSpread = stereoSpread_.load(std::memory_order_acquire);
+    const int requestedUnison = unisonVoices_.load(std::memory_order_acquire);
+    const float requestedDetuneCents = detuneCents_.load(std::memory_order_acquire);
+    const float requestedSpread = stereoSpread_.load(std::memory_order_acquire);
+    const auto waveAddTables = std::atomic_load_explicit(&waveAddTableSet_, std::memory_order_acquire);
+
+    // Wave-tab Add is the expensive additive recipe path. Raw 8-voice unison on top of
+    // additive harmonic synthesis is just a CPU bomb, so remap it to a cheaper but still
+    // musically sensible behaviour here instead of letting the whole project crackle.
+    const bool additiveWaveMode = (targetRenderMix >= 0.5f) || (currentRenderMix_ >= 0.5f);
+    int targetUnison = requestedUnison;
+    float targetDetuneCents = requestedDetuneCents;
+    float targetSpread = requestedSpread;
+    const int effectiveAdditivePartials = additivePartials;
+    if (additiveWaveMode) {
+        constexpr int kAdditiveUnisonCap = 3;
+        targetUnison = juce::jlimit(1, kAdditiveUnisonCap, requestedUnison);
+        if (requestedUnison > targetUnison) {
+            const float extra = static_cast<float>(requestedUnison - targetUnison)
+                / static_cast<float>(juce::jmax(1, 8 - targetUnison));
+            targetDetuneCents = juce::jlimit(0.0f, 100.0f, requestedDetuneCents * (1.0f + extra * 1.15f));
+            targetSpread = juce::jlimit(0.0f, 1.0f, requestedSpread + extra * 0.35f);
+        }
+    }
+
+    int layoutUnison = lastRequestedUnison_;
     if (targetUnison > lastRequestedUnison_) {
         for (int v = lastRequestedUnison_; v < targetUnison; ++v) {
             unisonPhases_[v] = phase_;
             unisonVoiceGains_[v] = 0.0f;
         }
+        lastRequestedUnison_ = targetUnison;
+        layoutUnison = targetUnison;
+    } else {
+        layoutUnison = juce::jmax(targetUnison, lastRequestedUnison_);
     }
-    lastRequestedUnison_ = targetUnison;
+
+    const int voiceLimit = juce::jlimit(1, 8, layoutUnison);
+    const int placementCount = juce::jmax(1, layoutUnison);
+    const float placementCenter = (static_cast<float>(placementCount) - 1.0f) * 0.5f;
 
     for (int i = 0; i < numSamples; ++i) {
         if (hasSyncInput) {
@@ -482,17 +714,21 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
         float rightSample = 0.0f;
         int contributingVoices = 0;
 
-        for (int v = 0; v < 8; ++v) {
+        bool higherVoicesStillActive = false;
+        for (int v = 0; v < voiceLimit; ++v) {
             const float targetVoiceGain = (v < targetUnison) ? 1.0f : 0.0f;
             unisonVoiceGains_[v] += (targetVoiceGain - unisonVoiceGains_[v]) * unisonVoiceSmoothingCoeff_;
             const float voiceGain = unisonVoiceGains_[v];
+            if (v >= targetUnison && voiceGain > 1.0e-4f) {
+                higherVoicesStillActive = true;
+            }
             if (voiceGain <= 1.0e-4f) {
                 continue;
             }
             ++contributingVoices;
 
-            const float center = (static_cast<float>(targetUnison) - 1.0f) * 0.5f;
-            const float detuneAmount = (static_cast<float>(v) - center) * currentDetuneCents_ / 100.0f;
+            const float voiceOffset = static_cast<float>(v) - placementCenter;
+            const float detuneAmount = voiceOffset * currentDetuneCents_ / 100.0f;
             const double freqMult = std::pow(2.0, detuneAmount / 12.0);
             const double voicePhaseInc = phaseIncrement * freqMult;
             const float voiceFrequency = currentFrequency_ * static_cast<float>(freqMult);
@@ -500,23 +736,35 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
             double& voicePhase = (v == 0) ? phase_ : unisonPhases_[v];
             const float phaseNorm = static_cast<float>(voicePhase / kTwoPi);
 
+            const auto renderAdditiveSample = [&]() {
+                if (waveAddTables) {
+                    const int bandIndex = waveAddBandIndexForFrequency(voiceFrequency, sampleRate_);
+                    return lookupWaveAddSample(*waveAddTables, phaseNorm, bandIndex);
+                }
+                return additiveRecipeSample(wf, phaseNorm, voiceFrequency, sampleRate_, pulseWidthNorm,
+                                            effectiveAdditivePartials, additiveTilt, additiveDrift);
+            };
+
             float waveformSample = 0.0f;
             if (renderMix <= 0.0001f) {
                 waveformSample = standardWaveformSample(wf, voicePhase, pulseWidthPhase);
             } else if (renderMix >= 0.9999f) {
-                waveformSample = additiveRecipeSample(wf, phaseNorm, voiceFrequency, sampleRate_, pulseWidthNorm,
-                                                      additivePartials, additiveTilt, additiveDrift);
+                waveformSample = renderAdditiveSample();
             } else {
                 const float standardSample = standardWaveformSample(wf, voicePhase, pulseWidthPhase);
-                const float additiveSample = additiveRecipeSample(wf, phaseNorm, voiceFrequency, sampleRate_, pulseWidthNorm,
-                                                                 additivePartials, additiveTilt, additiveDrift);
+                const float additiveSample = renderAdditiveSample();
                 waveformSample = standardSample + (additiveSample - standardSample) * renderMix;
             }
 
             waveformSample = applyDriveShape(waveformSample, drive, driveShape, driveBias, driveMix);
+            if (!std::isfinite(waveformSample)) {
+                waveformSample = 0.0f;
+            }
             waveformSample *= voiceGain;
 
-            const float pan = 0.5f + (static_cast<float>(v) - center) * currentSpread_ / static_cast<float>(juce::jmax(1, targetUnison));
+            const float pan = juce::jlimit(0.0f,
+                                           1.0f,
+                                           0.5f + voiceOffset * currentSpread_ / static_cast<float>(juce::jmax(1, placementCount)));
             const float leftPan = std::sqrt(1.0f - pan);
             const float rightPan = std::sqrt(pan);
 
@@ -532,9 +780,19 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
             }
         }
 
+        if (!higherVoicesStillActive) {
+            lastRequestedUnison_ = targetUnison;
+        }
+
         const float normGain = (contributingVoices > 0) ? (1.0f / std::sqrt(static_cast<float>(contributingVoices))) : 0.0f;
         leftSample *= normGain * currentAmplitude_;
         rightSample *= normGain * currentAmplitude_;
+        if (!std::isfinite(leftSample)) {
+            leftSample = 0.0f;
+        }
+        if (!std::isfinite(rightSample)) {
+            rightSample = 0.0f;
+        }
 
         if (out.numChannels >= 2) {
             out.setSample(0, i, leftSample);
