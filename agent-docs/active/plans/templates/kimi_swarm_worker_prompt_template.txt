@@ -1,0 +1,128 @@
+<file name="/tmp/rack_module_swarm_prompts/<index>_kimi-<letter>.txt">
+You own one rack module implementation as an **end-to-end vertical slice**.
+
+Owned module-local files:
+- UserScripts/projects/Main/lib/<module>_runtime.lua
+- UserScripts/projects/Main/ui/behaviors/<module>.lua
+- UserScripts/projects/Main/ui/components/<module>.ui.lua
+- UserScripts/projects/Main/ui/tests/test_<module>.lua
+
+Allowed shared integration files, but only for module-specific edits:
+- UserScripts/projects/Main/ui/behaviors/rack_midisynth_specs.lua
+- UserScripts/projects/Main/lib/ui/rack_module_factory.lua
+- UserScripts/projects/Main/ui/behaviors/midisynth.lua
+- UserScripts/projects/Main/ui/components/midisynth_view.ui.lua when the palette/nav UI uses fixed widgets and your module needs a real card/button to be reachable
+- UserScripts/projects/Main/lib/parameter_binder.lua when genuinely required
+- UserScripts/projects/Main/lib/modulation/runtime.lua for scalar/control routing support only
+
+Task:
+Implement the assigned rack module so the commit is reviewable **by itself**.
+That means the module must:
+- exist as a rack spec,
+- appear in the palette,
+- include any fixed palette/nav UI widget additions needed to actually render that palette entry,
+- be draggable/spawnable into the rack,
+- have binder + remap coverage for live params,
+- and have its runtime/UI wired end to end.
+
+Module:
+- ID: <module_id>
+- Name: <module_name>
+- Category: <voice|mod|analysis>
+- Kind: <VOICE->VOICE | scalar->scalar | multi-input scalar | audio->control>
+- Goal: <one sentence>
+- Spawn kind: <spawn_kind>
+- Component id: <component_id>
+- Palette card id: <palette_card_id>
+- Nav button id: <nav_button_id>
+- No-free status text: <status_text>
+
+Ports:
+Inputs:
+- <port>
+Outputs:
+- <port>
+
+Params:
+- <param>
+- <param>
+- <param>
+
+Runtime behavior:
+- <behavior rule>
+- <behavior rule>
+- <behavior rule>
+
+Routing recipe to validate:
+- <explicit route recipe using your ports>
+
+UI contract:
+- 1x1 only unless brief explicitly says otherwise
+- minimal controls only
+- no custom graph unless brief explicitly says otherwise
+- obey shared shell
+- patch and perf semantics must stay aligned
+- modulatable controls must use the shared modulation-aware display path
+- all coordinates use math.floor()
+
+Critical constraints:
+- Shared-file edits must stay narrowly scoped to your module.
+- Do not edit other workers’ modules.
+- Do not run builds.
+- Do not use shared runtime, IPC, or shared tmux app windows.
+- Do not widen scope into unrelated factory redesign.
+- Do not invent new signal semantics unless the existing contract forces a minimal routing addition for your module.
+- If you touch shared files, keep the diff obvious and module-local.
+
+Required contract surfaces to inspect before editing:
+- UserScripts/projects/Main/ui/behaviors/rack_midisynth_specs.lua
+- UserScripts/projects/Main/lib/ui/rack_module_factory.lua
+- UserScripts/projects/Main/ui/behaviors/midisynth.lua
+- UserScripts/projects/Main/ui/components/midisynth_view.ui.lua if your module needs fixed palette/nav widgets
+- UserScripts/projects/Main/lib/parameter_binder.lua
+- UserScripts/projects/Main/lib/modulation/runtime.lua if your module is scalar/control routed
+
+Dynamic param rule:
+Your module is not done until all three surfaces agree:
+1. front behavior/UI reads and writes the live instance paramBase
+2. parameter_binder.lua contains schema entries for every live dynamic path
+3. rack_midisynth_specs.lua remaps every __template param path onto the live instance base
+
+Useful references:
+- @agent-docs/active/plans/260402_rack_module_swarm_0_plan.md
+- @agent-docs/active/plans/260402_rack_module_factory_refactor_worksheet.md
+- @UserScripts/projects/Main/ui/tests/rack_module_testlib.lua
+- @UserScripts/projects/Main/ui/tests/test_velocity_mapper.lua
+- @UserScripts/projects/Main/ui/tests/test_range_mapper.lua
+- @UserScripts/projects/Main/ui/tests/test_rack_module_contracts.lua
+- @UserScripts/projects/Main/ui/tests/check_rack_module_registration.py
+- @<module_brief_doc>
+- @<factory_reference_file>
+- @<reference_runtime_file>
+
+Validation:
+- run `luac -p` on every Lua file you changed
+- run `lua UserScripts/projects/Main/ui/tests/test_rack_module_contracts.lua`
+- create/update `UserScripts/projects/Main/ui/tests/test_<module>.lua` using `UserScripts/projects/Main/ui/tests/rack_module_testlib.lua`
+- run `lua UserScripts/projects/Main/ui/tests/test_<module>.lua`
+- run `python3 UserScripts/projects/Main/ui/tests/check_rack_module_registration.py --module-id <module_id> --spawn-kind <spawn_kind> --component-id <component_id> --card-id <palette_card_id> --nav-id <nav_button_id> --status-text "<status_text>"`
+- run `rg` for obvious placeholder TODOs or forbidden symbol drift in changed files
+- verify the diff includes the palette/spec/factory/binder/remap wiring needed for end-to-end review
+
+Report back with:
+1. files changed
+2. implementation summary
+3. validation run with exact commands + outputs
+4. shared files touched and why
+5. unresolved issue / risk
+
+Read this worker brief fully.
+Summarize:
+- your owned module
+- allowed shared files
+- hard constraints
+- contract surfaces you must touch/check
+- end-to-end acceptance target
+- first implementation steps
+Do not edit any files until I send GO.
+</file>
