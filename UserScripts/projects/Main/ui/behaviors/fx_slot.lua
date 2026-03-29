@@ -1,5 +1,7 @@
 -- FX Slot component behavior
 -- XY pad + all real effect params for the selected FX type.
+local ModWidgetSync = require("ui.modulation_widget_sync")
+
 local FxSlotBehavior = {}
 
 local FX_TYPE_NAMES = {
@@ -20,6 +22,10 @@ local FX_TYPE_NAMES = {
   [14] = "EQ",
   [15] = "LIMITER",
   [16] = "TRANSIENT",
+  [17] = "BITCRUSHER",
+  [18] = "SHIMMER",
+  [19] = "REVERSE DELAY",
+  [20] = "STUTTER",
 }
 
 local FX_PARAMS = {
@@ -40,9 +46,42 @@ local FX_PARAMS = {
   [14] = { "Low", "High", "Mid" },
   [15] = { "Threshold", "Drive", "Release", "SoftClip" },
   [16] = { "Attack", "Sustain", "Sensitivity" },
+  [17] = { "Bits", "Rate", "Output" },
+  [18] = { "Size", "Pitch", "Feedback", "Filter" },
+  [19] = { "Time", "Window", "Feedback" },
+  [20] = { "Length", "Gate", "Prob", "Filter" },
 }
 
 local MAX_VISIBLE_PARAMS = 5
+local SYNC_INTERVAL = 0.12
+
+local function clamp(v, lo, hi)
+  local n = tonumber(v) or 0
+  if n < lo then return lo end
+  if n > hi then return hi end
+  return n
+end
+
+local function readParam(path, fallback)
+  if type(_G.getParam) == "function" then
+    local ok, value = pcall(_G.getParam, path)
+    if ok and value ~= nil then
+      return value
+    end
+  end
+  return fallback
+end
+
+local function writeParam(path, value)
+  if type(_G.setParam) == "function" then
+    return _G.setParam(path, tonumber(value) or 0)
+  end
+  if type(command) == "function" then
+    command("SET", path, tostring(value))
+    return true
+  end
+  return false
+end
 
 local function getParamNames(fxType)
   return FX_PARAMS[fxType or 0] or { "Param 1", "Param 2" }
@@ -64,10 +103,111 @@ local function setWidgetVisible(widget, visible)
   end
 end
 
+local function isUsableInstanceNodeId(nodeId)
+  local id = tostring(nodeId or "")
+  if id == "" then
+    return false
+  end
+  if id:match("Component$") or id:match("Content$") or id:match("Shell$") then
+    return false
+  end
+  return true
+end
+
+local function nodeIdFromGlobalId(globalId)
+  local gid = tostring(globalId or "")
+  local shellId = gid:match("%.([^.]+Shell)%.[^.]+$")
+  if shellId == nil then
+    shellId = gid:match("([^.]+Shell)%.[^.]+$")
+  end
+  if type(shellId) == "string" and shellId ~= "" then
+    local nodeId = shellId:gsub("Shell$", "")
+    if isUsableInstanceNodeId(nodeId) then
+      return nodeId
+    end
+  end
+  return nil
+end
+
+local function getInstanceNodeId(ctx)
+  if type(ctx) ~= "table" then
+    return "fx1"
+  end
+  local propsNodeId = ctx.instanceProps and ctx.instanceProps.instanceNodeId or nil
+  if isUsableInstanceNodeId(propsNodeId) then
+    ctx._instanceNodeId = propsNodeId
+    return propsNodeId
+  end
+  if isUsableInstanceNodeId(ctx._instanceNodeId) then
+    return ctx._instanceNodeId
+  end
+
+  local record = ctx.root and ctx.root._structuredRecord or nil
+  local globalId = type(record) == "table" and tostring(record.globalId or "") or ""
+  local nodeId = nodeIdFromGlobalId(globalId)
+  if nodeId ~= nil then
+    ctx._instanceNodeId = nodeId
+    return nodeId
+  end
+
+  local root = ctx.root
+  local node = root and root.node or nil
+  local source = node and node.getUserData and node:getUserData("_structuredInstanceSource") or nil
+  local sourceNodeId = type(source) == "table" and type(source.nodeId) == "string" and source.nodeId or nil
+  if isUsableInstanceNodeId(sourceNodeId) then
+    ctx._instanceNodeId = sourceNodeId
+    return sourceNodeId
+  end
+
+  local sourceGlobalId = type(source) == "table" and tostring(source.globalId or "") or ""
+  nodeId = nodeIdFromGlobalId(sourceGlobalId)
+  if nodeId ~= nil then
+    ctx._instanceNodeId = nodeId
+    return nodeId
+  end
+
+  return "fx1"
+end
+
+local function getParamBase(ctx)
+  local instanceProps = type(ctx) == "table" and ctx.instanceProps or nil
+  local propsParamBase = type(instanceProps) == "table" and type(instanceProps.paramBase) == "string" and instanceProps.paramBase or nil
+  if type(propsParamBase) == "string" and propsParamBase ~= "" then
+    return propsParamBase
+  end
+  local nodeId = getInstanceNodeId(ctx)
+  if nodeId == "fx1" then
+    return "/midi/synth/fx1"
+  elseif nodeId == "fx2" then
+    return "/midi/synth/fx2"
+  end
+
+  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  local entry = type(info) == "table" and info[nodeId] or nil
+  local paramBase = type(entry) == "table" and type(entry.paramBase) == "string" and entry.paramBase or nil
+  if type(paramBase) == "string" and paramBase ~= "" then
+    return paramBase
+  end
+
+  return "/midi/synth/fx1"
+end
+
+local function typePath(ctx)
+  return getParamBase(ctx) .. "/type"
+end
+
+local function mixPath(ctx)
+  return getParamBase(ctx) .. "/mix"
+end
+
+local function paramPath(ctx, index)
+  return string.format("%s/p/%d", getParamBase(ctx), math.max(0, math.floor(tonumber(index) or 0)))
+end
+
 local function buildXYDisplay(ctx, w, h)
   local display = {}
-  local xVal = ctx.xyX or 0.5
-  local yVal = ctx.xyY or 0.5
+  local xVal = ctx.xyXDisplay or ctx.xyX or 0.5
+  local yVal = ctx.xyYDisplay or ctx.xyY or 0.5
   local dragging = ctx.dragging
   local col = ctx.accentColor or 0xff22d3ee
   local colDim = (0x18 << 24) | (col & 0x00ffffff)
@@ -156,8 +296,12 @@ local function updateParamControls(ctx)
     local widget = paramWidgets[i]
     local name = names[i]
     if widget then
-      widget._label = name or ("P" .. tostring(i))
-      if widget._syncRetained then widget:_syncRetained() end
+      if widget.setLabel then
+        widget:setLabel(name or ("P" .. tostring(i)))
+      else
+        widget._label = name or ("P" .. tostring(i))
+        if widget._syncRetained then widget:_syncRetained() end
+      end
       setWidgetVisible(widget, name ~= nil)
     end
   end
@@ -170,6 +314,127 @@ local function syncAllDropdowns(ctx)
   ctx.xyXName = names[ctx.xyXIdx] or "X"
   ctx.xyYName = names[ctx.xyYIdx] or "Y"
   updateParamControls(ctx)
+end
+
+local function syncFromParams(ctx)
+  local changed = false
+  local typeDrop = ctx.widgets.type_dropdown
+  local xyXDrop = ctx.widgets.xy_x_dropdown
+  local xyYDrop = ctx.widgets.xy_y_dropdown
+  local mixKnob = ctx.widgets.mix_knob
+  local paramWidgets = getParamWidgets(ctx)
+
+  local anyDropdownOpen = (typeDrop and typeDrop._open)
+    or (xyXDrop and xyXDrop._open)
+    or (xyYDrop and xyYDrop._open)
+
+  local fxType = math.max(0, math.floor(tonumber(readParam(typePath(ctx), ctx.fxType or 0)) or 0))
+  local mixBase, mixEffective, mixState = ModWidgetSync.resolveValues(mixPath(ctx), 0.0, readParam)
+  local mix = clamp(mixBase, 0.0, 1.0)
+  local mixEffectiveClamped = clamp(mixEffective, 0.0, 1.0)
+
+  if ctx.fxType ~= fxType and not anyDropdownOpen then
+    ctx.fxType = fxType
+    ctx.fxName = FX_TYPE_NAMES[fxType] or "FX"
+    syncAllDropdowns(ctx)
+    if typeDrop and typeDrop.setSelected then
+      typeDrop:setSelected(fxType + 1)
+    end
+    changed = true
+  elseif typeDrop and typeDrop.setSelected and not anyDropdownOpen then
+    typeDrop:setSelected(fxType + 1)
+  end
+
+  ModWidgetSync.syncWidget(mixKnob, mix, mixEffectiveClamped, mixState)
+
+  local xIndex = math.max(1, math.floor(tonumber(ctx.xyXIdx) or 1))
+  local yIndex = math.max(1, math.floor(tonumber(ctx.xyYIdx) or 2))
+  for i = 1, #paramWidgets do
+    local valueBase, valueEffective, valueState = ModWidgetSync.resolveValues(paramPath(ctx, i - 1), 0.5, readParam)
+    local value = clamp(valueBase, 0.0, 1.0)
+    local valueEffectiveClamped = clamp(valueEffective, 0.0, 1.0)
+    local widget = paramWidgets[i]
+    ModWidgetSync.syncWidget(widget, value, valueEffectiveClamped, valueState)
+    if i == xIndex then
+      if not ctx.dragging and math.abs((ctx.xyX or 0.0) - value) > 0.0001 then
+        ctx.xyX = value
+        changed = true
+      end
+      if math.abs((ctx.xyXDisplay or 0.0) - valueEffectiveClamped) > 0.0001 then
+        ctx.xyXDisplay = valueEffectiveClamped
+        changed = true
+      end
+    end
+    if i == yIndex then
+      if not ctx.dragging and math.abs((ctx.xyY or 0.0) - value) > 0.0001 then
+        ctx.xyY = value
+        changed = true
+      end
+      if math.abs((ctx.xyYDisplay or 0.0) - valueEffectiveClamped) > 0.0001 then
+        ctx.xyYDisplay = valueEffectiveClamped
+        changed = true
+      end
+    end
+  end
+
+  return changed
+end
+
+local function bindParamControls(ctx)
+  local typeDrop = ctx.widgets.type_dropdown
+  local mixKnob = ctx.widgets.mix_knob
+  local paramWidgets = getParamWidgets(ctx)
+
+  if typeDrop then
+    typeDrop._onSelect = function(idx)
+      local nextType = math.max(0, (tonumber(idx) or 1) - 1)
+      writeParam(typePath(ctx), nextType)
+      ctx.fxType = nextType
+      FxSlotBehavior.onTypeChanged(ctx)
+    end
+  end
+
+  if mixKnob then
+    mixKnob._onChange = function(v)
+      writeParam(mixPath(ctx), clamp(v, 0.0, 1.0))
+    end
+  end
+
+  for i = 1, #paramWidgets do
+    local widget = paramWidgets[i]
+    if widget then
+      widget._onChange = function(v)
+        local normalized = clamp(v, 0.0, 1.0)
+        writeParam(paramPath(ctx, i - 1), normalized)
+        if i == (ctx.xyXIdx or 1) then
+          ctx.xyX = normalized
+          ctx.xyXDisplay = normalized
+        end
+        if i == (ctx.xyYIdx or 2) then
+          ctx.xyY = normalized
+          ctx.xyYDisplay = normalized
+        end
+        refreshPad(ctx)
+      end
+    end
+  end
+
+  ctx._onXYChanged = function(xVal, yVal)
+    local xIndex = math.max(1, math.floor(tonumber(ctx.xyXIdx) or 1))
+    local yIndex = math.max(1, math.floor(tonumber(ctx.xyYIdx) or 2))
+    writeParam(paramPath(ctx, xIndex - 1), xVal)
+    writeParam(paramPath(ctx, yIndex - 1), yVal)
+    ctx.xyX = xVal
+    ctx.xyY = yVal
+    ctx.xyXDisplay = xVal
+    ctx.xyYDisplay = yVal
+
+    local paramList = getParamWidgets(ctx)
+    local xWidget = paramList[xIndex]
+    local yWidget = paramList[yIndex]
+    if xWidget and xWidget.setValue then xWidget:setValue(xVal) end
+    if yWidget and yWidget.setValue then yWidget:setValue(yVal) end
+  end
 end
 
 local function setupInteraction(ctx)
@@ -194,7 +459,7 @@ local function setupInteraction(ctx)
       pad.node:setOnMouseDrag(function(mx, my) if ctx.dragging then applyXY(mx, my) end end)
     end
     if pad.node.setOnMouseUp then
-      pad.node:setOnMouseUp(function(mx, my) ctx.dragging = false; refreshPad(ctx) end)
+      pad.node:setOnMouseUp(function() ctx.dragging = false; refreshPad(ctx) end)
     end
   end
 
@@ -204,6 +469,9 @@ local function setupInteraction(ctx)
       ctx.xyXIdx = idx
       local names = getParamNames(ctx.fxType)
       ctx.xyXName = names[idx] or "X"
+      local value = clamp(readParam(paramPath(ctx, idx - 1), ctx.xyX or 0.5), 0.0, 1.0)
+      ctx.xyX = value
+      ctx.xyXDisplay = value
       refreshPad(ctx)
     end
   end
@@ -214,16 +482,21 @@ local function setupInteraction(ctx)
       ctx.xyYIdx = idx
       local names = getParamNames(ctx.fxType)
       ctx.xyYName = names[idx] or "Y"
+      local value = clamp(readParam(paramPath(ctx, idx - 1), ctx.xyY or 0.5), 0.0, 1.0)
+      ctx.xyY = value
+      ctx.xyYDisplay = value
       refreshPad(ctx)
     end
   end
 end
 
 function FxSlotBehavior.init(ctx)
-  ctx.fxType = 0
-  ctx.fxName = FX_TYPE_NAMES[0] or "FX"
+  ctx.fxType = -1
+  ctx.fxName = "FX"
   ctx.xyX = 0.5
   ctx.xyY = 0.5
+  ctx.xyXDisplay = 0.5
+  ctx.xyYDisplay = 0.5
   ctx.xyXIdx = 1
   ctx.xyYIdx = 2
   ctx.xyXName = "Rate"
@@ -231,9 +504,12 @@ function FxSlotBehavior.init(ctx)
   ctx.dragging = false
   ctx.accentColor = 0xff22d3ee
   ctx.paramNames = getParamNames(ctx.fxType)
+  ctx._lastSyncTime = 0
   setupInteraction(ctx)
-  syncAllDropdowns(ctx)
+  bindParamControls(ctx)
+  syncFromParams(ctx)
   ctx._refreshPad = function() refreshPad(ctx) end
+  ctx._syncFromParams = function() if syncFromParams(ctx) then refreshPad(ctx) else refreshPad(ctx) end end
   refreshPad(ctx)
 end
 
@@ -244,6 +520,10 @@ function FxSlotBehavior.onTypeChanged(ctx)
   if ctx.xyYIdx > #names then ctx.xyYIdx = math.min(2, #names) end
   if ctx.xyYIdx < 1 then ctx.xyYIdx = 1 end
   syncAllDropdowns(ctx)
+  ctx.xyX = clamp(readParam(paramPath(ctx, (ctx.xyXIdx or 1) - 1), ctx.xyX or 0.5), 0.0, 1.0)
+  ctx.xyY = clamp(readParam(paramPath(ctx, (ctx.xyYIdx or 2) - 1), ctx.xyY or 0.5), 0.0, 1.0)
+  ctx.xyXDisplay = ctx.xyX
+  ctx.xyYDisplay = ctx.xyY
   refreshPad(ctx)
 end
 
@@ -355,6 +635,24 @@ function FxSlotBehavior.resized(ctx, w, h)
     end
   end
 
+  refreshPad(ctx)
+end
+
+function FxSlotBehavior.update(ctx)
+  if type(ctx) ~= "table" then
+    return
+  end
+  local now = getTime and getTime() or 0
+  if now == 0 or now - (ctx._lastSyncTime or 0) >= SYNC_INTERVAL then
+    ctx._lastSyncTime = now
+    if syncFromParams(ctx) then
+      refreshPad(ctx)
+    end
+  end
+end
+
+function FxSlotBehavior.repaint(ctx)
+  syncFromParams(ctx)
   refreshPad(ctx)
 end
 

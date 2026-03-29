@@ -13,7 +13,7 @@ return {
     }
   },
   children = {
-    { id = "type_dropdown", type = "Dropdown", x = 16, y = 10, w = 200, h = 24, props = { options = { "Chorus", "Phaser", "WaveShaper", "Compressor", "StereoWidener", "Filter", "SVF Filter", "Reverb", "Stereo Delay", "Multitap", "Pitch Shift", "Granulator", "Ring Mod", "Formant", "EQ", "Limiter", "Transient" }, selected = 1, max_visible_rows = 8 }, style = { bg = 0xff1e293b, colour = 0xff22d3ee } },
+    { id = "type_dropdown", type = "Dropdown", x = 16, y = 10, w = 200, h = 24, props = { options = { "Chorus", "Phaser", "WaveShaper", "Compressor", "StereoWidener", "Filter", "SVF Filter", "Reverb", "Stereo Delay", "Multitap", "Pitch Shift", "Granulator", "Ring Mod", "Formant", "EQ", "Limiter", "Transient", "Bitcrusher", "Shimmer", "Reverse Delay", "Stutter" }, selected = 1, max_visible_rows = 8 }, style = { bg = 0xff1e293b, colour = 0xff22d3ee } },
     -- XY pad (title drawn inside)
     { id = "xy_pad", type = "Panel", x = 16, y = 40, w = 200, h = 98, style = { bg = 0xff0d1420, border = 0xff1a1a3a, borderWidth = 1, radius = 6 } },
 
