@@ -290,6 +290,8 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/PhaserNode.cpp
     dsp/core/nodes/GranulatorNode.h
     dsp/core/nodes/GranulatorNode.cpp
+    dsp/core/nodes/PhaseVocoderNode.h
+    dsp/core/nodes/PhaseVocoderNode.cpp
     dsp/core/nodes/StutterNode.h
     dsp/core/nodes/StutterNode.cpp
     dsp/core/nodes/ShimmerNode.h
