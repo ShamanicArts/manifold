@@ -112,6 +112,8 @@ public:
   virtual int getGraphOutputChannels() const { return 2; }
   virtual void requestGraphRuntimeSwap(
       std::unique_ptr<dsp_primitives::GraphRuntime>) {}
+  virtual void beginGraphMutation() {}
+  virtual void endGraphMutation() {}
   virtual bool loadDspScript(const juce::File &) { return false; }
   virtual bool loadDspScript(const juce::File &, const std::string &/*slot*/) { return false; }
   virtual bool loadDspScriptFromString(const std::string &, const std::string &) {
