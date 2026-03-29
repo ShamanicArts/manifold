@@ -52,6 +52,7 @@ private:
 
     static Coeffs makeBandpass(float sampleRate, float frequencyHz, float q);
     static float processBiquad(float x, BiquadState& s, const Coeffs& c);
+    void updateCoeffsForCurrentParams(bool force = false);
 
     std::atomic<float> targetVowel_{0.0f};
     std::atomic<float> targetShiftSemitones_{0.0f};
@@ -68,6 +69,10 @@ private:
 
     std::array<std::array<BiquadState, 3>, 2> states_{};
     std::array<Coeffs, 3> coeffs_{};
+    float lastCoeffVowel_ = 0.0f;
+    float lastCoeffShiftSemitones_ = 0.0f;
+    float lastCoeffResonance_ = 6.0f;
+    bool coeffsValid_ = false;
 
     double sampleRate_ = 44100.0;
     bool prepared_ = false;

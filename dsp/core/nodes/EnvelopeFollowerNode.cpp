@@ -36,8 +36,8 @@ void EnvelopeFollowerNode::process(const std::vector<AudioBufferView>& inputs,
                                    std::vector<WritableAudioBufferView>& outputs,
                                    int numSamples) {
     if (!prepared_ || inputs.empty() || outputs.empty() || numSamples <= 0) {
-        if (!outputs.empty()) {
-            outputs[0].clear();
+        for (auto& out : outputs) {
+            out.clear();
         }
         return;
     }
@@ -46,6 +46,7 @@ void EnvelopeFollowerNode::process(const std::vector<AudioBufferView>& inputs,
     const float tRelease = targetReleaseMs_.load(std::memory_order_acquire);
     const float tSensitivity = targetSensitivity_.load(std::memory_order_acquire);
     const float tHighpass = targetHighpassHz_.load(std::memory_order_acquire);
+    const int mode = detectorMode_.load(std::memory_order_acquire);
 
     for (int i = 0; i < numSamples; ++i) {
         currentAttackMs_ += (tAttack - currentAttackMs_) * smooth_;
@@ -63,16 +64,37 @@ void EnvelopeFollowerNode::process(const std::vector<AudioBufferView>& inputs,
         const float inL = inputs[0].getSample(0, i);
         const float inR = inputs[0].numChannels > 1 ? inputs[0].getSample(1, i) : inL;
 
+        // Highpass filter to remove DC / low rumble before detection
         float sum = 0.0f;
         for (int ch = 0; ch < 2; ++ch) {
             const float x = ch == 0 ? inL : inR;
             const float hp = hpCoeff * (hpState_[static_cast<size_t>(ch)] + x - hpInput_[static_cast<size_t>(ch)]);
             hpInput_[static_cast<size_t>(ch)] = x;
             hpState_[static_cast<size_t>(ch)] = hp;
-            sum += std::abs(hp);
+
+            if (mode == 1) {
+                // RMS mode: sum squared values
+                sum += hp * hp;
+            } else {
+                // Peak mode (0) and hybrid mode (2): sum absolute values
+                sum += std::abs(hp);
+            }
         }
 
-        const float detector = (sum * 0.5f) * currentSensitivity_;
+        float detector;
+        if (mode == 1) {
+            // RMS: sqrt of mean of squared values
+            detector = std::sqrt(sum * 0.5f) * currentSensitivity_;
+        } else if (mode == 2) {
+            // Hybrid: blend of peak and a smoothed RMS-like value
+            const float peakVal = (sum * 0.5f) * currentSensitivity_;
+            // Use the envelope itself as a rough RMS proxy, blend 70% peak / 30% smooth
+            detector = peakVal * 0.7f + envelope_ * 0.3f;
+        } else {
+            // Peak mode (default)
+            detector = (sum * 0.5f) * currentSensitivity_;
+        }
+
         if (detector > envelope_) {
             envelope_ = attackCoeff * envelope_ + (1.0f - attackCoeff) * detector;
         } else {
@@ -85,7 +107,7 @@ void EnvelopeFollowerNode::process(const std::vector<AudioBufferView>& inputs,
         }
     }
 
-    envelopeOut_.store(envelope_, std::memory_order_release);
+    envelopeOut_.store(juce::jlimit(0.0f, 1.0f, envelope_), std::memory_order_release);
 }
 
 } // namespace dsp_primitives

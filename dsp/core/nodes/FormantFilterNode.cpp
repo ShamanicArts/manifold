@@ -14,6 +14,19 @@ constexpr float kFormants[5][3] = {
 };
 
 constexpr float kFormantGains[3] = {1.0f, 0.8f, 0.55f};
+
+inline void copyDryToOutput(const AudioBufferView& input,
+                            WritableAudioBufferView& output,
+                            int numSamples) {
+    for (int i = 0; i < numSamples; ++i) {
+        const float inL = input.getSample(0, i);
+        const float inR = input.numChannels > 1 ? input.getSample(1, i) : inL;
+        output.setSample(0, i, inL);
+        if (output.numChannels > 1) {
+            output.setSample(1, i, inR);
+        }
+    }
+}
 }
 
 FormantFilterNode::FormantFilterNode() = default;
@@ -33,6 +46,7 @@ void FormantFilterNode::prepare(double sampleRate, int maxBlockSize) {
     currentMix_ = targetMix_.load(std::memory_order_acquire);
 
     reset();
+    updateCoeffsForCurrentParams(true);
     prepared_ = true;
 }
 
@@ -42,6 +56,39 @@ void FormantFilterNode::reset() {
             f = BiquadState{};
         }
     }
+    coeffsValid_ = false;
+}
+
+void FormantFilterNode::updateCoeffsForCurrentParams(bool force) {
+    constexpr float kVowelEpsilon = 0.01f;
+    constexpr float kShiftEpsilon = 0.02f;
+    constexpr float kResonanceEpsilon = 0.02f;
+
+    if (!force
+        && coeffsValid_
+        && std::abs(currentVowel_ - lastCoeffVowel_) <= kVowelEpsilon
+        && std::abs(currentShiftSemitones_ - lastCoeffShiftSemitones_) <= kShiftEpsilon
+        && std::abs(currentResonance_ - lastCoeffResonance_) <= kResonanceEpsilon) {
+        return;
+    }
+
+    const int idx0 = juce::jlimit(0, 4, static_cast<int>(std::floor(currentVowel_)));
+    const int idx1 = juce::jlimit(0, 4, idx0 + 1);
+    const float frac = juce::jlimit(0.0f, 1.0f, currentVowel_ - static_cast<float>(idx0));
+    const float shiftRatio = std::pow(2.0f, currentShiftSemitones_ / 12.0f);
+
+    for (int f = 0; f < 3; ++f) {
+        const float baseHz = juce::jmap(frac, kFormants[idx0][f], kFormants[idx1][f]);
+        coeffs_[static_cast<size_t>(f)] = makeBandpass(
+            static_cast<float>(sampleRate_),
+            baseHz * shiftRatio,
+            currentResonance_);
+    }
+
+    lastCoeffVowel_ = currentVowel_;
+    lastCoeffShiftSemitones_ = currentShiftSemitones_;
+    lastCoeffResonance_ = currentResonance_;
+    coeffsValid_ = true;
 }
 
 FormantFilterNode::Coeffs FormantFilterNode::makeBandpass(float sampleRate,
@@ -95,6 +142,11 @@ void FormantFilterNode::process(const std::vector<AudioBufferView>& inputs,
     const float tDrive = targetDrive_.load(std::memory_order_acquire);
     const float tMix = targetMix_.load(std::memory_order_acquire);
 
+    if (tMix <= 1.0e-4f && currentMix_ <= 1.0e-4f) {
+        copyDryToOutput(inputs[0], outputs[0], numSamples);
+        return;
+    }
+
     for (int i = 0; i < numSamples; ++i) {
         currentVowel_ += (tVowel - currentVowel_) * smooth_;
         currentShiftSemitones_ += (tShift - currentShiftSemitones_) * smooth_;
@@ -102,18 +154,7 @@ void FormantFilterNode::process(const std::vector<AudioBufferView>& inputs,
         currentDrive_ += (tDrive - currentDrive_) * smooth_;
         currentMix_ += (tMix - currentMix_) * smooth_;
 
-        const int idx0 = juce::jlimit(0, 4, static_cast<int>(std::floor(currentVowel_)));
-        const int idx1 = juce::jlimit(0, 4, idx0 + 1);
-        const float frac = juce::jlimit(0.0f, 1.0f, currentVowel_ - static_cast<float>(idx0));
-        const float shiftRatio = std::pow(2.0f, currentShiftSemitones_ / 12.0f);
-
-        for (int f = 0; f < 3; ++f) {
-            const float baseHz = juce::jmap(frac, kFormants[idx0][f], kFormants[idx1][f]);
-            coeffs_[static_cast<size_t>(f)] = makeBandpass(
-                static_cast<float>(sampleRate_),
-                baseHz * shiftRatio,
-                currentResonance_);
-        }
+        updateCoeffsForCurrentParams();
 
         const float inL = inputs[0].getSample(0, i);
         const float inR = inputs[0].numChannels > 1 ? inputs[0].getSample(1, i) : inL;
