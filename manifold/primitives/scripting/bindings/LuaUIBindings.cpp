@@ -115,6 +115,113 @@ namespace {
 
     juce::var luaObjectToVar(const sol::object& object);
 
+    juce::var luaPrimitiveToVar(const sol::object& object) {
+        if (!object.valid() || object == sol::lua_nil) {
+            return {};
+        }
+
+        switch (object.get_type()) {
+            case sol::type::boolean:
+                return juce::var(object.as<bool>());
+            case sol::type::number:
+                if (object.is<int>()) {
+                    return juce::var(object.as<int>());
+                }
+                if (object.is<float>()) {
+                    return juce::var(static_cast<double>(object.as<float>()));
+                }
+                return juce::var(object.as<double>());
+            case sol::type::string:
+                return juce::var(juce::String(object.as<std::string>()));
+            default:
+                return {};
+        }
+    }
+
+    bool tryLuaDisplayListCommandToVar(const sol::table& table, juce::var& out) {
+        const sol::object cmdObject = table["cmd"];
+        if (!cmdObject.valid() || cmdObject == sol::lua_nil || !cmdObject.is<std::string>()) {
+            return false;
+        }
+
+        auto obj = std::make_unique<juce::DynamicObject>();
+        obj->setProperty("cmd", juce::String(cmdObject.as<std::string>()));
+
+        const auto setPrimitiveProperty = [&table, &obj](const char* key) {
+            const juce::var value = luaPrimitiveToVar(table[key]);
+            if (!value.isVoid() && !value.isUndefined()) {
+                obj->setProperty(key, value);
+            }
+        };
+
+        setPrimitiveProperty("color");
+        setPrimitiveProperty("fontSize");
+        setPrimitiveProperty("x");
+        setPrimitiveProperty("y");
+        setPrimitiveProperty("w");
+        setPrimitiveProperty("h");
+        setPrimitiveProperty("radius");
+        setPrimitiveProperty("thickness");
+        setPrimitiveProperty("x1");
+        setPrimitiveProperty("y1");
+        setPrimitiveProperty("x2");
+        setPrimitiveProperty("y2");
+        setPrimitiveProperty("cx1");
+        setPrimitiveProperty("cy1");
+        setPrimitiveProperty("cx2");
+        setPrimitiveProperty("cy2");
+        setPrimitiveProperty("segments");
+        setPrimitiveProperty("text");
+        setPrimitiveProperty("align");
+        setPrimitiveProperty("valign");
+        setPrimitiveProperty("textureId");
+        setPrimitiveProperty("texture");
+        setPrimitiveProperty("u0");
+        setPrimitiveProperty("v0");
+        setPrimitiveProperty("u1");
+        setPrimitiveProperty("v1");
+
+        out = juce::var(obj.release());
+        return true;
+    }
+
+    bool tryLuaDisplayListToVar(const sol::object& object, juce::var& out) {
+        if (!object.valid() || object == sol::lua_nil || !object.is<sol::table>()) {
+            return false;
+        }
+
+        const sol::table table = object.as<sol::table>();
+        int maxIndex = 0;
+        for (const auto& pair : table) {
+            const sol::object& key = pair.first;
+            if (!key.is<int>()) {
+                return false;
+            }
+            const int index = key.as<int>();
+            if (index < 1) {
+                return false;
+            }
+            maxIndex = std::max(maxIndex, index);
+        }
+
+        juce::Array<juce::var> arr;
+        arr.ensureStorageAllocated(maxIndex);
+        for (int i = 1; i <= maxIndex; ++i) {
+            const sol::object value = table[i];
+            if (!value.valid() || value == sol::lua_nil || !value.is<sol::table>()) {
+                return false;
+            }
+            juce::var command;
+            if (!tryLuaDisplayListCommandToVar(value.as<sol::table>(), command)) {
+                return false;
+            }
+            arr.add(std::move(command));
+        }
+
+        out = juce::var(arr);
+        return true;
+    }
+
     juce::var luaTableToVar(const sol::table& table) {
         bool arrayLike = true;
         int maxIndex = 0;
@@ -165,25 +272,10 @@ namespace {
     }
 
     juce::var luaObjectToVar(const sol::object& object) {
-        if (!object.valid() || object == sol::lua_nil) {
-            return {};
+        if (const juce::var primitive = luaPrimitiveToVar(object); !primitive.isVoid() && !primitive.isUndefined()) {
+            return primitive;
         }
-        if (object.is<bool>()) {
-            return juce::var(object.as<bool>());
-        }
-        if (object.is<int>()) {
-            return juce::var(object.as<int>());
-        }
-        if (object.is<double>()) {
-            return juce::var(object.as<double>());
-        }
-        if (object.is<float>()) {
-            return juce::var(static_cast<double>(object.as<float>()));
-        }
-        if (object.is<std::string>()) {
-            return juce::var(juce::String(object.as<std::string>()));
-        }
-        if (object.is<sol::table>()) {
+        if (object.valid() && object != sol::lua_nil && object.is<sol::table>()) {
             return luaTableToVar(object.as<sol::table>());
         }
         return {};
@@ -411,7 +503,11 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
 
         "setDisplayList",
         [](Canvas& c, sol::object value) {
-            c.setDisplayList(luaObjectToVar(value));
+            juce::var displayList;
+            if (!tryLuaDisplayListToVar(value, displayList)) {
+                displayList = luaObjectToVar(value);
+            }
+            c.setDisplayList(displayList);
         },
 
         "getDisplayList",
@@ -524,7 +620,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                     auto result = fn(e.x, e.y,
                                      mods.isShiftDown(),
                                      mods.isCtrlDown() || mods.isCommandDown(),
-                                     mods.isAltDown());
+                                     mods.isAltDown(),
+                                     mods.isRightButtonDown());
                     if (!result.valid()) {
                         sol::error err = result;
                         std::fprintf(stderr, "LuaUI: onMouseDown error: %s\n", err.what());
@@ -557,7 +654,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                                      e.getDistanceFromDragStartY(),
                                      mods.isShiftDown(),
                                      mods.isCtrlDown() || mods.isCommandDown(),
-                                     mods.isAltDown());
+                                     mods.isAltDown(),
+                                     mods.isRightButtonDown());
                     if (!result.valid()) {
                         sol::error err = result;
                         std::fprintf(stderr, "LuaUI: onMouseDrag error: %s\n", err.what());
@@ -588,7 +686,8 @@ void LuaUIBindings::registerCanvasBindings(LuaCoreEngine& engine, Canvas* rootCa
                     auto result = fn(e.x, e.y,
                                      mods.isShiftDown(),
                                      mods.isCtrlDown() || mods.isCommandDown(),
-                                     mods.isAltDown());
+                                     mods.isAltDown(),
+                                     mods.isRightButtonDown());
                     if (!result.valid()) {
                         sol::error err = result;
                         std::fprintf(stderr, "LuaUI: onMouseUp error: %s\n", err.what());

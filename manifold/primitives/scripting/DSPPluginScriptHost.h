@@ -62,6 +62,11 @@ public:
 private:
   bool loadScriptImpl(const std::string &sourceName, const juce::File *scriptFile,
                       const std::string *scriptCode);
+  bool compileRuntimeAndRequestSwap(const std::string &reason);
+  bool applyDeferredGraphMutation(const std::string &path, float normalized);
+  bool enqueueDeferredGraphMutation(const std::string &path, float normalized);
+  void ensureDeferredWorkerStarted();
+  void stopDeferredWorker();
 
   struct Impl;
   std::unique_ptr<Impl> pImpl;

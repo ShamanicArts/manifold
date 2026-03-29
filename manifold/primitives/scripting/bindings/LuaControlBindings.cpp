@@ -19,6 +19,7 @@ extern "C" {
 #include "dsp/core/nodes/RetrospectiveCaptureNode.h"
 #include "dsp/core/nodes/SineBankNode.h"
 #include "dsp/core/graph/PrimitiveNode.h"
+#include "../../ui/RuntimeNode.h"
 #include "../../control/CommandParser.h"
 #include "../../control/ControlServer.h"
 #include "../../control/OSCEndpointRegistry.h"
@@ -37,6 +38,7 @@ extern "C" {
 #include <mutex>
 #include <vector>
 #include <atomic>
+#include <unordered_map>
 #include <unordered_set>
 #include <set>
 
@@ -86,6 +88,232 @@ sol::table sampleAnalysisToLua(sol::state& lua,
     return result;
 }
 
+struct CapturePeaksDebugStats {
+    std::mutex mutex;
+    uint64_t calls = 0;
+    uint64_t totalBuckets = 0;
+    uint64_t totalMicros = 0;
+    std::unordered_map<std::string, uint64_t> callsByPath;
+};
+
+struct ScriptListEntry {
+    std::string name;
+    std::string path;
+    std::string kind;
+    std::string scope;
+    std::string code;
+};
+
+struct ScriptListingCacheState {
+    std::mutex mutex;
+    bool uiValid = false;
+    std::string uiSignature;
+    std::vector<ScriptListEntry> uiEntries;
+    uint64_t uiBuilds = 0;
+    uint64_t uiHits = 0;
+
+    bool dspValid = false;
+    std::string dspSignature;
+    std::vector<ScriptListEntry> dspEntries;
+    uint64_t dspBuilds = 0;
+    uint64_t dspHits = 0;
+};
+
+struct WaveformPeakCacheEntry {
+    double cachedAtSeconds = 0.0;
+    std::vector<float> peaks;
+};
+
+struct WaveformPeakCacheState {
+    std::mutex mutex;
+    std::unordered_map<std::string, WaveformPeakCacheEntry> entries;
+    uint64_t hits = 0;
+    uint64_t misses = 0;
+    uint64_t stores = 0;
+    uint64_t evictions = 0;
+};
+
+CapturePeaksDebugStats& capturePeaksDebugStats() {
+    static CapturePeaksDebugStats stats;
+    return stats;
+}
+
+ScriptListingCacheState& scriptListingCacheState() {
+    static ScriptListingCacheState state;
+    return state;
+}
+
+WaveformPeakCacheState& waveformPeakCacheState() {
+    static WaveformPeakCacheState state;
+    return state;
+}
+
+void invalidateScriptListingCaches() {
+    auto& cache = scriptListingCacheState();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    cache.uiValid = false;
+    cache.uiSignature.clear();
+    cache.uiEntries.clear();
+    cache.dspValid = false;
+    cache.dspSignature.clear();
+    cache.dspEntries.clear();
+}
+
+void invalidateWaveformPeakCache() {
+    auto& cache = waveformPeakCacheState();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    cache.entries.clear();
+}
+
+void recordCapturePeaksCall(const std::string& path, int numBuckets, uint64_t elapsedMicros) {
+    auto& stats = capturePeaksDebugStats();
+    std::lock_guard<std::mutex> lock(stats.mutex);
+    ++stats.calls;
+    stats.totalBuckets += static_cast<uint64_t>(juce::jmax(0, numBuckets));
+    stats.totalMicros += elapsedMicros;
+    ++stats.callsByPath[path.empty() ? std::string("<empty>") : path];
+}
+
+std::vector<std::pair<std::string, uint64_t>> topCaptureEntries(const std::unordered_map<std::string, uint64_t>& source,
+                                                                size_t limit = 12) {
+    std::vector<std::pair<std::string, uint64_t>> out(source.begin(), source.end());
+    std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) {
+        if (a.second != b.second) {
+            return a.second > b.second;
+        }
+        return a.first < b.first;
+    });
+    if (out.size() > limit) {
+        out.resize(limit);
+    }
+    return out;
+}
+
+sol::table pushTopEntriesTable(sol::state& lua,
+                               const std::vector<std::pair<std::string, uint64_t>>& entries) {
+    auto out = sol::table(lua, sol::create);
+    for (size_t i = 0; i < entries.size(); ++i) {
+        auto row = sol::table(lua, sol::create);
+        row["key"] = entries[i].first;
+        row["count"] = entries[i].second;
+        out[i + 1] = row;
+    }
+    return out;
+}
+
+sol::table scriptListToLua(sol::state& lua,
+                           const std::vector<ScriptListEntry>& entries) {
+    auto result = sol::table(lua, sol::create);
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto& src = entries[i];
+        auto entry = sol::table(lua, sol::create);
+        entry["name"] = src.name;
+        entry["path"] = src.path;
+        if (!src.kind.empty()) entry["kind"] = src.kind;
+        if (!src.scope.empty()) entry["scope"] = src.scope;
+        if (!src.code.empty()) entry["code"] = src.code;
+        result[i + 1] = entry;
+    }
+    return result;
+}
+
+constexpr double kWaveformPeakCacheWindowSeconds = 1.0 / 30.0;
+constexpr size_t kWaveformPeakCacheMaxEntries = 128;
+
+double highResNowSeconds() {
+    return juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks());
+}
+
+std::string makeWaveformPeakCacheKey(const char* kind,
+                                     const std::string& path,
+                                     int a,
+                                     int b,
+                                     int c) {
+    return std::string(kind) + "|" + path + "|" + std::to_string(a) + "|"
+        + std::to_string(b) + "|" + std::to_string(c);
+}
+
+std::string makeWaveformPeakCacheKey(const char* kind,
+                                     uintptr_t ptr,
+                                     int a,
+                                     int b,
+                                     int c) {
+    return std::string(kind) + "|" + std::to_string(ptr) + "|" + std::to_string(a)
+        + "|" + std::to_string(b) + "|" + std::to_string(c);
+}
+
+std::string makeWaveformPeakCacheKey(const char* kind,
+                                     int a,
+                                     int b,
+                                     int c) {
+    return std::string(kind) + "|" + std::to_string(a) + "|" + std::to_string(b)
+        + "|" + std::to_string(c);
+}
+
+bool tryGetWaveformPeakCache(const std::string& key,
+                             std::vector<float>& outPeaks,
+                             double maxAgeSeconds = kWaveformPeakCacheWindowSeconds) {
+    auto& cache = waveformPeakCacheState();
+    const double now = highResNowSeconds();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    auto it = cache.entries.find(key);
+    if (it == cache.entries.end()) {
+        ++cache.misses;
+        return false;
+    }
+    if ((now - it->second.cachedAtSeconds) > maxAgeSeconds) {
+        cache.entries.erase(it);
+        ++cache.misses;
+        return false;
+    }
+    outPeaks = it->second.peaks;
+    ++cache.hits;
+    return true;
+}
+
+void storeWaveformPeakCache(const std::string& key,
+                            const std::vector<float>& peaks) {
+    auto& cache = waveformPeakCacheState();
+    const double now = highResNowSeconds();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+
+    if (cache.entries.size() >= kWaveformPeakCacheMaxEntries
+        && cache.entries.find(key) == cache.entries.end()) {
+        auto oldestIt = cache.entries.begin();
+        for (auto it = cache.entries.begin(); it != cache.entries.end(); ++it) {
+            if (it->second.cachedAtSeconds < oldestIt->second.cachedAtSeconds) {
+                oldestIt = it;
+            }
+        }
+        if (oldestIt != cache.entries.end()) {
+            cache.entries.erase(oldestIt);
+            ++cache.evictions;
+        }
+    }
+
+    cache.entries[key] = WaveformPeakCacheEntry{ now, peaks };
+    ++cache.stores;
+}
+
+template <typename Loader>
+bool getWaveformPeaksCached(const std::string& key,
+                            std::vector<float>& outPeaks,
+                            Loader&& loader,
+                            double maxAgeSeconds = kWaveformPeakCacheWindowSeconds) {
+    if (tryGetWaveformPeakCache(key, outPeaks, maxAgeSeconds)) {
+        return true;
+    }
+
+    std::vector<float> freshPeaks;
+    if (!loader(freshPeaks)) {
+        return false;
+    }
+
+    outPeaks = freshPeaks;
+    storeWaveformPeakCache(key, freshPeaks);
+    return true;
+}
+
 sol::table partialDataToLua(sol::state& lua,
                            const dsp_primitives::PartialData& partials) {
     auto result = sol::table(lua, sol::create);
@@ -118,6 +346,30 @@ sol::table partialDataToLua(sol::state& lua,
         entries[i + 1] = entry;
     }
     result["partials"] = entries;
+    return result;
+}
+
+sol::table temporalPartialDataToLua(sol::state& lua,
+                                    const dsp_primitives::TemporalPartialData& temporal) {
+    auto result = sol::table(lua, sol::create);
+    result["sampleRate"] = temporal.sampleRate;
+    result["sampleLengthSeconds"] = temporal.sampleLengthSeconds;
+    result["globalFundamental"] = temporal.globalFundamental;
+    result["frameCount"] = temporal.frameCount;
+    result["windowSize"] = temporal.windowSize;
+    result["hopSize"] = temporal.hopSize;
+    result["reliable"] = temporal.isReliable;
+
+    auto frames = sol::table(lua, sol::create);
+    auto frameTimes = sol::table(lua, sol::create);
+    const int safeCount = std::min(temporal.frameCount,
+                                   static_cast<int>(std::min(temporal.frames.size(), temporal.frameTimes.size())));
+    for (int i = 0; i < safeCount; ++i) {
+        frames[i + 1] = partialDataToLua(lua, temporal.frames[static_cast<size_t>(i)]);
+        frameTimes[i + 1] = temporal.frameTimes[static_cast<size_t>(i)];
+    }
+    result["frames"] = frames;
+    result["frameTimes"] = frameTimes;
     return result;
 }
 
@@ -257,6 +509,137 @@ juce::String readProjectDisplayName(const juce::File& manifestFile) {
     }
 
     return manifestFile.getParentDirectory().getFileName();
+}
+
+std::string currentUiScriptsSignature() {
+    auto& settings = Settings::getInstance();
+    return settings.getDevScriptsDir().toStdString() + "|"
+        + settings.getUserScriptsDir().toStdString() + "|"
+        + SystemPaths::getSystemProjectsDir().getFullPathName().toStdString();
+}
+
+std::string currentDspScriptsSignature() {
+    return Settings::getInstance().getDspScriptsDir().toStdString();
+}
+
+std::vector<ScriptListEntry> scanUiScripts() {
+    std::vector<ScriptListEntry> entries;
+    std::set<std::string> seenPaths;
+
+    auto addUiScriptEntry = [&](const juce::File& script,
+                                const juce::String& displayName,
+                                const juce::String& kind,
+                                const juce::String& scope) {
+        if (!script.exists()) return;
+        const auto fullPath = script.getFullPathName().toStdString();
+        if (seenPaths.count(fullPath) > 0) return;
+        seenPaths.insert(fullPath);
+
+        ScriptListEntry entry;
+        entry.name = displayName.toStdString();
+        entry.path = fullPath;
+        entry.kind = kind.toStdString();
+        entry.scope = scope.toStdString();
+        entries.push_back(std::move(entry));
+    };
+
+    auto addLooseUiScriptsFromDir = [&](const juce::File& dir,
+                                        const juce::String& scope) {
+        if (!dir.isDirectory()) return;
+        auto scripts = dir.findChildFiles(juce::File::findFiles, false, "*.lua");
+        for (const auto& script : scripts) {
+            auto name = script.getFileNameWithoutExtension();
+
+            if (name == "ui_widgets" || name == "ui_shell" ||
+                name == "project_loader") {
+                continue;
+            }
+            if (!isUiScriptFile(script)) {
+                continue;
+            }
+
+            addUiScriptEntry(script, name, "script", scope);
+        }
+    };
+
+    auto addProjectsFromDir = [&](const juce::File& dir) {
+        if (!dir.isDirectory()) return;
+        auto children = dir.findChildFiles(juce::File::findDirectories, false);
+        for (const auto& child : children) {
+            const auto manifest = child.getChildFile("manifold.project.json5");
+            if (!isProjectManifestFile(manifest)) {
+                continue;
+            }
+
+            auto name = readProjectDisplayName(manifest);
+            addUiScriptEntry(manifest, name, "project", "project");
+        }
+    };
+
+    auto& settings = Settings::getInstance();
+
+    auto devDir = settings.getDevScriptsDir();
+    if (devDir.isNotEmpty()) {
+        addLooseUiScriptsFromDir(juce::File(devDir), "system");
+    } else {
+        std::fprintf(stderr,
+                     "[LuaControlBindings] listUiScripts: devScriptsDir is empty\n");
+    }
+
+    auto systemProjectsDir = SystemPaths::getSystemProjectsDir();
+    if (systemProjectsDir.isDirectory()) {
+        addProjectsFromDir(systemProjectsDir);
+    }
+
+    auto userRoot = settings.getUserScriptsDir();
+    if (userRoot.isNotEmpty()) {
+        juce::File root(userRoot);
+        addProjectsFromDir(root.getChildFile("projects"));
+        addLooseUiScriptsFromDir(root.getChildFile("ui"), "user");
+        addLooseUiScriptsFromDir(root.getChildFile("UI"), "user-legacy");
+        addProjectsFromDir(root);
+    }
+
+    return entries;
+}
+
+std::vector<ScriptListEntry> scanDspScripts() {
+    std::vector<ScriptListEntry> entries;
+    std::set<std::string> seenNames;
+
+    auto addScriptsFromDir = [&](const juce::File& dir) {
+        if (!dir.isDirectory()) return;
+        auto scripts = dir.findChildFiles(juce::File::findFiles, false, "*.lua");
+        for (const auto& script : scripts) {
+            auto name = script.getFileNameWithoutExtension().toStdString();
+            if (seenNames.count(name) > 0) continue;
+
+            auto content = script.loadFileAsString();
+            if (!content.contains("function buildPlugin")) {
+                continue;
+            }
+
+            seenNames.insert(name);
+            ScriptListEntry entry;
+            entry.name = name;
+            entry.path = script.getFullPathName().toStdString();
+            entry.code = content.toStdString();
+            entries.push_back(std::move(entry));
+        }
+    };
+
+    auto& settings = Settings::getInstance();
+    auto dspDir = settings.getDspScriptsDir();
+    if (dspDir.isNotEmpty()) {
+        const juce::File baseDir(dspDir);
+        addScriptsFromDir(baseDir);
+        addScriptsFromDir(baseDir.getChildFile("scripts"));
+    } else {
+        std::fprintf(stderr,
+                     "[LuaControlBindings] listDspScripts: dspScriptsDir is empty\n");
+    }
+
+    return entries;
 }
 
 } // namespace
@@ -425,7 +808,10 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         if (!processor || numBuckets <= 0) return result;
 
         std::vector<float> peaks;
-        if (!processor->computeLayerPeaks(layerIdx, numBuckets, peaks)) {
+        const auto key = makeWaveformPeakCacheKey("layer", layerIdx, numBuckets, 0);
+        if (!getWaveformPeaksCached(key, peaks, [&](std::vector<float>& out) {
+                return processor->computeLayerPeaks(layerIdx, numBuckets, out);
+            })) {
             return result;
         }
         for (size_t i = 0; i < peaks.size(); ++i) {
@@ -442,7 +828,10 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         if (!processor || numBuckets <= 0) return result;
 
         std::vector<float> peaks;
-        if (!processor->computeLayerPeaksForPath(pathBase, layerIdx, numBuckets, peaks)) {
+        const auto key = makeWaveformPeakCacheKey("layer-path", pathBase, layerIdx, numBuckets, 0);
+        if (!getWaveformPeaksCached(key, peaks, [&](std::vector<float>& out) {
+                return processor->computeLayerPeaksForPath(pathBase, layerIdx, numBuckets, out);
+            })) {
             return result;
         }
         for (size_t i = 0; i < peaks.size(); ++i) {
@@ -458,7 +847,10 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         if (!processor || numBuckets <= 0) return result;
 
         std::vector<float> peaks;
-        if (!processor->computeCapturePeaks(startAgo, endAgo, numBuckets, peaks)) {
+        const auto key = makeWaveformPeakCacheKey("capture", startAgo, endAgo, numBuckets);
+        if (!getWaveformPeaksCached(key, peaks, [&](std::vector<float>& out) {
+                return processor->computeCapturePeaks(startAgo, endAgo, numBuckets, out);
+            })) {
             return result;
         }
         for (size_t i = 0; i < peaks.size(); ++i) {
@@ -474,11 +866,36 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         if (!processor || numBuckets <= 0) return result;
 
         std::vector<float> peaks;
-        if (!processor->computeSynthSamplePeaks(numBuckets, peaks)) {
+        const auto key = makeWaveformPeakCacheKey("synth-sample", numBuckets, 0, 0);
+        if (!getWaveformPeaksCached(key, peaks, [&](std::vector<float>& out) {
+                return processor->computeSynthSamplePeaks(numBuckets, out);
+            })) {
             return result;
         }
         for (size_t i = 0; i < peaks.size(); ++i) {
             result[i + 1] = peaks[i];
+        }
+        return result;
+    };
+
+    lua["invalidateWaveformPeakCache"] = []() {
+        invalidateWaveformPeakCache();
+    };
+
+    lua["getWaveformPeakCacheStats"] = [&lua](sol::optional<bool> resetOpt) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto& cache = waveformPeakCacheState();
+        std::lock_guard<std::mutex> lock(cache.mutex);
+        result["entries"] = static_cast<int>(cache.entries.size());
+        result["hits"] = cache.hits;
+        result["misses"] = cache.misses;
+        result["stores"] = cache.stores;
+        result["evictions"] = cache.evictions;
+        if (resetOpt.value_or(false)) {
+            cache.hits = 0;
+            cache.misses = 0;
+            cache.stores = 0;
+            cache.evictions = 0;
         }
         return result;
     };
@@ -667,6 +1084,91 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         return result;
     };
 
+    // Deterministic non-pitched test helper: inject filtered noise into the synth sample
+    // playback node so we can verify that partial/temporal extraction still works when
+    // pitch detection is unreliable or absent.
+    lua["injectSynthSampleTestNoise"] = [&state, &lua](double durationSeconds,
+                                                         sol::optional<double> amplitudeOpt,
+                                                         sol::optional<double> colorOpt) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        if (!processor) {
+            result["ok"] = false;
+            result["error"] = "no processor";
+            return result;
+        }
+
+        auto node = processor->getGraphNodeByPath("/midi/synth/sample/playback");
+        auto playback = std::dynamic_pointer_cast<dsp_primitives::SampleRegionPlaybackNode>(node);
+        if (!playback) {
+            result["ok"] = false;
+            result["error"] = "sample playback node not found";
+            return result;
+        }
+
+        const float sampleRate = static_cast<float>(processor->getSampleRate() > 0.0
+            ? processor->getSampleRate()
+            : 44100.0);
+        const float seconds = juce::jlimit(0.02f, 5.0f, static_cast<float>(durationSeconds));
+        const float amplitude = juce::jlimit(0.0f, 1.0f,
+            static_cast<float>(amplitudeOpt.value_or(0.8)));
+        const float color = juce::jlimit(0.0f, 1.0f,
+            static_cast<float>(colorOpt.value_or(0.65)));
+        const int numSamples = juce::jmax(1, static_cast<int>(std::round(seconds * sampleRate)));
+        const int channels = 2;
+
+        juce::AudioBuffer<float> buffer(channels, numSamples);
+        buffer.clear();
+        juce::Random rng(0x5EED1234);
+        float lowStateL = 0.0f;
+        float lowStateR = 0.0f;
+        const float alpha = juce::jlimit(0.001f, 0.999f, 0.02f + color * 0.18f);
+        const float fadeSamples = static_cast<float>(juce::jmin(numSamples / 2, 128));
+
+        for (int i = 0; i < numSamples; ++i) {
+            const float whiteL = rng.nextFloat() * 2.0f - 1.0f;
+            const float whiteR = rng.nextFloat() * 2.0f - 1.0f;
+            lowStateL += (whiteL - lowStateL) * alpha;
+            lowStateR += (whiteR - lowStateR) * alpha;
+            float sampleL = whiteL + (lowStateL - whiteL) * color;
+            float sampleR = whiteR + (lowStateR - whiteR) * color;
+
+            float env = 1.0f;
+            if (fadeSamples > 1.0f) {
+                if (static_cast<float>(i) < fadeSamples) {
+                    env *= static_cast<float>(i) / fadeSamples;
+                }
+                const float tail = static_cast<float>(numSamples - 1 - i);
+                if (tail < fadeSamples) {
+                    env *= tail / fadeSamples;
+                }
+            }
+
+            buffer.setSample(0, i, juce::jlimit(-1.0f, 1.0f, sampleL * amplitude * env));
+            buffer.setSample(1, i, juce::jlimit(-1.0f, 1.0f, sampleR * amplitude * env));
+        }
+
+        playback->copyFromCaptureBuffer(buffer, numSamples, 0, numSamples, false);
+        playback->stop();
+        const auto analysis = playback->analyzeSample();
+        const auto partials = playback->extractPartials();
+        const auto temporal = playback->extractTemporalPartials(24, 1024, 256, 64);
+
+        result["ok"] = true;
+        result["durationSeconds"] = seconds;
+        result["amplitude"] = amplitude;
+        result["color"] = color;
+        result["analysis"] = sampleAnalysisToLua(lua, analysis);
+        result["partials"] = partialDataToLua(lua, partials);
+        auto temporalTable = sol::table(lua, sol::create);
+        temporalTable["frameCount"] = temporal.frameCount;
+        temporalTable["globalFundamental"] = temporal.globalFundamental;
+        temporalTable["reliable"] = temporal.isReliable;
+        temporalTable["sampleLengthSeconds"] = temporal.sampleLengthSeconds;
+        result["temporal"] = temporalTable;
+        return result;
+    };
+
     // Deterministic Stage 4 helper: render the latest extracted sample partials
     // through SineBankNode, inject the rendered buffer back into sample playback,
     // then return the re-analysis so we can verify the additive consumer path.
@@ -740,7 +1242,18 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         auto node = extractNodeFromTable<dsp_primitives::RetrospectiveCaptureNode>(captureNodeTable);
         if (!node) return result;
 
-        auto peaks = node->computePeaks(startAgo, endAgo, numBuckets);
+        std::vector<float> peaks;
+        const auto key = makeWaveformPeakCacheKey("capture-node",
+                                                  reinterpret_cast<uintptr_t>(node.get()),
+                                                  startAgo,
+                                                  endAgo,
+                                                  numBuckets);
+        if (!getWaveformPeaksCached(key, peaks, [&](std::vector<float>& out) {
+                out = node->computePeaks(startAgo, endAgo, numBuckets);
+                return true;
+            })) {
+            return result;
+        }
         for (size_t i = 0; i < peaks.size(); ++i) {
             result[i + 1] = peaks[i];
         }
@@ -850,9 +1363,38 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
             return result;
         }
 
-        auto peaks = captureNode->computePeaks(startAgo, endAgo, numBuckets);
+        std::vector<float> peaks;
+        const auto key = makeWaveformPeakCacheKey("capture-path", path, startAgo, endAgo, numBuckets);
+        const auto startTicks = juce::Time::getHighResolutionTicks();
+        if (!getWaveformPeaksCached(key, peaks, [&](std::vector<float>& out) {
+                out = captureNode->computePeaks(startAgo, endAgo, numBuckets);
+                return true;
+            })) {
+            return result;
+        }
+        const auto elapsedMicros = static_cast<uint64_t>(juce::Time::highResolutionTicksToSeconds(
+            juce::Time::getHighResolutionTicks() - startTicks) * 1000000.0);
+        recordCapturePeaksCall(path, numBuckets, elapsedMicros);
         for (size_t i = 0; i < peaks.size(); ++i) {
             result[i + 1] = peaks[i];
+        }
+        return result;
+    };
+
+    lua["getCapturePeaksDebugStats"] = [&lua](sol::optional<bool> resetOpt) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto& stats = capturePeaksDebugStats();
+        const bool reset = resetOpt.value_or(false);
+        std::lock_guard<std::mutex> lock(stats.mutex);
+        result["calls"] = stats.calls;
+        result["totalBuckets"] = stats.totalBuckets;
+        result["totalMicros"] = stats.totalMicros;
+        result["topPaths"] = pushTopEntriesTable(lua, topCaptureEntries(stats.callsByPath));
+        if (reset) {
+            stats.calls = 0;
+            stats.totalBuckets = 0;
+            stats.totalMicros = 0;
+            stats.callsByPath.clear();
         }
         return result;
     };
@@ -1788,87 +2330,55 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     };
 
     lua["listUiScripts"] = [&lua]() -> sol::table {
+        const auto signature = currentUiScriptsSignature();
+        auto& cache = scriptListingCacheState();
+        std::vector<ScriptListEntry> entries;
+        bool cacheHit = false;
+        {
+            std::lock_guard<std::mutex> lock(cache.mutex);
+            if (cache.uiValid && cache.uiSignature == signature) {
+                entries = cache.uiEntries;
+                ++cache.uiHits;
+                cacheHit = true;
+            }
+        }
+
+        if (!cacheHit) {
+            entries = scanUiScripts();
+            std::lock_guard<std::mutex> lock(cache.mutex);
+            cache.uiEntries = entries;
+            cache.uiSignature = signature;
+            cache.uiValid = true;
+            ++cache.uiBuilds;
+        }
+
+        return scriptListToLua(lua, entries);
+    };
+
+    lua["invalidateScriptListingsCache"] = []() {
+        invalidateScriptListingCaches();
+    };
+
+    lua["getScriptListingsCacheStats"] = [&lua]() -> sol::table {
         auto result = sol::table(lua, sol::create);
-        std::set<std::string> seenPaths;
-        int index = 1;
+        auto& cache = scriptListingCacheState();
+        std::lock_guard<std::mutex> lock(cache.mutex);
 
-        auto addUiScriptEntry = [&](const juce::File& script,
-                                    const juce::String& displayName,
-                                    const juce::String& kind,
-                                    const juce::String& scope) {
-            if (!script.exists()) return;
-            const auto fullPath = script.getFullPathName().toStdString();
-            if (seenPaths.count(fullPath) > 0) return;
-            seenPaths.insert(fullPath);
+        auto ui = sol::table(lua, sol::create);
+        ui["valid"] = cache.uiValid;
+        ui["signature"] = cache.uiSignature;
+        ui["entries"] = static_cast<int>(cache.uiEntries.size());
+        ui["builds"] = cache.uiBuilds;
+        ui["hits"] = cache.uiHits;
+        result["ui"] = ui;
 
-            auto entry = sol::table(lua, sol::create);
-            entry["name"] = displayName.toStdString();
-            entry["path"] = fullPath;
-            entry["kind"] = kind.toStdString();
-            entry["scope"] = scope.toStdString();
-            result[index++] = entry;
-        };
-
-        auto addLooseUiScriptsFromDir = [&](const juce::File& dir,
-                                            const juce::String& scope) {
-            if (!dir.isDirectory()) return;
-            auto scripts = dir.findChildFiles(juce::File::findFiles, false, "*.lua");
-            for (const auto& script : scripts) {
-                auto name = script.getFileNameWithoutExtension();
-
-                if (name == "ui_widgets" || name == "ui_shell" ||
-                    name == "project_loader") {
-                    continue;
-                }
-                if (!isUiScriptFile(script)) {
-                    continue;
-                }
-
-                addUiScriptEntry(script, name, "script", scope);
-            }
-        };
-
-        auto addProjectsFromDir = [&](const juce::File& dir) {
-            if (!dir.isDirectory()) return;
-            auto entries = dir.findChildFiles(juce::File::findDirectories, false);
-            for (const auto& child : entries) {
-                const auto manifest = child.getChildFile("manifold.project.json5");
-                if (!isProjectManifestFile(manifest)) {
-                    continue;
-                }
-
-                auto name = readProjectDisplayName(manifest);
-                addUiScriptEntry(manifest, name, "project", "project");
-            }
-        };
-
-        auto& settings = Settings::getInstance();
-
-        auto devDir = settings.getDevScriptsDir();
-        if (devDir.isNotEmpty()) {
-            addLooseUiScriptsFromDir(juce::File(devDir), "system");
-        } else {
-            std::fprintf(stderr,
-                         "[LuaControlBindings] listUiScripts: devScriptsDir is empty\n");
-        }
-
-        // System projects (bundled with app)
-        auto systemProjectsDir = SystemPaths::getSystemProjectsDir();
-        if (systemProjectsDir.isDirectory()) {
-            addProjectsFromDir(systemProjectsDir);
-        }
-
-        // User projects
-        auto userRoot = settings.getUserScriptsDir();
-        if (userRoot.isNotEmpty()) {
-            juce::File root(userRoot);
-            addProjectsFromDir(root.getChildFile("projects"));
-            addLooseUiScriptsFromDir(root.getChildFile("ui"), "user");
-
-            // Transitional compatibility for older directory naming.
-            addLooseUiScriptsFromDir(root.getChildFile("UI"), "user-legacy");
-            addProjectsFromDir(root);
-        }
+        auto dsp = sol::table(lua, sol::create);
+        dsp["valid"] = cache.dspValid;
+        dsp["signature"] = cache.dspSignature;
+        dsp["entries"] = static_cast<int>(cache.dspEntries.size());
+        dsp["builds"] = cache.dspBuilds;
+        dsp["hits"] = cache.dspHits;
+        result["dsp"] = dsp;
 
         return result;
     };
@@ -1913,6 +2423,22 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
 
     lua["getCurrentScriptPath"] = [&state]() -> std::string {
         return state.getCurrentScriptFile().getFullPathName().toStdString();
+    };
+
+    lua["getRuntimeDisplayListDebugStats"] = [&lua](sol::optional<bool> resetOpt) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        const auto stats = RuntimeNode::getDisplayListDebugStats(resetOpt.value_or(false));
+        result["setCalls"] = stats.setCalls;
+        result["skippedSetCalls"] = stats.skippedSetCalls;
+        result["clearCalls"] = stats.clearCalls;
+        result["compileCalls"] = stats.compileCalls;
+        result["setCommands"] = stats.setCommands;
+        result["compiledCommands"] = stats.compiledCommands;
+        result["compileMicros"] = stats.compileMicros;
+        result["topSetByKey"] = pushTopEntriesTable(lua, stats.topSetByKey);
+        result["topSkippedSetByKey"] = pushTopEntriesTable(lua, stats.topSkippedSetByKey);
+        result["topCompileByKey"] = pushTopEntriesTable(lua, stats.topCompileByKey);
+        return result;
     };
 
     lua["setClipboardText"] = [](const std::string& text) -> bool {
@@ -1986,47 +2512,29 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     };
 
     lua["listDspScripts"] = [&lua]() -> sol::table {
-        auto result = sol::table(lua, sol::create);
-        std::set<std::string> seenNames;
-        int index = 1;
-
-        auto addScriptsFromDir = [&](const juce::File& dir) {
-            if (!dir.isDirectory()) return;
-            auto scripts = dir.findChildFiles(juce::File::findFiles, false, "*.lua");
-            for (const auto& script : scripts) {
-                auto name = script.getFileNameWithoutExtension().toStdString();
-
-                // Skip duplicates
-                if (seenNames.count(name) > 0) continue;
-
-                // Only include files that look like DSP scripts (contain buildPlugin function)
-                auto content = script.loadFileAsString();
-                if (!content.contains("function buildPlugin")) {
-                    continue;
-                }
-
-                seenNames.insert(name);
-                auto entry = sol::table(lua, sol::create);
-                entry["name"] = name;
-                entry["path"] = script.getFullPathName().toStdString();
-                entry["code"] = content.toStdString();
-                result[index++] = entry;
+        const auto signature = currentDspScriptsSignature();
+        auto& cache = scriptListingCacheState();
+        std::vector<ScriptListEntry> entries;
+        bool cacheHit = false;
+        {
+            std::lock_guard<std::mutex> lock(cache.mutex);
+            if (cache.dspValid && cache.dspSignature == signature) {
+                entries = cache.dspEntries;
+                ++cache.dspHits;
+                cacheHit = true;
             }
-        };
-
-        // Strict source: configured DSP scripts directory only (no fallbacks)
-        auto& settings = Settings::getInstance();
-        auto dspDir = settings.getDspScriptsDir();
-        if (dspDir.isNotEmpty()) {
-            const juce::File baseDir(dspDir);
-            addScriptsFromDir(baseDir);
-            addScriptsFromDir(baseDir.getChildFile("scripts"));
-        } else {
-            std::fprintf(stderr,
-                         "[LuaControlBindings] listDspScripts: dspScriptsDir is empty\n");
         }
 
-        return result;
+        if (!cacheHit) {
+            entries = scanDspScripts();
+            std::lock_guard<std::mutex> lock(cache.mutex);
+            cache.dspEntries = entries;
+            cache.dspSignature = signature;
+            cache.dspValid = true;
+            ++cache.dspBuilds;
+        }
+
+        return scriptListToLua(lua, entries);
     };
 
     // Settings table - persistent configuration
@@ -2039,6 +2547,7 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     settingsTable["setUserScriptsDir"] = [](const std::string& path) {
         Settings::getInstance().setUserScriptsDir(juce::String(path));
         Settings::getInstance().save();
+        invalidateScriptListingCaches();
     };
     
     settingsTable["getDevScriptsDir"] = []() -> std::string {
@@ -2048,6 +2557,7 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     settingsTable["setDevScriptsDir"] = [](const std::string& path) {
         Settings::getInstance().setDevScriptsDir(juce::String(path));
         Settings::getInstance().save();
+        invalidateScriptListingCaches();
     };
     
     settingsTable["getOscPort"] = []() -> int {
@@ -2100,6 +2610,7 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     settingsTable["setDspScriptsDir"] = [](const std::string& path) {
         Settings::getInstance().setDspScriptsDir(juce::String(path));
         Settings::getInstance().save();
+        invalidateScriptListingCaches();
     };
     
     settingsTable["browseForDspScriptsDir"] = [&state](sol::function callback) {

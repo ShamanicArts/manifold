@@ -699,6 +699,11 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
       packagePath += ";" + pImpl->sharedUiDir + "/?.lua;" +
                      pImpl->sharedUiDir + "/?/init.lua";
     }
+    // Add project lib directory for shared modules
+    const auto projectLibPath = target.projectRoot.getChildFile("lib").getFullPathName().toStdString();
+    if (!projectLibPath.empty()) {
+      packagePath += ";" + projectLibPath + "/?.lua;" + projectLibPath + "/?/init.lua";
+    }
     coreEngine_.getLuaState()["package"]["path"] = packagePath;
   }
 

@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <condition_variable>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -132,6 +133,8 @@ public:
     }
     void requestGraphRuntimeSwap(
         std::unique_ptr<dsp_primitives::GraphRuntime> runtime) override;
+    void beginGraphMutation() override;
+    void endGraphMutation() override;
 
     bool loadDspScript(const juce::File&) override;
     bool loadDspScript(const juce::File&, const std::string& slot) override;
@@ -286,6 +289,11 @@ private:
     std::atomic<dsp_primitives::GraphRuntime*> pendingRuntime{nullptr};
     dsp_primitives::GraphRuntime* activeRuntime = nullptr;
     dsp_primitives::GraphRuntime* pendingRetireRuntime = nullptr;
+    std::mutex graphMutationMutex;
+    std::condition_variable graphMutationCv;
+    std::atomic<bool> graphMutationPauseRequested{false};
+    std::atomic<int> graphProcessDepth{0};
+    bool graphMutationRestoreEnabled = false;
     static constexpr int RETIRE_QUEUE_CAPACITY = 64;
     SPSCQueuePtr<dsp_primitives::GraphRuntime, RETIRE_QUEUE_CAPACITY> retireQueue;
     std::mutex retiredRuntimeDrainMutex;

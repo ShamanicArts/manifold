@@ -29,7 +29,10 @@ extern "C" {
 #include <map>
 #include <mutex>
 #include <cmath>
+#include <condition_variable>
+#include <deque>
 #include <functional>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -42,6 +45,7 @@ struct DspParamSpec {
   float defaultValue = 0.0f;
   int access = 3;
   juce::String description;
+  bool deferGraphMutation = false;
 };
 
 float clampParamValue(const DspParamSpec &spec, float value) {
@@ -231,6 +235,11 @@ bool sampleDerivedAdditiveDebugFromLua(const sol::table &t,
 } // namespace
 
 struct DSPPluginScriptHost::Impl {
+  struct DeferredParamMutation {
+    std::string path;
+    float value = 0.0f;
+  };
+
   ScriptableProcessor *processor = nullptr;
 
   mutable std::recursive_mutex luaMutex;
@@ -255,6 +264,13 @@ struct DSPPluginScriptHost::Impl {
   // Keep old Lua VMs alive to avoid tearing down a VM during nested Lua call stacks.
   std::vector<sol::state> retiredLuaStates;
 
+  std::mutex deferredMutex;
+  std::condition_variable deferredCv;
+  std::deque<DeferredParamMutation> deferredMutations;
+  std::thread deferredWorker;
+  bool deferredWorkerRunning = false;
+  bool deferredWorkerStop = false;
+
   std::string namespaceBase{"/core/behavior"};
 
   bool loaded = false;
@@ -267,7 +283,163 @@ struct DSPPluginScriptHost::Impl {
 
 DSPPluginScriptHost::DSPPluginScriptHost() : pImpl(std::make_unique<Impl>()) {}
 
+bool DSPPluginScriptHost::compileRuntimeAndRequestSwap(const std::string &reason) {
+  auto *impl = pImpl.get();
+  if (!impl || !impl->processor) {
+    return false;
+  }
+
+  auto graph = impl->processor->getPrimitiveGraph();
+  if (!graph) {
+    const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
+    impl->lastError = reason + ": missing primitive graph";
+    return false;
+  }
+
+  const double sampleRate =
+      impl->processor->getSampleRate() > 0.0 ? impl->processor->getSampleRate()
+                                             : 44100.0;
+  const int blockSize = std::max(1, impl->processor->getGraphBlockSize());
+  const int numChannels = std::max(1, impl->processor->getGraphOutputChannels());
+
+  auto runtime = graph->compileRuntime(sampleRate, blockSize, numChannels);
+  if (!runtime) {
+    const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
+    impl->lastError = reason + ": failed to compile runtime";
+    return false;
+  }
+
+  impl->processor->requestGraphRuntimeSwap(std::move(runtime));
+  return true;
+}
+
+bool DSPPluginScriptHost::applyDeferredGraphMutation(const std::string &path,
+                                                     float normalized) {
+  auto *impl = pImpl.get();
+  if (!impl) {
+    return false;
+  }
+
+  if (impl->processor) {
+    impl->processor->beginGraphMutation();
+  }
+
+  bool ok = true;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
+    const auto specIt = impl->paramSpecs.find(path);
+    if (specIt == impl->paramSpecs.end()) {
+      ok = false;
+    } else {
+      const auto bindIt = impl->paramBindings.find(path);
+      if (bindIt != impl->paramBindings.end()) {
+        bindIt->second(normalized);
+      }
+
+      if (ok && impl->onParamChange.valid()) {
+        std::string internalPath = path;
+        const auto mapIt = impl->externalToInternalPath.find(path);
+        if (mapIt != impl->externalToInternalPath.end()) {
+          internalPath = mapIt->second;
+        }
+
+        sol::protected_function_result result = impl->onParamChange(internalPath, normalized);
+        if (!result.valid()) {
+          sol::error err = result;
+          impl->lastError = "deferred onParamChange failed: " + std::string(err.what());
+          ok = false;
+        }
+      }
+    }
+  }
+
+  if (ok) {
+    ok = compileRuntimeAndRequestSwap("deferred graph mutation");
+  }
+
+  if (impl->processor) {
+    impl->processor->endGraphMutation();
+  }
+  return ok;
+}
+
+void DSPPluginScriptHost::ensureDeferredWorkerStarted() {
+  auto *impl = pImpl.get();
+  if (!impl) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(impl->deferredMutex);
+  if (impl->deferredWorkerRunning) {
+    return;
+  }
+
+  impl->deferredWorkerStop = false;
+  impl->deferredWorkerRunning = true;
+  impl->deferredWorker = std::thread([this, impl]() {
+    for (;;) {
+      Impl::DeferredParamMutation mutation;
+      {
+        std::unique_lock<std::mutex> lock(impl->deferredMutex);
+        impl->deferredCv.wait(lock, [impl]() {
+          return impl->deferredWorkerStop || !impl->deferredMutations.empty();
+        });
+
+        if (impl->deferredWorkerStop && impl->deferredMutations.empty()) {
+          break;
+        }
+
+        mutation = impl->deferredMutations.front();
+        impl->deferredMutations.pop_front();
+      }
+
+      (void)applyDeferredGraphMutation(mutation.path, mutation.value);
+    }
+  });
+}
+
+bool DSPPluginScriptHost::enqueueDeferredGraphMutation(const std::string &path,
+                                                       float normalized) {
+  auto *impl = pImpl.get();
+  if (!impl) {
+    return false;
+  }
+
+  ensureDeferredWorkerStarted();
+  {
+    std::lock_guard<std::mutex> lock(impl->deferredMutex);
+    impl->deferredMutations.push_back({path, normalized});
+  }
+  impl->deferredCv.notify_one();
+  return true;
+}
+
+void DSPPluginScriptHost::stopDeferredWorker() {
+  auto *impl = pImpl.get();
+  if (!impl) {
+    return;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(impl->deferredMutex);
+    impl->deferredWorkerStop = true;
+    impl->deferredMutations.clear();
+  }
+  impl->deferredCv.notify_all();
+
+  if (impl->deferredWorker.joinable()) {
+    impl->deferredWorker.join();
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(impl->deferredMutex);
+    impl->deferredWorkerRunning = false;
+    impl->deferredWorkerStop = false;
+  }
+}
+
 DSPPluginScriptHost::~DSPPluginScriptHost() {
+  stopDeferredWorker();
   if (pImpl->processor) {
     if (auto graph = pImpl->processor->getPrimitiveGraph()) {
       for (auto &node : pImpl->ownedNodes) {
@@ -291,6 +463,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
                                          const juce::File *scriptFile,
                                          const std::string *scriptCode) {
   auto *impl = pImpl.get();
+  stopDeferredWorker();
   if (!impl->processor) {
     impl->lastError = "DSP host not initialised";
     return false;
@@ -326,6 +499,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   sol::state newLua;
   newLua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string,
                         sol::lib::table, sol::lib::package);
+  lua_State* newLuaState = newLua.lua_state();
 
   std::unordered_map<std::string, DspParamSpec> newParamSpecs;
   std::unordered_map<std::string, float> newParamValues;
@@ -422,8 +596,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "isPlaying", &dsp_primitives::LoopPlaybackNode::isPlaying,
       "seek", &dsp_primitives::LoopPlaybackNode::seekNormalized,
       "getNormalizedPosition", &dsp_primitives::LoopPlaybackNode::getNormalizedPosition,
-      "getPeaks", [&newLua](std::shared_ptr<dsp_primitives::LoopPlaybackNode>& self, int numBuckets) -> sol::table {
-        sol::table result = newLua.create_table();
+      "getPeaks", [newLuaState](std::shared_ptr<dsp_primitives::LoopPlaybackNode>& self, int numBuckets) -> sol::table {
+        sol::table result = sol::state_view(newLuaState).create_table();
         if (self) {
           std::vector<float> peaks;
           bool ok = self->computePeaks(numBuckets, peaks);
@@ -506,6 +680,26 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         return temporalPartialDataToLua(ts, self->getLastTemporalPartials());
       },
+      "hasTemporalPartials", [](std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>& self) -> bool {
+        return self ? self->hasTemporalPartials() : false;
+      },
+      "getTemporalFrameCount", [](std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>& self) -> int {
+        return self ? self->getTemporalFrameCount() : 0;
+      },
+      "getTemporalFrameAtPosition", [](sol::this_state ts,
+                                         std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>& self,
+                                         float pos,
+                                         sol::optional<float> smoothAmount,
+                                         sol::optional<float> contrastAmount) -> sol::table {
+        if (!self) {
+          sol::state_view lua(ts);
+          return sol::table(lua, sol::create);
+        }
+        return partialDataToLua(ts,
+                                self->getTemporalFrameAtPosition(pos,
+                                                                 smoothAmount.value_or(0.0f),
+                                                                 contrastAmount.value_or(0.5f)));
+      },
       "requestAsyncAnalysis", [](std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>& self,
                                    sol::optional<int> maxPartials,
                                    sol::optional<int> windowSize,
@@ -519,8 +713,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
       },
       "isAsyncAnalysisPending", &dsp_primitives::SampleRegionPlaybackNode::isAsyncAnalysisPending,
-      "getPeaks", [&newLua](std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>& self, int numBuckets) -> sol::table {
-        sol::table result = newLua.create_table();
+      "getPeaks", [newLuaState](std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>& self, int numBuckets) -> sol::table {
+        sol::table result = sol::state_view(newLuaState).create_table();
         if (self) {
           std::vector<float> peaks;
           bool ok = self->computePeaks(numBuckets, peaks);
@@ -669,6 +863,48 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "setPartial", &dsp_primitives::SineBankNode::setPartial,
       "getActivePartialCount", &dsp_primitives::SineBankNode::getActivePartialCount,
       "getReferenceFundamental", &dsp_primitives::SineBankNode::getReferenceFundamental,
+      "setSpectralMode", &dsp_primitives::SineBankNode::setSpectralMode,
+      "getSpectralMode", &dsp_primitives::SineBankNode::getSpectralMode,
+      "setSpectralSamplePlayback", [](std::shared_ptr<dsp_primitives::SineBankNode>& self,
+                                      const std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>& playback) {
+        if (self) {
+          self->setSpectralSamplePlayback(playback);
+        }
+      },
+      "clearSpectralSamplePlayback", &dsp_primitives::SineBankNode::clearSpectralSamplePlayback,
+      "hasSpectralSamplePlayback", &dsp_primitives::SineBankNode::hasSpectralSamplePlayback,
+      "setSpectralWaveform", &dsp_primitives::SineBankNode::setSpectralWaveform,
+      "getSpectralWaveform", &dsp_primitives::SineBankNode::getSpectralWaveform,
+      "setSpectralPulseWidth", &dsp_primitives::SineBankNode::setSpectralPulseWidth,
+      "getSpectralPulseWidth", &dsp_primitives::SineBankNode::getSpectralPulseWidth,
+      "setSpectralAdditivePartials", &dsp_primitives::SineBankNode::setSpectralAdditivePartials,
+      "getSpectralAdditivePartials", &dsp_primitives::SineBankNode::getSpectralAdditivePartials,
+      "setSpectralAdditiveTilt", &dsp_primitives::SineBankNode::setSpectralAdditiveTilt,
+      "getSpectralAdditiveTilt", &dsp_primitives::SineBankNode::getSpectralAdditiveTilt,
+      "setSpectralAdditiveDrift", &dsp_primitives::SineBankNode::setSpectralAdditiveDrift,
+      "getSpectralAdditiveDrift", &dsp_primitives::SineBankNode::getSpectralAdditiveDrift,
+      "setSpectralMorphAmount", &dsp_primitives::SineBankNode::setSpectralMorphAmount,
+      "getSpectralMorphAmount", &dsp_primitives::SineBankNode::getSpectralMorphAmount,
+      "setSpectralMorphDepth", &dsp_primitives::SineBankNode::setSpectralMorphDepth,
+      "getSpectralMorphDepth", &dsp_primitives::SineBankNode::getSpectralMorphDepth,
+      "setSpectralMorphCurve", &dsp_primitives::SineBankNode::setSpectralMorphCurve,
+      "getSpectralMorphCurve", &dsp_primitives::SineBankNode::getSpectralMorphCurve,
+      "setSpectralTemporalPosition", &dsp_primitives::SineBankNode::setSpectralTemporalPosition,
+      "getSpectralTemporalPosition", &dsp_primitives::SineBankNode::getSpectralTemporalPosition,
+      "setSpectralTemporalSpeed", &dsp_primitives::SineBankNode::setSpectralTemporalSpeed,
+      "getSpectralTemporalSpeed", &dsp_primitives::SineBankNode::getSpectralTemporalSpeed,
+      "setSpectralTemporalSmooth", &dsp_primitives::SineBankNode::setSpectralTemporalSmooth,
+      "getSpectralTemporalSmooth", &dsp_primitives::SineBankNode::getSpectralTemporalSmooth,
+      "setSpectralTemporalContrast", &dsp_primitives::SineBankNode::setSpectralTemporalContrast,
+      "getSpectralTemporalContrast", &dsp_primitives::SineBankNode::getSpectralTemporalContrast,
+      "setSpectralEnvelopeFollow", &dsp_primitives::SineBankNode::setSpectralEnvelopeFollow,
+      "getSpectralEnvelopeFollow", &dsp_primitives::SineBankNode::getSpectralEnvelopeFollow,
+      "setSpectralStretch", &dsp_primitives::SineBankNode::setSpectralStretch,
+      "getSpectralStretch", &dsp_primitives::SineBankNode::getSpectralStretch,
+      "setSpectralTiltMode", &dsp_primitives::SineBankNode::setSpectralTiltMode,
+      "getSpectralTiltMode", &dsp_primitives::SineBankNode::getSpectralTiltMode,
+      "setSpectralAddFlavor", &dsp_primitives::SineBankNode::setSpectralAddFlavor,
+      "getSpectralAddFlavor", &dsp_primitives::SineBankNode::getSpectralAddFlavor,
       "getPartials", [](sol::this_state ts, std::shared_ptr<dsp_primitives::SineBankNode>& self) -> sol::table {
         if (!self) {
           sol::state_view lua(ts);
@@ -893,6 +1129,23 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "getMix", &dsp_primitives::GranulatorNode::getMix,
       "reset", &dsp_primitives::GranulatorNode::reset);
 
+  newLua.new_usertype<dsp_primitives::PhaseVocoderNode>(
+      "PhaseVocoderNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::PhaseVocoderNode>(int)>(),
+      "setMode", &dsp_primitives::PhaseVocoderNode::setMode,
+      "getMode", &dsp_primitives::PhaseVocoderNode::getMode,
+      "setPitchSemitones", &dsp_primitives::PhaseVocoderNode::setPitchSemitones,
+      "getPitchSemitones", &dsp_primitives::PhaseVocoderNode::getPitchSemitones,
+      "setTimeStretch", &dsp_primitives::PhaseVocoderNode::setTimeStretch,
+      "getTimeStretch", &dsp_primitives::PhaseVocoderNode::getTimeStretch,
+      "setMix", &dsp_primitives::PhaseVocoderNode::setMix,
+      "getMix", &dsp_primitives::PhaseVocoderNode::getMix,
+      "setFFTOrder", &dsp_primitives::PhaseVocoderNode::setFFTOrder,
+      "getFFTOrder", &dsp_primitives::PhaseVocoderNode::getFFTOrder,
+      "getLatencySamples", &dsp_primitives::PhaseVocoderNode::getLatencySamples,
+      "reset", &dsp_primitives::PhaseVocoderNode::reset,
+      "prepare", &dsp_primitives::PhaseVocoderNode::prepare);
+
   newLua.new_usertype<dsp_primitives::StutterNode>(
       "StutterNode",
       sol::constructors<std::shared_ptr<dsp_primitives::StutterNode>()>(),
@@ -1038,10 +1291,12 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       "setRelease", &dsp_primitives::EnvelopeFollowerNode::setRelease,
       "setSensitivity", &dsp_primitives::EnvelopeFollowerNode::setSensitivity,
       "setHighpass", &dsp_primitives::EnvelopeFollowerNode::setHighpass,
+      "setMode", &dsp_primitives::EnvelopeFollowerNode::setMode,
       "getAttack", &dsp_primitives::EnvelopeFollowerNode::getAttack,
       "getRelease", &dsp_primitives::EnvelopeFollowerNode::getRelease,
       "getSensitivity", &dsp_primitives::EnvelopeFollowerNode::getSensitivity,
       "getHighpass", &dsp_primitives::EnvelopeFollowerNode::getHighpass,
+      "getMode", &dsp_primitives::EnvelopeFollowerNode::getMode,
       "getEnvelope", &dsp_primitives::EnvelopeFollowerNode::getEnvelope,
       "reset", &dsp_primitives::EnvelopeFollowerNode::reset);
 
@@ -1296,6 +1551,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     if (obj.is<std::shared_ptr<dsp_primitives::GranulatorNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::GranulatorNode>>();
     }
+    if (obj.is<std::shared_ptr<dsp_primitives::PhaseVocoderNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::PhaseVocoderNode>>();
+    }
     if (obj.is<std::shared_ptr<dsp_primitives::StutterNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::StutterNode>>();
     }
@@ -1444,6 +1702,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         if (nodeObj.is<std::shared_ptr<dsp_primitives::GranulatorNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::GranulatorNode>>();
         }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::PhaseVocoderNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::PhaseVocoderNode>>();
+        }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::StutterNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::StutterNode>>();
         }
@@ -1515,13 +1776,13 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     return nullptr;
   };
 
-  auto primitives = newLua.create_table();
+  auto primitives = sol::state_view(newLuaState).create_table();
   {
-    auto playheadApi = newLua.create_table();
-    playheadApi["new"] = [graph, &newLua, &trackNode]() {
+    auto playheadApi = sol::state_view(newLuaState).create_table();
+    playheadApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::PlayheadNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setLoopLength"] = [](sol::table self, int v) {
           if (auto n = tableNode<dsp_primitives::PlayheadNode>(self)) {
@@ -1588,29 +1849,29 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["PlayheadNode"] = playheadApi;
   }
   {
-    auto passthroughApi = newLua.create_table();
+    auto passthroughApi = sol::state_view(newLuaState).create_table();
     // PassthroughNode.new(numChannels [, mode])
     // mode: 0 = MonitorControlled (default, always-on input-dsp source)
     //       1 = RawCapture (monitor-toggle source)
-    passthroughApi["new"] = [graph, &newLua, &trackNode](int numChannels, sol::optional<int> mode) {
+    passthroughApi["new"] = [graph, newLuaState, trackNode](int numChannels, sol::optional<int> mode) {
         using Mode = dsp_primitives::PassthroughNode::HostInputMode;
         const Mode hostMode = (mode.has_value() && mode.value() == 1)
                                   ? Mode::RawCapture
                                   : Mode::MonitorControlled;
         auto node = std::make_shared<dsp_primitives::PassthroughNode>(numChannels, hostMode);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         return t;
       };
     primitives["PassthroughNode"] = passthroughApi;
   }
   {
-    auto gainApi = newLua.create_table();
-    gainApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto gainApi = sol::state_view(newLuaState).create_table();
+    gainApi["new"] = [graph, newLuaState, trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::GainNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setGain"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::GainNode>(self)) {
@@ -1639,11 +1900,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["GainNode"] = gainApi;
   }
   {
-    auto loopPlaybackApi = newLua.create_table();
-    loopPlaybackApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto loopPlaybackApi = sol::state_view(newLuaState).create_table();
+    loopPlaybackApi["new"] = [graph, newLuaState, trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::LoopPlaybackNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setLoopLength"] = [](sol::table self, int v) {
           if (auto n = tableNode<dsp_primitives::LoopPlaybackNode>(self)) {
@@ -1697,11 +1958,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["LoopPlaybackNode"] = loopPlaybackApi;
   }
   {
-    auto sampleRegionApi = newLua.create_table();
-    sampleRegionApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto sampleRegionApi = sol::state_view(newLuaState).create_table();
+    sampleRegionApi["new"] = [graph, newLuaState, trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::SampleRegionPlaybackNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setLoopLength"] = [](sol::table self, int v) {
           if (auto n = tableNode<dsp_primitives::SampleRegionPlaybackNode>(self)) {
@@ -1815,8 +2076,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           }
           return 0.0f;
         };
-        t["getPeaks"] = [&newLua](sol::table self, int numBuckets) {
-          sol::table result = newLua.create_table();
+        t["getPeaks"] = [newLuaState](sol::table self, int numBuckets) {
+          sol::table result = sol::state_view(newLuaState).create_table();
           if (auto n = tableNode<dsp_primitives::SampleRegionPlaybackNode>(self)) {
             std::vector<float> peaks;
             bool ok = n->computePeaks(numBuckets, peaks);
@@ -1833,11 +2094,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["SampleRegionPlaybackNode"] = sampleRegionApi;
   }
   {
-    auto gateApi = newLua.create_table();
-    gateApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto gateApi = sol::state_view(newLuaState).create_table();
+    gateApi["new"] = [graph, newLuaState, trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::PlaybackStateGateNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["play"] = [](sol::table self) {
           if (auto n = tableNode<dsp_primitives::PlaybackStateGateNode>(self)) {
@@ -1881,11 +2142,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["PlaybackStateGateNode"] = gateApi;
   }
   {
-    auto captureApi = newLua.create_table();
-    captureApi["new"] = [graph, &newLua, &trackNode](int numChannels) {
+    auto captureApi = sol::state_view(newLuaState).create_table();
+    captureApi["new"] = [graph, newLuaState, trackNode](int numChannels) {
         auto node = std::make_shared<dsp_primitives::RetrospectiveCaptureNode>(numChannels);
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setCaptureSeconds"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::RetrospectiveCaptureNode>(self)) {
@@ -1914,11 +2175,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["RetrospectiveCaptureNode"] = captureApi;
   }
   {
-    auto recordStateApi = newLua.create_table();
-    recordStateApi["new"] = [graph, &newLua, &trackNode]() {
+    auto recordStateApi = sol::state_view(newLuaState).create_table();
+    recordStateApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::RecordStateNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["startRecording"] = [](sol::table self) {
           if (auto n = tableNode<dsp_primitives::RecordStateNode>(self)) {
@@ -1952,11 +2213,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["RecordStateNode"] = recordStateApi;
   }
   {
-    auto quantizerApi = newLua.create_table();
-    quantizerApi["new"] = [graph, &newLua, &trackNode]() {
+    auto quantizerApi = sol::state_view(newLuaState).create_table();
+    quantizerApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::QuantizerNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setTempo"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::QuantizerNode>(self)) {
@@ -1991,11 +2252,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["QuantizerNode"] = quantizerApi;
   }
   {
-    auto modeApi = newLua.create_table();
-    modeApi["new"] = [graph, &newLua, &trackNode]() {
+    auto modeApi = sol::state_view(newLuaState).create_table();
+    modeApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::RecordModePolicyNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setMode"] = [](sol::table self, int v) {
           if (auto n = tableNode<dsp_primitives::RecordModePolicyNode>(self)) {
@@ -2025,11 +2286,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["RecordModePolicyNode"] = modeApi;
   }
   {
-    auto forwardApi = newLua.create_table();
-    forwardApi["new"] = [graph, &newLua, &trackNode]() {
+    auto forwardApi = sol::state_view(newLuaState).create_table();
+    forwardApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::ForwardCommitSchedulerNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["arm"] = [](sol::table self, float bars, int layerIndex, double currentSamples, float samplesPerBar) {
           if (auto n = tableNode<dsp_primitives::ForwardCommitSchedulerNode>(self)) {
@@ -2070,11 +2331,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["ForwardCommitSchedulerNode"] = forwardApi;
   }
   {
-    auto transportApi = newLua.create_table();
-    transportApi["new"] = [graph, &newLua, &trackNode]() {
+    auto transportApi = sol::state_view(newLuaState).create_table();
+    transportApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::TransportStateNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["play"] = [](sol::table self) {
           if (auto n = tableNode<dsp_primitives::TransportStateNode>(self)) {
@@ -2113,11 +2374,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["TransportStateNode"] = transportApi;
   }
   {
-    auto oscApi = newLua.create_table();
-    oscApi["new"] = [graph, &newLua, &trackNode]() {
+    auto oscApi = sol::state_view(newLuaState).create_table();
+    oscApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::OscillatorNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setFrequency"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::OscillatorNode>(self)) {
@@ -2220,11 +2481,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["OscillatorNode"] = oscApi;
   }
   {
-    auto sineBankApi = newLua.create_table();
-    sineBankApi["new"] = [graph, &newLua, &trackNode]() {
+    auto sineBankApi = sol::state_view(newLuaState).create_table();
+    sineBankApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::SineBankNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setFrequency"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
@@ -2286,6 +2547,110 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
             n->setSyncEnabled(v);
           }
         };
+        t["setSpectralMode"] = [](sol::table self, int v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralMode(v);
+          }
+        };
+        t["getSpectralMode"] = [](sol::table self) -> int {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            return n->getSpectralMode();
+          }
+          return 0;
+        };
+        t["setSpectralSamplePlayback"] = [](sol::table self, sol::object playbackObj) {
+          auto n = tableNode<dsp_primitives::SineBankNode>(self);
+          if (!n) {
+            return;
+          }
+          std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode> playback;
+          if (playbackObj.is<std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>>()) {
+            playback = playbackObj.as<std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>>();
+          } else if (playbackObj.get_type() == sol::type::table) {
+            playback = tableNode<dsp_primitives::SampleRegionPlaybackNode>(playbackObj.as<sol::table>());
+          }
+          n->setSpectralSamplePlayback(playback);
+        };
+        t["clearSpectralSamplePlayback"] = [](sol::table self) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->clearSpectralSamplePlayback();
+          }
+        };
+        t["setSpectralWaveform"] = [](sol::table self, int v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralWaveform(v);
+          }
+        };
+        t["setSpectralPulseWidth"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralPulseWidth(v);
+          }
+        };
+        t["setSpectralAdditivePartials"] = [](sol::table self, int v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralAdditivePartials(v);
+          }
+        };
+        t["setSpectralAdditiveTilt"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralAdditiveTilt(v);
+          }
+        };
+        t["setSpectralAdditiveDrift"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralAdditiveDrift(v);
+          }
+        };
+        t["setSpectralMorphAmount"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralMorphAmount(v);
+          }
+        };
+        t["setSpectralMorphDepth"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralMorphDepth(v);
+          }
+        };
+        t["setSpectralMorphCurve"] = [](sol::table self, int v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralMorphCurve(v);
+          }
+        };
+        t["setSpectralTemporalPosition"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralTemporalPosition(v);
+          }
+        };
+        t["setSpectralTemporalSpeed"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralTemporalSpeed(v);
+          }
+        };
+        t["setSpectralTemporalSmooth"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralTemporalSmooth(v);
+          }
+        };
+        t["setSpectralTemporalContrast"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralTemporalContrast(v);
+          }
+        };
+        t["setSpectralStretch"] = [](sol::table self, float v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralStretch(v);
+          }
+        };
+        t["setSpectralTiltMode"] = [](sol::table self, int v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralTiltMode(v);
+          }
+        };
+        t["setSpectralAddFlavor"] = [](sol::table self, int v) {
+          if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
+            n->setSpectralAddFlavor(v);
+          }
+        };
         t["reset"] = [](sol::table self) {
           if (auto n = tableNode<dsp_primitives::SineBankNode>(self)) {
             n->reset();
@@ -2326,23 +2691,23 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           }
           n->setPartials(data);
         };
-        t["getPartials"] = [graph, &newLua](sol::table self) -> sol::table {
+        t["getPartials"] = [graph, newLuaState](sol::table self) -> sol::table {
           auto n = tableNode<dsp_primitives::SineBankNode>(self);
           if (!n) {
-            return newLua.create_table();
+            return sol::state_view(newLuaState).create_table();
           }
-          return partialDataToLua(newLua.lua_state(), n->getPartials());
+          return partialDataToLua(newLuaState, n->getPartials());
         };
         return t;
       };
     primitives["SineBankNode"] = sineBankApi;
   }
   {
-    auto midiVoiceApi = newLua.create_table();
-    midiVoiceApi["new"] = [graph, &newLua, &trackNode]() {
+    auto midiVoiceApi = sol::state_view(newLuaState).create_table();
+    midiVoiceApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::MidiVoiceNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setWaveform"] = [](sol::table self, int v) {
           if (auto n = tableNode<dsp_primitives::MidiVoiceNode>(self)) {
@@ -2440,11 +2805,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["MidiVoiceNode"] = midiVoiceApi;
   }
   {
-    auto midiInputApi = newLua.create_table();
-    midiInputApi["new"] = [graph, &newLua, &trackNode]() {
+    auto midiInputApi = sol::state_view(newLuaState).create_table();
+    midiInputApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::MidiInputNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setChannelFilter"] = [](sol::table self, int v) {
           if (auto n = tableNode<dsp_primitives::MidiInputNode>(self)) {
@@ -2491,7 +2856,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
             n->triggerNoteOff(static_cast<uint8_t>(note));
           }
         };
-        t["connectToVoiceNode"] = [&newLua](sol::table self, sol::table voiceTable) {
+        t["connectToVoiceNode"] = [newLuaState](sol::table self, sol::table voiceTable) {
           auto voiceNode = tableNode<dsp_primitives::MidiVoiceNode>(voiceTable);
           auto inputNode = tableNode<dsp_primitives::MidiInputNode>(self);
           if (voiceNode && inputNode) {
@@ -2503,11 +2868,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["MidiInputNode"] = midiInputApi;
   }
   {
-    auto adsrApi = newLua.create_table();
-    adsrApi["new"] = [graph, &newLua, &trackNode]() {
+    auto adsrApi = sol::state_view(newLuaState).create_table();
+    adsrApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::ADSREnvelopeNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setAttack"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::ADSREnvelopeNode>(self)) {
@@ -2544,11 +2909,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["ADSREnvelopeNode"] = adsrApi;
   }
   {
-    auto reverbApi = newLua.create_table();
-    reverbApi["new"] = [graph, &newLua, &trackNode]() {
+    auto reverbApi = sol::state_view(newLuaState).create_table();
+    reverbApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::ReverbNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setRoomSize"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::ReverbNode>(self)) {
@@ -2580,11 +2945,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["ReverbNode"] = reverbApi;
   }
   {
-    auto filterApi = newLua.create_table();
-    filterApi["new"] = [graph, &newLua, &trackNode]() {
+    auto filterApi = sol::state_view(newLuaState).create_table();
+    filterApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::FilterNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setCutoff"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::FilterNode>(self)) {
@@ -2606,11 +2971,11 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["FilterNode"] = filterApi;
   }
   {
-    auto distApi = newLua.create_table();
-    distApi["new"] = [graph, &newLua, &trackNode]() {
+    auto distApi = sol::state_view(newLuaState).create_table();
+    distApi["new"] = [graph, newLuaState, trackNode]() {
         auto node = std::make_shared<dsp_primitives::DistortionNode>();
         trackNode(node);
-        auto t = newLua.create_table();
+        auto t = sol::state_view(newLuaState).create_table();
         t["__node"] = node;
         t["setDrive"] = [](sol::table self, float v) {
           if (auto n = tableNode<dsp_primitives::DistortionNode>(self)) {
@@ -2632,8 +2997,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["DistortionNode"] = distApi;
   }
   {
-    auto svfApi = newLua.create_table();
-    svfApi["new"] = [graph, &trackNode]() {
+    auto svfApi = sol::state_view(newLuaState).create_table();
+    svfApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::SVFNode>();
         trackNode(node);
         return node;
@@ -2641,8 +3006,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["SVFNode"] = svfApi;
   }
   {
-    auto delayApi = newLua.create_table();
-    delayApi["new"] = [graph, &trackNode]() {
+    auto delayApi = sol::state_view(newLuaState).create_table();
+    delayApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::StereoDelayNode>();
         trackNode(node);
         return node;
@@ -2651,8 +3016,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto compressorApi = newLua.create_table();
-    compressorApi["new"] = [graph, &trackNode]() {
+    auto compressorApi = sol::state_view(newLuaState).create_table();
+    compressorApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::CompressorNode>();
         trackNode(node);
         return node;
@@ -2661,8 +3026,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto waveShaperApi = newLua.create_table();
-    waveShaperApi["new"] = [graph, &trackNode]() {
+    auto waveShaperApi = sol::state_view(newLuaState).create_table();
+    waveShaperApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::WaveShaperNode>();
         trackNode(node);
         return node;
@@ -2671,8 +3036,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto chorusApi = newLua.create_table();
-    chorusApi["new"] = [graph, &trackNode]() {
+    auto chorusApi = sol::state_view(newLuaState).create_table();
+    chorusApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::ChorusNode>();
         trackNode(node);
         return node;
@@ -2681,8 +3046,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto widenerApi = newLua.create_table();
-    widenerApi["new"] = [graph, &trackNode]() {
+    auto widenerApi = sol::state_view(newLuaState).create_table();
+    widenerApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::StereoWidenerNode>();
         trackNode(node);
         return node;
@@ -2691,8 +3056,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto phaserApi = newLua.create_table();
-    phaserApi["new"] = [graph, &trackNode]() {
+    auto phaserApi = sol::state_view(newLuaState).create_table();
+    phaserApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::PhaserNode>();
         trackNode(node);
         return node;
@@ -2701,8 +3066,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto granulatorApi = newLua.create_table();
-    granulatorApi["new"] = [graph, &trackNode]() {
+    auto granulatorApi = sol::state_view(newLuaState).create_table();
+    granulatorApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::GranulatorNode>();
         trackNode(node);
         return node;
@@ -2711,8 +3076,18 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto stutterApi = newLua.create_table();
-    stutterApi["new"] = [graph, &trackNode]() {
+    auto phaseVocoderApi = sol::state_view(newLuaState).create_table();
+    phaseVocoderApi["new"] = [graph, trackNode](int numChannels) {
+        auto node = std::make_shared<dsp_primitives::PhaseVocoderNode>(numChannels);
+        trackNode(node);
+        return node;
+      };
+    primitives["PhaseVocoderNode"] = phaseVocoderApi;
+  }
+
+  {
+    auto stutterApi = sol::state_view(newLuaState).create_table();
+    stutterApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::StutterNode>();
         trackNode(node);
         return node;
@@ -2721,8 +3096,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto shimmerApi = newLua.create_table();
-    shimmerApi["new"] = [graph, &trackNode]() {
+    auto shimmerApi = sol::state_view(newLuaState).create_table();
+    shimmerApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::ShimmerNode>();
         trackNode(node);
         return node;
@@ -2731,8 +3106,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto multitapApi = newLua.create_table();
-    multitapApi["new"] = [graph, &trackNode]() {
+    auto multitapApi = sol::state_view(newLuaState).create_table();
+    multitapApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::MultitapDelayNode>();
         trackNode(node);
         return node;
@@ -2741,8 +3116,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto pitchShifterApi = newLua.create_table();
-    pitchShifterApi["new"] = [graph, &trackNode]() {
+    auto pitchShifterApi = sol::state_view(newLuaState).create_table();
+    pitchShifterApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::PitchShifterNode>();
         trackNode(node);
         return node;
@@ -2751,8 +3126,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto transientShaperApi = newLua.create_table();
-    transientShaperApi["new"] = [graph, &trackNode]() {
+    auto transientShaperApi = sol::state_view(newLuaState).create_table();
+    transientShaperApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::TransientShaperNode>();
         trackNode(node);
         return node;
@@ -2761,8 +3136,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto ringModApi = newLua.create_table();
-    ringModApi["new"] = [graph, &trackNode]() {
+    auto ringModApi = sol::state_view(newLuaState).create_table();
+    ringModApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::RingModulatorNode>();
         trackNode(node);
         return node;
@@ -2771,8 +3146,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto bitCrusherApi = newLua.create_table();
-    bitCrusherApi["new"] = [graph, &trackNode]() {
+    auto bitCrusherApi = sol::state_view(newLuaState).create_table();
+    bitCrusherApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::BitCrusherNode>();
         trackNode(node);
         return node;
@@ -2781,8 +3156,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto formantApi = newLua.create_table();
-    formantApi["new"] = [graph, &trackNode]() {
+    auto formantApi = sol::state_view(newLuaState).create_table();
+    formantApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::FormantFilterNode>();
         trackNode(node);
         return node;
@@ -2791,8 +3166,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto reverseDelayApi = newLua.create_table();
-    reverseDelayApi["new"] = [graph, &trackNode]() {
+    auto reverseDelayApi = sol::state_view(newLuaState).create_table();
+    reverseDelayApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::ReverseDelayNode>();
         trackNode(node);
         return node;
@@ -2801,8 +3176,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto envelopeApi = newLua.create_table();
-    envelopeApi["new"] = [graph, &trackNode]() {
+    auto envelopeApi = sol::state_view(newLuaState).create_table();
+    envelopeApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::EnvelopeFollowerNode>();
         trackNode(node);
         return node;
@@ -2811,8 +3186,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto pitchDetectorApi = newLua.create_table();
-    pitchDetectorApi["new"] = [graph, &trackNode]() {
+    auto pitchDetectorApi = sol::state_view(newLuaState).create_table();
+    pitchDetectorApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::PitchDetectorNode>();
         trackNode(node);
         return node;
@@ -2821,8 +3196,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto crossfaderApi = newLua.create_table();
-    crossfaderApi["new"] = [graph, &trackNode]() {
+    auto crossfaderApi = sol::state_view(newLuaState).create_table();
+    crossfaderApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::CrossfaderNode>();
         trackNode(node);
         return node;
@@ -2831,8 +3206,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto mixerApi = newLua.create_table();
-    mixerApi["new"] = [graph, &trackNode]() {
+    auto mixerApi = sol::state_view(newLuaState).create_table();
+    mixerApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::MixerNode>();
         trackNode(node);
         return node;
@@ -2841,8 +3216,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto noiseApi = newLua.create_table();
-    noiseApi["new"] = [graph, &trackNode]() {
+    auto noiseApi = sol::state_view(newLuaState).create_table();
+    noiseApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::NoiseGeneratorNode>();
         trackNode(node);
         return node;
@@ -2851,8 +3226,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto msEncApi = newLua.create_table();
-    msEncApi["new"] = [graph, &trackNode]() {
+    auto msEncApi = sol::state_view(newLuaState).create_table();
+    msEncApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::MSEncoderNode>();
         trackNode(node);
         return node;
@@ -2861,8 +3236,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto msDecApi = newLua.create_table();
-    msDecApi["new"] = [graph, &trackNode]() {
+    auto msDecApi = sol::state_view(newLuaState).create_table();
+    msDecApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::MSDecoderNode>();
         trackNode(node);
         return node;
@@ -2871,8 +3246,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto eqApi = newLua.create_table();
-    eqApi["new"] = [graph, &trackNode]() {
+    auto eqApi = sol::state_view(newLuaState).create_table();
+    eqApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::EQNode>();
         trackNode(node);
         return node;
@@ -2881,13 +3256,13 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto eq8Api = newLua.create_table();
-    eq8Api["new"] = [graph, &trackNode]() {
+    auto eq8Api = sol::state_view(newLuaState).create_table();
+    eq8Api["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::EQ8Node>();
         trackNode(node);
         return node;
       };
-    eq8Api["BandType"] = newLua.create_table_with(
+    eq8Api["BandType"] = sol::state_view(newLuaState).create_table_with(
         "Peak", static_cast<int>(dsp_primitives::EQ8Node::BandType::Peak),
         "LowShelf", static_cast<int>(dsp_primitives::EQ8Node::BandType::LowShelf),
         "HighShelf", static_cast<int>(dsp_primitives::EQ8Node::BandType::HighShelf),
@@ -2899,8 +3274,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto limiterApi = newLua.create_table();
-    limiterApi["new"] = [graph, &trackNode]() {
+    auto limiterApi = sol::state_view(newLuaState).create_table();
+    limiterApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::LimiterNode>();
         trackNode(node);
         return node;
@@ -2909,8 +3284,8 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
 
   {
-    auto spectrumApi = newLua.create_table();
-    spectrumApi["new"] = [graph, &trackNode]() {
+    auto spectrumApi = sol::state_view(newLuaState).create_table();
+    spectrumApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::SpectrumAnalyzerNode>();
         trackNode(node);
         return node;
@@ -2918,7 +3293,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     primitives["SpectrumAnalyzerNode"] = spectrumApi;
   }
 
-  auto graphTable = newLua.create_table();
+  auto graphTable = sol::state_view(newLuaState).create_table();
   graphTable["connect"] = sol::overload(
       [graph, toPrimitiveNode](const sol::object &fromObj,
                                const sol::object &toObj) {
@@ -2939,6 +3314,36 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         return graph->connect(from, fromOutput, to, toInput);
       });
+  graphTable["disconnect"] = sol::overload(
+      [graph, toPrimitiveNode](const sol::object &fromObj,
+                               const sol::object &toObj) {
+        auto from = toPrimitiveNode(fromObj);
+        auto to = toPrimitiveNode(toObj);
+        if (!from || !to) {
+          return false;
+        }
+        graph->disconnect(from, 0, to, 0);
+        return true;
+      },
+      [graph, toPrimitiveNode](const sol::object &fromObj,
+                               const sol::object &toObj, int fromOutput,
+                               int toInput) {
+        auto from = toPrimitiveNode(fromObj);
+        auto to = toPrimitiveNode(toObj);
+        if (!from || !to) {
+          return false;
+        }
+        graph->disconnect(from, fromOutput, to, toInput);
+        return true;
+      });
+  graphTable["disconnectAll"] = [graph, toPrimitiveNode](const sol::object &nodeObj) {
+    auto node = toPrimitiveNode(nodeObj);
+    if (!node) {
+      return false;
+    }
+    graph->disconnectAll(node);
+    return true;
+  };
   graphTable["clear"] = [graph]() { graph->clear(); };
   graphTable["hasCycle"] = [graph]() { return graph->hasCycle(); };
   graphTable["nodeCount"] =
@@ -2980,7 +3385,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       return true;
     };
 
-  auto paramsTable = newLua.create_table();
+  auto paramsTable = sol::state_view(newLuaState).create_table();
   paramsTable["register"] =
       [&newParamSpecs, &newParamValues, &newExternalToInternalPath,
        &newInternalToExternalPath, &mapInternalToExternal,
@@ -3009,6 +3414,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           if (options["description"].valid()) {
             spec.description =
                 juce::String(options["description"].get<std::string>());
+          }
+          if (options["deferGraphMutation"].valid()) {
+            spec.deferGraphMutation = options["deferGraphMutation"].get<bool>();
           }
         }
 
@@ -3470,6 +3878,25 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
           }
         }
 
+        if (auto phaseVocoder = std::dynamic_pointer_cast<dsp_primitives::PhaseVocoderNode>(node)) {
+          if (method == "setPitchSemitones") {
+            newParamBindings[path] = [phaseVocoder](float v) { phaseVocoder->setPitchSemitones(v); };
+            return true;
+          }
+          if (method == "setTimeStretch") {
+            newParamBindings[path] = [phaseVocoder](float v) { phaseVocoder->setTimeStretch(v); };
+            return true;
+          }
+          if (method == "setMix") {
+            newParamBindings[path] = [phaseVocoder](float v) { phaseVocoder->setMix(v); };
+            return true;
+          }
+          if (method == "setFFTOrder") {
+            newParamBindings[path] = [phaseVocoder](float v) { phaseVocoder->setFFTOrder(static_cast<int>(v)); };
+            return true;
+          }
+        }
+
         if (auto stutter = std::dynamic_pointer_cast<dsp_primitives::StutterNode>(node)) {
           if (method == "setLength") {
             newParamBindings[path] = [stutter](float v) { stutter->setLength(v); };
@@ -3926,10 +4353,10 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         return false;
       };
 
-  auto bundles = newLua.create_table();
+  auto bundles = sol::state_view(newLuaState).create_table();
   {
-    auto loopLayerApi = newLua.create_table();
-    loopLayerApi["new"] = [graph, &newLua, &newLayerPlaybackNodes, &newLayerGateNodes, &newLayerOutputNodes, &newNamedNodes, &mapInternalToExternal, &trackNode](sol::optional<sol::table> options) {
+    auto loopLayerApi = sol::state_view(newLuaState).create_table();
+    loopLayerApi["new"] = [graph, newLuaState, &newLayerPlaybackNodes, &newLayerGateNodes, &newLayerOutputNodes, &newNamedNodes, &mapInternalToExternal, trackNode](sol::optional<sol::table> options) {
       int numChannels = 2;
       if (options.has_value()) {
         sol::table opts = options.value();
@@ -4002,19 +4429,19 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       graph->connect(playback, 0, gate, 0);
       graph->connect(gate, 0, gain, 0);
 
-      auto layer = newLua.create_table();
+      auto layer = sol::state_view(newLuaState).create_table();
       layer["__node"] = gain;
       layer["__inputNode"] = input;
       layer["__outputNode"] = gain;
-      layer["__capture"] = newLua.create_table_with("__node", capture);
-      layer["__playback"] = newLua.create_table_with("__node", playback);
-      layer["__gate"] = newLua.create_table_with("__node", gate);
-      layer["__gain"] = newLua.create_table_with("__node", gain);
-      layer["__record"] = newLua.create_table_with("__node", recordState);
-      layer["__quantizer"] = newLua.create_table_with("__node", quantizer);
-      layer["__mode"] = newLua.create_table_with("__node", mode);
-      layer["__forward"] = newLua.create_table_with("__node", forward);
-      layer["__transport"] = newLua.create_table_with("__node", transport);
+      layer["__capture"] = sol::state_view(newLuaState).create_table_with("__node", capture);
+      layer["__playback"] = sol::state_view(newLuaState).create_table_with("__node", playback);
+      layer["__gate"] = sol::state_view(newLuaState).create_table_with("__node", gate);
+      layer["__gain"] = sol::state_view(newLuaState).create_table_with("__node", gain);
+      layer["__record"] = sol::state_view(newLuaState).create_table_with("__node", recordState);
+      layer["__quantizer"] = sol::state_view(newLuaState).create_table_with("__node", quantizer);
+      layer["__mode"] = sol::state_view(newLuaState).create_table_with("__node", mode);
+      layer["__forward"] = sol::state_view(newLuaState).create_table_with("__node", forward);
+      layer["__transport"] = sol::state_view(newLuaState).create_table_with("__node", transport);
       layer["__overdubLengthPolicy"] = 0;
 
       layer["setVolume"] = [](sol::table self, float v) {
@@ -4290,24 +4717,24 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
         }
         return result.get<bool>();
       };
-      layer["parts"] = newLua.create_table_with(
-          "input", newLua.create_table_with("__node", input),
-          "capture", newLua.create_table_with("__node", capture),
-          "record", newLua.create_table_with("__node", recordState),
-          "quantizer", newLua.create_table_with("__node", quantizer),
-          "mode", newLua.create_table_with("__node", mode),
-          "forward", newLua.create_table_with("__node", forward),
-          "transport", newLua.create_table_with("__node", transport),
-          "gain", newLua.create_table_with("__node", gain),
-          "gate", newLua.create_table_with("__node", gate),
-          "playback", newLua.create_table_with("__node", playback));
+      layer["parts"] = sol::state_view(newLuaState).create_table_with(
+          "input", sol::state_view(newLuaState).create_table_with("__node", input),
+          "capture", sol::state_view(newLuaState).create_table_with("__node", capture),
+          "record", sol::state_view(newLuaState).create_table_with("__node", recordState),
+          "quantizer", sol::state_view(newLuaState).create_table_with("__node", quantizer),
+          "mode", sol::state_view(newLuaState).create_table_with("__node", mode),
+          "forward", sol::state_view(newLuaState).create_table_with("__node", forward),
+          "transport", sol::state_view(newLuaState).create_table_with("__node", transport),
+          "gain", sol::state_view(newLuaState).create_table_with("__node", gain),
+          "gate", sol::state_view(newLuaState).create_table_with("__node", gate),
+          "playback", sol::state_view(newLuaState).create_table_with("__node", playback));
 
       return layer;
     };
     bundles["LoopLayer"] = loopLayerApi;
   }
 
-  auto hostApi = newLua.create_table();
+  auto hostApi = sol::state_view(newLuaState).create_table();
   hostApi["getSampleRate"] = [impl]() {
     return impl->processor ? impl->processor->getSampleRate() : 44100.0;
   };
@@ -4337,7 +4764,7 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     return impl->processor->getGraphNodeByPath(path);
   };
 
-  auto ctx = newLua.create_table();
+  auto ctx = sol::state_view(newLuaState).create_table();
   ctx["primitives"] = primitives;
   ctx["bundles"] = bundles;
   ctx["graph"] = graphTable;
@@ -4500,6 +4927,13 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     appendPackageRoot(scriptDir);
     appendPackageRoot(userDspRoot);
     appendPackageRoot(systemDspRoot);
+    // Add project lib directory (e.g., .../projects/Main/lib/ for scripts in .../projects/Main/dsp/)
+    if (scriptFile != nullptr) {
+      juce::File projectLibDir = scriptFile->getParentDirectory().getParentDirectory().getChildFile("lib");
+      if (projectLibDir.isDirectory()) {
+        appendPackageRoot(projectLibDir);
+      }
+    }
     newLua["package"]["path"] = packagePath;
 
     newLua["__manifoldDspScriptDir"] = scriptDir.getFullPathName().toStdString();
@@ -4606,7 +5040,7 @@ end
       return false;
     }
 
-    auto pathsTable = newLua.create_table();
+    auto pathsTable = sol::state_view(newLuaState).create_table();
     pathsTable["scriptDir"] = scriptDir.getFullPathName().toStdString();
     pathsTable["userDspRoot"] = userDspRoot.getFullPathName().toStdString();
     pathsTable["systemDspRoot"] = systemDspRoot.getFullPathName().toStdString();
@@ -4868,33 +5302,21 @@ bool DSPPluginScriptHost::hasParam(const std::string &path) const {
 }
 
 bool DSPPluginScriptHost::setParam(const std::string &path, float value) {
-  const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
-  const auto specIt = pImpl->paramSpecs.find(path);
-  if (specIt == pImpl->paramSpecs.end()) {
-    return false;
-  }
+  DspParamSpec spec;
+  float normalized = 0.0f;
+  bool shouldDeferGraphMutation = false;
 
-  const float normalized = clampParamValue(specIt->second, value);
-  pImpl->paramValues[path] = normalized;
-
-  const auto bindIt = pImpl->paramBindings.find(path);
-  if (bindIt != pImpl->paramBindings.end()) {
-    bindIt->second(normalized);
-  }
-
-  if (pImpl->onParamChange.valid()) {
-    std::string internalPath = path;
-    const auto mapIt = pImpl->externalToInternalPath.find(path);
-    if (mapIt != pImpl->externalToInternalPath.end()) {
-      internalPath = mapIt->second;
-    }
-
-    sol::protected_function_result result = pImpl->onParamChange(internalPath, normalized);
-    if (!result.valid()) {
-      sol::error err = result;
-      pImpl->lastError = "onParamChange failed: " + std::string(err.what());
+  {
+    const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+    const auto specIt = pImpl->paramSpecs.find(path);
+    if (specIt == pImpl->paramSpecs.end()) {
       return false;
     }
+
+    spec = specIt->second;
+    normalized = clampParamValue(spec, value);
+    pImpl->paramValues[path] = normalized;
+    shouldDeferGraphMutation = spec.deferGraphMutation;
   }
 
   if (pImpl->processor) {
@@ -4906,6 +5328,40 @@ bool DSPPluginScriptHost::setParam(const std::string &path, float value) {
     if (isRegisteredCustom) {
       pImpl->processor->getOSCServer().setCustomValue(paramPath,
                                                       {juce::var(normalized)});
+    }
+  }
+
+  if (shouldDeferGraphMutation) {
+    return enqueueDeferredGraphMutation(path, normalized);
+  }
+
+  {
+    const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+    const auto bindIt = pImpl->paramBindings.find(path);
+    if (bindIt != pImpl->paramBindings.end()) {
+      bindIt->second(normalized);
+    }
+
+    if (pImpl->onParamChange.valid()) {
+      std::string internalPath = path;
+      const auto mapIt = pImpl->externalToInternalPath.find(path);
+      if (mapIt != pImpl->externalToInternalPath.end()) {
+        internalPath = mapIt->second;
+      }
+
+      sol::protected_function_result result = pImpl->onParamChange(internalPath, normalized);
+      if (!result.valid()) {
+        sol::error err = result;
+        pImpl->lastError = "onParamChange failed: " + std::string(err.what());
+        return false;
+      }
+    }
+  }
+
+  if (pImpl->processor) {
+    const juce::String paramPath(path);
+    if (paramPath.startsWith("/midi/synth/rack/audio/")) {
+      return compileRuntimeAndRequestSwap("rack audio route change");
     }
   }
 

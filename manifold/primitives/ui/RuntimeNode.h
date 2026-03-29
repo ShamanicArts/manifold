@@ -125,11 +125,25 @@ public:
     const CallbackSlots& getCallbacks() const { return callbacks_; }
     void clearCallbacks();
 
+    struct DisplayListDebugStats {
+        uint64_t setCalls = 0;
+        uint64_t skippedSetCalls = 0;
+        uint64_t clearCalls = 0;
+        uint64_t compileCalls = 0;
+        uint64_t setCommands = 0;
+        uint64_t compiledCommands = 0;
+        uint64_t compileMicros = 0;
+        std::vector<std::pair<std::string, uint64_t>> topSetByKey;
+        std::vector<std::pair<std::string, uint64_t>> topSkippedSetByKey;
+        std::vector<std::pair<std::string, uint64_t>> topCompileByKey;
+    };
+
     void setDisplayList(const juce::var& displayList);
     const juce::var& getDisplayList() const { return displayList_; }
     bool hasDisplayList() const { return !displayList_.isVoid(); }
     std::shared_ptr<const manifold::ui::imgui::CompiledDisplayList> getCompiledDisplayList() const;
     void clearDisplayList();
+    static DisplayListDebugStats getDisplayListDebugStats(bool reset = false);
 
     void setCustomSurfaceType(const std::string& type);
     const std::string& getCustomSurfaceType() const { return customSurfaceType_; }

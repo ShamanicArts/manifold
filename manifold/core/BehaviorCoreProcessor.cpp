@@ -326,8 +326,11 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         graphWetBuffer.getNumSamples() >= numSamples &&
         monitorInputBuffer.getNumChannels() >= numChannels &&
         monitorInputBuffer.getNumSamples() >= numSamples;
+    const bool mutationPauseRequested =
+        graphMutationPauseRequested.load(std::memory_order_acquire);
 
-    if (canProcessGraph) {
+    if (canProcessGraph && !mutationPauseRequested) {
+        graphProcessDepth.fetch_add(1, std::memory_order_acq_rel);
         // INPUT -> INPUT-DSP: always active at inputVolume.
         for (int ch = 0; ch < numChannels; ++ch) {
             graphWetBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
@@ -376,6 +379,11 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                     outR[i] = wetR[i] * wetGain;
                 }
             }
+        }
+
+        if (graphProcessDepth.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            std::lock_guard<std::mutex> lock(graphMutationMutex);
+            graphMutationCv.notify_all();
         }
     } else {
         // No graph enabled - passthrough toggle controls direct input monitoring.
@@ -487,6 +495,28 @@ void BehaviorCoreProcessor::requestGraphRuntimeSwap(
     if (oldPending != nullptr) {
         delete oldPending;
     }
+}
+
+void BehaviorCoreProcessor::beginGraphMutation() {
+    std::unique_lock<std::mutex> lock(graphMutationMutex);
+    graphMutationPauseRequested.store(true, std::memory_order_release);
+    graphMutationRestoreEnabled = graphProcessingEnabled.exchange(false, std::memory_order_acq_rel);
+    controlServer.getAtomicState().graphEnabled.store(false, std::memory_order_relaxed);
+    graphMutationCv.wait(lock, [this]() {
+        return graphProcessDepth.load(std::memory_order_acquire) == 0;
+    });
+}
+
+void BehaviorCoreProcessor::endGraphMutation() {
+    {
+        std::lock_guard<std::mutex> lock(graphMutationMutex);
+        graphMutationPauseRequested.store(false, std::memory_order_release);
+        graphProcessingEnabled.store(graphMutationRestoreEnabled, std::memory_order_release);
+        controlServer.getAtomicState().graphEnabled.store(graphMutationRestoreEnabled,
+                                                          std::memory_order_relaxed);
+        graphMutationRestoreEnabled = false;
+    }
+    graphMutationCv.notify_all();
 }
 
 DSPPluginScriptHost& BehaviorCoreProcessor::getOrCreateSlot(const std::string& slot) {

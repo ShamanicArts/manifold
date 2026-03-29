@@ -8,6 +8,94 @@
 namespace {
 std::atomic<uint64_t> gNextRuntimeNodeStableId{1};
 
+struct DisplayListDebugState {
+    std::mutex mutex;
+    uint64_t setCalls = 0;
+    uint64_t skippedSetCalls = 0;
+    uint64_t clearCalls = 0;
+    uint64_t compileCalls = 0;
+    uint64_t setCommands = 0;
+    uint64_t compiledCommands = 0;
+    uint64_t compileMicros = 0;
+    std::unordered_map<std::string, uint64_t> setByKey;
+    std::unordered_map<std::string, uint64_t> skippedSetByKey;
+    std::unordered_map<std::string, uint64_t> compileByKey;
+};
+
+DisplayListDebugState& displayListDebugState() {
+    static DisplayListDebugState state;
+    return state;
+}
+
+std::string displayListDebugKey(const RuntimeNode& node) {
+    const auto& widgetType = node.getWidgetType();
+    const auto& nodeId = node.getNodeId();
+    if (!widgetType.empty() && !nodeId.empty()) {
+        return widgetType + ":" + nodeId;
+    }
+    if (!widgetType.empty()) {
+        return widgetType;
+    }
+    if (!nodeId.empty()) {
+        return nodeId;
+    }
+    return "<anonymous>";
+}
+
+uint64_t displayListCommandCount(const juce::var& displayList) {
+    auto* arr = displayList.getArray();
+    return arr != nullptr ? static_cast<uint64_t>(arr->size()) : 0;
+}
+
+void recordDisplayListSet(const RuntimeNode& node, const juce::var& displayList) {
+    auto& stats = displayListDebugState();
+    const auto key = displayListDebugKey(node);
+    const auto commandCount = displayListCommandCount(displayList);
+    std::lock_guard<std::mutex> lock(stats.mutex);
+    ++stats.setCalls;
+    stats.setCommands += commandCount;
+    ++stats.setByKey[key];
+}
+
+void recordDisplayListSetSkipped(const RuntimeNode& node) {
+    auto& stats = displayListDebugState();
+    const auto key = displayListDebugKey(node);
+    std::lock_guard<std::mutex> lock(stats.mutex);
+    ++stats.skippedSetCalls;
+    ++stats.skippedSetByKey[key];
+}
+
+void recordDisplayListClear() {
+    auto& stats = displayListDebugState();
+    std::lock_guard<std::mutex> lock(stats.mutex);
+    ++stats.clearCalls;
+}
+
+void recordDisplayListCompile(const RuntimeNode& node, uint64_t commandCount, uint64_t elapsedMicros) {
+    auto& stats = displayListDebugState();
+    const auto key = displayListDebugKey(node);
+    std::lock_guard<std::mutex> lock(stats.mutex);
+    ++stats.compileCalls;
+    stats.compiledCommands += commandCount;
+    stats.compileMicros += elapsedMicros;
+    ++stats.compileByKey[key];
+}
+
+std::vector<std::pair<std::string, uint64_t>> topEntries(const std::unordered_map<std::string, uint64_t>& source,
+                                                         size_t limit = 12) {
+    std::vector<std::pair<std::string, uint64_t>> out(source.begin(), source.end());
+    std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) {
+        if (a.second != b.second) {
+            return a.second > b.second;
+        }
+        return a.first < b.first;
+    });
+    if (out.size() > limit) {
+        out.resize(limit);
+    }
+    return out;
+}
+
 int varToInt(const juce::var& value, int fallback = 0) {
     if (value.isVoid() || value.isUndefined()) {
         return fallback;
@@ -40,6 +128,71 @@ uintptr_t varToTextureId(const juce::var& value, uintptr_t fallback = 0) {
         return static_cast<uintptr_t>(value.toString().getLargeIntValue());
     }
     return fallback;
+}
+
+bool varsSemanticallyEqual(const juce::var& a, const juce::var& b);
+
+bool arraysSemanticallyEqual(const juce::Array<juce::var>& a, const juce::Array<juce::var>& b) {
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (int i = 0; i < a.size(); ++i) {
+        if (!varsSemanticallyEqual(a.getReference(i), b.getReference(i))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool objectsSemanticallyEqual(const juce::DynamicObject* a, const juce::DynamicObject* b) {
+    if (a == b) {
+        return true;
+    }
+    if (a == nullptr || b == nullptr) {
+        return false;
+    }
+
+    const auto& aProps = a->getProperties();
+    const auto& bProps = b->getProperties();
+    if (aProps.size() != bProps.size()) {
+        return false;
+    }
+
+    for (const auto& property : aProps) {
+        if (!b->hasProperty(property.name)) {
+            return false;
+        }
+        if (!varsSemanticallyEqual(property.value, b->getProperty(property.name))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool varsSemanticallyEqual(const juce::var& a, const juce::var& b) {
+    if (a.isVoid() || a.isUndefined()) {
+        return b.isVoid() || b.isUndefined();
+    }
+    if (b.isVoid() || b.isUndefined()) {
+        return false;
+    }
+    if (a.isBool() || b.isBool()) {
+        return a.isBool() && b.isBool() && static_cast<bool>(a) == static_cast<bool>(b);
+    }
+    if ((a.isInt() || a.isInt64() || a.isDouble()) && (b.isInt() || b.isInt64() || b.isDouble())) {
+        return static_cast<double>(a) == static_cast<double>(b);
+    }
+    if (a.isString() || b.isString()) {
+        return a.toString() == b.toString();
+    }
+    if (auto* aArr = a.getArray()) {
+        auto* bArr = b.getArray();
+        return bArr != nullptr && arraysSemanticallyEqual(*aArr, *bArr);
+    }
+    if (auto* aObj = a.getDynamicObject()) {
+        return objectsSemanticallyEqual(aObj, b.getDynamicObject());
+    }
+    return a.equalsWithSameType(b);
 }
 
 std::shared_ptr<const manifold::ui::imgui::CompiledDisplayList> compileDisplayList(const juce::var& displayList) {
@@ -323,6 +476,13 @@ void RuntimeNode::clearCallbacks() {
 }
 
 void RuntimeNode::setDisplayList(const juce::var& displayList) {
+    recordDisplayListSet(*this, displayList);
+    const bool hadCustomRenderState = !customSurfaceType_.empty() || !customRenderPayload_.isVoid();
+    if (!hadCustomRenderState && varsSemanticallyEqual(displayList_, displayList)) {
+        recordDisplayListSetSkipped(*this);
+        return;
+    }
+
     displayList_ = displayList;
     customSurfaceType_.clear();
     customRenderPayload_ = juce::var();
@@ -339,7 +499,13 @@ std::shared_ptr<const manifold::ui::imgui::CompiledDisplayList> RuntimeNode::get
         }
     }
 
+    const auto startTicks = juce::Time::getHighResolutionTicks();
     auto compiled = compileDisplayList(displayList_);
+    const auto elapsedMicros = static_cast<uint64_t>(juce::Time::highResolutionTicksToSeconds(
+        juce::Time::getHighResolutionTicks() - startTicks) * 1000000.0);
+    recordDisplayListCompile(*this,
+                             compiled ? static_cast<uint64_t>(compiled->commands.size()) : 0,
+                             elapsedMicros);
     {
         std::lock_guard<std::mutex> lock(compiledDisplayListMutex_);
         if (!compiledDisplayList_ || compiledDisplayListVersion_ != currentVersion) {
@@ -354,9 +520,42 @@ void RuntimeNode::clearDisplayList() {
     if (displayList_.isVoid()) {
         return;
     }
+    recordDisplayListClear();
     displayList_ = juce::var();
     displayListVersion_.fetch_add(1, std::memory_order_relaxed);
     markRenderDirty();
+}
+
+RuntimeNode::DisplayListDebugStats RuntimeNode::getDisplayListDebugStats(bool reset) {
+    auto& state = displayListDebugState();
+    std::lock_guard<std::mutex> lock(state.mutex);
+
+    DisplayListDebugStats stats;
+    stats.setCalls = state.setCalls;
+    stats.skippedSetCalls = state.skippedSetCalls;
+    stats.clearCalls = state.clearCalls;
+    stats.compileCalls = state.compileCalls;
+    stats.setCommands = state.setCommands;
+    stats.compiledCommands = state.compiledCommands;
+    stats.compileMicros = state.compileMicros;
+    stats.topSetByKey = topEntries(state.setByKey);
+    stats.topSkippedSetByKey = topEntries(state.skippedSetByKey);
+    stats.topCompileByKey = topEntries(state.compileByKey);
+
+    if (reset) {
+        state.setCalls = 0;
+        state.skippedSetCalls = 0;
+        state.clearCalls = 0;
+        state.compileCalls = 0;
+        state.setCommands = 0;
+        state.compiledCommands = 0;
+        state.compileMicros = 0;
+        state.setByKey.clear();
+        state.skippedSetByKey.clear();
+        state.compileByKey.clear();
+    }
+
+    return stats;
 }
 
 void RuntimeNode::setCustomSurfaceType(const std::string& type) {
