@@ -30,29 +30,31 @@ agent-docs/
 
 ## Naming Convention
 
-All documents use the format: `DDMMYY_document_title.md`
+All documents use the format: `YYMMDD_document_title.md`
 
-- `DD` = Day (01-31)
-- `MM` = Month (01-12)
 - `YY` = Year (last two digits)
+- `MM` = Month (01-12)
+- `DD` = Day (01-31)
 - Document title in snake_case
+
+This ordering enables chronological sorting of files.
 
 ## Quick Reference
 
 ### Most Recent (ACTIVE)
-- `280328_blend_modes_and_modulation_analysis.md` - Today's analysis
-- `280327_project_ownership_and_reload_vision.md` - Architecture vision
+- `active/analysis/260328_blend_modes_and_modulation_analysis.md` - Today's analysis
+- `active/analysis/260327_project_ownership_and_reload_vision.md` - Architecture vision
 
 ### Current Sprint Focus
 - `active/rack-ui/` - Rack UI Framework (6 docs)
-- `active/analysis/250325_duda_review.md` - P0 issues to fix
+- `active/analysis/260325_duda_review.md` - P0 issues to fix
 
 ### Critical Bug Docs
-- `active/editor/240306_editor_working_status.md` - Move/resize bug details
+- `active/editor/260306_editor_working_status.md` - Move/resize bug details
 
 ### Archive Candidates (Historical)
-- `archive/240226_implementation_backlog.md` - All tickets complete
-- `archive/240224_imgui_migration_workplan.md` - Migration done
+- `archive/260226_implementation_backlog.md` - All tickets complete
+- `archive/260224_imgui_migration_workplan.md` - Migration done
 
 ## Status Legend
 
