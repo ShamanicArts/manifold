@@ -259,6 +259,9 @@ function M.attach(shell)
             self.previewOverlay:setBounds(0, 0, 0, 0)
 
             self.mainTabBar:setBounds(0, math.floor(contentY), math.floor(contentW), math.floor(tabH))
+            if self.projectTabHost and type(self.projectTabHost.refreshRetained) == "function" then
+                self.projectTabHost:refreshRetained(math.floor(contentW), math.floor(tabH))
+            end
             local perfBodyY = contentY + tabH
             local perfBodyH = math.max(0, contentH - tabH)
             if isUiTab then
@@ -343,10 +346,16 @@ function M.attach(shell)
 
             if self.editContentMode == "preview" then
                 self.mainTabBar:setBounds(math.floor(previewX), math.floor(contentY), math.floor(previewW), math.floor(tabH))
+                if self.projectTabHost and type(self.projectTabHost.refreshRetained) == "function" then
+                    self.projectTabHost:refreshRetained(math.floor(previewW), math.floor(tabH))
+                end
                 self.mainTabContent:setBounds(0, 0, 0, 0)
                 self.mainTabContent:setDisplayList({})
             else
                 self.mainTabBar:setBounds(0, 0, 0, 0)
+                if self.projectTabHost and type(self.projectTabHost.refreshRetained) == "function" then
+                    self.projectTabHost:refreshRetained(0, 0)
+                end
                 self.mainTabContent:setBounds(math.floor(previewX), math.floor(contentY), math.floor(previewW), math.floor(contentH))
             end
             if type(self.computeMainScriptEditorGeometry) == "function" then

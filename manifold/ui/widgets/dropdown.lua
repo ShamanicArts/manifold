@@ -58,6 +58,9 @@ end
 
 local function buildMainDisplayList(self, w, h)
     local bg = self:isHovered() and Utils.brighten(self._bg, 15) or self._bg
+    local r = self._radius
+    local border = self._border >= 0 and self._border or Utils.brighten(bg, 30)
+    local borderWidth = self._border >= 0 and self._borderWidth or 1
     return {
         {
             cmd = "fillRoundedRect",
@@ -65,7 +68,7 @@ local function buildMainDisplayList(self, w, h)
             y = 1,
             w = math.floor(w - 2),
             h = math.floor(h - 2),
-            radius = 6,
+            radius = r,
             color = bg,
         },
         {
@@ -74,9 +77,19 @@ local function buildMainDisplayList(self, w, h)
             y = 1,
             w = math.floor(w - 2),
             h = math.floor(h - 2),
-            radius = 6,
-            thickness = 1,
-            color = Utils.brighten(bg, 30),
+            radius = r,
+            thickness = borderWidth,
+            color = border,
+        },
+        {
+            cmd = "drawRoundedRect",
+            x = 1,
+            y = 1,
+            w = math.floor(w - 2),
+            h = math.floor(h - 2),
+            radius = r,
+            thickness = self._borderWidth,
+            color = border,
         },
         {
             cmd = "drawText",
@@ -106,6 +119,7 @@ local function buildMainDisplayList(self, w, h)
 end
 
 local function buildOverlayDisplayList(self, w, h, optionCount, visibleRows, itemH)
+    local r = self._radius
     local display = {
         {
             cmd = "fillRoundedRect",
@@ -113,7 +127,7 @@ local function buildOverlayDisplayList(self, w, h, optionCount, visibleRows, ite
             y = 2,
             w = w,
             h = h,
-            radius = 6,
+            radius = r,
             color = 0x40000000,
         },
         {
@@ -122,7 +136,7 @@ local function buildOverlayDisplayList(self, w, h, optionCount, visibleRows, ite
             y = 0,
             w = math.max(0, w - 2),
             h = math.max(0, h - 2),
-            radius = 6,
+            radius = r,
             color = 0xff1e293b,
         },
         {
@@ -131,9 +145,9 @@ local function buildOverlayDisplayList(self, w, h, optionCount, visibleRows, ite
             y = 0,
             w = math.max(0, w - 2),
             h = math.max(0, h - 2),
-            radius = 6,
+            radius = r,
             thickness = 1,
-            color = 0xff475569,
+            color = self._border,
         }
     }
 
@@ -274,6 +288,9 @@ function Dropdown.new(parent, name, config)
     self._onSelect = config.on_select or config.onSelect
     self._bg = Utils.colour(config.bg, 0xff1e293b)
     self._colour = Utils.colour(config.colour, 0xff38bdf8)
+    self._border = Utils.colour(config.border, -1)
+    self._borderWidth = math.max(0, tonumber(config.borderWidth or 1) or 1)
+    self._radius = math.max(0, tonumber(config.radius or 6) or 6)
     self._open = false
     self._overlay = nil
     self._rootNode = config.rootNode

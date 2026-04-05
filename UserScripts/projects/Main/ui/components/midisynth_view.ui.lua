@@ -772,10 +772,10 @@ return {
                     align = "center",
                   },
                   children = {
-                    { id = "octaveDown", type = "Button", x = 0, y = 0, w = 48, h = 28, layoutChild = { basisW = 48, shrink = 0 }, props = { label = "Oct -" }, style = { bg = 0xff1e293b, fontSize = 10 } },
-                    { id = "octaveUp", type = "Button", x = 0, y = 0, w = 48, h = 28, layoutChild = { basisW = 48, shrink = 0 }, props = { label = "Oct +" }, style = { bg = 0xff1e293b, fontSize = 10 } },
+                    { id = "octaveDown", type = "Button", x = 0, y = 0, w = 48, h = 28, layoutChild = { basisW = 48, shrink = 0 }, props = { label = "Oct -" }, style = { bg = 0xff1e293b, border = 0xff38bdf8, borderWidth = 1, radius = 0, fontSize = 10 } },
+                    { id = "octaveUp", type = "Button", x = 0, y = 0, w = 48, h = 28, layoutChild = { basisW = 48, shrink = 0 }, props = { label = "Oct +" }, style = { bg = 0xff1e293b, border = 0xff38bdf8, borderWidth = 1, radius = 0, fontSize = 10 } },
                     { id = "octaveLabel", type = "Label", x = 0, y = 0, w = 72, h = 16, layoutChild = { basisW = 72, shrink = 0, alignSelf = "center" }, props = { text = "C3-C5" }, style = { colour = 0xffcbd5e1, fontSize = 11 } },
-                    { id = "keyCountButton", type = "Button", x = 0, y = 0, w = 36, h = 28, layoutChild = { basisW = 36, shrink = 0 }, props = { label = "14k" }, style = { bg = 0xff334155, fontSize = 9 } },
+                    { id = "keyCountButton", type = "Button", x = 0, y = 0, w = 36, h = 28, layoutChild = { basisW = 36, shrink = 0 }, props = { label = "14k" }, style = { bg = 0xff1e293b, border = 0xff38bdf8, borderWidth = 1, radius = 0, fontSize = 9 } },
                   },
                 },
                 {
@@ -815,9 +815,9 @@ return {
                     align = "center",
                   },
                   children = {
-                    { id = "midiInputDropdown", type = "Dropdown", x = 0, y = 0, w = 180, h = 28, layoutChild = { grow = 1, shrink = 1, basisW = 180, minW = 140 }, props = { options = { "None (Disabled)" }, selected = 1, max_visible_rows = 8 }, style = { bg = 0xff1e293b, colour = 0xff38bdf8 } },
-                    { id = "refreshMidi", type = "Button", x = 0, y = 0, w = 64, h = 28, layoutChild = { basisW = 64, shrink = 0 }, props = { label = "Refresh" }, style = { bg = 0xff1d4ed8, fontSize = 10 } },
-                    { id = "panic", type = "Button", x = 0, y = 0, w = 64, h = 28, layoutChild = { basisW = 64, shrink = 0 }, props = { label = "Panic" }, style = { bg = 0xff7f1d1d, fontSize = 11 } },
+                    { id = "midiInputDropdown", type = "Dropdown", x = 0, y = 0, w = 180, h = 28, layoutChild = { grow = 1, shrink = 1, basisW = 180, minW = 140 }, props = { options = { "None (Disabled)" }, selected = 1, max_visible_rows = 8 }, style = { bg = 0xff1e293b, colour = 0xff38bdf8, radius = 0 } },
+                    { id = "refreshMidi", type = "Button", x = 0, y = 0, w = 64, h = 28, layoutChild = { basisW = 64, shrink = 0 }, props = { label = "Refresh" }, style = { bg = 0xff1e293b, border = 0xff38bdf8, borderWidth = 1, radius = 0, fontSize = 10 } },
+                    { id = "panic", type = "Button", x = 0, y = 0, w = 64, h = 28, layoutChild = { basisW = 64, shrink = 0 }, props = { label = "Panic" }, style = { bg = 0xff1e293b, border = 0xfff87171, borderWidth = 1, radius = 0, fontSize = 11 } },
                   },
                 },
               },
