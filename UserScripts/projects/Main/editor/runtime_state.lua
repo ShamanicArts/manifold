@@ -1,5 +1,5 @@
 return {
-  inputDevice = "Midi Through Port-0",
+  inputDevice = "MPK Mini Mk II MIDI 1",
   keyboardCollapsed = true,
   keyboardKeyCount = 14,
   utilityDockVisible = true,

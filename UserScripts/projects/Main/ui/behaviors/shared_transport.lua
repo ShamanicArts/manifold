@@ -1,6 +1,52 @@
 local Shared = require("behaviors.looper_shared_state")
+local DonutShared = require("behaviors.donut_shared_state")
 
 local M = {}
+
+local function initDonut(ctx, idx)
+  local widgets = ctx.widgets or {}
+  local donut = widgets["donut" .. idx]
+  if not donut then return end
+
+  donut._layerIndex = idx
+  donut._onSeek = function()
+    DonutShared.commandSet("/core/behavior/layer", idx)
+  end
+
+  donut.node:setOnClick(function()
+    DonutShared.commandSet("/core/behavior/layer", idx)
+  end)
+end
+
+local kDonutColours = { 0xff22d3ee, 0xffa78bfa, 0xfff59e0b, 0xff34d399 }
+
+local function updateDonut(ctx, state, idx)
+  local widgets = ctx.widgets or {}
+  local donut = widgets["donut" .. idx]
+  if not donut then return end
+
+  local layer = state.layers and state.layers[idx + 1] or {}
+  local stateName = layer.state or "empty"
+  local positionNorm = 0.0
+  if (layer.length or 0) > 0 then
+    positionNorm = DonutShared.clamp((tonumber(layer.position) or 0) / math.max(1, tonumber(layer.length) or 1), 0.0, 1.0)
+  end
+
+  local peaks = nil
+  if type(getLayerPeaks) == "function" then
+    peaks = getLayerPeaks(idx, 32)
+  end
+
+  donut:setLayerData({
+    length = layer.length or 0,
+    positionNorm = positionNorm,
+    volume = layer.volume or 1.0,
+    muted = layer.muted,
+    state = stateName,
+  })
+  donut:setPeaks(peaks)
+  donut:setBounce((stateName == "playing" and not layer.muted) and 0.15 or 0.0)
+end
 
 function M.init(ctx)
   local widgets = ctx.widgets or {}
@@ -74,6 +120,10 @@ function M.init(ctx)
       Shared.commandSet("/core/behavior/mode", modeIdx)
     end
   end
+
+  for i = 0, 3 do
+    initDonut(ctx, i)
+  end
 end
 
 function M.resized(ctx, w, h)
@@ -87,6 +137,10 @@ function M.resized(ctx, w, h)
     "stop",
     "overdub",
     "clearall",
+    "donut0",
+    "donut1",
+    "donut2",
+    "donut3",
     "linkIndicator",
     "tempo",
     "targetBpm",
@@ -155,6 +209,21 @@ function M.update(ctx, rawState)
 
   if widgets.overdub then
     widgets.overdub:setValue(state.overdubEnabled or false)
+  end
+
+  for i = 0, 3 do
+    updateDonut(ctx, state, i)
+  end
+
+  local activeLayer = state.activeLayer or 0
+  if ctx._lastActiveLayer ~= activeLayer then
+    ctx._lastActiveLayer = activeLayer
+    for i = 0, 3 do
+      local donut = widgets["donut" .. i]
+      if donut then
+        donut:setActive(i == activeLayer, kDonutColours[i + 1])
+      end
+    end
   end
 end
 
