@@ -4727,10 +4727,10 @@ function M._syncPaletteCardState(ctx)
   local function styleTagButton(widget, active)
     if widget then
       if widget.setBg then
-        widget:setBg(active and 0xff1e293b or 0xff111827)
+        widget:setBg(active and 0xff334155 or 0x00000000)
       end
       if widget.setTextColour then
-        widget:setTextColour(active and 0xffe2e8f0 or 0xff94a3b8)
+        widget:setTextColour(active and 0xfff1f5f9 or 0xff94a3b8)
       end
     end
   end
@@ -4754,13 +4754,7 @@ function M._syncPaletteCardState(ctx)
   local searchFocused = ctx._paletteSearchFocused == true
   local searchValue = tostring(ctx._paletteSearchText or "")
   if searchPanel and searchPanel.setStyle then
-    searchPanel:setStyle({
-      bg = searchFocused and 0xff1e293b or 0xff0f172a,
-      border = searchFocused and 0xff38bdf8 or 0xff1f2b4d,
-      borderWidth = 1,
-      radius = 4,
-    })
-    repaint(searchPanel)
+    searchPanel:setStyle({ bg = searchFocused and 0xff1e293b or 0xff0f172a })
   end
   if searchText then
     if searchValue ~= "" then
@@ -4770,7 +4764,6 @@ function M._syncPaletteCardState(ctx)
       syncText(searchText, searchFocused and "Type to filter..." or "Search modules...")
       syncColour(searchText, 0xff64748b)
     end
-    repaint(searchText)
   end
 
   local pageLabel = getScopedWidget(ctx, ".palettePageLabel")
@@ -4840,7 +4833,7 @@ function M._syncPaletteCardState(ctx)
       syncText(detailTitle, ellipsize(tostring(selectedEntry.displayName or selectedEntry.id or "Module"), 16))
     end
     if detailSubtitle then
-      syncText(detailSubtitle, ellipsize(tostring(selectedEntry.description or ""), 42))
+      syncText(detailSubtitle, tostring(selectedEntry.description or ""))
     end
     if detailPorts then
       syncText(detailPorts, ellipsize(tostring(selectedEntry.portSummary or ""), 22))
