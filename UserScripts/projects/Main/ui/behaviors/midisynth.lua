@@ -2108,6 +2108,30 @@ function M._paletteCardMetrics()
   }
 end
 
+function M._getFilteredPaletteEntries(ctx)
+  local entries = M._PALETTE_ENTRIES or {}
+  local tags = type(ctx) == "table" and ctx._paletteFilterTags or {}
+  local showAll = type(ctx) == "table" and ctx._paletteFilterTagAll ~= false
+  local searchText = type(ctx) == "table" and tostring(ctx._paletteSearchText or ""):lower() or ""
+  local hasTagFilter = type(tags) == "table" and next(tags) ~= nil
+  local hasSearchFilter = searchText ~= ""
+  if not hasTagFilter and not hasSearchFilter then
+    return entries
+  end
+  local filtered = {}
+  for i = 1, #entries do
+    local entry = entries[i]
+    local category = tostring(entry.category or "utility")
+    local name = tostring(entry.displayName or entry.id or ""):lower()
+    local matchesSearch = not hasSearchFilter or (name:find(searchText, 1, true) ~= nil)
+    local matchesTag = showAll or (not hasTagFilter) or (tags[category] == true)
+    if matchesSearch and matchesTag then
+      filtered[#filtered + 1] = entry
+    end
+  end
+  return filtered
+end
+
 function M._paletteViewportWidth(ctx)
   local strip = getScopedWidget(ctx, ".paletteStrip")
   local m = M._paletteCardMetrics()
@@ -3099,6 +3123,48 @@ function M._setupUtilityPaletteBrowserHandlers(ctx)
 
   local utilityBrowserBody = getScopedWidget(ctx, ".utilityBrowserBody") or ctx.widgets.utilityBrowserBody
   local paletteStrip = getScopedWidget(ctx, ".paletteStrip") or ctx.widgets.paletteStrip
+
+  local searchPanel = getScopedWidget(ctx, ".utilitySearchPanel")
+  if searchPanel and searchPanel.node then
+    searchPanel.node:setInterceptsMouse(true, true)
+    searchPanel.node:setWantsKeyboardFocus(true)
+    searchPanel.node:setOnMouseDown(function()
+      ctx._paletteSearchFocused = true
+      searchPanel.node:setWantsKeyboardFocus(true)
+      M._requestUtilityBrowserRefresh(ctx)
+    end)
+    if searchPanel.node.setOnKeyPress then
+      searchPanel.node:setOnKeyPress(function(keyCode, charCode, shift, ctrl, alt)
+        if not ctx._paletteSearchFocused then
+          return false
+        end
+        local _ = shift
+        _ = ctrl
+        _ = alt
+        if keyCode == 27 then
+          ctx._paletteSearchText = ""
+          ctx._paletteSearchFocused = false
+          M._requestUtilityBrowserRefresh(ctx)
+          return true
+        end
+        if keyCode == 8 then
+          local text = tostring(ctx._paletteSearchText or "")
+          if #text > 0 then
+            ctx._paletteSearchText = string.sub(text, 1, #text - 1)
+          end
+          M._requestUtilityBrowserRefresh(ctx)
+          return true
+        end
+        if charCode and charCode >= 32 and charCode < 127 then
+          local char = string.char(charCode)
+          ctx._paletteSearchText = tostring(ctx._paletteSearchText or "") .. char
+          M._requestUtilityBrowserRefresh(ctx)
+          return true
+        end
+        return false
+      end)
+    end
+  end
   
   local function handleScroll(mx, my, deltaY)
     local _ = mx
@@ -3151,59 +3217,63 @@ function M._setupUtilityPaletteBrowserHandlers(ctx)
     M._requestUtilityBrowserRefresh(ctx)
   end)
 
-  bindButton(".utilityNavVoiceAdsr", function()
-    M._selectPaletteEntry(ctx, "adsr")
+  bindButton(".utilityTagAll", function()
+    ctx._paletteFilterTagAll = true
+    ctx._paletteFilterTags = {}
+    ctx._paletteScrollOffset = 0
+    M._requestUtilityBrowserRefresh(ctx)
   end)
-  bindButton(".utilityNavVoiceArp", function()
-    M._selectPaletteEntry(ctx, "arp")
+  bindButton(".utilityTagVoice", function()
+    if ctx._paletteFilterTagAll then
+      ctx._paletteFilterTagAll = false
+      ctx._paletteFilterTags = { voice = true }
+    else
+      ctx._paletteFilterTags.voice = not ctx._paletteFilterTags.voice
+      if next(ctx._paletteFilterTags) == nil then
+        ctx._paletteFilterTagAll = true
+      end
+    end
+    ctx._paletteScrollOffset = 0
+    M._requestUtilityBrowserRefresh(ctx)
   end)
-  bindButton(".utilityNavVoiceTranspose", function()
-    M._selectPaletteEntry(ctx, "transpose")
+  bindButton(".utilityTagAudio", function()
+    if ctx._paletteFilterTagAll then
+      ctx._paletteFilterTagAll = false
+      ctx._paletteFilterTags = { audio = true }
+    else
+      ctx._paletteFilterTags.audio = not ctx._paletteFilterTags.audio
+      if next(ctx._paletteFilterTags) == nil then
+        ctx._paletteFilterTagAll = true
+      end
+    end
+    ctx._paletteScrollOffset = 0
+    M._requestUtilityBrowserRefresh(ctx)
   end)
-  bindButton(".utilityNavVoiceVelocityMapper", function()
-    M._selectPaletteEntry(ctx, "velocity_mapper")
+  bindButton(".utilityTagFx", function()
+    if ctx._paletteFilterTagAll then
+      ctx._paletteFilterTagAll = false
+      ctx._paletteFilterTags = { fx = true }
+    else
+      ctx._paletteFilterTags.fx = not ctx._paletteFilterTags.fx
+      if next(ctx._paletteFilterTags) == nil then
+        ctx._paletteFilterTagAll = true
+      end
+    end
+    ctx._paletteScrollOffset = 0
+    M._requestUtilityBrowserRefresh(ctx)
   end)
-  bindButton(".utilityNavVoiceScaleQuantizer", function()
-    M._selectPaletteEntry(ctx, "scale_quantizer")
-  end)
-  bindButton(".utilityNavVoiceNoteFilter", function()
-    M._selectPaletteEntry(ctx, "note_filter")
-  end)
-  bindButton(".utilityNavAudioPlaceholder", function()
-    M._selectPaletteEntry(ctx, "placeholder")
-  end)
-  bindButton(".utilityNavAudioOsc", function()
-    M._selectPaletteEntry(ctx, "rack_oscillator")
-  end)
-  bindButton(".utilityNavAudioFilter", function()
-    M._selectPaletteEntry(ctx, "filter")
-  end)
-  bindButton(".utilityNavFxEq", function()
-    M._selectPaletteEntry(ctx, "eq")
-  end)
-  bindButton(".utilityNavFxFx", function()
-    M._selectPaletteEntry(ctx, "fx")
-  end)
-  bindButton(".utilityNavFxRange", function()
-    M._selectPaletteEntry(ctx, "range_mapper")
-  end)
-  bindButton(".utilityNavModAttenuverterBias", function()
-    M._selectPaletteEntry(ctx, "attenuverter_bias")
-  end)
-  bindButton(".utilityNavModLfo", function()
-    M._selectPaletteEntry(ctx, "lfo")
-  end)
-  bindButton(".utilityNavModSlew", function()
-    M._selectPaletteEntry(ctx, "slew")
-  end)
-  bindButton(".utilityNavModSampleHold", function()
-    M._selectPaletteEntry(ctx, "sample_hold")
-  end)
-  bindButton(".utilityNavModCompare", function()
-    M._selectPaletteEntry(ctx, "compare")
-  end)
-  bindButton(".utilityNavModCvMix", function()
-    M._selectPaletteEntry(ctx, "cv_mix")
+  bindButton(".utilityTagMod", function()
+    if ctx._paletteFilterTagAll then
+      ctx._paletteFilterTagAll = false
+      ctx._paletteFilterTags = { mod = true }
+    else
+      ctx._paletteFilterTags.mod = not ctx._paletteFilterTags.mod
+      if next(ctx._paletteFilterTags) == nil then
+        ctx._paletteFilterTagAll = true
+      end
+    end
+    ctx._paletteScrollOffset = 0
+    M._requestUtilityBrowserRefresh(ctx)
   end)
 
   ctx._utilityPaletteBrowserHandlersReady = true
@@ -4590,6 +4660,14 @@ function M._syncPaletteCardState(ctx)
 
   for i = 1, #M._PALETTE_ENTRIES do
     local entry = M._PALETTE_ENTRIES[i]
+    local filteredEntries = M._getFilteredPaletteEntries(ctx)
+    local filteredIdx = nil
+    for fi = 1, #filteredEntries do
+      if filteredEntries[fi] == entry then
+        filteredIdx = fi
+        break
+      end
+    end
     local paletteCard = getScopedWidget(ctx, "." .. tostring(entry.cardId or ""))
     local paletteHint = getScopedWidget(ctx, "." .. tostring(entry.hintId or ""))
     local palettePorts = getScopedWidget(ctx, "." .. tostring(entry.portsId or ""))
@@ -4597,16 +4675,16 @@ function M._syncPaletteCardState(ctx)
     local paletteAvailable = M._canSpawnPaletteEntry(ctx, entry)
     local selected = selectedEntry and tostring(selectedEntry.id or "") == tostring(entry.id or "")
     local statusText = paletteStatusText(entry, paletteAvailable)
-    local row = math.floor((i - 1) / columns)
-    local col = (i - 1) % columns
+    local row = filteredIdx and math.floor((filteredIdx - 1) / columns) or 0
+    local col = filteredIdx and ((filteredIdx - 1) % columns) or 0
     local cardX = m.pad + (col * (m.w + m.gap))
     local cardY = m.pad + (row * (m.h + m.rowGap)) - scrollOffset
-    local pageVisible = (cardX + m.w) >= 0 and cardX <= viewportW and (cardY + m.h) >= 0 and cardY <= viewportH
-    if pageVisible then
+    local pageVisible = filteredIdx ~= nil and (cardX + m.w) >= 0 and cardX <= viewportW and (cardY + m.h) >= 0 and cardY <= viewportH
+    if pageVisible and filteredIdx then
       if visibleLast == 0 then
-        visibleFirst = i
+        visibleFirst = filteredIdx
       end
-      visibleLast = i
+      visibleLast = filteredIdx
     end
     if paletteCard and paletteCard.setStyle then
       paletteCard:setStyle({
@@ -4633,13 +4711,12 @@ function M._syncPaletteCardState(ctx)
       syncColour(palettePorts, selected and 0xffe2e8f0 or 0xff94a3b8)
     end
     if paletteCard then
-      if pageVisible then
+      if pageVisible and filteredIdx then
         changed = setWidgetBounds(paletteCard, math.floor(cardX), math.floor(cardY), m.w, m.h) or changed
         if paletteCard.setVisible then
           paletteCard:setVisible(true)
         end
       else
-        -- Hide cards outside viewport completely
         if paletteCard.setVisible then
           paletteCard:setVisible(false)
         end
@@ -4647,107 +4724,53 @@ function M._syncPaletteCardState(ctx)
     end
   end
 
-  local entryButtons = M._paletteBrowseEntryButtonMap()
-  for entryId, buttonId in pairs(entryButtons) do
-    local widget = getScopedWidget(ctx, "." .. tostring(buttonId))
-    local selected = selectedEntry and tostring(selectedEntry.id or "") == tostring(entryId)
-    styleNavButton(widget, selected)
-  end
-
-  local voiceCollapsed = M._isPaletteBrowseSectionCollapsed(ctx, "voice")
-  local audioCollapsed = M._isPaletteBrowseSectionCollapsed(ctx, "audio")
-  local fxCollapsed = M._isPaletteBrowseSectionCollapsed(ctx, "fx")
-  local modCollapsed = M._isPaletteBrowseSectionCollapsed(ctx, "mod")
-
-  local voiceHeader = getScopedWidget(ctx, ".utilityNavVoiceHeader")
-  local audioHeader = getScopedWidget(ctx, ".utilityNavAudioHeader")
-  local fxHeader = getScopedWidget(ctx, ".utilityNavFxHeader")
-  local modHeader = getScopedWidget(ctx, ".utilityNavModHeader")
-  syncButtonLabel(voiceHeader, voiceCollapsed and "Voice ▸" or "Voice ▾")
-  syncButtonLabel(audioHeader, audioCollapsed and "Audio ▸" or "Audio ▾")
-  syncButtonLabel(fxHeader, fxCollapsed and "FX ▸" or "FX ▾")
-  syncButtonLabel(modHeader, modCollapsed and "Mod ▸" or "Mod ▾")
-  local function styleNavHeader(widget)
-    if widget and widget.setStyle then
-      widget:setStyle({
-        bg = 0x00000000,
-        hoverBg = 0xff16233a,
-        colour = 0xffe2e8f0,
-        border = 0x00000000,
-        borderWidth = 0,
-        radius = 0,
-        fontSize = 9,
-      })
-    end
-  end
-  styleNavHeader(voiceHeader)
-  styleNavHeader(audioHeader)
-  styleNavHeader(fxHeader)
-  styleNavHeader(modHeader)
-
-  local searchStub = getScopedWidget(ctx, ".utilitySearchStub")
-  local navRail = getScopedWidget(ctx, ".utilityNavRail")
-  local navBounds = navRail and getWidgetBounds(navRail) or nil
-  local navW = math.max(120, math.floor(tonumber(navBounds and navBounds.w) or 168))
-  local navH = math.max(40, math.floor(tonumber(navBounds and navBounds.h) or 84))
-  if searchStub then
-    changed = setWidgetBounds(searchStub, 8, 6, math.max(72, navW - 16), 20) or changed
-  end
-
-  local navItems = {
-    { widget = voiceHeader, height = 18, visible = true },
-    { widget = getScopedWidget(ctx, ".utilityNavVoiceAdsr"), height = 16, visible = not voiceCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavVoiceArp"), height = 16, visible = not voiceCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavVoiceTranspose"), height = 16, visible = not voiceCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavVoiceVelocityMapper"), height = 16, visible = not voiceCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavVoiceScaleQuantizer"), height = 16, visible = not voiceCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavVoiceNoteFilter"), height = 16, visible = not voiceCollapsed },
-    { widget = audioHeader, height = 18, visible = true },
-    { widget = getScopedWidget(ctx, ".utilityNavAudioPlaceholder"), height = 16, visible = not audioCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavAudioOsc"), height = 16, visible = not audioCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavAudioFilter"), height = 16, visible = not audioCollapsed },
-    { widget = fxHeader, height = 18, visible = true },
-    { widget = getScopedWidget(ctx, ".utilityNavFxEq"), height = 16, visible = not fxCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavFxFx"), height = 16, visible = not fxCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavFxRange"), height = 16, visible = not fxCollapsed },
-    { widget = modHeader, height = 18, visible = true },
-    { widget = getScopedWidget(ctx, ".utilityNavModAttenuverterBias"), height = 16, visible = not modCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavModLfo"), height = 16, visible = not modCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavModSlew"), height = 16, visible = not modCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavModSampleHold"), height = 16, visible = not modCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavModCompare"), height = 16, visible = not modCollapsed },
-    { widget = getScopedWidget(ctx, ".utilityNavModCvMix"), height = 16, visible = not modCollapsed },
-  }
-
-  local navViewportTop = 30
-  local navViewportH = math.max(8, navH - navViewportTop - 6)
-  local navContentH = 0
-  for i = 1, #navItems do
-    local item = navItems[i]
-    if item.visible then
-      navContentH = navContentH + item.height + 2
-    end
-  end
-  local navMaxScroll = math.max(0, navContentH - navViewportH)
-  ctx._utilityNavScrollOffset = math.max(0, math.min(navMaxScroll, math.floor(tonumber(ctx._utilityNavScrollOffset) or 0)))
-  local navY = navViewportTop - (tonumber(ctx._utilityNavScrollOffset) or 0)
-  for i = 1, #navItems do
-    local item = navItems[i]
-    local widget = item.widget
+  local function styleTagButton(widget, active)
     if widget then
-      if item.visible then
-        changed = setWidgetBounds(widget, 8, math.floor(navY), math.max(72, navW - 16), item.height) or changed
-        local itemVisible = (navY + item.height) >= navViewportTop and navY <= (navViewportTop + navViewportH)
-        if widget.setVisible then
-          widget:setVisible(itemVisible)
-        end
-        navY = navY + item.height + 2
-      else
-        if widget.setVisible then
-          widget:setVisible(false)
-        end
+      if widget.setBg then
+        widget:setBg(active and 0xff1e293b or 0xff111827)
+      end
+      if widget.setTextColour then
+        widget:setTextColour(active and 0xffe2e8f0 or 0xff94a3b8)
       end
     end
+  end
+
+  local showAll = ctx._paletteFilterTagAll ~= false
+  local tags = ctx._paletteFilterTags or {}
+  ctx._scopedWidgetCache = nil
+  local tagAll = getScopedWidget(ctx, ".utilityTagAll")
+  local tagVoice = getScopedWidget(ctx, ".utilityTagVoice")
+  local tagAudio = getScopedWidget(ctx, ".utilityTagAudio")
+  local tagFx = getScopedWidget(ctx, ".utilityTagFx")
+  local tagMod = getScopedWidget(ctx, ".utilityTagMod")
+  styleTagButton(tagAll, showAll)
+  styleTagButton(tagVoice, not showAll and tags.voice == true)
+  styleTagButton(tagAudio, not showAll and tags.audio == true)
+  styleTagButton(tagFx, not showAll and tags.fx == true)
+  styleTagButton(tagMod, not showAll and tags.mod == true)
+
+  local searchPanel = getScopedWidget(ctx, ".utilitySearchPanel")
+  local searchText = getScopedWidget(ctx, ".utilitySearchText")
+  local searchFocused = ctx._paletteSearchFocused == true
+  local searchValue = tostring(ctx._paletteSearchText or "")
+  if searchPanel and searchPanel.setStyle then
+    searchPanel:setStyle({
+      bg = searchFocused and 0xff1e293b or 0xff0f172a,
+      border = searchFocused and 0xff38bdf8 or 0xff1f2b4d,
+      borderWidth = 1,
+      radius = 4,
+    })
+    repaint(searchPanel)
+  end
+  if searchText then
+    if searchValue ~= "" then
+      syncText(searchText, searchValue)
+      syncColour(searchText, 0xffe2e8f0)
+    else
+      syncText(searchText, searchFocused and "Type to filter..." or "Search modules...")
+      syncColour(searchText, 0xff64748b)
+    end
+    repaint(searchText)
   end
 
   local pageLabel = getScopedWidget(ctx, ".palettePageLabel")
@@ -4756,14 +4779,13 @@ function M._syncPaletteCardState(ctx)
   local topBarSelected = getScopedWidget(ctx, ".utilityTopBarSelected")
   local paletteScrollTrack = getScopedWidget(ctx, ".paletteScrollTrack")
   local paletteScrollThumb = getScopedWidget(ctx, ".paletteScrollThumb")
-  local navScrollTrack = getScopedWidget(ctx, ".utilityNavScrollTrack")
-  local navScrollThumb = getScopedWidget(ctx, ".utilityNavScrollThumb")
   local maxOffset = M._paletteMaxScrollOffset(ctx)
   if visibleLast == 0 then
     visibleFirst = 0
   end
   if pageLabel then
-    syncText(pageLabel, string.format("%d-%d/%d", visibleFirst, visibleLast, #M._PALETTE_ENTRIES))
+    local filteredEntries = M._getFilteredPaletteEntries(ctx)
+    syncText(pageLabel, string.format("%d-%d/%d", visibleFirst, visibleLast, #filteredEntries))
   end
   if pagePrev and pagePrev.setStyle then
     pagePrev:setStyle({
@@ -4802,18 +4824,6 @@ function M._syncPaletteCardState(ctx)
     changed = setWidgetBounds(paletteScrollThumb, 0, math.floor(thumbTravel * scrollT), 4, thumbH) or changed
     if paletteScrollTrack.setVisible then
       paletteScrollTrack:setVisible(maxOffset > 0)
-    end
-  end
-
-  if navScrollTrack and navScrollThumb then
-    local trackBounds = getWidgetBounds(navScrollTrack)
-    local trackH = math.max(8, math.floor(tonumber(trackBounds and trackBounds.h) or 0))
-    local thumbH = math.max(14, math.floor((navViewportH / math.max(navViewportH, navContentH)) * trackH))
-    local thumbTravel = math.max(0, trackH - thumbH)
-    local navT = (navMaxScroll > 0) and ((tonumber(ctx._utilityNavScrollOffset) or 0) / navMaxScroll) or 0
-    changed = setWidgetBounds(navScrollThumb, 0, math.floor(thumbTravel * navT), 4, thumbH) or changed
-    if navScrollTrack.setVisible then
-      navScrollTrack:setVisible(navMaxScroll > 0)
     end
   end
 
@@ -5663,6 +5673,10 @@ function M.init(ctx)
   ctx._paletteScrollOffset = 0
   ctx._utilityNavScrollOffset = 0
   ctx._paletteBrowseCollapsed = { voice = false, audio = false, fx = false, mod = false }
+  ctx._paletteFilterTags = {}
+  ctx._paletteFilterTagAll = true
+  ctx._paletteSearchText = ""
+  ctx._paletteSearchFocused = false
   ctx._rackModuleSpecs = MidiSynthRackSpecs.rackModuleSpecById()
   ctx._rackConnections = MidiSynthRackSpecs.defaultConnections(ctx._rackState.modules)
   invalidatePatchbay(nil, ctx)
