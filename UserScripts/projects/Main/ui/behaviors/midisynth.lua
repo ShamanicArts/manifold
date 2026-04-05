@@ -4410,8 +4410,8 @@ refreshManagedLayoutState = function(ctx, w, h)
     minH = 96,
     maxH = nil,
   }) or sizingChanged
-  local utilityNavW = isCompactMode and 224 or 248
-  local utilityDetailMinW = isCompactMode and 148 or 164
+  local utilityNavW = 248
+  local utilityDetailMinW = 164
   local paletteStripW = M._palettePreferredWidth(ctx)
   sizingChanged = updateLayoutChild(utilityNavRail, {
     basisW = utilityNavVisible and utilityNavW or 0,

@@ -1,10 +1,10 @@
 return {
   inputDevice = "MPK Mini Mk II MIDI 1",
-  keyboardCollapsed = false,
+  keyboardCollapsed = true,
   keyboardKeyCount = 14,
   utilityDockVisible = true,
   utilityDockMode = "keyboard",
-  utilityDockHeightMode = "compact",
+  utilityDockHeightMode = "collapsed",
   rackViewMode = "perf",
   rackDensityMode = "normal",
   rackNodes = {},
