@@ -169,7 +169,10 @@ public:
                              std::vector<float>& outPeaks) const override;
     bool computeSynthSamplePeaks(int numBuckets,
                                  std::vector<float>& outPeaks) const override;
+    bool computeDynamicSamplePeaks(int slotIndex, int numBuckets,
+                                   std::vector<float>& outPeaks) const override;
     std::vector<float> getVoiceSamplePositions() const override;
+    std::vector<float> getDynamicSampleVoicePositions(int slotIndex) const override;
     bool getLatestSampleAnalysis(dsp_primitives::SampleAnalysis& outAnalysis) const override;
     bool getLatestSamplePartials(dsp_primitives::PartialData& outPartials) const override;
     bool getSampleDerivedAdditiveDebug(int voiceIndex,

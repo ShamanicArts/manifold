@@ -386,6 +386,12 @@ function M.buildSynth(ctx, options)
   local params = paramRegistration.params
   local adsr = paramRegistration.adsr
   local dynamicRegisteredParamPaths = {}
+  for i = 1, #(params or {}) do
+    local path = tostring(params[i] or "")
+    if path ~= "" then
+      dynamicRegisteredParamPaths[path] = true
+    end
+  end
   local dynamicRegisteredSlots = {}
 
   local function registerDynamicSchemaEntries(schema)
@@ -543,6 +549,9 @@ function M.buildSynth(ctx, options)
       samplePitchModePhaseVocoder = SAMPLE_PITCH_MODE_PHASE_VOCODER,
       samplePitchModePhaseVocoderHQ = SAMPLE_PITCH_MODE_PHASE_VOCODER_HQ,
       sampleRootNote = tonumber(slot and slot.rootNote) or 60.0,
+      unisonVoices = math.floor(Utils.clamp(tonumber(slot and slot.unison) or 1, 1, 8) + 0.5),
+      detuneCents = Utils.clamp(tonumber(slot and slot.detune) or 0.0, 0.0, 100.0),
+      stereoSpread = Utils.clamp(tonumber(slot and slot.spread) or 0.0, 0.0, 1.0),
       blendKeyTrack = 1,
       blendSamplePitch = 0.0,
       noteToFrequency = noteToFrequency,
@@ -593,8 +602,10 @@ function M.buildSynth(ctx, options)
     local note = Utils.clamp(tonumber(voice.note) or 60.0, 0.0, 127.0)
     voice.freq = noteToFrequency(note)
     voice.gain:setGain(Utils.clamp01(tonumber(voice.level) or 0.0))
-    voice.samplePlayback:setSpeed(sampleSynth.getBlendSamplePlaybackSpeed(voice, buildDynamicSampleRuntimeOptions(slot)))
-    sampleSynth.applyPitchModeToVoice(voice, buildDynamicSampleRuntimeOptions(slot))
+    local runtimeOptions = buildDynamicSampleRuntimeOptions(slot)
+    sampleSynth.applyVoiceStackingParams(voice, runtimeOptions)
+    voice.samplePlayback:setSpeed(sampleSynth.getBlendSamplePlaybackSpeed(voice, runtimeOptions))
+    sampleSynth.applyPitchModeToVoice(voice, runtimeOptions)
     local pvocMode = ((tonumber(slot.pitchMode) or 0) == SAMPLE_PITCH_MODE_PHASE_VOCODER_HQ) and 1 or 0
     voice.samplePhaseVocoder:setMode(pvocMode)
     voice.samplePhaseVocoder:setFFTOrder(math.floor(Utils.clamp(tonumber(slot.pvocFFTOrder) or 11, 9, 12)))
@@ -879,6 +890,18 @@ function M.buildSynth(ctx, options)
       slot.rootNote = Utils.clamp(numeric, 12.0, 96.0)
       refreshDynamicSampleAllVoices(slotIndex)
       return true
+    elseif suffix == "unison" then
+      slot.unison = math.floor(Utils.clamp(numeric, 1.0, 8.0) + 0.5)
+      refreshDynamicSampleAllVoices(slotIndex)
+      return true
+    elseif suffix == "detune" then
+      slot.detune = Utils.clamp(numeric, 0.0, 100.0)
+      refreshDynamicSampleAllVoices(slotIndex)
+      return true
+    elseif suffix == "spread" then
+      slot.spread = Utils.clamp(numeric, 0.0, 1.0)
+      refreshDynamicSampleAllVoices(slotIndex)
+      return true
     elseif suffix == "playStart" then
       slot.playStart = Utils.clamp01(numeric)
       refreshDynamicSampleAllVoices(slotIndex)
@@ -911,23 +934,25 @@ function M.buildSynth(ctx, options)
       return dynamicSampleSlots[index]
     end
 
+    print(string.format("DynamicSample[%d]: create start", index))
     local slotMix = ctx.primitives.MixerNode.new()
     slotMix:setInputCount(VOICE_COUNT)
     local output = ctx.primitives.GainNode.new(2)
     output:setGain(0.8 * DYNAMIC_SAMPLE_OUTPUT_TRIM)
     ctx.graph.connect(slotMix, output)
+    print(string.format("DynamicSample[%d]: mix/output ready", index))
 
     local captureInput = ctx.primitives.PassthroughNode.new(2, 0)
+    print(string.format("DynamicSample[%d]: capture input ready", index))
     local slotSampleSynth = SampleSynth.create(ctx, {
       sourceSpecs = buildDynamicSampleSourceSpecs(captureInput),
       defaultSourceId = 1,
     })
-    if ctx.graph and ctx.graph.nameNode then
-      ctx.graph.nameNode(captureInput, string.format("/midi/synth/rack/sample/%d/input", index))
-    end
+    print(string.format("DynamicSample[%d]: sample synth ready", index))
 
     local voices = {}
     for voiceIndex = 1, VOICE_COUNT do
+      print(string.format("DynamicSample[%d]: voice %d start", index, voiceIndex))
       local samplePlayback = ctx.primitives.SampleRegionPlaybackNode.new(2)
       samplePlayback:setLoopLength(1)
       samplePlayback:setSpeed(1.0)
@@ -949,11 +974,7 @@ function M.buildSynth(ctx, options)
       ctx.graph.connect(samplePlayback, samplePhaseVocoder)
       ctx.graph.connect(samplePhaseVocoder, gain)
       connectMixerInput(slotMix, voiceIndex, gain)
-      if ctx.graph and ctx.graph.nameNode then
-        ctx.graph.nameNode(samplePlayback, string.format("/midi/synth/rack/sample/%d/voice/%d/playback", index, voiceIndex))
-        ctx.graph.nameNode(samplePhaseVocoder, string.format("/midi/synth/rack/sample/%d/voice/%d/pvoc", index, voiceIndex))
-        ctx.graph.nameNode(gain, string.format("/midi/synth/rack/sample/%d/voice/%d/gain", index, voiceIndex))
-      end
+      print(string.format("DynamicSample[%d]: voice %d ready", index, voiceIndex))
 
       voices[voiceIndex] = {
         samplePlayback = samplePlayback,
@@ -971,11 +992,7 @@ function M.buildSynth(ctx, options)
       }
     end
 
-    if ctx.graph and ctx.graph.nameNode then
-      ctx.graph.nameNode(slotMix, string.format("/midi/synth/rack/sample/%d/mix", index))
-      ctx.graph.nameNode(output, string.format("/midi/synth/rack/sample/%d/output", index))
-    end
-
+    print(string.format("DynamicSample[%d]: voices ready", index))
     local dynamicSlot = {
       slotIndex = index,
       mix = slotMix,
@@ -984,6 +1001,9 @@ function M.buildSynth(ctx, options)
       sampleSynth = slotSampleSynth,
       voices = voices,
       rootNote = 60.0,
+      unison = 1,
+      detune = 0.0,
+      spread = 0.0,
       pitchMapEnabled = false,
       pitchMode = SAMPLE_PITCH_MODE_CLASSIC,
       pvocFFTOrder = 11,
@@ -1001,8 +1021,10 @@ function M.buildSynth(ctx, options)
       latestTemporal = nil,
     }
     dynamicSampleSlots[index] = dynamicSlot
+    print(string.format("DynamicSample[%d]: slot table assigned", index))
 
     refreshDynamicSampleAllVoices(index)
+    print(string.format("DynamicSample[%d]: refresh complete", index))
     return dynamicSampleSlots[index]
   end
 
@@ -3380,6 +3402,41 @@ function M.buildSynth(ctx, options)
         end
       end
       return positions
+    end,
+
+    getDynamicSampleSlotPeaks = function(slotIndex, numBuckets)
+      local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+      if not slot then
+        return {}
+      end
+      local bucketCount = math.max(32, math.floor(tonumber(numBuckets) or 128))
+      if type(slot.cachedSamplePeaks) == "table" and #slot.cachedSamplePeaks > 0 then
+        return sampleSynth.resamplePeaks(slot.cachedSamplePeaks, bucketCount)
+      end
+      local voice = slot.voices and slot.voices[1] or nil
+      local playbackNode = voice and voice.samplePlayback and voice.samplePlayback.__node or nil
+      if playbackNode and type(getSampleRegionPlaybackPeaks) == "function" then
+        local ok, peaks = pcall(function()
+          return getSampleRegionPlaybackPeaks(playbackNode, bucketCount)
+        end)
+        if ok and type(peaks) == "table" and #peaks > 0 then
+          slot.cachedSamplePeaks = peaks
+          slot.cachedSamplePeakBuckets = #peaks
+          return sampleSynth.resamplePeaks(peaks, bucketCount)
+        end
+      end
+      return {}
+    end,
+
+    getDynamicSampleSlotVoicePositions = function(slotIndex)
+      local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+      local out = {}
+      local voices = slot and slot.voices or {}
+      for i = 1, #voices do
+        local voice = voices[i]
+        out[i] = (voice and voice.samplePlayback and voice.samplePlayback.getNormalizedPosition and voice.samplePlayback:getNormalizedPosition()) or 0.0
+      end
+      return out
     end,
 
     getSampleDerivedAddDebug = function(voiceIndex)

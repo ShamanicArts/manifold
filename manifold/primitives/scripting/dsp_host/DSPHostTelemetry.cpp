@@ -108,6 +108,52 @@ bool DSPPluginScriptHost::computeSynthSamplePeaks(int numBuckets,
   return true;
 }
 
+bool DSPPluginScriptHost::computeDynamicSamplePeaks(int slotIndex,
+                                                    int numBuckets,
+                                                    std::vector<float> &outPeaks) const {
+  outPeaks.clear();
+  if (slotIndex <= 0 || numBuckets <= 0) {
+    return false;
+  }
+
+  const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+  if (!pImpl->pluginTable.valid()) {
+    return false;
+  }
+
+  sol::object getPeaksFn = pImpl->pluginTable["getDynamicSampleSlotPeaks"];
+  if (!getPeaksFn.valid() || getPeaksFn.get_type() != sol::type::function) {
+    return false;
+  }
+
+  sol::protected_function_result result =
+      getPeaksFn.as<sol::function>()(slotIndex, numBuckets);
+  if (!result.valid()) {
+    return false;
+  }
+
+  sol::object peaksObj = result.get<sol::object>();
+  if (!peaksObj.valid() || peaksObj.get_type() != sol::type::table) {
+    return false;
+  }
+
+  sol::table peaksTable = peaksObj.as<sol::table>();
+  for (int i = 1; i <= numBuckets; ++i) {
+    sol::object val = peaksTable[i];
+    if (val.valid() && val.is<float>()) {
+      outPeaks.push_back(val.as<float>());
+    } else if (val.valid() && val.is<double>()) {
+      outPeaks.push_back(static_cast<float>(val.as<double>()));
+    } else if (val.valid() && val.is<int>()) {
+      outPeaks.push_back(static_cast<float>(val.as<int>()));
+    } else {
+      outPeaks.push_back(0.0f);
+    }
+  }
+
+  return true;
+}
+
 std::vector<float> DSPPluginScriptHost::getVoiceSamplePositions() const {
   std::vector<float> positions;
 
@@ -122,6 +168,40 @@ std::vector<float> DSPPluginScriptHost::getVoiceSamplePositions() const {
   }
 
   sol::protected_function_result result = getPosFn.as<sol::function>()();
+  if (!result.valid()) {
+    return positions;
+  }
+
+  sol::object posObj = result.get<sol::object>();
+  if (!posObj.valid() || posObj.get_type() != sol::type::table) {
+    return positions;
+  }
+
+  sol::table posTable = posObj.as<sol::table>();
+  for (size_t i = 1; i <= posTable.size(); ++i) {
+    positions.push_back(posTable[i].get_or(0.0f));
+  }
+
+  return positions;
+}
+
+std::vector<float> DSPPluginScriptHost::getDynamicSampleVoicePositions(int slotIndex) const {
+  std::vector<float> positions;
+  if (slotIndex <= 0) {
+    return positions;
+  }
+
+  const std::lock_guard<std::recursive_mutex> lock(pImpl->luaMutex);
+  if (!pImpl->pluginTable.valid()) {
+    return positions;
+  }
+
+  sol::object getPosFn = pImpl->pluginTable["getDynamicSampleSlotVoicePositions"];
+  if (!getPosFn.valid() || getPosFn.get_type() != sol::type::function) {
+    return positions;
+  }
+
+  sol::protected_function_result result = getPosFn.as<sol::function>()(slotIndex);
   if (!result.valid()) {
     return positions;
   }

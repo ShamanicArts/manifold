@@ -184,7 +184,20 @@ public:
     return false;
   }
 
+  virtual bool computeDynamicSamplePeaks(int slotIndex, int numBuckets,
+                                         std::vector<float> &outPeaks) const {
+    (void)slotIndex;
+    (void)numBuckets;
+    (void)outPeaks;
+    return false;
+  }
+
   virtual std::vector<float> getVoiceSamplePositions() const {
+    return {};
+  }
+
+  virtual std::vector<float> getDynamicSampleVoicePositions(int slotIndex) const {
+    (void)slotIndex;
     return {};
   }
 

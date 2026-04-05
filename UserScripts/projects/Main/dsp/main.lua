@@ -70,6 +70,20 @@ function buildPlugin(ctx)
       return {}
     end,
 
+    getDynamicSampleSlotPeaks = function(slotIndex, numBuckets)
+      if synth.getDynamicSampleSlotPeaks then
+        return synth.getDynamicSampleSlotPeaks(slotIndex, numBuckets)
+      end
+      return {}
+    end,
+
+    getDynamicSampleSlotVoicePositions = function(slotIndex)
+      if synth.getDynamicSampleSlotVoicePositions then
+        return synth.getDynamicSampleSlotVoicePositions(slotIndex)
+      end
+      return {}
+    end,
+
     ensureDynamicModuleSlot = function(specId, slotIndex)
       if synth.ensureDynamicModuleSlot then
         return synth.ensureDynamicModuleSlot(specId, slotIndex)

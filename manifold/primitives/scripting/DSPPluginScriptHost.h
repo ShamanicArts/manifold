@@ -43,7 +43,10 @@ public:
                          std::vector<float> &outPeaks) const;
   bool computeSynthSamplePeaks(int numBuckets,
                                std::vector<float> &outPeaks) const;
+  bool computeDynamicSamplePeaks(int slotIndex, int numBuckets,
+                                 std::vector<float> &outPeaks) const;
   std::vector<float> getVoiceSamplePositions() const;
+  std::vector<float> getDynamicSampleVoicePositions(int slotIndex) const;
   bool getLatestSampleAnalysis(dsp_primitives::SampleAnalysis &outAnalysis) const;
   bool getLatestSamplePartials(dsp_primitives::PartialData &outPartials) const;
   bool getSampleDerivedAdditiveDebug(int voiceIndex,

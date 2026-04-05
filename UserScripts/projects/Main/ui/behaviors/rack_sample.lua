@@ -26,6 +26,9 @@ local GLOBAL_PATHS = {
   pvocFFTOrder = "/midi/synth/sample/pvoc/fftOrder",
   pvocTimeStretch = "/midi/synth/sample/pvoc/timeStretch",
   rootNote = "/midi/synth/sample/rootNote",
+  unison = "/midi/synth/unison",
+  detune = "/midi/synth/detune",
+  spread = "/midi/synth/spread",
   playStart = "/midi/synth/sample/playStart",
   loopStart = "/midi/synth/sample/loopStart",
   loopLen = "/midi/synth/sample/loopLen",
@@ -84,6 +87,26 @@ local function setWidgetVisible(widget, visible)
   elseif widget and widget.node and widget.node.setVisible then
     widget.node:setVisible(visible == true)
   end
+end
+
+local function anchorDropdown(dropdown, root)
+  if not dropdown or not dropdown.setAbsolutePos or not dropdown.node or not root or not root.node then return end
+  local ax, ay = 0, 0
+  local node = dropdown.node
+  local depth = 0
+  while node and depth < 20 do
+    local bx, by = node:getBounds()
+    ax = ax + (bx or 0)
+    ay = ay + (by or 0)
+    local ok, parent = pcall(function() return node:getParent() end)
+    if ok and parent and parent ~= node then
+      node = parent
+    else
+      break
+    end
+    depth = depth + 1
+  end
+  dropdown:setAbsolutePos(ax, ay)
 end
 
 local function isUsableInstanceNodeId(nodeId)
@@ -196,6 +219,9 @@ local function pathFor(ctx, key)
       pvocFFTOrder = "/pvoc/fftOrder",
       pvocTimeStretch = "/pvoc/timeStretch",
       rootNote = "/rootNote",
+      unison = "/unison",
+      detune = "/detune",
+      spread = "/spread",
       playStart = "/playStart",
       loopStart = "/loopStart",
       loopLen = "/loopLen",
@@ -212,7 +238,8 @@ end
 
 local function dynamicSamplePeaks(ctx, numBuckets)
   local slotIndex = getSlotIndex(ctx)
-  local fn = type(_G) == "table" and _G.__midiSynthGetDynamicSampleSlotPeaks or nil
+  local fn = type(getDynamicSampleSlotPeaks) == "function" and getDynamicSampleSlotPeaks
+    or (type(_G) == "table" and _G.__midiSynthGetDynamicSampleSlotPeaks or nil)
   if type(fn) ~= "function" or slotIndex == nil then
     return {}
   end
@@ -225,7 +252,8 @@ end
 
 local function dynamicVoicePositions(ctx)
   local slotIndex = getSlotIndex(ctx)
-  local fn = type(_G) == "table" and _G.__midiSynthGetDynamicSampleSlotVoicePositions or nil
+  local fn = type(getDynamicSampleSlotVoicePositions) == "function" and getDynamicSampleSlotVoicePositions
+    or (type(_G) == "table" and _G.__midiSynthGetDynamicSampleSlotVoicePositions or nil)
   if type(fn) ~= "function" or slotIndex == nil then
     return {}
   end
@@ -350,7 +378,11 @@ local function buildSampleDisplay(ctx, w, h)
 
   display[#display + 1] = {
     cmd = "drawText", x = 4, y = 2, w = w - 8, h = 16,
-    text = "SAMPLE", color = 0xffa78bfa, fontSize = 10, align = "left", valign = "top",
+    text = "SAMPLE MODE", color = 0xffa78bfa, fontSize = 10, align = "left", valign = "top",
+  }
+  display[#display + 1] = {
+    cmd = "drawText", x = 4, y = 2, w = w - 8, h = 16,
+    text = string.format("%dms", tonumber(ctx.sampleCapturedLengthMs) or 0), color = 0xff94a3b8, fontSize = 10, align = "right", valign = "top",
   }
 
   return display
@@ -370,8 +402,15 @@ local function refreshGraph(ctx)
   graph.node:repaint()
 end
 
+local function syncSlider(widget, value)
+  if widget and widget.setValue and not widget._dragging then
+    widget:setValue(value)
+  end
+end
+
 local function updatePvocVisibility(ctx)
   local widgets = ctx.widgets or {}
+  setWidgetVisible(widgets.sample_pvoc_fft, true)
   setWidgetVisible(widgets.sample_pvoc_stretch, (ctx.samplePitchMode or 0) == 2)
 end
 
@@ -387,6 +426,9 @@ local function syncFromParams(ctx)
   ctx.samplePvocFFTOrder = clamp(readParam(pathFor(ctx, "pvocFFTOrder"), ctx.samplePvocFFTOrder or 11), 9, 12)
   ctx.samplePvocTimeStretch = clamp(readParam(pathFor(ctx, "pvocTimeStretch"), ctx.samplePvocTimeStretch or 1.0), 0.25, 4.0)
   ctx.sampleRootNote = clamp(readParam(pathFor(ctx, "rootNote"), ctx.sampleRootNote or 60.0), 12, 96)
+  ctx.unison = round(clamp(readParam(pathFor(ctx, "unison"), ctx.unison or 1), 1, 8))
+  ctx.detune = clamp(readParam(pathFor(ctx, "detune"), ctx.detune or 0.0), 0.0, 100.0)
+  ctx.spread = clamp(readParam(pathFor(ctx, "spread"), ctx.spread or 0.0), 0.0, 1.0)
   ctx.samplePlayStart = clamp(readParam(pathFor(ctx, "playStart"), ctx.samplePlayStart or 0.0), 0.0, 0.99)
   ctx.sampleLoopStart = clamp(readParam(pathFor(ctx, "loopStart"), ctx.sampleLoopStart or 0.0), 0.0, 0.95)
   ctx.sampleLoopLen = clamp(readParam(pathFor(ctx, "loopLen"), ctx.sampleLoopLen or 1.0), 0.05, 1.0)
@@ -406,20 +448,18 @@ local function syncFromParams(ctx)
   if widgets.sample_pitch_mode and widgets.sample_pitch_mode.setSelected then
     widgets.sample_pitch_mode:setSelected(ctx.samplePitchMode + 1)
   end
-  if widgets.sample_bars_box and widgets.sample_bars_box.setValue and not widgets.sample_bars_box._dragging then widgets.sample_bars_box:setValue(ctx.sampleCaptureBars) end
-  if widgets.sample_root_box and widgets.sample_root_box.setValue and not widgets.sample_root_box._dragging then widgets.sample_root_box:setValue(ctx.sampleRootNote) end
-  if widgets.sample_play_start_box and widgets.sample_play_start_box.setValue and not widgets.sample_play_start_box._dragging then widgets.sample_play_start_box:setValue(ctx.samplePlayStart * 100.0) end
-  if widgets.sample_loop_start_box and widgets.sample_loop_start_box.setValue and not widgets.sample_loop_start_box._dragging then widgets.sample_loop_start_box:setValue(ctx.sampleLoopStart * 100.0) end
-  if widgets.sample_loop_len_box and widgets.sample_loop_len_box.setValue and not widgets.sample_loop_len_box._dragging then widgets.sample_loop_len_box:setValue(ctx.sampleLoopLen * 100.0) end
-  if widgets.sample_xfade_box and widgets.sample_xfade_box.setValue and not widgets.sample_xfade_box._dragging then widgets.sample_xfade_box:setValue(ctx.sampleCrossfade * 100.0) end
-  if widgets.sample_pvoc_fft and widgets.sample_pvoc_fft.setValue and not widgets.sample_pvoc_fft._dragging then widgets.sample_pvoc_fft:setValue(ctx.samplePvocFFTOrder) end
-  if widgets.sample_pvoc_stretch and widgets.sample_pvoc_stretch.setValue and not widgets.sample_pvoc_stretch._dragging then widgets.sample_pvoc_stretch:setValue(ctx.samplePvocTimeStretch) end
+  syncSlider(widgets.sample_bars_box, ctx.sampleCaptureBars)
+  syncSlider(widgets.sample_root_box, ctx.sampleRootNote)
+  syncSlider(widgets.unison_knob, ctx.unison)
+  syncSlider(widgets.detune_knob, ctx.detune)
+  syncSlider(widgets.spread_knob, ctx.spread)
+  syncSlider(widgets.sample_loop_start_box, ctx.sampleLoopStart * 100.0)
+  syncSlider(widgets.sample_loop_len_box, ctx.sampleLoopLen * 100.0)
+  syncSlider(widgets.sample_xfade_box, ctx.sampleCrossfade * 100.0)
+  syncSlider(widgets.sample_pvoc_fft, ctx.samplePvocFFTOrder)
+  syncSlider(widgets.sample_pvoc_stretch, ctx.samplePvocTimeStretch)
   if widgets.sample_retrigger_toggle and widgets.sample_retrigger_toggle.setValue then widgets.sample_retrigger_toggle:setValue(ctx.sampleRetrigger) end
-  if widgets.output_knob and widgets.output_knob.setValue and not widgets.output_knob._dragging then widgets.output_knob:setValue(ctx.outputLevel) end
-  if widgets.sample_length_label and widgets.sample_length_label.setText then
-    widgets.sample_length_label:setText(string.format("%dms", ctx.sampleCapturedLengthMs or 0))
-  end
-
+  syncSlider(widgets.output_knob, ctx.outputLevel)
   updatePvocVisibility(ctx)
 end
 
@@ -496,11 +536,14 @@ local function bindControls(ctx)
   if widgets.sample_root_box then
     widgets.sample_root_box._onChange = function(v) writeParam(pathFor(ctx, "rootNote"), round(clamp(v, 12, 96))) end
   end
-  if widgets.sample_play_start_box then
-    widgets.sample_play_start_box._onChange = function(v)
-      writeParam(pathFor(ctx, "playStart"), clamp(v / 100.0, 0.0, 0.99))
-      refreshGraph(ctx)
-    end
+  if widgets.unison_knob then
+    widgets.unison_knob._onChange = function(v) writeParam(pathFor(ctx, "unison"), round(clamp(v, 1, 8))) end
+  end
+  if widgets.detune_knob then
+    widgets.detune_knob._onChange = function(v) writeParam(pathFor(ctx, "detune"), clamp(v, 0.0, 100.0)) end
+  end
+  if widgets.spread_knob then
+    widgets.spread_knob._onChange = function(v) writeParam(pathFor(ctx, "spread"), clamp(v, 0.0, 1.0)) end
   end
   if widgets.sample_loop_start_box then
     widgets.sample_loop_start_box._onChange = function(v)
@@ -648,6 +691,9 @@ function RackSampleBehavior.init(ctx)
   ctx.samplePvocFFTOrder = 11
   ctx.samplePvocTimeStretch = 1.0
   ctx.sampleRootNote = 60
+  ctx.unison = 1
+  ctx.detune = 0.0
+  ctx.spread = 0.0
   ctx.samplePlayStart = 0.0
   ctx.sampleLoopStart = 0.0
   ctx.sampleLoopLen = 1.0
@@ -674,51 +720,77 @@ function RackSampleBehavior.resized(ctx, w, h)
   local widgets = ctx.widgets or {}
   local pad = 10
   local gap = 8
-  local leftW = math.max(140, math.floor(w * 0.50) - pad - math.floor(gap / 2))
-  local rightX = pad + leftW + gap
-  local rightW = math.max(120, w - rightX - pad)
-  local graphH = math.max(80, h - pad * 2)
-
-  setBounds(widgets.title, 16, 8, 120, 14)
-  setBounds(widgets.sample_graph, pad, pad + 18, leftW, graphH - 18)
-  setBounds(widgets.sample_length_label, pad + leftW - 80, 8, 80, 16)
-
-  local y = pad + 18
   local rowH = 20
-  local rowGap = 6
-  local colGap = 8
-  local colW = math.max(48, math.floor((rightW - colGap * 3) / 4))
+  local rowGap = 2
+  local controlSliderH = 20
+  local controlRowGap = 6
 
-  setBounds(widgets.sample_source_dropdown, rightX, y, colW, rowH)
-  setBounds(widgets.sample_pitch_map_toggle, rightX + colW + colGap, y, colW, rowH)
-  setBounds(widgets.sample_capture_mode_toggle, rightX + (colW + colGap) * 2, y, colW, rowH)
-  setBounds(widgets.sample_capture_button, rightX + (colW + colGap) * 3, y, colW, rowH)
-  y = y + rowH + rowGap
+  local function placeControlRow(x, y, width)
+    local rowW = math.max(120, width)
+    local colW = math.max(52, math.floor((rowW - controlRowGap * 2) / 3))
+    local detuneX = x + colW + controlRowGap
+    local spreadX = detuneX + colW + controlRowGap
+    setBounds(widgets.unison_knob, x, y, colW, controlSliderH)
+    setBounds(widgets.detune_knob, detuneX, y, colW, controlSliderH)
+    setBounds(widgets.spread_knob, spreadX, y, colW, controlSliderH)
+  end
 
-  setBounds(widgets.sample_pitch_mode, rightX, y, rightW, rowH)
-  y = y + rowH + rowGap
+  local function placePanel(panelX, panelY, panelW, panelH)
+    local innerX = panelX + 4
+    local innerY = panelY + 4
+    local innerW = math.max(120, panelW - 8)
+    local colGap = 4
+    local sourceW = math.max(52, math.floor((innerW - colGap * 3 - 38) * 0.30))
+    local toggleW = math.max(52, math.floor((innerW - sourceW - colGap * 3 - 38) * 0.5))
+    local captureModeW = math.max(52, innerW - sourceW - toggleW - colGap * 3 - 38)
+    local buttonW = 38
 
-  setBounds(widgets.sample_bars_box, rightX, y, rightW, rowH)
-  y = y + rowH + rowGap
-  setBounds(widgets.sample_root_box, rightX, y, rightW, rowH)
-  y = y + rowH + rowGap
+    setBounds(widgets.sample_panel, panelX, panelY, panelW, panelH)
+    setBounds(widgets.sample_source_dropdown, innerX, innerY, sourceW, rowH)
+    setBounds(widgets.sample_pitch_map_toggle, innerX + sourceW + colGap, innerY, toggleW, rowH)
+    setBounds(widgets.sample_capture_mode_toggle, innerX + sourceW + toggleW + colGap * 2, innerY, captureModeW, rowH)
+    setBounds(widgets.sample_capture_button, panelX + panelW - 4 - buttonW, innerY, buttonW, rowH)
 
-  local halfW = math.max(58, math.floor((rightW - colGap) / 2))
-  setBounds(widgets.sample_play_start_box, rightX, y, halfW, rowH)
-  setBounds(widgets.sample_loop_start_box, rightX + halfW + colGap, y, halfW, rowH)
-  y = y + rowH + rowGap
+    local y = innerY + rowH + rowGap
+    setBounds(widgets.sample_pitch_mode, innerX, y, innerW, rowH)
+    y = y + rowH + rowGap
+    setBounds(widgets.sample_bars_box, innerX + 6, y, math.max(96, innerW - 52), rowH)
+    y = y + rowH + rowGap
+    setBounds(widgets.sample_root_box, innerX + 6, y, math.max(96, innerW - 52), rowH)
+    y = y + rowH + rowGap
+    placeControlRow(innerX + 6, y, math.max(120, innerW - 12))
+    y = y + rowH + rowGap
+    setBounds(widgets.output_knob, innerX + 6, y, math.max(96, innerW - 52), rowH)
+    y = y + rowH + rowGap
+    setBounds(widgets.sample_xfade_box, innerX + 6, y, math.max(96, innerW - 52), rowH)
+    y = y + rowH + rowGap
+    local halfW = math.max(56, math.floor((innerW - 16) / 2))
+    setBounds(widgets.sample_pvoc_fft, innerX + 6, y, halfW, rowH)
+    setBounds(widgets.sample_pvoc_stretch, innerX + 10 + halfW, y, halfW, rowH)
+  end
 
-  setBounds(widgets.sample_loop_len_box, rightX, y, halfW, rowH)
-  setBounds(widgets.sample_xfade_box, rightX + halfW + colGap, y, halfW, rowH)
-  y = y + rowH + rowGap
+  if w < 320 then
+    local contentW = w - pad * 2
+    local graphY = pad
+    local graphH = math.max(64, math.floor((h - pad * 2) * 0.34))
+    local panelY = graphY + graphH + gap
+    local panelH = math.max(1, h - pad - panelY)
+    setBounds(widgets.sample_graph, pad, graphY, contentW, graphH)
+    placePanel(pad, panelY, contentW, panelH)
+  else
+    local split = math.floor(w / 2)
+    local leftW = split - pad
+    local rightX = split + gap
+    local rightW = w - rightX - pad
+    local graphY = pad
+    local graphH = h - pad * 2
+    local panelY = graphY
+    local panelH = h - pad * 2
+    setBounds(widgets.sample_graph, pad, graphY, leftW, graphH)
+    placePanel(rightX, panelY, rightW, panelH)
+  end
 
-  setBounds(widgets.sample_pvoc_fft, rightX, y, halfW, rowH)
-  setBounds(widgets.sample_pvoc_stretch, rightX + halfW + colGap, y, halfW, rowH)
-  y = y + rowH + rowGap
-
-  setBounds(widgets.sample_retrigger_toggle, rightX, y, halfW, rowH)
-  setBounds(widgets.output_knob, rightX + halfW + colGap, y, halfW, rowH)
-
+  anchorDropdown(widgets.sample_source_dropdown, ctx.root)
   updatePvocVisibility(ctx)
   setupGraphInteraction(ctx)
   refreshGraph(ctx)

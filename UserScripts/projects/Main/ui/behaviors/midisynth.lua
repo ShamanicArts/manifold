@@ -237,13 +237,6 @@ function M._requestDynamicModuleSlot(specId, slotIndex)
   if index <= 0 then
     return false
   end
-  local ensureSlot = type(_G.ensureDynamicModuleSlot) == "function" and _G.ensureDynamicModuleSlot or nil
-  if ensureSlot then
-    local ok, ensured = pcall(ensureSlot, tostring(specId or ""), index)
-    if ok then
-      return ensured ~= false
-    end
-  end
 
   local kind = M._rackRegistryRequestKindForSpecId(specId)
   if kind == nil then
@@ -262,10 +255,10 @@ function M._requestDynamicModuleSlot(specId, slotIndex)
     return false
   end
   M._rackRegistryNonce = math.max(0, math.floor(tonumber(M._rackRegistryNonce or 0))) + 1
-  writer(PATHS.rackRegistryRequestKind, kind)
-  writer(PATHS.rackRegistryRequestIndex, index)
-  writer(PATHS.rackRegistryRequestNonce, M._rackRegistryNonce)
-  return true
+  local okKind = writer(PATHS.rackRegistryRequestKind, kind) ~= false
+  local okIndex = writer(PATHS.rackRegistryRequestIndex, index) ~= false
+  local okNonce = writer(PATHS.rackRegistryRequestNonce, M._rackRegistryNonce) ~= false
+  return okKind and okIndex and okNonce
 end
 
 
@@ -2076,7 +2069,6 @@ M._rebuildDynamicRackModuleState = function(ctx)
     end
   end
 
-  local ensureSlot = type(_G.__midiSynthEnsureDynamicModuleSlot) == "function" and _G.__midiSynthEnsureDynamicModuleSlot or nil
   local nodes = ctx._rackState and ctx._rackState.modules or {}
   local restored = 0
   local maxSerial = 0
@@ -2102,9 +2094,7 @@ M._rebuildDynamicRackModuleState = function(ctx)
       end
       slotIndex = math.max(1, math.floor(tonumber(slotIndex) or 1))
 
-      if ensureSlot then
-        ensureSlot(specId, slotIndex)
-      end
+      M._requestDynamicModuleSlot(specId, slotIndex)
 
       local paramBase = RackModuleFactory.buildParamBase(specId, slotIndex)
       local spec = RackModuleFactory.registerDynamicModuleSpec(ctx, specId, nodeId, {
@@ -2644,6 +2634,7 @@ function M._buildPaletteNodeFromEntry(ctx, entry)
   end
   if dynamicMeta and dynamicMeta.slotIndex ~= nil then
     RackModuleFactory.markSlotOccupied(ctx, specId, dynamicMeta.slotIndex, nodeId)
+    M._requestDynamicModuleSlot(specId, dynamicMeta.slotIndex)
   end
 
   local node = RackLayout.makeRackModuleInstance {

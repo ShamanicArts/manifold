@@ -566,6 +566,18 @@ function ParameterBinder.dynamicSampleRootNotePath(slotIndex)
   return ParameterBinder.dynamicSampleBasePath(slotIndex) .. "/rootNote"
 end
 
+function ParameterBinder.dynamicSampleUnisonPath(slotIndex)
+  return ParameterBinder.dynamicSampleBasePath(slotIndex) .. "/unison"
+end
+
+function ParameterBinder.dynamicSampleDetunePath(slotIndex)
+  return ParameterBinder.dynamicSampleBasePath(slotIndex) .. "/detune"
+end
+
+function ParameterBinder.dynamicSampleSpreadPath(slotIndex)
+  return ParameterBinder.dynamicSampleBasePath(slotIndex) .. "/spread"
+end
+
 function ParameterBinder.dynamicSamplePlayStartPath(slotIndex)
   return ParameterBinder.dynamicSampleBasePath(slotIndex) .. "/playStart"
 end
@@ -777,6 +789,18 @@ function ParameterBinder.matchDynamicSamplePath(path)
   slotIndex = normalized:match("^/midi/synth/rack/sample/(%d+)/rootNote$")
   if slotIndex ~= nil then
     return tonumber(slotIndex), "rootNote"
+  end
+  slotIndex = normalized:match("^/midi/synth/rack/sample/(%d+)/unison$")
+  if slotIndex ~= nil then
+    return tonumber(slotIndex), "unison"
+  end
+  slotIndex = normalized:match("^/midi/synth/rack/sample/(%d+)/detune$")
+  if slotIndex ~= nil then
+    return tonumber(slotIndex), "detune"
+  end
+  slotIndex = normalized:match("^/midi/synth/rack/sample/(%d+)/spread$")
+  if slotIndex ~= nil then
+    return tonumber(slotIndex), "spread"
   end
   slotIndex = normalized:match("^/midi/synth/rack/sample/(%d+)/playStart$")
   if slotIndex ~= nil then
@@ -1066,6 +1090,9 @@ local function appendDynamicSlotSchema(schema, specId, slotIndex, options)
     appendSchema(schema, ParameterBinder.dynamicSamplePvocFFTOrderPath(index), { type = "f", min = 9, max = 12, default = 11, description = "Dynamic Sample " .. index .. " phase vocoder FFT order" })
     appendSchema(schema, ParameterBinder.dynamicSamplePvocTimeStretchPath(index), { type = "f", min = 0.25, max = 4.0, default = 1.0, description = "Dynamic Sample " .. index .. " phase vocoder stretch" })
     appendSchema(schema, ParameterBinder.dynamicSampleRootNotePath(index), { type = "f", min = 12, max = 96, default = 60, description = "Dynamic Sample " .. index .. " root MIDI note" })
+    appendSchema(schema, ParameterBinder.dynamicSampleUnisonPath(index), { type = "f", min = 1, max = 8, default = 1, description = "Dynamic Sample " .. index .. " unison" })
+    appendSchema(schema, ParameterBinder.dynamicSampleDetunePath(index), { type = "f", min = 0, max = 100, default = 0, description = "Dynamic Sample " .. index .. " detune" })
+    appendSchema(schema, ParameterBinder.dynamicSampleSpreadPath(index), { type = "f", min = 0, max = 1, default = 0, description = "Dynamic Sample " .. index .. " spread" })
     appendSchema(schema, ParameterBinder.dynamicSamplePlayStartPath(index), { type = "f", min = 0, max = 0.95, default = 0, description = "Dynamic Sample " .. index .. " play start" })
     appendSchema(schema, ParameterBinder.dynamicSampleLoopStartPath(index), { type = "f", min = 0, max = 0.95, default = 0, description = "Dynamic Sample " .. index .. " loop start" })
     appendSchema(schema, ParameterBinder.dynamicSampleLoopLenPath(index), { type = "f", min = 0.05, max = 1.0, default = 1.0, description = "Dynamic Sample " .. index .. " loop length" })
@@ -1263,6 +1290,28 @@ function ParameterBinder.buildSchema(options)
     max = MAX_RACK_AUDIO_SOURCES,
     default = 1,
     description = "Rack audio source count"
+  })
+  appendSchema(schema, PATHS.rackRegistryRequestKind, {
+    type = "f",
+    min = 0,
+    max = 32,
+    default = 0,
+    description = "Rack registry request kind"
+  })
+  appendSchema(schema, PATHS.rackRegistryRequestIndex, {
+    type = "f",
+    min = 0,
+    max = 128,
+    default = 0,
+    description = "Rack registry request index"
+  })
+  appendSchema(schema, PATHS.rackRegistryRequestNonce, {
+    type = "f",
+    min = 0,
+    max = 1000000000,
+    default = 0,
+    description = "Rack registry request nonce",
+    deferGraphMutation = true,
   })
   for i = 1, MAX_RACK_AUDIO_STAGES do
     local entry = ParameterBinder.buildRackAudioStageSchema(i)

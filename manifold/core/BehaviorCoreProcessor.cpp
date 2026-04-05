@@ -1311,9 +1311,25 @@ bool BehaviorCoreProcessor::computeSynthSamplePeaks(int numBuckets,
     return false;
 }
 
+bool BehaviorCoreProcessor::computeDynamicSamplePeaks(int slotIndex,
+                                                      int numBuckets,
+                                                      std::vector<float>& outPeaks) const {
+    if (dspScriptHost) {
+        return dspScriptHost->computeDynamicSamplePeaks(slotIndex, numBuckets, outPeaks);
+    }
+    return false;
+}
+
 std::vector<float> BehaviorCoreProcessor::getVoiceSamplePositions() const {
     if (dspScriptHost) {
         return dspScriptHost->getVoiceSamplePositions();
+    }
+    return {};
+}
+
+std::vector<float> BehaviorCoreProcessor::getDynamicSampleVoicePositions(int slotIndex) const {
+    if (dspScriptHost) {
+        return dspScriptHost->getDynamicSampleVoicePositions(slotIndex);
     }
     return {};
 }

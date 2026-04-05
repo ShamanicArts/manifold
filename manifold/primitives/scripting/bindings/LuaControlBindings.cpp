@@ -878,6 +878,24 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         return result;
     };
 
+    lua["getDynamicSampleSlotPeaks"] = [&state, &lua](int slotIndex, int numBuckets) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        if (!processor || slotIndex <= 0 || numBuckets <= 0) return result;
+
+        std::vector<float> peaks;
+        const auto key = makeWaveformPeakCacheKey("dynamic-sample", slotIndex, numBuckets, 0);
+        if (!getWaveformPeaksCached(key, peaks, [&](std::vector<float>& out) {
+                return processor->computeDynamicSamplePeaks(slotIndex, numBuckets, out);
+            })) {
+            return result;
+        }
+        for (size_t i = 0; i < peaks.size(); ++i) {
+            result[i + 1] = peaks[i];
+        }
+        return result;
+    };
+
     lua["invalidateWaveformPeakCache"] = []() {
         invalidateWaveformPeakCache();
     };
@@ -907,6 +925,18 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         if (!processor) return result;
 
         auto positions = processor->getVoiceSamplePositions();
+        for (size_t i = 0; i < positions.size(); ++i) {
+            result[i + 1] = positions[i];
+        }
+        return result;
+    };
+
+    lua["getDynamicSampleSlotVoicePositions"] = [&state, &lua](int slotIndex) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        if (!processor || slotIndex <= 0) return result;
+
+        auto positions = processor->getDynamicSampleVoicePositions(slotIndex);
         for (size_t i = 0; i < positions.size(); ++i) {
             result[i + 1] = positions[i];
         }
