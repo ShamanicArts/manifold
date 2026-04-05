@@ -26,6 +26,7 @@ local DYNAMIC_MODULES = {
   "filter",
   "rack_oscillator",
   "rack_sample",
+  "blend_simple",
 }
 
 local tests = {}

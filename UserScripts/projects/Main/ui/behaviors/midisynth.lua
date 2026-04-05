@@ -205,6 +205,10 @@ function M._rackAudioSourceCodeForNodeId(nodeId)
     local slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 0))
     return 200 + slotIndex
   end
+  if type(entry) == "table" and tostring(entry.specId or "") == "blend_simple" then
+    local slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 0))
+    return 300 + slotIndex
+  end
   return 0
 end
 
@@ -228,6 +232,7 @@ function M._rackRegistryRequestKindForSpecId(specId)
     sample_hold = 15,
     compare = 16,
     cv_mix = 17,
+    blend_simple = 18,
   }
   return mapping[tostring(specId or "")]
 end
@@ -1926,6 +1931,13 @@ M._PALETTE_ENTRIES = {
     spawnKind = "sample-module",
     defaultNode = { w = 2, h = 1, sizeKey = "1x2", componentId = "rackSampleComponent" },
   }),
+  makePaletteEntry("blend_simple", {
+    id = "blend_simple",
+    cardId = "paletteBlendSimpleCard",
+    hintId = "paletteBlendSimpleHint",
+    spawnKind = "blend-simple-module",
+    defaultNode = { w = 1, h = 1, sizeKey = "1x1", componentId = "rackBlendSimpleComponent" },
+  }),
   makePaletteEntry("filter", {
     id = "filter",
     cardId = "paletteFilterCard",
@@ -2019,6 +2031,10 @@ function M._rackAudioStageCodeForNodeId(nodeId)
   if type(entry) == "table" and tostring(entry.specId or "") == "filter" then
     local slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 0))
     return 300 + slotIndex
+  end
+  if type(entry) == "table" and tostring(entry.specId or "") == "blend_simple" then
+    local slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 0))
+    return 400 + slotIndex
   end
   return 0
 end
@@ -2602,6 +2618,11 @@ function M._buildPaletteNodeFromEntry(ctx, entry)
     })
   elseif spawnKind == "sample-module" then
     dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "rack_sample", {
+      setPath = setPath,
+      voiceCount = VOICE_COUNT,
+    })
+  elseif spawnKind == "blend-simple-module" then
+    dynamicMeta = RackModuleFactory.createDynamicSpawnMeta(ctx, "blend_simple", {
       setPath = setPath,
       voiceCount = VOICE_COUNT,
     })

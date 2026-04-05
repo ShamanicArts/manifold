@@ -58,6 +58,7 @@ M.STAGE_EQ = 4
 M.DYNAMIC_EQ_STAGE_BASE = 100
 M.DYNAMIC_FX_STAGE_BASE = 200
 M.DYNAMIC_FILTER_STAGE_BASE = 300
+M.DYNAMIC_BLEND_SIMPLE_STAGE_BASE = 400
 
 local function bitIsSet(mask, bitIndex)
   return math.floor((tonumber(mask) or 0) / (2 ^ bitIndex)) % 2 >= 1
@@ -135,6 +136,7 @@ function M.create(ctx, nodes)
     dynamicEqSlots = type(nodes.dynamicEqSlots) == "table" and nodes.dynamicEqSlots or {},
     dynamicFxSlots = type(nodes.dynamicFxSlots) == "table" and nodes.dynamicFxSlots or {},
     dynamicFilterSlots = type(nodes.dynamicFilterSlots) == "table" and nodes.dynamicFilterSlots or {},
+    dynamicBlendSimpleSlots = type(nodes.dynamicBlendSimpleSlots) == "table" and nodes.dynamicBlendSimpleSlots or {},
     output = nodes.output,
     edgeMask = DEFAULT_EDGE_MASK,
     activeEdges = {},
@@ -291,7 +293,7 @@ function M.create(ctx, nodes)
           outputNode = node,
         }
       end
-    elseif stageCode >= M.DYNAMIC_FILTER_STAGE_BASE then
+    elseif stageCode >= M.DYNAMIC_FILTER_STAGE_BASE and stageCode < M.DYNAMIC_BLEND_SIMPLE_STAGE_BASE then
       local slotIndex = stageCode - M.DYNAMIC_FILTER_STAGE_BASE
       local slot = router.dynamicFilterSlots[slotIndex]
       local node = slot and slot.node or nil
@@ -301,6 +303,18 @@ function M.create(ctx, nodes)
           kind = "node_target",
           targetNode = node,
           outputNode = node,
+        }
+      end
+    elseif stageCode >= M.DYNAMIC_BLEND_SIMPLE_STAGE_BASE then
+      local slotIndex = stageCode - M.DYNAMIC_BLEND_SIMPLE_STAGE_BASE
+      local slot = router.dynamicBlendSimpleSlots[slotIndex]
+      local node = slot and slot.inputA or nil
+      if slot and node and slot.output then
+        return {
+          label = "blend_simple_" .. tostring(slotIndex),
+          kind = "node_target",
+          targetNode = node,
+          outputNode = slot.output,
         }
       end
     end

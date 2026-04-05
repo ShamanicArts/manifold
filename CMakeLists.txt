@@ -304,6 +304,10 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/TransientShaperNode.cpp
     dsp/core/nodes/RingModulatorNode.h
     dsp/core/nodes/RingModulatorNode.cpp
+    dsp/core/nodes/AudioFmNode.h
+    dsp/core/nodes/AudioFmNode.cpp
+    dsp/core/nodes/AudioSyncNode.h
+    dsp/core/nodes/AudioSyncNode.cpp
     dsp/core/nodes/BitCrusherNode.h
     dsp/core/nodes/BitCrusherNode.cpp
     dsp/core/nodes/FormantFilterNode.h

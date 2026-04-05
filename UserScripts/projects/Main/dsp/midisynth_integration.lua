@@ -39,7 +39,9 @@ local SAMPLE_PITCH_MODE_PHASE_VOCODER_HQ = 2
 local SAMPLE_PITCH_MODE_PHASE_VOCODER_HQ = 2
 local DYNAMIC_OSC_SOURCE_BASE = 100
 local DYNAMIC_SAMPLE_SOURCE_BASE = 200
+local DYNAMIC_BLEND_SIMPLE_SOURCE_BASE = 300
 local DYNAMIC_SAMPLE_OUTPUT_TRIM = 0.25
+local DYNAMIC_BLEND_SIMPLE_STAGE_BASE = 400
 
 function M.buildSynth(ctx, options)
   options = options or {}
@@ -94,6 +96,9 @@ function M.buildSynth(ctx, options)
 
   local dynamicSampleSlots = {}
   -- Lazy-loaded: slots created on-demand via createDynamicSampleSlot
+
+  local dynamicBlendSimpleSlots = {}
+  -- Lazy-loaded: slots created on-demand via createDynamicBlendSimpleSlot
 
   -- Noise generator
   local noiseGen = ctx.primitives.NoiseGeneratorNode.new()
@@ -256,6 +261,7 @@ function M.buildSynth(ctx, options)
     dynamicEqSlots = dynamicEqSlots,
     dynamicFxSlots = dynamicFxSlots,
     dynamicFilterSlots = dynamicFilterSlots,
+    dynamicBlendSimpleSlots = dynamicBlendSimpleSlots,
     output = spec,
   })
 
@@ -288,6 +294,17 @@ function M.buildSynth(ctx, options)
           key = "dyn_sample_" .. tostring(slotIndex),
           node = node,
           inputIndex = VOICE_COUNT + slotIndex + 1,
+        }
+      end
+    elseif sourceCode >= DYNAMIC_BLEND_SIMPLE_SOURCE_BASE then
+      local slotIndex = sourceCode - DYNAMIC_BLEND_SIMPLE_SOURCE_BASE
+      local slot = dynamicBlendSimpleSlots[slotIndex]
+      local node = slot and slot.output or nil
+      if node then
+        return {
+          key = "dyn_blend_simple_" .. tostring(slotIndex),
+          node = node,
+          inputIndex = VOICE_COUNT + 33 + slotIndex,
         }
       end
     elseif sourceCode >= DYNAMIC_OSC_SOURCE_BASE then
@@ -1028,6 +1045,140 @@ function M.buildSynth(ctx, options)
     return dynamicSampleSlots[index]
   end
 
+  local function createDynamicBlendSimpleSlot(slotIndex)
+    local index = math.max(1, math.floor(tonumber(slotIndex) or 1))
+    if dynamicBlendSimpleSlots[index] then
+      return dynamicBlendSimpleSlots[index]
+    end
+
+    local inputA = ctx.primitives.PassthroughNode.new(2)
+    local inputB = ctx.primitives.PassthroughNode.new(2)
+
+    local mixCrossfade = ctx.primitives.CrossfaderNode.new()
+    mixCrossfade:setPosition(0.0)
+    mixCrossfade:setCurve(1.0)
+    mixCrossfade:setMix(1.0)
+
+    local ringNode = ctx.primitives.RingModulatorNode.new()
+    ringNode:setFrequency(120.0)
+    ringNode:setDepth(0.5)
+    ringNode:setMix(1.0)
+    if ringNode.setEnabled then ringNode:setEnabled(true) end
+
+    local fmNode = ctx.primitives.AudioFmNode.new()
+    fmNode:setAmount(0.5)
+    fmNode:setMix(1.0)
+
+    local syncNode = ctx.primitives.AudioSyncNode.new()
+    syncNode:setHardness(0.5)
+    syncNode:setMix(1.0)
+
+    local modeMixer = ctx.primitives.MixerNode.new()
+    modeMixer:setInputCount(4)
+    for busIndex = 1, 4 do
+      modeMixer:setGain(busIndex, busIndex == 1 and 1.0 or 0.0)
+      modeMixer:setPan(busIndex, 0.0)
+    end
+
+    local output = ctx.primitives.GainNode.new(2)
+    output:setGain(1.0)
+
+    ctx.graph.connect(inputA, mixCrossfade, 0, 0)
+    ctx.graph.connect(inputB, mixCrossfade, 0, 2)
+    ctx.graph.connect(inputA, ringNode, 0, 0)
+    ctx.graph.connect(inputB, ringNode, 0, 2)
+    ctx.graph.connect(inputA, fmNode, 0, 0)
+    ctx.graph.connect(inputB, fmNode, 0, 2)
+    ctx.graph.connect(inputA, syncNode, 0, 0)
+    ctx.graph.connect(inputB, syncNode, 0, 2)
+    connectMixerInput(modeMixer, 1, mixCrossfade)
+    connectMixerInput(modeMixer, 2, ringNode)
+    connectMixerInput(modeMixer, 3, fmNode)
+    connectMixerInput(modeMixer, 4, syncNode)
+    ctx.graph.connect(modeMixer, output)
+
+    dynamicBlendSimpleSlots[index] = {
+      slotIndex = index,
+      inputA = inputA,
+      inputB = inputB,
+      mixCrossfade = mixCrossfade,
+      ringNode = ringNode,
+      fmNode = fmNode,
+      syncNode = syncNode,
+      modeMixer = modeMixer,
+      output = output,
+      mode = 0,
+      amount = 0.5,
+      mix = 0.5,
+      outputLevel = 1.0,
+    }
+    applyDynamicBlendSimpleParams(dynamicBlendSimpleSlots[index])
+    return dynamicBlendSimpleSlots[index]
+  end
+
+  local function applyDynamicBlendSimpleMode(slot)
+    if not slot then
+      return false
+    end
+    local mode = math.max(0, math.min(3, math.floor(tonumber(slot.mode) or 0)))
+    for busIndex = 1, 4 do
+      slot.modeMixer:setGain(busIndex, busIndex == (mode + 1) and 1.0 or 0.0)
+    end
+    return true
+  end
+
+  local function applyDynamicBlendSimpleParams(slot)
+    if not slot then
+      return false
+    end
+    local amount = Utils.clamp01(tonumber(slot.amount) or 0.5)
+    local mixAmount = Utils.clamp01(tonumber(slot.mix) or 0.5)
+    local blendPos = amount * 2.0 - 1.0
+
+    slot.mixCrossfade:setPosition(blendPos)
+    slot.mixCrossfade:setCurve(1.0)
+    slot.mixCrossfade:setMix(1.0)
+
+    slot.ringNode:setDepth(amount)
+    slot.ringNode:setMix(mixAmount)
+
+    slot.fmNode:setAmount(amount)
+    slot.fmNode:setMix(mixAmount)
+
+    slot.syncNode:setHardness(amount)
+    slot.syncNode:setMix(mixAmount)
+
+    slot.output:setGain(Utils.clamp01(tonumber(slot.outputLevel) or 1.0))
+    applyDynamicBlendSimpleMode(slot)
+    return true
+  end
+
+  local function applyDynamicBlendSimplePath(path, value)
+    local slotIndex, suffix = ParameterBinder.matchDynamicBlendSimplePath(path)
+    if slotIndex == nil then
+      return false
+    end
+    local slot = dynamicBlendSimpleSlots[slotIndex]
+    if not slot then
+      return true
+    end
+
+    local numeric = tonumber(value) or 0.0
+    if suffix == "mode" then
+      slot.mode = math.max(0, math.min(3, math.floor(numeric + 0.5)))
+    elseif suffix == "amount" then
+      slot.amount = Utils.clamp01(numeric)
+    elseif suffix == "mix" then
+      slot.mix = Utils.clamp01(numeric)
+    elseif suffix == "output" then
+      slot.outputLevel = Utils.clamp01(numeric)
+    else
+      return false
+    end
+
+    return applyDynamicBlendSimpleParams(slot)
+  end
+
   local function ensureDynamicModuleSlot(specId, slotIndex)
     local id = tostring(specId or "")
     local index = math.max(1, math.floor(tonumber(slotIndex) or 1))
@@ -1047,6 +1198,8 @@ function M.buildSynth(ctx, options)
       createDynamicOscillatorSlot(index)
     elseif id == "rack_sample" then
       createDynamicSampleSlot(index)
+    elseif id == "blend_simple" then
+      createDynamicBlendSimpleSlot(index)
     end
 
     registerDynamicSchemaEntries(ParameterBinder.buildDynamicSlotSchema(id, index, {
@@ -2581,6 +2734,7 @@ function M.buildSynth(ctx, options)
 
   local function resolveAuxAudioSourceNode(moduleId, portId)
     local id = tostring(moduleId or "")
+    local pid = tostring(portId or "")
     if id == "oscillator" then
       return mix
     elseif id == "filter" then
@@ -2601,6 +2755,12 @@ function M.buildSynth(ctx, options)
       return slot and slot.output or nil
     elseif specId == "rack_sample" then
       local slot = dynamicSampleSlots[slotIndex]
+      return slot and slot.output or nil
+    elseif specId == "blend_simple" then
+      local slot = dynamicBlendSimpleSlots[slotIndex]
+      if pid == "b" then
+        return slot and slot.inputB or nil
+      end
       return slot and slot.output or nil
     elseif specId == "filter" then
       local slot = dynamicFilterSlots[slotIndex]
@@ -2626,6 +2786,15 @@ function M.buildSynth(ctx, options)
     if specId == "rack_sample" and pid == "in" then
       local slot = dynamicSampleSlots[slotIndex]
       return slot and slot.captureInput or nil
+    end
+
+    if specId == "blend_simple" then
+      local slot = dynamicBlendSimpleSlots[slotIndex]
+      if pid == "a" then
+        return slot and slot.inputA or nil
+      elseif pid == "b" then
+        return slot and slot.inputB or nil
+      end
     end
 
     return nil
@@ -3215,6 +3384,7 @@ function M.buildSynth(ctx, options)
       applyDynamicEqPath,
       applyDynamicFxPath,
       applyDynamicFilterPath,
+      applyDynamicBlendSimplePath,
       applyDynamicSamplePath,
       function(path, value)
         local slotIndex, voiceIndex, suffix = ParameterBinder.matchDynamicOscillatorVoicePath(path)

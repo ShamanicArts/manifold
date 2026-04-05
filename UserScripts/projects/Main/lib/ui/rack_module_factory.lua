@@ -332,6 +332,23 @@ DYNAMIC_MODULES = {
       end
     end,
   },
+  blend_simple = {
+    slotBucket = "blend_simple",
+    buildParamBase = function(slotIndex)
+      return string.format("/midi/synth/rack/blend_simple/%d", math.max(1, math.floor(tonumber(slotIndex) or 1)))
+    end,
+    resetDefaults = function(slotIndex, deps)
+      local setPath = deps and deps.setPath or nil
+      if type(setPath) ~= "function" then
+        return
+      end
+      local base = DYNAMIC_MODULES.blend_simple.buildParamBase(slotIndex)
+      setPath(base .. "/mode", 0)
+      setPath(base .. "/amount", 0.5)
+      setPath(base .. "/mix", 0.5)
+      setPath(base .. "/output", 1.0)
+    end,
+  },
   range_mapper = {
     slotBucket = "range_mapper",
     buildParamBase = function(slotIndex)
@@ -386,6 +403,7 @@ function M.ensureDynamicModuleSlots(ctx)
     filter = {},
     rack_oscillator = {},
     rack_sample = {},
+    blend_simple = {},
     range_mapper = {},
   }
   ctx._dynamicModuleSlots.adsr = ctx._dynamicModuleSlots.adsr or {}
@@ -405,6 +423,7 @@ function M.ensureDynamicModuleSlots(ctx)
   ctx._dynamicModuleSlots.filter = ctx._dynamicModuleSlots.filter or {}
   ctx._dynamicModuleSlots.rack_oscillator = ctx._dynamicModuleSlots.rack_oscillator or {}
   ctx._dynamicModuleSlots.rack_sample = ctx._dynamicModuleSlots.rack_sample or {}
+  ctx._dynamicModuleSlots.blend_simple = ctx._dynamicModuleSlots.blend_simple or {}
   ctx._dynamicModuleSlots.range_mapper = ctx._dynamicModuleSlots.range_mapper or {}
   return ctx._dynamicModuleSlots
 end

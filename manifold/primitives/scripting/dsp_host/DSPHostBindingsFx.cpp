@@ -334,6 +334,24 @@ void registerFxBindings(LoadSession &session,
       "isEnabled", &dsp_primitives::RingModulatorNode::isEnabled,
       "reset", &dsp_primitives::RingModulatorNode::reset);
 
+  newLua.new_usertype<dsp_primitives::AudioFmNode>(
+      "AudioFmNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::AudioFmNode>()>(),
+      "setAmount", &dsp_primitives::AudioFmNode::setAmount,
+      "setMix", &dsp_primitives::AudioFmNode::setMix,
+      "getAmount", &dsp_primitives::AudioFmNode::getAmount,
+      "getMix", &dsp_primitives::AudioFmNode::getMix,
+      "reset", &dsp_primitives::AudioFmNode::reset);
+
+  newLua.new_usertype<dsp_primitives::AudioSyncNode>(
+      "AudioSyncNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::AudioSyncNode>()>(),
+      "setHardness", &dsp_primitives::AudioSyncNode::setHardness,
+      "setMix", &dsp_primitives::AudioSyncNode::setMix,
+      "getHardness", &dsp_primitives::AudioSyncNode::getHardness,
+      "getMix", &dsp_primitives::AudioSyncNode::getMix,
+      "reset", &dsp_primitives::AudioSyncNode::reset);
+
   newLua.new_usertype<dsp_primitives::BitCrusherNode>(
       "BitCrusherNode",
       sol::constructors<std::shared_ptr<dsp_primitives::BitCrusherNode>()>(),
@@ -799,6 +817,26 @@ void registerFxBindings(LoadSession &session,
         return node;
       };
     primitives["RingModulatorNode"] = ringModApi;
+  }
+
+  {
+    auto audioFmApi = sol::state_view(newLuaState).create_table();
+    audioFmApi["new"] = [graph, trackNode]() {
+        auto node = std::make_shared<dsp_primitives::AudioFmNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["AudioFmNode"] = audioFmApi;
+  }
+
+  {
+    auto audioSyncApi = sol::state_view(newLuaState).create_table();
+    audioSyncApi["new"] = [graph, trackNode]() {
+        auto node = std::make_shared<dsp_primitives::AudioSyncNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["AudioSyncNode"] = audioSyncApi;
   }
 
   {

@@ -24,6 +24,7 @@ local DYNAMIC_SLOT_CAPS = {
   filter = 32,
   rack_oscillator = 32,
   rack_sample = 32,
+  blend_simple = 32,
 }
 
 local MAX_RACK_AUDIO_STAGES = 128
@@ -610,6 +611,26 @@ function ParameterBinder.dynamicSampleVoiceVOctPath(slotIndex, voiceIndex)
   return string.format("%s/voice/%d/vOct", ParameterBinder.dynamicSampleBasePath(slotIndex), math.max(1, math.floor(tonumber(voiceIndex) or 1)))
 end
 
+function ParameterBinder.dynamicBlendSimpleBasePath(slotIndex)
+  return string.format("/midi/synth/rack/blend_simple/%d", math.max(1, math.floor(tonumber(slotIndex) or 1)))
+end
+
+function ParameterBinder.dynamicBlendSimpleModePath(slotIndex)
+  return ParameterBinder.dynamicBlendSimpleBasePath(slotIndex) .. "/mode"
+end
+
+function ParameterBinder.dynamicBlendSimpleAmountPath(slotIndex)
+  return ParameterBinder.dynamicBlendSimpleBasePath(slotIndex) .. "/amount"
+end
+
+function ParameterBinder.dynamicBlendSimpleMixPath(slotIndex)
+  return ParameterBinder.dynamicBlendSimpleBasePath(slotIndex) .. "/mix"
+end
+
+function ParameterBinder.dynamicBlendSimpleOutputPath(slotIndex)
+  return ParameterBinder.dynamicBlendSimpleBasePath(slotIndex) .. "/output"
+end
+
 function ParameterBinder.dynamicFilterBasePath(slotIndex)
   return string.format("/midi/synth/rack/filter/%d", math.max(1, math.floor(tonumber(slotIndex) or 1)))
 end
@@ -838,6 +859,27 @@ function ParameterBinder.matchDynamicSampleVoicePath(path)
   return nil
 end
 
+function ParameterBinder.matchDynamicBlendSimplePath(path)
+  local normalized = tostring(path or "")
+  local slotIndex = normalized:match("^/midi/synth/rack/blend_simple/(%d+)/mode$")
+  if slotIndex ~= nil then
+    return tonumber(slotIndex), "mode"
+  end
+  slotIndex = normalized:match("^/midi/synth/rack/blend_simple/(%d+)/amount$")
+  if slotIndex ~= nil then
+    return tonumber(slotIndex), "amount"
+  end
+  slotIndex = normalized:match("^/midi/synth/rack/blend_simple/(%d+)/mix$")
+  if slotIndex ~= nil then
+    return tonumber(slotIndex), "mix"
+  end
+  slotIndex = normalized:match("^/midi/synth/rack/blend_simple/(%d+)/output$")
+  if slotIndex ~= nil then
+    return tonumber(slotIndex), "output"
+  end
+  return nil
+end
+
 function ParameterBinder.specIdForRegistryRequestKind(kind)
   local k = math.max(0, math.floor(tonumber(kind) or 0))
   local mapping = {
@@ -859,8 +901,9 @@ function ParameterBinder.specIdForRegistryRequestKind(kind)
     [15] = "sample_hold",
     [16] = "compare",
     [17] = "cv_mix",
-    [18] = "rack_audio_stage",
-    [19] = "rack_audio_source",
+    [18] = "blend_simple",
+    [19] = "rack_audio_stage",
+    [20] = "rack_audio_source",
   }
   return mapping[k]
 end
@@ -886,6 +929,7 @@ function ParameterBinder.matchDynamicModulePath(path)
     { specId = "filter", pattern = "^/midi/synth/rack/filter/(%d+)/" },
     { specId = "rack_oscillator", pattern = "^/midi/synth/rack/osc/(%d+)/" },
     { specId = "rack_sample", pattern = "^/midi/synth/rack/sample/(%d+)/" },
+    { specId = "blend_simple", pattern = "^/midi/synth/rack/blend_simple/(%d+)/" },
   }
 
   for i = 1, #patterns do
@@ -1106,6 +1150,14 @@ local function appendDynamicSlotSchema(schema, specId, slotIndex, options)
     return schema
   end
 
+  if id == "blend_simple" then
+    appendSchema(schema, ParameterBinder.dynamicBlendSimpleModePath(index), { type = "f", min = 0, max = 3, default = 0, description = "Dynamic Blend Simple " .. index .. " mode (0=mix, 1=ring, 2=fm, 3=sync)" })
+    appendSchema(schema, ParameterBinder.dynamicBlendSimpleAmountPath(index), { type = "f", min = 0, max = 1, default = 0.5, description = "Dynamic Blend Simple " .. index .. " amount" })
+    appendSchema(schema, ParameterBinder.dynamicBlendSimpleMixPath(index), { type = "f", min = 0, max = 1, default = 0.5, description = "Dynamic Blend Simple " .. index .. " mix" })
+    appendSchema(schema, ParameterBinder.dynamicBlendSimpleOutputPath(index), { type = "f", min = 0, max = 1, default = 1.0, description = "Dynamic Blend Simple " .. index .. " output" })
+    return schema
+  end
+
   return schema
 end
 
@@ -1128,6 +1180,7 @@ local DYNAMIC_SLOT_SCHEMA_IDS = {
   "filter",
   "rack_oscillator",
   "rack_sample",
+  "blend_simple",
 }
 
 local function appendDynamicSlotsFromCounts(schema, options)

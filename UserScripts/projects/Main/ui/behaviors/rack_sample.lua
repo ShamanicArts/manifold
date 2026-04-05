@@ -719,15 +719,18 @@ function RackSampleBehavior.resized(ctx, w, h)
 
   local widgets = ctx.widgets or {}
   local pad = 10
-  local gap = 8
+  local gap = 6
   local rowH = 20
   local rowGap = 2
   local controlSliderH = 20
-  local controlRowGap = 6
+  local controlRowGap = 8
+  local controlGap = 8
+  local footerGap = 6
+  local footerSliderH = 22
 
   local function placeControlRow(x, y, width)
-    local rowW = math.max(120, width)
-    local colW = math.max(52, math.floor((rowW - controlRowGap * 2) / 3))
+    local rowW = math.max(96, width)
+    local colW = math.max(48, math.floor((rowW - controlRowGap * 2) / 3))
     local detuneX = x + colW + controlRowGap
     local spreadX = detuneX + colW + controlRowGap
     setBounds(widgets.unison_knob, x, y, colW, controlSliderH)
@@ -758,10 +761,6 @@ function RackSampleBehavior.resized(ctx, w, h)
     y = y + rowH + rowGap
     setBounds(widgets.sample_root_box, innerX + 6, y, math.max(96, innerW - 52), rowH)
     y = y + rowH + rowGap
-    placeControlRow(innerX + 6, y, math.max(120, innerW - 12))
-    y = y + rowH + rowGap
-    setBounds(widgets.output_knob, innerX + 6, y, math.max(96, innerW - 52), rowH)
-    y = y + rowH + rowGap
     setBounds(widgets.sample_xfade_box, innerX + 6, y, math.max(96, innerW - 52), rowH)
     y = y + rowH + rowGap
     local halfW = math.max(56, math.floor((innerW - 16) / 2))
@@ -772,10 +771,14 @@ function RackSampleBehavior.resized(ctx, w, h)
   if w < 320 then
     local contentW = w - pad * 2
     local graphY = pad
-    local graphH = math.max(64, math.floor((h - pad * 2) * 0.34))
-    local panelY = graphY + graphH + gap
-    local panelH = math.max(1, h - pad - panelY)
+    local footerY = h - pad - footerSliderH
+    local controlY = footerY - footerGap - controlSliderH
+    local graphH = math.max(48, controlY - controlGap - pad)
+    local panelY = controlY + controlSliderH + controlGap
+    local panelH = math.max(1, footerY - footerGap - panelY)
     setBounds(widgets.sample_graph, pad, graphY, contentW, graphH)
+    placeControlRow(pad + 6, controlY, math.max(96, contentW - 12))
+    setBounds(widgets.output_knob, pad + 6, footerY, math.max(96, contentW - 12), footerSliderH)
     placePanel(pad, panelY, contentW, panelH)
   else
     local split = math.floor(w / 2)
@@ -783,10 +786,14 @@ function RackSampleBehavior.resized(ctx, w, h)
     local rightX = split + gap
     local rightW = w - rightX - pad
     local graphY = pad
-    local graphH = h - pad * 2
+    local footerY = h - pad - footerSliderH
+    local controlY = footerY - footerGap - controlSliderH
+    local graphH = math.max(60, controlY - controlGap - pad)
     local panelY = graphY
     local panelH = h - pad * 2
     setBounds(widgets.sample_graph, pad, graphY, leftW, graphH)
+    placeControlRow(pad + 6, controlY, math.max(96, leftW - 12))
+    setBounds(widgets.output_knob, pad + 6, footerY, math.max(96, leftW - 12), footerSliderH)
     placePanel(rightX, panelY, rightW, panelH)
   end
 

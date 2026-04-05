@@ -208,6 +208,18 @@ local MODULE_META_DEFAULTS = {
       order = 52,
     },
   },
+  blend_simple = {
+    category = "audio",
+    description = "Simple dual-input blend stage with mix, ring, FM, and sync modes using serial A plus auxiliary B.",
+    instancePolicy = "dynamic",
+    runtimeKind = "processor",
+    paramTemplateMode = "dynamic_param_base",
+    palette = {
+      displayName = "Blend",
+      portSummary = "A/B -> OUT",
+      order = 54,
+    },
+  },
   filter = {
     category = "audio",
     description = "Tone-shaping audio stage. Canonical slot can be restored, dynamic slots can be added when available.",
@@ -497,6 +509,14 @@ local MODULE_PARAM_REMAP_DEFAULTS = {
       ["/midi/synth/output"] = "/output",
     },
   },
+  blend_simple = {
+    exact = {
+      ["/midi/synth/rack/blend_simple/__template/mode"] = "/mode",
+      ["/midi/synth/rack/blend_simple/__template/amount"] = "/amount",
+      ["/midi/synth/rack/blend_simple/__template/mix"] = "/mix",
+      ["/midi/synth/rack/blend_simple/__template/output"] = "/output",
+    },
+  },
 }
 
 local MODULE_CONTROL_PORT_DEFAULTS = {
@@ -583,6 +603,11 @@ local MODULE_CONTROL_PORT_DEFAULTS = {
     voice = { scope = "voice", signalKind = "voice_bundle", domain = "voice", min = 0, max = 1, default = 0, displayName = "Rack Sample Voice" },
     gate = { scope = "voice", signalKind = "scalar_unipolar", domain = "normalized", min = 0, max = 1, default = 0, displayName = "Rack Sample Gate" },
     v_oct = { scope = "voice", signalKind = "scalar", domain = "midi_note", min = 0, max = 127, default = 60, displayName = "Rack Sample V/Oct" },
+  },
+  blend_simple = {
+    a = { scope = "global", signalKind = "audio", domain = "audio", default = 0, displayName = "Blend A" },
+    b = { scope = "global", signalKind = "audio", domain = "audio", default = 0, displayName = "Blend B" },
+    out = { scope = "global", signalKind = "audio", domain = "audio", default = 0, displayName = "Blend Out" },
   },
   filter = {
     env = { scope = "voice", signalKind = "scalar_unipolar", domain = "normalized", min = 0, max = 1, default = 0, displayName = "Filter Env" },
@@ -1466,6 +1491,42 @@ local RACK_MODULE_SPECS = {
       behavior = "ui/behaviors/rack_sample.lua",
       componentRef = "ui/components/rack_sample.ui.lua",
       audioSource = true,
+    },
+  },
+  RackLayout.makeRackModuleSpec {
+    id = "blend_simple",
+    name = "Blend",
+    validSizes = { "1x1", "1x2", "2x1" },
+    accentColor = 0xfff97316,
+    ports = copyPorts {
+      inputs = {
+        { id = "a", type = "audio", label = "A" },
+        { id = "b", type = "audio", label = "B", auxiliary = true, audioRole = "blend_b" },
+      },
+      outputs = {
+        { id = "out", type = "audio", label = "OUT" },
+      },
+      params = {
+        { id = "mode", label = "Mode", path = "/midi/synth/rack/blend_simple/__template/mode",
+          min = 0, max = 3, step = 1, default = 0,
+          format = "enum",
+          options = { "Mix", "Ring", "FM", "Sync" },
+          input = true, output = true },
+        { id = "amount", label = "Amount", path = "/midi/synth/rack/blend_simple/__template/amount",
+          min = 0, max = 1, step = 0.01, default = 0.5,
+          input = true, output = true },
+        { id = "mix", label = "Mix", path = "/midi/synth/rack/blend_simple/__template/mix",
+          min = 0, max = 1, step = 0.01, default = 0.5,
+          input = true, output = true },
+        { id = "output", label = "Output", path = "/midi/synth/rack/blend_simple/__template/output",
+          min = 0, max = 1, step = 0.01, default = 1.0,
+          input = true, output = true },
+      },
+    },
+    meta = {
+      componentId = "rackBlendSimpleComponent",
+      behavior = "ui/behaviors/rack_blend_simple.lua",
+      componentRef = "ui/components/rack_blend_simple.ui.lua",
     },
   },
   RackLayout.makeRackModuleSpec {
