@@ -91,8 +91,8 @@ return {
       id = "mainStack",
       type = "Panel",
       x = 0, y = 0, w = 1280, h = 686,
-      style = { bg = 0x00000000 },
-      props = { interceptsMouse = false },
+                  style = { bg = 0x00000000 },
+                  props = { interceptsMouse = true },
       layout = {
         mode = "stack-y",
         padding = { 0, 0, 0, 0 },
@@ -107,9 +107,6 @@ return {
           layoutChild = { order = 1, grow = 0, shrink = 0, basisH = 452, minH = 452, maxH = 452 },
           style = {
             bg = 0xff0f1726,
-            border = 0xff1f2937,
-            borderWidth = 1,
-            radius = 0,
           },
           props = { interceptsMouse = false },
           layout = {
@@ -134,7 +131,7 @@ return {
           type = "Panel",
           x = 0, y = 0, w = 1248, h = 44,
           layoutChild = { order = 2, grow = 0, shrink = 0, basisH = 44, minH = 44 },
-          style = { bg = 0xff11172a, border = 0xff1f2b4d, borderWidth = 1, radius = 0 },
+          style = { bg = 0xff11172a },
           props = { interceptsMouse = false },
           layout = {
             mode = "stack-y",
@@ -329,7 +326,7 @@ return {
                       x = 0, y = 0, w = 760, h = 136,
                       layoutChild = { order = 2, grow = 1, shrink = 1 },
                       style = { bg = 0x00000000 },
-                      props = { interceptsMouse = false },
+                      props = { interceptsMouse = true },
                       children = {
                         {
                           id = "paletteScrollTrack",
@@ -355,7 +352,7 @@ return {
                           x = 0, y = 0, w = 760, h = 136,
                           layout = { mode = "hybrid", left = 0, top = 0, right = 0, bottom = 0 },
                           style = { bg = 0x00000000 },
-                          props = { interceptsMouse = false },
+                          props = { interceptsMouse = false, clip = true },
                           children = {
                             {
                               id = "paletteStripRow",

@@ -2012,6 +2012,7 @@ function M._selectPaletteEntry(ctx, entryId)
     return nil
   end
   ctx._selectedPaletteEntryId = tostring(entry.id or "")
+  ctx._suppressPaletteAutoScroll = false
   M._ensureSelectedPaletteScrollVisible(ctx)
   M._requestUtilityBrowserRefresh(ctx)
   return entry
@@ -3096,20 +3097,34 @@ function M._setupUtilityPaletteBrowserHandlers(ctx)
     end)
   end
 
-  local paletteStrip = getScopedWidget(ctx, ".paletteStrip")
-  if paletteStrip and paletteStrip.node and paletteStrip.node.setOnMouseWheel then
+  local utilityBrowserBody = getScopedWidget(ctx, ".utilityBrowserBody") or ctx.widgets.utilityBrowserBody
+  local paletteStrip = getScopedWidget(ctx, ".paletteStrip") or ctx.widgets.paletteStrip
+  
+  local function handleScroll(mx, my, deltaY)
+    local _ = mx
+    _ = my
+    local sign = (tonumber(deltaY) or 0) > 0 and -1 or 1
+    local step = M._paletteCardMetrics().step
+    local nextOffset = math.max(0, math.min(M._paletteMaxScrollOffset(ctx), (tonumber(ctx._paletteScrollOffset) or 0) + (sign * step)))
+    if nextOffset ~= (tonumber(ctx._paletteScrollOffset) or 0) then
+      ctx._paletteScrollOffset = nextOffset
+      ctx._suppressPaletteAutoScroll = true
+      M._requestUtilityBrowserRefresh(ctx)
+    end
+  end
+  
+  if utilityBrowserBody and utilityBrowserBody.node then
+    utilityBrowserBody.node:setInterceptsMouse(true, true)
+    if utilityBrowserBody.node.setOnMouseWheel then
+      utilityBrowserBody.node:setOnMouseWheel(handleScroll)
+    end
+  end
+  
+  if paletteStrip and paletteStrip.node then
     paletteStrip.node:setInterceptsMouse(true, true)
-    paletteStrip.node:setOnMouseWheel(function(mx, my, deltaY)
-      local _ = mx
-      _ = my
-      local sign = (tonumber(deltaY) or 0) > 0 and -1 or 1
-      local step = M._paletteCardMetrics().step
-      local nextOffset = math.max(0, math.min(M._paletteMaxScrollOffset(ctx), (tonumber(ctx._paletteScrollOffset) or 0) + (sign * step)))
-      if nextOffset ~= (tonumber(ctx._paletteScrollOffset) or 0) then
-        ctx._paletteScrollOffset = nextOffset
-        M._requestUtilityBrowserRefresh(ctx)
-      end
-    end)
+    if paletteStrip.node.setOnMouseWheel then
+      paletteStrip.node:setOnMouseWheel(handleScroll)
+    end
   end
 
   bindButton(".utilityNavVoiceHeader", function()
@@ -3199,7 +3214,7 @@ function M._setupPaletteDragHandlers(ctx)
     local entry = M._PALETTE_ENTRIES[i]
     local paletteCard = getScopedWidget(ctx, "." .. tostring(entry.cardId or ""))
     if paletteCard and paletteCard.node then
-      paletteCard.node:setInterceptsMouse(true, true)
+      paletteCard.node:setInterceptsMouse(true, false)
       local isDragging = false
 
       paletteCard.node:setOnMouseDown(function(x, y, shift)
@@ -3246,17 +3261,6 @@ function M._setupPaletteDragHandlers(ctx)
         end
         updateDragGhost(ctx)
       end)
-
-      if paletteCard.node.setOnMouseWheel then
-        paletteCard.node:setOnMouseWheel(function(mx, my, deltaY)
-          local _ = mx
-          _ = my
-          local sign = (tonumber(deltaY) or 0) > 0 and -1 or 1
-          local step = M._paletteCardMetrics().step
-          ctx._paletteScrollOffset = math.max(0, math.min(M._paletteMaxScrollOffset(ctx), (tonumber(ctx._paletteScrollOffset) or 0) + (sign * step)))
-          M._requestUtilityBrowserRefresh(ctx)
-        end)
-      end
 
       paletteCard.node:setOnMouseDrag(function(x, y, dx, dy)
         if not isDragging then return end
@@ -4558,7 +4562,9 @@ function M._syncPaletteCardState(ctx)
   end
 
   local selectedEntry = M._ensurePaletteSelection(ctx)
-  M._ensureSelectedPaletteScrollVisible(ctx)
+  if ctx._suppressPaletteAutoScroll ~= true then
+    M._ensureSelectedPaletteScrollVisible(ctx)
+  end
   local m = M._paletteCardMetrics()
   local scrollOffset = M._clampPaletteScrollOffset(ctx)
   local viewportW = M._paletteViewportWidth(ctx)
@@ -4571,9 +4577,15 @@ function M._syncPaletteCardState(ctx)
   local paletteStripContent = getScopedWidget(ctx, ".paletteStripContent")
   if paletteStripContent then
     changed = setWidgetBounds(paletteStripContent, 0, 0, viewportW, viewportH) or changed
+    if paletteStripContent.node and paletteStripContent.node.setClipRect then
+      paletteStripContent.node:setClipRect(0, 0, viewportW, viewportH)
+    end
   end
   if paletteStripRow then
     changed = setWidgetBounds(paletteStripRow, 0, 0, viewportW, viewportH) or changed
+    if paletteStripRow.node and paletteStripRow.node.setClipRect then
+      paletteStripRow.node:setClipRect(0, 0, viewportW, viewportH)
+    end
   end
 
   for i = 1, #M._PALETTE_ENTRIES do
@@ -4621,9 +4633,16 @@ function M._syncPaletteCardState(ctx)
       syncColour(palettePorts, selected and 0xffe2e8f0 or 0xff94a3b8)
     end
     if paletteCard then
-      changed = setWidgetBounds(paletteCard, math.floor(cardX), math.floor(cardY), m.w, m.h) or changed
-      if paletteCard.setVisible then
-        paletteCard:setVisible(pageVisible)
+      if pageVisible then
+        changed = setWidgetBounds(paletteCard, math.floor(cardX), math.floor(cardY), m.w, m.h) or changed
+        if paletteCard.setVisible then
+          paletteCard:setVisible(true)
+        end
+      else
+        -- Hide cards outside viewport completely
+        if paletteCard.setVisible then
+          paletteCard:setVisible(false)
+        end
       end
     end
   end

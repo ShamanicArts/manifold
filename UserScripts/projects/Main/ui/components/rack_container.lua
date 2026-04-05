@@ -45,9 +45,6 @@ return {
   x = 0, y = 0, w = 1248, h = 452,
   style = {
     bg = 0xff0f1726,
-    border = 0xff1f2937,
-    borderWidth = 1,
-    radius = 0,
   },
   props = { interceptsMouse = false },
   children = {
