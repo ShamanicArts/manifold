@@ -512,8 +512,8 @@ local MODULE_PARAM_REMAP_DEFAULTS = {
   blend_simple = {
     exact = {
       ["/midi/synth/rack/blend_simple/__template/mode"] = "/mode",
-      ["/midi/synth/rack/blend_simple/__template/amount"] = "/amount",
-      ["/midi/synth/rack/blend_simple/__template/mix"] = "/mix",
+      ["/midi/synth/rack/blend_simple/__template/blendAmount"] = "/blendAmount",
+      ["/midi/synth/rack/blend_simple/__template/blendModAmount"] = "/blendModAmount",
       ["/midi/synth/rack/blend_simple/__template/output"] = "/output",
     },
   },
@@ -1514,10 +1514,10 @@ local RACK_MODULE_SPECS = {
           format = "enum",
           options = { "Mix", "Ring", "FM", "Sync" },
           input = true, output = true },
-        { id = "amount", label = "Amount", path = "/midi/synth/rack/blend_simple/__template/amount",
+        { id = "blendAmount", label = "Blend", path = "/midi/synth/rack/blend_simple/__template/blendAmount",
           min = 0, max = 1, step = 0.01, default = 0.5,
           input = true, output = true },
-        { id = "mix", label = "Mix", path = "/midi/synth/rack/blend_simple/__template/mix",
+        { id = "blendModAmount", label = "Depth", path = "/midi/synth/rack/blend_simple/__template/blendModAmount",
           min = 0, max = 1, step = 0.01, default = 0.5,
           input = true, output = true },
         { id = "output", label = "Output", path = "/midi/synth/rack/blend_simple/__template/output",

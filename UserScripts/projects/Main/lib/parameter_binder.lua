@@ -638,12 +638,12 @@ function ParameterBinder.dynamicBlendSimpleModePath(slotIndex)
   return ParameterBinder.dynamicBlendSimpleBasePath(slotIndex) .. "/mode"
 end
 
-function ParameterBinder.dynamicBlendSimpleAmountPath(slotIndex)
-  return ParameterBinder.dynamicBlendSimpleBasePath(slotIndex) .. "/amount"
+function ParameterBinder.dynamicBlendSimpleBlendAmountPath(slotIndex)
+  return ParameterBinder.dynamicBlendSimpleBasePath(slotIndex) .. "/blendAmount"
 end
 
-function ParameterBinder.dynamicBlendSimpleMixPath(slotIndex)
-  return ParameterBinder.dynamicBlendSimpleBasePath(slotIndex) .. "/mix"
+function ParameterBinder.dynamicBlendSimpleBlendModAmountPath(slotIndex)
+  return ParameterBinder.dynamicBlendSimpleBasePath(slotIndex) .. "/blendModAmount"
 end
 
 function ParameterBinder.dynamicBlendSimpleOutputPath(slotIndex)
@@ -892,13 +892,13 @@ function ParameterBinder.matchDynamicBlendSimplePath(path)
   if slotIndex ~= nil then
     return tonumber(slotIndex), "mode"
   end
-  slotIndex = normalized:match("^/midi/synth/rack/blend_simple/(%d+)/amount$")
+  slotIndex = normalized:match("^/midi/synth/rack/blend_simple/(%d+)/blendAmount$")
   if slotIndex ~= nil then
-    return tonumber(slotIndex), "amount"
+    return tonumber(slotIndex), "blendAmount"
   end
-  slotIndex = normalized:match("^/midi/synth/rack/blend_simple/(%d+)/mix$")
+  slotIndex = normalized:match("^/midi/synth/rack/blend_simple/(%d+)/blendModAmount$")
   if slotIndex ~= nil then
-    return tonumber(slotIndex), "mix"
+    return tonumber(slotIndex), "blendModAmount"
   end
   slotIndex = normalized:match("^/midi/synth/rack/blend_simple/(%d+)/output$")
   if slotIndex ~= nil then
@@ -1184,8 +1184,8 @@ local function appendDynamicSlotSchema(schema, specId, slotIndex, options)
 
   if id == "blend_simple" then
     appendSchema(schema, ParameterBinder.dynamicBlendSimpleModePath(index), { type = "f", min = 0, max = 3, default = 0, description = "Dynamic Blend Simple " .. index .. " mode (0=mix, 1=ring, 2=fm, 3=sync)" })
-    appendSchema(schema, ParameterBinder.dynamicBlendSimpleAmountPath(index), { type = "f", min = 0, max = 1, default = 0.5, description = "Dynamic Blend Simple " .. index .. " amount" })
-    appendSchema(schema, ParameterBinder.dynamicBlendSimpleMixPath(index), { type = "f", min = 0, max = 1, default = 0.5, description = "Dynamic Blend Simple " .. index .. " mix" })
+    appendSchema(schema, ParameterBinder.dynamicBlendSimpleBlendAmountPath(index), { type = "f", min = 0, max = 1, default = 0.5, description = "Dynamic Blend Simple " .. index .. " blend amount" })
+    appendSchema(schema, ParameterBinder.dynamicBlendSimpleBlendModAmountPath(index), { type = "f", min = 0, max = 1, default = 0.5, description = "Dynamic Blend Simple " .. index .. " blend modulation amount" })
     appendSchema(schema, ParameterBinder.dynamicBlendSimpleOutputPath(index), { type = "f", min = 0, max = 1, default = 1.0, description = "Dynamic Blend Simple " .. index .. " output" })
     appendSchema(schema, ParameterBinder.dynamicBlendSimpleBSourcePath(index), { type = "f", min = 0, max = 65535, default = 0, description = "Dynamic Blend Simple " .. index .. " auxiliary B source code" })
     return schema

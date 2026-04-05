@@ -60,21 +60,21 @@ end
 
 local function syncView(ctx)
   local modeValue = math.floor(Ui.clamp(Ui.readParam(pathFor(ctx, "mode"), ctx.values.mode or 0), 0, 3) + 0.5)
-  local amountBase, amountEffective, amountState = ModWidgetSync.resolveValues(pathFor(ctx, "amount"), ctx.values.amount or 0.5, Ui.readParam)
-  local mixBase, mixEffective, mixState = ModWidgetSync.resolveValues(pathFor(ctx, "mix"), ctx.values.mix or 0.5, Ui.readParam)
+  local blendAmountBase, blendAmountEffective, blendAmountState = ModWidgetSync.resolveValues(pathFor(ctx, "blendAmount"), ctx.values.blendAmount or 0.5, Ui.readParam)
+  local blendModAmountBase, blendModAmountEffective, blendModAmountState = ModWidgetSync.resolveValues(pathFor(ctx, "blendModAmount"), ctx.values.blendModAmount or 0.5, Ui.readParam)
   local outputBase, outputEffective, outputState = ModWidgetSync.resolveValues(pathFor(ctx, "output"), ctx.values.output or 1.0, Ui.readParam)
 
   ctx.values.mode = modeValue
-  ctx.values.amount = Ui.clamp(amountBase, 0.0, 1.0)
-  ctx.values.mix = Ui.clamp(mixBase, 0.0, 1.0)
+  ctx.values.blendAmount = Ui.clamp(blendAmountBase, 0.0, 1.0)
+  ctx.values.blendModAmount = Ui.clamp(blendModAmountBase, 0.0, 1.0)
   ctx.values.output = Ui.clamp(outputBase, 0.0, 1.0)
 
   Ui.setOptions(ctx.widgets and ctx.widgets.mode_dropdown or nil, MODE_NAMES, modeValue + 1)
-  ModWidgetSync.syncWidget(ctx.widgets and ctx.widgets.amount_slider or nil, ctx.values.amount, Ui.clamp(amountEffective, 0.0, 1.0), amountState)
-  ModWidgetSync.syncWidget(ctx.widgets and ctx.widgets.mix_slider or nil, ctx.values.mix, Ui.clamp(mixEffective, 0.0, 1.0), mixState)
+  ModWidgetSync.syncWidget(ctx.widgets and ctx.widgets.blendAmount_slider or nil, ctx.values.blendAmount, Ui.clamp(blendAmountEffective, 0.0, 1.0), blendAmountState)
+  ModWidgetSync.syncWidget(ctx.widgets and ctx.widgets.blendModAmount_slider or nil, ctx.values.blendModAmount, Ui.clamp(blendModAmountEffective, 0.0, 1.0), blendModAmountState)
   ModWidgetSync.syncWidget(ctx.widgets and ctx.widgets.output_slider or nil, ctx.values.output, Ui.clamp(outputEffective, 0.0, 1.0), outputState)
 
-  Ui.setText(ctx.widgets and ctx.widgets.status_label or nil, string.format("%s  •  %.0f%% amt / %.0f%% mix", MODE_NAMES[modeValue + 1], ctx.values.amount * 100.0, ctx.values.mix * 100.0))
+  Ui.setText(ctx.widgets and ctx.widgets.status_label or nil, string.format("%s  •  %.0f%% blend / %.0f%% depth", MODE_NAMES[modeValue + 1], ctx.values.blendAmount * 100.0, ctx.values.blendModAmount * 100.0))
   Ui.setText(ctx.widgets and ctx.widgets.detail_label or nil, MODE_DESCRIPTIONS[modeValue + 1] or "")
 end
 
@@ -85,15 +85,15 @@ local function bindControls(ctx)
       syncView(ctx)
     end
   end
-  if ctx.widgets and ctx.widgets.amount_slider then
-    ctx.widgets.amount_slider._onChange = function(value)
-      Ui.writeParam(pathFor(ctx, "amount"), Ui.clamp(value, 0.0, 1.0))
+  if ctx.widgets and ctx.widgets.blendAmount_slider then
+    ctx.widgets.blendAmount_slider._onChange = function(value)
+      Ui.writeParam(pathFor(ctx, "blendAmount"), Ui.clamp(value, 0.0, 1.0))
       syncView(ctx)
     end
   end
-  if ctx.widgets and ctx.widgets.mix_slider then
-    ctx.widgets.mix_slider._onChange = function(value)
-      Ui.writeParam(pathFor(ctx, "mix"), Ui.clamp(value, 0.0, 1.0))
+  if ctx.widgets and ctx.widgets.blendModAmount_slider then
+    ctx.widgets.blendModAmount_slider._onChange = function(value)
+      Ui.writeParam(pathFor(ctx, "blendModAmount"), Ui.clamp(value, 0.0, 1.0))
       syncView(ctx)
     end
   end
@@ -106,7 +106,7 @@ local function bindControls(ctx)
 end
 
 function RackBlendSimpleBehavior.init(ctx)
-  ctx.values = { mode = 0, amount = 0.5, mix = 0.5, output = 1.0 }
+  ctx.values = { mode = 0, blendAmount = 0.5, blendModAmount = 0.5, output = 1.0 }
   bindControls(ctx)
   syncView(ctx)
 end
@@ -146,8 +146,8 @@ function RackBlendSimpleBehavior.resized(ctx, w, h)
   setBounds(widgets.title, pad, titleY, math.min(contentW, 120), titleH)
   setBounds(widgets.status_label, pad, statusY, contentW, statusH)
   setBounds(widgets.mode_dropdown, pad, dropdownY, dropdownW, controlH)
-  setBounds(widgets.amount_slider, pad, slider1Y, contentW, controlH)
-  setBounds(widgets.mix_slider, pad, slider2Y, contentW, controlH)
+  setBounds(widgets.blendAmount_slider, pad, slider1Y, contentW, controlH)
+  setBounds(widgets.blendModAmount_slider, pad, slider2Y, contentW, controlH)
   setBounds(widgets.output_slider, pad, slider3Y, contentW, controlH)
   setBounds(widgets.detail_label, pad, detailY, contentW, detailH)
 

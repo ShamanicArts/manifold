@@ -84,7 +84,7 @@ local function testMatchDynamicModulePath()
   assertEqual(specId, "rack_sample", "rack sample path resolves spec id")
   assertEqual(slotIndex, 3, "rack sample path resolves slot index")
 
-  specId, slotIndex = ParameterBinder.matchDynamicModulePath("/midi/synth/rack/blend_simple/6/mix")
+  specId, slotIndex = ParameterBinder.matchDynamicModulePath("/midi/synth/rack/blend_simple/6/blendModAmount")
   assertEqual(specId, "blend_simple", "blend simple path resolves spec id")
   assertEqual(slotIndex, 6, "blend simple path resolves slot index")
 end

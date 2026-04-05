@@ -1183,8 +1183,8 @@ function M.buildSynth(ctx, options)
     if not slot then
       return false
     end
-    local amount = Utils.clamp01(tonumber(slot.amount) or 0.5)
-    local wetAmount = Utils.clamp01(tonumber(slot.mix) or 0.5)
+    local amount = Utils.clamp01(tonumber(slot.blendAmount) or 0.5)
+    local wetAmount = Utils.clamp01(tonumber(slot.blendModAmount) or 0.5)
     local blendPos = amount * 2.0 - 1.0
     local modulationDepth = Utils.clamp01(wetAmount)
 
@@ -1240,10 +1240,10 @@ function M.buildSynth(ctx, options)
     local numeric = tonumber(value) or 0.0
     if suffix == "mode" then
       slot.mode = math.max(0, math.min(3, math.floor(numeric + 0.5)))
-    elseif suffix == "amount" then
-      slot.amount = Utils.clamp01(numeric)
-    elseif suffix == "mix" then
-      slot.mix = Utils.clamp01(numeric)
+    elseif suffix == "blendAmount" then
+      slot.blendAmount = Utils.clamp01(numeric)
+    elseif suffix == "blendModAmount" then
+      slot.blendModAmount = Utils.clamp01(numeric)
     elseif suffix == "output" then
       slot.outputLevel = Utils.clamp01(numeric)
     else
@@ -2848,12 +2848,19 @@ function M.buildSynth(ctx, options)
     return nil
   end
 
+  local function safeGetParam(path)
+    if ctx.host and ctx.host.getParam then
+      return ctx.host.getParam(path)
+    end
+    return nil
+  end
+
   local function refreshAuxAudioConnectionsFromParams()
     local desired = {}
     local unresolved = {}
 
     for slotIndex, slot in pairs(dynamicBlendSimpleSlots) do
-      local sourceCode = tonumber(getParam(ParameterBinder.dynamicBlendSimpleBSourcePath(slotIndex)) or 0) or 0
+      local sourceCode = tonumber(safeGetParam(ParameterBinder.dynamicBlendSimpleBSourcePath(slotIndex)) or 0) or 0
       local sourceNode = resolveAuxAudioSourceNodeByCode(sourceCode)
       if sourceNode and slot and slot.inputB then
         appendAuxAudioConnection(desired, sourceNode, slot.inputB)
@@ -2863,7 +2870,7 @@ function M.buildSynth(ctx, options)
     end
 
     for slotIndex, slot in pairs(dynamicSampleSlots) do
-      local sourceCode = tonumber(getParam(ParameterBinder.dynamicSampleInputSourcePath(slotIndex)) or 0) or 0
+      local sourceCode = tonumber(safeGetParam(ParameterBinder.dynamicSampleInputSourcePath(slotIndex)) or 0) or 0
       local sourceNode = resolveAuxAudioSourceNodeByCode(sourceCode)
       if sourceNode and slot and slot.captureInput then
         appendAuxAudioConnection(desired, sourceNode, slot.captureInput)
