@@ -22,6 +22,40 @@ add_subdirectory("${JUCE_DIR}" JUCE)
 option(MANIFOLD_BUILD_LUA "Build Lua 5.4 from source instead of using system install" OFF)
 set(MANIFOLD_LUA_TARGET "")
 
+function(manifold_header_is_lua_54 header_path out_var)
+    set(_is_lua_54 FALSE)
+
+    if(EXISTS "${header_path}")
+        file(STRINGS "${header_path}" _lua_version_num
+            REGEX "^#define[ \t]+LUA_VERSION_NUM[ \t]+504([ \t]|$)")
+        if(_lua_version_num)
+            set(_is_lua_54 TRUE)
+        else()
+            file(STRINGS "${header_path}" _lua_major_num
+                REGEX "^#define[ \t]+LUA_VERSION_MAJOR_N[ \t]+5([ \t]|$)")
+            file(STRINGS "${header_path}" _lua_minor_num
+                REGEX "^#define[ \t]+LUA_VERSION_MINOR_N[ \t]+4([ \t]|$)")
+            file(STRINGS "${header_path}" _lua_major_str
+                REGEX "^#define[ \t]+LUA_VERSION_MAJOR[ \t]+\"5\"([ \t]|$)")
+            file(STRINGS "${header_path}" _lua_minor_str
+                REGEX "^#define[ \t]+LUA_VERSION_MINOR[ \t]+\"4\"([ \t]|$)")
+            if((_lua_major_num AND _lua_minor_num) OR (_lua_major_str AND _lua_minor_str))
+                set(_is_lua_54 TRUE)
+            endif()
+        endif()
+    endif()
+
+    set(${out_var} ${_is_lua_54} PARENT_SCOPE)
+endfunction()
+
+function(manifold_make_lua_interface_target target_name include_dirs libraries)
+    add_library(${target_name} INTERFACE)
+    if(include_dirs)
+        target_include_directories(${target_name} INTERFACE ${include_dirs})
+    endif()
+    target_link_libraries(${target_name} INTERFACE ${libraries})
+endfunction()
+
 if(MANIFOLD_BUILD_LUA)
     # Build Lua from source (for Windows or when no system Lua is available)
     FetchContent_Declare(
@@ -46,43 +80,75 @@ if(MANIFOLD_BUILD_LUA)
     set(MANIFOLD_LUA_TARGET lua_static)
     message(STATUS "Building Lua from source")
 else()
-    # Preferred path on macOS/vcpkg and modern Linux installs
-    find_package(Lua 5.4 QUIET)
-    if(Lua_FOUND)
-        if(TARGET Lua::Lua)
-            set(MANIFOLD_LUA_TARGET Lua::Lua)
-        elseif(LUA_LIBRARIES)
-            add_library(manifold_lua_fallback INTERFACE)
-            if(DEFINED LUA_INCLUDE_DIRS)
-                target_include_directories(manifold_lua_fallback INTERFACE ${LUA_INCLUDE_DIRS})
-            elseif(DEFINED LUA_INCLUDE_DIR)
-                target_include_directories(manifold_lua_fallback INTERFACE ${LUA_INCLUDE_DIR})
-            endif()
-            target_link_libraries(manifold_lua_fallback INTERFACE ${LUA_LIBRARIES})
-            set(MANIFOLD_LUA_TARGET manifold_lua_fallback)
-        endif()
-    endif()
-
-    # Fallback for Linux environments that rely on pkg-config
-    if(NOT MANIFOLD_LUA_TARGET)
+    # On Linux, pkg-config is more reliable than FindLua when multiple Lua versions
+    # are installed. FindLua can pair the 5.4 library with the unversioned /usr/include
+    # headers, which breaks sol2 hard.
+    if(UNIX AND NOT APPLE)
         find_package(PkgConfig QUIET)
         if(PkgConfig_FOUND)
             pkg_check_modules(LUA54 QUIET IMPORTED_TARGET lua5.4)
             if(TARGET PkgConfig::LUA54)
                 set(MANIFOLD_LUA_TARGET PkgConfig::LUA54)
-            else()
-                pkg_check_modules(LUA QUIET IMPORTED_TARGET lua)
-                if(TARGET PkgConfig::LUA)
-                    set(MANIFOLD_LUA_TARGET PkgConfig::LUA)
+            endif()
+        endif()
+    endif()
+
+    if(NOT MANIFOLD_LUA_TARGET)
+        find_package(Lua 5.4 QUIET)
+        if(Lua_FOUND)
+            set(_manifold_lua_header "")
+            if(DEFINED LUA_INCLUDE_DIRS AND LUA_INCLUDE_DIRS)
+                list(GET LUA_INCLUDE_DIRS 0 _manifold_lua_include_dir)
+                set(_manifold_lua_header "${_manifold_lua_include_dir}/lua.h")
+            elseif(DEFINED LUA_INCLUDE_DIR AND LUA_INCLUDE_DIR)
+                set(_manifold_lua_header "${LUA_INCLUDE_DIR}/lua.h")
+            endif()
+
+            manifold_header_is_lua_54("${_manifold_lua_header}" _manifold_lua_header_ok)
+            if(_manifold_lua_header_ok)
+                if(TARGET Lua::Lua)
+                    set(MANIFOLD_LUA_TARGET Lua::Lua)
+                elseif(LUA_LIBRARIES)
+                    if(DEFINED LUA_INCLUDE_DIRS AND LUA_INCLUDE_DIRS)
+                        manifold_make_lua_interface_target(manifold_lua_fallback "${LUA_INCLUDE_DIRS}" "${LUA_LIBRARIES}")
+                    elseif(DEFINED LUA_INCLUDE_DIR AND LUA_INCLUDE_DIR)
+                        manifold_make_lua_interface_target(manifold_lua_fallback "${LUA_INCLUDE_DIR}" "${LUA_LIBRARIES}")
+                    else()
+                        manifold_make_lua_interface_target(manifold_lua_fallback "" "${LUA_LIBRARIES}")
+                    endif()
+                    set(MANIFOLD_LUA_TARGET manifold_lua_fallback)
                 endif()
+            else()
+                message(WARNING
+                    "FindLua located '${_manifold_lua_header}', which is not a Lua 5.4 header. "
+                    "Ignoring that result and trying versioned fallbacks.")
+            endif()
+        endif()
+    endif()
+
+    if(NOT MANIFOLD_LUA_TARGET)
+        find_path(MANIFOLD_LUA54_INCLUDE_DIR
+            NAMES lua.h
+            PATH_SUFFIXES lua5.4 include/lua5.4)
+        find_library(MANIFOLD_LUA54_LIBRARY
+            NAMES lua5.4 lua54 lua-5.4)
+        if(MANIFOLD_LUA54_INCLUDE_DIR AND MANIFOLD_LUA54_LIBRARY)
+            manifold_header_is_lua_54("${MANIFOLD_LUA54_INCLUDE_DIR}/lua.h" _manifold_manual_lua_header_ok)
+            if(_manifold_manual_lua_header_ok)
+                manifold_make_lua_interface_target(
+                    manifold_lua_manual
+                    "${MANIFOLD_LUA54_INCLUDE_DIR}"
+                    "${MANIFOLD_LUA54_LIBRARY}")
+                set(MANIFOLD_LUA_TARGET manifold_lua_manual)
             endif()
         endif()
     endif()
 
     if(NOT MANIFOLD_LUA_TARGET)
         message(FATAL_ERROR
-            "Could not find Lua 5.4.\n"
-            "Linux: install lua5.4 dev package (or pkg-config + lua5.4).\n"
+            "Could not find usable Lua 5.4 headers and libraries.\n"
+            "Linux: install lua5.4 dev package (and preferably pkg-config + lua5.4.pc).\n"
+            "If your system also has newer unversioned Lua headers, set -DMANIFOLD_BUILD_LUA=ON to build Lua 5.4 from source.\n"
             "Windows: configure with -DMANIFOLD_BUILD_LUA=ON to build from source.")
     endif()
 endif()
