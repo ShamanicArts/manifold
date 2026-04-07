@@ -7,6 +7,14 @@
 #include <cstring>
 #include <cmath>
 
+namespace {
+constexpr double kOscQueryFloatEpsilon = 1.0e-9;
+
+bool nearlyEqual(double a, double b) {
+    return std::abs(a - b) < kOscQueryFloatEpsilon;
+}
+}
+
 // ============================================================================
 // OSCQueryNode - tree building and JSON serialization
 // ============================================================================
@@ -143,14 +151,14 @@ juce::String OSCQueryNode::toJSON(int ind) const {
         }
         json += ",\n" + indent(ind + 1) + "\"ACCESS\": " + juce::String(endpoint.access);
 
-        if (endpoint.rangeMin != endpoint.rangeMax) {
+        if (!nearlyEqual(endpoint.rangeMin, endpoint.rangeMax)) {
             // Use float formatting for non-integer ranges
-            bool useFloat = (endpoint.rangeMin != (int)endpoint.rangeMin) ||
-                            (endpoint.rangeMax != (int)endpoint.rangeMax);
+            const bool useFloat = !nearlyEqual(endpoint.rangeMin, std::trunc(endpoint.rangeMin)) ||
+                                  !nearlyEqual(endpoint.rangeMax, std::trunc(endpoint.rangeMax));
             juce::String minStr = useFloat ? juce::String(endpoint.rangeMin, 1)
-                                           : juce::String((int)endpoint.rangeMin);
+                                           : juce::String(static_cast<int>(std::trunc(endpoint.rangeMin)));
             juce::String maxStr = useFloat ? juce::String(endpoint.rangeMax, 1)
-                                           : juce::String((int)endpoint.rangeMax);
+                                           : juce::String(static_cast<int>(std::trunc(endpoint.rangeMax)));
             json += ",\n" + indent(ind + 1) + "\"RANGE\": [{\"MIN\": " + minStr +
                     ", \"MAX\": " + maxStr + "}]";
         }
@@ -298,7 +306,7 @@ void OSCQueryServer::httpLoop() {
                     // Some HTTP clients (e.g. Python http.client) send headers and body
                     // as separate TCP writes.
                     buffer[totalRead] = '\0';
-                    juce::String partial(buffer, totalRead);
+                    juce::String partial(buffer, static_cast<size_t>(totalRead));
                     int headerEnd = partial.indexOf("\r\n\r\n");
                     if (headerEnd < 0) headerEnd = partial.indexOf("\n\n");
 
@@ -330,7 +338,7 @@ void OSCQueryServer::httpLoop() {
                     }
 
                     buffer[totalRead] = '\0';
-                    juce::String request(buffer, totalRead);
+                    juce::String request(buffer, static_cast<size_t>(totalRead));
 
                     // Extract raw headers for WebSocket upgrade detection
                     juce::String rawHeaders;
@@ -777,6 +785,9 @@ void OSCQueryServer::wsClientReadLoop(WebSocketClient* client) {
         }
 
         switch (opcode) {
+            case WSOpcode::Continuation:
+                break;
+
             case WSOpcode::Text: {
                 // JSON command (LISTEN/IGNORE)
                 juce::String text(reinterpret_cast<const char*>(payload.data()),

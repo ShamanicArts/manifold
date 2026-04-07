@@ -108,8 +108,8 @@ void DSPPluginScriptHost::ensureDeferredWorkerStarted() {
     for (;;) {
       Impl::DeferredParamMutation mutation;
       {
-        std::unique_lock<std::mutex> lock(impl->deferredMutex);
-        impl->deferredCv.wait(lock, [impl]() {
+        std::unique_lock<std::mutex> workerLock(impl->deferredMutex);
+        impl->deferredCv.wait(workerLock, [impl]() {
           return impl->deferredWorkerStop || !impl->deferredMutations.empty();
         });
 

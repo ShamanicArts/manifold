@@ -56,6 +56,10 @@ std::string MidiEvent::toString() const {
             return "Active Sensing";
         case EventType::Reset:
             return "MIDI Reset";
+        case EventType::Sysex:
+            return "System Exclusive";
+        case EventType::Unknown:
+            [[fallthrough]];
         default:
             std::snprintf(buffer, sizeof(buffer), 
                 "Unknown type=0x%02X ch=%d data1=%d data2=%d", 

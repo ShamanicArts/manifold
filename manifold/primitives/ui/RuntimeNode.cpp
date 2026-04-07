@@ -27,6 +27,10 @@ DisplayListDebugState& displayListDebugState() {
     return state;
 }
 
+bool nearlyEqual(double a, double b) {
+    return std::abs(a - b) < 1.0e-9;
+}
+
 std::string displayListDebugKey(const RuntimeNode& node) {
     const auto& widgetType = node.getWidgetType();
     const auto& nodeId = node.getNodeId();
@@ -180,7 +184,7 @@ bool varsSemanticallyEqual(const juce::var& a, const juce::var& b) {
         return a.isBool() && b.isBool() && static_cast<bool>(a) == static_cast<bool>(b);
     }
     if ((a.isInt() || a.isInt64() || a.isDouble()) && (b.isInt() || b.isInt64() || b.isDouble())) {
-        return static_cast<double>(a) == static_cast<double>(b);
+        return nearlyEqual(static_cast<double>(a), static_cast<double>(b));
     }
     if (a.isString() || b.isString()) {
         return a.toString() == b.toString();
@@ -391,9 +395,9 @@ void RuntimeNode::setZOrder(int zOrder) {
 void RuntimeNode::setStyle(const StyleState& style) {
     const bool changed = style_.background != style.background
         || style_.border != style.border
-        || style_.borderWidth != style.borderWidth
-        || style_.cornerRadius != style.cornerRadius
-        || style_.opacity != style.opacity
+        || !nearlyEqual(style_.borderWidth, style.borderWidth)
+        || !nearlyEqual(style_.cornerRadius, style.cornerRadius)
+        || !nearlyEqual(style_.opacity, style.opacity)
         || style_.padding != style.padding;
 
     if (!changed) {

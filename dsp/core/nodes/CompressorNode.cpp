@@ -56,7 +56,8 @@ void CompressorNode::process(const std::vector<AudioBufferView>& inputs,
 
     for (int i = 0; i < numSamples; ++i) {
         for (int ch = 0; ch < channels; ++ch) {
-            const float input = inputs[ch].getSample(ch, i);
+            const auto channelIndex = static_cast<std::size_t>(ch);
+            const float input = inputs[channelIndex].getSample(ch, i);
             const float level = std::abs(input);
             
             const float overThreshold = level > 0.0f ? 20.0f * std::log10(level) - threshold : -100.0f;
@@ -75,7 +76,7 @@ void CompressorNode::process(const std::vector<AudioBufferView>& inputs,
             const float gain = std::pow(10.0f, (-envelope_ + makeup) * 0.05f);
             const float output = input * (1.0f - mix) + input * gain * mix;
             
-            outputs[ch].setSample(ch, i, output);
+            outputs[channelIndex].setSample(ch, i, output);
         }
     }
     

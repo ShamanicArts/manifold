@@ -121,7 +121,7 @@ public:
     int getNumActiveVoices() const;
     
     // Access to internal voices for advanced control
-    SynthesizerVoice& getVoice(int index) { return voices_[index % MAX_VOICES]; }
+    SynthesizerVoice& getVoice(int index) { return voices_[static_cast<std::size_t>(index % MAX_VOICES)]; }
     
 private:
     int findFreeVoice();

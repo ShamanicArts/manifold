@@ -243,7 +243,7 @@ void PrimitiveGraph::process(juce::AudioBuffer<float>& outputBuffer) {
                         continue;
                     }
 
-                    auto& srcBuffer = workingBuffers_[it->second];
+                    auto& srcBuffer = workingBuffers_[static_cast<std::size_t>(it->second)];
                     const int channels = juce::jmin(inBuffer.getNumChannels(), srcBuffer.getNumChannels());
                     for (int ch = 0; ch < channels; ++ch) {
                         inBuffer.addFrom(ch, 0, srcBuffer, ch, 0, numSamples);
@@ -259,7 +259,7 @@ void PrimitiveGraph::process(juce::AudioBuffer<float>& outputBuffer) {
             }
         }
 
-        auto& outBuffer = workingBuffers_[bufferIndex];
+        auto& outBuffer = workingBuffers_[static_cast<std::size_t>(bufferIndex)];
         outBuffer.setSize(outputBuffer.getNumChannels(), numSamples, false, false, true);
         outBuffer.clear();
 
@@ -290,7 +290,7 @@ void PrimitiveGraph::process(juce::AudioBuffer<float>& outputBuffer) {
             continue;
         }
 
-        auto& sinkBuffer = workingBuffers_[it->second];
+        auto& sinkBuffer = workingBuffers_[static_cast<std::size_t>(it->second)];
         const int channels = juce::jmin(outputBuffer.getNumChannels(), sinkBuffer.getNumChannels());
         for (int ch = 0; ch < channels; ++ch) {
             outputBuffer.addFrom(ch, 0, sinkBuffer, ch, 0, numSamples);

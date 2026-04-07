@@ -124,9 +124,11 @@ const char *toLayerStateString(ScriptableLayerState state) {
     return "stopped";
   case ScriptableLayerState::Paused:
     return "paused";
-  default:
+  case ScriptableLayerState::Unknown:
     return "unknown";
   }
+
+  return "unknown";
 }
 
 std::string luaEvalResultToString(const sol::object &value) {
@@ -572,7 +574,7 @@ void LuaEngine::initialiseInternal(ScriptableProcessor *processor,
   pImpl->rootRuntime = rootRuntime;
   pImpl->rootMode = rootMode;
   pImpl->lastLayerStates.assign(
-      processor ? std::max(0, processor->getNumLayers()) : 0,
+      static_cast<std::size_t>(processor ? std::max(0, processor->getNumLayers()) : 0),
       static_cast<int>(ScriptableLayerState::Unknown));
 
   // Initialize core engine (VM lifecycle only)
@@ -1965,7 +1967,7 @@ void LuaEngine::invokeEventListeners() {
   const int numLayers = std::max(0, proc->getNumLayers());
   if (static_cast<int>(pImpl->lastLayerStates.size()) != numLayers) {
     pImpl->lastLayerStates.assign(
-        numLayers, static_cast<int>(ScriptableLayerState::Unknown));
+        static_cast<std::size_t>(numLayers), static_cast<int>(ScriptableLayerState::Unknown));
   }
 
   // Get current state for diff detection
@@ -2398,9 +2400,9 @@ void LuaEngine::showDirectoryChooser(const std::string& title,
           if (cb && cb->valid()) {
             try {
               std::fprintf(stderr, "[FileChooser] Invoking Lua callback with path: '%s'\n", path.c_str());
-              auto result = (*cb)(path);
-              if (!result.valid()) {
-                sol::error err = result;
+              auto callbackResult = (*cb)(path);
+              if (!callbackResult.valid()) {
+                sol::error err = callbackResult;
                 std::fprintf(stderr, "[FileChooser] Lua callback error: %s\n", err.what());
               } else {
                 std::fprintf(stderr, "[FileChooser] Lua callback succeeded\n");

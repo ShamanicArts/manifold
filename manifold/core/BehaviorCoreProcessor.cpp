@@ -1776,8 +1776,10 @@ const char* toLayerStateString(ScriptableLayerState state) {
         case ScriptableLayerState::Muted: return "muted";
         case ScriptableLayerState::Stopped: return "stopped";
         case ScriptableLayerState::Paused: return "paused";
-        default: return "unknown";
+        case ScriptableLayerState::Unknown: return "unknown";
     }
+
+    return "unknown";
 }
 
 const char* toRecordModeString(int mode) {
@@ -1798,7 +1800,7 @@ std::string stringifyStateValue(const char* value) {
     return value != nullptr ? std::string(value) : std::string{};
 }
 
-std::string stringifyStateValue(const std::string& value) {
+[[maybe_unused]] std::string stringifyStateValue(const std::string& value) {
     return value;
 }
 
@@ -2360,7 +2362,7 @@ void BehaviorCoreProcessor::serializeStateToLua(sol::state& lua) const {
     auto spectrum = getSpectrumData();
     sol::table spectrumTable = lua.create_table();
     for (int i = 0; i < static_cast<int>(spectrum.size()); ++i) {
-        spectrumTable[i + 1] = spectrum[i];
+        spectrumTable[i + 1] = spectrum[static_cast<std::size_t>(i)];
     }
     state["spectrum"] = spectrumTable;
 

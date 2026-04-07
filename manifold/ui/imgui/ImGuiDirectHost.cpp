@@ -508,7 +508,7 @@ void renderSnapshotNodeRecursive(const ImGuiDirectHost::RenderSnapshot& snapshot
     }
 }
 
-void renderSnapshot(const ImGuiDirectHost::RenderSnapshot& snapshot,
+[[maybe_unused]] void renderSnapshot(const ImGuiDirectHost::RenderSnapshot& snapshot,
                     ImDrawList* drawList,
                     const manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions& options) {
     if (drawList == nullptr || !snapshot.transform.valid || snapshot.rootIndex < 0) {

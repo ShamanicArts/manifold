@@ -57,7 +57,7 @@ struct PerfOverlayHostConfig {
 };
 
 
-double perfElapsedMs(PerfClock::time_point start) {
+[[maybe_unused]] double perfElapsedMs(PerfClock::time_point start) {
     return std::chrono::duration<double, std::milli>(PerfClock::now() - start).count();
 }
 
@@ -657,7 +657,7 @@ void buildHierarchyAndInspectorConfig(sol::state& lua,
                         if (rawValue.is<bool>()) {
                             matches = rawValue.as<bool>() == optionValue.as<bool>();
                         } else if (rawValue.is<double>()) {
-                            matches = rawValue.as<double>() == optionValue.as<double>();
+                            matches = std::abs(rawValue.as<double>() - optionValue.as<double>()) < 1.0e-9;
                         } else if (rawValue.is<std::string>()) {
                             matches = rawValue.as<std::string>() == optionValue.as<std::string>();
                         }

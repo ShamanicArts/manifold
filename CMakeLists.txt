@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+
 project(MANIFOLD VERSION 1.0.0)
 
 include(FetchContent)
@@ -229,17 +233,35 @@ target_link_libraries(imgui_color_text_edit
         imgui
         Boost::regex)
 
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(
+        manifold/ui/imgui/ImGuiOpenGLBackend.cpp
+        PROPERTIES
+            COMPILE_OPTIONS "-Wno-sign-conversion;-Wno-extra")
+endif()
+
 # --- Ableton Link ---
+set(LINK_BUILD_ASIO ON CACHE BOOL "" FORCE)
+set(LINK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LINK_BUILD_JACK OFF CACHE BOOL "" FORCE)
+set(LINK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LINK_ENABLE_ASAN OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
     ableton_link
     GIT_REPOSITORY https://github.com/Ableton/link.git
     GIT_TAG        Link-3.1.2
     GIT_SHALLOW    TRUE
 )
+set(_manifold_saved_policy_version_minimum "${CMAKE_POLICY_VERSION_MINIMUM}")
+set(_manifold_saved_warn_deprecated "${CMAKE_WARN_DEPRECATED}")
+set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+set(CMAKE_WARN_DEPRECATED OFF)
 FetchContent_MakeAvailable(ableton_link)
-set(LINK_BUILD_ASIO ON CACHE BOOL "" FORCE)
-set(LINK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(LINK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CMAKE_WARN_DEPRECATED "${_manifold_saved_warn_deprecated}")
+set(CMAKE_POLICY_VERSION_MINIMUM "${_manifold_saved_policy_version_minimum}")
+unset(_manifold_saved_warn_deprecated)
+unset(_manifold_saved_policy_version_minimum)
 
 set(MANIFOLD_LINK_PLATFORM_DEFINE "")
 if(WIN32)
@@ -251,6 +273,16 @@ elseif(UNIX)
 else()
     message(FATAL_ERROR "Unsupported platform for Ableton Link platform defines")
 endif()
+
+function(manifold_target_include_project_and_ableton target_name)
+    target_include_directories(${target_name}
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR})
+    target_include_directories(${target_name}
+        SYSTEM PRIVATE
+            ${ableton_link_SOURCE_DIR}/include
+            ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+endfunction()
 
 juce_add_plugin(GrainFreeze
     VERSION 1.0.0
@@ -276,8 +308,7 @@ target_compile_definitions(GrainFreeze
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_link_libraries(GrainFreeze
     PRIVATE
@@ -521,18 +552,13 @@ target_sources(Manifold
         ${MANIFOLD_RUNTIME_SOURCES}
         ${MANIFOLD_CORE_SOURCES})
 
-target_include_directories(Manifold 
-    PRIVATE 
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(Manifold)
 
 target_compile_definitions(Manifold
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0
         ASIO_STANDALONE=1
         SOL_ALL_SAFETIES_ON=1
         SOL_SAFE_NUMERICS=0
@@ -578,18 +604,12 @@ if(MANIFOLD_PLATFORM_ANDROID)
             manifold/android/AndroidMain.cpp
     )
     
-    target_include_directories(ManifoldMobile 
-        PRIVATE 
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            ${ableton_link_SOURCE_DIR}/include
-            ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include
-    )
+    manifold_target_include_project_and_ableton(ManifoldMobile)
     
     target_compile_definitions(ManifoldMobile
         PUBLIC
             JUCE_WEB_BROWSER=0
             JUCE_USE_CURL=0
-            JUCE_DISPLAY_SPLASH_SCREEN=0
             ASIO_STANDALONE=1
             SOL_ALL_SAFETIES_ON=1
             SOL_SAFE_NUMERICS=0
@@ -680,11 +700,7 @@ add_executable(CanonicalCommandHarness manifold/headless/CanonicalCommandHarness
 
 add_executable(StateProjectionHarness manifold/headless/StateProjectionHarness.cpp)
 
-target_include_directories(ManifoldHeadless
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(ManifoldHeadless)
 
 target_link_libraries(ManifoldHeadless
     PRIVATE
@@ -696,11 +712,7 @@ target_link_libraries(ManifoldHeadless
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2)
 
-target_include_directories(LuaEngineMockHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(LuaEngineMockHarness)
 
 target_link_libraries(LuaEngineMockHarness
     PRIVATE
@@ -712,11 +724,7 @@ target_link_libraries(LuaEngineMockHarness
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2)
 
-target_include_directories(EndpointResolverHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(EndpointResolverHarness)
 
 target_link_libraries(EndpointResolverHarness
     PRIVATE
@@ -728,11 +736,7 @@ target_link_libraries(EndpointResolverHarness
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2)
 
-target_include_directories(ControlCommandQueueHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(ControlCommandQueueHarness)
 
 target_link_libraries(ControlCommandQueueHarness
     PRIVATE
@@ -744,11 +748,7 @@ target_link_libraries(ControlCommandQueueHarness
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2)
 
-target_include_directories(CanonicalCommandHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(CanonicalCommandHarness)
 
 target_link_libraries(CanonicalCommandHarness
     PRIVATE
@@ -760,11 +760,7 @@ target_link_libraries(CanonicalCommandHarness
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2)
 
-target_include_directories(StateProjectionHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(StateProjectionHarness)
 
 target_link_libraries(StateProjectionHarness
     PRIVATE
@@ -780,43 +776,37 @@ target_compile_definitions(ManifoldHeadless
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(LuaEngineMockHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(EndpointResolverHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(ControlCommandQueueHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(CanonicalCommandHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(StateProjectionHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 enable_testing()
 
@@ -887,18 +877,13 @@ target_sources(Tempus
         test_plugins/Tempus/TempusPlugin.cpp
         test_plugins/Tempus/TempusEditor.cpp)
 
-target_include_directories(Tempus
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(Tempus)
 
 target_compile_definitions(Tempus
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0
         ASIO_STANDALONE=1
         ${MANIFOLD_LINK_PLATFORM_DEFINE})
 

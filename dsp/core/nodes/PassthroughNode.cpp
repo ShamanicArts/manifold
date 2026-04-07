@@ -15,8 +15,9 @@ void PassthroughNode::process(const std::vector<AudioBufferView>& inputs,
                               std::vector<WritableAudioBufferView>& outputs,
                               int numSamples) {
     for (int ch = 0; ch < numChannels_ && ch < static_cast<int>(inputs.size()) && ch < static_cast<int>(outputs.size()); ++ch) {
+        const auto channelIndex = static_cast<std::size_t>(ch);
         for (int i = 0; i < numSamples; ++i) {
-            outputs[ch].setSample(ch, i, inputs[ch].getSample(ch, i));
+            outputs[channelIndex].setSample(ch, i, inputs[channelIndex].getSample(ch, i));
         }
     }
 }

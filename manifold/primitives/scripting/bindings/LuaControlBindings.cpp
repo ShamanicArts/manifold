@@ -349,7 +349,7 @@ sol::table partialDataToLua(sol::state& lua,
     return result;
 }
 
-sol::table temporalPartialDataToLua(sol::state& lua,
+[[maybe_unused]] sol::table temporalPartialDataToLua(sol::state& lua,
                                     const dsp_primitives::TemporalPartialData& temporal) {
     auto result = sol::table(lua, sol::create);
     result["sampleRate"] = temporal.sampleRate;
@@ -671,13 +671,14 @@ void LuaControlBindings::registerCommandBindings(sol::state& lua,
         if (!processor || va.size() == 0) return;
 
         std::string cmdStr;
-        for (size_t i = 0; i < va.size(); ++i) {
-            if (i > 0) cmdStr += " ";
-            auto arg = va[i];
+        bool firstArg = true;
+        for (sol::object arg : va) {
+            if (!firstArg) cmdStr += " ";
+            firstArg = false;
             if (arg.get_type() == sol::type::number) {
-                cmdStr += std::to_string(arg.get<float>());
+                cmdStr += std::to_string(arg.as<float>());
             } else {
-                cmdStr += arg.get<std::string>();
+                cmdStr += arg.as<std::string>();
             }
         }
 
@@ -1572,10 +1573,10 @@ void LuaControlBindings::registerGraphBindings(sol::state& lua,
     };
 
     // Get graph from processor
-    auto* processor = state.getProcessor();
+    auto* graphProcessor = state.getProcessor();
     std::shared_ptr<dsp_primitives::PrimitiveGraph> graph;
-    if (processor) {
-        graph = processor->getPrimitiveGraph();
+    if (graphProcessor) {
+        graph = graphProcessor->getPrimitiveGraph();
     }
     if (!graph) {
         graph = std::make_shared<dsp_primitives::PrimitiveGraph>();

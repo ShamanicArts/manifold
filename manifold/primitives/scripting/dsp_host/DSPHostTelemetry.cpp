@@ -3,6 +3,7 @@
 #include "dsp/core/nodes/PrimitiveNodes.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
 using dsp_host::sampleDerivedAdditiveDebugFromLua;
@@ -457,7 +458,7 @@ bool DSPPluginScriptHost::ensureDynamicModuleSlot(const std::string &specId,
     return out.as<int>() != 0;
   }
   if (out.is<double>()) {
-    return out.as<double>() != 0.0;
+    return std::abs(out.as<double>()) >= 1.0e-9;
   }
   return true;
 }

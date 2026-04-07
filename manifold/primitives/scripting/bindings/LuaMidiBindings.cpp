@@ -24,12 +24,6 @@ static BehaviorCoreProcessor* toBcp(ScriptableProcessor* p) {
     return static_cast<BehaviorCoreProcessor*>(p);
 }
 
-// Helper to get MidiManager
-static midi::MidiManager* getMidiManager(ScriptableProcessor* p) {
-    auto* bcp = toBcp(p);
-    return bcp ? bcp->getMidiManager() : nullptr;
-}
-
 // ============================================================================
 // MIDI Bindings
 // ============================================================================
@@ -93,7 +87,6 @@ void LuaControlBindings::registerMidiBindings(sol::state& lua,
     lua["Midi"]["onNoteOn"] = [midiMgr](sol::function callback) {
         if (!midiMgr || !callback.valid()) return;
         midiMgr->setNoteOnCallback([callback](uint8_t channel, uint8_t note, uint8_t velocity, const midi::MidiEvent& event) {
-            sol::state_view lua(callback.lua_state());
             auto result = callback(channel + 1, note, velocity, event.timeStampSeconds);
             if (!result.valid()) {
                 sol::error err = result;
@@ -105,7 +98,6 @@ void LuaControlBindings::registerMidiBindings(sol::state& lua,
     lua["Midi"]["onNoteOff"] = [midiMgr](sol::function callback) {
         if (!midiMgr || !callback.valid()) return;
         midiMgr->setNoteOffCallback([callback](uint8_t channel, uint8_t note, const midi::MidiEvent& event) {
-            sol::state_view lua(callback.lua_state());
             auto result = callback(channel + 1, note, event.timeStampSeconds);
             if (!result.valid()) {
                 sol::error err = result;
@@ -117,7 +109,6 @@ void LuaControlBindings::registerMidiBindings(sol::state& lua,
     lua["Midi"]["onControlChange"] = [midiMgr](sol::function callback) {
         if (!midiMgr || !callback.valid()) return;
         midiMgr->setControlChangeCallback([callback](uint8_t channel, uint8_t cc, uint8_t value, const midi::MidiEvent& event) {
-            sol::state_view lua(callback.lua_state());
             auto result = callback(channel + 1, cc, value, event.timeStampSeconds);
             if (!result.valid()) {
                 sol::error err = result;
@@ -129,7 +120,6 @@ void LuaControlBindings::registerMidiBindings(sol::state& lua,
     lua["Midi"]["onPitchBend"] = [midiMgr](sol::function callback) {
         if (!midiMgr || !callback.valid()) return;
         midiMgr->setPitchBendCallback([callback](uint8_t channel, int16_t value, const midi::MidiEvent& event) {
-            sol::state_view lua(callback.lua_state());
             auto result = callback(channel + 1, value, event.timeStampSeconds);
             if (!result.valid()) {
                 sol::error err = result;
@@ -141,7 +131,6 @@ void LuaControlBindings::registerMidiBindings(sol::state& lua,
     lua["Midi"]["onProgramChange"] = [midiMgr](sol::function callback) {
         if (!midiMgr || !callback.valid()) return;
         midiMgr->setProgramChangeCallback([callback](uint8_t channel, uint8_t program, const midi::MidiEvent& event) {
-            sol::state_view lua(callback.lua_state());
             auto result = callback(channel + 1, program, event.timeStampSeconds);
             if (!result.valid()) {
                 sol::error err = result;
@@ -153,7 +142,6 @@ void LuaControlBindings::registerMidiBindings(sol::state& lua,
     lua["Midi"]["onMidiEvent"] = [midiMgr](sol::function callback) {
         if (!midiMgr || !callback.valid()) return;
         midiMgr->setMidiEventCallback([callback](const midi::MidiEvent& event) {
-            sol::state_view lua(callback.lua_state());
             auto result = callback(
                 static_cast<int>(event.type),
                 event.channel + 1,
@@ -229,20 +217,21 @@ void LuaControlBindings::registerMidiBindings(sol::state& lua,
         sol::table result = lua.create_table();
         if (!midiMgr) return result;
         
-        const auto& state = midiMgr->getChannelState(channel - 1);
-        result["program"] = state.program;
-        result["pressure"] = state.pressure;
-        result["pitchBend"] = state.pitchBend;
-        result["sustainPedal"] = state.sustainPedal;
-        result["sostenutoPedal"] = state.sostenutoPedal;
-        result["softPedal"] = state.softPedal;
-        result["numActiveNotes"] = state.numActiveNotes;
+        const auto& channelState = midiMgr->getChannelState(channel - 1);
+        result["program"] = channelState.program;
+        result["pressure"] = channelState.pressure;
+        result["pitchBend"] = channelState.pitchBend;
+        result["sustainPedal"] = channelState.sustainPedal;
+        result["sostenutoPedal"] = channelState.sostenutoPedal;
+        result["softPedal"] = channelState.softPedal;
+        result["numActiveNotes"] = channelState.numActiveNotes;
         
         // CC values table
         sol::table ccTable = lua.create_table();
         for (int i = 0; i < 128; ++i) {
-            if (state.ccValues[i] != 0) {
-                ccTable[i] = state.ccValues[i];
+            const auto index = static_cast<std::size_t>(i);
+            if (channelState.ccValues[index] != 0) {
+                ccTable[i] = channelState.ccValues[index];
             }
         }
         result["cc"] = ccTable;
