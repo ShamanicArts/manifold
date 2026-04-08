@@ -1322,14 +1322,17 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
         }
     }
 
-    int initialWidth = 1000;
-    int initialHeight = 640;
+    exportPluginUi_ = processorRef.hasExportPluginConfig();
+
+    int initialWidth = exportPluginUi_ ? processorRef.getExportEditorWidth() : 1000;
+    int initialHeight = exportPluginUi_ ? processorRef.getExportEditorHeight() : 640;
     if (parseProfileWindowSizeEnv(initialWidth, initialHeight)) {
         std::fprintf(stderr,
                      "BehaviorCoreEditor: using MANIFOLD_PROFILE_WINDOW_SIZE=%dx%d\n",
                      initialWidth,
                      initialHeight);
     }
+
     setSize(initialWidth, initialHeight);
 
     if (rootMode_ == RootMode::RuntimeNode) {
@@ -1910,6 +1913,9 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
 void BehaviorCoreEditor::resized() {
     luaEngine.frameTimings.editorWidth.store(getWidth(), std::memory_order_relaxed);
     luaEngine.frameTimings.editorHeight.store(getHeight(), std::memory_order_relaxed);
+    if (exportPluginUi_) {
+        processorRef.setExportEditorSize(getWidth(), getHeight());
+    }
     const auto localBounds = getBounds();
     const auto screenBounds = getScreenBounds();
     const auto scale = juce::Component::getApproximateScaleFactorForComponent(this);

@@ -63,7 +63,8 @@ private:
 
 class BehaviorCoreProcessor : public juce::AudioProcessor,
                               public ScriptableProcessor,
-                              private juce::MidiInputCallback {
+                              private juce::MidiInputCallback,
+                              private juce::AudioProcessorValueTreeState::Listener {
 public:
     static constexpr int MAX_LAYERS = 4;
     static constexpr int CAPTURE_SECONDS = 32;
@@ -235,6 +236,17 @@ public:
     std::string getAndClearPendingUISwitch();
     std::string getAndClearPendingUIRendererMode();
 
+    bool hasExportPluginConfig() const;
+    int getExportViewMode() const;
+    int getExportCompactWidth() const;
+    int getExportCompactHeight() const;
+    int getExportSplitWidth() const;
+    int getExportSplitHeight() const;
+    int getExportEditorWidth() const;
+    int getExportEditorHeight() const;
+    void setExportEditorSize(int width, int height);
+    juce::AudioProcessorValueTreeState* getHostParameterState() const;
+
     // MIDI API
     bool openMidiInput(int deviceIndex);
     bool openMidiOutput(int deviceIndex);
@@ -263,6 +275,37 @@ public:
     // Destroy deferred DSP slot hosts (safe boundary, not inside Lua call stacks)
     void drainPendingSlotDestroy();
 
+public:
+    struct ExportParamAlias {
+        juce::String path;
+        juce::String internalPath;
+        juce::String type{"f"};
+        float rangeMin = 0.0f;
+        float rangeMax = 1.0f;
+        juce::String description;
+        float defaultValue = 0.0f;
+        float skew = 1.0f;
+        juce::String hostParamId;
+        juce::String hostParamName;
+        juce::String hostParamKind{"float"};
+        juce::StringArray choices;
+        std::atomic<float>* rawHostValue = nullptr;
+    };
+
+    struct ExportPluginConfig {
+        bool enabled = false;
+        juce::String headerTitle{"Plugin"};
+        int compactWidth = 236;
+        int compactHeight = 220;
+        int splitWidth = 472;
+        int splitHeight = 220;
+        int defaultViewMode = 1;
+        bool oscDefaultEnabled = false;
+        bool oscQueryDefaultEnabled = false;
+        int oscBasePort = 9010;
+        std::vector<ExportParamAlias> paramAliases;
+    };
+
 private:
     // juce::MidiInputCallback
     void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
@@ -273,6 +316,20 @@ private:
     void processControlCommands();
     void initialiseAtomicState(double sampleRate);
     void scheduleForwardCommitIfNeeded();
+    void initialiseExportPluginConfig();
+    void initialiseHostParameters();
+    void registerExportPluginEndpoints();
+    bool applyExportPluginPath(const std::string& path, float value);
+    float readExportPluginPath(const std::string& path) const;
+    juce::String resolveExportInternalPath(const juce::String& path) const;
+    ExportParamAlias* findExportAliasByPublicPath(const juce::String& path);
+    const ExportParamAlias* findExportAliasByPublicPath(const juce::String& path) const;
+    ExportParamAlias* findExportAliasByHostParamId(const juce::String& hostParamId);
+    const ExportParamAlias* findExportAliasByHostParamId(const juce::String& hostParamId) const;
+    bool syncPublicPathToHostParameter(const juce::String& publicPath, float value);
+    void applyHostParameterSnapshotToProcessor();
+    void applyExportOscSettings();
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
 
     static bool extractLayerParam(const std::string& path, int& layerIndex,
                                   std::string& paramSuffix);
@@ -318,6 +375,17 @@ private:
     OSCQueryServer oscQueryServer;
 
     LinkSync linkSync;
+
+    ExportPluginConfig exportPluginConfig_;
+    std::unique_ptr<juce::AudioProcessorValueTreeState> hostParams_;
+    std::atomic<bool> suppressHostParameterCallbacks_{false};
+    std::atomic<int> exportViewMode_{1};
+    std::atomic<int> exportEditorWidth_{472};
+    std::atomic<int> exportEditorHeight_{220};
+    std::atomic<bool> exportOscEnabled_{false};
+    std::atomic<bool> exportOscQueryEnabled_{false};
+    std::atomic<int> exportOscInputPort_{0};
+    std::atomic<int> exportOscQueryPort_{0};
 
     // MIDI support
     MidiRingBuffer midiInputRing;  // Audio thread → Control thread

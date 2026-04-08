@@ -76,6 +76,7 @@ private:
     ImGuiDirectHost directHost_;
     bool directHostNeedsInitialFocus_ = false;
     RuntimeRendererMode runtimeRendererMode_ = RuntimeRendererMode::ImGuiDirect;
+    bool exportPluginUi_ = false;
     Canvas* errorNode = nullptr;
     std::string errorMessage;
 

@@ -273,6 +273,21 @@ local function svfMagnitude(freq, cutoff, resonance, filterType)
   return 1.0
 end
 
+local function resolveLayoutMode(ctx, width)
+  local root = type(ctx) == "table" and ctx.root or nil
+  local node = root and root.node or nil
+  if node and node.getUserData then
+    local forced = node:getUserData("_pluginViewMode")
+    if forced == "compact" then
+      return "compact"
+    end
+    if forced == "split" or forced == "wide" then
+      return "wide"
+    end
+  end
+  return Layout.layoutModeForWidth(width, COMPACT_LAYOUT_CUTOFF_W)
+end
+
 local function buildFilterDisplay(ctx, w, h)
   local display = {}
   local cutoff = clamp(ctx.displayCutoffHz or ctx.cutoffHz or 3200, MIN_FREQ, MAX_FREQ)
@@ -537,7 +552,7 @@ function FilterBehavior.resized(ctx, w, h)
 
   local widgets = ctx.widgets or {}
   local queue = {}
-  local mode = Layout.layoutModeForWidth(w, COMPACT_LAYOUT_CUTOFF_W)
+  local mode = resolveLayoutMode(ctx, w)
   local reference = mode == "compact" and COMPACT_REFERENCE_SIZE or WIDE_REFERENCE_SIZE
   local rects = mode == "compact" and COMPACT_RECTS or WIDE_RECTS
   local scaleX, scaleY = Layout.scaleFactors(w, h, reference)

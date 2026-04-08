@@ -165,6 +165,179 @@ juce::File resolveDefaultDspScriptFromProject(const juce::File& requestedPath) {
     return resolveProjectAssetRef(requestedPath.getParentDirectory(), dspRef);
 }
 
+int readIntProperty(juce::DynamicObject* obj, const char* name, int fallback) {
+    if (obj == nullptr || !obj->hasProperty(name)) {
+        return fallback;
+    }
+    return static_cast<int>(obj->getProperty(name));
+}
+
+bool readBoolProperty(juce::DynamicObject* obj, const char* name, bool fallback) {
+    if (obj == nullptr || !obj->hasProperty(name)) {
+        return fallback;
+    }
+    return static_cast<bool>(obj->getProperty(name));
+}
+
+BehaviorCoreProcessor::ExportPluginConfig resolveExportPluginConfig(const juce::File& requestedPath) {
+    BehaviorCoreProcessor::ExportPluginConfig config;
+    if (!isProjectManifestFile(requestedPath)) {
+        return config;
+    }
+
+    const auto json = juce::JSON::parse(requestedPath);
+    if (!json.isObject()) {
+        return config;
+    }
+
+    auto* obj = json.getDynamicObject();
+    if (obj == nullptr || !obj->hasProperty("plugin")) {
+        return config;
+    }
+
+    auto pluginVar = obj->getProperty("plugin");
+    if (!pluginVar.isObject()) {
+        return config;
+    }
+
+    auto* pluginObj = pluginVar.getDynamicObject();
+    if (pluginObj == nullptr) {
+        return config;
+    }
+
+    config.enabled = true;
+    if (obj->hasProperty("name")) {
+        config.headerTitle = obj->getProperty("name").toString();
+    }
+
+    if (pluginObj->hasProperty("headerTitle")) {
+        config.headerTitle = pluginObj->getProperty("headerTitle").toString();
+    }
+
+    auto viewVar = pluginObj->getProperty("view");
+    if (viewVar.isObject()) {
+        auto* viewObj = viewVar.getDynamicObject();
+        if (viewObj != nullptr) {
+            if (viewObj->hasProperty("defaultMode")) {
+                const auto defaultMode = viewObj->getProperty("defaultMode").toString().trim().toLowerCase();
+                config.defaultViewMode = defaultMode == "compact" ? 0 : 1;
+            }
+
+            auto compactVar = viewObj->getProperty("compact");
+            if (compactVar.isObject()) {
+                auto* compactObj = compactVar.getDynamicObject();
+                config.compactWidth = readIntProperty(compactObj, "w", config.compactWidth);
+                config.compactHeight = readIntProperty(compactObj, "h", config.compactHeight);
+            }
+
+            auto splitVar = viewObj->getProperty("split");
+            if (splitVar.isObject()) {
+                auto* splitObj = splitVar.getDynamicObject();
+                config.splitWidth = readIntProperty(splitObj, "w", config.splitWidth);
+                config.splitHeight = readIntProperty(splitObj, "h", config.splitHeight);
+            }
+        }
+    }
+
+    auto oscVar = pluginObj->getProperty("osc");
+    if (oscVar.isObject()) {
+        auto* oscObj = oscVar.getDynamicObject();
+        if (oscObj != nullptr) {
+            config.oscDefaultEnabled = readBoolProperty(oscObj, "enabled", config.oscDefaultEnabled);
+            config.oscQueryDefaultEnabled = readBoolProperty(oscObj, "queryEnabled", config.oscQueryDefaultEnabled);
+            config.oscBasePort = readIntProperty(oscObj, "basePort", config.oscBasePort);
+        }
+    }
+
+    auto paramsVar = pluginObj->getProperty("params");
+    if (paramsVar.isArray()) {
+        for (const auto& item : *paramsVar.getArray()) {
+            auto* paramObj = item.getDynamicObject();
+            if (paramObj == nullptr || !paramObj->hasProperty("path") || !paramObj->hasProperty("internalPath")) {
+                continue;
+            }
+
+            BehaviorCoreProcessor::ExportParamAlias alias;
+            alias.path = paramObj->getProperty("path").toString();
+            alias.internalPath = paramObj->getProperty("internalPath").toString();
+            alias.type = paramObj->hasProperty("type") ? paramObj->getProperty("type").toString() : juce::String("f");
+            alias.rangeMin = static_cast<float>(paramObj->hasProperty("min") ? static_cast<double>(paramObj->getProperty("min")) : 0.0);
+            alias.rangeMax = static_cast<float>(paramObj->hasProperty("max") ? static_cast<double>(paramObj->getProperty("max")) : 1.0);
+            alias.defaultValue = static_cast<float>(paramObj->hasProperty("default")
+                ? static_cast<double>(paramObj->getProperty("default"))
+                : static_cast<double>(alias.rangeMin));
+            alias.skew = static_cast<float>(paramObj->hasProperty("skew")
+                ? static_cast<double>(paramObj->getProperty("skew"))
+                : 1.0);
+            alias.hostParamId = paramObj->hasProperty("hostParamId")
+                ? paramObj->getProperty("hostParamId").toString()
+                : juce::String();
+            alias.hostParamName = paramObj->hasProperty("hostParamName")
+                ? paramObj->getProperty("hostParamName").toString()
+                : alias.hostParamId;
+            alias.hostParamKind = paramObj->hasProperty("hostParamKind")
+                ? paramObj->getProperty("hostParamKind").toString()
+                : juce::String("float");
+            if (paramObj->hasProperty("choices")) {
+                auto choicesVar = paramObj->getProperty("choices");
+                if (choicesVar.isArray()) {
+                    for (const auto& choice : *choicesVar.getArray()) {
+                        alias.choices.add(choice.toString());
+                    }
+                }
+            }
+            alias.description = paramObj->hasProperty("description")
+                ? paramObj->getProperty("description").toString()
+                : alias.path;
+            if (alias.path.isNotEmpty() && alias.internalPath.isNotEmpty()) {
+                config.paramAliases.push_back(alias);
+            }
+        }
+    }
+
+    return config;
+}
+
+bool isUdpPortAvailable(int port) {
+    if (port <= 0) {
+        return false;
+    }
+    juce::DatagramSocket socket(false);
+    const bool ok = socket.bindToPort(port);
+    if (ok) {
+        socket.shutdown();
+    }
+    return ok;
+}
+
+bool isTcpPortAvailable(int port) {
+    if (port <= 0) {
+        return false;
+    }
+    juce::StreamingSocket socket;
+    const bool ok = socket.createListener(port, "127.0.0.1");
+    if (ok) {
+        socket.close();
+    }
+    return ok;
+}
+
+void findAvailableOscPortPair(int preferredBasePort, int& oscPort, int& queryPort) {
+    const int base = preferredBasePort > 0 ? preferredBasePort : 9010;
+    for (int offset = 0; offset < 200; offset += 2) {
+        const int candidateOsc = base + offset;
+        const int candidateQuery = candidateOsc + 1;
+        if (isUdpPortAvailable(candidateOsc) && isTcpPortAvailable(candidateQuery)) {
+            oscPort = candidateOsc;
+            queryPort = candidateQuery;
+            return;
+        }
+    }
+
+    oscPort = base;
+    queryPort = base + 1;
+}
+
 } // namespace
 
 BehaviorCoreProcessor::BehaviorCoreProcessor()
@@ -179,11 +352,419 @@ BehaviorCoreProcessor::BehaviorCoreProcessor()
     }
     endpointRegistry.setNumLayers(MAX_LAYERS);
     endpointRegistry.rebuild();
+    initialiseExportPluginConfig();
+    initialiseHostParameters();
+    registerExportPluginEndpoints();
     initialiseAtomicState(currentSampleRate.load(std::memory_order_relaxed));
 }
 
 BehaviorCoreProcessor::~BehaviorCoreProcessor() {
+    if (hostParams_) {
+        for (const auto& alias : exportPluginConfig_.paramAliases) {
+            if (!alias.hostParamId.isEmpty()) {
+                hostParams_->removeParameterListener(alias.hostParamId, this);
+            }
+        }
+    }
     releaseResources();
+}
+
+void BehaviorCoreProcessor::initialiseExportPluginConfig() {
+    auto& settings = Settings::getInstance();
+    const juce::File uiTarget(settings.getDefaultUiScript());
+    exportPluginConfig_ = resolveExportPluginConfig(uiTarget);
+    if (!exportPluginConfig_.enabled) {
+        return;
+    }
+
+    exportViewMode_.store(exportPluginConfig_.defaultViewMode, std::memory_order_relaxed);
+    exportEditorWidth_.store(exportPluginConfig_.defaultViewMode == 0
+                                 ? exportPluginConfig_.compactWidth
+                                 : exportPluginConfig_.splitWidth,
+                             std::memory_order_relaxed);
+    exportEditorHeight_.store(exportPluginConfig_.defaultViewMode == 0
+                                  ? exportPluginConfig_.compactHeight
+                                  : exportPluginConfig_.splitHeight,
+                              std::memory_order_relaxed);
+    exportOscEnabled_.store(exportPluginConfig_.oscDefaultEnabled, std::memory_order_relaxed);
+    exportOscQueryEnabled_.store(exportPluginConfig_.oscQueryDefaultEnabled,
+                                 std::memory_order_relaxed);
+    exportOscInputPort_.store(exportPluginConfig_.oscBasePort, std::memory_order_relaxed);
+    exportOscQueryPort_.store(exportPluginConfig_.oscBasePort + 1, std::memory_order_relaxed);
+}
+
+void BehaviorCoreProcessor::initialiseHostParameters() {
+    if (!exportPluginConfig_.enabled) {
+        hostParams_.reset();
+        return;
+    }
+
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    params.reserve(exportPluginConfig_.paramAliases.size());
+
+    for (auto& alias : exportPluginConfig_.paramAliases) {
+        alias.rawHostValue = nullptr;
+        if (alias.hostParamId.isEmpty()) {
+            continue;
+        }
+
+        const auto kind = alias.hostParamKind.trim().toLowerCase();
+        if (kind == "choice" && alias.choices.size() > 0) {
+            params.push_back(std::make_unique<juce::AudioParameterChoice>(
+                juce::ParameterID(alias.hostParamId, 1),
+                alias.hostParamName.isNotEmpty() ? alias.hostParamName : alias.hostParamId,
+                alias.choices,
+                juce::jlimit(0, alias.choices.size() - 1,
+                             static_cast<int>(std::round(alias.defaultValue)))));
+        } else {
+            juce::NormalisableRange<float> range(alias.rangeMin, alias.rangeMax);
+            if (alias.skew > 0.0f && std::abs(alias.skew - 1.0f) > 1.0e-4f) {
+                range.skew = alias.skew;
+            }
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(
+                juce::ParameterID(alias.hostParamId, 1),
+                alias.hostParamName.isNotEmpty() ? alias.hostParamName : alias.hostParamId,
+                range,
+                juce::jlimit(alias.rangeMin, alias.rangeMax, alias.defaultValue)));
+        }
+    }
+
+    hostParams_ = std::make_unique<juce::AudioProcessorValueTreeState>(
+        *this,
+        nullptr,
+        "HostParameters",
+        juce::AudioProcessorValueTreeState::ParameterLayout{params.begin(), params.end()});
+
+    for (auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.hostParamId.isEmpty()) {
+            continue;
+        }
+        alias.rawHostValue = hostParams_->getRawParameterValue(alias.hostParamId);
+        hostParams_->addParameterListener(alias.hostParamId, this);
+    }
+}
+
+void BehaviorCoreProcessor::registerExportPluginEndpoints() {
+    if (!exportPluginConfig_.enabled) {
+        return;
+    }
+
+    const juce::StringArray uiPaths{
+        "/plugin/ui/viewMode",
+        "/plugin/ui/oscEnabled",
+        "/plugin/ui/oscQueryEnabled",
+        "/plugin/ui/oscInputPort",
+        "/plugin/ui/oscQueryPort"
+    };
+
+    for (const auto& path : uiPaths) {
+        endpointRegistry.unregisterCustomEndpoint(path);
+    }
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        endpointRegistry.unregisterCustomEndpoint(alias.path);
+    }
+
+    auto registerUiEndpoint = [this](const juce::String& path,
+                                     float minValue,
+                                     float maxValue,
+                                     int access,
+                                     const juce::String& description) {
+        OSCEndpoint endpoint;
+        endpoint.path = path;
+        endpoint.type = "f";
+        endpoint.rangeMin = minValue;
+        endpoint.rangeMax = maxValue;
+        endpoint.access = access;
+        endpoint.description = description;
+        endpoint.category = "plugin-ui";
+        endpoint.commandType = ControlCommand::Type::None;
+        endpoint.layerIndex = -1;
+        endpointRegistry.registerCustomEndpoint(endpoint);
+    };
+
+    registerUiEndpoint("/plugin/ui/viewMode", 0.0f, 1.0f, 3,
+                       "Plugin export view mode (0=compact, 1=split)");
+    registerUiEndpoint("/plugin/ui/oscEnabled", 0.0f, 1.0f, 3,
+                       "Plugin OSC enable (0/1)");
+    registerUiEndpoint("/plugin/ui/oscQueryEnabled", 0.0f, 1.0f, 3,
+                       "Plugin OSCQuery enable (0/1)");
+    registerUiEndpoint("/plugin/ui/oscInputPort", 0.0f, 65535.0f, 1,
+                       "Active OSC UDP input port");
+    registerUiEndpoint("/plugin/ui/oscQueryPort", 0.0f, 65535.0f, 1,
+                       "Active OSCQuery HTTP port");
+
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        OSCEndpoint endpoint;
+        endpoint.path = alias.path;
+        endpoint.type = alias.type;
+        endpoint.rangeMin = alias.rangeMin;
+        endpoint.rangeMax = alias.rangeMax;
+        endpoint.access = 3;
+        endpoint.description = alias.description;
+        endpoint.category = "plugin-param";
+        endpoint.commandType = ControlCommand::Type::None;
+        endpoint.layerIndex = -1;
+        endpointRegistry.registerCustomEndpoint(endpoint);
+    }
+
+    oscQueryServer.rebuildTree();
+}
+
+juce::String BehaviorCoreProcessor::resolveExportInternalPath(const juce::String& path) const {
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.path == path) {
+            return alias.internalPath;
+        }
+    }
+    return {};
+}
+
+BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByPublicPath(const juce::String& path) {
+    for (auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.path == path) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+const BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByPublicPath(const juce::String& path) const {
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.path == path) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByHostParamId(const juce::String& hostParamId) {
+    for (auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.hostParamId == hostParamId) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+const BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByHostParamId(const juce::String& hostParamId) const {
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.hostParamId == hostParamId) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+bool BehaviorCoreProcessor::syncPublicPathToHostParameter(const juce::String& publicPath, float value) {
+    if (!hostParams_) {
+        return false;
+    }
+
+    auto* alias = findExportAliasByPublicPath(publicPath);
+    if (alias == nullptr || alias->hostParamId.isEmpty()) {
+        return false;
+    }
+
+    auto* parameter = hostParams_->getParameter(alias->hostParamId);
+    auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+    if (ranged == nullptr) {
+        return false;
+    }
+
+    const float clamped = juce::jlimit(alias->rangeMin, alias->rangeMax, value);
+    const float current = alias->rawHostValue != nullptr ? alias->rawHostValue->load() : clamped;
+    if (std::abs(current - clamped) <= 1.0e-6f) {
+        return true;
+    }
+
+    ranged->setValueNotifyingHost(ranged->convertTo0to1(clamped));
+    return true;
+}
+
+void BehaviorCoreProcessor::applyHostParameterSnapshotToProcessor() {
+    if (!hostParams_) {
+        return;
+    }
+
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.internalPath.isEmpty() || alias.hostParamId.isEmpty()) {
+            continue;
+        }
+        const float value = alias.rawHostValue != nullptr ? alias.rawHostValue->load() : alias.defaultValue;
+        setParamByPath(alias.internalPath.toStdString(), value);
+    }
+}
+
+void BehaviorCoreProcessor::parameterChanged(const juce::String& parameterID, float newValue) {
+    if (suppressHostParameterCallbacks_.load(std::memory_order_relaxed)) {
+        return;
+    }
+
+    auto* alias = findExportAliasByHostParamId(parameterID);
+    if (alias == nullptr || alias->internalPath.isEmpty()) {
+        return;
+    }
+
+    setParamByPath(alias->internalPath.toStdString(), newValue);
+}
+
+bool BehaviorCoreProcessor::applyExportPluginPath(const std::string& path, float value) {
+    if (!exportPluginConfig_.enabled) {
+        return false;
+    }
+
+    if (path == "/plugin/ui/viewMode") {
+        const int nextMode = value >= 0.5f ? 1 : 0;
+        exportViewMode_.store(nextMode, std::memory_order_relaxed);
+        return true;
+    }
+
+    if (path == "/plugin/ui/oscEnabled") {
+        const bool enabled = value > 0.5f;
+        exportOscEnabled_.store(enabled, std::memory_order_relaxed);
+        if (!enabled) {
+            exportOscQueryEnabled_.store(false, std::memory_order_relaxed);
+        }
+        applyExportOscSettings();
+        return true;
+    }
+
+    if (path == "/plugin/ui/oscQueryEnabled") {
+        const bool enabled = value > 0.5f;
+        exportOscQueryEnabled_.store(enabled, std::memory_order_relaxed);
+        if (enabled) {
+            exportOscEnabled_.store(true, std::memory_order_relaxed);
+        }
+        applyExportOscSettings();
+        return true;
+    }
+
+    const juce::String publicPath(path);
+    const auto internalPath = resolveExportInternalPath(publicPath);
+    if (internalPath.isNotEmpty()) {
+        if (syncPublicPathToHostParameter(publicPath, value)) {
+            return true;
+        }
+        return setParamByPath(internalPath.toStdString(), value);
+    }
+
+    return false;
+}
+
+float BehaviorCoreProcessor::readExportPluginPath(const std::string& path) const {
+    if (!exportPluginConfig_.enabled) {
+        return 0.0f;
+    }
+
+    if (path == "/plugin/ui/viewMode") {
+        return static_cast<float>(exportViewMode_.load(std::memory_order_relaxed));
+    }
+    if (path == "/plugin/ui/oscEnabled") {
+        return exportOscEnabled_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/oscQueryEnabled") {
+        return exportOscQueryEnabled_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/oscInputPort") {
+        return static_cast<float>(exportOscInputPort_.load(std::memory_order_relaxed));
+    }
+    if (path == "/plugin/ui/oscQueryPort") {
+        return static_cast<float>(exportOscQueryPort_.load(std::memory_order_relaxed));
+    }
+
+    const auto* alias = findExportAliasByPublicPath(juce::String(path));
+    if (alias != nullptr) {
+        if (alias->rawHostValue != nullptr) {
+            return alias->rawHostValue->load();
+        }
+        if (alias->internalPath.isNotEmpty()) {
+            return getParamByPath(alias->internalPath.toStdString());
+        }
+    }
+
+    return 0.0f;
+}
+
+void BehaviorCoreProcessor::applyExportOscSettings() {
+    if (!exportPluginConfig_.enabled) {
+        return;
+    }
+
+    const bool oscEnabled = exportOscEnabled_.load(std::memory_order_relaxed);
+    const bool oscQueryEnabled = exportOscQueryEnabled_.load(std::memory_order_relaxed) && oscEnabled;
+    int oscPort = exportOscInputPort_.load(std::memory_order_relaxed);
+    int queryPort = exportOscQueryPort_.load(std::memory_order_relaxed);
+
+    if (oscEnabled || oscQueryEnabled) {
+        findAvailableOscPortPair(oscPort > 0 ? oscPort : exportPluginConfig_.oscBasePort,
+                                 oscPort,
+                                 queryPort);
+    } else {
+        oscPort = exportPluginConfig_.oscBasePort;
+        queryPort = exportPluginConfig_.oscBasePort + 1;
+    }
+
+    exportOscInputPort_.store(oscPort, std::memory_order_relaxed);
+    exportOscQueryPort_.store(queryPort, std::memory_order_relaxed);
+
+    oscQueryServer.stop();
+    oscServer.stop();
+
+    OSCSettings settings;
+    settings.inputPort = oscPort;
+    settings.queryPort = queryPort;
+    settings.oscEnabled = oscEnabled;
+    settings.oscQueryEnabled = oscQueryEnabled;
+    oscServer.setSettings(settings);
+    oscServer.start(this);
+    oscQueryServer.setContext(this, &endpointRegistry);
+    if (oscQueryEnabled) {
+        oscQueryServer.start(this, &endpointRegistry, queryPort, oscPort);
+    }
+}
+
+bool BehaviorCoreProcessor::hasExportPluginConfig() const {
+    return exportPluginConfig_.enabled;
+}
+
+int BehaviorCoreProcessor::getExportViewMode() const {
+    return exportViewMode_.load(std::memory_order_relaxed);
+}
+
+int BehaviorCoreProcessor::getExportCompactWidth() const {
+    return exportPluginConfig_.compactWidth;
+}
+
+int BehaviorCoreProcessor::getExportCompactHeight() const {
+    return exportPluginConfig_.compactHeight;
+}
+
+int BehaviorCoreProcessor::getExportSplitWidth() const {
+    return exportPluginConfig_.splitWidth;
+}
+
+int BehaviorCoreProcessor::getExportSplitHeight() const {
+    return exportPluginConfig_.splitHeight;
+}
+
+int BehaviorCoreProcessor::getExportEditorWidth() const {
+    return exportEditorWidth_.load(std::memory_order_relaxed);
+}
+
+int BehaviorCoreProcessor::getExportEditorHeight() const {
+    return exportEditorHeight_.load(std::memory_order_relaxed);
+}
+
+juce::AudioProcessorValueTreeState* BehaviorCoreProcessor::getHostParameterState() const {
+    return hostParams_.get();
+}
+
+void BehaviorCoreProcessor::setExportEditorSize(int width, int height) {
+    if (!exportPluginConfig_.enabled) {
+        return;
+    }
+    exportEditorWidth_.store(std::max(1, width), std::memory_order_relaxed);
+    exportEditorHeight_.store(std::max(1, height), std::memory_order_relaxed);
 }
 
 void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
@@ -243,26 +824,32 @@ void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
         }
     }
 
+    applyHostParameterSnapshotToProcessor();
+
     // Primitives behavior runtime is graph-driven; keep graph active by default.
     graphProcessingEnabled.store(true, std::memory_order_relaxed);
 
-    OSCSettings oscSettings = OSCSettingsPersistence::load();
-    auto settingsFile = OSCSettingsPersistence::getSettingsFile();
-    if (!settingsFile.existsAsFile()) {
-        oscSettings.oscEnabled = true;
-        oscSettings.oscQueryEnabled = true;
-        oscSettings.inputPort = 9000;
-        oscSettings.queryPort = 9001;
-        OSCSettingsPersistence::save(oscSettings);
-    }
+    if (exportPluginConfig_.enabled) {
+        applyExportOscSettings();
+    } else {
+        OSCSettings oscSettings = OSCSettingsPersistence::load();
+        auto settingsFile = OSCSettingsPersistence::getSettingsFile();
+        if (!settingsFile.existsAsFile()) {
+            oscSettings.oscEnabled = true;
+            oscSettings.oscQueryEnabled = true;
+            oscSettings.inputPort = 9000;
+            oscSettings.queryPort = 9001;
+            OSCSettingsPersistence::save(oscSettings);
+        }
 
-    oscServer.setSettings(oscSettings);
-    oscServer.start(this);
-    oscQueryServer.setContext(this, &endpointRegistry);
+        oscServer.setSettings(oscSettings);
+        oscServer.start(this);
+        oscQueryServer.setContext(this, &endpointRegistry);
 
-    if (oscSettings.oscQueryEnabled) {
-        oscQueryServer.start(this, &endpointRegistry, oscSettings.queryPort,
-                             oscSettings.inputPort);
+        if (oscSettings.oscQueryEnabled) {
+            oscQueryServer.start(this, &endpointRegistry, oscSettings.queryPort,
+                                 oscSettings.inputPort);
+        }
     }
 
     initialiseAtomicState(currentSampleRate.load(std::memory_order_relaxed));
@@ -1056,6 +1643,10 @@ bool BehaviorCoreProcessor::applyParamPath(const std::string& path, float value)
 }
 
 bool BehaviorCoreProcessor::setParamByPath(const std::string& path, float value) {
+    if (applyExportPluginPath(path, value)) {
+        return true;
+    }
+
     if (path == "/core/behavior/dsp/reload") {
         if (value > 0.5f) {
             return reloadDspScript();
@@ -1089,6 +1680,13 @@ bool BehaviorCoreProcessor::setParamByPath(const std::string& path, float value)
 }
 
 float BehaviorCoreProcessor::getParamByPath(const std::string& path) const {
+    if (exportPluginConfig_.enabled) {
+        const float exportValue = readExportPluginPath(path);
+        if (path.rfind("/plugin/", 0) == 0 || resolveExportInternalPath(juce::String(path)).isNotEmpty()) {
+            return exportValue;
+        }
+    }
+
     if (path == "/core/behavior/dsp/reload") {
         return 0.0f;
     }
@@ -1201,6 +1799,15 @@ float BehaviorCoreProcessor::getParamByPath(const std::string& path) const {
 bool BehaviorCoreProcessor::hasEndpoint(const std::string& path) const {
     if (path == "/core/behavior/dsp/reload") {
         return true;
+    }
+
+    if (exportPluginConfig_.enabled) {
+        if (path.rfind("/plugin/", 0) == 0 || resolveExportInternalPath(juce::String(path)).isNotEmpty()) {
+            const auto endpoint = endpointRegistry.findEndpoint(juce::String(path));
+            if (endpoint.path.isNotEmpty()) {
+                return true;
+            }
+        }
     }
 
     if (path == "/core/behavior/graph/enabled") {
@@ -2530,10 +3137,89 @@ void BehaviorCoreProcessor::processPendingChanges() {
     // TODO: Implement pending change processing
 }
 
-void BehaviorCoreProcessor::getStateInformation(juce::MemoryBlock&) {
+void BehaviorCoreProcessor::getStateInformation(juce::MemoryBlock& destData) {
+    juce::DynamicObject::Ptr root = new juce::DynamicObject();
+
+    if (exportPluginConfig_.enabled) {
+        juce::DynamicObject::Ptr pluginUi = new juce::DynamicObject();
+        pluginUi->setProperty("viewMode", exportViewMode_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("editorWidth", exportEditorWidth_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("editorHeight", exportEditorHeight_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("oscEnabled", exportOscEnabled_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("oscQueryEnabled", exportOscQueryEnabled_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("oscInputPort", exportOscInputPort_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("oscQueryPort", exportOscQueryPort_.load(std::memory_order_relaxed));
+        root->setProperty("pluginUi", juce::var(pluginUi.get()));
+    }
+
+    if (hostParams_) {
+        auto state = hostParams_->copyState();
+        if (auto xml = std::unique_ptr<juce::XmlElement>(state.createXml())) {
+            root->setProperty("hostParamsXml", xml->toString());
+        }
+    }
+
+    destData.reset();
+    juce::MemoryOutputStream out(destData, false);
+    out.writeString(juce::JSON::toString(juce::var(root.get())));
 }
 
-void BehaviorCoreProcessor::setStateInformation(const void*, int) {
+void BehaviorCoreProcessor::setStateInformation(const void* data, int sizeInBytes) {
+    if (data == nullptr || sizeInBytes <= 0) {
+        return;
+    }
+
+    const juce::String jsonText = juce::String::fromUTF8(static_cast<const char*>(data), sizeInBytes);
+    const auto json = juce::JSON::parse(jsonText);
+    if (!json.isObject()) {
+        return;
+    }
+
+    auto* obj = json.getDynamicObject();
+    if (obj == nullptr) {
+        return;
+    }
+
+    if (obj->hasProperty("pluginUi") && exportPluginConfig_.enabled) {
+        auto pluginUiVar = obj->getProperty("pluginUi");
+        auto* pluginUi = pluginUiVar.getDynamicObject();
+        if (pluginUi != nullptr) {
+            exportViewMode_.store(readIntProperty(pluginUi, "viewMode", exportPluginConfig_.defaultViewMode) == 0 ? 0 : 1,
+                                  std::memory_order_relaxed);
+            exportEditorWidth_.store(std::max(1, readIntProperty(pluginUi, "editorWidth", exportEditorWidth_.load(std::memory_order_relaxed))),
+                                     std::memory_order_relaxed);
+            exportEditorHeight_.store(std::max(1, readIntProperty(pluginUi, "editorHeight", exportEditorHeight_.load(std::memory_order_relaxed))),
+                                      std::memory_order_relaxed);
+            exportOscEnabled_.store(readBoolProperty(pluginUi, "oscEnabled", exportOscEnabled_.load(std::memory_order_relaxed)),
+                                    std::memory_order_relaxed);
+            exportOscQueryEnabled_.store(readBoolProperty(pluginUi, "oscQueryEnabled", exportOscQueryEnabled_.load(std::memory_order_relaxed)),
+                                         std::memory_order_relaxed);
+            exportOscInputPort_.store(readIntProperty(pluginUi, "oscInputPort", exportPluginConfig_.oscBasePort),
+                                      std::memory_order_relaxed);
+            exportOscQueryPort_.store(readIntProperty(pluginUi, "oscQueryPort", exportPluginConfig_.oscBasePort + 1),
+                                      std::memory_order_relaxed);
+
+            if (!exportOscEnabled_.load(std::memory_order_relaxed)) {
+                exportOscQueryEnabled_.store(false, std::memory_order_relaxed);
+            }
+
+            applyExportOscSettings();
+        }
+    }
+
+    if (obj->hasProperty("hostParamsXml") && hostParams_) {
+        const auto xmlText = obj->getProperty("hostParamsXml").toString();
+        if (xmlText.isNotEmpty()) {
+            if (auto xml = juce::parseXML(xmlText)) {
+                if (xml->hasTagName(hostParams_->state.getType())) {
+                    suppressHostParameterCallbacks_.store(true, std::memory_order_relaxed);
+                    hostParams_->replaceState(juce::ValueTree::fromXml(*xml));
+                    suppressHostParameterCallbacks_.store(false, std::memory_order_relaxed);
+                    applyHostParameterSnapshotToProcessor();
+                }
+            }
+        }
+    }
 }
 
 // ============================================================================
