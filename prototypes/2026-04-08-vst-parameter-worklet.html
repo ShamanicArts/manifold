@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VST Parameter Mapping - Web Audio Prototype</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 { color: #64ffda; margin-bottom: 10px; }
+        h2 { color: #89ddff; margin: 20px 0 10px; font-size: 1.1em; }
+        .container { max-width: 900px; margin: 0 auto; }
+        
+        .plugin-window {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #0f3460;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #0f3460;
+        }
+        
+        .view-toggle {
+            display: flex;
+            gap: 5px;
+        }
+        
+        button {
+            background: #0f3460;
+            color: #eee;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        button:hover { background: #1a4a7a; }
+        button.active { background: #64ffda; color: #1a1a2e; }
+        
+        .param-grid {
+            display: grid;
+            gap: 15px;
+            transition: all 0.3s ease;
+        }
+        
+        .compact .param-grid {
+            grid-template-columns: repeat(1, 1fr);
+        }
+        
+        .split .param-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .param {
+            background: #0f0f23;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #1a4a7a;
+        }
+        
+        .param-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .param-path {
+            font-family: monospace;
+            color: #555;
+            font-size: 10px;
+        }
+        
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #0f3460;
+            border-radius: 3px;
+            outline: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #64ffda;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .value-display {
+            min-width: 60px;
+            text-align: right;
+            font-family: monospace;
+            font-size: 12px;
+            color: #64ffda;
+        }
+        
+        .osc-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #0f3460;
+        }
+        
+        .osc-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+        }
+        
+        .indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #333;
+        }
+        
+        .indicator.active { background: #64ffda; box-shadow: 0 0 8px #64ffda; }
+        
+        .info-panel {
+            background: #0f0f23;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            font-size: 13px;
+        }
+        
+        .info-panel code {
+            background: #1a1a2e;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            color: #89ddff;
+        }
+        
+        .mapping-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        
+        .mapping-table th, .mapping-table td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #0f3460;
+        }
+        
+        .mapping-table th { color: #89ddff; }
+        
+        .audio-viz {
+            height: 60px;
+            background: #0f0f23;
+            border-radius: 4px;
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .start-btn {
+            background: #64ffda;
+            color: #1a1a2e;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        
+        .start-btn:hover { background: #4dd0c0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 VST Parameter Mapping Prototype</h1>
+        <p>Demonstrates the Manifold VST Export system's parameter mapping, view modes, and bidirectional sync.</p>
+        
+        <button class="start-btn" id="startBtn">▶ Start Audio Context</button>
+        
+        <div class="plugin-window split" id="pluginWindow">
+            <div class="header">
+                <div>
+                    <strong>Standalone Filter</strong>
+                    <span style="color: #666; font-size: 12px; margin-left: 10px;">VST3 Export</span>
+                </div>
+                <div class="view-toggle">
+                    <button id="compactBtn" onclick="setViewMode('compact')">1×1</button>
+                    <button id="splitBtn" class="active" onclick="setViewMode('split')">1×2</button>
+                </div>
+            </div>
+            
+            <div class="param-grid">
+                <div class="param">
+                    <div class="param-label">
+                        <span>Filter Type</span>
+                        <span class="param-path">/plugin/params/type</span>
+                    </div>
+                    <select id="filterType" style="width: 100%; padding: 6px; background: #0f3460; color: #eee; border: none; border-radius: 4px;">
+                        <option value="0">Low Pass</option>
+                        <option value="1">Band Pass</option>
+                        <option value="2">High Pass</option>
+                        <option value="3">Notch</option>
+                    </select>
+                    <div style="margin-top: 6px; font-size: 10px; color: #555;">
+                        → /midi/synth/rack/filter/1/type
+                    </div>
+                </div>
+                
+                <div class="param">
+                    <div class="param-label">
+                        <span>Cutoff</span>
+                        <span class="param-path">/plugin/params/cutoff</span>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="cutoff" min="0" max="1" step="0.001" value="0.3">
+                        <span class="value-display" id="cutoffValue">3200 Hz</span>
+                    </div>
+                    <div style="margin-top: 6px; font-size: 10px; color: #555;">
+                        → /midi/synth/rack/filter/1/cutoff (skew: 0.35)
+                    </div>
+                </div>
+                
+                <div class="param">
+                    <div class="param-label">
+                        <span>Resonance</span>
+                        <span class="param-path">/plugin/params/resonance</span>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="resonance" min="0" max="1" step="0.01" value="0.35">
+                        <span class="value-display" id="resonanceValue">0.75</span>
+                    </div>
+                    <div style="margin-top: 6px; font-size: 10px; color: #555;">
+                        → /midi/synth/rack/filter/1/resonance
+                    </div>
+                </div>
+                
+                <div class="param">
+                    <div class="param-label">
+                        <span>Drive</span>
+                        <span class="param-path">/plugin/params/drive</span>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="drive" min="0" max="1" step="0.01" value="0">
+                        <span class="value-display" id="driveValue">0 dB</span>
+                    </div>
+                    <div style="margin-top: 6px; font-size: 10px; color: #555;">
+                        → /midi/synth/rack/filter/1/drive
+                    </div>
+                </div>
+            </div>
+            
+            <div class="audio-viz">
+                <canvas id="audioCanvas"></canvas>
+            </div>
+            
+            <div class="osc-section">
+                <div class="osc-status">
+                    <div class="indicator" id="oscIndicator"></div>
+                    <span>OSC Control</span>
+                    <span style="color: #666; margin-left: auto; font-family: monospace;">127.0.0.1:9010</span>
+                    <button onclick="toggleOSC()" id="oscBtn">Enable</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="info-panel">
+            <h2>🔄 Bidirectional Sync Demo</h2>
+            <p>This prototype demonstrates how the VST export system handles parameter synchronization:</p>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+                <li><strong>Normalized values (0-1)</strong> are mapped to physical ranges using skew factors</li>
+                <li><strong>Audio thread</strong> reads from <code>std::atomic&lt;float&gt;</code> (lock-free)</li>
+                <li><strong>Message thread</strong> handles UI updates and host automation callbacks</li>
+                <li><strong>View modes</strong> switch between compact (236×220) and split (472×220)</li>
+            </ul>
+            
+            <h2>📊 Parameter Mapping Table</h2>
+            <table class="mapping-table">
+                <tr>
+                    <th>Host Param ID</th>
+                    <th>Public Path</th>
+                    <th>Internal Path</th>
+                    <th>Type</th>
+                    <th>Range</th>
+                </tr>
+                <tr>
+                    <td><code>type</code></td>
+                    <td><code>/plugin/params/type</code></td>
+                    <td><code>/midi/synth/rack/filter/1/type</code></td>
+                    <td>choice</td>
+                    <td>0-3</td>
+                </tr>
+                <tr>
+                    <td><code>cutoff</code></td>
+                    <td><code>/plugin/params/cutoff</code></td>
+                    <td><code>/midi/synth/rack/filter/1/cutoff</code></td>
+                    <td>float</td>
+                    <td>80-16000 Hz</td>
+                </tr>
+                <tr>
+                    <td><code>resonance</code></td>
+                    <td><code>/plugin/params/resonance</code></td>
+                    <td><code>/midi/synth/rack/filter/1/resonance</code></td>
+                    <td>float</td>
+                    <td>0.1-2.0</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Audio context and nodes
+        let audioCtx;
+        let filterNode;
+        let oscNode;
+        let gainNode;
+        let analyser;
+        let isPlaying = false;
+        let oscEnabled = false;
+        
+        // Parameter state (simulating the VST host parameter state)
+        const params = {
+            type: 0,      // 0=lowpass, 1=bandpass, 2=highpass, 3=notch
+            cutoff: 0.3,  // Normalized 0-1
+            resonance: 0.35,
+            drive: 0
+        };
+        
+        // Value mapping functions (matching C++ implementation)
+        function mapNormalizedToFrequency(norm) {
+            // Logarithmic mapping with skew = 0.35
+            const min = 80, max = 16000;
+            const skew = 0.35;
+            const scaled = Math.pow(norm, skew);
+            return min + (max - min) * scaled;
+        }
+        
+        function mapFrequencyToNormalized(freq) {
+            const min = 80, max = 16000;
+            const skew = 0.35;
+            const scaled = (freq - min) / (max - min);
+            return Math.pow(scaled, 1 / skew);
+        }
+        
+        function mapNormalizedToResonance(norm) {
+            const min = 0.1, max = 2.0;
+            return min + (max - min) * norm;
+        }
+        
+        function mapNormalizedToDrive(norm) {
+            // dB mapping: 0 -> 0dB, 1 -> +24dB
+            return norm * 24;
+        }
+        
+        // Initialize audio
+        document.getElementById('startBtn').addEventListener('click', async function() {
+            if (isPlaying) return;
+            
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Create noise source for filter demo
+            const bufferSize = audioCtx.sampleRate * 2;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            noise.loop = true;
+            
+            // Filter node
+            filterNode = audioCtx.createBiquadFilter();
+            filterNode.type = 'lowpass';
+            filterNode.frequency.value = mapNormalizedToFrequency(params.cutoff);
+            filterNode.Q.value = mapNormalizedToResonance(params.resonance);
+            
+            // Gain for drive simulation
+            gainNode = audioCtx.createGain();
+            gainNode.gain.value = 0.3;
+            
+            // Analyser for visualization
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            
+            // Connect
+            noise.connect(filterNode);
+            filterNode.connect(gainNode);
+            gainNode.connect(analyser);
+            analyser.connect(audioCtx.destination);
+            
+            noise.start();
+            isPlaying = true;
+            
+            this.textContent = '🔊 Audio Running';
+            this.disabled = true;
+            
+            startVisualization();
+        });
+        
+        // View mode switching
+        function setViewMode(mode) {
+            const window = document.getElementById('pluginWindow');
+            const compactBtn = document.getElementById('compactBtn');
+            const splitBtn = document.getElementById('splitBtn');
+            
+            if (mode === 'compact') {
+                window.classList.remove('split');
+                window.classList.add('compact');
+                compactBtn.classList.add('active');
+                splitBtn.classList.remove('active');
+            } else {
+                window.classList.remove('compact');
+                window.classList.add('split');
+                splitBtn.classList.add('active');
+                compactBtn.classList.remove('active');
+            }
+        }
+        
+        // Parameter handlers (simulating bidirectional sync)
+        document.getElementById('filterType').addEventListener('change', function(e) {
+            params.type = parseInt(e.target.value);
+            if (filterNode) {
+                const types = ['lowpass', 'bandpass', 'highpass', 'notch'];
+                filterNode.type = types[params.type];
+            }
+        });
+        
+        document.getElementById('cutoff').addEventListener('input', function(e) {
+            params.cutoff = parseFloat(e.target.value);
+            const freq = mapNormalizedToFrequency(params.cutoff);
+            document.getElementById('cutoffValue').textContent = Math.round(freq) + ' Hz';
+            if (filterNode) {
+                filterNode.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.01);
+            }
+        });
+        
+        document.getElementById('resonance').addEventListener('input', function(e) {
+            params.resonance = parseFloat(e.target.value);
+            const q = mapNormalizedToResonance(params.resonance);
+            document.getElementById('resonanceValue').textContent = q.toFixed(2);
+            if (filterNode) {
+                filterNode.Q.setTargetAtTime(q, audioCtx.currentTime, 0.01);
+            }
+        });
+        
+        document.getElementById('drive').addEventListener('input', function(e) {
+            params.drive = parseFloat(e.target.value);
+            const db = mapNormalizedToDrive(params.drive);
+            document.getElementById('driveValue').textContent = '+' + Math.round(db) + ' dB';
+        });
+        
+        // OSC toggle
+        function toggleOSC() {
+            oscEnabled = !oscEnabled;
+            const indicator = document.getElementById('oscIndicator');
+            const btn = document.getElementById('oscBtn');
+            
+            if (oscEnabled) {
+                indicator.classList.add('active');
+                btn.textContent = 'Disable';
+                // Simulate OSC messages
+                simulateOSCMessages();
+            } else {
+                indicator.classList.remove('active');
+                btn.textContent = 'Enable';
+            }
+        }
+        
+        function simulateOSCMessages() {
+            if (!oscEnabled) return;
+            
+            // Simulate incoming OSC control every few seconds
+            setTimeout(() => {
+                if (!oscEnabled) return;
+                
+                // Random parameter modulation
+                const param = Math.random() > 0.5 ? 'cutoff' : 'resonance';
+                const value = Math.random();
+                
+                if (param === 'cutoff') {
+                    document.getElementById('cutoff').value = value;
+                    document.getElementById('cutoff').dispatchEvent(new Event('input'));
+                } else {
+                    document.getElementById('resonance').value = value;
+                    document.getElementById('resonance').dispatchEvent(new Event('input'));
+                }
+                
+                simulateOSCMessages();
+            }, 2000 + Math.random() * 3000);
+        }
+        
+        // Visualization
+        function startVisualization() {
+            const canvas = document.getElementById('audioCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            function resize() {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            function draw() {
+                requestAnimationFrame(draw);
+                
+                analyser.getByteFrequencyData(dataArray);
+                
+                ctx.fillStyle = '#0f0f23';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let barHeight;
+                let x = 0;
+                
+                for (let i = 0; i < bufferLength; i++) {
+                    barHeight = (dataArray[i] / 255) * canvas.height;
+                    
+                    // Color based on frequency
+                    const hue = 160 + (i / bufferLength) * 60; // Cyan to green
+                    ctx.fillStyle = `hsla(${hue}, 100%, 60%, 0.8)`;
+                    ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                    
+                    x += barWidth + 1;
+                }
+                
+                // Draw filter cutoff line
+                if (filterNode) {
+                    const nyquist = audioCtx.sampleRate / 2;
+                    const cutoffFreq = filterNode.frequency.value;
+                    const xPos = (cutoffFreq / nyquist) * canvas.width * 0.5; // 0.5 for bin scaling
+                    
+                    ctx.strokeStyle = '#64ffda';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, 0);
+                    ctx.lineTo(xPos, canvas.height);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+            
+            draw();
+        }
+    </script>
+</body>
+</html>
