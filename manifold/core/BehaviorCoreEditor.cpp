@@ -9,6 +9,11 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 namespace {
 using PerfClock = std::chrono::steady_clock;
@@ -63,6 +68,42 @@ struct PerfOverlayHostConfig {
 
 void logEditorPerf(const char* label, PerfClock::time_point start, const char* extra = nullptr) {
     juce::ignoreUnused(label, start, extra);
+}
+
+struct ProcessMemorySnapshot {
+    int64_t pssBytes = 0;
+    int64_t privateDirtyBytes = 0;
+};
+
+ProcessMemorySnapshot readProcessMemorySnapshot() {
+    ProcessMemorySnapshot snapshot;
+    std::ifstream smaps("/proc/self/smaps_rollup");
+    std::string line;
+    while (std::getline(smaps, line)) {
+        if (line.rfind("Pss:", 0) == 0) {
+            std::istringstream iss(line);
+            std::string label, unit;
+            int64_t kb = 0;
+            iss >> label >> kb >> unit;
+            snapshot.pssBytes = kb * 1024;
+        } else if (line.rfind("Private_Dirty:", 0) == 0) {
+            std::istringstream iss(line);
+            std::string label, unit;
+            int64_t kb = 0;
+            iss >> label >> kb >> unit;
+            snapshot.privateDirtyBytes = kb * 1024;
+        }
+    }
+    return snapshot;
+}
+
+int64_t readGlibcHeapUsedBytes() {
+#if defined(__GLIBC__)
+    const auto mi = mallinfo2();
+    return static_cast<int64_t>(mi.uordblks);
+#else
+    return 0;
+#endif
 }
 
 void logEditorHostLayout(const char* name, HostLayoutTraceState& state, bool visible,
@@ -1333,6 +1374,7 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
                      initialHeight);
     }
 
+    setWantsKeyboardFocus(true);
     setSize(initialWidth, initialHeight);
 
     if (rootMode_ == RootMode::RuntimeNode) {
@@ -1344,13 +1386,15 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
     } else {
         addAndMakeVisible(rootCanvas);
     }
-    addAndMakeVisible(mainScriptEditorHost);
-    addAndMakeVisible(scriptListHost);
-    addAndMakeVisible(hierarchyHost);
-    addAndMakeVisible(inspectorHost);
-    addAndMakeVisible(scriptInspectorHost);
-    addAndMakeVisible(perfOverlayHost);
-    addAndMakeVisible(runtimeNodeDebugHost);
+    if (!exportPluginUi_) {
+        addAndMakeVisible(mainScriptEditorHost);
+        addAndMakeVisible(scriptListHost);
+        addAndMakeVisible(hierarchyHost);
+        addAndMakeVisible(inspectorHost);
+        addAndMakeVisible(scriptInspectorHost);
+        addAndMakeVisible(perfOverlayHost);
+        addAndMakeVisible(runtimeNodeDebugHost);
+    }
     addChildComponent(directHost_);
     runtimeNodeDebugHost.setOnExitRequested([this]() {
         setRuntimeRendererMode(RuntimeRendererMode::Canvas);
@@ -1442,6 +1486,16 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
                 handled = true;
             }
         });
+
+        if (!handled && exportPluginUi_) {
+            const auto ch = static_cast<int>(key.getTextCharacter());
+            if (ch == '`' || ch == '~') {
+                const float current = processorRef.getParamByPath("/plugin/ui/devVisible");
+                processorRef.setParamByPath("/plugin/ui/devVisible", current > 0.5f ? 0.0f : 1.0f);
+                handled = true;
+            }
+        }
+
         return handled;
     });
     perfOverlayHost.onBoundsChanged = [this](const juce::Rectangle<int>& bounds) {
@@ -1456,21 +1510,23 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
             }
         });
     };
-    mainScriptEditorHost.setVisible(false);
-    scriptListHost.setVisible(false);
-    hierarchyHost.setVisible(false);
-    inspectorHost.setVisible(false);
-    scriptInspectorHost.setVisible(false);
-    perfOverlayHost.setVisible(false);
-    runtimeNodeDebugHost.setVisible(false);
+    if (!exportPluginUi_) {
+        mainScriptEditorHost.setVisible(false);
+        scriptListHost.setVisible(false);
+        hierarchyHost.setVisible(false);
+        inspectorHost.setVisible(false);
+        scriptInspectorHost.setVisible(false);
+        perfOverlayHost.setVisible(false);
+        runtimeNodeDebugHost.setVisible(false);
+        mainScriptEditorHost.toFront(false);
+        scriptListHost.toFront(false);
+        hierarchyHost.toFront(false);
+        inspectorHost.toFront(false);
+        scriptInspectorHost.toFront(false);
+        perfOverlayHost.toFront(false);
+        runtimeNodeDebugHost.toFront(false);
+    }
     directHostNeedsInitialFocus_ = (runtimeRendererMode_ == RuntimeRendererMode::ImGuiDirect);
-    mainScriptEditorHost.toFront(false);
-    scriptListHost.toFront(false);
-    hierarchyHost.toFront(false);
-    inspectorHost.toFront(false);
-    scriptInspectorHost.toFront(false);
-    perfOverlayHost.toFront(false);
-    runtimeNodeDebugHost.toFront(false);
 
     LuaRuntimeNodeBindings::setAllowAutomaticLegacyRetainedReplay(rootMode_ != RootMode::RuntimeNode);
     if (rootMode_ == RootMode::RuntimeNode) {
@@ -1539,7 +1595,7 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
         }
     }
 
-    startTimerHz(30);
+    startTimerHz(exportPluginUi_ ? 20 : 30);
     resized();
 }
 
@@ -1718,7 +1774,9 @@ void BehaviorCoreEditor::timerCallback() {
             }
         }
         const auto tSyncStart = Clock::now();
-        syncImGuiHostsFromLuaShell();
+        if (!exportPluginUi_) {
+            syncImGuiHostsFromLuaShell();
+        }
         const auto tSyncEnd = Clock::now();
         if (rootMode_ == RootMode::Canvas) {
             rootCanvas.requestTrackedRepaint();
@@ -1751,10 +1809,12 @@ void BehaviorCoreEditor::timerCallback() {
             ? rootCanvas.getLastTrackedRepaintLeadUs()
             : 0;
 
-        const auto mainImguiStats = mainScriptEditorHost.getStatsSnapshot();
-        const auto imguiStats = (runtimeRendererMode_ == RuntimeRendererMode::ImGuiDirect)
-            ? directHost_.getStatsSnapshot()
-            : ImGuiDirectHost::StatsSnapshot{
+        const auto imguiStats = [&]() {
+            if (runtimeRendererMode_ == RuntimeRendererMode::ImGuiDirect || exportPluginUi_) {
+                return directHost_.getStatsSnapshot();
+            }
+            const auto mainImguiStats = mainScriptEditorHost.getStatsSnapshot();
+            return ImGuiDirectHost::StatsSnapshot{
                 mainImguiStats.contextReady,
                 mainImguiStats.testWindowVisible,
                 mainImguiStats.wantCaptureMouse,
@@ -1768,6 +1828,7 @@ void BehaviorCoreEditor::timerCallback() {
                 mainImguiStats.buttonClicks,
                 mainImguiStats.documentLineCount,
             };
+        }();
 
         luaEngine.frameTimings.imguiContextReady.store(imguiStats.contextReady,
                                                        std::memory_order_relaxed);
@@ -1796,6 +1857,43 @@ void BehaviorCoreEditor::timerCallback() {
         luaEngine.frameTimings.totalPaintAccumulatedUs.store(paintUs,
                                                              std::memory_order_relaxed);
 
+        // CPU and memory tracking
+        {
+            const auto cpuNow = Clock::now();
+            if (lastCpuCheck_.time_since_epoch().count() == 0) {
+                lastCpuCheck_ = cpuNow;
+                lastCpuTime_ = std::chrono::microseconds(totalUs);
+            } else {
+                const auto wallTime = std::chrono::duration_cast<std::chrono::microseconds>(cpuNow - lastCpuCheck_).count();
+                const auto cpuTime = totalUs;
+                if (wallTime > 0) {
+                    float cpuPercent = static_cast<float>(cpuTime) / static_cast<float>(wallTime) * 100.0f;
+                    cpuPercent = std::min(100.0f, std::max(0.0f, cpuPercent));
+                    luaEngine.frameTimings.cpuPercent.store(cpuPercent, std::memory_order_relaxed);
+                }
+                lastCpuCheck_ = cpuNow;
+            }
+
+            const auto mem = readProcessMemorySnapshot();
+            luaEngine.frameTimings.processPssBytes.store(mem.pssBytes, std::memory_order_relaxed);
+            luaEngine.frameTimings.privateDirtyBytes.store(mem.privateDirtyBytes, std::memory_order_relaxed);
+            luaEngine.frameTimings.glibcHeapUsedBytes.store(readGlibcHeapUsedBytes(), std::memory_order_relaxed);
+
+            int64_t luaHeapBytes = 0;
+            luaEngine.withLuaState([&luaHeapBytes](sol::state& lua) {
+                sol::protected_function collectgarbage = lua["collectgarbage"];
+                if (!collectgarbage.valid()) {
+                    return;
+                }
+                auto result = collectgarbage("count");
+                if (result.valid() && result.get_type() == sol::type::number) {
+                    const double kb = result.get<double>();
+                    luaHeapBytes = static_cast<int64_t>(kb * 1024.0);
+                }
+            });
+            luaEngine.frameTimings.luaHeapBytes.store(luaHeapBytes, std::memory_order_relaxed);
+        }
+
         luaEngine.frameTimings.update(totalUs, pushStateUs, eventListenersUs,
                                       uiUpdateUs, paintUs,
                                       animUs, renderDispatchUs,
@@ -1810,7 +1908,7 @@ void BehaviorCoreEditor::timerCallback() {
     }
 
     // Reschedule from now so mouse events get processed between callbacks
-    startTimerHz(30);
+    startTimerHz(exportPluginUi_ ? 20 : 30);
 }
 
 void BehaviorCoreEditor::paint(juce::Graphics& g) {
@@ -1955,7 +2053,9 @@ void BehaviorCoreEditor::resized() {
             });
             runtimeNodeDebugHost.setRootNode(getActiveRootRuntimeNode());
         }
-        syncImGuiHostsFromLuaShell();
+        if (!exportPluginUi_) {
+            syncImGuiHostsFromLuaShell();
+        }
     } else if (errorNode != nullptr) {
         errorNode->setBounds(rootCanvas.getLocalBounds());
         mainScriptEditorHost.setBounds(0, 0, 0, 0);
@@ -1965,6 +2065,18 @@ void BehaviorCoreEditor::resized() {
         scriptInspectorHost.setBounds(0, 0, 0, 0);
         runtimeNodeDebugHost.setBounds(0, 0, 0, 0);
     }
+}
+
+bool BehaviorCoreEditor::keyPressed(const juce::KeyPress& key) {
+    if (exportPluginUi_) {
+        const auto ch = static_cast<int>(key.getTextCharacter());
+        if (ch == '`' || ch == '~') {
+            const float current = processorRef.getParamByPath("/plugin/ui/devVisible");
+            processorRef.setParamByPath("/plugin/ui/devVisible", current > 0.5f ? 0.0f : 1.0f);
+            return true;
+        }
+    }
+    return juce::AudioProcessorEditor::keyPressed(key);
 }
 
 void BehaviorCoreEditor::showError(const std::string& message) {

@@ -246,6 +246,8 @@ public:
     int getExportEditorHeight() const;
     void setExportEditorSize(int width, int height);
     juce::AudioProcessorValueTreeState* getHostParameterState() const;
+    bool isExportPlugin() const { return exportPluginConfig_.enabled; }
+    bool isExportSettingsVisible() const;
 
     // MIDI API
     bool openMidiInput(int deviceIndex);
@@ -382,6 +384,8 @@ private:
     std::atomic<int> exportViewMode_{1};
     std::atomic<int> exportEditorWidth_{472};
     std::atomic<int> exportEditorHeight_{220};
+    std::atomic<bool> exportSettingsVisible_{true};
+    std::atomic<bool> exportDevVisible_{false};
     std::atomic<bool> exportOscEnabled_{false};
     std::atomic<bool> exportOscQueryEnabled_{false};
     std::atomic<int> exportOscInputPort_{0};

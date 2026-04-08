@@ -13,8 +13,8 @@
       "split": { "w": 472, "h": 220 }
     },
     "osc": {
-      "enabled": false,
-      "queryEnabled": false,
+      "enabled": true,
+      "queryEnabled": true,
       "basePort": 9010
     },
     "params": [

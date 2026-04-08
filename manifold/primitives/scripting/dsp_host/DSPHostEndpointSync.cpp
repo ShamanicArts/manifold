@@ -20,6 +20,9 @@ void syncEndpoints(LoadSession& session,
   }
   registeredEndpoints.clear();
 
+  // For export plugins, don't auto-register DSP endpoints - only explicit plugin endpoints
+  const bool isExportPlugin = processor->isExportPlugin();
+
   // Register new endpoints from paramSpecs
   for (const auto& entry : orderedSpecs) {
     const auto& path = entry.first;
@@ -44,7 +47,8 @@ void syncEndpoints(LoadSession& session,
     // Register script parameters as custom OSCQuery endpoints unless a backend
     // endpoint already owns this exact path. This lets behavior scripts expose
     // newly added parameters without having to wait for static template updates.
-    if (!backendOwned) {
+    // For export plugins, skip DSP category endpoints to avoid leaking internal paths.
+    if (!backendOwned && !(isExportPlugin && endpoint.category == "dsp")) {
       processor->getEndpointRegistry().registerCustomEndpoint(endpoint);
       registeredEndpoints.push_back(endpoint.path);
 

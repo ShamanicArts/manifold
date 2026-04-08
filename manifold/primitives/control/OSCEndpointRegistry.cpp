@@ -77,6 +77,12 @@ OSCEndpointRegistry::OSCEndpointRegistry() {
     buildBackendEndpoints();
 }
 
+void OSCEndpointRegistry::setBackendEnabled(bool enabled) {
+    std::lock_guard<std::mutex> lock(mutex);
+    backendEnabled = enabled;
+    buildBackendEndpoints();
+}
+
 void OSCEndpointRegistry::rebuild() {
     std::lock_guard<std::mutex> lock(mutex);
     buildBackendEndpoints();
@@ -84,6 +90,9 @@ void OSCEndpointRegistry::rebuild() {
 
 void OSCEndpointRegistry::buildBackendEndpoints() {
     backendEndpoints.clear();
+    if (!backendEnabled) {
+        return;
+    }
 
     static const juce::String canonicalPrefix("/core/behavior");
 

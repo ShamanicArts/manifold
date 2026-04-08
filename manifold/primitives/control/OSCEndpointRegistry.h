@@ -71,6 +71,9 @@ public:
     void setNumLayers(int n) { numLayers = n; }
     int getNumLayers() const { return numLayers; }
 
+    void setBackendEnabled(bool enabled);
+    bool isBackendEnabled() const { return backendEnabled; }
+
     // Rebuild backend endpoints (call after changing numLayers)
     void rebuild();
 
@@ -78,6 +81,7 @@ private:
     void buildBackendEndpoints();
 
     int numLayers = scripting::LayerConfig::MAX_LAYERS;  // default from config
+    bool backendEnabled = true;
 
     std::vector<OSCEndpoint> backendEndpoints;
     std::vector<OSCEndpoint> customEndpoints;

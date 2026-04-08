@@ -351,8 +351,9 @@ BehaviorCoreProcessor::BehaviorCoreProcessor()
         dspScriptHost->initialise(this, "/core/behavior");
     }
     endpointRegistry.setNumLayers(MAX_LAYERS);
-    endpointRegistry.rebuild();
     initialiseExportPluginConfig();
+    endpointRegistry.setBackendEnabled(!exportPluginConfig_.enabled);
+    endpointRegistry.rebuild();
     initialiseHostParameters();
     registerExportPluginEndpoints();
     initialiseAtomicState(currentSampleRate.load(std::memory_order_relaxed));
@@ -386,6 +387,8 @@ void BehaviorCoreProcessor::initialiseExportPluginConfig() {
                                   ? exportPluginConfig_.compactHeight
                                   : exportPluginConfig_.splitHeight,
                               std::memory_order_relaxed);
+    exportSettingsVisible_.store(false, std::memory_order_relaxed);
+    exportDevVisible_.store(false, std::memory_order_relaxed);
     exportOscEnabled_.store(exportPluginConfig_.oscDefaultEnabled, std::memory_order_relaxed);
     exportOscQueryEnabled_.store(exportPluginConfig_.oscQueryDefaultEnabled,
                                  std::memory_order_relaxed);
@@ -451,10 +454,23 @@ void BehaviorCoreProcessor::registerExportPluginEndpoints() {
 
     const juce::StringArray uiPaths{
         "/plugin/ui/viewMode",
+        "/plugin/ui/settingsVisible",
+        "/plugin/ui/devVisible",
         "/plugin/ui/oscEnabled",
         "/plugin/ui/oscQueryEnabled",
         "/plugin/ui/oscInputPort",
-        "/plugin/ui/oscQueryPort"
+        "/plugin/ui/oscQueryPort",
+        "/plugin/ui/perf/frameCurrentUs",
+        "/plugin/ui/perf/frameAvgUs",
+        "/plugin/ui/perf/framePeakUs",
+        "/plugin/ui/perf/uiUpdateUs",
+        "/plugin/ui/perf/renderUs",
+        "/plugin/ui/perf/paintUs",
+        "/plugin/ui/perf/cpuPercent",
+        "/plugin/ui/perf/pssMB",
+        "/plugin/ui/perf/privateDirtyMB",
+        "/plugin/ui/perf/luaHeapMB",
+        "/plugin/ui/perf/glibcHeapMB"
     };
 
     for (const auto& path : uiPaths) {
@@ -484,6 +500,10 @@ void BehaviorCoreProcessor::registerExportPluginEndpoints() {
 
     registerUiEndpoint("/plugin/ui/viewMode", 0.0f, 1.0f, 3,
                        "Plugin export view mode (0=compact, 1=split)");
+    registerUiEndpoint("/plugin/ui/settingsVisible", 0.0f, 1.0f, 3,
+                       "Plugin export settings/dev panel visible (0/1)");
+    registerUiEndpoint("/plugin/ui/devVisible", 0.0f, 1.0f, 3,
+                       "Plugin export dev/perf detail visible (0/1)");
     registerUiEndpoint("/plugin/ui/oscEnabled", 0.0f, 1.0f, 3,
                        "Plugin OSC enable (0/1)");
     registerUiEndpoint("/plugin/ui/oscQueryEnabled", 0.0f, 1.0f, 3,
@@ -492,6 +512,28 @@ void BehaviorCoreProcessor::registerExportPluginEndpoints() {
                        "Active OSC UDP input port");
     registerUiEndpoint("/plugin/ui/oscQueryPort", 0.0f, 65535.0f, 1,
                        "Active OSCQuery HTTP port");
+    registerUiEndpoint("/plugin/ui/perf/frameCurrentUs", 0.0f, 1000000.0f, 1,
+                       "Current editor frame time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/frameAvgUs", 0.0f, 1000000.0f, 1,
+                       "Average editor frame time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/framePeakUs", 0.0f, 1000000.0f, 1,
+                       "Peak editor frame time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/uiUpdateUs", 0.0f, 1000000.0f, 1,
+                       "Structured UI update time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/renderUs", 0.0f, 1000000.0f, 1,
+                       "ImGui/direct render time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/paintUs", 0.0f, 1000000.0f, 1,
+                       "Canvas paint time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/cpuPercent", 0.0f, 100.0f, 1,
+                       "CPU utilization percent (0-100)");
+    registerUiEndpoint("/plugin/ui/perf/pssMB", 0.0f, 8192.0f, 1,
+                       "Process proportional set size in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/privateDirtyMB", 0.0f, 8192.0f, 1,
+                       "Process private dirty memory in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/luaHeapMB", 0.0f, 512.0f, 1,
+                       "Lua VM heap in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/glibcHeapMB", 0.0f, 8192.0f, 1,
+                       "glibc heap allocated in megabytes");
 
     for (const auto& alias : exportPluginConfig_.paramAliases) {
         OSCEndpoint endpoint;
@@ -619,6 +661,16 @@ bool BehaviorCoreProcessor::applyExportPluginPath(const std::string& path, float
         return true;
     }
 
+    if (path == "/plugin/ui/settingsVisible") {
+        exportSettingsVisible_.store(value > 0.5f, std::memory_order_relaxed);
+        return true;
+    }
+
+    if (path == "/plugin/ui/devVisible") {
+        exportDevVisible_.store(value > 0.5f, std::memory_order_relaxed);
+        return true;
+    }
+
     if (path == "/plugin/ui/oscEnabled") {
         const bool enabled = value > 0.5f;
         exportOscEnabled_.store(enabled, std::memory_order_relaxed);
@@ -659,6 +711,12 @@ float BehaviorCoreProcessor::readExportPluginPath(const std::string& path) const
     if (path == "/plugin/ui/viewMode") {
         return static_cast<float>(exportViewMode_.load(std::memory_order_relaxed));
     }
+    if (path == "/plugin/ui/settingsVisible") {
+        return exportSettingsVisible_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/devVisible") {
+        return exportDevVisible_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+    }
     if (path == "/plugin/ui/oscEnabled") {
         return exportOscEnabled_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
     }
@@ -670,6 +728,46 @@ float BehaviorCoreProcessor::readExportPluginPath(const std::string& path) const
     }
     if (path == "/plugin/ui/oscQueryPort") {
         return static_cast<float>(exportOscQueryPort_.load(std::memory_order_relaxed));
+    }
+
+    if (auto* timings = controlServer.getFrameTimings()) {
+        if (path == "/plugin/ui/perf/frameCurrentUs") {
+            return static_cast<float>(timings->total.currentUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/frameAvgUs") {
+            return static_cast<float>(timings->total.getAvgUs());
+        }
+        if (path == "/plugin/ui/perf/framePeakUs") {
+            return static_cast<float>(timings->total.peakUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/uiUpdateUs") {
+            return static_cast<float>(timings->uiUpdate.currentUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/renderUs") {
+            return static_cast<float>(timings->imguiRenderUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/paintUs") {
+            return static_cast<float>(timings->paint.currentUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/cpuPercent") {
+            return timings->cpuPercent.load(std::memory_order_relaxed);
+        }
+        if (path == "/plugin/ui/perf/pssMB") {
+            const int64_t bytes = timings->processPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/privateDirtyMB") {
+            const int64_t bytes = timings->privateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/luaHeapMB") {
+            const int64_t bytes = timings->luaHeapBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/glibcHeapMB") {
+            const int64_t bytes = timings->glibcHeapUsedBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
     }
 
     const auto* alias = findExportAliasByPublicPath(juce::String(path));
@@ -757,6 +855,10 @@ int BehaviorCoreProcessor::getExportEditorHeight() const {
 
 juce::AudioProcessorValueTreeState* BehaviorCoreProcessor::getHostParameterState() const {
     return hostParams_.get();
+}
+
+bool BehaviorCoreProcessor::isExportSettingsVisible() const {
+    return exportSettingsVisible_.load(std::memory_order_relaxed);
 }
 
 void BehaviorCoreProcessor::setExportEditorSize(int width, int height) {
@@ -3145,10 +3247,7 @@ void BehaviorCoreProcessor::getStateInformation(juce::MemoryBlock& destData) {
         pluginUi->setProperty("viewMode", exportViewMode_.load(std::memory_order_relaxed));
         pluginUi->setProperty("editorWidth", exportEditorWidth_.load(std::memory_order_relaxed));
         pluginUi->setProperty("editorHeight", exportEditorHeight_.load(std::memory_order_relaxed));
-        pluginUi->setProperty("oscEnabled", exportOscEnabled_.load(std::memory_order_relaxed));
-        pluginUi->setProperty("oscQueryEnabled", exportOscQueryEnabled_.load(std::memory_order_relaxed));
-        pluginUi->setProperty("oscInputPort", exportOscInputPort_.load(std::memory_order_relaxed));
-        pluginUi->setProperty("oscQueryPort", exportOscQueryPort_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("devVisible", exportDevVisible_.load(std::memory_order_relaxed));
         root->setProperty("pluginUi", juce::var(pluginUi.get()));
     }
 
@@ -3190,19 +3289,13 @@ void BehaviorCoreProcessor::setStateInformation(const void* data, int sizeInByte
                                      std::memory_order_relaxed);
             exportEditorHeight_.store(std::max(1, readIntProperty(pluginUi, "editorHeight", exportEditorHeight_.load(std::memory_order_relaxed))),
                                       std::memory_order_relaxed);
-            exportOscEnabled_.store(readBoolProperty(pluginUi, "oscEnabled", exportOscEnabled_.load(std::memory_order_relaxed)),
+            exportSettingsVisible_.store(false, std::memory_order_relaxed);
+            exportDevVisible_.store(readBoolProperty(pluginUi, "devVisible", exportDevVisible_.load(std::memory_order_relaxed)),
                                     std::memory_order_relaxed);
-            exportOscQueryEnabled_.store(readBoolProperty(pluginUi, "oscQueryEnabled", exportOscQueryEnabled_.load(std::memory_order_relaxed)),
-                                         std::memory_order_relaxed);
-            exportOscInputPort_.store(readIntProperty(pluginUi, "oscInputPort", exportPluginConfig_.oscBasePort),
-                                      std::memory_order_relaxed);
-            exportOscQueryPort_.store(readIntProperty(pluginUi, "oscQueryPort", exportPluginConfig_.oscBasePort + 1),
-                                      std::memory_order_relaxed);
-
-            if (!exportOscEnabled_.load(std::memory_order_relaxed)) {
-                exportOscQueryEnabled_.store(false, std::memory_order_relaxed);
-            }
-
+            exportOscEnabled_.store(exportPluginConfig_.oscDefaultEnabled, std::memory_order_relaxed);
+            exportOscQueryEnabled_.store(exportPluginConfig_.oscQueryDefaultEnabled, std::memory_order_relaxed);
+            exportOscInputPort_.store(exportPluginConfig_.oscBasePort, std::memory_order_relaxed);
+            exportOscQueryPort_.store(exportPluginConfig_.oscBasePort + 1, std::memory_order_relaxed);
             applyExportOscSettings();
         }
     }

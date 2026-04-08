@@ -59,6 +59,13 @@ struct FrameTimings {
   std::atomic<bool> imguiDocumentDirty{false};
   std::atomic<int64_t> imguiDocumentLineCount{0};
 
+  // CPU and memory utilization (updated by editor)
+  std::atomic<float> cpuPercent{0.0f};        // 0-100%
+  std::atomic<int64_t> processPssBytes{0};    // proportional set size
+  std::atomic<int64_t> privateDirtyBytes{0};  // private dirty memory
+  std::atomic<int64_t> luaHeapBytes{0};       // Lua VM heap
+  std::atomic<int64_t> glibcHeapUsedBytes{0}; // glibc allocated heap in use
+
   void update(int64_t totalUs, int64_t pushStateUs, int64_t eventListenersUs,
               int64_t uiUpdateUs, int64_t paintUs,
               int64_t animUs = 0, int64_t renderDispatchUs = 0,

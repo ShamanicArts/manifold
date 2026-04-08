@@ -108,6 +108,7 @@ public:
   }
   virtual void setGraphProcessingEnabled(bool) {}
   virtual bool isGraphProcessingEnabled() const { return false; }
+  virtual bool isExportPlugin() const { return false; }
   virtual int getGraphBlockSize() const { return scripting::BufferConfig::MAX_DSP_BLOCK_SIZE; }
   virtual int getGraphOutputChannels() const { return 2; }
   virtual void requestGraphRuntimeSwap(

@@ -273,6 +273,7 @@ public:
   std::string getDiagnosticsJson();
 
   void setFrameTimings(FrameTimings *timings) { frameTimings = timings; }
+  FrameTimings *getFrameTimings() const { return frameTimings; }
   void setLuaEngine(LuaEngine *engine) { luaEngine = engine; }
 
   // UI switch / renderer request access
