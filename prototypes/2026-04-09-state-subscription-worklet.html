@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lock-Free State Subscription Pattern</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 { color: #58a6ff; margin-bottom: 10px; }
+        h2 { color: #79c0ff; margin: 25px 0 10px; font-size: 1.2em; }
+        h3 { color: #d2a8ff; margin: 15px 0 8px; font-size: 1em; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        
+        .panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        
+        .code-block {
+            background: #0d1117;
+            border: 1px solid #21262d;
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            color: #a5d6ff;
+        }
+        
+        .thread-label {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        .audio-thread { background: #da3633; color: white; }
+        .message-thread { background: #238636; color: white; }
+        .main-thread { background: #1f6feb; color: white; }
+        
+        .queue-viz {
+            display: flex;
+            gap: 4px;
+            padding: 15px;
+            background: #0d1117;
+            border-radius: 6px;
+            margin: 10px 0;
+            min-height: 60px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .queue-slot {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #30363d;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-family: monospace;
+            transition: all 0.2s;
+        }
+        
+        .queue-slot.empty { 
+            background: #21262d; 
+            border-color: #30363d;
+            color: #484f58;
+        }
+        .queue-slot.filled { 
+            background: #1f6feb; 
+            border-color: #58a6ff;
+            color: white;
+        }
+        .queue-slot.reading { 
+            background: #238636; 
+            border-color: #3fb950;
+            color: white;
+            animation: pulse 0.3s;
+        }
+        .queue-slot.writing { 
+            background: #da3633; 
+            border-color: #f85149;
+            color: white;
+            animation: pulse 0.3s;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .metric {
+            background: #0d1117;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #58a6ff;
+        }
+        
+        .metric-label {
+            font-size: 11px;
+            color: #8b949e;
+            text-transform: uppercase;
+        }
+        
+        button {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            margin: 5px;
+        }
+        
+        button:hover { background: #2ea043; }
+        button.stop { background: #da3633; }
+        button.stop:hover { background: #f85149; }
+        
+        .subscriber-list {
+            background: #0d1117;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .subscriber {
+            padding: 8px;
+            margin: 4px 0;
+            background: #21262d;
+            border-radius: 4px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .subscriber.active { border-left: 3px solid #238636; }
+        .subscriber.inactive { border-left: 3px solid #484f58; opacity: 0.6; }
+        
+        .notification-log {
+            background: #0d1117;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        
+        .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px solid #21262d;
+        }
+        
+        .log-entry.audio { color: #f85149; }
+        .log-entry.message { color: #3fb950; }
+        
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin: 10px 0;
+            font-size: 12px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .legend-box {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Lock-Free State Subscription Pattern</h1>
+        <p>Demonstrates real-time safe state change notifications using a lock-free SPSC queue.</p>
+        
+        <div class="panel">
+            <h2>Architecture Overview</h2>
+            <div class="code-block">
+<span class="thread-label audio-thread">AUDIO THREAD</span>
+void onParameterChanged(uint32_t pathId, float value) {
+    // Lock-free enqueue - O(1), no allocation, no locks
+    if (notificationQueue.tryWrite({pathId, value, sampleClock})) {
+        // Success - notification queued
+    } else {
+        // Queue full - drop oldest or handle overflow
+    }
+}
+
+<span class="thread-label message-thread">MESSAGE THREAD</span>
+void processPendingChanges() {
+    Notification note;
+    while (notificationQueue.tryRead(note)) {
+        // Dispatch to subscribers for this path
+        for (auto& sub : subscriptions[note.pathId]) {
+            sub.callback(note.pathId, note.value);
+        }
+    }
+}
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Live Simulation</h2>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #21262d; border: 2px solid #30363d;"></div>
+                    <span>Empty</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #da3633;"></div>
+                    <span>Writing (Audio)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #1f6feb;"></div>
+                    <span>Pending</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #238636;"></div>
+                    <span>Reading (Message)</span>
+                </div>
+            </div>
+            
+            <h3>Notification Queue (16 slots)</h3>
+            <div class="queue-viz" id="queueViz">
+                <!-- Generated by JS -->
+            </div>
+            
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-value" id="writeIdx">0</div>
+                    <div class="metric-label">Write Index</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="readIdx">0</div>
+                    <div class="metric-label">Read Index</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="queuedCount">0</div>
+                    <div class="metric-label">Queued</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="processedCount">0</div>
+                    <div class="metric-label">Processed</div>
+                </div>
+            </div>
+            
+            <div style="text-align: center; margin: 15px 0;">
+                <button id="startBtn">▶ Start Simulation</button>
+                <button id="stopBtn" class="stop" disabled>⏹ Stop</button>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Subscribers</h2>
+            <div class="subscriber-list" id="subscriberList">
+                <div class="subscriber active">
+                    <span>🔌 VST Host Automation</span>
+                    <span>/plugin/params/cutoff</span>
+                </div>
+                <div class="subscriber active">
+                    <span>🌐 OSCQuery Client #1</span>
+                    <span>/plugin/params/resonance</span>
+                </div>
+                <div class="subscriber active">
+                    <span>🎛️ UI Knob Component</span>
+                    <span>/plugin/params/drive</span>
+                </div>
+                <div class="subscriber inactive">
+                    <span>📊 Debug Logger</span>
+                    <span>* (wildcard - all paths)</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Notification Log</h2>
+            <div class="notification-log" id="notificationLog">
+                <div class="log-entry">Ready to start simulation...</div>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Memory Ordering Semantics</h2>
+            <div class="code-block">
+// Audio thread (producer)
+void write(Notification note) {
+    buffer_[writeIdx] = note;                    // Write data first
+    writeIdx.store((writeIdx + 1) % SIZE, 
+                   std::memory_order_release);   // Publish with release
+}
+
+// Message thread (consumer)
+bool read(Notification& note) {
+    size_t w = writeIdx.load(std::memory_order_acquire);  // Acquire to see writes
+    size_t r = readIdx.load(std::memory_order_relaxed);
+    
+    if (r == w) return false;  // Empty
+    
+    note = buffer_[r];         // Read data after acquire
+    readIdx.store((r + 1) % SIZE,
+                  std::memory_order_release);   // Publish read with release
+    return true;
+}
+            </div>
+            <p style="margin-top: 10px; font-size: 12px; color: #8b949e;">
+                <strong>Key insight:</strong> The release-acquire pair ensures the audio thread's 
+                data write is visible to the message thread before the index update is seen.
+                This matches the pattern used in the user's <code>SPSCQueuePtr</code> implementation.
+            </p>
+        </div>
+        
+        <div class="panel">
+            <h2>Integration with BehaviorCoreProcessor</h2>
+            <div class="code-block">
+class BehaviorCoreProcessor : public juce::AudioProcessor {
+    // ... existing members ...
+    
+    // New: State subscription system
+    struct StateChange {
+        uint32_t pathId;
+        float value;
+        uint64_t timestamp;
+    };
+    
+    // Lock-free queue for audio-to-message thread communication
+    SPSCQueue&lt;StateChange, 256&gt; pendingChanges_;
+    
+    // Message-thread only: subscriber callbacks
+    std::unordered_map&lt;uint32_t, std::vector&lt;Callback&gt;&gt; subscribers_;
+    std::mutex subscribersMutex_;  // Only accessed on message thread
+    
+public:
+    // Called from audio callback - MUST be lock-free
+    void notifyStateChange(const std::string& path, float value) {
+        uint32_t id = getPathId(path);  // Pre-computed hash
+        pendingChanges_.enqueue({id, value, sampleClock_});
+    }
+    
+    // Called from message thread timer
+    void processPendingChanges() {
+        StateChange change;
+        while (pendingChanges_.try_dequeue(change)) {
+            auto it = subscribers_.find(change.pathId);
+            if (it != subscribers_.end()) {
+                for (auto& cb : it->second) {
+                    cb(change.value);
+                }
+            }
+        }
+    }
+    
+    // Called from WebSocket or UI thread
+    void subscribeToPath(const std::string& path, Callback cb) {
+        uint32_t id = getPathId(path);
+        subscribers_[id].push_back(cb);
+    }
+};
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Key Design Decisions</h2>
+            <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid #30363d;">
+                    <th style="text-align: left; padding: 10px;">Aspect</th>
+                    <th style="text-align: left; padding: 10px;">Decision</th>
+                    <th style="text-align: left; padding: 10px;">Rationale</th>
+                </tr>
+                <tr style="border-bottom: 1px solid #21262d;">
+                    <td style="padding: 10px;">Queue size</td>
+                    <td style="padding: 10px;">256 entries</td>
+                    <td style="padding: 10px; color: #8b949e;">Enough for 5ms at 48kHz with one change per sample</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #21262d;">
+                    <td style="padding: 10px;">Path identification</td>
+                    <td style="padding: 10px;">Pre-hashed uint32_t</td>
+                    <td style="padding: 10px; color: #8b949e;">O(1) lookup, no string hashing in audio thread</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #21262d;">
+                    <td style="padding: 10px;">Overflow handling</td>
+                    <td style="padding: 10px;">Drop oldest (circular)</td>
+                    <td style="padding: 10px; color: #8b949e;">Message thread should keep up; if not, stale data is less valuable</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #21262d;">
+                    <td style="padding: 10px;">Subscriber storage</td>
+                    <td style="padding: 10px;">Hash map + vectors</td>
+                    <td style="padding: 10px; color: #8b949e;">Message thread only - can use standard containers</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px;">Timestamp</td>
+                    <td style="padding: 10px;">Sample clock (uint64_t)</td>
+                    <td style="padding: 10px; color: #8b949e;">Deterministic ordering, correlates with audio</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Simulation state
+        const QUEUE_SIZE = 16;
+        let writeIdx = 0;
+        let readIdx = 0;
+        let isRunning = false;
+        let audioInterval = null;
+        let messageInterval = null;
+        let processedCount = 0;
+        let queue = new Array(QUEUE_SIZE).fill(null);
+        
+        // DOM elements
+        const queueViz = document.getElementById('queueViz');
+        const writeIdxEl = document.getElementById('writeIdx');
+        const readIdxEl = document.getElementById('readIdx');
+        const queuedCountEl = document.getElementById('queuedCount');
+        const processedCountEl = document.getElementById('processedCount');
+        const logEl = document.getElementById('notificationLog');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        
+        // Initialize queue visualization
+        function initQueueViz() {
+            queueViz.innerHTML = '';
+            for (let i = 0; i < QUEUE_SIZE; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'queue-slot empty';
+                slot.textContent = i;
+                slot.id = `slot-${i}`;
+                queueViz.appendChild(slot);
+            }
+        }
+        
+        function updateQueueViz() {
+            for (let i = 0; i < QUEUE_SIZE; i++) {
+                const slot = document.getElementById(`slot-${i}`);
+                slot.className = 'queue-slot';
+                
+                if (i === writeIdx && i === readIdx) {
+                    slot.classList.add(queue[i] ? 'filled' : 'empty');
+                } else if (i === writeIdx) {
+                    slot.classList.add('writing');
+                    slot.textContent = 'W';
+                } else if (i === readIdx) {
+                    slot.classList.add('reading');
+                    slot.textContent = 'R';
+                } else if (queue[i]) {
+                    slot.classList.add('filled');
+                    slot.textContent = queue[i].path.substring(0, 3);
+                } else {
+                    slot.classList.add('empty');
+                    slot.textContent = i;
+                }
+            }
+            
+            // Update metrics
+            const queued = (writeIdx >= readIdx) 
+                ? writeIdx - readIdx 
+                : QUEUE_SIZE - readIdx + writeIdx;
+            
+            writeIdxEl.textContent = writeIdx;
+            readIdxEl.textContent = readIdx;
+            queuedCountEl.textContent = queued;
+            processedCountEl.textContent = processedCount;
+        }
+        
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.insertBefore(entry, logEl.firstChild);
+            
+            // Keep only last 20 entries
+            while (logEl.children.length > 20) {
+                logEl.removeChild(logEl.lastChild);
+            }
+        }
+        
+        // Audio thread simulation - writes notifications
+        function audioThreadTick() {
+            if (!isRunning) return;
+            
+            // Simulate parameter changes
+            if (Math.random() < 0.3) {  // 30% chance of change
+                const paths = ['/plugin/params/cutoff', '/plugin/params/resonance', '/plugin/params/drive'];
+                const path = paths[Math.floor(Math.random() * paths.length)];
+                const value = Math.random();
+                
+                // Try to enqueue (lock-free)
+                const nextWrite = (writeIdx + 1) % QUEUE_SIZE;
+                if (nextWrite !== readIdx) {  // Not full
+                    queue[writeIdx] = { path, value };
+                    writeIdx = nextWrite;
+                    log(`AUDIO: notify ${path} = ${value.toFixed(3)}`, 'audio');
+                } else {
+                    log('AUDIO: Queue full - dropping notification', 'audio');
+                }
+            }
+            
+            updateQueueViz();
+        }
+        
+        // Message thread simulation - reads and dispatches
+        function messageThreadTick() {
+            if (!isRunning) return;
+            
+            // Process all pending notifications
+            let processed = 0;
+            while (readIdx !== writeIdx && processed < 4) {  // Process up to 4 per tick
+                const note = queue[readIdx];
+                queue[readIdx] = null;
+                readIdx = (readIdx + 1) % QUEUE_SIZE;
+                processed++;
+                processedCount++;
+                
+                // Simulate dispatch to subscribers
+                const subs = ['VST Host', 'OSCQuery Client', 'UI Component'].slice(0, Math.floor(Math.random() * 3) + 1);
+                log(`MESSAGE: dispatch ${note.path}=${note.value.toFixed(3)} to [${subs.join(', ')}]`, 'message');
+            }
+            
+            if (processed > 0) {
+                updateQueueViz();
+            }
+        }
+        
+        function startSimulation() {
+            isRunning = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            log('Starting lock-free queue simulation...');
+            
+            // Audio thread: high frequency, irregular timing
+            audioInterval = setInterval(audioThreadTick, 50);
+            
+            // Message thread: lower frequency, regular timing  
+            messageInterval = setInterval(messageThreadTick, 100);
+        }
+        
+        function stopSimulation() {
+            isRunning = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            clearInterval(audioInterval);
+            clearInterval(messageInterval);
+            
+            log('Simulation stopped');
+        }
+        
+        startBtn.addEventListener('click', startSimulation);
+        stopBtn.addEventListener('click', stopSimulation);
+        
+        // Initialize
+        initQueueViz();
+    </script>
+</body>
+</html>
