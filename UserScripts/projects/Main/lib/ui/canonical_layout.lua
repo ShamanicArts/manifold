@@ -115,6 +115,14 @@ function M.layoutModeForWidth(width, cutoff)
   return (tonumber(width) or 0) < (tonumber(cutoff) or 300) and "compact" or "wide"
 end
 
+function M.layoutModeForSizeKey(sizeKey)
+  local rows, cols = tostring(sizeKey or ""):match("^(%d+)x(%d+)$")
+  if cols then
+    return tonumber(cols) >= 2 and "wide" or "compact"
+  end
+  return nil
+end
+
 function M.scaleFactors(width, height, reference)
   local refW = math.max(1, tonumber(reference and reference.w) or 1)
   local refH = math.max(1, tonumber(reference and reference.h) or 1)

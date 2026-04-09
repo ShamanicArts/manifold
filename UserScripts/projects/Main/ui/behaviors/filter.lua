@@ -285,6 +285,11 @@ local function resolveLayoutMode(ctx, width)
       return "wide"
     end
   end
+  local sizeKey = type(ctx) == "table" and ctx.instanceProps and ctx.instanceProps.sizeKey
+  local sizeMode = Layout.layoutModeForSizeKey(sizeKey)
+  if sizeMode then
+    return sizeMode
+  end
   return Layout.layoutModeForWidth(width, COMPACT_LAYOUT_CUTOFF_W)
 end
 
@@ -403,6 +408,11 @@ local function commitFilterValues(ctx)
   writeParam(resonancePath(ctx), clamp(ctx.resonance or 0.75, MIN_RESO, MAX_RESO))
 end
 
+local function widgetIsVisible(widget)
+  local node = widget and widget.node or nil
+  return node ~= nil and node.isVisible ~= nil and node:isVisible() == true
+end
+
 local function syncFromParams(ctx)
   local changed = false
   local filterTypeBase, filterTypeEffective = ModWidgetSync.resolveValues(typePath(ctx), ctx.filterType or 0, readParam)
@@ -416,12 +426,13 @@ local function syncFromParams(ctx)
   resonanceEffective = clamp(resonanceEffective, MIN_RESO, MAX_RESO)
 
   local dropdown = ctx.widgets and ctx.widgets.filter_type_dropdown or nil
-  local anyDropdownOpen = dropdown and dropdown._open
+  local dropdownVisible = widgetIsVisible(dropdown)
+  local anyDropdownOpen = dropdownVisible and dropdown and dropdown._open
 
   if ctx.filterType ~= filterType then
     ctx.filterType = filterType
     changed = true
-    if dropdown and dropdown.setSelected and not anyDropdownOpen then
+    if dropdownVisible and dropdown and dropdown.setSelected and not anyDropdownOpen then
       dropdown:setSelected(filterType + 1)
     end
   end
@@ -438,7 +449,8 @@ local function syncFromParams(ctx)
     ctx.displayCutoffHz = cutoffEffective
     changed = true
   end
-  ModWidgetSync.syncWidget(ctx.widgets and ctx.widgets.cutoff_knob or nil, cutoff, cutoffEffective, cutoffState)
+  local cutoffKnob = ctx.widgets and ctx.widgets.cutoff_knob or nil
+  ModWidgetSync.syncWidget(widgetIsVisible(cutoffKnob) and cutoffKnob or nil, cutoff, cutoffEffective, cutoffState)
 
   if math.abs((ctx.resonance or 0) - resonance) > 0.0001 then
     ctx.resonance = resonance
@@ -448,7 +460,8 @@ local function syncFromParams(ctx)
     ctx.displayResonance = resonanceEffective
     changed = true
   end
-  ModWidgetSync.syncWidget(ctx.widgets and ctx.widgets.resonance_knob or nil, resonance, resonanceEffective, resonanceState)
+  local resonanceKnob = ctx.widgets and ctx.widgets.resonance_knob or nil
+  ModWidgetSync.syncWidget(widgetIsVisible(resonanceKnob) and resonanceKnob or nil, resonance, resonanceEffective, resonanceState)
 
   return changed
 end

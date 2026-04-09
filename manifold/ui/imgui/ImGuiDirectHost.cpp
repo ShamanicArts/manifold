@@ -1800,12 +1800,7 @@ void ImGuiDirectHost::newOpenGLContextCreated() {
     io.BackendPlatformName = "manifold_juce_imgui_direct";
 
     manifold::ui::imgui::configureToolFonts(io);
-    unsigned char* fontPixels = nullptr;
-    int fontWidth = 0;
-    int fontHeight = 0;
-    io.Fonts->GetTexDataAsRGBA32(&fontPixels, &fontWidth, &fontHeight);
-    fontAtlasBytes_.store(static_cast<int64_t>(fontWidth) * static_cast<int64_t>(fontHeight) * 4,
-                          std::memory_order_relaxed);
+    fontAtlasBytes_.store(0, std::memory_order_relaxed);
     manifold::ui::imgui::applyToolTheme();
     ImGui_ImplOpenGL3_Init("#version 150");
     contextReady_ = true;
