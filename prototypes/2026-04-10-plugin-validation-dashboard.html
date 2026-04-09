@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manifold Plugin Validation Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        
+        header {
+            border-bottom: 1px solid #334155;
+            padding-bottom: 20px;
+            margin-bottom: 24px;
+        }
+        
+        h1 {
+            color: #a78bfa;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        
+        .subtitle {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        
+        /* Control Panel */
+        .controls {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        label {
+            font-size: 12px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        select, input[type="text"] {
+            background: #0f172a;
+            border: 1px solid #475569;
+            color: #e2e8f0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #a78bfa;
+        }
+        
+        button {
+            background: #7c3aed;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #8b5cf6;
+        }
+        
+        button.secondary {
+            background: #334155;
+        }
+        
+        button.secondary:hover {
+            background: #475569;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* Status Grid */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .status-card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid #475569;
+        }
+        
+        .status-card.pass {
+            border-left-color: #22c55e;
+        }
+        
+        .status-card.fail {
+            border-left-color: #dc2626;
+        }
+        
+        .status-card.warn {
+            border-left-color: #f59e0b;
+        }
+        
+        .status-card.running {
+            border-left-color: #3b82f6;
+        }
+        
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .status-title {
+            font-weight: 600;
+            font-size: 15px;
+        }
+        
+        .status-badge {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        
+        .badge-pass { background: #14532d; color: #86efac; }
+        .badge-fail { background: #450a0a; color: #fca5a5; }
+        .badge-warn { background: #451a03; color: #fcd34d; }
+        .badge-running { background: #1e3a8a; color: #93c5fd; }
+        .badge-pending { background: #334155; color: #94a3b8; }
+        
+        .status-details {
+            font-size: 13px;
+            color: #94a3b8;
+        }
+        
+        .status-metric {
+            font-size: 24px;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-top: 8px;
+        }
+        
+        .progress-bar {
+            height: 6px;
+            background: #334155;
+            border-radius: 3px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #3b82f6;
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+        
+        /* Test Results Table */
+        .results-section {
+            background: #1e293b;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .section-title {
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        th {
+            text-align: left;
+            padding: 12px 20px;
+            color: #94a3b8;
+            font-weight: 500;
+            border-bottom: 1px solid #334155;
+        }
+        
+        td {
+            padding: 12px 20px;
+            border-bottom: 1px solid #334155;
+        }
+        
+        tr:last-child td {
+            border-bottom: none;
+        }
+        
+        tr:hover {
+            background: #252f47;
+        }
+        
+        .test-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            font-size: 12px;
+            margin-right: 8px;
+        }
+        
+        .icon-pass { background: #14532d; color: #86efac; }
+        .icon-fail { background: #450a0a; color: #fca5a5; }
+        .icon-warn { background: #451a03; color: #fcd34d; }
+        
+        .duration {
+            color: #64748b;
+            font-size: 12px;
+        }
+        
+        /* Log Output */
+        .log-section {
+            background: #1e293b;
+            border-radius: 12px;
+            margin-top: 24px;
+            overflow: hidden;
+        }
+        
+        .log-output {
+            background: #0f172a;
+            padding: 16px 20px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 12px;
+            line-height: 1.8;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        .log-line {
+            color: #94a3b8;
+        }
+        
+        .log-line.info { color: #60a5fa; }
+        .log-line.success { color: #4ade80; }
+        .log-line.error { color: #f87171; }
+        .log-line.warn { color: #fbbf24; }
+        
+        /* Comparison View */
+        .comparison-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        
+        .bar-segment {
+            height: 8px;
+            border-radius: 4px;
+        }
+        
+        .bar-current { background: #7c3aed; }
+        .bar-baseline { background: #475569; }
+        
+        .delta-positive { color: #f87171; }
+        .delta-negative { color: #4ade80; }
+        
+        /* Footer Actions */
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid #334155;
+        }
+        
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .running .status-badge {
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔌 Manifold Plugin Validation Dashboard</h1>
+            <p class="subtitle">Automated testing and compliance verification for exported plugins</p>
+        </header>
+        
+        <!-- Control Panel -->
+        <div class="controls">
+            <div class="control-group">
+                <label>Plugin</label>
+                <select id="pluginSelect">
+                    <option value="manifold_filter">Manifold_Filter.vst3</option>
+                    <option value="manifold_eq">Manifold_EQ.vst3</option>
+                    <option value="manifold_fx">Manifold_FX.vst3</option>
+                    <option value="manifold_effect">Manifold Effect.vst3</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Format</label>
+                <select id="formatSelect">
+                    <option value="vst3">VST3</option>
+                    <option value="au" disabled>AU (macOS only)</option>
+                    <option value="clap" disabled>CLAP (coming soon)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Test Suite</label>
+                <select id="suiteSelect">
+                    <option value="quick">Quick Smoke Test</option>
+                    <option value="full">Full Compliance Suite</option>
+                    <option value="stress">Stress Test (1hr+)</option>
+                    <option value="memory">Memory Profiling</option>
+                </select>
+            </div>
+            
+            <button onclick="runTests()" id="runBtn">▶ Run Tests</button>
+            <button class="secondary" onclick="loadBaseline()">📊 Load Baseline</button>
+        </div>
+        
+        <!-- Status Cards -->
+        <div class="status-grid">
+            <div class="status-card pass" id="card-validator">
+                <div class="status-header">
+                    <span class="status-title">VST3 Validator</span>
+                    <span class="status-badge badge-pass">PASSED</span>
+                </div>
+                <div class="status-details">Official Steinberg compliance suite</div>
+                <div class="status-metric">142/142</div>
+                <div class="status-details">tests passed</div>
+            </div>
+            
+            <div class="status-card pass" id="card-stress">
+                <div class="status-header">
+                    <span class="status-title">PluginVal Stress</span>
+                    <span class="status-badge badge-pass">PASSED</span>
+                </div>
+                <div class="status-details">1000 open/close cycles, 5min audio</div>
+                <div class="status-metric">0</div>
+                <div class="status-details">crashes detected</div>
+            </div>
+            
+            <div class="status-card warn" id="card-memory">
+                <div class="status-header">
+                    <span class="status-title">Memory Profile</span>
+                    <span class="status-badge badge-warn">WARNING</span>
+                </div>
+                <div class="status-details">PSS vs baseline (expected: &lt;70MB)</div>
+                <div class="status-metric">73.2 MB</div>
+                <div class="comparison-bar">
+                    <div class="bar-segment bar-current" style="width: 73.2%"></div>
+                    <div class="bar-segment bar-baseline" style="width: 70%; opacity: 0.3;"></div>
+                    <span class="delta-positive">+3.2MB</span>
+                </div>
+            </div>
+            
+            <div class="status-card pass" id="card-state">
+                <div class="status-header">
+                    <span class="status-title">State Round-trip</span>
+                    <span class="status-badge badge-pass">PASSED</span>
+                </div>
+                <div class="status-details">Random parameter save/restore</div>
+                <div class="status-metric">1000</div>
+                <div class="status-details">iterations exact match</div>
+            </div>
+            
+            <div class="status-card pass" id="card-nan">
+                <div class="status-header">
+                    <span class="status-title">Signal Integrity</span>
+                    <span class="status-badge badge-pass">PASSED</span>
+                </div>
+                <div class="status-details">NaN/Inf detection across params</div>
+                <div class="status-metric">Clean</div>
+                <div class="status-details">no invalid samples</div>
+            </div>
+            
+            <div class="status-card running" id="card-stability">
+                <div class="status-header">
+                    <span class="status-title">48hr Stability</span>
+                    <span class="status-badge badge-running">RUNNING</span>
+                </div>
+                <div class="status-details">Continuous audio processing</div>
+                <div class="status-metric">18:42:13</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 39%"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Detailed Results -->
+        <div class="results-section">
+            <div class="section-header">
+                <span class="section-title">📋 Test Details</span>
+                <button class="secondary" onclick="exportCSV()">⬇ Export CSV</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Test</th>
+                        <th>Status</th>
+                        <th>Result</th>
+                        <th>Duration</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="testResults">
+                    <tr>
+                        <td><span class="test-icon icon-pass">✓</span>Component Creation</td>
+                        <td><span class="status-badge badge-pass">PASS</span></td>
+                        <td>Factory returns valid instance</td>
+                        <td class="duration">12ms</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><span class="test-icon icon-pass">✓</span>Parameter Definition</td>
+                        <td><span class="status-badge badge-pass">PASS</span></td>
+                        <td>7 params match manifest</td>
+                        <td class="duration">5ms</td>
+                        <td>type, mix, p0-p4</td>
+                    </tr>
+                    <tr>
+                        <td><span class="test-icon icon-pass">✓</span>Audio Processing</td>
+                        <td><span class="status-badge badge-pass">PASS</span></td>
+                        <td>Clean output, no denormals</td>
+                        <td class="duration">2.3s</td>
+                        <td>32-bit float, 48kHz</td>
+                    </tr>
+                    <tr>
+                        <td><span class="test-icon icon-pass">✓</span>State Serialization</td>
+                        <td><span class="status-badge badge-pass">PASS</span></td>
+                        <td>Blob round-trip exact</td>
+                        <td class="duration">45ms</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><span class="test-icon icon-pass">✓</span>Editor Creation</td>
+                        <td><span class="status-badge badge-pass">PASS</span></td>
+                        <td>UI opens, OSCQuery active</td>
+                        <td class="duration">180ms</td>
+                        <td>Port 9030/9031 bound</td>
+                    </tr>
+                    <tr>
+                        <td><span class="test-icon icon-warn">!</span>Memory Footprint</td>
+                        <td><span class="status-badge badge-warn">WARN</span></td>
+                        <td>PSS 73.2MB (baseline 70MB)</td>
+                        <td class="duration">1.2s</td>
+                        <td>Within 10% tolerance</td>
+                    </tr>
+                    <tr>
+                        <td><span class="test-icon icon-pass">✓</span>Multiple Instances</td>
+                        <td><span class="status-badge badge-pass">PASS</span></td>
+                        <td>10x instances, no port conflict</td>
+                        <td class="duration">850ms</td>
+                        <td>Dynamic port allocation OK</td>
+                    </tr>
+                    <tr>
+                        <td><span class="test-icon icon-pass">✓</span>Preset Loading</td>
+                        <td><span class="status-badge badge-pass">PASS</span></td>
+                        <td>All 21 FX types load correctly</td>
+                        <td class="duration">3.4s</td>
+                        <td>Parameter recall verified</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Log Output -->
+        <div class="log-section">
+            <div class="section-header">
+                <span class="section-title">📝 Validation Log</span>
+                <button class="secondary" onclick="clearLog()">Clear</button>
+            </div>
+            <div class="log-output" id="logOutput">[2026-04-10 09:23:15] <span class="info">INFO</span>: Loading plugin: Manifold_FX_VST3
+[2026-04-10 09:23:15] <span class="info">INFO</span>: Host: validator (Steinberg SDK 3.7.8)
+[2026-04-10 09:23:15] <span class="success">SUCCESS</span>: Component factory created
+[2026-04-10 09:23:15] <span class="info">INFO</span>: Plugin class: Manifold FX
+[2026-04-10 09:23:15] <span class="info">INFO</span>: Vendor: Manifold Audio
+[2026-04-10 09:23:15] <span class="success">SUCCESS</span>: Controller factory created
+[2026-04-10 09:23:15] <span class="info">INFO</span>: Parameter count: 7
+[2026-04-10 09:23:15] <span class="success">SUCCESS</span>: All parameters within valid range
+[2026-04-10 09:23:15] <span class="info">INFO</span>: Running audio test: 48kHz, 512 samples/block
+[2026-04-10 09:23:17] <span class="success">SUCCESS</span>: Audio processing completed (131072 samples)
+[2026-04-10 09:23:17] <span class="info">INFO</span>: State size: 284 bytes
+[2026-04-10 09:23:17] <span class="success">SUCCESS</span>: State save/restore: EXACT MATCH
+[2026-04-10 09:23:17] <span class="warn">WARN</span>: Memory PSS 73.2MB exceeds baseline 70MB by 4.6%
+[2026-04-10 09:23:18] <span class="info">INFO</span>: Starting 48hr stability test...
+[2026-04-10 10:12:45] <span class="info">INFO</span>: Stability test running: 00:49:27 elapsed
+[2026-04-10 11:30:22] <span class="info">INFO</span>: Stability test running: 02:07:04 elapsed
+[2026-04-10 14:15:08] <span class="info">INFO</span>: Stability test running: 04:51:50 elapsed
+[2026-04-10 18:42:13] <span class="info">INFO</span>: Stability test running: 18:42:13 elapsed...</div>
+        </div>
+        
+        <!-- Actions -->
+        <div class="actions">
+            <button onclick="viewFullReport()">📄 View Full Report</button>
+            <button class="secondary" onclick="compareWithBaseline()">📊 Compare with Baseline</button>
+            <button class="secondary" onclick="regenerateManifest()">🔄 Regenerate Manifest</button>
+            <button class="secondary" onclick="openInDAW()">🎹 Open in Test DAW</button>
+        </div>
+    </div>
+    
+    <script>
+        // Simulated test running
+        function runTests() {
+            const btn = document.getElementById('runBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Running...';
+            
+            addLog('info', 'Starting test suite: ' + document.getElementById('suiteSelect').value);
+            
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = '▶ Run Tests';
+                addLog('success', 'Test suite completed');
+            }, 2000);
+        }
+        
+        function addLog(level, message) {
+            const log = document.getElementById('logOutput');
+            const time = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            const levelClass = level === 'info' ? 'info' : level === 'success' ? 'success' : level === 'warn' ? 'warn' : 'error';
+            log.innerHTML += `\n[${time}] <span class="${levelClass}">${level.toUpperCase()}</span>: ${message}`;
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        function clearLog() {
+            document.getElementById('logOutput').innerHTML = '';
+        }
+        
+        function loadBaseline() {
+            addLog('info', 'Loading baseline from: baselines/manifold_fx_vst3_2026-04-01.json');
+        }
+        
+        function exportCSV() {
+            addLog('info', 'Exporting results to: reports/manifold_validation_2026-04-10.csv');
+        }
+        
+        function viewFullReport() {
+            addLog('info', 'Opening full report in new tab...');
+        }
+        
+        function compareWithBaseline() {
+            addLog('info', 'Generating comparison report...');
+        }
+        
+        function regenerateManifest() {
+            addLog('info', 'Running: python3 tools/generate_export_manifest.py --spec ...');
+        }
+        
+        function openInDAW() {
+            addLog('info', 'Launching Reaper with plugin...');
+        }
+    </script>
+</body>
+</html>
