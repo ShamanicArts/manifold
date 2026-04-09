@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>malloc_trim Diagnostic Endpoint - Prototype</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 40px; background: #0f172a; color: #e2e8f0; }
+        h1 { color: #a78bfa; }
+        h2 { color: #94a3b8; margin-top: 30px; }
+        code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-family: 'SF Mono', monospace; }
+        pre { background: #1e293b; padding: 16px; border-radius: 8px; overflow-x: auto; }
+        .warning { background: #451a1a; border-left: 4px solid #dc2626; padding: 12px 16px; margin: 16px 0; }
+        .info { background: #1e293b; border-left: 4px solid #3b82f6; padding: 12px 16px; margin: 16px 0; }
+        .success { background: #14532d; border-left: 4px solid #22c55e; padding: 12px 16px; margin: 16px 0; }
+        table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #334155; }
+        th { color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <h1>malloc_trim Diagnostic Endpoint</h1>
+    <p>Prototype for separating real allocations from allocator retention in the Manifold Filter plugin.</p>
+    
+    <div class="warning">
+        <strong>⚠️ Real-Time Safety Warning:</strong> <code>malloc_trim(0)</code> is NOT real-time safe. 
+        Only call from the message/UI thread, never from the audio thread.
+    </div>
+
+    <h2>Integration Approach</h2>
+    <p>Add this endpoint to your <code>BehaviorCoreProcessor</code> OSC endpoint registry:</p>
+    
+    <pre>// In BehaviorCoreProcessor.h - add to existing FrameTimings or new struct
+struct AllocatorMetrics {
+    std::atomic&lt;int64_t&gt; glibcArenaBytes{0};       // Total arena bytes
+    std::atomic&lt;int64_t&gt; glibcUsedBytes{0};        // Bytes actually in use (uordblks)
+    std::atomic&lt;int64_t&gt; glibcFreeBytes{0};        // Free bytes held by allocator (fordblks)
+    std::atomic&lt;int64_t&gt; glibcReleasableBytes{0};  // Top-most releasable bytes (keepcost)
+    std::atomic&lt;int64_t&gt; lastTrimDeltaBytes{0};    // PSS reduction from last malloc_trim
+};
+
+// New atomic controls
+std::atomic&lt;bool&gt; mallocTrimRequested{false};
+std::atomic&lt;bool&gt; renderPaused{false};</pre>
+
+    <h2>Implementation</h2>
+    
+    <pre>void BehaviorCoreProcessor::registerExportPluginEndpoints() {
+    // ... existing endpoints ...
+    
+    // Allocator diagnostic endpoints
+    endpointRegistry.addEndpoint({
+        "/plugin/dev/mallocTrim",
+        "Trigger malloc_trim(0) to release allocator-held memory. "
+        "NOT REAL-TIME SAFE - only call from message thread.",
+        [this](const juce::var&amp; value) {
+            mallocTrimRequested.store(true, std::memory_order_relaxed);
+        },
+        [this]() -&gt; juce::var {
+            return juce::var(static_cast&lt;juce::int64&gt;(
+                allocatorMetrics.lastTrimDeltaBytes.load(std::memory_order_relaxed)));
+        }
+    });
+    
+    endpointRegistry.addEndpoint({
+        "/plugin/dev/renderPaused",
+        "Pause UI rendering to test memory attribution. true=pause, false=resume",
+        [this](const juce::var&amp; value) {
+            renderPaused.store(static_cast&lt;bool&gt;(value), std::memory_order_relaxed);
+        },
+        [this]() -&gt; juce::var {
+            return juce::var(renderPaused.load(std::memory_order_relaxed));
+        }
+    });
+    
+    // Extended allocator metrics
+    endpointRegistry.addEndpoint({
+        "/plugin/ui/perf/glibcFreeMB",
+        "Allocator-held free memory (fordblks / 1MB)",
+        nullptr,
+        [this]() -&gt; juce::var {
+            return juce::var(static_cast&lt;juce::int64&gt;(
+                allocatorMetrics.glibcFreeBytes.load(std::memory_order_relaxed) / (1024 * 1024)));
+        }
+    });
+}</pre>
+
+    <h2>Message Thread Processing</h2>
+    
+    <pre>void BehaviorCoreProcessor::processMallocTrimRequest() {
+    #if defined(__GLIBC__)
+    if (!mallocTrimRequested.load(std::memory_order_relaxed)) {
+        return;
+    }
+    mallocTrimRequested.store(false, std::memory_order_relaxed);
+    
+    // Capture pre-trim state
+    auto preSnapshot = readProcessorMemorySnapshot();
+    auto preMallinfo = mallinfo2();
+    
+    // Trigger trim (releases memory back to OS)
+    malloc_trim(0);
+    
+    // Capture post-trim state
+    auto postSnapshot = readProcessorMemorySnapshot();
+    auto postMallinfo = mallinfo2();
+    
+    // Calculate deltas
+    int64_t pssDelta = preSnapshot.pssBytes - postSnapshot.pssBytes;
+    int64_t privateDelta = preSnapshot.privateDirtyBytes - postSnapshot.privateDirtyBytes;
+    int64_t heapDelta = preMallinfo.arena - postMallinfo.arena;
+    
+    // Store results
+    allocatorMetrics.lastTrimDeltaBytes.store(pssDelta, std::memory_order_relaxed);
+    
+    // Log for analysis
+    juce::Logger::writeToLog(
+        "malloc_trim result: PSS -" + juce::String(pssDelta / 1024) + "KB, " +
+        "Private -" + juce::String(privateDelta / 1024) + "KB, " +
+        "Heap -" + juce::String(heapDelta / 1024) + "KB");
+    #endif
+}</pre>
+
+    <h2>Render Pause Integration</h2>
+    
+    <pre>void ImGuiDirectHost::renderFrame() {
+    // Check render pause state
+    if (renderPaused.load(std::memory_order_relaxed)) {
+        // Clear to background color but skip all ImGui rendering
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        swapBuffers();
+        return;
+    }
+    
+    // Normal rendering path...
+    ImGui::NewFrame();
+    // ... render UI ...
+}</pre>
+
+    <h2>UI Overlay Extension</h2>
+    
+    <p>Add to your <code>perf_overlay.ui.lua</code> and <code>perf_overlay.lua</code>:</p>
+    
+    <pre>-- Add new row in perf_overlay.ui.lua
+{ id = "val_allocator", type = "Label", x = 116, y = 196, w = 200, h = 12, 
+  props = { text = "Ret 0.0 / Trim 0.0" },
+  style = { colour = 0xff94a3b8, fontSize = 8, bg = 0x00000000 } },
+
+-- Add in perf_overlay.lua syncState function
+local freeMb = safeGetParam('/plugin/ui/perf/glibcFreeMB', 0)
+local trimMb = safeGetParam('/plugin/ui/perf/lastTrimDeltaMB', 0)
+setText(w.val_allocator, 'Ret ' .. mb(freeMb) .. ' / Trim ' .. mb(trimMb))</pre>
+
+    <h2>Interpretation Guide</h2>
+    
+    <table>
+        <tr><th>Scenario</th><th>malloc_trim Effect</th><th>Interpretation</th></tr>
+        <tr>
+            <td>Large PSS reduction (>5MB)</td>
+            <td>Allocator was holding significant freed memory</td>
+            <td>"Missing" memory is allocator retention, not real usage</td>
+        </tr>
+        <tr>
+            <td>Small/no reduction</td>
+            <td>Memory is genuinely allocated</td>
+            <td>Look for unfreed allocations in framework/backend</td>
+        </tr>
+        <tr>
+            <td>Render pause reduces growth</td>
+            <td>N/A</td>
+            <td>Rendering pipeline (JUCE/OpenGL) is the culprit</td>
+        </tr>
+        <tr>
+            <td>Render pause has no effect</td>
+            <td>N/A</td>
+            <td>Look at static allocations, Lua, or DSP graph</td>
+        </tr>
+    </table>
+
+    <h2>Experiment Protocol</h2>
+    
+    <div class="info">
+        <strong>Recommended test sequence:</strong>
+        <ol>
+            <li>Open plugin, wait 10s for steady state</li>
+            <li>Note baseline PSS from overlay</li>
+            <li>Trigger <code>/plugin/dev/mallocTrim</code> via OSC</li>
+            <li>Wait 2s, note new PSS</li>
+            <li>Set <code>/plugin/dev/renderPaused</code> = true</li>
+            <li>Wait 10s, note PSS trend</li>
+            <li>Set <code>/plugin/dev/renderPaused</code> = false</li>
+            <li>Compare deltas</li>
+        </ol>
+    </div>
+
+    <div class="success">
+        <strong>Expected Outcome:</strong> Based on JUCE forum reports, OpenGL context overhead 
+        accounts for ~50-60MB. Your ~70MB UI delta likely matches this pattern.
+    </div>
+
+    <h2>Related Files</h2>
+    <ul>
+        <li><code>research/2026-04-09-audio-plugin-memory-profiling.md</code> - Full research document</li>
+        <li><code>agent-docs/reports/260409_filter_plugin_cost_findings.md</code> - Your findings</li>
+        <li><code>manifold/primitives/ui/FrameTimings.h</code> - Your timing/memory structs</li>
+    </ul>
+</body>
+</html>
