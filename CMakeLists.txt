@@ -587,132 +587,126 @@ target_link_libraries(Manifold
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
-juce_add_plugin(Manifold_Filter
-    VERSION 1.0.0
-    PLUGIN_MANUFACTURER_CODE Shmc
-    PLUGIN_CODE Mflt
-    FORMATS Standalone VST3
+function(manifold_add_export_lua_assets target_name comment_text)
+    add_custom_command(TARGET ${target_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/manifold/ui
+            $<TARGET_FILE_DIR:${target_name}>
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/manifold/SystemScripts
+            $<TARGET_FILE_DIR:${target_name}>/SystemScripts
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts
+            $<TARGET_FILE_DIR:${target_name}>/UserScripts
+        COMMENT "${comment_text}"
+    )
+endfunction()
+
+function(manifold_add_export_plugin target_name)
+    cmake_parse_arguments(ARG "" "PRODUCT_NAME;PLUGIN_CODE;PROJECT_DIR;MANIFEST_SPEC;PROJECT_MANIFEST" "" ${ARGN})
+
+    if(NOT ARG_PRODUCT_NAME)
+        message(FATAL_ERROR "manifold_add_export_plugin requires PRODUCT_NAME")
+    endif()
+    if(NOT ARG_PLUGIN_CODE)
+        message(FATAL_ERROR "manifold_add_export_plugin requires PLUGIN_CODE")
+    endif()
+    if(NOT ARG_PROJECT_DIR)
+        message(FATAL_ERROR "manifold_add_export_plugin requires PROJECT_DIR")
+    endif()
+
+    if(NOT ARG_MANIFEST_SPEC)
+        set(ARG_MANIFEST_SPEC "${ARG_PROJECT_DIR}/manifest.spec.json")
+    endif()
+    if(NOT ARG_PROJECT_MANIFEST)
+        set(ARG_PROJECT_MANIFEST "${ARG_PROJECT_DIR}/manifold.project.json5")
+    endif()
+
+    add_custom_command(
+        OUTPUT ${ARG_PROJECT_MANIFEST}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_export_manifest.py
+            --spec ${ARG_MANIFEST_SPEC}
+            --output ${ARG_PROJECT_MANIFEST}
+        DEPENDS
+            ${ARG_MANIFEST_SPEC}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_export_manifest.py
+        VERBATIM
+    )
+
+    add_custom_target(${target_name}_generate_manifest DEPENDS ${ARG_PROJECT_MANIFEST})
+
+    juce_add_plugin(${target_name}
+        VERSION 1.0.0
+        PLUGIN_MANUFACTURER_CODE Shmc
+        PLUGIN_CODE ${ARG_PLUGIN_CODE}
+        FORMATS Standalone VST3
+        PRODUCT_NAME "${ARG_PRODUCT_NAME}"
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT FALSE
+        NEEDS_MIDI_OUTPUT FALSE
+        IS_MIDI_EFFECT FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        COPY_PLUGIN_AFTER_BUILD FALSE)
+
+    target_sources(${target_name}
+        PRIVATE
+            ${MANIFOLD_DSP_SOURCES}
+            ${MANIFOLD_RUNTIME_SOURCES}
+            ${MANIFOLD_CORE_SOURCES})
+
+    manifold_target_include_project_and_ableton(${target_name})
+
+    target_compile_definitions(${target_name}
+        PUBLIC
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_VST3_CAN_REPLACE_VST2=0
+            ASIO_STANDALONE=1
+            SOL_ALL_SAFETIES_ON=1
+            SOL_SAFE_NUMERICS=0
+            MANIFOLD_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+            MANIFOLD_DEFAULT_PROJECT=${ARG_PROJECT_MANIFEST}
+            ${MANIFOLD_LINK_PLATFORM_DEFINE})
+
+    target_link_libraries(${target_name}
+        PRIVATE
+            juce::juce_audio_utils
+            juce::juce_audio_formats
+            juce::juce_dsp
+            juce::juce_gui_extra
+            juce::juce_opengl
+            imgui
+            imgui_color_text_edit
+            ${MANIFOLD_LUA_TARGET}
+            sol2::sol2
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_lto_flags
+            juce::juce_recommended_warning_flags)
+
+    add_dependencies(${target_name} ${target_name}_generate_manifest)
+    if(TARGET ${target_name}_Standalone)
+        add_dependencies(${target_name}_Standalone ${target_name}_generate_manifest)
+    endif()
+    if(TARGET ${target_name}_VST3)
+        add_dependencies(${target_name}_VST3 ${target_name}_generate_manifest)
+    endif()
+
+    manifold_add_export_lua_assets(${target_name} "Copying Lua assets for ${ARG_PRODUCT_NAME} Standalone")
+    if(NOT MANIFOLD_PLATFORM_ANDROID)
+        manifold_add_export_lua_assets(${target_name}_VST3 "Copying Lua assets for ${ARG_PRODUCT_NAME} VST3")
+    endif()
+endfunction()
+
+manifold_add_export_plugin(Manifold_Filter
     PRODUCT_NAME "Manifold Filter"
-    IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
-    NEEDS_MIDI_OUTPUT FALSE
-    IS_MIDI_EFFECT FALSE
-    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD FALSE)
+    PLUGIN_CODE Mflt
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Filter)
 
-target_sources(Manifold_Filter
-    PRIVATE
-        ${MANIFOLD_DSP_SOURCES}
-        ${MANIFOLD_RUNTIME_SOURCES}
-        ${MANIFOLD_CORE_SOURCES})
-
-manifold_target_include_project_and_ableton(Manifold_Filter)
-
-target_compile_definitions(Manifold_Filter
-    PUBLIC
-        JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        ASIO_STANDALONE=1
-        SOL_ALL_SAFETIES_ON=1
-        SOL_SAFE_NUMERICS=0
-        MANIFOLD_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-        MANIFOLD_DEFAULT_PROJECT=${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Filter/manifold.project.json5
-        ${MANIFOLD_LINK_PLATFORM_DEFINE})
-
-target_link_libraries(Manifold_Filter
-    PRIVATE
-        juce::juce_audio_utils
-        juce::juce_audio_formats
-        juce::juce_dsp
-        juce::juce_gui_extra
-        juce::juce_opengl
-        imgui
-        imgui_color_text_edit
-        ${MANIFOLD_LUA_TARGET}
-        sol2::sol2
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags)
-
-# --- Manifold EQ8 Export Plugin ---
-juce_add_plugin(Manifold_EQ8
-    VERSION 1.0.0
-    PLUGIN_MANUFACTURER_CODE Shmc
-    PLUGIN_CODE Mnq8
-    FORMATS Standalone VST3
+manifold_add_export_plugin(Manifold_EQ8
     PRODUCT_NAME "Manifold EQ8"
-    IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
-    NEEDS_MIDI_OUTPUT FALSE
-    IS_MIDI_EFFECT FALSE
-    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD FALSE)
-
-target_sources(Manifold_EQ8
-    PRIVATE
-        ${MANIFOLD_DSP_SOURCES}
-        ${MANIFOLD_RUNTIME_SOURCES}
-        ${MANIFOLD_CORE_SOURCES})
-
-manifold_target_include_project_and_ableton(Manifold_EQ8)
-
-target_compile_definitions(Manifold_EQ8
-    PUBLIC
-        JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        ASIO_STANDALONE=1
-        SOL_ALL_SAFETIES_ON=1
-        SOL_SAFE_NUMERICS=0
-        MANIFOLD_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-        MANIFOLD_DEFAULT_PROJECT=${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Eq/manifold.project.json5
-        ${MANIFOLD_LINK_PLATFORM_DEFINE})
-
-target_link_libraries(Manifold_EQ8
-    PRIVATE
-        juce::juce_audio_utils
-        juce::juce_audio_formats
-        juce::juce_dsp
-        juce::juce_gui_extra
-        juce::juce_opengl
-        imgui
-        imgui_color_text_edit
-        ${MANIFOLD_LUA_TARGET}
-        sol2::sol2
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags)
-
-add_custom_command(TARGET Manifold_EQ8 POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/manifold/ui
-        $<TARGET_FILE_DIR:Manifold_EQ8>
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/manifold/SystemScripts
-        $<TARGET_FILE_DIR:Manifold_EQ8>/SystemScripts
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts
-        $<TARGET_FILE_DIR:Manifold_EQ8>/UserScripts
-    COMMENT "Copying Lua assets for Manifold EQ8 Standalone"
-)
-
-if(NOT MANIFOLD_PLATFORM_ANDROID)
-add_custom_command(TARGET Manifold_EQ8_VST3 POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/manifold/ui
-        $<TARGET_FILE_DIR:Manifold_EQ8_VST3>
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/manifold/SystemScripts
-        $<TARGET_FILE_DIR:Manifold_EQ8_VST3>/SystemScripts
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts
-        $<TARGET_FILE_DIR:Manifold_EQ8_VST3>/UserScripts
-    COMMENT "Copying Lua assets for Manifold EQ8 VST3"
-)
-endif()
+    PLUGIN_CODE Mnq8
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Eq)
 
 # --- Android Mobile App ---
 if(MANIFOLD_PLATFORM_ANDROID)

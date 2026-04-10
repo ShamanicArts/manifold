@@ -9,8 +9,14 @@
   "plugin": {
     "view": {
       "defaultMode": "split",
-      "compact": { "w": 236, "h": 220 },
-      "split": { "w": 472, "h": 220 }
+      "compact": {
+        "w": 236,
+        "h": 220
+      },
+      "split": {
+        "w": 472,
+        "h": 220
+      }
     },
     "osc": {
       "enabled": true,
@@ -28,7 +34,12 @@
         "hostParamId": "type",
         "hostParamName": "Type",
         "hostParamKind": "choice",
-        "choices": ["Low Pass", "Band Pass", "High Pass", "Notch"],
+        "choices": [
+          "Low Pass",
+          "Band Pass",
+          "High Pass",
+          "Notch"
+        ],
         "description": "Filter type"
       },
       {

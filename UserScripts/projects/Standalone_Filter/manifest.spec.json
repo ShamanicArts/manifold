@@ -1,0 +1,30 @@
+{
+  "name": "Standalone Filter",
+  "version": 1,
+  "description": "Single-module Manifold filter export target",
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+  "plugin": {
+    "view": {
+      "defaultMode": "split",
+      "compact": { "w": 236, "h": 220 },
+      "split": { "w": 472, "h": 220 }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9010
+    },
+    "paramsSpec": {
+      "generator": "filter_single",
+      "publicPathBase": "/plugin/params",
+      "internalPathBase": "/midi/synth/rack/filter/1"
+    }
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "../Main/themes/dark.lua"
+}

@@ -9,8 +9,14 @@
   "plugin": {
     "view": {
       "defaultMode": "split",
-      "compact": { "w": 236, "h": 220 },
-      "split": { "w": 472, "h": 220 }
+      "compact": {
+        "w": 236,
+        "h": 220
+      },
+      "split": {
+        "w": 472,
+        "h": 220
+      }
     },
     "osc": {
       "enabled": true,
@@ -41,7 +47,15 @@
         "hostParamId": "band_1_type",
         "hostParamName": "Band 1 Type",
         "hostParamKind": "choice",
-        "choices": ["Bell", "Low Shelf", "High Shelf", "Low Pass", "High Pass", "Notch", "Band Pass"],
+        "choices": [
+          "Bell",
+          "Low Shelf",
+          "High Shelf",
+          "Low Pass",
+          "High Pass",
+          "Notch",
+          "Band Pass"
+        ],
         "description": "EQ band 1 type"
       },
       {
@@ -103,7 +117,15 @@
         "hostParamId": "band_2_type",
         "hostParamName": "Band 2 Type",
         "hostParamKind": "choice",
-        "choices": ["Bell", "Low Shelf", "High Shelf", "Low Pass", "High Pass", "Notch", "Band Pass"],
+        "choices": [
+          "Bell",
+          "Low Shelf",
+          "High Shelf",
+          "Low Pass",
+          "High Pass",
+          "Notch",
+          "Band Pass"
+        ],
         "description": "EQ band 2 type"
       },
       {
@@ -165,7 +187,15 @@
         "hostParamId": "band_3_type",
         "hostParamName": "Band 3 Type",
         "hostParamKind": "choice",
-        "choices": ["Bell", "Low Shelf", "High Shelf", "Low Pass", "High Pass", "Notch", "Band Pass"],
+        "choices": [
+          "Bell",
+          "Low Shelf",
+          "High Shelf",
+          "Low Pass",
+          "High Pass",
+          "Notch",
+          "Band Pass"
+        ],
         "description": "EQ band 3 type"
       },
       {
@@ -227,7 +257,15 @@
         "hostParamId": "band_4_type",
         "hostParamName": "Band 4 Type",
         "hostParamKind": "choice",
-        "choices": ["Bell", "Low Shelf", "High Shelf", "Low Pass", "High Pass", "Notch", "Band Pass"],
+        "choices": [
+          "Bell",
+          "Low Shelf",
+          "High Shelf",
+          "Low Pass",
+          "High Pass",
+          "Notch",
+          "Band Pass"
+        ],
         "description": "EQ band 4 type"
       },
       {
@@ -289,7 +327,15 @@
         "hostParamId": "band_5_type",
         "hostParamName": "Band 5 Type",
         "hostParamKind": "choice",
-        "choices": ["Bell", "Low Shelf", "High Shelf", "Low Pass", "High Pass", "Notch", "Band Pass"],
+        "choices": [
+          "Bell",
+          "Low Shelf",
+          "High Shelf",
+          "Low Pass",
+          "High Pass",
+          "Notch",
+          "Band Pass"
+        ],
         "description": "EQ band 5 type"
       },
       {
@@ -351,7 +397,15 @@
         "hostParamId": "band_6_type",
         "hostParamName": "Band 6 Type",
         "hostParamKind": "choice",
-        "choices": ["Bell", "Low Shelf", "High Shelf", "Low Pass", "High Pass", "Notch", "Band Pass"],
+        "choices": [
+          "Bell",
+          "Low Shelf",
+          "High Shelf",
+          "Low Pass",
+          "High Pass",
+          "Notch",
+          "Band Pass"
+        ],
         "description": "EQ band 6 type"
       },
       {
@@ -413,7 +467,15 @@
         "hostParamId": "band_7_type",
         "hostParamName": "Band 7 Type",
         "hostParamKind": "choice",
-        "choices": ["Bell", "Low Shelf", "High Shelf", "Low Pass", "High Pass", "Notch", "Band Pass"],
+        "choices": [
+          "Bell",
+          "Low Shelf",
+          "High Shelf",
+          "Low Pass",
+          "High Pass",
+          "Notch",
+          "Band Pass"
+        ],
         "description": "EQ band 7 type"
       },
       {
@@ -475,7 +537,15 @@
         "hostParamId": "band_8_type",
         "hostParamName": "Band 8 Type",
         "hostParamKind": "choice",
-        "choices": ["Bell", "Low Shelf", "High Shelf", "Low Pass", "High Pass", "Notch", "Band Pass"],
+        "choices": [
+          "Bell",
+          "Low Shelf",
+          "High Shelf",
+          "Low Pass",
+          "High Pass",
+          "Notch",
+          "Band Pass"
+        ],
         "description": "EQ band 8 type"
       },
       {
