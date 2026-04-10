@@ -13,8 +13,11 @@ return {
     }
   },
   children = {
-    -- Filter graph (title drawn inside)
+    -- Left visual area: filter graph / XY pad
     { id = "filter_graph", type = "Panel", x = 10, y = 10, w = 216, h = 188, style = { bg = 0xff0d1420, border = 0xff1a1a3a, borderWidth = 1, radius = 0 } },
+    { id = "xy_pad", type = "Panel", x = 10, y = 10, w = 216, h = 188, props = { visible = false }, style = { bg = 0xff0d1420, border = 0xff1a1a3a, borderWidth = 1, radius = 0 } },
+    { id = "visual_mode_dot_graph", type = "Label", x = 104, y = 184, w = 12, h = 12, props = { text = "•", interceptsMouse = true }, style = { colour = 0xffffffff, fontSize = 16 } },
+    { id = "visual_mode_dot_xy", type = "Label", x = 120, y = 184, w = 12, h = 12, props = { text = "•", interceptsMouse = true }, style = { colour = 0xff475569, fontSize = 16 } },
     { id = "filter_type_label", type = "Label", x = 10, y = 10, w = 60, h = 14, props = { text = "Type", visible = false }, style = { colour = 0xff94a3b8, fontSize = 10 } },
     { id = "filter_type_dropdown", type = "Dropdown", x = 10, y = 10, w = 140, h = 22, props = { options = { "SVF Lowpass", "SVF Bandpass", "SVF Highpass", "SVF Notch" }, selected = 1, max_visible_rows = 4, visible = false }, style = { bg = 0xff1e293b, colour = 0xffa78bfa } },
     { id = "cutoff_knob", type = "Slider", x = 10, y = 36, w = 160, h = 20, props = { min = 80, max = 16000, step = 1, value = 3200, label = "Cutoff", compact = true, showValue = true, visible = false }, style = { colour = 0xffa78bfa, bg = 0xff1e1b33, fontSize = 9 } },

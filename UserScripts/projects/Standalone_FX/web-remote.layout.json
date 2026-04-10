@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "name": "Manifold Effect",
+  "root": {
+    "id": "standalone_fx_remote",
+    "type": "panel",
+    "x": 0,
+    "y": 0,
+    "w": 472,
+    "h": 220,
+    "style": {
+      "bg": "#0b1220",
+      "border": "#1f2b4d",
+      "borderWidth": 1,
+      "radius": 0
+    },
+    "children": [
+      {
+        "id": "header_bg",
+        "type": "panel",
+        "x": 0,
+        "y": 0,
+        "w": 472,
+        "h": 12,
+        "style": { "bg": "#111827", "borderWidth": 0, "radius": 0 }
+      },
+      {
+        "id": "header_accent",
+        "type": "panel",
+        "x": 0,
+        "y": 0,
+        "w": 18,
+        "h": 12,
+        "style": { "bg": "#4ade80", "borderWidth": 0, "radius": 0 }
+      },
+      {
+        "id": "title",
+        "type": "label",
+        "x": 24,
+        "y": 0,
+        "w": 180,
+        "h": 12,
+        "text": "Effect",
+        "style": { "color": "#ffffff", "fontSize": 9 }
+      },
+      {
+        "id": "effect_xy",
+        "type": "xy",
+        "x": 10,
+        "y": 22,
+        "w": 226,
+        "h": 188,
+        "label": "Effect XY",
+        "style": {
+          "bg": "#0d1420",
+          "border": "#1a1a3a",
+          "borderWidth": 1,
+          "radius": 0,
+          "accent": "#22d3ee"
+        },
+        "bind": {
+          "xPath": "/plugin/params/p/0",
+          "yPath": "/plugin/params/p/1"
+        }
+      },
+      {
+        "id": "type",
+        "type": "dropdown",
+        "x": 242,
+        "y": 22,
+        "w": 220,
+        "h": 20,
+        "label": "Type",
+        "bind": { "path": "/plugin/params/type" }
+      },
+      {
+        "id": "xy_x_assign",
+        "type": "dropdown",
+        "x": 256,
+        "y": 48,
+        "w": 92,
+        "h": 20,
+        "label": "X",
+        "options": ["Param 1", "Param 2", "Param 3", "Param 4", "Param 5"],
+        "disabled": true
+      },
+      {
+        "id": "xy_y_assign",
+        "type": "dropdown",
+        "x": 368,
+        "y": 48,
+        "w": 94,
+        "h": 20,
+        "label": "Y",
+        "options": ["Param 1", "Param 2", "Param 3", "Param 4", "Param 5"],
+        "disabled": true
+      },
+      {
+        "id": "mix",
+        "type": "slider",
+        "x": 242,
+        "y": 76,
+        "w": 220,
+        "h": 18,
+        "label": "Mix",
+        "bind": { "path": "/plugin/params/mix" }
+      },
+      {
+        "id": "p0",
+        "type": "slider",
+        "x": 242,
+        "y": 98,
+        "w": 220,
+        "h": 18,
+        "label": "Param 1",
+        "bind": { "path": "/plugin/params/p/0" }
+      },
+      {
+        "id": "p1",
+        "type": "slider",
+        "x": 242,
+        "y": 120,
+        "w": 220,
+        "h": 18,
+        "label": "Param 2",
+        "bind": { "path": "/plugin/params/p/1" }
+      },
+      {
+        "id": "p2",
+        "type": "slider",
+        "x": 242,
+        "y": 142,
+        "w": 220,
+        "h": 18,
+        "label": "Param 3",
+        "bind": { "path": "/plugin/params/p/2" }
+      },
+      {
+        "id": "p3",
+        "type": "slider",
+        "x": 242,
+        "y": 164,
+        "w": 220,
+        "h": 18,
+        "label": "Param 4",
+        "bind": { "path": "/plugin/params/p/3" }
+      },
+      {
+        "id": "p4",
+        "type": "slider",
+        "x": 242,
+        "y": 186,
+        "w": 220,
+        "h": 18,
+        "label": "Param 5",
+        "bind": { "path": "/plugin/params/p/4" }
+      }
+    ]
+  }
+}

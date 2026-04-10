@@ -271,10 +271,12 @@ public:
   // Snapshot JSON used by IPC/OSCQuery state queries.
   std::string getStateJson();
   std::string getDiagnosticsJson();
+  std::string runCommand(const std::string &cmd) { return processCommand(cmd); }
 
   void setFrameTimings(FrameTimings *timings) { frameTimings = timings; }
   FrameTimings *getFrameTimings() const { return frameTimings; }
   void setLuaEngine(LuaEngine *engine) { luaEngine = engine; }
+  LuaEngine *getLuaEngine() const { return luaEngine; }
 
   // UI switch / renderer request access
   UISwitchRequest &getUISwitchRequest() { return uiSwitchRequest; }

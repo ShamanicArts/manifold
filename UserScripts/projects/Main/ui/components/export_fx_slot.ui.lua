@@ -1,3 +1,5 @@
+local PaginationDots = require("components.pagination_dots")
+
 return {
   id = "fxRoot",
   type = "Panel",
@@ -14,6 +16,8 @@ return {
   children = {
     { id = "type_dropdown", type = "Dropdown", x = 10, y = 10, w = 160, h = 20, props = { options = { "Chorus", "Phaser", "WaveShaper", "Compressor", "StereoWidener", "Filter", "SVF Filter", "Reverb", "Stereo Delay", "Multitap", "Pitch Shift", "Granulator", "Ring Mod", "Formant", "EQ", "Limiter", "Transient", "Bitcrusher", "Shimmer", "Reverse Delay", "Stutter" }, selected = 1, max_visible_rows = 8, visible = false }, style = { bg = 0xff1e293b, colour = 0xff22d3ee } },
     { id = "xy_pad", type = "Panel", x = 10, y = 10, w = 216, h = 188, style = { bg = 0xff0d1420, border = 0xff1a1a3a, borderWidth = 1, radius = 0 } },
+    { id = "filter_graph", type = "Panel", x = 10, y = 10, w = 216, h = 188, props = { visible = false }, style = { bg = 0xff0d1420, border = 0xff1a1a3a, borderWidth = 1, radius = 0 } },
+    PaginationDots({ id = "visual_mode_dots", dotIds = { "visual_mode_dot_graph", "visual_mode_dot_xy" }, count = 2, orientation = "x", gap = 4, x = 104, y = 184, w = 28, h = 12 }),
     { id = "xy_x_label", type = "Label", x = 10, y = 34, w = 14, h = 16, props = { text = "X", visible = false }, style = { colour = 0xff94a3b8, fontSize = 10 } },
     { id = "xy_x_dropdown", type = "Dropdown", x = 26, y = 34, w = 78, h = 20, props = { options = { "Rate" }, selected = 1, max_visible_rows = 6, visible = false }, style = { bg = 0xff1e293b, colour = 0xff64748b, fontSize = 9 } },
     { id = "xy_y_label", type = "Label", x = 108, y = 34, w = 14, h = 16, props = { text = "Y", visible = false }, style = { colour = 0xff94a3b8, fontSize = 10 } },

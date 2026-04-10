@@ -412,7 +412,7 @@ return {
                                   width = 102,
                                   height = 56,
                                   accentColor = 0xff22c55e,
-                                  name = "QUANT",
+                                  name = "SCALE",
                                   hint = "",
                                   ports = "VOICE  ->  VOICE",
                                   deleteStubId = "paletteScaleQuantizerDeleteStub",

@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "name": "Manifold Filter",
+  "root": {
+    "id": "standalone_filter_remote",
+    "type": "panel",
+    "x": 0,
+    "y": 0,
+    "w": 472,
+    "h": 220,
+    "style": {
+      "bg": "#0b1220",
+      "border": "#1f2b4d",
+      "borderWidth": 1,
+      "radius": 0
+    },
+    "children": [
+      {
+        "id": "header_bg",
+        "type": "panel",
+        "x": 0,
+        "y": 0,
+        "w": 472,
+        "h": 12,
+        "style": { "bg": "#111827", "borderWidth": 0, "radius": 0 }
+      },
+      {
+        "id": "header_accent",
+        "type": "panel",
+        "x": 0,
+        "y": 0,
+        "w": 18,
+        "h": 12,
+        "style": { "bg": "#a78bfa", "borderWidth": 0, "radius": 0 }
+      },
+      {
+        "id": "title",
+        "type": "label",
+        "x": 24,
+        "y": 0,
+        "w": 180,
+        "h": 12,
+        "text": "Filter",
+        "style": { "color": "#ffffff", "fontSize": 9 }
+      },
+      {
+        "id": "filter_graph",
+        "type": "filter-graph",
+        "x": 10,
+        "y": 22,
+        "w": 226,
+        "h": 188,
+        "label": "Filter",
+        "style": {
+          "bg": "#0d1420",
+          "border": "#1a1a3a",
+          "borderWidth": 1,
+          "radius": 0,
+          "accent": "#a78bfa"
+        },
+        "bind": {
+          "cutoffPath": "/plugin/params/cutoff",
+          "resonancePath": "/plugin/params/resonance",
+          "typePath": "/plugin/params/type"
+        }
+      },
+      {
+        "id": "type",
+        "type": "dropdown",
+        "x": 242,
+        "y": 22,
+        "w": 220,
+        "h": 22,
+        "label": "Type",
+        "bind": { "path": "/plugin/params/type" }
+      },
+      {
+        "id": "cutoff",
+        "type": "slider",
+        "x": 242,
+        "y": 54,
+        "w": 220,
+        "h": 20,
+        "label": "Cutoff",
+        "bind": { "path": "/plugin/params/cutoff" }
+      },
+      {
+        "id": "resonance",
+        "type": "slider",
+        "x": 242,
+        "y": 80,
+        "w": 220,
+        "h": 20,
+        "label": "Reso",
+        "bind": { "path": "/plugin/params/resonance" }
+      }
+    ]
+  }
+}

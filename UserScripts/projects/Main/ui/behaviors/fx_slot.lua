@@ -56,14 +56,25 @@ local FX_PARAMS = {
 local MAX_VISIBLE_PARAMS = 5
 local SYNC_INTERVAL = 0.12
 local COMPACT_LAYOUT_CUTOFF_W = 300
+local MIN_FREQ = 80
+local MAX_FREQ = 16000
+local LOG_MIN = math.log(MIN_FREQ)
+local LOG_MAX = math.log(MAX_FREQ)
+local MIN_RESO = 0.1
+local MAX_RESO = 2.0
+local DB_RANGE = 14
 
 local COMPACT_REFERENCE_SIZE = { w = 236, h = 208 }
 local WIDE_REFERENCE_SIZE = { w = 472, h = 208 }
 local COMPACT_RECTS = {
   xy_pad = { x = 10, y = 10, w = 216, h = 188 },
+  filter_graph = { x = 10, y = 10, w = 216, h = 188 },
+  visual_mode_dots = { x = 104, y = 184, w = 28, h = 12 },
 }
 local WIDE_RECTS = {
   xy_pad = { x = 10, y = 10, w = 226, h = 188 },
+  filter_graph = { x = 10, y = 10, w = 226, h = 188 },
+  visual_mode_dots = { x = 109, y = 184, w = 28, h = 12 },
   type_dropdown = { x = 242, y = 10, w = 220, h = 20 },
   xy_x_label = { x = 242, y = 38, w = 12, h = 14 },
   xy_x_dropdown = { x = 256, y = 36, w = 92, h = 20 },
@@ -128,6 +139,18 @@ end
 
 local function setWidgetVisible(widget, visible)
   Layout.setVisible(widget, visible)
+end
+
+local function relayoutManagedSubtree(widget, width, height)
+  local runtime = widget and widget._structuredRuntime or nil
+  local record = widget and widget._structuredRecord or nil
+  if type(runtime) ~= "table" or type(runtime.notifyRecordHostedResized) ~= "function" or type(record) ~= "table" then
+    return false
+  end
+  local ok = pcall(function()
+    runtime:notifyRecordHostedResized(record, width, height)
+  end)
+  return ok == true
 end
 
 local function anchorDropdown(dropdown, root)
@@ -251,6 +274,43 @@ local function paramPath(ctx, index)
   return string.format("%s/p/%d", getParamBase(ctx), math.max(0, math.floor(tonumber(index) or 0)))
 end
 
+local function fxHasFilterGraph(ctx)
+  local fxType = math.max(0, math.floor(tonumber(ctx and ctx.fxType or 0) or 0))
+  return fxType == 5 or fxType == 6
+end
+
+local function filterGraphColour(fxType)
+  if fxType == 6 then
+    return 0xff4ade80
+  end
+  return 0xffa78bfa
+end
+
+local function svfMagnitude(freq, cutoff, resonance)
+  local safeCutoff = math.max(MIN_FREQ, tonumber(cutoff) or 3200)
+  local w = freq / safeCutoff
+  if w < 0.1 then
+    return 1.0
+  end
+  if w > 10 then
+    return 0.0
+  end
+  local w2 = w * w
+  local q = math.max(0.5, (tonumber(resonance) or 0.75) * 2)
+  local denom = (1 - w2) * (1 - w2) + (w / q) * (w / q)
+  if denom < 1e-10 then denom = 1e-10 end
+  return 1.0 / math.sqrt(denom)
+end
+
+local function normalizedCutoffToHz(value)
+  local t = clamp(value, 0.0, 1.0)
+  return math.exp(LOG_MIN + t * (LOG_MAX - LOG_MIN))
+end
+
+local function normalizedResoToValue(value)
+  return MIN_RESO + clamp(value, 0.0, 1.0) * (MAX_RESO - MIN_RESO)
+end
+
 local function buildXYDisplay(ctx, w, h)
   local display = {}
   local xVal = ctx.xyXDisplay or ctx.xyX or 0.5
@@ -325,6 +385,192 @@ local function refreshPad(ctx)
   pad.node:repaint()
 end
 
+local function buildFilterDisplay(ctx, w, h)
+  local display = {}
+  local cutoffNorm = clamp(ctx.xyXDisplay or ctx.xyX or 0.5, 0.0, 1.0)
+  local resonanceNorm = clamp(ctx.xyYDisplay or ctx.xyY or 0.5, 0.0, 1.0)
+  local cutoff = normalizedCutoffToHz(cutoffNorm)
+  local resonance = normalizedResoToValue(resonanceNorm)
+  local dragging = ctx.dragging
+  local col = filterGraphColour(ctx.fxType)
+  local colDim = (0x20 << 24) | (col & 0x00ffffff)
+  local colMid = (0x60 << 24) | (col & 0x00ffffff)
+
+  display[#display + 1] = {
+    cmd = "drawText", x = 4, y = 2, w = w - 8, h = 16,
+    text = ctx.fxName or "FILTER", color = col, fontSize = 11, align = "left", valign = "top",
+  }
+
+  local freqMarks = { 100, 500, 1000, 5000, 10000 }
+  for _, f in ipairs(freqMarks) do
+    local x = math.floor((math.log(f) - LOG_MIN) / (LOG_MAX - LOG_MIN) * w)
+    display[#display + 1] = {
+      cmd = "drawLine", x1 = x, y1 = 0, x2 = x, y2 = h,
+      thickness = 1, color = 0xff1a1a3a,
+    }
+  end
+
+  local dbMarks = { -24, -12, 0, 12, 24 }
+  for _, db in ipairs(dbMarks) do
+    local y = math.floor(h * 0.5 - (db / DB_RANGE) * h * 0.45)
+    if y >= 0 and y <= h then
+      display[#display + 1] = {
+        cmd = "drawLine", x1 = 0, y1 = y, x2 = w, y2 = y,
+        thickness = 1, color = (db == 0) and 0xff1f2b4d or 0xff1a1a3a,
+      }
+    end
+  end
+
+  local cutoffX = math.floor(cutoffNorm * w)
+  display[#display + 1] = {
+    cmd = "drawLine", x1 = cutoffX, y1 = 0, x2 = cutoffX, y2 = h,
+    thickness = 1, color = colMid,
+  }
+
+  local numPoints = math.max(60, math.min(w, 200))
+  local prevX, prevY
+  local zeroY = math.floor(h * 0.5)
+  for i = 0, numPoints do
+    local t = i / numPoints
+    local freq = math.exp(LOG_MIN + t * (LOG_MAX - LOG_MIN))
+    local mag = svfMagnitude(freq, cutoff, resonance)
+    local db = 20 * math.log(mag + 1e-10) / math.log(10)
+    db = math.max(-DB_RANGE, math.min(DB_RANGE, db))
+    local x = math.floor(t * w)
+    local y = math.floor(h * 0.5 - (db / DB_RANGE) * h * 0.45)
+    y = math.max(1, math.min(h - 1, y))
+
+    if i > 0 then
+      display[#display + 1] = {
+        cmd = "drawLine", x1 = x, y1 = y, x2 = x, y2 = zeroY,
+        thickness = math.max(1, math.ceil(w / numPoints)), color = colDim,
+      }
+    end
+    if prevX then
+      display[#display + 1] = {
+        cmd = "drawLine", x1 = prevX, y1 = prevY, x2 = x, y2 = y,
+        thickness = 2, color = col,
+      }
+    end
+    prevX, prevY = x, y
+  end
+
+  local peakMag = svfMagnitude(cutoff, cutoff, resonance)
+  local peakDb = 20 * math.log(peakMag + 1e-10) / math.log(10)
+  peakDb = math.max(-DB_RANGE, math.min(DB_RANGE, peakDb))
+  local peakY = math.floor(h * 0.5 - (peakDb / DB_RANGE) * h * 0.45)
+  local ptR = dragging and 7 or 5
+  if dragging then
+    display[#display + 1] = {
+      cmd = "fillRoundedRect",
+      x = cutoffX - ptR - 3, y = peakY - ptR - 3,
+      w = (ptR + 3) * 2, h = (ptR + 3) * 2,
+      radius = ptR + 3,
+      color = (0x44 << 24) | (col & 0x00ffffff),
+    }
+  end
+  display[#display + 1] = {
+    cmd = "fillRoundedRect",
+    x = cutoffX - ptR, y = peakY - ptR,
+    w = ptR * 2, h = ptR * 2,
+    radius = ptR,
+    color = dragging and col or 0xFFFFFFFF,
+  }
+
+  return display
+end
+
+local function refreshFilterGraph(ctx)
+  local graph = ctx.widgets and ctx.widgets.filter_graph
+  if not graph or not graph.node then return end
+  local w = graph.node:getWidth()
+  local h = graph.node:getHeight()
+  if w <= 0 or h <= 0 then return end
+  graph.node:setDisplayList(buildFilterDisplay(ctx, w, h))
+  graph.node:repaint()
+end
+
+local function resolveVisualDotWidgets(ctx)
+  local widgets = ctx.widgets or {}
+  local graphDot = widgets.visual_mode_dot_graph
+  local xyDot = widgets.visual_mode_dot_xy
+  local container = widgets.visual_mode_dots
+  local children = container and container.children or nil
+
+  if (graphDot == nil or xyDot == nil or graphDot == xyDot) and type(children) == "table" then
+    graphDot = children.visual_mode_dot_graph or children["visual_mode_dot_graph"] or graphDot
+    xyDot = children.visual_mode_dot_xy or children["visual_mode_dot_xy"] or xyDot
+  end
+
+  return graphDot, xyDot
+end
+
+local function updateVisualDots(ctx)
+  local hasGraph = fxHasFilterGraph(ctx)
+  local graphDot, xyDot = resolveVisualDotWidgets(ctx)
+  local dots = {
+    { widget = graphDot, mode = 1 },
+    { widget = xyDot, mode = 2 },
+  }
+  for _, entry in ipairs(dots) do
+    local dot = entry.widget
+    if dot then
+      local isActive = hasGraph and (ctx.visualMode or 2) == entry.mode
+      local newColour = isActive and 0xffffffff or 0xff475569
+      if dot.setVisible then
+        dot:setVisible(hasGraph)
+      elseif dot.node and dot.node.setVisible then
+        dot.node:setVisible(hasGraph)
+      end
+      if dot.setColour then
+        dot:setColour(newColour)
+      else
+        dot._colour = newColour
+        if dot._syncRetained then dot:_syncRetained() end
+        if dot.node and dot.node.repaint then dot.node:repaint() end
+      end
+    end
+  end
+end
+
+local function syncVisualMode(ctx)
+  local widgets = ctx.widgets or {}
+  local hasGraph = fxHasFilterGraph(ctx)
+  if hasGraph then
+    local mode = tonumber(ctx.visualMode) or 1
+    if mode ~= 1 and mode ~= 2 then mode = 1 end
+    ctx.visualMode = mode
+  else
+    ctx.visualMode = 2
+  end
+  Layout.setVisible(widgets.filter_graph, hasGraph and ctx.visualMode == 1)
+  Layout.setVisible(widgets.xy_pad, (not hasGraph) or ctx.visualMode == 2)
+  Layout.setVisible(widgets.visual_mode_dots, hasGraph)
+  updateVisualDots(ctx)
+end
+
+local function bindVisualDots(ctx)
+  local graphDot, xyDot = resolveVisualDotWidgets(ctx)
+  local dots = {
+    { widget = graphDot, mode = 1 },
+    { widget = xyDot, mode = 2 },
+  }
+  for _, entry in ipairs(dots) do
+    local widget = entry.widget
+    if widget and widget.node then
+      widget.node:setInterceptsMouse(true, true)
+      local mode = entry.mode
+      widget.node:setOnClick(function()
+        if not fxHasFilterGraph(ctx) then return end
+        ctx.visualMode = mode
+        syncVisualMode(ctx)
+        refreshPad(ctx)
+        refreshFilterGraph(ctx)
+      end)
+    end
+  end
+end
+
 local function populateDropdown(dropdown, names, selectedIdx)
   if not dropdown then return end
   if dropdown.setOptions then dropdown:setOptions(names) end
@@ -381,9 +627,17 @@ local function syncFromParams(ctx)
   local mixEffectiveClamped = clamp(mixEffective, 0.0, 1.0)
 
   if ctx.fxType ~= fxType and not anyDropdownOpen then
+    local hadGraph = fxHasFilterGraph(ctx)
     ctx.fxType = fxType
     ctx.fxName = FX_TYPE_NAMES[fxType] or "FX"
+    ctx.accentColor = fxHasFilterGraph(ctx) and filterGraphColour(ctx.fxType) or 0xff22d3ee
     syncAllDropdowns(ctx)
+    if fxHasFilterGraph(ctx) and not hadGraph then
+      ctx.visualMode = 1
+    elseif not fxHasFilterGraph(ctx) then
+      ctx.visualMode = 2
+    end
+    ctx._hadFilterGraph = fxHasFilterGraph(ctx)
     if typeDrop and typeDrop.setSelected then
       typeDrop:setSelected(fxType + 1)
     end
@@ -446,6 +700,7 @@ local function bindParamControls(ctx)
       writeParam(mixPath(ctx), clamp(v, 0.0, 1.0))
       syncFromParams(ctx)
       refreshPad(ctx)
+      refreshFilterGraph(ctx)
     end
   end
 
@@ -457,6 +712,7 @@ local function bindParamControls(ctx)
         writeParam(paramPath(ctx, i - 1), normalized)
         syncFromParams(ctx)
         refreshPad(ctx)
+        refreshFilterGraph(ctx)
       end
     end
   end
@@ -469,6 +725,7 @@ local function bindParamControls(ctx)
     ctx.xyX = xVal
     ctx.xyY = yVal
     syncFromParams(ctx)
+    refreshFilterGraph(ctx)
   end
 end
 
@@ -485,6 +742,7 @@ local function setupInteraction(ctx)
       ctx.xyY = math.max(0, math.min(1, 1 - my / h))
       if ctx._onXYChanged then ctx._onXYChanged(ctx.xyX, ctx.xyY) end
       refreshPad(ctx)
+      refreshFilterGraph(ctx)
     end
 
     if pad.node.setOnMouseDown then
@@ -494,7 +752,7 @@ local function setupInteraction(ctx)
       pad.node:setOnMouseDrag(function(mx, my) if ctx.dragging then applyXY(mx, my) end end)
     end
     if pad.node.setOnMouseUp then
-      pad.node:setOnMouseUp(function() ctx.dragging = false; refreshPad(ctx) end)
+      pad.node:setOnMouseUp(function() ctx.dragging = false; refreshPad(ctx); refreshFilterGraph(ctx) end)
     end
   end
 
@@ -510,6 +768,7 @@ local function setupInteraction(ctx)
       ctx.xyX = value
       ctx.xyXDisplay = valueEffective
       refreshPad(ctx)
+      refreshFilterGraph(ctx)
     end
   end
 
@@ -525,7 +784,48 @@ local function setupInteraction(ctx)
       ctx.xyY = value
       ctx.xyYDisplay = valueEffective
       refreshPad(ctx)
+      refreshFilterGraph(ctx)
     end
+  end
+end
+
+local function setupFilterGraphInteraction(ctx)
+  local graph = ctx.widgets and ctx.widgets.filter_graph
+  if not graph or not graph.node then return end
+  if graph.node.setInterceptsMouse then graph.node:setInterceptsMouse(true, true) end
+
+  local function applyGraph(mx, my)
+    local w = graph.node:getWidth()
+    local h = graph.node:getHeight()
+    if w <= 0 or h <= 0 then return end
+    local xVal = math.max(0, math.min(1, mx / w))
+    local yVal = math.max(0, math.min(1, 1 - my / h))
+    if ctx._onXYChanged then ctx._onXYChanged(xVal, yVal) end
+    ctx.xyX = xVal
+    ctx.xyY = yVal
+    refreshPad(ctx)
+    refreshFilterGraph(ctx)
+  end
+
+  if graph.node.setOnMouseDown then
+    graph.node:setOnMouseDown(function(mx, my)
+      if not fxHasFilterGraph(ctx) then return end
+      ctx.dragging = true
+      applyGraph(mx, my)
+    end)
+  end
+  if graph.node.setOnMouseDrag then
+    graph.node:setOnMouseDrag(function(mx, my)
+      if not (ctx.dragging and fxHasFilterGraph(ctx)) then return end
+      applyGraph(mx, my)
+    end)
+  end
+  if graph.node.setOnMouseUp then
+    graph.node:setOnMouseUp(function()
+      ctx.dragging = false
+      refreshPad(ctx)
+      refreshFilterGraph(ctx)
+    end)
   end
 end
 
@@ -541,20 +841,36 @@ function FxSlotBehavior.init(ctx)
   ctx.xyXName = "Rate"
   ctx.xyYName = "Depth"
   ctx.dragging = false
+  ctx.visualMode = 2
   ctx.accentColor = 0xff22d3ee
   ctx.paramNames = getParamNames(ctx.fxType)
   ctx._lastSyncTime = 0
   setupInteraction(ctx)
+  setupFilterGraphInteraction(ctx)
+  bindVisualDots(ctx)
   bindParamControls(ctx)
   syncFromParams(ctx)
-  ctx._refreshPad = function() refreshPad(ctx) end
-  ctx._syncFromParams = function() if syncFromParams(ctx) then refreshPad(ctx) else refreshPad(ctx) end end
+  syncVisualMode(ctx)
+  ctx._refreshPad = function()
+    syncVisualMode(ctx)
+    refreshPad(ctx)
+    refreshFilterGraph(ctx)
+  end
+  ctx._syncFromParams = function()
+    syncFromParams(ctx)
+    syncVisualMode(ctx)
+    refreshPad(ctx)
+    refreshFilterGraph(ctx)
+  end
   refreshPad(ctx)
+  refreshFilterGraph(ctx)
 end
 
 function FxSlotBehavior.onTypeChanged(ctx)
   local names = getParamNames(ctx.fxType)
+  local hadGraph = ctx._hadFilterGraph == true
   ctx.fxName = FX_TYPE_NAMES[ctx.fxType] or "FX"
+  ctx.accentColor = fxHasFilterGraph(ctx) and filterGraphColour(ctx.fxType) or 0xff22d3ee
   if ctx.xyXIdx > #names then ctx.xyXIdx = 1 end
   if ctx.xyYIdx > #names then ctx.xyYIdx = math.min(2, #names) end
   if ctx.xyYIdx < 1 then ctx.xyYIdx = 1 end
@@ -563,7 +879,15 @@ function FxSlotBehavior.onTypeChanged(ctx)
   ctx.xyY = clamp(readParam(paramPath(ctx, (ctx.xyYIdx or 2) - 1), ctx.xyY or 0.5), 0.0, 1.0)
   ctx.xyXDisplay = ctx.xyX
   ctx.xyYDisplay = ctx.xyY
+  if fxHasFilterGraph(ctx) and not hadGraph then
+    ctx.visualMode = 1
+  elseif not fxHasFilterGraph(ctx) then
+    ctx.visualMode = 2
+  end
+  ctx._hadFilterGraph = fxHasFilterGraph(ctx)
+  syncVisualMode(ctx)
   refreshPad(ctx)
+  refreshFilterGraph(ctx)
 end
 
 function FxSlotBehavior.resized(ctx, w, h)
@@ -581,7 +905,11 @@ function FxSlotBehavior.resized(ctx, w, h)
   local paramWidgets = getParamWidgets(ctx)
   local names = getParamNames(ctx.fxType)
 
-  Layout.applyScaledRect(queue, widgets.xy_pad, (mode == "compact") and COMPACT_RECTS.xy_pad or WIDE_RECTS.xy_pad, scaleX, scaleY)
+  local rects = (mode == "compact") and COMPACT_RECTS or WIDE_RECTS
+
+  Layout.applyScaledRect(queue, widgets.xy_pad, rects.xy_pad, scaleX, scaleY)
+  Layout.applyScaledRect(queue, widgets.filter_graph, rects.filter_graph, scaleX, scaleY)
+  Layout.applyScaledRect(queue, widgets.visual_mode_dots, rects.visual_mode_dots, scaleX, scaleY)
 
   if mode == "compact" then
     Layout.setVisibleQueued(queue, widgets.type_dropdown, false)
@@ -631,10 +959,19 @@ function FxSlotBehavior.resized(ctx, w, h)
   end
 
   Layout.flushWidgetRefreshes(queue)
+
+  if widgets.visual_mode_dots and type(rects.visual_mode_dots) == "table" then
+    local _, _, dotsW, dotsH = Layout.scaledRect(rects.visual_mode_dots, scaleX, scaleY)
+    relayoutManagedSubtree(widgets.visual_mode_dots, dotsW, dotsH)
+  end
+
   anchorDropdown(widgets.type_dropdown, ctx.root)
   anchorDropdown(widgets.xy_x_dropdown, ctx.root)
   anchorDropdown(widgets.xy_y_dropdown, ctx.root)
+  bindVisualDots(ctx)
+  syncVisualMode(ctx)
   refreshPad(ctx)
+  refreshFilterGraph(ctx)
 end
 
 function FxSlotBehavior.update(ctx)
@@ -645,14 +982,19 @@ function FxSlotBehavior.update(ctx)
   if now == 0 or now - (ctx._lastSyncTime or 0) >= SYNC_INTERVAL then
     ctx._lastSyncTime = now
     if syncFromParams(ctx) then
+      syncVisualMode(ctx)
       refreshPad(ctx)
+      refreshFilterGraph(ctx)
     end
   end
 end
 
 function FxSlotBehavior.repaint(ctx)
+  bindVisualDots(ctx)
   syncFromParams(ctx)
+  syncVisualMode(ctx)
   refreshPad(ctx)
+  refreshFilterGraph(ctx)
 end
 
 return FxSlotBehavior

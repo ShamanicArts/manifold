@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manifold Remote Control</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Manifold Remote</h1>
+          <p class="muted">OSCQuery web remote for Manifold plugins</p>
+        </div>
+        <form id="connectForm" class="connect-form">
+          <label>
+            Host
+            <input id="hostInput" name="host" type="text" value="127.0.0.1" autocomplete="off" />
+          </label>
+          <label>
+            Port
+            <input id="portInput" name="port" type="number" min="1" max="65535" value="9011" />
+          </label>
+          <button type="submit">Connect</button>
+          <button id="refreshButton" type="button" class="secondary">Refresh</button>
+        </form>
+      </header>
+
+      <section class="statusbar">
+        <div id="statusText">Disconnected</div>
+        <div id="connectionMeta" class="muted"></div>
+      </section>
+
+      <main class="workspace">
+        <aside class="sidebar">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Parameters</h2>
+              <input id="searchInput" type="search" placeholder="Search paths" />
+            </div>
+            <div id="endpointList" class="endpoint-list empty-state">Connect to an OSCQuery target.</div>
+          </div>
+        </aside>
+
+        <section class="main-panel">
+          <div class="tabbar">
+            <button class="tab-button active" data-tab="generic">Generic</button>
+            <button class="tab-button" data-tab="layout">Layout</button>
+            <button class="tab-button" data-tab="custom">Custom Surface</button>
+          </div>
+
+          <section id="genericTab" class="tab-panel active">
+            <div id="genericGroups" class="groups-grid empty-state">No endpoint data yet.</div>
+          </section>
+
+          <section id="layoutTab" class="tab-panel">
+            <div class="panel-header inline-header">
+              <h2>Layout Mirror</h2>
+              <button id="reloadLayoutButton" type="button" class="secondary">Reload Layout</button>
+            </div>
+            <div id="layoutRoot" class="layout-root empty-state">This target does not expose <code>/ui/layout</code> yet.</div>
+          </section>
+
+          <section id="customTab" class="tab-panel">
+            <div class="panel-header inline-header">
+              <h2>Custom Surface</h2>
+              <div class="row-actions">
+                <button id="saveSurfaceButton" type="button" class="secondary">Save</button>
+                <button id="clearSurfaceButton" type="button" class="danger">Clear</button>
+              </div>
+            </div>
+            <div id="customSurface" class="custom-surface empty-state">Add parameters from the left browser to build a custom control page.</div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
