@@ -46,6 +46,36 @@ So the correct architecture is:
 - **dedicated layout metadata for native-ish rendering**
 - **generic fallback when layout metadata is unavailable**
 
+## First-pass architecture corrections
+
+These points became clearer after the first real browser remote pass.
+
+### Local service is the normal deployment shape
+The browser remote is typically served by a **local service** associated with the running Manifold target or plugin type.
+It is not useful to think of the browser as a completely standalone OSC client floating in space.
+
+### Host should default from the page origin
+For normal use, the target host should default to:
+- `window.location.hostname`
+
+If the user opened the remote through a LAN IP, Tailscale IP, or DNS name, the remote should use that same host by default.
+A manual host override can still exist for advanced/debug cases, but it should not be the primary workflow.
+
+### Separate origins per plugin type are acceptable
+We do **not** require one giant shared origin for all Manifold remotes.
+A per-plugin-type or per-remote origin is a valid shape as long as each page has a clean path to its local service and target discovery.
+
+### Browser -> local service -> OSC is a valid architecture
+A browser can absolutely drive OSC cleanly when a local service relays browser actions into:
+- OSC packets
+- direct control writes
+- or another plugin-side control API
+
+The real browser limitation is **raw UDP from the page itself**, not browser communication with a local service.
+Open Stage Control style relay/proxy behavior is a valid architectural reference here.
+
+That means the transport question is about choosing a clean browser-facing service API, not pretending browser-driven OSC is impossible.
+
 ---
 
 ## Existing Protocol Behavior
@@ -111,6 +141,78 @@ A remote web client should not assume messages look like:
 ```
 
 That is **not** the current implementation.
+
+## Current write path
+The first-pass browser client currently writes through:
+- `POST /api/command`
+- command bodies such as `SET /plugin/params/cutoff 1200`
+
+This works as a bootstrap, but it should be treated as a **transitional browser-facing API**, not the final shape.
+
+## Recommended write-path evolution
+Preferred long-term write shapes are:
+
+1. **OSC-over-WebSocket**
+   - browser sends binary OSC packets to the local service
+   - local service/plugin parses and dispatches them
+   - browser receives binary OSC packets back for live updates
+
+2. **Structured browser messages relayed by the local service**
+   - HTTP or WebSocket messages like:
+   ```json
+   {"path":"/plugin/params/cutoff","value":1200}
+   ```
+   - local service translates them into OSC or direct parameter writes
+
+The important point is that the local service can do the relay cleanly. We should not bake the stringly `SET ...` command bridge into the long-term protocol unless it proves to be the best shape after real use.
+
+## Addressing, identity, and context
+These are separate concerns and should stay separate.
+
+### Addressing
+How the browser reaches the target or local service.
+For normal operation this should derive from the page origin host, with manual override only when needed.
+
+### Instance identity
+Each remotely controllable plugin instance should have a stable identifier such as:
+- `instanceId`
+- `pluginType`
+- optional human-readable `displayName`
+
+### Context metadata
+When available, the target should also expose optional context such as:
+- host application name
+- project name
+- track path
+- device path
+- slot name/index
+
+Example:
+```json
+{
+  "instanceId": "abc123",
+  "pluginType": "fx",
+  "displayName": "Manifold FX",
+  "context": {
+    "hostApp": "Bitwig Studio",
+    "projectName": null,
+    "trackPath": null,
+    "devicePath": null,
+    "slotName": null
+  }
+}
+```
+
+This metadata is optional and host-dependent, but the schema should exist now so we have a stable place to surface it later.
+
+### Multi-instance routing
+If one local service exposes multiple plugin instances behind a single endpoint, it should provide instance routing through:
+- an instance list
+- an instance ID
+- and/or path prefixes
+
+If each instance or plugin type instead owns its own origin/port, that is also acceptable.
+The protocol should support both deployment shapes.
 
 ---
 
@@ -346,6 +448,21 @@ A major feature of the web remote should be the ability to create **custom remot
 This is more valuable than just cloning the native layout.
 It turns remote control into a real product feature instead of a tech demo.
 
+## Current first-pass status
+The current "custom surface" implementation is **not** this full feature yet.
+Right now it is closer to:
+- a saved flat list of chosen controls
+- browser-local persistence
+- simple control-type overrides
+
+It is **not yet** a true authored surface system with:
+- spatial layout/canvas editing
+- robust interaction design
+- shareable/project-backed persistence
+- a stable custom-page schema
+
+The spec should describe the real target, while being honest that the current first pass is only a stub toward it.
+
 ---
 
 ## Suggested Delivery Phases
@@ -354,13 +471,15 @@ It turns remote control into a real product feature instead of a tech demo.
 Ship first.
 
 ### Scope
-- connect to host:port
+- connect to the local service for the current remote origin
+- default target host from the page URL host
 - fetch OSCQuery tree
 - fetch host info
+- fetch instance metadata/context when available
 - decode WebSocket OSC packets
 - render generic grouped controls
-- allow control writes
-- save/load custom browser-side layouts
+- allow control writes through the local service relay
+- save/load lightweight browser-side custom pages
 
 ### Outcome
 Immediate utility for every plugin with no layout endpoint work.
@@ -421,8 +540,21 @@ Example:
 - project id
 - theme hints
 - module category hints
+- stable `instanceId`
+- `pluginType`
+- human-readable `displayName`
 
-## 4. Optional: expose grouped parameter metadata
+## 4. Optional: expose host/context metadata
+When available, expose:
+- host application name
+- project name
+- track path
+- device path
+- slot/index labels
+
+This must be optional and best-effort, because host support varies, but the schema should exist.
+
+## 5. Optional: expose grouped parameter metadata
 This can reduce generic-layout ugliness.
 
 Example:
@@ -443,17 +575,23 @@ Example:
 ## Browser App Architecture
 
 ## Transport layer
-- HTTP for discovery
+- browser page is typically served by a local Manifold remote service
+- default target host from the current page origin host
+- separate origins per plugin type/remote are acceptable
+- HTTP for discovery and metadata
 - WebSocket for live updates
 - OSC decoder for binary incoming messages
+- preferred long-term writes are either OSC-over-WebSocket or structured service messages relayed into OSC/direct control writes
 
 ## Data model
 - host info
+- instance identity metadata
+- optional host/context metadata
 - endpoint registry
 - current value store
 - subscriptions
 - layout metadata (optional)
-- saved custom pages
+- saved custom pages / authored remote pages
 
 ## Renderer layer
 - generic inspector renderer
@@ -512,8 +650,11 @@ That is actually interesting.
 The right plan is:
 
 1. **Ship a generic OSCQuery-based remote first**
-2. **Add a proper layout metadata endpoint**
-3. **Do not rely on raw Lua source fetches from the browser**
-4. **Support custom user-authored remote pages as a first-class feature**
+2. **Default host/addressing from the page origin, not manual re-entry as the primary path**
+3. **Treat browser -> local service -> OSC as a valid first-class architecture**
+4. **Add a proper layout metadata endpoint**
+5. **Add stable instance identity and optional host/context metadata**
+6. **Do not rely on raw Lua source fetches from the browser**
+7. **Support real custom user-authored remote pages as a first-class feature, not just a saved flat control list**
 
 That gets us something useful fast without painting ourselves into a stupid corner.
