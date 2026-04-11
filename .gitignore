@@ -12,3 +12,6 @@ __pycache__/
 
 # Local runtime settings (keep example tracked)
 .manifold.settings.json
+
+
+/home/shamanic/dev/my-plugin/web/remote-control/node_modules
