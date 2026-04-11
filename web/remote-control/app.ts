@@ -329,6 +329,21 @@ function decodeOscPacket(buffer) {
   return { path, args };
 }
 
+function buildProxyHttpUrl(target, path) {
+  const url = new URL("/__oscq/http", window.location.origin);
+  url.searchParams.set("host", target.host);
+  url.searchParams.set("port", String(target.port));
+  url.searchParams.set("path", path);
+  return url.toString();
+}
+
+function buildProxyCommandUrl(target) {
+  const url = new URL("/__oscq/command", window.location.origin);
+  url.searchParams.set("host", target.host);
+  url.searchParams.set("port", String(target.port));
+  return url.toString();
+}
+
 async function fetchJson(url, options = undefined) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -346,12 +361,12 @@ async function fetchJson(url, options = undefined) {
 }
 
 async function queryValue(target, path) {
-  const data = await fetchJson(`${target.baseUrl}/osc${path}`);
+  const data = await fetchJson(buildProxyHttpUrl(target, `/osc${path}`));
   return data?.VALUE;
 }
 
 async function sendCommand(target, command) {
-  const data = await fetchJson(`${target.baseUrl}/api/command`, {
+  const data = await fetchJson(buildProxyCommandUrl(target), {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
     body: command,
@@ -380,8 +395,11 @@ async function hydrateCurrentValues(target) {
     while (index < readable.length) {
       const current = readable[index++];
       try {
+        if (target.interactingPaths.has(current.path)) continue;
         const value = await queryValue(target, current.path);
-        if (value !== undefined) setLiveValue(target, current.path, value);
+        if (value !== undefined && !target.interactingPaths.has(current.path)) {
+          setLiveValue(target, current.path, value);
+        }
       } catch (error) {
         console.warn("value query failed", current.path, error);
       }
@@ -392,6 +410,11 @@ async function hydrateCurrentValues(target) {
 }
 
 function closeSocket(target) {
+  if (target?.pollTimer) {
+    clearInterval(target.pollTimer);
+    target.pollTimer = 0;
+  }
+  target.pollInFlight = false;
   if (!target?.ws) return;
   try {
     target.ws.close();
@@ -402,7 +425,7 @@ function closeSocket(target) {
 }
 
 function renderIfActive(target) {
-  if (activeTarget() === target) renderActiveViews();
+  if (activeTarget() === target) scheduleRender(target);
 }
 
 function beginInteraction(target, paths) {
@@ -415,24 +438,55 @@ function endInteraction(target, paths) {
   paths.forEach((path) => {
     if (path) target.interactingPaths.delete(path);
   });
-  scheduleRender(target);
+  if ((target.interactingPaths.size === 0 && (target.uiHoldCount || 0) === 0) || target.pendingRender) {
+    scheduleRender(target);
+  }
+}
+
+function beginUiHold(target) {
+  if (!target) return;
+  target.uiHoldCount = (target.uiHoldCount || 0) + 1;
+}
+
+function endUiHold(target) {
+  if (!target) return;
+  target.uiHoldCount = Math.max(0, (target.uiHoldCount || 0) - 1);
+  if (target.uiHoldCount === 0 && target.pendingRender) {
+    scheduleRender(target);
+  }
 }
 
 function scheduleRender(target) {
-  if (activeTarget() !== target) return;
+  if (target?.interactingPaths?.size > 0 || (target?.uiHoldCount || 0) > 0) {
+    target.pendingRender = true;
+    return;
+  }
+  if (activeTarget() !== target) {
+    target.pendingRender = true;
+    return;
+  }
   if (target.renderFrame) return;
+  target.pendingRender = false;
   target.renderFrame = requestAnimationFrame(() => {
     target.renderFrame = 0;
+    target.pendingRender = false;
     renderActiveViews();
   });
 }
 
 function connectWebSocket(target) {
   closeSocket(target);
+  console.log("[remote] opening ws", {
+    id: target.id,
+    wsUrl: target.wsUrl,
+    pageOrigin: window.location.origin,
+    pageProtocol: window.location.protocol,
+  });
   const socket = new WebSocket(target.wsUrl);
   socket.binaryType = "arraybuffer";
 
   socket.addEventListener("open", () => {
+    console.log("[remote] ws open", { id: target.id, wsUrl: target.wsUrl });
     setTargetStatus(target, `Connected to ${target.id}`, "ok");
     target.endpoints.forEach((endpoint) => {
       if (isReadable(endpoint)) {
@@ -448,22 +502,36 @@ function connectWebSocket(target) {
     }
     const decoded = decodeOscPacket(event.data);
     if (!decoded) return;
+    if (target.interactingPaths.has(decoded.path)) return;
     setLiveValue(target, decoded.path, decoded.args.length <= 1 ? decoded.args[0] : decoded.args);
     if (decoded.path === "/plugin/params/type") {
       scheduleRender(target);
-    } else if (!target.interactingPaths.has(decoded.path)) {
-      scheduleRender(target);
     }
   });
 
-  socket.addEventListener("close", () => {
+  socket.addEventListener("close", (event) => {
+    console.warn("[remote] ws close", {
+      id: target.id,
+      wsUrl: target.wsUrl,
+      code: event.code,
+      reason: event.reason,
+      wasClean: event.wasClean,
+    });
     if (target.ws === socket) {
       target.ws = null;
-      setTargetStatus(target, `Socket closed for ${target.id}`);
+      const details = event.reason ? `${event.code} ${event.reason}` : `${event.code}`;
+      setTargetStatus(target, `Socket closed for ${target.id} (${details})`, event.code === 1000 || event.code === 1005 ? "" : "error");
     }
   });
 
-  socket.addEventListener("error", () => {
+  socket.addEventListener("error", (event) => {
+    console.error("[remote] ws error", {
+      id: target.id,
+      wsUrl: target.wsUrl,
+      pageOrigin: window.location.origin,
+      pageProtocol: window.location.protocol,
+      event,
+    });
     setTargetStatus(target, `Socket error on ${target.wsUrl}`, "error");
   });
 
@@ -533,6 +601,19 @@ function brightenHex(hex, amount) {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
+function configureDirectManipulation(element) {
+  if (!element) return;
+  element.style.touchAction = "none";
+  element.style.userSelect = "none";
+  element.style.webkitUserSelect = "none";
+  element.style.webkitTouchCallout = "none";
+  element.style.webkitTapHighlightColor = "transparent";
+  const preventDefault = (event) => event.preventDefault();
+  element.addEventListener("dragstart", preventDefault);
+  element.addEventListener("selectstart", preventDefault);
+  element.addEventListener("contextmenu", preventDefault);
+}
+
 function createTarget(host, port) {
   return {
     id: targetId(host, port),
@@ -540,6 +621,8 @@ function createTarget(host, port) {
     port,
     baseUrl: `http://${host}:${port}`,
     wsUrl: "",
+    pollTimer: 0,
+    pollInFlight: false,
     hostInfo: null,
     uiMeta: null,
     paramMeta: new Map(),
@@ -559,6 +642,8 @@ function createTarget(host, port) {
     name: `${host}:${port}`,
     accent: "#38bdf8",
     renderFrame: 0,
+    pendingRender: false,
+    uiHoldCount: 0,
     layoutResizeObserver: null,
     interactingPaths: new Set(),
     liveBindings: new Map(),
@@ -669,7 +754,7 @@ function applySearchFilter(target) {
 
 async function loadLayout(target, forceResetState = false) {
   try {
-    const layout = await fetchJson(`${target.baseUrl}/ui/layout`);
+    const layout = await fetchJson(buildProxyHttpUrl(target, `/ui/layout`));
     if (!layout || layout.error) throw new Error(layout?.error || "layout unavailable");
     target.layout = layout;
     if (forceResetState) target.layoutState = {};
@@ -683,12 +768,39 @@ async function loadLayout(target, forceResetState = false) {
   }
 }
 
+function startPolling(target) {
+  if (target.pollTimer) clearInterval(target.pollTimer);
+  const tick = async () => {
+    if (target.pollInFlight) return;
+    if (target.interactingPaths.size > 0 || (target.uiHoldCount || 0) > 0) return;
+    target.pollInFlight = true;
+    try {
+      await hydrateCurrentValues(target);
+    } catch (error) {
+      console.warn("poll failed", target.id, error);
+    } finally {
+      target.pollInFlight = false;
+    }
+  };
+  void tick();
+  target.pollTimer = setInterval(() => {
+    void tick();
+  }, 1500);
+}
+
 async function connectTarget(host, port) {
   const id = targetId(host, port);
   if (state.targets.has(id)) {
     switchActiveTarget(id);
     return;
   }
+
+  console.log("[remote] connectTarget:start", {
+    host,
+    port,
+    pageOrigin: window.location.origin,
+    pageProtocol: window.location.protocol,
+  });
 
   const target = createTarget(host, port);
   loadSurface(target);
@@ -700,9 +812,9 @@ async function connectTarget(host, port) {
 
   try {
     const [hostInfo, tree, uiMeta] = await Promise.all([
-      fetchJson(`${target.baseUrl}/?HOST_INFO`),
-      fetchJson(`${target.baseUrl}/`),
-      fetchJson(`${target.baseUrl}/ui/meta`).catch(() => null),
+      fetchJson(buildProxyHttpUrl(target, `/?HOST_INFO`)),
+      fetchJson(buildProxyHttpUrl(target, `/`)),
+      fetchJson(buildProxyHttpUrl(target, `/ui/meta`)).catch(() => null),
     ]);
 
     target.hostInfo = hostInfo;
@@ -710,6 +822,12 @@ async function connectTarget(host, port) {
     target.paramMeta = buildParamMetaMap(uiMeta);
     target.tree = tree;
     target.wsUrl = `ws://${target.host}:${Number(hostInfo?.WS_PORT || target.port)}`;
+    console.log("[remote] connectTarget:resolved", {
+      id: target.id,
+      baseUrl: target.baseUrl,
+      wsUrl: target.wsUrl,
+      hostInfo,
+    });
     target.endpoints = mergeMetadataIntoEndpoints(target, flattenOscTree(tree)).sort((a, b) => a.path.localeCompare(b.path));
     target.endpointMap = new Map(target.endpoints.map((endpoint) => [endpoint.path, endpoint]));
     target.values = new Map();
@@ -723,8 +841,8 @@ async function connectTarget(host, port) {
       loadLayout(target, true),
     ]);
 
-    connectWebSocket(target);
-    setTargetStatus(target, `Connected to ${target.id}`, "ok");
+    startPolling(target);
+    setTargetStatus(target, `Connected to ${target.id} via Vite proxy`, "ok");
     renderTargetNav();
     renderIfActive(target);
   } catch (error) {
@@ -736,7 +854,13 @@ async function connectTarget(host, port) {
     setStatus(`Connection failed: ${error.message}`, "error");
     renderTargetNav();
     renderActiveViews();
-    console.error(error);
+    console.error("[remote] connectTarget:failed", {
+      id,
+      baseUrl: target.baseUrl,
+      pageOrigin: window.location.origin,
+      pageProtocol: window.location.protocol,
+      error,
+    });
   }
 }
 
@@ -917,6 +1041,7 @@ function buildFilterGraphControl(target, bindConfig, style = {}, bounds = {}) {
   canvas.width = width;
   canvas.height = height;
   panel.append(canvas);
+  configureDirectManipulation(canvas);
 
   const accent = style.accent || "#a78bfa";
   const minFreq = 80;
@@ -963,18 +1088,23 @@ function buildFilterGraphControl(target, bindConfig, style = {}, bounds = {}) {
   };
 
   const draw = () => {
-    const typeValue = toNumber(target.values.get(bindConfig.typePath), 0);
-    const cutoff = toNumber(target.values.get(bindConfig.cutoffPath), 3200);
-    const resonance = toNumber(target.values.get(bindConfig.resonancePath), 0.75);
+    const typeValue = Math.round(toNumber(target.values.get(bindConfig.typePath), 0));
+    const cutoff = clamp(toNumber(target.values.get(bindConfig.cutoffPath), 3200), minFreq, maxFreq);
+    const resonance = clamp(toNumber(target.values.get(bindConfig.resonancePath), 0.75), minReso, maxReso);
 
     ctx2d.clearRect(0, 0, width, height);
     ctx2d.fillStyle = style.bg || "#0d1420";
     ctx2d.fillRect(0, 0, width, height);
-    ctx2d.strokeStyle = "#1a1a3a";
-    ctx2d.lineWidth = 1;
+
+    const colDim = `rgba(167, 139, 250, 0.125)`;
+    const colMid = `rgba(167, 139, 250, 0.38)`;
+    const freqToCanvasX = (freq) => (Math.log(freq) - logMin) / (logMax - logMin) * width;
+    const zeroY = Math.floor(height * 0.5);
 
     [100, 500, 1000, 5000, 10000].forEach((f) => {
-      const x = (Math.log(f) - logMin) / (logMax - logMin) * width;
+      const x = freqToCanvasX(f);
+      ctx2d.strokeStyle = "#1a1a3a";
+      ctx2d.lineWidth = 1;
       ctx2d.beginPath();
       ctx2d.moveTo(x, 0);
       ctx2d.lineTo(x, height);
@@ -982,40 +1112,83 @@ function buildFilterGraphControl(target, bindConfig, style = {}, bounds = {}) {
     });
 
     [-24, -12, 0, 12, 24].forEach((db) => {
-      const y = height * 0.5 - (db / dbRange) * height * 0.45;
-      ctx2d.strokeStyle = db === 0 ? "#1f2b4d" : "#1a1a3a";
-      ctx2d.beginPath();
-      ctx2d.moveTo(0, y);
-      ctx2d.lineTo(width, y);
-      ctx2d.stroke();
+      const y = Math.floor(height * 0.5 - (db / dbRange) * height * 0.45);
+      if (y >= 0 && y <= height) {
+        ctx2d.strokeStyle = db === 0 ? "#1f2b4d" : "#1a1a3a";
+        ctx2d.lineWidth = 1;
+        ctx2d.beginPath();
+        ctx2d.moveTo(0, y);
+        ctx2d.lineTo(width, y);
+        ctx2d.stroke();
+      }
     });
 
-    const cutoffX = (Math.log(Math.max(minFreq, Math.min(maxFreq, cutoff))) - logMin) / (logMax - logMin) * width;
-    ctx2d.strokeStyle = accent;
-    ctx2d.globalAlpha = 0.35;
+    const cutoffX = freqToCanvasX(cutoff);
+    ctx2d.strokeStyle = colMid;
+    ctx2d.lineWidth = 1;
     ctx2d.beginPath();
     ctx2d.moveTo(cutoffX, 0);
     ctx2d.lineTo(cutoffX, height);
     ctx2d.stroke();
-    ctx2d.globalAlpha = 1;
 
-    ctx2d.strokeStyle = accent;
-    ctx2d.lineWidth = 2;
-    ctx2d.beginPath();
-    for (let i = 0; i <= 180; i += 1) {
-      const t = i / 180;
-      const freq = Math.exp(logMin + t * (logMax - logMin));
-      const mag = svfMagnitude(freq, cutoff, clamp(resonance, minReso, maxReso), Math.round(typeValue));
-      const db = clamp((20 * Math.log10(mag + 1e-10)), -dbRange, dbRange);
-      const x = t * width;
-      const y = height * 0.5 - (db / dbRange) * height * 0.45;
-      if (i === 0) ctx2d.moveTo(x, y);
-      else ctx2d.lineTo(x, y);
+    const numPoints = Math.max(60, Math.min(width, 200));
+    let prevX = null;
+    let prevY = null;
+
+    for (let i = 0; i <= numPoints; i += 1) {
+      const t = i / numPoints;
+      let freq = Math.exp(logMin + t * (logMax - logMin));
+      freq = Math.max(cutoff * 0.25, Math.min(cutoff * 4, freq));
+      const mag = svfMagnitude(freq, cutoff, resonance, typeValue);
+      let db = 20 * Math.log10(mag + 1e-10);
+      db = clamp(db, -dbRange, dbRange);
+
+      const x = Math.floor(t * width);
+      let y = Math.floor(height * 0.5 - (db / dbRange) * height * 0.45);
+      y = clamp(y, 1, height - 1);
+
+      if (i > 0) {
+        ctx2d.strokeStyle = colDim;
+        ctx2d.lineWidth = Math.max(1, Math.ceil(width / numPoints));
+        ctx2d.beginPath();
+        ctx2d.moveTo(x, y);
+        ctx2d.lineTo(x, zeroY);
+        ctx2d.stroke();
+      }
+
+      if (prevX != null) {
+        ctx2d.strokeStyle = accent;
+        ctx2d.lineWidth = 2;
+        ctx2d.beginPath();
+        ctx2d.moveTo(prevX, prevY);
+        ctx2d.lineTo(x, y);
+        ctx2d.stroke();
+      }
+
+      prevX = x;
+      prevY = y;
     }
-    ctx2d.stroke();
+
+    const peakMag = svfMagnitude(cutoff, cutoff, resonance, typeValue);
+    const peakDb = clamp(20 * Math.log10(peakMag + 1e-10), -dbRange, dbRange);
+    const peakY = Math.floor(height * 0.5 - (peakDb / dbRange) * height * 0.45);
+    const ptR = dragging ? 7 : 5;
+
+    if (dragging) {
+      ctx2d.fillStyle = `rgba(167, 139, 250, 0.27)`;
+      ctx2d.beginPath();
+      ctx2d.arc(cutoffX, peakY, ptR + 3, 0, Math.PI * 2);
+      ctx2d.fill();
+    }
+
+    ctx2d.fillStyle = dragging ? accent : "#ffffff";
+    ctx2d.beginPath();
+    ctx2d.arc(cutoffX, peakY, ptR, 0, Math.PI * 2);
+    ctx2d.fill();
   };
 
   let dragging = false;
+  let activePointerId = null;
   let queued = null;
   let sending = false;
   const flush = async () => {
@@ -1036,7 +1209,12 @@ function buildFilterGraphControl(target, bindConfig, style = {}, bounds = {}) {
     sending = false;
   };
 
+  registerLiveBinding(target, bindConfig.typePath, draw);
+  registerLiveBinding(target, bindConfig.cutoffPath, draw);
+  registerLiveBinding(target, bindConfig.resonancePath, draw);
+
   const applyPoint = (event) => {
+    event.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const mx = (event.clientX - rect.left) / rect.width * width;
     const my = (event.clientY - rect.top) / rect.height * height;
@@ -1050,20 +1228,28 @@ function buildFilterGraphControl(target, bindConfig, style = {}, bounds = {}) {
   };
 
   canvas.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    if (activePointerId != null) return;
+    activePointerId = event.pointerId;
     dragging = true;
     beginInteraction(target, [bindConfig.cutoffPath, bindConfig.resonancePath]);
     canvas.setPointerCapture(event.pointerId);
     applyPoint(event);
   });
   canvas.addEventListener("pointermove", (event) => {
-    if (dragging) applyPoint(event);
+    if (!dragging || event.pointerId !== activePointerId) return;
+    applyPoint(event);
   });
-  const endDrag = () => {
+  const endDrag = (event) => {
+    if (event?.pointerId != null && event.pointerId !== activePointerId) return;
+    event?.preventDefault?.();
     dragging = false;
+    activePointerId = null;
     endInteraction(target, [bindConfig.cutoffPath, bindConfig.resonancePath]);
   };
   canvas.addEventListener("pointerup", endDrag);
   canvas.addEventListener("pointercancel", endDrag);
+  canvas.addEventListener("lostpointercapture", endDrag);
 
   draw();
   return panel;
@@ -1087,6 +1273,7 @@ function buildEqGraphControl(target, bindConfig, style = {}, bounds = {}) {
   canvas.width = width;
   canvas.height = height;
   panel.append(canvas);
+  configureDirectManipulation(canvas);
 
   const ctx2d = canvas.getContext("2d");
   const minFreq = 20;
@@ -1310,7 +1497,23 @@ function buildEqGraphControl(target, bindConfig, style = {}, bounds = {}) {
       ctx2d.stroke();
     });
 
+    const glowColor = (0x24 << 24) | (parseInt(style.accent || "#22d3ee", 16) & 0x00ffffff);
     ctx2d.strokeStyle = style.accent || "#22d3ee";
+    ctx2d.lineWidth = 4;
+    ctx2d.beginPath();
+    for (let x = 0; x < width; x += 1) {
+      const freq = Math.exp(logMin + (x / width) * (logMax - logMin));
+      let mag = 1;
+      bands.forEach((band) => {
+        if (band.enabled) mag *= magnitudeForCoeffs(makeCoeffs(band), freq);
+      });
+      const db = clamp(20 * Math.log10(Math.max(mag, 1e-9)), -18, 18);
+      const y = gainToY(db);
+      if (x === 0) ctx2d.moveTo(x, y);
+      else ctx2d.lineTo(x, y);
+    }
+    ctx2d.stroke();
+
     ctx2d.lineWidth = 2;
     ctx2d.beginPath();
     for (let x = 0; x < width; x += 1) {
@@ -1330,19 +1533,38 @@ function buildEqGraphControl(target, bindConfig, style = {}, bounds = {}) {
       if (!band.enabled) return;
       const point = pointForBand(band);
       const selected = idx + 1 === selectedBand;
+      const r = selected ? 7 : 5;
+      const rg = selected ? 9 : 7;
+      const rw = selected ? 6 : 4;
+      const pointGlowColor = (0x40 << 24) | (parseInt(bandColors[idx], 16) & 0x00ffffff);
+      ctx2d.fillStyle = pointGlowColor;
+      ctx2d.beginPath();
+      ctx2d.arc(point.x, point.y, rg, 0, Math.PI * 2);
+      ctx2d.fill();
       ctx2d.fillStyle = bandColors[idx];
       ctx2d.beginPath();
-      ctx2d.arc(point.x, point.y, selected ? 7 : 5, 0, Math.PI * 2);
+      ctx2d.arc(point.x, point.y, r, 0, Math.PI * 2);
       ctx2d.fill();
       ctx2d.strokeStyle = selected ? "#ffffff" : "#0f172a";
       ctx2d.lineWidth = selected ? 2 : 1;
+      ctx2d.beginPath();
+      ctx2d.arc(point.x, point.y, rw, 0, Math.PI * 2);
       ctx2d.stroke();
     });
   };
 
+  for (let i = 1; i <= 8; i += 1) {
+    registerLiveBinding(target, `${bandBase}/${i}/enabled`, draw);
+    registerLiveBinding(target, `${bandBase}/${i}/type`, draw);
+    registerLiveBinding(target, `${bandBase}/${i}/freq`, draw);
+    registerLiveBinding(target, `${bandBase}/${i}/gain`, draw);
+    registerLiveBinding(target, `${bandBase}/${i}/q`, draw);
+  }
+
   let queuedBand = null;
   let sending = false;
   let dragging = false;
+  let activePointerId = null;
   const flushBand = async () => {
     if (sending || queuedBand == null) return;
     sending = true;
@@ -1390,6 +1612,9 @@ function buildEqGraphControl(target, bindConfig, style = {}, bounds = {}) {
   };
 
   canvas.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    if (activePointerId != null) return;
+    activePointerId = event.pointerId;
     const point = eventPoint(event);
     const bands = getBands();
     let hit = hitTestBand(bands, point.x, point.y);
@@ -1416,16 +1641,20 @@ function buildEqGraphControl(target, bindConfig, style = {}, bounds = {}) {
   });
 
   canvas.addEventListener("pointermove", (event) => {
-    if (!dragging) return;
+    if (!dragging || event.pointerId !== activePointerId) return;
+    event.preventDefault();
     const selectedBand = Number(getLayoutStateValue(target, selectedBandStateKey, 1));
     if (!selectedBand) return;
     const point = eventPoint(event);
     updateBandFromPosition(selectedBand, point.x, point.y);
   });
 
-  const endDrag = () => {
+  const endDrag = (event) => {
+    if (event?.pointerId != null && event.pointerId !== activePointerId) return;
+    event?.preventDefault?.();
     const selectedBand = Number(getLayoutStateValue(target, selectedBandStateKey, 1));
     dragging = false;
+    activePointerId = null;
     endInteraction(target, [
       `${bandBase}/${selectedBand}/enabled`,
       `${bandBase}/${selectedBand}/type`,
@@ -1436,6 +1665,7 @@ function buildEqGraphControl(target, bindConfig, style = {}, bounds = {}) {
   };
   canvas.addEventListener("pointerup", endDrag);
   canvas.addEventListener("pointercancel", endDrag);
+  canvas.addEventListener("lostpointercapture", endDrag);
 
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();
@@ -1468,13 +1698,18 @@ function buildEqGraphControl(target, bindConfig, style = {}, bounds = {}) {
 
 function buildLayoutXyControl(target, bind, style = {}, bounds = {}) {
   const root = makeElement("div", "layout-xy");
-  const handle = makeElement("div", "layout-xy-handle");
-  const info = makeElement("div", "layout-xy-info");
-  const xRow = makeElement("div", "layout-xy-row");
-  const yRow = makeElement("div", "layout-xy-row");
-  root.append(handle, info);
-  info.append(xRow, yRow);
+  const canvas = document.createElement("canvas");
+  const width = Math.max(128, Math.floor(bounds.width || 256));
+  const height = Math.max(128, Math.floor(bounds.height || 256));
+  canvas.width = width;
+  canvas.height = height;
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+  root.append(canvas);
+  configureDirectManipulation(root);
+  configureDirectManipulation(canvas);
 
+  const ctx2d = canvas.getContext("2d");
   const resolveBinding = () => {
     if (isFxTarget(target) && String(bind.xPath || "").startsWith("/plugin/params/p/") && String(bind.yPath || "").startsWith("/plugin/params/p/")) {
       return getFxAssignState(target);
@@ -1493,6 +1728,8 @@ function buildLayoutXyControl(target, bind, style = {}, bounds = {}) {
   const xRange = getRange(xEndpoint);
   const yRange = getRange(yEndpoint);
   const accent = style.accent || "#22d3ee";
+  const bgColour = style.bg || "#0d1420";
+  const gridColour = style.gridColour || "#1a1a3a";
   root.style.setProperty("--xy-accent", accent);
   if (style.bg) root.style.background = style.bg;
   if (style.border) root.style.borderColor = style.border;
@@ -1500,43 +1737,121 @@ function buildLayoutXyControl(target, bind, style = {}, bounds = {}) {
   if (bounds.width > 0) root.style.width = `${bounds.width}px`;
   if (bounds.height > 0) root.style.height = `${bounds.height}px`;
 
-  const updateHandle = () => {
+  const drawPad = () => {
     const resolved = resolveBinding();
     const xValue = toNumber(target.values.get(resolved.xPath), xRange.min);
     const yValue = toNumber(target.values.get(resolved.yPath), yRange.min);
     const xNorm = xRange.max === xRange.min ? 0 : (xValue - xRange.min) / (xRange.max - xRange.min);
     const yNorm = yRange.max === yRange.min ? 0 : (yValue - yRange.min) / (yRange.max - yRange.min);
-    handle.style.left = `${clamp(xNorm, 0, 1) * 100}%`;
-    handle.style.top = `${(1 - clamp(yNorm, 0, 1)) * 100}%`;
-    xRow.textContent = `X · ${resolved.xName} · ${formatEndpointValue(target.endpointMap.get(resolved.xPath) || xEndpoint, xValue)}`;
-    yRow.textContent = `Y · ${resolved.yName} · ${formatEndpointValue(target.endpointMap.get(resolved.yPath) || yEndpoint, yValue)}`;
+    const px = clamp(xNorm, 0, 1) * width;
+    const py = height - clamp(yNorm, 0, 1) * height;
+
+    ctx2d.clearRect(0, 0, width, height);
+
+    // Background with grid
+    ctx2d.fillStyle = bgColour;
+    ctx2d.fillRect(0, 0, width, height);
+
+    // Grid lines
+    ctx2d.strokeStyle = gridColour;
+    ctx2d.lineWidth = 1;
+    for (let i = 1; i <= 3; i++) {
+      const gx = (width / 4) * i;
+      ctx2d.beginPath();
+      ctx2d.moveTo(gx, 0);
+      ctx2d.lineTo(gx, height);
+      ctx2d.stroke();
+    }
+    for (let i = 1; i <= 3; i++) {
+      const gy = (height / 4) * i;
+      ctx2d.beginPath();
+      ctx2d.moveTo(0, gy);
+      ctx2d.lineTo(width, gy);
+      ctx2d.stroke();
+    }
+
+    // Crosshair at center
+    const cx = width / 2;
+    const cy = height / 2;
+    ctx2d.strokeStyle = accent;
+    ctx2d.globalAlpha = 0.35;
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx, 0);
+    ctx2d.lineTo(cx, height);
+    ctx2d.stroke();
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, cy);
+    ctx2d.lineTo(width, cy);
+    ctx2d.stroke();
+    ctx2d.globalAlpha = 1;
+
+    // Crosshair at position
+    const posColour = accent;
+    ctx2d.strokeStyle = posColour;
+    ctx2d.globalAlpha = 0.35;
+    ctx2d.beginPath();
+    ctx2d.moveTo(px, 0);
+    ctx2d.lineTo(px, height);
+    ctx2d.stroke();
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, py);
+    ctx2d.lineTo(width, py);
+    ctx2d.stroke();
+    ctx2d.globalAlpha = 1;
+
+    // Filled quadrant
+    const dimColour = (0x18 << 24) | (parseInt(accent, 16) & 0x00ffffff);
+    ctx2d.fillStyle = dimColour;
+    ctx2d.fillRect(0, py, px, height - py);
+
+    // Glow effect (3-layer)
+    for (let i = 3; i >= 1; i--) {
+      const glowSize = 8 + i * 6;
+      const alpha = 60 - i * 18;
+      ctx2d.fillStyle = `${(alpha << 24) | (parseInt(accent, 16) & 0x00ffffff)}`;
+      ctx2d.beginPath();
+      ctx2d.arc(px, py, glowSize / 2, 0, Math.PI * 2);
+      ctx2d.fill();
+    }
+
+    // Outer ring
+    ctx2d.fillStyle = "#33ffffff";
+    ctx2d.beginPath();
+    ctx2d.arc(px, py, 7, 0, Math.PI * 2);
+    ctx2d.fill();
+
+    // Main handle
+    ctx2d.fillStyle = "#ffffff";
+    ctx2d.beginPath();
+    ctx2d.arc(px, py, 5, 0, Math.PI * 2);
+    ctx2d.fill();
+
+    // Inner dot
+    ctx2d.fillStyle = accent;
+    ctx2d.beginPath();
+    ctx2d.arc(px, py, 2, 0, Math.PI * 2);
+    ctx2d.fill();
+
+    // Value labels
+    ctx2d.fillStyle = "#cbd5e1";
+    ctx2d.font = "9px Inter, sans-serif";
+    ctx2d.textAlign = "left";
+    ctx2d.fillText(`X: ${Math.round(xNorm * 100)}%`, 4, height - 4);
+    ctx2d.textAlign = "right";
+    ctx2d.fillText(`Y: ${Math.round(yNorm * 100)}%`, width - 4, 12);
   };
 
-  registerLiveBinding(target, binding.xPath, updateHandle);
-  registerLiveBinding(target, binding.yPath, updateHandle);
+  drawPad();
+
+  registerLiveBinding(target, binding.xPath, drawPad);
+  registerLiveBinding(target, binding.yPath, drawPad);
 
   if (isFxTarget(target)) {
-    registerLiveBinding(target, "/plugin/params/type", updateHandle);
+    registerLiveBinding(target, "/plugin/params/type", drawPad);
   }
 
-  const currentBindingPaths = () => {
-    const resolved = resolveBinding();
-    return [resolved.xPath, resolved.yPath];
-  };
-
-  let activeInteractionPaths = [];
-
-  const beginCurrentInteraction = () => {
-    activeInteractionPaths = currentBindingPaths();
-    beginInteraction(target, activeInteractionPaths);
-  };
-
-  const endCurrentInteraction = () => {
-    endInteraction(target, activeInteractionPaths);
-    activeInteractionPaths = [];
-  };
-
   let dragging = false;
+  let activePointerId = null;
   let queued = null;
   let sending = false;
   const flush = async () => {
@@ -1558,40 +1873,36 @@ function buildLayoutXyControl(target, bind, style = {}, bounds = {}) {
   };
 
   const applyPointer = (event) => {
-    const resolved = resolveBinding();
-    const liveXEndpoint = target.endpointMap.get(resolved.xPath) || xEndpoint;
-    const liveYEndpoint = target.endpointMap.get(resolved.yPath) || yEndpoint;
-    const liveXRange = getRange(liveXEndpoint);
-    const liveYRange = getRange(liveYEndpoint);
+    event.preventDefault();
     const rect = root.getBoundingClientRect();
     const px = clamp((event.clientX - rect.left) / rect.width, 0, 1);
     const py = clamp((event.clientY - rect.top) / rect.height, 0, 1);
-    const nextX = liveXRange.min + px * (liveXRange.max - liveXRange.min);
-    const nextY = liveYRange.min + (1 - py) * (liveYRange.max - liveYRange.min);
-    setLiveValue(target, resolved.xPath, nextX);
-    setLiveValue(target, resolved.yPath, nextY);
-    queued = { xPath: resolved.xPath, yPath: resolved.yPath, x: nextX, y: nextY, xEndpoint: liveXEndpoint, yEndpoint: liveYEndpoint };
-    updateHandle();
+    const xValue = xRange.min + px * (xRange.max - xRange.min);
+    const yValue = yRange.min + (1 - py) * (yRange.max - yRange.min);
+    setLiveValue(target, binding.xPath, xValue);
+    setLiveValue(target, binding.yPath, yValue);
+    queued = { xPath: binding.xPath, yPath: binding.yPath, x: xValue, y: yValue, xEndpoint, yEndpoint };
+    drawPad();
     void flush();
   };
 
   root.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    if (activePointerId != null) return;
+    activePointerId = event.pointerId;
     dragging = true;
-    beginCurrentInteraction();
+    beginInteraction(target, [binding.xPath, binding.yPath]);
     root.setPointerCapture(event.pointerId);
     applyPointer(event);
   });
   root.addEventListener("pointermove", (event) => {
-    if (dragging) applyPointer(event);
+    if (!dragging || event.pointerId !== activePointerId) return;
+    applyPointer(event);
   });
-  const endDragXy = () => {
-    dragging = false;
-    endCurrentInteraction();
-  };
-  root.addEventListener("pointerup", endDragXy);
-  root.addEventListener("pointercancel", endDragXy);
+  root.addEventListener("pointerup", (event) => { if (event.pointerId !== activePointerId) return; event.preventDefault(); dragging = false; activePointerId = null; endInteraction(target, [binding.xPath, binding.yPath]); });
+  root.addEventListener("pointercancel", (event) => { if (event.pointerId !== activePointerId) return; event.preventDefault(); dragging = false; activePointerId = null; endInteraction(target, [binding.xPath, binding.yPath]); });
+  root.addEventListener("lostpointercapture", () => { dragging = false; activePointerId = null; endInteraction(target, [binding.xPath, binding.yPath]); });
 
-  updateHandle();
   return root;
 }
 
@@ -1740,28 +2051,44 @@ function buildLuaDropdown(target, config) {
   if (config.disabled) root.style.opacity = "0.6";
 
   let popup = null;
+  let popupHeld = false;
   const closePopup = () => {
     if (!popup) return;
     popup.remove();
     popup = null;
     arrow.textContent = "▼";
     root.parentElement?.parentElement?.classList.remove("open-popup");
+    if (popupHeld) {
+      popupHeld = false;
+      endUiHold(target);
+    }
   };
 
   root.addEventListener("click", async (event) => {
     event.stopPropagation();
     if (config.disabled) return;
+    if (popup && popup.contains(event.target)) {
+      return;
+    }
     if (popup) {
       closePopup();
       return;
     }
     arrow.textContent = "▲";
     root.parentElement?.parentElement?.classList.add("open-popup");
+    if (!popupHeld) {
+      popupHeld = true;
+      beginUiHold(target);
+    }
     popup = makeElement("div", "lua-dropdown-popup");
     const options = config.getOptions();
     options.forEach((option) => {
       const row = makeElement("div", `lua-dropdown-option ${option.selected ? "selected" : ""}`, option.label);
+      row.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+      });
       row.addEventListener("click", async (e) => {
+        e.preventDefault();
         e.stopPropagation();
         try {
           await config.onSelect(option.value);
@@ -1901,6 +2228,7 @@ function buildControl(target, endpoint, overrideWidgetType = null, options = {})
 
     const wrap = makeElement("div", "xy-wrap");
     const pad = makeElement("div", "xy-pad");
+    configureDirectManipulation(pad);
     const handle = makeElement("div", "xy-handle");
     const xNorm = xRange.max === xRange.min ? 0 : (xValue - xRange.min) / (xRange.max - xRange.min);
     const yNorm = yRange.max === yRange.min ? 0 : (yValue - yRange.min) / (yRange.max - yRange.min);
@@ -1909,6 +2237,7 @@ function buildControl(target, endpoint, overrideWidgetType = null, options = {})
     pad.append(handle);
 
     const commitPointer = async (event) => {
+      event.preventDefault();
       if (!yEndpoint) return;
       const rect = pad.getBoundingClientRect();
       const px = clamp((event.clientX - rect.left) / rect.width, 0, 1);
@@ -1930,16 +2259,23 @@ function buildControl(target, endpoint, overrideWidgetType = null, options = {})
     };
 
     let dragging = false;
+    let activePointerId = null;
     pad.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      if (activePointerId != null) return;
+      activePointerId = event.pointerId;
       dragging = true;
+      beginInteraction(target, [path, yPath]);
       pad.setPointerCapture(event.pointerId);
       commitPointer(event);
     });
     pad.addEventListener("pointermove", (event) => {
-      if (dragging) commitPointer(event);
+      if (!dragging || event.pointerId !== activePointerId) return;
+      commitPointer(event);
     });
-    pad.addEventListener("pointerup", () => { dragging = false; });
-    pad.addEventListener("pointercancel", () => { dragging = false; });
+    pad.addEventListener("pointerup", (event) => { if (event.pointerId !== activePointerId) return; event.preventDefault(); dragging = false; activePointerId = null; endInteraction(target, [path, yPath]); });
+    pad.addEventListener("pointercancel", (event) => { if (event.pointerId !== activePointerId) return; event.preventDefault(); dragging = false; activePointerId = null; endInteraction(target, [path, yPath]); });
+    pad.addEventListener("lostpointercapture", () => { dragging = false; activePointerId = null; endInteraction(target, [path, yPath]); });
 
     const values = makeElement("div", "xy-values");
     values.append(

@@ -495,6 +495,11 @@ code {
   width: 100%;
   height: 100%;
   cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .xy-wrap {
@@ -513,6 +518,11 @@ code {
     linear-gradient(90deg, transparent 33.33%, rgba(148, 163, 184, 0.13) 33.33%, rgba(148, 163, 184, 0.13) 34.33%, transparent 34.33%, transparent 66.66%, rgba(148, 163, 184, 0.13) 66.66%, rgba(148, 163, 184, 0.13) 67.66%, transparent 67.66%),
     linear-gradient(transparent 33.33%, rgba(148, 163, 184, 0.13) 33.33%, rgba(148, 163, 184, 0.13) 34.33%, transparent 34.33%, transparent 66.66%, rgba(148, 163, 184, 0.13) 66.66%, rgba(148, 163, 184, 0.13) 67.66%, transparent 67.66%),
     #08101d;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .xy-handle {
@@ -801,6 +811,8 @@ code {
   padding: 2px 0;
   scrollbar-width: thin;
   scrollbar-color: #334155 transparent;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .lua-dropdown-option {
@@ -833,6 +845,11 @@ code {
     #08101d;
   overflow: hidden;
   cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .layout-xy-handle {
