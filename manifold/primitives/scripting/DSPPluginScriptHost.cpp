@@ -21,6 +21,52 @@ using dsp_host::LoadSession;
 using dsp_host::isRegistryOwnedCategory;
 using dsp_host::sanitizePath;
 
+namespace {
+
+bool useMinimalMidiEffectBindings(const juce::File* scriptFile) {
+  if (scriptFile == nullptr) {
+    return false;
+  }
+
+  const auto projectRoot = scriptFile->getParentDirectory().getParentDirectory();
+  const auto manifestFile = projectRoot.getChildFile("manifold.project.json5");
+  if (!manifestFile.existsAsFile()) {
+    return false;
+  }
+
+  const auto json = juce::JSON::parse(manifestFile);
+  if (!json.isObject()) {
+    return false;
+  }
+
+  auto* root = json.getDynamicObject();
+  if (root == nullptr || !root->hasProperty("plugin")) {
+    return false;
+  }
+
+  auto pluginVar = root->getProperty("plugin");
+  if (!pluginVar.isObject()) {
+    return false;
+  }
+
+  auto* plugin = pluginVar.getDynamicObject();
+  if (plugin == nullptr) {
+    return false;
+  }
+
+  if (plugin->hasProperty("midiEffect") && static_cast<bool>(plugin->getProperty("midiEffect"))) {
+    return true;
+  }
+
+  if (plugin->hasProperty("runtimeFamily")) {
+    return plugin->getProperty("runtimeFamily").toString().trim().toLowerCase() == "midi_effect";
+  }
+
+  return false;
+}
+
+} // namespace
+
 bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
                                          const juce::File *scriptFile,
                                          const std::string *scriptCode) {
@@ -50,7 +96,6 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   }
   // Limit retired states but destroy them safely
   while (impl->retiredLuaStates.size() > 4) {
-    // Collect the oldest state with explicit GC to ensure proper cleanup order
     sol::state& oldState = impl->retiredLuaStates.front();
     if (oldState.lua_state() != nullptr) {
       lua_gc(oldState.lua_state(), LUA_GCCOLLECT, 0);
@@ -122,18 +167,25 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   dsp_host::PrimitiveNodeResolverFn toPrimitiveNodeFn = dsp_host::toPrimitiveNode;
 
   auto ctx = sol::state_view(newLuaState).create_table();
-  dsp_host::registerCoreBindings(session, graph, ctx, trackNodeFn,
-                                 mapInternalToExternalFn);
-  dsp_host::registerSynthBindings(session, graph, ctx, trackNodeFn);
-  dsp_host::registerFxBindings(session, graph, ctx, trackNodeFn);
+  const bool minimalMidiEffectBindings = useMinimalMidiEffectBindings(scriptFile);
+  if (!minimalMidiEffectBindings) {
+    dsp_host::registerCoreBindings(session, graph, ctx, trackNodeFn,
+                                   mapInternalToExternalFn);
+    dsp_host::registerSynthBindings(session, graph, ctx, trackNodeFn);
+    dsp_host::registerFxBindings(session, graph, ctx, trackNodeFn);
+    dsp_host::registerLoopLayerBundle(session, graph, ctx, trackNodeFn,
+                                      mapInternalToExternalFn);
+  }
   dsp_host::registerParamsApi(session, ctx, mapInternalToExternalFn,
                               mapExternalToInternalFn);
-  dsp_host::registerLoopLayerBundle(session, graph, ctx, trackNodeFn,
-                                    mapInternalToExternalFn);
 
-  dsp_host::registerHostApiAndGlobals(session, impl->processor, graph, ctx,
-                                      mapInternalToExternalFn,
-                                      toPrimitiveNodeFn);
+  if (minimalMidiEffectBindings) {
+    dsp_host::registerMidiApi(session, impl->processor, ctx);
+  } else {
+    dsp_host::registerHostApiAndGlobals(session, impl->processor, graph, ctx,
+                                        impl->namespaceBase,
+                                        toPrimitiveNodeFn);
+  }
 
   if (!dsp_host::configureModuleLoading(session, scriptFile, ctx,
                                         impl->lastError)) {
@@ -151,10 +203,13 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   const int blockSize = std::max(1, impl->processor->getGraphBlockSize());
   const int numChannels = std::max(1, impl->processor->getGraphOutputChannels());
 
-  auto runtime = graph->compileRuntime(sampleRate, blockSize, numChannels);
-  if (!runtime) {
-    impl->lastError = "failed to compile runtime from buildPlugin graph";
-    return false;
+  std::unique_ptr<dsp_primitives::GraphRuntime> runtime;
+  if (!minimalMidiEffectBindings) {
+    runtime = graph->compileRuntime(sampleRate, blockSize, numChannels);
+    if (!runtime) {
+      impl->lastError = "failed to compile runtime from buildPlugin graph";
+      return false;
+    }
   }
 
   {
@@ -170,7 +225,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     }
   }
 
-  impl->processor->requestGraphRuntimeSwap(std::move(runtime));
+  if (runtime) {
+    impl->processor->requestGraphRuntimeSwap(std::move(runtime));
+  }
 
   std::map<std::string, DspParamSpec> orderedSpecs(newParamSpecs.begin(),
                                                    newParamSpecs.end());
@@ -275,4 +332,3 @@ void DSPPluginScriptHost::process(int blockSize, double sampleRate) {
     pImpl->lastError = "process failed: " + std::string(err.what());
   }
 }
-

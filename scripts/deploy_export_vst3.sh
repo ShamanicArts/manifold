@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "usage: $0 <Filter|EQ8|bundle-path> [dest-dir]" >&2
+  echo "usage: $0 <Filter|EQ8|FX|Arp|ScaleQuantizer|Transpose|VelocityMapper|NoteFilter|bundle-path> [dest-dir]" >&2
   exit 1
 fi
 
@@ -19,6 +19,21 @@ case "$arg" in
     ;;
   FX|fx|Effect|effect|Manifold_FX)
     src="$repo_dir/build-dev/Manifold_FX_artefacts/RelWithDebInfo/VST3/Manifold Effect.vst3"
+    ;;
+  Arp|arp|Manifold_Arp)
+    src="$repo_dir/build-dev/Manifold_Arp_artefacts/RelWithDebInfo/VST3/Manifold Arp.vst3"
+    ;;
+  ScaleQuantizer|scalequantizer|scale-quantizer|Scale-Quantizer|Manifold_ScaleQuantizer)
+    src="$repo_dir/build-dev/Manifold_ScaleQuantizer_artefacts/RelWithDebInfo/VST3/Manifold Scale Quantizer.vst3"
+    ;;
+  Transpose|transpose|Manifold_Transpose)
+    src="$repo_dir/build-dev/Manifold_Transpose_artefacts/RelWithDebInfo/VST3/Manifold Transpose.vst3"
+    ;;
+  VelocityMapper|velocitymapper|velocity-mapper|Velocity-Mapper|Manifold_VelocityMapper)
+    src="$repo_dir/build-dev/Manifold_VelocityMapper_artefacts/RelWithDebInfo/VST3/Manifold Velocity Mapper.vst3"
+    ;;
+  NoteFilter|notefilter|note-filter|Note-Filter|Manifold_NoteFilter)
+    src="$repo_dir/build-dev/Manifold_NoteFilter_artefacts/RelWithDebInfo/VST3/Manifold Note Filter.vst3"
     ;;
   *)
     src="$arg"

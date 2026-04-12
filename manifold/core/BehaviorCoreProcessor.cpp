@@ -399,8 +399,19 @@ void findAvailableOscPortPair(int preferredBasePort, int& oscPort, int& queryPor
 
 BehaviorCoreProcessor::BehaviorCoreProcessor()
     : juce::AudioProcessor(BusesProperties()
+                     #if JucePlugin_IsMidiEffect
+                               // VST3 MIDI processors still need a dummy audio callback path in
+                               // a bunch of hosts. We advertise the plugin as MIDI-focused via
+                               // metadata, but keep silent stereo buses so processBlock() runs.
                                .withInput("Input", juce::AudioChannelSet::stereo(), true)
-                               .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+                               .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+                     #else
+                      #if ! JucePlugin_IsSynth
+                               .withInput("Input", juce::AudioChannelSet::stereo(), true)
+                      #endif
+                               .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+                     #endif
+                               ),
       primitiveGraph(std::make_shared<dsp_primitives::PrimitiveGraph>()),
       dspScriptHost(std::make_unique<DSPPluginScriptHost>()),
       midiManager_(std::make_shared<midi::MidiManager>()) {
@@ -452,6 +463,8 @@ void BehaviorCoreProcessor::initialiseExportPluginConfig() {
                                  std::memory_order_relaxed);
     exportOscInputPort_.store(exportPluginConfig_.oscBasePort, std::memory_order_relaxed);
     exportOscQueryPort_.store(exportPluginConfig_.oscBasePort + 1, std::memory_order_relaxed);
+    exportXyXParam_.store(1, std::memory_order_relaxed);
+    exportXyYParam_.store(2, std::memory_order_relaxed);
 }
 
 void BehaviorCoreProcessor::initialiseHostParameters() {
@@ -518,6 +531,8 @@ void BehaviorCoreProcessor::registerExportPluginEndpoints() {
         "/plugin/ui/oscQueryEnabled",
         "/plugin/ui/oscInputPort",
         "/plugin/ui/oscQueryPort",
+        "/plugin/ui/xyXParam",
+        "/plugin/ui/xyYParam",
         "/plugin/ui/perf/frameCurrentUs",
         "/plugin/ui/perf/frameAvgUs",
         "/plugin/ui/perf/framePeakUs",
@@ -644,6 +659,10 @@ void BehaviorCoreProcessor::registerExportPluginEndpoints() {
                        "Active OSC UDP input port");
     registerUiEndpoint("/plugin/ui/oscQueryPort", 0.0f, 65535.0f, 1,
                        "Active OSCQuery HTTP port");
+    registerUiEndpoint("/plugin/ui/xyXParam", 1.0f, 5.0f, 3,
+                       "Effect XY X-axis assignment (1-5)");
+    registerUiEndpoint("/plugin/ui/xyYParam", 1.0f, 5.0f, 3,
+                       "Effect XY Y-axis assignment (1-5)");
     registerUiEndpoint("/plugin/ui/perf/frameCurrentUs", 0.0f, 1000000.0f, 1,
                        "Current editor frame time in microseconds");
     registerUiEndpoint("/plugin/ui/perf/frameAvgUs", 0.0f, 1000000.0f, 1,
@@ -971,6 +990,18 @@ bool BehaviorCoreProcessor::applyExportPluginPath(const std::string& path, float
         return true;
     }
 
+    if (path == "/plugin/ui/xyXParam") {
+        exportXyXParam_.store(juce::jlimit(1, 5, static_cast<int>(std::lround(value))),
+                              std::memory_order_relaxed);
+        return true;
+    }
+
+    if (path == "/plugin/ui/xyYParam") {
+        exportXyYParam_.store(juce::jlimit(1, 5, static_cast<int>(std::lround(value))),
+                              std::memory_order_relaxed);
+        return true;
+    }
+
     const juce::String publicPath(path);
     const auto internalPath = resolveExportInternalPath(publicPath);
     if (internalPath.isNotEmpty()) {
@@ -1008,6 +1039,12 @@ float BehaviorCoreProcessor::readExportPluginPath(const std::string& path) const
     }
     if (path == "/plugin/ui/oscQueryPort") {
         return static_cast<float>(exportOscQueryPort_.load(std::memory_order_relaxed));
+    }
+    if (path == "/plugin/ui/xyXParam") {
+        return static_cast<float>(exportXyXParam_.load(std::memory_order_relaxed));
+    }
+    if (path == "/plugin/ui/xyYParam") {
+        return static_cast<float>(exportXyYParam_.load(std::memory_order_relaxed));
     }
 
     if (auto* timings = controlServer.getFrameTimings()) {
@@ -1509,8 +1546,9 @@ void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     captureBuffer.setSize(captureSamples);
     captureBuffer.setNumChannels(2);
 
-    graphWetBuffer.setSize(2, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
-    monitorInputBuffer.setSize(2, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
+    const int graphChannels = juce::jmax(1, getGraphOutputChannels());
+    graphWetBuffer.setSize(graphChannels, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
+    monitorInputBuffer.setSize(graphChannels, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
     forwardScheduled = false;
     forwardFireAtSample = 0.0;
     forwardScheduledBars = 0.0f;
@@ -1622,8 +1660,17 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     juce::ScopedNoDenormals noDenormals;
     const auto dspStart = std::chrono::steady_clock::now();
 
-    // Process incoming MIDI from host/plugin
-    processMidiInput(midiMessages);
+    // Process incoming MIDI from host/plugin.
+    // Do not mirror host input into midiInputRing here; that ring is reserved for
+    // hardware MIDI callbacks and otherwise host MIDI gets fed back into the
+    // MidiManager a second time.
+    processMidiInput(midiMessages, false);
+
+    // By default, consume incoming host MIDI and only write explicit output MIDI.
+    // If MIDI thru is enabled, preserve the original incoming events.
+    if (!midiThruEnabled) {
+        midiMessages.clear();
+    }
     
     // Also process MIDI from hardware device (written to ring buffer by handleIncomingMidiMessage)
     juce::MidiBuffer hardwareMidi;
@@ -1634,12 +1681,6 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
     if (!hardwareMidi.isEmpty()) {
         processMidiInput(hardwareMidi, false);
-    }
-
-    // MIDI thru: forward incoming MIDI to output if enabled
-    juce::MidiBuffer midiThruBuffer;
-    if (midiThruEnabled) {
-        midiThruBuffer = midiMessages;
     }
 
     processControlCommands();
@@ -1673,6 +1714,42 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     float* outR = numChannels > 1 ? buffer.getWritePointer(1) : outL;
 
     auto& state = controlServer.getAtomicState();
+
+   #if JucePlugin_IsMidiEffect
+    {
+        buffer.clear();
+        state.graphEnabled.store(false, std::memory_order_relaxed);
+        state.captureLevel.store(0.0f, std::memory_order_relaxed);
+
+        if (dspScriptHost && dspScriptHost->isLoaded()) {
+            dspScriptHost->process(numSamples, currentSampleRate.load());
+        }
+        for (auto& entry : dspSlots) {
+            auto* host = entry.second.get();
+            if (host && host->isLoaded()) {
+                host->process(numSamples, currentSampleRate.load());
+            }
+        }
+
+        const double nextPlayTime =
+            playTimeSamples.load(std::memory_order_relaxed) + numSamples;
+        playTimeSamples.store(nextPlayTime, std::memory_order_relaxed);
+        state.playTime.store(nextPlayTime, std::memory_order_relaxed);
+
+        const double sr = currentSampleRate.load(std::memory_order_relaxed);
+        state.uptimeSeconds.store(sr > 0.0 ? nextPlayTime / sr : 0.0,
+                                  std::memory_order_relaxed);
+
+        drainMidiOutput(midiMessages);
+
+        const auto dspEnd = std::chrono::steady_clock::now();
+        const auto dspUs = std::chrono::duration_cast<std::chrono::microseconds>(dspEnd - dspStart).count();
+        if (auto* timings = controlServer.getFrameTimings()) {
+            updateTimingStage(timings->dsp, dspUs);
+        }
+        return;
+    }
+   #endif
 
     // Input volume controls level going into looper (capture + graph)
     const float inputVolume = state.inputVolume.load(std::memory_order_relaxed);
@@ -1736,17 +1813,6 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         activeRuntime->setMonitorEnabled(passthroughEnabled);
         activeRuntime->process(wetView, &monitorInputBuffer);
 
-        // Call script process callbacks if available
-        if (dspScriptHost && dspScriptHost->isLoaded()) {
-            dspScriptHost->process(numSamples, currentSampleRate.load());
-        }
-        for (auto& entry : dspSlots) {
-            auto* host = entry.second.get();
-            if (host && host->isLoaded()) {
-                host->process(numSamples, currentSampleRate.load());
-            }
-        }
-
         if (outL == nullptr) {
             buffer.clear();
         } else {
@@ -1780,6 +1846,18 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 if (outR != nullptr && outR != outL) {
                     outR[i] *= passthroughGain;
                 }
+            }
+        }
+    }
+
+    if (!mutationPauseRequested) {
+        if (dspScriptHost && dspScriptHost->isLoaded()) {
+            dspScriptHost->process(numSamples, currentSampleRate.load());
+        }
+        for (auto& entry : dspSlots) {
+            auto* host = entry.second.get();
+            if (host && host->isLoaded()) {
+                host->process(numSamples, currentSampleRate.load());
             }
         }
     }
@@ -3886,6 +3964,8 @@ void BehaviorCoreProcessor::getStateInformation(juce::MemoryBlock& destData) {
         pluginUi->setProperty("editorWidth", exportEditorWidth_.load(std::memory_order_relaxed));
         pluginUi->setProperty("editorHeight", exportEditorHeight_.load(std::memory_order_relaxed));
         pluginUi->setProperty("devVisible", exportDevVisible_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("xyXParam", exportXyXParam_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("xyYParam", exportXyYParam_.load(std::memory_order_relaxed));
         root->setProperty("pluginUi", juce::var(pluginUi.get()));
     }
 
@@ -3934,6 +4014,12 @@ void BehaviorCoreProcessor::setStateInformation(const void* data, int sizeInByte
             exportOscQueryEnabled_.store(exportPluginConfig_.oscQueryDefaultEnabled, std::memory_order_relaxed);
             exportOscInputPort_.store(exportPluginConfig_.oscBasePort, std::memory_order_relaxed);
             exportOscQueryPort_.store(exportPluginConfig_.oscBasePort + 1, std::memory_order_relaxed);
+            exportXyXParam_.store(juce::jlimit(1, 5,
+                                              readIntProperty(pluginUi, "xyXParam", exportXyXParam_.load(std::memory_order_relaxed))),
+                                 std::memory_order_relaxed);
+            exportXyYParam_.store(juce::jlimit(1, 5,
+                                              readIntProperty(pluginUi, "xyYParam", exportXyYParam_.load(std::memory_order_relaxed))),
+                                 std::memory_order_relaxed);
             applyExportOscSettings();
         }
     }
@@ -4034,25 +4120,26 @@ void BehaviorCoreProcessor::handleIncomingMidiMessage(juce::MidiInput* /*source*
                                                       const juce::MidiMessage& msg) {
     // Route incoming MIDI from hardware device to the MidiManager via ring buffer
     // The MidiManager will pick this up on the next process call
+    const uint8_t channel = static_cast<uint8_t>((juce::jlimit(1, 16, msg.getChannel()) - 1) & 0x0F);
     if (msg.isNoteOn()) {
-        midiInputRing.write(0x90 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0x90 | channel,
                            static_cast<uint8_t>(msg.getNoteNumber()),
                            static_cast<uint8_t>(msg.getVelocity()), 0);
     } else if (msg.isNoteOff()) {
-        midiInputRing.write(0x80 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0x80 | channel,
                            static_cast<uint8_t>(msg.getNoteNumber()),
                            static_cast<uint8_t>(msg.getVelocity()), 0);
     } else if (msg.isController()) {
-        midiInputRing.write(0xB0 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0xB0 | channel,
                            static_cast<uint8_t>(msg.getControllerNumber()),
                            static_cast<uint8_t>(msg.getControllerValue()), 0);
     } else if (msg.isPitchWheel()) {
         int value = msg.getPitchWheelValue();
-        midiInputRing.write(0xE0 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0xE0 | channel,
                            static_cast<uint8_t>(value & 0x7F),
                            static_cast<uint8_t>((value >> 7) & 0x7F), 0);
     } else if (msg.isProgramChange()) {
-        midiInputRing.write(0xC0 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0xC0 | channel,
                            static_cast<uint8_t>(msg.getProgramChangeNumber()), 0, 0);
     }
 }
@@ -4110,27 +4197,11 @@ void BehaviorCoreProcessor::processMidiInput(const juce::MidiBuffer& midiMessage
         return;
     }
     
-    // Keep legacy behavior: write to ring buffer for Lua consumption
-    for (const auto metadata : midiMessages) {
-        const juce::MidiMessage& msg = metadata.getMessage();
-        if (msg.isNoteOn()) {
-            midiInputRing.write(MidiStatus::NOTE_ON | msg.getChannel(),
-                              msg.getNoteNumber(), msg.getVelocity(), metadata.samplePosition);
-        } else if (msg.isNoteOff()) {
-            midiInputRing.write(MidiStatus::NOTE_OFF | msg.getChannel(),
-                               msg.getNoteNumber(), msg.getVelocity(), metadata.samplePosition);
-        } else if (msg.isController()) {
-            midiInputRing.write(MidiStatus::CONTROL_CHANGE | msg.getChannel(),
-                               msg.getControllerNumber(), msg.getControllerValue(), metadata.samplePosition);
-        } else if (msg.isPitchWheel()) {
-            midiInputRing.write(MidiStatus::PITCH_BEND | msg.getChannel(),
-                               msg.getPitchWheelValue() & 0x7F,
-                               (msg.getPitchWheelValue() >> 7) & 0x7F, metadata.samplePosition);
-        } else if (msg.isProgramChange()) {
-            midiInputRing.write(MidiStatus::PROGRAM_CHANGE | msg.getChannel(),
-                               msg.getProgramChangeNumber(), 0, metadata.samplePosition);
-        }
-    }
+    // Legacy ring mirroring is intentionally disabled here. Host MIDI is already
+    // available to Lua through MidiManager::inputRing_, and mirroring it into
+    // midiInputRing causes the same host events to be re-consumed as if they were
+    // hardware MIDI on the same block.
+    juce::ignoreUnused(midiMessages);
 }
 
 void BehaviorCoreProcessor::drainMidiOutput(juce::MidiBuffer& outMidi) {

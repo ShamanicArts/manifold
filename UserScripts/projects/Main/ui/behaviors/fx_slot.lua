@@ -274,6 +274,32 @@ local function paramPath(ctx, index)
   return string.format("%s/p/%d", getParamBase(ctx), math.max(0, math.floor(tonumber(index) or 0)))
 end
 
+local function xyAssignPath(ctx, axis)
+  if getParamBase(ctx) ~= "/plugin/params" then
+    return nil
+  end
+  if axis == "x" then
+    return "/plugin/ui/xyXParam"
+  end
+  return "/plugin/ui/xyYParam"
+end
+
+local function readXyAssign(ctx, axis, fallback)
+  local path = xyAssignPath(ctx, axis)
+  if not path then
+    return math.max(1, math.floor(tonumber(fallback) or 1))
+  end
+  return math.max(1, math.floor(tonumber(readParam(path, fallback)) or tonumber(fallback) or 1))
+end
+
+local function writeXyAssign(ctx, axis, value)
+  local path = xyAssignPath(ctx, axis)
+  if not path then
+    return false
+  end
+  return writeParam(path, math.max(1, math.floor(tonumber(value) or 1)))
+end
+
 local function fxHasFilterGraph(ctx)
   local fxType = math.max(0, math.floor(tonumber(ctx and ctx.fxType or 0) or 0))
   return fxType == 5 or fxType == 6
@@ -602,8 +628,8 @@ end
 
 local function syncAllDropdowns(ctx)
   local names = getParamNames(ctx.fxType)
-  ctx.xyXIdx = populateDropdown(ctx.widgets.xy_x_dropdown, names, ctx.xyXIdx or 1)
-  ctx.xyYIdx = populateDropdown(ctx.widgets.xy_y_dropdown, names, ctx.xyYIdx or math.min(2, #names))
+  ctx.xyXIdx = populateDropdown(ctx.widgets.xy_x_dropdown, names, readXyAssign(ctx, "x", ctx.xyXIdx or 1))
+  ctx.xyYIdx = populateDropdown(ctx.widgets.xy_y_dropdown, names, readXyAssign(ctx, "y", ctx.xyYIdx or math.min(2, #names)))
   ctx.xyXName = names[ctx.xyXIdx] or "X"
   ctx.xyYName = names[ctx.xyYIdx] or "Y"
   updateParamControls(ctx)
@@ -644,6 +670,31 @@ local function syncFromParams(ctx)
     changed = true
   elseif typeDrop and typeDrop.setSelected and not anyDropdownOpen then
     typeDrop:setSelected(fxType + 1)
+  end
+
+  if not anyDropdownOpen then
+    local nextXIndex = readXyAssign(ctx, "x", ctx.xyXIdx or 1)
+    local nextYIndex = readXyAssign(ctx, "y", ctx.xyYIdx or math.min(2, #ctx.paramNames))
+    local names = ctx.paramNames or getParamNames(ctx.fxType)
+    if nextXIndex > #names then nextXIndex = 1 end
+    if nextYIndex > #names then nextYIndex = math.min(2, #names) end
+    if nextYIndex < 1 then nextYIndex = 1 end
+    if ctx.xyXIdx ~= nextXIndex then
+      ctx.xyXIdx = nextXIndex
+      changed = true
+    end
+    if ctx.xyYIdx ~= nextYIndex then
+      ctx.xyYIdx = nextYIndex
+      changed = true
+    end
+    if xyXDrop and xyXDrop.setSelected then
+      xyXDrop:setSelected(ctx.xyXIdx)
+    end
+    if xyYDrop and xyYDrop.setSelected then
+      xyYDrop:setSelected(ctx.xyYIdx)
+    end
+    ctx.xyXName = names[ctx.xyXIdx] or "X"
+    ctx.xyYName = names[ctx.xyYIdx] or "Y"
   end
 
   ModWidgetSync.syncWidget(mixKnob, mix, mixEffectiveClamped, mixState)
@@ -760,6 +811,7 @@ local function setupInteraction(ctx)
   if xyXDrop then
     xyXDrop._onSelect = function(idx)
       ctx.xyXIdx = idx
+      writeXyAssign(ctx, "x", idx)
       local names = getParamNames(ctx.fxType)
       ctx.xyXName = names[idx] or "X"
       local value, valueEffective = ModWidgetSync.resolveValues(paramPath(ctx, idx - 1), ctx.xyX or 0.5, readParam)
@@ -776,6 +828,7 @@ local function setupInteraction(ctx)
   if xyYDrop then
     xyYDrop._onSelect = function(idx)
       ctx.xyYIdx = idx
+      writeXyAssign(ctx, "y", idx)
       local names = getParamNames(ctx.fxType)
       ctx.xyYName = names[idx] or "Y"
       local value, valueEffective = ModWidgetSync.resolveValues(paramPath(ctx, idx - 1), ctx.xyY or 0.5, readParam)
@@ -874,6 +927,8 @@ function FxSlotBehavior.onTypeChanged(ctx)
   if ctx.xyXIdx > #names then ctx.xyXIdx = 1 end
   if ctx.xyYIdx > #names then ctx.xyYIdx = math.min(2, #names) end
   if ctx.xyYIdx < 1 then ctx.xyYIdx = 1 end
+  writeXyAssign(ctx, "x", ctx.xyXIdx)
+  writeXyAssign(ctx, "y", ctx.xyYIdx)
   syncAllDropdowns(ctx)
   ctx.xyX = clamp(readParam(paramPath(ctx, (ctx.xyXIdx or 1) - 1), ctx.xyX or 0.5), 0.0, 1.0)
   ctx.xyY = clamp(readParam(paramPath(ctx, (ctx.xyYIdx or 2) - 1), ctx.xyY or 0.5), 0.0, 1.0)

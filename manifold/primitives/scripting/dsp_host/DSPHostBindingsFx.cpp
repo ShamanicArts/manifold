@@ -986,7 +986,6 @@ void registerFxBindings(LoadSession &session,
       };
     primitives["SpectrumAnalyzerNode"] = spectrumApi;
   }
-
 }
 
 } // namespace dsp_host

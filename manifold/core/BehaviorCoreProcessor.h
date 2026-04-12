@@ -89,9 +89,27 @@ public:
         return "Manifold";
 #endif
     }
-    bool acceptsMidi() const override { return true; }
-    bool producesMidi() const override { return true; }
-    bool isMidiEffect() const override { return false; }
+    bool acceptsMidi() const override {
+       #if JucePlugin_WantsMidiInput
+        return true;
+       #else
+        return false;
+       #endif
+    }
+    bool producesMidi() const override {
+       #if JucePlugin_ProducesMidiOutput
+        return true;
+       #else
+        return false;
+       #endif
+    }
+    bool isMidiEffect() const override {
+       #if JucePlugin_IsMidiEffect
+        return true;
+       #else
+        return false;
+       #endif
+    }
     double getTailLengthSeconds() const override { return 0.0; }
 
     int getNumPrograms() override { return 1; }
@@ -130,7 +148,7 @@ public:
         return currentBlockSize.load(std::memory_order_relaxed);
     }
     int getGraphOutputChannels() const override {
-        return 2;
+        return juce::jmax(1, getTotalNumOutputChannels());
     }
     void requestGraphRuntimeSwap(
         std::unique_ptr<dsp_primitives::GraphRuntime> runtime) override;
@@ -445,6 +463,8 @@ private:
     std::atomic<bool> exportOscQueryEnabled_{false};
     std::atomic<int> exportOscInputPort_{0};
     std::atomic<int> exportOscQueryPort_{0};
+    std::atomic<int> exportXyXParam_{1};
+    std::atomic<int> exportXyYParam_{2};
 
     // MIDI support
     MidiRingBuffer midiInputRing;  // Audio thread → Control thread

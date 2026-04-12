@@ -125,12 +125,15 @@ void registerLoopLayerBundle(LoadSession &session,
                              sol::table &ctx,
                              const TrackNodeFn &trackNode,
                              const PathMapperFn &mapInternalToExternal);
+void registerMidiApi(LoadSession &session,
+                     ScriptableProcessor *processor,
+                     sol::table &ctx);
 void registerHostApiAndGlobals(LoadSession &session,
-                               ScriptableProcessor *processor,
-                               PrimitiveGraphPtr graph,
-                               sol::table &ctx,
-                               const PathMapperFn &mapInternalToExternal,
-                               const PrimitiveNodeResolverFn &toPrimitiveNode);
+                                 ScriptableProcessor *processor,
+                                 PrimitiveGraphPtr graph,
+                                 sol::table &ctx,
+                                 const std::string &namespaceBase,
+                                 const PrimitiveNodeResolverFn &toPrimitiveNode);
 
 void syncEndpoints(LoadSession &session,
                    ScriptableProcessor *processor,

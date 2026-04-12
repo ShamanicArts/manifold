@@ -1,6 +1,8 @@
 #include "DSPHostInternal.h"
 
+#include "../../../core/BehaviorCoreProcessor.h"
 #include "../../core/Settings.h"
+#include "../../midi/MidiManager.h"
 #include "../PrimitiveGraph.h"
 #include "dsp/core/nodes/PrimitiveNodes.h"
 
@@ -238,15 +240,155 @@ bool executeBuildPlugin(LoadSession &session,
   return true;
 }
 
+void registerMidiApi(LoadSession &session,
+                     ScriptableProcessor *processor,
+                     sol::table &ctx) {
+  auto* bcp = static_cast<BehaviorCoreProcessor*>(processor);
+  auto* midiMgr = bcp != nullptr ? bcp->getMidiManager() : nullptr;
+  auto lua = sol::state_view(session.luaState);
+
+  auto hostApi = lua.create_table();
+  hostApi["getSampleRate"] = [processor]() {
+    return processor ? processor->getSampleRate() : 44100.0;
+  };
+  hostApi["getPlayTimeSamples"] = [processor]() {
+    return processor ? processor->getPlayTimeSamples() : 0.0;
+  };
+  hostApi["setParam"] = [processor](const std::string &path, float value) {
+    return processor ? processor->setParamByPath(path, value) : false;
+  };
+  hostApi["getParam"] = [processor](const std::string &path) {
+    return processor ? processor->getParamByPath(path) : 0.0f;
+  };
+  hostApi["hasEndpoint"] = [processor](const std::string &path) {
+    return processor ? processor->hasEndpoint(path) : false;
+  };
+  hostApi["setCustomValue"] = [processor](const std::string &path, const sol::object &value) {
+    if (processor == nullptr) {
+      return false;
+    }
+
+    std::vector<juce::var> args;
+    if (value.is<bool>()) args.emplace_back(value.as<bool>());
+    else if (value.is<int>()) args.emplace_back(value.as<int>());
+    else if (value.is<double>()) args.emplace_back(value.as<double>());
+    else if (value.is<float>()) args.emplace_back(static_cast<double>(value.as<float>()));
+    else if (value.is<std::string>()) args.emplace_back(juce::String(value.as<std::string>()));
+    else if (value.is<const char*>()) args.emplace_back(juce::String(value.as<const char*>()));
+    else return false;
+
+    processor->getOSCServer().setCustomValue(juce::String(path.c_str()), args);
+    return true;
+  };
+
+  session.lua["host"] = hostApi;
+  ctx["host"] = hostApi;
+  session.lua["getSampleRate"] = hostApi["getSampleRate"];
+  session.lua["getPlayTimeSamples"] = hostApi["getPlayTimeSamples"];
+  session.lua["setParam"] = hostApi["setParam"];
+  session.lua["getParam"] = hostApi["getParam"];
+  session.lua["hasEndpoint"] = hostApi["hasEndpoint"];
+  session.lua["setCustomValue"] = hostApi["setCustomValue"];
+
+  auto midiApi = lua.create_table();
+  midiApi["sendNoteOn"] = [bcp](int channel, int note, int velocity) {
+    if (bcp != nullptr) {
+      bcp->sendMidiNoteOn(channel, note, velocity);
+    }
+  };
+  midiApi["sendNoteOff"] = [bcp](int channel, int note) {
+    if (bcp != nullptr) {
+      bcp->sendMidiNoteOff(channel, note);
+    }
+  };
+  midiApi["sendCC"] = [bcp](int channel, int cc, int value) {
+    if (bcp != nullptr) {
+      bcp->sendMidiCC(channel, cc, value);
+    }
+  };
+  midiApi["sendPitchBend"] = [bcp](int channel, int value) {
+    if (bcp != nullptr) {
+      bcp->sendMidiPitchBend(channel, value);
+    }
+  };
+  midiApi["sendProgramChange"] = [bcp](int channel, int program) {
+    if (bcp != nullptr) {
+      bcp->sendMidiProgramChange(channel, program);
+    }
+  };
+  midiApi["sendAllNotesOff"] = [bcp](int channel) {
+    if (bcp != nullptr) {
+      bcp->sendMidiCC(channel, 123, 0);
+    }
+  };
+  midiApi["sendAllSoundOff"] = [bcp](int channel) {
+    if (bcp != nullptr) {
+      bcp->sendMidiCC(channel, 120, 0);
+    }
+  };
+  lua_State* midiLuaState = session.luaState;
+  midiApi["pollInputEvent"] = [midiLuaState, midiMgr]() -> sol::object {
+    auto midiLua = sol::state_view(midiLuaState);
+    if (midiMgr == nullptr) {
+      return sol::make_object(midiLua, sol::nil);
+    }
+
+    uint8_t status = 0, data1 = 0, data2 = 0;
+    int32_t timestamp = 0;
+    if (!midiMgr->getInputRing().read(status, data1, data2, timestamp)) {
+      return sol::make_object(midiLua, sol::nil);
+    }
+
+    sol::table event = midiLua.create_table();
+    event["status"] = status;
+    event["type"] = MidiStatus::type(status);
+    event["channel"] = MidiStatus::channel(status) + 1;
+    event["data1"] = data1;
+    event["data2"] = data2;
+    event["timestamp"] = timestamp;
+    return sol::make_object(midiLua, event);
+  };
+  midiApi["NOTE_OFF"] = 0x80;
+  midiApi["NOTE_ON"] = 0x90;
+  midiApi["AFTERTOUCH"] = 0xA0;
+  midiApi["CONTROL_CHANGE"] = 0xB0;
+  midiApi["PROGRAM_CHANGE"] = 0xC0;
+  midiApi["CHANNEL_PRESSURE"] = 0xD0;
+  midiApi["PITCH_BEND"] = 0xE0;
+  midiApi["CLOCK"] = 0xF8;
+  midiApi["START"] = 0xFA;
+  midiApi["STOP"] = 0xFC;
+  midiApi["CONTINUE"] = 0xFB;
+  session.lua["Midi"] = midiApi;
+  ctx["Midi"] = midiApi;
+}
+
 void registerHostApiAndGlobals(
     LoadSession &session,
     ScriptableProcessor *processor,
     std::shared_ptr<dsp_primitives::PrimitiveGraph> graph,
     sol::table &ctx,
-    const std::function<std::string(const std::string &)> &mapInternalToExternal,
+    const std::string &namespaceBase,
     const std::function<std::shared_ptr<dsp_primitives::IPrimitiveNode>(
         const sol::object &)> &toPrimitiveNode) {
   auto hostApi = sol::state_view(session.luaState).create_table();
+  auto mapInternalToExternal = [namespaceBase](const std::string &rawPath) {
+    juce::String internal = sanitizePath(rawPath);
+
+    if (namespaceBase.empty() || namespaceBase == "/core/behavior") {
+      return internal.toStdString();
+    }
+
+    juce::String base(namespaceBase);
+    if (internal == "/core/behavior") {
+      return base.toStdString();
+    }
+    if (internal.startsWith("/core/behavior/")) {
+      return (base + internal.substring(14)).toStdString();
+    }
+
+    return internal.toStdString();
+  };
   hostApi["getSampleRate"] = [processor]() {
     return processor ? processor->getSampleRate() : 44100.0;
   };
@@ -254,7 +396,7 @@ void registerHostApiAndGlobals(
     return processor ? processor->getPlayTimeSamples() : 0.0;
   };
   hostApi["setParam"] = [processor, mapInternalToExternal](const std::string &path,
-                                                             float value) {
+                                     float value) {
     if (!processor) {
       return false;
     }
@@ -276,6 +418,7 @@ void registerHostApiAndGlobals(
     return processor->getGraphNodeByPath(path);
   };
   ctx["host"] = hostApi;
+  registerMidiApi(session, processor, ctx);
 
   session.lua["getLoopPlaybackPeaks"] = [](
       sol::this_state ts,

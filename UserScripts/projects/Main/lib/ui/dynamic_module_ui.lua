@@ -170,11 +170,26 @@ function M.refreshDisplay(widget, builder)
 end
 
 function M.getViewState(globalKey, moduleId)
+  local id = tostring(moduleId or "")
   local store = type(_G) == "table" and _G[globalKey] or nil
-  if type(store) ~= "table" then
-    return nil
+  if type(store) == "table" and type(store[id]) == "table" then
+    return store[id]
   end
-  return store[tostring(moduleId or "")]
+
+  if type(osc) == "table" and type(osc.getValue) == "function" and globalKey ~= "" and id ~= "" then
+    local base = "/plugin/ui/viewstate/" .. tostring(globalKey) .. "/" .. id
+    return setmetatable({}, {
+      __index = function(_, key)
+        local value = osc.getValue(base .. "/" .. tostring(key))
+        if value == nil then
+          return nil
+        end
+        return value
+      end,
+    })
+  end
+
+  return nil
 end
 
 return M

@@ -695,8 +695,18 @@ function getFxParamNames(target) {
 
 function getFxAssignState(target) {
   const names = getFxParamNames(target);
-  let xIdx = Math.max(1, Math.floor(toNumber(getLayoutStateValue(target, "fxXYXParam", 1), 1)));
-  let yIdx = Math.max(1, Math.floor(toNumber(getLayoutStateValue(target, "fxXYYParam", Math.min(2, names.length)), Math.min(2, names.length))));
+  const xEndpointPath = "/plugin/ui/xyXParam";
+  const yEndpointPath = "/plugin/ui/xyYParam";
+  const xDefault = 1;
+  const yDefault = Math.min(2, names.length);
+  const xSource = target.endpointMap.has(xEndpointPath)
+    ? target.values.get(xEndpointPath)
+    : getLayoutStateValue(target, "fxXYXParam", xDefault);
+  const ySource = target.endpointMap.has(yEndpointPath)
+    ? target.values.get(yEndpointPath)
+    : getLayoutStateValue(target, "fxXYYParam", yDefault);
+  let xIdx = Math.max(1, Math.floor(toNumber(xSource, xDefault)));
+  let yIdx = Math.max(1, Math.floor(toNumber(ySource, yDefault)));
   if (xIdx > names.length) xIdx = 1;
   if (yIdx > names.length) yIdx = Math.min(2, names.length);
   if (yIdx < 1) yIdx = 1;
@@ -2176,10 +2186,12 @@ function buildLuaLocalDropdown(target, node: AnyRecord, style: AnyRecord = {}) {
 
 function buildFxAssignDropdown(target, axis, node: AnyRecord, style: AnyRecord = {}) {
   const stateKey = axis === "x" ? "fxXYXParam" : "fxXYYParam";
+  const endpointPath = axis === "x" ? "/plugin/ui/xyXParam" : "/plugin/ui/xyYParam";
+  const endpoint = target.endpointMap.get(endpointPath) || null;
   return buildLuaDropdown(target, {
     style,
     fontSize: `${Math.min(10, Math.max(7, (node.h || 20) - 8))}px`,
-    disabled: false,
+    disabled: endpoint ? !isWritable(endpoint) : node.disabled === true,
     getText: () => {
       const assign = getFxAssignState(target);
       return axis === "x" ? assign.xName : assign.yName;
@@ -2194,8 +2206,14 @@ function buildFxAssignDropdown(target, axis, node: AnyRecord, style: AnyRecord =
       }));
     },
     onSelect: async (value) => {
-      setLayoutStateValue(target, stateKey, Number(value));
-      scheduleRender(target);
+      const nextValue = Number(value);
+      if (endpoint) {
+        setLiveValue(target, endpoint.path, nextValue, { scheduleRender: true });
+        await writeValue(target, endpoint.path, nextValue, endpoint);
+      } else {
+        setLayoutStateValue(target, stateKey, nextValue);
+        scheduleRender(target);
+      }
     },
   });
 }

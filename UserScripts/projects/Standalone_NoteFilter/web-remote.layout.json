@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "Manifold Note Filter",
+  "root": {
+    "id": "standalone_note_filter_remote",
+    "type": "panel",
+    "x": 0,
+    "y": 0,
+    "w": 236,
+    "h": 200,
+    "style": { "bg": "#0b1220", "border": "#1f2b4d", "borderWidth": 1, "radius": 0 },
+    "children": [
+      { "id": "header_bg", "type": "panel", "x": 0, "y": 0, "w": 236, "h": 12, "style": { "bg": "#111827", "borderWidth": 0, "radius": 0 } },
+      { "id": "header_accent", "type": "panel", "x": 0, "y": 0, "w": 18, "h": 12, "style": { "bg": "#22c55e", "borderWidth": 0, "radius": 0 } },
+      { "id": "title", "type": "label", "x": 24, "y": 0, "w": 140, "h": 12, "text": "Note Filter", "style": { "color": "#ffffff", "fontSize": 9 } },
+      { "id": "mode", "type": "dropdown", "x": 12, "y": 28, "w": 84, "h": 18, "label": "Mode", "bind": { "path": "/plugin/params/mode" } },
+      { "id": "low", "type": "slider", "x": 12, "y": 56, "w": 212, "h": 18, "label": "Low", "bind": { "path": "/plugin/params/low" } },
+      { "id": "high", "type": "slider", "x": 12, "y": 80, "w": 212, "h": 18, "label": "High", "bind": { "path": "/plugin/params/high" } }
+    ]
+  }
+}

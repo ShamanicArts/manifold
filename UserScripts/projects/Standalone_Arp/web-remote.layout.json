@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "Manifold Arp",
+  "root": {
+    "id": "standalone_arp_remote",
+    "type": "panel",
+    "x": 0,
+    "y": 0,
+    "w": 236,
+    "h": 176,
+    "style": {
+      "bg": "#0b1220",
+      "border": "#1f2b4d",
+      "borderWidth": 1,
+      "radius": 0
+    },
+    "children": [
+      { "id": "header_bg", "type": "panel", "x": 0, "y": 0, "w": 236, "h": 12, "style": { "bg": "#111827", "borderWidth": 0, "radius": 0 } },
+      { "id": "header_accent", "type": "panel", "x": 0, "y": 0, "w": 18, "h": 12, "style": { "bg": "#f59e0b", "borderWidth": 0, "radius": 0 } },
+      { "id": "title", "type": "label", "x": 24, "y": 0, "w": 120, "h": 12, "text": "Arp", "style": { "color": "#ffffff", "fontSize": 9 } },
+      { "id": "mode", "type": "dropdown", "x": 12, "y": 22, "w": 92, "h": 20, "label": "Mode", "bind": { "path": "/plugin/params/mode" } },
+      { "id": "hold", "type": "toggle", "x": 112, "y": 22, "w": 112, "h": 20, "label": "Hold", "bind": { "path": "/plugin/params/hold" } },
+      { "id": "rate", "type": "slider", "x": 12, "y": 50, "w": 212, "h": 18, "label": "Rate", "bind": { "path": "/plugin/params/rate" } },
+      { "id": "octaves", "type": "dropdown", "x": 12, "y": 74, "w": 212, "h": 20, "label": "Octaves", "bind": { "path": "/plugin/params/octaves" } },
+      { "id": "gate", "type": "slider", "x": 12, "y": 102, "w": 212, "h": 18, "label": "Gate", "bind": { "path": "/plugin/params/gate" } }
+    ]
+  }
+}

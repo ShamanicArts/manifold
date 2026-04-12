@@ -229,10 +229,126 @@ def build_fx_single(spec):
     return params
 
 
+def build_arp_midi_effect(spec):
+    public = spec.get("publicPathBase", "/plugin/params").rstrip("/")
+    internal = spec.get("internalPathBase", "/midi/synth/rack/arp/1").rstrip("/")
+    return [
+        {
+            "path": f"{public}/rate",
+            "internalPath": f"{internal}/rate",
+            "type": "f",
+            "min": 0.25,
+            "max": 20.0,
+            "default": 8.0,
+            "hostParamId": "rate",
+            "hostParamName": "Rate",
+            "hostParamKind": "float",
+            "description": "Arpeggiator rate in Hz",
+        },
+        {
+            "path": f"{public}/mode",
+            "internalPath": f"{internal}/mode",
+            "type": "f",
+            "min": 0,
+            "max": 3,
+            "default": 0,
+            "hostParamId": "mode",
+            "hostParamName": "Mode",
+            "hostParamKind": "choice",
+            "choices": ["Up", "Down", "Up/Down", "Random"],
+            "description": "Arpeggiator mode",
+        },
+        {
+            "path": f"{public}/octaves",
+            "internalPath": f"{internal}/octaves",
+            "type": "f",
+            "min": 1,
+            "max": 4,
+            "default": 1,
+            "hostParamId": "octaves",
+            "hostParamName": "Octaves",
+            "hostParamKind": "int",
+            "description": "Arpeggiator octave range",
+        },
+        {
+            "path": f"{public}/gate",
+            "internalPath": f"{internal}/gate",
+            "type": "f",
+            "min": 0.05,
+            "max": 1.0,
+            "default": 0.6,
+            "hostParamId": "gate",
+            "hostParamName": "Gate",
+            "hostParamKind": "float",
+            "description": "Arpeggiator gate length",
+        },
+        {
+            "path": f"{public}/hold",
+            "internalPath": f"{internal}/hold",
+            "type": "f",
+            "min": 0,
+            "max": 1,
+            "default": 0,
+            "hostParamId": "hold",
+            "hostParamName": "Hold",
+            "hostParamKind": "bool",
+            "description": "Latch held notes",
+        },
+    ]
+
+
+def build_scale_quantizer_midi_effect(spec):
+    public = spec.get("publicPathBase", "/plugin/params").rstrip("/")
+    internal = spec.get("internalPathBase", "/midi/synth/rack/scale_quantizer/1").rstrip("/")
+    return [
+        {
+            "path": f"{public}/root",
+            "internalPath": f"{internal}/root",
+            "type": "f",
+            "min": 0,
+            "max": 11,
+            "default": 0,
+            "hostParamId": "root",
+            "hostParamName": "Root",
+            "hostParamKind": "choice",
+            "choices": ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"],
+            "description": "Scale root note",
+        },
+        {
+            "path": f"{public}/scale",
+            "internalPath": f"{internal}/scale",
+            "type": "f",
+            "min": 1,
+            "max": 6,
+            "default": 1,
+            "hostParamId": "scale",
+            "hostParamName": "Scale",
+            "hostParamKind": "choice",
+            "choices": ["Major", "Minor", "Dorian", "Mixolydian", "Pentatonic", "Chromatic"],
+            "description": "Scale selection",
+        },
+        {
+            "path": f"{public}/direction",
+            "internalPath": f"{internal}/direction",
+            "type": "f",
+            "min": 1,
+            "max": 3,
+            "default": 1,
+            "hostParamId": "direction",
+            "hostParamName": "Direction",
+            "hostParamKind": "choice",
+            "choices": ["Nearest", "Up", "Down"],
+            "description": "Scale quantization direction",
+        },
+    ]
+
+
 GENERATORS = {
     "filter_single": build_filter_single,
     "eq8_single": build_eq8_single,
     "fx_single": build_fx_single,
+    "arp_midi_effect": build_arp_midi_effect,
+    "scale_quantizer_midi_effect": build_scale_quantizer_midi_effect,
 }
 
 

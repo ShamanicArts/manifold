@@ -603,7 +603,7 @@ function(manifold_add_export_lua_assets target_name comment_text)
 endfunction()
 
 function(manifold_add_export_plugin target_name)
-    cmake_parse_arguments(ARG "" "PRODUCT_NAME;PLUGIN_CODE;PROJECT_DIR;MANIFEST_SPEC;PROJECT_MANIFEST" "" ${ARGN})
+    cmake_parse_arguments(ARG "IS_SYNTH;NEEDS_MIDI_INPUT;NEEDS_MIDI_OUTPUT;IS_MIDI_EFFECT" "PRODUCT_NAME;PLUGIN_CODE;PROJECT_DIR;MANIFEST_SPEC;PROJECT_MANIFEST" "FORMATS" ${ARGN})
 
     if(NOT ARG_PRODUCT_NAME)
         message(FATAL_ERROR "manifold_add_export_plugin requires PRODUCT_NAME")
@@ -635,18 +635,33 @@ function(manifold_add_export_plugin target_name)
 
     add_custom_target(${target_name}_generate_manifest DEPENDS ${ARG_PROJECT_MANIFEST})
 
+    if(NOT ARG_FORMATS)
+        set(ARG_FORMATS Standalone VST3)
+    endif()
+
     juce_add_plugin(${target_name}
         VERSION 1.0.0
         PLUGIN_MANUFACTURER_CODE Shmc
         PLUGIN_CODE ${ARG_PLUGIN_CODE}
-        FORMATS Standalone VST3
+        FORMATS ${ARG_FORMATS}
         PRODUCT_NAME "${ARG_PRODUCT_NAME}"
-        IS_SYNTH FALSE
-        NEEDS_MIDI_INPUT FALSE
-        NEEDS_MIDI_OUTPUT FALSE
-        IS_MIDI_EFFECT FALSE
+        IS_SYNTH ${ARG_IS_SYNTH}
+        NEEDS_MIDI_INPUT ${ARG_NEEDS_MIDI_INPUT}
+        NEEDS_MIDI_OUTPUT ${ARG_NEEDS_MIDI_OUTPUT}
+        IS_MIDI_EFFECT ${ARG_IS_MIDI_EFFECT}
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
         COPY_PLUGIN_AFTER_BUILD FALSE)
+
+    if(ARG_IS_MIDI_EFFECT)
+        # JUCE's CMake defaults every non-synth VST3 to plain "Fx", which causes
+        # our MIDI exports to scan as audio effects. Force an event-focused VST3
+        # category instead.
+        set_target_properties(${target_name} PROPERTIES
+            JUCE_VST3_CATEGORIES "Instrument;Tools")
+        target_compile_definitions(${target_name}
+            PUBLIC
+                JucePlugin_Vst3Category="Instrument|Tools")
+    endif()
 
     target_sources(${target_name}
         PRIVATE
@@ -712,6 +727,71 @@ manifold_add_export_plugin(Manifold_FX
     PRODUCT_NAME "Manifold Effect"
     PLUGIN_CODE Mnfx
     PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_FX)
+
+manifold_add_export_plugin(Manifold_Arp
+    PRODUCT_NAME "Manifold Arp"
+    PLUGIN_CODE Mnar
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Arp
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+manifold_add_export_plugin(Manifold_ScaleQuantizer
+    PRODUCT_NAME "Manifold Scale Quantizer"
+    PLUGIN_CODE Mnsq
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_ScaleQuantizer
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+manifold_add_export_plugin(Manifold_Transpose
+    PRODUCT_NAME "Manifold Transpose"
+    PLUGIN_CODE Mntr
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Transpose
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+manifold_add_export_plugin(Manifold_VelocityMapper
+    PRODUCT_NAME "Manifold Velocity Mapper"
+    PLUGIN_CODE Mnvm
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_VelocityMapper
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+manifold_add_export_plugin(Manifold_NoteFilter
+    PRODUCT_NAME "Manifold Note Filter"
+    PLUGIN_CODE Mnnf
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_NoteFilter
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+juce_add_console_app(ManifoldVST3Probe
+    PRODUCT_NAME "Manifold VST3 Probe")
+
+target_sources(ManifoldVST3Probe
+    PRIVATE
+        tools/ManifoldVST3Probe.cpp)
+
+target_link_libraries(ManifoldVST3Probe
+    PRIVATE
+        juce::juce_audio_processors_headless
+        juce::juce_events
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+
+target_compile_definitions(ManifoldVST3Probe
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_PLUGINHOST_VST=0
+        JUCE_PLUGINHOST_VST3=1
+        JUCE_PLUGINHOST_AU=0
+        JUCE_PLUGINHOST_LADSPA=0
+        JUCE_PLUGINHOST_LV2=0)
 
 # --- Android Mobile App ---
 if(MANIFOLD_PLATFORM_ANDROID)

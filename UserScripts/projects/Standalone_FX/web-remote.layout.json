@@ -81,8 +81,7 @@
         "w": 92,
         "h": 20,
         "label": "X",
-        "options": ["Param 1", "Param 2", "Param 3", "Param 4", "Param 5"],
-        "disabled": true
+        "options": ["Param 1", "Param 2", "Param 3", "Param 4", "Param 5"]
       },
       {
         "id": "xy_y_assign",
@@ -92,8 +91,7 @@
         "w": 94,
         "h": 20,
         "label": "Y",
-        "options": ["Param 1", "Param 2", "Param 3", "Param 4", "Param 5"],
-        "disabled": true
+        "options": ["Param 1", "Param 2", "Param 3", "Param 4", "Param 5"]
       },
       {
         "id": "mix",
