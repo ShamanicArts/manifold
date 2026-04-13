@@ -36,6 +36,8 @@ const state = {
   targets: new Map<string, AnyRecord>(),
   activeTargetId: null as string | null,
   discoveryPollTimer: 0 as number | ReturnType<typeof setInterval>,
+  selectedWidgetId: null as string | null,
+  dragState: null as AnyRecord | null,
 };
 
 const dom = {
@@ -59,6 +61,13 @@ const dom = {
     layout: document.querySelector("#layoutTab") as HTMLElement,
     custom: document.querySelector("#customTab") as HTMLElement,
   },
+  deviceTree: document.querySelector("#deviceTree") as HTMLElement,
+  deviceTreeSearch: document.querySelector("#deviceTreeSearch") as HTMLInputElement,
+  parameterSidebar: document.querySelector("#parameterSidebar") as HTMLElement,
+  deviceTreeSidebar: document.querySelector("#deviceTreeSidebar") as HTMLElement,
+  inspectorPanel: document.querySelector("#inspectorPanel") as HTMLElement,
+  inspectorContent: document.querySelector("#inspectorContent") as HTMLElement,
+  workspace: document.querySelector("#workspace") as HTMLElement,
 };
 
 function clamp(value, min, max) {
@@ -2364,6 +2373,127 @@ function buildControl(target, endpoint, overrideWidgetType = null, options: AnyR
   return controlCard;
 }
 
+function buildDeviceTree(target) {
+  const endpoints = target.filteredEndpoints;
+  const root = { label: "/", path: "/", children: new Map(), endpoint: null };
+  for (const endpoint of endpoints) {
+    const parts = String(endpoint.path || "").replace(/^\/+/, "").split("/").filter(Boolean);
+    let node = root;
+    for (let i = 0; i < parts.length; i++) {
+      const key = parts.slice(0, i + 1).join("/");
+      if (!node.children.has(key)) {
+        const isLeaf = i === parts.length - 1;
+        const isDevice = !isLeaf;
+        node.children.set(key, {
+          label: isDevice ? prettyLabel(parts[i]) : prettyLabel(parts[i]),
+          path: "/" + key,
+          children: new Map(),
+          endpoint: isLeaf ? endpoint : null,
+        });
+      }
+      node = node.children.get(key);
+    }
+  }
+  // Use the target name for the root device node
+  const firstChild = root.children.values().next().value;
+  if (firstChild && firstChild.children.size > 0) {
+    firstChild.label = deriveTargetName(target);
+  }
+  return root;
+}
+
+function renderDeviceTree() {
+  const container = dom.deviceTree;
+  const target = activeTarget();
+  container.innerHTML = "";
+  if (!target || !target.endpoints.length) {
+    container.className = "device-tree empty-state";
+    container.textContent = target ? "No parameters available." : "Connect to an OSCQuery target.";
+    return;
+  }
+  container.className = "device-tree";
+
+  const filter = (dom.deviceTreeSearch?.value || "").toLowerCase();
+  const tree = buildDeviceTree(target);
+
+  function renderNode(node, depth = 0) {
+    const hasChildren = node.children.size > 0;
+    const isDevice = hasChildren && !node.endpoint;
+    const isParam = !!node.endpoint;
+    const fragment = document.createDocumentFragment();
+
+    if (node.path !== "/") {
+      const item = makeElement("div", `device-tree-item ${isDevice ? "device" : "param"}`);
+
+      if (hasChildren) {
+        const toggle = makeElement("span", "device-tree-toggle", "▼");
+        item.append(toggle);
+        item.addEventListener("click", () => {
+          const childContainer = item.nextElementSibling;
+          if (childContainer && childContainer.classList.contains("device-tree-children")) {
+            const collapsed = childContainer.classList.toggle("collapsed");
+            toggle.classList.toggle("collapsed", collapsed);
+          }
+        });
+      } else {
+        item.append(makeElement("span", "device-tree-toggle", ""));
+      }
+
+      const icon = makeElement("span", "device-tree-icon", isDevice ? "📦" : isParam ? "🎛️" : "📁");
+      item.append(icon);
+
+      const label = makeElement("span", "device-tree-label", node.label);
+      item.append(label);
+
+      if (isParam) {
+        item.draggable = true;
+        item.addEventListener("dragstart", (event) => {
+          event.dataTransfer.setData("text/plain", node.path);
+          event.dataTransfer.effectAllowed = "copy";
+        });
+      }
+
+      if (isDevice) {
+        item.draggable = true;
+        item.addEventListener("dragstart", (event) => {
+          event.dataTransfer.setData("application/x-device", node.path);
+          event.dataTransfer.effectAllowed = "copy";
+        });
+      }
+
+      fragment.append(item);
+    }
+
+    if (hasChildren) {
+      const childContainer = makeElement("div", "device-tree-children");
+      const sorted = Array.from(node.children.values()).sort((a, b) => {
+        const aIsDevice = a.children.size > 0 && !a.endpoint;
+        const bIsDevice = b.children.size > 0 && !b.endpoint;
+        if (aIsDevice !== bIsDevice) return aIsDevice ? -1 : 1;
+        return a.label.localeCompare(b.label);
+      });
+      for (const child of sorted) {
+        if (filter && !child.path.toLowerCase().includes(filter) && !child.label.toLowerCase().includes(filter)) {
+          let hasMatch = false;
+          for (const desc of child.children.values()) {
+            if (desc.path.toLowerCase().includes(filter) || desc.label.toLowerCase().includes(filter)) {
+              hasMatch = true;
+              break;
+            }
+          }
+          if (!hasMatch) continue;
+        }
+        childContainer.append(renderNode(child, depth + 1));
+      }
+      fragment.append(childContainer);
+    }
+
+    return fragment;
+  }
+
+  container.append(renderNode(tree));
+}
+
 function renderEndpointBrowser() {
   const container = dom.endpointList;
   const target = activeTarget();
@@ -2621,22 +2751,22 @@ function renderLoadedLayout() {
   }
 }
 
-function addSurfaceWidget(target, endpoint) {
-  const existing = target.currentSurface.find((item) => item.path === endpoint.path);
-  if (existing) {
-    setTargetStatus(target, `${endpoint.label} is already on the custom surface`);
-    return;
-  }
+function addSurfaceWidget(target, endpoint, x = 20, y = 20) {
   const type = inferWidgetType(target, endpoint);
   if (type === "xy-y") {
     setTargetStatus(target, "Add the X endpoint for XY pairs, not the Y half", "error");
     return;
   }
+  const existing = target.currentSurface.length;
   target.currentSurface.push({
     id: crypto.randomUUID(),
     path: endpoint.path,
     widgetType: type === "xy-x" ? "xy-x" : type,
     title: resolveDisplayLabel(target, endpoint),
+    x: x + (existing % 10) * 10,
+    y: y + Math.floor(existing / 10) * 10,
+    w: 220,
+    h: 60,
   });
   renderIfActive(target);
 }
@@ -2650,6 +2780,52 @@ function renderCustomSurface() {
   const container = dom.customSurface;
   const target = activeTarget();
   container.innerHTML = "";
+  container.className = "custom-surface";
+
+  // Drop handlers must be set up regardless of empty state so you can drop onto an empty canvas
+  container.ondragover = (event) => {
+    if (event.dataTransfer?.types?.includes("text/plain") || event.dataTransfer?.types?.includes("application/x-device")) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      container.classList.add("drag-over");
+    }
+  };
+  container.ondragleave = () => container.classList.remove("drag-over");
+  container.ondrop = (event) => {
+    event.preventDefault();
+    container.classList.remove("drag-over");
+    if (!target) return;
+    const devicePath = event.dataTransfer?.getData("application/x-device");
+    const paramPath = event.dataTransfer?.getData("text/plain");
+    const rect = container.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    if (devicePath) {
+      // Dropping a device creates a layout widget that renders the remote layout
+      target.currentSurface.push({
+        id: crypto.randomUUID(),
+        path: devicePath,
+        widgetType: "layout",
+        title: deriveTargetName(target),
+        x: Math.max(0, x),
+        y: Math.max(0, y),
+        w: 480,
+        h: 400,
+      });
+      renderIfActive(target);
+    } else if (paramPath) {
+      const endpoint = target.endpointMap.get(paramPath);
+      if (endpoint) addSurfaceWidget(target, endpoint, Math.max(0, x), Math.max(0, y));
+    }
+  };
+  container.addEventListener("mousedown", (event) => {
+    if (event.target === container) {
+      state.selectedWidgetId = null;
+      renderInspector();
+      renderCustomSurface();
+    }
+  });
+
   if (!target) {
     container.className = "custom-surface empty-state";
     container.textContent = "Connect to an OSCQuery target.";
@@ -2657,62 +2833,242 @@ function renderCustomSurface() {
   }
   if (!target.currentSurface.length) {
     container.className = "custom-surface empty-state";
-    container.textContent = "Add parameters from the left browser to build a custom control page.";
+    container.textContent = "Drag parameters from the device tree to build a custom control surface.";
     return;
   }
 
-  container.className = "custom-surface";
   target.currentSurface.forEach((widget) => {
     const endpoint = target.endpointMap.get(widget.path);
+    const isSelected = state.selectedWidgetId === widget.id;
+
+    // Layout widget: render the remote layout
+    if (widget.widgetType === "layout") {
+      const el = makeElement("div", `canvas-widget canvas-layout${isSelected ? " selected" : ""}`);
+      el.style.left = `${widget.x || 0}px`;
+      el.style.top = `${widget.y || 0}px`;
+      el.style.width = `${widget.w || 480}px`;
+      el.style.height = `${widget.h || 400}px`;
+      el.style.overflow = "auto";
+
+      const dragBar = makeElement("div", "canvas-widget-drag");
+      dragBar.append(makeElement("span", "", widget.title || "Layout"));
+      const removeBtn = makeElement("button", "ghost");
+      removeBtn.innerHTML = "✕";
+      removeBtn.style.fontSize = "0.7rem";
+      removeBtn.style.padding = "0.1rem 0.3rem";
+      removeBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        removeSurfaceWidget(target, widget.id);
+      });
+      dragBar.append(removeBtn);
+
+      const layoutContainer = makeElement("div", "canvas-layout-content");
+      if (target.layout) {
+        const root = target.layout.root || target.layout;
+        if (Array.isArray(root)) {
+          root.forEach((child) => renderLayoutNode(target, child, layoutContainer, {}));
+        } else {
+          renderLayoutNode(target, root, layoutContainer, {});
+        }
+      }
+
+      el.append(dragBar, layoutContainer);
+      el.addEventListener("mousedown", (event) => {
+        if (event.target === dragBar || dragBar.contains(event.target)) {
+          state.selectedWidgetId = widget.id;
+          renderInspector();
+        }
+      });
+      dragBar.addEventListener("pointerdown", (event) => {
+        if (event.target === removeBtn || removeBtn.contains(event.target)) return;
+        event.preventDefault();
+        dragBar.setPointerCapture(event.pointerId);
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const origLeft = widget.x || 0;
+        const origTop = widget.y || 0;
+        const onMove = (moveEvent) => {
+          widget.x = Math.max(0, origLeft + moveEvent.clientX - startX);
+          widget.y = Math.max(0, origTop + moveEvent.clientY - startY);
+          el.style.left = `${widget.x}px`;
+          el.style.top = `${widget.y}px`;
+        };
+        const onUp = () => {
+          dragBar.removeEventListener("pointermove", onMove);
+          dragBar.removeEventListener("pointerup", onUp);
+          dragBar.removeEventListener("pointercancel", onUp);
+        };
+        dragBar.addEventListener("pointermove", onMove);
+        dragBar.addEventListener("pointerup", onUp);
+        dragBar.addEventListener("pointercancel", onUp);
+      });
+
+      container.append(el);
+      return;
+    }
+
     if (!endpoint) return;
 
-    const article = makeElement("article", "surface-widget");
-    const header = makeElement("div", "header");
-    const titleRow = makeElement("div", "title-row");
-    const titleBlock = makeElement("div");
-    titleBlock.append(makeElement("strong", "", widget.title || resolveDisplayLabel(target, endpoint)), makeElement("div", "path", endpoint.path));
-    const removeButton = makeElement("button", "danger", "Remove");
-    removeButton.addEventListener("click", () => removeSurfaceWidget(target, widget.id));
-    titleRow.append(titleBlock, removeButton);
-    header.append(titleRow);
+    const el = makeElement("div", `canvas-widget${isSelected ? " selected" : ""}`);
+    el.style.left = `${widget.x || 0}px`;
+    el.style.top = `${widget.y || 0}px`;
+    el.style.width = `${widget.w || 220}px`;
 
-    const body = makeElement("div", "body");
-    const options = makeElement("div", "widget-options");
-    const typeSelect = document.createElement("select");
-    ["slider", "slider-int", "choice", "toggle", "readout", "xy-x"].forEach((type) => {
-      const option = document.createElement("option");
-      option.value = type;
-      option.textContent = type === "xy-x" ? "xy" : type === "choice" ? "dropdown" : type;
-      if (widget.widgetType === type) option.selected = true;
-      typeSelect.append(option);
+    // Thin drag bar at top — controls below are live, not draggable
+    const dragBar = makeElement("div", "canvas-widget-drag");
+    dragBar.append(makeElement("span", "", widget.title || resolveDisplayLabel(target, endpoint)));
+    const removeBtn = makeElement("button", "ghost");
+    removeBtn.innerHTML = "✕";
+    removeBtn.style.fontSize = "0.65rem";
+    removeBtn.style.padding = "0 0.2rem";
+    removeBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      removeSurfaceWidget(target, widget.id);
     });
-    typeSelect.addEventListener("change", () => {
-      widget.widgetType = typeSelect.value;
-      renderIfActive(target);
-    });
+    dragBar.append(removeBtn);
 
-    const titleInput = document.createElement("input");
-    titleInput.type = "text";
-    titleInput.value = widget.title || resolveDisplayLabel(target, endpoint);
-    titleInput.placeholder = resolveDisplayLabel(target, endpoint);
-    titleInput.addEventListener("change", () => {
-      widget.title = titleInput.value.trim() || resolveDisplayLabel(target, endpoint);
-      renderIfActive(target);
-    });
-
-    options.append(typeSelect, titleInput);
-    body.append(options);
-
-    const control = buildControl(target, { ...endpoint, label: widget.title || resolveDisplayLabel(target, endpoint) }, widget.widgetType);
+    const body = makeElement("div", "canvas-widget-body");
+    const control = buildControl(target, { ...endpoint, label: widget.title || resolveDisplayLabel(target, endpoint) }, widget.widgetType, { showPath: false });
     if (control) body.append(control);
-    article.append(header, body);
-    container.append(article);
+    el.append(dragBar, body);
+
+    el.addEventListener("mousedown", (event) => {
+      if (event.target === removeBtn || removeBtn.contains(event.target)) return;
+      if (event.target === dragBar || dragBar.contains(event.target)) {
+        state.selectedWidgetId = widget.id;
+        renderInspector();
+      }
+    });
+
+    // Only drag from the drag bar — controls in the body must be live
+    dragBar.addEventListener("pointerdown", (event) => {
+      if (event.target === removeBtn || removeBtn.contains(event.target)) return;
+      event.preventDefault();
+      dragBar.setPointerCapture(event.pointerId);
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const origLeft = widget.x || 0;
+      const origTop = widget.y || 0;
+      const onMove = (moveEvent) => {
+        widget.x = Math.max(0, origLeft + moveEvent.clientX - startX);
+        widget.y = Math.max(0, origTop + moveEvent.clientY - startY);
+        el.style.left = `${widget.x}px`;
+        el.style.top = `${widget.y}px`;
+      };
+      const onUp = () => {
+        dragBar.removeEventListener("pointermove", onMove);
+        dragBar.removeEventListener("pointerup", onUp);
+        dragBar.removeEventListener("pointercancel", onUp);
+      };
+      dragBar.addEventListener("pointermove", onMove);
+      dragBar.addEventListener("pointerup", onUp);
+      dragBar.addEventListener("pointercancel", onUp);
+    });
+
+    container.append(el);
   });
 }
 
+function renderInspector() {
+  const container = dom.inspectorContent;
+  container.innerHTML = "";
+  const target = activeTarget();
+  if (!target || !state.selectedWidgetId) {
+    container.textContent = "Select a widget on the canvas.";
+    return;
+  }
+  const widget = target.currentSurface.find((w) => w.id === state.selectedWidgetId);
+  if (!widget) {
+    container.textContent = "Select a widget on the canvas.";
+    return;
+  }
+  const endpoint = target.endpointMap.get(widget.path);
+
+  const titleField = makeElement("div", "inspector-field");
+  titleField.append(makeElement("label", "", "Title"));
+  const titleInput = document.createElement("input");
+  titleInput.type = "text";
+  titleInput.value = widget.title || "";
+  titleInput.addEventListener("change", () => {
+    widget.title = titleInput.value.trim() || (endpoint ? resolveDisplayLabel(target, endpoint) : widget.path);
+    renderCustomSurface();
+  });
+  titleField.append(titleInput);
+
+  const typeField = makeElement("div", "inspector-field");
+  typeField.append(makeElement("label", "", "Widget Type"));
+  const typeSelect = document.createElement("select");
+  for (const t of ["slider", "slider-int", "choice", "toggle", "readout", "xy-x", "layout"]) {
+    const opt = document.createElement("option");
+    opt.value = t;
+    opt.textContent = t === "xy-x" ? "xy" : t === "choice" ? "dropdown" : t;
+    if (widget.widgetType === t) opt.selected = true;
+    typeSelect.append(opt);
+  }
+  typeSelect.addEventListener("change", () => {
+    widget.widgetType = typeSelect.value;
+    renderCustomSurface();
+  });
+  typeField.append(typeSelect);
+
+  const widthField = makeElement("div", "inspector-field");
+  widthField.append(makeElement("label", "", "Width"));
+  const widthInput = document.createElement("input");
+  widthInput.type = "number";
+  widthInput.value = String(widget.w || 220);
+  widthInput.min = "80";
+  widthInput.max = "800";
+  widthInput.addEventListener("change", () => {
+    widget.w = clamp(Number(widthInput.value) || 220, 80, 800);
+    renderCustomSurface();
+  });
+  widthField.append(widthInput);
+
+  const pathField = makeElement("div", "inspector-field");
+  pathField.append(makeElement("label", "", "Path"));
+  const pathDisplay = makeElement("div", "path", widget.path);
+  pathDisplay.style.fontSize = "0.78rem";
+  pathDisplay.style.color = "var(--muted)";
+  pathDisplay.style.wordBreak = "break-all";
+  pathField.append(pathDisplay);
+
+  const fields = [titleField, typeField, widthField, pathField];
+
+  if (endpoint && hasRange(endpoint)) {
+    const rangeField = makeElement("div", "inspector-field");
+    rangeField.append(makeElement("label", "", "Range"));
+    const { min, max } = getRange(endpoint);
+    rangeField.append(makeElement("div", "badge", `${formatValue(min)} → ${formatValue(max)}`));
+    fields.push(rangeField);
+  }
+
+  if (endpoint) {
+    const typeInfo = makeElement("div", "inspector-field");
+    typeInfo.append(makeElement("label", "", "OSC Type"));
+    typeInfo.append(makeElement("div", "badge", endpoint.type || "?"));
+    fields.push(typeInfo);
+  }
+
+  const currentVal = endpoint ? target.values.get(widget.path) : undefined;
+  if (currentVal !== undefined) {
+    const valField = makeElement("div", "inspector-field");
+    valField.append(makeElement("label", "", "Current Value"));
+    valField.append(makeElement("div", "", formatEndpointValue(endpoint || {}, currentVal)));
+    fields.push(valField);
+  }
+
+  container.append(...fields);
+}
+
 function syncTabUi(target) {
+  const isCustom = target?.activeTab === "custom";
   dom.tabButtons.forEach((button) => button.classList.toggle("active", button.dataset.tab === target?.activeTab));
   Object.entries(dom.tabPanels).forEach(([id, panel]) => panel.classList.toggle("active", id === target?.activeTab));
+  dom.parameterSidebar.style.display = isCustom ? "none" : "";
+  dom.deviceTreeSidebar.style.display = isCustom ? "" : "none";
+  dom.inspectorPanel.style.display = isCustom ? "" : "none";
+  dom.workspace.classList.toggle("custom-mode", isCustom);
+  if (isCustom) renderDeviceTree();
 }
 
 function renderActiveViews() {
@@ -2731,6 +3087,8 @@ function renderActiveViews() {
   renderEndpointBrowser();
   renderGenericGroups();
   renderCustomSurface();
+  renderInspector();
+  if (target?.activeTab === "custom") renderDeviceTree();
   if (target?.activeTab === "layout") renderLoadedLayout();
   else if (!target) renderLoadedLayout();
 }
@@ -2741,7 +3099,7 @@ function setActiveTab(tabId) {
   target.activeTab = tabId;
   syncTabUi(target);
   if (tabId === "layout") renderLoadedLayout();
-  if (tabId === "custom") renderCustomSurface();
+  if (tabId === "custom") { renderDeviceTree(); renderCustomSurface(); renderInspector(); }
   if (tabId === "generic") renderGenericGroups();
 }
 
@@ -2809,6 +3167,10 @@ function bindEvents() {
     applySearchFilter(target);
   });
 
+  dom.deviceTreeSearch?.addEventListener("input", () => {
+    renderDeviceTree();
+  });
+
   dom.reloadLayoutButton.addEventListener("click", () => {
     const target = activeTarget();
     if (!target) return;
@@ -2825,7 +3187,9 @@ function bindEvents() {
     const target = activeTarget();
     if (!target) return;
     target.currentSurface = [];
+    state.selectedWidgetId = null;
     renderCustomSurface();
+    renderInspector();
   });
 
   dom.tabButtons.forEach((button) => {

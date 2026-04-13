@@ -214,6 +214,10 @@ code {
   min-height: 0;
 }
 
+.workspace.custom-mode {
+  grid-template-columns: 260px 1fr 280px;
+}
+
 .sidebar,
 .main-panel {
   min-height: 0;
@@ -884,12 +888,233 @@ code {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
-/* ── Custom surface ── */
+/* ── Custom surface canvas ── */
 
 .custom-surface {
+  position: relative;
+  flex: 1;
+  min-height: 400px;
+  background:
+    linear-gradient(90deg, rgba(30, 41, 59, 0.3) 1px, transparent 1px),
+    linear-gradient(rgba(30, 41, 59, 0.3) 1px, transparent 1px);
+  background-size: 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.custom-surface.drag-over {
+  border-color: var(--accent);
+  background-color: rgba(56, 189, 248, 0.04);
+}
+
+.canvas-widget {
+  position: absolute;
+  min-width: 120px;
+  min-height: 40px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  user-select: none;
+  z-index: 10;
+}
+
+.canvas-widget:hover {
+  border-color: var(--accent);
+}
+
+.canvas-widget.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.3);
+  z-index: 20;
+}
+
+.canvas-widget-drag {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvas-widget-drag:active {
+  cursor: grabbing;
+}
+
+.canvas-widget-drag span {
+  color: var(--text);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-widget-body {
+  padding: 0.45rem;
+}
+
+.canvas-layout {
+  background: var(--surface);
+}
+
+.canvas-layout-content {
+  position: relative;
+  transform-origin: top left;
+}
+
+.canvas-widget .compact-slider-shell {
+  height: 28px;
+}
+
+.canvas-widget .compact-select {
+  height: 28px;
+}
+
+.canvas-widget .toggle-pill {
+  width: 100%;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.canvas-widget .value-readout {
+  font-size: 0.9rem;
+  padding: 0.3rem;
+}
+
+/* ── Device tree ── */
+
+.device-tree {
+  padding: 0.5rem;
+  overflow: auto;
+  flex: 1;
+}
+
+.device-tree-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.device-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.85rem;
+  color: var(--text);
+  transition: background 0.1s;
+}
+
+.device-tree-item:hover {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.device-tree-item.device {
+  font-weight: 600;
+}
+
+.device-tree-item.param {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.device-tree-item.param[draggable="true"] {
+  cursor: grab;
+}
+
+.device-tree-item.param[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.device-tree-toggle {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.device-tree-toggle.collapsed {
+  transform: rotate(-90deg);
+}
+
+.device-tree-icon {
+  font-size: 11px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.device-tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-tree-children {
+  padding-left: 1rem;
+}
+
+.device-tree-children.collapsed {
+  display: none;
+}
+
+/* ── Inspector panel ── */
+
+.inspector-panel {
+  width: 280px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: rgba(8, 17, 31, 0.7);
+  padding: 0;
+}
+
+.inspector-panel .panel {
+  height: 100%;
+  border-radius: 0;
+  border: none;
+  border-top: none;
+  border-bottom: none;
+  border-left: 1px solid var(--border);
+}
+
+.inspector-content {
+  padding: 0.75rem;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
+  gap: 0.7rem;
+  overflow: auto;
+  flex: 1;
+}
+
+.inspector-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.inspector-field label {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.inspector-field input,
+.inspector-field select {
+  font-size: 0.85rem;
+}
+
+.inspector-field input[type="color"] {
+  width: 100%;
+  height: 32px;
+  padding: 2px;
+  cursor: pointer;
 }
 
 .surface-widget .body {

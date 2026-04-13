@@ -21,7 +21,7 @@
       { "id": "mode", "type": "dropdown", "x": 12, "y": 22, "w": 92, "h": 20, "label": "Mode", "bind": { "path": "/plugin/params/mode" } },
       { "id": "hold", "type": "toggle", "x": 112, "y": 22, "w": 112, "h": 20, "label": "Hold", "bind": { "path": "/plugin/params/hold" } },
       { "id": "rate", "type": "slider", "x": 12, "y": 50, "w": 212, "h": 18, "label": "Rate", "bind": { "path": "/plugin/params/rate" } },
-      { "id": "octaves", "type": "dropdown", "x": 12, "y": 74, "w": 212, "h": 20, "label": "Octaves", "bind": { "path": "/plugin/params/octaves" } },
+      { "id": "octaves", "type": "slider", "x": 12, "y": 74, "w": 212, "h": 18, "label": "Octaves", "bind": { "path": "/plugin/params/octaves" } },
       { "id": "gate", "type": "slider", "x": 12, "y": 102, "w": 212, "h": 18, "label": "Gate", "bind": { "path": "/plugin/params/gate" } }
     ]
   }

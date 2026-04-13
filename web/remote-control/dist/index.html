@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Manifold Remote Control</title>
-    <script type="module" crossorigin src="/assets/index-BTH8KEVu.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BszcyrMj.css">
+    <script type="module" crossorigin src="/assets/index-Tgr1d_b8.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-C1YD7EdY.css">
   </head>
   <body>
     <div class="app-shell">
@@ -35,13 +35,23 @@
       </section>
 
       <main id="workspace" class="workspace">
-        <aside class="sidebar">
+        <aside class="sidebar" id="parameterSidebar">
           <div class="panel">
             <div class="panel-header">
               <h2>Parameters</h2>
               <input id="searchInput" type="search" placeholder="Search paths" />
             </div>
             <div id="endpointList" class="endpoint-list empty-state">Connect to an OSCQuery target.</div>
+          </div>
+        </aside>
+
+        <aside class="sidebar" id="deviceTreeSidebar" style="display:none">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Devices</h2>
+              <input id="deviceTreeSearch" type="search" placeholder="Filter" />
+            </div>
+            <div id="deviceTree" class="device-tree empty-state">Connect to an OSCQuery target.</div>
           </div>
         </aside>
 
@@ -72,9 +82,18 @@
                 <button id="clearSurfaceButton" type="button" class="danger">Clear</button>
               </div>
             </div>
-            <div id="customSurface" class="custom-surface empty-state">Add parameters from the left browser to build a custom control page.</div>
+            <div id="customSurface" class="custom-surface empty-state">Drag parameters from the device tree to build a custom control surface.</div>
           </section>
         </section>
+
+        <aside class="inspector-panel" id="inspectorPanel" style="display:none">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Inspector</h2>
+            </div>
+            <div id="inspectorContent" class="inspector-content">Select a widget on the canvas.</div>
+          </div>
+        </aside>
       </main>
     </div>
 

@@ -34,13 +34,23 @@
       </section>
 
       <main id="workspace" class="workspace">
-        <aside class="sidebar">
+        <aside class="sidebar" id="parameterSidebar">
           <div class="panel">
             <div class="panel-header">
               <h2>Parameters</h2>
               <input id="searchInput" type="search" placeholder="Search paths" />
             </div>
             <div id="endpointList" class="endpoint-list empty-state">Connect to an OSCQuery target.</div>
+          </div>
+        </aside>
+
+        <aside class="sidebar" id="deviceTreeSidebar" style="display:none">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Devices</h2>
+              <input id="deviceTreeSearch" type="search" placeholder="Filter" />
+            </div>
+            <div id="deviceTree" class="device-tree empty-state">Connect to an OSCQuery target.</div>
           </div>
         </aside>
 
@@ -71,9 +81,18 @@
                 <button id="clearSurfaceButton" type="button" class="danger">Clear</button>
               </div>
             </div>
-            <div id="customSurface" class="custom-surface empty-state">Add parameters from the left browser to build a custom control page.</div>
+            <div id="customSurface" class="custom-surface empty-state">Drag parameters from the device tree to build a custom control surface.</div>
           </section>
         </section>
+
+        <aside class="inspector-panel" id="inspectorPanel" style="display:none">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Inspector</h2>
+            </div>
+            <div id="inspectorContent" class="inspector-content">Select a widget on the canvas.</div>
+          </div>
+        </aside>
       </main>
     </div>
 
