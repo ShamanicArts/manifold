@@ -1,7 +1,8 @@
 local M = {}
+local ExportPluginShell = require("export_plugin_shell")
 
 local HEADER_H = 12
-local SYNC_INTERVAL = 0.15
+local SYNC_INTERVAL = ExportPluginShell.syncInterval()
 local DEFAULT_CONTENT_W = 472
 local DEFAULT_CONTENT_H = 208
 
@@ -176,9 +177,11 @@ end
 
 function M.init(ctx)
   ctx._lastSyncTime = 0
+  ctx._lastRemoteDiscoveryTime = 0
   bindControls(ctx)
   syncWidgetState(ctx)
   layout(ctx)
+  ExportPluginShell.remoteDiscoveryUpdate(ctx)
 end
 
 function M.resized(ctx)
@@ -187,12 +190,17 @@ function M.resized(ctx)
 end
 
 function M.update(ctx)
+  ExportPluginShell.remoteDiscoveryUpdate(ctx)
   local now = type(getTime) == 'function' and getTime() or 0
   if now == 0 or now - (ctx._lastSyncTime or 0) >= SYNC_INTERVAL then
     ctx._lastSyncTime = now
     syncWidgetState(ctx)
     layout(ctx)
   end
+end
+
+function M.cleanup(ctx)
+  ExportPluginShell.remoteDiscoveryShutdown()
 end
 
 return M

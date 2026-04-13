@@ -1,4 +1,5 @@
 local M = {}
+local ExportPluginShell = require("export_plugin_shell")
 
 local SYNC_INTERVAL = 0.15
 
@@ -47,6 +48,35 @@ local function formatPort(value)
   return tostring(n)
 end
 
+local function remoteDiscoveryState()
+  return ExportPluginShell.remoteDiscoveryStatus() or {}
+end
+
+local function remoteHostText()
+  local state = remoteDiscoveryState()
+  return tostring(state.host or "127.0.0.1")
+end
+
+local function remotePortValue()
+  local config = ExportPluginShell.remoteDiscoveryConfig() or {}
+  return math.floor((tonumber(config.port or config.defaultPort or 18081) or 18081) + 0.5)
+end
+
+local function remoteStatusText(queryEnabled, queryPort)
+  local state = remoteDiscoveryState()
+  if not queryEnabled or queryPort <= 0 then
+    return "Disabled"
+  end
+  if state.advertising then
+    return "Advertising"
+  end
+  local lastAttemptTime = tonumber(state.lastAttemptTime or 0) or 0
+  if lastAttemptTime > 0 then
+    return "Retrying"
+  end
+  return "Waiting"
+end
+
 local function layout(ctx)
   local root = ctx.root and ctx.root.node or nil
   if not root then
@@ -93,6 +123,16 @@ local function layout(ctx)
     local queryPortY = portY + 18
     qset(widgets.query_port_label, pad, queryPortY, 68, 16)
     qset(widgets.query_port_value, pad + valueIndent, queryPortY, math.max(40, w - pad * 2 - valueIndent), 16)
+
+    local remoteSectionY = queryPortY + 28
+    qset(widgets.remote_section_title, pad, remoteSectionY, math.max(80, w - pad * 2), 14)
+    local remoteRowY = remoteSectionY + 18
+    qset(widgets.remote_host_label, pad, remoteRowY, 34, 16)
+    qset(widgets.remote_host_value, pad + 36, remoteRowY, 64, 16)
+    qset(widgets.remote_port_box, pad + 102, remoteRowY - 8, math.max(80, w - pad * 2 - 172), 24)
+    local remoteStatusY = remoteRowY + 18
+    qset(widgets.remote_status_label, pad, remoteStatusY, 50, 16)
+    qset(widgets.remote_status_value, pad + valueIndent, remoteStatusY, math.max(40, w - pad * 2 - valueIndent), 16)
     return
   end
 
@@ -106,12 +146,23 @@ local function layout(ctx)
   qset(widgets.osc_port_value, pad + 64, portY, 60, 16)
   qset(widgets.query_port_label, pad + 134, portY, 70, 16)
   qset(widgets.query_port_value, pad + 209, portY, 60, 16)
+
+  local remoteSectionY = portY + 32
+  qset(widgets.remote_section_title, pad, remoteSectionY, 120, 16)
+  local remoteY = remoteSectionY + 26
+  qset(widgets.remote_host_label, pad, remoteY, 34, 16)
+  qset(widgets.remote_host_value, pad + 36, remoteY, 88, 16)
+  qset(widgets.remote_port_box, pad + 126, remoteY - 8, 100, 24)
+  qset(widgets.remote_status_label, pad + 236, remoteY, 44, 16)
+  qset(widgets.remote_status_value, pad + 284, remoteY, math.max(40, w - (pad + 284) - pad), 16)
 end
 
 local function syncState(ctx)
   local widgets = ctx.widgets or {}
   local oscEnabled = safeGetParam('/plugin/ui/oscEnabled', 1) > 0.5
   local queryEnabled = safeGetParam('/plugin/ui/oscQueryEnabled', 1) > 0.5
+  local oscPort = safeGetParam('/plugin/ui/oscInputPort', 0)
+  local queryPort = safeGetParam('/plugin/ui/oscQueryPort', 0)
 
   if queryEnabled and not oscEnabled then
     safeSetParam('/plugin/ui/oscEnabled', 1)
@@ -130,8 +181,13 @@ local function syncState(ctx)
     end
   end
 
-  setLabelText(widgets.osc_port_value, formatPort(safeGetParam('/plugin/ui/oscInputPort', 0)))
-  setLabelText(widgets.query_port_value, formatPort(safeGetParam('/plugin/ui/oscQueryPort', 0)))
+  setLabelText(widgets.osc_port_value, formatPort(oscPort))
+  setLabelText(widgets.query_port_value, formatPort(queryPort))
+  setLabelText(widgets.remote_host_value, remoteHostText())
+  if widgets.remote_port_box and widgets.remote_port_box.setValue then
+    widgets.remote_port_box:setValue(remotePortValue())
+  end
+  setLabelText(widgets.remote_status_value, remoteStatusText(queryEnabled, tonumber(queryPort) or 0))
 end
 
 local function bindControls(ctx)
@@ -147,6 +203,7 @@ local function bindControls(ctx)
       safeSetParam('/plugin/ui/oscEnabled', value and 1 or 0)
       if not value then
         safeSetParam('/plugin/ui/oscQueryEnabled', 0)
+        ExportPluginShell.remoteDiscoveryShutdown()
       end
       syncState(ctx)
       layout(ctx)
@@ -159,6 +216,17 @@ local function bindControls(ctx)
         safeSetParam('/plugin/ui/oscEnabled', 1)
       end
       safeSetParam('/plugin/ui/oscQueryEnabled', value and 1 or 0)
+      if not value then
+        ExportPluginShell.remoteDiscoveryShutdown()
+      end
+      syncState(ctx)
+      layout(ctx)
+    end
+  end
+
+  if widgets.remote_port_box then
+    widgets.remote_port_box._onChange = function(value)
+      ExportPluginShell.setRemoteDiscoveryPort(value)
       syncState(ctx)
       layout(ctx)
     end

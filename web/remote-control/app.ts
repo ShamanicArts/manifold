@@ -27,11 +27,15 @@ const FX_PARAM_NAMES = {
   20: ["Length", "Gate", "Prob", "Filter"],
 };
 
+const DISCOVERY_ENDPOINT = "/__oscq/targets";
+const DISCOVERY_POLL_MS = 750;
+
 const state = {
   lastHost: "127.0.0.1",
   lastPort: 9011,
   targets: new Map<string, AnyRecord>(),
   activeTargetId: null as string | null,
+  discoveryPollTimer: 0 as number | ReturnType<typeof setInterval>,
 };
 
 const dom = {
@@ -632,6 +636,8 @@ function createTarget(host, port) {
     id: targetId(host, port),
     host,
     port,
+    discovered: false,
+    lastSeenMs: 0,
     baseUrl: `http://${host}:${port}`,
     wsUrl: "",
     pollTimer: 0,
@@ -811,10 +817,22 @@ function startPolling(target) {
   }, 1500);
 }
 
-async function connectTarget(host, port) {
+async function connectTarget(host, port, options: AnyRecord = {}) {
   const id = targetId(host, port);
+  const activate = options.activate !== false;
+  const remember = options.remember !== false;
+  const discovered = options.discovered === true;
   if (state.targets.has(id)) {
-    switchActiveTarget(id);
+    const existing = state.targets.get(id);
+    if (existing) {
+      if (discovered) existing.discovered = true;
+      if (Number.isFinite(Number(options.lastSeenMs))) {
+        existing.lastSeenMs = Number(options.lastSeenMs);
+      }
+    }
+    if (activate) {
+      switchActiveTarget(id);
+    }
     return;
   }
 
@@ -826,10 +844,18 @@ async function connectTarget(host, port) {
   });
 
   const target = createTarget(host, port);
+  target.discovered = discovered;
+  if (Number.isFinite(Number(options.lastSeenMs))) {
+    target.lastSeenMs = Number(options.lastSeenMs);
+  }
   loadSurface(target);
   state.targets.set(id, target);
-  state.activeTargetId = id;
-  saveConnection(host, port);
+  if (activate || !state.activeTargetId) {
+    state.activeTargetId = id;
+  }
+  if (remember) {
+    saveConnection(host, port);
+  }
   renderTargetNav();
   renderActiveViews();
 
@@ -2719,6 +2745,49 @@ function setActiveTab(tabId) {
   if (tabId === "generic") renderGenericGroups();
 }
 
+async function syncDiscoveredTargets() {
+  try {
+    const data = await fetchJson(DISCOVERY_ENDPOINT);
+    const seen = new Set<string>();
+    const targets = Array.isArray(data?.targets) ? data.targets : [];
+
+    for (const item of targets) {
+      const host = String(item?.host || "127.0.0.1").trim() || "127.0.0.1";
+      const port = clamp(toNumber(item?.queryPort, NaN), 1, 65535);
+      if (!Number.isFinite(port)) continue;
+      const id = targetId(host, port);
+      seen.add(id);
+      await connectTarget(host, port, {
+        activate: false,
+        remember: false,
+        discovered: true,
+        lastSeenMs: toNumber(item?.lastSeenMs, 0),
+      });
+      const target = state.targets.get(id);
+      if (target) {
+        target.discovered = true;
+        target.lastSeenMs = toNumber(item?.lastSeenMs, target.lastSeenMs || 0);
+      }
+    }
+
+    Array.from(state.targets.values()).forEach((target) => {
+      if (target.discovered && !seen.has(target.id)) {
+        disconnectTarget(target.id);
+      }
+    });
+  } catch (error) {
+    console.warn("discovery sync failed", error);
+  }
+}
+
+function startDiscoveryPolling() {
+  if (state.discoveryPollTimer) clearInterval(state.discoveryPollTimer as number);
+  void syncDiscoveredTargets();
+  state.discoveryPollTimer = setInterval(() => {
+    void syncDiscoveredTargets();
+  }, DISCOVERY_POLL_MS);
+}
+
 function bindEvents() {
   dom.connectForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2764,6 +2833,7 @@ function bindEvents() {
   });
 
   window.addEventListener("beforeunload", () => {
+    if (state.discoveryPollTimer) clearInterval(state.discoveryPollTimer as number);
     Array.from(state.targets.values()).forEach((target) => closeSocket(target));
   });
 }
@@ -2775,6 +2845,7 @@ function init() {
   bindEvents();
   renderTargetNav();
   renderActiveViews();
+  startDiscoveryPolling();
 }
 
 init();
