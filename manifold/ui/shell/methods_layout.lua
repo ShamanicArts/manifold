@@ -77,20 +77,11 @@ local collectConfigLeaves = Inspector.collectConfigLeaves
 local M = {}
 
 local function shellLayoutPerfNowMs()
-    return nowSeconds() * 1000.0
+    return 0.0
 end
 
 local function shellLayoutPerfTrace(label, startMs, extra)
-    local elapsedMs = shellLayoutPerfNowMs() - startMs
-    if elapsedMs < 8.0 and extra == nil then
-        return elapsedMs
-    end
-    if extra ~= nil and extra ~= "" then
-        print(string.format("[ShellPerf] %s %.3fms %s", label, elapsedMs, extra))
-    else
-        print(string.format("[ShellPerf] %s %.3fms", label, elapsedMs))
-    end
-    return elapsedMs
+    return 0.0
 end
 
 function M.attach(shell)

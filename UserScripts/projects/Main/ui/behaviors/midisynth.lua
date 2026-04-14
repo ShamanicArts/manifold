@@ -6140,6 +6140,30 @@ function M.resized(ctx, w, h)
   refreshManagedLayoutState(ctx, w, h)
   updateDropdownAnchors(ctx)
 end
+function M.shouldUpdate(ctx, changedPaths, changedSet)
+  if type(changedPaths) ~= "table" or #changedPaths == 0 then
+    return true
+  end
+
+  local linkTickPaths = {
+    ["/manifold/link/beat"] = true,
+    ["/core/behavior/link/beat"] = true,
+    ["/dsp/manifold/link/beat"] = true,
+    ["/manifold/link/phase"] = true,
+    ["/core/behavior/link/phase"] = true,
+    ["/dsp/manifold/link/phase"] = true,
+  }
+
+  for i = 1, #changedPaths do
+    local path = tostring(changedPaths[i] or "")
+    if not linkTickPaths[path] then
+      return true
+    end
+  end
+
+  return false
+end
+
 function M.update(ctx, rawState)
   activeBehaviorCtx = ctx
   local UpdateSync = require("ui.update_sync")
@@ -6270,9 +6294,37 @@ function M.cleanup(ctx)
 
   -- Note: Midi.clearCallbacks() is still not called here to keep MIDI alive.
 
-  -- Clear patchbay widget cache
+  -- Clear patchbay/widget globals that can otherwise keep dead runtime nodes alive.
   invalidatePatchbay(nil, ctx)
   ctx._pendingPatchbayPages = nil
+  ctx._patchbayPortRegistry = nil
+
+  if _G.__midiSynthPatchbayPortRegistry == nil or _G.__midiSynthPatchbayPortRegistry == ctx._patchbayPortRegistry then
+    _G.__midiSynthPatchbayPortRegistry = nil
+  end
+  if _G.__midiSynthRackPagination == ctx._rackPagination then
+    _G.__midiSynthRackPagination = nil
+  end
+  if _G.__midiSynthRackWireLayer == RackWireLayer then
+    _G.__midiSynthRackWireLayer = nil
+  end
+  if type(_G) == "table" then
+    _G.__midiSynthDynamicModuleSpecs = nil
+    _G.__midiSynthDynamicOscillatorAnalysis = nil
+    _G.__midiSynthAdsrViewState = nil
+    _G.__midiSynthArpViewState = nil
+    _G.__midiSynthTransposeViewState = nil
+    _G.__midiSynthVelocityMapperViewState = nil
+    _G.__midiSynthScaleQuantizerViewState = nil
+    _G.__midiSynthNoteFilterViewState = nil
+    _G.__midiSynthAttenuverterBiasViewState = nil
+    _G.__midiSynthLfoViewState = nil
+    _G.__midiSynthSlewViewState = nil
+    _G.__midiSynthSampleHoldViewState = nil
+    _G.__midiSynthCompareViewState = nil
+    _G.__midiSynthCvMixViewState = nil
+    _G.__midiSynthRangeMapperViewState = nil
+  end
 
   if _G.__midiSynthRackState == ctx._rackState then
     _G.__midiSynthRackState = nil

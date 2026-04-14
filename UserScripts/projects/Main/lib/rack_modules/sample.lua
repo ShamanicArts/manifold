@@ -119,17 +119,20 @@ function M.create(deps)
       return false
     end
 
-    local writeOffsetPath = ParameterBinder.dynamicSampleCaptureWriteOffsetPath(slotIndex)
-    local writeOffset = slot.sampleSynth and slot.sampleSynth.getSelectedSourceWriteOffset and slot.sampleSynth.getSelectedSourceWriteOffset() or 0
-    writer(writeOffsetPath, math.max(0, math.floor(tonumber(writeOffset) or 0)))
-
-    local capturedLengthPath = ParameterBinder.dynamicSampleCapturedLengthMsPath(slotIndex)
-    writer(capturedLengthPath, math.max(0, math.floor(tonumber(slot.lastCapturedLengthMs) or 0)))
+    local capturedLengthValue = math.max(0, math.floor(tonumber(slot.lastCapturedLengthMs) or 0))
+    if slot._lastPublishedCapturedLengthMs ~= capturedLengthValue then
+      local capturedLengthPath = ParameterBinder.dynamicSampleCapturedLengthMsPath(slotIndex)
+      writer(capturedLengthPath, capturedLengthValue)
+      slot._lastPublishedCapturedLengthMs = capturedLengthValue
+    end
 
     local captureRecordingPath = ParameterBinder.dynamicSampleCaptureRecordingPath and ParameterBinder.dynamicSampleCaptureRecordingPath(slotIndex) or nil
     if type(captureRecordingPath) == "string" and captureRecordingPath ~= "" then
-      local recording = slot.sampleSynth and slot.sampleSynth.getCaptureRecording and slot.sampleSynth.getCaptureRecording() or false
-      writer(captureRecordingPath, recording and 1 or 0)
+      local recordingValue = (slot.sampleSynth and slot.sampleSynth.getCaptureRecording and slot.sampleSynth.getCaptureRecording()) and 1 or 0
+      if slot._lastPublishedCaptureRecording ~= recordingValue then
+        writer(captureRecordingPath, recordingValue)
+        slot._lastPublishedCaptureRecording = recordingValue
+      end
     end
     return true
   end

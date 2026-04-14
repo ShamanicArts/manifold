@@ -83,20 +83,11 @@ local collectConfigLeaves = Inspector.collectConfigLeaves
 local M = {}
 
 local function shellPerfNowMs()
-    return nowSeconds() * 1000.0
+    return 0.0
 end
 
 local function shellPerfTrace(label, startMs, extra)
-    local elapsedMs = shellPerfNowMs() - startMs
-    if elapsedMs < 8.0 and extra == nil then
-        return elapsedMs
-    end
-    if extra ~= nil and extra ~= "" then
-        print(string.format("[ShellPerf] %s %.3fms %s", label, elapsedMs, extra))
-    else
-        print(string.format("[ShellPerf] %s %.3fms", label, elapsedMs))
-    end
-    return elapsedMs
+    return 0.0
 end
 
 function M.attach(shell)
@@ -2251,42 +2242,58 @@ function M.attach(shell)
         end
     end
 
-    function shell:refreshMainUiTabs()
+    function shell:invalidateMainUiTabsCache()
+        self._projectTabsCache = nil
+    end
+
+    function shell:refreshMainUiTabs(force)
         local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
-        local uiScripts = listUiScripts and listUiScripts() or {}
+        local cache = self._projectTabsCache
+        local projectTabs = nil
 
-        -- Build project tab list for ProjectTabHost
-        local projectTabs = {}
-        local seenUiIds = {}
+        if not force and type(cache) == "table" and cache.currentUiPath == currentUiPath and type(cache.projectTabs) == "table" then
+            projectTabs = cache.projectTabs
+        else
+            local uiScripts = listUiScripts and listUiScripts() or {}
 
-        for i = 1, #uiScripts do
-            local s = uiScripts[i]
-            if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
-                local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
-                -- Skip system overlay projects (Settings etc) - they don't belong in the tab bar
-                if not scriptLooksSettings(name, s.path) then
-                    local tabId = "ui:" .. s.path
-                    if not seenUiIds[tabId] then
-                        seenUiIds[tabId] = true
-                        projectTabs[#projectTabs + 1] = {
-                            id = tabId,
-                            title = name,
-                            kind = "ui-script",
-                            path = s.path,
-                            isSystem = false,
-                        }
+            -- Build project tab list for ProjectTabHost
+            projectTabs = {}
+            local seenUiIds = {}
+
+            for i = 1, #uiScripts do
+                local s = uiScripts[i]
+                if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
+                    local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
+                    -- Skip system overlay projects (Settings etc) - they don't belong in the tab bar
+                    if not scriptLooksSettings(name, s.path) then
+                        local tabId = "ui:" .. s.path
+                        if not seenUiIds[tabId] then
+                            seenUiIds[tabId] = true
+                            projectTabs[#projectTabs + 1] = {
+                                id = tabId,
+                                title = name,
+                                kind = "ui-script",
+                                path = s.path,
+                                isSystem = false,
+                            }
+                        end
                     end
                 end
             end
-        end
 
-        if #projectTabs == 0 and currentUiPath ~= "" then
-            projectTabs[#projectTabs + 1] = {
-                id = "ui:" .. currentUiPath,
-                title = fileStem(currentUiPath),
-                kind = "ui-script",
-                path = currentUiPath,
-                isSystem = false,
+            if #projectTabs == 0 and currentUiPath ~= "" then
+                projectTabs[#projectTabs + 1] = {
+                    id = "ui:" .. currentUiPath,
+                    title = fileStem(currentUiPath),
+                    kind = "ui-script",
+                    path = currentUiPath,
+                    isSystem = false,
+                }
+            end
+
+            self._projectTabsCache = {
+                currentUiPath = currentUiPath,
+                projectTabs = projectTabs,
             }
         end
 

@@ -2093,10 +2093,12 @@ bool BehaviorCoreProcessor::unloadDspSlot(const std::string& slot) {
         return false;
     }
 
+    // SLOP: the comment below is giving codex. 
+
     // Do not destroy slot hosts during runtime UI/DSP transitions.
     // Tearing down Lua VMs has repeatedly caused crashes. Keep the host alive
     // and unload only its nodes by loading an empty script.
-    // TODO(shamanic): replace this empty-script unload + markUnloaded() split
+    // TODO: replace this empty-script unload + markUnloaded() split
     // with a proper slot lifecycle model. Right now we preserve the VM/runtime
     // for stability but lie about loaded-state so UI/project switches will
     // force a clean reload. That is the right tactical fix, but the long-term

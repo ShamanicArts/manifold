@@ -689,7 +689,6 @@ function M.buildSynth(ctx, options)
     return sampleSynth.getSelectedSourceWriteOffset()
   end
 
-  local publishedSampleCaptureWriteOffset = nil
   local publishedSampleCapturedLengthMs = nil
   local publishedSampleCaptureRecording = nil
 
@@ -698,14 +697,9 @@ function M.buildSynth(ctx, options)
       return false
     end
 
-    local writeOffset = math.max(0, math.floor(tonumber(sampleSynth.getSelectedSourceWriteOffset and sampleSynth.getSelectedSourceWriteOffset() or 0) or 0))
     local capturedLengthMs = math.max(0, math.floor(tonumber(sampleSynth.getLastCapturedLengthMs and sampleSynth.getLastCapturedLengthMs() or 0) or 0))
     local captureRecording = sampleSynth.getCaptureRecording and sampleSynth.getCaptureRecording() and 1 or 0
 
-    if publishedSampleCaptureWriteOffset ~= writeOffset then
-      ctx.host.setParam(PATHS.sampleCaptureWriteOffset, writeOffset)
-      publishedSampleCaptureWriteOffset = writeOffset
-    end
     if publishedSampleCapturedLengthMs ~= capturedLengthMs then
       ctx.host.setParam(PATHS.sampleCapturedLengthMs, capturedLengthMs)
       publishedSampleCapturedLengthMs = capturedLengthMs
