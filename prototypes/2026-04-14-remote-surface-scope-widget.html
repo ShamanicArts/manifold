@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manifold Remote — Scope + Spectrum Widget Prototype</title>
+  <style>
+    :root {
+      --bg: #0b0c0f;
+      --panel: #111318;
+      --border: #1f232c;
+      --text: #e6e8ef;
+      --muted: #8b92a8;
+      --accent: #00d2ff;
+      --accent-2: #ff5fa2;
+      --grid: #1a1e26;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+    .shell {
+      max-width: 960px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .card h2 {
+      font-size: 14px;
+      margin: 0 0 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .widget-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .surface-widget {
+      position: relative;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .widget-header {
+      position: absolute;
+      top: 8px;
+      left: 10px;
+      font-size: 11px;
+      color: var(--muted);
+      z-index: 2;
+      pointer-events: none;
+    }
+    canvas {
+      display: block;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    button {
+      background: #1a1e26;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { border-color: #2e3544; }
+    button.active { background: #0f2a3a; border-color: var(--accent); color: var(--accent); }
+    .note {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      background: #0b0c0f;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px dashed var(--border);
+      color: #c9cdd8;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div>
+      <h1>Remote Surface Scope + Spectrum Widget</h1>
+      <div class="subtitle">Prototype for Manifold web remote custom surface builder</div>
+    </div>
+
+    <div class="card">
+      <h2>Live Widgets</h2>
+      <div class="widget-row">
+        <div class="surface-widget" style="width:360px;height:160px;">
+          <div class="widget-header">/audio/scope/left</div>
+          <canvas id="scopeCanvas" width="360" height="160"></canvas>
+        </div>
+        <div class="surface-widget" style="width:360px;height:160px;">
+          <div class="widget-header">/audio/spectrum/mix</div>
+          <canvas id="spectrumCanvas" width="360" height="160"></canvas>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="btnSine" class="active">Sine</button>
+        <button id="btnSaw">Saw</button>
+        <button id="btnNoise">Noise</button>
+        <button id="btnChords">Chords</button>
+        <button id="btnPause">Pause</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Integration Notes</h2>
+      <div class="note">
+        <p><strong>How this fits into <code>app.ts</code>:</strong></p>
+        <p>
+          Add a new <code>widgetType === "scope"</code> branch in <code>buildControl()</code>. The widget
+          receives an endpoint path like <code>/audio/scope/left</code> and renders a canvas that updates
+          from either SSE, bundle polling, or simulated data.
+        </p>
+        <p>
+          The canvas uses <code>devicePixelRatio</code> scaling for crisp lines on Retina displays.
+          The render loop is driven by <code>requestAnimationFrame</code> and consumes the latest
+          Float32Array samples stored on the widget state.
+        </p>
+      </div>
+      <div class="code">if (widgetType === "scope") {
+  const canvas = document.createElement("canvas");
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = (widget.w || 320) * dpr;
+  canvas.height = (widget.h || 120) * dpr;
+  canvas.style.width = (widget.w || 320) + "px";
+  canvas.style.height = (widget.h || 120) + "px";
+
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+
+  startScopeRenderLoop(widget, canvas, ctx, target, endpoint);
+  controlCard.append(canvas);
+  return controlCard;
+}</div>
+    </div>
+
+    <div class="card">
+      <h2>OSCQuery Streaming Recommendations</h2>
+      <div class="note">
+        <ul>
+          <li><strong>SSE is the sweet spot</strong> for scopes: one HTTP connection, server pushes frames at 30–60 Hz.</li>
+          <li><strong>Base64-encoded Float32</strong> is ~3× faster to parse than JSON number arrays.</li>
+          <li><strong>Decimate on the server</strong>: only send 2× the canvas width in samples.</li>
+          <li><strong>Mark endpoints hidden</strong> from the generic parameter list (like <code>/stats</code> today).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // Simulated plugin signal generator
+    // ============================================================
+    let signalMode = 'sine';
+    let paused = false;
+    let phase = 0;
+    const sampleRate = 48000;
+    const bufferSize = 1024;
+
+    function generateSamples() {
+      if (paused) return lastSamples;
+      const out = new Float32Array(bufferSize);
+      const freq = signalMode === 'chords' ? 110 : (signalMode === 'saw' ? 220 : 440);
+      for (let i = 0; i < bufferSize; i++) {
+        const t = (phase + i) / sampleRate;
+        if (signalMode === 'sine') {
+          out[i] = Math.sin(2 * Math.PI * freq * t) * 0.8;
+        } else if (signalMode === 'saw') {
+          out[i] = (2 * (t * freq % 1) - 1) * 0.6;
+        } else if (signalMode === 'noise') {
+          out[i] = (Math.random() * 2 - 1) * 0.5;
+        } else if (signalMode === 'chords') {
+          out[i] = (
+            Math.sin(2 * Math.PI * 110 * t) * 0.35 +
+            Math.sin(2 * Math.PI * 138.59 * t) * 0.35 +
+            Math.sin(2 * Math.PI * 164.81 * t) * 0.35
+          );
+        }
+      }
+      phase += bufferSize;
+      lastSamples = out;
+      return out;
+    }
+    let lastSamples = new Float32Array(bufferSize);
+
+    // ============================================================
+    // FFT helpers for spectrum
+    // ============================================================
+    function computeFFT(samples) {
+      const N = 512; // power of two
+      const re = new Float64Array(N);
+      const im = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        re[i] = samples[i] || 0;
+        im[i] = 0;
+      }
+      // Cooley-Tukey iterative FFT
+      for (let i = 0; i < N; i++) {
+        let j = 0;
+        for (let k = 0; k < Math.log2(N); k++) {
+          j = (j << 1) | ((i >> k) & 1);
+        }
+        if (j > i) { const t = re[i]; re[i] = re[j]; re[j] = t; const u = im[i]; im[i] = im[j]; im[j] = u; }
+      }
+      for (let size = 2; size <= N; size *= 2) {
+        const half = size / 2;
+        const tableCos = new Float64Array(half);
+        const tableSin = new Float64Array(half);
+        for (let i = 0; i < half; i++) {
+          const angle = -2 * Math.PI * i / size;
+          tableCos[i] = Math.cos(angle);
+          tableSin[i] = Math.sin(angle);
+        }
+        for (let i = 0; i < N; i += size) {
+          for (let j = 0; j < half; j++) {
+            const uRe = re[i + j];
+            const uIm = im[i + j];
+            const vRe = re[i + j + half] * tableCos[j] - im[i + j + half] * tableSin[j];
+            const vIm = re[i + j + half] * tableSin[j] + im[i + j + half] * tableCos[j];
+            re[i + j] = uRe + vRe;
+            im[i + j] = uIm + vIm;
+            re[i + j + half] = uRe - vRe;
+            im[i + j + half] = uIm - vIm;
+          }
+        }
+      }
+      const mags = new Float32Array(N / 2);
+      for (let i = 0; i < N / 2; i++) {
+        mags[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]) / N;
+      }
+      return mags;
+    }
+
+    // ============================================================
+    // Scope renderer
+    // ============================================================
+    const scopeCanvas = document.getElementById('scopeCanvas');
+    const scopeCtx = scopeCanvas.getContext('2d');
+    const scopeDpr = window.devicePixelRatio || 1;
+    const scopeCssW = 360;
+    const scopeCssH = 160;
+    scopeCanvas.width = scopeCssW * scopeDpr;
+    scopeCanvas.height = scopeCssH * scopeDpr;
+    scopeCtx.scale(scopeDpr, scopeDpr);
+
+    function drawScope(samples) {
+      const w = scopeCssW;
+      const h = scopeCssH;
+      const ctx = scopeCtx;
+
+      // Background
+      ctx.fillStyle = '#0b0c0f';
+      ctx.fillRect(0, 0, w, h);
+
+      // Grid
+      ctx.strokeStyle = '#1a1e26';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += 40) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+      for (let y = 0; y <= h; y += 40) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+      ctx.stroke();
+
+      // Center line
+      ctx.strokeStyle = '#2e3544';
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+
+      // Waveform
+      ctx.strokeStyle = 'var(--accent)';
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      const step = Math.max(1, Math.floor(samples.length / w));
+      let drawn = 0;
+      for (let px = 0; px < w; px++) {
+        const i = Math.floor(px * samples.length / w);
+        const v = samples[i] || 0;
+        const y = h / 2 - v * (h * 0.42);
+        if (drawn === 0) ctx.moveTo(px, y);
+        else ctx.lineTo(px, y);
+        drawn++;
+      }
+      ctx.stroke();
+
+      // Glow
+      ctx.shadowColor = 'var(--accent)';
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // ============================================================
+    // Spectrum renderer
+    // ============================================================
+    const specCanvas = document.getElementById('spectrumCanvas');
+    const specCtx = specCanvas.getContext('2d');
+    const specDpr = window.devicePixelRatio || 1;
+    const specCssW = 360;
+    const specCssH = 160;
+    specCanvas.width = specCssW * specDpr;
+    specCanvas.height = specCssH * specDpr;
+    specCtx.scale(specDpr, specDpr);
+
+    let smoothedBins = null;
+
+    function drawSpectrum(mags) {
+      const w = specCssW;
+      const h = specCssH;
+      const ctx = specCtx;
+
+      // Background
+      ctx.fillStyle = '#0b0c0f';
+      ctx.fillRect(0, 0, w, h);
+
+      const bins = mags.length;
+      if (!smoothedBins || smoothedBins.length !== bins) smoothedBins = new Float32Array(bins);
+
+      const minDb = -90;
+      const maxDb = -10;
+      const barW = w / bins;
+
+      // Bars
+      for (let i = 0; i < bins; i++) {
+        const db = 20 * Math.log10(mags[i] + 1e-10);
+        const norm = (db - minDb) / (maxDb - minDb);
+        const targetH = Math.max(0, Math.min(1, norm)) * h;
+        smoothedBins[i] += (targetH - smoothedBins[i]) * 0.25;
+        const bh = smoothedBins[i];
+
+        const hue = 180 + (i / bins) * 160; // cyan -> pink
+        const color = `hsl(${hue}, 90%, 55%)`;
+        ctx.fillStyle = color;
+        ctx.fillRect(i * barW, h - bh, barW - 1, bh);
+      }
+
+      // Grid overlay
+      ctx.strokeStyle = 'rgba(26,30,38,0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let y = 0; y <= h; y += 40) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+      ctx.stroke();
+    }
+
+    // ============================================================
+    // Animation loop
+    // ============================================================
+    let lastFrame = 0;
+    function loop(now) {
+      if (now - lastFrame < 16) { // ~60 fps cap
+        requestAnimationFrame(loop);
+        return;
+      }
+      lastFrame = now;
+      const samples = generateSamples();
+      drawScope(samples);
+      const mags = computeFFT(samples);
+      drawSpectrum(mags);
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // ============================================================
+    // Controls
+    // ============================================================
+    const modes = {
+      btnSine: 'sine',
+      btnSaw: 'saw',
+      btnNoise: 'noise',
+      btnChords: 'chords',
+    };
+    Object.entries(modes).forEach(([id, mode]) => {
+      document.getElementById(id).addEventListener('click', () => {
+        signalMode = mode;
+        Object.keys(modes).forEach(k => document.getElementById(k).classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+      });
+    });
+    document.getElementById('btnPause').addEventListener('click', (e) => {
+      paused = !paused;
+      e.target.classList.toggle('active', paused);
+      e.target.textContent = paused ? 'Resume' : 'Pause';
+    });
+  </script>
+</body>
+</html>
