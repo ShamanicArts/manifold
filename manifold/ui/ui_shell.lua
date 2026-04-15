@@ -954,34 +954,23 @@ function Shell.create(parentNode, options)
         -- Restored from background stash (IPC UISWITCH bypasses Lua stash)
         shell.openProjects = _G.__manifoldShellOpenProjects
     else
-        -- Fresh start: show all discovered projects
-        local uiScripts = listUiScripts and listUiScripts() or {}
+        -- Fresh start: show only the current project
         local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
-        local seenUiIds = {}
-        for i = 1, #uiScripts do
-            local s = uiScripts[i]
-            if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
-                local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
-                if not scriptLooksSettings(name, s.path) then
-                    local tabId = "ui:" .. s.path
-                    if not seenUiIds[tabId] then
-                        seenUiIds[tabId] = true
-                        shell.openProjects[#shell.openProjects + 1] = {
-                            id = tabId,
-                            title = name,
-                            kind = "ui-script",
-                            path = s.path,
-                            isSystem = false,
-                        }
-                    end
+        if currentUiPath ~= "" then
+            local uiScripts = listUiScripts and listUiScripts() or {}
+            local currentName = ""
+            for _, s in ipairs(uiScripts) do
+                if type(s) == "table" and s.path == currentUiPath then
+                    currentName = s.name or fileStem(currentUiPath)
+                    break
                 end
             end
-        end
-        -- Fallback: if no projects discovered, seed with current project
-        if #shell.openProjects == 0 and currentUiPath ~= "" then
+            if currentName == "" then
+                currentName = fileStem(currentUiPath)
+            end
             shell.openProjects[#shell.openProjects + 1] = {
                 id = "ui:" .. currentUiPath,
-                title = fileStem(currentUiPath),
+                title = currentName,
                 kind = "ui-script",
                 path = currentUiPath,
                 isSystem = false,
