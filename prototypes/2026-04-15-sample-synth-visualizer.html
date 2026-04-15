@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manifold Sample Synth Visualizer Prototype</title>
+  <style>
+    :root {
+      --bg: #0d0d0f;
+      --panel: #16161a;
+      --accent: #00d4aa;
+      --accent-dim: #00d4aa44;
+      --text: #e6e6e6;
+      --text-dim: #888;
+      --border: #2a2a30;
+      --record: #ff3366;
+      --armed: #ffcc00;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 20px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .control-group { margin-bottom: 18px; }
+    .control-group label {
+      display: block;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+    .btn-row { display: flex; gap: 8px; }
+    button {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      flex: 1;
+      transition: all .15s ease;
+    }
+    button:hover { border-color: var(--accent); }
+    button.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    button.record {
+      background: var(--record);
+      border-color: var(--record);
+      color: #fff;
+      animation: pulse 1.2s infinite;
+    }
+    button.armed {
+      background: var(--armed);
+      border-color: var(--armed);
+      color: #000;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .75; }
+    }
+    select, input[type="range"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px;
+      border-radius: 6px;
+    }
+    .status {
+      font-size: 13px;
+      padding: 10px;
+      background: var(--bg);
+      border-radius: 8px;
+      border-left: 3px solid var(--accent);
+    }
+    canvas {
+      width: 100%;
+      height: 220px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: block;
+    }
+    .canvas-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin: 8px 4px 16px;
+    }
+    .integration {
+      margin-top: 20px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--text-dim);
+    }
+    .integration code {
+      background: #222;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent);
+    }
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>🎛️ Sample Synth Visualizer Prototype</h1>
+  <div class="subtitle">
+    Demonstrates waveform display, capture region editing, and spectral partial visualization for the Manifold MIDI synth sample engine.
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="control-group">
+        <label>Capture Mode</label>
+        <div class="btn-row">
+          <button id="modeRetro" class="active" onclick="setMode('retro')">Retro</button>
+          <button id="modeFree" onclick="setMode('free')">Free</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>Capture Action</label>
+        <div class="btn-row">
+          <button id="captureBtn" onclick="toggleCapture()">Capture</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>Retro Bars</label>
+        <select id="retroBars" onchange="drawWaveform()">
+          <option value="0.5">1/2 bar</option>
+          <option value="1" selected>1 bar</option>
+          <option value="2">2 bars</option>
+          <option value="4">4 bars</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Blend Mode</label>
+        <select id="blendMode" onchange="onBlendChange()">
+          <option value="mix">Mix</option>
+          <option value="ring">Ring</option>
+          <option value="fm">FM</option>
+          <option value="sync">Sync</option>
+          <option value="add" selected>Add</option>
+          <option value="morph">Morph</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <div class="status" id="statusBox">
+          <span id="statusSpinner"></span>
+          <span id="statusText">Idle — select a capture mode</span>
+        </div>
+      </div>
+
+      <div class="integration">
+        <strong>Integration Notes</strong><br>
+        • Waveform data: decimated peak array from <code>SampleRegionPlaybackNode</code><br>
+        • Spectral data: partials from <code>requestSampleRegionPlaybackAsyncAnalysis</code><br>
+        • Capture state: mirrored from <code>sample_synth.lua</code> recording flags<br>
+        • For Lua UI: render waveform to canvas, partials as vertical bars
+      </div>
+    </div>
+
+    <div>
+      <canvas id="waveformCanvas" width="800" height="220"></canvas>
+      <div class="canvas-label">
+        <span>Waveform + Capture Region</span>
+        <span>drag to adjust region (free mode only)</span>
+      </div>
+
+      <canvas id="spectrumCanvas" width="800" height="160"></canvas>
+      <div class="canvas-label">
+        <span>Spectral Partials</span>
+        <span id="spectrumLabel">Add mode — showing harmonic partials</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ─── State ───
+    let mode = 'retro';
+    let recording = false;
+    let recorded = false;
+    let captureStart = 0.3;
+    let captureEnd = 0.7;
+    let analysisInFlight = false;
+    let hasAnalysis = false;
+    let drag = null; // 'start' | 'end' | 'move'
+    let dragOffset = 0;
+    const waveformCanvas = document.getElementById('waveformCanvas');
+    const spectrumCanvas = document.getElementById('spectrumCanvas');
+    const wfCtx = waveformCanvas.getContext('2d');
+    const spCtx = spectrumCanvas.getContext('2d');
+
+    // Generate a fake waveform
+    const WAVE_POINTS = 800;
+    const waveData = new Float32Array(WAVE_POINTS);
+    function regenerateWaveform() {
+      for (let i = 0; i < WAVE_POINTS; i++) {
+        const t = i / WAVE_POINTS;
+        // A loop with some transients
+        waveData[i] = Math.sin(t * Math.PI * 8) * 0.3
+          + Math.sin(t * Math.PI * 23) * 0.15
+          + ((Math.random() - 0.5) * 0.08)
+          + (t > 0.6 && t < 0.63 ? 0.5 : 0) // transient at 60%
+          + (t > 0.82 && t < 0.85 ? -0.4 : 0); // transient at 82%
+      }
+    }
+    regenerateWaveform();
+
+    // ─── Interaction ───
+    function setMode(m) {
+      mode = m;
+      recording = false;
+      recorded = false;
+      document.getElementById('modeRetro').classList.toggle('active', m === 'retro');
+      document.getElementById('modeFree').classList.toggle('active', m === 'free');
+      updateStatus();
+      drawWaveform();
+    }
+
+    function toggleCapture() {
+      if (mode === 'retro') {
+        recorded = true;
+        triggerAnalysis();
+      } else {
+        if (!recording) {
+          recording = true;
+          captureStart = 0.3;
+          captureEnd = 0.7;
+        } else {
+          recording = false;
+          recorded = true;
+          triggerAnalysis();
+        }
+      }
+      updateStatus();
+      drawWaveform();
+    }
+
+    function triggerAnalysis() {
+      analysisInFlight = true;
+      hasAnalysis = false;
+      updateStatus();
+      setTimeout(() => {
+        analysisInFlight = false;
+        hasAnalysis = true;
+        updateStatus();
+        drawSpectrum();
+      }, 800);
+    }
+
+    function updateStatus() {
+      const btn = document.getElementById('captureBtn');
+      const text = document.getElementById('statusText');
+      const spinner = document.getElementById('statusSpinner');
+      btn.className = '';
+      spinner.className = '';
+
+      if (analysisInFlight) {
+        spinner.className = 'spinner';
+        text.textContent = 'Analyzing spectral content…';
+        btn.textContent = '…';
+        return;
+      }
+
+      if (mode === 'retro') {
+        btn.textContent = recorded ? 'Captured' : 'Capture Last';
+        text.textContent = recorded
+          ? `Retrospective capture: last ${document.getElementById('retroBars').value} bar(s)`
+          : 'Ready — press Capture Last to grab from the rolling buffer';
+      } else {
+        if (recording) {
+          btn.textContent = 'Stop Recording';
+          btn.className = 'record';
+          text.textContent = 'Recording free capture…';
+        } else if (recorded) {
+          btn.textContent = 'Record Again';
+          text.textContent = `Free capture: ${Math.round((captureEnd - captureStart) * 100)}% of buffer selected`;
+        } else {
+          btn.textContent = 'Start Recording';
+          btn.className = 'armed';
+          text.textContent = 'Armed — press Start Recording, then play audio';
+        }
+      }
+    }
+
+    function onBlendChange() {
+      const blend = document.getElementById('blendMode').value;
+      const label = document.getElementById('spectrumLabel');
+      const map = {
+        mix: 'Mix mode — amplitude envelope of sample + oscillator',
+        ring: 'Ring mode — modulated spectrum',
+        fm: 'FM mode — sideband partials',
+        sync: 'Sync mode — phase reset spectrum',
+        add: 'Add mode — showing harmonic partials',
+        morph: 'Morph mode — interpolated partials over time'
+      };
+      label.textContent = map[blend];
+      drawSpectrum();
+    }
+
+    // ─── Canvas Drawing ───
+    function drawWaveform() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = waveformCanvas.clientWidth;
+      const h = waveformCanvas.clientHeight;
+      waveformCanvas.width = Math.floor(w * dpr);
+      waveformCanvas.height = Math.floor(h * dpr);
+      wfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      wfCtx.fillStyle = '#0d0d0f';
+      wfCtx.fillRect(0, 0, w, h);
+
+      // Grid
+      wfCtx.strokeStyle = '#1a1a20';
+      wfCtx.lineWidth = 1;
+      for (let i = 1; i < 4; i++) {
+        const y = (h / 4) * i;
+        wfCtx.beginPath();
+        wfCtx.moveTo(0, y);
+        wfCtx.lineTo(w, y);
+        wfCtx.stroke();
+      }
+
+      // Capture region
+      if (recorded || (mode === 'free' && recording)) {
+        const xs = captureStart * w;
+        const xe = captureEnd * w;
+        wfCtx.fillStyle = mode === 'free' ? 'rgba(255, 51, 102, 0.15)' : 'rgba(0, 212, 170, 0.12)';
+        wfCtx.fillRect(xs, 0, xe - xs, h);
+        wfCtx.strokeStyle = mode === 'free' ? '#ff3366' : '#00d4aa';
+        wfCtx.lineWidth = 2;
+        wfCtx.beginPath();
+        wfCtx.moveTo(xs, 0);
+        wfCtx.lineTo(xs, h);
+        wfCtx.moveTo(xe, 0);
+        wfCtx.lineTo(xe, h);
+        wfCtx.stroke();
+
+        // Handles
+        const drawHandle = (x) => {
+          wfCtx.fillStyle = mode === 'free' ? '#ff3366' : '#00d4aa';
+          wfCtx.beginPath();
+          wfCtx.arc(x, h / 2, 5, 0, Math.PI * 2);
+          wfCtx.fill();
+        };
+        drawHandle(xs);
+        drawHandle(xe);
+      }
+
+      // Waveform
+      wfCtx.strokeStyle = '#e6e6e6';
+      wfCtx.lineWidth = 1.5;
+      wfCtx.beginPath();
+      const mid = h / 2;
+      const amp = mid * 0.85;
+      for (let i = 0; i < WAVE_POINTS; i++) {
+        const x = (i / (WAVE_POINTS - 1)) * w;
+        const y = mid - waveData[i] * amp;
+        if (i === 0) wfCtx.moveTo(x, y);
+        else wfCtx.lineTo(x, y);
+      }
+      wfCtx.stroke();
+
+      // Playhead
+      if (recorded) {
+        const t = (Date.now() / 2000) % 1;
+        const px = t * w;
+        wfCtx.strokeStyle = '#ffffff88';
+        wfCtx.lineWidth = 1;
+        wfCtx.setLineDash([4, 4]);
+        wfCtx.beginPath();
+        wfCtx.moveTo(px, 0);
+        wfCtx.lineTo(px, h);
+        wfCtx.stroke();
+        wfCtx.setLineDash([]);
+      }
+    }
+
+    function drawSpectrum() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = spectrumCanvas.clientWidth;
+      const h = spectrumCanvas.clientHeight;
+      spectrumCanvas.width = Math.floor(w * dpr);
+      spectrumCanvas.height = Math.floor(h * dpr);
+      spCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      spCtx.fillStyle = '#0d0d0f';
+      spCtx.fillRect(0, 0, w, h);
+
+      const blend = document.getElementById('blendMode').value;
+      const bars = 64;
+      const barW = (w - 20) / bars;
+      const gap = 2;
+
+      // Generate fake partial data based on blend mode
+      const partials = new Array(bars).fill(0);
+      const seed = recorded ? 42 : 1;
+      for (let i = 0; i < bars; i++) {
+        let v = 0;
+        if (blend === 'add' || blend === 'morph') {
+          // Harmonic series with some noise
+          v = (1 / (i * 0.3 + 1)) * (0.6 + Math.sin(i * 0.5 + seed) * 0.3);
+          if (i % 3 === 0) v *= 1.3;
+        } else if (blend === 'fm') {
+          v = Math.sin(i * 0.4) * 0.4 + 0.4;
+          if (i > 20 && i < 35) v += 0.3;
+        } else if (blend === 'ring') {
+          v = Math.exp(-i / 15) * Math.abs(Math.sin(i * 0.8));
+        } else {
+          v = Math.random() * 0.3 + 0.1;
+        }
+        partials[i] = Math.max(0.05, Math.min(1, v));
+      }
+
+      for (let i = 0; i < bars; i++) {
+        const x = 10 + i * barW;
+        const bh = partials[i] * (h - 30);
+        const y = h - 15 - bh;
+
+        const hue = 160 + (partials[i] * 60) + (i / bars) * 40;
+        spCtx.fillStyle = recorded
+          ? `hsl(${hue}, 80%, 55%)`
+          : `hsl(${hue}, 40%, 30%)`;
+        spCtx.fillRect(x, y, barW - gap, bh);
+      }
+
+      // Draw "no analysis" hint if not recorded
+      if (!recorded) {
+        spCtx.fillStyle = '#666';
+        spCtx.font = '13px system-ui';
+        spCtx.textAlign = 'center';
+        spCtx.fillText('Capture a sample to view spectral analysis', w / 2, h / 2);
+      }
+    }
+
+    // ─── Mouse Drag for Region ───
+    waveformCanvas.addEventListener('mousedown', (e) => {
+      if (mode !== 'free' || !recorded) return;
+      const rect = waveformCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const w = rect.width;
+      const xs = captureStart * w;
+      const xe = captureEnd * w;
+      const threshold = 12;
+      if (Math.abs(x - xs) < threshold) {
+        drag = 'start';
+      } else if (Math.abs(x - xe) < threshold) {
+        drag = 'end';
+      } else if (x > xs && x < xe) {
+        drag = 'move';
+        dragOffset = x - xs;
+      }
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!drag) return;
+      const rect = waveformCanvas.getBoundingClientRect();
+      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      const w = rect.width;
+      if (drag === 'start') {
+        captureStart = Math.min(x / w, captureEnd - 0.02);
+      } else if (drag === 'end') {
+        captureEnd = Math.max(x / w, captureStart + 0.02);
+      } else if (drag === 'move') {
+        const span = captureEnd - captureStart;
+        let ns = x / w - dragOffset / w;
+        ns = Math.max(0, Math.min(ns, 1 - span));
+        captureEnd = ns + span;
+        captureStart = ns;
+      }
+      drawWaveform();
+      updateStatus();
+    });
+    window.addEventListener('mouseup', () => { drag = null; });
+
+    // ─── Loop ───
+    function frame() {
+      drawWaveform();
+      drawSpectrum();
+      requestAnimationFrame(frame);
+    }
+    frame();
+  </script>
+</body>
+</html>
