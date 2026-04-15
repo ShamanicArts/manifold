@@ -21,6 +21,7 @@ local MidiParamRack = require("ui.midi_param_rack")
 local RackModuleFactory = require("ui.rack_module_factory")
 local RackLayoutEngine = require("behaviors.rack_layout_engine")
 local StateManager = require("behaviors.state_manager")
+local PatchbayBinding = require("behaviors.patchbay_binding")
 
 local M = {}
 require("behaviors.palette_browser").attach(M)
@@ -29,6 +30,7 @@ local ModulationRouter = require("behaviors.modulation_router")
 require("behaviors.modulation_router").attach(M)
 require("behaviors.rack_layout_engine").attach(M)
 require("behaviors.state_manager").attach(M)
+require("behaviors.patchbay_binding").attach(M)
 
 local resolveGlobalPrefix = ScopedWidget.resolveGlobalPrefix
 local endsWith = ScopedWidget.endsWith
@@ -193,98 +195,7 @@ local function auxAudioSourceCodeForEndpoint(moduleId, portId)
 end
 
 local function syncAuxAudioRouteParams(ctx)
-  local writer = nil
-  if type(setParam) == "function" then
-    writer = function(path, value)
-      return setParam(path, tonumber(value) or 0)
-    end
-  elseif type(command) == "function" then
-    writer = function(path, value)
-      command("SET", path, tostring(tonumber(value) or 0))
-      return true
-    end
-  end
-  if type(writer) ~= "function" then
-    return false
-  end
-
-  local modules = ctx and ctx._rackState and ctx._rackState.modules or {}
-  local moduleById = {}
-  local dynamicInfo = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
-  local registeredSpecs = type(_G) == "table" and _G.__midiSynthDynamicModuleSpecs or nil
-  for i = 1, #(modules or {}) do
-    local module = modules[i]
-    if type(module) == "table" and module.id ~= nil then
-      moduleById[tostring(module.id)] = module
-    end
-  end
-
-  local function resolveModuleRuntimeMeta(moduleId)
-    local id = tostring(moduleId or "")
-    local module = moduleById[id]
-    local moduleMeta = type(module) == "table" and type(module.meta) == "table" and module.meta or nil
-    local spec = type(registeredSpecs) == "table" and registeredSpecs[id] or nil
-    local specMeta = type(spec) == "table" and type(spec.meta) == "table" and spec.meta or nil
-    local entry = type(dynamicInfo) == "table" and dynamicInfo[id] or nil
-
-    local specId = tostring(
-      (type(entry) == "table" and entry.specId)
-      or (type(specMeta) == "table" and specMeta.specId)
-      or (type(moduleMeta) == "table" and moduleMeta.specId)
-      or id
-    )
-    local slotIndex = tonumber(
-      (type(entry) == "table" and entry.slotIndex)
-      or (type(specMeta) == "table" and specMeta.slotIndex)
-      or (type(moduleMeta) == "table" and moduleMeta.slotIndex)
-    )
-
-    return specId, slotIndex
-  end
-
-  local blendBSourceBySlot = {}
-  local sampleInputSourceBySlot = {}
-  local connections = ctx and ctx._rackConnections or {}
-
-  for i = 1, #(connections or {}) do
-    local conn = connections[i]
-    if tostring(conn and conn.kind or "") == "audio" then
-      local from = type(conn.from) == "table" and conn.from or nil
-      local to = type(conn.to) == "table" and conn.to or nil
-      if from and to then
-      local toModuleId = tostring(to.moduleId or "")
-        local specId, slotIndex = resolveModuleRuntimeMeta(toModuleId)
-        if specId == "blend_simple" and tostring(to.portId or "") == "b" and slotIndex ~= nil then
-          blendBSourceBySlot[slotIndex] = auxAudioSourceCodeForEndpoint(from.moduleId, from.portId)
-        elseif specId == "rack_sample" and tostring(to.portId or "") == "in" and slotIndex ~= nil then
-          sampleInputSourceBySlot[slotIndex] = auxAudioSourceCodeForEndpoint(from.moduleId, from.portId)
-        end
-      end
-    end
-  end
-
-  local dynamicSlots = ctx and ctx._dynamicModuleSlots or {}
-  local pending = false
-  local blendSlots = dynamicSlots and dynamicSlots.blend_simple or {}
-  for slotIndex, _ in pairs(blendSlots or {}) do
-    local ok = writer(ParameterBinder.dynamicBlendSimpleBSourcePath(slotIndex), blendBSourceBySlot[slotIndex] or 0)
-    if ok == false then
-      pending = true
-    end
-  end
-
-  local sampleSlots = dynamicSlots and dynamicSlots.rack_sample or {}
-  for slotIndex, _ in pairs(sampleSlots or {}) do
-    local ok = writer(ParameterBinder.dynamicSampleInputSourcePath(slotIndex), sampleInputSourceBySlot[slotIndex] or 0)
-    if ok == false then
-      pending = true
-    end
-  end
-
-  if ctx then
-    ctx._pendingAuxAudioRouteSync = pending == true
-  end
-  return true
+  return M.syncAuxAudioRouteParams(ctx)
 end
 
 local MAX_FX_PARAMS = 5
@@ -2084,102 +1995,35 @@ local function utilityDockHasKeyboard(ctx)
 end
 
 local function cleanupPatchbayFromRuntime(shellId, ctx)
-  return PatchbayRuntime.cleanupFromRuntime(shellId, ctx, {
-    RackWireLayer = RackWireLayer,
-  })
+  return M.cleanupPatchbayFromRuntime(shellId, ctx)
 end
 
 local function invalidatePatchbay(nodeId, ctx)
-  return PatchbayRuntime.invalidate(nodeId, ctx, {
-    RACK_MODULE_SHELL_LAYOUT = RACK_MODULE_SHELL_LAYOUT,
-    RackWireLayer = RackWireLayer,
-  })
+  return M.invalidatePatchbay(nodeId, ctx)
 end
 
 local function ensurePatchbayWidgets(ctx, shellId, nodeId, specId, currentPage)
-  return PatchbayRuntime.ensureWidgets(ctx, shellId, nodeId, specId, currentPage, {
-    RackWireLayer = RackWireLayer,
-    readParam = readParam,
-    setPath = setPath,
-    setWidgetValueSilently = setWidgetValueSilently,
-    PATHS = PATHS,
-    setSampleLoopStartLinked = setSampleLoopStartLinked,
-    setSampleLoopLenLinked = setSampleLoopLenLinked,
-    syncLegacyBlendDirectionFromBlend = syncLegacyBlendDirectionFromBlend,
-  })
+  return M.ensurePatchbayWidgets(ctx, shellId, nodeId, specId, currentPage)
 end
 
 local function syncPatchbayValues(ctx)
-  return PatchbayRuntime.syncValues(ctx, {
-    readParam = readParam,
-    setWidgetValueSilently = setWidgetValueSilently,
-    getModTargetState = function(path)
-      return ModulationRouter.getCombinedModTargetState(ctx, path)
-    end,
-  })
+  return M.syncPatchbayValues(ctx)
 end
 
 local function findRegisteredPatchbayPort(ctx, nodeId, portId, direction)
-  return PatchbayRuntime.findRegisteredPort(ctx, nodeId, portId, direction)
+  return M.findRegisteredPatchbayPort(ctx, nodeId, portId, direction)
 end
 
 syncRackEdgeTerminals = function(ctx)
-  return PatchbayRuntime.syncRackEdgeTerminals(ctx, {
-    getScopedWidget = getScopedWidget,
-    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
-    findRegisteredPatchbayPort = findRegisteredPatchbayPort,
-    round = round,
-  })
+  return M.syncRackEdgeTerminals(ctx)
 end
 
 syncPatchViewMode = function(ctx)
-  local result = PatchbayRuntime.syncPatchViewMode(ctx, {
-    RackWireLayer = RackWireLayer,
-    RackModPopover = RackModPopover,
-    getScopedWidget = getScopedWidget,
-    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
-    findRegisteredPatchbayPort = findRegisteredPatchbayPort,
-    round = round,
-    readParam = readParam,
-    setPath = setPath,
-    setWidgetValueSilently = setWidgetValueSilently,
-    PATHS = PATHS,
-    setSampleLoopStartLinked = setSampleLoopStartLinked,
-    setSampleLoopLenLinked = setSampleLoopLenLinked,
-    syncLegacyBlendDirectionFromBlend = syncLegacyBlendDirectionFromBlend,
-  })
-  RackModPopover.refresh(ctx, {
-    RackWireLayer = RackWireLayer,
-    getScopedWidget = getScopedWidget,
-    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
-  })
-  return result
+  return M.syncPatchViewMode(ctx)
 end
 
 local function toggleRackNodeWidth(ctx, nodeId)
-  return PatchbayRuntime.toggleNodeWidth(ctx, nodeId, {
-    RACK_MODULE_SHELL_LAYOUT = RACK_MODULE_SHELL_LAYOUT,
-    getScopedWidget = getScopedWidget,
-    invalidatePatchbay = invalidatePatchbay,
-    refreshManagedLayoutState = refreshManagedLayoutState,
-    syncPatchViewMode = syncPatchViewMode,
-    RackLayout = RackLayout,
-    getRackTotalRows = getRackTotalRows,
-    columnsPerRow = RACK_COLUMNS_PER_ROW,
-  })
-end
-
-M._setupResizeToggleHandlers = function(ctx)
-  return PatchbayRuntime.setupResizeToggleHandlers(ctx, {
-    RACK_MODULE_SHELL_LAYOUT = RACK_MODULE_SHELL_LAYOUT,
-    getScopedWidget = getScopedWidget,
-    invalidatePatchbay = invalidatePatchbay,
-    refreshManagedLayoutState = refreshManagedLayoutState,
-    syncPatchViewMode = syncPatchViewMode,
-    RackLayout = RackLayout,
-    getRackTotalRows = getRackTotalRows,
-    columnsPerRow = RACK_COLUMNS_PER_ROW,
-  })
+  return M.toggleRackNodeWidth(ctx, nodeId)
 end
 
 local function setWidgetVisible(widget, visible)
@@ -2431,12 +2275,7 @@ M._setupDeleteButtonHandlers = function(ctx)
 end
 
 local function bindWirePortWidget(ctx, portWidget, entry)
-  return PatchbayRuntime.bindWirePortWidget(ctx, portWidget, entry, {
-    RackWireLayer = RackWireLayer,
-    RackModPopover = RackModPopover,
-    getScopedWidget = getScopedWidget,
-    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
-  })
+  return M.bindWirePortWidget(ctx, portWidget, entry)
 end
 
 local function ensureRackControlRouting(ctx, reason)
@@ -3917,6 +3756,27 @@ function M.init(ctx)
     writeTextFile = writeTextFile,
     setPath = setPath,
     MidiSynthRackSpecs = MidiSynthRackSpecs,
+  })
+  PatchbayBinding.init({
+    RackWireLayer = RackWireLayer,
+    RackModPopover = RackModPopover,
+    getScopedWidget = getScopedWidget,
+    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
+    readParam = readParam,
+    setPath = setPath,
+    setWidgetValueSilently = setWidgetValueSilently,
+    setSampleLoopStartLinked = setSampleLoopStartLinked,
+    setSampleLoopLenLinked = setSampleLoopLenLinked,
+    syncLegacyBlendDirectionFromBlend = syncLegacyBlendDirectionFromBlend,
+    ModulationRouter = ModulationRouter,
+    ParameterBinder = ParameterBinder,
+    auxAudioSourceCodeForEndpoint = auxAudioSourceCodeForEndpoint,
+    RACK_MODULE_SHELL_LAYOUT = RACK_MODULE_SHELL_LAYOUT,
+    RackLayout = RackLayout,
+    getRackTotalRows = getRackTotalRows,
+    refreshManagedLayoutState = refreshManagedLayoutState,
+    RACK_COLUMNS_PER_ROW = RACK_COLUMNS_PER_ROW,
+    round = round,
   })
   require("behaviors.palette_browser").init({
     setPath = setPath,
