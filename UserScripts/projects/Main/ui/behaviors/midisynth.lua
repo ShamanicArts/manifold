@@ -2,6 +2,7 @@ local RackLayout = require("behaviors.rack_layout")
 local MidiSynthRackSpecs = require("behaviors.rack_midisynth_specs")
 local RackWireLayer = require("behaviors.rack_wire_layer")
 local KeyboardInput = require("behaviors.keyboard_input")
+local VoiceManager = require("behaviors.voice_manager")
 local FxDefs = require("fx_definitions")
 local ScopedWidget = require("ui.scoped_widget")
 local WidgetSync = require("ui.widget_sync")
@@ -21,6 +22,7 @@ local RackModuleFactory = require("ui.rack_module_factory")
 
 local M = {}
 require("behaviors.palette_browser").attach(M)
+require("behaviors.voice_manager").attach(M)
 
 local resolveGlobalPrefix = ScopedWidget.resolveGlobalPrefix
 local endsWith = ScopedWidget.endsWith
@@ -484,8 +486,14 @@ local function readParam(path, fallback)
   return fallback
 end
 
+-- Voice utility functions (needed early by applyVoiceModulationTarget)
 local function noteToFreq(note)
   return 440.0 * (2.0 ^ (((tonumber(note) or 69.0) - 69.0) / 12.0))
+end
+
+local function velocityToAmp(velocity)
+  local v = tonumber(velocity) or 0
+  return math.max(0, math.min(0.40, 0.03 + (v / 127.0) * 0.37))
 end
 
 M._writeVoiceTargetValue = function(ctx, path, value, meta, cacheKey, epsilon)
@@ -508,6 +516,94 @@ M._writeVoiceTargetValue = function(ctx, path, value, meta, cacheKey, epsilon)
   end
   setPath(path, nextValue, meta)
   return true
+end
+
+-- Voice gate route detection (needed by voice_manager)
+M._isLegacyOscillatorGateRouteConnected = function(ctx)
+  local router = ctx and ctx._rackControlRouter or nil
+  if not (router and router.getRoutesForTarget) then
+    return false
+  end
+
+  local function hasDirectLegacyAdsrSource(targetId)
+    local routes = router:getRoutesForTarget(targetId) or {}
+    for i = 1, #routes do
+      local route = routes[i]
+      local sourceId = tostring(
+        (route and route.source and route.source.id)
+        or (route and route.route and route.route.source)
+        or (route and route.compiled and route.compiled.sourceHandle)
+        or ""
+      )
+      if sourceId == "adsr.voice" or sourceId == "adsr.env" or sourceId == "adsr.inv" then
+        return true
+      end
+    end
+    return false
+  end
+
+  return hasDirectLegacyAdsrSource("oscillator.gate") or hasDirectLegacyAdsrSource("oscillator.voice")
+end
+
+M._hasCanonicalOscillatorGateRoute = function(ctx)
+  local router = ctx and ctx._rackControlRouter or nil
+  if not (router and router.isTargetConnected) then
+    return false
+  end
+  return not not (router:isTargetConnected("oscillator.gate") or router:isTargetConnected("oscillator.voice"))
+end
+
+M._hasAnyOscillatorGateRoute = function(ctx)
+  local router = ctx and ctx._rackControlRouter or nil
+  if not (router and router.isTargetConnected) then
+    return false
+  end
+  if M._hasCanonicalOscillatorGateRoute(ctx) then
+    return true
+  end
+
+  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  if type(info) == "table" then
+    for moduleId, entry in pairs(info) do
+      if type(entry) == "table" and (tostring(entry.specId or "") == "rack_oscillator" or tostring(entry.specId or "") == "rack_sample") then
+        if router:isTargetConnected(tostring(moduleId) .. ".gate") or router:isTargetConnected(tostring(moduleId) .. ".voice") then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+M._dynamicRackOscAdsrGateSlots = function(ctx)
+  local out = {}
+  local router = ctx and ctx._rackControlRouter or nil
+  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
+  if not (router and router.getRoutesForTarget and type(info) == "table") then
+    return out
+  end
+
+  for moduleId, entry in pairs(info) do
+    if type(entry) == "table"
+      and (tostring(entry.specId or "") == "rack_oscillator" or tostring(entry.specId or "") == "rack_sample")
+      and tonumber(entry.slotIndex) ~= nil then
+      local routes = router:getRoutesForTarget(tostring(moduleId) .. ".gate") or {}
+      for i = 1, #routes do
+        local route = routes[i]
+        local sourceId = tostring(route and route.source and route.source.id or route and route.route and route.route.source or "")
+        if sourceId == "adsr.env" then
+          out[#out + 1] = {
+            moduleId = tostring(moduleId),
+            slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 1)),
+            specId = tostring(entry.specId or ""),
+          }
+          break
+        end
+      end
+    end
+  end
+
+  return out
 end
 
 local function resolveDynamicVoiceBundleSample(ctx, sourceId, sourceEndpoint, voiceIndex, clampFn)
@@ -910,11 +1006,6 @@ end
 
 
 
-local function freqToNote(freq)
-  if freq <= 0 then return 0 end
-  return math.floor(69 + 12 * math.log(freq / 440.0) / math.log(2) + 0.5)
-end
-
 local function noteName(note)
   if not note then return "--" end
   local names = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }
@@ -926,10 +1017,6 @@ end
 local function formatMidiNoteValue(value)
   local midi = round(clamp(value or 0, 0, 127))
   return string.format("%s (%d)", noteName(midi), midi)
-end
-
-local function velocityToAmp(velocity)
-  return clamp(0.03 + ((tonumber(velocity) or 0) / 127.0) * 0.37, 0.0, 0.40)
 end
 
 local function formatTime(seconds)
@@ -1148,307 +1235,6 @@ local persistMidiInputSelection = MidiDevices.persistMidiInputSelection
 local applyMidiSelection = MidiDevices.applyMidiSelection
 local refreshMidiDevices = MidiDevices.refreshMidiDevices
 local maybeRefreshMidiDevices = MidiDevices.maybeRefreshMidiDevices
-
--- ADSR envelope calculation
-local function calculateEnvelope(ctx, voiceIndex, dt)
-  local voice = ctx._voices[voiceIndex]
-  if not voice then return 0 end
-  return require("adsr_runtime").advanceVoice(voice, ctx._adsr, dt)
-end
-
-local function updateEnvelopes(ctx, dt, now)
-  local legacyGateConnected = M._isLegacyOscillatorGateRouteConnected(ctx)
-  local canonicalOscillatorConnected = M._hasCanonicalOscillatorGateRoute(ctx)
-  local rackOscAdsrSlots = M._dynamicRackOscAdsrGateSlots(ctx)
-  for i = 1, VOICE_COUNT do
-    local voice = ctx._voices[i]
-    if voice then
-      local amp = calculateEnvelope(ctx, i, dt)
-      voice.currentAmp = amp
-
-      local sentAmp = voice.sentAmp or 0
-      local elapsed = now - (voice.lastAmpPushTime or 0)
-      local changedEnough = math.abs(amp - sentAmp) >= VOICE_AMP_SEND_EPSILON
-      local atRestEdge = (amp <= VOICE_AMP_SEND_EPSILON and sentAmp > VOICE_AMP_SEND_EPSILON)
-
-      if legacyGateConnected then
-        if changedEnough and (elapsed >= VOICE_AMP_SEND_INTERVAL or atRestEdge) then
-          voice.sentAmp = amp
-          voice.lastAmpPushTime = now
-          setPath(voiceAmpPath(i), amp)
-        end
-      elseif canonicalOscillatorConnected then
-        voice.sentAmp = 0
-        voice.lastAmpPushTime = now
-      else
-        voice.sentAmp = 0
-        voice.lastAmpPushTime = now
-        setPath(voiceAmpPath(i), 0)
-        setPath(voiceGatePath(i), 0)
-      end
-
-      for slotIndex = 1, #rackOscAdsrSlots do
-        local slot = rackOscAdsrSlots[slotIndex]
-        local gatePath = nil
-        if slot.specId == "rack_sample" then
-          gatePath = ParameterBinder.dynamicSampleVoiceGatePath(slot.slotIndex, i)
-        else
-          gatePath = ParameterBinder.dynamicOscillatorVoiceGatePath(slot.slotIndex, i)
-        end
-        setPath(gatePath, amp, {
-          source = "adsr_rackosc_parity",
-          action = "implicit_env",
-          moduleId = slot.moduleId,
-          voiceIndex = i,
-        })
-      end
-    end
-  end
-end
-
-local function chooseVoice(ctx, note, velocity)
-  local midiVoices = ctx._midiVoices or ctx._voices or {}
-  -- First, try to find an inactive voice
-  for i = 1, VOICE_COUNT do
-    local voice = midiVoices[i]
-    if not voice.active or voice.envelopeStage == "idle" then
-      return i
-    end
-  end
-  
-  -- All voices active - use smart stealing
-  local adsr = ctx._adsr
-  
-  -- Option 1: Steal voice in release stage with lowest level
-  local bestReleaseIndex = nil
-  local bestReleaseLevel = 999
-  for i = 1, VOICE_COUNT do
-    local voice = midiVoices[i]
-    if voice.envelopeStage == "release" then
-      if voice.envelopeLevel < bestReleaseLevel then
-        bestReleaseLevel = voice.envelopeLevel
-        bestReleaseIndex = i
-      end
-    end
-  end
-  if bestReleaseIndex then
-    return bestReleaseIndex
-  end
-  
-  -- Option 2: Steal oldest voice (highest stamp)
-  local oldestIndex = 1
-  local oldestStamp = midiVoices[1].stamp or 0
-  for i = 2, VOICE_COUNT do
-    local stamp = midiVoices[i].stamp or 0
-    if stamp < oldestStamp then
-      oldestStamp = stamp
-      oldestIndex = i
-    end
-  end
-  return oldestIndex
-end
-
-M._isLegacyOscillatorGateRouteConnected = function(ctx)
-  local router = ctx and ctx._rackControlRouter or nil
-  if not (router and router.getRoutesForTarget) then
-    return false
-  end
-
-  local function hasDirectLegacyAdsrSource(targetId)
-    local routes = router:getRoutesForTarget(targetId) or {}
-    for i = 1, #routes do
-      local route = routes[i]
-      local sourceId = tostring(
-        (route and route.source and route.source.id)
-        or (route and route.route and route.route.source)
-        or (route and route.compiled and route.compiled.sourceHandle)
-        or ""
-      )
-      if sourceId == "adsr.voice" or sourceId == "adsr.env" or sourceId == "adsr.inv" then
-        return true
-      end
-    end
-    return false
-  end
-
-  return hasDirectLegacyAdsrSource("oscillator.gate") or hasDirectLegacyAdsrSource("oscillator.voice")
-end
-
-M._hasCanonicalOscillatorGateRoute = function(ctx)
-  local router = ctx and ctx._rackControlRouter or nil
-  if not (router and router.isTargetConnected) then
-    return false
-  end
-  return not not (router:isTargetConnected("oscillator.gate") or router:isTargetConnected("oscillator.voice"))
-end
-
-M._hasAnyOscillatorGateRoute = function(ctx)
-  local router = ctx and ctx._rackControlRouter or nil
-  if not (router and router.isTargetConnected) then
-    return false
-  end
-  if M._hasCanonicalOscillatorGateRoute(ctx) then
-    return true
-  end
-
-  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
-  if type(info) == "table" then
-    for moduleId, entry in pairs(info) do
-      if type(entry) == "table" and (tostring(entry.specId or "") == "rack_oscillator" or tostring(entry.specId or "") == "rack_sample") then
-        if router:isTargetConnected(tostring(moduleId) .. ".gate") or router:isTargetConnected(tostring(moduleId) .. ".voice") then
-          return true
-        end
-      end
-    end
-  end
-  return false
-end
-
-M._dynamicRackOscAdsrGateSlots = function(ctx)
-  local out = {}
-  local router = ctx and ctx._rackControlRouter or nil
-  local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
-  if not (router and router.getRoutesForTarget and type(info) == "table") then
-    return out
-  end
-
-  for moduleId, entry in pairs(info) do
-    if type(entry) == "table"
-      and (tostring(entry.specId or "") == "rack_oscillator" or tostring(entry.specId or "") == "rack_sample")
-      and tonumber(entry.slotIndex) ~= nil then
-      local routes = router:getRoutesForTarget(tostring(moduleId) .. ".gate") or {}
-      for i = 1, #routes do
-        local route = routes[i]
-        local sourceId = tostring(route and route.source and route.source.id or route and route.route and route.route.source or "")
-        if sourceId == "adsr.env" then
-          out[#out + 1] = {
-            moduleId = tostring(moduleId),
-            slotIndex = math.max(1, math.floor(tonumber(entry.slotIndex) or 1)),
-            specId = tostring(entry.specId or ""),
-          }
-          break
-        end
-      end
-    end
-  end
-
-  return out
-end
-
-local function triggerVoice(ctx, note, velocity)
-  local gateConnected = M._hasAnyOscillatorGateRoute(ctx)
-  if not gateConnected then
-    ctx._keyboardDirty = true
-    ctx._triggerBlockedReason = "ADSR → source control missing"
-    ctx._lastEvent = "Trigger blocked: ADSR → source control missing"
-    return nil
-  end
-
-  ctx._triggerBlockedReason = nil
-
-  local index = chooseVoice(ctx, note, velocity)
-  local midiVoices = ctx._midiVoices or ctx._voices or {}
-  local voice = midiVoices[index]
-  
-  ctx._voiceStamp = (ctx._voiceStamp or 0) + 1
-  
-  voice.active = true
-  voice.note = note
-  voice.stamp = ctx._voiceStamp
-  voice.targetAmp = velocityToAmp(velocity)
-  voice.currentAmp = 0  -- ADSR starts at 0
-  voice.gate = 1
-  voice.envelopeStage = "attack"
-  voice.envelopeTime = 0
-  voice.envelopeStartLevel = 0
-  voice.envelopeLevel = 0
-  voice.currentAmp = 0
-  voice.sentAmp = -1 -- force immediate first amp push on next envelope tick
-  voice.lastAmpPushTime = 0
-  voice.freq = noteToFreq(note)
-  
-  -- Do not directly inject legacy oscillator gate/freq here.
-  -- Explicit rack control routing owns oscillator triggering now.
-  applyImplicitRackOscillatorKeyboardPitch(ctx, index, note)
-  ctx._keyboardDirty = true
-  
-  return index
-end
-
-local function releaseVoice(ctx, note)
-  local midiVoices = ctx._midiVoices or ctx._voices or {}
-  for i = 1, VOICE_COUNT do
-    local voice = midiVoices[i]
-    if voice.active and voice.note == note then
-      voice.gate = 0
-      voice.envelopeStage = "release"
-      voice.envelopeTime = 0
-      voice.envelopeStartLevel = voice.envelopeLevel or voice.targetAmp
-      voice.lastAmpPushTime = 0
-      ctx._keyboardDirty = true
-    end
-  end
-end
-
-local function panicVoices(ctx)
-  local midiVoices = ctx._midiVoices or {}
-  for i = 1, VOICE_COUNT do
-    local voice = ctx._voices[i]
-    voice.active = false
-    voice.note = nil
-    voice.stamp = 0
-    voice.gate = 0
-    voice.targetAmp = 0
-    voice.currentAmp = 0
-    voice.sentAmp = 0
-    voice.lastAmpPushTime = 0
-    voice.envelopeStage = "idle"
-    voice.envelopeLevel = 0
-    voice.freq = 220
-    setPath(voiceAmpPath(i), 0)
-    setPath(voiceGatePath(i), 0)
-    local midiVoice = midiVoices[i]
-    if midiVoice then
-      midiVoice.active = false
-      midiVoice.note = nil
-      midiVoice.stamp = 0
-      midiVoice.gate = 0
-      midiVoice.targetAmp = 0
-      midiVoice.currentAmp = 0
-      midiVoice.sentAmp = 0
-      midiVoice.lastAmpPushTime = 0
-      midiVoice.envelopeStage = "idle"
-      midiVoice.envelopeLevel = 0
-      midiVoice.freq = 220
-    end
-  end
-  ctx._keyboardDirty = true
-end
-
-local function activeVoiceCount(ctx)
-  local count = 0
-  for i = 1, VOICE_COUNT do
-    local voice = ctx._voices[i]
-    if voice.active and voice.envelopeStage ~= "idle" then
-      count = count + 1
-    end
-  end
-  return count
-end
-
-local function voiceSummary(ctx)
-  local notes = {}
-  for i = 1, VOICE_COUNT do
-    local voice = ctx._voices[i]
-    if voice.active and voice.note and voice.envelopeStage ~= "idle" then
-      notes[#notes + 1] = noteName(voice.note)
-    end
-  end
-  if #notes == 0 then
-    return "Voices: idle"
-  end
-  return "Voices: " .. table.concat(notes, "  ")
-end
 
 local refreshManagedLayoutState
 local syncKeyboardDisplay
@@ -4373,14 +4159,14 @@ local function backgroundTick(ctx)
 
       if event.type == Midi.NOTE_ON and event.data2 > 0 then
         ctx._currentNote = event.data1
-        local voiceIndex = triggerVoice(ctx, event.data1, event.data2)
+        local voiceIndex = VoiceManager.triggerVoice(ctx, event.data1, event.data2)
         if voiceIndex ~= nil then
           ctx._lastEvent = string.format("Note: %s vel %d", noteName(event.data1), event.data2)
         else
           ctx._lastEvent = string.format("Blocked: %s", tostring(ctx._triggerBlockedReason or "missing trigger path"))
         end
       elseif event.type == Midi.NOTE_OFF or (event.type == Midi.NOTE_ON and event.data2 == 0) then
-        releaseVoice(ctx, event.data1)
+        VoiceManager.releaseVoice(ctx, event.data1)
         if ctx._currentNote == event.data1 then
           ctx._currentNote = nil
         end
@@ -4418,7 +4204,7 @@ local function backgroundTick(ctx)
   ctx._adsr.decay = decay
   ctx._adsr.sustain = sustain
   ctx._adsr.release = release
-  updateEnvelopes(ctx, dt, now)
+  VoiceManager.updateEnvelopes(ctx, dt, now)
   require("adsr_runtime").updateDynamicModules(ctx, dt, readParam, clamp, VOICE_COUNT)
   if ctx._rackModRuntime and ctx._rackModRuntime.evaluateAndApply then
     ctx._rackModRuntime:evaluateAndApply(ctx, readParam, setPath)
@@ -4466,12 +4252,19 @@ function M.init(ctx)
   ctx._utilityDock = ctx._rackState.utilityDock or RackLayout.defaultUtilityDock()
   ctx._keyboardCollapsed = false
   KeyboardInput.init({
-    triggerVoice = triggerVoice,
-    releaseVoice = releaseVoice,
+    triggerVoice = VoiceManager.triggerVoice,
+    releaseVoice = VoiceManager.releaseVoice,
     ensureUtilityDockState = ensureUtilityDockState,
     refreshManagedLayoutState = refreshManagedLayoutState,
     noteName = noteName,
     repaint = repaint,
+  })
+  VoiceManager.init({
+    setPath = setPath,
+    readParam = readParam,
+    ParameterBinder = ParameterBinder,
+    adsr_runtime = require("adsr_runtime"),
+    applyImplicitRackOscillatorKeyboardPitch = applyImplicitRackOscillatorKeyboardPitch,
   })
   require("behaviors.palette_browser").init({
     setPath = setPath,
@@ -4676,8 +4469,8 @@ function M.update(ctx, rawState)
     setWidgetInteractiveState = setWidgetInteractiveState,
     setWidgetBounds = setWidgetBounds,
     isPluginMode = isPluginMode,
-    activeVoiceCount = activeVoiceCount,
-    voiceSummary = voiceSummary,
+    activeVoiceCount = VoiceManager.activeVoiceCount,
+    voiceSummary = VoiceManager.voiceSummary,
     noteName = noteName,
     formatTime = formatTime,
     syncKeyboardDisplay = syncKeyboardDisplay,
