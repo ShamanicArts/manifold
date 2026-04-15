@@ -29,6 +29,7 @@ require("behaviors.voice_manager").attach(M)
 local ModulationRouter = require("behaviors.modulation_router")
 require("behaviors.modulation_router").attach(M)
 require("behaviors.dynamic_module_binding").attach(M)
+require("behaviors.rack_mutation_runtime").attach(M)
 require("behaviors.rack_layout_engine").attach(M)
 require("behaviors.state_manager").attach(M)
 require("behaviors.patchbay_binding").attach(M)
@@ -491,196 +492,16 @@ local function projectRoot()
   return path:gsub("/+$", ""):match("^(.*)/[^/]+$") or ""
 end
 
-local function runtimeStatePath()
-  local root = projectRoot()
-  if root == "" then
-    return ""
-  end
-  return root .. "/editor/runtime_state.lua"
+local function loadRuntimeState()
+  return M.loadRuntimeState()
 end
 
-loadRuntimeState = function()
-  local path = runtimeStatePath()
-  if path == "" or type(readTextFile) ~= "function" then
-    return {}
-  end
-  local text = readTextFile(path)
-  if type(text) ~= "string" or text == "" then
-    return {}
-  end
-  local chunk, err = load(text, "midi_runtime_state", "t", {})
-  if not chunk then
-    return {}
-  end
-  local ok, state = pcall(chunk)
-  if not ok or type(state) ~= "table" then
-    return {}
-  end
-  return state
+local function saveRuntimeState(state)
+  return M.saveRuntimeState(state)
 end
 
-saveRuntimeState = function(state)
-  local path = runtimeStatePath()
-  if path == "" or type(writeTextFile) ~= "function" then
-    return false
-  end
-
-  local rackState = state.rackState or {
-    viewMode = state.rackViewMode,
-    densityMode = state.rackDensityMode,
-    utilityDock = {
-      visible = state.utilityDockVisible,
-      mode = state.utilityDockMode,
-      heightMode = state.utilityDockHeightMode,
-    },
-    nodes = state.rackNodes,
-  }
-
-  -- Serialize rackNodes array
-  local function serializeNodes(nodes)
-    if type(nodes) ~= "table" or #nodes == 0 then
-      return "{}"
-    end
-    local parts = {"{"}
-    for i, node in ipairs(nodes) do
-      local nodeParts = {
-        string.format("id=%q", tostring(node.id or "")),
-        string.format("row=%d", tonumber(node.row) or 0),
-        string.format("col=%d", tonumber(node.col) or 0),
-        string.format("w=%d", tonumber(node.w) or 1),
-        string.format("h=%d", tonumber(node.h) or 1),
-      }
-      if node.sizeKey then
-        table.insert(nodeParts, string.format("sizeKey=%q", tostring(node.sizeKey)))
-      end
-      local meta = type(node.meta) == "table" and node.meta or nil
-      if meta ~= nil then
-        local metaParts = {}
-        for _, key in ipairs({ "specId", "componentId", "paramBase" }) do
-          if meta[key] ~= nil then
-            metaParts[#metaParts + 1] = string.format("%s=%q", key, tostring(meta[key]))
-          end
-        end
-        if meta.slotIndex ~= nil then
-          metaParts[#metaParts + 1] = string.format("slotIndex=%d", math.max(1, math.floor(tonumber(meta.slotIndex) or 1)))
-        end
-        if meta.spawned ~= nil then
-          metaParts[#metaParts + 1] = string.format("spawned=%s", meta.spawned and "true" or "false")
-        end
-        if #metaParts > 0 then
-          table.insert(nodeParts, "meta={ " .. table.concat(metaParts, ", ") .. " }")
-        end
-      end
-      table.insert(parts, "  { " .. table.concat(nodeParts, ", ") .. " },")
-    end
-    table.insert(parts, "}")
-    return table.concat(parts, "\n")
-  end
-
-  local function serializeConnections(connections)
-    if type(connections) ~= "table" or #connections == 0 then
-      return "{}"
-    end
-    local parts = {"{"}
-    for i, conn in ipairs(connections) do
-      if tostring(conn.kind or "") == "audio" then
-        local from = type(conn.from) == "table" and conn.from or {}
-        local to = type(conn.to) == "table" and conn.to or {}
-        local meta = type(conn.meta) == "table" and conn.meta or {}
-      local metaParts = {}
-      for _, key in ipairs({ "route", "source" }) do
-        if meta[key] ~= nil then
-          metaParts[#metaParts + 1] = string.format("%s=%q", key, tostring(meta[key]))
-        end
-      end
-      if meta.visualOnly ~= nil then
-        metaParts[#metaParts + 1] = string.format("visualOnly=%s", meta.visualOnly and "true" or "false")
-      end
-      if meta.pending ~= nil then
-        metaParts[#metaParts + 1] = string.format("pending=%s", meta.pending and "true" or "false")
-      end
-        local metaText = (#metaParts > 0) and (", meta={ " .. table.concat(metaParts, ", ") .. " }") or ""
-        parts[#parts + 1] = string.format(
-          "  { id=%q, kind=%q, from={ moduleId=%q, portId=%q }, to={ moduleId=%q, portId=%q }%s },",
-          tostring(conn.id or ""),
-          tostring(conn.kind or "audio"),
-          tostring(from.moduleId or ""),
-          tostring(from.portId or ""),
-          tostring(to.moduleId or ""),
-          tostring(to.portId or ""),
-          metaText
-        )
-      end
-    end
-    parts[#parts + 1] = "}"
-    return table.concat(parts, "\n")
-  end
-
-  local lines = {
-    "return {",
-    string.format("  inputDevice = %q,", tostring(state.inputDevice or "")),
-    string.format("  keyboardCollapsed = %s,", state.keyboardCollapsed and "true" or "false"),
-    string.format("  keyboardKeyCount = %d,", tonumber(state.keyboardKeyCount) or 14),
-    string.format("  utilityDockVisible = %s,", state.utilityDockVisible == false and "false" or "true"),
-    string.format("  utilityDockMode = %q,", tostring(state.utilityDockMode or "full_keyboard")),
-    string.format("  utilityDockHeightMode = %q,", tostring(state.utilityDockHeightMode or (state.keyboardCollapsed and "collapsed" or "full"))),
-    string.format("  rackViewMode = %q,", tostring(rackState.viewMode or "perf")),
-    string.format("  rackDensityMode = %q,", tostring(rackState.densityMode or "normal")),
-    "  rackNodes = " .. serializeNodes(rackState.modules) .. ",",
-    "  rackConnections = " .. serializeConnections(state.rackConnections) .. ",",
-    string.format("  waveform = %d,", tonumber(state.waveform) or 1),
-    string.format("  filterType = %d,", tonumber(state.filterType) or 0),
-    string.format("  cutoff = %.2f,", tonumber(state.cutoff) or 3200),
-    string.format("  resonance = %.3f,", tonumber(state.resonance) or 0.75),
-    string.format("  drive = %.2f,", tonumber(state.drive) or 0.0),
-    string.format("  driveShape = %d,", tonumber(state.driveShape) or 0),
-    string.format("  driveBias = %.3f,", tonumber(state.driveBias) or 0.0),
-    string.format("  output = %.3f,", tonumber(state.output) or 0.8),
-    string.format("  attack = %.4f,", tonumber(state.attack) or 0.05),
-    string.format("  decay = %.4f,", tonumber(state.decay) or 0.2),
-    string.format("  sustain = %.3f,", tonumber(state.sustain) or 0.7),
-    string.format("  release = %.4f,", tonumber(state.release) or 0.4),
-    string.format("  fx1Type = %d,", tonumber(state.fx1Type) or 0),
-    string.format("  fx1Mix = %.3f,", tonumber(state.fx1Mix) or 0.0),
-    string.format("  fx2Type = %d,", tonumber(state.fx2Type) or 0),
-    string.format("  fx2Mix = %.3f,", tonumber(state.fx2Mix) or 0.0),
-    string.format("  oscMode = %d,", tonumber(state.oscMode) or 0),
-    string.format("  sampleSource = %d,", tonumber(state.sampleSource) or 0),
-    string.format("  sampleCaptureBars = %.4f,", tonumber(state.sampleCaptureBars) or 1.0),
-    string.format("  samplePitchMapEnabled = %s,", state.samplePitchMapEnabled and "true" or "false"),
-    string.format("  samplePitchMode = %d,", tonumber(state.samplePitchMode) or 0),
-    string.format("  sampleRootNote = %.2f,", tonumber(state.sampleRootNote) or 60.0),
-    string.format("  samplePlayStart = %.4f,", tonumber(state.samplePlayStart) or 0.0),
-    string.format("  sampleLoopStart = %.4f,", tonumber(state.sampleLoopStart) or 0.0),
-    string.format("  sampleLoopLen = %.4f,", tonumber(state.sampleLoopLen) or 1.0),
-    string.format("  sampleRetrigger = %d,", tonumber(state.sampleRetrigger) or 1),
-    string.format("  blendMode = %d,", tonumber(state.blendMode) or 0),
-    string.format("  blendAmount = %.3f,", tonumber(state.blendAmount) or 0.5),
-    string.format("  waveToSample = %.3f,", tonumber(state.waveToSample) or 0.5),
-    string.format("  sampleToWave = %.3f,", tonumber(state.sampleToWave) or 0.0),
-    string.format("  blendKeyTrack = %d,", tonumber(state.blendKeyTrack) or 2),
-    string.format("  blendSamplePitch = %.2f,", tonumber(state.blendSamplePitch) or 0.0),
-    string.format("  blendModAmount = %.3f,", tonumber(state.blendModAmount) or 0.5),
-    string.format("  envFollow = %.3f,", tonumber(state.envFollow) or 1.0),
-    string.format("  addFlavor = %d,", tonumber(state.addFlavor) or 0),
-    string.format("  xorBehavior = %d,", tonumber(state.xorBehavior) or 0),
-    string.format("  delayMix = %.3f,", tonumber(state.delayMix) or 0.0),
-    string.format("  delayTime = %d,", tonumber(state.delayTime) or 220),
-    string.format("  delayFeedback = %.3f,", tonumber(state.delayFeedback) or 0.24),
-    string.format("  reverbWet = %.3f,", tonumber(state.reverbWet) or 0.0),
-    string.format("  pulseWidth = %.2f,", tonumber(state.pulseWidth) or 0.5),
-    string.format("  unison = %d,", tonumber(state.unison) or 1),
-    string.format("  detune = %.1f,", tonumber(state.detune) or 0.0),
-    string.format("  spread = %.2f,", tonumber(state.spread) or 0.0),
-    string.format("  oscRenderMode = %d,", tonumber(state.oscRenderMode) or 0),
-    string.format("  additivePartials = %d,", tonumber(state.additivePartials) or 8),
-    string.format("  additiveTilt = %.3f,", tonumber(state.additiveTilt) or 0.0),
-    string.format("  additiveDrift = %.3f,", tonumber(state.additiveDrift) or 0.0),
-    "}",
-  }
-  
-  return writeTextFile(path, table.concat(lines, "\n"))
-end
+_G.loadRuntimeState = loadRuntimeState
+_G.saveRuntimeState = saveRuntimeState
 
 -- MIDI device functions now in MidiDevices module
 local isPluginMode = MidiDevices.isPluginMode
@@ -706,20 +527,6 @@ local function getOctaveLabel(baseOctave, ctx)
   local noteNames = {"C", "D", "E", "F", "G", "A", "B"}
   local endNote = noteNames[endNoteIndex] .. endOctave
   return startNote .. "-" .. endNote
-end
-
-local function ensureUtilityDockState(ctx)
-  local existing = ctx._utilityDock or {}
-  ctx._utilityDock = {
-    visible = existing.visible ~= false,
-    mode = type(existing.mode) == "string" and existing.mode ~= "" and existing.mode or "keyboard",
-    heightMode = type(existing.heightMode) == "string" and existing.heightMode or "full",
-    layoutMode = type(existing.layoutMode) == "string" and existing.layoutMode or "single",
-    primary = type(existing.primary) == "table" and existing.primary or {kind="keyboard",variant="full"},
-    secondary = type(existing.secondary) == "table" and existing.secondary or nil,
-  }
-  _G.__midiSynthUtilityDock = ctx._utilityDock
-  return ctx._utilityDock
 end
 
 -- Rack pagination state management
@@ -1438,8 +1245,6 @@ local function computeRackFlowTargetPlacement(ctx, snapshot, movingNodeId, cente
   }
 end
 
-local saveCurrentState
-local applyRackConnectionState
 
 local function samePlacement(a, b)
   return type(a) == "table" and type(b) == "table"
@@ -1612,7 +1417,7 @@ local function finalizeRackDragReorder(ctx)
   end
 
   ctx._rackState.modules = RackLayout.cloneRackModules(finalNodes)
-  ctx._rackState.utilityDock = ensureUtilityDockState(ctx)
+  ctx._rackState.utilityDock = M.ensureUtilityDockState(ctx)
   _G.__midiSynthRackState = ctx._rackState
   ctx._dragPreviewModules = nil
 
@@ -1634,7 +1439,7 @@ local function finalizeRackDragReorder(ctx)
     _G.__midiSynthRackConnections = ctx._rackConnections
     local finalNode = afterNode or getActiveRackNodeById(ctx, dragState.moduleId)
     ctx._lastEvent = string.format("Rack inserted: %s → row %d col %d", tostring(dragState.moduleId), tonumber(finalNode and finalNode.row) or -1, tonumber(finalNode and finalNode.col) or -1)
-    applyRackConnectionState(ctx, "rack-shift-insert")
+    M.applyRackConnectionState(ctx, "rack-shift-insert")
   else
     ctx._rackConnections = MidiSynthRackSpecs.normalizeConnections(ctx._rackConnections or {}, ctx._rackState.modules)
     _G.__midiSynthRackConnections = ctx._rackConnections
@@ -1749,12 +1554,8 @@ M._setupShellDragHandlers = function(ctx)
   end
 end
 
-local function getUtilityDockState(ctx)
-  return ensureUtilityDockState(ctx)
-end
-
 local function utilityDockHasKeyboard(ctx)
-  local dock = ensureUtilityDockState(ctx)
+  local dock = M.ensureUtilityDockState(ctx)
   local primary = dock.primary or {}
   local secondary = dock.secondary or nil
   return primary.kind == "keyboard" or (secondary and secondary.kind == "keyboard")
@@ -1803,339 +1604,12 @@ local function setWidgetVisible(widget, visible)
   end
 end
 
-local function buildDeletionMinRows(nodes)
-  local minRows = {}
-  if type(nodes) ~= "table" then
-    return minRows
-  end
-  for i = 1, #nodes do
-    local node = nodes[i]
-    if node then
-      minRows[tostring(node.id or "")] = math.max(0, math.floor(tonumber(node.row) or 0))
-    end
-  end
-  return minRows
-end
-
-local function spawnPaletteNodeAt(ctx, paletteEntryId, targetRow, targetIndex, insertMode)
-  if not (ctx and ctx._rackState) then
-    return false
-  end
-
-  local entry = M._getPaletteEntry(paletteEntryId)
-  if type(entry) ~= "table" then
-    return false
-  end
-
-  local nodeId, tempNode, unregisterOnFailure = M._buildPaletteNodeFromEntry(ctx, entry)
-  if not nodeId or not tempNode then
-    return false
-  end
-
-  local previousNodes = RackLayout.cloneRackModules(ctx._rackState.modules or {})
-  local previousConnections = MidiSynthRackSpecs.normalizeConnections(ctx._rackConnections or {}, previousNodes)
-  local baseNodes = RackLayout.cloneRackModules(previousNodes)
-  baseNodes[#baseNodes + 1] = tempNode
-
-  local workingNodes = autoCollapseRowForInsertion(
-    baseNodes,
-    nodeId,
-    math.max(0, math.floor(tonumber(targetRow) or 0)),
-    math.max(1, tonumber(tempNode.w) or 1),
-    ctx and ctx._rackModuleSpecs,
-    RACK_COLUMNS_PER_ROW
-  )
-
-  local minRows = buildDeletionMinRows(workingNodes)
-  minRows[tostring(nodeId)] = math.max(0, math.floor(tonumber(targetRow) or 0))
-
-  local targetCol = tonumber(targetIndex)
-  local desiredRow = math.max(0, math.floor(tonumber(targetRow) or 0))
-  local ok, nextNodes
-  local canUseSparseSlot = targetCol ~= nil
-    and targetCol >= 0
-    and targetCol < RACK_COLUMNS_PER_ROW
-    and RackLayout.isAreaFree(workingNodes, desiredRow, math.floor(targetCol), math.max(1, tonumber(tempNode.w) or 1), math.max(1, tonumber(tempNode.h) or 1), nodeId)
-
-  if canUseSparseSlot then
-    local maxRows = math.max(getRackTotalRows(ctx), desiredRow + math.max(1, tonumber(tempNode.h) or 1) + 1, 8)
-    ok, nextNodes = pcall(
-      RackLayout.moveModuleToSlot,
-      workingNodes,
-      nodeId,
-      desiredRow,
-      math.floor(targetCol),
-      RACK_COLUMNS_PER_ROW,
-      maxRows
-    )
-  else
-    ok, nextNodes = pcall(
-      RackLayout.moveModuleInFlowConstrained,
-      workingNodes,
-      nodeId,
-      math.max(1, math.floor(tonumber(targetIndex) or (#workingNodes))),
-      RACK_COLUMNS_PER_ROW,
-      0,
-      minRows
-    )
-  end
-  if not ok or type(nextNodes) ~= "table" then
-    if unregisterOnFailure then
-      RackModuleFactory.unregisterDynamicModuleSpec(ctx, nodeId, {
-        setPath = setPath,
-        voiceCount = VOICE_COUNT,
-      })
-    end
-    return false
-  end
-
-  ctx._rackState.modules = RackLayout.cloneRackModules(nextNodes)
-  ctx._rackState.utilityDock = ensureUtilityDockState(ctx)
-  local shouldInsertWire = (insertMode == true) or (tonumber(insertMode) or 0) > 0.5
-  local nextConnections
-  if shouldInsertWire then
-    nextConnections = MidiSynthRackSpecs.insertRackModuleAtVisualSlot(
-      ctx._rackConnections or {},
-      ctx._rackState.modules,
-      nodeId,
-      baseNodes
-    )
-  else
-    nextConnections = MidiSynthRackSpecs.normalizeConnections(ctx._rackConnections or {}, ctx._rackState.modules)
-  end
-  local topologyChanged = shouldInsertWire or (type(M._rackTopologyChanged) == "function" and M._rackTopologyChanged(previousConnections, previousNodes, nextConnections, ctx._rackState.modules) == true)
-  ctx._rackConnections = nextConnections
-  _G.__midiSynthRackState = ctx._rackState
-  _G.__midiSynthRackConnections = ctx._rackConnections
-
-  if topologyChanged then
-    applyRackConnectionState(ctx, shouldInsertWire and "palette-spawn-insert" or "palette-spawn")
-    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
-  else
-    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
-    if type(M._refreshRackPresentation) == "function" then
-      M._refreshRackPresentation(ctx)
-    end
-  end
-  ctx._lastEvent = string.format("Palette spawned: %s", tostring(nodeId))
-  return true
-end
-
-local function spawnPalettePlaceholderAt(ctx, targetRow, targetIndex)
-  return spawnPaletteNodeAt(ctx, "placeholder", targetRow, targetIndex)
-end
-
-local function deleteRackNode(ctx, nodeId)
-  local targetNodeId = tostring(nodeId or "")
-  if targetNodeId == "" or not (ctx and ctx._rackState) then
-    return false
-  end
-  if not (MidiSynthRackSpecs.isRackModuleDeletable and MidiSynthRackSpecs.isRackModuleDeletable(targetNodeId)) then
-    return false
-  end
-
-  local originalNodes = RackLayout.cloneRackModules(ctx._rackState.modules or {})
-  local previousConnections = MidiSynthRackSpecs.normalizeConnections(ctx._rackConnections or {}, originalNodes)
-  local currentNodes = RackLayout.cloneRackModules(originalNodes)
-  local removeIndex = RackLayout.findRackModuleIndex(currentNodes, targetNodeId)
-  if removeIndex == nil then
-    return false
-  end
-  table.remove(currentNodes, removeIndex)
-
-  local nextNodes = RackLayout.getFlowModules(currentNodes)
-  local nextConnections = ctx._rackConnections or {}
-  if MidiSynthRackSpecs.spliceRackModule then
-    nextConnections = MidiSynthRackSpecs.spliceRackModule(nextConnections, originalNodes, targetNodeId)
-  end
-
-  if dragState and dragState.moduleId == targetNodeId then
-    hideDragGhost(ctx)
-    resetDragState(ctx)
-  end
-  ctx._dragPreviewModules = nil
-
-  if RackWireLayer and RackWireLayer.cancelWireDrag then
-    RackWireLayer.cancelWireDrag(ctx)
-  end
-  if RackModPopover and RackModPopover.close then
-    RackModPopover.close(ctx)
-  end
-
-  local shellMeta = getRackShellMetaByNodeId(targetNodeId)
-  invalidatePatchbay(targetNodeId, ctx)
-  if shellMeta and shellMeta.shellId then
-    cleanupPatchbayFromRuntime(shellMeta.shellId, ctx)
-    local patchbayInstances = PatchbayRuntime.getInstances()
-    if type(patchbayInstances) == "table" then
-      patchbayInstances[shellMeta.shellId] = nil
-    end
-    local portRegistry = ctx._patchbayPortRegistry or _G.__midiSynthPatchbayPortRegistry
-    if type(portRegistry) == "table" then
-      for key, entry in pairs(portRegistry) do
-        if type(entry) == "table"
-          and (tostring(entry.nodeId or "") == targetNodeId or tostring(entry.shellId or "") == tostring(shellMeta.shellId)) then
-          portRegistry[key] = nil
-        end
-      end
-      ctx._patchbayPortRegistry = portRegistry
-      _G.__midiSynthPatchbayPortRegistry = portRegistry
-    end
-  end
-
-  local dynamicSpecs = type(_G) == "table" and _G.__midiSynthDynamicModuleSpecs or nil
-  local dynamicInfo = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
-  local isDynamicNode = (shellMeta and shellMeta.dynamic == true)
-    or (type(dynamicSpecs) == "table" and dynamicSpecs[targetNodeId] ~= nil)
-    or (type(dynamicInfo) == "table" and dynamicInfo[targetNodeId] ~= nil)
-  if isDynamicNode then
-    RackModuleFactory.unregisterDynamicModuleSpec(ctx, targetNodeId, {
-      setPath = setPath,
-      voiceCount = VOICE_COUNT,
-    })
-  end
-
-  local normalizedNextConnections = MidiSynthRackSpecs.normalizeConnections(nextConnections, nextNodes)
-  local topologyChanged = true
-  if type(M._rackTopologyChanged) == "function" then
-    topologyChanged = M._rackTopologyChanged(previousConnections, originalNodes, normalizedNextConnections, nextNodes)
-  end
-
-  ctx._rackState.modules = nextNodes
-  ctx._rackState.utilityDock = ensureUtilityDockState(ctx)
-  ctx._rackConnections = normalizedNextConnections
-  _G.__midiSynthRackState = ctx._rackState
-  _G.__midiSynthRackConnections = ctx._rackConnections
-
-  if topologyChanged then
-    applyRackConnectionState(ctx, "rack-delete")
-    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
-  else
-    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
-    if type(M._refreshRackPresentation) == "function" then
-      M._refreshRackPresentation(ctx)
-    end
-  end
-
-  ctx._lastEvent = string.format("Rack deleted: %s", targetNodeId)
-  return true
-end
-
-M._setupDeleteButtonHandlers = function(ctx)
-  if type(RACK_MODULE_SHELL_LAYOUT) ~= "table" then
-    return
-  end
-
-  for nodeId, meta in pairs(RACK_MODULE_SHELL_LAYOUT) do
-    local button = getScopedWidget(ctx, "." .. meta.shellId .. ".deleteButton")
-    if button and button.node then
-      button.node:setInterceptsMouse(true, true)
-      local targetNodeId = nodeId
-      button.node:setOnMouseDown(function()
-        if MidiSynthRackSpecs.isRackModuleDeletable and MidiSynthRackSpecs.isRackModuleDeletable(targetNodeId) then
-          deleteRackNode(ctx, targetNodeId)
-        end
-      end)
-    end
-  end
-end
-
 local function bindWirePortWidget(ctx, portWidget, entry)
   return M.bindWirePortWidget(ctx, portWidget, entry)
 end
 
-local function ensureRackControlRouting(ctx, reason)
-  ctx._modEndpointRegistry = ctx._modEndpointRegistry or ModEndpointRegistry.new()
-  ctx._modRouteCompiler = ctx._modRouteCompiler or ModRouteCompiler.new()
-  ctx._rackControlRouter = ctx._rackControlRouter or RackControlRouter.new()
-  ctx._rackModRuntime = ctx._rackModRuntime or ModRuntime.new()
-  ctx._modEndpointRegistry:rebuild(ctx, { reason = "rack-control-router" })
-  local snapshot = ctx._rackControlRouter:rebuild(ctx._rackConnections, ctx._modRouteCompiler, ctx._modEndpointRegistry, reason)
-  if ctx._rackModRuntime and ctx._rackModRuntime.setRoutes then
-    ctx._rackModRuntime:setRoutes(ctx._rackControlRouter.routes, ctx._modRouteCompiler, ctx._modEndpointRegistry)
-  end
-  return snapshot
-end
-
-local function syncPrimaryControlRoutes(ctx, reason)
-  local previous = M._hasAnyOscillatorGateRoute(ctx)
-  local previousLegacy = M._isLegacyOscillatorGateRouteConnected(ctx)
-  local snapshot = ensureRackControlRouting(ctx)
-  local connected = M._hasAnyOscillatorGateRoute(ctx)
-  local canonicalConnected = M._hasCanonicalOscillatorGateRoute(ctx)
-  local legacyConnected = M._isLegacyOscillatorGateRouteConnected(ctx)
-
-  ctx._controlRouteState = {
-    adsrToOscillatorGateConnected = connected,
-    adsrToCanonicalOscillatorGateConnected = canonicalConnected,
-    adsrToLegacyOscillatorGateConnected = legacyConnected,
-    lastReason = reason,
-    router = snapshot,
-  }
-
-  if previousLegacy == true and legacyConnected == false and type(ctx) == "table" and type(ctx._voices) == "table" and #ctx._voices > 0 then
-    for i = 1, VOICE_COUNT do
-      local voice = ctx._voices[i]
-      if voice then
-        voice.sentAmp = 0
-      end
-      setPath(voiceAmpPath(i), 0)
-      setPath(voiceGatePath(i), 0)
-    end
-  end
-
-  if previous == true and connected == false and type(ctx) == "table" and type(ctx._voices) == "table" and #ctx._voices > 0 then
-    panicVoices(ctx)
-    ctx._lastEvent = "ADSR → source control disconnected"
-  end
-
-  return connected
-end
-
-M._refreshRackPresentation = function(ctx)
-  local viewMode = ctx and ctx._rackState and (ctx._rackState.viewMode or "perf") or "perf"
-  if viewMode == "patch" then
-    syncPatchViewMode(ctx)
-    if RackWireLayer and RackWireLayer.refreshWires then
-      RackWireLayer.refreshWires(ctx)
-    end
-  end
-
-  if type(ctx and ctx._rackModPopoverState) == "table" or type(ctx and ctx._wireDrag) == "table" then
-    RackModPopover.refresh(ctx, {
-      RackWireLayer = RackWireLayer,
-      getScopedWidget = getScopedWidget,
-      getWidgetBoundsInRoot = getWidgetBoundsInRoot,
-    })
-  end
-end
-
-applyRackConnectionState = function(ctx, reason)
-  local rackNodes = ctx and ctx._rackState and ctx._rackState.modules or nil
-  local normalizedConnections = MidiSynthRackSpecs.normalizeConnections(ctx and ctx._rackConnections or nil, rackNodes)
-  local topologySignature = M._rackTopologySignature(normalizedConnections, rackNodes)
-
-  ctx._rackConnections = normalizedConnections
-  _G.__midiSynthRackConnections = ctx._rackConnections
-
-  if ctx._rackTopologySignature ~= topologySignature then
-    syncPrimaryControlRoutes(ctx, reason)
-
-    local edgeMask = MidiSynthRackSpecs.audioRouteEdgeMask(ctx._rackConnections)
-    ctx._rackAudioEdgeMask = edgeMask
-    M._syncRackAudioStageParams(ctx)
-    syncAuxAudioRouteParams(ctx)
-    setPath(PATHS.rackAudioEdgeMask, edgeMask)
-    ctx._rackTopologySignature = topologySignature
-  end
-
-  M._refreshRackPresentation(ctx)
-
-  return ctx._rackAudioEdgeMask or MidiSynthRackSpecs.audioRouteEdgeMask(ctx._rackConnections)
-end
-
 local function isUtilityDockVisible(ctx)
-  local dock = ensureUtilityDockState(ctx)
+  local dock = M.ensureUtilityDockState(ctx)
   return dock.visible ~= false and dock.mode ~= "hidden"
 end
 
@@ -2167,41 +1641,6 @@ end
 
 local function syncKeyboardCollapseButton(ctx)
   return KeyboardInput.syncKeyboardCollapseButton(ctx)
-end
-
-local function setUtilityDockMode(ctx, modeKey)
-  local dock = ensureUtilityDockState(ctx)
-  dock.visible = true
-  dock.mode = "keyboard"
-  dock.layoutMode = "split"
-  dock.primary = dock.primary or { kind = "keyboard", variant = "full" }
-  dock.primary.kind = "keyboard"
-  dock.secondary = { kind = "utility", variant = "compact" }
-
-  local normalizedMode = modeKey == "compact" and "compact_split" or modeKey
-  if normalizedMode == "compact_collapsed" then
-    dock.heightMode = "collapsed"
-    dock.primary.variant = "compact"
-    ctx._keyboardCollapsed = true
-  elseif normalizedMode == "compact_split" then
-    dock.heightMode = "compact"
-    dock.primary.variant = "compact"
-    ctx._keyboardCollapsed = false
-  else
-    dock.heightMode = "full"
-    dock.primary.variant = "full"
-    ctx._keyboardCollapsed = false
-  end
-
-  if ctx._rackState then
-    ctx._rackState.utilityDock = dock
-  end
-  ctx._dockMode = normalizedMode
-  syncKeyboardCollapseButton(ctx)
-  MidiParamRack.invalidate(ctx)
-  if ctx._lastW and ctx._lastH then
-    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
-  end
 end
 
 local function computeKeyboardPanelHeight(ctx, totalH)
@@ -2423,7 +1862,7 @@ refreshManagedLayoutState = function(ctx, w, h)
   local stackChanged = setWidgetBounds(mainStack, 0, 0, totalW, totalH)
 
   local dockVisible = isUtilityDockVisible(ctx)
-  local dock = ensureUtilityDockState(ctx)
+  local dock = M.ensureUtilityDockState(ctx)
   local isCollapsedMode = (dock.heightMode == "collapsed") or (ctx._dockMode == "compact_collapsed")
   local isCompactMode = (dock.heightMode == "compact") and not isCollapsedMode
   local bodyVisible = dockVisible and not isCollapsedMode
@@ -2768,419 +2207,6 @@ local function setKeyboardCollapsed(ctx, collapsed)
   return KeyboardInput.setKeyboardCollapsed(ctx, collapsed)
 end
 
-local function persistDockUiState(ctx)
-  persistMidiInputSelection(ctx._selectedMidiInputIdx and ctx._selectedMidiInputIdx > 1 and ctx._selectedMidiInputLabel or "")
-  local state = loadRuntimeState()
-  local dock = ensureUtilityDockState(ctx)
-  state.keyboardCollapsed = ctx._keyboardCollapsed == true
-  state.utilityDockVisible = dock.visible ~= false
-  state.utilityDockMode = dock.mode or "keyboard"
-  state.utilityDockHeightMode = dock.heightMode or (ctx._keyboardCollapsed and "collapsed" or "full")
-  saveRuntimeState(state)
-end
-
-saveCurrentState = function(ctx)
-  local dock = ensureUtilityDockState(ctx)
-  local defaultRackState = MidiSynthRackSpecs.defaultRackState()
-  local rackState = ctx._rackState or {
-    viewMode = defaultRackState.viewMode,
-    densityMode = defaultRackState.densityMode,
-    utilityDock = dock,
-    modules = RackLayout.cloneRackModules(defaultRackState.modules),
-  }
-  if #(rackState.modules or {}) == 0 then
-    rackState.modules = RackLayout.cloneRackModules(defaultRackState.modules)
-  end
-  rackState.utilityDock = {
-    visible = dock.visible ~= false,
-    mode = dock.mode or "keyboard",
-    heightMode = dock.heightMode or (ctx._keyboardCollapsed and "collapsed" or (ctx._dockMode == "compact_split" and "compact" or "full")),
-    layoutMode = "split",
-    primary = { kind = "keyboard", variant = (ctx._dockMode == "full") and "full" or "compact" },
-    secondary = { kind = "utility", variant = "compact" },
-  }
-  local state = {
-    inputDevice = ctx._selectedMidiInputLabel or "",
-    keyboardCollapsed = ctx._keyboardCollapsed == true,
-    keyboardKeyCount = ctx._keyboardKeyCount or 14,
-    utilityDockVisible = dock.visible ~= false,
-    utilityDockMode = dock.mode or "full_keyboard",
-    utilityDockHeightMode = dock.heightMode or (ctx._keyboardCollapsed and "collapsed" or (ctx._dockMode == "compact_split" and "compact" or "full")),
-    rackViewMode = rackState.viewMode,
-    rackDensityMode = rackState.densityMode,
-    rackNodes = RackLayout.cloneRackModules(rackState.modules),
-    rackState = rackState,
-    waveform = round(readParam(PATHS.waveform, 1)),
-    filterType = round(readParam(PATHS.filterType, 0)),
-    cutoff = readParam(PATHS.cutoff, 3200),
-    resonance = readParam(PATHS.resonance, 0.75),
-    drive = readParam(PATHS.drive, 0.0),
-    driveShape = round(readParam(PATHS.driveShape, 0)),
-    driveBias = readParam(PATHS.driveBias, 0.0),
-    output = readParam(PATHS.output, 0.8),
-    attack = readParam(PATHS.attack, 0.05),
-    decay = readParam(PATHS.decay, 0.2),
-    sustain = readParam(PATHS.sustain, 0.7),
-    release = readParam(PATHS.release, 0.4),
-    fx1Type = round(readParam(PATHS.fx1Type, 0)),
-    fx1Mix = readParam(PATHS.fx1Mix, 0.0),
-    fx2Type = round(readParam(PATHS.fx2Type, 0)),
-    fx2Mix = readParam(PATHS.fx2Mix, 0.0),
-    oscMode = round(readParam(PATHS.oscMode, 0)),
-    sampleSource = round(readParam(PATHS.sampleSource, 0)),
-    sampleCaptureBars = readParam(PATHS.sampleCaptureBars, 1.0),
-    samplePitchMapEnabled = (readParam(PATHS.samplePitchMapEnabled, 0.0) or 0.0) > 0.5,
-    samplePitchMode = round(readParam(PATHS.samplePitchMode, 0)),
-    sampleRootNote = readParam(PATHS.sampleRootNote, 60.0),
-    samplePlayStart = readParam(PATHS.samplePlayStart, 0.0),
-    sampleLoopStart = readParam(PATHS.sampleLoopStart, 0.0),
-    sampleLoopLen = readParam(PATHS.sampleLoopLen, 1.0),
-    sampleRetrigger = round(readParam(PATHS.sampleRetrigger, 1)),
-    blendMode = round(readParam(PATHS.blendMode, 0)),
-    blendAmount = readParam(PATHS.blendAmount, 0.5),
-    waveToSample = readParam(PATHS.waveToSample, 0.5),
-    sampleToWave = readParam(PATHS.sampleToWave, 0.0),
-    blendKeyTrack = round(readParam(PATHS.blendKeyTrack, 2)),
-    blendSamplePitch = readParam(PATHS.blendSamplePitch, 0.0),
-    blendModAmount = readParam(PATHS.blendModAmount, 0.5),
-    envFollow = readParam(PATHS.envFollow, 1.0),
-    addFlavor = round(readParam(PATHS.addFlavor, 0)),
-    xorBehavior = round(readParam(PATHS.xorBehavior, 0)),
-    delayMix = readParam(PATHS.delayMix, 0.0),
-    delayTime = round(readParam(PATHS.delayTimeL, 220)),
-    delayFeedback = readParam(PATHS.delayFeedback, 0.24),
-    reverbWet = readParam(PATHS.reverbWet, 0.0),
-    eqOutput = readParam(PATHS.eqOutput, 0.0),
-    eqMix = readParam(PATHS.eqMix, 1.0),
-    -- New oscillator parameters
-    pulseWidth = readParam(PATHS.pulseWidth, 0.5),
-    unison = round(readParam(PATHS.unison, 1)),
-    detune = readParam(PATHS.detune, 0.0),
-    spread = readParam(PATHS.spread, 0.0),
-    oscRenderMode = round(readParam(PATHS.oscRenderMode, 0)),
-    additivePartials = round(readParam(PATHS.additivePartials, 8)),
-    additiveTilt = readParam(PATHS.additiveTilt, 0.0),
-    additiveDrift = readParam(PATHS.additiveDrift, 0.0),
-  }
-  for i = 1, 8 do
-    state["eqBandEnabled" .. i] = round(readParam(eq8BandEnabledPath(i), 0))
-    state["eqBandType" .. i] = round(readParam(eq8BandTypePath(i), i == 1 and 1 or (i == 8 and 2 or 0)))
-    state["eqBandFreq" .. i] = readParam(eq8BandFreqPath(i), ({60, 120, 250, 500, 1000, 2500, 6000, 12000})[i])
-    state["eqBandGain" .. i] = readParam(eq8BandGainPath(i), 0.0)
-    state["eqBandQ" .. i] = readParam(eq8BandQPath(i), (i == 1 or i == 8) and 0.8 or 1.0)
-  end
-  
-  if saveRuntimeState(state) then
-    ctx._lastEvent = "State saved"
-  else
-    ctx._lastEvent = "Save failed"
-  end
-end
-
-local function cloneConnectionList(connections)
-  local out = {}
-  local source = type(connections) == "table" and connections or {}
-  for i = 1, #source do
-    local conn = source[i]
-    if tostring(conn and conn.kind or "") == "audio" then
-      out[#out + 1] = RackLayout.makeRackConnection(conn)
-    end
-  end
-  return out
-end
-
-local function loadSavedState(ctx)
-  local state = loadRuntimeState()
-  if not state or not next(state) then
-    applyRackConnectionState(ctx, "load-default")
-    ctx._lastEvent = "No saved state"
-    return
-  end
-
-  local defaultRackState = MidiSynthRackSpecs.defaultRackState()
-  local restoredRackState = nil
-  
-  -- First try to use rackState.modules if it exists and has content
-  if state.rackState and type(state.rackState) == "table" then
-    local rs = state.rackState
-    if rs.modules and #rs.modules > 0 then
-      restoredRackState = {
-        viewMode = rs.viewMode or state.rackViewMode or defaultRackState.viewMode,
-        densityMode = rs.densityMode or state.rackDensityMode or defaultRackState.densityMode,
-        utilityDock = rs.utilityDock or {
-          visible = state.utilityDockVisible,
-          mode = state.utilityDockMode,
-          heightMode = state.utilityDockHeightMode,
-        },
-        modules = RackLayout.cloneRackModules(rs.modules),
-      }
-    end
-  end
-
-  -- Fall back to rackNodes if no valid rackState.modules
-  if not restoredRackState then
-    local rackNodes = state.rackNodes
-    if rackNodes and #rackNodes > 0 then
-      restoredRackState = {
-        viewMode = state.rackViewMode or defaultRackState.viewMode,
-        densityMode = state.rackDensityMode or defaultRackState.densityMode,
-        utilityDock = {
-          visible = state.utilityDockVisible,
-          mode = state.utilityDockMode,
-          heightMode = state.utilityDockHeightMode,
-        },
-        modules = RackLayout.cloneRackModules(rackNodes),
-      }
-    end
-  end
-  
-  -- Final fallback to defaults
-  if not restoredRackState then
-    restoredRackState = {
-      viewMode = state.rackViewMode or defaultRackState.viewMode,
-      densityMode = state.rackDensityMode or defaultRackState.densityMode,
-      utilityDock = {
-        visible = state.utilityDockVisible,
-        mode = state.utilityDockMode,
-        heightMode = state.utilityDockHeightMode,
-      },
-      modules = RackLayout.cloneRackModules(defaultRackState.modules),
-    }
-  end
-  ctx._rackState = restoredRackState
-  ctx._rackModuleSpecs = MidiSynthRackSpecs.rackModuleSpecById()
-  ctx._dynamicModuleSlots = RackModuleFactory.ensureDynamicModuleSlots(ctx)
-  M._rebuildDynamicRackModuleState(ctx)
-  local restoredConnections = MidiSynthRackSpecs.defaultConnections(restoredRackState.modules)
-  ctx._rackConnections = MidiSynthRackSpecs.normalizeConnections(restoredConnections, restoredRackState.modules)
-  ctx._utilityDock = restoredRackState.utilityDock
-  _G.__midiSynthRackState = ctx._rackState
-  _G.__midiSynthRackModuleSpecs = ctx._rackModuleSpecs
-  _G.__midiSynthRackConnections = ctx._rackConnections
-  _G.__midiSynthUtilityDock = ctx._utilityDock
-
-  local dock = ensureUtilityDockState(ctx)
-  local hasExplicitDockState = false
-  if state.utilityDockVisible ~= nil then
-    dock.visible = state.utilityDockVisible == true
-    hasExplicitDockState = true
-  end
-  if type(state.utilityDockMode) == "string" and state.utilityDockMode ~= "" then
-    dock.mode = state.utilityDockMode
-    hasExplicitDockState = true
-  end
-  if type(state.utilityDockHeightMode) == "string" and state.utilityDockHeightMode ~= "" then
-    dock.heightMode = state.utilityDockHeightMode
-    hasExplicitDockState = true
-  elseif state.keyboardCollapsed ~= nil then
-    dock.heightMode = state.keyboardCollapsed == true and "collapsed" or "full"
-  end
-  syncKeyboardCollapsedFromUtilityDock(ctx)
-
-  -- If the current UI does not expose an explicit dock-mode selector yet,
-  -- do not leave the user stranded in a persisted compact mode from a prior
-  -- experimental build. Preserve collapsed/full via the visible toggle.
-  if not ((ctx.widgets or {}).dockModeTabs or (ctx.widgets or {}).dockModeDots) then
-    if dock.heightMode == "compact" then
-      dock.heightMode = "full"
-      if dock.primary and dock.primary.kind == "keyboard" then
-        dock.primary.variant = "full"
-      end
-      ctx._utilityDock = {visible=true,mode="keyboard",heightMode="full",layoutMode="single",primary={kind="keyboard",variant="full"}}
-      if ctx._rackState then
-        ctx._rackState.utilityDock = ctx._utilityDock
-      end
-      _G.__midiSynthUtilityDock = ctx._utilityDock
-      _G.__midiSynthRackState = ctx._rackState
-    end
-  end
-
-  if state.keyboardCollapsed ~= nil and not hasExplicitDockState then
-    setKeyboardCollapsed(ctx, state.keyboardCollapsed == true)
-  end
-  if state.keyboardKeyCount then
-    ctx._keyboardKeyCount = state.keyboardKeyCount
-  end
-
-  -- Apply all saved parameters
-  if state.waveform then
-    setPath(PATHS.waveform, state.waveform)
-  end
-  if state.cutoff then
-    setPath(PATHS.cutoff, state.cutoff)
-  end
-  if state.resonance then
-    setPath(PATHS.resonance, state.resonance)
-  end
-  if state.drive then
-    setPath(PATHS.drive, state.drive)
-  end
-  if state.output then
-    setPath(PATHS.output, state.output)
-  end
-  if state.attack then
-    setPath(PATHS.attack, state.attack)
-  end
-  if state.decay then
-    setPath(PATHS.decay, state.decay)
-  end
-  if state.sustain then
-    setPath(PATHS.sustain, state.sustain)
-  end
-  if state.release then
-    setPath(PATHS.release, state.release)
-  end
-  if state.chorusMix then
-    setPath(PATHS.chorusMix, state.chorusMix)
-  end
-  if state.delayMix then
-    setPath(PATHS.delayMix, state.delayMix)
-  end
-  if state.delayTime then
-    setPath(PATHS.delayTimeL, state.delayTime)
-    setPath(PATHS.delayTimeR, state.delayTime * 1.5)
-  end
-  if state.delayFeedback then
-    setPath(PATHS.delayFeedback, state.delayFeedback)
-  end
-  if state.reverbWet then
-    setPath(PATHS.reverbWet, state.reverbWet)
-  end
-  if state.eqOutput ~= nil then
-    setPath(PATHS.eqOutput, state.eqOutput)
-  end
-  if state.eqMix ~= nil then
-    setPath(PATHS.eqMix, state.eqMix)
-  end
-  for i = 1, 8 do
-    if state["eqBandEnabled" .. i] ~= nil then setPath(eq8BandEnabledPath(i), state["eqBandEnabled" .. i]) end
-    if state["eqBandType" .. i] ~= nil then setPath(eq8BandTypePath(i), state["eqBandType" .. i]) end
-    if state["eqBandFreq" .. i] ~= nil then setPath(eq8BandFreqPath(i), state["eqBandFreq" .. i]) end
-    if state["eqBandGain" .. i] ~= nil then setPath(eq8BandGainPath(i), state["eqBandGain" .. i]) end
-    if state["eqBandQ" .. i] ~= nil then setPath(eq8BandQPath(i), state["eqBandQ" .. i]) end
-  end
-  if state.filterType then
-    setPath(PATHS.filterType, state.filterType)
-  end
-  if state.fx1Type then setPath(PATHS.fx1Type, state.fx1Type) end
-  if state.fx1Mix then setPath(PATHS.fx1Mix, state.fx1Mix) end
-  if state.fx2Type then setPath(PATHS.fx2Type, state.fx2Type) end
-  if state.fx2Mix then setPath(PATHS.fx2Mix, state.fx2Mix) end
-  if state.oscMode ~= nil then setPath(PATHS.oscMode, state.oscMode) end
-  if state.sampleSource ~= nil then setPath(PATHS.sampleSource, state.sampleSource) end
-  if state.sampleCaptureBars ~= nil then setPath(PATHS.sampleCaptureBars, state.sampleCaptureBars) end
-  if state.samplePitchMapEnabled ~= nil then setPath(PATHS.samplePitchMapEnabled, state.samplePitchMapEnabled and 1 or 0) end
-  if state.samplePitchMode ~= nil then setPath(PATHS.samplePitchMode, state.samplePitchMode) end
-  if state.sampleRootNote ~= nil then setPath(PATHS.sampleRootNote, state.sampleRootNote) end
-  if state.samplePlayStart ~= nil then setPath(PATHS.samplePlayStart, state.samplePlayStart) end
-  if state.sampleLoopStart ~= nil then setPath(PATHS.sampleLoopStart, state.sampleLoopStart) end
-  if state.sampleLoopLen ~= nil then setPath(PATHS.sampleLoopLen, state.sampleLoopLen) end
-  if state.sampleRetrigger ~= nil then setPath(PATHS.sampleRetrigger, state.sampleRetrigger) end
-  if state.blendMode ~= nil then setPath(PATHS.blendMode, state.blendMode) end
-  if state.blendAmount ~= nil then setPath(PATHS.blendAmount, state.blendAmount) end
-  if state.waveToSample ~= nil then setPath(PATHS.waveToSample, state.waveToSample) end
-  if state.sampleToWave ~= nil then setPath(PATHS.sampleToWave, state.sampleToWave) end
-  if state.blendKeyTrack ~= nil then setPath(PATHS.blendKeyTrack, state.blendKeyTrack) end
-  if state.blendSamplePitch ~= nil then setPath(PATHS.blendSamplePitch, state.blendSamplePitch) end
-  if state.blendModAmount ~= nil then setPath(PATHS.blendModAmount, state.blendModAmount) end
-  if state.envFollow ~= nil then setPath(PATHS.envFollow, state.envFollow) end
-  if state.addFlavor ~= nil then setPath(PATHS.addFlavor, state.addFlavor) end
-  if state.xorBehavior ~= nil then setPath(PATHS.xorBehavior, state.xorBehavior) end
-  -- New oscillator parameters
-  if state.pulseWidth ~= nil then setPath(PATHS.pulseWidth, state.pulseWidth) end
-  if state.unison ~= nil then setPath(PATHS.unison, state.unison) end
-  if state.detune ~= nil then setPath(PATHS.detune, state.detune) end
-  if state.spread ~= nil then setPath(PATHS.spread, state.spread) end
-  if state.oscRenderMode ~= nil then setPath(PATHS.oscRenderMode, state.oscRenderMode) end
-  if state.additivePartials ~= nil then setPath(PATHS.additivePartials, state.additivePartials) end
-  if state.additiveTilt ~= nil then setPath(PATHS.additiveTilt, state.additiveTilt) end
-  if state.additiveDrift ~= nil then setPath(PATHS.additiveDrift, state.additiveDrift) end
-  if state.driveShape ~= nil then setPath(PATHS.driveShape, state.driveShape) end
-  if state.driveBias ~= nil then setPath(PATHS.driveBias, state.driveBias) end
-
-  -- Update ADSR cache
-  ctx._adsr.attack = state.attack or 0.05
-  ctx._adsr.decay = state.decay or 0.2
-  ctx._adsr.sustain = state.sustain or 0.7
-  ctx._adsr.release = state.release or 0.4
-
-  applyRackConnectionState(ctx, "load-state")
-  ctx._lastEvent = "State loaded"
-end
-
-local function resetToDefaults(ctx)
-  setPath(PATHS.waveform, 1)
-  setPath(PATHS.filterType, 0)
-  setPath(PATHS.cutoff, 3200)
-  setPath(PATHS.resonance, 0.75)
-  setPath(PATHS.drive, 0.0)
-  setPath(PATHS.output, 0.8)
-  setPath(PATHS.attack, 0.05)
-  setPath(PATHS.decay, 0.2)
-  setPath(PATHS.sustain, 0.7)
-  setPath(PATHS.release, 0.4)
-  setPath(PATHS.fx1Type, 0)
-  setPath(PATHS.fx1Mix, 0.0)
-  setPath(PATHS.fx2Type, 0)
-  setPath(PATHS.fx2Mix, 0.0)
-  setPath(PATHS.oscMode, 0)
-  setPath(PATHS.sampleSource, 0)
-  setPath(PATHS.sampleCaptureBars, 1.0)
-  setPath(PATHS.samplePitchMapEnabled, 0.0)
-  setPath(PATHS.samplePitchMode, 0.0)
-  setPath(PATHS.sampleRootNote, 60.0)
-  setPath(PATHS.samplePlayStart, 0.0)
-  setPath(PATHS.sampleLoopStart, 0.0)
-  setPath(PATHS.sampleLoopLen, 1.0)
-  setPath(PATHS.sampleRetrigger, 1.0)
-  setPath(PATHS.blendMode, 0)
-  setPath(PATHS.blendAmount, 0.5)
-  setPath(PATHS.waveToSample, 0.5)
-  setPath(PATHS.sampleToWave, 0.0)
-  setPath(PATHS.blendKeyTrack, 2.0)
-  setPath(PATHS.blendSamplePitch, 0.0)
-  setPath(PATHS.blendModAmount, 0.5)
-  setPath(PATHS.envFollow, 1.0)
-  setPath(PATHS.addFlavor, 0.0)
-  setPath(PATHS.xorBehavior, 0.0)
-  for i = 0, MAX_FX_PARAMS - 1 do
-    setPath(fxParamPath(1, i + 1), 0.5)
-    setPath(fxParamPath(2, i + 1), 0.5)
-  end
-  setPath(PATHS.delayMix, 0.0)
-  setPath(PATHS.delayTimeL, 220)
-  setPath(PATHS.delayTimeR, 330)
-  setPath(PATHS.delayFeedback, 0.24)
-  setPath(PATHS.reverbWet, 0.0)
-  setPath(PATHS.eqOutput, 0.0)
-  setPath(PATHS.eqMix, 1.0)
-  -- New oscillator parameters
-  setPath(PATHS.pulseWidth, 0.5)
-  setPath(PATHS.unison, 1)
-  setPath(PATHS.detune, 0.0)
-  setPath(PATHS.spread, 0.0)
-  setPath(PATHS.oscRenderMode, 0)
-  setPath(PATHS.additivePartials, 8)
-  setPath(PATHS.additiveTilt, 0.0)
-  setPath(PATHS.additiveDrift, 0.0)
-  setPath(PATHS.driveShape, 0)
-  setPath(PATHS.driveBias, 0.0)
-  for i = 1, 8 do
-    setPath(eq8BandEnabledPath(i), 0)
-    setPath(eq8BandTypePath(i), i == 1 and 1 or (i == 8 and 2 or 0))
-    setPath(eq8BandFreqPath(i), ({60, 120, 250, 500, 1000, 2500, 6000, 12000})[i])
-    setPath(eq8BandGainPath(i), 0.0)
-    setPath(eq8BandQPath(i), (i == 1 or i == 8) and 0.8 or 1.0)
-  end
-  
-  ctx._adsr = { attack = 0.05, decay = 0.2, sustain = 0.7, release = 0.4 }
-  ctx._keyboardOctave = 3
-  ctx._rackConnections = MidiSynthRackSpecs.defaultConnections(ctx._rackState and ctx._rackState.modules)
-  applyRackConnectionState(ctx, "reset")
-  setKeyboardCollapsed(ctx, false)
-  ctx._lastEvent = "Reset to defaults"
-end
-
 local function generateKeyboardKeys(whiteKeyCount)
   whiteKeyCount = whiteKeyCount or 14
   local whiteKeys = {}
@@ -3444,7 +2470,7 @@ function M.init(ctx)
   KeyboardInput.init({
     triggerVoice = VoiceManager.triggerVoice,
     releaseVoice = VoiceManager.releaseVoice,
-    ensureUtilityDockState = ensureUtilityDockState,
+    ensureUtilityDockState = M.ensureUtilityDockState,
     refreshManagedLayoutState = refreshManagedLayoutState,
     noteName = noteName,
     repaint = repaint,
@@ -3479,7 +2505,26 @@ function M.init(ctx)
     readTextFile = readTextFile,
     writeTextFile = writeTextFile,
     setPath = setPath,
+    readParam = readParam,
+    round = round,
     MidiSynthRackSpecs = MidiSynthRackSpecs,
+    RackLayout = RackLayout,
+    RackModuleFactory = RackModuleFactory,
+    PATHS = PATHS,
+    MAX_FX_PARAMS = MAX_FX_PARAMS,
+    fxParamPath = fxParamPath,
+    eq8BandEnabledPath = eq8BandEnabledPath,
+    eq8BandTypePath = eq8BandTypePath,
+    eq8BandFreqPath = eq8BandFreqPath,
+    eq8BandGainPath = eq8BandGainPath,
+    eq8BandQPath = eq8BandQPath,
+    syncKeyboardCollapsedFromUtilityDock = syncKeyboardCollapsedFromUtilityDock,
+    setKeyboardCollapsed = setKeyboardCollapsed,
+    applyRackConnectionState = M.applyRackConnectionState,
+    syncKeyboardCollapseButton = syncKeyboardCollapseButton,
+    refreshManagedLayoutState = refreshManagedLayoutState,
+    MidiParamRack = MidiParamRack,
+    persistMidiInputSelection = persistMidiInputSelection,
   })
   PatchbayBinding.init({
     RackWireLayer = RackWireLayer,
@@ -3511,6 +2556,39 @@ function M.init(ctx)
     getScopedBehavior = getScopedBehavior,
     RackLayoutManager = RackLayoutManager,
     PatchbayRuntime = PatchbayRuntime,
+  })
+  require("behaviors.rack_mutation_runtime").init({
+    RackLayout = RackLayout,
+    MidiSynthRackSpecs = MidiSynthRackSpecs,
+    RackModuleFactory = RackModuleFactory,
+    ModEndpointRegistry = ModEndpointRegistry,
+    ModRouteCompiler = ModRouteCompiler,
+    RackControlRouter = RackControlRouter,
+    ModRuntime = ModRuntime,
+    PatchbayRuntime = PatchbayRuntime,
+    RackWireLayer = RackWireLayer,
+    RackModPopover = RackModPopover,
+    setPath = setPath,
+    readParam = readParam,
+    PATHS = PATHS,
+    VOICE_COUNT = VOICE_COUNT,
+    RACK_COLUMNS_PER_ROW = RACK_COLUMNS_PER_ROW,
+    RACK_MODULE_SHELL_LAYOUT = RACK_MODULE_SHELL_LAYOUT,
+    getScopedWidget = getScopedWidget,
+    getWidgetBoundsInRoot = getWidgetBoundsInRoot,
+    autoCollapseRowForInsertion = autoCollapseRowForInsertion,
+    getRackTotalRows = getRackTotalRows,
+    ensureUtilityDockState = M.ensureUtilityDockState,
+    hideDragGhost = hideDragGhost,
+    resetDragState = resetDragState,
+    dragState = dragState,
+    getRackShellMetaByNodeId = getRackShellMetaByNodeId,
+    invalidatePatchbay = invalidatePatchbay,
+    cleanupPatchbayFromRuntime = cleanupPatchbayFromRuntime,
+    syncAuxAudioRouteParams = syncAuxAudioRouteParams,
+    syncPatchViewMode = syncPatchViewMode,
+    refreshManagedLayoutState = refreshManagedLayoutState,
+    panicVoices = VoiceManager.panicVoices,
   })
   require("behaviors.palette_browser").init({
     setPath = setPath,
@@ -3551,9 +2629,9 @@ function M.init(ctx)
     return ModulationRouter.resolveDynamicVoiceModulationSource(innerCtx, sourceId, source, voiceCount)
   end
   ctx._onRackConnectionsChanged = function(innerCtx, reason)
-    applyRackConnectionState(innerCtx, reason)
+    M.applyRackConnectionState(innerCtx, reason)
   end
-  applyRackConnectionState(ctx, "init")
+  M.applyRackConnectionState(ctx, "init")
   ctx._keyboardNote = nil
   ctx._keyboardDirty = true
   ctx._lastUpdateTime = getTime and getTime() or 0
@@ -3644,27 +2722,27 @@ function M.init(ctx)
     applyMidiSelection = applyMidiSelection,
     syncSelected = syncSelected,
     setKeyboardCollapsed = setKeyboardCollapsed,
-    persistDockUiState = persistDockUiState,
+    persistDockUiState = M.persistDockUiState,
     syncText = syncText,
     getOctaveLabel = getOctaveLabel,
     syncKeyboardDisplay = syncKeyboardDisplay,
     handleKeyboardClick = handleKeyboardClick,
-    saveCurrentState = saveCurrentState,
-    loadSavedState = loadSavedState,
-    resetToDefaults = resetToDefaults,
+    saveCurrentState = M.saveCurrentState,
+    loadSavedState = M.loadSavedState,
+    resetToDefaults = M.resetToDefaults,
     updateDropdownAnchors = updateDropdownAnchors,
-    loadRuntimeState = loadRuntimeState,
+    loadRuntimeState = M.loadRuntimeState,
     backgroundTick = backgroundTick,
     setPath = setPath,
     readParam = readParam,
-    applyRackConnectionState = applyRackConnectionState,
-    deleteRackNode = deleteRackNode,
+    applyRackConnectionState = M.applyRackConnectionState,
+    deleteRackNode = M.deleteRackNode,
     toggleRackNodeWidth = toggleRackNodeWidth,
-    spawnPalettePlaceholderAt = spawnPalettePlaceholderAt,
-    spawnPaletteNodeAt = spawnPaletteNodeAt,
-    setUtilityDockMode = setUtilityDockMode,
+    spawnPalettePlaceholderAt = M.spawnPalettePlaceholderAt,
+    spawnPaletteNodeAt = M.spawnPaletteNodeAt,
+    setUtilityDockMode = M.setUtilityDockMode,
     syncDockModeDots = syncDockModeDots,
-    ensureUtilityDockState = ensureUtilityDockState,
+    ensureUtilityDockState = M.ensureUtilityDockState,
     syncPatchViewMode = syncPatchViewMode,
     onRackDotClick = onRackDotClick,
     ensureRackPaginationState = ensureRackPaginationState,
@@ -3863,6 +2941,12 @@ function M.cleanup(ctx)
   end
   if type(_G) == "table" then
     _G.__midiSynthDynamicModuleInfo = nil
+  end
+  if _G.loadRuntimeState == loadRuntimeState then
+    _G.loadRuntimeState = nil
+  end
+  if _G.saveRuntimeState == saveRuntimeState then
+    _G.saveRuntimeState = nil
   end
 end
 
