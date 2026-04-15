@@ -1,6 +1,7 @@
 local RackLayout = require("behaviors.rack_layout")
 local MidiSynthRackSpecs = require("behaviors.rack_midisynth_specs")
 local RackWireLayer = require("behaviors.rack_wire_layer")
+local KeyboardInput = require("behaviors.keyboard_input")
 local FxDefs = require("fx_definitions")
 local ScopedWidget = require("ui.scoped_widget")
 local WidgetSync = require("ui.widget_sync")
@@ -4183,34 +4184,11 @@ local function isUtilityDockVisible(ctx)
 end
 
 local function syncKeyboardCollapsedFromUtilityDock(ctx)
-  local dock = ensureUtilityDockState(ctx)
-  ctx._keyboardCollapsed = dock.heightMode == "collapsed"
+  return KeyboardInput.syncKeyboardCollapsedFromUtilityDock(ctx)
 end
 
 local function syncUtilityDockFromKeyboardCollapsed(ctx)
-  local dock = ensureUtilityDockState(ctx)
-  dock.visible = true
-  if dock.mode == "hidden" then
-    dock.mode = "keyboard"
-  end
-  dock.layoutMode = "split"
-  dock.secondary = { kind = "utility", variant = "compact" }
-  dock.primary = dock.primary or { kind = "keyboard", variant = "full" }
-  dock.primary.kind = "keyboard"
-
-  if ctx._keyboardCollapsed then
-    dock.heightMode = "collapsed"
-    dock.primary.variant = "compact"
-  else
-    local mode = ctx._dockMode or "compact_split"
-    if mode == "compact_split" then
-      dock.heightMode = "compact"
-      dock.primary.variant = "compact"
-    else
-      dock.heightMode = "full"
-      dock.primary.variant = "full"
-    end
-  end
+  return KeyboardInput.syncUtilityDockFromKeyboardCollapsed(ctx)
 end
 
 local function utilityDockPresentationMode(ctx)
@@ -4232,12 +4210,7 @@ local function syncDockModeDots(ctx)
 end
 
 local function syncKeyboardCollapseButton(ctx)
-  local widgets = ctx.widgets or {}
-  if widgets.keyboardCollapse and widgets.keyboardCollapse.setLabel then
-    widgets.keyboardCollapse:setLabel(ctx._keyboardCollapsed and "▶" or "▼")
-    repaint(widgets.keyboardCollapse)
-  end
-  syncDockModeDots(ctx)
+  return KeyboardInput.syncKeyboardCollapseButton(ctx)
 end
 
 local function setUtilityDockMode(ctx, modeKey)
@@ -4276,31 +4249,7 @@ local function setUtilityDockMode(ctx, modeKey)
 end
 
 local function computeKeyboardPanelHeight(ctx, totalH)
-  local dock = ensureUtilityDockState(ctx)
-  if not isUtilityDockVisible(ctx) then
-    return 0
-  end
-
-  local h = math.max(0, tonumber(totalH) or 0)
-  local topPad = 0
-  local bottomPad = 0
-  local gap = 0
-  local captureH = 0
-  local captureGap = 0
-  local contentTop = topPad + captureH + captureGap
-  local availableBelow = math.max(220, h - contentTop - bottomPad)
-  local keyboardExpandedH = math.max(148, availableBelow - math.max(180, math.floor(availableBelow * 0.45)) - gap - 6)
-  -- Compact/collapsed needs a little more than the old half-height now that it also hosts
-  -- the MIDI rack + grab handle while still reaching the row-3 boundary cleanly.
-  local compactH = math.max(220, math.min(420, math.floor(keyboardExpandedH * 0.5) + 56))
-
-  if dock.heightMode == "collapsed" then
-    return compactH
-  end
-  if dock.heightMode == "compact" or dock.mode == "compact_keyboard" then
-    return compactH
-  end
-  return keyboardExpandedH
+  return KeyboardInput.computeKeyboardPanelHeight(ctx, totalH)
 end
 
 local function setMeasuredWidgetBounds(widget, width, height)
@@ -5171,21 +5120,7 @@ function M._syncPaletteCardState(ctx)
 end
 
 local function setKeyboardCollapsed(ctx, collapsed)
-  ctx._keyboardCollapsed = collapsed == true
-  if ctx._keyboardCollapsed then
-    ctx._dockMode = "compact_collapsed"
-  elseif ctx._dockMode ~= "full" then
-    ctx._dockMode = "compact_split"
-  end
-  syncUtilityDockFromKeyboardCollapsed(ctx)
-  if ctx._rackState then
-    ctx._rackState.utilityDock = ensureUtilityDockState(ctx)
-  end
-  syncKeyboardCollapseButton(ctx)
-  MidiParamRack.invalidate(ctx)
-  if ctx._lastW and ctx._lastH then
-    refreshManagedLayoutState(ctx, ctx._lastW, ctx._lastH)
-  end
+  return KeyboardInput.setKeyboardCollapsed(ctx, collapsed)
 end
 
 local function persistDockUiState(ctx)
@@ -5639,7 +5574,8 @@ end
 
 local function isKeyboardNoteActive(ctx, note)
   local midiVoices = ctx._midiVoices or ctx._voices or {}
-  for j = 1, VOICE_COUNT do
+  local voiceCount = ctx._voiceCount or 8
+  for j = 1, voiceCount do
     local voice = midiVoices[j]
     if voice and voice.active and voice.note == note and voice.gate > 0.5 then
       return true
@@ -5649,150 +5585,15 @@ local function isKeyboardNoteActive(ctx, note)
 end
 
 local function buildKeyboardDisplayList(ctx, w, h)
-  local display = {}
-  if w <= 0 or h <= 0 then
-    return display
-  end
-
-  local keyCount = getKeyCountForCtx(ctx)
-  local whiteKeys, blackKeys, blackPositions = generateKeyboardKeys(keyCount)
-  local whiteKeyWidth = w / keyCount
-  local blackKeyWidth = whiteKeyWidth * 0.6
-  local baseNote = ctx._keyboardOctave * 12
-
-  for i, offset in ipairs(whiteKeys) do
-    local note = baseNote + offset
-    local x = (i - 1) * whiteKeyWidth
-    local isActive = isKeyboardNoteActive(ctx, note)
-    local keyX = math.floor(x + 2)
-    local keyY = 2
-    local keyW = math.max(1, math.floor(whiteKeyWidth - 4))
-    local keyH = math.max(1, math.floor(h - 4))
-
-    display[#display + 1] = {
-      cmd = "fillRoundedRect",
-      x = keyX,
-      y = keyY,
-      w = keyW,
-      h = keyH,
-      radius = 4,
-      color = isActive and 0xff4ade80 or 0xfff1f5f9,
-    }
-    display[#display + 1] = {
-      cmd = "drawRoundedRect",
-      x = keyX,
-      y = keyY,
-      w = keyW,
-      h = keyH,
-      radius = 4,
-      thickness = 1,
-      color = 0xff64748b,
-    }
-  end
-
-  for i, offset in ipairs(blackKeys) do
-    local note = baseNote + offset
-    local pos = blackPositions[i]
-    local x = pos * whiteKeyWidth - blackKeyWidth / 2
-    local isActive = isKeyboardNoteActive(ctx, note)
-    local keyX = math.floor(x)
-    local keyY = 2
-    local keyW = math.max(1, math.floor(blackKeyWidth))
-    local keyH = math.max(1, math.floor(h * 0.6))
-
-    display[#display + 1] = {
-      cmd = "fillRoundedRect",
-      x = keyX,
-      y = keyY,
-      w = keyW,
-      h = keyH,
-      radius = 3,
-      color = isActive and 0xff22d3ee or 0xff1e293b,
-    }
-    display[#display + 1] = {
-      cmd = "drawRoundedRect",
-      x = keyX,
-      y = keyY,
-      w = keyW,
-      h = keyH,
-      radius = 3,
-      thickness = 1,
-      color = 0xff0f172a,
-    }
-  end
-
-  return display
+  return KeyboardInput.buildKeyboardDisplayList(ctx, w, h)
 end
 
 syncKeyboardDisplay = function(ctx)
-  local widgets = ctx.widgets or {}
-  local canvas = widgets.keyboardCanvas
-  if not (canvas and canvas.node and canvas.node.setDisplayList) then
-    return
-  end
-
-  local w = canvas.node:getWidth()
-  local h = canvas.node:getHeight()
-  canvas.node:setDisplayList(buildKeyboardDisplayList(ctx, w, h))
-  repaint(canvas)
+  return KeyboardInput.syncKeyboardDisplay(ctx)
 end
 
 local function handleKeyboardClick(ctx, x, y, isDown)
-  local widgets = ctx.widgets or {}
-  local canvas = widgets.keyboardCanvas
-  if not canvas or not canvas.node then return end
-  
-  local w = canvas.node:getWidth()
-  local h = canvas.node:getHeight()
-  local keyCount = getKeyCountForCtx(ctx)
-  local whiteKeys, blackKeys, blackPositions = generateKeyboardKeys(keyCount)
-  local whiteKeyWidth = w / keyCount
-  local baseNote = ctx._keyboardOctave * 12
-  
-  local blackKeyWidth = whiteKeyWidth * 0.6
-  local blackKeyHeight = h * 0.6
-  local hitNote = nil
-
-  -- Check black keys first (they're on top)
-  if y <= blackKeyHeight then
-    for i, offset in ipairs(blackKeys) do
-      local pos = blackPositions[i]
-      local kx = pos * whiteKeyWidth - blackKeyWidth / 2
-      if x >= kx and x <= kx + blackKeyWidth then
-        hitNote = baseNote + offset
-        break
-      end
-    end
-  end
-
-  -- Fall through to white keys if no black key hit
-  if not hitNote then
-    local keyIndex = math.floor(x / whiteKeyWidth) + 1
-    if keyIndex >= 1 and keyIndex <= #whiteKeys then
-      hitNote = baseNote + whiteKeys[keyIndex]
-    end
-  end
-
-  if hitNote then
-    if isDown then
-      local voiceIndex = triggerVoice(ctx, hitNote, 100)
-      ctx._keyboardNote = hitNote
-      ctx._currentNote = hitNote
-      if voiceIndex ~= nil then
-        ctx._lastEvent = string.format("Note: %s vel 100", noteName(hitNote))
-      else
-        ctx._lastEvent = string.format("Blocked: %s", tostring(ctx._triggerBlockedReason or "missing trigger path"))
-      end
-    else
-      releaseVoice(ctx, hitNote)
-      if ctx._keyboardNote == hitNote then
-        ctx._keyboardNote = nil
-      end
-      if ctx._currentNote == hitNote then
-        ctx._currentNote = nil
-      end
-    end
-  end
+  return KeyboardInput.handleKeyboardClick(ctx, x, y, isDown)
 end
 
 local function isUiInteracting(ctx)
@@ -5995,6 +5796,14 @@ function M.init(ctx)
   invalidatePatchbay(nil, ctx)
   ctx._utilityDock = ctx._rackState.utilityDock or RackLayout.defaultUtilityDock()
   ctx._keyboardCollapsed = false
+  KeyboardInput.init({
+    triggerVoice = triggerVoice,
+    releaseVoice = releaseVoice,
+    ensureUtilityDockState = ensureUtilityDockState,
+    refreshManagedLayoutState = refreshManagedLayoutState,
+    noteName = noteName,
+    repaint = repaint,
+  })
   syncKeyboardCollapsedFromUtilityDock(ctx)
   _G.__midiSynthRackState = ctx._rackState
   _G.__midiSynthRackModuleSpecs = ctx._rackModuleSpecs
