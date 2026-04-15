@@ -587,6 +587,14 @@ function Shell.create(parentNode, options)
         tabGap = 4,
         tabPadding = 12,
         tabSizing = "fill",  -- Stretch tabs to fill available width
+        showCloseButton = true,
+        closeButtonWidth = 16,
+        onTabClose = function(index, tabId, title)
+            local page = shell.projectTabHost:getProjectInfo(index)
+            if page and page.path and type(shell.closeProject) == "function" then
+                shell:closeProject(page.path)
+            end
+        end,
         bg = 0xff0f172a,
         tabBarBg = 0xff111827,
         tabBg = 0xff1e293b,

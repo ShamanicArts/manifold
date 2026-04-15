@@ -2259,6 +2259,7 @@ function M.attach(shell)
             -- Build project tab list for ProjectTabHost
             projectTabs = {}
             local seenUiIds = {}
+            local closedPaths = self._closedTabPaths or {}
 
             for i = 1, #uiScripts do
                 local s = uiScripts[i]
@@ -2266,16 +2267,19 @@ function M.attach(shell)
                     local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
                     -- Skip system overlay projects (Settings etc) - they don't belong in the tab bar
                     if not scriptLooksSettings(name, s.path) then
-                        local tabId = "ui:" .. s.path
-                        if not seenUiIds[tabId] then
-                            seenUiIds[tabId] = true
-                            projectTabs[#projectTabs + 1] = {
-                                id = tabId,
-                                title = name,
-                                kind = "ui-script",
-                                path = s.path,
-                                isSystem = false,
-                            }
+                        -- Skip projects the user has explicitly closed
+                        if not closedPaths[s.path] then
+                            local tabId = "ui:" .. s.path
+                            if not seenUiIds[tabId] then
+                                seenUiIds[tabId] = true
+                                projectTabs[#projectTabs + 1] = {
+                                    id = tabId,
+                                    title = name,
+                                    kind = "ui-script",
+                                    path = s.path,
+                                    isSystem = false,
+                                }
+                            end
                         end
                     end
                 end
@@ -2350,6 +2354,44 @@ function M.attach(shell)
         if type(self.flushDeferredRefreshes) == "function" then
             self:flushDeferredRefreshes()
         end
+    end
+
+    -- Close a project tab
+    function shell:closeProject(path)
+        if not path or path == "" then
+            return
+        end
+
+        -- Mark this path as closed so refreshMainUiTabs skips it
+        self._closedTabPaths = self._closedTabPaths or {}
+        self._closedTabPaths[path] = true
+
+        -- Invalidate cache so the next refresh rebuilds without the closed tab
+        self._projectTabsCache = nil
+
+        -- Determine the current project path
+        local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
+
+        -- If we closed the active project, switch to another
+        if path == currentUiPath then
+            local uiScripts = listUiScripts and listUiScripts() or {}
+            for i = 1, #uiScripts do
+                local s = uiScripts[i]
+                if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
+                    if s.path ~= path and not (self._closedTabPaths[s.path]) then
+                        local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
+                        if not scriptLooksSettings(name, s.path) then
+                            self:stashRestoreStateForScriptSwitch()
+                            switchUiScript(s.path)
+                            return
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Refresh the tab bar to remove the closed tab
+        self:refreshMainUiTabs(true)
     end
 
     function shell:ensureScriptEditorCursorVisible()

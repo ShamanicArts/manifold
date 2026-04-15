@@ -114,11 +114,16 @@ local function setStyleAndDisplay(host, w, h)
             radius = math.max(0, host._radius - 2),
             color = bg,
         }
+        local labelX = r.x + 6
+        local labelW = math.max(0, r.w - 12)
+        if host._showCloseButton then
+            labelW = math.max(0, r.w - host._closeButtonWidth - 12)
+        end
         display[#display + 1] = {
             cmd = "drawText",
-            x = r.x + 6,
+            x = labelX,
             y = r.y,
-            w = math.max(0, r.w - 12),
+            w = labelW,
             h = r.h,
             color = active and host._activeTextColour or host._textColour,
             text = label,
@@ -126,6 +131,34 @@ local function setStyleAndDisplay(host, w, h)
             align = "center",
             valign = "middle",
         }
+        if host._showCloseButton then
+            local closeR = host._closeButtonRects[visualIndex]
+            if closeR then
+                local bx = closeR.btnX or (closeR.x + 2)
+                local by = closeR.btnY or (closeR.y + 2)
+                local bs = closeR.btnSize or math.min(closeR.w - 4, closeR.h - 6)
+                display[#display + 1] = {
+                    cmd = "fillRect",
+                    x = bx,
+                    y = by,
+                    w = math.max(1, bs),
+                    h = math.max(1, bs),
+                    color = host._closeButtonBg,
+                }
+                display[#display + 1] = {
+                    cmd = "drawText",
+                    x = bx,
+                    y = by,
+                    w = math.max(1, bs),
+                    h = math.max(1, bs),
+                    color = host._closeButtonColour,
+                    text = "×",
+                    fontSize = 12.0,
+                    align = "center",
+                    valign = "middle",
+                }
+            end
+        end
     end
 
     host.node:setDisplayList(display)
@@ -148,10 +181,17 @@ function TabHost.new(parent, name, config)
     self._activeTabBg = Utils.colour(config.activeTabBg, 0xff2563eb)
     self._textColour = Utils.colour(config.textColour, 0xffcbd5e1)
     self._activeTextColour = Utils.colour(config.activeTextColour, 0xffffffff)
+    self._showCloseButton = config.showCloseButton == true
+    self._closeButtonWidth = math.max(14, math.floor(tonumber(config.closeButtonWidth or 16) or 16))
+    self._closeButtonBg = Utils.colour(config.closeButtonBg, 0xffdc2626)
+    self._closeButtonColour = Utils.colour(config.closeButtonColour, 0xffffffff)
+    self._closeButtonHoverBg = Utils.colour(config.closeButtonHoverBg, 0xffef4444)
     self._pages = {}
     self._tabRects = {}
+    self._closeButtonRects = {}
     self._visibleTabOrder = {}
     self._onSelect = config.on_select or config.onSelect
+    self._onTabClose = config.on_tab_close or config.onTabClose
     self._layoutDirty = true
     self._lastLayoutW = -1
     self._lastLayoutH = -1
@@ -188,8 +228,10 @@ end
 
 function TabHost:_computeTabRects(w)
     local rects = {}
+    local closeRects = {}
     local x = 0
     local h = self._tabBarHeight
+    local closeW = self._showCloseButton and self._closeButtonWidth or 0
     local order = {}
 
     for i = 1, #self._pages do
@@ -201,6 +243,7 @@ function TabHost:_computeTabRects(w)
 
     local pageCount = #order
     if pageCount <= 0 then
+        self._closeButtonRects = {}
         return rects
     end
 
@@ -209,15 +252,28 @@ function TabHost:_computeTabRects(w)
             local actualIndex = order[visualIndex]
             local page = self._pages[actualIndex]
             local label = coerceLabel(page.title, page.id or ("Tab " .. tostring(actualIndex)))
-            local tabW = math.max(72, math.min(220, self._tabPadding * 2 + (#label * 7)))
+            local tabW = math.max(72, math.min(220, self._tabPadding * 2 + (#label * 7) + closeW))
             rects[visualIndex] = {
                 x = x,
                 y = 0,
                 w = math.min(tabW, math.max(0, w - x)),
                 h = h,
             }
+            if self._showCloseButton then
+                local btnSize = math.min(closeW - 2, h - 6)
+                closeRects[visualIndex] = {
+                    x = x + rects[visualIndex].w - closeW,
+                    y = 0,
+                    w = closeW,
+                    h = h,
+                    btnX = x + rects[visualIndex].w - closeW + math.floor((closeW - btnSize) / 2),
+                    btnY = 2,
+                    btnSize = math.max(1, btnSize),
+                }
+            end
             x = x + rects[visualIndex].w + self._tabGap
         end
+        self._closeButtonRects = closeRects
         return rects
     end
 
@@ -238,9 +294,22 @@ function TabHost:_computeTabRects(w)
             w = math.max(0, tabW),
             h = h,
         }
+        if self._showCloseButton then
+            local btnSize = math.min(closeW - 2, h - 6)
+            closeRects[visualIndex] = {
+                x = x + tabW - closeW,
+                y = 0,
+                w = closeW,
+                h = h,
+                btnX = x + tabW - closeW + math.floor((closeW - btnSize) / 2),
+                btnY = 2,
+                btnSize = math.max(1, btnSize),
+            }
+        end
         x = x + rects[visualIndex].w + self._tabGap
     end
 
+    self._closeButtonRects = closeRects
     return rects
 end
 
@@ -333,6 +402,10 @@ end
 
 function TabHost:setOnSelect(fn)
     self._onSelect = fn
+end
+
+function TabHost:setOnTabClose(fn)
+    self._onTabClose = fn
 end
 
 function TabHost:getActiveIndex()
@@ -457,6 +530,18 @@ function TabHost:onMouseDown(mx, my)
     for visualIndex = 1, #self._tabRects do
         local r = self._tabRects[visualIndex]
         if mx >= r.x and mx <= (r.x + r.w) and my >= r.y and my <= (r.y + r.h) then
+            -- Check if click is in close button region
+            if self._showCloseButton then
+                local closeR = self._closeButtonRects[visualIndex]
+                if closeR and mx >= closeR.x and mx <= (closeR.x + closeR.w) then
+                    local actualIndex = self._visibleTabOrder[visualIndex] or visualIndex
+                    local page = self._pages[actualIndex]
+                    if self._onTabClose and page then
+                        self._onTabClose(actualIndex, page.id, page.title)
+                    end
+                    return
+                end
+            end
             local actualIndex = self._visibleTabOrder[visualIndex] or visualIndex
             self:setActiveIndex(actualIndex)
             return
@@ -497,9 +582,28 @@ function TabHost:onDraw(w, h)
         gfx.setColour(bg)
         gfx.fillRoundedRect(r.x, r.y, r.w, math.max(0, r.h - 2), math.max(0, self._radius - 2))
 
+        local labelX = r.x + 6
+        local labelW = math.max(0, r.w - 12)
+        if self._showCloseButton then
+            labelW = math.max(0, r.w - self._closeButtonWidth - 12)
+        end
         gfx.setColour(active and self._activeTextColour or self._textColour)
         gfx.setFont(12.0)
-        gfx.drawText(label, r.x + 6, r.y, math.max(0, r.w - 12), r.h, Justify.centred)
+        gfx.drawText(label, labelX, r.y, labelW, r.h, Justify.centred)
+
+        if self._showCloseButton then
+            local closeR = self._closeButtonRects[visualIndex]
+            if closeR then
+                local bx = closeR.btnX or (closeR.x + 2)
+                local by = closeR.btnY or (closeR.y + 2)
+                local bs = closeR.btnSize or math.min(closeR.w - 4, closeR.h - 6)
+                gfx.setColour(self._closeButtonBg)
+                gfx.fillRect(bx, by, math.max(1, bs), math.max(1, bs))
+                gfx.setColour(self._closeButtonColour)
+                gfx.setFont(12.0)
+                gfx.drawText("×", bx, by, math.max(1, bs), math.max(1, bs), Justify.centred)
+            end
+        end
     end
 
     if self._borderWidth > 0 and (self._border >> 24) & 0xff > 0 then
