@@ -734,6 +734,12 @@ void LuaRuntimeNodeBindings::registerBindings(LuaCoreEngine& engine, RuntimeNode
             setCallbackSlot(node, fn,
                             [](RuntimeNode::CallbackSlots& slots, sol::function value) { slots.onToggled = value; },
                             [](RuntimeNode::CallbackSlots& slots) { slots.onToggled = sol::lua_nil; });
+        },
+        "setOnImGuiFrame",
+        [](RuntimeNode& node, sol::function fn) {
+            setCallbackSlot(node, fn,
+                            [](RuntimeNode::CallbackSlots& slots, sol::function value) { slots.onImGuiFrame = value; },
+                            [](RuntimeNode::CallbackSlots& slots) { slots.onImGuiFrame = sol::lua_nil; });
         }
     );
 

@@ -90,6 +90,7 @@ function Shell.create(parentNode, options)
     local initialLeftPanelMode = "hierarchy"
     local pendingRestoreMode = nil
     local pendingRestoreLeftPanelMode = nil
+    local pendingRestoreOpenProjects = nil
 
     if type(restore) == "table" then
         if restore.mode == "edit" or restore.mode == "performance" then
@@ -97,6 +98,9 @@ function Shell.create(parentNode, options)
         end
         if restore.leftPanelMode == "hierarchy" or restore.leftPanelMode == "scripts" then
             pendingRestoreLeftPanelMode = restore.leftPanelMode
+        end
+        if type(restore.openProjects) == "table" and #restore.openProjects > 0 then
+            pendingRestoreOpenProjects = restore.openProjects
         end
         _G.__manifoldShellRestore = nil
     end
@@ -119,6 +123,7 @@ function Shell.create(parentNode, options)
         leftPanelMode = initialLeftPanelMode,
         pendingRestoreMode = pendingRestoreMode,
         pendingRestoreLeftPanelMode = pendingRestoreLeftPanelMode,
+        pendingRestoreOpenProjects = pendingRestoreOpenProjects,
         pendingRestoreApplied = false,
         dspRows = {},
         dspRowHeight = 20,
@@ -139,6 +144,7 @@ function Shell.create(parentNode, options)
         activeMainTabId = "",
         mainTabRects = {},
         mainTabBarH = 22,
+        openProjects = {},
         activeTabContentText = "",
         activeTabContentPath = "",
         editContentMode = "preview",
@@ -288,6 +294,17 @@ function Shell.create(parentNode, options)
         colour = 0xff7dd3fc,
         fontSize = 18.0,
         fontStyle = FontStyle.bold,
+    })
+
+    shell.startMenuButton = W.Button.new(shell.panel.node, "sharedStartMenu", {
+        label = shell.title,
+        bg = 0xff111827,
+        textColour = 0xff7dd3fc,
+        fontSize = 18.0,
+        radius = 0,
+        on_click = function()
+            shell.projectMenuOpen = true
+        end,
     })
 
     shell.masterKnob = W.Slider.new(shell.panel.node, "sharedMaster", {
@@ -926,8 +943,116 @@ function Shell.create(parentNode, options)
     ShellBindings.attach(shell)
     ShellMethodsLayout.attach(shell)
 
+    -- Seed openProjects: either from a prior session restore (project switch),
+    -- from a continuously-synced _G stash (IPC switch), or from the full
+    -- catalog of discovered projects (fresh start).
+    if type(shell.pendingRestoreOpenProjects) == "table" and #shell.pendingRestoreOpenProjects > 0 then
+        -- Restored from a tab-click switch (stashRestoreStateForScriptSwitch)
+        shell.openProjects = shell.pendingRestoreOpenProjects
+        shell.pendingRestoreOpenProjects = nil
+    elseif type(_G) == "table" and type(_G.__manifoldShellOpenProjects) == "table" and #_G.__manifoldShellOpenProjects > 0 then
+        -- Restored from background stash (IPC UISWITCH bypasses Lua stash)
+        shell.openProjects = _G.__manifoldShellOpenProjects
+    else
+        -- Fresh start: show all discovered projects
+        local uiScripts = listUiScripts and listUiScripts() or {}
+        local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
+        local seenUiIds = {}
+        for i = 1, #uiScripts do
+            local s = uiScripts[i]
+            if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
+                local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
+                if not scriptLooksSettings(name, s.path) then
+                    local tabId = "ui:" .. s.path
+                    if not seenUiIds[tabId] then
+                        seenUiIds[tabId] = true
+                        shell.openProjects[#shell.openProjects + 1] = {
+                            id = tabId,
+                            title = name,
+                            kind = "ui-script",
+                            path = s.path,
+                            isSystem = false,
+                        }
+                    end
+                end
+            end
+        end
+        -- Fallback: if no projects discovered, seed with current project
+        if #shell.openProjects == 0 and currentUiPath ~= "" then
+            shell.openProjects[#shell.openProjects + 1] = {
+                id = "ui:" .. currentUiPath,
+                title = fileStem(currentUiPath),
+                kind = "ui-script",
+                path = currentUiPath,
+                isSystem = false,
+            }
+        end
+    end
+
     shell:syncToolSurfaces()
     shell:syncPerfOverlaySurface(parentNode:getWidth(), parentNode:getHeight())
+
+    shell.projectMenuOpen = false
+
+    shell.panel.node:setOnImGuiFrame(function(node)
+        if type(imguiBeginPopup) ~= "function" then
+            return
+        end
+
+        local panelX, panelY, _, _ = shell.panel.node:getBounds()
+        local btnX, btnY, _, btnH = shell.startMenuButton.node:getBounds()
+        if type(imguiSetNextWindowPos) == "function" then
+            imguiSetNextWindowPos(panelX + btnX, panelY + btnY + btnH, imguiCond_Appearing)
+        end
+
+        if shell.projectMenuOpen then
+            imguiOpenPopup("StartMenu")
+            shell.projectMenuOpen = false
+        end
+
+        if imguiBeginPopup("StartMenu") then
+            local defaultProjects = shell.defaultProjects or {}
+            if #defaultProjects > 0 and imguiBeginMenu("Default Projects", true) then
+                for _, p in ipairs(defaultProjects) do
+                    if imguiMenuItem(p.title, nil, false, true) then
+                        shell:openProject(p.path)
+                        imguiCloseCurrentPopup()
+                    end
+                end
+                imguiEndMenu()
+            end
+
+            if #defaultProjects > 0 then
+                imguiSeparator()
+            end
+
+            if imguiMenuItem("Open from File...", nil, false, true) then
+                if type(shell.loadProjectFromFile) == "function" then
+                    shell:loadProjectFromFile()
+                end
+                imguiCloseCurrentPopup()
+            end
+
+            imguiEndPopup()
+        end
+    end)
+    -- Cache the full project catalog once at creation time.
+    -- listUiScripts() does filesystem I/O; never call it per frame.
+    shell.projectCatalog = (type(listUiScripts) == "function" and listUiScripts()) or {}
+    shell.defaultProjects = {}
+    shell.recentProjects = {}
+    for _, s in ipairs(shell.projectCatalog) do
+        if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
+            local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
+            if not scriptLooksSettings(name, s.path) then
+                shell.defaultProjects[#shell.defaultProjects + 1] = {
+                    title = name,
+                    path = s.path,
+                    kind = s.kind or "ui-script",
+                }
+            end
+        end
+    end
 
     return shell
 end

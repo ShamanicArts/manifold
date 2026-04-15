@@ -72,6 +72,7 @@ public:
         sol::function onGLContextClosing;
         sol::function onValueChanged;
         sol::function onToggled;
+        sol::function onImGuiFrame;
     };
 
     RuntimeNode(const std::string& name = "Canvas");

@@ -37,6 +37,7 @@ extern "C" {
 #include <map>
 #include <mutex>
 #include <vector>
+#include "imgui.h"
 #include <atomic>
 #include <unordered_map>
 #include <unordered_set>
@@ -2483,6 +2484,13 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         return state.getCurrentScriptFile().getFullPathName().toStdString();
     };
 
+    lua["showFileChooser"] = [&state](const std::string& title,
+                                        const std::string& initialPath,
+                                        const std::string& filePatterns,
+                                        sol::function callback) {
+        state.showFileChooser(title, initialPath, filePatterns, callback);
+    };
+
     lua["getRuntimeDisplayListDebugStats"] = [&lua](sol::optional<bool> resetOpt) -> sol::table {
         auto result = sol::table(lua, sol::create);
         const auto stats = RuntimeNode::getDisplayListDebugStats(resetOpt.value_or(false));
@@ -2716,5 +2724,77 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     
     lua["systemPaths"] = pathsTable;
     
-    std::fprintf(stderr, "[LuaControlBindings] Registered systemPaths table\n");
+    // ==========================================================================
+    // ImGui immediate-mode API bindings for onImGuiFrame callbacks.
+    // These may ONLY be called inside an onImGuiFrame callback (between
+    // ImGui::NewFrame() and ImGui::Render()). Calling outside that context
+    // will trigger ImGui asserts / undefined behaviour.
+    // ==========================================================================
+    lua["imguiBeginMainMenuBar"] = []() -> bool { return ImGui::BeginMainMenuBar(); };
+    lua["imguiEndMainMenuBar"]   = []() { ImGui::EndMainMenuBar(); };
+    lua["imguiBeginMenuBar"]     = []() -> bool { return ImGui::BeginMenuBar(); };
+    lua["imguiEndMenuBar"]       = []() { ImGui::EndMenuBar(); };
+    lua["imguiBeginMenu"]        = [](const char* label, sol::optional<bool> enabled) -> bool {
+        return ImGui::BeginMenu(label, enabled.value_or(true));
+    };
+    lua["imguiEndMenu"]          = []() { ImGui::EndMenu(); };
+    lua["imguiMenuItem"]         = [](const char* label, sol::optional<const char*> shortcut, sol::optional<bool> selected, sol::optional<bool> enabled) -> bool {
+        return ImGui::MenuItem(label, shortcut.value_or(nullptr), selected.value_or(false), enabled.value_or(true));
+    };
+    lua["imguiSeparator"]        = []() { ImGui::Separator(); };
+    lua["imguiOpenPopup"]        = [](const char* id) { ImGui::OpenPopup(id); };
+    lua["imguiBeginPopup"]       = [](const char* id) -> bool { return ImGui::BeginPopup(id); };
+    lua["imguiBeginPopupModal"]  = [](const char* id, sol::optional<int> flags) -> bool {
+        return ImGui::BeginPopupModal(id, nullptr, static_cast<ImGuiWindowFlags>(flags.value_or(0)));
+    };
+    lua["imguiEndPopup"]         = []() { ImGui::EndPopup(); };
+    lua["imguiCloseCurrentPopup"]= []() { ImGui::CloseCurrentPopup(); };
+    lua["imguiSelectable"]       = [](const char* label, sol::optional<bool> selected, sol::optional<int> flags, sol::optional<float> w, sol::optional<float> h) -> bool {
+        return ImGui::Selectable(label, selected.value_or(false), static_cast<ImGuiSelectableFlags>(flags.value_or(0)), ImVec2(w.value_or(0), h.value_or(0)));
+    };
+    lua["imguiButton"]           = [](const char* label, sol::optional<float> w, sol::optional<float> h) -> bool {
+        return ImGui::Button(label, ImVec2(w.value_or(0), h.value_or(0)));
+    };
+    lua["imguiText"]             = [](const char* text) { ImGui::TextUnformatted(text); };
+    lua["imguiSameLine"]         = [](sol::optional<float> offset, sol::optional<float> spacing) {
+        ImGui::SameLine(offset.value_or(0.0f), spacing.value_or(-1.0f));
+    };
+    lua["imguiPushStyleColor"]   = [](int idx, sol::object r, sol::optional<double> g, sol::optional<double> b, sol::optional<double> a) -> bool {
+        if (g.has_value() && b.has_value() && a.has_value()) {
+            ImGui::PushStyleColor(static_cast<ImGuiCol>(idx), ImVec4(static_cast<float>(r.as<double>()), static_cast<float>(*g), static_cast<float>(*b), static_cast<float>(*a)));
+        } else {
+            // Single uint32 color
+            uint32_t col = r.is<uint32_t>() ? r.as<uint32_t>() : static_cast<uint32_t>(r.as<double>());
+            float fr = static_cast<float>((col >> 16) & 0xffu) / 255.0f;
+            float fg = static_cast<float>((col >> 8) & 0xffu) / 255.0f;
+            float fb = static_cast<float>(col & 0xffu) / 255.0f;
+            float fa = static_cast<float>((col >> 24) & 0xffu) / 255.0f;
+            ImGui::PushStyleColor(static_cast<ImGuiCol>(idx), ImVec4(fr, fg, fb, fa));
+        }
+        return true;
+    };
+    lua["imguiPopStyleColor"]     = [](sol::optional<int> count) { ImGui::PopStyleColor(count.value_or(1)); };
+    lua["imguiGetContentRegionAvail"] = [&lua]() -> sol::table {
+        ImVec2 avail = ImGui::GetContentRegionAvail();
+        auto t = sol::table(lua, sol::create);
+        t["x"] = avail.x;
+        t["y"] = avail.y;
+        return t;
+    };
+    lua["imguiSetNextWindowSize"] = [](float w, float h, sol::optional<int> cond) {
+        ImGui::SetNextWindowSize(ImVec2(w, h), static_cast<ImGuiCond>(cond.value_or(static_cast<int>(ImGuiCond_Appearing))));
+    };
+    lua["imguiSetNextWindowPos"] = [](float x, float y, sol::optional<int> cond) {
+        ImGui::SetNextWindowPos(ImVec2(x, y), static_cast<ImGuiCond>(cond.value_or(0)));
+    };
+    lua["imguiCond_None"] = static_cast<int>(ImGuiCond_None);
+    lua["imguiCond_Always"] = static_cast<int>(ImGuiCond_Always);
+    lua["imguiCond_Appearing"] = static_cast<int>(ImGuiCond_Appearing);
+    lua["imguiWindowFlags_NoResize"] = static_cast<int>(ImGuiWindowFlags_NoResize);
+    lua["imguiWindowFlags_NoMove"] = static_cast<int>(ImGuiWindowFlags_NoMove);
+    lua["imguiWindowFlags_NoCollapse"] = static_cast<int>(ImGuiWindowFlags_NoCollapse);
+    lua["imguiWindowFlags_NoScrollbar"] = static_cast<int>(ImGuiWindowFlags_NoScrollbar);
+    lua["imguiColorFlags_None"] = static_cast<int>(ImGuiColorEditFlags_None);
+
+    std::fprintf(stderr, "[LuaControlBindings] Registered systemPaths table + imgui bindings\n");
 }

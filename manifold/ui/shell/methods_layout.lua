@@ -125,13 +125,17 @@ function M.attach(shell)
 
     function shell:setTitle(text)
         self.titleLabel:setText(text)
+        if self.startMenuButton and type(self.startMenuButton.setLabel) == "function" then
+            self.startMenuButton:setLabel(text)
+        end
     end
 
     function shell:layout(totalW, totalH)
         local perfStartMs = shellLayoutPerfNowMs()
         -- Shell header
         self.panel:setBounds(self.pad, self.pad, totalW - self.pad * 2, self.height)
-        self.titleLabel:setBounds(10, 0, 130, self.height)
+        self.titleLabel:setBounds(0, 0, 0, 0)
+        self.startMenuButton:setBounds(10, 4, 140, self.height - 8)
 
         local right = totalW - self.pad * 2 - 10
         local hGap = 6
@@ -158,6 +162,7 @@ function M.attach(shell)
         right = right - 50 - 4
         self.editButton:setBounds(right - 42, 6, 40, self.height - 12)
         right = right - 42 - hGap
+
 
         if self.mode == "performance" then
             self.perfButton:setBg(0xff38bdf8)

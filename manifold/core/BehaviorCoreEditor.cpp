@@ -2121,8 +2121,18 @@ void BehaviorCoreEditor::timerCallback() {
         runtimeNodeDebugHost.setVisible(false);
     }
 
-    // Reschedule from now so mouse events get processed between callbacks
-    startTimerHz(exportPluginUi_ ? 20 : 30);
+    // Reschedule from now so mouse events get processed between callbacks.
+    // When the direct ImGui host is capturing input (popups/menus), run faster
+    // from the main editor timer instead of forcing synchronous full renders
+    // on every mouse event.
+    int nextTimerHz = exportPluginUi_ ? 20 : 30;
+    if (!exportPluginUi_ && runtimeRendererMode_ == RuntimeRendererMode::ImGuiDirect) {
+        const auto directStats = directHost_.getStatsSnapshot();
+        if (directStats.wantCaptureMouse || directStats.wantCaptureKeyboard) {
+            nextTimerHz = 60;
+        }
+    }
+    startTimerHz(nextTimerHz);
 }
 
 void BehaviorCoreEditor::paint(juce::Graphics& g) {

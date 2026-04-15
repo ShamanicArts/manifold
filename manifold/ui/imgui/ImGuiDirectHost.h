@@ -62,6 +62,22 @@ public:
         juce::ModifierKeys mods;
     };
 
+    enum class EventType {
+        MousePos,
+        MouseButton,
+        MouseWheel,
+        Focus,
+    };
+
+    struct PendingEvent {
+        EventType type = EventType::MousePos;
+        float x = 0.0f;
+        float y = 0.0f;
+        int button = 0;
+        bool down = false;
+        bool focused = false;
+    };
+
     struct RenderNodeData {
         juce::Rectangle<int> sceneBounds;
         RuntimeNode::StyleState style;
@@ -148,6 +164,10 @@ public:
     void invokeLiveMouseEnter(uint64_t stableId);
     void invokeLiveMouseExit(uint64_t stableId);
     void invokeLiveMouseWheel(RuntimeNode& node, juce::Point<float> scenePosition, float deltaY, const juce::ModifierKeys& mods);
+    void queueMousePosition(juce::Point<float> position);
+    void queueMouseButton(int button, bool down);
+    void queueMouseWheel(float deltaX, float deltaY);
+    void queueFocus(bool focused);
 
     RuntimeNode* liveRoot_ = nullptr;
     uint64_t pressedNodeStableId_ = 0;
@@ -176,6 +196,12 @@ public:
     manifold::ui::imgui::RuntimeNodeRenderer::PreviewTransform previewTransform_;
     PendingDragEvent pendingDragEvent_;
     double lastContinuousInputDispatchMs_ = 0.0;
+    std::mutex inputMutex_;
+    std::vector<PendingEvent> pendingEvents_;
+    bool leftMouseDown_ = false;
+    bool rightMouseDown_ = false;
+    bool middleMouseDown_ = false;
+    bool renderInProgress_ = false;
     RenderSnapshot pendingSnapshot_;
     RenderSnapshot activeSnapshot_;
     RenderSnapshot glSnapshot_;

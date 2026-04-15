@@ -169,6 +169,10 @@ public:
   void showDirectoryChooser(const std::string& title, 
                             const std::string& initialPath,
                             sol::function callback) override;
+  void showFileChooser(const std::string& title,
+                       const std::string& initialPath,
+                       const std::string& filePatterns,
+                       sol::function callback) override;
 
   // Debug outline control (for ImGuiDirectHost in performance mode)
   void setDebugOutlinesEnabled(bool enabled) override;

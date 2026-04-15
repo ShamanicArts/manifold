@@ -2529,6 +2529,65 @@ void LuaEngine::showDirectoryChooser(const std::string& title,
   std::fprintf(stderr, "[FileChooser] Done\n");
 }
 
+void LuaEngine::showFileChooser(const std::string& title,
+                                const std::string& initialPath,
+                                const std::string& filePatterns,
+                                sol::function callback) {
+  if (!juce::MessageManager::getInstance()->isThisTheMessageThread()) {
+    juce::MessageManager::callAsync([callback]() mutable {
+      if (callback.valid()) {
+        try { callback(""); } catch (...) {}
+      }
+    });
+    return;
+  }
+
+  juce::File initialFile(initialPath);
+  juce::File initialDir = initialFile;
+  if (initialFile.existsAsFile()) {
+    initialDir = initialFile.getParentDirectory();
+  }
+  if (!initialDir.isDirectory()) {
+    initialDir = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
+  }
+
+  auto chooser = std::make_unique<juce::FileChooser>(
+      juce::String(title),
+      initialDir,
+      juce::String(filePatterns.empty() ? "*.lua;*.json5" : filePatterns),
+      true,
+      false
+  );
+
+  auto cb = std::make_shared<sol::function>(callback);
+
+  chooser->launchAsync(
+      juce::FileBrowserComponent::canSelectFiles
+          | juce::FileBrowserComponent::openMode,
+      [cb, chooserPtr = chooser.get()](const juce::FileChooser& fc) mutable {
+        juce::ignoreUnused(chooserPtr);
+        juce::File result = fc.getResult();
+        std::string path = result.exists() ? result.getFullPathName().toStdString() : "";
+
+        juce::MessageManager::callAsync([cb, path]() mutable {
+          if (cb && cb->valid()) {
+            try {
+              auto callbackResult = (*cb)(path);
+              if (!callbackResult.valid()) {
+                sol::error err = callbackResult;
+                std::fprintf(stderr, "[FileChooser] Lua file callback error: %s\n", err.what());
+              }
+            } catch (const sol::error& e) {
+              std::fprintf(stderr, "[FileChooser] Lua file callback exception: %s\n", e.what());
+            }
+          }
+        });
+      }
+  );
+
+  chooser.release();
+}
+
 // ============================================================================
 // Debug outline control (for ImGuiDirectHost in performance mode)
 // These are stored as atomic values that the Editor reads/writes

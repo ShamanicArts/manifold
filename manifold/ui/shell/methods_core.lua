@@ -91,6 +91,19 @@ local function shellPerfTrace(label, startMs, extra)
 end
 
 function M.attach(shell)
+    -- Wrap switchUiScript to always stash shell state before switching.
+    -- This ensures openProjects survives project switches regardless of
+    -- how the switch is triggered (tab click, IPC, Lua eval, etc).
+    local _originalSwitchUiScript = switchUiScript
+    if type(_originalSwitchUiScript) == "function" then
+        switchUiScript = function(path)
+            if type(shell.stashRestoreStateForScriptSwitch) == "function" then
+                shell:stashRestoreStateForScriptSwitch()
+            end
+            _originalSwitchUiScript(path)
+        end
+    end
+
     local function cloneRect(bounds)
         if type(bounds) ~= "table" then
             return { x = 0, y = 0, w = 0, h = 0 }
@@ -2210,6 +2223,7 @@ function M.attach(shell)
         _G.__manifoldShellRestore = {
             mode = self.mode,
             leftPanelMode = self.leftPanelMode,
+            openProjects = self.openProjects,
         }
     end
 
@@ -2243,62 +2257,43 @@ function M.attach(shell)
     end
 
     function shell:invalidateMainUiTabsCache()
-        self._projectTabsCache = nil
+        -- No-op: openProjects is the source of truth, no filesystem cache to invalidate
     end
 
     function shell:refreshMainUiTabs(force)
         local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
-        local cache = self._projectTabsCache
-        local projectTabs = nil
 
-        if not force and type(cache) == "table" and cache.currentUiPath == currentUiPath and type(cache.projectTabs) == "table" then
-            projectTabs = cache.projectTabs
-        else
-            local uiScripts = listUiScripts and listUiScripts() or {}
-
-            -- Build project tab list for ProjectTabHost
-            projectTabs = {}
-            local seenUiIds = {}
-            local closedPaths = self._closedTabPaths or {}
-
-            for i = 1, #uiScripts do
-                local s = uiScripts[i]
-                if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
-                    local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
-                    -- Skip system overlay projects (Settings etc) - they don't belong in the tab bar
-                    if not scriptLooksSettings(name, s.path) then
-                        -- Skip projects the user has explicitly closed
-                        if not closedPaths[s.path] then
-                            local tabId = "ui:" .. s.path
-                            if not seenUiIds[tabId] then
-                                seenUiIds[tabId] = true
-                                projectTabs[#projectTabs + 1] = {
-                                    id = tabId,
-                                    title = name,
-                                    kind = "ui-script",
-                                    path = s.path,
-                                    isSystem = false,
-                                }
-                            end
-                        end
-                    end
-                end
-            end
-
-            if #projectTabs == 0 and currentUiPath ~= "" then
+        -- Build project tab list from openProjects (the source of truth)
+        local projectTabs = {}
+        for i = 1, #self.openProjects do
+            local p = self.openProjects[i]
+            if type(p) == "table" and type(p.path) == "string" and p.path ~= "" then
+                -- Refresh the title from the catalog if possible
+                local name = p.title or fileStem(p.path)
                 projectTabs[#projectTabs + 1] = {
-                    id = "ui:" .. currentUiPath,
-                    title = fileStem(currentUiPath),
-                    kind = "ui-script",
-                    path = currentUiPath,
-                    isSystem = false,
+                    id = p.id or ("ui:" .. p.path),
+                    title = name,
+                    kind = p.kind or "ui-script",
+                    path = p.path,
+                    isSystem = p.isSystem or false,
                 }
             end
+        end
 
-            self._projectTabsCache = {
-                currentUiPath = currentUiPath,
-                projectTabs = projectTabs,
+        -- Fallback: if openProjects is empty and we have a current project, seed it
+        if #projectTabs == 0 and currentUiPath ~= "" then
+            projectTabs[#projectTabs + 1] = {
+                id = "ui:" .. currentUiPath,
+                title = fileStem(currentUiPath),
+                kind = "ui-script",
+                path = currentUiPath,
+                isSystem = false,
             }
+        end
+
+        -- Always keep _G in sync so C++ IPC switches can recover state
+        if type(_G) == "table" then
+            _G.__manifoldShellOpenProjects = self.openProjects
         end
 
         -- Update ProjectTabHost
@@ -2362,36 +2357,92 @@ function M.attach(shell)
             return
         end
 
-        -- Mark this path as closed so refreshMainUiTabs skips it
-        self._closedTabPaths = self._closedTabPaths or {}
-        self._closedTabPaths[path] = true
-
-        -- Invalidate cache so the next refresh rebuilds without the closed tab
-        self._projectTabsCache = nil
-
-        -- Determine the current project path
-        local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
+        -- Remove from openProjects
+        local remaining = {}
+        for _, p in ipairs(self.openProjects) do
+            if p.path ~= path then
+                remaining[#remaining + 1] = p
+            end
+        end
+        self.openProjects = remaining
 
         -- If we closed the active project, switch to another
+        local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
         if path == currentUiPath then
-            local uiScripts = listUiScripts and listUiScripts() or {}
-            for i = 1, #uiScripts do
-                local s = uiScripts[i]
-                if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
-                    if s.path ~= path and not (self._closedTabPaths[s.path]) then
-                        local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
-                        if not scriptLooksSettings(name, s.path) then
-                            self:stashRestoreStateForScriptSwitch()
-                            switchUiScript(s.path)
-                            return
-                        end
-                    end
-                end
+            if #self.openProjects > 0 then
+                local targetProject = self.openProjects[1]
+                self:stashRestoreStateForScriptSwitch()
+                switchUiScript(targetProject.path)
+                return
             end
         end
 
         -- Refresh the tab bar to remove the closed tab
         self:refreshMainUiTabs(true)
+    end
+
+    -- Open a project (add to openProjects and switch to it)
+    function shell:openProject(path)
+        if not path or path == "" then
+            return
+        end
+
+        -- Already open? Just activate
+        for _, p in ipairs(self.openProjects) do
+            if p.path == path then
+                self.projectTabHost:setActiveByPath(path)
+                return
+            end
+        end
+
+        -- Resolve name from cached catalog
+        local name = fileStem(path)
+        local uiScripts = self.projectCatalog or {}
+        for _, s in ipairs(uiScripts) do
+            if type(s) == "table" and s.path == path then
+                name = (s.name and s.name ~= "") and s.name or name
+                break
+            end
+        end
+
+        -- Add to openProjects
+        self.openProjects[#self.openProjects + 1] = {
+            id = "ui:" .. path,
+            title = name,
+            kind = "ui-script",
+            path = path,
+            isSystem = false,
+        }
+
+        -- Switch and refresh
+        self:stashRestoreStateForScriptSwitch()
+        switchUiScript(path)
+    end
+
+    function shell:loadProjectFromFile()
+        if type(showFileChooser) ~= "function" then
+            return
+        end
+
+        local initialPath = ""
+        if type(getCurrentScriptPath) == "function" then
+            local currentPath = getCurrentScriptPath() or ""
+            if currentPath ~= "" then
+                initialPath = currentPath
+            end
+        end
+
+        showFileChooser(
+            "Open Project",
+            initialPath,
+            "*.lua;*.json5",
+            function(selectedPath)
+                if type(selectedPath) ~= "string" or selectedPath == "" then
+                    return
+                end
+                shell:openProject(selectedPath)
+            end
+        )
     end
 
     function shell:ensureScriptEditorCursorVisible()

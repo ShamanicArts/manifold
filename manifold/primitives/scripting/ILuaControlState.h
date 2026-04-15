@@ -118,6 +118,10 @@ public:
     virtual void showDirectoryChooser(const std::string& title, 
                                        const std::string& initialPath,
                                        sol::function callback) = 0;
+    virtual void showFileChooser(const std::string& title,
+                                 const std::string& initialPath,
+                                 const std::string& filePatterns,
+                                 sol::function callback) = 0;
 
     // ============================================================================
     // Debug outline control (for ImGuiDirectHost in performance mode)

@@ -191,6 +191,29 @@ juce::Rectangle<float> previewRect(const juce::Rectangle<float>& sceneRect,
     return juce::Rectangle<float>(left, top, std::max(1.0f, right - left), std::max(1.0f, bottom - top));
 }
 
+void invokeOnImGuiFrameRecursive(RuntimeNode& node) {
+    if (!node.isVisible()) {
+        return;
+    }
+
+    auto& callbacks = node.getCallbacks();
+    if (callbacks.onImGuiFrame.valid()) {
+        sol::protected_function fn = callbacks.onImGuiFrame;
+        auto result = fn(node);
+        if (!result.valid()) {
+            sol::error err = result;
+            std::fprintf(stderr, "[ImGuiDirectHost] onImGuiFrame error for %s: %s\n",
+                         node.getNodeId().c_str(), err.what());
+        }
+    }
+
+    for (auto* child : node.getChildren()) {
+        if (child != nullptr) {
+            invokeOnImGuiFrameRecursive(*child);
+        }
+    }
+}
+
 struct SceneTransform {
     float scaleX = 1.0f;
     float scaleY = 1.0f;
@@ -885,7 +908,9 @@ ImGuiDirectHost::ImGuiDirectHost() {
     openGLContext_.setPersistentAttachment(true);
 #endif
     openGLContext_.setContinuousRepainting(false);
-    openGLContext_.setSwapInterval(1);
+    // renderNow() runs on the message thread in direct mode. Blocking that
+    // thread on vsync makes menu/popup interaction feel like dogshit.
+    openGLContext_.setSwapInterval(0);
 }
 
 ImGuiDirectHost::~ImGuiDirectHost() {
@@ -1368,6 +1393,11 @@ void ImGuiDirectHost::flushPendingDrag() {
 }
 
 void ImGuiDirectHost::renderNow() {
+    if (renderInProgress_) {
+        return;
+    }
+    juce::ScopedValueSetter<bool> renderGuard(renderInProgress_, true);
+
     attachContextIfNeeded();
 
     if (getWidth() <= 0 || getHeight() <= 0 || !isShowing()) {
@@ -1410,6 +1440,27 @@ void ImGuiDirectHost::renderNow() {
     io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
     io.DisplayFramebufferScale = ImVec2(scale, scale);
 
+    {
+        std::lock_guard<std::mutex> lock(inputMutex_);
+        for (const auto& event : pendingEvents_) {
+            switch (event.type) {
+                case EventType::MousePos:
+                    io.AddMousePosEvent(event.x, event.y);
+                    break;
+                case EventType::MouseButton:
+                    io.AddMouseButtonEvent(event.button, event.down);
+                    break;
+                case EventType::MouseWheel:
+                    io.AddMouseWheelEvent(event.x, event.y);
+                    break;
+                case EventType::Focus:
+                    io.AddFocusEvent(event.focused);
+                    break;
+            }
+        }
+        pendingEvents_.clear();
+    }
+
     using Clock = std::chrono::steady_clock;
     const auto t0 = Clock::now();
 
@@ -1434,18 +1485,35 @@ void ImGuiDirectHost::renderNow() {
     const auto t2 = Clock::now();
 
     std::unordered_set<uint64_t> touchedSurfaceIds;
-    auto* drawList = ImGui::GetForegroundDrawList();
-    if (liveRoot_ != nullptr) {
-        renderLiveTree(*this,
-                       *liveRoot_,
-                       drawList,
-                       renderOptions,
-                       previewTransform_,
-                       touchedSurfaceIds,
-                       juce::Time::getMillisecondCounterHiRes() * 0.001,
-                       hoveredNodeStableId_,
-                       pressedNodeStableId_);
+    ImDrawList* overlayDrawList = nullptr;
+
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)), ImGuiCond_Always);
+    constexpr ImGuiWindowFlags runtimeOverlayFlags = ImGuiWindowFlags_NoDecoration
+                                                   | ImGuiWindowFlags_NoMove
+                                                   | ImGuiWindowFlags_NoResize
+                                                   | ImGuiWindowFlags_NoSavedSettings
+                                                   | ImGuiWindowFlags_NoBringToFrontOnFocus
+                                                   | ImGuiWindowFlags_NoNav
+                                                   | ImGuiWindowFlags_NoInputs
+                                                   | ImGuiWindowFlags_NoBackground;
+
+    if (ImGui::Begin("##RuntimeNodeOverlay", nullptr, runtimeOverlayFlags)) {
+        overlayDrawList = ImGui::GetWindowDrawList();
+        if (liveRoot_ != nullptr) {
+            renderLiveTree(*this,
+                           *liveRoot_,
+                           overlayDrawList,
+                           renderOptions,
+                           previewTransform_,
+                           touchedSurfaceIds,
+                           juce::Time::getMillisecondCounterHiRes() * 0.001,
+                           hoveredNodeStableId_,
+                           pressedNodeStableId_);
+        }
     }
+    ImGui::End();
+
     pruneShaderSurfaces(touchedSurfaceIds);
 
     // Draw copyid mode indicator
@@ -1461,17 +1529,23 @@ void ImGuiDirectHost::renderNow() {
         const ImVec2 rectMax(margin + textSize.x + padX * 2, margin + textSize.y + padY * 2);
         const ImVec2 textPos(margin + padX, margin + padY);
         
-        // Draw background
-        drawList->AddRectFilled(rectMin, rectMax, IM_COL32(56, 189, 248, 200), 6.0f);
-        // Draw border
-        drawList->AddRect(rectMin, rectMax, IM_COL32(255, 255, 255, 255), 6.0f, 0, 2.0f);
-        // Draw text
-        if (font) {
-            drawList->AddText(font, fontSize, textPos, IM_COL32(255, 255, 255, 255), label);
+        if (overlayDrawList != nullptr) {
+            overlayDrawList->AddRectFilled(rectMin, rectMax, IM_COL32(56, 189, 248, 200), 6.0f);
+            overlayDrawList->AddRect(rectMin, rectMax, IM_COL32(255, 255, 255, 255), 6.0f, 0, 2.0f);
+            if (font) {
+                overlayDrawList->AddText(font, fontSize, textPos, IM_COL32(255, 255, 255, 255), label);
+            }
         }
     }
 
     const auto t3 = Clock::now();
+
+    // Invoke onImGuiFrame callbacks AFTER foreground draw list rendering.
+    // This ensures ImGui window content (menu bars, popups) renders on top
+    // of the retained-mode widget overlay.
+    if (liveRoot_ != nullptr) {
+        invokeOnImGuiFrameRecursive(*liveRoot_);
+    }
 
     ImGui::Render();
     int64_t vertexCount = 0;
@@ -1558,6 +1632,25 @@ void ImGuiDirectHost::parentHierarchyChanged() {
 }
 
 void ImGuiDirectHost::mouseDown(const juce::MouseEvent& e) {
+    queueMousePosition(e.position);
+    if (e.mods.isLeftButtonDown()) {
+        leftMouseDown_ = true;
+        queueMouseButton(0, true);
+    }
+    if (e.mods.isRightButtonDown()) {
+        rightMouseDown_ = true;
+        queueMouseButton(1, true);
+    }
+    if (e.mods.isMiddleButtonDown()) {
+        middleMouseDown_ = true;
+        queueMouseButton(2, true);
+    }
+
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        grabKeyboardFocus();
+        return;
+    }
+
     updateHover(e.position, &e.mods);
     auto hit = hitTestLiveTree(e.position, manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer);
     if (hit.node != nullptr) {
@@ -1671,6 +1764,11 @@ void ImGuiDirectHost::mouseDown(const juce::MouseEvent& e) {
 }
 
 void ImGuiDirectHost::mouseDrag(const juce::MouseEvent& e) {
+    queueMousePosition(e.position);
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        return;
+    }
+
     // Don't update hover during drag — we know what's pressed, and the hit test
     // + Lua callbacks at 60Hz+ floods the message thread, starving the timer.
 
@@ -1702,6 +1800,25 @@ void ImGuiDirectHost::mouseDrag(const juce::MouseEvent& e) {
 }
 
 void ImGuiDirectHost::mouseUp(const juce::MouseEvent& e) {
+    queueMousePosition(e.position);
+    if (leftMouseDown_) {
+        leftMouseDown_ = false;
+        queueMouseButton(0, false);
+    }
+    if (rightMouseDown_) {
+        rightMouseDown_ = false;
+        queueMouseButton(1, false);
+    }
+    if (middleMouseDown_) {
+        middleMouseDown_ = false;
+        queueMouseButton(2, false);
+    }
+
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        flushPendingDrag();
+        return;
+    }
+
     flushPendingDrag();
     auto hit = hitTestLiveTree(e.position, manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer);
     const uint64_t pressedStableId = pressedNodeStableId_;
@@ -1725,11 +1842,16 @@ void ImGuiDirectHost::mouseUp(const juce::MouseEvent& e) {
 }
 
 void ImGuiDirectHost::mouseMove(const juce::MouseEvent& e) {
+    queueMousePosition(e.position);
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        return;
+    }
     updateHover(e.position, &e.mods);
 }
 
 void ImGuiDirectHost::mouseExit(const juce::MouseEvent& e) {
     juce::ignoreUnused(e);
+    queueMousePosition(juce::Point<float>(-1.0f, -1.0f));
     const uint64_t previousHoveredStableId = hoveredNodeStableId_;
     hoveredNodeStableId_ = 0;
     if (previousHoveredStableId != 0) {
@@ -1739,6 +1861,12 @@ void ImGuiDirectHost::mouseExit(const juce::MouseEvent& e) {
 }
 
 void ImGuiDirectHost::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
+    queueMousePosition(e.position);
+    queueMouseWheel(wheel.deltaX, wheel.deltaY);
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        return;
+    }
+
     updateHover(e.position, &e.mods);
     auto hit = hitTestLiveTree(e.position, manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Wheel);
     if (hit.node == nullptr || hit.stableId == 0) {
@@ -2036,4 +2164,39 @@ juce::Point<float> ImGuiDirectHost::scenePositionFromLocal(juce::Point<float> lo
 
     return juce::Point<float>((local.x - previewTransform_.offsetX) / previewTransform_.scale,
                               (local.y - previewTransform_.offsetY) / previewTransform_.scale);
+}
+
+void ImGuiDirectHost::queueMousePosition(juce::Point<float> position) {
+    PendingEvent event;
+    event.type = EventType::MousePos;
+    event.x = position.x;
+    event.y = position.y;
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    pendingEvents_.push_back(std::move(event));
+}
+
+void ImGuiDirectHost::queueMouseButton(int button, bool down) {
+    PendingEvent event;
+    event.type = EventType::MouseButton;
+    event.button = button;
+    event.down = down;
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    pendingEvents_.push_back(std::move(event));
+}
+
+void ImGuiDirectHost::queueMouseWheel(float deltaX, float deltaY) {
+    PendingEvent event;
+    event.type = EventType::MouseWheel;
+    event.x = deltaX;
+    event.y = deltaY;
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    pendingEvents_.push_back(std::move(event));
+}
+
+void ImGuiDirectHost::queueFocus(bool focused) {
+    PendingEvent event;
+    event.type = EventType::Focus;
+    event.focused = focused;
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    pendingEvents_.push_back(std::move(event));
 }
