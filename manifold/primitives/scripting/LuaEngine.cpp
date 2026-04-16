@@ -190,9 +190,24 @@ struct UiLoadTarget {
   bool isStructured = false;
   bool isSystemProject = false;  // True if project has no DSP (UI-only/system project)
   bool isOverlay = false;        // True if project should overlay on top of current (not replace)
-  bool useSharedShell = true;    // False for export/minimal plugin UIs
+  bool useSharedShell = true;    // False requests minimal export UI in plugin hosts
   std::string error;
 };
+
+bool shouldUseSharedShell(const UiLoadTarget& target, bool isOverlay) {
+  if (isOverlay) {
+    return false;
+  }
+
+  if (target.useSharedShell) {
+    return true;
+  }
+
+  // Export projects suppress the shared shell inside real plugin wrappers,
+  // but when the same manifest is opened in a standalone app we still need
+  // shell chrome and project tabs or the host UI tears itself apart.
+  return juce::JUCEApplicationBase::isStandaloneApp();
+}
 
 juce::String escapeLuaString(const juce::String& text) {
   auto s = text.replace("\\", "\\\\");
@@ -835,7 +850,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
     coreEngine_.getLuaState()["shell"] = sol::nil;
   }
 
-  const bool useSharedShell = !isOverlay && target.useSharedShell;
+  const bool useSharedShell = shouldUseSharedShell(target, isOverlay);
 
   bool loaded = false;
   if (target.isStructured) {

@@ -130,6 +130,7 @@ def main() -> int:
     scripts = [
         repo_root / "manifold/ui/looper_ui.lua",
         repo_root / "UserScripts/projects/DspLiveScripting/manifold.project.json5",
+        repo_root / "UserScripts/projects/Standalone_Filter/manifold.project.json5",
         repo_root / "manifold/ui/manifold_settings_ui.lua",
         repo_root / "UserScripts/projects/ExperimentalUI/manifold.project.json5",
     ]
