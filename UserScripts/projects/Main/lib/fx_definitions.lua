@@ -40,6 +40,7 @@ function M.buildFxDefs(primitives, graph)
   return {
     { -- 0: Chorus
       label = "Chorus",
+      wetGain = 1.4,
       create = function()
         local node = P.ChorusNode.new()
         node:setRate(0.35); node:setDepth(0.3); node:setVoices(3)
@@ -106,6 +107,7 @@ function M.buildFxDefs(primitives, graph)
     },
     { -- 4: StereoWidener
       label = "StereoWidener",
+      wetGain = 1.1,
       create = function()
         local node = P.StereoWidenerNode.new()
         node:setWidth(1.25); node:setMonoLowFreq(140.0); node:setMonoLowEnable(true)
@@ -157,6 +159,7 @@ function M.buildFxDefs(primitives, graph)
     },
     { -- 8: Stereo Delay
       label = "Stereo Delay",
+      wetGain = 1.1,
       create = function()
         local node = P.StereoDelayNode.new()
         node:setTempo(120); node:setTimeMode(0); node:setTimeL(250); node:setTimeR(375)
@@ -172,6 +175,7 @@ function M.buildFxDefs(primitives, graph)
     },
     { -- 9: Multitap
       label = "Multitap",
+      wetGain = 1.4,
       create = function()
         local node = P.MultitapDelayNode.new()
         node:setTapCount(4)
@@ -230,6 +234,7 @@ function M.buildFxDefs(primitives, graph)
     },
     { -- 13: Formant
       label = "Formant",
+      wetGain = 1.5,
       create = function()
         local node = P.FormantFilterNode.new()
         node:setVowel(0.0); node:setShift(0.0); node:setResonance(7.0)
@@ -306,6 +311,7 @@ function M.buildFxDefs(primitives, graph)
     },
     { -- 18: Shimmer
       label = "Shimmer",
+      wetGain = 1.4,
       create = function()
         local node = P.ShimmerNode.new()
         node:setSize(0.65)
@@ -325,6 +331,7 @@ function M.buildFxDefs(primitives, graph)
     },
     { -- 19: Reverse Delay
       label = "Reverse Delay",
+      wetGain = 1.2,
       create = function()
         local node = P.ReverseDelayNode.new()
         node:setTime(420)

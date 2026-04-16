@@ -134,6 +134,7 @@ function M.create(ctx, fxDefs, options)
     end
 
     slot.applyAllParamsForEffect(effectIndex)
+    slot.applyMix(slot.mix)
     return true
   end
 
@@ -160,8 +161,10 @@ function M.create(ctx, fxDefs, options)
 
   function slot.applyMix(value)
     slot.mix = Utils.clamp01(tonumber(value) or slot.mix)
+    local effectDef = fxDefs[slot.select + 1]
+    local wetGain = (effectDef and effectDef.wetGain) or 1.0
     slot.dry:setGain(1.0 - slot.mix)
-    slot.wetTrim:setGain(slot.mix)
+    slot.wetTrim:setGain(slot.mix * wetGain)
   end
 
   slot.applySelection(0)
