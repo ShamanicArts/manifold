@@ -64,269 +64,248 @@ The decomposition is successful when all of the following are true:
 
 ---
 
-## Proposed Module Structure
+## Implemented Module Structure
 
-### 1. voice_manager.lua 
+The decomposition is now largely complete. The work did **not** reduce total code volume in a meaningful way; it reorganized the code into coherent seams and moved real behavior out of the monolith.
 
-**Responsibility**: Voice allocation, triggering, envelope processing
+### Extracted modules and current sizes
 
-**Functions to extract**:
-- `chooseVoice()` — Voice stealing algorithm (128 lines)
-- `triggerVoice()` — Note on handling
-- `releaseVoice()` — Note off handling
-- `panicVoices()` — All notes off
-- `updateEnvelopes()` — ADSR processing
-- `calculateEnvelope()` — Envelope calculation
-- `activeVoiceCount()`, `voiceSummary()` — Debug/info
-- `noteToFreq()`, `freqToNote()` — MIDI note conversion
-- `velocityToAmp()` — Velocity scaling
+| File | Lines | Status | Responsibility |
+|------|------:|--------|----------------|
+| `ui/behaviors/keyboard_input.lua` | 327 | complete | On-screen keyboard input + collapse behavior |
+| `ui/behaviors/palette_browser.lua` | 1435 | complete | Palette browsing, selection, card state, palette spawning hooks |
+| `ui/behaviors/voice_manager.lua` | 292 | complete | Voice allocation, triggering, release, envelopes |
+| `ui/behaviors/modulation_router.lua` | 452 | complete | Voice/control modulation routing |
+| `ui/behaviors/dynamic_module_binding.lua` | 323 | complete | Dynamic module registry requests, audio stage/source coding, topology helpers, dynamic shell binding |
+| `ui/behaviors/rack_mutation_runtime.lua` | 386 | complete | Spawn/delete rack modules and resync rack graph/runtime state |
+| `ui/behaviors/rack_layout_engine.lua` | 1589 | complete | Pagination, drag/reorder, shell layout, full rack layout refresh |
+| `ui/behaviors/state_manager.lua` | 693 | complete | Runtime state save/load/reset, dock state, parameter restore |
+| `ui/behaviors/patchbay_binding.lua` | 309 | complete | Patchbay wiring, widget binding, patchbay cleanup/sync |
+| `ui/behaviors/midisynth.lua` | 1392 | remaining orchestrator | Lifecycle, background tick, shared path helpers, remaining glue |
 
-**External dependencies**: adsr_runtime.lua, voice_pool.lua
+### Important implementation note
 
-**Exports**: Voice allocation, triggering, envelope update functions
+The original proposal assumed one large `rack_layout_engine.lua` would own both layout and mutation. In practice this split worked better as two seams:
 
----
+- `rack_layout_engine.lua` — layout, drag, pagination, shell refresh
+- `rack_mutation_runtime.lua` — spawn/delete + graph resync
 
-### 2. modulation_router.lua 
-
-**Responsibility**: Modulation routing for voices and controls
-
-**Functions to extract**:
-- `applyVoiceModulationTarget()` — Voice modulation routing (152 lines)
-- `resolveDynamicVoiceModulationSource()` — Voice mod source resolution
-- `applyControlModulationTarget()` — Control modulation routing
-- `resolveControlModulationSource()` — Control mod source resolution
-- `applyImplicitRackOscillatorKeyboardPitch()` — Keyboard pitch
-- `getCombinedModTargetState()` — Combined state lookup
-
-**External dependencies**: ModEndpointRegistry, ModRouteCompiler, ModRuntime
-
-**Exports**: Modulation application and resolution functions
+That split preserved runtime behavior better than forcing spawn/delete into the layout module.
 
 ---
 
-### 3. rack_layout_engine.lua 
+## Completed Slices
 
-**Responsibility**: Rack layout, drag-drop reordering, widget positioning
+### Slice 1 — keyboard input
+**Implemented in:** `ui/behaviors/keyboard_input.lua`
 
-**Functions to extract**:
-- `syncRackShellLayout()` — Layout synchronization (453 lines — **needs further internal decomposition**)
-- `computeRackFlowTargetPlacement()` — Drag placement calculation
-- `previewRackDragReorder()` — Drag preview
-- `finalizeRackDragReorder()` — Commit drag reordering
-- `spawnPaletteNodeAt()` — Module spawning
-- `deleteRackNode()` — Module deletion
-- `getRackNodeRowById()`, `getRackTotalRows()` — Row queries
-- `setRackViewport()` — Pagination viewport
-- `toggleRackNodeWidth()` — Module width toggle
-- `ensureRackPaginationState()`, `syncRackPaginationModel()` — Pagination
-- `updateRackPaginationDots()`, `onRackDotClick()` — Pagination UI
+Completed extraction of the on-screen keyboard behavior including display list generation, click handling, note-active checks, keyboard panel sizing, and collapsed/utility-dock sync behavior.
 
-**External dependencies**: RackLayout, RackLayoutManager
+### Slice 2 — palette browser
+**Implemented in:** `ui/behaviors/palette_browser.lua`
 
-**Exports**: Layout sync, node spawn/delete, drag handling
+Completed extraction of palette browsing, selection, palette card state sync, palette drag preview integration, and module palette node creation.
 
----
+### Slice 3 — voice management
+**Implemented in:** `ui/behaviors/voice_manager.lua`
 
-### 4. palette_browser.lua 
-**Responsibility**: Module palette, spawning, selection
+Completed extraction of note/frequency helpers, velocity scaling, voice selection, trigger/release, panic, envelope updates, and voice summary helpers.
 
-**Functions to extract**:
-- `_buildPaletteNodeFromEntry()` — Palette node creation (244 lines)
-- `_setupUtilityPaletteBrowserHandlers()` — Browser event handling (198 lines)
-- `makePaletteEntry()` — Palette entry factory (163 lines)
-- `_syncPaletteCardState()` — Card state sync (310 lines)
-- `_selectPaletteEntry()`, `_ensurePaletteSelection()` — Selection
-- `_togglePaletteBrowseSection()` — Section toggle
-- `_getFilteredPaletteEntries()` — Filtering
-- `_buildPaletteNode()` — Node construction
-- `_clearPaletteDragPreview()` — Preview cleanup
+### Slice 4 — modulation routing
+**Implemented in:** `ui/behaviors/modulation_router.lua`
 
-**External dependencies**: RackModuleFactory
+Completed extraction of dynamic voice modulation source resolution, control modulation target application, voice modulation target application, and combined modulation target state lookup.
 
-**Exports**: Palette building, selection, filtering functions
+### Slice 5 — dynamic module binding
+**Implemented in:** `ui/behaviors/dynamic_module_binding.lua`
 
----
+Completed extraction of:
+- rack audio stage/source path helpers
+- dynamic module slot request logic
+- registry-kind mapping for dynamic modules
+- topology signature/change helpers
+- rack audio stage parameter sync
+- dynamic shell instantiation and shell hookup
 
-### 5. keyboard_input.lua 
+### Slice 6 — rack mutation runtime
+**Implemented in:** `ui/behaviors/rack_mutation_runtime.lua`
 
-**Responsibility**: On-screen MIDI keyboard handling
+Completed extraction of:
+- spawn from palette into rack
+- placeholder spawn path
+- delete rack node path
+- rack control routing rebuild
+- rack connection state application
+- rack presentation refresh after mutation
 
-**Functions to extract**:
-- `buildKeyboardDisplayList()` — Keyboard rendering list (88 lines)
-- `handleKeyboardClick()` — Key click handling
-- `isKeyboardNoteActive()` — Note state query
-- `generateKeyboardKeys()` — Key generation
-- `computeKeyboardPanelHeight()` — Panel sizing
-- `syncKeyboardCollapsedFromUtilityDock()`, `syncUtilityDockFromKeyboardCollapsed()` — Dock sync
-- `syncKeyboardCollapseButton()` — Collapse button sync
-- `setKeyboardCollapsed()` — Collapse state
+This slice now owns the runtime mutation path that actually changes the rack graph.
 
-**Exports**: Keyboard building, click handling, collapse functions
+### Slice 7 — state persistence
+**Implemented in:** `ui/behaviors/state_manager.lua`
 
----
+Completed extraction of the real state implementation, not the earlier stub:
+- runtime state path
+- save/load runtime state
+- save current state
+- restore rack/modules/connections
+- reset to defaults
+- dock state management
+- parameter restore path
 
-### 6. state_manager.lua 
+Compatibility shims are still present in `midisynth.lua` because some legacy code still dereferences global `loadRuntimeState()` / `saveRuntimeState()`.
 
-**Responsibility**: State persistence, defaults, runtime path management
+### Slice 8 — patchbay binding
+**Implemented in:** `ui/behaviors/patchbay_binding.lua`
 
-**Functions to extract**:
-- `loadSavedState()` — State loading (218 lines)
-- `runtimeStatePath()` — Path resolution (201 lines)
-- `persistDockUiState()` — UI state persistence
-- `resetToDefaults()` — Reset to defaults
-- `getUtilityDockState()`, `setUtilityDockMode()` — Dock state
-- `ensureUtilityDockState()` — Dock initialization
+Completed extraction of patchbay lifecycle and sync behavior:
+- patchbay widget creation
+- patchbay cleanup/invalidation
+- wire-port binding
+- patchbay value sync
+- edge terminal / patch view sync wrappers
+- rack node width toggle plumbing
 
-**Exports**: State load/save, reset, path functions
+### Slice 9 — rack layout engine
+**Implemented in:** `ui/behaviors/rack_layout_engine.lua`
 
----
+Completed extraction of the remaining real layout seam:
+- rack pagination helpers
+- drag state and ghost handling
+- flow snapshot and row-band hit testing
+- target placement calculation
+- preview/finalize reorder
+- row auto-collapse for insertion
+- shell drag handlers
+- widget bounds helpers
+- shell layout sync
+- full rack refresh / resize layout pass
 
-### 7. patchbay_binding.lua 
-
-**Responsibility**: Patchbay port binding, wiring
-
-**Functions to extract**:
-- `bindWirePortWidget()` — Port widget binding
-- `findRegisteredPatchbayPort()` — Port lookup
-- `syncAuxAudioRouteParams()` — Audio route sync (109 lines)
-- `syncPatchbayValues()` — Value sync
-- `ensurePatchbayWidgets()` — Widget creation
-- `cleanupPatchbayFromRuntime()`, `invalidatePatchbay()` — Cleanup
-
-**External dependencies**: PatchbayRuntime
-
-**Exports**: Port binding, patchbay sync, cleanup functions
+This was the last major chunk needed to make `midisynth.lua` stop owning most of the rack layout logic.
 
 ---
 
-### 8. dynamic_module_binding.lua 
-**Responsibility**: Dynamic module slots, audio staging
+## Validation Summary
 
-**Functions to extract**:
-- `_rackAudioStagePath()`, `_rackAudioSourcePath()` — Path helpers
-- `_rackAudioSourceCodeForNodeId()`, `_rackAudioStageCodeForNodeId()` — Code generation
-- `_requestDynamicModuleSlot()` — Slot request (40 lines)
-- `_syncRackAudioStageParams()` — Param sync
-- `_rackTopologySignature()`, `_rackTopologyChanged()` — Topology handling
-- `_ensureDynamicShellForNode()` — Shell creation (124 lines)
+The implemented slices were validated incrementally against the running application.
 
-**External dependencies**: RackAudioRouter, RackModuleFactory
+### Runtime validation that was used repeatedly
+- Restart standalone in tmux and verify **no `ui_init` errors**.
+- Verify runtime behavior through the actual running app, not just static parsing.
+- Re-run rack module factory smoke after layout/mutation changes.
 
-**Exports**: Module slot requests, audio staging, topology functions
+### Smoke tests that passed after the final slices
+- Boot clean with no `ui_init` errors
+- `bash UserScripts/projects/Main/ui/tests/test_rack_module_factory_ipc.sh`
+  - result: `OK rack_module_factory ipc smoke`
 
----
+That IPC smoke exercises the real spawn/delete path through the running app, which was important for catching regressions during the rack mutation and layout slices.
 
-### 9. midisynth.lua 
-
-**Responsibility**: Lifecycle orchestration only — delegates to specialized modules
-
-**Functions to keep**:
-- `init()` — Delegates to state_manager.loadSavedState, layout_engine.syncRackShellLayout, etc.
-- `update()` — Delegates to domain modules
-- `cleanup()` — Cleanup all modules
-
-**Requires** (instead of current 19):
-- `VoiceManager = require("voice_manager")`
-- `ModRouter = require("modulation_router")`
-- `LayoutEngine = require("rack_layout_engine")`
-- `PaletteBrowser = require("palette_browser")`
-- `KeyboardInput = require("keyboard_input")`
-- `StateManager = require("state_manager")`
-- `PatchbayBinding = require("patchbay_binding")`
-- `DynamicModules = require("dynamic_module_binding")`
-
-**Exports**: M.init, M.update, M.cleanup, M.backgroundTick (delegated)
+### State manager validation
+A real runtime state round-trip was also exercised:
+- save temporary runtime state through the live app
+- load it back
+- verify saved fields round-trip
+- restore original runtime state file afterward
 
 ---
 
-## Implementation Approach
+## Current End State
 
-### Phase 1: Create specialized modules
+The monolith is no longer the primary owner of all rack/UI/runtime behavior.
 
-Create new files one at a time, starting with smallest/most isolated:
+### What still lives in `midisynth.lua`
+`midisynth.lua` is now mostly:
+- lifecycle: `init`, `resized`, `update`, `cleanup`
+- background/runtime tick orchestration
+- shared path helpers (`voice*Path`, `eq8Band*Path`, `fxParamPath`)
+- `setPath` / `readParam`
+- small formatting helpers
+- a small number of remaining dynamic/gate/glue helpers
 
-1. `keyboard_input.lua` — ~200 lines, minimal deps
-2. `state_manager.lua` — ~300 lines, minimal deps
-3. `patchbay_binding.lua` — ~150 lines
-4. `dynamic_module_binding.lua` — ~150 lines
-5. `voice_manager.lua` — ~450 lines
-6. `modulation_router.lua` — ~350 lines
-7. `palette_browser.lua` — ~500 lines
-8. `rack_layout_engine.lua` — ~850 lines (note: syncRackShellLayout internally needs decomposition)
+### Remaining meaningful helpers in `midisynth.lua`
+These are the main non-trivial behaviors still left there:
+- `M._isLegacyOscillatorGateRouteConnected`
+- `M._hasCanonicalOscillatorGateRoute`
+- `M._hasAnyOscillatorGateRoute`
+- `M._dynamicRackOscAdsrGateSlots`
+- `M._inferredDynamicSpecId`
+- `M._rebuildDynamicRackModuleState`
 
-### Phase 2: Refactor orchestrator
+### Compatibility shims still present
+To keep legacy call paths alive during the refactor, `midisynth.lua` still provides temporary compatibility for:
+- global `loadRuntimeState`
+- global `saveRuntimeState`
 
-Rewrite `midisynth.lua` to:
-1. Replace inline functions with imports
-2. Delegate lifecycle to specialized modules
-3. Re-export public API for backwards compatibility
-
-### Phase 3: Integration testing
-
-- Verify all existing functionality works unchanged
-- Test module interactions
-- Ensure no regressions
-
----
-
-## Risk Assessment
-
-| Risk | Mitigation |
-|------|------------|
-| Breaking existing functionality | Re-export all M.* functions from new orchestrator |
-| Circular dependencies | Design modules with clear dependency direction (libs → domain) |
-| Internal function coupling | Some local functions may need to move together; group by domain |
-| syncRackShellLayout complexity | This 453-line function may need internal sub-decomposition |
-| Testing complexity | Write tests after decomposition, not during |
+These exist because some legacy code still dereferences them directly rather than using injected dependencies or attached host methods.
 
 ---
 
 ## Why Decomposition (Not Reduction)
 
-The total lines of code will **not significantly decrease**:
-- Before: 6,329 lines
-- After: ~6,500 lines (some wrapper overhead)
+The value of this refactor was always organization, not line-count golf.
 
-The value is **organization**, not reduction:
+### Actual outcome
+- Before: `midisynth.lua` at **6,329** lines
+- After: `midisynth.lua` at **1,392** lines
+- Extracted modules total: **7,198** lines across the behavior files listed above
 
+So total code did **not** shrink in a meaningful way. It moved into better seams.
+
+### Actual benefit
 | Before | After |
 |--------|-------|
-| 1 file, 159 mixed functions | 9 files, ~18 functions each, clearly separated |
-| "Where's the voice stuff?" | File is called `voice_manager.lua` |
-| Entire file is a monolith | Each module has one clear responsibility |
-| Hard to onboard | Read one small file relevant to your task |
-
-**Benefits**:
-- Navigability: "I need to fix voice stealing" → open `voice_manager.lua`
-- Testability: Unit test each module independently
-- Parallel dev: Someone works on modulation, someone else on layout, no conflicts
-- Onboarding: New devs read the one file relevant to their task
+| One giant file mixing UI, rack, modulation, state, patchbay, and runtime behavior | Cohesive modules with explicit seams |
+| High risk of collateral damage for any change | Much narrower blast radius per file |
+| Hard to find ownership of a behavior path | File names now match behavior ownership |
+| Runtime regressions were hard to localize | Failures are much easier to pin to a seam |
 
 ---
 
-## Estimated Effort
+## Suggested Final Cleanup Pass
 
-| Module | Effort |
-|--------|--------|
-| keyboard_input.lua | 0.5 day |
-| state_manager.lua | 0.5 day |
-| patchbay_binding.lua | 1 day |
-| dynamic_module_binding.lua | 1 day |
-| voice_manager.lua | 1 day |
-| modulation_router.lua | 1 day |
-| palette_browser.lua | 1.5 days |
-| rack_layout_engine.lua | 2 days |
-| midisynth.lua rewrite | 1 day |
-| Testing/integration | 2 days |
-| **Total** | **~11 days** |
+The major decomposition work is done. The remaining pass is optional cleanup, but still worth doing.
+
+### 1. Move dynamic rebuild helpers into `dynamic_module_binding.lua`
+These still live in `midisynth.lua` and belong with the dynamic module seam:
+- `M._inferredDynamicSpecId`
+- `M._rebuildDynamicRackModuleState`
+
+**Why:** they are conceptually part of dynamic module binding/rehydration, not lifecycle orchestration.
+
+### 2. Move gate-route helpers out of `midisynth.lua`
+These are still orchestrator-resident glue but are a coherent remaining seam:
+- `M._isLegacyOscillatorGateRouteConnected`
+- `M._hasCanonicalOscillatorGateRoute`
+- `M._hasAnyOscillatorGateRoute`
+- `M._dynamicRackOscAdsrGateSlots`
+
+**Why:** they represent a specific rack/gate routing concern and no longer need to live in the top-level behavior file.
+
+### 3. Remove compatibility shims by updating legacy consumers
+Update the remaining legacy call sites so the temporary globals can be deleted:
+- `lib/ui/midi_devices.lua`
+- `lib/ui/init_controls.lua`
+
+Specifically, remove the need for:
+- `_G.loadRuntimeState`
+- `_G.saveRuntimeState`
+
+by routing those consumers through injected deps or attached host methods instead.
+
+**Why:** once those are gone, `midisynth.lua` stops carrying refactor-era compatibility baggage.
 
 ---
 
-## Open Questions
+## Final Recommended Stopping Point
 
-1. Should `syncRackShellLayout()` be further decomposed internally before extraction?
-2. Should the new modules live in `lib/` or stay in `behaviors/`?
-3. Should we maintain backwards compatibility by re-exporting all M.* functions, or is breaking the API acceptable?
-4. How do we handle `backgroundTick` — does it live in a module, or in the orchestrator?
-5. Should we add tests before or after decomposition?
+The refactor is already at a good stopping point.
+
+The suggested final cleanup pass is worth doing, but it is **cleanup**, not the core decomposition work. The big architectural win has already been achieved.
+
+If the final pass is completed, `midisynth.lua` should be left with mostly:
+- lifecycle
+- background tick
+- shared path/param helpers
+- minimal orchestrator glue
+
+At that point the decomposition can be considered fully complete.
