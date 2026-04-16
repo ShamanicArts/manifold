@@ -220,23 +220,17 @@ The monolith is no longer the primary owner of all rack/UI/runtime behavior.
 - shared path helpers (`voice*Path`, `eq8Band*Path`, `fxParamPath`)
 - `setPath` / `readParam`
 - small formatting helpers
-- a small number of remaining dynamic/gate/glue helpers
+- thin orchestrator glue
 
 ### Remaining meaningful helpers in `midisynth.lua`
-These are the main non-trivial behaviors still left there:
-- `M._isLegacyOscillatorGateRouteConnected`
-- `M._hasCanonicalOscillatorGateRoute`
-- `M._hasAnyOscillatorGateRoute`
-- `M._dynamicRackOscAdsrGateSlots`
-- `M._inferredDynamicSpecId`
-- `M._rebuildDynamicRackModuleState`
+After the final cleanup pass, the previous dynamic rebuild and gate-route helpers were moved out:
+- dynamic rebuild helpers now live in `ui/behaviors/dynamic_module_binding.lua`
+- gate-route helpers now live in `ui/behaviors/modulation_router.lua`
 
-### Compatibility shims still present
-To keep legacy call paths alive during the refactor, `midisynth.lua` still provides temporary compatibility for:
-- global `loadRuntimeState`
-- global `saveRuntimeState`
+### Compatibility shims
+The temporary global compatibility shims were removed from `midisynth.lua`.
 
-These exist because some legacy code still dereferences them directly rather than using injected dependencies or attached host methods.
+`lib/ui/midi_devices.lua` now receives runtime state I/O via explicit initialization, and `lib/ui/init_controls.lua` was already using injected `loadRuntimeState`.
 
 ---
 
@@ -261,38 +255,33 @@ So total code did **not** shrink in a meaningful way. It moved into better seams
 
 ---
 
-## Suggested Final Cleanup Pass
+## Final Cleanup Pass Status
 
-The major decomposition work is done. The remaining pass is optional cleanup, but still worth doing.
+The optional cleanup pass has now been completed.
 
-### 1. Move dynamic rebuild helpers into `dynamic_module_binding.lua`
-These still live in `midisynth.lua` and belong with the dynamic module seam:
-- `M._inferredDynamicSpecId`
-- `M._rebuildDynamicRackModuleState`
+### Completed cleanup items
+1. Moved dynamic rebuild helpers into `ui/behaviors/dynamic_module_binding.lua`
+   - `M._inferredDynamicSpecId`
+   - `M._rebuildDynamicRackModuleState`
 
-**Why:** they are conceptually part of dynamic module binding/rehydration, not lifecycle orchestration.
+2. Moved gate-route helpers into `ui/behaviors/modulation_router.lua`
+   - `M._isLegacyOscillatorGateRouteConnected`
+   - `M._hasCanonicalOscillatorGateRoute`
+   - `M._hasAnyOscillatorGateRoute`
+   - `M._dynamicRackOscAdsrGateSlots`
 
-### 2. Move gate-route helpers out of `midisynth.lua`
-These are still orchestrator-resident glue but are a coherent remaining seam:
-- `M._isLegacyOscillatorGateRouteConnected`
-- `M._hasCanonicalOscillatorGateRoute`
-- `M._hasAnyOscillatorGateRoute`
-- `M._dynamicRackOscAdsrGateSlots`
+3. Removed runtime-state compatibility globals from `ui/behaviors/midisynth.lua`
+   - `_G.loadRuntimeState`
+   - `_G.saveRuntimeState`
 
-**Why:** they represent a specific rack/gate routing concern and no longer need to live in the top-level behavior file.
+4. Updated legacy state consumer wiring
+   - `lib/ui/midi_devices.lua` now receives `loadRuntimeState` / `saveRuntimeState` through explicit module init
+   - `lib/ui/init_controls.lua` already used injected `loadRuntimeState`, so no extra compatibility shim was needed there
 
-### 3. Remove compatibility shims by updating legacy consumers
-Update the remaining legacy call sites so the temporary globals can be deleted:
-- `lib/ui/midi_devices.lua`
-- `lib/ui/init_controls.lua`
-
-Specifically, remove the need for:
-- `_G.loadRuntimeState`
-- `_G.saveRuntimeState`
-
-by routing those consumers through injected deps or attached host methods instead.
-
-**Why:** once those are gone, `midisynth.lua` stops carrying refactor-era compatibility baggage.
+### Validation
+- Standalone booted cleanly after the cleanup pass with no `ui_init` errors
+- `bash UserScripts/projects/Main/ui/tests/test_rack_module_factory_ipc.sh` still passed
+- IPC verification confirmed `loadRuntimeState` / `saveRuntimeState` are no longer exported as globals in the live app
 
 ---
 
