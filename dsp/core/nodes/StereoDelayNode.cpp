@@ -35,8 +35,8 @@ namespace {
 }
 
 StereoDelayNode::StereoDelayNode() 
-    : bufferSize_(0)
-    , writeIndex_(0)
+    : writeIndex_(0)
+    , bufferSize_(0)
     , readIndexL_(0.0f)
     , readIndexR_(0.0f)
     , filterG_(0.0f)

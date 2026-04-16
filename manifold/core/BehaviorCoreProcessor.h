@@ -63,7 +63,8 @@ private:
 
 class BehaviorCoreProcessor : public juce::AudioProcessor,
                               public ScriptableProcessor,
-                              private juce::MidiInputCallback {
+                              private juce::MidiInputCallback,
+                              private juce::AudioProcessorValueTreeState::Listener {
 public:
     static constexpr int MAX_LAYERS = 4;
     static constexpr int CAPTURE_SECONDS = 32;
@@ -88,9 +89,27 @@ public:
         return "Manifold";
 #endif
     }
-    bool acceptsMidi() const override { return true; }
-    bool producesMidi() const override { return true; }
-    bool isMidiEffect() const override { return false; }
+    bool acceptsMidi() const override {
+       #if JucePlugin_WantsMidiInput
+        return true;
+       #else
+        return false;
+       #endif
+    }
+    bool producesMidi() const override {
+       #if JucePlugin_ProducesMidiOutput
+        return true;
+       #else
+        return false;
+       #endif
+    }
+    bool isMidiEffect() const override {
+       #if JucePlugin_IsMidiEffect
+        return true;
+       #else
+        return false;
+       #endif
+    }
     double getTailLengthSeconds() const override { return 0.0; }
 
     int getNumPrograms() override { return 1; }
@@ -129,7 +148,7 @@ public:
         return currentBlockSize.load(std::memory_order_relaxed);
     }
     int getGraphOutputChannels() const override {
-        return 2;
+        return juce::jmax(1, getTotalNumOutputChannels());
     }
     void requestGraphRuntimeSwap(
         std::unique_ptr<dsp_primitives::GraphRuntime> runtime) override;
@@ -169,12 +188,16 @@ public:
                              std::vector<float>& outPeaks) const override;
     bool computeSynthSamplePeaks(int numBuckets,
                                  std::vector<float>& outPeaks) const override;
+    bool computeDynamicSamplePeaks(int slotIndex, int numBuckets,
+                                   std::vector<float>& outPeaks) const override;
     std::vector<float> getVoiceSamplePositions() const override;
+    std::vector<float> getDynamicSampleVoicePositions(int slotIndex) const override;
     bool getLatestSampleAnalysis(dsp_primitives::SampleAnalysis& outAnalysis) const override;
     bool getLatestSamplePartials(dsp_primitives::PartialData& outPartials) const override;
     bool getSampleDerivedAdditiveDebug(int voiceIndex,
                                        SampleDerivedAdditiveDebugState& outState) const override;
     bool refreshSampleDerivedAdditiveDebug(SampleDerivedAdditiveDebugState& outState) override;
+    bool ensureDynamicModuleSlot(const std::string& specId, int slotIndex) override;
 
     float getTempo() const override;
     float getTargetBPM() const override;
@@ -231,6 +254,45 @@ public:
     std::string getAndClearPendingUISwitch();
     std::string getAndClearPendingUIRendererMode();
 
+    bool hasExportPluginConfig() const;
+    int getExportViewMode() const;
+    int getExportCompactWidth() const;
+    int getExportCompactHeight() const;
+    int getExportSplitWidth() const;
+    int getExportSplitHeight() const;
+    int getExportEditorWidth() const;
+    int getExportEditorHeight() const;
+    void setExportEditorSize(int width, int height);
+    juce::AudioProcessorValueTreeState* getHostParameterState() const;
+    bool isExportPlugin() const { return exportPluginConfig_.enabled; }
+    bool isExportSettingsVisible() const;
+    void captureLuaInitSnapshot();
+    void captureBindingsSnapshot();
+    void captureScriptLoadSnapshot();
+    void captureEditorOpenSnapshot();
+    void captureUiIdleSnapshot();
+    int64_t getPluginBaselinePssBytes() const { return pluginBaselinePssBytes_.load(std::memory_order_relaxed); }
+    int64_t getPluginBaselinePrivateDirtyBytes() const { return pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed); }
+    int64_t getPluginBaselineHeapBytes() const { return pluginBaselineHeapBytes_.load(std::memory_order_relaxed); }
+    int64_t getPluginBaselineArenaBytes() const { return pluginBaselineArenaBytes_.load(std::memory_order_relaxed); }
+    int64_t getEditorOpenPssBytes() const { return editorOpenPssBytes_.load(std::memory_order_relaxed); }
+    int64_t getEditorOpenPrivateDirtyBytes() const { return editorOpenPrivateDirtyBytes_.load(std::memory_order_relaxed); }
+    int64_t getEditorOpenHeapBytes() const { return editorOpenHeapBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterLuaInitDeltaPssBytes() const { return afterLuaInitDeltaPssBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterLuaInitDeltaPrivateDirtyBytes() const { return afterLuaInitDeltaPrivateDirtyBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterBindingsDeltaPssBytes() const { return afterBindingsDeltaPssBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterBindingsDeltaPrivateDirtyBytes() const { return afterBindingsDeltaPrivateDirtyBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterScriptLoadDeltaPssBytes() const { return afterScriptLoadDeltaPssBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterScriptLoadDeltaPrivateDirtyBytes() const { return afterScriptLoadDeltaPrivateDirtyBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterDspDeltaPssBytes() const { return afterDspDeltaPssBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterDspDeltaPrivateDirtyBytes() const { return afterDspDeltaPrivateDirtyBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterUiOpenDeltaPssBytes() const { return afterUiOpenDeltaPssBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterUiOpenDeltaPrivateDirtyBytes() const { return afterUiOpenDeltaPrivateDirtyBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterUiIdleDeltaPssBytes() const { return afterUiIdleDeltaPssBytes_.load(std::memory_order_relaxed); }
+    int64_t getAfterUiIdleDeltaPrivateDirtyBytes() const { return afterUiIdleDeltaPrivateDirtyBytes_.load(std::memory_order_relaxed); }
+    int getManagedDspHostCount() const { return static_cast<int>(dspSlots.size()); }
+    int64_t getPrimaryDspScriptSizeBytes() const;
+
     // MIDI API
     bool openMidiInput(int deviceIndex);
     bool openMidiOutput(int deviceIndex);
@@ -259,6 +321,37 @@ public:
     // Destroy deferred DSP slot hosts (safe boundary, not inside Lua call stacks)
     void drainPendingSlotDestroy();
 
+public:
+    struct ExportParamAlias {
+        juce::String path;
+        juce::String internalPath;
+        juce::String type{"f"};
+        float rangeMin = 0.0f;
+        float rangeMax = 1.0f;
+        juce::String description;
+        float defaultValue = 0.0f;
+        float skew = 1.0f;
+        juce::String hostParamId;
+        juce::String hostParamName;
+        juce::String hostParamKind{"float"};
+        juce::StringArray choices;
+        std::atomic<float>* rawHostValue = nullptr;
+    };
+
+    struct ExportPluginConfig {
+        bool enabled = false;
+        juce::String headerTitle{"Plugin"};
+        int compactWidth = 236;
+        int compactHeight = 220;
+        int splitWidth = 472;
+        int splitHeight = 220;
+        int defaultViewMode = 1;
+        bool oscDefaultEnabled = false;
+        bool oscQueryDefaultEnabled = false;
+        int oscBasePort = 9010;
+        std::vector<ExportParamAlias> paramAliases;
+    };
+
 private:
     // juce::MidiInputCallback
     void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
@@ -268,7 +361,23 @@ private:
     void checkGraphRuntimeSwap();
     void processControlCommands();
     void initialiseAtomicState(double sampleRate);
+    void capturePluginConstructionBaseline();
+    void captureDspLoadedSnapshot();
     void scheduleForwardCommitIfNeeded();
+    void initialiseExportPluginConfig();
+    void initialiseHostParameters();
+    void registerExportPluginEndpoints();
+    bool applyExportPluginPath(const std::string& path, float value);
+    float readExportPluginPath(const std::string& path) const;
+    juce::String resolveExportInternalPath(const juce::String& path) const;
+    ExportParamAlias* findExportAliasByPublicPath(const juce::String& path);
+    const ExportParamAlias* findExportAliasByPublicPath(const juce::String& path) const;
+    ExportParamAlias* findExportAliasByHostParamId(const juce::String& hostParamId);
+    const ExportParamAlias* findExportAliasByHostParamId(const juce::String& hostParamId) const;
+    bool syncPublicPathToHostParameter(const juce::String& publicPath, float value);
+    void applyHostParameterSnapshotToProcessor();
+    void applyExportOscSettings();
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
 
     static bool extractLayerParam(const std::string& path, int& layerIndex,
                                   std::string& paramSuffix);
@@ -277,6 +386,33 @@ private:
     std::atomic<int> currentBlockSize{512};
     std::atomic<double> playTimeSamples{0.0};
     std::atomic<bool> graphProcessingEnabled{false};
+
+    // Plugin-attributable memory stage snapshots.
+    std::atomic<int64_t> pluginBaselinePssBytes_{0};
+    std::atomic<int64_t> pluginBaselinePrivateDirtyBytes_{0};
+    std::atomic<int64_t> pluginBaselineHeapBytes_{0};
+    std::atomic<int64_t> pluginBaselineArenaBytes_{0};
+    std::atomic<bool> luaInitSnapshotCaptured_{false};
+    std::atomic<int64_t> afterLuaInitDeltaPssBytes_{0};
+    std::atomic<int64_t> afterLuaInitDeltaPrivateDirtyBytes_{0};
+    std::atomic<bool> bindingsSnapshotCaptured_{false};
+    std::atomic<int64_t> afterBindingsDeltaPssBytes_{0};
+    std::atomic<int64_t> afterBindingsDeltaPrivateDirtyBytes_{0};
+    std::atomic<bool> scriptLoadSnapshotCaptured_{false};
+    std::atomic<int64_t> afterScriptLoadDeltaPssBytes_{0};
+    std::atomic<int64_t> afterScriptLoadDeltaPrivateDirtyBytes_{0};
+    std::atomic<bool> dspLoadedSnapshotCaptured_{false};
+    std::atomic<int64_t> afterDspDeltaPssBytes_{0};
+    std::atomic<int64_t> afterDspDeltaPrivateDirtyBytes_{0};
+    std::atomic<bool> editorOpenSnapshotCaptured_{false};
+    std::atomic<int64_t> afterUiOpenDeltaPssBytes_{0};
+    std::atomic<int64_t> afterUiOpenDeltaPrivateDirtyBytes_{0};
+    std::atomic<int64_t> editorOpenPssBytes_{0};
+    std::atomic<int64_t> editorOpenPrivateDirtyBytes_{0};
+    std::atomic<int64_t> editorOpenHeapBytes_{0};
+    std::atomic<bool> uiIdleSnapshotCaptured_{false};
+    std::atomic<int64_t> afterUiIdleDeltaPssBytes_{0};
+    std::atomic<int64_t> afterUiIdleDeltaPrivateDirtyBytes_{0};
 
     CaptureBuffer captureBuffer;
     juce::AudioBuffer<float> graphWetBuffer;
@@ -314,6 +450,21 @@ private:
     OSCQueryServer oscQueryServer;
 
     LinkSync linkSync;
+
+    ExportPluginConfig exportPluginConfig_;
+    std::unique_ptr<juce::AudioProcessorValueTreeState> hostParams_;
+    std::atomic<bool> suppressHostParameterCallbacks_{false};
+    std::atomic<int> exportViewMode_{1};
+    std::atomic<int> exportEditorWidth_{472};
+    std::atomic<int> exportEditorHeight_{220};
+    std::atomic<bool> exportSettingsVisible_{true};
+    std::atomic<bool> exportDevVisible_{false};
+    std::atomic<bool> exportOscEnabled_{false};
+    std::atomic<bool> exportOscQueryEnabled_{false};
+    std::atomic<int> exportOscInputPort_{0};
+    std::atomic<int> exportOscQueryPort_{0};
+    std::atomic<int> exportXyXParam_{1};
+    std::atomic<int> exportXyYParam_{2};
 
     // MIDI support
     MidiRingBuffer midiInputRing;  // Audio thread → Control thread

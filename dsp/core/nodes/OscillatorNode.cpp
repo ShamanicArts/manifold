@@ -24,6 +24,10 @@ namespace {
 constexpr int kMaxAdditiveHarmonics = 12;
 constexpr double kTwoPi = 2.0 * M_PI;
 
+constexpr std::size_t toIndex(int value) noexcept {
+    return static_cast<std::size_t>(value);
+}
+
 struct InharmonicPartial {
     double ratio;
     float amplitude;
@@ -587,7 +591,7 @@ void OscillatorNode::resetPhase() {
     for (auto& p : unisonPhases_) p = 0.0;
     unisonVoiceGains_[0] = 1.0f;
     for (int i = 1; i < 8; ++i) {
-        unisonVoiceGains_[i] = 0.0f;
+        unisonVoiceGains_[toIndex(i)] = 0.0f;
     }
     lastRequestedUnison_ = 1;
 }
@@ -678,8 +682,8 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
     int layoutUnison = lastRequestedUnison_;
     if (targetUnison > lastRequestedUnison_) {
         for (int v = lastRequestedUnison_; v < targetUnison; ++v) {
-            unisonPhases_[v] = phase_;
-            unisonVoiceGains_[v] = 0.0f;
+            unisonPhases_[toIndex(v)] = phase_;
+            unisonVoiceGains_[toIndex(v)] = 0.0f;
         }
         lastRequestedUnison_ = targetUnison;
         layoutUnison = targetUnison;
@@ -716,9 +720,10 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
 
         bool higherVoicesStillActive = false;
         for (int v = 0; v < voiceLimit; ++v) {
+            const auto voiceSlot = toIndex(v);
             const float targetVoiceGain = (v < targetUnison) ? 1.0f : 0.0f;
-            unisonVoiceGains_[v] += (targetVoiceGain - unisonVoiceGains_[v]) * unisonVoiceSmoothingCoeff_;
-            const float voiceGain = unisonVoiceGains_[v];
+            unisonVoiceGains_[voiceSlot] += (targetVoiceGain - unisonVoiceGains_[voiceSlot]) * unisonVoiceSmoothingCoeff_;
+            const float voiceGain = unisonVoiceGains_[voiceSlot];
             if (v >= targetUnison && voiceGain > 1.0e-4f) {
                 higherVoicesStillActive = true;
             }
@@ -733,7 +738,7 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
             const double voicePhaseInc = phaseIncrement * freqMult;
             const float voiceFrequency = currentFrequency_ * static_cast<float>(freqMult);
 
-            double& voicePhase = (v == 0) ? phase_ : unisonPhases_[v];
+            double& voicePhase = (v == 0) ? phase_ : unisonPhases_[voiceSlot];
             const float phaseNorm = static_cast<float>(voicePhase / kTwoPi);
 
             const auto renderAdditiveSample = [&]() {
@@ -836,11 +841,17 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
     int added = 0;
     float amplitudeSum = 0.0f;
 
+    const auto storePartial = [&result](int index, float frequency, float amplitude, float phase, float decayRate) {
+        const auto slot = toIndex(index);
+        result.frequencies[slot] = frequency;
+        result.amplitudes[slot] = amplitude;
+        result.phases[slot] = phase;
+        result.decayRates[slot] = decayRate;
+    };
+
     switch (waveform) {
         case 0: { // Sine
-            result.frequencies[0] = fundamental;
-            result.amplitudes[0] = 1.0f;
-            result.phases[0] = 0.0f;
+            storePartial(0, fundamental, 1.0f, 0.0f, 0.0f);
             result.activeCount = 1;
             result.brightness = 0.0f;
             result.inharmonicity = 0.0f;
@@ -854,10 +865,11 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
                 const auto [freqJitter, phaseJitter] = driftOffset(h);
                 const float ts = tiltScale(h) * baseAmp;
 
-                result.frequencies[added] = fundamental * static_cast<float>(h) * freqJitter;
-                result.amplitudes[added] = ts;
-                result.phases[added] = (negative ? static_cast<float>(M_PI) : 0.0f) + phaseJitter;
-                result.decayRates[added] = 0.0f;
+                storePartial(added,
+                             fundamental * static_cast<float>(h) * freqJitter,
+                             ts,
+                             (negative ? static_cast<float>(M_PI) : 0.0f) + phaseJitter,
+                             0.0f);
                 amplitudeSum += ts;
                 ++added;
             }
@@ -870,10 +882,11 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
                 const auto [freqJitter, phaseJitter] = driftOffset(h);
                 const float ts = tiltScale(h) * baseAmp;
 
-                result.frequencies[added] = fundamental * static_cast<float>(h) * freqJitter;
-                result.amplitudes[added] = ts;
-                result.phases[added] = phaseJitter;
-                result.decayRates[added] = 0.0f;
+                storePartial(added,
+                             fundamental * static_cast<float>(h) * freqJitter,
+                             ts,
+                             phaseJitter,
+                             0.0f);
                 amplitudeSum += ts;
                 ++added;
             }
@@ -887,10 +900,11 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
                 const auto [freqJitter, phaseJitter] = driftOffset(h);
                 const float ts = tiltScale(h) * baseAmp;
 
-                result.frequencies[added] = fundamental * static_cast<float>(h) * freqJitter;
-                result.amplitudes[added] = ts;
-                result.phases[added] = (positiveCosine ? static_cast<float>(M_PI * 0.5) : static_cast<float>(-M_PI * 0.5)) + phaseJitter;
-                result.decayRates[added] = 0.0f;
+                storePartial(added,
+                             fundamental * static_cast<float>(h) * freqJitter,
+                             ts,
+                             (positiveCosine ? static_cast<float>(M_PI * 0.5f) : static_cast<float>(-M_PI * 0.5f)) + phaseJitter,
+                             0.0f);
                 amplitudeSum += ts;
                 ++added;
             }
@@ -898,10 +912,7 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
         }
 
         case 4: { // Blend (mix of sine and saw)
-            result.frequencies[0] = fundamental;
-            result.amplitudes[0] = 0.45f;
-            result.phases[0] = 0.0f;
-            result.decayRates[0] = 0.0f;
+            storePartial(0, fundamental, 0.45f, 0.0f, 0.0f);
             amplitudeSum += 0.45f;
             added = 1;
 
@@ -911,10 +922,11 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
                 const auto [freqJitter, phaseJitter] = driftOffset(h);
                 const float ts = tiltScale(h) * baseAmp;
 
-                result.frequencies[added] = fundamental * static_cast<float>(h) * freqJitter;
-                result.amplitudes[added] = ts;
-                result.phases[added] = (negative ? static_cast<float>(M_PI) : 0.0f) + phaseJitter;
-                result.decayRates[added] = 0.0f;
+                storePartial(added,
+                             fundamental * static_cast<float>(h) * freqJitter,
+                             ts,
+                             (negative ? static_cast<float>(M_PI) : 0.0f) + phaseJitter,
+                             0.0f);
                 amplitudeSum += ts;
                 ++added;
             }
@@ -927,10 +939,11 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
                 const auto [freqJitter, phaseJitter] = driftOffset(static_cast<int>(i + 1));
                 const float ts = partial.amplitude * tiltScale(static_cast<int>(i + 1));
 
-                result.frequencies[added] = fundamental * static_cast<float>(partial.ratio) * freqJitter;
-                result.amplitudes[added] = ts;
-                result.phases[added] = static_cast<float>(partial.phaseOffset) + phaseJitter;
-                result.decayRates[added] = 0.0f;
+                storePartial(added,
+                             fundamental * static_cast<float>(partial.ratio) * freqJitter,
+                             ts,
+                             static_cast<float>(partial.phaseOffset) + phaseJitter,
+                             0.0f);
                 amplitudeSum += ts;
                 ++added;
             }
@@ -947,10 +960,11 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
                 const auto [freqJitter, phaseJitter] = driftOffset(h);
                 const float ts = tiltScale(h) * baseAmp;
 
-                result.frequencies[added] = fundamental * static_cast<float>(h) * freqJitter;
-                result.amplitudes[added] = ts;
-                result.phases[added] = (negative ? static_cast<float>(M_PI) : 0.0f) + phaseJitter;
-                result.decayRates[added] = 0.0f;
+                storePartial(added,
+                             fundamental * static_cast<float>(h) * freqJitter,
+                             ts,
+                             (negative ? static_cast<float>(M_PI) : 0.0f) + phaseJitter,
+                             0.0f);
                 amplitudeSum += ts;
                 ++added;
             }
@@ -964,10 +978,11 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
                 const auto [freqJitter, phaseJitter] = driftOffset(h);
                 const float ts = tiltScale(h) * baseAmp * 0.84f;
 
-                result.frequencies[added] = fundamental * static_cast<float>(h) * freqJitter;
-                result.amplitudes[added] = ts;
-                result.phases[added] = (negative ? static_cast<float>(M_PI) : 0.0f) + phaseJitter;
-                result.decayRates[added] = 0.0f;
+                storePartial(added,
+                             fundamental * static_cast<float>(h) * freqJitter,
+                             ts,
+                             (negative ? static_cast<float>(M_PI) : 0.0f) + phaseJitter,
+                             0.0f);
                 amplitudeSum += ts;
                 ++added;
             }
@@ -976,9 +991,7 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
         }
 
         default:
-            result.frequencies[0] = fundamental;
-            result.amplitudes[0] = 1.0f;
-            result.phases[0] = 0.0f;
+            storePartial(0, fundamental, 1.0f, 0.0f, 0.0f);
             result.activeCount = 1;
             return result;
     }
@@ -987,7 +1000,7 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
 
     if (amplitudeSum > 1.0e-6f) {
         for (int i = 0; i < result.activeCount; ++i) {
-            result.amplitudes[i] /= amplitudeSum;
+            result.amplitudes[toIndex(i)] /= amplitudeSum;
         }
     }
 
@@ -995,8 +1008,8 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
         float weightedFreq = 0.0f;
         float totalAmp = 0.0f;
         for (int i = 0; i < result.activeCount; ++i) {
-            weightedFreq += result.frequencies[i] * result.amplitudes[i];
-            totalAmp += result.amplitudes[i];
+            weightedFreq += result.frequencies[toIndex(i)] * result.amplitudes[toIndex(i)];
+            totalAmp += result.amplitudes[toIndex(i)];
         }
         if (totalAmp > 1.0e-6f) {
             const float centroid = weightedFreq / totalAmp;

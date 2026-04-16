@@ -1,0 +1,48 @@
+{
+  "name": "Standalone Transpose",
+  "version": 1,
+  "description": "Standalone MIDI transpose export target",
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+  "plugin": {
+    "midiEffect": true,
+    "runtimeFamily": "midi_effect",
+    "view": {
+      "defaultMode": "compact",
+      "compact": {
+        "w": 236,
+        "h": 176
+      },
+      "split": {
+        "w": 236,
+        "h": 176
+      }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9060,
+      "oscQueryPort": 9061
+    },
+    "params": [
+      {
+        "path": "/plugin/params/semitones",
+        "internalPath": "/midi/synth/rack/transpose/1/semitones",
+        "type": "f",
+        "min": -24,
+        "max": 24,
+        "default": 0,
+        "hostParamId": "semitones",
+        "hostParamName": "Semitones",
+        "hostParamKind": "float",
+        "description": "Transpose amount in semitones"
+      }
+    ]
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "../Main/themes/dark.lua"
+}

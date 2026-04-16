@@ -30,6 +30,7 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress& key) override;
 
 private:
     enum class RuntimeRendererMode {
@@ -76,8 +77,15 @@ private:
     ImGuiDirectHost directHost_;
     bool directHostNeedsInitialFocus_ = false;
     RuntimeRendererMode runtimeRendererMode_ = RuntimeRendererMode::ImGuiDirect;
+    bool exportPluginUi_ = false;
     Canvas* errorNode = nullptr;
     std::string errorMessage;
+
+    // CPU tracking
+    std::chrono::steady_clock::time_point lastCpuCheck_{};
+    std::chrono::microseconds lastCpuTime_{0};
+    bool uiIdleSnapshotCaptured_ = false;
+    int uiIdleSnapshotCountdown_ = 40;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BehaviorCoreEditor)
 };

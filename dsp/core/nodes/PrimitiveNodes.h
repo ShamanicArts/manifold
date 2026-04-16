@@ -32,6 +32,8 @@
 #include "dsp/core/nodes/PitchShifterNode.h"
 #include "dsp/core/nodes/TransientShaperNode.h"
 #include "dsp/core/nodes/RingModulatorNode.h"
+#include "dsp/core/nodes/AudioFmNode.h"
+#include "dsp/core/nodes/AudioSyncNode.h"
 #include "dsp/core/nodes/BitCrusherNode.h"
 #include "dsp/core/nodes/FormantFilterNode.h"
 #include "dsp/core/nodes/ReverseDelayNode.h"

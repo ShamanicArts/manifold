@@ -9,6 +9,11 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 namespace {
 using PerfClock = std::chrono::steady_clock;
@@ -57,12 +62,118 @@ struct PerfOverlayHostConfig {
 };
 
 
-double perfElapsedMs(PerfClock::time_point start) {
+[[maybe_unused]] double perfElapsedMs(PerfClock::time_point start) {
     return std::chrono::duration<double, std::milli>(PerfClock::now() - start).count();
 }
 
 void logEditorPerf(const char* label, PerfClock::time_point start, const char* extra = nullptr) {
     juce::ignoreUnused(label, start, extra);
+}
+
+struct ProcessMemorySnapshot {
+    int64_t pssBytes = 0;
+    int64_t privateDirtyBytes = 0;
+};
+
+struct GlibcAllocatorSnapshot {
+    int64_t heapUsedBytes = 0;
+    int64_t arenaBytes = 0;
+    int64_t mmapBytes = 0;
+    int64_t freeHeldBytes = 0;
+    int64_t releasableBytes = 0;
+    int64_t arenaCount = 0;
+};
+
+ProcessMemorySnapshot readProcessMemorySnapshot() {
+    ProcessMemorySnapshot snapshot;
+    std::ifstream smaps("/proc/self/smaps_rollup");
+    std::string line;
+    while (std::getline(smaps, line)) {
+        if (line.rfind("Pss:", 0) == 0) {
+            std::istringstream iss(line);
+            std::string label, unit;
+            int64_t kb = 0;
+            iss >> label >> kb >> unit;
+            snapshot.pssBytes = kb * 1024;
+        } else if (line.rfind("Private_Dirty:", 0) == 0) {
+            std::istringstream iss(line);
+            std::string label, unit;
+            int64_t kb = 0;
+            iss >> label >> kb >> unit;
+            snapshot.privateDirtyBytes = kb * 1024;
+        }
+    }
+    return snapshot;
+}
+
+GlibcAllocatorSnapshot readGlibcAllocatorSnapshot() {
+    GlibcAllocatorSnapshot snapshot;
+#if defined(__GLIBC__)
+    struct mallinfo2 mi;
+    memset(&mi, 0, sizeof(mi));
+    mi = mallinfo2();
+    
+    snapshot.heapUsedBytes = static_cast<int64_t>(mi.uordblks);
+    snapshot.arenaBytes = static_cast<int64_t>(mi.arena);
+    // hblkhd is unreliable in glibc 2.43 (returns garbage or GPU memory values)
+    // Skipping mmap metric - it conflates CPU and GPU memory
+    snapshot.mmapBytes = 0;
+    snapshot.freeHeldBytes = static_cast<int64_t>(mi.fordblks);
+    snapshot.releasableBytes = static_cast<int64_t>(mi.keepcost);
+    snapshot.arenaCount = static_cast<int64_t>(mi.ordblks);
+#endif
+    return snapshot;
+}
+
+int64_t estimateScriptListRowsBytes(const std::vector<ImGuiScriptListHost::ScriptRow>& rows) {
+    int64_t total = static_cast<int64_t>(rows.capacity()) * static_cast<int64_t>(sizeof(ImGuiScriptListHost::ScriptRow));
+    for (const auto& row : rows) {
+        total += static_cast<int64_t>(row.kind.capacity() + row.ownership.capacity() + row.name.capacity() + row.label.capacity() + row.path.capacity());
+    }
+    return total;
+}
+
+int64_t estimateHierarchyRowsBytes(const std::vector<ImGuiHierarchyHost::TreeRow>& rows) {
+    int64_t total = static_cast<int64_t>(rows.capacity()) * static_cast<int64_t>(sizeof(ImGuiHierarchyHost::TreeRow));
+    for (const auto& row : rows) {
+        total += static_cast<int64_t>(row.type.capacity() + row.name.capacity() + row.path.capacity());
+    }
+    return total;
+}
+
+int64_t estimateInspectorRowsBytes(const std::vector<ImGuiInspectorHost::InspectorRow>& rows,
+                                   const ImGuiInspectorHost::ActiveProperty& activeProperty) {
+    int64_t total = static_cast<int64_t>(rows.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::InspectorRow));
+    for (const auto& row : rows) {
+        total += static_cast<int64_t>(row.key.capacity() + row.value.capacity());
+    }
+    total += static_cast<int64_t>(activeProperty.key.capacity() + activeProperty.path.capacity() + activeProperty.editorType.capacity()
+                                + activeProperty.displayValue.capacity() + activeProperty.textValue.capacity());
+    total += static_cast<int64_t>(activeProperty.enumLabels.capacity()) * static_cast<int64_t>(sizeof(std::string));
+    for (const auto& label : activeProperty.enumLabels) {
+        total += static_cast<int64_t>(label.capacity());
+    }
+    return total;
+}
+
+int64_t estimateScriptInspectorBytes(const ImGuiInspectorHost::ScriptInspectorData& data) {
+    int64_t total = sizeof(ImGuiInspectorHost::ScriptInspectorData);
+    total += static_cast<int64_t>(data.name.capacity() + data.kind.capacity() + data.ownership.capacity() + data.path.capacity() +
+                                  data.text.capacity() + data.runtimeStatus.capacity() + data.projectLastError.capacity());
+    total += static_cast<int64_t>(data.declaredParams.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::DeclaredParam));
+    for (const auto& p : data.declaredParams) {
+        total += static_cast<int64_t>(p.path.capacity() + p.defaultValue.capacity());
+    }
+    total += static_cast<int64_t>(data.runtimeParams.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::RuntimeParam));
+    for (const auto& p : data.runtimeParams) {
+        total += static_cast<int64_t>(p.endpointPath.capacity() + p.path.capacity() + p.displayValue.capacity());
+    }
+    total += static_cast<int64_t>(data.graphNodes.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::GraphNode));
+    for (const auto& n : data.graphNodes) {
+        total += static_cast<int64_t>(n.var.capacity() + n.prim.capacity());
+    }
+    total += static_cast<int64_t>(data.graphEdges.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::GraphEdge));
+    return total;
 }
 
 void logEditorHostLayout(const char* name, HostLayoutTraceState& state, bool visible,
@@ -657,7 +768,7 @@ void buildHierarchyAndInspectorConfig(sol::state& lua,
                         if (rawValue.is<bool>()) {
                             matches = rawValue.as<bool>() == optionValue.as<bool>();
                         } else if (rawValue.is<double>()) {
-                            matches = rawValue.as<double>() == optionValue.as<double>();
+                            matches = std::abs(rawValue.as<double>() - optionValue.as<double>()) < 1.0e-9;
                         } else if (rawValue.is<std::string>()) {
                             matches = rawValue.as<std::string>() == optionValue.as<std::string>();
                         }
@@ -1322,14 +1433,18 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
         }
     }
 
-    int initialWidth = 1000;
-    int initialHeight = 640;
+    exportPluginUi_ = processorRef.hasExportPluginConfig();
+
+    int initialWidth = exportPluginUi_ ? processorRef.getExportEditorWidth() : 1000;
+    int initialHeight = exportPluginUi_ ? processorRef.getExportEditorHeight() : 640;
     if (parseProfileWindowSizeEnv(initialWidth, initialHeight)) {
         std::fprintf(stderr,
                      "BehaviorCoreEditor: using MANIFOLD_PROFILE_WINDOW_SIZE=%dx%d\n",
                      initialWidth,
                      initialHeight);
     }
+
+    setWantsKeyboardFocus(true);
     setSize(initialWidth, initialHeight);
 
     if (rootMode_ == RootMode::RuntimeNode) {
@@ -1341,13 +1456,15 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
     } else {
         addAndMakeVisible(rootCanvas);
     }
-    addAndMakeVisible(mainScriptEditorHost);
-    addAndMakeVisible(scriptListHost);
-    addAndMakeVisible(hierarchyHost);
-    addAndMakeVisible(inspectorHost);
-    addAndMakeVisible(scriptInspectorHost);
-    addAndMakeVisible(perfOverlayHost);
-    addAndMakeVisible(runtimeNodeDebugHost);
+    if (!exportPluginUi_) {
+        addAndMakeVisible(mainScriptEditorHost);
+        addAndMakeVisible(scriptListHost);
+        addAndMakeVisible(hierarchyHost);
+        addAndMakeVisible(inspectorHost);
+        addAndMakeVisible(scriptInspectorHost);
+        addAndMakeVisible(perfOverlayHost);
+        addAndMakeVisible(runtimeNodeDebugHost);
+    }
     addChildComponent(directHost_);
     runtimeNodeDebugHost.setOnExitRequested([this]() {
         setRuntimeRendererMode(RuntimeRendererMode::Canvas);
@@ -1439,6 +1556,16 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
                 handled = true;
             }
         });
+
+        if (!handled && exportPluginUi_) {
+            const auto ch = static_cast<int>(key.getTextCharacter());
+            if (ch == '`' || ch == '~') {
+                const float current = processorRef.getParamByPath("/plugin/ui/devVisible");
+                processorRef.setParamByPath("/plugin/ui/devVisible", current > 0.5f ? 0.0f : 1.0f);
+                handled = true;
+            }
+        }
+
         return handled;
     });
     perfOverlayHost.onBoundsChanged = [this](const juce::Rectangle<int>& bounds) {
@@ -1453,21 +1580,23 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
             }
         });
     };
-    mainScriptEditorHost.setVisible(false);
-    scriptListHost.setVisible(false);
-    hierarchyHost.setVisible(false);
-    inspectorHost.setVisible(false);
-    scriptInspectorHost.setVisible(false);
-    perfOverlayHost.setVisible(false);
-    runtimeNodeDebugHost.setVisible(false);
+    if (!exportPluginUi_) {
+        mainScriptEditorHost.setVisible(false);
+        scriptListHost.setVisible(false);
+        hierarchyHost.setVisible(false);
+        inspectorHost.setVisible(false);
+        scriptInspectorHost.setVisible(false);
+        perfOverlayHost.setVisible(false);
+        runtimeNodeDebugHost.setVisible(false);
+        mainScriptEditorHost.toFront(false);
+        scriptListHost.toFront(false);
+        hierarchyHost.toFront(false);
+        inspectorHost.toFront(false);
+        scriptInspectorHost.toFront(false);
+        perfOverlayHost.toFront(false);
+        runtimeNodeDebugHost.toFront(false);
+    }
     directHostNeedsInitialFocus_ = (runtimeRendererMode_ == RuntimeRendererMode::ImGuiDirect);
-    mainScriptEditorHost.toFront(false);
-    scriptListHost.toFront(false);
-    hierarchyHost.toFront(false);
-    inspectorHost.toFront(false);
-    scriptInspectorHost.toFront(false);
-    perfOverlayHost.toFront(false);
-    runtimeNodeDebugHost.toFront(false);
 
     LuaRuntimeNodeBindings::setAllowAutomaticLegacyRetainedReplay(rootMode_ != RootMode::RuntimeNode);
     if (rootMode_ == RootMode::RuntimeNode) {
@@ -1508,22 +1637,11 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
 
     auto& settings = Settings::getInstance();
     const auto settingsScript = settings.getDefaultUiScript();
-    if (settingsScript.isEmpty()) {
-        std::fprintf(stderr,
-                     "BehaviorCoreEditor: settings.defaultUiScript is empty; refusing to fall back\n");
-        showError("Settings error:\ndefaultUiScript is empty.\n"
-                  "Configure it in: " + settings.getConfigPath().toStdString());
-    } else {
+
+    // Try to load the configured UI script
+    if (settingsScript.isNotEmpty()) {
         const juce::File scriptFile(settingsScript);
-        if (!scriptFile.existsAsFile()) {
-            std::fprintf(stderr,
-                         "BehaviorCoreEditor: configured UI script does not exist: %s\n"
-                         "  -> Configure defaultUiScript in .manifold.settings.json in the repo root.\n",
-                         settingsScript.toRawUTF8());
-            showError("Settings error:\nconfigured defaultUiScript does not exist:\n" +
-                      settingsScript.toStdString() +
-                      "\n\nConfigure in .manifold.settings.json in the repo root.");
-        } else {
+        if (scriptFile.existsAsFile()) {
             usingLuaUi = luaEngine.loadScript(scriptFile);
             if (usingLuaUi) {
                 std::fprintf(stderr, "BehaviorCoreEditor: Using Lua UI from %s\n",
@@ -1533,10 +1651,68 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
                              luaEngine.getLastError().c_str());
                 showError("Lua UI failed to load:\n" + luaEngine.getLastError());
             }
+        } else {
+            // Fallback to empty launcher if configured script doesn't exist
+            const auto devScriptsDir = settings.getDevScriptsDir();
+            juce::File fallbackScript;
+
+            if (devScriptsDir.isNotEmpty()) {
+                fallbackScript = juce::File(devScriptsDir).getChildFile("empty_launcher.lua");
+            }
+
+            if (fallbackScript.existsAsFile()) {
+                usingLuaUi = luaEngine.loadScript(fallbackScript);
+                if (usingLuaUi) {
+                    std::fprintf(stderr,
+                                 "BehaviorCoreEditor: Configured UI script not found, using fallback shell: %s\n",
+                                 fallbackScript.getFullPathName().toRawUTF8());
+                } else {
+                    std::fprintf(stderr, "BehaviorCoreEditor: Fallback shell failed to load: %s\n",
+                                 luaEngine.getLastError().c_str());
+                    showError("Fallback shell failed to load:\n" + luaEngine.getLastError());
+                }
+            } else {
+                std::fprintf(stderr,
+                             "BehaviorCoreEditor: UI script not found and no fallback available:\n"
+                             "  Configured: %s\n"
+                             "  devScriptsDir: %s\n"
+                             "  -> Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n",
+                             settingsScript.toRawUTF8(), devScriptsDir.toRawUTF8());
+                showError("UI script not found:\n"
+                          "  Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
+            }
+        }
+    } else {
+        // Fallback to empty launcher if settings.defaultUiScript is empty
+        const auto devScriptsDir = settings.getDevScriptsDir();
+        juce::File fallbackScript;
+
+        if (devScriptsDir.isNotEmpty()) {
+            fallbackScript = juce::File(devScriptsDir).getChildFile("empty_launcher.lua");
+        }
+
+        if (fallbackScript.existsAsFile()) {
+            usingLuaUi = luaEngine.loadScript(fallbackScript);
+            if (usingLuaUi) {
+                std::fprintf(stderr,
+                             "BehaviorCoreEditor: Settings.defaultUiScript is empty, using fallback shell: %s\n",
+                             fallbackScript.getFullPathName().toRawUTF8());
+            } else {
+                std::fprintf(stderr, "BehaviorCoreEditor: Fallback shell failed to load: %s\n",
+                             luaEngine.getLastError().c_str());
+                showError("Fallback shell failed to load:\n" + luaEngine.getLastError());
+            }
+        } else {
+            std::fprintf(stderr,
+                         "BehaviorCoreEditor: No UI script configured and no fallback available.\n"
+                         "  -> Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
+            showError("No UI script configured:\n"
+                      "Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
         }
     }
 
-    startTimerHz(30);
+    processorRef.captureEditorOpenSnapshot();
+    startTimerHz(exportPluginUi_ ? 20 : 30);
     resized();
 }
 
@@ -1598,6 +1774,32 @@ void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
             }
         }
     }
+    if (directHost_.isVisible()) {
+        directHost_.toBack();
+    }
+    if (mainScriptEditorHost.isVisible()) {
+        mainScriptEditorHost.toFront(false);
+    }
+    if (scriptListHost.isVisible()) {
+        scriptListHost.toFront(false);
+    }
+    if (hierarchyHost.isVisible()) {
+        hierarchyHost.toFront(false);
+    }
+    if (inspectorHost.isVisible()) {
+        inspectorHost.toFront(false);
+    }
+    if (scriptInspectorHost.isVisible()) {
+        scriptInspectorHost.toFront(false);
+    }
+    if (runtimeNodeDebugHost.isVisible()) {
+        runtimeNodeDebugHost.toFront(false);
+    }
+    if (perfOverlayHost.isVisible()) {
+        perfOverlayHost.toFront(false);
+        perfOverlayHost.grabKeyboardFocus();
+    }
+
     auto count = deferredVisibilityChanges.size();
     deferredVisibilityChanges.clear();
     std::string extra = std::to_string(count) + " hosts";
@@ -1689,7 +1891,9 @@ void BehaviorCoreEditor::timerCallback() {
             }
         }
         const auto tSyncStart = Clock::now();
-        syncImGuiHostsFromLuaShell();
+        if (!exportPluginUi_) {
+            syncImGuiHostsFromLuaShell();
+        }
         const auto tSyncEnd = Clock::now();
         if (rootMode_ == RootMode::Canvas) {
             rootCanvas.requestTrackedRepaint();
@@ -1722,10 +1926,12 @@ void BehaviorCoreEditor::timerCallback() {
             ? rootCanvas.getLastTrackedRepaintLeadUs()
             : 0;
 
-        const auto mainImguiStats = mainScriptEditorHost.getStatsSnapshot();
-        const auto imguiStats = (runtimeRendererMode_ == RuntimeRendererMode::ImGuiDirect)
-            ? directHost_.getStatsSnapshot()
-            : ImGuiDirectHost::StatsSnapshot{
+        const auto imguiStats = [&]() {
+            if (runtimeRendererMode_ == RuntimeRendererMode::ImGuiDirect || exportPluginUi_) {
+                return directHost_.getStatsSnapshot();
+            }
+            const auto mainImguiStats = mainScriptEditorHost.getStatsSnapshot();
+            return ImGuiDirectHost::StatsSnapshot{
                 mainImguiStats.contextReady,
                 mainImguiStats.testWindowVisible,
                 mainImguiStats.wantCaptureMouse,
@@ -1738,7 +1944,12 @@ void BehaviorCoreEditor::timerCallback() {
                 mainImguiStats.lastIndexCount,
                 mainImguiStats.buttonClicks,
                 mainImguiStats.documentLineCount,
+                0,
+                0,
+                0,
+                0,
             };
+        }();
 
         luaEngine.frameTimings.imguiContextReady.store(imguiStats.contextReady,
                                                        std::memory_order_relaxed);
@@ -1758,6 +1969,36 @@ void BehaviorCoreEditor::timerCallback() {
                                                      std::memory_order_relaxed);
         luaEngine.frameTimings.imguiButtonClicks.store(imguiStats.buttonClicks,
                                                        std::memory_order_relaxed);
+        luaEngine.frameTimings.gpuFontAtlasBytes.store(imguiStats.fontAtlasBytes,
+                                                       std::memory_order_relaxed);
+        luaEngine.frameTimings.gpuSurfaceColorBytes.store(imguiStats.surfaceColorBytes,
+                                                          std::memory_order_relaxed);
+        luaEngine.frameTimings.gpuSurfaceDepthBytes.store(imguiStats.surfaceDepthBytes,
+                                                          std::memory_order_relaxed);
+        luaEngine.frameTimings.gpuTotalBytes.store(imguiStats.totalGpuBytes,
+                                                   std::memory_order_relaxed);
+        luaEngine.frameTimings.renderSnapshotBytes.store(imguiStats.renderSnapshotBytes,
+                                                         std::memory_order_relaxed);
+        luaEngine.frameTimings.renderSnapshotNodeCount.store(imguiStats.renderSnapshotNodeCount,
+                                                             std::memory_order_relaxed);
+        luaEngine.frameTimings.customSurfaceStateBytes.store(imguiStats.customSurfaceStateBytes,
+                                                             std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiWindowCount.store(imguiStats.imguiWindowCount,
+                                                      std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiTableCount.store(imguiStats.imguiTableCount,
+                                                     std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiTabBarCount.store(imguiStats.imguiTabBarCount,
+                                                      std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiViewportCount.store(imguiStats.imguiViewportCount,
+                                                        std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiFontCount.store(imguiStats.imguiFontCount,
+                                                    std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiWindowStateBytes.store(imguiStats.imguiWindowStateBytes,
+                                                           std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiDrawBufferBytes.store(imguiStats.imguiDrawBufferBytes,
+                                                          std::memory_order_relaxed);
+        luaEngine.frameTimings.imguiInternalStateBytes.store(imguiStats.imguiInternalStateBytes,
+                                                             std::memory_order_relaxed);
         luaEngine.frameTimings.imguiDocumentLoaded.store(imguiStats.documentLoaded,
                                                          std::memory_order_relaxed);
         luaEngine.frameTimings.imguiDocumentDirty.store(imguiStats.documentDirty,
@@ -1766,6 +2007,152 @@ void BehaviorCoreEditor::timerCallback() {
                                                             std::memory_order_relaxed);
         luaEngine.frameTimings.totalPaintAccumulatedUs.store(paintUs,
                                                              std::memory_order_relaxed);
+
+        // CPU and memory tracking
+        {
+            const auto cpuNow = Clock::now();
+            if (lastCpuCheck_.time_since_epoch().count() == 0) {
+                lastCpuCheck_ = cpuNow;
+                lastCpuTime_ = std::chrono::microseconds(totalUs);
+            } else {
+                const auto wallTime = std::chrono::duration_cast<std::chrono::microseconds>(cpuNow - lastCpuCheck_).count();
+                const auto cpuTime = totalUs;
+                if (wallTime > 0) {
+                    float cpuPercent = static_cast<float>(cpuTime) / static_cast<float>(wallTime) * 100.0f;
+                    cpuPercent = std::min(100.0f, std::max(0.0f, cpuPercent));
+                    luaEngine.frameTimings.cpuPercent.store(cpuPercent, std::memory_order_relaxed);
+                }
+                lastCpuCheck_ = cpuNow;
+            }
+
+            if (perfOverlayHost.isVisible() || runtimeNodeDebugHost.isVisible()) {
+                const auto mem = readProcessMemorySnapshot();
+                luaEngine.frameTimings.processPssBytes.store(mem.pssBytes, std::memory_order_relaxed);
+                luaEngine.frameTimings.privateDirtyBytes.store(mem.privateDirtyBytes, std::memory_order_relaxed);
+
+            if (auto* root = getActiveRootRuntimeNode()) {
+                const auto runtimeStats = root->estimateMemoryUsage();
+                luaEngine.frameTimings.runtimeNodeCount.store(static_cast<int64_t>(runtimeStats.nodeCount), std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeNodeBytes.store(runtimeStats.nodeBytes + runtimeStats.stringBytes + runtimeStats.vectorBytes,
+                                                              std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeCallbackCount.store(static_cast<int64_t>(runtimeStats.callbackCount), std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeUserDataEntries.store(static_cast<int64_t>(runtimeStats.userDataEntries), std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeUserDataBytes.store(runtimeStats.userDataBytes, std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeCustomPayloadBytes.store(runtimeStats.customPayloadBytes, std::memory_order_relaxed);
+                luaEngine.frameTimings.displayListCount.store(static_cast<int64_t>(runtimeStats.compiledDisplayListCount), std::memory_order_relaxed);
+                luaEngine.frameTimings.displayListCommandCount.store(static_cast<int64_t>(runtimeStats.compiledDisplayListCommands), std::memory_order_relaxed);
+                luaEngine.frameTimings.displayListBytes.store(runtimeStats.compiledDisplayListBytes, std::memory_order_relaxed);
+            } else {
+                luaEngine.frameTimings.runtimeNodeCount.store(0, std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeNodeBytes.store(0, std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeCallbackCount.store(0, std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeUserDataEntries.store(0, std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeUserDataBytes.store(0, std::memory_order_relaxed);
+                luaEngine.frameTimings.runtimeCustomPayloadBytes.store(0, std::memory_order_relaxed);
+                luaEngine.frameTimings.displayListCount.store(0, std::memory_order_relaxed);
+                luaEngine.frameTimings.displayListCommandCount.store(0, std::memory_order_relaxed);
+                luaEngine.frameTimings.displayListBytes.store(0, std::memory_order_relaxed);
+            }
+
+            const auto currentScriptFile = luaEngine.getCurrentScriptFile();
+            luaEngine.frameTimings.scriptSourceBytes.store(currentScriptFile.existsAsFile()
+                                                               ? static_cast<int64_t>(currentScriptFile.getSize())
+                                                               : 0,
+                                                           std::memory_order_relaxed);
+
+            const auto luaStats = luaEngine.getMemoryStats();
+            luaEngine.frameTimings.luaGlobalCount.store(luaStats.globalCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.luaRegistryEntryCount.store(luaStats.registryEntryCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.luaPackageLoadedCount.store(luaStats.packageLoadedCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.luaOscPathCount.store(luaStats.oscPathCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.luaOscCallbackCount.store(luaStats.oscCallbackCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.luaOscQueryHandlerCount.store(luaStats.oscQueryHandlerCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.luaEventListenerCount.store(luaStats.eventListenerCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.luaManagedDspSlotCount.store(luaStats.managedDspSlotCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.luaOverlayCacheCount.store(luaStats.overlayCacheCount, std::memory_order_relaxed);
+
+            const auto endpointStats = processorRef.getEndpointRegistry().getStats();
+            luaEngine.frameTimings.endpointTotalCount.store(endpointStats.totalCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.endpointCustomCount.store(endpointStats.customCount, std::memory_order_relaxed);
+            luaEngine.frameTimings.endpointPathBytes.store(endpointStats.pathBytes, std::memory_order_relaxed);
+            luaEngine.frameTimings.endpointDescriptionBytes.store(endpointStats.descriptionBytes, std::memory_order_relaxed);
+            luaEngine.frameTimings.dspHostCount.store(1 + static_cast<int64_t>(processorRef.getManagedDspHostCount()), std::memory_order_relaxed);
+            luaEngine.frameTimings.dspScriptSourceBytes.store(static_cast<int64_t>(processorRef.getPrimaryDspScriptSizeBytes()), std::memory_order_relaxed);
+
+            const auto alloc = readGlibcAllocatorSnapshot();
+            luaEngine.frameTimings.glibcHeapUsedBytes.store(alloc.heapUsedBytes, std::memory_order_relaxed);
+            luaEngine.frameTimings.glibcArenaBytes.store(alloc.arenaBytes, std::memory_order_relaxed);
+            luaEngine.frameTimings.glibcMmapBytes.store(alloc.mmapBytes, std::memory_order_relaxed);
+            luaEngine.frameTimings.glibcFreeHeldBytes.store(alloc.freeHeldBytes, std::memory_order_relaxed);
+            luaEngine.frameTimings.glibcReleasableBytes.store(alloc.releasableBytes, std::memory_order_relaxed);
+            luaEngine.frameTimings.glibcArenaCount.store(alloc.arenaCount, std::memory_order_relaxed);
+
+            int64_t luaHeapBytes = 0;
+            luaEngine.withLuaState([&luaHeapBytes](sol::state& lua) {
+                sol::protected_function collectgarbage = lua["collectgarbage"];
+                if (!collectgarbage.valid()) {
+                    return;
+                }
+                auto result = collectgarbage("count");
+                if (result.valid() && result.get_type() == sol::type::number) {
+                    const double kb = result.get<double>();
+                    luaHeapBytes = static_cast<int64_t>(kb * 1024.0);
+                }
+            });
+            luaEngine.frameTimings.luaHeapBytes.store(luaHeapBytes, std::memory_order_relaxed);
+
+            const auto pluginBaselinePss = processorRef.getPluginBaselinePssBytes();
+            const auto pluginBaselinePriv = processorRef.getPluginBaselinePrivateDirtyBytes();
+            const auto pluginBaselineHeap = processorRef.getPluginBaselineHeapBytes();
+            const auto pluginBaselineArena = processorRef.getPluginBaselineArenaBytes();
+            luaEngine.frameTimings.pluginDeltaPssBytes.store(mem.pssBytes - pluginBaselinePss, std::memory_order_relaxed);
+            luaEngine.frameTimings.pluginDeltaPrivateDirtyBytes.store(mem.privateDirtyBytes - pluginBaselinePriv, std::memory_order_relaxed);
+            luaEngine.frameTimings.pluginDeltaHeapBytes.store(alloc.heapUsedBytes - pluginBaselineHeap, std::memory_order_relaxed);
+            luaEngine.frameTimings.pluginDeltaArenaBytes.store(alloc.arenaBytes - pluginBaselineArena, std::memory_order_relaxed);
+
+            const auto editorOpenPss = processorRef.getEditorOpenPssBytes();
+            const auto editorOpenPriv = processorRef.getEditorOpenPrivateDirtyBytes();
+            const auto editorOpenHeap = processorRef.getEditorOpenHeapBytes();
+            luaEngine.frameTimings.uiDeltaPssBytes.store(editorOpenPss > 0 ? (mem.pssBytes - editorOpenPss) : 0,
+                                                         std::memory_order_relaxed);
+            luaEngine.frameTimings.uiDeltaPrivateDirtyBytes.store(editorOpenPriv > 0 ? (mem.privateDirtyBytes - editorOpenPriv) : 0,
+                                                                  std::memory_order_relaxed);
+            luaEngine.frameTimings.uiDeltaHeapBytes.store(editorOpenHeap > 0 ? (alloc.heapUsedBytes - editorOpenHeap) : 0,
+                                                          std::memory_order_relaxed);
+            luaEngine.frameTimings.afterLuaInitDeltaPssBytes.store(processorRef.getAfterLuaInitDeltaPssBytes(),
+                                                                   std::memory_order_relaxed);
+            luaEngine.frameTimings.afterLuaInitDeltaPrivateDirtyBytes.store(processorRef.getAfterLuaInitDeltaPrivateDirtyBytes(),
+                                                                            std::memory_order_relaxed);
+            luaEngine.frameTimings.afterBindingsDeltaPssBytes.store(processorRef.getAfterBindingsDeltaPssBytes(),
+                                                                    std::memory_order_relaxed);
+            luaEngine.frameTimings.afterBindingsDeltaPrivateDirtyBytes.store(processorRef.getAfterBindingsDeltaPrivateDirtyBytes(),
+                                                                             std::memory_order_relaxed);
+            luaEngine.frameTimings.afterScriptLoadDeltaPssBytes.store(processorRef.getAfterScriptLoadDeltaPssBytes(),
+                                                                      std::memory_order_relaxed);
+            luaEngine.frameTimings.afterScriptLoadDeltaPrivateDirtyBytes.store(processorRef.getAfterScriptLoadDeltaPrivateDirtyBytes(),
+                                                                               std::memory_order_relaxed);
+            luaEngine.frameTimings.afterDspDeltaPssBytes.store(processorRef.getAfterDspDeltaPssBytes(),
+                                                               std::memory_order_relaxed);
+            luaEngine.frameTimings.afterDspDeltaPrivateDirtyBytes.store(processorRef.getAfterDspDeltaPrivateDirtyBytes(),
+                                                                       std::memory_order_relaxed);
+            luaEngine.frameTimings.afterUiOpenDeltaPssBytes.store(processorRef.getAfterUiOpenDeltaPssBytes(),
+                                                                  std::memory_order_relaxed);
+            luaEngine.frameTimings.afterUiOpenDeltaPrivateDirtyBytes.store(processorRef.getAfterUiOpenDeltaPrivateDirtyBytes(),
+                                                                          std::memory_order_relaxed);
+                luaEngine.frameTimings.afterUiIdleDeltaPssBytes.store(processorRef.getAfterUiIdleDeltaPssBytes(),
+                                                                      std::memory_order_relaxed);
+                luaEngine.frameTimings.afterUiIdleDeltaPrivateDirtyBytes.store(processorRef.getAfterUiIdleDeltaPrivateDirtyBytes(),
+                                                                              std::memory_order_relaxed);
+            }
+
+            if (!uiIdleSnapshotCaptured_ && exportPluginUi_ && uiIdleSnapshotCountdown_ > 0) {
+                --uiIdleSnapshotCountdown_;
+                if (uiIdleSnapshotCountdown_ == 0) {
+                    processorRef.captureUiIdleSnapshot();
+                    uiIdleSnapshotCaptured_ = true;
+                }
+            }
+        }
 
         luaEngine.frameTimings.update(totalUs, pushStateUs, eventListenersUs,
                                       uiUpdateUs, paintUs,
@@ -1780,8 +2167,18 @@ void BehaviorCoreEditor::timerCallback() {
         runtimeNodeDebugHost.setVisible(false);
     }
 
-    // Reschedule from now so mouse events get processed between callbacks
-    startTimerHz(30);
+    // Reschedule from now so mouse events get processed between callbacks.
+    // When the direct ImGui host is capturing input (popups/menus), run faster
+    // from the main editor timer instead of forcing synchronous full renders
+    // on every mouse event.
+    int nextTimerHz = exportPluginUi_ ? 20 : 30;
+    if (!exportPluginUi_ && runtimeRendererMode_ == RuntimeRendererMode::ImGuiDirect) {
+        const auto directStats = directHost_.getStatsSnapshot();
+        if (directStats.wantCaptureMouse || directStats.wantCaptureKeyboard) {
+            nextTimerHz = 60;
+        }
+    }
+    startTimerHz(nextTimerHz);
 }
 
 void BehaviorCoreEditor::paint(juce::Graphics& g) {
@@ -1877,6 +2274,15 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
     applyPerfOverlayHostConfig(perfOverlayHost, perfOverlayConfig);
     queueHostVisibilityChange(perfOverlayHost, perfOverlayConfig.visible, perfOverlayConfig.bounds);
 
+    luaEngine.frameTimings.shellMainEditorTextBytes.store(static_cast<int64_t>(mainConfig.text.size()), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellScriptListRowCount.store(static_cast<int64_t>(scriptListConfig.rows.size()), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellScriptListBytes.store(estimateScriptListRowsBytes(scriptListConfig.rows), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellHierarchyRowCount.store(static_cast<int64_t>(hierarchyConfig.rows.size()), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellHierarchyBytes.store(estimateHierarchyRowsBytes(hierarchyConfig.rows), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellInspectorRowCount.store(static_cast<int64_t>(inspectorConfig.rows.size()), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellInspectorBytes.store(estimateInspectorRowsBytes(inspectorConfig.rows, inspectorConfig.activeProperty), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellScriptInspectorBytes.store(estimateScriptInspectorBytes(scriptInspectorConfig.scriptData), std::memory_order_relaxed);
+
     logEditorPerf("syncImGuiHostsFromLuaShell.applyHosts", hostApplyStart);
     logEditorPerf("syncImGuiHostsFromLuaShell.total", totalStart);
 }
@@ -1884,6 +2290,9 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
 void BehaviorCoreEditor::resized() {
     luaEngine.frameTimings.editorWidth.store(getWidth(), std::memory_order_relaxed);
     luaEngine.frameTimings.editorHeight.store(getHeight(), std::memory_order_relaxed);
+    if (exportPluginUi_) {
+        processorRef.setExportEditorSize(getWidth(), getHeight());
+    }
     const auto localBounds = getBounds();
     const auto screenBounds = getScreenBounds();
     const auto scale = juce::Component::getApproximateScaleFactorForComponent(this);
@@ -1923,7 +2332,9 @@ void BehaviorCoreEditor::resized() {
             });
             runtimeNodeDebugHost.setRootNode(getActiveRootRuntimeNode());
         }
-        syncImGuiHostsFromLuaShell();
+        if (!exportPluginUi_) {
+            syncImGuiHostsFromLuaShell();
+        }
     } else if (errorNode != nullptr) {
         errorNode->setBounds(rootCanvas.getLocalBounds());
         mainScriptEditorHost.setBounds(0, 0, 0, 0);
@@ -1933,6 +2344,18 @@ void BehaviorCoreEditor::resized() {
         scriptInspectorHost.setBounds(0, 0, 0, 0);
         runtimeNodeDebugHost.setBounds(0, 0, 0, 0);
     }
+}
+
+bool BehaviorCoreEditor::keyPressed(const juce::KeyPress& key) {
+    if (exportPluginUi_) {
+        const auto ch = static_cast<int>(key.getTextCharacter());
+        if (ch == '`' || ch == '~') {
+            const float current = processorRef.getParamByPath("/plugin/ui/devVisible");
+            processorRef.setParamByPath("/plugin/ui/devVisible", current > 0.5f ? 0.0f : 1.0f);
+            return true;
+        }
+    }
+    return juce::AudioProcessorEditor::keyPressed(key);
 }
 
 void BehaviorCoreEditor::showError(const std::string& message) {

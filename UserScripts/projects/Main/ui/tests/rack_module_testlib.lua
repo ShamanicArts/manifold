@@ -18,6 +18,7 @@ local RUNTIME_GLOBAL_KEYS = {
   "__midiSynthDynamicCompareRuntime",
   "__midiSynthDynamicCvMixRuntime",
   "__midiSynthDynamicRangeMapperRuntime",
+  "__midiSynthDynamicBlendSimpleRuntime",
 }
 
 local VIEW_STATE_KEYS = {

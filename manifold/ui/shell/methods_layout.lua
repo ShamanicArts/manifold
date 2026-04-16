@@ -77,20 +77,11 @@ local collectConfigLeaves = Inspector.collectConfigLeaves
 local M = {}
 
 local function shellLayoutPerfNowMs()
-    return nowSeconds() * 1000.0
+    return 0.0
 end
 
 local function shellLayoutPerfTrace(label, startMs, extra)
-    local elapsedMs = shellLayoutPerfNowMs() - startMs
-    if elapsedMs < 8.0 and extra == nil then
-        return elapsedMs
-    end
-    if extra ~= nil and extra ~= "" then
-        print(string.format("[ShellPerf] %s %.3fms %s", label, elapsedMs, extra))
-    else
-        print(string.format("[ShellPerf] %s %.3fms", label, elapsedMs))
-    end
-    return elapsedMs
+    return 0.0
 end
 
 function M.attach(shell)
@@ -134,72 +125,85 @@ function M.attach(shell)
 
     function shell:setTitle(text)
         self.titleLabel:setText(text)
+        if self.startMenuButton and type(self.startMenuButton.setLabel) == "function" then
+            self.startMenuButton:setLabel(text)
+        end
     end
 
     function shell:layout(totalW, totalH)
         local perfStartMs = shellLayoutPerfNowMs()
         -- Shell header
         self.panel:setBounds(self.pad, self.pad, totalW - self.pad * 2, self.height)
-        self.titleLabel:setBounds(10, 0, 130, self.height)
+        self.titleLabel:setBounds(0, 0, 0, 0)
+        self.startMenuButton:setBounds(10, 4, 140, self.height - 8)
 
         local right = totalW - self.pad * 2 - 10
-        local hGap = 8
-        local knobW = self.height - 4
+        local hGap = 6
+        local sliderW = 80
+        local sliderH = math.floor(self.height * 0.55)
 
         -- Settings button (rightmost)
-        self.settingsButton:setBounds(right - 80, 6, 78, self.height - 12)
-        right = right - 80 - hGap
+        self.settingsButton:setBounds(right - 68, 6, 66, self.height - 12)
+        right = right - 68 - hGap
 
-        -- Master/Input knobs
-        self.masterKnob:setBounds(right - knobW, 2, knobW, self.height - 4)
-        right = right - knobW - hGap
-        self.inputKnob:setBounds(right - knobW, 2, knobW, self.height - 4)
-        right = right - knobW - hGap
+        -- Master/Input sliders
+        local sliderY = math.floor((self.height - sliderH) / 2)
+        self.masterKnob:setBounds(right - sliderW, sliderY, sliderW, sliderH)
+        right = right - sliderW - 4
+        self.inputKnob:setBounds(right - sliderW, sliderY, sliderW, sliderH)
+        right = right - sliderW - hGap
 
         -- Input toggle
-        self.passthroughToggle:setBounds(right - 80, 6, 80, self.height - 12)
-        right = right - 80 - hGap - 8
+        self.passthroughToggle:setBounds(right - 68, 6, 66, self.height - 12)
+        right = right - 68 - hGap
 
         -- Mode toggle buttons (left of Input toggle)
-        self.perfButton:setBounds(right - 90, 6, 88, self.height - 12)
-        right = right - 90 - 4
-        self.editButton:setBounds(right - 48, 6, 46, self.height - 12)
-        right = right - 48 - hGap
+        self.perfButton:setBounds(right - 50, 6, 48, self.height - 12)
+        right = right - 50 - 4
+        self.editButton:setBounds(right - 42, 6, 40, self.height - 12)
+        right = right - 42 - hGap
+
 
         if self.mode == "performance" then
             self.perfButton:setBg(0xff38bdf8)
+            self.perfButton:setTextColour(0xffffffff)
             self.editButton:setBg(0xff1e293b)
+            self.editButton:setTextColour(0xff94a3b8)
         else
             self.perfButton:setBg(0xff1e293b)
+            self.perfButton:setTextColour(0xff94a3b8)
             self.editButton:setBg(0xff38bdf8)
+            self.editButton:setTextColour(0xffffffff)
         end
 
         local showStructuredControls = self.mode == "edit" and self:isStructuredProjectActive()
         if showStructuredControls then
-            self.reloadProjectButton:setBounds(right - 68, 8, 66, self.height - 16)
-            right = right - 68 - 4
-            self.saveProjectButton:setBounds(right - 58, 8, 56, self.height - 16)
-            right = right - 58 - 8
+            self.reloadProjectButton:setBounds(right - 58, 6, 56, self.height - 12)
+            right = right - 58 - 4
+            self.saveProjectButton:setBounds(right - 50, 6, 48, self.height - 12)
+            right = right - 50 - hGap
         else
             self.saveProjectButton:setBounds(0, 0, 0, 0)
             self.reloadProjectButton:setBounds(0, 0, 0, 0)
         end
 
         -- Edit navigation controls
-        self.zoomInButton:setBounds(right - 24, 8, 22, self.height - 16)
-        right = right - 24 - 2
-        self.zoomOutButton:setBounds(right - 24, 8, 22, self.height - 16)
-        right = right - 24 - 4
-        self.zoomLabel:setBounds(right - 48, 8, 46, self.height - 16)
-        right = right - 48 - 4
-        self.zoomFitButton:setBounds(right - 42, 8, 40, self.height - 16)
-        right = right - 42 - 4
-        self.panModeButton:setBounds(right - 44, 8, 42, self.height - 16)
+        self.zoomInButton:setBounds(right - 28, 6, 26, self.height - 12)
+        right = right - 28 - 2
+        self.zoomOutButton:setBounds(right - 28, 6, 26, self.height - 12)
+        right = right - 28 - 4
+        self.zoomLabel:setBounds(right - 40, 8, 36, self.height - 16)
+        right = right - 40 - 4
+        self.zoomFitButton:setBounds(right - 36, 6, 34, self.height - 12)
+        right = right - 36 - 4
+        self.panModeButton:setBounds(right - 38, 6, 36, self.height - 12)
 
         if self.navMode == "pan" then
             self.panModeButton:setBg(0xff38bdf8)
+            self.panModeButton:setTextColour(0xffffffff)
         else
             self.panModeButton:setBg(0xff1e293b)
+            self.panModeButton:setTextColour(0xff94a3b8)
         end
 
         local zoomPercent = math.floor((self.contentScale > 0 and self.contentScale or self.currentZoom) * 100 + 0.5)
@@ -259,6 +263,9 @@ function M.attach(shell)
             self.previewOverlay:setBounds(0, 0, 0, 0)
 
             self.mainTabBar:setBounds(0, math.floor(contentY), math.floor(contentW), math.floor(tabH))
+            if self.projectTabHost and type(self.projectTabHost.refreshRetained) == "function" then
+                self.projectTabHost:refreshRetained(math.floor(contentW), math.floor(tabH))
+            end
             local perfBodyY = contentY + tabH
             local perfBodyH = math.max(0, contentH - tabH)
             if isUiTab then
@@ -343,10 +350,16 @@ function M.attach(shell)
 
             if self.editContentMode == "preview" then
                 self.mainTabBar:setBounds(math.floor(previewX), math.floor(contentY), math.floor(previewW), math.floor(tabH))
+                if self.projectTabHost and type(self.projectTabHost.refreshRetained) == "function" then
+                    self.projectTabHost:refreshRetained(math.floor(previewW), math.floor(tabH))
+                end
                 self.mainTabContent:setBounds(0, 0, 0, 0)
                 self.mainTabContent:setDisplayList({})
             else
                 self.mainTabBar:setBounds(0, 0, 0, 0)
+                if self.projectTabHost and type(self.projectTabHost.refreshRetained) == "function" then
+                    self.projectTabHost:refreshRetained(0, 0)
+                end
                 self.mainTabContent:setBounds(math.floor(previewX), math.floor(contentY), math.floor(previewW), math.floor(contentH))
             end
             if type(self.computeMainScriptEditorGeometry) == "function" then

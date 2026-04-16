@@ -7,6 +7,12 @@
 
 namespace {
 
+constexpr double kResolverFloatEpsilon = 1.0e-9;
+
+bool nearlyEqual(double a, double b) {
+  return std::abs(a - b) < kResolverFloatEpsilon;
+}
+
 bool parseNumberFromString(const juce::String &value, double &out) {
   const auto trimmed = value.trim();
   if (trimmed.isEmpty()) {
@@ -133,7 +139,7 @@ void EndpointResolver::rebuild() {
     item.hasRange =
         (item.valueType == ResolverValueType::Float ||
          item.valueType == ResolverValueType::Int) &&
-        (endpoint.rangeMin != endpoint.rangeMax);
+        !nearlyEqual(endpoint.rangeMin, endpoint.rangeMax);
     item.commandType = endpoint.commandType;
     item.layerIndex = endpoint.layerIndex;
     item.description = endpoint.description;
@@ -279,7 +285,7 @@ EndpointResolver::validateWrite(const ResolvedEndpoint &endpoint,
                             ResolverCoercionCategory::Impossible);
       }
       value = raw;
-      coercionCategory = (std::trunc(raw) == raw)
+      coercionCategory = nearlyEqual(std::trunc(raw), raw)
                              ? ResolverCoercionCategory::Lossless
                              : ResolverCoercionCategory::Lossy;
     } else if (input.isString()) {
@@ -314,13 +320,13 @@ EndpointResolver::validateWrite(const ResolvedEndpoint &endpoint,
       value = static_cast<bool>(input);
       coercionCategory = ResolverCoercionCategory::Exact;
     } else if (input.isInt() || input.isInt64() || input.isDouble()) {
-      value = static_cast<double>(input) != 0.0;
+      value = !nearlyEqual(static_cast<double>(input), 0.0);
       coercionCategory = ResolverCoercionCategory::Lossy;
     } else if (input.isString()) {
       const auto text = input.toString().trim().toLowerCase();
       double numeric = 0.0;
       if (parseNumberFromString(text, numeric)) {
-        value = numeric != 0.0;
+        value = !nearlyEqual(numeric, 0.0);
         coercionCategory = ResolverCoercionCategory::Lossy;
       } else if (text == "true" || text == "on" || text == "1") {
         value = true;

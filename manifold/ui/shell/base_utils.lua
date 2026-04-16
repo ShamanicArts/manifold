@@ -86,6 +86,14 @@ function M.fileStem(path)
     return name:gsub("%.lua$", "")
 end
 
+function M.isShellLauncherPath(path)
+    if type(path) ~= "string" or path == "" then
+        return false
+    end
+    local name = string.lower(path:match("([^/\\]+)$") or path)
+    return name == "empty_launcher.lua"
+end
+
 -- Safe wrappers for Canvas-only APIs that may not exist on RuntimeNode
 function M.safeToFront(node)
     if node ~= nil and type(node.toFront) == "function" then

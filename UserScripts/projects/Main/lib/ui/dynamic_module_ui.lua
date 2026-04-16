@@ -169,12 +169,62 @@ function M.refreshDisplay(widget, builder)
   return true
 end
 
-function M.getViewState(globalKey, moduleId)
-  local store = type(_G) == "table" and _G[globalKey] or nil
-  if type(store) ~= "table" then
-    return nil
+local function makeNestedScalarProxy(base)
+  return setmetatable({}, {
+    __index = function(_, key)
+      if type(osc) ~= "table" or type(osc.getValue) ~= "function" then
+        return nil
+      end
+      return osc.getValue(base .. "/" .. tostring(key))
+    end,
+  })
+end
+
+local function readVoiceEntries(base)
+  if type(osc) ~= "table" or type(osc.getValue) ~= "function" then
+    return {}
   end
-  return store[tostring(moduleId or "")]
+  local count = math.max(0, math.floor(tonumber(osc.getValue(base .. "/count")) or 0))
+  local out = {}
+  for i = 1, count do
+    local voiceBase = base .. "/" .. tostring(i)
+    out[i] = setmetatable({}, {
+      __index = function(_, key)
+        return osc.getValue(voiceBase .. "/" .. tostring(key))
+      end,
+    })
+  end
+  return out
+end
+
+function M.getViewState(globalKey, moduleId)
+  local id = tostring(moduleId or "")
+  local store = type(_G) == "table" and _G[globalKey] or nil
+  if type(store) == "table" and type(store[id]) == "table" then
+    return store[id]
+  end
+
+  if type(osc) == "table" and type(osc.getValue) == "function" and globalKey ~= "" and id ~= "" then
+    local base = "/plugin/ui/viewstate/" .. tostring(globalKey) .. "/" .. id
+    return setmetatable({}, {
+      __index = function(_, key)
+        local keyStr = tostring(key)
+        if keyStr == "activeVoices" then
+          return readVoiceEntries(base .. "/activeVoices")
+        end
+        if keyStr == "values" or keyStr == "outputs" then
+          return makeNestedScalarProxy(base .. "/" .. keyStr)
+        end
+        local value = osc.getValue(base .. "/" .. keyStr)
+        if value == nil then
+          return nil
+        end
+        return value
+      end,
+    })
+  end
+
+  return nil
 end
 
 return M

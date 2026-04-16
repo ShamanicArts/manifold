@@ -14,6 +14,7 @@ local clamp = Base.clamp
 local nowSeconds = Base.nowSeconds
 local deriveNodeName = Base.deriveNodeName
 local fileStem = Base.fileStem
+local isShellLauncherPath = Base.isShellLauncherPath
 local safeToFront = Base.safeToFront
 local safeGrabKeyboardFocus = Base.safeGrabKeyboardFocus
 
@@ -83,23 +84,27 @@ local collectConfigLeaves = Inspector.collectConfigLeaves
 local M = {}
 
 local function shellPerfNowMs()
-    return nowSeconds() * 1000.0
+    return 0.0
 end
 
 local function shellPerfTrace(label, startMs, extra)
-    local elapsedMs = shellPerfNowMs() - startMs
-    if elapsedMs < 8.0 and extra == nil then
-        return elapsedMs
-    end
-    if extra ~= nil and extra ~= "" then
-        print(string.format("[ShellPerf] %s %.3fms %s", label, elapsedMs, extra))
-    else
-        print(string.format("[ShellPerf] %s %.3fms", label, elapsedMs))
-    end
-    return elapsedMs
+    return 0.0
 end
 
 function M.attach(shell)
+    -- Wrap switchUiScript to always stash shell state before switching.
+    -- This ensures openProjects survives project switches regardless of
+    -- how the switch is triggered (tab click, IPC, Lua eval, etc).
+    local _originalSwitchUiScript = switchUiScript
+    if type(_originalSwitchUiScript) == "function" then
+        switchUiScript = function(path)
+            if type(shell.stashRestoreStateForScriptSwitch) == "function" then
+                shell:stashRestoreStateForScriptSwitch()
+            end
+            _originalSwitchUiScript(path)
+        end
+    end
+
     local function cloneRect(bounds)
         if type(bounds) ~= "table" then
             return { x = 0, y = 0, w = 0, h = 0 }
@@ -2219,6 +2224,7 @@ function M.attach(shell)
         _G.__manifoldShellRestore = {
             mode = self.mode,
             leftPanelMode = self.leftPanelMode,
+            openProjects = self.openProjects,
         }
     end
 
@@ -2251,36 +2257,32 @@ function M.attach(shell)
         end
     end
 
-    function shell:refreshMainUiTabs()
+    function shell:invalidateMainUiTabsCache()
+        -- No-op: openProjects is the source of truth, no filesystem cache to invalidate
+    end
+
+    function shell:refreshMainUiTabs(force)
         local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
-        local uiScripts = listUiScripts and listUiScripts() or {}
 
-        -- Build project tab list for ProjectTabHost
+        -- Build project tab list from openProjects (the source of truth)
         local projectTabs = {}
-        local seenUiIds = {}
-
-        for i = 1, #uiScripts do
-            local s = uiScripts[i]
-            if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
-                local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
-                -- Skip system overlay projects (Settings etc) - they don't belong in the tab bar
-                if not scriptLooksSettings(name, s.path) then
-                    local tabId = "ui:" .. s.path
-                    if not seenUiIds[tabId] then
-                        seenUiIds[tabId] = true
-                        projectTabs[#projectTabs + 1] = {
-                            id = tabId,
-                            title = name,
-                            kind = "ui-script",
-                            path = s.path,
-                            isSystem = false,
-                        }
-                    end
-                end
+        for i = 1, #self.openProjects do
+            local p = self.openProjects[i]
+            if type(p) == "table" and type(p.path) == "string" and p.path ~= "" then
+                -- Refresh the title from the catalog if possible
+                local name = p.title or fileStem(p.path)
+                projectTabs[#projectTabs + 1] = {
+                    id = p.id or ("ui:" .. p.path),
+                    title = name,
+                    kind = p.kind or "ui-script",
+                    path = p.path,
+                    isSystem = p.isSystem or false,
+                }
             end
         end
 
-        if #projectTabs == 0 and currentUiPath ~= "" then
+        -- Fallback: if openProjects is empty and we have a current project, seed it
+        if #projectTabs == 0 and currentUiPath ~= "" and not isShellLauncherPath(currentUiPath) then
             projectTabs[#projectTabs + 1] = {
                 id = "ui:" .. currentUiPath,
                 title = fileStem(currentUiPath),
@@ -2288,6 +2290,11 @@ function M.attach(shell)
                 path = currentUiPath,
                 isSystem = false,
             }
+        end
+
+        -- Always keep _G in sync so C++ IPC switches can recover state
+        if type(_G) == "table" then
+            _G.__manifoldShellOpenProjects = self.openProjects
         end
 
         -- Update ProjectTabHost
@@ -2343,6 +2350,100 @@ function M.attach(shell)
         if type(self.flushDeferredRefreshes) == "function" then
             self:flushDeferredRefreshes()
         end
+    end
+
+    -- Close a project tab
+    function shell:closeProject(path)
+        if not path or path == "" then
+            return
+        end
+
+        -- Remove from openProjects
+        local remaining = {}
+        for _, p in ipairs(self.openProjects) do
+            if p.path ~= path then
+                remaining[#remaining + 1] = p
+            end
+        end
+        self.openProjects = remaining
+
+        -- If we closed the active project, switch to another
+        local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
+        if path == currentUiPath then
+            if #self.openProjects > 0 then
+                local targetProject = self.openProjects[1]
+                self:stashRestoreStateForScriptSwitch()
+                switchUiScript(targetProject.path)
+                return
+            end
+        end
+
+        -- Refresh the tab bar to remove the closed tab
+        self:refreshMainUiTabs(true)
+    end
+
+    -- Open a project (add to openProjects and switch to it)
+    function shell:openProject(path)
+        if not path or path == "" then
+            return
+        end
+
+        -- Already open? Just activate
+        for _, p in ipairs(self.openProjects) do
+            if p.path == path then
+                self.projectTabHost:setActiveByPath(path)
+                return
+            end
+        end
+
+        -- Resolve name from cached catalog
+        local name = fileStem(path)
+        local uiScripts = self.projectCatalog or {}
+        for _, s in ipairs(uiScripts) do
+            if type(s) == "table" and s.path == path then
+                name = (s.name and s.name ~= "") and s.name or name
+                break
+            end
+        end
+
+        -- Add to openProjects
+        self.openProjects[#self.openProjects + 1] = {
+            id = "ui:" .. path,
+            title = name,
+            kind = "ui-script",
+            path = path,
+            isSystem = false,
+        }
+
+        -- Switch and refresh
+        self:stashRestoreStateForScriptSwitch()
+        switchUiScript(path)
+    end
+
+    function shell:loadProjectFromFile()
+        if type(showFileChooser) ~= "function" then
+            return
+        end
+
+        local initialPath = ""
+        if type(getCurrentScriptPath) == "function" then
+            local currentPath = getCurrentScriptPath() or ""
+            if currentPath ~= "" then
+                initialPath = currentPath
+            end
+        end
+
+        showFileChooser(
+            "Open Project",
+            initialPath,
+            "*.lua;*.json5",
+            function(selectedPath)
+                if type(selectedPath) ~= "string" or selectedPath == "" then
+                    return
+                end
+                shell:openProject(selectedPath)
+            end
+        )
     end
 
     function shell:ensureScriptEditorCursorVisible()

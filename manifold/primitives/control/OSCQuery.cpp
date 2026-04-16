@@ -4,8 +4,18 @@
 #include "EndpointResolver.h"
 #include "OSCServer.h"
 #include "../scripting/ScriptableProcessor.h"
+#include "../scripting/LuaEngine.h"
+#include "../core/Settings.h"
 #include <cstring>
 #include <cmath>
+
+namespace {
+constexpr double kOscQueryFloatEpsilon = 1.0e-9;
+
+bool nearlyEqual(double a, double b) {
+    return std::abs(a - b) < kOscQueryFloatEpsilon;
+}
+}
 
 // ============================================================================
 // OSCQueryNode - tree building and JSON serialization
@@ -132,6 +142,137 @@ static bool tryReadProjectedValue(const juce::var& stateBundle,
     return false;
 }
 
+static juce::File resolveManifestFromScriptPath(const juce::File& scriptFile) {
+    if (!scriptFile.existsAsFile()) {
+        return {};
+    }
+    if (scriptFile.getFileName().equalsIgnoreCase("manifold.project.json5")) {
+        return scriptFile;
+    }
+
+    const auto parentManifest = scriptFile.getParentDirectory().getChildFile("manifold.project.json5");
+    if (parentManifest.existsAsFile()) {
+        return parentManifest;
+    }
+
+    const auto grandParent = scriptFile.getParentDirectory().getParentDirectory();
+    const auto grandParentManifest = grandParent.getChildFile("manifold.project.json5");
+    if (grandParentManifest.existsAsFile()) {
+        return grandParentManifest;
+    }
+
+    return {};
+}
+
+static juce::File resolveCurrentProjectManifest(ScriptableProcessor* owner) {
+    if (owner != nullptr) {
+        if (auto* luaEngine = owner->getControlServer().getLuaEngine()) {
+            const auto manifest = resolveManifestFromScriptPath(luaEngine->getCurrentScriptFile());
+            if (manifest.existsAsFile()) {
+                return manifest;
+            }
+        }
+    }
+
+    const auto defaultUiScript = Settings::getInstance().getDefaultUiScript();
+    if (defaultUiScript.isNotEmpty()) {
+        const auto manifest = resolveManifestFromScriptPath(juce::File(defaultUiScript));
+        if (manifest.existsAsFile()) {
+            return manifest;
+        }
+    }
+
+    return {};
+}
+
+static juce::File resolveProjectAssetRef(const juce::File& projectRoot, const juce::String& ref) {
+    if (ref.isEmpty()) {
+        return {};
+    }
+    if (juce::File::isAbsolutePath(ref)) {
+        return juce::File(ref);
+    }
+    return projectRoot.getChildFile(ref);
+}
+
+static juce::String buildUiMetaResponse(ScriptableProcessor* owner) {
+    const auto manifestFile = resolveCurrentProjectManifest(owner);
+    if (!manifestFile.existsAsFile()) {
+        return "{\"error\":\"ui metadata unavailable\"}";
+    }
+
+    const auto parsed = juce::JSON::parse(manifestFile);
+    if (!parsed.isObject()) {
+        return "{\"error\":\"project manifest is not valid JSON/JSON5 subset\"}";
+    }
+
+    auto* source = parsed.getDynamicObject();
+    if (source == nullptr) {
+        return "{\"error\":\"project manifest root is invalid\"}";
+    }
+
+    juce::DynamicObject::Ptr result = new juce::DynamicObject();
+    result->setProperty("name", source->getProperty("name"));
+    result->setProperty("version", source->getProperty("version"));
+    result->setProperty("description", source->getProperty("description"));
+    result->setProperty("manifestPath", manifestFile.getFullPathName());
+    result->setProperty("projectRoot", manifestFile.getParentDirectory().getFullPathName());
+
+    if (source->hasProperty("ui")) {
+        result->setProperty("ui", source->getProperty("ui"));
+    }
+    if (source->hasProperty("plugin")) {
+        result->setProperty("plugin", source->getProperty("plugin"));
+    }
+
+    juce::DynamicObject::Ptr capabilities = new juce::DynamicObject();
+    capabilities->setProperty("genericRemote", true);
+    capabilities->setProperty("layoutRemote", manifestFile.getParentDirectory().getChildFile("web-remote.layout.json").existsAsFile());
+    capabilities->setProperty("customSurface", true);
+    result->setProperty("capabilities", juce::var(capabilities.get()));
+
+    return juce::JSON::toString(juce::var(result.get()));
+}
+
+static juce::String buildUiLayoutResponse(ScriptableProcessor* owner) {
+    const auto manifestFile = resolveCurrentProjectManifest(owner);
+    if (!manifestFile.existsAsFile()) {
+        return "{\"error\":\"layout unavailable\"}";
+    }
+
+    const auto projectRoot = manifestFile.getParentDirectory();
+    const auto sidecar = projectRoot.getChildFile("web-remote.layout.json");
+    if (sidecar.existsAsFile()) {
+        const auto parsed = juce::JSON::parse(sidecar);
+        if (!parsed.isVoid()) {
+            return juce::JSON::toString(parsed);
+        }
+    }
+
+    const auto parsedManifest = juce::JSON::parse(manifestFile);
+    if (parsedManifest.isObject()) {
+        auto* obj = parsedManifest.getDynamicObject();
+        if (obj != nullptr && obj->hasProperty("ui")) {
+            const auto uiVar = obj->getProperty("ui");
+            if (uiVar.isObject()) {
+                auto* uiObj = uiVar.getDynamicObject();
+                if (uiObj != nullptr && uiObj->hasProperty("root")) {
+                    const auto layoutCandidate = resolveProjectAssetRef(projectRoot, uiObj->getProperty("root").toString());
+                    if (layoutCandidate.existsAsFile()) {
+                        juce::DynamicObject::Ptr fallback = new juce::DynamicObject();
+                        fallback->setProperty("error", "layout sidecar missing");
+                        fallback->setProperty("uiRoot", layoutCandidate.getFullPathName());
+                        fallback->setProperty("projectRoot", projectRoot.getFullPathName());
+                        return juce::JSON::toString(juce::var(fallback.get()));
+                    }
+                }
+            }
+        }
+    }
+
+    return "{\"error\":\"layout unavailable\"}";
+}
+
 juce::String OSCQueryNode::toJSON(int ind) const {
     juce::String json;
     json += indent(ind) + "{\n";
@@ -143,14 +284,14 @@ juce::String OSCQueryNode::toJSON(int ind) const {
         }
         json += ",\n" + indent(ind + 1) + "\"ACCESS\": " + juce::String(endpoint.access);
 
-        if (endpoint.rangeMin != endpoint.rangeMax) {
+        if (!nearlyEqual(endpoint.rangeMin, endpoint.rangeMax)) {
             // Use float formatting for non-integer ranges
-            bool useFloat = (endpoint.rangeMin != (int)endpoint.rangeMin) ||
-                            (endpoint.rangeMax != (int)endpoint.rangeMax);
+            const bool useFloat = !nearlyEqual(endpoint.rangeMin, std::trunc(endpoint.rangeMin)) ||
+                                  !nearlyEqual(endpoint.rangeMax, std::trunc(endpoint.rangeMax));
             juce::String minStr = useFloat ? juce::String(endpoint.rangeMin, 1)
-                                           : juce::String((int)endpoint.rangeMin);
+                                           : juce::String(static_cast<int>(std::trunc(endpoint.rangeMin)));
             juce::String maxStr = useFloat ? juce::String(endpoint.rangeMax, 1)
-                                           : juce::String((int)endpoint.rangeMax);
+                                           : juce::String(static_cast<int>(std::trunc(endpoint.rangeMax)));
             json += ",\n" + indent(ind + 1) + "\"RANGE\": [{\"MIN\": " + minStr +
                     ", \"MAX\": " + maxStr + "}]";
         }
@@ -298,7 +439,7 @@ void OSCQueryServer::httpLoop() {
                     // Some HTTP clients (e.g. Python http.client) send headers and body
                     // as separate TCP writes.
                     buffer[totalRead] = '\0';
-                    juce::String partial(buffer, totalRead);
+                    juce::String partial(buffer, static_cast<size_t>(totalRead));
                     int headerEnd = partial.indexOf("\r\n\r\n");
                     if (headerEnd < 0) headerEnd = partial.indexOf("\n\n");
 
@@ -330,7 +471,7 @@ void OSCQueryServer::httpLoop() {
                     }
 
                     buffer[totalRead] = '\0';
-                    juce::String request(buffer, totalRead);
+                    juce::String request(buffer, static_cast<size_t>(totalRead));
 
                     // Extract raw headers for WebSocket upgrade detection
                     juce::String rawHeaders;
@@ -389,6 +530,16 @@ void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
 
     juce::String response;
     juce::String contentType = "application/json";
+    int statusCode = 200;
+    juce::String statusText = "OK";
+
+    auto readRequestBody = [&request]() {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        if (body.isEmpty()) {
+            body = request.fromFirstOccurrenceOf("\n\n", false, false);
+        }
+        return body;
+    };
 
     // Extract query string
     juce::String query;
@@ -398,7 +549,10 @@ void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
         path = path.substring(0, queryPos);
     }
 
-    if (method == "GET") {
+    if (method == "OPTIONS") {
+        response = "";
+    }
+    else if (method == "GET") {
         if (query == "HOST_INFO") {
             response = buildHostInfo();
         }
@@ -411,6 +565,20 @@ void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
         }
         else if (path == "/info" || path == "/" || path.isEmpty()) {
             response = buildOSCQueryInfo();
+        }
+        else if (path == "/ui/meta") {
+            response = buildUiMetaResponse(owner);
+            if (response.contains("\"error\"")) {
+                statusCode = 404;
+                statusText = "Not Found";
+            }
+        }
+        else if (path == "/ui/layout") {
+            response = buildUiLayoutResponse(owner);
+            if (response.contains("\"error\"")) {
+                statusCode = 404;
+                statusText = "Not Found";
+            }
         }
         else if (path.startsWith("/osc")) {
             // Value query: /osc/core/behavior/tempo -> query /core/behavior/tempo
@@ -426,32 +594,60 @@ void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
                 response = val;
             } else {
                 response = "{\"error\":\"not found\"}";
+                statusCode = 404;
+                statusText = "Not Found";
             }
         }
     }
     else if (method == "POST") {
         if (path == "/api/targets") {
-            juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
-            if (body.isEmpty())
-                body = request.fromFirstOccurrenceOf("\n\n", false, false);
-            response = handleTargetsRequest(method, body);
+            response = handleTargetsRequest(method, readRequestBody());
+        } else if (path == "/api/command") {
+            juce::String body = readRequestBody().trim();
+            juce::String upper = body.toUpperCase();
+            if (!(upper.startsWith("SET ") || upper.startsWith("TRIGGER "))) {
+                response = "{\"error\":\"only SET and TRIGGER commands are allowed\"}";
+                statusCode = 400;
+                statusText = "Bad Request";
+            } else if (!owner) {
+                response = "{\"error\":\"no processor\"}";
+                statusCode = 500;
+                statusText = "Internal Server Error";
+            } else {
+                const std::string result = owner->getControlServer().runCommand(body.toStdString());
+                if (result.rfind("OK", 0) == 0) {
+                    response = "{\"ok\":true,\"result\":" + varToJsonLiteral(juce::String(result)) + "}";
+                } else {
+                    response = "{\"ok\":false,\"result\":" + varToJsonLiteral(juce::String(result)) + "}";
+                    statusCode = 400;
+                    statusText = "Bad Request";
+                }
+            }
         } else {
             response = "{\"error\":\"unknown endpoint\"}";
+            statusCode = 404;
+            statusText = "Not Found";
         }
     }
     else {
         response = "{\"error\":\"method not allowed\"}";
+        statusCode = 405;
+        statusText = "Method Not Allowed";
     }
 
-    juce::String header = "HTTP/1.1 200 OK\r\n";
+    juce::String header = "HTTP/1.1 " + juce::String(statusCode) + " " + statusText + "\r\n";
     header += "Content-Type: " + contentType + "\r\n";
-    header += "Content-Length: " + juce::String(response.length()) + "\r\n";
+    header += "Content-Length: " + juce::String(response.getNumBytesAsUTF8()) + "\r\n";
     header += "Access-Control-Allow-Origin: *\r\n";
+    header += "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n";
+    header += "Access-Control-Allow-Headers: Content-Type\r\n";
     header += "Connection: close\r\n";
     header += "\r\n";
 
     client->write(header.toRawUTF8(), (int)header.getNumBytesAsUTF8());
-    client->write(response.toRawUTF8(), (int)response.getNumBytesAsUTF8());
+    if (response.isNotEmpty()) {
+        client->write(response.toRawUTF8(), (int)response.getNumBytesAsUTF8());
+    }
 }
 
 // ============================================================================
@@ -777,6 +973,9 @@ void OSCQueryServer::wsClientReadLoop(WebSocketClient* client) {
         }
 
         switch (opcode) {
+            case WSOpcode::Continuation:
+                break;
+
             case WSOpcode::Text: {
                 // JSON command (LISTEN/IGNORE)
                 juce::String text(reinterpret_cast<const char*>(payload.data()),
@@ -1109,11 +1308,14 @@ void OSCQueryServer::wsBroadcastLoop() {
                 std::vector<juce::var> args;
                 if (!owner->getOSCServer().getCustomValue(listenPath, args)) {
                     juce::var projectedValue;
-                    if (!tryReadProjectedPath(listenPath, projectedValue) ||
-                        !isOscScalar(projectedValue)) {
+                    if (tryReadProjectedPath(listenPath, projectedValue) &&
+                        isOscScalar(projectedValue)) {
+                        args.push_back(projectedValue);
+                    } else if (owner->hasEndpoint(listenPath.toStdString())) {
+                        args.push_back(juce::var(owner->getParamByPath(listenPath.toStdString())));
+                    } else {
                         continue;
                     }
-                    args.push_back(projectedValue);
                 }
 
                 juce::String newSig = argsSignature(args);

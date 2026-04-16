@@ -21,6 +21,7 @@ local clamp = Base.clamp
 local nowSeconds = Base.nowSeconds
 local deriveNodeName = Base.deriveNodeName
 local fileStem = Base.fileStem
+local isShellLauncherPath = Base.isShellLauncherPath
 local safeToFront = require("shell.base_utils").safeToFront
 
 local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
@@ -90,6 +91,7 @@ function Shell.create(parentNode, options)
     local initialLeftPanelMode = "hierarchy"
     local pendingRestoreMode = nil
     local pendingRestoreLeftPanelMode = nil
+    local pendingRestoreOpenProjects = nil
 
     if type(restore) == "table" then
         if restore.mode == "edit" or restore.mode == "performance" then
@@ -97,6 +99,9 @@ function Shell.create(parentNode, options)
         end
         if restore.leftPanelMode == "hierarchy" or restore.leftPanelMode == "scripts" then
             pendingRestoreLeftPanelMode = restore.leftPanelMode
+        end
+        if type(restore.openProjects) == "table" and #restore.openProjects > 0 then
+            pendingRestoreOpenProjects = restore.openProjects
         end
         _G.__manifoldShellRestore = nil
     end
@@ -119,6 +124,7 @@ function Shell.create(parentNode, options)
         leftPanelMode = initialLeftPanelMode,
         pendingRestoreMode = pendingRestoreMode,
         pendingRestoreLeftPanelMode = pendingRestoreLeftPanelMode,
+        pendingRestoreOpenProjects = pendingRestoreOpenProjects,
         pendingRestoreApplied = false,
         dspRows = {},
         dspRowHeight = 20,
@@ -139,6 +145,7 @@ function Shell.create(parentNode, options)
         activeMainTabId = "",
         mainTabRects = {},
         mainTabBarH = 22,
+        openProjects = {},
         activeTabContentText = "",
         activeTabContentPath = "",
         editContentMode = "preview",
@@ -290,19 +297,32 @@ function Shell.create(parentNode, options)
         fontStyle = FontStyle.bold,
     })
 
-    shell.masterKnob = W.Knob.new(shell.panel.node, "sharedMaster", {
+    shell.startMenuButton = W.Button.new(shell.panel.node, "sharedStartMenu", {
+        label = shell.title,
+        bg = 0xff111827,
+        textColour = 0xff7dd3fc,
+        fontSize = 18.0,
+        radius = 0,
+        on_click = function()
+            shell.projectMenuOpen = true
+        end,
+    })
+
+    shell.masterKnob = W.Slider.new(shell.panel.node, "sharedMaster", {
         min = 0, max = 2, step = 0.01, value = 0.8,
         label = "Out", suffix = "",
-        colour = 0xffa78bfa,
+        colour = 0xffa78bfa, bg = 0xff1e1b33,
+        compact = true, showValue = true,
         on_change = function(v)
             command("SET", "/core/behavior/volume", tostring(v))
         end,
     })
 
-    shell.inputKnob = W.Knob.new(shell.panel.node, "sharedInput", {
+    shell.inputKnob = W.Slider.new(shell.panel.node, "sharedInput", {
         min = 0, max = 2, step = 0.01, value = 1.0,
         label = "In", suffix = "",
-        colour = 0xfff59e0b,
+        colour = 0xfff59e0b, bg = 0xff2a1b08,
+        compact = true, showValue = true,
         on_change = function(v)
             command("SET", "/core/behavior/inputVolume", tostring(v))
         end,
@@ -312,6 +332,7 @@ function Shell.create(parentNode, options)
         label = "Input",
         onColour = 0xff34d399,
         offColour = 0xff475569,
+        radius = 0,
         value = true,
         on_change = function(on)
             command("SET", "/core/behavior/passthrough", on and "1" or "0")
@@ -324,7 +345,11 @@ function Shell.create(parentNode, options)
     shell.settingsButton = W.Button.new(shell.panel.node, "sharedSettings", {
         label = "Settings",
         bg = 0xff1e293b,
-        fontSize = 13.0,
+        border = 0xff475569,
+        borderWidth = 1,
+        colour = 0xffcbd5e1,
+        fontSize = 10.0,
+        radius = 0,
         on_click = function()
             if not shell.settingsPanel then
                 local SettingsPanel = require("shell.settings_panel")
@@ -580,6 +605,14 @@ function Shell.create(parentNode, options)
         tabGap = 4,
         tabPadding = 12,
         tabSizing = "fill",  -- Stretch tabs to fill available width
+        showCloseButton = true,
+        closeButtonWidth = 16,
+        onTabClose = function(index, tabId, title)
+            local page = shell.projectTabHost:getProjectInfo(index)
+            if page and page.path and type(shell.closeProject) == "function" then
+                shell:closeProject(page.path)
+            end
+        end,
         bg = 0xff0f172a,
         tabBarBg = 0xff111827,
         tabBg = 0xff1e293b,
@@ -773,12 +806,15 @@ function Shell.create(parentNode, options)
     end)
 
     shell.perfButton = W.Button.new(shell.panel.node, "perfMode", {
-        label = "Performance",
+        label = "Perf",
         bg = (shell.mode == "performance") and 0xff38bdf8 or 0xff1e293b,
-        fontSize = 11.0,
+        border = (shell.mode ~= "performance") and 0xff475569 or 0xff38bdf8,
+        borderWidth = 1,
+        colour = (shell.mode == "performance") and 0xff0f172a or 0xffcbd5e1,
+        fontSize = 10.0,
+        radius = 0,
         on_click = function()
             if shell.mode ~= "performance" then
-                -- Defer mode switch to next frame to avoid blocking GUI thread
                 shell.deferredModeSwitch = "performance"
             end
         end,
@@ -787,11 +823,13 @@ function Shell.create(parentNode, options)
     shell.editButton = W.Button.new(shell.panel.node, "editMode", {
         label = "Edit",
         bg = (shell.mode == "edit") and 0xff38bdf8 or 0xff1e293b,
-        fontSize = 11.0,
+        border = (shell.mode ~= "edit") and 0xff475569 or 0xff38bdf8,
+        borderWidth = 1,
+        colour = (shell.mode == "edit") and 0xff0f172a or 0xffcbd5e1,
+        fontSize = 10.0,
+        radius = 0,
         on_click = function()
             if shell.mode ~= "edit" then
-                -- Defer mode switch to next frame to avoid blocking GUI thread
-                -- during OpenGL context creation on high-DPI displays
                 shell.deferredModeSwitch = "edit"
             end
         end,
@@ -800,7 +838,11 @@ function Shell.create(parentNode, options)
     shell.zoomOutButton = W.Button.new(shell.panel.node, "zoomOut", {
         label = "-",
         bg = 0xff1e293b,
-        fontSize = 12.0,
+        border = 0xff475569,
+        borderWidth = 1,
+        colour = 0xffcbd5e1,
+        fontSize = 10.0,
+        radius = 0,
         on_click = function()
             shell.autoFit = false
             shell.currentZoom = clamp(shell.currentZoom * 0.9, shell.minZoom, shell.maxZoom)
@@ -813,7 +855,11 @@ function Shell.create(parentNode, options)
     shell.zoomInButton = W.Button.new(shell.panel.node, "zoomIn", {
         label = "+",
         bg = 0xff1e293b,
-        fontSize = 12.0,
+        border = 0xff475569,
+        borderWidth = 1,
+        colour = 0xffcbd5e1,
+        fontSize = 10.0,
+        radius = 0,
         on_click = function()
             shell.autoFit = false
             shell.currentZoom = clamp(shell.currentZoom * 1.1, shell.minZoom, shell.maxZoom)
@@ -826,7 +872,11 @@ function Shell.create(parentNode, options)
     shell.zoomFitButton = W.Button.new(shell.panel.node, "zoomFit", {
         label = "Fit",
         bg = 0xff1e293b,
+        border = 0xff475569,
+        borderWidth = 1,
+        colour = 0xffcbd5e1,
         fontSize = 10.0,
+        radius = 0,
         on_click = function()
             shell.autoFit = true
             shell.panX = 0
@@ -840,7 +890,11 @@ function Shell.create(parentNode, options)
     shell.panModeButton = W.Button.new(shell.panel.node, "panMode", {
         label = "Pan",
         bg = 0xff1e293b,
+        border = 0xff475569,
+        borderWidth = 1,
+        colour = 0xffcbd5e1,
         fontSize = 10.0,
+        radius = 0,
         on_click = function()
             if shell.navMode == "pan" then
                 shell.navMode = "select"
@@ -854,18 +908,26 @@ function Shell.create(parentNode, options)
     })
 
     shell.saveProjectButton = W.Button.new(shell.panel.node, "saveProject", {
-        label = "Save UI",
+        label = "Save",
         bg = 0xff14532d,
+        border = 0xff22c55e,
+        borderWidth = 1,
+        colour = 0xffe2e8f0,
         fontSize = 10.0,
+        radius = 0,
         on_click = function()
             shell:saveStructuredProjectUi()
         end,
     })
 
     shell.reloadProjectButton = W.Button.new(shell.panel.node, "reloadProject", {
-        label = "Reload UI",
+        label = "Reload",
         bg = 0xff1e293b,
+        border = 0xff475569,
+        borderWidth = 1,
+        colour = 0xffcbd5e1,
         fontSize = 10.0,
+        radius = 0,
         on_click = function()
             shell:reloadStructuredProjectUi()
         end,
@@ -882,8 +944,105 @@ function Shell.create(parentNode, options)
     ShellBindings.attach(shell)
     ShellMethodsLayout.attach(shell)
 
+    -- Seed openProjects: either from a prior session restore (project switch),
+    -- from a continuously-synced _G stash (IPC switch), or from the full
+    -- catalog of discovered projects (fresh start).
+    if type(shell.pendingRestoreOpenProjects) == "table" and #shell.pendingRestoreOpenProjects > 0 then
+        -- Restored from a tab-click switch (stashRestoreStateForScriptSwitch)
+        shell.openProjects = shell.pendingRestoreOpenProjects
+        shell.pendingRestoreOpenProjects = nil
+    elseif type(_G) == "table" and type(_G.__manifoldShellOpenProjects) == "table" and #_G.__manifoldShellOpenProjects > 0 then
+        -- Restored from background stash (IPC UISWITCH bypasses Lua stash)
+        shell.openProjects = _G.__manifoldShellOpenProjects
+    else
+        -- Fresh start: show only the current project
+        local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
+        if currentUiPath ~= "" and not isShellLauncherPath(currentUiPath) then
+            local uiScripts = listUiScripts and listUiScripts() or {}
+            local currentName = ""
+            for _, s in ipairs(uiScripts) do
+                if type(s) == "table" and s.path == currentUiPath then
+                    currentName = s.name or fileStem(currentUiPath)
+                    break
+                end
+            end
+            if currentName == "" then
+                currentName = fileStem(currentUiPath)
+            end
+            shell.openProjects[#shell.openProjects + 1] = {
+                id = "ui:" .. currentUiPath,
+                title = currentName,
+                kind = "ui-script",
+                path = currentUiPath,
+                isSystem = false,
+            }
+        end
+    end
+
     shell:syncToolSurfaces()
     shell:syncPerfOverlaySurface(parentNode:getWidth(), parentNode:getHeight())
+
+    shell.projectMenuOpen = false
+
+    shell.panel.node:setOnImGuiFrame(function(node)
+        if type(imguiBeginPopup) ~= "function" then
+            return
+        end
+
+        local panelX, panelY, _, _ = shell.panel.node:getBounds()
+        local btnX, btnY, _, btnH = shell.startMenuButton.node:getBounds()
+        if type(imguiSetNextWindowPos) == "function" then
+            imguiSetNextWindowPos(panelX + btnX, panelY + btnY + btnH, imguiCond_Appearing)
+        end
+
+        if shell.projectMenuOpen then
+            imguiOpenPopup("StartMenu")
+            shell.projectMenuOpen = false
+        end
+
+        if imguiBeginPopup("StartMenu") then
+            local defaultProjects = shell.defaultProjects or {}
+            if #defaultProjects > 0 and imguiBeginMenu("Default Projects", true) then
+                for _, p in ipairs(defaultProjects) do
+                    if imguiMenuItem(p.title, nil, false, true) then
+                        shell:openProject(p.path)
+                        imguiCloseCurrentPopup()
+                    end
+                end
+                imguiEndMenu()
+            end
+
+            if #defaultProjects > 0 then
+                imguiSeparator()
+            end
+
+            if imguiMenuItem("Open from File...", nil, false, true) then
+                if type(shell.loadProjectFromFile) == "function" then
+                    shell:loadProjectFromFile()
+                end
+                imguiCloseCurrentPopup()
+            end
+
+            imguiEndPopup()
+        end
+    end)
+    -- Cache the full project catalog once at creation time.
+    -- listUiScripts() does filesystem I/O; never call it per frame.
+    shell.projectCatalog = (type(listUiScripts) == "function" and listUiScripts()) or {}
+    shell.defaultProjects = {}
+    shell.recentProjects = {}
+    for _, s in ipairs(shell.projectCatalog) do
+        if type(s) == "table" and type(s.path) == "string" and s.path ~= "" then
+            local name = (s.name and s.name ~= "") and s.name or fileStem(s.path)
+            if not scriptLooksSettings(name, s.path) then
+                shell.defaultProjects[#shell.defaultProjects + 1] = {
+                    title = name,
+                    path = s.path,
+                    kind = s.kind or "ui-script",
+                }
+            end
+        end
+    end
 
     return shell
 end

@@ -13,6 +13,12 @@ local SampleSynth = require("sample_synth")
 local SampleCaptureSources = require("sample_capture_sources")
 local ParameterBinder = require("parameter_binder")
 local RackAudioRouter = require("rack_audio_router")
+local RackEqModule = require("rack_modules.eq")
+local RackFxModule = require("rack_modules.fx")
+local RackFilterModule = require("rack_modules.filter")
+local RackOscillatorModule = require("rack_modules.oscillator")
+local RackSampleModule = require("rack_modules.sample")
+local RackBlendSimpleModule = require("rack_modules.blend_simple")
 
 local VOICE_COUNT = 8
 
@@ -38,10 +44,15 @@ local SAMPLE_PITCH_MODE_PHASE_VOCODER = 1
 local SAMPLE_PITCH_MODE_PHASE_VOCODER_HQ = 2
 local SAMPLE_PITCH_MODE_PHASE_VOCODER_HQ = 2
 local DYNAMIC_OSC_SOURCE_BASE = 100
+local DYNAMIC_SAMPLE_SOURCE_BASE = 200
+local DYNAMIC_BLEND_SIMPLE_SOURCE_BASE = 300
+local DYNAMIC_SAMPLE_OUTPUT_TRIM = 0.25
+local DYNAMIC_BLEND_SIMPLE_STAGE_BASE = 400
+local AUX_AUDIO_SOURCE_CODES = ParameterBinder.AUX_AUDIO_SOURCE_CODES or {}
 
 function M.buildSynth(ctx, options)
   options = options or {}
-  local targetLayerInput = options.targetLayerInput
+  local layerInputNodes = options.layerInputNodes or {}
   local layerSourceNodes = options.layerSourceNodes or {}
 
   local mix = ctx.primitives.MixerNode.new()
@@ -82,16 +93,19 @@ function M.buildSynth(ctx, options)
   local fx1Slot = FxSlot.create(fxCtx, fxDefs, {defaultMix = 0.0, maxFxParams = MAX_FX_PARAMS})
   local fx2Slot = FxSlot.create(fxCtx, fxDefs, {defaultMix = 0.0, maxFxParams = MAX_FX_PARAMS})
   local dynamicFxSlots = {}
-  -- Lazy-loaded: slots created on-demand via createDynamicFxSlot
+  -- Lazy-loaded rack FX module slots.
 
   local dynamicFilterSlots = {}
-  -- Lazy-loaded: slots created on-demand via createDynamicFilterSlot
+  -- Lazy-loaded rack filter module slots.
 
   local dynamicOscillatorSlots = {}
-  -- Lazy-loaded: slots created on-demand via createDynamicOscillatorSlot
+  -- Lazy-loaded rack oscillator module slots.
 
-  local dynamicOscillatorSlots = {}
-  -- Lazy-loaded: slots created on-demand via createDynamicOscillatorSlot
+  local dynamicSampleSlots = {}
+  -- Lazy-loaded rack sample module slots.
+
+  local dynamicBlendSimpleSlots = {}
+  -- Lazy-loaded rack blend-simple module slots.
 
   -- Noise generator
   local noiseGen = ctx.primitives.NoiseGeneratorNode.new()
@@ -171,6 +185,9 @@ function M.buildSynth(ctx, options)
 
   -- Live source for input-dsp capture path (mode 0 = MonitorControlled).
   local liveSampleInput = ctx.primitives.PassthroughNode.new(2, 0)
+  if ctx.graph and ctx.graph.markInput then
+    ctx.graph.markInput(liveSampleInput)
+  end
   local captureSourceConfig = SampleCaptureSources.buildConfig({
     liveInput = liveSampleInput,
     layerSourceNodes = layerSourceNodes,
@@ -228,7 +245,7 @@ function M.buildSynth(ctx, options)
 
   applyEqDefaults(eq8)
   local dynamicEqSlots = {}
-  -- Lazy-loaded: slots created on-demand via createDynamicEqSlot
+  -- Lazy-loaded rack EQ module slots.
 
   spec:setSensitivity(1.2); spec:setSmoothing(0.86); spec:setFloor(-72)
   out:setGain(0.8)
@@ -251,6 +268,7 @@ function M.buildSynth(ctx, options)
     dynamicEqSlots = dynamicEqSlots,
     dynamicFxSlots = dynamicFxSlots,
     dynamicFilterSlots = dynamicFilterSlots,
+    dynamicBlendSimpleSlots = dynamicBlendSimpleSlots,
     output = spec,
   })
 
@@ -274,6 +292,28 @@ function M.buildSynth(ctx, options)
         node = mix,
         inputIndex = 1,
       }
+    elseif sourceCode >= DYNAMIC_SAMPLE_SOURCE_BASE then
+      local slotIndex = sourceCode - DYNAMIC_SAMPLE_SOURCE_BASE
+      local slot = dynamicSampleSlots[slotIndex]
+      local node = slot and slot.output or nil
+      if node then
+        return {
+          key = "dyn_sample_" .. tostring(slotIndex),
+          node = node,
+          inputIndex = VOICE_COUNT + slotIndex + 1,
+        }
+      end
+    elseif sourceCode >= DYNAMIC_BLEND_SIMPLE_SOURCE_BASE then
+      local slotIndex = sourceCode - DYNAMIC_BLEND_SIMPLE_SOURCE_BASE
+      local slot = dynamicBlendSimpleSlots[slotIndex]
+      local node = slot and slot.output or nil
+      if node then
+        return {
+          key = "dyn_blend_simple_" .. tostring(slotIndex),
+          node = node,
+          inputIndex = VOICE_COUNT + 33 + slotIndex,
+        }
+      end
     elseif sourceCode >= DYNAMIC_OSC_SOURCE_BASE then
       local slotIndex = sourceCode - DYNAMIC_OSC_SOURCE_BASE
       local slot = dynamicOscillatorSlots[slotIndex]
@@ -333,14 +373,20 @@ function M.buildSynth(ctx, options)
   ctx.graph.connect(spec, out)
   ctx.graph.markOutput(out)
 
-  -- Route synth output to looper layer input for recording.
-  -- Use a separate send node so `out` is an explicit OutputDSP sink.
-  -- The send taps the same signal into the looper capture chain.
-  if targetLayerInput then
-    local send = ctx.primitives.GainNode.new(2)
-    send:setGain(1.0)
-    ctx.graph.connect(spec, send)
-    ctx.graph.connect(send, targetLayerInput)
+  -- Route synth output to every looper layer input for recording.
+  -- This mirrors the microphone path so all layers see the same live capture feed.
+  local synthSend = nil
+
+  if #layerInputNodes > 0 then
+    synthSend = ctx.primitives.GainNode.new(2)
+    synthSend:setGain(1.0)
+    ctx.graph.connect(spec, synthSend)
+    for i = 1, #layerInputNodes do
+      local layerInput = layerInputNodes[i]
+      if layerInput then
+        ctx.graph.connect(synthSend, layerInput)
+      end
+    end
   end
 
   -- Parameter registration
@@ -364,6 +410,12 @@ function M.buildSynth(ctx, options)
   local params = paramRegistration.params
   local adsr = paramRegistration.adsr
   local dynamicRegisteredParamPaths = {}
+  for i = 1, #(params or {}) do
+    local path = tostring(params[i] or "")
+    if path ~= "" then
+      dynamicRegisteredParamPaths[path] = true
+    end
+  end
   local dynamicRegisteredSlots = {}
 
   local function registerDynamicSchemaEntries(schema)
@@ -382,108 +434,97 @@ function M.buildSynth(ctx, options)
     end
   end
 
-  local function createDynamicEqSlot(slotIndex)
-    local index = math.max(1, math.floor(tonumber(slotIndex) or 1))
-    if dynamicEqSlots[index] then
-      return dynamicEqSlots[index]
-    end
-    local node = ctx.primitives.EQ8Node.new()
-    applyEqDefaults(node)
-    dynamicEqSlots[index] = { node = node }
-    return dynamicEqSlots[index]
-  end
+  local rackEqModule = RackEqModule.create({
+    ctx = ctx,
+    slots = dynamicEqSlots,
+    applyDefaults = applyEqDefaults,
+    ParameterBinder = ParameterBinder,
+  })
 
-  local function createDynamicFxSlot(slotIndex)
-    local index = math.max(1, math.floor(tonumber(slotIndex) or 1))
-    if dynamicFxSlots[index] then
-      return dynamicFxSlots[index]
-    end
-    dynamicFxSlots[index] = FxSlot.create(fxCtx, fxDefs, { defaultMix = 0.0, maxFxParams = MAX_FX_PARAMS })
-    return dynamicFxSlots[index]
-  end
+  local rackFxModule = RackFxModule.create({
+    slots = dynamicFxSlots,
+    FxSlot = FxSlot,
+    ParameterBinder = ParameterBinder,
+    fxCtx = fxCtx,
+    fxDefs = fxDefs,
+    maxFxParams = MAX_FX_PARAMS,
+  })
 
-  local function createDynamicFilterSlot(slotIndex)
-    local index = math.max(1, math.floor(tonumber(slotIndex) or 1))
-    if dynamicFilterSlots[index] then
-      return dynamicFilterSlots[index]
-    end
-    local node = ctx.primitives.SVFNode.new()
-    applyFilterDefaults(node)
-    dynamicFilterSlots[index] = { node = node }
-    return dynamicFilterSlots[index]
-  end
+  local rackFilterModule = RackFilterModule.create({
+    ctx = ctx,
+    slots = dynamicFilterSlots,
+    Utils = Utils,
+    ParameterBinder = ParameterBinder,
+    applyDefaults = applyFilterDefaults,
+  })
 
-  local function createDynamicOscillatorSlot(slotIndex)
-    local index = math.max(1, math.floor(tonumber(slotIndex) or 1))
-    if dynamicOscillatorSlots[index] then
-      return dynamicOscillatorSlots[index]
-    end
+  local rackOscillatorModule = RackOscillatorModule.create({
+    ctx = ctx,
+    slots = dynamicOscillatorSlots,
+    Utils = Utils,
+    ParameterBinder = ParameterBinder,
+    noteToFrequency = noteToFrequency,
+    connectMixerInput = connectMixerInput,
+    voiceCount = VOICE_COUNT,
+    outputTrim = DYNAMIC_OSC_OUTPUT_TRIM,
+    defaultOutput = DYNAMIC_OSC_DEFAULT_OUTPUT,
+    maxLevel = LEGACY_OSC_MAX_LEVEL,
+    oscRenderStandard = OSC_RENDER_STANDARD,
+  })
 
-    local slotMix = ctx.primitives.MixerNode.new()
-    slotMix:setInputCount(VOICE_COUNT + 1)
-    local output = ctx.primitives.GainNode.new(2)
-    output:setGain(DYNAMIC_OSC_DEFAULT_OUTPUT * DYNAMIC_OSC_OUTPUT_TRIM)
-    ctx.graph.connect(slotMix, output)
-
-    local manualOsc = ctx.primitives.OscillatorNode.new()
-    manualOsc:setWaveform(1)
-    manualOsc:setFrequency(261.625565)
-    manualOsc:setAmplitude(0.0)
-    manualOsc:setDrive(0.0)
-    manualOsc:setDriveShape(0)
-    manualOsc:setDriveBias(0.0)
-    manualOsc:setDriveMix(1.0)
-    manualOsc:setRenderMode(OSC_RENDER_STANDARD)
-    manualOsc:setAdditivePartials(8)
-    manualOsc:setAdditiveTilt(0.0)
-    manualOsc:setAdditiveDrift(0.0)
-    manualOsc:setPulseWidth(0.5)
-    manualOsc:setUnison(1)
-    manualOsc:setDetune(0.0)
-    manualOsc:setSpread(0.0)
-    connectMixerInput(slotMix, VOICE_COUNT + 1, manualOsc)
-
-    local voices = {}
-    for voiceIndex = 1, VOICE_COUNT do
-      local osc = ctx.primitives.OscillatorNode.new()
-      osc:setWaveform(1)
-      osc:setFrequency(220.0)
-      osc:setAmplitude(0.0)
-      osc:setDrive(0.0)
-      osc:setDriveShape(0)
-      osc:setDriveBias(0.0)
-      osc:setDriveMix(1.0)
-      osc:setRenderMode(OSC_RENDER_STANDARD)
-      osc:setAdditivePartials(8)
-      osc:setAdditiveTilt(0.0)
-      osc:setAdditiveDrift(0.0)
-      osc:setPulseWidth(0.5)
-      osc:setUnison(1)
-      osc:setDetune(0.0)
-      osc:setSpread(0.0)
-      connectMixerInput(slotMix, voiceIndex, osc)
-      voices[voiceIndex] = {
-        osc = osc,
-        note = 60.0,
-        fm = 0.0,
-        pwCv = 0.5,
-        basePulseWidth = 0.5,
-        gate = 0.0,
-        level = 0.0,
+  local function buildDynamicSampleSourceSpecs(slotInput)
+    local sourceSpecs = {}
+    if slotInput then
+      sourceSpecs[#sourceSpecs + 1] = {
+        id = 0,
+        name = "input",
+        node = slotInput,
+        kind = "input",
       }
     end
 
-    dynamicOscillatorSlots[index] = {
-      slotIndex = index,
-      mix = slotMix,
-      output = output,
-      voices = voices,
-      manualOsc = manualOsc,
-      manualPitch = 60.0,
-      manualLevel = 0.0,
-    }
-    return dynamicOscillatorSlots[index]
+    local sharedSpecs = type(captureSourceConfig and captureSourceConfig.sourceSpecs) == "table" and captureSourceConfig.sourceSpecs or {}
+    for i = 1, #sharedSpecs do
+      local spec = sharedSpecs[i]
+      if type(spec) == "table" and spec.node then
+        local cloned = {}
+        for key, value in pairs(spec) do
+          cloned[key] = value
+        end
+        cloned.id = math.max(1, math.floor(tonumber(spec.id) or 0) + 1)
+        sourceSpecs[#sourceSpecs + 1] = cloned
+      end
+    end
+
+    table.sort(sourceSpecs, function(a, b)
+      return (tonumber(a and a.id) or 0) < (tonumber(b and b.id) or 0)
+    end)
+    return sourceSpecs
   end
+
+  local rackSampleModule = RackSampleModule.create({
+    ctx = ctx,
+    slots = dynamicSampleSlots,
+    Utils = Utils,
+    SampleSynth = SampleSynth,
+    ParameterBinder = ParameterBinder,
+    noteToFrequency = noteToFrequency,
+    connectMixerInput = connectMixerInput,
+    voiceCount = VOICE_COUNT,
+    outputTrim = DYNAMIC_SAMPLE_OUTPUT_TRIM,
+    samplePitchModeClassic = SAMPLE_PITCH_MODE_CLASSIC,
+    samplePitchModePhaseVocoder = SAMPLE_PITCH_MODE_PHASE_VOCODER,
+    samplePitchModePhaseVocoderHQ = SAMPLE_PITCH_MODE_PHASE_VOCODER_HQ,
+    buildSourceSpecs = buildDynamicSampleSourceSpecs,
+  })
+
+  local rackBlendSimpleModule = RackBlendSimpleModule.create({
+    ctx = ctx,
+    slots = dynamicBlendSimpleSlots,
+    Utils = Utils,
+    ParameterBinder = ParameterBinder,
+    connectMixerInput = connectMixerInput,
+  })
 
   local function ensureDynamicModuleSlot(specId, slotIndex)
     local id = tostring(specId or "")
@@ -495,13 +536,17 @@ function M.buildSynth(ctx, options)
     end
 
     if id == "eq" then
-      createDynamicEqSlot(index)
+      rackEqModule.createSlot(index)
     elseif id == "fx" then
-      createDynamicFxSlot(index)
+      rackFxModule.createSlot(index)
     elseif id == "filter" then
-      createDynamicFilterSlot(index)
+      rackFilterModule.createSlot(index)
     elseif id == "rack_oscillator" then
-      createDynamicOscillatorSlot(index)
+      rackOscillatorModule.createSlot(index)
+    elseif id == "rack_sample" then
+      rackSampleModule.createSlot(index)
+    elseif id == "blend_simple" then
+      rackBlendSimpleModule.createSlot(index)
     end
 
     registerDynamicSchemaEntries(ParameterBinder.buildDynamicSlotSchema(id, index, {
@@ -540,6 +585,80 @@ function M.buildSynth(ctx, options)
 
   _G.__midiSynthEnsureDynamicModuleSlot = ensureDynamicModuleSlot
   _G.__midiSynthEnsureDynamicPath = ensureDynamicModulePath
+  _G.__midiSynthGetDynamicSampleSlotPeaks = function(slotIndex, numBuckets)
+    local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+    if not slot then
+      return {}
+    end
+    local bucketCount = math.max(32, math.floor(tonumber(numBuckets) or 128))
+    if type(slot.cachedSamplePeaks) == "table" and #slot.cachedSamplePeaks > 0 then
+      return sampleSynth.resamplePeaks(slot.cachedSamplePeaks, bucketCount)
+    end
+    local voice = slot.voices and slot.voices[1] or nil
+    local playbackNode = voice and voice.samplePlayback and voice.samplePlayback.__node or nil
+    if playbackNode and type(getSampleRegionPlaybackPeaks) == "function" then
+      local ok, peaks = pcall(function()
+        return getSampleRegionPlaybackPeaks(playbackNode, bucketCount)
+      end)
+      if ok and type(peaks) == "table" and #peaks > 0 then
+        slot.cachedSamplePeaks = peaks
+        slot.cachedSamplePeakBuckets = #peaks
+        return sampleSynth.resamplePeaks(peaks, bucketCount)
+      end
+    end
+    return {}
+  end
+  _G.__midiSynthGetDynamicSampleSlotAnalysis = function(slotIndex)
+    local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+    return (slot and type(slot.latestAnalysis) == "table") and slot.latestAnalysis or {}
+  end
+  _G.__midiSynthGetDynamicOscillatorSlotAnalysis = function(slotIndex)
+    local registry = type(_G) == "table" and _G.__midiSynthDynamicOscillatorAnalysis or nil
+    local entry = type(registry) == "table" and registry[math.max(1, math.floor(tonumber(slotIndex) or 1))] or nil
+    return type(entry) == "table" and entry or {}
+  end
+  _G.__midiSynthGetDynamicSampleSlotPartials = function(slotIndex)
+    local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+    return (slot and type(slot.latestPartials) == "table") and slot.latestPartials or {}
+  end
+  _G.__midiSynthGetDynamicSampleSlotTemporal = function(slotIndex)
+    local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+    return (slot and type(slot.latestTemporal) == "table") and slot.latestTemporal or {}
+  end
+  _G.__midiSynthGetDynamicSampleSlotVoicePositions = function(slotIndex)
+    local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+    local out = {}
+    local voices = slot and slot.voices or {}
+    for i = 1, #voices do
+      local voice = voices[i]
+      out[i] = (voice and voice.samplePlayback and voice.samplePlayback.getNormalizedPosition and voice.samplePlayback:getNormalizedPosition()) or 0.0
+    end
+    return out
+  end
+  _G.__midiSynthGetDynamicSampleSlotWriteOffset = function(slotIndex)
+    local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+    if not (slot and slot.sampleSynth and slot.sampleSynth.getSelectedSourceWriteOffset) then
+      return 0
+    end
+    return slot.sampleSynth.getSelectedSourceWriteOffset()
+  end
+  _G.__midiSynthGetDynamicSampleSlotSelectedSourceName = function(slotIndex)
+    local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+    if not (slot and slot.sampleSynth and slot.sampleSynth.getSelectedSourceEntry) then
+      return ""
+    end
+    local entry = slot.sampleSynth.getSelectedSourceEntry()
+    return tostring(entry and entry.name or "")
+  end
+  _G.__midiSynthGetAuxAudioConnectionCount = function()
+    return #(auxAudioConnectionsApplied or {})
+  end
+  _G.__midiSynthGetSampleCaptureRecording = function()
+    return sampleSynth.getCaptureRecording and sampleSynth.getCaptureRecording() or false
+  end
+  _G.__midiSynthGetSampleCapturedLengthMs = function()
+    return sampleSynth.getLastCapturedLengthMs and sampleSynth.getLastCapturedLengthMs() or 0
+  end
 
   local function hostSamplesPerBar()
     if ctx.host and ctx.host.getParam then
@@ -568,6 +687,28 @@ function M.buildSynth(ctx, options)
   -- Expose write offset for UI (free mode capture)
   local function getSelectedSourceWriteOffset()
     return sampleSynth.getSelectedSourceWriteOffset()
+  end
+
+  local publishedSampleCapturedLengthMs = nil
+  local publishedSampleCaptureRecording = nil
+
+  local function publishSampleCaptureReadbacks()
+    if not (ctx and ctx.host and ctx.host.setParam) then
+      return false
+    end
+
+    local capturedLengthMs = math.max(0, math.floor(tonumber(sampleSynth.getLastCapturedLengthMs and sampleSynth.getLastCapturedLengthMs() or 0) or 0))
+    local captureRecording = sampleSynth.getCaptureRecording and sampleSynth.getCaptureRecording() and 1 or 0
+
+    if publishedSampleCapturedLengthMs ~= capturedLengthMs then
+      ctx.host.setParam(PATHS.sampleCapturedLengthMs, capturedLengthMs)
+      publishedSampleCapturedLengthMs = capturedLengthMs
+    end
+    if publishedSampleCaptureRecording ~= captureRecording then
+      ctx.host.setParam(PATHS.sampleCaptureRecording, captureRecording)
+      publishedSampleCaptureRecording = captureRecording
+    end
+    return true
   end
 
   local function reverseTable(tbl)
@@ -1561,46 +1702,15 @@ function M.buildSynth(ctx, options)
     -- Sample will be stopped by applyVoiceModeForAmp when amp <= 0.0005
   end
 
-  local function captureSampleFromCurrentSource()
-    local sourceEntry = sampleSynth.getSelectedSourceEntry()
-    local captureNode = sourceEntry and sourceEntry.capture and sourceEntry.capture.__node or nil
+  local function captureSampleFromRequest(request)
+    local sourceEntry = type(request) == "table" and request.sourceEntry or nil
+    local captureNode = type(request) == "table" and (request.captureNode or (sourceEntry and sourceEntry.capture and sourceEntry.capture.__node)) or nil
     if not captureNode then
       print("CaptureSample: no capture node")
       return false
     end
 
-    local samplesBack
-    local captureMode = sampleSynth.getCaptureMode()
-    local captureStartOffset = sampleSynth.getCaptureStartOffset()
-    local captureBars = sampleSynth.getCaptureBars()
-    
-    if captureMode == 1 then
-      -- Free mode: calculate from start offset to current position
-      local currentOffset = captureNode:getWriteOffset()
-      print(string.format("CaptureSample (free): mode=%d startOffset=%d current=%d",
-        captureMode, captureStartOffset, currentOffset))
-
-      -- Handle time-based duration (negative startOffset signals time-based)
-      if captureStartOffset < 0 then
-        samplesBack = math.abs(captureStartOffset)
-        print(string.format("CaptureSample (free): time-based duration=%d samples", samplesBack))
-      elseif captureStartOffset == 0 then
-        print("CaptureSample (free): ERROR - startOffset is 0, using retro mode fallback")
-        samplesBack = math.max(1, math.floor(captureBars * hostSamplesPerBar() + 0.5))
-      else
-        local duration = currentOffset - captureStartOffset
-        if duration <= 0 then
-          duration = duration + captureNode:getCaptureSize()
-        end
-        samplesBack = math.max(1, math.floor(duration))
-        print(string.format("CaptureSample (free): offset-based duration=%d samplesBack=%d",
-          duration, samplesBack))
-      end
-    else
-      -- Retro mode: fixed bar count
-      samplesBack = math.max(1, math.floor(captureBars * hostSamplesPerBar() + 0.5))
-    end
-    
+    local samplesBack = math.max(1, math.floor(tonumber(type(request) == "table" and request.samplesBack or 0) or 0))
     local copiedAny = false
     print(string.format("CaptureSample: source=%s samplesBack=%d", tostring(sourceEntry and sourceEntry.name), samplesBack))
 
@@ -1740,163 +1850,6 @@ function M.buildSynth(ctx, options)
     end
   end
 
-  local function refreshDynamicOscillatorManual(slotIndex)
-    local slot = dynamicOscillatorSlots[slotIndex]
-    if not (slot and slot.manualOsc) then
-      return false
-    end
-    slot.manualOsc:setFrequency(Utils.clamp(noteToFrequency(tonumber(slot.manualPitch) or 60.0), 20.0, 8000.0))
-    slot.manualOsc:setAmplitude(Utils.clamp01(tonumber(slot.manualLevel) or 0.0) * LEGACY_OSC_MAX_LEVEL)
-    return true
-  end
-
-  local function refreshDynamicOscillatorVoice(slotIndex, voiceIndex)
-    local slot = dynamicOscillatorSlots[slotIndex]
-    local voice = slot and slot.voices and slot.voices[voiceIndex] or nil
-    if not (voice and voice.osc) then
-      return false
-    end
-
-    local note = Utils.clamp(tonumber(voice.note) or 60.0, 0.0, 127.0)
-    local fm = Utils.clamp(tonumber(voice.fm) or 0.0, -1.0, 1.0)
-    local freq = Utils.clamp(noteToFrequency(note + (fm * 12.0)), 20.0, 8000.0)
-    local width = Utils.clamp((tonumber(voice.basePulseWidth) or 0.5) + ((tonumber(voice.pwCv) or 0.5) - 0.5), 0.01, 0.99)
-    local level = Utils.clamp(tonumber(voice.level) or 0.0, 0.0, LEGACY_OSC_MAX_LEVEL)
-
-    voice.osc:setFrequency(freq)
-    voice.osc:setPulseWidth(width)
-    voice.osc:setAmplitude(level)
-    return true
-  end
-
-  local function applyDynamicOscillatorVoiceGate(slotIndex, voiceIndex, gateValue)
-    local slot = dynamicOscillatorSlots[slotIndex]
-    local voice = slot and slot.voices and slot.voices[voiceIndex] or nil
-    if not (voice and voice.osc) then
-      return true
-    end
-    local level = Utils.clamp01(tonumber(gateValue) or 0.0)
-    local previousLevel = Utils.clamp01(tonumber(voice.level) or 0.0)
-    voice.gate = level
-    voice.level = level
-    if level > 0.001 and previousLevel <= 0.001 then
-      voice.osc:resetPhase()
-    end
-    return refreshDynamicOscillatorVoice(slotIndex, voiceIndex)
-  end
-
-  local function applyDynamicOscillatorVoiceVOct(slotIndex, voiceIndex, noteValue)
-    local slot = dynamicOscillatorSlots[slotIndex]
-    local voice = slot and slot.voices and slot.voices[voiceIndex] or nil
-    if not (voice and voice.osc) then
-      return true
-    end
-    voice.note = Utils.clamp(tonumber(noteValue) or 60.0, 0.0, 127.0)
-    return refreshDynamicOscillatorVoice(slotIndex, voiceIndex)
-  end
-
-  local function applyDynamicOscillatorVoiceFm(slotIndex, voiceIndex, fmValue)
-    local slot = dynamicOscillatorSlots[slotIndex]
-    local voice = slot and slot.voices and slot.voices[voiceIndex] or nil
-    if not (voice and voice.osc) then
-      return true
-    end
-    voice.fm = Utils.clamp(tonumber(fmValue) or 0.0, -1.0, 1.0)
-    return refreshDynamicOscillatorVoice(slotIndex, voiceIndex)
-  end
-
-  local function applyDynamicOscillatorVoicePwCv(slotIndex, voiceIndex, pwCvValue)
-    local slot = dynamicOscillatorSlots[slotIndex]
-    local voice = slot and slot.voices and slot.voices[voiceIndex] or nil
-    if not (voice and voice.osc) then
-      return true
-    end
-    voice.pwCv = Utils.clamp01(tonumber(pwCvValue) or 0.5)
-    return refreshDynamicOscillatorVoice(slotIndex, voiceIndex)
-  end
-
-  local function applyDynamicOscillatorSlotParam(slotIndex, suffix, value)
-    local slot = dynamicOscillatorSlots[slotIndex]
-    if not slot then
-      return true
-    end
-    local numeric = tonumber(value) or 0.0
-    if suffix == "waveform" then
-      local wf = Utils.roundIndex(value, 7)
-      for i = 1, #slot.voices do slot.voices[i].osc:setWaveform(wf) end
-      if slot.manualOsc then slot.manualOsc:setWaveform(wf) end
-      return true
-    elseif suffix == "renderMode" then
-      local mode = Utils.roundIndex(value, 1)
-      for i = 1, #slot.voices do slot.voices[i].osc:setRenderMode(mode) end
-      if slot.manualOsc then slot.manualOsc:setRenderMode(mode) end
-      return true
-    elseif suffix == "additivePartials" then
-      local count = math.floor(Utils.clamp(numeric, 1, 32) + 0.5)
-      for i = 1, #slot.voices do slot.voices[i].osc:setAdditivePartials(count) end
-      if slot.manualOsc then slot.manualOsc:setAdditivePartials(count) end
-      return true
-    elseif suffix == "additiveTilt" then
-      local tilt = Utils.clamp(numeric, -1.0, 1.0)
-      for i = 1, #slot.voices do slot.voices[i].osc:setAdditiveTilt(tilt) end
-      if slot.manualOsc then slot.manualOsc:setAdditiveTilt(tilt) end
-      return true
-    elseif suffix == "additiveDrift" then
-      local drift = Utils.clamp(numeric, 0.0, 1.0)
-      for i = 1, #slot.voices do slot.voices[i].osc:setAdditiveDrift(drift) end
-      if slot.manualOsc then slot.manualOsc:setAdditiveDrift(drift) end
-      return true
-    elseif suffix == "drive" then
-      local drive = Utils.clamp(numeric, 0.0, 20.0)
-      for i = 1, #slot.voices do slot.voices[i].osc:setDrive(drive) end
-      if slot.manualOsc then slot.manualOsc:setDrive(drive) end
-      return true
-    elseif suffix == "driveShape" then
-      local shape = Utils.roundIndex(value, 3)
-      for i = 1, #slot.voices do slot.voices[i].osc:setDriveShape(shape) end
-      if slot.manualOsc then slot.manualOsc:setDriveShape(shape) end
-      return true
-    elseif suffix == "driveBias" then
-      local bias = Utils.clamp(numeric, -1.0, 1.0)
-      for i = 1, #slot.voices do slot.voices[i].osc:setDriveBias(bias) end
-      if slot.manualOsc then slot.manualOsc:setDriveBias(bias) end
-      return true
-    elseif suffix == "pulseWidth" then
-      local width = Utils.clamp(numeric, 0.01, 0.99)
-      for i = 1, #slot.voices do
-        slot.voices[i].basePulseWidth = width
-        refreshDynamicOscillatorVoice(slotIndex, i)
-      end
-      if slot.manualOsc then slot.manualOsc:setPulseWidth(width) end
-      return true
-    elseif suffix == "unison" then
-      local unison = math.floor(Utils.clamp(numeric, 1, 8) + 0.5)
-      for i = 1, #slot.voices do slot.voices[i].osc:setUnison(unison) end
-      if slot.manualOsc then slot.manualOsc:setUnison(unison) end
-      return true
-    elseif suffix == "detune" then
-      local detune = Utils.clamp(numeric, 0.0, 100.0)
-      for i = 1, #slot.voices do slot.voices[i].osc:setDetune(detune) end
-      if slot.manualOsc then slot.manualOsc:setDetune(detune) end
-      return true
-    elseif suffix == "spread" then
-      local spread = Utils.clamp01(numeric)
-      for i = 1, #slot.voices do slot.voices[i].osc:setSpread(spread) end
-      if slot.manualOsc then slot.manualOsc:setSpread(spread) end
-      return true
-    elseif suffix == "manualPitch" then
-      slot.manualPitch = Utils.clamp(numeric, 0.0, 127.0)
-      return refreshDynamicOscillatorManual(slotIndex)
-    elseif suffix == "manualLevel" then
-      slot.manualLevel = Utils.clamp01(numeric)
-      return refreshDynamicOscillatorManual(slotIndex)
-    elseif suffix == "output" then
-      slot.output:setGain(Utils.clamp01(numeric) * DYNAMIC_OSC_OUTPUT_TRIM)
-      return true
-    end
-    return false
-  end
-
   local function applyRackSourcePath(path, value)
     if tostring(path or "") == PATHS.rackAudioSourceCount then
       rackSourceState.count = math.max(0, math.floor(tonumber(value) or 0))
@@ -1915,12 +1868,142 @@ function M.buildSynth(ctx, options)
     return true
   end
 
-  for slotIndex = 1, #dynamicOscillatorSlots do
-    refreshDynamicOscillatorManual(slotIndex)
-    for i = 1, VOICE_COUNT do
-      refreshDynamicOscillatorVoice(slotIndex, i)
+  local auxAudioConnectionsApplied = {}
+
+  local function appendAuxAudioConnection(desired, fromNode, toNode)
+    if not (fromNode and toNode) then
+      return
     end
+    for i = 1, #desired do
+      local existing = desired[i]
+      if existing and existing.from == fromNode and existing.to == toNode then
+        return
+      end
+    end
+    desired[#desired + 1] = { from = fromNode, to = toNode }
   end
+
+  local function applyDesiredAuxAudioConnections(desired)
+    local current = auxAudioConnectionsApplied or {}
+    local mutated = false
+    for i = 1, #current do
+      local conn = current[i]
+      local keep = false
+      for j = 1, #(desired or {}) do
+        local target = desired[j]
+        if target and target.from == conn.from and target.to == conn.to then
+          keep = true
+          break
+        end
+      end
+      if not keep and conn and conn.from and conn.to then
+        ctx.graph.disconnect(conn.from, conn.to)
+        mutated = true
+      end
+    end
+
+    for i = 1, #(desired or {}) do
+      local conn = desired[i]
+      local present = false
+      for j = 1, #current do
+        local existing = current[j]
+        if existing and existing.from == conn.from and existing.to == conn.to then
+          present = true
+          break
+        end
+      end
+      if not present and conn and conn.from and conn.to then
+        ctx.graph.connect(conn.from, conn.to)
+        mutated = true
+      end
+    end
+
+    auxAudioConnectionsApplied = desired
+  end
+
+  local function resolveAuxAudioSourceNodeByCode(code)
+    local sourceCode = math.max(0, math.floor(tonumber(code) or 0))
+    if sourceCode == (AUX_AUDIO_SOURCE_CODES.OSCILLATOR or 1) then
+      return mix
+    elseif sourceCode == (AUX_AUDIO_SOURCE_CODES.FILTER or 2) then
+      return filt
+    elseif sourceCode == (AUX_AUDIO_SOURCE_CODES.FX1 or 3) then
+      return fx1Slot and fx1Slot.output or nil
+    elseif sourceCode == (AUX_AUDIO_SOURCE_CODES.FX2 or 4) then
+      return fx2Slot and fx2Slot.output or nil
+    elseif sourceCode == (AUX_AUDIO_SOURCE_CODES.EQ or 5) then
+      return eq8
+    elseif sourceCode >= (AUX_AUDIO_SOURCE_CODES.DYNAMIC_OSC_BASE or 100) and sourceCode < (AUX_AUDIO_SOURCE_CODES.DYNAMIC_SAMPLE_BASE or 200) then
+      local slotIndex = sourceCode - (AUX_AUDIO_SOURCE_CODES.DYNAMIC_OSC_BASE or 100)
+      local slot = dynamicOscillatorSlots[slotIndex]
+      return slot and slot.output or nil
+    elseif sourceCode >= (AUX_AUDIO_SOURCE_CODES.DYNAMIC_SAMPLE_BASE or 200) and sourceCode < (AUX_AUDIO_SOURCE_CODES.DYNAMIC_BLEND_SIMPLE_BASE or 300) then
+      local slotIndex = sourceCode - (AUX_AUDIO_SOURCE_CODES.DYNAMIC_SAMPLE_BASE or 200)
+      local slot = dynamicSampleSlots[slotIndex]
+      return slot and slot.output or nil
+    elseif sourceCode >= (AUX_AUDIO_SOURCE_CODES.DYNAMIC_BLEND_SIMPLE_BASE or 300) and sourceCode < (AUX_AUDIO_SOURCE_CODES.DYNAMIC_FILTER_BASE or 400) then
+      local slotIndex = sourceCode - (AUX_AUDIO_SOURCE_CODES.DYNAMIC_BLEND_SIMPLE_BASE or 300)
+      local slot = dynamicBlendSimpleSlots[slotIndex]
+      return slot and slot.output or nil
+    elseif sourceCode >= (AUX_AUDIO_SOURCE_CODES.DYNAMIC_FILTER_BASE or 400) and sourceCode < (AUX_AUDIO_SOURCE_CODES.DYNAMIC_FX_BASE or 500) then
+      local slotIndex = sourceCode - (AUX_AUDIO_SOURCE_CODES.DYNAMIC_FILTER_BASE or 400)
+      local slot = dynamicFilterSlots[slotIndex]
+      return slot and slot.node or nil
+    elseif sourceCode >= (AUX_AUDIO_SOURCE_CODES.DYNAMIC_FX_BASE or 500) and sourceCode < (AUX_AUDIO_SOURCE_CODES.DYNAMIC_EQ_BASE or 600) then
+      local slotIndex = sourceCode - (AUX_AUDIO_SOURCE_CODES.DYNAMIC_FX_BASE or 500)
+      local slot = dynamicFxSlots[slotIndex]
+      return slot and slot.output or nil
+    elseif sourceCode >= (AUX_AUDIO_SOURCE_CODES.DYNAMIC_EQ_BASE or 600) then
+      local slotIndex = sourceCode - (AUX_AUDIO_SOURCE_CODES.DYNAMIC_EQ_BASE or 600)
+      local slot = dynamicEqSlots[slotIndex]
+      return slot and slot.node or nil
+    end
+    return nil
+  end
+
+  local function safeGetParam(path)
+    if ctx.host and ctx.host.getParam then
+      return ctx.host.getParam(path)
+    end
+    return nil
+  end
+
+  local function refreshAuxAudioConnectionsFromParams()
+    local desired = {}
+    local unresolved = {}
+
+    for slotIndex, slot in pairs(dynamicBlendSimpleSlots) do
+      local sourceCode = tonumber(safeGetParam(ParameterBinder.dynamicBlendSimpleBSourcePath(slotIndex)) or 0) or 0
+      local sourceNode = resolveAuxAudioSourceNodeByCode(sourceCode)
+      if sourceNode and slot and slot.inputB then
+        appendAuxAudioConnection(desired, sourceNode, slot.inputB)
+      elseif sourceCode ~= 0 then
+        unresolved[#unresolved + 1] = string.format("blend_simple:%d:b:%d", slotIndex, sourceCode)
+      end
+    end
+
+    for slotIndex, slot in pairs(dynamicSampleSlots) do
+      local sourceCode = tonumber(safeGetParam(ParameterBinder.dynamicSampleInputSourcePath(slotIndex)) or 0) or 0
+      local sourceNode = resolveAuxAudioSourceNodeByCode(sourceCode)
+      if sourceNode and slot and slot.captureInput then
+        appendAuxAudioConnection(desired, sourceNode, slot.captureInput)
+      elseif sourceCode ~= 0 then
+        unresolved[#unresolved + 1] = string.format("rack_sample:%d:in:%d", slotIndex, sourceCode)
+      end
+    end
+
+    if type(_G) == "table" then
+      _G.__midiSynthRackAuxAudioState = {
+        desiredCount = #desired,
+        unresolved = unresolved,
+      }
+    end
+
+    applyDesiredAuxAudioConnections(desired)
+    return #unresolved == 0
+  end
+
+  rackOscillatorModule.refreshAll()
 
   local function reapplyVoiceFrequencies()
     forEachVoice(function(voice, i)
@@ -1953,90 +2036,6 @@ function M.buildSynth(ctx, options)
         voice.adsr[setterName](voice.adsr, normalized)
       end
     end)
-  end
-
-  local function setEqNodeBandEnabled(node, bandIndex, value)
-    node:setBandEnabled(math.max(1, math.floor(tonumber(bandIndex) or 1)), (tonumber(value) or 0) > 0.5)
-  end
-
-  local function applyDynamicEqPath(path, value)
-    local slotIndex, bandIndex, suffix = ParameterBinder.matchDynamicEqPath(path)
-    if slotIndex == nil then
-      return false
-    end
-    local slot = dynamicEqSlots[slotIndex]
-    local node = slot and slot.node or nil
-    if not node then
-      return true
-    end
-    if suffix == "mix" then
-      node:setMix(tonumber(value) or 1.0)
-      return true
-    elseif suffix == "output" then
-      node:setOutput(tonumber(value) or 0.0)
-      return true
-    elseif suffix == "enabled" and bandIndex ~= nil then
-      setEqNodeBandEnabled(node, bandIndex, value)
-      return true
-    elseif suffix == "type" and bandIndex ~= nil then
-      node:setBandType(bandIndex, math.max(0, math.floor((tonumber(value) or 0) + 0.5)))
-      return true
-    elseif suffix == "freq" and bandIndex ~= nil then
-      node:setBandFreq(bandIndex, tonumber(value) or 1000.0)
-      return true
-    elseif suffix == "gain" and bandIndex ~= nil then
-      node:setBandGain(bandIndex, tonumber(value) or 0.0)
-      return true
-    elseif suffix == "q" and bandIndex ~= nil then
-      node:setBandQ(bandIndex, tonumber(value) or 1.0)
-      return true
-    end
-    return false
-  end
-
-  local function applyDynamicFxPath(path, value)
-    local slotIndex, suffix, paramIndex = ParameterBinder.matchDynamicFxPath(path)
-    if slotIndex == nil then
-      return false
-    end
-    local slot = dynamicFxSlots[slotIndex]
-    if not slot then
-      return true
-    end
-    if suffix == "type" then
-      slot.applySelection(value)
-      return true
-    elseif suffix == "mix" then
-      slot.applyMix(value)
-      return true
-    elseif suffix == "param" and paramIndex ~= nil then
-      slot.applyParam(paramIndex + 1, value)
-      return true
-    end
-    return false
-  end
-
-  local function applyDynamicFilterPath(path, value)
-    local slotIndex, suffix = ParameterBinder.matchDynamicFilterPath(path)
-    if slotIndex == nil then
-      return false
-    end
-    local slot = dynamicFilterSlots[slotIndex]
-    local node = slot and slot.node or nil
-    if not node then
-      return true
-    end
-    if suffix == "type" then
-      node:setMode(Utils.roundIndex(value, 3))
-      return true
-    elseif suffix == "cutoff" then
-      node:setCutoff(tonumber(value) or 3200.0)
-      return true
-    elseif suffix == "resonance" then
-      node:setResonance(tonumber(value) or 0.75)
-      return true
-    end
-    return false
   end
 
   local function applyRackStagePath(path, value)
@@ -2132,16 +2131,19 @@ function M.buildSynth(ctx, options)
       end,
       [PATHS.sampleSource] = function(value)
         sampleSynth.setSource(Utils.roundIndex(value, captureSourceConfig.paramMax))
+        publishSampleCaptureReadbacks()
       end,
       [PATHS.sampleCaptureBars] = function(value)
         sampleSynth.setCaptureBars(Utils.clamp(tonumber(value) or 1.0, 0.0625, 16.0))
       end,
       [PATHS.sampleCaptureMode] = function(value)
         sampleSynth.setCaptureMode(value)
+        publishSampleCaptureReadbacks()
         print(string.format("DSP: capture mode = %s", sampleSynth.getCaptureMode() == 1 and "free" or "retro"))
       end,
       [PATHS.sampleCaptureStartOffset] = function(value)
         sampleSynth.setCaptureStartOffset(math.floor(tonumber(value) or 0))
+        publishSampleCaptureReadbacks()
         print(string.format("DSP: capture start offset = %d", sampleSynth.getCaptureStartOffset()))
       end,
       [PATHS.samplePitchMapEnabled] = function(value)
@@ -2226,11 +2228,15 @@ function M.buildSynth(ctx, options)
       end,
       [PATHS.sampleCaptureTrigger] = function(value)
         if (tonumber(value) or 0.0) > 0.5 then
-          local ok, lengthMs = captureSampleFromCurrentSource()
-          if ok and lengthMs and lengthMs > 0 then
-            sampleSynth.setLastCapturedLengthMs(lengthMs)
-            print(string.format("DSP: stored captured length = %d ms", lengthMs))
+          local request = sampleSynth.triggerCapture and sampleSynth.triggerCapture() or nil
+          if request then
+            local ok, lengthMs = captureSampleFromRequest(request)
+            if ok and lengthMs and lengthMs > 0 then
+              sampleSynth.setLastCapturedLengthMs(lengthMs)
+              print(string.format("DSP: stored captured length = %d ms", lengthMs))
+            end
           end
+          publishSampleCaptureReadbacks()
         end
       end,
       [PATHS.blendMode] = function(value)
@@ -2408,14 +2414,17 @@ function M.buildSynth(ctx, options)
       end,
       [PATHS.rackRegistryRequestKind] = function(value)
         registryRequestState.kind = math.max(0, math.floor(tonumber(value) or 0))
+        print(string.format("RackRegistry: kind=%d", registryRequestState.kind))
       end,
       [PATHS.rackRegistryRequestIndex] = function(value)
         registryRequestState.index = math.max(0, math.floor(tonumber(value) or 0))
+        print(string.format("RackRegistry: index=%d", registryRequestState.index))
       end,
       [PATHS.rackRegistryRequestNonce] = function()
         local kind = math.max(0, math.floor(tonumber(registryRequestState.kind) or 0))
         local index = math.max(0, math.floor(tonumber(registryRequestState.index) or 0))
         local specId = ParameterBinder.specIdForRegistryRequestKind(kind)
+        print(string.format("RackRegistry: nonce spec=%s index=%d", tostring(specId), index))
         if specId == "rack_audio_stage" then
           return ensureRackAudioStagePath(index)
         elseif specId == "rack_audio_source" then
@@ -2433,29 +2442,12 @@ function M.buildSynth(ctx, options)
     patternHandlers = {
       ParameterBinder.fxSlotPatternHandler("fx1", fx1Slot),
       ParameterBinder.fxSlotPatternHandler("fx2", fx2Slot),
-      applyDynamicEqPath,
-      applyDynamicFxPath,
-      applyDynamicFilterPath,
-      function(path, value)
-        local slotIndex, voiceIndex, suffix = ParameterBinder.matchDynamicOscillatorVoicePath(path)
-        if slotIndex ~= nil then
-          if suffix == "gate" then
-            return applyDynamicOscillatorVoiceGate(slotIndex, voiceIndex, value)
-          elseif suffix == "vOct" then
-            return applyDynamicOscillatorVoiceVOct(slotIndex, voiceIndex, value)
-          elseif suffix == "fm" then
-            return applyDynamicOscillatorVoiceFm(slotIndex, voiceIndex, value)
-          elseif suffix == "pwCv" then
-            return applyDynamicOscillatorVoicePwCv(slotIndex, voiceIndex, value)
-          end
-          return false
-        end
-        slotIndex, suffix = ParameterBinder.matchDynamicOscillatorPath(path)
-        if slotIndex == nil then
-          return false
-        end
-        return applyDynamicOscillatorSlotParam(slotIndex, suffix, value)
-      end,
+      rackEqModule.applyPath,
+      rackFxModule.applyPath,
+      rackFilterModule.applyPath,
+      rackBlendSimpleModule.applyPath,
+      rackSampleModule.applyPath,
+      rackOscillatorModule.applyPath,
       applyRackStagePath,
       applyRackSourcePath,
     },
@@ -2474,6 +2466,12 @@ function M.buildSynth(ctx, options)
 
       -- Keep async sample analysis results flowing back into Lua/DSP state.
       pollAsyncSampleAnalysis()
+      refreshAuxAudioConnectionsFromParams()
+      publishSampleCaptureReadbacks()
+      for slotIndex, _ in pairs(dynamicSampleSlots) do
+        rackSampleModule.pollAnalysis(slotIndex)
+        rackSampleModule.updateReadbacks(slotIndex)
+      end
 
       local additiveRefreshPending = sampleDerivedAdditiveRefreshPending == true
       sampleDerivedAdditiveRefreshPending = false
@@ -2619,6 +2617,41 @@ function M.buildSynth(ctx, options)
       return positions
     end,
 
+    getDynamicSampleSlotPeaks = function(slotIndex, numBuckets)
+      local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+      if not slot then
+        return {}
+      end
+      local bucketCount = math.max(32, math.floor(tonumber(numBuckets) or 128))
+      if type(slot.cachedSamplePeaks) == "table" and #slot.cachedSamplePeaks > 0 then
+        return sampleSynth.resamplePeaks(slot.cachedSamplePeaks, bucketCount)
+      end
+      local voice = slot.voices and slot.voices[1] or nil
+      local playbackNode = voice and voice.samplePlayback and voice.samplePlayback.__node or nil
+      if playbackNode and type(getSampleRegionPlaybackPeaks) == "function" then
+        local ok, peaks = pcall(function()
+          return getSampleRegionPlaybackPeaks(playbackNode, bucketCount)
+        end)
+        if ok and type(peaks) == "table" and #peaks > 0 then
+          slot.cachedSamplePeaks = peaks
+          slot.cachedSamplePeakBuckets = #peaks
+          return sampleSynth.resamplePeaks(peaks, bucketCount)
+        end
+      end
+      return {}
+    end,
+
+    getDynamicSampleSlotVoicePositions = function(slotIndex)
+      local slot = dynamicSampleSlots[math.max(1, math.floor(tonumber(slotIndex) or 1))]
+      local out = {}
+      local voices = slot and slot.voices or {}
+      for i = 1, #voices do
+        local voice = voices[i]
+        out[i] = (voice and voice.samplePlayback and voice.samplePlayback.getNormalizedPosition and voice.samplePlayback:getNormalizedPosition()) or 0.0
+      end
+      return out
+    end,
+
     getSampleDerivedAddDebug = function(voiceIndex)
       local idx = math.max(1, math.min(VOICE_COUNT, tonumber(voiceIndex) or 1))
       local voice = voicePool.voices[idx]
@@ -2674,9 +2707,13 @@ function M.buildSynth(ctx, options)
       return 0
     end,
 
+    getCaptureRecording = function()
+      return sampleSynth.getCaptureRecording and sampleSynth.getCaptureRecording() or false
+    end,
+
     -- Get last captured sample length in milliseconds
     getLastCapturedLengthMs = function()
-      return lastCapturedLengthMs
+      return sampleSynth.getLastCapturedLengthMs and sampleSynth.getLastCapturedLengthMs() or 0
     end,
 
     getRackAudioRouteDebug = function()

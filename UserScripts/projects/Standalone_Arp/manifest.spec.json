@@ -1,0 +1,33 @@
+{
+  "name": "Standalone Arp",
+  "version": 1,
+  "description": "Standalone MIDI arpeggiator export target",
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+  "plugin": {
+    "midiEffect": true,
+    "runtimeFamily": "midi_effect",
+    "view": {
+      "defaultMode": "compact",
+      "compact": { "w": 236, "h": 176 },
+      "split": { "w": 236, "h": 176 }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9040,
+      "oscQueryPort": 9041
+    },
+    "paramsSpec": {
+      "generator": "arp_midi_effect",
+      "publicPathBase": "/plugin/params",
+      "internalPathBase": "/midi/synth/rack/arp/1"
+    }
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "../Main/themes/dark.lua"
+}

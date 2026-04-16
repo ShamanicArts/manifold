@@ -1,0 +1,12 @@
+{
+  "name": "RackModuleHost",
+  "version": 1,
+  "description": "Standalone audio rack module host for Main rack modules",
+  "ui": {
+    "root": "ui/main.ui.lua"
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "../Main/themes/dark.lua"
+}

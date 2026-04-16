@@ -37,6 +37,7 @@ extern "C" {
 #include <map>
 #include <mutex>
 #include <vector>
+#include "imgui.h"
 #include <atomic>
 #include <unordered_map>
 #include <unordered_set>
@@ -48,6 +49,31 @@ class RetrospectiveCaptureNode;
 }
 
 namespace {
+
+// Static factory functions to avoid sol2 lambda destruction issues
+std::shared_ptr<dsp_primitives::LoopBufferWrapper> createLoopBuffer(int sizeSamples, int channels) {
+    auto buf = std::make_shared<dsp_primitives::LoopBufferWrapper>();
+    buf->setSize(sizeSamples, channels);
+    return buf;
+}
+
+std::shared_ptr<dsp_primitives::PlayheadWrapper> createPlayhead(int length) {
+    auto ph = std::make_shared<dsp_primitives::PlayheadWrapper>();
+    ph->setLoopLength(length);
+    return ph;
+}
+
+std::shared_ptr<dsp_primitives::CaptureBufferWrapper> createCaptureBuffer(int sizeSamples, int channels) {
+    auto cap = std::make_shared<dsp_primitives::CaptureBufferWrapper>();
+    cap->setSize(sizeSamples, channels);
+    return cap;
+}
+
+std::shared_ptr<dsp_primitives::QuantizerWrapper> createQuantizer(double sampleRate) {
+    auto q = std::make_shared<dsp_primitives::QuantizerWrapper>();
+    q->setSampleRate(sampleRate);
+    return q;
+}
 
 // Helper to extract C++ node from Lua table's __node field
 template <typename NodeT>
@@ -349,7 +375,7 @@ sol::table partialDataToLua(sol::state& lua,
     return result;
 }
 
-sol::table temporalPartialDataToLua(sol::state& lua,
+[[maybe_unused]] sol::table temporalPartialDataToLua(sol::state& lua,
                                     const dsp_primitives::TemporalPartialData& temporal) {
     auto result = sol::table(lua, sol::create);
     result["sampleRate"] = temporal.sampleRate;
@@ -551,7 +577,7 @@ std::vector<ScriptListEntry> scanUiScripts() {
             auto name = script.getFileNameWithoutExtension();
 
             if (name == "ui_widgets" || name == "ui_shell" ||
-                name == "project_loader") {
+                name == "project_loader" || name == "empty_launcher") {
                 continue;
             }
             if (!isUiScriptFile(script)) {
@@ -655,7 +681,12 @@ void LuaControlBindings::registerBindings(LuaCoreEngine& engine,
     registerCommandBindings(lua, state);
     registerWaveformBindings(lua, state);
     registerDspBindings(lua, state);
-    registerGraphBindings(lua, state);
+    // Skip graph bindings for export plugins to avoid sol2 usertype double-free
+    if (auto* processor = state.getProcessor()) {
+        if (!processor->isExportPlugin()) {
+            registerGraphBindings(lua, state);
+        }
+    }
     registerOSCBindings(lua, state);
     registerEventBindings(lua, state);
     registerLinkBindings(lua, state);
@@ -671,13 +702,14 @@ void LuaControlBindings::registerCommandBindings(sol::state& lua,
         if (!processor || va.size() == 0) return;
 
         std::string cmdStr;
-        for (size_t i = 0; i < va.size(); ++i) {
-            if (i > 0) cmdStr += " ";
-            auto arg = va[i];
+        bool firstArg = true;
+        for (sol::object arg : va) {
+            if (!firstArg) cmdStr += " ";
+            firstArg = false;
             if (arg.get_type() == sol::type::number) {
-                cmdStr += std::to_string(arg.get<float>());
+                cmdStr += std::to_string(arg.as<float>());
             } else {
-                cmdStr += arg.get<std::string>();
+                cmdStr += arg.as<std::string>();
             }
         }
 
@@ -878,6 +910,24 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         return result;
     };
 
+    lua["getDynamicSampleSlotPeaks"] = [&state, &lua](int slotIndex, int numBuckets) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        if (!processor || slotIndex <= 0 || numBuckets <= 0) return result;
+
+        std::vector<float> peaks;
+        const auto key = makeWaveformPeakCacheKey("dynamic-sample", slotIndex, numBuckets, 0);
+        if (!getWaveformPeaksCached(key, peaks, [&](std::vector<float>& out) {
+                return processor->computeDynamicSamplePeaks(slotIndex, numBuckets, out);
+            })) {
+            return result;
+        }
+        for (size_t i = 0; i < peaks.size(); ++i) {
+            result[i + 1] = peaks[i];
+        }
+        return result;
+    };
+
     lua["invalidateWaveformPeakCache"] = []() {
         invalidateWaveformPeakCache();
     };
@@ -907,6 +957,18 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         if (!processor) return result;
 
         auto positions = processor->getVoiceSamplePositions();
+        for (size_t i = 0; i < positions.size(); ++i) {
+            result[i + 1] = positions[i];
+        }
+        return result;
+    };
+
+    lua["getDynamicSampleSlotVoicePositions"] = [&state, &lua](int slotIndex) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        if (!processor || slotIndex <= 0) return result;
+
+        auto positions = processor->getDynamicSampleVoicePositions(slotIndex);
         for (size_t i = 0; i < positions.size(); ++i) {
             result[i + 1] = positions[i];
         }
@@ -1274,6 +1336,14 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         return result;
     };
 
+    lua["ensureDynamicModuleSlot"] = [&state](const std::string& specId, int slotIndex) -> bool {
+        auto* processor = state.getProcessor();
+        if (!processor || specId.empty() || slotIndex <= 0) {
+            return false;
+        }
+        return processor->ensureDynamicModuleSlot(specId, slotIndex);
+    };
+
     lua["getGraphNodeDebugByPath"] = [&state, &lua](const std::string& path) -> sol::table {
         auto result = sol::table(lua, sol::create);
         auto* processor = state.getProcessor();
@@ -1502,42 +1572,31 @@ void LuaControlBindings::registerDspBindings(sol::state& lua,
 
 void LuaControlBindings::registerGraphBindings(sol::state& lua,
                                                ILuaControlState& state) {
+    // Guard against re-registration (causes sol2 double-free on Lua cleanup)
+    if (lua["__graph_bindings_registered"].valid() && lua["__graph_bindings_registered"]) {
+        return;
+    }
+    
     // ---- DSP Primitives factory ----
     lua["Primitives"] = lua.create_table();
 
     lua["Primitives"]["LoopBuffer"] = lua.create_table();
-    lua["Primitives"]["LoopBuffer"]["new"] = [](int sizeSamples, int channels = 2) {
-        auto buf = std::make_shared<dsp_primitives::LoopBufferWrapper>();
-        buf->setSize(sizeSamples, channels);
-        return buf;
-    };
+    lua["Primitives"]["LoopBuffer"]["new"] = &createLoopBuffer;
 
     lua["Primitives"]["Playhead"] = lua.create_table();
-    lua["Primitives"]["Playhead"]["new"] = [](int length = 0) {
-        auto ph = std::make_shared<dsp_primitives::PlayheadWrapper>();
-        ph->setLoopLength(length);
-        return ph;
-    };
+    lua["Primitives"]["Playhead"]["new"] = &createPlayhead;
 
     lua["Primitives"]["CaptureBuffer"] = lua.create_table();
-    lua["Primitives"]["CaptureBuffer"]["new"] = [](int sizeSamples, int channels = 2) {
-        auto cap = std::make_shared<dsp_primitives::CaptureBufferWrapper>();
-        cap->setSize(sizeSamples, channels);
-        return cap;
-    };
+    lua["Primitives"]["CaptureBuffer"]["new"] = &createCaptureBuffer;
 
     lua["Primitives"]["Quantizer"] = lua.create_table();
-    lua["Primitives"]["Quantizer"]["new"] = [](double sampleRate) {
-        auto q = std::make_shared<dsp_primitives::QuantizerWrapper>();
-        q->setSampleRate(sampleRate);
-        return q;
-    };
+    lua["Primitives"]["Quantizer"]["new"] = &createQuantizer;
 
     // Get graph from processor
-    auto* processor = state.getProcessor();
+    auto* graphProcessor = state.getProcessor();
     std::shared_ptr<dsp_primitives::PrimitiveGraph> graph;
-    if (processor) {
-        graph = processor->getPrimitiveGraph();
+    if (graphProcessor) {
+        graph = graphProcessor->getPrimitiveGraph();
     }
     if (!graph) {
         graph = std::make_shared<dsp_primitives::PrimitiveGraph>();
@@ -2425,6 +2484,13 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         return state.getCurrentScriptFile().getFullPathName().toStdString();
     };
 
+    lua["showFileChooser"] = [&state](const std::string& title,
+                                        const std::string& initialPath,
+                                        const std::string& filePatterns,
+                                        sol::function callback) {
+        state.showFileChooser(title, initialPath, filePatterns, callback);
+    };
+
     lua["getRuntimeDisplayListDebugStats"] = [&lua](sol::optional<bool> resetOpt) -> sol::table {
         auto result = sol::table(lua, sol::create);
         const auto stats = RuntimeNode::getDisplayListDebugStats(resetOpt.value_or(false));
@@ -2658,5 +2724,77 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     
     lua["systemPaths"] = pathsTable;
     
-    std::fprintf(stderr, "[LuaControlBindings] Registered systemPaths table\n");
+    // ==========================================================================
+    // ImGui immediate-mode API bindings for onImGuiFrame callbacks.
+    // These may ONLY be called inside an onImGuiFrame callback (between
+    // ImGui::NewFrame() and ImGui::Render()). Calling outside that context
+    // will trigger ImGui asserts / undefined behaviour.
+    // ==========================================================================
+    lua["imguiBeginMainMenuBar"] = []() -> bool { return ImGui::BeginMainMenuBar(); };
+    lua["imguiEndMainMenuBar"]   = []() { ImGui::EndMainMenuBar(); };
+    lua["imguiBeginMenuBar"]     = []() -> bool { return ImGui::BeginMenuBar(); };
+    lua["imguiEndMenuBar"]       = []() { ImGui::EndMenuBar(); };
+    lua["imguiBeginMenu"]        = [](const char* label, sol::optional<bool> enabled) -> bool {
+        return ImGui::BeginMenu(label, enabled.value_or(true));
+    };
+    lua["imguiEndMenu"]          = []() { ImGui::EndMenu(); };
+    lua["imguiMenuItem"]         = [](const char* label, sol::optional<const char*> shortcut, sol::optional<bool> selected, sol::optional<bool> enabled) -> bool {
+        return ImGui::MenuItem(label, shortcut.value_or(nullptr), selected.value_or(false), enabled.value_or(true));
+    };
+    lua["imguiSeparator"]        = []() { ImGui::Separator(); };
+    lua["imguiOpenPopup"]        = [](const char* id) { ImGui::OpenPopup(id); };
+    lua["imguiBeginPopup"]       = [](const char* id) -> bool { return ImGui::BeginPopup(id); };
+    lua["imguiBeginPopupModal"]  = [](const char* id, sol::optional<int> flags) -> bool {
+        return ImGui::BeginPopupModal(id, nullptr, static_cast<ImGuiWindowFlags>(flags.value_or(0)));
+    };
+    lua["imguiEndPopup"]         = []() { ImGui::EndPopup(); };
+    lua["imguiCloseCurrentPopup"]= []() { ImGui::CloseCurrentPopup(); };
+    lua["imguiSelectable"]       = [](const char* label, sol::optional<bool> selected, sol::optional<int> flags, sol::optional<float> w, sol::optional<float> h) -> bool {
+        return ImGui::Selectable(label, selected.value_or(false), static_cast<ImGuiSelectableFlags>(flags.value_or(0)), ImVec2(w.value_or(0), h.value_or(0)));
+    };
+    lua["imguiButton"]           = [](const char* label, sol::optional<float> w, sol::optional<float> h) -> bool {
+        return ImGui::Button(label, ImVec2(w.value_or(0), h.value_or(0)));
+    };
+    lua["imguiText"]             = [](const char* text) { ImGui::TextUnformatted(text); };
+    lua["imguiSameLine"]         = [](sol::optional<float> offset, sol::optional<float> spacing) {
+        ImGui::SameLine(offset.value_or(0.0f), spacing.value_or(-1.0f));
+    };
+    lua["imguiPushStyleColor"]   = [](int idx, sol::object r, sol::optional<double> g, sol::optional<double> b, sol::optional<double> a) -> bool {
+        if (g.has_value() && b.has_value() && a.has_value()) {
+            ImGui::PushStyleColor(static_cast<ImGuiCol>(idx), ImVec4(static_cast<float>(r.as<double>()), static_cast<float>(*g), static_cast<float>(*b), static_cast<float>(*a)));
+        } else {
+            // Single uint32 color
+            uint32_t col = r.is<uint32_t>() ? r.as<uint32_t>() : static_cast<uint32_t>(r.as<double>());
+            float fr = static_cast<float>((col >> 16) & 0xffu) / 255.0f;
+            float fg = static_cast<float>((col >> 8) & 0xffu) / 255.0f;
+            float fb = static_cast<float>(col & 0xffu) / 255.0f;
+            float fa = static_cast<float>((col >> 24) & 0xffu) / 255.0f;
+            ImGui::PushStyleColor(static_cast<ImGuiCol>(idx), ImVec4(fr, fg, fb, fa));
+        }
+        return true;
+    };
+    lua["imguiPopStyleColor"]     = [](sol::optional<int> count) { ImGui::PopStyleColor(count.value_or(1)); };
+    lua["imguiGetContentRegionAvail"] = [&lua]() -> sol::table {
+        ImVec2 avail = ImGui::GetContentRegionAvail();
+        auto t = sol::table(lua, sol::create);
+        t["x"] = avail.x;
+        t["y"] = avail.y;
+        return t;
+    };
+    lua["imguiSetNextWindowSize"] = [](float w, float h, sol::optional<int> cond) {
+        ImGui::SetNextWindowSize(ImVec2(w, h), static_cast<ImGuiCond>(cond.value_or(static_cast<int>(ImGuiCond_Appearing))));
+    };
+    lua["imguiSetNextWindowPos"] = [](float x, float y, sol::optional<int> cond) {
+        ImGui::SetNextWindowPos(ImVec2(x, y), static_cast<ImGuiCond>(cond.value_or(0)));
+    };
+    lua["imguiCond_None"] = static_cast<int>(ImGuiCond_None);
+    lua["imguiCond_Always"] = static_cast<int>(ImGuiCond_Always);
+    lua["imguiCond_Appearing"] = static_cast<int>(ImGuiCond_Appearing);
+    lua["imguiWindowFlags_NoResize"] = static_cast<int>(ImGuiWindowFlags_NoResize);
+    lua["imguiWindowFlags_NoMove"] = static_cast<int>(ImGuiWindowFlags_NoMove);
+    lua["imguiWindowFlags_NoCollapse"] = static_cast<int>(ImGuiWindowFlags_NoCollapse);
+    lua["imguiWindowFlags_NoScrollbar"] = static_cast<int>(ImGuiWindowFlags_NoScrollbar);
+    lua["imguiColorFlags_None"] = static_cast<int>(ImGuiColorEditFlags_None);
+
+    std::fprintf(stderr, "[LuaControlBindings] Registered systemPaths table + imgui bindings\n");
 }

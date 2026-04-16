@@ -56,7 +56,7 @@ inline void compute(const void* data, size_t length, uint8_t output[20]) {
 
     // Append bit length as big-endian 64-bit
     for (int i = 0; i < 8; i++) {
-        padded[paddedLen - 8 + i] = (uint8_t)(bitLength >> (56 - i * 8));
+        padded[paddedLen - 8 + static_cast<size_t>(i)] = static_cast<uint8_t>(bitLength >> (56 - i * 8));
     }
 
     // Process each 64-byte (512-bit) block
@@ -65,10 +65,11 @@ inline void compute(const void* data, size_t length, uint8_t output[20]) {
 
         // Break block into sixteen 32-bit big-endian words
         for (int i = 0; i < 16; i++) {
-            w[i] = ((uint32_t)padded[offset + i * 4 + 0] << 24) |
-                   ((uint32_t)padded[offset + i * 4 + 1] << 16) |
-                   ((uint32_t)padded[offset + i * 4 + 2] <<  8) |
-                   ((uint32_t)padded[offset + i * 4 + 3]);
+            const auto wordOffset = offset + static_cast<size_t>(i) * 4;
+            w[i] = (static_cast<uint32_t>(padded[wordOffset + 0]) << 24) |
+                   (static_cast<uint32_t>(padded[wordOffset + 1]) << 16) |
+                   (static_cast<uint32_t>(padded[wordOffset + 2]) <<  8) |
+                   (static_cast<uint32_t>(padded[wordOffset + 3]));
         }
 
         // Extend to 80 words

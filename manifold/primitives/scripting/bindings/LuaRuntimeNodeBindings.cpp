@@ -49,22 +49,22 @@ juce::var luaPrimitiveToVar(const sol::object& object) {
         return {};
     }
 
-    switch (object.get_type()) {
-        case sol::type::boolean:
-            return juce::var(object.as<bool>());
-        case sol::type::number:
-            if (object.is<int>()) {
-                return juce::var(object.as<int>());
-            }
-            if (object.is<float>()) {
-                return juce::var(static_cast<double>(object.as<float>()));
-            }
-            return juce::var(object.as<double>());
-        case sol::type::string:
-            return juce::var(juce::String(object.as<std::string>()));
-        default:
-            return {};
+    if (object.is<bool>()) {
+        return juce::var(object.as<bool>());
     }
+    if (object.is<int>()) {
+        return juce::var(object.as<int>());
+    }
+    if (object.is<float>()) {
+        return juce::var(static_cast<double>(object.as<float>()));
+    }
+    if (object.is<double>()) {
+        return juce::var(object.as<double>());
+    }
+    if (object.is<std::string>()) {
+        return juce::var(juce::String(object.as<std::string>()));
+    }
+    return {};
 }
 
 bool tryLuaDisplayListCommandToVar(const sol::table& table, juce::var& out) {
@@ -734,6 +734,12 @@ void LuaRuntimeNodeBindings::registerBindings(LuaCoreEngine& engine, RuntimeNode
             setCallbackSlot(node, fn,
                             [](RuntimeNode::CallbackSlots& slots, sol::function value) { slots.onToggled = value; },
                             [](RuntimeNode::CallbackSlots& slots) { slots.onToggled = sol::lua_nil; });
+        },
+        "setOnImGuiFrame",
+        [](RuntimeNode& node, sol::function fn) {
+            setCallbackSlot(node, fn,
+                            [](RuntimeNode::CallbackSlots& slots, sol::function value) { slots.onImGuiFrame = value; },
+                            [](RuntimeNode::CallbackSlots& slots) { slots.onImGuiFrame = sol::lua_nil; });
         }
     );
 

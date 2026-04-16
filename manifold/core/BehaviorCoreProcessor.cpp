@@ -9,11 +9,68 @@
 #include <sol/sol.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 namespace {
+
+struct ProcessorMemorySnapshot {
+    int64_t pssBytes = 0;
+    int64_t privateDirtyBytes = 0;
+    int64_t heapUsedBytes = 0;
+    int64_t arenaBytes = 0;
+};
+
+ProcessorMemorySnapshot readProcessorMemorySnapshot() {
+    ProcessorMemorySnapshot snapshot;
+    std::ifstream smaps("/proc/self/smaps_rollup");
+    std::string line;
+    while (std::getline(smaps, line)) {
+        if (line.rfind("Pss:", 0) == 0) {
+            std::istringstream iss(line);
+            std::string label, unit;
+            int64_t kb = 0;
+            iss >> label >> kb >> unit;
+            snapshot.pssBytes = kb * 1024;
+        } else if (line.rfind("Private_Dirty:", 0) == 0) {
+            std::istringstream iss(line);
+            std::string label, unit;
+            int64_t kb = 0;
+            iss >> label >> kb >> unit;
+            snapshot.privateDirtyBytes = kb * 1024;
+        }
+    }
+#if defined(__GLIBC__)
+    const auto mi = mallinfo2();
+    snapshot.heapUsedBytes = static_cast<int64_t>(mi.uordblks);
+    snapshot.arenaBytes = static_cast<int64_t>(mi.arena);
+#endif
+    return snapshot;
+}
+
+void updateTimingStage(FrameTimingStage& stage, int64_t durationUs) {
+    stage.currentUs.store(durationUs, std::memory_order_relaxed);
+    const int64_t previousPeak = stage.peakUs.load(std::memory_order_relaxed);
+    if (durationUs > previousPeak) {
+        stage.peakUs.store(durationUs, std::memory_order_relaxed);
+    }
+    constexpr int64_t alphaNum = 5;
+    constexpr int64_t alphaDen = 100;
+    const int64_t previousAvgX100 = stage.avgUsX100.load(std::memory_order_relaxed);
+    const int64_t durationX100 = durationUs * 100;
+    const int64_t nextAvgX100 =
+        (previousAvgX100 == 0)
+            ? durationX100
+            : ((previousAvgX100 * (alphaDen - alphaNum)) + (durationX100 * alphaNum)) / alphaDen;
+    stage.avgUsX100.store(nextAvgX100, std::memory_order_relaxed);
+}
 
 constexpr float kDefaultTempo = 120.0f;
 constexpr float kDefaultTargetBpm = 120.0f;
@@ -116,25 +173,1366 @@ float computeBufferRms(const juce::AudioBuffer<float>& buffer) {
     return static_cast<float>(std::sqrt(sumSq / static_cast<double>(sampleCount)));
 }
 
+bool isProjectManifestFile(const juce::File& file) {
+    return file.existsAsFile() && file.getFileName().equalsIgnoreCase("manifold.project.json5");
+}
+
+juce::File resolveProjectAssetRef(const juce::File& projectRoot, const juce::String& ref) {
+    if (ref.isEmpty()) {
+        return {};
+    }
+
+    if (juce::File::isAbsolutePath(ref)) {
+        return juce::File(ref);
+    }
+
+    return projectRoot.getChildFile(ref);
+}
+
+juce::File resolveDefaultDspScriptFromProject(const juce::File& requestedPath) {
+    if (!isProjectManifestFile(requestedPath)) {
+        return {};
+    }
+
+    const auto json = juce::JSON::parse(requestedPath);
+    if (!json.isObject()) {
+        return {};
+    }
+
+    auto* obj = json.getDynamicObject();
+    if (obj == nullptr || !obj->hasProperty("dsp")) {
+        return {};
+    }
+
+    auto dspVar = obj->getProperty("dsp");
+    if (!dspVar.isObject()) {
+        return {};
+    }
+
+    auto* dspObj = dspVar.getDynamicObject();
+    if (dspObj == nullptr || !dspObj->hasProperty("default")) {
+        return {};
+    }
+
+    const auto dspRef = dspObj->getProperty("default").toString();
+    if (dspRef.isEmpty()) {
+        return {};
+    }
+
+    return resolveProjectAssetRef(requestedPath.getParentDirectory(), dspRef);
+}
+
+int readIntProperty(juce::DynamicObject* obj, const char* name, int fallback) {
+    if (obj == nullptr || !obj->hasProperty(name)) {
+        return fallback;
+    }
+    return static_cast<int>(obj->getProperty(name));
+}
+
+bool readBoolProperty(juce::DynamicObject* obj, const char* name, bool fallback) {
+    if (obj == nullptr || !obj->hasProperty(name)) {
+        return fallback;
+    }
+    return static_cast<bool>(obj->getProperty(name));
+}
+
+BehaviorCoreProcessor::ExportPluginConfig resolveExportPluginConfig(const juce::File& requestedPath) {
+    BehaviorCoreProcessor::ExportPluginConfig config;
+    if (!isProjectManifestFile(requestedPath)) {
+        return config;
+    }
+
+    const auto json = juce::JSON::parse(requestedPath);
+    if (!json.isObject()) {
+        return config;
+    }
+
+    auto* obj = json.getDynamicObject();
+    if (obj == nullptr || !obj->hasProperty("plugin")) {
+        return config;
+    }
+
+    auto pluginVar = obj->getProperty("plugin");
+    if (!pluginVar.isObject()) {
+        return config;
+    }
+
+    auto* pluginObj = pluginVar.getDynamicObject();
+    if (pluginObj == nullptr) {
+        return config;
+    }
+
+    config.enabled = true;
+    if (obj->hasProperty("name")) {
+        config.headerTitle = obj->getProperty("name").toString();
+    }
+
+    if (pluginObj->hasProperty("headerTitle")) {
+        config.headerTitle = pluginObj->getProperty("headerTitle").toString();
+    }
+
+    auto viewVar = pluginObj->getProperty("view");
+    if (viewVar.isObject()) {
+        auto* viewObj = viewVar.getDynamicObject();
+        if (viewObj != nullptr) {
+            if (viewObj->hasProperty("defaultMode")) {
+                const auto defaultMode = viewObj->getProperty("defaultMode").toString().trim().toLowerCase();
+                config.defaultViewMode = defaultMode == "compact" ? 0 : 1;
+            }
+
+            auto compactVar = viewObj->getProperty("compact");
+            if (compactVar.isObject()) {
+                auto* compactObj = compactVar.getDynamicObject();
+                config.compactWidth = readIntProperty(compactObj, "w", config.compactWidth);
+                config.compactHeight = readIntProperty(compactObj, "h", config.compactHeight);
+            }
+
+            auto splitVar = viewObj->getProperty("split");
+            if (splitVar.isObject()) {
+                auto* splitObj = splitVar.getDynamicObject();
+                config.splitWidth = readIntProperty(splitObj, "w", config.splitWidth);
+                config.splitHeight = readIntProperty(splitObj, "h", config.splitHeight);
+            }
+        }
+    }
+
+    auto oscVar = pluginObj->getProperty("osc");
+    if (oscVar.isObject()) {
+        auto* oscObj = oscVar.getDynamicObject();
+        if (oscObj != nullptr) {
+            config.oscDefaultEnabled = readBoolProperty(oscObj, "enabled", config.oscDefaultEnabled);
+            config.oscQueryDefaultEnabled = readBoolProperty(oscObj, "queryEnabled", config.oscQueryDefaultEnabled);
+            config.oscBasePort = readIntProperty(oscObj, "basePort", config.oscBasePort);
+        }
+    }
+
+    auto paramsVar = pluginObj->getProperty("params");
+    if (paramsVar.isArray()) {
+        for (const auto& item : *paramsVar.getArray()) {
+            auto* paramObj = item.getDynamicObject();
+            if (paramObj == nullptr || !paramObj->hasProperty("path") || !paramObj->hasProperty("internalPath")) {
+                continue;
+            }
+
+            BehaviorCoreProcessor::ExportParamAlias alias;
+            alias.path = paramObj->getProperty("path").toString();
+            alias.internalPath = paramObj->getProperty("internalPath").toString();
+            alias.type = paramObj->hasProperty("type") ? paramObj->getProperty("type").toString() : juce::String("f");
+            alias.rangeMin = static_cast<float>(paramObj->hasProperty("min") ? static_cast<double>(paramObj->getProperty("min")) : 0.0);
+            alias.rangeMax = static_cast<float>(paramObj->hasProperty("max") ? static_cast<double>(paramObj->getProperty("max")) : 1.0);
+            alias.defaultValue = static_cast<float>(paramObj->hasProperty("default")
+                ? static_cast<double>(paramObj->getProperty("default"))
+                : static_cast<double>(alias.rangeMin));
+            alias.skew = static_cast<float>(paramObj->hasProperty("skew")
+                ? static_cast<double>(paramObj->getProperty("skew"))
+                : 1.0);
+            alias.hostParamId = paramObj->hasProperty("hostParamId")
+                ? paramObj->getProperty("hostParamId").toString()
+                : juce::String();
+            alias.hostParamName = paramObj->hasProperty("hostParamName")
+                ? paramObj->getProperty("hostParamName").toString()
+                : alias.hostParamId;
+            alias.hostParamKind = paramObj->hasProperty("hostParamKind")
+                ? paramObj->getProperty("hostParamKind").toString()
+                : juce::String("float");
+            if (paramObj->hasProperty("choices")) {
+                auto choicesVar = paramObj->getProperty("choices");
+                if (choicesVar.isArray()) {
+                    for (const auto& choice : *choicesVar.getArray()) {
+                        alias.choices.add(choice.toString());
+                    }
+                }
+            }
+            alias.description = paramObj->hasProperty("description")
+                ? paramObj->getProperty("description").toString()
+                : alias.path;
+            if (alias.path.isNotEmpty() && alias.internalPath.isNotEmpty()) {
+                config.paramAliases.push_back(alias);
+            }
+        }
+    }
+
+    return config;
+}
+
+bool isUdpPortAvailable(int port) {
+    if (port <= 0) {
+        return false;
+    }
+    juce::DatagramSocket socket(false);
+    const bool ok = socket.bindToPort(port);
+    if (ok) {
+        socket.shutdown();
+    }
+    return ok;
+}
+
+bool isTcpPortAvailable(int port) {
+    if (port <= 0) {
+        return false;
+    }
+    juce::StreamingSocket socket;
+    const bool ok = socket.createListener(port, "127.0.0.1");
+    if (ok) {
+        socket.close();
+    }
+    return ok;
+}
+
+void findAvailableOscPortPair(int preferredBasePort, int& oscPort, int& queryPort) {
+    const int base = preferredBasePort > 0 ? preferredBasePort : 9010;
+    for (int offset = 0; offset < 200; offset += 2) {
+        const int candidateOsc = base + offset;
+        const int candidateQuery = candidateOsc + 1;
+        if (isUdpPortAvailable(candidateOsc) && isTcpPortAvailable(candidateQuery)) {
+            oscPort = candidateOsc;
+            queryPort = candidateQuery;
+            return;
+        }
+    }
+
+    oscPort = base;
+    queryPort = base + 1;
+}
+
 } // namespace
 
 BehaviorCoreProcessor::BehaviorCoreProcessor()
     : juce::AudioProcessor(BusesProperties()
+                     #if JucePlugin_IsMidiEffect
+                               // VST3 MIDI processors still need a dummy audio callback path in
+                               // a bunch of hosts. We advertise the plugin as MIDI-focused via
+                               // metadata, but keep silent stereo buses so processBlock() runs.
                                .withInput("Input", juce::AudioChannelSet::stereo(), true)
-                               .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+                               .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+                     #else
+                      #if ! JucePlugin_IsSynth
+                               .withInput("Input", juce::AudioChannelSet::stereo(), true)
+                      #endif
+                               .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+                     #endif
+                               ),
       primitiveGraph(std::make_shared<dsp_primitives::PrimitiveGraph>()),
       dspScriptHost(std::make_unique<DSPPluginScriptHost>()),
       midiManager_(std::make_shared<midi::MidiManager>()) {
+    capturePluginConstructionBaseline();
     if (dspScriptHost) {
         dspScriptHost->initialise(this, "/core/behavior");
     }
     endpointRegistry.setNumLayers(MAX_LAYERS);
+    initialiseExportPluginConfig();
+    endpointRegistry.setBackendEnabled(!exportPluginConfig_.enabled);
     endpointRegistry.rebuild();
+    initialiseHostParameters();
+    registerExportPluginEndpoints();
     initialiseAtomicState(currentSampleRate.load(std::memory_order_relaxed));
 }
 
 BehaviorCoreProcessor::~BehaviorCoreProcessor() {
+    if (hostParams_) {
+        for (const auto& alias : exportPluginConfig_.paramAliases) {
+            if (!alias.hostParamId.isEmpty()) {
+                hostParams_->removeParameterListener(alias.hostParamId, this);
+            }
+        }
+    }
     releaseResources();
+}
+
+void BehaviorCoreProcessor::initialiseExportPluginConfig() {
+    auto& settings = Settings::getInstance();
+    const juce::File uiTarget(settings.getDefaultUiScript());
+    exportPluginConfig_ = resolveExportPluginConfig(uiTarget);
+    if (!exportPluginConfig_.enabled) {
+        return;
+    }
+
+    exportViewMode_.store(exportPluginConfig_.defaultViewMode, std::memory_order_relaxed);
+    exportEditorWidth_.store(exportPluginConfig_.defaultViewMode == 0
+                                 ? exportPluginConfig_.compactWidth
+                                 : exportPluginConfig_.splitWidth,
+                             std::memory_order_relaxed);
+    exportEditorHeight_.store(exportPluginConfig_.defaultViewMode == 0
+                                  ? exportPluginConfig_.compactHeight
+                                  : exportPluginConfig_.splitHeight,
+                              std::memory_order_relaxed);
+    exportSettingsVisible_.store(false, std::memory_order_relaxed);
+    exportDevVisible_.store(false, std::memory_order_relaxed);
+    exportOscEnabled_.store(exportPluginConfig_.oscDefaultEnabled, std::memory_order_relaxed);
+    exportOscQueryEnabled_.store(exportPluginConfig_.oscQueryDefaultEnabled,
+                                 std::memory_order_relaxed);
+    exportOscInputPort_.store(exportPluginConfig_.oscBasePort, std::memory_order_relaxed);
+    exportOscQueryPort_.store(exportPluginConfig_.oscBasePort + 1, std::memory_order_relaxed);
+    exportXyXParam_.store(1, std::memory_order_relaxed);
+    exportXyYParam_.store(2, std::memory_order_relaxed);
+}
+
+void BehaviorCoreProcessor::initialiseHostParameters() {
+    if (!exportPluginConfig_.enabled) {
+        hostParams_.reset();
+        return;
+    }
+
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    params.reserve(exportPluginConfig_.paramAliases.size());
+
+    for (auto& alias : exportPluginConfig_.paramAliases) {
+        alias.rawHostValue = nullptr;
+        if (alias.hostParamId.isEmpty()) {
+            continue;
+        }
+
+        const auto kind = alias.hostParamKind.trim().toLowerCase();
+        if (kind == "choice" && alias.choices.size() > 0) {
+            params.push_back(std::make_unique<juce::AudioParameterChoice>(
+                juce::ParameterID(alias.hostParamId, 1),
+                alias.hostParamName.isNotEmpty() ? alias.hostParamName : alias.hostParamId,
+                alias.choices,
+                juce::jlimit(0, alias.choices.size() - 1,
+                             static_cast<int>(std::round(alias.defaultValue)))));
+        } else {
+            juce::NormalisableRange<float> range(alias.rangeMin, alias.rangeMax);
+            if (alias.skew > 0.0f && std::abs(alias.skew - 1.0f) > 1.0e-4f) {
+                range.skew = alias.skew;
+            }
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(
+                juce::ParameterID(alias.hostParamId, 1),
+                alias.hostParamName.isNotEmpty() ? alias.hostParamName : alias.hostParamId,
+                range,
+                juce::jlimit(alias.rangeMin, alias.rangeMax, alias.defaultValue)));
+        }
+    }
+
+    hostParams_ = std::make_unique<juce::AudioProcessorValueTreeState>(
+        *this,
+        nullptr,
+        "HostParameters",
+        juce::AudioProcessorValueTreeState::ParameterLayout{params.begin(), params.end()});
+
+    for (auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.hostParamId.isEmpty()) {
+            continue;
+        }
+        alias.rawHostValue = hostParams_->getRawParameterValue(alias.hostParamId);
+        hostParams_->addParameterListener(alias.hostParamId, this);
+    }
+}
+
+void BehaviorCoreProcessor::registerExportPluginEndpoints() {
+    if (!exportPluginConfig_.enabled) {
+        return;
+    }
+
+    const juce::StringArray uiPaths{
+        "/plugin/ui/viewMode",
+        "/plugin/ui/settingsVisible",
+        "/plugin/ui/devVisible",
+        "/plugin/ui/oscEnabled",
+        "/plugin/ui/oscQueryEnabled",
+        "/plugin/ui/oscInputPort",
+        "/plugin/ui/oscQueryPort",
+        "/plugin/ui/xyXParam",
+        "/plugin/ui/xyYParam",
+        "/plugin/ui/perf/frameCurrentUs",
+        "/plugin/ui/perf/frameAvgUs",
+        "/plugin/ui/perf/framePeakUs",
+        "/plugin/ui/perf/dspCurrentUs",
+        "/plugin/ui/perf/dspAvgUs",
+        "/plugin/ui/perf/dspPeakUs",
+        "/plugin/ui/perf/uiUpdateUs",
+        "/plugin/ui/perf/renderUs",
+        "/plugin/ui/perf/paintUs",
+        "/plugin/ui/perf/cpuPercent",
+        "/plugin/ui/perf/pssMB",
+        "/plugin/ui/perf/privateDirtyMB",
+        "/plugin/ui/perf/pluginDeltaPssMB",
+        "/plugin/ui/perf/pluginDeltaPrivateDirtyMB",
+        "/plugin/ui/perf/pluginDeltaHeapMB",
+        "/plugin/ui/perf/uiDeltaPssMB",
+        "/plugin/ui/perf/uiDeltaPrivateDirtyMB",
+        "/plugin/ui/perf/uiDeltaHeapMB",
+        "/plugin/ui/perf/afterLuaInitDeltaPssMB",
+        "/plugin/ui/perf/afterLuaInitDeltaPrivateDirtyMB",
+        "/plugin/ui/perf/afterBindingsDeltaPssMB",
+        "/plugin/ui/perf/afterBindingsDeltaPrivateDirtyMB",
+        "/plugin/ui/perf/afterScriptLoadDeltaPssMB",
+        "/plugin/ui/perf/afterScriptLoadDeltaPrivateDirtyMB",
+        "/plugin/ui/perf/afterDspDeltaPssMB",
+        "/plugin/ui/perf/afterDspDeltaPrivateDirtyMB",
+        "/plugin/ui/perf/afterUiOpenDeltaPssMB",
+        "/plugin/ui/perf/afterUiOpenDeltaPrivateDirtyMB",
+        "/plugin/ui/perf/afterUiIdleDeltaPssMB",
+        "/plugin/ui/perf/afterUiIdleDeltaPrivateDirtyMB",
+        "/plugin/ui/perf/luaHeapMB",
+        "/plugin/ui/perf/glibcHeapMB",
+        "/plugin/ui/perf/glibcArenaMB",
+        "/plugin/ui/perf/glibcMmapMB",
+        "/plugin/ui/perf/glibcFreeHeldMB",
+        "/plugin/ui/perf/glibcReleasableMB",
+        "/plugin/ui/perf/glibcArenaCount",
+        "/plugin/ui/perf/gpuFontAtlasMB",
+        "/plugin/ui/perf/gpuSurfaceColorMB",
+        "/plugin/ui/perf/gpuSurfaceDepthMB",
+        "/plugin/ui/perf/gpuTotalMB",
+        "/plugin/ui/perf/runtimeNodeCount",
+        "/plugin/ui/perf/runtimeNodeMB",
+        "/plugin/ui/perf/runtimeCallbackCount",
+        "/plugin/ui/perf/runtimeUserDataEntries",
+        "/plugin/ui/perf/runtimeUserDataMB",
+        "/plugin/ui/perf/runtimePayloadMB",
+        "/plugin/ui/perf/displayListCount",
+        "/plugin/ui/perf/displayListCommands",
+        "/plugin/ui/perf/displayListMB",
+        "/plugin/ui/perf/renderSnapshotNodes",
+        "/plugin/ui/perf/renderSnapshotMB",
+        "/plugin/ui/perf/customSurfaceStateMB",
+        "/plugin/ui/perf/scriptSourceKB",
+        "/plugin/ui/perf/luaGlobalCount",
+        "/plugin/ui/perf/luaRegistryEntryCount",
+        "/plugin/ui/perf/luaPackageLoadedCount",
+        "/plugin/ui/perf/luaOscPathCount",
+        "/plugin/ui/perf/luaOscCallbackCount",
+        "/plugin/ui/perf/luaOscQueryHandlerCount",
+        "/plugin/ui/perf/luaEventListenerCount",
+        "/plugin/ui/perf/luaManagedDspSlotCount",
+        "/plugin/ui/perf/luaOverlayCacheCount",
+        "/plugin/ui/perf/endpointTotalCount",
+        "/plugin/ui/perf/endpointCustomCount",
+        "/plugin/ui/perf/endpointPathKB",
+        "/plugin/ui/perf/endpointDescriptionKB",
+        "/plugin/ui/perf/dspHostCount",
+        "/plugin/ui/perf/dspScriptSourceKB",
+        "/plugin/ui/perf/imguiWindowCount",
+        "/plugin/ui/perf/imguiTableCount",
+        "/plugin/ui/perf/imguiTabBarCount",
+        "/plugin/ui/perf/imguiViewportCount",
+        "/plugin/ui/perf/imguiFontCount",
+        "/plugin/ui/perf/imguiWindowStateMB",
+        "/plugin/ui/perf/imguiDrawBufferMB",
+        "/plugin/ui/perf/imguiInternalStateMB",
+        "/plugin/ui/perf/shellScriptListRows",
+        "/plugin/ui/perf/shellScriptListMB",
+        "/plugin/ui/perf/shellHierarchyRows",
+        "/plugin/ui/perf/shellHierarchyMB",
+        "/plugin/ui/perf/shellInspectorRows",
+        "/plugin/ui/perf/shellInspectorMB",
+        "/plugin/ui/perf/shellScriptInspectorMB",
+        "/plugin/ui/perf/shellMainEditorTextKB"
+    };
+
+    for (const auto& path : uiPaths) {
+        endpointRegistry.unregisterCustomEndpoint(path);
+    }
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        endpointRegistry.unregisterCustomEndpoint(alias.path);
+    }
+
+    auto registerUiEndpoint = [this](const juce::String& path,
+                                     float minValue,
+                                     float maxValue,
+                                     int access,
+                                     const juce::String& description) {
+        OSCEndpoint endpoint;
+        endpoint.path = path;
+        endpoint.type = "f";
+        endpoint.rangeMin = minValue;
+        endpoint.rangeMax = maxValue;
+        endpoint.access = access;
+        endpoint.description = description;
+        endpoint.category = "plugin-ui";
+        endpoint.commandType = ControlCommand::Type::None;
+        endpoint.layerIndex = -1;
+        endpointRegistry.registerCustomEndpoint(endpoint);
+    };
+
+    registerUiEndpoint("/plugin/ui/viewMode", 0.0f, 1.0f, 3,
+                       "Plugin export view mode (0=compact, 1=split)");
+    registerUiEndpoint("/plugin/ui/settingsVisible", 0.0f, 1.0f, 3,
+                       "Plugin export settings/dev panel visible (0/1)");
+    registerUiEndpoint("/plugin/ui/devVisible", 0.0f, 1.0f, 3,
+                       "Plugin export dev/perf detail visible (0/1)");
+    registerUiEndpoint("/plugin/ui/oscEnabled", 0.0f, 1.0f, 3,
+                       "Plugin OSC enable (0/1)");
+    registerUiEndpoint("/plugin/ui/oscQueryEnabled", 0.0f, 1.0f, 3,
+                       "Plugin OSCQuery enable (0/1)");
+    registerUiEndpoint("/plugin/ui/oscInputPort", 0.0f, 65535.0f, 1,
+                       "Active OSC UDP input port");
+    registerUiEndpoint("/plugin/ui/oscQueryPort", 0.0f, 65535.0f, 1,
+                       "Active OSCQuery HTTP port");
+    registerUiEndpoint("/plugin/ui/xyXParam", 1.0f, 5.0f, 3,
+                       "Effect XY X-axis assignment (1-5)");
+    registerUiEndpoint("/plugin/ui/xyYParam", 1.0f, 5.0f, 3,
+                       "Effect XY Y-axis assignment (1-5)");
+    registerUiEndpoint("/plugin/ui/perf/frameCurrentUs", 0.0f, 1000000.0f, 1,
+                       "Current editor frame time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/frameAvgUs", 0.0f, 1000000.0f, 1,
+                       "Average editor frame time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/framePeakUs", 0.0f, 1000000.0f, 1,
+                       "Peak editor frame time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/dspCurrentUs", 0.0f, 1000000.0f, 1,
+                       "Current DSP block time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/dspAvgUs", 0.0f, 1000000.0f, 1,
+                       "Average DSP block time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/dspPeakUs", 0.0f, 1000000.0f, 1,
+                       "Peak DSP block time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/uiUpdateUs", 0.0f, 1000000.0f, 1,
+                       "Structured UI update time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/renderUs", 0.0f, 1000000.0f, 1,
+                       "ImGui/direct render time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/paintUs", 0.0f, 1000000.0f, 1,
+                       "Canvas paint time in microseconds");
+    registerUiEndpoint("/plugin/ui/perf/cpuPercent", 0.0f, 100.0f, 1,
+                       "CPU utilization percent (0-100)");
+    registerUiEndpoint("/plugin/ui/perf/pssMB", 0.0f, 8192.0f, 1,
+                       "Process proportional set size in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/privateDirtyMB", 0.0f, 8192.0f, 1,
+                       "Process private dirty memory in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/pluginDeltaPssMB", 0.0f, 8192.0f, 1,
+                       "Plugin-attributable PSS delta from processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/pluginDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
+                       "Plugin-attributable private dirty delta from processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/pluginDeltaHeapMB", 0.0f, 8192.0f, 1,
+                       "Plugin-attributable heap delta from processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/uiDeltaPssMB", -8192.0f, 8192.0f, 1,
+                       "UI-attributable PSS delta since editor opened");
+    registerUiEndpoint("/plugin/ui/perf/uiDeltaPrivateDirtyMB", -8192.0f, 8192.0f, 1,
+                       "UI-attributable private dirty delta since editor opened");
+    registerUiEndpoint("/plugin/ui/perf/uiDeltaHeapMB", -8192.0f, 8192.0f, 1,
+                       "UI-attributable heap delta since editor opened");
+    registerUiEndpoint("/plugin/ui/perf/afterLuaInitDeltaPssMB", 0.0f, 8192.0f, 1,
+                       "PSS delta after Lua VM init relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterLuaInitDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
+                       "Private dirty delta after Lua VM init relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterBindingsDeltaPssMB", 0.0f, 8192.0f, 1,
+                       "PSS delta after binding registration relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterBindingsDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
+                       "Private dirty delta after binding registration relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterScriptLoadDeltaPssMB", 0.0f, 8192.0f, 1,
+                       "PSS delta after script load relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterScriptLoadDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
+                       "Private dirty delta after script load relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterDspDeltaPssMB", 0.0f, 8192.0f, 1,
+                       "PSS delta after DSP boot relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterDspDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
+                       "Private dirty delta after DSP boot relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterUiOpenDeltaPssMB", 0.0f, 8192.0f, 1,
+                       "PSS delta after UI open relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterUiOpenDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
+                       "Private dirty delta after UI open relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterUiIdleDeltaPssMB", 0.0f, 8192.0f, 1,
+                       "PSS delta after UI idle settle relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/afterUiIdleDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
+                       "Private dirty delta after UI idle settle relative to processor construction baseline");
+    registerUiEndpoint("/plugin/ui/perf/luaHeapMB", 0.0f, 512.0f, 1,
+                       "Lua VM heap in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/glibcHeapMB", 0.0f, 8192.0f, 1,
+                       "glibc heap allocated in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/glibcArenaMB", 0.0f, 8192.0f, 1,
+                       "glibc arena bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/glibcMmapMB", 0.0f, 8192.0f, 1,
+                       "glibc mmap bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/glibcFreeHeldMB", 0.0f, 8192.0f, 1,
+                       "glibc free-but-held bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/glibcReleasableMB", 0.0f, 8192.0f, 1,
+                       "glibc releasable top bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/glibcArenaCount", 0.0f, 2048.0f, 1,
+                       "glibc arena count");
+    registerUiEndpoint("/plugin/ui/perf/gpuFontAtlasMB", 0.0f, 8192.0f, 1,
+                       "Plugin-owned ImGui font atlas bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/gpuSurfaceColorMB", 0.0f, 8192.0f, 1,
+                       "Plugin-owned offscreen color surface bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/gpuSurfaceDepthMB", 0.0f, 8192.0f, 1,
+                       "Plugin-owned offscreen depth surface bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/gpuTotalMB", 0.0f, 8192.0f, 1,
+                       "Total plugin-owned GPU bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/runtimeNodeCount", 0.0f, 1000000.0f, 1,
+                       "RuntimeNode count");
+    registerUiEndpoint("/plugin/ui/perf/runtimeNodeMB", 0.0f, 8192.0f, 1,
+                       "RuntimeNode tree object/string/vector bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/runtimeCallbackCount", 0.0f, 1000000.0f, 1,
+                       "Bound RuntimeNode callback count");
+    registerUiEndpoint("/plugin/ui/perf/runtimeUserDataEntries", 0.0f, 1000000.0f, 1,
+                       "RuntimeNode userdata entry count");
+    registerUiEndpoint("/plugin/ui/perf/runtimeUserDataMB", 0.0f, 8192.0f, 1,
+                       "RuntimeNode userdata bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/runtimePayloadMB", 0.0f, 8192.0f, 1,
+                       "RuntimeNode display/custom payload bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/displayListCount", 0.0f, 1000000.0f, 1,
+                       "Compiled display list count");
+    registerUiEndpoint("/plugin/ui/perf/displayListCommands", 0.0f, 10000000.0f, 1,
+                       "Compiled display list command count");
+    registerUiEndpoint("/plugin/ui/perf/displayListMB", 0.0f, 8192.0f, 1,
+                       "Compiled display list bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/renderSnapshotNodes", 0.0f, 1000000.0f, 1,
+                       "Render snapshot node count across pending/active/gl snapshots");
+    registerUiEndpoint("/plugin/ui/perf/renderSnapshotMB", 0.0f, 8192.0f, 1,
+                       "Render snapshot bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/customSurfaceStateMB", 0.0f, 8192.0f, 1,
+                       "Custom shader surface CPU-side state bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/scriptSourceKB", 0.0f, 1048576.0f, 1,
+                       "Current loaded script file size in kilobytes");
+    registerUiEndpoint("/plugin/ui/perf/luaGlobalCount", 0.0f, 1000000.0f, 1,
+                       "Lua global table entry count");
+    registerUiEndpoint("/plugin/ui/perf/luaRegistryEntryCount", 0.0f, 10000000.0f, 1,
+                       "Lua registry entry count");
+    registerUiEndpoint("/plugin/ui/perf/luaPackageLoadedCount", 0.0f, 1000000.0f, 1,
+                       "Lua package.loaded entry count");
+    registerUiEndpoint("/plugin/ui/perf/luaOscPathCount", 0.0f, 1000000.0f, 1,
+                       "Lua OSC path count");
+    registerUiEndpoint("/plugin/ui/perf/luaOscCallbackCount", 0.0f, 1000000.0f, 1,
+                       "Lua OSC callback count");
+    registerUiEndpoint("/plugin/ui/perf/luaOscQueryHandlerCount", 0.0f, 1000000.0f, 1,
+                       "Lua OSCQuery handler count");
+    registerUiEndpoint("/plugin/ui/perf/luaEventListenerCount", 0.0f, 1000000.0f, 1,
+                       "Lua event listener count");
+    registerUiEndpoint("/plugin/ui/perf/luaManagedDspSlotCount", 0.0f, 1000000.0f, 1,
+                       "Lua managed DSP slot count");
+    registerUiEndpoint("/plugin/ui/perf/luaOverlayCacheCount", 0.0f, 1000000.0f, 1,
+                       "Lua overlay cache entry count");
+    registerUiEndpoint("/plugin/ui/perf/endpointTotalCount", 0.0f, 1000000.0f, 1,
+                       "Total endpoint count");
+    registerUiEndpoint("/plugin/ui/perf/endpointCustomCount", 0.0f, 1000000.0f, 1,
+                       "Custom endpoint count");
+    registerUiEndpoint("/plugin/ui/perf/endpointPathKB", 0.0f, 1048576.0f, 1,
+                       "Endpoint path bytes in kilobytes");
+    registerUiEndpoint("/plugin/ui/perf/endpointDescriptionKB", 0.0f, 1048576.0f, 1,
+                       "Endpoint description bytes in kilobytes");
+    registerUiEndpoint("/plugin/ui/perf/dspHostCount", 0.0f, 1000000.0f, 1,
+                       "DSP host count (default + slots)");
+    registerUiEndpoint("/plugin/ui/perf/dspScriptSourceKB", 0.0f, 1048576.0f, 1,
+                       "Primary DSP script source file size in kilobytes");
+    registerUiEndpoint("/plugin/ui/perf/imguiWindowCount", 0.0f, 1000000.0f, 1,
+                       "ImGui window count");
+    registerUiEndpoint("/plugin/ui/perf/imguiTableCount", 0.0f, 1000000.0f, 1,
+                       "ImGui table count");
+    registerUiEndpoint("/plugin/ui/perf/imguiTabBarCount", 0.0f, 1000000.0f, 1,
+                       "ImGui tab bar count");
+    registerUiEndpoint("/plugin/ui/perf/imguiViewportCount", 0.0f, 1000000.0f, 1,
+                       "ImGui viewport count");
+    registerUiEndpoint("/plugin/ui/perf/imguiFontCount", 0.0f, 1000000.0f, 1,
+                       "ImGui font count");
+    registerUiEndpoint("/plugin/ui/perf/imguiWindowStateMB", 0.0f, 8192.0f, 1,
+                       "ImGui CPU-side window/state bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/imguiDrawBufferMB", 0.0f, 8192.0f, 1,
+                       "ImGui CPU-side draw buffer bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/imguiInternalStateMB", 0.0f, 8192.0f, 1,
+                       "ImGui total CPU-side internal bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/shellScriptListRows", 0.0f, 1000000.0f, 1,
+                       "Script list row count");
+    registerUiEndpoint("/plugin/ui/perf/shellScriptListMB", 0.0f, 8192.0f, 1,
+                       "Script list retained bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/shellHierarchyRows", 0.0f, 1000000.0f, 1,
+                       "Hierarchy row count");
+    registerUiEndpoint("/plugin/ui/perf/shellHierarchyMB", 0.0f, 8192.0f, 1,
+                       "Hierarchy retained bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/shellInspectorRows", 0.0f, 1000000.0f, 1,
+                       "Inspector row count");
+    registerUiEndpoint("/plugin/ui/perf/shellInspectorMB", 0.0f, 8192.0f, 1,
+                       "Inspector retained bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/shellScriptInspectorMB", 0.0f, 8192.0f, 1,
+                       "Script inspector retained bytes in megabytes");
+    registerUiEndpoint("/plugin/ui/perf/shellMainEditorTextKB", 0.0f, 1048576.0f, 1,
+                       "Main editor text size in kilobytes");
+
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        OSCEndpoint endpoint;
+        endpoint.path = alias.path;
+        endpoint.type = alias.type;
+        endpoint.rangeMin = alias.rangeMin;
+        endpoint.rangeMax = alias.rangeMax;
+        endpoint.access = 3;
+        endpoint.description = alias.description;
+        endpoint.category = "plugin-param";
+        endpoint.commandType = ControlCommand::Type::None;
+        endpoint.layerIndex = -1;
+        endpointRegistry.registerCustomEndpoint(endpoint);
+    }
+
+    oscQueryServer.rebuildTree();
+}
+
+juce::String BehaviorCoreProcessor::resolveExportInternalPath(const juce::String& path) const {
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.path == path) {
+            return alias.internalPath;
+        }
+    }
+    return {};
+}
+
+BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByPublicPath(const juce::String& path) {
+    for (auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.path == path) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+const BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByPublicPath(const juce::String& path) const {
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.path == path) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByHostParamId(const juce::String& hostParamId) {
+    for (auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.hostParamId == hostParamId) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+const BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByHostParamId(const juce::String& hostParamId) const {
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.hostParamId == hostParamId) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+bool BehaviorCoreProcessor::syncPublicPathToHostParameter(const juce::String& publicPath, float value) {
+    if (!hostParams_) {
+        return false;
+    }
+
+    auto* alias = findExportAliasByPublicPath(publicPath);
+    if (alias == nullptr || alias->hostParamId.isEmpty()) {
+        return false;
+    }
+
+    auto* parameter = hostParams_->getParameter(alias->hostParamId);
+    auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+    if (ranged == nullptr) {
+        return false;
+    }
+
+    const float clamped = juce::jlimit(alias->rangeMin, alias->rangeMax, value);
+    const float current = alias->rawHostValue != nullptr ? alias->rawHostValue->load() : clamped;
+    if (std::abs(current - clamped) <= 1.0e-6f) {
+        return true;
+    }
+
+    ranged->setValueNotifyingHost(ranged->convertTo0to1(clamped));
+    return true;
+}
+
+void BehaviorCoreProcessor::applyHostParameterSnapshotToProcessor() {
+    if (!hostParams_) {
+        return;
+    }
+
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        if (alias.internalPath.isEmpty() || alias.hostParamId.isEmpty()) {
+            continue;
+        }
+        const float value = alias.rawHostValue != nullptr ? alias.rawHostValue->load() : alias.defaultValue;
+        setParamByPath(alias.internalPath.toStdString(), value);
+    }
+}
+
+void BehaviorCoreProcessor::parameterChanged(const juce::String& parameterID, float newValue) {
+    if (suppressHostParameterCallbacks_.load(std::memory_order_relaxed)) {
+        return;
+    }
+
+    auto* alias = findExportAliasByHostParamId(parameterID);
+    if (alias == nullptr || alias->internalPath.isEmpty()) {
+        return;
+    }
+
+    setParamByPath(alias->internalPath.toStdString(), newValue);
+}
+
+bool BehaviorCoreProcessor::applyExportPluginPath(const std::string& path, float value) {
+    if (!exportPluginConfig_.enabled) {
+        return false;
+    }
+
+    if (path == "/plugin/ui/viewMode") {
+        const int nextMode = value >= 0.5f ? 1 : 0;
+        exportViewMode_.store(nextMode, std::memory_order_relaxed);
+        return true;
+    }
+
+    if (path == "/plugin/ui/settingsVisible") {
+        exportSettingsVisible_.store(value > 0.5f, std::memory_order_relaxed);
+        return true;
+    }
+
+    if (path == "/plugin/ui/devVisible") {
+        exportDevVisible_.store(value > 0.5f, std::memory_order_relaxed);
+        return true;
+    }
+
+    if (path == "/plugin/ui/oscEnabled") {
+        const bool enabled = value > 0.5f;
+        exportOscEnabled_.store(enabled, std::memory_order_relaxed);
+        if (!enabled) {
+            exportOscQueryEnabled_.store(false, std::memory_order_relaxed);
+        }
+        applyExportOscSettings();
+        return true;
+    }
+
+    if (path == "/plugin/ui/oscQueryEnabled") {
+        const bool enabled = value > 0.5f;
+        exportOscQueryEnabled_.store(enabled, std::memory_order_relaxed);
+        if (enabled) {
+            exportOscEnabled_.store(true, std::memory_order_relaxed);
+        }
+        applyExportOscSettings();
+        return true;
+    }
+
+    if (path == "/plugin/ui/xyXParam") {
+        exportXyXParam_.store(juce::jlimit(1, 5, static_cast<int>(std::lround(value))),
+                              std::memory_order_relaxed);
+        return true;
+    }
+
+    if (path == "/plugin/ui/xyYParam") {
+        exportXyYParam_.store(juce::jlimit(1, 5, static_cast<int>(std::lround(value))),
+                              std::memory_order_relaxed);
+        return true;
+    }
+
+    const juce::String publicPath(path);
+    const auto internalPath = resolveExportInternalPath(publicPath);
+    if (internalPath.isNotEmpty()) {
+        if (syncPublicPathToHostParameter(publicPath, value)) {
+            return true;
+        }
+        return setParamByPath(internalPath.toStdString(), value);
+    }
+
+    return false;
+}
+
+float BehaviorCoreProcessor::readExportPluginPath(const std::string& path) const {
+    if (!exportPluginConfig_.enabled) {
+        return 0.0f;
+    }
+
+    if (path == "/plugin/ui/viewMode") {
+        return static_cast<float>(exportViewMode_.load(std::memory_order_relaxed));
+    }
+    if (path == "/plugin/ui/settingsVisible") {
+        return exportSettingsVisible_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/devVisible") {
+        return exportDevVisible_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/oscEnabled") {
+        return exportOscEnabled_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/oscQueryEnabled") {
+        return exportOscQueryEnabled_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/oscInputPort") {
+        return static_cast<float>(exportOscInputPort_.load(std::memory_order_relaxed));
+    }
+    if (path == "/plugin/ui/oscQueryPort") {
+        return static_cast<float>(exportOscQueryPort_.load(std::memory_order_relaxed));
+    }
+    if (path == "/plugin/ui/xyXParam") {
+        return static_cast<float>(exportXyXParam_.load(std::memory_order_relaxed));
+    }
+    if (path == "/plugin/ui/xyYParam") {
+        return static_cast<float>(exportXyYParam_.load(std::memory_order_relaxed));
+    }
+
+    if (auto* timings = controlServer.getFrameTimings()) {
+        if (path == "/plugin/ui/perf/frameCurrentUs") {
+            return static_cast<float>(timings->total.currentUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/frameAvgUs") {
+            return static_cast<float>(timings->total.getAvgUs());
+        }
+        if (path == "/plugin/ui/perf/framePeakUs") {
+            return static_cast<float>(timings->total.peakUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/dspCurrentUs") {
+            return static_cast<float>(timings->dsp.currentUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/dspAvgUs") {
+            return static_cast<float>(timings->dsp.getAvgUs());
+        }
+        if (path == "/plugin/ui/perf/dspPeakUs") {
+            return static_cast<float>(timings->dsp.peakUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/uiUpdateUs") {
+            return static_cast<float>(timings->uiUpdate.currentUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/renderUs") {
+            return static_cast<float>(timings->imguiRenderUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/paintUs") {
+            return static_cast<float>(timings->paint.currentUs.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/cpuPercent") {
+            return timings->cpuPercent.load(std::memory_order_relaxed);
+        }
+        if (path == "/plugin/ui/perf/pssMB") {
+            const int64_t bytes = timings->processPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/privateDirtyMB") {
+            const int64_t bytes = timings->privateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/pluginDeltaPssMB") {
+            const int64_t bytes = timings->pluginDeltaPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/pluginDeltaPrivateDirtyMB") {
+            const int64_t bytes = timings->pluginDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/pluginDeltaHeapMB") {
+            const int64_t bytes = timings->pluginDeltaHeapBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/uiDeltaPssMB") {
+            const int64_t bytes = timings->uiDeltaPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/uiDeltaPrivateDirtyMB") {
+            const int64_t bytes = timings->uiDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/uiDeltaHeapMB") {
+            const int64_t bytes = timings->uiDeltaHeapBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterLuaInitDeltaPssMB") {
+            const int64_t bytes = timings->afterLuaInitDeltaPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterLuaInitDeltaPrivateDirtyMB") {
+            const int64_t bytes = timings->afterLuaInitDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterBindingsDeltaPssMB") {
+            const int64_t bytes = timings->afterBindingsDeltaPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterBindingsDeltaPrivateDirtyMB") {
+            const int64_t bytes = timings->afterBindingsDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterScriptLoadDeltaPssMB") {
+            const int64_t bytes = timings->afterScriptLoadDeltaPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterScriptLoadDeltaPrivateDirtyMB") {
+            const int64_t bytes = timings->afterScriptLoadDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterDspDeltaPssMB") {
+            const int64_t bytes = timings->afterDspDeltaPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterDspDeltaPrivateDirtyMB") {
+            const int64_t bytes = timings->afterDspDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterUiOpenDeltaPssMB") {
+            const int64_t bytes = timings->afterUiOpenDeltaPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterUiOpenDeltaPrivateDirtyMB") {
+            const int64_t bytes = timings->afterUiOpenDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterUiIdleDeltaPssMB") {
+            const int64_t bytes = timings->afterUiIdleDeltaPssBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/afterUiIdleDeltaPrivateDirtyMB") {
+            const int64_t bytes = timings->afterUiIdleDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/luaHeapMB") {
+            const int64_t bytes = timings->luaHeapBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/glibcHeapMB") {
+            const int64_t bytes = timings->glibcHeapUsedBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/glibcArenaMB") {
+            const int64_t bytes = timings->glibcArenaBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/glibcMmapMB") {
+            const int64_t bytes = timings->glibcMmapBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/glibcFreeHeldMB") {
+            const int64_t bytes = timings->glibcFreeHeldBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/glibcReleasableMB") {
+            const int64_t bytes = timings->glibcReleasableBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/glibcArenaCount") {
+            return static_cast<float>(timings->glibcArenaCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/gpuFontAtlasMB") {
+            const int64_t bytes = timings->gpuFontAtlasBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/gpuSurfaceColorMB") {
+            const int64_t bytes = timings->gpuSurfaceColorBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/gpuSurfaceDepthMB") {
+            const int64_t bytes = timings->gpuSurfaceDepthBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/gpuTotalMB") {
+            const int64_t bytes = timings->gpuTotalBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/runtimeNodeCount") {
+            return static_cast<float>(timings->runtimeNodeCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/runtimeNodeMB") {
+            const int64_t bytes = timings->runtimeNodeBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/runtimeCallbackCount") {
+            return static_cast<float>(timings->runtimeCallbackCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/runtimeUserDataEntries") {
+            return static_cast<float>(timings->runtimeUserDataEntries.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/runtimeUserDataMB") {
+            const int64_t bytes = timings->runtimeUserDataBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/runtimePayloadMB") {
+            const int64_t bytes = timings->runtimeCustomPayloadBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/displayListCount") {
+            return static_cast<float>(timings->displayListCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/displayListCommands") {
+            return static_cast<float>(timings->displayListCommandCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/displayListMB") {
+            const int64_t bytes = timings->displayListBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/renderSnapshotNodes") {
+            return static_cast<float>(timings->renderSnapshotNodeCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/renderSnapshotMB") {
+            const int64_t bytes = timings->renderSnapshotBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/customSurfaceStateMB") {
+            const int64_t bytes = timings->customSurfaceStateBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/scriptSourceKB") {
+            const int64_t bytes = timings->scriptSourceBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / 1024.0);
+        }
+        if (path == "/plugin/ui/perf/luaGlobalCount") {
+            return static_cast<float>(timings->luaGlobalCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/luaRegistryEntryCount") {
+            return static_cast<float>(timings->luaRegistryEntryCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/luaPackageLoadedCount") {
+            return static_cast<float>(timings->luaPackageLoadedCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/luaOscPathCount") {
+            return static_cast<float>(timings->luaOscPathCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/luaOscCallbackCount") {
+            return static_cast<float>(timings->luaOscCallbackCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/luaOscQueryHandlerCount") {
+            return static_cast<float>(timings->luaOscQueryHandlerCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/luaEventListenerCount") {
+            return static_cast<float>(timings->luaEventListenerCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/luaManagedDspSlotCount") {
+            return static_cast<float>(timings->luaManagedDspSlotCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/luaOverlayCacheCount") {
+            return static_cast<float>(timings->luaOverlayCacheCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/endpointTotalCount") {
+            return static_cast<float>(timings->endpointTotalCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/endpointCustomCount") {
+            return static_cast<float>(timings->endpointCustomCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/endpointPathKB") {
+            const int64_t bytes = timings->endpointPathBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / 1024.0);
+        }
+        if (path == "/plugin/ui/perf/endpointDescriptionKB") {
+            const int64_t bytes = timings->endpointDescriptionBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / 1024.0);
+        }
+        if (path == "/plugin/ui/perf/dspHostCount") {
+            return static_cast<float>(timings->dspHostCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/dspScriptSourceKB") {
+            const int64_t bytes = timings->dspScriptSourceBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / 1024.0);
+        }
+        if (path == "/plugin/ui/perf/imguiWindowCount") {
+            return static_cast<float>(timings->imguiWindowCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/imguiTableCount") {
+            return static_cast<float>(timings->imguiTableCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/imguiTabBarCount") {
+            return static_cast<float>(timings->imguiTabBarCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/imguiViewportCount") {
+            return static_cast<float>(timings->imguiViewportCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/imguiFontCount") {
+            return static_cast<float>(timings->imguiFontCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/imguiWindowStateMB") {
+            const int64_t bytes = timings->imguiWindowStateBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/imguiDrawBufferMB") {
+            const int64_t bytes = timings->imguiDrawBufferBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/imguiInternalStateMB") {
+            const int64_t bytes = timings->imguiInternalStateBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/shellScriptListRows") {
+            return static_cast<float>(timings->shellScriptListRowCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/shellScriptListMB") {
+            const int64_t bytes = timings->shellScriptListBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/shellHierarchyRows") {
+            return static_cast<float>(timings->shellHierarchyRowCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/shellHierarchyMB") {
+            const int64_t bytes = timings->shellHierarchyBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/shellInspectorRows") {
+            return static_cast<float>(timings->shellInspectorRowCount.load(std::memory_order_relaxed));
+        }
+        if (path == "/plugin/ui/perf/shellInspectorMB") {
+            const int64_t bytes = timings->shellInspectorBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/shellScriptInspectorMB") {
+            const int64_t bytes = timings->shellScriptInspectorBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / (1024.0 * 1024.0));
+        }
+        if (path == "/plugin/ui/perf/shellMainEditorTextKB") {
+            const int64_t bytes = timings->shellMainEditorTextBytes.load(std::memory_order_relaxed);
+            return static_cast<float>(bytes / 1024.0);
+        }
+    }
+
+    const auto* alias = findExportAliasByPublicPath(juce::String(path));
+    if (alias != nullptr) {
+        if (alias->rawHostValue != nullptr) {
+            return alias->rawHostValue->load();
+        }
+        if (alias->internalPath.isNotEmpty()) {
+            return getParamByPath(alias->internalPath.toStdString());
+        }
+    }
+
+    return 0.0f;
+}
+
+void BehaviorCoreProcessor::applyExportOscSettings() {
+    if (!exportPluginConfig_.enabled) {
+        return;
+    }
+
+    const bool oscEnabled = exportOscEnabled_.load(std::memory_order_relaxed);
+    const bool oscQueryEnabled = exportOscQueryEnabled_.load(std::memory_order_relaxed) && oscEnabled;
+    int oscPort = exportOscInputPort_.load(std::memory_order_relaxed);
+    int queryPort = exportOscQueryPort_.load(std::memory_order_relaxed);
+
+    if (oscEnabled || oscQueryEnabled) {
+        findAvailableOscPortPair(oscPort > 0 ? oscPort : exportPluginConfig_.oscBasePort,
+                                 oscPort,
+                                 queryPort);
+    } else {
+        oscPort = exportPluginConfig_.oscBasePort;
+        queryPort = exportPluginConfig_.oscBasePort + 1;
+    }
+
+    exportOscInputPort_.store(oscPort, std::memory_order_relaxed);
+    exportOscQueryPort_.store(queryPort, std::memory_order_relaxed);
+
+    oscQueryServer.stop();
+    oscServer.stop();
+
+    OSCSettings settings;
+    settings.inputPort = oscPort;
+    settings.queryPort = queryPort;
+    settings.oscEnabled = oscEnabled;
+    settings.oscQueryEnabled = oscQueryEnabled;
+    oscServer.setSettings(settings);
+    oscServer.start(this);
+    oscQueryServer.setContext(this, &endpointRegistry);
+    if (oscQueryEnabled) {
+        oscQueryServer.start(this, &endpointRegistry, queryPort, oscPort);
+    }
+}
+
+void BehaviorCoreProcessor::capturePluginConstructionBaseline() {
+    const auto snapshot = readProcessorMemorySnapshot();
+    pluginBaselinePssBytes_.store(snapshot.pssBytes, std::memory_order_relaxed);
+    pluginBaselinePrivateDirtyBytes_.store(snapshot.privateDirtyBytes, std::memory_order_relaxed);
+    pluginBaselineHeapBytes_.store(snapshot.heapUsedBytes, std::memory_order_relaxed);
+    pluginBaselineArenaBytes_.store(snapshot.arenaBytes, std::memory_order_relaxed);
+}
+
+void BehaviorCoreProcessor::captureLuaInitSnapshot() {
+    if (luaInitSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
+        return;
+    }
+    const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
+    const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
+    const auto snapshot = readProcessorMemorySnapshot();
+    afterLuaInitDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
+    afterLuaInitDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+}
+
+void BehaviorCoreProcessor::captureBindingsSnapshot() {
+    if (bindingsSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
+        return;
+    }
+    const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
+    const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
+    const auto snapshot = readProcessorMemorySnapshot();
+    afterBindingsDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
+    afterBindingsDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+}
+
+void BehaviorCoreProcessor::captureScriptLoadSnapshot() {
+    if (scriptLoadSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
+        return;
+    }
+    const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
+    const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
+    const auto snapshot = readProcessorMemorySnapshot();
+    afterScriptLoadDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
+    afterScriptLoadDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+}
+
+void BehaviorCoreProcessor::captureDspLoadedSnapshot() {
+    if (dspLoadedSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
+        return;
+    }
+    const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
+    const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
+    const auto snapshot = readProcessorMemorySnapshot();
+    afterDspDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
+    afterDspDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+}
+
+void BehaviorCoreProcessor::captureEditorOpenSnapshot() {
+    if (editorOpenSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
+        return;
+    }
+    const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
+    const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
+    const auto snapshot = readProcessorMemorySnapshot();
+    editorOpenPssBytes_.store(snapshot.pssBytes, std::memory_order_relaxed);
+    editorOpenPrivateDirtyBytes_.store(snapshot.privateDirtyBytes, std::memory_order_relaxed);
+    editorOpenHeapBytes_.store(snapshot.heapUsedBytes, std::memory_order_relaxed);
+    afterUiOpenDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
+    afterUiOpenDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+}
+
+void BehaviorCoreProcessor::captureUiIdleSnapshot() {
+    if (uiIdleSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
+        return;
+    }
+    const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
+    const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
+    const auto snapshot = readProcessorMemorySnapshot();
+    afterUiIdleDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
+    afterUiIdleDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+}
+
+bool BehaviorCoreProcessor::hasExportPluginConfig() const {
+    return exportPluginConfig_.enabled;
+}
+
+int BehaviorCoreProcessor::getExportViewMode() const {
+    return exportViewMode_.load(std::memory_order_relaxed);
+}
+
+int BehaviorCoreProcessor::getExportCompactWidth() const {
+    return exportPluginConfig_.compactWidth;
+}
+
+int BehaviorCoreProcessor::getExportCompactHeight() const {
+    return exportPluginConfig_.compactHeight;
+}
+
+int BehaviorCoreProcessor::getExportSplitWidth() const {
+    return exportPluginConfig_.splitWidth;
+}
+
+int BehaviorCoreProcessor::getExportSplitHeight() const {
+    return exportPluginConfig_.splitHeight;
+}
+
+int BehaviorCoreProcessor::getExportEditorWidth() const {
+    return exportEditorWidth_.load(std::memory_order_relaxed);
+}
+
+int BehaviorCoreProcessor::getExportEditorHeight() const {
+    return exportEditorHeight_.load(std::memory_order_relaxed);
+}
+
+int64_t BehaviorCoreProcessor::getPrimaryDspScriptSizeBytes() const {
+    return (dspScriptHost && dspScriptHost->getCurrentScriptFile().existsAsFile())
+               ? static_cast<int64_t>(dspScriptHost->getCurrentScriptFile().getSize())
+               : 0;
+}
+
+juce::AudioProcessorValueTreeState* BehaviorCoreProcessor::getHostParameterState() const {
+    return hostParams_.get();
+}
+
+bool BehaviorCoreProcessor::isExportSettingsVisible() const {
+    return exportSettingsVisible_.load(std::memory_order_relaxed);
+}
+
+void BehaviorCoreProcessor::setExportEditorSize(int width, int height) {
+    if (!exportPluginConfig_.enabled) {
+        return;
+    }
+    exportEditorWidth_.store(std::max(1, width), std::memory_order_relaxed);
+    exportEditorHeight_.store(std::max(1, height), std::memory_order_relaxed);
 }
 
 void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
@@ -148,8 +1546,9 @@ void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     captureBuffer.setSize(captureSamples);
     captureBuffer.setNumChannels(2);
 
-    graphWetBuffer.setSize(2, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
-    monitorInputBuffer.setSize(2, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
+    const int graphChannels = juce::jmax(1, getGraphOutputChannels());
+    graphWetBuffer.setSize(graphChannels, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
+    monitorInputBuffer.setSize(graphChannels, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
     forwardScheduled = false;
     forwardFireAtSample = 0.0;
     forwardScheduledBars = 0.0f;
@@ -162,46 +1561,64 @@ void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     auto& coreSettings = Settings::getInstance();
 
     if (dspScriptHost && !dspScriptHost->isLoaded()) {
-        const auto dspScriptsDir = coreSettings.getDspScriptsDir();
-        if (dspScriptsDir.isEmpty()) {
-            std::fprintf(stderr,
-                         "BehaviorCoreProcessor: settings.dspScriptsDir is empty; default DSP script not loaded\n");
-        } else {
-            const juce::File defaultDspScript =
-                juce::File(dspScriptsDir).getChildFile("looper_primitives_dsp.lua");
-            if (!defaultDspScript.existsAsFile()) {
+        const juce::File defaultUiTarget(coreSettings.getDefaultUiScript());
+        const juce::File projectDspScript = resolveDefaultDspScriptFromProject(defaultUiTarget);
+
+        if (projectDspScript.existsAsFile()) {
+            if (!loadDspScript(projectDspScript)) {
                 std::fprintf(stderr,
-                             "BehaviorCoreProcessor: configured default DSP script missing: %s\n"
-                             "  -> Configure dspScriptsDir in .manifold.settings.json in the repo root.\n",
-                             defaultDspScript.getFullPathName().toRawUTF8());
-            } else if (!loadDspScript(defaultDspScript)) {
-                std::fprintf(stderr,
-                             "BehaviorCoreProcessor: failed to load default DSP script: %s\n",
+                             "BehaviorCoreProcessor: failed to load project DSP script '%s': %s\n",
+                             projectDspScript.getFullPathName().toRawUTF8(),
                              getDspScriptLastError().c_str());
+            }
+        } else {
+            const auto dspScriptsDir = coreSettings.getDspScriptsDir();
+            if (dspScriptsDir.isEmpty()) {
+                std::fprintf(stderr,
+                             "BehaviorCoreProcessor: settings.dspScriptsDir is empty; default DSP script not loaded\n");
+            } else {
+                const juce::File defaultDspScript =
+                    juce::File(dspScriptsDir).getChildFile("looper_primitives_dsp.lua");
+                if (!defaultDspScript.existsAsFile()) {
+                    std::fprintf(stderr,
+                                 "BehaviorCoreProcessor: configured default DSP script missing: %s\n"
+                                 "  -> Configure dspScriptsDir in .manifold.settings.json in the repo root.\n",
+                                 defaultDspScript.getFullPathName().toRawUTF8());
+                } else if (!loadDspScript(defaultDspScript)) {
+                    std::fprintf(stderr,
+                                 "BehaviorCoreProcessor: failed to load default DSP script: %s\n",
+                                 getDspScriptLastError().c_str());
+                }
             }
         }
     }
 
+    applyHostParameterSnapshotToProcessor();
+
     // Primitives behavior runtime is graph-driven; keep graph active by default.
     graphProcessingEnabled.store(true, std::memory_order_relaxed);
 
-    OSCSettings oscSettings = OSCSettingsPersistence::load();
-    auto settingsFile = OSCSettingsPersistence::getSettingsFile();
-    if (!settingsFile.existsAsFile()) {
-        oscSettings.oscEnabled = true;
-        oscSettings.oscQueryEnabled = true;
-        oscSettings.inputPort = 9000;
-        oscSettings.queryPort = 9001;
-        OSCSettingsPersistence::save(oscSettings);
-    }
+    if (exportPluginConfig_.enabled) {
+        applyExportOscSettings();
+    } else {
+        OSCSettings oscSettings = OSCSettingsPersistence::load();
+        auto settingsFile = OSCSettingsPersistence::getSettingsFile();
+        if (!settingsFile.existsAsFile()) {
+            oscSettings.oscEnabled = true;
+            oscSettings.oscQueryEnabled = true;
+            oscSettings.inputPort = 9000;
+            oscSettings.queryPort = 9001;
+            OSCSettingsPersistence::save(oscSettings);
+        }
 
-    oscServer.setSettings(oscSettings);
-    oscServer.start(this);
-    oscQueryServer.setContext(this, &endpointRegistry);
+        oscServer.setSettings(oscSettings);
+        oscServer.start(this);
+        oscQueryServer.setContext(this, &endpointRegistry);
 
-    if (oscSettings.oscQueryEnabled) {
-        oscQueryServer.start(this, &endpointRegistry, oscSettings.queryPort,
-                             oscSettings.inputPort);
+        if (oscSettings.oscQueryEnabled) {
+            oscQueryServer.start(this, &endpointRegistry, oscSettings.queryPort,
+                                 oscSettings.inputPort);
+        }
     }
 
     initialiseAtomicState(currentSampleRate.load(std::memory_order_relaxed));
@@ -210,6 +1627,8 @@ void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     linkSync.initialise(currentSampleRate.load(std::memory_order_relaxed));
     linkSync.setEnabled(true);
     linkSync.setTempoSyncEnabled(true);
+
+    captureDspLoadedSnapshot();
 }
 
 void BehaviorCoreProcessor::releaseResources() {
@@ -239,9 +1658,19 @@ void BehaviorCoreProcessor::releaseResources() {
 void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                          juce::MidiBuffer& midiMessages) {
     juce::ScopedNoDenormals noDenormals;
+    const auto dspStart = std::chrono::steady_clock::now();
 
-    // Process incoming MIDI from host/plugin
-    processMidiInput(midiMessages);
+    // Process incoming MIDI from host/plugin.
+    // Do not mirror host input into midiInputRing here; that ring is reserved for
+    // hardware MIDI callbacks and otherwise host MIDI gets fed back into the
+    // MidiManager a second time.
+    processMidiInput(midiMessages, false);
+
+    // By default, consume incoming host MIDI and only write explicit output MIDI.
+    // If MIDI thru is enabled, preserve the original incoming events.
+    if (!midiThruEnabled) {
+        midiMessages.clear();
+    }
     
     // Also process MIDI from hardware device (written to ring buffer by handleIncomingMidiMessage)
     juce::MidiBuffer hardwareMidi;
@@ -252,12 +1681,6 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
     if (!hardwareMidi.isEmpty()) {
         processMidiInput(hardwareMidi, false);
-    }
-
-    // MIDI thru: forward incoming MIDI to output if enabled
-    juce::MidiBuffer midiThruBuffer;
-    if (midiThruEnabled) {
-        midiThruBuffer = midiMessages;
     }
 
     processControlCommands();
@@ -291,6 +1714,42 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     float* outR = numChannels > 1 ? buffer.getWritePointer(1) : outL;
 
     auto& state = controlServer.getAtomicState();
+
+   #if JucePlugin_IsMidiEffect
+    {
+        buffer.clear();
+        state.graphEnabled.store(false, std::memory_order_relaxed);
+        state.captureLevel.store(0.0f, std::memory_order_relaxed);
+
+        if (dspScriptHost && dspScriptHost->isLoaded()) {
+            dspScriptHost->process(numSamples, currentSampleRate.load());
+        }
+        for (auto& entry : dspSlots) {
+            auto* host = entry.second.get();
+            if (host && host->isLoaded()) {
+                host->process(numSamples, currentSampleRate.load());
+            }
+        }
+
+        const double nextPlayTime =
+            playTimeSamples.load(std::memory_order_relaxed) + numSamples;
+        playTimeSamples.store(nextPlayTime, std::memory_order_relaxed);
+        state.playTime.store(nextPlayTime, std::memory_order_relaxed);
+
+        const double sr = currentSampleRate.load(std::memory_order_relaxed);
+        state.uptimeSeconds.store(sr > 0.0 ? nextPlayTime / sr : 0.0,
+                                  std::memory_order_relaxed);
+
+        drainMidiOutput(midiMessages);
+
+        const auto dspEnd = std::chrono::steady_clock::now();
+        const auto dspUs = std::chrono::duration_cast<std::chrono::microseconds>(dspEnd - dspStart).count();
+        if (auto* timings = controlServer.getFrameTimings()) {
+            updateTimingStage(timings->dsp, dspUs);
+        }
+        return;
+    }
+   #endif
 
     // Input volume controls level going into looper (capture + graph)
     const float inputVolume = state.inputVolume.load(std::memory_order_relaxed);
@@ -354,17 +1813,6 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         activeRuntime->setMonitorEnabled(passthroughEnabled);
         activeRuntime->process(wetView, &monitorInputBuffer);
 
-        // Call script process callbacks if available
-        if (dspScriptHost && dspScriptHost->isLoaded()) {
-            dspScriptHost->process(numSamples, currentSampleRate.load());
-        }
-        for (auto& entry : dspSlots) {
-            auto* host = entry.second.get();
-            if (host && host->isLoaded()) {
-                host->process(numSamples, currentSampleRate.load());
-            }
-        }
-
         if (outL == nullptr) {
             buffer.clear();
         } else {
@@ -398,6 +1846,18 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 if (outR != nullptr && outR != outL) {
                     outR[i] *= passthroughGain;
                 }
+            }
+        }
+    }
+
+    if (!mutationPauseRequested) {
+        if (dspScriptHost && dspScriptHost->isLoaded()) {
+            dspScriptHost->process(numSamples, currentSampleRate.load());
+        }
+        for (auto& entry : dspSlots) {
+            auto* host = entry.second.get();
+            if (host && host->isLoaded()) {
+                host->process(numSamples, currentSampleRate.load());
             }
         }
     }
@@ -462,6 +1922,12 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     // Drain MIDI output messages to host MIDI buffer
     drainMidiOutput(midiMessages);
+
+    const auto dspEnd = std::chrono::steady_clock::now();
+    const auto dspUs = std::chrono::duration_cast<std::chrono::microseconds>(dspEnd - dspStart).count();
+    if (auto* timings = controlServer.getFrameTimings()) {
+        updateTimingStage(timings->dsp, dspUs);
+    }
 }
 
 juce::AudioProcessorEditor* BehaviorCoreProcessor::createEditor() {
@@ -627,10 +2093,12 @@ bool BehaviorCoreProcessor::unloadDspSlot(const std::string& slot) {
         return false;
     }
 
+    // SLOP: the comment below is giving codex. 
+
     // Do not destroy slot hosts during runtime UI/DSP transitions.
     // Tearing down Lua VMs has repeatedly caused crashes. Keep the host alive
     // and unload only its nodes by loading an empty script.
-    // TODO(shamanic): replace this empty-script unload + markUnloaded() split
+    // TODO: replace this empty-script unload + markUnloaded() split
     // with a proper slot lifecycle model. Right now we preserve the VM/runtime
     // for stability but lie about loaded-state so UI/project switches will
     // force a clean reload. That is the right tactical fix, but the long-term
@@ -995,6 +2463,10 @@ bool BehaviorCoreProcessor::applyParamPath(const std::string& path, float value)
 }
 
 bool BehaviorCoreProcessor::setParamByPath(const std::string& path, float value) {
+    if (applyExportPluginPath(path, value)) {
+        return true;
+    }
+
     if (path == "/core/behavior/dsp/reload") {
         if (value > 0.5f) {
             return reloadDspScript();
@@ -1028,6 +2500,13 @@ bool BehaviorCoreProcessor::setParamByPath(const std::string& path, float value)
 }
 
 float BehaviorCoreProcessor::getParamByPath(const std::string& path) const {
+    if (exportPluginConfig_.enabled) {
+        const float exportValue = readExportPluginPath(path);
+        if (path.rfind("/plugin/", 0) == 0 || resolveExportInternalPath(juce::String(path)).isNotEmpty()) {
+            return exportValue;
+        }
+    }
+
     if (path == "/core/behavior/dsp/reload") {
         return 0.0f;
     }
@@ -1140,6 +2619,15 @@ float BehaviorCoreProcessor::getParamByPath(const std::string& path) const {
 bool BehaviorCoreProcessor::hasEndpoint(const std::string& path) const {
     if (path == "/core/behavior/dsp/reload") {
         return true;
+    }
+
+    if (exportPluginConfig_.enabled) {
+        if (path.rfind("/plugin/", 0) == 0 || resolveExportInternalPath(juce::String(path)).isNotEmpty()) {
+            const auto endpoint = endpointRegistry.findEndpoint(juce::String(path));
+            if (endpoint.path.isNotEmpty()) {
+                return true;
+            }
+        }
     }
 
     if (path == "/core/behavior/graph/enabled") {
@@ -1311,9 +2799,25 @@ bool BehaviorCoreProcessor::computeSynthSamplePeaks(int numBuckets,
     return false;
 }
 
+bool BehaviorCoreProcessor::computeDynamicSamplePeaks(int slotIndex,
+                                                      int numBuckets,
+                                                      std::vector<float>& outPeaks) const {
+    if (dspScriptHost) {
+        return dspScriptHost->computeDynamicSamplePeaks(slotIndex, numBuckets, outPeaks);
+    }
+    return false;
+}
+
 std::vector<float> BehaviorCoreProcessor::getVoiceSamplePositions() const {
     if (dspScriptHost) {
         return dspScriptHost->getVoiceSamplePositions();
+    }
+    return {};
+}
+
+std::vector<float> BehaviorCoreProcessor::getDynamicSampleVoicePositions(int slotIndex) const {
+    if (dspScriptHost) {
+        return dspScriptHost->getDynamicSampleVoicePositions(slotIndex);
     }
     return {};
 }
@@ -1343,6 +2847,13 @@ bool BehaviorCoreProcessor::getSampleDerivedAdditiveDebug(int voiceIndex,
 bool BehaviorCoreProcessor::refreshSampleDerivedAdditiveDebug(SampleDerivedAdditiveDebugState& outState) {
     if (dspScriptHost) {
         return dspScriptHost->refreshSampleDerivedAdditiveDebug(outState);
+    }
+    return false;
+}
+
+bool BehaviorCoreProcessor::ensureDynamicModuleSlot(const std::string& specId, int slotIndex) {
+    if (dspScriptHost) {
+        return dspScriptHost->ensureDynamicModuleSlot(specId, slotIndex);
     }
     return false;
 }
@@ -1753,8 +3264,10 @@ const char* toLayerStateString(ScriptableLayerState state) {
         case ScriptableLayerState::Muted: return "muted";
         case ScriptableLayerState::Stopped: return "stopped";
         case ScriptableLayerState::Paused: return "paused";
-        default: return "unknown";
+        case ScriptableLayerState::Unknown: return "unknown";
     }
+
+    return "unknown";
 }
 
 const char* toRecordModeString(int mode) {
@@ -1775,7 +3288,7 @@ std::string stringifyStateValue(const char* value) {
     return value != nullptr ? std::string(value) : std::string{};
 }
 
-std::string stringifyStateValue(const std::string& value) {
+[[maybe_unused]] std::string stringifyStateValue(const std::string& value) {
     return value;
 }
 
@@ -2337,7 +3850,7 @@ void BehaviorCoreProcessor::serializeStateToLua(sol::state& lua) const {
     auto spectrum = getSpectrumData();
     sol::table spectrumTable = lua.create_table();
     for (int i = 0; i < static_cast<int>(spectrum.size()); ++i) {
-        spectrumTable[i + 1] = spectrum[i];
+        spectrumTable[i + 1] = spectrum[static_cast<std::size_t>(i)];
     }
     state["spectrum"] = spectrumTable;
 
@@ -2444,10 +3957,88 @@ void BehaviorCoreProcessor::processPendingChanges() {
     // TODO: Implement pending change processing
 }
 
-void BehaviorCoreProcessor::getStateInformation(juce::MemoryBlock&) {
+void BehaviorCoreProcessor::getStateInformation(juce::MemoryBlock& destData) {
+    juce::DynamicObject::Ptr root = new juce::DynamicObject();
+
+    if (exportPluginConfig_.enabled) {
+        juce::DynamicObject::Ptr pluginUi = new juce::DynamicObject();
+        pluginUi->setProperty("viewMode", exportViewMode_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("editorWidth", exportEditorWidth_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("editorHeight", exportEditorHeight_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("devVisible", exportDevVisible_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("xyXParam", exportXyXParam_.load(std::memory_order_relaxed));
+        pluginUi->setProperty("xyYParam", exportXyYParam_.load(std::memory_order_relaxed));
+        root->setProperty("pluginUi", juce::var(pluginUi.get()));
+    }
+
+    if (hostParams_) {
+        auto state = hostParams_->copyState();
+        if (auto xml = std::unique_ptr<juce::XmlElement>(state.createXml())) {
+            root->setProperty("hostParamsXml", xml->toString());
+        }
+    }
+
+    destData.reset();
+    juce::MemoryOutputStream out(destData, false);
+    out.writeString(juce::JSON::toString(juce::var(root.get())));
 }
 
-void BehaviorCoreProcessor::setStateInformation(const void*, int) {
+void BehaviorCoreProcessor::setStateInformation(const void* data, int sizeInBytes) {
+    if (data == nullptr || sizeInBytes <= 0) {
+        return;
+    }
+
+    const juce::String jsonText = juce::String::fromUTF8(static_cast<const char*>(data), sizeInBytes);
+    const auto json = juce::JSON::parse(jsonText);
+    if (!json.isObject()) {
+        return;
+    }
+
+    auto* obj = json.getDynamicObject();
+    if (obj == nullptr) {
+        return;
+    }
+
+    if (obj->hasProperty("pluginUi") && exportPluginConfig_.enabled) {
+        auto pluginUiVar = obj->getProperty("pluginUi");
+        auto* pluginUi = pluginUiVar.getDynamicObject();
+        if (pluginUi != nullptr) {
+            exportViewMode_.store(readIntProperty(pluginUi, "viewMode", exportPluginConfig_.defaultViewMode) == 0 ? 0 : 1,
+                                  std::memory_order_relaxed);
+            exportEditorWidth_.store(std::max(1, readIntProperty(pluginUi, "editorWidth", exportEditorWidth_.load(std::memory_order_relaxed))),
+                                     std::memory_order_relaxed);
+            exportEditorHeight_.store(std::max(1, readIntProperty(pluginUi, "editorHeight", exportEditorHeight_.load(std::memory_order_relaxed))),
+                                      std::memory_order_relaxed);
+            exportSettingsVisible_.store(false, std::memory_order_relaxed);
+            exportDevVisible_.store(readBoolProperty(pluginUi, "devVisible", exportDevVisible_.load(std::memory_order_relaxed)),
+                                    std::memory_order_relaxed);
+            exportOscEnabled_.store(exportPluginConfig_.oscDefaultEnabled, std::memory_order_relaxed);
+            exportOscQueryEnabled_.store(exportPluginConfig_.oscQueryDefaultEnabled, std::memory_order_relaxed);
+            exportOscInputPort_.store(exportPluginConfig_.oscBasePort, std::memory_order_relaxed);
+            exportOscQueryPort_.store(exportPluginConfig_.oscBasePort + 1, std::memory_order_relaxed);
+            exportXyXParam_.store(juce::jlimit(1, 5,
+                                              readIntProperty(pluginUi, "xyXParam", exportXyXParam_.load(std::memory_order_relaxed))),
+                                 std::memory_order_relaxed);
+            exportXyYParam_.store(juce::jlimit(1, 5,
+                                              readIntProperty(pluginUi, "xyYParam", exportXyYParam_.load(std::memory_order_relaxed))),
+                                 std::memory_order_relaxed);
+            applyExportOscSettings();
+        }
+    }
+
+    if (obj->hasProperty("hostParamsXml") && hostParams_) {
+        const auto xmlText = obj->getProperty("hostParamsXml").toString();
+        if (xmlText.isNotEmpty()) {
+            if (auto xml = juce::parseXML(xmlText)) {
+                if (xml->hasTagName(hostParams_->state.getType())) {
+                    suppressHostParameterCallbacks_.store(true, std::memory_order_relaxed);
+                    hostParams_->replaceState(juce::ValueTree::fromXml(*xml));
+                    suppressHostParameterCallbacks_.store(false, std::memory_order_relaxed);
+                    applyHostParameterSnapshotToProcessor();
+                }
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -2531,25 +4122,26 @@ void BehaviorCoreProcessor::handleIncomingMidiMessage(juce::MidiInput* /*source*
                                                       const juce::MidiMessage& msg) {
     // Route incoming MIDI from hardware device to the MidiManager via ring buffer
     // The MidiManager will pick this up on the next process call
+    const uint8_t channel = static_cast<uint8_t>((juce::jlimit(1, 16, msg.getChannel()) - 1) & 0x0F);
     if (msg.isNoteOn()) {
-        midiInputRing.write(0x90 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0x90 | channel,
                            static_cast<uint8_t>(msg.getNoteNumber()),
                            static_cast<uint8_t>(msg.getVelocity()), 0);
     } else if (msg.isNoteOff()) {
-        midiInputRing.write(0x80 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0x80 | channel,
                            static_cast<uint8_t>(msg.getNoteNumber()),
                            static_cast<uint8_t>(msg.getVelocity()), 0);
     } else if (msg.isController()) {
-        midiInputRing.write(0xB0 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0xB0 | channel,
                            static_cast<uint8_t>(msg.getControllerNumber()),
                            static_cast<uint8_t>(msg.getControllerValue()), 0);
     } else if (msg.isPitchWheel()) {
         int value = msg.getPitchWheelValue();
-        midiInputRing.write(0xE0 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0xE0 | channel,
                            static_cast<uint8_t>(value & 0x7F),
                            static_cast<uint8_t>((value >> 7) & 0x7F), 0);
     } else if (msg.isProgramChange()) {
-        midiInputRing.write(0xC0 | (msg.getChannel() & 0x0F),
+        midiInputRing.write(0xC0 | channel,
                            static_cast<uint8_t>(msg.getProgramChangeNumber()), 0, 0);
     }
 }
@@ -2607,27 +4199,11 @@ void BehaviorCoreProcessor::processMidiInput(const juce::MidiBuffer& midiMessage
         return;
     }
     
-    // Keep legacy behavior: write to ring buffer for Lua consumption
-    for (const auto metadata : midiMessages) {
-        const juce::MidiMessage& msg = metadata.getMessage();
-        if (msg.isNoteOn()) {
-            midiInputRing.write(MidiStatus::NOTE_ON | msg.getChannel(),
-                              msg.getNoteNumber(), msg.getVelocity(), metadata.samplePosition);
-        } else if (msg.isNoteOff()) {
-            midiInputRing.write(MidiStatus::NOTE_OFF | msg.getChannel(),
-                               msg.getNoteNumber(), msg.getVelocity(), metadata.samplePosition);
-        } else if (msg.isController()) {
-            midiInputRing.write(MidiStatus::CONTROL_CHANGE | msg.getChannel(),
-                               msg.getControllerNumber(), msg.getControllerValue(), metadata.samplePosition);
-        } else if (msg.isPitchWheel()) {
-            midiInputRing.write(MidiStatus::PITCH_BEND | msg.getChannel(),
-                               msg.getPitchWheelValue() & 0x7F,
-                               (msg.getPitchWheelValue() >> 7) & 0x7F, metadata.samplePosition);
-        } else if (msg.isProgramChange()) {
-            midiInputRing.write(MidiStatus::PROGRAM_CHANGE | msg.getChannel(),
-                               msg.getProgramChangeNumber(), 0, metadata.samplePosition);
-        }
-    }
+    // Legacy ring mirroring is intentionally disabled here. Host MIDI is already
+    // available to Lua through MidiManager::inputRing_, and mirroring it into
+    // midiInputRing causes the same host events to be re-consumed as if they were
+    // hardware MIDI on the same block.
+    juce::ignoreUnused(midiMessages);
 }
 
 void BehaviorCoreProcessor::drainMidiOutput(juce::MidiBuffer& outMidi) {

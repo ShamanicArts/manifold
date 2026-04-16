@@ -1,0 +1,33 @@
+{
+  "name": "Standalone Scale Quantizer",
+  "version": 1,
+  "description": "Standalone MIDI scale quantizer export target",
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+  "plugin": {
+    "midiEffect": true,
+    "runtimeFamily": "midi_effect",
+    "view": {
+      "defaultMode": "compact",
+      "compact": { "w": 236, "h": 176 },
+      "split": { "w": 236, "h": 176 }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9050,
+      "oscQueryPort": 9051
+    },
+    "paramsSpec": {
+      "generator": "scale_quantizer_midi_effect",
+      "publicPathBase": "/plugin/params",
+      "internalPathBase": "/midi/synth/rack/scale_quantizer/1"
+    }
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "../Main/themes/dark.lua"
+}

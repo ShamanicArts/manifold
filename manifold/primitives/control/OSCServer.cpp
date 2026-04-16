@@ -76,6 +76,7 @@ static void logDispatchDiagnostic(std::atomic<int>& counter,
                                   const juce::String& label,
                                   const juce::String& address,
                                   const juce::String& detail) {
+    juce::ignoreUnused(label, address, detail);
     const int count = counter.fetch_add(1, std::memory_order_relaxed) + 1;
     if (count <= 5 || (count % 100) == 0) {
         DBG("OSCServer: " << label << " '" << address << "' (" << detail

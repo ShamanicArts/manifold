@@ -1,0 +1,77 @@
+{
+  "name": "Standalone Velocity Mapper",
+  "version": 1,
+  "description": "Standalone MIDI velocity mapper export target",
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+  "plugin": {
+    "midiEffect": true,
+    "runtimeFamily": "midi_effect",
+    "view": {
+      "defaultMode": "compact",
+      "compact": {
+        "w": 236,
+        "h": 200
+      },
+      "split": {
+        "w": 236,
+        "h": 200
+      }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9070,
+      "oscQueryPort": 9071
+    },
+    "params": [
+      {
+        "path": "/plugin/params/amount",
+        "internalPath": "/midi/synth/rack/velocity_mapper/1/amount",
+        "type": "f",
+        "min": 0,
+        "max": 1,
+        "default": 1,
+        "hostParamId": "amount",
+        "hostParamName": "Amount",
+        "hostParamKind": "float",
+        "description": "Velocity mapping amount"
+      },
+      {
+        "path": "/plugin/params/curve",
+        "internalPath": "/midi/synth/rack/velocity_mapper/1/curve",
+        "type": "f",
+        "min": 0,
+        "max": 2,
+        "default": 0,
+        "hostParamId": "curve",
+        "hostParamName": "Curve",
+        "hostParamKind": "choice",
+        "choices": [
+          "Linear",
+          "Soft",
+          "Hard"
+        ],
+        "description": "Velocity response curve"
+      },
+      {
+        "path": "/plugin/params/offset",
+        "internalPath": "/midi/synth/rack/velocity_mapper/1/offset",
+        "type": "f",
+        "min": -1,
+        "max": 1,
+        "default": 0,
+        "hostParamId": "offset",
+        "hostParamName": "Offset",
+        "hostParamKind": "float",
+        "description": "Velocity offset"
+      }
+    ]
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "../Main/themes/dark.lua"
+}

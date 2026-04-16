@@ -51,7 +51,7 @@ double resolveRuntimeStep(const ImGuiInspectorHost::RuntimeParam& param) {
     return std::max(0.01, std::abs(param.value) * 0.05);
 }
 
-juce::Rectangle<int> toLocalRect(const ImVec2& min, const ImVec2& size) {
+[[maybe_unused]] juce::Rectangle<int> toLocalRect(const ImVec2& min, const ImVec2& size) {
     return {
         juce::roundToInt(min.x),
         juce::roundToInt(min.y),
