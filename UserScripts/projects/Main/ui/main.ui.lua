@@ -83,31 +83,6 @@ return {
           },
         },
         {
-          id = "donut_tab",
-          type = "TabPage",
-          x = 0,
-          y = 34,
-          w = 1280,
-          h = 686,
-          props = {
-            title = "DonutSuper",
-          },
-          style = {
-            bg = 0xff0b1220,
-          },
-          components = {
-            {
-              id = "donut_view",
-              x = 0,
-              y = 0,
-              w = 1280,
-              h = 720,
-              layout = { mode = "hybrid", left = 0, top = 0, right = 0, bottom = 0 },
-              ref = "ui/components/donut_view.ui.lua",
-            },
-          },
-        },
-        {
           id = "midisynth_tab",
           type = "TabPage",
           x = 0,
@@ -129,32 +104,6 @@ return {
               h = 720,
               layout = { mode = "hybrid", left = 0, top = 0, right = 0, bottom = 0 },
               ref = "ui/components/midisynth_view.ui.lua",
-            },
-          },
-        },
-        {
-          id = "sandbox_tab",
-          type = "TabPage",
-          x = 0,
-          y = 34,
-          w = 1280,
-          h = 686,
-          props = {
-            title = "FX Sandbox",
-          },
-          style = {
-            bg = 0xff0b1220,
-          },
-          components = {
-            {
-              id = "sandbox_view",
-              x = 0,
-              y = 0,
-              w = 1280,
-              h = 720,
-              layout = { mode = "hybrid", left = 0, top = 0, right = 0, bottom = 0 },
-              behavior = "ui/behaviors/effects_sandbox.lua",
-              ref = "ui/components/effects_sandbox.ui.lua",
             },
           },
         },

@@ -371,7 +371,6 @@ function M.buildSynth(ctx, options)
   applyRackSourceSequence()
   applyRackStageSequence()
   ctx.graph.connect(spec, out)
-  ctx.graph.markOutput(out)
 
   -- Route synth output to every looper layer input for recording.
   -- This mirrors the microphone path so all layers see the same live capture feed.
@@ -2454,6 +2453,7 @@ function M.buildSynth(ctx, options)
   })
 
   return {
+    output = out,
     params = params,
     onParamChange = onParamChange,
 

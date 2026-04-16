@@ -207,9 +207,9 @@ function M.init(ctx)
       widget.node:setOnClick(function()
         local state = ctx._state or {}
         if state.recordMode == "traditional" then
-          Shared.commandSet("/core/behavior/forward", bars)
+          Shared.writeParam("/core/behavior/forward", bars)
         else
-          Shared.commandSet("/core/behavior/commit", bars)
+          Shared.writeParam("/core/behavior/commit", bars)
         end
       end)
       attachRetainedDraw(widget.node, draw)

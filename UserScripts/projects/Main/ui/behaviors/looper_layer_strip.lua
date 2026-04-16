@@ -83,15 +83,15 @@ function M.init(ctx)
       selectLayer(layerIdx)
       local absSpeed = Shared.sanitizeSpeed(v)
       local rev = v < 0
-      Shared.commandSet(Shared.layerPath(layerIdx, "speed"), absSpeed)
-      Shared.commandSet(Shared.layerPath(layerIdx, "reverse"), rev and 1 or 0)
+      Shared.writeParam(Shared.layerPath(layerIdx, "speed"), absSpeed)
+      Shared.writeParam(Shared.layerPath(layerIdx, "reverse"), rev and 1 or 0)
     end
   end
 
   if widgets.vol then
     widgets.vol._onChange = function(v)
       selectLayer(layerIdx)
-      Shared.commandSet(Shared.layerPath(layerIdx, "volume"), v)
+      Shared.writeParam(Shared.layerPath(layerIdx, "volume"), v)
     end
   end
 
@@ -171,7 +171,7 @@ function M.init(ctx)
       scrub.cursorPos = p
 
       if scrub.lastPinnedPos == nil or math.abs(p - scrub.lastPinnedPos) > 0.0005 then
-        Shared.commandSet(Shared.layerPath(layerIdx, "seek"), p)
+        Shared.writeParam(Shared.layerPath(layerIdx, "seek"), p)
         scrub.lastPinnedPos = p
       end
 
@@ -191,11 +191,11 @@ function M.init(ctx)
       local rev = signedSpeed < 0.0
 
       if scrub.lastSpeedSent == nil or math.abs(absSpeed - scrub.lastSpeedSent) > 0.01 then
-        Shared.commandSet(Shared.layerPath(layerIdx, "speed"), absSpeed)
+        Shared.writeParam(Shared.layerPath(layerIdx, "speed"), absSpeed)
         scrub.lastSpeedSent = absSpeed
       end
       if scrub.lastReverseSent == nil or rev ~= scrub.lastReverseSent then
-        Shared.commandSet(Shared.layerPath(layerIdx, "reverse"), rev and 1 or 0)
+        Shared.writeParam(Shared.layerPath(layerIdx, "reverse"), rev and 1 or 0)
         scrub.lastReverseSent = rev
       end
     end
@@ -203,10 +203,10 @@ function M.init(ctx)
     widgets.waveform._onScrubEnd = function()
       local scrub = ctx._scrub
       if scrub.cursorPos ~= nil then
-        Shared.commandSet(Shared.layerPath(layerIdx, "seek"), scrub.cursorPos)
+        Shared.writeParam(Shared.layerPath(layerIdx, "seek"), scrub.cursorPos)
       end
-      Shared.commandSet(Shared.layerPath(layerIdx, "speed"), scrub.preScrubSpeed)
-      Shared.commandSet(Shared.layerPath(layerIdx, "reverse"), scrub.preScrubReversed and 1 or 0)
+      Shared.writeParam(Shared.layerPath(layerIdx, "speed"), scrub.preScrubSpeed)
+      Shared.writeParam(Shared.layerPath(layerIdx, "reverse"), scrub.preScrubReversed and 1 or 0)
 
       scrub._active = false
       scrub.scrubEndFrame = ctx._frameCounter or 0
@@ -363,7 +363,7 @@ function M.update(ctx, rawState, changedPaths)
     if pinned ~= nil then
       local lastPinned = scrub.lastPinnedPos
       if lastPinned == nil or math.abs(pinned - lastPinned) > 0.0002 then
-        Shared.commandSet(Shared.layerPath(layerIdx, "seek"), pinned)
+        Shared.writeParam(Shared.layerPath(layerIdx, "seek"), pinned)
         scrub.lastPinnedPos = pinned
       end
     end
@@ -372,7 +372,7 @@ function M.update(ctx, rawState, changedPaths)
     if (ctx._frameCounter - lastMotion) >= 1 then
       local lastSpeed = scrub.lastSpeedSent
       if lastSpeed == nil or math.abs(lastSpeed) > 0.0001 then
-        Shared.commandSet(Shared.layerPath(layerIdx, "speed"), 0.0)
+        Shared.writeParam(Shared.layerPath(layerIdx, "speed"), 0.0)
         scrub.lastSpeedSent = 0.0
       end
     end

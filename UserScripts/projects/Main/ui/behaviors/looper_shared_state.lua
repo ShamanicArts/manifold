@@ -12,6 +12,21 @@ function M.commandSet(path, value)
   end
 end
 
+function M.writeParam(path, value)
+  local numeric = tonumber(value)
+  if numeric == nil then
+    numeric = value
+  end
+  if type(_G.setParam) == "function" then
+    return _G.setParam(path, numeric)
+  end
+  if command then
+    command("SET", path, tostring(numeric))
+    return true
+  end
+  return false
+end
+
 function M.commandTrigger(path)
   if command then
     command("TRIGGER", path)

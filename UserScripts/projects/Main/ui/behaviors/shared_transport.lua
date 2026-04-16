@@ -1,7 +1,13 @@
 local Shared = require("behaviors.looper_shared_state")
-local DonutShared = require("behaviors.donut_shared_state")
 
 local M = {}
+
+local function clamp(v, lo, hi)
+  local n = tonumber(v) or 0
+  if n < lo then return lo end
+  if n > hi then return hi end
+  return n
+end
 
 local function initDonut(ctx, idx)
   local widgets = ctx.widgets or {}
@@ -10,11 +16,11 @@ local function initDonut(ctx, idx)
 
   donut._layerIndex = idx
   donut._onSeek = function()
-    DonutShared.commandSet("/core/behavior/layer", idx)
+    Shared.commandSet("/core/behavior/layer", idx)
   end
 
   donut.node:setOnClick(function()
-    DonutShared.commandSet("/core/behavior/layer", idx)
+    Shared.commandSet("/core/behavior/layer", idx)
   end)
 end
 
@@ -29,7 +35,7 @@ local function updateDonut(ctx, state, idx)
   local stateName = layer.state or "empty"
   local positionNorm = 0.0
   if (layer.length or 0) > 0 then
-    positionNorm = DonutShared.clamp((tonumber(layer.position) or 0) / math.max(1, tonumber(layer.length) or 1), 0.0, 1.0)
+    positionNorm = clamp((tonumber(layer.position) or 0) / math.max(1, tonumber(layer.length) or 1), 0.0, 1.0)
   end
 
   local peaks = nil
@@ -91,9 +97,9 @@ function M.init(ctx)
   end
 
   if overdub then
-    Shared.commandSet("/core/behavior/overdub", 1)
+    Shared.writeParam("/core/behavior/overdub", 1)
     overdub._onChange = function(on)
-      Shared.commandSet("/core/behavior/overdub", on and 1 or 0)
+      Shared.writeParam("/core/behavior/overdub", on and 1 or 0)
     end
   end
 
@@ -105,20 +111,20 @@ function M.init(ctx)
 
   if tempo then
     tempo._onChange = function(v)
-      Shared.commandSet("/core/behavior/tempo", v)
+      Shared.writeParam("/core/behavior/tempo", v)
     end
   end
 
   if target then
     target._onChange = function(v)
-      Shared.commandSet("/core/behavior/targetbpm", v)
+      Shared.writeParam("/core/behavior/targetbpm", v)
     end
   end
 
   if mode then
     mode._onSelect = function(idx)
       local modeIdx = math.max(0, math.min(2, (tonumber(idx) or 1) - 1))
-      Shared.commandSet("/core/behavior/mode", modeIdx)
+      Shared.writeParam("/core/behavior/mode", modeIdx)
     end
   end
 
