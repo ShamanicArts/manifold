@@ -21,6 +21,7 @@ local clamp = Base.clamp
 local nowSeconds = Base.nowSeconds
 local deriveNodeName = Base.deriveNodeName
 local fileStem = Base.fileStem
+local isShellLauncherPath = Base.isShellLauncherPath
 local safeToFront = require("shell.base_utils").safeToFront
 
 local SCRIPT_EDITOR_STYLE = ScriptEditor.SCRIPT_EDITOR_STYLE
@@ -956,7 +957,7 @@ function Shell.create(parentNode, options)
     else
         -- Fresh start: show only the current project
         local currentUiPath = getCurrentScriptPath and getCurrentScriptPath() or ""
-        if currentUiPath ~= "" then
+        if currentUiPath ~= "" and not isShellLauncherPath(currentUiPath) then
             local uiScripts = listUiScripts and listUiScripts() or {}
             local currentName = ""
             for _, s in ipairs(uiScripts) do

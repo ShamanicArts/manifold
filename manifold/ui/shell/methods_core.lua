@@ -14,6 +14,7 @@ local clamp = Base.clamp
 local nowSeconds = Base.nowSeconds
 local deriveNodeName = Base.deriveNodeName
 local fileStem = Base.fileStem
+local isShellLauncherPath = Base.isShellLauncherPath
 local safeToFront = Base.safeToFront
 local safeGrabKeyboardFocus = Base.safeGrabKeyboardFocus
 
@@ -2281,7 +2282,7 @@ function M.attach(shell)
         end
 
         -- Fallback: if openProjects is empty and we have a current project, seed it
-        if #projectTabs == 0 and currentUiPath ~= "" then
+        if #projectTabs == 0 and currentUiPath ~= "" and not isShellLauncherPath(currentUiPath) then
             projectTabs[#projectTabs + 1] = {
                 id = "ui:" .. currentUiPath,
                 title = fileStem(currentUiPath),

@@ -577,7 +577,7 @@ std::vector<ScriptListEntry> scanUiScripts() {
             auto name = script.getFileNameWithoutExtension();
 
             if (name == "ui_widgets" || name == "ui_shell" ||
-                name == "project_loader") {
+                name == "project_loader" || name == "empty_launcher") {
                 continue;
             }
             if (!isUiScriptFile(script)) {

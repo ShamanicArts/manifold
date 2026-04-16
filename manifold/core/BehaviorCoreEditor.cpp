@@ -1637,22 +1637,11 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
 
     auto& settings = Settings::getInstance();
     const auto settingsScript = settings.getDefaultUiScript();
-    if (settingsScript.isEmpty()) {
-        std::fprintf(stderr,
-                     "BehaviorCoreEditor: settings.defaultUiScript is empty; refusing to fall back\n");
-        showError("Settings error:\ndefaultUiScript is empty.\n"
-                  "Configure it in: " + settings.getConfigPath().toStdString());
-    } else {
+
+    // Try to load the configured UI script
+    if (settingsScript.isNotEmpty()) {
         const juce::File scriptFile(settingsScript);
-        if (!scriptFile.existsAsFile()) {
-            std::fprintf(stderr,
-                         "BehaviorCoreEditor: configured UI script does not exist: %s\n"
-                         "  -> Configure defaultUiScript in .manifold.settings.json in the repo root.\n",
-                         settingsScript.toRawUTF8());
-            showError("Settings error:\nconfigured defaultUiScript does not exist:\n" +
-                      settingsScript.toStdString() +
-                      "\n\nConfigure in .manifold.settings.json in the repo root.");
-        } else {
+        if (scriptFile.existsAsFile()) {
             usingLuaUi = luaEngine.loadScript(scriptFile);
             if (usingLuaUi) {
                 std::fprintf(stderr, "BehaviorCoreEditor: Using Lua UI from %s\n",
@@ -1662,6 +1651,63 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
                              luaEngine.getLastError().c_str());
                 showError("Lua UI failed to load:\n" + luaEngine.getLastError());
             }
+        } else {
+            // Fallback to empty launcher if configured script doesn't exist
+            const auto devScriptsDir = settings.getDevScriptsDir();
+            juce::File fallbackScript;
+
+            if (devScriptsDir.isNotEmpty()) {
+                fallbackScript = juce::File(devScriptsDir).getChildFile("empty_launcher.lua");
+            }
+
+            if (fallbackScript.existsAsFile()) {
+                usingLuaUi = luaEngine.loadScript(fallbackScript);
+                if (usingLuaUi) {
+                    std::fprintf(stderr,
+                                 "BehaviorCoreEditor: Configured UI script not found, using fallback shell: %s\n",
+                                 fallbackScript.getFullPathName().toRawUTF8());
+                } else {
+                    std::fprintf(stderr, "BehaviorCoreEditor: Fallback shell failed to load: %s\n",
+                                 luaEngine.getLastError().c_str());
+                    showError("Fallback shell failed to load:\n" + luaEngine.getLastError());
+                }
+            } else {
+                std::fprintf(stderr,
+                             "BehaviorCoreEditor: UI script not found and no fallback available:\n"
+                             "  Configured: %s\n"
+                             "  devScriptsDir: %s\n"
+                             "  -> Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n",
+                             settingsScript.toRawUTF8(), devScriptsDir.toRawUTF8());
+                showError("UI script not found:\n"
+                          "  Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
+            }
+        }
+    } else {
+        // Fallback to empty launcher if settings.defaultUiScript is empty
+        const auto devScriptsDir = settings.getDevScriptsDir();
+        juce::File fallbackScript;
+
+        if (devScriptsDir.isNotEmpty()) {
+            fallbackScript = juce::File(devScriptsDir).getChildFile("empty_launcher.lua");
+        }
+
+        if (fallbackScript.existsAsFile()) {
+            usingLuaUi = luaEngine.loadScript(fallbackScript);
+            if (usingLuaUi) {
+                std::fprintf(stderr,
+                             "BehaviorCoreEditor: Settings.defaultUiScript is empty, using fallback shell: %s\n",
+                             fallbackScript.getFullPathName().toRawUTF8());
+            } else {
+                std::fprintf(stderr, "BehaviorCoreEditor: Fallback shell failed to load: %s\n",
+                             luaEngine.getLastError().c_str());
+                showError("Fallback shell failed to load:\n" + luaEngine.getLastError());
+            }
+        } else {
+            std::fprintf(stderr,
+                         "BehaviorCoreEditor: No UI script configured and no fallback available.\n"
+                         "  -> Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
+            showError("No UI script configured:\n"
+                      "Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
         }
     }
 
