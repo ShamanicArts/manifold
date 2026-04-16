@@ -170,7 +170,7 @@ juce::Rectangle<float> previewRect(const juce::Rectangle<float>& sceneRect,
     return juce::Rectangle<float>(left, top, std::max(1.0f, right - left), std::max(1.0f, bottom - top));
 }
 
-juce::Rectangle<float> previewRect(const juce::Rectangle<int>& sceneRect,
+[[maybe_unused]] juce::Rectangle<float> previewRect(const juce::Rectangle<int>& sceneRect,
                                    const RuntimeNodeRenderer::PreviewTransform& transform) {
     return previewRect(juce::Rectangle<float>(static_cast<float>(sceneRect.getX()),
                                               static_cast<float>(sceneRect.getY()),
@@ -206,7 +206,7 @@ void renderDisplayList(const RuntimeNode& node,
     const float localScaleY = bounds.h > 0 ? (sceneBounds.getHeight() / static_cast<float>(bounds.h)) : 1.0f;
     const float renderScale = transform.scale * std::min(std::abs(localScaleX), std::abs(localScaleY));
 
-    auto localRectToPreview = [&](float rx, float ry, float rw, float rh) {
+    [[maybe_unused]] auto localRectToPreview = [&](float rx, float ry, float rw, float rh) {
         return previewRect(juce::Rectangle<float>(sceneBounds.getX() + rx * localScaleX,
                                                   sceneBounds.getY() + ry * localScaleY,
                                                   std::max(1.0f, rw * localScaleX),
@@ -380,7 +380,7 @@ void renderCompiledDisplayList(const CompiledDisplayList& compiled,
     const float localScaleY = bounds.h > 0 ? (sceneBounds.getHeight() / static_cast<float>(bounds.h)) : 1.0f;
     const float renderScale = transform.scale * std::min(std::abs(localScaleX), std::abs(localScaleY));
 
-    auto localRectToPreview = [&](float rx, float ry, float rw, float rh) {
+    [[maybe_unused]] auto localRectToPreview = [&](float rx, float ry, float rw, float rh) {
         return previewRect(juce::Rectangle<float>(sceneBounds.getX() + rx * localScaleX,
                                                   sceneBounds.getY() + ry * localScaleY,
                                                   std::max(1.0f, rw * localScaleX),

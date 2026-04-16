@@ -108,6 +108,7 @@ public:
   }
   virtual void setGraphProcessingEnabled(bool) {}
   virtual bool isGraphProcessingEnabled() const { return false; }
+  virtual bool isExportPlugin() const { return false; }
   virtual int getGraphBlockSize() const { return scripting::BufferConfig::MAX_DSP_BLOCK_SIZE; }
   virtual int getGraphOutputChannels() const { return 2; }
   virtual void requestGraphRuntimeSwap(
@@ -184,7 +185,20 @@ public:
     return false;
   }
 
+  virtual bool computeDynamicSamplePeaks(int slotIndex, int numBuckets,
+                                         std::vector<float> &outPeaks) const {
+    (void)slotIndex;
+    (void)numBuckets;
+    (void)outPeaks;
+    return false;
+  }
+
   virtual std::vector<float> getVoiceSamplePositions() const {
+    return {};
+  }
+
+  virtual std::vector<float> getDynamicSampleVoicePositions(int slotIndex) const {
+    (void)slotIndex;
     return {};
   }
 
@@ -207,6 +221,12 @@ public:
 
   virtual bool refreshSampleDerivedAdditiveDebug(SampleDerivedAdditiveDebugState &outState) {
     (void)outState;
+    return false;
+  }
+
+  virtual bool ensureDynamicModuleSlot(const std::string &specId, int slotIndex) {
+    (void)specId;
+    (void)slotIndex;
     return false;
   }
 

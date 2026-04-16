@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "Manifold Velocity Mapper",
+  "root": {
+    "id": "standalone_velocity_mapper_remote",
+    "type": "panel",
+    "x": 0,
+    "y": 0,
+    "w": 236,
+    "h": 200,
+    "style": { "bg": "#0b1220", "border": "#1f2b4d", "borderWidth": 1, "radius": 0 },
+    "children": [
+      { "id": "header_bg", "type": "panel", "x": 0, "y": 0, "w": 236, "h": 12, "style": { "bg": "#111827", "borderWidth": 0, "radius": 0 } },
+      { "id": "header_accent", "type": "panel", "x": 0, "y": 0, "w": 18, "h": 12, "style": { "bg": "#4ade80", "borderWidth": 0, "radius": 0 } },
+      { "id": "title", "type": "label", "x": 24, "y": 0, "w": 140, "h": 12, "text": "Velocity", "style": { "color": "#ffffff", "fontSize": 9 } },
+      { "id": "curve", "type": "dropdown", "x": 12, "y": 28, "w": 88, "h": 18, "label": "Curve", "bind": { "path": "/plugin/params/curve" } },
+      { "id": "amount", "type": "slider", "x": 12, "y": 56, "w": 212, "h": 18, "label": "Amount", "bind": { "path": "/plugin/params/amount" } },
+      { "id": "offset", "type": "slider", "x": 12, "y": 80, "w": 212, "h": 18, "label": "Offset", "bind": { "path": "/plugin/params/offset" } }
+    ]
+  }
+}

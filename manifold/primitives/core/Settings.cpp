@@ -1,5 +1,7 @@
 #include "Settings.h"
 
+#include "SystemPaths.h"
+
 namespace {
 
 bool isRepoRoot(const juce::File& dir) {
@@ -44,6 +46,64 @@ juce::File detectRepoRoot() {
     return {};
 }
 
+juce::File getDefaultLauncherScript() {
+    const auto repoRoot = detectRepoRoot();
+    if (repoRoot.isDirectory()) {
+        const auto repoLauncher = repoRoot.getChildFile("manifold")
+                                         .getChildFile("ui")
+                                         .getChildFile("empty_launcher.lua");
+        if (repoLauncher.existsAsFile()) {
+            return repoLauncher;
+        }
+    }
+
+#ifdef MANIFOLD_SOURCE_DIR
+    auto sourceDir = juce::String(JUCE_STRINGIFY(MANIFOLD_SOURCE_DIR));
+    if (sourceDir.length() >= 2 && sourceDir.startsWithChar('"') && sourceDir.endsWithChar('"')) {
+        sourceDir = sourceDir.substring(1, sourceDir.length() - 1);
+    }
+    const auto compiledLauncher = juce::File(sourceDir)
+                                      .getChildFile("manifold")
+                                      .getChildFile("ui")
+                                      .getChildFile("empty_launcher.lua");
+    if (compiledLauncher.existsAsFile()) {
+        return compiledLauncher;
+    }
+#endif
+
+    return {};
+}
+
+void applyDefaultPaths(Settings& settings) {
+    const auto repoRoot = detectRepoRoot();
+
+    if (repoRoot.isDirectory()) {
+        const auto devScriptsDir = repoRoot.getChildFile("manifold").getChildFile("ui");
+        const auto userScriptsDir = repoRoot.getChildFile("UserScripts");
+        const auto dspScriptsDir = repoRoot.getChildFile("manifold").getChildFile("dsp");
+
+        if (devScriptsDir.isDirectory()) {
+            settings.setDevScriptsDir(devScriptsDir.getFullPathName());
+        }
+        if (userScriptsDir.isDirectory()) {
+            settings.setUserScriptsDir(userScriptsDir.getFullPathName());
+        }
+        if (dspScriptsDir.isDirectory()) {
+            settings.setDspScriptsDir(dspScriptsDir.getFullPathName());
+        }
+    } else {
+        const auto userScriptsDir = SystemPaths::getUserScriptsDir();
+        if (userScriptsDir.isDirectory()) {
+            settings.setUserScriptsDir(userScriptsDir.getFullPathName());
+        }
+    }
+
+    const auto launcherScript = getDefaultLauncherScript();
+    if (launcherScript.existsAsFile()) {
+        settings.setDefaultUiScript(launcherScript.getFullPathName());
+    }
+}
+
 } // namespace
 
 Settings& Settings::getInstance() {
@@ -68,16 +128,18 @@ juce::File Settings::getConfigFile() const {
 }
 
 void Settings::load() {
+    applyDefaultPaths(*this);
+
     auto configFile = getConfigFile();
     if (!configFile.existsAsFile()) {
         loaded_ = true;
-        return; // Use defaults
+        return;
     }
 
     auto json = juce::JSON::parse(configFile);
     if (json.isObject()) {
         auto* obj = json.getDynamicObject();
-        
+
         // OSC settings
         if (obj->hasProperty("oscPort")) {
             oscPort_ = obj->getProperty("oscPort");
@@ -85,28 +147,28 @@ void Settings::load() {
         if (obj->hasProperty("oscQueryPort")) {
             oscQueryPort_ = obj->getProperty("oscQueryPort");
         }
-        
+
         // UI settings
         if (obj->hasProperty("defaultUiScript")) {
             defaultUiScript_ = obj->getProperty("defaultUiScript").toString();
         }
-        
+
         // Development settings
         if (obj->hasProperty("devScriptsDir")) {
             devScriptsDir_ = obj->getProperty("devScriptsDir").toString();
         }
-        
+
         // User scripts directory
         if (obj->hasProperty("userScriptsDir")) {
             userScriptsDir_ = obj->getProperty("userScriptsDir").toString();
         }
-        
+
         // DSP scripts directory
         if (obj->hasProperty("dspScriptsDir")) {
             dspScriptsDir_ = obj->getProperty("dspScriptsDir").toString();
         }
     }
-    
+
     loaded_ = true;
 }
 

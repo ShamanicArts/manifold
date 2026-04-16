@@ -16,7 +16,7 @@
 using namespace juce::gl;
 
 namespace {
-size_t traceThreadId() {
+[[maybe_unused]] size_t traceThreadId() {
     return std::hash<std::thread::id>{}(std::this_thread::get_id());
 }
 

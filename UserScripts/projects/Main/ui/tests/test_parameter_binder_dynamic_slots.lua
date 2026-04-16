@@ -54,6 +54,17 @@ local function testBuildDynamicSlotSchemaForArbitrarySlot()
   local oscSchema = ParameterBinder.buildDynamicSlotSchema("rack_oscillator", 5, { voiceCount = 8, oscRenderStandard = 0 })
   assertTrue(hasPath(oscSchema, "/midi/synth/rack/osc/5/output"), "osc output path present")
   assertTrue(hasPath(oscSchema, "/midi/synth/rack/osc/5/voice/8/pwCv"), "osc voice path scales to requested slot")
+
+  local sampleSchema = ParameterBinder.buildDynamicSlotSchema("rack_sample", 7, { voiceCount = 8 })
+  assertTrue(hasPath(sampleSchema, "/midi/synth/rack/sample/7/output"), "sample output path present")
+  assertTrue(hasPath(sampleSchema, "/midi/synth/rack/sample/7/voice/8/vOct"), "sample voice path scales to requested slot")
+  assertTrue(hasPath(sampleSchema, "/midi/synth/rack/sample/7/captureWriteOffset"), "sample write-offset readback path present")
+  assertTrue(hasPath(sampleSchema, "/midi/synth/rack/sample/7/inputSource"), "sample aux input source path present")
+
+  local blendSchema = ParameterBinder.buildDynamicSlotSchema("blend_simple", 4, { voiceCount = 8 })
+  assertTrue(hasPath(blendSchema, "/midi/synth/rack/blend_simple/4/mode"), "blend simple mode path present")
+  assertTrue(hasPath(blendSchema, "/midi/synth/rack/blend_simple/4/output"), "blend simple output path present")
+  assertTrue(hasPath(blendSchema, "/midi/synth/rack/blend_simple/4/bSource"), "blend simple aux source path present")
 end
 
 local function testMatchDynamicModulePath()
@@ -68,6 +79,14 @@ local function testMatchDynamicModulePath()
   specId, slotIndex = ParameterBinder.matchDynamicModulePath("/midi/synth/rack/sample_hold/9/mode")
   assertEqual(specId, "sample_hold", "sample hold path resolves spec id")
   assertEqual(slotIndex, 9, "sample hold path resolves slot index")
+
+  specId, slotIndex = ParameterBinder.matchDynamicModulePath("/midi/synth/rack/sample/3/rootNote")
+  assertEqual(specId, "rack_sample", "rack sample path resolves spec id")
+  assertEqual(slotIndex, 3, "rack sample path resolves slot index")
+
+  specId, slotIndex = ParameterBinder.matchDynamicModulePath("/midi/synth/rack/blend_simple/6/blendModAmount")
+  assertEqual(specId, "blend_simple", "blend simple path resolves spec id")
+  assertEqual(slotIndex, 6, "blend simple path resolves slot index")
 end
 
 local tests = {

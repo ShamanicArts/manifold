@@ -68,8 +68,8 @@ class PitchDetector {
 public:
     explicit PitchDetector(int maxBufferSize = 8192)
         : maxBufferSize_(maxBufferSize)
-        , yinBuffer_(maxBufferSize)
-        , windowBuffer_(maxBufferSize)
+        , yinBuffer_(static_cast<std::size_t>(maxBufferSize))
+        , windowBuffer_(static_cast<std::size_t>(maxBufferSize))
     {
     }
 
@@ -124,7 +124,7 @@ public:
         }
         
         // Step 1: Compute difference function
-        computeDifferenceFunction(numSamples, maxLag);
+        computeDifferenceFunction(maxLag);
         
         // Step 2: Cumulative mean normalized difference
         computeCMNDF(maxLag);
@@ -148,7 +148,7 @@ public:
         
         // Calculate clarity (1 - yinValue at best lag)
         float clarity = (bestLag > 0 && bestLag < static_cast<int>(yinBuffer_.size())) 
-            ? 1.0f - yinBuffer_[bestLag] 
+            ? 1.0f - yinBuffer_[static_cast<std::size_t>(bestLag)] 
             : 0.0f;
         clarity = std::clamp(clarity, 0.0f, 1.0f);
         
@@ -337,13 +337,13 @@ public:
      */
     void applyHannWindow(const float* samples, int numSamples, int channel = 0, int stride = 1) {
         if (static_cast<int>(windowBuffer_.size()) < numSamples) {
-            windowBuffer_.resize(numSamples);
+            windowBuffer_.resize(static_cast<std::size_t>(numSamples));
         }
         
         for (int i = 0; i < numSamples; ++i) {
-            float multiplier = 0.5f * (1.0f - std::cos(2.0f * M_PI * i / (numSamples - 1)));
-            int idx = channel + i * stride;
-            windowBuffer_[i] = samples[idx] * multiplier;
+            const float multiplier = 0.5f * (1.0f - std::cos(2.0f * M_PI * i / (numSamples - 1)));
+            const int idx = channel + i * stride;
+            windowBuffer_[static_cast<std::size_t>(i)] = samples[idx] * multiplier;
         }
     }
 
@@ -359,12 +359,12 @@ private:
         return static_cast<int>(sampleRate_ / minFrequency_ * 2.5f);
     }
     
-    void computeDifferenceFunction(int numSamples, int maxLag) {
+    void computeDifferenceFunction(int maxLag) {
         // Step 1: Compute difference function d_t(tau)
         // d_t(tau) = sum_{j=1}^{W} (x_j - x_{j+tau})^2
         
         if (static_cast<int>(yinBuffer_.size()) < maxLag) {
-            yinBuffer_.resize(maxLag + 1);
+            yinBuffer_.resize(static_cast<std::size_t>(maxLag + 1));
         }
         
         yinBuffer_[0] = 1.0f; // d(0) is always 0, but we set to 1 to avoid division issues
@@ -372,10 +372,12 @@ private:
         for (int lag = 1; lag <= maxLag; ++lag) {
             float sum = 0.0f;
             for (int i = 0; i < maxLag; ++i) {
-                float delta = windowBuffer_[i] - windowBuffer_[i + lag];
+                const auto baseIndex = static_cast<std::size_t>(i);
+                const auto laggedIndex = static_cast<std::size_t>(i + lag);
+                const float delta = windowBuffer_[baseIndex] - windowBuffer_[laggedIndex];
                 sum += delta * delta;
             }
-            yinBuffer_[lag] = sum;
+            yinBuffer_[static_cast<std::size_t>(lag)] = sum;
         }
     }
     
@@ -385,8 +387,9 @@ private:
         
         float runningSum = 0.0f;
         for (int lag = 1; lag <= maxLag; ++lag) {
-            runningSum += yinBuffer_[lag];
-            yinBuffer_[lag] = (yinBuffer_[lag] * lag) / runningSum;
+            const auto lagIndex = static_cast<std::size_t>(lag);
+            runningSum += yinBuffer_[lagIndex];
+            yinBuffer_[lagIndex] = (yinBuffer_[lagIndex] * static_cast<float>(lag)) / runningSum;
         }
     }
     
@@ -396,7 +399,8 @@ private:
         float minValue = std::numeric_limits<float>::max();
         
         for (int lag = minLag; lag <= maxLag && lag < static_cast<int>(yinBuffer_.size()); ++lag) {
-            float val = yinBuffer_[lag];
+            const auto lagIndex = static_cast<std::size_t>(lag);
+            const float val = yinBuffer_[lagIndex];
             
             if (val < threshold_) {
                 // Found a lag below threshold
@@ -404,7 +408,7 @@ private:
                 int searchLag = lag;
                 while (searchLag + 1 <= maxLag && 
                        searchLag + 1 < static_cast<int>(yinBuffer_.size()) &&
-                       yinBuffer_[searchLag + 1] < yinBuffer_[searchLag]) {
+                       yinBuffer_[static_cast<std::size_t>(searchLag + 1)] < yinBuffer_[static_cast<std::size_t>(searchLag)]) {
                     ++searchLag;
                 }
                 return searchLag;
@@ -429,11 +433,11 @@ private:
             return static_cast<float>(lag);
         }
         
-        float y1 = yinBuffer_[lag - 1];
-        float y2 = yinBuffer_[lag];
-        float y3 = yinBuffer_[lag + 1];
+        const float y1 = yinBuffer_[static_cast<std::size_t>(lag - 1)];
+        const float y2 = yinBuffer_[static_cast<std::size_t>(lag)];
+        const float y3 = yinBuffer_[static_cast<std::size_t>(lag + 1)];
         
-        float denom = y1 - 2.0f * y2 + y3;
+        const float denom = y1 - 2.0f * y2 + y3;
         if (std::abs(denom) < 1e-10f) {
             return static_cast<float>(lag);
         }
@@ -570,14 +574,15 @@ private:
         const int segmentSize = numSamples / numSegments;
         
         std::vector<float> amplitudes;
+        amplitudes.reserve(static_cast<std::size_t>(numSegments));
         for (int seg = 0; seg < numSegments; ++seg) {
-            int start = seg * segmentSize;
+            const int start = seg * segmentSize;
             amplitudes.push_back(calculateRMS(samples + start, segmentSize));
         }
         
         // Check for rapid initial decay
-        float initialAmp = amplitudes[0];
-        float laterAmp = amplitudes[amplitudes.size() - 1];
+        const float initialAmp = amplitudes.front();
+        const float laterAmp = amplitudes.back();
         
         // If amplitude decays very quickly after attack, likely percussive
         if (initialAmp > 0.3f && laterAmp < 0.02f && amplitudes[2] < initialAmp * 0.3f) {
@@ -595,18 +600,19 @@ private:
         if (numWindows < 3) return 0;
         
         std::vector<float> rmsValues;
+        rmsValues.reserve(static_cast<std::size_t>(numWindows));
         for (int w = 0; w < numWindows; ++w) {
-            int start = w * windowSize;
+            const int start = w * windowSize;
             rmsValues.push_back(calculateRMS(samples + start, windowSize));
         }
         
         // Find where amplitude changes become small
-        for (size_t i = 2; i < rmsValues.size(); ++i) {
-            float prevChange = std::abs(rmsValues[i - 1] - rmsValues[i - 2]);
-            float currChange = std::abs(rmsValues[i] - rmsValues[i - 1]);
+        for (std::size_t i = 2; i < rmsValues.size(); ++i) {
+            const float prevChange = std::abs(rmsValues[i - 1] - rmsValues[i - 2]);
+            const float currChange = std::abs(rmsValues[i] - rmsValues[i - 1]);
             
             if (prevChange < 0.02f && currChange < 0.02f && rmsValues[i] > 0.03f) {
-                return static_cast<int>(i * windowSize);
+                return static_cast<int>(i * static_cast<std::size_t>(windowSize));
             }
         }
         
@@ -638,7 +644,7 @@ public:
         , windowSize_(windowSize)
         , hopSize_(windowSize / 4) // 75% overlap
         , detector_(windowSize)
-        , ringBuffer_(windowSize * 2)
+        , ringBuffer_(static_cast<std::size_t>(windowSize * 2))
     {
         detector_.setSampleRate(sampleRate);
     }
@@ -651,7 +657,7 @@ public:
     void setWindowSize(int windowSize) {
         windowSize_ = windowSize;
         hopSize_ = windowSize / 4;
-        ringBuffer_.resize(windowSize * 2);
+        ringBuffer_.resize(static_cast<std::size_t>(windowSize * 2));
         writePos_ = 0;
         samplesAvailable_ = 0;
         detector_ = PitchDetector(windowSize);
@@ -678,7 +684,7 @@ public:
     bool process(const float* samples, int numSamples) {
         // Add samples to ring buffer
         for (int i = 0; i < numSamples; ++i) {
-            ringBuffer_[writePos_] = samples[i];
+            ringBuffer_[static_cast<std::size_t>(writePos_)] = samples[i];
             writePos_ = (writePos_ + 1) % static_cast<int>(ringBuffer_.size());
         }
         samplesAvailable_ += numSamples;
@@ -689,11 +695,11 @@ public:
         }
         
         // Extract window for analysis
-        std::vector<float> analysisWindow(windowSize_);
+        std::vector<float> analysisWindow(static_cast<std::size_t>(windowSize_));
         for (int i = 0; i < windowSize_; ++i) {
-            int readPos = (writePos_ - windowSize_ + i + static_cast<int>(ringBuffer_.size())) 
-                          % static_cast<int>(ringBuffer_.size());
-            analysisWindow[i] = ringBuffer_[readPos];
+            const int readPos = (writePos_ - windowSize_ + i + static_cast<int>(ringBuffer_.size())) 
+                                % static_cast<int>(ringBuffer_.size());
+            analysisWindow[static_cast<std::size_t>(i)] = ringBuffer_[static_cast<std::size_t>(readPos)];
         }
         
         // Run pitch detection

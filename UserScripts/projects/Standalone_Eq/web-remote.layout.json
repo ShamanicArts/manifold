@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "name": "Manifold EQ8",
+  "defaultState": {
+    "selectedBand": 1
+  },
+  "root": {
+    "id": "standalone_eq_remote",
+    "type": "panel",
+    "x": 0,
+    "y": 0,
+    "w": 472,
+    "h": 220,
+    "style": {
+      "bg": "#0b1220",
+      "border": "#1f2b4d",
+      "borderWidth": 1,
+      "radius": 0
+    },
+    "children": [
+      {
+        "id": "header_bg",
+        "type": "panel",
+        "x": 0,
+        "y": 0,
+        "w": 472,
+        "h": 12,
+        "style": { "bg": "#111827", "borderWidth": 0, "radius": 0 }
+      },
+      {
+        "id": "header_accent",
+        "type": "panel",
+        "x": 0,
+        "y": 0,
+        "w": 18,
+        "h": 12,
+        "style": { "bg": "#22d3ee", "borderWidth": 0, "radius": 0 }
+      },
+      {
+        "id": "title",
+        "type": "label",
+        "x": 24,
+        "y": 0,
+        "w": 180,
+        "h": 12,
+        "text": "EQ8",
+        "style": { "color": "#ffffff", "fontSize": 9 }
+      },
+      {
+        "id": "eq_graph",
+        "type": "eq-graph",
+        "x": 10,
+        "y": 22,
+        "w": 452,
+        "h": 108,
+        "style": {
+          "bg": "#0a0a1a",
+          "border": "#1f2b4d",
+          "borderWidth": 1,
+          "radius": 0,
+          "accent": "#22d3ee"
+        },
+        "bind": {
+          "bandBasePath": "/plugin/params/band",
+          "selectedBandStateKey": "selectedBand"
+        }
+      },
+      {
+        "id": "band_selector",
+        "type": "dropdown",
+        "x": 10,
+        "y": 146,
+        "w": 84,
+        "h": 22,
+        "label": "Band",
+        "stateKey": "selectedBand",
+        "defaultValue": 1,
+        "options": ["Band 1", "Band 2", "Band 3", "Band 4", "Band 5", "Band 6", "Band 7", "Band 8"]
+      },
+      {
+        "id": "enabled",
+        "type": "toggle",
+        "x": 102,
+        "y": 146,
+        "w": 96,
+        "h": 22,
+        "label": "Enabled",
+        "bind": {
+          "pathTemplate": "/plugin/params/band/__band__/enabled",
+          "stateKey": "selectedBand",
+          "defaultValue": 1
+        }
+      },
+      {
+        "id": "type",
+        "type": "dropdown",
+        "x": 206,
+        "y": 146,
+        "w": 120,
+        "h": 22,
+        "label": "Type",
+        "bind": {
+          "pathTemplate": "/plugin/params/band/__band__/type",
+          "stateKey": "selectedBand",
+          "defaultValue": 1
+        }
+      },
+      {
+        "id": "freq",
+        "type": "slider",
+        "x": 10,
+        "y": 178,
+        "w": 144,
+        "h": 24,
+        "label": "Freq",
+        "bind": {
+          "pathTemplate": "/plugin/params/band/__band__/freq",
+          "stateKey": "selectedBand",
+          "defaultValue": 1
+        }
+      },
+      {
+        "id": "gain",
+        "type": "slider",
+        "x": 164,
+        "y": 178,
+        "w": 144,
+        "h": 24,
+        "label": "Gain",
+        "bind": {
+          "pathTemplate": "/plugin/params/band/__band__/gain",
+          "stateKey": "selectedBand",
+          "defaultValue": 1
+        }
+      },
+      {
+        "id": "q",
+        "type": "slider",
+        "x": 318,
+        "y": 178,
+        "w": 144,
+        "h": 24,
+        "label": "Q",
+        "bind": {
+          "pathTemplate": "/plugin/params/band/__band__/q",
+          "stateKey": "selectedBand",
+          "defaultValue": 1
+        }
+      }
+    ]
+  }
+}

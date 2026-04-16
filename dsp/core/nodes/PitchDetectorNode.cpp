@@ -38,15 +38,16 @@ void PitchDetectorNode::process(const std::vector<AudioBufferView>& inputs,
     const int inChannels = std::min(static_cast<int>(inputs.size()), numChannels_);
     
     for (int ch = 0; ch < outChannels; ++ch) {
+        const auto channelIndex = static_cast<std::size_t>(ch);
         if (ch < inChannels) {
             // Copy input to output
             for (int i = 0; i < numSamples; ++i) {
-                outputs[ch].setSample(ch, i, inputs[ch].getSample(ch, i));
+                outputs[channelIndex].setSample(ch, i, inputs[channelIndex].getSample(ch, i));
             }
         } else {
             // Clear unused output channels
             for (int i = 0; i < numSamples; ++i) {
-                outputs[ch].setSample(ch, i, 0.0f);
+                outputs[channelIndex].setSample(ch, i, 0.0f);
             }
         }
     }
@@ -57,16 +58,16 @@ void PitchDetectorNode::process(const std::vector<AudioBufferView>& inputs,
     
     // Accumulate samples into mono buffer (mix down to mono)
     if (static_cast<int>(monoBuffer_.size()) < numSamples) {
-        monoBuffer_.resize(numSamples);
+        monoBuffer_.resize(static_cast<std::size_t>(numSamples));
     }
     
     // Mix to mono (average of channels)
     for (int i = 0; i < numSamples; ++i) {
         float sum = 0.0f;
         for (int ch = 0; ch < inChannels; ++ch) {
-            sum += inputs[ch].getSample(ch, i);
+            sum += inputs[static_cast<std::size_t>(ch)].getSample(ch, i);
         }
-        monoBuffer_[i] = sum / std::max(1, inChannels);
+        monoBuffer_[static_cast<std::size_t>(i)] = sum / std::max(1, inChannels);
     }
     
     // Process through streaming detector
@@ -85,7 +86,7 @@ void PitchDetectorNode::prepare(double sampleRate, int maxBlockSize) {
     sampleRate_ = sampleRate;
     detector_->setSampleRate(static_cast<float>(sampleRate));
     detector_->setWindowSize(windowSize_.load(std::memory_order_relaxed));
-    monoBuffer_.resize(maxBlockSize);
+    monoBuffer_.resize(static_cast<std::size_t>(maxBlockSize));
     frameCounter_ = 0;
     lastDetectionFrame_ = 0;
 }

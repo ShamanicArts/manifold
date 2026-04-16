@@ -59,6 +59,8 @@ function DonutWidget.new(parent, name, config)
     self._layerData = {}
     self._peaks = nil
     self._bounce = 0.0
+    self._active = false
+    self._activeColour = nil
 
     self.node:setInterceptsMouse(true, false)
 
@@ -161,6 +163,17 @@ function DonutWidget:setBounce(b)
     self.node:repaint()
 end
 
+function DonutWidget:setActive(active, colour)
+    local nextActive = active and true or false
+    if self._active == nextActive and (not nextActive or self._activeColour == colour) then
+        return
+    end
+    self._active = nextActive
+    self._activeColour = colour
+    self:_syncRetained()
+    self.node:repaint()
+end
+
 local function drawDonutCircle(cx, cy, r, colour, segs)
     segs = segs or 64
     gfx.setColour(colour)
@@ -177,7 +190,7 @@ end
 
 function DonutWidget:onDraw(w, h)
     local cx, cy = w * 0.5, h * 0.5
-    local baseRadius = math.max(20, math.min(w, h) * 0.34)
+    local baseRadius = math.min(w, h) * 0.34
     local thickness = Utils.clamp(self._thickness, 0.2, 0.8)
     local baseInner = baseRadius * thickness
     local bounce = self._bounce or 0.0
@@ -188,6 +201,10 @@ function DonutWidget:onDraw(w, h)
 
     local radius = baseRadius + bounce * 2.4
     local inner = baseInner + bounce * 1.2
+
+    if self._active and self._activeColour then
+        drawDonutCircle(cx, cy, radius + 3, self._activeColour, 72)
+    end
 
     drawDonutCircle(cx, cy, radius, self._bgColour, 72)
     drawDonutCircle(cx, cy, inner, self._bgColour, 72)
@@ -249,7 +266,7 @@ function DonutWidget:_syncRetained(w, h)
     h = h or bh
 
     local cx, cy = w * 0.5, h * 0.5
-    local baseRadius = math.max(20, math.min(w, h) * 0.34)
+    local baseRadius = math.min(w, h) * 0.34
     local thickness = Utils.clamp(self._thickness, 0.2, 0.8)
     local baseInner = baseRadius * thickness
     local bounce = self._bounce or 0.0
@@ -260,6 +277,10 @@ function DonutWidget:_syncRetained(w, h)
     local radius = baseRadius + bounce * 2.4
     local inner = baseInner + bounce * 1.2
     local display = {}
+
+    if self._active and self._activeColour then
+        pushCircle(display, cx, cy, radius + 3, self._activeColour, 72)
+    end
 
     pushCircle(display, cx, cy, radius, self._bgColour, 72)
     pushCircle(display, cx, cy, inner, self._bgColour, 72)

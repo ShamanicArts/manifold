@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+
 project(MANIFOLD VERSION 1.0.0)
 
 include(FetchContent)
@@ -33,6 +37,40 @@ endif()
 option(MANIFOLD_BUILD_LUA "Build Lua 5.4 from source instead of using system install" OFF)
 set(MANIFOLD_LUA_TARGET "")
 
+function(manifold_header_is_lua_54 header_path out_var)
+    set(_is_lua_54 FALSE)
+
+    if(EXISTS "${header_path}")
+        file(STRINGS "${header_path}" _lua_version_num
+            REGEX "^#define[ \t]+LUA_VERSION_NUM[ \t]+504([ \t]|$)")
+        if(_lua_version_num)
+            set(_is_lua_54 TRUE)
+        else()
+            file(STRINGS "${header_path}" _lua_major_num
+                REGEX "^#define[ \t]+LUA_VERSION_MAJOR_N[ \t]+5([ \t]|$)")
+            file(STRINGS "${header_path}" _lua_minor_num
+                REGEX "^#define[ \t]+LUA_VERSION_MINOR_N[ \t]+4([ \t]|$)")
+            file(STRINGS "${header_path}" _lua_major_str
+                REGEX "^#define[ \t]+LUA_VERSION_MAJOR[ \t]+\"5\"([ \t]|$)")
+            file(STRINGS "${header_path}" _lua_minor_str
+                REGEX "^#define[ \t]+LUA_VERSION_MINOR[ \t]+\"4\"([ \t]|$)")
+            if((_lua_major_num AND _lua_minor_num) OR (_lua_major_str AND _lua_minor_str))
+                set(_is_lua_54 TRUE)
+            endif()
+        endif()
+    endif()
+
+    set(${out_var} ${_is_lua_54} PARENT_SCOPE)
+endfunction()
+
+function(manifold_make_lua_interface_target target_name include_dirs libraries)
+    add_library(${target_name} INTERFACE)
+    if(include_dirs)
+        target_include_directories(${target_name} INTERFACE ${include_dirs})
+    endif()
+    target_link_libraries(${target_name} INTERFACE ${libraries})
+endfunction()
+
 if(MANIFOLD_BUILD_LUA)
     # Build Lua from source (for Windows or when no system Lua is available)
     FetchContent_Declare(
@@ -57,43 +95,75 @@ if(MANIFOLD_BUILD_LUA)
     set(MANIFOLD_LUA_TARGET lua_static)
     message(STATUS "Building Lua from source")
 else()
-    # Preferred path on macOS/vcpkg and modern Linux installs
-    find_package(Lua 5.4 QUIET)
-    if(Lua_FOUND)
-        if(TARGET Lua::Lua)
-            set(MANIFOLD_LUA_TARGET Lua::Lua)
-        elseif(LUA_LIBRARIES)
-            add_library(manifold_lua_fallback INTERFACE)
-            if(DEFINED LUA_INCLUDE_DIRS)
-                target_include_directories(manifold_lua_fallback INTERFACE ${LUA_INCLUDE_DIRS})
-            elseif(DEFINED LUA_INCLUDE_DIR)
-                target_include_directories(manifold_lua_fallback INTERFACE ${LUA_INCLUDE_DIR})
-            endif()
-            target_link_libraries(manifold_lua_fallback INTERFACE ${LUA_LIBRARIES})
-            set(MANIFOLD_LUA_TARGET manifold_lua_fallback)
-        endif()
-    endif()
-
-    # Fallback for Linux environments that rely on pkg-config
-    if(NOT MANIFOLD_LUA_TARGET)
+    # On Linux, pkg-config is more reliable than FindLua when multiple Lua versions
+    # are installed. FindLua can pair the 5.4 library with the unversioned /usr/include
+    # headers, which breaks sol2 hard.
+    if(UNIX AND NOT APPLE)
         find_package(PkgConfig QUIET)
         if(PkgConfig_FOUND)
             pkg_check_modules(LUA54 QUIET IMPORTED_TARGET lua5.4)
             if(TARGET PkgConfig::LUA54)
                 set(MANIFOLD_LUA_TARGET PkgConfig::LUA54)
-            else()
-                pkg_check_modules(LUA QUIET IMPORTED_TARGET lua)
-                if(TARGET PkgConfig::LUA)
-                    set(MANIFOLD_LUA_TARGET PkgConfig::LUA)
+            endif()
+        endif()
+    endif()
+
+    if(NOT MANIFOLD_LUA_TARGET)
+        find_package(Lua 5.4 QUIET)
+        if(Lua_FOUND)
+            set(_manifold_lua_header "")
+            if(DEFINED LUA_INCLUDE_DIRS AND LUA_INCLUDE_DIRS)
+                list(GET LUA_INCLUDE_DIRS 0 _manifold_lua_include_dir)
+                set(_manifold_lua_header "${_manifold_lua_include_dir}/lua.h")
+            elseif(DEFINED LUA_INCLUDE_DIR AND LUA_INCLUDE_DIR)
+                set(_manifold_lua_header "${LUA_INCLUDE_DIR}/lua.h")
+            endif()
+
+            manifold_header_is_lua_54("${_manifold_lua_header}" _manifold_lua_header_ok)
+            if(_manifold_lua_header_ok)
+                if(TARGET Lua::Lua)
+                    set(MANIFOLD_LUA_TARGET Lua::Lua)
+                elseif(LUA_LIBRARIES)
+                    if(DEFINED LUA_INCLUDE_DIRS AND LUA_INCLUDE_DIRS)
+                        manifold_make_lua_interface_target(manifold_lua_fallback "${LUA_INCLUDE_DIRS}" "${LUA_LIBRARIES}")
+                    elseif(DEFINED LUA_INCLUDE_DIR AND LUA_INCLUDE_DIR)
+                        manifold_make_lua_interface_target(manifold_lua_fallback "${LUA_INCLUDE_DIR}" "${LUA_LIBRARIES}")
+                    else()
+                        manifold_make_lua_interface_target(manifold_lua_fallback "" "${LUA_LIBRARIES}")
+                    endif()
+                    set(MANIFOLD_LUA_TARGET manifold_lua_fallback)
                 endif()
+            else()
+                message(WARNING
+                    "FindLua located '${_manifold_lua_header}', which is not a Lua 5.4 header. "
+                    "Ignoring that result and trying versioned fallbacks.")
+            endif()
+        endif()
+    endif()
+
+    if(NOT MANIFOLD_LUA_TARGET)
+        find_path(MANIFOLD_LUA54_INCLUDE_DIR
+            NAMES lua.h
+            PATH_SUFFIXES lua5.4 include/lua5.4)
+        find_library(MANIFOLD_LUA54_LIBRARY
+            NAMES lua5.4 lua54 lua-5.4)
+        if(MANIFOLD_LUA54_INCLUDE_DIR AND MANIFOLD_LUA54_LIBRARY)
+            manifold_header_is_lua_54("${MANIFOLD_LUA54_INCLUDE_DIR}/lua.h" _manifold_manual_lua_header_ok)
+            if(_manifold_manual_lua_header_ok)
+                manifold_make_lua_interface_target(
+                    manifold_lua_manual
+                    "${MANIFOLD_LUA54_INCLUDE_DIR}"
+                    "${MANIFOLD_LUA54_LIBRARY}")
+                set(MANIFOLD_LUA_TARGET manifold_lua_manual)
             endif()
         endif()
     endif()
 
     if(NOT MANIFOLD_LUA_TARGET)
         message(FATAL_ERROR
-            "Could not find Lua 5.4.\n"
-            "Linux: install lua5.4 dev package (or pkg-config + lua5.4).\n"
+            "Could not find usable Lua 5.4 headers and libraries.\n"
+            "Linux: install lua5.4 dev package (and preferably pkg-config + lua5.4.pc).\n"
+            "If your system also has newer unversioned Lua headers, set -DMANIFOLD_BUILD_LUA=ON to build Lua 5.4 from source.\n"
             "Windows: configure with -DMANIFOLD_BUILD_LUA=ON to build from source.")
     endif()
 endif()
@@ -128,11 +198,14 @@ add_library(imgui STATIC
     ${IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp
     manifold/ui/imgui/ManifoldImGuiGlobals.cpp)
 
+
 add_library(highway STATIC
     ${HWY_DIR}/hwy/abort.cc
     ${HWY_DIR}/hwy/aligned_allocator.cc
 	${HWY_DIR}/hwy/targets.cc)
 
+set_target_properties(imgui PROPERTIES
+    POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(imgui
     PUBLIC
@@ -175,6 +248,9 @@ add_library(imgui_color_text_edit STATIC
     ${IMGUI_COLOR_TEXT_EDIT_DIR}/TextEditor.cpp
     ${IMGUI_COLOR_TEXT_EDIT_DIR}/LanguageDefinitions.cpp)
 
+set_target_properties(imgui_color_text_edit PROPERTIES
+    POSITION_INDEPENDENT_CODE ON)
+
 target_include_directories(imgui_color_text_edit
     PUBLIC
         ${IMGUI_COLOR_TEXT_EDIT_DIR})
@@ -184,17 +260,35 @@ target_link_libraries(imgui_color_text_edit
         imgui
         Boost::regex)
 
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(
+        manifold/ui/imgui/ImGuiOpenGLBackend.cpp
+        PROPERTIES
+            COMPILE_OPTIONS "-Wno-sign-conversion;-Wno-extra")
+endif()
+
 # --- Ableton Link ---
+set(LINK_BUILD_ASIO ON CACHE BOOL "" FORCE)
+set(LINK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LINK_BUILD_JACK OFF CACHE BOOL "" FORCE)
+set(LINK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LINK_ENABLE_ASAN OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
     ableton_link
     GIT_REPOSITORY https://github.com/Ableton/link.git
     GIT_TAG        Link-3.1.2
     GIT_SHALLOW    TRUE
 )
+set(_manifold_saved_policy_version_minimum "${CMAKE_POLICY_VERSION_MINIMUM}")
+set(_manifold_saved_warn_deprecated "${CMAKE_WARN_DEPRECATED}")
+set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+set(CMAKE_WARN_DEPRECATED OFF)
 FetchContent_MakeAvailable(ableton_link)
-set(LINK_BUILD_ASIO ON CACHE BOOL "" FORCE)
-set(LINK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(LINK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CMAKE_WARN_DEPRECATED "${_manifold_saved_warn_deprecated}")
+set(CMAKE_POLICY_VERSION_MINIMUM "${_manifold_saved_policy_version_minimum}")
+unset(_manifold_saved_warn_deprecated)
+unset(_manifold_saved_policy_version_minimum)
 
 set(MANIFOLD_LINK_PLATFORM_DEFINE "")
 if(WIN32)
@@ -206,6 +300,16 @@ elseif(UNIX)
 else()
     message(FATAL_ERROR "Unsupported platform for Ableton Link platform defines")
 endif()
+
+function(manifold_target_include_project_and_ableton target_name)
+    target_include_directories(${target_name}
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR})
+    target_include_directories(${target_name}
+        SYSTEM PRIVATE
+            ${ableton_link_SOURCE_DIR}/include
+            ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+endfunction()
 
 juce_add_plugin(GrainFreeze
     VERSION 1.0.0
@@ -231,8 +335,7 @@ target_compile_definitions(GrainFreeze
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_link_libraries(GrainFreeze
     PRIVATE
@@ -325,6 +428,10 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/TransientShaperNode.cpp
     dsp/core/nodes/RingModulatorNode.h
     dsp/core/nodes/RingModulatorNode.cpp
+    dsp/core/nodes/AudioFmNode.h
+    dsp/core/nodes/AudioFmNode.cpp
+    dsp/core/nodes/AudioSyncNode.h
+    dsp/core/nodes/AudioSyncNode.cpp
     dsp/core/nodes/BitCrusherNode.h
     dsp/core/nodes/BitCrusherNode.cpp
     dsp/core/nodes/FormantFilterNode.h
@@ -392,6 +499,19 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/scripting/bindings/LuaMidiBindings.cpp
     manifold/primitives/scripting/DSPPluginScriptHost.h
     manifold/primitives/scripting/DSPPluginScriptHost.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostInternal.h
+    manifold/primitives/scripting/dsp_host/DSPHostPathMapping.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostValueConverters.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostDeferredMutation.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostTelemetry.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostScriptBootstrap.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostBindingsCore.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostBindingsSynth.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostBindingsFx.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostObjectResolver.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostParamRegistry.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostLoopLayerBundle.cpp
+    manifold/primitives/scripting/dsp_host/DSPHostEndpointSync.cpp
     manifold/primitives/midi/MidiEvent.h
     manifold/primitives/midi/MidiEvent.cpp
     manifold/primitives/midi/MidiManager.h
@@ -459,18 +579,13 @@ target_sources(Manifold
         ${MANIFOLD_RUNTIME_SOURCES}
         ${MANIFOLD_CORE_SOURCES})
 
-target_include_directories(Manifold 
-    PRIVATE 
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(Manifold)
 
 target_compile_definitions(Manifold
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0
         ASIO_STANDALONE=1
         SOL_ALL_SAFETIES_ON=1
         SOL_SAFE_NUMERICS=0
@@ -493,6 +608,212 @@ target_link_libraries(Manifold
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+function(manifold_add_export_lua_assets target_name comment_text)
+    add_custom_command(TARGET ${target_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/manifold/ui
+            $<TARGET_FILE_DIR:${target_name}>
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/manifold/SystemScripts
+            $<TARGET_FILE_DIR:${target_name}>/SystemScripts
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts
+            $<TARGET_FILE_DIR:${target_name}>/UserScripts
+        COMMENT "${comment_text}"
+    )
+endfunction()
+
+function(manifold_add_export_plugin target_name)
+    cmake_parse_arguments(ARG "IS_SYNTH;NEEDS_MIDI_INPUT;NEEDS_MIDI_OUTPUT;IS_MIDI_EFFECT" "PRODUCT_NAME;PLUGIN_CODE;PROJECT_DIR;MANIFEST_SPEC;PROJECT_MANIFEST" "FORMATS" ${ARGN})
+
+    if(NOT ARG_PRODUCT_NAME)
+        message(FATAL_ERROR "manifold_add_export_plugin requires PRODUCT_NAME")
+    endif()
+    if(NOT ARG_PLUGIN_CODE)
+        message(FATAL_ERROR "manifold_add_export_plugin requires PLUGIN_CODE")
+    endif()
+    if(NOT ARG_PROJECT_DIR)
+        message(FATAL_ERROR "manifold_add_export_plugin requires PROJECT_DIR")
+    endif()
+
+    if(NOT ARG_MANIFEST_SPEC)
+        set(ARG_MANIFEST_SPEC "${ARG_PROJECT_DIR}/manifest.spec.json")
+    endif()
+    if(NOT ARG_PROJECT_MANIFEST)
+        set(ARG_PROJECT_MANIFEST "${ARG_PROJECT_DIR}/manifold.project.json5")
+    endif()
+
+    add_custom_command(
+        OUTPUT ${ARG_PROJECT_MANIFEST}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_export_manifest.py
+            --spec ${ARG_MANIFEST_SPEC}
+            --output ${ARG_PROJECT_MANIFEST}
+        DEPENDS
+            ${ARG_MANIFEST_SPEC}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_export_manifest.py
+        VERBATIM
+    )
+
+    add_custom_target(${target_name}_generate_manifest DEPENDS ${ARG_PROJECT_MANIFEST})
+
+    if(NOT ARG_FORMATS)
+        set(ARG_FORMATS Standalone VST3)
+    endif()
+
+    juce_add_plugin(${target_name}
+        VERSION 1.0.0
+        PLUGIN_MANUFACTURER_CODE Shmc
+        PLUGIN_CODE ${ARG_PLUGIN_CODE}
+        FORMATS ${ARG_FORMATS}
+        PRODUCT_NAME "${ARG_PRODUCT_NAME}"
+        IS_SYNTH ${ARG_IS_SYNTH}
+        NEEDS_MIDI_INPUT ${ARG_NEEDS_MIDI_INPUT}
+        NEEDS_MIDI_OUTPUT ${ARG_NEEDS_MIDI_OUTPUT}
+        IS_MIDI_EFFECT ${ARG_IS_MIDI_EFFECT}
+        EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        COPY_PLUGIN_AFTER_BUILD FALSE)
+
+    if(ARG_IS_MIDI_EFFECT)
+        # JUCE's CMake defaults every non-synth VST3 to plain "Fx", which causes
+        # our MIDI exports to scan as audio effects. Force an event-focused VST3
+        # category instead.
+        set_target_properties(${target_name} PROPERTIES
+            JUCE_VST3_CATEGORIES "Instrument;Tools")
+        target_compile_definitions(${target_name}
+            PUBLIC
+                JucePlugin_Vst3Category="Instrument|Tools")
+    endif()
+
+    target_sources(${target_name}
+        PRIVATE
+            ${MANIFOLD_DSP_SOURCES}
+            ${MANIFOLD_RUNTIME_SOURCES}
+            ${MANIFOLD_CORE_SOURCES})
+
+    manifold_target_include_project_and_ableton(${target_name})
+
+    target_compile_definitions(${target_name}
+        PUBLIC
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_VST3_CAN_REPLACE_VST2=0
+            ASIO_STANDALONE=1
+            SOL_ALL_SAFETIES_ON=1
+            SOL_SAFE_NUMERICS=0
+            MANIFOLD_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+            MANIFOLD_DEFAULT_PROJECT=${ARG_PROJECT_MANIFEST}
+            ${MANIFOLD_LINK_PLATFORM_DEFINE})
+
+    target_link_libraries(${target_name}
+        PRIVATE
+            juce::juce_audio_utils
+            juce::juce_audio_formats
+            juce::juce_dsp
+            juce::juce_gui_extra
+            juce::juce_opengl
+            imgui
+            imgui_color_text_edit
+            ${MANIFOLD_LUA_TARGET}
+            sol2::sol2
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_lto_flags
+            juce::juce_recommended_warning_flags)
+
+    add_dependencies(${target_name} ${target_name}_generate_manifest)
+    if(TARGET ${target_name}_Standalone)
+        add_dependencies(${target_name}_Standalone ${target_name}_generate_manifest)
+    endif()
+    if(TARGET ${target_name}_VST3)
+        add_dependencies(${target_name}_VST3 ${target_name}_generate_manifest)
+    endif()
+
+    manifold_add_export_lua_assets(${target_name} "Copying Lua assets for ${ARG_PRODUCT_NAME} Standalone")
+    if(NOT MANIFOLD_PLATFORM_ANDROID)
+        manifold_add_export_lua_assets(${target_name}_VST3 "Copying Lua assets for ${ARG_PRODUCT_NAME} VST3")
+    endif()
+endfunction()
+
+manifold_add_export_plugin(Manifold_Filter
+    PRODUCT_NAME "Manifold Filter"
+    PLUGIN_CODE Mflt
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Filter)
+
+manifold_add_export_plugin(Manifold_EQ8
+    PRODUCT_NAME "Manifold EQ8"
+    PLUGIN_CODE Mnq8
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Eq)
+
+manifold_add_export_plugin(Manifold_FX
+    PRODUCT_NAME "Manifold Effect"
+    PLUGIN_CODE Mnfx
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_FX)
+
+manifold_add_export_plugin(Manifold_Arp
+    PRODUCT_NAME "Manifold Arp"
+    PLUGIN_CODE Mnar
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Arp
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+manifold_add_export_plugin(Manifold_ScaleQuantizer
+    PRODUCT_NAME "Manifold Scale Quantizer"
+    PLUGIN_CODE Mnsq
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_ScaleQuantizer
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+manifold_add_export_plugin(Manifold_Transpose
+    PRODUCT_NAME "Manifold Transpose"
+    PLUGIN_CODE Mntr
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Transpose
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+manifold_add_export_plugin(Manifold_VelocityMapper
+    PRODUCT_NAME "Manifold Velocity Mapper"
+    PLUGIN_CODE Mnvm
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_VelocityMapper
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+manifold_add_export_plugin(Manifold_NoteFilter
+    PRODUCT_NAME "Manifold Note Filter"
+    PLUGIN_CODE Mnnf
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_NoteFilter
+    NEEDS_MIDI_INPUT
+    NEEDS_MIDI_OUTPUT
+    IS_MIDI_EFFECT)
+
+juce_add_console_app(ManifoldVST3Probe
+    PRODUCT_NAME "Manifold VST3 Probe")
+
+target_sources(ManifoldVST3Probe
+    PRIVATE
+        tools/ManifoldVST3Probe.cpp)
+
+target_link_libraries(ManifoldVST3Probe
+    PRIVATE
+        juce::juce_audio_processors_headless
+        juce::juce_events
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+
+target_compile_definitions(ManifoldVST3Probe
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_PLUGINHOST_VST=0
+        JUCE_PLUGINHOST_VST3=1
+        JUCE_PLUGINHOST_AU=0
+        JUCE_PLUGINHOST_LADSPA=0
+        JUCE_PLUGINHOST_LV2=0)
 
 # --- Android Mobile App ---
 if(MANIFOLD_PLATFORM_ANDROID)
@@ -517,18 +838,12 @@ if(MANIFOLD_PLATFORM_ANDROID)
             manifold/android/AndroidMain.cpp
     )
     
-    target_include_directories(ManifoldMobile 
-        PRIVATE 
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            ${ableton_link_SOURCE_DIR}/include
-            ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include
-    )
+    manifold_target_include_project_and_ableton(ManifoldMobile)
     
     target_compile_definitions(ManifoldMobile
         PUBLIC
             JUCE_WEB_BROWSER=0
             JUCE_USE_CURL=0
-            JUCE_DISPLAY_SPLASH_SCREEN=0
             ASIO_STANDALONE=1
             SOL_ALL_SAFETIES_ON=1
             SOL_SAFE_NUMERICS=0
@@ -620,11 +935,7 @@ add_executable(CanonicalCommandHarness manifold/headless/CanonicalCommandHarness
 
 add_executable(StateProjectionHarness manifold/headless/StateProjectionHarness.cpp)
 
-target_include_directories(ManifoldHeadless
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(ManifoldHeadless)
 
 target_link_libraries(ManifoldHeadless
     PRIVATE
@@ -637,11 +948,7 @@ target_link_libraries(ManifoldHeadless
         sol2::sol2
 		highway)
 
-target_include_directories(LuaEngineMockHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(LuaEngineMockHarness)
 
 target_link_libraries(LuaEngineMockHarness
     PRIVATE
@@ -654,11 +961,7 @@ target_link_libraries(LuaEngineMockHarness
         sol2::sol2
 		highway)
 
-target_include_directories(EndpointResolverHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(EndpointResolverHarness)
 
 target_link_libraries(EndpointResolverHarness
     PRIVATE
@@ -671,11 +974,7 @@ target_link_libraries(EndpointResolverHarness
         sol2::sol2
 		highway)
 
-target_include_directories(ControlCommandQueueHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(ControlCommandQueueHarness)
 
 target_link_libraries(ControlCommandQueueHarness
     PRIVATE
@@ -688,11 +987,7 @@ target_link_libraries(ControlCommandQueueHarness
         sol2::sol2
 		highway)
 
-target_include_directories(CanonicalCommandHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(CanonicalCommandHarness)
 
 target_link_libraries(CanonicalCommandHarness
     PRIVATE
@@ -705,11 +1000,7 @@ target_link_libraries(CanonicalCommandHarness
         sol2::sol2
 		highway)
 
-target_include_directories(StateProjectionHarness
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(StateProjectionHarness)
 
 target_link_libraries(StateProjectionHarness
     PRIVATE
@@ -726,43 +1017,37 @@ target_compile_definitions(ManifoldHeadless
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(LuaEngineMockHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(EndpointResolverHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(ControlCommandQueueHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(CanonicalCommandHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(StateProjectionHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 enable_testing()
 
@@ -833,18 +1118,13 @@ target_sources(Tempus
         test_plugins/Tempus/TempusPlugin.cpp
         test_plugins/Tempus/TempusEditor.cpp)
 
-target_include_directories(Tempus
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${ableton_link_SOURCE_DIR}/include
-        ${ableton_link_SOURCE_DIR}/modules/asio-standalone/asio/include)
+manifold_target_include_project_and_ableton(Tempus)
 
 target_compile_definitions(Tempus
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0
         ASIO_STANDALONE=1
         ${MANIFOLD_LINK_PLATFORM_DEFINE})
 

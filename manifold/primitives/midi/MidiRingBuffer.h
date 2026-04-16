@@ -40,7 +40,7 @@ public:
         }
 
         // Pack: [status, data1, data2, timestampDelta]
-        ring[w] = (static_cast<uint32_t>(status) << 24) |
+        ring[static_cast<std::size_t>(w)] = (static_cast<uint32_t>(status) << 24) |
                   (static_cast<uint32_t>(data1) << 16) |
                   (static_cast<uint32_t>(data2) << 8) |
                   (static_cast<uint32_t>(timestampDelta & 0xFF));
@@ -57,7 +57,7 @@ public:
             return false; // empty
         }
 
-        uint32_t msg = ring[r];
+        uint32_t msg = ring[static_cast<std::size_t>(r)];
         status = static_cast<uint8_t>((msg >> 24) & 0xFF);
         data1 = static_cast<uint8_t>((msg >> 16) & 0xFF);
         data2 = static_cast<uint8_t>((msg >> 8) & 0xFF);
@@ -80,7 +80,7 @@ public:
             return false; // empty
         }
 
-        uint32_t msg = ring[r];
+        uint32_t msg = ring[static_cast<std::size_t>(r)];
         status = static_cast<uint8_t>((msg >> 24) & 0xFF);
         data1 = static_cast<uint8_t>((msg >> 16) & 0xFF);
         data2 = static_cast<uint8_t>((msg >> 8) & 0xFF);

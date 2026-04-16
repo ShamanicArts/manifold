@@ -93,7 +93,7 @@ void ShimmerNode::process(const std::vector<AudioBufferView>& inputs,
             const float in = ch == 0 ? inL : inR;
             const float delaySamples = baseDelay + (ch == 0 ? mod : -mod);
 
-            if (readPos_[static_cast<size_t>(ch)] == 0.0f) {
+            if (std::abs(readPos_[static_cast<size_t>(ch)]) < 1.0e-6f) {
                 readPos_[static_cast<size_t>(ch)] = static_cast<float>(writeIndex_) - delaySamples;
             }
 

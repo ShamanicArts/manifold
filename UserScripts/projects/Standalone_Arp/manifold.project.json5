@@ -1,0 +1,102 @@
+{
+  "name": "Standalone Arp",
+  "version": 1,
+  "description": "Standalone MIDI arpeggiator export target",
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+  "plugin": {
+    "midiEffect": true,
+    "runtimeFamily": "midi_effect",
+    "view": {
+      "defaultMode": "compact",
+      "compact": {
+        "w": 236,
+        "h": 176
+      },
+      "split": {
+        "w": 236,
+        "h": 176
+      }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9040,
+      "oscQueryPort": 9041
+    },
+    "params": [
+      {
+        "path": "/plugin/params/rate",
+        "internalPath": "/midi/synth/rack/arp/1/rate",
+        "type": "f",
+        "min": 0.25,
+        "max": 20.0,
+        "default": 8.0,
+        "hostParamId": "rate",
+        "hostParamName": "Rate",
+        "hostParamKind": "float",
+        "description": "Arpeggiator rate in Hz"
+      },
+      {
+        "path": "/plugin/params/mode",
+        "internalPath": "/midi/synth/rack/arp/1/mode",
+        "type": "f",
+        "min": 0,
+        "max": 3,
+        "default": 0,
+        "hostParamId": "mode",
+        "hostParamName": "Mode",
+        "hostParamKind": "choice",
+        "choices": [
+          "Up",
+          "Down",
+          "Up/Down",
+          "Random"
+        ],
+        "description": "Arpeggiator mode"
+      },
+      {
+        "path": "/plugin/params/octaves",
+        "internalPath": "/midi/synth/rack/arp/1/octaves",
+        "type": "f",
+        "min": 1,
+        "max": 4,
+        "default": 1,
+        "hostParamId": "octaves",
+        "hostParamName": "Octaves",
+        "hostParamKind": "int",
+        "description": "Arpeggiator octave range"
+      },
+      {
+        "path": "/plugin/params/gate",
+        "internalPath": "/midi/synth/rack/arp/1/gate",
+        "type": "f",
+        "min": 0.05,
+        "max": 1.0,
+        "default": 0.6,
+        "hostParamId": "gate",
+        "hostParamName": "Gate",
+        "hostParamKind": "float",
+        "description": "Arpeggiator gate length"
+      },
+      {
+        "path": "/plugin/params/hold",
+        "internalPath": "/midi/synth/rack/arp/1/hold",
+        "type": "f",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "hostParamId": "hold",
+        "hostParamName": "Hold",
+        "hostParamKind": "bool",
+        "description": "Latch held notes"
+      }
+    ]
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "../Main/themes/dark.lua"
+}

@@ -27,6 +27,10 @@ DisplayListDebugState& displayListDebugState() {
     return state;
 }
 
+bool nearlyEqual(double a, double b) {
+    return std::abs(a - b) < 1.0e-9;
+}
+
 std::string displayListDebugKey(const RuntimeNode& node) {
     const auto& widgetType = node.getWidgetType();
     const auto& nodeId = node.getNodeId();
@@ -180,7 +184,7 @@ bool varsSemanticallyEqual(const juce::var& a, const juce::var& b) {
         return a.isBool() && b.isBool() && static_cast<bool>(a) == static_cast<bool>(b);
     }
     if ((a.isInt() || a.isInt64() || a.isDouble()) && (b.isInt() || b.isInt64() || b.isDouble())) {
-        return static_cast<double>(a) == static_cast<double>(b);
+        return nearlyEqual(static_cast<double>(a), static_cast<double>(b));
     }
     if (a.isString() || b.isString()) {
         return a.toString() == b.toString();
@@ -193,6 +197,66 @@ bool varsSemanticallyEqual(const juce::var& a, const juce::var& b) {
         return objectsSemanticallyEqual(aObj, b.getDynamicObject());
     }
     return a.equalsWithSameType(b);
+}
+
+int64_t estimateVarBytes(const juce::var& value) {
+    if (value.isVoid() || value.isUndefined()) {
+        return 0;
+    }
+    if (value.isString()) {
+        return static_cast<int64_t>(value.toString().getNumBytesAsUTF8());
+    }
+    if (auto* arr = value.getArray()) {
+        int64_t total = static_cast<int64_t>(sizeof(juce::var)) * arr->size();
+        for (const auto& item : *arr) {
+            total += estimateVarBytes(item);
+        }
+        return total;
+    }
+    if (auto* obj = value.getDynamicObject()) {
+        int64_t total = sizeof(juce::DynamicObject);
+        for (const auto& prop : obj->getProperties()) {
+            total += static_cast<int64_t>(prop.name.toString().getNumBytesAsUTF8());
+            total += estimateVarBytes(prop.value);
+        }
+        return total;
+    }
+    return sizeof(juce::var);
+}
+
+int countValidCallbacks(const RuntimeNode::CallbackSlots& callbacks) {
+    int count = 0;
+    if (callbacks.onMouseDown.valid()) ++count;
+    if (callbacks.onMouseDrag.valid()) ++count;
+    if (callbacks.onMouseUp.valid()) ++count;
+    if (callbacks.onMouseMove.valid()) ++count;
+    if (callbacks.onMouseWheel.valid()) ++count;
+    if (callbacks.onKeyPress.valid()) ++count;
+    if (callbacks.onClick.valid()) ++count;
+    if (callbacks.onDoubleClick.valid()) ++count;
+    if (callbacks.onMouseEnter.valid()) ++count;
+    if (callbacks.onMouseExit.valid()) ++count;
+    if (callbacks.onDraw.valid()) ++count;
+    if (callbacks.onGLRender.valid()) ++count;
+    if (callbacks.onGLContextCreated.valid()) ++count;
+    if (callbacks.onGLContextClosing.valid()) ++count;
+    if (callbacks.onValueChanged.valid()) ++count;
+    if (callbacks.onToggled.valid()) ++count;
+    return count;
+}
+
+int64_t estimateCompiledDisplayListBytes(const manifold::ui::imgui::CompiledDisplayList& compiled,
+                                         uint64_t& commandCountOut) {
+    int64_t total = sizeof(manifold::ui::imgui::CompiledDisplayList);
+    total += static_cast<int64_t>(compiled.commands.capacity()) *
+             static_cast<int64_t>(sizeof(manifold::ui::imgui::CompiledDrawCmd));
+    commandCountOut = static_cast<uint64_t>(compiled.commands.size());
+    for (const auto& cmd : compiled.commands) {
+        total += static_cast<int64_t>(cmd.text.capacity());
+        total += static_cast<int64_t>(cmd.align.capacity());
+        total += static_cast<int64_t>(cmd.valign.capacity());
+    }
+    return total;
 }
 
 std::shared_ptr<const manifold::ui::imgui::CompiledDisplayList> compileDisplayList(const juce::var& displayList) {
@@ -391,9 +455,9 @@ void RuntimeNode::setZOrder(int zOrder) {
 void RuntimeNode::setStyle(const StyleState& style) {
     const bool changed = style_.background != style.background
         || style_.border != style.border
-        || style_.borderWidth != style.borderWidth
-        || style_.cornerRadius != style.cornerRadius
-        || style_.opacity != style.opacity
+        || !nearlyEqual(style_.borderWidth, style.borderWidth)
+        || !nearlyEqual(style_.cornerRadius, style.cornerRadius)
+        || !nearlyEqual(style_.opacity, style.opacity)
         || style_.padding != style.padding;
 
     if (!changed) {
@@ -555,6 +619,50 @@ RuntimeNode::DisplayListDebugStats RuntimeNode::getDisplayListDebugStats(bool re
         state.compileByKey.clear();
     }
 
+    return stats;
+}
+
+RuntimeNode::MemoryStats RuntimeNode::estimateMemoryUsage() const {
+    MemoryStats stats;
+    std::unordered_set<const manifold::ui::imgui::CompiledDisplayList*> seenCompiled;
+
+    std::function<void(const RuntimeNode&)> visit = [&](const RuntimeNode& node) {
+        stats.nodeCount += 1;
+        stats.nodeBytes += sizeof(RuntimeNode);
+        stats.stringBytes += static_cast<int64_t>(node.nodeId_.capacity());
+        stats.stringBytes += static_cast<int64_t>(node.widgetType_.capacity());
+        stats.stringBytes += static_cast<int64_t>(node.customSurfaceType_.capacity());
+        stats.vectorBytes += static_cast<int64_t>(node.children_.capacity()) * static_cast<int64_t>(sizeof(RuntimeNode*));
+        stats.vectorBytes += static_cast<int64_t>(node.ownedChildren_.capacity()) * static_cast<int64_t>(sizeof(std::unique_ptr<RuntimeNode>));
+        stats.callbackCount += static_cast<uint64_t>(countValidCallbacks(node.callbacks_));
+
+        stats.userDataEntries += static_cast<uint64_t>(node.userData_.size());
+        stats.userDataBytes += static_cast<int64_t>(node.userData_.size()) * static_cast<int64_t>(sizeof(std::pair<std::string, sol::object>));
+        for (const auto& [key, value] : node.userData_) {
+            stats.userDataBytes += static_cast<int64_t>(key.capacity());
+            stats.userDataBytes += sizeof(sol::object);
+            juce::ignoreUnused(value);
+        }
+
+        stats.customPayloadBytes += estimateVarBytes(node.customRenderPayload_);
+        stats.customPayloadBytes += estimateVarBytes(node.displayList_);
+
+        auto compiled = node.getCompiledDisplayList();
+        if (compiled && seenCompiled.insert(compiled.get()).second) {
+            stats.compiledDisplayListCount += 1;
+            uint64_t commandCount = 0;
+            stats.compiledDisplayListBytes += estimateCompiledDisplayListBytes(*compiled, commandCount);
+            stats.compiledDisplayListCommands += commandCount;
+        }
+
+        for (auto* child : node.children_) {
+            if (child != nullptr) {
+                visit(*child);
+            }
+        }
+    };
+
+    visit(*this);
     return stats;
 }
 

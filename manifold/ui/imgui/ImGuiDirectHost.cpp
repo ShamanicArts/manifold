@@ -3,6 +3,7 @@
 #include "Theme.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <algorithm>
 #include <array>
@@ -188,6 +189,29 @@ juce::Rectangle<float> previewRect(const juce::Rectangle<float>& sceneRect,
     const float right = std::max(x1, x2);
     const float bottom = std::max(y1, y2);
     return juce::Rectangle<float>(left, top, std::max(1.0f, right - left), std::max(1.0f, bottom - top));
+}
+
+void invokeOnImGuiFrameRecursive(RuntimeNode& node) {
+    if (!node.isVisible()) {
+        return;
+    }
+
+    auto& callbacks = node.getCallbacks();
+    if (callbacks.onImGuiFrame.valid()) {
+        sol::protected_function fn = callbacks.onImGuiFrame;
+        auto result = fn(node);
+        if (!result.valid()) {
+            sol::error err = result;
+            std::fprintf(stderr, "[ImGuiDirectHost] onImGuiFrame error for %s: %s\n",
+                         node.getNodeId().c_str(), err.what());
+        }
+    }
+
+    for (auto* child : node.getChildren()) {
+        if (child != nullptr) {
+            invokeOnImGuiFrameRecursive(*child);
+        }
+    }
 }
 
 struct SceneTransform {
@@ -508,7 +532,7 @@ void renderSnapshotNodeRecursive(const ImGuiDirectHost::RenderSnapshot& snapshot
     }
 }
 
-void renderSnapshot(const ImGuiDirectHost::RenderSnapshot& snapshot,
+[[maybe_unused]] void renderSnapshot(const ImGuiDirectHost::RenderSnapshot& snapshot,
                     ImDrawList* drawList,
                     const manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions& options) {
     if (drawList == nullptr || !snapshot.transform.valid || snapshot.rootIndex < 0) {
@@ -884,11 +908,115 @@ ImGuiDirectHost::ImGuiDirectHost() {
     openGLContext_.setPersistentAttachment(true);
 #endif
     openGLContext_.setContinuousRepainting(false);
-    openGLContext_.setSwapInterval(1);
+    // renderNow() runs on the message thread in direct mode. Blocking that
+    // thread on vsync makes menu/popup interaction feel like dogshit.
+    openGLContext_.setSwapInterval(0);
 }
 
 ImGuiDirectHost::~ImGuiDirectHost() {
     shutdown();
+}
+
+namespace {
+int64_t estimateRenderSnapshotBytes(const ImGuiDirectHost::RenderSnapshot& snapshot,
+                                    int64_t& nodeCountOut) {
+    int64_t total = sizeof(ImGuiDirectHost::RenderSnapshot);
+    total += static_cast<int64_t>(snapshot.nodes.capacity()) * static_cast<int64_t>(sizeof(ImGuiDirectHost::RenderNodeData));
+    nodeCountOut = static_cast<int64_t>(snapshot.nodes.size());
+    for (const auto& node : snapshot.nodes) {
+        total += static_cast<int64_t>(node.customSurfaceType.capacity());
+        total += static_cast<int64_t>(node.childIndices.capacity()) * static_cast<int64_t>(sizeof(int));
+    }
+    return total;
+}
+
+int64_t estimateShaderSurfaceStateBytes(const std::unordered_map<uint64_t, std::unique_ptr<ImGuiDirectHost::ShaderSurfaceState>>& states) {
+    int64_t total = static_cast<int64_t>(states.size()) * static_cast<int64_t>(sizeof(std::pair<const uint64_t, std::unique_ptr<ImGuiDirectHost::ShaderSurfaceState>>));
+    for (const auto& [_, state] : states) {
+        if (!state) {
+            continue;
+        }
+        total += static_cast<int64_t>(sizeof(ImGuiDirectHost::ShaderSurfaceState));
+        total += static_cast<int64_t>(state->surfaceType.capacity());
+        total += static_cast<int64_t>(state->payloadSignature.capacity());
+        total += static_cast<int64_t>(state->lastError.capacity());
+        total += static_cast<int64_t>(state->passes.capacity()) * static_cast<int64_t>(sizeof(ImGuiDirectHost::ShaderSurfaceState::PassResources));
+        for (const auto& pass : state->passes) {
+            total += static_cast<int64_t>(pass.vertexSource.capacity());
+            total += static_cast<int64_t>(pass.fragmentSource.capacity());
+            total += static_cast<int64_t>(pass.inputTextureUniform.capacity());
+        }
+    }
+    return total;
+}
+
+void estimateImGuiInternalStats(ImGuiContext* context,
+                                ImGuiDirectHost::StatsSnapshot& snapshot) {
+    if (context == nullptr) {
+        return;
+    }
+    ImGui::SetCurrentContext(context);
+    ImGuiContext& g = *context;
+    snapshot.imguiWindowCount = g.Windows.Size;
+    snapshot.imguiTableCount = g.Tables.GetMapSize();
+    snapshot.imguiTabBarCount = g.TabBars.GetMapSize();
+    snapshot.imguiViewportCount = g.Viewports.Size;
+    snapshot.imguiFontCount = g.IO.Fonts ? g.IO.Fonts->Fonts.Size : 0;
+
+    int64_t windowStateBytes = 0;
+    int64_t drawBufferBytes = 0;
+    windowStateBytes += static_cast<int64_t>(g.Windows.Capacity) * static_cast<int64_t>(sizeof(ImGuiWindow*));
+    windowStateBytes += static_cast<int64_t>(g.WindowsFocusOrder.Capacity) * static_cast<int64_t>(sizeof(ImGuiWindow*));
+    windowStateBytes += static_cast<int64_t>(g.WindowsTempSortBuffer.Capacity) * static_cast<int64_t>(sizeof(ImGuiWindow*));
+    windowStateBytes += static_cast<int64_t>(g.CurrentWindowStack.Capacity) * static_cast<int64_t>(sizeof(ImGuiWindowStackData));
+    windowStateBytes += static_cast<int64_t>(g.Tables.GetMapSize()) * static_cast<int64_t>(sizeof(ImGuiTable));
+    windowStateBytes += static_cast<int64_t>(g.TabBars.GetMapSize()) * static_cast<int64_t>(sizeof(ImGuiTabBar));
+    windowStateBytes += static_cast<int64_t>(g.Viewports.Capacity) * static_cast<int64_t>(sizeof(ImGuiViewportP*));
+    windowStateBytes += static_cast<int64_t>(g.FontAtlases.Capacity) * static_cast<int64_t>(sizeof(ImFontAtlas*));
+    windowStateBytes += static_cast<int64_t>(g.DrawChannelsTempMergeBuffer.Capacity) * static_cast<int64_t>(sizeof(ImDrawChannel));
+    windowStateBytes += static_cast<int64_t>(g.ClipboardHandlerData.Capacity) * static_cast<int64_t>(sizeof(char));
+    windowStateBytes += static_cast<int64_t>(g.TempBuffer.Capacity) * static_cast<int64_t>(sizeof(char));
+    windowStateBytes += static_cast<int64_t>(g.SettingsIniData.Buf.Capacity) * static_cast<int64_t>(sizeof(char));
+    windowStateBytes += static_cast<int64_t>(g.SettingsHandlers.Capacity) * static_cast<int64_t>(sizeof(ImGuiSettingsHandler));
+    windowStateBytes += static_cast<int64_t>(g.LogBuffer.Buf.Capacity) * static_cast<int64_t>(sizeof(char));
+    windowStateBytes += static_cast<int64_t>(g.InputEventsQueue.Capacity) * static_cast<int64_t>(sizeof(ImGuiInputEvent));
+    windowStateBytes += static_cast<int64_t>(g.InputEventsTrail.Capacity) * static_cast<int64_t>(sizeof(ImGuiInputEvent));
+
+    for (int i = 0; i < g.Windows.Size; ++i) {
+        ImGuiWindow* w = g.Windows[i];
+        if (w == nullptr) {
+            continue;
+        }
+        windowStateBytes += static_cast<int64_t>(sizeof(ImGuiWindow));
+        if (w->Name) {
+            windowStateBytes += static_cast<int64_t>(std::strlen(w->Name));
+        }
+        windowStateBytes += static_cast<int64_t>(w->IDStack.Capacity) * static_cast<int64_t>(sizeof(ImGuiID));
+        windowStateBytes += static_cast<int64_t>(w->DC.ChildWindows.Capacity) * static_cast<int64_t>(sizeof(ImGuiWindow*));
+        windowStateBytes += static_cast<int64_t>(w->DC.ItemWidthStack.Capacity) * static_cast<int64_t>(sizeof(float));
+        windowStateBytes += static_cast<int64_t>(w->DC.TextWrapPosStack.Capacity) * static_cast<int64_t>(sizeof(float));
+        if (w->DrawList) {
+            drawBufferBytes += static_cast<int64_t>(w->DrawList->VtxBuffer.Capacity) * static_cast<int64_t>(sizeof(ImDrawVert));
+            drawBufferBytes += static_cast<int64_t>(w->DrawList->IdxBuffer.Capacity) * static_cast<int64_t>(sizeof(ImDrawIdx));
+            drawBufferBytes += static_cast<int64_t>(w->DrawList->CmdBuffer.Capacity) * static_cast<int64_t>(sizeof(ImDrawCmd));
+        }
+    }
+
+    if (g.IO.Fonts) {
+        windowStateBytes += static_cast<int64_t>(sizeof(ImFontAtlas));
+        windowStateBytes += static_cast<int64_t>(g.IO.Fonts->Fonts.Capacity) * static_cast<int64_t>(sizeof(ImFont*));
+        windowStateBytes += static_cast<int64_t>(g.IO.Fonts->Sources.Capacity) * static_cast<int64_t>(sizeof(ImFontConfig));
+        for (int i = 0; i < g.IO.Fonts->Fonts.Size; ++i) {
+            ImFont* font = g.IO.Fonts->Fonts[i];
+            if (!font) continue;
+            windowStateBytes += static_cast<int64_t>(sizeof(ImFont));
+        }
+    }
+
+    snapshot.imguiWindowStateBytes = windowStateBytes;
+    snapshot.imguiDrawBufferBytes = drawBufferBytes;
+    snapshot.imguiInternalStateBytes = windowStateBytes + drawBufferBytes;
+}
 }
 
 ImGuiDirectHost::StatsSnapshot ImGuiDirectHost::getStatsSnapshot() const {
@@ -901,6 +1029,22 @@ ImGuiDirectHost::StatsSnapshot ImGuiDirectHost::getStatsSnapshot() const {
     snapshot.lastRenderUs = lastRenderUs_.load(std::memory_order_relaxed);
     snapshot.lastVertexCount = lastVertexCount_.load(std::memory_order_relaxed);
     snapshot.lastIndexCount = lastIndexCount_.load(std::memory_order_relaxed);
+    snapshot.fontAtlasBytes = fontAtlasBytes_.load(std::memory_order_relaxed);
+    snapshot.surfaceColorBytes = surfaceColorBytes_.load(std::memory_order_relaxed);
+    snapshot.surfaceDepthBytes = surfaceDepthBytes_.load(std::memory_order_relaxed);
+    snapshot.totalGpuBytes = snapshot.fontAtlasBytes + snapshot.surfaceColorBytes + snapshot.surfaceDepthBytes;
+    {
+        std::lock_guard<std::mutex> lock(snapshotMutex_);
+        int64_t pendingCount = 0;
+        int64_t activeCount = 0;
+        int64_t glCount = 0;
+        snapshot.renderSnapshotBytes = estimateRenderSnapshotBytes(pendingSnapshot_, pendingCount)
+                                     + estimateRenderSnapshotBytes(activeSnapshot_, activeCount)
+                                     + estimateRenderSnapshotBytes(glSnapshot_, glCount);
+        snapshot.renderSnapshotNodeCount = pendingCount + activeCount + glCount;
+    }
+    snapshot.customSurfaceStateBytes = estimateShaderSurfaceStateBytes(shaderSurfaceStates_);
+    estimateImGuiInternalStats(reinterpret_cast<ImGuiContext*>(imguiContext_), snapshot);
     return snapshot;
 }
 
@@ -976,6 +1120,7 @@ void ImGuiDirectHost::releaseShaderSurfaces() {
         state->passes.clear();
     }
     shaderSurfaceStates_.clear();
+    recalculateOwnedGpuBytes();
 }
 
 void ImGuiDirectHost::pruneShaderSurfaces(const std::unordered_set<uint64_t>& touchedStableIds) {
@@ -992,6 +1137,27 @@ void ImGuiDirectHost::pruneShaderSurfaces(const std::unordered_set<uint64_t>& to
         }
         it = shaderSurfaceStates_.erase(it);
     }
+    recalculateOwnedGpuBytes();
+}
+
+void ImGuiDirectHost::recalculateOwnedGpuBytes() {
+    int64_t colorBytes = 0;
+    int64_t depthBytes = 0;
+    for (const auto& [_, state] : shaderSurfaceStates_) {
+        if (!state || state->width <= 0 || state->height <= 0) {
+            continue;
+        }
+        for (const auto& pass : state->passes) {
+            if (pass.colorTex != 0) {
+                colorBytes += static_cast<int64_t>(state->width) * static_cast<int64_t>(state->height) * 4;
+            }
+            if (pass.depthRbo != 0) {
+                depthBytes += static_cast<int64_t>(state->width) * static_cast<int64_t>(state->height) * 4;
+            }
+        }
+    }
+    surfaceColorBytes_.store(colorBytes, std::memory_order_relaxed);
+    surfaceDepthBytes_.store(depthBytes, std::memory_order_relaxed);
 }
 
 std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& node,
@@ -1111,6 +1277,7 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
         }
         state->width = width;
         state->height = height;
+        recalculateOwnedGpuBytes();
     }
 
     if (!ensureSurfaceQuadGeometry()) {
@@ -1226,6 +1393,11 @@ void ImGuiDirectHost::flushPendingDrag() {
 }
 
 void ImGuiDirectHost::renderNow() {
+    if (renderInProgress_) {
+        return;
+    }
+    juce::ScopedValueSetter<bool> renderGuard(renderInProgress_, true);
+
     attachContextIfNeeded();
 
     if (getWidth() <= 0 || getHeight() <= 0 || !isShowing()) {
@@ -1268,6 +1440,27 @@ void ImGuiDirectHost::renderNow() {
     io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
     io.DisplayFramebufferScale = ImVec2(scale, scale);
 
+    {
+        std::lock_guard<std::mutex> lock(inputMutex_);
+        for (const auto& event : pendingEvents_) {
+            switch (event.type) {
+                case EventType::MousePos:
+                    io.AddMousePosEvent(event.x, event.y);
+                    break;
+                case EventType::MouseButton:
+                    io.AddMouseButtonEvent(event.button, event.down);
+                    break;
+                case EventType::MouseWheel:
+                    io.AddMouseWheelEvent(event.x, event.y);
+                    break;
+                case EventType::Focus:
+                    io.AddFocusEvent(event.focused);
+                    break;
+            }
+        }
+        pendingEvents_.clear();
+    }
+
     using Clock = std::chrono::steady_clock;
     const auto t0 = Clock::now();
 
@@ -1292,18 +1485,35 @@ void ImGuiDirectHost::renderNow() {
     const auto t2 = Clock::now();
 
     std::unordered_set<uint64_t> touchedSurfaceIds;
-    auto* drawList = ImGui::GetForegroundDrawList();
-    if (liveRoot_ != nullptr) {
-        renderLiveTree(*this,
-                       *liveRoot_,
-                       drawList,
-                       renderOptions,
-                       previewTransform_,
-                       touchedSurfaceIds,
-                       juce::Time::getMillisecondCounterHiRes() * 0.001,
-                       hoveredNodeStableId_,
-                       pressedNodeStableId_);
+    ImDrawList* overlayDrawList = nullptr;
+
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)), ImGuiCond_Always);
+    constexpr ImGuiWindowFlags runtimeOverlayFlags = ImGuiWindowFlags_NoDecoration
+                                                   | ImGuiWindowFlags_NoMove
+                                                   | ImGuiWindowFlags_NoResize
+                                                   | ImGuiWindowFlags_NoSavedSettings
+                                                   | ImGuiWindowFlags_NoBringToFrontOnFocus
+                                                   | ImGuiWindowFlags_NoNav
+                                                   | ImGuiWindowFlags_NoInputs
+                                                   | ImGuiWindowFlags_NoBackground;
+
+    if (ImGui::Begin("##RuntimeNodeOverlay", nullptr, runtimeOverlayFlags)) {
+        overlayDrawList = ImGui::GetWindowDrawList();
+        if (liveRoot_ != nullptr) {
+            renderLiveTree(*this,
+                           *liveRoot_,
+                           overlayDrawList,
+                           renderOptions,
+                           previewTransform_,
+                           touchedSurfaceIds,
+                           juce::Time::getMillisecondCounterHiRes() * 0.001,
+                           hoveredNodeStableId_,
+                           pressedNodeStableId_);
+        }
     }
+    ImGui::End();
+
     pruneShaderSurfaces(touchedSurfaceIds);
 
     // Draw copyid mode indicator
@@ -1319,17 +1529,23 @@ void ImGuiDirectHost::renderNow() {
         const ImVec2 rectMax(margin + textSize.x + padX * 2, margin + textSize.y + padY * 2);
         const ImVec2 textPos(margin + padX, margin + padY);
         
-        // Draw background
-        drawList->AddRectFilled(rectMin, rectMax, IM_COL32(56, 189, 248, 200), 6.0f);
-        // Draw border
-        drawList->AddRect(rectMin, rectMax, IM_COL32(255, 255, 255, 255), 6.0f, 0, 2.0f);
-        // Draw text
-        if (font) {
-            drawList->AddText(font, fontSize, textPos, IM_COL32(255, 255, 255, 255), label);
+        if (overlayDrawList != nullptr) {
+            overlayDrawList->AddRectFilled(rectMin, rectMax, IM_COL32(56, 189, 248, 200), 6.0f);
+            overlayDrawList->AddRect(rectMin, rectMax, IM_COL32(255, 255, 255, 255), 6.0f, 0, 2.0f);
+            if (font) {
+                overlayDrawList->AddText(font, fontSize, textPos, IM_COL32(255, 255, 255, 255), label);
+            }
         }
     }
 
     const auto t3 = Clock::now();
+
+    // Invoke onImGuiFrame callbacks AFTER foreground draw list rendering.
+    // This ensures ImGui window content (menu bars, popups) renders on top
+    // of the retained-mode widget overlay.
+    if (liveRoot_ != nullptr) {
+        invokeOnImGuiFrameRecursive(*liveRoot_);
+    }
 
     ImGui::Render();
     int64_t vertexCount = 0;
@@ -1383,6 +1599,9 @@ void ImGuiDirectHost::shutdown() {
         releaseSurfaceQuadGeometry();
         juce::OpenGLContext::deactivateCurrentContext();
     }
+    fontAtlasBytes_.store(0, std::memory_order_relaxed);
+    surfaceColorBytes_.store(0, std::memory_order_relaxed);
+    surfaceDepthBytes_.store(0, std::memory_order_relaxed);
 
     if (openGLContext_.isAttached()) {
         openGLContext_.detach();
@@ -1413,6 +1632,25 @@ void ImGuiDirectHost::parentHierarchyChanged() {
 }
 
 void ImGuiDirectHost::mouseDown(const juce::MouseEvent& e) {
+    queueMousePosition(e.position);
+    if (e.mods.isLeftButtonDown()) {
+        leftMouseDown_ = true;
+        queueMouseButton(0, true);
+    }
+    if (e.mods.isRightButtonDown()) {
+        rightMouseDown_ = true;
+        queueMouseButton(1, true);
+    }
+    if (e.mods.isMiddleButtonDown()) {
+        middleMouseDown_ = true;
+        queueMouseButton(2, true);
+    }
+
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        grabKeyboardFocus();
+        return;
+    }
+
     updateHover(e.position, &e.mods);
     auto hit = hitTestLiveTree(e.position, manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer);
     if (hit.node != nullptr) {
@@ -1526,6 +1764,11 @@ void ImGuiDirectHost::mouseDown(const juce::MouseEvent& e) {
 }
 
 void ImGuiDirectHost::mouseDrag(const juce::MouseEvent& e) {
+    queueMousePosition(e.position);
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        return;
+    }
+
     // Don't update hover during drag — we know what's pressed, and the hit test
     // + Lua callbacks at 60Hz+ floods the message thread, starving the timer.
 
@@ -1557,6 +1800,25 @@ void ImGuiDirectHost::mouseDrag(const juce::MouseEvent& e) {
 }
 
 void ImGuiDirectHost::mouseUp(const juce::MouseEvent& e) {
+    queueMousePosition(e.position);
+    if (leftMouseDown_) {
+        leftMouseDown_ = false;
+        queueMouseButton(0, false);
+    }
+    if (rightMouseDown_) {
+        rightMouseDown_ = false;
+        queueMouseButton(1, false);
+    }
+    if (middleMouseDown_) {
+        middleMouseDown_ = false;
+        queueMouseButton(2, false);
+    }
+
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        flushPendingDrag();
+        return;
+    }
+
     flushPendingDrag();
     auto hit = hitTestLiveTree(e.position, manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer);
     const uint64_t pressedStableId = pressedNodeStableId_;
@@ -1580,11 +1842,16 @@ void ImGuiDirectHost::mouseUp(const juce::MouseEvent& e) {
 }
 
 void ImGuiDirectHost::mouseMove(const juce::MouseEvent& e) {
+    queueMousePosition(e.position);
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        return;
+    }
     updateHover(e.position, &e.mods);
 }
 
 void ImGuiDirectHost::mouseExit(const juce::MouseEvent& e) {
     juce::ignoreUnused(e);
+    queueMousePosition(juce::Point<float>(-1.0f, -1.0f));
     const uint64_t previousHoveredStableId = hoveredNodeStableId_;
     hoveredNodeStableId_ = 0;
     if (previousHoveredStableId != 0) {
@@ -1594,6 +1861,12 @@ void ImGuiDirectHost::mouseExit(const juce::MouseEvent& e) {
 }
 
 void ImGuiDirectHost::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
+    queueMousePosition(e.position);
+    queueMouseWheel(wheel.deltaX, wheel.deltaY);
+    if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        return;
+    }
+
     updateHover(e.position, &e.mods);
     auto hit = hitTestLiveTree(e.position, manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Wheel);
     if (hit.node == nullptr || hit.stableId == 0) {
@@ -1655,6 +1928,7 @@ void ImGuiDirectHost::newOpenGLContextCreated() {
     io.BackendPlatformName = "manifold_juce_imgui_direct";
 
     manifold::ui::imgui::configureToolFonts(io);
+    fontAtlasBytes_.store(0, std::memory_order_relaxed);
     manifold::ui::imgui::applyToolTheme();
     ImGui_ImplOpenGL3_Init("#version 150");
     contextReady_ = true;
@@ -1679,6 +1953,9 @@ void ImGuiDirectHost::openGLContextClosing() {
         ImGui::DestroyContext(context);
         imguiContext_ = nullptr;
     }
+    fontAtlasBytes_.store(0, std::memory_order_relaxed);
+    surfaceColorBytes_.store(0, std::memory_order_relaxed);
+    surfaceDepthBytes_.store(0, std::memory_order_relaxed);
     contextReady_ = false;
 }
 
@@ -1887,4 +2164,39 @@ juce::Point<float> ImGuiDirectHost::scenePositionFromLocal(juce::Point<float> lo
 
     return juce::Point<float>((local.x - previewTransform_.offsetX) / previewTransform_.scale,
                               (local.y - previewTransform_.offsetY) / previewTransform_.scale);
+}
+
+void ImGuiDirectHost::queueMousePosition(juce::Point<float> position) {
+    PendingEvent event;
+    event.type = EventType::MousePos;
+    event.x = position.x;
+    event.y = position.y;
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    pendingEvents_.push_back(std::move(event));
+}
+
+void ImGuiDirectHost::queueMouseButton(int button, bool down) {
+    PendingEvent event;
+    event.type = EventType::MouseButton;
+    event.button = button;
+    event.down = down;
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    pendingEvents_.push_back(std::move(event));
+}
+
+void ImGuiDirectHost::queueMouseWheel(float deltaX, float deltaY) {
+    PendingEvent event;
+    event.type = EventType::MouseWheel;
+    event.x = deltaX;
+    event.y = deltaY;
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    pendingEvents_.push_back(std::move(event));
+}
+
+void ImGuiDirectHost::queueFocus(bool focused) {
+    PendingEvent event;
+    event.type = EventType::Focus;
+    event.focused = focused;
+    std::lock_guard<std::mutex> lock(inputMutex_);
+    pendingEvents_.push_back(std::move(event));
 }

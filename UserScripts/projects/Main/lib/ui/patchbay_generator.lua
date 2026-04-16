@@ -75,6 +75,21 @@ local function getShellIds()
   return ids
 end
 
+local function publishPortRegistry(ctx)
+  if ctx then
+    ctx._patchbayPortRegistry = next(patchbayPortRegistry) and patchbayPortRegistry or nil
+  end
+  _G.__midiSynthPatchbayPortRegistry = next(patchbayPortRegistry) and patchbayPortRegistry or nil
+end
+
+local function clearAllPortRegistry(ctx)
+  patchbayPortRegistry = {}
+  if ctx then
+    ctx._patchbayPortRegistry = nil
+  end
+  _G.__midiSynthPatchbayPortRegistry = nil
+end
+
 -- Clear port registry entries for a specific shell
 function M.clearPortRegistryForShell(shellId, ctx)
   for key, entry in pairs(patchbayPortRegistry) do
@@ -82,10 +97,7 @@ function M.clearPortRegistryForShell(shellId, ctx)
       patchbayPortRegistry[key] = nil
     end
   end
-  if ctx then
-    ctx._patchbayPortRegistry = patchbayPortRegistry
-  end
-  _G.__midiSynthPatchbayPortRegistry = patchbayPortRegistry
+  publishPortRegistry(ctx)
 end
 
 -- Register a patchbay port entry
@@ -94,10 +106,7 @@ function M.registerPort(entry, ctx)
     return
   end
   patchbayPortRegistry[entry.key] = entry
-  if ctx then
-    ctx._patchbayPortRegistry = patchbayPortRegistry
-  end
-  _G.__midiSynthPatchbayPortRegistry = patchbayPortRegistry
+  publishPortRegistry(ctx)
 end
 
 -- Bind wire port widget with mouse handlers for drag/drop
@@ -206,6 +215,7 @@ function M.invalidate(nodeId, ctx, RACK_MODULE_SHELL_LAYOUT, RackWireLayer)
       end
     end
     patchbayInstances = {}
+    clearAllPortRegistry(ctx)
     return
   end
 

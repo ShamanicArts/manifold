@@ -36,7 +36,7 @@ void WaveShaperNode::prepare(double sampleRate, int maxBlockSize) {
 
     // Allocate oversampling buffers (if needed)
     if (oversampleFactor_ > 1) {
-        const int maxOversampled = maxBlockSize * oversampleFactor_ + 4;
+        const auto maxOversampled = static_cast<std::size_t>(maxBlockSize * oversampleFactor_ + 4);
         upsampleBuffer_[0].resize(maxOversampled);
         upsampleBuffer_[1].resize(maxOversampled);
         downsampleBuffer_[0].resize(maxOversampled);
@@ -267,11 +267,8 @@ void WaveShaperNode::process(const std::vector<AudioBufferView>& inputs,
         // Would need to reallocate buffers here in a real implementation
     }
 
-    // Convert drive dB to linear gain
-    const float driveGain = std::pow(10.0f, targetDrive * 0.05f);
-    const float outputGain = std::pow(10.0f, targetOutput * 0.05f);
-
     for (int ch = 0; ch < channels; ++ch) {
+        const auto channelIndex = static_cast<std::size_t>(ch);
         for (int i = 0; i < numSamples; ++i) {
             // Smooth parameters
             currentDrive_ += (targetDrive - currentDrive_) * paramSmoothingCoeff_;
@@ -290,7 +287,7 @@ void WaveShaperNode::process(const std::vector<AudioBufferView>& inputs,
                 updateFilterCoefficients();
             }
 
-            const float dry = inputs[ch].getSample(ch, i);
+            const float dry = inputs[channelIndex].getSample(ch, i);
             float wet = dry;
 
             if (oversampleFactor_ == 1) {
@@ -345,7 +342,7 @@ void WaveShaperNode::process(const std::vector<AudioBufferView>& inputs,
             const float currentMix = currentMix_;
             const float output = dry * (1.0f - currentMix) + wet * currentMix;
             
-            outputs[ch].setSample(ch, i, output);
+            outputs[channelIndex].setSample(ch, i, output);
         }
     }
 }

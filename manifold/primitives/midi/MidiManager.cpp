@@ -5,6 +5,19 @@
 #include <algorithm>
 
 namespace midi {
+namespace {
+std::size_t voiceIndex(int index) {
+    return static_cast<std::size_t>(index);
+}
+
+std::size_t channelIndex(uint8_t channel) {
+    return static_cast<std::size_t>(channel);
+}
+
+std::size_t midiDataIndex(uint8_t value) {
+    return static_cast<std::size_t>(value);
+}
+} // namespace
 
 MidiManager::MidiManager() {
     for (auto& voice : voices_) {
@@ -127,6 +140,9 @@ void MidiManager::handleMidiEvent(const MidiEvent& event) {
         case EventType::NoteOff:
             handleNoteOff(event.channel, event.data1);
             break;
+
+        case EventType::Aftertouch:
+            break;
             
         case EventType::ControlChange:
             updateCC(event.channel, event.data1, event.data2);
@@ -137,7 +153,7 @@ void MidiManager::handleMidiEvent(const MidiEvent& event) {
             break;
 
         case EventType::PitchBend:
-            channels_[event.channel].pitchBend = event.getPitchBendValue();
+            channels_[channelIndex(event.channel)].pitchBend = event.getPitchBendValue();
             updateVoicePitchBends();
             if (!callbacksSuppressed_.load(std::memory_order_acquire)) {
                 std::lock_guard<std::mutex> lock(callbackMutex_);
@@ -146,7 +162,7 @@ void MidiManager::handleMidiEvent(const MidiEvent& event) {
             break;
 
         case EventType::ProgramChange:
-            channels_[event.channel].program = event.data1;
+            channels_[channelIndex(event.channel)].program = event.data1;
             if (!callbacksSuppressed_.load(std::memory_order_acquire)) {
                 std::lock_guard<std::mutex> lock(callbackMutex_);
                 if (programChangeCb_) programChangeCb_(event.channel, event.data1, event);
@@ -154,17 +170,24 @@ void MidiManager::handleMidiEvent(const MidiEvent& event) {
             break;
             
         case EventType::ChannelPressure:
-            channels_[event.channel].pressure = event.data1;
+            channels_[channelIndex(event.channel)].pressure = event.data1;
             break;
-            
-        default:
+
+        case EventType::Sysex:
+        case EventType::Clock:
+        case EventType::Start:
+        case EventType::Continue:
+        case EventType::Stop:
+        case EventType::ActiveSensing:
+        case EventType::Reset:
+        case EventType::Unknown:
             break;
     }
 }
 
 void MidiManager::handleNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
-    auto& ch = channels_[channel];
-    ch.notesHeld[note] = true;
+    auto& ch = channels_[channelIndex(channel)];
+    ch.notesHeld[midiDataIndex(note)] = true;
     ch.numActiveNotes++;
     
     // Find or steal voice
@@ -174,7 +197,7 @@ void MidiManager::handleNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) 
     }
     
     if (voiceIdx >= 0) {
-        auto& voice = voices_[voiceIdx];
+        auto& voice = voices_[voiceIndex(voiceIdx)];
         voice.reset();
         voice.note = note;
         voice.velocity = velocity;
@@ -195,13 +218,13 @@ void MidiManager::handleNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) 
 }
 
 void MidiManager::handleNoteOff(uint8_t channel, uint8_t note) {
-    auto& ch = channels_[channel];
-    ch.notesHeld[note] = false;
+    auto& ch = channels_[channelIndex(channel)];
+    ch.notesHeld[midiDataIndex(note)] = false;
     if (ch.numActiveNotes > 0) ch.numActiveNotes--;
 
     int voiceIdx = findVoicePlayingNote(note, channel);
     if (voiceIdx >= 0) {
-        auto& voice = voices_[voiceIdx];
+        auto& voice = voices_[voiceIndex(voiceIdx)];
         if (ch.sustainPedal) {
             voice.sustained = true;
         } else {
@@ -220,8 +243,8 @@ void MidiManager::handleNoteOff(uint8_t channel, uint8_t note) {
 }
 
 void MidiManager::updateCC(uint8_t channel, uint8_t cc, uint8_t value) {
-    auto& ch = channels_[channel];
-    ch.ccValues[cc] = value;
+    auto& ch = channels_[channelIndex(channel)];
+    ch.ccValues[midiDataIndex(cc)] = value;
     
     switch (cc) {
         case Constants::DAMPER_PEDAL:
@@ -251,22 +274,22 @@ void MidiManager::updateCC(uint8_t channel, uint8_t cc, uint8_t value) {
 void MidiManager::updateVoicePitchBends() {
     for (auto& voice : voices_) {
         if (voice.active) {
-            voice.currentPitchBend = static_cast<float>(channels_[voice.channel].pitchBend) / 8192.0f;
+            voice.currentPitchBend = static_cast<float>(channels_[channelIndex(voice.channel)].pitchBend) / 8192.0f;
         }
     }
 }
 
 int MidiManager::findFreeVoice() const {
     for (int i = 0; i < MAX_VOICES; ++i) {
-        if (!voices_[i].active) return i;
+        if (!voices_[voiceIndex(i)].active) return i;
     }
     
     // Voice stealing: find oldest non-sustained voice
     double oldestTime = currentSampleRate_;  // Large value
     int oldestIdx = -1;
     for (int i = 0; i < MAX_VOICES; ++i) {
-        if (!voices_[i].sustained && voices_[i].startTime < oldestTime) {
-            oldestTime = voices_[i].startTime;
+        if (!voices_[voiceIndex(i)].sustained && voices_[voiceIndex(i)].startTime < oldestTime) {
+            oldestTime = voices_[voiceIndex(i)].startTime;
             oldestIdx = i;
         }
     }
@@ -275,8 +298,8 @@ int MidiManager::findFreeVoice() const {
     if (oldestIdx < 0) {
         oldestTime = currentSampleRate_;
         for (int i = 0; i < MAX_VOICES; ++i) {
-            if (voices_[i].startTime < oldestTime) {
-                oldestTime = voices_[i].startTime;
+            if (voices_[voiceIndex(i)].startTime < oldestTime) {
+                oldestTime = voices_[voiceIndex(i)].startTime;
                 oldestIdx = i;
             }
         }
@@ -287,19 +310,19 @@ int MidiManager::findFreeVoice() const {
 
 int MidiManager::findVoicePlayingNote(uint8_t note, uint8_t channel) const {
     for (int i = 0; i < MAX_VOICES; ++i) {
-        if (voices_[i].active && voices_[i].note == note && 
-            (voices_[i].channel == channel || omniMode_)) {
+        if (voices_[voiceIndex(i)].active && voices_[voiceIndex(i)].note == note && 
+            (voices_[voiceIndex(i)].channel == channel || omniMode_)) {
             return i;
         }
     }
     return -1;
 }
 
-void MidiManager::releaseVoice(int voiceIndex) {
-    if (voiceIndex >= 0 && voiceIndex < MAX_VOICES && voices_[voiceIndex].active) {
-        voices_[voiceIndex].active = false;
-        voices_[voiceIndex].sustained = false;
-        voices_[voiceIndex].releaseTime = sampleCounter_ / currentSampleRate_;
+void MidiManager::releaseVoice(int voiceIndexValue) {
+    if (voiceIndexValue >= 0 && voiceIndexValue < MAX_VOICES && voices_[voiceIndex(voiceIndexValue)].active) {
+        voices_[voiceIndex(voiceIndexValue)].active = false;
+        voices_[voiceIndex(voiceIndexValue)].sustained = false;
+        voices_[voiceIndex(voiceIndexValue)].releaseTime = sampleCounter_ / currentSampleRate_;
         numActiveVoices_.store(numActiveVoices_.load(std::memory_order_relaxed) - 1,
                                std::memory_order_release);
     }
@@ -307,10 +330,10 @@ void MidiManager::releaseVoice(int voiceIndex) {
 
 void MidiManager::releaseAllVoices() {
     for (int i = 0; i < MAX_VOICES; ++i) {
-        if (voices_[i].active) {
-            voices_[i].active = false;
-            voices_[i].sustained = false;
-            voices_[i].releaseTime = sampleCounter_ / currentSampleRate_;
+        if (voices_[voiceIndex(i)].active) {
+            voices_[voiceIndex(i)].active = false;
+            voices_[voiceIndex(i)].sustained = false;
+            voices_[voiceIndex(i)].releaseTime = sampleCounter_ / currentSampleRate_;
         }
     }
     numActiveVoices_.store(0, std::memory_order_release);
@@ -519,6 +542,8 @@ void MidiManager::closeOutput() {
 }
 
 void MidiManager::handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) {
+    juce::ignoreUnused(source);
+
     // Convert JUCE message to our format and add to input ring
     auto data = message.getRawData();
     int size = message.getRawDataSize();

@@ -26,7 +26,7 @@ ImVec2 toImVec2(juce::Point<int> p) {
     return ImVec2(static_cast<float>(p.x), static_cast<float>(p.y));
 }
 
-ImVec2 toImVec2(const juce::Rectangle<int>& r) {
+[[maybe_unused]] ImVec2 toImVec2(const juce::Rectangle<int>& r) {
     return ImVec2(static_cast<float>(r.getX()), static_cast<float>(r.getY()));
 }
 

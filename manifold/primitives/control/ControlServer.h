@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstring>
@@ -95,11 +96,11 @@ struct ControlCommand {
   float floatParam = 0.0f; // bars, bpm, speed, volume, etc.
 };
 
-template <int Capacity> class SPSCQueue {
+template <std::size_t Capacity> class SPSCQueue {
 public:
   bool enqueue(const ControlCommand &cmd) {
-    int w = writeIdx.load(std::memory_order_relaxed);
-    int next = (w + 1) % Capacity;
+    const std::size_t w = writeIdx.load(std::memory_order_relaxed);
+    const std::size_t next = (w + 1) % Capacity;
     if (next == readIdx.load(std::memory_order_acquire))
       return false; // full
     ring[w] = cmd;
@@ -108,7 +109,7 @@ public:
   }
 
   bool dequeue(ControlCommand &cmd) {
-    int r = readIdx.load(std::memory_order_relaxed);
+    const std::size_t r = readIdx.load(std::memory_order_relaxed);
     if (r == writeIdx.load(std::memory_order_acquire))
       return false; // empty
     cmd = ring[r];
@@ -118,8 +119,8 @@ public:
 
 private:
   std::array<ControlCommand, Capacity> ring{};
-  std::atomic<int> writeIdx{0};
-  std::atomic<int> readIdx{0};
+  std::atomic<std::size_t> writeIdx{0};
+  std::atomic<std::size_t> readIdx{0};
 };
 
 // ============================================================================
@@ -131,37 +132,39 @@ struct ControlEvent {
   int length = 0;
 };
 
-template <int Capacity> class EventRing {
+template <std::size_t Capacity> class EventRing {
 public:
   // Called from audio thread only
   void push(const char *jsonStr, int len) {
-    int w = writeIdx.load(std::memory_order_relaxed);
+    const std::size_t w = writeIdx.load(std::memory_order_relaxed);
     auto &slot = ring[w];
-    int copyLen = (len < 511) ? len : 511;
+    const auto clampedLen = len < 0 ? 0 : len;
+    const auto copyLen = std::min<std::size_t>(static_cast<std::size_t>(clampedLen),
+                                               sizeof(slot.json) - 1);
     std::memcpy(slot.json, jsonStr, copyLen);
     slot.json[copyLen] = '\0';
-    slot.length = copyLen;
+    slot.length = static_cast<int>(copyLen);
     writeIdx.store((w + 1) % Capacity, std::memory_order_release);
   }
 
   // Called from server thread only. Returns number of events read.
   int drain(ControlEvent *out, int maxEvents) {
-    int count = 0;
-    while (count < maxEvents) {
-      int r = readIdx.load(std::memory_order_relaxed);
+    std::size_t count = 0;
+    while (count < static_cast<std::size_t>(std::max(0, maxEvents))) {
+      const std::size_t r = readIdx.load(std::memory_order_relaxed);
       if (r == writeIdx.load(std::memory_order_acquire))
         break;
       out[count] = ring[r];
       readIdx.store((r + 1) % Capacity, std::memory_order_release);
       ++count;
     }
-    return count;
+    return static_cast<int>(count);
   }
 
 private:
   std::array<ControlEvent, Capacity> ring{};
-  std::atomic<int> writeIdx{0};
-  std::atomic<int> readIdx{0};
+  std::atomic<std::size_t> writeIdx{0};
+  std::atomic<std::size_t> readIdx{0};
 };
 
 // ============================================================================
@@ -268,9 +271,12 @@ public:
   // Snapshot JSON used by IPC/OSCQuery state queries.
   std::string getStateJson();
   std::string getDiagnosticsJson();
+  std::string runCommand(const std::string &cmd) { return processCommand(cmd); }
 
   void setFrameTimings(FrameTimings *timings) { frameTimings = timings; }
+  FrameTimings *getFrameTimings() const { return frameTimings; }
   void setLuaEngine(LuaEngine *engine) { luaEngine = engine; }
+  LuaEngine *getLuaEngine() const { return luaEngine; }
 
   // UI switch / renderer request access
   UISwitchRequest &getUISwitchRequest() { return uiSwitchRequest; }

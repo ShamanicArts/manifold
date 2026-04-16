@@ -1,0 +1,76 @@
+{
+  "name": "Standalone Filter",
+  "version": 1,
+  "description": "Single-module Manifold filter export target",
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+  "plugin": {
+    "view": {
+      "defaultMode": "split",
+      "compact": {
+        "w": 236,
+        "h": 220
+      },
+      "split": {
+        "w": 472,
+        "h": 220
+      }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9010
+    },
+    "params": [
+      {
+        "path": "/plugin/params/type",
+        "internalPath": "/midi/synth/rack/filter/1/type",
+        "type": "f",
+        "min": 0,
+        "max": 3,
+        "default": 0,
+        "hostParamId": "type",
+        "hostParamName": "Type",
+        "hostParamKind": "choice",
+        "choices": [
+          "Low Pass",
+          "Band Pass",
+          "High Pass",
+          "Notch"
+        ],
+        "description": "Filter type"
+      },
+      {
+        "path": "/plugin/params/cutoff",
+        "internalPath": "/midi/synth/rack/filter/1/cutoff",
+        "type": "f",
+        "min": 80,
+        "max": 16000,
+        "default": 3200,
+        "skew": 0.35,
+        "hostParamId": "cutoff",
+        "hostParamName": "Cutoff",
+        "hostParamKind": "float",
+        "description": "Filter cutoff"
+      },
+      {
+        "path": "/plugin/params/resonance",
+        "internalPath": "/midi/synth/rack/filter/1/resonance",
+        "type": "f",
+        "min": 0.1,
+        "max": 2.0,
+        "default": 0.75,
+        "hostParamId": "resonance",
+        "hostParamName": "Resonance",
+        "hostParamKind": "float",
+        "description": "Filter resonance"
+      }
+    ]
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "../Main/themes/dark.lua"
+}

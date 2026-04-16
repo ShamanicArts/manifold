@@ -192,8 +192,32 @@ local MODULE_META_DEFAULTS = {
     paramTemplateMode = "dynamic_param_base",
     palette = {
       displayName = "Oscillator",
-      portSummary = "VOICE -> OUT",
+      portSummary = "VOICE -> OUT, ANALYSIS",
       order = 50,
+    },
+  },
+  rack_sample = {
+    category = "audio",
+    description = "Standalone sample source with capture controls, classic/PVoc/HQ pitch handling, and exported analysis data.",
+    instancePolicy = "dynamic",
+    runtimeKind = "source",
+    paramTemplateMode = "dynamic_param_base",
+    palette = {
+      displayName = "Sample",
+      portSummary = "IN/VOICE -> OUT, ANALYSIS",
+      order = 52,
+    },
+  },
+  blend_simple = {
+    category = "audio",
+    description = "Simple dual-input blend stage with mix, ring, FM, and sync modes using serial A plus auxiliary B.",
+    instancePolicy = "dynamic",
+    runtimeKind = "processor",
+    paramTemplateMode = "dynamic_param_base",
+    palette = {
+      displayName = "Blend",
+      portSummary = "A/B -> OUT",
+      order = 54,
     },
   },
   filter = {
@@ -461,6 +485,39 @@ local MODULE_PARAM_REMAP_DEFAULTS = {
       ["/midi/synth/output"] = "/output",
     },
   },
+  rack_sample = {
+    exact = {
+      ["/midi/synth/sample/source"] = "/source",
+      ["/midi/synth/sample/captureTrigger"] = "/captureTrigger",
+      ["/midi/synth/sample/captureBars"] = "/captureBars",
+      ["/midi/synth/sample/captureMode"] = "/captureMode",
+      ["/midi/synth/sample/captureStartOffset"] = "/captureStartOffset",
+      ["/midi/synth/sample/capturedLengthMs"] = "/capturedLengthMs",
+      ["/midi/synth/sample/captureRecording"] = "/captureRecording",
+      ["/midi/synth/sample/pitchMapEnabled"] = "/pitchMapEnabled",
+      ["/midi/synth/sample/pitchMode"] = "/pitchMode",
+      ["/midi/synth/sample/pvoc/fftOrder"] = "/pvoc/fftOrder",
+      ["/midi/synth/sample/pvoc/timeStretch"] = "/pvoc/timeStretch",
+      ["/midi/synth/sample/rootNote"] = "/rootNote",
+      ["/midi/synth/unison"] = "/unison",
+      ["/midi/synth/detune"] = "/detune",
+      ["/midi/synth/spread"] = "/spread",
+      ["/midi/synth/sample/playStart"] = "/playStart",
+      ["/midi/synth/sample/loopStart"] = "/loopStart",
+      ["/midi/synth/sample/loopLen"] = "/loopLen",
+      ["/midi/synth/sample/crossfade"] = "/crossfade",
+      ["/midi/synth/sample/retrigger"] = "/retrigger",
+      ["/midi/synth/output"] = "/output",
+    },
+  },
+  blend_simple = {
+    exact = {
+      ["/midi/synth/rack/blend_simple/__template/mode"] = "/mode",
+      ["/midi/synth/rack/blend_simple/__template/blendAmount"] = "/blendAmount",
+      ["/midi/synth/rack/blend_simple/__template/blendModAmount"] = "/blendModAmount",
+      ["/midi/synth/rack/blend_simple/__template/output"] = "/output",
+    },
+  },
 }
 
 local MODULE_CONTROL_PORT_DEFAULTS = {
@@ -542,6 +599,16 @@ local MODULE_CONTROL_PORT_DEFAULTS = {
     v_oct = { scope = "voice", signalKind = "scalar", domain = "midi_note", min = 0, max = 127, default = 60, displayName = "Rack Oscillator V/Oct" },
     fm = { scope = "voice", signalKind = "scalar_bipolar", domain = "normalized", min = -1, max = 1, default = 0, displayName = "Rack Oscillator FM" },
     pw_cv = { scope = "voice", signalKind = "scalar_unipolar", domain = "normalized", min = 0, max = 1, default = 0.5, displayName = "Rack Oscillator Pulse Width CV" },
+  },
+  rack_sample = {
+    voice = { scope = "voice", signalKind = "voice_bundle", domain = "voice", min = 0, max = 1, default = 0, displayName = "Rack Sample Voice" },
+    gate = { scope = "voice", signalKind = "scalar_unipolar", domain = "normalized", min = 0, max = 1, default = 0, displayName = "Rack Sample Gate" },
+    v_oct = { scope = "voice", signalKind = "scalar", domain = "midi_note", min = 0, max = 127, default = 60, displayName = "Rack Sample V/Oct" },
+  },
+  blend_simple = {
+    a = { scope = "global", signalKind = "audio", domain = "audio", default = 0, displayName = "Blend A" },
+    b = { scope = "global", signalKind = "audio", domain = "audio", default = 0, displayName = "Blend B" },
+    out = { scope = "global", signalKind = "audio", domain = "audio", default = 0, displayName = "Blend Out" },
   },
   filter = {
     env = { scope = "voice", signalKind = "scalar_unipolar", domain = "normalized", min = 0, max = 1, default = 0, displayName = "Filter Env" },
@@ -887,10 +954,10 @@ local RACK_MODULE_SPECS = {
     accentColor = 0xff22d3ee,
     ports = copyPorts {
       inputs = {
-        { id = "in", type = "control", label = "IN" },
+        { id = "in", type = "control", label = "CTRL" },
       },
       outputs = {
-        { id = "out", type = "control", label = "OUT" },
+        { id = "out", type = "control", label = "CTRL" },
       },
       params = {
         { id = "amount", label = "Amount", path = "/midi/synth/rack/attenuverter_bias/__template/amount",
@@ -959,10 +1026,10 @@ local RACK_MODULE_SPECS = {
     accentColor = 0xff22d3ee,
     ports = copyPorts {
       inputs = {
-        { id = "in", type = "control", label = "IN" },
+        { id = "in", type = "control", label = "CTRL" },
       },
       outputs = {
-        { id = "out", type = "control", label = "OUT" },
+        { id = "out", type = "control", label = "CTRL" },
       },
       params = {
         { id = "rise", label = "Rise", path = "/midi/synth/rack/slew/__template/rise",
@@ -990,11 +1057,11 @@ local RACK_MODULE_SPECS = {
     accentColor = 0xfff59e0b,
     ports = copyPorts {
       inputs = {
-        { id = "in", type = "control", label = "IN" },
+        { id = "in", type = "control", label = "CTRL" },
         { id = "trig", type = "control", label = "TRIG" },
       },
       outputs = {
-        { id = "out", type = "control", label = "OUT" },
+        { id = "out", type = "control", label = "CTRL" },
         { id = "inv", type = "control", label = "INV" },
       },
       params = {
@@ -1017,7 +1084,7 @@ local RACK_MODULE_SPECS = {
     accentColor = 0xfff97316,
     ports = copyPorts {
       inputs = {
-        { id = "in", type = "control", label = "IN" },
+        { id = "in", type = "control", label = "CTRL" },
       },
       outputs = {
         { id = "gate", type = "control", label = "GATE" },
@@ -1101,6 +1168,7 @@ local RACK_MODULE_SPECS = {
       outputs = {
         { id = "out", type = "audio", label = "OUT" },
         { id = "sub", type = "audio", label = "SUB" },
+        { id = "analysis", type = "analysis", label = "AN" },
       },
       params = {
         { id = "waveform", label = "Wave", path = "/midi/synth/waveform",
@@ -1149,7 +1217,7 @@ local RACK_MODULE_SPECS = {
           min = 0, max = 1, step = 0.01, default = 0.5,
           input = true, output = true },
         { id = "output", label = "Output", path = "/midi/synth/output",
-          min = 0, max = 1, step = 0.01, default = 0.8,
+          min = 0, max = 2, step = 0.01, default = 0.8,
           input = true, output = true },
         -- Sample tab params
         { id = "sample_source", label = "Source", path = "/midi/synth/sample/source",
@@ -1270,6 +1338,7 @@ local RACK_MODULE_SPECS = {
       outputs = {
         { id = "out", type = "audio", label = "OUT" },
         { id = "sub", type = "audio", label = "SUB" },
+        { id = "analysis", type = "analysis", label = "AN" },
       },
       params = {
         { id = "waveform", label = "Wave", path = "/midi/synth/waveform",
@@ -1321,7 +1390,7 @@ local RACK_MODULE_SPECS = {
           min = 0, max = 1, step = 0.01, default = 0,
           input = true, output = true },
         { id = "output", label = "Output", path = "/midi/synth/rack/osc/output",
-          min = 0, max = 1, step = 0.01, default = 0.8,
+          min = 0, max = 2, step = 0.01, default = 0.8,
           input = true, output = true },
       },
     },
@@ -1329,6 +1398,138 @@ local RACK_MODULE_SPECS = {
       componentId = "rackOscillatorComponent",
       behavior = "ui/behaviors/rack_oscillator.lua",
       componentRef = "ui/components/rack_oscillator.ui.lua",
+    },
+  },
+  RackLayout.makeRackModuleSpec {
+    id = "rack_sample",
+    name = "Rack Sample",
+    validSizes = { "1x2", "2x1", "2x2" },
+    accentColor = 0xff22d3ee,
+    ports = copyPorts {
+      inputs = {
+        { id = "in", type = "audio", label = "IN", auxiliary = true, audioRole = "capture" },
+        { id = "voice", type = "control", label = "VOICE" },
+        { id = "gate", type = "control", label = "GATE" },
+        { id = "v_oct", type = "control", label = "V/OCT" },
+      },
+      outputs = {
+        { id = "out", type = "audio", label = "OUT" },
+        { id = "analysis", type = "analysis", label = "AN" },
+      },
+      params = {
+        { id = "source", label = "Source", path = "/midi/synth/sample/source",
+          min = 0, max = 5, step = 1, default = 1,
+          format = "enum",
+          options = { "Input", "Live", "Layer 1", "Layer 2", "Layer 3", "Layer 4" },
+          input = true, output = true },
+        { id = "capture_mode", label = "Capture", path = "/midi/synth/sample/captureMode",
+          min = 0, max = 1, step = 1, default = 0,
+          format = "enum",
+          options = { "Retro", "Free" },
+          input = true, output = true },
+        { id = "capture", label = "Capture", path = "/midi/synth/sample/captureTrigger",
+          min = 0, max = 1, step = 1, default = 0,
+          format = "enum",
+          options = { "Idle", "Trig" },
+          input = true, output = false },
+        { id = "bars", label = "Bars", path = "/midi/synth/sample/captureBars",
+          min = 0.0625, max = 16, step = 0.0625, default = 1.0,
+          input = true, output = true },
+        { id = "pitch_map", label = "PMap", path = "/midi/synth/sample/pitchMapEnabled",
+          min = 0, max = 1, step = 1, default = 0,
+          format = "enum",
+          options = { "Off", "On" },
+          input = true, output = true },
+        { id = "pitch_mode", label = "Pitch", path = "/midi/synth/sample/pitchMode",
+          min = 0, max = 2, step = 1, default = 0,
+          format = "enum",
+          options = { "Classic", "PVoc", "HQ" },
+          input = true, output = true },
+        { id = "root", label = "Root", path = "/midi/synth/sample/rootNote",
+          min = 12, max = 96, step = 1, default = 60,
+          format = "int", input = true, output = true },
+        { id = "unison", label = "Unison", path = "/midi/synth/unison",
+          min = 1, max = 8, step = 1, default = 1,
+          format = "int", input = true, output = true },
+        { id = "detune", label = "Detune", path = "/midi/synth/detune",
+          min = 0, max = 100, step = 1, default = 0,
+          format = "int", input = true, output = true },
+        { id = "spread", label = "Spread", path = "/midi/synth/spread",
+          min = 0, max = 1, step = 0.01, default = 0,
+          format = "float", input = true, output = true },
+        { id = "play_start", label = "Play", path = "/midi/synth/sample/playStart",
+          min = 0, max = 99, step = 1, default = 0,
+          format = "int", input = true, output = true,
+          scale = { dspMin = 0.0, dspMax = 0.99 } },
+        { id = "loop_start", label = "Start", path = "/midi/synth/sample/loopStart",
+          min = 0, max = 95, step = 1, default = 0,
+          format = "int", input = true, output = true,
+          scale = { dspMin = 0.0, dspMax = 0.95 } },
+        { id = "loop_len", label = "Length", path = "/midi/synth/sample/loopLen",
+          min = 5, max = 100, step = 1, default = 100,
+          format = "int", input = true, output = true,
+          scale = { dspMin = 0.05, dspMax = 1.0 } },
+        { id = "crossfade", label = "X-Fade", path = "/midi/synth/sample/crossfade",
+          min = 0, max = 50, step = 1, default = 10,
+          format = "int", input = true, output = true,
+          scale = { dspMin = 0.0, dspMax = 0.5 } },
+        { id = "retrigger", label = "Retrig", path = "/midi/synth/sample/retrigger",
+          min = 0, max = 1, step = 1, default = 1,
+          format = "enum",
+          options = { "Off", "On" },
+          input = true, output = true },
+        { id = "pvoc_fft", label = "FFT", path = "/midi/synth/sample/pvoc/fftOrder",
+          min = 9, max = 12, step = 1, default = 11,
+          format = "int", input = true, output = true },
+        { id = "pvoc_stretch", label = "Stretch", path = "/midi/synth/sample/pvoc/timeStretch",
+          min = 0.25, max = 4.0, step = 0.25, default = 1.0,
+          format = "float", input = true, output = true },
+        { id = "output", label = "Output", path = "/midi/synth/output",
+          min = 0, max = 2, step = 0.01, default = 0.8,
+          input = true, output = true },
+      },
+    },
+    meta = {
+      componentId = "rackSampleComponent",
+      behavior = "ui/behaviors/rack_sample.lua",
+      componentRef = "ui/components/rack_sample.ui.lua",
+      audioSource = true,
+    },
+  },
+  RackLayout.makeRackModuleSpec {
+    id = "blend_simple",
+    name = "Blend",
+    validSizes = { "1x1", "1x2", "2x1" },
+    accentColor = 0xfff97316,
+    ports = copyPorts {
+      inputs = {
+        { id = "a", type = "audio", label = "A" },
+        { id = "b", type = "audio", label = "B", auxiliary = true, audioRole = "blend_b" },
+      },
+      outputs = {
+        { id = "out", type = "audio", label = "OUT" },
+      },
+      params = {
+        { id = "mode", label = "Mode", path = "/midi/synth/rack/blend_simple/__template/mode",
+          min = 0, max = 3, step = 1, default = 0,
+          format = "enum",
+          options = { "Mix", "Ring", "FM", "Sync" },
+          input = true, output = true },
+        { id = "blendAmount", label = "Blend", path = "/midi/synth/rack/blend_simple/__template/blendAmount",
+          min = 0, max = 1, step = 0.01, default = 0.5,
+          input = true, output = true },
+        { id = "blendModAmount", label = "Depth", path = "/midi/synth/rack/blend_simple/__template/blendModAmount",
+          min = 0, max = 1, step = 0.01, default = 0.5,
+          input = true, output = true },
+        { id = "output", label = "Output", path = "/midi/synth/rack/blend_simple/__template/output",
+          min = 0, max = 1, step = 0.01, default = 1.0,
+          input = true, output = true },
+      },
+    },
+    meta = {
+      componentId = "rackBlendSimpleComponent",
+      behavior = "ui/behaviors/rack_blend_simple.lua",
+      componentRef = "ui/components/rack_blend_simple.ui.lua",
     },
   },
   RackLayout.makeRackModuleSpec {
@@ -1619,10 +1820,10 @@ local RACK_MODULE_SPECS = {
     accentColor = 0xffa855f7,
     ports = copyPorts {
       inputs = {
-        { id = "in", type = "control", label = "IN", signalKind = "scalar_unipolar", domain = "normalized" },
+        { id = "in", type = "control", label = "CTRL", signalKind = "scalar_unipolar", domain = "normalized" },
       },
       outputs = {
-        { id = "out", type = "control", label = "OUT", signalKind = "scalar_unipolar", domain = "normalized" },
+        { id = "out", type = "control", label = "CTRL", signalKind = "scalar_unipolar", domain = "normalized" },
       },
       params = {
         { id = "min", label = "Min", path = "/midi/synth/rack/range_mapper/__template/min",
@@ -2030,6 +2231,22 @@ local function makeAudioConnectionFromEndpoints(modules, fromEndpoint, toEndpoin
   )
 end
 
+local function makeControlConnectionFromEndpoints(fromEndpoint, toEndpoint, preferredId, extraMeta)
+  if type(fromEndpoint) ~= "table" or type(toEndpoint) ~= "table" then
+    return nil
+  end
+  local meta = type(extraMeta) == "table" and deepCopy(extraMeta) or {}
+  return makeConnection(
+    preferredId or (tostring(fromEndpoint.moduleId) .. "_" .. tostring(fromEndpoint.portId) .. "_to_" .. tostring(toEndpoint.moduleId) .. "_" .. tostring(toEndpoint.portId)),
+    "control",
+    fromEndpoint.moduleId,
+    fromEndpoint.portId,
+    toEndpoint.moduleId,
+    toEndpoint.portId,
+    meta
+  )
+end
+
 local function findModuleSpec(moduleId)
   local id = tostring(moduleId or "")
   local dynamicSpecs = type(_G) == "table" and _G.__midiSynthDynamicModuleSpecs or nil
@@ -2043,6 +2260,40 @@ local function findModuleSpec(moduleId)
     end
   end
   return nil
+end
+
+local function findPortSpec(moduleId, direction, portId)
+  local spec = findModuleSpec(moduleId)
+  local ports = spec and spec.ports or nil
+  local list = nil
+  if direction == "input" then
+    list = ports and ports.inputs or nil
+  else
+    list = ports and ports.outputs or nil
+  end
+  if type(list) ~= "table" then
+    return nil
+  end
+  local targetPortId = tostring(portId or "")
+  for i = 1, #list do
+    local port = list[i]
+    if port and tostring(port.id or "") == targetPortId then
+      return port
+    end
+  end
+  return nil
+end
+
+local function isAuxiliaryAudioPort(moduleId, direction, portId)
+  local port = findPortSpec(moduleId, direction, portId)
+  return type(port) == "table"
+    and tostring(port.type or "") == "audio"
+    and (port.auxiliary == true or tostring(port.audioRole or "") ~= "")
+end
+
+local function isAudioPort(moduleId, direction, portId)
+  local port = findPortSpec(moduleId, direction, portId)
+  return type(port) == "table" and tostring(port.type or "") == "audio"
 end
 
 firstAudioPortId = function(moduleId, direction)
@@ -2066,6 +2317,28 @@ firstAudioPortId = function(moduleId, direction)
   return nil
 end
 
+local firstControlPortId
+firstControlPortId = function(moduleId, direction)
+  local spec = findModuleSpec(moduleId)
+  local ports = spec and spec.ports or nil
+  local list = nil
+  if direction == "input" then
+    list = ports and ports.inputs or nil
+  else
+    list = ports and ports.outputs or nil
+  end
+  if type(list) ~= "table" then
+    return nil
+  end
+  for i = 1, #list do
+    local port = list[i]
+    if port and tostring(port.type or "") == "control" then
+      return tostring(port.id or "")
+    end
+  end
+  return nil
+end
+
 local function isTransparentAudioModule(moduleId)
   local spec = findModuleSpec(moduleId)
   local meta = spec and spec.meta or nil
@@ -2079,6 +2352,11 @@ local function isAudioSourceModule(moduleId)
   end
   if isTransparentAudioModule(id) then
     return false
+  end
+  local spec = findModuleSpec(id)
+  local meta = spec and spec.meta or nil
+  if type(meta) == "table" and meta.audioSource == true then
+    return firstAudioPortId(id, "output") ~= nil
   end
   return firstAudioPortId(id, "output") ~= nil and firstAudioPortId(id, "input") == nil
 end
@@ -2116,6 +2394,20 @@ local function removeAudioConnectionsMatching(connections, predicate)
     local conn = connections[i]
     local isAudio = tostring(conn and conn.kind or "") == "audio"
     local remove = isAudio and predicate(conn) or false
+    if not remove then
+      kept[#kept + 1] = RackLayout.makeRackConnection(conn)
+    end
+  end
+  return kept
+end
+
+local function removeConnectionsMatching(connections, kind, predicate)
+  local kept = {}
+  local kindStr = tostring(kind or "")
+  for i = 1, #(connections or {}) do
+    local conn = connections[i]
+    local connKind = tostring(conn and conn.kind or "")
+    local remove = (kindStr == "" or connKind == kindStr) and predicate(conn) or false
     if not remove then
       kept[#kept + 1] = RackLayout.makeRackConnection(conn)
     end
@@ -2172,6 +2464,7 @@ function M.normalizeConnections(connections, modules)
           local supportedKey = table.concat({ fromModuleId, fromPortId, toModuleId, toPortId }, ":")
           keep = AUDIO_ROUTE_EDGE_INDEX[supportedKey] ~= nil
             or (isGenericAudioEndpoint(fromModuleId, fromPortId, "output") and isGenericAudioEndpoint(toModuleId, toPortId, "input"))
+            or (isAudioPort(fromModuleId, "output", fromPortId) and isAuxiliaryAudioPort(toModuleId, "input", toPortId))
         end
 
         if keep then
@@ -2408,14 +2701,26 @@ function M.describeAudioStageSequence(connections, nodes)
     end
   end
 
+  local function primaryAudioTargets(endpoints)
+    local out = {}
+    local source = type(endpoints) == "table" and endpoints or {}
+    for i = 1, #source do
+      local endpoint = source[i]
+      if type(endpoint) == "table" and not isAuxiliaryAudioPort(endpoint.moduleId, "input", endpoint.portId) then
+        out[#out + 1] = endpoint
+      end
+    end
+    return out
+  end
+
   local sourceNodeIds = {}
   local orderedModules = orderedAudioFlowModules(rackModules)
   for i = 1, #orderedModules do
     local module = orderedModules[i]
     if module and isAudioSourceModule(module.id) then
       local outputPortId = firstAudioPortId(module.id, "output") or "out"
-      local bucket = outgoing[tostring(module.id) .. ":" .. tostring(outputPortId)]
-      if type(bucket) == "table" and #bucket > 0 then
+      local bucket = primaryAudioTargets(outgoing[tostring(module.id) .. ":" .. tostring(outputPortId)])
+      if #bucket > 0 then
         sourceNodeIds[#sourceNodeIds + 1] = tostring(module.id)
       end
     end
@@ -2426,9 +2731,37 @@ function M.describeAudioStageSequence(connections, nodes)
 
   local orderedStages = {}
   local visited = {}
-  local currentModuleId = sourceNodeIds[1]
-  local currentPortId = firstAudioPortId(currentModuleId, "output") or "out"
+  local currentModuleId = nil
+  local currentPortId = nil
   local reachesOutput = false
+
+  local function firstSerialSource()
+    for i = 1, #orderedModules do
+      local module = orderedModules[i]
+      if module and isAudioSourceModule(module.id) then
+        local outputPortId = firstAudioPortId(module.id, "output") or "out"
+        local bucket = primaryAudioTargets(outgoing[tostring(module.id) .. ":" .. tostring(outputPortId)])
+        if #bucket > 0 then
+          for j = 1, #bucket do
+            local target = bucket[j]
+            if type(target) == "table" then
+              local targetModuleId = tostring(target.moduleId or "")
+              if targetModuleId == M.OUTPUT_NODE_ID or targetModuleId == "__rackRail" or isRealAudioStageModule(targetModuleId) then
+                return tostring(module.id), outputPortId
+              end
+            end
+          end
+        end
+      end
+    end
+    local fallbackSource = sourceNodeIds[1]
+    if fallbackSource ~= nil then
+      return fallbackSource, firstAudioPortId(fallbackSource, "output") or "out"
+    end
+    return nil, nil
+  end
+
+  currentModuleId, currentPortId = firstSerialSource()
 
   while currentModuleId ~= nil and currentPortId ~= nil do
     local key = tostring(currentModuleId) .. ":" .. tostring(currentPortId)
@@ -2437,7 +2770,7 @@ function M.describeAudioStageSequence(connections, nodes)
     end
     visited[key] = true
 
-    local nextEndpoints = outgoing[key] or {}
+    local nextEndpoints = primaryAudioTargets(outgoing[key])
     local nextEndpoint = nextEndpoints[1]
     if type(nextEndpoint) ~= "table" then
       break
@@ -2584,32 +2917,43 @@ function M.spliceRackModule(connections, modules, moduleId)
   local rackModules = type(modules) == "table" and RackLayout.cloneRackModules(modules) or M.defaultRackState().modules
   local nextConnections = M.normalizeConnections(connections, rackModules)
   local kept = {}
-  local incoming = {}
-  local outgoing = {}
+  local audioIncoming = {}
+  local audioOutgoing = {}
+  local controlIncoming = {}
+  local controlOutgoing = {}
 
   for i = 1, #nextConnections do
     local conn = nextConnections[i]
     local from = conn and conn.from or nil
     local to = conn and conn.to or nil
-    local isAudio = tostring(conn and conn.kind or "") == "audio"
-    local touchesModule = isAudio and ((type(from) == "table" and from.moduleId == moduleId) or (type(to) == "table" and to.moduleId == moduleId))
+    local connKind = tostring(conn and conn.kind or "")
+    local touchesModule = (type(from) == "table" and from.moduleId == moduleId) or (type(to) == "table" and to.moduleId == moduleId)
 
     if touchesModule then
-      if type(to) == "table" and to.moduleId == moduleId then
-        incoming[#incoming + 1] = RackLayout.makeRackConnection(conn)
-      end
-      if type(from) == "table" and from.moduleId == moduleId then
-        outgoing[#outgoing + 1] = RackLayout.makeRackConnection(conn)
+      if connKind == "audio" then
+        if type(to) == "table" and to.moduleId == moduleId then
+          audioIncoming[#audioIncoming + 1] = RackLayout.makeRackConnection(conn)
+        end
+        if type(from) == "table" and from.moduleId == moduleId then
+          audioOutgoing[#audioOutgoing + 1] = RackLayout.makeRackConnection(conn)
+        end
+      else
+        if type(to) == "table" and to.moduleId == moduleId then
+          controlIncoming[#controlIncoming + 1] = RackLayout.makeRackConnection(conn)
+        end
+        if type(from) == "table" and from.moduleId == moduleId then
+          controlOutgoing[#controlOutgoing + 1] = RackLayout.makeRackConnection(conn)
+        end
       end
     else
       kept[#kept + 1] = RackLayout.makeRackConnection(conn)
     end
   end
 
-  for i = 1, #incoming do
-    local inc = incoming[i]
-    for j = 1, #outgoing do
-      local out = outgoing[j]
+  for i = 1, #audioIncoming do
+    local inc = audioIncoming[i]
+    for j = 1, #audioOutgoing do
+      local out = audioOutgoing[j]
       local fromEndpoint = rawAudioEndpoint(inc, false)
       local toEndpoint = rawAudioEndpoint(out, true)
       local sameEndpoint = fromEndpoint and toEndpoint
@@ -2627,104 +2971,202 @@ function M.spliceRackModule(connections, modules, moduleId)
     end
   end
 
+  for i = 1, #controlIncoming do
+    local inc = controlIncoming[i]
+    for j = 1, #controlOutgoing do
+      local out = controlOutgoing[j]
+      local fromEndpoint = rawAudioEndpoint(inc, false)
+      local toEndpoint = rawAudioEndpoint(out, true)
+      local sameEndpoint = fromEndpoint and toEndpoint
+        and fromEndpoint.moduleId == toEndpoint.moduleId
+        and fromEndpoint.portId == toEndpoint.portId
+      if fromEndpoint and toEndpoint and not sameEndpoint then
+        kept[#kept + 1] = makeControlConnectionFromEndpoints(
+          fromEndpoint,
+          toEndpoint,
+          tostring(fromEndpoint.moduleId) .. "_" .. tostring(fromEndpoint.portId) .. "_to_" .. tostring(toEndpoint.moduleId) .. "_" .. tostring(toEndpoint.portId),
+          { source = "splice" }
+        )
+      end
+    end
+  end
+
   return M.normalizeConnections(kept, rackModules)
 end
 
 function M.insertRackModuleAtVisualSlot(connections, modules, moduleId, sourceModules)
   local rackModules = type(modules) == "table" and RackLayout.cloneRackModules(modules) or M.defaultRackState().modules
   local spliceModules = type(sourceModules) == "table" and RackLayout.cloneRackModules(sourceModules) or rackModules
-  local moduleInputPortId = firstAudioPortId(moduleId, "input")
-  local moduleOutputPortId = firstAudioPortId(moduleId, "output")
-  if moduleInputPortId == nil or moduleOutputPortId == nil then
-    return M.normalizeConnections(connections, rackModules)
-  end
-
-  local ordered = orderedAudioFlowModules(rackModules)
-  local moduleIndex = nil
-  for i = 1, #ordered do
-    local module = ordered[i]
-    if module and module.id == moduleId then
-      moduleIndex = i
-      break
-    end
-  end
-  if moduleIndex == nil then
-    return M.normalizeConnections(connections, rackModules)
-  end
-
-  local prevModule = nil
-  for i = moduleIndex - 1, 1, -1 do
-    local candidate = ordered[i]
-    if candidate
-      and firstAudioPortId(candidate.id, "output") ~= nil
-      and not isTransparentAudioModule(candidate.id) then
-      prevModule = candidate
-      break
-    end
-  end
-
-  local nextModule = nil
-  for i = moduleIndex + 1, #ordered do
-    local candidate = ordered[i]
-    if candidate
-      and firstAudioPortId(candidate.id, "input") ~= nil
-      and not isTransparentAudioModule(candidate.id) then
-      nextModule = candidate
-      break
-    end
-  end
-
-  local prevOutputPortId = prevModule and firstAudioPortId(prevModule.id, "output") or nil
-  local nextInputPortId = nextModule and firstAudioPortId(nextModule.id, "input") or nil
-  if prevModule == nil or prevOutputPortId == nil then
-    return M.normalizeConnections(connections, rackModules)
-  end
-
   local working = M.spliceRackModule(connections, spliceModules, moduleId)
 
-  if nextModule and nextInputPortId then
-    working = removeAudioConnectionsMatching(working, function(conn)
-      local toEndpoint = rawAudioEndpoint(conn, true)
-      return toEndpoint
-        and toEndpoint.moduleId == nextModule.id
-        and toEndpoint.portId == nextInputPortId
-    end)
-  else
-    working = removeAudioConnectionsMatching(working, function(conn)
-      local fromEndpoint = rawAudioEndpoint(conn, false)
-      local toEndpoint = rawAudioEndpoint(conn, true)
-      return fromEndpoint and toEndpoint
-        and fromEndpoint.moduleId == prevModule.id
-        and fromEndpoint.portId == prevOutputPortId
-        and toEndpoint.moduleId == M.OUTPUT_NODE_ID
-        and toEndpoint.portId == M.OUTPUT_PORT_ID
-    end)
+  local moduleAudioInputPortId = firstAudioPortId(moduleId, "input")
+  local moduleAudioOutputPortId = firstAudioPortId(moduleId, "output")
+  local moduleControlInputPortId = firstControlPortId(moduleId, "input")
+  local moduleControlOutputPortId = firstControlPortId(moduleId, "output")
+
+  if moduleAudioInputPortId ~= nil and moduleAudioOutputPortId ~= nil then
+    local ordered = orderedAudioFlowModules(rackModules)
+    local moduleIndex = nil
+    for i = 1, #ordered do
+      local module = ordered[i]
+      if module and module.id == moduleId then
+        moduleIndex = i
+        break
+      end
+    end
+
+    if moduleIndex ~= nil then
+      local prevModule = nil
+      for i = moduleIndex - 1, 1, -1 do
+        local candidate = ordered[i]
+        if candidate
+          and firstAudioPortId(candidate.id, "output") ~= nil
+          and not isTransparentAudioModule(candidate.id) then
+          prevModule = candidate
+          break
+        end
+      end
+
+      local nextModule = nil
+      for i = moduleIndex + 1, #ordered do
+        local candidate = ordered[i]
+        if candidate
+          and firstAudioPortId(candidate.id, "input") ~= nil
+          and not isTransparentAudioModule(candidate.id) then
+          nextModule = candidate
+          break
+        end
+      end
+
+      local prevOutputPortId = prevModule and firstAudioPortId(prevModule.id, "output") or nil
+      local nextInputPortId = nextModule and firstAudioPortId(nextModule.id, "input") or nil
+
+      if prevModule ~= nil and prevOutputPortId ~= nil then
+        if nextModule and nextInputPortId then
+          working = removeAudioConnectionsMatching(working, function(conn)
+            local toEndpoint = rawAudioEndpoint(conn, true)
+            return toEndpoint
+              and toEndpoint.moduleId == nextModule.id
+              and toEndpoint.portId == nextInputPortId
+          end)
+        else
+          working = removeAudioConnectionsMatching(working, function(conn)
+            local fromEndpoint = rawAudioEndpoint(conn, false)
+            local toEndpoint = rawAudioEndpoint(conn, true)
+            return fromEndpoint and toEndpoint
+              and fromEndpoint.moduleId == prevModule.id
+              and fromEndpoint.portId == prevOutputPortId
+              and toEndpoint.moduleId == M.OUTPUT_NODE_ID
+              and toEndpoint.portId == M.OUTPUT_PORT_ID
+          end)
+        end
+
+        working[#working + 1] = makeAudioConnectionFromEndpoints(
+          rackModules,
+          { moduleId = prevModule.id, portId = prevOutputPortId },
+          { moduleId = moduleId, portId = moduleAudioInputPortId },
+          tostring(prevModule.id) .. "_to_" .. tostring(moduleId),
+          { source = "shift-insert" }
+        )
+
+        if nextModule and nextInputPortId then
+          working[#working + 1] = makeAudioConnectionFromEndpoints(
+            rackModules,
+            { moduleId = moduleId, portId = moduleAudioOutputPortId },
+            { moduleId = nextModule.id, portId = nextInputPortId },
+            tostring(moduleId) .. "_to_" .. tostring(nextModule.id),
+            { source = "shift-insert" }
+          )
+        else
+          working[#working + 1] = makeAudioConnectionFromEndpoints(
+            rackModules,
+            { moduleId = moduleId, portId = moduleAudioOutputPortId },
+            { moduleId = M.OUTPUT_NODE_ID, portId = M.OUTPUT_PORT_ID },
+            tostring(moduleId) .. "_to_output",
+            { source = "shift-insert" }
+          )
+        end
+      end
+    end
   end
 
-  working[#working + 1] = makeAudioConnectionFromEndpoints(
-    rackModules,
-    { moduleId = prevModule.id, portId = prevOutputPortId },
-    { moduleId = moduleId, portId = moduleInputPortId },
-    tostring(prevModule.id) .. "_to_" .. tostring(moduleId),
-    { source = "shift-insert" }
-  )
+  if moduleControlInputPortId ~= nil and moduleControlOutputPortId ~= nil then
+    local orderedAll = RackLayout.getFlowModules(rackModules)
+    local modulePos = nil
+    for i = 1, #orderedAll do
+      local mod = orderedAll[i]
+      if mod and mod.id == moduleId then
+        modulePos = i
+        break
+      end
+    end
 
-  if nextModule and nextInputPortId then
-    working[#working + 1] = makeAudioConnectionFromEndpoints(
-      rackModules,
-      { moduleId = moduleId, portId = moduleOutputPortId },
-      { moduleId = nextModule.id, portId = nextInputPortId },
-      tostring(moduleId) .. "_to_" .. tostring(nextModule.id),
-      { source = "shift-insert" }
-    )
-  else
-    working[#working + 1] = makeAudioConnectionFromEndpoints(
-      rackModules,
-      { moduleId = moduleId, portId = moduleOutputPortId },
-      { moduleId = M.OUTPUT_NODE_ID, portId = M.OUTPUT_PORT_ID },
-      tostring(moduleId) .. "_to_output",
-      { source = "shift-insert" }
-    )
+    if modulePos ~= nil then
+      local function modulePosition(mid)
+        for k = 1, #orderedAll do
+          if orderedAll[k] and orderedAll[k].id == mid then
+            return k
+          end
+        end
+        return nil
+      end
+
+      local interceptedControl = {}
+      local remaining = {}
+      for i = 1, #working do
+        local conn = working[i]
+        local connKind = tostring(conn and conn.kind or "")
+        if connKind ~= "audio" then
+          local from = type(conn) == "table" and conn.from or nil
+          local to = type(conn) == "table" and conn.to or nil
+          if type(from) == "table" and type(to) == "table" then
+            local fromPos = modulePosition(tostring(from.moduleId or ""))
+            local toPos = modulePosition(tostring(to.moduleId or ""))
+            local fromIsRail = tostring(from.moduleId) == "__rackRail"
+            local toIsRail = tostring(to.moduleId) == "__rackRail"
+            if not fromIsRail and not toIsRail
+              and fromPos ~= nil and toPos ~= nil
+              and fromPos < modulePos and toPos > modulePos then
+              interceptedControl[#interceptedControl + 1] = conn
+            else
+              remaining[#remaining + 1] = conn
+            end
+          else
+            remaining[#remaining + 1] = conn
+          end
+        else
+          remaining[#remaining + 1] = conn
+        end
+      end
+
+      working = remaining
+
+      for i = 1, #interceptedControl do
+        local conn = interceptedControl[i]
+        local from = conn.from
+        local to = conn.to
+        local existingMeta = type(conn.meta) == "table" and conn.meta or {}
+        local bridgeMeta = {}
+        for k, v in pairs(existingMeta) do
+          bridgeMeta[k] = v
+        end
+        bridgeMeta.source = "shift-insert"
+
+        working[#working + 1] = makeControlConnectionFromEndpoints(
+          { moduleId = from.moduleId, portId = from.portId },
+          { moduleId = moduleId, portId = moduleControlInputPortId },
+          tostring(from.moduleId) .. "_" .. tostring(from.portId) .. "_to_" .. tostring(moduleId) .. "_" .. tostring(moduleControlInputPortId),
+          bridgeMeta
+        )
+
+        working[#working + 1] = makeControlConnectionFromEndpoints(
+          { moduleId = moduleId, portId = moduleControlOutputPortId },
+          { moduleId = to.moduleId, portId = to.portId },
+          tostring(moduleId) .. "_" .. tostring(moduleControlOutputPortId) .. "_to_" .. tostring(to.moduleId) .. "_" .. tostring(to.portId),
+          bridgeMeta
+        )
+      end
+    end
   end
 
   return M.normalizeConnections(working, rackModules)

@@ -189,8 +189,8 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
     for (size_t nodeIdx = 0; nodeIdx < numNodes; ++nodeIdx) {
         auto& compiled = compiledNodes_[nodeIdx];
         const int scratchIdx = nodeToScratchIndex_[nodeIdx];
-        auto& inputScratchBuf = inputScratchBuffers_[scratchIdx];
-        auto& outputScratchBuf = outputScratchBuffers_[scratchIdx];
+        auto& inputScratchBuf = inputScratchBuffers_[static_cast<std::size_t>(scratchIdx)];
+        auto& outputScratchBuf = outputScratchBuffers_[static_cast<std::size_t>(scratchIdx)];
         auto& scratchBuf = (compiled.role == PrimitiveGraph::NodeRole::InputDSP)
                                ? inputScratchBuf
                                : outputScratchBuf;
@@ -308,8 +308,8 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
         
         const int scratchIdx = nodeToScratchIndex_[nodeIdx];
         auto& sinkBuf = (role == PrimitiveGraph::NodeRole::InputDSP)
-                            ? inputScratchBuffers_[scratchIdx]
-                            : outputScratchBuffers_[scratchIdx];
+                            ? inputScratchBuffers_[static_cast<std::size_t>(scratchIdx)]
+                            : outputScratchBuffers_[static_cast<std::size_t>(scratchIdx)];
         
         for (int ch = 0; ch < numChannels_; ++ch) {
             buffer.addFrom(ch, 0, sinkBuf, ch, 0, numSamples);

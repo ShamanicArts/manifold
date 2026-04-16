@@ -43,12 +43,16 @@ public:
                          std::vector<float> &outPeaks) const;
   bool computeSynthSamplePeaks(int numBuckets,
                                std::vector<float> &outPeaks) const;
+  bool computeDynamicSamplePeaks(int slotIndex, int numBuckets,
+                                 std::vector<float> &outPeaks) const;
   std::vector<float> getVoiceSamplePositions() const;
+  std::vector<float> getDynamicSampleVoicePositions(int slotIndex) const;
   bool getLatestSampleAnalysis(dsp_primitives::SampleAnalysis &outAnalysis) const;
   bool getLatestSamplePartials(dsp_primitives::PartialData &outPartials) const;
   bool getSampleDerivedAdditiveDebug(int voiceIndex,
                                      SampleDerivedAdditiveDebugState &outState) const;
   bool refreshSampleDerivedAdditiveDebug(SampleDerivedAdditiveDebugState &outState);
+  bool ensureDynamicModuleSlot(const std::string &specId, int slotIndex);
   std::array<float, 8> getSpectrumBands() const;
 
   std::shared_ptr<dsp_primitives::IPrimitiveNode>

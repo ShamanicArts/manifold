@@ -7,6 +7,11 @@
 #endif
 
 namespace dsp_primitives {
+namespace {
+std::size_t voiceIndex(int index) {
+    return static_cast<std::size_t>(index);
+}
+} // namespace
 
 MidiVoiceNode::MidiVoiceNode() {
     for (auto& voice : voices_) {
@@ -39,15 +44,9 @@ void MidiVoiceNode::process(const std::vector<AudioBufferView>& inputs,
     const int poly = polyphony_.load(std::memory_order_acquire);
     
     // Get current parameter values
-    const int waveform = waveform_.load(std::memory_order_acquire);
     const float filterCutoff = filterCutoff_.load(std::memory_order_acquire);
-    const float filterResonance = filterResonance_.load(std::memory_order_acquire);
     const float filterEnvAmt = filterEnvAmount_.load(std::memory_order_acquire);
-    const float sustain = sustainLevel_.load(std::memory_order_acquire);
     const float glide = glideTime_.load(std::memory_order_acquire);
-    const float detuneCents = detune_.load(std::memory_order_acquire);
-    const float spread = stereoSpread_.load(std::memory_order_acquire);
-    const int unison = unisonVoices_.load(std::memory_order_acquire);
     
     // Update envelope coefficients
     attackCoeff_ = 1.0f - std::exp(-1.0f / (attackTime_.load() * sampleRate_ * 0.001f + 1.0f));
@@ -60,7 +59,7 @@ void MidiVoiceNode::process(const std::vector<AudioBufferView>& inputs,
         int activeVoiceCount = 0;
         
         for (int v = 0; v < poly; ++v) {
-            auto& voice = voices_[v];
+            auto& voice = voices_[voiceIndex(v)];
             
             if (!voice.active.load(std::memory_order_acquire)) {
                 continue;
@@ -120,10 +119,7 @@ void MidiVoiceNode::process(const std::vector<AudioBufferView>& inputs,
 }
 
 float MidiVoiceNode::processEnvelope(SynthesizerVoice& voice) {
-    const float attack = attackTime_.load(std::memory_order_acquire);
-    const float decay = decayTime_.load(std::memory_order_acquire);
     const float sustain = sustainLevel_.load(std::memory_order_acquire);
-    const float release = releaseTime_.load(std::memory_order_acquire);
     
     switch (voice.envStage) {
         case SynthesizerVoice::EnvStage::Off:
@@ -257,14 +253,14 @@ void MidiVoiceNode::noteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
     // Check if note is already playing (retrigger)
     int existingVoice = findVoicePlayingNote(note, channel);
     if (existingVoice >= 0) {
-        voices_[existingVoice].trigger(note, velocity, midi::noteToFrequency(note));
+        voices_[voiceIndex(existingVoice)].trigger(note, velocity, midi::noteToFrequency(note));
         return;
     }
     
     // Find free voice
     int voiceIdx = findFreeVoice();
     if (voiceIdx >= 0) {
-        voices_[voiceIdx].trigger(note, velocity, midi::noteToFrequency(note));
+        voices_[voiceIndex(voiceIdx)].trigger(note, velocity, midi::noteToFrequency(note));
         nextVoice_ = (voiceIdx + 1) % polyphony_.load();
     }
 }
@@ -272,7 +268,7 @@ void MidiVoiceNode::noteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
 void MidiVoiceNode::noteOff(uint8_t channel, uint8_t note) {
     int voiceIdx = findVoicePlayingNote(note, channel);
     if (voiceIdx >= 0) {
-        voices_[voiceIdx].release();
+        voices_[voiceIndex(voiceIdx)].release();
     }
 }
 
@@ -332,8 +328,8 @@ int MidiVoiceNode::findFreeVoice() {
     
     // First try to find an inactive voice
     for (int i = 0; i < poly; ++i) {
-        int idx = (nextVoice_ + i) % poly;
-        if (!voices_[idx].active.load(std::memory_order_acquire)) {
+        const int idx = (nextVoice_ + i) % poly;
+        if (!voices_[voiceIndex(idx)].active.load(std::memory_order_acquire)) {
             return idx;
         }
     }
@@ -342,8 +338,8 @@ int MidiVoiceNode::findFreeVoice() {
     int stealIdx = -1;
     float lowestLevel = 2.0f;
     for (int i = 0; i < poly; ++i) {
-        if (voices_[i].envelopeLevel < lowestLevel) {
-            lowestLevel = voices_[i].envelopeLevel;
+        if (voices_[voiceIndex(i)].envelopeLevel < lowestLevel) {
+            lowestLevel = voices_[voiceIndex(i)].envelopeLevel;
             stealIdx = i;
         }
     }
@@ -356,8 +352,8 @@ int MidiVoiceNode::findVoicePlayingNote(uint8_t note, uint8_t channel) {
     const int poly = polyphony_.load(std::memory_order_acquire);
     
     for (int i = 0; i < poly; ++i) {
-        if (voices_[i].active.load(std::memory_order_acquire) &&
-            voices_[i].note.load(std::memory_order_acquire) == note) {
+        if (voices_[voiceIndex(i)].active.load(std::memory_order_acquire) &&
+            voices_[voiceIndex(i)].note.load(std::memory_order_acquire) == note) {
             return i;
         }
     }
@@ -368,7 +364,7 @@ int MidiVoiceNode::getNumActiveVoices() const {
     int count = 0;
     const int poly = polyphony_.load(std::memory_order_acquire);
     for (int i = 0; i < poly; ++i) {
-        if (voices_[i].active.load(std::memory_order_acquire)) {
+        if (voices_[voiceIndex(i)].active.load(std::memory_order_acquire)) {
             count++;
         }
     }

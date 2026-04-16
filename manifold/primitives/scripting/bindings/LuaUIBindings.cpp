@@ -120,22 +120,22 @@ namespace {
             return {};
         }
 
-        switch (object.get_type()) {
-            case sol::type::boolean:
-                return juce::var(object.as<bool>());
-            case sol::type::number:
-                if (object.is<int>()) {
-                    return juce::var(object.as<int>());
-                }
-                if (object.is<float>()) {
-                    return juce::var(static_cast<double>(object.as<float>()));
-                }
-                return juce::var(object.as<double>());
-            case sol::type::string:
-                return juce::var(juce::String(object.as<std::string>()));
-            default:
-                return {};
+        if (object.is<bool>()) {
+            return juce::var(object.as<bool>());
         }
+        if (object.is<int>()) {
+            return juce::var(object.as<int>());
+        }
+        if (object.is<float>()) {
+            return juce::var(static_cast<double>(object.as<float>()));
+        }
+        if (object.is<double>()) {
+            return juce::var(object.as<double>());
+        }
+        if (object.is<std::string>()) {
+            return juce::var(juce::String(object.as<std::string>()));
+        }
+        return {};
     }
 
     bool tryLuaDisplayListCommandToVar(const sol::table& table, juce::var& out) {
@@ -949,21 +949,21 @@ void LuaUIBindings::registerGraphicsBindings(sol::state& lua) {
                 currentRuntimeDrawRecorder->state.fontSize = size;
             }
             if (currentGraphics)
-                currentGraphics->setFont(juce::Font(size));
+                currentGraphics->setFont(juce::Font(juce::FontOptions(size)));
         },
         [](const std::string& name, float size) {
             if (currentRuntimeDrawRecorder != nullptr) {
                 currentRuntimeDrawRecorder->state.fontSize = size;
             }
             if (currentGraphics)
-                currentGraphics->setFont(juce::Font(name, size, juce::Font::plain));
+                currentGraphics->setFont(juce::Font(juce::FontOptions(juce::String(name), size, juce::Font::plain)));
         },
         [](const std::string& name, float size, int flags) {
             if (currentRuntimeDrawRecorder != nullptr) {
                 currentRuntimeDrawRecorder->state.fontSize = size;
             }
             if (currentGraphics)
-                currentGraphics->setFont(juce::Font(name, size, flags));
+                currentGraphics->setFont(juce::Font(juce::FontOptions(juce::String(name), size, flags)));
         }
     );
 
@@ -1193,25 +1193,25 @@ void LuaUIBindings::registerOpenGLBindings(LuaCoreEngine& engine) {
     };
 
     gl["clear"] = [](sol::optional<int> mask) {
-        int m = mask.value_or(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClear(m);
+        const int m = mask.value_or(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(static_cast<GLbitfield>(m));
     };
 
     gl["viewport"] = [](int x, int y, int w, int h) { glViewport(x, y, w, h); };
 
-    gl["enable"] = [](int cap) { glEnable(cap); };
-    gl["disable"] = [](int cap) { glDisable(cap); };
+    gl["enable"] = [](int cap) { glEnable(static_cast<GLenum>(cap)); };
+    gl["disable"] = [](int cap) { glDisable(static_cast<GLenum>(cap)); };
 
     gl["blendFunc"] = [](int sfactor, int dfactor) {
-        glBlendFunc(sfactor, dfactor);
+        glBlendFunc(static_cast<GLenum>(sfactor), static_cast<GLenum>(dfactor));
     };
 
-    gl["depthFunc"] = [](int func) { glDepthFunc(func); };
+    gl["depthFunc"] = [](int func) { glDepthFunc(static_cast<GLenum>(func)); };
     gl["depthMask"] = [](bool flag) { glDepthMask(flag ? GL_TRUE : GL_FALSE); };
 
 #ifndef __ANDROID__
     // Desktop OpenGL matrix functions (not available in OpenGL ES)
-    gl["matrixMode"] = [](int mode) { glMatrixMode(mode); };
+    gl["matrixMode"] = [](int mode) { glMatrixMode(static_cast<GLenum>(mode)); };
     gl["loadIdentity"] = []() { glLoadIdentity(); };
     gl["pushMatrix"] = []() { glPushMatrix(); };
     gl["popMatrix"] = []() { glPopMatrix(); };
@@ -1222,7 +1222,7 @@ void LuaUIBindings::registerOpenGLBindings(LuaCoreEngine& engine) {
     gl["scale"] = [](float x, float y, float z) { glScalef(x, y, z); };
 
     // Desktop OpenGL immediate mode (not available in OpenGL ES)
-    gl["begin"] = [](int mode) { glBegin(mode); };
+    gl["begin"] = [](int mode) { glBegin(static_cast<GLenum>(mode)); };
     gl["end"] = []() { glEnd(); };
     gl["vertex2"] = [](float x, float y) { glVertex2f(x, y); };
     gl["vertex3"] = [](float x, float y, float z) { glVertex3f(x, y, z); };

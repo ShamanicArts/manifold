@@ -25,6 +25,8 @@ local DYNAMIC_MODULES = {
   "fx",
   "filter",
   "rack_oscillator",
+  "rack_sample",
+  "blend_simple",
 }
 
 local tests = {}

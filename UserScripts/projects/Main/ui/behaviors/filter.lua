@@ -1,5 +1,6 @@
 -- Filter component behavior - interactive frequency response curve
 local ModWidgetSync = require("ui.modulation_widget_sync")
+local Layout = require("ui.canonical_layout")
 
 local FilterBehavior = {}
 
@@ -18,6 +19,23 @@ local MIN_RESO = 0.1
 local MAX_RESO = 2.0
 local DB_RANGE = 14
 local SYNC_INTERVAL = 0.12
+local COMPACT_LAYOUT_CUTOFF_W = 300
+
+local COMPACT_REFERENCE_SIZE = { w = 236, h = 208 }
+local WIDE_REFERENCE_SIZE = { w = 472, h = 208 }
+local COMPACT_RECTS = {
+  filter_graph = { x = 10, y = 10, w = 216, h = 188 },
+  xy_pad = { x = 10, y = 10, w = 216, h = 188 },
+  visual_mode_dots = { x = 104, y = 184, w = 28, h = 12 },
+}
+local WIDE_RECTS = {
+  filter_graph = { x = 10, y = 10, w = 226, h = 188 },
+  xy_pad = { x = 10, y = 10, w = 226, h = 188 },
+  visual_mode_dots = { x = 109, y = 184, w = 28, h = 12 },
+  filter_type_dropdown = { x = 242, y = 10, w = 220, h = 22 },
+  cutoff_knob = { x = 242, y = 42, w = 220, h = 20 },
+  resonance_knob = { x = 242, y = 68, w = 220, h = 20 },
+}
 
 local function clamp(v, lo, hi)
   local n = tonumber(v) or 0
@@ -41,32 +59,19 @@ local function readParam(path, fallback)
 end
 
 local function writeParam(path, value)
+  local numeric = tonumber(value) or 0
+  local authoredWriter = type(_G) == "table" and _G.__midiSynthSetAuthoredParam or nil
+  if type(authoredWriter) == "function" then
+    return authoredWriter(path, numeric)
+  end
   if type(_G.setParam) == "function" then
-    return _G.setParam(path, tonumber(value) or 0)
+    return _G.setParam(path, numeric)
   end
   if type(command) == "function" then
-    command("SET", path, tostring(value))
+    command("SET", path, tostring(numeric))
     return true
   end
   return false
-end
-
-local function setBounds(widget, x, y, w, h)
-  x = math.floor(x)
-  y = math.floor(y)
-  w = math.max(1, math.floor(w))
-  h = math.max(1, math.floor(h))
-  if widget and widget.setBounds then
-    widget:setBounds(x, y, w, h)
-  elseif widget and widget.node and widget.node.setBounds then
-    widget.node:setBounds(x, y, w, h)
-  end
-end
-
-local function setWidgetVisible(widget, visible)
-  if widget and widget.setVisible then
-    widget:setVisible(visible)
-  end
 end
 
 local function anchorDropdown(dropdown, root)
@@ -190,13 +195,17 @@ local function typePath(ctx)
 end
 
 local function cutoffPath(ctx)
+  local paramBase = getParamBase(ctx)
+  if type(paramBase) == "string" and paramBase ~= "" then
+    return paramBase .. "/cutoff"
+  end
   local nodeId = getInstanceNodeId(ctx)
   if nodeId == "filter" then
     return "/midi/synth/cutoff"
   end
   local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
   local entry = type(info) == "table" and info[nodeId] or nil
-  local paramBase = type(entry) == "table" and type(entry.paramBase) == "string" and entry.paramBase or nil
+  paramBase = type(entry) == "table" and type(entry.paramBase) == "string" and entry.paramBase or nil
   if type(paramBase) == "string" and paramBase ~= "" then
     return paramBase .. "/cutoff"
   end
@@ -204,13 +213,17 @@ local function cutoffPath(ctx)
 end
 
 local function resonancePath(ctx)
+  local paramBase = getParamBase(ctx)
+  if type(paramBase) == "string" and paramBase ~= "" then
+    return paramBase .. "/resonance"
+  end
   local nodeId = getInstanceNodeId(ctx)
   if nodeId == "filter" then
     return "/midi/synth/resonance"
   end
   local info = type(_G) == "table" and _G.__midiSynthDynamicModuleInfo or nil
   local entry = type(info) == "table" and info[nodeId] or nil
-  local paramBase = type(entry) == "table" and type(entry.paramBase) == "string" and entry.paramBase or nil
+  paramBase = type(entry) == "table" and type(entry.paramBase) == "string" and entry.paramBase or nil
   if type(paramBase) == "string" and paramBase ~= "" then
     return paramBase .. "/resonance"
   end
@@ -262,6 +275,26 @@ local function svfMagnitude(freq, cutoff, resonance, filterType)
     return math.sqrt(num / denom)
   end
   return 1.0
+end
+
+local function resolveLayoutMode(ctx, width)
+  local root = type(ctx) == "table" and ctx.root or nil
+  local node = root and root.node or nil
+  if node and node.getUserData then
+    local forced = node:getUserData("_pluginViewMode")
+    if forced == "compact" then
+      return "compact"
+    end
+    if forced == "split" or forced == "wide" then
+      return "wide"
+    end
+  end
+  local sizeKey = type(ctx) == "table" and ctx.instanceProps and ctx.instanceProps.sizeKey
+  local sizeMode = Layout.layoutModeForSizeKey(sizeKey)
+  if sizeMode then
+    return sizeMode
+  end
+  return Layout.layoutModeForWidth(width, COMPACT_LAYOUT_CUTOFF_W)
 end
 
 local function buildFilterDisplay(ctx, w, h)
@@ -374,9 +407,151 @@ local function refreshGraph(ctx)
   graph.node:repaint()
 end
 
+local function buildXYDisplay(ctx, w, h)
+  local display = {}
+  local cutoff = clamp(ctx.displayCutoffHz or ctx.cutoffHz or 3200, MIN_FREQ, MAX_FREQ)
+  local resonance = clamp(ctx.displayResonance or ctx.resonance or 0.75, MIN_RESO, MAX_RESO)
+  local filterType = round(ctx.displayFilterType or ctx.filterType or 0)
+  local dragging = ctx.dragging
+  local col = FILTER_COLORS[filterType] or 0xffa78bfa
+  local colDim = (0x18 << 24) | (col & 0x00ffffff)
+  local colMid = (0x44 << 24) | (col & 0x00ffffff)
+  local xVal = (math.log(cutoff) - LOG_MIN) / (LOG_MAX - LOG_MIN)
+  local yVal = (resonance - MIN_RESO) / (MAX_RESO - MIN_RESO)
+
+  display[#display + 1] = {
+    cmd = "drawText", x = 4, y = 2, w = w - 8, h = 16,
+    text = "FILTER XY", color = col, fontSize = 11, align = "left", valign = "top",
+  }
+
+  for i = 1, 3 do
+    display[#display + 1] = {
+      cmd = "drawLine", x1 = math.floor(w * i / 4), y1 = 0,
+      x2 = math.floor(w * i / 4), y2 = h, thickness = 1, color = 0xff1a1a3a,
+    }
+    display[#display + 1] = {
+      cmd = "drawLine", x1 = 0, y1 = math.floor(h * i / 4),
+      x2 = w, y2 = math.floor(h * i / 4), thickness = 1, color = 0xff1a1a3a,
+    }
+  end
+
+  local cx = math.floor(xVal * w)
+  local cy = math.floor((1 - yVal) * h)
+  display[#display + 1] = { cmd = "drawLine", x1 = cx, y1 = 0, x2 = cx, y2 = h, thickness = 1, color = colMid }
+  display[#display + 1] = { cmd = "drawLine", x1 = 0, y1 = cy, x2 = w, y2 = cy, thickness = 1, color = colMid }
+  display[#display + 1] = { cmd = "fillRect", x = 0, y = cy, w = cx, h = h - cy, color = colDim }
+
+  local ptR = dragging and 8 or 6
+  if dragging then
+    display[#display + 1] = {
+      cmd = "fillRoundedRect",
+      x = cx - ptR - 3, y = cy - ptR - 3,
+      w = (ptR + 3) * 2, h = (ptR + 3) * 2,
+      radius = ptR + 3,
+      color = (0x33 << 24) | (col & 0x00ffffff),
+    }
+  end
+  display[#display + 1] = {
+    cmd = "fillRoundedRect",
+    x = cx - ptR, y = cy - ptR,
+    w = ptR * 2, h = ptR * 2,
+    radius = ptR,
+    color = dragging and col or 0xFFFFFFFF,
+  }
+
+  display[#display + 1] = {
+    cmd = "drawText", x = 4, y = h - 14, w = math.floor(w * 0.5), h = 12,
+    text = string.format("Cutoff: %.0f Hz", cutoff),
+    color = (0x88 << 24) | (col & 0x00ffffff), fontSize = 9,
+  }
+  display[#display + 1] = {
+    cmd = "drawText", x = math.floor(w * 0.5), y = 2,
+    w = math.floor(w * 0.5) - 4, h = 12,
+    text = string.format("Reso: %.2f", resonance),
+    color = (0x88 << 24) | (col & 0x00ffffff), fontSize = 9,
+    justification = 2,
+  }
+
+  return display
+end
+
+local function refreshXYPad(ctx)
+  local pad = ctx.widgets and ctx.widgets.xy_pad
+  if not pad or not pad.node then return end
+  local w = pad.node:getWidth()
+  local h = pad.node:getHeight()
+  if w <= 0 or h <= 0 then return end
+  pad.node:setDisplayList(buildXYDisplay(ctx, w, h))
+  pad.node:repaint()
+end
+
 local function commitFilterValues(ctx)
   writeParam(cutoffPath(ctx), clamp(ctx.cutoffHz or 3200, MIN_FREQ, MAX_FREQ))
   writeParam(resonancePath(ctx), clamp(ctx.resonance or 0.75, MIN_RESO, MAX_RESO))
+end
+
+local function widgetIsVisible(widget)
+  local node = widget and widget.node or nil
+  return node ~= nil and node.isVisible ~= nil and node:isVisible() == true
+end
+
+local function updateVisualDots(ctx)
+  local widgets = ctx.widgets or {}
+  local dots = {
+    { widget = widgets.visual_mode_dot_graph, mode = 1 },
+    { widget = widgets.visual_mode_dot_xy, mode = 2 },
+  }
+  for _, entry in ipairs(dots) do
+    local dot = entry.widget
+    if dot then
+      local isActive = (ctx.visualMode or 1) == entry.mode
+      local newColour = isActive and 0xffffffff or 0xff475569
+      if dot.setVisible then
+        dot:setVisible(true)
+      elseif dot.node and dot.node.setVisible then
+        dot.node:setVisible(true)
+      end
+      if dot.setColour then
+        dot:setColour(newColour)
+      else
+        dot._colour = newColour
+        if dot._syncRetained then dot:_syncRetained() end
+        if dot.node and dot.node.repaint then dot.node:repaint() end
+      end
+    end
+  end
+end
+
+local function syncVisualMode(ctx)
+  local widgets = ctx.widgets or {}
+  local mode = tonumber(ctx.visualMode) or 1
+  if mode ~= 2 then mode = 1 end
+  ctx.visualMode = mode
+  Layout.setVisible(widgets.filter_graph, mode == 1)
+  Layout.setVisible(widgets.xy_pad, mode == 2)
+  Layout.setVisible(widgets.visual_mode_dots, true)
+  updateVisualDots(ctx)
+end
+
+local function bindVisualDots(ctx)
+  local widgets = ctx.widgets or {}
+  local dots = {
+    { widget = widgets.visual_mode_dot_graph, mode = 1 },
+    { widget = widgets.visual_mode_dot_xy, mode = 2 },
+  }
+  for _, entry in ipairs(dots) do
+    local widget = entry.widget
+    if widget and widget.node then
+      widget.node:setInterceptsMouse(true, true)
+      local mode = entry.mode
+      widget.node:setOnClick(function()
+        ctx.visualMode = mode
+        syncVisualMode(ctx)
+        refreshGraph(ctx)
+        refreshXYPad(ctx)
+      end)
+    end
+  end
 end
 
 local function syncFromParams(ctx)
@@ -392,12 +567,13 @@ local function syncFromParams(ctx)
   resonanceEffective = clamp(resonanceEffective, MIN_RESO, MAX_RESO)
 
   local dropdown = ctx.widgets and ctx.widgets.filter_type_dropdown or nil
-  local anyDropdownOpen = dropdown and dropdown._open
+  local dropdownVisible = widgetIsVisible(dropdown)
+  local anyDropdownOpen = dropdownVisible and dropdown and dropdown._open
 
   if ctx.filterType ~= filterType then
     ctx.filterType = filterType
     changed = true
-    if dropdown and dropdown.setSelected and not anyDropdownOpen then
+    if dropdownVisible and dropdown and dropdown.setSelected and not anyDropdownOpen then
       dropdown:setSelected(filterType + 1)
     end
   end
@@ -414,7 +590,8 @@ local function syncFromParams(ctx)
     ctx.displayCutoffHz = cutoffEffective
     changed = true
   end
-  ModWidgetSync.syncWidget(ctx.widgets and ctx.widgets.cutoff_knob or nil, cutoff, cutoffEffective, cutoffState)
+  local cutoffKnob = ctx.widgets and ctx.widgets.cutoff_knob or nil
+  ModWidgetSync.syncWidget(widgetIsVisible(cutoffKnob) and cutoffKnob or nil, cutoff, cutoffEffective, cutoffState)
 
   if math.abs((ctx.resonance or 0) - resonance) > 0.0001 then
     ctx.resonance = resonance
@@ -424,7 +601,8 @@ local function syncFromParams(ctx)
     ctx.displayResonance = resonanceEffective
     changed = true
   end
-  ModWidgetSync.syncWidget(ctx.widgets and ctx.widgets.resonance_knob or nil, resonance, resonanceEffective, resonanceState)
+  local resonanceKnob = ctx.widgets and ctx.widgets.resonance_knob or nil
+  ModWidgetSync.syncWidget(widgetIsVisible(resonanceKnob) and resonanceKnob or nil, resonance, resonanceEffective, resonanceState)
 
   return changed
 end
@@ -438,6 +616,7 @@ local function bindControls(ctx)
       ctx.filterType = nextType
       ctx.displayFilterType = nextType
       refreshGraph(ctx)
+      refreshXYPad(ctx)
     end
   end
 
@@ -446,9 +625,10 @@ local function bindControls(ctx)
     cutoffKnob._onChange = function(v)
       local cutoff = clamp(v, MIN_FREQ, MAX_FREQ)
       ctx.cutoffHz = cutoff
-      ctx.displayCutoffHz = cutoff
       writeParam(cutoffPath(ctx), cutoff)
+      syncFromParams(ctx)
       refreshGraph(ctx)
+      refreshXYPad(ctx)
     end
   end
 
@@ -457,9 +637,10 @@ local function bindControls(ctx)
     resonanceKnob._onChange = function(v)
       local resonance = clamp(v, MIN_RESO, MAX_RESO)
       ctx.resonance = resonance
-      ctx.displayResonance = resonance
       writeParam(resonancePath(ctx), resonance)
+      syncFromParams(ctx)
       refreshGraph(ctx)
+      refreshXYPad(ctx)
     end
   end
 end
@@ -477,14 +658,10 @@ local function setupGraphInteraction(ctx)
     local h = graph.node:getHeight()
     ctx.cutoffHz = clamp(xToFreq(mx, w), MIN_FREQ, MAX_FREQ)
     ctx.resonance = clamp(yToReso(my, h), MIN_RESO, MAX_RESO)
-    ctx.displayCutoffHz = ctx.cutoffHz
-    ctx.displayResonance = ctx.resonance
-    local cutoffKnob = ctx.widgets and ctx.widgets.cutoff_knob or nil
-    local resonanceKnob = ctx.widgets and ctx.widgets.resonance_knob or nil
-    if cutoffKnob and cutoffKnob.setValue then cutoffKnob:setValue(ctx.cutoffHz) end
-    if resonanceKnob and resonanceKnob.setValue then resonanceKnob:setValue(ctx.resonance) end
     commitFilterValues(ctx)
+    syncFromParams(ctx)
     refreshGraph(ctx)
+    refreshXYPad(ctx)
   end
 
   if graph.node.setOnMouseDown then
@@ -505,6 +682,50 @@ local function setupGraphInteraction(ctx)
     graph.node:setOnMouseUp(function()
       ctx.dragging = false
       refreshGraph(ctx)
+      refreshXYPad(ctx)
+    end)
+  end
+end
+
+local function setupXYInteraction(ctx)
+  local pad = ctx.widgets and ctx.widgets.xy_pad
+  if not pad or not pad.node then return end
+
+  if pad.node.setInterceptsMouse then
+    pad.node:setInterceptsMouse(true, true)
+  end
+
+  local function applyXY(mx, my)
+    local w = pad.node:getWidth()
+    local h = pad.node:getHeight()
+    if w <= 0 or h <= 0 then return end
+    ctx.cutoffHz = clamp(xToFreq(mx, w), MIN_FREQ, MAX_FREQ)
+    ctx.resonance = clamp(yToReso(my, h), MIN_RESO, MAX_RESO)
+    commitFilterValues(ctx)
+    syncFromParams(ctx)
+    refreshXYPad(ctx)
+    refreshGraph(ctx)
+  end
+
+  if pad.node.setOnMouseDown then
+    pad.node:setOnMouseDown(function(mx, my)
+      ctx.dragging = true
+      applyXY(mx, my)
+    end)
+  end
+
+  if pad.node.setOnMouseDrag then
+    pad.node:setOnMouseDrag(function(mx, my)
+      if not ctx.dragging then return end
+      applyXY(mx, my)
+    end)
+  end
+
+  if pad.node.setOnMouseUp then
+    pad.node:setOnMouseUp(function()
+      ctx.dragging = false
+      refreshXYPad(ctx)
+      refreshGraph(ctx)
     end)
   end
 end
@@ -517,11 +738,16 @@ function FilterBehavior.init(ctx)
   ctx.resonance = 0.75
   ctx.displayResonance = 0.75
   ctx.dragging = false
+  ctx.visualMode = 1
   ctx._lastSyncTime = 0
   bindControls(ctx)
+  bindVisualDots(ctx)
   setupGraphInteraction(ctx)
+  setupXYInteraction(ctx)
   syncFromParams(ctx)
+  syncVisualMode(ctx)
   refreshGraph(ctx)
+  refreshXYPad(ctx)
 end
 
 function FilterBehavior.resized(ctx, w, h)
@@ -532,44 +758,40 @@ function FilterBehavior.resized(ctx, w, h)
   if not w or w <= 0 then return end
 
   local widgets = ctx.widgets or {}
-  local pad = 10
-  local gap = 6
+  local queue = {}
+  local mode = resolveLayoutMode(ctx, w)
+  local reference = mode == "compact" and COMPACT_REFERENCE_SIZE or WIDE_REFERENCE_SIZE
+  local rects = mode == "compact" and COMPACT_RECTS or WIDE_RECTS
+  local scaleX, scaleY = Layout.scaleFactors(w, h, reference)
 
-  local graph = widgets.filter_graph
-  local label = widgets.filter_type_label
-  local dropdown = widgets.filter_type_dropdown
-  local cutoffKnob = widgets.cutoff_knob
-  local resonanceKnob = widgets.resonance_knob
+  Layout.setVisibleQueued(queue, widgets.filter_type_label, false)
+  Layout.setBoundsQueued(queue, widgets.filter_type_label, 0, 0, 1, 1)
 
-  setWidgetVisible(label, false)
+  Layout.applyScaledRect(queue, widgets.filter_graph, rects.filter_graph, scaleX, scaleY)
+  Layout.applyScaledRect(queue, widgets.xy_pad, rects.xy_pad, scaleX, scaleY)
+  Layout.applyScaledRect(queue, widgets.visual_mode_dots, rects.visual_mode_dots, scaleX, scaleY)
 
-  if w < 300 then
-    setBounds(graph, pad, pad, w - pad * 2, h - pad * 2)
-    setWidgetVisible(dropdown, false)
-    setWidgetVisible(cutoffKnob, false)
-    setWidgetVisible(resonanceKnob, false)
+  if mode == "wide" then
+    Layout.setVisibleQueued(queue, widgets.filter_type_dropdown, true)
+    Layout.setVisibleQueued(queue, widgets.cutoff_knob, true)
+    Layout.setVisibleQueued(queue, widgets.resonance_knob, true)
+    Layout.applyScaledRect(queue, widgets.filter_type_dropdown, rects.filter_type_dropdown, scaleX, scaleY)
+    Layout.applyScaledRect(queue, widgets.cutoff_knob, rects.cutoff_knob, scaleX, scaleY)
+    Layout.applyScaledRect(queue, widgets.resonance_knob, rects.resonance_knob, scaleX, scaleY)
   else
-    setWidgetVisible(dropdown, true)
-    setWidgetVisible(cutoffKnob, true)
-    setWidgetVisible(resonanceKnob, true)
-
-    local split = math.floor(w / 2)
-    local leftW = split - pad
-    local rightX = split + gap
-    local rightW = w - rightX - pad
-
-    setBounds(graph, pad, pad, leftW, h - pad * 2)
-    setBounds(dropdown, rightX, pad, rightW, 20)
-    anchorDropdown(dropdown, ctx.root)
-
-    local sliderY = pad + 20 + gap
-    local sliderH = 20
-    local sliderGap = 6
-    setBounds(cutoffKnob, rightX, sliderY, rightW, sliderH)
-    setBounds(resonanceKnob, rightX, sliderY + sliderH + sliderGap, rightW, sliderH)
+    Layout.setVisibleQueued(queue, widgets.filter_type_dropdown, false)
+    Layout.setVisibleQueued(queue, widgets.cutoff_knob, false)
+    Layout.setVisibleQueued(queue, widgets.resonance_knob, false)
+    Layout.setBoundsQueued(queue, widgets.filter_type_dropdown, 0, 0, 1, 1)
+    Layout.setBoundsQueued(queue, widgets.cutoff_knob, 0, 0, 1, 1)
+    Layout.setBoundsQueued(queue, widgets.resonance_knob, 0, 0, 1, 1)
   end
 
+  Layout.flushWidgetRefreshes(queue)
+  anchorDropdown(widgets.filter_type_dropdown, ctx.root)
+  syncVisualMode(ctx)
   refreshGraph(ctx)
+  refreshXYPad(ctx)
 end
 
 function FilterBehavior.update(ctx)
@@ -581,12 +803,15 @@ function FilterBehavior.update(ctx)
     ctx._lastSyncTime = now
     if syncFromParams(ctx) then
       refreshGraph(ctx)
+      refreshXYPad(ctx)
     end
   end
 end
 
 function FilterBehavior.repaint(ctx)
+  syncVisualMode(ctx)
   refreshGraph(ctx)
+  refreshXYPad(ctx)
 end
 
 return FilterBehavior

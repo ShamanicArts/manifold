@@ -124,9 +124,11 @@ const char *toLayerStateString(ScriptableLayerState state) {
     return "stopped";
   case ScriptableLayerState::Paused:
     return "paused";
-  default:
+  case ScriptableLayerState::Unknown:
     return "unknown";
   }
+
+  return "unknown";
 }
 
 std::string luaEvalResultToString(const sol::object &value) {
@@ -188,6 +190,7 @@ struct UiLoadTarget {
   bool isStructured = false;
   bool isSystemProject = false;  // True if project has no DSP (UI-only/system project)
   bool isOverlay = false;        // True if project should overlay on top of current (not replace)
+  bool useSharedShell = true;    // False for export/minimal plugin UIs
   std::string error;
 };
 
@@ -197,6 +200,23 @@ juce::String escapeLuaString(const juce::String& text) {
   s = s.replace("\n", "\\n");
   s = s.replace("\r", "\\r");
   return s;
+}
+
+juce::File resolveCompiledSystemUiDir() {
+#ifdef MANIFOLD_SOURCE_DIR
+  auto sourceDir = juce::String(JUCE_STRINGIFY(MANIFOLD_SOURCE_DIR));
+  if (sourceDir.length() >= 2 && sourceDir.startsWithChar('"') && sourceDir.endsWithChar('"')) {
+    sourceDir = sourceDir.substring(1, sourceDir.length() - 1);
+  }
+  juce::File dir(sourceDir);
+  if (dir.isDirectory()) {
+    auto uiDir = dir.getChildFile("manifold").getChildFile("ui");
+    if (uiDir.isDirectory()) {
+      return uiDir;
+    }
+  }
+#endif
+  return {};
 }
 
 juce::File resolveSystemUiDir() {
@@ -209,10 +229,15 @@ juce::File resolveSystemUiDir() {
     }
   }
 
+  auto compiledUiDir = resolveCompiledSystemUiDir();
+  if (compiledUiDir.isDirectory()) {
+    return compiledUiDir;
+  }
+
   auto defaultUiScript = settings.getDefaultUiScript();
   if (defaultUiScript.isNotEmpty()) {
     juce::File script(defaultUiScript);
-    if (script.existsAsFile()) {
+    if (script.existsAsFile() && !script.getFileName().equalsIgnoreCase("manifold.project.json5")) {
       return script.getParentDirectory();
     }
   }
@@ -279,6 +304,10 @@ UiLoadTarget resolveUiLoadTarget(const juce::File& requestedPath) {
     if (uiObj == nullptr || !uiObj->hasProperty("root")) {
       target.error = "project manifest missing ui.root";
       return target;
+    }
+
+    if (uiObj->hasProperty("sharedShell")) {
+      target.useSharedShell = static_cast<bool>(uiObj->getProperty("sharedShell"));
     }
 
     auto rootRel = uiObj->getProperty("root").toString();
@@ -530,6 +559,68 @@ LuaEngine::~LuaEngine() {
   }
 }
 
+LuaEngine::MemoryStats LuaEngine::getMemoryStats() const {
+  MemoryStats stats;
+  if (!pImpl) {
+    return stats;
+  }
+
+  stats.oscPathCount = static_cast<int64_t>(pImpl->oscCallbacks.size());
+  for (const auto& [_, callbacks] : pImpl->oscCallbacks) {
+    stats.oscCallbackCount += static_cast<int64_t>(callbacks.size());
+  }
+  stats.oscQueryHandlerCount = static_cast<int64_t>(pImpl->oscQueryHandlers.size());
+  stats.eventListenerCount = static_cast<int64_t>(pImpl->tempoChangedListeners.size()
+                           + pImpl->commitListeners.size()
+                           + pImpl->recordingChangedListeners.size()
+                           + pImpl->layerStateChangedListeners.size()
+                           + pImpl->stateChangedListeners.size());
+  stats.managedDspSlotCount = static_cast<int64_t>(pImpl->managedDspSlots.size() + pImpl->persistentDspSlots.size());
+  stats.overlayCacheCount = static_cast<int64_t>(pImpl->overlayScriptCache.size());
+
+  const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
+  if (!coreEngine_.isInitialized()) {
+    return stats;
+  }
+  auto& lua = coreEngine_.getLuaState();
+  lua_State* L = lua.lua_state();
+  if (L == nullptr) {
+    return stats;
+  }
+
+  lua_pushglobaltable(L);
+  lua_pushnil(L);
+  while (lua_next(L, -2) != 0) {
+    stats.globalCount += 1;
+    lua_pop(L, 1);
+  }
+  lua_pop(L, 1);
+
+  lua_pushvalue(L, LUA_REGISTRYINDEX);
+  lua_pushnil(L);
+  while (lua_next(L, -2) != 0) {
+    stats.registryEntryCount += 1;
+    lua_pop(L, 1);
+  }
+  lua_pop(L, 1);
+
+  lua_getglobal(L, "package");
+  if (lua_istable(L, -1)) {
+    lua_getfield(L, -1, "loaded");
+    if (lua_istable(L, -1)) {
+      lua_pushnil(L);
+      while (lua_next(L, -2) != 0) {
+        stats.packageLoadedCount += 1;
+        lua_pop(L, 1);
+      }
+    }
+    lua_pop(L, 1);
+  }
+  lua_pop(L, 1);
+
+  return stats;
+}
+
 // ============================================================================
 // Initialisation
 // ============================================================================
@@ -572,12 +663,15 @@ void LuaEngine::initialiseInternal(ScriptableProcessor *processor,
   pImpl->rootRuntime = rootRuntime;
   pImpl->rootMode = rootMode;
   pImpl->lastLayerStates.assign(
-      processor ? std::max(0, processor->getNumLayers()) : 0,
+      static_cast<std::size_t>(processor ? std::max(0, processor->getNumLayers()) : 0),
       static_cast<int>(ScriptableLayerState::Unknown));
 
   // Initialize core engine (VM lifecycle only)
   std::fprintf(stderr, "[LuaEngine] Initializing core engine...\n");
   coreEngine_.initialize();
+  if (auto* bcp = dynamic_cast<BehaviorCoreProcessor*>(pImpl->processor)) {
+    bcp->captureLuaInitSnapshot();
+  }
 
   // Lock Core's mutex and get reference to its Lua state
   const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
@@ -585,6 +679,9 @@ void LuaEngine::initialiseInternal(ScriptableProcessor *processor,
   std::fprintf(stderr, "[LuaEngine] Calling registerBindings...\n");
   registerBindings();
   std::fprintf(stderr, "[LuaEngine] registerBindings returned\n");
+  if (auto* bcp = dynamic_cast<BehaviorCoreProcessor*>(pImpl->processor)) {
+    bcp->captureBindingsSnapshot();
+  }
 
   // Register OSC callback to allow Lua to handle incoming OSC messages
   if (pImpl->processor) {
@@ -738,6 +835,8 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
     coreEngine_.getLuaState()["shell"] = sol::nil;
   }
 
+  const bool useSharedShell = !isOverlay && target.useSharedShell;
+
   bool loaded = false;
   if (target.isStructured) {
     const auto userScriptsRoot = juce::File(Settings::getInstance().getUserScriptsDir());
@@ -793,7 +892,10 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
   }
 
   if (!loaded) {
-    pImpl->lastError = coreEngine_.getLastError();
+    const auto coreError = coreEngine_.getLastError();
+    if (pImpl->lastError.empty()) {
+      pImpl->lastError = coreError;
+    }
     std::fprintf(stderr, "LuaEngine: script load error: %s\n",
                  pImpl->lastError.c_str());
     pImpl->scriptLoaded = false;
@@ -835,7 +937,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
                                              ? pImpl->scriptContentCanvasRoot->getRuntimeNode()
                                              : pImpl->rootRuntime;
 
-        if (!isOverlay) {
+        if (useSharedShell) {
           const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
           sol::protected_function requireFn = coreEngine_.getLuaState()["require"];
           if (requireFn.valid()) {
@@ -876,7 +978,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
         pImpl->scriptContentRuntimeRoot = pImpl->rootRuntime->createChild("script_content_root");
 
         // Create shared shell in RuntimeNode mode (same as Canvas mode above)
-        if (!isOverlay) {
+        if (useSharedShell) {
           const std::lock_guard<std::recursive_mutex> lock(coreEngine_.getMutex());
           sol::protected_function requireFn = coreEngine_.getLuaState()["require"];
           if (requireFn.valid()) {
@@ -1058,6 +1160,10 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
     osc.setCustomValue("/ui/shell/script_load_count",
                        { juce::var(pImpl->uiScriptLoadCount) });
     osc.setCustomValue("/ui/shell/last_error", { juce::var("") });
+  }
+
+  if (auto* bcp = dynamic_cast<BehaviorCoreProcessor*>(pImpl->processor)) {
+    bcp->captureScriptLoadSnapshot();
   }
 
   std::fprintf(stderr, "LuaEngine: loaded script: %s\n",
@@ -1965,7 +2071,7 @@ void LuaEngine::invokeEventListeners() {
   const int numLayers = std::max(0, proc->getNumLayers());
   if (static_cast<int>(pImpl->lastLayerStates.size()) != numLayers) {
     pImpl->lastLayerStates.assign(
-        numLayers, static_cast<int>(ScriptableLayerState::Unknown));
+        static_cast<std::size_t>(numLayers), static_cast<int>(ScriptableLayerState::Unknown));
   }
 
   // Get current state for diff detection
@@ -2398,9 +2504,9 @@ void LuaEngine::showDirectoryChooser(const std::string& title,
           if (cb && cb->valid()) {
             try {
               std::fprintf(stderr, "[FileChooser] Invoking Lua callback with path: '%s'\n", path.c_str());
-              auto result = (*cb)(path);
-              if (!result.valid()) {
-                sol::error err = result;
+              auto callbackResult = (*cb)(path);
+              if (!callbackResult.valid()) {
+                sol::error err = callbackResult;
                 std::fprintf(stderr, "[FileChooser] Lua callback error: %s\n", err.what());
               } else {
                 std::fprintf(stderr, "[FileChooser] Lua callback succeeded\n");
@@ -2421,6 +2527,65 @@ void LuaEngine::showDirectoryChooser(const std::string& title,
   // Release ownership - FileChooser manages its own lifetime after launchAsync
   chooser.release();
   std::fprintf(stderr, "[FileChooser] Done\n");
+}
+
+void LuaEngine::showFileChooser(const std::string& title,
+                                const std::string& initialPath,
+                                const std::string& filePatterns,
+                                sol::function callback) {
+  if (!juce::MessageManager::getInstance()->isThisTheMessageThread()) {
+    juce::MessageManager::callAsync([callback]() mutable {
+      if (callback.valid()) {
+        try { callback(""); } catch (...) {}
+      }
+    });
+    return;
+  }
+
+  juce::File initialFile(initialPath);
+  juce::File initialDir = initialFile;
+  if (initialFile.existsAsFile()) {
+    initialDir = initialFile.getParentDirectory();
+  }
+  if (!initialDir.isDirectory()) {
+    initialDir = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
+  }
+
+  auto chooser = std::make_unique<juce::FileChooser>(
+      juce::String(title),
+      initialDir,
+      juce::String(filePatterns.empty() ? "*.lua;*.json5" : filePatterns),
+      true,
+      false
+  );
+
+  auto cb = std::make_shared<sol::function>(callback);
+
+  chooser->launchAsync(
+      juce::FileBrowserComponent::canSelectFiles
+          | juce::FileBrowserComponent::openMode,
+      [cb, chooserPtr = chooser.get()](const juce::FileChooser& fc) mutable {
+        juce::ignoreUnused(chooserPtr);
+        juce::File result = fc.getResult();
+        std::string path = result.exists() ? result.getFullPathName().toStdString() : "";
+
+        juce::MessageManager::callAsync([cb, path]() mutable {
+          if (cb && cb->valid()) {
+            try {
+              auto callbackResult = (*cb)(path);
+              if (!callbackResult.valid()) {
+                sol::error err = callbackResult;
+                std::fprintf(stderr, "[FileChooser] Lua file callback error: %s\n", err.what());
+              }
+            } catch (const sol::error& e) {
+              std::fprintf(stderr, "[FileChooser] Lua file callback exception: %s\n", e.what());
+            }
+          }
+        });
+      }
+  );
+
+  chooser.release();
 }
 
 // ============================================================================

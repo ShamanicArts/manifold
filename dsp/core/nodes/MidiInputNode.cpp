@@ -74,6 +74,10 @@ void MidiInputNode::processMidiEvent(const midi::MidiEvent& event) {
             routeToVoices(event.channel, event.data1, 0, false);
             break;
             
+        case midi::EventType::Aftertouch:
+        case midi::EventType::ChannelPressure:
+            break;
+            
         case midi::EventType::ControlChange:
             // Forward CC to connected voice node
             if (auto voiceNode = connectedVoiceNode_.lock()) {
@@ -91,8 +95,15 @@ void MidiInputNode::processMidiEvent(const midi::MidiEvent& event) {
         case midi::EventType::ProgramChange:
             // Could be used to change instrument/preset
             break;
-            
-        default:
+
+        case midi::EventType::Sysex:
+        case midi::EventType::Clock:
+        case midi::EventType::Start:
+        case midi::EventType::Continue:
+        case midi::EventType::Stop:
+        case midi::EventType::ActiveSensing:
+        case midi::EventType::Reset:
+        case midi::EventType::Unknown:
             break;
     }
     

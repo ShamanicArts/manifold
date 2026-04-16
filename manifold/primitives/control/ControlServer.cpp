@@ -25,7 +25,9 @@
 #include <sstream>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
+#include <limits>
 
 #if JUCE_WINDOWS
 
@@ -136,8 +138,12 @@ static std::string jsonStr(const std::string& key, const std::string& val) {
 
 static std::string jsonNum(const std::string& key, double val) {
     char buf[64];
-    if (val == (int)val)
-        std::snprintf(buf, sizeof(buf), "\"%s\":%d", key.c_str(), (int)val);
+    const double rounded = std::round(val);
+    const bool fitsIntRange = rounded >= static_cast<double>(std::numeric_limits<int>::min())
+                           && rounded <= static_cast<double>(std::numeric_limits<int>::max());
+    const bool isIntegral = std::isfinite(val) && fitsIntRange && std::abs(val - rounded) < 1.0e-9;
+    if (isIntegral)
+        std::snprintf(buf, sizeof(buf), "\"%s\":%d", key.c_str(), static_cast<int>(rounded));
     else
         std::snprintf(buf, sizeof(buf), "\"%s\":%.6g", key.c_str(), val);
     return buf;
@@ -956,7 +962,8 @@ void ControlServer::drainAndBroadcastEvents() {
     ControlEvent events[32];
     int count = eventRing.drain(events, 32);
     for (int i = 0; i < count; ++i) {
-        std::string msg = "EVENT " + std::string(events[i].json, events[i].length) + "\n";
+        const auto eventLength = static_cast<std::size_t>(std::max(0, events[i].length));
+        std::string msg = "EVENT " + std::string(events[i].json, eventLength) + "\n";
         broadcastToWatchers(msg);
     }
 }
@@ -1004,20 +1011,21 @@ std::string ControlServer::loadFileForInjection(const std::string& filepath) {
     // Prepare injection buffer
     {
         std::lock_guard<std::mutex> lock(injectionMutex);
-        injectionBuffer.samplesL.resize(numSamples);
-        injectionBuffer.samplesR.resize(numSamples);
+        const auto sampleCount = static_cast<std::size_t>(numSamples);
+        injectionBuffer.samplesL.resize(sampleCount);
+        injectionBuffer.samplesR.resize(sampleCount);
         injectionBuffer.totalSamples = numSamples;
 
         // Copy channel data
         const float* ch0 = fileBuffer.getReadPointer(0);
-        std::memcpy(injectionBuffer.samplesL.data(), ch0, numSamples * sizeof(float));
+        std::memcpy(injectionBuffer.samplesL.data(), ch0, sampleCount * sizeof(float));
 
         if (numChannels > 1) {
             const float* ch1 = fileBuffer.getReadPointer(1);
-            std::memcpy(injectionBuffer.samplesR.data(), ch1, numSamples * sizeof(float));
+            std::memcpy(injectionBuffer.samplesR.data(), ch1, sampleCount * sizeof(float));
         } else {
             // Mono: duplicate to both channels
-            std::memcpy(injectionBuffer.samplesR.data(), ch0, numSamples * sizeof(float));
+            std::memcpy(injectionBuffer.samplesR.data(), ch0, sampleCount * sizeof(float));
         }
     }
 
@@ -1064,8 +1072,9 @@ int ControlServer::drainInjection(CaptureBuffer& capture, int maxSamples, float 
     int toWrite = std::min(maxSamples, remaining);
 
     for (int i = 0; i < toWrite; ++i) {
-        capture.write(injectionBuffer.samplesL[pos + i] * gain, 0);
-        capture.write(injectionBuffer.samplesR[pos + i] * gain, 1);
+        const auto sampleIndex = static_cast<std::size_t>(pos + i);
+        capture.write(injectionBuffer.samplesL[sampleIndex] * gain, 0);
+        capture.write(injectionBuffer.samplesR[sampleIndex] * gain, 1);
     }
 
     injectionReadPos.store(pos + toWrite, std::memory_order_relaxed);

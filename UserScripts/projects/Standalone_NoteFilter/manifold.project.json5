@@ -1,0 +1,76 @@
+{
+  "name": "Standalone Note Filter",
+  "version": 1,
+  "description": "Standalone MIDI note filter export target",
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+  "plugin": {
+    "midiEffect": true,
+    "runtimeFamily": "midi_effect",
+    "view": {
+      "defaultMode": "compact",
+      "compact": {
+        "w": 236,
+        "h": 200
+      },
+      "split": {
+        "w": 236,
+        "h": 200
+      }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9080,
+      "oscQueryPort": 9081
+    },
+    "params": [
+      {
+        "path": "/plugin/params/mode",
+        "internalPath": "/midi/synth/rack/note_filter/1/mode",
+        "type": "f",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "hostParamId": "mode",
+        "hostParamName": "Mode",
+        "hostParamKind": "choice",
+        "choices": [
+          "Inside",
+          "Outside"
+        ],
+        "description": "Filter mode"
+      },
+      {
+        "path": "/plugin/params/low",
+        "internalPath": "/midi/synth/rack/note_filter/1/low",
+        "type": "f",
+        "min": 0,
+        "max": 127,
+        "default": 36,
+        "hostParamId": "low",
+        "hostParamName": "Low",
+        "hostParamKind": "float",
+        "description": "Low note bound"
+      },
+      {
+        "path": "/plugin/params/high",
+        "internalPath": "/midi/synth/rack/note_filter/1/high",
+        "type": "f",
+        "min": 0,
+        "max": 127,
+        "default": 96,
+        "hostParamId": "high",
+        "hostParamName": "High",
+        "hostParamKind": "float",
+        "description": "High note bound"
+      }
+    ]
+  },
+  "dsp": {
+    "default": "dsp/main.lua"
+  },
+  "theme": "../Main/themes/dark.lua"
+}
