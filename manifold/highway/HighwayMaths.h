@@ -71,7 +71,7 @@ namespace hwy
                 typedef hwy::HWY_NAMESPACE::MFromD<hwy::HWY_NAMESPACE::ScalableTag<float>> FltMaskType;
 
                 const FltType minval = HWY::Set(_flttype, -126.99999f);
-                const FltType maxval = HWY::Set(_flttype,129.0f);
+                const FltType maxval = HWY::Set(_flttype, 127.0f);
                 
 
                 //log2(x) * y
