@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manifold Start Menu & Project Launcher</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --bg-elevated: #121a2f;
+      --bg-hover: #1a2440;
+      --panel: #0d1420;
+      --panel-border: #1f2b4d;
+      --accent: #22d3ee;
+      --accent-dim: #22d3ee22;
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --text-muted: #64748b;
+      --danger: #f87171;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --tab-inactive: #1e293b;
+      --header-height: 40px;
+      --tab-height: 32px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header / Shared Shell */
+    .shell-header {
+      height: var(--header-height);
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      user-select: none;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+      margin-right: 8px;
+    }
+    .brand-dot {
+      width: 8px; height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--accent);
+    }
+
+    /* Menu Bar */
+    .menu-bar {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .menu-item {
+      position: relative;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: var(--text-dim);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all .12s ease;
+    }
+    .menu-item:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+    .menu-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 6px;
+      min-width: 220px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 8px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.45);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-4px);
+      transition: all .15s ease;
+      z-index: 100;
+    }
+    .menu-item.open > .menu-dropdown {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+    .menu-section {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      padding: 8px 10px 4px;
+    }
+    .menu-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .12s;
+    }
+    .menu-row:hover { background: var(--bg-hover); }
+    .menu-row .shortcut {
+      margin-left: auto;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    .menu-divider {
+      height: 1px;
+      background: var(--panel-border);
+      margin: 6px 4px;
+    }
+    .menu-row .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+
+    /* Open Projects Tab Bar */
+    .tab-bar {
+      flex: 1;
+      display: flex;
+      align-items: flex-end;
+      height: var(--header-height);
+      padding-bottom: 4px;
+      gap: 4px;
+      overflow-x: auto;
+    }
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      height: var(--tab-height);
+      background: var(--tab-inactive);
+      border: 1px solid var(--panel-border);
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      font-size: 12px;
+      color: var(--text-dim);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all .12s ease;
+      position: relative;
+    }
+    .tab:hover { background: var(--bg-hover); color: var(--text); }
+    .tab.active {
+      background: var(--bg);
+      color: var(--text);
+      border-color: var(--panel-border);
+      z-index: 1;
+    }
+    .tab.active::after {
+      content: "";
+      position: absolute;
+      bottom: -1px; left: 0; right: 0;
+      height: 1px;
+      background: var(--bg);
+    }
+    .tab-close {
+      width: 14px; height: 14px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 3px;
+      font-size: 10px;
+      color: var(--text-muted);
+      transition: all .1s;
+    }
+    .tab-close:hover { background: var(--danger); color: #fff; }
+
+    /* Main Content */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      position: relative;
+    }
+
+    /* Empty Launcher State */
+    .launcher-empty {
+      text-align: center;
+      max-width: 560px;
+    }
+    .launcher-empty .logo-ring {
+      width: 80px; height: 80px;
+      border: 2px solid var(--panel-border);
+      border-radius: 50%;
+      margin: 0 auto 24px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .launcher-empty .logo-ring::before {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      border-top-color: var(--accent);
+      animation: spin 8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .launcher-empty .logo-dot {
+      width: 14px; height: 14px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 24px var(--accent);
+    }
+    .launcher-empty h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      letter-spacing: -0.02em;
+    }
+    .launcher-empty p {
+      font-size: 14px;
+      color: var(--text-dim);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .quick-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all .12s ease;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+    }
+    .btn-primary:hover { background: #5eeaff; }
+    .btn-secondary {
+      background: var(--bg-hover);
+      border-color: var(--panel-border);
+      color: var(--text);
+    }
+    .btn-secondary:hover { border-color: var(--text-dim); }
+
+    /* Project Browser Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: all .2s ease;
+      z-index: 200;
+    }
+    .modal-overlay.open { opacity: 1; visibility: visible; }
+    .modal {
+      width: 720px;
+      max-width: 92vw;
+      max-height: 84vh;
+      background: var(--bg-elevated);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: translateY(12px);
+      transition: transform .2s ease;
+    }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .modal-header h2 { font-size: 15px; font-weight: 600; }
+    .modal-close {
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 6px;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .modal-close:hover { background: var(--bg-hover); color: var(--text); }
+    .modal-search {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .modal-search input {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--panel-border);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+    .modal-search input:focus { border-color: var(--accent); }
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+    }
+    .project-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .project-card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 14px;
+      cursor: pointer;
+      transition: all .12s ease;
+      position: relative;
+    }
+    .project-card:hover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      transform: translateY(-1px);
+    }
+    .project-card .type-badge {
+      position: absolute;
+      top: 10px; right: 10px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--bg-hover);
+      color: var(--text-muted);
+    }
+    .project-card .icon {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .project-card h3 {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .project-card p {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .modal-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--panel-border);
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Content State (when a project is "open") */
+    .project-content {
+      display: none;
+      width: 100%;
+      height: 100%;
+      background: var(--panel);
+      border-radius: 10px;
+      border: 1px solid var(--panel-border);
+      padding: 24px;
+    }
+    .project-content.active { display: block; }
+    .project-content h2 { font-size: 16px; margin-bottom: 8px; }
+    .project-content p { color: var(--text-dim); font-size: 13px; }
+
+    /* Info toast */
+    .toast {
+      position: fixed;
+      bottom: 20px; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--bg-elevated);
+      border: 1px solid var(--panel-border);
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--text);
+      opacity: 0;
+      visibility: hidden;
+      transition: all .2s ease;
+      z-index: 300;
+    }
+    .toast.show { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+  <!-- Shell Header -->
+  <div class="shell-header">
+    <div class="brand"><div class="brand-dot"></div>MANIFOLD</div>
+
+    <div class="menu-bar">
+      <div class="menu-item" data-menu="projects">
+        Projects
+        <div class="menu-dropdown">
+          <div class="menu-section">Default Projects</div>
+          <div class="menu-row" onclick="openProject('Looper')">
+            <div class="dot" style="background:#f472b6"></div>
+            <span>Looper</span>
+            <span class="shortcut">⌘1</span>
+          </div>
+          <div class="menu-row" onclick="openProject('MIDI Synth')">
+            <div class="dot" style="background:#a78bfa"></div>
+            <span>MIDI Synth</span>
+            <span class="shortcut">⌘2</span>
+          </div>
+          <div class="menu-row" onclick="openProject('Filter')">
+            <div class="dot" style="background:#22d3ee"></div>
+            <span>Filter</span>
+            <span class="shortcut">⌘3</span>
+          </div>
+          <div class="menu-divider"></div>
+          <div class="menu-section">Recent</div>
+          <div class="menu-row" onclick="openProject('Standalone Sample')">
+            <span>Standalone Sample</span>
+            <span class="shortcut">⌘⇧T</span>
+          </div>
+          <div class="menu-row" onclick="openProject('Grain Freeze')">
+            <span>Grain Freeze</span>
+          </div>
+          <div class="menu-divider"></div>
+          <div class="menu-row" onclick="toggleModal(true)">
+            <span>Browse Projects…</span>
+            <span class="shortcut">⌘O</span>
+          </div>
+          <div class="menu-row" onclick="showToast('Open from file chooser not implemented in prototype')">
+            <span>Open from File…</span>
+            <span class="shortcut">⌘⇧O</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-item" data-menu="settings">
+        Settings
+        <div class="menu-dropdown" style="min-width:180px">
+          <div class="menu-row" onclick="showToast('OSC settings panel would open here')">
+            <span>OSC / OSCQuery</span>
+          </div>
+          <div class="menu-row" onclick="showToast('Audio settings panel would open here')">
+            <span>Audio Device</span>
+          </div>
+          <div class="menu-row" onclick="showToast('UI theme settings would open here')">
+            <span>Appearance</span>
+          </div>
+          <div class="menu-divider"></div>
+          <div class="menu-row" onclick="showToast('Preferences JSON would open')">
+            <span>Open Preferences</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-item" data-menu="help">
+        Help
+        <div class="menu-dropdown" style="min-width:160px">
+          <div class="menu-row" onclick="showToast('Documentation would open in browser')">
+            <span>Documentation</span>
+          </div>
+          <div class="menu-row" onclick="showToast('Keyboard shortcuts cheat sheet would open')">
+            <span>Shortcuts</span>
+          </div>
+          <div class="menu-row" onclick="showToast('About dialog would open')">
+            <span>About Manifold</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-bar" id="tabBar">
+      <!-- Tabs injected here -->
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main" id="mainArea">
+    <div class="launcher-empty" id="emptyState">
+      <div class="logo-ring"><div class="logo-dot"></div></div>
+      <h1>Welcome to Manifold</h1>
+      <p>Open a project to start creating. You can load default projects from the <strong>Projects</strong> menu, browse your project library, or open a project file directly.</p>
+      <div class="quick-actions">
+        <button class="btn btn-primary" onclick="openProject('MIDI Synth')">🎹 MIDI Synth</button>
+        <button class="btn btn-secondary" onclick="openProject('Looper')">🔁 Looper</button>
+        <button class="btn btn-secondary" onclick="toggleModal(true)">Browse All…</button>
+      </div>
+    </div>
+
+    <div class="project-content" id="projectContent">
+      <h2 id="projectTitle">Project Name</h2>
+      <p>This area would render the active project's UI. In the real implementation, this is where <code>switchUiScript(path)</code> loads the project.</p>
+    </div>
+  </div>
+
+  <!-- Project Browser Modal -->
+  <div class="modal-overlay" id="projectModal" onclick="if(event.target===this) toggleModal(false)">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Browse Projects</h2>
+        <div class="modal-close" onclick="toggleModal(false)">✕</div>
+      </div>
+      <div class="modal-search">
+        <input type="text" id="projectSearch" placeholder="Search projects…" oninput="filterProjects()">
+      </div>
+      <div class="modal-body">
+        <div class="project-grid" id="projectGrid">
+          <!-- Cards injected here -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span>Press <strong>Enter</strong> to open selected project</span>
+        <span id="projectCount">0 projects</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // Project catalog
+    const projects = [
+      { name: 'Looper', type: 'system', desc: 'Multi-layer looper with scriptable UI and external control.', color: '#f472b6', icon: '🔁' },
+      { name: 'MIDI Synth', type: 'system', desc: 'Polyphonic synth with sampler, waveforms, and FX rack.', color: '#a78bfa', icon: '🎹' },
+      { name: 'Filter', type: 'system', desc: 'Standalone resonant filter with modulation.', color: '#22d3ee', icon: '🔊' },
+      { name: 'EQ', type: 'system', desc: '8-band parametric equalizer.', color: '#34d399', icon: '📊' },
+      { name: 'FX Rack', type: 'system', desc: 'Multi-effect processor with 21 effect types.', color: '#fbbf24', icon: '✨' },
+      { name: 'Standalone Sample', type: 'user', desc: 'Eurorack-style sample player with capture and phase vocoder.', color: '#fb923c', icon: '🎤' },
+      { name: 'Grain Freeze', type: 'user', desc: 'Granular synthesis and spectral freeze engine.', color: '#60a5fa', icon: '❄️' },
+      { name: 'Arpeggiator', type: 'export', desc: 'MIDI effect export: rhythmic note patterns.', color: '#c084fc', icon: '🎼' },
+      { name: 'Scale Quantizer', type: 'export', desc: 'MIDI effect export: real-time scale correction.', color: '#818cf8', icon: '🎵' },
+      { name: 'Note Filter', type: 'export', desc: 'MIDI effect export: velocity and note filtering.', color: '#f87171', icon: '🎚️' },
+    ];
+
+    let openProjects = [];
+    let activeProject = null;
+
+    // Menu interactions
+    document.querySelectorAll('.menu-item').forEach(item => {
+      item.addEventListener('click', e => {
+        e.stopPropagation();
+        const wasOpen = item.classList.contains('open');
+        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
+        if (!wasOpen) item.classList.add('open');
+      });
+    });
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
+    });
+
+    function renderTabs() {
+      const bar = document.getElementById('tabBar');
+      bar.innerHTML = '';
+      openProjects.forEach(p => {
+        const tab = document.createElement('div');
+        tab.className = 'tab' + (p === activeProject ? ' active' : '');
+        tab.innerHTML = `<span>${p}</span><div class="tab-close" onclick="event.stopPropagation(); closeProject('${p}')">×</div>`;
+        tab.onclick = () => switchToProject(p);
+        bar.appendChild(tab);
+      });
+    }
+
+    function openProject(name) {
+      if (!openProjects.includes(name)) {
+        openProjects.push(name);
+      }
+      switchToProject(name);
+      toggleModal(false);
+    }
+
+    function closeProject(name) {
+      openProjects = openProjects.filter(p => p !== name);
+      if (activeProject === name) {
+        activeProject = openProjects.length ? openProjects[openProjects.length - 1] : null;
+      }
+      updateMainView();
+      renderTabs();
+    }
+
+    function switchToProject(name) {
+      activeProject = name;
+      updateMainView();
+      renderTabs();
+    }
+
+    function updateMainView() {
+      const empty = document.getElementById('emptyState');
+      const content = document.getElementById('projectContent');
+      const title = document.getElementById('projectTitle');
+      if (!activeProject) {
+        empty.style.display = 'block';
+        content.classList.remove('active');
+      } else {
+        empty.style.display = 'none';
+        content.classList.add('active');
+        title.textContent = activeProject;
+      }
+    }
+
+    // Modal
+    function toggleModal(show) {
+      document.getElementById('projectModal').classList.toggle('open', show);
+      if (show) {
+        renderProjectGrid();
+        setTimeout(() => document.getElementById('projectSearch').focus(), 50);
+      }
+    }
+
+    function renderProjectGrid(filter = '') {
+      const grid = document.getElementById('projectGrid');
+      const term = filter.toLowerCase();
+      const filtered = projects.filter(p => p.name.toLowerCase().includes(term) || p.desc.toLowerCase().includes(term));
+      grid.innerHTML = filtered.map(p => `
+        <div class="project-card" onclick="openProject('${p.name}')">
+          <span class="type-badge">${p.type}</span>
+          <div class="icon" style="background:${p.color}22;color:${p.color}">${p.icon}</div>
+          <h3>${p.name}</h3>
+          <p>${p.desc}</p>
+        </div>
+      `).join('');
+      document.getElementById('projectCount').textContent = `${filtered.length} project${filtered.length !== 1 ? 's' : ''}`;
+    }
+
+    function filterProjects() {
+      renderProjectGrid(document.getElementById('projectSearch').value);
+    }
+
+    // Toast
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', e => {
+      if (e.metaKey && e.key === 'o') { e.preventDefault(); toggleModal(true); }
+      if (e.key === 'Escape') toggleModal(false);
+    });
+
+    // Initial render
+    renderTabs();
+    renderProjectGrid();
+  </script>
+</body>
+</html>
