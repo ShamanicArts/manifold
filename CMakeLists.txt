@@ -627,7 +627,7 @@ function(manifold_add_export_lua_assets target_name comment_text)
 endfunction()
 
 function(manifold_add_export_plugin target_name)
-    cmake_parse_arguments(ARG "IS_SYNTH;NEEDS_MIDI_INPUT;NEEDS_MIDI_OUTPUT;IS_MIDI_EFFECT" "PRODUCT_NAME;PLUGIN_CODE;PROJECT_DIR;MANIFEST_SPEC;PROJECT_MANIFEST" "FORMATS" ${ARGN})
+    cmake_parse_arguments(ARG "IS_SYNTH;NEEDS_MIDI_INPUT;NEEDS_MIDI_OUTPUT;IS_MIDI_EFFECT;FORCE_AUDIO_INPUT;NEEDS_AUDIO_SIDECHAIN" "PRODUCT_NAME;PLUGIN_CODE;PROJECT_DIR;MANIFEST_SPEC;PROJECT_MANIFEST" "FORMATS" ${ARGN})
 
     if(NOT ARG_PRODUCT_NAME)
         message(FATAL_ERROR "manifold_add_export_plugin requires PRODUCT_NAME")
@@ -706,6 +706,18 @@ function(manifold_add_export_plugin target_name)
             MANIFOLD_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
             MANIFOLD_DEFAULT_PROJECT=${ARG_PROJECT_MANIFEST}
             ${MANIFOLD_LINK_PLATFORM_DEFINE})
+
+    if(ARG_FORCE_AUDIO_INPUT)
+        target_compile_definitions(${target_name}
+            PUBLIC
+                MANIFOLD_EXPORT_FORCE_AUDIO_INPUT=1)
+    endif()
+
+    if(ARG_NEEDS_AUDIO_SIDECHAIN)
+        target_compile_definitions(${target_name}
+            PUBLIC
+                MANIFOLD_EXPORT_NEEDS_SIDECHAIN=1)
+    endif()
 
     target_link_libraries(${target_name}
         PRIVATE
@@ -791,6 +803,15 @@ manifold_add_export_plugin(Manifold_NoteFilter
     NEEDS_MIDI_INPUT
     NEEDS_MIDI_OUTPUT
     IS_MIDI_EFFECT)
+
+manifold_add_export_plugin(Manifold_Sample
+    PRODUCT_NAME "Manifold Sample"
+    PLUGIN_CODE Mnsm
+    PROJECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/UserScripts/projects/Standalone_Sample
+    IS_SYNTH
+    NEEDS_MIDI_INPUT
+    FORCE_AUDIO_INPUT
+    NEEDS_AUDIO_SIDECHAIN)
 
 juce_add_console_app(ManifoldVST3Probe
     PRODUCT_NAME "Manifold VST3 Probe")

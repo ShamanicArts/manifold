@@ -406,8 +406,11 @@ BehaviorCoreProcessor::BehaviorCoreProcessor()
                                .withInput("Input", juce::AudioChannelSet::stereo(), true)
                                .withOutput("Output", juce::AudioChannelSet::stereo(), true)
                      #else
-                      #if ! JucePlugin_IsSynth
+                      #if ! JucePlugin_IsSynth || defined(MANIFOLD_EXPORT_FORCE_AUDIO_INPUT)
                                .withInput("Input", juce::AudioChannelSet::stereo(), true)
+                      #endif
+                      #if defined(MANIFOLD_EXPORT_NEEDS_SIDECHAIN)
+                               .withInput("Sidechain", juce::AudioChannelSet::stereo(), false)
                       #endif
                                .withOutput("Output", juce::AudioChannelSet::stereo(), true)
                      #endif
@@ -426,6 +429,41 @@ BehaviorCoreProcessor::BehaviorCoreProcessor()
     initialiseHostParameters();
     registerExportPluginEndpoints();
     initialiseAtomicState(currentSampleRate.load(std::memory_order_relaxed));
+}
+
+bool BehaviorCoreProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
+   #if JucePlugin_IsMidiEffect
+    juce::ignoreUnused(layouts);
+    return true;
+   #else
+    const auto mainOut = layouts.getMainOutputChannelSet();
+    if (mainOut != juce::AudioChannelSet::mono() &&
+        mainOut != juce::AudioChannelSet::stereo()) {
+        return false;
+    }
+
+    const auto mainIn = layouts.getMainInputChannelSet();
+   #if ! JucePlugin_IsSynth || defined(MANIFOLD_EXPORT_FORCE_AUDIO_INPUT)
+    if (mainIn != juce::AudioChannelSet::disabled() &&
+        mainIn != juce::AudioChannelSet::mono() &&
+        mainIn != juce::AudioChannelSet::stereo()) {
+        return false;
+    }
+   #else
+    juce::ignoreUnused(mainIn);
+   #endif
+
+   #if defined(MANIFOLD_EXPORT_NEEDS_SIDECHAIN)
+    const auto sidechainIn = layouts.getChannelSet(true, 1);
+    if (sidechainIn != juce::AudioChannelSet::disabled() &&
+        sidechainIn != juce::AudioChannelSet::mono() &&
+        sidechainIn != juce::AudioChannelSet::stereo()) {
+        return false;
+    }
+   #endif
+
+    return true;
+   #endif
 }
 
 BehaviorCoreProcessor::~BehaviorCoreProcessor() {
@@ -1519,6 +1557,10 @@ int64_t BehaviorCoreProcessor::getPrimaryDspScriptSizeBytes() const {
                : 0;
 }
 
+juce::File BehaviorCoreProcessor::getPrimaryDspScriptFile() const {
+    return dspScriptHost ? dspScriptHost->getCurrentScriptFile() : juce::File();
+}
+
 juce::AudioProcessorValueTreeState* BehaviorCoreProcessor::getHostParameterState() const {
     return hostParams_.get();
 }
@@ -1549,6 +1591,7 @@ void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     const int graphChannels = juce::jmax(1, getGraphOutputChannels());
     graphWetBuffer.setSize(graphChannels, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
     monitorInputBuffer.setSize(graphChannels, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
+    sidechainInputBuffer.setSize(graphChannels, currentBlockSize.load(std::memory_order_relaxed), false, true, true);
     forwardScheduled = false;
     forwardFireAtSample = 0.0;
     forwardScheduledBars = 0.0f;
@@ -1715,6 +1758,11 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     auto& state = controlServer.getAtomicState();
 
+    auto mainInputBus = getBusCount(true) > 0 ? getBusBuffer(buffer, true, 0)
+                                              : juce::AudioBuffer<float>();
+    const int mainInputChannels = mainInputBus.getNumChannels();
+    const int mainBusChannels = juce::jmax(mainInputChannels, juce::jmax(1, getTotalNumOutputChannels()));
+
    #if JucePlugin_IsMidiEffect
     {
         buffer.clear();
@@ -1754,10 +1802,9 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     // Input volume controls level going into looper (capture + graph)
     const float inputVolume = state.inputVolume.load(std::memory_order_relaxed);
 
-    // Capture-plane source comes from incoming block before any output scaling.
-    // Use the same write pointers legacy uses for in-place host buffers.
-    const float* captureL = outL;
-    const float* captureR = outR;
+    // Capture-plane source comes from the main host input bus before any wet/dry mixing.
+    const float* captureL = mainInputChannels > 0 ? mainInputBus.getReadPointer(0) : nullptr;
+    const float* captureR = mainInputChannels > 1 ? mainInputBus.getReadPointer(1) : captureL;
 
     // Capture-plane source buffer is always fed from incoming input stream
     // (or injected stream when INJECT is active), before any wet/dry mixing.
@@ -1781,9 +1828,9 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     const bool canProcessGraph =
         graphEnabled &&
         activeRuntime != nullptr &&
-        graphWetBuffer.getNumChannels() >= numChannels &&
+        graphWetBuffer.getNumChannels() >= mainBusChannels &&
         graphWetBuffer.getNumSamples() >= numSamples &&
-        monitorInputBuffer.getNumChannels() >= numChannels &&
+        monitorInputBuffer.getNumChannels() >= mainBusChannels &&
         monitorInputBuffer.getNumSamples() >= numSamples;
     const bool mutationPauseRequested =
         graphMutationPauseRequested.load(std::memory_order_acquire);
@@ -1791,27 +1838,58 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     if (canProcessGraph && !mutationPauseRequested) {
         graphProcessDepth.fetch_add(1, std::memory_order_acq_rel);
         // INPUT -> INPUT-DSP: always active at inputVolume.
-        for (int ch = 0; ch < numChannels; ++ch) {
-            graphWetBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
-            graphWetBuffer.applyGain(ch, 0, numSamples, inputVolume);
+        for (int ch = 0; ch < mainBusChannels; ++ch) {
+            if (mainInputChannels > 0) {
+                const int srcCh = juce::jmin(ch, mainInputChannels - 1);
+                graphWetBuffer.copyFrom(ch, 0, mainInputBus, srcCh, 0, numSamples);
+                graphWetBuffer.applyGain(ch, 0, numSamples, inputVolume);
+            } else {
+                graphWetBuffer.clear(ch, 0, numSamples);
+            }
         }
 
         // INPUT-DSP -> Monitor branch: monitor-toggle-controlled source.
         const bool passthroughEnabled = state.passthroughEnabled.load(std::memory_order_relaxed);
         const float monitorInputGain = passthroughEnabled ? inputVolume : 0.0f;
-        for (int ch = 0; ch < numChannels; ++ch) {
-            monitorInputBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
-            monitorInputBuffer.applyGain(ch, 0, numSamples, monitorInputGain);
+        for (int ch = 0; ch < mainBusChannels; ++ch) {
+            if (mainInputChannels > 0) {
+                const int srcCh = juce::jmin(ch, mainInputChannels - 1);
+                monitorInputBuffer.copyFrom(ch, 0, mainInputBus, srcCh, 0, numSamples);
+                monitorInputBuffer.applyGain(ch, 0, numSamples, monitorInputGain);
+            } else {
+                monitorInputBuffer.clear(ch, 0, numSamples);
+            }
         }
 
         float* wetPtrs[2] = {
             graphWetBuffer.getWritePointer(0),
             graphWetBuffer.getNumChannels() > 1 ? graphWetBuffer.getWritePointer(1)
                                                 : graphWetBuffer.getWritePointer(0)};
-        juce::AudioBuffer<float> wetView(wetPtrs, juce::jmax(1, numChannels), numSamples);
+        juce::AudioBuffer<float> wetView(wetPtrs, juce::jmax(1, mainBusChannels), numSamples);
+
+        const juce::AudioBuffer<float>* sidechainPtr = nullptr;
+       #if defined(MANIFOLD_EXPORT_NEEDS_SIDECHAIN)
+        if (getBusCount(true) > 1 && getBus(true, 1) != nullptr && getBus(true, 1)->isEnabled() &&
+            sidechainInputBuffer.getNumChannels() > 0 &&
+            sidechainInputBuffer.getNumSamples() >= numSamples) {
+            auto sidechainBus = getBusBuffer(buffer, true, 1);
+            const int sidechainChannels = sidechainBus.getNumChannels();
+            const int destChannels = sidechainInputBuffer.getNumChannels();
+            for (int ch = 0; ch < destChannels; ++ch) {
+                if (sidechainChannels > 0) {
+                    const int srcCh = juce::jmin(ch, sidechainChannels - 1);
+                    sidechainInputBuffer.copyFrom(ch, 0, sidechainBus, srcCh, 0, numSamples);
+                    sidechainInputBuffer.applyGain(ch, 0, numSamples, inputVolume);
+                } else {
+                    sidechainInputBuffer.clear(ch, 0, numSamples);
+                }
+            }
+            sidechainPtr = &sidechainInputBuffer;
+        }
+       #endif
 
         activeRuntime->setMonitorEnabled(passthroughEnabled);
-        activeRuntime->process(wetView, &monitorInputBuffer);
+        activeRuntime->process(wetView, &monitorInputBuffer, sidechainPtr);
 
         if (outL == nullptr) {
             buffer.clear();
@@ -1862,8 +1940,8 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    state.captureLevel.store(captureL != nullptr ? computeBufferRms(buffer)
-                                                 : 0.0f,
+    state.captureLevel.store(mainInputChannels > 0 ? computeBufferRms(mainInputBus)
+                                                    : 0.0f,
                              std::memory_order_relaxed);
 
     for (int i = 0; i < MAX_LAYERS; ++i) {

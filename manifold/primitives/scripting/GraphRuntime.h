@@ -66,9 +66,12 @@ public:
      * @param buffer In-place audio buffer (modified)
      * @param rawHostInput Optional raw host-input buffer for nodes that request
      *                     capture-plane semantics when unconnected.
+     * @param sidechainInput Optional host sidechain buffer for nodes marked as
+     *                       SidechainInputDSP when unconnected.
      */
     void process(juce::AudioBuffer<float>& buffer,
-                 const juce::AudioBuffer<float>* rawHostInput = nullptr);
+                 const juce::AudioBuffer<float>* rawHostInput = nullptr,
+                 const juce::AudioBuffer<float>* sidechainInput = nullptr);
 
     void setMonitorEnabled(bool enabled) noexcept {
         monitorEnabled_.store(enabled, std::memory_order_relaxed);
@@ -114,6 +117,7 @@ private:
     // Preallocated buffers used in process() to avoid per-call heap work.
     juce::AudioBuffer<float> chunkBuffer_;
     juce::AudioBuffer<float> rawChunkBuffer_;
+    juce::AudioBuffer<float> sidechainChunkBuffer_;
 
     // Input accumulators per input bus (each is stereo). Input bus count is derived
     // from node->getNumInputs() using the legacy convention that most nodes
@@ -132,13 +136,15 @@ private:
      * Internal process that handles chunking for blocks larger than maxBlockSize.
      */
     void processChunked(juce::AudioBuffer<float>& buffer,
-                        const juce::AudioBuffer<float>* rawHostInput);
+                        const juce::AudioBuffer<float>* rawHostInput,
+                        const juce::AudioBuffer<float>* sidechainInput);
 
     /**
      * Single-pass process for blocks <= maxBlockSize.
      */
     void processSingle(juce::AudioBuffer<float>& buffer,
-                       const juce::AudioBuffer<float>* rawHostInput);
+                       const juce::AudioBuffer<float>* rawHostInput,
+                       const juce::AudioBuffer<float>* sidechainInput);
 };
 
 /**

@@ -35,6 +35,9 @@ case "$arg" in
   NoteFilter|notefilter|note-filter|Note-Filter|Manifold_NoteFilter)
     src="$repo_dir/build-dev/Manifold_NoteFilter_artefacts/RelWithDebInfo/VST3/Manifold Note Filter.vst3"
     ;;
+  Sample|sample|Manifold_Sample)
+    src="$repo_dir/build-dev/Manifold_Sample_artefacts/RelWithDebInfo/VST3/Manifold Sample.vst3"
+    ;;
   *)
     src="$arg"
     ;;

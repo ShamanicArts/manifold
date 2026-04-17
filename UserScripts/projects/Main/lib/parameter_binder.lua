@@ -1016,6 +1016,7 @@ local function appendDynamicSlotSchema(schema, specId, slotIndex, options)
   local maxFxParams = math.max(1, math.floor(tonumber(options and options.maxFxParams) or ParameterBinder.MAX_FX_PARAMS))
   local fxParamDefaults = type(options) == "table" and type(options.fxParamDefaults) == "table" and options.fxParamDefaults or nil
   local oscRenderStandard = tonumber(options and options.oscRenderStandard) or 0
+  local sampleSourceDefault = math.max(0, math.floor(tonumber(options and options.sampleSourceDefault) or 1))
 
   if id == "adsr" then
     appendSchema(schema, ParameterBinder.dynamicAdsrAttackPath(index), { type = "f", min = 0.001, max = 5, default = 0.05, description = "Dynamic ADSR " .. index .. " attack" })
@@ -1165,7 +1166,7 @@ local function appendDynamicSlotSchema(schema, specId, slotIndex, options)
   end
 
   if id == "rack_sample" then
-    appendSchema(schema, ParameterBinder.dynamicSampleSourcePath(index), { type = "f", min = 0, max = 5, default = 1, description = "Dynamic Sample " .. index .. " source (0=input, 1=live, 2..5=layers)" })
+    appendSchema(schema, ParameterBinder.dynamicSampleSourcePath(index), { type = "f", min = 0, max = 5, default = sampleSourceDefault, description = "Dynamic Sample " .. index .. " source (0=input, 1=live, 2..5=layers)" })
     appendSchema(schema, ParameterBinder.dynamicSampleCaptureTriggerPath(index), { type = "f", min = 0, max = 1, default = 0, description = "Dynamic Sample " .. index .. " capture trigger" })
     appendSchema(schema, ParameterBinder.dynamicSampleCaptureBarsPath(index), { type = "f", min = 0.0625, max = 16, default = 1.0, description = "Dynamic Sample " .. index .. " capture bars" })
     appendSchema(schema, ParameterBinder.dynamicSampleCaptureModePath(index), { type = "f", min = 0, max = 1, default = 0, description = "Dynamic Sample " .. index .. " capture mode (0=retro, 1=free)" })
