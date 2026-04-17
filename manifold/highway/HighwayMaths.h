@@ -1,4 +1,3 @@
-
 #define SinCos __SinCos
 
 #include "hwy/contrib/math/math-inl.h"
@@ -52,38 +51,35 @@ namespace hwy
     namespace HWY_NAMESPACE 
     {
         //Default
-        template< typename T, class D, int64_t X, typename ENABLE = void>
+        template<typename T, class D, int64_t X, typename ENABLE = void>
         struct HwyMathImpl
         {
-            template <class D, class V>
-            static HWY_INLINE void SinCos(const D d, V x, V& s, V& c)
+            template <class DN, class V>
+            static HWY_INLINE void SinCos(const DN d, V x, V& s, V& c)
             {
                 //Call the original version that we # redefined
                 __SinCos(d, x, s, c);
             }
 
-            template <class D, class V>
-            HWY_API V Pow(const D /*d*/, V val, V powval)
+            template <class DN, class V>
+            static HWY_INLINE V Pow(const DN /*d*/, V val, V powval)
             {
                 namespace HWY = hwy::HWY_NAMESPACE;
                 const hwy::HWY_NAMESPACE::ScalableTag<float> _flttype;
                 typedef hwy::HWY_NAMESPACE::VFromD<hwy::HWY_NAMESPACE::ScalableTag<float>> FltType;
-                typedef hwy::HWY_NAMESPACE::MFromD<hwy::HWY_NAMESPACE::ScalableTag<float>> FltMaskType;
 
                 const FltType minval = HWY::Set(_flttype, -126.99999f);
                 const FltType maxval = HWY::Set(_flttype, 127.0f);
-                
 
                 //log2(x) * y
                 FltType log2y = HWY::Log2(_flttype, val);
-                log2y = HWY::Mul(log2y,powval);
+                log2y = HWY::Mul(log2y, powval);
 
                 //Calculate exp2(log2(x) * y)
                 log2y = HWY::IfThenElse(HWY::Lt(log2y, minval), minval, log2y);
-                log2y = HWY::IfThenElse(HWY::Gt(log2y, maxval),maxval, log2y);
+                log2y = HWY::IfThenElse(HWY::Gt(log2y, maxval), maxval, log2y);
                 FltType exp2LogY = HWY::Exp2(_flttype, log2y);
 
-              
                 return exp2LogY;
             }
         };
@@ -91,16 +87,16 @@ namespace hwy
         //AVX512
         template<class D, int64_t X>
         struct HwyMathImpl<float, D, X,
-                           hwy::EnableIf< HWY_FLAG_CHECK_AVX3(X) && (HWY_MAX_LANES_D(D) * sizeof(float) == 64)> >
+                           hwy::EnableIf<HWY_FLAG_CHECK_AVX3(X) && (HWY_MAX_LANES_D(D) * sizeof(float) == 64)>>
         {
-            template <class D, class V>
-            static HWY_INLINE void SinCos(const D d, V x, V& s, V& c)
+            template <class DN, class V>
+            static HWY_INLINE void SinCos(const DN d, V x, V& s, V& c)
             {
                 s.raw = _mm512_sincos_ps(&c.raw, x.raw);
             }
 
-            template <class D, class V>
-            static HWY_INLINE V Pow(const D d, V a, V b)
+            template <class DN, class V>
+            static HWY_INLINE V Pow(const DN d, V a, V b)
             {
                 V ret;
                 ret.raw = _mm512_pow_ps(a.raw, b.raw);
@@ -110,17 +106,17 @@ namespace hwy
 
         //AVX2
         template<class D, int64_t X>
-        struct HwyMathImpl<float, D,X, 
-                           hwy::EnableIf< HWY_FLAG_CHECK_AVX_AVX3(X) && (HWY_MAX_LANES_D(D) * sizeof(float) == 32)> >
+        struct HwyMathImpl<float, D, X,
+                           hwy::EnableIf<HWY_FLAG_CHECK_AVX_AVX3(X) && (HWY_MAX_LANES_D(D) * sizeof(float) == 32)>>
         {
-            template <class D, class V>
-            static HWY_INLINE void SinCos(const D d, V x, V& s, V& c)
+            template <class DN, class V>
+            static HWY_INLINE void SinCos(const DN d, V x, V& s, V& c)
             {
                 s.raw = _mm256_sincos_ps(&c.raw, x.raw);
             }
 
-            template <class D, class V>
-            static HWY_INLINE V Pow(const D d, V a, V b)
+            template <class DN, class V>
+            static HWY_INLINE V Pow(const DN d, V a, V b)
             {
                 V ret;
                 ret.raw = _mm256_pow_ps(a.raw, b.raw);
@@ -130,17 +126,17 @@ namespace hwy
         
         //SSE
         template<class D, int64_t X>
-        struct HwyMathImpl<float, D,X, 
-                          hwy::EnableIf< HWY_FLAG_CHECK_SSE_AVX_AVX3(X) && (HWY_MAX_LANES_D(D) * sizeof(float) == 16)> >
+        struct HwyMathImpl<float, D, X,
+                          hwy::EnableIf<HWY_FLAG_CHECK_SSE_AVX_AVX3(X) && (HWY_MAX_LANES_D(D) * sizeof(float) == 16)>>
         {
-            template <class D, class V>
-            static HWY_INLINE void SinCos(const D d, V x, V& s, V& c)
+            template <class DN, class V>
+            static HWY_INLINE void SinCos(const DN d, V x, V& s, V& c)
             {
                 s.raw = _mm_sincos_ps(&c.raw, x.raw);
             }
 
-            template <class D, class V>
-            static HWY_INLINE V Pow(const D d, V a, V b)
+            template <class DN, class V>
+            static HWY_INLINE V Pow(const DN d, V a, V b)
             {
                 V ret;
                 ret.raw = _mm_pow_ps(a.raw, b.raw);
@@ -151,22 +147,20 @@ namespace hwy
         //================================================================
 
         template <class D, class V, int64_t X = HWY_TARGET>
-        HWY_INLINE void SinCos(const D d, V x, V& s, V& c) 
+        HWY_INLINE void SinCos(const D d, V x, V& s, V& c)
         {
             using T = TFromD<D>;
             HwyMathImpl<T, D, X>::SinCos(d, x, s, c);
         }
 
         template <class D, class V, int64_t X = HWY_TARGET>
-        HWY_INLINE V Pow(const D d, V a, V b) 
+        HWY_INLINE V Pow(const D d, V a, V b)
         {
             using T = TFromD<D>;
-            return HwyMathImpl<T, D, X>::Pow(d, a,b);
+            return HwyMathImpl<T, D, X>::Pow(d, a, b);
         }
 
         // NOLINTNEXTLINE(google-readability-namespace-comments)
     }  // namespace HWY_NAMESPACE
 }  // namespace hwy
 HWY_AFTER_NAMESPACE();
-
-

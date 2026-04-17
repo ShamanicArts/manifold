@@ -2,7 +2,7 @@
 //Do not guard against multiple inclusions - Highway works by including this file multiple times, once for each SIMD implementation
 
 #undef HWY_TARGET_INCLUDE 
-#define HWY_TARGET_INCLUDE "ADSREnvelopeNode_Highway.h"
+#define HWY_TARGET_INCLUDE "dsp/core/nodes/ADSREnvelopeNode_Highway.h"
 
 #include "manifold/highway/HighwayWrapper.h"
 
@@ -60,7 +60,7 @@ namespace dsp_primitives
                     prevGate_ = false;
                 }
 
-                virtual void run(const std::vector<AudioBufferView>& inputs,
+                HWY_ATTR virtual void run(const std::vector<AudioBufferView>& inputs,
                                  std::vector<WritableAudioBufferView>& outputs,
                                  int numsamples) override
                 {
@@ -424,7 +424,7 @@ namespace dsp_primitives
                 }
 
             private:
-                void configure()
+                HWY_ATTR void configure()
                 {
                     const hwy::HWY_NAMESPACE::ScalableTag<float> _flttype;
                     namespace HWY = hwy::HWY_NAMESPACE;

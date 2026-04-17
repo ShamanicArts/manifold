@@ -392,6 +392,7 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/SineBankNode.cpp
     dsp/core/nodes/ADSREnvelopeNode.h
     dsp/core/nodes/ADSREnvelopeNode.cpp
+    dsp/core/nodes/ADSREnvelopeNode_Highway.h
     dsp/core/nodes/ReverbNode.h
     dsp/core/nodes/ReverbNode.cpp
     dsp/core/nodes/FilterNode.h
@@ -434,6 +435,7 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/AudioSyncNode.cpp
     dsp/core/nodes/BitCrusherNode.h
     dsp/core/nodes/BitCrusherNode.cpp
+    dsp/core/nodes/BitCrusherNode_Highway.h
     dsp/core/nodes/FormantFilterNode.h
     dsp/core/nodes/FormantFilterNode.cpp
     dsp/core/nodes/ReverseDelayNode.h

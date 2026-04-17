@@ -1,7 +1,7 @@
 //Do not guard against multiple inclusions - Highway works by including this file multiple times, once for each SIMD implementation
 
 #undef HWY_TARGET_INCLUDE 
-#define HWY_TARGET_INCLUDE "BitCrusherNode_Highway.h"
+#define HWY_TARGET_INCLUDE "dsp/core/nodes/BitCrusherNode_Highway.h"
 
 #include "manifold/highway/HighwayWrapper.h"
 #include "manifold/highway/HighwayMaths.h"
@@ -40,7 +40,7 @@ namespace dsp_primitives
                     configure();
                 }
 
-                virtual void prepare(float sampleRate) override
+                HWY_ATTR virtual void prepare(float sampleRate) override
                 {
                     sampleRate_ = sampleRate;
 
@@ -81,7 +81,7 @@ namespace dsp_primitives
                 }
 
 
-                virtual void reset() override
+                HWY_ATTR virtual void reset() override
                 {
                     const hwy::HWY_NAMESPACE::ScalableTag<float> _flttype;
                     namespace HWY = hwy::HWY_NAMESPACE;
@@ -103,7 +103,7 @@ namespace dsp_primitives
                     }
                 }
 
-                virtual void run(const std::vector<AudioBufferView> & inputs,
+                HWY_ATTR virtual void run(const std::vector<AudioBufferView> & inputs,
                                  std::vector<WritableAudioBufferView> & outputs,
                                  int numsamples) override
                 {
@@ -194,10 +194,11 @@ namespace dsp_primitives
                             }
                             
                             currentStateValues = newStateValues;
-                            currentOutput = HWY::IfThenElse(stateMask, HWY::BroadcastLane<StateIndex_Output>(currentStateValues), currentOutput);
-                            currentBits = HWY::IfThenElse(stateMask, HWY::BroadcastLane<StateIndex_Bits>(currentStateValues), currentBits);
-                            currentRateReduction = HWY::IfThenElse(stateMask, HWY::BroadcastLane<StateIndex_RateReduction>(currentStateValues), currentRateReduction);
-                            currentMix = HWY::IfThenElse(stateMask, HWY::BroadcastLane<StateIndex_Mix>(currentStateValues), currentMix);
+                            HWY::Store(currentStateValues, _flttype, currentState_.get());
+                            currentOutput = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_Output]), currentOutput);
+                            currentBits = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_Bits]), currentBits);
+                            currentRateReduction = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_RateReduction]), currentRateReduction);
+                            currentMix = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_Mix]), currentMix);
                             stateMask = HWY::SlideMaskUpLanes(_flttype, stateMask, 1);
                         }
 
@@ -474,7 +475,7 @@ namespace dsp_primitives
                     HWY::Store(holdCounter, _flttype, holdCounters_.get());
                 }
             private:
-                void configure()
+                HWY_ATTR void configure()
                 {
                     const hwy::HWY_NAMESPACE::ScalableTag<float> _flttype;
                     namespace HWY = hwy::HWY_NAMESPACE;
