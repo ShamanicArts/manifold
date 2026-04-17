@@ -14,6 +14,7 @@ function M.create(deps)
   local samplePitchModePhaseVocoder = deps.samplePitchModePhaseVocoder
   local samplePitchModePhaseVocoderHQ = deps.samplePitchModePhaseVocoderHQ
   local buildSourceSpecs = deps.buildSourceSpecs
+  local defaultSourceId = tonumber(deps.defaultSourceId)
 
   local function buildRuntimeOptions(slot)
     return {
@@ -197,8 +198,21 @@ function M.create(deps)
     local sourceEntry = request.sourceEntry
     local captureNode = request.captureNode or (sourceEntry and sourceEntry.capture and sourceEntry.capture.__node) or nil
     local samplesBack = math.max(1, math.floor(tonumber(request.samplesBack) or 0))
+    local debugInfo = {
+      slotIndex = slotIndex,
+      sourceId = sourceEntry and sourceEntry.id or nil,
+      sourceName = sourceEntry and sourceEntry.name or nil,
+      samplesBack = samplesBack,
+      captureNodePresent = captureNode ~= nil,
+      voices = {},
+      copiedAny = false,
+      capturedLengthMs = 0,
+    }
     if not captureNode then
       print("DynamicSample: no capture node for slot " .. tostring(slotIndex))
+      if type(_G) == "table" then
+        _G.__dynamicSampleCaptureDebug = debugInfo
+      end
       return false, 0
     end
 
@@ -206,13 +220,22 @@ function M.create(deps)
     for voiceIndex = 1, #(slot.voices or {}) do
       local voice = slot.voices[voiceIndex]
       local playbackNode = voice and voice.samplePlayback and voice.samplePlayback.__node or nil
+      debugInfo.voices[voiceIndex] = {
+        playbackNodePresent = playbackNode ~= nil,
+        copyOk = false,
+        copied = false,
+        loopLength = voice and voice.samplePlayback and voice.samplePlayback:getLoopLength() or 0,
+      }
       if playbackNode then
         local ok, copied = pcall(function()
           return captureNode:copyRecentToLoop(playbackNode, samplesBack, false)
         end)
+        debugInfo.voices[voiceIndex].copyOk = ok == true
+        debugInfo.voices[voiceIndex].copied = copied == true
         if ok and copied then
           copiedAny = true
           voice.sampleCapturedLength = voice.samplePlayback:getLoopLength() or 0
+          debugInfo.voices[voiceIndex].loopLength = voice.sampleCapturedLength
           voice.samplePlayback:setLoopLength(voice.sampleCapturedLength)
           voice.samplePlayback:seek(0)
           voice.samplePhaseVocoder:reset()
@@ -246,6 +269,12 @@ function M.create(deps)
         end
       end
       updateReadbacks(slotIndex)
+    end
+
+    debugInfo.copiedAny = copiedAny == true
+    debugInfo.capturedLengthMs = capturedLengthMs
+    if type(_G) == "table" then
+      _G.__dynamicSampleCaptureDebug = debugInfo
     end
 
     return copiedAny, capturedLengthMs
@@ -302,7 +331,24 @@ function M.create(deps)
       return true
     elseif suffix == "captureTrigger" then
       if numeric > 0.5 then
+        local debugInfo = {
+          slotIndex = slotIndex,
+          sourceValue = slot.sampleSynth and slot.sampleSynth.getSource and slot.sampleSynth.getSource() or nil,
+          sourceEntryName = nil,
+          sourceEntryId = nil,
+          writeOffset = slot.sampleSynth and slot.sampleSynth.getSelectedSourceWriteOffset and slot.sampleSynth.getSelectedSourceWriteOffset() or nil,
+          requestPresent = false,
+        }
+        local selectedEntry = slot.sampleSynth and slot.sampleSynth.getSelectedSourceEntry and slot.sampleSynth.getSelectedSourceEntry() or nil
+        if type(selectedEntry) == "table" then
+          debugInfo.sourceEntryName = selectedEntry.name
+          debugInfo.sourceEntryId = selectedEntry.id
+        end
         local request = slot.sampleSynth.triggerCapture and slot.sampleSynth.triggerCapture() or nil
+        debugInfo.requestPresent = request ~= nil
+        if type(_G) == "table" then
+          _G.__dynamicSampleTriggerDebug = debugInfo
+        end
         if request then
           captureFromRequest(slotIndex, request)
         else
@@ -405,7 +451,7 @@ function M.create(deps)
     print(string.format("DynamicSample[%d]: capture input ready", index))
     local slotSampleSynth = SampleSynth.create(ctx, {
       sourceSpecs = buildSourceSpecs(captureInput),
-      defaultSourceId = 1,
+      defaultSourceId = defaultSourceId or 1,
     })
     print(string.format("DynamicSample[%d]: sample synth ready", index))
 

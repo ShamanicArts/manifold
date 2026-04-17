@@ -1068,7 +1068,7 @@ function M.update(ctx, rawState)
     cleanupPatchbayFromRuntime = cleanupPatchbayFromRuntime,
     patchbayInstances = PatchbayRuntime.getInstances(),
     ensurePatchbayWidgets = ensurePatchbayWidgets,
-    syncPatchbayValues = syncPatchbayValues,
+    syncPatchbayValues = M.syncPatchbayValues,
     clamp = clamp,
     setWidgetValueSilently = setWidgetValueSilently,
     getModTargetState = function(path)

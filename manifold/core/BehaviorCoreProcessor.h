@@ -120,6 +120,7 @@ public:
 
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*, int) override;
+    bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
 
     // ScriptableProcessor
     bool postControlCommandPayload(const ControlCommand& command) override;
@@ -292,6 +293,7 @@ public:
     int64_t getAfterUiIdleDeltaPrivateDirtyBytes() const { return afterUiIdleDeltaPrivateDirtyBytes_.load(std::memory_order_relaxed); }
     int getManagedDspHostCount() const { return static_cast<int>(dspSlots.size()); }
     int64_t getPrimaryDspScriptSizeBytes() const;
+    juce::File getPrimaryDspScriptFile() const;
 
     // MIDI API
     bool openMidiInput(int deviceIndex);
@@ -417,6 +419,7 @@ private:
     CaptureBuffer captureBuffer;
     juce::AudioBuffer<float> graphWetBuffer;
     juce::AudioBuffer<float> monitorInputBuffer;
+    juce::AudioBuffer<float> sidechainInputBuffer;
 
     bool forwardScheduled = false;
     double forwardFireAtSample = 0.0;

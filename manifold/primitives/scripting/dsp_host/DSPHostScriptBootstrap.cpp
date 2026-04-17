@@ -245,7 +245,7 @@ void registerMidiApi(LoadSession &session,
                      sol::table &ctx,
                      bool publishHostApi) {
   auto* bcp = static_cast<BehaviorCoreProcessor*>(processor);
-  auto* midiMgr = bcp != nullptr ? bcp->getMidiManager() : nullptr;
+  auto midiMgr = bcp != nullptr ? bcp->getMidiManagerShared() : nullptr;
   auto lua = sol::state_view(session.luaState);
 
   if (publishHostApi) {
@@ -332,7 +332,7 @@ void registerMidiApi(LoadSession &session,
   lua_State* midiLuaState = session.luaState;
   midiApi["pollInputEvent"] = [midiLuaState, midiMgr]() -> sol::object {
     auto midiLua = sol::state_view(midiLuaState);
-    if (midiMgr == nullptr) {
+    if (!midiMgr) {
       return sol::make_object(midiLua, sol::nil);
     }
 

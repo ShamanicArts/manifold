@@ -1,0 +1,35 @@
+{
+  "name": "Standalone Sample",
+  "version": 1,
+  "description": "Standalone sample instrument export target",
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+  "plugin": {
+    "view": {
+      "defaultMode": "split",
+      "compact": { "w": 472, "h": 220 },
+      "split": { "w": 472, "h": 220 }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9090,
+      "oscQueryPort": 9091
+    },
+    "params": [
+      {
+        "path": "/plugin/params/sample/source",
+        "internalPath": "/midi/synth/rack/sample/1/source",
+        "type": "f",
+        "min": 0,
+        "max": 1,
+        "default": 0,
+        "hostParamId": "source",
+        "hostParamName": "Source",
+        "hostParamKind": "choice"
+      }
+    ]
+  }
+}

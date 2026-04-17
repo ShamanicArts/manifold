@@ -66,6 +66,7 @@ void GraphRuntime::prepare(double sampleRate, int maxBlockSize, int numChannels)
     // Preallocate buffers used during processing (audio thread)
     chunkBuffer_.setSize(numChannels_, maxBlockSize_, false, true);
     rawChunkBuffer_.setSize(numChannels_, maxBlockSize_, false, true);
+    sidechainChunkBuffer_.setSize(numChannels_, maxBlockSize_, false, true);
 
     // Allocate input accumulators for the maximum bus-count across nodes.
     int maxInputBuses = 1;
@@ -86,7 +87,8 @@ void GraphRuntime::prepare(double sampleRate, int maxBlockSize, int numChannels)
 }
 
 void GraphRuntime::process(juce::AudioBuffer<float>& buffer,
-                           const juce::AudioBuffer<float>* rawHostInput) {
+                           const juce::AudioBuffer<float>* rawHostInput,
+                           const juce::AudioBuffer<float>* sidechainInput) {
     if (!isValid_.load()) {
         buffer.clear();
         return;
@@ -96,14 +98,15 @@ void GraphRuntime::process(juce::AudioBuffer<float>& buffer,
 
     // Handle blocks larger than maxBlockSize via chunking
     if (numSamples > maxBlockSize_) {
-        processChunked(buffer, rawHostInput);
+        processChunked(buffer, rawHostInput, sidechainInput);
     } else {
-        processSingle(buffer, rawHostInput);
+        processSingle(buffer, rawHostInput, sidechainInput);
     }
 }
 
 void GraphRuntime::processChunked(juce::AudioBuffer<float>& buffer,
-                                  const juce::AudioBuffer<float>* rawHostInput) {
+                                  const juce::AudioBuffer<float>* rawHostInput,
+                                  const juce::AudioBuffer<float>* sidechainInput) {
     const int totalSamples = buffer.getNumSamples();
     const int numChunks = (totalSamples + maxBlockSize_ - 1) / maxBlockSize_;
 
@@ -140,12 +143,31 @@ void GraphRuntime::processChunked(juce::AudioBuffer<float>& buffer,
             rawChunkPtr = &rawChunkView;
         }
 
+        const juce::AudioBuffer<float>* scChunkPtr = nullptr;
+        juce::AudioBuffer<float> scChunkView;
+        if (sidechainInput != nullptr &&
+            sidechainInput->getNumChannels() > 0 &&
+            sidechainInput->getNumSamples() >= (offset + chunkSize)) {
+            for (int ch = 0; ch < numChannels_; ++ch) {
+                const int srcCh = juce::jmin(ch, sidechainInput->getNumChannels() - 1);
+                std::memcpy(sidechainChunkBuffer_.getWritePointer(ch),
+                            sidechainInput->getReadPointer(srcCh) + offset,
+                            static_cast<size_t>(chunkSize) * sizeof(float));
+            }
+            float* scPtrs[2] = {
+                sidechainChunkBuffer_.getWritePointer(0),
+                sidechainChunkBuffer_.getWritePointer(1)
+            };
+            scChunkView.setDataToReferTo(scPtrs, numChannels_, chunkSize);
+            scChunkPtr = &scChunkView;
+        }
+
         float* chunkPtrs[2] = {
             chunkBuffer_.getWritePointer(0),
             chunkBuffer_.getWritePointer(1)
         };
         juce::AudioBuffer<float> chunkView(chunkPtrs, numChannels_, chunkSize);
-        processSingle(chunkView, rawChunkPtr);
+        processSingle(chunkView, rawChunkPtr, scChunkPtr);
 
         for (int ch = 0; ch < numChannels_; ++ch) {
             const int dstCh = juce::jmin(ch, buffer.getNumChannels() - 1);
@@ -159,7 +181,8 @@ void GraphRuntime::processChunked(juce::AudioBuffer<float>& buffer,
 }
 
 void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
-                                 const juce::AudioBuffer<float>* rawHostInput) {
+                                 const juce::AudioBuffer<float>* rawHostInput,
+                                 const juce::AudioBuffer<float>* sidechainInput) {
     const int numSamples = buffer.getNumSamples();
     const size_t numNodes = compiledNodes_.size();
     
@@ -191,9 +214,10 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
         const int scratchIdx = nodeToScratchIndex_[nodeIdx];
         auto& inputScratchBuf = inputScratchBuffers_[static_cast<std::size_t>(scratchIdx)];
         auto& outputScratchBuf = outputScratchBuffers_[static_cast<std::size_t>(scratchIdx)];
-        auto& scratchBuf = (compiled.role == PrimitiveGraph::NodeRole::InputDSP)
-                               ? inputScratchBuf
-                               : outputScratchBuf;
+        const bool isInputRole =
+            compiled.role == PrimitiveGraph::NodeRole::InputDSP ||
+            compiled.role == PrimitiveGraph::NodeRole::SidechainInputDSP;
+        auto& scratchBuf = isInputRole ? inputScratchBuf : outputScratchBuf;
         
         // Build per-bus input accumulators for this node (preallocated)
         const int busCount = std::max(0, (compiled.inputCount + numChannels_ - 1) / numChannels_);
@@ -215,7 +239,10 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
             const size_t srcNodeIdx = static_cast<size_t>(route.sourceNodeIndex);
             const int srcScratchIdx = nodeToScratchIndex_[srcNodeIdx];
             const auto srcRole = compiledNodes_[srcNodeIdx].role;
-            auto& srcBuf = (srcRole == PrimitiveGraph::NodeRole::InputDSP)
+            const bool srcIsInputRole =
+                srcRole == PrimitiveGraph::NodeRole::InputDSP ||
+                srcRole == PrimitiveGraph::NodeRole::SidechainInputDSP;
+            auto& srcBuf = srcIsInputRole
                                ? inputScratchBuffers_[static_cast<size_t>(srcScratchIdx)]
                                : outputScratchBuffers_[static_cast<size_t>(srcScratchIdx)];
 
@@ -234,10 +261,15 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
         if (!hasIncoming && compiled.inputCount > 0 &&
             compiled.node->acceptsHostInputWhenUnconnected()) {
             const juce::AudioBuffer<float>* hostInputSource = &buffer;
-            if (compiled.node->wantsRawHostInputWhenUnconnected() &&
-                rawHostInput != nullptr &&
-                rawHostInput->getNumChannels() > 0 &&
-                rawHostInput->getNumSamples() >= numSamples) {
+            if (compiled.role == PrimitiveGraph::NodeRole::SidechainInputDSP &&
+                sidechainInput != nullptr &&
+                sidechainInput->getNumChannels() > 0 &&
+                sidechainInput->getNumSamples() >= numSamples) {
+                hostInputSource = sidechainInput;
+            } else if (compiled.node->wantsRawHostInputWhenUnconnected() &&
+                       rawHostInput != nullptr &&
+                       rawHostInput->getNumChannels() > 0 &&
+                       rawHostInput->getNumSamples() >= numSamples) {
                 hostInputSource = rawHostInput;
             }
 

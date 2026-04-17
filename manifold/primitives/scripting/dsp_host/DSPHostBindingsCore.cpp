@@ -943,6 +943,14 @@ void registerCoreBindings(LoadSession &session,
       graph->setNodeRole(node, dsp_primitives::PrimitiveGraph::NodeRole::InputDSP);
       return true;
     };
+  graphTable["markSidechainInput"] = [graph](const sol::object& nodeObj) {
+      auto node = toPrimitiveNode(nodeObj);
+      if (!node) {
+        return false;
+      }
+      graph->setNodeRole(node, dsp_primitives::PrimitiveGraph::NodeRole::SidechainInputDSP);
+      return true;
+    };
   graphTable["markMonitor"] = [graph](const sol::object& nodeObj) {
       auto node = toPrimitiveNode(nodeObj);
       if (!node) {

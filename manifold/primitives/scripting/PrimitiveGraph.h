@@ -25,6 +25,7 @@ public:
         InputDSP = 1,
         Monitor = 2,
         OutputDSP = 3,
+        SidechainInputDSP = 4,
     };
 
     PrimitiveGraph();

@@ -660,20 +660,30 @@ void LuaEngine::initialiseInternal(ScriptableProcessor *processor,
   fflush(stderr);
 
   pImpl->processor = processor;
-  
-  // Initialize shared MidiManager if not already created
-  if (!pImpl->midiManager) {
-    pImpl->midiManager = std::make_shared<midi::MidiManager>();
-  }
-  
-  // Share MidiManager with processor so it can use the same device
+
+  // Reuse the processor's existing MidiManager whenever possible.
+  // The DSP script captures the processor MidiManager at load time for Midi.pollInputEvent().
+  // Replacing it here on editor open would split host MIDI writes and DSP MIDI reads across
+  // different ring buffers, which kills note input while leaving the rest of the plugin alive.
   if (pImpl->processor) {
     auto* bcp = dynamic_cast<BehaviorCoreProcessor*>(pImpl->processor);
     if (bcp) {
-      bcp->setMidiManager(pImpl->midiManager);
+      auto sharedMidiManager = bcp->getMidiManagerShared();
+      if (sharedMidiManager) {
+        pImpl->midiManager = sharedMidiManager;
+      } else {
+        if (!pImpl->midiManager) {
+          pImpl->midiManager = std::make_shared<midi::MidiManager>();
+        }
+        bcp->setMidiManager(pImpl->midiManager);
+      }
+    } else if (!pImpl->midiManager) {
+      pImpl->midiManager = std::make_shared<midi::MidiManager>();
     }
+  } else if (!pImpl->midiManager) {
+    pImpl->midiManager = std::make_shared<midi::MidiManager>();
   }
-  
+
   pImpl->rootCanvas = rootCanvas;
   pImpl->rootRuntime = rootRuntime;
   pImpl->rootMode = rootMode;
@@ -856,9 +866,24 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
   if (target.isStructured) {
     const auto userScriptsRoot = juce::File(Settings::getInstance().getUserScriptsDir());
     const auto systemDspDir = juce::File(Settings::getInstance().getDspScriptsDir());
+
+    bool skipStructuredDspLoad = skipDspLoad;
+    if (!skipStructuredDspLoad && target.dspDefaultFile.existsAsFile() && !target.useSharedShell) {
+      if (auto* behaviorProcessor = dynamic_cast<BehaviorCoreProcessor*>(pImpl->processor)) {
+        const auto currentDspFile = behaviorProcessor->getPrimaryDspScriptFile();
+        if (currentDspFile.existsAsFile()
+            && currentDspFile.getFullPathName() == target.dspDefaultFile.getFullPathName()) {
+          skipStructuredDspLoad = true;
+          std::fprintf(stderr,
+                       "LuaEngine: skipping DSP reload for export UI reopen (already loaded): %s\n",
+                       currentDspFile.getFullPathName().toRawUTF8());
+        }
+      }
+    }
+
     const auto bootstrap = makeStructuredUiBootstrap(target, userScriptsRoot,
                                                      systemUiDir, systemDspDir,
-                                                     skipDspLoad);
+                                                     skipStructuredDspLoad);
 
     // COMPILE OUTSIDE THE LOCK so MIDI callbacks don't stall during compilation.
     // load() touches lua_State internals and must be done locked, but the expensive

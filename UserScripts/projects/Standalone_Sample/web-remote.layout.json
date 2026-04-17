@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "name": "Manifold Sample",
+  "root": {
+    "id": "standalone_sample_remote",
+    "type": "panel",
+    "x": 0,
+    "y": 0,
+    "w": 472,
+    "h": 220,
+    "children": []
+  }
+}
