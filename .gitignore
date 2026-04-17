@@ -13,5 +13,18 @@ __pycache__/
 # Local runtime settings (keep example tracked)
 .manifold.settings.json
 
+#Local CMake generated Visual Studio files
+vs_build/
+
+#Ignore Visual Studio files
+.vs/
+*.user
+*.obj
+*.pdb
+*.idb
+*.ilk
+Debug/
+Debug_inline/
+Release/
 
 /home/shamanic/dev/my-plugin/web/remote-control/node_modules

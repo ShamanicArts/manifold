@@ -22,6 +22,17 @@ endif()
 
 add_subdirectory("${JUCE_DIR}" JUCE)
 
+# --- highway 1.3.0 --
+set(HWY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/highway" CACHE PATH
+    "Path to Google Highway checkout (default: git submodule at external/highway)")
+
+if(NOT EXISTS "${HWY_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "Google Highway not found at '${HWY_DIR}'.\n"
+        "Run: git submodule update --init --recursive\n"
+        "Or configure with: -DHWY_DIR=/path/to/highway")
+endif()
+
 # --- Lua 5.4 ---
 option(MANIFOLD_BUILD_LUA "Build Lua 5.4 from source instead of using system install" OFF)
 set(MANIFOLD_LUA_TARGET "")
@@ -187,6 +198,12 @@ add_library(imgui STATIC
     ${IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp
     manifold/ui/imgui/ManifoldImGuiGlobals.cpp)
 
+
+add_library(highway STATIC
+    ${HWY_DIR}/hwy/abort.cc
+    ${HWY_DIR}/hwy/aligned_allocator.cc
+	${HWY_DIR}/hwy/targets.cc)
+
 set_target_properties(imgui PROPERTIES
     POSITION_INDEPENDENT_CODE ON)
 
@@ -200,6 +217,10 @@ target_include_directories(imgui
 target_compile_definitions(imgui
     PUBLIC
         IMGUI_USER_CONFIG="manifold/ui/imgui/ManifoldImGuiConfig.h")
+		
+target_include_directories(highway
+    PUBLIC
+        ${HWY_DIR}	)
 
 # --- ImGuiColorTextEdit (pthom fork) ---
 if(MANIFOLD_PLATFORM_ANDROID)
@@ -371,6 +392,7 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/SineBankNode.cpp
     dsp/core/nodes/ADSREnvelopeNode.h
     dsp/core/nodes/ADSREnvelopeNode.cpp
+    dsp/core/nodes/ADSREnvelopeNode_Highway.h
     dsp/core/nodes/ReverbNode.h
     dsp/core/nodes/ReverbNode.cpp
     dsp/core/nodes/FilterNode.h
@@ -413,6 +435,7 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/AudioSyncNode.cpp
     dsp/core/nodes/BitCrusherNode.h
     dsp/core/nodes/BitCrusherNode.cpp
+    dsp/core/nodes/BitCrusherNode_Highway.h
     dsp/core/nodes/FormantFilterNode.h
     dsp/core/nodes/FormantFilterNode.cpp
     dsp/core/nodes/ReverseDelayNode.h
@@ -582,6 +605,7 @@ target_link_libraries(Manifold
         imgui_color_text_edit
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
+		highway
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -840,6 +864,7 @@ if(MANIFOLD_PLATFORM_ANDROID)
             imgui_color_text_edit
             ${MANIFOLD_LUA_TARGET}
             sol2::sol2
+			highway
         PUBLIC
             juce::juce_recommended_config_flags
     )
@@ -922,7 +947,8 @@ target_link_libraries(ManifoldHeadless
         juce::juce_audio_utils
         juce::juce_gui_extra
         ${MANIFOLD_LUA_TARGET}
-        sol2::sol2)
+        sol2::sol2
+		highway)
 
 manifold_target_include_project_and_ableton(LuaEngineMockHarness)
 
@@ -934,7 +960,8 @@ target_link_libraries(LuaEngineMockHarness
         juce::juce_audio_utils
         juce::juce_gui_extra
         ${MANIFOLD_LUA_TARGET}
-        sol2::sol2)
+        sol2::sol2
+		highway)
 
 manifold_target_include_project_and_ableton(EndpointResolverHarness)
 
@@ -946,7 +973,8 @@ target_link_libraries(EndpointResolverHarness
         juce::juce_audio_utils
         juce::juce_gui_extra
         ${MANIFOLD_LUA_TARGET}
-        sol2::sol2)
+        sol2::sol2
+		highway)
 
 manifold_target_include_project_and_ableton(ControlCommandQueueHarness)
 
@@ -958,7 +986,8 @@ target_link_libraries(ControlCommandQueueHarness
         juce::juce_audio_utils
         juce::juce_gui_extra
         ${MANIFOLD_LUA_TARGET}
-        sol2::sol2)
+        sol2::sol2
+		highway)
 
 manifold_target_include_project_and_ableton(CanonicalCommandHarness)
 
@@ -970,7 +999,8 @@ target_link_libraries(CanonicalCommandHarness
         juce::juce_audio_utils
         juce::juce_gui_extra
         ${MANIFOLD_LUA_TARGET}
-        sol2::sol2)
+        sol2::sol2
+		highway)
 
 manifold_target_include_project_and_ableton(StateProjectionHarness)
 
@@ -982,7 +1012,8 @@ target_link_libraries(StateProjectionHarness
         juce::juce_audio_utils
         juce::juce_gui_extra
         ${MANIFOLD_LUA_TARGET}
-        sol2::sol2)
+        sol2::sol2
+		highway)
 
 target_compile_definitions(ManifoldHeadless
     PRIVATE
@@ -1108,6 +1139,7 @@ target_link_libraries(Tempus
         juce::juce_opengl
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
+		highway
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
