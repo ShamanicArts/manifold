@@ -4,7 +4,7 @@
 
 namespace dsp_primitives {
 
-WaveShaperNode::WaveShaperNode() = default;
+WaveShaperNode::WaveShaperNode(int /*numChannels*/) {}
 
 void WaveShaperNode::prepare(double sampleRate, int maxBlockSize) {
     sampleRate_ = sampleRate > 1.0 ? sampleRate : 44100.0;
@@ -345,6 +345,11 @@ void WaveShaperNode::process(const std::vector<AudioBufferView>& inputs,
             outputs[channelIndex].setSample(ch, i, output);
         }
     }
+}
+
+void WaveShaperNode::disableSIMD()
+{
+    simd_implementation_.reset();
 }
 
 } // namespace dsp_primitives

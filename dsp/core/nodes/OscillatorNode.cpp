@@ -1,7 +1,7 @@
-#include "dsp/core/nodes/OscillatorNode.h"
-#include "dsp/core/nodes/PartialData.h"
 
 #define _USE_MATH_DEFINES
+#include "dsp/core/nodes/OscillatorNode.h"
+#include "dsp/core/nodes/OscillatorNode_Highway.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -137,7 +137,7 @@ inline int waveAddBandIndexForFrequency(float frequency, double sampleRate) {
     return juce::jlimit(0, kWaveAddBandCount - 1, ratioBucket - 1);
 }
 
-inline float lookupWaveAddSample(const WaveAddTableSet& tableSet, float phaseNorm, int bandIndex) {
+float lookupWaveAddSampleInternal(const WaveAddTableSet& tableSet, float phaseNorm, int bandIndex) {
     const float wrappedPhase = [] (float phase) {
         const float wrapped = std::fmod(phase, 1.0f);
         return wrapped < 0.0f ? wrapped + 1.0f : wrapped;
@@ -538,12 +538,34 @@ std::shared_ptr<const WaveAddTableSet> getOrCreateWaveAddTableSet(const WaveAddR
 }
 } // namespace
 
+float lookupWaveAddSample(const WaveAddTableSet& tableSet, float phaseNorm, int bandIndex) {
+    return lookupWaveAddSampleInternal(tableSet, phaseNorm, bandIndex);
+}
+
 OscillatorNode::OscillatorNode() {
     refreshWaveAddTableSet();
+    simd_implementation_.reset(OscillatorNode_Highway::__CreateInstance(44100.0f,
+                                                                        &targetFrequency_,
+                                                                        &targetAmplitude_,
+                                                                        &waveform_,
+                                                                        &pulseWidth_,
+                                                                        &drive_,
+                                                                        &driveShape_,
+                                                                        &driveBias_,
+                                                                        &driveMix_,
+                                                                        &renderMode_,
+                                                                        &additivePartials_,
+                                                                        &additiveTilt_,
+                                                                        &additiveDrift_,
+                                                                        &waveAddTableSet_,
+                                                                        &unisonVoices_,
+                                                                        &detuneCents_,
+                                                                        &stereoSpread_));
 }
 
 void OscillatorNode::setFrequency(float freq) {
     targetFrequency_.store(juce::jlimit(1.0f, 20000.0f, freq), std::memory_order_release);
+    notifyConfigChangeSimdImplementation();
 }
 
 void OscillatorNode::refreshWaveAddTableSet() {
@@ -560,6 +582,7 @@ void OscillatorNode::refreshWaveAddTableSet() {
 void OscillatorNode::setWaveform(int shape) {
     waveform_.store(juce::jlimit(0, 7, shape), std::memory_order_release);
     refreshWaveAddTableSet();
+    notifyConfigChangeSimdImplementation();
 }
 
 void OscillatorNode::setAdditivePartials(int count) {
@@ -570,20 +593,24 @@ void OscillatorNode::setAdditivePartials(int count) {
 void OscillatorNode::setAdditiveTilt(float tilt) {
     additiveTilt_.store(juce::jlimit(-1.0f, 1.0f, tilt), std::memory_order_release);
     refreshWaveAddTableSet();
+    notifyConfigChangeSimdImplementation();
 }
 
 void OscillatorNode::setAdditiveDrift(float drift) {
     additiveDrift_.store(juce::jlimit(0.0f, 1.0f, drift), std::memory_order_release);
     refreshWaveAddTableSet();
+    notifyConfigChangeSimdImplementation();
 }
 
 void OscillatorNode::setPulseWidth(float width) {
     pulseWidth_.store(juce::jlimit(0.01f, 0.99f, width), std::memory_order_release);
     refreshWaveAddTableSet();
+    notifyConfigChangeSimdImplementation();
 }
 
 void OscillatorNode::setUnison(int voices) {
     unisonVoices_.store(juce::jlimit(1, 8, voices), std::memory_order_release);
+    notifyConfigChangeSimdImplementation();
 }
 
 void OscillatorNode::resetPhase() {
@@ -594,12 +621,37 @@ void OscillatorNode::resetPhase() {
         unisonVoiceGains_[toIndex(i)] = 0.0f;
     }
     lastRequestedUnison_ = 1;
+    if (simd_implementation_) {
+        simd_implementation_->reset();
+    }
 }
 
 void OscillatorNode::prepare(double sampleRate, int maxBlockSize) {
     (void)maxBlockSize;
 
     sampleRate_ = sampleRate > 1.0 ? sampleRate : 44100.0;
+
+    if (!simd_implementation_) {
+        simd_implementation_.reset(OscillatorNode_Highway::__CreateInstance(static_cast<float>(sampleRate),
+                                                                            &targetFrequency_,
+                                                                            &targetAmplitude_,
+                                                                            &waveform_,
+                                                                            &pulseWidth_,
+                                                                            &drive_,
+                                                                            &driveShape_,
+                                                                            &driveBias_,
+                                                                            &driveMix_,
+                                                                            &renderMode_,
+                                                                            &additivePartials_,
+                                                                            &additiveTilt_,
+                                                                            &additiveDrift_,
+                                                                            &waveAddTableSet_,
+                                                                            &unisonVoices_,
+                                                                            &detuneCents_,
+                                                                            &stereoSpread_));
+    }
+    simd_implementation_->prepare(static_cast<float>(sampleRate));
+    simd_implementation_->configChanged();
 
     const double freqTimeSeconds = 0.02;
     const double ampTimeSeconds = 0.01;
@@ -643,7 +695,8 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
 
     auto& out = outputs[0];
     const int wf = waveform_.load(std::memory_order_acquire);
-    const float targetRenderMix = renderMode_.load(std::memory_order_acquire) == 1 ? 1.0f : 0.0f;
+    const int renderMode = renderMode_.load(std::memory_order_acquire);
+    const float targetRenderMix = renderMode == 1 ? 1.0f : 0.0f;
     const float targetFreq = targetFrequency_.load(std::memory_order_acquire);
     const float targetAmp = enabled ? targetAmplitude_.load(std::memory_order_acquire) : 0.0f;
     const float drive = drive_.load(std::memory_order_acquire);
@@ -659,6 +712,18 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
     const float requestedDetuneCents = detuneCents_.load(std::memory_order_acquire);
     const float requestedSpread = stereoSpread_.load(std::memory_order_acquire);
     const auto waveAddTables = std::atomic_load_explicit(&waveAddTableSet_, std::memory_order_acquire);
+
+    const bool simdSupportedWaveform = (wf == 0 || wf == 1 || wf == 2 || wf == 3 || wf == 4 || wf == 6 || wf == 7);
+    const bool canUseSIMD = simd_implementation_
+        && !syncOn
+        && renderMode == 0
+        && simdSupportedWaveform;
+    if (canUseSIMD) {
+        std::vector<AudioBufferView> simdInputs(inputs);
+        std::vector<WritableAudioBufferView> simdOutputs(outputs);
+        simd_implementation_->run(simdInputs, simdOutputs, numSamples);
+        return;
+    }
 
     // Wave-tab Add is the expensive additive recipe path. Raw 8-voice unison on top of
     // additive harmonic synthesis is just a CPU bomb, so remap it to a cheaper but still
@@ -744,7 +809,7 @@ void OscillatorNode::process(const std::vector<AudioBufferView>& inputs,
             const auto renderAdditiveSample = [&]() {
                 if (waveAddTables) {
                     const int bandIndex = waveAddBandIndexForFrequency(voiceFrequency, sampleRate_);
-                    return lookupWaveAddSample(*waveAddTables, phaseNorm, bandIndex);
+                    return lookupWaveAddSampleInternal(*waveAddTables, phaseNorm, bandIndex);
                 }
                 return additiveRecipeSample(wf, phaseNorm, voiceFrequency, sampleRate_, pulseWidthNorm,
                                             effectiveAdditivePartials, additiveTilt, additiveDrift);
@@ -1019,6 +1084,11 @@ PartialData buildWavePartials(int waveform, float fundamental, int partialCount,
 
     result.isReliable = true;
     return result;
+}
+
+void OscillatorNode::disableSIMD()
+{
+    simd_implementation_.reset();
 }
 
 } // namespace dsp_primitives

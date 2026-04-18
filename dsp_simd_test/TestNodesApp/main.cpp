@@ -21,6 +21,7 @@
 #include "dsp/core/nodes/BitCrusherNode.h"
 #include "dsp/core/nodes/MixerNode.h"
 #include "dsp/core/nodes/FilterNode.h"
+#include "dsp/core/nodes/OscillatorNode.h"
 
 struct NodeParameterValue
 {
@@ -72,6 +73,7 @@ struct NodeTestEntry
     std::vector<std::vector<float>> result;
     std::chrono::nanoseconds testDuration;
     std::chrono::nanoseconds baseTestDuration;
+    float tolerance = 0.008f;
 };
 
 #define FLOAT_TOLLERANCE_SSE            0.008f
@@ -289,6 +291,49 @@ static bool ConfigureNode(dsp_primitives::BitCrusherNode & node, const std::map<
     return true;
 }
 
+static bool ConfigureNode(dsp_primitives::OscillatorNode & node, const std::map<std::string,NodeParameterValue> & parameters)
+{
+    for(const auto & itr : parameters)
+    {
+        if(itr.first == "Frequency")
+            node.setFrequency(itr.second.floatval);
+        else if(itr.first == "Amplitude")
+            node.setAmplitude(itr.second.floatval);
+        else if(itr.first == "Enabled")
+            node.setEnabled(itr.second.bval);
+        else if(itr.first == "Waveform")
+            node.setWaveform(itr.second.i32val);
+        else if(itr.first == "Drive")
+            node.setDrive(itr.second.floatval);
+        else if(itr.first == "DriveShape")
+            node.setDriveShape(itr.second.i32val);
+        else if(itr.first == "DriveBias")
+            node.setDriveBias(itr.second.floatval);
+        else if(itr.first == "DriveMix")
+            node.setDriveMix(itr.second.floatval);
+        else if(itr.first == "RenderMode")
+            node.setRenderMode(itr.second.i32val);
+        else if(itr.first == "AdditivePartials")
+            node.setAdditivePartials(itr.second.i32val);
+        else if(itr.first == "AdditiveTilt")
+            node.setAdditiveTilt(itr.second.floatval);
+        else if(itr.first == "AdditiveDrift")
+            node.setAdditiveDrift(itr.second.floatval);
+        else if(itr.first == "PulseWidth")
+            node.setPulseWidth(itr.second.floatval);
+        else if(itr.first == "Unison")
+            node.setUnison(itr.second.i32val);
+        else if(itr.first == "Detune")
+            node.setDetune(itr.second.floatval);
+        else if(itr.first == "Spread")
+            node.setSpread(itr.second.floatval);
+        else if(itr.first == "SyncEnabled")
+            node.setSyncEnabled(itr.second.bval);
+    }
+
+    return true;
+}
+
 
 //================================================================
 
@@ -373,6 +418,17 @@ static void GenerateWave5Parameters(TestWaveData & entry, int sampleCount)
     entry.phases[0] = 0;
     entry.phases[1] = 32;
     entry.phases[2] = 56;
+}
+
+static void GenerateSilentParameters(TestWaveData & entry, int sampleCount)
+{
+    entry.channelAmps[0] = 0.0f;
+    entry.channelAmps[1] = 0.0f;
+    entry.numSamples = sampleCount;
+    entry.numWaves = 1;
+    entry.amps[0] = 0.0f;
+    entry.frequences[0] = 440;
+    entry.phases[0] = 0;
 }
 
 template<class T>
@@ -729,6 +785,219 @@ bool GetTestData<dsp_primitives::BitCrusherNode>(std::vector<NodeTestEntry> & ou
 }
 
 template<>
+bool GetTestData<dsp_primitives::OscillatorNode>(std::vector<NodeTestEntry> & out)
+{
+    out.resize(7);
+
+    out[0].stereo = true;
+    out[0].name = "Sine Standard SIMD";
+    out[0].tolerance = 0.02f;
+    out[0].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateSilentParameters(t[0].emplace_back(), 262144);
+        return t;
+    }();
+    out[0].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Enabled", NodeParameterValue(true)));
+        m.insert(std::make_pair("Frequency", NodeParameterValue(static_cast<float>(440.0f))));
+        m.insert(std::make_pair("Amplitude", NodeParameterValue(static_cast<float>(0.7f))));
+        m.insert(std::make_pair("Waveform", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("Drive", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("DriveShape", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("DriveBias", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("DriveMix", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("RenderMode", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("PulseWidth", NodeParameterValue(static_cast<float>(0.5f))));
+        m.insert(std::make_pair("Unison", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Detune", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("Spread", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("SyncEnabled", NodeParameterValue(false)));
+        return m;
+    }();
+
+    out[1].stereo = true;
+    out[1].name = "Saw Drive SIMD";
+    out[1].tolerance = 0.02f;
+    out[1].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateSilentParameters(t[0].emplace_back(), 262144);
+        return t;
+    }();
+    out[1].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Enabled", NodeParameterValue(true)));
+        m.insert(std::make_pair("Frequency", NodeParameterValue(static_cast<float>(220.0f))));
+        m.insert(std::make_pair("Amplitude", NodeParameterValue(static_cast<float>(0.9f))));
+        m.insert(std::make_pair("Waveform", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Drive", NodeParameterValue(static_cast<float>(8.0f))));
+        m.insert(std::make_pair("DriveShape", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("DriveBias", NodeParameterValue(static_cast<float>(0.15f))));
+        m.insert(std::make_pair("DriveMix", NodeParameterValue(static_cast<float>(0.8f))));
+        m.insert(std::make_pair("RenderMode", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("PulseWidth", NodeParameterValue(static_cast<float>(0.5f))));
+        m.insert(std::make_pair("Unison", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Detune", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("Spread", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("SyncEnabled", NodeParameterValue(false)));
+        return m;
+    }();
+
+    out[2].stereo = true;
+    out[2].name = "Blend SIMD";
+    out[2].tolerance = 0.02f;
+    out[2].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateSilentParameters(t[0].emplace_back(), 262144);
+        return t;
+    }();
+    out[2].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Enabled", NodeParameterValue(true)));
+        m.insert(std::make_pair("Frequency", NodeParameterValue(static_cast<float>(330.0f))));
+        m.insert(std::make_pair("Amplitude", NodeParameterValue(static_cast<float>(0.8f))));
+        m.insert(std::make_pair("Waveform", NodeParameterValue(static_cast<int>(4))));
+        m.insert(std::make_pair("Drive", NodeParameterValue(static_cast<float>(3.0f))));
+        m.insert(std::make_pair("DriveShape", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("DriveBias", NodeParameterValue(static_cast<float>(-0.1f))));
+        m.insert(std::make_pair("DriveMix", NodeParameterValue(static_cast<float>(0.65f))));
+        m.insert(std::make_pair("RenderMode", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("PulseWidth", NodeParameterValue(static_cast<float>(0.5f))));
+        m.insert(std::make_pair("Unison", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Detune", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("Spread", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("SyncEnabled", NodeParameterValue(false)));
+        return m;
+    }();
+
+    out[3].stereo = true;
+    out[3].name = "Pulse SIMD";
+    out[3].tolerance = 0.02f;
+    out[3].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateSilentParameters(t[0].emplace_back(), 262144);
+        return t;
+    }();
+    out[3].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Enabled", NodeParameterValue(true)));
+        m.insert(std::make_pair("Frequency", NodeParameterValue(static_cast<float>(550.0f))));
+        m.insert(std::make_pair("Amplitude", NodeParameterValue(static_cast<float>(0.75f))));
+        m.insert(std::make_pair("Waveform", NodeParameterValue(static_cast<int>(6))));
+        m.insert(std::make_pair("Drive", NodeParameterValue(static_cast<float>(4.0f))));
+        m.insert(std::make_pair("DriveShape", NodeParameterValue(static_cast<int>(3))));
+        m.insert(std::make_pair("DriveBias", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("DriveMix", NodeParameterValue(static_cast<float>(0.7f))));
+        m.insert(std::make_pair("RenderMode", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("PulseWidth", NodeParameterValue(static_cast<float>(0.23f))));
+        m.insert(std::make_pair("Unison", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Detune", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("Spread", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("SyncEnabled", NodeParameterValue(false)));
+        return m;
+    }();
+
+    out[4].stereo = true;
+    out[4].name = "Additive Render SIMD";
+    out[4].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateSilentParameters(t[0].emplace_back(), 131072);
+        return t;
+    }();
+    out[4].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Enabled", NodeParameterValue(true)));
+        m.insert(std::make_pair("Frequency", NodeParameterValue(static_cast<float>(440.0f))));
+        m.insert(std::make_pair("Amplitude", NodeParameterValue(static_cast<float>(0.8f))));
+        m.insert(std::make_pair("Waveform", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Drive", NodeParameterValue(static_cast<float>(2.0f))));
+        m.insert(std::make_pair("DriveShape", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("DriveBias", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("DriveMix", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("RenderMode", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("AdditivePartials", NodeParameterValue(static_cast<int>(8))));
+        m.insert(std::make_pair("AdditiveTilt", NodeParameterValue(static_cast<float>(0.35f))));
+        m.insert(std::make_pair("AdditiveDrift", NodeParameterValue(static_cast<float>(0.25f))));
+        m.insert(std::make_pair("PulseWidth", NodeParameterValue(static_cast<float>(0.5f))));
+        m.insert(std::make_pair("Unison", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Detune", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("Spread", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("SyncEnabled", NodeParameterValue(false)));
+        return m;
+    }();
+
+    out[5].stereo = true;
+    out[5].name = "Saw Unison SIMD";
+    out[5].tolerance = 0.02f;
+    out[5].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateSilentParameters(t[0].emplace_back(), 131072);
+        return t;
+    }();
+    out[5].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Enabled", NodeParameterValue(true)));
+        m.insert(std::make_pair("Frequency", NodeParameterValue(static_cast<float>(330.0f))));
+        m.insert(std::make_pair("Amplitude", NodeParameterValue(static_cast<float>(0.85f))));
+        m.insert(std::make_pair("Waveform", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Drive", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("DriveShape", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("DriveBias", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("DriveMix", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("RenderMode", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("PulseWidth", NodeParameterValue(static_cast<float>(0.5f))));
+        m.insert(std::make_pair("Unison", NodeParameterValue(static_cast<int>(4))));
+        m.insert(std::make_pair("Detune", NodeParameterValue(static_cast<float>(18.0f))));
+        m.insert(std::make_pair("Spread", NodeParameterValue(static_cast<float>(0.8f))));
+        m.insert(std::make_pair("SyncEnabled", NodeParameterValue(false)));
+        return m;
+    }();
+
+    out[6].stereo = true;
+    out[6].name = "SuperSaw SIMD";
+    out[6].tolerance = 0.02f;
+    out[6].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateSilentParameters(t[0].emplace_back(), 262144);
+        return t;
+    }();
+    out[6].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Enabled", NodeParameterValue(true)));
+        m.insert(std::make_pair("Frequency", NodeParameterValue(static_cast<float>(220.0f))));
+        m.insert(std::make_pair("Amplitude", NodeParameterValue(static_cast<float>(0.7f))));
+        m.insert(std::make_pair("Waveform", NodeParameterValue(static_cast<int>(7))));
+        m.insert(std::make_pair("Drive", NodeParameterValue(static_cast<float>(2.5f))));
+        m.insert(std::make_pair("DriveShape", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("DriveBias", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("DriveMix", NodeParameterValue(static_cast<float>(0.75f))));
+        m.insert(std::make_pair("RenderMode", NodeParameterValue(static_cast<int>(0))));
+        m.insert(std::make_pair("PulseWidth", NodeParameterValue(static_cast<float>(0.5f))));
+        m.insert(std::make_pair("Unison", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Detune", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("Spread", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("SyncEnabled", NodeParameterValue(false)));
+        return m;
+    }();
+
+    return true;
+}
+
+template<>
 bool GetTestData<dsp_primitives::MixerNode>(std::vector<NodeTestEntry> & out)
 {
     out.resize(6);
@@ -1006,6 +1275,15 @@ static bool TestNode(const double samplerate, const int blksize)
             printf("BASE CONFIGURE FAILED! ");
             return false;
         }
+
+        if constexpr (std::is_same_v<T, dsp_primitives::OscillatorNode>)
+        {
+            primitiveIFace->prepare(samplerate, blksize);
+            basePrimitiveIFace->prepare(samplerate, blksize);
+            basenode.disableSIMD();
+            node.resetPhase();
+            basenode.resetPhase();
+        }
             
         const int numChannels = curtest.stereo ? 2 : 1;
         curtest.testDuration = std::chrono::nanoseconds::zero();
@@ -1139,7 +1417,7 @@ static bool TestNode(const double samplerate, const int blksize)
                     //Compare with base
                     for(int x=0; x < blockSampleCount; ++x)
                     {
-                        if(!compareFloats(outputPtrs[c][x], baseOutputPtrs[c][x], FLOAT_TOLLERANCE_SSE))
+                        if(!compareFloats(outputPtrs[c][x], baseOutputPtrs[c][x], curtest.tolerance))
                         {
                             printf(" - Fail : Sample %zu Channel %u : Expected %g, got %g", x + cursz, c, baseOutputPtrs[c][x], outputPtrs[c][x]);
                             return false;
@@ -1324,7 +1602,7 @@ bool TestNode<dsp_primitives::FilterNode>(const double samplerate, const int blk
                     //Compare with base
                     for(int x=0; x < blockSampleCount; ++x)
                     {
-                        if(!compareFloats(outputPtrs[c][x], baseOutputPtrs[c][x], FLOAT_TOLLERANCE_SSE))
+                        if(!compareFloats(outputPtrs[c][x], baseOutputPtrs[c][x], curtest.tolerance))
                         {
                             printf(" - Fail : Sample %zu Channel %u : Expected %g, got %g", x + cursz, c, baseOutputPtrs[c][x], outputPtrs[c][x]);
                             return false;
@@ -1381,6 +1659,12 @@ int main(int argc, const char ** argv)
     }
 
     if(!TestNode<dsp_primitives::FilterNode>(c_samplerate, c_blockSize))
+    {
+        printf(" - FAILED!");
+        return -1;
+    }
+
+    if(!TestNode<dsp_primitives::OscillatorNode>(c_samplerate, c_blockSize))
     {
         printf(" - FAILED!");
         return -1;
