@@ -204,7 +204,7 @@ add_library(highway STATIC
     ${HWY_DIR}/hwy/aligned_allocator.cc
 	${HWY_DIR}/hwy/targets.cc)
 
-set_target_properties(imgui PROPERTIES
+set_target_properties(imgui highway PROPERTIES
     POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(imgui
@@ -217,10 +217,14 @@ target_include_directories(imgui
 target_compile_definitions(imgui
     PUBLIC
         IMGUI_USER_CONFIG="manifold/ui/imgui/ManifoldImGuiConfig.h")
-		
+
 target_include_directories(highway
     PUBLIC
-        ${HWY_DIR}	)
+        ${HWY_DIR})
+
+# Export symbols from the highway library so AllocateAlignedBytes and
+# FreeAlignedBytes are visible to linking code
+target_compile_definitions(highway PRIVATE HWY_SHARED_DEFINE)
 
 # --- ImGuiColorTextEdit (pthom fork) ---
 if(MANIFOLD_PLATFORM_ANDROID)
@@ -730,6 +734,7 @@ function(manifold_add_export_plugin target_name)
             imgui_color_text_edit
             ${MANIFOLD_LUA_TARGET}
             sol2::sol2
+            highway
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_lto_flags
