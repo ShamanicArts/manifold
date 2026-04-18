@@ -22,10 +22,16 @@ public:
     void setCutoff(float hz);
     void setResonance(float q);
     void setMix(float mix);
+    void reset();
 
     float getCutoff() const { return targetCutoffHz_.load(std::memory_order_acquire); }
     float getResonance() const { return targetResonance_.load(std::memory_order_acquire); }
     float getMix() const { return targetMix_.load(std::memory_order_acquire); }
+
+    void disableSIMD() //turn off SIMD implementation, for testing
+    {
+        simd_implementation_.reset();
+    }
 
 private:
     float computeAlpha(float cutoffHz, float resonance) const;
@@ -42,6 +48,11 @@ private:
     float mix_ = 1.0f;
     std::array<float, 2> z1_ {0.0f, 0.0f};
     std::array<float, 2> z2_ {0.0f, 0.0f};
+
+    bool prepared_ = false;
+
+    //SIMD implementation
+    std::unique_ptr<IPrimitiveNodeSIMDImplementation> simd_implementation_;
 };
 
 } // namespace dsp_primitives

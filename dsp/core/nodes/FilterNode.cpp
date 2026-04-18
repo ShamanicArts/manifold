@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "FilterNode_Highway.h"
+
 namespace dsp_primitives {
 
 FilterNode::FilterNode() = default;
@@ -22,18 +24,35 @@ void FilterNode::prepare(double sampleRate, int maxBlockSize) {
     cutoffHz_ = targetCutoffHz_.load(std::memory_order_acquire);
     resonance_ = targetResonance_.load(std::memory_order_acquire);
     mix_ = targetMix_.load(std::memory_order_acquire);
+    prepared_ = true;
+
+    //Set up SIMD implementation
+    if(simd_implementation_ == nullptr)
+        simd_implementation_.reset(FilterNode_Highway::__CreateInstance(
+            &targetCutoffHz_,
+            &targetResonance_,
+            &targetMix_,
+            sampleRate_));
+
+    simd_implementation_->prepare(static_cast<float>(sampleRate_));
 }
 
 void FilterNode::setCutoff(float hz) {
     targetCutoffHz_.store(juce::jlimit(20.0f, 18000.0f, hz), std::memory_order_release);
+    if(simd_implementation_ != nullptr)
+        simd_implementation_->configChanged();
 }
 
 void FilterNode::setResonance(float q) {
     targetResonance_.store(juce::jlimit(0.0f, 1.0f, q), std::memory_order_release);
+    if(simd_implementation_ != nullptr)
+        simd_implementation_->configChanged();
 }
 
 void FilterNode::setMix(float mix) {
     targetMix_.store(juce::jlimit(0.0f, 1.0f, mix), std::memory_order_release);
+    if(simd_implementation_ != nullptr)
+        simd_implementation_->configChanged();
 }
 
 float FilterNode::computeAlpha(float cutoffHz, float resonance) const {
@@ -47,6 +66,19 @@ float FilterNode::computeAlpha(float cutoffHz, float resonance) const {
 void FilterNode::process(const std::vector<AudioBufferView>& inputs,
                          std::vector<WritableAudioBufferView>& outputs,
                          int numSamples) {
+    if (!prepared_ || outputs.empty() || numSamples <= 0) {
+        if (!outputs.empty()) {
+            outputs[0].clear();
+        }
+        return;
+    }
+
+    if(simd_implementation_ != nullptr)
+    {
+        simd_implementation_->run(inputs, outputs, numSamples);
+        return;
+    }
+
     if (inputs.size() < 2 || outputs.size() < 2) {
         if (!outputs.empty()) outputs[0].clear();
         if (outputs.size() > 1) outputs[1].clear();
@@ -77,6 +109,12 @@ void FilterNode::process(const std::vector<AudioBufferView>& inputs,
             outputs[idx].setSample(ch, i, in * dry + filtered * wet);
         }
     }
+}
+
+void FilterNode::reset() {
+    // no internal state
+    if(simd_implementation_ != nullptr)
+        simd_implementation_->reset();
 }
 
 } // namespace dsp_primitives
