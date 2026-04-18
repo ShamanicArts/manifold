@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "MixerNode_Highway.h"
+
 namespace dsp_primitives {
 
 MixerNode::MixerNode() {
@@ -17,12 +19,16 @@ void MixerNode::setGain(int busIndex, float g) {
     const int idx = juce::jlimit(1, kMaxBusses, busIndex) - 1;
     targetGains_[static_cast<size_t>(idx)].store(
         juce::jlimit(0.0f, 2.0f, g), std::memory_order_release);
+    if(simd_implementation_ != nullptr)
+        simd_implementation_->configChanged();
 }
 
 void MixerNode::setPan(int busIndex, float p) {
     const int idx = juce::jlimit(1, kMaxBusses, busIndex) - 1;
     targetPans_[static_cast<size_t>(idx)].store(
         juce::jlimit(-1.0f, 1.0f, p), std::memory_order_release);
+    if(simd_implementation_ != nullptr)
+        simd_implementation_->configChanged();
 }
 
 float MixerNode::getGain(int busIndex) const {
@@ -52,10 +58,23 @@ void MixerNode::prepare(double sampleRate, int maxBlockSize) {
 
     master_ = targetMaster_.load(std::memory_order_acquire);
     prepared_ = true;
+
+    //Set up SIMD implementation
+    if(simd_implementation_ == nullptr)
+        simd_implementation_.reset(MixerNode_Highway::__CreateInstance(
+            &inputCount_,
+            targetGains_.data(),
+            targetPans_.data(),
+            &targetMaster_,
+            kMaxBusses));
+
+    simd_implementation_->prepare(static_cast<float>(sampleRate));
 }
 
 void MixerNode::reset() {
     // no internal state
+    if(simd_implementation_ != nullptr)
+        simd_implementation_->reset();
 }
 
 static inline void equalPowerPan(float pan, float& gainL, float& gainR) {
@@ -71,6 +90,12 @@ void MixerNode::process(const std::vector<AudioBufferView>& inputs,
         if (!outputs.empty()) {
             outputs[0].clear();
         }
+        return;
+    }
+
+    if(simd_implementation_ != nullptr)
+    {
+        simd_implementation_->run(inputs, outputs, numSamples);
         return;
     }
 

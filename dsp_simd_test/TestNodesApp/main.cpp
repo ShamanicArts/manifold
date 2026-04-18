@@ -1,16 +1,25 @@
 #define _USE_MATH_DEFINES
 
-#include <stdio.h>
-#include <math.h>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <memory>
+#include <string>
+#include <type_traits>
+#include <vector>
+#include <limits>
 
-namespace juce
-{
-    const char * juce_compilationDate = "1/1/1";
-    const char * juce_compilationTime = "2/2/2";
-}
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
-#include "dsp/core//nodes/ADSREnvelopeNode.h"
-#include "dsp/core//nodes/BitCrusherNode.h"
+#include "dsp/core/nodes/ADSREnvelopeNode.h"
+#include "dsp/core/nodes/BitCrusherNode.h"
+#include "dsp/core/nodes/MixerNode.h"
 
 struct NodeParameterValue
 {
@@ -66,60 +75,56 @@ struct NodeTestEntry
 
 #define FLOAT_TOLLERANCE_SSE            0.008f
 
-static float pow_wrapper(float a, float b)
+template<typename F>
+static F pow_wrapper(F a, F b)
 {
-    return powf(a,b);
-}
-
-static double pow_wrapper(double a, double b)
-{
-    return pow(a,b);
+    return static_cast<F>(std::pow(a, b));
 }
 
 
 template<typename F>
 static bool compareFloats(F a, F b, const F tolerance)
 {   
-    if(a == b)
+    if(std::memcmp(&a, &b, sizeof(F)) == 0)
         return true;
 
-    if(_finite(a) && !_finite(b))
+    if(std::isfinite(a) && !std::isfinite(b))
         return false;
 
-    if(!_finite(a) && _finite(b))
+    if(!std::isfinite(a) && std::isfinite(b))
         return false;
 
-    if(!_finite(a) && !_finite(b))
+    if(!std::isfinite(a) && !std::isfinite(b))
         return true;
 
-    if(!_isnan(a) && _isnan(b))
+    if(!std::isnan(a) && std::isnan(b))
         return false;
 
-    if(_isnan(a) && !_isnan(b))
+    if(std::isnan(a) && !std::isnan(b))
         return false;
 
-    if(_isnan(a) && _isnan(b))
+    if(std::isnan(a) && std::isnan(b))
         return true;
         
-    F absa = abs(a);
-    F absb = abs(b);
+    F absa = std::abs(a);
+    F absb = std::abs(b);
     F logab = 0;
     F flogab = 0;
     F maxab = (absa > absb) ? absa : absb;
     F minab = (absa < absb) ? absa : absb;
 
     int abfactor = 0;
-    if(maxab != 0)
+    if(maxab > static_cast<F>(0))
     {
-        logab = log10(maxab);
-        flogab = floor(logab);
-        abfactor = (int)flogab; 
+        logab = static_cast<F>(std::log10(maxab));
+        flogab = static_cast<F>(std::floor(logab));
+        abfactor = static_cast<int>(flogab); 
     }
 
         
     //Zero fix / approx zero fix
     F maxdiff = tolerance;
-    if((absa == 0) || (absb == 0))
+    if((absa <= std::numeric_limits<F>::epsilon()) || (absb <= std::numeric_limits<F>::epsilon()))
     {
         //Allow greater error if one value is zero
         maxdiff = tolerance * pow_wrapper(10.0f,  static_cast<F>(abfactor) / 2);
@@ -199,6 +204,51 @@ static bool ConfigureNode(dsp_primitives::ADSREnvelopeNode & node, const std::ma
             node.setRelease(itr.second.floatval);
         else if(itr.first == "Gate")
             node.setGate(itr.second.bval);
+    }
+
+    return true;
+}
+
+static bool ConfigureNode(dsp_primitives::MixerNode & node, const std::map<std::string,NodeParameterValue> & parameters)
+{
+    for(const auto & itr : parameters)
+    {
+        if(itr.first == "InputCount")
+            node.setInputCount(itr.second.i32val);
+        else if(itr.first == "Gain1")
+            node.setGain(1, itr.second.floatval);
+        else if(itr.first == "Gain2")
+            node.setGain(2, itr.second.floatval);
+        else if(itr.first == "Gain3")
+            node.setGain(3, itr.second.floatval);
+        else if(itr.first == "Gain4")
+            node.setGain(4, itr.second.floatval);
+        else if(itr.first == "Gain5")
+            node.setGain(5, itr.second.floatval);
+        else if(itr.first == "Gain6")
+            node.setGain(6, itr.second.floatval);
+        else if(itr.first == "Gain7")
+            node.setGain(7, itr.second.floatval);
+        else if(itr.first == "Gain8")
+            node.setGain(8, itr.second.floatval);
+        else if(itr.first == "Pan1")
+            node.setPan(1, itr.second.floatval);
+        else if(itr.first == "Pan2")
+            node.setPan(2, itr.second.floatval);
+        else if(itr.first == "Pan3")
+            node.setPan(3, itr.second.floatval);
+        else if(itr.first == "Pan4")
+            node.setPan(4, itr.second.floatval);
+        else if(itr.first == "Pan5")
+            node.setPan(5, itr.second.floatval);
+        else if(itr.first == "Pan6")
+            node.setPan(6, itr.second.floatval);
+        else if(itr.first == "Pan7")
+            node.setPan(7, itr.second.floatval);
+        else if(itr.first == "Pan8")
+            node.setPan(8, itr.second.floatval);
+        else if(itr.first == "Master")
+            node.setMaster(itr.second.floatval);
     }
 
     return true;
@@ -317,7 +367,7 @@ static bool GetTestData(std::vector<NodeTestEntry> & out)
 
 
 template<>
-static bool GetTestData<dsp_primitives::ADSREnvelopeNode>(std::vector<NodeTestEntry> & out)
+bool GetTestData<dsp_primitives::ADSREnvelopeNode>(std::vector<NodeTestEntry> & out)
 {
     out.resize(6);
 
@@ -444,7 +494,7 @@ static bool GetTestData<dsp_primitives::ADSREnvelopeNode>(std::vector<NodeTestEn
 
 
 template<>
-static bool GetTestData<dsp_primitives::BitCrusherNode>(std::vector<NodeTestEntry> & out)
+bool GetTestData<dsp_primitives::BitCrusherNode>(std::vector<NodeTestEntry> & out)
 {
     out.resize(9);
 
@@ -662,6 +712,138 @@ static bool GetTestData<dsp_primitives::BitCrusherNode>(std::vector<NodeTestEntr
     return true;
 }
 
+template<>
+bool GetTestData<dsp_primitives::MixerNode>(std::vector<NodeTestEntry> & out)
+{
+    out.resize(6);
+
+    out[0].stereo = true;
+    out[0].name = "1 Bus Stereo";
+    out[0].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        return t;
+    }();
+    out[0].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("InputCount", NodeParameterValue(static_cast<int>(1))));
+        m.insert(std::make_pair("Gain1", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Master", NodeParameterValue(static_cast<float>(1.0f))));
+        return m;
+    }();
+
+    out[1].stereo = true;
+    out[1].name = "2 Busses Stereo";
+    out[1].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        GenerateWave2Parameters(t[0].emplace_back(), 10000);
+        return t;
+    }();
+    out[1].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("InputCount", NodeParameterValue(static_cast<int>(2))));
+        m.insert(std::make_pair("Gain1", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Gain2", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Master", NodeParameterValue(static_cast<float>(1.0f))));
+        return m;
+    }();
+
+    out[2].stereo = true;
+    out[2].name = "4 Busses with Panning";
+    out[2].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        GenerateWave2Parameters(t[0].emplace_back(), 10000);
+        GenerateWave3Parameters(t[0].emplace_back(), 10000);
+        GenerateWave4Parameters(t[0].emplace_back(), 10000);
+        return t;
+    }();
+    out[2].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("InputCount", NodeParameterValue(static_cast<int>(4))));
+        m.insert(std::make_pair("Gain1", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Gain2", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Gain3", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Gain4", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Pan1", NodeParameterValue(static_cast<float>(0.0f))));
+        m.insert(std::make_pair("Pan2", NodeParameterValue(static_cast<float>(0.5f))));
+        m.insert(std::make_pair("Pan3", NodeParameterValue(static_cast<float>(-0.5f))));
+        m.insert(std::make_pair("Pan4", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Master", NodeParameterValue(static_cast<float>(1.0f))));
+        return m;
+    }();
+
+    out[3].stereo = true;
+    out[3].name = "8 Busses High Load";
+    out[3].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        for (int i = 0; i < 8; ++i) {
+            GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        }
+        return t;
+    }();
+    out[3].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("InputCount", NodeParameterValue(static_cast<int>(8))));
+        for (int i = 1; i <= 8; ++i) {
+            m.insert(std::make_pair("Gain" + std::to_string(i), NodeParameterValue(static_cast<float>(1.0f))));
+        }
+        m.insert(std::make_pair("Master", NodeParameterValue(static_cast<float>(1.0f))));
+        return m;
+    }();
+
+    out[4].stereo = true;
+    out[4].name = "Stereo Panning Only";
+    out[4].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        GenerateWave2Parameters(t[0].emplace_back(), 10000);
+        return t;
+    }();
+    out[4].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("InputCount", NodeParameterValue(static_cast<int>(2))));
+        m.insert(std::make_pair("Gain1", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Gain2", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Pan1", NodeParameterValue(static_cast<float>(-1.0f))));
+        m.insert(std::make_pair("Pan2", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Master", NodeParameterValue(static_cast<float>(1.0f))));
+        return m;
+    }();
+
+    out[5].stereo = true;
+    out[5].name = "Master Gain Variation";
+    out[5].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        GenerateWave2Parameters(t[0].emplace_back(), 10000);
+        return t;
+    }();
+    out[5].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("InputCount", NodeParameterValue(static_cast<int>(2))));
+        m.insert(std::make_pair("Gain1", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Gain2", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Master", NodeParameterValue(static_cast<float>(0.5f))));
+        return m;
+    }();
+
+    return true;
+}
+
 
 //================================================================
 template<typename T>
@@ -751,23 +933,58 @@ static bool TestNode(const double samplerate, const int blksize)
                 const int blockSampleCount = (remain > blksize) ? blksize : remain;
 
                 //Generate input view
-                std::vector<dsp_primitives::AudioBufferView> inputViews(testdatabuffers.size());
-                std::vector<const float *> inputPtrs(numChannels * testdatabuffers.size());
-                int idx = 0;
-                int ptridx = 0;
-                for(const auto & buf : testdatabuffers)
+                std::vector<dsp_primitives::AudioBufferView> inputViews;
+                std::vector<const float *> inputPtrs;
+                if constexpr (std::is_same_v<T, dsp_primitives::MixerNode>)
                 {
-                    inputViews[idx].numChannels = numChannels;
-                    inputViews[idx].numSamples = blockSampleCount;
-                    const float * const * origInPtrs = buf->getArrayOfReadPointers();
-                    for(int c=0; c < numChannels; ++c)
-                    {
-                        inputPtrs[ptridx] = &origInPtrs[c][offset];
-                        ++ptridx;
-                    }
+                    const int mixerInputCount = node.getInputCount();
+                    inputViews.resize(static_cast<size_t>(mixerInputCount * 2));
+                    inputPtrs.resize(static_cast<size_t>(numChannels * mixerInputCount * 2));
 
-                    inputViews[idx].channelData = &inputPtrs[ptridx - numChannels];
-                    ++idx;
+                    for(int bus = 0; bus < mixerInputCount; ++bus)
+                    {
+                        if(static_cast<size_t>(bus) >= testdatabuffers.size())
+                        {
+                            printf("FAILED - Mixer test data missing bus %d", bus);
+                            return false;
+                        }
+
+                        const auto & buf = testdatabuffers[static_cast<size_t>(bus)];
+                        const float * const * origInPtrs = buf->getArrayOfReadPointers();
+                        for(int dup = 0; dup < 2; ++dup)
+                        {
+                            const size_t viewIndex = static_cast<size_t>(bus * 2 + dup);
+                            inputViews[viewIndex].numChannels = numChannels;
+                            inputViews[viewIndex].numSamples = blockSampleCount;
+                            const size_t ptrBase = viewIndex * static_cast<size_t>(numChannels);
+                            for(int c = 0; c < numChannels; ++c)
+                            {
+                                inputPtrs[ptrBase + static_cast<size_t>(c)] = &origInPtrs[c][offset];
+                            }
+                            inputViews[viewIndex].channelData = &inputPtrs[ptrBase];
+                        }
+                    }
+                }
+                else
+                {
+                    inputViews.resize(testdatabuffers.size());
+                    inputPtrs.resize(static_cast<size_t>(numChannels) * testdatabuffers.size());
+                    int idx = 0;
+                    int ptridx = 0;
+                    for(const auto & buf : testdatabuffers)
+                    {
+                        inputViews[static_cast<size_t>(idx)].numChannels = numChannels;
+                        inputViews[static_cast<size_t>(idx)].numSamples = blockSampleCount;
+                        const float * const * origInPtrs = buf->getArrayOfReadPointers();
+                        for(int c=0; c < numChannels; ++c)
+                        {
+                            inputPtrs[static_cast<size_t>(ptridx)] = &origInPtrs[c][offset];
+                            ++ptridx;
+                        }
+
+                        inputViews[static_cast<size_t>(idx)].channelData = &inputPtrs[static_cast<size_t>(ptridx - numChannels)];
+                        ++idx;
+                    }
                 }
 
                 //Generate output view
@@ -827,13 +1044,15 @@ static bool TestNode(const double samplerate, const int blksize)
             }
         }
 
+        const long long baseNs = static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.baseTestDuration).count());
+        const long long simdNs = static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.testDuration).count());
         printf(" - Pass - Base: %lld nanoseconds SIMD:%lld nanoseconds Speed:%f\n",
-               std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.baseTestDuration).count(),
-               std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.testDuration).count(),
-               static_cast<float>(std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.baseTestDuration).count()) / static_cast<float>(std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.testDuration).count()));
+               baseNs,
+               simdNs,
+               static_cast<float>(baseNs) / static_cast<float>(simdNs));
 
-        baseTotal += std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.baseTestDuration).count();
-        simdTotal += std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.testDuration).count();
+        baseTotal += baseNs;
+        simdTotal += simdNs;
     }
 
     printf("SUCCESS - Base Total:%lld \t SIMD Total: %lld Speed:%f \n", baseTotal, simdTotal, static_cast<float>(baseTotal) / static_cast<float>(simdTotal));
@@ -857,6 +1076,12 @@ int main(int argc, const char ** argv)
     }
 
     if(!TestNode<dsp_primitives::BitCrusherNode>(c_samplerate, c_blockSize))
+    {
+        printf(" - FAILED!");
+        return -1;
+    }
+
+    if(!TestNode<dsp_primitives::MixerNode>(c_samplerate, c_blockSize))
     {
         printf(" - FAILED!");
         return -1;
