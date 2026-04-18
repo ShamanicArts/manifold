@@ -6,7 +6,8 @@ target_sources(ManifoldTestNodesApp
         ${PROJECT_SOURCE_DIR}/dsp_simd_test/TestNodesApp/main.cpp
         ${PROJECT_SOURCE_DIR}/dsp/core/nodes/ADSREnvelopeNode.cpp
         ${PROJECT_SOURCE_DIR}/dsp/core/nodes/BitCrusherNode.cpp
-        ${PROJECT_SOURCE_DIR}/dsp/core/nodes/MixerNode.cpp)
+        ${PROJECT_SOURCE_DIR}/dsp/core/nodes/MixerNode.cpp
+        ${PROJECT_SOURCE_DIR}/dsp/core/nodes/FilterNode.cpp)
 
 # Need project root in include path for includes like "dsp/core/..."
 target_include_directories(ManifoldTestNodesApp
