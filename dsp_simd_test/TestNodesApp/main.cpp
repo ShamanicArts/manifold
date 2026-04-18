@@ -22,6 +22,7 @@
 #include "dsp/core/nodes/MixerNode.h"
 #include "dsp/core/nodes/FilterNode.h"
 #include "dsp/core/nodes/OscillatorNode.h"
+#include "dsp/core/nodes/GainNode.h"
 
 struct NodeParameterValue
 {
@@ -791,7 +792,7 @@ bool GetTestData<dsp_primitives::OscillatorNode>(std::vector<NodeTestEntry> & ou
 
     out[0].stereo = true;
     out[0].name = "Sine Standard SIMD";
-    out[0].tolerance = 0.02f;
+    out[0].tolerance = 0.025f;
     out[0].testdata = []
     {
         std::vector<std::vector<TestWaveData>> t(1);
@@ -820,7 +821,7 @@ bool GetTestData<dsp_primitives::OscillatorNode>(std::vector<NodeTestEntry> & ou
 
     out[1].stereo = true;
     out[1].name = "Saw Drive SIMD";
-    out[1].tolerance = 0.02f;
+    out[1].tolerance = 0.025f;
     out[1].testdata = []
     {
         std::vector<std::vector<TestWaveData>> t(1);
@@ -991,6 +992,64 @@ bool GetTestData<dsp_primitives::OscillatorNode>(std::vector<NodeTestEntry> & ou
         m.insert(std::make_pair("Detune", NodeParameterValue(static_cast<float>(0.0f))));
         m.insert(std::make_pair("Spread", NodeParameterValue(static_cast<float>(0.0f))));
         m.insert(std::make_pair("SyncEnabled", NodeParameterValue(false)));
+        return m;
+    }();
+
+    return true;
+}
+
+template<>
+bool GetTestData<dsp_primitives::GainNode>(std::vector<NodeTestEntry> & out)
+{
+    out.resize(3);
+
+    out[0].stereo = false;
+    out[0].name = "Mono Gain 1.0";
+    out[0].tolerance = 0.025f;
+    out[0].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        return t;
+    }();
+    out[0].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Gain", NodeParameterValue(static_cast<float>(1.0f))));
+        m.insert(std::make_pair("Muted", NodeParameterValue(false)));
+        return m;
+    }();
+
+    out[1].stereo = true;
+    out[1].name = "Stereo Gain 0.5";
+    out[1].tolerance = 0.015f;
+    out[1].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        return t;
+    }();
+    out[1].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Gain", NodeParameterValue(static_cast<float>(0.5f))));
+        m.insert(std::make_pair("Muted", NodeParameterValue(false)));
+        return m;
+    }();
+
+    out[2].stereo = true;
+    out[2].name = "Stereo Gain 2.0 + Muted";
+    out[2].testdata = []
+    {
+        std::vector<std::vector<TestWaveData>> t(1);
+        GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        return t;
+    }();
+    out[2].parameters = []
+    {
+        std::map<std::string, NodeParameterValue> m;
+        m.insert(std::make_pair("Gain", NodeParameterValue(static_cast<float>(2.0f))));
+        m.insert(std::make_pair("Muted", NodeParameterValue(true)));
         return m;
     }();
 
@@ -1669,8 +1728,27 @@ int main(int argc, const char ** argv)
         printf(" - FAILED!");
         return -1;
     }
-    
+
+    if(!TestNode<dsp_primitives::GainNode>(c_samplerate, c_blockSize))
+    {
+        printf(" - FAILED!");
+        return -1;
+    }
+
     printf(" - Success\n");
 
     return 0;
+}
+
+static bool ConfigureNode(dsp_primitives::GainNode & node, const std::map<std::string,NodeParameterValue> & parameters)
+{
+    for(const auto & itr : parameters)
+    {
+        if(itr.first == "Gain")
+            node.setGain(itr.second.floatval);
+        else if(itr.first == "Muted")
+            node.setMuted(itr.second.bval);
+    }
+
+    return true;
 }

@@ -1,4 +1,5 @@
 #include "dsp/core/nodes/GainNode.h"
+#include "dsp/core/nodes/GainNode_Highway.h"
 
 #include <cmath>
 
@@ -15,22 +16,38 @@ void GainNode::prepare(double sampleRate, int maxBlockSize) {
     smoothingCoeff_ = juce::jlimit(0.0001f, 1.0f, smoothingCoeff_);
 
     currentGain_ = juce::jmax(0.0f, targetGain_.load(std::memory_order_acquire));
+
+    simd_implementation_ = std::unique_ptr<IPrimitiveNodeSIMDImplementation>(
+        dsp_primitives::GainNode_Highway::__CreateInstance(
+            static_cast<float>(sampleRate), numChannels_, &targetGain_, &muted_)
+    );
+    simd_implementation_->prepare(static_cast<float>(sampleRate));
+    prepared_ = true;
 }
 
 void GainNode::process(const std::vector<AudioBufferView>& inputs,
                        std::vector<WritableAudioBufferView>& outputs,
                        int numSamples) {
+    if (simd_implementation_) {
+        simd_implementation_->run(inputs, outputs, numSamples);
+        return;
+    }
+
+    if (inputs.empty() || outputs.empty() || numSamples <= 0)
+        return;
+
+    const int channels = juce::jmin(numChannels_,
+                                    inputs[0].numChannels,
+                                    outputs[0].numChannels);
+
     const float requestedGain = juce::jmax(0.0f, targetGain_.load(std::memory_order_acquire));
     const float target = muted_.load(std::memory_order_acquire) ? 0.0f : requestedGain;
 
-    const int channels = juce::jmin(numChannels_, static_cast<int>(inputs.size()),
-                                    static_cast<int>(outputs.size()));
     for (int i = 0; i < numSamples; ++i) {
         currentGain_ += (target - currentGain_) * smoothingCoeff_;
 
         for (int ch = 0; ch < channels; ++ch) {
-            const size_t idx = static_cast<size_t>(ch);
-            outputs[idx].setSample(ch, i, inputs[idx].getSample(ch, i) * currentGain_);
+            outputs[0].channelData[ch][i] = inputs[0].channelData[ch][i] * currentGain_;
         }
     }
 }
@@ -43,8 +60,21 @@ float GainNode::getGain() const {
     return targetGain_.load(std::memory_order_acquire);
 }
 
+void GainNode::reset() {
+    currentGain_ = 0.0f;
+
+    if (simd_implementation_) {
+        simd_implementation_->reset();
+    }
+}
+
+void GainNode::disableSIMD() {
+    simd_implementation_.reset();
+}
+
 void GainNode::setMuted(bool muted) {
     muted_.store(muted, std::memory_order_release);
+    notifyConfigChangeSimdImplementation();
 }
 
 bool GainNode::isMuted() const {
