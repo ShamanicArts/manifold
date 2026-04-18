@@ -21,7 +21,7 @@ enum class WaveShaperCurve {
 class WaveShaperNode : public IPrimitiveNode,
                        public std::enable_shared_from_this<WaveShaperNode> {
 public:
-    WaveShaperNode();
+    WaveShaperNode(int numChannels = 2);
     ~WaveShaperNode() override = default;
 
     const char* getNodeType() const override { return "WaveShaper"; }
@@ -62,6 +62,16 @@ public:
     void setOversample(int factor);  // 1, 2, or 4x
     int getOversample() const;
 
+    // SIMD control
+    void disableSIMD(); //turn off SIMD implementation, for testing
+
+private:
+    inline void notifyConfigChangeSimdImplementation()
+    {
+        if(simd_implementation_ != NULL)
+            simd_implementation_->configChanged();
+    }
+
 private:
     // Parameter targets (atomic for thread safety)
     std::atomic<int> targetCurve_{0};      // Tanh default
@@ -97,6 +107,9 @@ private:
     float postFilterState_[2] = {0.0f, 0.0f};
     float preFilterCoef_ = 0.0f;
     float postFilterCoef_ = 0.0f;
+
+    // SIMD implementation
+    std::unique_ptr<IPrimitiveNodeSIMDImplementation> simd_implementation_;
 
     // Oversampling buffers
     std::array<std::vector<float>, 2> upsampleBuffer_;

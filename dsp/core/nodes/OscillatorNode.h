@@ -9,6 +9,8 @@ namespace dsp_primitives {
 
 struct WaveAddTableSet;
 
+float lookupWaveAddSample(const WaveAddTableSet& tableSet, float phaseNorm, int bandIndex);
+
 // Build partials from waveform recipe for morph mode
 PartialData buildWavePartials(int waveform, float fundamental, int partialCount, float tilt, float drift, float pulseWidth = 0.5f);
 
@@ -60,11 +62,14 @@ public:
 
     // Unison settings for supersaw and rich tones
     void setUnison(int voices);
-    void setDetune(float cents) { detuneCents_.store(juce::jlimit(0.0f, 100.0f, cents), std::memory_order_release); }
-    void setSpread(float amount) { stereoSpread_.store(juce::jlimit(0.0f, 1.0f, amount), std::memory_order_release); }
+    void setDetune(float cents) { detuneCents_.store(juce::jlimit(0.0f, 100.0f, cents), std::memory_order_release); notifyConfigChangeSimdImplementation(); }
+    void setSpread(float amount) { stereoSpread_.store(juce::jlimit(0.0f, 1.0f, amount), std::memory_order_release); notifyConfigChangeSimdImplementation(); }
     int getUnison() const { return unisonVoices_.load(std::memory_order_acquire); }
     float getDetune() const { return detuneCents_.load(std::memory_order_acquire); }
     float getSpread() const { return stereoSpread_.load(std::memory_order_acquire); }
+
+    // SIMD control
+    void disableSIMD(); //turn off SIMD implementation, for testing
 
 private:
     std::atomic<float> targetFrequency_{440.0f};
@@ -113,6 +118,16 @@ private:
     std::shared_ptr<const WaveAddTableSet> waveAddTableSet_;
 
     void refreshWaveAddTableSet();
+
+    // SIMD implementation
+    std::unique_ptr<IPrimitiveNodeSIMDImplementation> simd_implementation_;
+
+private:
+    inline void notifyConfigChangeSimdImplementation()
+    {
+        if(simd_implementation_ != NULL)
+            simd_implementation_->configChanged();
+    }
 };
 
 } // namespace dsp_primitives
