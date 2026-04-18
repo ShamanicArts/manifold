@@ -63,7 +63,18 @@ public:
 
     float getMaster() const { return targetMaster_.load(std::memory_order_acquire); }
 
+    void disableSIMD() //turn off SIMD implementation, for testing
+    {
+        simd_implementation_.reset();
+    }
+
 private:
+    inline void notifyConfigChangeSimdImplementation()
+    {
+        if(simd_implementation_ != nullptr)
+            simd_implementation_->configChanged();
+    }
+
     std::atomic<int> inputCount_{4};
     std::array<std::atomic<float>, kMaxBusses> targetGains_{};
     std::array<std::atomic<float>, kMaxBusses> targetPans_{};
@@ -76,6 +87,9 @@ private:
     float smooth_ = 1.0f;
 
     bool prepared_ = false;
+
+    //SIMD implementation
+    std::unique_ptr<IPrimitiveNodeSIMDImplementation> simd_implementation_;
 };
 
 } // namespace dsp_primitives

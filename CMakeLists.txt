@@ -843,6 +843,9 @@ target_compile_definitions(ManifoldVST3Probe
         JUCE_PLUGINHOST_LADSPA=0
         JUCE_PLUGINHOST_LV2=0)
 
+# --- DSP SIMD test harness ---
+add_subdirectory(dsp_simd_test/TestNodesApp)
+
 # --- Android Mobile App ---
 if(MANIFOLD_PLATFORM_ANDROID)
     message(STATUS "Configuring Android mobile target")
