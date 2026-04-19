@@ -603,9 +603,13 @@ struct ImGuiDirectHost::ShaderSurfaceState {
         std::string vertexSource;
         std::string fragmentSource;
         std::string inputTextureUniform = "uInputTex";
+        std::string prevTextureUniform = "uPrevTex";
         juce::var uniforms;
         std::array<float, 4> clearColor { 0.0f, 0.0f, 0.0f, 0.0f };
         bool enableDepth = false;
+        int blendMode = 0;
+        float opacity = 1.0f;
+        bool chain = false;
     };
 
     std::string surfaceType;
@@ -616,6 +620,9 @@ struct ImGuiDirectHost::ShaderSurfaceState {
     int sourceWidth = 0;
     int sourceHeight = 0;
     uint64_t sourceSequence = 0;
+    unsigned int feedbackTex = 0;
+    int feedbackWidth = 0;
+    int feedbackHeight = 0;
     int width = 0;
     int height = 0;
     std::string lastError;
@@ -1193,6 +1200,10 @@ void ImGuiDirectHost::releaseShaderSurfaces() {
             glDeleteTextures(1, &state->sourceTexture);
             state->sourceTexture = 0;
         }
+        if (state->feedbackTex != 0) {
+            glDeleteTextures(1, &state->feedbackTex);
+            state->feedbackTex = 0;
+        }
     }
     shaderSurfaceStates_.clear();
     recalculateOwnedGpuBytes();
@@ -1223,6 +1234,10 @@ void ImGuiDirectHost::pruneShaderSurfaces(const std::unordered_set<uint64_t>& to
             if (it->second->sourceTexture != 0) {
                 glDeleteTextures(1, &it->second->sourceTexture);
                 it->second->sourceTexture = 0;
+            }
+            if (it->second->feedbackTex != 0) {
+                glDeleteTextures(1, &it->second->feedbackTex);
+                it->second->feedbackTex = 0;
             }
         }
         it = shaderSurfaceStates_.erase(it);
@@ -1265,6 +1280,9 @@ void ImGuiDirectHost::recalculateOwnedGpuBytes() {
             if (pass.depthRbo != 0) {
                 depthBytes += static_cast<int64_t>(state->width) * static_cast<int64_t>(state->height) * 4;
             }
+        }
+        if (state->feedbackTex != 0 && state->width > 0 && state->height > 0) {
+            colorBytes += static_cast<int64_t>(state->width) * static_cast<int64_t>(state->height) * 4;
         }
     }
     for (const auto& [_, state] : videoSurfaceStates_) {
@@ -1384,6 +1402,12 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
             state->sourceHeight = 0;
             state->sourceSequence = 0;
         }
+        if (state->feedbackTex != 0) {
+            glDeleteTextures(1, &state->feedbackTex);
+            state->feedbackTex = 0;
+            state->feedbackWidth = 0;
+            state->feedbackHeight = 0;
+        }
         state->surfaceType = surfaceType;
         state->payloadSignature = payloadSignature;
         state->sourceType = sourceType;
@@ -1402,9 +1426,35 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
             if (pass.inputTextureUniform.empty()) {
                 pass.inputTextureUniform = "uInputTex";
             }
+            pass.prevTextureUniform = passObj->getProperty("prevTextureUniform").toString().toStdString();
+            if (pass.prevTextureUniform.empty()) {
+                pass.prevTextureUniform = "uPrevTex";
+            }
             pass.uniforms = passObj->getProperty("uniforms").clone();
             pass.clearColor = readColorVec4(passObj->getProperty("clearColor"), { 0.0f, 0.0f, 0.0f, 0.0f });
             pass.enableDepth = static_cast<bool>(passObj->getProperty("depth"));
+            {
+                auto blendVar = passObj->getProperty("blendMode");
+                if (blendVar.isInt() || blendVar.isInt64() || blendVar.isDouble()) {
+                    pass.blendMode = static_cast<int>(blendVar);
+                } else if (blendVar.isString()) {
+                    const auto name = blendVar.toString().toStdString();
+                    if (name == "add") pass.blendMode = 1;
+                    else if (name == "multiply") pass.blendMode = 2;
+                    else if (name == "screen") pass.blendMode = 3;
+                    else if (name == "difference") pass.blendMode = 4;
+                    else pass.blendMode = 0;
+                }
+            }
+            {
+                auto opacityVar = passObj->getProperty("opacity");
+                if (opacityVar.isDouble() || opacityVar.isInt() || opacityVar.isInt64()) {
+                    pass.opacity = std::clamp(static_cast<float>(opacityVar), 0.0f, 1.0f);
+                } else {
+                    pass.opacity = 1.0f;
+                }
+            }
+            pass.chain = static_cast<bool>(passObj->getProperty("chain"));
             if (pass.vertexSource.empty() || pass.fragmentSource.empty()) {
                 state->lastError = "shader pass missing source";
                 return false;
@@ -1523,7 +1573,8 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
     glDisable(GL_SCISSOR_TEST);
     glBindVertexArray(surfaceQuadVao_);
 
-    unsigned int inputTexture = state->sourceType == "video_input" ? state->sourceTexture : 0;
+    const unsigned int sourceTexture = state->sourceType == "video_input" ? state->sourceTexture : 0;
+    unsigned int prevTexture = sourceTexture;
     for (std::size_t i = 0; i < state->passes.size(); ++i) {
         auto& pass = state->passes[i];
         glBindFramebuffer(GL_FRAMEBUFFER, pass.fbo);
@@ -1552,7 +1603,16 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
         if (resolutionLoc >= 0) {
             glUniform2f(resolutionLoc, static_cast<float>(targetWidth), static_cast<float>(targetHeight));
         }
+        const auto blendLoc = glGetUniformLocation(pass.program, "uBlendMode");
+        if (blendLoc >= 0) {
+            glUniform1i(blendLoc, pass.blendMode);
+        }
+        const auto opacityLoc = glGetUniformLocation(pass.program, "uOpacity");
+        if (opacityLoc >= 0) {
+            glUniform1f(opacityLoc, pass.opacity);
+        }
 
+        const unsigned int inputTexture = pass.chain ? prevTexture : sourceTexture;
         if (inputTexture != 0) {
             const auto inputLoc = glGetUniformLocation(pass.program, pass.inputTextureUniform.c_str());
             if (inputLoc >= 0) {
@@ -1561,12 +1621,55 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
                 glUniform1i(inputLoc, 0);
             }
         }
+        if (prevTexture != 0) {
+            const auto prevLoc = glGetUniformLocation(pass.program, pass.prevTextureUniform.c_str());
+            if (prevLoc >= 0) {
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, prevTexture);
+                glUniform1i(prevLoc, 1);
+            }
+        }
+        if (state->feedbackTex != 0) {
+            const auto feedbackLoc = glGetUniformLocation(pass.program, "uFeedbackTex");
+            if (feedbackLoc >= 0) {
+                glActiveTexture(GL_TEXTURE2);
+                glBindTexture(GL_TEXTURE_2D, state->feedbackTex);
+                glUniform1i(feedbackLoc, 2);
+            }
+        }
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
-        if (inputTexture != 0) {
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        prevTexture = pass.colorTex;
+    }
+
+    // Copy final pass output to persistent feedback texture
+    if (!state->passes.empty()) {
+        const auto finalTex = state->passes.back().colorTex;
+        if (finalTex != 0) {
+            if (state->feedbackTex == 0 || state->feedbackWidth != targetWidth || state->feedbackHeight != targetHeight) {
+                if (state->feedbackTex != 0) {
+                    glDeleteTextures(1, &state->feedbackTex);
+                }
+                glGenTextures(1, &state->feedbackTex);
+                glBindTexture(GL_TEXTURE_2D, state->feedbackTex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, targetWidth, targetHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+                state->feedbackWidth = targetWidth;
+                state->feedbackHeight = targetHeight;
+            }
+            glBindTexture(GL_TEXTURE_2D, state->feedbackTex);
+            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, targetWidth, targetHeight);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
-        inputTexture = pass.colorTex;
     }
 
     glBindVertexArray(0);
