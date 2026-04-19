@@ -1,6 +1,8 @@
-# Manifold Audio Looper
+# Manifold
 
-A real-time multi-layer audio looper built on JUCE with scriptable DSP and UI. Designed for live performance with lock-free threading, Ableton Link synchronization, and network control via OSC.
+A real-time scriptable audio plugin framework built on JUCE with a lock-free node graph DSP system. Designed for live performance with network control via OSC, Ableton Link synchronization, and Lua-based extensibility.
+
+> Manifold is a general-purpose audio plugin framework designed for creating custom audio plugins, MIDI processors, sample-based synthesis instruments, and live performance tools.
 
 ---
 
@@ -201,9 +203,9 @@ All parameters are addressed via canonical paths:
 
 ---
 
-## Record Modes
+## Record Modes (Looper Use Case)
 
-The looper supports three recording behaviors:
+The framework supports three recording behaviors, demonstrating one possible application for creating a looper:
 
 ```mermaid
 stateDiagram-v2
@@ -229,6 +231,8 @@ stateDiagram-v2
         FreeMode: quantize to nearest legal length
     end note
 ```
+
+> This record mode system is just one possible configuration. The framework can be used for other applications like MIDI processors, audio effects, and synthesis instruments.
 
 ---
 
@@ -319,7 +323,7 @@ The graph compiles to a `GraphRuntime` with pre-allocated scratch buffers for lo
 
 ---
 
-## Build Instructions
+## Developer Onboarding
 
 ### Prerequisites
 
@@ -414,6 +418,129 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target Manifold
 ```
 
+### Exporting as Plugin
+
+Export a UserScripts project as a standalone plugin:
+
+```bash
+# Edit manifold.project.json5 to define:
+# - Plugin name
+# - View modes (compact/split)
+# - OSC settings
+# - Parameter aliases (VST-facing paths → internal paths)
+```
+
+Example manifest (`UserScripts/projects/Standalone_Filter/manifold.project.json5`):
+
+```json5
+{
+  "name": "Manifold Filter",
+  "plugin": {
+    "view": {
+      "defaultMode": "split",
+      "compact": { "w": 236, "h": 220 },
+      "split": { "w": 472, "h": 220 }
+    },
+    "osc": {
+      "enabled": true,
+      "queryEnabled": true,
+      "basePort": 9010
+    },
+    "params": [
+      {
+        "path": "/plugin/cutoff",
+        "internalPath": "/dsp/filter/cutoff",
+        "type": "f",
+        "min": 80,
+        "max": 16000,
+        "default": 3200,
+        "skew": 0.35
+      }
+    ]
+  }
+}
+```
+
+Build with CMake:
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target Manifold_Filter
+```
+
+**Available exports:** Filter, EQ8, FX, Arp, ScaleQuantizer, Transpose, VelocityMapper, NoteFilter, Sample.
+
+### Writing DSP Scripts
+
+DSP scripts define node graphs via a `buildPlugin(ctx)` function:
+
+```lua
+function buildPlugin(ctx)
+  -- Create layer bundles
+  local state = { layers = {} }
+  for i = 1, 4 do
+    state.layers[i] = ctx.bundles.LoopLayer.new({ channels = 2 })
+  end
+
+  -- Return node graph definition
+  return {
+    nodes = {
+      { type = "passthrough", id = "input", params = {} },
+      { type = "retrospective_capture", id = "capture", params = {} },
+      { type = "loop_playback", id = "layer1", params = {} },
+      { type = "filter", id = "filter", params = {
+        cutoff = 1000,
+        resonance = 4
+      }},
+    },
+    connections = {
+      { from = "input", to = "capture", fromOutput = 0, toInput = 0 },
+      { from = "capture", to = "layer1", fromOutput = 0, toInput = 0 },
+      { from = "layer1", to = "filter", fromOutput = 0, toInput = 0 },
+    },
+    parameters = {
+      ["/my/param"] = {
+        default = 1.0,
+        min = 0.0,
+        max = 2.0,
+        onChange = function(v) end
+      }
+    }
+  }
+end
+```
+
+**Node types:** See `dsp/core/nodes/` for 50+ node implementations.
+
+### Writing UI Scripts
+
+The UI is entirely Lua-driven with a hierarchical Canvas scene graph:
+
+```lua
+local W = require("ui_widgets")
+
+-- Create UI
+local panel = W.Panel.new(root, "main", {
+    class = "panel-dark"
+})
+
+local slider = W.Slider.new(panel, "cutoff", {
+    label = "Cutoff",
+    min = 20,
+    max = 20000,
+    value = 1000,
+    onChange = function(v) command("SET", "/my/param", v) end
+})
+
+-- CSS-based styling
+local CSS = require("ui_styles")
+CSS.load(require("ui_themes.dark"))
+CSS.apply(panel)
+```
+
+**Built-in widgets:** Button, Label, Panel, Slider, VSlider, Knob, Toggle, Dropdown, WaveformView, Meter, SegmentedControl, NumberBox.
+
+**Widget library:** `manifold/ui/ui_widgets.lua`
+
 ---
 
 ## Testing
@@ -427,6 +554,8 @@ cmake --build build-dev --target ManifoldHeadless
 # Run CLI test
 ./build-dev/ManifoldHeadless [options]
 ```
+
+**Test scripts:** `tests/e2e_*.py`
 
 ---
 
