@@ -1,0 +1,45 @@
+{
+  "id": "fractal-echo",
+  "name": "Fractal Echo",
+  "category": "feedback",
+  "description": "Recursive zoom/rotate feedback with hue-shifted trails",
+  "params": [
+    {
+      "id": "intensity",
+      "name": "Intensity",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "speed",
+      "name": "Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 3.0,
+      "default": 1.0,
+      "step": 0.1
+    },
+    {
+      "id": "param1",
+      "name": "Zoom",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "param2",
+      "name": "Spin + Color",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    }
+  ],
+  "preamble": "\nvec3 hueShift(vec3 col, float shift) {\n    float cosA = cos(shift);\n    float sinA = sin(shift);\n    vec3 k = vec3(0.57735);\n    return col * cosA + cross(k, col) * sinA + k * dot(k, col) * (1.0 - cosA);\n}\n"
+}

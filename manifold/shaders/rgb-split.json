@@ -1,0 +1,45 @@
+{
+  "id": "rgb-split",
+  "name": "RGB Split",
+  "category": "color",
+  "description": "Directional RGB channel separation",
+  "params": [
+    {
+      "id": "intensity",
+      "name": "Intensity",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "speed",
+      "name": "Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 3.0,
+      "default": 1.0,
+      "step": 0.1
+    },
+    {
+      "id": "param1",
+      "name": "Distance",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "param2",
+      "name": "Rotation",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    }
+  ],
+  "preamble": ""
+}

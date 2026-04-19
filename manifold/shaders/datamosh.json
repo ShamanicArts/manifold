@@ -1,0 +1,72 @@
+{
+  "id": "datamosh",
+  "name": "Datamosh",
+  "category": "glitch",
+  "description": "Temporal diff + edge-protect + P-frame drift smearing",
+  "params": [
+    {
+      "id": "intensity",
+      "name": "Intensity",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "speed",
+      "name": "Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 3.0,
+      "default": 1.0,
+      "step": 0.1
+    },
+    {
+      "id": "param1",
+      "name": "Edge Protect",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "param2",
+      "name": "Smear",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "edgeMin",
+      "name": "Edge Min",
+      "unit": "",
+      "min": 0.01,
+      "max": 0.5,
+      "default": 0.15,
+      "step": 0.01
+    },
+    {
+      "id": "edgeMaxBase",
+      "name": "Edge Max Base",
+      "unit": "",
+      "min": 0.1,
+      "max": 1.5,
+      "default": 0.6,
+      "step": 0.01
+    },
+    {
+      "id": "smearScale",
+      "name": "Smear Scale",
+      "unit": "",
+      "min": 0.005,
+      "max": 0.2,
+      "default": 0.06,
+      "step": 0.005
+    }
+  ],
+  "preamble": ""
+}

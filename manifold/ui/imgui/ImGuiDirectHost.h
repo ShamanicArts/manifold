@@ -15,6 +15,15 @@
 
 #include "RuntimeNodeRenderer.h"
 #include "../../primitives/ui/RuntimeNode.h"
+#include "../../primitives/ui/CustomSurfaceProvider.h"
+
+namespace manifold::video {
+class VideoSurfaceProvider;
+}
+
+namespace manifold::shaders {
+class ShaderSurfaceProvider;
+}
 
 class ImGuiDirectHost : public juce::Component,
                         private juce::OpenGLRenderer {
@@ -125,14 +134,8 @@ public:
                                               double timeSeconds);
     bool getVideoSurfaceInfo(uint64_t stableId, int& width, int& height, uint64_t& sequence) const;
 
-public:
-    struct ShaderSurfaceState;
-    struct VideoSurfaceState {
-        unsigned int texture = 0;
-        int width = 0;
-        int height = 0;
-        uint64_t sequence = 0;
-    };
+    void registerSurfaceProvider(std::shared_ptr<CustomSurfaceProvider> provider);
+    void unregisterSurfaceProvider(const std::string& typeHint);
 
 private:
     void resized() override;
@@ -215,18 +218,11 @@ public:
     mutable std::mutex snapshotMutex_;
     std::atomic<bool> snapshotReady_{false};
 
-    std::unordered_map<uint64_t, std::unique_ptr<ShaderSurfaceState>> shaderSurfaceStates_;
-    std::unordered_map<uint64_t, VideoSurfaceState> videoSurfaceStates_;
-    unsigned int surfaceQuadVao_ = 0;
-    unsigned int surfaceQuadVbo_ = 0;
-    unsigned int surfaceQuadIbo_ = 0;
+    std::vector<std::shared_ptr<CustomSurfaceProvider>> surfaceProviders_;
 
-    bool ensureSurfaceQuadGeometry();
-    void releaseSurfaceQuadGeometry();
-    void releaseShaderSurfaces();
-    void releaseVideoSurfaces();
-    void pruneShaderSurfaces(const std::unordered_set<uint64_t>& touchedStableIds);
-    void pruneVideoSurfaces(const std::unordered_set<uint64_t>& touchedStableIds);
+    std::shared_ptr<manifold::video::VideoSurfaceProvider> videoSurfaceProvider_;
+    std::shared_ptr<manifold::shaders::ShaderSurfaceProvider> shaderSurfaceProvider_;
+
     void recalculateOwnedGpuBytes();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImGuiDirectHost)

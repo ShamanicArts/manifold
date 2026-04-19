@@ -1,0 +1,72 @@
+{
+  "id": "trail",
+  "name": "Trail",
+  "category": "feedback",
+  "description": "Motion-blur style trails via time-offset sampling",
+  "params": [
+    {
+      "id": "intensity",
+      "name": "Intensity",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "speed",
+      "name": "Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 3.0,
+      "default": 1.0,
+      "step": 0.1
+    },
+    {
+      "id": "param1",
+      "name": "Length",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "param2",
+      "name": "Fade",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "maxSamples",
+      "name": "Max Samples",
+      "unit": "",
+      "min": 1.0,
+      "max": 16.0,
+      "default": 10.0,
+      "step": 1.0
+    },
+    {
+      "id": "offsetScale",
+      "name": "Offset Scale",
+      "unit": "",
+      "min": 0.0,
+      "max": 0.02,
+      "default": 0.008,
+      "step": 0.001
+    },
+    {
+      "id": "fadeFloor",
+      "name": "Fade Floor",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    }
+  ],
+  "preamble": ""
+}

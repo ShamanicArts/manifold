@@ -1,0 +1,90 @@
+{
+  "id": "trail-dissolve",
+  "name": "Trail Dissolve",
+  "category": "feedback",
+  "description": "Dissolving particle trail over the live image",
+  "params": [
+    {
+      "id": "intensity",
+      "name": "Intensity",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "speed",
+      "name": "Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 3.0,
+      "default": 1.0,
+      "step": 0.1
+    },
+    {
+      "id": "param1",
+      "name": "Length",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "param2",
+      "name": "Feedback",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "maxSamples",
+      "name": "Max Samples",
+      "unit": "",
+      "min": 1.0,
+      "max": 16.0,
+      "default": 10.0,
+      "step": 1.0
+    },
+    {
+      "id": "offsetScale",
+      "name": "Offset Scale",
+      "unit": "",
+      "min": 0.0,
+      "max": 0.02,
+      "default": 0.008,
+      "step": 0.001
+    },
+    {
+      "id": "noiseCutoff",
+      "name": "Noise Cutoff",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.3,
+      "step": 0.01
+    },
+    {
+      "id": "dissolveMin",
+      "name": "Dissolve Min",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.3,
+      "step": 0.01
+    },
+    {
+      "id": "dissolveRange",
+      "name": "Dissolve Range",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.7,
+      "step": 0.01
+    }
+  ],
+  "preamble": ""
+}

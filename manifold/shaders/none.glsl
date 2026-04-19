@@ -1,0 +1,2 @@
+
+    fragColor = texture(uInputTex, vUv);

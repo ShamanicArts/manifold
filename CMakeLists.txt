@@ -490,6 +490,7 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/ui/CanvasStyle.h
     manifold/primitives/ui/RuntimeNode.h
     manifold/primitives/ui/RuntimeNode.cpp
+    manifold/primitives/ui/CustomSurfaceProvider.h
     manifold/primitives/scripting/LuaEngine.h
     manifold/primitives/scripting/LuaEngine.cpp
     manifold/primitives/scripting/ScriptableProcessor.h
@@ -528,8 +529,13 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/core/SystemPaths.cpp
     manifold/primitives/video/VideoCaptureManager.h
     manifold/primitives/video/VideoCaptureManager.cpp
-    manifold/primitives/video/VideoSynthPrimitive.h
-    manifold/primitives/video/VideoSynthPrimitive.cpp)
+    manifold/primitives/video/VideoSurfaceProvider.h
+    manifold/primitives/video/VideoSurfaceProvider.cpp
+    manifold/primitives/shaders/ShaderPipelineDescriptor.h
+    manifold/primitives/shaders/ShaderEffectRegistry.h
+    manifold/primitives/shaders/ShaderEffectRegistry.cpp
+    manifold/primitives/shaders/ShaderSurfaceProvider.h
+    manifold/primitives/shaders/ShaderSurfaceProvider.cpp)
 
 # --- Platform Detection ---
 if(CMAKE_SYSTEM_NAME STREQUAL "Android")

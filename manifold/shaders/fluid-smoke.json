@@ -1,0 +1,81 @@
+{
+  "id": "fluid-smoke",
+  "name": "Fluid Smoke",
+  "category": "feedback",
+  "description": "Curl-noise fluid simulation with feedback decay",
+  "params": [
+    {
+      "id": "intensity",
+      "name": "Intensity",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "speed",
+      "name": "Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 3.0,
+      "default": 1.0,
+      "step": 0.1
+    },
+    {
+      "id": "param1",
+      "name": "Flow Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "param2",
+      "name": "Smoke Life",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "texelScale",
+      "name": "Texel Scale",
+      "unit": "",
+      "min": 0.001,
+      "max": 0.02,
+      "default": 0.004,
+      "step": 0.001
+    },
+    {
+      "id": "turbulenceScale",
+      "name": "Turbulence",
+      "unit": "",
+      "min": 0.0,
+      "max": 0.02,
+      "default": 0.005,
+      "step": 0.001
+    },
+    {
+      "id": "decayMin",
+      "name": "Decay Min",
+      "unit": "",
+      "min": 0.5,
+      "max": 0.98,
+      "default": 0.85,
+      "step": 0.01
+    },
+    {
+      "id": "decayMax",
+      "name": "Decay Max",
+      "unit": "",
+      "min": 0.7,
+      "max": 0.999,
+      "default": 0.99,
+      "step": 0.001
+    }
+  ],
+  "preamble": ""
+}

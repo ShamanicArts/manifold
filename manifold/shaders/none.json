@@ -1,0 +1,8 @@
+{
+  "id": "none",
+  "name": "Passthrough",
+  "category": "utility",
+  "description": "Dry webcam feed with no processing",
+  "params": [],
+  "preamble": ""
+}
