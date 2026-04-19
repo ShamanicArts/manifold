@@ -1,0 +1,10 @@
+{
+  "id": "invert",
+  "name": "Invert",
+  "category": "color",
+  "description": "Simple color inversion effect loaded at runtime",
+  "params": [
+    { "id": "intensity", "name": "Intensity", "unit": "", "min": 0.0, "max": 1.0, "default": 0.5, "step": 0.01 }
+  ],
+  "preamble": ""
+}

@@ -1,0 +1,81 @@
+{
+  "id": "vhs",
+  "name": "VHS",
+  "category": "glitch",
+  "description": "VHS-style tearing, wobble, noise and chroma bleed",
+  "params": [
+    {
+      "id": "intensity",
+      "name": "Intensity",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "speed",
+      "name": "Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 3.0,
+      "default": 1.0,
+      "step": 0.1
+    },
+    {
+      "id": "param1",
+      "name": "Noise",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "param2",
+      "name": "Bleed",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "tearThreshold",
+      "name": "Tear Threshold",
+      "unit": "",
+      "min": 0.5,
+      "max": 1.0,
+      "default": 0.96,
+      "step": 0.01
+    },
+    {
+      "id": "tearAmount",
+      "name": "Tear Amount",
+      "unit": "",
+      "min": 0.0,
+      "max": 0.2,
+      "default": 0.05,
+      "step": 0.005
+    },
+    {
+      "id": "wobbleAmount",
+      "name": "Wobble Amount",
+      "unit": "",
+      "min": 0.0,
+      "max": 0.05,
+      "default": 0.005,
+      "step": 0.001
+    },
+    {
+      "id": "bleedScale",
+      "name": "Bleed Scale",
+      "unit": "",
+      "min": 0.0,
+      "max": 0.1,
+      "default": 0.02,
+      "step": 0.001
+    }
+  ],
+  "preamble": "float rand(vec2 co) {\n    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);\n}\n"
+}

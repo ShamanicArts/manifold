@@ -1,0 +1,72 @@
+{
+  "id": "pixelate",
+  "name": "Pixelate",
+  "category": "color",
+  "description": "Block pixelation with subtle animation",
+  "params": [
+    {
+      "id": "intensity",
+      "name": "Intensity",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "speed",
+      "name": "Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 3.0,
+      "default": 1.0,
+      "step": 0.1
+    },
+    {
+      "id": "param1",
+      "name": "Size",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "param2",
+      "name": "Animate",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "pixelMin",
+      "name": "Pixel Min",
+      "unit": "",
+      "min": 1e-05,
+      "max": 0.01,
+      "default": 0.0001,
+      "step": 5e-05
+    },
+    {
+      "id": "pixelMax",
+      "name": "Pixel Max",
+      "unit": "",
+      "min": 0.001,
+      "max": 0.05,
+      "default": 0.01,
+      "step": 0.001
+    },
+    {
+      "id": "animScale",
+      "name": "Anim Scale",
+      "unit": "",
+      "min": 0.0,
+      "max": 0.01,
+      "default": 5e-05,
+      "step": 5e-05
+    }
+  ],
+  "preamble": ""
+}

@@ -43,7 +43,7 @@ local function syncRendererMode(ctx)
 end
 
 local function updateFrameInfo(ctx)
-  local info = (video and video.getFrameInfo and video.getFrameInfo()) or nil
+  local info = (capture and capture.getFrameInfo and capture.getFrameInfo()) or nil
   if type(info) == "table" and info.valid then
     setText(ctx.widgets.frameInfo,
       string.format("Frame: %dx%d  seq=%d  device=%d",
@@ -239,9 +239,9 @@ local function setViewportSurface(ctx)
     return
   end
 
-  if video and video.buildEffectSurface then
+  if shaders and shaders.buildPipeline then
     local layers = buildLayerPayloadList(ctx)
-    local ok, payload = pcall(video.buildEffectSurface, layers, "contain")
+    local ok, payload = pcall(shaders.buildPipeline, layers, "contain")
     if ok and payload ~= nil then
       viewport.node:setCustomSurface("gpu_shader", payload)
       return
@@ -392,7 +392,7 @@ local function applyPersistedLayers(ctx)
 end
 
 local function refreshEffects(ctx)
-  ctx._effects = (video and video.listEffects and video.listEffects()) or {}
+  ctx._effects = (shaders and shaders.listEffects and shaders.listEffects()) or {}
   if #ctx._effects == 0 then
     ctx._effects = {
       { id = "none", name = "Passthrough", category = "utility", description = "Dry webcam feed", params = {} }
@@ -447,8 +447,8 @@ local function refreshModes(ctx, deviceListIndex)
     return
   end
 
-  if video and video.listModes then
-    ctx._modes = video.listModes(tonumber(device.index) or -1) or {}
+  if capture and capture.listModes then
+    ctx._modes = capture.listModes(tonumber(device.index) or -1) or {}
   end
 
   syncModeOptions(ctx)
@@ -489,11 +489,11 @@ local function openCurrentSelection(ctx)
   end
 
   local ok = false
-  if video and video.open then
-    ok = video.open(tonumber(device.index) or 0,
-                    tonumber(mode.width) or 640,
-                    tonumber(mode.height) or 480,
-                    tonumber(mode.fps) or 30)
+  if capture and capture.open then
+    ok = capture.open(tonumber(device.index) or 0,
+                      tonumber(mode.width) or 640,
+                      tonumber(mode.height) or 480,
+                      tonumber(mode.fps) or 30)
   end
 
   if ok then
@@ -503,15 +503,15 @@ local function openCurrentSelection(ctx)
     return true
   end
 
-  local err = (video and video.getLastError and video.getLastError()) or "failed to open video device"
+  local err = (capture and capture.getLastError and capture.getLastError()) or "failed to open video device"
   updateStatus(ctx, "Open failed: " .. tostring(err))
   return false
 end
 
 local function refreshDevices(ctx)
   local devices = {}
-  if video and video.listDevices then
-    devices = video.listDevices() or {}
+  if capture and capture.listDevices then
+    devices = capture.listDevices() or {}
   end
 
   ctx._devices = devices
@@ -651,8 +651,8 @@ function M.init(ctx)
 
   if ctx.widgets.closeBtn then
     ctx.widgets.closeBtn._onClick = function()
-      if video and video.close then
-        video.close()
+      if capture and capture.close then
+        capture.close()
       end
       updateStatus(ctx, "Video device closed")
       updateFrameInfo(ctx)
@@ -712,7 +712,7 @@ function M.update(ctx, _state)
   syncRendererMode(ctx)
   updateFrameInfo(ctx)
 
-  if video and video.isOpen and video.isOpen() then
+  if capture and capture.isOpen and capture.isOpen() then
     local devices = ctx._devices or {}
     local modes = ctx._modes or {}
     local device = devices[ctx._selectedDevice]
@@ -725,7 +725,7 @@ function M.update(ctx, _state)
     return
   end
 
-  local err = (video and video.getLastError and video.getLastError()) or ""
+  local err = (capture and capture.getLastError and capture.getLastError()) or ""
   if err ~= "" then
     updateStatus(ctx, "Idle - " .. tostring(err))
   elseif ctx._statusText ~= "" then
@@ -734,8 +734,8 @@ function M.update(ctx, _state)
 end
 
 function M.cleanup(_ctx)
-  if video and video.close then
-    video.close()
+  if capture and capture.close then
+    capture.close()
   end
 end
 

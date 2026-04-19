@@ -45,7 +45,8 @@ extern "C" {
 #include <set>
 #include <string>
 
-#include "../../video/VideoSynthPrimitive.h"
+#include "../../shaders/ShaderEffectRegistry.h"
+#include "../../shaders/UniformContract.h"
 
 // Forward declarations for node access
 namespace dsp_primitives {
@@ -2495,8 +2496,11 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         state.showFileChooser(title, initialPath, filePatterns, callback);
     };
 
-    auto videoTable = lua.create_table();
-    videoTable["listDevices"] = [&lua]() -> sol::table {
+    // ==========================================================================
+    // capture table - video capture hardware bindings
+    // ==========================================================================
+    auto captureTable = lua.create_table();
+    captureTable["listDevices"] = [&lua]() -> sol::table {
         auto result = sol::table(lua, sol::create);
         const auto devices = manifold::video::VideoCaptureManager::instance().listDevices();
         int luaIndex = 1;
@@ -2510,7 +2514,7 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         }
         return result;
     };
-    videoTable["listModes"] = [&lua](int deviceIndex) -> sol::table {
+    captureTable["listModes"] = [&lua](int deviceIndex) -> sol::table {
         auto result = sol::table(lua, sol::create);
         const auto modes = manifold::video::VideoCaptureManager::instance().listModes(deviceIndex);
         int luaIndex = 1;
@@ -2525,7 +2529,7 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         }
         return result;
     };
-    videoTable["open"] = [](int deviceIndex,
+    captureTable["open"] = [](int deviceIndex,
                               sol::optional<int> width,
                               sol::optional<int> height,
                               sol::optional<int> fps) -> bool {
@@ -2534,19 +2538,19 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                                                                            height.value_or(480),
                                                                            fps.value_or(30));
     };
-    videoTable["close"] = []() {
+    captureTable["close"] = []() {
         manifold::video::VideoCaptureManager::instance().closeDevice();
     };
-    videoTable["isOpen"] = []() -> bool {
+    captureTable["isOpen"] = []() -> bool {
         return manifold::video::VideoCaptureManager::instance().isOpen();
     };
-    videoTable["getActiveDeviceIndex"] = []() -> int {
+    captureTable["getActiveDeviceIndex"] = []() -> int {
         return manifold::video::VideoCaptureManager::instance().getActiveDeviceIndex();
     };
-    videoTable["getLastError"] = []() -> std::string {
+    captureTable["getLastError"] = []() -> std::string {
         return manifold::video::VideoCaptureManager::instance().getLastError();
     };
-    videoTable["getFrameInfo"] = [&lua]() -> sol::table {
+    captureTable["getFrameInfo"] = [&lua]() -> sol::table {
         auto result = sol::table(lua, sol::create);
         const auto frame = manifold::video::VideoCaptureManager::instance().getLatestFrameCopy();
         result["valid"] = frame.valid();
@@ -2557,10 +2561,16 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         result["activeDeviceIndex"] = manifold::video::VideoCaptureManager::instance().getActiveDeviceIndex();
         return result;
     };
-    videoTable["listEffects"] = [&lua]() -> sol::table {
+    lua["capture"] = captureTable;
+
+    // ==========================================================================
+    // shaders table - shader effect registry bindings
+    // ==========================================================================
+    auto shadersTable = lua.create_table();
+    shadersTable["listEffects"] = [&lua]() -> sol::table {
         auto result = sol::table(lua, sol::create);
         int effectIndex = 1;
-        for (const auto& effect : manifold::video::VideoSynthPrimitive::effects()) {
+        for (const auto& effect : manifold::shaders::ShaderEffectRegistry::instance().listEffects()) {
             auto effectTable = sol::table(lua, sol::create);
             effectTable["id"] = effect.id;
             effectTable["name"] = effect.name;
@@ -2585,8 +2595,8 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         }
         return result;
     };
-    videoTable["buildEffectSurface"] = [&lua](sol::object layersArg,
-                                                 sol::optional<std::string> fitModeOpt) -> sol::table {
+    shadersTable["buildPipeline"] = [&lua](sol::object layersArg,
+                                            sol::optional<std::string> fitModeOpt) -> sol::table {
         auto parseParams = [](sol::object paramsObj) {
             std::unordered_map<std::string, float> out;
             if (!paramsObj.is<sol::table>()) {
@@ -2644,7 +2654,7 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                 sol::object effectIdObj = layerTable["effectId"];
                 if (!effectIdObj.is<std::string>()) continue;
                 const auto effectId = effectIdObj.as<std::string>();
-                if (manifold::video::VideoSynthPrimitive::findEffect(effectId) == nullptr) continue;
+                if (manifold::shaders::ShaderEffectRegistry::instance().findEffect(effectId) == nullptr) continue;
 
                 LayerRequest req;
                 req.effectId = effectId;
@@ -2678,12 +2688,12 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         auto passes = sol::table(lua, sol::create);
         int passIndex = 1;
         for (const auto& layer : layers) {
-            const auto sanitizedParams = manifold::video::VideoSynthPrimitive::sanitizeParams(layer.effectId, layer.params);
+            const auto sanitizedParams = manifold::shaders::ShaderEffectRegistry::instance().sanitizeParams(layer.effectId, layer.params);
             auto pass = sol::table(lua, sol::create);
-            pass["vertexShader"] = manifold::video::VideoSynthPrimitive::vertexShaderSource();
-            pass["fragmentShader"] = manifold::video::VideoSynthPrimitive::fragmentShaderSource(layer.effectId, false);
-            pass["inputTextureUniform"] = "uInputTex";
-            pass["prevTextureUniform"] = "uPrevTex";
+            pass["vertexShader"] = manifold::shaders::ShaderEffectRegistry::instance().vertexShader();
+            pass["fragmentShader"] = manifold::shaders::ShaderEffectRegistry::instance().fragmentShaderFor(layer.effectId, false);
+            pass["inputTextureUniform"] = manifold::shaders::UniformContract::kInputTex;
+            pass["prevTextureUniform"] = manifold::shaders::UniformContract::kPrevTex;
             pass["chain"] = true;
             auto uniforms = sol::table(lua, sol::create);
             for (const auto& entry : sanitizedParams) {
@@ -2695,7 +2705,10 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         result["passes"] = passes;
         return result;
     };
-    lua["video"] = videoTable;
+    shadersTable["reload"] = []() {
+        manifold::shaders::ShaderEffectRegistry::instance().reloadRuntimeEffects();
+    };
+    lua["shaders"] = shadersTable;
 
     lua["getRuntimeDisplayListDebugStats"] = [&lua](sol::optional<bool> resetOpt) -> sol::table {
         auto result = sol::table(lua, sol::create);

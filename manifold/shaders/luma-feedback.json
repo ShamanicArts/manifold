@@ -1,0 +1,72 @@
+{
+  "id": "luma-feedback",
+  "name": "Luma Bloom",
+  "category": "color",
+  "description": "Threshold-based bloom on bright areas",
+  "params": [
+    {
+      "id": "intensity",
+      "name": "Intensity",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "speed",
+      "name": "Speed",
+      "unit": "",
+      "min": 0.0,
+      "max": 3.0,
+      "default": 1.0,
+      "step": 0.1
+    },
+    {
+      "id": "param1",
+      "name": "Threshold",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "param2",
+      "name": "Glow",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.5,
+      "step": 0.01
+    },
+    {
+      "id": "thresholdBase",
+      "name": "Threshold Base",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.05,
+      "step": 0.01
+    },
+    {
+      "id": "thresholdRange",
+      "name": "Threshold Range",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.6,
+      "step": 0.01
+    },
+    {
+      "id": "glowPulseAmount",
+      "name": "Glow Pulse",
+      "unit": "",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.15,
+      "step": 0.01
+    }
+  ],
+  "preamble": ""
+}
