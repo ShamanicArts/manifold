@@ -2585,15 +2585,15 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         }
         return result;
     };
-    videoTable["buildEffectSurface"] = [&lua](const std::string& effectId,
-                                                 sol::optional<sol::table> paramsOpt,
+    videoTable["buildEffectSurface"] = [&lua](sol::object layersArg,
                                                  sol::optional<std::string> fitModeOpt) -> sol::table {
-        std::unordered_map<std::string, float> requestedParams;
-        if (paramsOpt.has_value()) {
-            for (const auto& pair : paramsOpt.value()) {
-                if (!pair.first.is<std::string>()) {
-                    continue;
-                }
+        auto parseParams = [](sol::object paramsObj) {
+            std::unordered_map<std::string, float> out;
+            if (!paramsObj.is<sol::table>()) {
+                return out;
+            }
+            for (const auto& pair : paramsObj.as<sol::table>()) {
+                if (!pair.first.is<std::string>()) continue;
                 float value = 0.0f;
                 if (pair.second.is<double>()) {
                     value = static_cast<float>(pair.second.as<double>());
@@ -2602,28 +2602,96 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                 } else {
                     continue;
                 }
-                requestedParams[pair.first.as<std::string>()] = value;
+                out[pair.first.as<std::string>()] = value;
+            }
+            return out;
+        };
+
+        auto blendModeToInt = [](sol::object blendObj) -> int {
+            if (blendObj.is<int>()) return std::clamp(blendObj.as<int>(), 0, 4);
+            if (blendObj.is<double>()) return std::clamp(static_cast<int>(blendObj.as<double>()), 0, 4);
+            if (blendObj.is<std::string>()) {
+                const auto name = blendObj.as<std::string>();
+                if (name == "add") return 1;
+                if (name == "multiply") return 2;
+                if (name == "screen") return 3;
+                if (name == "difference") return 4;
+            }
+            return 0;
+        };
+
+        struct LayerRequest {
+            std::string effectId;
+            std::unordered_map<std::string, float> params;
+            int blendMode = 0;
+            float opacity = 1.0f;
+        };
+        std::vector<LayerRequest> layers;
+
+        if (layersArg.is<sol::table>()) {
+            auto layersTable = layersArg.as<sol::table>();
+            const std::size_t count = layersTable.size();
+            for (std::size_t i = 1; i <= count; ++i) {
+                sol::object entry = layersTable[i];
+                if (!entry.is<sol::table>()) continue;
+                auto layerTable = entry.as<sol::table>();
+
+                sol::object enabledObj = layerTable["enabled"];
+                if (enabledObj.is<bool>() && !enabledObj.as<bool>()) {
+                    continue;
+                }
+
+                sol::object effectIdObj = layerTable["effectId"];
+                if (!effectIdObj.is<std::string>()) continue;
+                const auto effectId = effectIdObj.as<std::string>();
+                if (manifold::video::VideoSynthPrimitive::findEffect(effectId) == nullptr) continue;
+
+                LayerRequest req;
+                req.effectId = effectId;
+                req.params = parseParams(layerTable["params"]);
+                req.blendMode = blendModeToInt(layerTable["blendMode"]);
+                sol::object opacityObj = layerTable["opacity"];
+                if (opacityObj.is<double>()) {
+                    req.opacity = std::clamp(static_cast<float>(opacityObj.as<double>()), 0.0f, 1.0f);
+                } else if (opacityObj.is<int>()) {
+                    req.opacity = std::clamp(static_cast<float>(opacityObj.as<int>()), 0.0f, 1.0f);
+                }
+                layers.push_back(std::move(req));
             }
         }
 
-        const auto sanitizedParams = manifold::video::VideoSynthPrimitive::sanitizeParams(effectId, requestedParams);
+        if (layers.empty()) {
+            LayerRequest fallback;
+            fallback.effectId = "none";
+            fallback.blendMode = 0;
+            fallback.opacity = 1.0f;
+            layers.push_back(std::move(fallback));
+        }
+
         auto result = sol::table(lua, sol::create);
-        result["version"] = 1;
+        result["version"] = 2;
         result["kind"] = "shaderQuad";
         result["shaderLanguage"] = "glsl";
         result["sourceType"] = "video_input";
         result["fitMode"] = fitModeOpt.value_or("contain");
 
         auto passes = sol::table(lua, sol::create);
-        auto pass = sol::table(lua, sol::create);
-        pass["vertexShader"] = manifold::video::VideoSynthPrimitive::vertexShaderSource();
-        pass["fragmentShader"] = manifold::video::VideoSynthPrimitive::fragmentShaderSource(effectId);
-        pass["inputTextureUniform"] = "uInputTex";
-        pass["uniforms"] = sol::table(lua, sol::create);
-        for (const auto& entry : sanitizedParams) {
-            pass["uniforms"][entry.first] = entry.second;
+        int passIndex = 1;
+        for (const auto& layer : layers) {
+            const auto sanitizedParams = manifold::video::VideoSynthPrimitive::sanitizeParams(layer.effectId, layer.params);
+            auto pass = sol::table(lua, sol::create);
+            pass["vertexShader"] = manifold::video::VideoSynthPrimitive::vertexShaderSource();
+            pass["fragmentShader"] = manifold::video::VideoSynthPrimitive::fragmentShaderSource(layer.effectId, false);
+            pass["inputTextureUniform"] = "uInputTex";
+            pass["prevTextureUniform"] = "uPrevTex";
+            pass["chain"] = true;
+            auto uniforms = sol::table(lua, sol::create);
+            for (const auto& entry : sanitizedParams) {
+                uniforms[entry.first] = entry.second;
+            }
+            pass["uniforms"] = uniforms;
+            passes[passIndex++] = pass;
         }
-        passes[1] = pass;
         result["passes"] = passes;
         return result;
     };

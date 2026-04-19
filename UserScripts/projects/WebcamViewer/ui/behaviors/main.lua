@@ -1,10 +1,18 @@
 local M = {}
 
-local MAX_EFFECT_PARAMS = 4
+local NUM_LAYERS = 4
+local NUM_PARAM_SLIDERS = 9
 
 local function setText(widget, text)
   if widget and widget.setText then
     widget:setText(text or "")
+  end
+end
+
+local function setSelected(widget, index)
+  if not widget then return end
+  if widget.setSelected then
+    widget:setSelected(index or 1)
   end
 end
 
@@ -79,6 +87,14 @@ local function stateFilePath()
   return joinPath(dirname(scriptPath), ".webcam_viewer.state")
 end
 
+local function defaultLayer(index)
+  return {
+    enabled = index == 1,
+    effectId = "none",
+    params = {},
+  }
+end
+
 local function loadPersistedState(ctx)
   ctx._persisted = {
     devicePath = nil,
@@ -86,9 +102,17 @@ local function loadPersistedState(ctx)
     height = nil,
     fps = nil,
     pixelFormat = nil,
-    effectId = nil,
-    effectParams = {},
+    activeLayer = nil,
+    layers = {},
   }
+  for i = 1, NUM_LAYERS do
+    ctx._persisted.layers[i] = {
+      enabled = nil,
+      effectId = nil,
+      params = {},
+    }
+  end
+
   local path = stateFilePath()
   local raw = (type(readTextFile) == "function") and readTextFile(path) or ""
   if raw == "" then
@@ -97,15 +121,31 @@ local function loadPersistedState(ctx)
   for line in tostring(raw):gmatch("[^\r\n]+") do
     local key, value = line:match("^([^=]+)=(.*)$")
     if key and value then
-      if key == "devicePath" then ctx._persisted.devicePath = value end
-      if key == "width" then ctx._persisted.width = tonumber(value) end
-      if key == "height" then ctx._persisted.height = tonumber(value) end
-      if key == "fps" then ctx._persisted.fps = tonumber(value) end
-      if key == "pixelFormat" then ctx._persisted.pixelFormat = value end
-      if key == "effectId" then ctx._persisted.effectId = value end
-      local paramKey = key:match("^effectParam%.(.+)$")
-      if paramKey then
-        ctx._persisted.effectParams[paramKey] = tonumber(value)
+      if key == "devicePath" then ctx._persisted.devicePath = value
+      elseif key == "width" then ctx._persisted.width = tonumber(value)
+      elseif key == "height" then ctx._persisted.height = tonumber(value)
+      elseif key == "fps" then ctx._persisted.fps = tonumber(value)
+      elseif key == "pixelFormat" then ctx._persisted.pixelFormat = value
+      elseif key == "activeLayer" then ctx._persisted.activeLayer = tonumber(value)
+      else
+        local layerIdx, field = key:match("^layer%.(%d+)%.([%w_]+)$")
+        if layerIdx and field then
+          local L = ctx._persisted.layers[tonumber(layerIdx)]
+          if L then
+            if field == "enabled" then L.enabled = (value == "true")
+            elseif field == "effectId" then L.effectId = value
+            end
+          end
+        else
+          local li, effectId, paramId = key:match("^layer%.(%d+)%.param%.([^%.]+)%.(.+)$")
+          if li and effectId and paramId then
+            local L = ctx._persisted.layers[tonumber(li)]
+            if L then
+              L.params[effectId] = L.params[effectId] or {}
+              L.params[effectId][paramId] = tonumber(value)
+            end
+          end
+        end
       end
     end
   end
@@ -125,13 +165,16 @@ local function savePersistedState(ctx)
     lines[#lines + 1] = "pixelFormat=" .. tostring(mode.pixelFormat or "")
   end
 
-  local effect = ctx._effects and ctx._effects[ctx._selectedEffect] or nil
-  if type(effect) == "table" then
-    lines[#lines + 1] = "effectId=" .. tostring(effect.id or "none")
-    local effectState = ctx._effectStates and ctx._effectStates[effect.id] or {}
-    if type(effectState) == "table" then
-      for key, value in pairs(effectState) do
-        lines[#lines + 1] = "effectParam." .. tostring(key) .. "=" .. tostring(value)
+  lines[#lines + 1] = "activeLayer=" .. tostring(ctx._activeLayer or 1)
+  for i = 1, NUM_LAYERS do
+    local L = ctx._layers[i]
+    lines[#lines + 1] = string.format("layer.%d.enabled=%s", i, tostring(L.enabled and true or false))
+    lines[#lines + 1] = string.format("layer.%d.effectId=%s", i, tostring(L.effectId or "none"))
+    for effectId, paramMap in pairs(L.params) do
+      if type(paramMap) == "table" then
+        for paramId, value in pairs(paramMap) do
+          lines[#lines + 1] = string.format("layer.%d.param.%s.%s=%s", i, tostring(effectId), tostring(paramId), tostring(value))
+        end
       end
     end
   end
@@ -141,53 +184,53 @@ local function savePersistedState(ctx)
   end
 end
 
-local function ensureEffectState(ctx, effect)
+local function findEffect(ctx, effectId)
+  for i = 1, #(ctx._effects or {}) do
+    if tostring(ctx._effects[i].id or "") == tostring(effectId) then
+      return ctx._effects[i], i
+    end
+  end
+  return nil, nil
+end
+
+local function ensureLayerEffectParams(ctx, layer)
+  local effect = findEffect(ctx, layer.effectId)
   if type(effect) ~= "table" then
     return {}
   end
-  ctx._effectStates = ctx._effectStates or {}
-  local state = ctx._effectStates[effect.id]
-  if type(state) ~= "table" then
-    state = {}
-    ctx._effectStates[effect.id] = state
+  layer.params = layer.params or {}
+  local store = layer.params[effect.id]
+  if type(store) ~= "table" then
+    store = {}
+    layer.params[effect.id] = store
   end
-
-  local persistedId = ctx._persisted and ctx._persisted.effectId or nil
-  local persistedParams = (ctx._persisted and ctx._persisted.effectParams) or {}
   for i = 1, #(effect.params or {}) do
     local spec = effect.params[i]
-    if state[spec.id] == nil then
-      if persistedId == effect.id and persistedParams[spec.id] ~= nil then
-        state[spec.id] = tonumber(persistedParams[spec.id]) or tonumber(spec.default) or 0
-      else
-        state[spec.id] = tonumber(spec.default) or 0
+    if store[spec.id] == nil then
+      store[spec.id] = tonumber(spec.default) or 0
+    end
+  end
+  return store
+end
+
+local function buildLayerPayloadList(ctx)
+  local list = {}
+  for i = 1, NUM_LAYERS do
+    local L = ctx._layers[i]
+    if L and L.enabled then
+      local effect = findEffect(ctx, L.effectId)
+      if type(effect) == "table" then
+        local paramStore = ensureLayerEffectParams(ctx, L)
+        local paramsCopy = {}
+        for k, v in pairs(paramStore) do paramsCopy[k] = v end
+        list[#list + 1] = {
+          effectId = effect.id,
+          params = paramsCopy,
+        }
       end
     end
   end
-  return state
-end
-
-local function syncEffectDescription(ctx)
-  local effect = ctx._effects and ctx._effects[ctx._selectedEffect] or nil
-  local description = "Shader effect applied to the live webcam feed"
-  if type(effect) == "table" then
-    local category = tostring(effect.category or "utility")
-    local detail = tostring(effect.description or "")
-    description = string.format("[%s] %s", category, detail ~= "" and detail or describeEffect(effect))
-  end
-  setText(ctx.widgets.fxDescription, description)
-end
-
-local function effectPayload(ctx)
-  local effect = ctx._effects and ctx._effects[ctx._selectedEffect] or nil
-  if type(effect) ~= "table" then
-    return nil
-  end
-  local effectState = ensureEffectState(ctx, effect)
-  if video and video.buildEffectSurface then
-    return video.buildEffectSurface(effect.id, effectState, "contain")
-  end
-  return nil
+  return list
 end
 
 local function setViewportSurface(ctx)
@@ -196,15 +239,19 @@ local function setViewportSurface(ctx)
     return
   end
 
-  local payload = effectPayload(ctx)
-  if payload ~= nil then
-    viewport.node:setCustomSurface("gpu_shader", payload)
-  else
-    viewport.node:setCustomSurface("video_input", {
-      version = 1,
-      fitMode = "contain",
-    })
+  if video and video.buildEffectSurface then
+    local layers = buildLayerPayloadList(ctx)
+    local ok, payload = pcall(video.buildEffectSurface, layers, "contain")
+    if ok and payload ~= nil then
+      viewport.node:setCustomSurface("gpu_shader", payload)
+      return
+    end
   end
+
+  viewport.node:setCustomSurface("video_input", {
+    version = 1,
+    fitMode = "contain",
+  })
 end
 
 local function effectParamFormatter(spec)
@@ -220,7 +267,7 @@ local function effectParamFormatter(spec)
     if math.abs(num) >= 10 then
       return string.format("%.1f%s", num, unit)
     end
-    return string.format("%.2f%s", num, unit)
+    return string.format("%.3f%s", num, unit)
   end
 end
 
@@ -229,7 +276,7 @@ local function configureParamSlider(slider, spec, value)
     return
   end
   if type(spec) ~= "table" then
-    slider:setVisible(false)
+    if slider.setVisible then slider:setVisible(false) end
     return
   end
 
@@ -237,38 +284,111 @@ local function configureParamSlider(slider, spec, value)
   slider._max = tonumber(spec.max) or 1
   slider._step = tonumber(spec.step) or 0.01
   slider._defaultValue = tonumber(spec.default) or slider._min
-  slider:setLabel(spec.name or spec.id or "Param")
-  slider:setValueFormatter(effectParamFormatter(spec))
-  slider:setVisible(true)
-  slider:setValue(tonumber(value) or slider._defaultValue)
+  if slider.setLabel then slider:setLabel(spec.name or spec.id or "Param") end
+  if slider.setValueFormatter then slider:setValueFormatter(effectParamFormatter(spec)) end
+  if slider.setVisible then slider:setVisible(true) end
+  if slider.setValue then slider:setValue(tonumber(value) or slider._defaultValue) end
 end
 
-local function syncEffectControls(ctx)
+local function syncLayerTabLabels(ctx)
+  local tabs = ctx.widgets.layerTabs
+  if not tabs then return end
   local labels = {}
+  for i = 1, NUM_LAYERS do
+    local L = ctx._layers[i]
+    local marker = (L and L.enabled) and "•" or " "
+    labels[i] = string.format("L%d %s", i, marker)
+  end
+  if tabs.setSegments then tabs:setSegments(labels) end
+  if tabs.setOptions then tabs:setOptions(labels) end
+  setSelected(tabs, ctx._activeLayer or 1)
+end
+
+local function syncLayerControls(ctx)
+  local layer = ctx._layers[ctx._activeLayer] or ctx._layers[1]
+
+  -- effect dropdown
+  local labels = {}
+  local effectIndex = 1
   for i = 1, #(ctx._effects or {}) do
     labels[i] = describeEffect(ctx._effects[i])
+    if tostring(ctx._effects[i].id or "") == tostring(layer.effectId) then
+      effectIndex = i
+    end
   end
-  if #labels == 0 then
-    labels[1] = "Passthrough"
-  end
-
+  if #labels == 0 then labels[1] = "Passthrough" end
   if ctx.widgets.effectSelect and ctx.widgets.effectSelect.setOptions then
     ctx.widgets.effectSelect:setOptions(labels)
-    ctx.widgets.effectSelect:setSelected(ctx._selectedEffect or 1)
+    setSelected(ctx.widgets.effectSelect, effectIndex)
   end
 
-  local effect = ctx._effects and ctx._effects[ctx._selectedEffect] or nil
-  local effectState = ensureEffectState(ctx, effect)
+  -- enabled button
+  if ctx.widgets.layerEnabledBtn then
+    local btn = ctx.widgets.layerEnabledBtn
+    if btn.setLabel then
+      btn:setLabel(layer.enabled and "On" or "Off")
+    elseif btn.setText then
+      btn:setText(layer.enabled and "On" or "Off")
+    end
+  end
+
+  -- description
+  local effect = findEffect(ctx, layer.effectId)
+  local description
+  if type(effect) == "table" then
+    local category = tostring(effect.category or "utility")
+    local detail = tostring(effect.description or "")
+    description = string.format("[%s] %s", category, detail ~= "" and detail or describeEffect(effect))
+  else
+    description = "Select an effect for this pass"
+  end
+  setText(ctx.widgets.layerDescription, description)
+
+  -- params
+  local paramStore = ensureLayerEffectParams(ctx, layer)
   ctx._activeParamSpecs = {}
-
-  for i = 1, MAX_EFFECT_PARAMS do
+  for i = 1, NUM_PARAM_SLIDERS do
     local slider = ctx.widgets["fxParam" .. tostring(i)]
-    local spec = type(effect) == "table" and effect.params and effect.params[i] or nil
+    local spec = (type(effect) == "table" and effect.params and effect.params[i]) or nil
     ctx._activeParamSpecs[i] = spec
-    configureParamSlider(slider, spec, spec and effectState[spec.id] or nil)
+    configureParamSlider(slider, spec, spec and paramStore[spec.id] or nil)
   end
 
-  syncEffectDescription(ctx)
+  syncLayerTabLabels(ctx)
+end
+
+local function rebuildLayerDefaults(ctx)
+  for i = 1, NUM_LAYERS do
+    local L = ctx._layers[i]
+    local effect = findEffect(ctx, L.effectId)
+    if type(effect) ~= "table" then
+      L.effectId = "none"
+    end
+    ensureLayerEffectParams(ctx, L)
+  end
+end
+
+local function applyPersistedLayers(ctx)
+  for i = 1, NUM_LAYERS do
+    local L = ctx._layers[i]
+    local P = ctx._persisted and ctx._persisted.layers and ctx._persisted.layers[i] or nil
+    if type(P) == "table" then
+      if P.enabled ~= nil then L.enabled = P.enabled end
+      if P.effectId ~= nil then L.effectId = P.effectId end
+      if type(P.params) == "table" then
+        for effectId, paramMap in pairs(P.params) do
+          L.params[effectId] = L.params[effectId] or {}
+          for paramId, v in pairs(paramMap) do
+            L.params[effectId][paramId] = v
+          end
+        end
+      end
+    end
+  end
+  ctx._activeLayer = tonumber(ctx._persisted and ctx._persisted.activeLayer) or 1
+  if ctx._activeLayer < 1 or ctx._activeLayer > NUM_LAYERS then
+    ctx._activeLayer = 1
+  end
 end
 
 local function refreshEffects(ctx)
@@ -279,22 +399,8 @@ local function refreshEffects(ctx)
     }
   end
 
-  local selectedIndex = 1
-  local persistedId = ctx._persisted and ctx._persisted.effectId or nil
-  if persistedId then
-    for i = 1, #ctx._effects do
-      if tostring(ctx._effects[i].id or "") == tostring(persistedId) then
-        selectedIndex = i
-        break
-      end
-    end
-  end
-
-  ctx._selectedEffect = selectedIndex
-  for i = 1, #ctx._effects do
-    ensureEffectState(ctx, ctx._effects[i])
-  end
-  syncEffectControls(ctx)
+  rebuildLayerDefaults(ctx)
+  syncLayerControls(ctx)
   setViewportSurface(ctx)
 end
 
@@ -354,6 +460,19 @@ local function refreshModes(ctx, deviceListIndex)
   end
 end
 
+local function layerSummary(ctx)
+  local names = {}
+  for i = 1, NUM_LAYERS do
+    local L = ctx._layers[i]
+    if L and L.enabled then
+      local effect = findEffect(ctx, L.effectId)
+      names[#names + 1] = string.format("L%d:%s", i, describeEffect(effect))
+    end
+  end
+  if #names == 0 then return "Passthrough" end
+  return table.concat(names, " -> ")
+end
+
 local function openCurrentSelection(ctx)
   local devices = ctx._devices or {}
   local modes = ctx._modes or {}
@@ -380,8 +499,7 @@ local function openCurrentSelection(ctx)
   if ok then
     setViewportSurface(ctx)
     savePersistedState(ctx)
-    local effect = ctx._effects and ctx._effects[ctx._selectedEffect] or nil
-    updateStatus(ctx, "Streaming " .. describeDevice(device) .. " / " .. describeMode(mode) .. "  •  FX: " .. describeEffect(effect))
+    updateStatus(ctx, "Streaming " .. describeDevice(device) .. " / " .. describeMode(mode) .. "  •  FX: " .. layerSummary(ctx))
     return true
   end
 
@@ -435,33 +553,57 @@ local function refreshDevices(ctx)
   end
 end
 
-local function onEffectChanged(ctx, selectedIndex)
-  ctx._selectedEffect = selectedIndex
-  syncEffectControls(ctx)
-  setViewportSurface(ctx)
-  savePersistedState(ctx)
-
-  local devices = ctx._devices or {}
-  local modes = ctx._modes or {}
-  local device = devices[ctx._selectedDevice]
-  local mode = modes[ctx._selectedMode]
-  if type(device) == "table" and type(mode) == "table" and video and video.isOpen and video.isOpen() then
-    updateStatus(ctx, "Streaming " .. describeDevice(device) .. " / " .. describeMode(mode) .. "  •  FX: " .. describeEffect(ctx._effects[selectedIndex]))
-  end
+local function setActiveLayer(ctx, index)
+  if type(index) ~= "number" then return end
+  if index < 1 then index = 1 end
+  if index > NUM_LAYERS then index = NUM_LAYERS end
+  ctx._activeLayer = index
+  syncLayerControls(ctx)
 end
 
+local function setActiveLayerEffect(ctx, effectIndex)
+  local effect = ctx._effects and ctx._effects[effectIndex] or nil
+  if type(effect) ~= "table" then return end
+  local layer = ctx._layers[ctx._activeLayer]
+  if not layer then return end
+  layer.effectId = effect.id
+  ensureLayerEffectParams(ctx, layer)
+  syncLayerControls(ctx)
+  setViewportSurface(ctx)
+  savePersistedState(ctx)
+end
+
+local function toggleActiveLayerEnabled(ctx)
+  local layer = ctx._layers[ctx._activeLayer]
+  if not layer then return end
+  layer.enabled = not layer.enabled
+  syncLayerControls(ctx)
+  setViewportSurface(ctx)
+  savePersistedState(ctx)
+end
+
+local function clearActiveLayer(ctx)
+  local index = ctx._activeLayer or 1
+  ctx._layers[index] = defaultLayer(index)
+  ctx._layers[index].enabled = false
+  ensureLayerEffectParams(ctx, ctx._layers[index])
+  syncLayerControls(ctx)
+  setViewportSurface(ctx)
+  savePersistedState(ctx)
+end
+
+
+
 local function installParamCallbacks(ctx)
-  for i = 1, MAX_EFFECT_PARAMS do
+  for i = 1, NUM_PARAM_SLIDERS do
     local slider = ctx.widgets["fxParam" .. tostring(i)]
     if slider then
       slider._onChange = function(value)
-        local effect = ctx._effects and ctx._effects[ctx._selectedEffect] or nil
+        local layer = ctx._layers[ctx._activeLayer]
         local spec = ctx._activeParamSpecs and ctx._activeParamSpecs[i] or nil
-        if type(effect) ~= "table" or type(spec) ~= "table" then
-          return
-        end
-        local effectState = ensureEffectState(ctx, effect)
-        effectState[spec.id] = value
+        if not layer or type(spec) ~= "table" then return end
+        local store = ensureLayerEffectParams(ctx, layer)
+        store[spec.id] = value
         setViewportSurface(ctx)
         savePersistedState(ctx)
       end
@@ -473,18 +615,26 @@ function M.init(ctx)
   ctx._devices = {}
   ctx._modes = {}
   ctx._effects = {}
-  ctx._effectStates = {}
+  ctx._layers = {}
+  for i = 1, NUM_LAYERS do
+    ctx._layers[i] = defaultLayer(i)
+  end
+  ctx._activeLayer = 1
   ctx._activeParamSpecs = {}
   ctx._selectedDevice = nil
   ctx._selectedMode = nil
-  ctx._selectedEffect = 1
   ctx._statusText = ""
+
   loadPersistedState(ctx)
+  applyPersistedLayers(ctx)
 
   syncRendererMode(ctx)
   updateFrameInfo(ctx)
-  refreshEffects(ctx)
   refreshDevices(ctx)
+  local ok, err = pcall(refreshEffects, ctx)
+  if not ok then
+    updateStatus(ctx, "Effect init failed: " .. tostring(err))
+  end
   installParamCallbacks(ctx)
 
   if ctx.widgets.refreshBtn then
@@ -525,35 +675,53 @@ function M.init(ctx)
     end
   end
 
-  if ctx.widgets.effectSelect then
-    ctx.widgets.effectSelect._onSelect = function(selectedIndex)
-      onEffectChanged(ctx, selectedIndex)
+  if ctx.widgets.layerTabs then
+    ctx.widgets.layerTabs._onSelect = function(selectedIndex)
+      setActiveLayer(ctx, selectedIndex)
     end
   end
+
+  if ctx.widgets.layerEnabledBtn then
+    ctx.widgets.layerEnabledBtn._onClick = function()
+      toggleActiveLayerEnabled(ctx)
+    end
+  end
+
+  if ctx.widgets.clearLayerBtn then
+    ctx.widgets.clearLayerBtn._onClick = function()
+      clearActiveLayer(ctx)
+    end
+  end
+
+  if ctx.widgets.effectSelect then
+    ctx.widgets.effectSelect._onSelect = function(selectedIndex)
+      setActiveLayerEffect(ctx, selectedIndex)
+    end
+  end
+
+
 end
 
 function M.resized(ctx, _w, _h)
   syncRendererMode(ctx)
   updateFrameInfo(ctx)
-  syncEffectControls(ctx)
+  syncLayerControls(ctx)
 end
 
 function M.update(ctx, _state)
   syncRendererMode(ctx)
   updateFrameInfo(ctx)
-  syncEffectDescription(ctx)
 
   if video and video.isOpen and video.isOpen() then
     local devices = ctx._devices or {}
     local modes = ctx._modes or {}
     local device = devices[ctx._selectedDevice]
     local mode = modes[ctx._selectedMode]
-    local effect = ctx._effects and ctx._effects[ctx._selectedEffect] or nil
     if type(device) == "table" and type(mode) == "table" then
-      updateStatus(ctx, "Streaming " .. describeDevice(device) .. " / " .. describeMode(mode) .. "  •  FX: " .. describeEffect(effect))
+      updateStatus(ctx, "Streaming " .. describeDevice(device) .. " / " .. describeMode(mode) .. "  •  FX: " .. layerSummary(ctx))
       return
     end
-    updateStatus(ctx, "Streaming active video device  •  FX: " .. describeEffect(effect))
+    updateStatus(ctx, "Streaming active video device  •  FX: " .. layerSummary(ctx))
     return
   end
 

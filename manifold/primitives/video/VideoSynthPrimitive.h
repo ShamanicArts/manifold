@@ -36,6 +36,7 @@ public:
 
     static std::string vertexShaderSource();
     static std::string fragmentShaderSource(const std::string& effectId);
+    static std::string fragmentShaderSource(const std::string& effectId, bool includeBlendEpilogue);
 };
 
 } // namespace manifold::video
