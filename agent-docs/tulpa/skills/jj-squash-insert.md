@@ -1,5 +1,17 @@
 # JJ Squash and Insert Workflow
 
+## ⚠️⚠️⚠️ THIS IS NOT A REBASE ⚠️⚠️⚠️
+
+**IF YOU HAVE BEEN LINKED THIS DOCUMENT AND TOLD TO DO THIS WORK, YOU ARE NOT TO `jj rebase`.**
+
+**THIS PROCESS IS NOT `jj rebase`. DO NOT USE `jj rebase`. DO NOT EVEN THINK ABOUT `jj rebase`.**
+
+**The correct commands are `jj new -A` followed by `jj squash --from --into`. That's it. Two commands. No rebase. No thinking. Just do the two commands.**
+
+If you use `jj rebase` after being linked this document, you have fucked up and destroyed the DAG. `jj undo` immediately and try again.
+
+---
+
 ## Description
 
 Squash messy working copy into single commit, then split into logical commits inserted at correct DAG positions. Used for cleaning up "agent slop" - mixed changes that need to be organized.
@@ -15,10 +27,11 @@ Squash messy working copy into single commit, then split into logical commits in
 ## Failure Mode
 
 **What happens when wrong:**
-- Agent uses `jj new` instead of `jj insert` → creates child instead of inserting between
+- Agent uses `jj rebase` instead of `jj new -A` + `jj squash` → destroys DAG shape
+- Agent uses `jj new` without `-A` → creates child instead of inserting between
 - Agent doesn't identify correct insertion points → wrong DAG shape
 - Agent commits without permission → user frustration
-- **User response:** *"I didnt say jj new . I said JJKK insert"*, *"Learn to fucking read"*
+- **User response:** *"I didnt say jj rebase . I said insert between"*, *"Learn to fucking read"*, *"Stop thinking, do the task"*
 
 ## The Two Methods
 
@@ -42,13 +55,31 @@ For inserting a commit between two existing commits:
 
 ```bash
 # 1. Insert empty commit after specific parent
-jj insert -A <parent_change_id> -m "type(scope): description"
+# This creates a new empty commit AFTER <parent_change_id> and rebases descendants
+jj new -A <parent_change_id> -m "type(scope): description"
 
-# 2. Get the new commit ID
-jj log -r "@ | @-" --limit 5
+# 2. Squash changes from source commit into the new empty commit
+jj squash --from <source_change_id> --into @ -m "type(scope): description"
 
-# 3. Squash changes into the new commit
-jj squash --from @ --into <new_commit_id>
+# 3. Verify correct placement
+jj log -r "@ | @- | @--" --limit 10
+```
+
+**Example: Put commit X between parent A and parent B**
+
+```bash
+# Given: A → B and X is the working copy with changes
+# Goal: A → X → B
+# CRITICAL: X is the WORKING HEAD. Do not move it. Do not rebase it.
+
+# Step 1: Describe the working copy
+jj describe -m "feat: new feature between A and B"
+
+# Step 2: Insert after A, squashing working copy changes
+# --keep-emptied preserves the working head at its original position
+jj squash --insert-after A --keep-emptied -m "feat: new feature between A and B"
+
+# Done. DAG is now A → new_commit(X) → B, working head is still at X
 ```
 
 ## Safe Protocol
@@ -117,79 +148,88 @@ jj st
 jj log -r "@ | @-" --limit 10
 ```
 
-### Example 2: Insert Between Commits
+### Example 2: Insert Commit Between Two Existing Commits
 
 ```bash
-# User wants commit between "refactor: rename" and "docs: update"
+# User wants commit X between commit A and commit B
+# Current DAG: A → B
+# Target DAG: A → X → B
+# WORKING HEAD is at X. X must remain the working head.
 
-# Insert empty commit after refactor
-jj insert -A <refactor_commit_id> -m "feat: new feature between refactor and docs"
+# Step 1: Describe the working copy
+jj describe -m "feat: new feature between A and B"
 
-# Check what ID was created
-jj log -r "@ | @-" --limit 5
-
-# Squash changes into the new commit
-jj squash --from @ --into <new_commit_id>
+# Step 2: Insert after A with --keep-emptied
+# This creates a new commit after A with the working copy's changes.
+# --keep-emptied prevents the working head from moving.
+jj squash --insert-after A --keep-emptied -m "feat: new feature between A and B"
 
 # Verify correct placement
-jj log -r "@ | @- | @--" --limit 10
+jj log -r "A | @ | B" --limit 10
 ```
 
 ## Critical Distinctions
 
-### `jj new` vs `jj insert`
+### `jj new` vs `jj new -A`
 
 | Command | What It Does | Use When |
 |---------|--------------|----------|
-| `jj new <parent>` | Creates **child** of parent | Adding to end of lineage |
-| `jj insert -A <parent>` | Inserts **between** parent and its child | Inserting in middle |
-| `jj squash --insert-after <parent>` | Squash to new commit **after** parent | Moving changes between |
+| `jj new <parent>` | Creates **child** at end of lineage | Adding to end of branch |
+| `jj new -A <parent>` | Inserts **between** parent and its children | Inserting in middle of DAG |
+| `jj rebase -s <commit> -d <parent>` | **DESTROYS DAG** - moves entire subtree | **NEVER USE THIS FOR INSERT** |
 
-**User correction:** *"I didnt say jj new . I said JJKK insert"*
+**User correction:** *"I didnt say jj rebase . I said insert between"*
 
-**Rule:** If user says "insert between", use `jj insert -A` not `jj new`.
+**Rule:** If user says "insert between", use `jj squash --insert-after <parent> --keep-emptied`. **NEVER** `jj rebase`. **NEVER** move the working head.
 
-### Split vs Squash
+### The Insert Pattern
 
-| Command | Purpose |
-|---------|---------|
-| `jj split -r @ -A <parent>` | Take files from working copy, create new commit after parent |
-| `jj squash --from @ --into <target>` | Move changes into existing commit |
-| `jj squash --from @ --insert-after <parent>` | Move changes to new commit after parent |
+The two-command insert pattern:
+
+```bash
+jj describe -m "description"                                       # Describe working copy
+jj squash --insert-after <parent> --keep-emptied -m "description"  # Insert after parent, preserve working head
+```
+
+**CRITICAL RULES:**
+- Use `--insert-after` to specify the parent to insert after
+- Use `--keep-emptied` to prevent the working head from moving
+- The working head stays at its original position
 
 ## Rules
 
-1. **Always verify parents before inserting** - Use `jj log` to see DAG
-2. **Use `jj insert -A` not `jj new`** when inserting between
-3. **Group by lineage** - Docs go to docs parent, code to code parent
-4. **Never squash without permission** - User must explicitly ask
-5. **Verify final state** - `jj st` and `jj log` to confirm shape
+1. **⚠️ NEVER USE `jj rebase` FOR INSERT OPERATIONS** - This destroys the DAG
+2. **Always verify parents before inserting** - Use `jj log` to see DAG
+3. **Use `jj new -A <parent>` to insert between** - Not `jj rebase`, not plain `jj new`
+4. **Group by lineage** - Docs go to docs parent, code to code parent
+5. **Never squash without permission** - User must explicitly ask
+6. **Verify final state** - `jj st` and `jj log` to confirm shape
 
 ## Common Mistakes
 
-### Mistake 1: Using `jj new` Instead of `jj insert`
+### Mistake 1: Using `jj rebase` Instead of Insert
+
+**WRONG - DESTROYS DAG:**
+```bash
+jj rebase -s X -d A    # DON'T DO THIS - moves X and ALL ITS DESCENDANTS
+```
+
+**RIGHT:**
+```bash
+jj describe -m "description"                                       # Describe working copy
+jj squash --insert-after A --keep-emptied -m "description"         # Insert after A, preserve working head
+```
+
+### Mistake 2: Using `jj new` Without `-A`
 
 **Wrong:**
 ```bash
-jj new <parent> -m "message"  # Creates child, not insertion
+jj new A -m "message"  # Creates child at end, does not insert between
 ```
 
 **Right:**
 ```bash
-jj insert -A <parent> -m "message"  # Inserts between parent and its child
-```
-
-### Mistake 2: Not Identifying Correct Parents
-
-**Wrong:**
-```bash
-jj split -r @ -A @- -m "message"  # Assumes parent is @-
-```
-
-**Right:**
-```bash
-jj log -r "bookmarks()"  # Find correct parent by bookmark
-jj split -r @ -A <correct_parent> -m "message"
+jj new -A A -m "message"  # Inserts between A and A's children
 ```
 
 ### Mistake 3: Squashing Without Permission
@@ -207,25 +247,30 @@ jj squash --into main  # User didn't ask for this
 
 ## Recovery
 
+**If used `jj rebase` by accident:**
+```bash
+jj undo                  # Undo the rebase immediately
+# Then use the correct insert pattern:
+jj new -A <parent> -m "description"
+jj squash --from <source> --into @ -m "description"
+```
+
 **If wrong parent:**
 ```bash
 jj undo
 jj log -r "bookmarks() | @- | @--"  # Find correct parent
-jj split -r @ -A <correct_parent> -m "message"
-```
-
-**If used `new` instead of `insert`:**
-```bash
-jj undo
-jj insert -A <parent> -m "message"
+jj new -A <correct_parent> -m "description"
+jj squash --from <source> --into @ -m "description"
 ```
 
 **User will say:** *"JJ undo. reread agent md."*
 
 ## Success Criteria
 
+- [ ] Did NOT use `jj rebase` at any point
+- [ ] Used `jj squash --insert-after <parent> --keep-emptied` to insert
+- [ ] Working head remained at original position
 - [ ] Verified parents with `jj log` before inserting
-- [ ] Used correct command (`insert` vs `new`)
 - [ ] Changes went to correct lineages
 - [ ] Final `jj st` shows clean state
 - [ ] `jj log` shows correct DAG shape
