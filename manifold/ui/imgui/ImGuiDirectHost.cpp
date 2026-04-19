@@ -1,6 +1,7 @@
 #include "ImGuiDirectHost.h"
 
 #include "Theme.h"
+#include "../../primitives/video/VideoCaptureManager.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -189,6 +190,55 @@ juce::Rectangle<float> previewRect(const juce::Rectangle<float>& sceneRect,
     const float right = std::max(x1, x2);
     const float bottom = std::max(y1, y2);
     return juce::Rectangle<float>(left, top, std::max(1.0f, right - left), std::max(1.0f, bottom - top));
+}
+
+juce::Rectangle<float> containRectWithin(const juce::Rectangle<float>& bounds,
+                                        float contentWidth,
+                                        float contentHeight) {
+    if (contentWidth <= 0.0f || contentHeight <= 0.0f) {
+        return bounds;
+    }
+    const float sx = bounds.getWidth() / contentWidth;
+    const float sy = bounds.getHeight() / contentHeight;
+    const float scale = std::min(sx, sy);
+    const float drawW = std::max(1.0f, contentWidth * scale);
+    const float drawH = std::max(1.0f, contentHeight * scale);
+    const float drawX = bounds.getX() + (bounds.getWidth() - drawW) * 0.5f;
+    const float drawY = bounds.getY() + (bounds.getHeight() - drawH) * 0.5f;
+    return juce::Rectangle<float>(drawX, drawY, drawW, drawH);
+}
+
+bool videoBackedFitModeForNode(const RuntimeNode& node, std::string& fitModeOut) {
+    if (node.getCustomSurfaceType() == "video_input") {
+        fitModeOut = "contain";
+        const auto payload = node.getCustomRenderPayload();
+        if (auto* obj = payload.getDynamicObject(); obj != nullptr) {
+            const auto fitMode = obj->getProperty("fitMode").toString().toStdString();
+            if (!fitMode.empty()) {
+                fitModeOut = fitMode;
+            }
+        }
+        return true;
+    }
+
+    if (node.getCustomSurfaceType() != "gpu_shader") {
+        return false;
+    }
+
+    const auto payload = node.getCustomRenderPayload();
+    if (auto* obj = payload.getDynamicObject(); obj != nullptr) {
+        const auto sourceType = obj->getProperty("sourceType").toString().toStdString();
+        if (sourceType != "video_input") {
+            return false;
+        }
+        fitModeOut = obj->getProperty("fitMode").toString().toStdString();
+        if (fitModeOut.empty()) {
+            fitModeOut = "contain";
+        }
+        return true;
+    }
+
+    return false;
 }
 
 void invokeOnImGuiFrameRecursive(RuntimeNode& node) {
@@ -560,7 +610,12 @@ struct ImGuiDirectHost::ShaderSurfaceState {
 
     std::string surfaceType;
     std::string payloadSignature;
+    std::string sourceType;
     std::vector<PassResources> passes;
+    unsigned int sourceTexture = 0;
+    int sourceWidth = 0;
+    int sourceHeight = 0;
+    uint64_t sourceSequence = 0;
     int width = 0;
     int height = 0;
     std::string lastError;
@@ -824,9 +879,22 @@ void renderLiveNodeRecursive(ImGuiDirectHost& host,
                                                                     std::max(1, juce::roundToInt(sceneBounds.getHeight())),
                                                                     timeSeconds);
         if (textureHandle != 0) {
+            auto drawBounds = bounds;
+            std::string fitMode;
+            if (videoBackedFitModeForNode(node, fitMode) && fitMode == "contain") {
+                int videoWidth = 0;
+                int videoHeight = 0;
+                uint64_t videoSequence = 0;
+                if (host.getVideoSurfaceInfo(node.getStableId(), videoWidth, videoHeight, videoSequence)) {
+                    juce::ignoreUnused(videoSequence);
+                    drawBounds = containRectWithin(bounds,
+                                                   static_cast<float>(videoWidth),
+                                                   static_cast<float>(videoHeight));
+                }
+            }
             drawList->AddImage(static_cast<ImTextureID>(textureHandle),
-                               toImVec2(bounds),
-                               toImVec2BottomRight(bounds),
+                               toImVec2(drawBounds),
+                               toImVec2BottomRight(drawBounds),
                                ImVec2(0, 0),
                                ImVec2(1, 1),
                                IM_COL32_WHITE);
@@ -930,9 +998,10 @@ int64_t estimateRenderSnapshotBytes(const ImGuiDirectHost::RenderSnapshot& snaps
     return total;
 }
 
-int64_t estimateShaderSurfaceStateBytes(const std::unordered_map<uint64_t, std::unique_ptr<ImGuiDirectHost::ShaderSurfaceState>>& states) {
-    int64_t total = static_cast<int64_t>(states.size()) * static_cast<int64_t>(sizeof(std::pair<const uint64_t, std::unique_ptr<ImGuiDirectHost::ShaderSurfaceState>>));
-    for (const auto& [_, state] : states) {
+int64_t estimateShaderSurfaceStateBytes(const std::unordered_map<uint64_t, std::unique_ptr<ImGuiDirectHost::ShaderSurfaceState>>& shaderStates,
+                                         const std::unordered_map<uint64_t, ImGuiDirectHost::VideoSurfaceState>& videoStates) {
+    int64_t total = static_cast<int64_t>(shaderStates.size()) * static_cast<int64_t>(sizeof(std::pair<const uint64_t, std::unique_ptr<ImGuiDirectHost::ShaderSurfaceState>>));
+    for (const auto& [_, state] : shaderStates) {
         if (!state) {
             continue;
         }
@@ -947,6 +1016,8 @@ int64_t estimateShaderSurfaceStateBytes(const std::unordered_map<uint64_t, std::
             total += static_cast<int64_t>(pass.inputTextureUniform.capacity());
         }
     }
+    total += static_cast<int64_t>(videoStates.size()) * static_cast<int64_t>(sizeof(std::pair<const uint64_t, ImGuiDirectHost::VideoSurfaceState>));
+    total += static_cast<int64_t>(videoStates.size()) * static_cast<int64_t>(sizeof(ImGuiDirectHost::VideoSurfaceState));
     return total;
 }
 
@@ -1043,7 +1114,7 @@ ImGuiDirectHost::StatsSnapshot ImGuiDirectHost::getStatsSnapshot() const {
                                      + estimateRenderSnapshotBytes(glSnapshot_, glCount);
         snapshot.renderSnapshotNodeCount = pendingCount + activeCount + glCount;
     }
-    snapshot.customSurfaceStateBytes = estimateShaderSurfaceStateBytes(shaderSurfaceStates_);
+    snapshot.customSurfaceStateBytes = estimateShaderSurfaceStateBytes(shaderSurfaceStates_, videoSurfaceStates_);
     estimateImGuiInternalStats(reinterpret_cast<ImGuiContext*>(imguiContext_), snapshot);
     return snapshot;
 }
@@ -1118,8 +1189,23 @@ void ImGuiDirectHost::releaseShaderSurfaces() {
             releaseShaderSurfacePass(pass);
         }
         state->passes.clear();
+        if (state->sourceTexture != 0) {
+            glDeleteTextures(1, &state->sourceTexture);
+            state->sourceTexture = 0;
+        }
     }
     shaderSurfaceStates_.clear();
+    recalculateOwnedGpuBytes();
+}
+
+void ImGuiDirectHost::releaseVideoSurfaces() {
+    for (auto& [_, state] : videoSurfaceStates_) {
+        if (state.texture != 0) {
+            glDeleteTextures(1, &state.texture);
+            state.texture = 0;
+        }
+    }
+    videoSurfaceStates_.clear();
     recalculateOwnedGpuBytes();
 }
 
@@ -1134,8 +1220,27 @@ void ImGuiDirectHost::pruneShaderSurfaces(const std::unordered_set<uint64_t>& to
             for (auto& pass : it->second->passes) {
                 releaseShaderSurfacePass(pass);
             }
+            if (it->second->sourceTexture != 0) {
+                glDeleteTextures(1, &it->second->sourceTexture);
+                it->second->sourceTexture = 0;
+            }
         }
         it = shaderSurfaceStates_.erase(it);
+    }
+    recalculateOwnedGpuBytes();
+}
+
+void ImGuiDirectHost::pruneVideoSurfaces(const std::unordered_set<uint64_t>& touchedStableIds) {
+    for (auto it = videoSurfaceStates_.begin(); it != videoSurfaceStates_.end();) {
+        if (touchedStableIds.find(it->first) != touchedStableIds.end()) {
+            ++it;
+            continue;
+        }
+
+        if (it->second.texture != 0) {
+            glDeleteTextures(1, &it->second.texture);
+        }
+        it = videoSurfaceStates_.erase(it);
     }
     recalculateOwnedGpuBytes();
 }
@@ -1144,7 +1249,13 @@ void ImGuiDirectHost::recalculateOwnedGpuBytes() {
     int64_t colorBytes = 0;
     int64_t depthBytes = 0;
     for (const auto& [_, state] : shaderSurfaceStates_) {
-        if (!state || state->width <= 0 || state->height <= 0) {
+        if (!state) {
+            continue;
+        }
+        if (state->sourceTexture != 0 && state->sourceWidth > 0 && state->sourceHeight > 0) {
+            colorBytes += static_cast<int64_t>(state->sourceWidth) * static_cast<int64_t>(state->sourceHeight) * 4;
+        }
+        if (state->width <= 0 || state->height <= 0) {
             continue;
         }
         for (const auto& pass : state->passes) {
@@ -1154,6 +1265,11 @@ void ImGuiDirectHost::recalculateOwnedGpuBytes() {
             if (pass.depthRbo != 0) {
                 depthBytes += static_cast<int64_t>(state->width) * static_cast<int64_t>(state->height) * 4;
             }
+        }
+    }
+    for (const auto& [_, state] : videoSurfaceStates_) {
+        if (state.texture != 0 && state.width > 0 && state.height > 0) {
+            colorBytes += static_cast<int64_t>(state.width) * static_cast<int64_t>(state.height) * 4;
         }
     }
     surfaceColorBytes_.store(colorBytes, std::memory_order_relaxed);
@@ -1169,6 +1285,59 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
     }
 
     const auto surfaceType = node.getCustomSurfaceType();
+    if (surfaceType == "video_input") {
+        auto frame = manifold::video::VideoCaptureManager::instance().getLatestFrameCopy();
+        if (!frame.valid()) {
+            return 0;
+        }
+
+        auto& state = videoSurfaceStates_[node.getStableId()];
+        if (state.texture == 0) {
+            glGenTextures(1, &state.texture);
+            if (state.texture == 0) {
+                return 0;
+            }
+            glBindTexture(GL_TEXTURE_2D, state.texture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+
+        if (state.sequence != frame.sequence || state.width != frame.width || state.height != frame.height) {
+            glBindTexture(GL_TEXTURE_2D, state.texture);
+            if (state.width != frame.width || state.height != frame.height) {
+                glTexImage2D(GL_TEXTURE_2D,
+                             0,
+                             GL_RGBA8,
+                             frame.width,
+                             frame.height,
+                             0,
+                             GL_RGBA,
+                             GL_UNSIGNED_BYTE,
+                             frame.rgba.data());
+            } else {
+                glTexSubImage2D(GL_TEXTURE_2D,
+                                0,
+                                0,
+                                0,
+                                frame.width,
+                                frame.height,
+                                GL_RGBA,
+                                GL_UNSIGNED_BYTE,
+                                frame.rgba.data());
+            }
+            glBindTexture(GL_TEXTURE_2D, 0);
+            state.width = frame.width;
+            state.height = frame.height;
+            state.sequence = frame.sequence;
+            recalculateOwnedGpuBytes();
+        }
+
+        return static_cast<std::uintptr_t>(state.texture);
+    }
+
     if (surfaceType != "gpu_shader" && surfaceType != "opengl") {
         return 0;
     }
@@ -1185,10 +1354,14 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
 
     const auto kind = payloadObj->getProperty("kind").toString().toStdString();
     const auto shaderLanguage = payloadObj->getProperty("shaderLanguage").toString().toStdString();
+    const auto sourceType = payloadObj->getProperty("sourceType").toString().toStdString();
     if (!kind.empty() && kind != "shaderQuad") {
         return 0;
     }
     if (!shaderLanguage.empty() && shaderLanguage != "glsl") {
+        return 0;
+    }
+    if (!sourceType.empty() && sourceType != "video_input") {
         return 0;
     }
 
@@ -1204,8 +1377,16 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
             releaseShaderSurfacePass(pass);
         }
         state->passes.clear();
+        if (state->sourceTexture != 0 && state->sourceType != sourceType) {
+            glDeleteTextures(1, &state->sourceTexture);
+            state->sourceTexture = 0;
+            state->sourceWidth = 0;
+            state->sourceHeight = 0;
+            state->sourceSequence = 0;
+        }
         state->surfaceType = surfaceType;
         state->payloadSignature = payloadSignature;
+        state->sourceType = sourceType;
         state->lastError.clear();
 
         auto configurePass = [&](const juce::var& passVar) {
@@ -1256,7 +1437,62 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
         return 0;
     }
 
-    if (state->width != width || state->height != height) {
+    if (state->sourceType == "video_input") {
+        auto frame = manifold::video::VideoCaptureManager::instance().getLatestFrameCopy();
+        if (!frame.valid()) {
+            return 0;
+        }
+        if (state->sourceTexture == 0) {
+            glGenTextures(1, &state->sourceTexture);
+            if (state->sourceTexture == 0) {
+                return 0;
+            }
+            glBindTexture(GL_TEXTURE_2D, state->sourceTexture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+        if (state->sourceSequence != frame.sequence || state->sourceWidth != frame.width || state->sourceHeight != frame.height) {
+            glBindTexture(GL_TEXTURE_2D, state->sourceTexture);
+            if (state->sourceWidth != frame.width || state->sourceHeight != frame.height) {
+                glTexImage2D(GL_TEXTURE_2D,
+                             0,
+                             GL_RGBA8,
+                             frame.width,
+                             frame.height,
+                             0,
+                             GL_RGBA,
+                             GL_UNSIGNED_BYTE,
+                             frame.rgba.data());
+            } else {
+                glTexSubImage2D(GL_TEXTURE_2D,
+                                0,
+                                0,
+                                0,
+                                frame.width,
+                                frame.height,
+                                GL_RGBA,
+                                GL_UNSIGNED_BYTE,
+                                frame.rgba.data());
+            }
+            glBindTexture(GL_TEXTURE_2D, 0);
+            state->sourceWidth = frame.width;
+            state->sourceHeight = frame.height;
+            state->sourceSequence = frame.sequence;
+            recalculateOwnedGpuBytes();
+        }
+    } else {
+        state->sourceWidth = width;
+        state->sourceHeight = height;
+        state->sourceSequence = 0;
+    }
+
+    const int targetWidth = state->sourceType == "video_input" ? std::max(1, state->sourceWidth) : width;
+    const int targetHeight = state->sourceType == "video_input" ? std::max(1, state->sourceHeight) : height;
+
+    if (state->width != targetWidth || state->height != targetHeight) {
         state->lastError.clear();
         for (auto& pass : state->passes) {
             if (pass.depthRbo != 0) {
@@ -1271,12 +1507,12 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
                 glDeleteFramebuffers(1, &pass.fbo);
                 pass.fbo = 0;
             }
-            if (!createSurfaceTarget(pass, width, height, state->lastError)) {
+            if (!createSurfaceTarget(pass, targetWidth, targetHeight, state->lastError)) {
                 return 0;
             }
         }
-        state->width = width;
-        state->height = height;
+        state->width = targetWidth;
+        state->height = targetHeight;
         recalculateOwnedGpuBytes();
     }
 
@@ -1287,11 +1523,11 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
     glDisable(GL_SCISSOR_TEST);
     glBindVertexArray(surfaceQuadVao_);
 
-    unsigned int inputTexture = 0;
+    unsigned int inputTexture = state->sourceType == "video_input" ? state->sourceTexture : 0;
     for (std::size_t i = 0; i < state->passes.size(); ++i) {
         auto& pass = state->passes[i];
         glBindFramebuffer(GL_FRAMEBUFFER, pass.fbo);
-        glViewport(0, 0, width, height);
+        glViewport(0, 0, targetWidth, targetHeight);
         if (pass.enableDepth) {
             glEnable(GL_DEPTH_TEST);
             glClear(GL_DEPTH_BUFFER_BIT);
@@ -1314,10 +1550,10 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
         }
         const auto resolutionLoc = glGetUniformLocation(pass.program, "uResolution");
         if (resolutionLoc >= 0) {
-            glUniform2f(resolutionLoc, static_cast<float>(width), static_cast<float>(height));
+            glUniform2f(resolutionLoc, static_cast<float>(targetWidth), static_cast<float>(targetHeight));
         }
 
-        if (i > 0 && inputTexture != 0) {
+        if (inputTexture != 0) {
             const auto inputLoc = glGetUniformLocation(pass.program, pass.inputTextureUniform.c_str());
             if (inputLoc >= 0) {
                 glActiveTexture(GL_TEXTURE0);
@@ -1327,7 +1563,7 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
         }
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
-        if (i > 0 && inputTexture != 0) {
+        if (inputTexture != 0) {
             glBindTexture(GL_TEXTURE_2D, 0);
         }
         inputTexture = pass.colorTex;
@@ -1339,6 +1575,26 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
     glDisable(GL_DEPTH_TEST);
 
     return state->passes.empty() ? 0 : static_cast<std::uintptr_t>(state->passes.back().colorTex);
+}
+
+bool ImGuiDirectHost::getVideoSurfaceInfo(uint64_t stableId, int& width, int& height, uint64_t& sequence) const {
+    const auto videoIt = videoSurfaceStates_.find(stableId);
+    if (videoIt != videoSurfaceStates_.end() && videoIt->second.texture != 0) {
+        width = videoIt->second.width;
+        height = videoIt->second.height;
+        sequence = videoIt->second.sequence;
+        return width > 0 && height > 0;
+    }
+
+    const auto shaderIt = shaderSurfaceStates_.find(stableId);
+    if (shaderIt != shaderSurfaceStates_.end() && shaderIt->second && shaderIt->second->sourceTexture != 0) {
+        width = shaderIt->second->sourceWidth;
+        height = shaderIt->second->sourceHeight;
+        sequence = shaderIt->second->sourceSequence;
+        return width > 0 && height > 0;
+    }
+
+    return false;
 }
 
 void ImGuiDirectHost::setGlobalKeyHandler(GlobalKeyHandler handler) {
@@ -1515,6 +1771,7 @@ void ImGuiDirectHost::renderNow() {
     ImGui::End();
 
     pruneShaderSurfaces(touchedSurfaceIds);
+    pruneVideoSurfaces(touchedSurfaceIds);
 
     // Draw copyid mode indicator
     if (copyIdModeEnabled_) {
@@ -1596,6 +1853,7 @@ void ImGuiDirectHost::shutdown() {
 
     if (contextReady_ && openGLContext_.makeActive()) {
         releaseShaderSurfaces();
+        releaseVideoSurfaces();
         releaseSurfaceQuadGeometry();
         juce::OpenGLContext::deactivateCurrentContext();
     }
@@ -1944,6 +2202,7 @@ void ImGuiDirectHost::openGLContextClosing() {
     lastIndexCount_.store(0, std::memory_order_relaxed);
 
     releaseShaderSurfaces();
+    releaseVideoSurfaces();
     releaseSurfaceQuadGeometry();
 
     auto* context = reinterpret_cast<ImGuiContext*>(imguiContext_);

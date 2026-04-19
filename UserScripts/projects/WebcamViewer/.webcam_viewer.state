@@ -1,0 +1,10 @@
+devicePath=/dev/video0
+width=640
+height=480
+fps=30
+pixelFormat=MJPG
+effectId=neon-edge
+effectParam.speed=1.0
+effectParam.param1=0.5
+effectParam.param2=0.5
+effectParam.intensity=0.5

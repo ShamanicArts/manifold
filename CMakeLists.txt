@@ -525,7 +525,11 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/core/Settings.h
     manifold/primitives/core/Settings.cpp
     manifold/primitives/core/SystemPaths.h
-    manifold/primitives/core/SystemPaths.cpp)
+    manifold/primitives/core/SystemPaths.cpp
+    manifold/primitives/video/VideoCaptureManager.h
+    manifold/primitives/video/VideoCaptureManager.cpp
+    manifold/primitives/video/VideoSynthPrimitive.h
+    manifold/primitives/video/VideoSynthPrimitive.cpp)
 
 # --- Platform Detection ---
 if(CMAKE_SYSTEM_NAME STREQUAL "Android")
