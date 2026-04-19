@@ -123,9 +123,16 @@ public:
                                               int width,
                                               int height,
                                               double timeSeconds);
+    bool getVideoSurfaceInfo(uint64_t stableId, int& width, int& height, uint64_t& sequence) const;
 
 public:
     struct ShaderSurfaceState;
+    struct VideoSurfaceState {
+        unsigned int texture = 0;
+        int width = 0;
+        int height = 0;
+        uint64_t sequence = 0;
+    };
 
 private:
     void resized() override;
@@ -209,6 +216,7 @@ public:
     std::atomic<bool> snapshotReady_{false};
 
     std::unordered_map<uint64_t, std::unique_ptr<ShaderSurfaceState>> shaderSurfaceStates_;
+    std::unordered_map<uint64_t, VideoSurfaceState> videoSurfaceStates_;
     unsigned int surfaceQuadVao_ = 0;
     unsigned int surfaceQuadVbo_ = 0;
     unsigned int surfaceQuadIbo_ = 0;
@@ -216,7 +224,9 @@ public:
     bool ensureSurfaceQuadGeometry();
     void releaseSurfaceQuadGeometry();
     void releaseShaderSurfaces();
+    void releaseVideoSurfaces();
     void pruneShaderSurfaces(const std::unordered_set<uint64_t>& touchedStableIds);
+    void pruneVideoSurfaces(const std::unordered_set<uint64_t>& touchedStableIds);
     void recalculateOwnedGpuBytes();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImGuiDirectHost)

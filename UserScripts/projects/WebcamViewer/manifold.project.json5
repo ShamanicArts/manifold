@@ -1,0 +1,8 @@
+{
+  "name": "WebcamViewer",
+  "version": 1,
+  "description": "Minimal webcam viewer project using the first-party video capture binding",
+  "ui": {
+    "root": "ui/main.ui.lua"
+  }
+}

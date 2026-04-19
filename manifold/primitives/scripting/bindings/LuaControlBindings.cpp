@@ -29,6 +29,7 @@ extern "C" {
 #include "../../control/OSCQuery.h"
 #include "../../core/Settings.h"
 #include "../../core/SystemPaths.h"
+#include "../../video/VideoCaptureManager.h"
 
 #include <juce_core/juce_core.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -42,6 +43,9 @@ extern "C" {
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
+#include <string>
+
+#include "../../video/VideoSynthPrimitive.h"
 
 // Forward declarations for node access
 namespace dsp_primitives {
@@ -2490,6 +2494,140 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                                         sol::function callback) {
         state.showFileChooser(title, initialPath, filePatterns, callback);
     };
+
+    auto videoTable = lua.create_table();
+    videoTable["listDevices"] = [&lua]() -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        const auto devices = manifold::video::VideoCaptureManager::instance().listDevices();
+        int luaIndex = 1;
+        for (const auto& device : devices) {
+            auto entry = sol::table(lua, sol::create);
+            entry["index"] = device.index;
+            entry["path"] = device.path;
+            entry["name"] = device.name;
+            entry["label"] = device.label;
+            result[luaIndex++] = entry;
+        }
+        return result;
+    };
+    videoTable["listModes"] = [&lua](int deviceIndex) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        const auto modes = manifold::video::VideoCaptureManager::instance().listModes(deviceIndex);
+        int luaIndex = 1;
+        for (const auto& mode : modes) {
+            auto entry = sol::table(lua, sol::create);
+            entry["width"] = mode.width;
+            entry["height"] = mode.height;
+            entry["fps"] = mode.fps;
+            entry["pixelFormat"] = mode.pixelFormat;
+            entry["label"] = mode.label;
+            result[luaIndex++] = entry;
+        }
+        return result;
+    };
+    videoTable["open"] = [](int deviceIndex,
+                              sol::optional<int> width,
+                              sol::optional<int> height,
+                              sol::optional<int> fps) -> bool {
+        return manifold::video::VideoCaptureManager::instance().openDevice(deviceIndex,
+                                                                           width.value_or(640),
+                                                                           height.value_or(480),
+                                                                           fps.value_or(30));
+    };
+    videoTable["close"] = []() {
+        manifold::video::VideoCaptureManager::instance().closeDevice();
+    };
+    videoTable["isOpen"] = []() -> bool {
+        return manifold::video::VideoCaptureManager::instance().isOpen();
+    };
+    videoTable["getActiveDeviceIndex"] = []() -> int {
+        return manifold::video::VideoCaptureManager::instance().getActiveDeviceIndex();
+    };
+    videoTable["getLastError"] = []() -> std::string {
+        return manifold::video::VideoCaptureManager::instance().getLastError();
+    };
+    videoTable["getFrameInfo"] = [&lua]() -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        const auto frame = manifold::video::VideoCaptureManager::instance().getLatestFrameCopy();
+        result["valid"] = frame.valid();
+        result["width"] = frame.width;
+        result["height"] = frame.height;
+        result["sequence"] = static_cast<double>(frame.sequence);
+        result["open"] = manifold::video::VideoCaptureManager::instance().isOpen();
+        result["activeDeviceIndex"] = manifold::video::VideoCaptureManager::instance().getActiveDeviceIndex();
+        return result;
+    };
+    videoTable["listEffects"] = [&lua]() -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        int effectIndex = 1;
+        for (const auto& effect : manifold::video::VideoSynthPrimitive::effects()) {
+            auto effectTable = sol::table(lua, sol::create);
+            effectTable["id"] = effect.id;
+            effectTable["name"] = effect.name;
+            effectTable["category"] = effect.category;
+            effectTable["description"] = effect.description;
+
+            auto paramsTable = sol::table(lua, sol::create);
+            int paramIndex = 1;
+            for (const auto& param : effect.params) {
+                auto paramTable = sol::table(lua, sol::create);
+                paramTable["id"] = param.id;
+                paramTable["name"] = param.name;
+                paramTable["unit"] = param.unit;
+                paramTable["min"] = param.min;
+                paramTable["max"] = param.max;
+                paramTable["default"] = param.defaultValue;
+                paramTable["step"] = param.step;
+                paramsTable[paramIndex++] = paramTable;
+            }
+            effectTable["params"] = paramsTable;
+            result[effectIndex++] = effectTable;
+        }
+        return result;
+    };
+    videoTable["buildEffectSurface"] = [&lua](const std::string& effectId,
+                                                 sol::optional<sol::table> paramsOpt,
+                                                 sol::optional<std::string> fitModeOpt) -> sol::table {
+        std::unordered_map<std::string, float> requestedParams;
+        if (paramsOpt.has_value()) {
+            for (const auto& pair : paramsOpt.value()) {
+                if (!pair.first.is<std::string>()) {
+                    continue;
+                }
+                float value = 0.0f;
+                if (pair.second.is<double>()) {
+                    value = static_cast<float>(pair.second.as<double>());
+                } else if (pair.second.is<int>()) {
+                    value = static_cast<float>(pair.second.as<int>());
+                } else {
+                    continue;
+                }
+                requestedParams[pair.first.as<std::string>()] = value;
+            }
+        }
+
+        const auto sanitizedParams = manifold::video::VideoSynthPrimitive::sanitizeParams(effectId, requestedParams);
+        auto result = sol::table(lua, sol::create);
+        result["version"] = 1;
+        result["kind"] = "shaderQuad";
+        result["shaderLanguage"] = "glsl";
+        result["sourceType"] = "video_input";
+        result["fitMode"] = fitModeOpt.value_or("contain");
+
+        auto passes = sol::table(lua, sol::create);
+        auto pass = sol::table(lua, sol::create);
+        pass["vertexShader"] = manifold::video::VideoSynthPrimitive::vertexShaderSource();
+        pass["fragmentShader"] = manifold::video::VideoSynthPrimitive::fragmentShaderSource(effectId);
+        pass["inputTextureUniform"] = "uInputTex";
+        pass["uniforms"] = sol::table(lua, sol::create);
+        for (const auto& entry : sanitizedParams) {
+            pass["uniforms"][entry.first] = entry.second;
+        }
+        passes[1] = pass;
+        result["passes"] = passes;
+        return result;
+    };
+    lua["video"] = videoTable;
 
     lua["getRuntimeDisplayListDebugStats"] = [&lua](sol::optional<bool> resetOpt) -> sol::table {
         auto result = sol::table(lua, sol::create);
