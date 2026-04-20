@@ -14,9 +14,9 @@ public:
 
     const char* getNodeType() const override { return "BitCrusher"; }
     // Two stereo busses encoded as 4 input views:
-    // bus A = inputs[0]/[1] (target), bus B = inputs[2]/[3] (logic/mod source, optional)
-    int getNumInputs() const override { return 4; }
-    int getNumOutputs() const override { return 2; }
+    // bus A = inputs[0] (target stereo), bus B = inputs[1] (logic/mod source stereo, optional)
+    int getNumInputs() const override { return 2; }
+    int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,

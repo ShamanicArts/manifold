@@ -15,8 +15,8 @@ public:
     AudioSyncNode();
 
     const char* getNodeType() const override { return "AudioSync"; }
-    int getNumInputs() const override { return 4; }
-    int getNumOutputs() const override { return 2; }
+    int getNumInputs() const override { return 2; }
+    int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,

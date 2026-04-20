@@ -149,10 +149,6 @@ namespace dsp_primitives
                         {
                             outputs[0].clear();
                         }
-                        if (outputs.size() > 1)
-                        {
-                            outputs[1].clear();
-                        }
                         return;
                     }
 
@@ -212,9 +208,8 @@ namespace dsp_primitives
 
                     for (int ch = 0; ch < channels; ++ch)
                     {
-                        const auto channelIndex = static_cast<std::size_t>(ch);
-                        const float * inputPtr = inputs[channelIndex].channelData[0];
-                        float * outputPtr = outputs[channelIndex].channelData[0];
+                        const float * inputPtr = inputs[0].channelData[ch];
+                        float * outputPtr = outputs[0].channelData[ch];
                         size_t offset = 0;
                         size_t samplesRemain = numsamples;
 

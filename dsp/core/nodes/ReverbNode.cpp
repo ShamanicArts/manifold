@@ -44,15 +44,21 @@ void ReverbNode::prepare(double sampleRate, int maxBlockSize) {
 void ReverbNode::process(const std::vector<AudioBufferView>& inputs,
                          std::vector<WritableAudioBufferView>& outputs,
                          int numSamples) {
-    if (inputs.size() < 2 || outputs.size() < 2) {
+    if (inputs.empty() || outputs.empty()) {
         if (!outputs.empty()) outputs[0].clear();
-        if (outputs.size() > 1) outputs[1].clear();
         return;
     }
 
+    auto& output = outputs[0];
     if (numSamples > static_cast<int>(left_.size())) {
-        outputs[0].clear();
-        outputs[1].clear();
+        output.clear();
+        return;
+    }
+
+    const auto& input = inputs[0];
+    const int channels = juce::jmin(2, input.numChannels, output.numChannels);
+    if (channels <= 0) {
+        output.clear();
         return;
     }
 
@@ -62,14 +68,12 @@ void ReverbNode::process(const std::vector<AudioBufferView>& inputs,
     const float targetDryLevel = targetDryLevel_.load(std::memory_order_acquire);
     const float targetWidth = targetWidth_.load(std::memory_order_acquire);
 
-    // Smooth parameters
     currentRoomSize_ += (targetRoomSize - currentRoomSize_) * smoothingCoeff_;
     currentDamping_ += (targetDamping - currentDamping_) * smoothingCoeff_;
     currentWetLevel_ += (targetWetLevel - currentWetLevel_) * smoothingCoeff_;
     currentDryLevel_ += (targetDryLevel - currentDryLevel_) * smoothingCoeff_;
     currentWidth_ += (targetWidth - currentWidth_) * smoothingCoeff_;
 
-    // Update reverb parameters
     params_.roomSize = currentRoomSize_;
     params_.damping = currentDamping_;
     params_.wetLevel = currentWetLevel_;
@@ -78,15 +82,17 @@ void ReverbNode::process(const std::vector<AudioBufferView>& inputs,
     reverb_.setParameters(params_);
 
     for (int i = 0; i < numSamples; ++i) {
-        left_[static_cast<size_t>(i)] = inputs[0].getSample(0, i);
-        right_[static_cast<size_t>(i)] = inputs[1].getSample(1, i);
+        left_[static_cast<size_t>(i)] = input.getSample(0, i);
+        right_[static_cast<size_t>(i)] = channels > 1 ? input.getSample(1, i) : left_[static_cast<size_t>(i)];
     }
 
     reverb_.processStereo(left_.data(), right_.data(), numSamples);
 
     for (int i = 0; i < numSamples; ++i) {
-        outputs[0].setSample(0, i, left_[static_cast<size_t>(i)]);
-        outputs[1].setSample(1, i, right_[static_cast<size_t>(i)]);
+        output.setSample(0, i, left_[static_cast<size_t>(i)]);
+        if (channels > 1) {
+            output.setSample(1, i, right_[static_cast<size_t>(i)]);
+        }
     }
 }
 

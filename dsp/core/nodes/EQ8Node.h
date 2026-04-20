@@ -25,8 +25,8 @@ public:
     EQ8Node();
 
     const char* getNodeType() const override { return "EQ8"; }
-    int getNumInputs() const override { return 2; }
-    int getNumOutputs() const override { return 2; }
+    int getNumInputs() const override { return 1; }
+    int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,

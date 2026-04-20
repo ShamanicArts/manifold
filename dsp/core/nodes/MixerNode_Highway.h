@@ -163,7 +163,7 @@ namespace dsp_primitives
                                 : HWY::MaskedLoad(activeMask, _flttype, tempPanR_.get());
 
                             // Load input for this bus
-                            const int viewIndex = bus * 2;
+                            const int viewIndex = bus;
                             if (inputs.size() <= static_cast<size_t>(viewIndex))
                                 continue;
 

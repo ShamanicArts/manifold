@@ -74,11 +74,11 @@ void LoopPlaybackNode::process(const std::vector<AudioBufferView>& inputs,
                                std::vector<WritableAudioBufferView>& outputs,
                                int numSamples) {
     (void)inputs;
-    const int channels = juce::jmin(numChannels_, static_cast<int>(outputs.size()));
-    if (channels <= 0 || numSamples <= 0) {
+    if (outputs.empty() || numSamples <= 0) {
         return;
     }
 
+    auto& output = outputs[0];
     const int loopLength = juce::jlimit(1, maxLoopSamples_, loopLength_.load(std::memory_order_acquire));
     const int seek = seekRequest_.exchange(-1, std::memory_order_acq_rel);
     if (seek >= 0) {
@@ -99,12 +99,7 @@ void LoopPlaybackNode::process(const std::vector<AudioBufferView>& inputs,
     }
 
     if (!playing_.load(std::memory_order_acquire)) {
-        for (int ch = 0; ch < channels; ++ch) {
-            const size_t idx = static_cast<size_t>(ch);
-            for (int i = 0; i < numSamples; ++i) {
-                outputs[idx].setSample(ch, i, 0.0f);
-            }
-        }
+        output.clear();
         return;
     }
 
@@ -117,7 +112,12 @@ void LoopPlaybackNode::process(const std::vector<AudioBufferView>& inputs,
 
     const int activeIndex = activeLoopBufferIndex_.load(std::memory_order_acquire);
     juce::AudioBuffer<float>& activeLoop = (activeIndex == 0) ? loopBufferA_ : loopBufferB_;
-    
+    const int channels = juce::jmin(numChannels_, activeLoop.getNumChannels(), output.numChannels);
+    if (channels <= 0) {
+        output.clear();
+        return;
+    }
+
     // Crossfade zone: last kCrossfadeSamples of the loop
     const int crossfadeStart = loopLength - kCrossfadeSamples;
     const bool canCrossfade = crossfadeReady_ && loopLength > kCrossfadeSamples && increment > 0.0;
@@ -125,8 +125,6 @@ void LoopPlaybackNode::process(const std::vector<AudioBufferView>& inputs,
     for (int i = 0; i < numSamples; ++i) {
         const int readIndex = juce::jlimit(0, loopLength - 1, static_cast<int>(readPosition_));
         const bool doSeekXfade = seekCrossfadeRemaining_ > 0 && seekCrossfadeTotal_ > 0;
-        
-        // Check if we're in loop boundary crossfade zone
         const bool doLoopXfade = canCrossfade && readIndex >= crossfadeStart;
 
         if (doSeekXfade) {
@@ -136,10 +134,9 @@ void LoopPlaybackNode::process(const std::vector<AudioBufferView>& inputs,
                                        static_cast<float>(seekCrossfadeTotal_);
 
             for (int ch = 0; ch < channels; ++ch) {
-                const size_t idx = static_cast<size_t>(ch);
                 const float src = activeLoop.getSample(ch, sourceIndex);
                 const float dst = activeLoop.getSample(ch, readIndex);
-                outputs[idx].setSample(ch, i, src * (1.0f - t) + dst * t);
+                output.setSample(ch, i, src * (1.0f - t) + dst * t);
             }
 
             seekCrossfadeSourcePosition_ =
@@ -150,31 +147,24 @@ void LoopPlaybackNode::process(const std::vector<AudioBufferView>& inputs,
                 seekCrossfadeTotal_ = 0;
             }
         } else if (doLoopXfade) {
-            // Loop boundary crossfade: fade from tail to head
-            int xfadePos = readIndex - crossfadeStart; // 0 to kCrossfadeSamples
-            float mix = static_cast<float>(xfadePos) / static_cast<float>(kCrossfadeSamples); // 0.0 to 1.0
-            
-            // Equal power crossfade
+            int xfadePos = readIndex - crossfadeStart;
+            float mix = static_cast<float>(xfadePos) / static_cast<float>(kCrossfadeSamples);
             float tailGain = std::cos(mix * 3.14159265f * 0.5f);
             float headGain = std::sin(mix * 3.14159265f * 0.5f);
-            
-            // Clamp to valid array indices
+
             if (xfadePos < 0) xfadePos = 0;
             if (xfadePos >= kCrossfadeSamples) xfadePos = kCrossfadeSamples - 1;
-            
+
             for (int ch = 0; ch < channels; ++ch) {
-                float tailSample = activeLoop.getSample(ch, readIndex);
-                float headSample = (ch == 0 || numChannels_ == 1) ? 
-                    crossfadeHeadL_[xfadePos] : crossfadeHeadR_[xfadePos];
-                
-                size_t idx = static_cast<size_t>(ch);
-                outputs[idx].setSample(ch, i, tailSample * tailGain + headSample * headGain);
+                const float tailSample = activeLoop.getSample(ch, readIndex);
+                const float headSample = (ch == 0 || numChannels_ == 1)
+                    ? crossfadeHeadL_[xfadePos]
+                    : crossfadeHeadR_[xfadePos];
+                output.setSample(ch, i, tailSample * tailGain + headSample * headGain);
             }
         } else {
             for (int ch = 0; ch < channels; ++ch) {
-                const size_t idx = static_cast<size_t>(ch);
-                const float loopSample = activeLoop.getSample(ch, readIndex);
-                outputs[idx].setSample(ch, i, loopSample);
+                output.setSample(ch, i, activeLoop.getSample(ch, readIndex));
             }
         }
 

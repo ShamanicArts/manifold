@@ -12,8 +12,8 @@ public:
     MSEncoderNode();
 
     const char* getNodeType() const override { return "MSEncoder"; }
-    int getNumInputs() const override { return 2; }
-    int getNumOutputs() const override { return 2; }
+    int getNumInputs() const override { return 1; }
+    int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,
@@ -38,8 +38,8 @@ public:
     MSDecoderNode();
 
     const char* getNodeType() const override { return "MSDecoder"; }
-    int getNumInputs() const override { return 2; }
-    int getNumOutputs() const override { return 2; }
+    int getNumInputs() const override { return 1; }
+    int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,

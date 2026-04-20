@@ -27,8 +27,17 @@ void RetrospectiveCaptureNode::prepare(double sampleRate, int maxBlockSize) {
 void RetrospectiveCaptureNode::process(const std::vector<AudioBufferView>& inputs,
                                        std::vector<WritableAudioBufferView>& outputs,
                                        int numSamples) {
-    const int channels = juce::jmin(numChannels_, static_cast<int>(outputs.size()));
-    if (channels <= 0 || numSamples <= 0) {
+    if (outputs.empty() || numSamples <= 0) {
+        return;
+    }
+
+    auto& output = outputs[0];
+    const AudioBufferView* input = inputs.empty() ? nullptr : &inputs[0];
+    const int channels = input != nullptr
+        ? juce::jmin(numChannels_, input->numChannels, output.numChannels)
+        : juce::jmin(numChannels_, output.numChannels);
+    if (channels <= 0) {
+        output.clear();
         return;
     }
 
@@ -45,15 +54,10 @@ void RetrospectiveCaptureNode::process(const std::vector<AudioBufferView>& input
         float samplePeak = 0.0f;
 
         for (int ch = 0; ch < channels; ++ch) {
-            const size_t idx = static_cast<size_t>(ch);
-            float s = 0.0f;
-            if (ch < static_cast<int>(inputs.size())) {
-                s = inputs[idx].getSample(ch, i);
-            }
-
+            const float s = input != nullptr ? input->getSample(ch, i) : 0.0f;
             samplePeak = std::max(samplePeak, std::abs(s));
             captureBuffer_.setSample(ch, writeIdx, s);
-            outputs[idx].setSample(ch, i, s);
+            output.setSample(ch, i, s);
         }
 
         currentPeakMax = std::max(currentPeakMax, samplePeak);

@@ -73,15 +73,22 @@ void FilterNode::process(const std::vector<AudioBufferView>& inputs,
         return;
     }
 
+    if (inputs.empty()) {
+        outputs[0].clear();
+        return;
+    }
+
     if(simd_implementation_ != nullptr)
     {
         simd_implementation_->run(inputs, outputs, numSamples);
         return;
     }
 
-    if (inputs.size() < 2 || outputs.size() < 2) {
-        if (!outputs.empty()) outputs[0].clear();
-        if (outputs.size() > 1) outputs[1].clear();
+    const auto& input = inputs[0];
+    auto& output = outputs[0];
+    const int channels = juce::jmin(2, input.numChannels, output.numChannels);
+    if (channels <= 0) {
+        output.clear();
         return;
     }
 
@@ -99,14 +106,14 @@ void FilterNode::process(const std::vector<AudioBufferView>& inputs,
         const float dry = 1.0f - mix_;
         const float wet = mix_;
 
-        for (int ch = 0; ch < 2; ++ch) {
+        for (int ch = 0; ch < channels; ++ch) {
             const size_t idx = static_cast<size_t>(ch);
-            const float in = inputs[idx].getSample(ch, i);
+            const float in = input.getSample(ch, i);
             const float x = in - feedback * (z2_[idx] - z1_[idx]);
             z1_[idx] += alpha * (x - z1_[idx]);
             z2_[idx] += alpha * (z1_[idx] - z2_[idx]);
             const float filtered = z2_[idx];
-            outputs[idx].setSample(ch, i, in * dry + filtered * wet);
+            output.setSample(ch, i, in * dry + filtered * wet);
         }
     }
 }

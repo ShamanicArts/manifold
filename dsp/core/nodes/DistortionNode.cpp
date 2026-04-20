@@ -22,9 +22,16 @@ void DistortionNode::prepare(double sampleRate, int maxBlockSize) {
 void DistortionNode::process(const std::vector<AudioBufferView>& inputs,
                              std::vector<WritableAudioBufferView>& outputs,
                              int numSamples) {
-    if (inputs.size() < 2 || outputs.size() < 2) {
+    if (inputs.empty() || outputs.empty() || numSamples <= 0) {
         if (!outputs.empty()) outputs[0].clear();
-        if (outputs.size() > 1) outputs[1].clear();
+        return;
+    }
+
+    const auto& input = inputs[0];
+    auto& output = outputs[0];
+    const int channels = juce::jmin(2, input.numChannels, output.numChannels);
+    if (channels <= 0) {
+        output.clear();
         return;
     }
 
@@ -40,13 +47,12 @@ void DistortionNode::process(const std::vector<AudioBufferView>& inputs,
         const float dry = 1.0f - mix_;
         const float wet = mix_;
 
-        for (int ch = 0; ch < 2; ++ch) {
-            const size_t idx = static_cast<size_t>(ch);
-            const float in = inputs[idx].getSample(ch, i);
+        for (int ch = 0; ch < channels; ++ch) {
+            const float in = input.getSample(ch, i);
             const float shaped = std::tanh(in * drive_);
-            float out = (in * dry + shaped * wet) * output_;
-            out = juce::jlimit(-1.0f, 1.0f, out);
-            outputs[idx].setSample(ch, i, out);
+            float outSample = (in * dry + shaped * wet) * output_;
+            outSample = juce::jlimit(-1.0f, 1.0f, outSample);
+            output.setSample(ch, i, outSample);
         }
     }
 }

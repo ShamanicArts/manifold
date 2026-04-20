@@ -38,7 +38,7 @@ void RingModulatorNode::process(const std::vector<AudioBufferView>& inputs,
     }
 
     const bool enabled = enabled_.load(std::memory_order_acquire);
-    const bool hasExternalModBus = inputs.size() >= 3;
+    const bool hasExternalModBus = inputs.size() >= 2;
 
     const float tFrequency = targetFrequencyHz_.load(std::memory_order_acquire);
     const float tDepth = targetDepth_.load(std::memory_order_acquire);
@@ -64,9 +64,9 @@ void RingModulatorNode::process(const std::vector<AudioBufferView>& inputs,
         float modL = 0.0f;
         float modR = 0.0f;
         if (hasExternalModBus) {
-            modL = juce::jlimit(-1.0f, 1.0f, inputs[2].getSample(0, i));
+            modL = juce::jlimit(-1.0f, 1.0f, inputs[1].getSample(0, i));
             modR = juce::jlimit(-1.0f, 1.0f,
-                                inputs[2].numChannels > 1 ? inputs[2].getSample(1, i) : modL);
+                                inputs[1].numChannels > 1 ? inputs[1].getSample(1, i) : modL);
         } else {
             const float phaseInc = currentFrequencyHz_ / static_cast<float>(sampleRate_);
             lfoPhase_ += phaseInc;

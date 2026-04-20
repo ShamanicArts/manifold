@@ -114,7 +114,7 @@ void MixerNode::process(const std::vector<AudioBufferView>& inputs,
             gains_[busIndex] += (targetGain - gains_[busIndex]) * smooth_;
             pans_[busIndex] += (targetPan - pans_[busIndex]) * smooth_;
 
-            const int viewIndex = bus * 2;
+            const int viewIndex = bus;
             if (inputs.size() <= static_cast<size_t>(viewIndex)) {
                 continue;
             }

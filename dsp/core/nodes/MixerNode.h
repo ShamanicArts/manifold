@@ -17,9 +17,9 @@ public:
     const char* getNodeType() const override { return "Mixer"; }
 
     int getNumInputs() const override {
-        return inputCount_.load(std::memory_order_acquire) * 2;
+        return inputCount_.load(std::memory_order_acquire);
     }
-    int getNumOutputs() const override { return 2; }
+    int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,
