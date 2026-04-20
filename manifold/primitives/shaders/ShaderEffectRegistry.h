@@ -8,6 +8,11 @@
 
 namespace manifold::shaders {
 
+enum class EffectCategory {
+    Effect,
+    BlendOp
+};
+
 struct ParamSpec {
     std::string id;
     std::string name;
@@ -22,6 +27,7 @@ struct EffectSpec {
     std::string id;
     std::string name;
     std::string category;
+    EffectCategory effectCategory = EffectCategory::Effect;
     std::string description;
     std::vector<ParamSpec> params;
 };
@@ -50,6 +56,7 @@ public:
 
     std::string vertexShader() const;
     std::string fragmentShaderFor(const std::string& effectId, bool includeBlendEpilogue = true) const;
+    std::string fragmentShaderForBlendOp(const std::string& effectId) const;
     std::unordered_map<std::string, float> sanitizeParams(
         const std::string& effectId,
         const std::unordered_map<std::string, float>& params) const;

@@ -57,6 +57,29 @@ uniform float uOpacity;
     return source;
 }
 
+std::string blendOpPreambleFor(const ShaderDefinition& definition) {
+    std::string source = R"(#version 150
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uBaseTex;
+uniform sampler2D uBlendTex;
+uniform float uOpacity;
+)";
+
+    for (const auto& param : definition.spec.params) {
+        source += "uniform float " + param.id + ";\n";
+    }
+
+    if (!definition.fragmentPreamble.empty()) {
+        source += definition.fragmentPreamble;
+    }
+
+    source += "\nvoid main() {\n";
+    source += definition.fragmentBody;
+    source += "\n}\n";
+    return source;
+}
+
 } // namespace
 
 ShaderEffectRegistry& ShaderEffectRegistry::instance() {
@@ -84,6 +107,19 @@ void ShaderEffectRegistry::registerBuiltinEffects() {
                                    true /* builtin */);
         }
     }
+
+    juce::File blendDir = shadersDir.getChildFile("blend");
+    if (blendDir.isDirectory()) {
+        auto blendJsonFiles = blendDir.findChildFiles(juce::File::findFiles, false, "*.json");
+        for (const auto& jsonFile : blendJsonFiles) {
+            auto glslFile = jsonFile.withFileExtension("glsl");
+            if (glslFile.existsAsFile()) {
+                loadEffectFromManifest(jsonFile.getFullPathName().toStdString(),
+                                       glslFile.getFullPathName().toStdString(),
+                                       true /* builtin */);
+            }
+        }
+    }
 }
 
 bool ShaderEffectRegistry::loadEffectFromManifest(const std::string& manifestPath,
@@ -109,6 +145,13 @@ bool ShaderEffectRegistry::loadEffectFromManifest(const std::string& manifestPat
     def.spec.name = json.getProperty("name", juce::var()).toString().toStdString();
     def.spec.category = json.getProperty("category", juce::var()).toString().toStdString();
     def.spec.description = json.getProperty("description", juce::var()).toString().toStdString();
+
+    auto effectCategoryStr = json.getProperty("effectCategory", juce::var("effect")).toString().toStdString();
+    if (effectCategoryStr == "blendOp") {
+        def.spec.effectCategory = EffectCategory::BlendOp;
+    } else {
+        def.spec.effectCategory = EffectCategory::Effect;
+    }
 
     auto paramsVar = json.getProperty("params", juce::var());
     if (paramsVar.isArray()) {
@@ -245,6 +288,15 @@ std::string ShaderEffectRegistry::fragmentShaderFor(const std::string& effectId,
     const auto* definition = findDefinition(id);
     if (definition != nullptr) {
         return fragmentPreambleFor(*definition, includeBlendEpilogue);
+    }
+    return std::string{};
+}
+
+std::string ShaderEffectRegistry::fragmentShaderForBlendOp(const std::string& effectId) const {
+    const auto id = effectId.empty() ? std::string("normal") : effectId;
+    const auto* definition = findDefinition(id);
+    if (definition != nullptr) {
+        return blendOpPreambleFor(*definition);
     }
     return std::string{};
 }

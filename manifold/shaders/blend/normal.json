@@ -1,0 +1,10 @@
+{
+  "id": "normal",
+  "name": "Normal",
+  "category": "blend",
+  "effectCategory": "blendOp",
+  "description": "Standard alpha blend",
+  "params": [
+    { "id": "opacity", "name": "Opacity", "min": 0, "max": 1, "default": 1.0, "step": 0.01 }
+  ]
+}

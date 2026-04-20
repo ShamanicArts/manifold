@@ -15,7 +15,9 @@ struct InputBinding {
 struct PassDescriptor {
     std::string effectId = "none";
     std::unordered_map<std::string, float> params;
-    int blendMode = 0;
+    bool composite = false;
+    std::string blendOpId = "normal";
+    std::unordered_map<std::string, float> blendParams;
     float opacity = 1.0f;
 };
 

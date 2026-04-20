@@ -47,6 +47,7 @@ extern "C" {
 
 #include "../../shaders/ShaderEffectRegistry.h"
 #include "../../shaders/UniformContract.h"
+#include "../../sources/TextureSourceRegistry.h"
 
 // Forward declarations for node access
 namespace dsp_primitives {
@@ -2564,6 +2565,40 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     lua["capture"] = captureTable;
 
     // ==========================================================================
+    // sources table - texture source registry bindings
+    // ==========================================================================
+    auto sourcesTable = lua.create_table();
+    sourcesTable["list"] = [&lua]() -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        int sourceIndex = 1;
+        for (const auto& source : manifold::sources::TextureSourceRegistry::instance().listSources()) {
+            auto sourceTable = sol::table(lua, sol::create);
+            sourceTable["id"] = source.id;
+            sourceTable["name"] = source.name;
+            sourceTable["category"] = source.category;
+            sourceTable["description"] = source.description;
+
+            auto paramsTable = sol::table(lua, sol::create);
+            int paramIndex = 1;
+            for (const auto& param : source.params) {
+                auto paramTable = sol::table(lua, sol::create);
+                paramTable["id"] = param.id;
+                paramTable["name"] = param.name;
+                paramTable["unit"] = param.unit;
+                paramTable["min"] = param.min;
+                paramTable["max"] = param.max;
+                paramTable["default"] = param.defaultValue;
+                paramTable["step"] = param.step;
+                paramsTable[paramIndex++] = paramTable;
+            }
+            sourceTable["params"] = paramsTable;
+            result[sourceIndex++] = sourceTable;
+        }
+        return result;
+    };
+    lua["sources"] = sourcesTable;
+
+    // ==========================================================================
     // shaders table - shader effect registry bindings
     // ==========================================================================
     auto shadersTable = lua.create_table();
@@ -2571,6 +2606,40 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         auto result = sol::table(lua, sol::create);
         int effectIndex = 1;
         for (const auto& effect : manifold::shaders::ShaderEffectRegistry::instance().listEffects()) {
+            if (effect.effectCategory != manifold::shaders::EffectCategory::Effect) {
+                continue;
+            }
+            auto effectTable = sol::table(lua, sol::create);
+            effectTable["id"] = effect.id;
+            effectTable["name"] = effect.name;
+            effectTable["category"] = effect.category;
+            effectTable["description"] = effect.description;
+
+            auto paramsTable = sol::table(lua, sol::create);
+            int paramIndex = 1;
+            for (const auto& param : effect.params) {
+                auto paramTable = sol::table(lua, sol::create);
+                paramTable["id"] = param.id;
+                paramTable["name"] = param.name;
+                paramTable["unit"] = param.unit;
+                paramTable["min"] = param.min;
+                paramTable["max"] = param.max;
+                paramTable["default"] = param.defaultValue;
+                paramTable["step"] = param.step;
+                paramsTable[paramIndex++] = paramTable;
+            }
+            effectTable["params"] = paramsTable;
+            result[effectIndex++] = effectTable;
+        }
+        return result;
+    };
+    shadersTable["listBlendOps"] = [&lua]() -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        int effectIndex = 1;
+        for (const auto& effect : manifold::shaders::ShaderEffectRegistry::instance().listEffects()) {
+            if (effect.effectCategory != manifold::shaders::EffectCategory::BlendOp) {
+                continue;
+            }
             auto effectTable = sol::table(lua, sol::create);
             effectTable["id"] = effect.id;
             effectTable["name"] = effect.name;
@@ -2596,7 +2665,8 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         return result;
     };
     shadersTable["buildPipeline"] = [&lua](sol::object layersArg,
-                                            sol::optional<std::string> fitModeOpt) -> sol::table {
+                                            sol::optional<std::string> fitModeOpt,
+                                            sol::optional<sol::object> sourceArgOpt) -> sol::table {
         auto parseParams = [](sol::object paramsObj) {
             std::unordered_map<std::string, float> out;
             if (!paramsObj.is<sol::table>()) {
@@ -2617,24 +2687,9 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
             return out;
         };
 
-        auto blendModeToInt = [](sol::object blendObj) -> int {
-            if (blendObj.is<int>()) return std::clamp(blendObj.as<int>(), 0, 4);
-            if (blendObj.is<double>()) return std::clamp(static_cast<int>(blendObj.as<double>()), 0, 4);
-            if (blendObj.is<std::string>()) {
-                const auto name = blendObj.as<std::string>();
-                if (name == "add") return 1;
-                if (name == "multiply") return 2;
-                if (name == "screen") return 3;
-                if (name == "difference") return 4;
-            }
-            return 0;
-        };
-
         struct LayerRequest {
             std::string effectId;
             std::unordered_map<std::string, float> params;
-            int blendMode = 0;
-            float opacity = 1.0f;
         };
         std::vector<LayerRequest> layers;
 
@@ -2659,13 +2714,6 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                 LayerRequest req;
                 req.effectId = effectId;
                 req.params = parseParams(layerTable["params"]);
-                req.blendMode = blendModeToInt(layerTable["blendMode"]);
-                sol::object opacityObj = layerTable["opacity"];
-                if (opacityObj.is<double>()) {
-                    req.opacity = std::clamp(static_cast<float>(opacityObj.as<double>()), 0.0f, 1.0f);
-                } else if (opacityObj.is<int>()) {
-                    req.opacity = std::clamp(static_cast<float>(opacityObj.as<int>()), 0.0f, 1.0f);
-                }
                 layers.push_back(std::move(req));
             }
         }
@@ -2673,17 +2721,45 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         if (layers.empty()) {
             LayerRequest fallback;
             fallback.effectId = "none";
-            fallback.blendMode = 0;
-            fallback.opacity = 1.0f;
             layers.push_back(std::move(fallback));
+        }
+
+        std::string sourceType = "video_input";
+        std::string sourceId;
+        std::unordered_map<std::string, float> sourceParams;
+        if (sourceArgOpt && sourceArgOpt->is<sol::table>()) {
+            auto sourceTable = sourceArgOpt->as<sol::table>();
+            const auto kind = sourceTable["type"].get_or(std::string("webcam"));
+            if (kind == "generator") {
+                auto candidateId = sourceTable["sourceId"].get_or(std::string{});
+                if (manifold::sources::TextureSourceRegistry::instance().findSource(candidateId) != nullptr) {
+                    sourceType = "generated_source";
+                    sourceId = candidateId;
+                    sourceParams = parseParams(sourceTable["params"]);
+                }
+            }
         }
 
         auto result = sol::table(lua, sol::create);
         result["version"] = 2;
         result["kind"] = "shaderQuad";
         result["shaderLanguage"] = "glsl";
-        result["sourceType"] = "video_input";
+        result["sourceType"] = sourceType;
         result["fitMode"] = fitModeOpt.value_or("contain");
+
+        if (sourceType == "generated_source") {
+            auto sourceShader = sol::table(lua, sol::create);
+            sourceShader["vertexShader"] = manifold::shaders::ShaderEffectRegistry::instance().vertexShader();
+            sourceShader["fragmentShader"] = manifold::sources::TextureSourceRegistry::instance().fragmentShaderFor(sourceId);
+            auto sourceUniforms = sol::table(lua, sol::create);
+            const auto sanitizedSourceParams = manifold::sources::TextureSourceRegistry::instance().sanitizeParams(sourceId, sourceParams);
+            for (const auto& entry : sanitizedSourceParams) {
+                sourceUniforms[entry.first] = entry.second;
+            }
+            sourceShader["uniforms"] = sourceUniforms;
+            result["sourceShader"] = sourceShader;
+            result["sourceId"] = sourceId;
+        }
 
         auto passes = sol::table(lua, sol::create);
         int passIndex = 1;

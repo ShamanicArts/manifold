@@ -535,7 +535,11 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/shaders/ShaderEffectRegistry.h
     manifold/primitives/shaders/ShaderEffectRegistry.cpp
     manifold/primitives/shaders/ShaderSurfaceProvider.h
-    manifold/primitives/shaders/ShaderSurfaceProvider.cpp)
+    manifold/primitives/shaders/ShaderSurfaceProvider.cpp
+    manifold/primitives/sources/TextureSourceRegistry.h
+    manifold/primitives/sources/TextureSourceRegistry.cpp
+    manifold/primitives/sources/GeneratedSourceProvider.h
+    manifold/primitives/sources/GeneratedSourceProvider.cpp)
 
 # --- Platform Detection ---
 if(CMAKE_SYSTEM_NAME STREQUAL "Android")

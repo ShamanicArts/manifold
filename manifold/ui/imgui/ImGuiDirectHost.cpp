@@ -2,6 +2,7 @@
 
 #include "Theme.h"
 #include "../../primitives/shaders/ShaderSurfaceProvider.h"
+#include "../../primitives/sources/GeneratedSourceProvider.h"
 #include "../../primitives/video/VideoSurfaceProvider.h"
 #include "../../primitives/ui/CustomSurfaceProvider.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -197,10 +198,6 @@ bool videoBackedFitModeForNode(const RuntimeNode& node, std::string& fitModeOut)
 
     const auto payload = node.getCustomRenderPayload();
     if (auto* obj = payload.getDynamicObject(); obj != nullptr) {
-        const auto sourceType = obj->getProperty("sourceType").toString().toStdString();
-        if (sourceType != "video_input") {
-            return false;
-        }
         fitModeOut = obj->getProperty("fitMode").toString().toStdString();
         if (fitModeOut.empty()) {
             fitModeOut = "contain";
@@ -715,8 +712,10 @@ void renderLiveTree(ImGuiDirectHost& host,
 ImGuiDirectHost::ImGuiDirectHost()
     : surfaceProviders_(),
       videoSurfaceProvider_(std::make_shared<manifold::video::VideoSurfaceProvider>()),
+      generatedSourceProvider_(std::make_shared<manifold::sources::GeneratedSourceProvider>()),
       shaderSurfaceProvider_(std::make_shared<manifold::shaders::ShaderSurfaceProvider>()) {
     registerSurfaceProvider(videoSurfaceProvider_);
+    registerSurfaceProvider(generatedSourceProvider_);
     registerSurfaceProvider(shaderSurfaceProvider_);
 
     shaderSurfaceProvider_->setInputResolver([this](const std::string& sourceType,
@@ -725,19 +724,26 @@ ImGuiDirectHost::ImGuiDirectHost()
                                                     int height,
                                                     double timeSeconds) {
         manifold::shaders::ShaderSurfaceProvider::ResolvedInputTexture resolved;
-        if (sourceType != "video_input" || !videoSurfaceProvider_) {
+        if (sourceType == "video_input" && videoSurfaceProvider_) {
+            resolved.textureHandle = videoSurfaceProvider_->prepareTexture(node, width, height, timeSeconds);
+            if (resolved.textureHandle != 0) {
+                videoSurfaceProvider_->getSurfaceInfo(node.getStableId(),
+                                                      resolved.width,
+                                                      resolved.height,
+                                                      resolved.sequence);
+            }
             return resolved;
         }
-
-        resolved.textureHandle = videoSurfaceProvider_->prepareTexture(node, width, height, timeSeconds);
-        if (resolved.textureHandle == 0) {
+        if (sourceType == "generated_source" && generatedSourceProvider_) {
+            resolved.textureHandle = generatedSourceProvider_->prepareTexture(node, width, height, timeSeconds);
+            if (resolved.textureHandle != 0) {
+                generatedSourceProvider_->getSurfaceInfo(node.getStableId(),
+                                                         resolved.width,
+                                                         resolved.height,
+                                                         resolved.sequence);
+            }
             return resolved;
         }
-
-        videoSurfaceProvider_->getSurfaceInfo(node.getStableId(),
-                                              resolved.width,
-                                              resolved.height,
-                                              resolved.sequence);
         return resolved;
     });
 
@@ -868,6 +874,7 @@ ImGuiDirectHost::StatsSnapshot ImGuiDirectHost::getStatsSnapshot() const {
         snapshot.renderSnapshotNodeCount = pendingCount + activeCount + glCount;
     }
     snapshot.customSurfaceStateBytes = (videoSurfaceProvider_ ? videoSurfaceProvider_->estimateStateBytes() : 0)
+                                     + (generatedSourceProvider_ ? generatedSourceProvider_->estimateStateBytes() : 0)
                                      + (shaderSurfaceProvider_ ? shaderSurfaceProvider_->estimateStateBytes() : 0);
     estimateImGuiInternalStats(reinterpret_cast<ImGuiContext*>(imguiContext_), snapshot);
     return snapshot;
@@ -886,18 +893,23 @@ std::string ImGuiDirectHost::getSelectedNodeId() const {
 void ImGuiDirectHost::recalculateOwnedGpuBytes() {
     int64_t videoColorBytes = 0;
     int64_t videoDepthBytes = 0;
+    int64_t generatedColorBytes = 0;
+    int64_t generatedDepthBytes = 0;
     int64_t shaderColorBytes = 0;
     int64_t shaderDepthBytes = 0;
 
     if (videoSurfaceProvider_) {
         videoSurfaceProvider_->getOwnedGpuBytes(videoColorBytes, videoDepthBytes);
     }
+    if (generatedSourceProvider_) {
+        generatedSourceProvider_->getOwnedGpuBytes(generatedColorBytes, generatedDepthBytes);
+    }
     if (shaderSurfaceProvider_) {
         shaderSurfaceProvider_->getOwnedGpuBytes(shaderColorBytes, shaderDepthBytes);
     }
 
-    surfaceColorBytes_.store(videoColorBytes + shaderColorBytes, std::memory_order_relaxed);
-    surfaceDepthBytes_.store(videoDepthBytes + shaderDepthBytes, std::memory_order_relaxed);
+    surfaceColorBytes_.store(videoColorBytes + generatedColorBytes + shaderColorBytes, std::memory_order_relaxed);
+    surfaceDepthBytes_.store(videoDepthBytes + generatedDepthBytes + shaderDepthBytes, std::memory_order_relaxed);
 }
 
 std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& node,

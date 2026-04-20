@@ -1,0 +1,11 @@
+vec2 uv = vUv * max(2.0, scale);
+vec2 cell = fract(uv) - 0.5;
+vec2 grid = floor(uv);
+float checkerValue = mod(grid.x + grid.y, 2.0);
+float edge = max(abs(cell.x), abs(cell.y));
+float fade = smoothstep(0.5, 0.5 - clamp(softness, 0.0, 0.45), edge);
+vec3 a = vec3(0.08, 0.09, 0.11);
+vec3 b = vec3(0.92, 0.95, 0.98);
+vec3 col = mix(a, b, checkerValue);
+col *= mix(0.75, 1.0, fade);
+fragColor = vec4(col, 1.0);

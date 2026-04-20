@@ -25,6 +25,10 @@ namespace manifold::shaders {
 class ShaderSurfaceProvider;
 }
 
+namespace manifold::sources {
+class GeneratedSourceProvider;
+}
+
 class ImGuiDirectHost : public juce::Component,
                         private juce::OpenGLRenderer {
 public:
@@ -221,6 +225,7 @@ public:
     std::vector<std::shared_ptr<CustomSurfaceProvider>> surfaceProviders_;
 
     std::shared_ptr<manifold::video::VideoSurfaceProvider> videoSurfaceProvider_;
+    std::shared_ptr<manifold::sources::GeneratedSourceProvider> generatedSourceProvider_;
     std::shared_ptr<manifold::shaders::ShaderSurfaceProvider> shaderSurfaceProvider_;
 
     void recalculateOwnedGpuBytes();

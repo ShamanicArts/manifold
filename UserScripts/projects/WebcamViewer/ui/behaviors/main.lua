@@ -2,6 +2,26 @@ local M = {}
 
 local NUM_LAYERS = 4
 local NUM_PARAM_SLIDERS = 9
+local NUM_SOURCE_PARAM_SLIDERS = 4
+local WEBCAM_SOURCE = {
+  kind = "webcam",
+  id = "webcam",
+  name = "Webcam",
+  category = "capture",
+  description = "Live V4L2 capture source. Generator sources slot into this same source card.",
+  params = {},
+}
+
+local function clamp(v, lo, hi)
+  local n = tonumber(v) or 0
+  if n < lo then return lo end
+  if n > hi then return hi end
+  return n
+end
+
+local function round(v)
+  return math.floor((tonumber(v) or 0) + 0.5)
+end
 
 local function setText(widget, text)
   if widget and widget.setText then
@@ -10,9 +30,34 @@ local function setText(widget, text)
 end
 
 local function setSelected(widget, index)
-  if not widget then return end
-  if widget.setSelected then
+  if widget and widget.setSelected then
     widget:setSelected(index or 1)
+  end
+end
+
+local function setOptions(widget, options)
+  if widget and widget.setOptions then
+    widget:setOptions(options or {})
+  end
+end
+
+local function setVisible(widget, visible)
+  if widget and widget.setVisible then
+    widget:setVisible(visible == true)
+  elseif widget and widget.node and widget.node.setVisible then
+    widget.node:setVisible(visible == true)
+  end
+end
+
+local function setBounds(widget, x, y, w, h)
+  local rx = round(x)
+  local ry = round(y)
+  local rw = round(w)
+  local rh = round(h)
+  if widget and widget.setBounds then
+    widget:setBounds(rx, ry, rw, rh)
+  elseif widget and widget.node and widget.node.setBounds then
+    widget.node:setBounds(rx, ry, rw, rh)
   end
 end
 
@@ -60,7 +105,7 @@ local function describeDevice(device)
   if type(device) ~= "table" then
     return "<unknown>"
   end
-  return tostring(device.label or device.name or device.path or ("Device " .. tostring(device.index or "?")))
+  return tostring(device.label or device.name or device.path or ("Device " .. tostring(device.index or "?") ))
 end
 
 local function describeMode(mode)
@@ -95,8 +140,19 @@ local function defaultLayer(index)
   }
 end
 
+local function defaultSourceState()
+  return {
+    kind = "webcam",
+    id = "webcam",
+    params = {},
+  }
+end
+
 local function loadPersistedState(ctx)
   ctx._persisted = {
+    sourceKind = "webcam",
+    sourceId = "webcam",
+    sourceParams = {},
     devicePath = nil,
     width = nil,
     height = nil,
@@ -118,31 +174,38 @@ local function loadPersistedState(ctx)
   if raw == "" then
     return
   end
+
   for line in tostring(raw):gmatch("[^\r\n]+") do
     local key, value = line:match("^([^=]+)=(.*)$")
     if key and value then
-      if key == "devicePath" then ctx._persisted.devicePath = value
+      if key == "sourceKind" then ctx._persisted.sourceKind = value
+      elseif key == "sourceId" then ctx._persisted.sourceId = value
+      elseif key == "devicePath" then ctx._persisted.devicePath = value
       elseif key == "width" then ctx._persisted.width = tonumber(value)
       elseif key == "height" then ctx._persisted.height = tonumber(value)
       elseif key == "fps" then ctx._persisted.fps = tonumber(value)
       elseif key == "pixelFormat" then ctx._persisted.pixelFormat = value
       elseif key == "activeLayer" then ctx._persisted.activeLayer = tonumber(value)
       else
-        local layerIdx, field = key:match("^layer%.(%d+)%.([%w_]+)$")
-        if layerIdx and field then
-          local L = ctx._persisted.layers[tonumber(layerIdx)]
-          if L then
-            if field == "enabled" then L.enabled = (value == "true")
-            elseif field == "effectId" then L.effectId = value
-            end
-          end
+        local sourceParamId = key:match("^source%.param%.(.+)$")
+        if sourceParamId then
+          ctx._persisted.sourceParams[sourceParamId] = tonumber(value)
         else
-          local li, effectId, paramId = key:match("^layer%.(%d+)%.param%.([^%.]+)%.(.+)$")
-          if li and effectId and paramId then
-            local L = ctx._persisted.layers[tonumber(li)]
+          local layerIdx, field = key:match("^layer%.(%d+)%.([%w_]+)$")
+          if layerIdx and field then
+            local L = ctx._persisted.layers[tonumber(layerIdx)]
             if L then
-              L.params[effectId] = L.params[effectId] or {}
-              L.params[effectId][paramId] = tonumber(value)
+              if field == "enabled" then L.enabled = (value == "true")
+              elseif field == "effectId" then L.effectId = value end
+            end
+          else
+            local li, effectId, paramId = key:match("^layer%.(%d+)%.param%.([^%.]+)%.(.+)$")
+            if li and effectId and paramId then
+              local L = ctx._persisted.layers[tonumber(li)]
+              if L then
+                L.params[effectId] = L.params[effectId] or {}
+                L.params[effectId][paramId] = tonumber(value)
+              end
             end
           end
         end
@@ -153,6 +216,12 @@ end
 
 local function savePersistedState(ctx)
   local lines = {}
+  lines[#lines + 1] = "sourceKind=" .. tostring(ctx._source.kind or "webcam")
+  lines[#lines + 1] = "sourceId=" .. tostring(ctx._source.id or "webcam")
+  for paramId, value in pairs(ctx._source.params or {}) do
+    lines[#lines + 1] = string.format("source.param.%s=%s", tostring(paramId), tostring(value))
+  end
+
   local devices = ctx._devices or {}
   local modes = ctx._modes or {}
   local device = devices[ctx._selectedDevice]
@@ -213,6 +282,48 @@ local function ensureLayerEffectParams(ctx, layer)
   return store
 end
 
+local function findSourceChoice(ctx, kind, id)
+  for i = 1, #(ctx._sourceChoices or {}) do
+    local choice = ctx._sourceChoices[i]
+    if tostring(choice.kind) == tostring(kind) and tostring(choice.id) == tostring(id) then
+      return choice, i
+    end
+  end
+  return ctx._sourceChoices and ctx._sourceChoices[1] or WEBCAM_SOURCE, 1
+end
+
+local function ensureSourceParams(ctx)
+  if ctx._source.kind ~= "generator" then
+    return {}
+  end
+  local choice = findSourceChoice(ctx, ctx._source.kind, ctx._source.id)
+  local spec = choice or WEBCAM_SOURCE
+  ctx._source.params = ctx._source.params or {}
+  for i = 1, #(spec.params or {}) do
+    local param = spec.params[i]
+    if ctx._source.params[param.id] == nil then
+      ctx._source.params[param.id] = tonumber(param.default) or 0
+    end
+  end
+  return ctx._source.params
+end
+
+local function buildSourceDescriptor(ctx)
+  if ctx._source.kind == "generator" then
+    local params = ensureSourceParams(ctx)
+    local copy = {}
+    for k, v in pairs(params) do copy[k] = v end
+    return {
+      type = "generator",
+      sourceId = ctx._source.id,
+      params = copy,
+    }
+  end
+  return {
+    type = "webcam",
+  }
+end
+
 local function buildLayerPayloadList(ctx)
   local list = {}
   for i = 1, NUM_LAYERS do
@@ -224,6 +335,7 @@ local function buildLayerPayloadList(ctx)
         local paramsCopy = {}
         for k, v in pairs(paramStore) do paramsCopy[k] = v end
         list[#list + 1] = {
+          enabled = true,
           effectId = effect.id,
           params = paramsCopy,
         }
@@ -241,7 +353,8 @@ local function setViewportSurface(ctx)
 
   if shaders and shaders.buildPipeline then
     local layers = buildLayerPayloadList(ctx)
-    local ok, payload = pcall(shaders.buildPipeline, layers, "contain")
+    local source = buildSourceDescriptor(ctx)
+    local ok, payload = pcall(shaders.buildPipeline, layers, "contain", source)
     if ok and payload ~= nil then
       viewport.node:setCustomSurface("gpu_shader", payload)
       return
@@ -254,7 +367,7 @@ local function setViewportSurface(ctx)
   })
 end
 
-local function effectParamFormatter(spec)
+local function valueFormatter(spec)
   return function(value)
     if not spec then
       return tostring(value)
@@ -271,12 +384,12 @@ local function effectParamFormatter(spec)
   end
 end
 
-local function configureParamSlider(slider, spec, value)
+local function configureSlider(slider, spec, value)
   if not slider then
     return
   end
   if type(spec) ~= "table" then
-    if slider.setVisible then slider:setVisible(false) end
+    setVisible(slider, false)
     return
   end
 
@@ -285,8 +398,8 @@ local function configureParamSlider(slider, spec, value)
   slider._step = tonumber(spec.step) or 0.01
   slider._defaultValue = tonumber(spec.default) or slider._min
   if slider.setLabel then slider:setLabel(spec.name or spec.id or "Param") end
-  if slider.setValueFormatter then slider:setValueFormatter(effectParamFormatter(spec)) end
-  if slider.setVisible then slider:setVisible(true) end
+  if slider.setValueFormatter then slider:setValueFormatter(valueFormatter(spec)) end
+  setVisible(slider, true)
   if slider.setValue then slider:setValue(tonumber(value) or slider._defaultValue) end
 end
 
@@ -307,7 +420,6 @@ end
 local function syncLayerControls(ctx)
   local layer = ctx._layers[ctx._activeLayer] or ctx._layers[1]
 
-  -- effect dropdown
   local labels = {}
   local effectIndex = 1
   for i = 1, #(ctx._effects or {}) do
@@ -317,22 +429,17 @@ local function syncLayerControls(ctx)
     end
   end
   if #labels == 0 then labels[1] = "Passthrough" end
-  if ctx.widgets.effectSelect and ctx.widgets.effectSelect.setOptions then
-    ctx.widgets.effectSelect:setOptions(labels)
-    setSelected(ctx.widgets.effectSelect, effectIndex)
-  end
+  setOptions(ctx.widgets.effectSelect, labels)
+  setSelected(ctx.widgets.effectSelect, effectIndex)
 
-  -- enabled button
   if ctx.widgets.layerEnabledBtn then
-    local btn = ctx.widgets.layerEnabledBtn
-    if btn.setLabel then
-      btn:setLabel(layer.enabled and "On" or "Off")
-    elseif btn.setText then
-      btn:setText(layer.enabled and "On" or "Off")
+    if ctx.widgets.layerEnabledBtn.setLabel then
+      ctx.widgets.layerEnabledBtn:setLabel(layer.enabled and "On" or "Off")
+    elseif ctx.widgets.layerEnabledBtn.setText then
+      ctx.widgets.layerEnabledBtn:setText(layer.enabled and "On" or "Off")
     end
   end
 
-  -- description
   local effect = findEffect(ctx, layer.effectId)
   local description
   if type(effect) == "table" then
@@ -340,21 +447,61 @@ local function syncLayerControls(ctx)
     local detail = tostring(effect.description or "")
     description = string.format("[%s] %s", category, detail ~= "" and detail or describeEffect(effect))
   else
-    description = "Select an effect for this pass"
+    description = "Select an effect for this layer"
   end
   setText(ctx.widgets.layerDescription, description)
 
-  -- params
   local paramStore = ensureLayerEffectParams(ctx, layer)
   ctx._activeParamSpecs = {}
   for i = 1, NUM_PARAM_SLIDERS do
     local slider = ctx.widgets["fxParam" .. tostring(i)]
     local spec = (type(effect) == "table" and effect.params and effect.params[i]) or nil
     ctx._activeParamSpecs[i] = spec
-    configureParamSlider(slider, spec, spec and paramStore[spec.id] or nil)
+    configureSlider(slider, spec, spec and paramStore[spec.id] or nil)
   end
 
   syncLayerTabLabels(ctx)
+end
+
+local function syncSourceControls(ctx)
+  local labels = {}
+  local selectedIndex = 1
+  local selectedSource = nil
+  for i = 1, #(ctx._sourceChoices or {}) do
+    local choice = ctx._sourceChoices[i]
+    labels[i] = tostring(choice.name or choice.id or "Source")
+    if tostring(choice.kind) == tostring(ctx._source.kind) and tostring(choice.id) == tostring(ctx._source.id) then
+      selectedIndex = i
+      selectedSource = choice
+    end
+  end
+  if not selectedSource then
+    selectedSource = (ctx._sourceChoices and ctx._sourceChoices[1]) or WEBCAM_SOURCE
+  end
+  setOptions(ctx.widgets.sourceSelect, labels)
+  setSelected(ctx.widgets.sourceSelect, selectedIndex)
+
+  setText(ctx.widgets.sourceDescription, tostring(selectedSource.description or ""))
+  setText(ctx.widgets.viewportTitle, tostring(selectedSource.name or "Source") .. " Preview")
+
+  local isWebcam = ctx._source.kind == "webcam"
+  setVisible(ctx.widgets.deviceSelect, isWebcam)
+  setVisible(ctx.widgets.modeSelect, isWebcam)
+  setVisible(ctx.widgets.refreshBtn, isWebcam)
+  setVisible(ctx.widgets.openBtn, isWebcam)
+  setVisible(ctx.widgets.closeBtn, isWebcam)
+  setVisible(ctx.widgets.frameInfo, isWebcam)
+
+  local sourceParams = ensureSourceParams(ctx)
+  for i = 1, NUM_SOURCE_PARAM_SLIDERS do
+    local slider = ctx.widgets["sourceParam" .. tostring(i)]
+    local spec = (selectedSource.params and selectedSource.params[i]) or nil
+    if isWebcam then
+      setVisible(slider, false)
+    else
+      configureSlider(slider, spec, spec and sourceParams[spec.id] or nil)
+    end
+  end
 end
 
 local function rebuildLayerDefaults(ctx)
@@ -368,7 +515,14 @@ local function rebuildLayerDefaults(ctx)
   end
 end
 
-local function applyPersistedLayers(ctx)
+local function applyPersistedState(ctx)
+  ctx._source.kind = tostring(ctx._persisted.sourceKind or "webcam")
+  ctx._source.id = tostring(ctx._persisted.sourceId or "webcam")
+  ctx._source.params = {}
+  for paramId, value in pairs(ctx._persisted.sourceParams or {}) do
+    ctx._source.params[paramId] = value
+  end
+
   for i = 1, NUM_LAYERS do
     local L = ctx._layers[i]
     local P = ctx._persisted and ctx._persisted.layers and ctx._persisted.layers[i] or nil
@@ -391,11 +545,34 @@ local function applyPersistedLayers(ctx)
   end
 end
 
+local function refreshSourceRegistry(ctx)
+  local generatorSources = (sources and sources.list and sources.list()) or {}
+  ctx._sourceChoices = { WEBCAM_SOURCE }
+  for i = 1, #generatorSources do
+    local src = generatorSources[i]
+    ctx._sourceChoices[#ctx._sourceChoices + 1] = {
+      kind = "generator",
+      id = src.id,
+      name = src.name,
+      category = src.category,
+      description = src.description,
+      params = src.params or {},
+    }
+  end
+
+  local choice = findSourceChoice(ctx, ctx._source.kind, ctx._source.id)
+  if not choice then
+    ctx._source = defaultSourceState()
+  end
+  ensureSourceParams(ctx)
+  syncSourceControls(ctx)
+end
+
 local function refreshEffects(ctx)
   ctx._effects = (shaders and shaders.listEffects and shaders.listEffects()) or {}
   if #ctx._effects == 0 then
     ctx._effects = {
-      { id = "none", name = "Passthrough", category = "utility", description = "Dry webcam feed", params = {} }
+      { id = "none", name = "Passthrough", category = "utility", description = "Dry source feed", params = {} }
     }
   end
 
@@ -428,10 +605,8 @@ local function syncModeOptions(ctx)
     end
   end
 
-  if ctx.widgets.modeSelect and ctx.widgets.modeSelect.setOptions then
-    ctx.widgets.modeSelect:setOptions(labels)
-    ctx.widgets.modeSelect:setSelected(selectedIndex or 1)
-  end
+  setOptions(ctx.widgets.modeSelect, labels)
+  setSelected(ctx.widgets.modeSelect, selectedIndex or 1)
   ctx._selectedMode = selectedIndex
 end
 
@@ -474,6 +649,14 @@ local function layerSummary(ctx)
 end
 
 local function openCurrentSelection(ctx)
+  if ctx._source.kind ~= "webcam" then
+    setViewportSurface(ctx)
+    savePersistedState(ctx)
+    local choice = findSourceChoice(ctx, ctx._source.kind, ctx._source.id)
+    updateStatus(ctx, tostring(choice.name or ctx._source.id) .. " source active  •  FX: " .. layerSummary(ctx))
+    return true
+  end
+
   local devices = ctx._devices or {}
   local modes = ctx._modes or {}
   local device = devices[ctx._selectedDevice]
@@ -510,7 +693,7 @@ end
 
 local function refreshDevices(ctx)
   local devices = {}
-  if capture and capture.listDevices then
+  if ctx._source.kind == "webcam" and capture and capture.listDevices then
     devices = capture.listDevices() or {}
   end
 
@@ -534,23 +717,43 @@ local function refreshDevices(ctx)
     end
   end
 
-  if ctx.widgets.deviceSelect and ctx.widgets.deviceSelect.setOptions then
-    ctx.widgets.deviceSelect:setOptions(labels)
-    ctx.widgets.deviceSelect:setSelected(selectedIndex or 1)
-  end
+  setOptions(ctx.widgets.deviceSelect, labels)
+  setSelected(ctx.widgets.deviceSelect, selectedIndex or 1)
 
   if #devices == 0 then
     ctx._selectedDevice = nil
     ctx._modes = {}
     syncModeOptions(ctx)
-    updateStatus(ctx, "No V4L2 capture devices found under /dev/video*")
+    if ctx._source.kind == "webcam" then
+      updateStatus(ctx, "No V4L2 capture devices found under /dev/video*")
+    end
     return
   end
 
   refreshModes(ctx, selectedIndex or 1)
-  if #ctx._modes > 0 then
+  if #ctx._modes > 0 and ctx._source.kind == "webcam" then
     openCurrentSelection(ctx)
   end
+end
+
+local function setSelectedSource(ctx, selectedIndex)
+  local choice = ctx._sourceChoices and ctx._sourceChoices[selectedIndex] or WEBCAM_SOURCE
+  if not choice then
+    return
+  end
+
+  if ctx._source.kind == "webcam" and choice.kind ~= "webcam" and capture and capture.close then
+    capture.close()
+  end
+
+  ctx._source.kind = choice.kind
+  ctx._source.id = choice.id
+  ctx._source.params = ctx._source.params or {}
+  ensureSourceParams(ctx)
+  syncSourceControls(ctx)
+  refreshDevices(ctx)
+  openCurrentSelection(ctx)
+  savePersistedState(ctx)
 end
 
 local function setActiveLayer(ctx, index)
@@ -592,8 +795,6 @@ local function clearActiveLayer(ctx)
   savePersistedState(ctx)
 end
 
-
-
 local function installParamCallbacks(ctx)
   for i = 1, NUM_PARAM_SLIDERS do
     local slider = ctx.widgets["fxParam" .. tostring(i)]
@@ -609,12 +810,132 @@ local function installParamCallbacks(ctx)
       end
     end
   end
+
+  for i = 1, NUM_SOURCE_PARAM_SLIDERS do
+    local slider = ctx.widgets["sourceParam" .. tostring(i)]
+    if slider then
+      slider._onChange = function(value)
+        local choice = findSourceChoice(ctx, ctx._source.kind, ctx._source.id)
+        local spec = choice and choice.params and choice.params[i] or nil
+        if ctx._source.kind ~= "generator" or type(spec) ~= "table" then return end
+        ctx._source.params[spec.id] = value
+        setViewportSurface(ctx)
+        savePersistedState(ctx)
+      end
+    end
+  end
+end
+
+local function layoutUi(ctx, width, height)
+  local widgets = ctx.widgets
+  local pad = 16
+  local headerH = 72
+  local contentY = pad + headerH + pad
+  local contentH = math.max(120, height - contentY - pad)
+  local rightW = clamp(math.floor(width * 0.35), 320, 420)
+  rightW = math.min(rightW, math.max(300, width - pad * 3 - 260))
+  local leftW = math.max(260, width - pad * 3 - rightW)
+  local rightX = pad * 2 + leftW
+
+  setBounds(widgets.header, pad, pad, width - pad * 2, headerH)
+  setBounds(widgets.title, pad + 16, pad + 10, 240, 22)
+  setBounds(widgets.rendererMode, pad + 16, pad + 38, 240, 16)
+  setBounds(widgets.status, pad + 260, pad + 14, math.max(100, width - pad * 2 - 276), 18)
+
+  setBounds(widgets.viewportPanel, pad, contentY, leftW, contentH)
+  setBounds(widgets.viewportTitle, pad + 14, contentY + 12, leftW - 28, 18)
+  setBounds(widgets.viewportHint, pad + 14, contentY + 34, leftW - 28, 16)
+  setBounds(widgets.viewport, pad + 12, contentY + 58, leftW - 24, math.max(80, contentH - 70))
+
+  local sourceH = clamp(math.floor(contentH * 0.40), 220, 280)
+  local fxY = contentY + sourceH + pad
+  local fxH = math.max(180, contentH - sourceH - pad)
+
+  setBounds(widgets.sourcePanel, rightX, contentY, rightW, sourceH)
+  setBounds(widgets.fxPanel, rightX, fxY, rightW, fxH)
+
+  do
+    local x = rightX + 12
+    local w = rightW - 24
+    local y = contentY + 12
+    setBounds(widgets.sourceTitle, x, y, w, 18)
+    y = y + 26
+    setBounds(widgets.sourceSelect, x, y, w, 24)
+    y = y + 30
+    setBounds(widgets.sourceDescription, x, y, w, 30)
+    y = y + 36
+
+    setBounds(widgets.deviceSelect, x, y, w, 24)
+    setBounds(widgets.sourceParam1, x, y, w, 26)
+    y = y + 32
+    setBounds(widgets.modeSelect, x, y, w, 24)
+    setBounds(widgets.sourceParam2, x, y, w, 26)
+    y = y + 32
+
+    local buttonGap = 8
+    local buttonW = math.floor((w - buttonGap * 2) / 3)
+    setBounds(widgets.refreshBtn, x, y, buttonW, 24)
+    setBounds(widgets.openBtn, x + buttonW + buttonGap, y, buttonW, 24)
+    setBounds(widgets.closeBtn, x + (buttonW + buttonGap) * 2, y, buttonW, 24)
+    setBounds(widgets.sourceParam3, x, y, w, 26)
+    y = y + 32
+
+    setBounds(widgets.frameInfo, x, y, w, 16)
+    setBounds(widgets.sourceParam4, x, y, w, 26)
+  end
+
+  do
+    local x = rightX + 12
+    local w = rightW - 24
+    local y = fxY + 12
+    setBounds(widgets.fxTitle, x, y, w, 18)
+    y = y + 26
+
+    local enableW = 56
+    local clearW = 60
+    local tabsW = math.max(100, w - enableW - clearW - 12)
+    setBounds(widgets.layerTabs, x, y, tabsW, 22)
+    setBounds(widgets.layerEnabledBtn, x + tabsW + 6, y, enableW, 22)
+    setBounds(widgets.clearLayerBtn, x + tabsW + 6 + enableW + 6, y, clearW, 22)
+    y = y + 30
+
+    setBounds(widgets.effectSelect, x, y, w, 24)
+    y = y + 30
+    setBounds(widgets.layerDescription, x, y, w, 30)
+    y = y + 38
+
+    local paramsBottomH = 30
+    local paramsH = math.max(0, fxH - (y - fxY) - paramsBottomH - 16)
+    local cols = w >= 300 and 2 or 1
+    local colGap = 10
+    local rowGap = 8
+    local sliderW = cols == 1 and w or math.floor((w - colGap) / 2)
+    local sliderH = 26
+    local maxRows = math.max(1, math.floor((paramsH + rowGap) / (sliderH + rowGap)))
+
+    for i = 1, NUM_PARAM_SLIDERS do
+      local slider = widgets["fxParam" .. tostring(i)]
+      local row = math.floor((i - 1) / cols)
+      local col = (i - 1) % cols
+      if row < maxRows then
+        local sx = x + col * (sliderW + colGap)
+        local sy = y + row * (sliderH + rowGap)
+        setBounds(slider, sx, sy, sliderW, sliderH)
+      else
+        setBounds(slider, x, y, 0, 0)
+      end
+    end
+
+    setBounds(widgets.fxHint, x, fxY + fxH - 34, w, 22)
+  end
 end
 
 function M.init(ctx)
   ctx._devices = {}
   ctx._modes = {}
   ctx._effects = {}
+  ctx._sourceChoices = { WEBCAM_SOURCE }
+  ctx._source = defaultSourceState()
   ctx._layers = {}
   for i = 1, NUM_LAYERS do
     ctx._layers[i] = defaultLayer(i)
@@ -626,10 +947,11 @@ function M.init(ctx)
   ctx._statusText = ""
 
   loadPersistedState(ctx)
-  applyPersistedLayers(ctx)
+  applyPersistedState(ctx)
 
   syncRendererMode(ctx)
   updateFrameInfo(ctx)
+  refreshSourceRegistry(ctx)
   refreshDevices(ctx)
   local ok, err = pcall(refreshEffects, ctx)
   if not ok then
@@ -659,10 +981,16 @@ function M.init(ctx)
     end
   end
 
+  if ctx.widgets.sourceSelect then
+    ctx.widgets.sourceSelect._onSelect = function(selectedIndex)
+      setSelectedSource(ctx, selectedIndex)
+    end
+  end
+
   if ctx.widgets.deviceSelect then
     ctx.widgets.deviceSelect._onSelect = function(selectedIndex)
       refreshModes(ctx, selectedIndex)
-      if #(ctx._modes or {}) > 0 then
+      if #(ctx._modes or {}) > 0 and ctx._source.kind == "webcam" then
         openCurrentSelection(ctx)
       end
     end
@@ -698,12 +1026,12 @@ function M.init(ctx)
       setActiveLayerEffect(ctx, selectedIndex)
     end
   end
-
-
 end
 
-function M.resized(ctx, _w, _h)
+function M.resized(ctx, w, h)
+  layoutUi(ctx, w, h)
   syncRendererMode(ctx)
+  syncSourceControls(ctx)
   updateFrameInfo(ctx)
   syncLayerControls(ctx)
 end
@@ -712,7 +1040,7 @@ function M.update(ctx, _state)
   syncRendererMode(ctx)
   updateFrameInfo(ctx)
 
-  if capture and capture.isOpen and capture.isOpen() then
+  if ctx._source.kind == "webcam" and capture and capture.isOpen and capture.isOpen() then
     local devices = ctx._devices or {}
     local modes = ctx._modes or {}
     local device = devices[ctx._selectedDevice]
@@ -722,6 +1050,12 @@ function M.update(ctx, _state)
       return
     end
     updateStatus(ctx, "Streaming active video device  •  FX: " .. layerSummary(ctx))
+    return
+  end
+
+  if ctx._source.kind == "generator" then
+    local choice = findSourceChoice(ctx, ctx._source.kind, ctx._source.id)
+    updateStatus(ctx, tostring(choice.name or ctx._source.id) .. " source active  •  FX: " .. layerSummary(ctx))
     return
   end
 
