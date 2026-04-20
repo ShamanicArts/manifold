@@ -6,6 +6,7 @@
 #include "manifold/highway/HighwayWrapper.h"
 #include "manifold/highway/HighwayMaths.h"
 
+
 namespace dsp_primitives
 {
     namespace BitCrusherNode_Highway
@@ -174,10 +175,9 @@ namespace dsp_primitives
 
                         sampleLaneCount = (samplesRemain > numLanes) ? numLanes : samplesRemain;
 
-                   
                         //Generate values for all lanes
                         stateMask = HWY::Not(HWY::MaskFalse(_flttype));
-                        laneMask = HWY::FirstN(_flttype, StateIndex_Count);
+                        laneMask = HWY::FirstN(_flttype, static_cast<int>(StateIndex_Count));
                         for(int lane = 0; lane < sampleLaneCount; ++lane)
                         {
                             newStateValues = HWY::MulAdd(HWY::Sub(targetStateValues, currentStateValues), smooth, currentStateValues);
@@ -194,11 +194,10 @@ namespace dsp_primitives
                             }
                             
                             currentStateValues = newStateValues;
-                            HWY::Store(currentStateValues, _flttype, currentState_.get());
-                            currentOutput = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_Output]), currentOutput);
-                            currentBits = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_Bits]), currentBits);
-                            currentRateReduction = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_RateReduction]), currentRateReduction);
-                            currentMix = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_Mix]), currentMix);
+                            currentOutput = HWY::IfThenElse(stateMask, HWY::BroadcastLane< static_cast<int>(StateIndex_Output) >(currentStateValues), currentOutput);
+                            currentBits = HWY::IfThenElse(stateMask, HWY::BroadcastLane< static_cast<int>(StateIndex_Bits) >(currentStateValues),  currentBits);
+                            currentRateReduction = HWY::IfThenElse(stateMask, HWY::BroadcastLane< static_cast<int>(StateIndex_RateReduction) >(currentStateValues), currentRateReduction);
+                            currentMix = HWY::IfThenElse(stateMask, HWY::BroadcastLane< static_cast<int>(StateIndex_Mix) >(currentStateValues), currentMix);
                             stateMask = HWY::SlideMaskUpLanes(_flttype, stateMask, 1);
                         }
 
@@ -481,7 +480,7 @@ namespace dsp_primitives
                     namespace HWY = hwy::HWY_NAMESPACE;
                     
                     size_t numLanes = HWY::Lanes(_flttype);
-                    const int numValues = 4;
+                    const int numValues = StateIndex_Count;
                     const FltType  one = HWY::Set(_flttype, 1.0f);
                     const FltType laneNum = HWY::Iota(_flttype, 1);
 

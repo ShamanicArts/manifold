@@ -51,11 +51,23 @@
     <ClCompile Include="..\..\dsp\core\nodes\BitCrusherNode.cpp">
       <Filter>Source Files\Nodes</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\dsp\core\nodes\FilterNode.cpp">
+      <Filter>Source Files\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\dsp\core\nodes\GainNode.cpp">
+      <Filter>Source Files\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\dsp\core\nodes\OscillatorNode.cpp">
+      <Filter>Source Files\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\dsp\core\nodes\MixerNode.cpp">
+      <Filter>Source Files\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\external\JUCE\modules\juce_core\juce_core_CompilationTime.cpp">
+      <Filter>Source Files\JUCE</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\manifold\core\HighwayWrapper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\dsp\core\nodes\ADSREnvelopeNode_Highway.h">
       <Filter>Header Files\Nodes_Highway</Filter>
     </ClInclude>
@@ -68,7 +80,34 @@
     <ClInclude Include="..\..\dsp\core\nodes\BitCrusherNode_Highway.h">
       <Filter>Header Files\Nodes_Highway</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\manifold\core\HighwayMaths.h">
+    <ClInclude Include="..\..\dsp\core\nodes\FilterNode_Highway.h">
+      <Filter>Header Files\Nodes_Highway</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\GainNode_Highway.h">
+      <Filter>Header Files\Nodes_Highway</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\MixerNode_Highway.h">
+      <Filter>Header Files\Nodes_Highway</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\FilterNode.h">
+      <Filter>Header Files\Nodes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\GainNode.h">
+      <Filter>Header Files\Nodes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\MixerNode.h">
+      <Filter>Header Files\Nodes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\OscillatorNode.h">
+      <Filter>Header Files\Nodes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\OscillatorNode_Highway.h">
+      <Filter>Header Files\Nodes_Highway</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\manifold\highway\HighwayMaths.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\manifold\highway\HighwayWrapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
