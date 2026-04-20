@@ -64,7 +64,7 @@ void AudioSyncNode::process(const std::vector<AudioBufferView>& inputs,
         return;
     }
 
-    const bool hasSyncBus = inputs.size() >= 3;
+    const bool hasSyncBus = inputs.size() >= 2;
     const float tHardness = targetHardness_.load(std::memory_order_acquire);
     const float tMix = targetMix_.load(std::memory_order_acquire);
 
@@ -80,8 +80,8 @@ void AudioSyncNode::process(const std::vector<AudioBufferView>& inputs,
 
         float triggerSample = 0.0f;
         if (hasSyncBus) {
-            const float syncL = inputs[2].getSample(0, i);
-            const float syncR = inputs[2].numChannels > 1 ? inputs[2].getSample(1, i) : syncL;
+            const float syncL = inputs[1].getSample(0, i);
+            const float syncR = inputs[1].numChannels > 1 ? inputs[1].getSample(1, i) : syncL;
             triggerSample = 0.5f * (syncL + syncR);
         }
 

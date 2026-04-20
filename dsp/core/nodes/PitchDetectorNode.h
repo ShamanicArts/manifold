@@ -50,8 +50,8 @@ public:
     explicit PitchDetectorNode(int numChannels = 2);
 
     const char* getNodeType() const override { return "PitchDetector"; }
-    int getNumInputs() const override { return numChannels_; }
-    int getNumOutputs() const override { return numChannels_; } // Pass-through
+    int getNumInputs() const override { return 1; }
+    int getNumOutputs() const override { return 1; } // Pass-through
     
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,

@@ -59,7 +59,7 @@ void BitCrusherNode::process(const std::vector<AudioBufferView>& inputs,
         return;
     }
 
-    const bool hasBusB = inputs.size() >= 3;
+    const bool hasBusB = inputs.size() >= 2;
 
     const float tBits = targetBits_.load(std::memory_order_acquire);
     const float tRateReduction = targetRateReduction_.load(std::memory_order_acquire);
@@ -91,8 +91,8 @@ void BitCrusherNode::process(const std::vector<AudioBufferView>& inputs,
 
         const float inAL = inputs[0].getSample(0, i);
         const float inAR = inputs[0].numChannels > 1 ? inputs[0].getSample(1, i) : inAL;
-        const float inBL = hasBusB ? inputs[2].getSample(0, i) : 0.0f;
-        const float inBR = hasBusB ? (inputs[2].numChannels > 1 ? inputs[2].getSample(1, i) : inBL) : 0.0f;
+        const float inBL = hasBusB ? inputs[1].getSample(0, i) : 0.0f;
+        const float inBR = hasBusB ? (inputs[1].numChannels > 1 ? inputs[1].getSample(1, i) : inBL) : 0.0f;
 
         float outL = inAL;
         float outR = inAR;

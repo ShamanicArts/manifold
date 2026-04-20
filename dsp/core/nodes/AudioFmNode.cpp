@@ -68,7 +68,7 @@ void AudioFmNode::process(const std::vector<AudioBufferView>& inputs,
         return;
     }
 
-    const bool hasModBus = inputs.size() >= 3;
+    const bool hasModBus = inputs.size() >= 2;
     const float tAmount = targetAmount_.load(std::memory_order_acquire);
     const float tMix = targetMix_.load(std::memory_order_acquire);
     const float maxModSamples = juce::jlimit(1.0f, static_cast<float>(bufferSize_ - 8), static_cast<float>(sampleRate_ * 0.005));
@@ -80,9 +80,9 @@ void AudioFmNode::process(const std::vector<AudioBufferView>& inputs,
 
         const float inL = !inputs.empty() ? inputs[0].getSample(0, i) : 0.0f;
         const float inR = (!inputs.empty() && inputs[0].numChannels > 1) ? inputs[0].getSample(1, i) : inL;
-        const float modL = hasModBus ? juce::jlimit(-1.0f, 1.0f, inputs[2].getSample(0, i)) : 0.0f;
+        const float modL = hasModBus ? juce::jlimit(-1.0f, 1.0f, inputs[1].getSample(0, i)) : 0.0f;
         const float modR = hasModBus
-            ? juce::jlimit(-1.0f, 1.0f, inputs[2].numChannels > 1 ? inputs[2].getSample(1, i) : modL)
+            ? juce::jlimit(-1.0f, 1.0f, inputs[1].numChannels > 1 ? inputs[1].getSample(1, i) : modL)
             : modL;
 
         delayBuffer_[0][static_cast<std::size_t>(writePos_)] = inL;

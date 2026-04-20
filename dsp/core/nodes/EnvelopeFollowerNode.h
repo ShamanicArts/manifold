@@ -13,8 +13,8 @@ public:
     EnvelopeFollowerNode();
 
     const char* getNodeType() const override { return "EnvelopeFollower"; }
-    int getNumInputs() const override { return 2; }
-    int getNumOutputs() const override { return 2; }
+    int getNumInputs() const override { return 1; }
+    int getNumOutputs() const override { return 1; }
 
     /// Audio passthrough node with envelope metering.
     /// The tracked envelope is exposed via getEnvelope().

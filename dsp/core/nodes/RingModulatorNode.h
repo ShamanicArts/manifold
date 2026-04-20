@@ -13,9 +13,9 @@ public:
 
     const char* getNodeType() const override { return "RingModulator"; }
     // Two stereo busses encoded as 4 input views:
-    // bus A = inputs[0]/[1] (carrier), bus B = inputs[2]/[3] (external modulator, optional)
-    int getNumInputs() const override { return 4; }
-    int getNumOutputs() const override { return 2; }
+    // bus A = inputs[0] (carrier stereo), bus B = inputs[1] (external modulator stereo, optional)
+    int getNumInputs() const override { return 2; }
+    int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,

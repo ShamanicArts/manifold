@@ -397,38 +397,33 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
                                        std::vector<WritableAudioBufferView>& outputs,
                                        int numSamples) {
     (void)inputs;
-    const int channels = juce::jmin(numChannels_, static_cast<int>(outputs.size()));
-    if (channels <= 0 || numSamples <= 0) {
+    if (outputs.empty() || numSamples <= 0) {
         return;
     }
 
+    auto& output = outputs[0];
     const RegionState region = computeRegionState();
     const int targetUnison = juce::jlimit(1, kMaxUnisonVoices, unisonVoices_.load(std::memory_order_acquire));
     applyPendingControlChanges(region, targetUnison);
 
     if (region.sampleLength <= 0 || !playing_.load(std::memory_order_acquire)) {
-        for (int ch = 0; ch < channels; ++ch) {
-            const size_t idx = static_cast<size_t>(ch);
-            for (int i = 0; i < numSamples; ++i) {
-                outputs[idx].setSample(ch, i, 0.0f);
-            }
-        }
+        output.clear();
         return;
     }
 
     const int activeIndex = activeLoopBufferIndex_.load(std::memory_order_acquire);
     juce::AudioBuffer<float>& activeLoop = (activeIndex == 0) ? loopBufferA_ : loopBufferB_;
+    const int channels = juce::jmin(numChannels_, activeLoop.getNumChannels(), output.numChannels);
+    if (channels <= 0) {
+        output.clear();
+        return;
+    }
 
     const float targetSpeed = juce::jlimit(0.0f, 8.0f, speed_.load(std::memory_order_acquire));
     const float targetDetuneCents = detuneCents_.load(std::memory_order_acquire);
     const float targetSpread = stereoSpread_.load(std::memory_order_acquire);
     if (targetSpeed <= 0.0f && currentSpeed_ <= 1.0e-4f) {
-        for (int ch = 0; ch < channels; ++ch) {
-            const size_t idx = static_cast<size_t>(ch);
-            for (int i = 0; i < numSamples; ++i) {
-                outputs[idx].setSample(ch, i, 0.0f);
-            }
-        }
+        output.clear();
         return;
     }
 
@@ -479,7 +474,7 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
                                              position < static_cast<double>(region.loopEnd);
 
             for (int ch = 0; ch < channels; ++ch) {
-                float out = 0.0f;
+                float outSample = 0.0f;
                 if (inBoundaryCrossfade) {
                     const double seamOffset = position - crossfadeStart;
                     const double headPosition = static_cast<double>(region.loopStart) + seamOffset;
@@ -488,16 +483,16 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
                     const float headGain = std::sin(mix * juce::MathConstants<float>::halfPi);
                     const float tailSample = readSample(activeLoop, ch, position);
                     const float headSample = readSample(activeLoop, ch, headPosition);
-                    out = tailSample * tailGain + headSample * headGain;
+                    outSample = tailSample * tailGain + headSample * headGain;
                 } else {
-                    out = readSample(activeLoop, ch, position);
+                    outSample = readSample(activeLoop, ch, position);
                 }
 
-                out *= voiceGain;
+                outSample *= voiceGain;
                 if (channels >= 2) {
-                    mixedSamples[ch] += out * (ch == 0 ? leftPan : rightPan);
+                    mixedSamples[ch] += outSample * (ch == 0 ? leftPan : rightPan);
                 } else {
-                    mixedSamples[ch] += out;
+                    mixedSamples[ch] += outSample;
                 }
             }
 
@@ -525,8 +520,7 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
             ? (1.0f / std::sqrt(static_cast<float>(contributingVoices)))
             : 0.0f;
         for (int ch = 0; ch < channels; ++ch) {
-            const size_t idx = static_cast<size_t>(ch);
-            outputs[idx].setSample(ch, i, mixedSamples[ch] * normGain);
+            output.setSample(ch, i, mixedSamples[ch] * normGain);
         }
     }
 

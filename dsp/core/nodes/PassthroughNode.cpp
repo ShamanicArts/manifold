@@ -14,10 +14,22 @@ void PassthroughNode::prepare(double sampleRate, int maxBlockSize) {
 void PassthroughNode::process(const std::vector<AudioBufferView>& inputs,
                               std::vector<WritableAudioBufferView>& outputs,
                               int numSamples) {
-    for (int ch = 0; ch < numChannels_ && ch < static_cast<int>(inputs.size()) && ch < static_cast<int>(outputs.size()); ++ch) {
-        const auto channelIndex = static_cast<std::size_t>(ch);
+    if (inputs.empty() || outputs.empty() || numSamples <= 0) {
+        if (!outputs.empty()) outputs[0].clear();
+        return;
+    }
+
+    const auto& input = inputs[0];
+    auto& output = outputs[0];
+    const int channels = juce::jmin(numChannels_, input.numChannels, output.numChannels);
+    if (channels <= 0) {
+        output.clear();
+        return;
+    }
+
+    for (int ch = 0; ch < channels; ++ch) {
         for (int i = 0; i < numSamples; ++i) {
-            outputs[channelIndex].setSample(ch, i, inputs[channelIndex].getSample(ch, i));
+            output.setSample(ch, i, input.getSample(ch, i));
         }
     }
 }

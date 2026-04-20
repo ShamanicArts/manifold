@@ -23,8 +23,20 @@ void PlaybackStateGateNode::prepare(double sampleRate, int maxBlockSize) {
 void PlaybackStateGateNode::process(const std::vector<AudioBufferView>& inputs,
                                     std::vector<WritableAudioBufferView>& outputs,
                                     int numSamples) {
-    const int channels = juce::jmin(numChannels_, static_cast<int>(outputs.size()));
+    if (outputs.empty() || numSamples <= 0) {
+        return;
+    }
+
+    auto& output = outputs[0];
+    if (inputs.empty()) {
+        output.clear();
+        return;
+    }
+
+    const auto& input = inputs[0];
+    const int channels = juce::jmin(numChannels_, input.numChannels, output.numChannels);
     if (channels <= 0) {
+        output.clear();
         return;
     }
 
@@ -32,18 +44,11 @@ void PlaybackStateGateNode::process(const std::vector<AudioBufferView>& inputs,
                             !muted_.load(std::memory_order_acquire);
     const float targetGain = shouldPass ? 1.0f : 0.0f;
 
-    const int inputChannels = juce::jmin(channels, static_cast<int>(inputs.size()));
     for (int i = 0; i < numSamples; ++i) {
         gateGain_ += (targetGain - gateGain_) * smoothingCoeff_;
 
         for (int ch = 0; ch < channels; ++ch) {
-            const size_t idx = static_cast<size_t>(ch);
-            if (ch >= inputChannels) {
-                outputs[idx].setSample(ch, i, 0.0f);
-                continue;
-            }
-
-            outputs[idx].setSample(ch, i, inputs[idx].getSample(ch, i) * gateGain_);
+            output.setSample(ch, i, input.getSample(ch, i) * gateGain_);
         }
     }
 }

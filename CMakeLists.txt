@@ -976,6 +976,8 @@ add_executable(CanonicalCommandHarness manifold/headless/CanonicalCommandHarness
 
 add_executable(StateProjectionHarness manifold/headless/StateProjectionHarness.cpp)
 
+add_executable(PortBufferSemanticsHarness manifold/headless/PortBufferSemanticsHarness.cpp)
+
 manifold_target_include_project_and_ableton(ManifoldHeadless)
 
 target_link_libraries(ManifoldHeadless
@@ -1043,7 +1045,20 @@ target_link_libraries(CanonicalCommandHarness
 
 manifold_target_include_project_and_ableton(StateProjectionHarness)
 
+manifold_target_include_project_and_ableton(PortBufferSemanticsHarness)
+
 target_link_libraries(StateProjectionHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+		highway)
+
+target_link_libraries(PortBufferSemanticsHarness
     PRIVATE
         Manifold
         juce::juce_audio_processors
@@ -1090,6 +1105,12 @@ target_compile_definitions(StateProjectionHarness
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
+target_compile_definitions(PortBufferSemanticsHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
 enable_testing()
 
 add_test(
@@ -1130,6 +1151,12 @@ add_test(
 set_tests_properties(manifold_standalone_direct_profile_sanity PROPERTIES
     LABELS "manifold;standalone;direct;profile"
     SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME manifold_port_buffer_semantics
+    COMMAND $<TARGET_FILE:PortBufferSemanticsHarness>)
+set_tests_properties(manifold_port_buffer_semantics PROPERTIES
+    LABELS "manifold;dsp;regression;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:

@@ -37,7 +37,7 @@ void CrossfaderNode::process(const std::vector<AudioBufferView>& inputs,
 
     // Expect 2 stereo busses encoded as 4 input views (bus0 duplicated for ch0/ch1, bus1 duplicated).
     // If only one bus is connected or runtime doesn't provide it, fall back to bus0 passthrough.
-    const bool hasBusB = inputs.size() >= 3; // inputs[2] should exist when bus1 is available
+    const bool hasBusB = inputs.size() >= 2; // inputs[1] is bus B when available
 
     const float tPos = targetPosition_.load(std::memory_order_acquire);
     const float tCurve = targetCurve_.load(std::memory_order_acquire);
@@ -66,8 +66,8 @@ void CrossfaderNode::process(const std::vector<AudioBufferView>& inputs,
         float inBL = 0.0f;
         float inBR = 0.0f;
         if (hasBusB) {
-            inBL = inputs[2].getSample(0, i);
-            inBR = inputs[2].numChannels > 1 ? inputs[2].getSample(1, i) : inBL;
+            inBL = inputs[1].getSample(0, i);
+            inBR = inputs[1].numChannels > 1 ? inputs[1].getSample(1, i) : inBL;
         }
 
         const float xL = inAL * gainA + inBL * gainB;

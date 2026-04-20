@@ -17,7 +17,7 @@ public:
     SineBankNode();
 
     const char* getNodeType() const override { return "SineBank"; }
-    int getNumInputs() const override { return 2; }
+    int getNumInputs() const override { return 1; }
     int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,

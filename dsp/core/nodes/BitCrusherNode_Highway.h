@@ -124,9 +124,9 @@ namespace dsp_primitives
 
                     const float * inputPtr1L = inputs[0].channelData[0];
                     const float * inputPtr1R = (inputs[0].numChannels > 1) ? inputs[0].channelData[1] : NULL;
-                    const bool hasBusB = inputs.size() >= 3;
-                    const float * inputPtr2L = hasBusB ? inputs[2].channelData[0] : NULL;
-                    const float * inputPtr2R = (hasBusB && (inputs[2].numChannels > 1)) ? inputs[2].channelData[1] : NULL;
+                    const bool hasBusB = inputs.size() >= 2;
+                    const float * inputPtr2L = hasBusB ? inputs[1].channelData[0] : NULL;
+                    const float * inputPtr2R = (hasBusB && (inputs[1].numChannels > 1)) ? inputs[1].channelData[1] : NULL;
                     const bool outputMono = outputs[0].numChannels == 1;
                     float * outputPtrL = outputs[0].channelData[0];
                     float * outputPtrR = !outputMono ? outputs[0].channelData[1] : NULL;

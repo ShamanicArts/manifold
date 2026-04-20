@@ -13,8 +13,8 @@ public:
     ReverseDelayNode();
 
     const char* getNodeType() const override { return "ReverseDelay"; }
-    int getNumInputs() const override { return 2; }
-    int getNumOutputs() const override { return 2; }
+    int getNumInputs() const override { return 1; }
+    int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,

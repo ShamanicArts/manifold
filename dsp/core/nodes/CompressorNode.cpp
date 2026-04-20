@@ -42,10 +42,16 @@ void CompressorNode::reset() {
 void CompressorNode::process(const std::vector<AudioBufferView>& inputs,
                              std::vector<WritableAudioBufferView>& outputs,
                              int numSamples) {
-    const int channels = juce::jmin(2, static_cast<int>(inputs.size()), static_cast<int>(outputs.size()));
-    if (channels <= 0) {
+    if (inputs.empty() || outputs.empty() || numSamples <= 0) {
         if (!outputs.empty()) outputs[0].clear();
-        if (outputs.size() > 1) outputs[1].clear();
+        return;
+    }
+
+    const auto& inputView = inputs[0];
+    auto& outputView = outputs[0];
+    const int channels = juce::jmin(2, inputView.numChannels, outputView.numChannels);
+    if (channels <= 0) {
+        outputView.clear();
         return;
     }
 
@@ -56,30 +62,29 @@ void CompressorNode::process(const std::vector<AudioBufferView>& inputs,
 
     for (int i = 0; i < numSamples; ++i) {
         for (int ch = 0; ch < channels; ++ch) {
-            const auto channelIndex = static_cast<std::size_t>(ch);
-            const float input = inputs[channelIndex].getSample(ch, i);
+            const float input = inputView.getSample(ch, i);
             const float level = std::abs(input);
-            
+
             const float overThreshold = level > 0.0f ? 20.0f * std::log10(level) - threshold : -100.0f;
-            
+
             float targetReduction = 0.0f;
             if (overThreshold > 0.0f) {
                 targetReduction = overThreshold * (1.0f - 1.0f / ratio);
             }
-            
+
             if (targetReduction > envelope_) {
                 envelope_ = attackCoeff_ * envelope_ + (1.0f - attackCoeff_) * targetReduction;
             } else {
                 envelope_ = releaseCoeff_ * envelope_ + (1.0f - releaseCoeff_) * targetReduction;
             }
-            
+
             const float gain = std::pow(10.0f, (-envelope_ + makeup) * 0.05f);
             const float output = input * (1.0f - mix) + input * gain * mix;
-            
-            outputs[channelIndex].setSample(ch, i, output);
+
+            outputView.setSample(ch, i, output);
         }
     }
-    
+
     gainReduction_.store(-envelope_, std::memory_order_release);
 }
 

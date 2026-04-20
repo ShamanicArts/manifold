@@ -13,8 +13,8 @@ public:
 
     const char* getNodeType() const override { return "Crossfader"; }
     // 2 stereo busses encoded as 4 input views (bus0 duplicated for ch0/ch1, bus1 duplicated)
-    int getNumInputs() const override { return 4; }
-    int getNumOutputs() const override { return 2; }
+    int getNumInputs() const override { return 2; }
+    int getNumOutputs() const override { return 1; }
 
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,

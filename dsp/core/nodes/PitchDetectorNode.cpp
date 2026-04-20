@@ -33,41 +33,43 @@ PitchDetectorNode::PitchDetectorNode(int numChannels)
 void PitchDetectorNode::process(const std::vector<AudioBufferView>& inputs,
                                 std::vector<WritableAudioBufferView>& outputs,
                                 int numSamples) {
-    // Pass-through: copy input to output
-    const int outChannels = std::min(static_cast<int>(outputs.size()), numChannels_);
-    const int inChannels = std::min(static_cast<int>(inputs.size()), numChannels_);
-    
-    for (int ch = 0; ch < outChannels; ++ch) {
-        const auto channelIndex = static_cast<std::size_t>(ch);
-        if (ch < inChannels) {
-            // Copy input to output
-            for (int i = 0; i < numSamples; ++i) {
-                outputs[channelIndex].setSample(ch, i, inputs[channelIndex].getSample(ch, i));
-            }
-        } else {
-            // Clear unused output channels
-            for (int i = 0; i < numSamples; ++i) {
-                outputs[channelIndex].setSample(ch, i, 0.0f);
-            }
+    if (outputs.empty() || numSamples <= 0) {
+        return;
+    }
+
+    auto& output = outputs[0];
+    if (inputs.empty()) {
+        output.clear();
+        return;
+    }
+
+    const auto& input = inputs[0];
+    const int channels = juce::jmin(numChannels_, input.numChannels, output.numChannels);
+    if (channels <= 0) {
+        output.clear();
+        return;
+    }
+
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int i = 0; i < numSamples; ++i) {
+            output.setSample(ch, i, input.getSample(ch, i));
         }
     }
-    
+
     if (!enabled_.load(std::memory_order_relaxed)) {
         return;
     }
-    
-    // Accumulate samples into mono buffer (mix down to mono)
+
     if (static_cast<int>(monoBuffer_.size()) < numSamples) {
         monoBuffer_.resize(static_cast<std::size_t>(numSamples));
     }
-    
-    // Mix to mono (average of channels)
+
     for (int i = 0; i < numSamples; ++i) {
         float sum = 0.0f;
-        for (int ch = 0; ch < inChannels; ++ch) {
-            sum += inputs[static_cast<std::size_t>(ch)].getSample(ch, i);
+        for (int ch = 0; ch < channels; ++ch) {
+            sum += input.getSample(ch, i);
         }
-        monoBuffer_[static_cast<std::size_t>(i)] = sum / std::max(1, inChannels);
+        monoBuffer_[static_cast<std::size_t>(i)] = sum / std::max(1, channels);
     }
     
     // Process through streaming detector

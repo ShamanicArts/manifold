@@ -241,9 +241,16 @@ float WaveShaperNode::downsample(float* input, int factor) {
 void WaveShaperNode::process(const std::vector<AudioBufferView>& inputs,
                              std::vector<WritableAudioBufferView>& outputs,
                              int numSamples) {
-    const int channels = juce::jmin(2, static_cast<int>(inputs.size()), static_cast<int>(outputs.size()));
-    if (channels <= 0) {
+    if (inputs.empty() || outputs.empty() || numSamples <= 0) {
         for (auto& out : outputs) out.clear();
+        return;
+    }
+
+    const auto& input = inputs[0];
+    auto& outputView = outputs[0];
+    const int channels = juce::jmin(2, input.numChannels, outputView.numChannels);
+    if (channels <= 0) {
+        outputView.clear();
         return;
     }
 
@@ -268,7 +275,6 @@ void WaveShaperNode::process(const std::vector<AudioBufferView>& inputs,
     }
 
     for (int ch = 0; ch < channels; ++ch) {
-        const auto channelIndex = static_cast<std::size_t>(ch);
         for (int i = 0; i < numSamples; ++i) {
             // Smooth parameters
             currentDrive_ += (targetDrive - currentDrive_) * paramSmoothingCoeff_;
@@ -287,7 +293,7 @@ void WaveShaperNode::process(const std::vector<AudioBufferView>& inputs,
                 updateFilterCoefficients();
             }
 
-            const float dry = inputs[channelIndex].getSample(ch, i);
+            const float dry = input.getSample(ch, i);
             float wet = dry;
 
             if (oversampleFactor_ == 1) {
@@ -342,7 +348,7 @@ void WaveShaperNode::process(const std::vector<AudioBufferView>& inputs,
             const float currentMix = currentMix_;
             const float output = dry * (1.0f - currentMix) + wet * currentMix;
             
-            outputs[channelIndex].setSample(ch, i, output);
+            outputView.setSample(ch, i, output);
         }
     }
 }

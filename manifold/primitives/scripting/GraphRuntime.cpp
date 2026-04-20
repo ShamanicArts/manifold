@@ -69,9 +69,10 @@ void GraphRuntime::prepare(double sampleRate, int maxBlockSize, int numChannels)
     sidechainChunkBuffer_.setSize(numChannels_, maxBlockSize_, false, true);
 
     // Allocate input accumulators for the maximum bus-count across nodes.
+    // inputCount now directly reports the number of stereo buses.
     int maxInputBuses = 1;
     for (const auto& compiled : compiledNodes_) {
-        const int buses = std::max(0, (compiled.inputCount + numChannels_ - 1) / numChannels_);
+        const int buses = std::max(1, compiled.inputCount);
         maxInputBuses = std::max(maxInputBuses, buses);
     }
 
@@ -220,8 +221,8 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
         auto& scratchBuf = isInputRole ? inputScratchBuf : outputScratchBuf;
         
         // Build per-bus input accumulators for this node (preallocated)
-        const int busCount = std::max(0, (compiled.inputCount + numChannels_ - 1) / numChannels_);
-        const int activeBuses = std::max(1, busCount);
+        // inputCount now directly reports the number of stereo buses.
+        const int activeBuses = std::max(1, compiled.inputCount);
 
         for (int b = 0; b < activeBuses; ++b) {
             inputAccumulators_[static_cast<size_t>(b)].clear(0, numSamples);
@@ -281,12 +282,10 @@ void GraphRuntime::processSingle(juce::AudioBuffer<float>& buffer,
         }
 
         // Build input views from per-bus accumulators.
-        // Legacy convention: most nodes declare inputCount==2 for stereo,
-        // and index inputs by channel (inputs[0] for L, inputs[1] for R).
-        // Multi-bus nodes encode busses as (busCount * 2) input views.
+        // inputCount directly reports the number of stereo buses.
         inputViews_.clear();
         for (int i = 0; i < compiled.inputCount; ++i) {
-            const int bus = juce::jlimit(0, activeBuses - 1, i / numChannels_);
+            const int bus = juce::jlimit(0, activeBuses - 1, i);
             inputViews_.push_back(AudioBufferView(inputAccumulators_[static_cast<size_t>(bus)]));
         }
 

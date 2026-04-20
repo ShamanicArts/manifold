@@ -21,8 +21,8 @@ public:
     ~SampleRegionPlaybackNode() override;
 
     const char* getNodeType() const override { return "SampleRegionPlayback"; }
-    int getNumInputs() const override { return numChannels_; }
-    int getNumOutputs() const override { return numChannels_; }
+    int getNumInputs() const override { return 0; }
+    int getNumOutputs() const override { return 1; }
     void process(const std::vector<AudioBufferView>& inputs,
                  std::vector<WritableAudioBufferView>& outputs,
                  int numSamples) override;
