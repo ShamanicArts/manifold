@@ -5,3 +5,5 @@ build/
 # Clang cache (clangd index files)
 .cache/
 *.idx
+
+*UserScripts/projects/WebcamViewer/.webcam_viewer.state
