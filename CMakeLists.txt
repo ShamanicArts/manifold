@@ -539,7 +539,9 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/sources/TextureSourceRegistry.h
     manifold/primitives/sources/TextureSourceRegistry.cpp
     manifold/primitives/sources/GeneratedSourceProvider.h
-    manifold/primitives/sources/GeneratedSourceProvider.cpp)
+    manifold/primitives/sources/GeneratedSourceProvider.cpp
+    manifold/primitives/composite/CompositeSurfaceProvider.h
+    manifold/primitives/composite/CompositeSurfaceProvider.cpp)
 
 # --- Platform Detection ---
 if(CMAKE_SYSTEM_NAME STREQUAL "Android")

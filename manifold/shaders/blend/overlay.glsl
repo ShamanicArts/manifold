@@ -1,0 +1,9 @@
+vec4 base = texture2D(uBaseTex, vUv);
+vec4 blend = texture2D(uBlendTex, vUv);
+vec3 low = 2.0 * base.rgb * blend.rgb;
+vec3 high = 1.0 - 2.0 * (1.0 - base.rgb) * (1.0 - blend.rgb);
+vec3 selector = step(vec3(pivot), base.rgb);
+vec3 overlaid = mix(low, high, selector);
+vec3 contrasted = clamp((overlaid - 0.5) * contrast + 0.5, 0.0, 1.0);
+vec3 result = mix(base.rgb, contrasted, strength);
+fragColor = vec4(mix(base.rgb, result, uOpacity), max(base.a, blend.a));

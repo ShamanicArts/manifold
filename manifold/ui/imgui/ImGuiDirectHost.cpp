@@ -3,6 +3,7 @@
 #include "Theme.h"
 #include "../../primitives/shaders/ShaderSurfaceProvider.h"
 #include "../../primitives/sources/GeneratedSourceProvider.h"
+#include "../../primitives/composite/CompositeSurfaceProvider.h"
 #include "../../primitives/video/VideoSurfaceProvider.h"
 #include "../../primitives/ui/CustomSurfaceProvider.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -192,7 +193,7 @@ bool videoBackedFitModeForNode(const RuntimeNode& node, std::string& fitModeOut)
         return true;
     }
 
-    if (node.getCustomSurfaceType() != "gpu_shader") {
+    if (node.getCustomSurfaceType() != "gpu_shader" && node.getCustomSurfaceType() != "gpu_composite") {
         return false;
     }
 
@@ -713,10 +714,12 @@ ImGuiDirectHost::ImGuiDirectHost()
     : surfaceProviders_(),
       videoSurfaceProvider_(std::make_shared<manifold::video::VideoSurfaceProvider>()),
       generatedSourceProvider_(std::make_shared<manifold::sources::GeneratedSourceProvider>()),
-      shaderSurfaceProvider_(std::make_shared<manifold::shaders::ShaderSurfaceProvider>()) {
+      shaderSurfaceProvider_(std::make_shared<manifold::shaders::ShaderSurfaceProvider>()),
+      compositeSurfaceProvider_(std::make_shared<manifold::composite::CompositeSurfaceProvider>()) {
     registerSurfaceProvider(videoSurfaceProvider_);
     registerSurfaceProvider(generatedSourceProvider_);
     registerSurfaceProvider(shaderSurfaceProvider_);
+    registerSurfaceProvider(compositeSurfaceProvider_);
 
     shaderSurfaceProvider_->setInputResolver([this](const std::string& sourceType,
                                                     const RuntimeNode& node,
@@ -743,6 +746,38 @@ ImGuiDirectHost::ImGuiDirectHost()
                                                          resolved.sequence);
             }
             return resolved;
+        }
+        return resolved;
+    });
+
+    compositeSurfaceProvider_->setNodeTextureResolver([this](const std::string& targetNodeId,
+                                                             const RuntimeNode& requestingNode,
+                                                             int width,
+                                                             int height,
+                                                             double timeSeconds) {
+        manifold::composite::CompositeSurfaceProvider::ResolvedNodeTexture resolved;
+        if (targetNodeId.empty() || liveRoot_ == nullptr) {
+            return resolved;
+        }
+
+        auto* targetNode = liveRoot_->findById(targetNodeId);
+        if (targetNode == nullptr || targetNode->getStableId() == 0) {
+            return resolved;
+        }
+        if (targetNode->getStableId() == requestingNode.getStableId()) {
+            return resolved;
+        }
+        if (targetNode->getCustomSurfaceType() == "gpu_composite") {
+            return resolved;
+        }
+
+        resolved.textureHandle = prepareCustomSurfaceTexture(*targetNode, width, height, timeSeconds);
+        if (resolved.textureHandle != 0) {
+            if (!getVideoSurfaceInfo(targetNode->getStableId(), resolved.width, resolved.height, resolved.sequence)) {
+                resolved.width = width;
+                resolved.height = height;
+                resolved.sequence = 0;
+            }
         }
         return resolved;
     });
@@ -897,6 +932,8 @@ void ImGuiDirectHost::recalculateOwnedGpuBytes() {
     int64_t generatedDepthBytes = 0;
     int64_t shaderColorBytes = 0;
     int64_t shaderDepthBytes = 0;
+    int64_t compositeColorBytes = 0;
+    int64_t compositeDepthBytes = 0;
 
     if (videoSurfaceProvider_) {
         videoSurfaceProvider_->getOwnedGpuBytes(videoColorBytes, videoDepthBytes);
@@ -907,9 +944,12 @@ void ImGuiDirectHost::recalculateOwnedGpuBytes() {
     if (shaderSurfaceProvider_) {
         shaderSurfaceProvider_->getOwnedGpuBytes(shaderColorBytes, shaderDepthBytes);
     }
+    if (compositeSurfaceProvider_) {
+        compositeSurfaceProvider_->getOwnedGpuBytes(compositeColorBytes, compositeDepthBytes);
+    }
 
-    surfaceColorBytes_.store(videoColorBytes + generatedColorBytes + shaderColorBytes, std::memory_order_relaxed);
-    surfaceDepthBytes_.store(videoDepthBytes + generatedDepthBytes + shaderDepthBytes, std::memory_order_relaxed);
+    surfaceColorBytes_.store(videoColorBytes + generatedColorBytes + shaderColorBytes + compositeColorBytes, std::memory_order_relaxed);
+    surfaceDepthBytes_.store(videoDepthBytes + generatedDepthBytes + shaderDepthBytes + compositeDepthBytes, std::memory_order_relaxed);
 }
 
 std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& node,

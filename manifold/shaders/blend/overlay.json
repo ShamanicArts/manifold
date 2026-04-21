@@ -1,0 +1,12 @@
+{
+  "id": "overlay",
+  "name": "Overlay",
+  "category": "blend",
+  "effectCategory": "blendOp",
+  "description": "Overlay blend with strength, pivot, and contrast",
+  "params": [
+    { "id": "strength", "name": "Strength", "min": 0, "max": 2, "default": 1.0, "step": 0.01 },
+    { "id": "pivot", "name": "Pivot", "min": 0, "max": 1, "default": 0.5, "step": 0.01 },
+    { "id": "contrast", "name": "Contrast", "min": 0, "max": 2, "default": 1.0, "step": 0.01 }
+  ]
+}

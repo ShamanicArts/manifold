@@ -3,10 +3,11 @@ local M = {}
 local NUM_LAYERS = 4
 local NUM_PARAM_SLIDERS = 9
 local NUM_SOURCE_PARAM_SLIDERS = 4
+local NUM_BLEND_PARAM_SLIDERS = 4
 
 local STACK_CONFIG = {
-  a = { suffix = "", label = "A" },
-  b = { suffix = "B", label = "B" },
+  a = { suffix = "", label = "A", viewportId = "viewport", tapPrefix = "tapA" },
+  b = { suffix = "B", label = "B", viewportId = "viewportB", tapPrefix = "tapB" },
 }
 
 local STACK_ORDER = { "a", "b" }
@@ -139,6 +140,12 @@ local function stackState(ctx, stackKey)
   return ctx._stacks and ctx._stacks[stackKey] or nil
 end
 
+local function tapWidget(ctx, stackKey, layerIndex)
+  local cfg = STACK_CONFIG[stackKey]
+  if not cfg then return nil end
+  return ctx.widgets[cfg.tapPrefix .. tostring(layerIndex)]
+end
+
 local function describeDevice(device)
   if type(device) ~= "table" then
     return "<unknown>"
@@ -181,6 +188,17 @@ local function defaultSourceState()
   }
 end
 
+local function defaultCompositeState()
+  return {
+    bottomTarget = "a_stack",
+    topTarget = "b_stack",
+    blendOpId = "normal",
+    opacity = 1.0,
+    blendParams = {},
+    activeParamSpecs = {},
+  }
+end
+
 local function createStackState()
   local stack = {
     devices = {},
@@ -202,11 +220,7 @@ end
 local function defaultPersistedStack()
   local layers = {}
   for i = 1, NUM_LAYERS do
-    layers[i] = {
-      enabled = nil,
-      effectId = nil,
-      params = {},
-    }
+    layers[i] = { enabled = nil, effectId = nil, params = {} }
   end
   return {
     sourceKind = "webcam",
@@ -223,53 +237,18 @@ local function defaultPersistedStack()
   }
 end
 
-local function stackPrefix(stackKey)
-  return stackKey .. "."
-end
-
-local function parsePersistedIntoStack(target, key, value)
-  if key == "sourceKind" then target.sourceKind = value
-  elseif key == "sourceId" then target.sourceId = value
-  elseif key == "devicePath" then target.devicePath = value
-  elseif key == "width" then target.width = tonumber(value)
-  elseif key == "height" then target.height = tonumber(value)
-  elseif key == "fps" then target.fps = tonumber(value)
-  elseif key == "pixelFormat" then target.pixelFormat = value
-  elseif key == "activeLayer" then target.activeLayer = tonumber(value)
-  elseif key == "editorMode" then target.editorMode = value
-  else
-    local sourceParamId = key:match("^source%.param%.(.+)$")
-    if sourceParamId then
-      target.sourceParams[sourceParamId] = tonumber(value)
-      return
-    end
-
-    local layerIdx, field = key:match("^layer%.(%d+)%.([%w_]+)$")
-    if layerIdx and field then
-      local L = target.layers[tonumber(layerIdx)]
-      if L then
-        if field == "enabled" then L.enabled = (value == "true")
-        elseif field == "effectId" then L.effectId = value end
-      end
-      return
-    end
-
-    local li, effectId, paramId = key:match("^layer%.(%d+)%.param%.([^%.]+)%.(.+)$")
-    if li and effectId and paramId then
-      local L = target.layers[tonumber(li)]
-      if L then
-        L.params[effectId] = L.params[effectId] or {}
-        L.params[effectId][paramId] = tonumber(value)
-      end
-    end
-  end
-end
-
 local function loadPersistedState(ctx)
   ctx._persisted = {
     stacks = {
       a = defaultPersistedStack(),
       b = defaultPersistedStack(),
+    },
+    composite = {
+      bottomTarget = "a_stack",
+      topTarget = "b_stack",
+      blendOpId = "normal",
+      opacity = 1.0,
+      blendParams = {},
     }
   }
 
@@ -282,11 +261,54 @@ local function loadPersistedState(ctx)
   for line in tostring(raw):gmatch("[^\r\n]+") do
     local key, value = line:match("^([^=]+)=(.*)$")
     if key and value then
-      local prefixedStack, rest = key:match("^([ab])%.(.+)$")
-      if prefixedStack and rest then
-        parsePersistedIntoStack(ctx._persisted.stacks[prefixedStack], rest, value)
-      else
-        parsePersistedIntoStack(ctx._persisted.stacks.a, key, value)
+      local stackKey, rest = key:match("^([ab])%.(.+)$")
+      if stackKey and rest then
+        local target = ctx._persisted.stacks[stackKey]
+        if rest == "sourceKind" then target.sourceKind = value
+        elseif rest == "sourceId" then target.sourceId = value
+        elseif rest == "devicePath" then target.devicePath = value
+        elseif rest == "width" then target.width = tonumber(value)
+        elseif rest == "height" then target.height = tonumber(value)
+        elseif rest == "fps" then target.fps = tonumber(value)
+        elseif rest == "pixelFormat" then target.pixelFormat = value
+        elseif rest == "activeLayer" then target.activeLayer = tonumber(value)
+        elseif rest == "editorMode" then target.editorMode = value
+        else
+          local sourceParamId = rest:match("^source%.param%.(.+)$")
+          if sourceParamId then
+            target.sourceParams[sourceParamId] = tonumber(value)
+          else
+            local li, field = rest:match("^layer%.(%d+)%.([%w_]+)$")
+            if li and field then
+              local L = target.layers[tonumber(li)]
+              if L then
+                if field == "enabled" then L.enabled = (value == "true")
+                elseif field == "effectId" then L.effectId = value end
+              end
+            else
+              local lidx, effectId, paramId = rest:match("^layer%.(%d+)%.param%.([^%.]+)%.(.+)$")
+              if lidx and effectId and paramId then
+                local L = target.layers[tonumber(lidx)]
+                if L then
+                  L.params[effectId] = L.params[effectId] or {}
+                  L.params[effectId][paramId] = tonumber(value)
+                end
+              end
+            end
+          end
+        end
+      elseif key:match("^composite%.") then
+        local rest = key:sub(#("composite.") + 1)
+        if rest == "bottomTarget" then ctx._persisted.composite.bottomTarget = value
+        elseif rest == "topTarget" then ctx._persisted.composite.topTarget = value
+        elseif rest == "blendOpId" then ctx._persisted.composite.blendOpId = value
+        elseif rest == "opacity" then ctx._persisted.composite.opacity = tonumber(value)
+        else
+          local paramId = rest:match("^param%.(.+)$")
+          if paramId then
+            ctx._persisted.composite.blendParams[paramId] = tonumber(value)
+          end
+        end
       end
     end
   end
@@ -296,15 +318,13 @@ local function savePersistedState(ctx)
   local lines = {}
   for _, stackKey in ipairs(STACK_ORDER) do
     local stack = stackState(ctx, stackKey)
-    local prefix = stackPrefix(stackKey)
+    local prefix = stackKey .. "."
     lines[#lines + 1] = prefix .. "sourceKind=" .. tostring(stack.source.kind or "webcam")
     lines[#lines + 1] = prefix .. "sourceId=" .. tostring(stack.source.id or "webcam")
     lines[#lines + 1] = prefix .. "editorMode=" .. tostring(stack.editorMode or "source")
-
     for paramId, value in pairs(stack.source.params or {}) do
       lines[#lines + 1] = string.format("%ssource.param.%s=%s", prefix, tostring(paramId), tostring(value))
     end
-
     local device = stack.devices[stack.selectedDevice]
     local mode = stack.modes[stack.selectedMode]
     if type(device) == "table" and type(mode) == "table" then
@@ -314,7 +334,6 @@ local function savePersistedState(ctx)
       lines[#lines + 1] = prefix .. "fps=" .. tostring(mode.fps or 0)
       lines[#lines + 1] = prefix .. "pixelFormat=" .. tostring(mode.pixelFormat or "")
     end
-
     lines[#lines + 1] = prefix .. "activeLayer=" .. tostring(stack.activeLayer or 1)
     for i = 1, NUM_LAYERS do
       local L = stack.layers[i]
@@ -322,12 +341,20 @@ local function savePersistedState(ctx)
       lines[#lines + 1] = string.format("%slayer.%d.effectId=%s", prefix, i, tostring(L.effectId or "none"))
       for effectId, paramMap in pairs(L.params or {}) do
         if type(paramMap) == "table" then
-          for paramId, v in pairs(paramMap) do
-            lines[#lines + 1] = string.format("%slayer.%d.param.%s.%s=%s", prefix, i, tostring(effectId), tostring(paramId), tostring(v))
+          for paramId, value in pairs(paramMap) do
+            lines[#lines + 1] = string.format("%slayer.%d.param.%s.%s=%s", prefix, i, tostring(effectId), tostring(paramId), tostring(value))
           end
         end
       end
     end
+  end
+
+  lines[#lines + 1] = "composite.bottomTarget=" .. tostring(ctx._composite.bottomTarget or "a_stack")
+  lines[#lines + 1] = "composite.topTarget=" .. tostring(ctx._composite.topTarget or "b_stack")
+  lines[#lines + 1] = "composite.blendOpId=" .. tostring(ctx._composite.blendOpId or "normal")
+  lines[#lines + 1] = "composite.opacity=" .. tostring(ctx._composite.opacity or 1.0)
+  for paramId, value in pairs(ctx._composite.blendParams or {}) do
+    lines[#lines + 1] = string.format("composite.param.%s=%s", tostring(paramId), tostring(value))
   end
 
   if type(writeTextFile) == "function" then
@@ -342,6 +369,25 @@ local function findEffect(ctx, effectId)
     end
   end
   return nil, nil
+end
+
+local function findBlendOp(ctx, blendOpId)
+  for i = 1, #(ctx._blendOps or {}) do
+    if tostring(ctx._blendOps[i].id or "") == tostring(blendOpId) then
+      return ctx._blendOps[i], i
+    end
+  end
+  return nil, nil
+end
+
+local function findSourceChoice(ctx, kind, id)
+  for i = 1, #(ctx._sourceChoices or {}) do
+    local choice = ctx._sourceChoices[i]
+    if tostring(choice.kind) == tostring(kind) and tostring(choice.id) == tostring(id) then
+      return choice, i
+    end
+  end
+  return (ctx._sourceChoices and ctx._sourceChoices[1]) or WEBCAM_SOURCE, 1
 end
 
 local function ensureLayerEffectParams(ctx, stackKey, layer)
@@ -364,16 +410,6 @@ local function ensureLayerEffectParams(ctx, stackKey, layer)
   return store
 end
 
-local function findSourceChoice(ctx, kind, id)
-  for i = 1, #(ctx._sourceChoices or {}) do
-    local choice = ctx._sourceChoices[i]
-    if tostring(choice.kind) == tostring(kind) and tostring(choice.id) == tostring(id) then
-      return choice, i
-    end
-  end
-  return (ctx._sourceChoices and ctx._sourceChoices[1]) or WEBCAM_SOURCE, 1
-end
-
 local function ensureSourceParams(ctx, stackKey)
   local stack = stackState(ctx, stackKey)
   if not stack or stack.source.kind ~= "generator" then
@@ -390,47 +426,112 @@ local function ensureSourceParams(ctx, stackKey)
   return stack.source.params
 end
 
-local function buildSourceDescriptor(ctx, stackKey)
-  local stack = stackState(ctx, stackKey)
-  if not stack then
-    return { type = "webcam" }
+local function sanitizeParamMap(specList, params)
+  local out = {}
+  for i = 1, #(specList or {}) do
+    local spec = specList[i]
+    local value = params[spec.id]
+    if value == nil then value = tonumber(spec.default) or 0 end
+    out[spec.id] = clamp(value, tonumber(spec.min) or value, tonumber(spec.max) or value)
+  end
+  return out
+end
+
+local function applyPersistedState(ctx)
+  for _, stackKey in ipairs(STACK_ORDER) do
+    local stack = stackState(ctx, stackKey)
+    local persisted = ctx._persisted.stacks[stackKey]
+    stack.source.kind = tostring(persisted.sourceKind or "webcam")
+    stack.source.id = tostring(persisted.sourceId or "webcam")
+    stack.source.params = {}
+    for paramId, value in pairs(persisted.sourceParams or {}) do
+      stack.source.params[paramId] = value
+    end
+    stack.editorMode = (persisted.editorMode == "fx") and "fx" or "source"
+    for i = 1, NUM_LAYERS do
+      local L = stack.layers[i]
+      local P = persisted.layers[i]
+      if type(P) == "table" then
+        if P.enabled ~= nil then L.enabled = P.enabled end
+        if P.effectId ~= nil then L.effectId = P.effectId end
+        if type(P.params) == "table" then
+          for effectId, paramMap in pairs(P.params) do
+            L.params[effectId] = L.params[effectId] or {}
+            for paramId, v in pairs(paramMap) do
+              L.params[effectId][paramId] = v
+            end
+          end
+        end
+      end
+    end
+    stack.activeLayer = tonumber(persisted.activeLayer) or 1
+    if stack.activeLayer < 1 or stack.activeLayer > NUM_LAYERS then stack.activeLayer = 1 end
   end
 
-  if stack.source.kind == "generator" then
-    local params = ensureSourceParams(ctx, stackKey)
-    local copy = {}
-    for k, v in pairs(params) do copy[k] = v end
-    return {
-      type = "generator",
-      sourceId = stack.source.id,
-      params = copy,
-    }
+  ctx._composite.bottomTarget = tostring(ctx._persisted.composite.bottomTarget or "a_stack")
+  ctx._composite.topTarget = tostring(ctx._persisted.composite.topTarget or "b_stack")
+  ctx._composite.blendOpId = tostring(ctx._persisted.composite.blendOpId or "normal")
+  ctx._composite.opacity = clamp(ctx._persisted.composite.opacity or 1.0, 0.0, 1.0)
+  ctx._composite.blendParams = {}
+  for paramId, value in pairs(ctx._persisted.composite.blendParams or {}) do
+    ctx._composite.blendParams[paramId] = value
   end
+end
 
+local function compositeTargets(ctx)
   return {
-    type = "webcam",
+    { id = "a_stack", name = "A Stack", nodeId = "viewport" },
+    { id = "a_l1", name = "A L1", nodeId = "tapA1" },
+    { id = "a_l2", name = "A L2", nodeId = "tapA2" },
+    { id = "a_l3", name = "A L3", nodeId = "tapA3" },
+    { id = "a_l4", name = "A L4", nodeId = "tapA4" },
+    { id = "b_stack", name = "B Stack", nodeId = "viewportB" },
+    { id = "b_l1", name = "B L1", nodeId = "tapB1" },
+    { id = "b_l2", name = "B L2", nodeId = "tapB2" },
+    { id = "b_l3", name = "B L3", nodeId = "tapB3" },
+    { id = "b_l4", name = "B L4", nodeId = "tapB4" },
   }
 end
 
-local function buildLayerPayloadList(ctx, stackKey)
+local function resolveCompositeTargetNodeId(ctx, targetId)
+  for _, target in ipairs(ctx._compositeTargets or {}) do
+    if target.id == targetId then
+      return target.nodeId
+    end
+  end
+  return ""
+end
+
+local function buildSourceDescriptor(ctx, stackKey)
+  local stack = stackState(ctx, stackKey)
+  if not stack then return { type = "webcam" } end
+  if stack.source.kind == "generator" then
+    local choice = findSourceChoice(ctx, stack.source.kind, stack.source.id)
+    local params = sanitizeParamMap(choice.params or {}, ensureSourceParams(ctx, stackKey))
+    return {
+      type = "generator",
+      sourceId = stack.source.id,
+      params = params,
+    }
+  end
+  return { type = "webcam" }
+end
+
+local function buildLayerPayloadList(ctx, stackKey, maxLayer)
   local stack = stackState(ctx, stackKey)
   local list = {}
-  if not stack then
-    return list
-  end
-
-  for i = 1, NUM_LAYERS do
+  if not stack then return list end
+  local lastLayer = maxLayer or NUM_LAYERS
+  for i = 1, lastLayer do
     local L = stack.layers[i]
     if L and L.enabled then
       local effect = findEffect(ctx, L.effectId)
       if type(effect) == "table" then
         local paramStore = ensureLayerEffectParams(ctx, stackKey, L)
-        local paramsCopy = {}
-        for k, v in pairs(paramStore) do paramsCopy[k] = v end
         list[#list + 1] = {
           enabled = true,
           effectId = effect.id,
-          params = paramsCopy,
+          params = sanitizeParamMap(effect.params or {}, paramStore),
         }
       end
     end
@@ -438,98 +539,141 @@ local function buildLayerPayloadList(ctx, stackKey)
   return list
 end
 
-local function setViewportSurface(ctx, stackKey)
-  local viewport = stackWidget(ctx, stackKey, "viewport")
-  if not viewport or not viewport.node then
-    return
-  end
-
+local function setNodeSurfaceWithPipeline(ctx, widget, stackKey, maxLayer)
+  if not widget or not widget.node then return end
   if shaders and shaders.buildPipeline then
-    local layers = buildLayerPayloadList(ctx, stackKey)
+    local layers = buildLayerPayloadList(ctx, stackKey, maxLayer)
     local source = buildSourceDescriptor(ctx, stackKey)
     local ok, payload = pcall(shaders.buildPipeline, layers, "contain", source)
     if ok and payload ~= nil then
-      viewport.node:setCustomSurface("gpu_shader", payload)
+      widget.node:setCustomSurface("gpu_shader", payload)
       return
     end
   end
+  widget.node:setCustomSurface("video_input", { version = 1, fitMode = "contain" })
+end
 
-  viewport.node:setCustomSurface("video_input", {
+local function syncCompositeControls(ctx)
+  local bottomLabels = {}
+  local topLabels = {}
+  local bottomSelected = 1
+  local topSelected = 1
+  for i, target in ipairs(ctx._compositeTargets or {}) do
+    bottomLabels[i] = target.name
+    topLabels[i] = target.name
+    if target.id == ctx._composite.bottomTarget then bottomSelected = i end
+    if target.id == ctx._composite.topTarget then topSelected = i end
+  end
+  setOptions(ctx.widgets.compositeBottomSelect, bottomLabels)
+  setSelected(ctx.widgets.compositeBottomSelect, bottomSelected)
+  setOptions(ctx.widgets.compositeTopSelect, topLabels)
+  setSelected(ctx.widgets.compositeTopSelect, topSelected)
+
+  local blendLabels = {}
+  local blendSelected = 1
+  local blendOp = nil
+  for i, op in ipairs(ctx._blendOps or {}) do
+    blendLabels[i] = describeEffect(op)
+    if tostring(op.id or "") == tostring(ctx._composite.blendOpId) then
+      blendSelected = i
+      blendOp = op
+    end
+  end
+  if not blendOp and #((ctx._blendOps) or {}) > 0 then
+    blendOp = ctx._blendOps[1]
+    ctx._composite.blendOpId = blendOp.id
+  end
+  setOptions(ctx.widgets.compositeBlendSelect, blendLabels)
+  setSelected(ctx.widgets.compositeBlendSelect, blendSelected)
+  setText(ctx.widgets.compositeBlendDescription, blendOp and tostring(blendOp.description or "") or "")
+
+  if ctx.widgets.compositeOpacity and ctx.widgets.compositeOpacity.setValue then
+    ctx.widgets.compositeOpacity:setValue(ctx._composite.opacity or 1.0)
+  end
+
+  local paramSpecs = {}
+  for _, spec in ipairs((blendOp and blendOp.params) or {}) do
+    if tostring(spec.id or "") ~= "opacity" then
+      paramSpecs[#paramSpecs + 1] = spec
+    end
+  end
+  ctx._composite.activeParamSpecs = paramSpecs
+  local sanitized = sanitizeParamMap(paramSpecs, ctx._composite.blendParams or {})
+  ctx._composite.blendParams = sanitized
+
+  for i = 1, NUM_BLEND_PARAM_SLIDERS do
+    local slider = ctx.widgets["compositeParam" .. tostring(i)]
+    local spec = paramSpecs[i]
+    if type(spec) == "table" then
+      slider._min = tonumber(spec.min) or 0
+      slider._max = tonumber(spec.max) or 1
+      slider._step = tonumber(spec.step) or 0.01
+      slider._defaultValue = tonumber(spec.default) or slider._min
+      if slider.setLabel then slider:setLabel(spec.name or spec.id or ("Blend Param " .. tostring(i))) end
+      if slider.setValueFormatter then
+        slider:setValueFormatter(function(value)
+          local unit = tostring(spec.unit or "")
+          local num = tonumber(value) or 0
+          return string.format("%.3f%s", num, unit)
+        end)
+      end
+      setVisible(slider, true)
+      if slider.setValue then slider:setValue(sanitized[spec.id] or slider._defaultValue) end
+    else
+      setVisible(slider, false)
+    end
+  end
+end
+
+local function setCompositeSurface(ctx)
+  local viewport = ctx.widgets.compositeViewport
+  if not viewport or not viewport.node then return end
+  local payload = {
     version = 1,
+    kind = "compositeQuad",
     fitMode = "contain",
-  })
+    bottomNodeId = resolveCompositeTargetNodeId(ctx, ctx._composite.bottomTarget),
+    topNodeId = resolveCompositeTargetNodeId(ctx, ctx._composite.topTarget),
+    blendOpId = ctx._composite.blendOpId or "normal",
+    opacity = ctx._composite.opacity or 1.0,
+    blendParams = ctx._composite.blendParams or {},
+  }
+  viewport.node:setCustomSurface("gpu_composite", payload)
 end
 
-local function valueFormatter(spec)
-  return function(value)
-    if not spec then
-      return tostring(value)
-    end
-    local unit = tostring(spec.unit or "")
-    local num = tonumber(value) or 0
-    if math.abs((tonumber(spec.step) or 0) - 1.0) < 0.0001 then
-      return string.format("%.0f%s", num, unit)
-    end
-    if math.abs(num) >= 10 then
-      return string.format("%.1f%s", num, unit)
-    end
-    return string.format("%.3f%s", num, unit)
+local function updateStackSurfaces(ctx, stackKey)
+  setNodeSurfaceWithPipeline(ctx, stackWidget(ctx, stackKey, "viewport"), stackKey, NUM_LAYERS)
+  for i = 1, NUM_LAYERS do
+    setNodeSurfaceWithPipeline(ctx, tapWidget(ctx, stackKey, i), stackKey, i)
   end
+  setCompositeSurface(ctx)
 end
 
-local function configureSlider(slider, spec, value)
-  if not slider then return end
-  if type(spec) ~= "table" then
-    setVisible(slider, false)
-    return
-  end
-
-  slider._min = tonumber(spec.min) or 0
-  slider._max = tonumber(spec.max) or 1
-  slider._step = tonumber(spec.step) or 0.01
-  slider._defaultValue = tonumber(spec.default) or slider._min
-  if slider.setLabel then slider:setLabel(spec.name or spec.id or "Param") end
-  if slider.setValueFormatter then slider:setValueFormatter(valueFormatter(spec)) end
-  setVisible(slider, true)
-  if slider.setValue then slider:setValue(tonumber(value) or slider._defaultValue) end
-end
-
-local function updateFrameInfo(ctx, stackKey)
-  local widget = stackWidget(ctx, stackKey, "frameInfo")
+local function syncLayerTabLabels(ctx, stackKey)
+  local tabs = stackWidget(ctx, stackKey, "layerTabs")
   local stack = stackState(ctx, stackKey)
-  if not widget or not stack then return end
-
-  if stack.source.kind ~= "webcam" then
-    setText(widget, "Frame: generator")
-    return
+  if not tabs or not stack then return end
+  local labels = {}
+  for i = 1, NUM_LAYERS do
+    local L = stack.layers[i]
+    local marker = (L and L.enabled) and "•" or " "
+    labels[i] = string.format("L%d %s", i, marker)
   end
-
-  local info = (capture and capture.getFrameInfo and capture.getFrameInfo()) or nil
-  if type(info) == "table" and info.valid then
-    setText(widget,
-      string.format("Frame: %dx%d  seq=%d  device=%d",
-        tonumber(info.width) or 0,
-        tonumber(info.height) or 0,
-        tonumber(info.sequence) or 0,
-        tonumber(info.activeDeviceIndex) or -1))
-  else
-    setText(widget, "Frame: --")
-  end
+  if tabs.setSegments then tabs:setSegments(labels) end
+  if tabs.setOptions then tabs:setOptions(labels) end
+  setSelected(tabs, stack.activeLayer or 1)
 end
 
 local function syncEditorMode(ctx, stackKey)
   local stack = stackState(ctx, stackKey)
   if not stack then return end
-
   local sourceVisible = stack.editorMode == "source"
   local fxVisible = not sourceVisible
-  local isWebcam = stack.source.kind == "webcam"
   local selectedSource = findSourceChoice(ctx, stack.source.kind, stack.source.id)
+  local isWebcam = stack.source.kind == "webcam"
 
   local tabs = stackWidget(ctx, stackKey, "editorModeTabs")
-  if tabs then
-    setSelected(tabs, sourceVisible and 1 or 2)
-  end
+  if tabs then setSelected(tabs, sourceVisible and 1 or 2) end
 
   setVisible(stackWidget(ctx, stackKey, "sourceTitle"), sourceVisible)
   setVisible(stackWidget(ctx, stackKey, "sourceSelect"), sourceVisible)
@@ -539,8 +683,7 @@ local function syncEditorMode(ctx, stackKey)
   setVisible(stackWidget(ctx, stackKey, "refreshBtn"), sourceVisible and isWebcam)
   setVisible(stackWidget(ctx, stackKey, "openBtn"), sourceVisible and isWebcam)
   setVisible(stackWidget(ctx, stackKey, "closeBtn"), sourceVisible and isWebcam)
-  setVisible(stackWidget(ctx, stackKey, "frameInfo"), sourceVisible and isWebcam)
-
+  setVisible(stackWidget(ctx, stackKey, "frameInfo"), sourceVisible)
   for i = 1, NUM_SOURCE_PARAM_SLIDERS do
     local slider = stackWidget(ctx, stackKey, "sourceParam" .. tostring(i))
     local spec = selectedSource and selectedSource.params and selectedSource.params[i] or nil
@@ -553,7 +696,6 @@ local function syncEditorMode(ctx, stackKey)
   setVisible(stackWidget(ctx, stackKey, "clearLayerBtn"), fxVisible)
   setVisible(stackWidget(ctx, stackKey, "effectSelect"), fxVisible)
   setVisible(stackWidget(ctx, stackKey, "layerDescription"), fxVisible)
-
   for i = 1, NUM_PARAM_SLIDERS do
     local slider = stackWidget(ctx, stackKey, "fxParam" .. tostring(i))
     local spec = stack.activeParamSpecs and stack.activeParamSpecs[i] or nil
@@ -561,35 +703,60 @@ local function syncEditorMode(ctx, stackKey)
   end
 end
 
-local function syncLayerTabLabels(ctx, stackKey)
-  local tabs = stackWidget(ctx, stackKey, "layerTabs")
+local function syncSourceControls(ctx, stackKey)
   local stack = stackState(ctx, stackKey)
-  if not tabs or not stack then return end
-
+  if not stack then return end
   local labels = {}
-  for i = 1, NUM_LAYERS do
-    local L = stack.layers[i]
-    local marker = (L and L.enabled) and "•" or " "
-    labels[i] = string.format("L%d %s", i, marker)
+  local selectedIndex = 1
+  local selectedSource = nil
+  for i, choice in ipairs(ctx._sourceChoices or {}) do
+    labels[i] = tostring(choice.name or choice.id or "Source")
+    if tostring(choice.kind) == tostring(stack.source.kind) and tostring(choice.id) == tostring(stack.source.id) then
+      selectedIndex = i
+      selectedSource = choice
+    end
   end
-  if tabs.setSegments then tabs:setSegments(labels) end
-  if tabs.setOptions then tabs:setOptions(labels) end
-  setSelected(tabs, stack.activeLayer or 1)
+  if not selectedSource then selectedSource = (ctx._sourceChoices and ctx._sourceChoices[1]) or WEBCAM_SOURCE end
+
+  setOptions(stackWidget(ctx, stackKey, "sourceSelect"), labels)
+  setSelected(stackWidget(ctx, stackKey, "sourceSelect"), selectedIndex)
+  setText(stackWidget(ctx, stackKey, "sourceDescription"), tostring(selectedSource.description or ""))
+  setText(stackWidget(ctx, stackKey, "viewportTitle"), string.format("%s Preview", tostring(selectedSource.name or "Source")))
+
+  local sourceParams = ensureSourceParams(ctx, stackKey)
+  for i = 1, NUM_SOURCE_PARAM_SLIDERS do
+    local slider = stackWidget(ctx, stackKey, "sourceParam" .. tostring(i))
+    local spec = selectedSource.params and selectedSource.params[i] or nil
+    if type(spec) == "table" then
+      slider._min = tonumber(spec.min) or 0
+      slider._max = tonumber(spec.max) or 1
+      slider._step = tonumber(spec.step) or 0.01
+      slider._defaultValue = tonumber(spec.default) or slider._min
+      if slider.setLabel then slider:setLabel(spec.name or spec.id or ("Source Param " .. tostring(i))) end
+      if slider.setValueFormatter then
+        slider:setValueFormatter(function(value)
+          local unit = tostring(spec.unit or "")
+          local num = tonumber(value) or 0
+          return string.format("%.3f%s", num, unit)
+        end)
+      end
+      if slider.setValue then slider:setValue(sourceParams[spec.id] or slider._defaultValue) end
+    end
+  end
+
+  syncEditorMode(ctx, stackKey)
 end
 
 local function syncLayerControls(ctx, stackKey)
   local stack = stackState(ctx, stackKey)
   if not stack then return end
-
   local layer = stack.layers[stack.activeLayer] or stack.layers[1]
 
   local labels = {}
   local effectIndex = 1
-  for i = 1, #(ctx._effects or {}) do
-    labels[i] = describeEffect(ctx._effects[i])
-    if tostring(ctx._effects[i].id or "") == tostring(layer.effectId) then
-      effectIndex = i
-    end
+  for i, effect in ipairs(ctx._effects or {}) do
+    labels[i] = describeEffect(effect)
+    if tostring(effect.id or "") == tostring(layer.effectId) then effectIndex = i end
   end
   if #labels == 0 then labels[1] = "Passthrough" end
   setOptions(stackWidget(ctx, stackKey, "effectSelect"), labels)
@@ -597,11 +764,8 @@ local function syncLayerControls(ctx, stackKey)
 
   local enabledBtn = stackWidget(ctx, stackKey, "layerEnabledBtn")
   if enabledBtn then
-    if enabledBtn.setLabel then
-      enabledBtn:setLabel(layer.enabled and "On" or "Off")
-    elseif enabledBtn.setText then
-      enabledBtn:setText(layer.enabled and "On" or "Off")
-    end
+    if enabledBtn.setLabel then enabledBtn:setLabel(layer.enabled and "On" or "Off")
+    elseif enabledBtn.setText then enabledBtn:setText(layer.enabled and "On" or "Off") end
   end
 
   local effect = findEffect(ctx, layer.effectId)
@@ -621,95 +785,25 @@ local function syncLayerControls(ctx, stackKey)
     local slider = stackWidget(ctx, stackKey, "fxParam" .. tostring(i))
     local spec = (type(effect) == "table" and effect.params and effect.params[i]) or nil
     stack.activeParamSpecs[i] = spec
-    configureSlider(slider, spec, spec and paramStore[spec.id] or nil)
+    if type(spec) == "table" then
+      slider._min = tonumber(spec.min) or 0
+      slider._max = tonumber(spec.max) or 1
+      slider._step = tonumber(spec.step) or 0.01
+      slider._defaultValue = tonumber(spec.default) or slider._min
+      if slider.setLabel then slider:setLabel(spec.name or spec.id or ("Param " .. tostring(i))) end
+      if slider.setValueFormatter then
+        slider:setValueFormatter(function(value)
+          local unit = tostring(spec.unit or "")
+          local num = tonumber(value) or 0
+          return string.format("%.3f%s", num, unit)
+        end)
+      end
+      if slider.setValue then slider:setValue(paramStore[spec.id] or slider._defaultValue) end
+    end
   end
 
   syncLayerTabLabels(ctx, stackKey)
   syncEditorMode(ctx, stackKey)
-end
-
-local function syncSourceControls(ctx, stackKey)
-  local stack = stackState(ctx, stackKey)
-  if not stack then return end
-
-  local labels = {}
-  local selectedIndex = 1
-  local selectedSource = nil
-  for i = 1, #(ctx._sourceChoices or {}) do
-    local choice = ctx._sourceChoices[i]
-    labels[i] = tostring(choice.name or choice.id or "Source")
-    if tostring(choice.kind) == tostring(stack.source.kind) and tostring(choice.id) == tostring(stack.source.id) then
-      selectedIndex = i
-      selectedSource = choice
-    end
-  end
-  if not selectedSource then
-    selectedSource = (ctx._sourceChoices and ctx._sourceChoices[1]) or WEBCAM_SOURCE
-  end
-
-  setOptions(stackWidget(ctx, stackKey, "sourceSelect"), labels)
-  setSelected(stackWidget(ctx, stackKey, "sourceSelect"), selectedIndex)
-  setText(stackWidget(ctx, stackKey, "sourceDescription"), tostring(selectedSource.description or ""))
-  setText(stackWidget(ctx, stackKey, "viewportTitle"), string.format("%s Preview", tostring(selectedSource.name or "Source")))
-
-  local sourceParams = ensureSourceParams(ctx, stackKey)
-  for i = 1, NUM_SOURCE_PARAM_SLIDERS do
-    local slider = stackWidget(ctx, stackKey, "sourceParam" .. tostring(i))
-    local spec = (selectedSource.params and selectedSource.params[i]) or nil
-    configureSlider(slider, spec, spec and sourceParams[spec.id] or nil)
-  end
-
-  updateFrameInfo(ctx, stackKey)
-  syncEditorMode(ctx, stackKey)
-end
-
-local function rebuildLayerDefaults(ctx, stackKey)
-  local stack = stackState(ctx, stackKey)
-  if not stack then return end
-  for i = 1, NUM_LAYERS do
-    local L = stack.layers[i]
-    local effect = findEffect(ctx, L.effectId)
-    if type(effect) ~= "table" then
-      L.effectId = "none"
-    end
-    ensureLayerEffectParams(ctx, stackKey, L)
-  end
-end
-
-local function applyPersistedState(ctx)
-  for _, stackKey in ipairs(STACK_ORDER) do
-    local stack = stackState(ctx, stackKey)
-    local persisted = ctx._persisted.stacks[stackKey]
-    stack.source.kind = tostring(persisted.sourceKind or "webcam")
-    stack.source.id = tostring(persisted.sourceId or "webcam")
-    stack.source.params = {}
-    for paramId, value in pairs(persisted.sourceParams or {}) do
-      stack.source.params[paramId] = value
-    end
-    stack.editorMode = (persisted.editorMode == "fx") and "fx" or "source"
-
-    for i = 1, NUM_LAYERS do
-      local L = stack.layers[i]
-      local P = persisted.layers[i]
-      if type(P) == "table" then
-        if P.enabled ~= nil then L.enabled = P.enabled end
-        if P.effectId ~= nil then L.effectId = P.effectId end
-        if type(P.params) == "table" then
-          for effectId, paramMap in pairs(P.params) do
-            L.params[effectId] = L.params[effectId] or {}
-            for paramId, v in pairs(paramMap) do
-              L.params[effectId][paramId] = v
-            end
-          end
-        end
-      end
-    end
-
-    stack.activeLayer = tonumber(persisted.activeLayer) or 1
-    if stack.activeLayer < 1 or stack.activeLayer > NUM_LAYERS then
-      stack.activeLayer = 1
-    end
-  end
 end
 
 local function refreshSourceRegistry(ctx)
@@ -726,13 +820,10 @@ local function refreshSourceRegistry(ctx)
       params = src.params or {},
     }
   end
-
   for _, stackKey in ipairs(STACK_ORDER) do
     local stack = stackState(ctx, stackKey)
     local choice = findSourceChoice(ctx, stack.source.kind, stack.source.id)
-    if not choice then
-      stack.source = defaultSourceState()
-    end
+    if not choice then stack.source = defaultSourceState() end
     ensureSourceParams(ctx, stackKey)
     syncSourceControls(ctx, stackKey)
   end
@@ -741,26 +832,39 @@ end
 local function refreshEffects(ctx)
   ctx._effects = (shaders and shaders.listEffects and shaders.listEffects()) or {}
   if #ctx._effects == 0 then
-    ctx._effects = {
-      { id = "none", name = "Passthrough", category = "utility", description = "Dry source feed", params = {} }
-    }
+    ctx._effects = { { id = "none", name = "Passthrough", category = "utility", description = "Dry source feed", params = {} } }
   end
-
   for _, stackKey in ipairs(STACK_ORDER) do
-    rebuildLayerDefaults(ctx, stackKey)
+    local stack = stackState(ctx, stackKey)
+    for i = 1, NUM_LAYERS do
+      local L = stack.layers[i]
+      local effect = findEffect(ctx, L.effectId)
+      if type(effect) ~= "table" then L.effectId = "none" end
+      ensureLayerEffectParams(ctx, stackKey, L)
+    end
     syncLayerControls(ctx, stackKey)
-    setViewportSurface(ctx, stackKey)
+    updateStackSurfaces(ctx, stackKey)
   end
+end
+
+local function refreshBlendOps(ctx)
+  ctx._blendOps = (shaders and shaders.listBlendOps and shaders.listBlendOps()) or {}
+  if #ctx._blendOps == 0 then
+    ctx._blendOps = { { id = "normal", name = "Normal", category = "blend", description = "Standard blend", params = {} } }
+  end
+  local found = findBlendOp(ctx, ctx._composite.blendOpId)
+  if not found then
+    ctx._composite.blendOpId = ctx._blendOps[1].id
+  end
+  syncCompositeControls(ctx)
+  setCompositeSurface(ctx)
 end
 
 local function syncModeOptions(ctx, stackKey)
   local stack = stackState(ctx, stackKey)
   if not stack then return end
-
   local labels = {}
-  for i = 1, #(stack.modes or {}) do
-    labels[i] = describeMode(stack.modes[i])
-  end
+  for i = 1, #(stack.modes or {}) do labels[i] = describeMode(stack.modes[i]) end
   if #labels == 0 then labels[1] = "No modes found" end
 
   local selectedIndex = (#stack.modes > 0) and 1 or nil
@@ -777,7 +881,6 @@ local function syncModeOptions(ctx, stackKey)
       end
     end
   end
-
   setOptions(stackWidget(ctx, stackKey, "modeSelect"), labels)
   setSelected(stackWidget(ctx, stackKey, "modeSelect"), selectedIndex or 1)
   stack.selectedMode = selectedIndex
@@ -788,114 +891,27 @@ local function refreshModes(ctx, stackKey, deviceListIndex)
   if not stack then return end
   stack.selectedDevice = deviceListIndex
   stack.modes = {}
-
   local device = stack.devices[deviceListIndex]
   if type(device) ~= "table" then
     syncModeOptions(ctx, stackKey)
     return
   end
-
   if capture and capture.listModes then
     stack.modes = capture.listModes(tonumber(device.index) or -1) or {}
   end
   syncModeOptions(ctx, stackKey)
 end
 
-local function layerSummary(ctx, stackKey)
-  local stack = stackState(ctx, stackKey)
-  if not stack then return "Passthrough" end
-
-  local names = {}
-  for i = 1, NUM_LAYERS do
-    local L = stack.layers[i]
-    if L and L.enabled then
-      local effect = findEffect(ctx, L.effectId)
-      names[#names + 1] = string.format("L%d:%s", i, describeEffect(effect))
-    end
-  end
-  if #names == 0 then return "Passthrough" end
-  return table.concat(names, " -> ")
-end
-
-local function stackSummary(ctx, stackKey)
-  local stack = stackState(ctx, stackKey)
-  local cfg = STACK_CONFIG[stackKey]
-  if not stack then return "" end
-
-  if stack.source.kind == "generator" then
-    local choice = findSourceChoice(ctx, stack.source.kind, stack.source.id)
-    return string.format("%s:%s • FX:%s", cfg.label, tostring(choice.name or stack.source.id), layerSummary(ctx, stackKey))
-  end
-
-  local device = stack.devices[stack.selectedDevice]
-  local mode = stack.modes[stack.selectedMode]
-  if capture and capture.isOpen and capture.isOpen() then
-    if type(device) == "table" and type(mode) == "table" then
-      return string.format("%s:%s / %s • FX:%s", cfg.label, describeDevice(device), describeMode(mode), layerSummary(ctx, stackKey))
-    end
-    return string.format("%s:webcam active • FX:%s", cfg.label, layerSummary(ctx, stackKey))
-  end
-
-  return string.format("%s:webcam idle • FX:%s", cfg.label, layerSummary(ctx, stackKey))
-end
-
-local function syncGlobalStatus(ctx)
-  setText(ctx.widgets.status, stackSummary(ctx, "a") .. "   |   " .. stackSummary(ctx, "b"))
-  setText(ctx.widgets.compositeStatus, "Composite stack placeholder — A and B are now full editors with complete parameter visibility.")
-end
-
-local function openCurrentSelection(ctx, stackKey)
-  local stack = stackState(ctx, stackKey)
-  if not stack then return false end
-
-  if stack.source.kind ~= "webcam" then
-    setViewportSurface(ctx, stackKey)
-    savePersistedState(ctx)
-    syncGlobalStatus(ctx)
-    return true
-  end
-
-  local device = stack.devices[stack.selectedDevice]
-  local mode = stack.modes[stack.selectedMode]
-  if type(device) ~= "table" or type(mode) ~= "table" then
-    syncGlobalStatus(ctx)
-    return false
-  end
-
-  local ok = false
-  if capture and capture.open then
-    ok = capture.open(tonumber(device.index) or 0,
-                      tonumber(mode.width) or 640,
-                      tonumber(mode.height) or 480,
-                      tonumber(mode.fps) or 30)
-  end
-
-  if ok then
-    setViewportSurface(ctx, "a")
-    setViewportSurface(ctx, "b")
-    savePersistedState(ctx)
-    syncGlobalStatus(ctx)
-    return true
-  end
-
-  syncGlobalStatus(ctx)
-  return false
-end
-
 local function refreshDevices(ctx, stackKey)
   local stack = stackState(ctx, stackKey)
   if not stack then return end
-
   local devices = {}
   if stack.source.kind == "webcam" and capture and capture.listDevices then
     devices = capture.listDevices() or {}
   end
-
   stack.devices = devices
   local labels = {}
-  for i = 1, #devices do
-    labels[i] = describeDevice(devices[i])
-  end
+  for i = 1, #devices do labels[i] = describeDevice(devices[i]) end
   if #labels == 0 then labels[1] = "No devices found" end
 
   local selectedIndex = (#devices > 0) and 1 or nil
@@ -916,28 +932,108 @@ local function refreshDevices(ctx, stackKey)
     stack.selectedDevice = nil
     stack.modes = {}
     syncModeOptions(ctx, stackKey)
-    updateFrameInfo(ctx, stackKey)
-    syncGlobalStatus(ctx)
     return
   end
-
   refreshModes(ctx, stackKey, selectedIndex or 1)
-  if #stack.modes > 0 and stack.source.kind == "webcam" then
-    openCurrentSelection(ctx, stackKey)
+end
+
+local function updateFrameInfo(ctx, stackKey)
+  local widget = stackWidget(ctx, stackKey, "frameInfo")
+  local stack = stackState(ctx, stackKey)
+  if not widget or not stack then return end
+  if stack.source.kind ~= "webcam" then
+    setText(widget, "Frame: generator")
+    return
   end
+  local info = (capture and capture.getFrameInfo and capture.getFrameInfo()) or nil
+  if type(info) == "table" and info.valid then
+    setText(widget, string.format("Frame: %dx%d  seq=%d  device=%d", tonumber(info.width) or 0, tonumber(info.height) or 0, tonumber(info.sequence) or 0, tonumber(info.activeDeviceIndex) or -1))
+  else
+    setText(widget, "Frame: --")
+  end
+end
+
+local function layerSummary(ctx, stackKey)
+  local stack = stackState(ctx, stackKey)
+  if not stack then return "Passthrough" end
+  local names = {}
+  for i = 1, NUM_LAYERS do
+    local L = stack.layers[i]
+    if L and L.enabled then
+      local effect = findEffect(ctx, L.effectId)
+      names[#names + 1] = string.format("L%d:%s", i, describeEffect(effect))
+    end
+  end
+  if #names == 0 then return "Passthrough" end
+  return table.concat(names, " -> ")
+end
+
+local function stackSummary(ctx, stackKey)
+  local stack = stackState(ctx, stackKey)
+  local cfg = STACK_CONFIG[stackKey]
+  if not stack then return "" end
+  if stack.source.kind == "generator" then
+    local choice = findSourceChoice(ctx, stack.source.kind, stack.source.id)
+    return string.format("%s:%s • FX:%s", cfg.label, tostring(choice.name or stack.source.id), layerSummary(ctx, stackKey))
+  end
+  local device = stack.devices[stack.selectedDevice]
+  local mode = stack.modes[stack.selectedMode]
+  if capture and capture.isOpen and capture.isOpen() then
+    if type(device) == "table" and type(mode) == "table" then
+      return string.format("%s:%s / %s • FX:%s", cfg.label, describeDevice(device), describeMode(mode), layerSummary(ctx, stackKey))
+    end
+    return string.format("%s:webcam active • FX:%s", cfg.label, layerSummary(ctx, stackKey))
+  end
+  return string.format("%s:webcam idle • FX:%s", cfg.label, layerSummary(ctx, stackKey))
+end
+
+local function syncGlobalStatus(ctx)
+  setText(ctx.widgets.status, stackSummary(ctx, "a") .. "   |   " .. stackSummary(ctx, "b"))
+  local blendOp = findBlendOp(ctx, ctx._composite.blendOpId)
+  setText(ctx.widgets.compositeStatus, string.format("Main Out: %s over %s via %s", tostring(ctx._composite.topTarget or "top"), tostring(ctx._composite.bottomTarget or "bottom"), tostring((blendOp and blendOp.name) or ctx._composite.blendOpId or "normal")))
+end
+
+local function openCurrentSelection(ctx, stackKey)
+  local stack = stackState(ctx, stackKey)
+  if not stack then return false end
+  if stack.source.kind ~= "webcam" then
+    updateStackSurfaces(ctx, stackKey)
+    savePersistedState(ctx)
+    syncGlobalStatus(ctx)
+    return true
+  end
+  local device = stack.devices[stack.selectedDevice]
+  local mode = stack.modes[stack.selectedMode]
+  if type(device) ~= "table" or type(mode) ~= "table" then
+    syncGlobalStatus(ctx)
+    return false
+  end
+  local ok = false
+  if capture and capture.open then
+    ok = capture.open(tonumber(device.index) or 0,
+                      tonumber(mode.width) or 640,
+                      tonumber(mode.height) or 480,
+                      tonumber(mode.fps) or 30)
+  end
+  if ok then
+    updateStackSurfaces(ctx, "a")
+    updateStackSurfaces(ctx, "b")
+    savePersistedState(ctx)
+    syncGlobalStatus(ctx)
+    return true
+  end
+  syncGlobalStatus(ctx)
+  return false
 end
 
 local function setSelectedSource(ctx, stackKey, selectedIndex)
   local stack = stackState(ctx, stackKey)
   if not stack then return end
-
   local choice = ctx._sourceChoices and ctx._sourceChoices[selectedIndex] or WEBCAM_SOURCE
   if not choice then return end
-
   if stack.source.kind == "webcam" and choice.kind ~= "webcam" and capture and capture.close then
     capture.close()
   end
-
   stack.source.kind = choice.kind
   stack.source.id = choice.id
   stack.source.params = stack.source.params or {}
@@ -959,7 +1055,7 @@ end
 
 local function setActiveLayer(ctx, stackKey, index)
   local stack = stackState(ctx, stackKey)
-  if not stack or type(index) ~= "number" then return end
+  if not stack then return end
   if index < 1 then index = 1 end
   if index > NUM_LAYERS then index = NUM_LAYERS end
   stack.activeLayer = index
@@ -976,7 +1072,7 @@ local function setActiveLayerEffect(ctx, stackKey, effectIndex)
   layer.effectId = effect.id
   ensureLayerEffectParams(ctx, stackKey, layer)
   syncLayerControls(ctx, stackKey)
-  setViewportSurface(ctx, stackKey)
+  updateStackSurfaces(ctx, stackKey)
   savePersistedState(ctx)
   syncGlobalStatus(ctx)
 end
@@ -988,7 +1084,7 @@ local function toggleActiveLayerEnabled(ctx, stackKey)
   if not layer then return end
   layer.enabled = not layer.enabled
   syncLayerControls(ctx, stackKey)
-  setViewportSurface(ctx, stackKey)
+  updateStackSurfaces(ctx, stackKey)
   savePersistedState(ctx)
   syncGlobalStatus(ctx)
 end
@@ -1001,7 +1097,7 @@ local function clearActiveLayer(ctx, stackKey)
   stack.layers[index].enabled = false
   ensureLayerEffectParams(ctx, stackKey, stack.layers[index])
   syncLayerControls(ctx, stackKey)
-  setViewportSurface(ctx, stackKey)
+  updateStackSurfaces(ctx, stackKey)
   savePersistedState(ctx)
   syncGlobalStatus(ctx)
 end
@@ -1009,7 +1105,6 @@ end
 local function installParamCallbacks(ctx)
   for _, stackKey in ipairs(STACK_ORDER) do
     local stack = stackState(ctx, stackKey)
-
     for i = 1, NUM_PARAM_SLIDERS do
       local slider = stackWidget(ctx, stackKey, "fxParam" .. tostring(i))
       if slider then
@@ -1019,13 +1114,12 @@ local function installParamCallbacks(ctx)
           if not layer or type(spec) ~= "table" then return end
           local store = ensureLayerEffectParams(ctx, stackKey, layer)
           store[spec.id] = value
-          setViewportSurface(ctx, stackKey)
+          updateStackSurfaces(ctx, stackKey)
           savePersistedState(ctx)
           syncGlobalStatus(ctx)
         end
       end
     end
-
     for i = 1, NUM_SOURCE_PARAM_SLIDERS do
       local slider = stackWidget(ctx, stackKey, "sourceParam" .. tostring(i))
       if slider then
@@ -1034,10 +1128,32 @@ local function installParamCallbacks(ctx)
           local spec = choice and choice.params and choice.params[i] or nil
           if stack.source.kind ~= "generator" or type(spec) ~= "table" then return end
           stack.source.params[spec.id] = value
-          setViewportSurface(ctx, stackKey)
+          updateStackSurfaces(ctx, stackKey)
           savePersistedState(ctx)
           syncGlobalStatus(ctx)
         end
+      end
+    end
+  end
+
+  if ctx.widgets.compositeOpacity then
+    ctx.widgets.compositeOpacity._onChange = function(value)
+      ctx._composite.opacity = clamp(value, 0.0, 1.0)
+      setCompositeSurface(ctx)
+      savePersistedState(ctx)
+      syncGlobalStatus(ctx)
+    end
+  end
+
+  for i = 1, NUM_BLEND_PARAM_SLIDERS do
+    local slider = ctx.widgets["compositeParam" .. tostring(i)]
+    if slider then
+      slider._onChange = function(value)
+        local spec = ctx._composite.activeParamSpecs and ctx._composite.activeParamSpecs[i] or nil
+        if type(spec) ~= "table" then return end
+        ctx._composite.blendParams[spec.id] = value
+        setCompositeSurface(ctx)
+        savePersistedState(ctx)
       end
     end
   end
@@ -1099,7 +1215,6 @@ local function layoutStack(ctx, stackKey, y, h, width)
   fxY = fxY + 30
   setBounds(stackWidget(ctx, stackKey, "layerDescription"), x, fxY, w, 26)
   fxY = fxY + 34
-
   local colGap = 10
   local sliderW = math.floor((w - colGap * 2) / 3)
   local sliderH = 26
@@ -1141,19 +1256,53 @@ local function layoutUi(ctx, width, height)
   setBounds(ctx.widgets.compositeTitle, pad + 16, compositeY + 12, width - pad * 2 - 32, 18)
   setBounds(ctx.widgets.compositeHint, pad + 16, compositeY + 34, width - pad * 2 - 32, 16)
   setBounds(ctx.widgets.compositeStatus, pad + 16, compositeY + 54, width - pad * 2 - 32, 16)
-  setBounds(ctx.widgets.compositeViewport, pad + 12, compositeY + 78, width - pad * 2 - 24, math.max(80, compositeH - 90))
+
+  local fullW = width - pad * 2
+  local gap = 16
+  local editorW = clamp(math.floor(fullW * 0.42), 500, 560)
+  local previewPanelW = math.max(280, fullW - editorW - gap)
+  local previewX = pad + 12
+  local previewW = previewPanelW - 24
+  local controlsX = pad + previewPanelW + gap + 16
+  local controlsW = editorW - 32
+
+  setBounds(ctx.widgets.compositeViewport, previewX, compositeY + 78, previewW, math.max(80, compositeH - 90))
+
+  local cy = compositeY + 82
+  setBounds(ctx.widgets.compositeBottomLabel, controlsX, cy, controlsW, 14)
+  cy = cy + 16
+  setBounds(ctx.widgets.compositeBottomSelect, controlsX, cy, controlsW, 24)
+  cy = cy + 30
+  setBounds(ctx.widgets.compositeTopLabel, controlsX, cy, controlsW, 14)
+  cy = cy + 16
+  setBounds(ctx.widgets.compositeTopSelect, controlsX, cy, controlsW, 24)
+  cy = cy + 30
+  setBounds(ctx.widgets.compositeBlendLabel, controlsX, cy, controlsW, 14)
+  cy = cy + 16
+  setBounds(ctx.widgets.compositeBlendSelect, controlsX, cy, controlsW, 24)
+  cy = cy + 30
+  setBounds(ctx.widgets.compositeOpacity, controlsX, cy, controlsW, 26)
+  cy = cy + 32
+  local halfW = math.floor((controlsW - 12) / 2)
+  setBounds(ctx.widgets.compositeParam1, controlsX, cy, halfW, 26)
+  setBounds(ctx.widgets.compositeParam2, controlsX + halfW + 12, cy, halfW, 26)
+  cy = cy + 32
+  setBounds(ctx.widgets.compositeParam3, controlsX, cy, halfW, 26)
+  setBounds(ctx.widgets.compositeParam4, controlsX + halfW + 12, cy, halfW, 26)
+  cy = cy + 30
+  setBounds(ctx.widgets.compositeBlendDescription, controlsX, cy, controlsW, 18)
 
   layoutStack(ctx, "a", stackAY, stackAH, width)
   layoutStack(ctx, "b", stackBY, stackBH, width)
 end
 
 function M.init(ctx)
-  ctx._effects = {}
+  ctx._stacks = { a = createStackState(), b = createStackState() }
+  ctx._composite = defaultCompositeState()
   ctx._sourceChoices = { WEBCAM_SOURCE }
-  ctx._stacks = {
-    a = createStackState(),
-    b = createStackState(),
-  }
+  ctx._effects = {}
+  ctx._blendOps = {}
+  ctx._compositeTargets = compositeTargets(ctx)
 
   loadPersistedState(ctx)
   applyPersistedState(ctx)
@@ -1163,12 +1312,11 @@ function M.init(ctx)
   for _, stackKey in ipairs(STACK_ORDER) do
     refreshDevices(ctx, stackKey)
   end
-
   local ok, err = pcall(refreshEffects, ctx)
   if not ok then
     setText(ctx.widgets.status, "Effect init failed: " .. tostring(err))
   end
-
+  refreshBlendOps(ctx)
   installParamCallbacks(ctx)
 
   for _, stackKey in ipairs(STACK_ORDER) do
@@ -1178,7 +1326,6 @@ function M.init(ctx)
         setSelectedSource(ctx, stackKey, selectedIndex)
       end
     end
-
     local deviceSelect = stackWidget(ctx, stackKey, "deviceSelect")
     if deviceSelect then
       deviceSelect._onSelect = function(selectedIndex)
@@ -1191,7 +1338,6 @@ function M.init(ctx)
         end
       end
     end
-
     local modeSelect = stackWidget(ctx, stackKey, "modeSelect")
     if modeSelect then
       modeSelect._onSelect = function(selectedIndex)
@@ -1200,75 +1346,71 @@ function M.init(ctx)
         openCurrentSelection(ctx, stackKey)
       end
     end
-
     local refreshBtn = stackWidget(ctx, stackKey, "refreshBtn")
-    if refreshBtn then
-      refreshBtn._onClick = function()
-        refreshDevices(ctx, stackKey)
-      end
-    end
-
+    if refreshBtn then refreshBtn._onClick = function() refreshDevices(ctx, stackKey) end end
     local openBtn = stackWidget(ctx, stackKey, "openBtn")
-    if openBtn then
-      openBtn._onClick = function()
-        openCurrentSelection(ctx, stackKey)
-      end
-    end
-
+    if openBtn then openBtn._onClick = function() openCurrentSelection(ctx, stackKey) end end
     local closeBtn = stackWidget(ctx, stackKey, "closeBtn")
-    if closeBtn then
-      closeBtn._onClick = function()
-        if capture and capture.close then
-          capture.close()
-        end
-        updateFrameInfo(ctx, "a")
-        updateFrameInfo(ctx, "b")
+    if closeBtn then closeBtn._onClick = function()
+      if capture and capture.close then capture.close() end
+      updateFrameInfo(ctx, "a")
+      updateFrameInfo(ctx, "b")
+      syncGlobalStatus(ctx)
+    end end
+    local editorTabs = stackWidget(ctx, stackKey, "editorModeTabs")
+    if editorTabs then editorTabs._onSelect = function(selectedIndex) setEditorMode(ctx, stackKey, selectedIndex) end end
+    local layerTabs = stackWidget(ctx, stackKey, "layerTabs")
+    if layerTabs then layerTabs._onSelect = function(selectedIndex) setActiveLayer(ctx, stackKey, selectedIndex) end end
+    local enabledBtn = stackWidget(ctx, stackKey, "layerEnabledBtn")
+    if enabledBtn then enabledBtn._onClick = function() toggleActiveLayerEnabled(ctx, stackKey) end end
+    local clearBtn = stackWidget(ctx, stackKey, "clearLayerBtn")
+    if clearBtn then clearBtn._onClick = function() clearActiveLayer(ctx, stackKey) end end
+    local effectSelect = stackWidget(ctx, stackKey, "effectSelect")
+    if effectSelect then effectSelect._onSelect = function(selectedIndex) setActiveLayerEffect(ctx, stackKey, selectedIndex) end end
+  end
+
+  if ctx.widgets.compositeBottomSelect then
+    ctx.widgets.compositeBottomSelect._onSelect = function(selectedIndex)
+      local target = ctx._compositeTargets[selectedIndex]
+      if target then
+        ctx._composite.bottomTarget = target.id
+        setCompositeSurface(ctx)
+        savePersistedState(ctx)
         syncGlobalStatus(ctx)
       end
     end
-
-    local editorTabs = stackWidget(ctx, stackKey, "editorModeTabs")
-    if editorTabs then
-      editorTabs._onSelect = function(selectedIndex)
-        setEditorMode(ctx, stackKey, selectedIndex)
+  end
+  if ctx.widgets.compositeTopSelect then
+    ctx.widgets.compositeTopSelect._onSelect = function(selectedIndex)
+      local target = ctx._compositeTargets[selectedIndex]
+      if target then
+        ctx._composite.topTarget = target.id
+        setCompositeSurface(ctx)
+        savePersistedState(ctx)
+        syncGlobalStatus(ctx)
       end
     end
-
-    local layerTabs = stackWidget(ctx, stackKey, "layerTabs")
-    if layerTabs then
-      layerTabs._onSelect = function(selectedIndex)
-        setActiveLayer(ctx, stackKey, selectedIndex)
-      end
-    end
-
-    local enabledBtn = stackWidget(ctx, stackKey, "layerEnabledBtn")
-    if enabledBtn then
-      enabledBtn._onClick = function()
-        toggleActiveLayerEnabled(ctx, stackKey)
-      end
-    end
-
-    local clearBtn = stackWidget(ctx, stackKey, "clearLayerBtn")
-    if clearBtn then
-      clearBtn._onClick = function()
-        clearActiveLayer(ctx, stackKey)
-      end
-    end
-
-    local effectSelect = stackWidget(ctx, stackKey, "effectSelect")
-    if effectSelect then
-      effectSelect._onSelect = function(selectedIndex)
-        setActiveLayerEffect(ctx, stackKey, selectedIndex)
+  end
+  if ctx.widgets.compositeBlendSelect then
+    ctx.widgets.compositeBlendSelect._onSelect = function(selectedIndex)
+      local op = ctx._blendOps[selectedIndex]
+      if op then
+        ctx._composite.blendOpId = op.id
+        syncCompositeControls(ctx)
+        setCompositeSurface(ctx)
+        savePersistedState(ctx)
+        syncGlobalStatus(ctx)
       end
     end
   end
 
   for _, stackKey in ipairs(STACK_ORDER) do
-    syncEditorMode(ctx, stackKey)
     syncSourceControls(ctx, stackKey)
     syncLayerControls(ctx, stackKey)
     updateFrameInfo(ctx, stackKey)
   end
+  syncCompositeControls(ctx)
+  setCompositeSurface(ctx)
   syncGlobalStatus(ctx)
 end
 
@@ -1276,11 +1418,11 @@ function M.resized(ctx, w, h)
   layoutUi(ctx, w, h)
   syncRendererMode(ctx)
   for _, stackKey in ipairs(STACK_ORDER) do
-    syncEditorMode(ctx, stackKey)
     syncSourceControls(ctx, stackKey)
     syncLayerControls(ctx, stackKey)
     updateFrameInfo(ctx, stackKey)
   end
+  syncCompositeControls(ctx)
   syncGlobalStatus(ctx)
 end
 

@@ -1,0 +1,12 @@
+{
+  "id": "multiply",
+  "name": "Multiply",
+  "category": "blend",
+  "effectCategory": "blendOp",
+  "description": "Multiply blend with strength, lift, and gamma",
+  "params": [
+    { "id": "strength", "name": "Strength", "min": 0, "max": 2, "default": 1.0, "step": 0.01 },
+    { "id": "lift", "name": "Lift", "min": 0, "max": 1, "default": 0.0, "step": 0.01 },
+    { "id": "gamma", "name": "Gamma", "min": 0.2, "max": 3.0, "default": 1.0, "step": 0.01 }
+  ]
+}
