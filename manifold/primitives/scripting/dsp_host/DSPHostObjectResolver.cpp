@@ -63,6 +63,18 @@ namespace dsp_host {
     if (obj.is<std::shared_ptr<dsp_primitives::SVFNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::SVFNode>>();
     }
+    if (obj.is<std::shared_ptr<dsp_primitives::AllpassNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::AllpassNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::ResonatorNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::ResonatorNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::SlewLimiterNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::SlewLimiterNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::ConstantSignalNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::ConstantSignalNode>>();
+    }
     if (obj.is<std::shared_ptr<dsp_primitives::StereoDelayNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::StereoDelayNode>>();
     }
@@ -96,8 +108,14 @@ namespace dsp_host {
     if (obj.is<std::shared_ptr<dsp_primitives::MultitapDelayNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::MultitapDelayNode>>();
     }
+    if (obj.is<std::shared_ptr<dsp_primitives::CombNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::CombNode>>();
+    }
     if (obj.is<std::shared_ptr<dsp_primitives::PitchShifterNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::PitchShifterNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::FrequencyShiftNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::FrequencyShiftNode>>();
     }
     if (obj.is<std::shared_ptr<dsp_primitives::TransientShaperNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::TransientShaperNode>>();
@@ -128,6 +146,9 @@ namespace dsp_host {
     }
     if (obj.is<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>>();
+    }
+    if (obj.is<std::shared_ptr<dsp_primitives::ADSREnvelopeNode>>()) {
+      return obj.as<std::shared_ptr<dsp_primitives::ADSREnvelopeNode>>();
     }
     if (obj.is<std::shared_ptr<dsp_primitives::MSEncoderNode>>()) {
       return obj.as<std::shared_ptr<dsp_primitives::MSEncoderNode>>();
@@ -214,6 +235,18 @@ namespace dsp_host {
         if (nodeObj.is<std::shared_ptr<dsp_primitives::SVFNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::SVFNode>>();
         }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::AllpassNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::AllpassNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::ResonatorNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::ResonatorNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::SlewLimiterNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::SlewLimiterNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::ConstantSignalNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::ConstantSignalNode>>();
+        }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::StereoDelayNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::StereoDelayNode>>();
         }
@@ -247,8 +280,14 @@ namespace dsp_host {
         if (nodeObj.is<std::shared_ptr<dsp_primitives::MultitapDelayNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::MultitapDelayNode>>();
         }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::CombNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::CombNode>>();
+        }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::PitchShifterNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::PitchShifterNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::FrequencyShiftNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::FrequencyShiftNode>>();
         }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::TransientShaperNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::TransientShaperNode>>();
@@ -279,6 +318,9 @@ namespace dsp_host {
         }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::NoiseGeneratorNode>>();
+        }
+        if (nodeObj.is<std::shared_ptr<dsp_primitives::ADSREnvelopeNode>>()) {
+          return nodeObj.as<std::shared_ptr<dsp_primitives::ADSREnvelopeNode>>();
         }
         if (nodeObj.is<std::shared_ptr<dsp_primitives::MSEncoderNode>>()) {
           return nodeObj.as<std::shared_ptr<dsp_primitives::MSEncoderNode>>();

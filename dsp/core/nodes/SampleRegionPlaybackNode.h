@@ -32,6 +32,8 @@ public:
     int getLoopLength() const;
     void setSpeed(float speed);
     float getSpeed() const;
+    void setOneShot(bool enabled);
+    bool isOneShot() const;
     void play();
     void pause();
     void stop();
@@ -92,6 +94,7 @@ public:
                                     const TemporalPartialData& temporal);
     SampleAnalysisResult analyzeRootKey() const;
     void clearLoop();
+    bool loadFile(const juce::File& file);
     void copyFromCaptureBuffer(const juce::AudioBuffer<float>& captureBuffer,
                                int captureSize,
                                int captureStartOffset,
@@ -125,7 +128,9 @@ private:
 
     std::atomic<int> loopLength_{0};
     std::atomic<float> speed_{1.0f};
+    std::atomic<float> sourceRateRatio_{1.0f};
     std::atomic<bool> playing_{false};
+    std::atomic<bool> oneShot_{false};
 
     std::atomic<float> playStartNorm_{0.0f};
     std::atomic<float> loopStartNorm_{0.0f};
@@ -159,6 +164,7 @@ private:
 
     double readPositions_[kMaxUnisonVoices] = {0.0};
     bool firstPassStates_[kMaxUnisonVoices] = {true};
+    bool voiceActive_[kMaxUnisonVoices] = {true, false, false, false, false, false, false, false};
     float unisonVoiceGains_[kMaxUnisonVoices] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     int lastRequestedUnison_ = 1;
 };

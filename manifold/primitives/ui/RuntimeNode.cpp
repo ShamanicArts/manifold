@@ -341,6 +341,34 @@ std::shared_ptr<const manifold::ui::imgui::CompiledDisplayList> compileDisplayLi
             cmd.type = manifold::ui::imgui::CompiledDrawCmd::Type::DrawText;
         } else if (cmdName == "drawImage") {
             cmd.type = manifold::ui::imgui::CompiledDrawCmd::Type::DrawImage;
+        } else if (cmdName == "fillCircle") {
+            cmd.type = manifold::ui::imgui::CompiledDrawCmd::Type::FillCircle;
+        } else if (cmdName == "drawCircle") {
+            cmd.type = manifold::ui::imgui::CompiledDrawCmd::Type::DrawCircle;
+        } else if (cmdName == "drawArc") {
+            cmd.type = manifold::ui::imgui::CompiledDrawCmd::Type::DrawArc;
+            cmd.startAngle = static_cast<float>(varToDouble(obj->getProperty("startAngle"), 0.0));
+            cmd.endAngle = static_cast<float>(varToDouble(obj->getProperty("endAngle"), 0.0));
+        } else if (cmdName == "fillPolygon") {
+            cmd.type = manifold::ui::imgui::CompiledDrawCmd::Type::FillPolygon;
+            auto pointsVar = obj->getProperty("points");
+            if (auto* arr = pointsVar.getArray()) {
+                for (int i = 0; i + 1 < arr->size(); i += 2) {
+                    float px = static_cast<float>(varToDouble(arr->getReference(i), 0.0));
+                    float py = static_cast<float>(varToDouble(arr->getReference(i + 1), 0.0));
+                    cmd.polyPoints.push_back({px, py});
+                }
+            }
+        } else if (cmdName == "drawPolyline") {
+            cmd.type = manifold::ui::imgui::CompiledDrawCmd::Type::DrawPolyline;
+            auto pointsVar = obj->getProperty("points");
+            if (auto* arr = pointsVar.getArray()) {
+                for (int i = 0; i + 1 < arr->size(); i += 2) {
+                    float px = static_cast<float>(varToDouble(arr->getReference(i), 0.0));
+                    float py = static_cast<float>(varToDouble(arr->getReference(i + 1), 0.0));
+                    cmd.polyPoints.push_back({px, py});
+                }
+            }
         } else if (cmdName == "clipRect") {
             cmd.type = manifold::ui::imgui::CompiledDrawCmd::Type::ClipRect;
         } else if (cmdName == "popClipRect") {

@@ -22,6 +22,12 @@ endif()
 
 add_subdirectory("${JUCE_DIR}" JUCE)
 
+set(MANIFOLD_EXTRA_GL_LIBS "")
+if(UNIX AND NOT APPLE)
+    find_package(OpenGL REQUIRED COMPONENTS EGL)
+    list(APPEND MANIFOLD_EXTRA_GL_LIBS OpenGL::EGL)
+endif()
+
 # --- highway 1.3.0 --
 set(HWY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/highway" CACHE PATH
     "Path to Google Highway checkout (default: git submodule at external/highway)")
@@ -397,6 +403,14 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/ADSREnvelopeNode.h
     dsp/core/nodes/ADSREnvelopeNode.cpp
     dsp/core/nodes/ADSREnvelopeNode_Highway.h
+    dsp/core/nodes/AllpassNode.h
+    dsp/core/nodes/AllpassNode.cpp
+    dsp/core/nodes/SlewLimiterNode.h
+    dsp/core/nodes/SlewLimiterNode.cpp
+    dsp/core/nodes/ConstantSignalNode.h
+    dsp/core/nodes/ConstantSignalNode.cpp
+    dsp/core/nodes/ResonatorNode.h
+    dsp/core/nodes/ResonatorNode.cpp
     dsp/core/nodes/ReverbNode.h
     dsp/core/nodes/ReverbNode.cpp
     dsp/core/nodes/FilterNode.h
@@ -427,8 +441,12 @@ set(MANIFOLD_DSP_SOURCES
     dsp/core/nodes/ShimmerNode.cpp
     dsp/core/nodes/MultitapDelayNode.h
     dsp/core/nodes/MultitapDelayNode.cpp
+    dsp/core/nodes/CombNode.h
+    dsp/core/nodes/CombNode.cpp
     dsp/core/nodes/PitchShifterNode.h
     dsp/core/nodes/PitchShifterNode.cpp
+    dsp/core/nodes/FrequencyShiftNode.h
+    dsp/core/nodes/FrequencyShiftNode.cpp
     dsp/core/nodes/TransientShaperNode.h
     dsp/core/nodes/TransientShaperNode.cpp
     dsp/core/nodes/RingModulatorNode.h
@@ -626,6 +644,7 @@ target_link_libraries(Manifold
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
 		highway
+        ${MANIFOLD_EXTRA_GL_LIBS}
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -751,6 +770,7 @@ function(manifold_add_export_plugin target_name)
             ${MANIFOLD_LUA_TARGET}
             sol2::sol2
             highway
+            ${MANIFOLD_EXTRA_GL_LIBS}
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_lto_flags
@@ -995,7 +1015,8 @@ target_link_libraries(ManifoldHeadless
         juce::juce_gui_extra
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
-		highway)
+		highway
+        ${MANIFOLD_EXTRA_GL_LIBS})
 
 manifold_target_include_project_and_ableton(LuaEngineMockHarness)
 

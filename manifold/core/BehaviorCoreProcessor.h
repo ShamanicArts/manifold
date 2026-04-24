@@ -81,6 +81,7 @@ public:
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
+    std::optional<juce::Image> captureEditorScreenshot() override;
 
     const juce::String getName() const override { 
 #ifdef JucePlugin_Name
@@ -254,6 +255,7 @@ public:
 
     std::string getAndClearPendingUISwitch();
     std::string getAndClearPendingUIRendererMode();
+    std::string getAndClearPendingScreenshot();
 
     bool hasExportPluginConfig() const;
     int getExportViewMode() const;

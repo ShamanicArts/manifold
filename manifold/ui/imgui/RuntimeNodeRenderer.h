@@ -28,7 +28,12 @@ struct CompiledDrawCmd {
         Save,
         Restore,
         SetColor,
-        SetFontSize
+        SetFontSize,
+        FillCircle,
+        DrawCircle,
+        DrawArc,
+        FillPolygon,
+        DrawPolyline
     };
 
     Type type = Type::FillRect;
@@ -59,6 +64,9 @@ struct CompiledDrawCmd {
     float v0 = 0.0f;
     float u1 = 1.0f;
     float v1 = 1.0f;
+    float startAngle = 0.0f;
+    float endAngle = 0.0f;
+    std::vector<std::pair<float, float>> polyPoints;
 };
 
 struct CompiledDisplayList {

@@ -60,6 +60,7 @@ int main(int argc, char* argv[]) {
                  sampleRate, blockSize, duration, testUi ? "true" : "false");
 
     BehaviorCoreProcessor processor;
+    processor.getControlServer().start(&processor);
     processor.prepareToPlay(sampleRate, blockSize);
 
     std::unique_ptr<BehaviorCoreEditor> editor;
@@ -79,43 +80,65 @@ int main(int argc, char* argv[]) {
         static_cast<long long>(blockSize / sampleRate * 1'000'000.0));
 
     const auto startTime = std::chrono::steady_clock::now();
-    long long blocksProcessed = 0;
+    std::atomic<long long> blocksProcessed{0};
+    std::atomic<bool> audioDone{false};
 
-    while (!shouldQuit.load()) {
-        const auto blockStart = std::chrono::steady_clock::now();
+    // Run audio processing on a separate thread so it can maintain real-time
+    // regardless of how long UI rendering takes on the main thread.
+    std::thread audioThread([&]() {
+        while (!shouldQuit.load() && !audioDone.load()) {
+            const auto blockStart = std::chrono::steady_clock::now();
 
-        buffer.clear();
-        processor.processBlock(buffer, midi);
-        ++blocksProcessed;
+            buffer.clear();
+            processor.processBlock(buffer, midi);
+            blocksProcessed.fetch_add(1);
 
+            if (duration > 0.0) {
+                const auto elapsed = std::chrono::steady_clock::now() - startTime;
+                const double elapsedSecs = std::chrono::duration<double>(elapsed).count();
+                if (elapsedSecs >= duration) {
+                    audioDone.store(true);
+                    break;
+                }
+            }
+
+            const auto elapsed = std::chrono::steady_clock::now() - blockStart;
+            const auto remaining = blockDuration - elapsed;
+            if (remaining.count() > 0)
+                std::this_thread::sleep_for(remaining);
+        }
+    });
+
+    // Main thread runs UI timers so heavy rendering doesn't block audio.
+    while (!shouldQuit.load() && !audioDone.load()) {
         if (testUi) {
             juce::Timer::callPendingTimersSynchronously();
         }
-
-        if (duration > 0.0) {
-            const auto elapsed = std::chrono::steady_clock::now() - startTime;
-            const double elapsedSecs = std::chrono::duration<double>(elapsed).count();
-            if (elapsedSecs >= duration)
-                break;
-        }
-
-        const auto elapsed = std::chrono::steady_clock::now() - blockStart;
-        const auto remaining = blockDuration - elapsed;
-        if (remaining.count() > 0)
-            std::this_thread::sleep_for(remaining);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+
+    audioThread.join();
 
     const auto totalTime = std::chrono::steady_clock::now() - startTime;
     const double totalSecs = std::chrono::duration<double>(totalTime).count();
+    const long long finalBlocks = blocksProcessed.load();
 
     std::fprintf(stderr,
                  "\nManifoldHeadless: Stopped. %lld blocks processed in %.1fs "
                  "(%.1f blocks/sec)\n",
-                 blocksProcessed,
+                 finalBlocks,
                  totalSecs,
-                 blocksProcessed / (totalSecs > 0 ? totalSecs : 1.0));
+                 finalBlocks / (totalSecs > 0 ? totalSecs : 1.0));
 
-    editor.reset();
+    // Intentionally leak the transient test editor on process teardown.
+    // Offscreen GL screenshot capture keeps backend state alive long enough that
+    // fully destroying the editor here has been causing a late shutdown crash in
+    // the harness. The process exits immediately after this, so leaking the test
+    // editor is the safer option for deterministic headless runs.
+    editor.release();
+    processor.getControlServer().stop();
     processor.releaseResources();
-    return 0;
+    std::fflush(stdout);
+    std::fflush(stderr);
+    std::_Exit(0);
 }

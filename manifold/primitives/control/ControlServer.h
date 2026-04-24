@@ -237,6 +237,101 @@ struct UIRendererRequest {
 };
 
 // ============================================================================
+// Screenshot request: server thread sets path, UI thread captures and saves
+// ============================================================================
+
+struct ScreenshotRequest {
+  std::string outputPath;
+  std::atomic<bool> pending{false};
+  std::atomic<bool> completed{false};
+  std::atomic<bool> success{false};
+  std::mutex mutex;
+};
+
+// ============================================================================
+// Lock-free audio capture ring buffer: audio thread -> writer thread
+// ============================================================================
+
+class AudioCaptureRing {
+public:
+  static constexpr std::size_t CAPACITY = 1 << 20; // ~1M floats = ~11.6s @ 44.1k stereo
+
+  // Write interleaved stereo floats. Called from audio thread only.
+  bool write(const float* left, const float* right, int numSamples) {
+    if (left == nullptr || numSamples <= 0) return false;
+    const std::size_t toWrite = static_cast<std::size_t>(numSamples) * 2;
+    if (toWrite > CAPACITY) return false;
+    const std::size_t w = writeIdx.load(std::memory_order_relaxed);
+    const std::size_t r = readIdx.load(std::memory_order_acquire);
+    const std::size_t available = (r <= w) ? (CAPACITY - (w - r) - 1) : (r - w - 1);
+    if (toWrite > available) return false; // ring full, drop
+    for (int i = 0; i < numSamples; ++i) {
+      buffer[(w + i * 2) & (CAPACITY - 1)] = left[i];
+      buffer[(w + i * 2 + 1) & (CAPACITY - 1)] = (right != nullptr) ? right[i] : left[i];
+    }
+    writeIdx.store((w + toWrite) & (CAPACITY - 1), std::memory_order_release);
+    return true;
+  }
+
+  // Read interleaved stereo floats. Called from writer thread only.
+  std::size_t read(float* out, std::size_t maxSamples) {
+    const std::size_t r = readIdx.load(std::memory_order_relaxed);
+    const std::size_t w = writeIdx.load(std::memory_order_acquire);
+    if (r == w) return 0;
+    const std::size_t available = (w >= r) ? (w - r) : (CAPACITY - r + w);
+    const std::size_t toRead = std::min(available, maxSamples);
+    for (std::size_t i = 0; i < toRead; ++i) {
+      out[i] = buffer[(r + i) & (CAPACITY - 1)];
+    }
+    readIdx.store((r + toRead) & (CAPACITY - 1), std::memory_order_release);
+    return toRead;
+  }
+
+private:
+  std::array<float, CAPACITY> buffer{};
+  std::atomic<std::size_t> writeIdx{0};
+  std::atomic<std::size_t> readIdx{0};
+};
+
+// ============================================================================
+// Forward declarations
+// ============================================================================
+
+namespace juce {
+  class AudioFormatWriter;
+}
+
+// ============================================================================
+// Debug capture: screenshot and recording state
+// ============================================================================
+
+struct CaptureState {
+  std::string lastScreenshotPath;
+  std::atomic<bool> captureInProgress{false};
+  std::mutex mutex;
+};
+
+struct RecordingState {
+  std::string format = "png";       // png, jpg
+  int duration = 0;                 // 0 = manual stop
+  int startTimestamp = 0;          // time when recording started
+  std::string outputPath;          // output directory or file
+  std::string outputDir;           // resolved output directory
+  std::atomic<bool> recording{false};
+  std::atomic<int> frameCounter{0};
+  std::atomic<double> startTimeSec{0.0};
+  std::vector<std::string> framePaths;  // captured frame paths
+  std::mutex mutex;
+
+  // Audio capture
+  std::unique_ptr<AudioCaptureRing> audioRing;
+  juce::AudioFormatWriter* audioWriter = nullptr; // owned, deleted in stopRecording
+  std::thread audioWriterThread;
+  double audioSampleRate = 44100.0;
+  int audioChannels = 2;
+};
+
+// ============================================================================
 // ControlServer - Unix socket IPC for observation and control
 // ============================================================================
 
@@ -287,6 +382,22 @@ public:
   int getCurrentUIRendererMode() const {
     return currentUIRendererMode.load(std::memory_order_relaxed);
   }
+
+  // Screenshot request access (for UI thread to read/write)
+  ScreenshotRequest &getScreenshotRequest() { return screenshotRequest; }
+
+  // Debug capture: screenshot and recording
+  std::string captureScreenshot(const std::string &path);
+  std::string startRecording(const std::string &format, int duration, const std::string &path);
+  std::string stopRecording();
+  std::string getRecordingStatus();
+
+  RecordingState &getRecordingState() { return recordingState; }
+  const RecordingState &getRecordingState() const { return recordingState; }
+
+  // Audio thread: write output samples to recording ring buffer
+  void writeAudioSamples(const float *left, const float *right, int numSamples);
+  bool isRecording() const { return recordingState.recording.load(std::memory_order_acquire); }
 
 private:
   void acceptLoop();
@@ -340,10 +451,15 @@ private:
   // UI switch / renderer requests (set by server thread, read by GUI thread)
   UISwitchRequest uiSwitchRequest;
   UIRendererRequest uiRendererRequest;
+  ScreenshotRequest screenshotRequest;
   std::atomic<int> currentUIRendererMode{3};
 
   FrameTimings *frameTimings = nullptr;
   LuaEngine *luaEngine = nullptr;
+
+  // Debug capture state
+  CaptureState captureState;
+  RecordingState recordingState;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ControlServer)
 };

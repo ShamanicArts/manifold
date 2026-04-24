@@ -180,6 +180,13 @@ namespace {
         setPrimitiveProperty("v0");
         setPrimitiveProperty("u1");
         setPrimitiveProperty("v1");
+        setPrimitiveProperty("startAngle");
+        setPrimitiveProperty("endAngle");
+
+        const juce::var points = luaObjectToVar(table["points"]);
+        if (!points.isVoid() && !points.isUndefined()) {
+            obj->setProperty("points", points);
+        }
 
         out = juce::var(obj.release());
         return true;

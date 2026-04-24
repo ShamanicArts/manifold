@@ -13,6 +13,11 @@
 #include "../ui/imgui/ImGuiDirectHost.h"
 
 #include <memory>
+#include <mutex>
+#include <thread>
+#include <queue>
+#include <atomic>
+#include <condition_variable>
 
 class BehaviorCoreProcessor;
 
@@ -86,6 +91,16 @@ private:
     std::chrono::microseconds lastCpuTime_{0};
     bool uiIdleSnapshotCaptured_ = false;
     int uiIdleSnapshotCountdown_ = 40;
+
+    // Recording frame capture timing (30 FPS target)
+    std::chrono::steady_clock::time_point lastFrameCaptureTime_{};
+    bool firstFrameCapture_ = true;
+    bool wasRecording_ = false;
+
+    // RAM frame accumulation: capture to memory during recording, flush to disk after
+    std::vector<juce::Image> ramFrames_;
+    std::mutex ramFramesMutex_;
+    void flushRamFramesToDisk(const std::string& outputDir);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BehaviorCoreEditor)
 };

@@ -343,6 +343,42 @@ void renderDisplayList(const RuntimeNode& node,
                                    ImVec2(u1, v1),
                                    state.color);
             }
+        } else if (cmd == "fillCircle") {
+            drawList->AddCircleFilled(localPointToPreview(x + radius, y + radius), radius * renderScale, state.color, varToInt(obj->getProperty("segments"), 0));
+        } else if (cmd == "drawCircle") {
+            drawList->AddCircle(localPointToPreview(x + radius, y + radius), radius * renderScale, state.color, varToInt(obj->getProperty("segments"), 0), scaledThickness);
+        } else if (cmd == "drawArc") {
+            const auto center = localPointToPreview(x, y);
+            const float r = radius * renderScale;
+            const float startAngle = static_cast<float>(varToDouble(obj->getProperty("startAngle"), 0.0));
+            const float endAngle = static_cast<float>(varToDouble(obj->getProperty("endAngle"), 0.0));
+            const int seg = varToInt(obj->getProperty("segments"), 0);
+            drawList->PathArcTo(center, r, startAngle, endAngle, seg > 0 ? seg : 0);
+            drawList->PathStroke(state.color, 0, scaledThickness);
+        } else if (cmd == "fillPolygon") {
+            auto pointsVar = obj->getProperty("points");
+            if (auto* arr = pointsVar.getArray(); arr != nullptr && arr->size() >= 6) {
+                std::vector<ImVec2> pts;
+                pts.reserve(arr->size() / 2);
+                for (int i = 0; i + 1 < arr->size(); i += 2) {
+                    float px = static_cast<float>(varToDouble(arr->getReference(i), 0.0));
+                    float py = static_cast<float>(varToDouble(arr->getReference(i + 1), 0.0));
+                    pts.push_back(localPointToPreview(px, py));
+                }
+                drawList->AddConcavePolyFilled(pts.data(), static_cast<int>(pts.size()), state.color);
+            }
+        } else if (cmd == "drawPolyline") {
+            auto pointsVar = obj->getProperty("points");
+            if (auto* arr = pointsVar.getArray(); arr != nullptr && arr->size() >= 4) {
+                std::vector<ImVec2> pts;
+                pts.reserve(arr->size() / 2);
+                for (int i = 0; i + 1 < arr->size(); i += 2) {
+                    float px = static_cast<float>(varToDouble(arr->getReference(i), 0.0));
+                    float py = static_cast<float>(varToDouble(arr->getReference(i + 1), 0.0));
+                    pts.push_back(localPointToPreview(px, py));
+                }
+                drawList->AddPolyline(pts.data(), static_cast<int>(pts.size()), state.color, 0, scaledThickness);
+            }
         } else if (cmd == "clipRect") {
             const auto clipMin = toImVec2(rect);
             const auto clipMax = toImVec2BottomRight(rect);
@@ -503,6 +539,39 @@ void renderCompiledDisplayList(const CompiledDisplayList& compiled,
                 if (!state.clipStack.empty()) {
                     drawList->PopClipRect();
                     state.clipStack.pop_back();
+                }
+                break;
+            case CompiledDrawCmd::Type::FillCircle:
+                drawList->AddCircleFilled(localPointToPreview(cmd.x + cmd.radius, cmd.y + cmd.radius), cmd.radius * renderScale, state.color, cmd.segments);
+                break;
+            case CompiledDrawCmd::Type::DrawCircle:
+                drawList->AddCircle(localPointToPreview(cmd.x + cmd.radius, cmd.y + cmd.radius), cmd.radius * renderScale, state.color, cmd.segments, scaledThickness);
+                break;
+            case CompiledDrawCmd::Type::DrawArc: {
+                const auto center = localPointToPreview(cmd.x, cmd.y);
+                const float r = cmd.radius * renderScale;
+                drawList->PathArcTo(center, r, cmd.startAngle, cmd.endAngle, cmd.segments > 0 ? cmd.segments : 0);
+                drawList->PathStroke(state.color, 0, scaledThickness);
+                break;
+            }
+            case CompiledDrawCmd::Type::FillPolygon:
+                if (cmd.polyPoints.size() >= 3) {
+                    std::vector<ImVec2> pts;
+                    pts.reserve(cmd.polyPoints.size());
+                    for (const auto& p : cmd.polyPoints) {
+                        pts.push_back(localPointToPreview(p.first, p.second));
+                    }
+                    drawList->AddConcavePolyFilled(pts.data(), static_cast<int>(pts.size()), state.color);
+                }
+                break;
+            case CompiledDrawCmd::Type::DrawPolyline:
+                if (cmd.polyPoints.size() >= 2) {
+                    std::vector<ImVec2> pts;
+                    pts.reserve(cmd.polyPoints.size());
+                    for (const auto& p : cmd.polyPoints) {
+                        pts.push_back(localPointToPreview(p.first, p.second));
+                    }
+                    drawList->AddPolyline(pts.data(), static_cast<int>(pts.size()), state.color, 0, scaledThickness);
                 }
                 break;
             case CompiledDrawCmd::Type::SetColor:

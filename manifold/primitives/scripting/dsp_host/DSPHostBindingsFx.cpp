@@ -292,6 +292,21 @@ void registerFxBindings(LoadSession &session,
       "getMix", &dsp_primitives::MultitapDelayNode::getMix,
       "reset", &dsp_primitives::MultitapDelayNode::reset);
 
+  newLua.new_usertype<dsp_primitives::CombNode>(
+      "CombNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::CombNode>()>(),
+      "setMaxDelay", &dsp_primitives::CombNode::setMaxDelay,
+      "setDelay", &dsp_primitives::CombNode::setDelay,
+      "setGain", &dsp_primitives::CombNode::setGain,
+      "setFeedforward", &dsp_primitives::CombNode::setFeedforward,
+      "setFeedback", &dsp_primitives::CombNode::setFeedback,
+      "getMaxDelay", &dsp_primitives::CombNode::getMaxDelay,
+      "getDelay", &dsp_primitives::CombNode::getDelay,
+      "getGain", &dsp_primitives::CombNode::getGain,
+      "getFeedforward", &dsp_primitives::CombNode::getFeedforward,
+      "getFeedback", &dsp_primitives::CombNode::getFeedback,
+      "reset", &dsp_primitives::CombNode::reset);
+
   newLua.new_usertype<dsp_primitives::PitchShifterNode>(
       "PitchShifterNode",
       sol::constructors<std::shared_ptr<dsp_primitives::PitchShifterNode>()>(),
@@ -304,6 +319,15 @@ void registerFxBindings(LoadSession &session,
       "getFeedback", &dsp_primitives::PitchShifterNode::getFeedback,
       "getMix", &dsp_primitives::PitchShifterNode::getMix,
       "reset", &dsp_primitives::PitchShifterNode::reset);
+
+  newLua.new_usertype<dsp_primitives::FrequencyShiftNode>(
+      "FrequencyShiftNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::FrequencyShiftNode>()>(),
+      "setShiftHz", &dsp_primitives::FrequencyShiftNode::setShiftHz,
+      "setMix", &dsp_primitives::FrequencyShiftNode::setMix,
+      "getShiftHz", &dsp_primitives::FrequencyShiftNode::getShiftHz,
+      "getMix", &dsp_primitives::FrequencyShiftNode::getMix,
+      "reset", &dsp_primitives::FrequencyShiftNode::reset);
 
   newLua.new_usertype<dsp_primitives::TransientShaperNode>(
       "TransientShaperNode",
@@ -790,6 +814,16 @@ void registerFxBindings(LoadSession &session,
   }
 
   {
+    auto combApi = sol::state_view(newLuaState).create_table();
+    combApi["new"] = [graph, trackNode](sol::optional<float> maxDelayMs) {
+        auto node = std::make_shared<dsp_primitives::CombNode>(maxDelayMs.value_or(50.0f));
+        trackNode(node);
+        return node;
+      };
+    primitives["CombNode"] = combApi;
+  }
+
+  {
     auto pitchShifterApi = sol::state_view(newLuaState).create_table();
     pitchShifterApi["new"] = [graph, trackNode]() {
         auto node = std::make_shared<dsp_primitives::PitchShifterNode>();
@@ -797,6 +831,16 @@ void registerFxBindings(LoadSession &session,
         return node;
       };
     primitives["PitchShifterNode"] = pitchShifterApi;
+  }
+
+  {
+    auto frequencyShiftApi = sol::state_view(newLuaState).create_table();
+    frequencyShiftApi["new"] = [graph, trackNode]() {
+        auto node = std::make_shared<dsp_primitives::FrequencyShiftNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["FrequencyShiftNode"] = frequencyShiftApi;
   }
 
   {
@@ -985,6 +1029,92 @@ void registerFxBindings(LoadSession &session,
         return node;
       };
     primitives["SpectrumAnalyzerNode"] = spectrumApi;
+  }
+
+  // BÄPP required nodes - using usertype pattern
+  newLua.new_usertype<dsp_primitives::AllpassNode>(
+      "AllpassNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::AllpassNode>()>(),
+      "setMaxDelay", &dsp_primitives::AllpassNode::setMaxDelay,
+      "setDelay", &dsp_primitives::AllpassNode::setDelay,
+      "setFeedback", &dsp_primitives::AllpassNode::setFeedback,
+      "setGain", &dsp_primitives::AllpassNode::setGain,
+      "getMaxDelay", &dsp_primitives::AllpassNode::getMaxDelay,
+      "getDelay", &dsp_primitives::AllpassNode::getDelay,
+      "getFeedback", &dsp_primitives::AllpassNode::getFeedback,
+      "getGain", &dsp_primitives::AllpassNode::getGain,
+      "reset", &dsp_primitives::AllpassNode::reset);
+
+  newLua.new_usertype<dsp_primitives::SlewLimiterNode>(
+      "SlewLimiterNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::SlewLimiterNode>()>(),
+      "setSlideUp", &dsp_primitives::SlewLimiterNode::setSlideUp,
+      "setSlideDown", &dsp_primitives::SlewLimiterNode::setSlideDown,
+      "getSlideUp", &dsp_primitives::SlewLimiterNode::getSlideUp,
+      "getSlideDown", &dsp_primitives::SlewLimiterNode::getSlideDown,
+      "setRiseRate", &dsp_primitives::SlewLimiterNode::setRiseRate,
+      "setFallRate", &dsp_primitives::SlewLimiterNode::setFallRate,
+      "getRiseRate", &dsp_primitives::SlewLimiterNode::getRiseRate,
+      "getFallRate", &dsp_primitives::SlewLimiterNode::getFallRate,
+      "reset", &dsp_primitives::SlewLimiterNode::reset);
+
+  newLua.new_usertype<dsp_primitives::ConstantSignalNode>(
+      "ConstantSignalNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::ConstantSignalNode>()>(),
+      "setValue", &dsp_primitives::ConstantSignalNode::setValue,
+      "getValue", &dsp_primitives::ConstantSignalNode::getValue);
+
+
+  newLua.new_usertype<dsp_primitives::ResonatorNode>(
+      "ResonatorNode",
+      sol::constructors<std::shared_ptr<dsp_primitives::ResonatorNode>()>(),
+      "setGain", &dsp_primitives::ResonatorNode::setGain,
+      "setFrequency", &dsp_primitives::ResonatorNode::setFrequency,
+      "setQ", &dsp_primitives::ResonatorNode::setQ,
+      "getGain", &dsp_primitives::ResonatorNode::getGain,
+      "getFrequency", &dsp_primitives::ResonatorNode::getFrequency,
+      "getQ", &dsp_primitives::ResonatorNode::getQ,
+      "reset", &dsp_primitives::ResonatorNode::reset);
+
+  // API tables for instantiation
+  {
+    auto allpassApi = sol::state_view(newLuaState).create_table();
+    allpassApi["new"] = [graph, trackNode](sol::optional<float> maxDelayMs) {
+        auto node = std::make_shared<dsp_primitives::AllpassNode>(maxDelayMs.value_or(10.0f));
+        trackNode(node);
+        return node;
+      };
+    primitives["AllpassNode"] = allpassApi;
+  }
+
+  {
+    auto slewApi = sol::state_view(newLuaState).create_table();
+    slewApi["new"] = [graph, trackNode]() {
+        auto node = std::make_shared<dsp_primitives::SlewLimiterNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["SlewLimiterNode"] = slewApi;
+  }
+
+  {
+    auto constantApi = sol::state_view(newLuaState).create_table();
+    constantApi["new"] = [graph, trackNode]() {
+        auto node = std::make_shared<dsp_primitives::ConstantSignalNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["ConstantSignalNode"] = constantApi;
+  }
+
+  {
+    auto resonatorApi = sol::state_view(newLuaState).create_table();
+    resonatorApi["new"] = [graph, trackNode]() {
+        auto node = std::make_shared<dsp_primitives::ResonatorNode>();
+        trackNode(node);
+        return node;
+      };
+    primitives["ResonatorNode"] = resonatorApi;
   }
 }
 

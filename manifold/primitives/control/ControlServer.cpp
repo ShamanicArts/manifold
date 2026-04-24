@@ -27,6 +27,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <iomanip>
 #include <limits>
 
 #if JUCE_WINDOWS
@@ -331,6 +332,11 @@ void ControlServer::start(ScriptableProcessor* processor) {
 void ControlServer::stop() {
     if (!running.exchange(false)) return;
 
+    // Stop any active recording before tearing down
+    if (recordingState.recording.load(std::memory_order_acquire)) {
+        stopRecording();
+    }
+
     // Close server socket to unblock accept
     if (serverFd >= 0) {
         ::shutdown(serverFd, SHUT_RDWR);
@@ -627,6 +633,9 @@ std::string ControlServer::processCommand(const std::string& cmd) {
                 }
                 return "OK " + payload.toStdString();
             }
+            if (result.queryType == "RECORD_STATUS") {
+                return getRecordingStatus();
+            }
             return "ERROR unknown query type";
         }
 
@@ -677,6 +686,20 @@ std::string ControlServer::processCommand(const std::string& cmd) {
             }
             return "OK UI renderer queued: " + normalizedMode;
         }
+
+        case ParseResult::Kind::Screenshot:
+            return captureScreenshot(result.capturePath);
+
+
+        case ParseResult::Kind::RecordStart:
+            return startRecording(result.recordFormat, result.recordDuration, result.capturePath);
+
+        case ParseResult::Kind::RecordStop:
+            return stopRecording();
+
+        case ParseResult::Kind::RecordStatus:
+            return getRecordingStatus();
+
 
         case ParseResult::Kind::NoOpWarning:
             return "ERROR " + result.warningMessage;
@@ -1079,6 +1102,284 @@ int ControlServer::drainInjection(CaptureBuffer& capture, int maxSamples, float 
 
     injectionReadPos.store(pos + toWrite, std::memory_order_relaxed);
     return toWrite;
+}
+
+// ============================================================================
+// Debug capture: screenshot and recording implementations
+// ============================================================================
+
+std::string ControlServer::captureScreenshot(const std::string& path) {
+    // Generate default path if not provided
+    std::string outputPath = path;
+    if (outputPath.empty()) {
+        // Default: ~/manifold_screenshot_<timestamp>.png
+        const auto now = std::time(nullptr);
+        char timestamp[32];
+        std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", std::localtime(&now));
+        outputPath = "/tmp/manifold_screenshot_" + std::string(timestamp) + ".png";
+    }
+
+    // Queue screenshot request for UI thread to handle
+    {
+        std::lock_guard<std::mutex> lock(screenshotRequest.mutex);
+        screenshotRequest.outputPath = outputPath;
+        screenshotRequest.pending.store(true, std::memory_order_release);
+        screenshotRequest.completed.store(false, std::memory_order_release);
+        screenshotRequest.success.store(false, std::memory_order_release);
+    }
+
+    // Wait for UI thread to complete (with timeout)
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (screenshotRequest.completed.load(std::memory_order_acquire)) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    bool captured = screenshotRequest.success.load(std::memory_order_acquire);
+
+    std::lock_guard<std::mutex> lock(captureState.mutex);
+    captureState.lastScreenshotPath = outputPath;
+    captureState.captureInProgress.store(false, std::memory_order_release);
+
+    std::ostringstream o;
+    o << "OK {";
+    o << jsonStr("path", outputPath) << ",";
+    o << jsonBool("captured", captured) << ",";
+    if (!captured) {
+        o << jsonStr("note", "screenshot request queued - UI thread will capture");
+    }
+    o << "}";
+    return o.str();
+}
+
+void ControlServer::writeAudioSamples(const float* left, const float* right, int numSamples) {
+    if (!recordingState.recording.load(std::memory_order_acquire)) return;
+    if (!recordingState.audioRing) return;
+    recordingState.audioRing->write(left, right, numSamples);
+}
+
+std::string ControlServer::startRecording(const std::string& format, int duration, const std::string& path) {
+    // Check if already recording
+    if (recordingState.recording.load(std::memory_order_acquire)) {
+        return "ERROR recording already in progress";
+    }
+
+    // Validate format
+    std::string validatedFormat = CommandParser::toLower(format);
+    if (validatedFormat != "png" && validatedFormat != "jpg" && validatedFormat != "jpeg" && validatedFormat != "tga") {
+        return "ERROR invalid format: " + format + " (valid: png, jpg, tga)";
+    }
+
+    // Generate default output path if not provided
+    std::string outputPath = path;
+    if (outputPath.empty()) {
+        const auto now = std::time(nullptr);
+        char timestamp[32];
+        std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", std::localtime(&now));
+        outputPath = "/tmp/manifold_recording_" + std::string(timestamp);
+    }
+
+    // Resolve output directory
+    juce::File outputDir(outputPath);
+    juce::String jucePath(outputPath);
+    if (!jucePath.endsWith("/") && !jucePath.endsWith(".png") && !jucePath.endsWith(".jpg") && !jucePath.endsWith(".tga")) {
+        outputDir = juce::File(outputPath);
+    } else {
+        outputDir = outputDir.getParentDirectory();
+    }
+    const auto dirCreated = outputDir.createDirectory();
+    (void)dirCreated;
+
+    // Set up recording state
+    {
+        std::lock_guard<std::mutex> lock(recordingState.mutex);
+        recordingState.format = validatedFormat;
+        recordingState.duration = duration;
+        recordingState.outputPath = outputPath;
+        recordingState.outputDir = outputDir.getFullPathName().toStdString();
+        recordingState.startTimestamp = static_cast<int>(std::time(nullptr));
+        recordingState.startTimeSec.store(0.0, std::memory_order_relaxed);
+        recordingState.frameCounter.store(0, std::memory_order_relaxed);
+        recordingState.framePaths.clear();
+        recordingState.audioRing = std::make_unique<AudioCaptureRing>();
+        recordingState.audioSampleRate = atomicState.sampleRate.load(std::memory_order_relaxed);
+        recordingState.audioChannels = 2;
+        recordingState.audioWriter = nullptr;
+    }
+
+    // Create WAV writer
+    juce::File wavFile(outputDir.getChildFile("audio.wav"));
+    auto* stream = new juce::FileOutputStream(wavFile);
+    if (stream->openedOk()) {
+        juce::WavAudioFormat wavFormat;
+        const double sr = recordingState.audioSampleRate;
+        auto* writer = wavFormat.createWriterFor(stream, sr, 2, 16, {}, 0);
+        if (writer != nullptr) {
+            std::lock_guard<std::mutex> lock(recordingState.mutex);
+            recordingState.audioWriter = writer;
+        } else {
+            delete stream;
+        }
+    } else {
+        delete stream;
+    }
+
+    // Start audio writer thread
+    recordingState.audioWriterThread = std::thread([this]() {
+        constexpr std::size_t kTempSize = 8192; // floats
+        std::vector<float> temp(kTempSize);
+        while (recordingState.recording.load(std::memory_order_acquire)) {
+            std::size_t n = 0;
+            {
+                std::lock_guard<std::mutex> lock(recordingState.mutex);
+                if (recordingState.audioRing) {
+                    n = recordingState.audioRing->read(temp.data(), kTempSize);
+                }
+            }
+            if (n > 0 && recordingState.audioWriter) {
+                const int samples = static_cast<int>(n / 2);
+                juce::AudioBuffer<float> buf(2, samples);
+                for (int i = 0; i < samples; ++i) {
+                    buf.setSample(0, i, temp[i * 2]);
+                    buf.setSample(1, i, temp[i * 2 + 1]);
+                }
+                recordingState.audioWriter->writeFromAudioSampleBuffer(buf, 0, samples);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        // Drain remaining samples
+        std::size_t n = 0;
+        {
+            std::lock_guard<std::mutex> lock(recordingState.mutex);
+            if (recordingState.audioRing) {
+                n = recordingState.audioRing->read(temp.data(), kTempSize);
+            }
+        }
+        if (n > 0 && recordingState.audioWriter) {
+            const int samples = static_cast<int>(n / 2);
+            juce::AudioBuffer<float> buf(2, samples);
+            for (int i = 0; i < samples; ++i) {
+                buf.setSample(0, i, temp[i * 2]);
+                buf.setSample(1, i, temp[i * 2 + 1]);
+            }
+            recordingState.audioWriter->writeFromAudioSampleBuffer(buf, 0, samples);
+        }
+    });
+
+    recordingState.recording.store(true, std::memory_order_release);
+
+    std::ostringstream o;
+    o << "OK {";
+    o << jsonStr("format", validatedFormat) << ",";
+    o << jsonNum("duration", duration) << ",";
+    o << jsonStr("outputPath", outputPath) << ",";
+    o << jsonStr("outputDir", recordingState.outputDir) << ",";
+    o << jsonBool("recording", true);
+    o << "}";
+    return o.str();
+}
+
+std::string ControlServer::stopRecording() {
+    if (!recordingState.recording.load(std::memory_order_acquire)) {
+        return "ERROR no recording in progress";
+    }
+
+    // Signal stop
+    recordingState.recording.store(false, std::memory_order_release);
+
+    // Join audio writer thread
+    if (recordingState.audioWriterThread.joinable()) {
+        recordingState.audioWriterThread.join();
+    }
+
+    // Finalize audio writer
+    {
+        std::lock_guard<std::mutex> lock(recordingState.mutex);
+        delete recordingState.audioWriter; // closes WAV file
+        recordingState.audioWriter = nullptr;
+    }
+
+    int frameCount = 0;
+    int duration = 0;
+    std::string outputDir;
+    std::vector<std::string> framePaths;
+
+    {
+        std::lock_guard<std::mutex> lock(recordingState.mutex);
+        frameCount = recordingState.frameCounter.load(std::memory_order_relaxed);
+        framePaths = recordingState.framePaths;
+        duration = static_cast<int>(std::time(nullptr)) - recordingState.startTimestamp;
+        outputDir = recordingState.outputDir;
+    }
+
+    // Write manifest JSON
+    if (!outputDir.empty()) {
+        juce::File manifestFile(juce::String(outputDir) + "/manifest.json");
+        std::ostringstream manifest;
+        manifest << "{\n";
+        manifest << "  \"fps\": 30,\n";
+        manifest << "  \"audioSampleRate\": " << recordingState.audioSampleRate << ",\n";
+        manifest << "  \"audioChannels\": " << recordingState.audioChannels << ",\n";
+        manifest << "  \"frameCount\": " << frameCount << ",\n";
+        manifest << "  \"durationSeconds\": " << duration << ",\n";
+        manifest << "  \"audioPath\": \"audio.wav\",\n";
+        manifest << "  \"frames\": [\n";
+        for (int i = 0; i < frameCount; ++i) {
+            manifest << "    \"frame_" << std::setw(4) << std::setfill('0') << (i + 1) << ".tga\"";
+            if (i < frameCount - 1) manifest << ",";
+            manifest << "\n";
+        }
+        manifest << "  ]\n";
+        manifest << "}\n";
+
+        juce::String manifestStr(manifest.str());
+        std::unique_ptr<juce::FileOutputStream> manifestStream(manifestFile.createOutputStream());
+        if (manifestStream != nullptr) {
+            manifestStream->write(manifestStr.toRawUTF8(), static_cast<int>(manifestStr.getNumBytesAsUTF8()));
+            manifestStream->flush();
+        }
+    }
+
+    std::ostringstream o;
+    o << "OK {";
+    o << jsonBool("recording", false) << ",";
+    o << jsonNum("frameCount", frameCount) << ",";
+    o << jsonNum("durationSeconds", duration) << ",";
+    o << jsonStr("outputDir", outputDir) << ",";
+    o << jsonStr("audioPath", outputDir + "/audio.wav");
+    o << "}";
+    return o.str();
+}
+
+std::string ControlServer::getRecordingStatus() {
+    const bool recording = recordingState.recording.load(std::memory_order_acquire);
+    int frameCount = 0;
+    int duration = 0;
+    std::string format;
+    std::string outputPath;
+    std::string outputDir;
+
+    {
+        std::lock_guard<std::mutex> lock(recordingState.mutex);
+        frameCount = recordingState.frameCounter.load(std::memory_order_relaxed);
+        duration = recording ? (static_cast<int>(std::time(nullptr)) - recordingState.startTimestamp) : 0;
+        format = recordingState.format;
+        outputPath = recordingState.outputPath;
+        outputDir = recordingState.outputDir;
+    }
+
+    std::ostringstream o;
+    o << "OK {";
+    o << jsonBool("recording", recording) << ",";
+    o << jsonNum("frameCount", frameCount) << ",";
+    o << jsonNum("durationSeconds", duration) << ",";
+    o << jsonStr("format", format) << ",";
+    o << jsonStr("outputPath", outputPath) << ",";
+    o << jsonStr("outputDir", outputDir);
+    o << "}";
+    return o.str();
 }
 
 #endif

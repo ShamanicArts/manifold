@@ -1998,6 +1998,14 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     state.uptimeSeconds.store(sr > 0.0 ? nextPlayTime / sr : 0.0,
                               std::memory_order_relaxed);
 
+    // Write output to recording audio ring buffer if active
+    if (controlServer.isRecording()) {
+        const int outChannels = buffer.getNumChannels();
+        const float* outL = buffer.getReadPointer(0);
+        const float* outR = outChannels > 1 ? buffer.getReadPointer(1) : outL;
+        controlServer.writeAudioSamples(outL, outR, numSamples);
+    }
+
     // Drain MIDI output messages to host MIDI buffer
     drainMidiOutput(midiMessages);
 
@@ -2010,6 +2018,20 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
 juce::AudioProcessorEditor* BehaviorCoreProcessor::createEditor() {
     return new BehaviorCoreEditor(*this, rootModeFromEnvironmentOrState(controlServer));
+}
+
+std::optional<juce::Image> BehaviorCoreProcessor::captureEditorScreenshot() {
+    // Try to get existing editor
+    if (auto* editor = getActiveEditor()) {
+        // Create a snapshot of the editor
+        const int w = editor->getWidth();
+        const int h = editor->getHeight();
+        if (w > 0 && h > 0) {
+            // Use JUCE's component snapshot
+            return editor->createComponentSnapshot(juce::Rectangle<int>(0, 0, w, h), true, 1.0f);
+        }
+    }
+    return std::nullopt;
 }
 
 bool BehaviorCoreProcessor::postControlCommandPayload(
@@ -3051,6 +3073,18 @@ std::string BehaviorCoreProcessor::getAndClearPendingUIRendererMode() {
     req.mode.clear();
     req.pending.store(false, std::memory_order_release);
     return mode;
+}
+
+std::string BehaviorCoreProcessor::getAndClearPendingScreenshot() {
+    auto& req = controlServer.getScreenshotRequest();
+    if (!req.pending.load(std::memory_order_acquire)) {
+        return {};
+    }
+
+    std::lock_guard<std::mutex> lock(req.mutex);
+    std::string path = req.outputPath;
+    req.pending.store(false, std::memory_order_release);
+    return path;
 }
 
 void BehaviorCoreProcessor::applyControlCommand(const ControlCommand& cmd) {

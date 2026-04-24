@@ -1414,6 +1414,74 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
             return result;
         }
 
+        const std::string nodeType = std::string(node->getNodeType());
+
+        if (nodeType == "Allpass") {
+            auto allpass = std::static_pointer_cast<dsp_primitives::AllpassNode>(node);
+            result["maxDelay"] = allpass->getMaxDelay();
+            result["delay"] = allpass->getDelay();
+            result["gain"] = allpass->getGain();
+            return result;
+        }
+
+        if (nodeType == "Resonator") {
+            auto resonator = std::static_pointer_cast<dsp_primitives::ResonatorNode>(node);
+            result["gain"] = resonator->getGain();
+            result["frequency"] = resonator->getFrequency();
+            result["q"] = resonator->getQ();
+            return result;
+        }
+
+        if (nodeType == "Comb") {
+            auto comb = std::static_pointer_cast<dsp_primitives::CombNode>(node);
+            result["maxDelay"] = comb->getMaxDelay();
+            result["delay"] = comb->getDelay();
+            result["gain"] = comb->getGain();
+            result["feedforward"] = comb->getFeedforward();
+            result["feedback"] = comb->getFeedback();
+            return result;
+        }
+
+        if (nodeType == "SlewLimiter") {
+            auto slew = std::static_pointer_cast<dsp_primitives::SlewLimiterNode>(node);
+            result["slideUp"] = slew->getSlideUp();
+            result["slideDown"] = slew->getSlideDown();
+            return result;
+        }
+
+        if (nodeType == "ConstantSignal") {
+            auto constant = std::static_pointer_cast<dsp_primitives::ConstantSignalNode>(node);
+            result["value"] = constant->getValue();
+            return result;
+        }
+
+        if (nodeType == "EnvelopeFollower") {
+            auto env = std::static_pointer_cast<dsp_primitives::EnvelopeFollowerNode>(node);
+            result["attack"] = env->getAttack();
+            result["release"] = env->getRelease();
+            result["sensitivity"] = env->getSensitivity();
+            result["highpass"] = env->getHighpass();
+            result["mode"] = env->getMode();
+            result["envelope"] = env->getEnvelope();
+            return result;
+        }
+
+        if (nodeType == "SpectrumAnalyzer") {
+            auto spectrum = std::static_pointer_cast<dsp_primitives::SpectrumAnalyzerNode>(node);
+            result["band1"] = spectrum->getBand1();
+            result["band2"] = spectrum->getBand2();
+            result["band3"] = spectrum->getBand3();
+            result["band4"] = spectrum->getBand4();
+            result["band5"] = spectrum->getBand5();
+            result["band6"] = spectrum->getBand6();
+            result["band7"] = spectrum->getBand7();
+            result["band8"] = spectrum->getBand8();
+            result["sensitivity"] = spectrum->getSensitivity();
+            result["smoothing"] = spectrum->getSmoothing();
+            result["floor"] = spectrum->getFloor();
+            return result;
+        }
+
         return result;
     };
 

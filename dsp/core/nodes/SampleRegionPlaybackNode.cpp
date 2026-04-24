@@ -2,6 +2,8 @@
 #include "dsp/core/nodes/PartialsExtractor.h"
 #include "dsp/core/nodes/SampleAnalyzer.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
+
 #include <cmath>
 #include <vector>
 #include <utility>
@@ -156,6 +158,7 @@ void SampleRegionPlaybackNode::prepare(double sampleRate, int maxBlockSize) {
         for (int v = 0; v < kMaxUnisonVoices; ++v) {
             readPositions_[v] = 0.0;
             firstPassStates_[v] = true;
+            voiceActive_[v] = (v == 0);
         }
         lastPosition_.store(0, std::memory_order_release);
     } else {
@@ -168,7 +171,7 @@ void SampleRegionPlaybackNode::prepare(double sampleRate, int maxBlockSize) {
 
     const int currentLength = juce::jlimit(0, maxLoopSamples_, loopLength_.load(std::memory_order_acquire));
     loopLength_.store(currentLength, std::memory_order_release);
-    currentSpeed_ = speed_.load(std::memory_order_acquire);
+    currentSpeed_ = speed_.load(std::memory_order_acquire) * sourceRateRatio_.load(std::memory_order_acquire);
     currentDetuneCents_ = detuneCents_.load(std::memory_order_acquire);
     currentSpread_ = stereoSpread_.load(std::memory_order_acquire);
     unisonVoiceGains_[0] = 1.0f;
@@ -195,8 +198,22 @@ float SampleRegionPlaybackNode::getSpeed() const {
     return speed_.load(std::memory_order_acquire);
 }
 
+void SampleRegionPlaybackNode::setOneShot(bool enabled) {
+    oneShot_.store(enabled, std::memory_order_release);
+}
+
+bool SampleRegionPlaybackNode::isOneShot() const {
+    return oneShot_.load(std::memory_order_acquire);
+}
+
 void SampleRegionPlaybackNode::play() {
     playing_.store(true, std::memory_order_release);
+    if (oneShot_.load(std::memory_order_acquire)) {
+        const int unison = juce::jlimit(1, kMaxUnisonVoices, unisonVoices_.load(std::memory_order_acquire));
+        for (int v = 0; v < kMaxUnisonVoices; ++v) {
+            voiceActive_[v] = (v < unison);
+        }
+    }
 }
 
 void SampleRegionPlaybackNode::pause() {
@@ -210,6 +227,7 @@ void SampleRegionPlaybackNode::stop() {
     for (int v = 0; v < kMaxUnisonVoices; ++v) {
         readPositions_[v] = 0.0;
         firstPassStates_[v] = true;
+        voiceActive_[v] = false;
         unisonVoiceGains_[v] = (v == 0) ? 1.0f : 0.0f;
     }
     lastRequestedUnison_ = 1;
@@ -360,6 +378,7 @@ void SampleRegionPlaybackNode::applyPendingControlChanges(const RegionState& reg
         for (int v = lastRequestedUnison_; v < unison; ++v) {
             readPositions_[v] = anchorPosition;
             firstPassStates_[v] = anchorFirstPass;
+            voiceActive_[v] = voiceActive_[anchorVoice];
             unisonVoiceGains_[v] = 0.0f;
         }
     }
@@ -369,11 +388,13 @@ void SampleRegionPlaybackNode::applyPendingControlChanges(const RegionState& reg
         for (int v = 0; v < unison; ++v) {
             readPositions_[v] = static_cast<double>(region.playStart);
             firstPassStates_[v] = true;
+            voiceActive_[v] = true;
             unisonVoiceGains_[v] = (v == 0) ? 1.0f : 0.0f;
         }
         for (int v = unison; v < kMaxUnisonVoices; ++v) {
             readPositions_[v] = static_cast<double>(region.playStart);
             firstPassStates_[v] = true;
+            voiceActive_[v] = false;
             unisonVoiceGains_[v] = 0.0f;
         }
         lastPosition_.store(region.playStart, std::memory_order_release);
@@ -387,6 +408,7 @@ void SampleRegionPlaybackNode::applyPendingControlChanges(const RegionState& reg
         for (int v = 0; v < kMaxUnisonVoices; ++v) {
             readPositions_[v] = seekPos;
             firstPassStates_[v] = firstPass;
+            voiceActive_[v] = (v < unison);
             unisonVoiceGains_[v] = (v == 0) ? 1.0f : 0.0f;
         }
         lastPosition_.store(static_cast<int>(seekPos), std::memory_order_release);
@@ -419,7 +441,9 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
         return;
     }
 
-    const float targetSpeed = juce::jlimit(0.0f, 8.0f, speed_.load(std::memory_order_acquire));
+    const bool oneShotEnabled = oneShot_.load(std::memory_order_acquire);
+    const float targetSpeed = juce::jlimit(0.0f, 8.0f, speed_.load(std::memory_order_acquire))
+                            * sourceRateRatio_.load(std::memory_order_acquire);
     const float targetDetuneCents = detuneCents_.load(std::memory_order_acquire);
     const float targetSpread = stereoSpread_.load(std::memory_order_acquire);
     if (targetSpeed <= 0.0f && currentSpeed_ <= 1.0e-4f) {
@@ -428,11 +452,14 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
     }
 
     for (int v = 0; v < kMaxUnisonVoices; ++v) {
+        if (oneShotEnabled && !voiceActive_[v]) {
+            continue;
+        }
         if (firstPassStates_[v]) {
             readPositions_[v] = juce::jlimit(static_cast<double>(region.playStart),
                                              static_cast<double>(region.loopEnd - 1),
                                              readPositions_[v]);
-        } else {
+        } else if (!oneShotEnabled) {
             while (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
                 readPositions_[v] -= static_cast<double>(region.loopWindow);
             }
@@ -453,10 +480,11 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
         int contributingVoices = 0;
 
         for (int v = 0; v < kMaxUnisonVoices; ++v) {
-            const float targetVoiceGain = (v < targetUnison) ? 1.0f : 0.0f;
+            const bool voiceEnabled = (v < targetUnison) && (!oneShotEnabled || voiceActive_[v]);
+            const float targetVoiceGain = voiceEnabled ? 1.0f : 0.0f;
             unisonVoiceGains_[v] += (targetVoiceGain - unisonVoiceGains_[v]) * unisonVoiceSmoothingCoeff_;
             const float voiceGain = unisonVoiceGains_[v];
-            if (voiceGain <= 1.0e-4f) {
+            if (!voiceEnabled || voiceGain <= 1.0e-4f) {
                 continue;
             }
             ++contributingVoices;
@@ -469,7 +497,8 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
             const float rightPan = std::sqrt(pan);
             const double position = readPositions_[v];
 
-            const bool inBoundaryCrossfade = region.crossfadeSamples > 0 &&
+            const bool inBoundaryCrossfade = !oneShotEnabled &&
+                                             region.crossfadeSamples > 0 &&
                                              position >= crossfadeStart &&
                                              position < static_cast<double>(region.loopEnd);
 
@@ -497,7 +526,14 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
             }
 
             readPositions_[v] += voiceSpeed;
-            if (firstPassStates_[v]) {
+            if (oneShotEnabled) {
+                if (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
+                    readPositions_[v] = static_cast<double>(region.loopEnd - 1);
+                    firstPassStates_[v] = false;
+                    voiceActive_[v] = false;
+                    unisonVoiceGains_[v] = 0.0f;
+                }
+            } else if (firstPassStates_[v]) {
                 if (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
                     const double overshoot = readPositions_[v] - static_cast<double>(region.loopEnd);
                     const double resumeOffset = static_cast<double>(region.crossfadeSamples);
@@ -513,6 +549,19 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
                     const double resumeOffset = static_cast<double>(region.crossfadeSamples);
                     readPositions_[v] = static_cast<double>(region.loopStart) + resumeOffset + overshoot;
                 }
+            }
+        }
+
+        if (oneShotEnabled) {
+            bool anyVoiceActive = false;
+            for (int v = 0; v < targetUnison; ++v) {
+                if (voiceActive_[v]) {
+                    anyVoiceActive = true;
+                    break;
+                }
+            }
+            if (!anyVoiceActive) {
+                playing_.store(false, std::memory_order_release);
             }
         }
 
@@ -817,9 +866,14 @@ void SampleRegionPlaybackNode::clearLoop() {
     for (int v = 0; v < kMaxUnisonVoices; ++v) {
         readPositions_[v] = 0.0;
         firstPassStates_[v] = true;
+        voiceActive_[v] = false;
     }
     lastPosition_.store(0, std::memory_order_release);
     loopLength_.store(0, std::memory_order_release);
+    sourceRateRatio_.store(1.0f, std::memory_order_release);
+    playing_.store(false, std::memory_order_release);
+    triggerRequest_.store(false, std::memory_order_release);
+    seekRequest_.store(-1, std::memory_order_release);
     analysisRequestedGeneration_.store(0, std::memory_order_release);
     analysisCompletedGeneration_.store(0, std::memory_order_release);
     asyncAnalysisPending_.store(false, std::memory_order_release);
@@ -832,6 +886,70 @@ void SampleRegionPlaybackNode::clearLoop() {
     }
     clearSnapshot(lastPartialsSnapshot_);
     clearSnapshot(lastTemporalPartialsSnapshot_);
+}
+
+bool SampleRegionPlaybackNode::loadFile(const juce::File& file) {
+    if (!file.existsAsFile()) {
+        return false;
+    }
+
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
+    if (!reader || reader->lengthInSamples <= 0 || reader->numChannels <= 0) {
+        return false;
+    }
+
+    const int activeIndex = activeLoopBufferIndex_.load(std::memory_order_acquire);
+    const int writeIndex = (activeIndex == 0) ? 1 : 0;
+    juce::AudioBuffer<float>& writeBuffer = (writeIndex == 0) ? loopBufferA_ : loopBufferB_;
+
+    const int targetLength = juce::jlimit(1, maxLoopSamples_, static_cast<int>(reader->lengthInSamples));
+    const int channels = juce::jmin(numChannels_, static_cast<int>(reader->numChannels), writeBuffer.getNumChannels());
+
+    juce::AudioBuffer<float> tempBuffer(static_cast<int>(reader->numChannels), targetLength);
+    tempBuffer.clear();
+    if (!reader->read(&tempBuffer, 0, targetLength, 0, true, true)) {
+        return false;
+    }
+
+    writeBuffer.clear();
+    for (int ch = 0; ch < channels; ++ch) {
+        writeBuffer.copyFrom(ch, 0, tempBuffer, ch, 0, targetLength);
+    }
+
+    loopLength_.store(targetLength, std::memory_order_release);
+    activeLoopBufferIndex_.store(writeIndex, std::memory_order_release);
+    sourceRateRatio_.store(static_cast<float>((sampleRate_ > 0.0 && reader->sampleRate > 0.0)
+                                ? (reader->sampleRate / sampleRate_)
+                                : 1.0),
+                           std::memory_order_release);
+    currentSpeed_ = speed_.load(std::memory_order_acquire) * sourceRateRatio_.load(std::memory_order_acquire);
+    playing_.store(false, std::memory_order_release);
+    triggerRequest_.store(false, std::memory_order_release);
+    seekRequest_.store(-1, std::memory_order_release);
+    for (int v = 0; v < kMaxUnisonVoices; ++v) {
+        readPositions_[v] = 0.0;
+        firstPassStates_[v] = true;
+        voiceActive_[v] = false;
+        unisonVoiceGains_[v] = (v == 0) ? 1.0f : 0.0f;
+    }
+    lastRequestedUnison_ = 1;
+    lastPosition_.store(0, std::memory_order_release);
+    analysisRequestedGeneration_.store(0, std::memory_order_release);
+    analysisCompletedGeneration_.store(0, std::memory_order_release);
+    asyncAnalysisPending_.store(false, std::memory_order_release);
+
+    {
+        std::lock_guard<std::mutex> lock(analysisMutex_);
+        lastAnalysis_ = SampleAnalysis{};
+        lastPartials_ = PartialData{};
+        lastTemporalPartials_ = TemporalPartialData{};
+    }
+    clearSnapshot(lastPartialsSnapshot_);
+    clearSnapshot(lastTemporalPartialsSnapshot_);
+    return true;
 }
 
 void SampleRegionPlaybackNode::copyFromCaptureBuffer(const juce::AudioBuffer<float>& captureBuffer,
@@ -881,9 +999,11 @@ void SampleRegionPlaybackNode::copyFromCaptureBuffer(const juce::AudioBuffer<flo
 
     loopLength_.store(targetLength, std::memory_order_release);
     activeLoopBufferIndex_.store(writeIndex, std::memory_order_release);
+    sourceRateRatio_.store(1.0f, std::memory_order_release);
     for (int v = 0; v < kMaxUnisonVoices; ++v) {
         readPositions_[v] = 0.0;
         firstPassStates_[v] = true;
+        voiceActive_[v] = false;
     }
     lastPosition_.store(0, std::memory_order_release);
     asyncAnalysisPending_.store(false, std::memory_order_release);

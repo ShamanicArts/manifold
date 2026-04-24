@@ -489,6 +489,17 @@ void registerCoreBindings(LoadSession &session,
           }
           return 0.0f;
         };
+        t["setOneShot"] = [](sol::table self, bool v) {
+          if (auto n = tableNode<dsp_primitives::SampleRegionPlaybackNode>(self)) {
+            n->setOneShot(v);
+          }
+        };
+        t["isOneShot"] = [](sol::table self) {
+          if (auto n = tableNode<dsp_primitives::SampleRegionPlaybackNode>(self)) {
+            return n->isOneShot();
+          }
+          return false;
+        };
         t["play"] = [](sol::table self) {
           if (auto n = tableNode<dsp_primitives::SampleRegionPlaybackNode>(self)) {
             n->play();
@@ -591,6 +602,12 @@ void registerCoreBindings(LoadSession &session,
             }
           }
           return result;
+        };
+        t["loadFile"] = [](sol::table self, const std::string& path) {
+          if (auto n = tableNode<dsp_primitives::SampleRegionPlaybackNode>(self)) {
+            return n->loadFile(juce::File(path));
+          }
+          return false;
         };
         return t;
       };

@@ -1732,6 +1732,10 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
 
 BehaviorCoreEditor::~BehaviorCoreEditor() {
     stopTimer();
+    {
+        std::lock_guard<std::mutex> lock(ramFramesMutex_);
+        ramFrames_.clear();
+    }
     // Shut down the direct host first (detaches GL context, clears live tree pointer)
     directHost_.shutdown();
     // Then the old debug host
@@ -1873,6 +1877,66 @@ void BehaviorCoreEditor::timerCallback() {
         setRuntimeRendererMode(runtimeRendererModeFromString(pendingRendererMode, runtimeRendererMode_), true);
     }
 
+    // Handle screenshot request
+    auto pendingScreenshot = processorRef.getAndClearPendingScreenshot();
+    if (!pendingScreenshot.empty()) {
+        auto& req = processorRef.getControlServer().getScreenshotRequest();
+        bool captured = false;
+        juce::Image image;
+
+        // Prefer OpenGL framebuffer capture when ImGuiDirectHost is active
+        if (directHost_.isVisible()) {
+            image = directHost_.captureScreenshot();
+        }
+
+        // Fallback: JUCE component snapshot (e.g. Canvas mode)
+        if (!image.isValid()) {
+            const int w = getWidth();
+            const int h = getHeight();
+            if (w > 0 && h > 0) {
+                image = createComponentSnapshot(juce::Rectangle<int>(0, 0, w, h), true, 1.0f);
+            }
+        }
+
+        if (image.isValid()) {
+            juce::File outputFile(pendingScreenshot);
+            std::unique_ptr<juce::FileOutputStream> stream(outputFile.createOutputStream());
+            if (stream) {
+                juce::PNGImageFormat pngFormat;
+                if (pngFormat.writeImageToStream(image, *stream)) {
+                    captured = true;
+                    std::fprintf(stderr, "BehaviorCoreEditor: captured screenshot to %s\n", pendingScreenshot.c_str());
+                }
+                stream->flush();
+            }
+        }
+
+        req.success.store(captured, std::memory_order_release);
+        req.completed.store(true, std::memory_order_release);
+    }
+
+    // Handle recording frame capture (target 30 FPS)
+    const bool isRecording = processorRef.getControlServer().isRecording();
+    if (isRecording && !wasRecording_) {
+        // Recording started: clear any stale RAM frames
+        {
+            std::lock_guard<std::mutex> lock(ramFramesMutex_);
+            ramFrames_.clear();
+        }
+    } else if (!isRecording && wasRecording_) {
+        // Recording stopped: flush all accumulated RAM frames to disk
+        auto& rec = processorRef.getControlServer().getRecordingState();
+        std::string outputDir;
+        {
+            std::lock_guard<std::mutex> lock(rec.mutex);
+            outputDir = rec.outputDir;
+        }
+        if (!outputDir.empty()) {
+            flushRamFramesToDisk(outputDir);
+        }
+    }
+    wasRecording_ = isRecording;
+
     processorRef.processLinkPendingRequests();
     processorRef.drainPendingSlotDestroy();
 
@@ -1897,7 +1961,19 @@ void BehaviorCoreEditor::timerCallback() {
                 // Sync debug outline and copyid mode state from Lua to DirectHost
                 directHost_.setDebugOutlinesEnabled(luaEngine.areDebugOutlinesEnabled());
                 directHost_.setCopyIdModeEnabled(luaEngine.isCopyIdModeEnabled());
-                directHost_.renderNow();
+                if (isRecording) {
+                    // captureScreenshot() renders to EGL (headless) or skips swap
+                    // (standalone) and reads pixels — the only path that actually
+                    // produces framebuffer content in both modes.
+                    juce::Image frame = directHost_.captureScreenshot();
+                    if (frame.isValid()) {
+                        std::lock_guard<std::mutex> lock(ramFramesMutex_);
+                        ramFrames_.push_back(frame);
+                    }
+                    processorRef.getControlServer().getRecordingState().frameCounter.fetch_add(1);
+                } else {
+                    directHost_.renderNow();
+                }
             } else {
                 runtimeNodeDebugHost.refreshSnapshotNow();
                 runtimeNodeDebugHost.repaint();
@@ -2200,6 +2276,10 @@ void BehaviorCoreEditor::timerCallback() {
             nextTimerHz = 60;
         }
     }
+    // Ensure 30 FPS frame capture during recording
+    if (processorRef.getControlServer().isRecording()) {
+        nextTimerHz = 30;
+    }
     startTimerHz(nextTimerHz);
 }
 
@@ -2411,4 +2491,57 @@ void BehaviorCoreEditor::showError(const std::string& message) {
         g.drawMultiLineText(juce::String(errorMessage), inner.getX(), inner.getY() + 14,
                             inner.getWidth());
     };
+}
+
+namespace {
+bool writeTga(const juce::Image& image, const std::string& path) {
+    FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f) return false;
+    const int w = image.getWidth();
+    const int h = image.getHeight();
+    std::uint8_t header[18] = {};
+    header[2] = 2;
+    header[12] = static_cast<std::uint8_t>(w & 0xFF);
+    header[13] = static_cast<std::uint8_t>((w >> 8) & 0xFF);
+    header[14] = static_cast<std::uint8_t>(h & 0xFF);
+    header[15] = static_cast<std::uint8_t>((h >> 8) & 0xFF);
+    header[16] = 32;
+    header[17] = 0x28;
+    std::fwrite(header, 1, 18, f);
+    juce::Image::BitmapData bitmap(image, juce::Image::BitmapData::readOnly);
+    for (int y = 0; y < h; ++y) {
+        const auto* src = bitmap.getLinePointer(y);
+        for (int x = 0; x < w; ++x) {
+            std::uint8_t pixel[4] = {src[x * 4 + 0], src[x * 4 + 1], src[x * 4 + 2], src[x * 4 + 3]};
+            std::fwrite(pixel, 1, 4, f);
+        }
+    }
+    std::fclose(f);
+    return true;
+}
+}
+
+void BehaviorCoreEditor::flushRamFramesToDisk(const std::string& outputDir) {
+    std::vector<juce::Image> frames;
+    {
+        std::lock_guard<std::mutex> lock(ramFramesMutex_);
+        frames = std::move(ramFrames_);
+        ramFrames_.clear();
+    }
+    if (frames.empty()) {
+        return;
+    }
+    auto& rec = processorRef.getControlServer().getRecordingState();
+    int frameNum = 0;
+    for (const auto& image : frames) {
+        ++frameNum;
+        char framePath[512];
+        std::snprintf(framePath, sizeof(framePath), "%s/frame_%04d.tga",
+                      outputDir.c_str(), frameNum);
+        writeTga(image, framePath);
+        {
+            std::lock_guard<std::mutex> lock(rec.mutex);
+            rec.framePaths.push_back(framePath);
+        }
+    }
 }

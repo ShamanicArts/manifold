@@ -126,6 +126,15 @@ public:
     void renderNow();
     void shutdown();
 
+    // Capture the current framebuffer to a JUCE Image (for debug/screenshots).
+    // This renders a fresh frame, reads back the OpenGL framebuffer, and returns
+    // a copy as a JUCE Image. May return an invalid image if the context is not ready.
+    juce::Image captureScreenshot();
+
+    // Read back the framebuffer that was already rendered (no re-render).
+    // Use this when you know a fresh frame is already in the GL framebuffer.
+    juce::Image readbackFramebuffer();
+
     // Debug/inspection API
     uint64_t getHoveredNodeStableId() const { return hoveredNodeStableId_; }
     uint64_t getPressedNodeStableId() const { return pressedNodeStableId_; }
@@ -146,6 +155,8 @@ public:
     void unregisterSurfaceProvider(const std::string& typeHint);
 
 private:
+    struct EglOffscreenContext;
+
     void resized() override;
     void visibilityChanged() override;
     void parentHierarchyChanged() override;
@@ -166,6 +177,11 @@ public:
     void openGLContextClosing() override;
 
     void attachContextIfNeeded();
+    bool ensureEglOffscreenContext(int width, int height);
+    void releaseEglOffscreenContext();
+    void initialiseImGuiBackendIfNeeded();
+    void shutdownImGuiBackend();
+    bool renderFrameWithCurrentContext(float scale, bool allowSwap);
     void updateHover(juce::Point<float> position, const juce::ModifierKeys* mods = nullptr);
     void flushPendingDrag();
 
@@ -195,6 +211,7 @@ public:
     bool copyIdModeEnabled_ = false;
 
     juce::OpenGLContext openGLContext_;
+    std::unique_ptr<EglOffscreenContext> eglOffscreenContext_;
     void* imguiContext_ = nullptr;
     bool contextReady_ = false;
     GlobalKeyHandler globalKeyHandler_;
@@ -220,6 +237,8 @@ public:
     bool rightMouseDown_ = false;
     bool middleMouseDown_ = false;
     bool renderInProgress_ = false;
+    bool skipNextSwap_ = false;
+    bool forceNextRender_ = false;
     RenderSnapshot pendingSnapshot_;
     RenderSnapshot activeSnapshot_;
     RenderSnapshot glSnapshot_;

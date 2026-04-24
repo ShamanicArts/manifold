@@ -1,5 +1,7 @@
 #pragma once
 
+#include <juce_core/juce_core.h>
+#include <juce_graphics/juce_graphics.h>
 #include "../control/ControlServer.h"
 #include "ScriptingConfig.h"
 #include "IStateSerializer.h"
@@ -100,6 +102,9 @@ public:
   virtual OSCServer &getOSCServer() = 0;
   virtual OSCEndpointRegistry &getEndpointRegistry() = 0;
   virtual OSCQueryServer &getOSCQueryServer() = 0;
+
+  // Debug screenshot capture - returns empty if editor not available
+  virtual std::optional<juce::Image> captureEditorScreenshot() { return {}; }
 
   // Optional graph/script host hooks. Defaults are safe no-ops so non-looper
   // processors can participate in the shared runtime services.

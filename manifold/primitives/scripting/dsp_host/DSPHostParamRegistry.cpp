@@ -286,6 +286,54 @@ void registerParamsApi(LoadSession &session,
           }
         }
 
+        if (auto allpass = std::dynamic_pointer_cast<dsp_primitives::AllpassNode>(node)) {
+          if (method == "setMaxDelay") {
+            newParamBindings[path] = [allpass](float v) { allpass->setMaxDelay(v); };
+            return true;
+          }
+          if (method == "setDelay") {
+            newParamBindings[path] = [allpass](float v) { allpass->setDelay(v); };
+            return true;
+          }
+          if (method == "setFeedback" || method == "setGain") {
+            newParamBindings[path] = [allpass](float v) { allpass->setFeedback(v); };
+            return true;
+          }
+        }
+
+        if (auto resonator = std::dynamic_pointer_cast<dsp_primitives::ResonatorNode>(node)) {
+          if (method == "setGain") {
+            newParamBindings[path] = [resonator](float v) { resonator->setGain(v); };
+            return true;
+          }
+          if (method == "setFrequency") {
+            newParamBindings[path] = [resonator](float v) { resonator->setFrequency(v); };
+            return true;
+          }
+          if (method == "setQ") {
+            newParamBindings[path] = [resonator](float v) { resonator->setQ(v); };
+            return true;
+          }
+        }
+
+        if (auto slew = std::dynamic_pointer_cast<dsp_primitives::SlewLimiterNode>(node)) {
+          if (method == "setSlideUp" || method == "setRiseRate") {
+            newParamBindings[path] = [slew](float v) { slew->setSlideUp(v); };
+            return true;
+          }
+          if (method == "setSlideDown" || method == "setFallRate") {
+            newParamBindings[path] = [slew](float v) { slew->setSlideDown(v); };
+            return true;
+          }
+        }
+
+        if (auto constant = std::dynamic_pointer_cast<dsp_primitives::ConstantSignalNode>(node)) {
+          if (method == "setValue") {
+            newParamBindings[path] = [constant](float v) { constant->setValue(v); };
+            return true;
+          }
+        }
+
         if (auto delay = std::dynamic_pointer_cast<dsp_primitives::StereoDelayNode>(node)) {
           if (method == "setTimeMode") {
             newParamBindings[path] = [delay](float v) { delay->setTimeMode(static_cast<dsp_primitives::StereoDelayNode::TimeMode>(static_cast<int>(v))); };

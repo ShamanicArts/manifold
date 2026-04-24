@@ -15,9 +15,135 @@
 #include <cfloat>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <unordered_set>
 
+#if JUCE_LINUX
+#include <EGL/egl.h>
+#endif
+
 using namespace juce::gl;
+
+#if JUCE_LINUX
+struct ImGuiDirectHost::EglOffscreenContext {
+    ~EglOffscreenContext() { shutdown(); }
+
+    bool initialise(int newWidth, int newHeight) {
+        if (newWidth <= 0 || newHeight <= 0) {
+            return false;
+        }
+
+        if (display != EGL_NO_DISPLAY && width == newWidth && height == newHeight) {
+            return true;
+        }
+
+        shutdown();
+
+        display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        if (display == EGL_NO_DISPLAY) {
+            return false;
+        }
+
+        EGLint major = 0;
+        EGLint minor = 0;
+        if (!eglInitialize(display, &major, &minor)) {
+            shutdown();
+            return false;
+        }
+
+        if (!eglBindAPI(EGL_OPENGL_API)) {
+            shutdown();
+            return false;
+        }
+
+        const EGLint configAttribs[] = {
+            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+            EGL_RED_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE, 8,
+            EGL_ALPHA_SIZE, 8,
+            EGL_DEPTH_SIZE, 16,
+            EGL_NONE
+        };
+
+        EGLint numConfigs = 0;
+        if (!eglChooseConfig(display, configAttribs, &config, 1, &numConfigs) || numConfigs < 1) {
+            shutdown();
+            return false;
+        }
+
+        const EGLint pbufferAttribs[] = {
+            EGL_WIDTH, newWidth,
+            EGL_HEIGHT, newHeight,
+            EGL_NONE
+        };
+
+        surface = eglCreatePbufferSurface(display, config, pbufferAttribs);
+        if (surface == EGL_NO_SURFACE) {
+            shutdown();
+            return false;
+        }
+
+        context = eglCreateContext(display, config, EGL_NO_CONTEXT, nullptr);
+        if (context == EGL_NO_CONTEXT) {
+            shutdown();
+            return false;
+        }
+
+        width = newWidth;
+        height = newHeight;
+        return true;
+    }
+
+    void shutdown() {
+        if (display != EGL_NO_DISPLAY) {
+            eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        }
+        if (display != EGL_NO_DISPLAY && context != EGL_NO_CONTEXT) {
+            eglDestroyContext(display, context);
+        }
+        if (display != EGL_NO_DISPLAY && surface != EGL_NO_SURFACE) {
+            eglDestroySurface(display, surface);
+        }
+        if (display != EGL_NO_DISPLAY) {
+            eglTerminate(display);
+        }
+        display = EGL_NO_DISPLAY;
+        context = EGL_NO_CONTEXT;
+        surface = EGL_NO_SURFACE;
+        config = nullptr;
+        width = 0;
+        height = 0;
+    }
+
+    bool makeCurrent() {
+        return display != EGL_NO_DISPLAY
+            && surface != EGL_NO_SURFACE
+            && context != EGL_NO_CONTEXT
+            && eglMakeCurrent(display, surface, surface, context);
+    }
+
+    void doneCurrent() {
+        if (display != EGL_NO_DISPLAY) {
+            eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        }
+    }
+
+    bool isValid() const {
+        return display != EGL_NO_DISPLAY
+            && surface != EGL_NO_SURFACE
+            && context != EGL_NO_CONTEXT;
+    }
+
+    EGLDisplay display = EGL_NO_DISPLAY;
+    EGLConfig config = nullptr;
+    EGLContext context = EGL_NO_CONTEXT;
+    EGLSurface surface = EGL_NO_SURFACE;
+    int width = 0;
+    int height = 0;
+};
+#endif
 
 namespace {
 
@@ -418,6 +544,48 @@ void renderCompiledDisplayList(const manifold::ui::imgui::CompiledDisplayList& c
                 if (!state.clipStack.empty()) {
                     drawList->PopClipRect();
                     state.clipStack.pop_back();
+                }
+                break;
+            case manifold::ui::imgui::CompiledDrawCmd::Type::FillCircle: {
+                const ImVec2 center(transform.offsetX + (static_cast<float>(sceneBounds.getX()) + cmd.x + cmd.radius) * transform.scale,
+                                    transform.offsetY + (static_cast<float>(sceneBounds.getY()) + cmd.y + cmd.radius) * transform.scale);
+                drawList->AddCircleFilled(center, cmd.radius * transform.scale, state.color, cmd.segments);
+                break;
+            }
+            case manifold::ui::imgui::CompiledDrawCmd::Type::DrawCircle: {
+                const ImVec2 center(transform.offsetX + (static_cast<float>(sceneBounds.getX()) + cmd.x + cmd.radius) * transform.scale,
+                                    transform.offsetY + (static_cast<float>(sceneBounds.getY()) + cmd.y + cmd.radius) * transform.scale);
+                drawList->AddCircle(center, cmd.radius * transform.scale, state.color, cmd.segments, scaledThickness);
+                break;
+            }
+            case manifold::ui::imgui::CompiledDrawCmd::Type::DrawArc: {
+                const ImVec2 center(transform.offsetX + (static_cast<float>(sceneBounds.getX()) + cmd.x) * transform.scale,
+                                    transform.offsetY + (static_cast<float>(sceneBounds.getY()) + cmd.y) * transform.scale);
+                const float r = cmd.radius * transform.scale;
+                drawList->PathArcTo(center, r, cmd.startAngle, cmd.endAngle, cmd.segments > 0 ? cmd.segments : 0);
+                drawList->PathStroke(state.color, 0, scaledThickness);
+                break;
+            }
+            case manifold::ui::imgui::CompiledDrawCmd::Type::FillPolygon:
+                if (cmd.polyPoints.size() >= 3) {
+                    std::vector<ImVec2> pts;
+                    pts.reserve(cmd.polyPoints.size());
+                    for (const auto& p : cmd.polyPoints) {
+                        pts.emplace_back(transform.offsetX + (static_cast<float>(sceneBounds.getX()) + p.first) * transform.scale,
+                                         transform.offsetY + (static_cast<float>(sceneBounds.getY()) + p.second) * transform.scale);
+                    }
+                    drawList->AddConcavePolyFilled(pts.data(), static_cast<int>(pts.size()), state.color);
+                }
+                break;
+            case manifold::ui::imgui::CompiledDrawCmd::Type::DrawPolyline:
+                if (cmd.polyPoints.size() >= 2) {
+                    std::vector<ImVec2> pts;
+                    pts.reserve(cmd.polyPoints.size());
+                    for (const auto& p : cmd.polyPoints) {
+                        pts.emplace_back(transform.offsetX + (static_cast<float>(sceneBounds.getX()) + p.first) * transform.scale,
+                                         transform.offsetY + (static_cast<float>(sceneBounds.getY()) + p.second) * transform.scale);
+                    }
+                    drawList->AddPolyline(pts.data(), static_cast<int>(pts.size()), state.color, 0, scaledThickness);
                 }
                 break;
             case manifold::ui::imgui::CompiledDrawCmd::Type::SetColor:
@@ -981,6 +1149,209 @@ bool ImGuiDirectHost::getVideoSurfaceInfo(uint64_t stableId, int& width, int& he
     return false;
 }
 
+bool ImGuiDirectHost::ensureEglOffscreenContext(int width, int height) {
+#if JUCE_LINUX
+    if (!eglOffscreenContext_) {
+        eglOffscreenContext_ = std::make_unique<EglOffscreenContext>();
+    }
+    if (eglOffscreenContext_->initialise(width, height)) {
+        return true;
+    }
+    eglOffscreenContext_.reset();
+#endif
+    juce::ignoreUnused(width, height);
+    return false;
+}
+
+void ImGuiDirectHost::releaseEglOffscreenContext() {
+    if (eglOffscreenContext_) {
+        eglOffscreenContext_->shutdown();
+        eglOffscreenContext_.reset();
+    }
+}
+
+void ImGuiDirectHost::initialiseImGuiBackendIfNeeded() {
+    if (contextReady_) {
+        return;
+    }
+
+    IMGUI_CHECKVERSION();
+    auto* context = ImGui::CreateContext();
+    imguiContext_ = context;
+    ImGui::SetCurrentContext(context);
+
+    auto& io = ImGui::GetIO();
+    io.BackendPlatformName = "manifold_juce_imgui_direct";
+    manifold::ui::imgui::configureToolFonts(io);
+    fontAtlasBytes_.store(0, std::memory_order_relaxed);
+    manifold::ui::imgui::applyToolTheme();
+#if JUCE_LINUX
+    if (!openGLContext_.isAttached() && eglOffscreenContext_ && eglOffscreenContext_->isValid()) {
+        juce::gl::loadFunctions();
+    }
+#endif
+    ImGui_ImplOpenGL3_Init("#version 150");
+    contextReady_ = true;
+}
+
+void ImGuiDirectHost::shutdownImGuiBackend() {
+    auto* context = reinterpret_cast<ImGuiContext*>(imguiContext_);
+    if (context != nullptr) {
+        ImGui::SetCurrentContext(context);
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui::DestroyContext(context);
+        imguiContext_ = nullptr;
+    }
+    fontAtlasBytes_.store(0, std::memory_order_relaxed);
+    surfaceColorBytes_.store(0, std::memory_order_relaxed);
+    surfaceDepthBytes_.store(0, std::memory_order_relaxed);
+    contextReady_ = false;
+}
+
+bool ImGuiDirectHost::renderFrameWithCurrentContext(float scale, bool allowSwap) {
+    auto* context = reinterpret_cast<ImGuiContext*>(imguiContext_);
+    if (context == nullptr) {
+        return false;
+    }
+
+    ImGui::SetCurrentContext(context);
+
+    const auto width = std::max(1, getWidth());
+    const auto height = std::max(1, getHeight());
+    const auto framebufferWidth = std::max(1, juce::roundToInt(scale * static_cast<float>(width)));
+    const auto framebufferHeight = std::max(1, juce::roundToInt(scale * static_cast<float>(height)));
+
+    auto& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
+    io.DisplayFramebufferScale = ImVec2(scale, scale);
+
+    {
+        std::lock_guard<std::mutex> lock(inputMutex_);
+        for (const auto& event : pendingEvents_) {
+            switch (event.type) {
+                case EventType::MousePos:
+                    io.AddMousePosEvent(event.x, event.y);
+                    break;
+                case EventType::MouseButton:
+                    io.AddMouseButtonEvent(event.button, event.down);
+                    break;
+                case EventType::MouseWheel:
+                    io.AddMouseWheelEvent(event.x, event.y);
+                    break;
+                case EventType::Focus:
+                    io.AddFocusEvent(event.focused);
+                    break;
+            }
+        }
+        pendingEvents_.clear();
+    }
+
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
+
+    const auto renderOptions = makeDirectRenderOptions(debugOutlinesEnabled_);
+    if (liveRoot_ != nullptr) {
+        previewTransform_ = renderer_.buildPreviewTransform(*liveRoot_, width, height, renderOptions);
+    } else {
+        previewTransform_ = {};
+    }
+
+    const auto& theme = manifold::ui::imgui::toolTheme();
+    glViewport(0, 0, framebufferWidth, framebufferHeight);
+    glDisable(GL_SCISSOR_TEST);
+    glClearColor(theme.panelBg.x, theme.panelBg.y, theme.panelBg.z, theme.panelBg.w);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui::NewFrame();
+
+    std::unordered_set<uint64_t> touchedSurfaceIds;
+    ImDrawList* overlayDrawList = nullptr;
+
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)), ImGuiCond_Always);
+    constexpr ImGuiWindowFlags runtimeOverlayFlags = ImGuiWindowFlags_NoDecoration
+                                                   | ImGuiWindowFlags_NoMove
+                                                   | ImGuiWindowFlags_NoResize
+                                                   | ImGuiWindowFlags_NoSavedSettings
+                                                   | ImGuiWindowFlags_NoBringToFrontOnFocus
+                                                   | ImGuiWindowFlags_NoNav
+                                                   | ImGuiWindowFlags_NoInputs
+                                                   | ImGuiWindowFlags_NoBackground;
+
+    if (ImGui::Begin("##RuntimeNodeOverlay", nullptr, runtimeOverlayFlags)) {
+        overlayDrawList = ImGui::GetWindowDrawList();
+        if (liveRoot_ != nullptr) {
+            renderLiveTree(*this,
+                           *liveRoot_,
+                           overlayDrawList,
+                           renderOptions,
+                           previewTransform_,
+                           touchedSurfaceIds,
+                           juce::Time::getMillisecondCounterHiRes() * 0.001,
+                           hoveredNodeStableId_,
+                           pressedNodeStableId_);
+        }
+    }
+    ImGui::End();
+
+    for (auto& provider : surfaceProviders_) {
+        if (provider) {
+            provider->prune(touchedSurfaceIds);
+        }
+    }
+    recalculateOwnedGpuBytes();
+
+    if (copyIdModeEnabled_) {
+        const float margin = 8.0f;
+        const char* label = "COPYID MODE - Click to copy ID";
+        auto* font = ImGui::GetFont();
+        const float fontSize = 14.0f;
+        const ImVec2 textSize = font ? font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, label) : ImVec2(200, 14);
+        const float padX = 12.0f;
+        const float padY = 6.0f;
+        const ImVec2 rectMin(margin, margin);
+        const ImVec2 rectMax(margin + textSize.x + padX * 2, margin + textSize.y + padY * 2);
+        const ImVec2 textPos(margin + padX, margin + padY);
+
+        if (overlayDrawList != nullptr) {
+            overlayDrawList->AddRectFilled(rectMin, rectMax, IM_COL32(56, 189, 248, 200), 6.0f);
+            overlayDrawList->AddRect(rectMin, rectMax, IM_COL32(255, 255, 255, 255), 6.0f, 0, 2.0f);
+            if (font) {
+                overlayDrawList->AddText(font, fontSize, textPos, IM_COL32(255, 255, 255, 255), label);
+            }
+        }
+    }
+
+    if (liveRoot_ != nullptr) {
+        invokeOnImGuiFrameRecursive(*liveRoot_);
+    }
+
+    ImGui::Render();
+    int64_t vertexCount = 0;
+    int64_t indexCount = 0;
+    if (auto* drawData = ImGui::GetDrawData()) {
+        vertexCount = static_cast<int64_t>(drawData->TotalVtxCount);
+        indexCount = static_cast<int64_t>(drawData->TotalIdxCount);
+        ImGui_ImplOpenGL3_RenderDrawData(drawData);
+    }
+
+    if (allowSwap && !skipNextSwap_ && openGLContext_.isAttached()) {
+        openGLContext_.swapBuffers();
+    }
+    skipNextSwap_ = false;
+
+    const auto tEnd = Clock::now();
+    wantCaptureMouse_.store(io.WantCaptureMouse, std::memory_order_relaxed);
+    wantCaptureKeyboard_.store(io.WantCaptureKeyboard, std::memory_order_relaxed);
+    frameCount_.fetch_add(1, std::memory_order_relaxed);
+    lastRenderUs_.store(std::chrono::duration_cast<std::chrono::microseconds>(tEnd - t0).count(),
+                        std::memory_order_relaxed);
+    lastVertexCount_.store(vertexCount, std::memory_order_relaxed);
+    lastIndexCount_.store(indexCount, std::memory_order_relaxed);
+    return true;
+}
+
 void ImGuiDirectHost::setGlobalKeyHandler(GlobalKeyHandler handler) {
     globalKeyHandler_ = std::move(handler);
 }
@@ -1040,7 +1411,7 @@ void ImGuiDirectHost::renderNow() {
 
     attachContextIfNeeded();
 
-    if (getWidth() <= 0 || getHeight() <= 0 || !isShowing()) {
+    if (getWidth() <= 0 || getHeight() <= 0 || (!isShowing() && !forceNextRender_)) {
         wantCaptureMouse_.store(false, std::memory_order_relaxed);
         wantCaptureKeyboard_.store(false, std::memory_order_relaxed);
         lastVertexCount_.store(0, std::memory_order_relaxed);
@@ -1062,168 +1433,135 @@ void ImGuiDirectHost::renderNow() {
         return;
     }
 
-    auto* context = reinterpret_cast<ImGuiContext*>(imguiContext_);
-    if (context == nullptr) {
-        juce::OpenGLContext::deactivateCurrentContext();
-        return;
-    }
-
-    ImGui::SetCurrentContext(context);
-
-    const auto width = std::max(1, getWidth());
-    const auto height = std::max(1, getHeight());
     const auto scale = static_cast<float>(openGLContext_.getRenderingScale());
-    const auto framebufferWidth = std::max(1, juce::roundToInt(scale * static_cast<float>(width)));
-    const auto framebufferHeight = std::max(1, juce::roundToInt(scale * static_cast<float>(height)));
-
-    auto& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
-    io.DisplayFramebufferScale = ImVec2(scale, scale);
-
-    {
-        std::lock_guard<std::mutex> lock(inputMutex_);
-        for (const auto& event : pendingEvents_) {
-            switch (event.type) {
-                case EventType::MousePos:
-                    io.AddMousePosEvent(event.x, event.y);
-                    break;
-                case EventType::MouseButton:
-                    io.AddMouseButtonEvent(event.button, event.down);
-                    break;
-                case EventType::MouseWheel:
-                    io.AddMouseWheelEvent(event.x, event.y);
-                    break;
-                case EventType::Focus:
-                    io.AddFocusEvent(event.focused);
-                    break;
-            }
-        }
-        pendingEvents_.clear();
-    }
-
-    using Clock = std::chrono::steady_clock;
-    const auto t0 = Clock::now();
-
-    const auto renderOptions = makeDirectRenderOptions(debugOutlinesEnabled_);
-    if (liveRoot_ != nullptr) {
-        previewTransform_ = renderer_.buildPreviewTransform(*liveRoot_, width, height, renderOptions);
-    } else {
-        previewTransform_ = {};
-    }
-
-    const auto t1 = Clock::now();
-
-    const auto& theme = manifold::ui::imgui::toolTheme();
-    glViewport(0, 0, framebufferWidth, framebufferHeight);
-    glDisable(GL_SCISSOR_TEST);
-    glClearColor(theme.panelBg.x, theme.panelBg.y, theme.panelBg.z, theme.panelBg.w);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui::NewFrame();
-
-    const auto t2 = Clock::now();
-
-    std::unordered_set<uint64_t> touchedSurfaceIds;
-    ImDrawList* overlayDrawList = nullptr;
-
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(width), static_cast<float>(height)), ImGuiCond_Always);
-    constexpr ImGuiWindowFlags runtimeOverlayFlags = ImGuiWindowFlags_NoDecoration
-                                                   | ImGuiWindowFlags_NoMove
-                                                   | ImGuiWindowFlags_NoResize
-                                                   | ImGuiWindowFlags_NoSavedSettings
-                                                   | ImGuiWindowFlags_NoBringToFrontOnFocus
-                                                   | ImGuiWindowFlags_NoNav
-                                                   | ImGuiWindowFlags_NoInputs
-                                                   | ImGuiWindowFlags_NoBackground;
-
-    if (ImGui::Begin("##RuntimeNodeOverlay", nullptr, runtimeOverlayFlags)) {
-        overlayDrawList = ImGui::GetWindowDrawList();
-        if (liveRoot_ != nullptr) {
-            renderLiveTree(*this,
-                           *liveRoot_,
-                           overlayDrawList,
-                           renderOptions,
-                           previewTransform_,
-                           touchedSurfaceIds,
-                           juce::Time::getMillisecondCounterHiRes() * 0.001,
-                           hoveredNodeStableId_,
-                           pressedNodeStableId_);
-        }
-    }
-    ImGui::End();
-
-    for (auto& provider : surfaceProviders_) {
-        if (provider) {
-            provider->prune(touchedSurfaceIds);
-        }
-    }
-    recalculateOwnedGpuBytes();
-
-    // Draw copyid mode indicator
-    if (copyIdModeEnabled_) {
-        const float margin = 8.0f;
-        const char* label = "COPYID MODE - Click to copy ID";
-        auto* font = ImGui::GetFont();
-        const float fontSize = 14.0f;
-        const ImVec2 textSize = font ? font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, label) : ImVec2(200, 14);
-        const float padX = 12.0f;
-        const float padY = 6.0f;
-        const ImVec2 rectMin(margin, margin);
-        const ImVec2 rectMax(margin + textSize.x + padX * 2, margin + textSize.y + padY * 2);
-        const ImVec2 textPos(margin + padX, margin + padY);
-        
-        if (overlayDrawList != nullptr) {
-            overlayDrawList->AddRectFilled(rectMin, rectMax, IM_COL32(56, 189, 248, 200), 6.0f);
-            overlayDrawList->AddRect(rectMin, rectMax, IM_COL32(255, 255, 255, 255), 6.0f, 0, 2.0f);
-            if (font) {
-                overlayDrawList->AddText(font, fontSize, textPos, IM_COL32(255, 255, 255, 255), label);
-            }
-        }
-    }
-
-    const auto t3 = Clock::now();
-
-    // Invoke onImGuiFrame callbacks AFTER foreground draw list rendering.
-    // This ensures ImGui window content (menu bars, popups) renders on top
-    // of the retained-mode widget overlay.
-    if (liveRoot_ != nullptr) {
-        invokeOnImGuiFrameRecursive(*liveRoot_);
-    }
-
-    ImGui::Render();
-    int64_t vertexCount = 0;
-    int64_t indexCount = 0;
-    if (auto* drawData = ImGui::GetDrawData()) {
-        vertexCount = static_cast<int64_t>(drawData->TotalVtxCount);
-        indexCount = static_cast<int64_t>(drawData->TotalIdxCount);
-        ImGui_ImplOpenGL3_RenderDrawData(drawData);
-    }
-
-    const auto t4 = Clock::now();
-
-    openGLContext_.swapBuffers();
-
-    const auto t5 = Clock::now();
-
-    wantCaptureMouse_.store(io.WantCaptureMouse, std::memory_order_relaxed);
-    wantCaptureKeyboard_.store(io.WantCaptureKeyboard, std::memory_order_relaxed);
-    frameCount_.fetch_add(1, std::memory_order_relaxed);
-    lastRenderUs_.store(std::chrono::duration_cast<std::chrono::microseconds>(t5 - t0).count(),
-                        std::memory_order_relaxed);
-    lastVertexCount_.store(vertexCount, std::memory_order_relaxed);
-    lastIndexCount_.store(indexCount, std::memory_order_relaxed);
-
+    (void) renderFrameWithCurrentContext(scale, true);
     juce::OpenGLContext::deactivateCurrentContext();
+}
 
-    static int frameCounter = 0;
-    if (++frameCounter % 60 == 0) {
-        auto us = [](auto a, auto b) { return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count(); };
-        std::fprintf(stderr, "[DirectHost] transform=%lldus setup=%lldus render=%lldus submit=%lldus swap=%lldus TOTAL=%lldus\n",
-                     (long long)us(t0, t1), (long long)us(t1, t2), (long long)us(t2, t3),
-                     (long long)us(t3, t4), (long long)us(t4, t5), (long long)us(t0, t5));
+juce::Image ImGuiDirectHost::captureScreenshot() {
+    const int w = getWidth();
+    const int h = getHeight();
+    if (w <= 0 || h <= 0) {
+        return {};
     }
+
+    const bool useJuceContext = openGLContext_.isAttached() && contextReady_;
+    const bool useEglContext = !useJuceContext && ensureEglOffscreenContext(w, h);
+    if (!useJuceContext && !useEglContext) {
+        return {};
+    }
+
+    forceNextRender_ = true;
+    skipNextSwap_ = true;
+
+    bool active = false;
+    float scale = 1.0f;
+    if (useJuceContext) {
+        active = openGLContext_.makeActive();
+        if (active) {
+            scale = static_cast<float>(openGLContext_.getRenderingScale());
+        }
+    } else if (eglOffscreenContext_ && eglOffscreenContext_->isValid()) {
+        active = eglOffscreenContext_->makeCurrent();
+        if (active) {
+            initialiseImGuiBackendIfNeeded();
+            scale = 1.0f;
+        }
+    }
+
+    if (!active) {
+        forceNextRender_ = false;
+        return {};
+    }
+
+    flushPendingDrag();
+    if (!renderFrameWithCurrentContext(scale, false)) {
+        forceNextRender_ = false;
+        if (useJuceContext) {
+            juce::OpenGLContext::deactivateCurrentContext();
+        } else if (eglOffscreenContext_) {
+            eglOffscreenContext_->doneCurrent();
+        }
+        return {};
+    }
+
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(w * h * 4));
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+    juce::Image result(juce::Image::ARGB, w, h, false);
+    {
+        juce::Image::BitmapData dest(result, juce::Image::BitmapData::writeOnly);
+        for (int y = 0; y < h; ++y) {
+            const int srcY = (h - 1) - y;
+            const std::uint8_t* src = pixels.data() + static_cast<std::size_t>(srcY * w * 4);
+            auto* dst = dest.getLinePointer(y);
+            for (int x = 0; x < w; ++x) {
+                dst[x * 4 + 0] = src[x * 4 + 2];
+                dst[x * 4 + 1] = src[x * 4 + 1];
+                dst[x * 4 + 2] = src[x * 4 + 0];
+                dst[x * 4 + 3] = src[x * 4 + 3];
+            }
+        }
+    }
+
+    forceNextRender_ = false;
+    if (useJuceContext) {
+        juce::OpenGLContext::deactivateCurrentContext();
+    } else if (eglOffscreenContext_) {
+        eglOffscreenContext_->doneCurrent();
+    }
+    return result;
+}
+
+juce::Image ImGuiDirectHost::readbackFramebuffer() {
+    const int w = getWidth();
+    const int h = getHeight();
+    if (w <= 0 || h <= 0) {
+        return {};
+    }
+
+    const bool useJuceContext = openGLContext_.isAttached() && contextReady_;
+    const bool useEglContext = !useJuceContext && ensureEglOffscreenContext(w, h);
+    if (!useJuceContext && !useEglContext) {
+        return {};
+    }
+
+    bool active = false;
+    if (useJuceContext) {
+        active = openGLContext_.makeActive();
+    } else if (eglOffscreenContext_ && eglOffscreenContext_->isValid()) {
+        active = eglOffscreenContext_->makeCurrent();
+    }
+
+    if (!active) {
+        return {};
+    }
+
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(w * h * 4));
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+    juce::Image result(juce::Image::ARGB, w, h, false);
+    {
+        juce::Image::BitmapData dest(result, juce::Image::BitmapData::writeOnly);
+        for (int y = 0; y < h; ++y) {
+            const int srcY = (h - 1) - y;
+            const std::uint8_t* src = pixels.data() + static_cast<std::size_t>(srcY * w * 4);
+            auto* dst = dest.getLinePointer(y);
+            for (int x = 0; x < w; ++x) {
+                dst[x * 4 + 0] = src[x * 4 + 2];
+                dst[x * 4 + 1] = src[x * 4 + 1];
+                dst[x * 4 + 2] = src[x * 4 + 0];
+                dst[x * 4 + 3] = src[x * 4 + 3];
+            }
+        }
+    }
+
+    if (useJuceContext) {
+        juce::OpenGLContext::deactivateCurrentContext();
+    } else if (eglOffscreenContext_) {
+        eglOffscreenContext_->doneCurrent();
+    }
+    return result;
 }
 
 void ImGuiDirectHost::registerSurfaceProvider(std::shared_ptr<CustomSurfaceProvider> provider) {
@@ -1251,30 +1589,34 @@ void ImGuiDirectHost::shutdown() {
     lastVertexCount_.store(0, std::memory_order_relaxed);
     lastIndexCount_.store(0, std::memory_order_relaxed);
 
-    if (contextReady_ && openGLContext_.makeActive()) {
+    if (openGLContext_.isAttached()) {
+        openGLContext_.detach();
+    } else if (contextReady_ && eglOffscreenContext_ && eglOffscreenContext_->makeCurrent()) {
         for (auto& provider : surfaceProviders_) {
             if (provider) {
                 provider->releaseAll();
             }
         }
         recalculateOwnedGpuBytes();
-        juce::OpenGLContext::deactivateCurrentContext();
-    }
-    fontAtlasBytes_.store(0, std::memory_order_relaxed);
-    surfaceColorBytes_.store(0, std::memory_order_relaxed);
-    surfaceDepthBytes_.store(0, std::memory_order_relaxed);
-
-    if (openGLContext_.isAttached()) {
-        openGLContext_.detach();
+        shutdownImGuiBackend();
+        eglOffscreenContext_->doneCurrent();
     }
 
-    imguiContext_ = nullptr;
-    contextReady_ = false;
+    releaseEglOffscreenContext();
+    if (!openGLContext_.isAttached()) {
+        shutdownImGuiBackend();
+    }
 }
 
 void ImGuiDirectHost::resized() {
     attachContextIfNeeded();
     previewTransform_ = {};
+    if (eglOffscreenContext_ && (eglOffscreenContext_->width != getWidth() || eglOffscreenContext_->height != getHeight())) {
+        releaseEglOffscreenContext();
+        if (!openGLContext_.isAttached()) {
+            shutdownImGuiBackend();
+        }
+    }
 }
 
 void ImGuiDirectHost::visibilityChanged() {
@@ -1580,19 +1922,7 @@ bool ImGuiDirectHost::keyPressed(const juce::KeyPress& key) {
 }
 
 void ImGuiDirectHost::newOpenGLContextCreated() {
-    IMGUI_CHECKVERSION();
-    auto* context = ImGui::CreateContext();
-    imguiContext_ = context;
-    ImGui::SetCurrentContext(context);
-
-    auto& io = ImGui::GetIO();
-    io.BackendPlatformName = "manifold_juce_imgui_direct";
-
-    manifold::ui::imgui::configureToolFonts(io);
-    fontAtlasBytes_.store(0, std::memory_order_relaxed);
-    manifold::ui::imgui::applyToolTheme();
-    ImGui_ImplOpenGL3_Init("#version 150");
-    contextReady_ = true;
+    initialiseImGuiBackendIfNeeded();
 }
 
 void ImGuiDirectHost::renderOpenGL() {
@@ -1610,18 +1940,7 @@ void ImGuiDirectHost::openGLContextClosing() {
         }
     }
     recalculateOwnedGpuBytes();
-
-    auto* context = reinterpret_cast<ImGuiContext*>(imguiContext_);
-    if (context != nullptr) {
-        ImGui::SetCurrentContext(context);
-        ImGui_ImplOpenGL3_Shutdown();
-        ImGui::DestroyContext(context);
-        imguiContext_ = nullptr;
-    }
-    fontAtlasBytes_.store(0, std::memory_order_relaxed);
-    surfaceColorBytes_.store(0, std::memory_order_relaxed);
-    surfaceDepthBytes_.store(0, std::memory_order_relaxed);
-    contextReady_ = false;
+    shutdownImGuiBackend();
 }
 
 void ImGuiDirectHost::attachContextIfNeeded() {
