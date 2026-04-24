@@ -1,7 +1,7 @@
 # Headless Recording & Promo Capture Guide
 
 **Audience:** anyone (human or agent) capturing audio + GL-rendered UI frames from Manifold in headless mode, then muxing to MP4.
-**Reference implementations:** `test_rack_osc_promo.py`, `manifold/headless/ManifoldHeadless.cpp`, `manifold/core/BehaviorCoreEditor.cpp`, `manifold/primitives/control/ControlServer.cpp`.
+**Reference implementations:** `test_inline_composite.py`, `test_rack_osc_promo.py`, `manifold/headless/ManifoldHeadless.cpp`, `manifold/core/BehaviorCoreEditor.cpp`, `manifold/primitives/control/ControlServer.cpp`.
 **Key binaries:** `ManifoldHeadless`, `Manifold_Standalone`.
 
 This doc captures how the screenshot/recording pipeline works, how to run it, how it was debugged, and the traps that burned time.
@@ -10,16 +10,16 @@ This doc captures how the screenshot/recording pipeline works, how to run it, ho
 
 ## 1. What the pipeline does
 
-The system can capture **real OpenGL-rendered UI frames** plus **real output audio** from Manifold running headlessly (no X11 window), then mux them into a viewable MP4.
+The system can capture **real OpenGL-rendered UI frames** plus **real output audio** from Manifold running headlessly (no X11 window), then mux them into a viewable MP4. Frames are captured at ~30fps using RAM accumulation, then bulk-written to disk when recording stops for optimal performance.
 
 | Layer | Responsibility |
 |-------|---------------|
 | **IPC command parser** | `CommandParser.h` — parses `SCREENSHOT`, `RECORD START <fmt> <path>`, `RECORD STOP`, `RECORD STATUS` |
 | **Control server** | `ControlServer.cpp` — owns recording state, starts/stops capture, manages the audio ring buffer |
 | **Audio thread** | `BehaviorCoreProcessor::processBlock()` — writes output samples into `AudioCaptureRing` while recording is active |
-| **UI thread** | `BehaviorCoreEditor::timerCallback()` — captures frames at ~30fps during recording |
+| **UI thread** | `BehaviorCoreEditor::timerCallback()` — captures frames at ~30fps during recording using RAM accumulation |
 | **Headless harness** | `ManifoldHeadless.cpp` — runs audio and UI on separate threads, drives everything without a display server |
-| **Automation script** | `test_rack_osc_promo.py` — loads DSP, switches UI, animates parameters, starts/stops recording, muxes with ffmpeg |
+| **Automation script** | `test_inline_composite.py` — loads composite project, animates parameters, records, muxes with ffmpeg |
 
 ---
 
@@ -27,7 +27,7 @@ The system can capture **real OpenGL-rendered UI frames** plus **real output aud
 
 ### 2.1 Audio and UI must run on separate threads
 
-**The single most important invariant.** The original headless harness ran `processBlock()` and `callPendingTimersSynchronously()` on the same loop iteration. UI rendering + PNG writes took ~40ms per frame at 1000×640. That made the harness fall behind real-time: 5 seconds of wall-clock time produced only ~1.7 seconds of audio, while frames were captured based on wall-clock time. Muxing 150 frames at 30fps against 1.7s of audio gave massive A/V desync.
+**The single most important invariant.** The original headless harness ran `processBlock()` and `callPendingTimersSynchronously()` on the same loop iteration. UI rendering + PNG writes took ~40ms per frame. That made the harness fall behind real-time: 5 seconds of wall-clock time produced only ~1.7 seconds of audio, while frames were captured based on wall-clock time.
 
 Fix in `ManifoldHeadless.cpp`:
 - **Audio thread:** tight loop calling `processBlock()`, sleeping to maintain exact block cadence.
@@ -50,22 +50,26 @@ while (!shouldQuit.load() && !audioDone.load()) {
 
 ### 2.2 Frame capture happens in `BehaviorCoreEditor::timerCallback()`
 
-The editor runs at 30Hz (`startTimerHz(30)`). During recording it checks `msSinceLast >= 33` and, if enough time has elapsed, captures a frame via `ImGuiDirectHost::captureScreenshot()` (OpenGL framebuffer readback) or JUCE `createComponentSnapshot()` as fallback.
+The editor runs at 30Hz (`startTimerHz(30)`). During recording, frames are captured via `ImGuiDirectHost::captureScreenshot()` which does render + readback in one call.
+
+**Key insight:** In headless mode, `renderNow()` returns early because no JUCE OpenGL context is attached. The only way to render and capture is via `captureScreenshot()`.
 
 ```cpp
-if (processorRef.getControlServer().isRecording()) {
-    auto& rec = processorRef.getControlServer().getRecordingState();
-    const auto frameNow = Clock::now();
-    // ...throttle to ~30fps...
-    const int frameNum = rec.frameCounter.fetch_add(1);
-    juce::Image frameImage = directHost_.captureScreenshot();
-    // ...write PNG...
+if (isRecording) {
+    juce::Image frame = directHost_.captureScreenshot();
+    if (frame.isValid()) {
+        std::lock_guard<std::mutex> lock(ramFramesMutex_);
+        ramFrames_.push_back(frame);
+    }
+    rec.frameCounter.fetch_add(1);
+} else {
+    directHost_.renderNow();  // Normal display path
 }
 ```
 
 ### 2.3 Audio capture is lock-free
 
-`AudioCaptureRing` is a lock-free SPSC ring buffer (audio thread writes, writer thread reads). Capacity is ~1M floats (~11.6s @ 44.1kHz stereo). The writer thread runs in the background, drains the ring, and writes to a JUCE `WavAudioFormat` writer.
+`AudioCaptureRing` is a lock-free SPSC ring buffer (audio thread writes, writer thread reads). Capacity is ~1M floats (~11.6s @ 44.1kHz stereo).
 
 ```cpp
 // Audio thread (processBlock)
@@ -83,7 +87,37 @@ while (recordingState.recording.load()) {
 }
 ```
 
-### 2.4 EGL offscreen context for true headless GL
+### 2.4 RAM accumulation for optimal frame capture
+
+To achieve 30fps without disk I/O blocking the UI thread, frames are accumulated in RAM during recording and bulk-written when recording stops:
+
+```cpp
+// During recording: capture to RAM
+if (isRecording && frameDue) {
+    juce::Image frame = directHost_.captureScreenshot();
+    std::lock_guard<std::mutex> lock(ramFramesMutex_);
+    ramFrames_.push_back(frame);
+}
+
+// On stop: flush all frames to disk
+void BehaviorCoreEditor::flushRamFramesToDisk(const std::string& outputDir) {
+    std::vector<juce::Image> frames;
+    {
+        std::lock_guard<std::mutex> lock(ramFramesMutex_);
+        frames = std::move(ramFrames_);
+    }
+    // Write all frames synchronously (recording has stopped, so this is fine)
+    for (const auto& image : frames) {
+        writeTga(image, framePath);
+    }
+}
+```
+
+**Why RAM accumulation?** Writing PNG/TGA frames in the timer callback caused frame drops. Even with a background writer thread, queue management and sync overhead was complex. Accumulating in RAM (350MB for 10s at 640×480) is simpler and more reliable.
+
+**Why TGA format?** Uncompressed TGA writes at memcpy speed (~5ms per frame at 640×480). PNG compression takes ~100ms per frame, making 30fps impossible. TGA is the fast path; ffmpeg converts it to MP4 efficiently.
+
+### 2.5 EGL offscreen context for true headless GL
 
 `ImGuiDirectHost` creates an EGL PBuffer surface when no native window is available. This lets `captureScreenshot()` call `glReadPixels()` on real rendered pixels even without X11.
 
@@ -107,80 +141,97 @@ Without `juce::gl::loadFunctions()`, the ImGui GL backend has no function pointe
 | Command | Response | Effect |
 |---------|----------|--------|
 | `SCREENSHOT /path/to/out.png` | `OK {"path":"...","captured":true}` | Queues screenshot request; UI thread captures next frame |
-| `RECORD START png /tmp/my_rec` | `OK {"format":"png","recording":true,...}` | Starts audio writer thread + frame capture |
-| `RECORD STOP` | `OK {"recording":false,"frameCount":N,...}` | Stops audio thread, drains ring, writes manifest.json |
+| `RECORD START tga /tmp/my_rec` | `OK {"format":"tga","recording":true,...}` | Starts audio writer thread + frame capture (RAM accumulation) |
+| `RECORD STOP` | `OK {"recording":false,"frameCount":N,...}` | Stops audio thread, drains ring, flushes RAM frames to disk, writes manifest.json |
 | `RECORD STATUS` | `OK {"recording":true,"frameCount":N,...}` | Current state without changing it |
+
+**Supported formats:** `tga`, `png`, `jpg`. TGA is recommended for headless recording (fastest). PNG/JPG work but are slower.
 
 The `RECORD START` command takes a **directory** path, not a file. It creates:
 - `<dir>/audio.wav` — 16-bit stereo WAV
-- `<dir>/frame_0001.png` … `frame_NNNN.png` — PNG sequence
+- `<dir>/frame_0001.tga` … `frame_NNNN.tga` — TGA sequence
 - `<dir>/manifest.json` — fps, sampleRate, frame list
 
 ---
 
-## 4. Automation script — `test_rack_osc_promo.py`
+## 4. Automation script — `test_inline_composite.py`
 
 ### 4.1 What it does
 
 1. Starts `ManifoldHeadless --test-ui --duration 0`
-2. Loads a DSP script via `EVAL loadDspScript(...)`
-3. Switches to a UI manifest via `UISWITCH <manifest>`
-4. Configures oscillator parameters via `SET <path> <value>`
-5. Starts recording: `RECORD START png <dir>`
-6. Animates parameters for 5 seconds (pitch sweep, waveform cycle, etc.)
-7. Stops recording: `RECORD STOP`
-8. Muxes frames + WAV into MP4 via ffmpeg
+2. Loads a composite UI project via `UISWITCH`
+3. Starts recording: `RECORD START tga <dir>`
+4. Animates parameters for 10 seconds with continuous motion
+5. Stops recording: `RECORD STOP`
+6. Muxes frames + WAV into MP4 via ffmpeg
 
 ### 4.2 The A/V sync fix — compute actual fps from audio duration
 
 After recording, the script measures the real WAV duration and computes the exact fps:
 
 ```python
-stats = analyze_wav(wav_path)
-audio_duration = stats["sample_count"] / 2 / 44100.0  # stereo
+# Get audio duration from WAV file
+result = subprocess.run(
+    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+     "-of", "default=noprint_wrappers=1:nokey=1", wav_path],
+    capture_output=True, text=True
+)
+audio_duration = float(result.stdout.strip())
 actual_fps = len(frame_files) / audio_duration
 ```
 
-Then passes `actual_fps` to ffmpeg, plus `-vsync cfr -async 1`:
+Then passes `actual_fps` to ffmpeg:
 
 ```python
 cmd = [
     "ffmpeg", "-y",
-    "-framerate", str(actual_fps),
+    "-framerate", str(actual_fps),  # Dynamic fps from audio
     "-start_number", "1",
-    "-i", frame_pattern,
-    "-i", wav_path,
+    "-i", frame_pattern,  # TGA sequence
     "-c:v", "libx264", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "128k",
-    "-vsync", "cfr", "-async", "1",
+    "-vsync", "cfr",
     out_mp4,
 ]
 ```
 
-This guarantees every frame maps 1:1 to the correct audio time. Do NOT hardcode 30fps.
+**Key points:**
+- Do NOT hardcode 30fps — actual fps may vary slightly
+- Use `-vsync cfr` to ensure constant frame rate output
+- TGA frames are read directly by ffmpeg (no conversion needed)
+- Audio WAV is muxed in the same ffmpeg call if needed
 
-### 4.3 Matching editor size to the module
+### 4.3 Continuous automation for smooth motion
 
-Set `MANIFOLD_PROFILE_WINDOW_SIZE=WxH` in the environment before starting headless. The oscillator rack module is 472×208, so:
+Avoid discrete "step" automation that creates a slideshow effect. Use continuous time-based functions:
 
-```python
-env["MANIFOLD_PROFILE_WINDOW_SIZE"] = "472x208"
-proc = subprocess.Popen([HEADLESS_BIN, "--test-ui", "--duration", "0"],
-                        env=env, ...)
+```lua
+-- Bad: discrete phase changes every N seconds
+local phase = math.floor(t / 3) % 3
+
+-- Good: continuous blend between phases
+local cycle = (t * 0.5) % 3
+local phase = math.floor(cycle)
+local blend = cycle - phase  -- 0.0 to 1.0
 ```
 
-This eliminates dark padding and speeds up rendering.
+Use `math.sin()` for smooth oscillation:
+```lua
+local intensity = 0.3 + 0.3 * math.sin(t * 0.5)  -- Smooth wave
+local scale = 4.0 + 3.0 * math.sin(t * 0.8)       -- Continuous morphing
+```
+
+This creates natural, flowing motion instead of jarring discrete jumps.
 
 ### 4.4 Removing the shared shell
 
-The MANIFOLD header/sidebar is controlled by `"sharedShell": false` in the project manifest. The script creates a sibling directory with a temporary manifest:
+The MANIFOLD header/sidebar is controlled by `"sharedShell": false` in the project manifest:
 
 ```json
 {
-  "name": "StandaloneOscillator",
+  "name": "InlineComposite",
   "version": 1,
   "ui": {
-    "root": "ui/standalone_osc.ui.lua",
+    "root": "ui/composite.ui.lua",
     "sharedShell": false
   }
 }
@@ -198,19 +249,19 @@ cmake --build build-dev --target ManifoldHeadless
 
 # 2. Run the automation script
 cd /home/shamanic/dev/my-plugin-experiment
-python3 test_rack_osc_promo.py
+python3 test_inline_composite.py
 
 # 3. Inspect output
 ffprobe -v error -show_entries stream=duration,nb_frames \
-  -of default=noprint_wrappers=1 rack_osc_promo.mp4
+  -of default=noprint_wrappers=1 inline_composite.mp4
 
 # 4. Inspect a frame
-file /tmp/test_rack_osc_promo/frame_0001.png
-# → PNG image data, 472 x 208, 8-bit/color RGBA
+file /tmp/composite_rec/frame_0001.tga
+# → TGA image data, 640 x 480, 32-bit/pixel
 
 # 5. Inspect audio
 ffprobe -v error -show_entries stream=duration,sample_rate \
-  -of default=noprint_wrappers=1 /tmp/test_rack_osc_promo/audio.wav
+  -of default=noprint_wrappers=1 /tmp/composite_rec/audio.wav
 ```
 
 ---
@@ -221,11 +272,11 @@ ffprobe -v error -show_entries stream=duration,sample_rate \
 |---------|-------|-----|
 | Audio much shorter than video | UI rendering blocked audio thread | Run audio + UI on separate threads (§2.1) |
 | Audio/video drift | Hardcoded 30fps mux vs actual frame timing | Compute `actual_fps = frames / audio_duration` (§4.2) |
-| Black/transparent frames | `glReadPixels()` before ImGui init or no GL context | Ensure EGL PBuffer + `juce::gl::loadFunctions()` before `ImGui_ImplOpenGL3_Init()` (§2.4) |
+| Black/transparent frames | `glReadPixels()` before ImGui init or no GL context | Ensure EGL PBuffer + `juce::gl::loadFunctions()` before `ImGui_ImplOpenGL3_Init()` (§2.5) |
 | Manifest not loading | Wrong filename | Must be exactly `manifold.project.json5` (§4.4) |
 | Frames have shell chrome | `sharedShell: true` | Create manifest with `"sharedShell": false` (§4.4) |
-| Empty dark padding around module | Editor bigger than module | Set `MANIFOLD_PROFILE_WINDOW_SIZE` to module bounds (§4.3) |
-| Writer thread exits early | `recording=true` set after thread creation | Set atomic before spawning thread; already fixed in current code |
+| Steppy/slideshow motion | Discrete automation using `math.floor()` | Use continuous `math.sin()` and smooth interpolation (§4.3) |
+| Too slow for 30fps | PNG compression in timer callback | Use TGA format + RAM accumulation (§2.4) |
 | Audio truncated at end | Ring buffer not drained on stop | Post-loop drain already implemented in `ControlServer.cpp` |
 
 ---
@@ -234,25 +285,39 @@ ffprobe -v error -show_entries stream=duration,sample_rate \
 
 ### 7.1 Recording a different module
 
-1. Create a standalone UI manifest for that module (copy `StandaloneOsc/` pattern).
-2. Know the module's pixel dimensions (check its Lua bounds or measure with a screenshot).
+1. Create a standalone UI manifest for that module.
+2. Know the module's pixel dimensions.
 3. Update `MANIFOLD_PROFILE_WINDOW_SIZE` to those dimensions.
-4. Update parameter paths in the animation loop to the new module's OSC endpoints.
+4. Update parameter paths in the animation loop.
 
-### 7.2 Adding a new `RECORD START` format
+### 7.2 Format support and adding new formats
 
-Currently only `"png"` and `"jpg"` are accepted in `CommandParser.h`. To add e.g. `"mp4"`:
+**Supported formats:**
+- `tga` — Uncompressed TGA (fastest, recommended for headless)
+- `png` — Compressed PNG (slower, smaller files)
+- `jpg` — Compressed JPEG (slower, smallest files)
 
-1. Add validation in `CommandParser::toLower(format)` check.
-2. In `ControlServer::startRecording()`, spawn an ffmpeg subprocess that reads from the ring buffer and encodes directly.
-3. Or keep the PNG+WAV intermediate approach and call ffmpeg internally in `stopRecording()`.
+To add a new format (e.g. `mp4`):
+
+1. Add validation in `CommandParser.h`:
+```cpp
+if (upperFormat == "PNG" || upperFormat == "JPG" || 
+    upperFormat == "JPEG" || upperFormat == "TGA" || 
+    upperFormat == "MP4") {
+```
+
+2. In `ControlServer::startRecording()`, handle the new format.
+3. For video formats, you'd need to encode directly (complex) or keep the PNG+audio approach and encode at the end.
+
+**Recommendation:** Stick with TGA + WAV + ffmpeg muxing. It's simple, fast, and produces high-quality MP4 output.
 
 ### 7.3 Higher frame rates
 
 The timer runs at 30Hz. For 60fps:
 - Change `startTimerHz(60)` in `BehaviorCoreEditor.cpp`.
 - Lower the frame capture throttle from 33ms to 16ms.
-- Be aware that PNG writing in `timerCallback()` is synchronous and may drop frames if it can't keep up. Move PNG writes to a background thread if needed.
+- RAM accumulation handles the I/O load — frames are written after recording stops.
+- Be aware that `captureScreenshot()` is called every frame, which does render + readback. At 60fps this may be heavy on GPU/CPU.
 
 ### 7.4 Capturing from the standalone (windowed) instead of headless
 
@@ -269,7 +334,7 @@ Before claiming a recording pipeline is working:
 - [ ] MP4 video stream duration equals audio stream duration (ffprobe)
 - [ ] At least one frame contains real rendered content (not black/transparent)
 - [ ] Audio has non-silent signal (`max_abs > 1000` for 16-bit)
-- [ ] Parameters visibly animate across frames (e.g. waveform display changes)
+- [ ] Parameters visibly animate across frames (continuous motion, not steppy)
 - [ ] No shared shell chrome in frames (if intended)
 - [ ] Editor size matches module size (no dark padding)
 
@@ -279,16 +344,17 @@ Before claiming a recording pipeline is working:
 
 | File | Role |
 |------|------|
-| `manifold/primitives/control/CommandParser.h` | Parses screenshot/recording IPC commands |
-| `manifold/primitives/control/ControlServer.cpp` | Recording state, audio ring, writer thread |
+| `manifold/primitives/control/CommandParser.h` | Parses screenshot/recording IPC commands (SCREENSHOT, RECORD START/STOP/STATUS) |
+| `manifold/primitives/control/ControlServer.cpp` | Recording state, audio ring, writer thread, frame path tracking |
 | `manifold/primitives/control/ControlServer.h` | `AudioCaptureRing`, `RecordingState` structs |
-| `manifold/core/BehaviorCoreProcessor.cpp` | `writeAudioSamples()` call in `processBlock()` |
-| `manifold/core/BehaviorCoreEditor.cpp` | Frame capture logic in `timerCallback()` |
-| `manifold/core/BehaviorCoreEditor.h` | Frame capture timing state |
-| `manifold/ui/imgui/ImGuiDirectHost.cpp` | `captureScreenshot()` via `glReadPixels()` |
+| `manifold/core/BehaviorCoreProcessor.cpp` | `writeAudioSamples()` call in `processBlock()` for audio capture |
+| `manifold/core/BehaviorCoreEditor.cpp` | Frame capture in `timerCallback()`, RAM accumulation, `flushRamFramesToDisk()` |
+| `manifold/core/BehaviorCoreEditor.h` | `ramFrames_`, `ramFramesMutex_`, `wasRecording_` state |
+| `manifold/ui/imgui/ImGuiDirectHost.cpp` | `captureScreenshot()` via `glReadPixels()`, `readbackFramebuffer()` |
 | `manifold/ui/imgui/ImGuiDirectHost.h` | `EglOffscreenContext`, `skipNextSwap_`, `forceNextRender_` |
-| `manifold/headless/ManifoldHeadless.cpp` | Headless harness — audio + UI threads |
-| `test_rack_osc_promo.py` | Full automation script |
+| `manifold/headless/ManifoldHeadless.cpp` | Headless harness — audio + UI threads split |
+| `test_inline_composite.py` | Full automation script with continuous motion |
+| `test_rack_osc_promo.py` | Original automation script (oscillator promo) |
 | `UserScripts/projects/StandaloneOsc/` | Example standalone oscillator project |
 
 ---
@@ -303,6 +369,12 @@ Before claiming a recording pipeline is working:
 
 4. **The manifest filename is exact.** `manifold.project.json5` is the only string `isProjectManifestFile()` accepts. A temp file named anything else silently falls through to Lua parsing and explodes with a syntax error.
 
-5. **PNG writes in the timer callback are a bottleneck.** At 1000×640 each PNG is ~100KB and takes ~5–10ms to compress and write. This is fine at 30fps, but 60fps or 4K will need a background writer thread. The infrastructure for that (`PendingFrame`, `frameWriterThread_`) was sketched but not fully landed — the threaded harness made it unnecessary for the current use case.
+5. **RAM accumulation is the fast path.** Writing PNG/TGA in the timer callback causes frame drops. Accumulating in RAM and bulk-writing after recording stops achieves 30fps reliably.
 
-6. **`_Exit(0)` is a band-aid.** The headless harness intentionally leaks the editor on shutdown (`editor.release()`) and calls `_Exit(0)` to avoid late-destructor segfaults in offscreen GL state. This is test-only; do not copy into production plugin code.
+6. **TGA is faster than PNG for capture.** Uncompressed TGA writes at memcpy speed (~5ms per frame). PNG compression takes ~100ms per frame. TGA + ffmpeg muxing is the recommended approach.
+
+7. **Continuous automation creates smooth motion.** Use `math.sin()` and smooth interpolation instead of discrete `math.floor()` phase changes to avoid the "slideshow" effect.
+
+8. **In headless mode, use `captureScreenshot()` only.** `renderNow()` returns early because no JUCE OpenGL context is attached. `captureScreenshot()` handles EGL context creation and rendering.
+
+9. **`_Exit(0)` is a band-aid.** The headless harness intentionally leaks the editor on shutdown and calls `_Exit(0)` to avoid late-destructor segfaults in offscreen GL state. This is test-only; do not copy into production plugin code.
