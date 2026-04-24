@@ -224,6 +224,9 @@ namespace dsp_primitives
                                     inBR = (inputPtr2R == NULL) ? inBL : HWY::MaskedLoad(sampleLaneMask, _flttype, inputPtr2R + offset);
                                 }
 
+                                //Float version of maxCode - used several times below.
+                                maxCodeFlt = HWY::ConvertTo(_flttype, maxCode);
+                                
                                 // Offset codes to center around 0, XOR, then offset back
 
                                 /*  auto quantizeToCode = [](float x, float levels) {
@@ -238,8 +241,7 @@ namespace dsp_primitives
                                 //const int qa = quantizeToCode(inA, quantLevels);
                                 tmp = HWY::IfThenElse(HWY::Gt(inAL, one), one, inAL);
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
-                                maxCodeFlt = HWY::ConvertTo(_flttype, maxCode);
-                                tmp = HWY::Mul(HWY::Add(tmp, one), half);
+                                tmp = HWY::MulAdd(tmp, half, half);
                                 tmp = HWY::Mul(tmp, maxCodeFlt);
                                 qaL = HWY::ConvertTo(_inttype, HWY::Round(tmp));
                                 qaL = HWY::IfThenElse(HWY::Gt(qaL, maxCode), maxCode, qaL);
@@ -248,7 +250,7 @@ namespace dsp_primitives
                                 
                                 tmp = HWY::IfThenElse(HWY::Gt(inAR, one), one, inAR);
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
-                                tmp = HWY::Mul(HWY::Add(tmp, one), half);
+                                tmp = HWY::MulAdd(tmp, half, half);
                                 tmp = HWY::Mul(tmp,maxCodeFlt);
                                 qaR = HWY::ConvertTo(_inttype, HWY::Round(tmp));
                                 qaR = HWY::IfThenElse(HWY::Gt(qaR, maxCode), maxCode, qaR);
@@ -258,7 +260,7 @@ namespace dsp_primitives
                                 //const int qb = quantizeToCode(inB, quantLevels);
                                 tmp = HWY::IfThenElse(HWY::Gt(inBL, one), one, inBL);
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
-                                tmp = HWY::Mul(HWY::Add(tmp, one), half);
+                                tmp = HWY::MulAdd(tmp, half, half);
                                 tmp = HWY::Mul(tmp, maxCodeFlt);
                                 qbL = HWY::ConvertTo(_inttype, HWY::Round(tmp));
                                 qbL = HWY::IfThenElse(HWY::Gt(qbL, maxCode), maxCode, qbL);
@@ -267,7 +269,7 @@ namespace dsp_primitives
                                 
                                 tmp = HWY::IfThenElse(HWY::Gt(inBR, one), one, inBR);
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
-                                tmp = HWY::Mul(HWY::Add(tmp, one), half);
+                                tmp = HWY::MulAdd(tmp, half, half);
                                 tmp = HWY::Mul(tmp, maxCodeFlt);
                                 qbR = HWY::ConvertTo(_inttype, HWY::Round(tmp));
                                 qbR = HWY::IfThenElse(HWY::Gt(qbR, maxCode), maxCode, qbR);
