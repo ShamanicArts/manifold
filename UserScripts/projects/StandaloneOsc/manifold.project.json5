@@ -1,0 +1,7 @@
+{
+  "name": "StandaloneOscillator",
+  "version": 1,
+  "ui": {
+    "root": "ui/standalone_osc.ui.lua"
+  }
+}
