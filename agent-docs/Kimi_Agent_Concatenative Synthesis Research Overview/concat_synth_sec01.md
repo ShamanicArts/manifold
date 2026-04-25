@@ -1,0 +1,44 @@
+## 1. Introduction and Conceptual Framework
+
+### 1.1 Defining Concatenative Synthesis
+
+Concatenative synthesis is a corpus-based audio generation paradigm in which new sounds are assembled by selecting and joining short segments—*units*—drawn from a pre-analyzed database of recordings. The process is defined by four sequential stages: (1) a target specification, which may be a descriptor vector, a text prompt, or a live audio input; (2) a corpus $C$ of recorded units, each segmented and annotated with feature descriptors; (3) a unit selection algorithm that searches $C$ for sequences matching the target; and (4) a concatenation stage in which selected units are crossfaded or overlap-added to produce a continuous output stream [^1^][^3^].
+
+The selection problem was formalized by Hunt and Black (1996) for speech synthesis and later adapted to musical sound by Schwarz [^22^][^5^]. Given a target specification $T$ and a corpus $C$, the objective is to find a sequence of units $\{u_1, \dots, u_n\}$ from $C$ that minimizes a joint cost function
+
+$$J = \sum_{i=1}^{n} C^{\mathrm{t}}(u_i, T) + \sum_{i=1}^{n-1} C^{\mathrm{c}}(u_i, u_{i+1})$$
+
+where $C^{\mathrm{t}}$ denotes the *target cost*—a weighted sum of sub-costs measuring mismatch between a candidate unit and the desired target features—and $C^{\mathrm{c}}$ denotes the *concatenation cost*, which estimates the spectral, fundamental frequency, and power continuity across a join boundary [^22^]. In musical applications, the target is frequently a point in a multi-dimensional descriptor space (e.g., spectral centroid, loudness, noisiness) navigated by a performer in real time, rather than a predetermined phoneme sequence [^1^].
+
+This report addresses *musical* concatenative synthesis: systems in which the corpus is a heterogeneous collection of recorded sounds, the target is defined by timbral or semantic descriptors, and the output is intended for composition or live performance. The scope explicitly excludes pure parametric synthesis—frequency modulation (FM), subtractive, or additive methods that generate waveforms from mathematical models—and also excludes simple keyzone sampling in which playback is triggered by MIDI note and velocity without content-based unit selection [^3^].
+
+### 1.2 Comparative Synthesis Paradigms
+
+Concatenative synthesis occupies a distinct position in the landscape of sample-based sound generation. Its closest neighbors are granular synthesis, wavetable synthesis, and conventional sampling; the differences lie in unit size, selection logic, and the relationship between the performer and the corpus.
+
+**Concatenative vs. granular synthesis.** Granular synthesis, first implemented digitally by Curtis Roads in 1974 and brought to real-time performance by Barry Truax in 1986, operates on grains of approximately 1–50 ms selected by temporal position within a single sound file [^6^]. Diemo Schwarz characterized granular synthesis as "rudimentarily corpus-based": it performs no analysis, uses arbitrary grain sizes, and limits selection to position within one file [^7^]. Concatenative synthesis extends this model by adding descriptor analysis and content-based selection across a multi-source corpus, enabling navigation by sound characteristics rather than by playback position [^1^]. The unit size distinction is consequential: granular grains at densities above 100 grains per second fuse into continuous texture, whereas concatenative units—typically 100 ms to several seconds—preserve the morphological identity of their source recordings [^6^].
+
+**Concatenative vs. wavetable synthesis.** Wavetable synthesis, pioneered by Wolfgang Palm at PPG in the late 1970s, stores single-cycle waveforms in indexed tables and retrieves them at variable playback rates to produce pitched output. Modern implementations use frames of approximately 2,048 samples per cycle with interpolation between adjacent tables to create evolving timbres. The corpus in wavetable synthesis is a homogeneous, pre-analyzed sequence of periodic waveforms from a single source; spectral fidelity is high but timbral idiosyncrasy is low because the output is constructed from abstracted cycles rather than full recordings. Concatenative synthesis, by contrast, draws from heterogeneous, multi-source corpora and retains the full spectral and temporal envelope of each selected unit.
+
+**Concatenative vs. sampling and ROMplers.** Conventional sampling instruments organize recordings into keyzones and velocity layers, triggering a specific sample when a MIDI note falls within a defined range. Selection is deterministic: note number plus velocity maps to a predetermined waveform. Concatenative synthesis inverts this relationship. The corpus becomes a navigable timbre space; the same input target may retrieve different units on each query depending on the descriptor match. In this framing, the corpus is not merely material to be played back, but an instrument whose topology defines the playable space [^3^].
+
+The following table summarizes these distinctions across six operational dimensions.
+
+| Dimension | Concatenative | Granular | Wavetable | Sampling / ROMpler |
+|-----------|--------------|----------|-----------|-------------------|
+| Unit size | 100 ms–several s [^1^] | 1–50 ms [^6^] | Single cycle (~2–50 ms) | Full note / phrase |
+| Selection logic | Descriptor-based (content) [^1^] | Position-based [^7^] | Index-based (table position) | Key + velocity trigger |
+| Corpus composition | Multi-source, heterogeneous [^3^] | Usually single file [^7^] | Homogeneous single source | Multi-sample keyzone map |
+| Analysis required | Segmentation + descriptors [^1^] | None | Wavetable extraction | Optional (loop points) |
+| Timbral outcome | Idiosyncratic, source-identifiable [^5^] | Textural, abstract | Predictable, periodic | Literal playback |
+| Real-time capability | Greedy nearest-neighbor or offline [^1^] | Yes | Yes | Yes |
+
+The table reveals that concatenative synthesis is the only paradigm in this group that combines multi-source corpora with content-based selection and unit sizes large enough to preserve source identity. These properties give it a unique sonic signature—one that is immediately identifiable as a distinct synthesis category despite its technical overlaps with granular and sampling methods. The commercial market reflects this categorical separation: dozens of granular plugins (Output Portal, Arturia Pigments, Ableton Granulator III) and wavetable instruments (Xfer Serum, Vital) are available, while concatenative synthesis remained confined to research environments until the release of DataMind Audio's Concatenator in 2025 [^11^]. This market asymmetry is not merely a matter of commercial preference; it reflects fundamental differences in implementation complexity, user interface design, and the analytical overhead required to prepare a navigable corpus.
+
+### 1.3 The Core Proposition: Identity Through Selection
+
+The defining perceptual characteristic of concatenative synthesis is what might be termed the *source recognition effect*: listeners can often identify the original recordings from which units are drawn, even when those units are sequenced into novel arrangements [^5^]. This effect arises because the selected units retain their full spectral envelope, temporal microstructure, and recording context. Unlike wavetable or granular output, which tends toward abstraction, concatenative synthesis produces *idiosyncratic* sound—output that carries the imprint of specific source materials.
+
+The dimensions of control available to composers and performers have expanded substantially over the past two decades. Early systems such as CataRT relied on handcrafted spectral descriptors: Mel-frequency cepstral coefficients (MFCC), spectral centroid, loudness, and noisiness, condensed to scalar values per unit [^1^]. More recent systems incorporate self-supervised audio embeddings (e.g., CLAP, MuQ-MuLan) that map natural language descriptions into a shared audio-text latent space, enabling semantic targets such as "bright, reedy attack" or "warm sustained strings" [^12^][^13^]. This progression—from spectral coefficients to perceptual descriptors to semantic embeddings—defines the evolving control vocabulary of the field.
+
+The remainder of this report is structured as follows. Chapter 2 traces the historical lineage from Musique Concrète through CataRT. Chapter 3 examines unit selection algorithms, from Hunt and Black's Viterbi framework to modern Bayesian particle filters. Chapters 4 and 5 address real-time systems and the commercial landscape, respectively. Chapters 6 through 8 cover creative techniques, neural hybrid architectures, and emerging research frontiers. Developers may wish to read Chapters 2–4 sequentially; musicians and composers may find Chapters 6–8 most immediately applicable; researchers are encouraged to consult the full sequence.
