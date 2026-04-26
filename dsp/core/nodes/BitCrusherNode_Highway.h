@@ -53,9 +53,6 @@ namespace dsp_primitives
 
                     const double sr = sampleRate > 1.0 ? sampleRate : 44100.0;
                     const double smoothTime = 0.01;
-                    
-                    
-                    //smooth_ = hwy::AllocateAligned<float>(numLanes);
                     float smoothval = static_cast<float>(1.0 - std::exp(-1.0 / (smoothTime * sr)));
                     smoothval = juce::jlimit(0.0001f, 1.0f, smoothval);
                     smoother_.SetSmooth(smoothval);
@@ -95,6 +92,8 @@ namespace dsp_primitives
                         HWY::Store(laneNum, _flttype, holdCounters_.get());
                         HWY::Store(laneNum, _flttype, holdCounters_.get() + numLanes);
                     }
+
+                    smoother_.PrepareCurrentValues();//Reset current values
                 }
 
                 HWY_ATTR virtual void run(const std::vector<AudioBufferView> & inputs,
@@ -106,18 +105,11 @@ namespace dsp_primitives
                     namespace HWY = hwy::HWY_NAMESPACE;
                     const size_t numLanes = HWY::Lanes(_flttype);
 
-                    if(numLanes != laneCount_)
+                    if(configChanged_ || (numLanes != laneCount_))
                     {
                         configure();
-                        prepare(sampleRate_);
-                        smoother_.UpdateTargetValues();
                     }
-                    else if(configChanged_)
-                    {
-                        configure();
-                        smoother_.UpdateTargetValues();
-                    }
-
+                    
                     const float * inputPtr1L = inputs[0].channelData[0];
                     const float * inputPtr1R = (inputs[0].numChannels > 1) ? inputs[0].channelData[1] : NULL;
                     const bool hasBusB = inputs.size() >= 2;
@@ -428,9 +420,11 @@ namespace dsp_primitives
                     namespace HWY = hwy::HWY_NAMESPACE;
                     
                     size_t numLanes = HWY::Lanes(_flttype);
-                    //const int numValues = StateIndex_Count;
                     const FltType  one = HWY::Set(_flttype, 1.0f);
                     const FltType laneNum = HWY::Iota(_flttype, 1);
+
+                    smoother_.UpdateTargetValues();
+
 
                     currentLogicMode_ = targetLogicMode_->load(std::memory_order_acquire);
 

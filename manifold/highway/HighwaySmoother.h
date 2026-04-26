@@ -18,8 +18,22 @@ namespace hwy
         class HighwayValueSmoother
         {
         private:
-            typedef hwy::HWY_NAMESPACE::VFromD<hwy::HWY_NAMESPACE::CappedTag<T, COUNT>> VecType;
-            typedef hwy::HWY_NAMESPACE::MFromD<hwy::HWY_NAMESPACE::CappedTag<T, COUNT>> VecMaskType;
+
+            //Round COUNT up to the next power of 2 - since CappedTag requires only powers of 2.
+            static constexpr int _laneCount()
+            {
+                int v = COUNT - 1;
+                v |= v >> 1;
+                v |= v >> 2;
+                v |= v >> 4;
+                v |= v >> 8;
+                v |= v >> 16;
+                v++;
+                return v;
+            }
+
+            typedef hwy::HWY_NAMESPACE::VFromD<hwy::HWY_NAMESPACE::CappedTag<T, _laneCount()  >> VecType;
+            typedef hwy::HWY_NAMESPACE::MFromD<hwy::HWY_NAMESPACE::CappedTag<T, _laneCount()  >> VecMaskType;
 
         public:
             typedef VecType ValueType;
@@ -64,6 +78,7 @@ namespace hwy
                 InitFunc<ATOMIC...>::initTargets(targets_, args...);
             }
 
+
             HWY_ATTR HWY_INLINE void SetSmooth(T smoothVal)
             {
                 configure(smoothVal);
@@ -72,7 +87,7 @@ namespace hwy
             HWY_ATTR HWY_INLINE void UpdateTargetValues()
             {
                 namespace HWY = hwy::HWY_NAMESPACE;
-                const hwy::HWY_NAMESPACE::CappedTag<T,COUNT> _vectype;
+                const HWY::DFromV<VecType> _vectype;
 
                 VecType val = HWY::Zero(_vectype);
                 VecMaskType mask = HWY::Not(HWY::MaskFalse(_vectype));
@@ -93,7 +108,7 @@ namespace hwy
             HWY_ATTR HWY_INLINE void PrepareCurrentValues()
             {
                 namespace HWY = hwy::HWY_NAMESPACE;
-                const hwy::HWY_NAMESPACE::CappedTag<T,COUNT> _vectype;
+                const HWY::DFromV<VecType> _vectype;
 
                 VecType val = HWY::Zero(_vectype);
                 VecMaskType mask = HWY::Not(HWY::MaskFalse(_vectype));
@@ -114,7 +129,7 @@ namespace hwy
             HWY_ATTR HWY_INLINE void Start(VecType & target, VecType & current, VecType & smooth  ) const
             {
                 namespace HWY = hwy::HWY_NAMESPACE;
-                const hwy::HWY_NAMESPACE::CappedTag<T,COUNT> _vectype;
+                const HWY::DFromV<VecType> _vectype;
 
                 target = HWY::Load(_vectype, targetVals_.get());
                 current = HWY::Load(_vectype, currentVals_.get());
@@ -124,7 +139,7 @@ namespace hwy
             HWY_ATTR HWY_INLINE void End(const VecType & current) const
             {
                 namespace HWY = hwy::HWY_NAMESPACE;
-                const hwy::HWY_NAMESPACE::CappedTag<T,COUNT> _vectype;
+                const HWY::DFromV<VecType> _vectype;
 
                 HWY::Store(current, _vectype, currentVals_.get());
             }
@@ -133,7 +148,7 @@ namespace hwy
             HWY_ATTR HWY_INLINE void Run(const size_t numTimes, const VecType & smooth, const VecType & target, VecType & current, OT & out1,  OUT&... output)
             {
                 namespace HWY = hwy::HWY_NAMESPACE;
-                const hwy::HWY_NAMESPACE::CappedTag<T,COUNT> _vectype;
+                const HWY::DFromV<VecType> _vectype; _vectype;
                 const HWY::DFromV<OT> _outtype;
                 using OutMaskType = hwy::HWY_NAMESPACE::MFromD< hwy::HWY_NAMESPACE::DFromV<OT>>;
                 OutMaskType outMask = HWY::Not(HWY::MaskFalse(_outtype));
@@ -168,18 +183,31 @@ namespace hwy
                 }
             }
 
+            template<typename VT, typename... OT>
+            HWY_ATTR HWY_INLINE void GetTargetValues( OT&... values)
+            {
+                namespace HWY = hwy::HWY_NAMESPACE;
+                const HWY::DFromV<VecType> _vectype;
+                const HWY::DFromV<OT> _outtype;
+                using OutMaskType = hwy::HWY_NAMESPACE::MFromD< hwy::HWY_NAMESPACE::DFromV<OT>>;
+                VecType target = HWY::Load(_vectype, targetVals_.get());
+
+                OutMaskType outMask = HWY::Not(HWY::MaskFalse(_outtype));
+                GetOutput(outMask, target, values...);
+            }
+
         private:
             HWY_API constexpr size_t  AllocSize()
             {
                 namespace HWY = hwy::HWY_NAMESPACE;
-                const hwy::HWY_NAMESPACE::CappedTag<T,COUNT> _vectype;
+                const HWY::DFromV<VecType> _vectype;
                 return HWY::MaxLanes(_vectype);
             }
             
             HWY_ATTR HWY_INLINE void configure(T smoothval)
             {
                 namespace HWY = hwy::HWY_NAMESPACE;
-                const hwy::HWY_NAMESPACE::CappedTag<T,COUNT> _vectype;
+                const HWY::DFromV<VecType> _vectype;
                 constexpr size_t allocsz = AllocSize();
 
                 if(!smooth_)

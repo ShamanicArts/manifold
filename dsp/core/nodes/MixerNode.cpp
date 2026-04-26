@@ -61,12 +61,7 @@ void MixerNode::prepare(double sampleRate, int maxBlockSize) {
 
     //Set up SIMD implementation
     if(simd_implementation_ == nullptr)
-        simd_implementation_.reset(MixerNode_Highway::__CreateInstance(
-            &inputCount_,
-            targetGains_.data(),
-            targetPans_.data(),
-            &targetMaster_,
-            kMaxBusses));
+        simd_implementation_.reset(MixerNode_Highway::__CreateInstance<kMaxBusses>(&inputCount_, targetGains_.data(), targetPans_.data(), &targetMaster_));
 
     simd_implementation_->prepare(static_cast<float>(sampleRate));
 }
