@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AV Sampler Lab - Full Parameters</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; user-select: none; background: #050816; color: #b8c2d9; font-family: 'Segoe UI', system-ui, sans-serif; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; }
+  .screen.active { display: flex; }
+  .nav { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; background: rgba(10,12,18,0.96); border: 1px solid #20263a; border-radius: 20px; padding: 6px 14px; z-index: 1000; }
+  .nav-d { width: 8px; height: 8px; border-radius: 50%; background: #334155; cursor: pointer; }
+  .nav-d.a { background: #fff; }
+  .nav-l { position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #7c8aa8; text-transform: uppercase; letter-spacing: 1px; opacity: 0; transition: 0.2s; }
+  .nav:hover .nav-l { opacity: 1; }
+  .tb { display: flex; align-items: center; gap: 3px; height: 22px; padding: 0 6px; background: #0b0e16; border-bottom: 1px solid #1b2234; font-size: 8px; flex-shrink: 0; }
+  .tb button { background: #151a25; border: 1px solid #262f45; color: #8fa0bf; font-size: 7px; padding: 1px 5px; cursor: pointer; }
+  .tb button:hover { background: #1c2433; }
+  .tb .ton { color: #dbeafe; border-color: #3b4b69; }
+  .tb .trec { color: #ef4444; border-color: #4a1d25; }
+  .sep { width: 1px; height: 11px; background: #273044; margin: 0 2px; }
+  .workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1px; padding: 1px; background: #050816; }
+  .row { display: flex; gap: 1px; min-width: 0; min-height: 0; }
+  .col { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; min-height: 0; }
+  .mod { background: #121a2f; border: 1px solid #1f2b4d; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
+  .mod-h { display: flex; align-items: center; height: 18px; border-bottom: 1px solid #1f2b4d; background: #0d1420; flex-shrink: 0; }
+  .mod-h .del { width: 22px; height: 18px; background: #991b1b; border: none; cursor: pointer; flex-shrink: 0; }
+  .mod-h .del:hover { background: #b91c1c; }
+  .mod-h .acc { flex: 1; height: 18px; display: flex; align-items: center; padding: 0 6px; gap: 4px; font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #fff; }
+  .mod-h .acc .nm { color: #fff; }
+  .mod-h .sz { width: 22px; height: 18px; background: rgba(255,255,255,0.06); border: none; cursor: pointer; flex-shrink: 0; }
+  .mod-b { flex: 1; display: flex; flex-direction: column; padding: 3px 4px 3px 5px; gap: 1px; overflow: auto; min-height: 0; }
+  .mod-b.np { padding: 0; }
+  .dd { background: #1e293b; color: #22d3ee; border: 1px solid #334155; border-radius: 2px; padding: 0 4px; font-size: 8px; cursor: pointer; margin-left: auto; }
+  .stage { background: #000; position: relative; overflow: hidden; min-height: 0; flex: 1; }
+  .stage::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 28% 38%, rgba(0,180,220,0.09) 0%, transparent 58%), radial-gradient(ellipse at 74% 58%, rgba(220,80,160,0.07) 0%, transparent 58%); }
+  .vpl { position: absolute; top: 4px; left: 5px; font-size: 8px; color: rgba(255,255,255,0.24); text-transform: uppercase; z-index: 2; }
+  .mini-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; min-height: 0; flex: 1; }
+  .cell { background: #0a0a14; border: 1px solid #1a1a22; border-radius: 3px; position: relative; overflow: hidden; cursor: pointer; min-height: 0; }
+  .cell:hover { border-color: #334155; }
+  .cell.sel { border-color: #22d3ee; box-shadow: inset 0 0 0 1px rgba(34,211,238,0.18); }
+  .cell .th { position: absolute; inset: 0; background: linear-gradient(135deg, #1a1a3a 0%, #0d1420 100%); }
+  .cell .th::after { content: ''; position: absolute; inset: 18%; border: 1px solid rgba(255,255,255,0.08); border-radius: 2px; }
+  .cell .lb { position: absolute; bottom: 0; left: 0; right: 0; padding: 1px 3px; font-size: 7px; color: rgba(255,255,255,0.45); background: rgba(0,0,0,0.72); }
+  .layer-grid { display: flex; flex-direction: column; gap: 1px; flex: 1; min-height: 0; }
+  .layer-row { display: flex; gap: 1px; flex: 1; min-height: 0; }
+  .layer-head { width: 64px; display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+  .lh-top { height: 12px; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 7px; color: #8b9abb; text-transform: uppercase; }
+  .ab { display: flex; gap: 1px; }
+  .ab span { min-width: 13px; height: 12px; display: flex; align-items: center; justify-content: center; font-size: 7px; border: 1px solid #26304a; background: #111827; color: #60708f; }
+  .ab span.on { background: #17b193; color: #041312; border-color: #17b193; }
+  .blend { height: 12px; background: linear-gradient(90deg, #16a34a 0%, #16a34a 48%, #1d4ed8 52%, #1d4ed8 100%); border-radius: 2px; position: relative; overflow: hidden; }
+  .blend::after { content: ''; position: absolute; top: 0; bottom: 0; left: 54%; width: 2px; background: #fff; }
+  .clip-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; flex: 1; min-height: 0; }
+  .pb { display: flex; align-items: center; height: 20px; border-radius: 2px; overflow: hidden; cursor: pointer; flex-shrink: 0; }
+  .pb .pn { padding: 0 6px; font-size: 8px; color: #fff; font-weight: 500; white-space: nowrap; flex: 1; min-width: 0; }
+  .pb .pv { padding-right: 6px; font-size: 8px; color: rgba(255,255,255,0.72); font-family: monospace; flex-shrink: 0; }
+  .p1 { background: linear-gradient(90deg, #0ea5e9 0%, #0ea5e9 var(--p), #0f172a var(--p)); }
+  .p2 { background: linear-gradient(90deg, #22c55e 0%, #22c55e var(--p), #0f172a var(--p)); }
+  .p3 { background: linear-gradient(90deg, #f97316 0%, #f97316 var(--p), #0f172a var(--p)); }
+  .p4 { background: linear-gradient(90deg, #ef4444 0%, #ef4444 var(--p), #0f172a var(--p)); }
+  .p5 { background: linear-gradient(90deg, #a855f7 0%, #a855f7 var(--p), #0f172a var(--p)); }
+  .p6 { background: linear-gradient(90deg, #06b6d4 0%, #06b6d4 var(--p), #0f172a var(--p)); }
+  .p7 { background: linear-gradient(90deg, #eab308 0%, #eab308 var(--p), #0f172a var(--p)); }
+  .p8 { background: linear-gradient(90deg, #ec4899 0%, #ec4899 var(--p), #0f172a var(--p)); }
+  .p9 { background: linear-gradient(90deg, #14b8a6 0%, #14b8a6 var(--p), #0f172a var(--p)); }
+  .xy { flex: 1; min-height: 110px; background: #0d1420; border: 1px solid #1a1a3a; border-radius: 4px; position: relative; overflow: hidden; }
+  .xy .gx { position: absolute; top: 0; bottom: 0; width: 1px; background: #1a1a3a; }
+  .xy .gy { position: absolute; left: 0; right: 0; height: 1px; background: #1a1a3a; }
+  .xy .dot { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; transform: translate(-50%,-50%); box-shadow: 0 0 8px rgba(255,255,255,0.4); }
+  .xy .xl { position: absolute; font-size: 8px; color: rgba(255,255,255,0.35); }
+  .xy .xl.tr { top: 2px; right: 4px; }
+  .xy .xl.bl { bottom: 2px; left: 4px; }
+  .wave-strip { height: 100%; display: flex; align-items: flex-end; gap: 1px; min-height: 0; background: #0a0a14; border-radius: 3px; overflow: hidden; padding: 2px; }
+  .wave-strip span { flex: 1; min-width: 1px; }
+  .chips { display: flex; gap: 1px; margin-bottom: 1px; flex-shrink: 0; }
+  .chip { flex: 1; height: 14px; font-size: 7px; display: flex; align-items: center; justify-content: center; background: #162033; border: 1px solid #2a3551; color: #7183a7; }
+  .chip.on { background: #22c55e; color: #05130a; border-color: #22c55e; }
+  .chip.off { background: #991b1b; color: #fff; border-color: #991b1b; }
+  .io-pair { display: flex; gap: 1px; flex: 1; min-height: 0; }
+  .tiny-meter { height: 12px; display: grid; grid-template-columns: repeat(16, 1fr); gap: 1px; flex-shrink: 0; }
+  .tiny-meter span { background: #0f172a; }
+  .tiny-meter span.on1 { background: #22d3ee; }
+  .tiny-meter span.on2 { background: #4ade80; }
+  .tiny-meter span.on3 { background: #f59e0b; }
+  .timeline { display: flex; align-items: center; gap: 4px; height: 16px; font-size: 7px; color: #7183a7; flex-shrink: 0; }
+  .timeline .line { flex: 1; height: 4px; background: #0c1220; border-radius: 2px; position: relative; overflow: hidden; }
+  .timeline .line::before { content: ''; position: absolute; inset: 0 32% 0 0; background: linear-gradient(90deg, #22d3ee, #ec4899); }
+  .timeline .line::after { content: ''; position: absolute; top: 0; bottom: 0; left: 61%; width: 2px; background: #fff; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; }
+  .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; }
+  .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; }
+  .xy-row { display: flex; gap: 2px; min-height: 110px; }
+  .sr { display: flex; align-items: center; gap: 4px; height: 17px; flex-shrink: 0; }
+  .sr .sl { width: 50px; font-size: 8px; color: #7083a6; flex-shrink: 0; }
+  .sr .st { flex: 1; height: 3px; background: #0f172a; border-radius: 1px; position: relative; overflow: hidden; }
+  .sr .sf { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 1px; }
+  .sr .sv { width: 28px; text-align: right; font-size: 8px; color: #98a8c5; flex-shrink: 0; }
+  .map-row { display: flex; align-items: center; gap: 2px; height: 16px; flex-shrink: 0; }
+  .map-row .mt { width: 16px; font-size: 7px; color: #a78bfa; text-align: center; flex-shrink: 0; }
+  .map-row .mo { width: 28px; height: 14px; font-size: 7px; display: flex; align-items: center; justify-content: center; background: #111827; border: 1px solid #26304a; color: #60708f; flex-shrink: 0; }
+  .map-row .mo.on { background: #17b193; color: #041312; border-color: #17b193; }
+  .map-row .ms { flex: 1; height: 14px; font-size: 7px; display: flex; align-items: center; padding: 0 3px; background: #0f172a; border: 1px solid #1f2b4d; color: #94a3b8; overflow: hidden; white-space: nowrap; }
+  .map-row .mm { width: 32px; height: 10px; background: #0f172a; border-radius: 1px; position: relative; overflow: hidden; flex-shrink: 0; }
+  .map-row .mm::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; background: #a78bfa; border-radius: 1px; }
+  .map-row .mv { width: 24px; font-size: 7px; color: #94a3b8; text-align: right; flex-shrink: 0; }
+  .voice-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 2px; }
+  .voice-cell { height: 28px; background: #0a0f1c; border: 1px solid #1f2b4d; border-radius: 2px; display: flex; flex-direction: column; justify-content: center; padding: 0 4px; }
+  .voice-cell.on { border-color: #22d3ee; background: #0d1f2a; }
+  .voice-cell .vn { font-size: 7px; color: #60708f; }
+  .voice-cell .vv { font-size: 8px; color: #fff; }
+  .voice-cell .vp { font-size: 7px; color: #94a3b8; }
+  .sec-title { font-size: 7px; color: #55627f; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; margin-bottom: 1px; flex-shrink: 0; }
+  .dd-row { display: flex; align-items: center; gap: 4px; height: 20px; flex-shrink: 0; }
+  .dd-row .dl { font-size: 8px; color: #7083a6; flex-shrink: 0; width: 60px; }
+  .dd-row select { background: #1e293b; color: #22d3ee; border: 1px solid #334155; border-radius: 2px; padding: 0 4px; font-size: 8px; cursor: pointer; flex: 1; height: 16px; }
+</style>
+</head>
+<body>
+
+<!-- ===== D1: DECK-FIRST HYBRID ===== -->
+<div class="screen active" id="d1">
+  <div class="tb">
+    <button class="ton">▶</button><button>■</button><button class="trec">●</button>
+    <span class="sep"></span>
+    <button class="ton">POLY</button><button>SLICE</button><button>LOOP</button>
+    <span style="font-size:8px;color:#55627f;margin-left:4px;">128 BPM · 8 VOICES · PERFORMANCE</span>
+    <span style="margin-left:auto;font-size:8px;color:#46536e;">SEG · POSE · 4.0s · FULLSCREEN</span>
+  </div>
+  <div class="workspace">
+    <div class="mod" style="height:26%;flex-shrink:0;">
+      <div class="mod-h">
+        <div class="del"></div>
+        <div class="acc" style="background:linear-gradient(90deg,#0aa 0%,#0aa 2px,transparent 2px);"><span class="nm">Deck / Layers</span></div>
+        <div class="sz"></div>
+      </div>
+      <div class="mod-b" style="padding:1px;gap:1px;">
+        <div class="layer-grid">
+          <div class="layer-row">
+            <div class="layer-head">
+              <div class="lh-top"><span>L3</span><div class="ab"><span>A</span><span class="on">B</span></div></div>
+              <div class="blend"></div>
+            </div>
+            <div class="clip-row">
+              <div class="cell"><div class="th"></div><div class="lb">Cap1</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap2</div></div>
+              <div class="cell sel"><div class="th"></div><div class="lb">Cap3</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap4</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Raw</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Seg</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Pose</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Out</div></div>
+            </div>
+          </div>
+          <div class="layer-row">
+            <div class="layer-head">
+              <div class="lh-top"><span>L2</span><div class="ab"><span class="on">A</span><span>B</span></div></div>
+              <div class="blend" style="background:linear-gradient(90deg,#16a34a 0%,#16a34a 60%,#1d4ed8 64%,#1d4ed8 100%);"></div>
+            </div>
+            <div class="clip-row">
+              <div class="cell"><div class="th"></div><div class="lb">Cap1</div></div>
+              <div class="cell sel"><div class="th"></div><div class="lb">Cap2</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap3</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap4</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Raw</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Seg</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Pose</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">FX</div></div>
+            </div>
+          </div>
+          <div class="layer-row">
+            <div class="layer-head">
+              <div class="lh-top"><span>L1</span><div class="ab"><span>A</span><span class="on">B</span></div></div>
+              <div class="blend" style="background:linear-gradient(90deg,#16a34a 0%,#16a34a 42%,#1d4ed8 46%,#1d4ed8 100%);"></div>
+            </div>
+            <div class="clip-row">
+              <div class="cell sel"><div class="th"></div><div class="lb">Move1</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Move2</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Raw</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Seg</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Pose</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Out</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="flex:1;min-height:0;">
+      <div class="col" style="flex:1.4;">
+        <div class="io-pair" style="flex:1;min-height:0;">
+          <div class="mod" style="flex:1.25;">
+            <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#c84 0%,#c84 2px,transparent 2px);"><span class="nm">Output</span></div><div class="sz"></div></div>
+            <div class="mod-b np"><div class="stage"><div class="vpl">Output</div></div></div>
+          </div>
+          <div class="mod" style="flex:1;">
+            <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#a84 0%,#a84 2px,transparent 2px);"><span class="nm">Preview</span></div><div class="sz"></div></div>
+            <div class="mod-b np"><div class="stage"><div class="vpl">Preview</div></div></div>
+          </div>
+        </div>
+        <div class="io-pair" style="height:18%;flex-shrink:0;">
+          <div class="mod" style="flex:1;">
+            <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#22d3ee 0%,#22d3ee 2px,transparent 2px);"><span class="nm">Raw</span></div><div class="sz"></div></div>
+            <div class="mod-b np"><div class="stage"><div class="vpl">Raw</div></div></div>
+          </div>
+          <div class="mod" style="flex:1;">
+            <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#22c55e 0%,#22c55e 2px,transparent 2px);"><span class="nm">Segmented</span></div><div class="sz"></div></div>
+            <div class="mod-b np"><div class="stage"><div class="vpl">Segmented</div></div></div>
+          </div>
+          <div class="mod" style="flex:1;">
+            <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#a855f7 0%,#a855f7 2px,transparent 2px);"><span class="nm">Pose</span></div><div class="sz"></div></div>
+            <div class="mod-b np"><div class="stage"><div class="vpl">Pose</div></div></div>
+          </div>
+        </div>
+        <div class="mod" style="height:12%;flex-shrink:0;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#a8a 0%,#a8a 2px,transparent 2px);"><span class="nm">Waveform / Transport</span></div><div class="sz"></div></div>
+          <div class="mod-b">
+            <div class="timeline"><span>00:43</span><div class="line"></div><span>04.0s</span></div>
+            <div class="wave-strip" id="w1"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" style="flex:1.2;">
+        <div class="mod" style="flex:1.1;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#c84 0%,#c84 2px,transparent 2px);"><span class="nm">Shader</span><select class="dd"><option>Fluid Smoke</option></select></div><div class="sz"></div></div>
+          <div class="mod-b">
+            <div class="dd-row"><span class="dl">Source</span><select><option>Webcam</option></select></div>
+            <div class="dd-row"><span class="dl">Layer</span><select><option>L1</option></select></div>
+            <div class="dd-row"><span class="dl">Effect</span><select><option>Fluid Smoke</option></select></div>
+            <div class="chips" style="margin-top:1px;"><div class="chip on">L1</div><div class="chip">L2</div><div class="chip">L3</div><div class="chip on">On</div><div class="chip off">Clr</div></div>
+            <div class="grid-2">
+              <div class="pb p1" style="--p:60%;"><span class="pn">Intensity</span><span class="pv">0.860</span></div>
+              <div class="pb p2" style="--p:70%;"><span class="pn">Speed</span><span class="pv">2.400</span></div>
+              <div class="pb p3" style="--p:45%;"><span class="pn">Smoke Life</span><span class="pv">0.900</span></div>
+              <div class="pb p4" style="--p:30%;"><span class="pn">Texel Scale</span><span class="pv">0.017</span></div>
+              <div class="pb p5" style="--p:85%;"><span class="pn">Decay Min</span><span class="pv">0.850</span></div>
+              <div class="pb p6" style="--p:55%;"><span class="pn">Decay Max</span><span class="pv">0.695</span></div>
+              <div class="pb p7" style="--p:40%;"><span class="pn">Turbulence</span><span class="pv">0.400</span></div>
+              <div class="pb p8" style="--p:65%;"><span class="pn">Vorticity</span><span class="pv">0.650</span></div>
+              <div class="pb p9" style="--p:22%;"><span class="pn">Diffusion</span><span class="pv">0.220</span></div>
+              <div class="pb p1" style="--p:52%;"><span class="pn">Shimmer</span><span class="pv">0.520</span></div>
+              <div class="pb p2" style="--p:38%;"><span class="pn">Warp</span><span class="pv">0.380</span></div>
+              <div class="pb p3" style="--p:74%;"><span class="pn">Feedback</span><span class="pv">0.740</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="mod" style="flex:0.9;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#0a8 0%,#0a8 2px,transparent 2px);"><span class="nm">Pose / Seg / Mapping</span></div><div class="sz"></div></div>
+          <div class="mod-b">
+            <div class="grid-3">
+              <div class="pb p6" style="--p:42%;"><span class="pn">Pose Conf</span><span class="pv">0.300</span></div>
+              <div class="pb p7" style="--p:100%;"><span class="pn">Skel On</span><span class="pv">1.000</span></div>
+              <div class="pb p8" style="--p:50%;"><span class="pn">Seg Gain</span><span class="pv">1.000</span></div>
+              <div class="pb p9" style="--p:50%;"><span class="pn">Threshold</span><span class="pv">0.500</span></div>
+              <div class="pb p1" style="--p:15%;"><span class="pn">Feather</span><span class="pv">0.150</span></div>
+              <div class="pb p2" style="--p:0%;"><span class="pn">Invert</span><span class="pv">0.000</span></div>
+            </div>
+            <div class="sec-title">Pose Mapping (8 Tracks)</div>
+            <div class="map-row"><span class="mt">T1</span><span class="mo on">On</span><span class="ms">left_wrist.y</span><span class="ms">FX1 Mix</span><span class="mm" style="--m:42%;"></span><span class="mv">0.42</span></div>
+            <div class="map-row"><span class="mt">T2</span><span class="mo on">On</span><span class="ms">right_wrist.x</span><span class="ms">Sampler Speed</span><span class="mm" style="--m:67%;"></span><span class="mv">0.67</span></div>
+            <div class="map-row"><span class="mt">T3</span><span class="mo">Off</span><span class="ms">nose.y</span><span class="ms">Shader L1 P1</span><span class="mm" style="--m:23%;"></span><span class="mv">0.23</span></div>
+            <div class="map-row"><span class="mt">T4</span><span class="mo">Off</span><span class="ms">left_elbow.x</span><span class="ms">Slice Select</span><span class="mm" style="--m:55%;"></span><span class="mv">0.55</span></div>
+            <div class="map-row"><span class="mt">T5</span><span class="mo">Off</span><span class="ms">right_elbow.y</span><span class="ms">Output</span><span class="mm" style="--m:31%;"></span><span class="mv">0.31</span></div>
+            <div class="map-row"><span class="mt">T6</span><span class="mo">Off</span><span class="ms">both_hands.spread</span><span class="ms">Root Note</span><span class="mm" style="--m:78%;"></span><span class="mv">0.78</span></div>
+            <div class="map-row"><span class="mt">T7</span><span class="mo">Off</span><span class="ms">left_arm.reach</span><span class="ms">Crossfade</span><span class="mm" style="--m:15%;"></span><span class="mv">0.15</span></div>
+            <div class="map-row"><span class="mt">T8</span><span class="mo">Off</span><span class="ms">right_arm.reach</span><span class="ms">Seg Gain</span><span class="mm" style="--m:60%;"></span><span class="mv">0.60</span></div>
+            <div class="sec-title">Poly Voice Areas</div>
+            <div class="voice-grid">
+              <div class="voice-cell on"><span class="vn">V1</span><span class="vv">C3 · vel 96</span><span class="vp">0.312</span></div>
+              <div class="voice-cell on"><span class="vn">V2</span><span class="vv">E3 · vel 84</span><span class="vp">0.412</span></div>
+              <div class="voice-cell"><span class="vn">V3</span><span class="vv">—</span><span class="vp">—</span></div>
+              <div class="voice-cell"><span class="vn">V4</span><span class="vv">—</span><span class="vp">—</span></div>
+              <div class="voice-cell"><span class="vn">V5</span><span class="vv">—</span><span class="vp">—</span></div>
+              <div class="voice-cell"><span class="vn">V6</span><span class="vv">—</span><span class="vp">—</span></div>
+              <div class="voice-cell"><span class="vn">V7</span><span class="vv">—</span><span class="vp">—</span></div>
+              <div class="voice-cell"><span class="vn">V8</span><span class="vv">—</span><span class="vp">—</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" style="flex:0.9;">
+        <div class="mod" style="flex:1;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#0aa 0%,#0aa 2px,transparent 2px);"><span class="nm">FX1</span><select class="dd"><option>Reverb</option></select></div><div class="sz"></div></div>
+          <div class="mod-b">
+            <div class="dd-row"><span class="dl">FX Type</span><select><option>Reverb</option></select></div>
+            <div class="xy-row" style="min-height:90px;">
+              <div class="xy" style="min-height:90px;"><div class="gx" style="left:25%"></div><div class="gx" style="left:50%"></div><div class="gx" style="left:75%"></div><div class="gy" style="top:25%"></div><div class="gy" style="top:50%"></div><div class="gy" style="top:75%"></div><div class="dot" style="left:70%;top:40%"></div><div class="xl tr">Room:70%</div><div class="xl bl">Damp:40%</div></div>
+            </div>
+            <div class="grid-2">
+              <div class="pb p1" style="--p:50%;"><span class="pn">Mix</span><span class="pv">0.500</span></div>
+              <div class="pb p2" style="--p:70%;"><span class="pn">Room</span><span class="pv">0.700</span></div>
+              <div class="pb p3" style="--p:40%;"><span class="pn">Damp</span><span class="pv">0.400</span></div>
+              <div class="pb p4" style="--p:80%;"><span class="pn">Width</span><span class="pv">0.800</span></div>
+              <div class="pb p5" style="--p:25%;"><span class="pn">PreDly</span><span class="pv">0.250</span></div>
+              <div class="pb p6" style="--p:63%;"><span class="pn">Tone</span><span class="pv">0.630</span></div>
+              <div class="pb p7" style="--p:45%;"><span class="pn">Diffusion</span><span class="pv">0.450</span></div>
+              <div class="pb p8" style="--p:55%;"><span class="pn">Size</span><span class="pv">0.550</span></div>
+            </div>
+            <div class="tiny-meter" style="margin-top:1px;">
+              <span class="on1"></span><span class="on1"></span><span class="on1"></span><span class="on2"></span><span class="on2"></span><span class="on2"></span><span class="on2"></span><span class="on3"></span><span class="on3"></span><span class="on3"></span><span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== D2: STAGE-FIRST PERFORMANCE ===== -->
+<div class="screen" id="d2">
+  <div class="tb">
+    <button class="ton">▶</button><button>■</button><button class="trec">●</button>
+    <span class="sep"></span>
+    <button class="ton">PERF</button><button>CAP</button><button>FX</button>
+    <span style="font-size:8px;color:#55627f;margin-left:4px;">128 BPM · LIVE PLAYBACK · 3 LAYERS</span>
+    <span style="margin-left:auto;font-size:8px;color:#46536e;">OUTPUT+WAVEFORM · COMP COLUMN · PARAMS</span>
+  </div>
+  <div class="workspace">
+    <div class="row" style="flex:1;min-height:0;">
+      <div class="col" style="flex:1.15;">
+        <div class="mod" style="flex:1;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#c84 0%,#c84 2px,transparent 2px);"><span class="nm">Output</span></div><div class="sz"></div></div>
+          <div class="mod-b np"><div class="stage"><div class="vpl">Output</div></div></div>
+        </div>
+        <div class="mod" style="height:13%;flex-shrink:0;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#a8a 0%,#a8a 2px,transparent 2px);"><span class="nm">Waveform</span></div><div class="sz"></div></div>
+          <div class="mod-b">
+            <div class="timeline"><span>Slice 1</span><div class="line"></div><span>04.0s</span></div>
+            <div class="wave-strip" id="w2"></div>
+          </div>
+        </div>
+        <div class="mod" style="height:22%;flex-shrink:0;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#a84 0%,#a84 2px,transparent 2px);"><span class="nm">Preview / Seg / Pose</span></div><div class="sz"></div></div>
+          <div class="mod-b np">
+            <div class="io-pair" style="padding:3px;">
+              <div class="stage" style="border-radius:4px;"><div class="vpl">Preview</div></div>
+              <div class="stage" style="border-radius:4px;"><div class="vpl">Seg</div></div>
+              <div class="stage" style="border-radius:4px;"><div class="vpl">Pose</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" style="flex:0.82;">
+        <div class="mod" style="flex:1;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#0aa 0%,#0aa 2px,transparent 2px);"><span class="nm">Composition Column</span></div><div class="sz"></div></div>
+          <div class="mod-b" style="padding:1px;">
+            <div class="mini-grid">
+              <div class="cell sel"><div class="th"></div><div class="lb">Move1</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap1</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap2</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap3</div></div>
+              <div class="cell sel"><div class="th"></div><div class="lb">Smoke</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Move2</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Mask</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Seg</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Seg</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Raw</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Delay</div></div>
+              <div class="cell sel"><div class="th"></div><div class="lb">Pose</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">FX</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Raw</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Q</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Out</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" style="flex:1.1;">
+        <div class="mod" style="flex:1;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#22c55e 0%,#22c55e 2px,transparent 2px);"><span class="nm">All Parameters</span></div><div class="sz"></div></div>
+          <div class="mod-b">
+            <div class="dd-row"><span class="dl">Source</span><select><option>Webcam</option></select></div>
+            <div class="dd-row"><span class="dl">Effect</span><select><option>Fluid Smoke</option></select></div>
+            <div class="dd-row"><span class="dl">FX Type</span><select><option>Reverb</option></select></div>
+            <div class="dd-row"><span class="dl">Mode</span><select><option>Poly</option></select></div>
+            <div class="chips"><div class="chip on">L1</div><div class="chip">L2</div><div class="chip">L3</div><div class="chip on">On</div><div class="chip off">Clr</div></div>
+
+            <div class="sec-title">Transport</div>
+            <div class="grid-3">
+              <div class="pb p1" style="--p:50%;"><span class="pn">Speed</span><span class="pv">1.000</span></div>
+              <div class="pb p2" style="--p:40%;"><span class="pn">Output</span><span class="pv">0.800</span></div>
+              <div class="pb p3" style="--p:47%;"><span class="pn">Root Note</span><span class="pv">60</span></div>
+              <div class="pb p4" style="--p:100%;"><span class="pn">Pitch Trk</span><span class="pv">On</span></div>
+              <div class="pb p5" style="--p:100%;"><span class="pn">Voice Cnt</span><span class="pv">8</span></div>
+              <div class="pb p6" style="--p:0%;"><span class="pn">Play Start</span><span class="pv">0.000</span></div>
+              <div class="pb p7" style="--p:0%;"><span class="pn">Loop Start</span><span class="pv">0.000</span></div>
+              <div class="pb p8" style="--p:100%;"><span class="pn">Loop End</span><span class="pv">1.000</span></div>
+              <div class="pb p9" style="--p:6%;"><span class="pn">Crossfade</span><span class="pv">0.030</span></div>
+              <div class="pb p1" style="--p:0%;"><span class="pn">One Shot</span><span class="pv">Off</span></div>
+              <div class="pb p2" style="--p:50%;"><span class="pn">Loop Fade</span><span class="pv">0.260</span></div>
+              <div class="pb p3" style="--p:68%;"><span class="pn">Velocity</span><span class="pv">0.680</span></div>
+            </div>
+
+            <div class="sec-title">Capture</div>
+            <div class="grid-3">
+              <div class="pb p4" style="--p:75%;"><span class="pn">Cap Secs</span><span class="pv">4.000</span></div>
+              <div class="pb p5" style="--p:0%;"><span class="pn">Cap Mode</span><span class="pv">Retro</span></div>
+              <div class="pb p6" style="--p:0%;"><span class="pn">Mode</span><span class="pv">Poly</span></div>
+              <div class="pb p7" style="--p:12%;"><span class="pn">Sel Slice</span><span class="pv">1</span></div>
+            </div>
+
+            <div class="sec-title">Seg / Pose</div>
+            <div class="grid-3">
+              <div class="pb p8" style="--p:50%;"><span class="pn">Seg Gain</span><span class="pv">1.000</span></div>
+              <div class="pb p9" style="--p:50%;"><span class="pn">Threshold</span><span class="pv">0.500</span></div>
+              <div class="pb p1" style="--p:15%;"><span class="pn">Feather</span><span class="pv">0.150</span></div>
+              <div class="pb p2" style="--p:0%;"><span class="pn">Invert</span><span class="pv">0.000</span></div>
+              <div class="pb p3" style="--p:30%;"><span class="pn">Pose Conf</span><span class="pv">0.300</span></div>
+              <div class="pb p4" style="--p:100%;"><span class="pn">Show Skel</span><span class="pv">On</span></div>
+            </div>
+
+            <div class="sec-title">Shader</div>
+            <div class="grid-3">
+              <div class="pb p5" style="--p:60%;"><span class="pn">Intensity</span><span class="pv">0.860</span></div>
+              <div class="pb p6" style="--p:70%;"><span class="pn">Speed</span><span class="pv">2.400</span></div>
+              <div class="pb p7" style="--p:45%;"><span class="pn">Smoke Life</span><span class="pv">0.900</span></div>
+              <div class="pb p8" style="--p:30%;"><span class="pn">Texel Scale</span><span class="pv">0.017</span></div>
+              <div class="pb p9" style="--p:85%;"><span class="pn">Decay Min</span><span class="pv">0.850</span></div>
+              <div class="pb p1" style="--p:55%;"><span class="pn">Decay Max</span><span class="pv">0.695</span></div>
+              <div class="pb p2" style="--p:40%;"><span class="pn">Turbulence</span><span class="pv">0.400</span></div>
+              <div class="pb p3" style="--p:65%;"><span class="pn">Vorticity</span><span class="pv">0.650</span></div>
+              <div class="pb p4" style="--p:22%;"><span class="pn">Diffusion</span><span class="pv">0.220</span></div>
+              <div class="pb p5" style="--p:52%;"><span class="pn">Shimmer</span><span class="pv">0.520</span></div>
+              <div class="pb p6" style="--p:38%;"><span class="pn">Warp</span><span class="pv">0.380</span></div>
+              <div class="pb p7" style="--p:74%;"><span class="pn">Feedback</span><span class="pv">0.740</span></div>
+            </div>
+
+            <div class="sec-title">FX1</div>
+            <div class="grid-3">
+              <div class="pb p8" style="--p:48%;"><span class="pn">FX1 Mix</span><span class="pv">0.480</span></div>
+              <div class="pb p9" style="--p:62%;"><span class="pn">FX1 Room</span><span class="pv">0.620</span></div>
+              <div class="pb p1" style="--p:39%;"><span class="pn">FX1 Damp</span><span class="pv">0.390</span></div>
+              <div class="pb p2" style="--p:74%;"><span class="pn">FX1 Width</span><span class="pv">0.740</span></div>
+              <div class="pb p3" style="--p:28%;"><span class="pn">FX1 PreDly</span><span class="pv">0.280</span></div>
+              <div class="pb p4" style="--p:50%;"><span class="pn">FX1 Tone</span><span class="pv">0.500</span></div>
+            </div>
+
+            <div class="sec-title">ADSR</div>
+            <div class="grid-4">
+              <div class="pb p7" style="--p:50%;"><span class="pn">Attack</span><span class="pv">0.500</span></div>
+              <div class="pb p8" style="--p:70%;"><span class="pn">Decay</span><span class="pv">0.700</span></div>
+              <div class="pb p9" style="--p:40%;"><span class="pn">Sustain</span><span class="pv">0.400</span></div>
+              <div class="pb p1" style="--p:60%;"><span class="pn">Release</span><span class="pv">0.600</span></div>
+            </div>
+
+            <div class="sec-title">Pose Mapping</div>
+            <div class="grid-4">
+              <div class="pb p2" style="--p:100%;"><span class="pn">T1 On</span><span class="pv">lw→FX1</span></div>
+              <div class="pb p3" style="--p:100%;"><span class="pn">T2 On</span><span class="pv">rw→Mix</span></div>
+              <div class="pb p4" style="--p:0%;"><span class="pn">T3 Off</span><span class="pv">nose→Spd</span></div>
+              <div class="pb p5" style="--p:0%;"><span class="pn">T4 Off</span><span class="pv">le→Glt</span></div>
+              <div class="pb p6" style="--p:0%;"><span class="pn">T5 Off</span><span class="pv">re→XFd</span></div>
+              <div class="pb p7" style="--p:0%;"><span class="pn">T6 Off</span><span class="pv">spr→Lyr</span></div>
+              <div class="pb p8" style="--p:0%;"><span class="pn">T7 Off</span><span class="pv">lar→Out</span></div>
+              <div class="pb p9" style="--p:0%;"><span class="pn">T8 Off</span><span class="pv">rar→RN</span></div>
+            </div>
+
+            <div style="border-top:1px solid #1f2b4d;margin-top:2px;padding-top:2px;flex-shrink:0;">
+              <div class="xy-row">
+                <div class="xy"><div class="gx" style="left:25%"></div><div class="gx" style="left:50%"></div><div class="gx" style="left:75%"></div><div class="gy" style="top:25%"></div><div class="gy" style="top:50%"></div><div class="gy" style="top:75%"></div><div class="dot" style="left:60%;top:30%"></div><div class="xl tr">X</div><div class="xl bl">Y</div></div>
+                <div class="xy"><div class="gx" style="left:25%"></div><div class="gx" style="left:50%"></div><div class="gx" style="left:75%"></div><div class="gy" style="top:25%"></div><div class="gy" style="top:50%"></div><div class="gy" style="top:75%"></div><div class="dot" style="left:45%;top:55%"></div><div class="xl tr">Env</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== D3: INSPECTOR-FIRST COMPOSER ===== -->
+<div class="screen" id="d3">
+  <div class="tb">
+    <button class="ton">▶</button><button>■</button><button class="trec">●</button>
+    <span class="sep"></span>
+    <button class="ton">COMPOSE</button><button>EDIT</button><button>MAP</button>
+    <span style="font-size:8px;color:#55627f;margin-left:4px;">128 BPM · ARRANGE + PERFORM</span>
+    <span style="margin-left:auto;font-size:8px;color:#46536e;">PREV/SEG/POSE LEFT · OUTPUT RIGHT</span>
+  </div>
+  <div class="workspace">
+    <div class="row" style="height:38%;flex-shrink:0;">
+      <div class="col" style="flex:1.1;">
+        <div class="row" style="flex:1;min-height:0;">
+          <div class="col" style="flex:0.3;">
+            <div class="mod" style="flex:1;">
+              <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#22d3ee 0%,#22d3ee 2px,transparent 2px);"><span class="nm">Raw</span></div><div class="sz"></div></div>
+              <div class="mod-b np"><div class="stage"><div class="vpl">Raw</div></div></div>
+            </div>
+            <div class="mod" style="flex:0.8;">
+              <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#22c55e 0%,#22c55e 2px,transparent 2px);"><span class="nm">Segmented</span></div><div class="sz"></div></div>
+              <div class="mod-b np"><div class="stage"><div class="vpl">Segmented</div></div></div>
+            </div>
+            <div class="mod" style="flex:0.8;">
+              <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#a855f7 0%,#a855f7 2px,transparent 2px);"><span class="nm">Pose</span></div><div class="sz"></div></div>
+              <div class="mod-b np"><div class="stage"><div class="vpl">Pose</div></div></div>
+            </div>
+          </div>
+          <div class="mod" style="flex:1;">
+            <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#a84 0%,#a84 2px,transparent 2px);"><span class="nm">Preview</span></div><div class="sz"></div></div>
+            <div class="mod-b np"><div class="stage"><div class="vpl">Preview</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="mod" style="flex:0.9;">
+        <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#c84 0%,#c84 2px,transparent 2px);"><span class="nm">Output</span></div><div class="sz"></div></div>
+        <div class="mod-b np"><div class="stage"><div class="vpl">Output</div></div></div>
+      </div>
+    </div>
+
+    <div class="row" style="flex:1;min-height:0;">
+      <div class="col" style="flex:1.1;">
+        <div class="mod" style="flex:1;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#c84 0%,#c84 2px,transparent 2px);"><span class="nm">All Parameters</span></div><div class="sz"></div></div>
+          <div class="mod-b">
+            <div class="dd-row"><span class="dl">Source</span><select><option>Webcam</option></select></div>
+            <div class="dd-row"><span class="dl">Effect</span><select><option>Fluid Smoke</option></select></div>
+            <div class="dd-row"><span class="dl">FX Type</span><select><option>Reverb</option></select></div>
+            <div class="dd-row"><span class="dl">Mode</span><select><option>Poly</option></select></div>
+            <div class="chips"><div class="chip on">Webcam</div><div class="chip">L1</div><div class="chip on">On</div><div class="chip">Chromatic</div><div class="chip off">Reset</div></div>
+
+            <div class="xy-row" style="min-height:110px;">
+              <div class="xy"><div class="gx" style="left:25%"></div><div class="gx" style="left:50%"></div><div class="gx" style="left:75%"></div><div class="gy" style="top:25%"></div><div class="gy" style="top:50%"></div><div class="gy" style="top:75%"></div><div class="dot" style="left:55%;top:35%"></div><div class="xl tr">X</div><div class="xl bl">Y</div></div>
+              <div class="xy"><div class="gx" style="left:25%"></div><div class="gx" style="left:50%"></div><div class="gx" style="left:75%"></div><div class="gy" style="top:25%"></div><div class="gy" style="top:50%"></div><div class="gy" style="top:75%"></div><div class="dot" style="left:45%;top:55%"></div><div class="xl tr">Env</div></div>
+            </div>
+
+            <div class="sec-title">Transport</div>
+            <div class="grid-4">
+              <div class="pb p1" style="--p:50%;"><span class="pn">Speed</span><span class="pv">1.000</span></div>
+              <div class="pb p2" style="--p:40%;"><span class="pn">Output</span><span class="pv">0.800</span></div>
+              <div class="pb p3" style="--p:47%;"><span class="pn">Root Note</span><span class="pv">60</span></div>
+              <div class="pb p4" style="--p:100%;"><span class="pn">Pitch Trk</span><span class="pv">On</span></div>
+              <div class="pb p5" style="--p:100%;"><span class="pn">Voice Cnt</span><span class="pv">8</span></div>
+              <div class="pb p6" style="--p:0%;"><span class="pn">Play Start</span><span class="pv">0.000</span></div>
+              <div class="pb p7" style="--p:0%;"><span class="pn">Loop Start</span><span class="pv">0.000</span></div>
+              <div class="pb p8" style="--p:100%;"><span class="pn">Loop End</span><span class="pv">1.000</span></div>
+              <div class="pb p9" style="--p:6%;"><span class="pn">Crossfade</span><span class="pv">0.030</span></div>
+              <div class="pb p1" style="--p:0%;"><span class="pn">One Shot</span><span class="pv">Off</span></div>
+              <div class="pb p2" style="--p:50%;"><span class="pn">Loop Fade</span><span class="pv">0.260</span></div>
+              <div class="pb p3" style="--p:68%;"><span class="pn">Velocity</span><span class="pv">0.680</span></div>
+            </div>
+
+            <div class="sec-title">Capture</div>
+            <div class="grid-4">
+              <div class="pb p4" style="--p:75%;"><span class="pn">Cap Secs</span><span class="pv">4.000</span></div>
+              <div class="pb p5" style="--p:0%;"><span class="pn">Cap Mode</span><span class="pv">Retro</span></div>
+              <div class="pb p6" style="--p:0%;"><span class="pn">Mode</span><span class="pv">Poly</span></div>
+              <div class="pb p7" style="--p:12%;"><span class="pn">Sel Slice</span><span class="pv">1</span></div>
+            </div>
+
+            <div class="sec-title">Seg / Pose</div>
+            <div class="grid-4">
+              <div class="pb p8" style="--p:50%;"><span class="pn">Seg Gain</span><span class="pv">1.000</span></div>
+              <div class="pb p9" style="--p:50%;"><span class="pn">Threshold</span><span class="pv">0.500</span></div>
+              <div class="pb p1" style="--p:15%;"><span class="pn">Feather</span><span class="pv">0.150</span></div>
+              <div class="pb p2" style="--p:0%;"><span class="pn">Invert</span><span class="pv">0.000</span></div>
+              <div class="pb p3" style="--p:30%;"><span class="pn">Pose Conf</span><span class="pv">0.300</span></div>
+              <div class="pb p4" style="--p:100%;"><span class="pn">Show Skel</span><span class="pv">On</span></div>
+            </div>
+
+            <div class="sec-title">Shader</div>
+            <div class="grid-4">
+              <div class="pb p5" style="--p:60%;"><span class="pn">Intensity</span><span class="pv">0.860</span></div>
+              <div class="pb p6" style="--p:70%;"><span class="pn">Speed</span><span class="pv">2.400</span></div>
+              <div class="pb p7" style="--p:45%;"><span class="pn">Smoke Life</span><span class="pv">0.900</span></div>
+              <div class="pb p8" style="--p:30%;"><span class="pn">Texel Scale</span><span class="pv">0.017</span></div>
+              <div class="pb p9" style="--p:85%;"><span class="pn">Decay Min</span><span class="pv">0.850</span></div>
+              <div class="pb p1" style="--p:55%;"><span class="pn">Decay Max</span><span class="pv">0.695</span></div>
+              <div class="pb p2" style="--p:40%;"><span class="pn">Turbulence</span><span class="pv">0.400</span></div>
+              <div class="pb p3" style="--p:65%;"><span class="pn">Vorticity</span><span class="pv">0.650</span></div>
+              <div class="pb p4" style="--p:22%;"><span class="pn">Diffusion</span><span class="pv">0.220</span></div>
+              <div class="pb p5" style="--p:52%;"><span class="pn">Shimmer</span><span class="pv">0.520</span></div>
+              <div class="pb p6" style="--p:38%;"><span class="pn">Warp</span><span class="pv">0.380</span></div>
+              <div class="pb p7" style="--p:74%;"><span class="pn">Feedback</span><span class="pv">0.740</span></div>
+            </div>
+
+            <div class="sec-title">FX1</div>
+            <div class="grid-4">
+              <div class="pb p8" style="--p:48%;"><span class="pn">FX1 Mix</span><span class="pv">0.480</span></div>
+              <div class="pb p9" style="--p:62%;"><span class="pn">FX1 Room</span><span class="pv">0.620</span></div>
+              <div class="pb p1" style="--p:39%;"><span class="pn">FX1 Damp</span><span class="pv">0.390</span></div>
+              <div class="pb p2" style="--p:74%;"><span class="pn">FX1 Width</span><span class="pv">0.740</span></div>
+              <div class="pb p3" style="--p:28%;"><span class="pn">FX1 PreDly</span><span class="pv">0.280</span></div>
+              <div class="pb p4" style="--p:50%;"><span class="pn">FX1 Tone</span><span class="pv">0.500</span></div>
+              <div class="pb p5" style="--p:45%;"><span class="pn">FX1 Diff</span><span class="pv">0.450</span></div>
+              <div class="pb p6" style="--p:55%;"><span class="pn">FX1 Size</span><span class="pv">0.550</span></div>
+            </div>
+
+            <div class="sec-title">ADSR</div>
+            <div class="grid-4">
+              <div class="pb p7" style="--p:50%;"><span class="pn">Attack</span><span class="pv">0.500</span></div>
+              <div class="pb p8" style="--p:70%;"><span class="pn">Decay</span><span class="pv">0.700</span></div>
+              <div class="pb p9" style="--p:40%;"><span class="pn">Sustain</span><span class="pv">0.400</span></div>
+              <div class="pb p1" style="--p:60%;"><span class="pn">Release</span><span class="pv">0.600</span></div>
+            </div>
+
+            <div class="sec-title">Pose Mapping</div>
+            <div class="grid-4">
+              <div class="pb p2" style="--p:100%;"><span class="pn">T1 On</span><span class="pv">lw→FX1</span></div>
+              <div class="pb p3" style="--p:100%;"><span class="pn">T2 On</span><span class="pv">rw→Mix</span></div>
+              <div class="pb p4" style="--p:0%;"><span class="pn">T3 Off</span><span class="pv">nose→Spd</span></div>
+              <div class="pb p5" style="--p:0%;"><span class="pn">T4 Off</span><span class="pv">le→Glt</span></div>
+              <div class="pb p6" style="--p:0%;"><span class="pn">T5 Off</span><span class="pv">re→XFd</span></div>
+              <div class="pb p7" style="--p:0%;"><span class="pn">T6 Off</span><span class="pv">spr→Lyr</span></div>
+              <div class="pb p8" style="--p:0%;"><span class="pn">T7 Off</span><span class="pv">lar→Out</span></div>
+              <div class="pb p9" style="--p:0%;"><span class="pn">T8 Off</span><span class="pv">rar→RN</span></div>
+            </div>
+
+            <div class="sec-title">Slice</div>
+            <div class="grid-4">
+              <div class="pb p1" style="--p:0%;"><span class="pn">S1 Start</span><span class="pv">0.000</span></div>
+              <div class="pb p2" style="--p:12%;"><span class="pn">S2 Start</span><span class="pv">0.125</span></div>
+              <div class="pb p3" style="--p:25%;"><span class="pn">S3 Start</span><span class="pv">0.250</span></div>
+              <div class="pb p4" style="--p:37%;"><span class="pn">S4 Start</span><span class="pv">0.375</span></div>
+              <div class="pb p5" style="--p:50%;"><span class="pn">S5 Start</span><span class="pv">0.500</span></div>
+              <div class="pb p6" style="--p:62%;"><span class="pn">S6 Start</span><span class="pv">0.625</span></div>
+              <div class="pb p7" style="--p:75%;"><span class="pn">S7 Start</span><span class="pv">0.750</span></div>
+              <div class="pb p8" style="--p:87%;"><span class="pn">S8 Start</span><span class="pv">0.875</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col" style="flex:0.9;">
+        <div class="mod" style="height:18%;flex-shrink:0;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#a8a 0%,#a8a 2px,transparent 2px);"><span class="nm">Waveform</span></div><div class="sz"></div></div>
+          <div class="mod-b">
+            <div class="wave-strip" id="w3"></div>
+          </div>
+        </div>
+        <div class="mod" style="flex:1;">
+          <div class="mod-h"><div class="del"></div><div class="acc" style="background:linear-gradient(90deg,#0aa 0%,#0aa 2px,transparent 2px);"><span class="nm">Clip Matrix</span></div><div class="sz"></div></div>
+          <div class="mod-b" style="padding:1px;">
+            <div class="mini-grid">
+              <div class="cell sel"><div class="th"></div><div class="lb">Cap1</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap2</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap3</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Cap4</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Raw</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Seg</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Pose</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Mask</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Move1</div></div>
+              <div class="cell sel"><div class="th"></div><div class="lb">Move2</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Delay</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Warp</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Gate</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">FX</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Out</div></div>
+              <div class="cell"><div class="th"></div><div class="lb">Queue</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== NAV ===== -->
+<div class="nav">
+  <div class="nav-l" id="navLabel">Deck-First Hybrid</div>
+  <div class="nav-d a" data-i="0"></div>
+  <div class="nav-d" data-i="1"></div>
+  <div class="nav-d" data-i="2"></div>
+</div>
+
+<script>
+  const screens = ['d1','d2','d3'];
+  const labels = ['Deck-First Hybrid','Stage-First Performance','Inspector-First Composer'];
+  const dots = document.querySelectorAll('.nav-d');
+  const navLabel = document.getElementById('navLabel');
+  let current = 0;
+  function show(i) {
+    current = i;
+    screens.forEach((id, idx) => document.getElementById(id).classList.toggle('active', idx === i));
+    dots.forEach((d, idx) => d.classList.toggle('a', idx === i));
+    navLabel.textContent = labels[i];
+  }
+  dots.forEach(d => d.addEventListener('click', () => show(parseInt(d.dataset.i, 10))));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') show((current + 1) % screens.length);
+    if (e.key === 'ArrowLeft') show((current + screens.length - 1) % screens.length);
+  });
+  function gen(id, count, palette) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    for (let i = 0; i < count; i++) {
+      const s = document.createElement('span');
+      s.style.background = palette[Math.floor((i / count) * palette.length) % palette.length];
+      s.style.height = (14 + Math.random() * 82) + '%';
+      el.appendChild(s);
+    }
+  }
+  gen('w1', 180, ['#a855f7','#f97316','#06b6d4','#22c55e','#eab308','#ec4899']);
+  gen('w2', 170, ['#f97316','#22d3ee','#22c55e','#a855f7','#ec4899']);
+  gen('w3', 180, ['#a855f7','#f97316','#06b6d4','#22c55e','#eab308']);
+</script>
+</body>
+</html>
