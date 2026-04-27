@@ -12,7 +12,7 @@ class MixerNode : public IPrimitiveNode,
 public:
     static constexpr int kMaxBusses = 32;
 
-    MixerNode();
+    MixerNode(int simdtarget = 0);
 
     const char* getNodeType() const override { return "Mixer"; }
 
@@ -63,10 +63,15 @@ public:
 
     float getMaster() const { return targetMaster_.load(std::memory_order_acquire); }
 
-    void disableSIMD() //turn off SIMD implementation, for testing
+    const char * getHighwayImplementationTargetName() const
     {
-        simd_implementation_.reset();
+        if(simd_implementation_.get() == NULL)
+            return NULL;
+
+        return simd_implementation_->targetName();
     }
+
+    int getHighwayErrorCode() const { return highwayErrCode_;}
 
 private:
     inline void notifyConfigChangeSimdImplementation()
@@ -74,6 +79,9 @@ private:
         if(simd_implementation_ != nullptr)
             simd_implementation_->configChanged();
     }
+
+    int simdTarget_ = 0;
+    int highwayErrCode_ = 0;
 
     std::atomic<int> inputCount_{4};
     std::array<std::atomic<float>, kMaxBusses> targetGains_{};

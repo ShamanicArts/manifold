@@ -6,6 +6,7 @@
 #include "manifold/highway/HighwayWrapper.h"
 #include "manifold/highway/HighwayMaths.h"
 #include "manifold/highway/HighwaySmoother.h"
+#include "manifold/highway/HighwayUtils.h"
 
 namespace dsp_primitives
 {
@@ -495,7 +496,7 @@ namespace dsp_primitives
                                                                                const std::atomic<int> * targetlogicmode)
             {
                 return new BitCrusherNodeSIMDImplementation(samplerate, targetbits, targetratered, targetmix, targetoutput, targetlogicmode);
-            }        
+            }
         }
 
         //========================================================================
@@ -503,15 +504,23 @@ namespace dsp_primitives
 
         #if HWY_ONCE || HWY_IDE
 
-            IPrimitiveNodeSIMDImplementation *  __CreateInstance(float samplerate,
+            IPrimitiveNodeSIMDImplementation *  __CreateInstance(int target,
+                                                                float samplerate,
                                                                 const std::atomic<float> * targetbits,
                                                                 const std::atomic<float> * targetratered,
                                                                 const std::atomic<float> * targetmix,
                                                                 const std::atomic<float> * targetoutput,
-                                                                const std::atomic<int> * targetlogicmode)
+                                                                const std::atomic<int> * targetlogicmode ,
+                                                                hwy::RunHighwayErrorCode * retErrorCode)
             {
                 HWY_EXPORT_T(_create_instance_table, __CreateInstanceForCPU);
-                return HWY_DYNAMIC_DISPATCH_T(_create_instance_table)(samplerate, targetbits, targetratered, targetmix, targetoutput, targetlogicmode);
+                IPrimitiveNodeSIMDImplementation * retiface = NULL;
+
+                hwy::RunHighwayErrorCode res =  hwy::RunHighwayFunction(target, &retiface, HWY_DISPATCH_TABLE(_create_instance_table),
+                                                                        samplerate, targetbits, targetratered, targetmix, targetoutput, targetlogicmode);
+
+                *retErrorCode = res;
+                return retiface;
             }
         
         #endif

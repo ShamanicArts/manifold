@@ -8,6 +8,9 @@ namespace dsp_primitives {
 
 ADSREnvelopeNode::ADSREnvelopeNode() = default;
 
+ADSREnvelopeNode::ADSREnvelopeNode(int target) : simdTarget_(target)
+{}
+
 void ADSREnvelopeNode::prepare(double sampleRate, int maxBlockSize)
 {
     sampleRate_ = sampleRate;
@@ -16,7 +19,13 @@ void ADSREnvelopeNode::prepare(double sampleRate, int maxBlockSize)
     //Create implementation
     //Note we're passing pointers of the std::atmomic values to the SIMD implementation here. This allows these values to change without
     //needing to be syncronised with the simd implementaion.
-    simd_implementation_.reset(ADSREnvelopeNode_Highway::__CreateInstance(static_cast<float>(sampleRate), &attack_, &decay_, &sustain_, &release_, &gate_ ));
+
+    if((simd_implementation_ == NULL) && (simdTarget_ >= 0))
+    {
+        hwy::RunHighwayErrorCode errcode = hwy::RunHighwayErrorCode_Error;
+        simd_implementation_.reset(ADSREnvelopeNode_Highway::__CreateInstance(simdTarget_, static_cast<float>(sampleRate), &attack_, &decay_, &sustain_, &release_, &gate_, &errcode));
+        highwayErrCode_ = static_cast<int>(errcode);
+    }
 }
 
 void ADSREnvelopeNode::setAttack(float seconds) 
@@ -62,14 +71,6 @@ void ADSREnvelopeNode::setGate(bool gateOn)
     //Notify SIMD implementation that a value has changed, and recalculation of pre-calculated values may be required
     if(simd_implementation_ != NULL) 
         simd_implementation_->configChanged();
-}
-
-
-void ADSREnvelopeNode::disableSIMD()
-{
-    //Debug method, for disabling SIMD implementation and using the original implementation instead
-    //(used for comparing the original (base) implementaion against the SIMD one)
-    simd_implementation_.reset();
 }
 
 void ADSREnvelopeNode::reset() {

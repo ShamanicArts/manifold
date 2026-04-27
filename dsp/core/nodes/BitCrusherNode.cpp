@@ -8,6 +8,11 @@ namespace dsp_primitives {
 
 BitCrusherNode::BitCrusherNode() = default;
 
+BitCrusherNode::BitCrusherNode(int simdTarget)
+{
+    simdTarget_ = simdTarget;
+}
+
 void BitCrusherNode::prepare(double sampleRate, int maxBlockSize) {
     (void)maxBlockSize;
 
@@ -24,11 +29,18 @@ void BitCrusherNode::prepare(double sampleRate, int maxBlockSize) {
 
     reset();
 
-    //Set up SIMD implementation
-    if(simd_implementation_ == NULL)
-        simd_implementation_.reset(BitCrusherNode_Highway::__CreateInstance(static_cast<float>(sampleRate), &targetBits_, &targetRateReduction_, &targetMix_, &targetOutput_, &targetLogicMode_));
-    
-    simd_implementation_->prepare(static_cast<float>(sampleRate));
+    //Set up SIMD implementation according to simdTarget_
+    //  0 = automatic
+    //  -1 = disabled
+    if((simd_implementation_ == NULL) && (simdTarget_ >= 0))
+    {
+        hwy::RunHighwayErrorCode errCode = hwy::RunHighwayErrorCode_Error;
+        simd_implementation_.reset(BitCrusherNode_Highway::__CreateInstance(simdTarget_, static_cast<float>(sampleRate), &targetBits_, &targetRateReduction_, &targetMix_, &targetOutput_, &targetLogicMode_, &errCode));
+        highwayErrCode_ = static_cast<int>(errCode);
+    }
+
+    if(simd_implementation_ != NULL)
+        simd_implementation_->prepare(static_cast<float>(sampleRate));
 
     prepared_ = true;
 }

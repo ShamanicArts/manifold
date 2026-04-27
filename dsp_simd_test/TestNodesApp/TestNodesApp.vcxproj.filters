@@ -113,5 +113,8 @@
     <ClInclude Include="..\..\manifold\highway\HighwaySmoother.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\manifold\highway\HighwayUtils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

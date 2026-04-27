@@ -6,6 +6,7 @@
 #include "manifold/highway/HighwayWrapper.h"
 #include "manifold/highway/HighwayMaths.h"
 #include "manifold/highway/HighwaySmoother.h"
+#include "manifold/highway/HighwayUtils.h"
 
 #include <cmath>
 
@@ -269,13 +270,20 @@ namespace dsp_primitives
         #if HWY_ONCE || HWY_IDE
 
             template<int MAXBUSSES>
-            IPrimitiveNodeSIMDImplementation *  __CreateInstance(const std::atomic<int>* targetInputCount,
+            IPrimitiveNodeSIMDImplementation *  __CreateInstance(int target,
+                                                                 const std::atomic<int>* targetInputCount,
                                                                  const std::atomic<float>* targetGains,
                                                                  const std::atomic<float>* targetPans,
-                                                                 const std::atomic<float>* targetMaster)
+                                                                 const std::atomic<float>* targetMaster,
+                                                                 hwy::RunHighwayErrorCode * retErrCode)
             {
                 HWY_EXPORT_T(_create_instance_table, __CreateInstanceForCPU<MAXBUSSES>);
-                return HWY_DYNAMIC_DISPATCH_T(_create_instance_table)(targetInputCount, targetGains, targetPans, targetMaster);
+                
+                IPrimitiveNodeSIMDImplementation * ret = NULL;
+                hwy::RunHighwayErrorCode errCode = hwy::RunHighwayFunction(target, &ret, HWY_DISPATCH_TABLE(_create_instance_table),
+                                                                           targetInputCount, targetGains, targetPans, targetMaster);
+                *retErrCode = errCode;
+                return ret;
             }
 
         #endif

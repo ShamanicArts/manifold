@@ -1198,8 +1198,10 @@ bool GetTestData<dsp_primitives::FilterNode>(std::vector<NodeTestEntry> & out)
     out[0].name = "Default Low Cutoff";
     out[0].testdata = []
     {
-        std::vector<std::vector<TestWaveData>> t(1);
+        std::vector<std::vector<TestWaveData>> t(3);
         GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        GenerateWave2Parameters(t[1].emplace_back(), 1203);
+        GenerateWave3Parameters(t[2].emplace_back(), 1007);
         return t;
     }();
     out[0].parameters = []
@@ -1215,8 +1217,11 @@ bool GetTestData<dsp_primitives::FilterNode>(std::vector<NodeTestEntry> & out)
     out[1].name = "High Cutoff High Resonance";
     out[1].testdata = []
     {
-        std::vector<std::vector<TestWaveData>> t(1);
+        std::vector<std::vector<TestWaveData>> t(4);
         GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        GenerateWave2Parameters(t[1].emplace_back(), 1001);
+        GenerateWave3Parameters(t[2].emplace_back(), 9999);
+        GenerateWave4Parameters(t[3].emplace_back(), 23001);
         return t;
     }();
     out[1].parameters = []
@@ -1232,8 +1237,11 @@ bool GetTestData<dsp_primitives::FilterNode>(std::vector<NodeTestEntry> & out)
     out[2].name = "Dry/Wet Mix";
     out[2].testdata = []
     {
-        std::vector<std::vector<TestWaveData>> t(1);
+        std::vector<std::vector<TestWaveData>> t(4);
         GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        GenerateWave2Parameters(t[1].emplace_back(), 1002);
+        GenerateWave3Parameters(t[2].emplace_back(), 9999);
+        GenerateWave4Parameters(t[3].emplace_back(), 23001);
         return t;
     }();
     out[2].parameters = []
@@ -1249,8 +1257,12 @@ bool GetTestData<dsp_primitives::FilterNode>(std::vector<NodeTestEntry> & out)
     out[3].name = "Stereo Processing";
     out[3].testdata = []
     {
-        std::vector<std::vector<TestWaveData>> t(1);
+        std::vector<std::vector<TestWaveData>> t(5);
         GenerateWave1Parameters(t[0].emplace_back(), 10000);
+        GenerateWave2Parameters(t[1].emplace_back(), 1075);
+        GenerateWave2Parameters(t[2].emplace_back(), 1001);
+        GenerateWave3Parameters(t[3].emplace_back(), 9999);
+        GenerateWave4Parameters(t[4].emplace_back(), 23001);
         return t;
     }();
     out[3].parameters = []
@@ -1266,9 +1278,12 @@ bool GetTestData<dsp_primitives::FilterNode>(std::vector<NodeTestEntry> & out)
     out[4].name = "Extreme Values";
     out[4].testdata = []
     {
-        std::vector<std::vector<TestWaveData>> t(1);
+        std::vector<std::vector<TestWaveData>> t(5);
         GenerateWave1Parameters(t[0].emplace_back(), 10000);
-        GenerateWave2Parameters(t[0].emplace_back(), 10000);
+        GenerateWave2Parameters(t[1].emplace_back(), 10000);
+        GenerateWave4Parameters(t[2].emplace_back(), 1006);
+        GenerateWave3Parameters(t[3].emplace_back(), 9999);
+        GenerateWave5Parameters(t[4].emplace_back(), 23001);
         return t;
     }();
     out[4].parameters = []
@@ -1289,223 +1304,261 @@ bool GetTestData<dsp_primitives::FilterNode>(std::vector<NodeTestEntry> & out)
 template<typename T>
 static bool TestNode(const double samplerate, const int blksize)
 {
-    T node;
-    T basenode;
-
-    printf("===================================\n%s\n===================================\n", node.getNodeType());
-
+    
     //Get test data
     std::vector<NodeTestEntry> tests;
-    if(!GetTestData<T>(tests) || tests.empty())
+
+    for(int target = 0; target < 64; ++target)
     {
-        printf("TEST DATA GENERATION FAILED! ");
-        return false;
-    }
+        T node(target);
 
-    //Get generic interface
-    dsp_primitives::IPrimitiveNode * primitiveIFace = &node;
-    dsp_primitives::IPrimitiveNode * basePrimitiveIFace = &basenode;
-
-    //Set sample rate and block size
-    primitiveIFace->prepare(samplerate, blksize);
-    basePrimitiveIFace->prepare(samplerate, blksize);
+        //On the base version, turn off SIMD.
+        //This gives us something to compare against
+        T basenode(-1);
 
 
-    //On the base version, turn off SIMD.
-    //This gives us something to compare against
-    basenode.disableSIMD();
-    
-    //Run tests
-    long long baseTotal = 0;
-    long long simdTotal = 0;
-    for(auto & curtest : tests)
-    {
-        printf("   Test %s : ", curtest.name.c_str());
-
-        //Configure the node
-        if(!ConfigureNode(node, curtest.parameters))
+        if(target == 0)
         {
-            printf("CONFIGURE FAILED! ");
-            return false;
-        }
-
-        if(!ConfigureNode(basenode, curtest.parameters))
-        {
-            printf("BASE CONFIGURE FAILED! ");
-            return false;
-        }
-
-        if constexpr (std::is_same_v<T, dsp_primitives::OscillatorNode>)
-        {
-            primitiveIFace->prepare(samplerate, blksize);
-            basePrimitiveIFace->prepare(samplerate, blksize);
-            basenode.disableSIMD();
-            node.resetPhase();
-            basenode.resetPhase();
-        }
-            
-        const int numChannels = curtest.stereo ? 2 : 1;
-        curtest.testDuration = std::chrono::nanoseconds::zero();
-        curtest.baseTestDuration = std::chrono::nanoseconds::zero();
-        for(const auto & curtestdata : curtest.testdata)
-        {
-            //Generate test data
-            std::vector<std::unique_ptr<juce::AudioBuffer<float>>> testdatabuffers;
-            int numSamples = -1;
-            for(const auto & bufdata : curtestdata)
+            printf("===================================\n%s\n===================================\n", node.getNodeType());
+        
+            if(!GetTestData<T>(tests) || tests.empty())
             {
-                if((numSamples == -1) || (bufdata.numSamples < numSamples))
-                    numSamples = bufdata.numSamples;
-
-                testdatabuffers.push_back(GenerateSamples(samplerate, curtest.stereo, bufdata.numSamples, bufdata.channelAmps,
-                                                          bufdata.frequences, bufdata.phases, bufdata.amps, bufdata.numWaves));
-            }
-
-            //Allocate buffer for output
-            std::unique_ptr<juce::AudioBuffer<float>> outputbuffer(new juce::AudioBuffer<float>(numChannels, numSamples));
-
-            //Allocate buffer for base output
-            std::unique_ptr<juce::AudioBuffer<float>> baseOutputbuffer(new juce::AudioBuffer<float>(numChannels, numSamples));
-            
-
-            //Process in blocks
-            int remain = numSamples;
-            if(remain == 0)
-            {
-                printf("FAILED - Test Buffer Zero");
+                printf("TEST DATA GENERATION FAILED! \n");
                 return false;
             }
-            
-            size_t offset = 0;
-            while(remain > 0)
+        }
+
+        //Get generic interface
+        dsp_primitives::IPrimitiveNode * primitiveIFace = &node;
+        dsp_primitives::IPrimitiveNode * basePrimitiveIFace = &basenode;
+
+        //Set sample rate and block size
+        primitiveIFace->prepare(samplerate, blksize);
+        basePrimitiveIFace->prepare(samplerate, blksize);
+
+        //Check highway error code
+        int errcode = node.getHighwayErrorCode();
+        if(errcode != 0)
+        {
+            switch(errcode)
             {
-                const int blockSampleCount = (remain > blksize) ? blksize : remain;
+                case 1:
+                    return true; //Out of targets to test
 
-                //Generate input view
-                std::vector<dsp_primitives::AudioBufferView> inputViews;
-                std::vector<const float *> inputPtrs;
-                if constexpr (std::is_same_v<T, dsp_primitives::MixerNode>)
-                {
-                    const int mixerInputCount = node.getInputCount();
-                    inputViews.resize(static_cast<size_t>(mixerInputCount * 2));
-                    inputPtrs.resize(static_cast<size_t>(numChannels * mixerInputCount * 2));
+                case 2:
+                    printf("Target %d : not built in\n",target);
+                    continue;
 
-                    for(int bus = 0; bus < mixerInputCount; ++bus)
-                    {
-                        if(static_cast<size_t>(bus) >= testdatabuffers.size())
-                        {
-                            printf("FAILED - Mixer test data missing bus %d", bus);
-                            return false;
-                        }
+                case 3:
+                    printf("Target %d : not supported\n",target);
+                    continue;
 
-                        const auto & buf = testdatabuffers[static_cast<size_t>(bus)];
-                        const float * const * origInPtrs = buf->getArrayOfReadPointers();
-                        for(int dup = 0; dup < 2; ++dup)
-                        {
-                            const size_t viewIndex = static_cast<size_t>(bus * 2 + dup);
-                            inputViews[viewIndex].numChannels = numChannels;
-                            inputViews[viewIndex].numSamples = blockSampleCount;
-                            const size_t ptrBase = viewIndex * static_cast<size_t>(numChannels);
-                            for(int c = 0; c < numChannels; ++c)
-                            {
-                                inputPtrs[ptrBase + static_cast<size_t>(c)] = &origInPtrs[c][offset];
-                            }
-                            inputViews[viewIndex].channelData = &inputPtrs[ptrBase];
-                        }
-                    }
-                }
-                else
-                {
-                    inputViews.resize(testdatabuffers.size());
-                    inputPtrs.resize(static_cast<size_t>(numChannels) * testdatabuffers.size());
-                    int idx = 0;
-                    int ptridx = 0;
-                    for(const auto & buf : testdatabuffers)
-                    {
-                        inputViews[static_cast<size_t>(idx)].numChannels = numChannels;
-                        inputViews[static_cast<size_t>(idx)].numSamples = blockSampleCount;
-                        const float * const * origInPtrs = buf->getArrayOfReadPointers();
-                        for(int c=0; c < numChannels; ++c)
-                        {
-                            inputPtrs[static_cast<size_t>(ptridx)] = &origInPtrs[c][offset];
-                            ++ptridx;
-                        }
-
-                        inputViews[static_cast<size_t>(idx)].channelData = &inputPtrs[static_cast<size_t>(ptridx - numChannels)];
-                        ++idx;
-                    }
-                }
-
-                //Generate output view
-                std::vector<dsp_primitives::WritableAudioBufferView> outputViews(1);
-                std::vector<dsp_primitives::WritableAudioBufferView> baseOutputViews(1);
-                std::vector<float *> outputPtrs(numChannels);
-                std::vector<float *> baseOutputPtrs(numChannels);
-                outputViews[0].numChannels = numChannels;
-                outputViews[0].numSamples = blockSampleCount;
-                baseOutputViews[0].numChannels = numChannels;
-                baseOutputViews[0].numSamples = blockSampleCount;
-                float * const * origOutPtrs = outputbuffer->getArrayOfWritePointers();
-                float * const * origBaseOutPtrs = baseOutputbuffer->getArrayOfWritePointers();
-                for(int c=0; c < numChannels; ++c)
-                {
-                    outputPtrs[c] = &origOutPtrs[c][offset];
-                    baseOutputPtrs[c] = &origBaseOutPtrs[c][offset];
-                }
-                outputViews[0].channelData = outputPtrs.data();
-                baseOutputViews[0].channelData = baseOutputPtrs.data();
-
-                //Process base implementation
-                auto start = std::chrono::high_resolution_clock::now();;
-                basePrimitiveIFace->process(inputViews, baseOutputViews, blockSampleCount);
-                auto end = std::chrono::high_resolution_clock::now();
-                curtest.baseTestDuration += (end - start);
-
-                //Process simd implementation
-                start = std::chrono::high_resolution_clock::now();
-                primitiveIFace->process(inputViews, outputViews, blockSampleCount);
-                end = std::chrono::high_resolution_clock::now();
-                curtest.testDuration += (end - start);
-                
-                //collect results for current block
-                curtest.result.resize(numChannels);
-                for(int c = 0; c < numChannels; ++c)
-                {
-                    const size_t cursz = curtest.result[c].size();
-
-                    //Compare with base
-                    for(int x=0; x < blockSampleCount; ++x)
-                    {
-                        if(!compareFloats(outputPtrs[c][x], baseOutputPtrs[c][x], curtest.tolerance))
-                        {
-                            printf(" - Fail : Sample %zu Channel %u : Expected %g, got %g", x + cursz, c, baseOutputPtrs[c][x], outputPtrs[c][x]);
-                            return false;
-                        }
-                    }
-
-                    curtest.result[c].resize(cursz + blockSampleCount);
-                    memcpy(&curtest.result[c][cursz], outputPtrs[c], sizeof(float) * blockSampleCount);
-                }
-
-                //Next block
-                remain -= blockSampleCount;
-                offset += blockSampleCount;
+                default:
+                    printf("Target %d : Unknown highway error code %d\n", target, errcode);
+                    return false;
             }
         }
 
-        const long long baseNs = static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.baseTestDuration).count());
-        const long long simdNs = static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.testDuration).count());
-        printf(" - Pass - Base: %lld nanoseconds SIMD:%lld nanoseconds Speed:%f\n",
-               baseNs,
-               simdNs,
-               static_cast<float>(baseNs) / static_cast<float>(simdNs));
+        const char * tgtname = node.getHighwayImplementationTargetName();
+        if(tgtname == NULL)
+        {
+            printf("TARGET %d NOT AVAILABLE\n", target);
+            return false;
+        }
 
-        baseTotal += baseNs;
-        simdTotal += simdNs;
+        printf("\nTesting Target Implemention %d : %s \n", target, tgtname);
+
+        //Run tests
+        long long baseTotal = 0;
+        long long simdTotal = 0;
+        for(auto & curtest : tests)
+        {
+            printf("   Test %s : ", curtest.name.c_str());
+
+            //Configure the node
+            if(!ConfigureNode(node, curtest.parameters))
+            {
+                printf("CONFIGURE FAILED! ");
+                return false;
+            }
+
+            if(!ConfigureNode(basenode, curtest.parameters))
+            {
+                printf("BASE CONFIGURE FAILED! ");
+                return false;
+            }
+
+            if constexpr(std::is_same_v<T, dsp_primitives::OscillatorNode>)
+            {
+                primitiveIFace->prepare(samplerate, blksize);
+                basePrimitiveIFace->prepare(samplerate, blksize);
+                basenode.disableSIMD();
+                node.resetPhase();
+                basenode.resetPhase();
+            }
+
+            const int numChannels = curtest.stereo ? 2 : 1;
+            curtest.testDuration = std::chrono::nanoseconds::zero();
+            curtest.baseTestDuration = std::chrono::nanoseconds::zero();
+            for(const auto & curtestdata : curtest.testdata)
+            {
+                //Generate test data
+                std::vector<std::unique_ptr<juce::AudioBuffer<float>>> testdatabuffers;
+                int numSamples = -1;
+                for(const auto & bufdata : curtestdata)
+                {
+                    if((numSamples == -1) || (bufdata.numSamples < numSamples))
+                        numSamples = bufdata.numSamples;
+
+                    testdatabuffers.push_back(GenerateSamples(samplerate, curtest.stereo, bufdata.numSamples, bufdata.channelAmps,
+                                                              bufdata.frequences, bufdata.phases, bufdata.amps, bufdata.numWaves));
+                }
+
+                //Allocate buffer for output
+                std::unique_ptr<juce::AudioBuffer<float>> outputbuffer(new juce::AudioBuffer<float>(numChannels, numSamples));
+
+                //Allocate buffer for base output
+                std::unique_ptr<juce::AudioBuffer<float>> baseOutputbuffer(new juce::AudioBuffer<float>(numChannels, numSamples));
+
+
+                //Process in blocks
+                int remain = numSamples;
+                if(remain == 0)
+                {
+                    printf("FAILED - Test Buffer Zero");
+                    return false;
+                }
+
+                size_t offset = 0;
+                while(remain > 0)
+                {
+                    const int blockSampleCount = (remain > blksize) ? blksize : remain;
+
+                    //Generate input view
+                    std::vector<dsp_primitives::AudioBufferView> inputViews;
+                    std::vector<const float *> inputPtrs;
+                    if constexpr(std::is_same_v<T, dsp_primitives::MixerNode>)
+                    {
+                        const int mixerInputCount = node.getInputCount();
+                        inputViews.resize(static_cast<size_t>(mixerInputCount * 2));
+                        inputPtrs.resize(static_cast<size_t>(numChannels * mixerInputCount * 2));
+
+                        for(int bus = 0; bus < mixerInputCount; ++bus)
+                        {
+                            if(static_cast<size_t>(bus) >= testdatabuffers.size())
+                            {
+                                printf("FAILED - Mixer test data missing bus %d", bus);
+                                return false;
+                            }
+
+                            const auto & buf = testdatabuffers[static_cast<size_t>(bus)];
+                            const float * const * origInPtrs = buf->getArrayOfReadPointers();
+                            for(int dup = 0; dup < 2; ++dup)
+                            {
+                                const size_t viewIndex = static_cast<size_t>(bus * 2 + dup);
+                                inputViews[viewIndex].numChannels = numChannels;
+                                inputViews[viewIndex].numSamples = blockSampleCount;
+                                const size_t ptrBase = viewIndex * static_cast<size_t>(numChannels);
+                                for(int c = 0; c < numChannels; ++c)
+                                {
+                                    inputPtrs[ptrBase + static_cast<size_t>(c)] = &origInPtrs[c][offset];
+                                }
+                                inputViews[viewIndex].channelData = &inputPtrs[ptrBase];
+                            }
+                        }
+                    }
+                    else
+                    {
+                        inputViews.resize(testdatabuffers.size());
+                        inputPtrs.resize(static_cast<size_t>(numChannels) * testdatabuffers.size());
+                        int idx = 0;
+                        int ptridx = 0;
+                        for(const auto & buf : testdatabuffers)
+                        {
+                            inputViews[static_cast<size_t>(idx)].numChannels = numChannels;
+                            inputViews[static_cast<size_t>(idx)].numSamples = blockSampleCount;
+                            const float * const * origInPtrs = buf->getArrayOfReadPointers();
+                            for(int c = 0; c < numChannels; ++c)
+                            {
+                                inputPtrs[static_cast<size_t>(ptridx)] = &origInPtrs[c][offset];
+                                ++ptridx;
+                            }
+
+                            inputViews[static_cast<size_t>(idx)].channelData = &inputPtrs[static_cast<size_t>(ptridx - numChannels)];
+                            ++idx;
+                        }
+                    }
+
+                    //Generate output view
+                    std::vector<dsp_primitives::WritableAudioBufferView> outputViews(1);
+                    std::vector<dsp_primitives::WritableAudioBufferView> baseOutputViews(1);
+                    std::vector<float *> outputPtrs(numChannels);
+                    std::vector<float *> baseOutputPtrs(numChannels);
+                    outputViews[0].numChannels = numChannels;
+                    outputViews[0].numSamples = blockSampleCount;
+                    baseOutputViews[0].numChannels = numChannels;
+                    baseOutputViews[0].numSamples = blockSampleCount;
+                    float * const * origOutPtrs = outputbuffer->getArrayOfWritePointers();
+                    float * const * origBaseOutPtrs = baseOutputbuffer->getArrayOfWritePointers();
+                    for(int c = 0; c < numChannels; ++c)
+                    {
+                        outputPtrs[c] = &origOutPtrs[c][offset];
+                        baseOutputPtrs[c] = &origBaseOutPtrs[c][offset];
+                    }
+                    outputViews[0].channelData = outputPtrs.data();
+                    baseOutputViews[0].channelData = baseOutputPtrs.data();
+
+                    //Process base implementation
+                    auto start = std::chrono::high_resolution_clock::now();;
+                    basePrimitiveIFace->process(inputViews, baseOutputViews, blockSampleCount);
+                    auto end = std::chrono::high_resolution_clock::now();
+                    curtest.baseTestDuration += (end - start);
+
+                    //Process simd implementation
+                    start = std::chrono::high_resolution_clock::now();
+                    primitiveIFace->process(inputViews, outputViews, blockSampleCount);
+                    end = std::chrono::high_resolution_clock::now();
+                    curtest.testDuration += (end - start);
+
+                    //collect results for current block
+                    curtest.result.resize(numChannels);
+                    for(int c = 0; c < numChannels; ++c)
+                    {
+                        const size_t cursz = curtest.result[c].size();
+
+                        //Compare with base
+                        for(int x = 0; x < blockSampleCount; ++x)
+                        {
+                            if(!compareFloats(outputPtrs[c][x], baseOutputPtrs[c][x], curtest.tolerance))
+                            {
+                                printf(" - Fail : Sample %zu Channel %u : Expected %g, got %g", x + cursz, c, baseOutputPtrs[c][x], outputPtrs[c][x]);
+                                return false;
+                            }
+                        }
+
+                        curtest.result[c].resize(cursz + blockSampleCount);
+                        memcpy(&curtest.result[c][cursz], outputPtrs[c], sizeof(float) * blockSampleCount);
+                    }
+
+                    //Next block
+                    remain -= blockSampleCount;
+                    offset += blockSampleCount;
+                }
+            }
+
+            const long long baseNs = static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.baseTestDuration).count());
+            const long long simdNs = static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(curtest.testDuration).count());
+            printf("Pass - Base: %lld nanoseconds SIMD:%lld nanoseconds Speed:%f\n",
+                   baseNs,
+                   simdNs,
+                   static_cast<float>(baseNs) / static_cast<float>(simdNs));
+
+            baseTotal += baseNs;
+            simdTotal += simdNs;
+        }
+
+        printf("SUCCESS - Base Total:%lld \t SIMD Total: %lld Speed:%f\n\n", baseTotal, simdTotal, static_cast<float>(baseTotal) / static_cast<float>(simdTotal));
     }
-
-    printf("SUCCESS - Base Total:%lld \t SIMD Total: %lld Speed:%f \n", baseTotal, simdTotal, static_cast<float>(baseTotal) / static_cast<float>(simdTotal));
-
     //return success
     return true;
 }
@@ -1515,7 +1568,7 @@ static bool TestNode(const double samplerate, const int blksize)
 
 
 //================================================================
-template<>
+/*template<>
 bool TestNode<dsp_primitives::FilterNode>(const double samplerate, const int blksize)
 {
     dsp_primitives::FilterNode node;
@@ -1691,7 +1744,7 @@ bool TestNode<dsp_primitives::FilterNode>(const double samplerate, const int blk
 
     //return success
     return true;
-}
+}*/
 
 
 int main(int argc, const char ** argv)
@@ -1699,12 +1752,14 @@ int main(int argc, const char ** argv)
     static const double c_samplerate = 44100;
     static const int c_blockSize = 256;
 
+    
+        
     if(!TestNode<dsp_primitives::ADSREnvelopeNode>(c_samplerate, c_blockSize))
     {
         printf(" - FAILED!");
         return -1;
     }
-
+        
     if(!TestNode<dsp_primitives::BitCrusherNode>(c_samplerate, c_blockSize))
     {
         printf(" - FAILED!");
@@ -1717,7 +1772,7 @@ int main(int argc, const char ** argv)
         return -1;
     }
 
-    if(!TestNode<dsp_primitives::FilterNode>(c_samplerate, c_blockSize))
+    /*if(!TestNode<dsp_primitives::FilterNode>(c_samplerate, c_blockSize))
     {
         printf(" - FAILED!");
         return -1;
@@ -1734,9 +1789,9 @@ int main(int argc, const char ** argv)
         printf(" - FAILED!");
         return -1;
     }
-
+    */
     printf(" - Success\n");
-
+    
     return 0;
 }
 

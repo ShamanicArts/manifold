@@ -9,6 +9,7 @@ namespace dsp_primitives {
 class ADSREnvelopeNode : public IPrimitiveNode {
 public:
     ADSREnvelopeNode();
+    ADSREnvelopeNode(int target); //Override automatic selection of SIMD implementation
     
     const char* getNodeType() const override { return "ADSREnvelope"; }
     int getNumInputs() const override { return 1; }
@@ -25,7 +26,17 @@ public:
     void setRelease(float seconds);
     void setGate(bool gateOn);
     void reset();
-    void disableSIMD(); //turn off SIMD implementation, for testing
+    
+    const char * getHighwayImplementationTargetName() const
+    {
+        if(simd_implementation_.get() == NULL)
+            return NULL;
+
+        return simd_implementation_->targetName();
+    }
+
+    int getHighwayErrorCode() const { return highwayErrCode_;}
+
 
     enum class Stage { Off, Attack, Decay, Sustain, Release };
     
@@ -38,6 +49,9 @@ private:
     std::atomic<float> release_{0.4f};
     std::atomic<bool> gate_{false};
     
+    //SIMD / Google highway
+    int simdTarget_ = 0; //0 = automatic
+    int highwayErrCode_ = 0;
    
     Stage stage_ = Stage::Off; // // State (NOT atomic - only touched in audio thread)
     float envelope_ = 0.0f;
