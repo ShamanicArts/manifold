@@ -5,7 +5,7 @@ description: Testing, introspection, and control of the Manifold audio plugin vi
 
 # Manifold Testing Skill
 
-**Reference Document:** `agent-docs/INTROSPECTION_AND_CONTROL_SYSTEMS.md` (read this for complete details)
+**Reference Document:** `agent-docs/complete/midi-osc/260224_introspection_and_control_systems.md` (read this for complete details)
 
 ## Quick Start
 
@@ -92,4 +92,4 @@ tmux capture-pane -p -t "VST-Plug:2" | tail -20
 
 For complete documentation of all interfaces, protocols, error codes, and testing workflows, read:
 
-**`agent-docs/INTROSPECTION_AND_CONTROL_SYSTEMS.md`**
+**`agent-docs/complete/midi-osc/260224_introspection_and_control_systems.md`**
