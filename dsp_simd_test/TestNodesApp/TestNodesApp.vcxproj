@@ -225,6 +225,8 @@
     <ClCompile Include="..\..\external\JUCE\modules\juce_core\juce_core.cpp" />
     <ClCompile Include="..\..\external\JUCE\modules\juce_core\juce_core_CompilationTime.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="TestFilterNode.cpp" />
+    <ClCompile Include="TestingBase.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\dsp\core\nodes\ADSREnvelopeNode.h" />
@@ -243,6 +245,8 @@
     <ClInclude Include="..\..\manifold\highway\HighwaySmoother.h" />
     <ClInclude Include="..\..\manifold\highway\HighwayUtils.h" />
     <ClInclude Include="..\..\manifold\highway\HighwayWrapper.h" />
+    <ClInclude Include="TestFilterNode.h" />
+    <ClInclude Include="TestingBase.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
