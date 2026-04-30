@@ -10,6 +10,7 @@ namespace dsp_primitives {
 class FilterNode : public IPrimitiveNode, public std::enable_shared_from_this<FilterNode> {
 public:
     FilterNode();
+    FilterNode(int simdTarget);
 
     const char* getNodeType() const override { return "Filter"; }
     int getNumInputs() const override { return 1; }
@@ -28,13 +29,21 @@ public:
     float getResonance() const { return targetResonance_.load(std::memory_order_acquire); }
     float getMix() const { return targetMix_.load(std::memory_order_acquire); }
 
-    void disableSIMD() //turn off SIMD implementation, for testing
+    const char * getHighwayImplementationTargetName() const
     {
-        simd_implementation_.reset();
+        if(simd_implementation_.get() == NULL)
+            return NULL;
+
+        return simd_implementation_->targetName();
     }
+
+    int getHighwayErrorCode() const { return highwayError_;}
 
 private:
     float computeAlpha(float cutoffHz, float resonance) const;
+
+    int simdTarget_ = 0;
+    int highwayError_ = 0;
 
     double sampleRate_ = 44100.0;
     float smoothingCoeff_ = 1.0f;

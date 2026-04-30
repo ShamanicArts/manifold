@@ -461,25 +461,10 @@ namespace dsp_primitives
                 size_t laneCount_;
                 float sampleRate_;
                 
-                
-                
-                /*enum StateIndex
-                {
-                    StateIndex_Bits = 0,
-                    StateIndex_RateReduction = 1,
-                    StateIndex_Mix = 2,
-                    StateIndex_Output = 3,
-                    StateIndex_Count = 4
-                };
-                */
-
                 typedef hwy::HWY_NAMESPACE::HighwayValueSmoother<float, 4> Smoother;
 
                 Smoother smoother_;
-                //hwy::AlignedFreeUniquePtr<float[]> currentState_;
-                //hwy::AlignedFreeUniquePtr<float[]> targetState_;
                 int currentLogicMode_;
-                //hwy::AlignedFreeUniquePtr<float[]> smooth_;
                 hwy::AlignedFreeUniquePtr<float[]> holdCounters_;
                 hwy::AlignedFreeUniquePtr<float[]> heldSample_;
                 hwy::AlignedFreeUniquePtr<float[]> laneNumber_;

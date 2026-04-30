@@ -8,6 +8,9 @@ namespace dsp_primitives {
 
 FilterNode::FilterNode() = default;
 
+FilterNode::FilterNode(int tgt) : simdTarget_(tgt)
+{}
+
 void FilterNode::prepare(double sampleRate, int maxBlockSize) {
     (void)maxBlockSize;
 
@@ -27,14 +30,15 @@ void FilterNode::prepare(double sampleRate, int maxBlockSize) {
     prepared_ = true;
 
     //Set up SIMD implementation
-    if(simd_implementation_ == nullptr)
-        simd_implementation_.reset(FilterNode_Highway::__CreateInstance(
-            &targetCutoffHz_,
-            &targetResonance_,
-            &targetMix_,
-            sampleRate_));
+    if((simd_implementation_ == NULL) && (simdTarget_ >= 0))
+    {
+        hwy::RunHighwayErrorCode errcode = hwy::RunHighwayErrorCode_Error;
+        simd_implementation_.reset(FilterNode_Highway::__CreateInstance(simdTarget_, &targetCutoffHz_, &targetResonance_, &targetMix_,   &errcode));
+        highwayError_ = static_cast<int>(errcode);
+    }
 
-    simd_implementation_->prepare(static_cast<float>(sampleRate_));
+    if(simd_implementation_ != NULL)
+        simd_implementation_->prepare(static_cast<float>(sampleRate));
 }
 
 void FilterNode::setCutoff(float hz) {

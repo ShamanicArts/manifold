@@ -4,6 +4,10 @@
 #define HWY_TARGET_INCLUDE "dsp/core/nodes/GainNode_Highway.h"
 
 #include "manifold/highway/HighwayWrapper.h"
+#include "manifold/highway/HighwaySmoother.h"
+#include "manifold/highway/HighwayUtils.h"
+
+#include <cmath>
 
 namespace dsp_primitives
 {
@@ -19,16 +23,15 @@ namespace dsp_primitives
                 typedef hwy::HWY_NAMESPACE::VFromD<hwy::HWY_NAMESPACE::ScalableTag<float>> FltType;
 
             public:
-                GainNodeSIMDImplementation(float sampleRate,
-                                           int numChannels,
+                GainNodeSIMDImplementation(int numChannels,
                                            const std::atomic<float> * targetGain,
-                                           const std::atomic<bool> * targetMuted)
-                    : numChannels_(numChannels)
-                    , targetGain_(targetGain)
-                    , targetMuted_(targetMuted)
-                    , sampleRate_(sampleRate > 1.0f ? sampleRate : 44100.0f)
-                    , laneCount_(0)
-                {}
+                                           const std::atomic<bool> * targetMuted) : numChannels_(numChannels),
+                                                                                    laneCount_(0),
+                                                                                    configChanged_(true),
+                                                                                    targetMuted_(targetMuted)
+                {
+                    smoother_.initialise(targetGain);
+                }
 
                 const char * targetName() const override
                 {
@@ -37,41 +40,29 @@ namespace dsp_primitives
 
                 virtual void configChanged() override
                 {
-                    // Nothing to precompute; targets are loaded each run()
+                    configChanged_ = true;
                 }
 
                 virtual void reset() override
                 {
-                    currentGain_ = computeTarget();
+                    smoother_.ZeroCurrentValues();
                 }
 
                 HWY_ATTR virtual void prepare(float sampleRate) override
-                {
-                    sampleRate_ = (sampleRate > 1.0f) ? sampleRate : 44100.0f;
-
+                {   
                     const hwy::HWY_NAMESPACE::ScalableTag<float> _flttype;
                     namespace HWY = hwy::HWY_NAMESPACE;
                     const size_t numLanes = HWY::Lanes(_flttype);
 
-                    // Exponential smoothing coefficient:  coeff = 1 - exp(-1 / (time * sr))
+                    //Configure smoother
+                    const double sr = sampleRate > 1.0 ? sampleRate : 44100.0;
                     const double smoothingTimeSeconds = 0.01;
-                    float coeff = static_cast<float>(1.0 - std::exp(-1.0 / (smoothingTimeSeconds * static_cast<double>(sampleRate_))));
-                    coeff = juce::jlimit(0.0001f, 1.0f, coeff);
-                    const float a = 1.0f - coeff; // per-sample decay factor
+                    float smoothingCoeff = static_cast<float>(1.0 - std::exp(-1.0 / (smoothingTimeSeconds * sr)));
+                    smoothingCoeff = juce::jlimit(0.0001f, 1.0f, smoothingCoeff);
+                    smoother_.SetSmooth(smoothingCoeff);
 
-                    // Precompute per-lane powers: powers_[k] = a^(k+1)
-                    // These let us compute gains[k] = target + (g - target) * a^(k+1)
-                    powers_ = hwy::AllocateAligned<float>(numLanes);
-                    float p = 1.0f;
-                    for (size_t k = 0; k < numLanes; ++k)
-                    {
-                        p *= a;           // p = a^(k+1)
-                        powers_[k] = p;
-                    }
-                    aPowLanes_ = p;       // a^numLanes, advance factor across a full chunk
-
-                    laneCount_ = numLanes;
-                    currentGain_ = computeTarget();
+                    //Set current gain
+                    smoother_.PrepareCurrentValues();
                 }
 
                 HWY_ATTR virtual void run(const std::vector<AudioBufferView> & inputs,
@@ -82,80 +73,106 @@ namespace dsp_primitives
                     namespace HWY = hwy::HWY_NAMESPACE;
                     const size_t numLanes = HWY::Lanes(_flttype);
 
-                    if (numLanes != laneCount_)
-                        prepare(sampleRate_);
+                    if(configChanged_)
+                    {
+                        const bool muted = targetMuted_->load(std::memory_order_acquire);
+                        if(muted)
+                        {
+                            //Zero the target values
+                            smoother_.ZeroTargetValues();
+                        }
+                        else
+                        {
+                            //Re-read target values
+                            smoother_.UpdateTargetValues();
+                        }
 
-                    if (inputs.empty() || outputs.empty() || numsamples <= 0)
+                        configChanged_ = false;
+                    }
+
+                  
+                    const int numChannels = juce::jmin(numChannels_,
+                                                       inputs[0].numChannels,
+                                                       outputs[0].numChannels);
+                    if (numChannels <= 0)
                         return;
 
-                    const int channels = juce::jmin(numChannels_,
-                                                   inputs[0].numChannels,
-                                                   outputs[0].numChannels);
-                    if (channels <= 0)
-                        return;
+                    Smoother::ValueType targetStateValues, currentStateValues, smoothVals;
+                    FltType lValues = HWY::Zero(_flttype);
+                    FltType rValues = lValues;
+                    FltType gainValues;
+                    const float * const * inputPtrs = inputs[0].channelData;
+                    float * const * outputPtrs = outputs[0].channelData;
 
-                    const float target = computeTarget();
-                    const FltType targetVec = HWY::Set(_flttype, target);
-                    const FltType powsVec = HWY::Load(_flttype, powers_.get());
-
-                    float g = currentGain_;
+                    //Start the gain smoother
+                    smoother_.Start(targetStateValues, currentStateValues, smoothVals);
+                    
+                    //Process samples
                     size_t offset = 0;
+                    size_t sampleLaneCount;
                     size_t samplesRemain = static_cast<size_t>(numsamples);
-
-                    while (samplesRemain >= numLanes)
+                    while(samplesRemain > 0)
                     {
-                        // gains[k] = target + (g - target) * a^(k+1)
-                        const FltType gains = HWY::MulAdd(powsVec,
-                                                          HWY::Set(_flttype, g - target),
-                                                          targetVec);
-
-                        for (int ch = 0; ch < channels; ++ch)
+                        //How many samples to process? 
+                        if(samplesRemain >= numLanes)
                         {
-                            const FltType in = HWY::LoadU(_flttype, inputs[0].channelData[ch] + offset);
-                            HWY::StoreU(HWY::Mul(in, gains), _flttype, outputs[0].channelData[ch] + offset);
+                            sampleLaneCount = numLanes;
+                            
+                            //Load input values
+                            lValues = HWY::LoadU(_flttype, inputPtrs[0] + offset);
+                            rValues = (numChannels > 1) ? HWY::LoadU(_flttype, inputPtrs[1] + offset) : lValues;
+                        }
+                        else
+                        {
+                            sampleLaneCount = samplesRemain;
+                            
+                            //Load input values
+                            lValues = HWY::LoadN(_flttype, inputPtrs[0] + offset, samplesRemain);
+                            rValues = (numChannels > 1) ? HWY::LoadN(_flttype, inputPtrs[1] + offset, samplesRemain) : lValues;
                         }
 
-                        // Advance g by a^numLanes
-                        g = target + (g - target) * aPowLanes_;
+                        
+                        //Run the gain smoother 
+                        smoother_.Run(sampleLaneCount, smoothVals, targetStateValues, currentStateValues, gainValues);
 
-                        samplesRemain -= numLanes;
-                        offset += numLanes;
-                    }
-
-                    if (samplesRemain > 0)
-                    {
-                        const auto mask = HWY::FirstN(_flttype, samplesRemain);
-                        const FltType gains = HWY::MulAdd(powsVec,
-                                                          HWY::Set(_flttype, g - target),
-                                                          targetVec);
-
-                        for (int ch = 0; ch < channels; ++ch)
+                        //Apply gain -
+                        lValues = HWY::Mul(lValues, gainValues);
+                        rValues = (numChannels > 1) ? HWY::Mul(rValues, gainValues) : lValues;
+                        
+                        //Write out
+                        if(sampleLaneCount == numLanes)
                         {
-                            const FltType in = HWY::MaskedLoad(mask, _flttype, inputs[0].channelData[ch] + offset);
-                            HWY::BlendedStore(HWY::Mul(in, gains), mask, _flttype, outputs[0].channelData[ch] + offset);
+                            HWY::StoreU(lValues, _flttype, outputPtrs[0] + offset);
+                            if(numChannels > 1)
+                                HWY::StoreU(rValues, _flttype, outputPtrs[1] + offset);
+                        }
+                        else
+                        {
+                            HWY::StoreN(lValues, _flttype, outputPtrs[0] + offset, sampleLaneCount);
+                            if(numChannels > 1)
+                                HWY::StoreN(rValues, _flttype, outputPtrs[1] + offset, sampleLaneCount);
                         }
 
-                        // Advance g by a^samplesRemain
-                        g = target + (g - target) * powers_[samplesRemain - 1];
+                        //Next
+                        samplesRemain -= sampleLaneCount;
+                        offset += sampleLaneCount;
                     }
 
-                    currentGain_ = g;
+                    //Update smoother state
+                    smoother_.End(currentStateValues);
                 }
 
             private:
-                float computeTarget() const
-                {
-                    const float requested = juce::jmax(0.0f, targetGain_->load(std::memory_order_acquire));
-                    const bool muted = targetMuted_->load(std::memory_order_acquire);
-                    return muted ? 0.0f : requested;
-                }
+              
+                const int numChannels_;
+                bool configChanged_;
+                int laneCount_;
 
-                int numChannels_;
-                const std::atomic<float> * targetGain_;
+                typedef hwy::HWY_NAMESPACE::HighwayValueSmoother<float, 1> Smoother;
+
+                Smoother smoother_;
                 const std::atomic<bool> * targetMuted_;
 
-                float sampleRate_;
-                size_t laneCount_;
                 float currentGain_ = 0.0f;
                 float aPowLanes_ = 0.0f;
 
@@ -163,12 +180,11 @@ namespace dsp_primitives
             };
 
             //Create CPU specific instance
-            HWY_API IPrimitiveNodeSIMDImplementation * __CreateInstanceForCPU(float sampleRate,
-                                                                              int numChannels,
+            HWY_API IPrimitiveNodeSIMDImplementation * __CreateInstanceForCPU(int numChannels,
                                                                               const std::atomic<float> * targetGain,
                                                                               const std::atomic<bool> * targetMuted)
             {
-                return new GainNodeSIMDImplementation(sampleRate, numChannels, targetGain, targetMuted);
+                return new GainNodeSIMDImplementation(numChannels, targetGain, targetMuted);
             }
         }
 
@@ -177,13 +193,19 @@ namespace dsp_primitives
 
         #if HWY_ONCE || HWY_IDE
 
-            IPrimitiveNodeSIMDImplementation * __CreateInstance(float sampleRate,
+            IPrimitiveNodeSIMDImplementation * __CreateInstance(int target, 
                                                                 int numChannels,
                                                                 const std::atomic<float> * targetGain,
-                                                                const std::atomic<bool> * targetMuted)
+                                                                const std::atomic<bool> * targetMuted, 
+                                                                hwy::RunHighwayErrorCode * retErrCode)
             {
-                HWY_EXPORT_T(_create_instance_table, __CreateInstanceForCPU);
-                return HWY_DYNAMIC_DISPATCH_T(_create_instance_table)(sampleRate, numChannels, targetGain, targetMuted);
+                 HWY_EXPORT_T(_create_instance_table, __CreateInstanceForCPU);
+                
+                IPrimitiveNodeSIMDImplementation * ret = NULL;
+                hwy::RunHighwayErrorCode errCode = hwy::RunHighwayFunction(target, &ret, HWY_DISPATCH_TABLE(_create_instance_table),
+                                                                           numChannels, targetGain, targetMuted);
+                *retErrCode = errCode;
+                return ret;
             }
 
         #endif

@@ -13,7 +13,7 @@ namespace dsp_primitives {
 class GainNode : public IPrimitiveNode, public std::enable_shared_from_this<GainNode> {
 public:
     explicit GainNode(int numChannels = 2);
-
+    
     const char* getNodeType() const override { return "Gain"; }
     int getNumInputs() const override { return 1; }
     int getNumOutputs() const override { return 1; }
@@ -26,8 +26,29 @@ public:
     float getGain() const;
     void setMuted(bool muted);
     void reset();
-    void disableSIMD();
     bool isMuted() const;
+
+
+    //Because constructor is explicit, we cannot set the target using it
+    //Instead we have an override method that the testing system can use instead.
+    void overrideHighwayImplementationTarget(int target)
+    {
+        //Ensure this is called before prepare()
+        if(simd_implementation_ != NULL)
+            throw "Cannot override SIMD target when implementation has been instantiated";
+
+        simdTarget_ = target;
+    }
+
+    const char * getHighwayImplementationTargetName() const
+    {
+        if(simd_implementation_.get() == NULL)
+            return NULL;
+
+        return simd_implementation_->targetName();
+    }
+
+    int getHighwayErrorCode() const { return highwayErrCode_;}
 
 private:
     inline void notifyConfigChangeSimdImplementation()
@@ -37,6 +58,9 @@ private:
     }
 
     int numChannels_ = 2;
+    int simdTarget_ = 0;
+    int highwayErrCode_ = 0;
+
     std::atomic<float> targetGain_{1.0f};
     std::atomic<bool> muted_{false};
 
