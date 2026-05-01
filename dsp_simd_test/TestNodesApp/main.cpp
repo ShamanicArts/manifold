@@ -11,6 +11,7 @@
 #include "TestADSRNode.h"
 #include "TestBitcrusherNode.h"
 #include "TestFilterNode.h"
+#include "TestGainNode.h"
 
 // default implementation
 template <typename T>
@@ -209,6 +210,12 @@ static bool TestNode()
             {
                 printf("   Test %s ", test.name.c_str());
 
+                //Init results
+                test.baseResult[tgtname].reset();
+                test.simdResult[tgtname].reset();
+                test.simdDurations[tgtname] = std::chrono::nanoseconds::zero();
+                test.baseTestDuration[tgtname] = std::chrono::nanoseconds::zero();
+
                 //Configure both the base and SIMD nodes
                 if(!testclass->ConfigureNode(primitiveIFace, test))
                 {
@@ -393,6 +400,12 @@ int main(int argc, const char ** argv)
         printf(" - FAILED!");
         return -1;
     }
+    
 
+    if(!TestNode<TestGainNode, dsp_primitives::GainNode>())
+    {
+        printf(" - FAILED!");
+        return -1;
+    }
     return 0;
 }

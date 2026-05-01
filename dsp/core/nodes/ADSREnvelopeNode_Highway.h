@@ -388,19 +388,19 @@ namespace dsp_primitives
                                     data1 = HWY::Add(data1, data2);
                                     data1 = HWY::Mul(data1, HWY::Set(_flttype, 0.5));
 
-                                    HWY::BlendedStore(data1, processLaneMask, _flttype, outputPtr1 + offset);
+                                    HWY::StoreN(data1,_flttype, outputPtr1 + offset, samplesRemain);
                                 }
                                 else
                                 {
-                                    HWY::BlendedStore(data1, processLaneMask, _flttype, outputPtr1 + offset);
-                                    HWY::BlendedStore(data2, processLaneMask, _flttype, outputPtr2 + offset);
+                                    HWY::StoreN(data1,  _flttype, outputPtr1 + offset, samplesRemain);
+                                    HWY::StoreN(data2,  _flttype, outputPtr2 + offset, samplesRemain);
                                 }
                             }
                             else
                             {
-                                HWY::BlendedStore(data1, processLaneMask, _flttype, outputPtr1 + offset);
+                                HWY::StoreN(data1,  _flttype, outputPtr1 + offset, samplesRemain);
                                 if(outputPtr2 != NULL)
-                                    HWY::BlendedStore(data1, processLaneMask, _flttype, outputPtr2 + offset);
+                                    HWY::StoreN(data1, _flttype, outputPtr2 + offset, samplesRemain);
                             }
 
                             //Increment the stage time - use the last *processed* lane value + dt + laneTimes
