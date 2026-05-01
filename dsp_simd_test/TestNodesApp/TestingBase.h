@@ -33,7 +33,7 @@ public:
     };
 
     //Details of left and right channel definitions
-    struct TestChannels
+    struct TestWaveSpec
     {
         int numSamples = 1024;
         TestMix left;
@@ -43,7 +43,7 @@ public:
     //Details of multiple waves appended together
     struct TestBus
     {   
-        std::vector<TestChannels> waves;
+        std::vector<TestWaveSpec> waves;
     };
 
     
@@ -142,11 +142,17 @@ public:
     virtual bool ConfigureNode(dsp_primitives::IPrimitiveNode * node, const TestData & parameters) = 0;
 
 protected:
+    enum Channel
+    {
+        Channel_Left = 0,
+        Channel_Right = 1
+    };
+
      TestData * CreateTest(const char * name, float samplerate, StereoMode mode, int numBusses);
 
-     TestChannels * CreateTestWaveChannels(TestData * test, int bus, int numSamples);
+     TestWaveSpec * AppendTestWaveSpec(TestData * test, int bus, int numSamples, float leftScale = 1.0f, float rightScale = 1.0f);
 
-     TestWave * CreateTestWaveMix(TestChannels * testch, int channel, float frequency, float amplitude, float phase);
+     TestWave * AddWaveToMix(TestWaveSpec * testch, Channel channel, float frequency, float amplitude, float phase);
 
      std::vector<TestData> * GetTestDataPtr()
      {

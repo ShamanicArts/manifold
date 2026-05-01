@@ -78,6 +78,12 @@
     <ClCompile Include="TestFilterNode.cpp">
       <Filter>Source Files\Testing</Filter>
     </ClCompile>
+    <ClCompile Include="TestADSRNode.cpp">
+      <Filter>Source Files\Testing</Filter>
+    </ClCompile>
+    <ClCompile Include="TestBitcrusherNode.cpp">
+      <Filter>Source Files\Testing</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\dsp\core\nodes\ADSREnvelopeNode_Highway.h">
@@ -132,6 +138,12 @@
       <Filter>Header Files\Testing</Filter>
     </ClInclude>
     <ClInclude Include="TestFilterNode.h">
+      <Filter>Header Files\Testing</Filter>
+    </ClInclude>
+    <ClInclude Include="TestADSRNode.h">
+      <Filter>Header Files\Testing</Filter>
+    </ClInclude>
+    <ClInclude Include="TestBitcrusherNode.h">
       <Filter>Header Files\Testing</Filter>
     </ClInclude>
   </ItemGroup>

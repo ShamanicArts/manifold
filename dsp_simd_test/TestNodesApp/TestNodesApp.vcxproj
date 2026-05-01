@@ -225,6 +225,8 @@
     <ClCompile Include="..\..\external\JUCE\modules\juce_core\juce_core.cpp" />
     <ClCompile Include="..\..\external\JUCE\modules\juce_core\juce_core_CompilationTime.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="TestADSRNode.cpp" />
+    <ClCompile Include="TestBitcrusherNode.cpp" />
     <ClCompile Include="TestFilterNode.cpp" />
     <ClCompile Include="TestingBase.cpp" />
   </ItemGroup>
@@ -245,6 +247,8 @@
     <ClInclude Include="..\..\manifold\highway\HighwaySmoother.h" />
     <ClInclude Include="..\..\manifold\highway\HighwayUtils.h" />
     <ClInclude Include="..\..\manifold\highway\HighwayWrapper.h" />
+    <ClInclude Include="TestADSRNode.h" />
+    <ClInclude Include="TestBitcrusherNode.h" />
     <ClInclude Include="TestFilterNode.h" />
     <ClInclude Include="TestingBase.h" />
   </ItemGroup>

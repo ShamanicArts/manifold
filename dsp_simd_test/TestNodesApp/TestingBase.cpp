@@ -22,14 +22,16 @@ TestingBase::TestData * TestingBase::CreateTest(const char * name, float sampler
     return &retData;
 }
 
-TestingBase::TestChannels * TestingBase::CreateTestWaveChannels(TestData * test, int bus, int numSamples)
+TestingBase::TestWaveSpec * TestingBase::AppendTestWaveSpec(TestData * test, int bus, int numSamples, float leftScale, float rightScale)
 {
-    TestChannels & ret = test->busses[bus].waves.emplace_back();
+    TestWaveSpec & ret = test->busses[bus].waves.emplace_back();
     ret.numSamples = numSamples;
+    ret.left.scale = leftScale;
+    ret.right.scale = rightScale;
     return &ret;
 }
 
-TestingBase::TestWave * TestingBase::CreateTestWaveMix(TestChannels * testch, int channel, float frequency, float amplitude, float phase)
+TestingBase::TestWave * TestingBase::AddWaveToMix(TestWaveSpec * testch, Channel channel, float frequency, float amplitude, float phase)
 {
     TestWave * ret = NULL;
     if(channel == 0)

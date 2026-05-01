@@ -232,11 +232,17 @@ namespace dsp_primitives
                                 // XOR: quantize both, XOR the codes, convert back.
                                 // Use bipolar quantization so silence (0.0) XOR silence = 0.0.
                                 //const int qa = quantizeToCode(inA, quantLevels);
+                                //
+                                //A Note about rounding:
+                                // The base version uses std::round as part of this process. In the tie-break condition (e.g: 1234.5) will round away from zero (e.g: 1234.5 -> 1235.0)
+                                //HWY::Round on x86/x64 will round towards EVEN.  So 1234.5 will round DOWN to 1234.0
+                                //Thus, we avoid using HWY::Round, and instead truncate the value +- 0.5 (plus if > 0, subtract if < 0) to match what std::round does.
+                                //
                                 tmp = HWY::IfThenElse(HWY::Gt(inAL, one), one, inAL);
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
                                 tmp = HWY::MulAdd(tmp, half, half);
                                 tmp = HWY::Mul(tmp, maxCodeFlt);
-                                qaL = HWY::ConvertTo(_inttype, HWY::Round(tmp));
+                                qaL = HWY::ConvertTo(_inttype,HWY::Trunc(HWY::IfThenElse(HWY::Gt(tmp, zero), HWY::Add(tmp, half), HWY::Sub(tmp, half)))); //Rounding like std::round
                                 qaL = HWY::IfThenElse(HWY::Gt(qaL, maxCode), maxCode, qaL);
                                 qaL = HWY::IfThenElse(HWY::Lt(qaL, izero), izero, qaL);
                                 qaL = HWY::Sub(qaL, midCode); //const int da = qa - midCode;
@@ -245,7 +251,7 @@ namespace dsp_primitives
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
                                 tmp = HWY::MulAdd(tmp, half, half);
                                 tmp = HWY::Mul(tmp,maxCodeFlt);
-                                qaR = HWY::ConvertTo(_inttype, HWY::Round(tmp));
+                                qaR = HWY::ConvertTo(_inttype,HWY::Trunc(HWY::IfThenElse(HWY::Gt(tmp, zero), HWY::Add(tmp, half), HWY::Sub(tmp, half)))); //Rounding like std::round
                                 qaR = HWY::IfThenElse(HWY::Gt(qaR, maxCode), maxCode, qaR);
                                 qaR = HWY::IfThenElse(HWY::Lt(qaR, izero), izero, qaR);
                                 qaR = HWY::Sub(qaR, midCode);//const int da = qa - midCode;
@@ -255,7 +261,7 @@ namespace dsp_primitives
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
                                 tmp = HWY::MulAdd(tmp, half, half);
                                 tmp = HWY::Mul(tmp, maxCodeFlt);
-                                qbL = HWY::ConvertTo(_inttype, HWY::Round(tmp));
+                                qbL = HWY::ConvertTo(_inttype,HWY::Trunc(HWY::IfThenElse(HWY::Gt(tmp, zero), HWY::Add(tmp, half), HWY::Sub(tmp, half)))); //Rounding like std::round
                                 qbL = HWY::IfThenElse(HWY::Gt(qbL, maxCode), maxCode, qbL);
                                 qbL = HWY::IfThenElse(HWY::Lt(qbL, izero), izero, qbL);
                                 qbL = HWY::Sub(qbL, midCode); //const int db = qb - midCode;
@@ -264,7 +270,7 @@ namespace dsp_primitives
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
                                 tmp = HWY::MulAdd(tmp, half, half);
                                 tmp = HWY::Mul(tmp, maxCodeFlt);
-                                qbR = HWY::ConvertTo(_inttype, HWY::Round(tmp));
+                                qbR = HWY::ConvertTo(_inttype,HWY::Trunc(HWY::IfThenElse(HWY::Gt(tmp, zero), HWY::Add(tmp, half), HWY::Sub(tmp, half)))); //Rounding like std::round
                                 qbR = HWY::IfThenElse(HWY::Gt(qbR, maxCode), maxCode, qbR);
                                 qbR = HWY::IfThenElse(HWY::Lt(qbR, izero), izero, qbR);
                                 qbR = HWY::Sub(qbR, midCode); //const int db = qb - midCode;
