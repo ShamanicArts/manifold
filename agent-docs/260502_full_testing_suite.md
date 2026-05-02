@@ -151,6 +151,29 @@ Tests are registered in `CMakeLists.txt:1288-1342` via `add_test()`. Each test h
 
 **What it tests:** Video retrospective capture ring buffer — writes frames, reads them back after a delay, verifies correct frames survive the ring buffer roll.
 
+### 2.8. `manifold_core_midi_contract`
+
+| Field | Value |
+|-------|-------|
+| Tier | 0 (C++ harness) |
+| Binary | `BehaviorCoreMidiContractHarness` |
+| Source | `manifold/headless/BehaviorCoreMidiContractHarness.cpp` (286L) |
+| Labels | `manifold`, `core`, `midi`, `contract` |
+| Golden file | `tests/fixtures/core_midi_golden.json` (3.1K) |
+
+**What it tests:** Deterministic processor MIDI behavior — synthetic incoming MIDI (`note on`, `CC`, `pitch bend`, `program change`, `note off`) through `BehaviorCoreProcessor::processMidiInput()`, `MidiManager` channel/voice state, drained input ring contents, and outgoing MIDI emitted via the public `sendMidi*` API and `drainMidiOutput()`.
+
+**How it works:** Creates a real `BehaviorCoreProcessor`, prepares it, enables MIDI thru, attempts invalid device opens (must remain closed), injects deterministic `juce::MidiBuffer` input, snapshots `MidiManager` state as JSON, drains the manager input ring, sends deterministic outgoing MIDI via `sendMidiNoteOn` / `sendMidiCC` / `sendMidiPitchBend` / `sendMidiProgramChange` / `sendMidiNoteOff`, drains output, and diffs against the golden file.
+
+**What it catches:**
+- Broken note/CC/pitch-bend/program-change state updates in `MidiManager`
+- Drift in voice allocation / release for the first synthetic note
+- Input ring encoding regressions
+- Outgoing MIDI encoding regressions in the processor helper layer
+- Accidental behavior changes while splitting MIDI helpers out of `BehaviorCoreProcessor.cpp`
+
+**Established for:** Priority 5, Phase 5b support extraction (processor MIDI helpers).
+
 ---
 
 ## 3. Unregistered Assets
@@ -198,6 +221,7 @@ These tests exist and work but are not wired into CTest. They're the immediate h
 | avsamplerDOCKING project state | ✅ Full contract | `e2e_avsampler_docking_regression.py` |
 | Video sampler storage | ✅ Unit | `VideoSamplerHarness` |
 | Video retrospective capture | ✅ Unit | `VideoRetrospectiveCaptureHarness` |
+| Processor MIDI helper layer | ✅ Contract | `BehaviorCoreMidiContractHarness` |
 | Direct renderer perf | ✅ Threshold | `ui_profile_test.py` |
 
 ### 4.2. What's Partially Covered
@@ -209,6 +233,7 @@ These tests exist and work but are not wired into CTest. They're the immediate h
 | Rack EQ palette | Partial smoke | `e2e_rack_eq_palette_test.py` exists but unregistered |
 | Tab bar behavior | Partial smoke | `main_tab_bar_test.py` exists but unregistered |
 | Direct renderer regression | Partial stress | `standalone_direct_regression_test.py` exists but unregistered |
+| MIDI hardware-device path | Partial contract | `manifold_core_midi_contract` covers synthetic input/output + `MidiManager` state, but not real device callback routing |
 | Shell state observability | Partial | `DIAGNOSE.shell` is partially wired per the testing workplan |
 
 ### 4.3. What's Missing
@@ -216,8 +241,8 @@ These tests exist and work but are not wired into CTest. They're the immediate h
 | Area | Gap | Why It Matters | Priority |
 |------|-----|----------------|:--------:|
 | **DSP node unit tests** | 55+ nodes have zero tests | Every node is a potential regression point | High |
-| **ControlServer command dispatch** | 915L switch has no test coverage | Every new IPC command is untested | High |
-| **MIDI engine** | `MidiManager`, note routing, CC — zero tests | MIDI is a core user-facing feature | High |
+| **ControlServer command dispatch** | Command reachability is covered, but command-specific semantics are still sparse | Every new IPC command can still be semantically wrong while remaining callable | High |
+| **MIDI hardware callback + real device lifecycle** | Synthetic MIDI is covered, but real device callback routing is not | Hardware-input regressions can still hide behind the synthetic harness | High |
 | **Graph runtime** | `PrimitiveGraph`, `GraphRuntime` — no graph-level tests | Graph construction bugs are silent | Medium |
 | **State serialization round-trip** | `StateProjectionHarness.cpp` exists but unregistered | Save/load bugs cause data loss | Medium |
 | **DSP host parameter bindings** | Param set/get round-trip at DSP host level | Parameter automation correctness | Medium |
@@ -423,4 +448,5 @@ ctest -L manifold
 
 | Date | Change |
 |------|--------|
+| 2026-05-03 | Added `manifold_core_midi_contract` and documented the new deterministic MIDI harness + golden file. Updated coverage map: processor MIDI helper layer is now contract-covered; real hardware-device routing remains a separate gap. |
 | 2026-05-02 | Initial document. Compiled from CTest registration, test directory audit, harness module analysis, and existing testing workplans. |

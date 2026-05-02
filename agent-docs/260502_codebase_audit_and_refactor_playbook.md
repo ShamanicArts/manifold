@@ -180,7 +180,33 @@ This catches the case where the refactoring accidentally changes behavior AND th
 
 **Lesson:** The codebase profile lists file sizes but doesn't distinguish compiled vs. dead files. Cross-reference CMakeLists.txt `target_sources` when analyzing refactoring targets.
 
-### 3.3. avsamplerDOCKING God Object Decomposition
+### 3.3. BehaviorCoreProcessor MIDI Support Extraction + Contract Harness
+
+**Targets:**
+- `manifold/core/BehaviorCoreProcessor.cpp` (3,894L → 3,794L)
+- `manifold/core/MidiSupport.h` (new, 281L)
+- `manifold/headless/BehaviorCoreMidiContractHarness.cpp` (new, 286L)
+- `tests/fixtures/core_midi_golden.json` (3.1K)
+
+**Date:** 2026-05-03
+
+**What was done:** Added a dedicated deterministic MIDI contract harness, then extracted the processor's MIDI helper logic into a header-only support layer without changing `BehaviorCoreProcessor`'s ownership model. The processor still owns the legacy hardware-device members and rings; the refactor only moved mechanical helper logic out of the god file.
+
+**Harness:** `BehaviorCoreMidiContractHarness --write-contract/--verify-contract` creates a real `BehaviorCoreProcessor`, injects deterministic MIDI input (`note on`, `CC`, `pitch bend`, `program change`, `note off`), captures `MidiManager` channel/voice state, drains the input ring, emits outgoing MIDI through the public `sendMidi*` API, drains output, and diffs against `tests/fixtures/core_midi_golden.json`.
+
+**What was extracted to `MidiSupport.h`:**
+- MIDI device enumeration helpers
+- Open/close helpers for the processor-owned hardware device handles
+- Hardware callback → ring-buffer enqueue logic
+- `sendMidiMessage` / `sendMidiNoteOn` / `sendMidiNoteOff` / `sendMidiCC` / `sendMidiPitchBend` / `sendMidiProgramChange` helper logic
+- `processMidiInput()` + `drainMidiOutput()` helper logic
+- Processor MIDI contract serialization helper used by `exportStateContract()`
+
+**Contract:** New `manifold_core_midi_contract` test passes. Existing `manifold_core_state_contract` was expanded (MIDI manager nested state) and refreshed. Full `ctest -R manifold -E manifold_standalone_direct_profile_sanity --output-on-failure` remains green (9/9).
+
+**Key lesson:** The MIDI concern has two different risk classes: pure helper logic and real hardware device routing. The helper slice can be extracted safely under a synthetic contract harness. Device ownership/routing should not be moved until a hardware-path guard exists.
+
+### 3.4. avsamplerDOCKING God Object Decomposition
 
 **Target:** `UserScripts/projects/avsamplerDOCKING/ui/behaviors/main.lua` (4,457L → 852L)
 
@@ -194,7 +220,7 @@ This catches the case where the refactoring accidentally changes behavior AND th
 
 **Key lesson:** The test harness must be written before the first extraction. Contract testing caught subtle state drift that visual inspection would have missed.
 
-### 3.2. C++ Binding God Functions Decomposition
+### 3.5. C++ Binding God Functions Decomposition
 
 **Target files:**
 - `LuaControlBindings.cpp` (4,054L → 32L)
@@ -245,9 +271,9 @@ The core problem in 8 C++ files was not that the code was wrong — it was that 
 
 The cross-cutting pattern still applies: wherever data (parameter spec tables, usertype descriptors) is embedded in C++ as `lua.new_usertype<>()` calls, refactoring is expensive because every change touches the C++ build.
 
-### 4.3. The Big Switch
+### 4.3. The Big Switch (Historical)
 
-`ControlServer::processCommand` is a 915-line switch statement handling ~50 command types. Every new IPC command adds another `case` branch. A dispatch table (map command name → handler function) would make adding commands a one-line registration instead of a new `case` block.
+`ControlServer::processCommand` was a 233-line command handler wall (the earlier 915-line estimate was stale). This has now been refactored into extracted handlers plus a dispatch table. The underlying lesson still stands: inline command walls grow badly, and a registration/dispatch mechanism is the right composition point for IPC command handling.
 
 ### 4.4. Mixed Concern Engine Files
 
@@ -263,7 +289,7 @@ The cross-cutting pattern still applies: wherever data (parameter spec tables, u
 | ~~2~~ | ~~`VideoSynthPrimitive::shaderDefinitions`~~ | ~~942L~~ | ~~Data in code → shader files~~ | ~~Low~~ | ~~Shader compile test~~ | 🗑️ **Deleted** (dead code, live system already file-based) |
 | 3 | `DSPHostBindingsCore/Fx/Synth` | ~2,800L total | Per-file god functions → data-driven | Medium | Existing oscquery contract | Pending |
 | 4 | `ImGuiDirectHost.cpp` | 2,553L, 6 concerns | Mixed concerns → extract shader/GPU/video | Medium | Frame capture comparison | Pending |
-| 5 | `BehaviorCoreProcessor/Editor` | 6,497L combined + 740L support header | Engine/editor mixed concerns | High | State projection contract | ⚙️ Partial — Phase 5a complete |
+| 5 | `BehaviorCoreProcessor/Editor` | 6,397L combined + 1,021L support headers | Engine/editor mixed concerns | High | State projection + MIDI contracts | ⚙️ Partial — Phases 5a + 5b support slices complete |
 
 ### ~~5.1. Priority 1: `ControlServer::processCommand` — Dispatch Table~~ ✅ COMPLETE
 
@@ -336,11 +362,11 @@ static const UsertypeDef kFxUsertypes[] = {
 
 ### 5.5. Priority 5: `BehaviorCoreProcessor` / `BehaviorCoreEditor` Splitting
 
-**Files:** `BehaviorCoreProcessor.cpp` (4,337L → 3,894L), `BehaviorCoreEditor.cpp` (2,603L), new `manifold/core/ExportPluginConfigSupport.h` (740L)
+**Files:** `BehaviorCoreProcessor.cpp` (4,337L → 3,794L), `BehaviorCoreEditor.cpp` (2,603L), new `manifold/core/ExportPluginConfigSupport.h` (740L), new `manifold/core/MidiSupport.h` (281L)
 
 **Current pattern:** Engine and editor with 10 and 8 concern categories respectively. Well-factored internally (avg 21L and 41L per function) but carrying everything: lifecycle, export plugin config, graph management, MIDI, OSC, profiling, serialization, host params, memory snapshots.
 
-**Progress (2026-05-02):** **Phase 5a complete** — the export plugin config concern has been extracted into a support layer without changing `BehaviorCoreProcessor` ownership.
+**Progress (2026-05-03):** **Phase 5a complete + Phase 5b support slice complete** — export plugin config and MIDI helper logic have both been extracted into support layers without changing `BehaviorCoreProcessor` ownership.
 
 **What was extracted to `ExportPluginConfigSupport.h`:**
 - Export config data model: `ExportParamAlias`, `ExportPluginConfig`
@@ -356,15 +382,16 @@ static const UsertypeDef kFxUsertypes[] = {
 
 **What remains in `BehaviorCoreProcessor`:**
 - Export state ownership (`hostParams_`, atomics, config instance)
+- MIDI state ownership (`midiInputDevice`, `midiOutputDevice`, rings, `midiThruEnabled`, `midiManager_`)
 - Actual server / registry side effects (`oscServer`, `oscQueryServer`, endpoint registry mutation)
 - Trivial public getters / setters
 - Higher-level processor orchestration
 
-**Contract:** `BehaviorCoreProjectionHarness` + `manifold_core_state_contract` stayed byte-identical throughout. `manifold_headless_ipc_core`, `manifold_headless_oscquery_contract`, `manifold_core_sniff`, and the full `ctest -R manifold -E manifold_standalone_direct_profile_sanity --output-on-failure` suite all pass after the extraction.
+**Contract:** `BehaviorCoreProjectionHarness` + `manifold_core_state_contract` remain green after the export + MIDI support extractions, and the new `BehaviorCoreMidiContractHarness` adds a dedicated deterministic guard for MIDI manager state, input-ring contents, and outgoing MIDI event encoding. `manifold_headless_ipc_core`, `manifold_headless_oscquery_contract`, `manifold_core_sniff`, and the full `ctest -R manifold -E manifold_standalone_direct_profile_sanity --output-on-failure` suite all pass after the extraction.
 
-**Target pattern:** Continue with the same approach for later slices — keep ownership in `BehaviorCoreProcessor` until a seam is proven, then extract orchestration or state holders only when the contract harness says it is safe. Candidate next slices remain graph management, serialization, MIDI, Link, and editor host management.
+**Target pattern:** Continue with the same approach for later slices — keep ownership in `BehaviorCoreProcessor` until a seam is proven, then extract orchestration or state holders only when the contract harness says it is safe. Candidate next slices remain serialization, Link, graph management, and editor host management. MIDI device ownership/routing is still deferred until a hardware-path contract exists.
 
-**Risk:** Still high at the whole-class level, but the export plugin config slice has now been de-risked and completed under contract.
+**Risk:** Still high at the whole-class level, but the export plugin config slice and the MIDI helper slice have now been de-risked under contract.
 
 ---
 
@@ -443,6 +470,7 @@ python3 tests/e2e_oscquery_contract_test.py \
 
 | Date | Change |
 |------|--------|
+| 2026-05-03 | Completed Phase 5b support slice of Priority 5: added `BehaviorCoreMidiContractHarness` + `core_midi_golden.json`, extracted MIDI helper logic to `manifold/core/MidiSupport.h`, reduced `BehaviorCoreProcessor.cpp` from 3,894L to 3,794L, expanded the core-state MIDI subcontract, and kept the full non-standalone manifold suite green (9/9). |
 | 2026-05-02 | Completed Phase 5a of Priority 5: `BehaviorCoreProcessor` export plugin config support extraction. Added `ExportPluginConfigSupport.h`, reduced `BehaviorCoreProcessor.cpp` from 4,337L to 3,894L, replaced handwritten export endpoint wall with extracted spec table, and kept all contract / IPC / OSCQuery / manifold regression tests green. |
 | 2026-05-02 | Initial document. Compiled from codebase profile v2, binding decomposition worksheet v3, avsampler decomposition plan, and manual source reading. |
 | 2026-05-02 | **Phase 1 complete:** `ControlServer::processCommand` dispatch table extraction. 17 handlers extracted, 233L → ~35L orchestration. All 9 tests pass. |
