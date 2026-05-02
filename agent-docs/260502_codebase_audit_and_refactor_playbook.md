@@ -1,7 +1,7 @@
 # Codebase Audit & Refactor Playbook
 
 **Date:** 2026-05-02
-**Status:** Living reference — updated as refactoring work completes
+**Status:** Living reference — updated 2026-05-02 (Phase 1 ✅, Phase 2 🗑️)
 **Scope:** Full structural audit of `manifold/`, `dsp/`, `UserScripts/`, `web/` runtime code.
 **Refactor methodology:** Contract-first, golden snapshots, side-by-side migration, profile+test+refactor as one operation.
 
@@ -150,7 +150,37 @@ This catches the case where the refactoring accidentally changes behavior AND th
 
 ## 3. Completed Refactoring Work
 
-### 3.1. avsamplerDOCKING God Object Decomposition
+### 3.1. ControlServer Command Dispatch Table
+
+**Target:** `manifold/primitives/control/ControlServer.cpp:processCommand` (233L switch/if-else chain → dispatch table)
+
+**Date:** 2026-05-02
+
+**What was done:** Extracted all 17 command handlers from the monolithic `processCommand` function into named private member functions. Replaced the procedural prefix-check + switch dispatch with a `std::unordered_map<ParseResult::Kind, std::function>` dispatch map (function-local static, populated once via IIFE).
+
+**Handlers created (17 total):**
+- **4 prefix handlers** (short-circuit before parser): `handleDspRun`, `handlePerfReset`, `handleEval`, `handleDirectSet`
+- **13 parsed handlers** (after `CommandParser::parse`): `handleEnqueue`, `handleQuery`, `handleWatch`, `handleInject`, `handleInjectionStatus`, `handleUISwitch`, `handleUIRenderer`, `handleScreenshot`, `handleRecordStart`, `handleRecordStop`, `handleRecordStatus`, `handleNoOpWarning`, `handleError`
+
+**Net change:** `processCommand` 233L → ~35L inline orchestration + 17 extracted handlers (~500L total). Each handler is independently readable and testable. New commands require writing one handler function and adding one line to the dispatch map.
+
+**Contract:** Existing `manifold_headless_ipc_core` (15 tests), `manifold_core_sniff` (19 tests), `manifold_core_state_contract`, and `manifold_headless_oscquery_contract` all pass unchanged — proving zero behavioral drift.
+
+**Key lesson:** The dispatch map approach works cleanly for command handlers. The `std::function` + IIFE static pattern avoids startup ordering issues and keeps the map definition adjacent to `processCommand`.
+
+### 3.2. VideoSynthPrimitive Dead Code Removal
+
+**Target:** `manifold/primitives/video/VideoSynthPrimitive.cpp` (1,141L) + `.h`
+
+**Date:** 2026-05-02
+
+**What was done:** Discovered that the entire `VideoSynthPrimitive` class was dead code — not included in any CMake target, not referenced by any file in the codebase. The live shader system (`ShaderEffectRegistry` in `manifold/primitives/shaders/`) already loaded shaders from `manifold/shaders/*.json` + `*.glsl` files at runtime. The playbook's Phase 2 analysis was stale.
+
+**Action:** Deleted both files. 1,141 lines of dead GLSL string literals removed. All 9 tests pass, all targets build clean.
+
+**Lesson:** The codebase profile lists file sizes but doesn't distinguish compiled vs. dead files. Cross-reference CMakeLists.txt `target_sources` when analyzing refactoring targets.
+
+### 3.3. avsamplerDOCKING God Object Decomposition
 
 **Target:** `UserScripts/projects/avsamplerDOCKING/ui/behaviors/main.lua` (4,457L → 852L)
 
@@ -207,11 +237,13 @@ The core problem in 8 C++ files was not that the code was wrong — it was that 
 
 **This pattern applies anywhere sol2 bindings are registered.** The DSPHost files (`DSPHostBindingsCore/Fx/Synth.cpp`) still have the same problem at the function level — each file is one 700-1100 line function. They weren't touched because the gain from further splitting (per-usertype files or data-driven registration) was marginal relative to work.
 
-### 4.2. Data Masquerading as Code
+### 4.2. Data Masquerading as Code (Historical)
 
-`VideoSynthPrimitive.cpp` contains 942 lines of GLSL shader source code as C++ string literals. This is data living in code because there was no mechanism to load shader files at runtime. Every time a shader changes, it forces a recompile of the entire video synth primitive.
+`VideoSynthPrimitive.cpp` formerly contained 942 lines of GLSL shader source code as C++ string literals — data living in code because there was no mechanism to load shader files at runtime. 
 
-This is a cross-cutting pattern: wherever data (shaders, parameter spec tables, usertype descriptors) is embedded in C++ as string literals or `lua.new_usertype<>()` calls, refactoring is expensive because every change touches the C++ build.
+**This file has been deleted.** It was dead code (never compiled into any target). The live shader system (`ShaderEffectRegistry` in `manifold/primitives/shaders/`) already loads shaders from `manifold/shaders/*.json` + `*.glsl` files at runtime, using `MANIFOLD_SOURCE_DIR` for path resolution. The live system supports both builtin effects (loaded at startup) and runtime effects (loaded from `UserScripts/shaders/`).
+
+The cross-cutting pattern still applies: wherever data (parameter spec tables, usertype descriptors) is embedded in C++ as `lua.new_usertype<>()` calls, refactoring is expensive because every change touches the C++ build.
 
 ### 4.3. The Big Switch
 
@@ -225,39 +257,41 @@ This is a cross-cutting pattern: wherever data (shaders, parameter spec tables, 
 
 ## 5. Remaining C++ Structural Debt (Priority Order)
 
-| Priority | Target | Current Size | Pattern | Complexity | Harness Needed |
-|----------|--------|-------------|---------|------------|----------------|
-| 1 | `ControlServer::processCommand` | 915L switch | Big switch → dispatch table | Low | IPC command coverage |
-| 2 | `VideoSynthPrimitive::shaderDefinitions` | 942L string literals | Data in code → shader files | Low | Shader load + compile test |
-| 3 | `DSPHostBindingsCore/Fx/Synth` | ~2,800L total | Per-file god functions → data-driven | Medium | Existing oscquery contract |
-| 4 | `ImGuiDirectHost.cpp` | 2,553L, 6 concerns | Mixed concerns → extract shader/GPU/video | Medium | Frame capture comparison |
-| 5 | `BehaviorCoreProcessor/Editor` | 6,940L combined | Engine/editor mixed concerns | High | State projection contract |
+| Priority | Target | Current Size | Pattern | Complexity | Harness Needed | Status |
+|----------|--------|-------------|---------|------------|----------------|--------|
+| ~~1~~ | ~~`ControlServer::processCommand`~~ | ~~915L~~ | ~~Switch → dispatch table~~ | ~~Low~~ | ~~IPC command coverage~~ | ✅ **Complete** (233L real, 17 handlers extracted) |
+| ~~2~~ | ~~`VideoSynthPrimitive::shaderDefinitions`~~ | ~~942L~~ | ~~Data in code → shader files~~ | ~~Low~~ | ~~Shader compile test~~ | 🗑️ **Deleted** (dead code, live system already file-based) |
+| 3 | `DSPHostBindingsCore/Fx/Synth` | ~2,800L total | Per-file god functions → data-driven | Medium | Existing oscquery contract | Pending |
+| 4 | `ImGuiDirectHost.cpp` | 2,553L, 6 concerns | Mixed concerns → extract shader/GPU/video | Medium | Frame capture comparison | Pending |
+| 5 | `BehaviorCoreProcessor/Editor` | 6,940L combined | Engine/editor mixed concerns | High | State projection contract | Pending |
 
-### 5.1. Priority 1: `ControlServer::processCommand` — Dispatch Table
+### ~~5.1. Priority 1: `ControlServer::processCommand` — Dispatch Table~~ ✅ COMPLETE
 
+**Date:** 2026-05-02
 **Location:** `manifold/primitives/control/ControlServer.cpp:532`
-**Size:** 915 lines, one function
+**Actual size:** 233 lines (not 915 — playbook estimate was stale)
 
-**Current pattern:** A `if/else if` chain parsing a command string and dispatching to inline handlers. Every command type adds another branch.
+**What was done:** Extracted 17 command handlers into named private member functions. Replaced prefix checks + switch with a dispatch map (`std::unordered_map<ParseResult::Kind, std::function>`) populated once on first call via static IIFE.
 
-**Target pattern:** A `std::map<std::string, CommandHandler>` populated at startup. Each command is a standalone handler function. `processCommand` does `auto it = handlers.find(cmdType); if (it != handlers.end()) it->second(args);`.
+**Before:** 233L of inline prefix checks + switch on `ParseResult::Kind` + inline handler code. Adding a new command meant adding a new `case` block.
 
-**Risk:** Low. Each handler is already a distinct code block within the switch. Extraction is mechanical.
+**After:** `processCommand` is ~35L of orchestration. Each handler is a standalone named function. New commands require writing one handler function and adding one line to the dispatch map.
 
-**Harness needed:** Iterate all command types via IPC, capture response schema + state mutations. An iterative test that sends every command and validates response format would also serve as a completeness check (catches undocumented commands).
+**Contract:** All 9 CTest tests pass unchanged: `manifold_headless_ipc_core` (15 IPC round-trip tests), `manifold_core_sniff` (19 smoke tests), `manifold_core_state_contract`, `manifold_headless_oscquery_contract`.
 
-### 5.2. Priority 2: `VideoSynthPrimitive::shaderDefinitions` — Separate Shader Files
+**Harness delivered:** The existing IPC test suite now serves as regression guard for the dispatch table. No new harness was needed.
 
-**Location:** `manifold/primitives/video/VideoSynthPrimitive.cpp:54`
-**Size:** 942 lines of GLSL string literals
+### ~~5.2. Priority 2: `VideoSynthPrimitive::shaderDefinitions` — Separate Shader Files~~ 🗑️ DELETED
 
-**Current pattern:** ~15 video effects defined as concatenated vertex+fragment shader strings. One massive `const char*` array at file scope.
+**Date:** 2026-05-02
+**Location:** `manifold/primitives/video/VideoSynthPrimitive.cpp` (now deleted)
+**Actual size:** 1,141 lines (not 942 — playbook estimate was low)
 
-**Target pattern:** Each shader pair in its own `.glsl` or `.vert`/`.frag` file, loaded at runtime by `VideoSynthPrimitive`. The C++ file contains loading logic, not shader source.
+**What was found:** The entire `VideoSynthPrimitive` class was dead code — not included in any CMake `target_sources()`, not referenced by any `.cpp`, `.h`, or `.lua` file in the codebase. The live shader system (`ShaderEffectRegistry` in `manifold/primitives/shaders/`) already loads shaders from `manifold/shaders/*.json` + `*.glsl` files at runtime via `MANIFOLD_SOURCE_DIR`. 18 effects are already shipped as paired `.json`/`.glsl` files.
 
-**Risk:** Low. Requires a shader load mechanism and a directory to store shader files. Loading could be done once at init and cached.
+**Action:** Both `VideoSynthPrimitive.cpp` and `.h` deleted. 1,141 lines removed. All targets build clean, all 9 tests pass.
 
-**Harness needed:** Load a shader, compile it, verify it produces expected output for known input. The existing `ShaderSurfaceProvider` already does compilation — this is testing the load path, not the compile.
+**Lesson:** The codebase profile (`tools/profiling/`) counts source files regardless of whether they're compiled. Always cross-reference against `CMakeLists.txt` `target_sources` when identifying refactoring targets.
 
 ### 5.3. Priority 3: DSPHost Binding Files — Data-Driven Usertype Registration
 
@@ -388,3 +422,5 @@ python3 tests/e2e_oscquery_contract_test.py \
 | Date | Change |
 |------|--------|
 | 2026-05-02 | Initial document. Compiled from codebase profile v2, binding decomposition worksheet v3, avsampler decomposition plan, and manual source reading. |
+| 2026-05-02 | **Phase 1 complete:** `ControlServer::processCommand` dispatch table extraction. 17 handlers extracted, 233L → ~35L orchestration. All 9 tests pass. |
+| 2026-05-02 | **Phase 2 resolved:** `VideoSynthPrimitive.cpp` was dead code (never compiled). Live shader system already loads from `manifold/shaders/*.json`/`*.glsl` at runtime. Deleted both `.cpp` and `.h` (1,141L removed). All targets build clean. |
