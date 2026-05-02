@@ -172,6 +172,27 @@ Tests are registered in `CMakeLists.txt:1288-1342` via `add_test()`. Each test h
 - Outgoing MIDI encoding regressions in the processor helper layer
 - Accidental behavior changes while splitting MIDI helpers out of `BehaviorCoreProcessor.cpp`
 
+### 2.9. `manifold_state_projection`
+
+| Field | Value |
+|-------|-------|
+| Tier | 0 (C++ harness) |
+| Binary | `StateProjectionHarness` |
+| Source | `manifold/headless/StateProjectionHarness.cpp` (228L) |
+| Labels | `manifold`, `state`, `projection`, `regression` |
+
+**What it tests:** State JSON projection schema validation — verifies that `ControlServer::getStateJson()` produces a correctly-structured JSON with all expected fields, typed correctly, and with the layered `params`/`voices` structure.
+
+**How it works:** Creates a `ControlServer`, sets all atomic state fields to known deterministic values, calls `getStateJson()`, parses the JSON, and runs 695 assertion checks against the schema (field types, layer structure, aliased paths, voice representation).
+
+**What it catches:**
+- State JSON schema drift after refactoring
+- Wrong field types or missing fields
+- Broken projection structure (`params` vs `voices` layering)
+- Param path alias changes
+
+**Established for:** Phase 5c state serialization support extraction.
+
 **Established for:** Priority 5, Phase 5b support extraction (processor MIDI helpers).
 
 ---
@@ -188,7 +209,7 @@ These exist in the codebase but have no CTest entry. They are functional but not
 | `ControlCommandQueueHarness.cpp` | 114 | Tests command queue enqueue/dequeue | Yes |
 | `EndpointResolverHarness.cpp` | 208 | Tests endpoint path resolution | Yes |
 | `PortBufferSemanticsHarness.cpp` | 254 | Tests audio port buffer handling | Maybe — may have been removed from suite deliberately |
-| `StateProjectionHarness.cpp` | 228 | Tests state serialization round-trip | Yes |
+| `StateProjectionHarness.cpp` | 228 | Tests state serialization round-trip | ✅ Registered as `manifold_state_projection` |
 
 These were likely built during earlier development phases and their CTest entries were either never created or removed. They all compile (they're in `MANIFOLD_RUNTIME_SOURCES`). Most are fast and deterministic — prime candidates for registration.
 
@@ -223,6 +244,7 @@ These tests exist and work but are not wired into CTest. They're the immediate h
 | Video retrospective capture | ✅ Unit | `VideoRetrospectiveCaptureHarness` |
 | Processor MIDI helper layer | ✅ Contract | `BehaviorCoreMidiContractHarness` |
 | Processor Link state | ✅ Full contract | `manifold_core_state_contract` (all 7 Link fields) |
+| State projection schema | ✅ Unit | `StateProjectionHarness` (695 checks) |
 | Direct renderer perf | ✅ Threshold | `ui_profile_test.py` |
 
 ### 4.2. What's Partially Covered
@@ -450,5 +472,6 @@ ctest -L manifold
 | Date | Change |
 |------|--------|
 | 2026-05-03 | Added `manifold_core_midi_contract` and documented the new deterministic MIDI harness + golden file. Updated coverage map: processor MIDI helper layer is now contract-covered; real hardware-device routing remains a separate gap.
-| 2026-05-03 | Added `manifold/core/LinkSupport.h` – 14 Link delegate methods extracted from `BehaviorCoreProcessor`. Link state coverage documented: all 7 fields covered by existing `manifold_core_state_contract`. No new harness needed. |
+| 2026-05-03 | Added `manifold/core/LinkSupport.h` – 14 Link delegate methods extracted from `BehaviorCoreProcessor`. Link state coverage documented: all 7 fields covered by existing `manifold_core_state_contract`. No new harness needed.
+| 2026-05-03 | Added `manifold/core/StateSerializationSupport.h` – extracted IStateSerializer helpers + method bodies (~700L). Registered `StateProjectionHarness.cpp` as new `manifold_state_projection` CTest (695 checks, passes). Full suite now 10/10. |
 | 2026-05-02 | Initial document. Compiled from CTest registration, test directory audit, harness module analysis, and existing testing workplans. |

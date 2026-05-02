@@ -405,7 +405,11 @@ static const UsertypeDef kFxUsertypes[] = {
 
 **Contract:** `BehaviorCoreProjectionHarness` + `manifold_core_state_contract` remain green after the export + MIDI support extractions, and the new `BehaviorCoreMidiContractHarness` adds a dedicated deterministic guard for MIDI manager state, input-ring contents, and outgoing MIDI event encoding. `manifold_headless_ipc_core`, `manifold_headless_oscquery_contract`, `manifold_core_sniff`, and the full `ctest -R manifold -E manifold_standalone_direct_profile_sanity --output-on-failure` suite all pass after the extraction.
 
-**Target pattern:** Continue with the same approach for later slices — keep ownership in `BehaviorCoreProcessor` until a seam is proven, then extract orchestration or state holders only when the contract harness says it is safe. Candidate next slices remain serialization, Link, graph management, and editor host management. MIDI device ownership/routing is still deferred until a hardware-path contract exists.
+**Target pattern:** Continue with the same approach for later slices — keep ownership in `BehaviorCoreProcessor` until a seam is proven, then extract orchestration or state holders only when the contract harness says it is safe. Candidate next slices remain graph management and editor host management. MIDI device ownership/routing is still deferred until a hardware-path contract exists.
+
+**Link extraction complete (2026-05-03):** 14 Link methods extracted to `LinkSupport.h`. Cleanest extraction in the codebase — every method was a one-liner delegation. State contract provides complete coverage.
+
+**State serialization extraction complete (2026-05-03):** Extracted all IStateSerializer helpers + method bodies (except `getStateInformation`/`setStateInformation`) to `StateSerializationSupport.h` (~700L). Registered `StateProjectionHarness.cpp` as CTest `manifold_state_projection` (695 checks, passes). Full suite remains green (10/10).
 
 **Risk:** Still high at the whole-class level, but the export plugin config slice and the MIDI helper slice have now been de-risked under contract.
 
