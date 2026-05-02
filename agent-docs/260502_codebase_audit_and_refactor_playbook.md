@@ -263,7 +263,7 @@ The cross-cutting pattern still applies: wherever data (parameter spec tables, u
 | ~~2~~ | ~~`VideoSynthPrimitive::shaderDefinitions`~~ | ~~942L~~ | ~~Data in code → shader files~~ | ~~Low~~ | ~~Shader compile test~~ | 🗑️ **Deleted** (dead code, live system already file-based) |
 | 3 | `DSPHostBindingsCore/Fx/Synth` | ~2,800L total | Per-file god functions → data-driven | Medium | Existing oscquery contract | Pending |
 | 4 | `ImGuiDirectHost.cpp` | 2,553L, 6 concerns | Mixed concerns → extract shader/GPU/video | Medium | Frame capture comparison | Pending |
-| 5 | `BehaviorCoreProcessor/Editor` | 6,940L combined | Engine/editor mixed concerns | High | State projection contract | Pending |
+| 5 | `BehaviorCoreProcessor/Editor` | 6,497L combined + 740L support header | Engine/editor mixed concerns | High | State projection contract | ⚙️ Partial — Phase 5a complete |
 
 ### ~~5.1. Priority 1: `ControlServer::processCommand` — Dispatch Table~~ ✅ COMPLETE
 
@@ -336,13 +336,35 @@ static const UsertypeDef kFxUsertypes[] = {
 
 ### 5.5. Priority 5: `BehaviorCoreProcessor` / `BehaviorCoreEditor` Splitting
 
-**Files:** `BehaviorCoreProcessor.cpp` (4,337L), `BehaviorCoreEditor.cpp` (2,603L)
+**Files:** `BehaviorCoreProcessor.cpp` (4,337L → 3,894L), `BehaviorCoreEditor.cpp` (2,603L), new `manifold/core/ExportPluginConfigSupport.h` (740L)
 
 **Current pattern:** Engine and editor with 10 and 8 concern categories respectively. Well-factored internally (avg 21L and 41L per function) but carrying everything: lifecycle, export plugin config, graph management, MIDI, OSC, profiling, serialization, host params, memory snapshots.
 
-**Target pattern:** Extract export plugin config to `ExportPluginConfig.cpp`, graph management to `BehaviorCoreGraphManager.cpp`, memory profiling to `ProfilingUtils.cpp`.
+**Progress (2026-05-02):** **Phase 5a complete** — the export plugin config concern has been extracted into a support layer without changing `BehaviorCoreProcessor` ownership.
 
-**Risk:** High. These are the most-coupled classes in the codebase. Every other system reaches into them. Splitting requires understanding all dependencies. Not recommended until lower-priority targets are cleared.
+**What was extracted to `ExportPluginConfigSupport.h`:**
+- Export config data model: `ExportParamAlias`, `ExportPluginConfig`
+- Manifest parsing + config resolution
+- Alias/path lookup helpers
+- Host parameter setup, binding, sync, change propagation, snapshot replay
+- Export UI default-state computation
+- Basic `/plugin/ui/*` path read/apply logic
+- OSC runtime settings + port-pair selection
+- Export UI endpoint spec table (data-driven replacement for the handwritten registration wall)
+- Export plugin contract serialization helper
+- One-shot memory snapshot helper logic for export-related baselines/deltas
+
+**What remains in `BehaviorCoreProcessor`:**
+- Export state ownership (`hostParams_`, atomics, config instance)
+- Actual server / registry side effects (`oscServer`, `oscQueryServer`, endpoint registry mutation)
+- Trivial public getters / setters
+- Higher-level processor orchestration
+
+**Contract:** `BehaviorCoreProjectionHarness` + `manifold_core_state_contract` stayed byte-identical throughout. `manifold_headless_ipc_core`, `manifold_headless_oscquery_contract`, `manifold_core_sniff`, and the full `ctest -R manifold -E manifold_standalone_direct_profile_sanity --output-on-failure` suite all pass after the extraction.
+
+**Target pattern:** Continue with the same approach for later slices — keep ownership in `BehaviorCoreProcessor` until a seam is proven, then extract orchestration or state holders only when the contract harness says it is safe. Candidate next slices remain graph management, serialization, MIDI, Link, and editor host management.
+
+**Risk:** Still high at the whole-class level, but the export plugin config slice has now been de-risked and completed under contract.
 
 ---
 
@@ -421,6 +443,7 @@ python3 tests/e2e_oscquery_contract_test.py \
 
 | Date | Change |
 |------|--------|
+| 2026-05-02 | Completed Phase 5a of Priority 5: `BehaviorCoreProcessor` export plugin config support extraction. Added `ExportPluginConfigSupport.h`, reduced `BehaviorCoreProcessor.cpp` from 4,337L to 3,894L, replaced handwritten export endpoint wall with extracted spec table, and kept all contract / IPC / OSCQuery / manifold regression tests green. |
 | 2026-05-02 | Initial document. Compiled from codebase profile v2, binding decomposition worksheet v3, avsampler decomposition plan, and manual source reading. |
 | 2026-05-02 | **Phase 1 complete:** `ControlServer::processCommand` dispatch table extraction. 17 handlers extracted, 233L → ~35L orchestration. All 9 tests pass. |
 | 2026-05-02 | **Phase 2 resolved:** `VideoSynthPrimitive.cpp` was dead code (never compiled). Live shader system already loads from `manifold/shaders/*.json`/`*.glsl` at runtime. Deleted both `.cpp` and `.h` (1,141L removed). All targets build clean. |
