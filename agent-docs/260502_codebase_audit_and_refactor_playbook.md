@@ -253,6 +253,22 @@ This catches the case where the refactoring accidentally changes behavior AND th
 - Action: Reverted. Snapshot fixture (`tests/fixtures/parameter_binder_path_snapshot.txt`) and tool (`tools/snapshot_parameter_binder_paths.lua`) remain in place
 - Lesson: The data model must carry explicit path segments rather than deriving them from function names. Returning requires a different approach.
 
+### 3.4. BehaviorCoreProcessor Link Support Extraction
+
+**Target:** `manifold/core/BehaviorCoreProcessor.cpp` (3,794L → 3,795L + `manifold/core/LinkSupport.h` (73L))
+
+**Date:** 2026-05-03
+
+**What was done:** Extracted all 14 Ableton Link delegate methods from `BehaviorCoreProcessor` into a header-only support layer without changing processor ownership. Every Link method was a one-liner delegation to `linkSync` — the safest extraction in the codebase.
+
+**File created:** `manifold/core/LinkSupport.h` containing `isLinkEnabled`, `setLinkEnabled`, `isLinkTempoSyncEnabled`, `setLinkTempoSyncEnabled`, `isLinkStartStopSyncEnabled`, `setLinkStartStopSyncEnabled`, `getLinkNumPeers`, `isLinkPlaying`, `getLinkBeat`, `getLinkPhase`, `requestLinkTempo`, `requestLinkStart`, `requestLinkStop`, `processLinkPendingRequests`.
+
+**Net change:** 12 method bodies replaced with delegation calls to `manifold::link_support::*`. File line count effectively unchanged (+1 for the include). Behavior preserved through existing `manifold_core_state_contract` (exports every Link field) and the full 9-test suite.
+
+**Contract:** Existing `manifold_core_state_contract` covers every Link field (`/link/enabled`, `/link/tempoSync`, `/link/startStopSync`, `/link/peers`, `/link/playing`, `/link/beat`, `/link/phase`). Contract diff is empty before and after extraction. Full `ctest -R manifold -E manifold_standalone_direct_profile_sanity` remains green (9/9).
+
+**Key lesson:** This was the cleanest extraction in the codebase. Every method was a one-liner delegation. The state contract provides complete coverage. Zero risk.
+
 ---
 
 ## 4. What Deeper Patterns Emerged
@@ -289,7 +305,7 @@ The cross-cutting pattern still applies: wherever data (parameter spec tables, u
 | ~~2~~ | ~~`VideoSynthPrimitive::shaderDefinitions`~~ | ~~942L~~ | ~~Data in code → shader files~~ | ~~Low~~ | ~~Shader compile test~~ | 🗑️ **Deleted** (dead code, live system already file-based) |
 | 3 | `DSPHostBindingsCore/Fx/Synth` | ~2,800L total | Per-file god functions → data-driven | Medium | Existing oscquery contract | Pending |
 | 4 | `ImGuiDirectHost.cpp` | 2,553L, 6 concerns | Mixed concerns → extract shader/GPU/video | Medium | Frame capture comparison | Pending |
-| 5 | `BehaviorCoreProcessor/Editor` | 6,397L combined + 1,021L support headers | Engine/editor mixed concerns | High | State projection + MIDI contracts | ⚙️ Partial — Phases 5a + 5b support slices complete |
+| 5 | `BehaviorCoreProcessor/Editor` | 6,398L combined + 1,094L support headers | Engine/editor mixed concerns | High | State projection + MIDI + Link contracts | ⚙️ Partial — Phases 5a + 5b + 5d support slices complete |
 
 ### ~~5.1. Priority 1: `ControlServer::processCommand` — Dispatch Table~~ ✅ COMPLETE
 
@@ -470,7 +486,8 @@ python3 tests/e2e_oscquery_contract_test.py \
 
 | Date | Change |
 |------|--------|
-| 2026-05-03 | Completed Phase 5b support slice of Priority 5: added `BehaviorCoreMidiContractHarness` + `core_midi_golden.json`, extracted MIDI helper logic to `manifold/core/MidiSupport.h`, reduced `BehaviorCoreProcessor.cpp` from 3,894L to 3,794L, expanded the core-state MIDI subcontract, and kept the full non-standalone manifold suite green (9/9). |
+| 2026-05-03 | Completed Phase 5b support slice of Priority 5: added `BehaviorCoreMidiContractHarness` + `core_midi_golden.json`, extracted MIDI helper logic to `manifold/core/MidiSupport.h`, reduced `BehaviorCoreProcessor.cpp` from 3,894L to 3,794L, expanded the core-state MIDI subcontract, and kept the full non-standalone manifold suite green (9/9).
+| 2026-05-03 | Completed Phase 5d support slice of Priority 5: extracted 14 Ableton Link delegate methods from `BehaviorCoreProcessor` into `manifold/core/LinkSupport.h`. Safest extraction in the codebase — every method was a one-liner delegation. State contract provides complete coverage. Full suite remains green (9/9). |
 | 2026-05-02 | Completed Phase 5a of Priority 5: `BehaviorCoreProcessor` export plugin config support extraction. Added `ExportPluginConfigSupport.h`, reduced `BehaviorCoreProcessor.cpp` from 4,337L to 3,894L, replaced handwritten export endpoint wall with extracted spec table, and kept all contract / IPC / OSCQuery / manifold regression tests green. |
 | 2026-05-02 | Initial document. Compiled from codebase profile v2, binding decomposition worksheet v3, avsampler decomposition plan, and manual source reading. |
 | 2026-05-02 | **Phase 1 complete:** `ControlServer::processCommand` dispatch table extraction. 17 handlers extracted, 233L → ~35L orchestration. All 9 tests pass. |

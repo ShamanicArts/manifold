@@ -222,6 +222,7 @@ These tests exist and work but are not wired into CTest. They're the immediate h
 | Video sampler storage | ✅ Unit | `VideoSamplerHarness` |
 | Video retrospective capture | ✅ Unit | `VideoRetrospectiveCaptureHarness` |
 | Processor MIDI helper layer | ✅ Contract | `BehaviorCoreMidiContractHarness` |
+| Processor Link state | ✅ Full contract | `manifold_core_state_contract` (all 7 Link fields) |
 | Direct renderer perf | ✅ Threshold | `ui_profile_test.py` |
 
 ### 4.2. What's Partially Covered
@@ -448,5 +449,6 @@ ctest -L manifold
 
 | Date | Change |
 |------|--------|
-| 2026-05-03 | Added `manifold_core_midi_contract` and documented the new deterministic MIDI harness + golden file. Updated coverage map: processor MIDI helper layer is now contract-covered; real hardware-device routing remains a separate gap. |
+| 2026-05-03 | Added `manifold_core_midi_contract` and documented the new deterministic MIDI harness + golden file. Updated coverage map: processor MIDI helper layer is now contract-covered; real hardware-device routing remains a separate gap.
+| 2026-05-03 | Added `manifold/core/LinkSupport.h` – 14 Link delegate methods extracted from `BehaviorCoreProcessor`. Link state coverage documented: all 7 fields covered by existing `manifold_core_state_contract`. No new harness needed. |
 | 2026-05-02 | Initial document. Compiled from CTest registration, test directory audit, harness module analysis, and existing testing workplans. |
