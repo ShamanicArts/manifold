@@ -230,6 +230,7 @@
     <ClCompile Include="TestFilterNode.cpp" />
     <ClCompile Include="TestGainNode.cpp" />
     <ClCompile Include="TestingBase.cpp" />
+    <ClCompile Include="TestMixerNode.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\dsp\core\nodes\ADSREnvelopeNode.h" />
@@ -253,6 +254,7 @@
     <ClInclude Include="TestFilterNode.h" />
     <ClInclude Include="TestGainNode.h" />
     <ClInclude Include="TestingBase.h" />
+    <ClInclude Include="TestMixerNode.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

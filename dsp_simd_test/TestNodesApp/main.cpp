@@ -12,6 +12,7 @@
 #include "TestBitcrusherNode.h"
 #include "TestFilterNode.h"
 #include "TestGainNode.h"
+#include "TestMixerNode.h"
 
 // default implementation
 template <typename T>
@@ -305,10 +306,6 @@ static bool TestNode()
                         baseOutputPtrs[c] = &origBaseOutPtrs[c][offset];
                     }
 
-                    
-                    if(offset == 6656)
-                        test.wavedata.size();
-
                     outputViews[0].channelData = outputPtrs.data();
                     baseOutputViews[0].channelData = baseOutputPtrs.data();
 
@@ -400,9 +397,14 @@ int main(int argc, const char ** argv)
         printf(" - FAILED!");
         return -1;
     }
-    
-
+   
     if(!TestNode<TestGainNode, dsp_primitives::GainNode>())
+    {
+        printf(" - FAILED!");
+        return -1;
+    }
+
+     if(!TestNode<TestMixerNode, dsp_primitives::MixerNode>())
     {
         printf(" - FAILED!");
         return -1;

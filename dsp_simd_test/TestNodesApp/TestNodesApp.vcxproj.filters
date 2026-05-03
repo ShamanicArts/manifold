@@ -87,6 +87,9 @@
     <ClCompile Include="TestGainNode.cpp">
       <Filter>Source Files\Testing</Filter>
     </ClCompile>
+    <ClCompile Include="TestMixerNode.cpp">
+      <Filter>Source Files\Testing</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\dsp\core\nodes\ADSREnvelopeNode_Highway.h">
@@ -150,6 +153,9 @@
       <Filter>Header Files\Testing</Filter>
     </ClInclude>
     <ClInclude Include="TestGainNode.h">
+      <Filter>Header Files\Testing</Filter>
+    </ClInclude>
+    <ClInclude Include="TestMixerNode.h">
       <Filter>Header Files\Testing</Filter>
     </ClInclude>
   </ItemGroup>
