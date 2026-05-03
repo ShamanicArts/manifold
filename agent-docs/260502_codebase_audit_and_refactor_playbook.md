@@ -304,7 +304,7 @@ The cross-cutting pattern still applies: wherever data (parameter spec tables, u
 | ~~1~~ | ~~`ControlServer::processCommand`~~ | ~~915L~~ | ~~Switch → dispatch table~~ | ~~Low~~ | ~~IPC command coverage~~ | ✅ **Complete** (233L real, 17 handlers extracted) |
 | ~~2~~ | ~~`VideoSynthPrimitive::shaderDefinitions`~~ | ~~942L~~ | ~~Data in code → shader files~~ | ~~Low~~ | ~~Shader compile test~~ | 🗑️ **Deleted** (dead code, live system already file-based) |
 | 3 | `DSPHostBindingsCore/Fx/Synth` | ~2,800L total | Per-file god functions → data-driven | Medium | Existing oscquery contract | Pending |
-| 4 | `ImGuiDirectHost.cpp` | 1,565L + 1,054L support headers | Mixed concerns → staged support extraction | Medium | Full direct-host golden contract + manifold suite | ⚙️ Partial — render, embedded-panel, and stats slices complete |
+| 4 | `ImGuiDirectHost.cpp` | 429L + 2,205L support headers | Mixed concerns → staged support extraction | Medium | Full direct-host golden contract + manifold suite | ✅ Complete — renderer decomposed under contract |
 | 5 | `BehaviorCoreProcessor/Editor` | 6,398L combined + 1,094L support headers | Engine/editor mixed concerns | High | State projection + MIDI + Link contracts | ⚙️ Partial — Phases 5a + 5b + 5d support slices complete |
 
 ### ~~5.1. Priority 1: `ControlServer::processCommand` — Dispatch Table~~ ✅ COMPLETE
@@ -365,26 +365,38 @@ static const UsertypeDef kFxUsertypes[] = {
 
 **Note:** Deferred from the binding work because the gain is marginal — the files are already at per-domain granularity. Worth doing if build times become a concern (each file instantiates sol2 templates for all its usertypes).
 
-### 5.4. Priority 4: `ImGuiDirectHost.cpp` — Mixed Concern Extraction
+### 5.4. Priority 4: `ImGuiDirectHost.cpp` — Mixed Concern Extraction ✅ COMPLETE
 
 **Location:** `manifold/ui/imgui/ImGuiDirectHost.cpp`
-**Current size:** 1,565 lines (from 2,553L) + new support headers:
+**Final size:** 429 lines (from 2,553L) + support headers:
 - `manifold/ui/imgui/DirectHostRenderSupport.h` (795L)
 - `manifold/ui/imgui/DirectHostEmbeddedPanelSupport.h` (168L)
 - `manifold/ui/imgui/DirectHostStatsSupport.h` (91L)
+- `manifold/ui/imgui/DirectHostSurfaceSupport.h` (58L)
+- `manifold/ui/imgui/DirectHostRuntimeSupport.h` (362L)
+- `manifold/ui/imgui/DirectHostInputSupport.h` (297L)
+- `manifold/ui/imgui/DirectHostGlLifecycleSupport.h` (434L)
 
-**Progress (2026-05-03):** A full golden-state renderer contract harness now guards this file: `manifold_direct_host_contract` verifies `tests/fixtures/direct_host_contract_golden.json`, which captures runtime tree state, screenshots/readbacks, hit-testing, callback logs, geometry queries, surface-provider behavior, and private host state snapshots. Under that guard, three mechanical slices have been extracted:
+**Progress (2026-05-03):** A full golden-state renderer contract harness guards this file: `manifold_direct_host_contract` verifies `tests/fixtures/direct_host_contract_golden.json`, which captures runtime tree state, screenshots/readbacks, hit-testing, callback logs, geometry queries, surface-provider behavior, and private host state snapshots.
+
+**What was extracted under contract:**
 1. **Render support slab** → `DirectHostRenderSupport.h` (scene transforms, preview geometry, compiled display-list rendering, render snapshot construction, live-tree rendering helpers)
 2. **Embedded panel slice** → `DirectHostEmbeddedPanelSupport.h` (`renderEmbeddedRuntimePanel` orchestration)
 3. **Stats helpers** → `DirectHostStatsSupport.h` (`estimateRenderSnapshotBytes`, `estimateImGuiInternalStats`)
+4. **GPU bookkeeping slice** → `DirectHostSurfaceSupport.h` (`recalculateOwnedGpuBytes`)
+5. **Runtime/support slice** → `DirectHostRuntimeSupport.h` (`setRootNode`, `buildRenderSnapshot`, `flushPendingDrag`, `renderNow`, `attachContextIfNeeded`, hover/focus helpers, live callback dispatch, scene conversion, queued input events)
+6. **Mouse/key event slice** → `DirectHostInputSupport.h` (all JUCE mouse/keyboard event handlers)
+7. **GL/backend/lifecycle slice** → `DirectHostGlLifecycleSupport.h` (EGL context management, ImGui backend bootstrap/shutdown, frame rendering, screenshot/readback, component lifecycle hooks)
 
-**Current pattern:** `ImGuiDirectHost` still owns OpenGL/EGL lifecycle, screenshot/readback flow, surface-provider dispatch, input event handling, and backend bootstrap. The large pure-render and embedded-panel orchestration blocks are now isolated behind support headers.
+**What remains in `ImGuiDirectHost.cpp`:**
+- The nested `EglOffscreenContext` definition
+- Constructor + destructor
+- Stats/getter glue
+- Surface API wrappers + embedded-panel wrapper
 
-**Target pattern:** Continue with the same proven support-layer pattern. The remaining sane mechanical slices are surface/GPU bookkeeping, screenshot/readback helpers, and possibly input/event-path helpers. `ImGuiDirectHost` should stay the orchestrator for context ownership and frame submission.
+**Contract:** `manifold_direct_host_contract` stayed byte-identical through the extraction, and the full non-standalone suite (`ctest -R manifold -E manifold_standalone_direct_profile_sanity`) remains green (11/11).
 
-**Contract:** `manifold_direct_host_contract` stays byte-identical after every extraction slice, and the full non-standalone suite (`ctest -R manifold -E manifold_standalone_direct_profile_sanity`) remains green.
-
-**Risk:** Medium. The new harness de-risks renderer surgery substantially, but GL context ownership and backend lifecycle are still the sharp edges.
+**Risk / stopping point:** The remaining 429-line cpp is now mostly constructor/bootstrap glue plus the nested EGL helper type. Further splitting would be design churn, not mechanical decomposition. This is the safe stopping point.
 
 ### 5.5. Priority 5: `BehaviorCoreProcessor` / `BehaviorCoreEditor` Splitting
 
@@ -500,7 +512,7 @@ python3 tests/e2e_oscquery_contract_test.py \
 
 | Date | Change |
 |------|--------|
-| 2026-05-03 | Completed staged Priority 4 extraction work for `ImGuiDirectHost.cpp`: added `DirectHostRenderSupport.h`, `DirectHostEmbeddedPanelSupport.h`, and `DirectHostStatsSupport.h`; reduced `ImGuiDirectHost.cpp` from 2,553L to 1,565L under the full `manifold_direct_host_contract` golden harness; kept the full non-standalone manifold suite green (11/11). |
+| 2026-05-03 | Completed Priority 4 decomposition of `ImGuiDirectHost.cpp`: added `DirectHostRenderSupport.h`, `DirectHostEmbeddedPanelSupport.h`, `DirectHostStatsSupport.h`, `DirectHostSurfaceSupport.h`, `DirectHostRuntimeSupport.h`, `DirectHostInputSupport.h`, and `DirectHostGlLifecycleSupport.h`; reduced `ImGuiDirectHost.cpp` from 2,553L to 429L under the full `manifold_direct_host_contract` golden harness; kept the full non-standalone manifold suite green (11/11). |
 | 2026-05-03 | Completed Phase 5b support slice of Priority 5: added `BehaviorCoreMidiContractHarness` + `core_midi_golden.json`, extracted MIDI helper logic to `manifold/core/MidiSupport.h`, reduced `BehaviorCoreProcessor.cpp` from 3,894L to 3,794L, expanded the core-state MIDI subcontract, and kept the full non-standalone manifold suite green (9/9).
 | 2026-05-03 | Completed Phase 5d support slice of Priority 5: extracted 14 Ableton Link delegate methods from `BehaviorCoreProcessor` into `manifold/core/LinkSupport.h`. Safest extraction in the codebase — every method was a one-liner delegation. State contract provides complete coverage. Full suite remains green (9/9). |
 | 2026-05-02 | Completed Phase 5a of Priority 5: `BehaviorCoreProcessor` export plugin config support extraction. Added `ExportPluginConfigSupport.h`, reduced `BehaviorCoreProcessor.cpp` from 4,337L to 3,894L, replaced handwritten export endpoint wall with extracted spec table, and kept all contract / IPC / OSCQuery / manifold regression tests green. |
