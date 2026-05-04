@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-03 (v6)
-**Status:** IN PROGRESS — DSP nodes, graph runtime, MIDI behavior, ParamRegistry contract, DSP host lifecycle, LuaEngine load/eval/hot-reload, Lua bindings behavior smoke, and ShaderEffectRegistry contract all implemented; remaining deep gaps are teardown/ASan lifecycle semantics, exhaustive Lua binding behavior, Control/IPC unit coverage, ImGui geometry, and GL-backed shader surface tests
+**Date:** 2026-05-03 (v7)
+**Status:** IN PROGRESS — DSP nodes, graph runtime, MIDI behavior, ParamRegistry contract, DSP host lifecycle, LuaEngine load/eval/hot-reload, Lua bindings behavior smoke, ShaderEffectRegistry contract, and Control/IPC parser-resolver-registry-settings coverage all implemented; remaining deep gaps are teardown/ASan lifecycle semantics, exhaustive Lua binding behavior, ControlServer/OSCQuery/OSCServer behavior, ImGui geometry, and GL-backed shader surface tests
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -39,13 +39,13 @@ This worksheet covers every C++ implementation file in the project, organized by
 |--------|-------|
 | Total C++ `.cpp` files (excl. tests, external) | 137 |
 | Test harness `.cpp` files (headless + tests) | 12 |
-| Registered CTest tests | 19 |
-| Files with direct test coverage | ~75 (56 DSP + 2 graph + 2 MIDI + 1 param registry + 1 shader registry + ~13 existing) |
-| Files with zero direct tests | ~62 |
+| Registered CTest tests | 24 |
+| Files with direct test coverage | ~78 (56 DSP + 2 graph + 2 MIDI + 1 param registry + 1 shader registry + 3 control + ~13 existing) |
+| Files with zero direct tests | ~59 |
 | DSP nodes with tests | 56 |
 | Scripting/binding files with zero behavior tests | ~33 |
 | ImGui host files with zero tests | 12 |
-| Control/IPC files with zero unit tests | 6 |
+| Control/IPC files with zero unit tests | 3 |
 | Shader pipeline files with zero tests | 4 |
 
 ---
@@ -432,7 +432,15 @@ GraphRuntimeContractHarness
 
 ---
 
-## 5. Tier 1 — Control/IPC Layer (Medium Priority)
+## 5. Tier 1 — Control/IPC Layer ✅ PARTIALLY COVERED
+
+**Implemented harnesses / tests:**
+- `manifold_command_parser` — `CanonicalCommandHarness.cpp`
+- `manifold_command_queue` — `ControlCommandQueueHarness.cpp`
+- `manifold_endpoint_resolver` — `EndpointResolverHarness.cpp`
+- `manifold_osc_endpoint_registry_contract` — `OSCEndpointRegistryContractHarness.cpp`
+- `manifold_osc_settings_persistence_contract` — `OSCSettingsPersistenceContractHarness.cpp`
+- existing `manifold_headless_oscquery_contract` retained for end-to-end OSCQuery path-tree coverage
 
 ### 5.1. Coverage Status
 
@@ -441,16 +449,16 @@ GraphRuntimeContractHarness
 | `manifold/primitives/control/ControlServer.cpp` | **0** (indirect via e2e) | **0% direct** |
 | `manifold/primitives/control/OSCQuery.cpp` | **0** (indirect via e2e) | **0% direct** |
 | `manifold/primitives/control/OSCServer.cpp` | **0** (indirect via e2e) | **0% direct** |
-| `manifold/primitives/control/OSCEndpointRegistry.cpp` | **0** | **0%** |
-| `manifold/primitives/control/CommandParser.h` | **0** (CanonicalCommandHarness exists but orphaned) | **0% registered** |
-| `manifold/primitives/control/EndpointResolver.cpp` | **0** (EndpointResolverHarness exists but orphaned) | **0% registered** |
-| `manifold/primitives/control/OSCSettingsPersistence.cpp` | **0** | **0%** |
+| `manifold/primitives/control/OSCEndpointRegistry.cpp` | **1 / 1** | **100% contract** |
+| `manifold/primitives/control/CommandParser.h` | **registered + passing** | **canonical parser covered** |
+| `manifold/primitives/control/EndpointResolver.cpp` | **1 / 1** | **100% harness** |
+| `manifold/primitives/control/OSCSettingsPersistence.cpp` | **1 / 1** | **100% contract** |
 | `manifold/primitives/control/OSCPacketBuilder.h` | — | Header only |
 
 ### 5.2. Researched Findings
 
-**Finding 1 — The e2e IPC tests exercise the full stack, not individual components:**
-The existing `e2e_ipc_test.py` launches `ManifoldHeadless`, sends commands, and checks responses. This tests the integrated system (socket → CommandParser → ControlServer → atomic state). A failure in any component produces the same symptom (wrong response), making debugging difficult. The orphaned `CanonicalCommandHarness`, `ControlCommandQueueHarness`, and `EndpointResolverHarness` exist precisely to test individual components — they just need CTest registration.
+**Finding 1 — Parser / queue / resolver / registry / settings are now covered, leaving the real server surfaces exposed:**
+The existing `e2e_ipc_test.py` and `e2e_oscquery_contract_test.py` still exercise the full stack (socket → CommandParser → ControlServer → atomic state / OSCQuery JSON tree). In addition, unit / contract coverage now exists for `CommandParser`, `ControlCommandQueue`, `EndpointResolver`, `OSCEndpointRegistry`, and `OSCSettingsPersistence`. That means the remaining meaningful gap in this subsystem is no longer parser plumbing — it is the behavior of `ControlServer.cpp`, `OSCQuery.cpp`, and `OSCServer.cpp` themselves.
 
 **Finding 2 — ControlServer.cpp (55 KB) has zero direct tests:**
 This file handles: Unix socket server lifecycle, client connection management, command parsing and dispatch, state broadcast to IPC watchers, and health monitoring. It is the central nervous system of IPC. The e2e tests exercise it at a high level but don't test edge cases: concurrent connections, max client limits, malformed commands, partial message reads, socket recovery after crash.
@@ -458,21 +466,22 @@ This file handles: Unix socket server lifecycle, client connection management, c
 **Finding 3 — OSCQuery.cpp (51 KB) has zero direct tests:**
 This is the OSCQuery HTTP server that powers external introspection (TouchDesigner, etc.). It generates the `/info` JSON tree, manages endpoint metadata (type, range, description), and handles HTTP request routing. Metadata correctness is critical for external tool integration. Untested.
 
-**Finding 4 — CommandParser.h tests exist but are orphaned:**
-`CanonicalCommandHarness.cpp` tests 20+ command format permutations. It compiles, runs, and has a clear pass/fail protocol (returns non-zero on failure). It just needs a CTest entry. This is the definition of low-hanging fruit.
+**Finding 4 — Settings persistence needed sandboxing to be tested honestly:**
+`OSCSettingsPersistence` uses JUCE special locations and would normally touch the real user config path. `OSCSettingsPersistenceContractHarness` self-reexecs with sandboxed `HOME` / `XDG_CONFIG_HOME` before JUCE resolves paths, so the contract verifies save/load/reset semantics without touching the user's actual config. This was necessary to make the test legitimate instead of silently mutating real settings.
 
 ### 5.3. Solution Space
 
-**Approach — Phase 0: Register orphaned harnesses (hours):**
-- `CanonicalCommandHarness` → `manifold_command_parser` (test exists, just needs CTest entry)
-- `ControlCommandQueueHarness` → `manifold_command_queue` (test exists, just needs CTest entry)
-- `EndpointResolverHarness` → `manifold_endpoint_resolver` (test exists, just needs CTest entry)
+**Completed in this pass:**
+- `CanonicalCommandHarness` registered as `manifold_command_parser`
+- `ControlCommandQueueHarness` registered as `manifold_command_queue`
+- `EndpointResolverHarness` registered as `manifold_endpoint_resolver`
+- `OSCEndpointRegistryContractHarness` added for backend/custom endpoint inventory and rebuild semantics
+- `OSCSettingsPersistenceContractHarness` added for sandboxed save/load/reset behavior
 
-**Approach — Phase 1: Control server contract harness (days):**
-- `ControlServerContractHarness` that creates a ControlServer with mock graph runtime, connects a Unix socket client, sends each command type, and golden-files the state response
-
-**Approach — Phase 2: OSCQuery metadata contract:**
-- Extend `e2e_oscquery_contract_test.py` to also verify endpoint descriptions, type metadata, and range constraints — not just the path tree structure
+**Remaining work:**
+- `ControlServerContractHarness` — create a real `ControlServer`, connect a socket client, send command/query/watch flows, verify JSON/state/event responses
+- `OSCQuery metadata contract` — extend beyond path tree shape to verify type, range, description, and VALUE payload semantics
+- `OSCServer contract` — direct packet handling, target management, and outbound routing semantics
 
 ### 5.4. Risk Register
 
@@ -485,11 +494,14 @@ This is the OSCQuery HTTP server that powers external introspection (TouchDesign
 
 ### 5.5. Success Criteria
 
-- [ ] `CanonicalCommandHarness` registered in CTest and passing
-- [ ] `ControlCommandQueueHarness` registered in CTest and passing
-- [ ] `EndpointResolverHarness` registered in CTest and passing
+- [x] `CanonicalCommandHarness` registered in CTest and passing
+- [x] `ControlCommandQueueHarness` registered in CTest and passing
+- [x] `EndpointResolverHarness` registered in CTest and passing
+- [x] `OSCEndpointRegistry` contract registered and passing
+- [x] `OSCSettingsPersistence` contract registered and passing (sandboxed, no real user config touch)
 - [ ] ControlServer contract: each command type exercises without crash
 - [ ] OSCQuery metadata contract: type, range, description verified for all endpoints
+- [ ] OSCServer direct routing / target-management contract
 
 ---
 
@@ -875,7 +887,7 @@ for (each node type) {
 4. ✅ **Scripting engine behavior** — substantial coverage now in place (ParamRegistry, DSPHost lifecycle, LuaEngine, Lua bindings behavior smoke)
 5. ✅ **Shader registry contract** — COMPLETE (metadata, sanitize, validate, runtime reload, load failures)
 6. **ImGui geometry extraction** (12 .cpp) — proven pattern
-7. **Control/IPC unit coverage** (6 .cpp) — build on orphaned infrastructure
+7. **Control/IPC server behavior** (3 .cpp) — ControlServer, OSCQuery metadata, OSCServer routing still open
 8. **Core support headers** (13 support headers)
 9. **Primitives layer** (~10 .cpp/h)
 10. ~~Orphaned harnesses~~ — deferred per user instruction
@@ -891,7 +903,8 @@ for (each node type) {
 | ✅ **P2** | LuaEngine.cpp extraction (102KB) | MINIMUM DONE — load/eval/hot-reload contract; rendering still largely untested |
 | ✅ **P2** | Shader registry | DONE — builtin inventory, metadata, sanitize, validation, runtime reload, load failures |
 | **P2** | ImGui geometry extraction | NOT STARTED — 12 .cpp |
-| **P2** | Control/IPC unit | NOT STARTED — 6 .cpp |
+| ✅ **P2** | Control/IPC parser/resolver/registry/settings | DONE — 5 tests, 3 direct files + parser/queue/resolver harnesses |
+| **P2** | Control/IPC server behavior | NOT STARTED — ControlServer.cpp, OSCQuery.cpp, OSCServer.cpp |
 | **P3** | Core support headers | NOT STARTED — 13 headers |
 | **P3** | Primitives layer | NOT STARTED — ~10 files |
 | — | Orphaned harnesses (10 tests) | DEFERRED (user discretion)
@@ -920,7 +933,8 @@ for (each node type) {
 - [x] Scripting engine behavior: meaningful coverage now in place for DSP host lifecycle, binding behavior smoke, LuaEngine load/eval/hot-reload, and ParamRegistry core behavior
 - [x] MIDI behavior extended: voice allocation, sustain, channel filtering, ring buffer, MIDI clock — DONE
 - [x] ParamRegistry contract: clamp, sanitize, category, register, bind dispatch — DONE
-- [ ] Control/IPC unit coverage: command parser, endpoint resolver, command queue registered and passing
+- [x] Control/IPC parser/resolver/queue/registry/settings coverage: registered and passing — DONE
+- [ ] Control/IPC server behavior: ControlServer/OSCQuery/OSCServer direct contracts
 - [x] Shader registry contract: builtin inventory, metadata, sanitize, validation, runtime reload, and load failures — DONE
 - [ ] ImGui geometry: at least RuntimeNodeRenderer + WidgetPrimitives tested via extraction
 - [ ] Core support headers: state serialization round-trip, link state contract
@@ -937,5 +951,6 @@ for (each node type) {
 | 2026-05-03 (v2) | **DSP node contract** (P0): 56 nodes, 7 SIMD variants, 4 bugs fixed. **Graph runtime contract** (P1): 8 test cases, topology/cycle/state continuity. **MIDI behavior** (P1): 5 domains (voice steal, sustain, filtering, ring buffer, clock), 1 bug fix in MidiManager::handleNoteOn. Updated all status markers and success criteria. |
 | 2026-05-03 (v3) | **ParamRegistry contract** (Scripting sub-target): 5 domains (clamp edge cases, path sanitization, category ownership, full param register with 5 spec types, binding callback dispatch with type isolation). Added `handleParamRegister`/`handleParamBind` declarations to DSPHostInternal.h. Registered as `manifold_param_registry_contract`. |
 | 2026-05-03 (v6) | **Shader registry contract** (Shader pipeline sub-target): added `ShaderRegistryContractHarness.cpp`, registered as `manifold_shader_registry_contract`, golden file `tests/fixtures/shader_registry_contract_golden.json`. Covers builtin effect inventory, metadata integrity, shader source generation, param sanitization, pipeline validation, runtime effect reload, and manifest load failures. Also corrected worksheet wording: DSP-host param round-trip is not a missing test on an existing API because no real production serialize/load seam exists there yet. |
+| 2026-05-03 (v7) | **Control/IPC coverage pass**: registered `manifold_command_parser`, `manifold_command_queue`, `manifold_endpoint_resolver`; added `OSCEndpointRegistryContractHarness` and `OSCSettingsPersistenceContractHarness` with golden files. Control layer is now partially covered at the parser / resolver / registry / settings seams; remaining gap narrowed to `ControlServer.cpp`, `OSCQuery.cpp`, and `OSCServer.cpp` behavior. |
 | 2026-05-03 (v4) | **DSPHost lifecycle contract** — slot load/reload/unload/string, param endpoints via processor public slot API. Root cause of 2-branch crash: `PassthroughNode.new()` called without required `numChannels` arg → Lua error → failed LoadSession → cleanup crash. Fix: `new(2)` with channel count. Registered as `manifold_dsp_host_lifecycle_contract`. Updated status markers. |
 | 2026-05-03 (v5) | Expanded scripting coverage substantially: `DSPHostLifecycleContractHarness` now covers real bind side effects, `onParamChange`, deferred mutation, process callback, semantic reload, and isolated failure probes. Added `LuaEngineContractHarness` for load/eval/hot-reload. Registered `LuaEngineMockHarness` smoke mode as `manifold_lua_bindings_behavior_smoke` so binding behavior is no longer registry-only. Updated scripting coverage and success criteria honestly. |
