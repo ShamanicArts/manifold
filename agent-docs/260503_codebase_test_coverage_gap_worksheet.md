@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-03 (v3)
-**Status:** IN PROGRESS — Tier 0 complete (DSP nodes, graph runtime), MIDI behavior extended, ParamRegistry contract complete
+**Date:** 2026-05-03 (v4)
+**Status:** IN PROGRESS — DSP nodes, graph runtime, MIDI behavior, ParamRegistry, DSP host lifecycle contract all complete
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -867,7 +867,9 @@ for (each node type) {
 | ✅ **P1** | Graph runtime | DONE — 8 test cases, topology/cycle/state continuity |
 | ✅ **P1** | MIDI behavior | DONE — 5 domains, 2 files, 1 bug fixed |
 | ✅ **P2** | ParamRegistry (scripting sub-target) | DONE — 5 domains, clamp/path/category/register/bind dispatch |
-| **P1** | Scripting engine behavior (remaining) | NOT STARTED — DSP host lifecycle, LuaEngine.cpp, Lua bindings behavior |
+| ✅ **P1** | DSPHost lifecycle (slot API) | DONE — load/reload/unload/string, param endpoints via processor |
+| **P1** | Lua bindings behavior (21 files) | NOT STARTED |
+| **P2** | LuaEngine.cpp extraction (102KB) | NOT STARTED — hot-reload/rendering |
 | **P2** | Shader registry | NOT STARTED — 1 .cpp, no GL needed |
 | **P2** | ImGui geometry extraction | NOT STARTED — 12 .cpp |
 | **P2** | Control/IPC unit | NOT STARTED — 6 .cpp |
@@ -915,3 +917,4 @@ for (each node type) {
 | 2026-05-03 | Initial document. Complete coverage map across all 10 subsystems. |
 | 2026-05-03 (v2) | **DSP node contract** (P0): 56 nodes, 7 SIMD variants, 4 bugs fixed. **Graph runtime contract** (P1): 8 test cases, topology/cycle/state continuity. **MIDI behavior** (P1): 5 domains (voice steal, sustain, filtering, ring buffer, clock), 1 bug fix in MidiManager::handleNoteOn. Updated all status markers and success criteria. |
 | 2026-05-03 (v3) | **ParamRegistry contract** (Scripting sub-target): 5 domains (clamp edge cases, path sanitization, category ownership, full param register with 5 spec types, binding callback dispatch with type isolation). Added `handleParamRegister`/`handleParamBind` declarations to DSPHostInternal.h. Registered as `manifold_param_registry_contract`. |
+| 2026-05-03 (v4) | **DSPHost lifecycle contract** — slot load/reload/unload/string, param endpoints via processor public slot API. Root cause of 2-branch crash: `PassthroughNode.new()` called without required `numChannels` arg → Lua error → failed LoadSession → cleanup crash. Fix: `new(2)` with channel count. Registered as `manifold_dsp_host_lifecycle_contract`. Updated status markers. |
