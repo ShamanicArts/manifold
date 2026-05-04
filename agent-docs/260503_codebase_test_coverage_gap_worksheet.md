@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-03 (v2)
-**Status:** IN PROGRESS — Tier 0 complete (DSP nodes, graph runtime), MIDI behavior extended with real bug fix
+**Date:** 2026-05-03 (v3)
+**Status:** IN PROGRESS — Tier 0 complete (DSP nodes, graph runtime), MIDI behavior extended, ParamRegistry contract complete
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -39,9 +39,9 @@ This worksheet covers every C++ implementation file in the project, organized by
 |--------|-------|
 | Total C++ `.cpp` files (excl. tests, external) | 137 |
 | Test harness `.cpp` files (headless + tests) | 12 |
-| Registered CTest tests | 14 |
-| Files with direct test coverage | ~73 (56 DSP + 2 graph + 2 MIDI + ~13 existing) |
-| Files with zero direct tests | ~64 |
+| Registered CTest tests | 15 |
+| Files with direct test coverage | ~74 (56 DSP + 2 graph + 2 MIDI + 1 param registry + ~13 existing) |
+| Files with zero direct tests | ~63 |
 | DSP nodes with tests | 56 |
 | Scripting/binding files with zero behavior tests | 40 |
 | ImGui host files with zero tests | 12 |
@@ -866,7 +866,8 @@ for (each node type) {
 | ✅ **P0** | DSP node contract | DONE — 56 nodes, 7 Highway variants, 4 bugs fixed |
 | ✅ **P1** | Graph runtime | DONE — 8 test cases, topology/cycle/state continuity |
 | ✅ **P1** | MIDI behavior | DONE — 5 domains, 2 files, 1 bug fixed |
-| **P1** | Scripting engine behavior | NOT STARTED — 40 .cpp (LuaEngine 102KB, DSPHostParamRegistry 45KB) |
+| ✅ **P2** | ParamRegistry (scripting sub-target) | DONE — 5 domains, clamp/path/category/register/bind dispatch |
+| **P1** | Scripting engine behavior (remaining) | NOT STARTED — DSP host lifecycle, LuaEngine.cpp, Lua bindings behavior |
 | **P2** | Shader registry | NOT STARTED — 1 .cpp, no GL needed |
 | **P2** | ImGui geometry extraction | NOT STARTED — 12 .cpp |
 | **P2** | Control/IPC unit | NOT STARTED — 6 .cpp |
@@ -897,6 +898,7 @@ for (each node type) {
 - [x] Graph runtime contract: topology, cycle detection, state continuity covered — DONE
 - [ ] Scripting engine behavior: 40 files covered at minimum (DSP host lifecycle, binding behavior, param registry)
 - [x] MIDI behavior extended: voice allocation, sustain, channel filtering, ring buffer, MIDI clock — DONE
+- [x] ParamRegistry contract: clamp, sanitize, category, register, bind dispatch — DONE
 - [ ] Control/IPC unit coverage: command parser, endpoint resolver, command queue registered and passing
 - [ ] Shader registry contract: 17+ effects verified for correct metadata
 - [ ] ImGui geometry: at least RuntimeNodeRenderer + WidgetPrimitives tested via extraction
@@ -912,3 +914,4 @@ for (each node type) {
 |------|--------|
 | 2026-05-03 | Initial document. Complete coverage map across all 10 subsystems. |
 | 2026-05-03 (v2) | **DSP node contract** (P0): 56 nodes, 7 SIMD variants, 4 bugs fixed. **Graph runtime contract** (P1): 8 test cases, topology/cycle/state continuity. **MIDI behavior** (P1): 5 domains (voice steal, sustain, filtering, ring buffer, clock), 1 bug fix in MidiManager::handleNoteOn. Updated all status markers and success criteria. |
+| 2026-05-03 (v3) | **ParamRegistry contract** (Scripting sub-target): 5 domains (clamp edge cases, path sanitization, category ownership, full param register with 5 spec types, binding callback dispatch with type isolation). Added `handleParamRegister`/`handleParamBind` declarations to DSPHostInternal.h. Registered as `manifold_param_registry_contract`. |
