@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-04 (v15)
-**Status:** IN PROGRESS — Core support headers for non-editor subsystems are now fully covered (Link, GraphRuntime, StateSerialization, ControlCommand, Midi, BehaviorQuery, BehaviorParam, BehaviorHousekeeping, DspSlot). Remaining deep gaps are teardown/ASan lifecycle semantics, exhaustive Lua binding behavior, editor export support headers (EditorPerf, EditorRecording, EditorRenderer, ExportPluginConfig, ExportPluginPerf) — these need a processor editor context, deeper editor lifecycle seams, and GL-backed shader surface tests.
+**Date:** 2026-05-04 (v16)
+**Status:** IN PROGRESS — All non-editor core support headers covered (9/9), all 8 tested Lua binding families now fully contracted. Remaining: MIDI/Link/OpenGL/RuntimeNode Lua bindings requiring richer mock, editor export support headers (5) requiring processor editor context, BehaviorCoreEditor.cpp (121 KB, 0 tests) requiring JUCE GUI message thread, and GL-backed shader surface pipeline requiring headless GL context. Production teardown crash fixed: RuntimeNode Lua-ref cleanup centralized in LuaEngine::clearAttachedUiLuaState.
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -43,7 +43,7 @@ This worksheet covers every C++ implementation file in the project, organized by
 | Files with direct test coverage | ~115 (56 DSP + 2 graph + 2 MIDI + 1 param registry + 1 shader registry + 6 control + 9 core support + 13 imgui-covered files + 5 DSP primitives + 5 new support + ~13 existing) |
 | Files with zero direct tests | ~22 |
 | DSP nodes with tests | 56 |
-| Scripting/binding files with zero behavior tests | ~33 |
+| Scripting/binding files with zero behavior tests | ~30 |
 | ImGui host files with zero tests | 0 |
 | Control/IPC files with zero unit tests | 0 |
 | Shader pipeline files with zero tests | 4 |
@@ -920,13 +920,13 @@ for (each node type) {
 | ✅ **P1** | MIDI behavior | DONE — 5 domains, 2 files, 1 bug fixed |
 | ✅ **P2** | ParamRegistry (scripting sub-target) | DONE — 5 domains, clamp/path/category/register/bind dispatch |
 | ✅ **P1** | DSPHost lifecycle (slot API) | DONE — load/reload/unload/string, real bind side effects, deferred mutation, process callback, failure probes |
-| ✅ **P1** | Lua bindings behavior (21 files) | PARTIAL DONE — registry contract + behavior smoke across multiple binding families |
+| ✅ **P1** | Lua bindings behavior (21 files) | DONE — 8 binding families under deterministic contract (Command, DSP, Graph, OSC, UI/Canvas, Event, Utility, Waveform). Golden verification with clearAttachedUiLuaState teardown. |
 | ✅ **P2** | LuaEngine.cpp extraction (102KB) | MINIMUM DONE — load/eval/hot-reload contract; rendering still largely untested |
 | ✅ **P2** | Shader registry | DONE — builtin inventory, metadata, sanitize, validation, runtime reload, load failures |
 | ✅ **P2** | ImGui geometry extraction | DONE — 13 ImGui-covered files, 14 ImGui tests, including upstream shaping seams, globals contract, and OpenGL backend smoke |
 | ✅ **P2** | Control/IPC parser/resolver/registry/settings | DONE — 5 tests, 3 direct files + parser/queue/resolver harnesses |
 | ✅ **P2** | Control/IPC server behavior | DONE — 3 contracts covering ControlServer.cpp, OSCQuery.cpp, OSCServer.cpp |
-| ⚠️ **P3** | Core support headers | PARTIAL DONE — 4 contracts (`LinkSupport`, `GraphRuntimeSupport`, `StateSerializationSupport`, `ControlCommandSupport`) |
+| ✅ **P3** | Core support headers | DONE — 9 contracts covering all non-editor support headers (Link, GraphRuntime, StateSerialization, ControlCommand, Midi, BehaviorQuery, BehaviorParam, BehaviorHousekeeping, DspSlot) |
 | **P3** | Primitives layer | PARTIAL — CaptureBuffer, LoopBuffer, TempoInference, Playhead, Quantizer covered; Settings, SystemPaths, CompositeSurfaceProvider, ML, Video, Canvas remaining |
 | — | Orphaned harnesses (10 tests) | DEFERRED (user discretion)
 
@@ -958,9 +958,11 @@ for (each node type) {
 - [x] Control/IPC server behavior: ControlServer/OSCQuery/OSCServer direct contracts — DONE
 - [x] Shader registry contract: builtin inventory, metadata, sanitize, validation, runtime reload, and load failures — DONE
 - [x] ImGui geometry/support/glue: `RuntimeNodeRenderer`, `WidgetPrimitives`, `Theme`, `ImGuiHierarchyHost`, `ImGuiHost`, `ImGuiInspectorHost`, `ImGuiScriptListHost`, `ImGuiPerfOverlayHost`, `ImGuiRuntimeNodeHost`, `ToolComponents`, `EditorShellSupport` shaping, `ManifoldImGuiGlobals`, and `ImGuiOpenGLBackend` now have direct test coverage
-- [ ] Core support headers: remaining headers plus state serialization round-trip/editor-side coverage
-- [x] Total registered CTest tests: 12 → **48**
-- [x] Full contract-label sweep passes: **39/39**
+- [x] Core support headers: all 9 non-editor support headers covered — DONE
+- [x] Lua bindings behavior contract: 8 binding families covered — DONE
+- [x] Production teardown bug fixed: Lua-ref cleanup centralized in LuaEngine::clearAttachedUiLuaState + RuntimeNode::clearLuaStateRecursive
+- [x] Total registered CTest tests: 12 → **50**
+- [x] Full contract-label sweep passes: **41/41**
 - [x] Full ImGui-label sweep passes: **14/14**
 - [x] DSP primitive layer contract: CaptureBuffer, LoopBuffer, TempoInference, Playhead, Quantizer covered (no production code changes)
 - [x] Playhead bug fixed: infinite loop in `setPosition` when `length==0`
@@ -989,3 +991,5 @@ for (each node type) {
 | 2026-05-04 (v13) | **DSP primitive layer contract + determinism fixes**: added `DspPrimitiveContractHarness` covering CaptureBuffer, LoopBuffer, TempoInference, Playhead, Quantizer, with golden `dsp_primitive_contract_golden.json`. Fixed infinite loop in `Playhead::setPosition` when `length==0`. Fixed `StutterNode` non-determinism by seeding `juce::Random` with fixed seed (12345). Updated test to set Stutter probability=1.0 for determinism. Full contract-label sweep now passes 36/36 across 45 registered CTest tests. |
 | 2026-05-04 (v14) | **Core support header coverage (MidiSupport, BehaviorQuerySupport, BehaviorParamSupport)**: added `MidiSupportContractHarness` (MIDI message translation, null safety, drain, device listing), `BehaviorQuerySupportContractHarness` (layer state enum, snapshots, peak computation, spectrum, all ControlServer atomic state readers, null-host wrappers), and `BehaviorParamSupportContractHarness` (computeSamplesPerBar, extractLayerParam, applyParamPath for all 20+ core behavior paths, readCoreParamPath, hasCoreEndpoint). All with golden fixtures and CTest registrations. Full contract-label sweep now passes 39/39 across 49 registered CTest tests. |
 | 2026-05-03 (v5) | Expanded scripting coverage substantially: `DSPHostLifecycleContractHarness` now covers real bind side effects, `onParamChange`, deferred mutation, process callback, semantic reload, and isolated failure probes. Added `LuaEngineContractHarness` for load/eval/hot-reload. Registered `LuaEngineMockHarness` smoke mode as `manifold_lua_bindings_behavior_smoke` so binding behavior is no longer registry-only. Updated scripting coverage and success criteria honestly. |
+| 2026-05-04 (v15) | **Core support header completion (BehaviorHousekeeping, DspSlot)**: added `BehaviorHousekeepingSupportContractHarness` (takePendingString, forward schedule, initialiseAtomicState) and `DspSlotSupportContractHarness` (load/reload/unload, null-host safety, getOrCreateSlot, getGraphNodeByPath). Full contract-label sweep now passes 41/41 across 50 registered CTest tests. All 9 non-editor core support headers covered. |
+| 2026-05-04 (v16) | **Lua bindings behavior completion + production teardown fix**: extended `LuaBindingsBehaviorContractHarness` to cover Event, Utility, and Waveform binding families (8 total). Added `onTempoChanged`/`onCommit`/`onRecordingChanged`/`onLayerStateChanged` listener registration tests; `getTime`/`getClipboardText`/`setClipboardText`/`areDebugOutlinesEnabled`/`isCopyIdModeEnabled`/`setUIRendererMode`/`isOverlayActive`/`getCurrentScriptPath` utility tests; `getLayerPeaks`/`getCapturePeaks`/`invalidateWaveformPeakCache`/`getWaveformPeakCacheStats` waveform tests. **Fixed production teardown crash** where RuntimeNode `sol::object` refs outlived Lua VM — added `RuntimeNode::clearLuaStateRecursive()` (clears callbacks, userData, display lists, custom render payload) and `LuaEngine::clearAttachedUiLuaState()` (recursive clear on attached root tree). Replaced BehaviorCoreEditor's ad-hoc workaround with centralized API. All 4 Lua CTest tests pass. Contract golden updated (5962→9551 bytes). | |
