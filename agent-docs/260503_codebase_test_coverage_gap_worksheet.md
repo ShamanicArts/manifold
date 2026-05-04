@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-04 (v13)
-**Status:** IN PROGRESS — DSP nodes, graph runtime, MIDI behavior, ParamRegistry contract, DSP host lifecycle, LuaEngine load/eval/hot-reload, Lua bindings behavior smoke, ShaderEffectRegistry contract, Control/IPC server behavior, the first core-support contracts, the ImGui host/glue coverage pass, and the DSP primitive layer contract are all implemented; remaining deep gaps are teardown/ASan lifecycle semantics, exhaustive Lua binding behavior, remaining core support headers, deeper editor lifecycle seams, and GL-backed shader surface tests
+**Date:** 2026-05-04 (v15)
+**Status:** IN PROGRESS — Core support headers for non-editor subsystems are now fully covered (Link, GraphRuntime, StateSerialization, ControlCommand, Midi, BehaviorQuery, BehaviorParam, BehaviorHousekeeping, DspSlot). Remaining deep gaps are teardown/ASan lifecycle semantics, exhaustive Lua binding behavior, editor export support headers (EditorPerf, EditorRecording, EditorRenderer, ExportPluginConfig, ExportPluginPerf) — these need a processor editor context, deeper editor lifecycle seams, and GL-backed shader surface tests.
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -38,10 +38,10 @@ This worksheet covers every C++ implementation file in the project, organized by
 | Metric | Count |
 |--------|-------|
 | Total C++ `.cpp` files (excl. tests, external) | 137 |
-| Test harness `.cpp` files (headless + tests) | 41 |
-| Registered CTest tests | 45 |
-| Files with direct test coverage | ~103 (56 DSP + 2 graph + 2 MIDI + 1 param registry + 1 shader registry + 6 control + 4 core support + 13 imgui-covered files + 5 DSP primitives + ~13 existing) |
-| Files with zero direct tests | ~34 |
+| Test harness `.cpp` files (headless + tests) | 47 |
+| Registered CTest tests | 50 |
+| Files with direct test coverage | ~115 (56 DSP + 2 graph + 2 MIDI + 1 param registry + 1 shader registry + 6 control + 9 core support + 13 imgui-covered files + 5 DSP primitives + 5 new support + ~13 existing) |
+| Files with zero direct tests | ~22 |
 | DSP nodes with tests | 56 |
 | Scripting/binding files with zero behavior tests | ~33 |
 | ImGui host files with zero tests | 0 |
@@ -959,12 +959,15 @@ for (each node type) {
 - [x] Shader registry contract: builtin inventory, metadata, sanitize, validation, runtime reload, and load failures — DONE
 - [x] ImGui geometry/support/glue: `RuntimeNodeRenderer`, `WidgetPrimitives`, `Theme`, `ImGuiHierarchyHost`, `ImGuiHost`, `ImGuiInspectorHost`, `ImGuiScriptListHost`, `ImGuiPerfOverlayHost`, `ImGuiRuntimeNodeHost`, `ToolComponents`, `EditorShellSupport` shaping, `ManifoldImGuiGlobals`, and `ImGuiOpenGLBackend` now have direct test coverage
 - [ ] Core support headers: remaining headers plus state serialization round-trip/editor-side coverage
-- [x] Total registered CTest tests: 12 → **45**
-- [x] Full contract-label sweep passes: **36/36**
+- [x] Total registered CTest tests: 12 → **48**
+- [x] Full contract-label sweep passes: **39/39**
 - [x] Full ImGui-label sweep passes: **14/14**
 - [x] DSP primitive layer contract: CaptureBuffer, LoopBuffer, TempoInference, Playhead, Quantizer covered (no production code changes)
 - [x] Playhead bug fixed: infinite loop in `setPosition` when `length==0`
 - [x] StutterNode determinism fixed: seeded `juce::Random` with fixed seed
+- [x] MidiSupport contract: device listing, MIDI message translation, drain/output, null safety
+- [x] BehaviorQuerySupport contract: layer state enum, snapshot, layer/compute peaks, all atomic state readers, spectrum data, null-host wrappers
+- [x] BehaviorParamSupport contract: computeSamplesPerBar, extractLayerParam, applyParamPath (all 20+ paths), readCoreParamPath, hasCoreEndpoint
 - [ ] CI passes on all registered tests before merge
 
 ---
@@ -984,4 +987,5 @@ for (each node type) {
 | 2026-05-03 (v11) | **Broader ImGui host support pass**: added `TextInputHostSupportContractHarness`, `ScriptListSupportContractHarness`, `PerfOverlaySupportContractHarness`, `ToolComponentSupportContractHarness`, and `RuntimeNodeHostSupportContractHarness`, with goldens `text_input_host_support_contract_golden.json`, `script_list_support_contract_golden.json`, `perf_overlay_support_contract_golden.json`, `tool_component_support_contract_golden.json`, and `runtime_node_host_support_contract_golden.json`. Extracted production support headers `TextInputHostSupport.h`, `ScriptListSupport.h`, `PerfOverlaySupport.h`, `ToolComponentSupport.h`, and `RuntimeNodeHostSupport.h`, and routed `ImGuiHost.cpp`, `ImGuiInspectorHost.cpp`, `ImGuiScriptListHost.cpp`, `ImGuiPerfOverlayHost.cpp`, `ToolComponents.cpp`, and `ImGuiRuntimeNodeHost.cpp` through them without changing behavior. Full contract-label sweep now passes 32/32. |
 | 2026-05-03 (v12) | **ImGui completion pass**: added `EditorShellImGuiSupportContractHarness`, `InspectorHostStateSupportContractHarness`, `ManifoldImGuiGlobalsContractHarness`, and `ImGuiOpenGLBackendSmokeHarness`, with goldens `editor_shell_imgui_support_contract_golden.json`, `inspector_host_state_support_contract_golden.json`, and `manifold_imgui_globals_contract_golden.json`. Extracted production support headers `EditorShellImGuiSupport.h` and `InspectorHostStateSupport.h`, routed `EditorShellSupport.h` and `ImGuiInspectorHost.cpp` through them, added direct contract coverage for `ManifoldImGuiGlobals.cpp`, and added smoke coverage for `ImGuiOpenGLBackend.cpp`. Full contract-label sweep now passes 35/35 and full `imgui`-label sweep passes 14/14. |
 | 2026-05-04 (v13) | **DSP primitive layer contract + determinism fixes**: added `DspPrimitiveContractHarness` covering CaptureBuffer, LoopBuffer, TempoInference, Playhead, Quantizer, with golden `dsp_primitive_contract_golden.json`. Fixed infinite loop in `Playhead::setPosition` when `length==0`. Fixed `StutterNode` non-determinism by seeding `juce::Random` with fixed seed (12345). Updated test to set Stutter probability=1.0 for determinism. Full contract-label sweep now passes 36/36 across 45 registered CTest tests. |
+| 2026-05-04 (v14) | **Core support header coverage (MidiSupport, BehaviorQuerySupport, BehaviorParamSupport)**: added `MidiSupportContractHarness` (MIDI message translation, null safety, drain, device listing), `BehaviorQuerySupportContractHarness` (layer state enum, snapshots, peak computation, spectrum, all ControlServer atomic state readers, null-host wrappers), and `BehaviorParamSupportContractHarness` (computeSamplesPerBar, extractLayerParam, applyParamPath for all 20+ core behavior paths, readCoreParamPath, hasCoreEndpoint). All with golden fixtures and CTest registrations. Full contract-label sweep now passes 39/39 across 49 registered CTest tests. |
 | 2026-05-03 (v5) | Expanded scripting coverage substantially: `DSPHostLifecycleContractHarness` now covers real bind side effects, `onParamChange`, deferred mutation, process callback, semantic reload, and isolated failure probes. Added `LuaEngineContractHarness` for load/eval/hot-reload. Registered `LuaEngineMockHarness` smoke mode as `manifold_lua_bindings_behavior_smoke` so binding behavior is no longer registry-only. Updated scripting coverage and success criteria honestly. |
