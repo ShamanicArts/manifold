@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-03 (v5)
-**Status:** IN PROGRESS — DSP nodes, graph runtime, MIDI behavior, ParamRegistry contract, DSP host lifecycle, LuaEngine load/eval/hot-reload, and Lua bindings behavior smoke all implemented; remaining scripting gap is full ParamRegistry round-trip + teardown/ASan semantics
+**Date:** 2026-05-03 (v6)
+**Status:** IN PROGRESS — DSP nodes, graph runtime, MIDI behavior, ParamRegistry contract, DSP host lifecycle, LuaEngine load/eval/hot-reload, Lua bindings behavior smoke, and ShaderEffectRegistry contract all implemented; remaining deep gaps are teardown/ASan lifecycle semantics, exhaustive Lua binding behavior, Control/IPC unit coverage, ImGui geometry, and GL-backed shader surface tests
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -39,14 +39,14 @@ This worksheet covers every C++ implementation file in the project, organized by
 |--------|-------|
 | Total C++ `.cpp` files (excl. tests, external) | 137 |
 | Test harness `.cpp` files (headless + tests) | 12 |
-| Registered CTest tests | 15 |
-| Files with direct test coverage | ~74 (56 DSP + 2 graph + 2 MIDI + 1 param registry + ~13 existing) |
-| Files with zero direct tests | ~63 |
+| Registered CTest tests | 19 |
+| Files with direct test coverage | ~75 (56 DSP + 2 graph + 2 MIDI + 1 param registry + 1 shader registry + ~13 existing) |
+| Files with zero direct tests | ~62 |
 | DSP nodes with tests | 56 |
-| Scripting/binding files with zero behavior tests | 40 |
+| Scripting/binding files with zero behavior tests | ~33 |
 | ImGui host files with zero tests | 12 |
 | Control/IPC files with zero unit tests | 6 |
-| Shader pipeline files with zero tests | 5+ |
+| Shader pipeline files with zero tests | 4 |
 
 ---
 
@@ -394,8 +394,8 @@ GraphRuntimeContractHarness
 **Finding 3 — LuaEngine.cpp now has minimum viable contract coverage:**
 `LuaEngineContractHarness` covers script file load, async `queueEval()` execution, eval error reporting, file-modification hot reload via `notifyUpdate()`, and explicit `reloadCurrentScript()`. This gives the project a real regression tripwire for the highest-risk file in the codebase, even though rendering-path behavior is still mostly outside headless coverage.
 
-**Finding 4 — DSPHostParamRegistry is covered, but not fully exhausted:**
-`ParamRegistryContractHarness` covers `clampParamValue`, `sanitizePath`, `isRegistryOwnedCategory`, `handleParamRegister`, path mapping behavior, and binding-shape callback dispatch. It does **not yet** do a full host-level serialization / deserialization round-trip across a large parameter set, so the parameter registry story is strong but not yet total.
+**Finding 4 — DSPHostParamRegistry is covered at the real production seam, but a wording correction matters:**
+`ParamRegistryContractHarness` covers `clampParamValue`, `sanitizePath`, `isRegistryOwnedCategory`, `handleParamRegister`, path mapping behavior, and binding-shape callback dispatch. Earlier worksheet wording implied a missing full host-level serialization / deserialization round-trip, but there is **no real production DSP-host param round-trip API** exposed to test against. That gap should therefore be framed honestly as a potential future feature / state-surface addition, not as a currently missing test on an existing public contract.
 
 ### 4.4. Solution Space
 
@@ -425,7 +425,8 @@ GraphRuntimeContractHarness
 
 - [x] `LuaEngineMockHarness` behavior exercised in CTest via `manifold_lua_bindings_behavior_smoke` — real side effects covered across multiple binding families
 - [x] `DSPHostLifecycleContractHarness` created: load/reload/unload/string-load, real bind side effects, deferred mutation, process callback, failure probes
-- [ ] `DSPHostParamRegistry` full round-trip serialization contract: **PARTIAL** — core register/clamp/mapping behavior covered, large serialization round-trip still missing
+- [x] `DSPHostParamRegistry` core contract covered at the real exposed seam: clamp, sanitize, category, register, bind dispatch — DONE
+- [ ] DSP-host param persistence round-trip — BLOCKED / NOT APPLICABLE YET: no real production serialize+load API exists for this surface
 - [x] `ScriptingEngine` labels added to CTest registry (`scripting`, `lifecycle`, `luaengine`, `behavior`)
 - [x] `LuaEngine.cpp` (102 KB) has at minimum: script load, eval, hot-reload contract
 
@@ -623,14 +624,25 @@ It handles node positioning, wire routing, color coding, zoom/pan, and hit testi
 
 ---
 
-## 8. Tier 2 — Shader Pipeline (Medium Priority)
+## 8. Tier 2 — Shader Pipeline ✅ PARTIALLY COVERED
+
+**Implemented harness / test:**
+- `manifold_shader_registry_contract` — `ShaderRegistryContractHarness.cpp`
+
+**What it covers:**
+- builtin inventory and metadata integrity across all registered effects
+- lookup, shader source generation, and blend-op shader generation
+- parameter sanitization and clamping
+- pipeline descriptor validation
+- runtime effect reload / clear via `UserScripts/shaders`
+- direct manifest loading failure cases (missing manifest, missing GLSL, invalid JSON)
 
 ### 8.1. Coverage Status
 
 | Files | Tested | Coverage |
 |-------|--------|----------|
 | `manifold/primitives/shaders/ShaderSurfaceProvider.cpp` | **0** | **0%** |
-| `manifold/primitives/shaders/ShaderEffectRegistry.cpp` | **0** | **0%** |
+| `manifold/primitives/shaders/ShaderEffectRegistry.cpp` | **1 / 1** | **100% contract** |
 | `manifold/primitives/composite/CompositeSurfaceProvider.cpp` | **0** | **0%** |
 | `manifold/primitives/sources/GeneratedSourceProvider.cpp` | **0** | **0%** |
 | `manifold/primitives/sources/TextureSourceRegistry.cpp` | **0** | **0%** |
@@ -667,8 +679,8 @@ The `ShaderEffectRegistry` is the infrastructure that already exists but isn't t
 
 ### 8.5. Success Criteria
 
-- [ ] `ShaderEffectRegistry` contract: all 17+ effects verified for correct metadata (name, params, types, ranges)
-- [ ] Registry contract registered in CTest with label `manifold;shader;contract`
+- [x] `ShaderEffectRegistry` contract: all registered effects verified for metadata, params, sanitization, pipeline validation, and runtime reload semantics
+- [x] Registry contract registered in CTest with label `manifold;shader;registry;contract`
 - [ ] ShaderSurfaceProvider fallback/logic path tested without GL
 - [ ] (Stretch) OSMesa-backed compilation smoke test
 
@@ -861,7 +873,7 @@ for (each node type) {
 2. ✅ **Graph runtime contract** — COMPLETE (8 test cases)
 3. ✅ **MIDI behavior extension** — COMPLETE (5 domains, 1 bug fix)
 4. ✅ **Scripting engine behavior** — substantial coverage now in place (ParamRegistry, DSPHost lifecycle, LuaEngine, Lua bindings behavior smoke)
-5. **Shader registry contract** (1 .cpp) — can test without GL
+5. ✅ **Shader registry contract** — COMPLETE (metadata, sanitize, validate, runtime reload, load failures)
 6. **ImGui geometry extraction** (12 .cpp) — proven pattern
 7. **Control/IPC unit coverage** (6 .cpp) — build on orphaned infrastructure
 8. **Core support headers** (13 support headers)
@@ -877,7 +889,7 @@ for (each node type) {
 | ✅ **P1** | DSPHost lifecycle (slot API) | DONE — load/reload/unload/string, real bind side effects, deferred mutation, process callback, failure probes |
 | ✅ **P1** | Lua bindings behavior (21 files) | PARTIAL DONE — registry contract + behavior smoke across multiple binding families |
 | ✅ **P2** | LuaEngine.cpp extraction (102KB) | MINIMUM DONE — load/eval/hot-reload contract; rendering still largely untested |
-| **P2** | Shader registry | NOT STARTED — 1 .cpp, no GL needed |
+| ✅ **P2** | Shader registry | DONE — builtin inventory, metadata, sanitize, validation, runtime reload, load failures |
 | **P2** | ImGui geometry extraction | NOT STARTED — 12 .cpp |
 | **P2** | Control/IPC unit | NOT STARTED — 6 .cpp |
 | **P3** | Core support headers | NOT STARTED — 13 headers |
@@ -909,10 +921,10 @@ for (each node type) {
 - [x] MIDI behavior extended: voice allocation, sustain, channel filtering, ring buffer, MIDI clock — DONE
 - [x] ParamRegistry contract: clamp, sanitize, category, register, bind dispatch — DONE
 - [ ] Control/IPC unit coverage: command parser, endpoint resolver, command queue registered and passing
-- [ ] Shader registry contract: 17+ effects verified for correct metadata
+- [x] Shader registry contract: builtin inventory, metadata, sanitize, validation, runtime reload, and load failures — DONE
 - [ ] ImGui geometry: at least RuntimeNodeRenderer + WidgetPrimitives tested via extraction
 - [ ] Core support headers: state serialization round-trip, link state contract
-- [x] Total registered CTest tests: 12 → **18** (DSP node, graph runtime, param registry, DSP host lifecycle, LuaEngine contract, Lua bindings behavior smoke)
+- [x] Total registered CTest tests: 12 → **19** (DSP node, graph runtime, param registry, DSP host lifecycle, LuaEngine contract, Lua bindings behavior smoke, shader registry)
 - [ ] CI passes on all registered tests before merge
 
 ---
@@ -924,5 +936,6 @@ for (each node type) {
 | 2026-05-03 | Initial document. Complete coverage map across all 10 subsystems. |
 | 2026-05-03 (v2) | **DSP node contract** (P0): 56 nodes, 7 SIMD variants, 4 bugs fixed. **Graph runtime contract** (P1): 8 test cases, topology/cycle/state continuity. **MIDI behavior** (P1): 5 domains (voice steal, sustain, filtering, ring buffer, clock), 1 bug fix in MidiManager::handleNoteOn. Updated all status markers and success criteria. |
 | 2026-05-03 (v3) | **ParamRegistry contract** (Scripting sub-target): 5 domains (clamp edge cases, path sanitization, category ownership, full param register with 5 spec types, binding callback dispatch with type isolation). Added `handleParamRegister`/`handleParamBind` declarations to DSPHostInternal.h. Registered as `manifold_param_registry_contract`. |
+| 2026-05-03 (v6) | **Shader registry contract** (Shader pipeline sub-target): added `ShaderRegistryContractHarness.cpp`, registered as `manifold_shader_registry_contract`, golden file `tests/fixtures/shader_registry_contract_golden.json`. Covers builtin effect inventory, metadata integrity, shader source generation, param sanitization, pipeline validation, runtime effect reload, and manifest load failures. Also corrected worksheet wording: DSP-host param round-trip is not a missing test on an existing API because no real production serialize/load seam exists there yet. |
 | 2026-05-03 (v4) | **DSPHost lifecycle contract** — slot load/reload/unload/string, param endpoints via processor public slot API. Root cause of 2-branch crash: `PassthroughNode.new()` called without required `numChannels` arg → Lua error → failed LoadSession → cleanup crash. Fix: `new(2)` with channel count. Registered as `manifold_dsp_host_lifecycle_contract`. Updated status markers. |
 | 2026-05-03 (v5) | Expanded scripting coverage substantially: `DSPHostLifecycleContractHarness` now covers real bind side effects, `onParamChange`, deferred mutation, process callback, semantic reload, and isolated failure probes. Added `LuaEngineContractHarness` for load/eval/hot-reload. Registered `LuaEngineMockHarness` smoke mode as `manifold_lua_bindings_behavior_smoke` so binding behavior is no longer registry-only. Updated scripting coverage and success criteria honestly. |
