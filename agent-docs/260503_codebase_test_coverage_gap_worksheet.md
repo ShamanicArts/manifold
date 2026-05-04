@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-03 (v8)
-**Status:** IN PROGRESS — DSP nodes, graph runtime, MIDI behavior, ParamRegistry contract, DSP host lifecycle, LuaEngine load/eval/hot-reload, Lua bindings behavior smoke, ShaderEffectRegistry contract, and Control/IPC server behavior coverage are all implemented; remaining deep gaps are teardown/ASan lifecycle semantics, exhaustive Lua binding behavior, ImGui geometry, core support headers, primitives-layer contracts, and GL-backed shader surface tests
+**Date:** 2026-05-03 (v9)
+**Status:** IN PROGRESS — DSP nodes, graph runtime, MIDI behavior, ParamRegistry contract, DSP host lifecycle, LuaEngine load/eval/hot-reload, Lua bindings behavior smoke, ShaderEffectRegistry contract, Control/IPC server behavior, and the first core-support contracts are all implemented; remaining deep gaps are teardown/ASan lifecycle semantics, exhaustive Lua binding behavior, ImGui geometry, remaining core support headers, primitives-layer contracts, and GL-backed shader surface tests
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -18,7 +18,7 @@
 
 ## 1. Executive Summary
 
-The Manifold codebase contains **137 C++ implementation files** (`.cpp`) across ~10 distinct subsystems. Of these, **~18-23 files now have direct test coverage** via the 27 registered CTest tests. The remaining **~114-119 files still have zero direct tests**. This is still not a marginal gap — it remains a systemic coverage problem, just materially less bad than at the start of this worksheet.
+The Manifold codebase contains **137 C++ implementation files** (`.cpp`) across ~10 distinct subsystems. Of these, **~22-27 files now have direct test coverage** via the 31 registered CTest tests. The remaining **~110-115 files still have zero direct tests**. This is still not a marginal gap — it remains a systemic coverage problem, just materially less bad than at the start of this worksheet.
 
 The existing test infrastructure (contract testing with golden JSON fixtures, tiered harness architecture, the `ManifoldClient`/`ManagedManifoldProcess` Python harness module) is well-designed and proven by the avsamplerDOCKING and binding god functions decompositions. The gap is in **breadth**, not methodology. The contract testing pattern scales — what's needed is systematic application across all modules.
 
@@ -38,10 +38,10 @@ This worksheet covers every C++ implementation file in the project, organized by
 | Metric | Count |
 |--------|-------|
 | Total C++ `.cpp` files (excl. tests, external) | 137 |
-| Test harness `.cpp` files (headless + tests) | 12 |
-| Registered CTest tests | 27 |
-| Files with direct test coverage | ~81 (56 DSP + 2 graph + 2 MIDI + 1 param registry + 1 shader registry + 6 control + ~13 existing) |
-| Files with zero direct tests | ~56 |
+| Test harness `.cpp` files (headless + tests) | 27 |
+| Registered CTest tests | 31 |
+| Files with direct test coverage | ~85 (56 DSP + 2 graph + 2 MIDI + 1 param registry + 1 shader registry + 6 control + 4 support + ~13 existing) |
+| Files with zero direct tests | ~52 |
 | DSP nodes with tests | 56 |
 | Scripting/binding files with zero behavior tests | ~33 |
 | ImGui host files with zero tests | 12 |
@@ -710,9 +710,9 @@ The `ShaderEffectRegistry` is the infrastructure that already exists but isn't t
 
 | Files | Tested | Coverage |
 |-------|--------|----------|
-| `manifold/core/BehaviorCoreProcessor.cpp` (177 KB — largest .cpp) | **Partial** — state + MIDI contract | **Processing behavior not covered** |
+| `manifold/core/BehaviorCoreProcessor.cpp` (177 KB — largest .cpp) | **Partial** — state + MIDI + support contracts | **Processing behavior not covered** |
 | `manifold/core/BehaviorCoreEditor.cpp` (121 KB) | **0** | **0%** |
-| 13 support headers (extracted from processor) | **Indirect** via processor contracts | **Individual behavior not tested** |
+| 13 support headers (extracted from processor) | **Partial direct** — 4 support contracts added | **4 / 13 directly exercised** |
 
 ### 9.2. Researched Findings
 
@@ -727,12 +727,17 @@ This is the plugin editor implementation — UI layout, shell commands, renderer
 
 ### 9.3. Solution Space
 
-**Approach — Support header contract tests:**
-Each extracted support header should have a corresponding contract harness that exercises its public interface independently:
-- `LinkSupport` → `LinkContractHarness` (test Ableton Link state management)
-- `StateSerializationSupport` → state round-trip contract (save → load → verify)
-- `GraphRuntimeSupport` → graph swap lifecycle contract
-- `ControlCommandSupport` → command dispatch contract
+**Completed in this pass:**
+- `LinkSupportContractHarness` — helper get/set/request semantics over real `LinkSync`
+- `GraphRuntimeSupportContractHarness` — pending swap, mutation pause/resume, retire/fallback semantics
+- `StateSerializationSupportContractHarness` — helper strings/path extraction, serialized alias map, Lua full+incremental serialization, change-cache helpers, link/runtime sub-builders
+- `ControlCommandSupportContractHarness` — command-to-path dispatch, layer fanout, toggle state mutation, queue drain semantics
+
+**Remaining work:**
+- `MidiSupport` contract
+- `BehaviorQuerySupport` contract
+- `BehaviorParamSupport` / `BehaviorHousekeepingSupport` / `DspSlotSupport` deeper direct contracts as needed
+- editor lifecycle / shell behavior once UI-side seams are chosen
 
 ### 9.4. Risk Register
 
@@ -746,9 +751,9 @@ Each extracted support header should have a corresponding contract harness that 
 
 - [ ] Each extracted support header has a corresponding contract test exercising public API
 - [ ] State serialization round-trip test: save → load → save → verify byte-identical
-- [ ] Link state contract: all 7 Link fields set/get correctly
+- [x] Link state contract: all 7 Link fields set/get correctly
 - [ ] Editor state contract: basic lifecycle (create, show, hide, destroy)
-- [ ] CTest labels `manifold;core;support;contract` for each
+- [x] First support-header CTest labels in place: `manifold;core;support;contract`
 
 ---
 
@@ -790,25 +795,22 @@ The tempo inference algorithm detects BPM from incoming audio. This is inherentl
 
 ---
 
-## 11. Orphaned Tests — Immediate Fix (Zero New Code)
+## 11. Deferred Orphaned Tests (Zero New Code)
 
 ### 11.1. Inventory
 
-These tests exist as code but have no CTest registration. They are the highest-ROI testing improvement — they just need wiring.
+These tests exist as code but remain intentionally deferred per user instruction.
 
-| Harness file | Proposed CTest name | Est. wiring time |
-|-------------|---------------------|-----------------|
-| `manifold/headless/CanonicalCommandHarness.cpp` | `manifold_command_parser` | 5 min |
-| `manifold/headless/ControlCommandQueueHarness.cpp` | `manifold_command_queue` | 5 min |
-| `manifold/headless/EndpointResolverHarness.cpp` | `manifold_endpoint_resolver` | 5 min |
-| `tests/e2e_editor_ipc_test.py` | `manifold_headless_editor_ipc` | 5 min |
-| `tests/e2e_fx_slot_swap_test.py` | `manifold_headless_fx_slot_swap` | 5 min |
-| `tests/e2e_main_fx_lazy_test.py` | `manifold_headless_main_fx_lazy` | 5 min |
-| `tests/e2e_rack_eq_palette_test.py` | `manifold_headless_rack_eq_palette` | 5 min |
-| `tests/e2e_super_fx_lazy_test.py` | `manifold_headless_super_fx_lazy` | 5 min |
-| `tests/main_tab_bar_test.py` | `manifold_headless_main_tab_bar` | 5 min |
-| `tests/standalone_direct_regression_test.py` | `manifold_standalone_direct_regression` | 5 min |
-| **Total** | **10 new registered tests** | **~50 min** |
+| Harness file | Proposed CTest name |
+|-------------|---------------------|
+| `tests/e2e_editor_ipc_test.py` | `manifold_headless_editor_ipc` |
+| `tests/e2e_fx_slot_swap_test.py` | `manifold_headless_fx_slot_swap` |
+| `tests/e2e_main_fx_lazy_test.py` | `manifold_headless_main_fx_lazy` |
+| `tests/e2e_rack_eq_palette_test.py` | `manifold_headless_rack_eq_palette` |
+| `tests/e2e_super_fx_lazy_test.py` | `manifold_headless_super_fx_lazy` |
+| `tests/main_tab_bar_test.py` | `manifold_headless_main_tab_bar` |
+| `tests/standalone_direct_regression_test.py` | `manifold_standalone_direct_regression` |
+| **Total** | **7 deferred registrations** |
 
 ### 11.2. Wiring pattern (per test)
 
@@ -825,8 +827,8 @@ For Python-based tests, the cmd template is already established by existing regi
 
 ### 11.3. Success Criteria
 
-- [ ] All 10 orphaned tests registered in CTest
-- [ ] All 10 pass on the current codebase (or documented as expected failures if not)
+- [ ] All 7 deferred orphaned tests registered in CTest
+- [ ] All 7 pass on the current codebase (or documented as expected failures if not)
 - [ ] CI includes them in the test run
 
 ---
@@ -893,10 +895,9 @@ for (each node type) {
 4. ✅ **Scripting engine behavior** — substantial coverage now in place (ParamRegistry, DSPHost lifecycle, LuaEngine, Lua bindings behavior smoke)
 5. ✅ **Shader registry contract** — COMPLETE (metadata, sanitize, validate, runtime reload, load failures)
 6. **ImGui geometry extraction** (12 .cpp) — proven pattern
-7. **Core support headers** (13 support headers)
-8. **Core support headers** (13 support headers)
-9. **Primitives layer** (~10 .cpp/h)
-10. ~~Orphaned harnesses~~ — deferred per user instruction
+7. **Core support headers** (13 support headers) — now partial direct coverage
+8. **Primitives layer** (~10 .cpp/h)
+9. ~~Orphaned harnesses~~ — deferred per user instruction
 
 | Priority | Module | Status |
 |----------|--------|--------|
@@ -911,7 +912,7 @@ for (each node type) {
 | **P2** | ImGui geometry extraction | NOT STARTED — 12 .cpp |
 | ✅ **P2** | Control/IPC parser/resolver/registry/settings | DONE — 5 tests, 3 direct files + parser/queue/resolver harnesses |
 | ✅ **P2** | Control/IPC server behavior | DONE — 3 contracts covering ControlServer.cpp, OSCQuery.cpp, OSCServer.cpp |
-| **P3** | Core support headers | NOT STARTED — 13 headers |
+| ⚠️ **P3** | Core support headers | PARTIAL DONE — 4 contracts (`LinkSupport`, `GraphRuntimeSupport`, `StateSerializationSupport`, `ControlCommandSupport`) |
 | **P3** | Primitives layer | NOT STARTED — ~10 files |
 | — | Orphaned harnesses (10 tests) | DEFERRED (user discretion)
 
@@ -932,7 +933,7 @@ for (each node type) {
 
 ## 15. Success Criteria (Overall)
 
-- [ ] All 10 orphaned tests registered in CTest and passing — DEFERRED (user discretion)
+- [ ] All 7 deferred orphaned tests registered in CTest and passing — DEFERRED (user discretion)
 - [x] All 56 DSP nodes covered by parameterized contract harness — DONE
 - [x] All 7 Highway SIMD variants dual-path compared to scalar — DONE
 - [x] Graph runtime contract: topology, cycle detection, state continuity covered — DONE
@@ -943,9 +944,9 @@ for (each node type) {
 - [x] Control/IPC server behavior: ControlServer/OSCQuery/OSCServer direct contracts — DONE
 - [x] Shader registry contract: builtin inventory, metadata, sanitize, validation, runtime reload, and load failures — DONE
 - [ ] ImGui geometry: at least RuntimeNodeRenderer + WidgetPrimitives tested via extraction
-- [ ] Core support headers: state serialization round-trip, link state contract
-- [x] Total registered CTest tests: 12 → **27** (adds control parser/queue/resolver, registry/settings contracts, and direct ControlServer/OSCQuery/OSCServer contracts)
-- [x] Full contract-label sweep passes: **19/19**
+- [ ] Core support headers: remaining headers plus state serialization round-trip/editor-side coverage
+- [x] Total registered CTest tests: 12 → **31** (adds control parser/queue/resolver, registry/settings contracts, direct ControlServer/OSCQuery/OSCServer contracts, and 4 core-support contracts)
+- [x] Full contract-label sweep passes: **23/23**
 - [ ] CI passes on all registered tests before merge
 
 ---
@@ -960,5 +961,6 @@ for (each node type) {
 | 2026-05-03 (v6) | **Shader registry contract** (Shader pipeline sub-target): added `ShaderRegistryContractHarness.cpp`, registered as `manifold_shader_registry_contract`, golden file `tests/fixtures/shader_registry_contract_golden.json`. Covers builtin effect inventory, metadata integrity, shader source generation, param sanitization, pipeline validation, runtime effect reload, and manifest load failures. Also corrected worksheet wording: DSP-host param round-trip is not a missing test on an existing API because no real production serialize/load seam exists there yet. |
 | 2026-05-03 (v7) | **Control/IPC coverage pass**: registered `manifold_command_parser`, `manifold_command_queue`, `manifold_endpoint_resolver`; added `OSCEndpointRegistryContractHarness` and `OSCSettingsPersistenceContractHarness` with golden files. Control layer is now partially covered at the parser / resolver / registry / settings seams; remaining gap narrowed to `ControlServer.cpp`, `OSCQuery.cpp`, and `OSCServer.cpp` behavior. |
 | 2026-05-03 (v8) | **Control/IPC server behavior pass**: added `ControlServerContractHarness`, `OSCQueryServerContractHarness`, and `OSCServerContractHarness`, with golden files `control_server_contract_golden.json`, `oscquery_server_contract_golden.json`, and `osc_server_contract_golden.json`. Covers real Unix-socket IPC flows, OSCQuery HTTP metadata/VALUE routes plus WebSocket LISTEN streaming, and UDP OSC dispatch/broadcast routing. Full contract-label sweep passes 19/19. |
+| 2026-05-03 (v9) | **Core support header pass**: added `LinkSupportContractHarness`, `GraphRuntimeSupportContractHarness`, `StateSerializationSupportContractHarness`, and `ControlCommandSupportContractHarness`, with golden files `link_support_contract_golden.json`, `graph_runtime_support_contract_golden.json`, `state_serialization_support_contract_golden.json`, and `control_command_support_contract_golden.json`. Full contract-label sweep now passes 23/23. |
 | 2026-05-03 (v4) | **DSPHost lifecycle contract** — slot load/reload/unload/string, param endpoints via processor public slot API. Root cause of 2-branch crash: `PassthroughNode.new()` called without required `numChannels` arg → Lua error → failed LoadSession → cleanup crash. Fix: `new(2)` with channel count. Registered as `manifold_dsp_host_lifecycle_contract`. Updated status markers. |
 | 2026-05-03 (v5) | Expanded scripting coverage substantially: `DSPHostLifecycleContractHarness` now covers real bind side effects, `onParamChange`, deferred mutation, process callback, semantic reload, and isolated failure probes. Added `LuaEngineContractHarness` for load/eval/hot-reload. Registered `LuaEngineMockHarness` smoke mode as `manifold_lua_bindings_behavior_smoke` so binding behavior is no longer registry-only. Updated scripting coverage and success criteria honestly. |
