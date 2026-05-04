@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-04 (v17)
-**Status:** IN PROGRESS — All non-editor core support headers covered (9/9). All 10 binding families now under deterministic contract (Command, DSP, Graph, OSC, UI/Canvas, Event, Utility, Waveform, MIDI, Link). Lua bindings MIDI and Link complete — `LuaMidiBindings.cpp` uses `dynamic_cast` for test-safe BCP access. Remaining: editor export support headers (5) requiring processor editor context, BehaviorCoreEditor.cpp (121 KB, 0 tests) requiring JUCE GUI message thread, and GL-backed shader surface pipeline requiring headless GL context.
+**Date:** 2026-05-04 (v18)
+**Status:** IN PROGRESS — All non-editor core support headers covered (9/9), all 10 Lua binding families under deterministic contract, and editor export support headers (5/5) now covered by `ExportSupportContractHarness`. Full CTest sweep is clean at **53/53 passing**. Remaining: `BehaviorCoreEditor.cpp` (121 KB, 0 tests) requiring broader JUCE GUI/message-thread seams, GL-backed shader surface pipeline requiring headless GL context, Settings singleton isolation, and ML/ONNX-dependent paths.
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -18,7 +18,7 @@
 
 ## 1. Executive Summary
 
-The Manifold codebase contains **137 C++ implementation files** (`.cpp`) across ~10 distinct subsystems. Of these, **~31-36 files now have direct test coverage** via the 40 registered CTest tests. The remaining **~101-106 files still have zero direct tests**. This is still not a marginal gap — it remains a systemic coverage problem, just materially less bad than at the start of this worksheet.
+The Manifold codebase contains **137 C++ implementation files** (`.cpp`) across ~10 distinct subsystems. Of these, **a substantial majority now have direct or seam-level contract coverage** via the 53 registered CTest tests, including all DSP nodes, graph runtime, MIDI behavior/core support, control/IPC seams and servers, all current Lua binding families, all extracted ImGui support seams, DSP primitives, SystemPaths, and export support helpers. The remaining gap is no longer broad first-pass coverage; it is concentrated in harder editor lifecycle, GL, settings-isolation, and ML-dependent areas.
 
 The existing test infrastructure (contract testing with golden JSON fixtures, tiered harness architecture, the `ManifoldClient`/`ManagedManifoldProcess` Python harness module) is well-designed and proven by the avsamplerDOCKING and binding god functions decompositions. The gap is in **breadth**, not methodology. The contract testing pattern scales — what's needed is systematic application across all modules.
 
@@ -39,9 +39,9 @@ This worksheet covers every C++ implementation file in the project, organized by
 |--------|-------|
 | Total C++ `.cpp` files (excl. tests, external) | 137 |
 | Test harness `.cpp` files (headless + tests) | 47 |
-| Registered CTest tests | 50 |
-| Files with direct test coverage | ~115 (56 DSP + 2 graph + 2 MIDI + 1 param registry + 1 shader registry + 6 control + 9 core support + 13 imgui-covered files + 5 DSP primitives + 5 new support + ~13 existing) |
-| Files with zero direct tests | ~22 |
+| Registered CTest tests | 53 |
+| Files with direct / seam-level contract coverage | Broad coverage across DSP, scripting/bindings, control/IPC, ImGui support, primitives, SystemPaths, and export support |
+| Remaining concentrated zero-test areas | `BehaviorCoreEditor.cpp`, GL-backed shader surface pipeline, Settings isolation, ML/ONNX paths |
 | DSP nodes with tests | 56 |
 | Scripting/binding files with zero behavior tests | ~28 |
 | ImGui host files with zero tests | 0 |
@@ -995,3 +995,4 @@ for (each node type) {
 | 2026-05-04 (v15) | **Core support header completion (BehaviorHousekeeping, DspSlot)**: added `BehaviorHousekeepingSupportContractHarness` (takePendingString, forward schedule, initialiseAtomicState) and `DspSlotSupportContractHarness` (load/reload/unload, null-host safety, getOrCreateSlot, getGraphNodeByPath). Full contract-label sweep now passes 41/41 across 50 registered CTest tests. All 9 non-editor core support headers covered. |
 | 2026-05-04 (v16) | **Lua bindings behavior completion + production teardown fix**: extended `LuaBindingsBehaviorContractHarness` to cover Event, Utility, and Waveform binding families (8 total). Added `onTempoChanged`/`onCommit`/`onRecordingChanged`/`onLayerStateChanged` listener registration tests; `getTime`/`getClipboardText`/`setClipboardText`/`areDebugOutlinesEnabled`/`isCopyIdModeEnabled`/`setUIRendererMode`/`isOverlayActive`/`getCurrentScriptPath` utility tests; `getLayerPeaks`/`getCapturePeaks`/`invalidateWaveformPeakCache`/`getWaveformPeakCacheStats` waveform tests. **Fixed production teardown crash** where RuntimeNode `sol::object` refs outlived Lua VM — added `RuntimeNode::clearLuaStateRecursive()` (clears callbacks, userData, display lists, custom render payload) and `LuaEngine::clearAttachedUiLuaState()` (recursive clear on attached root tree). Replaced BehaviorCoreEditor's ad-hoc workaround with centralized API. All 4 Lua CTest tests pass. Contract golden updated (5962→9551 bytes). |
 | 2026-05-04 (v17) | **MIDI + Link Lua bindings contract**: added `midiTestScript` and `linkTestScript` to `LuaBindingsBehaviorContractHarness`. MIDI covers callback registration (onNoteOn, onNoteOff, onControlChange, onPitchBend, onProgramChange, onMidiEvent), send functions (null-safe via dynamic_cast), state queries (getNumActiveVoices, getChannelState, note utilities), settings (omniMode, reset), and constants (EventType, CC_*). Link covers all 13 ScriptableProcessor virtuals (isEnabled/setEnabled, isTempoSyncEnabled/setTempoSyncEnabled, isStartStopSyncEnabled/setStartStopSyncEnabled, getNumPeers, isPlaying, getBeat, getPhase, requestTempo/requestStart/requestStop). **Production change**: `LuaMidiBindings.cpp` toBcp changed from `static_cast` to `dynamic_cast` for test-safe null return with existing guards. All 10 scripts load and pass. Contract golden updated (9551→14179 bytes). All 4 Lua CTest tests pass. |
+| 2026-05-04 (v18) | **Export support contract complete**: fixed `ExportSupportContractHarness` CMake wiring so it links `${MANIFOLD_LUA_TARGET}` and therefore gets the correct Lua 5.4 include path during sol2 compilation. Added `tests/fixtures/export_support_contract_golden.json`. Stabilized `EditorPerfSupport` contract assertions by replacing exact live `pssBytes` matching with invariant checks (`pssPositive`, `privPositive`, allocator non-negativity / ordering). `manifold_export_support_contract` now passes, missing video harness executables were built, and the full suite passes **53/53**. |
