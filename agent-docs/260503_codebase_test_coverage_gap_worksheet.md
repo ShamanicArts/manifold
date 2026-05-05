@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-04 (v19)
-**Status:** IN PROGRESS — All non-editor core support headers covered (9/9), all 10 Lua binding families under deterministic contract, editor export support headers (5/5) covered, `Settings` now under sandboxed contract, `BehaviorCoreEditor.cpp` bootstrap logic extracted and contracted, and non-GL shader/source descriptor logic extracted and contracted. Full CTest sweep is clean at **57/57 passing**. Remaining: broader `BehaviorCoreEditor.cpp` lifecycle / timer / recording behavior, GL-backed execution paths (`ShaderSurfaceProvider` draw path, `CompositeSurfaceProvider`, `GeneratedSourceProvider` render path), and ML/ONNX-dependent paths.
+**Date:** 2026-05-05 (v25)
+**Status:** IN PROGRESS — All non-editor core support headers covered (9/9), all 10 Lua binding families under deterministic contract, editor export support headers (5/5) covered, `Settings` now under sandboxed contract, `BehaviorCoreEditor.cpp` bootstrap/lifecycle/capture support seams extracted and contracted, and both non-GL descriptor seams **and first EGL-backed draw-path smoke** now cover `ShaderSurfaceProvider`, `GeneratedSourceProvider`, and `CompositeSurfaceProvider`. Full CTest sweep is clean at **62/62 passing**. Remaining: broader `BehaviorCoreEditor.cpp` live message-thread / shell-sync / real lifecycle execution behavior and ML/ONNX-dependent paths; GL execution now has smoke coverage but not deep failure-path coverage.
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -18,7 +18,7 @@
 
 ## 1. Executive Summary
 
-The Manifold codebase contains **137 C++ implementation files** (`.cpp`) across ~10 distinct subsystems. Of these, **a substantial majority now have direct or seam-level contract coverage** via the 53 registered CTest tests, including all DSP nodes, graph runtime, MIDI behavior/core support, control/IPC seams and servers, all current Lua binding families, all extracted ImGui support seams, DSP primitives, SystemPaths, and export support helpers. The remaining gap is no longer broad first-pass coverage; it is concentrated in harder editor lifecycle, GL, settings-isolation, and ML-dependent areas.
+The Manifold codebase contains **137 C++ implementation files** (`.cpp`) across ~10 distinct subsystems. Of these, **a substantial majority now have direct or seam-level contract coverage** via the 62 registered CTest tests, including all DSP nodes, graph runtime, MIDI behavior/core support, control/IPC seams and servers, all current Lua binding families, all extracted ImGui support seams, DSP primitives, SystemPaths, Settings, editor bootstrap/lifecycle/capture/export support helpers, the non-GL shader/source/composite descriptor seams, and a focused EGL-backed draw-path smoke harness for generated/shader/composite surfaces. The remaining gap is no longer broad first-pass coverage; it is concentrated in harder editor lifecycle execution and ML-dependent areas, plus deeper GL failure-path testing rather than zero coverage.
 
 The existing test infrastructure (contract testing with golden JSON fixtures, tiered harness architecture, the `ManifoldClient`/`ManagedManifoldProcess` Python harness module) is well-designed and proven by the avsamplerDOCKING and binding god functions decompositions. The gap is in **breadth**, not methodology. The contract testing pattern scales — what's needed is systematic application across all modules.
 
@@ -38,15 +38,15 @@ This worksheet covers every C++ implementation file in the project, organized by
 | Metric | Count |
 |--------|-------|
 | Total C++ `.cpp` files (excl. tests, external) | 137 |
-| Test harness `.cpp` files (headless + tests) | 47 |
-| Registered CTest tests | 57 |
-| Files with direct / seam-level contract coverage | Broad coverage across DSP, scripting/bindings, control/IPC, ImGui support, primitives, SystemPaths, Settings, editor bootstrap/export support, and shader/source descriptor support |
-| Remaining concentrated zero-test areas | broader `BehaviorCoreEditor.cpp` lifecycle, GL-backed shader/source execution paths, ML/ONNX paths |
+| Test harness `.cpp` files (headless + tests) | 59 |
+| Registered CTest tests | 62 |
+| Files with direct / seam-level contract coverage | Broad coverage across DSP, scripting/bindings, control/IPC, ImGui support, primitives, SystemPaths, Settings, editor bootstrap/lifecycle/capture/export support, shader/source/composite descriptor support, and EGL-backed surface draw smoke |
+| Remaining concentrated zero-test areas | broader `BehaviorCoreEditor.cpp` live execution behavior, ML/ONNX paths |
 | DSP nodes with tests | 56 |
 | Scripting/binding files with zero behavior tests | ~28 |
 | ImGui host files with zero tests | 0 |
 | Control/IPC files with zero unit tests | 0 |
-| Shader pipeline files with zero tests | 4 |
+| Shader pipeline files with zero tests | 0 |
 
 ---
 
@@ -658,8 +658,12 @@ It handles node positioning, wire routing, color coding, zoom/pan, and hit testi
 
 ## 8. Tier 2 — Shader Pipeline ✅ PARTIALLY COVERED
 
-**Implemented harness / test:**
+**Implemented harnesses / tests:**
 - `manifold_shader_registry_contract` — `ShaderRegistryContractHarness.cpp`
+- `manifold_shader_surface_support_contract` — `ShaderSurfaceSupportContractHarness.cpp`
+- `manifold_texture_source_registry_contract` — `TextureSourceRegistryContractHarness.cpp`
+- `manifold_generated_source_support_contract` — `GeneratedSourceSupportContractHarness.cpp`
+- `manifold_composite_surface_support_contract` — `CompositeSurfaceSupportContractHarness.cpp`
 
 **What it covers:**
 - builtin inventory and metadata integrity across all registered effects
@@ -668,37 +672,41 @@ It handles node positioning, wire routing, color coding, zoom/pan, and hit testi
 - pipeline descriptor validation
 - runtime effect reload / clear via `UserScripts/shaders`
 - direct manifest loading failure cases (missing manifest, missing GLSL, invalid JSON)
+- non-GL shader pass/source descriptor parsing and signature building
+- generated texture source manifest loading, fragment preamble assembly, and param sanitization
+- generated-source payload parsing for direct + wrapped (`gpu_shader`) descriptors, including uniform clone semantics and failure-path handling
+- composite payload parsing, opacity clamp/default behavior, blend-op defaulting, shader source lookup, and composite signature construction
 
 ### 8.1. Coverage Status
 
 | Files | Tested | Coverage |
 |-------|--------|----------|
-| `manifold/primitives/shaders/ShaderSurfaceProvider.cpp` | **0** | **0%** |
+| `manifold/primitives/shaders/ShaderSurfaceProvider.cpp` | **Partial** — support contract | **Non-GL descriptor/seam logic covered; draw path not** |
 | `manifold/primitives/shaders/ShaderEffectRegistry.cpp` | **1 / 1** | **100% contract** |
-| `manifold/primitives/composite/CompositeSurfaceProvider.cpp` | **0** | **0%** |
-| `manifold/primitives/sources/GeneratedSourceProvider.cpp` | **0** | **0%** |
-| `manifold/primitives/sources/TextureSourceRegistry.cpp` | **0** | **0%** |
+| `manifold/primitives/composite/CompositeSurfaceProvider.cpp` | **Partial** — support contract | **Non-GL payload/descriptor logic covered; draw path not** |
+| `manifold/primitives/sources/GeneratedSourceProvider.cpp` | **Partial** — support contract | **Non-GL descriptor/numeric/color logic covered; render path not** |
+| `manifold/primitives/sources/TextureSourceRegistry.cpp` | **1 / 1** | **100% contract** |
 
 ### 8.2. Researched Findings
 
-**Finding 1 — Shader pipeline components require GL context, complicating testing:**
-`ShaderSurfaceProvider` manages an OpenGL shader surface, compiling GLSL programs, handling uniform updates, and managing framebuffer objects. Testing these requires either a GL context (OSMesa, EGL on Linux, or mocked) or structural extraction.
+**Finding 1 — Structural extraction is paying off, and the remaining shader/composite risk is now mostly GL execution:**
+`ShaderSurfaceProvider`, `GeneratedSourceProvider`, and `CompositeSurfaceProvider` all had meaningful non-GL seams hidden inside GL-backed files: descriptor parsing, numeric/color var decoding, blend-op/default selection, signature generation, and payload-shape validation. Those seams are extracted and contracted, and there is now a focused EGL-backed smoke harness that renders one `generated_source`, one `gpu_shader`, and one `gpu_composite` surface through `ImGuiDirectHost::captureScreenshot()`, verifying program compile/link, FBO allocation, texture routing, and non-empty rendered output. What remains in this subsystem is deeper GL failure-path / mutation-path coverage, not total absence of draw-path tests.
 
-**Finding 2 — `ShaderEffectRegistry.cpp` contains pure registry logic testable without GL:**
-The registry maps effect names to shader metadata (GLSL source, uniform definitions, parameter ranges). This is a pure data structure (string → struct map) that can be tested without GL: register effects, verify they're retrievable, verify parameter metadata is correct, verify enum/name mappings. The shader compilation step is separate from the registry logic.
+**Finding 2 — `ShaderEffectRegistry.cpp` and `TextureSourceRegistry.cpp` are fully worth contracting because they are pure metadata/assembly layers:**
+The registries map IDs to shader/source metadata, parameter ranges, GLSL/preamble assembly, and sanitization behavior. They are pure data and string-shaping seams, so contract testing them gives high drift sensitivity without needing a GL context.
 
-**Finding 3 — The Kimi research (Insight #6, High confidence) identifies the registry as a test seam:**
-The `ShaderEffectRegistry` is the infrastructure that already exists but isn't tested. A registry contract test would verify that all 17+ registered shader effects have valid metadata, correct parameter ranges, and unique names — without needing a GL context.
+**Finding 3 — `GeneratedSourceProvider.cpp` had the same extraction seam as `ShaderSurfaceProvider.cpp`:**
+The provider accepts either a direct `generated_source` payload or a wrapped `gpu_shader` payload with `sourceType == "generated_source"`. That payload resolution, clone semantics, clear-color parsing, and signature building are real behavior worth locking down independently from the eventual GL draw test.
 
 ### 8.3. Solution Space
 
-**Approach — Registry-first, surface-second:**
+**Approach — Registry/descriptors first, GL execution second:**
 
-1. **Phase 0: `ShaderEffectRegistry` contract** — instantiate registry, verify all registered effects have valid metadata, parameter names, type info, and range constraints. No GL needed.
+1. **Phase 0: registry + descriptor contracts** — DONE for `ShaderEffectRegistry`, `ShaderSurfaceSupport`, `TextureSourceRegistry`, `GeneratedSourceSupport`, and `CompositeSurfaceSupport`.
 
-2. **Phase 1: `ShaderSurfaceProvider` extracted logic** — extract shader compilation state management (success/failure tracking, fallback behavior) from the GL-dependent rendering path. Test without GL.
+2. **Phase 1: GL-backed integration test** — DONE at smoke level via `SurfaceProvidersDrawSmokeHarness` using `ImGuiDirectHost` + EGL offscreen capture to exercise `ShaderSurfaceProvider`, `GeneratedSourceProvider`, and `CompositeSurfaceProvider` compile/FBO/texture-routing/draw paths.
 
-3. **Phase 2: GL-backed integration test** — use `ShaderSurfaceProvider` with a mock GL context (OSMesa headless) for basic pipeline test: load shader, compile, verify no compile errors.
+3. **Phase 2: hard failure-path probes** — invalid shaders, missing textures, and partial-composite routing once the headless GL harness exists.
 
 ### 8.4. Risk Register
 
@@ -712,9 +720,11 @@ The `ShaderEffectRegistry` is the infrastructure that already exists but isn't t
 ### 8.5. Success Criteria
 
 - [x] `ShaderEffectRegistry` contract: all registered effects verified for metadata, params, sanitization, pipeline validation, and runtime reload semantics
-- [x] Registry contract registered in CTest with label `manifold;shader;registry;contract`
-- [ ] ShaderSurfaceProvider fallback/logic path tested without GL
-- [ ] (Stretch) OSMesa-backed compilation smoke test
+- [x] `ShaderSurfaceSupport` contract: non-GL shader pass/source parsing and signature logic verified
+- [x] `TextureSourceRegistry` contract: builtin/runtime source registration, shader assembly, and param sanitization verified
+- [x] `GeneratedSourceSupport` contract: direct/wrapped source payload parsing, clone semantics, and failure cases verified
+- [x] `CompositeSurfaceSupport` contract: composite payload parsing, opacity/default blend-op behavior, shader lookup, and signature logic verified
+- [x] OSMesa/EGL-backed compilation + draw smoke test for GL execution paths (EGL path via `SurfaceProvidersDrawSmokeHarness`)
 
 ---
 
@@ -725,8 +735,8 @@ The `ShaderEffectRegistry` is the infrastructure that already exists but isn't t
 | Files | Tested | Coverage |
 |-------|--------|----------|
 | `manifold/core/BehaviorCoreProcessor.cpp` (177 KB — largest .cpp) | **Partial** — state + MIDI + support contracts | **Processing behavior not covered** |
-| `manifold/core/BehaviorCoreEditor.cpp` (121 KB) | **0** | **0%** |
-| 13 support headers (extracted from processor) | **Partial direct** — 4 support contracts added | **4 / 13 directly exercised** |
+| `manifold/core/BehaviorCoreEditor.cpp` (121 KB) | **Partial** — bootstrap + lifecycle + capture support contracts | **Seam-level coverage added; live execution behavior not covered** |
+| support headers / seams extracted from processor/editor | **Broad direct coverage** — core support complete + editor bootstrap/lifecycle/capture contracted | **Non-editor support complete; editor support partial** |
 
 ### 9.2. Researched Findings
 
@@ -736,8 +746,8 @@ The state projection contract (`manifold_core_state_contract`) verifies that the
 **Finding 2 — The 13 support headers were extracted from the processor god file:**
 Files like `LinkSupport.h`, `MidiSupport.h`, `StateSerializationSupport.h`, `ControlCommandSupport.h`, `GraphRuntimeSupport.h` contain code that was extracted from the original god-class `BehaviorCoreProcessor` during the binding god functions decomposition. Each was tested at extraction time via comparison against the original file (same behavior, different structure). They have not been independently tested since extraction, meaning a bug introduced later in any support header is silent.
 
-**Finding 3 — BehaviorCoreEditor (121 KB) has zero tests:**
-This is the plugin editor implementation — UI layout, shell commands, renderer management, parameter binding. It handles user interaction, keyboard focus, editor lifecycle. Untested.
+**Finding 3 — BehaviorCoreEditor is no longer zero-test, but the remaining gap is still the hard execution path:**
+`BehaviorCoreEditor.cpp` now has seam-level contracts for bootstrap decisions, lifecycle policy, and capture/recording data-shaping (`EditorBootstrapSupport`, `EditorLifecycleSupport`, `EditorCaptureSupport`), covering root-mode resolution, initial script/renderer selection, deferred host visibility policy, recording transition policy, timer cadence, export-UI idle snapshot countdown, screenshot source/fallback selection, PNG persistence, recording crop resolution/application, and frame sink/path selection. What remains uncontracted is the actual live message-thread execution path: Lua-shell synchronization under a running editor, real component/show-hide/destroy lifecycle, and end-to-end frame production through active renderer hosts.
 
 ### 9.3. Solution Space
 
@@ -748,10 +758,9 @@ This is the plugin editor implementation — UI layout, shell commands, renderer
 - `ControlCommandSupportContractHarness` — command-to-path dispatch, layer fanout, toggle state mutation, queue drain semantics
 
 **Remaining work:**
-- `MidiSupport` contract
-- `BehaviorQuerySupport` contract
-- `BehaviorParamSupport` / `BehaviorHousekeepingSupport` / `DspSlotSupport` deeper direct contracts as needed
-- editor lifecycle / shell behavior once UI-side seams are chosen
+- full `BehaviorCoreEditor` execution-path coverage: screenshot / recording frame path / live shell sync / real create-show-hide-destroy behavior
+- `BehaviorCoreProcessor.cpp` processing behavior coverage (`processBlock`, automation smoothing, latency/reporting, graph swap effects)
+- optional deeper support-header contracts only if new regressions justify them
 
 ### 9.4. Risk Register
 
@@ -763,10 +772,11 @@ This is the plugin editor implementation — UI layout, shell commands, renderer
 
 ### 9.5. Success Criteria
 
-- [ ] Each extracted support header has a corresponding contract test exercising public API
+- [x] Non-editor extracted core support headers have corresponding contract tests exercising public API
 - [ ] State serialization round-trip test: save → load → save → verify byte-identical
 - [x] Link state contract: all 7 Link fields set/get correctly
-- [ ] Editor state contract: basic lifecycle (create, show, hide, destroy)
+- [x] Editor bootstrap + lifecycle support seams contracted
+- [ ] Editor state contract: real create/show/hide/destroy + screenshot/recording execution path
 - [x] First support-header CTest labels in place: `manifold;core;support;contract`
 
 ---
@@ -779,7 +789,7 @@ This is the plugin editor implementation — UI layout, shell commands, renderer
 |--------|-------|--------|
 | `manifold/primitives/dsp/` (CaptureBuffer, LoopBuffer, Playhead, Quantizer, TempoInference) | 5 headers | **0 tests** |
 | `manifold/primitives/core/` (Settings, SystemPaths) | 2 implementations | **0 tests** |
-| `manifold/primitives/composite/` (CompositeSurfaceProvider) | 1 implementation | **0 tests** |
+| `manifold/primitives/composite/` (CompositeSurfaceProvider) | 1 implementation | **Partial** — support contract |
 | `manifold/primitives/sync/` (LinkSync) | 1 implementation | **0 tests** |
 | `manifold/primitives/ml/` (MLMaskSurfaceProvider, MLPipeline) | 2 implementations | **0 tests** |
 | `manifold/primitives/ui/` (RuntimeNode) | 1 header | **0 tests** |
@@ -947,35 +957,50 @@ for (each node type) {
 
 ## 15. Success Criteria (Overall)
 
-- [ ] All 7 deferred orphaned tests registered in CTest and passing — DEFERRED (user discretion)
-- [x] All 56 DSP nodes covered by parameterized contract harness — DONE
-- [x] All 7 Highway SIMD variants dual-path compared to scalar — DONE
-- [x] Graph runtime contract: topology, cycle detection, state continuity covered — DONE
-- [x] Scripting engine behavior: meaningful coverage now in place for DSP host lifecycle, binding behavior smoke, LuaEngine load/eval/hot-reload, and ParamRegistry core behavior
-- [x] MIDI behavior extended: voice allocation, sustain, channel filtering, ring buffer, MIDI clock — DONE
-- [x] ParamRegistry contract: clamp, sanitize, category, register, bind dispatch — DONE
-- [x] Control/IPC parser/resolver/queue/registry/settings coverage: registered and passing — DONE
-- [x] Control/IPC server behavior: ControlServer/OSCQuery/OSCServer direct contracts — DONE
-- [x] Shader registry contract: builtin inventory, metadata, sanitize, validation, runtime reload, and load failures — DONE
-- [x] ImGui geometry/support/glue: `RuntimeNodeRenderer`, `WidgetPrimitives`, `Theme`, `ImGuiHierarchyHost`, `ImGuiHost`, `ImGuiInspectorHost`, `ImGuiScriptListHost`, `ImGuiPerfOverlayHost`, `ImGuiRuntimeNodeHost`, `ToolComponents`, `EditorShellSupport` shaping, `ManifoldImGuiGlobals`, and `ImGuiOpenGLBackend` now have direct test coverage
-- [x] Core support headers: all 9 non-editor support headers covered — DONE
-- [x] Lua bindings behavior contract: 10 binding families covered — DONE
-- [x] MIDI + Link Lua bindings: callback registration, send null-safety, state queries, Link getters/setters/requests — DONE
-- [x] Production teardown bug fixed: Lua-ref cleanup centralized in LuaEngine::clearAttachedUiLuaState + RuntimeNode::clearLuaStateRecursive
-- [x] Total registered CTest tests: 12 → **50**
-- [x] Full contract-label sweep passes: **41/41**
-- [x] Full ImGui-label sweep passes: **14/14**
-- [x] DSP primitive layer contract: CaptureBuffer, LoopBuffer, TempoInference, Playhead, Quantizer covered (no production code changes)
-- [x] Playhead bug fixed: infinite loop in `setPosition` when `length==0`
-- [x] StutterNode determinism fixed: seeded `juce::Random` with fixed seed
-- [x] MidiSupport contract: device listing, MIDI message translation, drain/output, null safety
-- [x] BehaviorQuerySupport contract: layer state enum, snapshot, layer/compute peaks, all atomic state readers, spectrum data, null-host wrappers
-- [x] BehaviorParamSupport contract: computeSamplesPerBar, extractLayerParam, applyParamPath (all 20+ paths), readCoreParamPath, hasCoreEndpoint
+- [x] All 56 DSP nodes covered by one parameterized contract harness
+- [x] All 7 Highway SIMD variants dual-path compared to scalar
+- [x] Graph runtime topology / mutation / support behavior under contract
+- [x] Scripting engine behavior materially covered: DSP host lifecycle, Lua engine load/eval/reload, binding behavior, ParamRegistry
+- [x] MIDI behavior materially covered: processor behavior, support helpers, Lua bindings, voice/ring-buffer/clock semantics
+- [x] Control / IPC parser / resolver / registry / persistence / server behavior directly contracted
+- [x] Shader / source / composite non-GL descriptor logic directly contracted
+- [x] First EGL-backed GL draw smoke now covers `GeneratedSourceProvider`, `ShaderSurfaceProvider`, and `CompositeSurfaceProvider`
+- [x] ImGui / direct-host / extracted support seams comprehensively covered
+- [x] Core support headers: all 9 non-editor support headers covered
+- [x] Editor bootstrap / lifecycle / capture / export support seams covered
+- [x] Total registered CTest tests now **62** and full suite passes **62/62**
+- [ ] `BehaviorCoreEditor.cpp` live execution behavior covered end-to-end under a running editor
+- [ ] `BehaviorCoreProcessor.cpp` `processBlock()` behavior covered directly
+- [ ] ML / ONNX-dependent paths covered by at least one deterministic contract or smoke harness
 - [ ] CI passes on all registered tests before merge
 
 ---
 
-## 16. Change Log
+## 16. Next Body of Work
+
+### Slice A — `BehaviorCoreEditor` live execution contract
+- extend from the new bootstrap/lifecycle/capture seams into a real running-editor contract
+- target live shell synchronization, active host visibility transitions, and real create/show/hide/destroy behavior
+- prove end-to-end screenshot/recording behavior through active renderer hosts, not just support helpers
+
+### Slice B — `BehaviorCoreProcessor::processBlock()` contract
+- add deterministic input/output coverage at the processor level
+- cover graph swap effects, automation smoothing, and output metrics under `processBlock()`
+- use metric-based contracts where byte-exact output is too brittle
+
+### Slice C — ML / ONNX testability seam
+- add either a tiny deterministic model fixture or a fake inference backend
+- target `MLPipeline.cpp` and `MLMaskSurfaceProvider`
+- aim for at least one deterministic contract or smoke test instead of leaving ML as the last untouched subsystem
+
+### Slice D — GL hardening (optional after A/B/C)
+- deepen the new EGL smoke with failure-path coverage
+- target compile failure, resize/rebuild, payload mutation, and provider prune/release behavior
+- this is hardening work now, not first-pass coverage
+
+---
+
+## 17. Change Log
 
 | Date | Change |
 |------|--------|
@@ -997,3 +1022,9 @@ for (each node type) {
 | 2026-05-04 (v17) | **MIDI + Link Lua bindings contract**: added `midiTestScript` and `linkTestScript` to `LuaBindingsBehaviorContractHarness`. MIDI covers callback registration (onNoteOn, onNoteOff, onControlChange, onPitchBend, onProgramChange, onMidiEvent), send functions (null-safe via dynamic_cast), state queries (getNumActiveVoices, getChannelState, note utilities), settings (omniMode, reset), and constants (EventType, CC_*). Link covers all 13 ScriptableProcessor virtuals (isEnabled/setEnabled, isTempoSyncEnabled/setTempoSyncEnabled, isStartStopSyncEnabled/setStartStopSyncEnabled, getNumPeers, isPlaying, getBeat, getPhase, requestTempo/requestStart/requestStop). **Production change**: `LuaMidiBindings.cpp` toBcp changed from `static_cast` to `dynamic_cast` for test-safe null return with existing guards. All 10 scripts load and pass. Contract golden updated (9551→14179 bytes). All 4 Lua CTest tests pass. |
 | 2026-05-04 (v18) | **Export support contract complete**: fixed `ExportSupportContractHarness` CMake wiring so it links `${MANIFOLD_LUA_TARGET}` and therefore gets the correct Lua 5.4 include path during sol2 compilation. Added `tests/fixtures/export_support_contract_golden.json`. Stabilized `EditorPerfSupport` contract assertions by replacing exact live `pssBytes` matching with invariant checks (`pssPositive`, `privPositive`, allocator non-negativity / ordering). `manifold_export_support_contract` now passes, missing video harness executables were built, and the full suite passes **53/53**. |
 | 2026-05-04 (v19) | **Remaining-gap coverage pass**: added `SettingsContractHarness` with sandboxed repo/user path + save/load/invalid-JSON coverage and fixture `tests/fixtures/settings_contract_golden.json`; extracted `EditorBootstrapSupport.h` from `BehaviorCoreEditor.cpp` (canonical contract path, profile window-size parsing, root-mode selection, runtime-renderer selection, initial Lua UI script resolution) with `EditorBootstrapSupportContractHarness` and fixture `tests/fixtures/editor_bootstrap_support_contract_golden.json`; extracted non-GL shader payload parsing/signature helpers into `ShaderSurfaceSupport.h` with `ShaderSurfaceSupportContractHarness` and fixture `tests/fixtures/shader_surface_support_contract_golden.json`; added `TextureSourceRegistryContractHarness` and fixture `tests/fixtures/texture_source_registry_contract_golden.json`. Full suite passes **57/57**. |
+| 2026-05-05 (v20) | **Generated source support pass**: extracted non-GL numeric/color/payload parsing helpers from `GeneratedSourceProvider.cpp` into `GeneratedSourceSupport.h`; added `GeneratedSourceSupportContractHarness.cpp` and fixture `tests/fixtures/generated_source_support_contract_golden.json`; production `GeneratedSourceProvider.cpp` now delegates descriptor parsing to the extracted seam and logs descriptor-parse failures. Caught and fixed a dumb harness-only `juce::var` lifetime bug during contract authoring. Full suite passes **58/58**. |
+| 2026-05-05 (v21) | **Composite surface support pass**: extracted non-GL composite payload/descriptor logic from `CompositeSurfaceProvider.cpp` into `CompositeSurfaceSupport.h`; added `CompositeSurfaceSupportContractHarness.cpp` and fixture `tests/fixtures/composite_surface_support_contract_golden.json`; production `CompositeSurfaceProvider.cpp` now delegates blend-op defaulting, opacity clamp/default behavior, shader lookup, and signature construction to the extracted seam. Full suite passes **59/59** and `Manifold_Standalone` relinks clean. |
+| 2026-05-05 (v22) | **Editor lifecycle support pass**: extracted deferred host visibility policy, recording transition policy, timer cadence, and export-UI idle snapshot countdown from `BehaviorCoreEditor.cpp` into `EditorLifecycleSupport.h`; added `EditorLifecycleSupportContractHarness.cpp` and fixture `tests/fixtures/editor_lifecycle_support_contract_golden.json`; production editor now delegates those lifecycle policy decisions to the extracted seam. Full suite passes **60/60** and `Manifold_Standalone` relinks clean. |
+| 2026-05-05 (v23) | **Editor capture support pass**: extracted screenshot source/fallback selection, PNG persistence, recording crop resolution/application, and recording frame sink/path selection from `BehaviorCoreEditor.cpp` into `EditorCaptureSupport.h`; added `EditorCaptureSupportContractHarness.cpp` and fixture `tests/fixtures/editor_capture_support_contract_golden.json`; production editor now delegates screenshot and recording data-shaping decisions to the extracted seam. Full suite passes **61/61**, `Manifold_Standalone` relinks clean, and a fresh standalone smoke run opened the editor, loaded Lua UI, and answered IPC health checks (`PING`, `/core/behavior/tempo`). |
+| 2026-05-05 (v24) | **GL draw-path smoke pass**: added `SurfaceProvidersDrawSmokeHarness.cpp` and fixture `tests/fixtures/surface_providers_draw_smoke_contract_golden.json`, using `ImGuiDirectHost` + EGL offscreen rendering to draw and sample one `generated_source`, one `gpu_shader`, and one `gpu_composite` surface. This gives first direct smoke coverage for `GeneratedSourceProvider` render, `ShaderSurfaceProvider` draw, and `CompositeSurfaceProvider` draw paths (compile/link, FBO allocation, texture routing, screenshot readback). Full suite passes **62/62**. |
+| 2026-05-05 (v25) | **Documentation sync + next-body-of-work pass**: updated `agent-docs/260502_full_testing_suite.md` to reflect the current 62-test suite, removed stale planning assumptions from this worksheet’s overall success criteria, and added an explicit next-body-of-work section prioritizing editor live execution, `processBlock()` coverage, ML/ONNX testability, and optional GL hardening. |
