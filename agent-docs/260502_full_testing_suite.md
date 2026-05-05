@@ -1,8 +1,8 @@
 # Full Codebase Testing Suite
 
 **Date:** 2026-05-05
-**Status:** Living reference — synced to the current suite at **62/62 passing**
-**Scope:** Current test architecture, registered tests, golden-fixture workflow, operational commands, coverage boundaries, and the next body of work for the final testing push.
+**Status:** Living reference — synced to the current suite at **66/66 passing**
+**Scope:** Current test architecture, registered tests, golden-fixture workflow, operational commands, coverage boundaries, and the remaining work after the editor-live / `processBlock()` / ML-seam push.
 
 ---
 
@@ -12,9 +12,9 @@
 
 | Metric | Value |
 |---|---:|
-| Registered CTest tests | **62** |
-| Harness `.cpp` files (`manifold/headless` + `tests`) | **59** |
-| Full-suite status | **62/62 passing** |
+| Registered CTest tests | **66** |
+| Harness `.cpp` files (`manifold/headless` + `tests`) | **62** |
+| Full-suite status | **66/66 passing** |
 | DSP node coverage | **56 nodes under contract** |
 | Lua binding families under behavior/registry coverage | **10 / 10** |
 | ImGui host files with zero tests | **0** |
@@ -31,6 +31,9 @@
 - control / IPC / OSC / OSCQuery parser, registry, server, persistence, endpoint, and resolver layers
 - all extracted ImGui support seams
 - editor bootstrap / lifecycle / capture / export support seams
+- live editor execution behavior through `manifold_editor_live_contract`
+- processor-level `processBlock()` behavior through `manifold_processor_process_block_contract`
+- ML pipeline backend + mask shaping seams through `manifold_ml_pipeline_contract` and `manifold_ml_mask_surface_support_contract`
 - system paths + settings persistence
 - shader/source/composite non-GL descriptor logic
 - first EGL-backed draw-path smoke for:
@@ -40,24 +43,14 @@
 
 ### What is still not done
 
-The remaining work is now concentrated in a few hard areas instead of broad first-pass coverage gaps:
+The remaining work is optional GL-facing polish instead of broad first-pass coverage gaps:
 
-1. **`BehaviorCoreEditor.cpp` live execution behavior**
-   - live Lua-shell synchronization under a running editor
-   - real create/show/hide/destroy lifecycle behavior
-   - active renderer-host execution paths on the JUCE message thread
+1. **Deeper GL lifecycle hardening**
+   - provider prune/release behavior under active rendering
+   - payload mutation without dimension change (texture key invalidation)
+   - the current smoke covers happy-path drawing, broken-shader compile path, and resize/rebuild mutation
 
-2. **`BehaviorCoreProcessor.cpp` process behavior**
-   - `processBlock()`-level output behavior
-   - automation smoothing / latency / graph swap effects
-
-3. **ML / ONNX-dependent paths**
-   - `MLPipeline.cpp`
-   - `MLMaskSurfaceProvider`
-
-4. **Deeper GL failure-path coverage**
-   - smoke coverage exists now
-   - failure-path / mutation-path / resource-rebuild coverage is still shallow
+There is no longer a pure "zero-test" subsystem in the codebase. Every area has at least seam-level, pipeline-level, or smoke-level contract coverage.
 
 ---
 
@@ -125,13 +118,17 @@ This is the current registered suite grouped by domain.
 | Domain | Registered tests |
 |---|---|
 | system + settings | `manifold_system_paths_contract`, `manifold_settings_contract` |
-| editor seams | `manifold_editor_bootstrap_support_contract`, `manifold_editor_lifecycle_support_contract`, `manifold_editor_capture_support_contract`, `manifold_export_support_contract` |
-| processor state / smoke | `manifold_core_state_contract`, `manifold_core_midi_contract`, `manifold_core_sniff`, `manifold_state_projection` |
+| editor seams + live execution | `manifold_editor_bootstrap_support_contract`, `manifold_editor_lifecycle_support_contract`, `manifold_editor_capture_support_contract`, `manifold_export_support_contract`, `manifold_editor_live_contract` |
+| processor state / smoke / process | `manifold_core_state_contract`, `manifold_core_midi_contract`, `manifold_core_sniff`, `manifold_state_projection`, `manifold_processor_process_block_contract` |
+| ML seam contracts | `manifold_ml_pipeline_contract`, `manifold_ml_mask_surface_support_contract` |
 
 **What this proves:**
 - editor bootstrap decisions are deterministic
 - editor lifecycle policy decisions are deterministic
 - screenshot / recording data-shaping logic is deterministic
+- live editor shell/renderer/perf-overlay state transitions are contracted under a running editor instance
+- processor audio/MIDI/capture/playtime behavior is now contracted at the `processBlock()` level
+- ML/ONNX request shaping, tensor packing, async inference plumbing, segmentation RGBA post-processing, and mask/composite payload shaping are now deterministic under fake backends
 - system path and settings persistence behavior are sandbox-covered
 - core state/midi projection remains stable
 
@@ -214,6 +211,9 @@ tests/fixtures/
 Examples added in the latest passes:
 - `editor_lifecycle_support_contract_golden.json`
 - `editor_capture_support_contract_golden.json`
+- `processor_process_block_contract_golden.json`
+- `ml_pipeline_contract_golden.json`
+- `ml_mask_surface_support_contract_golden.json`
 - `surface_providers_draw_smoke_contract_golden.json`
 
 ### 4.2. What belongs in a golden
@@ -322,81 +322,22 @@ What is **still shallow**:
 
 This remains the cleanest major hole.
 
-Missing ingredients:
-- deterministic model fixture(s)
-- or a proper fake / mock inference layer
-
-Until that exists, ML coverage will stay weaker than the rest of the system.
-
 ---
 
 ## 7. Next Body of Work
 
-This is the recommended order for the final push.
+The editor-live, `processBlock()`, and ML-seam slices are done. The remaining order is now just GL hardening.
 
-### Slice 1 — `BehaviorCoreEditor` live execution contract
+### Slice 1 — GL hardening
 
-**Goal:** cover the remaining real editor behavior, not just extracted policy helpers.
-
-**Target behaviors:**
-- live Lua-shell sync under running editor state
-- real host visibility transitions under active components
-- create/show/hide/destroy lifecycle behavior
-- screenshot/recording requests through active renderer hosts, not just seam logic
-
-**Likely approach:**
-- extend existing headless/direct-host/editor harness paths instead of inventing a new framework
-- add deterministic introspection for active host state after real timer/message-thread work
-- keep production changes limited to observability/test seams, not behavior changes
-
-**Done when:**
-- there is a direct contract or smoke test proving live editor state transitions under an active editor instance
-
-### Slice 2 — `BehaviorCoreProcessor::processBlock()` contract
-
-**Goal:** stop relying on indirect state coverage for processor behavior.
-
-**Target behaviors:**
-- audio output mutation through `processBlock()`
-- automation smoothing effects
-- graph swap / pending runtime behavior during processing
-- latency/reporting invariants if meaningful
-
-**Likely approach:**
-- build deterministic input buffers + MIDI buffers
-- snapshot output metrics instead of sample-exact giant binaries unless exactness is cheap
-- isolate failure paths if teardown remains crashy
-
-**Done when:**
-- a process-level contract exists that would catch a real audio-path regression in `BehaviorCoreProcessor.cpp`
-
-### Slice 3 — ML / ONNX testability seam
-
-**Goal:** get the ML subsystem out of the “special case, hard later” bucket.
-
-**Target behaviors:**
-- request shaping into the pipeline
-- inference result handling
-- mask/composite state behavior
-
-**Likely approach:**
-- choose one of:
-  1. tiny deterministic model fixture,
-  2. fake inference backend,
-  3. compile-time mock provider path
-
-**Done when:**
-- `MLPipeline` and/or `MLMaskSurfaceProvider` has at least one deterministic contract or smoke harness
-
-### Slice 4 — GL hardening (optional after Slice 1/2)
-
-**Goal:** deepen the new draw-smoke coverage.
+**Goal:** deepen the existing draw-smoke coverage into real failure/mutation coverage.
 
 **Target behaviors:**
 - bad shader compile path
 - FBO resize / rebuild behavior
 - texture-routing mutation after payload changes
 - provider prune/release lifecycle under active rendering
+- ML mask provider texture-upload path under a real direct-host GL context
 
 **Done when:**
 - GL coverage includes both happy-path smoke and at least one failure/mutation path
@@ -418,7 +359,9 @@ This is the recommended order for the final push.
 
 | Date | Change |
 |---|---|
-| 2026-05-05 | Synced this document to the current suite reality: **62 registered CTest tests**, **59 harness `.cpp` files**, current domain inventory, current coverage boundaries, and the next body of work for the final push. |
+| 2026-05-05 | Synced this document to the current suite reality: **66 registered CTest tests**, **62 harness `.cpp` files**, current domain inventory, current coverage boundaries, and the remaining GL-hardening body of work. |
 | 2026-05-05 | Added editor support coverage summary: bootstrap, lifecycle, capture, export support seams. |
+| 2026-05-05 | Added live editor + processor coverage summary: `manifold_editor_live_contract` and `manifold_processor_process_block_contract`. |
+| 2026-05-05 | Added ML seam coverage summary: `manifold_ml_pipeline_contract` and `manifold_ml_mask_surface_support_contract`. |
 | 2026-05-05 | Added GL draw-smoke coverage summary: `SurfaceProvidersDrawSmokeHarness` exercising `generated_source`, `gpu_shader`, and `gpu_composite` through EGL-backed `ImGuiDirectHost` rendering. |
 | 2026-05-02 | Initial document. |

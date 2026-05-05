@@ -1,7 +1,7 @@
 # Codebase Test Coverage Gap — Comprehensive Worksheet
 
-**Date:** 2026-05-05 (v25)
-**Status:** IN PROGRESS — All non-editor core support headers covered (9/9), all 10 Lua binding families under deterministic contract, editor export support headers (5/5) covered, `Settings` now under sandboxed contract, `BehaviorCoreEditor.cpp` bootstrap/lifecycle/capture support seams extracted and contracted, and both non-GL descriptor seams **and first EGL-backed draw-path smoke** now cover `ShaderSurfaceProvider`, `GeneratedSourceProvider`, and `CompositeSurfaceProvider`. Full CTest sweep is clean at **62/62 passing**. Remaining: broader `BehaviorCoreEditor.cpp` live message-thread / shell-sync / real lifecycle execution behavior and ML/ONNX-dependent paths; GL execution now has smoke coverage but not deep failure-path coverage.
+**Date:** 2026-05-05 (v27)
+**Status:** IN PROGRESS — All non-editor core support headers covered (9/9), all 10 Lua binding families under deterministic contract, editor export support headers (5/5) covered, `Settings` now under sandboxed contract, `BehaviorCoreEditor.cpp` bootstrap/lifecycle/capture support seams extracted and contracted, the live editor execution contract now covers real shell/message-thread state, `BehaviorCoreProcessor::processBlock()` now has direct processor-level contract coverage, `MLPipeline.cpp` now has deterministic fake-backend contract coverage, `MLMaskSurfaceProvider` request/mask shaping is now contracted through extracted support helpers, and both non-GL descriptor seams **and first EGL-backed draw-path smoke** now cover `ShaderSurfaceProvider`, `GeneratedSourceProvider`, and `CompositeSurfaceProvider`. Full CTest sweep is clean at **66/66 passing**. Remaining: deeper GL failure-path coverage, including the ML provider’s actual texture-upload path under the direct host.
 **Audience:** Agents planning or executing test coverage expansion
 **Reference session:** `.pi/agent/sessions/--home-shamanic-dev-my-plugin--/2026-05-03T00-00-00-000Z_testing_coverage_analysis.md`
 **Prior art:**
@@ -18,7 +18,7 @@
 
 ## 1. Executive Summary
 
-The Manifold codebase contains **137 C++ implementation files** (`.cpp`) across ~10 distinct subsystems. Of these, **a substantial majority now have direct or seam-level contract coverage** via the 62 registered CTest tests, including all DSP nodes, graph runtime, MIDI behavior/core support, control/IPC seams and servers, all current Lua binding families, all extracted ImGui support seams, DSP primitives, SystemPaths, Settings, editor bootstrap/lifecycle/capture/export support helpers, the non-GL shader/source/composite descriptor seams, and a focused EGL-backed draw-path smoke harness for generated/shader/composite surfaces. The remaining gap is no longer broad first-pass coverage; it is concentrated in harder editor lifecycle execution and ML-dependent areas, plus deeper GL failure-path testing rather than zero coverage.
+The Manifold codebase contains **137 C++ implementation files** (`.cpp`) across ~10 distinct subsystems. Of these, **a substantial majority now have direct or seam-level contract coverage** via the 66 registered CTest tests, including all DSP nodes, graph runtime, MIDI behavior/core support, control/IPC seams and servers, all current Lua binding families, all extracted ImGui support seams, DSP primitives, SystemPaths, Settings, editor bootstrap/lifecycle/capture/export support helpers, the live editor execution path, the processor-level `processBlock()` seam, the ML pipeline and mask-shaping seams, the non-GL shader/source/composite descriptor seams, and a focused EGL-backed draw-path smoke harness for generated/shader/composite surfaces. The remaining gap is no longer broad first-pass coverage; it is concentrated in deeper GL failure-path testing rather than zero coverage.
 
 The existing test infrastructure (contract testing with golden JSON fixtures, tiered harness architecture, the `ManifoldClient`/`ManagedManifoldProcess` Python harness module) is well-designed and proven by the avsamplerDOCKING and binding god functions decompositions. The gap is in **breadth**, not methodology. The contract testing pattern scales — what's needed is systematic application across all modules.
 
@@ -38,10 +38,10 @@ This worksheet covers every C++ implementation file in the project, organized by
 | Metric | Count |
 |--------|-------|
 | Total C++ `.cpp` files (excl. tests, external) | 137 |
-| Test harness `.cpp` files (headless + tests) | 59 |
-| Registered CTest tests | 62 |
-| Files with direct / seam-level contract coverage | Broad coverage across DSP, scripting/bindings, control/IPC, ImGui support, primitives, SystemPaths, Settings, editor bootstrap/lifecycle/capture/export support, shader/source/composite descriptor support, and EGL-backed surface draw smoke |
-| Remaining concentrated zero-test areas | broader `BehaviorCoreEditor.cpp` live execution behavior, ML/ONNX paths |
+| Test harness `.cpp` files (headless + tests) | 62 |
+| Registered CTest tests | 66 |
+| Files with direct / seam-level contract coverage | Broad coverage across DSP, scripting/bindings, control/IPC, ImGui support, primitives, SystemPaths, Settings, editor bootstrap/lifecycle/capture/export support, ML pipeline + mask shaping, shader/source/composite descriptor support, and EGL-backed surface draw smoke |
+| Remaining concentrated zero-test areas | none as pure zero-test subsystems; remaining gaps are GL-facing failure/mutation paths |
 | DSP nodes with tests | 56 |
 | Scripting/binding files with zero behavior tests | ~28 |
 | ImGui host files with zero tests | 0 |
@@ -734,20 +734,20 @@ The provider accepts either a direct `generated_source` payload or a wrapped `gp
 
 | Files | Tested | Coverage |
 |-------|--------|----------|
-| `manifold/core/BehaviorCoreProcessor.cpp` (177 KB — largest .cpp) | **Partial** — state + MIDI + support contracts | **Processing behavior not covered** |
-| `manifold/core/BehaviorCoreEditor.cpp` (121 KB) | **Partial** — bootstrap + lifecycle + capture support contracts | **Seam-level coverage added; live execution behavior not covered** |
-| support headers / seams extracted from processor/editor | **Broad direct coverage** — core support complete + editor bootstrap/lifecycle/capture contracted | **Non-editor support complete; editor support partial** |
+| `manifold/core/BehaviorCoreProcessor.cpp` (177 KB — largest .cpp) | **Substantial** — state + MIDI + support contracts + direct `processBlock()` contract | **Automation smoothing / latency-reporting still not isolated** |
+| `manifold/core/BehaviorCoreEditor.cpp` (121 KB) | **Substantial** — bootstrap + lifecycle + capture support contracts + live execution contract | **Remaining work is hardening, not first-pass coverage** |
+| support headers / seams extracted from processor/editor | **Broad direct coverage** — core support complete + editor bootstrap/lifecycle/capture contracted | **Non-editor support complete; editor support materially covered** |
 
 ### 9.2. Researched Findings
 
-**Finding 1 — Processor has state contracts but no processing behavior tests:**
-The state projection contract (`manifold_core_state_contract`) verifies that the processor's state JSON schema is correct. The MIDI contract (`manifold_core_midi_contract`) verifies MIDI helper layer behavior. Neither tests the actual `processBlock` callback — audio processing, parameter automation smoothing, latency reporting, or graph swap lifecycle.
+**Finding 1 — Processor now has direct processing-behavior coverage, but not every corner of it:**
+The state projection contract (`manifold_core_state_contract`) verifies that the processor's state JSON schema is correct. The MIDI contract (`manifold_core_midi_contract`) verifies MIDI helper layer behavior. The new `manifold_processor_process_block_contract` now covers real `processBlock()` callback behavior for no-graph passthrough scaling, muted-output-with-capture-filled behavior, graph-runtime output scaling with `masterVolume`, MIDI thru off/on semantics, and play-time / uptime progression. The remaining processor gap is deeper isolation of automation smoothing, latency reporting, and more pathological graph swap paths.
 
 **Finding 2 — The 13 support headers were extracted from the processor god file:**
 Files like `LinkSupport.h`, `MidiSupport.h`, `StateSerializationSupport.h`, `ControlCommandSupport.h`, `GraphRuntimeSupport.h` contain code that was extracted from the original god-class `BehaviorCoreProcessor` during the binding god functions decomposition. Each was tested at extraction time via comparison against the original file (same behavior, different structure). They have not been independently tested since extraction, meaning a bug introduced later in any support header is silent.
 
-**Finding 3 — BehaviorCoreEditor is no longer zero-test, but the remaining gap is still the hard execution path:**
-`BehaviorCoreEditor.cpp` now has seam-level contracts for bootstrap decisions, lifecycle policy, and capture/recording data-shaping (`EditorBootstrapSupport`, `EditorLifecycleSupport`, `EditorCaptureSupport`), covering root-mode resolution, initial script/renderer selection, deferred host visibility policy, recording transition policy, timer cadence, export-UI idle snapshot countdown, screenshot source/fallback selection, PNG persistence, recording crop resolution/application, and frame sink/path selection. What remains uncontracted is the actual live message-thread execution path: Lua-shell synchronization under a running editor, real component/show-hide/destroy lifecycle, and end-to-end frame production through active renderer hosts.
+**Finding 3 — BehaviorCoreEditor is no longer a first-pass gap:**
+`BehaviorCoreEditor.cpp` now has seam-level contracts for bootstrap decisions, lifecycle policy, and capture/recording data-shaping (`EditorBootstrapSupport`, `EditorLifecycleSupport`, `EditorCaptureSupport`), plus the live editor execution contract over a running `--test-ui` headless process via `EDITORSTATE`. That covers Lua-shell synchronization under a running editor, real shell/renderer/perf-overlay state transitions, and screenshot request handling through the active editor path. The remaining editor work is optional hardening, not a zero-test execution hole.
 
 ### 9.3. Solution Space
 
@@ -758,9 +758,9 @@ Files like `LinkSupport.h`, `MidiSupport.h`, `StateSerializationSupport.h`, `Con
 - `ControlCommandSupportContractHarness` — command-to-path dispatch, layer fanout, toggle state mutation, queue drain semantics
 
 **Remaining work:**
-- full `BehaviorCoreEditor` execution-path coverage: screenshot / recording frame path / live shell sync / real create-show-hide-destroy behavior
-- `BehaviorCoreProcessor.cpp` processing behavior coverage (`processBlock`, automation smoothing, latency/reporting, graph swap effects)
-- optional deeper support-header contracts only if new regressions justify them
+- deeper `BehaviorCoreProcessor.cpp` corners if needed: automation smoothing, latency/reporting, and more pathological graph swap effects
+- ML / ONNX-dependent paths (`MLPipeline`, `MLMaskSurfaceProvider`)
+- optional deeper GL/support hardening only if new regressions justify it
 
 ### 9.4. Risk Register
 
@@ -776,7 +776,8 @@ Files like `LinkSupport.h`, `MidiSupport.h`, `StateSerializationSupport.h`, `Con
 - [ ] State serialization round-trip test: save → load → save → verify byte-identical
 - [x] Link state contract: all 7 Link fields set/get correctly
 - [x] Editor bootstrap + lifecycle support seams contracted
-- [ ] Editor state contract: real create/show/hide/destroy + screenshot/recording execution path
+- [x] Editor state contract: real create/show/hide/destroy + screenshot/recording execution path
+- [x] Processor state contract: deterministic `processBlock()` behavior covered for direct passthrough, muted capture, graph-runtime scaling, MIDI thru, and play-time progression
 - [x] First support-header CTest labels in place: `manifold;core;support;contract`
 
 ---
@@ -787,35 +788,41 @@ Files like `LinkSupport.h`, `MidiSupport.h`, `StateSerializationSupport.h`, `Con
 
 | Module | Files | Tested |
 |--------|-------|--------|
-| `manifold/primitives/dsp/` (CaptureBuffer, LoopBuffer, Playhead, Quantizer, TempoInference) | 5 headers | **0 tests** |
-| `manifold/primitives/core/` (Settings, SystemPaths) | 2 implementations | **0 tests** |
-| `manifold/primitives/composite/` (CompositeSurfaceProvider) | 1 implementation | **Partial** — support contract |
-| `manifold/primitives/sync/` (LinkSync) | 1 implementation | **0 tests** |
-| `manifold/primitives/ml/` (MLMaskSurfaceProvider, MLPipeline) | 2 implementations | **0 tests** |
-| `manifold/primitives/ui/` (RuntimeNode) | 1 header | **0 tests** |
+| `manifold/primitives/dsp/` (CaptureBuffer, LoopBuffer, Playhead, Quantizer, TempoInference) | 5 headers | **Covered** — `manifold_dsp_primitive_contract` |
+| `manifold/primitives/core/` (Settings, SystemPaths) | 2 implementations | **Covered** — `manifold_settings_contract`, `manifold_system_paths_contract` |
+| `manifold/primitives/composite/` (CompositeSurfaceProvider) | 1 implementation | **Substantial** — support contract + EGL draw smoke |
+| `manifold/primitives/sync/` (LinkSync) | 1 implementation | **Partial** — `manifold_link_support_contract` |
+| `manifold/primitives/ml/` (MLMaskSurfaceProvider, MLPipeline) | 2 implementations | **Partial** — `MLPipeline` contract + ML mask support contract |
+| `manifold/primitives/ui/` (RuntimeNode) | 1 header | **Partial** — runtime-node support / editor-host coverage |
 
 ### 10.2. Researched Findings
 
-**Finding 1 — CaptureBuffer and LoopBuffer are core DSP infrastructure, untested:**
-`CaptureBuffer` manages the always-on audio capture ring buffer. `LoopBuffer` manages loop recording/playback buffers. These are used by every loop recording and playback operation. A bug in buffer management (wrong wrap position, incorrect write pointer, off-by-one in read/write overlap) corrupts audio.
+**Finding 1 — Most primitives are no longer the gap; ML is:**
+`CaptureBuffer`, `LoopBuffer`, `Playhead`, `Quantizer`, and `TempoInference` are already under deterministic contract coverage. `Settings` and `SystemPaths` are also covered under sandboxed contracts. The remaining zero-test primitive area is the ML subsystem.
 
-**Finding 2 — TempoInference is heuristic-based and particularly needs testing:**
-The tempo inference algorithm detects BPM from incoming audio. This is inherently heuristic and needs a test suite of known-tempo audio examples to verify detection accuracy and regression safety. Without tests, any change to the inference algorithm is flying blind.
+**Finding 2 — ML is no longer zero-test, but the provider’s GL upload path still sits at the boundary with the next slice:**
+`MLPipeline` no longer hard-wires ONNX Runtime as an untestable dependency — it now accepts a fakeable inference backend, and the tensor-packing / async / segmentation pipeline is directly contracted. `MLMaskSurfaceProvider` now routes request parsing and mask/composite shaping through extracted support helpers under contract. The remaining gap is the actual GL texture-upload path under a live direct-host context, which naturally belongs to the GL hardening slice rather than the pure ML seam.
 
 ### 10.3. Solution Space
 
-**Approach — Focus on the DSP-relevant primitives first:**
+**Completed ML seam work:**
 
-1. `CaptureBuffer` / `LoopBuffer` contract: deterministic write → read of known audio, verify byte-identical content, test wrap-around at buffer boundaries
-2. `TempoInference` contract: feed known BPM test signals (120, 140, 90 BPM click tracks), verify detected BPM within tolerance
-3. `Playhead` / `Quantizer` contract: test quantization of positions to beat grid at various time signatures and swing amounts
+1. injected a fakeable inference backend seam into `MLPipeline`
+2. added deterministic fake-backend contract coverage for packing, inference dispatch, async results, and segmentation output
+3. contracted `MLMaskSurfaceProvider` request shaping, mask processing, and composite RGBA shaping through extracted support helpers
+
+**Remaining ML-adjacent work:**
+
+1. cover `MLMaskSurfaceProvider`’s actual GL texture-upload path under a live direct-host context
+2. fold provider prune/release lifecycle checks into the GL hardening pass
 
 ### 10.4. Success Criteria
 
-- [ ] `CaptureBuffer` read/write contract: write N samples, read back, verify byte-identical
-- [ ] `LoopBuffer` record/play lifecycle: record → play → verify correct content
-- [ ] `TempoInference` accuracy: 3+ known tempos detected within ±2 BPM
-- [ ] `Quantizer` contract: known positions quantized to expected beat grid positions
+- [x] `CaptureBuffer` / `LoopBuffer` / `TempoInference` / `Playhead` / `Quantizer` contracted directly
+- [x] `Settings` and `SystemPaths` contracted under sandboxed config paths
+- [x] `MLPipeline` has deterministic contract coverage
+- [x] `MLMaskSurfaceProvider` request/mask/composite shaping has deterministic contract coverage
+- [ ] `MLMaskSurfaceProvider` GL upload path is covered under a live host/context
 
 ---
 
@@ -968,34 +975,20 @@ for (each node type) {
 - [x] ImGui / direct-host / extracted support seams comprehensively covered
 - [x] Core support headers: all 9 non-editor support headers covered
 - [x] Editor bootstrap / lifecycle / capture / export support seams covered
-- [x] Total registered CTest tests now **62** and full suite passes **62/62**
-- [ ] `BehaviorCoreEditor.cpp` live execution behavior covered end-to-end under a running editor
-- [ ] `BehaviorCoreProcessor.cpp` `processBlock()` behavior covered directly
-- [ ] ML / ONNX-dependent paths covered by at least one deterministic contract or smoke harness
+- [x] Total registered CTest tests now **66** and full suite passes **66/66**
+- [x] `BehaviorCoreEditor.cpp` live execution behavior covered end-to-end under a running editor
+- [x] `BehaviorCoreProcessor.cpp` `processBlock()` behavior covered directly
+- [x] ML / ONNX-dependent paths covered by deterministic contract harnesses (`MLPipeline`, `MLMaskSurfaceSupport`)
 - [ ] CI passes on all registered tests before merge
 
 ---
 
 ## 16. Next Body of Work
 
-### Slice A — `BehaviorCoreEditor` live execution contract
-- extend from the new bootstrap/lifecycle/capture seams into a real running-editor contract
-- target live shell synchronization, active host visibility transitions, and real create/show/hide/destroy behavior
-- prove end-to-end screenshot/recording behavior through active renderer hosts, not just support helpers
-
-### Slice B — `BehaviorCoreProcessor::processBlock()` contract
-- add deterministic input/output coverage at the processor level
-- cover graph swap effects, automation smoothing, and output metrics under `processBlock()`
-- use metric-based contracts where byte-exact output is too brittle
-
-### Slice C — ML / ONNX testability seam
-- add either a tiny deterministic model fixture or a fake inference backend
-- target `MLPipeline.cpp` and `MLMaskSurfaceProvider`
-- aim for at least one deterministic contract or smoke test instead of leaving ML as the last untouched subsystem
-
-### Slice D — GL hardening (optional after A/B/C)
+### Slice A — GL hardening
 - deepen the new EGL smoke with failure-path coverage
 - target compile failure, resize/rebuild, payload mutation, and provider prune/release behavior
+- include `MLMaskSurfaceProvider`’s real texture-upload / lifecycle path under a live host/context
 - this is hardening work now, not first-pass coverage
 
 ---
@@ -1028,3 +1021,5 @@ for (each node type) {
 | 2026-05-05 (v23) | **Editor capture support pass**: extracted screenshot source/fallback selection, PNG persistence, recording crop resolution/application, and recording frame sink/path selection from `BehaviorCoreEditor.cpp` into `EditorCaptureSupport.h`; added `EditorCaptureSupportContractHarness.cpp` and fixture `tests/fixtures/editor_capture_support_contract_golden.json`; production editor now delegates screenshot and recording data-shaping decisions to the extracted seam. Full suite passes **61/61**, `Manifold_Standalone` relinks clean, and a fresh standalone smoke run opened the editor, loaded Lua UI, and answered IPC health checks (`PING`, `/core/behavior/tempo`). |
 | 2026-05-05 (v24) | **GL draw-path smoke pass**: added `SurfaceProvidersDrawSmokeHarness.cpp` and fixture `tests/fixtures/surface_providers_draw_smoke_contract_golden.json`, using `ImGuiDirectHost` + EGL offscreen rendering to draw and sample one `generated_source`, one `gpu_shader`, and one `gpu_composite` surface. This gives first direct smoke coverage for `GeneratedSourceProvider` render, `ShaderSurfaceProvider` draw, and `CompositeSurfaceProvider` draw paths (compile/link, FBO allocation, texture routing, screenshot readback). Full suite passes **62/62**. |
 | 2026-05-05 (v25) | **Documentation sync + next-body-of-work pass**: updated `agent-docs/260502_full_testing_suite.md` to reflect the current 62-test suite, removed stale planning assumptions from this worksheet’s overall success criteria, and added an explicit next-body-of-work section prioritizing editor live execution, `processBlock()` coverage, ML/ONNX testability, and optional GL hardening. |
+| 2026-05-05 (v26) | **Processor `processBlock()` contract landed**: added `ProcessorProcessBlockContractHarness.cpp`, fixture `tests/fixtures/processor_process_block_contract_golden.json`, and CTest `manifold_processor_process_block_contract`; documented direct coverage for no-graph passthrough scaling, muted-output capture behavior, graph-runtime output scaling with `masterVolume`, MIDI thru off/on semantics, and play-time / uptime progression. Synced both suite docs to the new **64/64 passing** state and removed editor-live / `processBlock()` from the remaining-body-of-work list. |
+| 2026-05-05 (v27) | **ML seam pass**: added `MLInferenceBackend.h` and injected a fakeable backend seam into `MLPipeline`; added `MLPipelineContractHarness.cpp`, `MLMaskSurfaceSupport.h`, `MLMaskSurfaceSupportContractHarness.cpp`, and fixtures `tests/fixtures/ml_pipeline_contract_golden.json` / `tests/fixtures/ml_mask_surface_support_contract_golden.json`; registered `manifold_ml_pipeline_contract` and `manifold_ml_mask_surface_support_contract`. This covers tensor packing (NHWC/NCHW, float/int32), async inference plumbing, segmentation RGBA output, and ML mask request/post-process/composite shaping under deterministic fake backends. Full suite passes **66/66**. The remaining ML-adjacent gap is the provider’s actual GL upload path, which now rolls into the GL hardening slice instead of being a pure ML zero-test area. |
