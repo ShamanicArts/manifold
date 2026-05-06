@@ -83,6 +83,10 @@ std::string ControlServer::getDiagnosticsJson() {
     return buildDiagnoseJson();
 }
 
+std::string ControlServer::getEditorStateJson() const {
+    return std::string{};
+}
+
 std::string ControlServer::buildDiagnoseJson() {
     return "{\"ok\":true,\"ipc\":\"disabled\",\"platform\":\"windows\"}\n";
 }
@@ -662,6 +666,13 @@ std::string ControlServer::handleQuery(const ParseResult& result) {
     if (result.queryType == "PING")     return "OK PONG";
     if (result.queryType == "DIAGNOSE") return "OK " + buildDiagnoseJson();
     if (result.queryType == "DIAGNOSTICS") return "OK " + buildDiagnoseJson();
+    if (result.queryType == "EDITORSTATE" || result.queryType == "EDITOR_CONTRACT") {
+        const auto editorState = getEditorStateJson();
+        if (editorState.empty()) {
+            return "ERROR no editor state";
+        }
+        return "OK " + editorState;
+    }
     if (result.queryType == "UIRENDERER") {
         std::ostringstream o;
         o << "OK {" << jsonStr("mode", uiRendererModeToString(getCurrentUIRendererMode())) << "}";
@@ -818,6 +829,15 @@ std::string ControlServer::processCommand(const std::string& cmd) {
 // ============================================================================
 // JSON builders - read from AtomicState (lock-free)
 // ============================================================================
+
+std::string ControlServer::getEditorStateJson() const {
+    std::function<std::string()> provider;
+    {
+        std::lock_guard<std::mutex> lock(editorStateProviderMutex);
+        provider = editorStateProvider;
+    }
+    return provider ? provider() : std::string{};
+}
 
 std::string ControlServer::buildStateJson() {
     auto& s = atomicState;

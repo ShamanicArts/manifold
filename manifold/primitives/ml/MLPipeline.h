@@ -9,6 +9,8 @@
 #include <thread>
 #include <vector>
 
+#include "MLInferenceBackend.h"
+
 namespace manifold::ml {
 
 struct FrameJob {
@@ -38,6 +40,7 @@ struct FrameJob {
 class MLPipeline {
 public:
     MLPipeline();
+    explicit MLPipeline(std::unique_ptr<IMLInferenceBackend> backend);
     ~MLPipeline();
 
     MLPipeline(const MLPipeline&) = delete;

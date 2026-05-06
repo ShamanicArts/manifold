@@ -1129,6 +1129,8 @@ add_executable(ParamRegistryContractHarness manifold/headless/ParamRegistryContr
 
 add_executable(DSPHostLifecycleContractHarness manifold/headless/DSPHostLifecycleContractHarness.cpp)
 
+add_executable(ProcessorProcessBlockContractHarness manifold/headless/ProcessorProcessBlockContractHarness.cpp)
+
 add_executable(SystemPathsContractHarness manifold/headless/SystemPathsContractHarness.cpp)
 
 add_executable(SettingsContractHarness manifold/headless/SettingsContractHarness.cpp)
@@ -1208,6 +1210,10 @@ add_executable(BehaviorParamSupportContractHarness manifold/headless/BehaviorPar
 add_executable(BehaviorHousekeepingSupportContractHarness manifold/headless/BehaviorHousekeepingSupportContractHarness.cpp)
 
 add_executable(DspSlotSupportContractHarness manifold/headless/DspSlotSupportContractHarness.cpp)
+
+add_executable(MLPipelineContractHarness manifold/headless/MLPipelineContractHarness.cpp)
+
+add_executable(MLMaskSurfaceSupportContractHarness manifold/headless/MLMaskSurfaceSupportContractHarness.cpp)
 
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
@@ -1403,6 +1409,18 @@ target_link_libraries(ParamRegistryContractHarness
 
 manifold_target_include_project_and_ableton(DSPHostLifecycleContractHarness)
 target_link_libraries(DSPHostLifecycleContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway)
+
+manifold_target_include_project_and_ableton(ProcessorProcessBlockContractHarness)
+target_link_libraries(ProcessorProcessBlockContractHarness
     PRIVATE
         Manifold
         juce::juce_audio_processors
@@ -1819,6 +1837,19 @@ target_link_libraries(DspSlotSupportContractHarness
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
         highway)
+
+manifold_target_include_project_and_ableton(MLPipelineContractHarness)
+target_link_libraries(MLPipelineContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core
+        ${MANIFOLD_ML_TARGET})
+
+manifold_target_include_project_and_ableton(MLMaskSurfaceSupportContractHarness)
+target_link_libraries(MLMaskSurfaceSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core)
 
 target_include_directories(VideoSamplerHarness
     PRIVATE
@@ -2282,6 +2313,15 @@ set_tests_properties(manifold_core_sniff PROPERTIES
     LABELS "manifold;core;smoke")
 
 add_test(
+    NAME manifold_editor_live_contract
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e_editor_live_contract_test.py
+            --headless build-dev/ManifoldHeadless
+            --duration 20.0)
+set_tests_properties(manifold_editor_live_contract PROPERTIES
+    LABELS "manifold;editor;live;contract")
+
+add_test(
     NAME manifold_direct_host_contract
     COMMAND $<TARGET_FILE:ImGuiDirectHostContractHarness>
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/direct_host_contract_golden.json)
@@ -2330,11 +2370,32 @@ set_tests_properties(manifold_dsp_host_lifecycle_contract PROPERTIES
     LABELS "manifold;scripting;lifecycle;contract")
 
 add_test(
+    NAME manifold_processor_process_block_contract
+    COMMAND $<TARGET_FILE:ProcessorProcessBlockContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/processor_process_block_contract_golden.json)
+set_tests_properties(manifold_processor_process_block_contract PROPERTIES
+    LABELS "manifold;processor;audio;contract")
+
+add_test(
     NAME manifold_lua_engine_contract
     COMMAND $<TARGET_FILE:LuaEngineContractHarness>
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lua_engine_contract_golden.json)
 set_tests_properties(manifold_lua_engine_contract PROPERTIES
     LABELS "manifold;scripting;luaengine;contract")
+
+add_test(
+    NAME manifold_ml_pipeline_contract
+    COMMAND $<TARGET_FILE:MLPipelineContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ml_pipeline_contract_golden.json)
+set_tests_properties(manifold_ml_pipeline_contract PROPERTIES
+    LABELS "manifold;ml;pipeline;contract")
+
+add_test(
+    NAME manifold_ml_mask_surface_support_contract
+    COMMAND $<TARGET_FILE:MLMaskSurfaceSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ml_mask_surface_support_contract_golden.json)
+set_tests_properties(manifold_ml_mask_surface_support_contract PROPERTIES
+    LABELS "manifold;ml;surface;support;contract")
 
 add_test(
     NAME manifold_shader_registry_contract

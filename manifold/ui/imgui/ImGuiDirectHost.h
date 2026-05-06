@@ -206,6 +206,7 @@ public:
 
     void attachContextIfNeeded();
     bool ensureEglOffscreenContext(int width, int height);
+    bool makeEglContextCurrent();
     void releaseEglOffscreenContext();
     void initialiseImGuiBackendIfNeeded();
     void shutdownImGuiBackend();

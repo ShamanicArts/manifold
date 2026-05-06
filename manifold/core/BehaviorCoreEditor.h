@@ -46,8 +46,10 @@ public:
     // harness. Captures root mode, renderer mode, Lua UI state, host visibility,
     // and frame timings.
     std::string exportStateContract() const;
+    std::string getCachedStateContract() const;
 
 private:
+    void refreshCachedStateContract();
     using RuntimeRendererMode = editor_renderer::RuntimeRendererMode;
 
     void timerCallback() override;
@@ -98,6 +100,9 @@ private:
     // Recording frame capture
     bool wasRecording_ = false;
     editor_recording::RamFrameAccumulator recordingAccumulator_;
+
+    mutable std::mutex cachedStateContractMutex_;
+    std::string cachedStateContract_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BehaviorCoreEditor)
 };

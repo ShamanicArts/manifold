@@ -136,6 +136,15 @@ juce::var makeGeneratedSourcePayload(juce::Colour colour) {
   return payload;
 }
 
+juce::var makeBrokenGeneratedSourcePayload() {
+  auto payload = makeObject();
+  const auto vertex = manifold::shaders::ShaderEffectRegistry::instance().vertexShader();
+  asObject(payload)->setProperty("vertexShader", juce::String(vertex));
+  asObject(payload)->setProperty("fragmentShader", juce::String("#version 150\nin vec2 vUv;\nout vec4 fragColor;\nvoid main() { fragColor = vec4( }\n"));
+  asObject(payload)->setProperty("uniforms", makeObject());
+  return payload;
+}
+
 juce::var makeShaderSurfacePayload() {
   auto payload = makeObject();
   const auto vertex = manifold::shaders::ShaderEffectRegistry::instance().vertexShader();
@@ -235,6 +244,7 @@ juce::var buildFullContract() {
   auto generatedPayload = makeGeneratedSourcePayload(juce::Colour(0xffff0000));
   auto shaderPayload = makeShaderSurfacePayload();
   auto compositePayload = makeCompositePayload("generated_node", "shader_node", 0.5f);
+  auto brokenGeneratedPayload = makeBrokenGeneratedSourcePayload();
 
   auto* generatedNode = root.createChild("GeneratedNode");
   configureSurfaceNode(*generatedNode, "generated_node", {16, 20, 80, 80}, "generated_source", generatedPayload);
@@ -244,6 +254,9 @@ juce::var buildFullContract() {
 
   auto* compositeNode = root.createChild("CompositeNode");
   configureSurfaceNode(*compositeNode, "composite_node", {224, 20, 80, 80}, "gpu_composite", compositePayload);
+
+  auto* brokenNode = root.createChild("BrokenGeneratedNode");
+  configureSurfaceNode(*brokenNode, "broken_generated_node", {0, 0, 1, 1}, "generated_source", brokenGeneratedPayload);
 
   auto host = std::make_unique<ImGuiDirectHost>();
   host->setBounds(0, 0, 320, 120);
@@ -264,6 +277,12 @@ juce::var buildFullContract() {
                         static_cast<juce::int64>(host->prepareCustomSurfaceTextureImmediate(*shaderNode, 80, 80, 0.0)));
   contract->setProperty("compositeHandle",
                         static_cast<juce::int64>(host->prepareCustomSurfaceTextureImmediate(*compositeNode, 80, 80, 0.0)));
+  const bool eglActive = host->makeEglContextCurrent();
+  contract->setProperty("eglCurrentAfterScreenshot", eglActive);
+  contract->setProperty("brokenGeneratedHandle",
+                        static_cast<juce::int64>(host->prepareCustomSurfaceTextureImmediate(*brokenNode, 32, 32, 0.0)));
+  contract->setProperty("generatedResizeHandle",
+                        static_cast<juce::int64>(host->prepareCustomSurfaceTextureImmediate(*generatedNode, 96, 64, 0.5)));
   auto screenshotObj = makeObject();
   asObject(screenshotObj)->setProperty("valid", screenshot.isValid());
   asObject(screenshotObj)->setProperty("width", screenshot.getWidth());
@@ -287,6 +306,7 @@ juce::var buildFullContract() {
   infoObj.getDynamicObject()->setProperty("generated", surfaceInfoToVar(*host, generatedNode->getStableId()));
   infoObj.getDynamicObject()->setProperty("shader", surfaceInfoToVar(*host, shaderNode->getStableId()));
   infoObj.getDynamicObject()->setProperty("composite", surfaceInfoToVar(*host, compositeNode->getStableId()));
+  infoObj.getDynamicObject()->setProperty("brokenGenerated", surfaceInfoToVar(*host, brokenNode->getStableId()));
   contract->setProperty("surfaceInfo", infoObj);
 
   const auto stats = host->getStatsSnapshot();

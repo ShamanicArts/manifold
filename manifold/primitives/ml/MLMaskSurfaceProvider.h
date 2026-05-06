@@ -1,16 +1,26 @@
 #pragma once
 
 #include "../ui/CustomSurfaceProvider.h"
+#include "../video/VideoCaptureManager.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
+
 namespace manifold::ml {
+
+class MLPipeline;
 
 class MLMaskSurfaceProvider : public CustomSurfaceProvider {
 public:
+    using PipelineFactory = std::function<std::unique_ptr<MLPipeline>()>;
+    using FrameSupplier = std::function<manifold::video::FrameData()>;
+
     MLMaskSurfaceProvider();
+    explicit MLMaskSurfaceProvider(PipelineFactory pipelineFactory,
+                                   FrameSupplier frameSupplier = {});
     ~MLMaskSurfaceProvider() override;
 
     bool handlesType(const std::string& surfaceType) const override;

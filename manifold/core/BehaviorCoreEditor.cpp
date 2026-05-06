@@ -136,6 +136,17 @@ RuntimeNode* BehaviorCoreEditor::getActiveRootRuntimeNode() {
     return rootCanvas.getRuntimeNode();
 }
 
+void BehaviorCoreEditor::refreshCachedStateContract() {
+    const auto snapshot = exportStateContract();
+    std::lock_guard<std::mutex> lock(cachedStateContractMutex_);
+    cachedStateContract_ = snapshot;
+}
+
+std::string BehaviorCoreEditor::getCachedStateContract() const {
+    std::lock_guard<std::mutex> lock(cachedStateContractMutex_);
+    return cachedStateContract_;
+}
+
 void BehaviorCoreEditor::setRuntimeRendererMode(RuntimeRendererMode mode, bool logChange) {
     if (rootMode_ == RootMode::RuntimeNode
         && (mode == RuntimeRendererMode::Canvas || mode == RuntimeRendererMode::ImGuiOverlay)) {
@@ -423,6 +434,9 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
     runtimeNodeDebugHost.setRootNode(getActiveRootRuntimeNode());
     processorRef.getControlServer().setFrameTimings(&luaEngine.frameTimings);
     processorRef.getControlServer().setLuaEngine(&luaEngine);
+    processorRef.getControlServer().setEditorStateProvider([this]() {
+        return getCachedStateContract();
+    });
 
     {
         const char* envRenderer = std::getenv("MANIFOLD_RENDERER");
@@ -500,6 +514,7 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
     processorRef.captureEditorOpenSnapshot();
     startTimerHz(exportPluginUi_ ? 20 : 30);
     resized();
+    refreshCachedStateContract();
 }
 
 BehaviorCoreEditor::~BehaviorCoreEditor() {
@@ -519,6 +534,7 @@ BehaviorCoreEditor::~BehaviorCoreEditor() {
 
     removeChildComponent(&runtimeNodeDebugHost);
     removeChildComponent(&directHost_);
+    processorRef.getControlServer().setEditorStateProvider({});
     processorRef.getControlServer().setLuaEngine(nullptr);
     processorRef.getControlServer().setFrameTimings(nullptr);
 }
@@ -1042,6 +1058,8 @@ void BehaviorCoreEditor::timerCallback() {
         runtimeNodeDebugHost.setVisible(false);
     }
 
+    refreshCachedStateContract();
+
     // Reschedule from now so mouse events get processed between callbacks.
     // Do not pin the message thread at 60 Hz while ImGui is capturing input:
     // direct-mode renders already cost ~a frame on some drivers, so the old
@@ -1213,6 +1231,9 @@ void BehaviorCoreEditor::resized() {
         scriptInspectorHost.setBounds(0, 0, 0, 0);
         runtimeNodeDebugHost.setBounds(0, 0, 0, 0);
     }
+    if (usingLuaUi) {
+        refreshCachedStateContract();
+    }
 }
 
 bool BehaviorCoreEditor::keyPressed(const juce::KeyPress& key) {
@@ -1258,6 +1279,7 @@ void BehaviorCoreEditor::showError(const std::string& message) {
         g.drawMultiLineText(juce::String(errorMessage), inner.getX(), inner.getY() + 14,
                             inner.getWidth());
     };
+    refreshCachedStateContract();
 }
 
 std::string BehaviorCoreEditor::exportStateContract() const {
@@ -1283,6 +1305,12 @@ std::string BehaviorCoreEditor::exportStateContract() const {
     shellObj->setProperty("mode", juce::String());
     shellObj->setProperty("leftPanelMode", juce::String());
     shellObj->setProperty("title", juce::String());
+    shellObj->setProperty("editContentMode", juce::String());
+    shellObj->setProperty("scriptEditorPath", juce::String());
+    shellObj->setProperty("scriptEditorFocused", false);
+    shellObj->setProperty("perfOverlayVisible", false);
+    shellObj->setProperty("perfOverlayActiveTab", juce::String());
+    shellObj->setProperty("perfOverlayBounds", juce::var(new juce::DynamicObject()));
     shellObj->setProperty("surfaceCount", 0);
     luaEngine.withLuaState([&](const sol::state& L) {
         sol::object shellValue = L["_G"]["shell"];
@@ -1294,6 +1322,32 @@ std::string BehaviorCoreEditor::exportStateContract() const {
         shellObj->setProperty("mode", juce::String(shell["mode"].get_or(std::string{})));
         shellObj->setProperty("leftPanelMode", juce::String(shell["leftPanelMode"].get_or(std::string{})));
         shellObj->setProperty("title", juce::String(shell["title"].get_or(std::string{})));
+        shellObj->setProperty("editContentMode", juce::String(shell["editContentMode"].get_or(std::string{})));
+
+        sol::object scriptEditorValue = shell["scriptEditor"];
+        if (scriptEditorValue.valid() && scriptEditorValue.is<sol::table>()) {
+            const auto scriptEditor = scriptEditorValue.as<sol::table>();
+            shellObj->setProperty("scriptEditorPath", juce::String(scriptEditor["path"].get_or(std::string{})));
+            shellObj->setProperty("scriptEditorFocused", scriptEditor["focused"].get_or(false));
+        }
+
+        sol::object perfOverlayValue = shell["perfOverlay"];
+        if (perfOverlayValue.valid() && perfOverlayValue.is<sol::table>()) {
+            const auto perfOverlay = perfOverlayValue.as<sol::table>();
+            shellObj->setProperty("perfOverlayVisible", perfOverlay["visible"].get_or(false));
+            shellObj->setProperty("perfOverlayActiveTab", juce::String(perfOverlay["activeTab"].get_or(std::string{})));
+            auto* boundsObj = new juce::DynamicObject();
+            sol::object perfBoundsValue = perfOverlay["bounds"];
+            if (perfBoundsValue.valid() && perfBoundsValue.is<sol::table>()) {
+                const auto perfBounds = perfBoundsValue.as<sol::table>();
+                boundsObj->setProperty("x", perfBounds["x"].get_or(0));
+                boundsObj->setProperty("y", perfBounds["y"].get_or(0));
+                boundsObj->setProperty("w", perfBounds["w"].get_or(0));
+                boundsObj->setProperty("h", perfBounds["h"].get_or(0));
+            }
+            shellObj->setProperty("perfOverlayBounds", juce::var(boundsObj));
+        }
+
         int surfaceCount = 0;
         sol::object surfacesValue = shell["surfaces"];
         if (surfacesValue.valid() && surfacesValue.is<sol::table>()) {

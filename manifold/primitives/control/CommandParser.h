@@ -594,6 +594,8 @@ inline ParseResult parse(const std::string &cmd,
     return makeQuery("DIAGNOSE");
   if (verb == "DIAGNOSTICS")
     return makeQuery("DIAGNOSTICS");
+  if (verb == "EDITORSTATE" || verb == "EDITOR_CONTRACT")
+    return makeQuery("EDITORSTATE");
   if (verb == "WATCH")
   {
     ParseResult result;

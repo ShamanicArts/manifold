@@ -389,6 +389,11 @@ public:
   FrameTimings *getFrameTimings() const { return frameTimings; }
   void setLuaEngine(LuaEngine *engine) { luaEngine = engine; }
   LuaEngine *getLuaEngine() const { return luaEngine; }
+  void setEditorStateProvider(std::function<std::string()> provider) {
+    std::lock_guard<std::mutex> lock(editorStateProviderMutex);
+    editorStateProvider = std::move(provider);
+  }
+  std::string getEditorStateJson() const;
 
   // UI switch / renderer request access
   UISwitchRequest &getUISwitchRequest() { return uiSwitchRequest; }
@@ -499,6 +504,8 @@ private:
 
   FrameTimings *frameTimings = nullptr;
   LuaEngine *luaEngine = nullptr;
+  mutable std::mutex editorStateProviderMutex;
+  std::function<std::string()> editorStateProvider;
 
   // Debug capture state
   CaptureState captureState;

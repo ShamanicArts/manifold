@@ -1,194 +1,195 @@
 #include "MLPipeline.h"
 
-#include <cstring>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include <onnxruntime_cxx_api.h>
 
 namespace manifold::ml {
+namespace {
 
-struct MLPipeline::Impl {
-    enum class InputLayout {
-        NHWC,
-        NCHW,
-    };
+class OrtInferenceBackend final : public IMLInferenceBackend {
+public:
+    OrtInferenceBackend() {
+        opts_.SetIntraOpNumThreads(4);
+    }
 
-    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "ManifoldML"};
-    Ort::SessionOptions opts;
-    std::unique_ptr<Ort::Session> session;
+    bool load(const std::string& modelPath) override {
+        error_.clear();
+        loaded_ = false;
 
-    std::vector<int64_t> inputDims;
-    std::vector<int64_t> outputDims;
-    int inputW = 0;
-    int inputH = 0;
-    int inputC = 0;
-    int outputElems = 0;
-    bool loaded = false;
-    std::string error;
+        try {
+            session_ = std::make_unique<Ort::Session>(env_, modelPath.c_str(), opts_);
+        } catch (const Ort::Exception& e) {
+            error_ = "Failed to create session: ";
+            error_ += e.what();
+            return false;
+        }
 
-    // Input/output names — queried from model
-    std::string inputName;
-    std::string outputName;
-    InputLayout inputLayout = InputLayout::NHWC;
+        auto inputTypeInfo = session_->GetInputTypeInfo(0);
+        auto inputTensorInfo = inputTypeInfo.GetTensorTypeAndShapeInfo();
+        inputDims_ = inputTensorInfo.GetShape();
+        for (auto& d : inputDims_) {
+            if (d < 0) {
+                d = 1;
+            }
+        }
 
-    // Pre-allocated resize/input buffers to avoid per-frame allocation
-    std::vector<float> resizeBuf;
-    std::vector<float> inputBuf;
-    std::vector<int32_t> inputBufInt32;
+        if (inputDims_.size() != 4) {
+            error_ = "Expected 4D input (NHWC or NCHW), got " +
+                     std::to_string(inputDims_.size()) + "D";
+            return false;
+        }
 
-    float normScale = 2.0f;
-    float normBias = -1.0f;
-    ONNXTensorElementDataType inputElementType = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+        const int d1 = static_cast<int>(inputDims_[1]);
+        const int d2 = static_cast<int>(inputDims_[2]);
+        const int d3 = static_cast<int>(inputDims_[3]);
 
-    // --- Async background inference ---
-    std::thread bgThread;
-    std::atomic<bool> bgRunning{false};
-    std::mutex queueMutex;
-    std::condition_variable cv;
-    std::queue<FrameJob> frameQueue;
-    std::mutex resultMutex;
-    std::vector<float> latestOutput;
-    bool latestValid = false;
+        if (d3 == 1 || d3 == 3 || d3 == 4) {
+            inputLayout_ = MLInputLayout::NHWC;
+            inputH_ = d1;
+            inputW_ = d2;
+            inputC_ = d3;
+        } else if (d1 == 1 || d1 == 3 || d1 == 4) {
+            inputLayout_ = MLInputLayout::NCHW;
+            inputC_ = d1;
+            inputH_ = d2;
+            inputW_ = d3;
+        } else {
+            error_ = "Unable to infer model input layout from dims [" +
+                     std::to_string(d1) + ", " +
+                     std::to_string(d2) + ", " +
+                     std::to_string(d3) + "]";
+            return false;
+        }
 
-    // Segmentation result (full RGBA frame, processed on background thread)
-    std::mutex segResultMutex;
-    std::vector<std::uint8_t> segResultRGBA;
-    int segResultW = 0;
-    int segResultH = 0;
-    uint64_t segResultSeq = 0;
-    bool segResultValid = false;
+        auto outputTypeInfo = session_->GetOutputTypeInfo(0);
+        auto outputTensorInfo = outputTypeInfo.GetTensorTypeAndShapeInfo();
+        outputDims_ = outputTensorInfo.GetShape();
+        for (auto& d : outputDims_) {
+            if (d < 0) {
+                d = 1;
+            }
+        }
+
+        outputElems_ = 1;
+        for (const auto d : outputDims_) {
+            outputElems_ *= static_cast<int>(d);
+        }
+
+        inputElementType_ = inputTensorInfo.GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32
+            ? MLInputElementType::Int32
+            : MLInputElementType::Float32;
+
+        auto inputNameAlloc = session_->GetInputNameAllocated(0, Ort::AllocatorWithDefaultOptions());
+        inputName_ = inputNameAlloc.get();
+        auto outputNameAlloc = session_->GetOutputNameAllocated(0, Ort::AllocatorWithDefaultOptions());
+        outputName_ = outputNameAlloc.get();
+
+        loaded_ = true;
+        return true;
+    }
+
+    bool isLoaded() const override { return loaded_; }
+    int inputWidth() const override { return inputW_; }
+    int inputHeight() const override { return inputH_; }
+    int inputChannels() const override { return inputC_; }
+    int outputElements() const override { return outputElems_; }
+    MLInputLayout inputLayout() const override { return inputLayout_; }
+    MLInputElementType inputElementType() const override { return inputElementType_; }
+
+    bool run(const float* input, std::size_t elementCount, std::vector<float>& output) override {
+        if (!loaded_ || !session_) {
+            error_ = "No model loaded";
+            return false;
+        }
+
+        try {
+            auto memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+            const char* inputNames[] = {inputName_.c_str()};
+            const char* outputNames[] = {outputName_.c_str()};
+
+            std::vector<Ort::Value> inputTensors;
+            inputTensors.push_back(Ort::Value::CreateTensor<float>(
+                memoryInfo,
+                const_cast<float*>(input),
+                elementCount,
+                inputDims_.data(),
+                inputDims_.size()));
+
+            auto outputTensors = session_->Run(
+                Ort::RunOptions{},
+                inputNames, inputTensors.data(), 1,
+                outputNames, 1);
+
+            float* outputData = outputTensors[0].GetTensorMutableData<float>();
+            output.assign(outputData, outputData + outputElems_);
+            return true;
+        } catch (const Ort::Exception& e) {
+            error_ = "Inference failed: ";
+            error_ += e.what();
+            return false;
+        }
+    }
+
+    bool run(const std::int32_t* input,
+             std::size_t elementCount,
+             std::vector<float>& output) override {
+        if (!loaded_ || !session_) {
+            error_ = "No model loaded";
+            return false;
+        }
+
+        try {
+            auto memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+            const char* inputNames[] = {inputName_.c_str()};
+            const char* outputNames[] = {outputName_.c_str()};
+
+            std::vector<Ort::Value> inputTensors;
+            inputTensors.push_back(Ort::Value::CreateTensor<std::int32_t>(
+                memoryInfo,
+                const_cast<std::int32_t*>(input),
+                elementCount,
+                inputDims_.data(),
+                inputDims_.size()));
+
+            auto outputTensors = session_->Run(
+                Ort::RunOptions{},
+                inputNames, inputTensors.data(), 1,
+                outputNames, 1);
+
+            float* outputData = outputTensors[0].GetTensorMutableData<float>();
+            output.assign(outputData, outputData + outputElems_);
+            return true;
+        } catch (const Ort::Exception& e) {
+            error_ = "Inference failed: ";
+            error_ += e.what();
+            return false;
+        }
+    }
+
+    const std::string& lastError() const override { return error_; }
+
+private:
+    Ort::Env env_{ORT_LOGGING_LEVEL_WARNING, "ManifoldML"};
+    Ort::SessionOptions opts_;
+    std::unique_ptr<Ort::Session> session_;
+
+    std::vector<int64_t> inputDims_;
+    std::vector<int64_t> outputDims_;
+    int inputW_ = 0;
+    int inputH_ = 0;
+    int inputC_ = 0;
+    int outputElems_ = 0;
+    bool loaded_ = false;
+    std::string error_;
+    std::string inputName_;
+    std::string outputName_;
+    MLInputLayout inputLayout_ = MLInputLayout::NHWC;
+    MLInputElementType inputElementType_ = MLInputElementType::Float32;
 };
-
-MLPipeline::MLPipeline()
-    : pImpl_(std::make_unique<Impl>()) {
-    pImpl_->opts.SetIntraOpNumThreads(4);
-}
-
-MLPipeline::~MLPipeline() {
-    if (pImpl_->bgRunning) {
-        pImpl_->bgRunning = false;
-        pImpl_->cv.notify_one();
-        if (pImpl_->bgThread.joinable()) pImpl_->bgThread.join();
-    }
-}
-
-bool MLPipeline::load(const std::string& modelPath) {
-    pImpl_->error.clear();
-    pImpl_->loaded = false;
-
-    try {
-        pImpl_->session = std::make_unique<Ort::Session>(
-            pImpl_->env, modelPath.c_str(), pImpl_->opts);
-    } catch (const Ort::Exception& e) {
-        pImpl_->error = "Failed to create session: ";
-        pImpl_->error += e.what();
-        return false;
-    }
-
-    // Query input info
-    auto inputTypeInfo = pImpl_->session->GetInputTypeInfo(0);
-    auto inputTensorInfo = inputTypeInfo.GetTensorTypeAndShapeInfo();
-    pImpl_->inputDims = inputTensorInfo.GetShape();
-
-    // Handle dynamic batch dimension (-1)
-    for (auto& d : pImpl_->inputDims) {
-        if (d < 0) d = 1;
-    }
-
-    if (pImpl_->inputDims.size() != 4) {
-        pImpl_->error = "Expected 4D input (NHWC or NCHW), got " +
-                        std::to_string(pImpl_->inputDims.size()) + "D";
-        return false;
-    }
-
-    // Detect layout from tensor shape.
-    const int d1 = static_cast<int>(pImpl_->inputDims[1]);
-    const int d2 = static_cast<int>(pImpl_->inputDims[2]);
-    const int d3 = static_cast<int>(pImpl_->inputDims[3]);
-
-    if (d3 == 1 || d3 == 3 || d3 == 4) {
-        // NHWC: {batch, height, width, channels}
-        pImpl_->inputLayout = Impl::InputLayout::NHWC;
-        pImpl_->inputH = d1;
-        pImpl_->inputW = d2;
-        pImpl_->inputC = d3;
-    } else if (d1 == 1 || d1 == 3 || d1 == 4) {
-        // NCHW: {batch, channels, height, width}
-        pImpl_->inputLayout = Impl::InputLayout::NCHW;
-        pImpl_->inputC = d1;
-        pImpl_->inputH = d2;
-        pImpl_->inputW = d3;
-    } else {
-        pImpl_->error = "Unable to infer model input layout from dims [" +
-                        std::to_string(d1) + ", " +
-                        std::to_string(d2) + ", " +
-                        std::to_string(d3) + "]";
-        return false;
-    }
-
-    // Query output info
-    auto outputTypeInfo = pImpl_->session->GetOutputTypeInfo(0);
-    auto outputTensorInfo = outputTypeInfo.GetTensorTypeAndShapeInfo();
-    pImpl_->outputDims = outputTensorInfo.GetShape();
-    for (auto& d : pImpl_->outputDims) {
-        if (d < 0) d = 1;
-    }
-
-    pImpl_->outputElems = 1;
-    for (auto d : pImpl_->outputDims) {
-        pImpl_->outputElems *= static_cast<int>(d);
-    }
-
-    // Query input element type (float, int32, etc.)
-    pImpl_->inputElementType = inputTensorInfo.GetElementType();
-
-    // Get input/output names
-    auto inputNameAlloc = pImpl_->session->GetInputNameAllocated(0, Ort::AllocatorWithDefaultOptions());
-    pImpl_->inputName = inputNameAlloc.get();
-    auto outputNameAlloc = pImpl_->session->GetOutputNameAllocated(0, Ort::AllocatorWithDefaultOptions());
-    pImpl_->outputName = outputNameAlloc.get();
-
-    // Pre-allocate resize buffer
-    const std::size_t numInput = static_cast<std::size_t>(pImpl_->inputW)
-                               * static_cast<std::size_t>(pImpl_->inputH)
-                               * static_cast<std::size_t>(pImpl_->inputC);
-    pImpl_->resizeBuf.resize(numInput);
-    if (pImpl_->inputElementType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
-        pImpl_->inputBufInt32.resize(numInput);
-    } else {
-        pImpl_->inputBuf.resize(numInput);
-    }
-
-    pImpl_->loaded = true;
-    return true;
-}
-
-bool MLPipeline::isLoaded() const {
-    return pImpl_->loaded;
-}
-
-void MLPipeline::setNormalization(float scale, float bias) {
-    pImpl_->normScale = scale;
-    pImpl_->normBias = bias;
-}
-
-int MLPipeline::inputWidth() const {
-    return pImpl_->inputW;
-}
-
-int MLPipeline::inputHeight() const {
-    return pImpl_->inputH;
-}
-
-int MLPipeline::inputChannels() const {
-    return pImpl_->inputC;
-}
-
-int MLPipeline::outputElements() const {
-    return pImpl_->outputElems;
-}
 
 static void bilinearResizeRGBA(const unsigned char* src,
                                int srcW, int srcH,
@@ -231,117 +232,6 @@ static void bilinearResizeRGBA(const unsigned char* src,
     }
 }
 
-bool MLPipeline::infer(const unsigned char* rgbaData,
-                       int srcWidth,
-                       int srcHeight,
-                       std::vector<float>& output) {
-    if (!pImpl_->loaded) {
-        pImpl_->error = "No model loaded";
-        return false;
-    }
-
-    try {
-        // 1. Resize and normalize RGBA → float RGB
-        bilinearResizeRGBA(rgbaData, srcWidth, srcHeight,
-                           pImpl_->resizeBuf.data(),
-                           pImpl_->inputW, pImpl_->inputH, pImpl_->inputC);
-
-        // 2. Normalize and pack into model layout
-        auto memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        const std::size_t numInput = static_cast<std::size_t>(pImpl_->inputW)
-                                   * static_cast<std::size_t>(pImpl_->inputH)
-                                   * static_cast<std::size_t>(pImpl_->inputC);
-
-        const float scale = pImpl_->normScale;
-        const float bias = pImpl_->normBias;
-        const bool isInt32 = pImpl_->inputElementType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-
-        // Int32 models (e.g. MoveNet) typically expect raw pixel range [0,255], not normalized.
-        // Float models (e.g. selfie segmentation) expect normalized range with custom scale/bias.
-        const float int32Mul = isInt32 ? 255.0f : 1.0f;
-        const float int32Bias = isInt32 ? 0.0f : bias;
-        const float effectiveScale = isInt32 ? 1.0f : scale;
-
-        if (pImpl_->inputLayout == Impl::InputLayout::NHWC) {
-            for (std::size_t i = 0; i < numInput; ++i) {
-                float v = pImpl_->resizeBuf[i] * effectiveScale * int32Mul + int32Bias;
-                if (isInt32) {
-                    pImpl_->inputBufInt32[i] = static_cast<int32_t>(std::clamp(std::lround(v), 0L, 255L));
-                } else {
-                    pImpl_->inputBuf[i] = v;
-                }
-            }
-        } else {
-            const std::size_t planeSize = static_cast<std::size_t>(pImpl_->inputW)
-                                        * static_cast<std::size_t>(pImpl_->inputH);
-            for (int y = 0; y < pImpl_->inputH; ++y) {
-                for (int x = 0; x < pImpl_->inputW; ++x) {
-                    const std::size_t hwcBase = (static_cast<std::size_t>(y) * static_cast<std::size_t>(pImpl_->inputW)
-                                               + static_cast<std::size_t>(x)) * static_cast<std::size_t>(pImpl_->inputC);
-                    const std::size_t pixelIndex = static_cast<std::size_t>(y) * static_cast<std::size_t>(pImpl_->inputW)
-                                                 + static_cast<std::size_t>(x);
-                    for (int c = 0; c < pImpl_->inputC; ++c) {
-                        const std::size_t chwIndex = static_cast<std::size_t>(c) * planeSize + pixelIndex;
-                        float v = pImpl_->resizeBuf[hwcBase + static_cast<std::size_t>(c)] * effectiveScale * int32Mul + int32Bias;
-                        if (isInt32) {
-                            pImpl_->inputBufInt32[chwIndex] = static_cast<int32_t>(std::clamp(std::lround(v), 0L, 255L));
-                        } else {
-                            pImpl_->inputBuf[chwIndex] = v;
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Run inference
-        const char* inputNames[] = {pImpl_->inputName.c_str()};
-        const char* outputNames[] = {pImpl_->outputName.c_str()};
-
-        std::vector<Ort::Value> inputTensors;
-        if (isInt32) {
-            inputTensors.push_back(Ort::Value::CreateTensor<int32_t>(
-                memoryInfo,
-                pImpl_->inputBufInt32.data(),
-                numInput,
-                pImpl_->inputDims.data(),
-                pImpl_->inputDims.size()));
-        } else {
-            inputTensors.push_back(Ort::Value::CreateTensor<float>(
-                memoryInfo,
-                pImpl_->inputBuf.data(),
-                numInput,
-                pImpl_->inputDims.data(),
-                pImpl_->inputDims.size()));
-        }
-
-        auto outputTensors = pImpl_->session->Run(
-            Ort::RunOptions{},
-            inputNames, inputTensors.data(), 1,
-            outputNames, 1);
-
-        // 4. Read output
-        float* outputData = outputTensors[0].GetTensorMutableData<float>();
-        output.assign(outputData, outputData + pImpl_->outputElems);
-
-    } catch (const Ort::Exception& e) {
-        pImpl_->error = "Inference failed: ";
-        pImpl_->error += e.what();
-        return false;
-    }
-
-    return true;
-}
-
-bool MLPipeline::getOutputAsMask(std::vector<float>& mask) {
-    mask.resize(static_cast<std::size_t>(pImpl_->inputW)
-              * static_cast<std::size_t>(pImpl_->inputH));
-    return true;
-}
-
-// ============================================================================
-// Segmentation mask processing helpers (runs on background thread)
-// ============================================================================
-
 static float segClamp01(float v) {
     return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
 }
@@ -352,46 +242,52 @@ static float segSmoothstep(float edge0, float edge1, float x) {
 }
 
 static float segPostprocessValue(float rawValue, float gain, bool useSigmoid,
-                                  float threshold, float feather,
-                                  bool invert, bool applySigmoid) {
+                                 float threshold, float feather,
+                                 bool invert, bool applySigmoid) {
     float value = rawValue;
-    if (applySigmoid && useSigmoid)
+    if (applySigmoid && useSigmoid) {
         value = 1.0f / (1.0f + std::exp(-value));
-    if (invert) value = 1.0f - value;
+    }
+    if (invert) {
+        value = 1.0f - value;
+    }
     value = segClamp01(value * std::max(0.01f, gain));
-    if (feather > 0.0f)
+    if (feather > 0.0f) {
         value = segSmoothstep(threshold - feather * 0.5f, threshold + feather * 0.5f, value);
-    else
+    } else {
         value = (value >= threshold) ? 1.0f : 0.0f;
+    }
     return segClamp01(value);
 }
 
 static float segSampleNearest(const std::vector<float>& mask,
-                               int maskW, int maskH,
-                               int x, int y, int outW, int outH) {
+                              int maskW, int maskH,
+                              int x, int y, int outW, int outH) {
     const int mx = std::clamp((x * maskW) / outW, 0, maskW - 1);
     const int my = std::clamp((y * maskH) / outH, 0, maskH - 1);
     return mask[static_cast<std::size_t>(my) * static_cast<std::size_t>(maskW) + static_cast<std::size_t>(mx)];
 }
 
-static bool processSegmentationMask(
-    const std::vector<float>& rawOutput,
-    const FrameJob& job,
-    std::vector<std::uint8_t>& outRGBA)
-{
-    // rawOutput size determines mask dimensions (square root approximation)
+static bool processSegmentationMask(const std::vector<float>& rawOutput,
+                                    const FrameJob& job,
+                                    std::vector<std::uint8_t>& outRGBA) {
     const std::size_t rawSize = rawOutput.size();
     int maskW = static_cast<int>(std::sqrt(static_cast<float>(rawSize)));
     int maskH = maskW;
     while (static_cast<std::size_t>(maskW) * static_cast<std::size_t>(maskH) < rawSize) {
         ++maskW;
-        if (static_cast<std::size_t>(maskW) * static_cast<std::size_t>(maskH) >= rawSize) break;
+        if (static_cast<std::size_t>(maskW) * static_cast<std::size_t>(maskH) >= rawSize) {
+            break;
+        }
         ++maskH;
     }
-    if (maskW <= 0 || maskH <= 0) return false;
+    if (maskW <= 0 || maskH <= 0) {
+        return false;
+    }
     const std::size_t maskSize = static_cast<std::size_t>(maskW) * static_cast<std::size_t>(maskH);
 
-    float minVal = rawOutput[0], maxVal = rawOutput[0];
+    float minVal = rawOutput[0];
+    float maxVal = rawOutput[0];
     for (std::size_t i = 1; i < maskSize; ++i) {
         minVal = std::min(minVal, rawOutput[i]);
         maxVal = std::max(maxVal, rawOutput[i]);
@@ -400,12 +296,15 @@ static bool processSegmentationMask(
 
     std::vector<float> processedMask(maskSize);
     for (std::size_t i = 0; i < maskSize; ++i) {
-        processedMask[i] = segPostprocessValue(rawOutput[i], job.segGain, job.segUseSigmoid,
-                                               job.segThreshold, job.segFeather,
-                                               job.segInvert, applySigmoid);
+        processedMask[i] = segPostprocessValue(rawOutput[i],
+                                               job.segGain,
+                                               job.segUseSigmoid,
+                                               job.segThreshold,
+                                               job.segFeather,
+                                               job.segInvert,
+                                               applySigmoid);
     }
 
-    // Build RGBA output by resampling mask to original frame size
     const int fw = job.width;
     const int fh = job.height;
     outRGBA.resize(static_cast<std::size_t>(fw) * static_cast<std::size_t>(fh) * 4u);
@@ -432,16 +331,216 @@ static bool processSegmentationMask(
     return true;
 }
 
+} // namespace
+
+std::unique_ptr<IMLInferenceBackend> makeOrtInferenceBackend() {
+    return std::make_unique<OrtInferenceBackend>();
+}
+
+struct MLPipeline::Impl {
+    std::unique_ptr<IMLInferenceBackend> backend;
+    int inputW = 0;
+    int inputH = 0;
+    int inputC = 0;
+    int outputElems = 0;
+    bool loaded = false;
+    std::string error;
+    MLInputLayout inputLayout = MLInputLayout::NHWC;
+    MLInputElementType inputElementType = MLInputElementType::Float32;
+
+    std::vector<float> resizeBuf;
+    std::vector<float> inputBuf;
+    std::vector<std::int32_t> inputBufInt32;
+
+    float normScale = 2.0f;
+    float normBias = -1.0f;
+
+    std::thread bgThread;
+    std::atomic<bool> bgRunning{false};
+    std::mutex queueMutex;
+    std::condition_variable cv;
+    std::queue<FrameJob> frameQueue;
+    std::mutex resultMutex;
+    std::vector<float> latestOutput;
+    bool latestValid = false;
+
+    std::mutex segResultMutex;
+    std::vector<std::uint8_t> segResultRGBA;
+    int segResultW = 0;
+    int segResultH = 0;
+    uint64_t segResultSeq = 0;
+    bool segResultValid = false;
+};
+
+MLPipeline::MLPipeline()
+    : MLPipeline(makeOrtInferenceBackend()) {
+}
+
+MLPipeline::MLPipeline(std::unique_ptr<IMLInferenceBackend> backend)
+    : pImpl_(std::make_unique<Impl>()) {
+    pImpl_->backend = backend ? std::move(backend) : makeOrtInferenceBackend();
+}
+
+MLPipeline::~MLPipeline() {
+    if (pImpl_->bgRunning) {
+        pImpl_->bgRunning = false;
+        pImpl_->cv.notify_one();
+        if (pImpl_->bgThread.joinable()) {
+            pImpl_->bgThread.join();
+        }
+    }
+}
+
+bool MLPipeline::load(const std::string& modelPath) {
+    pImpl_->error.clear();
+    pImpl_->loaded = false;
+
+    if (!pImpl_->backend) {
+        pImpl_->error = "No inference backend configured";
+        return false;
+    }
+
+    if (!pImpl_->backend->load(modelPath)) {
+        pImpl_->error = pImpl_->backend->lastError();
+        return false;
+    }
+
+    pImpl_->inputW = pImpl_->backend->inputWidth();
+    pImpl_->inputH = pImpl_->backend->inputHeight();
+    pImpl_->inputC = pImpl_->backend->inputChannels();
+    pImpl_->outputElems = pImpl_->backend->outputElements();
+    pImpl_->inputLayout = pImpl_->backend->inputLayout();
+    pImpl_->inputElementType = pImpl_->backend->inputElementType();
+
+    const std::size_t numInput = static_cast<std::size_t>(pImpl_->inputW)
+                               * static_cast<std::size_t>(pImpl_->inputH)
+                               * static_cast<std::size_t>(pImpl_->inputC);
+    pImpl_->resizeBuf.resize(numInput);
+    pImpl_->inputBuf.clear();
+    pImpl_->inputBufInt32.clear();
+    if (pImpl_->inputElementType == MLInputElementType::Int32) {
+        pImpl_->inputBufInt32.resize(numInput);
+    } else {
+        pImpl_->inputBuf.resize(numInput);
+    }
+
+    pImpl_->loaded = true;
+    return true;
+}
+
+bool MLPipeline::isLoaded() const {
+    return pImpl_->loaded && pImpl_->backend && pImpl_->backend->isLoaded();
+}
+
+void MLPipeline::setNormalization(float scale, float bias) {
+    pImpl_->normScale = scale;
+    pImpl_->normBias = bias;
+}
+
+int MLPipeline::inputWidth() const {
+    return pImpl_->inputW;
+}
+
+int MLPipeline::inputHeight() const {
+    return pImpl_->inputH;
+}
+
+int MLPipeline::inputChannels() const {
+    return pImpl_->inputC;
+}
+
+int MLPipeline::outputElements() const {
+    return pImpl_->outputElems;
+}
+
+bool MLPipeline::infer(const unsigned char* rgbaData,
+                       int srcWidth,
+                       int srcHeight,
+                       std::vector<float>& output) {
+    if (!isLoaded()) {
+        pImpl_->error = "No model loaded";
+        return false;
+    }
+
+    bilinearResizeRGBA(rgbaData,
+                       srcWidth,
+                       srcHeight,
+                       pImpl_->resizeBuf.data(),
+                       pImpl_->inputW,
+                       pImpl_->inputH,
+                       pImpl_->inputC);
+
+    const std::size_t numInput = static_cast<std::size_t>(pImpl_->inputW)
+                               * static_cast<std::size_t>(pImpl_->inputH)
+                               * static_cast<std::size_t>(pImpl_->inputC);
+
+    const float scale = pImpl_->normScale;
+    const float bias = pImpl_->normBias;
+    const bool isInt32 = pImpl_->inputElementType == MLInputElementType::Int32;
+    const float int32Mul = isInt32 ? 255.0f : 1.0f;
+    const float int32Bias = isInt32 ? 0.0f : bias;
+    const float effectiveScale = isInt32 ? 1.0f : scale;
+
+    if (pImpl_->inputLayout == MLInputLayout::NHWC) {
+        for (std::size_t i = 0; i < numInput; ++i) {
+            const float v = pImpl_->resizeBuf[i] * effectiveScale * int32Mul + int32Bias;
+            if (isInt32) {
+                pImpl_->inputBufInt32[i] = static_cast<std::int32_t>(std::clamp(std::lround(v), 0L, 255L));
+            } else {
+                pImpl_->inputBuf[i] = v;
+            }
+        }
+    } else {
+        const std::size_t planeSize = static_cast<std::size_t>(pImpl_->inputW)
+                                    * static_cast<std::size_t>(pImpl_->inputH);
+        for (int y = 0; y < pImpl_->inputH; ++y) {
+            for (int x = 0; x < pImpl_->inputW; ++x) {
+                const std::size_t hwcBase = (static_cast<std::size_t>(y) * static_cast<std::size_t>(pImpl_->inputW)
+                                           + static_cast<std::size_t>(x)) * static_cast<std::size_t>(pImpl_->inputC);
+                const std::size_t pixelIndex = static_cast<std::size_t>(y) * static_cast<std::size_t>(pImpl_->inputW)
+                                             + static_cast<std::size_t>(x);
+                for (int c = 0; c < pImpl_->inputC; ++c) {
+                    const std::size_t chwIndex = static_cast<std::size_t>(c) * planeSize + pixelIndex;
+                    const float v = pImpl_->resizeBuf[hwcBase + static_cast<std::size_t>(c)] * effectiveScale * int32Mul + int32Bias;
+                    if (isInt32) {
+                        pImpl_->inputBufInt32[chwIndex] = static_cast<std::int32_t>(std::clamp(std::lround(v), 0L, 255L));
+                    } else {
+                        pImpl_->inputBuf[chwIndex] = v;
+                    }
+                }
+            }
+        }
+    }
+
+    const bool ok = isInt32
+        ? pImpl_->backend->run(pImpl_->inputBufInt32.data(), numInput, output)
+        : pImpl_->backend->run(pImpl_->inputBuf.data(), numInput, output);
+    if (!ok) {
+        pImpl_->error = pImpl_->backend->lastError();
+    }
+    return ok;
+}
+
+bool MLPipeline::getOutputAsMask(std::vector<float>& mask) {
+    mask.resize(static_cast<std::size_t>(pImpl_->inputW)
+              * static_cast<std::size_t>(pImpl_->inputH));
+    return true;
+}
+
 const std::string& MLPipeline::lastError() const {
+    if (!pImpl_->error.empty()) {
+        return pImpl_->error;
+    }
+    if (pImpl_->backend) {
+        return pImpl_->backend->lastError();
+    }
     return pImpl_->error;
 }
 
-// ============================================================================
-// Async background inference
-// ============================================================================
-
 void MLPipeline::startBackgroundWorker() {
-    if (pImpl_->bgRunning) return;
+    if (pImpl_->bgRunning) {
+        return;
+    }
     pImpl_->bgRunning = true;
     pImpl_->bgThread = std::thread([this]() {
         while (pImpl_->bgRunning) {
@@ -450,37 +549,38 @@ void MLPipeline::startBackgroundWorker() {
                 std::unique_lock<std::mutex> lock(pImpl_->queueMutex);
                 if (pImpl_->frameQueue.empty()) {
                     pImpl_->cv.wait_for(lock, std::chrono::milliseconds(16));
-                    if (pImpl_->frameQueue.empty()) continue;
+                    if (pImpl_->frameQueue.empty()) {
+                        continue;
+                    }
                 }
                 job = std::move(pImpl_->frameQueue.front());
                 pImpl_->frameQueue.pop();
             }
 
-            if (!job.valid()) continue;
+            if (!job.valid()) {
+                continue;
+            }
 
             if (job.isSegmentation) {
-                // Segmentation pipeline: infer + mask process + RGBA build
-                // Store source frame dims for processing
                 const int srcW = job.width;
                 const int srcH = job.height;
-
-                std::vector<float> output;
-                if (infer(job.rgba.data(), job.width, job.height, output)) {
+                std::vector<float> result;
+                if (infer(job.rgba.data(), job.width, job.height, result)) {
                     std::vector<std::uint8_t> segRGBA;
-                    if (processSegmentationMask(output, job, segRGBA)) {
+                    if (processSegmentationMask(result, job, segRGBA)) {
                         std::lock_guard<std::mutex> lock(pImpl_->segResultMutex);
                         pImpl_->segResultRGBA = std::move(segRGBA);
                         pImpl_->segResultW = srcW;
                         pImpl_->segResultH = srcH;
+                        pImpl_->segResultSeq = 0;
                         pImpl_->segResultValid = true;
                     }
                 }
             } else {
-                // Regular inference: just run infer, store raw output
-                std::vector<float> output;
-                if (infer(job.rgba.data(), job.width, job.height, output)) {
+                std::vector<float> result;
+                if (infer(job.rgba.data(), job.width, job.height, result)) {
                     std::lock_guard<std::mutex> lock(pImpl_->resultMutex);
-                    pImpl_->latestOutput = std::move(output);
+                    pImpl_->latestOutput = std::move(result);
                     pImpl_->latestValid = true;
                 }
             }
@@ -489,15 +589,17 @@ void MLPipeline::startBackgroundWorker() {
 }
 
 void MLPipeline::submitFrame(int width, int height, std::vector<std::uint8_t> rgba) {
-    if (!pImpl_->bgRunning) return;
+    if (!pImpl_->bgRunning) {
+        return;
+    }
     FrameJob job;
     job.width = width;
     job.height = height;
     job.rgba = std::move(rgba);
     {
         std::lock_guard<std::mutex> lock(pImpl_->queueMutex);
-        if (!pImpl_->frameQueue.empty()) {
-            while (!pImpl_->frameQueue.empty()) pImpl_->frameQueue.pop();
+        while (!pImpl_->frameQueue.empty()) {
+            pImpl_->frameQueue.pop();
         }
         pImpl_->frameQueue.push(std::move(job));
     }
@@ -505,8 +607,10 @@ void MLPipeline::submitFrame(int width, int height, std::vector<std::uint8_t> rg
 }
 
 void MLPipeline::submitSegmentation(int width, int height, std::vector<std::uint8_t> rgba,
-                                     const SegmentationOpts& opts) {
-    if (!pImpl_->bgRunning) return;
+                                    const SegmentationOpts& opts) {
+    if (!pImpl_->bgRunning) {
+        return;
+    }
     FrameJob job;
     job.width = width;
     job.height = height;
@@ -518,10 +622,11 @@ void MLPipeline::submitSegmentation(int width, int height, std::vector<std::uint
     job.segFeather = opts.feather;
     job.segInvert = opts.invert;
     job.segBackground = opts.background;
+    job.sequence = 0;
     {
         std::lock_guard<std::mutex> lock(pImpl_->queueMutex);
-        if (!pImpl_->frameQueue.empty()) {
-            while (!pImpl_->frameQueue.empty()) pImpl_->frameQueue.pop();
+        while (!pImpl_->frameQueue.empty()) {
+            pImpl_->frameQueue.pop();
         }
         pImpl_->frameQueue.push(std::move(job));
     }
@@ -530,18 +635,23 @@ void MLPipeline::submitSegmentation(int width, int height, std::vector<std::uint
 
 std::vector<std::uint8_t> MLPipeline::pollSegmentationResult(int& outW, int& outH, uint64_t& sequence) {
     std::lock_guard<std::mutex> lock(pImpl_->segResultMutex);
-    if (!pImpl_->segResultValid) return {};
+    if (!pImpl_->segResultValid) {
+        return {};
+    }
     outW = pImpl_->segResultW;
     outH = pImpl_->segResultH;
-    sequence = 0;  // sequence not tracked at this level
+    sequence = 0;
     pImpl_->segResultValid = false;
     return std::move(pImpl_->segResultRGBA);
 }
 
 bool MLPipeline::pollResult(std::vector<float>& output) {
     std::lock_guard<std::mutex> lock(pImpl_->resultMutex);
-    if (!pImpl_->latestValid) return false;
+    if (!pImpl_->latestValid) {
+        return false;
+    }
     output = pImpl_->latestOutput;
+    pImpl_->latestValid = false;
     return true;
 }
 

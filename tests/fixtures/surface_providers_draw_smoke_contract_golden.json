@@ -1,7 +1,10 @@
 {
+  "brokenGeneratedHandle": 7,
   "compositeHandle": 5,
+  "eglCurrentAfterScreenshot": true,
   "eglReady": true,
   "generatedHandle": 1,
+  "generatedResizeHandle": 1,
   "postShutdownReadbackValid": true,
   "renderedBounds": {
     "composite": {
@@ -73,11 +76,17 @@
     "contextReady": true,
     "frameCount": 1,
     "lastRenderUsPositive": true,
-    "surfaceColorBytes": 128000,
+    "surfaceColorBytes": 131072,
     "surfaceDepthBytes": 0,
-    "totalGpuBytes": 128000
+    "totalGpuBytes": 131072
   },
   "surfaceInfo": {
+    "brokenGenerated": {
+      "height": 32,
+      "ok": true,
+      "sequence": 1,
+      "width": 32
+    },
     "composite": {
       "height": 80,
       "ok": true,
@@ -85,10 +94,10 @@
       "width": 80
     },
     "generated": {
-      "height": 80,
+      "height": 64,
       "ok": true,
-      "sequence": 4,
-      "width": 80
+      "sequence": 5,
+      "width": 96
     },
     "shader": {
       "height": 80,
@@ -98,4 +107,3 @@
     }
   }
 }
-

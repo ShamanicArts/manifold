@@ -42,6 +42,16 @@ void ImGuiDirectHost::releaseEglOffscreenContext() {
     }
 }
 
+bool ImGuiDirectHost::makeEglContextCurrent() {
+#if JUCE_LINUX
+    if (eglOffscreenContext_ && eglOffscreenContext_->isValid()) {
+        return eglOffscreenContext_->makeCurrent();
+    }
+#endif
+    juce::ignoreUnused(this);
+    return false;
+}
+
 void ImGuiDirectHost::initialiseImGuiBackendIfNeeded() {
     if (contextReady_) {
         return;
