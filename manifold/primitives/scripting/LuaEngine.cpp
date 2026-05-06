@@ -262,6 +262,28 @@ LuaEngine::~LuaEngine() {
   }
 }
 
+void LuaEngine::clearAttachedUiLuaState() {
+  if (!pImpl) {
+    return;
+  }
+
+  RuntimeNode* clearedRoot = nullptr;
+
+  if (pImpl->rootCanvas != nullptr) {
+    if (auto* canvasRoot = pImpl->rootCanvas->getRuntimeNode()) {
+      canvasRoot->clearLuaStateRecursive();
+      clearedRoot = canvasRoot;
+    }
+  }
+
+  if (pImpl->rootRuntime != nullptr && pImpl->rootRuntime != clearedRoot) {
+    pImpl->rootRuntime->clearLuaStateRecursive();
+  }
+
+  pImpl->scriptContentCanvasRoot = nullptr;
+  pImpl->scriptContentRuntimeRoot = nullptr;
+}
+
 LuaEngine::MemoryStats LuaEngine::getMemoryStats() const {
   MemoryStats stats;
   if (!pImpl) {

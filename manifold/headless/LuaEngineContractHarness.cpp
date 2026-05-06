@@ -327,6 +327,7 @@ int main(int argc, char* argv[]) {
   root->setProperty("d5_missingFile", juce::var(missingObj));
 
   scriptFile.deleteFile();
+  engine.clearAttachedUiLuaState();
 
   const auto contract = juce::JSON::toString(juce::var(root), true).toStdString();
   switch (opts.mode) {

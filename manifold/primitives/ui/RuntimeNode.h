@@ -200,6 +200,7 @@ public:
     std::vector<std::string> getUserDataKeys() const;
     void clearUserData(const std::string& key);
     void clearAllUserData();
+    void clearLuaStateRecursive();
 
 private:
     RuntimeNode* parent_ = nullptr;

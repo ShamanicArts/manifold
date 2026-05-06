@@ -70,6 +70,12 @@ public:
   /** Reload the currently loaded script (hot-reload). */
   bool reloadCurrentScript();
 
+  /** Clear Lua-owned references from the attached UI tree while the Lua VM is
+   *  still alive. Call this before destroying any external Canvas/RuntimeNode
+   *  passed to initialise() if destruction order is uncertain.
+   */
+  void clearAttachedUiLuaState();
+
   /** Get list of available UI scripts in a directory.
    *  Returns vector of {name, absolutePath} pairs. */
   std::vector<std::pair<std::string, std::string>>

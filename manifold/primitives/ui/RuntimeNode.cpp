@@ -879,3 +879,16 @@ void RuntimeNode::clearAllUserData() {
         markPropsDirty();
     }
 }
+
+void RuntimeNode::clearLuaStateRecursive() {
+    for (auto* child : children_) {
+        if (child != nullptr) {
+            child->clearLuaStateRecursive();
+        }
+    }
+
+    clearCallbacks();
+    clearAllUserData();
+    clearDisplayList();
+    clearCustomRenderPayload();
+}

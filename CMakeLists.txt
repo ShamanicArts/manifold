@@ -1101,6 +1101,8 @@ add_executable(ManifoldHeadless manifold/headless/ManifoldHeadless.cpp)
 
 add_executable(LuaEngineMockHarness manifold/headless/LuaEngineMockHarness.cpp)
 
+add_executable(LuaBindingsBehaviorContractHarness manifold/headless/LuaBindingsBehaviorContractHarness.cpp)
+
 add_executable(EndpointResolverHarness manifold/headless/EndpointResolverHarness.cpp)
 
 add_executable(ControlCommandQueueHarness manifold/headless/ControlCommandQueueHarness.cpp)
@@ -1237,6 +1239,18 @@ target_link_libraries(LuaEngineMockHarness
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
 		highway)
+
+manifold_target_include_project_and_ableton(LuaBindingsBehaviorContractHarness)
+target_link_libraries(LuaBindingsBehaviorContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway)
 
 manifold_target_include_project_and_ableton(EndpointResolverHarness)
 
@@ -1765,6 +1779,12 @@ target_compile_definitions(LuaEngineMockHarness
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
+target_compile_definitions(LuaBindingsBehaviorContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
 target_compile_definitions(EndpointResolverHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
@@ -1977,6 +1997,13 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lua_bindings_golden.json)
 set_tests_properties(manifold_lua_bindings_contract PROPERTIES
     LABELS "manifold;lua;bindings;contract")
+
+add_test(
+    NAME manifold_lua_bindings_behavior_contract
+    COMMAND $<TARGET_FILE:LuaBindingsBehaviorContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lua_bindings_behavior_golden.json)
+set_tests_properties(manifold_lua_bindings_behavior_contract PROPERTIES
+    LABELS "manifold;lua;bindings;behavior;contract")
 
 add_test(
     NAME manifold_lua_bindings_behavior_smoke

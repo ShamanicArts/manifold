@@ -509,6 +509,7 @@ juce::var buildBindingsContract() {
   }
   contract->setProperty("globals", globalsArray);
 
+  engine.clearAttachedUiLuaState();
   return juce::var(contract.get());
 }
 
@@ -1052,6 +1053,7 @@ end
                "LuaEngineMockHarness: PASS (commands=%zu, first=SetTempo %.1f via setParam)\n",
                commands.size(), first.floatParam);
 
+  engine.clearAttachedUiLuaState();
   return 0;
 }
 

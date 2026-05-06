@@ -41,21 +41,6 @@ juce::String canonicalContractPath(const juce::File& file) {
     return file.getFullPathName();
 }
 
-void clearRuntimeNodeLuaStateRecursive(RuntimeNode* node) {
-    if (node == nullptr) {
-        return;
-    }
-
-    for (auto* child : node->getChildren()) {
-        clearRuntimeNodeLuaStateRecursive(child);
-    }
-
-    node->clearCallbacks();
-    node->clearAllUserData();
-    node->clearDisplayList();
-    node->clearCustomRenderPayload();
-}
-
 [[maybe_unused]] double perfElapsedMs(PerfClock::time_point start) {
     return std::chrono::duration<double, std::milli>(PerfClock::now() - start).count();
 }
@@ -592,8 +577,7 @@ BehaviorCoreEditor::~BehaviorCoreEditor() {
     // RuntimeNode::CallbackSlots / user data destruction on editor close/reopen.
     // Clear all Lua-owned callback/user-data refs while the Lua state is still alive,
     // before the RuntimeNode tree is destroyed as editor members unwind.
-    clearRuntimeNodeLuaStateRecursive(rootCanvas.getRuntimeNode());
-    clearRuntimeNodeLuaStateRecursive(rootRuntime_.get());
+    luaEngine.clearAttachedUiLuaState();
 
     removeChildComponent(&runtimeNodeDebugHost);
     removeChildComponent(&directHost_);
