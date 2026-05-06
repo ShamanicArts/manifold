@@ -1127,6 +1127,8 @@ add_executable(DSPHostLifecycleContractHarness manifold/headless/DSPHostLifecycl
 
 add_executable(LuaEngineContractHarness manifold/headless/LuaEngineContractHarness.cpp)
 
+add_executable(ShaderRegistryContractHarness manifold/headless/ShaderRegistryContractHarness.cpp)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -1315,6 +1317,16 @@ target_link_libraries(LuaEngineContractHarness
         juce::juce_gui_extra
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
+        highway)
+
+manifold_target_include_project_and_ableton(ShaderRegistryContractHarness)
+target_link_libraries(ShaderRegistryContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
         highway)
 
 target_include_directories(VideoSamplerHarness
@@ -1568,6 +1580,13 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lua_engine_contract_golden.json)
 set_tests_properties(manifold_lua_engine_contract PROPERTIES
     LABELS "manifold;scripting;luaengine;contract")
+
+add_test(
+    NAME manifold_shader_registry_contract
+    COMMAND $<TARGET_FILE:ShaderRegistryContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shader_registry_contract_golden.json)
+set_tests_properties(manifold_shader_registry_contract PROPERTIES
+    LABELS "manifold;shader;registry;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:
