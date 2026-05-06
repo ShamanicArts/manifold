@@ -61,6 +61,23 @@ local function clamp(v, lo, hi)
 end
 
 local function round(v) return math.floor((tonumber(v) or 0) + 0.5) end
+
+local function fitBox(maxW, maxH, contentW, contentH)
+  maxW = math.max(1, math.floor(tonumber(maxW) or 1))
+  maxH = math.max(1, math.floor(tonumber(maxH) or 1))
+  contentW = math.max(1, tonumber(contentW) or maxW)
+  contentH = math.max(1, tonumber(contentH) or maxH)
+  local aspect = contentW / math.max(1, contentH)
+  local w = maxW
+  local h = math.floor(w / math.max(0.001, aspect) + 0.5)
+  if h > maxH then
+    h = maxH
+    w = math.floor(h * aspect + 0.5)
+  end
+  local x = math.floor((maxW - w) * 0.5)
+  local y = math.floor((maxH - h) * 0.5)
+  return x, y, math.max(1, w), math.max(1, h)
+end
 local function rackFxBasePath(slot) return "/midi/synth/rack/fx/" .. math.max(1, round(slot or 1)) end
 local function rackFxTypePath(slot) return rackFxBasePath(slot) .. "/type" end
 local function rackFxMixPath(slot) return rackFxBasePath(slot) .. "/mix" end
@@ -272,7 +289,7 @@ local function relayoutManagedSubtree(widget, width, height)
 end
 
 local function selectedDeviceIndex(ctx)
-  local selected = 1
+  local selected = ctx.deviceSelectIndex or 1
   local dd = ctx.widgets and ctx.widgets.deviceSelect
   if dd and dd.getSelected then selected = dd:getSelected() end
   local entry = ctx._devices and ctx._devices[math.max(1, round(selected))]
@@ -291,8 +308,12 @@ local function refreshDevices(ctx)
     labels[i] = tostring(devices[i].label or devices[i].name or devices[i].path or ("Device " .. tostring(devices[i].index or i - 1)))
   end
   if #labels == 0 then labels[1] = "Device 0" end
+  ctx._deviceLabels = labels
+  ctx.deviceSelectIndex = 1
   setOptions(ctx.widgets.deviceSelect, labels)
   setSelectedSilently(ctx.widgets.deviceSelect, 1)
+  setOptions(ctx.widgets.sourceDeviceSelect, labels)
+  setSelectedSilently(ctx.widgets.sourceDeviceSelect, 1)
 end
 
 local function currentMidiLabel()
@@ -1056,9 +1077,23 @@ local function syncParamsFromHost(ctx)
   setCaptureButtonAppearance(ctx)
 
   local sourceIndex = math.max(1, math.min(#(ctx.sources or {}), round(readParam(NS .. "/shader/source", ctx.shader.sourceIndex))))
-  if sourceIndex ~= ctx.shader.sourceIndex then ctx.shader.sourceIndex = sourceIndex; setSelectedSilently(ctx.widgets.sourceSelect, sourceIndex); changedShader = true; syncShaderSourceParams(ctx) end
+  if sourceIndex ~= ctx.shader.sourceIndex then
+    ctx.shader.sourceIndex = sourceIndex
+    setSelectedSilently(ctx.widgets.sourceSelect, sourceIndex)
+    changedShader = true
+    syncShaderSourceParams(ctx)
+    if ctx.selection and ctx.selection.col == 1 and ctx.selection.row == 1 then
+      ctx.selection = { col = 1, row = 1 }
+    end
+  end
   local activeLayer = math.max(1, math.min(8, round(readParam(NS .. "/shader/active_layer", ctx.shader.activeLayer))))
-  if activeLayer ~= ctx.shader.activeLayer then ctx.shader.activeLayer = activeLayer; syncShaderEditor(ctx) end
+  if activeLayer ~= ctx.shader.activeLayer then
+    ctx.shader.activeLayer = activeLayer
+    syncShaderEditor(ctx)
+    if ctx.selection and ctx.selection.col == 1 and ctx.selection.row > 1 then
+      ctx.selection = { col = 1, row = 1 + activeLayer }
+    end
+  end
   for l = 1, 8 do
     local L = ctx.shader.layers[l]
     local en = readParam(NS .. "/shader/layer/" .. l .. "/enabled", L.enabled and 1 or 0) > 0.5
@@ -1183,8 +1218,14 @@ local function syncToolbarButtons(ctx)
   setVisible(ctx.widgets.resizeHelp, ctx._resizeMode == true)
 end
 
+local function defaultGridAlignment(preset)
+  if preset == "stage" or preset == "inspector" then return "left-to-right" end
+  return "bottom-up"
+end
+
 local function setLayoutPreset(ctx, preset)
   ctx._layoutPreset = tostring(preset or "deck")
+  ctx.gridAlignment = defaultGridAlignment(ctx._layoutPreset)
   ctx._rebuildDockTree = true
   resetPanelDocks(ctx)
   syncToolbarButtons(ctx)
@@ -1261,30 +1302,56 @@ syncShaderSourceParams = function(ctx)
   end
 end
 
-local function layoutShaderEmbed(ctx, w, h)
-  setBounds(ctx.widgets.shaderEmbed, 0, 0, w, h)
+local function layoutSourceEmbed(ctx, w, h)
+  setBounds(ctx.widgets.sourceEmbed, 0, 0, w, h)
   local pad, gap = 8, 4
-  -- Row 0: source select, aspect select, layer, enabled, effect
-  setBounds(ctx.widgets.sourceSelect, pad, 25, 82, 18)
-  setBounds(ctx.widgets.aspectSelect, pad + 86, 25, 72, 18)
-  setBounds(ctx.widgets.shaderLayer, pad + 86 + 72 + gap, 25, 48, 18)
-  setBounds(ctx.widgets.shaderEnabled, pad + 86 + 72 + gap + 48 + gap, 25, 50, 18)
-  local effectX = pad + 86 + 72 + gap + 48 + gap + 50 + gap
-  setBounds(ctx.widgets.effectSelect, effectX, 25, math.max(60, w - pad - effectX), 18)
-  -- Row 1-2: source params in 2-column grid
-  local srcRowY = 47
-  local srcCount = 4
+  local topY = 25
+  local leftW = math.max(96, math.floor((w - pad * 2 - gap) * 0.58))
+  setBounds(ctx.widgets.sourceSelect, pad, topY, leftW, 18)
+  setBounds(ctx.widgets.aspectSelect, pad + leftW + gap, topY, math.max(72, w - pad - (pad + leftW + gap)), 18)
+
+  local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex] or nil
+  local isGen = choice and choice.kind == "generator"
+  local deviceY = 47
+  setVisible(ctx.widgets.sourceDeviceSelect, not isGen)
+  setVisible(ctx.widgets.sourceRefreshDevices, not isGen)
+  setVisible(ctx.widgets.sourceOpenWebcam, not isGen)
+  setVisible(ctx.widgets.sourceCloseWebcam, not isGen)
+  if not isGen then
+    local deviceW = math.max(110, w - pad * 2 - 40 - 44 - 48 - gap * 3)
+    setBounds(ctx.widgets.sourceDeviceSelect, pad, deviceY, deviceW, 18)
+    setBounds(ctx.widgets.sourceRefreshDevices, pad + deviceW + gap, deviceY, 40, 18)
+    setBounds(ctx.widgets.sourceOpenWebcam, pad + deviceW + gap + 44, deviceY, 44, 18)
+    setBounds(ctx.widgets.sourceCloseWebcam, pad + deviceW + gap + 44 + 48, deviceY, 48, 18)
+  else
+    setBounds(ctx.widgets.sourceDeviceSelect, 0, 0, 0, 0)
+    setBounds(ctx.widgets.sourceRefreshDevices, 0, 0, 0, 0)
+    setBounds(ctx.widgets.sourceOpenWebcam, 0, 0, 0, 0)
+    setBounds(ctx.widgets.sourceCloseWebcam, 0, 0, 0, 0)
+  end
+
+  local srcRowY = isGen and 47 or 69
   local srcCols = 2
   local srcColW = math.max(80, math.floor((w - pad * 2 - gap * (srcCols - 1)) / srcCols))
-  for pi = 1, srcCount do
+  for pi = 1, 4 do
     local col = (pi - 1) % srcCols
     local row = math.floor((pi - 1) / srcCols)
     setBounds(ctx.widgets["sourceParam" .. pi], pad + col * (srcColW + gap), srcRowY + row * 22, math.max(1, srcColW - gap), 17)
   end
-  -- Row 3: frame info label
-  setBounds(ctx.widgets.frameInfo, pad, 91, math.max(1, w - pad * 2), 14)
-  -- Rows 4+: shader params grid
-  local shaderY = 107
+  setBounds(ctx.widgets.frameInfo, pad, math.max(srcRowY + 44, h - 18), math.max(1, w - pad * 2), 14)
+  syncShaderSourceParams(ctx)
+end
+
+local function layoutEffectEmbed(ctx, w, h)
+  setBounds(ctx.widgets.effectEmbed, 0, 0, w, h)
+  local pad, gap = 8, 4
+  local topY = 25
+  setBounds(ctx.widgets.shaderLayer, pad, topY, 48, 18)
+  setBounds(ctx.widgets.shaderEnabled, pad + 52, topY, 52, 18)
+  local effectX = pad + 108
+  setBounds(ctx.widgets.effectSelect, effectX, topY, math.max(72, w - pad - effectX), 18)
+
+  local shaderY = 49
   local cols, colW = 3, math.max(92, math.floor((w - pad * 2) / 3))
   for p = 1, 9 do
     local col = (p - 1) % cols
@@ -1292,7 +1359,6 @@ local function layoutShaderEmbed(ctx, w, h)
     setBounds(ctx.widgets["shaderParam" .. p], pad + col * colW, shaderY + row * 22, math.max(1, colW - 6), 18)
   end
   setBounds(ctx.widgets.shaderStatus, pad, math.max(shaderY + 66, h - 18), math.max(1, w - pad * 2), 14)
-  syncShaderSourceParams(ctx)
 end
 
 local function layoutMappingEmbed(ctx, w, h)
@@ -1393,17 +1459,135 @@ end
 
 local function layoutStageEmbed(ctx, w, h)
   setBounds(ctx.widgets.stageEmbed, 0, 0, w, h)
-  -- Viewports rendered as ImGui dock windows
-  setBounds(ctx.widgets.outputViewport, 0, 0, 0, 0)
+  setBounds(ctx.widgets.outputViewport, 0, 0, w, h)
   setBounds(ctx.widgets.previewStage, 0, 0, 0, 0)
-  -- Output row cells still position relative to outputViewport
   layoutOutputRow(ctx)
   updatePreviewSurface(ctx)
 end
 
--- Grid Phase 2: 1-column clip grid showing current processing chain
+-- Grid Phase 3: selection bridge on top of the Phase 2 clip grid
 
 local GRID_COLS = 4
+
+local function selectedGridClip(ctx)
+  local sel = ctx and ctx.selection or nil
+  if not sel then return nil end
+  return ctx.clips and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row] or nil
+end
+
+local function selectionSummary(ctx)
+  local clip = selectedGridClip(ctx)
+  if not clip then return "Selected: --" end
+  if clip.kind == "source" then
+    return string.format("Selected: Source — %s", clip.name or clip.sourceType or "Source")
+  end
+  local state = clip.enabled and "enabled" or "disabled"
+  return string.format("Selected: FX L%d — %s (%s)", clip.layerIndex or 0, clip.fxName or clip.fxId or "Effect", state)
+end
+
+local function selectGridCell(ctx, col, row)
+  local clip = ctx.clips and ctx.clips[col] and ctx.clips[col][row] or nil
+  if not clip or clip.empty then return end
+
+  ctx.selection = { col = col, row = row }
+
+  -- Phase 3 only has a real chain in column 1. Keep the bridge narrow and
+  -- drive the existing shader/source editor off that selected slot.
+  if col ~= 1 then return end
+
+  if row <= 1 then
+    local nextSource = math.max(1, math.min(#(ctx.sources or {}), clip.sourceIndex or ctx.shader.sourceIndex or 1))
+    if nextSource ~= ctx.shader.sourceIndex then
+      ctx.shader.sourceIndex = nextSource
+      writeParam(NS .. "/shader/source", nextSource)
+      setSelectedSilently(ctx.widgets.sourceSelect, nextSource)
+      syncShaderSourceParams(ctx)
+      updateOutputAspect(ctx)
+      updateShader(ctx)
+    else
+      syncShaderSourceParams(ctx)
+    end
+    syncShaderEditor(ctx)
+    return
+  end
+
+  local nextLayer = math.max(1, math.min(8, clip.layerIndex or (row - 1)))
+  if nextLayer ~= ctx.shader.activeLayer then
+    ctx.shader.activeLayer = nextLayer
+    writeParam(NS .. "/shader/active_layer", nextLayer)
+  end
+  setSelectedSilently(ctx.widgets.shaderLayer, ctx.shader.activeLayer)
+  syncShaderEditor(ctx)
+end
+
+local ASPECT_OPTIONS = { "Native", "16:9", "4:3", "1:1" }
+
+local function applySourceSelection(ctx, idx)
+  idx = math.max(1, math.min(#(ctx.sources or {}), round(idx)))
+  ctx.shader.sourceIndex = idx
+  ctx.selection = { col = 1, row = 1 }
+  writeParam(NS .. "/shader/source", idx)
+  setSelectedSilently(ctx.widgets.sourceSelect, idx)
+  syncShaderSourceParams(ctx)
+  updateOutputAspect(ctx)
+  updateShader(ctx)
+end
+
+local function applyAspectModeSelection(ctx, idx)
+  ctx.aspectMode = ASPECT_OPTIONS[math.max(1, math.min(#ASPECT_OPTIONS, round(idx)))] or "16:9"
+  updateOutputAspect(ctx)
+end
+
+local function applyActiveLayerSelection(ctx, idx)
+  ctx.shader.activeLayer = math.max(1, math.min(8, round(idx)))
+  ctx.selection = { col = 1, row = 1 + ctx.shader.activeLayer }
+  writeParam(NS .. "/shader/active_layer", ctx.shader.activeLayer)
+  setSelectedSilently(ctx.widgets.shaderLayer, ctx.shader.activeLayer)
+  syncShaderEditor(ctx)
+end
+
+local function applyShaderEnabledSelection(ctx, enabled)
+  local v = enabled == true
+  ctx.shader.layers[ctx.shader.activeLayer].enabled = v
+  writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/enabled", v and 1 or 0)
+  if ctx.widgets.shaderEnabled and ctx.widgets.shaderEnabled.setValue then setValueSilently(ctx.widgets.shaderEnabled, v) end
+  updateShader(ctx)
+end
+
+local function applyEffectSelection(ctx, idx)
+  local L = ctx.shader.layers[ctx.shader.activeLayer]
+  idx = math.max(1, math.min(#(ctx.effects or {}), round(idx)))
+  L.effectIndex = idx
+  writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/effect", idx)
+  setSelectedSilently(ctx.widgets.effectSelect, idx)
+  syncShaderEditor(ctx)
+  syncShaderSourceParams(ctx)
+  updateShader(ctx)
+end
+
+local function applyShaderParamDisplay(ctx, p, displayValue)
+  local L = ctx.shader.layers[ctx.shader.activeLayer]
+  local effect = ctx.effects[L.effectIndex] or {}
+  local spec = effect.params and effect.params[p]
+  local pmin = tonumber(spec and spec.min) or 0
+  local pmax = tonumber(spec and spec.max) or 1
+  local normalized = (displayValue - pmin) / math.max(0.001, pmax - pmin)
+  L.params[p] = clamp(normalized, 0, 1)
+  writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/param/" .. p, L.params[p])
+  updateShader(ctx)
+end
+
+local function applySourceParamDisplay(ctx, pi, displayValue)
+  local choice = ctx.sources[ctx.shader.sourceIndex]
+  local pspec = choice and choice.params and choice.params[pi] or nil
+  if not pspec then return end
+  local pmin = tonumber(pspec.min) or 0
+  local pmax = tonumber(pspec.max) or 1
+  local normalized = (displayValue - pmin) / math.max(0.001, pmax - pmin)
+  ctx.shaderSourceParams = ctx.shaderSourceParams or {}
+  ctx.shaderSourceParams[pspec.id] = clamp(normalized, 0, 1)
+  updateShader(ctx)
+end
 
 local function syncClipModel(ctx)
   ctx.clips = ctx.clips or {}
@@ -1439,6 +1623,14 @@ local function syncClipModel(ctx)
       empty = true,
     }
   end
+
+  local sel = ctx.selection
+  local valid = sel and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row] and not ctx.clips[sel.col][sel.row].empty
+  if not valid then
+    local defaultRow = math.max(2, math.min(9, 1 + (ctx.shader and ctx.shader.activeLayer or 1)))
+    ctx.selection = { col = 1, row = defaultRow }
+  end
+
   return GRID_COLS, 9  -- cols, rows per col
 end
 
@@ -1495,6 +1687,13 @@ local function ensureGridCells(ctx)
         local lbl = cell:addChild("gridCell_" .. key .. "_lbl")
         thumb:setInterceptsMouse(false, false)
         lbl:setInterceptsMouse(false, false)
+        if cell.setInterceptsMouse then cell:setInterceptsMouse(true, true) end
+        if cell.setOnMouseDown then
+          local clickCol, clickRow = col, row
+          cell:setOnMouseDown(function()
+            selectGridCell(ctx, clickCol, clickRow)
+          end)
+        end
         ctx._gridCells[key] = { node = cell, thumb = thumb, label = lbl, col = col, row = row }
       end
     end
@@ -1577,16 +1776,35 @@ local function layoutClipGrid(ctx, w, h)
   local pad, gap = 8, 4
   local availW = math.max(1, w - pad * 2)
   local availH = math.max(1, h - pad * 2)
-
   local numCols, numRows = ensureGridCells(ctx)
   if numCols < 1 or numRows < 1 then return end
   updateGridThumbnails(ctx)
 
-  -- Bottom-up: source row at bottom, FX stacked above, columns side by side
-  local cellW = math.max(40, math.floor((availW - gap * (numCols - 1)) / numCols))
-  local cellH = math.max(24, math.floor((availH - gap * (numRows - 1)) / numRows))
-  local thumbH = math.max(1, cellH - 16)
-  local labelH = math.max(1, cellH - thumbH - 4)
+  local alignment = ctx.gridAlignment or "bottom-up"
+  local cellW, cellH
+
+  if alignment == "left-to-right" then
+    -- Columns stack vertically, rows extend right
+    cellH = math.max(24, math.floor((availH - gap * (numCols - 1)) / numCols))
+    cellW = math.max(40, math.floor((availW - gap * (numRows - 1)) / numRows))
+  else
+    -- bottom-up, top-down: columns side by side, rows stack vertically
+    cellW = math.max(40, math.floor((availW - gap * (numCols - 1)) / numCols))
+    cellH = math.max(24, math.floor((availH - gap * (numRows - 1)) / numRows))
+  end
+
+  -- Left-to-right: overlay label on thumb (minimal padding).
+  -- Bottom-up/top-down: label below thumb with 16px overhead.
+  local thumbH, labelH, isOverlay
+  if alignment == "left-to-right" then
+    thumbH = math.max(1, cellH - 4)
+    labelH = 12
+    isOverlay = true
+  else
+    thumbH = math.max(1, cellH - 16)
+    labelH = math.max(1, cellH - thumbH - 4)
+    isOverlay = false
+  end
 
   for col = 1, numCols do
     for row = 1, numRows do
@@ -1594,10 +1812,19 @@ local function layoutClipGrid(ctx, w, h)
       local cell = ctx._gridCells[key]
       if not cell then break end
 
-      -- bottom-up: row 1 at physical bottom
-      local displayRow = numRows - row + 1
-      local cx = pad + (col - 1) * (cellW + gap)
-      local cy = pad + (displayRow - 1) * (cellH + gap)
+      local cx, cy
+      if alignment == "bottom-up" then
+        local displayRow = numRows - row + 1
+        cx = pad + (col - 1) * (cellW + gap)
+        cy = pad + (displayRow - 1) * (cellH + gap)
+      elseif alignment == "left-to-right" then
+        -- Rows extend right, columns stack vertically
+        cx = pad + (row - 1) * (cellW + gap)
+        cy = pad + (col - 1) * (cellH + gap)
+      else -- top-down
+        cx = pad + (col - 1) * (cellW + gap)
+        cy = pad + (row - 1) * (cellH + gap)
+      end
 
       cell.node:setBounds(cx, cy, cellW, cellH)
 
@@ -1606,44 +1833,63 @@ local function layoutClipGrid(ctx, w, h)
       local isEmpty = clip and clip.empty
       local isEnabled = (not isSource) and clip and clip.enabled
 
-      local bg, borderClr
+      local isSelected = ctx.selection and ctx.selection.col == col and ctx.selection.row == row
+      local bg, borderClr, borderThick
       if isEmpty then
         bg = 0xff080c18
         borderClr = 0xff0f1520
+        borderThick = 1
       elseif isSource then
         bg = CELL_SRC_TINT
-        borderClr = 0xff22d3ee
+        borderClr = isSelected and CELL_SEL_BD or 0xff22d3ee
+        borderThick = isSelected and 2 or 1
       elseif isEnabled then
         bg = CELL_FX_TINT
-        borderClr = CELL_BORDER
+        borderClr = isSelected and CELL_SEL_BD or CELL_BORDER
+        borderThick = isSelected and 2 or 1
       else
         bg = EMPTY_CELL_BG
-        borderClr = 0xff0f1520
+        borderClr = isSelected and CELL_SEL_BD or 0xff0f1520
+        borderThick = isSelected and 2 or 1
       end
 
       cell.node:setDisplayList({
         { cmd = "fillRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = bg },
-        { cmd = "drawRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = borderClr, thickness = 1 },
+        { cmd = "drawRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = borderClr, thickness = borderThick },
       })
 
       if isEmpty then
-        -- Placeholder: show "+" icon in center
         cell.thumb:setBounds(0, 0, 0, 0)
         cell.label:setBounds(0, 0, cellW, cellH)
         cell.label:setDisplayList({
           { cmd = "drawText", text = "+", color = 0xff334155, fontSize = 16, align = "center", valign = "middle" },
         })
       elseif isSource or isEnabled then
-        cell.thumb:setBounds(2, 2, math.max(1, cellW - 4), math.max(1, thumbH - 2))
-        local labelText = clip and (clip.name or clip.fxName) or ""
-        cell.label:setBounds(4, math.max(1, thumbH + 2), math.max(1, cellW - 8), labelH)
-        local labelClr = isSource and 0xff22d3ee or (isEnabled and 0xff94a3b8 or 0xff334155)
-        cell.label:setDisplayList({
-          { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = labelH + 2, color = bg },
-          { cmd = "drawText", text = labelText, color = labelClr, fontSize = 8 },
-        })
+        local contentAspectW = ctx.outputW or 1920
+        local contentAspectH = ctx.outputH or 1080
+        if isOverlay then
+          -- Overlay label on thumb: thumb is boxed to the canonical source aspect.
+          local ix, iy, iw, ih = fitBox(math.max(1, cellW - 4), math.max(1, cellH - 4), contentAspectW, contentAspectH)
+          cell.thumb:setBounds(2 + ix, 2 + iy, iw, ih)
+          cell.label:setBounds(4, math.max(1, cellH - 13), math.max(1, cellW - 8), labelH)
+          local labelText = clip and (clip.name or clip.fxName) or ""
+          local labelClr = isSource and 0xff22d3ee or 0xff94a3b8
+          cell.label:setDisplayList({
+            { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = labelH + 2, color = 0xaa000000 },
+            { cmd = "drawText", text = labelText, color = labelClr, fontSize = 8, align = "left", valign = "middle" },
+          })
+        else
+          local ix, iy, iw, ih = fitBox(math.max(1, cellW - 4), math.max(1, thumbH - 2), contentAspectW, contentAspectH)
+          cell.thumb:setBounds(2 + ix, 2 + iy, iw, ih)
+          local labelText = clip and (clip.name or clip.fxName) or ""
+          cell.label:setBounds(4, math.max(1, thumbH + 2), math.max(1, cellW - 8), labelH)
+          local labelClr = isSource and 0xff22d3ee or (isEnabled and 0xff94a3b8 or 0xff334155)
+          cell.label:setDisplayList({
+            { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = labelH + 2, color = bg },
+            { cmd = "drawText", text = labelText, color = labelClr, fontSize = 8 },
+          })
+        end
       else
-        -- Disabled FX slot: empty thumbnail, dim label
         cell.thumb:setBounds(0, 0, 0, 0)
         local labelText = clip and clip.fxName or ""
         cell.label:setBounds(4, 4, math.max(1, cellW - 8), math.max(1, cellH - 8))
@@ -1774,6 +2020,7 @@ local function renderStagePanel(ctx)
     if av.x > 4 and av.y > 4 then
       local rw, rh = math.floor(av.x), math.floor(av.y)
       setBounds(ctx.widgets.outputViewport, 0, 0, rw, rh)
+      layoutOutputRow(ctx)
       imguiRetainedPanel(ctx.widgets.outputViewport.node, rw, rh, true)
     end
   end
@@ -1907,7 +2154,25 @@ local function renderEmbeddedPanel(ctx, widgetId, layoutFn, forcedHeight, fitToV
   imguiRetainedPanel(host.node, w, h, fitToView == true)
 end
 
-local function renderParametersPanel(ctx)
+local function renderSourceInspectorWindow(ctx)
+  local sourceSelected = ctx.selection and ctx.selection.row == 1 and ctx.selection.col == 1
+  imguiTextColored(sourceSelected and 0xff22d3ee or 0xff94a3b8, sourceSelected and "Source (grid-selected)" or "Source")
+  imguiSeparator()
+  local avail = imguiGetContentRegionAvail()
+  renderEmbeddedPanel(ctx, "sourceEmbed", layoutSourceEmbed, math.max(120, math.floor(tonumber(avail.y) or 120) - 18))
+end
+
+local function renderEffectInspectorWindow(ctx)
+  local effectSelected = ctx.selection and ctx.selection.row and ctx.selection.row > 1 and ctx.selection.col == 1
+  imguiTextColored(effectSelected and 0xff22d3ee or 0xff94a3b8, effectSelected and "Effect (grid-selected)" or "Effect")
+  imguiSeparator()
+  local avail = imguiGetContentRegionAvail()
+  renderEmbeddedPanel(ctx, "effectEmbed", layoutEffectEmbed, math.max(180, math.floor(tonumber(avail.y) or 180) - 18))
+  imguiSpacing()
+  imguiTextColored(0xff64748b, "Pins for selected effect/source will land here later.")
+end
+
+local function renderParamTransportWindow(ctx)
   imguiSeparatorText("Transport / MIDI")
   renderEmbeddedPanel(ctx, "transportEmbed", layoutTransportEmbed, 98)
   imguiSpacing()
@@ -1918,16 +2183,119 @@ local function renderParametersPanel(ctx)
     imguiSeparatorText("Poly Voice Areas")
     renderEmbeddedPanel(ctx, "polyEmbed", layoutPolyEmbed, 104)
   end
-  imguiSpacing()
-  imguiSeparatorText("Shader")
-  renderEmbeddedPanel(ctx, "shaderEmbed", layoutShaderEmbed, 248)
-  imguiSpacing()
+end
+
+local function renderParamMappingWindow(ctx)
   imguiSeparatorText("Pose / Seg / Mapping")
-  renderEmbeddedPanel(ctx, "mappingEmbed", layoutMappingEmbed, 252)
-  imguiSpacing()
+  local avail = imguiGetContentRegionAvail()
+  renderEmbeddedPanel(ctx, "mappingEmbed", layoutMappingEmbed, math.max(200, math.floor(tonumber(avail.y) or 200)))
+end
+
+local function renderParamFxWindow(ctx)
   imguiSeparatorText("FX Rack")
   local avail = imguiGetContentRegionAvail()
   renderEmbeddedPanel(ctx, "fxEmbed", layoutFxEmbed, math.max(220, math.floor(tonumber(avail.y) or 220)))
+end
+
+local function renderParametersPanel(ctx)
+  local dockspaceId = imguiGetID("AVSD_params_ds")
+
+  if not ctx._panelDocks or not ctx._panelDocks.params then
+    ctx._panelDocks = ctx._panelDocks or {}
+    local avail = imguiGetContentRegionAvail()
+    local pw = math.max(1, math.floor(tonumber(avail.x) or 360))
+    local ph = math.max(1, math.floor(tonumber(avail.y) or 300))
+
+    imguiDockBuilderRemoveNode(dockspaceId)
+    imguiDockBuilderAddNode(dockspaceId, imguiDockNodeFlags_DockSpace)
+    imguiDockBuilderSetNodeSize(dockspaceId, pw, ph)
+
+    -- One inspector column: Source + Effect share the top band, the rest stack
+    -- below full-width. Splitting them into a separate side column was a dumb
+    -- layout regression that made the lower sections too thin.
+    local topBand, lowerStack = panelSplit{ node = dockspaceId, dir = imguiDir_Up, ratio = 0.24 }
+    local sourceArea, effectArea = panelSplit{ node = topBand, dir = imguiDir_Right, ratio = 0.50 }
+    local transportArea, lowerTail = panelSplit{ node = lowerStack, dir = imguiDir_Up, ratio = 0.22 }
+    local mappingArea, fxArea = panelSplit{ node = lowerTail, dir = imguiDir_Up, ratio = 0.56 }
+
+    imguiDockBuilderDockWindow("Source###AVSD_param_source", sourceArea)
+    imguiDockBuilderDockWindow("Effect###AVSD_param_effect", effectArea)
+    imguiDockBuilderDockWindow("Transport###AVSD_param_transport", transportArea)
+    imguiDockBuilderDockWindow("Mapping###AVSD_param_mapping", mappingArea)
+    imguiDockBuilderDockWindow("FX Rack###AVSD_param_fx", fxArea)
+
+    imguiDockBuilderFinish(dockspaceId)
+    ctx._panelDocks.params = true
+  end
+
+  imguiDockSpace(dockspaceId, 0, 0, imguiDockNodeFlags_None)
+
+  if imguiBegin("Source###AVSD_param_source", imguiWindowFlags_NoTitleBar) then
+    renderSourceInspectorWindow(ctx)
+  end
+  imguiEnd()
+
+  if imguiBegin("Effect###AVSD_param_effect", imguiWindowFlags_NoTitleBar) then
+    renderEffectInspectorWindow(ctx)
+  end
+  imguiEnd()
+
+  if imguiBegin("Transport###AVSD_param_transport", imguiWindowFlags_NoTitleBar) then
+    renderParamTransportWindow(ctx)
+  end
+  imguiEnd()
+
+  if imguiBegin("Mapping###AVSD_param_mapping", imguiWindowFlags_NoTitleBar) then
+    renderParamMappingWindow(ctx)
+  end
+  imguiEnd()
+
+  if imguiBegin("FX Rack###AVSD_param_fx", imguiWindowFlags_NoTitleBar) then
+    renderParamFxWindow(ctx)
+  end
+  imguiEnd()
+end
+
+local function renderGridToolbar(ctx, parentW)
+  local toolbarH = 22
+  imguiBeginChild("##gridToolbar", parentW, toolbarH, false, 0)
+
+  local alignments = {
+    { "^BU", "bottom-up", "Bottom-Up" },
+    { ">LR", "left-to-right", "Left-to-Right" },
+    { "vTD", "top-down", "Top-Down" },
+  }
+  for _, a in ipairs(alignments) do
+    local isActive = ctx.gridAlignment == a[2]
+    if isActive then
+      imguiTextColored(0xff22d3ee, a[1])
+    else
+      if imguiButton(a[1]) then ctx.gridAlignment = a[2] end
+    end
+    imguiSameLine()
+  end
+
+  local colCount = 0
+  if ctx.clips then
+    for k, _ in pairs(ctx.clips) do colCount = colCount + 1 end
+  end
+  imguiText("  Cols: " .. tostring(colCount))
+  imguiEndChild()
+  return toolbarH
+end
+
+local function renderDeckPanel(ctx)
+  local av = imguiGetContentRegionAvail()
+  if av.x < 4 or av.y < 4 then return end
+  local pw = math.floor(av.x)
+  local ph = math.floor(av.y)
+
+  local toolbarH = renderGridToolbar(ctx, pw)
+  local gridH = math.max(1, ph - toolbarH)
+
+  setBounds(ctx.widgets.deckEmbed, 0, 0, pw, gridH)
+  layoutClipGrid(ctx, pw, gridH)
+  imguiRetainedPanel(ctx.widgets.deckEmbed.node, pw, gridH, true)
 end
 
 local function renderPanel(ctx, win)
@@ -1939,7 +2307,7 @@ local function renderPanel(ctx, win)
     elseif win.key == "stage" then
       renderStagePanel(ctx)
     elseif win.key == "deck" then
-      renderEmbeddedPanel(ctx, "deckEmbed", layoutClipGrid, nil, true)
+      renderDeckPanel(ctx)
     elseif win.key == "waveform" then
       renderWaveformPanel(ctx)
     end
@@ -2012,6 +2380,8 @@ function M.init(ctx)
   for i = 1, MAX_MAPPINGS do ctx.mappings[i] = defaultMapping(i) end
   ctx.fxSlot = 1
   ctx._layoutPreset = "deck"
+  ctx.gridAlignment = "bottom-up"
+  ctx.selection = { col = 1, row = 1 + ctx.shader.activeLayer }
   ctx._resizeMode = false
   ctx._dockTreeBuilt = false
   ctx._rebuildDockTree = false
@@ -2034,10 +2404,11 @@ function M.init(ctx)
 
   setDropdownOverlayRoot(ctx.widgets.deviceSelect, ctx.root)
   setDropdownOverlayRoot(ctx.widgets.midiInput, ctx.widgets.transportEmbed)
-  setDropdownOverlayRoot(ctx.widgets.sourceSelect, ctx.widgets.shaderEmbed)
-  setDropdownOverlayRoot(ctx.widgets.aspectSelect, ctx.widgets.shaderEmbed)
-  setDropdownOverlayRoot(ctx.widgets.shaderLayer, ctx.widgets.shaderEmbed)
-  setDropdownOverlayRoot(ctx.widgets.effectSelect, ctx.widgets.shaderEmbed)
+  setDropdownOverlayRoot(ctx.widgets.sourceSelect, ctx.widgets.sourceEmbed)
+  setDropdownOverlayRoot(ctx.widgets.aspectSelect, ctx.widgets.sourceEmbed)
+  setDropdownOverlayRoot(ctx.widgets.sourceDeviceSelect, ctx.widgets.sourceEmbed)
+  setDropdownOverlayRoot(ctx.widgets.shaderLayer, ctx.widgets.effectEmbed)
+  setDropdownOverlayRoot(ctx.widgets.effectSelect, ctx.widgets.effectEmbed)
   setDropdownOverlayRoot(ctx.widgets.selectedSlice, ctx.widgets.sliceEmbed)
   -- FX slot dropdowns live inside a nested component runtime, so they are not in
   -- ctx.widgets. If we don't grab the real instances from ctx.allWidgets, they
@@ -2074,8 +2445,23 @@ function M.init(ctx)
   syncParamsFromHost(ctx)
 
   ctx.widgets.refreshDevices._onClick = function() refreshDevices(ctx) end
+  if ctx.widgets.deviceSelect then
+    ctx.widgets.deviceSelect._onSelect = function(idx)
+      ctx.deviceSelectIndex = math.max(1, round(idx))
+      setSelectedSilently(ctx.widgets.sourceDeviceSelect, ctx.deviceSelectIndex)
+    end
+  end
+  if ctx.widgets.sourceDeviceSelect then
+    ctx.widgets.sourceDeviceSelect._onSelect = function(idx)
+      ctx.deviceSelectIndex = math.max(1, round(idx))
+      setSelectedSilently(ctx.widgets.deviceSelect, ctx.deviceSelectIndex)
+    end
+  end
   ctx.widgets.openWebcam._onClick = function() openWebcam(ctx) end
   ctx.widgets.closeWebcam._onClick = function() closeWebcam(ctx) end
+  if ctx.widgets.sourceRefreshDevices then ctx.widgets.sourceRefreshDevices._onClick = function() refreshDevices(ctx) end end
+  if ctx.widgets.sourceOpenWebcam then ctx.widgets.sourceOpenWebcam._onClick = function() openWebcam(ctx) end end
+  if ctx.widgets.sourceCloseWebcam then ctx.widgets.sourceCloseWebcam._onClick = function() closeWebcam(ctx) end end
   ctx.widgets.loadModels._onClick = function() loadModels(ctx) end
   ctx.widgets.captureNow._onClick = function() onCaptureButton(ctx) end
   ctx.widgets.play._onClick = function() bump(NS .. "/play_trigger") end
@@ -2133,62 +2519,30 @@ function M.init(ctx)
   end
 
   ctx.widgets.sourceSelect._onSelect = function(idx)
-    ctx.shader.sourceIndex = idx
-    writeParam(NS .. "/shader/source", idx)
-    syncShaderSourceParams(ctx)
-    updateOutputAspect(ctx)
-    updateShader(ctx)
+    applySourceSelection(ctx, idx)
   end
   ctx.widgets.aspectSelect._onSelect = function(idx)
-    local opts = {"Native","16:9","4:3","1:1"}
-    ctx.aspectMode = opts[math.max(1, math.min(#opts, round(idx)))]
-    updateOutputAspect(ctx)
+    applyAspectModeSelection(ctx, idx)
   end
   ctx.widgets.shaderLayer._onSelect = function(idx)
-    ctx.shader.activeLayer = math.max(1, math.min(8, round(idx)))
-    writeParam(NS .. "/shader/active_layer", ctx.shader.activeLayer)
-    syncShaderEditor(ctx)
+    applyActiveLayerSelection(ctx, idx)
   end
   ctx.widgets.shaderEnabled._onChange = function(v)
-    ctx.shader.layers[ctx.shader.activeLayer].enabled = v == true
-    writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/enabled", v and 1 or 0)
-    updateShader(ctx)
+    applyShaderEnabledSelection(ctx, v == true)
   end
   ctx.widgets.effectSelect._onSelect = function(idx)
-    local L = ctx.shader.layers[ctx.shader.activeLayer]
-    L.effectIndex = idx
-    writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/effect", idx)
-    syncShaderEditor(ctx)
-    syncShaderSourceParams(ctx)
-    updateShader(ctx)
+    applyEffectSelection(ctx, idx)
   end
   for p = 1, 9 do
     ctx.widgets["shaderParam" .. p]._onChange = function(v)
-      local L = ctx.shader.layers[ctx.shader.activeLayer]
-      local effect = ctx.effects[L.effectIndex] or {}
-      local spec = effect.params and effect.params[p]
-      local pmin = tonumber(spec and spec.min) or 0
-      local pmax = tonumber(spec and spec.max) or 1
-      local normalized = (v - pmin) / math.max(0.001, pmax - pmin)
-      L.params[p] = normalized
-      writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/param/" .. p, normalized)
-      updateShader(ctx)
+      applyShaderParamDisplay(ctx, p, v)
     end
   end
   for pi = 1, 4 do
     local sl = ctx.widgets["sourceParam" .. pi]
     if sl then
       sl._onChange = function(v)
-        local choice = ctx.sources[ctx.shader.sourceIndex]
-        local pspec = choice and choice.params and choice.params[pi] or nil
-        if pspec then
-          local pmin = tonumber(pspec.min) or 0
-          local pmax = tonumber(pspec.max) or 1
-          local normalized = (v - pmin) / math.max(0.001, pmax - pmin)
-          ctx.shaderSourceParams = ctx.shaderSourceParams or {}
-          ctx.shaderSourceParams[pspec.id] = normalized
-        end
-        updateShader(ctx)
+        applySourceParamDisplay(ctx, pi, v)
       end
     end
   end

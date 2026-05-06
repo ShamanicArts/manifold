@@ -137,25 +137,34 @@ local function paramGrid(prefix, specs, x, y, colW, h, cols)
   return children
 end
 
-local function shaderChildren()
+local function sourceChildren()
+  return {
+    dropdown("sourceSelect", 8, 25, 120, 18, {"Webcam"}, 1, C.live),
+    dropdown("aspectSelect", 134, 25, 84, 18, {"Native","16:9","4:3","1:1"}, 2, C.warn),
+    dropdown("sourceDeviceSelect", 8, 47, 162, 18, {"Device 0"}, 1, C.live),
+    button("sourceRefreshDevices", 176, 47, 40, 18, "DEV"),
+    button("sourceOpenWebcam", 222, 47, 44, 18, "OPEN", C.button, C.live),
+    button("sourceCloseWebcam", 272, 47, 48, 18, "CLOSE", C.button, C.bad),
+    slider("sourceParam1", 8, 69, 104, 17, "Src1", 0, 1, 0.01, 0.5, nil, C.live),
+    slider("sourceParam2", 118, 69, 104, 17, "Src2", 0, 1, 0.01, 0.5, nil, C.seg),
+    slider("sourceParam3", 8, 89, 104, 17, "Src3", 0, 1, 0.01, 0.5, nil, C.sample),
+    slider("sourceParam4", 118, 89, 104, 17, "Src4", 0, 1, 0.01, 0.5, nil, C.pose),
+    label("frameInfo", 8, 112, 300, 12, "Frame: --", C.muted, 8),
+  }
+end
+
+local function effectChildren()
   local children = {
-    dropdown("sourceSelect", 8, 25, 82, 18, {"Webcam"}, 1, C.live),
-    dropdown("aspectSelect", 96, 25, 72, 18, {"Native","16:9","4:3","1:1"}, 2, C.warn),
-    dropdown("shaderLayer", 96, 25, 44, 18, {"L1","L2","L3","L4","L5","L6","L7","L8"}, 1, C.sample),
-    toggle("shaderEnabled", 146, 25, 44, 18, "Off", "On", true, nil, C.seg),
-    dropdown("effectSelect", 196, 25, 120, 18, {"Passthrough"}, 1, C.sample),
-    slider("sourceParam1", 8, 47, 104, 17, "Src1", 0, 1, 0.01, 0.5, nil, C.live),
-    slider("sourceParam2", 118, 47, 104, 17, "Src2", 0, 1, 0.01, 0.5, nil, C.seg),
-    slider("sourceParam3", 8, 67, 104, 17, "Src3", 0, 1, 0.01, 0.5, nil, C.sample),
-    slider("sourceParam4", 118, 67, 104, 17, "Src4", 0, 1, 0.01, 0.5, nil, C.pose),
-    label("frameInfo", 8, 89, 300, 12, "Frame: --", C.muted, 8),
+    dropdown("shaderLayer", 8, 25, 48, 18, {"L1","L2","L3","L4","L5","L6","L7","L8"}, 1, C.sample),
+    toggle("shaderEnabled", 62, 25, 52, 18, "Off", "On", true, nil, C.seg),
+    dropdown("effectSelect", 120, 25, 120, 18, {"Passthrough"}, 1, C.sample),
     label("shaderStatus", 8, 208, 310, 14, "Shader: --", C.muted, 8),
   }
   local grid = paramGrid("shaderParam", {
     {"P1",0,1,0.01,0.5,nil,C.live},{"P2",0,1,0.01,0.5,nil,C.seg},{"P3",0,1,0.01,0.5,nil,C.sample},
     {"P4",0,1,0.01,0.5,nil,C.bad},{"P5",0,1,0.01,0.5,nil,C.pose},{"P6",0,1,0.01,0.5,nil,C.live},
     {"P7",0,1,0.01,0.5,nil,C.warn},{"P8",0,1,0.01,0.5,nil,0xffec4899},{"P9",0,1,0.01,0.5,nil,0xff14b8a6},
-  }, 8, 91, 104, 18, 3)
+  }, 8, 49, 104, 18, 3)
   for _, child in ipairs(grid) do children[#children + 1] = child end
   return children
 end
@@ -270,7 +279,8 @@ return {
       { id="transportEmbed", type="Panel", x=0, y=0, w=296, h=98, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=transportChildren() },
       { id="polyEmbed", type="Panel", x=0, y=0, w=296, h=104, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=polyChildren() },
       { id="sliceEmbed", type="Panel", x=0, y=0, w=296, h=104, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=sliceChildren() },
-      { id="shaderEmbed", type="Panel", x=0, y=0, w=320, h=248, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=shaderChildren() },
+      { id="sourceEmbed", type="Panel", x=0, y=0, w=320, h=164, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=sourceChildren() },
+      { id="effectEmbed", type="Panel", x=0, y=0, w=320, h=248, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=effectChildren() },
       { id="mappingEmbed", type="Panel", x=0, y=0, w=486, h=252, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=mappingChildren() },
       { id="inputsEmbed", type="Panel", x=0, y=0, w=540, h=195, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=inputsChildren() },
       { id="waveformEmbed", type="Panel", x=0, y=0, w=640, h=122, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children={
