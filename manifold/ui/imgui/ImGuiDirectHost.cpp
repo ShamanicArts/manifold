@@ -164,135 +164,32 @@ constexpr double kDeferredSurfaceBudgetMicros = 2000.0;
 #include "DirectHostGlLifecycleSupport.h"
 
 ImGuiDirectHost::ImGuiDirectHost()
-    : surfaceProviders_(),
-      videoSurfaceProvider_(std::make_shared<manifold::video::VideoSurfaceProvider>()),
-      generatedSourceProvider_(std::make_shared<manifold::sources::GeneratedSourceProvider>()),
-      shaderSurfaceProvider_(std::make_shared<manifold::shaders::ShaderSurfaceProvider>()),
-      compositeSurfaceProvider_(std::make_shared<manifold::composite::CompositeSurfaceProvider>())
+    : surfaceHostImpl_(std::make_unique<ImGuiDirectSurfaceHost>()),
+      embeddedPanelTouchedSurfaceIds_(surfaceHostImpl_->embeddedPanelTouchedSurfaceIds()),
+      cachedSurfaceTextures_(surfaceHostImpl_->cachedSurfaceTextures()),
+      surfaceProviders_(surfaceHostImpl_->surfaceProviders()),
+      videoSurfaceProvider_(surfaceHostImpl_->videoSurfaceProvider()),
+      generatedSourceProvider_(surfaceHostImpl_->generatedSourceProvider()),
+      shaderSurfaceProvider_(surfaceHostImpl_->shaderSurfaceProvider()),
+      compositeSurfaceProvider_(surfaceHostImpl_->compositeSurfaceProvider())
 #if MANIFOLD_HAS_ML
-      , mlMaskSurfaceProvider_(std::make_shared<manifold::ml::MLMaskSurfaceProvider>())
+      , mlMaskSurfaceProvider_(surfaceHostImpl_->mlMaskSurfaceProvider())
 #endif
 {
-    registerSurfaceProvider(videoSurfaceProvider_);
-    registerSurfaceProvider(generatedSourceProvider_);
-    registerSurfaceProvider(shaderSurfaceProvider_);
-    registerSurfaceProvider(compositeSurfaceProvider_);
-#if MANIFOLD_HAS_ML
-    registerSurfaceProvider(mlMaskSurfaceProvider_);
-#endif
-
-    shaderSurfaceProvider_->setInputResolver([this](const std::string& sourceType,
-                                                    const std::string& sourceId,
-                                                    const RuntimeNode& node,
-                                                    int width,
-                                                    int height,
-                                                    double timeSeconds) {
-        manifold::shaders::ShaderSurfaceProvider::ResolvedInputTexture resolved;
-        if (sourceType == "video_input" && videoSurfaceProvider_) {
-            resolved.textureHandle = videoSurfaceProvider_->prepareTexture(node, width, height, timeSeconds);
-            if (resolved.textureHandle != 0) {
-                videoSurfaceProvider_->getSurfaceInfo(node.getStableId(),
-                                                      resolved.width,
-                                                      resolved.height,
-                                                      resolved.sequence);
+    surfaceHostImpl_->configureResolvers(
+        [this](const std::string& nodeId) -> RuntimeNode* {
+            if (liveRoot_ == nullptr || nodeId.empty()) {
+                return nullptr;
             }
-            return resolved;
-        }
-        if (sourceType == "generated_source" && generatedSourceProvider_) {
-            resolved.textureHandle = generatedSourceProvider_->prepareTexture(node, width, height, timeSeconds);
-            if (resolved.textureHandle != 0) {
-                generatedSourceProvider_->getSurfaceInfo(node.getStableId(),
-                                                         resolved.width,
-                                                         resolved.height,
-                                                         resolved.sequence);
-            }
-            return resolved;
-        }
-        if (sourceType == "node_surface") {
-            if (sourceId.empty() || liveRoot_ == nullptr) {
-                return resolved;
-            }
-            auto* targetNode = liveRoot_->findById(sourceId);
-            if (targetNode == nullptr || targetNode->getStableId() == 0) {
-                return resolved;
-            }
-            if (targetNode->getStableId() == node.getStableId()) {
-                return resolved;
-            }
-            resolved.textureHandle = prepareCustomSurfaceTextureImmediate(*targetNode, width, height, timeSeconds);
-            if (resolved.textureHandle != 0) {
-                embeddedPanelTouchedSurfaceIds_.insert(targetNode->getStableId());
-                cachedSurfaceTextures_[targetNode->getStableId()].textureHandle = resolved.textureHandle;
-                if (!getVideoSurfaceInfo(targetNode->getStableId(), resolved.width, resolved.height, resolved.sequence)) {
-                    resolved.width = width;
-                    resolved.height = height;
-                    resolved.sequence = 0;
-                }
-            }
-            return resolved;
-        }
-        return resolved;
-    });
-
-    compositeSurfaceProvider_->setNodeTextureResolver([this](const std::string& targetNodeId,
-                                                             const RuntimeNode& requestingNode,
-                                                             int width,
-                                                             int height,
-                                                             double timeSeconds) {
-        manifold::composite::CompositeSurfaceProvider::ResolvedNodeTexture resolved;
-        if (targetNodeId.empty() || liveRoot_ == nullptr) {
-            return resolved;
-        }
-
-        auto* targetNode = liveRoot_->findById(targetNodeId);
-        if (targetNode == nullptr || targetNode->getStableId() == 0) {
-            static int missingBudget = 24;
-            if (missingBudget > 0) {
-                --missingBudget;
-                std::fprintf(stderr,
-                             "[ImGuiDirectHost] composite resolver missing target node id=%s\n",
-                             targetNodeId.c_str());
-                std::fflush(stderr);
-            }
-            return resolved;
-        }
-        if (targetNode->getStableId() == requestingNode.getStableId()) {
-            static int selfBudget = 12;
-            if (selfBudget > 0) {
-                --selfBudget;
-                std::fprintf(stderr,
-                             "[ImGuiDirectHost] composite resolver self-reference target=%s requester=%s\n",
-                             targetNodeId.c_str(),
-                             requestingNode.getNodeId().c_str());
-                std::fflush(stderr);
-            }
-            return resolved;
-        }
-        resolved.textureHandle = prepareCustomSurfaceTextureImmediate(*targetNode, width, height, timeSeconds);
-        if (resolved.textureHandle != 0) {
-            embeddedPanelTouchedSurfaceIds_.insert(targetNode->getStableId());
-            cachedSurfaceTextures_[targetNode->getStableId()].textureHandle = resolved.textureHandle;
-            if (!getVideoSurfaceInfo(targetNode->getStableId(), resolved.width, resolved.height, resolved.sequence)) {
-                resolved.width = width;
-                resolved.height = height;
-                resolved.sequence = 0;
-            }
-        } else {
-            static int zeroBudget = 48;
-            if (zeroBudget > 0) {
-                --zeroBudget;
-                std::fprintf(stderr,
-                             "[ImGuiDirectHost] composite resolver zero texture target=%s type=%s requester=%s wh=%dx%d\n",
-                             targetNodeId.c_str(),
-                             targetNode->getCustomSurfaceType().c_str(),
-                             requestingNode.getNodeId().c_str(),
-                             width,
-                             height);
-                std::fflush(stderr);
-            }
-        }
-        return resolved;
-    });
+            return liveRoot_->findById(nodeId);
+        },
+        [this](const RuntimeNode& node, int width, int height, double timeSeconds) {
+            return prepareCustomSurfaceTextureImmediate(node, width, height, timeSeconds);
+        },
+        [this](uint64_t stableId, std::uintptr_t textureHandle) {
+            embeddedPanelTouchedSurfaceIds_.insert(stableId);
+            cachedSurfaceTextures_[stableId].textureHandle = textureHandle;
+        });
 
     setOpaque(true);
     setWantsKeyboardFocus(true);
@@ -315,15 +212,11 @@ ImGuiDirectHost::~ImGuiDirectHost() {
 }
 
 void ImGuiDirectHost::registerSurfaceProvider(std::shared_ptr<CustomSurfaceProvider> provider) {
-    surfaceProviders_.push_back(provider);
+    surfaceHostImpl_->registerSurfaceProvider(std::move(provider));
 }
 
 void ImGuiDirectHost::unregisterSurfaceProvider(const std::string& typeHint) {
-    surfaceProviders_.erase(std::remove_if(surfaceProviders_.begin(), surfaceProviders_.end(),
-        [&typeHint](const std::shared_ptr<CustomSurfaceProvider>& provider) {
-            return provider && provider->handlesType(typeHint);
-        }),
-        surfaceProviders_.end());
+    surfaceHostImpl_->unregisterSurfaceProvider(typeHint);
 }
 
 ImGuiDirectHost::StatsSnapshot ImGuiDirectHost::getStatsSnapshot() const {
@@ -379,16 +272,9 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTextureImmediate(const Runti
         return 0;
     }
 
-    const auto surfaceType = node.getCustomSurfaceType();
-    for (auto& provider : surfaceProviders_) {
-        if (provider && provider->handlesType(surfaceType)) {
-            const auto texture = provider->prepareTexture(node, width, height, timeSeconds);
-            recalculateOwnedGpuBytes();
-            return texture;
-        }
-    }
-
-    return 0;
+    const auto texture = surfaceHostImpl_->prepareCustomSurfaceTexture(node, width, height, timeSeconds);
+    recalculateOwnedGpuBytes();
+    return texture;
 }
 
 std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& node,
@@ -403,12 +289,7 @@ void ImGuiDirectHost::processDeferredSurfaceRequests(double timeSeconds) {
 }
 
 bool ImGuiDirectHost::getVideoSurfaceInfo(uint64_t stableId, int& width, int& height, uint64_t& sequence) const {
-    for (auto& provider : surfaceProviders_) {
-        if (provider && provider->getSurfaceInfo(stableId, width, height, sequence)) {
-            return true;
-        }
-    }
-    return false;
+    return surfaceHostImpl_->getSurfaceInfo(stableId, width, height, sequence);
 }
 
 bool ImGuiDirectHost::renderEmbeddedRuntimePanel(RuntimeNode& root,

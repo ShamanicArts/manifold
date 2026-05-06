@@ -109,10 +109,8 @@ inline void ImGuiDirectHost::openGLContextClosing() {
     deferredSurfaceOrder_.clear();
     cachedSurfaceTextures_.clear();
 
-    for (auto& provider : surfaceProviders_) {
-        if (provider) {
-            provider->releaseAll();
-        }
+    if (surfaceHostImpl_ != nullptr) {
+        surfaceHostImpl_->releaseAll();
     }
     recalculateOwnedGpuBytes();
     shutdownImGuiBackend();

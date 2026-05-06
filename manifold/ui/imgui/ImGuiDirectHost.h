@@ -16,6 +16,7 @@
 #include <juce_core/juce_core.h>
 
 #include "RuntimeNodeRenderer.h"
+#include "ImGuiDirectSurfaceHost.h"
 #include "../../primitives/ui/RuntimeNode.h"
 #include "../../primitives/ui/CustomSurfaceProvider.h"
 
@@ -271,17 +272,17 @@ public:
         int height = 0;
     };
 
-    struct CachedSurfaceTexture {
-        std::uintptr_t textureHandle = 0;
-    };
+    using CachedSurfaceTexture = ImGuiDirectCachedSurfaceTexture;
+
+    std::unique_ptr<ImGuiDirectSurfaceHost> surfaceHostImpl_;
 
     manifold::ui::imgui::RuntimeNodeRenderer renderer_;
     manifold::ui::imgui::RuntimeNodeRenderer::PreviewTransform previewTransform_;
     std::unordered_map<uint64_t, EmbeddedPanelState> embeddedPanelStates_;
-    std::unordered_set<uint64_t> embeddedPanelTouchedSurfaceIds_;
+    std::unordered_set<uint64_t>& embeddedPanelTouchedSurfaceIds_;
     std::unordered_map<uint64_t, DeferredSurfaceRequest> deferredSurfaceRequests_;
     std::deque<uint64_t> deferredSurfaceOrder_;
-    std::unordered_map<uint64_t, CachedSurfaceTexture> cachedSurfaceTextures_;
+    std::unordered_map<uint64_t, CachedSurfaceTexture>& cachedSurfaceTextures_;
     PendingDragEvent pendingDragEvent_;
     double lastContinuousInputDispatchMs_ = 0.0;
     std::mutex inputMutex_;
@@ -300,14 +301,14 @@ public:
 
     static thread_local ImGuiDirectHost* activeInstance_;
 
-    std::vector<std::shared_ptr<CustomSurfaceProvider>> surfaceProviders_;
+    std::vector<std::shared_ptr<CustomSurfaceProvider>>& surfaceProviders_;
 
-    std::shared_ptr<manifold::video::VideoSurfaceProvider> videoSurfaceProvider_;
-    std::shared_ptr<manifold::sources::GeneratedSourceProvider> generatedSourceProvider_;
-    std::shared_ptr<manifold::shaders::ShaderSurfaceProvider> shaderSurfaceProvider_;
-    std::shared_ptr<manifold::composite::CompositeSurfaceProvider> compositeSurfaceProvider_;
+    std::shared_ptr<manifold::video::VideoSurfaceProvider>& videoSurfaceProvider_;
+    std::shared_ptr<manifold::sources::GeneratedSourceProvider>& generatedSourceProvider_;
+    std::shared_ptr<manifold::shaders::ShaderSurfaceProvider>& shaderSurfaceProvider_;
+    std::shared_ptr<manifold::composite::CompositeSurfaceProvider>& compositeSurfaceProvider_;
 #if MANIFOLD_HAS_ML
-    std::shared_ptr<manifold::ml::MLMaskSurfaceProvider> mlMaskSurfaceProvider_;
+    std::shared_ptr<manifold::ml::MLMaskSurfaceProvider>& mlMaskSurfaceProvider_;
 #endif
 
     void recalculateOwnedGpuBytes();

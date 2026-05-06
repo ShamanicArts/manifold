@@ -180,22 +180,9 @@ bool ImGuiDirectHost::renderFrameWithCurrentContext(float scale, bool allowSwap)
     }
     ImGui::End();
 
-    for (const auto& id : embeddedPanelTouchedSurfaceIds_) {
-        touchedSurfaceIds.insert(id);
-    }
-    embeddedPanelTouchedSurfaceIds_.clear();
-
-    for (auto& provider : surfaceProviders_) {
-        if (provider) {
-            provider->prune(touchedSurfaceIds);
-        }
-    }
-    for (auto it = cachedSurfaceTextures_.begin(); it != cachedSurfaceTextures_.end();) {
-        if (touchedSurfaceIds.find(it->first) == touchedSurfaceIds.end()) {
-            it = cachedSurfaceTextures_.erase(it);
-        } else {
-            ++it;
-        }
+    if (surfaceHostImpl_ != nullptr) {
+        surfaceHostImpl_->mergeTouchedSurfaceIds(touchedSurfaceIds);
+        surfaceHostImpl_->pruneUntouched(touchedSurfaceIds);
     }
     recalculateOwnedGpuBytes();
 
@@ -401,10 +388,8 @@ void ImGuiDirectHost::shutdown() {
     if (openGLContext_.isAttached()) {
         openGLContext_.detach();
     } else if (contextReady_ && eglOffscreenContext_ && eglOffscreenContext_->makeCurrent()) {
-        for (auto& provider : surfaceProviders_) {
-            if (provider) {
-                provider->releaseAll();
-            }
+        if (surfaceHostImpl_ != nullptr) {
+            surfaceHostImpl_->releaseAll();
         }
         recalculateOwnedGpuBytes();
         shutdownImGuiBackend();
