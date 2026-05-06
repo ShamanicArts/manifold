@@ -30,6 +30,8 @@ extern "C" {
 #include "../../core/Settings.h"
 #include "../../core/SystemPaths.h"
 #include "../../video/VideoCaptureManager.h"
+#include "../../video/VideoRetrospectiveCapture.h"
+#include "../../video/VideoSampler.h"
 
 #include <juce_core/juce_core.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -2658,6 +2660,166 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                                         sol::function callback) {
         state.showFileChooser(title, initialPath, filePatterns, callback);
     };
+
+    // ==========================================================================
+    // videoSampler table - audio-timed video sampler/capture bindings
+    // ==========================================================================
+    lua.new_usertype<manifold::video::VideoSampler>("VideoSampler",
+        sol::no_constructor,
+        "getId", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> std::string {
+            return self ? self->getId() : std::string();
+        },
+        "hasFrames", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> bool {
+            return self ? self->hasFrames() : false;
+        },
+        "getFrameCount", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> int {
+            return self ? self->getFrameCount() : 0;
+        },
+        "getDurationSamples", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> double {
+            return self ? self->getDurationSamples() : 0.0;
+        },
+        "getDurationSeconds", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> float {
+            return self ? self->getDurationSeconds() : 0.0f;
+        },
+        "clear", [](const std::shared_ptr<manifold::video::VideoSampler>& self) {
+            if (self) self->clear();
+        },
+        "setPosition", [](const std::shared_ptr<manifold::video::VideoSampler>& self, float normalized) {
+            if (self) self->seekNormalized(normalized);
+        },
+        "seek", [](const std::shared_ptr<manifold::video::VideoSampler>& self, float normalized) {
+            if (self) self->seekNormalized(normalized);
+        },
+        "getPosition", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> float {
+            return self ? self->getNormalizedPosition() : 0.0f;
+        },
+        "getNormalizedPosition", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> float {
+            return self ? self->getNormalizedPosition() : 0.0f;
+        },
+        "play", [](const std::shared_ptr<manifold::video::VideoSampler>& self) {
+            if (self) self->play();
+        },
+        "pause", [](const std::shared_ptr<manifold::video::VideoSampler>& self) {
+            if (self) self->pause();
+        },
+        "stop", [](const std::shared_ptr<manifold::video::VideoSampler>& self) {
+            if (self) self->stop();
+        },
+        "trigger", [](const std::shared_ptr<manifold::video::VideoSampler>& self) {
+            if (self) self->trigger();
+        },
+        "isPlaying", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> bool {
+            return self ? self->isPlaying() : false;
+        },
+        "advance", [](const std::shared_ptr<manifold::video::VideoSampler>& self, double deltaSeconds) {
+            if (self) self->advance(deltaSeconds);
+        },
+        "setOneShot", [](const std::shared_ptr<manifold::video::VideoSampler>& self, bool enabled) {
+            if (self) self->setOneShot(enabled);
+        },
+        "isOneShot", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> bool {
+            return self ? self->isOneShot() : false;
+        },
+        "setPlayStart", [](const std::shared_ptr<manifold::video::VideoSampler>& self, float normalized) {
+            if (self) self->setPlayStart(normalized);
+        },
+        "getPlayStart", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> float {
+            return self ? self->getPlayStart() : 0.0f;
+        },
+        "setLoopStart", [](const std::shared_ptr<manifold::video::VideoSampler>& self, float normalized) {
+            if (self) self->setLoopStart(normalized);
+        },
+        "getLoopStart", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> float {
+            return self ? self->getLoopStart() : 0.0f;
+        },
+        "setLoopEnd", [](const std::shared_ptr<manifold::video::VideoSampler>& self, float normalized) {
+            if (self) self->setLoopEnd(normalized);
+        },
+        "getLoopEnd", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> float {
+            return self ? self->getLoopEnd() : 1.0f;
+        },
+        "setCrossfade", [](const std::shared_ptr<manifold::video::VideoSampler>& self, float normalized) {
+            if (self) self->setCrossfade(normalized);
+        },
+        "getCrossfade", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> float {
+            return self ? self->getCrossfade() : 0.0f;
+        });
+
+    lua.new_usertype<manifold::video::VideoRetrospectiveCapture>("VideoRetrospectiveCapture",
+        sol::no_constructor,
+        "setCaptureSeconds", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self, float seconds) {
+            if (self) self->setCaptureSeconds(seconds);
+        },
+        "getCaptureSeconds", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) -> float {
+            return self ? self->getCaptureSeconds() : 0.0f;
+        },
+        "ingestLatest", [&state](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) -> bool {
+            auto* processor = state.getProcessor();
+            if (!self || processor == nullptr) {
+                return false;
+            }
+            return self->ingestLatestFrame(processor->getPlayTimeSamples(), highResNowSeconds());
+        },
+        "copyRecentToSampler", [&state](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self,
+                                          const std::shared_ptr<manifold::video::VideoSampler>& sampler,
+                                          double samplesBack) -> bool {
+            auto* processor = state.getProcessor();
+            if (!self || !sampler || processor == nullptr) {
+                return false;
+            }
+            return self->copyRecentToSampler(*sampler,
+                                             processor->getPlayTimeSamples(),
+                                             samplesBack,
+                                             processor->getSampleRate());
+        },
+        "getFrameCount", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) -> int {
+            return self ? self->getFrameCount() : 0;
+        },
+        "getLockedWidth", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) -> int {
+            return self ? self->getLockedWidth() : 0;
+        },
+        "getLockedHeight", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) -> int {
+            return self ? self->getLockedHeight() : 0;
+        },
+        "clear", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) {
+            if (self) self->clear();
+        });
+
+    auto videoSamplerTable = lua.create_table();
+    videoSamplerTable["new"] = [](sol::optional<sol::table> opts) -> std::shared_ptr<manifold::video::VideoSampler> {
+        std::string id;
+        if (opts) {
+            sol::object idObj = (*opts)["id"];
+            if (idObj.valid() && idObj.is<std::string>()) {
+                id = idObj.as<std::string>();
+            }
+        }
+        return manifold::video::VideoSamplerRegistry::instance().createSampler(id);
+    };
+    videoSamplerTable["capture"] = [](sol::optional<sol::table> opts) -> std::shared_ptr<manifold::video::VideoRetrospectiveCapture> {
+        std::string id;
+        float maxSeconds = 30.0f;
+        if (opts) {
+            sol::object idObj = (*opts)["id"];
+            if (idObj.valid() && idObj.is<std::string>()) {
+                id = idObj.as<std::string>();
+            }
+            sol::object maxSecondsObj = (*opts)["maxSeconds"];
+            if (maxSecondsObj.valid() && maxSecondsObj.is<double>()) {
+                maxSeconds = static_cast<float>(maxSecondsObj.as<double>());
+            } else if (maxSecondsObj.valid() && maxSecondsObj.is<int>()) {
+                maxSeconds = static_cast<float>(maxSecondsObj.as<int>());
+            }
+        }
+        return manifold::video::VideoSamplerRegistry::instance().createCapture(id, maxSeconds);
+    };
+    videoSamplerTable["get"] = [](const std::string& id) -> std::shared_ptr<manifold::video::VideoSampler> {
+        return manifold::video::VideoSamplerRegistry::instance().getSampler(id);
+    };
+    videoSamplerTable["clearRegistry"] = []() {
+        manifold::video::VideoSamplerRegistry::instance().clear();
+    };
+    lua["videoSampler"] = videoSamplerTable;
 
     // ==========================================================================
     // capture table - video capture hardware bindings

@@ -547,6 +547,10 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/core/SystemPaths.cpp
     manifold/primitives/video/VideoCaptureManager.h
     manifold/primitives/video/VideoCaptureManager.cpp
+    manifold/primitives/video/VideoSampler.h
+    manifold/primitives/video/VideoSampler.cpp
+    manifold/primitives/video/VideoRetrospectiveCapture.h
+    manifold/primitives/video/VideoRetrospectiveCapture.cpp
     manifold/primitives/video/VideoSurfaceProvider.h
     manifold/primitives/video/VideoSurfaceProvider.cpp
     manifold/primitives/shaders/ShaderPipelineDescriptor.h
@@ -1004,6 +1008,18 @@ add_executable(StateProjectionHarness manifold/headless/StateProjectionHarness.c
 
 add_executable(PortBufferSemanticsHarness manifold/headless/PortBufferSemanticsHarness.cpp)
 
+add_executable(VideoSamplerHarness
+    tests/VideoSamplerHarness.cpp
+    manifold/primitives/video/VideoSampler.cpp
+    manifold/primitives/video/VideoRetrospectiveCapture.cpp
+    manifold/primitives/video/VideoCaptureManager.cpp)
+
+add_executable(VideoRetrospectiveCaptureHarness
+    tests/VideoRetrospectiveCaptureHarness.cpp
+    manifold/primitives/video/VideoSampler.cpp
+    manifold/primitives/video/VideoRetrospectiveCapture.cpp
+    manifold/primitives/video/VideoCaptureManager.cpp)
+
 manifold_target_include_project_and_ableton(ManifoldHeadless)
 
 target_link_libraries(ManifoldHeadless
@@ -1073,6 +1089,34 @@ target_link_libraries(CanonicalCommandHarness
 manifold_target_include_project_and_ableton(StateProjectionHarness)
 
 manifold_target_include_project_and_ableton(PortBufferSemanticsHarness)
+
+target_include_directories(VideoSamplerHarness
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR})
+
+target_link_libraries(VideoSamplerHarness
+    PRIVATE
+        juce::juce_core
+        juce::juce_graphics)
+
+target_compile_definitions(VideoSamplerHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
+
+target_include_directories(VideoRetrospectiveCaptureHarness
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR})
+
+target_link_libraries(VideoRetrospectiveCaptureHarness
+    PRIVATE
+        juce::juce_core
+        juce::juce_graphics)
+
+target_compile_definitions(VideoRetrospectiveCaptureHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
 
 target_link_libraries(StateProjectionHarness
     PRIVATE
@@ -1184,6 +1228,18 @@ add_test(
     COMMAND $<TARGET_FILE:PortBufferSemanticsHarness>)
 set_tests_properties(manifold_port_buffer_semantics PROPERTIES
     LABELS "manifold;dsp;regression;contract")
+
+add_test(
+    NAME manifold_video_sampler_storage
+    COMMAND $<TARGET_FILE:VideoSamplerHarness>)
+set_tests_properties(manifold_video_sampler_storage PROPERTIES
+    LABELS "manifold;video;sampler;regression")
+
+add_test(
+    NAME manifold_video_retrospective_capture
+    COMMAND $<TARGET_FILE:VideoRetrospectiveCaptureHarness>)
+set_tests_properties(manifold_video_retrospective_capture PROPERTIES
+    LABELS "manifold;video;capture;regression")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:
