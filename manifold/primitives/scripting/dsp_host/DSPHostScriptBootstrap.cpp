@@ -244,7 +244,7 @@ void registerMidiApi(LoadSession &session,
                      ScriptableProcessor *processor,
                      sol::table &ctx,
                      bool publishHostApi) {
-  auto* bcp = static_cast<BehaviorCoreProcessor*>(processor);
+  auto* bcp = dynamic_cast<BehaviorCoreProcessor*>(processor);
   auto midiMgr = bcp != nullptr ? bcp->getMidiManagerShared() : nullptr;
   auto lua = sol::state_view(session.luaState);
 
@@ -371,7 +371,7 @@ void registerHostApiAndGlobals(
     ScriptableProcessor *processor,
     std::shared_ptr<dsp_primitives::PrimitiveGraph> graph,
     sol::table &ctx,
-    const PathMapperFn &mapInternalToExternal,
+    PathMapperFn mapInternalToExternal,
     const std::function<std::shared_ptr<dsp_primitives::IPrimitiveNode>(
         const sol::object &)> &toPrimitiveNode) {
   auto hostApi = sol::state_view(session.luaState).create_table();

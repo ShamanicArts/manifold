@@ -106,7 +106,7 @@ void registerCoreBindings(LoadSession &session,
                           PrimitiveGraphPtr graph,
                           sol::table &ctx,
                           const TrackNodeFn &trackNode,
-                          const PathMapperFn &mapInternalToExternal);
+                          PathMapperFn mapInternalToExternal);
 void registerSynthBindings(LoadSession &session,
                            PrimitiveGraphPtr graph,
                            sol::table &ctx,
@@ -116,15 +116,31 @@ void registerFxBindings(LoadSession &session,
                         sol::table &ctx,
                         const TrackNodeFn &trackNode);
 PrimitiveNodePtr toPrimitiveNode(const sol::object &obj);
+
+// Param registry helpers — exposed for contract testing
+void handleParamRegister(
+    const std::string &rawPath, sol::table options,
+    std::unordered_map<std::string, dsp_host::DspParamSpec> &newParamSpecs,
+    std::unordered_map<std::string, float> &newParamValues,
+    std::unordered_map<std::string, std::string> &newExternalToInternalPath,
+    std::unordered_map<std::string, std::string> &newInternalToExternalPath,
+    const dsp_host::PathMapperFn &mapInternalToExternal,
+    const dsp_host::PathMapperFn &mapExternalToInternal);
+bool handleParamBind(
+    const std::string &rawPath, const sol::object &nodeObj,
+    const std::string &method,
+    std::unordered_map<std::string, std::function<void(float)>> &newParamBindings,
+    PathMapperFn mapInternalToExternal);
+
 void registerParamsApi(LoadSession &session,
                        sol::table &ctx,
-                       const PathMapperFn &mapInternalToExternal,
-                       const PathMapperFn &mapExternalToInternal);
+                       PathMapperFn mapInternalToExternal,
+                       PathMapperFn mapExternalToInternal);
 void registerLoopLayerBundle(LoadSession &session,
                              PrimitiveGraphPtr graph,
                              sol::table &ctx,
                              const TrackNodeFn &trackNode,
-                             const PathMapperFn &mapInternalToExternal);
+                             PathMapperFn mapInternalToExternal);
 void registerMidiApi(LoadSession &session,
                      ScriptableProcessor *processor,
                      sol::table &ctx,
@@ -133,7 +149,7 @@ void registerHostApiAndGlobals(LoadSession &session,
                                  ScriptableProcessor *processor,
                                  PrimitiveGraphPtr graph,
                                  sol::table &ctx,
-                                 const PathMapperFn &mapInternalToExternal,
+                                 PathMapperFn mapInternalToExternal,
                                  const PrimitiveNodeResolverFn &toPrimitiveNode);
 
 void syncEndpoints(LoadSession &session,

@@ -9,7 +9,7 @@ void registerLoopLayerBundle(LoadSession &session,
                              PrimitiveGraphPtr graph,
                              sol::table &ctx,
                              const TrackNodeFn &trackNode,
-                             const PathMapperFn &mapInternalToExternal) {
+                             PathMapperFn mapInternalToExternal) {
   auto &newLayerPlaybackNodes = session.layerPlaybackNodes;
   auto &newLayerGateNodes = session.layerGateNodes;
   auto &newLayerOutputNodes = session.layerOutputNodes;

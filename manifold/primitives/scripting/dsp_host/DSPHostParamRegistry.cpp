@@ -61,7 +61,7 @@ bool handleParamBind(
     const std::string &rawPath, const sol::object &nodeObj,
     const std::string &method,
     std::unordered_map<std::string, std::function<void(float)>> &newParamBindings,
-    const PathMapperFn &mapInternalToExternal) {
+    PathMapperFn mapInternalToExternal) {
         const std::string path = mapInternalToExternal(rawPath);
         auto node = toPrimitiveNode(nodeObj);
         if (!node) {
@@ -1035,8 +1035,8 @@ bool handleParamBind(
 
 void registerParamsApi(LoadSession &session,
                        sol::table &ctx,
-                       const PathMapperFn &mapInternalToExternal,
-                       const PathMapperFn &mapExternalToInternal) {
+                       PathMapperFn mapInternalToExternal,
+                       PathMapperFn mapExternalToInternal) {
   auto &newParamSpecs = session.paramSpecs;
   auto &newParamValues = session.paramValues;
   auto &newParamBindings = session.paramBindings;

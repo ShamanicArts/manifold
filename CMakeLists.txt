@@ -1121,6 +1121,23 @@ add_executable(DspNodeContractHarness manifold/headless/DspNodeContractHarness.c
 
 add_executable(GraphRuntimeContractHarness manifold/headless/GraphRuntimeContractHarness.cpp)
 
+add_executable(ParamRegistryContractHarness manifold/headless/ParamRegistryContractHarness.cpp)
+
+add_executable(DSPHostLifecycleContractHarness manifold/headless/DSPHostLifecycleContractHarness.cpp)
+
+add_executable(dsp_crash_test tests/crash_test.cpp)
+manifold_target_include_project_and_ableton(dsp_crash_test)
+target_link_libraries(dsp_crash_test
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway)
+
 add_executable(VideoSamplerHarness
     tests/VideoSamplerHarness.cpp
     manifold/primitives/video/VideoSampler.cpp
@@ -1260,6 +1277,30 @@ target_link_libraries(GraphRuntimeContractHarness
         juce::juce_audio_formats
         juce::juce_audio_utils
         juce::juce_gui_extra
+        highway)
+
+manifold_target_include_project_and_ableton(ParamRegistryContractHarness)
+target_link_libraries(ParamRegistryContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway)
+
+manifold_target_include_project_and_ableton(DSPHostLifecycleContractHarness)
+target_link_libraries(DSPHostLifecycleContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
         highway)
 
 target_include_directories(VideoSamplerHarness
@@ -1480,6 +1521,20 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/graph_runtime_contract_golden.json)
 set_tests_properties(manifold_graph_runtime_contract PROPERTIES
     LABELS "manifold;graph;runtime;contract")
+
+add_test(
+    NAME manifold_param_registry_contract
+    COMMAND $<TARGET_FILE:ParamRegistryContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/param_registry_contract_golden.json)
+set_tests_properties(manifold_param_registry_contract PROPERTIES
+    LABELS "manifold;param;registry;contract")
+
+add_test(
+    NAME manifold_dsp_host_lifecycle_contract
+    COMMAND $<TARGET_FILE:DSPHostLifecycleContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dsp_host_lifecycle_contract_golden.json)
+set_tests_properties(manifold_dsp_host_lifecycle_contract PROPERTIES
+    LABELS "manifold;scripting;lifecycle;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:

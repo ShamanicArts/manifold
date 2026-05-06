@@ -26,7 +26,7 @@ void registerCoreBindings(LoadSession &session,
                           PrimitiveGraphPtr graph,
                           sol::table &ctx,
                           const TrackNodeFn &trackNode,
-                          const PathMapperFn &mapInternalToExternal) {
+                          PathMapperFn mapInternalToExternal) {
   auto &newLua = session.lua;
   lua_State *newLuaState = session.luaState;
   auto &newNamedNodes = session.namedNodes;
