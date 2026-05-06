@@ -115,6 +115,24 @@ local function deckChildren()
   }
 end
 
+local function compoLayerChildren()
+  return {
+    dropdown("compoColumn", 8, 25, 96, 18, {"Col 1"}, 1, C.sample),
+    dropdown("compoTap", 110, 25, 80, 18, {"Output"}, 1, C.sample),
+    dropdown("compoBlend", 196, 25, 70, 18, {"normal"}, 1, C.sample),
+    slider("compoOpacity", 8, 49, 100, 17, "Opacity", 0, 1, 0.01, 1.0, nil, C.warn),
+    toggle("compoVisible", 114, 49, 50, 17, "Hide", "Show", true, nil, C.seg),
+  }
+end
+
+local function compoLayerEmbed()
+  return {
+    id="compoLayerEmbed", type="Panel", x=0, y=0, w=280, h=72,
+    style={ bg=0x00000000, border=0x00000000, borderWidth=0 },
+    children=compoLayerChildren(),
+  }
+end
+
 local function transportChildren()
   return {
     slider("speed", 8, 25, 82, 17, "Speed", -2, 4, 0.01, 1, "/avsampler/speed", C.sample),
@@ -281,6 +299,7 @@ return {
       { id="sliceEmbed", type="Panel", x=0, y=0, w=296, h=104, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=sliceChildren() },
       { id="sourceEmbed", type="Panel", x=0, y=0, w=320, h=164, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=sourceChildren() },
       { id="effectEmbed", type="Panel", x=0, y=0, w=320, h=248, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=effectChildren() },
+      compoLayerEmbed(),
       { id="mappingEmbed", type="Panel", x=0, y=0, w=486, h=252, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=mappingChildren() },
       { id="inputsEmbed", type="Panel", x=0, y=0, w=540, h=195, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children=inputsChildren() },
       { id="waveformEmbed", type="Panel", x=0, y=0, w=640, h=122, style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 }, children={

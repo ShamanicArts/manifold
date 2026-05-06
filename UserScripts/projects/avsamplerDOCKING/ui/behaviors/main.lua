@@ -3041,6 +3041,92 @@ local function renderSourceInspectorWindow(ctx)
   renderEmbeddedPanel(ctx, "sourceEmbed", layoutSourceEmbed, math.max(120, math.floor(tonumber(avail.y) or 120) - 18))
 end
 
+layoutCompoLayerControls = function(ctx, w, h)
+  local embed = ctx.widgets.compoLayerEmbed
+  if not embed then return end
+  setBounds(embed, 0, 0, w, h)
+
+  local selIdx = ctx.compositorSelection and ctx.compositorSelection.layerIndex
+  local layer = selIdx and ctx.compositor and ctx.compositor.layers[selIdx]
+  if not layer then
+    for _, id in ipairs{"compoColumn","compoTap","compoBlend","compoOpacity","compoVisible"} do
+      if ctx.widgets[id] then setVisible(ctx.widgets[id], false) end
+    end
+    return
+  end
+
+  local curCol = layer.sourceColumn or 1
+
+  -- Column dropdown: build options from _colData
+  local colOptions = {}
+  if ctx._colData then
+    for cid, _ in pairs(ctx._colData) do
+      table.insert(colOptions, { id = cid, label = "Col " .. cid .. " (" .. colSourceLabel(ctx, cid) .. ")" })
+    end
+  end
+  if #colOptions == 0 then table.insert(colOptions, { id = 1, label = "Col 1" }) end
+  local colLabels = {}
+  for _, opt in ipairs(colOptions) do colLabels[#colLabels + 1] = opt.label end
+  setOptions(ctx.widgets.compoColumn, colLabels)
+  local curColIdx = 1
+  for i, opt in ipairs(colOptions) do if opt.id == curCol then curColIdx = i; break end end
+  setSelectedSilently(ctx.widgets.compoColumn, curColIdx)
+  setBounds(ctx.widgets.compoColumn, 8, 25, 96, 18)
+  ctx.widgets.compoColumn._onSelect = function(idx)
+    local opt = colOptions[math.max(1, math.min(#colOptions, round(idx)))]
+    if opt then layer.sourceColumn = opt.id; ctx._compoThumbSigs = {} end
+  end
+  setVisible(ctx.widgets.compoColumn, true)
+
+  -- Tap dropdown
+  local cd = ctx._colData and ctx._colData[curCol]
+  local numFx = cd and #cd.fx or 8
+  local tapLabels = { "Output", "Raw Source" }
+  local tapVals = { nil, 0 }
+  for ti = 1, numFx do
+    table.insert(tapLabels, "FX " .. ti)
+    table.insert(tapVals, ti)
+  end
+  setOptions(ctx.widgets.compoTap, tapLabels)
+  local curTap = layer.tapIndex
+  local curTapIdx = 1
+  for i, v in ipairs(tapVals) do if v == curTap then curTapIdx = i; break end end
+  setSelectedSilently(ctx.widgets.compoTap, curTapIdx)
+  setBounds(ctx.widgets.compoTap, 110, 25, 80, 18)
+  ctx.widgets.compoTap._onSelect = function(idx)
+    local vi = math.max(1, math.min(#tapVals, round(idx)))
+    layer.tapIndex = tapVals[vi]; ctx._compoThumbSigs = {}
+  end
+  setVisible(ctx.widgets.compoTap, true)
+
+  -- Blend mode dropdown
+  local blendModes = { "normal", "add", "screen", "multiply", "overlay", "difference" }
+  setOptions(ctx.widgets.compoBlend, blendModes)
+  local curMode = layer.blendMode or "normal"
+  local curModeIdx = 1
+  for i, bm in ipairs(blendModes) do if bm == curMode then curModeIdx = i; break end end
+  setSelectedSilently(ctx.widgets.compoBlend, curModeIdx)
+  setBounds(ctx.widgets.compoBlend, 196, 25, 70, 18)
+  ctx.widgets.compoBlend._onSelect = function(idx)
+    layer.blendMode = blendModes[math.max(1, math.min(#blendModes, round(idx)))] or "normal"
+  end
+  setVisible(ctx.widgets.compoBlend, true)
+
+  -- Opacity slider
+  setBounds(ctx.widgets.compoOpacity, 8, 49, 100, 17)
+  setValueSilently(ctx.widgets.compoOpacity, layer.opacity or 1.0)
+  ctx.widgets.compoOpacity._onChange = function(v) layer.opacity = clamp(v, 0, 1) end
+  setVisible(ctx.widgets.compoOpacity, true)
+
+  -- Visibility toggle
+  setBounds(ctx.widgets.compoVisible, 114, 49, 50, 17)
+  setValueSilently(ctx.widgets.compoVisible, layer.visible == true)
+  ctx.widgets.compoVisible._onChange = function(v)
+    layer.visible = v == true; ctx._compoThumbSigs = {}
+  end
+  setVisible(ctx.widgets.compoVisible, true)
+end
+
 renderCompositorLayerControls = function(ctx)
   local selIdx = ctx.compositorSelection and ctx.compositorSelection.layerIndex
   if not selIdx then
@@ -3052,76 +3138,10 @@ renderCompositorLayerControls = function(ctx)
     imguiTextColored(0xff94a3b8, "No layer selected")
     return
   end
-
   imguiTextColored(0xfff97316, "Compositor Layer " .. selIdx .. ": " .. (layer.name or ""))
-  local curCol = layer.sourceColumn or 1
-
-  -- Column picker button + popup
-  imguiText("Column")
-  local colLabel = "Col " .. curCol .. " (" .. colSourceLabel(ctx, curCol) .. ")"
-  if imguiButton(colLabel .. "###compoColBtn") then imguiOpenPopup("##compoCol") end
-  if imguiBeginPopup("##compoCol") then
-    if ctx._colData then
-      for cid, _ in pairs(ctx._colData) do
-        local cl = "Col " .. cid .. " (" .. colSourceLabel(ctx, cid) .. ")"
-        if imguiSelectable(cl) then
-          layer.sourceColumn = cid
-          ctx._compoThumbSigs = {}
-        end
-      end
-    end
-    imguiEndPopup()
-  end
-
-  -- Tap picker button + popup
-  imguiText("Tap")
-  local cd = ctx._colData and ctx._colData[curCol]
-  local numFx = cd and #cd.fx or 8
-  local tapLabels = { "Output", "Raw Source" }
-  local tapVals = { nil, 0 }
-  for ti = 1, numFx do
-    table.insert(tapLabels, "FX " .. ti)
-    table.insert(tapVals, ti)
-  end
-  local curTap = layer.tapIndex
-  local curTapLabel = "Output"
-  for i, v in ipairs(tapVals) do
-    if v == curTap then curTapLabel = tapLabels[i]; break end
-  end
-  if imguiButton(curTapLabel .. "###compoTapBtn") then imguiOpenPopup("##compoTap") end
-  if imguiBeginPopup("##compoTap") then
-    for i, label in ipairs(tapLabels) do
-      if imguiSelectable(label) then
-        layer.tapIndex = tapVals[i]
-        ctx._compoThumbSigs = {}
-      end
-    end
-    imguiEndPopup()
-  end
-
-  -- Blend mode dropdown (popup pattern)
-  imguiText("Blend")
-  local blendModes = { "normal", "add", "screen", "multiply", "overlay", "difference" }
-  local curMode = layer.blendMode or "normal"
-  if imguiButton(curMode .. "###compoBlendBtn") then imguiOpenPopup("##compoBlend") end
-  if imguiBeginPopup("##compoBlend") then
-    for _, bm in ipairs(blendModes) do
-      if imguiSelectable(bm, bm == curMode) then layer.blendMode = bm; end
-    end
-    imguiEndPopup()
-  end
-
-  -- Opacity slider
-  imguiText("Opacity")
-  local opacity = layer.opacity or 1.0
-  local newOpacity = imguiSliderFloat("##compoOpacity", opacity, 0.0, 1.0)
-  if math.abs(newOpacity - opacity) > 0.001 then layer.opacity = clamp(newOpacity, 0, 1) end
-
-  -- Visibility toggle
-  imguiText("Visible")
-  local vis = layer.visible
-  local newVis = imguiCheckbox("##compoVis", vis)
-  if newVis ~= vis then layer.visible = newVis; ctx._compoThumbSigs = {} end
+  imguiSeparator()
+  local avail = imguiGetContentRegionAvail()
+  renderEmbeddedPanel(ctx, "compoLayerEmbed", layoutCompoLayerControls, 72)
 end
 
 local function renderEffectInspectorWindow(ctx)
@@ -3485,21 +3505,70 @@ updateCompositorOutput = function(ctx)
   local outNode = ctx.widgets.outputViewport.node
   if not outNode then profileEnd(ctx, "updateCompositorOutput"); return end
 
-  -- Find the first visible layer, or use layer 1 even if invisible
-  local activeLayer = nil
+  syncCol1FromShader(ctx)
+
+  -- Collect visible layers
+  local visLayers = {}
   for i = 1, #layers do
     if layers[i].visible then
-      activeLayer = layers[i]
-      break
+      table.insert(visLayers, { idx = i, layer = layers[i] })
     end
   end
-  activeLayer = activeLayer or layers[1]
 
-  -- Render that layer's pipeline directly on the output viewport
-  local payload = compositorLayerCellPipeline(ctx, activeLayer)
-  if payload then
-    outNode:setCustomSurface("gpu_shader", payload)
+  if #visLayers == 0 then
+    -- No visible layers: fall back to layer 1
+    local payload = compositorLayerCellPipeline(ctx, layers[1])
+    if payload then outNode:setCustomSurface("gpu_shader", payload) end
+    profileEnd(ctx, "updateCompositorOutput")
+    return
   end
+
+  -- Build hidden source nodes as children of ctx.root.node (safe, like WebcamViewer)
+  local rootNode = ctx.root and ctx.root.node
+  if not rootNode then profileEnd(ctx, "updateCompositorOutput"); return end
+  ctx._compoSrcNodes = ctx._compoSrcNodes or {}
+
+  for _, vl in ipairs(visLayers) do
+    local key = "_compoSrc_" .. vl.idx
+    if not ctx._compoSrcNodes[key] then
+      local n = rootNode:addChild("__" .. key)
+      if n then
+        if n.setNodeId then n:setNodeId(key) end
+        if n.setVisible then n:setVisible(false) end
+        if n.setBounds then n:setBounds(0, 0, 64, 64) end
+        ctx._compoSrcNodes[key] = n
+      end
+    end
+    local payload = compositorLayerCellPipeline(ctx, vl.layer)
+    if payload and ctx._compoSrcNodes[key] then
+      ctx._compoSrcNodes[key]:setCustomSurface("gpu_shader", payload)
+    end
+  end
+
+  -- Single visible layer: output directly
+  if #visLayers == 1 then
+    local payload = compositorLayerCellPipeline(ctx, visLayers[1].layer)
+    if payload then outNode:setCustomSurface("gpu_shader", payload) end
+    profileEnd(ctx, "updateCompositorOutput")
+    return
+  end
+
+  -- Multi-layer: use gpu_composite version 2
+  local compoLayers = {}
+  for _, vl in ipairs(visLayers) do
+    table.insert(compoLayers, {
+      nodeId = "_compoSrc_" .. vl.idx,
+      blendOpId = vl.layer.blendMode or "normal",
+      opacity = vl.layer.opacity or 1.0,
+    })
+  end
+
+  outNode:setCustomSurface("gpu_composite", {
+    version = 2,
+    fitMode = "contain",
+    layers = compoLayers,
+    blendParams = {},
+  })
   profileEnd(ctx, "updateCompositorOutput")
 end
 
@@ -3725,6 +3794,7 @@ function M.init(ctx)
     }
   end
   ctx.compositorSelection = { layerIndex = 1 }
+  syncCol1FromShader(ctx)
 
   for _, w in pairs(ctx.allWidgets or {}) do
     if type(w) == "table" then
@@ -3747,6 +3817,9 @@ function M.init(ctx)
   setDropdownOverlayRoot(ctx.widgets.shaderLayer, ctx.widgets.effectEmbed)
   setDropdownOverlayRoot(ctx.widgets.effectSelect, ctx.widgets.effectEmbed)
   setDropdownOverlayRoot(ctx.widgets.selectedSlice, ctx.widgets.sliceEmbed)
+  setDropdownOverlayRoot(ctx.widgets.compoColumn, ctx.widgets.compoLayerEmbed)
+  setDropdownOverlayRoot(ctx.widgets.compoTap, ctx.widgets.compoLayerEmbed)
+  setDropdownOverlayRoot(ctx.widgets.compoBlend, ctx.widgets.compoLayerEmbed)
   -- FX slot dropdowns live inside a nested component runtime, so they are not in
   -- ctx.widgets. If we don't grab the real instances from ctx.allWidgets, they
   -- keep their default global root and the popovers get parented to the hidden
