@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <mutex>
@@ -9,6 +10,7 @@
 
 #include <sol/sol.hpp>
 
+#include "../primitives/scripting/DSPPluginScriptHost.h"
 #include "../primitives/scripting/ScriptableProcessor.h"
 #include "BehaviorCoreProcessor.h"
 
@@ -724,6 +726,108 @@ inline void serializeStateToLuaIncremental(
     for (const auto& path : changedPaths) {
         applyIncrementalStatePath(lua, state, params, voices, linkState, processor, path);
     }
+}
+
+// ============================================================================
+// Contract sub-builders (for exportStateContract)
+// ============================================================================
+
+inline juce::String canonicalContractPath(const juce::File& file) {
+    if (!file.exists()) {
+        return {};
+    }
+#ifdef MANIFOLD_SOURCE_DIR
+    const juce::File sourceRoot(juce::String(MANIFOLD_SOURCE_DIR));
+    if (sourceRoot.isDirectory()) {
+        return file.getRelativePathFrom(sourceRoot);
+    }
+#endif
+    return file.getFullPathName();
+}
+
+inline juce::var buildLinkContract(const BehaviorCoreProcessor& processor) {
+    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+    obj->setProperty("enabled", processor.isLinkEnabled());
+    obj->setProperty("tempoSyncEnabled", processor.isLinkTempoSyncEnabled());
+    obj->setProperty("startStopSyncEnabled", processor.isLinkStartStopSyncEnabled());
+    obj->setProperty("numPeers", processor.getLinkNumPeers());
+    obj->setProperty("isPlaying", processor.isLinkPlaying());
+    obj->setProperty("beat", processor.getLinkBeat());
+    obj->setProperty("phase", processor.getLinkPhase());
+    return juce::var(obj.get());
+}
+
+inline juce::var buildRuntimeContract(double sampleRate, int blockSize,
+                                      double playTimeSamples,
+                                      bool graphProcessingEnabled) {
+    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+    obj->setProperty("sampleRate", sampleRate);
+    obj->setProperty("blockSize", blockSize);
+    obj->setProperty("playTimeSamples", playTimeSamples);
+    obj->setProperty("graphProcessingEnabled", graphProcessingEnabled);
+    return juce::var(obj.get());
+}
+
+inline juce::var buildHostParamsContract(const juce::AudioProcessorValueTreeState* hostParams) {
+    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+    juce::Array<juce::var> paramsArray;
+    if (hostParams != nullptr) {
+        obj->setProperty("numParams", hostParams->state.getNumChildren());
+        for (int i = 0; i < hostParams->state.getNumChildren(); ++i) {
+            const auto child = hostParams->state.getChild(i);
+            juce::DynamicObject::Ptr paramObj = new juce::DynamicObject();
+            paramObj->setProperty("id", child.getProperty("id").toString());
+            paramObj->setProperty("value", child.getProperty("value"));
+            paramsArray.add(juce::var(paramObj.get()));
+        }
+    } else {
+        obj->setProperty("numParams", 0);
+    }
+    obj->setProperty("params", juce::var(paramsArray));
+    return juce::var(obj.get());
+}
+
+inline juce::var buildDspSlotsContract(
+    const DSPPluginScriptHost* dspScriptHost,
+    const std::unordered_map<std::string,
+                              std::unique_ptr<DSPPluginScriptHost>>& dspSlots) {
+    juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+    obj->setProperty("count", 1 + static_cast<int>(dspSlots.size()));
+
+    // Default slot
+    {
+        juce::DynamicObject::Ptr slot = new juce::DynamicObject();
+        const bool loaded = dspScriptHost != nullptr && dspScriptHost->isLoaded();
+        slot->setProperty("loaded", loaded);
+        slot->setProperty("error", juce::String(
+            dspScriptHost ? dspScriptHost->getLastError() : std::string{}));
+        slot->setProperty("scriptFile", canonicalContractPath(
+            dspScriptHost ? dspScriptHost->getCurrentScriptFile() : juce::File{}));
+        obj->setProperty("default", juce::var(slot.get()));
+    }
+
+    // Named slots (sorted for determinism)
+    std::vector<std::string> slotNames;
+    slotNames.reserve(dspSlots.size());
+    for (const auto& [name, _] : dspSlots) {
+        slotNames.push_back(name);
+    }
+    std::sort(slotNames.begin(), slotNames.end());
+
+    for (const auto& name : slotNames) {
+        const auto it = dspSlots.find(name);
+        if (it == dspSlots.end() || it->second == nullptr) {
+            continue;
+        }
+        const auto& host = it->second;
+        juce::DynamicObject::Ptr slot = new juce::DynamicObject();
+        slot->setProperty("loaded", host->isLoaded());
+        slot->setProperty("error", juce::String(host->getLastError()));
+        slot->setProperty("scriptFile", canonicalContractPath(host->getCurrentScriptFile()));
+        obj->setProperty(juce::Identifier(juce::String(name)), juce::var(slot.get()));
+    }
+
+    return juce::var(obj.get());
 }
 
 } // namespace state_serialization

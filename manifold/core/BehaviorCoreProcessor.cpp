@@ -111,19 +111,6 @@ std::string normalizeRendererModeToken(std::string mode) {
     return mode;
 }
 
-juce::String canonicalContractPath(const juce::File& file) {
-    if (!file.exists()) {
-        return {};
-    }
-#ifdef MANIFOLD_SOURCE_DIR
-    const juce::File sourceRoot(juce::String(MANIFOLD_SOURCE_DIR));
-    if (sourceRoot.isDirectory()) {
-        return file.getRelativePathFrom(sourceRoot);
-    }
-#endif
-    return file.getFullPathName();
-}
-
 BehaviorCoreEditor::RootMode rootModeFromEnvironmentOrState(const ControlServer& controlServer) {
     if (const char* envRenderer = std::getenv("MANIFOLD_RENDERER")) {
         const auto normalized = normalizeRendererModeToken(envRenderer);
@@ -1882,44 +1869,20 @@ std::string BehaviorCoreProcessor::exportStateContract() const {
     }
     root->setProperty("controlState", controlState);
 
-    // DSP slot contract. Sort names so unordered_map iteration cannot randomize output.
-    juce::DynamicObject::Ptr dspSlotsObj = new juce::DynamicObject();
-    dspSlotsObj->setProperty("count", 1 + static_cast<int>(dspSlots.size()));
-    {
-        juce::DynamicObject::Ptr slot = new juce::DynamicObject();
-        const bool loaded = dspScriptHost && dspScriptHost->isLoaded();
-        slot->setProperty("loaded", loaded);
-        slot->setProperty("error", juce::String(dspScriptHost ? dspScriptHost->getLastError() : std::string{}));
-        slot->setProperty("scriptFile", canonicalContractPath(dspScriptHost ? dspScriptHost->getCurrentScriptFile() : juce::File{}));
-        dspSlotsObj->setProperty("default", juce::var(slot.get()));
-    }
-    std::vector<std::string> slotNames;
-    slotNames.reserve(dspSlots.size());
-    for (const auto& [name, _] : dspSlots) {
-        slotNames.push_back(name);
-    }
-    std::sort(slotNames.begin(), slotNames.end());
-    for (const auto& name : slotNames) {
-        const auto it = dspSlots.find(name);
-        if (it == dspSlots.end()) {
-            continue;
-        }
-        const auto& host = it->second;
-        juce::DynamicObject::Ptr slot = new juce::DynamicObject();
-        slot->setProperty("loaded", host && host->isLoaded());
-        slot->setProperty("error", juce::String(host ? host->getLastError() : std::string{}));
-        slot->setProperty("scriptFile", canonicalContractPath(host ? host->getCurrentScriptFile() : juce::File{}));
-        dspSlotsObj->setProperty(juce::Identifier(juce::String(name)), juce::var(slot.get()));
-    }
-    root->setProperty("dspSlots", juce::var(dspSlotsObj.get()));
+    // DSP slots
+    root->setProperty("dspSlots",
+        manifold::state_serialization::buildDspSlotsContract(dspScriptHost.get(), dspSlots));
 
+    // Primary DSP info
     juce::DynamicObject::Ptr primaryDsp = new juce::DynamicObject();
-    primaryDsp->setProperty("scriptFile", canonicalContractPath(getPrimaryDspScriptFile()));
+    primaryDsp->setProperty("scriptFile",
+        manifold::state_serialization::canonicalContractPath(getPrimaryDspScriptFile()));
     primaryDsp->setProperty("scriptSizeBytes", static_cast<double>(getPrimaryDspScriptSizeBytes()));
     primaryDsp->setProperty("lastError", juce::String(getDspScriptLastError()));
     primaryDsp->setProperty("managedHostCount", getManagedDspHostCount());
     root->setProperty("primaryDsp", juce::var(primaryDsp.get()));
 
+    // Export plugin config
     root->setProperty("exportPlugin", manifold::export_plugin::makeExportPluginContract(
         exportPluginConfig_,
         exportViewMode_.load(std::memory_order_relaxed),
@@ -1934,45 +1897,26 @@ std::string BehaviorCoreProcessor::exportStateContract() const {
         exportXyXParam_.load(std::memory_order_relaxed),
         exportXyYParam_.load(std::memory_order_relaxed)));
 
+    // MIDI
     root->setProperty("midi", manifold::midi_support::makeMidiContract(
         midiInputDevice != nullptr,
         midiOutputDevice != nullptr,
         midiThruEnabled,
         midiManager_));
 
-    juce::DynamicObject::Ptr linkObj = new juce::DynamicObject();
-    linkObj->setProperty("enabled", isLinkEnabled());
-    linkObj->setProperty("tempoSyncEnabled", isLinkTempoSyncEnabled());
-    linkObj->setProperty("startStopSyncEnabled", isLinkStartStopSyncEnabled());
-    linkObj->setProperty("numPeers", getLinkNumPeers());
-    linkObj->setProperty("isPlaying", isLinkPlaying());
-    linkObj->setProperty("beat", getLinkBeat());
-    linkObj->setProperty("phase", getLinkPhase());
-    root->setProperty("link", juce::var(linkObj.get()));
+    // Link
+    root->setProperty("link", manifold::state_serialization::buildLinkContract(*this));
 
-    juce::DynamicObject::Ptr runtimeObj = new juce::DynamicObject();
-    runtimeObj->setProperty("sampleRate", currentSampleRate.load(std::memory_order_relaxed));
-    runtimeObj->setProperty("blockSize", currentBlockSize.load(std::memory_order_relaxed));
-    runtimeObj->setProperty("playTimeSamples", playTimeSamples.load(std::memory_order_relaxed));
-    runtimeObj->setProperty("graphProcessingEnabled", graphProcessingEnabled.load(std::memory_order_relaxed));
-    root->setProperty("runtime", juce::var(runtimeObj.get()));
+    // Runtime
+    root->setProperty("runtime", manifold::state_serialization::buildRuntimeContract(
+        currentSampleRate.load(std::memory_order_relaxed),
+        currentBlockSize.load(std::memory_order_relaxed),
+        playTimeSamples.load(std::memory_order_relaxed),
+        graphProcessingEnabled.load(std::memory_order_relaxed)));
 
-    juce::DynamicObject::Ptr hostParamsObj = new juce::DynamicObject();
-    juce::Array<juce::var> hostParamsArray;
-    if (hostParams_) {
-        hostParamsObj->setProperty("numParams", hostParams_->state.getNumChildren());
-        for (int i = 0; i < hostParams_->state.getNumChildren(); ++i) {
-            const auto child = hostParams_->state.getChild(i);
-            juce::DynamicObject::Ptr paramObj = new juce::DynamicObject();
-            paramObj->setProperty("id", child.getProperty("id").toString());
-            paramObj->setProperty("value", child.getProperty("value"));
-            hostParamsArray.add(juce::var(paramObj.get()));
-        }
-    } else {
-        hostParamsObj->setProperty("numParams", 0);
-    }
-    hostParamsObj->setProperty("params", juce::var(hostParamsArray));
-    root->setProperty("hostParams", juce::var(hostParamsObj.get()));
+    // Host params
+    root->setProperty("hostParams",
+        manifold::state_serialization::buildHostParamsContract(hostParams_.get()));
 
     // Save-state contract catches serialization regressions.
     juce::MemoryBlock savedStateBlock;
