@@ -571,6 +571,103 @@ function ui_update(state)
 end
 )").trimStart();
 
+// ----- Event bindings tests -----
+juce::String eventTestScript = juce::String(R"(
+function ui_init(root)
+  results = {}
+
+  -- Test registering event listeners
+  results.tempoOk = looper.onTempoChanged(function() end, false)
+  results.commitOk = looper.onCommit(function() end, true)
+  results.recordingOk = looper.onRecordingChanged(function() end)
+  results.layerStateOk = looper.onLayerStateChanged(function() end)
+
+end
+
+function ui_update(state)
+end
+)").trimStart();
+
+// ----- Utility bindings tests -----
+juce::String utilityTestScript = juce::String(R"(
+function ui_init(root)
+  results = {}
+
+  -- Time
+  results.hasTime = (getTime() ~= nil)
+  results.timeIsNumber = (type(getTime()) == "number")
+
+  -- Clipboard round-trip
+  setClipboardText("test-clipboard-123")
+  results.clipboardText = getClipboardText()
+
+  -- Debug outlines toggle
+  results.outlinesInitial = areDebugOutlinesEnabled()
+  setDebugOutlinesEnabled(true)
+  results.outlinesAfter = areDebugOutlinesEnabled()
+  setDebugOutlinesEnabled(false)
+
+  -- Copy ID mode toggle
+  results.copyIdInitial = isCopyIdModeEnabled()
+  setCopyIdModeEnabled(true)
+  results.copyIdAfter = isCopyIdModeEnabled()
+  setCopyIdModeEnabled(false)
+
+  -- UI renderer mode
+  setUIRendererMode("contract-test")
+  results.rendererMode = getUIRendererMode()
+  setUIRendererMode("default")
+
+  -- Overlay state
+  results.overlayInitial = isOverlayActive()
+
+  -- Script path
+  results.scriptPath = getCurrentScriptPath()
+end
+
+function ui_update(state)
+end
+)").trimStart();
+
+// ----- Waveform bindings tests -----
+juce::String waveformTestScript = juce::String(R"(
+function ui_init(root)
+  results = {}
+
+  -- Layer peaks (mock returns 0.5-filled array)
+  local peaks0 = getLayerPeaks(0, 6)
+  results.peaksCount = #peaks0
+  if #peaks0 >= 1 then
+    results.peaksFirst = peaks0[1]
+  end
+
+  -- Invalid layer index returns empty
+  local peaksNeg = getLayerPeaks(-1, 10)
+  results.peaksNegCount = #peaksNeg
+
+  -- Capture peaks (mock returns 0.25-filled array)
+  local capturePeaks = getCapturePeaks(0, 100, 4)
+  results.capturePeaksCount = #capturePeaks
+  if #capturePeaks >= 1 then
+    results.capturePeaksFirst = capturePeaks[1]
+  end
+
+  -- Invalid capture range returns empty
+  local captureEmpty = getCapturePeaks(100, 0, 4)
+  results.captureEmptyCount = #captureEmpty
+
+  -- Cache invalidation (should not throw)
+  invalidateWaveformPeakCache()
+
+  -- Cache stats
+  local stats = getWaveformPeakCacheStats(false)
+  results.cacheStatsType = type(stats)
+end
+
+function ui_update(state)
+end
+)").trimStart();
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -601,6 +698,15 @@ juce::var buildFullContract() {
 
   rootObj->setProperty("ui",
     runTestScript(engine, mock, uiTestScript, "ui"));
+
+  rootObj->setProperty("event",
+    runTestScript(engine, mock, eventTestScript, "event"));
+
+  rootObj->setProperty("utility",
+    runTestScript(engine, mock, utilityTestScript, "utility"));
+
+  rootObj->setProperty("waveform",
+    runTestScript(engine, mock, waveformTestScript, "waveform"));
 
   engine.clearAttachedUiLuaState();
   return juce::var(rootObj);

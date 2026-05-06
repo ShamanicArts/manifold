@@ -126,6 +126,70 @@
     "tempo": 135.0,
     "transportPlaying": false
   },
+  "event": {
+    "activeLayer": 2,
+    "commands": [
+      {
+        "floatParam": 130.0,
+        "intParam": 0,
+        "type": 3
+      },
+      {
+        "floatParam": 0.75,
+        "intParam": 0,
+        "type": 23
+      },
+      {
+        "floatParam": 0.0,
+        "intParam": 0,
+        "type": 25
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 0,
+        "type": 24
+      },
+      {
+        "floatParam": 2.0,
+        "intParam": 2,
+        "type": 11
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 1,
+        "type": 22
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 0,
+        "type": 6
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 1,
+        "type": 20
+      }
+    ],
+    "commitCount": 0,
+    "dspLastError": "",
+    "forwardArmed": false,
+    "graphEnabled": true,
+    "inputVolume": 0.5,
+    "linkEnabled": false,
+    "linkTempo": 120.0,
+    "loadedDspSlots": [
+      "slot-b"
+    ],
+    "masterVolume": 0.75,
+    "overdub": false,
+    "passthrough": false,
+    "recordModeIndex": 1,
+    "recording": false,
+    "script": "event",
+    "targetBPM": 120.0,
+    "tempo": 135.0,
+    "transportPlaying": false
+  },
   "graph": {
     "activeLayer": 2,
     "commands": [
@@ -314,6 +378,134 @@
     "recordModeIndex": 1,
     "recording": false,
     "script": "ui",
+    "targetBPM": 120.0,
+    "tempo": 135.0,
+    "transportPlaying": false
+  },
+  "utility": {
+    "activeLayer": 2,
+    "commands": [
+      {
+        "floatParam": 130.0,
+        "intParam": 0,
+        "type": 3
+      },
+      {
+        "floatParam": 0.75,
+        "intParam": 0,
+        "type": 23
+      },
+      {
+        "floatParam": 0.0,
+        "intParam": 0,
+        "type": 25
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 0,
+        "type": 24
+      },
+      {
+        "floatParam": 2.0,
+        "intParam": 2,
+        "type": 11
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 1,
+        "type": 22
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 0,
+        "type": 6
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 1,
+        "type": 20
+      }
+    ],
+    "commitCount": 0,
+    "dspLastError": "",
+    "forwardArmed": false,
+    "graphEnabled": true,
+    "inputVolume": 0.5,
+    "linkEnabled": false,
+    "linkTempo": 120.0,
+    "loadedDspSlots": [
+      "slot-b"
+    ],
+    "masterVolume": 0.75,
+    "overdub": false,
+    "passthrough": false,
+    "recordModeIndex": 1,
+    "recording": false,
+    "script": "utility",
+    "targetBPM": 120.0,
+    "tempo": 135.0,
+    "transportPlaying": false
+  },
+  "waveform": {
+    "activeLayer": 2,
+    "commands": [
+      {
+        "floatParam": 130.0,
+        "intParam": 0,
+        "type": 3
+      },
+      {
+        "floatParam": 0.75,
+        "intParam": 0,
+        "type": 23
+      },
+      {
+        "floatParam": 0.0,
+        "intParam": 0,
+        "type": 25
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 0,
+        "type": 24
+      },
+      {
+        "floatParam": 2.0,
+        "intParam": 2,
+        "type": 11
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 1,
+        "type": 22
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 0,
+        "type": 6
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 1,
+        "type": 20
+      }
+    ],
+    "commitCount": 0,
+    "dspLastError": "",
+    "forwardArmed": false,
+    "graphEnabled": true,
+    "inputVolume": 0.5,
+    "linkEnabled": false,
+    "linkTempo": 120.0,
+    "loadedDspSlots": [
+      "slot-b"
+    ],
+    "masterVolume": 0.75,
+    "overdub": false,
+    "passthrough": false,
+    "recordModeIndex": 1,
+    "recording": false,
+    "script": "waveform",
     "targetBPM": 120.0,
     "tempo": 135.0,
     "transportPlaying": false
