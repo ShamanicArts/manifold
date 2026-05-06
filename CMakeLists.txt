@@ -1402,6 +1402,12 @@ add_test(
 set_tests_properties(manifold_core_sniff PROPERTIES
     LABELS "manifold;core;smoke")
 
+add_test(
+    NAME manifold_state_projection
+    COMMAND $<TARGET_FILE:StateProjectionHarness>)
+set_tests_properties(manifold_state_projection PROPERTIES
+    LABELS "manifold;state;projection;regression")
+
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:
 # - ScriptableProcessor inheritance
