@@ -1265,6 +1265,12 @@ add_test(
 set_tests_properties(manifold_headless_ipc_editor PROPERTIES LABELS "manifold;headless;editor;ipc")
 
 add_test(
+    NAME manifold_headless_avsampler_docking_regression
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e_avsampler_docking_regression.py
+            --headless build-dev/ManifoldHeadless)
+set_tests_properties(manifold_headless_avsampler_docking_regression PROPERTIES LABELS "manifold;headless;editor;avsampler;regression")
+
+add_test(
     NAME manifold_standalone_direct_regression
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/standalone_direct_regression_test.py
             --launch build-dev/Manifold_artefacts/RelWithDebInfo/Standalone/Manifold

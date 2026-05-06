@@ -1328,6 +1328,7 @@ local function installPaneResizeHandlers(ctx)
 end
 
 function M.init(ctx)
+  _G.__avsdCtx = ctx
   ctx.video = videoSampler and videoSampler.new and videoSampler.new({ id = VIDEO_SAMPLER_ID }) or nil
   ctx.videoCap = videoSampler and videoSampler.capture and videoSampler.capture({ id = VIDEO_CAPTURE_ID, maxSeconds = MAX_CAPTURE_SECONDS }) or nil
   ctx.seg = { gain=1.0, useSigmoid=true, threshold=0.5, feather=0.15, invert=false }
@@ -1438,6 +1439,244 @@ function M.init(ctx)
     wf._onScrubSnap = function(pos) local p=clamp(pos,0,0.999); if not ctx._scrubSlice then ctx._scrubSlice=nearestSlice(p); ctx._selectedSlice=ctx._scrubSlice; setSelectedSilently(ctx.widgets.selectedSlice, ctx._selectedSlice); writeParam(NS.."/selected_slice", ctx._selectedSlice) end; writeParam(pathForSlice(ctx._scrubSlice), p); refreshWaveform(ctx); saveState(ctx) end
     wf._onScrubEnd = function() ctx._scrubSlice = nil end
   end
+
+  _G.__avsdExportContract = function(path)
+    local function bool01(v)
+      return v == true or tonumber(v) == 1
+    end
+    local function num(v)
+      return tonumber(v) or 0
+    end
+    local function copyNumArray(values)
+      local out = {}
+      for i = 1, #(values or {}) do out[i] = num(values[i]) end
+      return out
+    end
+    local function cleanSourceSpec(spec)
+      if type(spec) ~= "table" then return nil end
+      local params = nil
+      if type(spec.params) == "table" then
+        params = {}
+        local keys = {}
+        for k in pairs(spec.params) do keys[#keys + 1] = tostring(k) end
+        table.sort(keys)
+        for i = 1, #keys do
+          local key = keys[i]
+          params[key] = num(spec.params[key])
+        end
+      end
+      return {
+        kind = spec.kind,
+        sourceIndex = spec.sourceIndex,
+        sourceId = spec.sourceId,
+        mlType = spec.mlType,
+        params = params,
+      }
+    end
+    local function esc(s)
+      s = tostring(s or "")
+      s = s:gsub("\\", "\\\\")
+      s = s:gsub("\"", "\\\"")
+      s = s:gsub("\n", "\\n")
+      s = s:gsub("\r", "\\r")
+      return s
+    end
+    local function isArray(t)
+      if type(t) ~= "table" then return false end
+      local n = #t
+      for k in pairs(t) do
+        if type(k) ~= "number" or k < 1 or k > n or k % 1 ~= 0 then return false end
+      end
+      return true
+    end
+    local function encode(v)
+      local tv = type(v)
+      if tv == "nil" then return "null" end
+      if tv == "boolean" then return v and "true" or "false" end
+      if tv == "number" then
+        if v ~= v or v == math.huge or v == -math.huge then return "0" end
+        return tostring(v)
+      end
+      if tv == "string" then return "\"" .. esc(v) .. "\"" end
+      if tv ~= "table" then return "\"" .. esc(tostring(v)) .. "\"" end
+      if isArray(v) then
+        local out = {}
+        for i = 1, #v do out[i] = encode(v[i]) end
+        return "[" .. table.concat(out, ",") .. "]"
+      end
+      local keys, out = {}, {}
+      for k in pairs(v) do keys[#keys + 1] = tostring(k) end
+      table.sort(keys)
+      for i = 1, #keys do
+        local key = keys[i]
+        out[i] = "\"" .. esc(key) .. "\":" .. encode(v[key])
+      end
+      return "{" .. table.concat(out, ",") .. "}"
+    end
+
+    local contract = {
+      projectPath = (type(getCurrentScriptPath) == "function" and getCurrentScriptPath()) or "",
+      rendererMode = (type(getUIRendererMode) == "function" and getUIRendererMode()) or "unknown",
+      layoutPreset = ctx._layoutPreset,
+      selectedSlice = ctx._selectedSlice,
+      captureMode = ctx.captureMode,
+      captureRecording = bool01(ctx.captureRecording),
+      poseConf = num(ctx.poseConf),
+      showSkeleton = bool01(ctx.showSkeleton),
+      seg = {
+        gain = num(ctx.seg and ctx.seg.gain),
+        threshold = num(ctx.seg and ctx.seg.threshold),
+        feather = num(ctx.seg and ctx.seg.feather),
+        invert = bool01(ctx.seg and ctx.seg.invert),
+      },
+      sampler = {
+        frameCount = ctx.video and ctx.video.getFrameCount and ctx.video:getFrameCount() or 0,
+        durationSeconds = ctx.video and ctx.video.getDurationSeconds and ctx.video:getDurationSeconds() or 0,
+      },
+      capture = {
+        frameCount = ctx.videoCap and ctx.videoCap.getFrameCount and ctx.videoCap:getFrameCount() or 0,
+        lockedWidth = ctx.videoCap and ctx.videoCap.getLockedWidth and ctx.videoCap:getLockedWidth() or 0,
+        lockedHeight = ctx.videoCap and ctx.videoCap.getLockedHeight and ctx.videoCap:getLockedHeight() or 0,
+      },
+      hostParams = {
+        mode = round(readParam(NS .. "/mode", 0)),
+        speed = num(readParam(NS .. "/speed", 1)),
+        output = num(readParam(NS .. "/output", 0.8)),
+        rootNote = round(readParam(NS .. "/root_note", 60)),
+        voiceCount = round(readParam(NS .. "/voice_count", 8)),
+        pitchTracking = bool01(readParam(NS .. "/pitch_tracking", 1)),
+        playStart = num(readParam(NS .. "/play_start", 0)),
+        loopStart = num(readParam(NS .. "/loop_start", 0)),
+        loopEnd = num(readParam(NS .. "/loop_end", 1)),
+        crossfade = num(readParam(NS .. "/crossfade", 0.03)),
+        oneShot = bool01(readParam(NS .. "/one_shot", 0)),
+        shaderSource = round(readParam(NS .. "/shader/source", 1)),
+      },
+      slices = {},
+      shader = {
+        sourceIndex = ctx.shader and ctx.shader.sourceIndex or 1,
+        activeLayer = ctx.shader and ctx.shader.activeLayer or 1,
+        layers = {},
+      },
+      mappings = {},
+      sources = {},
+      effects = {},
+      columns = {},
+      compositor = nil,
+    }
+
+    for i = 1, MAX do
+      contract.slices[i] = { start = num(readParam(pathForSlice(i), (i - 1) / MAX)) }
+    end
+    for i = 1, #(ctx.shader and ctx.shader.layers or {}) do
+      local layer = ctx.shader.layers[i]
+      contract.shader.layers[i] = {
+        enabled = bool01(layer.enabled),
+        effectIndex = layer.effectIndex,
+        params = copyNumArray(layer.params),
+      }
+    end
+    for i = 1, #(ctx.mappings or {}) do
+      local mapping = ctx.mappings[i]
+      contract.mappings[i] = {
+        enabled = bool01(mapping.enabled),
+        source = mapping.source,
+        target = mapping.target,
+        min = num(mapping.min),
+        max = num(mapping.max),
+        invert = bool01(mapping.invert),
+      }
+    end
+    for i = 1, #(ctx.sources or {}) do
+      local source = ctx.sources[i] or {}
+      contract.sources[i] = {
+        id = source.id,
+        name = source.name,
+        kind = source.kind,
+      }
+    end
+    for i = 1, #(ctx.effects or {}) do
+      local effect = ctx.effects[i] or {}
+      contract.effects[i] = effect.name or effect.id or tostring(i)
+    end
+    if type(ctx._colData) == "table" then
+      for col = 1, #ctx._colData do
+        local data = ctx._colData[col] or {}
+        local fxRows = {}
+        for row = 1, #(data.fx or {}) do
+          local fx = data.fx[row] or {}
+          fxRows[row] = {
+            effectIndex = fx.effectIndex,
+            enabled = bool01(fx.enabled),
+            params = copyNumArray(fx.params),
+          }
+        end
+        contract.columns[col] = {
+          id = data.id,
+          source = cleanSourceSpec(type(sourceSpecForColumn) == "function" and sourceSpecForColumn(ctx, col) or data.sourceSpec),
+        }
+      end
+    end
+
+    local json = encode(contract)
+    if type(path) == "string" and path ~= "" and type(writeTextFile) == "function" then
+      writeTextFile(path, json)
+      return path
+    end
+    return json
+  end
+
+  _G.__avsdAction = function(action, a, b, c, d)
+    local function bool01(v)
+      return v == true or tonumber(v) == 1
+    end
+    local function num(v)
+      return tonumber(v) or 0
+    end
+    action = tostring(action or "")
+    if action == "set_layout_preset" then
+      if type(setLayoutPreset) == "function" then setLayoutPreset(ctx, tostring(a or "deck")) end
+      return true
+    elseif action == "set_selected_slice" then
+      if ctx.widgets.selectedSlice and ctx.widgets.selectedSlice._onSelect then ctx.widgets.selectedSlice._onSelect(round(a)) end
+      return ctx._selectedSlice or 1
+    elseif action == "set_source_select" then
+      if ctx.widgets.sourceSelect and ctx.widgets.sourceSelect._onSelect then ctx.widgets.sourceSelect._onSelect(round(a)) end
+      return ctx.shader and ctx.shader.sourceIndex or 1
+    elseif action == "set_shader_layer" then
+      if ctx.widgets.shaderLayer and ctx.widgets.shaderLayer._onSelect then ctx.widgets.shaderLayer._onSelect(round(a)) end
+      return ctx.shader and ctx.shader.activeLayer or 1
+    elseif action == "set_shader_enabled" then
+      if ctx.widgets.shaderEnabled and ctx.widgets.shaderEnabled._onChange then ctx.widgets.shaderEnabled._onChange(bool01(a)) end
+      return true
+    elseif action == "set_effect_select" then
+      if ctx.widgets.effectSelect and ctx.widgets.effectSelect._onSelect then ctx.widgets.effectSelect._onSelect(round(a)) end
+      return true
+    elseif action == "set_shader_param" then
+      local widget = ctx.widgets["shaderParam" .. tostring(round(a))]
+      if widget and widget._onChange then widget._onChange(num(b)) end
+      return true
+    elseif action == "set_mapping_field" then
+      local track = round(a)
+      local field = tostring(b or "")
+      if field == "enable" and ctx.widgets["mapping" .. track .. "Enable"] and ctx.widgets["mapping" .. track .. "Enable"]._onChange then
+        ctx.widgets["mapping" .. track .. "Enable"]._onChange(bool01(c))
+      elseif field == "source" and ctx.widgets["mapping" .. track .. "Source"] and ctx.widgets["mapping" .. track .. "Source"]._onSelect then
+        ctx.widgets["mapping" .. track .. "Source"]._onSelect(round(c))
+      elseif field == "target" and ctx.widgets["mapping" .. track .. "Target"] and ctx.widgets["mapping" .. track .. "Target"]._onSelect then
+        ctx.widgets["mapping" .. track .. "Target"]._onSelect(round(c))
+      elseif field == "min" and ctx.widgets["mapping" .. track .. "Min"] and ctx.widgets["mapping" .. track .. "Min"]._onChange then
+        ctx.widgets["mapping" .. track .. "Min"]._onChange(num(c))
+      elseif field == "max" and ctx.widgets["mapping" .. track .. "Max"] and ctx.widgets["mapping" .. track .. "Max"]._onChange then
+        ctx.widgets["mapping" .. track .. "Max"]._onChange(num(c))
+      elseif field == "invert" and ctx.widgets["mapping" .. track .. "Invert"] and ctx.widgets["mapping" .. track .. "Invert"]._onChange then
+        ctx.widgets["mapping" .. track .. "Invert"]._onChange(bool01(c))
+      end
+      return true
+    end
+    return false
+  end
+
   installPaneResizeHandlers(ctx)
   applyCaptureWindow(ctx); bindInputSurfaces(ctx); syncModePanels(ctx); applyAppLayout(ctx); refreshWaveform(ctx)
 end
@@ -1447,6 +1686,7 @@ function M.resized(ctx)
 end
 
 function M.update(ctx)
+  _G.__avsdCtx = ctx
   applyCaptureWindow(ctx)
 
   if shouldRunInterval(ctx, "paramSync", PARAM_SYNC_INTERVAL) then
@@ -1510,6 +1750,7 @@ function M.update(ctx)
 end
 
 function M.cleanup(ctx)
+  if _G.__avsdCtx == ctx then _G.__avsdCtx = nil end
   if ctx then
     if ctx.video then pcall(function() ctx.video:clear() end) end
     if ctx.videoCap then pcall(function() ctx.videoCap:clear() end) end
@@ -1517,6 +1758,8 @@ function M.cleanup(ctx)
   end
   if capture and capture.close then pcall(capture.close) end
   if videoSampler then if videoSampler.remove then pcall(videoSampler.remove, VIDEO_SAMPLER_ID) end; if videoSampler.removeCapture then pcall(videoSampler.removeCapture, VIDEO_CAPTURE_ID) end end
+  if _G.__avsdExportContract then _G.__avsdExportContract = nil end
+  if _G.__avsdAction then _G.__avsdAction = nil end
 end
 
 return M
