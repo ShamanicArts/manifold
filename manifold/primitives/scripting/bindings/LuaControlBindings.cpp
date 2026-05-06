@@ -2558,6 +2558,16 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
             juce::Time::getHighResolutionTicks() - startTime);
     };
 
+    lua["getAudioClockInfo"] = [&state, &lua]() -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        result["sampleRate"] = processor ? processor->getSampleRate() : 44100.0;
+        result["playTimeSamples"] = processor ? processor->getPlayTimeSamples() : 0.0;
+        result["tempo"] = processor ? processor->getTempo() : 120.0f;
+        result["samplesPerBar"] = processor ? processor->getSamplesPerBar() : 88200.0f;
+        return result;
+    };
+
     lua["listUiScripts"] = [&lua]() -> sol::table {
         const auto signature = currentUiScriptsSignature();
         auto& cache = scriptListingCacheState();

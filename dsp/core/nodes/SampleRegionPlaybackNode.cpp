@@ -405,6 +405,7 @@ void SampleRegionPlaybackNode::applyPendingControlChanges(const RegionState& reg
     lastRequestedUnison_ = unison;
 
     if (triggerRequest_.exchange(false, std::memory_order_acq_rel)) {
+        currentSpeed_ = speed_.load(std::memory_order_acquire) * sourceRateRatio_.load(std::memory_order_acquire);
         for (int v = 0; v < unison; ++v) {
             readPositions_[v] = static_cast<double>(region.playStart);
             firstPassStates_[v] = true;
@@ -423,6 +424,7 @@ void SampleRegionPlaybackNode::applyPendingControlChanges(const RegionState& reg
 
     const int seek = seekRequest_.exchange(-1, std::memory_order_acq_rel);
     if (seek >= 0) {
+        currentSpeed_ = speed_.load(std::memory_order_acquire) * sourceRateRatio_.load(std::memory_order_acquire);
         const double seekPos = static_cast<double>(juce::jlimit(0, region.sampleLength - 1, seek));
         const bool firstPass = (seekPos < static_cast<double>(region.loopStart));
         for (int v = 0; v < kMaxUnisonVoices; ++v) {

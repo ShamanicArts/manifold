@@ -1,0 +1,17 @@
+{
+  "name": "VideoSamplerLab",
+  "description": "Audio-timed video sampler lab: webcam capture ring + committed video sampler driven by SampleRegionPlaybackNode position",
+  "author": "Agent",
+  "version": "0.1.0",
+
+  "dsp": {
+    "default": "dsp/default_dsp.lua"
+  },
+
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+
+  "theme": "../Main/themes/dark.lua"
+}
