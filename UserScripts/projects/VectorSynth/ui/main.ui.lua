@@ -36,7 +36,7 @@ return {
     { id="panic_btn", type="Button", x=px(170), y=px(126), w=px(100), h=px(36), props={ label="Panic", paramPath="/vector/panic" }, style={ bg=C.bad, textColour=C.badText, fontSize=12, radius=4 } },
 
     label("xy_title", 18, 178, 260, 18, "VECTOR XY", C.muted, 12),
-    { id="xy_pad", type="Panel", x=px(18), y=px(200), w=px(330), h=px(330), props={ interceptsMouse=true }, style={ bg=C.panel, border=C.panelBorder, borderWidth=1, radius=6 } },
+    { id="xy_pad", type="Panel", x=px(18), y=px(200), w=px(330), h=px(330), style={ bg=C.panel, border=C.panelBorder, borderWidth=1, radius=6 } },
     label("xy_hint", 18, 536, 330, 16, "Drag pad. Env Amount blends manual XY with per-note path.", C.label, 10),
 
     label("vector_label", 380, 178, 220, 18, "Vector Envelope", C.muted, 12),

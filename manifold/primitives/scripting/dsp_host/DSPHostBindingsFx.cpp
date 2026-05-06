@@ -210,16 +210,34 @@ void registerFxBindings(LoadSession &session,
       "setPitch", &dsp_primitives::GranulatorNode::setPitch,
       "setSpray", &dsp_primitives::GranulatorNode::setSpray,
       "setFreeze", &dsp_primitives::GranulatorNode::setFreeze,
+      "setEnabled", &dsp_primitives::GranulatorNode::setEnabled,
       "setEnvelope", &dsp_primitives::GranulatorNode::setEnvelope,
       "setMix", &dsp_primitives::GranulatorNode::setMix,
+      "setBufferSeconds", &dsp_primitives::GranulatorNode::setBufferSeconds,
+      "setSourceRegion", &dsp_primitives::GranulatorNode::setSourceRegion,
+      "clearSourceBuffer", &dsp_primitives::GranulatorNode::clearSourceBuffer,
+      "loadFile", [](std::shared_ptr<dsp_primitives::GranulatorNode>& self, const std::string& path) -> bool {
+        return self ? self->loadFile(juce::File(path)) : false;
+      },
       "getGrainSize", &dsp_primitives::GranulatorNode::getGrainSize,
       "getDensity", &dsp_primitives::GranulatorNode::getDensity,
       "getPosition", &dsp_primitives::GranulatorNode::getPosition,
       "getPitch", &dsp_primitives::GranulatorNode::getPitch,
       "getSpray", &dsp_primitives::GranulatorNode::getSpray,
       "getFreeze", &dsp_primitives::GranulatorNode::getFreeze,
+      "getEnabled", &dsp_primitives::GranulatorNode::getEnabled,
       "getEnvelope", &dsp_primitives::GranulatorNode::getEnvelope,
       "getMix", &dsp_primitives::GranulatorNode::getMix,
+      "getBufferSeconds", &dsp_primitives::GranulatorNode::getBufferSeconds,
+      "getActiveGrainPositions", [newLuaState](std::shared_ptr<dsp_primitives::GranulatorNode>& self) -> sol::table {
+        sol::table result = sol::state_view(newLuaState).create_table();
+        if (!self) return result;
+        const auto positions = self->getActiveGrainPositions();
+        for (size_t i = 0; i < positions.size(); ++i) {
+          result[i + 1] = positions[i];
+        }
+        return result;
+      },
       "reset", &dsp_primitives::GranulatorNode::reset);
 
   newLua.new_usertype<dsp_primitives::PhaseVocoderNode>(

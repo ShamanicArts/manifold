@@ -113,7 +113,7 @@ end
 function buildPlugin(ctx)
   local maxVoices = 8
   local params = {
-    vectorX = 0.5, vectorY = 0.5, envAmount = 0.75, envSpeed = 1.0, envPath = 0, envLoop = 0,
+    vectorX = 0.5, vectorY = 0.5, envAmount = 0.0, envSpeed = 1.0, envPath = 0, envLoop = 0,
     attackMs = 20.0, decayMs = 300.0, sustain = 0.7, releaseMs = 900.0,
     filterCutoff = 9000.0, filterResonance = 0.15,
     glideMs = 0.0, masterGain = 0.75,

@@ -148,6 +148,26 @@ bool RetrospectiveCaptureNode::copyRecentToLoop(const std::shared_ptr<SampleRegi
     return true;
 }
 
+bool RetrospectiveCaptureNode::copyRecentToGranulator(const std::shared_ptr<GranulatorNode>& granulator,
+                                                      int samplesBack) {
+    const int size = captureSize_.load(std::memory_order_acquire);
+    if (!granulator || samplesBack <= 0 || size <= 0) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(bufferMutex_);
+    const int currentSize = captureSize_.load(std::memory_order_acquire);
+    const int clamped = juce::jmin(samplesBack, currentSize);
+    int start = getWriteOffset() - clamped;
+    while (start < 0) {
+        start += currentSize;
+    }
+    start %= currentSize;
+
+    granulator->copyFromCaptureBuffer(captureBuffer_, currentSize, start, clamped);
+    return true;
+}
+
 void RetrospectiveCaptureNode::ensureBuffer(float sampleRate) {
     const float seconds = getCaptureSeconds();
     const int target = juce::jmax(1, static_cast<int>(sampleRate * seconds));

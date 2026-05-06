@@ -41,6 +41,7 @@ public:
     bool isPlaying() const;
     void seekNormalized(float normalized);
     float getNormalizedPosition() const;
+    float getLoopAwarePosition() const;
 
     void setPlayStart(float normalized);
     float getPlayStart() const;

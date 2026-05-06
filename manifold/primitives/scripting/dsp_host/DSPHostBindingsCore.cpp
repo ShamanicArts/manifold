@@ -102,6 +102,7 @@ void registerCoreBindings(LoadSession &session,
       "isPlaying", &dsp_primitives::SampleRegionPlaybackNode::isPlaying,
       "seek", &dsp_primitives::SampleRegionPlaybackNode::seekNormalized,
       "getNormalizedPosition", &dsp_primitives::SampleRegionPlaybackNode::getNormalizedPosition,
+      "getLoopAwarePosition", &dsp_primitives::SampleRegionPlaybackNode::getLoopAwarePosition,
       "setPlayStart", &dsp_primitives::SampleRegionPlaybackNode::setPlayStart,
       "getPlayStart", &dsp_primitives::SampleRegionPlaybackNode::getPlayStart,
       "setLoopStart", &dsp_primitives::SampleRegionPlaybackNode::setLoopStart,
@@ -231,7 +232,8 @@ void registerCoreBindings(LoadSession &session,
               &dsp_primitives::RetrospectiveCaptureNode::copyRecentToLoop),
           static_cast<bool (dsp_primitives::RetrospectiveCaptureNode::*)(
               const std::shared_ptr<dsp_primitives::SampleRegionPlaybackNode>&, int, bool)>(
-              &dsp_primitives::RetrospectiveCaptureNode::copyRecentToLoop)));
+              &dsp_primitives::RetrospectiveCaptureNode::copyRecentToLoop)),
+      "copyRecentToGranulator", &dsp_primitives::RetrospectiveCaptureNode::copyRecentToGranulator);
 
   newLua.new_usertype<dsp_primitives::RecordStateNode>(
       "RecordStateNode",

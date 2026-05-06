@@ -1525,6 +1525,100 @@ void LuaControlBindings::registerWaveformBindings(sol::state& lua,
         return result;
     };
 
+    lua["getSampleRegionPeaksAtPath"] = [&state, &lua](const std::string& path,
+                                                        int numBuckets) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        if (!processor || path.empty() || numBuckets <= 0) return result;
+
+        auto node = processor->getGraphNodeByPath(path);
+        auto playback = std::dynamic_pointer_cast<dsp_primitives::SampleRegionPlaybackNode>(node);
+        if (!playback) return result;
+
+        std::vector<float> peaks;
+        const auto key = makeWaveformPeakCacheKey("sample-region-path", path, numBuckets, 0, 0);
+        if (!getWaveformPeaksCached(key, peaks, [&](std::vector<float>& out) {
+                out = playback->getPeaks(numBuckets);
+                return true;
+            }, 0.25)) {
+            return result;
+        }
+
+        for (size_t i = 0; i < peaks.size(); ++i) {
+            result[i + 1] = peaks[i];
+        }
+        return result;
+    };
+
+    lua["loadSampleRegionFileAtPath"] = [&state](const std::string& nodePath,
+                                                   const std::string& filePath) -> bool {
+        auto* processor = state.getProcessor();
+        if (!processor || nodePath.empty() || filePath.empty()) return false;
+
+        auto node = processor->getGraphNodeByPath(nodePath);
+        auto playback = std::dynamic_pointer_cast<dsp_primitives::SampleRegionPlaybackNode>(node);
+        if (!playback) return false;
+
+        const bool ok = playback->loadFile(juce::File(filePath));
+        if (ok) {
+            invalidateWaveformPeakCache();
+        }
+        return ok;
+    };
+
+    lua["loadGranulatorFileAtPath"] = [&state](const std::string& nodePath,
+                                                const std::string& filePath) -> bool {
+        auto* processor = state.getProcessor();
+        if (!processor || nodePath.empty() || filePath.empty()) return false;
+
+        auto node = processor->getGraphNodeByPath(nodePath);
+        auto granulator = std::dynamic_pointer_cast<dsp_primitives::GranulatorNode>(node);
+        if (!granulator) return false;
+
+        return granulator->loadFile(juce::File(filePath));
+    };
+
+    lua["getGranulatorGrainPositionsAtPath"] = [&state, &lua](const std::string& path) -> sol::table {
+        auto result = sol::table(lua, sol::create);
+        auto* processor = state.getProcessor();
+        if (!processor || path.empty()) return result;
+        auto node = processor->getGraphNodeByPath(path);
+        auto granulator = std::dynamic_pointer_cast<dsp_primitives::GranulatorNode>(node);
+        if (!granulator) return result;
+        const auto positions = granulator->getActiveGrainPositions();
+        for (size_t i = 0; i < positions.size(); ++i) {
+            result[i + 1] = positions[i];
+        }
+        return result;
+    };
+
+    lua["getSampleRegionPlaybackPosition"] = [&state](const std::string& path) -> float {
+        auto* processor = state.getProcessor();
+        if (!processor || path.empty()) return 0.0f;
+        auto node = processor->getGraphNodeByPath(path);
+        auto playback = std::dynamic_pointer_cast<dsp_primitives::SampleRegionPlaybackNode>(node);
+        if (!playback) return 0.0f;
+        return playback->getNormalizedPosition();
+    };
+
+    lua["getSampleRegionPlaybackLoopAwarePosition"] = [&state](const std::string& path) -> float {
+        auto* processor = state.getProcessor();
+        if (!processor || path.empty()) return 0.0f;
+        auto node = processor->getGraphNodeByPath(path);
+        auto playback = std::dynamic_pointer_cast<dsp_primitives::SampleRegionPlaybackNode>(node);
+        if (!playback) return 0.0f;
+        return playback->getLoopAwarePosition();
+    };
+
+    lua["isSampleRegionPlaybackPlaying"] = [&state](const std::string& path) -> bool {
+        auto* processor = state.getProcessor();
+        if (!processor || path.empty()) return false;
+        auto node = processor->getGraphNodeByPath(path);
+        auto playback = std::dynamic_pointer_cast<dsp_primitives::SampleRegionPlaybackNode>(node);
+        if (!playback) return false;
+        return playback->isPlaying();
+    };
+
     lua["getCapturePeaksDebugStats"] = [&lua](sol::optional<bool> resetOpt) -> sol::table {
         auto result = sol::table(lua, sol::create);
         auto& stats = capturePeaksDebugStats();

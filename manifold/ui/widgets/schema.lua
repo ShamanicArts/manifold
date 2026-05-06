@@ -87,8 +87,12 @@ local kEditorSchemaByWidget = {
         { path = "mode", label = "Mode", type = "enum", group = "Behavior", options = {
             { label = "layer", value = "layer" },
             { label = "capture", value = "capture" },
+            { label = "capturePath", value = "capturePath" },
+            { label = "samplePath", value = "samplePath" },
         } },
         { path = "layerIndex", label = "Layer", type = "number", min = 0, max = 16, step = 1, group = "Behavior" },
+        { path = "capturePath", label = "Capture Path", type = "text", group = "Behavior" },
+        { path = "samplePath", label = "Sample Path", type = "text", group = "Behavior" },
         { path = "colour", label = "Wave Colour", type = "color", group = "Style" },
         { path = "bg", label = "Background", type = "color", group = "Style" },
         { path = "playheadColour", label = "Playhead", type = "color", group = "Style" },

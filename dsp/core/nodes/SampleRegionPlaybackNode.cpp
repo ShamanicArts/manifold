@@ -257,6 +257,26 @@ float SampleRegionPlaybackNode::getNormalizedPosition() const {
     return static_cast<float>(position) / static_cast<float>(sampleLength);
 }
 
+float SampleRegionPlaybackNode::getLoopAwarePosition() const {
+    const RegionState region = computeRegionState();
+    if (region.sampleLength <= 1) {
+        return 0.0f;
+    }
+
+    double position = static_cast<double>(juce::jlimit(0, region.sampleLength - 1,
+                                                       lastPosition_.load(std::memory_order_acquire)));
+    if (!oneShot_.load(std::memory_order_acquire)) {
+        while (position >= static_cast<double>(region.loopEnd)) {
+            position -= static_cast<double>(region.loopWindow);
+        }
+        while (position < static_cast<double>(region.loopStart)) {
+            position += static_cast<double>(region.loopWindow);
+        }
+    }
+
+    return juce::jlimit(0.0f, 1.0f, static_cast<float>(position / static_cast<double>(region.sampleLength)));
+}
+
 void SampleRegionPlaybackNode::setPlayStart(float normalized) {
     playStartNorm_.store(clamp01f(normalized), std::memory_order_release);
 }
