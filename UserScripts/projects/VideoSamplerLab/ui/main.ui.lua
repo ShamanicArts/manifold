@@ -74,7 +74,7 @@ return {
     button("closeWebcam", 534, 88, 80, 26, "Close", C.panel2, C.bad),
     label("webcamStatus", 630, 92, 610, 18, "Webcam: not opened", C.muted, 10),
 
-    slider("captureSeconds", 32, 124, 180, 22, "Capture sec", 0.25, 30.0, 0.25, 4.0, "/video_sampler_lab/capture_seconds"),
+    slider("captureSeconds", 32, 124, 180, 22, "Capture sec", 0.25, 6.0, 0.25, 4.0, "/video_sampler_lab/capture_seconds"),
     { id = "captureMode", type = "Toggle", x = px(222), y = px(122), w = px(60), h = px(22), props = { offLabel = "Retro", onLabel = "Free", value = false, paramPath = "/video_sampler_lab/capture_mode" }, style = { bg = C.button, colour = C.good, fontSize = 10 } },
     button("captureNow", 296, 122, 88, 28, "Cap", C.good, 0xff04110a),
     button("play", 396, 122, 72, 28, "Trigger", C.sample, 0xff111111),
@@ -115,7 +115,7 @@ return {
     label("samplerStatus", 760, 628, 470, 18, "Sampler: --", C.text, 10),
     label("audioStatus", 760, 652, 470, 18, "Audio: --", C.text, 10),
     label("positionStatus", 760, 676, 470, 18, "Position: --", C.text, 10),
-    label("help", 760, 704, 470, 46, "Workflow: open webcam, wait for frames, click Capture A/V, then Trigger. The right viewport is not live: it is the committed VideoSampler frame selected by audio loop-aware position.", C.warn, 10),
+    label("help", 760, 704, 470, 46, "Workflow: open webcam, wait for frames, click Capture A/V, then Trigger. Capture is capped to 6s/256MB so this lab cannot silently eat a gig of RAM.", C.warn, 10),
 
     label("footer", 18, 786, 1220, 18, "If right viewport changes while left webcam keeps moving, Slice 1-3 are actually working. If Trigger is playing, right viewport follows SampleRegionPlaybackNode:getLoopAwarePosition().", C.muted, 10),
   }

@@ -6,6 +6,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -130,6 +131,8 @@ public:
     // This renders a fresh frame, reads back the OpenGL framebuffer, and returns
     // a copy as a JUCE Image. May return an invalid image if the context is not ready.
     juce::Image captureScreenshot();
+    std::optional<juce::Rectangle<int>> getRenderedNodeBounds(const std::string& nodeId,
+                                                              uint64_t stableId = 0);
 
     // Read back the framebuffer that was already rendered (no re-render).
     // Use this when you know a fresh frame is already in the GL framebuffer.

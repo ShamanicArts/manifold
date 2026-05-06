@@ -1452,7 +1452,7 @@ juce::Image ImGuiDirectHost::captureScreenshot() {
     }
 
     forceNextRender_ = true;
-    skipNextSwap_ = true;
+    skipNextSwap_ = false;
 
     bool active = false;
     float scale = 1.0f;
@@ -1488,6 +1488,10 @@ juce::Image ImGuiDirectHost::captureScreenshot() {
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(w * h * 4));
     glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
+    if (useJuceContext) {
+        openGLContext_.swapBuffers();
+    }
+
     juce::Image result(juce::Image::ARGB, w, h, false);
     {
         juce::Image::BitmapData dest(result, juce::Image::BitmapData::writeOnly);
@@ -1511,6 +1515,35 @@ juce::Image ImGuiDirectHost::captureScreenshot() {
         eglOffscreenContext_->doneCurrent();
     }
     return result;
+}
+
+std::optional<juce::Rectangle<int>> ImGuiDirectHost::getRenderedNodeBounds(const std::string& nodeId,
+                                                                            uint64_t stableId) {
+    RuntimeNode* node = nullptr;
+    if (liveRoot_ != nullptr && stableId != 0) {
+        node = liveRoot_->findByStableId(stableId);
+    }
+    if (node == nullptr && liveRoot_ != nullptr && !nodeId.empty()) {
+        node = liveRoot_->findById(nodeId);
+    }
+    if (node == nullptr) {
+        return std::nullopt;
+    }
+
+    if ((!previewTransform_.valid || previewTransform_.scale <= 0.0f) && liveRoot_ != nullptr && getWidth() > 0 && getHeight() > 0) {
+        previewTransform_ = renderer_.buildPreviewTransform(*liveRoot_, getWidth(), getHeight(), makeDirectRenderOptions());
+    }
+    if (!previewTransform_.valid || previewTransform_.scale <= 0.0f) {
+        return std::nullopt;
+    }
+
+    const auto sceneBounds = sceneBoundsForNode(node);
+    auto rendered = previewRect(sceneBounds, previewTransform_).getSmallestIntegerContainer();
+    rendered = rendered.getIntersection(juce::Rectangle<int>(0, 0, getWidth(), getHeight()));
+    if (rendered.isEmpty()) {
+        return std::nullopt;
+    }
+    return rendered;
 }
 
 juce::Image ImGuiDirectHost::readbackFramebuffer() {

@@ -9,6 +9,9 @@ local MIDI_NOTE_PATH = "/video_sampler_lab/midi_note"
 local MIDI_VELOCITY_PATH = "/video_sampler_lab/midi_velocity"
 local MIDI_NOTE_ON_TRIGGER_PATH = "/video_sampler_lab/midi_note_on_trigger"
 local MIDI_NOTE_OFF_TRIGGER_PATH = "/video_sampler_lab/midi_note_off_trigger"
+local VIDEO_CAPTURE_ID = "video_sampler_lab_capture"
+local VIDEO_SAMPLER_ID = "video_sampler_lab_clip"
+local MAX_CAPTURE_SECONDS = 6.0
 
 local function clamp(v, lo, hi)
   local n = tonumber(v) or 0
@@ -169,6 +172,15 @@ local function bindSamplerSurface(ctx, position)
   })
 end
 
+local function applyCaptureWindow(ctx)
+  if not ctx.videoCap then return end
+  local seconds = clamp(readParam(CAPTURE_SECONDS_PATH, 4.0), 0.25, MAX_CAPTURE_SECONDS)
+  if ctx._lastAppliedCaptureSeconds ~= seconds then
+    ctx.videoCap:setCaptureSeconds(seconds)
+    ctx._lastAppliedCaptureSeconds = seconds
+  end
+end
+
 local function applyVideoWindow(ctx)
   if not ctx.video then return end
   ctx.video:setPlayStart(clamp(readParam("/video_sampler_lab/play_start", 0), 0, 1))
@@ -228,24 +240,81 @@ local function stopPlayback(ctx)
   bindSamplerSurface(ctx, 0)
 end
 
+local function makeRecordingPath(baseDir)
+  local base = tostring(baseDir or "")
+  if base == "" then base = "/tmp" end
+  if base:sub(-1) == "/" then base = base:sub(1, -2) end
+  local nowMs = math.floor((getTime and getTime() or 0) * 1000)
+  local stamp = tostring(nowMs)
+  return base .. "/vsl_rec_" .. stamp
+end
+
+local function sampleViewportBounds(ctx)
+  local vp = ctx.widgets and ctx.widgets.sampleViewport
+  if not (vp and vp.node and vp.node.getBounds) then
+    return 0, 0, 600, 338
+  end
+  local x, y, w, h = vp.node:getBounds()
+  return math.floor(tonumber(x) or 0),
+         math.floor(tonumber(y) or 0),
+         math.floor(tonumber(w) or 600),
+         math.floor(tonumber(h) or 338)
+end
+
+local function startRecordingAt(ctx, baseDir)
+  if ctx._destroyed or ctx._recording then return end
+  local path = makeRecordingPath(baseDir)
+  if debugRecording and debugRecording.startNode then
+    local response = debugRecording.startNode(path, "sampleViewport", true)
+    ctx._lastRecordResponse = response
+  elseif debugRecording and debugRecording.startViewport then
+    local x, y, w, h = sampleViewportBounds(ctx)
+    local response = debugRecording.startViewport(path, x, y, w, h, true)
+    ctx._lastRecordResponse = response
+  else
+    command("RECORD", "START", "tga", path)
+  end
+  ctx._recording = true
+  ctx._recordPath = path
+  ctx._recordChooserPending = false
+  setLabel(ctx.widgets and ctx.widgets.recordBtn, "Stop Rec")
+  setText(ctx.widgets and ctx.widgets.recordStatus, "Recording sampler viewport: " .. path)
+end
+
 local function toggleRecording(ctx)
   if type(command) ~= "function" then
     setText(ctx.widgets and ctx.widgets.recordStatus, "Recording: command() unavailable")
     return
   end
   if ctx._recording then
-    command("RECORD", "STOP")
+    if debugRecording and debugRecording.stop then
+      ctx._lastRecordStopResponse = debugRecording.stop()
+    else
+      command("RECORD", "STOP")
+    end
     ctx._recording = false
+    ctx._recordChooserPending = false
     setLabel(ctx.widgets and ctx.widgets.recordBtn, "Record")
-    setText(ctx.widgets and ctx.widgets.recordStatus, "Recording: stopped")
+    setText(ctx.widgets and ctx.widgets.recordStatus, "Recording saved + mux queued: " .. tostring(ctx._recordPath or ""))
+    return
+  end
+
+  if ctx._recordChooserPending then return end
+  ctx._recordChooserPending = true
+  setText(ctx.widgets and ctx.widgets.recordStatus, "Choose recording folder…")
+
+  if type(showDirectoryChooser) == "function" then
+    showDirectoryChooser("Choose VideoSamplerLab recording folder", "/tmp", function(path)
+      ctx._recordChooserPending = false
+      if ctx._destroyed then return end
+      if type(path) ~= "string" or path == "" then
+        setText(ctx.widgets and ctx.widgets.recordStatus, "Recording: cancelled")
+        return
+      end
+      startRecordingAt(ctx, path)
+    end)
   else
-    local timestamp = tostring(math.floor((getTime and getTime() or 0) * 1000))
-    local path = "/tmp/vsl_rec_" .. timestamp
-    command("RECORD", "START", "tga", path)
-    ctx._recording = true
-    ctx._recordPath = path
-    setLabel(ctx.widgets and ctx.widgets.recordBtn, "Stop Rec")
-    setText(ctx.widgets and ctx.widgets.recordStatus, "Recording: " .. path)
+    startRecordingAt(ctx, "/tmp")
   end
 end
 
@@ -259,7 +328,8 @@ end
 
 local function doRetroCapture(ctx)
   if not (ctx.videoCap and ctx.video) then return end
-  local seconds = clamp(readParam(CAPTURE_SECONDS_PATH, 4.0), 0.25, 30.0)
+  local seconds = clamp(readParam(CAPTURE_SECONDS_PATH, 4.0), 0.25, MAX_CAPTURE_SECONDS)
+  applyCaptureWindow(ctx)
   local clk = clockInfo()
   local sr = tonumber(clk.sampleRate) or 44100
   local samplesBack = math.max(1, math.floor(seconds * sr))
@@ -340,8 +410,8 @@ local function bindParamWidget(widget)
 end
 
 function M.init(ctx)
-  ctx.video = videoSampler and videoSampler.new and videoSampler.new({ id = "video_sampler_lab_clip" }) or nil
-  ctx.videoCap = videoSampler and videoSampler.capture and videoSampler.capture({ id = "video_sampler_lab_capture", maxSeconds = 30 }) or nil
+  ctx.video = videoSampler and videoSampler.new and videoSampler.new({ id = VIDEO_SAMPLER_ID }) or nil
+  ctx.videoCap = videoSampler and videoSampler.capture and videoSampler.capture({ id = VIDEO_CAPTURE_ID, maxSeconds = MAX_CAPTURE_SECONDS }) or nil
   ctx._manualPosition = 0
   ctx._lastVideoCommitOk = false
   ctx.captureMode = round(readParam("/video_sampler_lab/capture_mode", 0))
@@ -424,6 +494,7 @@ function M.init(ctx)
   if Audio == nil or (Audio.isPlugin and not Audio.isPlugin()) then
     if not currentMidiLabel() then openPreferredMidi(ctx) end
   end
+  applyCaptureWindow(ctx)
   bindLiveSurface(ctx)
   bindSamplerSurface(ctx, 0)
   setText(ctx.widgets and ctx.widgets.captureStatus, ctx.videoCap and "Capture ring ready" or "No videoSampler.capture binding")
@@ -431,6 +502,7 @@ function M.init(ctx)
 end
 
 function M.update(ctx)
+  applyCaptureWindow(ctx)
   if ctx.videoCap then
     ctx.videoCap:ingestLatest()
   end
@@ -476,14 +548,17 @@ function M.update(ctx)
   local capCount = ctx.videoCap and ctx.videoCap:getFrameCount() or 0
   local lockedW = ctx.videoCap and ctx.videoCap:getLockedWidth() or 0
   local lockedH = ctx.videoCap and ctx.videoCap:getLockedHeight() or 0
+  local capMB = (ctx.videoCap and ctx.videoCap:getEstimatedBytes() or 0) / (1024 * 1024)
+  local capLimitMB = (ctx.videoCap and ctx.videoCap:getMaxRetainedBytes() or 0) / (1024 * 1024)
   setText(ctx.widgets and ctx.widgets.captureStatus,
-    string.format("Capture ring: %d frames, locked %dx%d %s", capCount, lockedW, lockedH,
+    string.format("Capture ring: %d frames, locked %dx%d, %.1f/%.0f MB %s", capCount, lockedW, lockedH, capMB, capLimitMB,
       (ctx.captureMode == 1 and ctx.captureRecording) and "[RECORDING]" or ""))
 
   local sampleFrames = ctx.video and ctx.video:getFrameCount() or 0
   local duration = ctx.video and ctx.video:getDurationSeconds() or 0
+  local sampleMB = (ctx.video and ctx.video:getEstimatedBytes() or 0) / (1024 * 1024)
   setText(ctx.widgets and ctx.widgets.samplerStatus,
-    string.format("Sampler: %d frames, %.3fs, last commit %s", sampleFrames, duration, ctx._lastVideoCommitOk and "OK" or "--"))
+    string.format("Sampler: %d frames, %.3fs, %.1f MB, last commit %s", sampleFrames, duration, sampleMB, ctx._lastVideoCommitOk and "OK" or "--"))
 
   setText(ctx.widgets and ctx.widgets.audioStatus,
     string.format("Audio: %s  capture %.2fs / samplesBack %s", playing and "playing" or "stopped", tonumber(ctx._lastCaptureSeconds) or readParam(CAPTURE_SECONDS_PATH, 4), tostring(ctx._lastCaptureSamplesBack or "--")))
@@ -503,14 +578,30 @@ function M.update(ctx)
   local recLabel = ctx._recording and "Stop Rec" or "Record"
   setLabel(ctx.widgets and ctx.widgets.recordBtn, recLabel)
 
-  setText(ctx.widgets and ctx.widgets.sampleOverlay,
-    sampleFrames > 0 and string.format("sampler %s frameCount=%d pos=%.3f", ctx.video:getId(), sampleFrames, pos)
-      or "waiting for committed frames")
+  if ctx._recording then
+    setText(ctx.widgets and ctx.widgets.sampleOverlay, "")
+  else
+    setText(ctx.widgets and ctx.widgets.sampleOverlay,
+      sampleFrames > 0 and string.format("sampler %s frameCount=%d pos=%.3f", ctx.video:getId(), sampleFrames, pos)
+        or "waiting for committed frames")
+  end
 end
 
-function M.cleanup(_ctx)
-  -- Keep webcam open; this matches WebcamViewer behavior and avoids surprising
-  -- other projects. Explicit Close button is provided.
+function M.cleanup(ctx)
+  if ctx then
+    ctx._destroyed = true
+    if ctx._recording and type(command) == "function" then
+      pcall(command, "RECORD", "STOP")
+      ctx._recording = false
+    end
+    if ctx.video then pcall(function() ctx.video:clear() end) end
+    if ctx.videoCap then pcall(function() ctx.videoCap:clear() end) end
+  end
+  if capture and capture.close then pcall(capture.close) end
+  if videoSampler then
+    if videoSampler.remove then pcall(videoSampler.remove, VIDEO_SAMPLER_ID) end
+    if videoSampler.removeCapture then pcall(videoSampler.removeCapture, VIDEO_CAPTURE_ID) end
+  end
 end
 
 return M

@@ -12,6 +12,7 @@
 #include "../ui/imgui/ImGuiRuntimeNodeHost.h"
 #include "../ui/imgui/ImGuiDirectHost.h"
 
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -99,6 +100,8 @@ private:
 
     // RAM frame accumulation: capture to memory during recording, flush to disk after
     std::vector<juce::Image> ramFrames_;
+    std::size_t ramFramesBytes_ = 0;
+    bool ramFramesLimitWarned_ = false;
     std::mutex ramFramesMutex_;
     void flushRamFramesToDisk(const std::string& outputDir);
 

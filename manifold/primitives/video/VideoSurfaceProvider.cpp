@@ -75,7 +75,6 @@ struct VideoSurfaceProvider::Impl {
         uint64_t sequence = 0;
         uint64_t stableId = 0;
         std::string sourceSignature;
-        FrameData latestFrame;
     };
 
     std::unordered_map<uint64_t, TextureState> states;
@@ -124,7 +123,6 @@ struct VideoSurfaceProvider::Impl {
         state.width = 0;
         state.height = 0;
         state.sequence = 0;
-        state.latestFrame = {};
     }
 
     static bool uploadFrame(TextureState& state, const FrameData& frame) {
@@ -165,7 +163,6 @@ struct VideoSurfaceProvider::Impl {
         state.width = frame.width;
         state.height = frame.height;
         state.sequence = frame.sequence;
-        state.latestFrame = frame;
         return true;
     }
 };
@@ -287,7 +284,6 @@ int64_t VideoSurfaceProvider::estimateStateBytes() const {
         const auto& state = entry.second;
         total += static_cast<int64_t>(sizeof(Impl::TextureState));
         total += static_cast<int64_t>(state.sourceSignature.capacity());
-        total += static_cast<int64_t>(state.latestFrame.rgba.capacity());
     }
     return total;
 }

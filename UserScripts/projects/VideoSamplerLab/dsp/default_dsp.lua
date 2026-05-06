@@ -65,7 +65,7 @@ function buildPlugin(ctx)
   end
 
   local regs = {
-    { "/video_sampler_lab/capture_seconds", 0.25, 30.0, params.captureSeconds },
+    { "/video_sampler_lab/capture_seconds", 0.25, 6.0, params.captureSeconds },
     { "/video_sampler_lab/capture_trigger", 0, 1000000, 0 },
     { "/video_sampler_lab/play_trigger", 0, 1000000, 0 },
     { "/video_sampler_lab/stop_trigger", 0, 1000000, 0 },
@@ -158,7 +158,7 @@ function buildPlugin(ctx)
 
   local function onParamChange(path, value)
     if path == "/video_sampler_lab/capture_seconds" then
-      params.captureSeconds = clamp(value, 0.25, 30.0)
+      params.captureSeconds = clamp(value, 0.25, 6.0)
     elseif path == "/video_sampler_lab/capture_trigger" then
       local n = round(value)
       if n ~= captureCounter then

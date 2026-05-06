@@ -13,6 +13,10 @@ bool VideoRetrospectiveCapture::isFinite(double value) {
     return std::isfinite(value);
 }
 
+std::size_t VideoRetrospectiveCapture::estimateFrameBytes(const FrameData& frame) {
+    return frame.rgba.size();
+}
+
 void VideoRetrospectiveCapture::setCaptureSeconds(float seconds) {
     if (!std::isfinite(seconds)) {
         seconds = 30.0f;
@@ -62,12 +66,23 @@ bool VideoRetrospectiveCapture::ingestFrame(FrameData frame,
     timed.frame = std::move(frame);
     timed.hostSamplePosition = hostSamplePosition;
     timed.hostTimeSeconds = hostTimeSeconds;
+    retainedBytes_ += estimateFrameBytes(timed.frame);
     frames_.push_back(std::move(timed));
 
     lastIngestedSequence_ = frames_.back().frame.sequence;
     hasLastIngestedSequence_ = true;
     pruneLocked(hostTimeSeconds);
     return true;
+}
+
+void VideoRetrospectiveCapture::popFrontLocked() {
+    if (frames_.empty()) {
+        return;
+    }
+
+    const auto bytes = estimateFrameBytes(frames_.front().frame);
+    retainedBytes_ = bytes >= retainedBytes_ ? 0u : retainedBytes_ - bytes;
+    frames_.pop_front();
 }
 
 void VideoRetrospectiveCapture::pruneLocked(double newestHostTimeSeconds) {
@@ -77,7 +92,11 @@ void VideoRetrospectiveCapture::pruneLocked(double newestHostTimeSeconds) {
 
     const double cutoff = newestHostTimeSeconds - static_cast<double>(captureSeconds_);
     while (!frames_.empty() && frames_.front().hostTimeSeconds < cutoff) {
-        frames_.pop_front();
+        popFrontLocked();
+    }
+
+    while (!frames_.empty() && retainedBytes_ > maxRetainedBytes_) {
+        popFrontLocked();
     }
 }
 
@@ -141,9 +160,20 @@ int VideoRetrospectiveCapture::getLockedHeight() const {
     return lockedHeight_;
 }
 
+std::size_t VideoRetrospectiveCapture::getEstimatedBytes() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return retainedBytes_;
+}
+
+std::size_t VideoRetrospectiveCapture::getMaxRetainedBytes() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return maxRetainedBytes_;
+}
+
 void VideoRetrospectiveCapture::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     frames_.clear();
+    retainedBytes_ = 0;
     lastIngestedSequence_ = 0;
     hasLastIngestedSequence_ = false;
     lockedWidth_ = 0;

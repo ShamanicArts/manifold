@@ -177,6 +177,52 @@ static const char* recordModeToString(int mode) {
     }
 }
 
+static std::string shellQuote(const std::string& value) {
+    std::string out = "'";
+    for (const char c : value) {
+        if (c == '\'') {
+            out += "'\\''";
+        } else {
+            out += c;
+        }
+    }
+    out += "'";
+    return out;
+}
+
+static void launchFfmpegMux(const std::string& outputDir,
+                            const std::string& outputPath,
+                            int fps) {
+    if (outputDir.empty()) {
+        return;
+    }
+
+    const int safeFps = std::max(1, fps);
+    const std::string mp4Path = outputPath.empty() ? (outputDir + "/video.mp4") : outputPath;
+    const std::string framePattern = outputDir + "/frame_%04d.tga";
+    const std::string audioPath = outputDir + "/audio.wav";
+
+    std::thread([framePattern, audioPath, mp4Path, safeFps]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::ostringstream cmd;
+        cmd << "ffmpeg -y -hide_banner -loglevel warning "
+            << "-framerate " << safeFps << " -start_number 1 -i " << shellQuote(framePattern) << " ";
+        if (juce::File(audioPath).existsAsFile()) {
+            cmd << "-i " << shellQuote(audioPath) << " ";
+        }
+        cmd << "-vf " << shellQuote("pad=ceil(iw/2)*2:ceil(ih/2)*2") << " -c:v libx264 -pix_fmt yuv420p ";
+        if (juce::File(audioPath).existsAsFile()) {
+            cmd << "-c:a aac -shortest ";
+        }
+        cmd << shellQuote(mp4Path);
+        const int result = std::system(cmd.str().c_str());
+        std::fprintf(stderr,
+                     "ControlServer: ffmpeg mux %s (%s)\n",
+                     result == 0 ? "completed" : "failed",
+                     mp4Path.c_str());
+    }).detach();
+}
+
 static const char* uiRendererModeToString(int mode) {
     switch (mode) {
         case 1: return "imgui-overlay";
@@ -1161,6 +1207,13 @@ void ControlServer::writeAudioSamples(const float* left, const float* right, int
 }
 
 std::string ControlServer::startRecording(const std::string& format, int duration, const std::string& path) {
+    return startRecording(format, duration, path, RecordingOptions{});
+}
+
+std::string ControlServer::startRecording(const std::string& format,
+                                          int duration,
+                                          const std::string& path,
+                                          const RecordingOptions& options) {
     // Check if already recording
     if (recordingState.recording.load(std::memory_order_acquire)) {
         return "ERROR recording already in progress";
@@ -1203,6 +1256,7 @@ std::string ControlServer::startRecording(const std::string& format, int duratio
         recordingState.startTimeSec.store(0.0, std::memory_order_relaxed);
         recordingState.frameCounter.store(0, std::memory_order_relaxed);
         recordingState.framePaths.clear();
+        recordingState.options = options;
         recordingState.audioRing = std::make_unique<AudioCaptureRing>();
         recordingState.audioSampleRate = atomicState.sampleRate.load(std::memory_order_relaxed);
         recordingState.audioChannels = 2;
@@ -1225,6 +1279,8 @@ std::string ControlServer::startRecording(const std::string& format, int duratio
     } else {
         delete stream;
     }
+
+    recordingState.recording.store(true, std::memory_order_release);
 
     // Start audio writer thread
     recordingState.audioWriterThread = std::thread([this]() {
@@ -1268,8 +1324,6 @@ std::string ControlServer::startRecording(const std::string& format, int duratio
         }
     });
 
-    recordingState.recording.store(true, std::memory_order_release);
-
     std::ostringstream o;
     o << "OK {";
     o << jsonStr("format", validatedFormat) << ",";
@@ -1304,6 +1358,7 @@ std::string ControlServer::stopRecording() {
     int frameCount = 0;
     int duration = 0;
     std::string outputDir;
+    RecordingOptions options;
     std::vector<std::string> framePaths;
 
     {
@@ -1312,6 +1367,7 @@ std::string ControlServer::stopRecording() {
         framePaths = recordingState.framePaths;
         duration = static_cast<int>(std::time(nullptr)) - recordingState.startTimestamp;
         outputDir = recordingState.outputDir;
+        options = recordingState.options;
     }
 
     // Write manifest JSON
@@ -1340,6 +1396,10 @@ std::string ControlServer::stopRecording() {
             manifestStream->write(manifestStr.toRawUTF8(), static_cast<int>(manifestStr.getNumBytesAsUTF8()));
             manifestStream->flush();
         }
+    }
+
+    if (options.muxAfterStop) {
+        launchFfmpegMux(outputDir, options.muxOutputPath, options.fps);
     }
 
     std::ostringstream o;

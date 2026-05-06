@@ -36,6 +36,7 @@ extern "C" {
 #include <juce_core/juce_core.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <map>
 #include <mutex>
@@ -2684,6 +2685,81 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         state.showFileChooser(title, initialPath, filePatterns, callback);
     };
 
+    lua["showDirectoryChooser"] = [&state](const std::string& title,
+                                             const std::string& initialPath,
+                                             sol::function callback) {
+        state.showDirectoryChooser(title, initialPath, callback);
+    };
+
+    auto debugRecordingTable = lua.create_table();
+    auto startNodeRecording = [&state](const std::string& outputDir,
+                                        const std::string& nodeId,
+                                        uint64_t stableId,
+                                        sol::optional<bool> muxAfterStop) -> std::string {
+        auto* processor = state.getProcessor();
+        if (processor == nullptr) {
+            return "ERROR no processor";
+        }
+        RecordingOptions options;
+        options.cropEnabled = true;
+        options.cropNodeId = nodeId;
+        options.cropStableId = stableId;
+        options.cropW = 1;
+        options.cropH = 1;
+        options.streamFramesToDisk = true;
+        options.muxAfterStop = muxAfterStop.value_or(true);
+        options.fps = 30;
+        options.muxOutputPath = outputDir + "/video.mp4";
+        return processor->getControlServer().startRecording("tga", 0, outputDir, options);
+    };
+    debugRecordingTable["startNode"] = [startNodeRecording](const std::string& outputDir,
+                                                             const std::string& nodeId,
+                                                             sol::optional<bool> muxAfterStop) -> std::string {
+        return startNodeRecording(outputDir, nodeId, 0, muxAfterStop);
+    };
+    debugRecordingTable["startStableId"] = [startNodeRecording](const std::string& outputDir,
+                                                                 double stableId,
+                                                                 sol::optional<bool> muxAfterStop) -> std::string {
+        return startNodeRecording(outputDir, std::string(), static_cast<uint64_t>(std::max(0.0, stableId)), muxAfterStop);
+    };
+    debugRecordingTable["startViewport"] = [&state](const std::string& outputDir,
+                                                      int x,
+                                                      int y,
+                                                      int w,
+                                                      int h,
+                                                      sol::optional<bool> muxAfterStop) -> std::string {
+        auto* processor = state.getProcessor();
+        if (processor == nullptr) {
+            return "ERROR no processor";
+        }
+        RecordingOptions options;
+        options.cropEnabled = true;
+        options.cropX = std::max(0, x);
+        options.cropY = std::max(0, y);
+        options.cropW = std::max(1, w);
+        options.cropH = std::max(1, h);
+        options.streamFramesToDisk = true;
+        options.muxAfterStop = muxAfterStop.value_or(true);
+        options.fps = 30;
+        options.muxOutputPath = outputDir + "/video.mp4";
+        return processor->getControlServer().startRecording("tga", 0, outputDir, options);
+    };
+    debugRecordingTable["stop"] = [&state]() -> std::string {
+        auto* processor = state.getProcessor();
+        if (processor == nullptr) {
+            return "ERROR no processor";
+        }
+        return processor->getControlServer().stopRecording();
+    };
+    debugRecordingTable["status"] = [&state]() -> std::string {
+        auto* processor = state.getProcessor();
+        if (processor == nullptr) {
+            return "ERROR no processor";
+        }
+        return processor->getControlServer().getRecordingStatus();
+    };
+    lua["debugRecording"] = debugRecordingTable;
+
     // ==========================================================================
     // videoSampler table - audio-timed video sampler/capture bindings
     // ==========================================================================
@@ -2703,6 +2779,9 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         },
         "getDurationSeconds", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> float {
             return self ? self->getDurationSeconds() : 0.0f;
+        },
+        "getEstimatedBytes", [](const std::shared_ptr<manifold::video::VideoSampler>& self) -> double {
+            return self ? static_cast<double>(self->getEstimatedBytes()) : 0.0;
         },
         "clear", [](const std::shared_ptr<manifold::video::VideoSampler>& self) {
             if (self) self->clear();
@@ -2804,6 +2883,12 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         "getLockedHeight", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) -> int {
             return self ? self->getLockedHeight() : 0;
         },
+        "getEstimatedBytes", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) -> double {
+            return self ? static_cast<double>(self->getEstimatedBytes()) : 0.0;
+        },
+        "getMaxRetainedBytes", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) -> double {
+            return self ? static_cast<double>(self->getMaxRetainedBytes()) : 0.0;
+        },
         "clear", [](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self) {
             if (self) self->clear();
         });
@@ -2838,6 +2923,18 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     };
     videoSamplerTable["get"] = [](const std::string& id) -> std::shared_ptr<manifold::video::VideoSampler> {
         return manifold::video::VideoSamplerRegistry::instance().getSampler(id);
+    };
+    videoSamplerTable["remove"] = [](const std::string& id) {
+        manifold::video::VideoSamplerRegistry::instance().unregisterSampler(id);
+    };
+    videoSamplerTable["removeCapture"] = [](const std::string& id) {
+        manifold::video::VideoSamplerRegistry::instance().unregisterCapture(id);
+    };
+    videoSamplerTable["size"] = []() -> int {
+        return static_cast<int>(manifold::video::VideoSamplerRegistry::instance().size());
+    };
+    videoSamplerTable["captureCount"] = []() -> int {
+        return static_cast<int>(manifold::video::VideoSamplerRegistry::instance().captureCount());
     };
     videoSamplerTable["clearRegistry"] = []() {
         manifold::video::VideoSamplerRegistry::instance().clear();

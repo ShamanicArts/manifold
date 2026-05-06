@@ -35,6 +35,7 @@ public:
     int getFrameCount() const;
     double getDurationSamples() const;
     float getDurationSeconds() const;
+    std::size_t getEstimatedBytes() const;
 
     // Primary synced lookup. This does not advance transport state.
     FrameData getFrameAtNormalizedPosition(float normalized) const;

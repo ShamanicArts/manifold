@@ -18,6 +18,8 @@
 namespace {
 using PerfClock = std::chrono::steady_clock;
 
+bool writeTga(const juce::Image& image, const std::string& path);
+
 struct HostLayoutTraceState {
     bool initialised = false;
     bool visible = false;
@@ -1735,6 +1737,8 @@ BehaviorCoreEditor::~BehaviorCoreEditor() {
     {
         std::lock_guard<std::mutex> lock(ramFramesMutex_);
         ramFrames_.clear();
+        ramFramesBytes_ = 0;
+        ramFramesLimitWarned_ = false;
     }
     // Shut down the direct host first (detaches GL context, clears live tree pointer)
     directHost_.shutdown();
@@ -1922,6 +1926,8 @@ void BehaviorCoreEditor::timerCallback() {
         {
             std::lock_guard<std::mutex> lock(ramFramesMutex_);
             ramFrames_.clear();
+            ramFramesBytes_ = 0;
+            ramFramesLimitWarned_ = false;
         }
     } else if (!isRecording && wasRecording_) {
         // Recording stopped: flush all accumulated RAM frames to disk
@@ -1961,16 +1967,69 @@ void BehaviorCoreEditor::timerCallback() {
                 // Sync debug outline and copyid mode state from Lua to DirectHost
                 directHost_.setDebugOutlinesEnabled(luaEngine.areDebugOutlinesEnabled());
                 directHost_.setCopyIdModeEnabled(luaEngine.isCopyIdModeEnabled());
-                if (isRecording) {
-                    // captureScreenshot() renders to EGL (headless) or skips swap
-                    // (standalone) and reads pixels — the only path that actually
-                    // produces framebuffer content in both modes.
+                if (processorRef.getControlServer().isRecording()) {
+                    // captureScreenshot() renders to EGL (headless) or renders,
+                    // reads back, and presents the visible GL buffer (standalone).
+                    // This is the only path that produces framebuffer content in both modes.
                     juce::Image frame = directHost_.captureScreenshot();
                     if (frame.isValid()) {
-                        std::lock_guard<std::mutex> lock(ramFramesMutex_);
-                        ramFrames_.push_back(frame);
+                        auto& rec = processorRef.getControlServer().getRecordingState();
+                        RecordingOptions options;
+                        std::string outputDir;
+                        {
+                            std::lock_guard<std::mutex> lock(rec.mutex);
+                            options = rec.options;
+                            outputDir = rec.outputDir;
+                        }
+
+                        if (options.cropEnabled) {
+                            juce::Rectangle<int> crop(options.cropX, options.cropY, options.cropW, options.cropH);
+                            if (!options.cropNodeId.empty() || options.cropStableId != 0) {
+                                if (auto resolved = directHost_.getRenderedNodeBounds(options.cropNodeId, options.cropStableId)) {
+                                    crop = *resolved;
+                                }
+                            }
+
+                            const juce::Rectangle<int> bounds(0, 0, frame.getWidth(), frame.getHeight());
+                            const auto clipped = crop.getIntersection(bounds);
+                            if (!clipped.isEmpty()) {
+                                frame = frame.getClippedImage(clipped);
+                            }
+                        }
+
+                        if (options.streamFramesToDisk && !outputDir.empty()) {
+                            const int frameNum = rec.frameCounter.fetch_add(1, std::memory_order_relaxed) + 1;
+                            char framePath[512];
+                            std::snprintf(framePath, sizeof(framePath), "%s/frame_%04d.tga",
+                                          outputDir.c_str(), frameNum);
+                            if (writeTga(frame, framePath)) {
+                                std::lock_guard<std::mutex> lock(rec.mutex);
+                                rec.framePaths.push_back(framePath);
+                            }
+                        } else {
+                            constexpr std::size_t kRecordingRamFrameByteLimit = 384u * 1024u * 1024u;
+                            const auto frameBytes = static_cast<std::size_t>(frame.getWidth())
+                                                * static_cast<std::size_t>(frame.getHeight())
+                                                * 4u;
+                            bool accepted = false;
+                            {
+                                std::lock_guard<std::mutex> lock(ramFramesMutex_);
+                                if (ramFramesBytes_ + frameBytes <= kRecordingRamFrameByteLimit) {
+                                    ramFramesBytes_ += frameBytes;
+                                    ramFrames_.push_back(frame);
+                                    accepted = true;
+                                } else if (!ramFramesLimitWarned_) {
+                                    ramFramesLimitWarned_ = true;
+                                    std::fprintf(stderr,
+                                                 "BehaviorCoreEditor: recording frame RAM cap reached (%zu bytes), dropping further frames\n",
+                                                 kRecordingRamFrameByteLimit);
+                                }
+                            }
+                            if (accepted) {
+                                rec.frameCounter.fetch_add(1, std::memory_order_relaxed);
+                            }
+                        }
                     }
-                    processorRef.getControlServer().getRecordingState().frameCounter.fetch_add(1);
                 } else {
                     directHost_.renderNow();
                 }
@@ -2527,6 +2586,8 @@ void BehaviorCoreEditor::flushRamFramesToDisk(const std::string& outputDir) {
         std::lock_guard<std::mutex> lock(ramFramesMutex_);
         frames = std::move(ramFrames_);
         ramFrames_.clear();
+        ramFramesBytes_ = 0;
+        ramFramesLimitWarned_ = false;
     }
     if (frames.empty()) {
         return;

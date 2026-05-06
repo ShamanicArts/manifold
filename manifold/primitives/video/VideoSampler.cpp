@@ -117,6 +117,15 @@ float VideoSampler::getDurationSeconds() const {
     return static_cast<float>(durationSamples_ / sampleRate_);
 }
 
+std::size_t VideoSampler::getEstimatedBytes() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::size_t total = 0;
+    for (const auto& frame : frames_) {
+        total += frame.frame.rgba.size();
+    }
+    return total;
+}
+
 FrameData VideoSampler::getFrameAtNormalizedPosition(float normalized) const {
     const float target = clamp01(normalized);
 

@@ -311,6 +311,20 @@ struct CaptureState {
   std::mutex mutex;
 };
 
+struct RecordingOptions {
+  bool cropEnabled = false;
+  std::string cropNodeId;
+  uint64_t cropStableId = 0;
+  int cropX = 0;
+  int cropY = 0;
+  int cropW = 0;
+  int cropH = 0;
+  bool streamFramesToDisk = false;
+  bool muxAfterStop = false;
+  int fps = 30;
+  std::string muxOutputPath;
+};
+
 struct RecordingState {
   std::string format = "png";       // png, jpg
   int duration = 0;                 // 0 = manual stop
@@ -321,6 +335,7 @@ struct RecordingState {
   std::atomic<int> frameCounter{0};
   std::atomic<double> startTimeSec{0.0};
   std::vector<std::string> framePaths;  // captured frame paths
+  RecordingOptions options;
   std::mutex mutex;
 
   // Audio capture
@@ -389,6 +404,7 @@ public:
   // Debug capture: screenshot and recording
   std::string captureScreenshot(const std::string &path);
   std::string startRecording(const std::string &format, int duration, const std::string &path);
+  std::string startRecording(const std::string &format, int duration, const std::string &path, const RecordingOptions& options);
   std::string stopRecording();
   std::string getRecordingStatus();
 

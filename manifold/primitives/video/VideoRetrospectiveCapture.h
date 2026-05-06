@@ -3,6 +3,7 @@
 #include "VideoCaptureManager.h"
 #include "VideoSampler.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <mutex>
@@ -39,15 +40,21 @@ public:
     int getFrameCount() const;
     int getLockedWidth() const;
     int getLockedHeight() const;
+    std::size_t getEstimatedBytes() const;
+    std::size_t getMaxRetainedBytes() const;
     void clear();
 
 private:
     static bool isFinite(double value);
+    static std::size_t estimateFrameBytes(const FrameData& frame);
     void pruneLocked(double newestHostTimeSeconds);
+    void popFrontLocked();
 
     mutable std::mutex mutex_;
     std::deque<TimedVideoFrame> frames_;
     float captureSeconds_ = 30.0f;
+    std::size_t retainedBytes_ = 0;
+    std::size_t maxRetainedBytes_ = 256u * 1024u * 1024u;
     uint64_t lastIngestedSequence_ = 0;
     bool hasLastIngestedSequence_ = false;
     int lockedWidth_ = 0;
