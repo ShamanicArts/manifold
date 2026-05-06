@@ -4,6 +4,8 @@
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string_view>
 #include <vector>
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -41,9 +43,63 @@ struct ExportPluginConfig {
     std::vector<ExportParamAlias> paramAliases;
 };
 
+struct BasicExportUiPathApplyResult {
+    bool handled = false;
+    bool needsOscRefresh = false;
+};
+
+struct ExportOscRuntimeSettings {
+    int oscPort = 0;
+    int queryPort = 0;
+    bool oscEnabled = false;
+    bool oscQueryEnabled = false;
+};
+
 inline bool isProjectManifestFile(const juce::File& file) {
     return file.existsAsFile()
         && file.getFileName().equalsIgnoreCase("manifold.project.json5");
+}
+
+inline bool isUdpPortAvailable(int port) {
+    if (port <= 0) {
+        return false;
+    }
+    juce::DatagramSocket socket(false);
+    const bool ok = socket.bindToPort(port);
+    if (ok) {
+        socket.shutdown();
+    }
+    return ok;
+}
+
+inline bool isTcpPortAvailable(int port) {
+    if (port <= 0) {
+        return false;
+    }
+    juce::StreamingSocket socket;
+    const bool ok = socket.createListener(port, "127.0.0.1");
+    if (ok) {
+        socket.close();
+    }
+    return ok;
+}
+
+inline void findAvailableOscPortPair(int preferredBasePort,
+                                     int& oscPort,
+                                     int& queryPort) {
+    const int base = preferredBasePort > 0 ? preferredBasePort : 9010;
+    for (int offset = 0; offset < 200; offset += 2) {
+        const int candidateOsc = base + offset;
+        const int candidateQuery = candidateOsc + 1;
+        if (isUdpPortAvailable(candidateOsc) && isTcpPortAvailable(candidateQuery)) {
+            oscPort = candidateOsc;
+            queryPort = candidateQuery;
+            return;
+        }
+    }
+
+    oscPort = base;
+    queryPort = base + 1;
 }
 
 inline int readIntProperty(juce::DynamicObject* obj, const char* name, int fallback) {
@@ -272,6 +328,117 @@ inline void applyHostParameterSnapshotToProcessor(const ExportPluginConfig& conf
         const float value = alias.rawHostValue != nullptr ? alias.rawHostValue->load() : alias.defaultValue;
         setParamByPath(alias.internalPath.toStdString(), value);
     }
+}
+
+inline ExportOscRuntimeSettings computeExportOscRuntimeSettings(
+    const ExportPluginConfig& config,
+    bool oscEnabled,
+    bool oscQueryEnabled,
+    int requestedOscPort,
+    int requestedQueryPort) {
+    ExportOscRuntimeSettings settings;
+    settings.oscEnabled = oscEnabled;
+    settings.oscQueryEnabled = oscQueryEnabled && oscEnabled;
+    settings.oscPort = requestedOscPort;
+    settings.queryPort = requestedQueryPort;
+
+    if (settings.oscEnabled || settings.oscQueryEnabled) {
+        findAvailableOscPortPair(settings.oscPort > 0 ? settings.oscPort : config.oscBasePort,
+                                 settings.oscPort,
+                                 settings.queryPort);
+    } else {
+        settings.oscPort = config.oscBasePort;
+        settings.queryPort = config.oscBasePort + 1;
+    }
+
+    return settings;
+}
+
+inline BasicExportUiPathApplyResult applyBasicExportUiPath(std::string_view path,
+                                                           float value,
+                                                           int& viewMode,
+                                                           bool& settingsVisible,
+                                                           bool& devVisible,
+                                                           bool& oscEnabled,
+                                                           bool& oscQueryEnabled,
+                                                           int& xyXParam,
+                                                           int& xyYParam) {
+    if (path == "/plugin/ui/viewMode") {
+        viewMode = value >= 0.5f ? 1 : 0;
+        return {true, false};
+    }
+    if (path == "/plugin/ui/settingsVisible") {
+        settingsVisible = value > 0.5f;
+        return {true, false};
+    }
+    if (path == "/plugin/ui/devVisible") {
+        devVisible = value > 0.5f;
+        return {true, false};
+    }
+    if (path == "/plugin/ui/oscEnabled") {
+        oscEnabled = value > 0.5f;
+        if (!oscEnabled) {
+            oscQueryEnabled = false;
+        }
+        return {true, true};
+    }
+    if (path == "/plugin/ui/oscQueryEnabled") {
+        oscQueryEnabled = value > 0.5f;
+        if (oscQueryEnabled) {
+            oscEnabled = true;
+        }
+        return {true, true};
+    }
+    if (path == "/plugin/ui/xyXParam") {
+        xyXParam = juce::jlimit(1, 5, static_cast<int>(std::lround(value)));
+        return {true, false};
+    }
+    if (path == "/plugin/ui/xyYParam") {
+        xyYParam = juce::jlimit(1, 5, static_cast<int>(std::lround(value)));
+        return {true, false};
+    }
+
+    return {};
+}
+
+inline std::optional<float> readBasicExportUiPath(std::string_view path,
+                                                  int viewMode,
+                                                  bool settingsVisible,
+                                                  bool devVisible,
+                                                  bool oscEnabled,
+                                                  bool oscQueryEnabled,
+                                                  int oscInputPort,
+                                                  int oscQueryPort,
+                                                  int xyXParam,
+                                                  int xyYParam) {
+    if (path == "/plugin/ui/viewMode") {
+        return static_cast<float>(viewMode);
+    }
+    if (path == "/plugin/ui/settingsVisible") {
+        return settingsVisible ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/devVisible") {
+        return devVisible ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/oscEnabled") {
+        return oscEnabled ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/oscQueryEnabled") {
+        return oscQueryEnabled ? 1.0f : 0.0f;
+    }
+    if (path == "/plugin/ui/oscInputPort") {
+        return static_cast<float>(oscInputPort);
+    }
+    if (path == "/plugin/ui/oscQueryPort") {
+        return static_cast<float>(oscQueryPort);
+    }
+    if (path == "/plugin/ui/xyXParam") {
+        return static_cast<float>(xyXParam);
+    }
+    if (path == "/plugin/ui/xyYParam") {
+        return static_cast<float>(xyYParam);
+    }
+    return std::nullopt;
 }
 
 inline std::unique_ptr<juce::AudioProcessorValueTreeState> createHostParameterState(

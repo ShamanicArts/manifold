@@ -236,46 +236,6 @@ juce::File resolveDefaultDspScriptFromProject(const juce::File& requestedPath) {
     return resolveProjectAssetRef(requestedPath.getParentDirectory(), dspRef);
 }
 
-bool isUdpPortAvailable(int port) {
-    if (port <= 0) {
-        return false;
-    }
-    juce::DatagramSocket socket(false);
-    const bool ok = socket.bindToPort(port);
-    if (ok) {
-        socket.shutdown();
-    }
-    return ok;
-}
-
-bool isTcpPortAvailable(int port) {
-    if (port <= 0) {
-        return false;
-    }
-    juce::StreamingSocket socket;
-    const bool ok = socket.createListener(port, "127.0.0.1");
-    if (ok) {
-        socket.close();
-    }
-    return ok;
-}
-
-void findAvailableOscPortPair(int preferredBasePort, int& oscPort, int& queryPort) {
-    const int base = preferredBasePort > 0 ? preferredBasePort : 9010;
-    for (int offset = 0; offset < 200; offset += 2) {
-        const int candidateOsc = base + offset;
-        const int candidateQuery = candidateOsc + 1;
-        if (isUdpPortAvailable(candidateOsc) && isTcpPortAvailable(candidateQuery)) {
-            oscPort = candidateOsc;
-            queryPort = candidateQuery;
-            return;
-        }
-    }
-
-    oscPort = base;
-    queryPort = base + 1;
-}
-
 } // namespace
 
 BehaviorCoreProcessor::BehaviorCoreProcessor()
@@ -781,51 +741,35 @@ bool BehaviorCoreProcessor::applyExportPluginPath(const std::string& path, float
         return false;
     }
 
-    if (path == "/plugin/ui/viewMode") {
-        const int nextMode = value >= 0.5f ? 1 : 0;
-        exportViewMode_.store(nextMode, std::memory_order_relaxed);
-        return true;
-    }
+    int viewMode = exportViewMode_.load(std::memory_order_relaxed);
+    bool settingsVisible = exportSettingsVisible_.load(std::memory_order_relaxed);
+    bool devVisible = exportDevVisible_.load(std::memory_order_relaxed);
+    bool oscEnabled = exportOscEnabled_.load(std::memory_order_relaxed);
+    bool oscQueryEnabled = exportOscQueryEnabled_.load(std::memory_order_relaxed);
+    int xyXParam = exportXyXParam_.load(std::memory_order_relaxed);
+    int xyYParam = exportXyYParam_.load(std::memory_order_relaxed);
 
-    if (path == "/plugin/ui/settingsVisible") {
-        exportSettingsVisible_.store(value > 0.5f, std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/plugin/ui/devVisible") {
-        exportDevVisible_.store(value > 0.5f, std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/plugin/ui/oscEnabled") {
-        const bool enabled = value > 0.5f;
-        exportOscEnabled_.store(enabled, std::memory_order_relaxed);
-        if (!enabled) {
-            exportOscQueryEnabled_.store(false, std::memory_order_relaxed);
+    const auto uiResult = manifold::export_plugin::applyBasicExportUiPath(
+        path,
+        value,
+        viewMode,
+        settingsVisible,
+        devVisible,
+        oscEnabled,
+        oscQueryEnabled,
+        xyXParam,
+        xyYParam);
+    if (uiResult.handled) {
+        exportViewMode_.store(viewMode, std::memory_order_relaxed);
+        exportSettingsVisible_.store(settingsVisible, std::memory_order_relaxed);
+        exportDevVisible_.store(devVisible, std::memory_order_relaxed);
+        exportOscEnabled_.store(oscEnabled, std::memory_order_relaxed);
+        exportOscQueryEnabled_.store(oscQueryEnabled, std::memory_order_relaxed);
+        exportXyXParam_.store(xyXParam, std::memory_order_relaxed);
+        exportXyYParam_.store(xyYParam, std::memory_order_relaxed);
+        if (uiResult.needsOscRefresh) {
+            applyExportOscSettings();
         }
-        applyExportOscSettings();
-        return true;
-    }
-
-    if (path == "/plugin/ui/oscQueryEnabled") {
-        const bool enabled = value > 0.5f;
-        exportOscQueryEnabled_.store(enabled, std::memory_order_relaxed);
-        if (enabled) {
-            exportOscEnabled_.store(true, std::memory_order_relaxed);
-        }
-        applyExportOscSettings();
-        return true;
-    }
-
-    if (path == "/plugin/ui/xyXParam") {
-        exportXyXParam_.store(juce::jlimit(1, 5, static_cast<int>(std::lround(value))),
-                              std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/plugin/ui/xyYParam") {
-        exportXyYParam_.store(juce::jlimit(1, 5, static_cast<int>(std::lround(value))),
-                              std::memory_order_relaxed);
         return true;
     }
 
@@ -846,32 +790,18 @@ float BehaviorCoreProcessor::readExportPluginPath(const std::string& path) const
         return 0.0f;
     }
 
-    if (path == "/plugin/ui/viewMode") {
-        return static_cast<float>(exportViewMode_.load(std::memory_order_relaxed));
-    }
-    if (path == "/plugin/ui/settingsVisible") {
-        return exportSettingsVisible_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/plugin/ui/devVisible") {
-        return exportDevVisible_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/plugin/ui/oscEnabled") {
-        return exportOscEnabled_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/plugin/ui/oscQueryEnabled") {
-        return exportOscQueryEnabled_.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/plugin/ui/oscInputPort") {
-        return static_cast<float>(exportOscInputPort_.load(std::memory_order_relaxed));
-    }
-    if (path == "/plugin/ui/oscQueryPort") {
-        return static_cast<float>(exportOscQueryPort_.load(std::memory_order_relaxed));
-    }
-    if (path == "/plugin/ui/xyXParam") {
-        return static_cast<float>(exportXyXParam_.load(std::memory_order_relaxed));
-    }
-    if (path == "/plugin/ui/xyYParam") {
-        return static_cast<float>(exportXyYParam_.load(std::memory_order_relaxed));
+    if (const auto value = manifold::export_plugin::readBasicExportUiPath(
+            path,
+            exportViewMode_.load(std::memory_order_relaxed),
+            exportSettingsVisible_.load(std::memory_order_relaxed),
+            exportDevVisible_.load(std::memory_order_relaxed),
+            exportOscEnabled_.load(std::memory_order_relaxed),
+            exportOscQueryEnabled_.load(std::memory_order_relaxed),
+            exportOscInputPort_.load(std::memory_order_relaxed),
+            exportOscQueryPort_.load(std::memory_order_relaxed),
+            exportXyXParam_.load(std::memory_order_relaxed),
+            exportXyYParam_.load(std::memory_order_relaxed))) {
+        return *value;
     }
 
     if (auto* timings = controlServer.getFrameTimings()) {
@@ -1198,36 +1128,29 @@ void BehaviorCoreProcessor::applyExportOscSettings() {
         return;
     }
 
-    const bool oscEnabled = exportOscEnabled_.load(std::memory_order_relaxed);
-    const bool oscQueryEnabled = exportOscQueryEnabled_.load(std::memory_order_relaxed) && oscEnabled;
-    int oscPort = exportOscInputPort_.load(std::memory_order_relaxed);
-    int queryPort = exportOscQueryPort_.load(std::memory_order_relaxed);
+    const auto runtimeSettings = manifold::export_plugin::computeExportOscRuntimeSettings(
+        exportPluginConfig_,
+        exportOscEnabled_.load(std::memory_order_relaxed),
+        exportOscQueryEnabled_.load(std::memory_order_relaxed),
+        exportOscInputPort_.load(std::memory_order_relaxed),
+        exportOscQueryPort_.load(std::memory_order_relaxed));
 
-    if (oscEnabled || oscQueryEnabled) {
-        findAvailableOscPortPair(oscPort > 0 ? oscPort : exportPluginConfig_.oscBasePort,
-                                 oscPort,
-                                 queryPort);
-    } else {
-        oscPort = exportPluginConfig_.oscBasePort;
-        queryPort = exportPluginConfig_.oscBasePort + 1;
-    }
-
-    exportOscInputPort_.store(oscPort, std::memory_order_relaxed);
-    exportOscQueryPort_.store(queryPort, std::memory_order_relaxed);
+    exportOscInputPort_.store(runtimeSettings.oscPort, std::memory_order_relaxed);
+    exportOscQueryPort_.store(runtimeSettings.queryPort, std::memory_order_relaxed);
 
     oscQueryServer.stop();
     oscServer.stop();
 
     OSCSettings settings;
-    settings.inputPort = oscPort;
-    settings.queryPort = queryPort;
-    settings.oscEnabled = oscEnabled;
-    settings.oscQueryEnabled = oscQueryEnabled;
+    settings.inputPort = runtimeSettings.oscPort;
+    settings.queryPort = runtimeSettings.queryPort;
+    settings.oscEnabled = runtimeSettings.oscEnabled;
+    settings.oscQueryEnabled = runtimeSettings.oscQueryEnabled;
     oscServer.setSettings(settings);
     oscServer.start(this);
     oscQueryServer.setContext(this, &endpointRegistry);
-    if (oscQueryEnabled) {
-        oscQueryServer.start(this, &endpointRegistry, queryPort, oscPort);
+    if (runtimeSettings.oscQueryEnabled) {
+        oscQueryServer.start(this, &endpointRegistry, runtimeSettings.queryPort, runtimeSettings.oscPort);
     }
 }
 
