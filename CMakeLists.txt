@@ -1173,6 +1173,8 @@ add_executable(ManifoldImGuiGlobalsContractHarness manifold/headless/ManifoldImG
 
 add_executable(ImGuiOpenGLBackendSmokeHarness manifold/headless/ImGuiOpenGLBackendSmokeHarness.cpp)
 
+add_executable(DspPrimitiveContractHarness manifold/headless/DspPrimitiveContractHarness.cpp)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -1651,6 +1653,12 @@ target_link_libraries(ImGuiOpenGLBackendSmokeHarness
         highway
         ${MANIFOLD_ML_TARGET}
         ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(DspPrimitiveContractHarness)
+target_link_libraries(DspPrimitiveContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors)
 
 target_include_directories(VideoSamplerHarness
     PRIVATE
@@ -2202,6 +2210,13 @@ add_test(
 set_tests_properties(manifold_imgui_opengl_backend_smoke PROPERTIES
     LABELS "manifold;imgui;opengl;smoke"
     SKIP_RETURN_CODE 77)
+
+add_test(
+    NAME manifold_dsp_primitive_contract
+    COMMAND $<TARGET_FILE:DspPrimitiveContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dsp_primitive_contract_golden.json)
+set_tests_properties(manifold_dsp_primitive_contract PROPERTIES
+    LABELS "manifold;dsp;primitive;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:

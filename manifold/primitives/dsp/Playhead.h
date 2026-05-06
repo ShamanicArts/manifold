@@ -13,8 +13,10 @@ public:
     
     void setPosition(float pos) { 
         position = pos;
-        while (position >= length) position -= length;
-        while (position < 0) position += length;
+        if (length > 0) {
+            while (position >= length) position -= length;
+            while (position < 0) position += length;
+        }
     }
     
     void setSpeed(float s) { speed = s; }

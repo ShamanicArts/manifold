@@ -1004,7 +1004,7 @@ void configureStutterNode(dsp_primitives::IPrimitiveNode& node) {
     s.setGate(0.75f);
     s.setFilterDecay(0.3f);
     s.setPitchDecay(0.2f);
-    s.setProbability(0.8f);
+    s.setProbability(1.0f);
     s.setPattern(0b10101010);
     s.setTempo(120.0f);
     s.setMix(0.5f);

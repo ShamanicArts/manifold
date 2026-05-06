@@ -4,7 +4,9 @@
 
 namespace dsp_primitives {
 
-StutterNode::StutterNode() = default;
+StutterNode::StutterNode()
+    : random_(12345) // deterministic seed for reproducible output
+{}
 
 void StutterNode::prepare(double sampleRate, int maxBlockSize) {
     sampleRate_ = sampleRate > 1.0 ? sampleRate : 44100.0;
