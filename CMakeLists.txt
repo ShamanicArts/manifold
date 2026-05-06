@@ -1115,6 +1115,8 @@ add_executable(BehaviorCoreProjectionHarness manifold/headless/BehaviorCoreProje
 
 add_executable(BehaviorCoreMidiContractHarness manifold/headless/BehaviorCoreMidiContractHarness.cpp)
 
+add_executable(ImGuiDirectHostContractHarness manifold/headless/ImGuiDirectHostContractHarness.cpp)
+
 add_executable(VideoSamplerHarness
     tests/VideoSamplerHarness.cpp
     manifold/primitives/video/VideoSampler.cpp
@@ -1222,6 +1224,20 @@ target_link_libraries(BehaviorCoreMidiContractHarness
         sol2::sol2
 		highway)
 
+manifold_target_include_project_and_ableton(ImGuiDirectHostContractHarness)
+target_link_libraries(ImGuiDirectHostContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+		highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
 target_include_directories(VideoSamplerHarness
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1320,6 +1336,12 @@ target_compile_definitions(BehaviorCoreMidiContractHarness
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
+target_compile_definitions(ImGuiDirectHostContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
 enable_testing()
 
 add_test(
@@ -1401,6 +1423,13 @@ add_test(
             --duration 8.0)
 set_tests_properties(manifold_core_sniff PROPERTIES
     LABELS "manifold;core;smoke")
+
+add_test(
+    NAME manifold_direct_host_contract
+    COMMAND $<TARGET_FILE:ImGuiDirectHostContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/direct_host_contract_golden.json)
+set_tests_properties(manifold_direct_host_contract PROPERTIES
+    LABELS "manifold;direct;contract;imgui")
 
 add_test(
     NAME manifold_state_projection
