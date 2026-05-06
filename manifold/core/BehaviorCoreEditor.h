@@ -12,6 +12,8 @@
 #include "../ui/imgui/ImGuiRuntimeNodeHost.h"
 #include "../ui/imgui/ImGuiDirectHost.h"
 #include "EditorRecordingSupport.h"
+#include "EditorRendererSupport.h"
+#include "EditorPerfSupport.h"
 
 #include <cstddef>
 #include <memory>
@@ -45,12 +47,7 @@ public:
     std::string exportStateContract() const;
 
 private:
-    enum class RuntimeRendererMode {
-        Canvas = 0,
-        ImGuiOverlay = 1,
-        ImGuiReplace = 2,
-        ImGuiDirect = 3,
-    };
+    using RuntimeRendererMode = editor_renderer::RuntimeRendererMode;
 
     void timerCallback() override;
     void syncImGuiHostsFromLuaShell();
@@ -58,9 +55,6 @@ private:
     RuntimeNode* getActiveRootRuntimeNode();
     void setRuntimeRendererMode(RuntimeRendererMode mode, bool logChange = true);
     void updateRuntimeRendererPresentation();
-    static RuntimeRendererMode runtimeRendererModeFromString(const std::string& value,
-                                                            RuntimeRendererMode fallback);
-    static const char* runtimeRendererModeToString(RuntimeRendererMode mode);
     
     // Deferred visibility changes to avoid blocking GUI thread during OpenGL context creation
     struct DeferredVisibility {

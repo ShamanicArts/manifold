@@ -18,12 +18,7 @@
 
 namespace {
 using PerfClock = std::chrono::steady_clock;
-
-struct HostLayoutTraceState {
-    bool initialised = false;
-    bool visible = false;
-    juce::Rectangle<int> bounds;
-};
+using HostLayoutTraceState = editor_perf::HostLayoutTraceState;
 
 struct HostConfig {
     bool visible = false;
@@ -92,157 +87,6 @@ void clearRuntimeNodeLuaStateRecursive(RuntimeNode* node) {
 
 [[maybe_unused]] double perfElapsedMs(PerfClock::time_point start) {
     return std::chrono::duration<double, std::milli>(PerfClock::now() - start).count();
-}
-
-void logEditorPerf(const char* label, PerfClock::time_point start, const char* extra = nullptr) {
-    juce::ignoreUnused(label, start, extra);
-}
-
-struct ProcessMemorySnapshot {
-    int64_t pssBytes = 0;
-    int64_t privateDirtyBytes = 0;
-};
-
-struct GlibcAllocatorSnapshot {
-    int64_t heapUsedBytes = 0;
-    int64_t arenaBytes = 0;
-    int64_t mmapBytes = 0;
-    int64_t freeHeldBytes = 0;
-    int64_t releasableBytes = 0;
-    int64_t arenaCount = 0;
-};
-
-ProcessMemorySnapshot readProcessMemorySnapshot() {
-    ProcessMemorySnapshot snapshot;
-    std::ifstream smaps("/proc/self/smaps_rollup");
-    std::string line;
-    while (std::getline(smaps, line)) {
-        if (line.rfind("Pss:", 0) == 0) {
-            std::istringstream iss(line);
-            std::string label, unit;
-            int64_t kb = 0;
-            iss >> label >> kb >> unit;
-            snapshot.pssBytes = kb * 1024;
-        } else if (line.rfind("Private_Dirty:", 0) == 0) {
-            std::istringstream iss(line);
-            std::string label, unit;
-            int64_t kb = 0;
-            iss >> label >> kb >> unit;
-            snapshot.privateDirtyBytes = kb * 1024;
-        }
-    }
-    return snapshot;
-}
-
-GlibcAllocatorSnapshot readGlibcAllocatorSnapshot() {
-    GlibcAllocatorSnapshot snapshot;
-#if defined(__GLIBC__)
-    struct mallinfo2 mi;
-    memset(&mi, 0, sizeof(mi));
-    mi = mallinfo2();
-    
-    snapshot.heapUsedBytes = static_cast<int64_t>(mi.uordblks);
-    snapshot.arenaBytes = static_cast<int64_t>(mi.arena);
-    // hblkhd is unreliable in glibc 2.43 (returns garbage or GPU memory values)
-    // Skipping mmap metric - it conflates CPU and GPU memory
-    snapshot.mmapBytes = 0;
-    snapshot.freeHeldBytes = static_cast<int64_t>(mi.fordblks);
-    snapshot.releasableBytes = static_cast<int64_t>(mi.keepcost);
-    snapshot.arenaCount = static_cast<int64_t>(mi.ordblks);
-#endif
-    return snapshot;
-}
-
-int64_t estimateScriptListRowsBytes(const std::vector<ImGuiScriptListHost::ScriptRow>& rows) {
-    int64_t total = static_cast<int64_t>(rows.capacity()) * static_cast<int64_t>(sizeof(ImGuiScriptListHost::ScriptRow));
-    for (const auto& row : rows) {
-        total += static_cast<int64_t>(row.kind.capacity() + row.ownership.capacity() + row.name.capacity() + row.label.capacity() + row.path.capacity());
-    }
-    return total;
-}
-
-int64_t estimateHierarchyRowsBytes(const std::vector<ImGuiHierarchyHost::TreeRow>& rows) {
-    int64_t total = static_cast<int64_t>(rows.capacity()) * static_cast<int64_t>(sizeof(ImGuiHierarchyHost::TreeRow));
-    for (const auto& row : rows) {
-        total += static_cast<int64_t>(row.type.capacity() + row.name.capacity() + row.path.capacity());
-    }
-    return total;
-}
-
-int64_t estimateInspectorRowsBytes(const std::vector<ImGuiInspectorHost::InspectorRow>& rows,
-                                   const ImGuiInspectorHost::ActiveProperty& activeProperty) {
-    int64_t total = static_cast<int64_t>(rows.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::InspectorRow));
-    for (const auto& row : rows) {
-        total += static_cast<int64_t>(row.key.capacity() + row.value.capacity());
-    }
-    total += static_cast<int64_t>(activeProperty.key.capacity() + activeProperty.path.capacity() + activeProperty.editorType.capacity()
-                                + activeProperty.displayValue.capacity() + activeProperty.textValue.capacity());
-    total += static_cast<int64_t>(activeProperty.enumLabels.capacity()) * static_cast<int64_t>(sizeof(std::string));
-    for (const auto& label : activeProperty.enumLabels) {
-        total += static_cast<int64_t>(label.capacity());
-    }
-    return total;
-}
-
-int64_t estimateScriptInspectorBytes(const ImGuiInspectorHost::ScriptInspectorData& data) {
-    int64_t total = sizeof(ImGuiInspectorHost::ScriptInspectorData);
-    total += static_cast<int64_t>(data.name.capacity() + data.kind.capacity() + data.ownership.capacity() + data.path.capacity() +
-                                  data.text.capacity() + data.runtimeStatus.capacity() + data.projectLastError.capacity());
-    total += static_cast<int64_t>(data.declaredParams.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::DeclaredParam));
-    for (const auto& p : data.declaredParams) {
-        total += static_cast<int64_t>(p.path.capacity() + p.defaultValue.capacity());
-    }
-    total += static_cast<int64_t>(data.runtimeParams.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::RuntimeParam));
-    for (const auto& p : data.runtimeParams) {
-        total += static_cast<int64_t>(p.endpointPath.capacity() + p.path.capacity() + p.displayValue.capacity());
-    }
-    total += static_cast<int64_t>(data.graphNodes.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::GraphNode));
-    for (const auto& n : data.graphNodes) {
-        total += static_cast<int64_t>(n.var.capacity() + n.prim.capacity());
-    }
-    total += static_cast<int64_t>(data.graphEdges.capacity()) * static_cast<int64_t>(sizeof(ImGuiInspectorHost::GraphEdge));
-    return total;
-}
-
-void logEditorHostLayout(const char* name, HostLayoutTraceState& state, bool visible,
-                         const juce::Rectangle<int>& bounds) {
-    juce::ignoreUnused(name, visible, bounds);
-    state.initialised = true;
-    state.visible = visible;
-    state.bounds = bounds;
-}
-
-void readSurfaceDescriptor(sol::object surfacesObj, const char* surfaceId,
-                           bool& visibleOut, juce::Rectangle<int>& boundsOut,
-                           std::string* titleOut = nullptr) {
-    visibleOut = false;
-    boundsOut = juce::Rectangle<int>();
-    if (titleOut != nullptr) {
-        titleOut->clear();
-    }
-    if (!surfacesObj.valid() || !surfacesObj.is<sol::table>()) {
-        return;
-    }
-    sol::table surfaces = surfacesObj.as<sol::table>();
-    sol::object surfaceObj = surfaces[surfaceId];
-    if (!surfaceObj.valid() || !surfaceObj.is<sol::table>()) {
-        return;
-    }
-    sol::table surface = surfaceObj.as<sol::table>();
-    visibleOut = surface["visible"].get_or(false);
-    if (titleOut != nullptr) {
-        *titleOut = surface["title"].get_or(std::string{});
-    }
-    sol::object boundsObj = surface["bounds"];
-    if (!boundsObj.valid() || !boundsObj.is<sol::table>()) {
-        return;
-    }
-    sol::table bounds = boundsObj.as<sol::table>();
-    boundsOut = juce::Rectangle<int>(
-        bounds["x"].get_or(0),
-        bounds["y"].get_or(0),
-        std::max(0, bounds["w"].get_or(0)),
-        std::max(0, bounds["h"].get_or(0)));
 }
 
 void invokeShellMethod(sol::table& shell, const char* name) {
@@ -644,7 +488,7 @@ bool populateMainEditorConfigFromShellTable(sol::table& shell,
                                           const char* tableKey,
                                           HostConfig& mainConfig) {
     HostConfig candidate;
-    readSurfaceDescriptor(surfacesObj, surfaceId, candidate.visible, candidate.bounds);
+    editor_perf::readSurfaceDescriptor(surfacesObj, surfaceId, candidate.visible, candidate.bounds);
     if (!candidate.visible || candidate.bounds.getWidth() <= 0 || candidate.bounds.getHeight() <= 0) {
         return false;
     }
@@ -689,7 +533,7 @@ void buildHierarchyAndInspectorConfig(sol::state& lua,
                                       sol::object surfacesObj,
                                       HierarchyHostConfig& hierarchyConfig,
                                       InspectorHostConfig& inspectorConfig) {
-    readSurfaceDescriptor(surfacesObj, "hierarchyTool", hierarchyConfig.visible, hierarchyConfig.bounds);
+    editor_perf::readSurfaceDescriptor(surfacesObj, "hierarchyTool", hierarchyConfig.visible, hierarchyConfig.bounds);
     if (!hierarchyConfig.visible || hierarchyConfig.bounds.getWidth() <= 0 || hierarchyConfig.bounds.getHeight() <= 0) {
         return;
     }
@@ -718,7 +562,7 @@ void buildHierarchyAndInspectorConfig(sol::state& lua,
         }
     }
 
-    readSurfaceDescriptor(surfacesObj, "inspectorTool", inspectorConfig.visible, inspectorConfig.bounds);
+    editor_perf::readSurfaceDescriptor(surfacesObj, "inspectorTool", inspectorConfig.visible, inspectorConfig.bounds);
     if (inspectorConfig.visible && inspectorConfig.bounds.getWidth() > 0 && inspectorConfig.bounds.getHeight() > 0) {
         sol::protected_function getSelectionBounds = shell["getSelectionBounds"];
         if (getSelectionBounds.valid()) {
@@ -840,7 +684,7 @@ void buildScriptListConfig(sol::state& lua,
                            sol::table& shell,
                            sol::object surfacesObj,
                            ScriptListHostConfig& scriptListConfig) {
-    readSurfaceDescriptor(surfacesObj, "scriptList", scriptListConfig.visible, scriptListConfig.bounds);
+    editor_perf::readSurfaceDescriptor(surfacesObj, "scriptList", scriptListConfig.visible, scriptListConfig.bounds);
     if (!scriptListConfig.visible || scriptListConfig.bounds.getWidth() <= 0 || scriptListConfig.bounds.getHeight() <= 0) {
         return;
     }
@@ -903,7 +747,7 @@ void buildScriptInspectorConfig(sol::state& lua,
         return;
     }
 
-    readSurfaceDescriptor(surfacesObj, "scriptInspectorTool", scriptInspectorConfig.visible, scriptInspectorConfig.bounds);
+    editor_perf::readSurfaceDescriptor(surfacesObj, "scriptInspectorTool", scriptInspectorConfig.visible, scriptInspectorConfig.bounds);
     sol::object scriptInspectorObj = shell["scriptInspector"];
     if (!scriptInspectorConfig.visible
         || scriptInspectorConfig.bounds.getWidth() <= 0
@@ -1228,7 +1072,7 @@ void buildPerfOverlayConfig(LuaEngine& luaEngine,
 void applyMainEditorHostConfig(HostLayoutTraceState& trace,
                                ImGuiHost& host,
                                const HostConfig& config) {
-    logEditorHostLayout("mainScriptEditorHost", trace, config.visible,
+    editor_perf::logEditorHostLayout("mainScriptEditorHost", trace, config.visible,
                         config.visible ? config.bounds : juce::Rectangle<int>());
     if (config.visible) {
         host.configureDocument(config.file, config.text, config.syncToken, config.readOnly);
@@ -1238,7 +1082,7 @@ void applyMainEditorHostConfig(HostLayoutTraceState& trace,
 void applyHierarchyHostConfig(HostLayoutTraceState& trace,
                               ImGuiHierarchyHost& host,
                               const HierarchyHostConfig& config) {
-    logEditorHostLayout("hierarchyHost", trace, config.visible,
+    editor_perf::logEditorHostLayout("hierarchyHost", trace, config.visible,
                         config.visible ? config.bounds : juce::Rectangle<int>());
     if (config.visible) {
         host.configureRows(config.rows);
@@ -1248,7 +1092,7 @@ void applyHierarchyHostConfig(HostLayoutTraceState& trace,
 void applyScriptListHostConfig(HostLayoutTraceState& trace,
                                ImGuiScriptListHost& host,
                                const ScriptListHostConfig& config) {
-    logEditorHostLayout("scriptListHost", trace, config.visible,
+    editor_perf::logEditorHostLayout("scriptListHost", trace, config.visible,
                         config.visible ? config.bounds : juce::Rectangle<int>());
     if (config.visible) {
         host.configureRows(config.rows);
@@ -1258,7 +1102,7 @@ void applyScriptListHostConfig(HostLayoutTraceState& trace,
 void applyInspectorHostConfig(HostLayoutTraceState& trace,
                               ImGuiInspectorHost& host,
                               const InspectorHostConfig& config) {
-    logEditorHostLayout("inspectorHost", trace, config.visible,
+    editor_perf::logEditorHostLayout("inspectorHost", trace, config.visible,
                         config.visible ? config.bounds : juce::Rectangle<int>());
     if (config.visible) {
         host.configureData(config.selectionBounds, config.rows, config.activeProperty);
@@ -1268,7 +1112,7 @@ void applyInspectorHostConfig(HostLayoutTraceState& trace,
 void applyScriptInspectorHostConfig(HostLayoutTraceState& trace,
                                     ImGuiInspectorHost& host,
                                     const InspectorHostConfig& config) {
-    logEditorHostLayout("scriptInspectorHost", trace, config.visible,
+    editor_perf::logEditorHostLayout("scriptInspectorHost", trace, config.visible,
                         config.visible ? config.bounds : juce::Rectangle<int>());
     if (config.visible) {
         host.configureScriptData(config.scriptData);
@@ -1289,54 +1133,6 @@ RuntimeNode* BehaviorCoreEditor::getActiveRootRuntimeNode() {
         return rootRuntime_.get();
     }
     return rootCanvas.getRuntimeNode();
-}
-
-const char* BehaviorCoreEditor::runtimeRendererModeToString(RuntimeRendererMode mode) {
-    switch (mode) {
-        case RuntimeRendererMode::Canvas:
-            return "canvas";
-        case RuntimeRendererMode::ImGuiOverlay:
-            return "imgui-overlay";
-        case RuntimeRendererMode::ImGuiReplace:
-            return "imgui-replace";
-        case RuntimeRendererMode::ImGuiDirect:
-            return "imgui-direct";
-    }
-
-    return "canvas";
-}
-
-BehaviorCoreEditor::RuntimeRendererMode BehaviorCoreEditor::runtimeRendererModeFromString(
-    const std::string& value,
-    RuntimeRendererMode fallback) {
-    std::string normalized;
-    normalized.reserve(value.size());
-    for (char ch : value) {
-        if (ch >= 'A' && ch <= 'Z') {
-            normalized.push_back(static_cast<char>(ch - 'A' + 'a'));
-        } else {
-            normalized.push_back(ch == '_' ? '-' : ch);
-        }
-    }
-
-    if (normalized.empty()) {
-        return fallback;
-    }
-    if (normalized == "0" || normalized == "off" || normalized == "false" || normalized == "canvas") {
-        return RuntimeRendererMode::Canvas;
-    }
-    if (normalized == "1" || normalized == "on" || normalized == "true" || normalized == "imgui"
-        || normalized == "overlay" || normalized == "imgui-overlay") {
-        return RuntimeRendererMode::ImGuiOverlay;
-    }
-    if (normalized == "replace" || normalized == "full" || normalized == "imgui-replace"
-        || normalized == "imgui-full") {
-        return RuntimeRendererMode::ImGuiReplace;
-    }
-    if (normalized == "direct" || normalized == "imgui-direct") {
-        return RuntimeRendererMode::ImGuiDirect;
-    }
-    return fallback;
 }
 
 void BehaviorCoreEditor::setRuntimeRendererMode(RuntimeRendererMode mode, bool logChange) {
@@ -1373,7 +1169,7 @@ void BehaviorCoreEditor::setRuntimeRendererMode(RuntimeRendererMode mode, bool l
     if (logChange) {
         std::fprintf(stderr,
                      "BehaviorCoreEditor: UI renderer mode -> %s\n",
-                     runtimeRendererModeToString(runtimeRendererMode_));
+                     editor_renderer::runtimeRendererModeToString(runtimeRendererMode_));
     }
 }
 
@@ -1441,7 +1237,7 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
       processorRef(ownerProcessor),
       rootMode_(rootMode) {
     if (const char* envRenderer = std::getenv("MANIFOLD_RENDERER")) {
-        const auto envMode = runtimeRendererModeFromString(envRenderer, RuntimeRendererMode::ImGuiDirect);
+        const auto envMode = editor_renderer::runtimeRendererModeFromString(envRenderer, RuntimeRendererMode::ImGuiDirect);
         if (envMode == RuntimeRendererMode::Canvas || envMode == RuntimeRendererMode::ImGuiOverlay || envMode == RuntimeRendererMode::ImGuiReplace) {
             rootMode_ = RootMode::Canvas;
         } else {
@@ -1637,7 +1433,7 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
     processorRef.getControlServer().setLuaEngine(&luaEngine);
 
     if (const char* envRenderer = std::getenv("MANIFOLD_RENDERER")) {
-        runtimeRendererMode_ = runtimeRendererModeFromString(envRenderer,
+        runtimeRendererMode_ = editor_renderer::runtimeRendererModeFromString(envRenderer,
                                                              rootMode_ == RootMode::RuntimeNode
                                                                  ? RuntimeRendererMode::ImGuiDirect
                                                                  : RuntimeRendererMode::Canvas);
@@ -1645,15 +1441,15 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
             std::fprintf(stderr,
                          "BehaviorCoreEditor: renderer enabled via MANIFOLD_RENDERER=%s (%s)\n",
                          envRenderer,
-                         runtimeRendererModeToString(runtimeRendererMode_));
+                         editor_renderer::runtimeRendererModeToString(runtimeRendererMode_));
         }
     } else if (const char* envMode = std::getenv("MANIFOLD_RUNTIME_NODE_DEBUG")) {
-        runtimeRendererMode_ = runtimeRendererModeFromString(envMode, RuntimeRendererMode::ImGuiOverlay);
+        runtimeRendererMode_ = editor_renderer::runtimeRendererModeFromString(envMode, RuntimeRendererMode::ImGuiOverlay);
         if (runtimeRendererMode_ != RuntimeRendererMode::Canvas) {
             std::fprintf(stderr,
                          "BehaviorCoreEditor: RuntimeNode renderer enabled via MANIFOLD_RUNTIME_NODE_DEBUG=%s (%s)\n",
                          envMode,
-                         runtimeRendererModeToString(runtimeRendererMode_));
+                         editor_renderer::runtimeRendererModeToString(runtimeRendererMode_));
         }
     }
     if (rootMode_ == RootMode::RuntimeNode
@@ -1840,7 +1636,7 @@ void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
     auto count = deferredVisibilityChanges.size();
     deferredVisibilityChanges.clear();
     std::string extra = std::to_string(count) + " hosts";
-    logEditorPerf("applyDeferredVisibilityChanges", applyStart, extra.c_str());
+    editor_perf::logEditorPerf("applyDeferredVisibilityChanges", applyStart, extra.c_str());
 }
 
 void BehaviorCoreEditor::queueHostVisibilityChange(juce::Component& host, bool visible,
@@ -1885,7 +1681,7 @@ void BehaviorCoreEditor::timerCallback() {
 
     auto pendingRendererMode = processorRef.getAndClearPendingUIRendererMode();
     if (!pendingRendererMode.empty()) {
-        setRuntimeRendererMode(runtimeRendererModeFromString(pendingRendererMode, runtimeRendererMode_), true);
+        setRuntimeRendererMode(editor_renderer::runtimeRendererModeFromString(pendingRendererMode, runtimeRendererMode_), true);
     }
 
     // Handle screenshot request
@@ -2166,7 +1962,7 @@ void BehaviorCoreEditor::timerCallback() {
             }
 
             if (perfOverlayHost.isVisible() || runtimeNodeDebugHost.isVisible()) {
-                const auto mem = readProcessMemorySnapshot();
+                const auto mem = editor_perf::readProcessMemorySnapshot();
                 luaEngine.frameTimings.processPssBytes.store(mem.pssBytes, std::memory_order_relaxed);
                 luaEngine.frameTimings.privateDirtyBytes.store(mem.privateDirtyBytes, std::memory_order_relaxed);
 
@@ -2219,7 +2015,7 @@ void BehaviorCoreEditor::timerCallback() {
             luaEngine.frameTimings.dspHostCount.store(1 + static_cast<int64_t>(processorRef.getManagedDspHostCount()), std::memory_order_relaxed);
             luaEngine.frameTimings.dspScriptSourceBytes.store(static_cast<int64_t>(processorRef.getPrimaryDspScriptSizeBytes()), std::memory_order_relaxed);
 
-            const auto alloc = readGlibcAllocatorSnapshot();
+            const auto alloc = editor_perf::readGlibcAllocatorSnapshot();
             luaEngine.frameTimings.glibcHeapUsedBytes.store(alloc.heapUsedBytes, std::memory_order_relaxed);
             luaEngine.frameTimings.glibcArenaBytes.store(alloc.arenaBytes, std::memory_order_relaxed);
             luaEngine.frameTimings.glibcMmapBytes.store(alloc.mmapBytes, std::memory_order_relaxed);
@@ -2332,14 +2128,14 @@ void BehaviorCoreEditor::paint(juce::Graphics& g) {
 
 void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
     const auto totalStart = PerfClock::now();
-    static HostLayoutTraceState mainScriptHostTrace;
-    static HostLayoutTraceState scriptListHostTrace;
-    static HostLayoutTraceState hierarchyHostTrace;
-    static HostLayoutTraceState inspectorHostTrace;
-    static HostLayoutTraceState scriptInspectorHostTrace;
+    static editor_perf::HostLayoutTraceState mainScriptHostTrace;
+    static editor_perf::HostLayoutTraceState scriptListHostTrace;
+    static editor_perf::HostLayoutTraceState hierarchyHostTrace;
+    static editor_perf::HostLayoutTraceState inspectorHostTrace;
+    static editor_perf::HostLayoutTraceState scriptInspectorHostTrace;
 
     const auto mainStatsBefore = mainScriptEditorHost.getStatsSnapshot();
-    const std::string rendererModeLabel = runtimeRendererModeToString(runtimeRendererMode_);
+    const std::string rendererModeLabel = editor_renderer::runtimeRendererModeToString(runtimeRendererMode_);
     const auto mainIdentityBefore = mainScriptEditorHost.getDocumentIdentity();
     const auto mainTextBefore = mainScriptEditorHost.getCurrentText();
     const auto mainActions = mainScriptEditorHost.consumeActionRequests();
@@ -2392,7 +2188,7 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
                                rendererModeLabel,
                                perfOverlayConfig);
     });
-    logEditorPerf("syncImGuiHostsFromLuaShell.luaState", luaStateStart);
+    editor_perf::logEditorPerf("syncImGuiHostsFromLuaShell.luaState", luaStateStart);
 
     const auto hostApplyStart = PerfClock::now();
     applyMainEditorHostConfig(mainScriptHostTrace, mainScriptEditorHost, mainConfig);
@@ -2415,15 +2211,15 @@ void BehaviorCoreEditor::syncImGuiHostsFromLuaShell() {
 
     luaEngine.frameTimings.shellMainEditorTextBytes.store(static_cast<int64_t>(mainConfig.text.size()), std::memory_order_relaxed);
     luaEngine.frameTimings.shellScriptListRowCount.store(static_cast<int64_t>(scriptListConfig.rows.size()), std::memory_order_relaxed);
-    luaEngine.frameTimings.shellScriptListBytes.store(estimateScriptListRowsBytes(scriptListConfig.rows), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellScriptListBytes.store(editor_perf::estimateScriptListRowsBytes(scriptListConfig.rows), std::memory_order_relaxed);
     luaEngine.frameTimings.shellHierarchyRowCount.store(static_cast<int64_t>(hierarchyConfig.rows.size()), std::memory_order_relaxed);
-    luaEngine.frameTimings.shellHierarchyBytes.store(estimateHierarchyRowsBytes(hierarchyConfig.rows), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellHierarchyBytes.store(editor_perf::estimateHierarchyRowsBytes(hierarchyConfig.rows), std::memory_order_relaxed);
     luaEngine.frameTimings.shellInspectorRowCount.store(static_cast<int64_t>(inspectorConfig.rows.size()), std::memory_order_relaxed);
-    luaEngine.frameTimings.shellInspectorBytes.store(estimateInspectorRowsBytes(inspectorConfig.rows, inspectorConfig.activeProperty), std::memory_order_relaxed);
-    luaEngine.frameTimings.shellScriptInspectorBytes.store(estimateScriptInspectorBytes(scriptInspectorConfig.scriptData), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellInspectorBytes.store(editor_perf::estimateInspectorRowsBytes(inspectorConfig.rows, inspectorConfig.activeProperty), std::memory_order_relaxed);
+    luaEngine.frameTimings.shellScriptInspectorBytes.store(editor_perf::estimateScriptInspectorBytes(scriptInspectorConfig.scriptData), std::memory_order_relaxed);
 
-    logEditorPerf("syncImGuiHostsFromLuaShell.applyHosts", hostApplyStart);
-    logEditorPerf("syncImGuiHostsFromLuaShell.total", totalStart);
+    editor_perf::logEditorPerf("syncImGuiHostsFromLuaShell.applyHosts", hostApplyStart);
+    editor_perf::logEditorPerf("syncImGuiHostsFromLuaShell.total", totalStart);
 }
 
 void BehaviorCoreEditor::resized() {
@@ -2534,7 +2330,7 @@ std::string BehaviorCoreEditor::exportStateContract() const {
     juce::DynamicObject::Ptr root = new juce::DynamicObject();
     root->setProperty("contractVersion", 1);
     root->setProperty("rootMode", rootMode_ == RootMode::RuntimeNode ? "RuntimeNode" : "Canvas");
-    root->setProperty("rendererMode", runtimeRendererModeToString(runtimeRendererMode_));
+    root->setProperty("rendererMode", editor_renderer::runtimeRendererModeToString(runtimeRendererMode_));
     root->setProperty("usingLuaUi", usingLuaUi);
     root->setProperty("exportPluginUi", exportPluginUi_);
     root->setProperty("directHostNeedsInitialFocus", directHostNeedsInitialFocus_);
