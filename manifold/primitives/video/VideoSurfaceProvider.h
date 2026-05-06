@@ -1,7 +1,10 @@
 #pragma once
 
 #include "../ui/CustomSurfaceProvider.h"
+#include "VideoCaptureManager.h"
+
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -18,7 +21,10 @@ namespace manifold::video {
  */
 class VideoSurfaceProvider : public CustomSurfaceProvider {
 public:
+    using FrameSupplier = std::function<FrameData()>;
+
     VideoSurfaceProvider();
+    explicit VideoSurfaceProvider(FrameSupplier frameSupplier);
     ~VideoSurfaceProvider() override;
 
     // CustomSurfaceProvider interface

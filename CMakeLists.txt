@@ -1225,6 +1225,21 @@ add_executable(MLPipelineContractHarness manifold/headless/MLPipelineContractHar
 
 add_executable(MLMaskSurfaceSupportContractHarness manifold/headless/MLMaskSurfaceSupportContractHarness.cpp)
 
+add_executable(VideoSurfaceProviderContractHarness manifold/headless/VideoSurfaceProviderContractHarness.cpp)
+
+manifold_target_include_project_and_ableton(VideoSurfaceProviderContractHarness)
+
+target_link_libraries(VideoSurfaceProviderContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -2424,6 +2439,13 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/ml_mask_surface_support_contract_golden.json)
 set_tests_properties(manifold_ml_mask_surface_support_contract PROPERTIES
     LABELS "manifold;ml;surface;support;contract")
+
+add_test(
+    NAME manifold_video_surface_provider_contract
+    COMMAND $<TARGET_FILE:VideoSurfaceProviderContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/video_surface_provider_contract_golden.json)
+set_tests_properties(manifold_video_surface_provider_contract PROPERTIES
+    LABELS "manifold;video;surface;provider;contract")
 
 add_test(
     NAME manifold_shader_registry_contract

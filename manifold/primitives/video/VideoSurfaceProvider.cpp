@@ -79,6 +79,7 @@ struct VideoSurfaceProvider::Impl {
         std::string sourceSignature;
     };
 
+    FrameSupplier frameSupplier;
     std::unordered_map<uint64_t, TextureState> states;
     std::unordered_map<uint64_t, uint64_t> latestStateKeyByStableId;
 
@@ -174,7 +175,12 @@ struct VideoSurfaceProvider::Impl {
 };
 
 VideoSurfaceProvider::VideoSurfaceProvider()
+    : VideoSurfaceProvider([]() { return VideoCaptureManager::instance().getLatestFrameCopy(); }) {
+}
+
+VideoSurfaceProvider::VideoSurfaceProvider(FrameSupplier frameSupplier)
     : pImpl_(std::make_unique<Impl>()) {
+    pImpl_->frameSupplier = std::move(frameSupplier);
 }
 
 VideoSurfaceProvider::~VideoSurfaceProvider() {
@@ -221,7 +227,7 @@ std::uintptr_t VideoSurfaceProvider::prepareTexture(const RuntimeNode& node,
             : sampler->getNormalizedPosition();
         frame = sampler->getFrameAtNormalizedPosition(position);
     } else {
-        frame = VideoCaptureManager::instance().getLatestFrameCopy();
+        frame = pImpl_->frameSupplier ? pImpl_->frameSupplier() : FrameData{};
     }
 
     if (!frame.valid()) {
