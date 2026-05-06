@@ -1,0 +1,43 @@
+{
+  "builtins": {
+    "checkerParam0Default": 12.0,
+    "checkerParam0Id": "scale",
+    "checkerParam1Id": "softness",
+    "checkerParam1Max": 0.449999988079071,
+    "checkerParamCount": 2,
+    "count": 4,
+    "firstId": "checker",
+    "hasChecker": true,
+    "hasNoise": true,
+    "lastId": "plasma"
+  },
+  "contractVersion": 1,
+  "fragmentShader": {
+    "exists": true,
+    "hasFragColor": true,
+    "hasScaleUniform": true,
+    "hasSoftnessUniform": true,
+    "hasVersion": true,
+    "missingEmpty": true
+  },
+  "runtimeLoad": {
+    "found": true,
+    "loaded": true,
+    "paramCount": 2,
+    "shaderHasBiasUniform": true,
+    "shaderHasGainUniform": true,
+    "shaderHasMousePreamble": true
+  },
+  "sanitizeChecker": {
+    "count": 2,
+    "scale": 80.0,
+    "softness": 0.0,
+    "unknownEmpty": true
+  },
+  "sanitizeRuntime": {
+    "bias": 1.0,
+    "count": 2,
+    "gain": 0.0
+  }
+}
+

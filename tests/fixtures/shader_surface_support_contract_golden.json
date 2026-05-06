@@ -1,0 +1,71 @@
+{
+  "blendModes": {
+    "blendAdd": 1,
+    "blendDifference": 4,
+    "blendMultiply": 2,
+    "blendNumeric": 7,
+    "blendScreen": 3,
+    "blendUnknown": 0
+  },
+  "colorParsing": {
+    "arrayA": 0.400000005960464,
+    "arrayB": 0.300000011920929,
+    "arrayG": 0.200000002980232,
+    "arrayR": 0.100000001490116,
+    "fallbackA": 0.800000011920929,
+    "fallbackR": 0.5,
+    "objectA": 1.0,
+    "objectB": 0.699999988079071,
+    "objectG": 0.800000011920929,
+    "objectR": 0.899999976158142
+  },
+  "contractVersion": 1,
+  "descriptorSignature": {
+    "containsPass0BlendOp": true,
+    "containsPass0Depth": true,
+    "containsPass1BlendOp": true,
+    "containsPass1Chain": true,
+    "containsPassCount": true,
+    "containsSourceVertex": true,
+    "containsSurfaceType": true,
+    "signatureSize": 371
+  },
+  "numericHelpers": {
+    "doubleBoolFalse": 0.0,
+    "doubleBoolTrue": 1.0,
+    "doubleInt": 9.0,
+    "doubleVoidFallback": 3.5,
+    "numberBool": true,
+    "numberDouble": true,
+    "numberInt": true,
+    "numberString": false
+  },
+  "passParsing": {
+    "blendMode": 2,
+    "blendOpId": "normal",
+    "chain": true,
+    "clearA": 0.5,
+    "composite": true,
+    "depth": true,
+    "error": "",
+    "fragment": "fs_main",
+    "inputUniform": "uInput",
+    "missingError": "shader pass missing source",
+    "missingOk": false,
+    "ok": true,
+    "opacityClamped": 1.0,
+    "prevUniform": "uPrev",
+    "vertex": "vs_main"
+  },
+  "sourceParsing": {
+    "clearA": 1.0,
+    "clearR": 0.25,
+    "error": "",
+    "fragment": "src_fs",
+    "missingError": "generator source missing shader source",
+    "missingOk": false,
+    "ok": true,
+    "vertex": "src_vs"
+  }
+}
+

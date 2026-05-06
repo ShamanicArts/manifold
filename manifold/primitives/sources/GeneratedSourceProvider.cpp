@@ -1,5 +1,6 @@
 #include "GeneratedSourceProvider.h"
 
+#include "GeneratedSourceSupport.h"
 #include "../shaders/ShaderEffectRegistry.h"
 #include "../shaders/UniformContract.h"
 
@@ -18,62 +19,32 @@ using namespace juce::gl;
 namespace manifold::sources {
 namespace {
 
-bool varIsNumber(const juce::var& value) {
-    return value.isInt() || value.isInt64() || value.isDouble() || value.isBool();
-}
-
-double varToDoubleValue(const juce::var& value, double fallback = 0.0) {
-    if (value.isVoid() || value.isUndefined()) {
-        return fallback;
-    }
-    if (value.isBool()) {
-        return static_cast<bool>(value) ? 1.0 : 0.0;
-    }
-    return static_cast<double>(value);
-}
-
-std::array<float, 4> readColorVec4(const juce::var& value,
-                                   std::array<float, 4> fallback = { 0.0f, 0.0f, 0.0f, 1.0f }) {
-    if (auto* arr = value.getArray(); arr != nullptr) {
-        if (!arr->isEmpty()) fallback[0] = static_cast<float>(varToDoubleValue(arr->getReference(0), fallback[0]));
-        if (arr->size() > 1) fallback[1] = static_cast<float>(varToDoubleValue(arr->getReference(1), fallback[1]));
-        if (arr->size() > 2) fallback[2] = static_cast<float>(varToDoubleValue(arr->getReference(2), fallback[2]));
-        if (arr->size() > 3) fallback[3] = static_cast<float>(varToDoubleValue(arr->getReference(3), fallback[3]));
-        return fallback;
-    }
-    if (auto* obj = value.getDynamicObject(); obj != nullptr) {
-        fallback[0] = static_cast<float>(varToDoubleValue(obj->getProperty("r"), fallback[0]));
-        fallback[1] = static_cast<float>(varToDoubleValue(obj->getProperty("g"), fallback[1]));
-        fallback[2] = static_cast<float>(varToDoubleValue(obj->getProperty("b"), fallback[2]));
-        fallback[3] = static_cast<float>(varToDoubleValue(obj->getProperty("a"), fallback[3]));
-    }
-    return fallback;
-}
+namespace source_support = manifold::sources::generated_source_support;
 
 void applyUniformValue(int location, const juce::var& value) {
     if (location < 0) {
         return;
     }
-    if (varIsNumber(value)) {
-        glUniform1f(location, static_cast<float>(varToDoubleValue(value)));
+    if (source_support::varIsNumber(value)) {
+        glUniform1f(location, static_cast<float>(source_support::varToDoubleValue(value)));
         return;
     }
     if (auto* arr = value.getArray(); arr != nullptr) {
         if (arr->size() == 2) {
             glUniform2f(location,
-                        static_cast<float>(varToDoubleValue(arr->getReference(0))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(1))));
+                        static_cast<float>(source_support::varToDoubleValue(arr->getReference(0))),
+                        static_cast<float>(source_support::varToDoubleValue(arr->getReference(1))));
         } else if (arr->size() == 3) {
             glUniform3f(location,
-                        static_cast<float>(varToDoubleValue(arr->getReference(0))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(1))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(2))));
+                        static_cast<float>(source_support::varToDoubleValue(arr->getReference(0))),
+                        static_cast<float>(source_support::varToDoubleValue(arr->getReference(1))),
+                        static_cast<float>(source_support::varToDoubleValue(arr->getReference(2))));
         } else if (arr->size() >= 4) {
             glUniform4f(location,
-                        static_cast<float>(varToDoubleValue(arr->getReference(0))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(1))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(2))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(3))));
+                        static_cast<float>(source_support::varToDoubleValue(arr->getReference(0))),
+                        static_cast<float>(source_support::varToDoubleValue(arr->getReference(1))),
+                        static_cast<float>(source_support::varToDoubleValue(arr->getReference(2))),
+                        static_cast<float>(source_support::varToDoubleValue(arr->getReference(3))));
         }
     }
 }
@@ -225,50 +196,6 @@ bool createTarget(SourceResources& source, int width, int height, std::string& e
     return true;
 }
 
-bool readSourceDescriptor(const RuntimeNode& node,
-                          std::string& signatureOut,
-                          std::string& vertexSourceOut,
-                          std::string& fragmentSourceOut,
-                          juce::var& uniformsOut,
-                          std::array<float, 4>& clearColorOut) {
-    const auto payload = node.getCustomRenderPayload();
-    auto* payloadObj = payload.getDynamicObject();
-    if (payloadObj == nullptr) {
-        return false;
-    }
-
-    juce::var sourceVar;
-    if (node.getCustomSurfaceType() == "generated_source") {
-        sourceVar = payload;
-    } else if (node.getCustomSurfaceType() == "gpu_shader") {
-        const auto sourceType = payloadObj->getProperty("sourceType").toString().toStdString();
-        if (sourceType != "generated_source") {
-            return false;
-        }
-        sourceVar = payloadObj->getProperty("sourceShader");
-    } else {
-        return false;
-    }
-
-    auto* sourceObj = sourceVar.getDynamicObject();
-    if (sourceObj == nullptr) {
-        return false;
-    }
-
-    vertexSourceOut = sourceObj->getProperty("vertexShader").toString().toStdString();
-    fragmentSourceOut = sourceObj->getProperty("fragmentShader").toString().toStdString();
-    uniformsOut = sourceObj->getProperty("uniforms").clone();
-    clearColorOut = readColorVec4(sourceObj->getProperty("clearColor"), { 0.0f, 0.0f, 0.0f, 1.0f });
-    if (vertexSourceOut.empty() || fragmentSourceOut.empty()) {
-        return false;
-    }
-
-    signatureOut = vertexSourceOut;
-    signatureOut += "\n--frag--\n";
-    signatureOut += fragmentSourceOut;
-    return true;
-}
-
 } // namespace
 
 struct GeneratedSourceProvider::Impl {
@@ -362,12 +289,14 @@ std::uintptr_t GeneratedSourceProvider::prepareTexture(const RuntimeNode& node,
     }
 
     auto& impl = *pImpl_;
-    std::string signature;
-    std::string vertexSource;
-    std::string fragmentSource;
-    juce::var uniforms;
-    std::array<float, 4> clearColor { 0.0f, 0.0f, 0.0f, 1.0f };
-    if (!readSourceDescriptor(node, signature, vertexSource, fragmentSource, uniforms, clearColor)) {
+    source_support::ParsedSourceDescriptor descriptor;
+    std::string error;
+    if (!source_support::parseSourceDescriptor(node.getCustomSurfaceType(),
+                                               node.getCustomRenderPayload(),
+                                               descriptor,
+                                               error)) {
+        std::fprintf(stderr, "[GeneratedSourceProvider] descriptor failed: %s\n", error.c_str());
+        std::fflush(stderr);
         return 0;
     }
 
@@ -376,22 +305,22 @@ std::uintptr_t GeneratedSourceProvider::prepareTexture(const RuntimeNode& node,
         state = std::make_unique<SourceResources>();
     }
 
-    if (state->signature != signature) {
+    if (state->signature != descriptor.signature) {
         releaseSourceResources(*state);
-        state->signature = signature;
-        state->vertexSource = vertexSource;
-        state->fragmentSource = fragmentSource;
-        state->uniforms = uniforms.clone();
-        state->clearColor = clearColor;
-        std::string error;
-        if (!buildProgram(*state, error)) {
-            std::fprintf(stderr, "[GeneratedSourceProvider] build failed: %s\n", error.c_str());
+        state->signature = descriptor.signature;
+        state->vertexSource = descriptor.vertexSource;
+        state->fragmentSource = descriptor.fragmentSource;
+        state->uniforms = descriptor.uniforms.clone();
+        state->clearColor = descriptor.clearColor;
+        std::string buildError;
+        if (!buildProgram(*state, buildError)) {
+            std::fprintf(stderr, "[GeneratedSourceProvider] build failed: %s\n", buildError.c_str());
             std::fflush(stderr);
             return 0;
         }
     } else {
-        state->uniforms = uniforms.clone();
-        state->clearColor = clearColor;
+        state->uniforms = descriptor.uniforms.clone();
+        state->clearColor = descriptor.clearColor;
     }
 
     if (state->width != width || state->height != height || state->fbo == 0 || state->colorTex == 0) {

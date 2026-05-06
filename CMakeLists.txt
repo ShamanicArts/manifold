@@ -1139,6 +1139,10 @@ add_executable(LuaEngineContractHarness manifold/headless/LuaEngineContractHarne
 
 add_executable(ShaderRegistryContractHarness manifold/headless/ShaderRegistryContractHarness.cpp)
 
+add_executable(ShaderSurfaceSupportContractHarness manifold/headless/ShaderSurfaceSupportContractHarness.cpp)
+
+add_executable(TextureSourceRegistryContractHarness manifold/headless/TextureSourceRegistryContractHarness.cpp)
+
 add_executable(OSCEndpointRegistryContractHarness manifold/headless/OSCEndpointRegistryContractHarness.cpp)
 
 add_executable(OSCSettingsPersistenceContractHarness manifold/headless/OSCSettingsPersistenceContractHarness.cpp)
@@ -1435,6 +1439,18 @@ target_link_libraries(ShaderRegistryContractHarness
         juce::juce_audio_utils
         juce::juce_gui_extra
         highway)
+
+manifold_target_include_project_and_ableton(ShaderSurfaceSupportContractHarness)
+target_link_libraries(ShaderSurfaceSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core)
+
+manifold_target_include_project_and_ableton(TextureSourceRegistryContractHarness)
+target_link_libraries(TextureSourceRegistryContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core)
 
 manifold_target_include_project_and_ableton(OSCEndpointRegistryContractHarness)
 target_link_libraries(OSCEndpointRegistryContractHarness
@@ -2075,6 +2091,20 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/export_support_contract_golden.json)
 set_tests_properties(manifold_export_support_contract PROPERTIES
     LABELS "manifold;export;contract")
+
+add_test(
+    NAME manifold_shader_surface_support_contract
+    COMMAND $<TARGET_FILE:ShaderSurfaceSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shader_surface_support_contract_golden.json)
+set_tests_properties(manifold_shader_surface_support_contract PROPERTIES
+    LABELS "manifold;shader;support;contract")
+
+add_test(
+    NAME manifold_texture_source_registry_contract
+    COMMAND $<TARGET_FILE:TextureSourceRegistryContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/texture_source_registry_contract_golden.json)
+set_tests_properties(manifold_texture_source_registry_contract PROPERTIES
+    LABELS "manifold;source;registry;contract")
 
 add_test(
     NAME manifold_headless_oscquery_contract
