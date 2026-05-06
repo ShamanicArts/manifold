@@ -196,4 +196,31 @@ Flat list of observations, bugs, ideas, and stray thoughts. Append to the bottom
   yet implemented). Unexpected behavior / data loss risk. @bug @ui @grid 
   @navigation @overflow
 
+- [2026-04-21] **ARCHITECTURE** — Renderer is structurally inseparable from JUCE.
+  All 7 ImGui host classes (`ImGuiDirectHost`, `ImGuiHost`, `ImGuiHierarchyHost`,
+  `ImGuiInspectorHost`, `ImGuiPerfOverlayHost`, `ImGuiScriptListHost`,
+  `ImGuiRuntimeNodeHost`) and `Canvas` inherit from `juce::Component` and
+  `juce::OpenGLRenderer`, embedding `juce::OpenGLContext` directly. GL lifecycle,
+  input events, and swap buffers are all JUCE-hardcoded. This blocks headless EGL,
+  standalone GLFW/SDL tooling, and any non-JUCE windowing. Need to extract a
+  JUCE-agnostic renderer core (scene graph → ImGui draw commands already exists
+  in `RuntimeNodeRenderer`) and provide adapter interfaces for GL context,
+  input source, and render target. JUCE and non-JUCE drivers can then feed the
+  same core. `CustomSurfaceProvider` already proves the pattern works.
+  **INVESTIGATED BY KIMI (Agent)** — See report at
+  `agent-docs/reports/260421_renderer_juce_decoupling_analysis.md`
+  @agent @investigate @architecture @renderer @decoupling @opengl @juce
+
+- [2026-04-21] **AGENT DOCS** — Comprehensive document audit from March is stale
+  and misses all April work (swarm-0 completion, DSP decomposition, shader
+  decomposition, BÄPP port, rack module exports, etc.). Needs rewrite or
+  replacement to accurately reflect current active/completed work.
+  **Moved to backlog:** `agent-docs/backlog/DOCUMENT_AUDIT_MASTER_ANALYSIS.md`
+  @agent @docs @backlog @audit
+
+- [2026-04-21] **BUG** — ADSR envelope node (C++ `ADSREnvelopeNode`) appears to
+  have silent failure or connection issues in live DSP paths. the node compiled but produced no audio; resolver entry was
+  missing from `DSPHostObjectResolver.cpp`. After adding the resolver entry,
+  the node still didn't integrate properly. Working projects (Main, Standalone_Sample)
+  appear to implement envelopes in Lua rather than using `ADSREnvelopeNode` directly.
 
