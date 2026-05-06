@@ -125,6 +125,9 @@ end
 
 local refreshWaveform
 local updatePreviewSurface
+local updateGridThumbnails
+local resetPanelDocks
+local syncShaderSourceParams
 local layoutOutputRow
 
 local POLY_PATHS, SLICE_PATHS = {}, {}
@@ -549,8 +552,10 @@ local function ensurePoseOverlay(ctx)
       ctx._poseOverlay = o
     end
   end
-  if ctx._poseOverlay and vp.node.getWidth and vp.node.getHeight then
-    ctx._poseOverlay:setBounds(0, 0, math.max(1, math.floor(vp.node:getWidth() or 1)), math.max(1, math.floor(vp.node:getHeight() or 1)))
+  if ctx._poseOverlay then
+    local pw = ctx._poseVpW or math.max(1, math.floor(vp.node:getWidth() or 1))
+    local ph = ctx._poseVpH or math.max(1, math.floor(vp.node:getHeight() or 1))
+    ctx._poseOverlay:setBounds(0, 0, pw, ph)
   end
 end
 
@@ -661,7 +666,62 @@ local function applyMapping(ctx)
   end
 end
 
-local function updateShader(ctx)
+local function ensureShaderSourceNode(ctx)
+  if ctx._shaderSourceNode and ctx._shaderSourceNode.node then return ctx._shaderSourceNode end
+  local rootNode = ctx.root and ctx.root.node
+  if not (rootNode and rootNode.createChild) then return nil end
+  local node = rootNode:createChild("avsd_shader_source")
+  if not node then return nil end
+  local entry = { id = "__avsd_shader_source", node = node }
+  if node.setNodeId then node:setNodeId(entry.id) end
+  if node.setBounds then node:setBounds(0, 0, 64, 64) end
+  if node.setVisible then node:setVisible(false) end
+  ctx._shaderSourceNode = entry
+  return entry
+end
+
+local function buildShaderSourceDescriptor(ctx)
+  local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
+  local entry = ensureShaderSourceNode(ctx)
+  if entry and entry.node then
+    if choice and choice.kind == "generator" and shaders and shaders.buildPipeline then
+      local sourceParams = {}
+      local specParams = choice.params or {}
+      for pi = 1, #specParams do
+        local pspec = specParams[pi]
+        local normalized = ctx.shaderSourceParams and ctx.shaderSourceParams[pspec.id] or tonumber(pspec.default) or 0
+        local pmin = tonumber(pspec.min) or 0
+        local pmax = tonumber(pspec.max) or 1
+        sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
+      end
+      local ok, payload = pcall(shaders.buildPipeline, {}, "cover", { type = "generator", sourceId = choice.id, params = sourceParams })
+      if ok and payload then
+        entry.node:setCustomSurface("gpu_shader", payload)
+        return { type = "node", sourceId = entry.id }, choice
+      end
+    else
+      entry.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
+      return { type = "node", sourceId = entry.id }, choice
+    end
+  end
+
+  local source = { type = "webcam" }
+  if choice and choice.kind == "generator" then
+    local sourceParams = {}
+    local specParams = choice.params or {}
+    for pi = 1, #specParams do
+      local pspec = specParams[pi]
+      local normalized = ctx.shaderSourceParams and ctx.shaderSourceParams[pspec.id] or tonumber(pspec.default) or 0
+      local pmin = tonumber(pspec.min) or 0
+      local pmax = tonumber(pspec.max) or 1
+      sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
+    end
+    source = { type = "generator", sourceId = choice.id, params = sourceParams }
+  end
+  return source, choice
+end
+
+function updateShader(ctx)
   if not (ctx.widgets.outputViewport and ctx.widgets.outputViewport.node) then return end
   local layers = {}
   for i = 1, 8 do
@@ -681,23 +741,24 @@ local function updateShader(ctx)
       layers[#layers + 1] = { enabled = true, effectId = effect.id, params = params }
     end
   end
-  local source = { type = "webcam" }
-  local choice = ctx.sources[ctx.shader.sourceIndex]
-  if choice and choice.kind == "generator" then
-    local sourceParams = {}
-    local specParams = choice.params or {}
-    for pi = 1, #specParams do
-      local pspec = specParams[pi]
-      local normalized = ctx.shaderSourceParams and ctx.shaderSourceParams[pspec.id] or tonumber(pspec.default) or 0
-      local pmin = tonumber(pspec.min) or 0
-      local pmax = tonumber(pspec.max) or 1
-      sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
-    end
-    source = { type = "generator", sourceId = choice.id, params = sourceParams }
-  end
+  local source, choice = buildShaderSourceDescriptor(ctx)
   if shaders and shaders.buildPipeline then
     local ok, payload = pcall(shaders.buildPipeline, layers, "cover", source)
-    if ok and payload then ctx.widgets.outputViewport.node:setCustomSurface("gpu_shader", payload) end
+    if ok and payload then
+      -- Build a signature to detect actual payload changes
+      local sig = tostring(ctx.shader.sourceIndex) .. "|" .. tostring(#layers)
+      for _, l in ipairs(layers) do
+        sig = sig .. "|" .. tostring(l.effectId)
+        for k, v in pairs(l.params or {}) do
+          sig = sig .. "|" .. tostring(k) .. "=" .. tostring(math.floor((tonumber(v) or 0) * 10000 + 0.5))
+        end
+      end
+      if sig ~= ctx._lastShaderSig then
+        ctx.widgets.outputViewport.node:setCustomSurface("gpu_shader", payload)
+        ctx._lastShaderSig = sig
+        updateGridThumbnails(ctx)
+      end
+    end
   end
   setText(ctx.widgets.shaderStatus, string.format("Shader: %s %s", choice and choice.name or "Webcam", ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1] and ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1].name or "--"))
 end
@@ -969,7 +1030,7 @@ local function syncParamsFromHost(ctx)
     if en ~= L.enabled or eff ~= L.effectIndex then L.enabled = en; L.effectIndex = eff; changedShader = true end
     for p = 1, 9 do
       local v = clamp(readParam(NS .. "/shader/layer/" .. l .. "/param/" .. p, L.params[p] or 0.5), 0, 1)
-      if v ~= L.params[p] then L.params[p] = v; changedShader = true end
+      if math.abs(v - (L.params[p] or 0)) > 0.0001 then L.params[p] = v; changedShader = true end
     end
   end
   if changedShader then updateShader(ctx); syncShaderEditor(ctx) end
@@ -1136,7 +1197,7 @@ local function layoutSliceEmbed(ctx, w, h)
   setBounds(ctx.widgets.sliceHelp, pad, 50, math.max(1, w - pad * 2), math.max(42, h - 54))
 end
 
-local function syncShaderSourceParams(ctx)
+syncShaderSourceParams = function(ctx)
   local choice = ctx.sources[ctx.shader.sourceIndex]
   local isGen = choice and choice.kind == "generator"
   ctx.shaderSourceParams = ctx.shaderSourceParams or {}
@@ -1297,7 +1358,259 @@ local function layoutStageEmbed(ctx, w, h)
   updatePreviewSurface(ctx)
 end
 
-local function resetPanelDocks(ctx)
+-- Grid Phase 2: 1-column clip grid showing current processing chain
+
+local GRID_COLS = 4
+
+local function syncClipModel(ctx)
+  ctx.clips = ctx.clips or {}
+  -- Column 1: current processing chain
+  ctx.clips[1] = {}
+  local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
+  ctx.clips[1][1] = {
+    kind = "source",
+    sourceType = choice and choice.kind or "webcam",
+    sourceIndex = ctx.shader.sourceIndex,
+    name = (choice and choice.name) or "Webcam",
+  }
+  for i = 1, 8 do
+    local L = ctx.shader.layers[i]
+    local eff = L and ctx.effects and ctx.effects[L.effectIndex]
+    local enabled = L and L.enabled and eff ~= nil
+    ctx.clips[1][1 + i] = {
+      kind = "fx",
+      fxId = eff and eff.id or nil,
+      fxName = eff and (eff.name or eff.id) or ("Slot " .. i),
+      layerIndex = i,
+      enabled = enabled,
+      params = L and L.params or nil,
+    }
+  end
+  -- Columns 2..GRID_COLS: empty placeholders
+  for col = 2, GRID_COLS do
+    ctx.clips[col] = {}
+    ctx.clips[col][1] = {
+      kind = "source",
+      sourceType = "empty",
+      name = "Add Source",
+      empty = true,
+    }
+  end
+  return GRID_COLS, 9  -- cols, rows per col
+end
+
+local function buildTapPipeline(ctx, col, tapIndex)
+  if tapIndex <= 1 then return nil end
+  local column = ctx.clips[col]
+  if not column then return nil end
+  local layers = {}
+  for i = 2, tapIndex do
+    local clip = column[i]
+    if clip and clip.kind == "fx" and clip.enabled then
+      local L = ctx.shader.layers[clip.layerIndex]
+      local eff = L and ctx.effects and ctx.effects[L.effectIndex]
+      if L and eff then
+        local params = {}
+        for p = 1, 9 do
+          local spec = eff.params and eff.params[p]
+          if spec then
+            local normalized = L.params[p] or spec.default or 0
+            local pmin = tonumber(spec.min) or 0
+            local pmax = tonumber(spec.max) or 1
+            params[spec.id] = pmin + normalized * (pmax - pmin)
+          end
+        end
+        layers[#layers + 1] = { enabled = true, effectId = eff.id, params = params }
+      end
+    end
+  end
+  if #layers == 0 then return nil end
+  local source = buildShaderSourceDescriptor(ctx)
+  local ok, payload = pcall(shaders.buildPipeline, layers, "cover", source)
+  if ok and payload then return payload end
+  return nil
+end
+
+local CELL_SRC_TINT = 0xff0d2028
+local CELL_FX_TINT = 0xff0d1420
+local CELL_BORDER = 0xff1a1a22
+local CELL_SEL_BD = 0xff22d3ee
+
+local function ensureGridCells(ctx)
+  local parentNode = ctx.widgets and ctx.widgets.deckEmbed and ctx.widgets.deckEmbed.node
+  if not parentNode then return 0, 0 end
+  local numCols, numRows = syncClipModel(ctx)
+  ctx._gridCells = ctx._gridCells or {}
+
+  -- Create or reuse cells for each (col, row)
+  for col = 1, numCols do
+    for row = 1, numRows do
+      local key = tostring(col) .. "_" .. tostring(row)
+      if not ctx._gridCells[key] then
+        local cell = parentNode:addChild("gridCell_" .. key)
+        local thumb = cell:addChild("gridCell_" .. key .. "_thumb")
+        local lbl = cell:addChild("gridCell_" .. key .. "_lbl")
+        thumb:setInterceptsMouse(false, false)
+        lbl:setInterceptsMouse(false, false)
+        ctx._gridCells[key] = { node = cell, thumb = thumb, label = lbl, col = col, row = row }
+      end
+    end
+  end
+  -- Hide cells beyond the grid bounds
+  for key, cell in pairs(ctx._gridCells) do
+    if cell.col > numCols or cell.row > numRows then
+      cell.node:setBounds(0, 0, 0, 0)
+    end
+  end
+  return numCols, numRows
+end
+
+updateGridThumbnails = function(ctx)
+  local cells = ctx._gridCells or {}
+  local numCols, numRows = GRID_COLS, 9
+  ctx._gridThumbSigs = ctx._gridThumbSigs or {}
+  for col = 1, numCols do
+    for row = 1, numRows do
+      local key = tostring(col) .. "_" .. tostring(row)
+      local cell = cells[key]
+      if not cell then break end
+      local clip = ctx.clips[col] and ctx.clips[col][row]
+      local thumb = cell.thumb
+      if clip and not clip.empty then
+        -- Build signature for this cell
+        local sig = tostring(col) .. "_" .. tostring(row)
+        if row == 1 and clip.kind == "source" then
+          sig = sig .. "|source|" .. tostring(ctx.shader.sourceIndex)
+          if ctx._gridThumbSigs[key] ~= sig then
+            ctx._gridThumbSigs[key] = sig
+            local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
+            if choice and choice.kind == "generator" then
+              local sourceParams = {}
+              local specParams = choice.params or {}
+              local srcParams = ctx.shaderSourceParams or {}
+              for pi = 1, #specParams do
+                local pspec = specParams[pi]
+                local normalized = srcParams[pspec.id] or tonumber(pspec.default) or 0
+                local pmin = tonumber(pspec.min) or 0
+                local pmax = tonumber(pspec.max) or 1
+                sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
+                sig = sig .. "|" .. tostring(pspec.id) .. "=" .. tostring(math.floor(sourceParams[pspec.id] * 1000 + 0.5))
+              end
+              local ok, payload = pcall(shaders.buildPipeline, {}, "cover", { type = "generator", sourceId = choice.id, params = sourceParams })
+              if ok and payload then
+                thumb:setCustomSurface("gpu_shader", payload)
+              end
+            else
+              thumb:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
+            end
+          end
+        elseif clip.kind == "fx" and clip.enabled then
+          sig = sig .. "|fx|" .. tostring(clip.fxId or "") .. "|" .. tostring(clip.layerIndex)
+          local L = ctx.shader.layers[clip.layerIndex]
+          if L then
+            for p = 1, 9 do
+              sig = sig .. "|" .. tostring(math.floor((L.params[p] or 0) * 10000 + 0.5))
+            end
+          end
+          if ctx._gridThumbSigs[key] ~= sig then
+            ctx._gridThumbSigs[key] = sig
+            local payload = buildTapPipeline(ctx, col, row)
+            if payload then
+              thumb:setCustomSurface("gpu_shader", payload)
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+local EMPTY_CELL_BG = 0xff080c18
+
+local function layoutClipGrid(ctx, w, h)
+  setBounds(ctx.widgets.deckEmbed, 0, 0, w, h)
+  local pad, gap = 8, 4
+  local availW = math.max(1, w - pad * 2)
+  local availH = math.max(1, h - pad * 2)
+
+  local numCols, numRows = ensureGridCells(ctx)
+  if numCols < 1 or numRows < 1 then return end
+
+  -- Bottom-up: source row at bottom, FX stacked above, columns side by side
+  local cellW = math.max(40, math.floor((availW - gap * (numCols - 1)) / numCols))
+  local cellH = math.max(24, math.floor((availH - gap * (numRows - 1)) / numRows))
+  local thumbH = math.max(1, cellH - 16)
+  local labelH = math.max(1, cellH - thumbH - 4)
+
+  for col = 1, numCols do
+    for row = 1, numRows do
+      local key = tostring(col) .. "_" .. tostring(row)
+      local cell = ctx._gridCells[key]
+      if not cell then break end
+
+      -- bottom-up: row 1 at physical bottom
+      local displayRow = numRows - row + 1
+      local cx = pad + (col - 1) * (cellW + gap)
+      local cy = pad + (displayRow - 1) * (cellH + gap)
+
+      cell.node:setBounds(cx, cy, cellW, cellH)
+
+      local clip = ctx.clips[col] and ctx.clips[col][row]
+      local isSource = (row == 1)
+      local isEmpty = clip and clip.empty
+      local isEnabled = (not isSource) and clip and clip.enabled
+
+      local bg, borderClr
+      if isEmpty then
+        bg = 0xff080c18
+        borderClr = 0xff0f1520
+      elseif isSource then
+        bg = CELL_SRC_TINT
+        borderClr = 0xff22d3ee
+      elseif isEnabled then
+        bg = CELL_FX_TINT
+        borderClr = CELL_BORDER
+      else
+        bg = EMPTY_CELL_BG
+        borderClr = 0xff0f1520
+      end
+
+      cell.node:setDisplayList({
+        { cmd = "fillRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = bg },
+        { cmd = "drawRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = borderClr, thickness = 1 },
+      })
+
+      if isEmpty then
+        -- Placeholder: show "+" icon in center
+        cell.thumb:setBounds(0, 0, 0, 0)
+        cell.label:setBounds(0, 0, cellW, cellH)
+        cell.label:setDisplayList({
+          { cmd = "drawText", text = "+", color = 0xff334155, fontSize = 16, align = "center", valign = "middle" },
+        })
+      elseif isSource or isEnabled then
+        cell.thumb:setBounds(2, 2, math.max(1, cellW - 4), math.max(1, thumbH - 2))
+        local labelText = clip and clip.name or ""
+        cell.label:setBounds(4, math.max(1, thumbH + 2), math.max(1, cellW - 8), labelH)
+        local labelClr = isSource and 0xff22d3ee or (isEnabled and 0xff94a3b8 or 0xff334155)
+        cell.label:setDisplayList({
+          { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = labelH + 2, color = bg },
+          { cmd = "drawText", text = labelText, color = labelClr, fontSize = 8 },
+        })
+      else
+        -- Disabled FX slot: empty thumbnail, dim label
+        cell.thumb:setBounds(0, 0, 0, 0)
+        local labelText = clip and clip.fxName or ""
+        cell.label:setBounds(4, 4, math.max(1, cellW - 8), math.max(1, cellH - 8))
+        cell.label:setDisplayList({
+          { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = cellH, color = bg },
+          { cmd = "drawText", text = labelText, color = 0xff334155, fontSize = 8, align = "center", valign = "middle" },
+        })
+      end
+    end
+  end
+end
+
+resetPanelDocks = function(ctx)
   ctx._panelDocks = {}
 end
 
@@ -1363,9 +1676,11 @@ local function renderSourcesPanel(ctx)
     local av = imguiGetContentRegionAvail()
     if av.x > 4 and av.y > 4 then
       setBounds(ctx.widgets.poseViewport, 0, 0, math.floor(av.x), math.floor(av.y))
+      ctx._poseVpW = math.floor(av.x)
+      ctx._poseVpH = math.floor(av.y)
       ensurePoseOverlay(ctx)
       if ctx._poseOverlay then
-        ctx._poseOverlay:setBounds(0, 0, math.floor(av.x), math.floor(av.y))
+        ctx._poseOverlay:setBounds(0, 0, ctx._poseVpW, ctx._poseVpH)
       end
       imguiRetainedPanel(ctx.widgets.poseViewport.node, math.floor(av.x), math.floor(av.y), true)
     end
@@ -1576,7 +1891,7 @@ local function renderPanel(ctx, win)
     elseif win.key == "stage" then
       renderStagePanel(ctx)
     elseif win.key == "deck" then
-      renderEmbeddedPanel(ctx, "deckEmbed", layoutDeckEmbed)
+      renderEmbeddedPanel(ctx, "deckEmbed", layoutClipGrid)
     elseif win.key == "waveform" then
       renderWaveformPanel(ctx)
     end
@@ -1875,6 +2190,10 @@ function M.init(ctx)
   if ctx.root and ctx.root.node and ctx.root.node.setOnImGuiFrame then
     ctx.root.node:setOnImGuiFrame(function() renderFrame(ctx) end)
   end
+
+  -- Init grid
+  ensureGridCells(ctx)
+  updateGridThumbnails(ctx)
 end
 
 function M.resized(ctx)

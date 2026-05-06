@@ -544,7 +544,76 @@ local function resolveCompositeTargetNodeId(ctx, targetId)
   return ""
 end
 
+local function ensurePipelineSourceNode(ctx, stackKey)
+  ctx._pipelineSourceNodes = ctx._pipelineSourceNodes or {}
+  local existing = ctx._pipelineSourceNodes[stackKey]
+  if existing and existing.node then return existing end
+  local rootNode = ctx.root and ctx.root.node
+  if not (rootNode and rootNode.createChild) then return nil end
+  local node = rootNode:createChild("pipelineSource_" .. tostring(stackKey))
+  if not node then return nil end
+  local entry = {
+    id = "__webcamViewerPipelineSource_" .. tostring(stackKey),
+    node = node,
+  }
+  if node.setNodeId then node:setNodeId(entry.id) end
+  if node.setBounds then node:setBounds(0, 0, 64, 64) end
+  if node.setVisible then node:setVisible(false) end
+  ctx._pipelineSourceNodes[stackKey] = entry
+  return entry
+end
+
+local function updatePipelineSourceNode(ctx, stackKey)
+  local entry = ensurePipelineSourceNode(ctx, stackKey)
+  if not (entry and entry.node) then return nil end
+  local stack = stackState(ctx, stackKey)
+  if not stack then return nil end
+
+  if stack.source.kind == "generator" then
+    local choice = findSourceChoice(ctx, stack.source.kind, stack.source.id)
+    local params = sanitizeParamMap(choice.params or {}, ensureSourceParams(ctx, stackKey))
+    if shaders and shaders.buildPipeline then
+      local ok, payload = pcall(shaders.buildPipeline, {}, "contain", {
+        type = "generator",
+        sourceId = stack.source.id,
+        params = params,
+      })
+      if ok and payload ~= nil then
+        entry.node:setCustomSurface("gpu_shader", payload)
+        return entry
+      end
+    end
+  elseif stack.segmentation and stack.segmentation.enabled and stack.source.kind == "webcam" then
+    local seg = stack.segmentation
+    entry.node:setCustomSurface("ml_composite", {
+      version = 1,
+      fitMode = "contain",
+      modelPath = seg.modelPath,
+      gain = seg.params.gain,
+      useSigmoid = seg.params.useSigmoid,
+      threshold = seg.params.threshold,
+      feather = seg.params.feather,
+      invert = seg.params.invert,
+      background = seg.params.background,
+    })
+    return entry
+  else
+    entry.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
+    return entry
+  end
+
+  return nil
+end
+
 local function buildSourceDescriptor(ctx, stackKey)
+  local entry = updatePipelineSourceNode(ctx, stackKey)
+  if entry and entry.id then
+    return {
+      type = "node",
+      sourceId = entry.id,
+    }
+  end
+
   local stack = stackState(ctx, stackKey)
   if not stack then return { type = "webcam" } end
   if stack.source.kind == "generator" then
@@ -583,23 +652,6 @@ end
 
 local function setNodeSurfaceWithPipeline(ctx, widget, stackKey, maxLayer)
   if not widget or not widget.node then return end
-  local stack = stackState(ctx, stackKey)
-  if maxLayer == NUM_LAYERS and stack and stack.segmentation and stack.segmentation.enabled and stack.source.kind == "webcam" then
-    local seg = stack.segmentation
-    local payload = {
-      version = 1,
-      fitMode = "contain",
-      modelPath = seg.modelPath,
-      gain = seg.params.gain,
-      useSigmoid = seg.params.useSigmoid,
-      threshold = seg.params.threshold,
-      feather = seg.params.feather,
-      invert = seg.params.invert,
-      background = seg.params.background,
-    }
-    widget.node:setCustomSurface("ml_composite", payload)
-    return
-  end
   if shaders and shaders.buildPipeline then
     local layers = buildLayerPayloadList(ctx, stackKey, maxLayer)
     local source = buildSourceDescriptor(ctx, stackKey)

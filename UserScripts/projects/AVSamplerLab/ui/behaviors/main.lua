@@ -655,6 +655,40 @@ local function applyMapping(ctx)
   end
 end
 
+local function ensureShaderSourceNode(ctx)
+  if ctx._shaderSourceNode and ctx._shaderSourceNode.node then return ctx._shaderSourceNode end
+  local rootNode = ctx.root and ctx.root.node
+  if not (rootNode and rootNode.createChild) then return nil end
+  local node = rootNode:createChild("avlab_shader_source")
+  if not node then return nil end
+  local entry = { id = "__avlab_shader_source", node = node }
+  if node.setNodeId then node:setNodeId(entry.id) end
+  if node.setBounds then node:setBounds(0, 0, 64, 64) end
+  if node.setVisible then node:setVisible(false) end
+  ctx._shaderSourceNode = entry
+  return entry
+end
+
+local function buildShaderSourceDescriptor(ctx)
+  local choice = ctx.sources[ctx.shader.sourceIndex]
+  local entry = ensureShaderSourceNode(ctx)
+  if entry and entry.node then
+    if choice and choice.kind == "generator" and shaders and shaders.buildPipeline then
+      local ok, payload = pcall(shaders.buildPipeline, {}, "cover", { type = "generator", sourceId = choice.id, params = choice.params or {} })
+      if ok and payload then
+        entry.node:setCustomSurface("gpu_shader", payload)
+        return { type = "node", sourceId = entry.id }, choice
+      end
+    else
+      entry.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
+      return { type = "node", sourceId = entry.id }, choice
+    end
+  end
+  local source = { type = "webcam" }
+  if choice and choice.kind == "generator" then source = { type="generator", sourceId=choice.id, params=choice.params or {} } end
+  return source, choice
+end
+
 function updateShader(ctx)
   if not (ctx.widgets.outputViewport and ctx.widgets.outputViewport.node) then return end
   local layers = {}
@@ -667,9 +701,7 @@ function updateShader(ctx)
       layers[#layers+1] = { enabled=true, effectId=effect.id, params=params }
     end
   end
-  local source = { type = "webcam" }
-  local choice = ctx.sources[ctx.shader.sourceIndex]
-  if choice and choice.kind == "generator" then source = { type="generator", sourceId=choice.id, params=choice.params or {} } end
+  local source, choice = buildShaderSourceDescriptor(ctx)
   if shaders and shaders.buildPipeline then
     local ok, payload = pcall(shaders.buildPipeline, layers, "cover", source)
     if ok and payload then ctx.widgets.outputViewport.node:setCustomSurface("gpu_shader", payload) end

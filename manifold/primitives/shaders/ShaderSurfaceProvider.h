@@ -20,6 +20,7 @@ public:
     };
 
     using InputResolver = std::function<ResolvedInputTexture(const std::string& sourceType,
+                                                             const std::string& sourceId,
                                                              const RuntimeNode& node,
                                                              int width,
                                                              int height,

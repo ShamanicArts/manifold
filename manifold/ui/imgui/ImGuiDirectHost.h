@@ -258,6 +258,7 @@ public:
     manifold::ui::imgui::RuntimeNodeRenderer renderer_;
     manifold::ui::imgui::RuntimeNodeRenderer::PreviewTransform previewTransform_;
     std::unordered_map<uint64_t, EmbeddedPanelState> embeddedPanelStates_;
+    std::unordered_set<uint64_t> embeddedPanelTouchedSurfaceIds_;
     PendingDragEvent pendingDragEvent_;
     double lastContinuousInputDispatchMs_ = 0.0;
     std::mutex inputMutex_;

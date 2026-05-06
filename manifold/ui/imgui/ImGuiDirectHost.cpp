@@ -956,6 +956,7 @@ ImGuiDirectHost::ImGuiDirectHost()
 #endif
 
     shaderSurfaceProvider_->setInputResolver([this](const std::string& sourceType,
+                                                    const std::string& sourceId,
                                                     const RuntimeNode& node,
                                                     int width,
                                                     int height,
@@ -978,6 +979,27 @@ ImGuiDirectHost::ImGuiDirectHost()
                                                          resolved.width,
                                                          resolved.height,
                                                          resolved.sequence);
+            }
+            return resolved;
+        }
+        if (sourceType == "node_surface") {
+            if (sourceId.empty() || liveRoot_ == nullptr) {
+                return resolved;
+            }
+            auto* targetNode = liveRoot_->findById(sourceId);
+            if (targetNode == nullptr || targetNode->getStableId() == 0) {
+                return resolved;
+            }
+            if (targetNode->getStableId() == node.getStableId()) {
+                return resolved;
+            }
+            resolved.textureHandle = prepareCustomSurfaceTexture(*targetNode, width, height, timeSeconds);
+            if (resolved.textureHandle != 0) {
+                if (!getVideoSurfaceInfo(targetNode->getStableId(), resolved.width, resolved.height, resolved.sequence)) {
+                    resolved.width = width;
+                    resolved.height = height;
+                    resolved.sequence = 0;
+                }
             }
             return resolved;
         }
@@ -1289,14 +1311,13 @@ bool ImGuiDirectHost::renderEmbeddedRuntimePanel(RuntimeNode& root,
                          std::max(itemMax.y, subtreePreviewBounds.getBottom()));
 
     auto& state = embeddedPanelStates_[root.getStableId()];
-    std::unordered_set<uint64_t> touchedSurfaceIds;
     drawList->PushClipRect(clipMin, clipMax, true);
     renderLiveTree(*this,
                    root,
                    drawList,
                    renderOptions,
                    transform,
-                   touchedSurfaceIds,
+                   embeddedPanelTouchedSurfaceIds_,
                    ImGui::GetTime(),
                    state.hoveredNodeStableId,
                    state.pressedNodeStableId);
@@ -1523,6 +1544,14 @@ bool ImGuiDirectHost::renderFrameWithCurrentContext(float scale, bool allowSwap)
         }
     }
     ImGui::End();
+
+    // Merge embedded panel surface IDs before pruning, otherwise nodes
+    // rendered via imguiRetainedPanel (which uses a different traversal)
+    // lose their surface state every frame, destroying temporal feedback.
+    for (const auto& id : embeddedPanelTouchedSurfaceIds_) {
+        touchedSurfaceIds.insert(id);
+    }
+    embeddedPanelTouchedSurfaceIds_.clear();
 
     for (auto& provider : surfaceProviders_) {
         if (provider) {

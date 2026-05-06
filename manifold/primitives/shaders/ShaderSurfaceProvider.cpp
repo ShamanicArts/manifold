@@ -597,7 +597,7 @@ std::uintptr_t ShaderSurfaceProvider::prepareTexture(const RuntimeNode& node,
     if (!shaderLanguage.empty() && shaderLanguage != "glsl") {
         return 0;
     }
-    if (!sourceType.empty() && sourceType != "video_input" && sourceType != "generated_source" && sourceType != "generator_shader") {
+    if (!sourceType.empty() && sourceType != "video_input" && sourceType != "generated_source" && sourceType != "generator_shader" && sourceType != "node_surface") {
         return 0;
     }
 
@@ -747,7 +747,7 @@ std::uintptr_t ShaderSurfaceProvider::prepareTexture(const RuntimeNode& node,
         if (!impl.inputResolver) {
             return 0;
         }
-        resolvedSource = impl.inputResolver(state->sourceType, node, width, height, timeSeconds);
+        resolvedSource = impl.inputResolver(state->sourceType, state->sourceId, node, width, height, timeSeconds);
         if (resolvedSource.textureHandle == 0 || resolvedSource.width <= 0 || resolvedSource.height <= 0) {
             return 0;
         }

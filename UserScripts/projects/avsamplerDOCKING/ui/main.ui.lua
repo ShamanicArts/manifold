@@ -109,38 +109,10 @@ local function outputViewport()
   }
 end
 
-local function clipCell(id, x, y, w, h, text, selected)
-  return { id=id, type="Panel", x=px(x), y=px(y), w=px(w), h=px(h),
-    style={ bg=selected and 0xff0d2430 or C.well, border=selected and C.live or 0xff1a1a22, borderWidth=1, radius=3 },
-    children={
-      { id=id .. "Thumb", type="Panel", x=2, y=2, w=math.max(1, px(w)-4), h=math.max(1, px(h)-17),
-        style={ bg=0xff10182a, border=0x22ffffff, borderWidth=1, radius=2 } },
-      label(id .. "Label", 4, h-14, math.max(1, w-8), 12, text, selected and C.live or 0x88ffffff, 7),
-    } }
-end
-
 local function deckChildren()
-  local children = {}
-  local names = {
-    { "Cap1", "Cap2", "Cap3", "Cap4", "Raw", "Seg", "Pose", "Out" },
-    { "Move1", "Move2", "Raw", "Seg", "Pose", "FX", "Delay", "Out" },
-    { "Cap1", "Smoke", "Mask", "Pose", "Raw", "Seg", "Queue", "Out" },
+  return {
+    label("gridInfo", 8, 8, 200, 14, "Clip Grid", C.dim, 9),
   }
-  for row = 1, 3 do
-    local y = 25 + (row - 1) * 46
-    local layer = 4 - row
-    children[#children + 1] = label("deckLayer" .. row, 8, y + 2, 22, 12, "L" .. tostring(layer), C.muted, 8)
-    children[#children + 1] = button("deckLayer" .. row .. "A", 34, y, 20, 13, "A", row == 2 and C.seg or C.button, row == 2 and 0xff041312 or C.dim)
-    children[#children + 1] = button("deckLayer" .. row .. "B", 56, y, 20, 13, "B", row ~= 2 and C.seg or C.button, row ~= 2 and 0xff041312 or C.dim)
-    children[#children + 1] = { id="deckBlend" .. row, type="Panel", x=34, y=y+18, w=42, h=11,
-      style={ bg=0xff0f172a, border=0xff26304a, borderWidth=1, radius=2 }, children={
-        { id="deckBlendFill" .. row, type="Panel", x=0, y=0, w=math.floor(16 + row * 7), h=11, style={ bg=row == 2 and 0xff16a34a or 0xff1d4ed8, radius=2 } },
-      } }
-    for i = 1, 8 do
-      children[#children + 1] = clipCell("deckCell" .. row .. "_" .. i, 86 + (i - 1) * 70, y, 66, 38, names[row][i], i == row or i == (9 - row))
-    end
-  end
-  return children
 end
 
 local function transportChildren()

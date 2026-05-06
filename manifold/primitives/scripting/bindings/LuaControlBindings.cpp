@@ -3419,6 +3419,12 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                     sourceId = candidateId;
                     sourceParams = parseParams(sourceTable["params"]);
                 }
+            } else if (kind == "node") {
+                auto candidateId = sourceTable["sourceId"].get_or(std::string{});
+                if (!candidateId.empty()) {
+                    sourceType = "node_surface";
+                    sourceId = candidateId;
+                }
             }
         }
 
@@ -3440,6 +3446,8 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
             }
             sourceShader["uniforms"] = sourceUniforms;
             result["sourceShader"] = sourceShader;
+        }
+        if (!sourceId.empty()) {
             result["sourceId"] = sourceId;
         }
 
