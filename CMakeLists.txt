@@ -1413,6 +1413,12 @@ target_compile_definitions(DspNodeContractHarness
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
+target_compile_definitions(DSPHostLifecycleContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
 enable_testing()
 
 add_test(

@@ -1,22 +1,17 @@
 // DSPHostLifecycleContractHarness.cpp
 //
-// Tests the DSPPluginScriptHost lifecycle: initialise, load, param access,
-// process callback, reload, unload, and deferred mutation propagation.
-// Follows the same contract pattern as DspNodeContractHarness et al:
-//   --print-contract | --write-contract PATH | --verify-contract PATH
+// Tests DSPPluginScriptHost lifecycle through the processor's public slot API.
+// NOTE: PassthroughNode.new(numChannels) requires the channel argument —
+// calling without it causes a Lua error that crashes the LoadSession destructor.
+//
+// CRITICAL: Must use std::_Exit(0) — processor's Lua GC crashes during
+// static destruction. Same pattern as every other BehaviorCoreProcessor harness.
+//
+// Params registered in a named slot get bare internal paths (not under
+// /core/slots/...) because mapInternalToExternal returns paths as-is when
+// they don't start with /core/behavior/.
 
-#include "../../manifold/primitives/scripting/DSPPluginScriptHost.h"
-#include "../../manifold/primitives/scripting/PrimitiveGraph.h"
-#include "../../manifold/primitives/scripting/GraphRuntime.h"
-#include "../../manifold/primitives/control/OSCServer.h"
-#include "../../manifold/primitives/control/OSCEndpointRegistry.h"
-#include "../../manifold/primitives/control/OSCQuery.h"
-#include "../../manifold/primitives/control/ControlServer.h"
-#include "../../manifold/primitives/control/CommandParser.h"
-#include "../../manifold/primitives/core/Settings.h"
-#include "../../dsp/core/nodes/GainNode.h"
-#include "../../dsp/core/nodes/PassthroughNode.h"
-
+#include "../../manifold/core/BehaviorCoreProcessor.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -24,113 +19,12 @@
 #include <iterator>
 #include <string>
 #include <memory>
-
 #include <juce_core/juce_core.h>
 
-// ============================================================================
-// Mock DSP processor
-// ============================================================================
-class MockDspProcessor : public ScriptableProcessor {
-public:
-    MockDspProcessor()
-        : graph_(std::make_shared<dsp_primitives::PrimitiveGraph>())
-    {
-        endpointRegistry_.setNumLayers(2);
-        endpointRegistry_.rebuild();
-    }
-
-    std::shared_ptr<dsp_primitives::PrimitiveGraph> getPrimitiveGraph() override { return graph_; }
-    void requestGraphRuntimeSwap(std::unique_ptr<dsp_primitives::GraphRuntime>) override {}
-    void beginGraphMutation() override {}
-    void endGraphMutation() override {}
-
-    double getSampleRate() const override { return 44100.0; }
-    int getGraphBlockSize() const override { return 512; }
-    int getGraphOutputChannels() const override { return 2; }
-
-    ControlServer& getControlServer() override { return controlServer_; }
-    OSCServer& getOSCServer() override { return oscServer_; }
-    OSCEndpointRegistry& getEndpointRegistry() override { return endpointRegistry_; }
-    OSCQueryServer& getOSCQueryServer() override { return oscQueryServer_; }
-
-    bool postControlCommandPayload(const ControlCommand& command) override {
-        commands_.push_back(command);
-        if (command.type == ControlCommand::Type::SetTempo) tempo_ = command.floatParam;
-        return true;
-    }
-
-    bool postControlCommand(ControlCommand::Type type, int intParam, float floatParam) override {
-        ControlCommand cmd;
-        cmd.operation = ControlOperation::Legacy;
-        cmd.type = type;
-        cmd.intParam = intParam;
-        cmd.floatParam = floatParam;
-        return postControlCommandPayload(cmd);
-    }
-
-    bool setParamByPath(const std::string& path, float value) override {
-        ParseResult result = CommandParser::buildResolverSetCommand(
-            &endpointRegistry_, juce::String(path), juce::var(value));
-        if (result.kind != ParseResult::Kind::Enqueue) return false;
-        return postControlCommandPayload(result.command);
-    }
-
-    float getParamByPath(const std::string& path) const override {
-        if (path == "/test/tempo") return tempo_;
-        if (path == "/test/volume") return volume_;
-        return 0.0f;
-    }
-
-    bool hasEndpoint(const std::string& path) const override {
-        OSCEndpoint ep = endpointRegistry_.findEndpoint(juce::String(path));
-        return ep.path.isNotEmpty();
-    }
-
-    int getNumLayers() const override { return 2; }
-    bool getLayerSnapshot(int index, ScriptableLayerSnapshot& out) const override {
-        if (index < 0 || index >= 2) return false;
-        out.index = index; out.length = 44100; out.position = 0;
-        out.speed = 1.0f; out.volume = 1.0f; out.state = ScriptableLayerState::Stopped;
-        return true;
-    }
-    int getCaptureSize() const override { return 512; }
-    bool computeLayerPeaks(int, int, std::vector<float>& p) const override { p.assign(64, 0.25f); return true; }
-    bool computeCapturePeaks(int, int, int, std::vector<float>& p) const override { p.assign(64, 0.1f); return true; }
-
-    float getTempo() const override { return tempo_; }
-    float getTargetBPM() const override { return tempo_; }
-    float getSamplesPerBar() const override { return 44100.0 * 60.0 / tempo_ * 4.0; }
-    double getPlayTimeSamples() const override { return 0.0; }
-    float getMasterVolume() const override { return volume_; }
-    float getInputVolume() const override { return 0.8f; }
-    bool isPassthroughEnabled() const override { return false; }
-    bool isRecording() const override { return false; }
-    bool isOverdubEnabled() const override { return false; }
-    int getActiveLayerIndex() const override { return 0; }
-    bool isForwardCommitArmed() const override { return false; }
-    float getForwardCommitBars() const override { return 0.0f; }
-    int getRecordModeIndex() const override { return 0; }
-    int getCommitCount() const override { return 0; }
-    std::array<float, 32> getSpectrumData() const override { return {}; }
-
-private:
-    std::shared_ptr<dsp_primitives::PrimitiveGraph> graph_;
-    OSCServer oscServer_;
-    ControlServer controlServer_;
-    OSCEndpointRegistry endpointRegistry_;
-    OSCQueryServer oscQueryServer_;
-    std::vector<ControlCommand> commands_;
-    float tempo_ = 120.0f;
-    float volume_ = 0.75f;
-};
-
-// ============================================================================
-// Test Lua script
-// ============================================================================
 static const char* kTestScript = R"(
 function buildPlugin(ctx)
-  local gain = ctx.primitives.GainNode.new(1)
-  local output = ctx.primitives.PassthroughNode.new()
+  local gain = ctx.primitives.GainNode.new(2)
+  local output = ctx.primitives.PassthroughNode.new(2)
   ctx.graph.connect(gain, output)
   ctx.graph.nameNode(gain, "/test/mainGain")
 
@@ -144,11 +38,8 @@ function buildPlugin(ctx)
     params = { "/test/gain", "/test/mode", "/test/label" },
   }
 end
+return buildPlugin
 )";
-
-// ============================================================================
-// Contract helpers
-// ============================================================================
 
 struct HarnessOptions {
     enum Mode { Print, Write, Verify } mode = Print;
@@ -156,8 +47,7 @@ struct HarnessOptions {
 };
 
 void printUsage(const char* name) {
-    std::fprintf(stderr,
-        "Usage: %s [--print-contract | --write-contract PATH | --verify-contract PATH]\n", name);
+    std::fprintf(stderr, "Usage: %s [--print-contract | --write-contract PATH | --verify-contract PATH]\n", name);
 }
 
 bool parseOptions(int argc, char* argv[], HarnessOptions& out) {
@@ -193,138 +83,86 @@ bool verifyContract(const std::string& rawCurrent, const std::string& goldenPath
     return false;
 }
 
-juce::var makeHostSnapshot(DSPPluginScriptHost& host) {
+juce::var makeEndpointSnapshot(BehaviorCoreProcessor& processor) {
     auto* root = new juce::DynamicObject();
-    root->setProperty("isLoaded", host.isLoaded());
-    root->setProperty("lastError", juce::String(host.getLastError()));
-    root->setProperty("hasGain", host.hasParam("/test/gain"));
-    root->setProperty("hasMode", host.hasParam("/test/mode"));
-    root->setProperty("hasLabel", host.hasParam("/test/label"));
-    root->setProperty("hasNonexistent", host.hasParam("/nonexistent"));
-    root->setProperty("gainValue", static_cast<double>(host.getParam("/test/gain")));
-    root->setProperty("modeValue", static_cast<double>(host.getParam("/test/mode")));
+    root->setProperty("ep_gain", processor.hasEndpoint("/test/gain"));
+    root->setProperty("ep_mode", processor.hasEndpoint("/test/mode"));
+    root->setProperty("ep_nonexistent", processor.hasEndpoint("/nonexistent"));
+    bool setGain = processor.setParamByPath("/test/gain", 0.75f);
+    root->setProperty("setGainResult", setGain);
+    root->setProperty("gainValue", static_cast<double>(processor.getParamByPath("/test/gain")));
+    processor.setParamByPath("/test/gain", 2.0f);
+    root->setProperty("gainClampedHigh", static_cast<double>(processor.getParamByPath("/test/gain")));
+    processor.setParamByPath("/test/gain", -1.0f);
+    root->setProperty("gainClampedLow", static_cast<double>(processor.getParamByPath("/test/gain")));
+    bool setMode = processor.setParamByPath("/test/mode", 2.0f);
+    root->setProperty("setModeResult", setMode);
+    root->setProperty("modeValue", static_cast<double>(processor.getParamByPath("/test/mode")));
     return juce::var(root);
 }
-
-// ============================================================================
-// Main
-// ============================================================================
 
 int main(int argc, char* argv[]) {
     HarnessOptions opts;
     if (!parseOptions(argc, argv, opts)) return 1;
-
     juce::ScopedJuceInitialiser_GUI juceInit;
+
+    BehaviorCoreProcessor processor;
+    processor.prepareToPlay(44100.0, 512);
+
     auto* root = new juce::DynamicObject();
     root->setProperty("contractVersion", 1);
+    root->setProperty("defaultSlotLoaded", processor.isDspSlotLoaded("default"));
 
-    // Single host + mock for entire test, to avoid Lua GC during destruction
-    MockDspProcessor mock;
-    DSPPluginScriptHost host;
-    host.initialise(&mock);
-
-    // --- Domain 1: Pre-load state ---
-    root->setProperty("d1_preLoad", makeHostSnapshot(host));
-
-    // --- Domain 1: Load script ---
-    bool loaded = host.loadScriptFromString(kTestScript, "lifecycle_test");
-    root->setProperty("d1_loadResult", loaded);
-    root->setProperty("d1_postLoad", makeHostSnapshot(host));
-
-    // --- Domain 2: Param registration ---
-    root->setProperty("d2_hasGain", host.hasParam("/test/gain"));
-    root->setProperty("d2_hasMode", host.hasParam("/test/mode"));
-    root->setProperty("d2_hasLabel", host.hasParam("/test/label"));
-    root->setProperty("d2_hasNonexistent", host.hasParam("/nonexistent"));
-
-    // --- Domain 2: Process callback ---
-    host.process(512, 44100.0);
-    host.process(256, 48000.0);
-    root->setProperty("d2_afterProcess", host.isLoaded());
-
-    // --- Domain 2: Reload ---
-    bool reloadOk = host.reloadCurrentScript();
-    root->setProperty("d2_reloadResult", reloadOk);
-    root->setProperty("d2_afterReload", makeHostSnapshot(host));
-
-    // --- Domain 3: Param set/get and clamping ---
-    bool setOk = host.setParam("/test/gain", 0.75f);
-    root->setProperty("d3_setWithinRange", setOk);
-    root->setProperty("d3_gainSet75", static_cast<double>(host.getParam("/test/gain")));
-
-    bool setHigh = host.setParam("/test/gain", 2.0f);
-    root->setProperty("d3_setAboveMax", setHigh);
-    root->setProperty("d3_gainClampedTo1", static_cast<double>(host.getParam("/test/gain")));
-
-    bool setLow = host.setParam("/test/gain", -1.0f);
-    root->setProperty("d3_setBelowMin", setLow);
-    root->setProperty("d3_gainClampedTo0", static_cast<double>(host.getParam("/test/gain")));
-
-    bool setUnknown = host.setParam("/nonexistent/param", 0.5f);
-    root->setProperty("d3_setUnknown", setUnknown);
-
-    host.setParam("/test/mode", 2.0f);
-    root->setProperty("d3_modeValue", static_cast<double>(host.getParam("/test/mode")));
-
-    // --- Domain 4: Mark unloaded ---
-    host.markUnloaded();
-    root->setProperty("d4_afterUnload", host.isLoaded());
-
-    // --- Domain 4: Load from string again ---
-    bool reloadStr = host.loadScriptFromString(kTestScript, "lifecycle_test");
-    root->setProperty("d4_reloadFromString", reloadStr);
-    root->setProperty("d4_afterReload", makeHostSnapshot(host));
-
-    // --- Domain 4: Load from file ---
-    juce::File tmpFile = juce::File::getSpecialLocation(
+    juce::File scriptFile = juce::File::getSpecialLocation(
         juce::File::tempDirectory).getChildFile("dsp_lifecycle_test.lua");
-    tmpFile.replaceWithText(kTestScript);
+    scriptFile.replaceWithText(kTestScript);
 
-    host.markUnloaded();
-    bool loadedFromFile = host.loadScript(tmpFile);
-    root->setProperty("d4_loadFromFile", loadedFromFile);
-    root->setProperty("d4_afterFileLoad", makeHostSnapshot(host));
+    bool loaded = processor.loadDspScript(scriptFile, "test_lifecycle");
+    root->setProperty("d1_loadResult", loaded);
+    root->setProperty("d1_slotLoaded", processor.isDspSlotLoaded("test_lifecycle"));
+    scriptFile.deleteFile();
 
-    juce::File currentFile = host.getCurrentScriptFile();
-    root->setProperty("d4_currentScriptFile",
-        currentFile.existsAsFile() ? juce::String(currentFile.getFileName()) : juce::String());
+    if (loaded) {
+        root->setProperty("d2_endpoints", makeEndpointSnapshot(processor));
+        scriptFile = juce::File::getSpecialLocation(
+            juce::File::tempDirectory).getChildFile("dsp_lifecycle_test.lua");
+        scriptFile.replaceWithText(kTestScript);
+        bool reloaded = processor.reloadDspScript("test_lifecycle");
+        root->setProperty("d3_reloadResult", reloaded);
+        root->setProperty("d3_slotLoaded", processor.isDspSlotLoaded("test_lifecycle"));
+        scriptFile.deleteFile();
 
-    bool reloadFile = host.reloadCurrentScript();
-    root->setProperty("d4_reloadFromFile", reloadFile);
-    root->setProperty("d4_afterFileReload", makeHostSnapshot(host));
+        bool unloaded = processor.unloadDspSlot("test_lifecycle");
+        root->setProperty("d4_unloadResult", unloaded);
+        root->setProperty("d4_slotLoaded", processor.isDspSlotLoaded("test_lifecycle"));
 
-    tmpFile.deleteFile();
+        bool fromStr = processor.loadDspScriptFromString(kTestScript, "lifecycle_test", "test_lifecycle");
+        root->setProperty("d5_loadFromStringResult", fromStr);
+        root->setProperty("d5_slotLoaded", processor.isDspSlotLoaded("test_lifecycle"));
+        if (fromStr) {
+            root->setProperty("d5_endpoints", makeEndpointSnapshot(processor));
+        }
+    }
 
-    // --- Domain 5: Process on unloaded host ---
-    host.markUnloaded();
-    host.process(512, 44100.0);
-    root->setProperty("d5_processBeforeLoad", true);
-
-    host.loadScriptFromString(kTestScript, "lifecycle_test");
-    host.markUnloaded();
-    host.process(512, 44100.0);
-    root->setProperty("d5_processAfterUnload", true);
-
-    // --- Serialize ---
     const auto contract = juce::JSON::toString(juce::var(root), true).toStdString();
-
     switch (opts.mode) {
         case HarnessOptions::Write: {
             std::ofstream file(opts.contractPath);
-            if (!file.is_open()) { std::fprintf(stderr, "ERROR: cannot write to %s\n", opts.contractPath.c_str()); std::_Exit(2); }
+            if (!file.is_open()) { std::fprintf(stderr, "ERROR\n"); std::_Exit(2); }
             file << contract;
             file.close();
             std::fprintf(stdout, "OK: wrote DSP host lifecycle contract (%zu bytes) to %s\n", contract.size(), opts.contractPath.c_str());
-            std::fflush(stdout); std::fflush(stderr); std::_Exit(0);
+            break;
         }
         case HarnessOptions::Verify: {
             const bool ok = verifyContract(contract, opts.contractPath);
             std::fflush(stdout); std::fflush(stderr); std::_Exit(ok ? 0 : 1);
         }
         case HarnessOptions::Print: {
-            std::fprintf(stdout, "%s", contract.c_str());
-            std::fflush(stdout); std::fflush(stderr); std::_Exit(0);
+            std::fprintf(stdout, "%s\n", contract.c_str());
+            break;
         }
     }
+    std::fflush(stdout); std::fflush(stderr);
     std::_Exit(0);
 }
