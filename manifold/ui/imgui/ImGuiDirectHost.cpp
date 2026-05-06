@@ -996,6 +996,7 @@ ImGuiDirectHost::ImGuiDirectHost()
             }
             resolved.textureHandle = prepareCustomSurfaceTextureImmediate(*targetNode, width, height, timeSeconds);
             if (resolved.textureHandle != 0) {
+                embeddedPanelTouchedSurfaceIds_.insert(targetNode->getStableId());
                 cachedSurfaceTextures_[targetNode->getStableId()].textureHandle = resolved.textureHandle;
                 if (!getVideoSurfaceInfo(targetNode->getStableId(), resolved.width, resolved.height, resolved.sequence)) {
                     resolved.width = width;
@@ -1020,22 +1021,49 @@ ImGuiDirectHost::ImGuiDirectHost()
 
         auto* targetNode = liveRoot_->findById(targetNodeId);
         if (targetNode == nullptr || targetNode->getStableId() == 0) {
+            static int missingBudget = 24;
+            if (missingBudget > 0) {
+                --missingBudget;
+                std::fprintf(stderr,
+                             "[ImGuiDirectHost] composite resolver missing target node id=%s\n",
+                             targetNodeId.c_str());
+                std::fflush(stderr);
+            }
             return resolved;
         }
         if (targetNode->getStableId() == requestingNode.getStableId()) {
+            static int selfBudget = 12;
+            if (selfBudget > 0) {
+                --selfBudget;
+                std::fprintf(stderr,
+                             "[ImGuiDirectHost] composite resolver self-reference target=%s requester=%s\n",
+                             targetNodeId.c_str(),
+                             requestingNode.getNodeId().c_str());
+                std::fflush(stderr);
+            }
             return resolved;
         }
-        if (targetNode->getCustomSurfaceType() == "gpu_composite") {
-            return resolved;
-        }
-
         resolved.textureHandle = prepareCustomSurfaceTextureImmediate(*targetNode, width, height, timeSeconds);
         if (resolved.textureHandle != 0) {
+            embeddedPanelTouchedSurfaceIds_.insert(targetNode->getStableId());
             cachedSurfaceTextures_[targetNode->getStableId()].textureHandle = resolved.textureHandle;
             if (!getVideoSurfaceInfo(targetNode->getStableId(), resolved.width, resolved.height, resolved.sequence)) {
                 resolved.width = width;
                 resolved.height = height;
                 resolved.sequence = 0;
+            }
+        } else {
+            static int zeroBudget = 48;
+            if (zeroBudget > 0) {
+                --zeroBudget;
+                std::fprintf(stderr,
+                             "[ImGuiDirectHost] composite resolver zero texture target=%s type=%s requester=%s wh=%dx%d\n",
+                             targetNodeId.c_str(),
+                             targetNode->getCustomSurfaceType().c_str(),
+                             requestingNode.getNodeId().c_str(),
+                             width,
+                             height);
+                std::fflush(stderr);
             }
         }
         return resolved;

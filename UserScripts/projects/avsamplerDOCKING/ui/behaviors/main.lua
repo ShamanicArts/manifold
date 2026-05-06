@@ -258,7 +258,7 @@ end
 -- Profiling: globals to avoid consuming local variable slots (200 limit)
 _G.__avsdProfileInit = function(ctx)
   ctx._profile = {}
-  for _, k in ipairs{"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline","applyCaptureWindow","segmentIngest","playbackUi","statusInterval","updateCompositorOutput"} do
+  for _, k in ipairs{"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline","applyCaptureWindow","segmentIngest","playbackUi","statusInterval","updateCompositorThumbnails","updateCompositorOutput"} do
     ctx._profile[k] = { total = 0, count = 0, max = 0, last = 0, avg = 0 }
   end
 end
@@ -1039,7 +1039,8 @@ applySourceSpecToHiddenNode = function(ctx, spec, key)
     return { type = "webcam" }, nil
   end
   if kind == "columntap" then
-    return colSourceDescriptor(ctx, spec.sourceCol), nil
+    local sourceId = stackNodeIdForTap(spec.sourceCol or 1, spec.tapIndex)
+    return { type = "node", sourceId = sourceId }, nil
   end
   return { type = "webcam" }, nil
 end
@@ -1105,12 +1106,12 @@ function updateShader(ctx)
         end
       end
       if sig ~= ctx._lastShaderSig then
-        ctx.widgets.outputViewport.node:setCustomSurface("gpu_shader", payload)
         ctx._lastShaderSig = sig
         updateGridThumbnails(ctx)
       end
     end
   end
+  updateStackRenderNodes(ctx)
   local srcLabel = colSourceLabel(ctx, 1)
   setText(ctx.widgets.shaderStatus, string.format("Shader: %s %s", srcLabel or (choice and choice.name) or "Webcam", ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1] and ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1].name or "--"))
   profileEnd(ctx, "updateShader")
@@ -1687,7 +1688,7 @@ colSourceLabel = function(ctx, col)
     return src.sourceId or "Gen"
   end
   if src.kind == "columntap" then
-    return "Col " .. tostring(src.sourceCol) .. " T" .. tostring(src.tapIndex or 0)
+    return "Stack " .. tostring(src.sourceCol) .. " T" .. tostring(src.tapIndex or 0)
   end
   if src.kind == "ml" then
     return src.mlType == "pose" and "Pose" or "Segmented"
@@ -2314,13 +2315,245 @@ colBuildCellPipeline = function(ctx, col, row)
       end
     end
   end
-  if #layers == 0 then return nil end
   local ok, payload = pcall(shaders.buildPipeline, layers, "contain", source)
   if ok and payload then return payload end
   return nil
 end
 
-local function syncClipModel(ctx)
+stackNodeIdForRow = function(stack, row)
+  stack = tonumber(stack) or 1
+  row = tonumber(row) or 1
+  if row <= 1 then return "__stack_" .. tostring(stack) .. "_source" end
+  if row >= 10 then return "__stack_" .. tostring(stack) .. "_output" end
+  return "__stack_" .. tostring(stack) .. "_tap_" .. tostring(row - 1)
+end
+
+stackNodeIdForTap = function(stack, tapIndex)
+  if tapIndex == nil then return stackNodeIdForRow(stack, 10) end
+  local ti = tonumber(tapIndex) or 0
+  if ti <= 0 then return stackNodeIdForRow(stack, 1) end
+  if ti >= 8 then return stackNodeIdForRow(stack, 10) end
+  return stackNodeIdForRow(stack, ti + 1)
+end
+
+appendSigKV = function(parts, key, value)
+  parts[#parts + 1] = tostring(key) .. "=" .. tostring(value)
+end
+
+appendSortedParamSig = function(parts, params, prefix)
+  if type(params) ~= "table" then return end
+  local keys = {}
+  for k in pairs(params) do keys[#keys + 1] = tostring(k) end
+  table.sort(keys)
+  for _, k in ipairs(keys) do
+    local v = tonumber(params[k]) or 0
+    appendSigKV(parts, (prefix or "p") .. k, math.floor(v * 10000 + 0.5))
+  end
+end
+
+sourceSpecSignature = function(ctx, col)
+  local spec = sourceSpecForColumn(ctx, col)
+  if not spec then return "nosource" end
+  local parts = { "src", tostring(spec.kind or "webcam") }
+  appendSigKV(parts, "sourceIndex", spec.sourceIndex or "")
+  appendSigKV(parts, "sourceId", spec.sourceId or "")
+  appendSigKV(parts, "mlType", spec.mlType or "")
+  appendSigKV(parts, "sourceCol", spec.sourceCol or "")
+  appendSigKV(parts, "tapIndex", spec.tapIndex == nil and "output" or spec.tapIndex)
+  appendSortedParamSig(parts, spec.params, "sp_")
+  return table.concat(parts, "|")
+end
+
+stackTapSignature = function(ctx, col, row)
+  local parts = { "stack", tostring(col), tostring(row), sourceSpecSignature(ctx, col) }
+  local cd = ctx._colData and ctx._colData[col]
+  if not cd then return table.concat(parts, "|") end
+  local upto = math.max(0, math.min((tonumber(row) or 1) - 1, 8))
+  for i = 1, upto do
+    local f = cd.fx[i]
+    if not f then
+      appendSigKV(parts, "fx" .. i, "empty")
+    else
+      appendSigKV(parts, "fx" .. i .. "_effect", f.effectIndex or 0)
+      appendSigKV(parts, "fx" .. i .. "_enabled", f.enabled and 1 or 0)
+      for p = 1, 9 do
+        appendSigKV(parts, "fx" .. i .. "_p" .. p, math.floor(((f.params and f.params[p]) or 0) * 10000 + 0.5))
+      end
+    end
+  end
+  return table.concat(parts, "|")
+end
+
+clearNodeSurface = function(node)
+  if node and node.clearCustomRenderPayload then
+    node:clearCustomRenderPayload()
+  end
+end
+
+buildNodePassthroughPayload = function(sourceId)
+  if not sourceId or sourceId == "" then return nil end
+  local ok, payload = pcall(shaders.buildPipeline, {}, "contain", { type = "node", sourceId = sourceId })
+  if ok and payload then return payload end
+  return nil
+end
+
+compositorBlendParams = function(blendOpId)
+  local id = tostring(blendOpId or "normal")
+  if id == "normal" then
+    return { baseLevel = 1.0, topLevel = 1.0, topGamma = 1.0 }
+  elseif id == "add" then
+    return { gain = 1.0, bias = 0.0, softClamp = 1.0 }
+  elseif id == "screen" then
+    return { strength = 1.0, bias = 0.0, gamma = 1.0 }
+  elseif id == "multiply" then
+    return { strength = 1.0, lift = 0.0, gamma = 1.0 }
+  elseif id == "overlay" then
+    return { strength = 1.0, pivot = 0.5, contrast = 1.0 }
+  elseif id == "difference" then
+    return { strength = 1.0, bias = 0.0, contrast = 1.0 }
+  end
+  return {}
+end
+
+ensureCompositorSurfaceNode = function(ctx, key)
+  local rootNode = ctx.root and ctx.root.node
+  if not (rootNode and rootNode.addChild) then return nil end
+  ctx._compoOutNodes = ctx._compoOutNodes or {}
+  if not ctx._compoOutNodes[key] then
+    local ok, n = pcall(rootNode.addChild, rootNode, "_n_" .. key)
+    if ok and n then
+      if n.setNodeId then n:setNodeId(key) end
+      if n.setVisible then n:setVisible(false) end
+      if n.setBounds then n:setBounds(0, 0, math.max(1, ctx.outputW or 1920), math.max(1, ctx.outputH or 1080)) end
+      ctx._compoOutNodes[key] = n
+    end
+  end
+  return ctx._compoOutNodes[key]
+end
+
+ensureStackSurfaceNode = function(ctx, stack, row)
+  local key = stackNodeIdForRow(stack, row)
+  local rootNode = ctx.root and ctx.root.node
+  if not (rootNode and rootNode.addChild) then return nil end
+  ctx._stackSurfaceNodes = ctx._stackSurfaceNodes or {}
+  if not ctx._stackSurfaceNodes[key] then
+    local ok, n = pcall(rootNode.addChild, rootNode, key)
+    if ok and n then
+      if n.setNodeId then n:setNodeId(key) end
+      if n.setVisible then n:setVisible(false) end
+      if n.setBounds then n:setBounds(0, 0, math.max(1, ctx.outputW or 1920), math.max(1, ctx.outputH or 1080)) end
+      ctx._stackSurfaceNodes[key] = n
+    end
+  end
+  return ctx._stackSurfaceNodes[key]
+end
+
+updateStackRenderNodes = function(ctx)
+  profileStart(ctx, "updateStackRenderNodes")
+  local numStacks = syncClipModel(ctx)
+  ctx._stackNodeSigs = ctx._stackNodeSigs or {}
+
+  for stack = 1, numStacks do
+    local srcClip = ctx.clips and ctx.clips[stack] and ctx.clips[stack][1]
+    local hasSource = srcClip and not srcClip.empty and sourceSpecForColumn(ctx, stack)
+    local sourceNode = ensureStackSurfaceNode(ctx, stack, 1)
+    if sourceNode then
+      local srcSig = hasSource and sourceSpecSignature(ctx, stack) or "empty"
+      if ctx._stackNodeSigs[stackNodeIdForRow(stack, 1)] ~= srcSig then
+        ctx._stackNodeSigs[stackNodeIdForRow(stack, 1)] = srcSig
+        if hasSource then
+          local descriptor = colSourceDescriptor(ctx, stack)
+          local ok, payload = pcall(shaders.buildPipeline, {}, "contain", descriptor)
+          if ok and payload then
+            sourceNode:setCustomSurface("gpu_shader", payload)
+          else
+            clearNodeSurface(sourceNode)
+          end
+        else
+          clearNodeSurface(sourceNode)
+        end
+      end
+    end
+
+    for row = 2, 10 do
+      local node = ensureStackSurfaceNode(ctx, stack, row)
+      local nodeKey = stackNodeIdForRow(stack, row)
+      local clip = ctx.clips and ctx.clips[stack] and ctx.clips[stack][row]
+      local active = hasSource and ((row == 10) or (clip and clip.kind == "fx" and clip.enabled))
+      local sig = active and ((row == 10 and (stackTapSignature(ctx, stack, 10) .. "|output")) or stackTapSignature(ctx, stack, row)) or "empty"
+      if node and ctx._stackNodeSigs[nodeKey] ~= sig then
+        ctx._stackNodeSigs[nodeKey] = sig
+        if active then
+          local payload = colBuildCellPipeline(ctx, stack, row == 10 and 10 or row)
+          if payload then
+            node:setCustomSurface("gpu_shader", payload)
+          else
+            clearNodeSurface(node)
+          end
+        else
+          clearNodeSurface(node)
+        end
+      end
+    end
+  end
+  profileEnd(ctx, "updateStackRenderNodes")
+end
+
+buildCompositorGraph = function(ctx)
+  local compo = ctx.compositor
+  if not (compo and compo.layers) then return nil end
+  updateStackRenderNodes(ctx)
+
+  local visible = {}
+  local accumulatedKeyByLayer = {}
+  local prevKey = nil
+
+  for i = 1, #compo.layers do
+    local layer = compo.layers[i]
+    if layer and layer.visible then
+      local sourceStack = tonumber(layer.sourceColumn) or 1
+      local sourceNodeId = stackNodeIdForTap(sourceStack, layer.tapIndex)
+      local srcNode = ensureCompositorSurfaceNode(ctx, "_compoSrc_" .. tostring(i))
+      if srcNode then
+        local payload = buildNodePassthroughPayload(sourceNodeId)
+        if payload then
+          srcNode:setCustomSurface("gpu_shader", payload)
+          local srcKey = "_compoSrc_" .. tostring(i)
+          local accKey = srcKey
+          if prevKey ~= nil then
+            accKey = "_compoAcc_" .. tostring(i)
+            local accNode = ensureCompositorSurfaceNode(ctx, accKey)
+            if accNode then
+              local blendId = layer.blendMode or "normal"
+              accNode:setCustomSurface("gpu_composite", {
+                version = 1, kind = "compositeQuad", fitMode = "contain",
+                bottomNodeId = prevKey, topNodeId = srcKey,
+                blendOpId = blendId,
+                opacity = layer.opacity or 1.0,
+                blendParams = compositorBlendParams(blendId),
+              })
+            end
+          end
+          prevKey = accKey
+          accumulatedKeyByLayer[i] = accKey
+          visible[#visible + 1] = {
+            idx = i,
+            layer = layer,
+            sourceNodeId = sourceNodeId,
+            sourceStack = sourceStack,
+            accKey = accKey,
+            cell = ctx._compoCells and ctx._compoCells["compo_" .. i] or nil,
+          }
+        end
+      end
+    end
+  end
+
+  if #visible == 0 then return nil end
+  return { visible = visible, accumulatedKeyByLayer = accumulatedKeyByLayer, finalKey = prevKey }
+end
+
+syncClipModel = function(ctx)
   profileStart(ctx, "syncClipModel")
   ctx.clips = ctx.clips or {}
   ctx._colData = ctx._colData or {}
@@ -2468,84 +2701,45 @@ updateGridThumbnails = function(ctx)
       local thumb = cell.thumb
       if clip and not clip.empty then
         local sig = tostring(col) .. "_" .. tostring(row)
-        local cd = ctx._colData and ctx._colData[col]
-        local src = cd and cd.source
 
         if row == 1 and clip.kind == "source" then
-          local srcSpec = sourceSpecForColumn(ctx, col)
-          if srcSpec then
-            sig = sig .. "|sourceKind|" .. tostring(srcSpec.kind or "webcam")
-            if srcSpec.kind == "generator" then
-              sig = sig .. "|" .. tostring(srcSpec.sourceId or "")
-              for k, v in pairs(srcSpec.params or {}) do
-                sig = sig .. "|" .. tostring(k) .. "=" .. tostring(math.floor((tonumber(v) or 0) * 10000 + 0.5))
-              end
-            elseif srcSpec.kind == "ml" then
-              sig = sig .. "|" .. tostring(srcSpec.mlType or "segmented")
-              for k, v in pairs(srcSpec.params or {}) do
-                sig = sig .. "|" .. tostring(k) .. "=" .. tostring(math.floor((tonumber(v) or 0) * 10000 + 0.5))
-              end
-            elseif srcSpec.kind == "columntap" then
-              sig = sig .. "|col=" .. tostring(srcSpec.sourceCol or 0) .. "|tap=" .. tostring(srcSpec.tapIndex or 0)
-            end
-          end
+          sig = sig .. "|" .. sourceSpecSignature(ctx, col)
           if ctx._gridThumbSigs[key] ~= sig then
             ctx._gridThumbSigs[key] = sig
-            local descriptor = colSourceDescriptor(ctx, col)
-            local ok, payload = pcall(shaders.buildPipeline, {}, "contain", descriptor)
-            if ok and payload then
+            local payload = buildNodePassthroughPayload(stackNodeIdForRow(col, 1))
+            if payload then
               thumb:setCustomSurface("gpu_shader", payload)
+            else
+              clearNodeSurface(thumb)
             end
           end
         elseif clip.kind == "fx" and clip.enabled then
-          sig = sig .. "|fx|" .. tostring(clip.fxId or "")
-          local cd = ctx._colData and ctx._colData[col]
-          if col == 1 then
-            -- Column 1: use ctx.shader
-            sig = sig .. "|" .. tostring(clip.effectIndex or 0)
-            local fxSlot = row - 1
-            local L = fxSlot >= 1 and fxSlot <= 8 and ctx.shader.layers[fxSlot]
-            if L then
-              for p = 1, 9 do
-                sig = sig .. "|" .. tostring(math.floor((L.params[p] or 0) * 10000 + 0.5))
-              end
-            end
-            if ctx._gridThumbSigs[key] ~= sig then
-              ctx._gridThumbSigs[key] = sig
-              local payload = buildTapPipeline(ctx, col, row)
-              if payload then
-                thumb:setCustomSurface("gpu_shader", payload)
-              end
-            end
-          else
-            -- Columns 2+: use colData
-            local fxSlot = row - 1
-            local f = cd and cd.fx[fxSlot]
-            if f then
-              for p = 1, 9 do
-                sig = sig .. "|" .. tostring(math.floor((f.params[p] or 0) * 10000 + 0.5))
-              end
-            end
-            if ctx._gridThumbSigs[key] ~= sig then
-              ctx._gridThumbSigs[key] = sig
-              local payload = colBuildCellPipeline(ctx, col, row)
-              if payload then
-                thumb:setCustomSurface("gpu_shader", payload)
-              end
+          sig = stackTapSignature(ctx, col, row)
+          if ctx._gridThumbSigs[key] ~= sig then
+            ctx._gridThumbSigs[key] = sig
+            local payload = buildNodePassthroughPayload(stackNodeIdForRow(col, row))
+            if payload then
+              thumb:setCustomSurface("gpu_shader", payload)
+            else
+              clearNodeSurface(thumb)
             end
           end
         elseif clip.kind == "output" then
-          -- Output cell: full pipeline (source + all enabled FX)
-          sig = sig .. "|output"
-          local cd = ctx._colData and ctx._colData[col]
+          sig = stackTapSignature(ctx, col, 10) .. "|output"
           if ctx._gridThumbSigs[key] ~= sig then
             ctx._gridThumbSigs[key] = sig
-            local payload = colBuildCellPipeline(ctx, col, 10)
+            local payload = buildNodePassthroughPayload(stackNodeIdForRow(col, 10))
             if payload then
               thumb:setCustomSurface("gpu_shader", payload)
+            else
+              clearNodeSurface(thumb)
             end
           end
+        else
+          clearNodeSurface(thumb)
         end
+      else
+        clearNodeSurface(thumb)
       end
     end
   end
@@ -2947,9 +3141,9 @@ local function renderSourceInspectorWindow(ctx)
   if sourceCol > 1 then
     local cd = ctx._colData and ctx._colData[sourceCol]
     if cd and cd.source then
-      label = "Col " .. tostring(sourceCol) .. ": " .. colSourceLabel(ctx, sourceCol) .. " (grid)"
+      label = "Stack " .. tostring(sourceCol) .. ": " .. colSourceLabel(ctx, sourceCol) .. " (grid)"
     else
-      label = "Col " .. tostring(sourceCol) .. ": (grid)"
+      label = "Stack " .. tostring(sourceCol) .. ": (grid)"
     end
   else
     label = "Source (grid-selected)"
@@ -2968,7 +3162,7 @@ local function renderSourceInspectorWindow(ctx)
     imguiOpenPopup("##srcInspectorPicker")
   end
   imguiSameLine()
-  imguiText("Col " .. tostring(sourceCol))
+  imguiText("Stack " .. tostring(sourceCol))
 
   if imguiBeginPopup("##srcInspectorPicker") then
     local targetCol = sourceCol
@@ -3013,7 +3207,7 @@ local function renderSourceInspectorWindow(ctx)
         if cd and cd.source then
           -- Skip if it's the same column we're editing
           if targetCol ~= colId then
-            local clabel = "Col " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
+            local clabel = "Stack " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
             if imguiMenuItem(clabel .. " / Raw (T0)") then
               setSourceSpecForColumn(ctx, targetCol, { kind = "columntap", sourceCol = colId, tapIndex = 0 })
               imguiCloseCurrentPopup()
@@ -3057,28 +3251,39 @@ layoutCompoLayerControls = function(ctx, w, h)
 
   local curCol = layer.sourceColumn or 1
 
-  -- Column dropdown: build options from _colData
-  local colOptions = {}
+  -- Column dropdown: setOptions when labels change, setSelected only when value changes
+  ctx._compoColLabels = ctx._compoColLabels or {}
+  local colLabels = {}
   if ctx._colData then
     for cid, _ in pairs(ctx._colData) do
-      table.insert(colOptions, { id = cid, label = "Col " .. cid .. " (" .. colSourceLabel(ctx, cid) .. ")" })
+      table.insert(colLabels, "Stack " .. cid .. " (" .. colSourceLabel(ctx, cid) .. ")")
     end
   end
-  if #colOptions == 0 then table.insert(colOptions, { id = 1, label = "Col 1" }) end
-  local colLabels = {}
-  for _, opt in ipairs(colOptions) do colLabels[#colLabels + 1] = opt.label end
-  setOptions(ctx.widgets.compoColumn, colLabels)
+  if #colLabels == 0 then table.insert(colLabels, "Stack 1") end
+  if table.concat(ctx._compoColLabels) ~= table.concat(colLabels) then
+    ctx._compoColLabels = colLabels
+    ctx._compoColSelCache = nil
+    setOptions(ctx.widgets.compoColumn, colLabels)
+  end
   local curColIdx = 1
-  for i, opt in ipairs(colOptions) do if opt.id == curCol then curColIdx = i; break end end
-  setSelectedSilently(ctx.widgets.compoColumn, curColIdx)
+  for i, label in ipairs(colLabels) do
+    if label:match("Stack " .. curCol) then curColIdx = i; break end
+  end
+  if ctx._compoColSelCache ~= curColIdx then
+    ctx._compoColSelCache = curColIdx
+    setSelectedSilently(ctx.widgets.compoColumn, curColIdx)
+  end
   setBounds(ctx.widgets.compoColumn, 8, 25, 96, 18)
   ctx.widgets.compoColumn._onSelect = function(idx)
-    local opt = colOptions[math.max(1, math.min(#colOptions, round(idx)))]
-    if opt then layer.sourceColumn = opt.id; ctx._compoThumbSigs = {} end
+    local i = math.max(1, math.min(#colLabels, round(idx)))
+    local cid = tonumber(colLabels[i]:match("Stack (%d+)")) or 1
+    layer.sourceColumn = cid; ctx._compoThumbSigs = {}
   end
   setVisible(ctx.widgets.compoColumn, true)
 
-  -- Tap dropdown
+  -- Tap dropdown: only setOptions when column changes, only setSelected when value changes
+  ctx._compoLastTapCol = ctx._compoLastTapCol or {}
+  local tapKey = "col" .. curCol
   local cd = ctx._colData and ctx._colData[curCol]
   local numFx = cd and #cd.fx or 8
   local tapLabels = { "Output", "Raw Source" }
@@ -3087,40 +3292,64 @@ layoutCompoLayerControls = function(ctx, w, h)
     table.insert(tapLabels, "FX " .. ti)
     table.insert(tapVals, ti)
   end
-  setOptions(ctx.widgets.compoTap, tapLabels)
+  if ctx._compoLastTapCol ~= tapKey then
+    ctx._compoLastTapCol = tapKey
+    ctx._compoTapLabels = tapLabels
+    ctx._compoTapVals = tapVals
+    ctx._compoTapSelCache = nil
+    setOptions(ctx.widgets.compoTap, tapLabels)
+  end
   local curTap = layer.tapIndex
   local curTapIdx = 1
-  for i, v in ipairs(tapVals) do if v == curTap then curTapIdx = i; break end end
-  setSelectedSilently(ctx.widgets.compoTap, curTapIdx)
+  for i, v in ipairs(ctx._compoTapVals or tapVals) do if v == curTap then curTapIdx = i; break end end
+  if ctx._compoTapSelCache ~= curTapIdx then
+    ctx._compoTapSelCache = curTapIdx
+    setSelectedSilently(ctx.widgets.compoTap, curTapIdx)
+  end
   setBounds(ctx.widgets.compoTap, 110, 25, 80, 18)
   ctx.widgets.compoTap._onSelect = function(idx)
-    local vi = math.max(1, math.min(#tapVals, round(idx)))
-    layer.tapIndex = tapVals[vi]; ctx._compoThumbSigs = {}
+    local vi = math.max(1, math.min(#(ctx._compoTapVals or tapVals), round(idx)))
+    layer.tapIndex = (ctx._compoTapVals or tapVals)[vi]; ctx._compoThumbSigs = {}
   end
   setVisible(ctx.widgets.compoTap, true)
 
-  -- Blend mode dropdown
+  -- Blend mode dropdown: only setOptions once
+  if not ctx._compoBlendInited then
+    ctx._compoBlendInited = true
+    ctx._compoBlendSelCache = nil
+    setOptions(ctx.widgets.compoBlend, { "normal", "add", "screen", "multiply", "overlay", "difference" })
+  end
   local blendModes = { "normal", "add", "screen", "multiply", "overlay", "difference" }
-  setOptions(ctx.widgets.compoBlend, blendModes)
   local curMode = layer.blendMode or "normal"
   local curModeIdx = 1
   for i, bm in ipairs(blendModes) do if bm == curMode then curModeIdx = i; break end end
-  setSelectedSilently(ctx.widgets.compoBlend, curModeIdx)
+  if ctx._compoBlendSelCache ~= curModeIdx then
+    ctx._compoBlendSelCache = curModeIdx
+    setSelectedSilently(ctx.widgets.compoBlend, curModeIdx)
+  end
   setBounds(ctx.widgets.compoBlend, 196, 25, 70, 18)
   ctx.widgets.compoBlend._onSelect = function(idx)
     layer.blendMode = blendModes[math.max(1, math.min(#blendModes, round(idx)))] or "normal"
   end
   setVisible(ctx.widgets.compoBlend, true)
 
-  -- Opacity slider
+  -- Opacity slider: only setValue when value changes
+  local curOpacity = layer.opacity or 1.0
+  if ctx._compoOpacityCache == nil or math.abs(ctx._compoOpacityCache - curOpacity) > 0.001 then
+    ctx._compoOpacityCache = curOpacity
+    setValueSilently(ctx.widgets.compoOpacity, curOpacity)
+  end
   setBounds(ctx.widgets.compoOpacity, 8, 49, 100, 17)
-  setValueSilently(ctx.widgets.compoOpacity, layer.opacity or 1.0)
   ctx.widgets.compoOpacity._onChange = function(v) layer.opacity = clamp(v, 0, 1) end
   setVisible(ctx.widgets.compoOpacity, true)
 
-  -- Visibility toggle
+  -- Visibility toggle: only setValue when value changes
+  local curVis = layer.visible == true
+  if ctx._compoVisCache ~= curVis then
+    ctx._compoVisCache = curVis
+    setValueSilently(ctx.widgets.compoVisible, curVis)
+  end
   setBounds(ctx.widgets.compoVisible, 114, 49, 50, 17)
-  setValueSilently(ctx.widgets.compoVisible, layer.visible == true)
   ctx.widgets.compoVisible._onChange = function(v)
     layer.visible = v == true; ctx._compoThumbSigs = {}
   end
@@ -3138,7 +3367,7 @@ renderCompositorLayerControls = function(ctx)
     imguiTextColored(0xff94a3b8, "No layer selected")
     return
   end
-  imguiTextColored(0xfff97316, "Compositor Layer " .. selIdx .. ": " .. (layer.name or ""))
+  imguiTextColored(0xfff97316, "Layer " .. selIdx)
   imguiSeparator()
   local avail = imguiGetContentRegionAvail()
   renderEmbeddedPanel(ctx, "compoLayerEmbed", layoutCompoLayerControls, 72)
@@ -3156,7 +3385,7 @@ local function renderEffectInspectorWindow(ctx)
   if sel and sel.col and sel.col > 1 and sel.row > 1 then
     local cd = ctx._colData and ctx._colData[sel.col]
     local fxName = cd and cd.fx[sel.row - 1] and colFxLabel(ctx, sel.col, sel.row - 1) or ""
-    label = "Col " .. tostring(sel.col) .. " FX" .. tostring(sel.row - 1) .. ": " .. fxName .. " (grid)"
+    label = "Stack " .. tostring(sel.col) .. " FX" .. tostring(sel.row - 1) .. ": " .. fxName .. " (grid)"
   elseif effectSelected and sel and sel.col == 1 then
     label = "Effect (grid-selected)"
   else
@@ -3285,7 +3514,7 @@ local function renderGridToolbar(ctx, parentW)
   end
 
   -- Add Column button + popup
-  if imguiButton("+Col") then
+  if imguiButton("+Stack") then
     imguiOpenPopup("##srcPicker")
   end
   imguiSameLine()
@@ -3338,7 +3567,7 @@ local function renderGridToolbar(ctx, parentW)
     if hasTappable and imguiBeginMenu("From Column") then
       for colId, cd in pairs(ctx._colData or {}) do
         if cd and cd.source then
-          local label = "Col " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
+          local label = "Stack " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
           -- Tap 0 (raw)
           if imguiMenuItem(label .. " / Raw (T0)") then
             addColumn(ctx, { kind = "columntap", sourceCol = colId, tapIndex = 0 })
@@ -3449,6 +3678,7 @@ ensureCompositorCells = function(ctx, parentNode)
         ctx.selectedView = "compositor"
         ctx.compositorSelection = { layerIndex = idx }
       end)
+
       ctx._compoCells[key] = { node = cell, thumb = thumb, label = lbl, index = i }
     end
   end
@@ -3481,94 +3711,52 @@ compositorLayerCellPipeline = function(ctx, layer)
 end
 
 updateCompositorThumbnails = function(ctx)
-  if not ctx._compoCells then return end
+  profileStart(ctx, "updateCompositorThumbnails")
+  if not ctx._compoCells then profileEnd(ctx, "updateCompositorThumbnails"); return end
   ctx._compoThumbSigs = ctx._compoThumbSigs or {}
+
+  local graph = buildCompositorGraph(ctx)
+  local accByLayer = graph and graph.accumulatedKeyByLayer or {}
+
   for i = 1, #ctx.compositor.layers do
-    local key = "compo_" .. i
+    local key = "compo_" .. tostring(i)
     local cell = ctx._compoCells[key]
-    if not cell then break end
-    local layer = ctx.compositor.layers[i]
-    local sig = "compo_" .. i .. "|" .. tostring(layer.sourceColumn) .. "|" .. tostring(layer.tapIndex) .. "|" .. tostring(layer.visible)
-    if ctx._compoThumbSigs[key] ~= sig then
-      ctx._compoThumbSigs[key] = sig
-      local payload = compositorLayerCellPipeline(ctx, layer)
-      if payload then
-        cell.thumb:setCustomSurface("gpu_shader", payload)
+    if cell then
+      local accKey = accByLayer[i]
+      local sig = accKey and ("compo|" .. tostring(i) .. "|" .. tostring(accKey)) or ("compo|" .. tostring(i) .. "|empty")
+      if ctx._compoThumbSigs[key] ~= sig then
+        ctx._compoThumbSigs[key] = sig
+        if accKey then
+          local payload = buildNodePassthroughPayload(accKey)
+          if payload then
+            cell.thumb:setCustomSurface("gpu_shader", payload)
+          else
+            clearNodeSurface(cell.thumb)
+          end
+        else
+          clearNodeSurface(cell.thumb)
+        end
       end
     end
   end
+  profileEnd(ctx, "updateCompositorThumbnails")
 end
 
 updateCompositorOutput = function(ctx)
   profileStart(ctx, "updateCompositorOutput")
-  local layers = ctx.compositor.layers
-  local outNode = ctx.widgets.outputViewport.node
+  local outNode = ctx.widgets and ctx.widgets.outputViewport and ctx.widgets.outputViewport.node
   if not outNode then profileEnd(ctx, "updateCompositorOutput"); return end
 
-  syncCol1FromShader(ctx)
+  local graph = buildCompositorGraph(ctx)
+  local finalKey = graph and graph.finalKey or nil
+  if not finalKey then profileEnd(ctx, "updateCompositorOutput"); return end
 
-  -- Collect visible layers
-  local visLayers = {}
-  for i = 1, #layers do
-    if layers[i].visible then
-      table.insert(visLayers, { idx = i, layer = layers[i] })
-    end
+  local payload = buildNodePassthroughPayload(finalKey)
+  if payload then
+    outNode:setCustomSurface("gpu_shader", payload)
+  else
+    clearNodeSurface(outNode)
   end
-
-  if #visLayers == 0 then
-    -- No visible layers: fall back to layer 1
-    local payload = compositorLayerCellPipeline(ctx, layers[1])
-    if payload then outNode:setCustomSurface("gpu_shader", payload) end
-    profileEnd(ctx, "updateCompositorOutput")
-    return
-  end
-
-  -- Build hidden source nodes as children of ctx.root.node (safe, like WebcamViewer)
-  local rootNode = ctx.root and ctx.root.node
-  if not rootNode then profileEnd(ctx, "updateCompositorOutput"); return end
-  ctx._compoSrcNodes = ctx._compoSrcNodes or {}
-
-  for _, vl in ipairs(visLayers) do
-    local key = "_compoSrc_" .. vl.idx
-    if not ctx._compoSrcNodes[key] then
-      local n = rootNode:addChild("__" .. key)
-      if n then
-        if n.setNodeId then n:setNodeId(key) end
-        if n.setVisible then n:setVisible(false) end
-        if n.setBounds then n:setBounds(0, 0, 64, 64) end
-        ctx._compoSrcNodes[key] = n
-      end
-    end
-    local payload = compositorLayerCellPipeline(ctx, vl.layer)
-    if payload and ctx._compoSrcNodes[key] then
-      ctx._compoSrcNodes[key]:setCustomSurface("gpu_shader", payload)
-    end
-  end
-
-  -- Single visible layer: output directly
-  if #visLayers == 1 then
-    local payload = compositorLayerCellPipeline(ctx, visLayers[1].layer)
-    if payload then outNode:setCustomSurface("gpu_shader", payload) end
-    profileEnd(ctx, "updateCompositorOutput")
-    return
-  end
-
-  -- Multi-layer: use gpu_composite version 2
-  local compoLayers = {}
-  for _, vl in ipairs(visLayers) do
-    table.insert(compoLayers, {
-      nodeId = "_compoSrc_" .. vl.idx,
-      blendOpId = vl.layer.blendMode or "normal",
-      opacity = vl.layer.opacity or 1.0,
-    })
-  end
-
-  outNode:setCustomSurface("gpu_composite", {
-    version = 2,
-    fitMode = "contain",
-    layers = compoLayers,
-    blendParams = {},
-  })
   profileEnd(ctx, "updateCompositorOutput")
 end
 
@@ -3579,10 +3767,12 @@ renderCompositorPanel = function(ctx)
   local ph = math.floor(av.y)
 
   -- Create the compositor embed node on first render
+  -- Use embedHost (hidden container) as parent so it's not double-rendered by root
   if not ctx._compositorEmbed then
-    local rootNode = ctx.root and ctx.root.node
-    if rootNode and rootNode.addChild then
-      ctx._compositorEmbed = rootNode:addChild("__compositor_embed")
+    local parent = ctx.widgets and ctx.widgets.embedHost and ctx.widgets.embedHost.node
+    if not parent then parent = ctx.root and ctx.root.node end
+    if parent and parent.addChild then
+      ctx._compositorEmbed = parent:addChild("__compositor_embed")
     end
   end
 
@@ -3627,7 +3817,6 @@ renderCompositorPanel = function(ctx)
   local cellsH = math.max(1, ph - toolbarH - 8)
   local numLayers = ensureCompositorCells(ctx, ctx._compositorEmbed)
   if numLayers < 1 then return end
-  updateCompositorThumbnails(ctx)
 
   local cellW, cellH
   if compo.orientation == "left-to-right" then
@@ -3684,6 +3873,7 @@ renderCompositorPanel = function(ctx)
     })
   end
 
+  updateCompositorThumbnails(ctx)
   imguiRetainedPanel(ctx._compositorEmbed, pw - pad * 2, cellsH, true)
 end
 
@@ -3755,6 +3945,7 @@ local function renderFrame(ctx)
 end
 
 function M.init(ctx)
+  _G.__avsdCtx = ctx
   ctx.video = videoSampler and videoSampler.new and videoSampler.new({ id = VIDEO_SAMPLER_ID }) or nil
   ctx.videoCap = videoSampler and videoSampler.capture and videoSampler.capture({ id = VIDEO_CAPTURE_ID, maxSeconds = MAX_CAPTURE_SECONDS }) or nil
   ctx.seg = { gain = 1.0, useSigmoid = true, threshold = 0.5, feather = 0.15, invert = false }
@@ -4053,6 +4244,7 @@ function M.resized(ctx)
 end
 
 function M.update(ctx)
+  _G.__avsdCtx = ctx
   profileStart(ctx, "applyCaptureWindow")
   applyCaptureWindow(ctx)
   profileEnd(ctx, "applyCaptureWindow")
@@ -4124,12 +4316,13 @@ function M.update(ctx)
     profileEnd(ctx, "statusInterval")
   end
 
-  profileStart(ctx, "updateCompositorOutput")
+  -- Ensure compositor cell thumbs and output are driven by the same compositor graph.
+  updateCompositorThumbnails(ctx)
   updateCompositorOutput(ctx)
-  profileEnd(ctx, "updateCompositorOutput")
 end
 
 function M.cleanup(ctx)
+  if _G.__avsdCtx == ctx then _G.__avsdCtx = nil end
   if ctx then
     if ctx.video then pcall(function() ctx.video:clear() end) end
     if ctx.videoCap then pcall(function() ctx.videoCap:clear() end) end

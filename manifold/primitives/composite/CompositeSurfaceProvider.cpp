@@ -385,6 +385,20 @@ std::uintptr_t CompositeSurfaceProvider::prepareTexture(const RuntimeNode& node,
     const auto bottomResolved = impl.nodeTextureResolver(bottomNodeId, node, width, height, timeSeconds);
     const auto topResolved = impl.nodeTextureResolver(topNodeId, node, width, height, timeSeconds);
     if (bottomResolved.textureHandle == 0 || topResolved.textureHandle == 0) {
+        static int resolveBudget = 64;
+        if (resolveBudget > 0) {
+            --resolveBudget;
+            std::fprintf(stderr,
+                         "[CompositeSurfaceProvider] unresolved input bottom=%s tex=%llu top=%s tex=%llu node=%s wh=%dx%d\n",
+                         bottomNodeId.c_str(),
+                         static_cast<unsigned long long>(bottomResolved.textureHandle),
+                         topNodeId.c_str(),
+                         static_cast<unsigned long long>(topResolved.textureHandle),
+                         node.getNodeId().c_str(),
+                         width,
+                         height);
+            std::fflush(stderr);
+        }
         return 0;
     }
 
