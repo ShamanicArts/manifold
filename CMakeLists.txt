@@ -1125,6 +1125,8 @@ add_executable(ParamRegistryContractHarness manifold/headless/ParamRegistryContr
 
 add_executable(DSPHostLifecycleContractHarness manifold/headless/DSPHostLifecycleContractHarness.cpp)
 
+add_executable(LuaEngineContractHarness manifold/headless/LuaEngineContractHarness.cpp)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -1303,6 +1305,18 @@ target_link_libraries(DSPHostLifecycleContractHarness
         sol2::sol2
         highway)
 
+manifold_target_include_project_and_ableton(LuaEngineContractHarness)
+target_link_libraries(LuaEngineContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway)
+
 target_include_directories(VideoSamplerHarness
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1429,6 +1443,12 @@ set_tests_properties(manifold_lua_bindings_contract PROPERTIES
     LABELS "manifold;lua;bindings;contract")
 
 add_test(
+    NAME manifold_lua_bindings_behavior_smoke
+    COMMAND $<TARGET_FILE:LuaEngineMockHarness>)
+set_tests_properties(manifold_lua_bindings_behavior_smoke PROPERTIES
+    LABELS "manifold;lua;bindings;behavior;scripting")
+
+add_test(
     NAME manifold_headless_oscquery_contract
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e_oscquery_contract_test.py
             --headless build-dev/ManifoldHeadless
@@ -1541,6 +1561,13 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dsp_host_lifecycle_contract_golden.json)
 set_tests_properties(manifold_dsp_host_lifecycle_contract PROPERTIES
     LABELS "manifold;scripting;lifecycle;contract")
+
+add_test(
+    NAME manifold_lua_engine_contract
+    COMMAND $<TARGET_FILE:LuaEngineContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lua_engine_contract_golden.json)
+set_tests_properties(manifold_lua_engine_contract PROPERTIES
+    LABELS "manifold;scripting;luaengine;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:
