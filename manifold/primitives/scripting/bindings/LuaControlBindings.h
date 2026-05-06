@@ -21,7 +21,6 @@ public:
     static void registerBindings(LuaCoreEngine& engine, ILuaControlState& state);
 
 private:
-    static void registerCommandBindings(sol::state& lua, ILuaControlState& state);
     static void registerOSCBindings(sol::state& lua, ILuaControlState& state);
     static void registerEventBindings(sol::state& lua, ILuaControlState& state);
     static void registerWaveformBindings(sol::state& lua, ILuaControlState& state);
@@ -29,5 +28,4 @@ private:
     static void registerGraphBindings(sol::state& lua, ILuaControlState& state);
     static void registerLinkBindings(sol::state& lua, ILuaControlState& state);
     static void registerUtilityBindings(sol::state& lua, ILuaControlState& state);
-    static void registerMidiBindings(sol::state& lua, ILuaControlState& state);
 };

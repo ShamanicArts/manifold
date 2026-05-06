@@ -1,4 +1,4 @@
-#include "LuaControlBindings.h"
+#include "LuaMidiBindings.h"
 #include "../ILuaControlState.h"
 #include "../ScriptableProcessor.h"
 
@@ -28,8 +28,10 @@ static BehaviorCoreProcessor* toBcp(ScriptableProcessor* p) {
 // MIDI Bindings
 // ============================================================================
 
-void LuaControlBindings::registerMidiBindings(sol::state& lua,
-                                              ILuaControlState& state) {
+namespace lua_bindings {
+
+void registerMidiBindings(sol::state& lua,
+                          ILuaControlState& state) {
     auto* processor = state.getProcessor();
     auto* bcp = toBcp(processor);
     auto* midiMgr = state.getMidiManager();
@@ -428,3 +430,5 @@ void LuaControlBindings::registerMidiBindings(sol::state& lua,
     eventTypes["Continue"] = 0xFB;
     lua["Midi"]["EventType"] = eventTypes;
 }
+
+} // namespace lua_bindings

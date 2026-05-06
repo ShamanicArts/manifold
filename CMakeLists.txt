@@ -578,6 +578,9 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/scripting/bindings/LuaRuntimeNodeBindings.cpp
     manifold/primitives/scripting/bindings/LuaControlBindings.h
     manifold/primitives/scripting/bindings/LuaControlBindings.cpp
+    manifold/primitives/scripting/bindings/LuaCommandBindings.h
+    manifold/primitives/scripting/bindings/LuaCommandBindings.cpp
+    manifold/primitives/scripting/bindings/LuaMidiBindings.h
     manifold/primitives/scripting/bindings/LuaMidiBindings.cpp
     manifold/primitives/scripting/DSPPluginScriptHost.h
     manifold/primitives/scripting/DSPPluginScriptHost.cpp
