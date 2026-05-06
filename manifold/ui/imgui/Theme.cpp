@@ -1,4 +1,5 @@
 #include "Theme.h"
+#include "ThemeSupport.h"
 
 #include <juce_core/juce_core.h>
 
@@ -74,60 +75,30 @@ void configureToolFonts(ImGuiIO& io) {
 }
 
 void applyToolTheme() {
-    const auto& theme = toolTheme();
+    const auto snapshot = makeToolThemeStyleSnapshot(toolTheme());
 
     ImGui::StyleColorsDark();
     auto& style = ImGui::GetStyle();
-    style.WindowRounding = 0.0f;
-    style.ChildRounding = theme.childRounding;
-    style.FrameRounding = theme.frameRounding;
-    style.PopupRounding = theme.frameRounding;
-    style.GrabRounding = theme.frameRounding;
-    style.TabRounding = theme.frameRounding;
-    style.WindowBorderSize = 0.0f;
-    style.ChildBorderSize = 1.0f;
-    style.FrameBorderSize = 0.0f;
-    style.WindowPadding = ImVec2(theme.windowPaddingX, theme.windowPaddingY);
-    style.FramePadding = ImVec2(theme.rowPaddingX - 2.0f, theme.rowPaddingY);
-    style.ItemSpacing = ImVec2(theme.itemGap, 6.0f);
-    style.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
-    style.CellPadding = ImVec2(8.0f, 4.0f);
-    style.IndentSpacing = theme.indentWidth;
-    style.ScrollbarSize = 12.0f;
+    style.WindowRounding = snapshot.windowRounding;
+    style.ChildRounding = snapshot.childRounding;
+    style.FrameRounding = snapshot.frameRounding;
+    style.PopupRounding = snapshot.popupRounding;
+    style.GrabRounding = snapshot.grabRounding;
+    style.TabRounding = snapshot.tabRounding;
+    style.WindowBorderSize = snapshot.windowBorderSize;
+    style.ChildBorderSize = snapshot.childBorderSize;
+    style.FrameBorderSize = snapshot.frameBorderSize;
+    style.WindowPadding = snapshot.windowPadding;
+    style.FramePadding = snapshot.framePadding;
+    style.ItemSpacing = snapshot.itemSpacing;
+    style.ItemInnerSpacing = snapshot.itemInnerSpacing;
+    style.CellPadding = snapshot.cellPadding;
+    style.IndentSpacing = snapshot.indentSpacing;
+    style.ScrollbarSize = snapshot.scrollbarSize;
 
-    style.Colors[ImGuiCol_WindowBg] = theme.panelBg;
-    style.Colors[ImGuiCol_ChildBg] = theme.panelBgAlt;
-    style.Colors[ImGuiCol_Border] = theme.panelBorder;
-    style.Colors[ImGuiCol_Separator] = theme.panelBorder;
-    style.Colors[ImGuiCol_SeparatorHovered] = theme.accent;
-    style.Colors[ImGuiCol_SeparatorActive] = theme.accent;
-    style.Colors[ImGuiCol_Text] = theme.text;
-    style.Colors[ImGuiCol_TextDisabled] = theme.textMuted;
-    style.Colors[ImGuiCol_Header] = theme.selectionBg;
-    style.Colors[ImGuiCol_HeaderHovered] = theme.accent;
-    style.Colors[ImGuiCol_HeaderActive] = theme.accent;
-    style.Colors[ImGuiCol_Button] = theme.buttonBg;
-    style.Colors[ImGuiCol_ButtonHovered] = theme.buttonHoveredBg;
-    style.Colors[ImGuiCol_ButtonActive] = theme.buttonActiveBg;
-    style.Colors[ImGuiCol_FrameBg] = theme.frameBg;
-    style.Colors[ImGuiCol_FrameBgHovered] = theme.frameHoveredBg;
-    style.Colors[ImGuiCol_FrameBgActive] = theme.frameActiveBg;
-    style.Colors[ImGuiCol_TitleBg] = theme.panelBg;
-    style.Colors[ImGuiCol_TitleBgActive] = theme.panelBg;
-    style.Colors[ImGuiCol_ScrollbarBg] = theme.panelBgAlt;
-    style.Colors[ImGuiCol_ScrollbarGrab] = theme.hoverBg;
-    style.Colors[ImGuiCol_ScrollbarGrabHovered] = theme.rowActiveBg;
-    style.Colors[ImGuiCol_ScrollbarGrabActive] = theme.accent;
-    style.Colors[ImGuiCol_CheckMark] = theme.selectionText;
-    style.Colors[ImGuiCol_SliderGrab] = theme.accent;
-    style.Colors[ImGuiCol_SliderGrabActive] = theme.selectionText;
-    style.Colors[ImGuiCol_ResizeGrip] = theme.hoverBg;
-    style.Colors[ImGuiCol_ResizeGripHovered] = theme.accent;
-    style.Colors[ImGuiCol_ResizeGripActive] = theme.selectionText;
-    style.Colors[ImGuiCol_Tab] = theme.buttonBg;
-    style.Colors[ImGuiCol_TabHovered] = theme.buttonHoveredBg;
-    style.Colors[ImGuiCol_TabActive] = theme.buttonActiveBg;
-    style.Colors[ImGuiCol_NavHighlight] = theme.accent;
+    for (int colorIndex = 0; colorIndex < ImGuiCol_COUNT; ++colorIndex) {
+        style.Colors[colorIndex] = snapshot.colors[static_cast<size_t>(colorIndex)];
+    }
 }
 
 void beginFullWindow(const char* windowId, int width, int height) {

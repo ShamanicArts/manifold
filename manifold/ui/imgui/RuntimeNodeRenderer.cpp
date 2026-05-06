@@ -1,5 +1,6 @@
 #include "RuntimeNodeRenderer.h"
 
+#include "RuntimeNodeGeometrySupport.h"
 #include "imgui.h"
 
 #include <algorithm>
@@ -792,40 +793,21 @@ RuntimeNodeRenderer::PreviewTransform RuntimeNodeRenderer::buildPreviewTransform
                                                                                 int width,
                                                                                 int height,
                                                                                 const RenderOptions& options) const {
+    const auto supportTransform = runtime_node_geometry_support::buildPreviewTransform(root,
+                                                                                       width,
+                                                                                       height,
+                                                                                       options.leftPad,
+                                                                                       options.rightPad,
+                                                                                       options.topPad,
+                                                                                       options.bottomPad,
+                                                                                       options.fitToView);
+
     PreviewTransform transform;
-
-    juce::Rectangle<float> sceneBounds;
-    bool hasBounds = false;
-    collectVisibleBounds(root, SceneTransform{}, sceneBounds, hasBounds);
-    if (!hasBounds) {
-        sceneBounds = sceneRectForNode(root, SceneTransform{});
-    }
-
-    transform.valid = true;
-    transform.sceneBounds = enclosingIntRect(sceneBounds);
-
-    if (!options.fitToView) {
-        transform.scale = 1.0f;
-        transform.offsetX = 0.0f;
-        transform.offsetY = 0.0f;
-        return transform;
-    }
-
-    const float leftPad = options.leftPad;
-    const float rightPad = options.rightPad;
-    const float topPad = options.topPad;
-    const float bottomPad = options.bottomPad;
-    const float availableW = std::max(1.0f, static_cast<float>(width) - leftPad - rightPad);
-    const float availableH = std::max(1.0f, static_cast<float>(height) - topPad - bottomPad);
-    const float sceneW = std::max(1.0f, static_cast<float>(sceneBounds.getWidth()));
-    const float sceneH = std::max(1.0f, static_cast<float>(sceneBounds.getHeight()));
-    const float scale = std::min(availableW / sceneW, availableH / sceneH);
-
-    transform.scale = std::max(0.01f, scale);
-    transform.offsetX = leftPad + (availableW - sceneW * transform.scale) * 0.5f
-        - static_cast<float>(sceneBounds.getX()) * transform.scale;
-    transform.offsetY = topPad + (availableH - sceneH * transform.scale) * 0.5f
-        - static_cast<float>(sceneBounds.getY()) * transform.scale;
+    transform.valid = supportTransform.valid;
+    transform.scale = supportTransform.scale;
+    transform.offsetX = supportTransform.offsetX;
+    transform.offsetY = supportTransform.offsetY;
+    transform.sceneBounds = supportTransform.sceneBounds;
     return transform;
 }
 
@@ -853,16 +835,40 @@ RuntimeNodeRenderer::HitTestResult RuntimeNodeRenderer::hitTest(const Snapshot& 
                                                                 juce::Point<float> position,
                                                                 const PreviewTransform& transform,
                                                                 HitTestMode mode) const {
-    if (snapshot.root == nullptr || !transform.valid || transform.scale <= 0.0f) {
+    if (snapshot.root == nullptr) {
         return {};
     }
 
-    const float sceneX = (position.x - transform.offsetX) / transform.scale;
-    const float sceneY = (position.y - transform.offsetY) / transform.scale;
-    return hitTestRecursive(*snapshot.root,
-                            juce::Point<float>(sceneX, sceneY),
-                            SceneTransform{},
-                            mode);
+    RuntimeNodePreviewTransformData supportTransform;
+    supportTransform.valid = transform.valid;
+    supportTransform.scale = transform.scale;
+    supportTransform.offsetX = transform.offsetX;
+    supportTransform.offsetY = transform.offsetY;
+    supportTransform.sceneBounds = transform.sceneBounds;
+
+    RuntimeNodeHitTestModeData supportMode = RuntimeNodeHitTestModeData::Pointer;
+    switch (mode) {
+        case HitTestMode::Pointer:
+            supportMode = RuntimeNodeHitTestModeData::Pointer;
+            break;
+        case HitTestMode::Wheel:
+            supportMode = RuntimeNodeHitTestModeData::Wheel;
+            break;
+        case HitTestMode::AnyVisible:
+            supportMode = RuntimeNodeHitTestModeData::AnyVisible;
+            break;
+    }
+
+    const auto supportHit = runtime_node_geometry_support::hitTest(*snapshot.root,
+                                                                   position,
+                                                                   supportTransform,
+                                                                   supportMode);
+    HitTestResult result;
+    result.node = supportHit.node;
+    result.stableId = supportHit.stableId;
+    result.sceneBounds = supportHit.sceneBounds;
+    result.scenePosition = supportHit.scenePosition;
+    return result;
 }
 
 RuntimeNode* RuntimeNodeRenderer::cloneTree(const RuntimeNode& root,

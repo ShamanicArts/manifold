@@ -1147,6 +1147,14 @@ add_executable(StateSerializationSupportContractHarness manifold/headless/StateS
 
 add_executable(ControlCommandSupportContractHarness manifold/headless/ControlCommandSupportContractHarness.cpp)
 
+add_executable(RuntimeNodeGeometryContractHarness manifold/headless/RuntimeNodeGeometryContractHarness.cpp)
+
+add_executable(WidgetGeometryContractHarness manifold/headless/WidgetGeometryContractHarness.cpp)
+
+add_executable(ThemeSupportContractHarness manifold/headless/ThemeSupportContractHarness.cpp)
+
+add_executable(HierarchyHostInputContractHarness manifold/headless/HierarchyHostInputContractHarness.cpp)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -1441,6 +1449,62 @@ target_link_libraries(ControlCommandSupportContractHarness
         sol2::sol2
         highway)
 
+manifold_target_include_project_and_ableton(RuntimeNodeGeometryContractHarness)
+target_link_libraries(RuntimeNodeGeometryContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(WidgetGeometryContractHarness)
+target_link_libraries(WidgetGeometryContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(ThemeSupportContractHarness)
+target_link_libraries(ThemeSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(HierarchyHostInputContractHarness)
+target_link_libraries(HierarchyHostInputContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
 target_include_directories(VideoSamplerHarness
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1594,6 +1658,30 @@ target_compile_definitions(StateSerializationSupportContractHarness
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(ControlCommandSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(RuntimeNodeGeometryContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(WidgetGeometryContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(ThemeSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(HierarchyHostInputContractHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
@@ -1822,6 +1910,34 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/control_command_support_contract_golden.json)
 set_tests_properties(manifold_control_command_support_contract PROPERTIES
     LABELS "manifold;core;support;control;contract")
+
+add_test(
+    NAME manifold_runtime_node_geometry_contract
+    COMMAND $<TARGET_FILE:RuntimeNodeGeometryContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/runtime_node_geometry_contract_golden.json)
+set_tests_properties(manifold_runtime_node_geometry_contract PROPERTIES
+    LABELS "manifold;imgui;geometry;runtime;contract")
+
+add_test(
+    NAME manifold_widget_geometry_contract
+    COMMAND $<TARGET_FILE:WidgetGeometryContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/widget_geometry_contract_golden.json)
+set_tests_properties(manifold_widget_geometry_contract PROPERTIES
+    LABELS "manifold;imgui;geometry;widget;contract")
+
+add_test(
+    NAME manifold_theme_support_contract
+    COMMAND $<TARGET_FILE:ThemeSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/theme_support_contract_golden.json)
+set_tests_properties(manifold_theme_support_contract PROPERTIES
+    LABELS "manifold;imgui;theme;support;contract")
+
+add_test(
+    NAME manifold_hierarchy_host_input_contract
+    COMMAND $<TARGET_FILE:HierarchyHostInputContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/hierarchy_host_input_contract_golden.json)
+set_tests_properties(manifold_hierarchy_host_input_contract PROPERTIES
+    LABELS "manifold;imgui;hierarchy;input;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:

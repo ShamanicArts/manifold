@@ -1,6 +1,6 @@
 #pragma once
 
-#include "imgui.h"
+#include "external/imgui/imgui.h"
 
 namespace manifold {
 namespace ui {

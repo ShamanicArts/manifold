@@ -7,58 +7,37 @@ namespace ui {
 namespace imgui {
 namespace {
 
-float resolveRowHeight(const ThemeTokens& theme) {
-    return std::max(theme.rowHeight, ImGui::GetTextLineHeight() + theme.rowPaddingY * 2.0f);
-}
-
 void drawRow(const RowOptions& options, bool hovered, bool active) {
     const auto& theme = toolTheme();
     auto* drawList = ImGui::GetWindowDrawList();
     const auto min = ImGui::GetItemRectMin();
     const auto max = ImGui::GetItemRectMax();
     const auto textLineHeight = ImGui::GetTextLineHeight();
-    const auto rectHeight = max.y - min.y;
+    const auto detailSize = ImGui::CalcTextSize(options.detail != nullptr ? options.detail : "");
 
-    ImU32 background = 0;
-    if (options.selected) {
-        background = toU32(theme.selectionBg);
-    } else if (active) {
-        background = toU32(theme.rowActiveBg);
-    } else if (hovered) {
-        background = toU32(theme.hoverBg);
+    const auto resolved = resolveWidgetRowStyle(theme, options, hovered, active, textLineHeight);
+    const auto layout = computeWidgetRowLayout(theme, options, min, max, textLineHeight, detailSize.x);
+
+    if (resolved.background != 0) {
+        drawList->AddRectFilled(min, max, resolved.background, theme.rowRounding);
     }
 
-    if (background != 0) {
-        drawList->AddRectFilled(min, max, background, theme.rowRounding);
-    }
-
-    drawList->AddLine(ImVec2(min.x, max.y - 1.0f), ImVec2(max.x, max.y - 1.0f), toU32(theme.panelBorder));
-
-    float left = min.x + theme.rowPaddingX + options.indent;
-    float right = max.x - theme.rowPaddingX;
-    const float textY = min.y + (rectHeight - textLineHeight) * 0.5f;
-
-    ImVec4 labelColor = options.selected ? theme.selectionText
-                                         : (options.muted ? theme.textMuted : theme.text);
-    ImVec4 detailColor = options.selected ? theme.selectionText : theme.textMuted;
+    drawList->AddLine(ImVec2(min.x, max.y - 1.0f), ImVec2(max.x, max.y - 1.0f), resolved.separator);
 
     if (options.detail != nullptr && options.detail[0] != '\0') {
-        const auto detailSize = ImGui::CalcTextSize(options.detail);
-        const float detailX = std::max(left, right - detailSize.x);
-        drawList->AddText(ImVec2(detailX, textY), toU32(detailColor), options.detail);
-        right = detailX - theme.itemGap;
+        drawList->AddText(ImVec2(layout.detailX, layout.textY), resolved.detailColor, options.detail);
     }
 
-    const float clipMaxX = std::max(left, right);
-    drawList->PushClipRect(ImVec2(left, min.y), ImVec2(clipMaxX, max.y), true);
-    drawList->AddText(ImVec2(left, textY), toU32(labelColor), options.label != nullptr ? options.label : "");
+    drawList->PushClipRect(ImVec2(layout.left, min.y), ImVec2(layout.clipMaxX, max.y), true);
+    drawList->AddText(ImVec2(layout.left, layout.textY), resolved.labelColor, options.label != nullptr ? options.label : "");
     drawList->PopClipRect();
 }
 
 void advanceRowCursor() {
     const auto& theme = toolTheme();
-    const auto height = resolveRowHeight(theme);
-    const auto width = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const auto textLineHeight = ImGui::GetTextLineHeight();
+    const auto height = resolveWidgetRowHeight(theme, textLineHeight);
+    const auto width = resolveWidgetRowWidth(ImGui::GetContentRegionAvail().x);
     ImGui::Dummy(ImVec2(width, height));
 }
 
@@ -66,25 +45,22 @@ void advanceRowCursor() {
 
 void drawSectionHeader(const char* label) {
     const auto& theme = toolTheme();
-    const auto width = std::max(1.0f, ImGui::GetContentRegionAvail().x);
     const auto pos = ImGui::GetCursorScreenPos();
     const auto textLineHeight = ImGui::GetTextLineHeight();
-    const auto height = textLineHeight + theme.sectionPaddingY * 2.0f;
+    const auto labelSize = ImGui::CalcTextSize(label != nullptr ? label : "");
+    const auto layout = computeSectionHeaderLayout(theme,
+                                                   pos,
+                                                   ImGui::GetContentRegionAvail().x,
+                                                   textLineHeight,
+                                                   labelSize.x);
 
-    ImGui::Dummy(ImVec2(width, height));
+    ImGui::Dummy(ImVec2(layout.width, layout.height));
 
     auto* drawList = ImGui::GetWindowDrawList();
-    const float textX = pos.x + theme.rowPaddingX;
-    const float textY = pos.y + theme.sectionPaddingY;
-    const auto labelSize = ImGui::CalcTextSize(label != nullptr ? label : "");
-    const float lineY = pos.y + height - 1.0f;
-    const float lineStart = std::min(pos.x + width - theme.rowPaddingX,
-                                     textX + labelSize.x + theme.itemGap);
-
-    drawList->AddText(ImVec2(textX, textY), toU32(theme.textMuted), label != nullptr ? label : "");
-    if (lineStart < pos.x + width - theme.rowPaddingX) {
-        drawList->AddLine(ImVec2(lineStart, lineY),
-                          ImVec2(pos.x + width - theme.rowPaddingX, lineY),
+    drawList->AddText(ImVec2(layout.textX, layout.textY), toU32(theme.textMuted), label != nullptr ? label : "");
+    if (layout.lineStart < pos.x + layout.width - theme.rowPaddingX) {
+        drawList->AddLine(ImVec2(layout.lineStart, layout.lineY),
+                          ImVec2(pos.x + layout.width - theme.rowPaddingX, layout.lineY),
                           toU32(theme.panelBorder));
     }
 }
@@ -114,8 +90,8 @@ void drawTextRow(const RowOptions& options) {
 
 bool drawSelectableRow(const RowOptions& options) {
     const auto& theme = toolTheme();
-    const auto height = resolveRowHeight(theme);
-    const auto width = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+    const auto height = resolveWidgetRowHeight(theme, ImGui::GetTextLineHeight());
+    const auto width = resolveWidgetRowWidth(ImGui::GetContentRegionAvail().x);
 
     const bool pressed = ImGui::InvisibleButton("##row", ImVec2(width, height));
     drawRow(options, ImGui::IsItemHovered(), ImGui::IsItemActive());

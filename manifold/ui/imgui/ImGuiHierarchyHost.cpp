@@ -105,29 +105,15 @@ void ImGuiHierarchyHost::mouseUp(const juce::MouseEvent& e) {
 void ImGuiHierarchyHost::mouseExit(const juce::MouseEvent& e) {
     logHierarchyHostMouse("mouseExit", this, e);
 
-    if (leftMouseDown_ || rightMouseDown_ || middleMouseDown_) {
-        return;
-    }
-
-    PendingEvent event;
-    event.type = EventType::MousePos;
-    event.x = -1.0f;
-    event.y = -1.0f;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueHierarchyHostMouseExitIfIdle(pendingEvents, mouseButtons_);
 }
 
 void ImGuiHierarchyHost::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
     queueMousePosition(e.position);
 
-    PendingEvent event;
-    event.type = EventType::MouseWheel;
-    event.x = wheel.deltaX;
-    event.y = wheel.deltaY;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueHierarchyHostMouseWheel(pendingEvents, wheel);
 }
 
 void ImGuiHierarchyHost::focusGained(FocusChangeType cause) {
@@ -194,16 +180,16 @@ void ImGuiHierarchyHost::renderOpenGL() {
         std::lock_guard<std::mutex> lock(inputMutex);
         for (const auto& event : pendingEvents) {
             switch (event.type) {
-                case EventType::MousePos:
+                case manifold::ui::imgui::HierarchyHostInputEventType::MousePos:
                     io.AddMousePosEvent(event.x, event.y);
                     break;
-                case EventType::MouseButton:
+                case manifold::ui::imgui::HierarchyHostInputEventType::MouseButton:
                     io.AddMouseButtonEvent(event.button, event.down);
                     break;
-                case EventType::MouseWheel:
+                case manifold::ui::imgui::HierarchyHostInputEventType::MouseWheel:
                     io.AddMouseWheelEvent(event.x, event.y);
                     break;
-                case EventType::Focus:
+                case manifold::ui::imgui::HierarchyHostInputEventType::Focus:
                     io.AddFocusEvent(event.focused);
                     break;
             }
@@ -216,7 +202,7 @@ void ImGuiHierarchyHost::renderOpenGL() {
     {
         std::lock_guard<std::mutex> lock(inputMutex);
         for (const auto& event : pendingEvents) {
-            if (event.type == EventType::MouseButton) {
+            if (event.type == manifold::ui::imgui::HierarchyHostInputEventType::MouseButton) {
                 io.AddMouseButtonEvent(event.button, event.down);
             }
         }
@@ -297,13 +283,8 @@ void ImGuiHierarchyHost::attachContextIfNeeded() {
 }
 
 void ImGuiHierarchyHost::queueMousePosition(juce::Point<float> position) {
-    PendingEvent event;
-    event.type = EventType::MousePos;
-    event.x = position.x;
-    event.y = position.y;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueHierarchyHostMousePosition(pendingEvents, position);
 }
 
 void ImGuiHierarchyHost::queueCurrentMousePosition() {
@@ -318,56 +299,16 @@ void ImGuiHierarchyHost::queueCurrentMousePosition() {
 }
 
 void ImGuiHierarchyHost::syncMouseButtons(const juce::ModifierKeys& mods) {
-    const bool nextLeft = mods.isLeftButtonDown();
-    const bool nextRight = mods.isRightButtonDown();
-    const bool nextMiddle = mods.isMiddleButtonDown();
-
     std::lock_guard<std::mutex> lock(inputMutex);
-
-    const auto pushMouseButton = [&](bool& current, int button, bool nextState) {
-        if (current == nextState) {
-            return;
-        }
-
-        current = nextState;
-        PendingEvent event;
-        event.type = EventType::MouseButton;
-        event.button = button;
-        event.down = nextState;
-        pendingEvents.push_back(std::move(event));
-    };
-
-    pushMouseButton(leftMouseDown_, 0, nextLeft);
-    pushMouseButton(rightMouseDown_, 1, nextRight);
-    pushMouseButton(middleMouseDown_, 2, nextMiddle);
+    manifold::ui::imgui::syncHierarchyHostMouseButtons(pendingEvents, mouseButtons_, mods);
 }
 
 void ImGuiHierarchyHost::releaseAllMouseButtons() {
     std::lock_guard<std::mutex> lock(inputMutex);
-
-    const auto releaseButton = [&](bool& current, int button) {
-        if (!current) {
-            return;
-        }
-
-        current = false;
-        PendingEvent event;
-        event.type = EventType::MouseButton;
-        event.button = button;
-        event.down = false;
-        pendingEvents.push_back(std::move(event));
-    };
-
-    releaseButton(leftMouseDown_, 0);
-    releaseButton(rightMouseDown_, 1);
-    releaseButton(middleMouseDown_, 2);
+    manifold::ui::imgui::releaseHierarchyHostMouseButtons(pendingEvents, mouseButtons_);
 }
 
 void ImGuiHierarchyHost::queueFocus(bool focused) {
-    PendingEvent event;
-    event.type = EventType::Focus;
-    event.focused = focused;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueHierarchyHostFocus(pendingEvents, focused);
 }
