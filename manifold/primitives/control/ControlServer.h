@@ -10,7 +10,6 @@
 #include <optional>
 #include <string>
 #include <thread>
-#include <unordered_map>
 #include <vector>
 
 #if !JUCE_WINDOWS
@@ -28,6 +27,7 @@
 class ScriptableProcessor;
 class CaptureBuffer;
 class LuaEngine;
+struct ParseResult;
 
 // ============================================================================
 // Lock-free SPSC command queue: control thread -> audio thread
@@ -443,12 +443,8 @@ private:
   std::string handleNoOpWarning(const ParseResult& result);
   std::string handleError(const ParseResult& result);
 
-  // Dispatch maps populated during start()
-  using PrefixHandler = std::function<std::optional<std::string>(const std::string&, const std::string&)>;
-  using ParsedHandler = std::function<std::string(const ParseResult&)>;
+  // Dispatch map registration
   void registerCommandHandlers();
-  std::vector<std::pair<std::string, PrefixHandler>> prefixHandlers;
-  std::unordered_map<ParseResult::Kind, ParsedHandler> parsedHandlers;
 
   std::string buildStateJson();
   std::string buildDiagnoseJson();

@@ -27,7 +27,9 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <iomanip>
+#include <unordered_map>
 #include <limits>
 
 #if JUCE_WINDOWS
@@ -526,6 +528,239 @@ void ControlServer::clientLoop(int clientFd) {
 }
 
 // ============================================================================
+// Prefix command handlers (Stage 1 - short-circuit before parser)
+// ============================================================================
+
+std::optional<std::string> ControlServer::handleDspRun(const std::string& cmd, const std::string& /*upperTrimmedCmd*/) {
+    if (owner == nullptr)
+        return std::nullopt;
+
+    constexpr const char* kDspRunPrefix = "DSPRUN ";
+    constexpr size_t kDspRunPrefixLen = 7;
+    if (cmd.rfind(kDspRunPrefix, 0) != 0)
+        return std::nullopt;
+
+    std::string script = cmd.substr(kDspRunPrefixLen);
+    juce::String scriptText(script);
+    scriptText = scriptText.replace("\\n", "\n");
+    if (owner->loadDspScriptFromString(scriptText.toStdString(), "ipc:dsprun")) {
+        return std::string("OK");
+    }
+    return std::string("ERROR ") + owner->getDspScriptLastError();
+}
+
+std::optional<std::string> ControlServer::handlePerfReset(const std::string& upperTrimmedCmd) {
+    if (upperTrimmedCmd != "PERF RESET")
+        return std::nullopt;
+
+    if (frameTimings != nullptr) {
+        frameTimings->resetPeaks();
+    }
+    return std::string("OK");
+}
+
+std::optional<std::string> ControlServer::handleEval(const std::string& cmd, const std::string& upperTrimmedCmd) {
+    if (upperTrimmedCmd != "EVAL" && upperTrimmedCmd.rfind("EVAL ", 0) != 0)
+        return std::nullopt;
+
+    if (luaEngine == nullptr) {
+        return std::string("ERROR no lua engine");
+    }
+    if (!luaEngine->isInitialized()) {
+        return std::string("ERROR lua engine not initialized");
+    }
+
+    const size_t separatorPos = cmd.find_first_of(" \t");
+    std::string script = separatorPos == std::string::npos ? "" : cmd.substr(separatorPos + 1);
+    juce::String scriptText(script);
+    scriptText = scriptText.replace("\\n", "\n");
+
+    auto request = luaEngine->queueEval(scriptText.toStdString());
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!request->completed.load(std::memory_order_acquire)) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+            return std::string("ERROR eval timeout");
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    std::lock_guard<std::mutex> resultLock(request->resultMutex);
+    if (request->isError) {
+        return std::string("ERROR ") + request->result;
+    }
+    if (request->result.empty()) {
+        return std::string("OK");
+    }
+    return std::string("OK ") + request->result;
+}
+
+std::optional<std::string> ControlServer::handleDirectSet(const std::string& cmd, const std::string& /*upperTrimmedCmd*/) {
+    if (owner == nullptr || cmd.size() <= 4)
+        return std::nullopt;
+
+    std::istringstream iss(cmd);
+    std::vector<std::string> tokens;
+    std::string tok;
+    while (iss >> tok) {
+        tokens.push_back(tok);
+    }
+
+    if (tokens.size() < 3 || CommandParser::toUpper(tokens[0]) != "SET")
+        return std::nullopt;
+
+    const juce::String path(tokens[1]);
+
+    EndpointResolver resolver(&owner->getEndpointRegistry());
+    ResolvedEndpoint endpoint;
+    if (!resolver.resolve(path, endpoint) ||
+        endpoint.commandType != ControlCommand::Type::None) {
+        return std::nullopt;
+    }
+
+    std::string rawValue = tokens[2];
+    for (size_t i = 3; i < tokens.size(); ++i) {
+        rawValue += " ";
+        rawValue += tokens[i];
+    }
+
+    const juce::var input = CommandParser::parseCanonicalValueToken(rawValue);
+    const auto validation = resolver.validateWrite(endpoint, input);
+    if (!validation.accepted) {
+        return std::string("ERROR invalid value for path: ") + path.toStdString();
+    }
+
+    float normalized = 0.0f;
+    const juce::var& value = validation.normalizedValue;
+    if (value.isBool()) {
+        normalized = static_cast<bool>(value) ? 1.0f : 0.0f;
+    } else if (value.isInt() || value.isInt64() || value.isDouble()) {
+        normalized = static_cast<float>(static_cast<double>(value));
+    } else {
+        return std::string("ERROR unsupported direct value type for path: ") +
+               path.toStdString();
+    }
+
+    if (!owner->setParamByPath(path.toStdString(), normalized)) {
+        return std::string("ERROR rejected direct endpoint write: ") +
+               path.toStdString();
+    }
+    return std::string("OK");
+}
+
+// ============================================================================
+// Parsed command handlers (Stage 2 - after CommandParser::parse)
+// ============================================================================
+
+std::string ControlServer::handleEnqueue(const ParseResult& result) {
+    if (!enqueueCommand(result.command))
+        return "ERROR queue full";
+    return "OK";
+}
+
+std::string ControlServer::handleQuery(const ParseResult& result) {
+    if (result.queryType == "STATE")    return "OK " + buildStateJson();
+    if (result.queryType == "PING")     return "OK PONG";
+    if (result.queryType == "DIAGNOSE") return "OK " + buildDiagnoseJson();
+    if (result.queryType == "DIAGNOSTICS") return "OK " + buildDiagnoseJson();
+    if (result.queryType == "UIRENDERER") {
+        std::ostringstream o;
+        o << "OK {" << jsonStr("mode", uiRendererModeToString(getCurrentUIRendererMode())) << "}";
+        return o.str();
+    }
+    if (result.queryType == "GET") {
+        if (!owner) {
+            return "ERROR no processor";
+        }
+
+        const juce::String payload =
+            owner->getOSCQueryServer().queryPathValue(
+                juce::String(result.queryPath));
+        if (payload.startsWith("{\"error\"")) {
+            return "ERROR " + payload.toStdString();
+        }
+        return "OK " + payload.toStdString();
+    }
+    if (result.queryType == "RECORD_STATUS") {
+        return getRecordingStatus();
+    }
+    return "ERROR unknown query type";
+}
+
+std::string ControlServer::handleWatch(const ParseResult& /*result*/) {
+    return "OK watching";
+}
+
+std::string ControlServer::handleInject(const ParseResult& result) {
+    return loadFileForInjection(result.filepath);
+}
+
+std::string ControlServer::handleInjectionStatus(const ParseResult& /*result*/) {
+    bool active = injectionActive.load(std::memory_order_acquire);
+    int pos = injectionReadPos.load(std::memory_order_relaxed);
+    int total = 0;
+    {
+        std::lock_guard<std::mutex> lock(injectionMutex);
+        total = injectionBuffer.totalSamples;
+    }
+    std::ostringstream o;
+    o << "OK {";
+    o << jsonBool("active", active) << ",";
+    o << jsonNum("readPos", pos) << ",";
+    o << jsonNum("totalSamples", total) << ",";
+    o << jsonNum("progress", total > 0 ? (double)pos / total : 0.0);
+    o << "}";
+    return o.str();
+}
+
+std::string ControlServer::handleUISwitch(const ParseResult& result) {
+    std::lock_guard<std::mutex> lock(uiSwitchRequest.mutex);
+    uiSwitchRequest.path = result.filepath;
+    uiSwitchRequest.pending.store(true, std::memory_order_release);
+    return "OK UI switch queued";
+}
+
+std::string ControlServer::handleUIRenderer(const ParseResult& result) {
+    const std::string normalizedMode = normalizeUIRendererModeToken(result.rendererMode);
+    std::lock_guard<std::mutex> lock(uiRendererRequest.mutex);
+    uiRendererRequest.mode = normalizedMode;
+    uiRendererRequest.pending.store(true, std::memory_order_release);
+    if (normalizedMode == "canvas") {
+        setCurrentUIRendererMode(0);
+    } else if (normalizedMode == "imgui-overlay") {
+        setCurrentUIRendererMode(1);
+    } else if (normalizedMode == "imgui-replace") {
+        setCurrentUIRendererMode(2);
+    } else if (normalizedMode == "imgui-direct") {
+        setCurrentUIRendererMode(3);
+    }
+    return "OK UI renderer queued: " + normalizedMode;
+}
+
+std::string ControlServer::handleScreenshot(const ParseResult& result) {
+    return captureScreenshot(result.capturePath);
+}
+
+std::string ControlServer::handleRecordStart(const ParseResult& result) {
+    return startRecording(result.recordFormat, result.recordDuration, result.capturePath);
+}
+
+std::string ControlServer::handleRecordStop(const ParseResult& /*result*/) {
+    return stopRecording();
+}
+
+std::string ControlServer::handleRecordStatus(const ParseResult& /*result*/) {
+    return getRecordingStatus();
+}
+
+std::string ControlServer::handleNoOpWarning(const ParseResult& result) {
+    return "ERROR " + result.warningMessage;
+}
+
+std::string ControlServer::handleError(const ParseResult& result) {
+    return "ERROR " + result.errorMessage;
+}
+
+// ============================================================================
 // Command processing - called from client thread, reads atomics
 // ============================================================================
 
@@ -533,108 +768,11 @@ std::string ControlServer::processCommand(const std::string& cmd) {
     const std::string trimmedCmd = trim(cmd);
     const std::string upperTrimmedCmd = toUpper(trimmedCmd);
 
-    if (owner) {
-        constexpr const char* kDspRunPrefix = "DSPRUN ";
-        constexpr size_t kDspRunPrefixLen = 7;
-        if (cmd.rfind(kDspRunPrefix, 0) == 0) {
-            std::string script = cmd.substr(kDspRunPrefixLen);
-            juce::String scriptText(script);
-            scriptText = scriptText.replace("\\n", "\n");
-            if (owner->loadDspScriptFromString(scriptText.toStdString(), "ipc:dsprun")) {
-                return "OK";
-            }
-            return "ERROR " + owner->getDspScriptLastError();
-        }
-    }
-
-    if (upperTrimmedCmd == "PERF RESET") {
-        if (frameTimings != nullptr) {
-            frameTimings->resetPeaks();
-        }
-        return "OK";
-    }
-
-    if (upperTrimmedCmd == "EVAL" || upperTrimmedCmd.rfind("EVAL ", 0) == 0) {
-        if (luaEngine == nullptr) {
-            return "ERROR no lua engine";
-        }
-        if (!luaEngine->isInitialized()) {
-            return "ERROR lua engine not initialized";
-        }
-
-        const size_t separatorPos = cmd.find_first_of(" \t");
-        std::string script = separatorPos == std::string::npos ? "" : cmd.substr(separatorPos + 1);
-        juce::String scriptText(script);
-        scriptText = scriptText.replace("\\n", "\n");
-
-        auto request = luaEngine->queueEval(scriptText.toStdString());
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-        while (!request->completed.load(std::memory_order_acquire)) {
-            if (std::chrono::steady_clock::now() >= deadline) {
-                return "ERROR eval timeout";
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-
-        std::lock_guard<std::mutex> resultLock(request->resultMutex);
-        if (request->isError) {
-            return "ERROR " + request->result;
-        }
-        if (request->result.empty()) {
-            return "OK";
-        }
-        return "OK " + request->result;
-    }
-
-    // Direct-value endpoints (commandType=None) are handled synchronously.
-    // They must be declared in the endpoint registry and pass resolver
-    // validation. Unknown paths are not accepted.
-    if (owner && cmd.size() > 4) {
-        std::istringstream iss(cmd);
-        std::vector<std::string> tokens;
-        std::string tok;
-        while (iss >> tok) {
-            tokens.push_back(tok);
-        }
-
-        if (tokens.size() >= 3 && toUpper(tokens[0]) == "SET") {
-            const juce::String path(tokens[1]);
-
-            EndpointResolver resolver(&owner->getEndpointRegistry());
-            ResolvedEndpoint endpoint;
-            if (resolver.resolve(path, endpoint) &&
-                endpoint.commandType == ControlCommand::Type::None) {
-                std::string rawValue = tokens[2];
-                for (size_t i = 3; i < tokens.size(); ++i) {
-                    rawValue += " ";
-                    rawValue += tokens[i];
-                }
-
-                const juce::var input = CommandParser::parseCanonicalValueToken(rawValue);
-                const auto validation = resolver.validateWrite(endpoint, input);
-                if (!validation.accepted) {
-                    return "ERROR invalid value for path: " + path.toStdString();
-                }
-
-                float normalized = 0.0f;
-                const juce::var& value = validation.normalizedValue;
-                if (value.isBool()) {
-                    normalized = static_cast<bool>(value) ? 1.0f : 0.0f;
-                } else if (value.isInt() || value.isInt64() || value.isDouble()) {
-                    normalized = static_cast<float>(static_cast<double>(value));
-                } else {
-                    return "ERROR unsupported direct value type for path: " +
-                           path.toStdString();
-                }
-
-                if (!owner->setParamByPath(path.toStdString(), normalized)) {
-                    return "ERROR rejected direct endpoint write: " +
-                           path.toStdString();
-                }
-                return "OK";
-            }
-        }
-    }
+    // Stage 1: prefix handlers (short-circuit before parser)
+    if (auto result = handleDspRun(cmd, upperTrimmedCmd)) return *result;
+    if (auto result = handlePerfReset(upperTrimmedCmd)) return *result;
+    if (auto result = handleEval(cmd, upperTrimmedCmd)) return *result;
+    if (auto result = handleDirectSet(cmd, upperTrimmedCmd)) return *result;
 
     auto result = CommandParser::parse(
         cmd,
@@ -649,111 +787,31 @@ std::string ControlServer::processCommand(const std::string& cmd) {
         }
     }
 
-    switch (result.kind) {
-        case ParseResult::Kind::Enqueue: {
-            if (!enqueueCommand(result.command))
-                return "ERROR queue full";
-            return "OK";
-        }
+    // Stage 2: dispatch map lookup (populated once on first call)
+    static const auto& dispatchMap = []() {
+        using H = std::function<std::string(ControlServer&, const ParseResult&)>;
+        static std::unordered_map<ParseResult::Kind, H> m;
+        m[ParseResult::Kind::Enqueue]         = [](ControlServer& self, const ParseResult& r) { return self.handleEnqueue(r); };
+        m[ParseResult::Kind::Query]           = [](ControlServer& self, const ParseResult& r) { return self.handleQuery(r); };
+        m[ParseResult::Kind::Watch]           = [](ControlServer& self, const ParseResult& r) { return self.handleWatch(r); };
+        m[ParseResult::Kind::Inject]          = [](ControlServer& self, const ParseResult& r) { return self.handleInject(r); };
+        m[ParseResult::Kind::InjectionStatus]  = [](ControlServer& self, const ParseResult& r) { return self.handleInjectionStatus(r); };
+        m[ParseResult::Kind::UISwitch]        = [](ControlServer& self, const ParseResult& r) { return self.handleUISwitch(r); };
+        m[ParseResult::Kind::UIRenderer]      = [](ControlServer& self, const ParseResult& r) { return self.handleUIRenderer(r); };
+        m[ParseResult::Kind::Screenshot]      = [](ControlServer& self, const ParseResult& r) { return self.handleScreenshot(r); };
+        m[ParseResult::Kind::RecordStart]     = [](ControlServer& self, const ParseResult& r) { return self.handleRecordStart(r); };
+        m[ParseResult::Kind::RecordStop]      = [](ControlServer& self, const ParseResult& r) { return self.handleRecordStop(r); };
+        m[ParseResult::Kind::RecordStatus]    = [](ControlServer& self, const ParseResult& r) { return self.handleRecordStatus(r); };
+        m[ParseResult::Kind::NoOpWarning]     = [](ControlServer& self, const ParseResult& r) { return self.handleNoOpWarning(r); };
+        m[ParseResult::Kind::Error]           = [](ControlServer& self, const ParseResult& r) { return self.handleError(r); };
+        return m;
+    }();
 
-        case ParseResult::Kind::Query: {
-            if (result.queryType == "STATE")    return "OK " + buildStateJson();
-            if (result.queryType == "PING")     return "OK PONG";
-            if (result.queryType == "DIAGNOSE") return "OK " + buildDiagnoseJson();
-            if (result.queryType == "DIAGNOSTICS") return "OK " + buildDiagnoseJson();
-            if (result.queryType == "UIRENDERER") {
-                std::ostringstream o;
-                o << "OK {" << jsonStr("mode", uiRendererModeToString(getCurrentUIRendererMode())) << "}";
-                return o.str();
-            }
-            if (result.queryType == "GET") {
-                if (!owner) {
-                    return "ERROR no processor";
-                }
-
-                const juce::String payload =
-                    owner->getOSCQueryServer().queryPathValue(
-                        juce::String(result.queryPath));
-                if (payload.startsWith("{\"error\"")) {
-                    return "ERROR " + payload.toStdString();
-                }
-                return "OK " + payload.toStdString();
-            }
-            if (result.queryType == "RECORD_STATUS") {
-                return getRecordingStatus();
-            }
-            return "ERROR unknown query type";
-        }
-
-        case ParseResult::Kind::Watch:
-            return "OK watching";
-
-        case ParseResult::Kind::Inject:
-            return loadFileForInjection(result.filepath);
-
-        case ParseResult::Kind::InjectionStatus: {
-            bool active = injectionActive.load(std::memory_order_acquire);
-            int pos = injectionReadPos.load(std::memory_order_relaxed);
-            int total = 0;
-            {
-                std::lock_guard<std::mutex> lock(injectionMutex);
-                total = injectionBuffer.totalSamples;
-            }
-            std::ostringstream o;
-            o << "OK {";
-            o << jsonBool("active", active) << ",";
-            o << jsonNum("readPos", pos) << ",";
-            o << jsonNum("totalSamples", total) << ",";
-            o << jsonNum("progress", total > 0 ? (double)pos / total : 0.0);
-            o << "}";
-            return o.str();
-        }
-
-        case ParseResult::Kind::UISwitch: {
-            std::lock_guard<std::mutex> lock(uiSwitchRequest.mutex);
-            uiSwitchRequest.path = result.filepath;
-            uiSwitchRequest.pending.store(true, std::memory_order_release);
-            return "OK UI switch queued";
-        }
-
-        case ParseResult::Kind::UIRenderer: {
-            const std::string normalizedMode = normalizeUIRendererModeToken(result.rendererMode);
-            std::lock_guard<std::mutex> lock(uiRendererRequest.mutex);
-            uiRendererRequest.mode = normalizedMode;
-            uiRendererRequest.pending.store(true, std::memory_order_release);
-            if (normalizedMode == "canvas") {
-                setCurrentUIRendererMode(0);
-            } else if (normalizedMode == "imgui-overlay") {
-                setCurrentUIRendererMode(1);
-            } else if (normalizedMode == "imgui-replace") {
-                setCurrentUIRendererMode(2);
-            } else if (normalizedMode == "imgui-direct") {
-                setCurrentUIRendererMode(3);
-            }
-            return "OK UI renderer queued: " + normalizedMode;
-        }
-
-        case ParseResult::Kind::Screenshot:
-            return captureScreenshot(result.capturePath);
-
-
-        case ParseResult::Kind::RecordStart:
-            return startRecording(result.recordFormat, result.recordDuration, result.capturePath);
-
-        case ParseResult::Kind::RecordStop:
-            return stopRecording();
-
-        case ParseResult::Kind::RecordStatus:
-            return getRecordingStatus();
-
-
-        case ParseResult::Kind::NoOpWarning:
-            return "ERROR " + result.warningMessage;
-
-        case ParseResult::Kind::Error:
-            return "ERROR " + result.errorMessage;
+    {
+        auto it = dispatchMap.find(result.kind);
+        if (it != dispatchMap.end())
+            return it->second(*this, result);
     }
-
     return "ERROR internal";
 }
 
