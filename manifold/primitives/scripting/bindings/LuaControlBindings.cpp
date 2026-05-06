@@ -2930,7 +2930,7 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
             }
             return self->ingestLatestFrame(processor->getPlayTimeSamples(), highResNowSeconds());
         },
-        "ingestSegmentedLatest", [&state](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self,
+        "ingestSegmentedLatest", [&state, &lua](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self,
                                             const std::shared_ptr<manifold::ml::MLPipeline>& pipeline,
                                             sol::optional<sol::table> opts) -> bool {
             auto* processor = state.getProcessor();
@@ -2938,83 +2938,41 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                 return false;
             }
 
-            auto frame = manifold::video::VideoCaptureManager::instance().getLatestFrameCopy();
-            if (!frame.valid()) {
-                return false;
-            }
+        // Start background worker on first call
+        pipeline->startBackgroundWorker();
 
-            float gain = 1.0f;
-            bool useSigmoid = true;
-            float threshold = 0.5f;
-            float feather = 0.15f;
-            bool invert = false;
-            float background = 0.0f;
-            if (opts) {
-                auto table = *opts;
-                gain = static_cast<float>(table["gain"].get_or(1.0));
-                useSigmoid = table["useSigmoid"].get_or(true);
-                threshold = static_cast<float>(table["threshold"].get_or(0.5));
-                feather = static_cast<float>(table["feather"].get_or(0.15));
-                invert = table["invert"].get_or(false);
-                background = static_cast<float>(table["background"].get_or(0.0));
-            }
-            threshold = mlClamp01(threshold);
-            feather = mlClamp01(feather);
-            background = mlClamp01(background);
+        // Copy latest frame and submit as segmentation job
+        auto frame = manifold::video::VideoCaptureManager::instance().getLatestFrameCopy();
+        if (!frame.valid()) return false;
 
-            std::vector<float> rawOutput;
-            if (!pipeline->infer(frame.rgba.data(), frame.width, frame.height, rawOutput)) {
-                return false;
-            }
+        manifold::ml::MLPipeline::SegmentationOpts sopts;
+        if (opts) {
+            auto table = *opts;
+            sopts.gain = static_cast<float>(table["gain"].get_or(1.0));
+            sopts.useSigmoid = table["useSigmoid"].get_or(true);
+            sopts.threshold = mlClamp01(static_cast<float>(table["threshold"].get_or(0.5)));
+            sopts.feather = mlClamp01(static_cast<float>(table["feather"].get_or(0.15)));
+            sopts.invert = table["invert"].get_or(false);
+            sopts.background = mlClamp01(static_cast<float>(table["background"].get_or(0.0)));
+        }
 
-            const int maskW = pipeline->inputWidth();
-            const int maskH = pipeline->inputHeight();
-            const std::size_t maskSize = static_cast<std::size_t>(maskW) * static_cast<std::size_t>(maskH);
-            if (maskW <= 0 || maskH <= 0 || rawOutput.size() < maskSize) {
-                return false;
-            }
+        pipeline->submitSegmentation(frame.width, frame.height, std::move(frame.rgba), sopts);
 
-            float minValue = rawOutput[0];
-            float maxValue = rawOutput[0];
-            for (std::size_t i = 1; i < maskSize; ++i) {
-                minValue = std::min(minValue, rawOutput[i]);
-                maxValue = std::max(maxValue, rawOutput[i]);
-            }
-            const bool applySigmoid = useSigmoid && (minValue < 0.0f || maxValue > 1.0f);
+        // Poll for completed segmentation result (non-blocking)
+        int outW = 0, outH = 0;
+        uint64_t seqOut = 0;
+        auto segResult = pipeline->pollSegmentationResult(outW, outH, seqOut);
+        if (segResult.empty() || outW <= 0 || outH <= 0) {
+            return false;
+        }
 
-            std::vector<float> processedMask(maskSize);
-            for (std::size_t i = 0; i < maskSize; ++i) {
-                processedMask[i] = mlPostprocessMaskValue(rawOutput[i], gain, useSigmoid, threshold, feather, invert, applySigmoid);
-            }
-
-            manifold::video::FrameData out;
-            out.width = frame.width;
-            out.height = frame.height;
-            out.sequence = frame.sequence;
-            const std::size_t pixelCount = static_cast<std::size_t>(out.width) * static_cast<std::size_t>(out.height);
-            out.rgba.resize(pixelCount * 4u);
-            for (int y = 0; y < out.height; ++y) {
-                for (int x = 0; x < out.width; ++x) {
-                    const float alpha = mlSampleMaskNearest(processedMask, maskW, maskH, x, y, out.width, out.height);
-                    const std::size_t pixelIndex = static_cast<std::size_t>(y) * static_cast<std::size_t>(out.width) + static_cast<std::size_t>(x);
-                    const std::size_t base = pixelIndex * 4u;
-                    if (background <= 0.0f) {
-                        out.rgba[base + 0] = frame.rgba[base + 0];
-                        out.rgba[base + 1] = frame.rgba[base + 1];
-                        out.rgba[base + 2] = frame.rgba[base + 2];
-                        out.rgba[base + 3] = static_cast<std::uint8_t>(std::lround(alpha * 255.0f));
-                    } else {
-                        const float mixFactor = background + alpha * (1.0f - background);
-                        out.rgba[base + 0] = static_cast<std::uint8_t>(std::lround(static_cast<float>(frame.rgba[base + 0]) * mixFactor));
-                        out.rgba[base + 1] = static_cast<std::uint8_t>(std::lround(static_cast<float>(frame.rgba[base + 1]) * mixFactor));
-                        out.rgba[base + 2] = static_cast<std::uint8_t>(std::lround(static_cast<float>(frame.rgba[base + 2]) * mixFactor));
-                        out.rgba[base + 3] = 255;
-                    }
-                }
-            }
-
-            return self->ingestFrame(std::move(out), processor->getPlayTimeSamples(), highResNowSeconds());
-        },
+        manifold::video::FrameData out;
+        out.width = outW;
+        out.height = outH;
+        out.sequence = seqOut;
+        out.rgba = std::move(segResult);
+        return self->ingestFrame(std::move(out), processor->getPlayTimeSamples(), highResNowSeconds());
+    },
         "copyRecentToSampler", [&state](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self,
                                           const std::shared_ptr<manifold::video::VideoSampler>& sampler,
                                           double samplesBack) -> bool {
@@ -3108,7 +3066,10 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         "inputChannels", &manifold::ml::MLPipeline::inputChannels,
         "outputElements", &manifold::ml::MLPipeline::outputElements,
         "setNormalization", &manifold::ml::MLPipeline::setNormalization,
-        "lastError", &manifold::ml::MLPipeline::lastError);
+        "lastError", &manifold::ml::MLPipeline::lastError,
+        "startBackgroundWorker", &manifold::ml::MLPipeline::startBackgroundWorker,
+        "submitFrame", &manifold::ml::MLPipeline::submitFrame,
+        "pollResult", &manifold::ml::MLPipeline::pollResult);
 
     mlTable["load"] = [](const std::string& modelPath)
         -> std::shared_ptr<manifold::ml::MLPipeline> {
@@ -3119,8 +3080,41 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         return pipeline;
     };
 
-    // Convenience: infer from latest webcam frame
+    // Async infer: submits frame to background worker, returns last completed result.
+    // Non-blocking — frame copy is fast (<50us), inference runs on background thread.
     mlTable["infer"] = [&lua](
+        const std::shared_ptr<manifold::ml::MLPipeline>& pipeline)
+        -> sol::optional<sol::table> {
+        if (!pipeline || !pipeline->isLoaded()) return sol::nullopt;
+
+        // Start background worker on first call
+        pipeline->startBackgroundWorker();
+
+        // Copy latest frame (fast: mutex lock + vector copy)
+        auto frame = manifold::video::VideoCaptureManager::instance().getLatestFrameCopy();
+        if (frame.valid()) {
+            pipeline->submitFrame(frame.width, frame.height, std::move(frame.rgba));
+        }
+
+        // Return last completed result (non-blocking)
+        std::vector<float> output;
+        if (!pipeline->pollResult(output)) {
+            return sol::nullopt;
+        }
+
+        auto result = sol::table(lua, sol::create);
+        result["width"] = pipeline->inputWidth();
+        result["height"] = pipeline->inputHeight();
+        result["size"] = static_cast<int>(output.size());
+        sol::table dataTable = sol::table(lua, sol::create);
+        for (int i = 0; i < static_cast<int>(output.size()); ++i)
+            dataTable[i + 1] = output[static_cast<std::size_t>(i)];
+        result["data"] = dataTable;
+        return result;
+    };
+
+    // Synchronous infer (old behavior): blocks until inference completes.
+    mlTable["inferSync"] = [&lua](
         const std::shared_ptr<manifold::ml::MLPipeline>& pipeline)
         -> sol::optional<sol::table> {
         if (!pipeline || !pipeline->isLoaded()) return sol::nullopt;

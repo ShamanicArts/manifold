@@ -1,0 +1,3475 @@
+{
+  "timestamp": "2026-04-30T22:32:06.214411",
+  "files": [
+    {
+      "path": "UserScripts/DSP/test_user_dsp.lua",
+      "lines": 22,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/AVSampler/dsp/default_dsp.lua",
+      "lines": 393,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/AVSampler/ui/behaviors/main.lua",
+      "lines": 1522,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/AVSampler/ui/main.ui.lua",
+      "lines": 334,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/AVSamplerLab/dsp/default_dsp.lua",
+      "lines": 393,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/AVSamplerLab/ui/behaviors/main.lua",
+      "lines": 1045,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/AVSamplerLab/ui/main.ui.lua",
+      "lines": 238,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappEventLab/dsp/default_dsp.lua",
+      "lines": 244,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappEventLab/dsp/lib/max_event_runtime.lua",
+      "lines": 121,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappEventLab/ui/behaviors/main.lua",
+      "lines": 180,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappEventLab/ui/main.ui.lua",
+      "lines": 172,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappFxChain/dsp/default_dsp.lua",
+      "lines": 404,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappFxChain/ui/behaviors/main.lua",
+      "lines": 211,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappFxChain/ui/main.ui.lua",
+      "lines": 307,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappInstrument/data/myPresets.json",
+      "lines": 1,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/BappInstrument/dsp/default_dsp.full_attempt.lua",
+      "lines": 1437,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappInstrument/dsp/default_dsp.lua",
+      "lines": 2746,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappInstrument/ui/behaviors/adsr.lua",
+      "lines": 272,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappInstrument/ui/behaviors/main.lua",
+      "lines": 2568,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappInstrument/ui/components/adsr.ui.lua",
+      "lines": 51,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappInstrument/ui/main.ui.lua",
+      "lines": 496,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappNoiseLab/dsp/default_dsp.lua",
+      "lines": 346,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappNoiseLab/ui/behaviors/main.lua",
+      "lines": 307,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappNoiseLab/ui/main.ui.lua",
+      "lines": 188,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappPrimitiveLab/dsp/default_dsp.lua",
+      "lines": 265,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappPrimitiveLab/manifest.spec.json",
+      "lines": 30,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/BappPrimitiveLab/themes/dark.lua",
+      "lines": 15,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappPrimitiveLab/ui/behaviors/main.lua",
+      "lines": 115,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappPrimitiveLab/ui/components/main.ui.lua",
+      "lines": 168,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappPrimitiveLab/ui/main.ui.lua",
+      "lines": 232,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappSampleTopper/dsp/default_dsp.lua",
+      "lines": 449,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappSampleTopper/ui/behaviors/main.lua",
+      "lines": 307,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappSampleTopper/ui/main.ui.lua",
+      "lines": 143,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappSourceLayerLab/dsp/default_dsp.lua",
+      "lines": 719,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappSourceLayerLab/dsp/default_dsp_clap_wip.lua",
+      "lines": 837,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappSourceLayerLab/ui/behaviors/main.lua",
+      "lines": 307,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappSourceLayerLab/ui/main.ui.lua",
+      "lines": 281,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/BappSourceLayerLab/ui/main_clap_wip.ui.lua",
+      "lines": 281,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/DspLiveScripting/dsp/default_dsp.lua",
+      "lines": 26,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/DspLiveScripting/dsp/fx_slot_swap_harness.lua",
+      "lines": 286,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/DspLiveScripting/themes/dark.lua",
+      "lines": 15,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/DspLiveScripting/ui/behaviors/main.lua",
+      "lines": 2219,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/DspLiveScripting/ui/main.ui.lua",
+      "lines": 384,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/behaviors/main.lua",
+      "lines": 626,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/legacy/experimental_legacy.lua",
+      "lines": 1871,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/main.ui.lua",
+      "lines": 426,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/widgets/eq_visualizer.lua",
+      "lines": 158,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/widgets/kaleidoscope.lua",
+      "lines": 126,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/widgets/matrix_rain.lua",
+      "lines": 122,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/widgets/particle_emitter.lua",
+      "lines": 201,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/widgets/vector_field.lua",
+      "lines": 105,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/widgets/visual_utils.lua",
+      "lines": 93,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/widgets/waveform_ring.lua",
+      "lines": 141,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ExperimentalUI/ui/widgets/xy_trails.lua",
+      "lines": 174,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/GranularLab/dsp/default_dsp.lua",
+      "lines": 570,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/GranularLab/ui/behaviors/main.lua",
+      "lines": 431,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/GranularLab/ui/main.ui.lua",
+      "lines": 117,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Imported_BAPP/dsp/default_dsp.lua",
+      "lines": 329,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Imported_BAPP/ui/behaviors/main.lua",
+      "lines": 307,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Imported_BAPP/ui/main.ui.lua",
+      "lines": 118,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/KarplusStrongLab/dsp/default_dsp.lua",
+      "lines": 447,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/KarplusStrongLab/ui/behaviors/main.lua",
+      "lines": 262,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/KarplusStrongLab/ui/main.ui.lua",
+      "lines": 213,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/LayoutModeDemo/ui/main.ui.lua",
+      "lines": 472,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/MLLab/ui/behaviors/main.lua",
+      "lines": 704,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/MLLab/ui/main.ui.lua",
+      "lines": 143,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/dsp/looper_baseline.lua",
+      "lines": 360,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/dsp/main.lua",
+      "lines": 190,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/dsp/midisynth_integration.lua",
+      "lines": 2757,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/editor/runtime_state.lua",
+      "lines": 66,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/adsr_runtime.lua",
+      "lines": 362,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/arp_runtime.lua",
+      "lines": 572,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/attenuverter_bias_runtime.lua",
+      "lines": 177,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/compare_runtime.lua",
+      "lines": 195,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/cv_mix_runtime.lua",
+      "lines": 160,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/export_midi_effect_scaffold.lua",
+      "lines": 407,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/export_midi_effects/arp.lua",
+      "lines": 150,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/export_midi_effects/note_filter.lua",
+      "lines": 12,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/export_midi_effects/scale_quantizer.lua",
+      "lines": 149,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/export_midi_effects/transpose.lua",
+      "lines": 12,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/export_midi_effects/velocity_mapper.lua",
+      "lines": 12,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/export_midi_effects/voice_transform.lua",
+      "lines": 149,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/export_plugin_scaffold.lua",
+      "lines": 102,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/export_plugin_shell.lua",
+      "lines": 340,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/fx_definitions.lua",
+      "lines": 369,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/fx_slot.lua",
+      "lines": 175,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/lfo_runtime.lua",
+      "lines": 255,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/modulation/endpoint_registry.lua",
+      "lines": 184,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/modulation/providers/midi_sources.lua",
+      "lines": 194,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/modulation/providers/parameter_targets.lua",
+      "lines": 127,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/modulation/providers/rack_sources.lua",
+      "lines": 228,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/modulation/rack_control_router.lua",
+      "lines": 297,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/modulation/route_compiler.lua",
+      "lines": 368,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/modulation/runtime.lua",
+      "lines": 1195,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/note_filter_runtime.lua",
+      "lines": 323,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/parameter_binder.lua",
+      "lines": 1682,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/rack_audio_router.lua",
+      "lines": 452,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/rack_module_host_runtime.lua",
+      "lines": 295,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/rack_modules/blend_simple.lua",
+      "lines": 223,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/rack_modules/eq.lua",
+      "lines": 65,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/rack_modules/filter.lua",
+      "lines": 50,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/rack_modules/fx.lua",
+      "lines": 65,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/rack_modules/oscillator.lua",
+      "lines": 272,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/rack_modules/sample.lua",
+      "lines": 562,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/range_mapper_runtime.lua",
+      "lines": 177,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/sample_capture_sources.lua",
+      "lines": 48,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/sample_hold_runtime.lua",
+      "lines": 173,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/sample_synth.lua",
+      "lines": 1579,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/scale_quantizer_runtime.lua",
+      "lines": 362,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/slew_runtime.lua",
+      "lines": 176,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/transpose_runtime.lua",
+      "lines": 277,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/canonical_layout.lua",
+      "lines": 132,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/dynamic_module_graphs.lua",
+      "lines": 573,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/dynamic_module_ui.lua",
+      "lines": 230,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/fx_slot_panel.lua",
+      "lines": 87,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/init_bindings.lua",
+      "lines": 589,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/init_controls.lua",
+      "lines": 596,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/midi_devices.lua",
+      "lines": 241,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/midi_param_rack.lua",
+      "lines": 203,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/modulation_widget_sync.lua",
+      "lines": 110,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/oscillator_preview.lua",
+      "lines": 368,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/patchbay_generator.lua",
+      "lines": 796,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/patchbay_runtime.lua",
+      "lines": 364,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/rack_controller.lua",
+      "lines": 246,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/rack_layout_manager.lua",
+      "lines": 190,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/rack_mod_popover.lua",
+      "lines": 1379,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/rack_module_factory.lua",
+      "lines": 732,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/scoped_widget.lua",
+      "lines": 218,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/update_sync.lua",
+      "lines": 623,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/ui/widget_sync.lua",
+      "lines": 80,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/utils.lua",
+      "lines": 33,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/velocity_mapper_runtime.lua",
+      "lines": 351,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/lib/voice_pool.lua",
+      "lines": 379,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/themes/dark.lua",
+      "lines": 9,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/arp.lua",
+      "lines": 113,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/attenuverter_bias.lua",
+      "lines": 72,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/compare.lua",
+      "lines": 84,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/cv_mix.lua",
+      "lines": 78,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/dynamic_module_binding.lua",
+      "lines": 408,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/envelope.lua",
+      "lines": 622,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/eq.lua",
+      "lines": 1037,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/export_perf_overlay.lua",
+      "lines": 89,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/export_settings_panel.lua",
+      "lines": 257,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/export_shell.lua",
+      "lines": 206,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/filter.lua",
+      "lines": 817,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/fx_slot.lua",
+      "lines": 1055,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/keyboard.lua",
+      "lines": 403,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/keyboard_input.lua",
+      "lines": 328,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/lfo.lua",
+      "lines": 105,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/looper_capture_plane.lua",
+      "lines": 260,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/looper_layer_strip.lua",
+      "lines": 444,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/looper_shared_state.lua",
+      "lines": 319,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/looper_transport.lua",
+      "lines": 164,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/looper_view.lua",
+      "lines": 31,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/main.lua",
+      "lines": 42,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/midi_monitor.lua",
+      "lines": 130,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/midisynth.lua",
+      "lines": 1211,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/modulation_router.lua",
+      "lines": 548,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/note_filter.lua",
+      "lines": 94,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/oscillator.lua",
+      "lines": 6,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/palette_browser.lua",
+      "lines": 1435,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/patch_connector.lua",
+      "lines": 289,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/patchbay_binding.lua",
+      "lines": 310,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/rack_blend_simple.lua",
+      "lines": 164,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/rack_layout.lua",
+      "lines": 763,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/rack_layout_engine.lua",
+      "lines": 1589,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/rack_midisynth_specs.lua",
+      "lines": 3175,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/rack_mutation_runtime.lua",
+      "lines": 386,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/rack_node_shell.lua",
+      "lines": 42,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/rack_oscillator.lua",
+      "lines": 927,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/rack_sample.lua",
+      "lines": 882,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/rack_wire_layer.lua",
+      "lines": 840,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/range_mapper.lua",
+      "lines": 85,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/sample_hold.lua",
+      "lines": 60,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/scale_quantizer.lua",
+      "lines": 100,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/shared_capture_plane.lua",
+      "lines": 349,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/shared_transport.lua",
+      "lines": 240,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/slew.lua",
+      "lines": 84,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/source_panel.lua",
+      "lines": 2166,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/state_manager.lua",
+      "lines": 693,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/transpose.lua",
+      "lines": 86,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/velocity_mapper.lua",
+      "lines": 87,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/behaviors/voice_manager.lua",
+      "lines": 293,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/arp.ui.lua",
+      "lines": 14,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/attenuverter_bias.ui.lua",
+      "lines": 12,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/compare.ui.lua",
+      "lines": 13,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/cv_mix.ui.lua",
+      "lines": 15,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/effects.ui.lua",
+      "lines": 206,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/envelope.ui.lua",
+      "lines": 65,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/eq.ui.lua",
+      "lines": 73,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/export_fx_slot.ui.lua",
+      "lines": 32,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/export_perf_overlay.ui.lua",
+      "lines": 48,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/export_settings_panel.ui.lua",
+      "lines": 193,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/filter.ui.lua",
+      "lines": 26,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/fx_slot.ui.lua",
+      "lines": 36,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/header.ui.lua",
+      "lines": 143,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/keyboard.ui.lua",
+      "lines": 92,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/lfo.ui.lua",
+      "lines": 15,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/looper_capture_plane.ui.lua",
+      "lines": 318,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/looper_layer_strip.ui.lua",
+      "lines": 159,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/looper_transport.ui.lua",
+      "lines": 164,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/looper_view.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/midi_monitor.ui.lua",
+      "lines": 49,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/midisynth_view.ui.lua",
+      "lines": 871,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/note_filter.ui.lua",
+      "lines": 13,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/oscillator.ui.lua",
+      "lines": 118,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/pagination_dots.lua",
+      "lines": 43,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/patch_connector.ui.lua",
+      "lines": 8,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/patchbay_panel.lua",
+      "lines": 651,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/placeholder.ui.lua",
+      "lines": 11,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/placeholder_knob.ui.lua",
+      "lines": 68,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/presets.ui.lua",
+      "lines": 67,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/rack_blend_simple.ui.lua",
+      "lines": 25,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/rack_container.lua",
+      "lines": 248,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/rack_module_shell.lua",
+      "lines": 146,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/rack_module_shell.ui.lua",
+      "lines": 43,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/rack_oscillator.ui.lua",
+      "lines": 71,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/rack_sample.ui.lua",
+      "lines": 40,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/range_mapper.ui.lua",
+      "lines": 13,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/sample_hold.ui.lua",
+      "lines": 12,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/scale_quantizer.ui.lua",
+      "lines": 13,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/shared_capture_plane.ui.lua",
+      "lines": 317,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/shared_transport.ui.lua",
+      "lines": 245,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/slew.ui.lua",
+      "lines": 13,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/source_panel.ui.lua",
+      "lines": 122,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/spectrum.ui.lua",
+      "lines": 35,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/transpose.ui.lua",
+      "lines": 12,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/components/velocity_mapper.ui.lua",
+      "lines": 13,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Main/ui/main.ui.lua",
+      "lines": 113,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ModalLab/dsp/default_dsp.lua",
+      "lines": 446,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ModalLab/ui/behaviors/main.lua",
+      "lines": 297,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/ModalLab/ui/main.ui.lua",
+      "lines": 280,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/RackModuleHost/dsp/main.lua",
+      "lines": 543,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/RackModuleHost/lib/module_host_registry.lua",
+      "lines": 294,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/RackModuleHost/ui/behaviors/main.lua",
+      "lines": 2375,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/RackModuleHost/ui/main.ui.lua",
+      "lines": 384,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/RackModuleHost/ui/midi_devices.lua",
+      "lines": 279,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/RuntimeBenchmark/ui/behaviors/main.lua",
+      "lines": 264,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/RuntimeBenchmark/ui/main.ui.lua",
+      "lines": 155,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/StandaloneOsc/ui/standalone_osc.ui.lua",
+      "lines": 86,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Arp/dsp/main.lua",
+      "lines": 51,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Arp/manifest.spec.json",
+      "lines": 33,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Arp/ui/main.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Arp/web-remote.layout.json",
+      "lines": 28,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Eq/dsp/main.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Eq/manifest.spec.json",
+      "lines": 31,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Eq/ui/behaviors/main.lua",
+      "lines": 183,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Eq/ui/behaviors/perf_overlay.lua",
+      "lines": 89,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Eq/ui/behaviors/settings_panel.lua",
+      "lines": 112,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Eq/ui/components/perf_overlay.ui.lua",
+      "lines": 49,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Eq/ui/components/settings_panel.ui.lua",
+      "lines": 126,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Eq/ui/main.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Eq/web-remote.layout.json",
+      "lines": 152,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_FX/dsp/main.lua",
+      "lines": 80,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_FX/manifest.spec.json",
+      "lines": 31,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_FX/ui/main.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_FX/web-remote.layout.json",
+      "lines": 158,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Filter/dsp/main.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Filter/manifest.spec.json",
+      "lines": 30,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Filter/ui/behaviors/main.lua",
+      "lines": 183,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Filter/ui/behaviors/perf_overlay.lua",
+      "lines": 89,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Filter/ui/behaviors/settings_panel.lua",
+      "lines": 112,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Filter/ui/components/perf_overlay.ui.lua",
+      "lines": 49,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Filter/ui/components/settings_panel.ui.lua",
+      "lines": 126,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Filter/ui/main.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Filter/web-remote.layout.json",
+      "lines": 99,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_NoteFilter/dsp/main.lua",
+      "lines": 51,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_NoteFilter/manifest.spec.json",
+      "lines": 70,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_NoteFilter/ui/main.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_NoteFilter/web-remote.layout.json",
+      "lines": 21,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Sample/dsp/main.lua",
+      "lines": 416,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Sample/manifest.spec.json",
+      "lines": 40,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Sample/ui/behaviors/standalone_sample.lua",
+      "lines": 3,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Sample/ui/components/standalone_sample.ui.lua",
+      "lines": 11,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Sample/ui/main.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Sample/web-remote.layout.json",
+      "lines": 13,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_ScaleQuantizer/dsp/main.lua",
+      "lines": 51,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_ScaleQuantizer/manifest.spec.json",
+      "lines": 33,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_ScaleQuantizer/ui/main.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_ScaleQuantizer/web-remote.layout.json",
+      "lines": 26,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Transpose/dsp/main.lua",
+      "lines": 51,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Transpose/manifest.spec.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Transpose/ui/main.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_Transpose/web-remote.layout.json",
+      "lines": 19,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_VelocityMapper/dsp/main.lua",
+      "lines": 51,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_VelocityMapper/manifest.spec.json",
+      "lines": 70,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_VelocityMapper/ui/main.ui.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/Standalone_VelocityMapper/web-remote.layout.json",
+      "lines": 21,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/projects/VectorSynth/dsp/default_dsp.lua",
+      "lines": 322,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VectorSynth/ui/behaviors/main.lua",
+      "lines": 149,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VectorSynth/ui/main.ui.lua",
+      "lines": 97,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VideoPolySamplerLab/dsp/default_dsp.lua",
+      "lines": 362,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VideoPolySamplerLab/ui/behaviors/main.lua",
+      "lines": 607,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VideoPolySamplerLab/ui/main.ui.lua",
+      "lines": 152,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VideoSamplerLab/dsp/default_dsp.lua",
+      "lines": 241,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VideoSamplerLab/ui/behaviors/main.lua",
+      "lines": 607,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VideoSamplerLab/ui/main.ui.lua",
+      "lines": 122,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VideoSliceRackLab/dsp/default_dsp.lua",
+      "lines": 302,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VideoSliceRackLab/ui/behaviors/main.lua",
+      "lines": 731,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/VideoSliceRackLab/ui/main.ui.lua",
+      "lines": 143,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/WebcamViewer/ui/behaviors/main.lua",
+      "lines": 1690,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/WebcamViewer/ui/main.ui.lua",
+      "lines": 742,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/avsamplerDOCKING/dsp/default_dsp.lua",
+      "lines": 24,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/avsamplerDOCKING/ui/behaviors/main.lua",
+      "lines": 3703,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/projects/avsamplerDOCKING/ui/main.ui.lua",
+      "lines": 303,
+      "ext": ".lua"
+    },
+    {
+      "path": "UserScripts/shaders/invert.json",
+      "lines": 10,
+      "ext": ".json"
+    },
+    {
+      "path": "UserScripts/test_midi.lua",
+      "lines": 29,
+      "ext": ".lua"
+    },
+    {
+      "path": "dsp/core/graph/PrimitiveNode.h",
+      "lines": 133,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/ADSREnvelopeNode.cpp",
+      "lines": 200,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/ADSREnvelopeNode.h",
+      "lines": 54,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/ADSREnvelopeNode_Highway.h",
+      "lines": 524,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/AllpassNode.cpp",
+      "lines": 160,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/AllpassNode.h",
+      "lines": 54,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/AudioFmNode.cpp",
+      "lines": 110,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/AudioFmNode.h",
+      "lines": 47,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/AudioSyncNode.cpp",
+      "lines": 123,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/AudioSyncNode.h",
+      "lines": 51,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/BitCrusherNode.cpp",
+      "lines": 162,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/BitCrusherNode.h",
+      "lines": 73,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/BitCrusherNode_Highway.h",
+      "lines": 582,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/ChorusNode.cpp",
+      "lines": 191,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/ChorusNode.h",
+      "lines": 86,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/CombNode.cpp",
+      "lines": 210,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/CombNode.h",
+      "lines": 61,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/CompressorNode.cpp",
+      "lines": 91,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/CompressorNode.h",
+      "lines": 73,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/ConstantSignalNode.cpp",
+      "lines": 55,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/ConstantSignalNode.h",
+      "lines": 35,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/CrossfaderNode.cpp",
+      "lines": 84,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/CrossfaderNode.h",
+      "lines": 46,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/DistortionNode.cpp",
+      "lines": 60,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/DistortionNode.h",
+      "lines": 41,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/EQ8Node.cpp",
+      "lines": 397,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/EQ8Node.h",
+      "lines": 117,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/EQNode.cpp",
+      "lines": 236,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/EQNode.h",
+      "lines": 108,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/EnvelopeFollowerNode.cpp",
+      "lines": 113,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/EnvelopeFollowerNode.h",
+      "lines": 63,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/FilterNode.cpp",
+      "lines": 127,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/FilterNode.h",
+      "lines": 58,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/FilterNode_Highway.h",
+      "lines": 204,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/FormantFilterNode.cpp",
+      "lines": 191,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/FormantFilterNode.h",
+      "lines": 81,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/ForwardCommitSchedulerNode.cpp",
+      "lines": 63,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/ForwardCommitSchedulerNode.h",
+      "lines": 38,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/FrequencyShiftNode.cpp",
+      "lines": 130,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/FrequencyShiftNode.h",
+      "lines": 60,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/GainNode.cpp",
+      "lines": 84,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/GainNode.h",
+      "lines": 51,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/GainNode_Highway.h",
+      "lines": 191,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/GranulatorNode.cpp",
+      "lines": 314,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/GranulatorNode.h",
+      "lines": 115,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/LimiterNode.cpp",
+      "lines": 103,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/LimiterNode.h",
+      "lines": 59,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/LoopPlaybackNode.cpp",
+      "lines": 382,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/LoopPlaybackNode.h",
+      "lines": 79,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/MSEncoderNode.cpp",
+      "lines": 91,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/MSEncoderNode.h",
+      "lines": 54,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/MidiInputNode.cpp",
+      "lines": 157,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/MidiInputNode.h",
+      "lines": 95,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/MidiVoiceNode.cpp",
+      "lines": 374,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/MidiVoiceNode.h",
+      "lines": 170,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/MixerNode.cpp",
+      "lines": 147,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/MixerNode.h",
+      "lines": 95,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/MixerNode_Highway.h",
+      "lines": 280,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/MultitapDelayNode.cpp",
+      "lines": 153,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/MultitapDelayNode.h",
+      "lines": 63,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/NoiseGeneratorNode.cpp",
+      "lines": 84,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/NoiseGeneratorNode.h",
+      "lines": 52,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/OscillatorNode.cpp",
+      "lines": 1094,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/OscillatorNode.h",
+      "lines": 133,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/OscillatorNode_Highway.h",
+      "lines": 1022,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PartialData.h",
+      "lines": 36,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PartialsExtractor.h",
+      "lines": 803,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PassthroughNode.cpp",
+      "lines": 37,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/PassthroughNode.h",
+      "lines": 35,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PhaseVocoderNode.cpp",
+      "lines": 467,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/PhaseVocoderNode.h",
+      "lines": 134,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PhaserNode.cpp",
+      "lines": 108,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/PhaserNode.h",
+      "lines": 66,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PitchDetector.h",
+      "lines": 746,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PitchDetectorNode.cpp",
+      "lines": 186,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/PitchDetectorNode.h",
+      "lines": 172,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PitchShifterNode.cpp",
+      "lines": 186,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/PitchShifterNode.h",
+      "lines": 66,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PlaybackStateGateNode.cpp",
+      "lines": 84,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/PlaybackStateGateNode.h",
+      "lines": 40,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PlayheadNode.cpp",
+      "lines": 102,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/PlayheadNode.h",
+      "lines": 44,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/PrimitiveNodes.h",
+      "lines": 59,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/QuantizerNode.cpp",
+      "lines": 83,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/QuantizerNode.h",
+      "lines": 36,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/RecordModePolicyNode.cpp",
+      "lines": 42,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/RecordModePolicyNode.h",
+      "lines": 39,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/RecordStateNode.cpp",
+      "lines": 38,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/RecordStateNode.h",
+      "lines": 34,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/ResonatorNode.cpp",
+      "lines": 158,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/ResonatorNode.h",
+      "lines": 51,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/RetrospectiveCaptureNode.cpp",
+      "lines": 312,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/RetrospectiveCaptureNode.h",
+      "lines": 72,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/ReverbNode.cpp",
+      "lines": 99,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/ReverbNode.h",
+      "lines": 59,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/ReverseDelayNode.cpp",
+      "lines": 156,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/ReverseDelayNode.h",
+      "lines": 61,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/RingModulatorNode.cpp",
+      "lines": 93,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/RingModulatorNode.h",
+      "lines": 56,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/SVFNode.cpp",
+      "lines": 203,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/SVFNode.h",
+      "lines": 85,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/SampleAnalysis.h",
+      "lines": 32,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/SampleAnalyzer.h",
+      "lines": 212,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/SampleRegionPlaybackNode.cpp",
+      "lines": 1086,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/SampleRegionPlaybackNode.h",
+      "lines": 176,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/ShimmerNode.cpp",
+      "lines": 128,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/ShimmerNode.h",
+      "lines": 69,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/SineBankNode.cpp",
+      "lines": 734,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/SineBankNode.h",
+      "lines": 183,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/SlewLimiterNode.cpp",
+      "lines": 96,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/SlewLimiterNode.h",
+      "lines": 49,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/SpectrumAnalyzerNode.cpp",
+      "lines": 101,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/SpectrumAnalyzerNode.h",
+      "lines": 64,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/StereoDelayNode.cpp",
+      "lines": 355,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/StereoDelayNode.h",
+      "lines": 160,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/StereoWidenerNode.cpp",
+      "lines": 94,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/StereoWidenerNode.h",
+      "lines": 55,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/StutterNode.cpp",
+      "lines": 130,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/StutterNode.h",
+      "lines": 77,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/TemporalPartialData.h",
+      "lines": 187,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/TransientShaperNode.cpp",
+      "lines": 114,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/TransientShaperNode.h",
+      "lines": 62,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/TransportStateNode.cpp",
+      "lines": 48,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/TransportStateNode.h",
+      "lines": 40,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/WaveShaperNode.cpp",
+      "lines": 361,
+      "ext": ".cpp"
+    },
+    {
+      "path": "dsp/core/nodes/WaveShaperNode.h",
+      "lines": 138,
+      "ext": ".h"
+    },
+    {
+      "path": "dsp/core/nodes/WaveShaperNode_Highway.h",
+      "lines": 433,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/SystemScripts/projects/Settings/ui/behaviors/main.lua",
+      "lines": 539,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/SystemScripts/projects/Settings/ui/main.ui.lua",
+      "lines": 910,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/SystemScripts/projects/Settings/ui/midi_tab.lua",
+      "lines": 362,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/android/AndroidMain.cpp",
+      "lines": 60,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/core/BehaviorCoreEditor.cpp",
+      "lines": 2603,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/core/BehaviorCoreEditor.h",
+      "lines": 109,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/core/BehaviorCoreProcessor.cpp",
+      "lines": 4337,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/core/BehaviorCoreProcessor.h",
+      "lines": 488,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/dsp/default_dsp.lua",
+      "lines": 73,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/looper_primitives_dsp.lua",
+      "lines": 350,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/input_filter.lua",
+      "lines": 17,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/input_reverb_tone.lua",
+      "lines": 21,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_bitcrusher.lua",
+      "lines": 50,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_chorus.lua",
+      "lines": 87,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_compressor.lua",
+      "lines": 75,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_crossfader.lua",
+      "lines": 52,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_envelope_follower.lua",
+      "lines": 50,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_eq.lua",
+      "lines": 67,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_formant_filter.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_granulator.lua",
+      "lines": 68,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_limiter.lua",
+      "lines": 63,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_midi_arp.lua",
+      "lines": 123,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_midi_synth.lua",
+      "lines": 87,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_mixer.lua",
+      "lines": 83,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_ms.lua",
+      "lines": 50,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_multitap.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_noise.lua",
+      "lines": 34,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_param_modulation.lua",
+      "lines": 109,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_phaser.lua",
+      "lines": 71,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_pitch_detector.lua",
+      "lines": 50,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_pitch_shifter.lua",
+      "lines": 50,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_reverse_delay.lua",
+      "lines": 50,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_ringmod.lua",
+      "lines": 50,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_shimmer.lua",
+      "lines": 58,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_spectrum.lua",
+      "lines": 58,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_stereo_delay.lua",
+      "lines": 137,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_stereo_delay_debug.lua",
+      "lines": 53,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_stutter.lua",
+      "lines": 68,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_svf.lua",
+      "lines": 95,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_transient_shaper.lua",
+      "lines": 46,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_waveshaper.lua",
+      "lines": 82,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/test_widener.lua",
+      "lines": 55,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/tone_input_chain.lua",
+      "lines": 29,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/dsp/scripts/tone_test_osc_only.lua",
+      "lines": 14,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/engine/ManifoldLayer.h",
+      "lines": 169,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/grpc/GRPCServer.cpp",
+      "lines": 564,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/grpc/GRPCServer.h",
+      "lines": 290,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/headless/CanonicalCommandHarness.cpp",
+      "lines": 217,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/headless/ControlCommandQueueHarness.cpp",
+      "lines": 114,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/headless/EndpointResolverHarness.cpp",
+      "lines": 208,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/headless/LuaEngineMockHarness.cpp",
+      "lines": 610,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/headless/ManifoldHeadless.cpp",
+      "lines": 144,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/headless/PortBufferSemanticsHarness.cpp",
+      "lines": 254,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/headless/StateProjectionHarness.cpp",
+      "lines": 228,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/highway/HighwayMaths.h",
+      "lines": 166,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/highway/HighwayWrapper.h",
+      "lines": 29,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/composite/CompositeSurfaceProvider.cpp",
+      "lines": 499,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/composite/CompositeSurfaceProvider.h",
+      "lines": 48,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/control/CommandParser.h",
+      "lines": 813,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/control/ControlServer.cpp",
+      "lines": 1445,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/control/ControlServer.h",
+      "lines": 481,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/control/EndpointResolver.cpp",
+      "lines": 409,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/control/EndpointResolver.h",
+      "lines": 83,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/control/OSCEndpointRegistry.cpp",
+      "lines": 209,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/control/OSCEndpointRegistry.h",
+      "lines": 98,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/control/OSCPacketBuilder.h",
+      "lines": 84,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/control/OSCQuery.cpp",
+      "lines": 1344,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/control/OSCQuery.h",
+      "lines": 196,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/control/OSCServer.cpp",
+      "lines": 671,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/control/OSCServer.h",
+      "lines": 151,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/control/OSCSettingsPersistence.cpp",
+      "lines": 77,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/control/OSCSettingsPersistence.h",
+      "lines": 15,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/control/SHA1.h",
+      "lines": 128,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/core/Settings.cpp",
+      "lines": 206,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/core/Settings.h",
+      "lines": 77,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/core/SystemPaths.cpp",
+      "lines": 113,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/core/SystemPaths.h",
+      "lines": 30,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/dsp/CaptureBuffer.h",
+      "lines": 99,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/dsp/LoopBuffer.h",
+      "lines": 109,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/dsp/Playhead.h",
+      "lines": 62,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/dsp/Quantizer.h",
+      "lines": 100,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/dsp/TempoInference.h",
+      "lines": 77,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/midi/MidiEvent.cpp",
+      "lines": 72,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/midi/MidiEvent.h",
+      "lines": 139,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/midi/MidiManager.cpp",
+      "lines": 580,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/midi/MidiManager.h",
+      "lines": 187,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/midi/MidiRingBuffer.h",
+      "lines": 146,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/ml/MLMaskSurfaceProvider.cpp",
+      "lines": 517,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/ml/MLMaskSurfaceProvider.h",
+      "lines": 33,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/ml/MLPipeline.cpp",
+      "lines": 548,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/ml/MLPipeline.h",
+      "lines": 123,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/DSPPluginScriptHost.cpp",
+      "lines": 334,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/DSPPluginScriptHost.h",
+      "lines": 77,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/DSPPrimitiveWrappers.h",
+      "lines": 69,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/GraphRuntime.cpp",
+      "lines": 420,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/GraphRuntime.h",
+      "lines": 178,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/ILuaControlState.h",
+      "lines": 140,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/IStateSerializer.h",
+      "lines": 106,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/LuaEngine.cpp",
+      "lines": 2676,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/LuaEngine.h",
+      "lines": 227,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/PrimitiveGraph.cpp",
+      "lines": 376,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/PrimitiveGraph.h",
+      "lines": 80,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/ScriptableProcessor.cpp",
+      "lines": 87,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/ScriptableProcessor.h",
+      "lines": 270,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/ScriptingConfig.h",
+      "lines": 76,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/bindings/LuaControlBindings.cpp",
+      "lines": 4054,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/bindings/LuaControlBindings.h",
+      "lines": 33,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/bindings/LuaMidiBindings.cpp",
+      "lines": 430,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/bindings/LuaRuntimeNodeBindings.cpp",
+      "lines": 756,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/bindings/LuaRuntimeNodeBindings.h",
+      "lines": 10,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/bindings/LuaUIBindings.cpp",
+      "lines": 1727,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/bindings/LuaUIBindings.h",
+      "lines": 49,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/core/LuaCoreEngine.cpp",
+      "lines": 236,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/core/LuaCoreEngine.h",
+      "lines": 123,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostBindingsCore.cpp",
+      "lines": 1015,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostBindingsFx.cpp",
+      "lines": 1139,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostBindingsSynth.cpp",
+      "lines": 706,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostDeferredMutation.cpp",
+      "lines": 188,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostEndpointSync.cpp",
+      "lines": 66,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostInternal.h",
+      "lines": 191,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostLoopLayerBundle.cpp",
+      "lines": 403,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostObjectResolver.cpp",
+      "lines": 354,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostParamRegistry.cpp",
+      "lines": 1174,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostPathMapping.cpp",
+      "lines": 24,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostScriptBootstrap.cpp",
+      "lines": 570,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostTelemetry.cpp",
+      "lines": 514,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/scripting/dsp_host/DSPHostValueConverters.cpp",
+      "lines": 175,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/shaders/ShaderEffectRegistry.cpp",
+      "lines": 335,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/shaders/ShaderEffectRegistry.h",
+      "lines": 76,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/shaders/ShaderPipelineDescriptor.h",
+      "lines": 34,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/shaders/ShaderSurfaceProvider.cpp",
+      "lines": 1146,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/shaders/ShaderSurfaceProvider.h",
+      "lines": 50,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/shaders/UniformContract.h",
+      "lines": 20,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/sources/GeneratedSourceProvider.cpp",
+      "lines": 512,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/sources/GeneratedSourceProvider.h",
+      "lines": 34,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/sources/TextureSourceRegistry.cpp",
+      "lines": 187,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/sources/TextureSourceRegistry.h",
+      "lines": 59,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/sync/LinkSync.cpp",
+      "lines": 170,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/sync/LinkSync.h",
+      "lines": 71,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/ui/Canvas.cpp",
+      "lines": 611,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/ui/Canvas.h",
+      "lines": 181,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/ui/CanvasStyle.h",
+      "lines": 37,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/ui/CustomSurfaceProvider.h",
+      "lines": 85,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/ui/FrameTimings.h",
+      "lines": 222,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/ui/RuntimeNode.cpp",
+      "lines": 881,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/ui/RuntimeNode.h",
+      "lines": 240,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/video/VideoCaptureManager.cpp",
+      "lines": 627,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/video/VideoCaptureManager.h",
+      "lines": 91,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/video/VideoRetrospectiveCapture.cpp",
+      "lines": 183,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/video/VideoRetrospectiveCapture.h",
+      "lines": 64,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/video/VideoSampler.cpp",
+      "lines": 380,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/video/VideoSampler.h",
+      "lines": 114,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/video/VideoSurfaceProvider.cpp",
+      "lines": 324,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/video/VideoSurfaceProvider.h",
+      "lines": 48,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/primitives/video/VideoSynthPrimitive.cpp",
+      "lines": 1141,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/primitives/video/VideoSynthPrimitive.h",
+      "lines": 42,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/shaders/blend/add.json",
+      "lines": 12,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/blend/difference.json",
+      "lines": 12,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/blend/multiply.json",
+      "lines": 12,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/blend/normal.json",
+      "lines": 13,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/blend/overlay.json",
+      "lines": 12,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/blend/screen.json",
+      "lines": 12,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/chromatic.json",
+      "lines": 63,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/datamosh.json",
+      "lines": 72,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/edge-glow.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/edge-trails.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/fluid-smoke.json",
+      "lines": 81,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/fractal-echo.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/glitch.json",
+      "lines": 81,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/kaleidoscope.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/luma-feedback.json",
+      "lines": 72,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/neon-edge.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/none.json",
+      "lines": 8,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/optical-flow.json",
+      "lines": 99,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/pixel-sort.json",
+      "lines": 81,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/pixelate.json",
+      "lines": 72,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/posterize.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/psychedelic.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/rgb-split.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/ripple.json",
+      "lines": 81,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/time-smear.json",
+      "lines": 45,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/trail-dissolve.json",
+      "lines": 90,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/trail.json",
+      "lines": 72,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/vhs.json",
+      "lines": 81,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/shaders/wave.json",
+      "lines": 90,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/sources/generator/checker.json",
+      "lines": 10,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/sources/generator/fbm.json",
+      "lines": 13,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/sources/generator/noise.json",
+      "lines": 12,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/sources/generator/plasma.json",
+      "lines": 11,
+      "ext": ".json"
+    },
+    {
+      "path": "manifold/ui/editor_core.lua",
+      "lines": 158,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/empty_launcher.lua",
+      "lines": 22,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiDirectHost.cpp",
+      "lines": 2525,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiDirectHost.h",
+      "lines": 315,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiHierarchyHost.cpp",
+      "lines": 373,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiHierarchyHost.h",
+      "lines": 89,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiHost.cpp",
+      "lines": 709,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiHost.h",
+      "lines": 157,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiInspectorHost.cpp",
+      "lines": 741,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiInspectorHost.h",
+      "lines": 272,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiOpenGLBackend.cpp",
+      "lines": 6,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiPerfOverlayHost.cpp",
+      "lines": 445,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiPerfOverlayHost.h",
+      "lines": 82,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiRuntimeNodeHost.cpp",
+      "lines": 948,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiRuntimeNodeHost.h",
+      "lines": 99,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiScriptListHost.cpp",
+      "lines": 411,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/ImGuiScriptListHost.h",
+      "lines": 96,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/ManifoldImGuiConfig.h",
+      "lines": 5,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/ManifoldImGuiGlobals.cpp",
+      "lines": 4,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/RuntimeNodeRenderer.cpp",
+      "lines": 927,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/RuntimeNodeRenderer.h",
+      "lines": 138,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/Theme.cpp",
+      "lines": 148,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/Theme.h",
+      "lines": 47,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/ToolComponents.cpp",
+      "lines": 428,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/ToolComponents.h",
+      "lines": 46,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/imgui/WidgetPrimitives.cpp",
+      "lines": 127,
+      "ext": ".cpp"
+    },
+    {
+      "path": "manifold/ui/imgui/WidgetPrimitives.h",
+      "lines": 26,
+      "ext": ".h"
+    },
+    {
+      "path": "manifold/ui/layout_engine.lua",
+      "lines": 696,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/midi_settings.lua",
+      "lines": 348,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/midi_tab.lua",
+      "lines": 359,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/project_loader.lua",
+      "lines": 1920,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/shell/base_utils.lua",
+      "lines": 110,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/shell/bindings.lua",
+      "lines": 2404,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/shell/inspector_utils.lua",
+      "lines": 687,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/shell/methods_core.lua",
+      "lines": 4239,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/shell/methods_layout.lua",
+      "lines": 920,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/shell/runtime_script_utils.lua",
+      "lines": 459,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/shell/script_editor_utils.lua",
+      "lines": 453,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/shell/settings_panel.lua",
+      "lines": 132,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/ui_shell.lua",
+      "lines": 1050,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/ui_widgets.lua",
+      "lines": 59,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/base.lua",
+      "lines": 382,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/button.lua",
+      "lines": 165,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/curve.lua",
+      "lines": 349,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/donut.lua",
+      "lines": 336,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/dropdown.lua",
+      "lines": 631,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/gl_surface.lua",
+      "lines": 123,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/glsl.lua",
+      "lines": 273,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/knob.lua",
+      "lines": 388,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/label.lua",
+      "lines": 194,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/meter.lua",
+      "lines": 182,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/numberbox.lua",
+      "lines": 280,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/panel.lua",
+      "lines": 75,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/project_tabhost.lua",
+      "lines": 278,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/radio.lua",
+      "lines": 146,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/schema.lua",
+      "lines": 182,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/segmented.lua",
+      "lines": 149,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/slider.lua",
+      "lines": 747,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/tabhost.lua",
+      "lines": 662,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/tabpage.lua",
+      "lines": 46,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/toggle.lua",
+      "lines": 220,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/utils.lua",
+      "lines": 85,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/waveform.lua",
+      "lines": 543,
+      "ext": ".lua"
+    },
+    {
+      "path": "manifold/ui/widgets/xypad.lua",
+      "lines": 292,
+      "ext": ".lua"
+    },
+    {
+      "path": "web/remote-control/app.ts",
+      "lines": 3529,
+      "ext": ".ts"
+    },
+    {
+      "path": "web/remote-control/dist/assets/index-DAAkjskd.css",
+      "lines": 1,
+      "ext": ".css"
+    },
+    {
+      "path": "web/remote-control/package-lock.json",
+      "lines": 607,
+      "ext": ".json"
+    },
+    {
+      "path": "web/remote-control/package.json",
+      "lines": 14,
+      "ext": ".json"
+    },
+    {
+      "path": "web/remote-control/style.css",
+      "lines": 1289,
+      "ext": ".css"
+    },
+    {
+      "path": "web/remote-control/tsconfig.json",
+      "lines": 14,
+      "ext": ".json"
+    },
+    {
+      "path": "web/remote-control/vite.config.ts",
+      "lines": 242,
+      "ext": ".ts"
+    }
+  ]
+}

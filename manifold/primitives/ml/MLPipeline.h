@@ -1,10 +1,31 @@
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
+#include <queue>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace manifold::ml {
+
+struct FrameJob {
+    int width = 0;
+    int height = 0;
+    std::vector<std::uint8_t> rgba;
+    // Segmentation-specific: if set, worker runs full infer+mask+RGBA pipeline
+    bool isSegmentation = false;
+    float segGain = 1.0f;
+    bool segUseSigmoid = true;
+    float segThreshold = 0.5f;
+    float segFeather = 0.15f;
+    bool segInvert = false;
+    float segBackground = 0.0f;
+    uint64_t sequence = 0;
+    bool valid() const { return width > 0 && height > 0 && !rgba.empty(); }
+};
 
 /**
  * A TensorFlow Lite inference wrapper.
@@ -56,6 +77,43 @@ public:
 
     /** Last error message. */
     const std::string& lastError() const;
+
+    // --- Async inference API ---
+
+    /** Start the background inference worker thread. Safe to call multiple times. */
+    void startBackgroundWorker();
+
+    /** Submit a frame for async inference. Thread-safe. */
+    void submitFrame(int width, int height, std::vector<std::uint8_t> rgba);
+
+    /**
+     * Poll for the latest completed inference result.
+     * Returns true if new data was available, false if no result ready yet.
+     * Thread-safe.
+     */
+    bool pollResult(std::vector<float>& output);
+
+    // --- Segmentation-specific async pipeline ---
+
+    struct SegmentationOpts {
+        float gain = 1.0f;
+        bool useSigmoid = true;
+        float threshold = 0.5f;
+        float feather = 0.15f;
+        bool invert = false;
+        float background = 0.0f;
+    };
+
+    /** Submit a frame for full segmentation pipeline (infer + mask process + RGBA). Thread-safe. */
+    void submitSegmentation(int width, int height, std::vector<std::uint8_t> rgba,
+                            const SegmentationOpts& opts);
+
+    /**
+     * Poll for the latest completed segmentation result (pre-built RGBA frame).
+     * Returns the frame data if available. Caller takes ownership.
+     * Thread-safe.
+     */
+    std::vector<std::uint8_t> pollSegmentationResult(int& outW, int& outH, uint64_t& sequence);
 
 private:
     struct Impl;

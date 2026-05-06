@@ -257,7 +257,7 @@ end
 -- Profiling: globals to avoid consuming local variable slots (200 limit)
 _G.__avsdProfileInit = function(ctx)
   ctx._profile = {}
-  for _, k in ipairs{"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline"} do
+  for _, k in ipairs{"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline","applyCaptureWindow","segmentIngest","playbackUi","statusInterval"} do
     ctx._profile[k] = { total = 0, count = 0, max = 0, last = 0, avg = 0 }
   end
 end
@@ -3590,7 +3590,7 @@ function M.init(ctx)
     local out = {}
     local p = ctx._profile
     if not p then return "no profile data" end
-    local keys = {"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline"}
+    local keys = {"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline","applyCaptureWindow","segmentIngest","playbackUi","statusInterval"}
     for _, k in ipairs(keys) do
       local t = p[k]
       if t and t.count > 0 then
@@ -3615,7 +3615,9 @@ function M.resized(ctx)
 end
 
 function M.update(ctx)
+  profileStart(ctx, "applyCaptureWindow")
   applyCaptureWindow(ctx)
+  profileEnd(ctx, "applyCaptureWindow")
 
   if shouldRunInterval(ctx, "paramSync", PARAM_SYNC_INTERVAL) then
     syncParamsFromHost(ctx)
@@ -3627,6 +3629,7 @@ function M.update(ctx)
   local webcamOpen = (capture and capture.isOpen and capture.isOpen()) and true or false
 
   if ctx.videoCap and webcamOpen and shouldRunInterval(ctx, "segmentIngest", SEGMENT_INGEST_INTERVAL) then
+    profileStart(ctx, "segmentIngest")
     local seq = tonumber(frame.sequence)
     if seq == nil or ctx._lastSegmentFrameSeq ~= seq then
       local ok = false
@@ -3643,6 +3646,7 @@ function M.update(ctx)
       if not ok then ctx.videoCap:ingestLatest() end
       if seq ~= nil then ctx._lastSegmentFrameSeq = seq end
     end
+    profileEnd(ctx, "segmentIngest")
   end
 
   local poseUpdated = runPose(ctx, frame)
@@ -3651,6 +3655,7 @@ function M.update(ctx)
   end
 
   if shouldRunInterval(ctx, "playbackUi", PLAYBACK_UI_INTERVAL) then
+    profileStart(ctx, "playbackUi")
     ctx._selectedSlice = math.max(1, math.min(MAX, round(readParam(NS .. "/selected_slice", ctx._selectedSlice or 1))))
     for i = 1, MAX do
       ctx._polyPlaying[i], ctx._polyPos[i] = samplePosition(POLY_PATHS[i], 0)
@@ -3659,9 +3664,11 @@ function M.update(ctx)
     layoutOutputRow(ctx)
     updatePreviewSurface(ctx)
     refreshWaveform(ctx)
+    profileEnd(ctx, "playbackUi")
   end
 
   if shouldRunInterval(ctx, "status", STATUS_INTERVAL) then
+    profileStart(ctx, "statusInterval")
     setText(ctx.widgets.webcamStatus, string.format("Webcam: %s frame=%s %dx%d seq=%s", webcamOpen and "open" or "closed", frame.valid and "yes" or "no", frame.width or 0, frame.height or 0, tostring(frame.sequence or "--")))
     local clk = clockInfo()
     setText(ctx.widgets.clockStatus, string.format("Clock: sr=%.0f samples=%.0f tempo=%.1f", clk.sampleRate or 0, clk.playTimeSamples or 0, clk.tempo or 0))
@@ -3676,6 +3683,7 @@ function M.update(ctx)
     setText(ctx.widgets.samplerStatus, string.format("Sampler: %d frames %.2fs last commit %s visible=%d", sampleFrames, ctx.video and ctx.video:getDurationSeconds() or 0, ctx._lastVideoCommitOk and "OK" or "--", #(ctx._visible or {})))
     setText(ctx.widgets.midiStatus, string.format("MIDI: %s last=%s", currentMidiLabel() or "none", tostring(ctx._lastMidi or "--")))
     setText(ctx.widgets.fxStatus, string.format("FX%d type=%d mix=%.2f", ctx.fxSlot, round(readParam(rackFxTypePath(ctx.fxSlot), 0)), readParam(rackFxMixPath(ctx.fxSlot), 0)))
+    profileEnd(ctx, "statusInterval")
   end
 end
 

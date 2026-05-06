@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 #include <onnxruntime_cxx_api.h>
@@ -40,6 +41,24 @@ struct MLPipeline::Impl {
     float normScale = 2.0f;
     float normBias = -1.0f;
     ONNXTensorElementDataType inputElementType = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+
+    // --- Async background inference ---
+    std::thread bgThread;
+    std::atomic<bool> bgRunning{false};
+    std::mutex queueMutex;
+    std::condition_variable cv;
+    std::queue<FrameJob> frameQueue;
+    std::mutex resultMutex;
+    std::vector<float> latestOutput;
+    bool latestValid = false;
+
+    // Segmentation result (full RGBA frame, processed on background thread)
+    std::mutex segResultMutex;
+    std::vector<std::uint8_t> segResultRGBA;
+    int segResultW = 0;
+    int segResultH = 0;
+    uint64_t segResultSeq = 0;
+    bool segResultValid = false;
 };
 
 MLPipeline::MLPipeline()
@@ -47,7 +66,13 @@ MLPipeline::MLPipeline()
     pImpl_->opts.SetIntraOpNumThreads(4);
 }
 
-MLPipeline::~MLPipeline() = default;
+MLPipeline::~MLPipeline() {
+    if (pImpl_->bgRunning) {
+        pImpl_->bgRunning = false;
+        pImpl_->cv.notify_one();
+        if (pImpl_->bgThread.joinable()) pImpl_->bgThread.join();
+    }
+}
 
 bool MLPipeline::load(const std::string& modelPath) {
     pImpl_->error.clear();
@@ -313,8 +338,211 @@ bool MLPipeline::getOutputAsMask(std::vector<float>& mask) {
     return true;
 }
 
+// ============================================================================
+// Segmentation mask processing helpers (runs on background thread)
+// ============================================================================
+
+static float segClamp01(float v) {
+    return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+}
+
+static float segSmoothstep(float edge0, float edge1, float x) {
+    const float t = segClamp01((x - edge0) / (edge1 - edge0));
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static float segPostprocessValue(float rawValue, float gain, bool useSigmoid,
+                                  float threshold, float feather,
+                                  bool invert, bool applySigmoid) {
+    float value = rawValue;
+    if (applySigmoid && useSigmoid)
+        value = 1.0f / (1.0f + std::exp(-value));
+    if (invert) value = 1.0f - value;
+    value = segClamp01(value * std::max(0.01f, gain));
+    if (feather > 0.0f)
+        value = segSmoothstep(threshold - feather * 0.5f, threshold + feather * 0.5f, value);
+    else
+        value = (value >= threshold) ? 1.0f : 0.0f;
+    return segClamp01(value);
+}
+
+static float segSampleNearest(const std::vector<float>& mask,
+                               int maskW, int maskH,
+                               int x, int y, int outW, int outH) {
+    const int mx = std::clamp((x * maskW) / outW, 0, maskW - 1);
+    const int my = std::clamp((y * maskH) / outH, 0, maskH - 1);
+    return mask[static_cast<std::size_t>(my) * static_cast<std::size_t>(maskW) + static_cast<std::size_t>(mx)];
+}
+
+static bool processSegmentationMask(
+    const std::vector<float>& rawOutput,
+    const FrameJob& job,
+    std::vector<std::uint8_t>& outRGBA)
+{
+    // rawOutput size determines mask dimensions (square root approximation)
+    const std::size_t rawSize = rawOutput.size();
+    int maskW = static_cast<int>(std::sqrt(static_cast<float>(rawSize)));
+    int maskH = maskW;
+    while (static_cast<std::size_t>(maskW) * static_cast<std::size_t>(maskH) < rawSize) {
+        ++maskW;
+        if (static_cast<std::size_t>(maskW) * static_cast<std::size_t>(maskH) >= rawSize) break;
+        ++maskH;
+    }
+    if (maskW <= 0 || maskH <= 0) return false;
+    const std::size_t maskSize = static_cast<std::size_t>(maskW) * static_cast<std::size_t>(maskH);
+
+    float minVal = rawOutput[0], maxVal = rawOutput[0];
+    for (std::size_t i = 1; i < maskSize; ++i) {
+        minVal = std::min(minVal, rawOutput[i]);
+        maxVal = std::max(maxVal, rawOutput[i]);
+    }
+    const bool applySigmoid = job.segUseSigmoid && (minVal < 0.0f || maxVal > 1.0f);
+
+    std::vector<float> processedMask(maskSize);
+    for (std::size_t i = 0; i < maskSize; ++i) {
+        processedMask[i] = segPostprocessValue(rawOutput[i], job.segGain, job.segUseSigmoid,
+                                               job.segThreshold, job.segFeather,
+                                               job.segInvert, applySigmoid);
+    }
+
+    // Build RGBA output by resampling mask to original frame size
+    const int fw = job.width;
+    const int fh = job.height;
+    outRGBA.resize(static_cast<std::size_t>(fw) * static_cast<std::size_t>(fh) * 4u);
+    const std::uint8_t* src = job.rgba.data();
+    for (int y = 0; y < fh; ++y) {
+        for (int x = 0; x < fw; ++x) {
+            const float alpha = segSampleNearest(processedMask, maskW, maskH, x, y, fw, fh);
+            const std::size_t pi = static_cast<std::size_t>(y) * static_cast<std::size_t>(fw) + static_cast<std::size_t>(x);
+            const std::size_t base = pi * 4u;
+            if (job.segBackground <= 0.0f) {
+                outRGBA[base + 0] = src[base + 0];
+                outRGBA[base + 1] = src[base + 1];
+                outRGBA[base + 2] = src[base + 2];
+                outRGBA[base + 3] = static_cast<std::uint8_t>(std::lround(alpha * 255.0f));
+            } else {
+                const float mix = job.segBackground + alpha * (1.0f - job.segBackground);
+                outRGBA[base + 0] = static_cast<std::uint8_t>(std::lround(static_cast<float>(src[base + 0]) * mix));
+                outRGBA[base + 1] = static_cast<std::uint8_t>(std::lround(static_cast<float>(src[base + 1]) * mix));
+                outRGBA[base + 2] = static_cast<std::uint8_t>(std::lround(static_cast<float>(src[base + 2]) * mix));
+                outRGBA[base + 3] = 255;
+            }
+        }
+    }
+    return true;
+}
+
 const std::string& MLPipeline::lastError() const {
     return pImpl_->error;
+}
+
+// ============================================================================
+// Async background inference
+// ============================================================================
+
+void MLPipeline::startBackgroundWorker() {
+    if (pImpl_->bgRunning) return;
+    pImpl_->bgRunning = true;
+    pImpl_->bgThread = std::thread([this]() {
+        while (pImpl_->bgRunning) {
+            FrameJob job;
+            {
+                std::unique_lock<std::mutex> lock(pImpl_->queueMutex);
+                if (pImpl_->frameQueue.empty()) {
+                    pImpl_->cv.wait_for(lock, std::chrono::milliseconds(16));
+                    if (pImpl_->frameQueue.empty()) continue;
+                }
+                job = std::move(pImpl_->frameQueue.front());
+                pImpl_->frameQueue.pop();
+            }
+
+            if (!job.valid()) continue;
+
+            if (job.isSegmentation) {
+                // Segmentation pipeline: infer + mask process + RGBA build
+                // Store source frame dims for processing
+                const int srcW = job.width;
+                const int srcH = job.height;
+
+                std::vector<float> output;
+                if (infer(job.rgba.data(), job.width, job.height, output)) {
+                    std::vector<std::uint8_t> segRGBA;
+                    if (processSegmentationMask(output, job, segRGBA)) {
+                        std::lock_guard<std::mutex> lock(pImpl_->segResultMutex);
+                        pImpl_->segResultRGBA = std::move(segRGBA);
+                        pImpl_->segResultW = srcW;
+                        pImpl_->segResultH = srcH;
+                        pImpl_->segResultValid = true;
+                    }
+                }
+            } else {
+                // Regular inference: just run infer, store raw output
+                std::vector<float> output;
+                if (infer(job.rgba.data(), job.width, job.height, output)) {
+                    std::lock_guard<std::mutex> lock(pImpl_->resultMutex);
+                    pImpl_->latestOutput = std::move(output);
+                    pImpl_->latestValid = true;
+                }
+            }
+        }
+    });
+}
+
+void MLPipeline::submitFrame(int width, int height, std::vector<std::uint8_t> rgba) {
+    if (!pImpl_->bgRunning) return;
+    FrameJob job;
+    job.width = width;
+    job.height = height;
+    job.rgba = std::move(rgba);
+    {
+        std::lock_guard<std::mutex> lock(pImpl_->queueMutex);
+        if (!pImpl_->frameQueue.empty()) {
+            while (!pImpl_->frameQueue.empty()) pImpl_->frameQueue.pop();
+        }
+        pImpl_->frameQueue.push(std::move(job));
+    }
+    pImpl_->cv.notify_one();
+}
+
+void MLPipeline::submitSegmentation(int width, int height, std::vector<std::uint8_t> rgba,
+                                     const SegmentationOpts& opts) {
+    if (!pImpl_->bgRunning) return;
+    FrameJob job;
+    job.width = width;
+    job.height = height;
+    job.rgba = std::move(rgba);
+    job.isSegmentation = true;
+    job.segGain = opts.gain;
+    job.segUseSigmoid = opts.useSigmoid;
+    job.segThreshold = opts.threshold;
+    job.segFeather = opts.feather;
+    job.segInvert = opts.invert;
+    job.segBackground = opts.background;
+    {
+        std::lock_guard<std::mutex> lock(pImpl_->queueMutex);
+        if (!pImpl_->frameQueue.empty()) {
+            while (!pImpl_->frameQueue.empty()) pImpl_->frameQueue.pop();
+        }
+        pImpl_->frameQueue.push(std::move(job));
+    }
+    pImpl_->cv.notify_one();
+}
+
+std::vector<std::uint8_t> MLPipeline::pollSegmentationResult(int& outW, int& outH, uint64_t& sequence) {
+    std::lock_guard<std::mutex> lock(pImpl_->segResultMutex);
+    if (!pImpl_->segResultValid) return {};
+    outW = pImpl_->segResultW;
+    outH = pImpl_->segResultH;
+    sequence = 0;  // sequence not tracked at this level
+    pImpl_->segResultValid = false;
+    return std::move(pImpl_->segResultRGBA);
+}
+
+bool MLPipeline::pollResult(std::vector<float>& output) {
+    std::lock_guard<std::mutex> lock(pImpl_->resultMutex);
+    if (!pImpl_->latestValid) return false;
+    output = pImpl_->latestOutput;
+    return true;
 }
 
 } // namespace manifold::ml
