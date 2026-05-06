@@ -1,6 +1,7 @@
 #include "BehaviorCoreProcessor.h"
 
 #include "BehaviorCoreEditor.h"
+#include "LinkSupport.h"
 #include "MidiSupport.h"
 #include "../primitives/control/OSCSettingsPersistence.h"
 #include "../primitives/core/Settings.h"
@@ -2740,59 +2741,59 @@ void BehaviorCoreProcessor::initialiseAtomicState(double sampleRate) {
 // ============================================================================
 
 bool BehaviorCoreProcessor::isLinkEnabled() const {
-    return linkSync.isEnabled();
+    return manifold::link_support::isLinkEnabled(linkSync);
 }
 
 void BehaviorCoreProcessor::setLinkEnabled(bool enabled) {
-    linkSync.setEnabled(enabled);
+    manifold::link_support::setLinkEnabled(linkSync, enabled);
 }
 
 bool BehaviorCoreProcessor::isLinkTempoSyncEnabled() const {
-    return linkSync.getState().isTempoSyncEnabled.load(std::memory_order_relaxed);
+    return manifold::link_support::isLinkTempoSyncEnabled(linkSync);
 }
 
 void BehaviorCoreProcessor::setLinkTempoSyncEnabled(bool enabled) {
-    linkSync.setTempoSyncEnabled(enabled);
+    manifold::link_support::setLinkTempoSyncEnabled(linkSync, enabled);
 }
 
 bool BehaviorCoreProcessor::isLinkStartStopSyncEnabled() const {
-    return linkSync.getState().isStartStopSyncEnabled.load(std::memory_order_relaxed);
+    return manifold::link_support::isLinkStartStopSyncEnabled(linkSync);
 }
 
 void BehaviorCoreProcessor::setLinkStartStopSyncEnabled(bool enabled) {
-    linkSync.setStartStopSyncEnabled(enabled);
+    manifold::link_support::setLinkStartStopSyncEnabled(linkSync, enabled);
 }
 
 int BehaviorCoreProcessor::getLinkNumPeers() const {
-    return linkSync.getNumPeers();
+    return manifold::link_support::getLinkNumPeers(linkSync);
 }
 
 bool BehaviorCoreProcessor::isLinkPlaying() const {
-    return linkSync.getIsPlaying();
+    return manifold::link_support::isLinkPlaying(linkSync);
 }
 
 double BehaviorCoreProcessor::getLinkBeat() const {
-    return linkSync.getBeat();
+    return manifold::link_support::getLinkBeat(linkSync);
 }
 
 double BehaviorCoreProcessor::getLinkPhase() const {
-    return linkSync.getPhase();
+    return manifold::link_support::getLinkPhase(linkSync);
 }
 
 void BehaviorCoreProcessor::requestLinkTempo(double bpm) {
-    linkSync.requestTempo(bpm);
+    manifold::link_support::requestLinkTempo(linkSync, bpm);
 }
 
 void BehaviorCoreProcessor::requestLinkStart() {
-    linkSync.requestPlay();
+    manifold::link_support::requestLinkStart(linkSync);
 }
 
 void BehaviorCoreProcessor::requestLinkStop() {
-    linkSync.requestStop();
+    manifold::link_support::requestLinkStop(linkSync);
 }
 
 void BehaviorCoreProcessor::processLinkPendingRequests() {
-    linkSync.processPendingRequests();
+    manifold::link_support::processLinkPendingRequests(linkSync);
 }
 
 // ============================================================================
