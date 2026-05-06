@@ -201,7 +201,7 @@ return {
 
     fxShell("fx1", "FX1", 18, 892, 1, 0xff22d3ee),
     fxShell("fx2", "FX2", 502, 892, 2, 0xff38bdf8),
-    label("fxStatus", 990, 902, 260, 34, "FX rack modules are the exact Main/ui/components/fx_slot.ui.lua module, bound to /avlab/fx/{1,2}.", C.muted, 10),
+    label("fxStatus", 990, 902, 260, 34, "FX rack modules are the exact Main/ui/components/fx_slot.ui.lua module, bound to /midi/synth/rack/fx/{1,2}.", C.muted, 10),
 
     panel("mappingPanel", 18, 1120, 1244, 76, C.border, C.panel),
     label("mappingLabel", 32, 1124, 88, 16, "Pose map", C.muted, 11),

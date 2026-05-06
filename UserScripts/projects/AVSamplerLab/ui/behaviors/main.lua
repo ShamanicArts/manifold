@@ -6,6 +6,11 @@ local MAX_CAPTURE_SECONDS = 6.0
 local VIDEO_CAPTURE_ID = "avlab_segmented_capture"
 local VIDEO_SAMPLER_ID = "avlab_clip"
 local MAJOR_OFFSETS = { 0, 2, 4, 5, 7, 9, 11, 12 }
+local PARAM_SYNC_INTERVAL = 1.0 / 30.0
+local SEGMENT_INGEST_INTERVAL = 1.0 / 15.0
+local POSE_INTERVAL = 1.0 / 12.0
+local PLAYBACK_UI_INTERVAL = 1.0 / 20.0
+local STATUS_INTERVAL = 0.20
 local KEYPOINTS = {
   "nose", "left_eye", "right_eye", "left_ear", "right_ear",
   "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
@@ -78,9 +83,38 @@ local function writeParam(path, value)
   return false
 end
 local function bump(path) writeParam(path, (readParam(path, 0) + 1) % 1000000) end
+local function nowSeconds() return (type(getTime) == "function" and tonumber(getTime())) or 0 end
+local function shouldRunInterval(ctx, key, interval)
+  if type(ctx) ~= "table" then return true end
+  ctx._timers = ctx._timers or {}
+  local now = nowSeconds()
+  if now <= 0 then return true end
+  local last = tonumber(ctx._timers[key]) or -1e9
+  if (now - last) >= (tonumber(interval) or 0) then
+    ctx._timers[key] = now
+    return true
+  end
+  return false
+end
+local function writeParamIfChanged(ctx, cacheKey, path, value, epsilon)
+  if type(ctx) ~= "table" then return writeParam(path, value) end
+  ctx._lastParamWrites = ctx._lastParamWrites or {}
+  local numeric = tonumber(value) or 0
+  local last = tonumber(ctx._lastParamWrites[cacheKey])
+  local threshold = tonumber(epsilon) or 0.0005
+  if last ~= nil and math.abs(last - numeric) <= threshold then
+    return false
+  end
+  ctx._lastParamWrites[cacheKey] = numeric
+  return writeParam(path, numeric)
+end
 local function pathForSlice(i) return NS .. "/slice/" .. i .. "/start" end
 local function triggerPathForSlice(i) return NS .. "/slice/" .. i .. "/trigger" end
 local function velocityPathForSlice(i) return NS .. "/slice/" .. i .. "/velocity" end
+local function rackFxBasePath(slot) return "/midi/synth/rack/fx/" .. math.max(1, round(slot or 1)) end
+local function rackFxTypePath(slot) return rackFxBasePath(slot) .. "/type" end
+local function rackFxMixPath(slot) return rackFxBasePath(slot) .. "/mix" end
+local function rackFxParamPath(slot, paramIndex) return rackFxBasePath(slot) .. "/p/" .. math.max(0, round(paramIndex or 0)) end
 
 local function currentScriptDir()
   local p = (type(getCurrentScriptPath) == "function") and getCurrentScriptPath() or ""
@@ -461,10 +495,14 @@ local function publishPose(ctx, values)
   if not (osc and osc.send) then return end
   for path, value in pairs(values or {}) do pcall(osc.send, path, value) end
 end
-local function runPose(ctx)
-  if not (ctx._posePipeline and capture and capture.isOpen and capture.isOpen()) then return end
+local function runPose(ctx, frameInfo)
+  if not (ctx._posePipeline and capture and capture.isOpen and capture.isOpen()) then return false end
+  if not shouldRunInterval(ctx, "pose", POSE_INTERVAL) then return false end
+  local seq = tonumber(frameInfo and frameInfo.sequence)
+  if seq ~= nil and ctx._lastPoseFrameSeq == seq then return false end
   local ok, result = pcall(ml.infer, ctx._posePipeline)
-  if not ok or not result or type(result.data) ~= "table" or #result.data < 51 then return end
+  if not ok or not result or type(result.data) ~= "table" or #result.data < 51 then return false end
+  if seq ~= nil then ctx._lastPoseFrameSeq = seq end
   local inputW, inputH = ctx._posePipeline:inputWidth(), ctx._posePipeline:inputHeight()
   local kps = {}
   for i=0,16 do
@@ -490,9 +528,14 @@ local function runPose(ctx)
   ctx.pose.values[NS .. "/pose/left_arm/reach"] = clamp(leftReach,0,1)
   ctx.pose.values[NS .. "/pose/right_arm/reach"] = clamp(rightReach,0,1)
   publishPose(ctx, ctx.pose.values)
-  if ctx._poseOverlay then local frame = capture.getFrameInfo and capture.getFrameInfo() or {}; ctx._poseOverlay:setBounds(0,0,ctx._poseOverlay:getWidth(),ctx._poseOverlay:getHeight()); ctx._poseOverlay:setDisplayList(buildPoseDisplay(kps, ctx.poseConf, ctx.showSkeleton, ctx._poseOverlay:getWidth(), ctx._poseOverlay:getHeight(), frame.width or 640, frame.height or 480)) end
+  if ctx._poseOverlay then
+    local frame = frameInfo or (capture.getFrameInfo and capture.getFrameInfo()) or {}
+    ctx._poseOverlay:setBounds(0,0,ctx._poseOverlay:getWidth(),ctx._poseOverlay:getHeight())
+    ctx._poseOverlay:setDisplayList(buildPoseDisplay(kps, ctx.poseConf, ctx.showSkeleton, ctx._poseOverlay:getWidth(), ctx._poseOverlay:getHeight(), frame.width or 640, frame.height or 480))
+  end
   local visible = 0; for _,kp in ipairs(kps) do if kp.conf > ctx.poseConf then visible = visible + 1 end end
   setText(ctx.widgets.poseStatus, string.format("Pose: %d/17 visible | nose %.2f %.2f | wrists spread %.2f", visible, nose and nose.x or 0, nose and nose.y or 0, spread))
+  return true
 end
 
 local function poseSourceValue(ctx, track)
@@ -521,13 +564,26 @@ local function applyMappingTrack(ctx, track)
   local out = mapping.min + src * (mapping.max - mapping.min)
   local target = mapping.target or 1
   if target == 1 then
-    ctx.shader.layers[1].params[1] = clamp(out, 0, 1); setValueSilently(ctx.widgets.shaderParam1, ctx.shader.layers[ctx.shader.activeLayer].params[1]); updateShader(ctx)
+    local nextValue = clamp(out, 0, 1)
+    if math.abs((ctx.shader.layers[1].params[1] or 0.5) - nextValue) > 0.0005 then
+      ctx.shader.layers[1].params[1] = nextValue
+      setValueSilently(ctx.widgets.shaderParam1, ctx.shader.layers[ctx.shader.activeLayer].params[1])
+      updateShader(ctx)
+    end
   elseif target == 2 then
-    writeParam(NS .. "/fx/1/mix", clamp(out, 0, 1))
+    writeParamIfChanged(ctx, "mapping.fx1.mix", rackFxMixPath(1), clamp(out, 0, 1), 0.002)
   elseif target == 3 then
-    writeParam(NS .. "/speed", clamp(out, -2, 4)); setValueSilently(ctx.widgets.speed, clamp(out,-2,4))
+    local speed = clamp(out, -2, 4)
+    if writeParamIfChanged(ctx, "mapping.speed", NS .. "/speed", speed, 0.002) then
+      setValueSilently(ctx.widgets.speed, speed)
+    end
   elseif target == 4 then
-    local s = math.max(1, math.min(MAX, round(1 + clamp(out,0,1) * (MAX-1)))); ctx._selectedSlice = s; writeParam(NS .. "/selected_slice", s); setSelectedSilently(ctx.widgets.selectedSlice, s)
+    local s = math.max(1, math.min(MAX, round(1 + clamp(out,0,1) * (MAX-1))))
+    if ctx._selectedSlice ~= s then
+      ctx._selectedSlice = s
+      writeParamIfChanged(ctx, "mapping.selectedSlice", NS .. "/selected_slice", s, 0.0)
+      setSelectedSilently(ctx.widgets.selectedSlice, s)
+    end
   end
 end
 local function applyMapping(ctx)
@@ -666,9 +722,9 @@ local function syncParamsFromHost(ctx)
   end
 
   local s = ctx.fxSlot or 1
-  if ctx.widgets.fxType then setSelectedSilently(ctx.widgets.fxType, round(readParam(NS.."/fx/"..s.."/type",0))+1) end
-  if ctx.widgets.fxMix then setValueSilently(ctx.widgets.fxMix, readParam(NS.."/fx/"..s.."/mix",0)) end
-  for p=1,5 do if ctx.widgets["fxParam"..p] then setValueSilently(ctx.widgets["fxParam"..p], readParam(NS.."/fx/"..s.."/param/"..p,0.5)) end end
+  if ctx.widgets.fxType then setSelectedSilently(ctx.widgets.fxType, round(readParam(rackFxTypePath(s),0))+1) end
+  if ctx.widgets.fxMix then setValueSilently(ctx.widgets.fxMix, readParam(rackFxMixPath(s),0)) end
+  for p=1,5 do if ctx.widgets["fxParam"..p] then setValueSilently(ctx.widgets["fxParam"..p], readParam(rackFxParamPath(s, p - 1),0.5)) end end
 end
 
 local function saveState(ctx)
@@ -792,14 +848,14 @@ function M.init(ctx)
     ctx.widgets.fxSlot._onSelect = function(idx)
       ctx.fxSlot = math.max(1, math.min(2, round(idx)))
       local s=ctx.fxSlot
-      if ctx.widgets.fxMix then setValueSilently(ctx.widgets.fxMix, readParam(NS.."/fx/"..s.."/mix",0)) end
-      for p=1,5 do if ctx.widgets["fxParam"..p] then setValueSilently(ctx.widgets["fxParam"..p], readParam(NS.."/fx/"..s.."/param/"..p,0.5)) end end
-      if ctx.widgets.fxType then setSelectedSilently(ctx.widgets.fxType, round(readParam(NS.."/fx/"..s.."/type",0))+1) end
+      if ctx.widgets.fxMix then setValueSilently(ctx.widgets.fxMix, readParam(rackFxMixPath(s),0)) end
+      for p=1,5 do if ctx.widgets["fxParam"..p] then setValueSilently(ctx.widgets["fxParam"..p], readParam(rackFxParamPath(s, p - 1),0.5)) end end
+      if ctx.widgets.fxType then setSelectedSilently(ctx.widgets.fxType, round(readParam(rackFxTypePath(s),0))+1) end
     end
   end
-  if ctx.widgets.fxType then ctx.widgets.fxType._onSelect = function(idx) writeParam(NS .. "/fx/" .. ctx.fxSlot .. "/type", math.max(0, round(idx)-1)); saveState(ctx) end end
-  if ctx.widgets.fxMix then ctx.widgets.fxMix._onChange = function(v) writeParam(NS .. "/fx/" .. ctx.fxSlot .. "/mix", v); saveState(ctx) end end
-  for p=1,5 do if ctx.widgets["fxParam"..p] then ctx.widgets["fxParam"..p]._onChange = function(v) writeParam(NS .. "/fx/" .. ctx.fxSlot .. "/param/" .. p, v); saveState(ctx) end end end
+  if ctx.widgets.fxType then ctx.widgets.fxType._onSelect = function(idx) writeParam(rackFxTypePath(ctx.fxSlot), math.max(0, round(idx)-1)); saveState(ctx) end end
+  if ctx.widgets.fxMix then ctx.widgets.fxMix._onChange = function(v) writeParam(rackFxMixPath(ctx.fxSlot), v); saveState(ctx) end end
+  for p=1,5 do if ctx.widgets["fxParam"..p] then ctx.widgets["fxParam"..p]._onChange = function(v) writeParam(rackFxParamPath(ctx.fxSlot, p - 1), v); saveState(ctx) end end end
 
   local wf = ctx.widgets.waveform
   if wf then
@@ -817,31 +873,65 @@ end
 
 function M.update(ctx)
   applyCaptureWindow(ctx)
-  syncParamsFromHost(ctx)
-  if ctx.videoCap then
-    local ok = false
-    if ctx.videoCap.ingestSegmentedLatest and ctx._segPipeline then ok = ctx.videoCap:ingestSegmentedLatest(ctx._segPipeline, { gain=ctx.seg.gain, useSigmoid=ctx.seg.useSigmoid, threshold=ctx.seg.threshold, feather=ctx.seg.feather, invert=ctx.seg.invert, background=0.0 }) end
-    if not ok then ctx.videoCap:ingestLatest() end
+
+  if shouldRunInterval(ctx, "paramSync", PARAM_SYNC_INTERVAL) then
+    syncParamsFromHost(ctx)
   end
-  pollMidi(ctx); runPose(ctx); applyMapping(ctx)
+
+  pollMidi(ctx)
 
   local frame = (capture and capture.getFrameInfo and capture.getFrameInfo()) or { valid=false }
-  setText(ctx.widgets.webcamStatus, string.format("Webcam: %s frame=%s %dx%d seq=%s", (capture and capture.isOpen and capture.isOpen()) and "open" or "closed", frame.valid and "yes" or "no", frame.width or 0, frame.height or 0, tostring(frame.sequence or "--")))
-  local clk = clockInfo(); setText(ctx.widgets.clockStatus, string.format("Clock: sr=%.0f samples=%.0f tempo=%.1f", clk.sampleRate or 0, clk.playTimeSamples or 0, clk.tempo or 0))
-  setText(ctx.widgets.rendererStatus, "Renderer: " .. ((type(getUIRendererMode)=="function" and getUIRendererMode()) or "canvas"))
+  local webcamOpen = (capture and capture.isOpen and capture.isOpen()) and true or false
 
-  for i=1,MAX do ctx._polyPlaying[i], ctx._polyPos[i] = samplePosition(POLY_PATHS[i], 0); ctx._slicePlaying[i], ctx._slicePos[i] = samplePosition(SLICE_PATHS[i], readParam(pathForSlice(i), (i-1)/MAX)) end
-  layoutOutputRow(ctx); refreshWaveform(ctx)
+  if ctx.videoCap and webcamOpen and shouldRunInterval(ctx, "segmentIngest", SEGMENT_INGEST_INTERVAL) then
+    local seq = tonumber(frame.sequence)
+    if seq == nil or ctx._lastSegmentFrameSeq ~= seq then
+      local ok = false
+      if ctx.videoCap.ingestSegmentedLatest and ctx._segPipeline then
+        ok = ctx.videoCap:ingestSegmentedLatest(ctx._segPipeline, {
+          gain=ctx.seg.gain,
+          useSigmoid=ctx.seg.useSigmoid,
+          threshold=ctx.seg.threshold,
+          feather=ctx.seg.feather,
+          invert=ctx.seg.invert,
+          background=0.0,
+        })
+      end
+      if not ok then ctx.videoCap:ingestLatest() end
+      if seq ~= nil then ctx._lastSegmentFrameSeq = seq end
+    end
+  end
 
-  local capFrames = ctx.videoCap and ctx.videoCap:getFrameCount() or 0
-  ctx._lockedW = ctx.videoCap and ctx.videoCap:getLockedWidth() or ctx._lockedW
-  ctx._lockedH = ctx.videoCap and ctx.videoCap:getLockedHeight() or ctx._lockedH
-  local capMB = (ctx.videoCap and ctx.videoCap:getEstimatedBytes() or 0) / (1024*1024)
-  setText(ctx.widgets.captureStatus, string.format("Capture ring: %d segmented frames locked %dx%d %.1fMB", capFrames, ctx._lockedW or 0, ctx._lockedH or 0, capMB))
-  local sampleFrames = ctx.video and ctx.video:getFrameCount() or 0
-  setText(ctx.widgets.samplerStatus, string.format("Sampler: %d frames %.2fs last commit %s visible=%d", sampleFrames, ctx.video and ctx.video:getDurationSeconds() or 0, ctx._lastVideoCommitOk and "OK" or "--", #(ctx._visible or {})))
-  setText(ctx.widgets.midiStatus, string.format("MIDI: %s last=%s", currentMidiLabel() or "none", tostring(ctx._lastMidi or "--")))
-  setText(ctx.widgets.fxStatus, string.format("FX%d type=%d mix=%.2f", ctx.fxSlot, round(readParam(NS.."/fx/"..ctx.fxSlot.."/type",0)), readParam(NS.."/fx/"..ctx.fxSlot.."/mix",0)))
+  local poseUpdated = runPose(ctx, frame)
+  if poseUpdated or shouldRunInterval(ctx, "mapping", POSE_INTERVAL) then
+    applyMapping(ctx)
+  end
+
+  if shouldRunInterval(ctx, "playbackUi", PLAYBACK_UI_INTERVAL) then
+    for i=1,MAX do
+      ctx._polyPlaying[i], ctx._polyPos[i] = samplePosition(POLY_PATHS[i], 0)
+      ctx._slicePlaying[i], ctx._slicePos[i] = samplePosition(SLICE_PATHS[i], readParam(pathForSlice(i), (i-1)/MAX))
+    end
+    layoutOutputRow(ctx)
+    refreshWaveform(ctx)
+  end
+
+  if shouldRunInterval(ctx, "status", STATUS_INTERVAL) then
+    setText(ctx.widgets.webcamStatus, string.format("Webcam: %s frame=%s %dx%d seq=%s", webcamOpen and "open" or "closed", frame.valid and "yes" or "no", frame.width or 0, frame.height or 0, tostring(frame.sequence or "--")))
+    local clk = clockInfo()
+    setText(ctx.widgets.clockStatus, string.format("Clock: sr=%.0f samples=%.0f tempo=%.1f", clk.sampleRate or 0, clk.playTimeSamples or 0, clk.tempo or 0))
+    setText(ctx.widgets.rendererStatus, "Renderer: " .. ((type(getUIRendererMode)=="function" and getUIRendererMode()) or "canvas"))
+
+    local capFrames = ctx.videoCap and ctx.videoCap:getFrameCount() or 0
+    ctx._lockedW = ctx.videoCap and ctx.videoCap:getLockedWidth() or ctx._lockedW
+    ctx._lockedH = ctx.videoCap and ctx.videoCap:getLockedHeight() or ctx._lockedH
+    local capMB = (ctx.videoCap and ctx.videoCap:getEstimatedBytes() or 0) / (1024*1024)
+    setText(ctx.widgets.captureStatus, string.format("Capture ring: %d segmented frames locked %dx%d %.1fMB", capFrames, ctx._lockedW or 0, ctx._lockedH or 0, capMB))
+    local sampleFrames = ctx.video and ctx.video:getFrameCount() or 0
+    setText(ctx.widgets.samplerStatus, string.format("Sampler: %d frames %.2fs last commit %s visible=%d", sampleFrames, ctx.video and ctx.video:getDurationSeconds() or 0, ctx._lastVideoCommitOk and "OK" or "--", #(ctx._visible or {})))
+    setText(ctx.widgets.midiStatus, string.format("MIDI: %s last=%s", currentMidiLabel() or "none", tostring(ctx._lastMidi or "--")))
+    setText(ctx.widgets.fxStatus, string.format("FX%d type=%d mix=%.2f", ctx.fxSlot, round(readParam(rackFxTypePath(ctx.fxSlot),0)), readParam(rackFxMixPath(ctx.fxSlot),0)))
+  end
 end
 
 function M.cleanup(ctx)

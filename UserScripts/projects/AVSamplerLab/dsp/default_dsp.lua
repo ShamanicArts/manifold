@@ -230,7 +230,15 @@ function buildPlugin(ctx)
     for i = 1, MAX do ctx.graph.nameNode(voices[i].sample, NS .. "/poly/voice/" .. i .. "/sample"); ctx.graph.nameNode(slices[i].sample, NS .. "/slice/" .. i .. "/sample") end
   end
 
-  local function reg(path, min, max, default) ctx.params.register(path, { type = "f", min = min, max = max, default = default }) end
+  local function reg(path, min, max, default, extra)
+    local spec = { type = "f", min = min, max = max, default = default }
+    if type(extra) == "table" then
+      for key, value in pairs(extra) do
+        spec[key] = value
+      end
+    end
+    ctx.params.register(path, spec)
+  end
   local regs = {
     { "/loaded", 0, 1, 1 }, { "/mode", 0, 1, params.mode }, { "/capture_mode", 0, 1, params.captureMode },
     { "/capture_seconds", 0.25, 6.0, params.captureSeconds }, { "/capture_trigger", 0, 1000000, 0 },
@@ -248,7 +256,7 @@ function buildPlugin(ctx)
   for _, r in ipairs(regs) do reg(NS .. r[1], r[2], r[3], r[4]) end
   for i = 1, MAX do reg(NS .. "/slice/" .. i .. "/start", 0, 0.999, sliceStarts[i]); reg(NS .. "/slice/" .. i .. "/trigger", 0, 1000000, 0); reg(NS .. "/slice/" .. i .. "/velocity", 0, 127, 127) end
   for s = 1, 2 do
-    reg(ParameterBinder.dynamicFxTypePath(s), 0, math.max(0, #fxDefs - 1), 0)
+    reg(ParameterBinder.dynamicFxTypePath(s), 0, math.max(0, #fxDefs - 1), 0, { deferGraphMutation = true })
     reg(ParameterBinder.dynamicFxMixPath(s), 0, 1, 0)
     for p = 1, maxFxParams do
       reg(ParameterBinder.dynamicFxParamPath(s, p - 1), 0, 1, 0.5)
