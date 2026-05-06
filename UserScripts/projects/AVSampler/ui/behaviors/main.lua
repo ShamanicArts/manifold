@@ -1,11 +1,11 @@
 local M = {}
 
-local NS = "/avlab"
+local NS = "/avsampler"
 local MAX = 8
 local MAX_MAPPINGS = 8
 local MAX_CAPTURE_SECONDS = 6.0
-local VIDEO_CAPTURE_ID = "avlab_segmented_capture"
-local VIDEO_SAMPLER_ID = "avlab_clip"
+local VIDEO_CAPTURE_ID = "av_sampler_segmented_capture"
+local VIDEO_SAMPLER_ID = "av_sampler_clip"
 local MAJOR_OFFSETS = { 0, 2, 4, 5, 7, 9, 11, 12 }
 local PARAM_SYNC_INTERVAL = 1.0 / 30.0
 local SEGMENT_INGEST_INTERVAL = 1.0 / 15.0
@@ -188,7 +188,7 @@ local function projectRootDir()
   if dir:match("/ui/$") then return parentDir(dir) end
   return dir
 end
-local function statePath() return join(projectRootDir(), ".av_sampler_lab.state") end
+local function statePath() return join(projectRootDir(), ".av_sampler.state") end
 
 local function clockInfo()
   if type(getAudioClockInfo) == "function" then local ok, info = pcall(getAudioClockInfo); if ok and type(info)=="table" then return info end end
@@ -273,11 +273,13 @@ local function loadModels(ctx)
   local scriptsProjects = parentDir(projectDir)
   ctx._segPipeline, ctx._segModelPath = tryLoad(ctx, {
     join(projectDir, "selfie_segmentation.onnx"),
+    join(scriptsProjects, "AVSamplerLab/selfie_segmentation.onnx"),
     join(scriptsProjects, "MLLab/selfie_segmentation.onnx"),
     join(scriptsProjects, "WebcamViewer/selfie_segmentation.onnx"),
   })
   ctx._posePipeline, ctx._poseModelPath = tryLoad(ctx, {
     join(projectDir, "movenet_singlepose_lightning.onnx"),
+    join(scriptsProjects, "AVSamplerLab/movenet_singlepose_lightning.onnx"),
     join(scriptsProjects, "MLLab/movenet_singlepose_lightning.onnx"),
   })
   if ctx._posePipeline and ctx._posePipeline.setNormalization then ctx._posePipeline:setNormalization(1.0, 0.0) end
@@ -543,9 +545,14 @@ local function buildPoseDisplay(kps, conf, show, w, h, vidW, vidH)
 end
 local function ensurePoseOverlay(ctx)
   local vp = ctx.widgets.poseViewport
-  if ctx._poseOverlay or not (vp and vp.node and vp.node.addChild) then return end
-  local o = vp.node:addChild("avlabPoseOverlay")
-  if o then o:setInterceptsMouse(false,false); o:setBounds(0,0,vp.node:getWidth(),vp.node:getHeight()); o:setDisplayList({}); ctx._poseOverlay = o end
+  if not (vp and vp.node) then return end
+  if not ctx._poseOverlay and vp.node.addChild then
+    local o = vp.node:addChild("avSamplerPoseOverlay")
+    if o then o:setInterceptsMouse(false,false); o:setDisplayList({}); ctx._poseOverlay = o end
+  end
+  if ctx._poseOverlay and vp.node.getWidth and vp.node.getHeight then
+    ctx._poseOverlay:setBounds(0, 0, math.max(1, math.floor(vp.node:getWidth() or 1)), math.max(1, math.floor(vp.node:getHeight() or 1)))
+  end
 end
 
 local function publishPose(ctx, values)
@@ -586,8 +593,8 @@ local function runPose(ctx, frameInfo)
   ctx.pose.values[NS .. "/pose/right_arm/reach"] = clamp(rightReach,0,1)
   publishPose(ctx, ctx.pose.values)
   if ctx._poseOverlay then
+    ensurePoseOverlay(ctx)
     local frame = frameInfo or (capture.getFrameInfo and capture.getFrameInfo()) or {}
-    ctx._poseOverlay:setBounds(0,0,ctx._poseOverlay:getWidth(),ctx._poseOverlay:getHeight())
     ctx._poseOverlay:setDisplayList(buildPoseDisplay(kps, ctx.poseConf, ctx.showSkeleton, ctx._poseOverlay:getWidth(), ctx._poseOverlay:getHeight(), frame.width or 640, frame.height or 480))
   end
   local visible = 0; for _,kp in ipairs(kps) do if kp.conf > ctx.poseConf then visible = visible + 1 end end
@@ -617,6 +624,7 @@ local function applyMappingTrack(ctx, track)
   local mapping = ctx.mappings[track]
   if not mapping or not mapping.enabled then return nil end
   local sourceValue = clamp(poseSourceValue(ctx, track), 0, 1)
+  -- Pose Y is screen-space top→bottom; normal mapping flips it so upward motion increases value.
   if not mapping.invert then sourceValue = 1.0 - sourceValue end
   local target, targetIndex = mappingTargetSpec(mapping.target or 1)
   local minNorm = clamp(mapping.min or 0, 0, 1)
@@ -794,6 +802,7 @@ local function saveState(ctx)
   lines[#lines+1] = "mode=" .. tostring(round(readParam(NS .. "/mode",0)))
   lines[#lines+1] = "source=" .. tostring(ctx.shader.sourceIndex or 1)
   lines[#lines+1] = "captureMode=" .. tostring(round(readParam(NS .. "/capture_mode",0)))
+  lines[#lines+1] = "layoutPreset=" .. tostring(ctx._layoutPreset or "deck")
   for i=1,8 do local L=ctx.shader.layers[i]; lines[#lines+1]=string.format("shader.%d=%s,%s,%s,%s", i, tostring(L.enabled), tostring(L.effectIndex or 1), tostring(L.params[1] or 0), tostring(L.params[2] or 0)) end
   for i=1,MAX do lines[#lines+1] = string.format("slice.%d=%s", i, tostring(readParam(pathForSlice(i), (i-1)/MAX))) end
   for t = 1, MAX_MAPPINGS do
@@ -811,6 +820,7 @@ local function loadState(ctx)
       if k == "mode" then writeParam(NS .. "/mode", tonumber(v) or 0); setValueSilently(ctx.widgets.mode, (tonumber(v) or 0) > 0.5)
       elseif k == "captureMode" then writeParam(NS .. "/capture_mode", tonumber(v) or 0); setValueSilently(ctx.widgets.captureMode, (tonumber(v) or 0) > 0.5)
       elseif k == "source" then ctx.shader.sourceIndex = tonumber(v) or 1
+      elseif k == "layoutPreset" then ctx._layoutPreset = tostring(v or "deck")
       else
         local si = k:match("^slice%.(%d+)$"); if si then writeParam(pathForSlice(tonumber(si)), tonumber(v) or 0) end
         local li = k:match("^shader%.(%d+)$"); if li then local a,b,c,d = v:match("([^,]+),([^,]+),([^,]+),([^,]+)"); local L=ctx.shader.layers[tonumber(li)]; if L then L.enabled=(a=="true"); L.effectIndex=tonumber(b) or 1; L.params[1]=tonumber(c) or 0; L.params[2]=tonumber(d) or 0 end end
@@ -822,6 +832,465 @@ local function loadState(ctx)
           end
         end
       end
+    end
+  end
+end
+
+local RESIZABLE_PANES = { "deckPane", "outputPane", "previewPane", "inputsPane", "waveformPane", "allParamsPane", "transportPane", "polyPanel", "slicePanel", "shaderPanel", "mappingPanel", "fx1" }
+
+local function rootSize(ctx)
+  local w, h = 1280, 720
+  if ctx and ctx.root and ctx.root.node and ctx.root.node.getBounds then
+    local _, _, bw, bh = ctx.root.node:getBounds()
+    w = math.max(320, math.floor(tonumber(bw) or w))
+    h = math.max(240, math.floor(tonumber(bh) or h))
+  end
+  return w, h
+end
+
+local function rect(x, y, w, h)
+  return { x = math.floor(x or 0), y = math.floor(y or 0), w = math.max(1, math.floor(w or 1)), h = math.max(1, math.floor(h or 1)) }
+end
+
+local function layoutPresetRects(ctx, preset, w, h)
+  local m, top = 1, 24
+  local cw, ch = math.max(1, w - m * 2), math.max(1, h - top - m)
+  local p = tostring(preset or "deck")
+  local r = { toolbarPane = rect(0, 0, w, 22) }
+
+  if p == "stage" then
+    local rightW = math.min(560, math.max(420, math.floor(cw * 0.30)))
+    local compW = math.max(220, math.floor(cw * 0.18))
+    local leftW = math.max(420, cw - rightW - compW - m * 2)
+    local x1, x2, x3 = m, m + leftW + m, m + leftW + m + compW + m
+    local lowerH = math.max(180, math.floor(ch * 0.22))
+    local waveH = math.max(96, math.floor(ch * 0.12))
+    local outputH = math.max(260, ch - lowerH - waveH - m * 2)
+    local previewW = math.floor(leftW * 0.34)
+    r.outputPane = rect(x1, top, leftW, outputH)
+    r.waveformPane = rect(x1, top + outputH + m, leftW, waveH)
+    r.previewPane = rect(x1, top + outputH + waveH + m * 2, previewW, lowerH)
+    r.inputsPane = rect(x1 + previewW + m, top + outputH + waveH + m * 2, leftW - previewW - m, lowerH)
+    r.deckPane = rect(x2, top, compW, ch)
+    r.transportPane = rect(x3, top, rightW, 104)
+    r.polyPanel = rect(x3, top + 105, rightW, 116)
+    r.slicePanel = r.polyPanel
+    r.shaderPanel = rect(x3, top + 222, rightW, math.max(190, math.floor(ch * 0.24)))
+    r.mappingPanel = rect(x3, r.shaderPanel.y + r.shaderPanel.h + m, rightW, math.max(220, h - (r.shaderPanel.y + r.shaderPanel.h) - 228))
+    r.fx1 = rect(x3, h - 226, math.min(472, rightW), 220)
+    r.fxStatus = rect(x3 + 10, h - 26, math.max(1, rightW - 20), 18)
+  elseif p == "inspector" then
+    local topH = math.max(300, math.floor(ch * 0.38))
+    local bottomY = top + topH + m
+    local rightW = math.min(980, math.max(620, math.floor(cw * 0.45)))
+    local leftW = cw - rightW - m
+    local x1, x2 = m, m + leftW + m
+    local rawStripW = math.max(230, math.floor(leftW * 0.23))
+    local previewW = math.max(360, math.floor(leftW * 0.47))
+    r.inputsPane = rect(x1, top, rawStripW, topH)
+    r.previewPane = rect(x1 + rawStripW + m, top, previewW, topH)
+    r.outputPane = rect(x2, top, rightW, topH)
+    r.allParamsPane = rect(x1, bottomY, leftW, h - bottomY - m)
+    local paramX, paramY = x1 + 8, bottomY + 26
+    local paramW = leftW - 16
+    r.transportPane = rect(paramX, paramY, paramW, 82)
+    r.polyPanel = rect(paramX, paramY + 86, paramW, 96)
+    r.slicePanel = r.polyPanel
+    r.shaderPanel = rect(paramX, paramY + 186, paramW, math.max(165, math.floor((h - paramY - 186 - 250) * 0.55)))
+    r.mappingPanel = rect(paramX, r.shaderPanel.y + r.shaderPanel.h + 4, paramW, math.max(220, h - (r.shaderPanel.y + r.shaderPanel.h) - 12))
+    r.waveformPane = rect(x2, bottomY, rightW, math.max(118, math.floor((h - bottomY - m) * 0.18)))
+    r.deckPane = rect(x2, r.waveformPane.y + r.waveformPane.h + m, rightW, h - (r.waveformPane.y + r.waveformPane.h) - m)
+    r.fx1 = rect(-2000, -2000, 1, 1)
+    r.fxStatus = rect(-2000, -2000, 1, 1)
+  else
+    local deckH = math.max(210, math.min(340, math.floor(ch * 0.25)))
+    local y = top + deckH + m
+    local rightW = math.min(500, math.max(472, math.floor(cw * 0.22)))
+    local midW = math.min(620, math.max(420, math.floor(cw * 0.30)))
+    local leftW = math.max(520, cw - rightW - midW - m * 2)
+    local x1, x2, x3 = m, m + leftW + m, m + leftW + m + midW + m
+    local waveH = math.max(110, math.floor(ch * 0.12))
+    local inputH = math.max(180, math.floor(ch * 0.18))
+    local stageH = math.max(260, h - y - inputH - waveH - m * 3)
+    local outW = math.max(320, math.floor(leftW * 0.58))
+    r.deckPane = rect(m, top, cw, deckH)
+    r.outputPane = rect(x1, y, outW, stageH)
+    r.previewPane = rect(x1 + outW + m, y, leftW - outW - m, stageH)
+    r.inputsPane = rect(x1, y + stageH + m, leftW, inputH)
+    r.waveformPane = rect(x1, y + stageH + inputH + m * 2, leftW, waveH)
+    r.shaderPanel = rect(x2, y, midW, math.max(210, math.floor((h - y - m) * 0.24)))
+    r.mappingPanel = rect(x2, r.shaderPanel.y + r.shaderPanel.h + m, midW, h - (r.shaderPanel.y + r.shaderPanel.h) - m)
+    r.transportPane = rect(x3, y, rightW, 104)
+    r.polyPanel = rect(x3, y + 105, rightW, 116)
+    r.slicePanel = r.polyPanel
+    r.fx1 = rect(x3, y + 222, math.min(472, rightW), 220)
+    r.fxStatus = rect(x3 + 10, y + 446, rightW - 20, 18)
+  end
+  return r
+end
+
+local function setWidgetRect(ctx, id, r)
+  local w = ctx and ctx.widgets and ctx.widgets[id]
+  if not (w and r) then return end
+  setBounds(w, r.x, r.y, r.w, r.h)
+end
+
+local function setWidgetVisibility(ctx, id, visible)
+  local w = ctx and ctx.widgets and ctx.widgets[id]
+  setVisible(w, visible == true)
+end
+
+local function syncLayoutButtons(ctx)
+  local active = tostring(ctx._layoutPreset or "deck")
+  local colours = { layoutDeck = active == "deck", layoutStage = active == "stage", layoutInspector = active == "inspector" }
+  for id, on in pairs(colours) do
+    local w = ctx.widgets and ctx.widgets[id]
+    if w and w.setBg then w:setBg(on and 0xff22d3ee or 0xff1e293b) end
+  end
+  if ctx.widgets.resizeMode and ctx.widgets.resizeMode.setValue then setValueSilently(ctx.widgets.resizeMode, ctx._resizeMode == true) end
+  setWidgetVisibility(ctx, "resizeHelp", ctx._resizeMode == true)
+end
+
+local function paneRect(ctx, paneId)
+  local widget = ctx and ctx.widgets and ctx.widgets[paneId]
+  if widget and widget.node and widget.node.getBounds then
+    local x, y, w, h = widget.node:getBounds()
+    return rect(x, y, w, h)
+  end
+  return rect(0, 0, 1, 1)
+end
+
+local function setLocal(ctx, id, x, y, w, h)
+  local widget = ctx and ctx.widgets and ctx.widgets[id]
+  if widget then setBounds(widget, x, y, w, h) end
+end
+
+local function setLocalVisible(ctx, id, visible)
+  setWidgetVisibility(ctx, id, visible == true)
+end
+
+local function layoutPaneChrome(ctx, paneId, r)
+  setLocal(ctx, paneId .. "Delete", 0, 0, 22, 18)
+  setLocal(ctx, paneId .. "Drag", 22, 0, math.max(1, r.w - 44), 18)
+  setLocal(ctx, paneId .. "Title", 7, 1, math.max(1, r.w - 58), 16)
+  setLocal(ctx, paneId .. "Resize", math.max(0, r.w - 22), 0, 22, 18)
+end
+
+local function layoutDeckContents(ctx, r)
+  layoutPaneChrome(ctx, "deckPane", r)
+  local x0, y0, w, h = 8, 26, math.max(1, r.w - 16), math.max(1, r.h - 32)
+  local gap = 4
+  local preset = tostring(ctx._layoutPreset or "deck")
+
+  if preset ~= "deck" then
+    for row = 1, 3 do
+      setLocalVisible(ctx, "deckLayer" .. row, false)
+      setLocalVisible(ctx, "deckLayer" .. row .. "A", false)
+      setLocalVisible(ctx, "deckLayer" .. row .. "B", false)
+      setLocalVisible(ctx, "deckBlend" .. row, false)
+    end
+    local cols = r.w < 280 and 2 or 4
+    local rows = math.ceil(24 / cols)
+    local cellW = math.max(24, math.floor((w - gap * (cols - 1)) / cols))
+    local cellH = math.max(24, math.floor((h - gap * (rows - 1)) / rows))
+    local n = 0
+    for row = 1, 3 do
+      for i = 1, 8 do
+        n = n + 1
+        local id = "deckCell" .. row .. "_" .. i
+        local col = (n - 1) % cols
+        local rr = math.floor((n - 1) / cols)
+        local cx = x0 + col * (cellW + gap)
+        local cy = y0 + rr * (cellH + gap)
+        setLocal(ctx, id, cx, cy, cellW, cellH)
+        setLocal(ctx, id .. "Thumb", 2, 2, math.max(1, cellW - 4), math.max(1, cellH - 17))
+        setLocal(ctx, id .. "Label", 4, math.max(2, cellH - 14), math.max(1, cellW - 8), 12)
+      end
+    end
+    setText(ctx.widgets.deckPaneTitle, preset == "stage" and "Composition Column" or "Clip Matrix")
+    return
+  end
+
+  setText(ctx.widgets.deckPaneTitle, "Deck / Layers")
+  for row = 1, 3 do
+    setLocalVisible(ctx, "deckLayer" .. row, true)
+    setLocalVisible(ctx, "deckLayer" .. row .. "A", true)
+    setLocalVisible(ctx, "deckLayer" .. row .. "B", true)
+    setLocalVisible(ctx, "deckBlend" .. row, true)
+  end
+  local rowH = math.max(34, math.floor((h - 2) / 3))
+  local headW = math.max(76, math.floor(w * 0.07))
+  local cellW = math.max(28, math.floor((w - headW - gap * 8) / 8))
+  for row = 1, 3 do
+    local y = y0 + (row - 1) * rowH
+    setLocal(ctx, "deckLayer" .. row, x0, y + 3, 22, 12)
+    setLocal(ctx, "deckLayer" .. row .. "A", x0 + 28, y, 20, 13)
+    setLocal(ctx, "deckLayer" .. row .. "B", x0 + 50, y, 20, 13)
+    setLocal(ctx, "deckBlend" .. row, x0 + 28, y + 18, math.max(42, headW - 34), 11)
+    setLocal(ctx, "deckBlendFill" .. row, 0, 0, math.max(12, math.floor((headW - 34) * (0.38 + row * 0.12))), 11)
+    for i = 1, 8 do
+      local id = "deckCell" .. row .. "_" .. i
+      local cx = x0 + headW + (i - 1) * (cellW + gap)
+      local ch = math.max(24, rowH - 8)
+      setLocal(ctx, id, cx, y, cellW, ch)
+      setLocal(ctx, id .. "Thumb", 2, 2, math.max(1, cellW - 4), math.max(1, ch - 17))
+      setLocal(ctx, id .. "Label", 4, math.max(2, ch - 14), math.max(1, cellW - 8), 12)
+    end
+  end
+end
+
+local function layoutOutputContents(ctx, paneId, viewportId, r)
+  layoutPaneChrome(ctx, paneId, r)
+  setLocal(ctx, viewportId, 6, 24, math.max(1, r.w - 12), math.max(1, r.h - 30))
+end
+
+local function layoutPreviewContents(ctx, r)
+  layoutPaneChrome(ctx, "previewPane", r)
+  setLocal(ctx, "previewStage", 6, 24, math.max(1, r.w - 12), math.max(1, r.h - 30))
+  setLocal(ctx, "previewStageTag", 5, 4, math.max(1, r.w - 22), 12)
+end
+
+local function layoutInputsContents(ctx, r)
+  layoutPaneChrome(ctx, "inputsPane", r)
+  local pad, y = 6, 24
+  local preset = tostring(ctx._layoutPreset or "deck")
+  local compact = r.h < 210
+  setLocalVisible(ctx, "rawTitle", false); setLocalVisible(ctx, "segTitle", false); setLocalVisible(ctx, "poseTitle", false)
+  setLocalVisible(ctx, "poseStatus", not compact and preset ~= "inspector")
+  setLocalVisible(ctx, "captureStatus", not compact and preset ~= "inspector")
+  setLocalVisible(ctx, "samplerStatus", not compact and preset ~= "inspector")
+  local gap = 6
+
+  if preset == "inspector" then
+    local controlsH = 24
+    local viewH = math.max(42, math.floor((r.h - y - controlsH - gap * 4) / 3))
+    setLocal(ctx, "liveViewport", pad, y, math.max(1, r.w - pad * 2), viewH)
+    setLocal(ctx, "segViewport", pad, y + viewH + gap, math.max(1, r.w - pad * 2), viewH)
+    setLocal(ctx, "poseViewport", pad, y + (viewH + gap) * 2, math.max(1, r.w - pad * 2), viewH)
+    local cy = y + (viewH + gap) * 3 + 2
+    local sw = math.max(32, math.floor((r.w - pad * 2 - gap * 3) / 4))
+    setLocal(ctx, "segGain", pad, cy, sw, 17)
+    setLocal(ctx, "segThreshold", pad + (sw + gap), cy, sw, 17)
+    setLocal(ctx, "segFeather", pad + (sw + gap) * 2, cy, sw, 17)
+    setLocal(ctx, "poseConf", pad + (sw + gap) * 3, cy, math.max(1, r.w - pad * 2 - (sw + gap) * 3), 17)
+    setLocal(ctx, "segInvert", -2000, -2000, 1, 1)
+    setLocal(ctx, "showSkeleton", -2000, -2000, 1, 1)
+    setLocal(ctx, "loadModels", -2000, -2000, 1, 1)
+    ensurePoseOverlay(ctx)
+    return
+  end
+
+  local statusH = compact and 0 or 46
+  local controlsH = compact and 24 or 42
+  local viewH = math.max(36, r.h - y - controlsH - statusH - 8)
+  local cellW = math.max(30, math.floor((r.w - pad * 2 - gap * 2) / 3))
+  setLocal(ctx, "liveViewport", pad, y, cellW, viewH)
+  setLocal(ctx, "segViewport", pad + cellW + gap, y, cellW, viewH)
+  setLocal(ctx, "poseViewport", pad + (cellW + gap) * 2, y, math.max(1, r.w - pad * 2 - (cellW + gap) * 2), viewH)
+  local cy = y + viewH + 6
+  local sw = math.max(52, math.floor((r.w - pad * 2 - gap * 6) / 7))
+  setLocal(ctx, "segGain", pad, cy, sw, 17)
+  setLocal(ctx, "segThreshold", pad + (sw + gap), cy, sw, 17)
+  setLocal(ctx, "segFeather", pad + (sw + gap) * 2, cy, sw, 17)
+  setLocal(ctx, "segInvert", pad + (sw + gap) * 3, cy, sw, 18)
+  setLocal(ctx, "poseConf", pad + (sw + gap) * 4, cy, sw, 17)
+  setLocal(ctx, "showSkeleton", pad + (sw + gap) * 5, cy, sw, 18)
+  setLocal(ctx, "loadModels", pad + (sw + gap) * 6, cy, math.max(28, r.w - pad * 2 - (sw + gap) * 6), 18)
+  if not compact then
+    setLocal(ctx, "poseStatus", pad, cy + 23, r.w - pad * 2, 13)
+    setLocal(ctx, "captureStatus", pad, cy + 37, r.w - pad * 2, 13)
+    setLocal(ctx, "samplerStatus", pad, cy + 51, r.w - pad * 2, 13)
+  end
+  ensurePoseOverlay(ctx)
+end
+
+local function layoutWaveformContents(ctx, r)
+  layoutPaneChrome(ctx, "waveformPane", r)
+  setLocal(ctx, "waveform", 6, 26, math.max(1, r.w - 12), math.max(34, r.h - 48))
+  setLocal(ctx, "waveformStatus", 8, math.max(26, r.h - 18), math.max(1, r.w - 16), 14)
+end
+
+local function layoutShaderContents(ctx, r)
+  layoutPaneChrome(ctx, "shaderPanel", r)
+  local pad, y, gap = 8, 25, 6
+  local ddW = math.max(72, math.floor((r.w - pad * 2 - gap * 3) / 4))
+  setLocal(ctx, "sourceSelect", pad, y, ddW, 18)
+  setLocal(ctx, "shaderLayer", pad + ddW + gap, y, 48, 18)
+  setLocal(ctx, "shaderEnabled", pad + ddW + gap + 54, y, 50, 18)
+  setLocal(ctx, "effectSelect", pad + ddW + gap + 110, y, math.max(70, r.w - (pad + ddW + gap + 110) - pad), 18)
+  local cols = r.w > 520 and 4 or (r.w > 360 and 3 or 2)
+  local colW = math.floor((r.w - pad * 2 - gap * (cols - 1)) / cols)
+  for i = 1, 9 do
+    local cx = pad + ((i - 1) % cols) * (colW + gap)
+    local cy = 52 + math.floor((i - 1) / cols) * 23
+    setLocal(ctx, "shaderParam" .. i, cx, cy, colW, 18)
+  end
+  setLocal(ctx, "shaderStatus", pad, math.max(70, r.h - 18), math.max(1, r.w - pad * 2), 14)
+end
+
+local function layoutMappingContents(ctx, r)
+  layoutPaneChrome(ctx, "mappingPanel", r)
+  setLocal(ctx, "mappingHelp", 8, 23, math.max(1, r.w - 16), 14)
+  local pad, y0, rowH = 8, 42, math.max(19, math.floor((r.h - 72) / MAX_MAPPINGS))
+  local available = math.max(260, r.w - pad * 2)
+  local enableW, minW, maxW, invW = 46, 54, 54, 54
+  local sourceW = math.max(82, math.floor(available * 0.25))
+  local targetW = math.max(82, available - 22 - enableW - sourceW - minW - maxW - invW - 18)
+  for i = 1, MAX_MAPPINGS do
+    local y = y0 + (i - 1) * rowH
+    setLocal(ctx, "track" .. i .. "Label", pad, y + 2, 18, 14)
+    setLocal(ctx, "mapping" .. i .. "Enable", pad + 20, y, enableW, 17)
+    setLocal(ctx, "mapping" .. i .. "Source", pad + 20 + enableW + 4, y, sourceW, 17)
+    setLocal(ctx, "mapping" .. i .. "Target", pad + 20 + enableW + sourceW + 8, y, targetW, 17)
+    setLocal(ctx, "mapping" .. i .. "Min", r.w - pad - invW - maxW - minW - 8, y, minW, 16)
+    setLocal(ctx, "mapping" .. i .. "Max", r.w - pad - invW - maxW - 4, y, maxW, 16)
+    setLocal(ctx, "mapping" .. i .. "Invert", r.w - pad - invW, y, invW, 17)
+  end
+  setLocal(ctx, "mappingStatus", pad, math.max(42, r.h - 18), math.max(1, r.w - pad * 2), 14)
+end
+
+local function layoutTransportContents(ctx, r)
+  layoutPaneChrome(ctx, "transportPane", r)
+  local pad, gap = 8, 6
+  local sw = math.floor((r.w - pad * 2 - gap * 2) / 3)
+  setLocal(ctx, "speed", pad, 25, sw, 17)
+  setLocal(ctx, "output", pad + sw + gap, 25, sw, 17)
+  setLocal(ctx, "rootNote", pad + (sw + gap) * 2, 25, math.max(1, r.w - pad * 2 - (sw + gap) * 2), 17)
+  setLocal(ctx, "midiInput", pad, 50, math.max(80, r.w - pad * 2 - 54), 18)
+  setLocal(ctx, "midiRefresh", r.w - pad - 48, 50, 48, 18)
+  setLocal(ctx, "midiStatus", pad, 73, math.max(1, r.w - pad * 2), 13)
+end
+
+local function layoutPolyContents(ctx, r)
+  layoutPaneChrome(ctx, "polyPanel", r); layoutPaneChrome(ctx, "slicePanel", r)
+  local pad, gap = 8, 6
+  local sw = math.floor((r.w - pad * 2 - gap * 2) / 3)
+  setLocal(ctx, "pitchTracking", pad, 25, sw, 18)
+  setLocal(ctx, "voiceCount", pad + sw + gap, 25, sw, 17)
+  setLocal(ctx, "playStart", pad + (sw + gap) * 2, 25, math.max(1, r.w - pad * 2 - (sw + gap) * 2), 17)
+  setLocal(ctx, "loopStart", pad, 50, sw, 17)
+  setLocal(ctx, "loopEnd", pad + sw + gap, 50, sw, 17)
+  setLocal(ctx, "crossfade", pad + (sw + gap) * 2, 50, math.max(1, r.w - pad * 2 - (sw + gap) * 2), 17)
+  setLocal(ctx, "oneShot", pad, 74, sw, 18)
+  setLocal(ctx, "selectedSlice", pad, 25, math.max(86, sw), 18)
+  setLocal(ctx, "auditionSelected", pad + math.max(86, sw) + gap, 25, 76, 18)
+  setLocal(ctx, "sliceHelp", pad, 50, math.max(1, r.w - pad * 2), 42)
+end
+
+local function layoutFxContents(ctx, r)
+  setLocal(ctx, "fx1", r.x, r.y, r.w, r.h)
+  layoutPaneChrome(ctx, "fx1", r)
+end
+
+local function layoutPaneContents(ctx, rects)
+  local preset = tostring(ctx._layoutPreset or "deck")
+  local r = {}
+  for id, base in pairs(rects or {}) do r[id] = (ctx._customPaneRects and ctx._customPaneRects[id]) or base end
+  if r.allParamsPane then layoutPaneChrome(ctx, "allParamsPane", r.allParamsPane) end
+  if r.deckPane then layoutDeckContents(ctx, r.deckPane) end
+  if r.outputPane then layoutOutputContents(ctx, "outputPane", "outputViewport", r.outputPane) end
+  if r.previewPane then layoutPreviewContents(ctx, r.previewPane) end
+  if r.inputsPane then layoutInputsContents(ctx, r.inputsPane) end
+  if r.waveformPane then layoutWaveformContents(ctx, r.waveformPane) end
+  if r.shaderPanel then layoutShaderContents(ctx, r.shaderPanel) end
+  if r.mappingPanel then layoutMappingContents(ctx, r.mappingPanel) end
+  if r.transportPane then layoutTransportContents(ctx, r.transportPane) end
+  if r.polyPanel then layoutPolyContents(ctx, r.polyPanel) end
+  if r.fx1 then layoutFxContents(ctx, r.fx1) end
+  setWidgetVisibility(ctx, "previewPane", true)
+  setWidgetVisibility(ctx, "deckPane", true)
+  setWidgetVisibility(ctx, "inputsPane", true)
+  setWidgetVisibility(ctx, "shaderPanel", true)
+  setWidgetVisibility(ctx, "mappingPanel", true)
+  setWidgetVisibility(ctx, "waveformPane", true)
+  setWidgetVisibility(ctx, "transportPane", true)
+  setWidgetVisibility(ctx, "allParamsPane", preset == "inspector")
+  setWidgetVisibility(ctx, "fx1", preset ~= "inspector")
+  setWidgetVisibility(ctx, "fxStatus", preset ~= "inspector")
+end
+
+local function applyAppLayout(ctx)
+  local w, h = rootSize(ctx)
+  local rects = layoutPresetRects(ctx, ctx._layoutPreset or "deck", w, h)
+  ctx._paneRects = ctx._paneRects or {}
+  for id, r in pairs(rects) do
+    local custom = ctx._customPaneRects and ctx._customPaneRects[id]
+    setWidgetRect(ctx, id, custom or r)
+  end
+  layoutPaneContents(ctx, rects)
+  for _, id in ipairs(RESIZABLE_PANES) do
+    setWidgetVisibility(ctx, id .. "Resize", ctx._resizeMode == true)
+  end
+  syncLayoutButtons(ctx)
+end
+
+local function setLayoutPreset(ctx, preset)
+  ctx._layoutPreset = tostring(preset or "deck")
+  ctx._customPaneRects = nil
+  applyAppLayout(ctx)
+  refreshWaveform(ctx)
+  layoutOutputRow(ctx)
+  saveState(ctx)
+end
+
+local function clampPaneRect(ctx, r)
+  local w, h = rootSize(ctx)
+  local m = 6
+  r.w = math.max(96, math.min(math.floor(r.w or 1), w - m * 2))
+  r.h = math.max(48, math.min(math.floor(r.h or 1), h - m * 2))
+  r.x = math.max(m, math.min(math.floor(r.x or m), w - r.w - m))
+  r.y = math.max(58, math.min(math.floor(r.y or 58), h - r.h - m))
+  return r
+end
+
+local function paneBounds(ctx, paneId)
+  local w = ctx and ctx.widgets and ctx.widgets[paneId]
+  if w and w.node and w.node.getBounds then
+    local x, y, ww, hh = w.node:getBounds()
+    return rect(x, y, ww, hh)
+  end
+  local all = layoutPresetRects(ctx, ctx._layoutPreset or "deck", rootSize(ctx))
+  return all[paneId] or rect(0,0,100,100)
+end
+
+local function installPaneResizeHandlers(ctx)
+  ctx._resizeMode = ctx._resizeMode == true
+  for _, paneId in ipairs(RESIZABLE_PANES) do
+    local drag = ctx.widgets and ctx.widgets[paneId .. "Drag"]
+    local resize = ctx.widgets and ctx.widgets[paneId .. "Resize"]
+    if drag and drag.node and drag.node.setOnMouseDown then
+      local startRect = nil
+      drag.node:setInterceptsMouse(true, true)
+      drag.node:setOnMouseDown(function()
+        if not ctx._resizeMode then return end
+        startRect = paneBounds(ctx, paneId)
+      end)
+      drag.node:setOnMouseDrag(function(_, _, dx, dy)
+        if not ctx._resizeMode or not startRect then return end
+        ctx._customPaneRects = ctx._customPaneRects or {}
+        local nextRect = clampPaneRect(ctx, rect(startRect.x + (tonumber(dx) or 0), startRect.y + (tonumber(dy) or 0), startRect.w, startRect.h))
+        ctx._customPaneRects[paneId] = nextRect
+        applyAppLayout(ctx)
+        layoutOutputRow(ctx)
+      end)
+      drag.node:setOnMouseUp(function() startRect = nil end)
+    end
+    if resize and resize.node and resize.node.setOnMouseDown then
+      local startRect = nil
+      resize.node:setInterceptsMouse(true, true)
+      resize.node:setOnMouseDown(function()
+        if not ctx._resizeMode then return end
+        startRect = paneBounds(ctx, paneId)
+      end)
+      resize.node:setOnMouseDrag(function(_, _, dx, dy)
+        if not ctx._resizeMode or not startRect then return end
+        ctx._customPaneRects = ctx._customPaneRects or {}
+        local nextRect = clampPaneRect(ctx, rect(startRect.x, startRect.y, startRect.w + (tonumber(dx) or 0), startRect.h + (tonumber(dy) or 0)))
+        ctx._customPaneRects[paneId] = nextRect
+        applyAppLayout(ctx)
+        layoutOutputRow(ctx)
+      end)
+      resize.node:setOnMouseUp(function() startRect = nil end)
     end
   end
 end
@@ -840,6 +1309,8 @@ function M.init(ctx)
   ctx.mappings = {}
   for i = 1, MAX_MAPPINGS do ctx.mappings[i] = defaultMapping(i) end
   ctx.fxSlot = 1
+  ctx._layoutPreset = ctx._layoutPreset or "deck"
+  ctx._resizeMode = false
 
   for _,w in pairs(ctx.allWidgets or {}) do if type(w)=="table" then w._ctx = ctx; if type(w.config)=="table" and type(w.config.paramPath)=="string" then bindParamWidget(w) end end end
 
@@ -861,6 +1332,11 @@ function M.init(ctx)
   end
   ctx.widgets.stop._onClick = function() bump(NS .. "/stop_trigger") end
   ctx.widgets.clear._onClick = function() if ctx.video then ctx.video:clear() end; if ctx.videoCap then ctx.videoCap:clear() end end
+  ctx.widgets.layoutDeck._onClick = function() setLayoutPreset(ctx, "deck") end
+  ctx.widgets.layoutStage._onClick = function() setLayoutPreset(ctx, "stage") end
+  ctx.widgets.layoutInspector._onClick = function() setLayoutPreset(ctx, "inspector") end
+  ctx.widgets.resetLayout._onClick = function() ctx._customPaneRects = nil; applyAppLayout(ctx); saveState(ctx) end
+  ctx.widgets.resizeMode._onChange = function(v) ctx._resizeMode = v == true; applyAppLayout(ctx) end
   ctx.widgets.midiRefresh._onClick = function() refreshMidi(ctx); if not currentMidiLabel() then openPreferredMidi(ctx) end end
   ctx.widgets.midiInput._onSelect = function(idx) if idx <= 1 then if Midi and Midi.closeInput then Midi.closeInput() end else if Midi and Midi.openInput then Midi.openInput(idx-2) end end; refreshMidi(ctx) end
   ctx.widgets.selectedSlice._onSelect = function(idx) ctx._selectedSlice = math.max(1, math.min(MAX, round(idx))); writeParam(NS .. "/selected_slice", ctx._selectedSlice); refreshWaveform(ctx); saveState(ctx) end
@@ -930,11 +1406,12 @@ function M.init(ctx)
     wf._onScrubSnap = function(pos) local p=clamp(pos,0,0.999); if not ctx._scrubSlice then ctx._scrubSlice=nearestSlice(p); ctx._selectedSlice=ctx._scrubSlice; setSelectedSilently(ctx.widgets.selectedSlice, ctx._selectedSlice); writeParam(NS.."/selected_slice", ctx._selectedSlice) end; writeParam(pathForSlice(ctx._scrubSlice), p); refreshWaveform(ctx); saveState(ctx) end
     wf._onScrubEnd = function() ctx._scrubSlice = nil end
   end
-  applyCaptureWindow(ctx); bindInputSurfaces(ctx); syncModePanels(ctx); refreshWaveform(ctx)
+  installPaneResizeHandlers(ctx)
+  applyCaptureWindow(ctx); bindInputSurfaces(ctx); syncModePanels(ctx); applyAppLayout(ctx); refreshWaveform(ctx)
 end
 
 function M.resized(ctx)
-  ensurePoseOverlay(ctx); layoutOutputRow(ctx)
+  applyAppLayout(ctx); ensurePoseOverlay(ctx); layoutOutputRow(ctx)
 end
 
 function M.update(ctx)

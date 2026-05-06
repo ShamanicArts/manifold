@@ -1,0 +1,17 @@
+{
+  "name": "AVSampler",
+  "description": "A/V sampler: segmented webcam capture, pose publishing/mapping, poly and slice playback, shader background, dockable pane-style performance layouts, and post-mix FX.",
+  "author": "Agent",
+  "version": "0.1.0",
+
+  "dsp": {
+    "default": "dsp/default_dsp.lua"
+  },
+
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+
+  "theme": "../Main/themes/dark.lua"
+}

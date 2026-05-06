@@ -1,7 +1,7 @@
--- AVSamplerLab — audio authority for segmented A/V sampler.
+-- AVSampler — audio authority for segmented A/V sampler.
 -- Uses the same FxSlot/FxDefs stack as Standalone_FX / FX rack modules.
 
-local NS = "/avlab"
+local NS = "/avsampler"
 local MAX = 8
 local MAX_MAPPINGS = 8
 local MAX_MAPPING_TARGETS = 128
@@ -389,5 +389,5 @@ function buildPlugin(ctx)
     end
   end
 
-  return { description = "AVSamplerLab DSP authority", input = input, output = outputGain, onParamChange = onParamChange }
+  return { description = "AVSampler DSP authority", input = input, output = outputGain, onParamChange = onParamChange }
 end

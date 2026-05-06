@@ -28,6 +28,7 @@ appendPackageRoot(join(mainRoot, "lib"))
 
 local RackModuleShell = require("components.rack_module_shell")
 local px = math.floor
+local MAX_MAPPINGS = 8
 
 local C = {
   bg = 0xff050816, panel = 0xff0f172a, panel2 = 0xff111827, border = 0xff334155,
@@ -105,6 +106,37 @@ local function fxShell(id, nodeName, x, y, slot, accent)
   })
 end
 
+local function mappingPanelChildren()
+  local children = {
+    label("mappingLabel", 14, 10, 180, 16, "Pose map / automation", C.muted, 11),
+    label("mappingHelp", 190, 10, 556, 16, "Route any pose source into any exposed parameter. Min/Max are normalized target range limits.", C.muted, 9),
+  }
+
+  for i = 1, MAX_MAPPINGS do
+    local y = 34 + (i - 1) * 29
+    children[#children + 1] = label("track" .. i .. "Label", 14, y + 4, 18, 16, "T" .. i, C.pose, 9)
+    children[#children + 1] = toggle("mapping" .. i .. "Enable", 36, y, 52, 22, "Off", "On", i <= 2, nil, C.pose)
+    children[#children + 1] = dropdown("mapping" .. i .. "Source", 94, y, 174, 22, { "left_wrist.y" }, 1, C.pose)
+    children[#children + 1] = dropdown("mapping" .. i .. "Target", 274, y, 250, 22, { "FX1 Mix" }, 1, C.sample)
+    children[#children + 1] = slider("mapping" .. i .. "Min", 530, y, 72, 20, "Lo", 0, 1, 0.01, 0, nil)
+    children[#children + 1] = slider("mapping" .. i .. "Max", 608, y, 72, 20, "Hi", 0, 1, 0.01, 1, nil)
+    children[#children + 1] = toggle("mapping" .. i .. "Invert", 686, y, 60, 22, "Norm", "Inv", false, nil, C.warn)
+  end
+
+  children[#children + 1] = label("mappingStatus", 14, 278, 720, 16, "Mapping: --", C.warn, 10)
+  return children
+end
+
+local function mappingPanelNode()
+  return {
+    id = "mappingPanel",
+    type = "Panel",
+    x = px(502), y = px(892), w = px(760), h = px(304),
+    style = { bg = C.panel, border = C.border, borderWidth = 1, radius = 7 },
+    children = mappingPanelChildren(),
+  }
+end
+
 return {
   id="root", type="Panel", behavior="ui/behaviors/main.lua", x=0, y=0, w=px(1280), h=px(1200),
   shellLayout={ mode="fill", designW=1280, designH=1200 }, style={ bg=C.bg },
@@ -121,7 +153,7 @@ return {
     toggle("captureMode", 666, 84, 70, 25, "Retro", "Free", false, "/avlab/capture_mode", C.seg),
     slider("captureSeconds", 746, 84, 150, 22, "Retro win", 0.25, 6.0, 0.25, 4.0, "/avlab/capture_seconds"),
     button("captureNow", 908, 82, 96, 29, "Capture A/V", C.seg, 0xff04110a),
-    button("play", 1012, 82, 54, 29, "Play", C.sample, 0xff111111),
+    button("play", 1012, 82, 54, 29, "Loop", C.sample, 0xff111111),
     button("stop", 1074, 82, 54, 29, "Stop", C.button),
     button("clear", 1136, 82, 54, 29, "Clear", C.button, C.bad),
     label("webcamStatus", 30, 120, 600, 18, "Webcam: --", C.muted, 10),
@@ -200,25 +232,7 @@ return {
     label("shaderStatus", 736, 852, 500, 16, "Shader: --", C.muted, 9),
 
     fxShell("fx1", "FX1", 18, 892, 1, 0xff22d3ee),
-    fxShell("fx2", "FX2", 502, 892, 2, 0xff38bdf8),
-    label("fxStatus", 990, 902, 260, 34, "FX rack modules are the exact Main/ui/components/fx_slot.ui.lua module, bound to /midi/synth/rack/fx/{1,2}.", C.muted, 10),
-
-    panel("mappingPanel", 18, 1120, 1244, 76, C.border, C.panel),
-    label("mappingLabel", 32, 1124, 88, 16, "Pose map", C.muted, 11),
-    label("track1Label", 32, 1132, 20, 16, "T1", C.pose, 9),
-    toggle("mapping1Enable", 58, 1130, 56, 22, "Off", "On", true, nil, C.pose),
-    dropdown("mapping1Source", 122, 1130, 160, 22, {"left_wrist.y"}, 1, C.pose),
-    dropdown("mapping1Target", 290, 1130, 150, 22, {"Shader L1 P1","FX1 Mix","Sampler Speed","Slice Select"}, 1, C.sample),
-    slider("mapping1Min", 448, 1130, 90, 20, "Min", -2, 2, 0.01, 0, nil),
-    slider("mapping1Max", 546, 1130, 90, 20, "Max", -2, 2, 0.01, 1, nil),
-    toggle("mapping1Invert", 644, 1130, 72, 22, "Normal", "Invert", false, nil, C.warn),
-    label("track2Label", 32, 1160, 20, 16, "T2", C.pose, 9),
-    toggle("mapping2Enable", 58, 1158, 56, 22, "Off", "On", true, nil, C.pose),
-    dropdown("mapping2Source", 122, 1158, 160, 22, {"right_wrist.y"}, 1, C.pose),
-    dropdown("mapping2Target", 290, 1158, 150, 22, {"Shader L1 P1","FX1 Mix","Sampler Speed","Slice Select"}, 1, C.sample),
-    slider("mapping2Min", 448, 1158, 90, 20, "Min", -2, 2, 0.01, 0, nil),
-    slider("mapping2Max", 546, 1158, 90, 20, "Max", -2, 2, 0.01, 1, nil),
-    toggle("mapping2Invert", 644, 1158, 72, 22, "Normal", "Invert", false, nil, C.warn),
-    label("mappingStatus", 726, 1132, 300, 16, "Mapping: --", C.warn, 10),
+    label("fxStatus", 30, 1120, 440, 34, "Single FX slot uses /midi/synth/rack/fx/1. Right side is now all pose automation/mapping.", C.muted, 10),
+    mappingPanelNode(),
   }
 }
