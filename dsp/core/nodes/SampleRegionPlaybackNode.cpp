@@ -171,7 +171,7 @@ void SampleRegionPlaybackNode::prepare(double sampleRate, int maxBlockSize) {
 
     const int currentLength = juce::jlimit(0, maxLoopSamples_, loopLength_.load(std::memory_order_acquire));
     loopLength_.store(currentLength, std::memory_order_release);
-    currentSpeed_ = speed_.load(std::memory_order_acquire) * sourceRateRatio_.load(std::memory_order_acquire);
+    currentSpeed_ = std::abs(speed_.load(std::memory_order_acquire)) * sourceRateRatio_.load(std::memory_order_acquire);
     currentDetuneCents_ = detuneCents_.load(std::memory_order_acquire);
     currentSpread_ = stereoSpread_.load(std::memory_order_acquire);
     unisonVoiceGains_[0] = 1.0f;
@@ -191,11 +191,20 @@ int SampleRegionPlaybackNode::getLoopLength() const {
 }
 
 void SampleRegionPlaybackNode::setSpeed(float speed) {
-    speed_.store(juce::jlimit(0.0f, 8.0f, speed), std::memory_order_release);
+    speed_.store(juce::jlimit(-8.0f, 8.0f, speed), std::memory_order_release);
+    reversed_.store(speed < 0.0f, std::memory_order_release);
 }
 
 float SampleRegionPlaybackNode::getSpeed() const {
     return speed_.load(std::memory_order_acquire);
+}
+
+void SampleRegionPlaybackNode::setReversed(bool reversed) {
+    reversed_.store(reversed, std::memory_order_release);
+}
+
+bool SampleRegionPlaybackNode::isReversed() const {
+    return reversed_.load(std::memory_order_acquire);
 }
 
 void SampleRegionPlaybackNode::setOneShot(bool enabled) {
@@ -405,7 +414,7 @@ void SampleRegionPlaybackNode::applyPendingControlChanges(const RegionState& reg
     lastRequestedUnison_ = unison;
 
     if (triggerRequest_.exchange(false, std::memory_order_acq_rel)) {
-        currentSpeed_ = speed_.load(std::memory_order_acquire) * sourceRateRatio_.load(std::memory_order_acquire);
+        currentSpeed_ = std::abs(speed_.load(std::memory_order_acquire)) * sourceRateRatio_.load(std::memory_order_acquire);
         for (int v = 0; v < unison; ++v) {
             readPositions_[v] = static_cast<double>(region.playStart);
             firstPassStates_[v] = true;
@@ -424,7 +433,7 @@ void SampleRegionPlaybackNode::applyPendingControlChanges(const RegionState& reg
 
     const int seek = seekRequest_.exchange(-1, std::memory_order_acq_rel);
     if (seek >= 0) {
-        currentSpeed_ = speed_.load(std::memory_order_acquire) * sourceRateRatio_.load(std::memory_order_acquire);
+        currentSpeed_ = std::abs(speed_.load(std::memory_order_acquire)) * sourceRateRatio_.load(std::memory_order_acquire);
         const double seekPos = static_cast<double>(juce::jlimit(0, region.sampleLength - 1, seek));
         const bool firstPass = (seekPos < static_cast<double>(region.loopStart));
         for (int v = 0; v < kMaxUnisonVoices; ++v) {
@@ -464,7 +473,8 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
     }
 
     const bool oneShotEnabled = oneShot_.load(std::memory_order_acquire);
-    const float targetSpeed = juce::jlimit(0.0f, 8.0f, speed_.load(std::memory_order_acquire))
+    const bool isReversed = reversed_.load(std::memory_order_acquire);
+    const float targetSpeed = std::abs(speed_.load(std::memory_order_acquire))
                             * sourceRateRatio_.load(std::memory_order_acquire);
     const float targetDetuneCents = detuneCents_.load(std::memory_order_acquire);
     const float targetSpread = stereoSpread_.load(std::memory_order_acquire);
@@ -478,9 +488,15 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
             continue;
         }
         if (firstPassStates_[v]) {
-            readPositions_[v] = juce::jlimit(static_cast<double>(region.playStart),
-                                             static_cast<double>(region.loopEnd - 1),
-                                             readPositions_[v]);
+            if (isReversed) {
+                readPositions_[v] = juce::jlimit(static_cast<double>(region.loopStart),
+                                                 static_cast<double>(region.playStart),
+                                                 readPositions_[v]);
+            } else {
+                readPositions_[v] = juce::jlimit(static_cast<double>(region.playStart),
+                                                 static_cast<double>(region.loopEnd - 1),
+                                                 readPositions_[v]);
+            }
         } else if (!oneShotEnabled) {
             while (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
                 readPositions_[v] -= static_cast<double>(region.loopWindow);
@@ -513,7 +529,8 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
 
             const float offset = normalizedUnisonOffset(v, targetUnison);
             const double speedMult = std::pow(2.0, static_cast<double>(offset * currentDetuneCents_) / 1200.0);
-            const double voiceSpeed = static_cast<double>(currentSpeed_) * speedMult;
+            const double baseSpeed = static_cast<double>(currentSpeed_) * speedMult;
+            const double voiceSpeed = isReversed ? -baseSpeed : baseSpeed;
             const float pan = juce::jlimit(0.0f, 1.0f, 0.5f + offset * currentSpread_ * 0.5f);
             const float leftPan = std::sqrt(1.0f - pan);
             const float rightPan = std::sqrt(pan);
@@ -549,27 +566,56 @@ void SampleRegionPlaybackNode::process(const std::vector<AudioBufferView>& input
 
             readPositions_[v] += voiceSpeed;
             if (oneShotEnabled) {
-                if (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
-                    readPositions_[v] = static_cast<double>(region.loopEnd - 1);
-                    firstPassStates_[v] = false;
-                    voiceActive_[v] = false;
-                    unisonVoiceGains_[v] = 0.0f;
+                if (isReversed) {
+                    if (readPositions_[v] < static_cast<double>(region.loopStart)) {
+                        readPositions_[v] = static_cast<double>(region.loopStart);
+                        firstPassStates_[v] = false;
+                        voiceActive_[v] = false;
+                        unisonVoiceGains_[v] = 0.0f;
+                    }
+                } else {
+                    if (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
+                        readPositions_[v] = static_cast<double>(region.loopEnd - 1);
+                        firstPassStates_[v] = false;
+                        voiceActive_[v] = false;
+                        unisonVoiceGains_[v] = 0.0f;
+                    }
                 }
             } else if (firstPassStates_[v]) {
-                if (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
-                    const double overshoot = readPositions_[v] - static_cast<double>(region.loopEnd);
-                    const double resumeOffset = static_cast<double>(region.crossfadeSamples);
-                    readPositions_[v] = static_cast<double>(region.loopStart) + resumeOffset + overshoot;
-                    while (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
-                        readPositions_[v] -= static_cast<double>(region.loopWindow);
+                if (isReversed) {
+                    if (readPositions_[v] < static_cast<double>(region.loopStart)) {
+                        const double overshoot = static_cast<double>(region.loopStart) - readPositions_[v];
+                        const double resumeOffset = static_cast<double>(region.crossfadeSamples);
+                        readPositions_[v] = static_cast<double>(region.loopEnd) - resumeOffset - overshoot;
+                        while (readPositions_[v] < static_cast<double>(region.loopStart)) {
+                            readPositions_[v] += static_cast<double>(region.loopWindow);
+                        }
+                        firstPassStates_[v] = false;
                     }
-                    firstPassStates_[v] = false;
+                } else {
+                    if (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
+                        const double overshoot = readPositions_[v] - static_cast<double>(region.loopEnd);
+                        const double resumeOffset = static_cast<double>(region.crossfadeSamples);
+                        readPositions_[v] = static_cast<double>(region.loopStart) + resumeOffset + overshoot;
+                        while (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
+                            readPositions_[v] -= static_cast<double>(region.loopWindow);
+                        }
+                        firstPassStates_[v] = false;
+                    }
                 }
             } else {
-                while (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
-                    const double overshoot = readPositions_[v] - static_cast<double>(region.loopEnd);
-                    const double resumeOffset = static_cast<double>(region.crossfadeSamples);
-                    readPositions_[v] = static_cast<double>(region.loopStart) + resumeOffset + overshoot;
+                if (isReversed) {
+                    while (readPositions_[v] < static_cast<double>(region.loopStart)) {
+                        const double overshoot = static_cast<double>(region.loopStart) - readPositions_[v];
+                        const double resumeOffset = static_cast<double>(region.crossfadeSamples);
+                        readPositions_[v] = static_cast<double>(region.loopEnd) - resumeOffset - overshoot;
+                    }
+                } else {
+                    while (readPositions_[v] >= static_cast<double>(region.loopEnd)) {
+                        const double overshoot = readPositions_[v] - static_cast<double>(region.loopEnd);
+                        const double resumeOffset = static_cast<double>(region.crossfadeSamples);
+                        readPositions_[v] = static_cast<double>(region.loopStart) + resumeOffset + overshoot;
+                    }
                 }
             }
         }
@@ -947,7 +993,7 @@ bool SampleRegionPlaybackNode::loadFile(const juce::File& file) {
                                 ? (reader->sampleRate / sampleRate_)
                                 : 1.0),
                            std::memory_order_release);
-    currentSpeed_ = speed_.load(std::memory_order_acquire) * sourceRateRatio_.load(std::memory_order_acquire);
+    currentSpeed_ = std::abs(speed_.load(std::memory_order_acquire)) * sourceRateRatio_.load(std::memory_order_acquire);
     playing_.store(false, std::memory_order_release);
     triggerRequest_.store(false, std::memory_order_release);
     seekRequest_.store(-1, std::memory_order_release);

@@ -32,6 +32,8 @@ public:
     int getLoopLength() const;
     void setSpeed(float speed);
     float getSpeed() const;
+    void setReversed(bool reversed);
+    bool isReversed() const;
     void setOneShot(bool enabled);
     bool isOneShot() const;
     void play();
@@ -140,6 +142,7 @@ private:
     std::atomic<int> unisonVoices_{1};
     std::atomic<float> detuneCents_{0.0f};
     std::atomic<float> stereoSpread_{0.0f};
+    std::atomic<bool> reversed_{false};
 
     std::atomic<int> seekRequest_{-1};
     std::atomic<bool> triggerRequest_{false};

@@ -1,0 +1,17 @@
+{
+  "name": "VideoPolySamplerLab",
+  "description": "Polyphonic audio-timed video sampler lab: webcam capture ring + committed video sampler grid driven by up to eight SampleRegionPlaybackNode voices",
+  "author": "Agent",
+  "version": "0.1.0",
+
+  "dsp": {
+    "default": "dsp/default_dsp.lua"
+  },
+
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+
+  "theme": "../Main/themes/dark.lua"
+}

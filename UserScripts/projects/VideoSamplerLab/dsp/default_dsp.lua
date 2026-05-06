@@ -70,7 +70,7 @@ function buildPlugin(ctx)
     { "/video_sampler_lab/play_trigger", 0, 1000000, 0 },
     { "/video_sampler_lab/stop_trigger", 0, 1000000, 0 },
     { "/video_sampler_lab/seek", 0, 1, 0 },
-    { "/video_sampler_lab/speed", 0, 8, params.speed },
+    { "/video_sampler_lab/speed", -2, 4, params.speed },
     { "/video_sampler_lab/play_start", 0, 1, params.playStart },
     { "/video_sampler_lab/loop_start", 0, 1, params.loopStart },
     { "/video_sampler_lab/loop_end", 0, 1, params.loopEnd },
@@ -110,7 +110,7 @@ function buildPlugin(ctx)
   end
 
   local function setSampleSpeedForNote(note)
-    sample:setSpeed(clamp(params.speed * noteSpeedRatio(note), 0.0, 8.0))
+    sample:setSpeed(clamp(params.speed * noteSpeedRatio(note), -2.0, 4.0))
   end
 
   local function noteOn(note, velocity)
@@ -184,7 +184,7 @@ function buildPlugin(ctx)
     elseif path == "/video_sampler_lab/seek" then
       sample:seek(clamp(value, 0.0, 1.0))
     elseif path == "/video_sampler_lab/speed" then
-      params.speed = clamp(value, 0.0, 8.0)
+      params.speed = clamp(value, -2.0, 4.0)
       setSampleSpeedForNote(activeNote or params.rootNote)
     elseif path == "/video_sampler_lab/play_start" then
       params.playStart = clamp(value, 0.0, 1.0)

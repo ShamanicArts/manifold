@@ -95,6 +95,8 @@ void registerCoreBindings(LoadSession &session,
       "getLoopLength", &dsp_primitives::SampleRegionPlaybackNode::getLoopLength,
       "setSpeed", &dsp_primitives::SampleRegionPlaybackNode::setSpeed,
       "getSpeed", &dsp_primitives::SampleRegionPlaybackNode::getSpeed,
+      "setReversed", &dsp_primitives::SampleRegionPlaybackNode::setReversed,
+      "isReversed", &dsp_primitives::SampleRegionPlaybackNode::isReversed,
       "play", &dsp_primitives::SampleRegionPlaybackNode::play,
       "pause", &dsp_primitives::SampleRegionPlaybackNode::pause,
       "stop", &dsp_primitives::SampleRegionPlaybackNode::stop,
@@ -490,6 +492,17 @@ void registerCoreBindings(LoadSession &session,
             return n->getSpeed();
           }
           return 0.0f;
+        };
+        t["setReversed"] = [](sol::table self, bool v) {
+          if (auto n = tableNode<dsp_primitives::SampleRegionPlaybackNode>(self)) {
+            n->setReversed(v);
+          }
+        };
+        t["isReversed"] = [](sol::table self) {
+          if (auto n = tableNode<dsp_primitives::SampleRegionPlaybackNode>(self)) {
+            return n->isReversed();
+          }
+          return false;
         };
         t["setOneShot"] = [](sol::table self, bool v) {
           if (auto n = tableNode<dsp_primitives::SampleRegionPlaybackNode>(self)) {
