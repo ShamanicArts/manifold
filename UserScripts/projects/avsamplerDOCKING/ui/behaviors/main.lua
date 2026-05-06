@@ -254,6 +254,38 @@ local function shouldRunInterval(ctx, key, interval)
   return false
 end
 
+-- Profiling: globals to avoid consuming local variable slots (200 limit)
+_G.__avsdProfileInit = function(ctx)
+  ctx._profile = {}
+  for _, k in ipairs{"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline"} do
+    ctx._profile[k] = { total = 0, count = 0, max = 0, last = 0, avg = 0 }
+  end
+end
+
+_G.__avsdProfileStart = function(ctx, key)
+  if not ctx._profile then return end
+  local t = ctx._profile[key]
+  if not t then return end
+  t._start = nowSeconds()
+end
+
+_G.__avsdProfileEnd = function(ctx, key)
+  if not ctx._profile then return end
+  local t = ctx._profile[key]
+  if not t or not t._start then return end
+  local elapsed = (nowSeconds() - t._start) * 1000000
+  t.last = elapsed
+  t.total = t.total + elapsed
+  t.count = t.count + 1
+  if elapsed > t.max then t.max = elapsed end
+  t.avg = t.count == 1 and elapsed or (t.avg * 0.95 + elapsed * 0.05)
+  t._start = nil
+end
+
+-- Alias to avoid repeated _G lookups
+local profileStart = _G.__avsdProfileStart
+local profileEnd = _G.__avsdProfileEnd
+
 local function dirname(path)
   return (tostring(path or ""):gsub("/+$", ""):match("^(.*)/[^/]+$") or ".")
 end
@@ -387,6 +419,7 @@ local function segPayload(ctx)
 end
 
 local function bindInputSurfaces(ctx)
+  profileStart(ctx, "bindInputSurfaces")
   if ctx.widgets.liveViewport and ctx.widgets.liveViewport.node then
     ctx.widgets.liveViewport.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
   end
@@ -427,6 +460,7 @@ local function bindInputSurfaces(ctx)
   if ctx.widgets.poseViewport and ctx.widgets.poseViewport.node and hasModel then
     ctx.widgets.poseViewport.node:setCustomSurface("ml_composite", segPayload(ctx))
   end
+  profileEnd(ctx, "bindInputSurfaces")
 end
 
 local function tryLoad(paths)
@@ -570,7 +604,8 @@ local function releaseNote(ctx, note)
 end
 
 local function pollMidi(ctx)
-  if not (Midi and Midi.pollInputEvent) then return end
+  profileStart(ctx, "pollMidi")
+  if not (Midi and Midi.pollInputEvent) then profileEnd(ctx, "pollMidi"); return end
   local consumed = 0
   while consumed < 64 do
     local e = Midi.pollInputEvent()
@@ -587,6 +622,7 @@ local function pollMidi(ctx)
       bump(NS .. "/stop_trigger")
     end
   end
+  profileEnd(ctx, "pollMidi")
 end
 
 local function setCaptureButtonAppearance(ctx)
@@ -668,12 +704,13 @@ local function ensurePoseOverlay(ctx)
 end
 
 local function runPose(ctx, frameInfo)
-  if not (ctx._posePipeline and capture and capture.isOpen and capture.isOpen()) then return false end
-  if not shouldRunInterval(ctx, "pose", POSE_INTERVAL) then return false end
+  profileStart(ctx, "runPose")
+  if not (ctx._posePipeline and capture and capture.isOpen and capture.isOpen()) then profileEnd(ctx, "runPose"); return false end
+  if not shouldRunInterval(ctx, "pose", POSE_INTERVAL) then profileEnd(ctx, "runPose"); return false end
   local seq = tonumber(frameInfo and frameInfo.sequence)
-  if seq ~= nil and ctx._lastPoseFrameSeq == seq then return false end
+  if seq ~= nil and ctx._lastPoseFrameSeq == seq then profileEnd(ctx, "runPose"); return false end
   local ok, result = pcall(ml.infer, ctx._posePipeline)
-  if not ok or not result or type(result.data) ~= "table" or #result.data < 51 then return false end
+  if not ok or not result or type(result.data) ~= "table" or #result.data < 51 then profileEnd(ctx, "runPose"); return false end
   if seq ~= nil then ctx._lastPoseFrameSeq = seq end
   local inputW, inputH = ctx._posePipeline:inputWidth(), ctx._posePipeline:inputHeight()
   local kps = {}
@@ -710,6 +747,7 @@ local function runPose(ctx, frameInfo)
   local visible = 0
   for _, kp in ipairs(kps) do if kp.conf > ctx.poseConf then visible = visible + 1 end end
   setText(ctx.widgets.poseStatus, string.format("Pose: %d/17 visible | nose %.2f %.2f | wrists spread %.2f", visible, nose and nose.x or 0, nose and nose.y or 0, spread))
+  profileEnd(ctx, "runPose")
   return true
 end
 
@@ -758,6 +796,7 @@ local function applyMappingTrack(ctx, track)
 end
 
 local function applyMapping(ctx)
+  profileStart(ctx, "applyMapping")
   local active, firstSummary = 0, nil
   for t = 1, MAX_MAPPINGS do
     if ctx.mappings[t] and ctx.mappings[t].enabled then
@@ -766,12 +805,13 @@ local function applyMapping(ctx)
       if firstSummary == nil and summary ~= nil then firstSummary = summary end
     end
   end
-  if active <= 0 then setText(ctx.widgets.mappingStatus, "Mapping: disabled"); return end
+  if active <= 0 then profileEnd(ctx, "applyMapping"); setText(ctx.widgets.mappingStatus, "Mapping: disabled"); return end
   if firstSummary then
     setText(ctx.widgets.mappingStatus, string.format("Mapping: %d active | T%d %s %.2f → %.3f", active, firstSummary.track, firstSummary.targetLabel, firstSummary.sourceValue, firstSummary.value))
   else
     setText(ctx.widgets.mappingStatus, string.format("Mapping: %d active", active))
   end
+  profileEnd(ctx, "applyMapping")
 end
 
 local function cloneTable(t)
@@ -1024,7 +1064,8 @@ local function buildShaderSourceDescriptor(ctx)
 end
 
 function updateShader(ctx)
-  if not (ctx.widgets.outputViewport and ctx.widgets.outputViewport.node) then return end
+  profileStart(ctx, "updateShader")
+  if not (ctx.widgets.outputViewport and ctx.widgets.outputViewport.node) then profileEnd(ctx, "updateShader"); return end
   local layers = {}
   for i = 1, 8 do
     local L = ctx.shader.layers[i]
@@ -1071,6 +1112,7 @@ function updateShader(ctx)
   end
   local srcLabel = colSourceLabel(ctx, 1)
   setText(ctx.widgets.shaderStatus, string.format("Shader: %s %s", srcLabel or (choice and choice.name) or "Webcam", ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1] and ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1].name or "--"))
+  profileEnd(ctx, "updateShader")
 end
 
 local function refreshShaderLists(ctx)
@@ -1329,6 +1371,7 @@ local function nearestSlice(pos)
 end
 
 local function syncParamsFromHost(ctx)
+  profileStart(ctx, "syncParamsFromHost")
   local changedShader = false
   local oldSeg = { ctx.seg.gain, ctx.seg.threshold, ctx.seg.feather, ctx.seg.invert }
   ctx.seg.gain = clamp(readParam(NS .. "/seg/gain", ctx.seg.gain), 0.25, 4)
@@ -1416,6 +1459,7 @@ local function syncParamsFromHost(ctx)
   end
 
   bindInputSurfaces(ctx)
+  profileEnd(ctx, "syncParamsFromHost")
 end
 
 local function viewportSize()
@@ -2229,9 +2273,10 @@ colSourceDescriptor = function(ctx, col)
 end
 
 colBuildCellPipeline = function(ctx, col, row)
+  profileStart(ctx, "colBuildCellPipeline")
   local cd = ctx._colData and ctx._colData[col]
-  if not cd or not cd.source then return nil end
-  if row <= 1 then return nil end  -- source cells don't need a pipeline
+  if not cd or not cd.source then profileEnd(ctx, "colBuildCellPipeline"); return nil end
+  if row <= 1 then profileEnd(ctx, "colBuildCellPipeline"); return nil end  -- source cells don't need a pipeline
 
   local source, _ = colSourceDescriptor(ctx, col)
   local layers = {}
@@ -2261,6 +2306,7 @@ colBuildCellPipeline = function(ctx, col, row)
 end
 
 local function syncClipModel(ctx)
+  profileStart(ctx, "syncClipModel")
   ctx.clips = ctx.clips or {}
   ctx._colData = ctx._colData or {}
   syncCol1FromShader(ctx)
@@ -2329,6 +2375,7 @@ local function syncClipModel(ctx)
       }
     end
   end
+  profileEnd(ctx, "syncClipModel")
   return maxCols, 9
 end
 
@@ -2344,8 +2391,9 @@ local CELL_SRC_SEL_BD = 0xff22d3ee
 local CELL_FX_SEL_BD = 0xfff97316
 
 local function ensureGridCells(ctx)
+  profileStart(ctx, "ensureGridCells")
   local parentNode = ctx.widgets and ctx.widgets.deckEmbed and ctx.widgets.deckEmbed.node
-  if not parentNode then return 0, 0 end
+  if not parentNode then profileEnd(ctx, "ensureGridCells"); return 0, 0 end
   local numCols, numRows = syncClipModel(ctx)
   ctx._gridCells = ctx._gridCells or {}
 
@@ -2376,10 +2424,12 @@ local function ensureGridCells(ctx)
       cell.node:setBounds(0, 0, 0, 0)
     end
   end
+  profileEnd(ctx, "ensureGridCells")
   return numCols, numRows
 end
 
 updateGridThumbnails = function(ctx)
+  profileStart(ctx, "updateGridThumbnails")
   local cells = ctx._gridCells or {}
   local numCols, numRows = syncClipModel(ctx)
   ctx._gridThumbSigs = ctx._gridThumbSigs or {}
@@ -2462,6 +2512,7 @@ updateGridThumbnails = function(ctx)
       end
     end
   end
+  profileEnd(ctx, "updateGridThumbnails")
 end
 
 local EMPTY_CELL_BG = 0xff080c18
@@ -3360,6 +3411,7 @@ function M.init(ctx)
     if not currentMidiLabel() then openPreferredMidi(ctx) end
   end
   loadModels(ctx)
+  __avsdProfileInit(ctx)
   bindInputSurfaces(ctx)
   ensurePoseOverlay(ctx)
   layoutToolbar(ctx)
@@ -3531,6 +3583,22 @@ function M.init(ctx)
 
   if ctx.root and ctx.root.node and ctx.root.node.setOnImGuiFrame then
     ctx.root.node:setOnImGuiFrame(function() renderFrame(ctx) end)
+  end
+
+  -- Expose profiling data for IPC EVAL queries (globals, no locals consumed)
+  _G.__avsdProfile = function()
+    local out = {}
+    local p = ctx._profile
+    if not p then return "no profile data" end
+    local keys = {"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline"}
+    for _, k in ipairs(keys) do
+      local t = p[k]
+      if t and t.count > 0 then
+        table.insert(out, string.format("%-24s last=%8.0fus avg=%8.0fus max=%8.0fus count=%d",
+          k, t.last, t.avg, t.max, t.count))
+      end
+    end
+    return table.concat(out, "\n")
   end
 
   -- Init grid
