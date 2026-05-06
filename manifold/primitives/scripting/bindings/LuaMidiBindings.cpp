@@ -21,7 +21,7 @@ extern "C" {
 
 // Helper to cast ScriptableProcessor to BehaviorCoreProcessor
 static BehaviorCoreProcessor* toBcp(ScriptableProcessor* p) {
-    return static_cast<BehaviorCoreProcessor*>(p);
+    return dynamic_cast<BehaviorCoreProcessor*>(p);
 }
 
 // ============================================================================

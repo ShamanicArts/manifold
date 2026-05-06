@@ -218,6 +218,21 @@ public:
   }
   int getCaptureSize() const override { return capture.getSize(); }
 
+  // ---- Link overrides ----
+  bool isLinkEnabled() const override { return linkEnabled; }
+  void setLinkEnabled(bool enabled) override { linkEnabled = enabled; }
+  bool isLinkTempoSyncEnabled() const override { return linkTempoSync; }
+  void setLinkTempoSyncEnabled(bool enabled) override { linkTempoSync = enabled; }
+  bool isLinkStartStopSyncEnabled() const override { return linkStartStopSync; }
+  void setLinkStartStopSyncEnabled(bool enabled) override { linkStartStopSync = enabled; }
+  int getLinkNumPeers() const override { return linkNumPeers; }
+  bool isLinkPlaying() const override { return linkPlaying; }
+  double getLinkBeat() const override { return linkBeat; }
+  double getLinkPhase() const override { return linkPhase; }
+  void requestLinkTempo(double bpm) override { linkTempoRequested = bpm; }
+  void requestLinkStart() override { linkStartRequested = true; }
+  void requestLinkStop() override { linkStopRequested = true; }
+
   bool computeLayerPeaks(int layerIndex, int numBuckets, std::vector<float>& outPeaks) const override {
     outPeaks.clear();
     if (layerIndex < 0 || layerIndex >= getNumLayers() || numBuckets <= 0) return false;
@@ -269,7 +284,15 @@ public:
   int commitCount = 0;
   bool graphEnabled = true;
   bool linkEnabled = false;
-  float linkTempo = 120.0f;
+  bool linkTempoSync = false;
+  bool linkStartStopSync = false;
+  int linkNumPeers = 0;
+  bool linkPlaying = false;
+  double linkBeat = 0.0;
+  double linkPhase = 0.0;
+  double linkTempoRequested = -1.0;
+  bool linkStartRequested = false;
+  bool linkStopRequested = false;
   bool transportPlaying = false;
   int lastSeekLayer = -1;
 
@@ -355,7 +378,15 @@ juce::var runTestScript(LuaEngine& engine, MockScriptableProcessor& mock,
   root->setProperty("commitCount", mock.commitCount);
   root->setProperty("graphEnabled", mock.graphEnabled);
   root->setProperty("linkEnabled", mock.linkEnabled);
-  root->setProperty("linkTempo", mock.linkTempo);
+  root->setProperty("linkTempoSync", mock.linkTempoSync);
+  root->setProperty("linkStartStopSync", mock.linkStartStopSync);
+  root->setProperty("linkNumPeers", mock.linkNumPeers);
+  root->setProperty("linkPlaying", mock.linkPlaying);
+  root->setProperty("linkBeat", mock.linkBeat);
+  root->setProperty("linkPhase", mock.linkPhase);
+  root->setProperty("linkTempoRequested", mock.linkTempoRequested);
+  root->setProperty("linkStartRequested", mock.linkStartRequested);
+  root->setProperty("linkStopRequested", mock.linkStopRequested);
   root->setProperty("transportPlaying", mock.transportPlaying);
 
   return juce::var(root);
@@ -669,6 +700,150 @@ end
 )").trimStart();
 
 // ============================================================================
+// MIDI bindings tests
+// ============================================================================
+
+juce::String midiTestScript = juce::String(R"(
+function ui_init(root)
+  -- Test MIDI callbacks
+  local noteOnRegistered = false
+  Midi.onNoteOn(function(ch, note, vel, ts)
+    noteOnRegistered = true
+  end)
+
+  local noteOffRegistered = false
+  Midi.onNoteOff(function(ch, note, ts)
+    noteOffRegistered = true
+  end)
+
+  local ccRegistered = false
+  Midi.onControlChange(function(ch, cc, val, ts)
+    ccRegistered = true
+  end)
+
+  local pitchBendRegistered = false
+  Midi.onPitchBend(function(ch, val, ts)
+    pitchBendRegistered = true
+  end)
+
+  local progChangeRegistered = false
+  Midi.onProgramChange(function(ch, prog, ts)
+    progChangeRegistered = true
+  end)
+
+  local eventRegistered = false
+  Midi.onMidiEvent(function(typ, ch, d1, d2, ts)
+    eventRegistered = true
+  end)
+
+  -- Test send functions (null-safe via dynamic_cast)
+  Midi.sendNoteOn(1, 60, 100)
+  Midi.sendNoteOff(1, 60)
+  Midi.sendCC(1, 7, 100)
+  Midi.sendPitchBend(1, 0)
+  Midi.sendProgramChange(1, 0)
+  Midi.sendAllNotesOff(1)
+  Midi.sendAllSoundOff(1)
+
+  -- Test state queries
+  local numVoices = Midi.getNumActiveVoices()
+  local chState = Midi.getChannelState(1)
+  local noteFreq = Midi.noteToFrequency(69)
+  local freqNote = Midi.frequencyToNote(440)
+  local noteName = Midi.noteName(60)
+
+  -- Test settings
+  local omniBefore = Midi.isOmniMode()
+  Midi.setOmniMode(false)
+  local omniAfter = Midi.isOmniMode()
+  Midi.reset()
+
+  -- Test clearCallbacks
+  Midi.clearCallbacks()
+
+  -- Test constants
+  local ccCutoff = Midi.CC_CUTOFF
+  local eventTypeNoteOn = Midi.EventType.NoteOn
+  local eventTypeClock = Midi.EventType.Clock
+
+  -- Store results
+  results = {
+    numVoices = numVoices,
+    chStateType = type(chState),
+    chStateProgram = chState.program,
+    noteFreq = noteFreq,
+    freqNote = freqNote,
+    noteName = noteName,
+    omniBefore = omniBefore,
+    omniAfter = omniAfter,
+    ccCutoff = ccCutoff,
+    eventTypeNoteOn = eventTypeNoteOn,
+    eventTypeClock = eventTypeClock,
+    callbackRegistrations = {
+      noteOn = noteOnRegistered,
+      noteOff = noteOffRegistered,
+      cc = ccRegistered,
+      pitchBend = pitchBendRegistered,
+      programChange = progChangeRegistered,
+      event = eventRegistered,
+    },
+  }
+end
+
+function ui_update(state)
+end
+)").trimStart();
+
+// ============================================================================
+// Link bindings tests
+// ============================================================================
+
+juce::String linkTestScript = juce::String(R"(
+function ui_init(root)
+  -- Test initial state
+  local enabledBefore = link.isEnabled()
+  local tempoSyncBefore = link.isTempoSyncEnabled()
+  local startStopBefore = link.isStartStopSyncEnabled()
+  local numPeers = link.getNumPeers()
+  local playing = link.isPlaying()
+  local beat = link.getBeat()
+  local phase = link.getPhase()
+
+  -- Test setters
+  link.setEnabled(true)
+  local enabledAfter = link.isEnabled()
+
+  link.setTempoSyncEnabled(true)
+  local tempoSyncAfter = link.isTempoSyncEnabled()
+
+  link.setStartStopSyncEnabled(true)
+  local startStopAfter = link.isStartStopSyncEnabled()
+
+  -- Test request methods
+  link.requestTempo(140.0)
+  link.requestStart()
+  link.requestStop()
+
+  -- Store results
+  results = {
+    enabledBefore = enabledBefore,
+    tempoSyncBefore = tempoSyncBefore,
+    startStopBefore = startStopBefore,
+    numPeers = numPeers,
+    playing = playing,
+    beat = beat,
+    phase = phase,
+    enabledAfter = enabledAfter,
+    tempoSyncAfter = tempoSyncAfter,
+    startStopAfter = startStopAfter,
+  }
+end
+
+function ui_update(state)
+end
+)").trimStart();
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -707,6 +882,12 @@ juce::var buildFullContract() {
 
   rootObj->setProperty("waveform",
     runTestScript(engine, mock, waveformTestScript, "waveform"));
+
+  rootObj->setProperty("midi",
+    runTestScript(engine, mock, midiTestScript, "midi"));
+
+  rootObj->setProperty("link",
+    runTestScript(engine, mock, linkTestScript, "link"));
 
   engine.clearAttachedUiLuaState();
   return juce::var(rootObj);

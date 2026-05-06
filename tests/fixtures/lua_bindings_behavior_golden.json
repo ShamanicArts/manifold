@@ -48,8 +48,16 @@
     "forwardArmed": false,
     "graphEnabled": true,
     "inputVolume": 0.5,
+    "linkBeat": 0.0,
     "linkEnabled": false,
-    "linkTempo": 120.0,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": false,
+    "linkStartStopSync": false,
+    "linkStopRequested": false,
+    "linkTempoRequested": -1.0,
+    "linkTempoSync": false,
     "loadedDspSlots": [],
     "masterVolume": 0.75,
     "overdub": false,
@@ -111,8 +119,16 @@
     "forwardArmed": false,
     "graphEnabled": true,
     "inputVolume": 0.5,
+    "linkBeat": 0.0,
     "linkEnabled": false,
-    "linkTempo": 120.0,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": false,
+    "linkStartStopSync": false,
+    "linkStopRequested": false,
+    "linkTempoRequested": -1.0,
+    "linkTempoSync": false,
     "loadedDspSlots": [
       "slot-b"
     ],
@@ -175,8 +191,16 @@
     "forwardArmed": false,
     "graphEnabled": true,
     "inputVolume": 0.5,
+    "linkBeat": 0.0,
     "linkEnabled": false,
-    "linkTempo": 120.0,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": false,
+    "linkStartStopSync": false,
+    "linkStopRequested": false,
+    "linkTempoRequested": -1.0,
+    "linkTempoSync": false,
     "loadedDspSlots": [
       "slot-b"
     ],
@@ -239,8 +263,16 @@
     "forwardArmed": false,
     "graphEnabled": true,
     "inputVolume": 0.5,
+    "linkBeat": 0.0,
     "linkEnabled": false,
-    "linkTempo": 120.0,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": false,
+    "linkStartStopSync": false,
+    "linkStopRequested": false,
+    "linkTempoRequested": -1.0,
+    "linkTempoSync": false,
     "loadedDspSlots": [
       "slot-b"
     ],
@@ -250,6 +282,150 @@
     "recordModeIndex": 1,
     "recording": false,
     "script": "graph",
+    "targetBPM": 120.0,
+    "tempo": 135.0,
+    "transportPlaying": false
+  },
+  "link": {
+    "activeLayer": 2,
+    "commands": [
+      {
+        "floatParam": 130.0,
+        "intParam": 0,
+        "type": 3
+      },
+      {
+        "floatParam": 0.75,
+        "intParam": 0,
+        "type": 23
+      },
+      {
+        "floatParam": 0.0,
+        "intParam": 0,
+        "type": 25
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 0,
+        "type": 24
+      },
+      {
+        "floatParam": 2.0,
+        "intParam": 2,
+        "type": 11
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 1,
+        "type": 22
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 0,
+        "type": 6
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 1,
+        "type": 20
+      }
+    ],
+    "commitCount": 0,
+    "dspLastError": "",
+    "forwardArmed": false,
+    "graphEnabled": true,
+    "inputVolume": 0.5,
+    "linkBeat": 0.0,
+    "linkEnabled": true,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": true,
+    "linkStartStopSync": true,
+    "linkStopRequested": true,
+    "linkTempoRequested": 140.0,
+    "linkTempoSync": true,
+    "loadedDspSlots": [
+      "slot-b"
+    ],
+    "masterVolume": 0.75,
+    "overdub": false,
+    "passthrough": false,
+    "recordModeIndex": 1,
+    "recording": false,
+    "script": "link",
+    "targetBPM": 120.0,
+    "tempo": 135.0,
+    "transportPlaying": false
+  },
+  "midi": {
+    "activeLayer": 2,
+    "commands": [
+      {
+        "floatParam": 130.0,
+        "intParam": 0,
+        "type": 3
+      },
+      {
+        "floatParam": 0.75,
+        "intParam": 0,
+        "type": 23
+      },
+      {
+        "floatParam": 0.0,
+        "intParam": 0,
+        "type": 25
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 0,
+        "type": 24
+      },
+      {
+        "floatParam": 2.0,
+        "intParam": 2,
+        "type": 11
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 1,
+        "type": 22
+      },
+      {
+        "floatParam": 1.0,
+        "intParam": 0,
+        "type": 6
+      },
+      {
+        "floatParam": 0.5,
+        "intParam": 1,
+        "type": 20
+      }
+    ],
+    "commitCount": 0,
+    "dspLastError": "",
+    "forwardArmed": false,
+    "graphEnabled": true,
+    "inputVolume": 0.5,
+    "linkBeat": 0.0,
+    "linkEnabled": false,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": false,
+    "linkStartStopSync": false,
+    "linkStopRequested": false,
+    "linkTempoRequested": -1.0,
+    "linkTempoSync": false,
+    "loadedDspSlots": [
+      "slot-b"
+    ],
+    "masterVolume": 0.75,
+    "overdub": false,
+    "passthrough": false,
+    "recordModeIndex": 1,
+    "recording": false,
+    "script": "midi",
     "targetBPM": 120.0,
     "tempo": 135.0,
     "transportPlaying": false
@@ -303,8 +479,16 @@
     "forwardArmed": false,
     "graphEnabled": true,
     "inputVolume": 0.5,
+    "linkBeat": 0.0,
     "linkEnabled": false,
-    "linkTempo": 120.0,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": false,
+    "linkStartStopSync": false,
+    "linkStopRequested": false,
+    "linkTempoRequested": -1.0,
+    "linkTempoSync": false,
     "loadedDspSlots": [
       "slot-b"
     ],
@@ -367,8 +551,16 @@
     "forwardArmed": false,
     "graphEnabled": true,
     "inputVolume": 0.5,
+    "linkBeat": 0.0,
     "linkEnabled": false,
-    "linkTempo": 120.0,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": false,
+    "linkStartStopSync": false,
+    "linkStopRequested": false,
+    "linkTempoRequested": -1.0,
+    "linkTempoSync": false,
     "loadedDspSlots": [
       "slot-b"
     ],
@@ -431,8 +623,16 @@
     "forwardArmed": false,
     "graphEnabled": true,
     "inputVolume": 0.5,
+    "linkBeat": 0.0,
     "linkEnabled": false,
-    "linkTempo": 120.0,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": false,
+    "linkStartStopSync": false,
+    "linkStopRequested": false,
+    "linkTempoRequested": -1.0,
+    "linkTempoSync": false,
     "loadedDspSlots": [
       "slot-b"
     ],
@@ -495,8 +695,16 @@
     "forwardArmed": false,
     "graphEnabled": true,
     "inputVolume": 0.5,
+    "linkBeat": 0.0,
     "linkEnabled": false,
-    "linkTempo": 120.0,
+    "linkNumPeers": 0,
+    "linkPhase": 0.0,
+    "linkPlaying": false,
+    "linkStartRequested": false,
+    "linkStartStopSync": false,
+    "linkStopRequested": false,
+    "linkTempoRequested": -1.0,
+    "linkTempoSync": false,
     "loadedDspSlots": [
       "slot-b"
     ],
