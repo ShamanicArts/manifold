@@ -605,8 +605,8 @@ void OSCQueryServer::handleHttpRequest(juce::StreamingSocket* client,
         } else if (path == "/api/command") {
             juce::String body = readRequestBody().trim();
             juce::String upper = body.toUpperCase();
-            if (!(upper.startsWith("SET ") || upper.startsWith("TRIGGER "))) {
-                response = "{\"error\":\"only SET and TRIGGER commands are allowed\"}";
+            if (!(upper.startsWith("SET ") || upper.startsWith("TRIGGER ") || upper.startsWith("UISWITCH "))) {
+                response = "{\"error\":\"only SET, TRIGGER, and UISWITCH commands are allowed\"}";
                 statusCode = 400;
                 statusText = "Bad Request";
             } else if (!owner) {

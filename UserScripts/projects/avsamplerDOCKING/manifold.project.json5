@@ -1,0 +1,17 @@
+{
+  "name": "AVSamplerDocking",
+  "description": "AVSampler UI skeleton using ImGui docking windows instead of retained-mode pane layout.",
+  "author": "Agent",
+  "version": "0.1.0",
+
+  "dsp": {
+    "default": "dsp/default_dsp.lua"
+  },
+
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+
+  "theme": "../Main/themes/dark.lua"
+}

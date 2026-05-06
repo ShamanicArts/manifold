@@ -148,6 +148,8 @@ struct ImGuiDirectHost::EglOffscreenContext {
 };
 #endif
 
+thread_local ImGuiDirectHost* ImGuiDirectHost::activeInstance_ = nullptr;
+
 namespace {
 
 bool isCtrlLikeDown(const juce::ModifierKeys& mods) {
@@ -1215,6 +1217,7 @@ void ImGuiDirectHost::initialiseImGuiBackendIfNeeded() {
 
     auto& io = ImGui::GetIO();
     io.BackendPlatformName = "manifold_juce_imgui_direct";
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     manifold::ui::imgui::configureToolFonts(io);
     fontAtlasBytes_.store(0, std::memory_order_relaxed);
     manifold::ui::imgui::applyToolTheme();
@@ -1356,9 +1359,11 @@ bool ImGuiDirectHost::renderFrameWithCurrentContext(float scale, bool allowSwap)
         }
     }
 
+    activeInstance_ = this;
     if (liveRoot_ != nullptr) {
         invokeOnImGuiFrameRecursive(*liveRoot_);
     }
+    activeInstance_ = nullptr;
 
     ImGui::Render();
     int64_t vertexCount = 0;

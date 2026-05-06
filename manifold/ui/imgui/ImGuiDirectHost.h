@@ -154,6 +154,10 @@ public:
     void setCopyIdModeEnabled(bool enabled) { copyIdModeEnabled_ = enabled; }
     bool isCopyIdModeEnabled() const { return copyIdModeEnabled_; }
 
+    /// Get the ImGuiDirectHost that is currently rendering the onImGuiFrame callback.
+    /// Returns nullptr if called outside the render loop (e.g. from a timer or MIDI callback).
+    static ImGuiDirectHost* getActiveInstance() noexcept { return activeInstance_; }
+
     std::uintptr_t prepareCustomSurfaceTexture(const RuntimeNode& node,
                                               int width,
                                               int height,
@@ -253,6 +257,8 @@ public:
     RenderSnapshot glSnapshot_;
     mutable std::mutex snapshotMutex_;
     std::atomic<bool> snapshotReady_{false};
+
+    static thread_local ImGuiDirectHost* activeInstance_;
 
     std::vector<std::shared_ptr<CustomSurfaceProvider>> surfaceProviders_;
 

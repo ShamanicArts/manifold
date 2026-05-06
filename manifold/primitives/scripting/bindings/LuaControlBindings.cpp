@@ -20,6 +20,7 @@ extern "C" {
 #include "dsp/core/nodes/SineBankNode.h"
 #include "dsp/core/graph/PrimitiveNode.h"
 #include "../../ui/RuntimeNode.h"
+#include "../../../ui/imgui/ImGuiDirectHost.h"
 #include "../../control/CommandParser.h"
 #include "../../control/ControlServer.h"
 #include "../../control/OSCEndpointRegistry.h"
@@ -44,6 +45,7 @@ extern "C" {
 #include <mutex>
 #include <vector>
 #include "imgui.h"
+#include "imgui_internal.h"
 #include <atomic>
 #include <unordered_map>
 #include <unordered_set>
@@ -3705,6 +3707,10 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     // ImGui::NewFrame() and ImGui::Render()). Calling outside that context
     // will trigger ImGui asserts / undefined behaviour.
     // ==========================================================================
+    lua["imguiBegin"] = [](const char* title, sol::optional<int> flags) -> bool {
+        return ImGui::Begin(title, nullptr, static_cast<ImGuiWindowFlags>(flags.value_or(0)));
+    };
+    lua["imguiEnd"] = []() { ImGui::End(); };
     lua["imguiBeginMainMenuBar"] = []() -> bool { return ImGui::BeginMainMenuBar(); };
     lua["imguiEndMainMenuBar"]   = []() { ImGui::EndMainMenuBar(); };
     lua["imguiBeginMenuBar"]     = []() -> bool { return ImGui::BeginMenuBar(); };
@@ -3727,6 +3733,55 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     lua["imguiSelectable"]       = [](const char* label, sol::optional<bool> selected, sol::optional<int> flags, sol::optional<float> w, sol::optional<float> h) -> bool {
         return ImGui::Selectable(label, selected.value_or(false), static_cast<ImGuiSelectableFlags>(flags.value_or(0)), ImVec2(w.value_or(0), h.value_or(0)));
     };
+    lua["imguiBeginTable"]       = [](const char* id, int columns, sol::optional<int> flags) -> bool {
+        return ImGui::BeginTable(id, columns, static_cast<ImGuiTableFlags>(flags.value_or(0)));
+    };
+    lua["imguiEndTable"]         = []() { ImGui::EndTable(); };
+    lua["imguiTableNextRow"]     = [](sol::optional<int> flags, sol::optional<float> minHeight) {
+        ImGui::TableNextRow(static_cast<ImGuiTableRowFlags>(flags.value_or(0)), minHeight.value_or(0.0f));
+    };
+    lua["imguiTableNextColumn"]  = []() -> bool { return ImGui::TableNextColumn(); };
+    lua["imguiGetID"]            = [](const char* id) -> uint32_t { return ImGui::GetID(id); };
+    lua["imguiDockSpace"] = [](uint32_t id, sol::optional<float> w, sol::optional<float> h, sol::optional<int> flags) -> uint32_t {
+        return ImGui::DockSpace(static_cast<ImGuiID>(id), ImVec2(w.value_or(0.0f), h.value_or(0.0f)), static_cast<ImGuiDockNodeFlags>(flags.value_or(0)));
+    };
+    lua["imguiDockSpaceOverViewport"] = [](sol::optional<uint32_t> id, sol::optional<int> flags) -> uint32_t {
+        return ImGui::DockSpaceOverViewport(static_cast<ImGuiID>(id.value_or(0)), nullptr, static_cast<ImGuiDockNodeFlags>(flags.value_or(0)));
+    };
+    lua["imguiDockBuilderRemoveNode"] = [](uint32_t id) { ImGui::DockBuilderRemoveNode(static_cast<ImGuiID>(id)); };
+    lua["imguiDockBuilderAddNode"] = [](uint32_t id, sol::optional<int> flags) {
+        ImGui::DockBuilderAddNode(static_cast<ImGuiID>(id), static_cast<ImGuiDockNodeFlags>(flags.value_or(0)));
+    };
+    lua["imguiGetMainViewport"] = [&lua]() -> sol::table {
+        auto* viewport = ImGui::GetMainViewport();
+        auto t = sol::table(lua, sol::create);
+        t["x"] = viewport ? viewport->WorkPos.x : 0.0f;
+        t["y"] = viewport ? viewport->WorkPos.y : 0.0f;
+        t["w"] = viewport ? viewport->WorkSize.x : 1.0f;
+        t["h"] = viewport ? viewport->WorkSize.y : 1.0f;
+        return t;
+    };
+    lua["imguiDockBuilderSetNodePos"] = [](uint32_t id, float x, float y) {
+        ImGui::DockBuilderSetNodePos(static_cast<ImGuiID>(id), ImVec2(x, y));
+    };
+    lua["imguiDockBuilderSetNodeSize"] = [](uint32_t id, float w, float h) {
+        ImGui::DockBuilderSetNodeSize(static_cast<ImGuiID>(id), ImVec2(w, h));
+    };
+    lua["imguiDockBuilderSplitNode"] = [&lua](uint32_t id, int dir, float ratio) -> sol::table {
+        ImGuiID atDir = 0;
+        ImGuiID opposite = 0;
+        ImGui::DockBuilderSplitNode(static_cast<ImGuiID>(id), static_cast<ImGuiDir>(dir), ratio, &atDir, &opposite);
+        auto t = sol::table(lua, sol::create);
+        t["atDir"] = static_cast<uint32_t>(atDir);
+        t["opposite"] = static_cast<uint32_t>(opposite);
+        return t;
+    };
+    lua["imguiDockBuilderDockWindow"] = [](const char* windowName, uint32_t nodeId) {
+        ImGui::DockBuilderDockWindow(windowName, static_cast<ImGuiID>(nodeId));
+    };
+    lua["imguiDockBuilderFinish"] = [](uint32_t id) { ImGui::DockBuilderFinish(static_cast<ImGuiID>(id)); };
+    lua["imguiPushID"]           = [](const char* id) { ImGui::PushID(id); };
+    lua["imguiPopID"]            = []() { ImGui::PopID(); };
     lua["imguiButton"]           = [](const char* label, sol::optional<float> w, sol::optional<float> h) -> bool {
         return ImGui::Button(label, ImVec2(w.value_or(0), h.value_or(0)));
     };
@@ -3762,14 +3817,223 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     lua["imguiSetNextWindowPos"] = [](float x, float y, sol::optional<int> cond) {
         ImGui::SetNextWindowPos(ImVec2(x, y), static_cast<ImGuiCond>(cond.value_or(0)));
     };
+    lua["imguiSetNextWindowDockID"] = [](uint32_t dockId, sol::optional<int> cond) {
+        ImGui::SetNextWindowDockID(static_cast<ImGuiID>(dockId), static_cast<ImGuiCond>(cond.value_or(static_cast<int>(ImGuiCond_Appearing))));
+    };
+    lua["imguiImage"] = [](uint64_t textureId, float w, float h) {
+        ImGui::Image(ImTextureID(static_cast<std::uintptr_t>(textureId)), ImVec2(w, h));
+    };
+    lua["imguiSliderFloat"] = [](const char* label, float v, float vMin, float vMax, sol::optional<const char*> fmt, sol::optional<int> flags) -> float {
+        float val = v;
+        ImGui::SliderFloat(label, &val, vMin, vMax, fmt.value_or("%.3f"), static_cast<ImGuiSliderFlags>(flags.value_or(0)));
+        return val;
+    };
+    lua["imguiDragFloat"] = [](const char* label, float v, sol::optional<float> vSpeed, sol::optional<float> vMin, sol::optional<float> vMax, sol::optional<const char*> fmt) -> float {
+        float val = v;
+        ImGui::DragFloat(label, &val, vSpeed.value_or(0.01f), vMin.value_or(0.0f), vMax.value_or(1.0f), fmt.value_or("%.3f"));
+        return val;
+    };
+    lua["imguiVSliderFloat"] = [](const char* label, float w, float h, float v, float vMin, float vMax, sol::optional<const char*> fmt) -> float {
+        float val = v;
+        ImGui::VSliderFloat(label, ImVec2(w, h), &val, vMin, vMax, fmt.value_or("%.3f"));
+        return val;
+    };
+    lua["imguiCheckbox"] = [](const char* label, bool v) -> bool {
+        bool val = v;
+        ImGui::Checkbox(label, &val);
+        return val;
+    };
+    lua["imguiCombo"] = [](const char* label, int currentItem, sol::table items, int itemsCount, sol::optional<int> popupMaxHeightInItems) -> int {
+        std::vector<const char*> itemPtrs;
+        itemPtrs.reserve(itemsCount);
+        std::vector<std::string> storage;
+        storage.reserve(itemsCount);
+        for (int i = 1; i <= itemsCount; ++i) {
+            sol::object obj = items[i];
+            if (obj.is<std::string>()) {
+                storage.push_back(obj.as<std::string>());
+                itemPtrs.push_back(storage.back().c_str());
+            } else if (obj.is<const char*>()) {
+                itemPtrs.push_back(obj.as<const char*>());
+            } else {
+                storage.push_back("?");
+                itemPtrs.push_back(storage.back().c_str());
+            }
+        }
+        int sel = currentItem;
+        if (ImGui::Combo(label, &sel, itemPtrs.data(), itemsCount, popupMaxHeightInItems.value_or(-1)))
+            return sel;
+        return currentItem;
+    };
+    lua["imguiBeginChild"] = [](const char* id, sol::optional<float> w, sol::optional<float> h, sol::optional<int> border, sol::optional<int> flags) -> bool {
+        return ImGui::BeginChild(id, ImVec2(w.value_or(0.0f), h.value_or(0.0f)), border.value_or(false) ? ImGuiChildFlags_Borders : ImGuiChildFlags_None, static_cast<ImGuiWindowFlags>(flags.value_or(0)));
+    };
+    lua["imguiEndChild"] = []() { ImGui::EndChild(); };
+    lua["imguiTextColored"] = [](uint32_t col, const char* text) {
+        float a = static_cast<float>((col >> 24) & 0xffu) / 255.0f;
+        float r = static_cast<float>((col >> 16) & 0xffu) / 255.0f;
+        float g = static_cast<float>((col >> 8) & 0xffu) / 255.0f;
+        float b = static_cast<float>(col & 0xffu) / 255.0f;
+        ImGui::TextColored(ImVec4(r, g, b, a), "%s", text);
+    };
+    lua["imguiBulletText"] = [](const char* text) { ImGui::BulletText("%s", text); };
+    lua["imguiSpacing"] = []() { ImGui::Spacing(); };
+    lua["imguiDummy"] = [](float w, float h) { ImGui::Dummy(ImVec2(w, h)); };
+    lua["imguiSeparatorText"] = [](const char* label) { ImGui::SeparatorText(label); };
+    lua["imguiArrowButton"] = [](const char* id, int dir) -> bool {
+        return ImGui::ArrowButton(id, static_cast<ImGuiDir>(dir));
+    };
+    lua["imguiSmallButton"] = [](const char* label) -> bool {
+        return ImGui::SmallButton(label);
+    };
+    lua["imguiRadioButton"] = [](const char* label, bool active) -> bool {
+        return ImGui::RadioButton(label, active);
+    };
+    lua["imguiProgressBar"] = [](float fraction, sol::optional<float> w, sol::optional<float> h, sol::optional<const char*> overlay) {
+        ImGui::ProgressBar(fraction, ImVec2(w.value_or(-1.0f), h.value_or(0.0f)), overlay.value_or(nullptr));
+    };
+    lua["imguiBeginDisabled"] = [](bool disabled) { ImGui::BeginDisabled(disabled); };
+    lua["imguiEndDisabled"] = []() { ImGui::EndDisabled(); };
+    lua["imguiSetNextItemWidth"] = [](float width) { ImGui::SetNextItemWidth(width); };
+    lua["imguiPushItemFlag"] = [](int flag, bool enabled) { ImGui::PushItemFlag(static_cast<ImGuiItemFlags>(flag), enabled); };
+    lua["imguiPopItemFlag"] = []() { ImGui::PopItemFlag(); };
+    lua["imguiIsItemHovered"] = []() -> bool { return ImGui::IsItemHovered(); };
+    lua["imguiIsItemClicked"] = [](sol::optional<int> mouseButton) -> bool {
+        return ImGui::IsItemClicked(static_cast<ImGuiMouseButton>(mouseButton.value_or(0)));
+    };
+    lua["imguiTooltip"] = [](const char* text) {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+            ImGui::SetTooltip("%s", text);
+        }
+    };
+    lua["imguiIndent"] = [](sol::optional<float> w) { ImGui::Indent(w.value_or(0.0f)); };
+    lua["imguiUnindent"] = [](sol::optional<float> w) { ImGui::Unindent(w.value_or(0.0f)); };
+    lua["imguiBeginGroup"] = []() { ImGui::BeginGroup(); };
+    lua["imguiEndGroup"] = []() { ImGui::EndGroup(); };
+    lua["imguiInputText"] = [](const char* label, const char* text, size_t maxLen, sol::optional<int> flags) -> std::string {
+        std::string buf(text ? text : "");
+        buf.resize(maxLen, '\0');
+        if (ImGui::InputText(label, buf.data(), maxLen, static_cast<ImGuiInputTextFlags>(flags.value_or(0))))
+            return buf.c_str();
+        return text ? std::string(text) : "";
+    };
+    lua["imguiInputFloat"] = [](const char* label, float v, sol::optional<float> step, sol::optional<float> stepFast, sol::optional<const char*> fmt) -> float {
+        float val = v;
+        ImGui::InputFloat(label, &val, step.value_or(0.01f), stepFast.value_or(0.1f), fmt.value_or("%.3f"));
+        return val;
+    };
+    lua["imguiInputInt"] = [](const char* label, int v, sol::optional<int> step, sol::optional<int> stepFast) -> int {
+        int val = v;
+        ImGui::InputInt(label, &val, step.value_or(1), stepFast.value_or(100));
+        return val;
+    };
+    lua["imguiColorEdit3"] = [&lua](const char* label, float r, float g, float b, sol::optional<int> flags) -> sol::optional<sol::table> {
+        float col[3] = { r, g, b };
+        if (ImGui::ColorEdit3(label, col, static_cast<ImGuiColorEditFlags>(flags.value_or(0)))) {
+            auto t = sol::table(lua, sol::create);
+            t["r"] = col[0];
+            t["g"] = col[1];
+            t["b"] = col[2];
+            return t;
+        }
+        return sol::nullopt;
+    };
+    lua["imguiColorEdit4"] = [&lua](const char* label, float r, float g, float b, float a, sol::optional<int> flags) -> sol::optional<sol::table> {
+        float col[4] = { r, g, b, a };
+        if (ImGui::ColorEdit4(label, col, static_cast<ImGuiColorEditFlags>(flags.value_or(0)))) {
+            auto t = sol::table(lua, sol::create);
+            t["r"] = col[0];
+            t["g"] = col[1];
+            t["b"] = col[2];
+            t["a"] = col[3];
+            return t;
+        }
+        return sol::nullopt;
+    };
+    lua["imguiCollapsingHeader"] = [](const char* label, sol::optional<int> flags) -> bool {
+        return ImGui::CollapsingHeader(label, static_cast<ImGuiTreeNodeFlags>(flags.value_or(0)));
+    };
+    lua["imguiTreeNode"] = [](const char* label, sol::optional<int> flags) -> bool {
+        return ImGui::TreeNodeEx(label, static_cast<ImGuiTreeNodeFlags>(flags.value_or(0)));
+    };
+    lua["imguiTreePop"] = []() { ImGui::TreePop(); };
+    lua["imguiGetFrameHeight"] = []() -> float { return ImGui::GetFrameHeight(); };
+    lua["imguiGetStyleFramePadding"] = [&lua]() -> sol::table {
+        auto t = sol::table(lua, sol::create);
+        t["x"] = ImGui::GetStyle().FramePadding.x;
+        t["y"] = ImGui::GetStyle().FramePadding.y;
+        return t;
+    };
+    lua["imguiCalcTextSize"] = [&lua](const char* text, sol::optional<float> wrapWidth) -> sol::table {
+        ImVec2 sz = ImGui::CalcTextSize(text, nullptr, true, wrapWidth.value_or(0.0f));
+        auto t = sol::table(lua, sol::create);
+        t["x"] = sz.x;
+        t["y"] = sz.y;
+        return t;
+    };
+    lua["imguiPushStyleVar"] = [](int idx, float val) { ImGui::PushStyleVar(static_cast<ImGuiStyleVar>(idx), val); };
+    lua["imguiPushStyleVar2"] = [](int idx, float x, float y) { ImGui::PushStyleVar(static_cast<ImGuiStyleVar>(idx), ImVec2(x, y)); };
+    lua["imguiPopStyleVar"] = [](sol::optional<int> count) { ImGui::PopStyleVar(count.value_or(1)); };
+    lua["imguiTextColored"] = [](uint32_t col, const char* text) {
+        float a = static_cast<float>((col >> 24) & 0xffu) / 255.0f;
+        float r = static_cast<float>((col >> 16) & 0xffu) / 255.0f;
+        float g = static_cast<float>((col >> 8) & 0xffu) / 255.0f;
+        float b = static_cast<float>(col & 0xffu) / 255.0f;
+        ImGui::TextColored(ImVec4(r, g, b, a), "%s", text);
+    };
+    lua["resolveNodeSurfaceTexture"] = [](RuntimeNode& node, int width, int height) -> uint64_t {
+        auto* host = ImGuiDirectHost::getActiveInstance();
+        if (!host || width <= 0 || height <= 0) return 0;
+        double time = ImGui::GetTime();
+        return static_cast<uint64_t>(host->prepareCustomSurfaceTexture(node, width, height, time));
+    };
     lua["imguiCond_None"] = static_cast<int>(ImGuiCond_None);
     lua["imguiCond_Always"] = static_cast<int>(ImGuiCond_Always);
     lua["imguiCond_Appearing"] = static_cast<int>(ImGuiCond_Appearing);
+    lua["imguiWindowFlags_None"] = 0;
     lua["imguiWindowFlags_NoResize"] = static_cast<int>(ImGuiWindowFlags_NoResize);
     lua["imguiWindowFlags_NoMove"] = static_cast<int>(ImGuiWindowFlags_NoMove);
     lua["imguiWindowFlags_NoCollapse"] = static_cast<int>(ImGuiWindowFlags_NoCollapse);
     lua["imguiWindowFlags_NoScrollbar"] = static_cast<int>(ImGuiWindowFlags_NoScrollbar);
+    lua["imguiWindowFlags_NoTitleBar"] = static_cast<int>(ImGuiWindowFlags_NoTitleBar);
+    lua["imguiWindowFlags_NoSavedSettings"] = static_cast<int>(ImGuiWindowFlags_NoSavedSettings);
+    lua["imguiTableFlags_None"] = static_cast<int>(ImGuiTableFlags_None);
+    lua["imguiTableFlags_Borders"] = static_cast<int>(ImGuiTableFlags_Borders);
+    lua["imguiTableFlags_RowBg"] = static_cast<int>(ImGuiTableFlags_RowBg);
+    lua["imguiTableFlags_SizingFixedFit"] = static_cast<int>(ImGuiTableFlags_SizingFixedFit);
+    lua["imguiDockNodeFlags_None"] = static_cast<int>(ImGuiDockNodeFlags_None);
+    lua["imguiDockNodeFlags_DockSpace"] = static_cast<int>(ImGuiDockNodeFlags_DockSpace);
+    lua["imguiDir_Left"] = static_cast<int>(ImGuiDir_Left);
+    lua["imguiDir_Right"] = static_cast<int>(ImGuiDir_Right);
+    lua["imguiDir_Up"] = static_cast<int>(ImGuiDir_Up);
+    lua["imguiDir_Down"] = static_cast<int>(ImGuiDir_Down);
     lua["imguiColorFlags_None"] = static_cast<int>(ImGuiColorEditFlags_None);
+    lua["imguiSliderFlags_None"] = static_cast<int>(ImGuiSliderFlags_None);
+    lua["imguiSliderFlags_AlwaysClamp"] = static_cast<int>(ImGuiSliderFlags_AlwaysClamp);
+    lua["imguiSliderFlags_Logarithmic"] = static_cast<int>(ImGuiSliderFlags_Logarithmic);
+    lua["imguiTreeNodeFlags_None"] = static_cast<int>(ImGuiTreeNodeFlags_None);
+    lua["imguiTreeNodeFlags_DefaultOpen"] = static_cast<int>(ImGuiTreeNodeFlags_DefaultOpen);
+    lua["imguiTreeNodeFlags_SpanFullWidth"] = static_cast<int>(ImGuiTreeNodeFlags_SpanFullWidth);
+    lua["imguiStyleVar_FramePadding"] = static_cast<int>(ImGuiStyleVar_FramePadding);
+    lua["imguiStyleVar_ItemSpacing"] = static_cast<int>(ImGuiStyleVar_ItemSpacing);
+    lua["imguiStyleVar_WindowPadding"] = static_cast<int>(ImGuiStyleVar_WindowPadding);
+    lua["imguiStyleVar_FrameRounding"] = static_cast<int>(ImGuiStyleVar_FrameRounding);
+    lua["imguiStyleVar_GrabRounding"] = static_cast<int>(ImGuiStyleVar_GrabRounding);
+    lua["imguiStyleVar_ScrollbarSize"] = static_cast<int>(ImGuiStyleVar_ScrollbarSize);
+    lua["imguiCol_Text"] = static_cast<int>(ImGuiCol_Text);
+    lua["imguiCol_FrameBg"] = static_cast<int>(ImGuiCol_FrameBg);
+    lua["imguiCol_FrameBgHovered"] = static_cast<int>(ImGuiCol_FrameBgHovered);
+    lua["imguiCol_FrameBgActive"] = static_cast<int>(ImGuiCol_FrameBgActive);
+    lua["imguiCol_Button"] = static_cast<int>(ImGuiCol_Button);
+    lua["imguiCol_ButtonHovered"] = static_cast<int>(ImGuiCol_ButtonHovered);
+    lua["imguiCol_ButtonActive"] = static_cast<int>(ImGuiCol_ButtonActive);
+    lua["imguiCol_Header"] = static_cast<int>(ImGuiCol_Header);
+    lua["imguiCol_Separator"] = static_cast<int>(ImGuiCol_Separator);
+    lua["imguiCol_Tab"] = static_cast<int>(ImGuiCol_Tab);
+    lua["imguiCol_TabActive"] = static_cast<int>(ImGuiCol_TabActive);
+    lua["imguiCol_TabHovered"] = static_cast<int>(ImGuiCol_TabHovered);
+    lua["imguiCol_TitleBg"] = static_cast<int>(ImGuiCol_TitleBg);
+    lua["imguiCol_TitleBgActive"] = static_cast<int>(ImGuiCol_TitleBgActive);
 
     std::fprintf(stderr, "[LuaControlBindings] Registered systemPaths table + imgui bindings\n");
 }
