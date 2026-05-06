@@ -1119,6 +1119,8 @@ add_executable(ImGuiDirectHostContractHarness manifold/headless/ImGuiDirectHostC
 
 add_executable(DspNodeContractHarness manifold/headless/DspNodeContractHarness.cpp)
 
+add_executable(GraphRuntimeContractHarness manifold/headless/GraphRuntimeContractHarness.cpp)
+
 add_executable(VideoSamplerHarness
     tests/VideoSamplerHarness.cpp
     manifold/primitives/video/VideoSampler.cpp
@@ -1249,6 +1251,16 @@ target_link_libraries(DspNodeContractHarness
         juce::juce_audio_utils
         juce::juce_gui_extra
 		highway)
+
+manifold_target_include_project_and_ableton(GraphRuntimeContractHarness)
+target_link_libraries(GraphRuntimeContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        highway)
 
 target_include_directories(VideoSamplerHarness
     PRIVATE
@@ -1461,6 +1473,13 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dsp_node_contract_golden.json)
 set_tests_properties(manifold_dsp_node_contract PROPERTIES
     LABELS "manifold;dsp;node;contract")
+
+add_test(
+    NAME manifold_graph_runtime_contract
+    COMMAND $<TARGET_FILE:GraphRuntimeContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/graph_runtime_contract_golden.json)
+set_tests_properties(manifold_graph_runtime_contract PROPERTIES
+    LABELS "manifold;graph;runtime;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:

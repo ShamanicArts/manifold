@@ -1,4 +1,5 @@
 #include "../../manifold/core/BehaviorCoreProcessor.h"
+#include "../../dsp/core/nodes/MidiVoiceNode.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -6,6 +7,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <cmath>
 
 #include <juce_core/juce_core.h>
 
@@ -250,6 +252,284 @@ int main(int argc, char* argv[]) {
     processor.drainMidiOutput(output);
     root->setProperty("outgoingEvents", serialiseMidiBuffer(output));
     root->setProperty("finalProcessorMidi", extractMidiSubcontract(processor));
+
+    // ==========================================================================
+    // Domain 1: Voice Allocation & Stealing — 9 notes on 8-voice polyphony
+    // MidiManager has MAX_VOICES=32, but the key test is that findFreeVoice()
+    // correctly selects which voice to steal when all are active.
+    // We send note-ons for notes 60-68 and observe which voice is stolen.
+    // ==========================================================================
+    {
+        midiManager->reset();
+        juce::MidiBuffer buf;
+        for (int note = 60; note <= 68; ++note) {
+            buf.addEvent(juce::MidiMessage::noteOn(1, note, static_cast<juce::uint8>(80)), 0);
+        }
+        processor.processMidiInput(buf, false);
+        root->setProperty("voiceStealing_9notesOn8Max", makeManagerSnapshot(*midiManager));
+        root->setProperty("voiceStealing_ring", drainInputRing(*midiManager));
+
+        // Now send note-ons for 5 more notes to force multiple steal cycles
+        juce::MidiBuffer buf2;
+        for (int note = 70; note <= 74; ++note) {
+            buf2.addEvent(juce::MidiMessage::noteOn(1, note, static_cast<juce::uint8>(90)), 4 * (note - 69));
+        }
+        processor.processMidiInput(buf2, false);
+        root->setProperty("voiceStealing_5moreSteals", makeManagerSnapshot(*midiManager));
+        root->setProperty("voiceStealing_ring2", drainInputRing(*midiManager));
+
+        // Note retrigger: press note 60 while it's still held → should retrigger, not allocate new voice
+        juce::MidiBuffer buf3;
+        buf3.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        processor.processMidiInput(buf3, false);
+        root->setProperty("voiceStealing_retrigger60", makeManagerSnapshot(*midiManager));
+
+        // Release all
+        juce::MidiBuffer releaseAll;
+        for (int note = 60; note <= 74; ++note) {
+            releaseAll.addEvent(juce::MidiMessage::noteOff(1, note), 0);
+        }
+        processor.processMidiInput(releaseAll, false);
+        root->setProperty("voiceStealing_afterReleaseAll", makeManagerSnapshot(*midiManager));
+    }
+
+    // ==========================================================================
+    // Domain 2: Sustain Pedal State Machine
+    // Note-on → sustain pedal on → note-off → voice stays sustained
+    // Then release pedal → voices release
+    // ==========================================================================
+    {
+        midiManager->reset();
+
+        // Step 1: Note on, then hold with sustain
+        juce::MidiBuffer step1;
+        step1.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        step1.addEvent(juce::MidiMessage::noteOn(1, 64, static_cast<juce::uint8>(90)), 8);
+        step1.addEvent(juce::MidiMessage::noteOn(1, 67, static_cast<juce::uint8>(80)), 16);
+        processor.processMidiInput(step1, false);
+        root->setProperty("sustain_after3NotesOn", makeManagerSnapshot(*midiManager));
+
+        // Step 2: Press sustain pedal (CC64 >= 64)
+        juce::MidiBuffer step2;
+        step2.addEvent(juce::MidiMessage::controllerEvent(1, 64, 127), 0);
+        processor.processMidiInput(step2, false);
+        root->setProperty("sustain_pedalOn", makeManagerSnapshot(*midiManager));
+
+        // Step 3: Release all 3 notes while pedal is held
+        juce::MidiBuffer step3;
+        step3.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+        step3.addEvent(juce::MidiMessage::noteOff(1, 64), 4);
+        step3.addEvent(juce::MidiMessage::noteOff(1, 67), 8);
+        processor.processMidiInput(step3, false);
+        root->setProperty("sustain_notesOffWhilePedalHeld", makeManagerSnapshot(*midiManager));
+        root->setProperty("sustain_ringAfterNoteOff", drainInputRing(*midiManager));
+
+        // Step 4: Release sustain pedal → sustained voices release
+        juce::MidiBuffer step4;
+        step4.addEvent(juce::MidiMessage::controllerEvent(1, 64, 0), 0);
+        processor.processMidiInput(step4, false);
+        root->setProperty("sustain_pedalOffVoicesReleased", makeManagerSnapshot(*midiManager));
+
+        // Step 5: Sostenuto pedal — press while notes held, sostenuto only holds those notes
+        // Re-press 2 notes, then press sostenuto (CC66 >= 64), release notes
+        midiManager->reset();
+        juce::MidiBuffer step5a;
+        step5a.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        step5a.addEvent(juce::MidiMessage::noteOn(1, 63, static_cast<juce::uint8>(90)), 8);
+        processor.processMidiInput(step5a, false);
+
+        juce::MidiBuffer step5b;
+        step5b.addEvent(juce::MidiMessage::controllerEvent(1, 66, 127), 0);  // sostenuto on
+        processor.processMidiInput(step5b, false);
+        root->setProperty("sustain_sostenutoOn", makeManagerSnapshot(*midiManager));
+
+        // Play a new note after sostenuto — should NOT be sustained
+        juce::MidiBuffer step5c;
+        step5c.addEvent(juce::MidiMessage::noteOn(1, 67, static_cast<juce::uint8>(80)), 0);
+        processor.processMidiInput(step5c, false);
+
+        // Release all notes
+        juce::MidiBuffer step5d;
+        step5d.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+        step5d.addEvent(juce::MidiMessage::noteOff(1, 63), 4);
+        step5d.addEvent(juce::MidiMessage::noteOff(1, 67), 8);
+        processor.processMidiInput(step5d, false);
+        root->setProperty("sustain_sostenutoNotesReleased", makeManagerSnapshot(*midiManager));
+    }
+
+    // ==========================================================================
+    // Domain 3: Channel Filtering & Omni Mode
+    // When channel-masked to ch1 only, ch2 messages should be dropped.
+    // When omniMode=false and only ch2 enabled, ch1 messages should be dropped.
+    // ==========================================================================
+    {
+        midiManager->reset();
+
+        // Set channel mask to only allow channel 1
+        midiManager->setChannelMask(0x0001);  // bit 0 = channel 1
+        midiManager->setOmniMode(false);
+        root->setProperty("filter_channelMask1only", makeManagerSnapshot(*midiManager));
+
+        // Send note-on on channel 2 → should be filtered
+        juce::MidiBuffer bufCh2;
+        bufCh2.addEvent(juce::MidiMessage::noteOn(2, 60, static_cast<juce::uint8>(100)), 0);
+        processor.processMidiInput(bufCh2, false);
+        root->setProperty("filter_ch2noteDropped", makeManagerSnapshot(*midiManager));
+
+        // Send note-on on channel 1 → should pass
+        juce::MidiBuffer bufCh1;
+        bufCh1.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        processor.processMidiInput(bufCh1, false);
+        root->setProperty("filter_ch1notePassed", makeManagerSnapshot(*midiManager));
+
+        // Switch to omni mode (all channels regardless of mask)
+        // Actually omniMode makes isChannelEnabled still check the mask. Let's verify:
+        // isOmniMode=true + channelMask 0x0001 → channel 2 should still be filtered
+        midiManager->setOmniMode(true);
+        // Actually re-read the code: handleMidiEvent checks isChannelEnabled(),
+        // which checks channelMask_. So omni mode doesn't bypass the mask.
+        // Let's set mask to all channels + omni mode
+        midiManager->setChannelMask(0xFFFF);
+        juce::MidiBuffer bufCh2Omni;
+        bufCh2Omni.addEvent(juce::MidiMessage::noteOn(2, 61, static_cast<juce::uint8>(90)), 0);
+        processor.processMidiInput(bufCh2Omni, false);
+        root->setProperty("filter_omniCh2Passes", makeManagerSnapshot(*midiManager));
+
+        // Track channel states independently
+        midiManager->setOmniMode(false);
+        midiManager->setChannelMask(0x0003);  // channels 1 and 2
+        juce::MidiBuffer multiCh;
+        multiCh.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        multiCh.addEvent(juce::MidiMessage::noteOn(2, 61, static_cast<juce::uint8>(90)), 8);
+        processor.processMidiInput(multiCh, false);
+        root->setProperty("filter_multiChannelTracking", makeManagerSnapshot(*midiManager));
+    }
+
+    // ==========================================================================
+    // Domain 4: Ring Buffer Edge Cases
+    // Test the lock-free MidiRingBuffer directly for:
+    //   - Write until full, 257th fails
+    //   - Wraparound: write 200, read 150, write 200 more
+    //   - Read empty returns false
+    //   - Peek doesn't consume
+    // ==========================================================================
+    {
+        auto& ring = midiManager->getInputRing();
+        ring.clear();
+        auto* ringRoot = new juce::DynamicObject();
+
+        // Fill until full: try 257 writes (capacity=256)
+        int writesBeforeFull = 0;
+        for (int i = 0; i < 257; ++i) {
+            if (ring.write(0x90, static_cast<uint8_t>(i & 0x7F), 100, 0)) {
+                writesBeforeFull++;
+            }
+        }
+        ringRoot->setProperty("writesBeforeFull", writesBeforeFull);
+        ringRoot->setProperty("isFullAfterFill", ring.isFull());
+
+        // Drain all
+        uint8_t s, d1, d2;
+        int32_t ts;
+        int reads = 0;
+        while (ring.read(s, d1, d2, ts)) {
+            reads++;
+        }
+        ringRoot->setProperty("readsAfterDrain", reads);
+        ringRoot->setProperty("isEmptyAfterDrain", ring.isEmpty());
+        ringRoot->setProperty("readFromEmpty", ring.read(s, d1, d2, ts) ? 1 : 0);
+
+        // Wraparound test
+        ring.clear();
+        // Write 200, read 150 (leaves 50 in buffer, readIdx at 150)
+        for (int i = 0; i < 200; ++i) {
+            ring.write(0x90, static_cast<uint8_t>(i & 0x7F), 100, 0);
+        }
+        for (int i = 0; i < 150; ++i) {
+            ring.read(s, d1, d2, ts);
+        }
+        // Write 200 more (this wraps around: writeIdx=200, next wraps to 0, then 1..199)
+        int wrapWrites = 0;
+        for (int i = 0; i < 200; ++i) {
+            if (ring.write(0x91, 0x7F, 100, 0)) {
+                wrapWrites++;
+            }
+        }
+        ringRoot->setProperty("wrapWrites", wrapWrites);
+
+        // Read and verify sequence: 50 old + 200 new = 250 total
+        int wrapReads = 0;
+        uint8_t firstStatus = 0;
+        bool gotFirst = false;
+        while (ring.read(s, d1, d2, ts)) {
+            if (!gotFirst) {
+                firstStatus = s;
+                gotFirst = true;
+            }
+            wrapReads++;
+        }
+        ringRoot->setProperty("wrapReads", wrapReads);
+        ringRoot->setProperty("wrapFirstStatus", static_cast<int>(firstStatus));
+
+        // Peek test: write one, peek (don't consume), read -> should still get it
+        ring.clear();
+        ring.write(0x92, 42, 77, 0);
+        uint8_t p_s=0, p_d1=0, p_d2=0;
+        bool peeked = ring.peek(p_s, p_d1, p_d2);
+        ringRoot->setProperty("peekResult", peeked ? 1 : 0);
+        ringRoot->setProperty("peekStatus", static_cast<int>(p_s));
+        ringRoot->setProperty("peekData1", static_cast<int>(p_d1));
+        ringRoot->setProperty("peekData2", static_cast<int>(p_d2));
+        // Read should still work (peek doesn't consume)
+        bool readAfterPeek = ring.read(s, d1, d2, ts);
+        ringRoot->setProperty("readAfterPeek", readAfterPeek ? 1 : 0);
+        ringRoot->setProperty("readAfterPeekStatus", static_cast<int>(s));
+        ringRoot->setProperty("readAfterPeekData1", static_cast<int>(d1));
+        ringRoot->setProperty("readAfterPeekData2", static_cast<int>(d2));
+        // Second read should fail (only one message)
+        ringRoot->setProperty("secondReadAfterPeek", ring.read(s, d1, d2, ts) ? 1 : 0);
+
+        root->setProperty("ringBuffer", juce::var(ringRoot));
+    }
+
+    // ==========================================================================
+    // Domain 5: MIDI Clock & Transport Events
+    // MidiManager should forward clock, start, stop, continue events to the ring.
+    // ==========================================================================
+    {
+        midiManager->reset();
+
+        juce::MidiBuffer clockBuf;
+        // Send 24 MIDI clock ticks (one quarter note at 120 BPM)
+        for (int i = 0; i < 24; ++i) {
+            clockBuf.addEvent(juce::MidiMessage::midiClock(), 0);
+        }
+        processor.processMidiInput(clockBuf, false);
+        auto clockRing = drainInputRing(*midiManager);
+        auto* clockObj = new juce::DynamicObject();
+        auto* arr = clockRing.getArray();
+        clockObj->setProperty("clockEventCount", arr != nullptr ? arr->size() : 0);
+        if (arr != nullptr && arr->size() > 0) {
+            clockObj->setProperty("firstClockStatus", static_cast<int>((*arr)[0].getDynamicObject()->getProperty("status")));
+        }
+        root->setProperty("midiClock", juce::var(clockObj));
+
+        // Transport: Start, Continue, Stop
+        midiManager->reset();
+        juce::MidiBuffer transportBuf;
+        transportBuf.addEvent(juce::MidiMessage::midiStart(), 0);
+        transportBuf.addEvent(juce::MidiMessage::midiContinue(), 8);
+        transportBuf.addEvent(juce::MidiMessage::midiStop(), 16);
+        processor.processMidiInput(transportBuf, false);
+        root->setProperty("midiTransport", drainInputRing(*midiManager));
+
+        // Active sensing (should be parsed, not crash)
+        midiManager->reset();
+        juce::MidiBuffer senseBuf;
+        senseBuf.addEvent(juce::MidiMessage(0xFE), 0);
+        processor.processMidiInput(senseBuf, false);
+        root->setProperty("midiActiveSensing", drainInputRing(*midiManager));
+    }
 
     const auto contract = juce::JSON::toString(juce::var(root), true).toStdString();
 

@@ -191,7 +191,8 @@ void MidiManager::handleNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) 
     ch.numActiveNotes++;
     
     // Find or steal voice
-    int voiceIdx = findVoicePlayingNote(note, channel);
+    const int existingVoice = findVoicePlayingNote(note, channel);
+    int voiceIdx = existingVoice;
     if (voiceIdx < 0) {
         voiceIdx = findFreeVoice();
     }
@@ -206,8 +207,13 @@ void MidiManager::handleNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) 
         voice.startTime = sampleCounter_ / currentSampleRate_;
         voice.currentPitchBend = static_cast<float>(ch.pitchBend) / 8192.0f;
         
-        numActiveVoices_.store(numActiveVoices_.load(std::memory_order_relaxed) + 1,
-                               std::memory_order_release);
+        // Only increment count if this is a new voice, not a retrigger of an
+        // already-active voice. voice.reset() set active=false, so without this
+        // guard numActiveVoices would inflate on every overlapping note press.
+        if (existingVoice < 0) {
+            numActiveVoices_.store(numActiveVoices_.load(std::memory_order_relaxed) + 1,
+                                   std::memory_order_release);
+        }
     }
 
     // Fire callback (skip if suppressed to avoid blocking audio thread during script load)
