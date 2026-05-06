@@ -1,0 +1,17 @@
+{
+  "name": "VideoSliceRackLab",
+  "description": "Dynamic audio-timed video slice rack: one committed A/V capture, eight MIDI-triggered slice one-shots, waveform marker editing, and active-note auto-split video rendering",
+  "author": "Agent",
+  "version": "0.2.0",
+
+  "dsp": {
+    "default": "dsp/default_dsp.lua"
+  },
+
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+
+  "theme": "../Main/themes/dark.lua"
+}
