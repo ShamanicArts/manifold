@@ -14,6 +14,7 @@
 #include "EditorRecordingSupport.h"
 #include "EditorRendererSupport.h"
 #include "EditorPerfSupport.h"
+#include "EditorLifecycleSupport.h"
 
 #include <cstddef>
 #include <memory>
@@ -55,6 +56,7 @@ private:
     RuntimeNode* getActiveRootRuntimeNode();
     void setRuntimeRendererMode(RuntimeRendererMode mode, bool logChange = true);
     void updateRuntimeRendererPresentation();
+    editor_lifecycle::HostRole deferredHostRole(const juce::Component& host) const;
     
     // Deferred visibility changes to avoid blocking GUI thread during OpenGL context creation
     struct DeferredVisibility {

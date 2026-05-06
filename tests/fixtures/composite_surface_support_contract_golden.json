@@ -1,0 +1,59 @@
+{
+  "contractVersion": 1,
+  "defaultBlendDescriptor": {
+    "blendClonePreserved": true,
+    "blendParamCount": 1,
+    "bottom": "node_bottom",
+    "effectiveBlendOp": "normal",
+    "error": "",
+    "fragmentNonEmpty": true,
+    "ok": true,
+    "opacity": 1.0,
+    "requestedBlendOpEmpty": true,
+    "signatureHasNormal": true,
+    "top": "node_top",
+    "vertexHasAPos": true
+  },
+  "explicitBlendDescriptor": {
+    "effectiveBlendOp": "screen",
+    "error": "",
+    "fragmentHasBlendTex": true,
+    "ok": true,
+    "opacityClamped": 1.0,
+    "requestedBlendOp": "screen",
+    "signatureHasScreen": true
+  },
+  "failures": {
+    "badBlendError": "composite blend shader missing source",
+    "badBlendOk": false,
+    "nonObjectError": "composite payload must be an object",
+    "nonObjectOk": false
+  },
+  "negativeOpacity": {
+    "ok": true,
+    "opacityClamped": 0.0
+  },
+  "numericHelpers": {
+    "doubleBoolFalse": 0.0,
+    "doubleBoolTrue": 1.0,
+    "doubleVoidFallback": 5.5,
+    "numberBool": true,
+    "numberDouble": true,
+    "numberInt": true,
+    "numberString": false
+  },
+  "sequenceResolution": {
+    "bottomWins": 9,
+    "equal": 7,
+    "topWins": 9
+  },
+  "signature": {
+    "containsBlendOp": true,
+    "containsBottom": true,
+    "containsFragment": true,
+    "containsTop": true,
+    "containsVertex": true,
+    "size": 73
+  }
+}
+

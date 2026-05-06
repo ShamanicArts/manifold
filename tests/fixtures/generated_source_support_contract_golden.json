@@ -1,0 +1,65 @@
+{
+  "colorParsing": {
+    "arrayA": 1.0,
+    "arrayB": 0.300000011920929,
+    "arrayG": 0.200000002980232,
+    "arrayR": 0.100000001490116,
+    "fallbackA": 0.800000011920929,
+    "fallbackR": 0.5,
+    "objectA": 0.5,
+    "objectB": 0.699999988079071,
+    "objectG": 0.800000011920929,
+    "objectR": 0.899999976158142
+  },
+  "contractVersion": 1,
+  "directDescriptor": {
+    "clearA": 1.0,
+    "clearR": 0.200000002980232,
+    "error": "",
+    "fragment": "fs_direct",
+    "ok": true,
+    "signatureHasSeparator": true,
+    "uniformClonePreserved": true,
+    "uniformCount": 2,
+    "vertex": "vs_direct"
+  },
+  "failures": {
+    "missingShaderError": "generated source missing shader source",
+    "missingShaderOk": false,
+    "missingSourceError": "generated source payload must be an object",
+    "missingSourceOk": false,
+    "nonObjectError": "source payload must be an object",
+    "nonObjectOk": false,
+    "unsupportedError": "unsupported surface type",
+    "unsupportedOk": false,
+    "wrongTypeError": "gpu_shader payload is not a generated source",
+    "wrongTypeOk": false
+  },
+  "numericHelpers": {
+    "doubleBoolFalse": 0.0,
+    "doubleBoolTrue": 1.0,
+    "doubleInt": 9.0,
+    "doubleVoidFallback": 7.5,
+    "numberBool": true,
+    "numberDouble": true,
+    "numberInt": true,
+    "numberString": false
+  },
+  "signature": {
+    "containsFragment": true,
+    "containsSeparator": true,
+    "containsVertex": true,
+    "size": 24
+  },
+  "wrappedDescriptor": {
+    "clearA": 0.899999976158142,
+    "clearB": 0.100000001490116,
+    "error": "",
+    "fragment": "fs_wrapped",
+    "ok": true,
+    "sourceClonePreserved": true,
+    "uniformGain": 1.5,
+    "vertex": "vs_wrapped"
+  }
+}
+

@@ -1119,6 +1119,8 @@ add_executable(BehaviorCoreMidiContractHarness manifold/headless/BehaviorCoreMid
 
 add_executable(ImGuiDirectHostContractHarness manifold/headless/ImGuiDirectHostContractHarness.cpp)
 
+add_executable(SurfaceProvidersDrawSmokeHarness manifold/headless/SurfaceProvidersDrawSmokeHarness.cpp)
+
 add_executable(DspNodeContractHarness manifold/headless/DspNodeContractHarness.cpp)
 
 add_executable(GraphRuntimeContractHarness manifold/headless/GraphRuntimeContractHarness.cpp)
@@ -1133,6 +1135,10 @@ add_executable(SettingsContractHarness manifold/headless/SettingsContractHarness
 
 add_executable(EditorBootstrapSupportContractHarness manifold/headless/EditorBootstrapSupportContractHarness.cpp)
 
+add_executable(EditorLifecycleSupportContractHarness manifold/headless/EditorLifecycleSupportContractHarness.cpp)
+
+add_executable(EditorCaptureSupportContractHarness manifold/headless/EditorCaptureSupportContractHarness.cpp)
+
 add_executable(ExportSupportContractHarness manifold/headless/ExportSupportContractHarness.cpp)
 
 add_executable(LuaEngineContractHarness manifold/headless/LuaEngineContractHarness.cpp)
@@ -1142,6 +1148,10 @@ add_executable(ShaderRegistryContractHarness manifold/headless/ShaderRegistryCon
 add_executable(ShaderSurfaceSupportContractHarness manifold/headless/ShaderSurfaceSupportContractHarness.cpp)
 
 add_executable(TextureSourceRegistryContractHarness manifold/headless/TextureSourceRegistryContractHarness.cpp)
+
+add_executable(GeneratedSourceSupportContractHarness manifold/headless/GeneratedSourceSupportContractHarness.cpp)
+
+add_executable(CompositeSurfaceSupportContractHarness manifold/headless/CompositeSurfaceSupportContractHarness.cpp)
 
 add_executable(OSCEndpointRegistryContractHarness manifold/headless/OSCEndpointRegistryContractHarness.cpp)
 
@@ -1345,6 +1355,20 @@ target_link_libraries(ImGuiDirectHostContractHarness
         ${MANIFOLD_ML_TARGET}
         ${MANIFOLD_EXTRA_GL_LIBS})
 
+manifold_target_include_project_and_ableton(SurfaceProvidersDrawSmokeHarness)
+target_link_libraries(SurfaceProvidersDrawSmokeHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+		highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
 manifold_target_include_project_and_ableton(DspNodeContractHarness)
 target_link_libraries(DspNodeContractHarness
     PRIVATE
@@ -1451,6 +1475,32 @@ target_link_libraries(TextureSourceRegistryContractHarness
     PRIVATE
         Manifold
         juce::juce_core)
+
+manifold_target_include_project_and_ableton(GeneratedSourceSupportContractHarness)
+target_link_libraries(GeneratedSourceSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core)
+
+manifold_target_include_project_and_ableton(CompositeSurfaceSupportContractHarness)
+target_link_libraries(CompositeSurfaceSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core)
+
+manifold_target_include_project_and_ableton(EditorLifecycleSupportContractHarness)
+target_link_libraries(EditorLifecycleSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core
+        juce::juce_graphics)
+
+manifold_target_include_project_and_ableton(EditorCaptureSupportContractHarness)
+target_link_libraries(EditorCaptureSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core
+        juce::juce_graphics)
 
 manifold_target_include_project_and_ableton(OSCEndpointRegistryContractHarness)
 target_link_libraries(OSCEndpointRegistryContractHarness
@@ -1880,6 +1930,12 @@ target_compile_definitions(ImGuiDirectHostContractHarness
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
+target_compile_definitions(SurfaceProvidersDrawSmokeHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
 target_compile_definitions(DspNodeContractHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
@@ -2086,6 +2142,20 @@ set_tests_properties(manifold_editor_bootstrap_support_contract PROPERTIES
     LABELS "manifold;editor;support;contract")
 
 add_test(
+    NAME manifold_editor_lifecycle_support_contract
+    COMMAND $<TARGET_FILE:EditorLifecycleSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/editor_lifecycle_support_contract_golden.json)
+set_tests_properties(manifold_editor_lifecycle_support_contract PROPERTIES
+    LABELS "manifold;editor;lifecycle;support;contract")
+
+add_test(
+    NAME manifold_editor_capture_support_contract
+    COMMAND $<TARGET_FILE:EditorCaptureSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/editor_capture_support_contract_golden.json)
+set_tests_properties(manifold_editor_capture_support_contract PROPERTIES
+    LABELS "manifold;editor;capture;support;contract")
+
+add_test(
     NAME manifold_export_support_contract
     COMMAND $<TARGET_FILE:ExportSupportContractHarness>
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/export_support_contract_golden.json)
@@ -2105,6 +2175,20 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/texture_source_registry_contract_golden.json)
 set_tests_properties(manifold_texture_source_registry_contract PROPERTIES
     LABELS "manifold;source;registry;contract")
+
+add_test(
+    NAME manifold_generated_source_support_contract
+    COMMAND $<TARGET_FILE:GeneratedSourceSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/generated_source_support_contract_golden.json)
+set_tests_properties(manifold_generated_source_support_contract PROPERTIES
+    LABELS "manifold;source;support;contract")
+
+add_test(
+    NAME manifold_composite_surface_support_contract
+    COMMAND $<TARGET_FILE:CompositeSurfaceSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/composite_surface_support_contract_golden.json)
+set_tests_properties(manifold_composite_surface_support_contract PROPERTIES
+    LABELS "manifold;composite;support;contract")
 
 add_test(
     NAME manifold_headless_oscquery_contract
@@ -2203,6 +2287,13 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/direct_host_contract_golden.json)
 set_tests_properties(manifold_direct_host_contract PROPERTIES
     LABELS "manifold;direct;contract;imgui")
+
+add_test(
+    NAME manifold_surface_providers_draw_smoke
+    COMMAND $<TARGET_FILE:SurfaceProvidersDrawSmokeHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/surface_providers_draw_smoke_contract_golden.json)
+set_tests_properties(manifold_surface_providers_draw_smoke PROPERTIES
+    LABELS "manifold;surface;draw;smoke;opengl;contract")
 
 add_test(
     NAME manifold_state_projection

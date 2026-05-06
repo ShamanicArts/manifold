@@ -1,0 +1,146 @@
+{
+  "applyCrop": {
+    "croppedBottomRight": {
+      "a": 255,
+      "argb": "ff135724",
+      "b": 36,
+      "g": 87,
+      "r": 19
+    },
+    "croppedHeight": 2,
+    "croppedTopLeft": {
+      "a": 255,
+      "argb": "ffff00ff",
+      "b": 255,
+      "g": 0,
+      "r": 255
+    },
+    "croppedWidth": 2,
+    "unchangedHeight": 3,
+    "unchangedPixel": {
+      "a": 255,
+      "argb": "ff112233",
+      "b": 51,
+      "g": 34,
+      "r": 17
+    },
+    "unchangedWidth": 4
+  },
+  "contractVersion": 1,
+  "pngWrite": {
+    "decodedHeight": 3,
+    "decodedPixel00": {
+      "a": 255,
+      "argb": "ffff0000",
+      "b": 0,
+      "g": 0,
+      "r": 255
+    },
+    "decodedValid": true,
+    "decodedWidth": 4,
+    "fileExists": true,
+    "fileSizePositive": true,
+    "writeEmptyPath": false,
+    "writeInvalidImage": false,
+    "writeValid": true
+  },
+  "recordingCropPlan": {
+    "clippedApplied": true,
+    "clippedEffective": {
+      "h": 10,
+      "w": 20,
+      "x": 80,
+      "y": 70
+    },
+    "disabledApplied": false,
+    "disabledEffective": {
+      "h": 80,
+      "w": 100,
+      "x": 0,
+      "y": 0
+    },
+    "disabledRequested": {
+      "h": 80,
+      "w": 100,
+      "x": 0,
+      "y": 0
+    },
+    "emptyApplied": false,
+    "emptyEffective": {
+      "h": 80,
+      "w": 100,
+      "x": 0,
+      "y": 0
+    },
+    "emptyRequested": {
+      "h": 20,
+      "w": 20,
+      "x": 150,
+      "y": 90
+    },
+    "explicitApplied": true,
+    "explicitEffective": {
+      "h": 20,
+      "w": 40,
+      "x": 10,
+      "y": 12
+    },
+    "explicitRequested": {
+      "h": 20,
+      "w": 40,
+      "x": 10,
+      "y": 12
+    },
+    "explicitResolved": false,
+    "resolvedApplied": true,
+    "resolvedEffective": {
+      "h": 8,
+      "w": 7,
+      "x": 3,
+      "y": 4
+    },
+    "resolvedRequested": {
+      "h": 8,
+      "w": 7,
+      "x": 3,
+      "y": 4
+    },
+    "resolvedUsedNodeBounds": true
+  },
+  "recordingSink": {
+    "diskSink": 1,
+    "diskWithoutDirSink": 0,
+    "path1": "/tmp/out/frame_0001.tga",
+    "path42": "/tmp/out/frame_0042.tga",
+    "pathInvalidFrame": "",
+    "pathMissingDir": "",
+    "ramSink": 0
+  },
+  "screenshotPlan": {
+    "componentAllowFallback": false,
+    "componentBounds": {
+      "h": 200,
+      "w": 320,
+      "x": 0,
+      "y": 0
+    },
+    "componentPrimary": 2,
+    "directAllowFallback": true,
+    "directBounds": {
+      "h": 480,
+      "w": 640,
+      "x": 0,
+      "y": 0
+    },
+    "directPrimary": 1,
+    "noneAllowFallback": false,
+    "noneBounds": {
+      "h": 0,
+      "w": 0,
+      "x": 0,
+      "y": 0
+    },
+    "nonePrimary": 0
+  }
+}
+

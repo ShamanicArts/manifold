@@ -1,5 +1,6 @@
 #include "CompositeSurfaceProvider.h"
 
+#include "CompositeSurfaceSupport.h"
 #include "../shaders/ShaderEffectRegistry.h"
 #include "../shaders/UniformContract.h"
 #include "../ui/RuntimeNode.h"
@@ -18,44 +19,32 @@ using namespace juce::gl;
 namespace manifold::composite {
 namespace {
 
-bool varIsNumber(const juce::var& value) {
-    return value.isInt() || value.isInt64() || value.isDouble() || value.isBool();
-}
-
-double varToDoubleValue(const juce::var& value, double fallback = 0.0) {
-    if (value.isVoid() || value.isUndefined()) {
-        return fallback;
-    }
-    if (value.isBool()) {
-        return static_cast<bool>(value) ? 1.0 : 0.0;
-    }
-    return static_cast<double>(value);
-}
+namespace composite_support = manifold::composite::surface_support;
 
 void applyUniformValue(int location, const juce::var& value) {
     if (location < 0) {
         return;
     }
-    if (varIsNumber(value)) {
-        glUniform1f(location, static_cast<float>(varToDoubleValue(value)));
+    if (composite_support::varIsNumber(value)) {
+        glUniform1f(location, static_cast<float>(composite_support::varToDoubleValue(value)));
         return;
     }
     if (auto* arr = value.getArray(); arr != nullptr) {
         if (arr->size() == 2) {
             glUniform2f(location,
-                        static_cast<float>(varToDoubleValue(arr->getReference(0))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(1))));
+                        static_cast<float>(composite_support::varToDoubleValue(arr->getReference(0))),
+                        static_cast<float>(composite_support::varToDoubleValue(arr->getReference(1))));
         } else if (arr->size() == 3) {
             glUniform3f(location,
-                        static_cast<float>(varToDoubleValue(arr->getReference(0))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(1))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(2))));
+                        static_cast<float>(composite_support::varToDoubleValue(arr->getReference(0))),
+                        static_cast<float>(composite_support::varToDoubleValue(arr->getReference(1))),
+                        static_cast<float>(composite_support::varToDoubleValue(arr->getReference(2))));
         } else if (arr->size() >= 4) {
             glUniform4f(location,
-                        static_cast<float>(varToDoubleValue(arr->getReference(0))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(1))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(2))),
-                        static_cast<float>(varToDoubleValue(arr->getReference(3))));
+                        static_cast<float>(composite_support::varToDoubleValue(arr->getReference(0))),
+                        static_cast<float>(composite_support::varToDoubleValue(arr->getReference(1))),
+                        static_cast<float>(composite_support::varToDoubleValue(arr->getReference(2))),
+                        static_cast<float>(composite_support::varToDoubleValue(arr->getReference(3))));
         }
     }
 }
@@ -272,18 +261,6 @@ bool ensureTarget(SurfaceState& state, int width, int height, std::string& error
     return true;
 }
 
-std::string buildSignature(const std::string& bottomNodeId,
-                           const std::string& topNodeId,
-                           const std::string& blendOpId,
-                           const std::string& vertexSource,
-                           const std::string& fragmentSource) {
-    return "bottom=" + bottomNodeId + "\n"
-        + "top=" + topNodeId + "\n"
-        + "blendOp=" + blendOpId + "\n"
-        + "vertex:\n" + vertexSource + "\n"
-        + "fragment:\n" + fragmentSource + "\n";
-}
-
 } // namespace
 
 struct CompositeSurfaceProvider::Impl {
@@ -331,24 +308,11 @@ std::uintptr_t CompositeSurfaceProvider::prepareTexture(const RuntimeNode& node,
         return 0;
     }
 
-    const auto payload = node.getCustomRenderPayload();
-    auto* payloadObj = payload.getDynamicObject();
-    if (payloadObj == nullptr) {
-        return 0;
-    }
-
-    const auto bottomNodeId = payloadObj->getProperty("bottomNodeId").toString().toStdString();
-    const auto topNodeId = payloadObj->getProperty("topNodeId").toString().toStdString();
-    const auto blendOpId = payloadObj->getProperty("blendOpId").toString().toStdString();
-    const auto opacityVar = payloadObj->getProperty("opacity");
-    const auto opacity = (opacityVar.isDouble() || opacityVar.isInt() || opacityVar.isInt64())
-        ? std::clamp(static_cast<float>(opacityVar), 0.0f, 1.0f)
-        : 1.0f;
-    const auto blendParams = payloadObj->getProperty("blendParams").clone();
-
-    const auto vertexSource = manifold::shaders::ShaderEffectRegistry::instance().vertexShader();
-    const auto fragmentSource = manifold::shaders::ShaderEffectRegistry::instance().fragmentShaderForBlendOp(blendOpId.empty() ? std::string("normal") : blendOpId);
-    if (vertexSource.empty() || fragmentSource.empty()) {
+    composite_support::ParsedCompositeDescriptor descriptor;
+    std::string error;
+    if (!composite_support::parseCompositeDescriptor(node.getCustomRenderPayload(), descriptor, error)) {
+        std::fprintf(stderr, "[CompositeSurfaceProvider] descriptor failed: %s\n", error.c_str());
+        std::fflush(stderr);
         return 0;
     }
 
@@ -357,21 +321,20 @@ std::uintptr_t CompositeSurfaceProvider::prepareTexture(const RuntimeNode& node,
         state = std::make_unique<SurfaceState>();
     }
 
-    state->bottomNodeId = bottomNodeId;
-    state->topNodeId = topNodeId;
-    state->blendParams = blendParams.clone();
-    state->opacity = opacity;
+    state->bottomNodeId = descriptor.bottomNodeId;
+    state->topNodeId = descriptor.topNodeId;
+    state->blendParams = descriptor.blendParams.clone();
+    state->opacity = descriptor.opacity;
 
-    const auto signature = buildSignature(bottomNodeId, topNodeId, blendOpId, vertexSource, fragmentSource);
-    if (state->signature != signature) {
+    if (state->signature != descriptor.signature) {
         state->lastError.clear();
         if (state->program != 0) {
             glDeleteProgram(state->program);
             state->program = 0;
         }
-        state->vertexSource = vertexSource;
-        state->fragmentSource = fragmentSource;
-        state->signature = signature;
+        state->vertexSource = descriptor.vertexSource;
+        state->fragmentSource = descriptor.fragmentSource;
+        state->signature = descriptor.signature;
         if (!buildProgram(*state, state->lastError)) {
             return 0;
         }
@@ -382,17 +345,17 @@ std::uintptr_t CompositeSurfaceProvider::prepareTexture(const RuntimeNode& node,
         return 0;
     }
 
-    const auto bottomResolved = impl.nodeTextureResolver(bottomNodeId, node, width, height, timeSeconds);
-    const auto topResolved = impl.nodeTextureResolver(topNodeId, node, width, height, timeSeconds);
+    const auto bottomResolved = impl.nodeTextureResolver(descriptor.bottomNodeId, node, width, height, timeSeconds);
+    const auto topResolved = impl.nodeTextureResolver(descriptor.topNodeId, node, width, height, timeSeconds);
     if (bottomResolved.textureHandle == 0 || topResolved.textureHandle == 0) {
         static int resolveBudget = 64;
         if (resolveBudget > 0) {
             --resolveBudget;
             std::fprintf(stderr,
                          "[CompositeSurfaceProvider] unresolved input bottom=%s tex=%llu top=%s tex=%llu node=%s wh=%dx%d\n",
-                         bottomNodeId.c_str(),
+                         descriptor.bottomNodeId.c_str(),
                          static_cast<unsigned long long>(bottomResolved.textureHandle),
-                         topNodeId.c_str(),
+                         descriptor.topNodeId.c_str(),
                          static_cast<unsigned long long>(topResolved.textureHandle),
                          node.getNodeId().c_str(),
                          width,
@@ -439,7 +402,7 @@ std::uintptr_t CompositeSurfaceProvider::prepareTexture(const RuntimeNode& node,
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glUseProgram(0);
 
-    state->sequence = std::max(bottomResolved.sequence, topResolved.sequence);
+    state->sequence = composite_support::resolveCompositeSequence(bottomResolved.sequence, topResolved.sequence);
     impl.recalculateOwnedGpuBytes();
     return static_cast<std::uintptr_t>(state->colorTex);
 }

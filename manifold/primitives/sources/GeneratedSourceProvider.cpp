@@ -332,9 +332,9 @@ std::uintptr_t GeneratedSourceProvider::prepareTexture(const RuntimeNode& node,
             glDeleteFramebuffers(1, &state->fbo);
             state->fbo = 0;
         }
-        std::string error;
-        if (!createTarget(*state, width, height, error)) {
-            std::fprintf(stderr, "[GeneratedSourceProvider] target failed: %s\n", error.c_str());
+        std::string targetError;
+        if (!createTarget(*state, width, height, targetError)) {
+            std::fprintf(stderr, "[GeneratedSourceProvider] target failed: %s\n", targetError.c_str());
             std::fflush(stderr);
             return 0;
         }

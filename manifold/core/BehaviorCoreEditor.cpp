@@ -2,7 +2,9 @@
 #include "../ui/imgui/DirectHostRuntimeSupport.h"
 #include "BehaviorCoreProcessor.h"
 #include "EditorBootstrapSupport.h"
+#include "EditorCaptureSupport.h"
 #include "EditorShellSupport.h"
+#include "EditorLifecycleSupport.h"
 #include "../primitives/core/Settings.h"
 #include "../primitives/scripting/bindings/LuaRuntimeNodeBindings.h"
 #include "../primitives/ui/Canvas.h"
@@ -521,6 +523,18 @@ BehaviorCoreEditor::~BehaviorCoreEditor() {
     processorRef.getControlServer().setFrameTimings(nullptr);
 }
 
+editor_lifecycle::HostRole BehaviorCoreEditor::deferredHostRole(const juce::Component& host) const {
+    if (&host == &mainScriptEditorHost) return editor_lifecycle::HostRole::MainScriptEditor;
+    if (&host == &scriptListHost) return editor_lifecycle::HostRole::ScriptList;
+    if (&host == &hierarchyHost) return editor_lifecycle::HostRole::Hierarchy;
+    if (&host == &inspectorHost) return editor_lifecycle::HostRole::Inspector;
+    if (&host == &scriptInspectorHost) return editor_lifecycle::HostRole::ScriptInspector;
+    if (&host == &perfOverlayHost) return editor_lifecycle::HostRole::PerfOverlay;
+    if (&host == &runtimeNodeDebugHost) return editor_lifecycle::HostRole::RuntimeNodeDebug;
+    if (&host == &directHost_) return editor_lifecycle::HostRole::DirectHost;
+    return editor_lifecycle::HostRole::Other;
+}
+
 void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
     if (deferredVisibilityChanges.empty()) return;
 
@@ -530,40 +544,20 @@ void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
             continue;
         }
 
-        if (change.visible) {
-            if (change.host->getBounds() != change.bounds) {
-                change.host->setBounds(change.bounds);
-            }
-            if (!change.host->isVisible()) {
-                change.host->setVisible(true);
-            }
-            change.host->toFront(false);
-            if (change.host == &perfOverlayHost) {
-                perfOverlayHost.grabKeyboardFocus();
-            }
-        } else {
-            const bool keepGlHostVisible = change.host == &perfOverlayHost
-                || change.host == &mainScriptEditorHost
-                || change.host == &scriptListHost
-                || change.host == &hierarchyHost
-                || change.host == &inspectorHost
-                || change.host == &scriptInspectorHost;
+        const auto plan = editor_lifecycle::buildVisibilityApplyPlan(
+            deferredHostRole(*change.host), change.visible, change.bounds);
 
-            if (keepGlHostVisible) {
-                if (!change.host->isVisible()) {
-                    change.host->setVisible(true);
-                }
-                if (change.host->getBounds() != change.bounds) {
-                    change.host->setBounds(change.bounds);
-                }
-            } else {
-                if (change.host->isVisible()) {
-                    change.host->setVisible(false);
-                }
-                if (change.host->getBounds() != change.bounds) {
-                    change.host->setBounds(change.bounds);
-                }
-            }
+        if (change.host->getBounds() != plan.targetBounds) {
+            change.host->setBounds(plan.targetBounds);
+        }
+        if (change.host->isVisible() != plan.targetVisible) {
+            change.host->setVisible(plan.targetVisible);
+        }
+        if (plan.bringToFront) {
+            change.host->toFront(false);
+        }
+        if (plan.grabFocus && change.host == &perfOverlayHost) {
+            perfOverlayHost.grabKeyboardFocus();
         }
     }
     if (directHost_.isVisible()) {
@@ -600,8 +594,8 @@ void BehaviorCoreEditor::applyDeferredVisibilityChanges() {
 
 void BehaviorCoreEditor::queueHostVisibilityChange(juce::Component& host, bool visible,
                                                  const juce::Rectangle<int>& bounds) {
-    const auto targetBounds = visible ? bounds : juce::Rectangle<int>(0, 0, 0, 0);
-    if (host.isVisible() != visible || host.getBounds() != targetBounds) {
+    const auto targetBounds = editor_lifecycle::targetBoundsForVisibility(visible, bounds);
+    if (editor_lifecycle::shouldQueueVisibilityChange(host.isVisible(), host.getBounds(), visible, bounds)) {
         deferredVisibilityChanges.push_back({&host, visible, targetBounds});
     }
 }
@@ -650,31 +644,21 @@ void BehaviorCoreEditor::timerCallback() {
         bool captured = false;
         juce::Image image;
 
-        // Prefer OpenGL framebuffer capture when ImGuiDirectHost is active
-        if (directHost_.isVisible()) {
+        const auto screenshotPlan = editor_capture::buildScreenshotCapturePlan(
+            directHost_.isVisible(), getWidth(), getHeight());
+        if (screenshotPlan.primarySource == editor_capture::ScreenshotCaptureSource::DirectHost) {
             image = directHost_.captureScreenshot();
+        } else if (screenshotPlan.primarySource == editor_capture::ScreenshotCaptureSource::ComponentSnapshot) {
+            image = createComponentSnapshot(screenshotPlan.componentSnapshotBounds, true, 1.0f);
         }
 
-        // Fallback: JUCE component snapshot (e.g. Canvas mode)
-        if (!image.isValid()) {
-            const int w = getWidth();
-            const int h = getHeight();
-            if (w > 0 && h > 0) {
-                image = createComponentSnapshot(juce::Rectangle<int>(0, 0, w, h), true, 1.0f);
-            }
+        if (!image.isValid() && screenshotPlan.allowComponentFallback) {
+            image = createComponentSnapshot(screenshotPlan.componentSnapshotBounds, true, 1.0f);
         }
 
-        if (image.isValid()) {
-            juce::File outputFile(pendingScreenshot);
-            std::unique_ptr<juce::FileOutputStream> stream(outputFile.createOutputStream());
-            if (stream) {
-                juce::PNGImageFormat pngFormat;
-                if (pngFormat.writeImageToStream(image, *stream)) {
-                    captured = true;
-                    std::fprintf(stderr, "BehaviorCoreEditor: captured screenshot to %s\n", pendingScreenshot.c_str());
-                }
-                stream->flush();
-            }
+        if (editor_capture::writePng(image, pendingScreenshot)) {
+            captured = true;
+            std::fprintf(stderr, "BehaviorCoreEditor: captured screenshot to %s\n", pendingScreenshot.c_str());
         }
 
         req.success.store(captured, std::memory_order_release);
@@ -683,9 +667,10 @@ void BehaviorCoreEditor::timerCallback() {
 
     // Handle recording frame capture (target 30 FPS)
     const bool isRecording = processorRef.getControlServer().isRecording();
-    if (isRecording && !wasRecording_) {
+    const auto recordingPlan = editor_lifecycle::planRecordingTransition(wasRecording_, isRecording);
+    if (recordingPlan.clearAccumulator) {
         recordingAccumulator_.clear();
-    } else if (!isRecording && wasRecording_) {
+    } else if (recordingPlan.flushAccumulator) {
         auto& rec = processorRef.getControlServer().getRecordingState();
         std::string outputDir;
         {
@@ -738,26 +723,21 @@ void BehaviorCoreEditor::timerCallback() {
                             outputDir = rec.outputDir;
                         }
 
-                        if (options.cropEnabled) {
-                            juce::Rectangle<int> crop(options.cropX, options.cropY, options.cropW, options.cropH);
-                            if (!options.cropNodeId.empty() || options.cropStableId != 0) {
-                                if (auto resolved = directHost_.getRenderedNodeBounds(options.cropNodeId, options.cropStableId)) {
-                                    crop = *resolved;
-                                }
-                            }
-
-                            const juce::Rectangle<int> bounds(0, 0, frame.getWidth(), frame.getHeight());
-                            const auto clipped = crop.getIntersection(bounds);
-                            if (!clipped.isEmpty()) {
-                                frame = frame.getClippedImage(clipped);
-                            }
+                        std::optional<juce::Rectangle<int>> resolvedCropBounds;
+                        if (options.cropEnabled && (!options.cropNodeId.empty() || options.cropStableId != 0)) {
+                            resolvedCropBounds = directHost_.getRenderedNodeBounds(options.cropNodeId,
+                                                                                  options.cropStableId);
                         }
+                        const auto cropPlan = editor_capture::buildRecordingCropPlan(
+                            options,
+                            resolvedCropBounds,
+                            juce::Rectangle<int>(0, 0, frame.getWidth(), frame.getHeight()));
+                        frame = editor_capture::applyRecordingCrop(frame, cropPlan);
 
-                        if (options.streamFramesToDisk && !outputDir.empty()) {
+                        if (editor_capture::chooseRecordingFrameSink(options, outputDir)
+                            == editor_capture::RecordingFrameSink::Disk) {
                             const int frameNum = rec.frameCounter.fetch_add(1, std::memory_order_relaxed) + 1;
-                            char framePath[512];
-                            std::snprintf(framePath, sizeof(framePath), "%s/frame_%04d.tga",
-                                          outputDir.c_str(), frameNum);
+                            const auto framePath = editor_capture::buildRecordingFramePath(outputDir, frameNum);
                             if (editor_recording::writeTga(frame, framePath)) {
                                 std::lock_guard<std::mutex> lock(rec.mutex);
                                 rec.framePaths.push_back(framePath);
@@ -1040,13 +1020,13 @@ void BehaviorCoreEditor::timerCallback() {
                                                                               std::memory_order_relaxed);
             }
 
-            if (!uiIdleSnapshotCaptured_ && exportPluginUi_ && uiIdleSnapshotCountdown_ > 0) {
-                --uiIdleSnapshotCountdown_;
-                if (uiIdleSnapshotCountdown_ == 0) {
-                    processorRef.captureUiIdleSnapshot();
-                    uiIdleSnapshotCaptured_ = true;
-                }
+            const auto uiIdlePlan = editor_lifecycle::advanceUiIdleSnapshot(
+                uiIdleSnapshotCaptured_, exportPluginUi_, uiIdleSnapshotCountdown_);
+            uiIdleSnapshotCountdown_ = uiIdlePlan.nextCountdown;
+            if (uiIdlePlan.captureNow) {
+                processorRef.captureUiIdleSnapshot();
             }
+            uiIdleSnapshotCaptured_ = uiIdlePlan.markCaptured;
         }
 
         luaEngine.frameTimings.update(totalUs, pushStateUs, eventListenersUs,
@@ -1067,12 +1047,7 @@ void BehaviorCoreEditor::timerCallback() {
     // direct-mode renders already cost ~a frame on some drivers, so the old
     // capture-timer boost starved the event queue and made docking feel like ass.
     // Captured input now requests redraws directly from ImGuiDirectHost.
-    int nextTimerHz = exportPluginUi_ ? 20 : 30;
-    // Ensure 30 FPS frame capture during recording
-    if (processorRef.getControlServer().isRecording()) {
-        nextTimerHz = 30;
-    }
-    startTimerHz(nextTimerHz);
+    startTimerHz(editor_lifecycle::nextTimerHz(exportPluginUi_, processorRef.getControlServer().isRecording()));
 }
 
 void BehaviorCoreEditor::paint(juce::Graphics& g) {

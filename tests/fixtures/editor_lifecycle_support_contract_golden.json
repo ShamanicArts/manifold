@@ -1,0 +1,78 @@
+{
+  "applyPlans": {
+    "hideRuntimeDebugBounds": {
+      "h": 0,
+      "w": 0,
+      "x": 0,
+      "y": 0
+    },
+    "hideRuntimeDebugFront": false,
+    "hideRuntimeDebugVisible": false,
+    "hideScriptListBounds": {
+      "h": 0,
+      "w": 0,
+      "x": 0,
+      "y": 0
+    },
+    "hideScriptListFront": false,
+    "hideScriptListVisible": true,
+    "showPerfBounds": {
+      "h": 40,
+      "w": 30,
+      "x": 10,
+      "y": 20
+    },
+    "showPerfFocus": true,
+    "showPerfFront": true,
+    "showPerfVisible": true
+  },
+  "contractVersion": 1,
+  "keepVisiblePolicy": {
+    "directHost": false,
+    "mainScript": true,
+    "other": false,
+    "perfOverlay": true,
+    "runtimeDebug": false
+  },
+  "queuePolicy": {
+    "boundsChangeQueues": true,
+    "hideQueues": true,
+    "sameStateNoQueue": false,
+    "visibilityChangeQueues": true
+  },
+  "recordingTransitions": {
+    "startedClear": true,
+    "startedFlush": false,
+    "steadyClear": false,
+    "steadyFlush": false,
+    "stoppedClear": false,
+    "stoppedFlush": true
+  },
+  "targetBounds": {
+    "hiddenW": 0,
+    "hiddenX": 0,
+    "visibleW": 3,
+    "visibleX": 1
+  },
+  "timerPolicy": {
+    "exportIdle": 20,
+    "normalIdle": 30,
+    "recordingExport": 30,
+    "recordingNormal": 30
+  },
+  "uiIdleSnapshot": {
+    "alreadyCapturedCountdown": 10,
+    "alreadyCapturedMarked": true,
+    "alreadyCapturedNow": false,
+    "captureCountdown": 0,
+    "captureMarked": true,
+    "captureNow": true,
+    "notExportCountdown": 5,
+    "notExportMarked": false,
+    "notExportNow": false,
+    "tickCapture": false,
+    "tickCountdown": 2,
+    "tickMarked": false
+  }
+}
+
