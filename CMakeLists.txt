@@ -1117,6 +1117,8 @@ add_executable(BehaviorCoreMidiContractHarness manifold/headless/BehaviorCoreMid
 
 add_executable(ImGuiDirectHostContractHarness manifold/headless/ImGuiDirectHostContractHarness.cpp)
 
+add_executable(DspNodeContractHarness manifold/headless/DspNodeContractHarness.cpp)
+
 add_executable(VideoSamplerHarness
     tests/VideoSamplerHarness.cpp
     manifold/primitives/video/VideoSampler.cpp
@@ -1238,6 +1240,16 @@ target_link_libraries(ImGuiDirectHostContractHarness
         ${MANIFOLD_ML_TARGET}
         ${MANIFOLD_EXTRA_GL_LIBS})
 
+manifold_target_include_project_and_ableton(DspNodeContractHarness)
+target_link_libraries(DspNodeContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+		highway)
+
 target_include_directories(VideoSamplerHarness
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1342,6 +1354,12 @@ target_compile_definitions(ImGuiDirectHostContractHarness
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
+target_compile_definitions(DspNodeContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
 enable_testing()
 
 add_test(
@@ -1436,6 +1454,13 @@ add_test(
     COMMAND $<TARGET_FILE:StateProjectionHarness>)
 set_tests_properties(manifold_state_projection PROPERTIES
     LABELS "manifold;state;projection;regression")
+
+add_test(
+    NAME manifold_dsp_node_contract
+    COMMAND $<TARGET_FILE:DspNodeContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dsp_node_contract_golden.json)
+set_tests_properties(manifold_dsp_node_contract PROPERTIES
+    LABELS "manifold;dsp;node;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:

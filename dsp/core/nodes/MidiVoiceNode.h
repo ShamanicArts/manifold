@@ -58,6 +58,7 @@ struct SynthesizerVoice {
         frequency.store(freq, std::memory_order_relaxed);
         gate.store(true, std::memory_order_relaxed);
         active.store(true, std::memory_order_release);
+        envStage = EnvStage::Attack;
         phaseIncrement = 2.0 * M_PI * freq / 44100.0;  // Will be updated in prepare
     }
     

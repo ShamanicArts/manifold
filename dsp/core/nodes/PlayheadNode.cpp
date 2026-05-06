@@ -32,18 +32,12 @@ void PlayheadNode::process(const std::vector<AudioBufferView>& inputs,
     }
 
     for (int i = 0; i < numSamples; ++i) {
-        int pos = position_.fetch_add(static_cast<int>(increment >= 0 ? 1 : -1), std::memory_order_relaxed);
-
+        int pos = position_.load(std::memory_order_relaxed);
         if (increment >= 0) {
-            while (pos >= loopLen) {
-                pos -= loopLen;
-            }
+            if (++pos >= loopLen) { pos = 0; }
         } else {
-            while (pos < 0) {
-                pos += loopLen;
-            }
+            if (--pos < 0) { pos = loopLen - 1; }
         }
-
         position_.store(pos, std::memory_order_release);
     }
 

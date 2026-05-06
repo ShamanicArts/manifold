@@ -1,6 +1,7 @@
 #include "dsp/core/nodes/QuantizerNode.h"
 
 #include <cmath>
+#include <limits>
 
 namespace dsp_primitives {
 
@@ -64,7 +65,7 @@ int QuantizerNode::quantizeToNearestLegal(int samples) const {
     };
 
     int best = samples;
-    int bestDistance = std::abs(samples - best);
+    int bestDistance = std::numeric_limits<int>::max();
 
     for (const float candidate : candidates) {
         const int size = juce::jmax(1, static_cast<int>(candidate));

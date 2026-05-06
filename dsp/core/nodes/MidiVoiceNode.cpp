@@ -94,10 +94,9 @@ void MidiVoiceNode::process(const std::vector<AudioBufferView>& inputs,
             float vel = voice.velocity.load(std::memory_order_acquire) / 127.0f;
             voiceSample *= vel * envLevel;
             
-            // Apply filter
             voice.filterCutoff = filterCutoff * std::pow(2.0f, filterEnvAmt * (envLevel - 0.5f) * 4.0f);
             voiceSample = applyFilter(voice, voiceSample);
-            
+
             leftSample += voiceSample * stereoPan[0];
             rightSample += voiceSample * stereoPan[1];
             activeVoiceCount++;
@@ -182,8 +181,8 @@ float MidiVoiceNode::generateSample(SynthesizerVoice& voice, float* stereoPan) {
             case 2: voiceSample = squareWave(voice.phase); break;
             case 3: voiceSample = triangleWave(voice.phase); break;
             case 4: voiceSample = noise(); break;
-            case 5: voiceSample = (voice.phase < M_PI) ? 0.8f : -0.2f; break;  // Pulse
-            case 6: {  // Supersaw (multiple detuned saws)
+            case 5: voiceSample = (voice.phase < M_PI) ? 0.8f : -0.2f; break;
+            case 6: {
                 voiceSample = sawWave(voice.phase);
                 voiceSample += sawWave(voice.phase * 1.01) * 0.5f;
                 voiceSample += sawWave(voice.phase * 0.99) * 0.5f;
@@ -192,6 +191,7 @@ float MidiVoiceNode::generateSample(SynthesizerVoice& voice, float* stereoPan) {
             }
             default: voiceSample = sineWave(voice.phase); break;
         }
+
         
         // Stereo spread
         float pan = 0.5f + (u - unison * 0.5f) * spread / unison;
@@ -214,8 +214,11 @@ float MidiVoiceNode::applyFilter(SynthesizerVoice& voice, float input) {
     float resonance = filterResonance_.load(std::memory_order_acquire);
     
     float f = 2.0f * std::sin(M_PI * cutoff / sampleRate_);
-    float q = 1.0f / resonance;
-    
+    // Chamberlin SVF: ensure stability by capping q so f² + 2f*q < 4
+    float q_raw = 1.0f / (2.0f * resonance + 0.001f);
+    float q_max = (3.99f - f * f) / (2.0f * f + 0.0001f);
+    float q = juce::jmin(q_raw, juce::jmax(0.0f, q_max));
+
     float low = voice.filterState[0] + f * voice.filterState[1];
     float high = input - low - q * voice.filterState[1];
     float band = f * high + voice.filterState[1];
