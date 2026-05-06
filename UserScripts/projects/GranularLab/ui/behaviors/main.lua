@@ -93,10 +93,10 @@ local function refreshWaveform(ctx)
   local captureSeconds = readParam("/granular/capture_seconds", 12)
   if mode > 0.5 and wf.setSamplePath then
     wf:setSamplePath(DISPLAY_SAMPLE_PATH)
-    if wf.setColour then wf:setColour(0xfffca5a5) end
+    if wf.setColour then wf:setColour(0xff4a5568) end
   elseif wf.setCapturePath then
     wf:setCapturePath(CAPTURE_NODE_PATH, 0, captureSeconds)
-    if wf.setColour then wf:setColour(0xff22d3ee) end
+    if wf.setColour then wf:setColour(0xff4a5568) end
   end
 
   local loopStart = clamp(readParam("/sample/loop_start", 0), 0, 1)

@@ -154,7 +154,7 @@ function WaveformView:onDraw(w, h)
     gfx.setColour(self._scrubbing and 0x50475569 or 0x30475569)
     gfx.drawRoundedRect(0, 0, w, h, 4, self._scrubbing and 2 or 1)
 
-    gfx.setColour(0x18ffffff)
+    gfx.setColour(0x0cffffff)
     gfx.drawHorizontalLine(math.floor(h / 2), 2, w - 2)
 
     local numBuckets = waveformBucketCount(w)
@@ -185,9 +185,9 @@ function WaveformView:onDraw(w, h)
     if self._regionStart >= 0 and self._regionEnd > self._regionStart then
         local x1 = 2 + math.floor(self._regionStart * (w - 4))
         local x2 = 2 + math.floor(self._regionEnd * (w - 4))
-        gfx.setColour(0x2260a5fa)
+        gfx.setColour(0x06ffffff)
         gfx.fillRect(x1, 1, math.max(1, x2 - x1), h - 2)
-        gfx.setColour(0xff60a5fa)
+        gfx.setColour(0x35ffffff)
         gfx.drawVerticalLine(x1, 1, h - 1)
         gfx.drawVerticalLine(x2, 1, h - 1)
     end
@@ -199,25 +199,32 @@ function WaveformView:onDraw(w, h)
         local xe1 = 2 + math.floor((self._regionStart + xf) * (w - 4))
         local xs2 = 2 + math.floor((self._regionEnd - xf) * (w - 4))
         local xe2 = 2 + math.floor(self._regionEnd * (w - 4))
-        gfx.setColour(0x33ffffff)
+        gfx.setColour(0x04ffffff)
         gfx.fillRect(xs1, 1, math.max(1, xe1 - xs1), h - 2)
         gfx.fillRect(xs2, 1, math.max(1, xe2 - xs2), h - 2)
     end
 
     if self._playStart >= 0 and self._playStart <= 1 then
         local psX = 2 + math.floor(self._playStart * (w - 4))
-        gfx.setColour(0xff86efac)
+        gfx.setColour(0xff4a6b5a)
         gfx.drawVerticalLine(psX, 1, h - 1)
     end
 
+    local maxVoices = 6
+    local bandH = math.max(1, math.floor((h - 8) / maxVoices))
     for voiceIndex, grains in ipairs(self._voiceGrains or {}) do
         local colour = self._voiceColours[((voiceIndex - 1) % #self._voiceColours) + 1] or 0x99ffcc66
+        local bandTop = 4 + (voiceIndex - 1) * bandH
+        local bandCenter = bandTop + math.floor(bandH / 2)
         for i, p in ipairs(grains or {}) do
             if p >= 0 and p <= 1 then
                 local gx = 2 + math.floor(p * (w - 4))
-                local gy1 = 5 + (((voiceIndex * 13) + (i * 7)) % math.max(1, h - 14))
+                local jitterRange = math.max(1, bandH - 2)
+                local jitter = ((i * 3) % jitterRange) - math.floor(jitterRange / 2)
+                local gy1 = math.max(4, bandCenter + jitter - 2)
+                local gy2 = math.min(h - 4, bandCenter + jitter + 2)
                 gfx.setColour(colour)
-                gfx.drawVerticalLine(gx, gy1, math.min(h - 4, gy1 + 7))
+                gfx.drawVerticalLine(gx, gy1, gy2)
             end
         end
     end
@@ -226,21 +233,21 @@ function WaveformView:onDraw(w, h)
         if p >= 0 and p <= 1 then
             local gx = 2 + math.floor(p * (w - 4))
             local gy1 = 5 + ((i * 7) % math.max(1, h - 14))
-            gfx.setColour(0x99ffcc66)
+            gfx.setColour(0xccffd54f)
             gfx.drawVerticalLine(gx, gy1, math.min(h - 4, gy1 + 6))
         end
     end
 
     if self._grainPosition >= 0 and self._grainPosition <= 1 then
         local gX = 2 + math.floor(self._grainPosition * (w - 4))
-        gfx.setColour(0xffffcc66)
+        gfx.setColour(0xffffd54f)
         gfx.drawVerticalLine(gX, 1, h - 1)
     end
 
     for i, p in ipairs(self._voicePlayheads or {}) do
         if p >= 0 and p <= 1 then
             local vX = 2 + math.floor(p * (w - 4))
-            gfx.setColour(self._voiceColours[((i - 1) % #self._voiceColours) + 1] or (i == 1 and self._playheadColour or 0x99ff8888))
+            gfx.setColour(self._voiceColours[((i - 1) % #self._voiceColours) + 1] or self._playheadColour)
             gfx.drawVerticalLine(vX, 1, h - 1)
         end
     end
@@ -298,7 +305,7 @@ function WaveformView:_syncRetained(w, h)
             x2 = w - 2,
             y2 = math.floor(h / 2),
             thickness = 1,
-            color = 0x18ffffff,
+            color = 0x0cffffff,
         }
     }
 
@@ -328,9 +335,9 @@ function WaveformView:_syncRetained(w, h)
     if self._regionStart >= 0 and self._regionEnd > self._regionStart then
         local x1 = 2 + math.floor(self._regionStart * (w - 4))
         local x2 = 2 + math.floor(self._regionEnd * (w - 4))
-        display[#display + 1] = { cmd = "fillRect", x = x1, y = 1, w = math.max(1, x2 - x1), h = h - 2, color = 0x2260a5fa }
-        pushLine(display, x1, 1, x1, h - 1, 0xff60a5fa, 1.0)
-        pushLine(display, x2, 1, x2, h - 1, 0xff60a5fa, 1.0)
+        display[#display + 1] = { cmd = "fillRect", x = x1, y = 1, w = math.max(1, x2 - x1), h = h - 2, color = 0x06ffffff }
+        pushLine(display, x1, 1, x1, h - 1, 0x35ffffff, 1.0)
+        pushLine(display, x2, 1, x2, h - 1, 0x35ffffff, 1.0)
     end
 
     if self._crossfade > 0 and self._regionStart >= 0 and self._regionEnd > self._regionStart then
@@ -340,22 +347,29 @@ function WaveformView:_syncRetained(w, h)
         local xe1 = 2 + math.floor((self._regionStart + xf) * (w - 4))
         local xs2 = 2 + math.floor((self._regionEnd - xf) * (w - 4))
         local xe2 = 2 + math.floor(self._regionEnd * (w - 4))
-        display[#display + 1] = { cmd = "fillRect", x = xs1, y = 1, w = math.max(1, xe1 - xs1), h = h - 2, color = 0x33ffffff }
-        display[#display + 1] = { cmd = "fillRect", x = xs2, y = 1, w = math.max(1, xe2 - xs2), h = h - 2, color = 0x33ffffff }
+        display[#display + 1] = { cmd = "fillRect", x = xs1, y = 1, w = math.max(1, xe1 - xs1), h = h - 2, color = 0x04ffffff }
+        display[#display + 1] = { cmd = "fillRect", x = xs2, y = 1, w = math.max(1, xe2 - xs2), h = h - 2, color = 0x04ffffff }
     end
 
     if self._playStart >= 0 and self._playStart <= 1 then
         local psX = 2 + math.floor(self._playStart * (w - 4))
-        pushLine(display, psX, 1, psX, h - 1, 0xff86efac, 1.0)
+        pushLine(display, psX, 1, psX, h - 1, 0xff4a6b5a, 1.0)
     end
 
+    local maxVoices = 6
+    local bandH = math.max(1, math.floor((h - 8) / maxVoices))
     for voiceIndex, grains in ipairs(self._voiceGrains or {}) do
         local colour = self._voiceColours[((voiceIndex - 1) % #self._voiceColours) + 1] or 0x99ffcc66
+        local bandTop = 4 + (voiceIndex - 1) * bandH
+        local bandCenter = bandTop + math.floor(bandH / 2)
         for i, p in ipairs(grains or {}) do
             if p >= 0 and p <= 1 then
                 local gx = 2 + math.floor(p * (w - 4))
-                local gy1 = 5 + (((voiceIndex * 13) + (i * 7)) % math.max(1, h - 14))
-                pushLine(display, gx, gy1, gx, math.min(h - 4, gy1 + 7), colour, 1.0)
+                local jitterRange = math.max(1, bandH - 2)
+                local jitter = ((i * 3) % jitterRange) - math.floor(jitterRange / 2)
+                local gy1 = math.max(4, bandCenter + jitter - 2)
+                local gy2 = math.min(h - 4, bandCenter + jitter + 2)
+                pushLine(display, gx, gy1, gx, gy2, colour, 2.0)
             end
         end
     end
@@ -364,26 +378,26 @@ function WaveformView:_syncRetained(w, h)
         if p >= 0 and p <= 1 then
             local gx = 2 + math.floor(p * (w - 4))
             local gy1 = 5 + ((i * 7) % math.max(1, h - 14))
-            pushLine(display, gx, gy1, gx, math.min(h - 4, gy1 + 6), 0x99ffcc66, 1.0)
+            pushLine(display, gx, gy1, gx, math.min(h - 4, gy1 + 6), 0xccffd54f, 2.0)
         end
     end
 
     if self._grainPosition >= 0 and self._grainPosition <= 1 then
         local gX = 2 + math.floor(self._grainPosition * (w - 4))
-        pushLine(display, gX, 1, gX, h - 1, 0xffffcc66, 1.0)
+        pushLine(display, gX, 1, gX, h - 1, 0xffffd54f, 2.0)
     end
 
     local voiceCount = #(self._voicePlayheads or {})
     for i, p in ipairs(self._voicePlayheads or {}) do
         if p >= 0 and p <= 1 then
             local vX = 2 + math.floor(p * (w - 4))
-            pushLine(display, vX, 1, vX, h - 1, self._voiceColours[((i - 1) % #self._voiceColours) + 1] or (i == 1 and self._playheadColour or 0x99ff8888), 1.0)
+            pushLine(display, vX, 1, vX, h - 1, self._voiceColours[((i - 1) % #self._voiceColours) + 1] or self._playheadColour, 2.0)
         end
     end
 
     if self._playheadPos >= 0 and self._playheadPos <= 1 and voiceCount == 0 then
         local phX = 2 + math.floor(self._playheadPos * (w - 4))
-        pushLine(display, phX, 1, phX, h - 1, self._scrubbing and 0xffffff00 or self._playheadColour, 1.0)
+        pushLine(display, phX, 1, phX, h - 1, self._scrubbing and 0xffffff00 or self._playheadColour, 2.0)
     end
 
     setTransparentStyle(self.node)

@@ -61,7 +61,7 @@ return {
     label("waveform_label", 18, 210, 200, 18, "Sample / Capture Waveform", C.muted, 12),
     { id="waveform", type="WaveformView", x=px(18), y=px(232), w=px(560), h=px(190),
       props={ mode="samplePath", samplePath="/granular/voice/1/sample",
-              colour=C.sample, bg=C.panel, playheadColour=0xffff8888 },
+              colour=0xff4a5568, bg=C.panel, playheadColour=0xffffd54f },
       style={ bg=C.panel, border=C.panelBorder, borderWidth=1, radius=6 } },
     label("waveform_status", 28, 242, 390, 16, "Sample buffer", C.label, 10),
 
