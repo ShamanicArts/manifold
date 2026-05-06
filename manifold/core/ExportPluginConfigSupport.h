@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cmath>
 #include <functional>
+#include <memory>
 #include <vector>
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -271,6 +272,70 @@ inline void applyHostParameterSnapshotToProcessor(const ExportPluginConfig& conf
         const float value = alias.rawHostValue != nullptr ? alias.rawHostValue->load() : alias.defaultValue;
         setParamByPath(alias.internalPath.toStdString(), value);
     }
+}
+
+inline std::unique_ptr<juce::AudioProcessorValueTreeState> createHostParameterState(
+    juce::AudioProcessor& processor,
+    ExportPluginConfig& config) {
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+    params.reserve(config.paramAliases.size());
+
+    for (auto& alias : config.paramAliases) {
+        alias.rawHostValue = nullptr;
+        if (alias.hostParamId.isEmpty()) {
+            continue;
+        }
+
+        const auto kind = alias.hostParamKind.trim().toLowerCase();
+        if (kind == "choice" && alias.choices.size() > 0) {
+            params.push_back(std::make_unique<juce::AudioParameterChoice>(
+                juce::ParameterID(alias.hostParamId, 1),
+                alias.hostParamName.isNotEmpty() ? alias.hostParamName : alias.hostParamId,
+                alias.choices,
+                juce::jlimit(0, alias.choices.size() - 1,
+                             static_cast<int>(std::round(alias.defaultValue)))));
+        } else {
+            juce::NormalisableRange<float> range(alias.rangeMin, alias.rangeMax);
+            if (alias.skew > 0.0f && std::abs(alias.skew - 1.0f) > 1.0e-4f) {
+                range.skew = alias.skew;
+            }
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(
+                juce::ParameterID(alias.hostParamId, 1),
+                alias.hostParamName.isNotEmpty() ? alias.hostParamName : alias.hostParamId,
+                range,
+                juce::jlimit(alias.rangeMin, alias.rangeMax, alias.defaultValue)));
+        }
+    }
+
+    return std::make_unique<juce::AudioProcessorValueTreeState>(
+        processor,
+        nullptr,
+        "HostParameters",
+        juce::AudioProcessorValueTreeState::ParameterLayout{params.begin(), params.end()});
+}
+
+inline void bindHostParameterAliases(ExportPluginConfig& config,
+                                     juce::AudioProcessorValueTreeState& hostParams,
+                                     juce::AudioProcessorValueTreeState::Listener& listener) {
+    for (auto& alias : config.paramAliases) {
+        if (alias.hostParamId.isEmpty()) {
+            continue;
+        }
+        alias.rawHostValue = hostParams.getRawParameterValue(alias.hostParamId);
+        hostParams.addParameterListener(alias.hostParamId, &listener);
+    }
+}
+
+inline void applyHostParameterChange(const ExportPluginConfig& config,
+                                     const juce::String& parameterID,
+                                     float newValue,
+                                     const std::function<void(const std::string&, float)>& setParamByPath) {
+    const auto* alias = findExportAliasByHostParamId(config, parameterID);
+    if (alias == nullptr || alias->internalPath.isEmpty()) {
+        return;
+    }
+
+    setParamByPath(alias->internalPath.toStdString(), newValue);
 }
 
 } // namespace manifold::export_plugin

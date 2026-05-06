@@ -392,49 +392,8 @@ void BehaviorCoreProcessor::initialiseHostParameters() {
         return;
     }
 
-    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
-    params.reserve(exportPluginConfig_.paramAliases.size());
-
-    for (auto& alias : exportPluginConfig_.paramAliases) {
-        alias.rawHostValue = nullptr;
-        if (alias.hostParamId.isEmpty()) {
-            continue;
-        }
-
-        const auto kind = alias.hostParamKind.trim().toLowerCase();
-        if (kind == "choice" && alias.choices.size() > 0) {
-            params.push_back(std::make_unique<juce::AudioParameterChoice>(
-                juce::ParameterID(alias.hostParamId, 1),
-                alias.hostParamName.isNotEmpty() ? alias.hostParamName : alias.hostParamId,
-                alias.choices,
-                juce::jlimit(0, alias.choices.size() - 1,
-                             static_cast<int>(std::round(alias.defaultValue)))));
-        } else {
-            juce::NormalisableRange<float> range(alias.rangeMin, alias.rangeMax);
-            if (alias.skew > 0.0f && std::abs(alias.skew - 1.0f) > 1.0e-4f) {
-                range.skew = alias.skew;
-            }
-            params.push_back(std::make_unique<juce::AudioParameterFloat>(
-                juce::ParameterID(alias.hostParamId, 1),
-                alias.hostParamName.isNotEmpty() ? alias.hostParamName : alias.hostParamId,
-                range,
-                juce::jlimit(alias.rangeMin, alias.rangeMax, alias.defaultValue)));
-        }
-    }
-
-    hostParams_ = std::make_unique<juce::AudioProcessorValueTreeState>(
-        *this,
-        nullptr,
-        "HostParameters",
-        juce::AudioProcessorValueTreeState::ParameterLayout{params.begin(), params.end()});
-
-    for (auto& alias : exportPluginConfig_.paramAliases) {
-        if (alias.hostParamId.isEmpty()) {
-            continue;
-        }
-        alias.rawHostValue = hostParams_->getRawParameterValue(alias.hostParamId);
-        hostParams_->addParameterListener(alias.hostParamId, this);
-    }
+    hostParams_ = manifold::export_plugin::createHostParameterState(*this, exportPluginConfig_);
+    manifold::export_plugin::bindHostParameterAliases(exportPluginConfig_, *hostParams_, *this);
 }
 
 void BehaviorCoreProcessor::registerExportPluginEndpoints() {
@@ -808,12 +767,13 @@ void BehaviorCoreProcessor::parameterChanged(const juce::String& parameterID, fl
         return;
     }
 
-    auto* alias = findExportAliasByHostParamId(parameterID);
-    if (alias == nullptr || alias->internalPath.isEmpty()) {
-        return;
-    }
-
-    setParamByPath(alias->internalPath.toStdString(), newValue);
+    manifold::export_plugin::applyHostParameterChange(
+        exportPluginConfig_,
+        parameterID,
+        newValue,
+        [this](const std::string& path, float value) {
+            setParamByPath(path, value);
+        });
 }
 
 bool BehaviorCoreProcessor::applyExportPluginPath(const std::string& path, float value) {
