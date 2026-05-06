@@ -50,6 +50,7 @@ local DOCK_WINDOWS = {
   { key = "sources", title = "Capture / Sources",    accent = 0xffa78bfa },
   { key = "waveform",title = "Waveform",             accent = 0xffaa88aa },
   { key = "params",  title = "Parameters / Inspector", accent = 0xff22c55e },
+  { key = "compositor", title = "Compositor", accent = 0xfff97316 },
 }
 
 local function bor(...)
@@ -257,7 +258,7 @@ end
 -- Profiling: globals to avoid consuming local variable slots (200 limit)
 _G.__avsdProfileInit = function(ctx)
   ctx._profile = {}
-  for _, k in ipairs{"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline","applyCaptureWindow","segmentIngest","playbackUi","statusInterval"} do
+  for _, k in ipairs{"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline","applyCaptureWindow","segmentIngest","playbackUi","statusInterval","updateCompositorOutput"} do
     ctx._profile[k] = { total = 0, count = 0, max = 0, last = 0, avg = 0 }
   end
 end
@@ -1510,11 +1511,13 @@ local function buildDeckLayout(ctx, dockId)
   local wave, deck = split{ node = center, dir = imguiDir_Down, ratio = 0.25 }
   local sources, stage = split{ node = leftInner, dir = imguiDir_Down, ratio = 0.64 }
 
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[1]), deck)
+  local grid, comp = split{ node = deck, dir = imguiDir_Down, ratio = 0.65 }
+  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[1]), grid)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[2]), stage)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[3]), sources)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[4]), wave)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[5]), params)
+  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[6]), comp)
 end
 
 local function buildStageLayout(ctx, dockId)
@@ -1523,11 +1526,13 @@ local function buildStageLayout(ctx, dockId)
   local bottom, stage = split{ node = leftCol, dir = imguiDir_Down, ratio = 0.32 }
   local wave, deck = split{ node = bottom, dir = imguiDir_Down, ratio = 0.50 }
 
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[1]), deck)
+  local grid, comp = split{ node = deck, dir = imguiDir_Down, ratio = 0.65 }
+  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[1]), grid)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[2]), stage)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[3]), sources)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[4]), wave)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[5]), params)
+  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[6]), comp)
 end
 
 local function buildInspectorLayout(ctx, dockId)
@@ -1536,11 +1541,13 @@ local function buildInspectorLayout(ctx, dockId)
   local bottom, stage = split{ node = topLeft, dir = imguiDir_Down, ratio = 0.38 }
   local wave, deck = split{ node = bottom, dir = imguiDir_Down, ratio = 0.50 }
 
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[1]), deck)
+  local grid, comp = split{ node = deck, dir = imguiDir_Down, ratio = 0.65 }
+  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[1]), grid)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[2]), stage)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[3]), sources)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[4]), wave)
   imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[5]), params)
+  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[6]), comp)
 end
 
 local function syncToolbarButtons(ctx)
@@ -1936,10 +1943,18 @@ end
 
 local function selectGridCell(ctx, col, row)
   local clip = ctx.clips and ctx.clips[col] and ctx.clips[col][row] or nil
-  if not clip or clip.empty then return end
+  if not clip then return end
+
+  ctx.selectedView = "grid"
 
   if row <= 1 then
     ctx.sourceSelectionCol = col
+    return
+  end
+
+  -- Output tap: just select, don't change shader state
+  if clip and clip.kind == "output" then
+    ctx.selection = { col = col, row = row }
     return
   end
 
@@ -2343,15 +2358,17 @@ local function syncClipModel(ctx)
           }
         end
       end
-    else
-      ctx.clips[colId][1] = {
-        kind = "source",
-        sourceType = "empty",
-        name = "Add Source",
-        empty = true,
-      }
-    end
+    ctx.clips[colId][10] = { kind = "output", sourceColumn = colId, output = true }
+  else
+    ctx.clips[colId][1] = {
+      kind = "source",
+      sourceType = "empty",
+      name = "Add Source",
+      empty = true,
+    }
+    ctx.clips[colId][10] = { kind = "output", sourceColumn = colId, output = true }
   end
+end
 
   local sel = ctx.selection
   local valid = sel and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row] and not ctx.clips[sel.col][sel.row].empty
@@ -2370,13 +2387,22 @@ local function syncClipModel(ctx)
       ctx.clips[col][1] = {
         kind = "source",
         sourceType = "empty",
-        name = "Add Source",
+        name = "No Source",
         empty = true,
       }
+      for i = 2, 9 do
+        ctx.clips[col][i] = {
+          kind = "fx",
+          fxName = "+ Add FX",
+          emptyFx = true,
+          enabled = false,
+        }
+      end
+      ctx.clips[col][10] = { kind = "output", sourceColumn = col, output = true }
     end
   end
   profileEnd(ctx, "syncClipModel")
-  return maxCols, 9
+  return maxCols, 10
 end
 
 local function buildTapPipeline(ctx, col, tapIndex)
@@ -2508,6 +2534,17 @@ updateGridThumbnails = function(ctx)
               end
             end
           end
+        elseif clip.kind == "output" then
+          -- Output cell: full pipeline (source + all enabled FX)
+          sig = sig .. "|output"
+          local cd = ctx._colData and ctx._colData[col]
+          if ctx._gridThumbSigs[key] ~= sig then
+            ctx._gridThumbSigs[key] = sig
+            local payload = colBuildCellPipeline(ctx, col, 10)
+            if payload then
+              thumb:setCustomSurface("gpu_shader", payload)
+            end
+          end
         end
       end
     end
@@ -2579,6 +2616,7 @@ local function layoutClipGrid(ctx, w, h)
       local isSource = (row == 1)
       local isEmpty = clip and clip.empty
       local isEnabled = (not isSource) and clip and clip.enabled
+      local isOutput = clip and clip.kind == "output"
 
       local isSourceSelected = isSource and ((tonumber(ctx.sourceSelectionCol) or 1) == col)
       local isEffectSelected = (not isSource) and ctx.selection and ctx.selection.col == col and ctx.selection.row == row
@@ -2591,7 +2629,7 @@ local function layoutClipGrid(ctx, w, h)
         bg = CELL_SRC_TINT
         borderClr = isSourceSelected and CELL_SRC_SEL_BD or 0xff22d3ee
         borderThick = isSourceSelected and 2 or 1
-      elseif isEnabled then
+      elseif isEnabled or isOutput then
         bg = CELL_FX_TINT
         borderClr = isEffectSelected and CELL_FX_SEL_BD or CELL_BORDER
         borderThick = isEffectSelected and 2 or 1
@@ -2610,9 +2648,9 @@ local function layoutClipGrid(ctx, w, h)
         cell.thumb:setBounds(0, 0, 0, 0)
         cell.label:setBounds(0, 0, cellW, cellH)
         cell.label:setDisplayList({
-          { cmd = "drawText", text = "+", color = 0xff334155, fontSize = 16, align = "center", valign = "middle" },
+          { cmd = "drawText", text = "No Source", color = 0xff334155, fontSize = 9, align = "center", valign = "middle" },
         })
-      elseif isSource or isEnabled then
+      elseif isSource or isEnabled or isOutput then
         local contentAspectW = ctx.outputW or 1920
         local contentAspectH = ctx.outputH or 1080
         if isOverlay then
@@ -2620,18 +2658,18 @@ local function layoutClipGrid(ctx, w, h)
           local ix, iy, iw, ih = fitBox(math.max(1, cellW - 4), math.max(1, cellH - 4), contentAspectW, contentAspectH)
           cell.thumb:setBounds(2 + ix, 2 + iy, iw, ih)
           cell.label:setBounds(4, math.max(1, cellH - 13), math.max(1, cellW - 8), labelH)
-          local labelText = clip and (clip.name or clip.fxName) or ""
-          local labelClr = isSource and 0xff22d3ee or 0xff94a3b8
+          local labelText = isOutput and "OUT" or (clip and (clip.name or clip.fxName) or "")
+          local labelClr = isSource and 0xff22d3ee or (isOutput and 0xffa78bfa or 0xff94a3b8)
           cell.label:setDisplayList({
             { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = labelH + 2, color = 0xaa000000 },
-            { cmd = "drawText", text = labelText, color = labelClr, fontSize = 8, align = "left", valign = "middle" },
+            { cmd = "drawText", text = labelText, color = labelClr, fontSize = 8, align = isOutput and "right" or "left", valign = "middle" },
           })
         else
           local ix, iy, iw, ih = fitBox(math.max(1, cellW - 4), math.max(1, thumbH - 2), contentAspectW, contentAspectH)
           cell.thumb:setBounds(2 + ix, 2 + iy, iw, ih)
-          local labelText = clip and (clip.name or clip.fxName) or ""
+          local labelText = isOutput and "OUT" or (clip and (clip.name or clip.fxName) or "")
           cell.label:setBounds(4, math.max(1, thumbH + 2), math.max(1, cellW - 8), labelH)
-          local labelClr = isSource and 0xff22d3ee or (isEnabled and 0xff94a3b8 or 0xff334155)
+          local labelClr = isSource and 0xff22d3ee or (isOutput and 0xffa78bfa or (isEnabled and 0xff94a3b8 or 0xff334155))
           cell.label:setDisplayList({
             { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = labelH + 2, color = bg },
             { cmd = "drawText", text = labelText, color = labelClr, fontSize = 8 },
@@ -2918,6 +2956,13 @@ local function renderSourceInspectorWindow(ctx)
   end
   imguiTextColored(sourceSelected and 0xff22d3ee or 0xff94a3b8, label)
 
+  -- Check if this column has no source assigned yet
+  local cd = ctx._colData and ctx._colData[sourceCol]
+  if not cd or not cd.source then
+    imguiTextColored(0xff94a3b8, "No source — select one to assign")
+    imguiSpacing()
+  end
+
   -- Source picker button + nested popup (replaces flat dropdown)
   if imguiButton("Source: " .. colSourceLabel(ctx, sourceCol)) then
     imguiOpenPopup("##srcInspectorPicker")
@@ -2996,7 +3041,95 @@ local function renderSourceInspectorWindow(ctx)
   renderEmbeddedPanel(ctx, "sourceEmbed", layoutSourceEmbed, math.max(120, math.floor(tonumber(avail.y) or 120) - 18))
 end
 
+renderCompositorLayerControls = function(ctx)
+  local selIdx = ctx.compositorSelection and ctx.compositorSelection.layerIndex
+  if not selIdx then
+    imguiTextColored(0xff94a3b8, "No layer selected")
+    return
+  end
+  local layer = ctx.compositor and ctx.compositor.layers[selIdx]
+  if not layer then
+    imguiTextColored(0xff94a3b8, "No layer selected")
+    return
+  end
+
+  imguiTextColored(0xfff97316, "Compositor Layer " .. selIdx .. ": " .. (layer.name or ""))
+  local curCol = layer.sourceColumn or 1
+
+  -- Column picker button + popup
+  imguiText("Column")
+  local colLabel = "Col " .. curCol .. " (" .. colSourceLabel(ctx, curCol) .. ")"
+  if imguiButton(colLabel .. "###compoColBtn") then imguiOpenPopup("##compoCol") end
+  if imguiBeginPopup("##compoCol") then
+    if ctx._colData then
+      for cid, _ in pairs(ctx._colData) do
+        local cl = "Col " .. cid .. " (" .. colSourceLabel(ctx, cid) .. ")"
+        if imguiSelectable(cl) then
+          layer.sourceColumn = cid
+          ctx._compoThumbSigs = {}
+        end
+      end
+    end
+    imguiEndPopup()
+  end
+
+  -- Tap picker button + popup
+  imguiText("Tap")
+  local cd = ctx._colData and ctx._colData[curCol]
+  local numFx = cd and #cd.fx or 8
+  local tapLabels = { "Output", "Raw Source" }
+  local tapVals = { nil, 0 }
+  for ti = 1, numFx do
+    table.insert(tapLabels, "FX " .. ti)
+    table.insert(tapVals, ti)
+  end
+  local curTap = layer.tapIndex
+  local curTapLabel = "Output"
+  for i, v in ipairs(tapVals) do
+    if v == curTap then curTapLabel = tapLabels[i]; break end
+  end
+  if imguiButton(curTapLabel .. "###compoTapBtn") then imguiOpenPopup("##compoTap") end
+  if imguiBeginPopup("##compoTap") then
+    for i, label in ipairs(tapLabels) do
+      if imguiSelectable(label) then
+        layer.tapIndex = tapVals[i]
+        ctx._compoThumbSigs = {}
+      end
+    end
+    imguiEndPopup()
+  end
+
+  -- Blend mode dropdown (popup pattern)
+  imguiText("Blend")
+  local blendModes = { "normal", "add", "screen", "multiply", "overlay", "difference" }
+  local curMode = layer.blendMode or "normal"
+  if imguiButton(curMode .. "###compoBlendBtn") then imguiOpenPopup("##compoBlend") end
+  if imguiBeginPopup("##compoBlend") then
+    for _, bm in ipairs(blendModes) do
+      if imguiSelectable(bm, bm == curMode) then layer.blendMode = bm; end
+    end
+    imguiEndPopup()
+  end
+
+  -- Opacity slider
+  imguiText("Opacity")
+  local opacity = layer.opacity or 1.0
+  local newOpacity = imguiSliderFloat("##compoOpacity", opacity, 0.0, 1.0)
+  if math.abs(newOpacity - opacity) > 0.001 then layer.opacity = clamp(newOpacity, 0, 1) end
+
+  -- Visibility toggle
+  imguiText("Visible")
+  local vis = layer.visible
+  local newVis = imguiCheckbox("##compoVis", vis)
+  if newVis ~= vis then layer.visible = newVis; ctx._compoThumbSigs = {} end
+end
+
 local function renderEffectInspectorWindow(ctx)
+  if ctx.selectedView == "compositor" then
+    renderCompositorLayerControls(ctx)
+    return
+  end
+
   local sel = ctx.selection
   local effectSelected = sel and sel.row and sel.row > 1
   local label
@@ -3010,6 +3143,16 @@ local function renderEffectInspectorWindow(ctx)
     label = "Effect"
   end
   imguiTextColored(effectSelected and 0xff22d3ee or 0xff94a3b8, label)
+
+  -- Check if the selected FX cell is empty
+  local isEmptyFx = sel and sel.col and sel.row and sel.row > 1 and
+    ctx.clips and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row] and
+    ctx.clips[sel.col][sel.row].emptyFx
+  if isEmptyFx then
+    imguiTextColored(0xff94a3b8, "Select an effect to assign")
+    imguiSpacing()
+  end
+
   imguiSeparator()
   local avail = imguiGetContentRegionAvail()
   renderEmbeddedPanel(ctx, "effectEmbed", layoutEffectEmbed, math.max(180, math.floor(tonumber(avail.y) or 180) - 18))
@@ -3268,6 +3411,213 @@ local function renderDeckPanel(ctx)
   imguiRetainedPanel(ctx.widgets.deckEmbed.node, pw, gridH, true)
 end
 
+ensureCompositorCells = function(ctx, parentNode)
+  if not parentNode then return 0 end
+  local numLayers = #ctx.compositor.layers
+  ctx._compoCells = ctx._compoCells or {}
+  for i = 1, numLayers do
+    local key = "compo_" .. i
+    if not ctx._compoCells[key] then
+      local cell = parentNode:addChild("compoCell_" .. i)
+      local thumb = cell:addChild("compoCell_" .. i .. "_thumb")
+      local lbl = cell:addChild("compoCell_" .. i .. "_lbl")
+      thumb:setInterceptsMouse(false, false)
+      lbl:setInterceptsMouse(false, false)
+      cell:setInterceptsMouse(true, true)
+      local idx = i
+      cell:setOnMouseDown(function()
+        ctx.selectedView = "compositor"
+        ctx.compositorSelection = { layerIndex = idx }
+      end)
+      ctx._compoCells[key] = { node = cell, thumb = thumb, label = lbl, index = i }
+    end
+  end
+  -- Hide cells beyond layer count
+  for key, cell in pairs(ctx._compoCells) do
+    if cell.index > numLayers then
+      cell.node:setBounds(0, 0, 0, 0)
+    end
+  end
+  return numLayers
+end
+
+compositorLayerCellPipeline = function(ctx, layer)
+  if not layer or not layer.visible then return nil end
+  local col = layer.sourceColumn or 1
+  local cd = ctx._colData and ctx._colData[col]
+  if not cd or not cd.source then return nil end
+  local tapIndex = layer.tapIndex
+  if tapIndex == nil then
+    return colBuildCellPipeline(ctx, col, 10)  -- output tap = all FX
+  elseif tapIndex == 0 then
+    local descriptor, _ = colSourceDescriptor(ctx, col)
+    if not descriptor then return nil end
+    local ok, payload = pcall(shaders.buildPipeline, {}, "contain", descriptor)
+    if ok then return payload end
+    return nil
+  else
+    return colBuildCellPipeline(ctx, col, tapIndex + 1)
+  end
+end
+
+updateCompositorThumbnails = function(ctx)
+  if not ctx._compoCells then return end
+  ctx._compoThumbSigs = ctx._compoThumbSigs or {}
+  for i = 1, #ctx.compositor.layers do
+    local key = "compo_" .. i
+    local cell = ctx._compoCells[key]
+    if not cell then break end
+    local layer = ctx.compositor.layers[i]
+    local sig = "compo_" .. i .. "|" .. tostring(layer.sourceColumn) .. "|" .. tostring(layer.tapIndex) .. "|" .. tostring(layer.visible)
+    if ctx._compoThumbSigs[key] ~= sig then
+      ctx._compoThumbSigs[key] = sig
+      local payload = compositorLayerCellPipeline(ctx, layer)
+      if payload then
+        cell.thumb:setCustomSurface("gpu_shader", payload)
+      end
+    end
+  end
+end
+
+updateCompositorOutput = function(ctx)
+  profileStart(ctx, "updateCompositorOutput")
+  local layers = ctx.compositor.layers
+  local outNode = ctx.widgets.outputViewport.node
+  if not outNode then profileEnd(ctx, "updateCompositorOutput"); return end
+
+  -- Find the first visible layer, or use layer 1 even if invisible
+  local activeLayer = nil
+  for i = 1, #layers do
+    if layers[i].visible then
+      activeLayer = layers[i]
+      break
+    end
+  end
+  activeLayer = activeLayer or layers[1]
+
+  -- Render that layer's pipeline directly on the output viewport
+  local payload = compositorLayerCellPipeline(ctx, activeLayer)
+  if payload then
+    outNode:setCustomSurface("gpu_shader", payload)
+  end
+  profileEnd(ctx, "updateCompositorOutput")
+end
+
+renderCompositorPanel = function(ctx)
+  local av = imguiGetContentRegionAvail()
+  if av.x < 4 or av.y < 4 then return end
+  local pw = math.floor(av.x)
+  local ph = math.floor(av.y)
+
+  -- Create the compositor embed node on first render
+  if not ctx._compositorEmbed then
+    local rootNode = ctx.root and ctx.root.node
+    if rootNode and rootNode.addChild then
+      ctx._compositorEmbed = rootNode:addChild("__compositor_embed")
+    end
+  end
+
+  local compo = ctx.compositor
+  local pad, gap = 8, 4
+
+  -- Toolbar
+  local toolbarH = 22
+  local curAlign = compo.orientation or "bottom-up"
+  local alignments = { "bottom-up", "left-to-right", "top-down" }
+  local alignLabels = { "^BU", ">LR", "vTD" }
+  for ai, a in ipairs(alignments) do
+    if a == curAlign then
+      imguiText(" " .. alignLabels[ai] .. " ")
+    elseif imguiButton(alignLabels[ai] .. "##compAlign" .. ai) then
+      compo.orientation = a
+    end
+    if ai < #alignments then imguiSameLine() end
+  end
+  imguiSameLine()
+
+  if imguiButton("+Layer") then
+    local idx = #compo.layers + 1
+    compo.layers[idx] = {
+      sourceColumn = 1, tapIndex = nil,
+      blendMode = "normal", opacity = 1.0, visible = true,
+      name = "Layer " .. idx,
+    }
+    ctx.compositorSelection = { layerIndex = idx }
+    ctx._compoThumbSigs = {}
+  end
+  imguiSameLine()
+
+  local selIdx = ctx.compositorSelection and ctx.compositorSelection.layerIndex
+  if selIdx and #compo.layers > 1 and imguiButton("Delete") then
+    table.remove(compo.layers, selIdx)
+    ctx.compositorSelection = { layerIndex = math.max(1, math.min(#compo.layers, selIdx)) }
+    ctx._compoThumbSigs = {}
+  end
+
+  -- Layer cells
+  local cellsH = math.max(1, ph - toolbarH - 8)
+  local numLayers = ensureCompositorCells(ctx, ctx._compositorEmbed)
+  if numLayers < 1 then return end
+  updateCompositorThumbnails(ctx)
+
+  local cellW, cellH
+  if compo.orientation == "left-to-right" then
+    cellH = math.max(28, cellsH)
+    cellW = math.max(50, math.floor((pw - pad * 2 - gap * (numLayers - 1)) / numLayers))
+  else
+    cellW = math.max(60, pw - pad * 2)
+    cellH = math.max(28, math.floor((cellsH - gap * (numLayers - 1)) / numLayers))
+  end
+
+  setBounds(ctx._compositorEmbed, pad, toolbarH, pw - pad * 2, cellsH)
+
+  for i = 1, numLayers do
+    local key = "compo_" .. i
+    local cell = ctx._compoCells[key]
+    if not cell then break end
+
+    local cx, cy
+    if compo.orientation == "bottom-up" then
+      local displayIdx = numLayers - i + 1
+      cx = 0; cy = (displayIdx - 1) * (cellH + gap)
+    elseif compo.orientation == "left-to-right" then
+      cx = (i - 1) * (cellW + gap); cy = 0
+    else -- top-down
+      cx = 0; cy = (i - 1) * (cellH + gap)
+    end
+
+    cell.node:setBounds(cx, cy, cellW, cellH)
+
+    local isSelected = ctx.compositorSelection and ctx.compositorSelection.layerIndex == i
+    local layer = compo.layers[i]
+    local hasSignal = layer and layer.visible and ctx._colData and ctx._colData[layer.sourceColumn or 1] and ctx._colData[layer.sourceColumn or 1].source
+    local bg = hasSignal and 0xff0d1420 or 0xff080c18
+    local borderClr = isSelected and 0xfff97316 or 0xff1a1a22
+    local borderThick = isSelected and 2 or 1
+
+    cell.node:setDisplayList({
+      { cmd = "fillRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = bg },
+      { cmd = "drawRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = borderClr, thickness = borderThick },
+    })
+
+    local thumbH = math.max(1, cellH - 16)
+    if hasSignal then
+      cell.thumb:setBounds(2, 2, math.max(1, cellW - 4), thumbH)
+    else
+      cell.thumb:setBounds(0, 0, 0, 0)
+    end
+
+    local labelText = layer and (layer.name or "Layer " .. i) or "Layer " .. i
+    cell.label:setBounds(4, math.max(1, thumbH + 2), math.max(1, cellW - 8), 14)
+    cell.label:setDisplayList({
+      { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = 16, color = bg },
+      { cmd = "drawText", text = labelText, color = isSelected and 0xfff97316 or 0xff94a3b8, fontSize = 8 },
+    })
+  end
+
+  imguiRetainedPanel(ctx._compositorEmbed, pw - pad * 2, cellsH, true)
+end
+
 local function renderPanel(ctx, win)
   if imguiBegin(windowName(ctx, win), imguiWindowFlags_NoCollapse) then
     if win.key == "sources" then
@@ -3278,6 +3628,8 @@ local function renderPanel(ctx, win)
       renderStagePanel(ctx)
     elseif win.key == "deck" then
       renderDeckPanel(ctx)
+    elseif win.key == "compositor" then
+      renderCompositorPanel(ctx)
     elseif win.key == "waveform" then
       renderWaveformPanel(ctx)
     end
@@ -3360,6 +3712,19 @@ function M.init(ctx)
   ctx.outputH = 1080
   ctx.aspectMode = "16:9"
   ctx._colData = {}  -- column data model, populated by syncCol1FromShader on first grid render
+  ctx.selectedView = "grid"  -- "grid" | "compositor"
+  ctx.compositor = { orientation = "bottom-up", layers = {} }
+  for i = 1, 4 do
+    ctx.compositor.layers[i] = {
+      sourceColumn = 1,
+      tapIndex = nil,
+      blendMode = "normal",
+      opacity = i == 1 and 1.0 or 0.0,
+      visible = i == 1,
+      name = "Layer " .. i,
+    }
+  end
+  ctx.compositorSelection = { layerIndex = 1 }
 
   for _, w in pairs(ctx.allWidgets or {}) do
     if type(w) == "table" then
@@ -3685,6 +4050,10 @@ function M.update(ctx)
     setText(ctx.widgets.fxStatus, string.format("FX%d type=%d mix=%.2f", ctx.fxSlot, round(readParam(rackFxTypePath(ctx.fxSlot), 0)), readParam(rackFxMixPath(ctx.fxSlot), 0)))
     profileEnd(ctx, "statusInterval")
   end
+
+  profileStart(ctx, "updateCompositorOutput")
+  updateCompositorOutput(ctx)
+  profileEnd(ctx, "updateCompositorOutput")
 end
 
 function M.cleanup(ctx)
