@@ -574,6 +574,16 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/scripting/core/LuaCoreEngine.cpp
     manifold/primitives/scripting/bindings/LuaUIBindings.h
     manifold/primitives/scripting/bindings/LuaUIBindings.cpp
+    manifold/primitives/scripting/bindings/LuaUIBindingHelpers.h
+    manifold/primitives/scripting/bindings/LuaUIBindingHelpers.cpp
+    manifold/primitives/scripting/bindings/LuaCanvasBindings.h
+    manifold/primitives/scripting/bindings/LuaCanvasBindings.cpp
+    manifold/primitives/scripting/bindings/LuaGraphicsBindings.h
+    manifold/primitives/scripting/bindings/LuaGraphicsBindings.cpp
+    manifold/primitives/scripting/bindings/LuaOpenGLBindings.h
+    manifold/primitives/scripting/bindings/LuaOpenGLBindings.cpp
+    manifold/primitives/scripting/bindings/LuaUIConstantsBindings.h
+    manifold/primitives/scripting/bindings/LuaUIConstantsBindings.cpp
     manifold/primitives/scripting/bindings/LuaRuntimeNodeBindings.h
     manifold/primitives/scripting/bindings/LuaRuntimeNodeBindings.cpp
     manifold/primitives/scripting/ScriptPathResolver.h
@@ -583,6 +593,16 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/scripting/bindings/LuaDspPrimitiveBindings.cpp
     manifold/primitives/scripting/bindings/LuaCommandBindings.h
     manifold/primitives/scripting/bindings/LuaCommandBindings.cpp
+    manifold/primitives/scripting/bindings/LuaPrimitiveWrapperHelpers.h
+    manifold/primitives/scripting/bindings/LuaPrimitiveWrapperHelpers.cpp
+    manifold/primitives/scripting/bindings/LuaWaveformHelpers.h
+    manifold/primitives/scripting/bindings/LuaWaveformHelpers.cpp
+    manifold/primitives/scripting/bindings/LuaUtilityHelpers.h
+    manifold/primitives/scripting/bindings/LuaUtilityHelpers.cpp
+    manifold/primitives/scripting/bindings/LuaWaveformBindings.h
+    manifold/primitives/scripting/bindings/LuaWaveformBindings.cpp
+    manifold/primitives/scripting/bindings/LuaUtilityBindings.h
+    manifold/primitives/scripting/bindings/LuaUtilityBindings.cpp
     manifold/primitives/scripting/bindings/LuaDspBindings.h
     manifold/primitives/scripting/bindings/LuaDspBindings.cpp
     manifold/primitives/scripting/bindings/LuaEventBindings.h

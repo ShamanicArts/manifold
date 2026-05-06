@@ -19,8 +19,4 @@ public:
      * @param state The ILuaControlState for command posting and state access
      */
     static void registerBindings(LuaCoreEngine& engine, ILuaControlState& state);
-
-private:
-    static void registerWaveformBindings(sol::state& lua, ILuaControlState& state);
-    static void registerUtilityBindings(sol::state& lua, ILuaControlState& state);
 };
