@@ -38,6 +38,7 @@ extern "C" {
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <map>
 #include <mutex>
@@ -510,6 +511,70 @@ bool isValidUIRendererMode(const std::string& mode) {
         || mode == "imgui-overlay"
         || mode == "imgui-replace"
         || mode == "imgui-direct";
+}
+
+float mlClamp01(float v) {
+    return std::clamp(v, 0.0f, 1.0f);
+}
+
+float mlSigmoid(float x) {
+    if (x >= 0.0f) {
+        const float z = std::exp(-x);
+        return 1.0f / (1.0f + z);
+    }
+    const float z = std::exp(x);
+    return z / (1.0f + z);
+}
+
+float mlSmoothstep(float edge0, float edge1, float x) {
+    if (edge1 <= edge0) {
+        return x >= edge1 ? 1.0f : 0.0f;
+    }
+    const float t = mlClamp01((x - edge0) / (edge1 - edge0));
+    return t * t * (3.0f - 2.0f * t);
+}
+
+float mlPostprocessMaskValue(float rawValue,
+                             float gain,
+                             bool useSigmoid,
+                             float threshold,
+                             float feather,
+                             bool invert,
+                             bool applySigmoid) {
+    float value = rawValue;
+    if (useSigmoid && applySigmoid) {
+        value = mlSigmoid(value);
+    }
+    value = mlClamp01(value * std::max(0.01f, gain));
+
+    if (feather > 0.0f) {
+        const float half = feather * 0.5f;
+        value = mlSmoothstep(threshold - half, threshold + half, value);
+    } else {
+        value = value >= threshold ? 1.0f : 0.0f;
+    }
+
+    if (invert) {
+        value = 1.0f - value;
+    }
+    return mlClamp01(value);
+}
+
+float mlSampleMaskNearest(const std::vector<float>& mask,
+                          int maskW,
+                          int maskH,
+                          int dstX,
+                          int dstY,
+                          int dstW,
+                          int dstH) {
+    if (mask.empty() || maskW <= 0 || maskH <= 0 || dstW <= 0 || dstH <= 0) {
+        return 0.0f;
+    }
+    const float u = (static_cast<float>(dstX) + 0.5f) / static_cast<float>(dstW);
+    const float v = (static_cast<float>(dstY) + 0.5f) / static_cast<float>(dstH);
+    const int sx = std::clamp(static_cast<int>(u * static_cast<float>(maskW)), 0, maskW - 1);
+    const int sy = std::clamp(static_cast<int>(v * static_cast<float>(maskH)), 0, maskH - 1);
+    return mask[static_cast<std::size_t>(sy) * static_cast<std::size_t>(maskW) + static_cast<std::size_t>(sx)];
 }
 
 const char* uiRendererModeToString(int mode) {
@@ -2862,6 +2927,91 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
                 return false;
             }
             return self->ingestLatestFrame(processor->getPlayTimeSamples(), highResNowSeconds());
+        },
+        "ingestSegmentedLatest", [&state](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self,
+                                            const std::shared_ptr<manifold::ml::MLPipeline>& pipeline,
+                                            sol::optional<sol::table> opts) -> bool {
+            auto* processor = state.getProcessor();
+            if (!self || !pipeline || !pipeline->isLoaded() || processor == nullptr) {
+                return false;
+            }
+
+            auto frame = manifold::video::VideoCaptureManager::instance().getLatestFrameCopy();
+            if (!frame.valid()) {
+                return false;
+            }
+
+            float gain = 1.0f;
+            bool useSigmoid = true;
+            float threshold = 0.5f;
+            float feather = 0.15f;
+            bool invert = false;
+            float background = 0.0f;
+            if (opts) {
+                auto table = *opts;
+                gain = static_cast<float>(table["gain"].get_or(1.0));
+                useSigmoid = table["useSigmoid"].get_or(true);
+                threshold = static_cast<float>(table["threshold"].get_or(0.5));
+                feather = static_cast<float>(table["feather"].get_or(0.15));
+                invert = table["invert"].get_or(false);
+                background = static_cast<float>(table["background"].get_or(0.0));
+            }
+            threshold = mlClamp01(threshold);
+            feather = mlClamp01(feather);
+            background = mlClamp01(background);
+
+            std::vector<float> rawOutput;
+            if (!pipeline->infer(frame.rgba.data(), frame.width, frame.height, rawOutput)) {
+                return false;
+            }
+
+            const int maskW = pipeline->inputWidth();
+            const int maskH = pipeline->inputHeight();
+            const std::size_t maskSize = static_cast<std::size_t>(maskW) * static_cast<std::size_t>(maskH);
+            if (maskW <= 0 || maskH <= 0 || rawOutput.size() < maskSize) {
+                return false;
+            }
+
+            float minValue = rawOutput[0];
+            float maxValue = rawOutput[0];
+            for (std::size_t i = 1; i < maskSize; ++i) {
+                minValue = std::min(minValue, rawOutput[i]);
+                maxValue = std::max(maxValue, rawOutput[i]);
+            }
+            const bool applySigmoid = useSigmoid && (minValue < 0.0f || maxValue > 1.0f);
+
+            std::vector<float> processedMask(maskSize);
+            for (std::size_t i = 0; i < maskSize; ++i) {
+                processedMask[i] = mlPostprocessMaskValue(rawOutput[i], gain, useSigmoid, threshold, feather, invert, applySigmoid);
+            }
+
+            manifold::video::FrameData out;
+            out.width = frame.width;
+            out.height = frame.height;
+            out.sequence = frame.sequence;
+            const std::size_t pixelCount = static_cast<std::size_t>(out.width) * static_cast<std::size_t>(out.height);
+            out.rgba.resize(pixelCount * 4u);
+            for (int y = 0; y < out.height; ++y) {
+                for (int x = 0; x < out.width; ++x) {
+                    const float alpha = mlSampleMaskNearest(processedMask, maskW, maskH, x, y, out.width, out.height);
+                    const std::size_t pixelIndex = static_cast<std::size_t>(y) * static_cast<std::size_t>(out.width) + static_cast<std::size_t>(x);
+                    const std::size_t base = pixelIndex * 4u;
+                    if (background <= 0.0f) {
+                        out.rgba[base + 0] = frame.rgba[base + 0];
+                        out.rgba[base + 1] = frame.rgba[base + 1];
+                        out.rgba[base + 2] = frame.rgba[base + 2];
+                        out.rgba[base + 3] = static_cast<std::uint8_t>(std::lround(alpha * 255.0f));
+                    } else {
+                        const float mixFactor = background + alpha * (1.0f - background);
+                        out.rgba[base + 0] = static_cast<std::uint8_t>(std::lround(static_cast<float>(frame.rgba[base + 0]) * mixFactor));
+                        out.rgba[base + 1] = static_cast<std::uint8_t>(std::lround(static_cast<float>(frame.rgba[base + 1]) * mixFactor));
+                        out.rgba[base + 2] = static_cast<std::uint8_t>(std::lround(static_cast<float>(frame.rgba[base + 2]) * mixFactor));
+                        out.rgba[base + 3] = 255;
+                    }
+                }
+            }
+
+            return self->ingestFrame(std::move(out), processor->getPlayTimeSamples(), highResNowSeconds());
         },
         "copyRecentToSampler", [&state](const std::shared_ptr<manifold::video::VideoRetrospectiveCapture>& self,
                                           const std::shared_ptr<manifold::video::VideoSampler>& sampler,
