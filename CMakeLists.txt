@@ -1175,6 +1175,16 @@ add_executable(ImGuiOpenGLBackendSmokeHarness manifold/headless/ImGuiOpenGLBacke
 
 add_executable(DspPrimitiveContractHarness manifold/headless/DspPrimitiveContractHarness.cpp)
 
+add_executable(MidiSupportContractHarness manifold/headless/MidiSupportContractHarness.cpp)
+
+add_executable(BehaviorQuerySupportContractHarness manifold/headless/BehaviorQuerySupportContractHarness.cpp)
+
+add_executable(BehaviorParamSupportContractHarness manifold/headless/BehaviorParamSupportContractHarness.cpp)
+
+add_executable(BehaviorHousekeepingSupportContractHarness manifold/headless/BehaviorHousekeepingSupportContractHarness.cpp)
+
+add_executable(DspSlotSupportContractHarness manifold/headless/DspSlotSupportContractHarness.cpp)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -1660,6 +1670,39 @@ target_link_libraries(DspPrimitiveContractHarness
         Manifold
         juce::juce_audio_processors)
 
+manifold_target_include_project_and_ableton(MidiSupportContractHarness)
+target_link_libraries(MidiSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors)
+
+manifold_target_include_project_and_ableton(BehaviorQuerySupportContractHarness)
+target_link_libraries(BehaviorQuerySupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors)
+
+manifold_target_include_project_and_ableton(BehaviorParamSupportContractHarness)
+target_link_libraries(BehaviorParamSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors)
+
+manifold_target_include_project_and_ableton(BehaviorHousekeepingSupportContractHarness)
+target_link_libraries(BehaviorHousekeepingSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors)
+
+manifold_target_include_project_and_ableton(DspSlotSupportContractHarness)
+target_link_libraries(DspSlotSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway)
+
 target_include_directories(VideoSamplerHarness
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1795,6 +1838,36 @@ target_compile_definitions(OSCServerContractHarness
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(LinkSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(MidiSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(BehaviorQuerySupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(BehaviorParamSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(BehaviorHousekeepingSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(DspSlotSupportContractHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
@@ -2217,6 +2290,41 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dsp_primitive_contract_golden.json)
 set_tests_properties(manifold_dsp_primitive_contract PROPERTIES
     LABELS "manifold;dsp;primitive;contract")
+
+add_test(
+    NAME manifold_midi_support_contract
+    COMMAND $<TARGET_FILE:MidiSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/midi_support_contract_golden.json)
+set_tests_properties(manifold_midi_support_contract PROPERTIES
+    LABELS "manifold;core;support;midi;contract")
+
+add_test(
+    NAME manifold_behavior_query_support_contract
+    COMMAND $<TARGET_FILE:BehaviorQuerySupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/behavior_query_support_contract_golden.json)
+set_tests_properties(manifold_behavior_query_support_contract PROPERTIES
+    LABELS "manifold;core;support;query;contract")
+
+add_test(
+    NAME manifold_behavior_param_support_contract
+    COMMAND $<TARGET_FILE:BehaviorParamSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/behavior_param_support_contract_golden.json)
+set_tests_properties(manifold_behavior_param_support_contract PROPERTIES
+    LABELS "manifold;core;support;param;contract")
+
+add_test(
+    NAME manifold_behavior_housekeeping_support_contract
+    COMMAND $<TARGET_FILE:BehaviorHousekeepingSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/behavior_housekeeping_support_contract_golden.json)
+set_tests_properties(manifold_behavior_housekeeping_support_contract PROPERTIES
+    LABELS "manifold;core;support;housekeeping;contract")
+
+add_test(
+    NAME manifold_dsp_slot_support_contract
+    COMMAND $<TARGET_FILE:DspSlotSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dsp_slot_support_contract_golden.json)
+set_tests_properties(manifold_dsp_slot_support_contract PROPERTIES
+    LABELS "manifold;core;support;dsp;slot;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:
