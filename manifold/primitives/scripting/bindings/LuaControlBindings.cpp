@@ -750,6 +750,19 @@ void LuaControlBindings::registerCommandBindings(sol::state& lua,
         case ParseResult::Kind::Enqueue:
             processor->postControlCommandPayload(result.command);
             break;
+        case ParseResult::Kind::RecordStart: {
+            auto& controlServer = processor->getControlServer();
+            auto response = controlServer.startRecording(
+                result.recordFormat, result.recordDuration, result.capturePath);
+            juce::ignoreUnused(response);
+            break;
+        }
+        case ParseResult::Kind::RecordStop: {
+            auto& controlServer = processor->getControlServer();
+            auto response = controlServer.stopRecording();
+            juce::ignoreUnused(response);
+            break;
+        }
         case ParseResult::Kind::Query:
         case ParseResult::Kind::Watch:
         case ParseResult::Kind::Inject:

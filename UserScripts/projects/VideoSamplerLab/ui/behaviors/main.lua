@@ -228,6 +228,27 @@ local function stopPlayback(ctx)
   bindSamplerSurface(ctx, 0)
 end
 
+local function toggleRecording(ctx)
+  if type(command) ~= "function" then
+    setText(ctx.widgets and ctx.widgets.recordStatus, "Recording: command() unavailable")
+    return
+  end
+  if ctx._recording then
+    command("RECORD", "STOP")
+    ctx._recording = false
+    setLabel(ctx.widgets and ctx.widgets.recordBtn, "Record")
+    setText(ctx.widgets and ctx.widgets.recordStatus, "Recording: stopped")
+  else
+    local timestamp = tostring(math.floor((getTime and getTime() or 0) * 1000))
+    local path = "/tmp/vsl_rec_" .. timestamp
+    command("RECORD", "START", "tga", path)
+    ctx._recording = true
+    ctx._recordPath = path
+    setLabel(ctx.widgets and ctx.widgets.recordBtn, "Stop Rec")
+    setText(ctx.widgets and ctx.widgets.recordStatus, "Recording: " .. path)
+  end
+end
+
 local function setCaptureButtonAppearance(ctx)
   local btn = ctx.widgets and ctx.widgets.captureNow
   if not btn then return end
@@ -325,6 +346,8 @@ function M.init(ctx)
   ctx._lastVideoCommitOk = false
   ctx.captureMode = round(readParam("/video_sampler_lab/capture_mode", 0))
   ctx.captureRecording = false
+  ctx._recording = false
+  ctx._recordPath = nil
 
   for _, w in pairs(ctx.allWidgets or {}) do
     if type(w) == "table" then
@@ -356,6 +379,8 @@ function M.init(ctx)
       setText(ctx.widgets and ctx.widgets.sampleOverlay, "cleared")
     end
   end
+  local recordBtn = ctx.widgets and ctx.widgets.recordBtn
+  if recordBtn then recordBtn._onClick = function() toggleRecording(ctx) end end
   local captureModeToggle = ctx.widgets and ctx.widgets.captureMode
   if captureModeToggle then
     captureModeToggle._onChange = function(value)
@@ -474,6 +499,9 @@ function M.update(ctx)
 
   setText(ctx.widgets and ctx.widgets.positionStatus,
     string.format("Position: %.4f (%s)", pos, playing and "audio loop-aware" or "manual/fallback"))
+
+  local recLabel = ctx._recording and "Stop Rec" or "Record"
+  setLabel(ctx.widgets and ctx.widgets.recordBtn, recLabel)
 
   setText(ctx.widgets and ctx.widgets.sampleOverlay,
     sampleFrames > 0 and string.format("sampler %s frameCount=%d pos=%.3f", ctx.video:getId(), sampleFrames, pos)

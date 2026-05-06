@@ -80,7 +80,9 @@ return {
     button("play", 396, 122, 72, 28, "Trigger", C.sample, 0xff111111),
     button("stop", 478, 122, 64, 28, "Stop", C.button, C.text),
     button("clear", 552, 122, 64, 28, "Clear", C.button, C.bad),
-    label("clockStatus", 630, 128, 610, 18, "Clock: --", C.muted, 10),
+    button("recordBtn", 626, 122, 80, 28, "Record", C.bad, 0xffffffff),
+    label("recordStatus", 716, 128, 200, 18, "Recording: idle", C.muted, 10),
+    label("clockStatus", 930, 128, 310, 18, "Clock: --", C.muted, 10),
 
     label("liveTitle", 18, 176, 300, 18, "Live Webcam Source", C.live, 13),
     viewport("liveViewport", 18, 200, 600, 338, C.live),
