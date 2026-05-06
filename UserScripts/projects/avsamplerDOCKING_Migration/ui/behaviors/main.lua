@@ -1,4 +1,9 @@
 local M = {}
+local AVSD = {
+  Mapping = require("behaviors.avsd.mapping"),
+  Midi = require("behaviors.avsd.midi"),
+  State = require("behaviors.avsd.state"),
+}
 
 local NS = "/avsampler"
 local MAX = 8
@@ -93,61 +98,6 @@ local function pathForSlice(i) return NS .. "/slice/" .. i .. "/start" end
 local function triggerPathForSlice(i) return NS .. "/slice/" .. i .. "/trigger" end
 local function velocityPathForSlice(i) return NS .. "/slice/" .. i .. "/velocity" end
 
-local function buildMappingTargets()
-  local targets = {
-    { label = "Shader L1 P1", path = NS .. "/shader/layer/1/param/1", min = 0, max = 1, epsilon = 0.002 },
-    { label = "FX1 Mix", path = rackFxMixPath(1), min = 0, max = 1, epsilon = 0.002 },
-    { label = "Sampler Speed", path = NS .. "/speed", min = -2, max = 4, epsilon = 0.01 },
-    { label = "Slice Select", path = NS .. "/selected_slice", min = 1, max = MAX, integer = true, epsilon = 0.0 },
-  }
-
-  for p = 2, 9 do
-    targets[#targets + 1] = { label = "Shader L1 P" .. p, path = NS .. "/shader/layer/1/param/" .. p, min = 0, max = 1, epsilon = 0.002 }
-  end
-  for layer = 2, 8 do
-    for p = 1, 9 do
-      targets[#targets + 1] = { label = "Shader L" .. layer .. " P" .. p, path = NS .. "/shader/layer/" .. layer .. "/param/" .. p, min = 0, max = 1, epsilon = 0.002 }
-    end
-  end
-  for p = 1, 5 do
-    targets[#targets + 1] = { label = "FX1 Param " .. p, path = rackFxParamPath(1, p - 1), min = 0, max = 1, epsilon = 0.002 }
-  end
-
-  targets[#targets + 1] = { label = "Output", path = NS .. "/output", min = 0, max = 2, epsilon = 0.01 }
-  targets[#targets + 1] = { label = "Root Note", path = NS .. "/root_note", min = 0, max = 127, integer = true, epsilon = 0.0 }
-  targets[#targets + 1] = { label = "Voice Count", path = NS .. "/voice_count", min = 1, max = MAX, integer = true, epsilon = 0.0 }
-  targets[#targets + 1] = { label = "Pitch Tracking", path = NS .. "/pitch_tracking", min = 0, max = 1, boolean = true, epsilon = 0.0 }
-  targets[#targets + 1] = { label = "Play Start", path = NS .. "/play_start", min = 0, max = 1, epsilon = 0.002 }
-  targets[#targets + 1] = { label = "Loop Start", path = NS .. "/loop_start", min = 0, max = 1, epsilon = 0.002 }
-  targets[#targets + 1] = { label = "Loop End", path = NS .. "/loop_end", min = 0, max = 1, epsilon = 0.002 }
-  targets[#targets + 1] = { label = "Crossfade", path = NS .. "/crossfade", min = 0, max = 0.5, epsilon = 0.001 }
-  targets[#targets + 1] = { label = "Seg Gain", path = NS .. "/seg/gain", min = 0.25, max = 4, epsilon = 0.01 }
-  targets[#targets + 1] = { label = "Seg Threshold", path = NS .. "/seg/threshold", min = 0, max = 1, epsilon = 0.002 }
-  targets[#targets + 1] = { label = "Seg Feather", path = NS .. "/seg/feather", min = 0, max = 1, epsilon = 0.002 }
-  targets[#targets + 1] = { label = "Seg Invert", path = NS .. "/seg/invert", min = 0, max = 1, boolean = true, epsilon = 0.0 }
-  targets[#targets + 1] = { label = "Pose Confidence", path = NS .. "/pose/confidence", min = 0, max = 1, epsilon = 0.002 }
-  return targets
-end
-
-local MAPPING_TARGETS = buildMappingTargets()
-local MAPPING_TARGET_LABELS = {}
-for i = 1, #MAPPING_TARGETS do MAPPING_TARGET_LABELS[i] = MAPPING_TARGETS[i].label end
-
-local function mappingTargetSpec(index)
-  local idx = math.max(1, math.min(#MAPPING_TARGETS, round(index or 1)))
-  return MAPPING_TARGETS[idx], idx
-end
-
-local function defaultMapping(track)
-  return {
-    enabled = track <= 2,
-    source = track == 1 and 29 or (track == 2 and 32 or 1),
-    target = track == 1 and 1 or (track == 2 and 2 or 1),
-    min = 0.0,
-    max = 1.0,
-    invert = false,
-  }
-end
 
 local refreshWaveform
 local updatePreviewSurface
@@ -369,42 +319,6 @@ local function refreshDevices(ctx)
   setSelectedSilently(ctx.widgets.deviceSelect, 1)
   setOptions(ctx.widgets.sourceDeviceSelect, labels)
   setSelectedSilently(ctx.widgets.sourceDeviceSelect, 1)
-end
-
-local function currentMidiLabel()
-  if Midi and Midi.currentInputDeviceName then
-    local n = Midi.currentInputDeviceName()
-    if type(n) == "string" and n ~= "" then return n end
-  end
-  return nil
-end
-
-local function refreshMidi(ctx)
-  local devices = (Midi and Midi.inputDevices and Midi.inputDevices()) or {}
-  ctx._midiDevices = devices
-  local opts = { "None (Disabled)" }
-  for i = 1, #devices do opts[#opts + 1] = tostring(devices[i]) end
-  setOptions(ctx.widgets.midiInput, opts)
-  local active = currentMidiLabel()
-  local selected = 1
-  if active then
-    for i = 1, #opts do
-      if opts[i] == active then selected = i end
-    end
-  end
-  setSelectedSilently(ctx.widgets.midiInput, selected)
-  setText(ctx.widgets.midiStatus, string.format("MIDI: %s (%s)", active or "none", (Midi and Midi.isInputOpen and Midi.isInputOpen()) and "open" or "closed"))
-end
-
-local function openPreferredMidi(ctx)
-  if not (Midi and Midi.openInput) then return end
-  for i = 1, #(ctx._midiDevices or {}) do
-    if not tostring(ctx._midiDevices[i]):lower():find("through", 1, true) then
-      Midi.openInput(i - 1)
-      refreshMidi(ctx)
-      return
-    end
-  end
 end
 
 local function segPayload(ctx)
@@ -659,69 +573,6 @@ local function doRetroCapture(ctx, secondsOverride)
   end
 end
 
-local function encodedMidi(ctx, note, velocity)
-  ctx._midiCounter = ((ctx._midiCounter or 0) + 1) % 512
-  return ctx._midiCounter * 16384 + round(clamp(note, 0, 127)) * 128 + round(clamp(velocity, 0, 127))
-end
-
-local function noteToSlice(note, root)
-  for i = 1, #MAJOR_OFFSETS do
-    if round(note) == round(root) + MAJOR_OFFSETS[i] then return i end
-  end
-  return nil
-end
-
-local function triggerNote(ctx, note, velocity)
-  writeParam(NS .. "/midi_note", note)
-  writeParam(NS .. "/midi_velocity", velocity)
-  writeParam(NS .. "/midi_note_on_trigger", encodedMidi(ctx, note, velocity))
-  ctx._lastMidi = string.format("NOTE ON %d vel %d", note, velocity)
-end
-
-local function releaseNote(ctx, note)
-  writeParam(NS .. "/midi_note", note)
-  writeParam(NS .. "/midi_note_off_trigger", encodedMidi(ctx, note, 0))
-  ctx._lastMidi = string.format("NOTE OFF %d", note)
-end
-
-local function pollMidi(ctx)
-  profileStart(ctx, "pollMidi")
-  local consumed = 0
-  local queue = ctx._testSeams and ctx._testSeams.midiQueue or nil
-  while type(queue) == "table" and #queue > 0 and consumed < 64 do
-    local e = table.remove(queue, 1)
-    consumed = consumed + 1
-    local kind = tostring(e.kind or "")
-    local d1 = tonumber(e.data1 or 0) or 0
-    local d2 = tonumber(e.data2 or 0) or 0
-    if kind == "note_on" then
-      triggerNote(ctx, d1, d2)
-    elseif kind == "note_off" then
-      releaseNote(ctx, d1)
-    elseif kind == "cc_all_notes_off" then
-      bump(NS .. "/stop_trigger")
-      ctx._lastMidi = "CC 123"
-    end
-  end
-  if not (Midi and Midi.pollInputEvent) then profileEnd(ctx, "pollMidi"); return end
-  while consumed < 64 do
-    local e = Midi.pollInputEvent()
-    if not e then break end
-    consumed = consumed + 1
-    local t = tonumber(e.type or 0) or 0
-    local d1 = tonumber(e.data1 or 0) or 0
-    local d2 = tonumber(e.data2 or 0) or 0
-    if Midi.NOTE_ON and t == Midi.NOTE_ON and d2 > 0 then
-      triggerNote(ctx, d1, d2)
-    elseif (Midi.NOTE_OFF and t == Midi.NOTE_OFF) or (Midi.NOTE_ON and t == Midi.NOTE_ON and d2 <= 0) then
-      releaseNote(ctx, d1)
-    elseif Midi.CONTROL_CHANGE and t == Midi.CONTROL_CHANGE and d1 == 123 then
-      bump(NS .. "/stop_trigger")
-    end
-  end
-  profileEnd(ctx, "pollMidi")
-end
-
 local function setCaptureButtonAppearance(ctx)
   local recording = ctx.captureMode == 1 and ctx.captureRecording == true
   setLabel(ctx.widgets.captureNow, recording and "STOP" or "Capture A/V")
@@ -881,7 +732,7 @@ local function applyMappingTrack(ctx, track)
   if not mapping or not mapping.enabled then return nil end
   local sourceValue = clamp(poseSourceValue(ctx, track), 0, 1)
   if not mapping.invert then sourceValue = 1.0 - sourceValue end
-  local target, targetIndex = mappingTargetSpec(mapping.target or 1)
+  local target, targetIndex = AVSD.Mapping.targetSpec(mapping.target or 1)
   local minNorm = clamp(mapping.min or 0, 0, 1)
   local maxNorm = clamp(mapping.max or 1, 0, 1)
   local normalizedTarget = minNorm + sourceValue * (maxNorm - minNorm)
@@ -1016,7 +867,7 @@ setSourceSpecForColumn = function(ctx, col, spec)
     return
   end
   ctx._colData = ctx._colData or {}
-  ctx._colData[col] = ctx._colData[col] or colInit(col)
+  ctx._colData[col] = ctx._colData[col] or AVSD.State.colInit(col)
   ctx._colData[col].source = cloneTable(spec)
   syncShaderSourceParams(ctx)
   updateGridThumbnails(ctx)
@@ -1289,7 +1140,7 @@ local function refreshShaderLists(ctx)
   setOptions(ctx.widgets.sourceSelect, sourceNames)
   for track = 1, MAX_MAPPINGS do
     setOptions(ctx.widgets["mapping" .. track .. "Source"], poseNames)
-    setOptions(ctx.widgets["mapping" .. track .. "Target"], MAPPING_TARGET_LABELS)
+    setOptions(ctx.widgets["mapping" .. track .. "Target"], AVSD.Mapping.TARGET_LABELS)
   end
 end
 
@@ -1599,11 +1450,11 @@ local function syncParamsFromHost(ctx)
   if changedShader then updateShader(ctx); syncShaderEditor(ctx) end
 
   for t = 1, MAX_MAPPINGS do
-    local m = ctx.mappings[t] or defaultMapping(t)
+    local m = ctx.mappings[t] or AVSD.Mapping.defaultMapping(t)
     ctx.mappings[t] = m
     m.enabled = readParam(NS .. "/mapping/" .. t .. "/enabled", m.enabled and 1 or 0) > 0.5
     m.source = math.max(1, math.min(#POSE_SOURCES, round(readParam(NS .. "/mapping/" .. t .. "/source", m.source or 1))))
-    m.target = math.max(1, math.min(#MAPPING_TARGETS, round(readParam(NS .. "/mapping/" .. t .. "/target", m.target or 1))))
+    m.target = math.max(1, math.min(#AVSD.Mapping.TARGETS, round(readParam(NS .. "/mapping/" .. t .. "/target", m.target or 1))))
     m.min = clamp(readParam(NS .. "/mapping/" .. t .. "/min", m.min or 0), 0, 1)
     m.max = clamp(readParam(NS .. "/mapping/" .. t .. "/max", m.max or 1), 0, 1)
     m.invert = readParam(NS .. "/mapping/" .. t .. "/invert", m.invert and 1 or 0) > 0.5
@@ -2316,123 +2167,7 @@ local function applySourceParamDisplay(ctx, pi, displayValue)
   end
 end
 
--- Column data model for the clip grid. Column 1 mirrors ctx.shader for
--- backward compat. Columns 2+ are independently managed with their own
--- source and FX stacks.
-
-local function colInit(id)
-  return {
-    id = id,
-    source = nil,   -- { kind = "webcam" } | { kind = "generator", sourceId = "...", params = {...} } | { kind = "columntap", sourceCol = 1, tapIndex = 0 }
-    fx = {},        -- fx[slot] = { effectIndex, params = {[1..9]=normalized,...}, enabled }
-  }
-end
-
-local function syncCol1FromShader(ctx)
-  ctx._colData = ctx._colData or {}
-  ctx._colData[1] = ctx._colData[1] or colInit(1)
-  local cd = ctx._colData[1]
-  cd.source = cloneTable(currentCol1SourceSpec(ctx))
-  for i = 1, 8 do
-    local L = ctx.shader.layers[i]
-    local eff = L and ctx.effects and ctx.effects[L.effectIndex]
-    cd.fx[i] = {
-      effectIndex = L.effectIndex,
-      params = { table.unpack(L.params or {}) },
-      enabled = L.enabled and eff ~= nil,
-    }
-  end
-end
-
-local function addColumn(ctx, sourceSpec)
-  ctx._colData = ctx._colData or {}
-  -- find the next available column id
-  local id = 2
-  while ctx._colData[id] do id = id + 1 end
-  ctx._colData[id] = colInit(id)
-  ctx._colData[id].source = sourceSpec
-
-  -- For columntap, default tap to raw (tap 0)
-  if sourceSpec.kind == "columntap" then
-    ctx._colData[id].source.tapIndex = sourceSpec.tapIndex or 0
-  end
-
-  ctx.sourceSelectionCol = id
-  return id
-end
-
-local function removeColumn(ctx, col)
-  if col <= 1 then return end  -- can't remove column 1
-  ctx._colData = ctx._colData or {}
-  ctx._colData[col] = nil
-  -- adjust selection if needed
-  local sel = ctx.selection
-  if sel and sel.col == col then
-    ctx.selection = { col = 1, row = 2 }
-  end
-  if tonumber(ctx.sourceSelectionCol) == col then
-    ctx.sourceSelectionCol = 1
-  end
-end
-
-local function colAddFx(ctx, col, effectIndex)
-  local cd = ctx._colData and ctx._colData[col]
-  if not cd then return end
-  local eff = ctx.effects and ctx.effects[effectIndex]
-  if not eff then return end
-  local params = {}
-  for p = 1, 9 do
-    local spec = eff.params and eff.params[p]
-    params[p] = spec and (tonumber(spec.default) or 0.5) or 0.5
-  end
-  local slot = #cd.fx + 1
-  cd.fx[slot] = { effectIndex = effectIndex, params = params, enabled = true }
-  if col == 1 then
-    -- mirror to ctx.shader
-    local L = ctx.shader.layers[slot]
-    if L then
-      L.effectIndex = effectIndex
-      L.params = { table.unpack(params) }
-      L.enabled = true
-      writeParam(NS .. "/shader/layer/" .. slot .. "/effect", effectIndex)
-      updateShader(ctx)
-    end
-  end
-  ctx.selection = { col = col, row = slot + 1 }
-end
-
-local function colRemoveFx(ctx, col, row)
-  local cd = ctx._colData and ctx._colData[col]
-  if not cd or row <= 1 or row > #cd.fx + 1 then return end
-  local fxSlot = row - 1
-  table.remove(cd.fx, fxSlot)
-  if col == 1 then
-    -- shift layers in ctx.shader down
-    for i = fxSlot, 7 do
-      local src = ctx.shader.layers[i + 1]
-      local dst = ctx.shader.layers[i]
-      dst.effectIndex = src.effectIndex
-      dst.params = { table.unpack(src.params or {}) }
-      dst.enabled = src.enabled
-      writeParam(NS .. "/shader/layer/" .. i .. "/effect", dst.effectIndex)
-      for p = 1, 9 do
-        writeParam(NS .. "/shader/layer/" .. i .. "/param/" .. p, dst.params[p] or 0.5)
-      end
-      writeParam(NS .. "/shader/layer/" .. i .. "/enabled", dst.enabled and 1 or 0)
-    end
-    -- clear last layer
-    local last = ctx.shader.layers[8]
-    last.effectIndex = 1
-    last.params = {0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5}
-    last.enabled = false
-    writeParam(NS .. "/shader/layer/8/enabled", 0)
-    updateShader(ctx)
-  end
-  local sel = ctx.selection
-  if sel and sel.col == col and sel.row == row then
-    ctx.selection = { col = col, row = 1 }
-  end
-end
+-- Column data model for the clip grid lives in behaviors/avsd/state.lua.
 
 colSourceDescriptor = function(ctx, col)
   local spec = sourceSpecForColumn(ctx, col)
@@ -2719,7 +2454,7 @@ syncClipModel = function(ctx)
   profileStart(ctx, "syncClipModel")
   ctx.clips = ctx.clips or {}
   ctx._colData = ctx._colData or {}
-  syncCol1FromShader(ctx)
+  AVSD.State.syncCol1FromShader(ctx, { cloneTable = cloneTable, currentCol1SourceSpec = currentCol1SourceSpec })
 
   -- Build ctx.clips from ctx._colData for ALL columns
   for colId, cd in pairs(ctx._colData) do
@@ -3687,7 +3422,7 @@ local function renderGridToolbar(ctx, parentW)
 
   if imguiBeginPopup("##srcPicker") then
     if imguiMenuItem("Webcam") then
-      addColumn(ctx, { kind = "webcam" })
+      AVSD.State.addColumn(ctx, { kind = "webcam" })
       imguiCloseCurrentPopup()
     end
 
@@ -3701,7 +3436,7 @@ local function renderGridToolbar(ctx, parentW)
               local defaultNorm = (tonumber(pspec.default) or 0 - tonumber(pspec.min or 0)) / math.max(0.001, tonumber(pspec.max or 1) - tonumber(pspec.min or 0))
               params[pspec.id] = clamp(defaultNorm, 0, 1)
             end
-            addColumn(ctx, { kind = "generator", sourceId = g.id, params = params })
+            AVSD.State.addColumn(ctx, { kind = "generator", sourceId = g.id, params = params })
             imguiCloseCurrentPopup()
           end
         end
@@ -3712,11 +3447,11 @@ local function renderGridToolbar(ctx, parentW)
     -- ML sources
     if imguiBeginMenu("ML") then
       if imguiMenuItem("Segmented") then
-        addColumn(ctx, { kind = "ml", mlType = "segmented" })
+        AVSD.State.addColumn(ctx, { kind = "ml", mlType = "segmented" })
         imguiCloseCurrentPopup()
       end
       if imguiMenuItem("Pose") then
-        addColumn(ctx, { kind = "ml", mlType = "pose" })
+        AVSD.State.addColumn(ctx, { kind = "ml", mlType = "pose" })
         imguiCloseCurrentPopup()
       end
       imguiEndMenu()
@@ -3736,7 +3471,7 @@ local function renderGridToolbar(ctx, parentW)
           local label = "Stack " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
           -- Tap 0 (raw)
           if imguiMenuItem(label .. " / Raw (T0)") then
-            addColumn(ctx, { kind = "columntap", sourceCol = colId, tapIndex = 0 })
+            AVSD.State.addColumn(ctx, { kind = "columntap", sourceCol = colId, tapIndex = 0 })
             imguiCloseCurrentPopup()
           end
           -- Taps 1..N
@@ -3744,7 +3479,7 @@ local function renderGridToolbar(ctx, parentW)
             if cd.fx[ti] and cd.fx[ti].enabled then
               local fxName = colFxLabel(ctx, colId, ti)
               if imguiMenuItem(label .. " / " .. fxName .. " (T" .. ti .. ")") then
-                addColumn(ctx, { kind = "columntap", sourceCol = colId, tapIndex = ti })
+                AVSD.State.addColumn(ctx, { kind = "columntap", sourceCol = colId, tapIndex = ti })
                 imguiCloseCurrentPopup()
               end
             end
@@ -3762,7 +3497,7 @@ local function renderGridToolbar(ctx, parentW)
   local sel = ctx.selection
   if sourceCol > 1 then
     if imguiButton("Del") then
-      removeColumn(ctx, sourceCol)
+      AVSD.State.removeColumn(ctx, sourceCol)
     end
     imguiSameLine()
   end
@@ -3783,7 +3518,7 @@ local function renderGridToolbar(ctx, parentW)
         if imguiBeginPopup("##fxPicker") then
           for i, eff in ipairs(ctx.effects or {}) do
             if imguiMenuItem(eff.name or eff.id or ("Effect " .. i)) then
-              colAddFx(ctx, sel.col, i)
+              AVSD.State.colAddFx(ctx, sel.col, i, { NS = NS, writeParam = writeParam, updateShader = updateShader })
               imguiCloseCurrentPopup()
             end
           end
@@ -3792,7 +3527,7 @@ local function renderGridToolbar(ctx, parentW)
 
         if isFxCell and sel.row > 1 then
           if imguiButton("RmFX") then
-            colRemoveFx(ctx, sel.col, sel.row)
+            AVSD.State.colRemoveFx(ctx, sel.col, sel.row, { NS = NS, writeParam = writeParam, updateShader = updateShader })
           end
           imguiSameLine()
         end
@@ -4130,7 +3865,7 @@ function M.init(ctx)
   ctx.captureMode = round(readParam(NS .. "/capture_mode", 0))
   ctx.captureRecording = false
   ctx.mappings = {}
-  for i = 1, MAX_MAPPINGS do ctx.mappings[i] = defaultMapping(i) end
+  for i = 1, MAX_MAPPINGS do ctx.mappings[i] = AVSD.Mapping.defaultMapping(i) end
   ctx.fxSlot = 1
   ctx._layoutPreset = "deck"
   ctx.gridAlignment = "bottom-up"
@@ -4156,7 +3891,7 @@ function M.init(ctx)
     }
   end
   ctx.compositorSelection = { layerIndex = 1 }
-  syncCol1FromShader(ctx)
+  AVSD.State.syncCol1FromShader(ctx, { cloneTable = cloneTable, currentCol1SourceSpec = currentCol1SourceSpec })
 
   for _, w in pairs(ctx.allWidgets or {}) do
     if type(w) == "table" then
@@ -4206,9 +3941,9 @@ function M.init(ctx)
   end
   updateShader(ctx)
   refreshDevices(ctx)
-  refreshMidi(ctx)
+  AVSD.Midi.refresh(ctx)
   if Audio == nil or (Audio.isPlugin and not Audio.isPlugin()) then
-    if not currentMidiLabel() then openPreferredMidi(ctx) end
+    if not AVSD.Midi.currentMidiLabel() then AVSD.Midi.openPreferred(ctx) end
   end
   loadModels(ctx)
   __avsdProfileInit(ctx)
@@ -4251,14 +3986,14 @@ function M.init(ctx)
   ctx.widgets.layoutInspector._onClick = function() setLayoutPreset(ctx, "inspector") end
   ctx.widgets.resetLayout._onClick = function() ctx._rebuildDockTree = true; resetPanelDocks(ctx) end
   ctx.widgets.resizeMode._onChange = function(v) ctx._resizeMode = v == true; syncToolbarButtons(ctx) end
-  ctx.widgets.midiRefresh._onClick = function() refreshMidi(ctx); if not currentMidiLabel() then openPreferredMidi(ctx) end end
+  ctx.widgets.midiRefresh._onClick = function() AVSD.Midi.refresh(ctx); if not AVSD.Midi.currentMidiLabel() then AVSD.Midi.openPreferred(ctx) end end
   ctx.widgets.midiInput._onSelect = function(idx)
     if idx <= 1 then
       if Midi and Midi.closeInput then Midi.closeInput() end
     else
       if Midi and Midi.openInput then Midi.openInput(idx - 2) end
     end
-    refreshMidi(ctx)
+    AVSD.Midi.refresh(ctx)
   end
   ctx.widgets.selectedSlice._onSelect = function(idx)
     ctx._selectedSlice = math.max(1, math.min(MAX, round(idx)))
@@ -4338,7 +4073,7 @@ function M.init(ctx)
       writeParam(NS .. "/mapping/" .. t .. "/source", ctx.mappings[t].source)
     end
     ctx.widgets["mapping" .. t .. "Target"]._onSelect = function(idx)
-      local _, targetIndex = mappingTargetSpec(idx)
+      local _, targetIndex = AVSD.Mapping.targetSpec(idx)
       ctx.mappings[t].target = targetIndex
       writeParam(NS .. "/mapping/" .. t .. "/target", ctx.mappings[t].target)
     end
@@ -4634,7 +4369,7 @@ function M.init(ctx)
       preview = previewState(),
       visible = copyNumArray({}),
       midi = {
-        currentLabel = currentMidiLabel() or "none",
+        currentLabel = AVSD.Midi.currentMidiLabel() or "none",
         lastMidi = tostring(ctx._lastMidi or "--"),
         devices = copyStringArray(ctx._midiDevices or {}),
         selectedInput = selectedDeviceIndex(ctx),
@@ -4711,7 +4446,7 @@ function M.init(ctx)
     end
     for i = 1, #(ctx.mappings or {}) do
       local mapping = ctx.mappings[i]
-      local target = mappingTargetSpec(mapping.target or 1)
+      local target = AVSD.Mapping.targetSpec(mapping.target or 1)
       contract.mappings[i] = {
         enabled = bool01(mapping.enabled),
         source = mapping.source,
@@ -4964,26 +4699,25 @@ function M.init(ctx)
       if w and w._onChange then w._onChange(num(b)) end
       return true
     elseif action == "add_column" then
-      if type(addColumn) ~= "function" then return false end
       local kind = tostring(a or "ml")
       if kind == "ml" then
-        addColumn(ctx, { kind = "ml", mlType = tostring(b or "segmented"), params = { gain = 1.0, threshold = 0.5, feather = 0.15, background = 0.02, useSigmoid = true, invert = false } })
+        AVSD.State.addColumn(ctx, { kind = "ml", mlType = tostring(b or "segmented"), params = { gain = 1.0, threshold = 0.5, feather = 0.15, background = 0.02, useSigmoid = true, invert = false } })
       elseif kind == "generator" then
-        addColumn(ctx, { kind = "generator", sourceIndex = round(b or 1), sourceId = (((ctx.sources or {})[round(b or 1)] or {}).id), params = {} })
+        AVSD.State.addColumn(ctx, { kind = "generator", sourceIndex = round(b or 1), sourceId = (((ctx.sources or {})[round(b or 1)] or {}).id), params = {} })
       elseif kind == "columntap" then
-        addColumn(ctx, { kind = "columntap", sourceCol = round(b or 1), tapIndex = round(c or 0) })
+        AVSD.State.addColumn(ctx, { kind = "columntap", sourceCol = round(b or 1), tapIndex = round(c or 0) })
       else
-        addColumn(ctx, { kind = "webcam", sourceIndex = 1 })
+        AVSD.State.addColumn(ctx, { kind = "webcam", sourceIndex = 1 })
       end
       return #(ctx._colData or {})
     elseif action == "remove_column" then
-      if type(removeColumn) == "function" then removeColumn(ctx, round(a)) end
+      AVSD.State.removeColumn(ctx, round(a))
       return #(ctx._colData or {})
     elseif action == "col_add_fx" then
-      if type(colAddFx) == "function" then colAddFx(ctx, round(a), round(b)) end
+      AVSD.State.colAddFx(ctx, round(a), round(b), { NS = NS, writeParam = writeParam, updateShader = updateShader })
       return true
     elseif action == "col_remove_fx" then
-      if type(colRemoveFx) == "function" then colRemoveFx(ctx, round(a), round(b)) end
+      AVSD.State.colRemoveFx(ctx, round(a), round(b), { NS = NS, writeParam = writeParam, updateShader = updateShader })
       return true
     elseif action == "set_column_source_ml" then
       if type(setSourceSpecForColumn) == "function" then
@@ -5117,10 +4851,10 @@ function M.init(ctx)
       doRetroCapture(ctx, a ~= nil and num(a) or nil)
       return ctx._lastVideoCommitOk == true
     elseif action == "midi_note_on" then
-      triggerNote(ctx, round(a or 0), round(b or 0))
+      AVSD.Midi.triggerNote(ctx, round(a or 0), round(b or 0))
       return true
     elseif action == "midi_note_off" then
-      releaseNote(ctx, round(a or 0))
+      AVSD.Midi.releaseNote(ctx, round(a or 0))
       return true
     end
     return false
@@ -5184,7 +4918,7 @@ function M.update(ctx)
     syncParamsFromHost(ctx)
   end
 
-  pollMidi(ctx)
+  AVSD.Midi.poll(ctx, { profileStart = profileStart, profileEnd = profileEnd })
 
   local seams = ctx._testSeams or nil
   local frame = (type(seams) == "table" and type(seams.frameInfo) == "table" and seams.frameInfo) or ((capture and capture.getFrameInfo and capture.getFrameInfo()) or { valid = false })
@@ -5251,7 +4985,7 @@ function M.update(ctx)
     local sampleFrames = (type(seams) == "table" and type(seams.sampler) == "table" and round(seams.sampler.frameCount or 0)) or (ctx.video and ctx.video:getFrameCount() or 0)
     local sampleDuration = (type(seams) == "table" and type(seams.sampler) == "table" and tonumber(seams.sampler.durationSeconds or 0)) or (ctx.video and ctx.video:getDurationSeconds() or 0)
     setText(ctx.widgets.samplerStatus, string.format("Sampler: %d frames %.2fs last commit %s visible=%d", sampleFrames, sampleDuration, ctx._lastVideoCommitOk and "OK" or "--", #(ctx._visible or {})))
-    setText(ctx.widgets.midiStatus, string.format("MIDI: %s last=%s", currentMidiLabel() or "none", tostring(ctx._lastMidi or "--")))
+    setText(ctx.widgets.midiStatus, string.format("MIDI: %s last=%s", AVSD.Midi.currentMidiLabel() or "none", tostring(ctx._lastMidi or "--")))
     setText(ctx.widgets.fxStatus, string.format("FX%d type=%d mix=%.2f", ctx.fxSlot, round(readParam(rackFxTypePath(ctx.fxSlot), 0)), readParam(rackFxMixPath(ctx.fxSlot), 0)))
     profileEnd(ctx, "statusInterval")
   end
