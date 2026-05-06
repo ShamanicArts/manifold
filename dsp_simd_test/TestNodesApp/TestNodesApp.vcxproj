@@ -215,19 +215,46 @@
   <ItemGroup>
     <ClCompile Include="..\..\dsp\core\nodes\ADSREnvelopeNode.cpp" />
     <ClCompile Include="..\..\dsp\core\nodes\BitCrusherNode.cpp" />
+    <ClCompile Include="..\..\dsp\core\nodes\FilterNode.cpp" />
+    <ClCompile Include="..\..\dsp\core\nodes\GainNode.cpp" />
+    <ClCompile Include="..\..\dsp\core\nodes\MixerNode.cpp" />
+    <ClCompile Include="..\..\dsp\core\nodes\OscillatorNode.cpp" />
     <ClCompile Include="..\..\external\highway\hwy\abort.cc" />
     <ClCompile Include="..\..\external\highway\hwy\aligned_allocator.cc" />
     <ClCompile Include="..\..\external\highway\hwy\targets.cc" />
     <ClCompile Include="..\..\external\JUCE\modules\juce_core\juce_core.cpp" />
+    <ClCompile Include="..\..\external\JUCE\modules\juce_core\juce_core_CompilationTime.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="TestADSRNode.cpp" />
+    <ClCompile Include="TestBitcrusherNode.cpp" />
+    <ClCompile Include="TestFilterNode.cpp" />
+    <ClCompile Include="TestGainNode.cpp" />
+    <ClCompile Include="TestingBase.cpp" />
+    <ClCompile Include="TestMixerNode.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\dsp\core\nodes\ADSREnvelopeNode.h" />
     <ClInclude Include="..\..\dsp\core\nodes\ADSREnvelopeNode_Highway.h" />
     <ClInclude Include="..\..\dsp\core\nodes\BitCrusherNode.h" />
     <ClInclude Include="..\..\dsp\core\nodes\BitCrusherNode_Highway.h" />
-    <ClInclude Include="..\..\manifold\core\HighwayMaths.h" />
-    <ClInclude Include="..\..\manifold\core\HighwayWrapper.h" />
+    <ClInclude Include="..\..\dsp\core\nodes\FilterNode.h" />
+    <ClInclude Include="..\..\dsp\core\nodes\FilterNode_Highway.h" />
+    <ClInclude Include="..\..\dsp\core\nodes\GainNode.h" />
+    <ClInclude Include="..\..\dsp\core\nodes\GainNode_Highway.h" />
+    <ClInclude Include="..\..\dsp\core\nodes\MixerNode.h" />
+    <ClInclude Include="..\..\dsp\core\nodes\MixerNode_Highway.h" />
+    <ClInclude Include="..\..\dsp\core\nodes\OscillatorNode.h" />
+    <ClInclude Include="..\..\dsp\core\nodes\OscillatorNode_Highway.h" />
+    <ClInclude Include="..\..\manifold\highway\HighwayMaths.h" />
+    <ClInclude Include="..\..\manifold\highway\HighwaySmoother.h" />
+    <ClInclude Include="..\..\manifold\highway\HighwayUtils.h" />
+    <ClInclude Include="..\..\manifold\highway\HighwayWrapper.h" />
+    <ClInclude Include="TestADSRNode.h" />
+    <ClInclude Include="TestBitcrusherNode.h" />
+    <ClInclude Include="TestFilterNode.h" />
+    <ClInclude Include="TestGainNode.h" />
+    <ClInclude Include="TestingBase.h" />
+    <ClInclude Include="TestMixerNode.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -6,7 +6,8 @@
 
 namespace dsp_primitives {
 
-MixerNode::MixerNode() {
+MixerNode::MixerNode(int target) : simdTarget_(target) 
+{
     for (int i = 0; i < kMaxBusses; ++i) {
         targetGains_[static_cast<size_t>(i)].store(1.0f, std::memory_order_release);
         targetPans_[static_cast<size_t>(i)].store(0.0f, std::memory_order_release);
@@ -14,6 +15,7 @@ MixerNode::MixerNode() {
         pans_[static_cast<size_t>(i)] = 0.0f;
     }
 }
+
 
 void MixerNode::setGain(int busIndex, float g) {
     const int idx = juce::jlimit(1, kMaxBusses, busIndex) - 1;
@@ -60,15 +62,15 @@ void MixerNode::prepare(double sampleRate, int maxBlockSize) {
     prepared_ = true;
 
     //Set up SIMD implementation
-    if(simd_implementation_ == nullptr)
-        simd_implementation_.reset(MixerNode_Highway::__CreateInstance(
-            &inputCount_,
-            targetGains_.data(),
-            targetPans_.data(),
-            &targetMaster_,
-            kMaxBusses));
+    if((simd_implementation_ == NULL) && (simdTarget_ >= 0))
+    {
+        hwy::RunHighwayErrorCode errcode = hwy::RunHighwayErrorCode_Error;
+        simd_implementation_.reset(MixerNode_Highway::__CreateInstance<kMaxBusses>(simdTarget_, &inputCount_, targetGains_.data(), targetPans_.data(), &targetMaster_, &errcode));
+        highwayErrCode_ = static_cast<int>(errcode);
+    }
 
-    simd_implementation_->prepare(static_cast<float>(sampleRate));
+    if(simd_implementation_ != nullptr)
+        simd_implementation_->prepare(static_cast<float>(sampleRate));
 }
 
 void MixerNode::reset() {

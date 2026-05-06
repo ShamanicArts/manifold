@@ -5,6 +5,8 @@
 
 #include "manifold/highway/HighwayWrapper.h"
 #include "manifold/highway/HighwayMaths.h"
+#include "manifold/highway/HighwaySmoother.h"
+#include "manifold/highway/HighwayUtils.h"
 
 #include <cmath>
 
@@ -15,7 +17,7 @@ namespace dsp_primitives
         //Do not change this namespace. This separates the specific SIMD implementaions from each other
         namespace HWY_NAMESPACE
         {
-
+            template<int MAXBUSSES>
             class MixerNodeSIMDImplementation : public IPrimitiveNodeSIMDImplementation
             {
             private:
@@ -28,9 +30,18 @@ namespace dsp_primitives
                 MixerNodeSIMDImplementation(const std::atomic<int>* targetInputCount,
                                            const std::atomic<float>* targetGains,
                                            const std::atomic<float>* targetPans,
-                                           const std::atomic<float>* targetMaster,
-                                           int maxBusses)
-                    : targetInputCount_(targetInputCount), targetGains_(targetGains), targetPans_(targetPans), targetMaster_(targetMaster), maxBusses_(maxBusses) {}
+                                           const std::atomic<float>* targetMaster) :    targetInputCount_(targetInputCount),  
+                                                                                        laneCount_(0),
+                                                                                        configChanged_(true)
+                {
+                    //We use the first smoother to handle the 'master' value as well
+                    //We do include it in smoothers for all other inputs, but it is ignored
+                    //With SIMD, calculating the smoothing for 3 values should be no more expensive than calculating smoothing for 2.
+                    for(int b = 0; b < MAXBUSSES; ++b)
+                    {
+                        smoothers_[b].initialise(&targetGains[b], &targetPans[b], &targetMaster[0]);
+                    }
+                }
 
                 HWY_ATTR virtual void prepare(float sampleRate) override
                 {
@@ -41,36 +52,27 @@ namespace dsp_primitives
 
                     const double sr = sampleRate > 1.0 ? sampleRate : 44100.0;
                     const double smoothTime = 0.01;
-                    smooth_ = hwy::AllocateAligned<float>(numLanes);
                     float smoothval = static_cast<float>(1.0 - std::exp(-1.0 / (smoothTime * sr)));
                     smoothval = juce::jlimit(0.0001f, 1.0f, smoothval);
-                    HWY::Store(HWY::Set(_flttype, smoothval),  _flttype, smooth_.get());
-
-                    // Initialize gains and pans to identity
-                    const FltType one = HWY::Set(_flttype, 1.0f);
-                    const FltType zero = HWY::Sub(one, one);
-
-                    for (size_t i = 0; i < numValues; ++i) {
-                        gains_[i] = hwy::AllocateAligned<float>(numLanes);
-                        pans_[i] = hwy::AllocateAligned<float>(numLanes);
-
-                        HWY::Store(one, _flttype, gains_[i].get());
-                        HWY::Store(zero, _flttype, pans_[i].get());
+                    
+                    if(inputCount_ == 0)
+                    {
+                        configure();
                     }
 
-                    master_ = hwy::AllocateAligned<float>(numLanes);
-                    tempGain_ = hwy::AllocateAligned<float>(numLanes);
-                    tempPanL_ = hwy::AllocateAligned<float>(numLanes);
-                    tempPanR_ = hwy::AllocateAligned<float>(numLanes);
-                    tempMaster_ = hwy::AllocateAligned<float>(numLanes);
-                    HWY::Store(one, _flttype, master_.get());
+                    for(int b = 0; b < MAXBUSSES; ++b)
+                    {
+                        smoothers_[b].SetSmooth(smoothval);
+                        smoothers_[b].PrepareCurrentValues();
+                    }
+                    
 
                     laneCount_ = numLanes;
                 }
 
                 virtual void configChanged() override
                 {
-                    // Config changes are handled in prepare() which recalculates everything
+                    configChanged_ = true;
                 }
 
                 const char * targetName() const override
@@ -86,177 +88,179 @@ namespace dsp_primitives
                     const FltType one = HWY::Set(_flttype, 1.0f);
                     const FltType zero = HWY::Sub(one, one);
 
-                    for (size_t i = 0; i < MixerNode::kMaxBusses; ++i) {
-                        HWY::Store(one, _flttype, gains_[i].get());
-                        HWY::Store(zero, _flttype, pans_[i].get());
+                    configure();
+
+                    for(int x = 0; x < MAXBUSSES; ++x)
+                    {
+                        smoothers_[x].PrepareCurrentValues();//Reset current values
                     }
-                    HWY::Store(one, _flttype, master_.get());
                 }
 
                 HWY_ATTR virtual void run(const std::vector<AudioBufferView> & inputs,
-                                 std::vector<WritableAudioBufferView> & outputs,
-                                 int numsamples) override
+                                            std::vector<WritableAudioBufferView> & outputs,
+                                            int numsamples) override
                 {
                     const hwy::HWY_NAMESPACE::ScalableTag<float> _flttype;
                     namespace HWY = hwy::HWY_NAMESPACE;
                     const size_t numLanes = HWY::Lanes(_flttype);
-
-                    const FltType zero = HWY::Sub(HWY::Set(_flttype, 1.0f), HWY::Set(_flttype, 1.0f));
-                    const float smoothScalar = smooth_.get()[0];
-                    const float piScalar = 3.14159265358979323846f;
-
-                    const int inputCount = juce::jlimit(1, maxBusses_, targetInputCount_->load(std::memory_order_acquire));
-
+                    
+                    if((configChanged_) || (numLanes != laneCount_))
+                    {
+                        configure();
+                    }
+                    
+                    const FltType half = HWY::Set(_flttype, 0.5f);
+                    const FltType one = HWY::Add(half,half);
+                    const FltType zero =  HWY::Sub(one,one);
+                    const FltType negone = HWY::Sub( zero,one );
+                    const FltType  halfpiScalar = HWY::Set(_flttype, 3.14159265358979323846f / 2);
+                    const int inputBufferCount = (inputCount_ > inputs.size()) ? inputs.size() : inputCount_;
+                    const AudioBufferView * inputBufferViews = inputs.data();
+                    
+                    
+                    FltType inL, inR, outL, outR, currentBusPan, currentBusGain, tmp, panL, panR, currentMaster;
+                    FltType pans[MAXBUSSES];
+                    
+                    const float * const * inputPtrs;
+                    const bool outputMono = outputs[0].numChannels == 1;
                     float * outputPtrL = outputs[0].channelData[0];
-                    float * outputPtrR = (outputs[0].numChannels > 1) ? outputs[0].channelData[1] : NULL;
+                    float * outputPtrR = !outputMono ? outputs[0].channelData[1] : NULL;
+
+                    Smoother * cursmoother;
+                    Smoother::ValueType targetValues[MAXBUSSES];
+                    Smoother::ValueType currentValues[MAXBUSSES];
+                    Smoother::ValueType smoothValues[MAXBUSSES];
+                    
+                    bool haveLoaded = false;
                     size_t offset = 0;
+                    size_t sampleLaneCount;
                     size_t samplesRemain = static_cast<size_t>(numsamples);
-
-                    float currentMasterScalar = master_.get()[0];
-
+                    const AudioBufferView * curbuf;
                     while(samplesRemain > 0)
                     {
-                        // Prefetch
-                        hwy::Prefetch(outputPtrL + offset);
-                        if(outputPtrR != NULL)
-                            hwy::Prefetch(outputPtrR + offset);
+                        sampleLaneCount = (samplesRemain > numLanes) ? numLanes : samplesRemain;
 
-                        // Initialize output
-                        FltType outL = zero;
-                        FltType outR = zero;
-
-                        const size_t activeLaneCount = (samplesRemain > numLanes) ? numLanes : samplesRemain;
-                        const FltMaskType activeMask = HWY::FirstN(_flttype, activeLaneCount);
-
-                        // Process each bus
-                        for (int bus = 0; bus < inputCount; ++bus)
+                        outL = zero;
+                        outR = zero;
+                        for(int bus = 0; bus < inputBufferCount; ++bus)
                         {
-                            const size_t busIndex = static_cast<size_t>(bus);
-                            const float targetGainScalar = targetGains_[busIndex].load(std::memory_order_acquire);
-                            const float targetPanScalar = targetPans_[busIndex].load(std::memory_order_acquire);
-                            float currentGainScalar = gains_[busIndex].get()[0];
-                            float currentPanScalar = pans_[busIndex].get()[0];
+                            if(bus >= inputBufferCount)
+                                break;
 
-                            for (size_t lane = 0; lane < activeLaneCount; ++lane)
+                            //Load if required
+                            if(!haveLoaded)
                             {
-                                currentGainScalar += (targetGainScalar - currentGainScalar) * smoothScalar;
-                                currentPanScalar += (targetPanScalar - currentPanScalar) * smoothScalar;
-
-                                tempGain_.get()[lane] = currentGainScalar;
-                                const float t = 0.5f * (juce::jlimit(-1.0f, 1.0f, currentPanScalar) + 1.0f);
-                                const float angle = 0.5f * piScalar * t;
-                                tempPanL_.get()[lane] = std::cos(angle);
-                                tempPanR_.get()[lane] = std::sin(angle);
+                                smoothers_[bus].Start(targetValues[bus], currentValues[bus], smoothValues[bus]);
                             }
 
-                            HWY::Store(HWY::Set(_flttype, currentGainScalar), _flttype, gains_[busIndex].get());
-                            HWY::Store(HWY::Set(_flttype, currentPanScalar), _flttype, pans_[busIndex].get());
+                            //Stuff...
+                            cursmoother = &smoothers_[bus];
+                            curbuf = &inputBufferViews[bus];
+                            inputPtrs = curbuf->channelData;
 
-                            const FltType gainVec = (samplesRemain >= numLanes)
-                                ? HWY::Load(_flttype, tempGain_.get())
-                                : HWY::MaskedLoad(activeMask, _flttype, tempGain_.get());
-                            const FltType gainL = (samplesRemain >= numLanes)
-                                ? HWY::Load(_flttype, tempPanL_.get())
-                                : HWY::MaskedLoad(activeMask, _flttype, tempPanL_.get());
-                            const FltType gainR = (samplesRemain >= numLanes)
-                                ? HWY::Load(_flttype, tempPanR_.get())
-                                : HWY::MaskedLoad(activeMask, _flttype, tempPanR_.get());
+                            //Load input values
+                            inL = HWY::LoadU(_flttype, inputPtrs[0] + offset);
+                            inR = (curbuf->numChannels > 1) ? HWY::LoadU(_flttype, inputPtrs[1] + offset) : inL;
 
-                            // Load input for this bus
-                            const int viewIndex = bus;
-                            if (inputs.size() <= static_cast<size_t>(viewIndex))
-                                continue;
+                            //Run value smoother to obtain current gain and pan values
+                            //If this is bus 0 - the first input, then the 'master' is also calculated, and is to be used later
+                            //For subsequent busses, the 'master' value on those smoothers is to be ignored and thrown away - we just apply the
+                            //smoothed 'master' value that was obtained from the first smoother.
+                            cursmoother->Run(sampleLaneCount, smoothValues[bus], targetValues[bus], currentValues[bus], currentBusGain, currentBusPan, (bus == 0) ? currentMaster : tmp);
 
-                            const auto& inView = inputs[static_cast<size_t>(viewIndex)];
-                            FltType inL, inR;
-
-                            if (samplesRemain >= numLanes)
-                            {
-                                inL = HWY::LoadU(_flttype, inView.channelData[0] + offset);
-                                inR = (inView.numChannels > 1) ? HWY::LoadU(_flttype, inView.channelData[1] + offset) : inL;
+                            //Apply panning
+                            /*
+                            * static inline void equalPowerPan(float pan, float& gainL, float& gainR) {
+                                const float t = 0.5f * (juce::jlimit(-1.0f, 1.0f, pan) + 1.0f);
+                                gainL = std::cos(0.5f * juce::MathConstants<float>::pi * t);
+                                gainR = std::sin(0.5f * juce::MathConstants<float>::pi * t);
                             }
-                            else
+                            */
+                            //where: pan = pans_[busIndex] (part of the smoother - output via currentBusPan), and gainL and gainR are pure outputs
+                            
+                            tmp = HWY::IfThenElse(HWY::Lt(currentBusPan, negone), negone, currentBusPan);
+                            tmp = HWY::IfThenElse(HWY::Gt(tmp, one), one, tmp);
+                            tmp = HWY::Add(one, tmp);
+                            tmp = HWY::Mul(half, tmp);
+                            tmp = HWY::Mul(tmp, halfpiScalar);
+                            HWY::SinCos(_flttype, tmp, panR, panL); //sin to panR, cos to panL
+
+                            // outL += inL * gains_[busIndex] * panL;
+                            //outR += inR * gains_[busIndex] * panR;
+                            panL = HWY::Mul(panL, currentBusGain);
+                            panR = HWY::Mul(panR, currentBusGain);
+
+                            outL = HWY::MulAdd(inL, panL, outL);
+                            outR = HWY::MulAdd(inR, panR, outR);
+
+                            //Save smoother state if this is the last iteration
+                            if(samplesRemain <= numLanes)
                             {
-                                inL = HWY::MaskedLoad(activeMask, _flttype, inView.channelData[0] + offset);
-                                inR = (inView.numChannels > 1) ? HWY::MaskedLoad(activeMask, _flttype, inView.channelData[1] + offset) : inL;
+                                smoothers_[bus].End(currentValues[bus]);
                             }
+                        }//End of for loop over busses
 
-                            // Apply gain and pan
-                            inL = HWY::Mul(HWY::Mul(inL, gainVec), gainL);
-                            inR = HWY::Mul(HWY::Mul(inR, gainVec), gainR);
+                        //Apply the 'master' to the output
+                        outL = HWY::Mul(currentMaster, outL);
+                        outR = HWY::Mul(currentMaster, outR);
 
-                            // Add to output
-                            outL = HWY::Add(outL, inL);
-                            outR = HWY::Add(outR, inR);
-                        }
-
-                        const float targetMasterScalar = targetMaster_->load(std::memory_order_acquire);
-                        for (size_t lane = 0; lane < activeLaneCount; ++lane)
-                        {
-                            currentMasterScalar += (targetMasterScalar - currentMasterScalar) * smoothScalar;
-                            tempMaster_.get()[lane] = currentMasterScalar;
-                        }
-                        const FltType masterVec = (samplesRemain >= numLanes)
-                            ? HWY::Load(_flttype, tempMaster_.get())
-                            : HWY::MaskedLoad(activeMask, _flttype, tempMaster_.get());
-                        outL = HWY::Mul(outL, masterVec);
-                        outR = (outputPtrR == NULL) ? zero : HWY::Mul(outR, masterVec);
-
-                        HWY::Store(HWY::Set(_flttype, currentMasterScalar), _flttype, master_.get());
-
-                        // Write output
+                        //Store result
                         if(samplesRemain >= numLanes)
                         {
                             HWY::StoreU(outL, _flttype, outputPtrL + offset);
                             if(outputPtrR != NULL)
                                 HWY::StoreU(outR, _flttype, outputPtrR + offset);
-
-                            samplesRemain -= numLanes;
-                            offset += numLanes;
                         }
                         else
                         {
-                            FltMaskType storeMask = HWY::FirstN(_flttype, samplesRemain);
-                            HWY::BlendedStore(outL, storeMask, _flttype, outputPtrL + offset);
+                            HWY::StoreN(outL, _flttype, outputPtrL + offset, samplesRemain);
                             if(outputPtrR != NULL)
-                                HWY::BlendedStore(outR, storeMask, _flttype, outputPtrR + offset);
-
-                            samplesRemain = 0;
+                                HWY::StoreN(outR, _flttype, outputPtrR + offset, samplesRemain);
                         }
+
+                        haveLoaded = true;
+                        offset += sampleLaneCount;
+                        samplesRemain -= sampleLaneCount;
                     }
                 }
 
             private:
                 HWY_ATTR void configure()
                 {
-                    // Not used - prepare() handles everything
+                    const hwy::HWY_NAMESPACE::ScalableTag<float> _flttype;
+                    namespace HWY = hwy::HWY_NAMESPACE;
+                    const size_t numLanes = HWY::Lanes(_flttype);
+
+                    const FltType one = HWY::Set(_flttype, 1.0f); 
+
+                    inputCount_ = juce::jlimit(1, MAXBUSSES, targetInputCount_->load(std::memory_order_acquire));
+                    
+                    for(size_t x = 0; x < inputCount_; ++x)
+                    {
+                        smoothers_[x].UpdateTargetValues();
+                    }
+
+                    laneCount_ = numLanes;
+                    configChanged_ = false;
                 }
 
+                typedef hwy::HWY_NAMESPACE::HighwayValueSmoother<float, 3> Smoother;
+                
                 const std::atomic<int>* targetInputCount_;
-                const std::atomic<float>* targetGains_;
-                const std::atomic<float>* targetPans_;
-                const std::atomic<float>* targetMaster_;
-                const int maxBusses_;
                 size_t laneCount_;
-
-                hwy::AlignedFreeUniquePtr<float[]> smooth_;
-                hwy::AlignedFreeUniquePtr<float[]> master_;
-                hwy::AlignedFreeUniquePtr<float[]> tempGain_;
-                hwy::AlignedFreeUniquePtr<float[]> tempPanL_;
-                hwy::AlignedFreeUniquePtr<float[]> tempPanR_;
-                hwy::AlignedFreeUniquePtr<float[]> tempMaster_;
-                std::array<hwy::AlignedFreeUniquePtr<float[]>, MixerNode::kMaxBusses> gains_;
-                std::array<hwy::AlignedFreeUniquePtr<float[]>, MixerNode::kMaxBusses> pans_;
+                bool configChanged_;
+                int inputCount_;
+                Smoother smoothers_[MAXBUSSES];
             };
 
             //Create CPU specific instance
+            template<int MAXBUSSES>
             HWY_API IPrimitiveNodeSIMDImplementation *  __CreateInstanceForCPU(const std::atomic<int>* targetInputCount,
                                                                                const std::atomic<float>* targetGains,
                                                                                const std::atomic<float>* targetPans,
-                                                                               const std::atomic<float>* targetMaster,
-                                                                               int maxBusses)
+                                                                               const std::atomic<float>* targetMaster)
             {
-                return new MixerNodeSIMDImplementation(targetInputCount, targetGains, targetPans, targetMaster, maxBusses);
+                return new MixerNodeSIMDImplementation<MAXBUSSES>(targetInputCount, targetGains, targetPans, targetMaster);
             }
         }
 
@@ -265,14 +269,21 @@ namespace dsp_primitives
 
         #if HWY_ONCE || HWY_IDE
 
-            IPrimitiveNodeSIMDImplementation *  __CreateInstance(const std::atomic<int>* targetInputCount,
+            template<int MAXBUSSES>
+            IPrimitiveNodeSIMDImplementation *  __CreateInstance(int target,
+                                                                 const std::atomic<int>* targetInputCount,
                                                                  const std::atomic<float>* targetGains,
                                                                  const std::atomic<float>* targetPans,
                                                                  const std::atomic<float>* targetMaster,
-                                                                 int maxBusses)
+                                                                 hwy::RunHighwayErrorCode * retErrCode)
             {
-                HWY_EXPORT_T(_create_instance_table, __CreateInstanceForCPU);
-                return HWY_DYNAMIC_DISPATCH_T(_create_instance_table)(targetInputCount, targetGains, targetPans, targetMaster, maxBusses);
+                HWY_EXPORT_T(_create_instance_table, __CreateInstanceForCPU<MAXBUSSES>);
+                
+                IPrimitiveNodeSIMDImplementation * ret = NULL;
+                hwy::RunHighwayErrorCode errCode = hwy::RunHighwayFunction(target, &ret, HWY_DISPATCH_TABLE(_create_instance_table),
+                                                                           targetInputCount, targetGains, targetPans, targetMaster);
+                *retErrCode = errCode;
+                return ret;
             }
 
         #endif

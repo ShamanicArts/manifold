@@ -1,8 +1,14 @@
+//Redefine the Highway Math implementation methods, so we can override them
+//We bascially use Intel SVML to implement them, if SVML is available, and
+//revert to the original implementation (as redefined below) if SVML is not available.
 #define SinCos __SinCos
+#define Exp __Exp
 
 #include "hwy/contrib/math/math-inl.h"
 
+//Remove our redefinitions
 #undef SinCos
+#undef Exp
 
 
 //==================================================================
@@ -55,6 +61,13 @@ namespace hwy
         struct HwyMathImpl
         {
             template <class DN, class V>
+            static HWY_INLINE V Exp(const DN d, V val)
+            {
+                //Call the original version that we # redefined
+                return __Exp(d, val);
+            }
+
+            template <class DN, class V>
             static HWY_INLINE void SinCos(const DN d, V x, V& s, V& c)
             {
                 //Call the original version that we # redefined
@@ -90,6 +103,14 @@ namespace hwy
                            hwy::EnableIf<HWY_FLAG_CHECK_AVX3(X) && (HWY_MAX_LANES_D(D) * sizeof(float) == 64)>>
         {
             template <class DN, class V>
+            static HWY_INLINE V Exp(const DN /*d*/, V val)
+            {
+                V ret;
+                ret.raw = _mm512_exp_ps(val.raw);
+                return ret;
+            }
+
+            template <class DN, class V>
             static HWY_INLINE void SinCos(const DN d, V x, V& s, V& c)
             {
                 s.raw = _mm512_sincos_ps(&c.raw, x.raw);
@@ -109,6 +130,14 @@ namespace hwy
         struct HwyMathImpl<float, D, X,
                            hwy::EnableIf<HWY_FLAG_CHECK_AVX_AVX3(X) && (HWY_MAX_LANES_D(D) * sizeof(float) == 32)>>
         {
+            template <class DN, class V>
+            static HWY_INLINE V Exp(const DN /*d*/, V val)
+            {
+                V ret;
+                ret.raw = _mm256_exp_ps(val.raw);
+                return ret;
+            }
+
             template <class DN, class V>
             static HWY_INLINE void SinCos(const DN d, V x, V& s, V& c)
             {
@@ -130,6 +159,14 @@ namespace hwy
                           hwy::EnableIf<HWY_FLAG_CHECK_SSE_AVX_AVX3(X) && (HWY_MAX_LANES_D(D) * sizeof(float) == 16)>>
         {
             template <class DN, class V>
+            static HWY_INLINE V Exp(const DN /*d*/, V val)
+            {
+                V ret;
+                ret.raw = _mm_exp_ps(val.raw);
+                return ret;
+            }
+
+            template <class DN, class V>
             static HWY_INLINE void SinCos(const DN d, V x, V& s, V& c)
             {
                 s.raw = _mm_sincos_ps(&c.raw, x.raw);
@@ -145,6 +182,14 @@ namespace hwy
         };
 
         //================================================================
+
+         template <class D, class V, int64_t X = HWY_TARGET>
+        HWY_INLINE V Exp(const D d, V val)
+        {
+            using T = TFromD<D>;
+            auto ret = HwyMathImpl<T, D, X>::Exp(d, val);
+            return ret;
+        }
 
         template <class D, class V, int64_t X = HWY_TARGET>
         HWY_INLINE void SinCos(const D d, V x, V& s, V& c)

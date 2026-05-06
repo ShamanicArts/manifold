@@ -4,6 +4,12 @@ juce_add_console_app(ManifoldTestNodesApp
 target_sources(ManifoldTestNodesApp
     PRIVATE
         ${PROJECT_SOURCE_DIR}/dsp_simd_test/TestNodesApp/main.cpp
+        ${PROJECT_SOURCE_DIR}/dsp_simd_test/TestNodesApp/TestingBase.cpp
+        ${PROJECT_SOURCE_DIR}/dsp_simd_test/TestNodesApp/TestADSRNode.cpp
+        ${PROJECT_SOURCE_DIR}/dsp_simd_test/TestNodesApp/TestBitcrusherNode.cpp
+        ${PROJECT_SOURCE_DIR}/dsp_simd_test/TestNodesApp/TestFilterNode.cpp
+        ${PROJECT_SOURCE_DIR}/dsp_simd_test/TestNodesApp/TestGainNode.cpp
+        ${PROJECT_SOURCE_DIR}/dsp_simd_test/TestNodesApp/TestMixerNode.cpp
         ${PROJECT_SOURCE_DIR}/dsp/core/nodes/ADSREnvelopeNode.cpp
         ${PROJECT_SOURCE_DIR}/dsp/core/nodes/BitCrusherNode.cpp
         ${PROJECT_SOURCE_DIR}/dsp/core/nodes/MixerNode.cpp

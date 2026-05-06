@@ -5,6 +5,7 @@
 #define HWY_TARGET_INCLUDE "dsp/core/nodes/ADSREnvelopeNode_Highway.h"
 
 #include "manifold/highway/HighwayWrapper.h"
+#include "manifold/highway/HighwayUtils.h"
 
 namespace dsp_primitives
 {
@@ -113,13 +114,14 @@ namespace dsp_primitives
                     bool haveDecayVal = false;
                     bool haveSustainVal = false;
                     bool haveReleaseVal = false;
+
+                    //Pre-fetch 
+                    hwy::Prefetch(inputPtr1);
+                    if(inputPtr2 != NULL)
+                        hwy::Prefetch(inputPtr2);
+
                     while(samplesRemain > 0)
                     {
-                        //Pre-fetch 
-                        hwy::Prefetch(inputPtr1 + offset);
-                        if(inputPtr2 != NULL)
-                            hwy::Prefetch(inputPtr2 + offset);
-
                         //Process all lanes
                         processLaneMask = HWY::Not(HWY::MaskFalse(_flttype));
 
@@ -386,19 +388,19 @@ namespace dsp_primitives
                                     data1 = HWY::Add(data1, data2);
                                     data1 = HWY::Mul(data1, HWY::Set(_flttype, 0.5));
 
-                                    HWY::BlendedStore(data1, processLaneMask, _flttype, outputPtr1 + offset);
+                                    HWY::StoreN(data1,_flttype, outputPtr1 + offset, samplesRemain);
                                 }
                                 else
                                 {
-                                    HWY::BlendedStore(data1, processLaneMask, _flttype, outputPtr1 + offset);
-                                    HWY::BlendedStore(data2, processLaneMask, _flttype, outputPtr2 + offset);
+                                    HWY::StoreN(data1,  _flttype, outputPtr1 + offset, samplesRemain);
+                                    HWY::StoreN(data2,  _flttype, outputPtr2 + offset, samplesRemain);
                                 }
                             }
                             else
                             {
-                                HWY::BlendedStore(data1, processLaneMask, _flttype, outputPtr1 + offset);
+                                HWY::StoreN(data1,  _flttype, outputPtr1 + offset, samplesRemain);
                                 if(outputPtr2 != NULL)
-                                    HWY::BlendedStore(data1, processLaneMask, _flttype, outputPtr2 + offset);
+                                    HWY::StoreN(data1, _flttype, outputPtr2 + offset, samplesRemain);
                             }
 
                             //Increment the stage time - use the last *processed* lane value + dt + laneTimes
@@ -508,13 +510,21 @@ namespace dsp_primitives
 
         #if HWY_ONCE || HWY_IDE
 
-            IPrimitiveNodeSIMDImplementation *  __CreateInstance(float samplerate,
+            IPrimitiveNodeSIMDImplementation *  __CreateInstance(int target, 
+                                                                 float samplerate,
                                                                 const std::atomic<float> * attack, const std::atomic<float> *decay, 
                                                                 const std::atomic<float> * sustain, const std::atomic<float> * release, 
-                                                                const std::atomic<bool> * gate)
+                                                                const std::atomic<bool> * gate,
+                                                                hwy::RunHighwayErrorCode * retErrCode)
             {
                 HWY_EXPORT_T(_create_instance_table, __CreateInstanceForCPU);
-                return HWY_DYNAMIC_DISPATCH_T(_create_instance_table)(samplerate, attack,decay, sustain, release, gate);
+                
+                IPrimitiveNodeSIMDImplementation * ret = NULL;
+                hwy::RunHighwayErrorCode errCode = hwy::RunHighwayFunction(target, &ret, HWY_DISPATCH_TABLE(_create_instance_table),
+                                                                           samplerate, attack, decay, sustain, release, gate);
+
+                *retErrCode = errCode;
+                return ret;
             }
         
         #endif

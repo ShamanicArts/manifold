@@ -5,6 +5,8 @@
 
 #include "manifold/highway/HighwayWrapper.h"
 #include "manifold/highway/HighwayMaths.h"
+#include "manifold/highway/HighwaySmoother.h"
+#include "manifold/highway/HighwayUtils.h"
 
 namespace dsp_primitives
 {
@@ -37,6 +39,7 @@ namespace dsp_primitives
                                                                                               laneCount_(0),
                                                                                               sampleRate_(samplerate)
                 {
+                    smoother_.initialise(targetbits, targetratered, targetmix, targetoutput);
                     configure();
                 }
 
@@ -46,27 +49,16 @@ namespace dsp_primitives
 
                     const hwy::HWY_NAMESPACE::ScalableTag<float> _flttype;
                     namespace HWY = hwy::HWY_NAMESPACE;
-                    const int numValues = StateIndex_Count;
+                    //const int numValues = StateIndex_Count;
                     const size_t numLanes = HWY::Lanes(_flttype);
 
                     const double sr = sampleRate > 1.0 ? sampleRate : 44100.0;
                     const double smoothTime = 0.01;
-                    
-                    smooth_ = hwy::AllocateAligned<float>(numLanes);
                     float smoothval = static_cast<float>(1.0 - std::exp(-1.0 / (smoothTime * sr)));
                     smoothval = juce::jlimit(0.0001f, 1.0f, smoothval);
-                    HWY::Store(HWY::Set(_flttype, smoothval),  _flttype, smooth_.get());
+                    smoother_.SetSmooth(smoothval);
+                    smoother_.PrepareCurrentValues();
 
-                    if(!currentState_ || (numLanes != laneCount_))
-                        currentState_ = hwy::AllocateAligned<float>( (numValues < numLanes) ? numLanes : ((1+(numValues / numLanes)) * numLanes)  );
-                    
-                    float * stateptr = currentState_.get();
-                    stateptr[StateIndex_Bits] = targetBits_->load(std::memory_order_acquire);
-                    stateptr[StateIndex_RateReduction] = targetRateReduction_->load(std::memory_order_acquire);
-                    stateptr[StateIndex_Mix] = targetMix_->load(std::memory_order_acquire);
-                    stateptr[StateIndex_Output] = targetOutput_->load(std::memory_order_acquire);
-                    currentLogicMode_ = targetLogicMode_->load(std::memory_order_acquire);
-                    
                     reset();
                 }
 
@@ -101,6 +93,8 @@ namespace dsp_primitives
                         HWY::Store(laneNum, _flttype, holdCounters_.get());
                         HWY::Store(laneNum, _flttype, holdCounters_.get() + numLanes);
                     }
+
+                    smoother_.PrepareCurrentValues();//Reset current values
                 }
 
                 HWY_ATTR virtual void run(const std::vector<AudioBufferView> & inputs,
@@ -112,16 +106,11 @@ namespace dsp_primitives
                     namespace HWY = hwy::HWY_NAMESPACE;
                     const size_t numLanes = HWY::Lanes(_flttype);
 
-                    if(numLanes != laneCount_)
-                    {
-                        configure();
-                        prepare(sampleRate_);
-                    }
-                    else if(configChanged_)
+                    if(configChanged_ || (numLanes != laneCount_))
                     {
                         configure();
                     }
-
+                    
                     const float * inputPtr1L = inputs[0].channelData[0];
                     const float * inputPtr1R = (inputs[0].numChannels > 1) ? inputs[0].channelData[1] : NULL;
                     const bool hasBusB = inputs.size() >= 2;
@@ -133,78 +122,48 @@ namespace dsp_primitives
                     size_t offset = 0;
                     size_t samplesRemain = numsamples;
                     
-                    const FltType lanecount = HWY::Set(_flttype, static_cast<float>(numLanes));
                     const FltType half = HWY::Set(_flttype, 0.5f);
                     const FltType one = HWY::Add(half,half);
                     const FltType two = HWY::Add(one,one);
                     const FltType gateLevel = HWY::Set(_flttype, 0.001f);
                     const FltType zero = HWY::Sub(one,one);
                     const FltType negone = HWY::Sub( zero,one );
-                    const FltType targetStateValues = HWY::Load(_flttype, targetState_.get());
                     const FltType laneNumbers = HWY::Load(_flttype, laneNumber_.get());
                     const IntType ione = HWY::Set(_inttype, 1);
                     const IntType izero = HWY::Sub(ione,ione);
 
                     FltType holdCounter = HWY::Load(_flttype, holdCounters_.get());
-                    FltMaskType stateMask, laneMask, gate, sampleLaneMask;
-                    FltType currentStateValues = HWY::Load(_flttype, currentState_.get());
-                    FltType smooth = HWY::Load(_flttype, smooth_.get());
-                    FltType currentOutput = HWY::Zero(_flttype);
-                    FltType currentBits = HWY::Zero(_flttype);
-                    FltType currentRateReduction = HWY::Zero(_flttype);
-                    FltType currentMix = HWY::Zero(_flttype);
+                    FltMaskType laneMask, gate, sampleLaneMask;
+                    FltType currentOutput, currentBits, currentRateReduction, currentMix;
                     FltType heldSampleL = HWY::Load(_flttype, heldSample_.get() );
                     FltType heldSampleR = HWY::Load(_flttype, heldSample_.get() + numLanes);
-                    FltType holdInterval, tmp, inAL,inAR, outputL, outputR, newHeldSampleL, newHeldSampleR, quantLevels, newStateValues;
+                    FltType holdInterval, tmp, inAL,inAR, outputL, outputR, newHeldSampleL, newHeldSampleR, quantLevels, maxCodeFlt;
                     FltType inBL = zero;
                     FltType inBR = zero;
                     IntType maxCode, midCode, qaL, qaR, qbL, qbR;
-                    size_t sampleLaneCount;
+                    size_t sampleLaneCount, laneidx;
+
+                    Smoother::ValueType targetStateVals, currentStateVals, smoothVals;
+                    smoother_.Start(targetStateVals, currentStateVals, smoothVals);
+
+                    //Pre-fetch
+                    hwy::Prefetch(inputPtr1L);
+                    if(inputPtr1R != NULL)
+                        hwy::Prefetch(inputPtr1R );
+                    if(inputPtr2L != NULL)
+                        hwy::Prefetch(inputPtr2L);
+                    if(inputPtr2R != NULL)
+                        hwy::Prefetch(inputPtr2R);
+
                     while(samplesRemain > 0)
                     {
-                        //Pre-fetch
-                        hwy::Prefetch(inputPtr1L + offset);
-                        if(inputPtr1R != NULL)
-                            hwy::Prefetch(inputPtr1R + offset);
-                        if(inputPtr2L != NULL)
-                            hwy::Prefetch(inputPtr2L + offset);
-                        if(inputPtr2R != NULL)
-                            hwy::Prefetch(inputPtr2R + offset);
-
-
                         sampleLaneCount = (samplesRemain > numLanes) ? numLanes : samplesRemain;
 
-                   
-                        //Generate values for all lanes
-                        stateMask = HWY::Not(HWY::MaskFalse(_flttype));
-                        laneMask = HWY::FirstN(_flttype, StateIndex_Count);
-                        for(int lane = 0; lane < sampleLaneCount; ++lane)
-                        {
-                            newStateValues = HWY::MulAdd(HWY::Sub(targetStateValues, currentStateValues), smooth, currentStateValues);
-                            if((lane > 0) && HWY::AllFalse(_flttype, HWY::MaskedNe(laneMask, newStateValues, currentStateValues)))
-                            {
-                                //If we're here, then the target and current state values are no longer moving.
-                                //Thus, it is safe to skip the calculation for the remainder of the lanes - since
-                                //the broadcast(s) would have set the remainder of the lanes already.
-                                //It does mean the broadcasts need running at least once, so only skip if lane > 0
-                                
-                                //Update state mask
-                                stateMask =  HWY::SlideMaskUpLanes(_flttype, stateMask, sampleLaneCount - lane);
-                                break;
-                            }
-                            
-                            currentStateValues = newStateValues;
-                            HWY::Store(currentStateValues, _flttype, currentState_.get());
-                            currentOutput = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_Output]), currentOutput);
-                            currentBits = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_Bits]), currentBits);
-                            currentRateReduction = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_RateReduction]), currentRateReduction);
-                            currentMix = HWY::IfThenElse(stateMask, HWY::Set(_flttype, currentState_.get()[StateIndex_Mix]), currentMix);
-                            stateMask = HWY::SlideMaskUpLanes(_flttype, stateMask, 1);
-                        }
+                        smoother_.Run(sampleLaneCount, smoothVals, targetStateVals, currentStateVals,
+                                      currentBits, currentRateReduction, currentMix, currentOutput);
 
                         holdInterval = HWY::IfThenElse(HWY::Lt(currentRateReduction, one), one, currentRateReduction);
-                        sampleLaneMask = HWY::Not(stateMask); //mask out lanes we're not processing (due to incomplete block)
-
+                        
                         //By default, the output is the currently held sample
                         outputL = heldSampleL;
                         outputR = heldSampleR;
@@ -212,11 +171,13 @@ namespace dsp_primitives
                         //Read input A
                         if(samplesRemain >= numLanes)
                         {
+                            sampleLaneMask = HWY::Not( HWY::MaskFalse(_flttype));
                             inAL = HWY::LoadU(_flttype, inputPtr1L + offset);
                             inAR = (inputPtr1R == NULL) ? inAL : HWY::LoadU(_flttype, inputPtr1R + offset);
                         }
                         else
                         {
+                            sampleLaneMask = HWY::FirstN(_flttype, sampleLaneCount);
                             inAL = HWY::MaskedLoad(sampleLaneMask, _flttype, inputPtr1L + offset);
                             inAR = (inputPtr1R == NULL) ? inAL : HWY::MaskedLoad(sampleLaneMask, _flttype, inputPtr1R + offset);
                         }
@@ -234,13 +195,17 @@ namespace dsp_primitives
                             maxCode = HWY::ConvertTo(_inttype, HWY::Add(quantLevels, quantLevels));
                             maxCode = HWY::Sub(maxCode, ione);
                             maxCode = HWY::IfThenElse(HWY::Lt(maxCode, ione), ione, maxCode);
-
+                            
                             //const int midCode = juce::jmax(1, static_cast<int>(quantLevels * 2.0f) - 1) / 2;
                             midCode = HWY::ShiftRight<1>(maxCode);
 
-                            //Read input B
-                            if((currentLogicMode_ <= 2) && hasBusB)
+                            //Generate potential new held sample values.
+                            //These will get picked out and used later
+                            newHeldSampleL = heldSampleL;
+                            newHeldSampleR = heldSampleR;
+                            if(hasBusB && (currentLogicMode_ == 1))
                             {
+                                //Read input B
                                 if(samplesRemain >= numLanes)
                                 {
                                     inBL = HWY::LoadU(_flttype, inputPtr2L + offset);
@@ -251,14 +216,10 @@ namespace dsp_primitives
                                     inBL = HWY::MaskedLoad(sampleLaneMask, _flttype, inputPtr2L + offset);
                                     inBR = (inputPtr2R == NULL) ? inBL : HWY::MaskedLoad(sampleLaneMask, _flttype, inputPtr2R + offset);
                                 }
-                            }
 
-                            //Generate potential new held sample values.
-                            //These will get picked out and used later
-                            newHeldSampleL = heldSampleL;
-                            newHeldSampleR = heldSampleR;
-                            if(currentLogicMode_ == 1 && hasBusB)
-                            {
+                                //Float version of maxCode - used several times below.
+                                maxCodeFlt = HWY::ConvertTo(_flttype, maxCode);
+                                
                                 // Offset codes to center around 0, XOR, then offset back
 
                                 /*  auto quantizeToCode = [](float x, float levels) {
@@ -271,57 +232,49 @@ namespace dsp_primitives
                                 // XOR: quantize both, XOR the codes, convert back.
                                 // Use bipolar quantization so silence (0.0) XOR silence = 0.0.
                                 //const int qa = quantizeToCode(inA, quantLevels);
+                                //
+                                //A Note about rounding:
+                                // The base version uses std::round as part of this process. In the tie-break condition (e.g: 1234.5) will round away from zero (e.g: 1234.5 -> 1235.0)
+                                //HWY::Round on x86/x64 will round towards EVEN.  So 1234.5 will round DOWN to 1234.0
+                                //Thus, we avoid using HWY::Round, and instead truncate the value +- 0.5 (plus if > 0, subtract if < 0) to match what std::round does.
+                                //
                                 tmp = HWY::IfThenElse(HWY::Gt(inAL, one), one, inAL);
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
-                                tmp = HWY::Mul(HWY::Add(tmp, one), half);
-                                tmp = HWY::Mul(tmp, HWY::ConvertTo(_flttype, maxCode));
-                                qaL = HWY::ConvertTo(_inttype, HWY::Round(tmp));
+                                tmp = HWY::MulAdd(tmp, half, half);
+                                tmp = HWY::Mul(tmp, maxCodeFlt);
+                                qaL = HWY::ConvertTo(_inttype,HWY::Trunc(HWY::IfThenElse(HWY::Gt(tmp, zero), HWY::Add(tmp, half), HWY::Sub(tmp, half)))); //Rounding like std::round
                                 qaL = HWY::IfThenElse(HWY::Gt(qaL, maxCode), maxCode, qaL);
                                 qaL = HWY::IfThenElse(HWY::Lt(qaL, izero), izero, qaL);
                                 qaL = HWY::Sub(qaL, midCode); //const int da = qa - midCode;
-                                if(HWY::AllTrue(_flttype, HWY::Eq(inAL, inAR)))
-                                {
-                                    //Mono input
-                                    qaR = qaL;
-                                }
-                                else
-                                {
-                                    tmp = HWY::IfThenElse(HWY::Gt(inAR, one), one, inAR);
-                                    tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
-                                    tmp = HWY::Mul(HWY::Add(tmp, one), half);
-                                    tmp = HWY::Mul(tmp, HWY::ConvertTo(_flttype, maxCode));
-                                    qaR = HWY::ConvertTo(_inttype, HWY::Round(tmp));
-                                    qaR = HWY::IfThenElse(HWY::Gt(qaR, maxCode), maxCode, qaR);
-                                    qaR = HWY::IfThenElse(HWY::Lt(qaR, izero), izero, qaR);
-                                    qaR = HWY::Sub(qaR, midCode);//const int da = qa - midCode;
-                                }
-
+                                
+                                tmp = HWY::IfThenElse(HWY::Gt(inAR, one), one, inAR);
+                                tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
+                                tmp = HWY::MulAdd(tmp, half, half);
+                                tmp = HWY::Mul(tmp,maxCodeFlt);
+                                qaR = HWY::ConvertTo(_inttype,HWY::Trunc(HWY::IfThenElse(HWY::Gt(tmp, zero), HWY::Add(tmp, half), HWY::Sub(tmp, half)))); //Rounding like std::round
+                                qaR = HWY::IfThenElse(HWY::Gt(qaR, maxCode), maxCode, qaR);
+                                qaR = HWY::IfThenElse(HWY::Lt(qaR, izero), izero, qaR);
+                                qaR = HWY::Sub(qaR, midCode);//const int da = qa - midCode;
+                                
                                 //const int qb = quantizeToCode(inB, quantLevels);
                                 tmp = HWY::IfThenElse(HWY::Gt(inBL, one), one, inBL);
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
-                                tmp = HWY::Mul(HWY::Add(tmp, one), half);
-                                tmp = HWY::Mul(tmp, HWY::ConvertTo(_flttype, maxCode));
-                                qbL = HWY::ConvertTo(_inttype, HWY::Round(tmp));
+                                tmp = HWY::MulAdd(tmp, half, half);
+                                tmp = HWY::Mul(tmp, maxCodeFlt);
+                                qbL = HWY::ConvertTo(_inttype,HWY::Trunc(HWY::IfThenElse(HWY::Gt(tmp, zero), HWY::Add(tmp, half), HWY::Sub(tmp, half)))); //Rounding like std::round
                                 qbL = HWY::IfThenElse(HWY::Gt(qbL, maxCode), maxCode, qbL);
                                 qbL = HWY::IfThenElse(HWY::Lt(qbL, izero), izero, qbL);
                                 qbL = HWY::Sub(qbL, midCode); //const int db = qb - midCode;
-                                if(HWY::AllTrue(_flttype, HWY::Eq(inBL, inBR)))
-                                {
-                                    //Mono input
-                                    qbR = qbL;
-                                }
-                                else
-                                {
-                                    tmp = HWY::IfThenElse(HWY::Gt(inBR, one), one, inBR);
-                                    tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
-                                    tmp = HWY::Mul(HWY::Add(tmp, one), half);
-                                    tmp = HWY::Mul(tmp, HWY::ConvertTo(_flttype, maxCode));
-                                    qbR = HWY::ConvertTo(_inttype, HWY::Round(tmp));
-                                    qbR = HWY::IfThenElse(HWY::Gt(qbR, maxCode), maxCode, qbR);
-                                    qbR = HWY::IfThenElse(HWY::Lt(qbR, izero), izero, qbR);
-                                    qbR = HWY::Sub(qbR, midCode); //const int db = qb - midCode;
-                                }
-
+                                
+                                tmp = HWY::IfThenElse(HWY::Gt(inBR, one), one, inBR);
+                                tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
+                                tmp = HWY::MulAdd(tmp, half, half);
+                                tmp = HWY::Mul(tmp, maxCodeFlt);
+                                qbR = HWY::ConvertTo(_inttype,HWY::Trunc(HWY::IfThenElse(HWY::Gt(tmp, zero), HWY::Add(tmp, half), HWY::Sub(tmp, half)))); //Rounding like std::round
+                                qbR = HWY::IfThenElse(HWY::Gt(qbR, maxCode), maxCode, qbR);
+                                qbR = HWY::IfThenElse(HWY::Lt(qbR, izero), izero, qbR);
+                                qbR = HWY::Sub(qbR, midCode); //const int db = qb - midCode;
+                            
                                 //const int qx = (da ^ db) + midCode;
                                 qaL = HWY::Add(midCode, HWY::Xor(qaL, qbL));
                                 qaR = HWY::Add(midCode, HWY::Xor(qaR, qbR));
@@ -334,25 +287,30 @@ namespace dsp_primitives
                                 };*/
                                 qbL = HWY::IfThenElse(HWY::Gt(qaL, maxCode), maxCode, qaL);
                                 qbL = HWY::IfThenElse(HWY::Lt(qbL, izero), izero, qbL);
-                                tmp = HWY::Div(HWY::ConvertTo(_flttype, qbL), HWY::ConvertTo(_flttype, maxCode));
+                                tmp = HWY::Div(HWY::ConvertTo(_flttype, qbL), maxCodeFlt);
                                 tmp = HWY::MulSub(tmp, two, one);
                                 newHeldSampleL = HWY::Mul(tmp, currentOutput);
-                                if(HWY::AllTrue(_inttype, HWY::Eq(qaL, qaR)))
+                                
+                                qbR = HWY::IfThenElse(HWY::Gt(qaR, maxCode), maxCode, qaR);
+                                qbR = HWY::IfThenElse(HWY::Lt(qbR, izero), izero, qbR);
+                                tmp = HWY::Div(HWY::ConvertTo(_flttype, qbR), maxCodeFlt);
+                                tmp = HWY::MulSub(tmp, two, one);
+                                newHeldSampleR = HWY::Mul(tmp, currentOutput);
+                            }
+                            else if(hasBusB && (currentLogicMode_ == 2))
+                            {
+                                //Read input B
+                                if(samplesRemain >= numLanes)
                                 {
-                                    //Mono input
-                                    newHeldSampleR = newHeldSampleL;
+                                    inBL = HWY::LoadU(_flttype, inputPtr2L + offset);
+                                    inBR = (inputPtr2R == NULL) ? inBL : HWY::LoadU(_flttype, inputPtr2R + offset);
                                 }
                                 else
                                 {
-                                    qbR = HWY::IfThenElse(HWY::Gt(qaR, maxCode), maxCode, qaR);
-                                    qbR = HWY::IfThenElse(HWY::Lt(qbR, izero), izero, qbR);
-                                    tmp = HWY::Div(HWY::ConvertTo(_flttype, qbR), HWY::ConvertTo(_flttype, maxCode));
-                                    tmp = HWY::MulSub(tmp, two, one);
-                                    newHeldSampleR = HWY::Mul(tmp, currentOutput);
+                                    inBL = HWY::MaskedLoad(sampleLaneMask, _flttype, inputPtr2L + offset);
+                                    inBR = (inputPtr2R == NULL) ? inBL : HWY::MaskedLoad(sampleLaneMask, _flttype, inputPtr2R + offset);
                                 }
-                            }
-                            else if(currentLogicMode_ == 2 && hasBusB)
-                            {
+
                                 // Gate/compare: use bus B amplitude to gate target A.
 
                                 //const float qa = std::round(inA * quantLevels) / quantLevels;
@@ -363,18 +321,11 @@ namespace dsp_primitives
                                 tmp = HWY::Mul(tmp, currentOutput);
                                 newHeldSampleL = HWY::IfThenElse(gate, tmp, zero);
 
-                                //Check for mono, and avoid div and mul if the input left signals are identical to the right.
-                                if(HWY::AllTrue(_flttype, HWY::Eq(inAL, inAR)) && HWY::AllTrue(_flttype, HWY::Eq(inBL, inBR)))
-                                {
-                                    newHeldSampleR = newHeldSampleL;
-                                }
-                                else
-                                {
-                                    tmp = HWY::Div(HWY::Round(HWY::Mul(inAR, quantLevels)), quantLevels);
-                                    gate = HWY::Gt(HWY::Abs(inBR), gateLevel);
-                                    tmp = HWY::Mul(tmp, currentOutput);
-                                    newHeldSampleR = HWY::IfThenElse(gate, tmp, zero);
-                                }
+                                
+                                tmp = HWY::Div(HWY::Round(HWY::Mul(inAR, quantLevels)), quantLevels);
+                                gate = HWY::Gt(HWY::Abs(inBR), gateLevel);
+                                tmp = HWY::Mul(tmp, currentOutput);
+                                newHeldSampleR = HWY::IfThenElse(gate, tmp, zero);
                             }
                             else
                             {
@@ -384,17 +335,11 @@ namespace dsp_primitives
                                 tmp = HWY::IfThenElse(HWY::Gt(tmp, one), one, tmp);
                                 tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
                                 newHeldSampleL = HWY::Mul(tmp, currentOutput);
-                                if(HWY::AllTrue(_flttype, HWY::Eq(inAL, inAR)))
-                                {
-                                    newHeldSampleR = newHeldSampleL;
-                                }
-                                else
-                                {
-                                    tmp = HWY::Div(HWY::Round(HWY::Mul(inAR, quantLevels)), quantLevels);
-                                    tmp = HWY::IfThenElse(HWY::Gt(tmp, one), one, tmp);
-                                    tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
-                                    newHeldSampleR = HWY::Mul(tmp, currentOutput);
-                                }
+                           
+                                tmp = HWY::Div(HWY::Round(HWY::Mul(inAR, quantLevels)), quantLevels);
+                                tmp = HWY::IfThenElse(HWY::Gt(tmp, one), one, tmp);
+                                tmp = HWY::IfThenElse(HWY::Lt(tmp, negone), negone, tmp);
+                                newHeldSampleR = HWY::Mul(tmp, currentOutput);
                             }
 
 
@@ -402,6 +347,8 @@ namespace dsp_primitives
                             //(The check has already been done earlier, and the result put into 'laneMask')
                             do
                             {
+                                laneidx = HWY::FindKnownFirstTrue(_flttype, laneMask);
+
                                 //Here we perform the subtraction (as per  { holdCounter_[static_cast<size_t>(ch)] -= holdInterval; })
                                 //But to avoid SIMD floating point errors, in comparison with the original code, 
                                 //we extract the result of the subtraction from the correct lane, broadcast that result
@@ -412,13 +359,13 @@ namespace dsp_primitives
                                 //Unfortunalty, this can introduce floating point rounding errors as time goes on,
                                 //so we need to use the slower version as described above.
                                 holdCounter = HWY::Sub(holdCounter, holdInterval);
-                                holdCounter = HWY::BroadcastLane<0>(HWY::Compress(holdCounter, laneMask));
-                                holdCounter = HWY::Add(holdCounter, HWY::Expand( HWY::Sub( laneNumbers, one), laneMask));
+                                holdCounter = HWY::BroadcastLane<0>(HWY::SlideDownLanes(_flttype, holdCounter, laneidx));
+                                holdCounter = HWY::Add(holdCounter, HWY::SlideUpLanes(_flttype, laneNumbers, laneidx + 1));
 
-                                //Shift lanes down and set the new held sample
-                                tmp = HWY::Compress(newHeldSampleL, laneMask);
+                                //Shift lanes down and set the new held sample for current and future lanes
+                                tmp = HWY::SlideDownLanes(_flttype,newHeldSampleL, laneidx);
                                 heldSampleL = HWY::BroadcastLane<0>(tmp);
-                                tmp = HWY::Compress(newHeldSampleR, laneMask);
+                                tmp = HWY::SlideDownLanes(_flttype,newHeldSampleR, laneidx);
                                 heldSampleR = HWY::BroadcastLane<0>(tmp);
 
                                 //Apply new held sample to the output
@@ -435,7 +382,7 @@ namespace dsp_primitives
                         // const float wet = heldSample_[static_cast<size_t>(ch)];
                         //const float out = inA * (1.0f - currentMix_) + wet * currentMix_;
                         outputL = HWY::MulAdd(inAL, HWY::Sub(one, currentMix), HWY::Mul(outputL, currentMix));
-                        outputR = (outputPtrR == NULL) ? HWY::Zero(_flttype) : HWY::MulAdd(inAR, HWY::Sub(one, currentMix), HWY::Mul(outputR, currentMix));
+                        outputR = (outputPtrR == NULL) ? outputL : HWY::MulAdd(inAR, HWY::Sub(one, currentMix), HWY::Mul(outputR, currentMix));
 
                         //Update for next round, and Write output for this round
                         if(samplesRemain >= numLanes)
@@ -454,8 +401,7 @@ namespace dsp_primitives
                         {
                             //Use the last value of the hold counter to generate the next set of hold counters - 
                             //this is a partial block so only use the counter of the last sample
-                            laneMask = HWY::Not( HWY::FirstN(_flttype, samplesRemain - 1)); 
-                            holdCounter = HWY::BroadcastLane<0>(HWY::Compress(holdCounter, laneMask));
+                            holdCounter = HWY::BroadcastLane<0>(HWY::SlideDownLanes(_flttype, holdCounter, samplesRemain - 1));
                             holdCounter = HWY::Add(laneNumbers, holdCounter);
                            
                             HWY::StoreN(outputL, _flttype, outputPtrL + offset, samplesRemain);
@@ -469,7 +415,7 @@ namespace dsp_primitives
 
                         
                     //Save state
-                    HWY::Store(currentStateValues, _flttype, currentState_.get());
+                    smoother_.End(currentStateVals);
                     HWY::Store(heldSampleL, _flttype, heldSample_.get());
                     HWY::Store(heldSampleR, _flttype, heldSample_.get() + numLanes);
                     HWY::Store(holdCounter, _flttype, holdCounters_.get());
@@ -481,18 +427,12 @@ namespace dsp_primitives
                     namespace HWY = hwy::HWY_NAMESPACE;
                     
                     size_t numLanes = HWY::Lanes(_flttype);
-                    const int numValues = 4;
                     const FltType  one = HWY::Set(_flttype, 1.0f);
                     const FltType laneNum = HWY::Iota(_flttype, 1);
 
-                    if(!targetState_ || (numLanes != laneCount_))
-                        targetState_ = hwy::AllocateAligned<float>( (numValues < numLanes) ? numLanes : ((1+(numValues / numLanes)) * numLanes)  );
+                    smoother_.UpdateTargetValues();
 
-                    float * stateptr = targetState_.get();
-                    stateptr[StateIndex_Bits] = targetBits_->load(std::memory_order_acquire);
-                    stateptr[StateIndex_RateReduction] = targetRateReduction_->load(std::memory_order_acquire);
-                    stateptr[StateIndex_Mix] = targetMix_->load(std::memory_order_acquire);
-                    stateptr[StateIndex_Output] = targetOutput_->load(std::memory_order_acquire);
+
                     currentLogicMode_ = targetLogicMode_->load(std::memory_order_acquire);
 
                     if(!holdCounters_ || (numLanes != laneCount_))
@@ -527,21 +467,10 @@ namespace dsp_primitives
                 size_t laneCount_;
                 float sampleRate_;
                 
-                
-                
-                enum StateIndex
-                {
-                    StateIndex_Bits = 0,
-                    StateIndex_RateReduction = 1,
-                    StateIndex_Mix = 2,
-                    StateIndex_Output = 3,
-                    StateIndex_Count = 4
-                };
+                typedef hwy::HWY_NAMESPACE::HighwayValueSmoother<float, 4> Smoother;
 
-                hwy::AlignedFreeUniquePtr<float[]> currentState_;
-                hwy::AlignedFreeUniquePtr<float[]> targetState_;
+                Smoother smoother_;
                 int currentLogicMode_;
-                hwy::AlignedFreeUniquePtr<float[]> smooth_;
                 hwy::AlignedFreeUniquePtr<float[]> holdCounters_;
                 hwy::AlignedFreeUniquePtr<float[]> heldSample_;
                 hwy::AlignedFreeUniquePtr<float[]> laneNumber_;
@@ -558,7 +487,7 @@ namespace dsp_primitives
                                                                                const std::atomic<int> * targetlogicmode)
             {
                 return new BitCrusherNodeSIMDImplementation(samplerate, targetbits, targetratered, targetmix, targetoutput, targetlogicmode);
-            }        
+            }
         }
 
         //========================================================================
@@ -566,15 +495,23 @@ namespace dsp_primitives
 
         #if HWY_ONCE || HWY_IDE
 
-            IPrimitiveNodeSIMDImplementation *  __CreateInstance(float samplerate,
+            IPrimitiveNodeSIMDImplementation *  __CreateInstance(int target,
+                                                                float samplerate,
                                                                 const std::atomic<float> * targetbits,
                                                                 const std::atomic<float> * targetratered,
                                                                 const std::atomic<float> * targetmix,
                                                                 const std::atomic<float> * targetoutput,
-                                                                const std::atomic<int> * targetlogicmode)
+                                                                const std::atomic<int> * targetlogicmode ,
+                                                                hwy::RunHighwayErrorCode * retErrorCode)
             {
                 HWY_EXPORT_T(_create_instance_table, __CreateInstanceForCPU);
-                return HWY_DYNAMIC_DISPATCH_T(_create_instance_table)(samplerate, targetbits, targetratered, targetmix, targetoutput, targetlogicmode);
+                IPrimitiveNodeSIMDImplementation * retiface = NULL;
+
+                hwy::RunHighwayErrorCode res =  hwy::RunHighwayFunction(target, &retiface, HWY_DISPATCH_TABLE(_create_instance_table),
+                                                                        samplerate, targetbits, targetratered, targetmix, targetoutput, targetlogicmode);
+
+                *retErrorCode = res;
+                return retiface;
             }
         
         #endif

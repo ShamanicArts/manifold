@@ -5,7 +5,8 @@
 
 namespace dsp_primitives {
 
-GainNode::GainNode(int numChannels) : numChannels_(numChannels) {}
+GainNode::GainNode(int numChannels) : numChannels_(numChannels){}
+
 
 void GainNode::prepare(double sampleRate, int maxBlockSize) {
     (void)maxBlockSize;
@@ -17,25 +18,31 @@ void GainNode::prepare(double sampleRate, int maxBlockSize) {
 
     currentGain_ = juce::jmax(0.0f, targetGain_.load(std::memory_order_acquire));
 
-    simd_implementation_ = std::unique_ptr<IPrimitiveNodeSIMDImplementation>(
-        dsp_primitives::GainNode_Highway::__CreateInstance(
-            static_cast<float>(sampleRate), numChannels_, &targetGain_, &muted_)
-    );
-    simd_implementation_->prepare(static_cast<float>(sampleRate));
+    //Set up SIMD implementation
+    if((simd_implementation_ == NULL) && (simdTarget_ >= 0))
+    {
+        hwy::RunHighwayErrorCode errcode = hwy::RunHighwayErrorCode_Error;
+        simd_implementation_.reset(GainNode_Highway::__CreateInstance(simdTarget_, numChannels_, &targetGain_, &muted_, &errcode));
+        highwayErrCode_ = static_cast<int>(errcode);
+    }
+
+    if(simd_implementation_ != NULL)
+        simd_implementation_->prepare(static_cast<float>(sampleRate));
+    
     prepared_ = true;
 }
 
 void GainNode::process(const std::vector<AudioBufferView>& inputs,
                        std::vector<WritableAudioBufferView>& outputs,
                        int numSamples) {
+    if (inputs.empty() || outputs.empty() || numSamples <= 0)
+        return;
+
     if (simd_implementation_) {
         simd_implementation_->run(inputs, outputs, numSamples);
         return;
     }
-
-    if (inputs.empty() || outputs.empty() || numSamples <= 0)
-        return;
-
+   
     const int channels = juce::jmin(numChannels_,
                                     inputs[0].numChannels,
                                     outputs[0].numChannels);
@@ -54,6 +61,7 @@ void GainNode::process(const std::vector<AudioBufferView>& inputs,
 
 void GainNode::setGain(float gain) {
     targetGain_.store(juce::jmax(0.0f, gain), std::memory_order_release);
+     notifyConfigChangeSimdImplementation();
 }
 
 float GainNode::getGain() const {
@@ -66,10 +74,6 @@ void GainNode::reset() {
     if (simd_implementation_) {
         simd_implementation_->reset();
     }
-}
-
-void GainNode::disableSIMD() {
-    simd_implementation_.reset();
 }
 
 void GainNode::setMuted(bool muted) {

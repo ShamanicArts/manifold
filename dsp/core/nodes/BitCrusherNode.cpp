@@ -8,6 +8,11 @@ namespace dsp_primitives {
 
 BitCrusherNode::BitCrusherNode() = default;
 
+BitCrusherNode::BitCrusherNode(int simdTarget)
+{
+    simdTarget_ = simdTarget;
+}
+
 void BitCrusherNode::prepare(double sampleRate, int maxBlockSize) {
     (void)maxBlockSize;
 
@@ -24,11 +29,18 @@ void BitCrusherNode::prepare(double sampleRate, int maxBlockSize) {
 
     reset();
 
-    //Set up SIMD implementation
-    if(simd_implementation_ == NULL)
-        simd_implementation_.reset(BitCrusherNode_Highway::__CreateInstance(static_cast<float>(sampleRate), &targetBits_, &targetRateReduction_, &targetMix_, &targetOutput_, &targetLogicMode_));
-    
-    simd_implementation_->prepare(static_cast<float>(sampleRate));
+    //Set up SIMD implementation according to simdTarget_
+    //  0 = automatic
+    //  -1 = disabled
+    if((simd_implementation_ == NULL) && (simdTarget_ >= 0))
+    {
+        hwy::RunHighwayErrorCode errCode = hwy::RunHighwayErrorCode_Error;
+        simd_implementation_.reset(BitCrusherNode_Highway::__CreateInstance(simdTarget_, static_cast<float>(sampleRate), &targetBits_, &targetRateReduction_, &targetMix_, &targetOutput_, &targetLogicMode_, &errCode));
+        highwayErrCode_ = static_cast<int>(errCode);
+    }
+
+    if(simd_implementation_ != NULL)
+        simd_implementation_->prepare(static_cast<float>(sampleRate));
 
     prepared_ = true;
 }
@@ -98,8 +110,8 @@ void BitCrusherNode::process(const std::vector<AudioBufferView>& inputs,
         float outR = inAR;
 
 
-        //printf("DEBUG: Sample:%d, heldL=%f heldR=%f holdCountL=%f (%f) holdCountR=%f (%f)   holdInterval=%f tbits=%f currentBits_=%f   tRateRed=%f  currentRateReduction_=%f   tMix=%f currentMix_=%f   tout=%f currentOutput_=%f currentLogicMode_=%d inAL=%f inAR=%f inBL=%f inBR=%f\n",
-        //       i, heldSample_[0], heldSample_[1], holdCounter_[0], holdCounter_[0] + 1.0f,  holdCounter_[1], holdCounter_[1] + 1.0f, holdInterval, tBits, currentBits_, tRateReduction,currentRateReduction_, tMix, currentMix_, tOutput, currentOutput_, currentLogicMode_, inAL, inAR, inBL, inBR);
+        //printf("DEBUG: Sample:%d, heldL=%f heldR=%f holdCountL=%f (%f) holdCountR=%f (%f)   holdInterval=%f  tbits=%f currentBits_=%f   tRateRed=%f  currentRateReduction_=%f   tMix=%f currentMix_=%f   tout=%f currentOutput_=%f currentLogicMode_=%d  quant=%f  inAL=%f inAR=%f inBL=%f inBR=%f\n",
+        //       i, heldSample_[0], heldSample_[1], holdCounter_[0], holdCounter_[0] + 1.0f,  holdCounter_[1], holdCounter_[1] + 1.0f, holdInterval, tBits, currentBits_, tRateReduction,currentRateReduction_, tMix, currentMix_, tOutput, currentOutput_, currentLogicMode_, quantLevels, inAL, inAR, inBL, inBR);
 
 
         for (int ch = 0; ch < 2; ++ch) {
@@ -131,11 +143,13 @@ void BitCrusherNode::process(const std::vector<AudioBufferView>& inputs,
                     const float qa = std::round(inA * quantLevels) / quantLevels;
                     const bool gate = std::fabs(inB) > 0.001f;
                     wet = (gate ? qa : 0.0f) * currentOutput_;
+
+                    //printf("   DEBUG LOGIC 2: Channel %d hold counter %f at sample %d quant:%f  qa=%f gate=%u newheld=%f \n", ch, holdCounter_[static_cast<size_t>(ch)], i,quantLevels, qa,gate, wet);
                 } else {
                     const float q = std::round(inA * quantLevels) / quantLevels;
                     wet = juce::jlimit(-1.0f, 1.0f, q) * currentOutput_;
 
-                    //printf("   DEBUG: ELSE Channel %d hold counter %f at sample %d quant:%f newheld=%f \n", ch, holdCounter_[static_cast<size_t>(ch)], i,quantLevels, wet);
+                    //printf("   DEBUG: ELSE Channel %d hold counter %f at sample %d quant:%f  q=%f newheld=%f \n", ch, holdCounter_[static_cast<size_t>(ch)], i,quantLevels, q, wet);
                 }
 
                 heldSample_[static_cast<size_t>(ch)] = wet;
@@ -154,9 +168,11 @@ void BitCrusherNode::process(const std::vector<AudioBufferView>& inputs,
         if (outputs[0].numChannels > 1) {
             outputs[0].setSample(1, i, outR);
         }
+
+        //printf("\n");
     }
 
-    //printf("\n\n");
+    //printf("\n");
 }
 
 } // namespace dsp_primitives

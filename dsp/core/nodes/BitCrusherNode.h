@@ -11,6 +11,7 @@ class BitCrusherNode : public IPrimitiveNode,
                        public std::enable_shared_from_this<BitCrusherNode> {
 public:
     BitCrusherNode();
+    BitCrusherNode(int simdTarget);
 
     const char* getNodeType() const override { return "BitCrusher"; }
     // Two stereo busses encoded as 4 input views:
@@ -37,10 +38,15 @@ public:
     float getOutput() const { return targetOutput_.load(std::memory_order_acquire); }
     int getLogicMode() const { return targetLogicMode_.load(std::memory_order_acquire); }
 
-    void disableSIMD() //turn off SIMD implementation, for testing
+    const char * getHighwayImplementationTargetName() const
     {
-        simd_implementation_.reset();
+        if(simd_implementation_.get() == NULL)
+            return NULL;
+
+        return simd_implementation_->targetName();
     }
+
+    int getHighwayErrorCode() const { return highwayErrCode_;}
 private:
     inline void notifyConfigChangeSimdImplementation()
     {
@@ -53,6 +59,9 @@ private:
     std::atomic<float> targetMix_{1.0f};
     std::atomic<float> targetOutput_{0.8f};
     std::atomic<int> targetLogicMode_{0};
+
+    int simdTarget_ = 0; //0 = automatic
+    int highwayErrCode_ = 0;
 
     float currentBits_ = 8.0f;
     float currentRateReduction_ = 4.0f;

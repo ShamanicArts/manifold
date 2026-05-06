@@ -28,6 +28,12 @@
     <Filter Include="Header Files\Nodes_Highway">
       <UniqueIdentifier>{556d0166-32da-418d-ae59-c2f4e10f7c98}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Testing">
+      <UniqueIdentifier>{505d7994-e8f0-4dc9-baf3-3d7d5e33fa08}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Testing">
+      <UniqueIdentifier>{f974119a-a574-4a3c-8a71-3796970ba81d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\dsp\core\nodes\ADSREnvelopeNode.cpp">
@@ -51,11 +57,41 @@
     <ClCompile Include="..\..\dsp\core\nodes\BitCrusherNode.cpp">
       <Filter>Source Files\Nodes</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\dsp\core\nodes\FilterNode.cpp">
+      <Filter>Source Files\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\dsp\core\nodes\GainNode.cpp">
+      <Filter>Source Files\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\dsp\core\nodes\OscillatorNode.cpp">
+      <Filter>Source Files\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\dsp\core\nodes\MixerNode.cpp">
+      <Filter>Source Files\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\external\JUCE\modules\juce_core\juce_core_CompilationTime.cpp">
+      <Filter>Source Files\JUCE</Filter>
+    </ClCompile>
+    <ClCompile Include="TestingBase.cpp">
+      <Filter>Source Files\Testing</Filter>
+    </ClCompile>
+    <ClCompile Include="TestFilterNode.cpp">
+      <Filter>Source Files\Testing</Filter>
+    </ClCompile>
+    <ClCompile Include="TestADSRNode.cpp">
+      <Filter>Source Files\Testing</Filter>
+    </ClCompile>
+    <ClCompile Include="TestBitcrusherNode.cpp">
+      <Filter>Source Files\Testing</Filter>
+    </ClCompile>
+    <ClCompile Include="TestGainNode.cpp">
+      <Filter>Source Files\Testing</Filter>
+    </ClCompile>
+    <ClCompile Include="TestMixerNode.cpp">
+      <Filter>Source Files\Testing</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\manifold\core\HighwayWrapper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\dsp\core\nodes\ADSREnvelopeNode_Highway.h">
       <Filter>Header Files\Nodes_Highway</Filter>
     </ClInclude>
@@ -68,8 +104,59 @@
     <ClInclude Include="..\..\dsp\core\nodes\BitCrusherNode_Highway.h">
       <Filter>Header Files\Nodes_Highway</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\manifold\core\HighwayMaths.h">
+    <ClInclude Include="..\..\dsp\core\nodes\FilterNode_Highway.h">
+      <Filter>Header Files\Nodes_Highway</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\GainNode_Highway.h">
+      <Filter>Header Files\Nodes_Highway</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\MixerNode_Highway.h">
+      <Filter>Header Files\Nodes_Highway</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\FilterNode.h">
+      <Filter>Header Files\Nodes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\GainNode.h">
+      <Filter>Header Files\Nodes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\MixerNode.h">
+      <Filter>Header Files\Nodes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\OscillatorNode.h">
+      <Filter>Header Files\Nodes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dsp\core\nodes\OscillatorNode_Highway.h">
+      <Filter>Header Files\Nodes_Highway</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\manifold\highway\HighwayMaths.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\manifold\highway\HighwayWrapper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\manifold\highway\HighwaySmoother.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\manifold\highway\HighwayUtils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TestingBase.h">
+      <Filter>Header Files\Testing</Filter>
+    </ClInclude>
+    <ClInclude Include="TestFilterNode.h">
+      <Filter>Header Files\Testing</Filter>
+    </ClInclude>
+    <ClInclude Include="TestADSRNode.h">
+      <Filter>Header Files\Testing</Filter>
+    </ClInclude>
+    <ClInclude Include="TestBitcrusherNode.h">
+      <Filter>Header Files\Testing</Filter>
+    </ClInclude>
+    <ClInclude Include="TestGainNode.h">
+      <Filter>Header Files\Testing</Filter>
+    </ClInclude>
+    <ClInclude Include="TestMixerNode.h">
+      <Filter>Header Files\Testing</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
