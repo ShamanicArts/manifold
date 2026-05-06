@@ -1213,6 +1213,12 @@ add_executable(BehaviorParamSupportContractHarness manifold/headless/BehaviorPar
 
 add_executable(BehaviorHousekeepingSupportContractHarness manifold/headless/BehaviorHousekeepingSupportContractHarness.cpp)
 
+add_executable(AtomicStateProjectionContractHarness manifold/headless/AtomicStateProjectionContractHarness.cpp)
+
+add_executable(AtomicStateCouplingContractHarness manifold/headless/AtomicStateCouplingContractHarness.cpp)
+
+add_executable(AtomicStatePublicationContractHarness manifold/headless/AtomicStatePublicationContractHarness.cpp)
+
 add_executable(DspSlotSupportContractHarness manifold/headless/DspSlotSupportContractHarness.cpp)
 
 add_executable(MLPipelineContractHarness manifold/headless/MLPipelineContractHarness.cpp)
@@ -1829,6 +1835,24 @@ target_link_libraries(BehaviorParamSupportContractHarness
 
 manifold_target_include_project_and_ableton(BehaviorHousekeepingSupportContractHarness)
 target_link_libraries(BehaviorHousekeepingSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors)
+
+manifold_target_include_project_and_ableton(AtomicStateProjectionContractHarness)
+target_link_libraries(AtomicStateProjectionContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors)
+
+manifold_target_include_project_and_ableton(AtomicStateCouplingContractHarness)
+target_link_libraries(AtomicStateCouplingContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors)
+
+manifold_target_include_project_and_ableton(AtomicStatePublicationContractHarness)
+target_link_libraries(AtomicStatePublicationContractHarness
     PRIVATE
         Manifold
         juce::juce_audio_processors)
@@ -2596,6 +2620,27 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/behavior_housekeeping_support_contract_golden.json)
 set_tests_properties(manifold_behavior_housekeeping_support_contract PROPERTIES
     LABELS "manifold;core;support;housekeeping;contract")
+
+add_test(
+    NAME manifold_atomic_state_projection_contract
+    COMMAND $<TARGET_FILE:AtomicStateProjectionContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/atomic_state_projection_contract_golden.json)
+set_tests_properties(manifold_atomic_state_projection_contract PROPERTIES
+    LABELS "manifold;core;state;projection;contract")
+
+add_test(
+    NAME manifold_atomic_state_coupling_contract
+    COMMAND $<TARGET_FILE:AtomicStateCouplingContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/atomic_state_coupling_contract_golden.json)
+set_tests_properties(manifold_atomic_state_coupling_contract PROPERTIES
+    LABELS "manifold;core;state;coupling;contract")
+
+add_test(
+    NAME manifold_atomic_state_publication_contract
+    COMMAND $<TARGET_FILE:AtomicStatePublicationContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/atomic_state_publication_contract_golden.json)
+set_tests_properties(manifold_atomic_state_publication_contract PROPERTIES
+    LABELS "manifold;core;state;publication;contract")
 
 add_test(
     NAME manifold_dsp_slot_support_contract
