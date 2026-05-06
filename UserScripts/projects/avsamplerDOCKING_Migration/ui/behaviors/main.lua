@@ -3,7 +3,18 @@ local AVSD = {
   Mapping = require("behaviors.avsd.mapping"),
   Midi = require("behaviors.avsd.midi"),
   State = require("behaviors.avsd.state"),
+  Prof = require("behaviors.avsd.profiler"),
+  ML = require("behaviors.avsd.ml"),
+  Sampler = require("behaviors.avsd.sampler"),
+  Sources = require("behaviors.avsd.sources"),
+  Params = require("behaviors.avsd.params"),
+  Grid = require("behaviors.avsd.grid"),
+  Layout = require("behaviors.avsd.layout"),
+  Compositor = require("behaviors.avsd.compositor"),
 }
+local GRID_DEPS = nil
+local LAYOUT_DEPS = nil
+local COMPO_DEPS = nil
 
 local NS = "/avsampler"
 local MAX = 8
@@ -32,22 +43,6 @@ local KEYPOINTS = {
   "left_wrist", "right_wrist", "left_hip", "right_hip",
   "left_knee", "right_knee", "left_ankle", "right_ankle"
 }
-
-local function buildPoseSources()
-  local out = {}
-  for _, name in ipairs(KEYPOINTS) do
-    out[#out + 1] = { label = name .. ".x", keypoint = name, property = "x" }
-    out[#out + 1] = { label = name .. ".y", keypoint = name, property = "y" }
-    out[#out + 1] = { label = name .. ".confidence", keypoint = name, property = "confidence" }
-  end
-  out[#out + 1] = { label = "both_hands.spread", derived = "both_hands_spread" }
-  out[#out + 1] = { label = "left_arm.reach", derived = "left_arm_reach" }
-  out[#out + 1] = { label = "right_arm.reach", derived = "right_arm_reach" }
-  return out
-end
-
-local POSE_SOURCES = buildPoseSources()
-local SKELETON = { {1,2},{1,3},{2,4},{3,5},{6,8},{8,10},{7,9},{9,11},{6,7},{6,12},{7,13},{12,13},{12,14},{14,16},{13,15},{15,17} }
 
 local DOCK_WINDOWS = {
   { key = "deck",    title = "Deck",                 accent = 0xff22d3ee },
@@ -94,10 +89,6 @@ local function rackFxBasePath(slot) return "/midi/synth/rack/fx/" .. math.max(1,
 local function rackFxTypePath(slot) return rackFxBasePath(slot) .. "/type" end
 local function rackFxMixPath(slot) return rackFxBasePath(slot) .. "/mix" end
 local function rackFxParamPath(slot, paramIndex) return rackFxBasePath(slot) .. "/p/" .. math.max(0, round(paramIndex or 0)) end
-local function pathForSlice(i) return NS .. "/slice/" .. i .. "/start" end
-local function triggerPathForSlice(i) return NS .. "/slice/" .. i .. "/trigger" end
-local function velocityPathForSlice(i) return NS .. "/slice/" .. i .. "/velocity" end
-
 
 local refreshWaveform
 local updatePreviewSurface
@@ -122,12 +113,21 @@ local sourceSpecForColumn
 local setSourceSpecForColumn
 local applySourceSpecToHiddenNode
 local buildPoseSourcePayload
-
-local POLY_PATHS, SLICE_PATHS = {}, {}
-for i = 1, MAX do
-  POLY_PATHS[i] = NS .. "/poly/voice/" .. i .. "/sample"
-  SLICE_PATHS[i] = NS .. "/slice/" .. i .. "/sample"
-end
+local pathForSlice = AVSD.Sampler.pathForSlice
+local triggerPathForSlice = AVSD.Sampler.triggerPathForSlice
+local velocityPathForSlice = AVSD.Sampler.velocityPathForSlice
+local applyCaptureWindow = AVSD.Sampler.applyCaptureWindow
+local applyVideoWindow = AVSD.Sampler.applyVideoWindow
+local doRetroCapture = AVSD.Sampler.doRetroCapture
+local setCaptureButtonAppearance = AVSD.Sampler.setCaptureButtonAppearance
+local onCaptureButton = AVSD.Sampler.onCaptureButton
+local samplePosition = AVSD.Sampler.samplePosition
+local nearestSlice = AVSD.Sampler.nearestSlice
+local POLY_PATHS = AVSD.Sampler.POLY_PATHS
+local SLICE_PATHS = AVSD.Sampler.SLICE_PATHS
+refreshWaveform = AVSD.Sampler.refreshWaveform
+updatePreviewSurface = AVSD.Sampler.updatePreviewSurface
+layoutOutputRow = AVSD.Sampler.layoutOutputRow
 
 local function toNum(v)
   local t = type(v)
@@ -205,37 +205,8 @@ local function shouldRunInterval(ctx, key, interval)
   return false
 end
 
--- Profiling: globals to avoid consuming local variable slots (200 limit)
-_G.__avsdProfileInit = function(ctx)
-  ctx._profile = {}
-  for _, k in ipairs{"updateShader","updateGridThumbnails","syncParamsFromHost","runPose","applyMapping","syncClipModel","ensureGridCells","pollMidi","bindInputSurfaces","colBuildCellPipeline","buildTapPipeline","applyCaptureWindow","segmentIngest","playbackUi","statusInterval","updateCompositorThumbnails","updateCompositorOutput"} do
-    ctx._profile[k] = { total = 0, count = 0, max = 0, last = 0, avg = 0 }
-  end
-end
-
-_G.__avsdProfileStart = function(ctx, key)
-  if not ctx._profile then return end
-  local t = ctx._profile[key]
-  if not t then return end
-  t._start = nowSeconds()
-end
-
-_G.__avsdProfileEnd = function(ctx, key)
-  if not ctx._profile then return end
-  local t = ctx._profile[key]
-  if not t or not t._start then return end
-  local elapsed = (nowSeconds() - t._start) * 1000000
-  t.last = elapsed
-  t.total = t.total + elapsed
-  t.count = t.count + 1
-  if elapsed > t.max then t.max = elapsed end
-  t.avg = t.count == 1 and elapsed or (t.avg * 0.95 + elapsed * 0.05)
-  t._start = nil
-end
-
--- Alias to avoid repeated _G lookups
-local profileStart = _G.__avsdProfileStart
-local profileEnd = _G.__avsdProfileEnd
+local profileStart = AVSD.Prof.start
+local profileEnd = AVSD.Prof.finish
 
 local function dirname(path)
   return (tostring(path or ""):gsub("/+$", ""):match("^(.*)/[^/]+$") or ".")
@@ -319,95 +290,6 @@ local function refreshDevices(ctx)
   setSelectedSilently(ctx.widgets.deviceSelect, 1)
   setOptions(ctx.widgets.sourceDeviceSelect, labels)
   setSelectedSilently(ctx.widgets.sourceDeviceSelect, 1)
-end
-
-local function segPayload(ctx)
-  return {
-    version = 1,
-    fitMode = "contain",
-    modelPath = ctx._segModelPath or "",
-    gain = ctx.seg.gain,
-    useSigmoid = ctx.seg.useSigmoid,
-    threshold = ctx.seg.threshold,
-    feather = ctx.seg.feather,
-    invert = ctx.seg.invert,
-    background = 0.0,
-  }
-end
-
-local function bindInputSurfaces(ctx)
-  profileStart(ctx, "bindInputSurfaces")
-  if ctx.widgets.liveViewport and ctx.widgets.liveViewport.node then
-    ctx.widgets.liveViewport.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
-  end
-
-  local hasModel = ctx._segModelPath ~= nil
-
-  -- Create ML source nodes as children of inputsEmbed so they render every
-  -- frame inside the Sources retained panel. ml_composite surfaces only
-  -- produce output when the node is actually drawn (unlike gpu_shader).
-  local function ensureMLSourceNode(nodeId, mlType)
-    if ctx["_mlSrcNode_" .. nodeId] then return ctx["_mlSrcNode_" .. nodeId] end
-    local parent = ctx.widgets and ctx.widgets.inputsEmbed and ctx.widgets.inputsEmbed.node
-    if not (parent and parent.createChild) then return nil end
-    local node = parent:createChild(nodeId .. "_src")
-    if node then
-      node:setNodeId(nodeId)
-      node:setBounds(0, 0, 4, 4)
-      node:setVisible(true)
-      node:setInterceptsMouse(false, false)
-      ctx["_mlSrcNode_" .. nodeId] = node
-    end
-    return node
-  end
-
-  local segNode = ensureMLSourceNode("avsd_ml_seg")
-  local poseNode = ensureMLSourceNode("avsd_ml_pose")
-
-  if segNode and hasModel then
-    segNode:setCustomSurface("ml_composite", segPayload(ctx))
-  end
-  if poseNode and hasModel then
-    poseNode:setCustomSurface("ml_composite", segPayload(ctx))
-  end
-
-  if ctx.widgets.segViewport and ctx.widgets.segViewport.node and hasModel then
-    ctx.widgets.segViewport.node:setCustomSurface("ml_composite", segPayload(ctx))
-  end
-  if ctx.widgets.poseViewport and ctx.widgets.poseViewport.node and hasModel then
-    ctx.widgets.poseViewport.node:setCustomSurface("ml_composite", segPayload(ctx))
-  end
-  profileEnd(ctx, "bindInputSurfaces")
-end
-
-local function tryLoad(paths)
-  if not (ml and ml.load) then return nil, nil end
-  for _, p in ipairs(paths) do
-    local ok, pipe = pcall(ml.load, p)
-    if ok and pipe then return pipe, p end
-  end
-  return nil, nil
-end
-
-local function loadModels(ctx)
-  local projectDir = projectRootDir()
-  local scriptsProjects = parentDir(projectDir)
-  ctx._segPipeline, ctx._segModelPath = tryLoad({
-    join(projectDir, "selfie_segmentation.onnx"),
-    join(scriptsProjects, "AVSampler/selfie_segmentation.onnx"),
-    join(scriptsProjects, "AVSamplerLab/selfie_segmentation.onnx"),
-    join(scriptsProjects, "MLLab/selfie_segmentation.onnx"),
-    join(scriptsProjects, "WebcamViewer/selfie_segmentation.onnx"),
-  })
-  ctx._posePipeline, ctx._poseModelPath = tryLoad({
-    join(projectDir, "movenet_singlepose_lightning.onnx"),
-    join(scriptsProjects, "AVSampler/movenet_singlepose_lightning.onnx"),
-    join(scriptsProjects, "AVSamplerLab/movenet_singlepose_lightning.onnx"),
-    join(scriptsProjects, "MLLab/movenet_singlepose_lightning.onnx"),
-  })
-  if ctx._posePipeline and ctx._posePipeline.setNormalization then ctx._posePipeline:setNormalization(1.0, 0.0) end
-  bindInputSurfaces(ctx)
-  setText(ctx.widgets.poseStatus, string.format("Models: seg=%s pose=%s", ctx._segModelPath and "OK" or "missing", ctx._poseModelPath and "OK" or "missing"))
 end
 
 canonicalAspectSizeForSpec = function(ctx, spec, depth)
@@ -505,101 +387,13 @@ local function openWebcam(ctx)
   local ok = false
   if capture and capture.open then ok = capture.open(idx, capW, capH, 30) end
   setText(ctx.widgets.webcamStatus, ok and ("Webcam: open device " .. idx .. " @" .. capW .. "x" .. capH) or "Webcam: open failed")
-  bindInputSurfaces(ctx)
+  AVSD.ML.bindInputSurfaces(ctx)
   updateOutputAspect(ctx)
 end
 
 local function closeWebcam(ctx)
   if capture and capture.close then capture.close() end
   setText(ctx.widgets.webcamStatus, "Webcam: closed")
-end
-
-local function applyCaptureWindow(ctx)
-  if not ctx.videoCap then return end
-  local seconds = clamp(readParam(NS .. "/capture_seconds", 4), 0.25, MAX_CAPTURE_SECONDS)
-  if ctx._lastCaptureSecondsApplied ~= seconds then
-    ctx.videoCap:setCaptureSeconds(seconds)
-    ctx._lastCaptureSecondsApplied = seconds
-  end
-end
-
-local function applyVideoWindow(ctx)
-  if not ctx.video then return end
-  ctx.video:setPlayStart(clamp(readParam(NS .. "/play_start", 0), 0, 1))
-  ctx.video:setLoopStart(clamp(readParam(NS .. "/loop_start", 0), 0, 1))
-  ctx.video:setLoopEnd(clamp(readParam(NS .. "/loop_end", 1), 0, 1))
-  ctx.video:setCrossfade(clamp(readParam(NS .. "/crossfade", 0.03), 0, 0.5))
-  ctx.video:setOneShot(readParam(NS .. "/one_shot", 0) > 0.5)
-end
-
-local function doRetroCapture(ctx, secondsOverride)
-  if not (ctx.videoCap and ctx.video) then return end
-  local previousCaptureSeconds = readParam(NS .. "/capture_seconds", 4)
-  local seconds = clamp(secondsOverride or previousCaptureSeconds, 0.25, MAX_CAPTURE_SECONDS)
-  if secondsOverride ~= nil then writeParam(NS .. "/capture_seconds", seconds) end
-  applyCaptureWindow(ctx)
-  local clk = clockInfo()
-  local sr = tonumber(clk.sampleRate) or 44100
-  local samplesBack = math.max(1, math.floor(seconds * sr))
-  bump(NS .. "/capture_trigger")
-  local seams = ctx._testSeams or nil
-  local okVideo = false
-  if type(seams) == "table" and (type(seams.capture) == "table" or type(seams.sampler) == "table") then
-    seams.capture = type(seams.capture) == "table" and seams.capture or {}
-    seams.sampler = type(seams.sampler) == "table" and seams.sampler or {}
-    seams.sampler.frameCount = math.max(0, round(seams.sampler.frameCount or seams.capture.frameCount or 0))
-    seams.sampler.durationSeconds = seconds
-    seams.sampler.position = 0
-    seams.sampler.playing = false
-    seams.sampler.playStart = clamp(readParam(NS .. "/play_start", 0), 0, 1)
-    seams.sampler.loopStart = clamp(readParam(NS .. "/loop_start", 0), 0, 1)
-    seams.sampler.loopEnd = clamp(readParam(NS .. "/loop_end", 1), 0, 1)
-    seams.sampler.crossfade = clamp(readParam(NS .. "/crossfade", 0.03), 0, 0.5)
-    seams.sampler.oneShot = readParam(NS .. "/one_shot", 0) > 0.5
-    seams.capture.captureSeconds = seconds
-    okVideo = true
-  else
-    okVideo = ctx.videoCap:copyRecentToSampler(ctx.video, samplesBack)
-    ctx.video:seek(0)
-    applyVideoWindow(ctx)
-  end
-  ctx._lastCapturedSeconds = seconds
-  ctx._lastVideoCommitOk = okVideo == true
-  refreshWaveform(ctx)
-  updatePreviewSurface(ctx)
-  if secondsOverride ~= nil then
-    writeParam(NS .. "/capture_seconds", previousCaptureSeconds)
-    ctx._lastCaptureSecondsApplied = nil
-  end
-end
-
-local function setCaptureButtonAppearance(ctx)
-  local recording = ctx.captureMode == 1 and ctx.captureRecording == true
-  setLabel(ctx.widgets.captureNow, recording and "STOP" or "Capture A/V")
-  if ctx.widgets.captureNow and ctx.widgets.captureNow.setBg then
-    ctx.widgets.captureNow:setBg(recording and 0xffdc2626 or 0xff22c55e)
-  end
-end
-
-local function onCaptureButton(ctx)
-  ctx.captureMode = round(readParam(NS .. "/capture_mode", ctx.captureMode or 0))
-  if ctx.captureMode == 1 then
-    if ctx.captureRecording then
-      local clk = clockInfo()
-      local sr = tonumber(clk.sampleRate) or 44100
-      local elapsed = math.max(0.25, ((tonumber(clk.playTimeSamples) or 0) - (ctx.freeStartSamples or 0)) / sr)
-      ctx.captureRecording = false
-      doRetroCapture(ctx, elapsed)
-      setCaptureButtonAppearance(ctx)
-    else
-      local clk = clockInfo()
-      ctx.freeStartSamples = tonumber(clk.playTimeSamples) or 0
-      ctx.captureRecording = true
-      setCaptureButtonAppearance(ctx)
-    end
-  else
-    doRetroCapture(ctx)
-  end
 end
 
 local function letterbox(vpW, vpH, vidW, vidH)
@@ -610,127 +404,10 @@ local function letterbox(vpW, vpH, vidW, vidH)
   return math.floor((vpW - dw) / 2), 0, math.floor(dw), vpH
 end
 
-local function buildPoseDisplay(kps, conf, show, w, h, vidW, vidH)
-  local d = {}
-  if not kps then return d end
-  local ox, oy, dw, dh = letterbox(w, h, vidW or 640, vidH or 480)
-  local function mx(x) return math.floor(ox + clamp(x, 0, 1) * dw) end
-  local function my(y) return math.floor(oy + clamp(y, 0, 1) * dh) end
-  if show then
-    for _, c in ipairs(SKELETON) do
-      local a, b = kps[c[1]], kps[c[2]]
-      if a and b and a.conf > conf and b.conf > conf then
-        d[#d + 1] = { cmd = "drawLine", x1 = mx(a.x), y1 = my(a.y), x2 = mx(b.x), y2 = my(b.y), thickness = 2, color = 0xff00ffff }
-      end
-    end
-  end
-  for i, k in ipairs(kps) do
-    if k.conf > conf then
-      local x, y = mx(k.x), my(k.y)
-      d[#d + 1] = { cmd = "fillRoundedRect", x = x - 3, y = y - 3, w = 6, h = 6, radius = 3, color = (i == 10 or i == 11) and 0xffff5c8a or 0xff22c55e }
-    end
-  end
-  return d
-end
-
-local function ensurePoseOverlay(ctx)
-  local vp = ctx.widgets.poseViewport
-  if not (vp and vp.node) then return end
-  if not ctx._poseOverlay and vp.node.addChild then
-    local o = vp.node:addChild("avSamplerPoseOverlay")
-    if o then
-      o:setInterceptsMouse(false, false)
-      o:setDisplayList({})
-      ctx._poseOverlay = o
-    end
-  end
-  if ctx._poseOverlay then
-    local pw = ctx._poseVpW or math.max(1, math.floor(vp.node:getWidth() or 1))
-    local ph = ctx._poseVpH or math.max(1, math.floor(vp.node:getHeight() or 1))
-    ctx._poseOverlay:setBounds(0, 0, pw, ph)
-  end
-end
-
-local function runPose(ctx, frameInfo)
-  profileStart(ctx, "runPose")
-  local seams = ctx._testSeams or nil
-  local usingSeam = type(seams) == "table" and type(seams.poseKeypoints) == "table"
-  if not usingSeam and not (ctx._posePipeline and capture and capture.isOpen and capture.isOpen()) then profileEnd(ctx, "runPose"); return false end
-  if not shouldRunInterval(ctx, "pose", POSE_INTERVAL) then profileEnd(ctx, "runPose"); return false end
-  local seq = tonumber((usingSeam and (seams.poseSequence or (frameInfo and frameInfo.sequence))) or (frameInfo and frameInfo.sequence))
-  if seq ~= nil and ctx._lastPoseFrameSeq == seq then profileEnd(ctx, "runPose"); return false end
-  local kps = {}
-  if usingSeam then
-    for i = 1, 17 do
-      local src = seams.poseKeypoints[i] or {}
-      kps[i] = { x = clamp(src.x or 0, 0, 1), y = clamp(src.y or 0, 0, 1), conf = tonumber(src.conf or 0) or 0 }
-    end
-  else
-    local ok, result = pcall(ml.infer, ctx._posePipeline)
-    if not ok or not result or type(result.data) ~= "table" or #result.data < 51 then profileEnd(ctx, "runPose"); return false end
-    local inputW, inputH = ctx._posePipeline:inputWidth(), ctx._posePipeline:inputHeight()
-    for i = 0, 16 do
-      local y, x, c = tonumber(result.data[i * 3 + 1]) or 0, tonumber(result.data[i * 3 + 2]) or 0, tonumber(result.data[i * 3 + 3]) or 0
-      if x > 1.5 then x = x / inputW end
-      if y > 1.5 then y = y / inputH end
-      kps[i + 1] = { x = clamp(x, 0, 1), y = clamp(y, 0, 1), conf = c }
-    end
-  end
-  if seq ~= nil then ctx._lastPoseFrameSeq = seq end
-
-  ctx.pose = { keypoints = kps, byName = {} }
-  for i, name in ipairs(KEYPOINTS) do ctx.pose.byName[name] = kps[i] end
-  local lw, rw, nose = ctx.pose.byName.left_wrist, ctx.pose.byName.right_wrist, ctx.pose.byName.nose
-  local ls, rs = ctx.pose.byName.left_shoulder, ctx.pose.byName.right_shoulder
-  local spread = (lw and rw) and math.sqrt((lw.x - rw.x)^2 + (lw.y - rw.y)^2) or 0
-  local leftReach = (lw and ls) and math.sqrt((lw.x - ls.x)^2 + (lw.y - ls.y)^2) or 0
-  local rightReach = (rw and rs) and math.sqrt((rw.x - rs.x)^2 + (rw.y - rs.y)^2) or 0
-  ctx.pose.values = {}
-  for _, name in ipairs(KEYPOINTS) do
-    local kp = ctx.pose.byName[name]
-    ctx.pose.values[NS .. "/pose/" .. name .. "/x"] = kp and kp.x or 0
-    ctx.pose.values[NS .. "/pose/" .. name .. "/y"] = kp and kp.y or 0
-    ctx.pose.values[NS .. "/pose/" .. name .. "/confidence"] = kp and kp.conf or 0
-  end
-  ctx.pose.values[NS .. "/pose/both_hands/spread"] = clamp(spread, 0, 1)
-  ctx.pose.values[NS .. "/pose/left_arm/reach"] = clamp(leftReach, 0, 1)
-  ctx.pose.values[NS .. "/pose/right_arm/reach"] = clamp(rightReach, 0, 1)
-
-  if ctx._poseOverlay then
-    ensurePoseOverlay(ctx)
-    local frame = frameInfo or ((capture and capture.getFrameInfo and capture.getFrameInfo()) or {})
-    ctx._poseOverlay:setDisplayList(buildPoseDisplay(kps, ctx.poseConf, ctx.showSkeleton, ctx._poseOverlay:getWidth(), ctx._poseOverlay:getHeight(), frame.width or 640, frame.height or 480))
-  end
-  local visible = 0
-  for _, kp in ipairs(kps) do if kp.conf > ctx.poseConf then visible = visible + 1 end end
-  setText(ctx.widgets.poseStatus, string.format("Pose: %d/17 visible | nose %.2f %.2f | wrists spread %.2f", visible, nose and nose.x or 0, nose and nose.y or 0, spread))
-  profileEnd(ctx, "runPose")
-  return true
-end
-
-local function poseSourceValue(ctx, track)
-  local mapping = ctx.mappings[track]
-  local idx = math.max(1, math.min(#POSE_SOURCES, round(mapping.source or 1)))
-  local source = POSE_SOURCES[idx]
-  local pose = ctx.pose and ctx.pose.byName or {}
-  if source and source.keypoint then
-    local kp = pose[source.keypoint]
-    if not kp then return 0 end
-    if source.property == "x" then return kp.x or 0 end
-    if source.property == "y" then return kp.y or 0 end
-    return kp.conf or 0
-  end
-  local values = ctx.pose and ctx.pose.values or {}
-  if source and source.derived == "both_hands_spread" then return values[NS .. "/pose/both_hands/spread"] or 0 end
-  if source and source.derived == "left_arm_reach" then return values[NS .. "/pose/left_arm/reach"] or 0 end
-  if source and source.derived == "right_arm_reach" then return values[NS .. "/pose/right_arm/reach"] or 0 end
-  return 0
-end
-
 local function applyMappingTrack(ctx, track)
   local mapping = ctx.mappings[track]
   if not mapping or not mapping.enabled then return nil end
-  local sourceValue = clamp(poseSourceValue(ctx, track), 0, 1)
+  local sourceValue = clamp(AVSD.ML.poseSourceValue(ctx, track), 0, 1)
   if not mapping.invert then sourceValue = 1.0 - sourceValue end
   local target, targetIndex = AVSD.Mapping.targetSpec(mapping.target or 1)
   local minNorm = clamp(mapping.min or 0, 0, 1)
@@ -780,275 +457,28 @@ local function cloneTable(t)
   return out
 end
 
-local function defaultMLSourceSpec(mlType)
-  local params = { gain = 1.0, threshold = 0.5, feather = 0.15, background = 0.02, useSigmoid = true, invert = false }
-  return { kind = "ml", mlType = mlType or "segmented", params = params }
-end
-
-materializeGeneratorParams = function(ctx, sourceId, normalizedParams)
-  local choice = nil
-  for _, s in ipairs(ctx.sources or {}) do
-    if s.kind == "generator" and s.id == sourceId then
-      choice = s
-      break
-    end
-  end
-  if not choice then return cloneTable(normalizedParams or {}) end
-  local out = {}
-  local specParams = choice.params or {}
-  local values = normalizedParams or {}
-  for _, pspec in ipairs(specParams) do
-    local pmin = tonumber(pspec.min) or 0
-    local pmax = tonumber(pspec.max) or 1
-    local norm = values[pspec.id]
-    if norm == nil then
-      out[pspec.id] = tonumber(pspec.default) or pmin
-    else
-      out[pspec.id] = pmin + clamp(norm, 0, 1) * (pmax - pmin)
-    end
-  end
-  return out
-end
-
-local function currentCol1SourceSpec(ctx)
-  if ctx._col1SourceSpec and type(ctx._col1SourceSpec) == "table" then
-    return ctx._col1SourceSpec
-  end
-  local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
-  if choice and choice.kind == "generator" then
-    local params = {}
-    local specParams = choice.params or {}
-    local stored = ctx.shaderSourceParams or {}
-    for _, pspec in ipairs(specParams) do
-      local norm = stored[pspec.id]
-      if norm == nil then
-        local pmin = tonumber(pspec.min) or 0
-        local pmax = tonumber(pspec.max) or 1
-        norm = ((tonumber(pspec.default) or pmin) - pmin) / math.max(0.001, pmax - pmin)
-      end
-      params[pspec.id] = clamp(norm, 0, 1)
-    end
-    ctx._col1SourceSpec = { kind = "generator", sourceIndex = ctx.shader.sourceIndex, sourceId = choice.id, params = params }
-  else
-    ctx._col1SourceSpec = { kind = "webcam", sourceIndex = 1 }
-  end
-  return ctx._col1SourceSpec
-end
-
-sourceSpecForColumn = function(ctx, col)
-  if tonumber(col) == 1 then return currentCol1SourceSpec(ctx) end
-  local cd = ctx._colData and ctx._colData[col]
-  return cd and cd.source or nil
-end
-
+local defaultMLSourceSpec = AVSD.Sources.defaultMLSourceSpec
+materializeGeneratorParams = AVSD.Sources.materializeGeneratorParams
+currentCol1SourceSpec = AVSD.Sources.currentCol1SourceSpec
+sourceSpecForColumn = AVSD.Sources.sourceSpecForColumn
 setSourceSpecForColumn = function(ctx, col, spec)
-  col = tonumber(col) or 1
-  ctx.sourceSelectionCol = col
-  if col == 1 then
-    ctx._col1SourceSpec = cloneTable(spec)
-    if spec.kind == "generator" then
-      local idx = 1
-      for i, s in ipairs(ctx.sources or {}) do
-        if s.kind == "generator" and s.id == spec.sourceId then idx = i break end
-      end
-      ctx.shader.sourceIndex = idx
-      writeParam(NS .. "/shader/source", idx)
-      ctx.shaderSourceParams = cloneTable(spec.params or {})
-    else
-      ctx.shader.sourceIndex = 1
-      if spec.kind == "webcam" then
-        writeParam(NS .. "/shader/source", 1)
-      end
-    end
-    setSelectedSilently(ctx.widgets.sourceSelect, math.max(1, ctx.shader.sourceIndex or 1))
-    syncShaderSourceParams(ctx)
-    updateOutputAspect(ctx)
-    updateShader(ctx)
-    return
-  end
-  ctx._colData = ctx._colData or {}
-  ctx._colData[col] = ctx._colData[col] or AVSD.State.colInit(col)
-  ctx._colData[col].source = cloneTable(spec)
-  syncShaderSourceParams(ctx)
-  updateGridThumbnails(ctx)
+  return AVSD.Sources.setSourceSpecForColumn(ctx, col, spec, {
+    writeParam = writeParam,
+    setSelectedSilently = setSelectedSilently,
+    syncShaderSourceParams = syncShaderSourceParams,
+    updateOutputAspect = updateOutputAspect,
+    updateShader = updateShader,
+    colInit = AVSD.State.colInit,
+    updateGridThumbnails = updateGridThumbnails,
+  })
 end
-
-local function ensureAuxSourceNode(ctx, key, nodeId)
-  ctx._auxSourceNodes = ctx._auxSourceNodes or {}
-  local existing = ctx._auxSourceNodes[key]
-  local cw, ch = canonicalAspectSize(ctx)
-  if existing and existing.node then
-    if existing.node.setBounds then existing.node:setBounds(0, 0, cw, ch) end
-    return existing
-  end
-  local rootNode = ctx.root and ctx.root.node
-  if not (rootNode and rootNode.createChild) then return nil end
-  local node = rootNode:createChild(nodeId)
-  if not node then return nil end
-  local entry = { id = nodeId, node = node }
-  node:setNodeId(nodeId)
-  node:setBounds(0, 0, cw, ch)
-  node:setVisible(false)
-  ctx._auxSourceNodes[key] = entry
-  return entry
-end
-
-local function buildPoseSourcePayload(ctx, baseSourceId, spec)
-  ctx._poseSourceFragment = ctx._poseSourceFragment or (function()
-    local lines = {}
-    lines[#lines + 1] = "#version 150"
-    lines[#lines + 1] = "in vec2 vUv;"
-    lines[#lines + 1] = "out vec4 fragColor;"
-    lines[#lines + 1] = "uniform sampler2D uInputTex;"
-    lines[#lines + 1] = "uniform float uPoseConf;"
-    for i = 0, 16 do lines[#lines + 1] = string.format("uniform vec3 uKp%d;", i) end
-    lines[#lines + 1] = [[
-float segDist(vec2 p, vec2 a, vec2 b) {
-  vec2 pa = p - a;
-  vec2 ba = b - a;
-  float h = clamp(dot(pa, ba) / max(dot(ba, ba), 0.00001), 0.0, 1.0);
-  return length(pa - ba * h);
-}
-float lineMask(vec2 p, vec2 a, vec2 b, float r) {
-  float d = segDist(p, a, b);
-  return 1.0 - smoothstep(r, r * 1.8, d);
-}
-float pointMask(vec2 p, vec2 a, float r) {
-  float d = length(p - a);
-  return 1.0 - smoothstep(r, r * 1.8, d);
-}
-void addLine(inout vec3 rgb, vec3 a, vec3 b, vec3 col) {
-  if (a.z < uPoseConf || b.z < uPoseConf) return;
-  vec2 pa = vec2(a.x, 1.0 - a.y);
-  vec2 pb = vec2(b.x, 1.0 - b.y);
-  float m = lineMask(vUv, pa, pb, 0.008);
-  rgb = mix(rgb, col, m);
-}
-void addPoint(inout vec3 rgb, vec3 k, vec3 col) {
-  if (k.z < uPoseConf) return;
-  vec2 p = vec2(k.x, 1.0 - k.y);
-  float m = pointMask(vUv, p, 0.015);
-  rgb = mix(rgb, col, m);
-}
-void main() {
-  vec4 base = texture(uInputTex, vUv);
-  vec3 rgb = base.rgb;
-]]
-    for _, pair in ipairs(SKELETON) do
-      lines[#lines + 1] = string.format("  addLine(rgb, uKp%d, uKp%d, vec3(0.0, 1.0, 1.0));", pair[1] - 1, pair[2] - 1)
-    end
-    for i = 0, 16 do
-      local col = (i == 9 or i == 10) and "vec3(1.0, 0.36, 0.54)" or "vec3(0.13, 0.78, 0.37)"
-      lines[#lines + 1] = string.format("  addPoint(rgb, uKp%d, %s);", i, col)
-    end
-    lines[#lines + 1] = "  fragColor = vec4(rgb, 1.0);"
-    lines[#lines + 1] = "}"
-    return table.concat(lines, "\n")
-  end)()
-
-  local uniforms = { uPoseConf = ctx.poseConf or 0.3 }
-  local byName = ctx.pose and ctx.pose.byName or {}
-  for i, name in ipairs(KEYPOINTS) do
-    local kp = byName[name] or { x = 0.0, y = 0.0, conf = 0.0 }
-    uniforms["uKp" .. tostring(i - 1)] = { kp.x or 0.0, kp.y or 0.0, kp.conf or 0.0 }
-  end
-
-  return {
-    version = 1,
-    kind = "shaderQuad",
-    shaderLanguage = "glsl",
-    sourceType = "node_surface",
-    sourceId = baseSourceId,
-    fitMode = "contain",
-    passes = {
-      {
-        vertexShader = [[#version 150
-in vec2 aPos;
-in vec2 aUv;
-out vec2 vUv;
-void main(){ vUv = aUv; gl_Position = vec4(aPos, 0.0, 1.0); }
-]],
-        fragmentShader = ctx._poseSourceFragment,
-        inputTextureUniform = "uInputTex",
-        uniforms = uniforms,
-      }
-    }
-  }
-end
-
+buildPoseSourcePayload = AVSD.Sources.buildPoseSourcePayload
 applySourceSpecToHiddenNode = function(ctx, spec, key)
-  local kind = spec and spec.kind or "webcam"
-  if kind == "webcam" then
-    local entry = ensureAuxSourceNode(ctx, key .. "_webcam", "__" .. key .. "_webcam")
-    if entry and entry.node then
-      entry.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
-      return { type = "node", sourceId = entry.id }, nil
-    end
-    return { type = "webcam" }, nil
-  end
-  if kind == "generator" then
-    local entry = ensureAuxSourceNode(ctx, key .. "_gen", "__" .. key .. "_gen")
-    if entry and entry.node and shaders then
-      local params = materializeGeneratorParams(ctx, spec.sourceId, spec.params or {})
-      local ok, payload = pcall(shaders.buildPipeline, {}, "contain", { type = "generator", sourceId = spec.sourceId, params = params })
-      if ok and payload then
-        entry.node:setCustomSurface("gpu_shader", payload)
-        return { type = "node", sourceId = entry.id }, nil
-      end
-    end
-    return { type = "webcam" }, nil
-  end
-  if kind == "ml" then
-    local opaque = ensureAuxSourceNode(ctx, key .. "_ml_base", "__" .. key .. "_ml_base")
-    if opaque and opaque.node then
-      local mlp = {
-        version = 1,
-        fitMode = "contain",
-        modelPath = ctx._segModelPath or "",
-        gain = tonumber((spec.params or {}).gain) or 1.0,
-        useSigmoid = ((spec.params or {}).useSigmoid ~= false),
-        threshold = tonumber((spec.params or {}).threshold) or 0.5,
-        feather = tonumber((spec.params or {}).feather) or 0.15,
-        invert = ((spec.params or {}).invert == true),
-        background = math.max(0.001, tonumber((spec.params or {}).background) or 0.02),
-      }
-      opaque.node:setCustomSurface("ml_composite", mlp)
-      if spec.mlType == "pose" then
-        local overlay = ensureAuxSourceNode(ctx, key .. "_ml_pose", "__" .. key .. "_ml_pose")
-        if overlay and overlay.node then
-          overlay.node:setCustomSurface("gpu_shader", buildPoseSourcePayload(ctx, opaque.id, spec))
-          return { type = "node", sourceId = overlay.id }, nil
-        end
-      end
-      return { type = "node", sourceId = opaque.id }, nil
-    end
-    return { type = "webcam" }, nil
-  end
-  if kind == "columntap" then
-    local sourceId = stackNodeIdForTap(spec.sourceCol or 1, spec.tapIndex)
-    return { type = "node", sourceId = sourceId }, nil
-  end
-  return { type = "webcam" }, nil
+  return AVSD.Sources.applySourceSpecToHiddenNode(ctx, spec, key, {
+    canonicalAspectSize = canonicalAspectSize,
+    stackNodeIdForTap = stackNodeIdForTap,
+  })
 end
-
-local function ensureShaderSourceNode(ctx)
-  local cw, ch = canonicalAspectSize(ctx)
-  if ctx._shaderSourceNode and ctx._shaderSourceNode.node then
-    if ctx._shaderSourceNode.node.setBounds then ctx._shaderSourceNode.node:setBounds(0, 0, cw, ch) end
-    return ctx._shaderSourceNode
-  end
-  local rootNode = ctx.root and ctx.root.node
-  if not (rootNode and rootNode.createChild) then return nil end
-  local node = rootNode:createChild("avsd_shader_source")
-  if not node then return nil end
-  local entry = { id = "__avsd_shader_source", node = node }
-  if node.setNodeId then node:setNodeId(entry.id) end
-  if node.setBounds then node:setBounds(0, 0, cw, ch) end
-  if node.setVisible then node:setVisible(false) end
-  ctx._shaderSourceNode = entry
-  return entry
-end
-
 local function buildShaderSourceDescriptor(ctx)
   local spec = currentCol1SourceSpec(ctx)
   local descriptor, choice = applySourceSpecToHiddenNode(ctx, spec, "col1_source")
@@ -1107,42 +537,7 @@ function updateShader(ctx)
   profileEnd(ctx, "updateShader")
 end
 
-local function refreshShaderLists(ctx)
-  ctx.effects = (shaders and shaders.listEffects and shaders.listEffects()) or {}
-  if #ctx.effects == 0 then ctx.effects = { { id = "none", name = "Passthrough", params = {} } } end
-  ctx.sources = { { kind = "webcam", id = "webcam", name = "Webcam", params = {} } }
-  local gens = (sources and sources.list and sources.list()) or {}
-  for i = 1, #gens do
-    local gen = gens[i]
-    local genParams = gen.params or {}
-    local newParams = {}
-    for pi = 1, #genParams do
-      local pspec = genParams[pi]
-      if pspec then
-        newParams[pi] = {
-          id = pspec.id,
-          name = pspec.name,
-          unit = pspec.unit,
-          min = pspec.min,
-          max = pspec.max,
-          default = pspec.default,
-          step = pspec.step,
-        }
-      end
-    end
-    ctx.sources[#ctx.sources + 1] = { kind = "generator", id = gen.id, name = gen.name or gen.id, params = newParams }
-  end
-  local effectNames, sourceNames, poseNames = {}, {}, {}
-  for i, source in ipairs(POSE_SOURCES) do poseNames[i] = source.label end
-  for i, e in ipairs(ctx.effects) do effectNames[i] = tostring(e.name or e.id or "Effect") end
-  for i, s in ipairs(ctx.sources) do sourceNames[i] = tostring(s.name or s.id or "Source") end
-  setOptions(ctx.widgets.effectSelect, effectNames)
-  setOptions(ctx.widgets.sourceSelect, sourceNames)
-  for track = 1, MAX_MAPPINGS do
-    setOptions(ctx.widgets["mapping" .. track .. "Source"], poseNames)
-    setOptions(ctx.widgets["mapping" .. track .. "Target"], AVSD.Mapping.TARGET_LABELS)
-  end
-end
+local refreshShaderLists = AVSD.Sources.refreshShaderLists
 
 local function syncModePanels(ctx)
   local isSlice = round(readParam(NS .. "/mode", 0)) == 1
@@ -1221,163 +616,6 @@ local function syncShaderEditor(ctx)
   end
 end
 
-local function samplePosition(path, fallback)
-  local seam = _G.__avsdCtx and _G.__avsdCtx._testSeams and _G.__avsdCtx._testSeams.playback
-  if type(seam) == "table" then
-    local override = seam[path]
-    if type(override) == "table" then
-      return override.playing == true, clamp(override.pos or fallback or 0, 0, 1)
-    end
-  end
-  local playing = false
-  if type(isSampleRegionPlaybackPlaying) == "function" then
-    local ok, v = pcall(isSampleRegionPlaybackPlaying, path)
-    playing = ok and v == true
-  end
-  local pos = fallback or 0
-  if playing and type(getSampleRegionPlaybackLoopAwarePosition) == "function" then
-    local ok, v = pcall(getSampleRegionPlaybackLoopAwarePosition, path)
-    if ok and tonumber(v) then pos = clamp(v, 0, 1) end
-  end
-  return playing, pos
-end
-
-local function setCellSurface(ctx, slot, sourceIndex, pos, label)
-  local cell = ctx.widgets["cell" .. slot]
-  if cell and cell.node and cell.node.setCustomSurface and ctx.video then
-    cell.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "sampler", samplerId = ctx.video:getId(), position = clamp(pos or 0, 0, 1) })
-  end
-  local lab = ctx.widgets["cellLabel" .. slot]
-  setText(lab, label or "")
-end
-
-layoutOutputRow = function(ctx)
-  local host = ctx.widgets.outputViewport
-  local surface = ctx.widgets.outputSurface
-  local x0, y0 = 0, 0
-  local w, h = 608, 342
-  if surface and surface.node and surface.node.getBounds then
-    local sx, sy, sw, sh = surface.node:getBounds()
-    x0 = tonumber(sx) or 0
-    y0 = tonumber(sy) or 0
-    w = tonumber(sw) or w
-    h = tonumber(sh) or h
-  elseif host and host.node then
-    if host.node.getWidth then w = tonumber(host.node:getWidth()) or w end
-    if host.node.getHeight then h = tonumber(host.node:getHeight()) or h end
-  end
-  local frame = (capture and capture.getFrameInfo and capture.getFrameInfo()) or {}
-  local ar = (tonumber(frame.width) or ctx._lockedW or 640) / math.max(1, (tonumber(frame.height) or ctx._lockedH or 480))
-  local visible = {}
-  local mode = round(readParam(NS .. "/mode", 0))
-  if mode == 0 then
-    for i = 1, MAX do if ctx._polyPlaying[i] then visible[#visible + 1] = { kind = "V", index = i, pos = ctx._polyPos[i] or 0 } end end
-  else
-    for i = 1, MAX do if ctx._slicePlaying[i] then visible[#visible + 1] = { kind = "S", index = i, pos = ctx._slicePos[i] or 0 } end end
-  end
-  ctx._visible = visible
-  if #visible == 0 then
-    for slot = 1, MAX do
-      setBounds(ctx.widgets["cell" .. slot], 0, 0, 0, 0)
-      setBounds(ctx.widgets["cellLabel" .. slot], 0, 0, 0, 0)
-      setText(ctx.widgets["cellLabel" .. slot], "")
-    end
-    return
-  end
-  local count = #visible
-  local cellW = math.floor(w / count)
-  local cellH = math.floor(math.min(h, cellW / math.max(0.01, ar)))
-  local y = math.floor(h - cellH)
-  for slot = 1, MAX do
-    local item = visible[slot]
-    if item then
-      local x = x0 + (slot - 1) * cellW
-      local yy = y0 + y
-      setBounds(ctx.widgets["cell" .. slot], x, yy, cellW, cellH)
-      setBounds(ctx.widgets["cellLabel" .. slot], x + 8, yy + 8, math.max(1, cellW - 16), 18)
-      setCellSurface(ctx, slot, item.index, item.pos, string.format("%s%d %.3f", item.kind, item.index, item.pos or 0))
-    else
-      setBounds(ctx.widgets["cell" .. slot], 0, 0, 0, 0)
-      setBounds(ctx.widgets["cellLabel" .. slot], 0, 0, 0, 0)
-      setText(ctx.widgets["cellLabel" .. slot], "")
-    end
-  end
-end
-
-updatePreviewSurface = function(ctx)
-  local preview = ctx.widgets.previewStage
-  if not (preview and preview.node and preview.node.setCustomSurface and ctx.video) then return end
-  local mode = round(readParam(NS .. "/mode", 0))
-  local pos = 0
-  if mode == 0 then
-    for i = 1, MAX do
-      if ctx._polyPlaying[i] then pos = ctx._polyPos[i] or 0 break end
-    end
-    if pos <= 0 then pos = clamp(readParam(NS .. "/play_start", 0), 0, 1) end
-  else
-    local sel = math.max(1, math.min(MAX, round(ctx._selectedSlice or 1)))
-    pos = ctx._slicePos[sel] or clamp(readParam(pathForSlice(sel), (sel - 1) / MAX), 0, 0.999)
-  end
-  preview.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "sampler", samplerId = ctx.video:getId(), position = clamp(pos, 0, 1) })
-end
-
-refreshWaveform = function(ctx)
-  local wf = ctx.widgets and ctx.widgets.waveform
-  if not wf then return end
-  local mode = round(readParam(NS .. "/mode", 0))
-  if wf.setSamplePath then wf:setSamplePath(mode == 0 and POLY_PATHS[1] or SLICE_PATHS[1]) end
-
-  local playheads = {}
-  if mode == 0 then
-    local loopStart = clamp(readParam(NS .. "/loop_start", 0), 0, 0.999)
-    local loopEnd = clamp(readParam(NS .. "/loop_end", 1), loopStart + 0.001, 1)
-    local playStart = clamp(readParam(NS .. "/play_start", loopStart), loopStart, loopEnd)
-    for i = 1, MAX do playheads[i] = (ctx._polyPlaying[i] and ctx._polyPos[i]) or -1 end
-    if wf.setVoicePlayheads then wf:setVoicePlayheads(playheads) end
-    if wf.setVoiceGrains then wf:setVoiceGrains({}) end
-    if wf.setGrainPositions then wf:setGrainPositions({ loopStart, playStart, loopEnd }) end
-    if wf.setGrainPosition then wf:setGrainPosition(-1) end
-    if wf.setRegion then wf:setRegion(loopStart, loopEnd) end
-    if wf.setPlayStart then wf:setPlayStart(playStart) end
-    if wf.setCrossfade then wf:setCrossfade(clamp(readParam(NS .. "/crossfade", 0.03), 0, 0.5)) end
-    local first = -1
-    for i = 1, MAX do if playheads[i] and playheads[i] >= 0 then first = playheads[i] break end end
-    if wf.setPlayheadPos then wf:setPlayheadPos(first >= 0 and first or playStart) end
-    setText(ctx.widgets.waveformStatus, string.format("Poly: play %.3f | loop %.3f→%.3f | active voice playheads follow SampleRegionPlaybackNode positions", playStart, loopStart, loopEnd))
-    return
-  end
-
-  local starts = {}
-  for i = 1, MAX do starts[i] = clamp(readParam(pathForSlice(i), (i - 1) / MAX), 0, 0.999) end
-  if wf.setGrainPositions then wf:setGrainPositions(starts) end
-  if wf.setVoiceGrains then
-    local g = {}
-    for i = 1, MAX do g[i] = { starts[i] } end
-    wf:setVoiceGrains(g)
-  end
-  for i = 1, MAX do playheads[i] = (ctx._slicePlaying[i] and ctx._slicePos[i]) or -1 end
-  if wf.setVoicePlayheads then wf:setVoicePlayheads(playheads) end
-  local sel = math.max(1, math.min(MAX, round(ctx._selectedSlice or 1)))
-  local start = starts[sel] or 0
-  local finish = 1.0
-  for i = 1, MAX do if (starts[i] or 0) > start + 0.002 and starts[i] < finish then finish = starts[i] end end
-  if wf.setRegion then wf:setRegion(start, finish) end
-  if wf.setPlayStart then wf:setPlayStart(start) end
-  if wf.setGrainPosition then wf:setGrainPosition(start) end
-  if wf.setCrossfade then wf:setCrossfade(0.002) end
-  if wf.setPlayheadPos then wf:setPlayheadPos(playheads[sel] ~= -1 and playheads[sel] or start) end
-  setText(ctx.widgets.waveformStatus, string.format("Slice: selected S%d %.3f→%.3f | drag nearest marker to edit actual slice start", sel, start, finish))
-end
-
-local function nearestSlice(pos)
-  local best, dist = 1, 999
-  for i = 1, MAX do
-    local d = math.abs(readParam(pathForSlice(i), (i - 1) / MAX) - pos)
-    if d < dist then best, dist = i, d end
-  end
-  return best
-end
-
 local function syncParamsFromHost(ctx)
   profileStart(ctx, "syncParamsFromHost")
   local changedShader = false
@@ -1387,7 +625,7 @@ local function syncParamsFromHost(ctx)
   ctx.seg.feather = clamp(readParam(NS .. "/seg/feather", ctx.seg.feather), 0, 1)
   ctx.seg.invert = readParam(NS .. "/seg/invert", ctx.seg.invert and 1 or 0) > 0.5
   ctx.poseConf = clamp(readParam(NS .. "/pose/confidence", ctx.poseConf), 0, 1)
-  if oldSeg[1] ~= ctx.seg.gain or oldSeg[2] ~= ctx.seg.threshold or oldSeg[3] ~= ctx.seg.feather or oldSeg[4] ~= ctx.seg.invert then bindInputSurfaces(ctx) end
+  if oldSeg[1] ~= ctx.seg.gain or oldSeg[2] ~= ctx.seg.threshold or oldSeg[3] ~= ctx.seg.feather or oldSeg[4] ~= ctx.seg.invert then AVSD.ML.bindInputSurfaces(ctx) end
   setValueSilently(ctx.widgets.segGain, ctx.seg.gain)
   setValueSilently(ctx.widgets.segThreshold, ctx.seg.threshold)
   setValueSilently(ctx.widgets.segFeather, ctx.seg.feather)
@@ -1453,7 +691,7 @@ local function syncParamsFromHost(ctx)
     local m = ctx.mappings[t] or AVSD.Mapping.defaultMapping(t)
     ctx.mappings[t] = m
     m.enabled = readParam(NS .. "/mapping/" .. t .. "/enabled", m.enabled and 1 or 0) > 0.5
-    m.source = math.max(1, math.min(#POSE_SOURCES, round(readParam(NS .. "/mapping/" .. t .. "/source", m.source or 1))))
+    m.source = math.max(1, math.min(#AVSD.ML.POSE_SOURCES, round(readParam(NS .. "/mapping/" .. t .. "/source", m.source or 1))))
     m.target = math.max(1, math.min(#AVSD.Mapping.TARGETS, round(readParam(NS .. "/mapping/" .. t .. "/target", m.target or 1))))
     m.min = clamp(readParam(NS .. "/mapping/" .. t .. "/min", m.min or 0), 0, 1)
     m.max = clamp(readParam(NS .. "/mapping/" .. t .. "/max", m.max or 1), 0, 1)
@@ -1466,127 +704,30 @@ local function syncParamsFromHost(ctx)
     setValueSilently(ctx.widgets["mapping" .. t .. "Invert"], m.invert)
   end
 
-  bindInputSurfaces(ctx)
+  AVSD.ML.bindInputSurfaces(ctx)
   profileEnd(ctx, "syncParamsFromHost")
 end
 
-local function viewportSize()
-  if type(imguiGetMainViewport) == "function" then
-    local vp = imguiGetMainViewport()
-    if type(vp) == "table" then
-      local w = toNum(vp.w or vp.width or vp.sizeX or vp.size_x) or 0
-      local h = toNum(vp.h or vp.height or vp.sizeY or vp.size_y) or 0
-      if w > 0 and h > 0 then return w, h end
-    end
-  end
-  return 1280, 720
+local viewportSize = function()
+  return AVSD.Layout.viewportSize({ toNum = toNum })
 end
-
-local function projectContentBounds(ctx)
-  local totalW, totalH = viewportSize()
-  if type(shell) == "table" and type(shell.getContentBounds) == "function" then
-    local ok, x, y, w, h = pcall(function() return shell:getContentBounds(totalW, totalH) end)
-    if ok and toNum(w) and toNum(h) and w > 0 and h > 0 then
-      return toNum(x) or 0, toNum(y) or 0, toNum(w), toNum(h)
-    end
-  end
-  if ctx and ctx.root and ctx.root.node and ctx.root.node.getBounds then
-    local ok, x, y, w, h = pcall(ctx.root.node.getBounds, ctx.root.node)
-    if ok and toNum(w) and toNum(h) and w > 0 and h > 0 then
-      return toNum(x) or 0, toNum(y) or 0, toNum(w), toNum(h)
-    end
-  end
-  return 0, 0, totalW, totalH
+local projectContentBounds = function(ctx)
+  return AVSD.Layout.projectContentBounds(ctx, { toNum = toNum })
 end
-
-local function windowName(ctx, win)
-  return win.title .. "###AVSD_" .. tostring(ctx._dockSuffix or "0") .. "_" .. win.key
+local windowName = AVSD.Layout.windowName
+local split = AVSD.Layout.split
+local buildDeckLayout = AVSD.Layout.buildDeckLayout
+local buildStageLayout = AVSD.Layout.buildStageLayout
+local buildInspectorLayout = AVSD.Layout.buildInspectorLayout
+local syncToolbarButtons = function(ctx)
+  return AVSD.Layout.syncToolbarButtons(ctx, { setValueSilently = setValueSilently, setVisible = setVisible })
 end
-
-local function split(t)
-  local r = imguiDockBuilderSplitNode(t.node, t.dir, t.ratio)
-  if imguiDockBuilderSetNodeFlags then
-    imguiDockBuilderSetNodeFlags(r.atDir, imguiDockNodeFlags_HiddenTabBar)
-    imguiDockBuilderSetNodeFlags(r.opposite, imguiDockNodeFlags_HiddenTabBar)
-  end
-  return r.atDir, r.opposite
+local defaultGridAlignment = AVSD.Layout.defaultGridAlignment
+local setLayoutPreset = function(ctx, preset)
+  return AVSD.Layout.setLayoutPreset(ctx, preset, { setValueSilently = setValueSilently, setVisible = setVisible })
 end
-
-local function buildDeckLayout(ctx, dockId)
-  local params, leftCol = split{ node = dockId, dir = imguiDir_Right, ratio = 0.26 }
-  local leftInner, center = split{ node = leftCol, dir = imguiDir_Left, ratio = 0.34 }
-  local wave, deck = split{ node = center, dir = imguiDir_Down, ratio = 0.25 }
-  local sources, stage = split{ node = leftInner, dir = imguiDir_Down, ratio = 0.64 }
-
-  local grid, comp = split{ node = deck, dir = imguiDir_Down, ratio = 0.65 }
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[1]), grid)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[2]), stage)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[3]), sources)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[4]), wave)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[5]), params)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[6]), comp)
-end
-
-local function buildStageLayout(ctx, dockId)
-  local rightCol, leftCol = split{ node = dockId, dir = imguiDir_Right, ratio = 0.38 }
-  local sources, params = split{ node = rightCol, dir = imguiDir_Down, ratio = 0.44 }
-  local bottom, stage = split{ node = leftCol, dir = imguiDir_Down, ratio = 0.32 }
-  local wave, deck = split{ node = bottom, dir = imguiDir_Down, ratio = 0.50 }
-
-  local grid, comp = split{ node = deck, dir = imguiDir_Down, ratio = 0.65 }
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[1]), grid)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[2]), stage)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[3]), sources)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[4]), wave)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[5]), params)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[6]), comp)
-end
-
-local function buildInspectorLayout(ctx, dockId)
-  local params, leftCol = split{ node = dockId, dir = imguiDir_Right, ratio = 0.38 }
-  local sources, topLeft = split{ node = leftCol, dir = imguiDir_Down, ratio = 0.30 }
-  local bottom, stage = split{ node = topLeft, dir = imguiDir_Down, ratio = 0.38 }
-  local wave, deck = split{ node = bottom, dir = imguiDir_Down, ratio = 0.50 }
-
-  local grid, comp = split{ node = deck, dir = imguiDir_Down, ratio = 0.65 }
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[1]), grid)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[2]), stage)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[3]), sources)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[4]), wave)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[5]), params)
-  imguiDockBuilderDockWindow(windowName(ctx, DOCK_WINDOWS[6]), comp)
-end
-
-local function syncToolbarButtons(ctx)
-  local active = tostring(ctx._layoutPreset or "deck")
-  local colours = { layoutDeck = active == "deck", layoutStage = active == "stage", layoutInspector = active == "inspector" }
-  for id, on in pairs(colours) do
-    local w = ctx.widgets and ctx.widgets[id]
-    if w and w.setBg then w:setBg(on and 0xff22d3ee or 0xff1e293b) end
-  end
-  if ctx.widgets.resizeMode and ctx.widgets.resizeMode.setValue then setValueSilently(ctx.widgets.resizeMode, ctx._resizeMode == true) end
-  setVisible(ctx.widgets.resizeHelp, ctx._resizeMode == true)
-end
-
-local function defaultGridAlignment(preset)
-  if preset == "stage" or preset == "inspector" then return "left-to-right" end
-  return "bottom-up"
-end
-
-local function setLayoutPreset(ctx, preset)
-  ctx._layoutPreset = tostring(preset or "deck")
-  ctx.gridAlignment = defaultGridAlignment(ctx._layoutPreset)
-  ctx._rebuildDockTree = true
-  resetPanelDocks(ctx)
-  syncToolbarButtons(ctx)
-end
-
-local function layoutToolbar(ctx)
-  if ctx.widgets and ctx.widgets.toolbarPane and ctx.root and ctx.root.node and ctx.root.node.getBounds then
-    local _, _, w = ctx.root.node:getBounds()
-    setBounds(ctx.widgets.toolbarPane, 0, 0, math.max(1280, math.floor(tonumber(w) or 1280)), TOOLBAR_H)
-  end
-  syncToolbarButtons(ctx)
+local layoutToolbar = function(ctx)
+  return AVSD.Layout.layoutToolbar(ctx, { setBounds = setBounds, setValueSilently = setValueSilently, setVisible = setVisible })
 end
 
 local function layoutTransportEmbed(ctx, w, h)
@@ -1933,60 +1074,19 @@ end
 local GRID_COLS = 4
 
 local function selectedGridClip(ctx)
-  local sel = ctx and ctx.selection or nil
-  if not sel then return nil end
-  return ctx.clips and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row] or nil
+  return AVSD.Grid.selectedGridClip(ctx)
 end
 
 local function selectionSummary(ctx)
-  local clip = selectedGridClip(ctx)
-  if not clip then return "Selected: --" end
-  if clip.kind == "source" then
-    return string.format("Selected: Source — %s", clip.name or clip.sourceType or "Source")
-  end
-  local state = clip.enabled and "enabled" or "disabled"
-  return string.format("Selected: FX L%d — %s (%s)", clip.layerIndex or 0, clip.fxName or clip.fxId or "Effect", state)
+  return AVSD.Grid.selectionSummary(ctx)
 end
 
 local function selectGridCell(ctx, col, row)
-  local clip = ctx.clips and ctx.clips[col] and ctx.clips[col][row] or nil
-  if not clip then return end
-
-  ctx.selectedView = "grid"
-
-  if row <= 1 then
-    ctx.sourceSelectionCol = col
-    return
-  end
-
-  -- Output tap: just select, don't change shader state
-  if clip and clip.kind == "output" then
-    ctx.selection = { col = col, row = row }
-    return
-  end
-
-  ctx.selection = { col = col, row = row }
-  local cd = ctx._colData and ctx._colData[col]
-
-  if col == 1 then
-    local nextLayer = math.max(1, math.min(8, clip.layerIndex or (row - 1)))
-    if nextLayer ~= ctx.shader.activeLayer then
-      ctx.shader.activeLayer = nextLayer
-      writeParam(NS .. "/shader/active_layer", nextLayer)
-    end
-    setSelectedSilently(ctx.widgets.shaderLayer, ctx.shader.activeLayer)
-    syncShaderEditor(ctx)
-    return
-  end
-
-  -- Columns 2+: sync the colData into the effect inspector UI
-  local fxSlot = row - 1
-  local f = cd and cd.fx[fxSlot]
-  if f then
-    setSelectedSilently(ctx.widgets.shaderLayer, fxSlot)
-    setSelectedSilently(ctx.widgets.effectSelect, f.effectIndex)
-    syncShaderEditor(ctx)
-  end
+  return AVSD.Grid.selectGridCell(ctx, col, row, {
+    writeParam = writeParam,
+    setSelectedSilently = setSelectedSilently,
+    syncShaderEditor = syncShaderEditor,
+  })
 end
 
 local ASPECT_OPTIONS = { "Native", "16:9", "4:3", "1:1" }
@@ -2540,417 +1640,36 @@ local function buildTapPipeline(ctx, col, tapIndex)
   return colBuildCellPipeline(ctx, col, tapIndex)
 end
 
-local CELL_SRC_TINT = 0xff0d2028
-local CELL_FX_TINT = 0xff0d1420
-local CELL_BORDER = 0xff1a1a22
-local CELL_SRC_SEL_BD = 0xff22d3ee
-local CELL_FX_SEL_BD = 0xfff97316
-
 local function ensureGridCells(ctx)
-  profileStart(ctx, "ensureGridCells")
-  local parentNode = ctx.widgets and ctx.widgets.deckEmbed and ctx.widgets.deckEmbed.node
-  if not parentNode then profileEnd(ctx, "ensureGridCells"); return 0, 0 end
-  local numCols, numRows = syncClipModel(ctx)
-  ctx._gridCells = ctx._gridCells or {}
-
-  -- Create or reuse cells for each (col, row)
-  for col = 1, numCols do
-    for row = 1, numRows do
-      local key = tostring(col) .. "_" .. tostring(row)
-      if not ctx._gridCells[key] then
-        local cell = parentNode:addChild("gridCell_" .. key)
-        local thumb = cell:addChild("gridCell_" .. key .. "_thumb")
-        local lbl = cell:addChild("gridCell_" .. key .. "_lbl")
-        thumb:setInterceptsMouse(false, false)
-        lbl:setInterceptsMouse(false, false)
-        if cell.setInterceptsMouse then cell:setInterceptsMouse(true, true) end
-        if cell.setOnMouseDown then
-          local clickCol, clickRow = col, row
-          cell:setOnMouseDown(function()
-            selectGridCell(ctx, clickCol, clickRow)
-          end)
-        end
-        ctx._gridCells[key] = { node = cell, thumb = thumb, label = lbl, col = col, row = row }
-      end
-    end
-  end
-  -- Hide cells beyond the grid bounds
-  for key, cell in pairs(ctx._gridCells) do
-    if cell.col > numCols or cell.row > numRows then
-      cell.node:setBounds(0, 0, 0, 0)
-    end
-  end
-  profileEnd(ctx, "ensureGridCells")
-  return numCols, numRows
+  return AVSD.Grid.ensureGridCells(ctx, GRID_DEPS)
 end
 
 updateGridThumbnails = function(ctx)
-  profileStart(ctx, "updateGridThumbnails")
-  local cells = ctx._gridCells or {}
-  local numCols, numRows = syncClipModel(ctx)
-  ctx._gridThumbSigs = ctx._gridThumbSigs or {}
-  for col = 1, numCols do
-    for row = 1, numRows do
-      local key = tostring(col) .. "_" .. tostring(row)
-      local cell = cells[key]
-      if not cell then break end
-      local clip = ctx.clips[col] and ctx.clips[col][row]
-      local thumb = cell.thumb
-      if clip and not clip.empty then
-        local sig = tostring(col) .. "_" .. tostring(row)
-
-        if row == 1 and clip.kind == "source" then
-          sig = sig .. "|" .. sourceSpecSignature(ctx, col)
-          if ctx._gridThumbSigs[key] ~= sig then
-            ctx._gridThumbSigs[key] = sig
-            local payload = buildNodePassthroughPayload(stackNodeIdForRow(col, 1))
-            if payload then
-              thumb:setCustomSurface("gpu_shader", payload)
-            else
-              clearNodeSurface(thumb)
-            end
-          end
-        elseif clip.kind == "fx" and clip.enabled then
-          sig = stackTapSignature(ctx, col, row)
-          if ctx._gridThumbSigs[key] ~= sig then
-            ctx._gridThumbSigs[key] = sig
-            local payload = buildNodePassthroughPayload(stackNodeIdForRow(col, row))
-            if payload then
-              thumb:setCustomSurface("gpu_shader", payload)
-            else
-              clearNodeSurface(thumb)
-            end
-          end
-        elseif clip.kind == "output" then
-          sig = stackTapSignature(ctx, col, 10) .. "|output"
-          if ctx._gridThumbSigs[key] ~= sig then
-            ctx._gridThumbSigs[key] = sig
-            local payload = buildNodePassthroughPayload(stackNodeIdForRow(col, 10))
-            if payload then
-              thumb:setCustomSurface("gpu_shader", payload)
-            else
-              clearNodeSurface(thumb)
-            end
-          end
-        else
-          clearNodeSurface(thumb)
-        end
-      else
-        clearNodeSurface(thumb)
-      end
-    end
-  end
-  profileEnd(ctx, "updateGridThumbnails")
+  return AVSD.Grid.updateGridThumbnails(ctx, GRID_DEPS)
 end
 
-local EMPTY_CELL_BG = 0xff080c18
-
 local function layoutClipGrid(ctx, w, h)
-  setBounds(ctx.widgets.deckEmbed, 0, 0, w, h)
-  syncClipModel(ctx)
-  local pad, gap = 8, 4
-  local availW = math.max(1, w - pad * 2)
-  local availH = math.max(1, h - pad * 2)
-  local numCols, numRows = ensureGridCells(ctx)
-  if numCols < 1 or numRows < 1 then return end
-  updateGridThumbnails(ctx)
-
-  local alignment = ctx.gridAlignment or "bottom-up"
-  local cellW, cellH
-
-  if alignment == "left-to-right" then
-    -- Columns stack vertically, rows extend right
-    cellH = math.max(24, math.floor((availH - gap * (numCols - 1)) / numCols))
-    cellW = math.max(40, math.floor((availW - gap * (numRows - 1)) / numRows))
-  else
-    -- bottom-up, top-down: columns side by side, rows stack vertically
-    cellW = math.max(40, math.floor((availW - gap * (numCols - 1)) / numCols))
-    cellH = math.max(24, math.floor((availH - gap * (numRows - 1)) / numRows))
-  end
-
-  -- Left-to-right: overlay label on thumb (minimal padding).
-  -- Bottom-up/top-down: label below thumb with 16px overhead.
-  local thumbH, labelH, isOverlay
-  if alignment == "left-to-right" then
-    thumbH = math.max(1, cellH - 4)
-    labelH = 12
-    isOverlay = true
-  else
-    thumbH = math.max(1, cellH - 16)
-    labelH = math.max(1, cellH - thumbH - 4)
-    isOverlay = false
-  end
-
-  for col = 1, numCols do
-    for row = 1, numRows do
-      local key = tostring(col) .. "_" .. tostring(row)
-      local cell = ctx._gridCells[key]
-      if not cell then break end
-
-      local cx, cy
-      if alignment == "bottom-up" then
-        local displayRow = numRows - row + 1
-        cx = pad + (col - 1) * (cellW + gap)
-        cy = pad + (displayRow - 1) * (cellH + gap)
-      elseif alignment == "left-to-right" then
-        -- Rows extend right, columns stack vertically
-        cx = pad + (row - 1) * (cellW + gap)
-        cy = pad + (col - 1) * (cellH + gap)
-      else -- top-down
-        cx = pad + (col - 1) * (cellW + gap)
-        cy = pad + (row - 1) * (cellH + gap)
-      end
-
-      cell.node:setBounds(cx, cy, cellW, cellH)
-
-      local clip = ctx.clips[col] and ctx.clips[col][row]
-      local isSource = (row == 1)
-      local isEmpty = clip and clip.empty
-      local isEnabled = (not isSource) and clip and clip.enabled
-      local isOutput = clip and clip.kind == "output"
-
-      local isSourceSelected = isSource and ((tonumber(ctx.sourceSelectionCol) or 1) == col)
-      local isEffectSelected = (not isSource) and ctx.selection and ctx.selection.col == col and ctx.selection.row == row
-      local bg, borderClr, borderThick
-      if isEmpty then
-        bg = 0xff080c18
-        borderClr = 0xff0f1520
-        borderThick = 1
-      elseif isSource then
-        bg = CELL_SRC_TINT
-        borderClr = isSourceSelected and CELL_SRC_SEL_BD or 0xff22d3ee
-        borderThick = isSourceSelected and 2 or 1
-      elseif isEnabled or isOutput then
-        bg = CELL_FX_TINT
-        borderClr = isEffectSelected and CELL_FX_SEL_BD or CELL_BORDER
-        borderThick = isEffectSelected and 2 or 1
-      else
-        bg = EMPTY_CELL_BG
-        borderClr = isEffectSelected and CELL_FX_SEL_BD or 0xff0f1520
-        borderThick = isEffectSelected and 2 or 1
-      end
-
-      cell.node:setDisplayList({
-        { cmd = "fillRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = bg },
-        { cmd = "drawRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = borderClr, thickness = borderThick },
-      })
-
-      if isEmpty then
-        cell.thumb:setBounds(0, 0, 0, 0)
-        cell.label:setBounds(0, 0, cellW, cellH)
-        cell.label:setDisplayList({
-          { cmd = "drawText", text = "No Source", color = 0xff334155, fontSize = 9, align = "center", valign = "middle" },
-        })
-      elseif isSource or isEnabled or isOutput then
-        local contentAspectW, contentAspectH = canonicalAspectSize(ctx)
-        if isOverlay then
-          -- Overlay label on thumb: thumb is boxed to the canonical source aspect.
-          local ix, iy, iw, ih = fitBox(math.max(1, cellW - 4), math.max(1, cellH - 4), contentAspectW, contentAspectH)
-          cell.thumb:setBounds(2 + ix, 2 + iy, iw, ih)
-          cell.label:setBounds(4, math.max(1, cellH - 13), math.max(1, cellW - 8), labelH)
-          local labelText = isOutput and "OUT" or (clip and (clip.name or clip.fxName) or "")
-          local labelClr = isSource and 0xff22d3ee or (isOutput and 0xffa78bfa or 0xff94a3b8)
-          cell.label:setDisplayList({
-            { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = labelH + 2, color = 0xaa000000 },
-            { cmd = "drawText", text = labelText, color = labelClr, fontSize = 8, align = isOutput and "right" or "left", valign = "middle" },
-          })
-        else
-          local ix, iy, iw, ih = fitBox(math.max(1, cellW - 4), math.max(1, thumbH - 2), contentAspectW, contentAspectH)
-          cell.thumb:setBounds(2 + ix, 2 + iy, iw, ih)
-          local labelText = isOutput and "OUT" or (clip and (clip.name or clip.fxName) or "")
-          cell.label:setBounds(4, math.max(1, thumbH + 2), math.max(1, cellW - 8), labelH)
-          local labelClr = isSource and 0xff22d3ee or (isOutput and 0xffa78bfa or (isEnabled and 0xff94a3b8 or 0xff334155))
-          cell.label:setDisplayList({
-            { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = labelH + 2, color = bg },
-            { cmd = "drawText", text = labelText, color = labelClr, fontSize = 8 },
-          })
-        end
-      else
-        cell.thumb:setBounds(0, 0, 0, 0)
-        local labelText = clip and clip.fxName or ""
-        cell.label:setBounds(4, 4, math.max(1, cellW - 8), math.max(1, cellH - 8))
-        cell.label:setDisplayList({
-          { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = cellH, color = bg },
-          { cmd = "drawText", text = labelText, color = 0xff334155, fontSize = 8, align = "center", valign = "middle" },
-        })
-      end
-    end
-  end
+  return AVSD.Grid.layoutClipGrid(ctx, w, h, GRID_DEPS)
 end
 
 resetPanelDocks = function(ctx)
-  ctx._panelDocks = {}
+  return AVSD.Layout.resetPanelDocks(ctx)
 end
 
 local function panelSplit(t)
-  local r = imguiDockBuilderSplitNode(t.node, t.dir, t.ratio)
-  if imguiDockBuilderSetNodeFlags then
-    imguiDockBuilderSetNodeFlags(r.atDir, imguiDockNodeFlags_HiddenTabBar)
-    imguiDockBuilderSetNodeFlags(r.opposite, imguiDockNodeFlags_HiddenTabBar)
-  end
-  return r.atDir, r.opposite
+  return AVSD.Layout.panelSplit(t)
 end
 
 local function renderSourcesPanel(ctx)
-  local dockspaceId = imguiGetID("AVSD_sources_ds")
-
-  if not ctx._panelDocks or not ctx._panelDocks.sources then
-    ctx._panelDocks = ctx._panelDocks or {}
-    local avail = imguiGetContentRegionAvail()
-    local pw = math.max(1, math.floor(tonumber(avail.x) or 300))
-    local ph = math.max(1, math.floor(tonumber(avail.y) or 200))
-
-    imguiDockBuilderRemoveNode(dockspaceId)
-    imguiDockBuilderAddNode(dockspaceId, imguiDockNodeFlags_DockSpace)
-    imguiDockBuilderSetNodeSize(dockspaceId, pw, ph)
-
-    local viewports, controls = panelSplit{ node = dockspaceId, dir = imguiDir_Down, ratio = 0.55 }
-    local liveArea, rest = panelSplit{ node = viewports, dir = imguiDir_Left, ratio = 0.33 }
-    local segArea, poseArea = panelSplit{ node = rest, dir = imguiDir_Left, ratio = 0.50 }
-
-    imguiDockBuilderDockWindow("Live###AVSD_live", liveArea)
-    imguiDockBuilderDockWindow("Segmented###AVSD_seg", segArea)
-    imguiDockBuilderDockWindow("Pose###AVSD_pose", poseArea)
-    imguiDockBuilderDockWindow("Controls###AVSD_src_ctrl", controls)
-
-    imguiDockBuilderFinish(dockspaceId)
-    ctx._panelDocks.sources = true
-  end
-
-  imguiDockSpace(dockspaceId, 0, 0, imguiDockNodeFlags_None)
-
-  -- Live viewport dock window
-  if imguiBegin("Live###AVSD_live", imguiWindowFlags_NoTitleBar) then
-    local av = imguiGetContentRegionAvail()
-    if av.x > 4 and av.y > 4 then
-      setBounds(ctx.widgets.liveViewport, 0, 0, math.floor(av.x), math.floor(av.y))
-      imguiRetainedPanel(ctx.widgets.liveViewport.node, math.floor(av.x), math.floor(av.y), true)
-    end
-  end
-  imguiEnd()
-
-  -- Segmented viewport dock window
-  if imguiBegin("Segmented###AVSD_seg", imguiWindowFlags_NoTitleBar) then
-    local av = imguiGetContentRegionAvail()
-    if av.x > 4 and av.y > 4 then
-      setBounds(ctx.widgets.segViewport, 0, 0, math.floor(av.x), math.floor(av.y))
-      imguiRetainedPanel(ctx.widgets.segViewport.node, math.floor(av.x), math.floor(av.y), true)
-    end
-  end
-  imguiEnd()
-
-  -- Pose viewport dock window
-  if imguiBegin("Pose###AVSD_pose", imguiWindowFlags_NoTitleBar) then
-    local av = imguiGetContentRegionAvail()
-    if av.x > 4 and av.y > 4 then
-      setBounds(ctx.widgets.poseViewport, 0, 0, math.floor(av.x), math.floor(av.y))
-      ctx._poseVpW = math.floor(av.x)
-      ctx._poseVpH = math.floor(av.y)
-      ensurePoseOverlay(ctx)
-      if ctx._poseOverlay then
-        ctx._poseOverlay:setBounds(0, 0, ctx._poseVpW, ctx._poseVpH)
-      end
-      imguiRetainedPanel(ctx.widgets.poseViewport.node, math.floor(av.x), math.floor(av.y), true)
-    end
-  end
-  imguiEnd()
-
-  -- Controls dock window
-  if imguiBegin("Controls###AVSD_src_ctrl", imguiWindowFlags_NoTitleBar) then
-    local av = imguiGetContentRegionAvail()
-    if av.x > 4 and av.y > 4 then
-      layoutInputsEmbed(ctx, math.floor(av.x), math.floor(av.y))
-      imguiRetainedPanel(ctx.widgets.inputsEmbed.node, math.floor(av.x), math.floor(av.y), false)
-    end
-  end
-  imguiEnd()
+  return AVSD.Layout.renderSourcesPanel(ctx, LAYOUT_DEPS)
 end
 
 local function renderStagePanel(ctx)
-  local dockspaceId = imguiGetID("AVSD_stage_ds")
-
-  if not ctx._panelDocks or not ctx._panelDocks.stage then
-    ctx._panelDocks = ctx._panelDocks or {}
-    local avail = imguiGetContentRegionAvail()
-    local pw = math.max(1, math.floor(tonumber(avail.x) or 500))
-    local ph = math.max(1, math.floor(tonumber(avail.y) or 300))
-
-    imguiDockBuilderRemoveNode(dockspaceId)
-    imguiDockBuilderAddNode(dockspaceId, imguiDockNodeFlags_DockSpace)
-    imguiDockBuilderSetNodeSize(dockspaceId, pw, ph)
-
-    local outputArea, previewArea = panelSplit{ node = dockspaceId, dir = imguiDir_Right, ratio = 0.28 }
-
-    imguiDockBuilderDockWindow("Output###AVSD_output", outputArea)
-    imguiDockBuilderDockWindow("Preview###AVSD_preview", previewArea)
-
-    imguiDockBuilderFinish(dockspaceId)
-    ctx._panelDocks.stage = true
-  end
-
-  imguiDockSpace(dockspaceId, 0, 0, imguiDockNodeFlags_None)
-
-  -- Output viewport dock window
-  if imguiBegin("Output###AVSD_output", imguiWindowFlags_NoTitleBar) then
-    local av = imguiGetContentRegionAvail()
-    if av.x > 4 and av.y > 4 then
-      local rw, rh = math.floor(av.x), math.floor(av.y)
-      setBounds(ctx.widgets.outputViewport, 0, 0, rw, rh)
-      if ctx.widgets.outputSurface then
-        local cw, ch = canonicalAspectSize(ctx)
-        local ix, iy, iw, ih = fitBox(rw, rh, cw, ch)
-        setBounds(ctx.widgets.outputSurface, ix, iy, iw, ih)
-      end
-      layoutOutputRow(ctx)
-      imguiRetainedPanel(ctx.widgets.outputViewport.node, rw, rh, true)
-    end
-  end
-  imguiEnd()
-
-  -- Preview dock window
-  if imguiBegin("Preview###AVSD_preview", imguiWindowFlags_NoTitleBar) then
-    local av = imguiGetContentRegionAvail()
-    if av.x > 4 and av.y > 4 then
-      local rw, rh = math.floor(av.x), math.floor(av.y)
-      setBounds(ctx.widgets.previewStage, 0, 0, rw, rh)
-      setBounds(ctx.widgets.previewStageTag, 5, 4, math.max(1, rw - 10), 12)
-      imguiRetainedPanel(ctx.widgets.previewStage.node, rw, rh, true)
-    end
-  end
-  imguiEnd()
+  return AVSD.Layout.renderStagePanel(ctx, LAYOUT_DEPS)
 end
 
 local function renderWaveformPanel(ctx)
-  local dockspaceId = imguiGetID("AVSD_waveform_ds")
-
-  if not ctx._panelDocks or not ctx._panelDocks.waveform then
-    ctx._panelDocks = ctx._panelDocks or {}
-    local avail = imguiGetContentRegionAvail()
-    local pw = math.max(1, math.floor(tonumber(avail.x) or 500))
-    local ph = math.max(1, math.floor(tonumber(avail.y) or 120))
-
-    imguiDockBuilderRemoveNode(dockspaceId)
-    imguiDockBuilderAddNode(dockspaceId, imguiDockNodeFlags_DockSpace)
-    imguiDockBuilderSetNodeSize(dockspaceId, pw, ph)
-
-    imguiDockBuilderDockWindow("Waveform###AVSD_waveform", dockspaceId)
-
-    imguiDockBuilderFinish(dockspaceId)
-    ctx._panelDocks.waveform = true
-  end
-
-  imguiDockSpace(dockspaceId, 0, 0, imguiDockNodeFlags_None)
-
-  -- Waveform viewport dock window
-  if imguiBegin("Waveform###AVSD_waveform", imguiWindowFlags_NoTitleBar) then
-    local av = imguiGetContentRegionAvail()
-    if av.x > 4 and av.y > 4 then
-      setBounds(ctx.widgets.waveform, 0, 0, math.floor(av.x), math.floor(av.y))
-      imguiRetainedPanel(ctx.widgets.waveform.node, math.floor(av.x), math.floor(av.y), true)
-    end
-  end
-  imguiEnd()
-  -- Waveform status renders as part of the waveform embed, not as its own dock
+  return AVSD.Layout.renderWaveformPanel(ctx, LAYOUT_DEPS)
 end
 
 local function layoutDeckEmbed(ctx, w, h)
@@ -3036,818 +1755,115 @@ local function renderEmbeddedPanel(ctx, widgetId, layoutFn, forcedHeight, fitToV
 end
 
 local function renderSourceInspectorWindow(ctx)
-  local sourceCol = tonumber(ctx.sourceSelectionCol) or 1
-  local sourceSelected = true
-  local label
-  if sourceCol > 1 then
-    local cd = ctx._colData and ctx._colData[sourceCol]
-    if cd and cd.source then
-      label = "Stack " .. tostring(sourceCol) .. ": " .. colSourceLabel(ctx, sourceCol) .. " (grid)"
-    else
-      label = "Stack " .. tostring(sourceCol) .. ": (grid)"
-    end
-  else
-    label = "Source (grid-selected)"
-  end
-  imguiTextColored(sourceSelected and 0xff22d3ee or 0xff94a3b8, label)
-
-  -- Check if this column has no source assigned yet
-  local cd = ctx._colData and ctx._colData[sourceCol]
-  if not cd or not cd.source then
-    imguiTextColored(0xff94a3b8, "No source — select one to assign")
-    imguiSpacing()
-  end
-
-  -- Source picker button + nested popup (replaces flat dropdown)
-  if imguiButton("Source: " .. colSourceLabel(ctx, sourceCol)) then
-    imguiOpenPopup("##srcInspectorPicker")
-  end
-  imguiSameLine()
-  imguiText("Stack " .. tostring(sourceCol))
-
-  if imguiBeginPopup("##srcInspectorPicker") then
-    local targetCol = sourceCol
-    if imguiMenuItem("Webcam") then
-      setSourceSpecForColumn(ctx, targetCol, { kind = "webcam", sourceIndex = 1 })
-      imguiCloseCurrentPopup()
-    end
-
-    if imguiBeginMenu("Generators") then
-      for i, g in ipairs(ctx.sources or {}) do
-        if g.kind == "generator" then
-          if imguiMenuItem(g.name or g.id) then
-            local params = {}
-            for _, pspec in ipairs(g.params or {}) do
-              local pmin = tonumber(pspec.min) or 0
-              local pmax = tonumber(pspec.max) or 1
-              local defaultNorm = ((tonumber(pspec.default) or pmin) - pmin) / math.max(0.001, pmax - pmin)
-              params[pspec.id] = clamp(defaultNorm, 0, 1)
-            end
-            setSourceSpecForColumn(ctx, targetCol, { kind = "generator", sourceIndex = i, sourceId = g.id, params = params })
-            imguiCloseCurrentPopup()
-          end
-        end
-      end
-      imguiEndMenu()
-    end
-
-    if imguiBeginMenu("ML") then
-      if imguiMenuItem("Segmented") then
-        setSourceSpecForColumn(ctx, targetCol, defaultMLSourceSpec("segmented"))
-        imguiCloseCurrentPopup()
-      end
-      if imguiMenuItem("Pose") then
-        setSourceSpecForColumn(ctx, targetCol, defaultMLSourceSpec("pose"))
-        imguiCloseCurrentPopup()
-      end
-      imguiEndMenu()
-    end
-
-    if imguiBeginMenu("From Column") then
-      for colId, cd in pairs(ctx._colData or {}) do
-        if cd and cd.source then
-          -- Skip if it's the same column we're editing
-          if targetCol ~= colId then
-            local clabel = "Stack " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
-            if imguiMenuItem(clabel .. " / Raw (T0)") then
-              setSourceSpecForColumn(ctx, targetCol, { kind = "columntap", sourceCol = colId, tapIndex = 0 })
-              imguiCloseCurrentPopup()
-            end
-            for ti = 1, math.min(#cd.fx, 8) do
-              if cd.fx[ti] and cd.fx[ti].enabled then
-                local fxName = colFxLabel(ctx, colId, ti)
-                if imguiMenuItem(clabel .. " / " .. fxName .. " (T" .. ti .. ")") then
-                  setSourceSpecForColumn(ctx, targetCol, { kind = "columntap", sourceCol = colId, tapIndex = ti })
-                  imguiCloseCurrentPopup()
-                end
-              end
-            end
-          end
-        end
-      end
-      imguiEndMenu()
-    end
-
-    imguiEndPopup()
-  end
-
-  imguiSeparator()
-  local avail = imguiGetContentRegionAvail()
-  renderEmbeddedPanel(ctx, "sourceEmbed", layoutSourceEmbed, math.max(120, math.floor(tonumber(avail.y) or 120) - 18))
+  return AVSD.Params.renderSourceInspectorWindow(ctx, {
+    colSourceLabel = colSourceLabel,
+    colFxLabel = colFxLabel,
+    setSourceSpecForColumn = setSourceSpecForColumn,
+    defaultMLSourceSpec = defaultMLSourceSpec,
+    renderEmbeddedPanel = renderEmbeddedPanel,
+    layoutSourceEmbed = layoutSourceEmbed,
+    clamp = clamp,
+  })
 end
 
 layoutCompoLayerControls = function(ctx, w, h)
-  local embed = ctx.widgets.compoLayerEmbed
-  if not embed then return end
-  setBounds(embed, 0, 0, w, h)
-
-  local selIdx = ctx.compositorSelection and ctx.compositorSelection.layerIndex
-  local layer = selIdx and ctx.compositor and ctx.compositor.layers[selIdx]
-  if not layer then
-    for _, id in ipairs{"compoColumn","compoTap","compoBlend","compoOpacity","compoVisible"} do
-      if ctx.widgets[id] then setVisible(ctx.widgets[id], false) end
-    end
-    return
-  end
-
-  local curCol = layer.sourceColumn or 1
-
-  -- Column dropdown: setOptions when labels change, setSelected only when value changes
-  ctx._compoColLabels = ctx._compoColLabels or {}
-  local colLabels = {}
-  if ctx._colData then
-    for cid, _ in pairs(ctx._colData) do
-      table.insert(colLabels, "Stack " .. cid .. " (" .. colSourceLabel(ctx, cid) .. ")")
-    end
-  end
-  if #colLabels == 0 then table.insert(colLabels, "Stack 1") end
-  if table.concat(ctx._compoColLabels) ~= table.concat(colLabels) then
-    ctx._compoColLabels = colLabels
-    ctx._compoColSelCache = nil
-    setOptions(ctx.widgets.compoColumn, colLabels)
-  end
-  local curColIdx = 1
-  for i, label in ipairs(colLabels) do
-    if label:match("Stack " .. curCol) then curColIdx = i; break end
-  end
-  if ctx._compoColSelCache ~= curColIdx then
-    ctx._compoColSelCache = curColIdx
-    setSelectedSilently(ctx.widgets.compoColumn, curColIdx)
-  end
-  setBounds(ctx.widgets.compoColumn, 8, 25, 96, 18)
-  ctx.widgets.compoColumn._onSelect = function(idx)
-    local i = math.max(1, math.min(#colLabels, round(idx)))
-    local cid = tonumber(colLabels[i]:match("Stack (%d+)")) or 1
-    layer.sourceColumn = cid; ctx._compoThumbSigs = {}
-  end
-  setVisible(ctx.widgets.compoColumn, true)
-
-  -- Tap dropdown: only setOptions when column changes, only setSelected when value changes
-  ctx._compoLastTapCol = ctx._compoLastTapCol or {}
-  local tapKey = "col" .. curCol
-  local cd = ctx._colData and ctx._colData[curCol]
-  local numFx = cd and #cd.fx or 8
-  local tapLabels = { "Output", "Raw Source" }
-  local tapVals = { nil, 0 }
-  for ti = 1, numFx do
-    table.insert(tapLabels, "FX " .. ti)
-    table.insert(tapVals, ti)
-  end
-  if ctx._compoLastTapCol ~= tapKey then
-    ctx._compoLastTapCol = tapKey
-    ctx._compoTapLabels = tapLabels
-    ctx._compoTapVals = tapVals
-    ctx._compoTapSelCache = nil
-    setOptions(ctx.widgets.compoTap, tapLabels)
-  end
-  local curTap = layer.tapIndex
-  local curTapIdx = 1
-  for i, v in ipairs(ctx._compoTapVals or tapVals) do if v == curTap then curTapIdx = i; break end end
-  if ctx._compoTapSelCache ~= curTapIdx then
-    ctx._compoTapSelCache = curTapIdx
-    setSelectedSilently(ctx.widgets.compoTap, curTapIdx)
-  end
-  setBounds(ctx.widgets.compoTap, 110, 25, 80, 18)
-  ctx.widgets.compoTap._onSelect = function(idx)
-    local vi = math.max(1, math.min(#(ctx._compoTapVals or tapVals), round(idx)))
-    layer.tapIndex = (ctx._compoTapVals or tapVals)[vi]; ctx._compoThumbSigs = {}
-  end
-  setVisible(ctx.widgets.compoTap, true)
-
-  -- Blend mode dropdown: only setOptions once
-  if not ctx._compoBlendInited then
-    ctx._compoBlendInited = true
-    ctx._compoBlendSelCache = nil
-    setOptions(ctx.widgets.compoBlend, { "normal", "add", "screen", "multiply", "overlay", "difference" })
-  end
-  local blendModes = { "normal", "add", "screen", "multiply", "overlay", "difference" }
-  local curMode = layer.blendMode or "normal"
-  local curModeIdx = 1
-  for i, bm in ipairs(blendModes) do if bm == curMode then curModeIdx = i; break end end
-  if ctx._compoBlendSelCache ~= curModeIdx then
-    ctx._compoBlendSelCache = curModeIdx
-    setSelectedSilently(ctx.widgets.compoBlend, curModeIdx)
-  end
-  setBounds(ctx.widgets.compoBlend, 196, 25, 70, 18)
-  ctx.widgets.compoBlend._onSelect = function(idx)
-    layer.blendMode = blendModes[math.max(1, math.min(#blendModes, round(idx)))] or "normal"
-  end
-  setVisible(ctx.widgets.compoBlend, true)
-
-  -- Opacity slider: only setValue when value changes
-  local curOpacity = layer.opacity or 1.0
-  if ctx._compoOpacityCache == nil or math.abs(ctx._compoOpacityCache - curOpacity) > 0.001 then
-    ctx._compoOpacityCache = curOpacity
-    setValueSilently(ctx.widgets.compoOpacity, curOpacity)
-  end
-  setBounds(ctx.widgets.compoOpacity, 8, 49, 100, 17)
-  ctx.widgets.compoOpacity._onChange = function(v) layer.opacity = clamp(v, 0, 1) end
-  setVisible(ctx.widgets.compoOpacity, true)
-
-  -- Visibility toggle: only setValue when value changes
-  local curVis = layer.visible == true
-  if ctx._compoVisCache ~= curVis then
-    ctx._compoVisCache = curVis
-    setValueSilently(ctx.widgets.compoVisible, curVis)
-  end
-  setBounds(ctx.widgets.compoVisible, 114, 49, 50, 17)
-  ctx.widgets.compoVisible._onChange = function(v)
-    layer.visible = v == true; ctx._compoThumbSigs = {}
-  end
-  setVisible(ctx.widgets.compoVisible, true)
+  return AVSD.Compositor.layoutCompoLayerControls(ctx, w, h, COMPO_DEPS)
 end
 
 renderCompositorLayerControls = function(ctx)
-  local selIdx = ctx.compositorSelection and ctx.compositorSelection.layerIndex
-  if not selIdx then
-    imguiTextColored(0xff94a3b8, "No layer selected")
-    return
-  end
-  local layer = ctx.compositor and ctx.compositor.layers[selIdx]
-  if not layer then
-    imguiTextColored(0xff94a3b8, "No layer selected")
-    return
-  end
-  imguiTextColored(0xfff97316, "Layer " .. selIdx)
-  imguiSeparator()
-  local avail = imguiGetContentRegionAvail()
-  renderEmbeddedPanel(ctx, "compoLayerEmbed", layoutCompoLayerControls, 72)
+  return AVSD.Compositor.renderCompositorLayerControls(ctx, COMPO_DEPS)
 end
 
 local function renderEffectInspectorWindow(ctx)
-  if ctx.selectedView == "compositor" then
-    renderCompositorLayerControls(ctx)
-    return
-  end
-
-  local sel = ctx.selection
-  local effectSelected = sel and sel.row and sel.row > 1
-  local label
-  if sel and sel.col and sel.col > 1 and sel.row > 1 then
-    local cd = ctx._colData and ctx._colData[sel.col]
-    local fxName = cd and cd.fx[sel.row - 1] and colFxLabel(ctx, sel.col, sel.row - 1) or ""
-    label = "Stack " .. tostring(sel.col) .. " FX" .. tostring(sel.row - 1) .. ": " .. fxName .. " (grid)"
-  elseif effectSelected and sel and sel.col == 1 then
-    label = "Effect (grid-selected)"
-  else
-    label = "Effect"
-  end
-  imguiTextColored(effectSelected and 0xff22d3ee or 0xff94a3b8, label)
-
-  -- Check if the selected FX cell is empty
-  local isEmptyFx = sel and sel.col and sel.row and sel.row > 1 and
-    ctx.clips and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row] and
-    ctx.clips[sel.col][sel.row].emptyFx
-  if isEmptyFx then
-    imguiTextColored(0xff94a3b8, "Select an effect to assign")
-    imguiSpacing()
-  end
-
-  imguiSeparator()
-  local avail = imguiGetContentRegionAvail()
-  renderEmbeddedPanel(ctx, "effectEmbed", layoutEffectEmbed, math.max(180, math.floor(tonumber(avail.y) or 180) - 18))
-  imguiSpacing()
-  imguiTextColored(0xff64748b, "Pins for selected effect/source will land here later.")
+  return AVSD.Params.renderEffectInspectorWindow(ctx, {
+    colFxLabel = colFxLabel,
+    renderEmbeddedPanel = renderEmbeddedPanel,
+    layoutEffectEmbed = layoutEffectEmbed,
+    renderCompositorLayerControls = renderCompositorLayerControls,
+  })
 end
 
 local function renderParamTransportWindow(ctx)
-  imguiSeparatorText("Transport / MIDI")
-  renderEmbeddedPanel(ctx, "transportEmbed", layoutTransportEmbed, 98)
-  imguiSpacing()
-  if round(readParam(NS .. "/mode", 0)) == 1 then
-    imguiSeparatorText("Slice Mode")
-    renderEmbeddedPanel(ctx, "sliceEmbed", layoutSliceEmbed, 104)
-  else
-    imguiSeparatorText("Poly Voice Areas")
-    renderEmbeddedPanel(ctx, "polyEmbed", layoutPolyEmbed, 104)
-  end
+  return AVSD.Params.renderParamTransportWindow(ctx, {
+    renderEmbeddedPanel = renderEmbeddedPanel,
+    layoutTransportEmbed = layoutTransportEmbed,
+    layoutSliceEmbed = layoutSliceEmbed,
+    layoutPolyEmbed = layoutPolyEmbed,
+    round = round,
+    readParam = readParam,
+  })
 end
 
 local function renderParamMappingWindow(ctx)
-  imguiSeparatorText("Pose / Seg / Mapping")
-  local avail = imguiGetContentRegionAvail()
-  renderEmbeddedPanel(ctx, "mappingEmbed", layoutMappingEmbed, math.max(200, math.floor(tonumber(avail.y) or 200)))
+  return AVSD.Params.renderParamMappingWindow(ctx, {
+    renderEmbeddedPanel = renderEmbeddedPanel,
+    layoutMappingEmbed = layoutMappingEmbed,
+  })
 end
 
 local function renderParamFxWindow(ctx)
-  imguiSeparatorText("FX Rack")
-  local avail = imguiGetContentRegionAvail()
-  renderEmbeddedPanel(ctx, "fxEmbed", layoutFxEmbed, math.max(220, math.floor(tonumber(avail.y) or 220)))
+  return AVSD.Params.renderParamFxWindow(ctx, {
+    renderEmbeddedPanel = renderEmbeddedPanel,
+    layoutFxEmbed = layoutFxEmbed,
+  })
 end
 
 local function renderParametersPanel(ctx)
-  local dockspaceId = imguiGetID("AVSD_params_ds")
-
-  if not ctx._panelDocks or not ctx._panelDocks.params then
-    ctx._panelDocks = ctx._panelDocks or {}
-    local avail = imguiGetContentRegionAvail()
-    local pw = math.max(1, math.floor(tonumber(avail.x) or 360))
-    local ph = math.max(1, math.floor(tonumber(avail.y) or 300))
-
-    imguiDockBuilderRemoveNode(dockspaceId)
-    imguiDockBuilderAddNode(dockspaceId, imguiDockNodeFlags_DockSpace)
-    imguiDockBuilderSetNodeSize(dockspaceId, pw, ph)
-
-    -- One inspector column: Source + Effect share the top band, the rest stack
-    -- below full-width. Splitting them into a separate side column was a dumb
-    -- layout regression that made the lower sections too thin.
-    local topBand, lowerStack = panelSplit{ node = dockspaceId, dir = imguiDir_Up, ratio = 0.24 }
-    local sourceArea, effectArea = panelSplit{ node = topBand, dir = imguiDir_Right, ratio = 0.50 }
-    local transportArea, lowerTail = panelSplit{ node = lowerStack, dir = imguiDir_Up, ratio = 0.22 }
-    local mappingArea, fxArea = panelSplit{ node = lowerTail, dir = imguiDir_Up, ratio = 0.56 }
-
-    imguiDockBuilderDockWindow("Source###AVSD_param_source", sourceArea)
-    imguiDockBuilderDockWindow("Effect###AVSD_param_effect", effectArea)
-    imguiDockBuilderDockWindow("Transport###AVSD_param_transport", transportArea)
-    imguiDockBuilderDockWindow("Mapping###AVSD_param_mapping", mappingArea)
-    imguiDockBuilderDockWindow("FX Rack###AVSD_param_fx", fxArea)
-
-    imguiDockBuilderFinish(dockspaceId)
-    ctx._panelDocks.params = true
-  end
-
-  imguiDockSpace(dockspaceId, 0, 0, imguiDockNodeFlags_None)
-
-  if imguiBegin("Source###AVSD_param_source", imguiWindowFlags_NoTitleBar) then
-    renderSourceInspectorWindow(ctx)
-  end
-  imguiEnd()
-
-  if imguiBegin("Effect###AVSD_param_effect", imguiWindowFlags_NoTitleBar) then
-    renderEffectInspectorWindow(ctx)
-  end
-  imguiEnd()
-
-  if imguiBegin("Transport###AVSD_param_transport", imguiWindowFlags_NoTitleBar) then
-    renderParamTransportWindow(ctx)
-  end
-  imguiEnd()
-
-  if imguiBegin("Mapping###AVSD_param_mapping", imguiWindowFlags_NoTitleBar) then
-    renderParamMappingWindow(ctx)
-  end
-  imguiEnd()
-
-  if imguiBegin("FX Rack###AVSD_param_fx", imguiWindowFlags_NoTitleBar) then
-    renderParamFxWindow(ctx)
-  end
-  imguiEnd()
+  return AVSD.Params.renderParametersPanel(ctx, {
+    panelSplit = panelSplit,
+    renderEmbeddedPanel = renderEmbeddedPanel,
+    layoutSourceEmbed = layoutSourceEmbed,
+    layoutEffectEmbed = layoutEffectEmbed,
+    layoutTransportEmbed = layoutTransportEmbed,
+    layoutSliceEmbed = layoutSliceEmbed,
+    layoutPolyEmbed = layoutPolyEmbed,
+    layoutMappingEmbed = layoutMappingEmbed,
+    layoutFxEmbed = layoutFxEmbed,
+    colSourceLabel = colSourceLabel,
+    colFxLabel = colFxLabel,
+    setSourceSpecForColumn = setSourceSpecForColumn,
+    defaultMLSourceSpec = defaultMLSourceSpec,
+    renderCompositorLayerControls = renderCompositorLayerControls,
+    clamp = clamp,
+    round = round,
+    readParam = readParam,
+  })
 end
 
 local function renderGridToolbar(ctx, parentW)
-  local toolbarH = 24
-  imguiBeginChild("##gridToolbar", parentW, toolbarH, false, 0)
-
-  -- Alignment switcher
-  local alignments = {
-    { "^BU", "bottom-up", "Bottom-Up" },
-    { ">LR", "left-to-right", "Left-to-Right" },
-    { "vTD", "top-down", "Top-Down" },
-  }
-  for _, a in ipairs(alignments) do
-    local isActive = ctx.gridAlignment == a[2]
-    if isActive then
-      imguiTextColored(0xff22d3ee, a[1])
-    else
-      if imguiButton(a[1]) then ctx.gridAlignment = a[2] end
-    end
-    imguiSameLine()
-  end
-
-  -- Add Column button + popup
-  if imguiButton("+Stack") then
-    imguiOpenPopup("##srcPicker")
-  end
-  imguiSameLine()
-
-  if imguiBeginPopup("##srcPicker") then
-    if imguiMenuItem("Webcam") then
-      AVSD.State.addColumn(ctx, { kind = "webcam" })
-      imguiCloseCurrentPopup()
-    end
-
-    if imguiBeginMenu("Generators") then
-      for _, g in ipairs(ctx.sources or {}) do
-        if g.kind == "generator" then
-          if imguiMenuItem(g.name or g.id) then
-            -- Initialize generator params from defaults
-            local params = {}
-            for _, pspec in ipairs(g.params or {}) do
-              local defaultNorm = (tonumber(pspec.default) or 0 - tonumber(pspec.min or 0)) / math.max(0.001, tonumber(pspec.max or 1) - tonumber(pspec.min or 0))
-              params[pspec.id] = clamp(defaultNorm, 0, 1)
-            end
-            AVSD.State.addColumn(ctx, { kind = "generator", sourceId = g.id, params = params })
-            imguiCloseCurrentPopup()
-          end
-        end
-      end
-      imguiEndMenu()
-    end
-
-    -- ML sources
-    if imguiBeginMenu("ML") then
-      if imguiMenuItem("Segmented") then
-        AVSD.State.addColumn(ctx, { kind = "ml", mlType = "segmented" })
-        imguiCloseCurrentPopup()
-      end
-      if imguiMenuItem("Pose") then
-        AVSD.State.addColumn(ctx, { kind = "ml", mlType = "pose" })
-        imguiCloseCurrentPopup()
-      end
-      imguiEndMenu()
-    end
-
-    -- Column tap sources: reuse another column's output
-    local hasTappable = false
-    for colId, cd in pairs(ctx._colData or {}) do
-      if cd and cd.source then
-        hasTappable = true
-        break
-      end
-    end
-    if hasTappable and imguiBeginMenu("From Column") then
-      for colId, cd in pairs(ctx._colData or {}) do
-        if cd and cd.source then
-          local label = "Stack " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
-          -- Tap 0 (raw)
-          if imguiMenuItem(label .. " / Raw (T0)") then
-            AVSD.State.addColumn(ctx, { kind = "columntap", sourceCol = colId, tapIndex = 0 })
-            imguiCloseCurrentPopup()
-          end
-          -- Taps 1..N
-          for ti = 1, math.min(#cd.fx, 8) do
-            if cd.fx[ti] and cd.fx[ti].enabled then
-              local fxName = colFxLabel(ctx, colId, ti)
-              if imguiMenuItem(label .. " / " .. fxName .. " (T" .. ti .. ")") then
-                AVSD.State.addColumn(ctx, { kind = "columntap", sourceCol = colId, tapIndex = ti })
-                imguiCloseCurrentPopup()
-              end
-            end
-          end
-        end
-      end
-      imguiEndMenu()
-    end
-
-    imguiEndPopup()
-  end
-
-  -- Delete source-selected column
-  local sourceCol = tonumber(ctx.sourceSelectionCol) or 1
-  local sel = ctx.selection
-  if sourceCol > 1 then
-    if imguiButton("Del") then
-      AVSD.State.removeColumn(ctx, sourceCol)
-    end
-    imguiSameLine()
-  end
-
-  -- Add FX button + popup (when an FX/add cell is selected)
-  if sel and sel.col then
-    local cd = ctx._colData and ctx._colData[sel.col]
-    local clip = ctx.clips and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row]
-    if cd and cd.source and clip then
-      local isAddCell = clip.emptyFx == true
-      local isFxCell = clip.kind == "fx"
-      if isAddCell or isFxCell then
-        if imguiButton("+FX") then
-          imguiOpenPopup("##fxPicker")
-        end
-        imguiSameLine()
-
-        if imguiBeginPopup("##fxPicker") then
-          for i, eff in ipairs(ctx.effects or {}) do
-            if imguiMenuItem(eff.name or eff.id or ("Effect " .. i)) then
-              AVSD.State.colAddFx(ctx, sel.col, i, { NS = NS, writeParam = writeParam, updateShader = updateShader })
-              imguiCloseCurrentPopup()
-            end
-          end
-          imguiEndPopup()
-        end
-
-        if isFxCell and sel.row > 1 then
-          if imguiButton("RmFX") then
-            AVSD.State.colRemoveFx(ctx, sel.col, sel.row, { NS = NS, writeParam = writeParam, updateShader = updateShader })
-          end
-          imguiSameLine()
-        end
-      end
-    end
-  end
-
-  imguiText("")
-  imguiSameLine()  -- push column count to far right
-
-  local colCount = 0
-  if ctx._colData then
-    for k, _ in pairs(ctx._colData) do colCount = colCount + 1 end
-  end
-  imguiText("  " .. tostring(colCount) .. " cols")
-  imguiEndChild()
-  return toolbarH
+  return AVSD.Grid.renderGridToolbar(ctx, parentW, GRID_DEPS)
 end
 
 local function renderDeckPanel(ctx)
-  local av = imguiGetContentRegionAvail()
-  if av.x < 4 or av.y < 4 then return end
-  local pw = math.floor(av.x)
-  local ph = math.floor(av.y)
-
-  local toolbarH = renderGridToolbar(ctx, pw)
-  local gridH = math.max(1, ph - toolbarH)
-
-  setBounds(ctx.widgets.deckEmbed, 0, 0, pw, gridH)
-  layoutClipGrid(ctx, pw, gridH)
-  imguiRetainedPanel(ctx.widgets.deckEmbed.node, pw, gridH, true)
+  return AVSD.Grid.renderDeckPanel(ctx, GRID_DEPS)
 end
 
 ensureCompositorCells = function(ctx, parentNode)
-  if not parentNode then return 0 end
-  local numLayers = #ctx.compositor.layers
-  ctx._compoCells = ctx._compoCells or {}
-  for i = 1, numLayers do
-    local key = "compo_" .. i
-    if not ctx._compoCells[key] then
-      local cell = parentNode:addChild("compoCell_" .. i)
-      local thumb = cell:addChild("compoCell_" .. i .. "_thumb")
-      local lbl = cell:addChild("compoCell_" .. i .. "_lbl")
-      thumb:setInterceptsMouse(false, false)
-      lbl:setInterceptsMouse(false, false)
-      cell:setInterceptsMouse(true, true)
-      local idx = i
-      cell:setOnMouseDown(function()
-        ctx.selectedView = "compositor"
-        ctx.compositorSelection = { layerIndex = idx }
-      end)
-
-      ctx._compoCells[key] = { node = cell, thumb = thumb, label = lbl, index = i }
-    end
-  end
-  -- Hide cells beyond layer count
-  for key, cell in pairs(ctx._compoCells) do
-    if cell.index > numLayers then
-      cell.node:setBounds(0, 0, 0, 0)
-    end
-  end
-  return numLayers
+  return AVSD.Compositor.ensureCompositorCells(ctx, parentNode)
 end
 
 compositorLayerCellPipeline = function(ctx, layer)
-  if not layer or not layer.visible then return nil end
-  local col = layer.sourceColumn or 1
-  local cd = ctx._colData and ctx._colData[col]
-  if not cd or not cd.source then return nil end
-  local tapIndex = layer.tapIndex
-  if tapIndex == nil then
-    return colBuildCellPipeline(ctx, col, 10)  -- output tap = all FX
-  elseif tapIndex == 0 then
-    local descriptor, _ = colSourceDescriptor(ctx, col)
-    if not descriptor then return nil end
-    local ok, payload = pcall(shaders.buildPipeline, {}, "contain", descriptor)
-    if ok then return payload end
-    return nil
-  else
-    return colBuildCellPipeline(ctx, col, tapIndex + 1)
-  end
+  return AVSD.Compositor.compositorLayerCellPipeline(ctx, layer, COMPO_DEPS)
 end
 
 updateCompositorThumbnails = function(ctx)
-  profileStart(ctx, "updateCompositorThumbnails")
-  if not ctx._compoCells then profileEnd(ctx, "updateCompositorThumbnails"); return end
-  ctx._compoThumbSigs = ctx._compoThumbSigs or {}
-
-  local graph = buildCompositorGraph(ctx)
-  local accByLayer = graph and graph.accumulatedKeyByLayer or {}
-
-  for i = 1, #ctx.compositor.layers do
-    local key = "compo_" .. tostring(i)
-    local cell = ctx._compoCells[key]
-    if cell then
-      local accKey = accByLayer[i]
-      local sig = accKey and ("compo|" .. tostring(i) .. "|" .. tostring(accKey)) or ("compo|" .. tostring(i) .. "|empty")
-      if ctx._compoThumbSigs[key] ~= sig then
-        ctx._compoThumbSigs[key] = sig
-        if accKey then
-          local payload = buildNodePassthroughPayload(accKey)
-          if payload then
-            cell.thumb:setCustomSurface("gpu_shader", payload)
-          else
-            clearNodeSurface(cell.thumb)
-          end
-        else
-          clearNodeSurface(cell.thumb)
-        end
-      end
-    end
-  end
-  profileEnd(ctx, "updateCompositorThumbnails")
+  return AVSD.Compositor.updateCompositorThumbnails(ctx, COMPO_DEPS)
 end
 
 updateCompositorOutput = function(ctx)
-  profileStart(ctx, "updateCompositorOutput")
-  local outNode = ctx.widgets and ((ctx.widgets.outputSurface and ctx.widgets.outputSurface.node) or (ctx.widgets.outputViewport and ctx.widgets.outputViewport.node))
-  if not outNode then profileEnd(ctx, "updateCompositorOutput"); return end
-
-  local graph = buildCompositorGraph(ctx)
-  local finalKey = graph and graph.finalKey or nil
-  if not finalKey then profileEnd(ctx, "updateCompositorOutput"); return end
-
-  local payload = buildNodePassthroughPayload(finalKey)
-  if payload then
-    outNode:setCustomSurface("gpu_shader", payload)
-    if ctx.widgets and ctx.widgets.outputViewport and ctx.widgets.outputViewport.node and outNode ~= ctx.widgets.outputViewport.node then
-      clearNodeSurface(ctx.widgets.outputViewport.node)
-    end
-  else
-    clearNodeSurface(outNode)
-  end
-  profileEnd(ctx, "updateCompositorOutput")
+  return AVSD.Compositor.updateCompositorOutput(ctx, COMPO_DEPS)
 end
 
 renderCompositorPanel = function(ctx)
-  local av = imguiGetContentRegionAvail()
-  if av.x < 4 or av.y < 4 then return end
-  local pw = math.floor(av.x)
-  local ph = math.floor(av.y)
-
-  -- Create the compositor embed node on first render
-  -- Use embedHost (hidden container) as parent so it's not double-rendered by root
-  if not ctx._compositorEmbed then
-    local parent = ctx.widgets and ctx.widgets.embedHost and ctx.widgets.embedHost.node
-    if not parent then parent = ctx.root and ctx.root.node end
-    if parent and parent.addChild then
-      ctx._compositorEmbed = parent:addChild("__compositor_embed")
-    end
-  end
-
-  local compo = ctx.compositor
-  local pad, gap = 8, 4
-
-  -- Toolbar
-  local toolbarH = 22
-  local curAlign = compo.orientation or "bottom-up"
-  local alignments = { "bottom-up", "left-to-right", "top-down" }
-  local alignLabels = { "^BU", ">LR", "vTD" }
-  for ai, a in ipairs(alignments) do
-    if a == curAlign then
-      imguiText(" " .. alignLabels[ai] .. " ")
-    elseif imguiButton(alignLabels[ai] .. "##compAlign" .. ai) then
-      compo.orientation = a
-    end
-    if ai < #alignments then imguiSameLine() end
-  end
-  imguiSameLine()
-
-  if imguiButton("+Layer") then
-    local idx = #compo.layers + 1
-    compo.layers[idx] = {
-      sourceColumn = 1, tapIndex = nil,
-      blendMode = "normal", opacity = 1.0, visible = true,
-      name = "Layer " .. idx,
-    }
-    ctx.compositorSelection = { layerIndex = idx }
-    ctx._compoThumbSigs = {}
-  end
-  imguiSameLine()
-
-  local selIdx = ctx.compositorSelection and ctx.compositorSelection.layerIndex
-  if selIdx and #compo.layers > 1 and imguiButton("Delete") then
-    table.remove(compo.layers, selIdx)
-    ctx.compositorSelection = { layerIndex = math.max(1, math.min(#compo.layers, selIdx)) }
-    ctx._compoThumbSigs = {}
-  end
-
-  -- Layer cells
-  local cellsH = math.max(1, ph - toolbarH - 8)
-  local numLayers = ensureCompositorCells(ctx, ctx._compositorEmbed)
-  if numLayers < 1 then return end
-
-  local cellW, cellH
-  if compo.orientation == "left-to-right" then
-    cellH = math.max(28, cellsH)
-    cellW = math.max(50, math.floor((pw - pad * 2 - gap * (numLayers - 1)) / numLayers))
-  else
-    cellW = math.max(60, pw - pad * 2)
-    cellH = math.max(28, math.floor((cellsH - gap * (numLayers - 1)) / numLayers))
-  end
-
-  setBounds(ctx._compositorEmbed, pad, toolbarH, pw - pad * 2, cellsH)
-
-  for i = 1, numLayers do
-    local key = "compo_" .. i
-    local cell = ctx._compoCells[key]
-    if not cell then break end
-
-    local cx, cy
-    if compo.orientation == "bottom-up" then
-      local displayIdx = numLayers - i + 1
-      cx = 0; cy = (displayIdx - 1) * (cellH + gap)
-    elseif compo.orientation == "left-to-right" then
-      cx = (i - 1) * (cellW + gap); cy = 0
-    else -- top-down
-      cx = 0; cy = (i - 1) * (cellH + gap)
-    end
-
-    cell.node:setBounds(cx, cy, cellW, cellH)
-
-    local isSelected = ctx.compositorSelection and ctx.compositorSelection.layerIndex == i
-    local layer = compo.layers[i]
-    local hasSignal = layer and layer.visible and ctx._colData and ctx._colData[layer.sourceColumn or 1] and ctx._colData[layer.sourceColumn or 1].source
-    local bg = hasSignal and 0xff0d1420 or 0xff080c18
-    local borderClr = isSelected and 0xfff97316 or 0xff1a1a22
-    local borderThick = isSelected and 2 or 1
-
-    cell.node:setDisplayList({
-      { cmd = "fillRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = bg },
-      { cmd = "drawRoundedRect", x = 0, y = 0, w = cellW, h = cellH, radius = 3, color = borderClr, thickness = borderThick },
-    })
-
-    local thumbH = math.max(1, cellH - 16)
-    if hasSignal then
-      local cw, ch = canonicalAspectSize(ctx)
-      local ix, iy, iw, ih = fitBox(math.max(1, cellW - 4), thumbH, cw, ch)
-      cell.thumb:setBounds(2 + ix, 2 + iy, math.max(1, iw), math.max(1, ih))
-    else
-      cell.thumb:setBounds(0, 0, 0, 0)
-    end
-
-    local labelText = layer and (layer.name or "Layer " .. i) or "Layer " .. i
-    cell.label:setBounds(4, math.max(1, thumbH + 2), math.max(1, cellW - 8), 14)
-    cell.label:setDisplayList({
-      { cmd = "fillRect", x = 0, y = 0, w = cellW + 8, h = 16, color = bg },
-      { cmd = "drawText", text = labelText, color = isSelected and 0xfff97316 or 0xff94a3b8, fontSize = 8 },
-    })
-  end
-
-  updateCompositorThumbnails(ctx)
-  imguiRetainedPanel(ctx._compositorEmbed, pw - pad * 2, cellsH, true)
+  return AVSD.Compositor.renderCompositorPanel(ctx, COMPO_DEPS)
 end
 
 local function renderPanel(ctx, win)
-  if imguiBegin(windowName(ctx, win), imguiWindowFlags_NoCollapse) then
-    if win.key == "sources" then
-      renderSourcesPanel(ctx)
-    elseif win.key == "params" then
-      renderParametersPanel(ctx)
-    elseif win.key == "stage" then
-      renderStagePanel(ctx)
-    elseif win.key == "deck" then
-      renderDeckPanel(ctx)
-    elseif win.key == "compositor" then
-      renderCompositorPanel(ctx)
-    elseif win.key == "waveform" then
-      renderWaveformPanel(ctx)
-    end
-  end
-  imguiEnd()
+  return AVSD.Layout.renderPanel(ctx, win, LAYOUT_DEPS)
 end
 
 local function renderFrame(ctx)
-  local x, y, w, h = projectContentBounds(ctx)
-  if w < 64 or h < 64 then return end
-
-  local toolbarH = TOOLBAR_H
-  local hostFlags = bor(
-    imguiWindowFlags_NoTitleBar,
-    imguiWindowFlags_NoResize,
-    imguiWindowFlags_NoMove,
-    imguiWindowFlags_NoCollapse,
-    imguiWindowFlags_NoSavedSettings,
-    imguiWindowFlags_NoScrollbar
-  )
-
-  imguiSetNextWindowPos(x, y + toolbarH, imguiCond_Always)
-  imguiSetNextWindowSize(w, math.max(1, h - toolbarH), imguiCond_Always)
-
-  local hostName = "AVSampler Dockspace Host###AVSD_host_" .. tostring(ctx._dockSuffix or "0")
-  local dockspaceId = imguiGetID("AVSamplerProjectDockspace_" .. tostring(ctx._dockSuffix or "0"))
-
-  if imguiBegin(hostName, hostFlags) then
-    imguiDockSpace(dockspaceId, 0, 0, imguiDockNodeFlags_None)
-    if (ctx._rebuildDockTree or not ctx._dockTreeBuilt) and w > 200 and h > 160 then
-      local preset = tostring(ctx._layoutPreset or "deck")
-      imguiDockBuilderRemoveNode(dockspaceId)
-      imguiDockBuilderAddNode(dockspaceId, imguiDockNodeFlags_DockSpace)
-      imguiDockBuilderSetNodeSize(dockspaceId, w, math.max(1, h - toolbarH))
-      if preset == "stage" then
-        buildStageLayout(ctx, dockspaceId)
-      elseif preset == "inspector" then
-        buildInspectorLayout(ctx, dockspaceId)
-      else
-        buildDeckLayout(ctx, dockspaceId)
-      end
-      imguiDockBuilderFinish(dockspaceId)
-      if imguiDockBuilderSetNodeFlags then imguiDockBuilderSetNodeFlags(dockspaceId, imguiDockNodeFlags_HiddenTabBar) end
-      ctx._dockTreeBuilt = true
-      ctx._rebuildDockTree = false
-    end
-  end
-  imguiEnd()
-
-  for _, win in ipairs(DOCK_WINDOWS) do renderPanel(ctx, win) end
-  -- Embedded retained panels already render their own dropdown overlays once the
-  -- dropdown is rooted at that panel. Doing an extra detached pass here just
-  -- duplicates popovers and creates bogus hit targets.
+  return AVSD.Layout.renderFrame(ctx, LAYOUT_DEPS)
 end
 
 function M.init(ctx)
@@ -3892,6 +1908,68 @@ function M.init(ctx)
   end
   ctx.compositorSelection = { layerIndex = 1 }
   AVSD.State.syncCol1FromShader(ctx, { cloneTable = cloneTable, currentCol1SourceSpec = currentCol1SourceSpec })
+  GRID_DEPS = {
+    writeParam = writeParam,
+    setSelectedSilently = setSelectedSilently,
+    syncShaderEditor = syncShaderEditor,
+    profileStart = profileStart,
+    profileEnd = profileEnd,
+    syncClipModel = syncClipModel,
+    sourceSpecSignature = sourceSpecSignature,
+    buildNodePassthroughPayload = buildNodePassthroughPayload,
+    stackNodeIdForRow = stackNodeIdForRow,
+    stackTapSignature = stackTapSignature,
+    clearNodeSurface = clearNodeSurface,
+    canonicalAspectSize = canonicalAspectSize,
+    fitBox = fitBox,
+    clamp = clamp,
+    setBounds = setBounds,
+    colSourceLabel = colSourceLabel,
+    colFxLabel = colFxLabel,
+    addColumn = AVSD.State.addColumn,
+    removeColumn = AVSD.State.removeColumn,
+    colAddFx = function(innerCtx, col, fxIndex)
+      return AVSD.State.colAddFx(innerCtx, col, fxIndex, { NS = NS, writeParam = writeParam, updateShader = updateShader })
+    end,
+    colRemoveFx = function(innerCtx, col, row)
+      return AVSD.State.colRemoveFx(innerCtx, col, row, { NS = NS, writeParam = writeParam, updateShader = updateShader })
+    end,
+  }
+  LAYOUT_DEPS = {
+    toNum = toNum,
+    setBounds = setBounds,
+    setValueSilently = setValueSilently,
+    setVisible = setVisible,
+    layoutInputsEmbed = layoutInputsEmbed,
+    canonicalAspectSize = canonicalAspectSize,
+    fitBox = fitBox,
+    layoutOutputRow = layoutOutputRow,
+    renderParametersPanel = renderParametersPanel,
+    renderDeckPanel = renderDeckPanel,
+    renderCompositorPanel = renderCompositorPanel,
+    windowName = windowName,
+    bor = bor,
+  }
+  COMPO_DEPS = {
+    setBounds = setBounds,
+    setVisible = setVisible,
+    setOptions = setOptions,
+    setSelectedSilently = setSelectedSilently,
+    setValueSilently = setValueSilently,
+    clamp = clamp,
+    round = round,
+    colSourceLabel = colSourceLabel,
+    renderEmbeddedPanel = renderEmbeddedPanel,
+    canonicalAspectSize = canonicalAspectSize,
+    fitBox = fitBox,
+    profileStart = profileStart,
+    profileEnd = profileEnd,
+    buildCompositorGraph = buildCompositorGraph,
+    buildNodePassthroughPayload = buildNodePassthroughPayload,
+    clearNodeSurface = clearNodeSurface,
+    colBuildCellPipeline = colBuildCellPipeline,
+    colSourceDescriptor = colSourceDescriptor,
+  }
 
   for _, w in pairs(ctx.allWidgets or {}) do
     if type(w) == "table" then
@@ -3945,10 +2023,10 @@ function M.init(ctx)
   if Audio == nil or (Audio.isPlugin and not Audio.isPlugin()) then
     if not AVSD.Midi.currentMidiLabel() then AVSD.Midi.openPreferred(ctx) end
   end
-  loadModels(ctx)
-  __avsdProfileInit(ctx)
-  bindInputSurfaces(ctx)
-  ensurePoseOverlay(ctx)
+  AVSD.ML.loadModels(ctx)
+  AVSD.Prof.init(ctx)
+  AVSD.ML.bindInputSurfaces(ctx)
+  AVSD.ML.ensurePoseOverlay(ctx)
   layoutToolbar(ctx)
   syncParamsFromHost(ctx)
 
@@ -3970,7 +2048,7 @@ function M.init(ctx)
   if ctx.widgets.sourceRefreshDevices then ctx.widgets.sourceRefreshDevices._onClick = function() refreshDevices(ctx) end end
   if ctx.widgets.sourceOpenWebcam then ctx.widgets.sourceOpenWebcam._onClick = function() openWebcam(ctx) end end
   if ctx.widgets.sourceCloseWebcam then ctx.widgets.sourceCloseWebcam._onClick = function() closeWebcam(ctx) end end
-  ctx.widgets.loadModels._onClick = function() loadModels(ctx) end
+  ctx.widgets.loadModels._onClick = function() AVSD.ML.loadModels(ctx) end
   ctx.widgets.captureNow._onClick = function() onCaptureButton(ctx) end
   ctx.widgets.play._onClick = function() bump(NS .. "/play_trigger") end
   ctx.widgets.stop._onClick = function() bump(NS .. "/stop_trigger") end
@@ -4006,10 +2084,10 @@ function M.init(ctx)
     bump(triggerPathForSlice(ctx._selectedSlice))
   end
 
-  ctx.widgets.segGain._onChange = function(v) ctx.seg.gain = clamp(v, 0.25, 4); writeParam(NS .. "/seg/gain", ctx.seg.gain); bindInputSurfaces(ctx) end
-  ctx.widgets.segThreshold._onChange = function(v) ctx.seg.threshold = clamp(v, 0, 1); writeParam(NS .. "/seg/threshold", ctx.seg.threshold); bindInputSurfaces(ctx) end
-  ctx.widgets.segFeather._onChange = function(v) ctx.seg.feather = clamp(v, 0, 1); writeParam(NS .. "/seg/feather", ctx.seg.feather); bindInputSurfaces(ctx) end
-  ctx.widgets.segInvert._onChange = function(v) ctx.seg.invert = v == true; writeParam(NS .. "/seg/invert", ctx.seg.invert and 1 or 0); bindInputSurfaces(ctx) end
+  ctx.widgets.segGain._onChange = function(v) ctx.seg.gain = clamp(v, 0.25, 4); writeParam(NS .. "/seg/gain", ctx.seg.gain); AVSD.ML.bindInputSurfaces(ctx) end
+  ctx.widgets.segThreshold._onChange = function(v) ctx.seg.threshold = clamp(v, 0, 1); writeParam(NS .. "/seg/threshold", ctx.seg.threshold); AVSD.ML.bindInputSurfaces(ctx) end
+  ctx.widgets.segFeather._onChange = function(v) ctx.seg.feather = clamp(v, 0, 1); writeParam(NS .. "/seg/feather", ctx.seg.feather); AVSD.ML.bindInputSurfaces(ctx) end
+  ctx.widgets.segInvert._onChange = function(v) ctx.seg.invert = v == true; writeParam(NS .. "/seg/invert", ctx.seg.invert and 1 or 0); AVSD.ML.bindInputSurfaces(ctx) end
   ctx.widgets.poseConf._onChange = function(v) ctx.poseConf = clamp(v, 0, 1); writeParam(NS .. "/pose/confidence", ctx.poseConf) end
   ctx.widgets.showSkeleton._onChange = function(v) ctx.showSkeleton = v == true end
   ctx.widgets.mode._onChange = function(v)
@@ -4450,7 +2528,7 @@ function M.init(ctx)
       contract.mappings[i] = {
         enabled = bool01(mapping.enabled),
         source = mapping.source,
-        sourceLabel = (POSE_SOURCES[mapping.source or 1] or {}).label,
+        sourceLabel = (AVSD.ML.POSE_SOURCES[mapping.source or 1] or {}).label,
         target = mapping.target,
         targetLabel = target and target.label or nil,
         min = num(mapping.min),
@@ -4590,7 +2668,7 @@ function M.init(ctx)
     end
     local function forceRefresh()
       syncParamsFromHost(ctx)
-      bindInputSurfaces(ctx)
+      AVSD.ML.bindInputSurfaces(ctx)
       applyVideoWindow(ctx)
       updateOutputAspect(ctx)
       refreshWaveform(ctx)
@@ -4902,7 +2980,7 @@ end
 
 function M.resized(ctx)
   layoutToolbar(ctx)
-  ensurePoseOverlay(ctx)
+  AVSD.ML.ensurePoseOverlay(ctx)
   refreshWaveform(ctx)
   updatePreviewSurface(ctx)
   layoutOutputRow(ctx)
@@ -4918,7 +2996,7 @@ function M.update(ctx)
     syncParamsFromHost(ctx)
   end
 
-  AVSD.Midi.poll(ctx, { profileStart = profileStart, profileEnd = profileEnd })
+  AVSD.Midi.poll(ctx, { profileStart = AVSD.Prof.start, profileEnd = AVSD.Prof.finish })
 
   local seams = ctx._testSeams or nil
   local frame = (type(seams) == "table" and type(seams.frameInfo) == "table" and seams.frameInfo) or ((capture and capture.getFrameInfo and capture.getFrameInfo()) or { valid = false })
@@ -4952,7 +3030,7 @@ function M.update(ctx)
     profileEnd(ctx, "segmentIngest")
   end
 
-  local poseUpdated = runPose(ctx, frame)
+  local poseUpdated = AVSD.ML.runPose(ctx, frame)
   if poseUpdated or shouldRunInterval(ctx, "mapping", POSE_INTERVAL) then
     applyMapping(ctx)
   end
