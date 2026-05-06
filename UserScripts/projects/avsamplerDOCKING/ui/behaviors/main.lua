@@ -494,6 +494,64 @@ local function loadModels(ctx)
   setText(ctx.widgets.poseStatus, string.format("Models: seg=%s pose=%s", ctx._segModelPath and "OK" or "missing", ctx._poseModelPath and "OK" or "missing"))
 end
 
+canonicalAspectSizeForSpec = function(ctx, spec, depth)
+  depth = depth or 0
+  if depth > 4 then
+    return math.max(1, round(ctx.outputW or 1920)), math.max(1, round(ctx.outputH or 1080))
+  end
+  local kind = spec and spec.kind or "webcam"
+  if kind == "webcam" or kind == "ml" then
+    local frame = (capture and capture.getFrameInfo and capture.getFrameInfo()) or {}
+    if frame.valid and tonumber(frame.width) and tonumber(frame.height) then
+      return math.max(1, round(frame.width)), math.max(1, round(frame.height))
+    end
+    return math.max(1, round(ctx.outputW or 1920)), math.max(1, round(ctx.outputH or 1080))
+  elseif kind == "columntap" then
+    local sourceCol = tonumber(spec.sourceCol) or 1
+    local nextSpec = sourceSpecForColumn and sourceSpecForColumn(ctx, sourceCol) or nil
+    if nextSpec and nextSpec ~= spec then
+      return canonicalAspectSizeForSpec(ctx, nextSpec, depth + 1)
+    end
+    return math.max(1, round(ctx.outputW or 1920)), math.max(1, round(ctx.outputH or 1080))
+  end
+  return math.max(1, round(ctx.outputW or 1920)), math.max(1, round(ctx.outputH or 1080))
+end
+
+canonicalAspectSize = function(ctx)
+  local spec = (sourceSpecForColumn and sourceSpecForColumn(ctx, 1)) or currentCol1SourceSpec(ctx)
+  return canonicalAspectSizeForSpec(ctx, spec, 0)
+end
+
+syncCanonicalSurfaceBounds = function(ctx)
+  local w, h = canonicalAspectSize(ctx)
+  if ctx._canonicalSurfaceW == w and ctx._canonicalSurfaceH == h then return w, h end
+  ctx._canonicalSurfaceW, ctx._canonicalSurfaceH = w, h
+
+  if ctx._compoOutNodes then
+    for _, n in pairs(ctx._compoOutNodes) do
+      if n and n.setBounds then n:setBounds(0, 0, w, h) end
+    end
+  end
+  if ctx._stackSurfaceNodes then
+    for _, n in pairs(ctx._stackSurfaceNodes) do
+      if n and n.setBounds then n:setBounds(0, 0, w, h) end
+    end
+  end
+  if ctx._auxSourceNodes then
+    for _, entry in pairs(ctx._auxSourceNodes) do
+      local n = entry and entry.node or nil
+      if n and n.setBounds then n:setBounds(0, 0, w, h) end
+    end
+  end
+  if ctx._shaderSourceNode and ctx._shaderSourceNode.node and ctx._shaderSourceNode.node.setBounds then
+    ctx._shaderSourceNode.node:setBounds(0, 0, w, h)
+  end
+  ctx._stackNodeSigs = {}
+  ctx._gridThumbSigs = {}
+  ctx._compoThumbSigs = {}
+  return w, h
+end
+
 local function updateOutputAspect(ctx)
   local mode = ctx.aspectMode or "16:9"
   if mode == "Native" then
@@ -515,10 +573,12 @@ local function updateOutputAspect(ctx)
     ctx.outputW = 1080
     ctx.outputH = 1080
   end
+  local cw, ch = canonicalAspectSize(ctx)
   local fi = ctx.widgets.frameInfo
   if fi and fi.setText then
-    fi:setText(string.format("Frame: %dx%d (%.2f:1)", ctx.outputW, ctx.outputH, ctx.outputW / math.max(1, ctx.outputH)))
+    fi:setText(string.format("Frame: %dx%d (%.2f:1)", cw, ch, cw / math.max(1, ch)))
   end
+  syncCanonicalSurfaceBounds(ctx)
 end
 
 local function openWebcam(ctx)
@@ -829,6 +889,31 @@ local function defaultMLSourceSpec(mlType)
   return { kind = "ml", mlType = mlType or "segmented", params = params }
 end
 
+materializeGeneratorParams = function(ctx, sourceId, normalizedParams)
+  local choice = nil
+  for _, s in ipairs(ctx.sources or {}) do
+    if s.kind == "generator" and s.id == sourceId then
+      choice = s
+      break
+    end
+  end
+  if not choice then return cloneTable(normalizedParams or {}) end
+  local out = {}
+  local specParams = choice.params or {}
+  local values = normalizedParams or {}
+  for _, pspec in ipairs(specParams) do
+    local pmin = tonumber(pspec.min) or 0
+    local pmax = tonumber(pspec.max) or 1
+    local norm = values[pspec.id]
+    if norm == nil then
+      out[pspec.id] = tonumber(pspec.default) or pmin
+    else
+      out[pspec.id] = pmin + clamp(norm, 0, 1) * (pmax - pmin)
+    end
+  end
+  return out
+end
+
 local function currentCol1SourceSpec(ctx)
   if ctx._col1SourceSpec and type(ctx._col1SourceSpec) == "table" then
     return ctx._col1SourceSpec
@@ -895,14 +980,18 @@ end
 local function ensureAuxSourceNode(ctx, key, nodeId)
   ctx._auxSourceNodes = ctx._auxSourceNodes or {}
   local existing = ctx._auxSourceNodes[key]
-  if existing and existing.node then return existing end
+  local cw, ch = canonicalAspectSize(ctx)
+  if existing and existing.node then
+    if existing.node.setBounds then existing.node:setBounds(0, 0, cw, ch) end
+    return existing
+  end
   local rootNode = ctx.root and ctx.root.node
   if not (rootNode and rootNode.createChild) then return nil end
   local node = rootNode:createChild(nodeId)
   if not node then return nil end
   local entry = { id = nodeId, node = node }
   node:setNodeId(nodeId)
-  node:setBounds(0, 0, 64, 64)
+  node:setBounds(0, 0, cw, ch)
   node:setVisible(false)
   ctx._auxSourceNodes[key] = entry
   return entry
@@ -1004,7 +1093,8 @@ applySourceSpecToHiddenNode = function(ctx, spec, key)
   if kind == "generator" then
     local entry = ensureAuxSourceNode(ctx, key .. "_gen", "__" .. key .. "_gen")
     if entry and entry.node and shaders then
-      local ok, payload = pcall(shaders.buildPipeline, {}, "contain", { type = "generator", sourceId = spec.sourceId, params = spec.params or {} })
+      local params = materializeGeneratorParams(ctx, spec.sourceId, spec.params or {})
+      local ok, payload = pcall(shaders.buildPipeline, {}, "contain", { type = "generator", sourceId = spec.sourceId, params = params })
       if ok and payload then
         entry.node:setCustomSurface("gpu_shader", payload)
         return { type = "node", sourceId = entry.id }, nil
@@ -1046,14 +1136,18 @@ applySourceSpecToHiddenNode = function(ctx, spec, key)
 end
 
 local function ensureShaderSourceNode(ctx)
-  if ctx._shaderSourceNode and ctx._shaderSourceNode.node then return ctx._shaderSourceNode end
+  local cw, ch = canonicalAspectSize(ctx)
+  if ctx._shaderSourceNode and ctx._shaderSourceNode.node then
+    if ctx._shaderSourceNode.node.setBounds then ctx._shaderSourceNode.node:setBounds(0, 0, cw, ch) end
+    return ctx._shaderSourceNode
+  end
   local rootNode = ctx.root and ctx.root.node
   if not (rootNode and rootNode.createChild) then return nil end
   local node = rootNode:createChild("avsd_shader_source")
   if not node then return nil end
   local entry = { id = "__avsd_shader_source", node = node }
   if node.setNodeId then node:setNodeId(entry.id) end
-  if node.setBounds then node:setBounds(0, 0, 64, 64) end
+  if node.setBounds then node:setBounds(0, 0, cw, ch) end
   if node.setVisible then node:setVisible(false) end
   ctx._shaderSourceNode = entry
   return entry
@@ -1256,8 +1350,16 @@ end
 
 layoutOutputRow = function(ctx)
   local host = ctx.widgets.outputViewport
+  local surface = ctx.widgets.outputSurface
+  local x0, y0 = 0, 0
   local w, h = 608, 342
-  if host and host.node then
+  if surface and surface.node and surface.node.getBounds then
+    local sx, sy, sw, sh = surface.node:getBounds()
+    x0 = tonumber(sx) or 0
+    y0 = tonumber(sy) or 0
+    w = tonumber(sw) or w
+    h = tonumber(sh) or h
+  elseif host and host.node then
     if host.node.getWidth then w = tonumber(host.node:getWidth()) or w end
     if host.node.getHeight then h = tonumber(host.node:getHeight()) or h end
   end
@@ -1286,9 +1388,10 @@ layoutOutputRow = function(ctx)
   for slot = 1, MAX do
     local item = visible[slot]
     if item then
-      local x = (slot - 1) * cellW
-      setBounds(ctx.widgets["cell" .. slot], x, y, cellW, cellH)
-      setBounds(ctx.widgets["cellLabel" .. slot], x + 8, y + 8, math.max(1, cellW - 16), 18)
+      local x = x0 + (slot - 1) * cellW
+      local yy = y0 + y
+      setBounds(ctx.widgets["cell" .. slot], x, yy, cellW, cellH)
+      setBounds(ctx.widgets["cellLabel" .. slot], x + 8, yy + 8, math.max(1, cellW - 16), 18)
       setCellSurface(ctx, slot, item.index, item.pos, string.format("%s%d %.3f", item.kind, item.index, item.pos or 0))
     else
       setBounds(ctx.widgets["cell" .. slot], 0, 0, 0, 0)
@@ -2419,14 +2522,17 @@ ensureCompositorSurfaceNode = function(ctx, key)
   local rootNode = ctx.root and ctx.root.node
   if not (rootNode and rootNode.addChild) then return nil end
   ctx._compoOutNodes = ctx._compoOutNodes or {}
+  local cw, ch = canonicalAspectSize(ctx)
   if not ctx._compoOutNodes[key] then
     local ok, n = pcall(rootNode.addChild, rootNode, "_n_" .. key)
     if ok and n then
       if n.setNodeId then n:setNodeId(key) end
       if n.setVisible then n:setVisible(false) end
-      if n.setBounds then n:setBounds(0, 0, math.max(1, ctx.outputW or 1920), math.max(1, ctx.outputH or 1080)) end
+      if n.setBounds then n:setBounds(0, 0, cw, ch) end
       ctx._compoOutNodes[key] = n
     end
+  elseif ctx._compoOutNodes[key].setBounds then
+    ctx._compoOutNodes[key]:setBounds(0, 0, cw, ch)
   end
   return ctx._compoOutNodes[key]
 end
@@ -2436,20 +2542,24 @@ ensureStackSurfaceNode = function(ctx, stack, row)
   local rootNode = ctx.root and ctx.root.node
   if not (rootNode and rootNode.addChild) then return nil end
   ctx._stackSurfaceNodes = ctx._stackSurfaceNodes or {}
+  local cw, ch = canonicalAspectSize(ctx)
   if not ctx._stackSurfaceNodes[key] then
     local ok, n = pcall(rootNode.addChild, rootNode, key)
     if ok and n then
       if n.setNodeId then n:setNodeId(key) end
       if n.setVisible then n:setVisible(false) end
-      if n.setBounds then n:setBounds(0, 0, math.max(1, ctx.outputW or 1920), math.max(1, ctx.outputH or 1080)) end
+      if n.setBounds then n:setBounds(0, 0, cw, ch) end
       ctx._stackSurfaceNodes[key] = n
     end
+  elseif ctx._stackSurfaceNodes[key].setBounds then
+    ctx._stackSurfaceNodes[key]:setBounds(0, 0, cw, ch)
   end
   return ctx._stackSurfaceNodes[key]
 end
 
 updateStackRenderNodes = function(ctx)
   profileStart(ctx, "updateStackRenderNodes")
+  syncCanonicalSurfaceBounds(ctx)
   local numStacks = syncClipModel(ctx)
   ctx._stackNodeSigs = ctx._stackNodeSigs or {}
 
@@ -2845,8 +2955,7 @@ local function layoutClipGrid(ctx, w, h)
           { cmd = "drawText", text = "No Source", color = 0xff334155, fontSize = 9, align = "center", valign = "middle" },
         })
       elseif isSource or isEnabled or isOutput then
-        local contentAspectW = ctx.outputW or 1920
-        local contentAspectH = ctx.outputH or 1080
+        local contentAspectW, contentAspectH = canonicalAspectSize(ctx)
         if isOverlay then
           -- Overlay label on thumb: thumb is boxed to the canonical source aspect.
           local ix, iy, iw, ih = fitBox(math.max(1, cellW - 4), math.max(1, cellH - 4), contentAspectW, contentAspectH)
@@ -3000,6 +3109,11 @@ local function renderStagePanel(ctx)
     if av.x > 4 and av.y > 4 then
       local rw, rh = math.floor(av.x), math.floor(av.y)
       setBounds(ctx.widgets.outputViewport, 0, 0, rw, rh)
+      if ctx.widgets.outputSurface then
+        local cw, ch = canonicalAspectSize(ctx)
+        local ix, iy, iw, ih = fitBox(rw, rh, cw, ch)
+        setBounds(ctx.widgets.outputSurface, ix, iy, iw, ih)
+      end
       layoutOutputRow(ctx)
       imguiRetainedPanel(ctx.widgets.outputViewport.node, rw, rh, true)
     end
@@ -3744,7 +3858,7 @@ end
 
 updateCompositorOutput = function(ctx)
   profileStart(ctx, "updateCompositorOutput")
-  local outNode = ctx.widgets and ctx.widgets.outputViewport and ctx.widgets.outputViewport.node
+  local outNode = ctx.widgets and ((ctx.widgets.outputSurface and ctx.widgets.outputSurface.node) or (ctx.widgets.outputViewport and ctx.widgets.outputViewport.node))
   if not outNode then profileEnd(ctx, "updateCompositorOutput"); return end
 
   local graph = buildCompositorGraph(ctx)
@@ -3754,6 +3868,9 @@ updateCompositorOutput = function(ctx)
   local payload = buildNodePassthroughPayload(finalKey)
   if payload then
     outNode:setCustomSurface("gpu_shader", payload)
+    if ctx.widgets and ctx.widgets.outputViewport and ctx.widgets.outputViewport.node and outNode ~= ctx.widgets.outputViewport.node then
+      clearNodeSurface(ctx.widgets.outputViewport.node)
+    end
   else
     clearNodeSurface(outNode)
   end
@@ -3860,7 +3977,9 @@ renderCompositorPanel = function(ctx)
 
     local thumbH = math.max(1, cellH - 16)
     if hasSignal then
-      cell.thumb:setBounds(2, 2, math.max(1, cellW - 4), thumbH)
+      local cw, ch = canonicalAspectSize(ctx)
+      local ix, iy, iw, ih = fitBox(math.max(1, cellW - 4), thumbH, cw, ch)
+      cell.thumb:setBounds(2 + ix, 2 + iy, math.max(1, iw), math.max(1, ih))
     else
       cell.thumb:setBounds(0, 0, 0, 0)
     end

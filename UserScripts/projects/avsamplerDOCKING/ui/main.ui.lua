@@ -99,7 +99,10 @@ local function rowLabel(i)
 end
 
 local function outputViewport()
-  local children = {}
+  local children = {
+    { id="outputSurface", type="Panel", x=0, y=0, w=430, h=302,
+      style={ bg=0x00000000, border=0x00000000, borderWidth=0, radius=0 } },
+  }
   for i = 1, MAX do children[#children + 1] = rowCell(i) end
   for i = 1, MAX do children[#children + 1] = rowLabel(i) end
   return {
