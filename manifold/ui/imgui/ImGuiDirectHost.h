@@ -158,11 +158,20 @@ public:
     /// Returns nullptr if called outside the render loop (e.g. from a timer or MIDI callback).
     static ImGuiDirectHost* getActiveInstance() noexcept { return activeInstance_; }
 
+    struct EmbeddedPanelOptions {
+        bool fitToView = false;
+        bool captureWheel = true;
+    };
+
     std::uintptr_t prepareCustomSurfaceTexture(const RuntimeNode& node,
                                               int width,
                                               int height,
                                               double timeSeconds);
     bool getVideoSurfaceInfo(uint64_t stableId, int& width, int& height, uint64_t& sequence) const;
+    bool renderEmbeddedRuntimePanel(RuntimeNode& root,
+                                    float width,
+                                    float height,
+                                    const EmbeddedPanelOptions& options);
 
     void registerSurfaceProvider(std::shared_ptr<CustomSurfaceProvider> provider);
     void unregisterSurfaceProvider(const std::string& typeHint);
@@ -240,8 +249,15 @@ public:
     std::atomic<int64_t> surfaceColorBytes_{0};
     std::atomic<int64_t> surfaceDepthBytes_{0};
 
+    struct EmbeddedPanelState {
+        uint64_t hoveredNodeStableId = 0;
+        uint64_t pressedNodeStableId = 0;
+        juce::Point<float> dragStartScenePosition;
+    };
+
     manifold::ui::imgui::RuntimeNodeRenderer renderer_;
     manifold::ui::imgui::RuntimeNodeRenderer::PreviewTransform previewTransform_;
+    std::unordered_map<uint64_t, EmbeddedPanelState> embeddedPanelStates_;
     PendingDragEvent pendingDragEvent_;
     double lastContinuousInputDispatchMs_ = 0.0;
     std::mutex inputMutex_;

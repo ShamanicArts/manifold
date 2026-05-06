@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cfloat>
+#include <cmath>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -154,6 +155,10 @@ namespace {
 
 bool isCtrlLikeDown(const juce::ModifierKeys& mods) {
     return mods.isCtrlDown() || mods.isCommandDown();
+}
+
+juce::ModifierKeys currentRealtimeModifiers() {
+    return juce::ModifierKeys::getCurrentModifiersRealtime();
 }
 
 template <typename... Args>
@@ -395,6 +400,25 @@ juce::Rectangle<float> sceneRectFromLocalRect(const juce::Rectangle<float>& loca
     const float right = std::max(x1, x2);
     const float bottom = std::max(y1, y2);
     return juce::Rectangle<float>(left, top, std::max(0.0f, right - left), std::max(0.0f, bottom - top));
+}
+
+juce::Rectangle<float> collectSceneBoundsRecursive(const RuntimeNode& node,
+                                                   const SceneTransform& parentTransform) {
+    const auto& bounds = node.getBounds();
+    const auto nodeTransform = composeSceneTransform(node, parentTransform);
+    juce::Rectangle<float> out = sceneRectFromLocalRect(juce::Rectangle<float>(0.0f,
+                                                                                0.0f,
+                                                                                static_cast<float>(bounds.w),
+                                                                                static_cast<float>(bounds.h)),
+                                                        nodeTransform);
+
+    for (auto* child : node.getChildren()) {
+        if (child == nullptr || !child->isVisible()) {
+            continue;
+        }
+        out = out.getUnion(collectSceneBoundsRecursive(*child, nodeTransform));
+    }
+    return out;
 }
 
 juce::Rectangle<int> enclosingIntRect(const juce::Rectangle<float>& rect) {
@@ -1182,6 +1206,146 @@ bool ImGuiDirectHost::getVideoSurfaceInfo(uint64_t stableId, int& width, int& he
         }
     }
     return false;
+}
+
+bool ImGuiDirectHost::renderEmbeddedRuntimePanel(RuntimeNode& root,
+                                                 float width,
+                                                 float height,
+                                                 const EmbeddedPanelOptions& options) {
+    if (root.getStableId() == 0 || width <= 0.0f || height <= 0.0f) {
+        return false;
+    }
+
+    const std::string itemId = "##embedded_runtime_panel_" + std::to_string(root.getStableId());
+    ImGui::InvisibleButton(itemId.c_str(), ImVec2(width, height));
+
+    const ImVec2 itemMin = ImGui::GetItemRectMin();
+    const ImVec2 itemMax = ImGui::GetItemRectMax();
+    auto* drawList = ImGui::GetWindowDrawList();
+    if (drawList == nullptr) {
+        return false;
+    }
+
+    manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions renderOptions;
+    renderOptions.leftPad = 0.0f;
+    renderOptions.rightPad = 0.0f;
+    renderOptions.topPad = 0.0f;
+    renderOptions.bottomPad = 0.0f;
+    renderOptions.fitToView = options.fitToView;
+    renderOptions.showFallbackBoxes = false;
+    renderOptions.showNodeLabels = false;
+    renderOptions.showSurfaceLabels = false;
+    renderOptions.showHoveredOutline = false;
+    renderOptions.showSelectedOutline = false;
+
+    auto transform = renderer_.buildPreviewTransform(root,
+                                                     std::max(1, juce::roundToInt(width)),
+                                                     std::max(1, juce::roundToInt(height)),
+                                                     renderOptions);
+    if (!options.fitToView) {
+        const auto& bounds = root.getBounds();
+        transform.valid = true;
+        transform.scale = 1.0f;
+        transform.offsetX = itemMin.x - static_cast<float>(bounds.x);
+        transform.offsetY = itemMin.y - static_cast<float>(bounds.y);
+    } else {
+        transform.offsetX += itemMin.x;
+        transform.offsetY += itemMin.y;
+    }
+
+    const auto subtreeSceneBounds = collectSceneBoundsRecursive(root, SceneTransform{});
+    const auto subtreePreviewBounds = previewRect(subtreeSceneBounds, transform);
+    const ImVec2 clipMin(std::min(itemMin.x, subtreePreviewBounds.getX()),
+                         std::min(itemMin.y, subtreePreviewBounds.getY()));
+    const ImVec2 clipMax(std::max(itemMax.x, subtreePreviewBounds.getRight()),
+                         std::max(itemMax.y, subtreePreviewBounds.getBottom()));
+
+    auto& state = embeddedPanelStates_[root.getStableId()];
+    std::unordered_set<uint64_t> touchedSurfaceIds;
+    drawList->PushClipRect(clipMin, clipMax, true);
+    renderLiveTree(*this,
+                   root,
+                   drawList,
+                   renderOptions,
+                   transform,
+                   touchedSurfaceIds,
+                   ImGui::GetTime(),
+                   state.hoveredNodeStableId,
+                   state.pressedNodeStableId);
+    drawList->PopClipRect();
+
+    const auto mousePos = ImGui::GetIO().MousePos;
+    const juce::Point<float> previewPosition(mousePos.x, mousePos.y);
+    const auto mods = currentRealtimeModifiers();
+    const bool panelHovered = ImGui::IsMouseHoveringRect(clipMin, clipMax, false);
+
+    auto updateHoverForHit = [&](const manifold::ui::imgui::RuntimeNodeRenderer::HitTestResult& hit) {
+        const uint64_t nextHovered = hit.node != nullptr ? hit.stableId : 0;
+        if (state.hoveredNodeStableId != nextHovered) {
+            if (state.hoveredNodeStableId != 0) {
+                invokeLiveMouseExit(state.hoveredNodeStableId);
+            }
+            state.hoveredNodeStableId = nextHovered;
+            if (nextHovered != 0) {
+                invokeLiveMouseEnter(nextHovered);
+            }
+        }
+        if (hit.node != nullptr) {
+            auto localPosition = localPositionForNode(const_cast<RuntimeNode*>(hit.node), hit.scenePosition);
+            invokeLiveMouseMove(const_cast<RuntimeNode&>(*hit.node), localPosition, mods);
+        }
+    };
+
+    if (panelHovered) {
+        auto hit = hitTestLiveTreeDetailed(renderer_, &root, previewPosition, transform,
+                                           manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer);
+        updateHoverForHit(hit);
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hit.node != nullptr) {
+            state.pressedNodeStableId = hit.stableId;
+            state.dragStartScenePosition = hit.scenePosition;
+            auto localPosition = localPositionForNode(const_cast<RuntimeNode*>(hit.node), hit.scenePosition);
+            setLiveFocus(hit.stableId);
+            invokeLiveMouseDown(const_cast<RuntimeNode&>(*hit.node), localPosition, mods);
+        }
+
+        if (options.captureWheel && std::abs(ImGui::GetIO().MouseWheel) > 0.0001f && hit.node != nullptr) {
+            invokeLiveMouseWheel(const_cast<RuntimeNode&>(*hit.node), hit.scenePosition, ImGui::GetIO().MouseWheel, mods);
+        }
+    } else if (state.hoveredNodeStableId != 0) {
+        invokeLiveMouseExit(state.hoveredNodeStableId);
+        state.hoveredNodeStableId = 0;
+    }
+
+    if (state.pressedNodeStableId != 0 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        if (auto* pressedNode = findLiveNodeByStableId(state.pressedNodeStableId)) {
+            const auto scenePosition = juce::Point<float>((previewPosition.x - transform.offsetX) / std::max(0.0001f, transform.scale),
+                                                          (previewPosition.y - transform.offsetY) / std::max(0.0001f, transform.scale));
+            const auto localPosition = localPositionForNode(pressedNode, scenePosition);
+            const auto dragDelta = juce::Point<float>(scenePosition.x - state.dragStartScenePosition.x,
+                                                      scenePosition.y - state.dragStartScenePosition.y);
+            invokeLiveMouseDrag(*pressedNode, localPosition, dragDelta, mods);
+        } else {
+            state.pressedNodeStableId = 0;
+        }
+    }
+
+    if (state.pressedNodeStableId != 0 && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        if (auto* pressedNode = findLiveNodeByStableId(state.pressedNodeStableId)) {
+            const auto scenePosition = juce::Point<float>((previewPosition.x - transform.offsetX) / std::max(0.0001f, transform.scale),
+                                                          (previewPosition.y - transform.offsetY) / std::max(0.0001f, transform.scale));
+            const auto localPosition = localPositionForNode(pressedNode, scenePosition);
+            const auto releaseHit = panelHovered
+                ? hitTestLiveTreeDetailed(renderer_, &root, previewPosition, transform,
+                                          manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer)
+                : manifold::ui::imgui::RuntimeNodeRenderer::HitTestResult{};
+            const bool triggerClick = releaseHit.stableId != 0 && releaseHit.stableId == state.pressedNodeStableId;
+            invokeLiveMouseUp(*pressedNode, localPosition, triggerClick, false, mods);
+        }
+        state.pressedNodeStableId = 0;
+    }
+
+    return panelHovered;
 }
 
 bool ImGuiDirectHost::ensureEglOffscreenContext(int width, int height) {

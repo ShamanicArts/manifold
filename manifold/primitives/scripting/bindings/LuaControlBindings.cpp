@@ -3991,6 +3991,13 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         double time = ImGui::GetTime();
         return static_cast<uint64_t>(host->prepareCustomSurfaceTexture(node, width, height, time));
     };
+    lua["imguiRetainedPanel"] = [](RuntimeNode& node, float width, float height, sol::optional<bool> fitToView) -> bool {
+        auto* host = ImGuiDirectHost::getActiveInstance();
+        if (!host || width <= 0.0f || height <= 0.0f) return false;
+        ImGuiDirectHost::EmbeddedPanelOptions options;
+        options.fitToView = fitToView.value_or(false);
+        return host->renderEmbeddedRuntimePanel(node, width, height, options);
+    };
     lua["imguiCond_None"] = static_cast<int>(ImGuiCond_None);
     lua["imguiCond_Always"] = static_cast<int>(ImGuiCond_Always);
     lua["imguiCond_Appearing"] = static_cast<int>(ImGuiCond_Appearing);

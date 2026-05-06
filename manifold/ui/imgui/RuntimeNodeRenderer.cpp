@@ -738,9 +738,6 @@ RuntimeNodeRenderer::HitTestResult hitTestRecursive(const RuntimeNode& node,
                                                                       static_cast<float>(node.getBounds().w),
                                                                       static_cast<float>(node.getBounds().h)),
                                                nodeTransform);
-    if (!bounds.contains(position)) {
-        return {};
-    }
 
     if (node.hasClipRect()) {
         const auto& clip = node.getClipRect();
@@ -763,6 +760,10 @@ RuntimeNodeRenderer::HitTestResult hitTestRecursive(const RuntimeNode& node,
         if (hit.node != nullptr) {
             return hit;
         }
+    }
+
+    if (!bounds.contains(position)) {
+        return {};
     }
 
     if (!nodeMatchesHitMode(node, mode)) {
