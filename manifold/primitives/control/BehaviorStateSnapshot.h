@@ -83,11 +83,9 @@ inline BehaviorControlStateSnapshot captureBehaviorControlState(
 }
 
 inline BehaviorControlStateSnapshot captureBehaviorControlState(
-    const manifold::BehaviorControlState& controlState,
-    const AtomicState* legacyMirror = nullptr) {
+    const manifold::BehaviorControlState& controlState) {
     return captureBehaviorControlState(
-        manifold::control_state_view::BehaviorControlStateConstView(controlState,
-                                                                    legacyMirror));
+        manifold::control_state_view::BehaviorControlStateConstView(controlState));
 }
 
 inline BehaviorRuntimeTelemetrySnapshot captureBehaviorRuntimeTelemetry(
@@ -115,11 +113,9 @@ inline BehaviorRuntimeTelemetrySnapshot captureBehaviorRuntimeTelemetry(
 }
 
 inline BehaviorRuntimeTelemetrySnapshot captureBehaviorRuntimeTelemetry(
-    const manifold::BehaviorRuntimeTelemetry& runtimeTelemetry,
-    const AtomicState* legacyMirror = nullptr) {
+    const manifold::BehaviorRuntimeTelemetry& runtimeTelemetry) {
     return captureBehaviorRuntimeTelemetry(
-        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(runtimeTelemetry,
-                                                                            legacyMirror));
+        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(runtimeTelemetry));
 }
 
 } // namespace state_snapshot

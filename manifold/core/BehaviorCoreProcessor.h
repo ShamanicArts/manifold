@@ -351,7 +351,7 @@ private:
     void applyControlCommand(const ControlCommand& cmd);
     void checkGraphRuntimeSwap();
     void processControlCommands();
-    void initialiseAtomicState(double sampleRate);
+    void initialiseBehaviorState(double sampleRate);
     void capturePluginConstructionBaseline();
     void captureDspLoadedSnapshot();
     void scheduleForwardCommitIfNeeded();

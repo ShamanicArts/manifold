@@ -247,7 +247,7 @@ BehaviorCoreProcessor::BehaviorCoreProcessor()
     endpointRegistry.rebuild();
     initialiseHostParameters();
     registerExportPluginEndpoints();
-    initialiseAtomicState(currentSampleRate.load(std::memory_order_relaxed));
+    initialiseBehaviorState(currentSampleRate.load(std::memory_order_relaxed));
 }
 
 bool BehaviorCoreProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -777,7 +777,7 @@ void BehaviorCoreProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
         }
     }
 
-    initialiseAtomicState(currentSampleRate.load(std::memory_order_relaxed));
+    initialiseBehaviorState(currentSampleRate.load(std::memory_order_relaxed));
 
     // Initialize Ableton Link (enabled by default)
     linkSync.initialise(currentSampleRate.load(std::memory_order_relaxed));
@@ -1560,8 +1560,8 @@ void BehaviorCoreProcessor::scheduleForwardCommitIfNeeded() {
         forwardScheduledBars);
 }
 
-void BehaviorCoreProcessor::initialiseAtomicState(double sampleRate) {
-    manifold::behavior_housekeeping_support::initialiseAtomicState(
+void BehaviorCoreProcessor::initialiseBehaviorState(double sampleRate) {
+    manifold::behavior_housekeeping_support::initialiseBehaviorState(
         controlServer,
         sampleRate,
         captureBuffer,

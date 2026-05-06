@@ -157,14 +157,14 @@ int main(int argc, char* argv[]) {
     }
 
     // =====================================================================
-    // Domain 7: initialiseAtomicState – defaults
+    // Domain 7: initialiseBehaviorState – defaults
     // =====================================================================
     {
         ControlServer cs;
         CaptureBuffer buf(65536);
         std::atomic<bool> graphEnabled{true};
 
-        initialiseAtomicState(cs, 48000.0, buf, graphEnabled, 130.0f, 130.0f, 0.85f, 0.9f);
+        initialiseBehaviorState(cs, 48000.0, buf, graphEnabled, 130.0f, 130.0f, 0.85f, 0.9f);
 
         const auto controlState = captureControlState(cs);
         const auto runtimeTelemetry = captureRuntimeTelemetry(cs);
@@ -205,7 +205,7 @@ int main(int argc, char* argv[]) {
         obj->setProperty("layer7_state",
             runtimeTelemetry.layers[7].state);
 
-        root->setProperty("initialiseAtomicState", juce::var(obj));
+        root->setProperty("initialiseBehaviorState", juce::var(obj));
     }
 
     const auto contract = juce::JSON::toString(juce::var(root), true).toStdString();

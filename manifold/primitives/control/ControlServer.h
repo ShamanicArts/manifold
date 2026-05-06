@@ -172,48 +172,6 @@ private:
 };
 
 // ============================================================================
-// Atomic state snapshot - updated each audio block by the processor
-// ============================================================================
-
-struct AtomicLayerState {
-  std::atomic<int> state{0};       // ManifoldLayer::State enum as int
-  std::atomic<int> length{0};      // buffer length in samples
-  std::atomic<int> playheadPos{0}; // current position
-  std::atomic<float> speed{1.0f};
-  std::atomic<bool> reversed{false};
-  std::atomic<float> volume{1.0f};
-  std::atomic<float> numBars{0.0f};
-  std::atomic<bool> muted{false};  // Mute is independent of playback state
-};
-
-struct AtomicState {
-  static constexpr int MAX_LAYERS = scripting::LayerConfig::MAX_LAYERS;
-
-  std::atomic<float> tempo{120.0f};
-  std::atomic<float> targetBPM{120.0f};
-  std::atomic<float> samplesPerBar{0.0f};
-  std::atomic<double> sampleRate{44100.0};
-  std::atomic<int> captureSize{0};
-  std::atomic<int> captureWritePos{0};
-  std::atomic<float> captureLevel{0.0f};
-  std::atomic<bool> isRecording{false};
-  std::atomic<bool> overdubEnabled{false};
-  std::atomic<bool> forwardArmed{false};
-  std::atomic<float> forwardBars{0.0f};
-  std::atomic<bool> graphEnabled{false};
-  std::atomic<int> recordMode{0};
-  std::atomic<int> activeLayer{0};
-  std::atomic<float> masterVolume{1.0f};
-  std::atomic<float> inputVolume{1.0f};
-  std::atomic<bool> passthroughEnabled{true};
-  std::atomic<double> playTime{0.0};
-  std::atomic<int> commitCount{0};
-  std::atomic<double> uptimeSeconds{0.0};
-
-  AtomicLayerState layers[MAX_LAYERS];
-};
-
-// ============================================================================
 // Audio injection buffer: server thread loads WAV, audio thread drains into
 // CaptureBuffer as if it were live mic input.
 // ============================================================================

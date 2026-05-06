@@ -72,7 +72,7 @@ inline void scheduleForwardCommitIfNeeded(ControlServer& controlServer,
     forwardScheduled = true;
 }
 
-inline void initialiseAtomicState(ControlServer& controlServer,
+inline void initialiseBehaviorState(ControlServer& controlServer,
                                   double sampleRate,
                                   const CaptureBuffer& captureBuffer,
                                   bool graphProcessingEnabled,
@@ -110,7 +110,7 @@ inline void initialiseAtomicState(ControlServer& controlServer,
     runtimeTelemetry.setCommitCount(0);
     runtimeTelemetry.setUptimeSeconds(0.0);
 
-    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
+    for (int i = 0; i < manifold::BehaviorControlState::MAX_LAYERS; ++i) {
         runtimeTelemetry.setLayerLength(i, 0);
         runtimeTelemetry.setLayerPlayheadPos(i, 0);
         controlState.setLayerSpeed(i, 1.0f);
