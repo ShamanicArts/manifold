@@ -1253,6 +1253,21 @@ target_compile_definitions(PortBufferSemanticsHarness
 enable_testing()
 
 add_test(
+    NAME manifold_lua_bindings_contract
+    COMMAND $<TARGET_FILE:LuaEngineMockHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lua_bindings_golden.json)
+set_tests_properties(manifold_lua_bindings_contract PROPERTIES
+    LABELS "manifold;lua;bindings;contract")
+
+add_test(
+    NAME manifold_headless_oscquery_contract
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e_oscquery_contract_test.py
+            --headless build-dev/ManifoldHeadless
+            --verify-golden ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/dsphost_oscquery_golden.json)
+set_tests_properties(manifold_headless_oscquery_contract PROPERTIES
+    LABELS "manifold;headless;oscquery;contract")
+
+add_test(
     NAME manifold_headless_ipc_core
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e_ipc_test.py
             --headless build-dev/ManifoldHeadless)

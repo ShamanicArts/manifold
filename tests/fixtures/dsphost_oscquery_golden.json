@@ -1,0 +1,867 @@
+{
+  "CONTENTS": {
+    "core": {
+      "CONTENTS": {
+        "behavior": {
+          "CONTENTS": {
+            "activeLayer": {
+              "ACCESS": 3,
+              "DESCRIPTION": "",
+              "FULL_PATH": "/core/behavior/activeLayer",
+              "RANGE": [
+                {
+                  "MAX": 3,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "f"
+            },
+            "clear": {
+              "ACCESS": 2,
+              "DESCRIPTION": "Clear all layers",
+              "FULL_PATH": "/core/behavior/clear",
+              "TYPE": "N"
+            },
+            "commit": {
+              "ACCESS": 2,
+              "DESCRIPTION": "Commit N bars retrospectively",
+              "FULL_PATH": "/core/behavior/commit",
+              "RANGE": [
+                {
+                  "MAX": 16,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "f"
+            },
+            "diagnostics": {
+              "ACCESS": 1,
+              "DESCRIPTION": "Diagnostics counters and warning telemetry",
+              "FULL_PATH": "/core/behavior/diagnostics",
+              "TYPE": "N"
+            },
+            "dsp": {
+              "CONTENTS": {
+                "reload": {
+                  "ACCESS": 2,
+                  "DESCRIPTION": "Reload DSP script (write 1)",
+                  "FULL_PATH": "/core/behavior/dsp/reload",
+                  "RANGE": [
+                    {
+                      "MAX": 1,
+                      "MIN": 0
+                    }
+                  ],
+                  "TYPE": "i"
+                }
+              },
+              "FULL_PATH": "/core/behavior/dsp"
+            },
+            "forward": {
+              "ACCESS": 2,
+              "DESCRIPTION": "Arm forward commit N bars",
+              "FULL_PATH": "/core/behavior/forward",
+              "RANGE": [
+                {
+                  "MAX": 16,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "f"
+            },
+            "forwardArmed": {
+              "ACCESS": 3,
+              "DESCRIPTION": "Forward-commit armed (0/1)",
+              "FULL_PATH": "/core/behavior/forwardArmed",
+              "RANGE": [
+                {
+                  "MAX": 1,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "i"
+            },
+            "forwardBars": {
+              "ACCESS": 3,
+              "DESCRIPTION": "Forward-commit bars (0 disarms)",
+              "FULL_PATH": "/core/behavior/forwardBars",
+              "RANGE": [
+                {
+                  "MAX": 16,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "f"
+            },
+            "forwardFire": {
+              "ACCESS": 3,
+              "DESCRIPTION": "",
+              "FULL_PATH": "/core/behavior/forwardFire",
+              "RANGE": [
+                {
+                  "MAX": 1,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "f"
+            },
+            "graph": {
+              "CONTENTS": {
+                "enabled": {
+                  "ACCESS": 3,
+                  "DESCRIPTION": "Enable graph processing (0/1)",
+                  "FULL_PATH": "/core/behavior/graph/enabled",
+                  "RANGE": [
+                    {
+                      "MAX": 1,
+                      "MIN": 0
+                    }
+                  ],
+                  "TYPE": "i"
+                }
+              },
+              "FULL_PATH": "/core/behavior/graph"
+            },
+            "inputVolume": {
+              "ACCESS": 3,
+              "DESCRIPTION": "Input volume",
+              "FULL_PATH": "/core/behavior/inputVolume",
+              "RANGE": [
+                {
+                  "MAX": 2,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "f"
+            },
+            "layer": {
+              "ACCESS": 3,
+              "CONTENTS": {
+                "0": {
+                  "CONTENTS": {
+                    "bars": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Loop length in bars",
+                      "FULL_PATH": "/core/behavior/layer/0/bars",
+                      "TYPE": "f"
+                    },
+                    "clear": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Clear layer",
+                      "FULL_PATH": "/core/behavior/layer/0/clear",
+                      "TYPE": "N"
+                    },
+                    "length": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Loop length in samples",
+                      "FULL_PATH": "/core/behavior/layer/0/length",
+                      "TYPE": "i"
+                    },
+                    "mute": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer mute (0/1)",
+                      "FULL_PATH": "/core/behavior/layer/0/mute",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "i"
+                    },
+                    "pause": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Pause layer",
+                      "FULL_PATH": "/core/behavior/layer/0/pause",
+                      "TYPE": "N"
+                    },
+                    "play": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Play layer",
+                      "FULL_PATH": "/core/behavior/layer/0/play",
+                      "TYPE": "N"
+                    },
+                    "position": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Playhead position (normalized)",
+                      "FULL_PATH": "/core/behavior/layer/0/position",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "reverse": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer reverse (0/1)",
+                      "FULL_PATH": "/core/behavior/layer/0/reverse",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "i"
+                    },
+                    "seek": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Seek layer (0-1)",
+                      "FULL_PATH": "/core/behavior/layer/0/seek",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "speed": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer playback speed",
+                      "FULL_PATH": "/core/behavior/layer/0/speed",
+                      "RANGE": [
+                        {
+                          "MAX": 4,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "state": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Layer state string",
+                      "FULL_PATH": "/core/behavior/layer/0/state",
+                      "TYPE": "s"
+                    },
+                    "stop": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Stop layer (keep buffer)",
+                      "FULL_PATH": "/core/behavior/layer/0/stop",
+                      "TYPE": "N"
+                    },
+                    "volume": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer volume",
+                      "FULL_PATH": "/core/behavior/layer/0/volume",
+                      "RANGE": [
+                        {
+                          "MAX": 2,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    }
+                  },
+                  "FULL_PATH": "/core/behavior/layer/0"
+                },
+                "1": {
+                  "CONTENTS": {
+                    "bars": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Loop length in bars",
+                      "FULL_PATH": "/core/behavior/layer/1/bars",
+                      "TYPE": "f"
+                    },
+                    "clear": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Clear layer",
+                      "FULL_PATH": "/core/behavior/layer/1/clear",
+                      "TYPE": "N"
+                    },
+                    "length": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Loop length in samples",
+                      "FULL_PATH": "/core/behavior/layer/1/length",
+                      "TYPE": "i"
+                    },
+                    "mute": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer mute (0/1)",
+                      "FULL_PATH": "/core/behavior/layer/1/mute",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "i"
+                    },
+                    "pause": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Pause layer",
+                      "FULL_PATH": "/core/behavior/layer/1/pause",
+                      "TYPE": "N"
+                    },
+                    "play": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Play layer",
+                      "FULL_PATH": "/core/behavior/layer/1/play",
+                      "TYPE": "N"
+                    },
+                    "position": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Playhead position (normalized)",
+                      "FULL_PATH": "/core/behavior/layer/1/position",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "reverse": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer reverse (0/1)",
+                      "FULL_PATH": "/core/behavior/layer/1/reverse",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "i"
+                    },
+                    "seek": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Seek layer (0-1)",
+                      "FULL_PATH": "/core/behavior/layer/1/seek",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "speed": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer playback speed",
+                      "FULL_PATH": "/core/behavior/layer/1/speed",
+                      "RANGE": [
+                        {
+                          "MAX": 4,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "state": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Layer state string",
+                      "FULL_PATH": "/core/behavior/layer/1/state",
+                      "TYPE": "s"
+                    },
+                    "stop": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Stop layer (keep buffer)",
+                      "FULL_PATH": "/core/behavior/layer/1/stop",
+                      "TYPE": "N"
+                    },
+                    "volume": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer volume",
+                      "FULL_PATH": "/core/behavior/layer/1/volume",
+                      "RANGE": [
+                        {
+                          "MAX": 2,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    }
+                  },
+                  "FULL_PATH": "/core/behavior/layer/1"
+                },
+                "2": {
+                  "CONTENTS": {
+                    "bars": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Loop length in bars",
+                      "FULL_PATH": "/core/behavior/layer/2/bars",
+                      "TYPE": "f"
+                    },
+                    "clear": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Clear layer",
+                      "FULL_PATH": "/core/behavior/layer/2/clear",
+                      "TYPE": "N"
+                    },
+                    "length": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Loop length in samples",
+                      "FULL_PATH": "/core/behavior/layer/2/length",
+                      "TYPE": "i"
+                    },
+                    "mute": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer mute (0/1)",
+                      "FULL_PATH": "/core/behavior/layer/2/mute",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "i"
+                    },
+                    "pause": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Pause layer",
+                      "FULL_PATH": "/core/behavior/layer/2/pause",
+                      "TYPE": "N"
+                    },
+                    "play": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Play layer",
+                      "FULL_PATH": "/core/behavior/layer/2/play",
+                      "TYPE": "N"
+                    },
+                    "position": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Playhead position (normalized)",
+                      "FULL_PATH": "/core/behavior/layer/2/position",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "reverse": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer reverse (0/1)",
+                      "FULL_PATH": "/core/behavior/layer/2/reverse",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "i"
+                    },
+                    "seek": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Seek layer (0-1)",
+                      "FULL_PATH": "/core/behavior/layer/2/seek",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "speed": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer playback speed",
+                      "FULL_PATH": "/core/behavior/layer/2/speed",
+                      "RANGE": [
+                        {
+                          "MAX": 4,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "state": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Layer state string",
+                      "FULL_PATH": "/core/behavior/layer/2/state",
+                      "TYPE": "s"
+                    },
+                    "stop": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Stop layer (keep buffer)",
+                      "FULL_PATH": "/core/behavior/layer/2/stop",
+                      "TYPE": "N"
+                    },
+                    "volume": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer volume",
+                      "FULL_PATH": "/core/behavior/layer/2/volume",
+                      "RANGE": [
+                        {
+                          "MAX": 2,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    }
+                  },
+                  "FULL_PATH": "/core/behavior/layer/2"
+                },
+                "3": {
+                  "CONTENTS": {
+                    "bars": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Loop length in bars",
+                      "FULL_PATH": "/core/behavior/layer/3/bars",
+                      "TYPE": "f"
+                    },
+                    "clear": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Clear layer",
+                      "FULL_PATH": "/core/behavior/layer/3/clear",
+                      "TYPE": "N"
+                    },
+                    "length": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Loop length in samples",
+                      "FULL_PATH": "/core/behavior/layer/3/length",
+                      "TYPE": "i"
+                    },
+                    "mute": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer mute (0/1)",
+                      "FULL_PATH": "/core/behavior/layer/3/mute",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "i"
+                    },
+                    "pause": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Pause layer",
+                      "FULL_PATH": "/core/behavior/layer/3/pause",
+                      "TYPE": "N"
+                    },
+                    "play": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Play layer",
+                      "FULL_PATH": "/core/behavior/layer/3/play",
+                      "TYPE": "N"
+                    },
+                    "position": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Playhead position (normalized)",
+                      "FULL_PATH": "/core/behavior/layer/3/position",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "reverse": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer reverse (0/1)",
+                      "FULL_PATH": "/core/behavior/layer/3/reverse",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "i"
+                    },
+                    "seek": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Seek layer (0-1)",
+                      "FULL_PATH": "/core/behavior/layer/3/seek",
+                      "RANGE": [
+                        {
+                          "MAX": 1,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "speed": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer playback speed",
+                      "FULL_PATH": "/core/behavior/layer/3/speed",
+                      "RANGE": [
+                        {
+                          "MAX": 4,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    },
+                    "state": {
+                      "ACCESS": 1,
+                      "DESCRIPTION": "Layer state string",
+                      "FULL_PATH": "/core/behavior/layer/3/state",
+                      "TYPE": "s"
+                    },
+                    "stop": {
+                      "ACCESS": 2,
+                      "DESCRIPTION": "Stop layer (keep buffer)",
+                      "FULL_PATH": "/core/behavior/layer/3/stop",
+                      "TYPE": "N"
+                    },
+                    "volume": {
+                      "ACCESS": 3,
+                      "DESCRIPTION": "Layer volume",
+                      "FULL_PATH": "/core/behavior/layer/3/volume",
+                      "RANGE": [
+                        {
+                          "MAX": 2,
+                          "MIN": 0
+                        }
+                      ],
+                      "TYPE": "f"
+                    }
+                  },
+                  "FULL_PATH": "/core/behavior/layer/3"
+                }
+              },
+              "DESCRIPTION": "Active layer index (0-3)",
+              "FULL_PATH": "/core/behavior/layer",
+              "RANGE": [
+                {
+                  "MAX": 3,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "i"
+            },
+            "link": {
+              "CONTENTS": {
+                "beat": {
+                  "ACCESS": 1,
+                  "DESCRIPTION": "Current Link beat position",
+                  "FULL_PATH": "/core/behavior/link/beat",
+                  "TYPE": "f"
+                },
+                "enabled": {
+                  "ACCESS": 3,
+                  "DESCRIPTION": "Link enabled (0/1)",
+                  "FULL_PATH": "/core/behavior/link/enabled",
+                  "RANGE": [
+                    {
+                      "MAX": 1,
+                      "MIN": 0
+                    }
+                  ],
+                  "TYPE": "i"
+                },
+                "peers": {
+                  "ACCESS": 1,
+                  "DESCRIPTION": "Number of Link peers connected",
+                  "FULL_PATH": "/core/behavior/link/peers",
+                  "TYPE": "i"
+                },
+                "phase": {
+                  "ACCESS": 1,
+                  "DESCRIPTION": "Current Link phase (0-1)",
+                  "FULL_PATH": "/core/behavior/link/phase",
+                  "RANGE": [
+                    {
+                      "MAX": 1,
+                      "MIN": 0
+                    }
+                  ],
+                  "TYPE": "f"
+                },
+                "playing": {
+                  "ACCESS": 1,
+                  "DESCRIPTION": "Link transport playing (0/1)",
+                  "FULL_PATH": "/core/behavior/link/playing",
+                  "RANGE": [
+                    {
+                      "MAX": 1,
+                      "MIN": 0
+                    }
+                  ],
+                  "TYPE": "i"
+                },
+                "startStopSync": {
+                  "ACCESS": 3,
+                  "DESCRIPTION": "Link start/stop sync enabled (0/1)",
+                  "FULL_PATH": "/core/behavior/link/startStopSync",
+                  "RANGE": [
+                    {
+                      "MAX": 1,
+                      "MIN": 0
+                    }
+                  ],
+                  "TYPE": "i"
+                },
+                "tempoSync": {
+                  "ACCESS": 3,
+                  "DESCRIPTION": "Link tempo sync enabled (0/1)",
+                  "FULL_PATH": "/core/behavior/link/tempoSync",
+                  "RANGE": [
+                    {
+                      "MAX": 1,
+                      "MIN": 0
+                    }
+                  ],
+                  "TYPE": "i"
+                }
+              },
+              "FULL_PATH": "/core/behavior/link"
+            },
+            "mode": {
+              "ACCESS": 3,
+              "DESCRIPTION": "Record mode (firstLoop/freeMode/traditional/retrospective)",
+              "FULL_PATH": "/core/behavior/mode",
+              "TYPE": "s"
+            },
+            "overdub": {
+              "ACCESS": 3,
+              "DESCRIPTION": "Toggle/set overdub (0/1/none)",
+              "FULL_PATH": "/core/behavior/overdub",
+              "RANGE": [
+                {
+                  "MAX": 1,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "i"
+            },
+            "overdubLengthPolicy": {
+              "ACCESS": 3,
+              "DESCRIPTION": "",
+              "FULL_PATH": "/core/behavior/overdubLengthPolicy",
+              "RANGE": [
+                {
+                  "MAX": 1,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "f"
+            },
+            "passthrough": {
+              "ACCESS": 3,
+              "DESCRIPTION": "Input passthrough (0/1)",
+              "FULL_PATH": "/core/behavior/passthrough",
+              "RANGE": [
+                {
+                  "MAX": 1,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "i"
+            },
+            "pause": {
+              "ACCESS": 2,
+              "DESCRIPTION": "Pause all layers",
+              "FULL_PATH": "/core/behavior/pause",
+              "TYPE": "N"
+            },
+            "play": {
+              "ACCESS": 2,
+              "DESCRIPTION": "Play all layers",
+              "FULL_PATH": "/core/behavior/play",
+              "TYPE": "N"
+            },
+            "rec": {
+              "ACCESS": 2,
+              "DESCRIPTION": "Start recording",
+              "FULL_PATH": "/core/behavior/rec",
+              "TYPE": "N"
+            },
+            "recording": {
+              "ACCESS": 1,
+              "DESCRIPTION": "Recording state (0/1)",
+              "FULL_PATH": "/core/behavior/recording",
+              "RANGE": [
+                {
+                  "MAX": 1,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "i"
+            },
+            "state": {
+              "ACCESS": 1,
+              "DESCRIPTION": "Full state query (returns bundle)",
+              "FULL_PATH": "/core/behavior/state",
+              "TYPE": "N"
+            },
+            "stop": {
+              "ACCESS": 2,
+              "DESCRIPTION": "Stop all layers",
+              "FULL_PATH": "/core/behavior/stop",
+              "TYPE": "N"
+            },
+            "stoprec": {
+              "ACCESS": 2,
+              "DESCRIPTION": "Stop recording",
+              "FULL_PATH": "/core/behavior/stoprec",
+              "TYPE": "N"
+            },
+            "targetbpm": {
+              "ACCESS": 3,
+              "DESCRIPTION": "Target tempo for inference",
+              "FULL_PATH": "/core/behavior/targetbpm",
+              "RANGE": [
+                {
+                  "MAX": 300,
+                  "MIN": 20
+                }
+              ],
+              "TYPE": "f"
+            },
+            "tempo": {
+              "ACCESS": 3,
+              "DESCRIPTION": "Tempo (BPM)",
+              "FULL_PATH": "/core/behavior/tempo",
+              "RANGE": [
+                {
+                  "MAX": 300,
+                  "MIN": 20
+                }
+              ],
+              "TYPE": "f"
+            },
+            "transport": {
+              "ACCESS": 3,
+              "DESCRIPTION": "",
+              "FULL_PATH": "/core/behavior/transport",
+              "RANGE": [
+                {
+                  "MAX": 2,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "f"
+            },
+            "volume": {
+              "ACCESS": 3,
+              "DESCRIPTION": "Master volume",
+              "FULL_PATH": "/core/behavior/volume",
+              "RANGE": [
+                {
+                  "MAX": 2,
+                  "MIN": 0
+                }
+              ],
+              "TYPE": "f"
+            }
+          },
+          "FULL_PATH": "/core/behavior"
+        }
+      },
+      "FULL_PATH": "/core"
+    },
+    "phase0": {
+      "CONTENTS": {
+        "custom": {
+          "ACCESS": 3,
+          "DESCRIPTION": "Phase 0 contract endpoint",
+          "FULL_PATH": "/phase0/custom",
+          "RANGE": [
+            {
+              "MAX": 1,
+              "MIN": 0
+            }
+          ],
+          "TYPE": "f"
+        }
+      },
+      "FULL_PATH": "/phase0"
+    }
+  },
+  "FULL_PATH": "/"
+}

@@ -1,5 +1,6 @@
 #include "../primitives/scripting/LuaEngine.h"
 #include "../primitives/scripting/ScriptableProcessor.h"
+#include "../primitives/scripting/core/LuaCoreEngine.h"
 #include "../primitives/control/OSCEndpointRegistry.h"
 #include "../primitives/control/OSCQuery.h"
 #include "../primitives/control/OSCServer.h"
@@ -8,10 +9,28 @@
 #include "../primitives/dsp/CaptureBuffer.h"
 #include "../engine/ManifoldLayer.h"
 
+extern "C" {
+#include <lauxlib.h>
+#include <lua.h>
+#include <lualib.h>
+}
+
+#define SOL_ALL_SAFETIES_ON 1
+#include <sol/sol.hpp>
+
+#include <juce_core/juce_core.h>
+
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <optional>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class MockScriptableProcessor : public ScriptableProcessor {
@@ -204,7 +223,434 @@ private:
   std::vector<ControlCommand> commands;
 };
 
-int main() {
+namespace {
+
+struct HarnessOptions {
+  enum class Mode {
+    Smoke,
+    PrintContract,
+    WriteContract,
+    VerifyContract,
+  };
+
+  Mode mode = Mode::Smoke;
+  juce::File contractPath;
+};
+
+struct LuaDumpContext {
+  std::unordered_set<const void*> activePointers;
+  int maxDepth = 6;
+};
+
+struct SortedDumpEntry {
+  std::string sortKey;
+  juce::var payload;
+};
+
+void printUsage(const char* programName) {
+  std::fprintf(stderr,
+               "Usage: %s [--print-contract | --write-contract PATH | --verify-contract PATH]\n"
+               "  no args              Run the existing LuaEngine smoke harness\n"
+               "  --print-contract     Print canonical Lua binding contract JSON\n"
+               "  --write-contract     Write canonical Lua binding contract JSON to PATH\n"
+               "  --verify-contract    Compare canonical Lua binding contract JSON against PATH\n",
+               programName);
+}
+
+bool parseOptions(int argc, char* argv[], HarnessOptions& out) {
+  for (int i = 1; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--print-contract") {
+      out.mode = HarnessOptions::Mode::PrintContract;
+    } else if (arg == "--write-contract" && i + 1 < argc) {
+      out.mode = HarnessOptions::Mode::WriteContract;
+      out.contractPath = juce::File(argv[++i]);
+    } else if (arg == "--verify-contract" && i + 1 < argc) {
+      out.mode = HarnessOptions::Mode::VerifyContract;
+      out.contractPath = juce::File(argv[++i]);
+    } else if (arg == "--help" || arg == "-h") {
+      printUsage(argv[0]);
+      return false;
+    } else {
+      std::fprintf(stderr, "LuaEngineMockHarness: unknown argument: %s\n", argv[i]);
+      printUsage(argv[0]);
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string numericKeyString(lua_State* L, int index) {
+  if (lua_isinteger(L, index)) {
+    return std::to_string(static_cast<long long>(lua_tointeger(L, index)));
+  }
+  return juce::String(lua_tonumber(L, index), 6).toStdString();
+}
+
+std::string keySortToken(lua_State* L, int index) {
+  const int type = lua_type(L, index);
+  switch (type) {
+    case LUA_TSTRING:
+      return "string:" + std::string(lua_tostring(L, index));
+    case LUA_TNUMBER:
+      return "number:" + numericKeyString(L, index);
+    case LUA_TBOOLEAN:
+      return std::string("boolean:") + (lua_toboolean(L, index) ? "true" : "false");
+    case LUA_TNIL:
+      return "nil:nil";
+    default:
+      return std::string(lua_typename(L, type));
+  }
+}
+
+juce::var dumpLuaValue(lua_State* L, int index, LuaDumpContext& ctx, int depth);
+
+juce::var dumpLuaKey(lua_State* L, int index) {
+  juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+  const int type = lua_type(L, index);
+  obj->setProperty("kind", juce::String(lua_typename(L, type)));
+  obj->setProperty("repr", juce::String(keySortToken(L, index)));
+
+  switch (type) {
+    case LUA_TSTRING:
+      obj->setProperty("value", juce::String(lua_tostring(L, index)));
+      break;
+    case LUA_TNUMBER:
+      if (lua_isinteger(L, index)) {
+        obj->setProperty("value", static_cast<double>(lua_tointeger(L, index)));
+        obj->setProperty("numericKind", "integer");
+      } else {
+        obj->setProperty("value", lua_tonumber(L, index));
+        obj->setProperty("numericKind", "float");
+      }
+      break;
+    case LUA_TBOOLEAN:
+      obj->setProperty("value", static_cast<bool>(lua_toboolean(L, index)));
+      break;
+    default:
+      break;
+  }
+
+  return juce::var(obj.get());
+}
+
+juce::Array<juce::var> dumpLuaTableEntries(lua_State* L,
+                                           int tableIndex,
+                                           LuaDumpContext& ctx,
+                                           int depth) {
+  const int absoluteIndex = lua_absindex(L, tableIndex);
+  std::vector<SortedDumpEntry> entries;
+
+  lua_pushnil(L);
+  while (lua_next(L, absoluteIndex) != 0) {
+    juce::DynamicObject::Ptr entry = new juce::DynamicObject();
+    entry->setProperty("key", dumpLuaKey(L, -2));
+    entry->setProperty("value", dumpLuaValue(L, -1, ctx, depth + 1));
+    entries.push_back({keySortToken(L, -2), juce::var(entry.get())});
+    lua_pop(L, 1);
+  }
+
+  std::sort(entries.begin(), entries.end(),
+            [](const SortedDumpEntry& a, const SortedDumpEntry& b) {
+              return a.sortKey < b.sortKey;
+            });
+
+  juce::Array<juce::var> array;
+  for (const auto& entry : entries) {
+    array.add(entry.payload);
+  }
+  return array;
+}
+
+juce::var dumpLuaValue(lua_State* L, int index, LuaDumpContext& ctx, int depth) {
+  const int absoluteIndex = lua_absindex(L, index);
+  const int type = lua_type(L, absoluteIndex);
+
+  juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+  obj->setProperty("kind", juce::String(lua_typename(L, type)));
+
+  switch (type) {
+    case LUA_TNIL:
+      return juce::var(obj.get());
+    case LUA_TBOOLEAN:
+      obj->setProperty("value", static_cast<bool>(lua_toboolean(L, absoluteIndex)));
+      return juce::var(obj.get());
+    case LUA_TNUMBER:
+      if (lua_isinteger(L, absoluteIndex)) {
+        obj->setProperty("value", static_cast<double>(lua_tointeger(L, absoluteIndex)));
+        obj->setProperty("numericKind", "integer");
+      } else {
+        obj->setProperty("value", lua_tonumber(L, absoluteIndex));
+        obj->setProperty("numericKind", "float");
+      }
+      return juce::var(obj.get());
+    case LUA_TSTRING:
+      obj->setProperty("value", juce::String(lua_tostring(L, absoluteIndex)));
+      return juce::var(obj.get());
+    case LUA_TFUNCTION: {
+      obj->setProperty("isC", static_cast<bool>(lua_iscfunction(L, absoluteIndex)));
+      lua_pushvalue(L, absoluteIndex);
+      lua_Debug dbg{};
+      if (lua_getinfo(L, ">Su", &dbg) != 0) {
+        obj->setProperty("what", juce::String(dbg.what != nullptr ? dbg.what : ""));
+        obj->setProperty("source", juce::String(dbg.source != nullptr ? dbg.source : ""));
+        obj->setProperty("linedefined", dbg.linedefined);
+        obj->setProperty("lastlinedefined", dbg.lastlinedefined);
+        obj->setProperty("nups", dbg.nups);
+      }
+      return juce::var(obj.get());
+    }
+    case LUA_TTABLE:
+    case LUA_TUSERDATA:
+    case LUA_TLIGHTUSERDATA: {
+      const void* ptr = lua_topointer(L, absoluteIndex);
+      const bool trackPointer = (ptr != nullptr);
+      if (trackPointer) {
+        if (ctx.activePointers.find(ptr) != ctx.activePointers.end()) {
+          obj->setProperty("recursiveRef", true);
+          return juce::var(obj.get());
+        }
+        ctx.activePointers.insert(ptr);
+      }
+
+      if (depth >= ctx.maxDepth) {
+        obj->setProperty("truncated", true);
+      } else if (type == LUA_TTABLE) {
+        obj->setProperty("entries", dumpLuaTableEntries(L, absoluteIndex, ctx, depth));
+      }
+
+      if (lua_getmetatable(L, absoluteIndex) != 0) {
+        obj->setProperty("metatable", dumpLuaValue(L, -1, ctx, depth + 1));
+        lua_pop(L, 1);
+      }
+
+      if (trackPointer) {
+        ctx.activePointers.erase(ptr);
+      }
+      return juce::var(obj.get());
+    }
+    case LUA_TTHREAD:
+      return juce::var(obj.get());
+    default:
+      return juce::var(obj.get());
+  }
+}
+
+std::set<std::string> captureTopLevelGlobalKeys(LuaCoreEngine& engine) {
+  std::set<std::string> keys;
+  const std::lock_guard<std::recursive_mutex> lock(engine.getMutex());
+  sol::state& lua = engine.getLuaState();
+  lua_State* L = lua.lua_state();
+  if (L == nullptr) {
+    return keys;
+  }
+
+  lua_pushglobaltable(L);
+  lua_pushnil(L);
+  while (lua_next(L, -2) != 0) {
+    if (lua_type(L, -2) == LUA_TSTRING) {
+      keys.emplace(lua_tostring(L, -2));
+    }
+    lua_pop(L, 1);
+  }
+  lua_pop(L, 1);
+  return keys;
+}
+
+juce::var buildBindingsContract() {
+  LuaCoreEngine baselineEngine;
+  if (!baselineEngine.initialize()) {
+    throw std::runtime_error("failed to initialize baseline LuaCoreEngine");
+  }
+  const auto baselineKeys = captureTopLevelGlobalKeys(baselineEngine);
+
+  MockScriptableProcessor mock;
+  Canvas root("root");
+  LuaEngine engine;
+  engine.initialise(&mock, &root);
+
+  LuaDumpContext ctx;
+  juce::DynamicObject::Ptr contract = new juce::DynamicObject();
+  contract->setProperty("contractVersion", 1);
+  contract->setProperty("maxDepth", ctx.maxDepth);
+
+  std::vector<SortedDumpEntry> globals;
+  engine.withLuaState([&](const sol::state& lua) {
+    lua_State* L = lua.lua_state();
+    if (L == nullptr) {
+      return;
+    }
+
+    lua_pushglobaltable(L);
+    lua_pushnil(L);
+    while (lua_next(L, -2) != 0) {
+      if (lua_type(L, -2) == LUA_TSTRING) {
+        const std::string name = lua_tostring(L, -2);
+        if (baselineKeys.find(name) == baselineKeys.end()) {
+          juce::DynamicObject::Ptr entry = new juce::DynamicObject();
+          entry->setProperty("name", juce::String(name));
+          entry->setProperty("value", dumpLuaValue(L, -1, ctx, 0));
+          globals.push_back({name, juce::var(entry.get())});
+        }
+      }
+      lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+  });
+
+  std::sort(globals.begin(), globals.end(),
+            [](const SortedDumpEntry& a, const SortedDumpEntry& b) {
+              return a.sortKey < b.sortKey;
+            });
+
+  juce::Array<juce::var> globalsArray;
+  for (const auto& global : globals) {
+    globalsArray.add(global.payload);
+  }
+  contract->setProperty("globals", globalsArray);
+
+  return juce::var(contract.get());
+}
+
+juce::String indentString(int indent) {
+  juce::String out;
+  for (int i = 0; i < indent; ++i) {
+    out += "  ";
+  }
+  return out;
+}
+
+void appendCanonicalJson(const juce::var& value, juce::String& out, int indent) {
+  if (auto* object = value.getDynamicObject()) {
+    struct PropertyEntry {
+      juce::String name;
+      juce::var value;
+    };
+
+    std::vector<PropertyEntry> properties;
+    const auto& namedValues = object->getProperties();
+    properties.reserve(static_cast<std::size_t>(namedValues.size()));
+    for (int i = 0; i < namedValues.size(); ++i) {
+      properties.push_back({namedValues.getName(i).toString(), namedValues.getValueAt(i)});
+    }
+    std::sort(properties.begin(), properties.end(),
+              [](const PropertyEntry& a, const PropertyEntry& b) {
+                return a.name < b.name;
+              });
+
+    out += "{\n";
+    for (std::size_t i = 0; i < properties.size(); ++i) {
+      out += indentString(indent + 1);
+      out += juce::JSON::toString(juce::var(properties[i].name), true);
+      out += ": ";
+      appendCanonicalJson(properties[i].value, out, indent + 1);
+      if (i + 1 < properties.size()) {
+        out += ",";
+      }
+      out += "\n";
+    }
+    out += indentString(indent);
+    out += "}";
+    return;
+  }
+
+  if (auto* array = value.getArray()) {
+    out += "[";
+    if (!array->isEmpty()) {
+      out += "\n";
+      for (int i = 0; i < array->size(); ++i) {
+        out += indentString(indent + 1);
+        appendCanonicalJson(array->getReference(i), out, indent + 1);
+        if (i + 1 < array->size()) {
+          out += ",";
+        }
+        out += "\n";
+      }
+      out += indentString(indent);
+    }
+    out += "]";
+    return;
+  }
+
+  out += juce::JSON::toString(value, true);
+}
+
+juce::String serializeBindingsContract() {
+  juce::String out;
+  appendCanonicalJson(buildBindingsContract(), out, 0);
+  out += "\n";
+  return out;
+}
+
+int runContractMode(const HarnessOptions& options) {
+  juce::ScopedJuceInitialiser_GUI juceInit;
+  const juce::String contractJson = serializeBindingsContract();
+
+  if (options.mode == HarnessOptions::Mode::PrintContract) {
+    std::fputs(contractJson.toRawUTF8(), stdout);
+    return 0;
+  }
+
+  if (options.contractPath.getFullPathName().isEmpty()) {
+    std::fprintf(stderr, "LuaEngineMockHarness: missing contract path\n");
+    return 20;
+  }
+
+  if (options.mode == HarnessOptions::Mode::WriteContract) {
+    if (!options.contractPath.getParentDirectory().exists()) {
+      options.contractPath.getParentDirectory().createDirectory();
+    }
+    if (!options.contractPath.replaceWithText(contractJson)) {
+      std::fprintf(stderr,
+                   "LuaEngineMockHarness: failed to write contract file: %s\n",
+                   options.contractPath.getFullPathName().toRawUTF8());
+      return 21;
+    }
+    std::fprintf(stdout,
+                 "LuaEngineMockHarness: wrote binding contract to %s\n",
+                 options.contractPath.getFullPathName().toRawUTF8());
+    return 0;
+  }
+
+  if (!options.contractPath.existsAsFile()) {
+    std::fprintf(stderr,
+                 "LuaEngineMockHarness: contract file does not exist: %s\n",
+                 options.contractPath.getFullPathName().toRawUTF8());
+    return 22;
+  }
+
+  const juce::var expectedParsed = juce::JSON::parse(options.contractPath);
+  if (expectedParsed.isVoid()) {
+    std::fprintf(stderr,
+                 "LuaEngineMockHarness: failed to parse contract JSON: %s\n",
+                 options.contractPath.getFullPathName().toRawUTF8());
+    return 23;
+  }
+
+  juce::String expectedCanonical;
+  appendCanonicalJson(expectedParsed, expectedCanonical, 0);
+  expectedCanonical += "\n";
+
+  if (expectedCanonical != contractJson) {
+    const auto actualPath = options.contractPath.getSiblingFile(
+        options.contractPath.getFileNameWithoutExtension() + ".actual" + options.contractPath.getFileExtension());
+    actualPath.replaceWithText(contractJson);
+    std::fprintf(stderr,
+                 "LuaEngineMockHarness: contract mismatch: expected=%s actual=%s\n",
+                 options.contractPath.getFullPathName().toRawUTF8(),
+                 actualPath.getFullPathName().toRawUTF8());
+    return 24;
+  }
+
+  std::fprintf(stdout,
+               "LuaEngineMockHarness: contract PASS (%s)\n",
+               options.contractPath.getFullPathName().toRawUTF8());
+  return 0;
+}
+
+} // namespace
+
+static int runSmokeHarness() {
   juce::ScopedJuceInitialiser_GUI juceInit;
 
   MockScriptableProcessor mock;
@@ -607,4 +1053,28 @@ end
                commands.size(), first.floatParam);
 
   return 0;
+}
+
+int main(int argc, char* argv[]) {
+  HarnessOptions options;
+  if (!parseOptions(argc, argv, options)) {
+    return (argc > 1) ? 1 : 0;
+  }
+
+  try {
+    switch (options.mode) {
+      case HarnessOptions::Mode::Smoke:
+        return runSmokeHarness();
+      case HarnessOptions::Mode::PrintContract:
+      case HarnessOptions::Mode::WriteContract:
+      case HarnessOptions::Mode::VerifyContract:
+        return runContractMode(options);
+    }
+  } catch (const std::exception& e) {
+    std::fprintf(stderr, "LuaEngineMockHarness: exception: %s\n", e.what());
+    return 25;
+  }
+
+  std::fprintf(stderr, "LuaEngineMockHarness: unreachable mode dispatch\n");
+  return 26;
 }
