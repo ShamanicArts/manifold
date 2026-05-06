@@ -8,6 +8,7 @@
 #include "../ui/imgui/ImGuiInspectorHost.h"
 #include "../ui/imgui/ImGuiPerfOverlayHost.h"
 #include "EditorPerfSupport.h"
+#include "EditorShellImGuiSupport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <sol/sol.hpp>
@@ -486,23 +487,26 @@ inline void buildHierarchyAndInspectorConfig(sol::state& lua,
         sol::table treeRows = rowsObj.as<sol::table>();
         sol::object selectedCanvasObj = shell["selectedWidget"];
         const auto rowCount = treeRows.size();
-        hierarchyConfig.rows.reserve(rowCount);
+        std::vector<HierarchyTreeRowData> rowData;
+        rowData.reserve(rowCount);
         for (std::size_t i = 1; i <= rowCount; ++i) {
             sol::object rowObj = treeRows[i];
             if (!rowObj.valid() || !rowObj.is<sol::table>()) {
                 continue;
             }
             sol::table row = rowObj.as<sol::table>();
-            ImGuiHierarchyHost::TreeRow hostRow;
-            hostRow.depth = row["depth"].get_or(0);
-            hostRow.type = row["type"].get_or(std::string{});
-            hostRow.name = row["name"].get_or(std::string{});
-            hostRow.path = row["path"].get_or(std::string{});
             sol::object rowCanvasObj = row["canvas"];
-            hostRow.selected = selectedCanvasObj.valid() && rowCanvasObj.valid()
+
+            HierarchyTreeRowData nextRow;
+            nextRow.depth = row["depth"].get_or(0);
+            nextRow.type = row["type"].get_or(std::string{});
+            nextRow.name = row["name"].get_or(std::string{});
+            nextRow.path = row["path"].get_or(std::string{});
+            nextRow.selected = selectedCanvasObj.valid() && rowCanvasObj.valid()
                 && selectedCanvasObj == rowCanvasObj;
-            hierarchyConfig.rows.push_back(std::move(hostRow));
+            rowData.push_back(std::move(nextRow));
         }
+        hierarchyConfig.rows = buildHierarchyHostRows(rowData);
     }
 
     editor_perf::readSurfaceDescriptor(surfacesObj, "inspectorTool", inspectorConfig.visible, inspectorConfig.bounds);
@@ -570,6 +574,8 @@ inline void buildHierarchyAndInspectorConfig(sol::state& lua,
                 sol::table enumOptions = enumOptionsObj.as<sol::table>();
                 sol::object rawValue = activeProperty["rawValue"];
                 const auto optionCount = enumOptions.size();
+                std::vector<bool> enumMatches;
+                enumMatches.reserve(optionCount);
                 for (std::size_t optionIndex = 1; optionIndex <= optionCount; ++optionIndex) {
                     sol::object optionObj = enumOptions[optionIndex];
                     if (!optionObj.valid() || !optionObj.is<sol::table>()) {
@@ -588,33 +594,33 @@ inline void buildHierarchyAndInspectorConfig(sol::state& lua,
                             matches = rawValue.as<std::string>() == optionValue.as<std::string>();
                         }
                     }
-                    if (matches) {
-                        inspectorConfig.activeProperty.enumSelectedIndex = static_cast<int>(optionIndex);
-                    }
+                    enumMatches.push_back(matches);
                 }
+                inspectorConfig.activeProperty.enumSelectedIndex = resolveInspectorEnumSelectedIndex(
+                    enumMatches,
+                    inspectorConfig.activeProperty.enumSelectedIndex);
             }
         }
 
         if (inspectorRowsObj.valid() && inspectorRowsObj.is<sol::table>()) {
             sol::table inspectorRows = inspectorRowsObj.as<sol::table>();
             const auto inspectorRowCount = inspectorRows.size();
-            inspectorConfig.rows.reserve(inspectorRowCount);
+            std::vector<InspectorRowData> rowData;
+            rowData.reserve(inspectorRowCount);
             for (std::size_t i = 1; i <= inspectorRowCount; ++i) {
                 sol::object rowObj = inspectorRows[i];
                 if (!rowObj.valid() || !rowObj.is<sol::table>()) {
                     continue;
                 }
                 sol::table row = rowObj.as<sol::table>();
-                ImGuiInspectorHost::InspectorRow hostRow;
-                hostRow.rowIndex = static_cast<int>(i);
-                hostRow.section = !row["isConfig"].get_or(false) && row["value"].get_or(std::string{}).empty();
-                hostRow.interactive = row["isConfig"].get_or(false);
-                hostRow.key = row["key"].get_or(std::string{});
-                hostRow.value = row["value"].get_or(std::string{});
-                hostRow.selected = hostRow.interactive && !activePath.empty()
-                    && row["path"].get_or(std::string{}) == activePath;
-                inspectorConfig.rows.push_back(std::move(hostRow));
+                InspectorRowData nextRow;
+                nextRow.isConfig = row["isConfig"].get_or(false);
+                nextRow.key = row["key"].get_or(std::string{});
+                nextRow.value = row["value"].get_or(std::string{});
+                nextRow.path = row["path"].get_or(std::string{});
+                rowData.push_back(std::move(nextRow));
             }
+            inspectorConfig.rows = buildInspectorHostRows(rowData, activePath);
         }
 
         lua["__manifoldImguiInspectorActive"] = true;

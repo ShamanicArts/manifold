@@ -1,5 +1,6 @@
 #include "ImGuiScriptListHost.h"
 
+#include "ScriptListSupport.h"
 #include "Theme.h"
 #include "WidgetPrimitives.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -25,24 +26,18 @@ void logScriptListHostMouse(const char* event, ImGuiScriptListHost* host, const 
 }
 
 std::string buildDisplayLabel(const ImGuiScriptListHost::ScriptRow& row) {
-    if (row.section) {
-        return row.label;
-    }
-    if (row.nonInteractive) {
-        return row.name;
-    }
-
-    std::string label = row.name;
-    if (row.ownership == "editor-owned") {
-        label += " [editor]";
-    }
-    if (row.active) {
-        label += "  • active";
-    }
-    if (row.dirty) {
-        label = "* " + label;
-    }
-    return label;
+    return manifold::ui::imgui::buildScriptListDisplayLabel({
+        row.section,
+        row.nonInteractive,
+        row.selected,
+        row.active,
+        row.dirty,
+        row.kind,
+        row.ownership,
+        row.name,
+        row.label,
+        row.path,
+    });
 }
 }
 
@@ -127,29 +122,15 @@ void ImGuiScriptListHost::mouseUp(const juce::MouseEvent& e) {
 void ImGuiScriptListHost::mouseExit(const juce::MouseEvent& e) {
     logScriptListHostMouse("mouseExit", this, e);
 
-    if (leftMouseDown_ || rightMouseDown_ || middleMouseDown_) {
-        return;
-    }
-
-    PendingEvent event;
-    event.type = EventType::MousePos;
-    event.x = -1.0f;
-    event.y = -1.0f;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueHierarchyHostMouseExitIfIdle(pendingEvents, mouseButtons_);
 }
 
 void ImGuiScriptListHost::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
     queueMousePosition(e.position);
 
-    PendingEvent event;
-    event.type = EventType::MouseWheel;
-    event.x = wheel.deltaX;
-    event.y = wheel.deltaY;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueHierarchyHostMouseWheel(pendingEvents, wheel);
 }
 
 void ImGuiScriptListHost::focusGained(FocusChangeType cause) {
@@ -215,16 +196,16 @@ void ImGuiScriptListHost::renderOpenGL() {
         std::lock_guard<std::mutex> lock(inputMutex);
         for (const auto& event : pendingEvents) {
             switch (event.type) {
-                case EventType::MousePos:
+                case manifold::ui::imgui::HierarchyHostInputEventType::MousePos:
                     io.AddMousePosEvent(event.x, event.y);
                     break;
-                case EventType::MouseButton:
+                case manifold::ui::imgui::HierarchyHostInputEventType::MouseButton:
                     io.AddMouseButtonEvent(event.button, event.down);
                     break;
-                case EventType::MouseWheel:
+                case manifold::ui::imgui::HierarchyHostInputEventType::MouseWheel:
                     io.AddMouseWheelEvent(event.x, event.y);
                     break;
-                case EventType::Focus:
+                case manifold::ui::imgui::HierarchyHostInputEventType::Focus:
                     io.AddFocusEvent(event.focused);
                     break;
             }
@@ -237,7 +218,7 @@ void ImGuiScriptListHost::renderOpenGL() {
     {
         std::lock_guard<std::mutex> lock(inputMutex);
         for (const auto& event : pendingEvents) {
-            if (event.type == EventType::MouseButton) {
+            if (event.type == manifold::ui::imgui::HierarchyHostInputEventType::MouseButton) {
                 io.AddMouseButtonEvent(event.button, event.down);
             }
         }
@@ -292,10 +273,11 @@ void ImGuiScriptListHost::renderOpenGL() {
                 const bool hovered = ImGui::IsItemHovered();
                 const bool doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 
-                if (activated || doubleClicked) {
+                const auto interaction = manifold::ui::imgui::resolveScriptListInteraction(activated, doubleClicked);
+                if (interaction.requestSelect) {
                     requestSelectIndex_.store(i + 1, std::memory_order_relaxed);
                 }
-                if (doubleClicked) {
+                if (interaction.requestOpen) {
                     requestOpenIndex_.store(i + 1, std::memory_order_relaxed);
                 }
 
@@ -335,13 +317,8 @@ void ImGuiScriptListHost::attachContextIfNeeded() {
 }
 
 void ImGuiScriptListHost::queueMousePosition(juce::Point<float> position) {
-    PendingEvent event;
-    event.type = EventType::MousePos;
-    event.x = position.x;
-    event.y = position.y;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueHierarchyHostMousePosition(pendingEvents, position);
 }
 
 void ImGuiScriptListHost::queueCurrentMousePosition() {
@@ -356,56 +333,16 @@ void ImGuiScriptListHost::queueCurrentMousePosition() {
 }
 
 void ImGuiScriptListHost::syncMouseButtons(const juce::ModifierKeys& mods) {
-    const bool nextLeft = mods.isLeftButtonDown();
-    const bool nextRight = mods.isRightButtonDown();
-    const bool nextMiddle = mods.isMiddleButtonDown();
-
     std::lock_guard<std::mutex> lock(inputMutex);
-
-    const auto pushMouseButton = [&](bool& current, int button, bool nextState) {
-        if (current == nextState) {
-            return;
-        }
-
-        current = nextState;
-        PendingEvent event;
-        event.type = EventType::MouseButton;
-        event.button = button;
-        event.down = nextState;
-        pendingEvents.push_back(std::move(event));
-    };
-
-    pushMouseButton(leftMouseDown_, 0, nextLeft);
-    pushMouseButton(rightMouseDown_, 1, nextRight);
-    pushMouseButton(middleMouseDown_, 2, nextMiddle);
+    manifold::ui::imgui::syncHierarchyHostMouseButtons(pendingEvents, mouseButtons_, mods);
 }
 
 void ImGuiScriptListHost::releaseAllMouseButtons() {
     std::lock_guard<std::mutex> lock(inputMutex);
-
-    const auto releaseButton = [&](bool& current, int button) {
-        if (!current) {
-            return;
-        }
-
-        current = false;
-        PendingEvent event;
-        event.type = EventType::MouseButton;
-        event.button = button;
-        event.down = false;
-        pendingEvents.push_back(std::move(event));
-    };
-
-    releaseButton(leftMouseDown_, 0);
-    releaseButton(rightMouseDown_, 1);
-    releaseButton(middleMouseDown_, 2);
+    manifold::ui::imgui::releaseHierarchyHostMouseButtons(pendingEvents, mouseButtons_);
 }
 
 void ImGuiScriptListHost::queueFocus(bool focused) {
-    PendingEvent event;
-    event.type = EventType::Focus;
-    event.focused = focused;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueHierarchyHostFocus(pendingEvents, focused);
 }

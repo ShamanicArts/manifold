@@ -1,5 +1,6 @@
 #include "ImGuiRuntimeNodeHost.h"
 
+#include "RuntimeNodeHostSupport.h"
 #include "Theme.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
@@ -525,8 +526,8 @@ void ImGuiRuntimeNodeHost::mouseDown(const juce::MouseEvent& e) {
     if (hit.node != nullptr) {
         uint64_t previousSelectedStableId = 0;
         const std::string nodeId = hit.node->getNodeId();
-        const auto localPosition = juce::Point<float>(hit.scenePosition.x - static_cast<float>(hit.sceneBounds.getX()),
-                                                      hit.scenePosition.y - static_cast<float>(hit.sceneBounds.getY()));
+        const auto localPosition = manifold::ui::imgui::runtimeNodeHostLocalPositionFromHit(
+            { true, hit.stableId, hit.node->getNodeId(), hit.sceneBounds, hit.scenePosition });
         {
             std::lock_guard<std::mutex> lock(dataMutex_);
             previousSelectedStableId = selectedNodeStableId_;
@@ -575,10 +576,10 @@ void ImGuiRuntimeNodeHost::mouseUp(const juce::MouseEvent& e) {
         bool triggerClick = false;
         bool triggerDoubleClick = false;
         if (hit.node != nullptr && hit.stableId == pressedNodeStableId) {
-            localPosition = juce::Point<float>(hit.scenePosition.x - static_cast<float>(hit.sceneBounds.getX()),
-                                               hit.scenePosition.y - static_cast<float>(hit.sceneBounds.getY()));
+            localPosition = manifold::ui::imgui::runtimeNodeHostLocalPositionFromHit(
+                { true, hit.stableId, hit.node->getNodeId(), hit.sceneBounds, hit.scenePosition });
             triggerDoubleClick = e.getNumberOfClicks() >= 2;
-            triggerClick = !triggerDoubleClick && !e.mouseWasDraggedSinceMouseDown();
+            triggerClick = manifold::ui::imgui::runtimeNodeHostShouldTriggerClick(true, triggerDoubleClick, e.mouseWasDraggedSinceMouseDown());
         }
         invokeLiveMouseUp(pressedNodeStableId, localPosition, triggerClick, triggerDoubleClick, e.mods);
     }
@@ -627,7 +628,11 @@ bool ImGuiRuntimeNodeHost::keyPressed(const juce::KeyPress& key) {
         presentationMode = presentationMode_;
     }
 
-    if (presentationMode == PresentationMode::Replace && key.getKeyCode() == juce::KeyPress::escapeKey) {
+    if (manifold::ui::imgui::runtimeNodeHostShouldRequestExit(
+            presentationMode == PresentationMode::Replace
+                ? manifold::ui::imgui::RuntimeNodeHostPresentationModeData::Replace
+                : manifold::ui::imgui::RuntimeNodeHostPresentationModeData::DebugPreview,
+            key.getKeyCode())) {
         if (exitRequested) {
             exitRequested();
             return true;
@@ -863,41 +868,42 @@ juce::Point<float> ImGuiRuntimeNodeHost::scenePositionFromPreview(juce::Point<fl
         transform = previewTransform_;
     }
 
-    if (!transform.valid || transform.scale <= 0.0f) {
-        return {};
-    }
-
-    return juce::Point<float>((position.x - transform.offsetX) / transform.scale,
-                              (position.y - transform.offsetY) / transform.scale);
+    return manifold::ui::imgui::runtimeNodeHostScenePositionFromPreview(position,
+                                                                        transform.valid,
+                                                                        transform.scale,
+                                                                        transform.offsetX,
+                                                                        transform.offsetY);
 }
 
 void ImGuiRuntimeNodeHost::updateHover(juce::Point<float> position, const juce::ModifierKeys* mods) {
     refreshSnapshotIfNeeded();
     auto hit = hitTestNode(position, manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer);
-    const uint64_t nextHoveredStableId = hit.node != nullptr ? hit.stableId : 0;
-    const std::string nextHovered = hit.node != nullptr ? hit.node->getNodeId() : std::string{};
 
     uint64_t previousHoveredStableId = 0;
     {
         std::lock_guard<std::mutex> lock(dataMutex_);
         previousHoveredStableId = hoveredNodeStableId_;
-        hoveredNodeStableId_ = nextHoveredStableId;
-        hoveredNodeId_ = nextHovered;
     }
 
-    if (previousHoveredStableId != nextHoveredStableId) {
-        if (previousHoveredStableId != 0) {
-            invokeLiveMouseExit(previousHoveredStableId);
-        }
-        if (nextHoveredStableId != 0) {
-            invokeLiveMouseEnter(nextHoveredStableId);
-        }
+    const auto hoverUpdate = manifold::ui::imgui::computeRuntimeNodeHostHoverUpdate(
+        previousHoveredStableId,
+        { hit.node != nullptr, hit.stableId, hit.node != nullptr ? hit.node->getNodeId() : std::string{}, hit.sceneBounds, hit.scenePosition },
+        mods != nullptr);
+
+    {
+        std::lock_guard<std::mutex> lock(dataMutex_);
+        hoveredNodeStableId_ = hoverUpdate.nextHoveredStableId;
+        hoveredNodeId_ = hoverUpdate.nextHoveredId;
     }
 
-    if (mods != nullptr && hit.node != nullptr && nextHoveredStableId != 0) {
-        const auto localPosition = juce::Point<float>(hit.scenePosition.x - static_cast<float>(hit.sceneBounds.getX()),
-                                                      hit.scenePosition.y - static_cast<float>(hit.sceneBounds.getY()));
-        invokeLiveMouseMove(nextHoveredStableId, localPosition, *mods);
+    if (hoverUpdate.exitPrevious) {
+        invokeLiveMouseExit(previousHoveredStableId);
+    }
+    if (hoverUpdate.enterNext) {
+        invokeLiveMouseEnter(hoverUpdate.nextHoveredStableId);
+    }
+    if (hoverUpdate.invokeMove) {
+        invokeLiveMouseMove(hoverUpdate.nextHoveredStableId, hoverUpdate.localPosition, *mods);
     }
 
     refreshSnapshotIfNeeded();

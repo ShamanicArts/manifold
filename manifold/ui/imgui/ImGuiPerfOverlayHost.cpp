@@ -1,5 +1,6 @@
 #include "ImGuiPerfOverlayHost.h"
 
+#include "PerfOverlaySupport.h"
 #include "Theme.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
@@ -10,17 +11,6 @@
 using namespace juce::gl;
 
 namespace {
-constexpr int kTitleBarHeight = 30;
-constexpr int kTabBarHeight = 28;
-constexpr int kCloseButtonSize = 16;
-constexpr int kOuterPadding = 10;
-constexpr int kInnerPadding = 8;
-constexpr int kRowHeight = 20;
-constexpr int kTabWidth = 92;
-constexpr int kTabGap = 6;
-constexpr int kTabLabelInset = 10;
-constexpr int kContentTopGap = 8;
-constexpr float kCornerRadius = 8.0f;
 
 ImVec2 toImVec2(juce::Point<int> p) {
     return ImVec2(static_cast<float>(p.x), static_cast<float>(p.y));
@@ -92,28 +82,19 @@ void ImGuiPerfOverlayHost::notifyBoundsChanged() {
 }
 
 juce::Rectangle<int> ImGuiPerfOverlayHost::titleBarBounds() const {
-    return getLocalBounds().withHeight(kTitleBarHeight);
+    return manifold::ui::imgui::perfOverlayTitleBarBounds(getLocalBounds());
 }
 
 juce::Rectangle<int> ImGuiPerfOverlayHost::closeButtonBounds() const {
-    const auto title = titleBarBounds();
-    return juce::Rectangle<int>(
-        title.getRight() - kOuterPadding - kCloseButtonSize,
-        title.getY() + (title.getHeight() - kCloseButtonSize) / 2,
-        kCloseButtonSize,
-        kCloseButtonSize);
+    return manifold::ui::imgui::perfOverlayCloseButtonBounds(getLocalBounds());
 }
 
 juce::Rectangle<int> ImGuiPerfOverlayHost::tabBoundsForIndex(int index) const {
-    const auto title = titleBarBounds();
-    const int tabX = kOuterPadding + index * (kTabWidth + kTabGap);
-    const int tabY = title.getBottom() + kContentTopGap;
-    return juce::Rectangle<int>(tabX, tabY, kTabWidth, kTabBarHeight - 4);
+    return manifold::ui::imgui::perfOverlayTabBoundsForIndex(getLocalBounds(), index);
 }
 
 juce::Rectangle<int> ImGuiPerfOverlayHost::contentBounds() const {
-    return getLocalBounds().reduced(kOuterPadding)
-        .withTrimmedTop(kTitleBarHeight + kContentTopGap + kTabBarHeight + kInnerPadding);
+    return manifold::ui::imgui::perfOverlayContentBounds(getLocalBounds());
 }
 
 void ImGuiPerfOverlayHost::paint(juce::Graphics& g) {
@@ -153,11 +134,8 @@ void ImGuiPerfOverlayHost::mouseDrag(const juce::MouseEvent& e) {
     }
 
     const auto delta = e.getScreenPosition() - dragStartScreen_;
-    auto next = dragStartBounds_.translated(delta.x, delta.y);
     const auto parentBounds = parent->getLocalBounds();
-
-    next.setX(juce::jlimit(parentBounds.getX(), parentBounds.getRight() - next.getWidth(), next.getX()));
-    next.setY(juce::jlimit(parentBounds.getY(), parentBounds.getBottom() - next.getHeight(), next.getY()));
+    auto next = manifold::ui::imgui::clampPerfOverlayDraggedBounds(dragStartBounds_, parentBounds, delta);
     setBounds(next);
     notifyBoundsChanged();
 }
@@ -209,25 +187,27 @@ void ImGuiPerfOverlayHost::mouseWheelMove(const juce::MouseEvent& e, const juce:
     }
 
     const auto snapshot = currentSnapshot();
-    const ImGuiPerfOverlayHost::TabData* activeTab = nullptr;
+    manifold::ui::imgui::PerfOverlaySnapshotData supportSnapshot;
+    supportSnapshot.activeTab = snapshot.activeTab;
+    supportSnapshot.title = snapshot.title;
+    supportSnapshot.tabs.reserve(snapshot.tabs.size());
     for (const auto& tab : snapshot.tabs) {
-        if (tab.id == snapshot.activeTab) {
-            activeTab = &tab;
-            break;
+        manifold::ui::imgui::PerfOverlayTabData copy;
+        copy.id = tab.id;
+        copy.label = tab.label;
+        copy.rows.reserve(tab.rows.size());
+        for (const auto& row : tab.rows) {
+            copy.rows.push_back({ row.label, row.value });
         }
-    }
-    if (activeTab == nullptr && !snapshot.tabs.empty()) {
-        activeTab = &snapshot.tabs.front();
-    }
-    if (activeTab == nullptr) {
-        return;
+        supportSnapshot.tabs.push_back(std::move(copy));
     }
 
-    const int visibleRows = std::max(1, contentBounds().getHeight() / kRowHeight);
-    const int maxScrollRows = std::max(0, static_cast<int>(activeTab->rows.size()) - visibleRows);
-    int next = scrollRows_.load(std::memory_order_relaxed);
-    next -= wheel.deltaY > 0.0f ? 1 : -1;
-    scrollRows_.store(juce::jlimit(0, maxScrollRows, next), std::memory_order_relaxed);
+    scrollRows_.store(manifold::ui::imgui::nextPerfOverlayScrollRows(
+                          supportSnapshot,
+                          contentBounds(),
+                          scrollRows_.load(std::memory_order_relaxed),
+                          wheel.deltaY),
+                      std::memory_order_relaxed);
     repaint();
 }
 
@@ -242,18 +222,20 @@ bool ImGuiPerfOverlayHost::keyPressed(const juce::KeyPress& key) {
         return true;
     }
 
-    const int currentIndex = [&]() {
-        for (int i = 0; i < static_cast<int>(snapshot.tabs.size()); ++i) {
-            if (snapshot.tabs[static_cast<std::size_t>(i)].id == snapshot.activeTab) {
-                return i;
-            }
-        }
-        return 0;
-    }();
+    manifold::ui::imgui::PerfOverlaySnapshotData supportSnapshot;
+    supportSnapshot.activeTab = snapshot.activeTab;
+    supportSnapshot.title = snapshot.title;
+    supportSnapshot.tabs.reserve(snapshot.tabs.size());
+    for (const auto& tab : snapshot.tabs) {
+        manifold::ui::imgui::PerfOverlayTabData copy;
+        copy.id = tab.id;
+        copy.label = tab.label;
+        supportSnapshot.tabs.push_back(std::move(copy));
+    }
 
     if (key.getKeyCode() == juce::KeyPress::leftKey || key.getKeyCode() == juce::KeyPress::rightKey) {
         const int delta = key.getKeyCode() == juce::KeyPress::leftKey ? -1 : 1;
-        const int nextIndex = juce::jlimit(0, static_cast<int>(snapshot.tabs.size()) - 1, currentIndex + delta);
+        const int nextIndex = manifold::ui::imgui::nextPerfOverlayTabIndex(supportSnapshot, delta);
         const auto& tab = snapshot.tabs[static_cast<std::size_t>(nextIndex)];
         setActiveTabLocally(tab.id);
         if (onTabChanged) {
@@ -347,13 +329,13 @@ void ImGuiPerfOverlayHost::renderOpenGL() {
     auto* draw = ImGui::GetWindowDrawList();
 
     draw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(static_cast<float>(bounds.getWidth()), static_cast<float>(bounds.getHeight())), 0x00000000);
-    draw->AddRectFilled(toImVec2(bounds.getTopLeft()), toImVec2BottomRight(bounds), manifold::ui::imgui::toU32(ImVec4(theme.panelBg.x, theme.panelBg.y, theme.panelBg.z, 0.88f)), kCornerRadius);
-    draw->AddRect(toImVec2(bounds.getTopLeft()), toImVec2BottomRight(bounds), manifold::ui::imgui::toU32(ImVec4(theme.panelBorder.x, theme.panelBorder.y, theme.panelBorder.z, 0.95f)), kCornerRadius, 0, 1.0f);
+    draw->AddRectFilled(toImVec2(bounds.getTopLeft()), toImVec2BottomRight(bounds), manifold::ui::imgui::toU32(ImVec4(theme.panelBg.x, theme.panelBg.y, theme.panelBg.z, 0.88f)), manifold::ui::imgui::kPerfOverlayCornerRadius);
+    draw->AddRect(toImVec2(bounds.getTopLeft()), toImVec2BottomRight(bounds), manifold::ui::imgui::toU32(ImVec4(theme.panelBorder.x, theme.panelBorder.y, theme.panelBorder.z, 0.95f)), manifold::ui::imgui::kPerfOverlayCornerRadius, 0, 1.0f);
 
-    draw->AddRectFilled(toImVec2(title.getTopLeft()), toImVec2BottomRight(title), manifold::ui::imgui::toU32(ImVec4(theme.panelBgAlt.x, theme.panelBgAlt.y, theme.panelBgAlt.z, 0.94f)), kCornerRadius, ImDrawFlags_RoundCornersTop);
+    draw->AddRectFilled(toImVec2(title.getTopLeft()), toImVec2BottomRight(title), manifold::ui::imgui::toU32(ImVec4(theme.panelBgAlt.x, theme.panelBgAlt.y, theme.panelBgAlt.z, 0.94f)), manifold::ui::imgui::kPerfOverlayCornerRadius, ImDrawFlags_RoundCornersTop);
     draw->AddRectFilled(ImVec2(static_cast<float>(title.getX()), static_cast<float>(title.getBottom() - 8)), ImVec2(static_cast<float>(title.getRight()), static_cast<float>(title.getBottom())), manifold::ui::imgui::toU32(ImVec4(theme.panelBgAlt.x, theme.panelBgAlt.y, theme.panelBgAlt.z, 0.94f)));
 
-    draw->AddText(ImVec2(static_cast<float>(kOuterPadding), static_cast<float>(title.getY() + 7)), manifold::ui::imgui::toU32(theme.text), snapshot.title.empty() ? "Performance" : snapshot.title.c_str());
+    draw->AddText(ImVec2(static_cast<float>(manifold::ui::imgui::kPerfOverlayOuterPadding), static_cast<float>(title.getY() + 7)), manifold::ui::imgui::toU32(theme.text), snapshot.title.empty() ? "Performance" : snapshot.title.c_str());
 
     draw->AddRectFilled(toImVec2(closeBounds.getTopLeft()), toImVec2BottomRight(closeBounds), manifold::ui::imgui::toU32(ImVec4(theme.buttonBg.x, theme.buttonBg.y, theme.buttonBg.z, 0.95f)), 4.0f);
     draw->AddText(ImVec2(static_cast<float>(closeBounds.getX() + 4), static_cast<float>(closeBounds.getY() - 1)), manifold::ui::imgui::toU32(theme.text), "x");
@@ -365,43 +347,46 @@ void ImGuiPerfOverlayHost::renderOpenGL() {
         const ImVec4 bg = active ? theme.accent : theme.buttonBg;
         const ImVec4 fg = active ? theme.selectionText : theme.textMuted;
         draw->AddRectFilled(toImVec2(tabRect.getTopLeft()), toImVec2BottomRight(tabRect), manifold::ui::imgui::toU32(bg), 6.0f);
-        draw->AddText(ImVec2(static_cast<float>(tabRect.getX() + kTabLabelInset), static_cast<float>(tabRect.getY() + 6)), manifold::ui::imgui::toU32(fg), tab.label.c_str());
+        draw->AddText(ImVec2(static_cast<float>(tabRect.getX() + manifold::ui::imgui::kPerfOverlayTabLabelInset), static_cast<float>(tabRect.getY() + 6)), manifold::ui::imgui::toU32(fg), tab.label.c_str());
     }
 
-    const ImGuiPerfOverlayHost::TabData* activeTab = nullptr;
+    manifold::ui::imgui::PerfOverlaySnapshotData supportSnapshot;
+    supportSnapshot.activeTab = snapshot.activeTab;
+    supportSnapshot.title = snapshot.title;
+    supportSnapshot.tabs.reserve(snapshot.tabs.size());
     for (const auto& tab : snapshot.tabs) {
-        if (tab.id == snapshot.activeTab) {
-            activeTab = &tab;
-            break;
+        manifold::ui::imgui::PerfOverlayTabData copy;
+        copy.id = tab.id;
+        copy.label = tab.label;
+        copy.rows.reserve(tab.rows.size());
+        for (const auto& row : tab.rows) {
+            copy.rows.push_back({ row.label, row.value });
         }
+        supportSnapshot.tabs.push_back(std::move(copy));
     }
-    if (activeTab == nullptr && !snapshot.tabs.empty()) {
-        activeTab = &snapshot.tabs.front();
-    }
+    const auto* activeTab = manifold::ui::imgui::resolvePerfOverlayActiveTab(supportSnapshot);
 
     if (activeTab != nullptr && rowsBounds.getWidth() > 0 && rowsBounds.getHeight() > 0) {
         draw->AddRectFilled(toImVec2(rowsBounds.getTopLeft()), toImVec2BottomRight(rowsBounds), manifold::ui::imgui::toU32(ImVec4(theme.panelBgAlt.x, theme.panelBgAlt.y, theme.panelBgAlt.z, 0.55f)), 6.0f);
 
-        const int visibleRows = std::max(1, rowsBounds.getHeight() / kRowHeight);
-        const int maxScrollRows = std::max(0, static_cast<int>(activeTab->rows.size()) - visibleRows);
-        const int scrollRows = juce::jlimit(0, maxScrollRows, scrollRows_.load(std::memory_order_relaxed));
+        const int scrollRows = manifold::ui::imgui::clampPerfOverlayScrollRows(activeTab, rowsBounds, scrollRows_.load(std::memory_order_relaxed));
         scrollRows_.store(scrollRows, std::memory_order_relaxed);
 
         const int labelWidth = std::max(120, static_cast<int>(rowsBounds.getWidth() * 0.56f));
         const int valueX = rowsBounds.getX() + labelWidth;
-        int rowY = rowsBounds.getY() + kInnerPadding;
+        int rowY = rowsBounds.getY() + manifold::ui::imgui::kPerfOverlayInnerPadding;
 
         draw->PushClipRect(
             ImVec2(static_cast<float>(rowsBounds.getX()), static_cast<float>(rowsBounds.getY())),
             ImVec2(static_cast<float>(rowsBounds.getRight()), static_cast<float>(rowsBounds.getBottom())),
             true);
 
-        for (int rowIndex = scrollRows; rowIndex < static_cast<int>(activeTab->rows.size()) && rowY + kRowHeight <= rowsBounds.getBottom() - kInnerPadding; ++rowIndex) {
+        for (int rowIndex = scrollRows; rowIndex < static_cast<int>(activeTab->rows.size()) && rowY + manifold::ui::imgui::kPerfOverlayRowHeight <= rowsBounds.getBottom() - manifold::ui::imgui::kPerfOverlayInnerPadding; ++rowIndex) {
             const auto& row = activeTab->rows[static_cast<std::size_t>(rowIndex)];
-            const auto rowRect = juce::Rectangle<int>(rowsBounds.getX() + kInnerPadding,
+            const auto rowRect = juce::Rectangle<int>(rowsBounds.getX() + manifold::ui::imgui::kPerfOverlayInnerPadding,
                                                       rowY,
-                                                      rowsBounds.getWidth() - kInnerPadding * 2,
-                                                      kRowHeight);
+                                                      rowsBounds.getWidth() - manifold::ui::imgui::kPerfOverlayInnerPadding * 2,
+                                                      manifold::ui::imgui::kPerfOverlayRowHeight);
             if (((rowIndex - scrollRows) & 1) == 0) {
                 draw->AddRectFilled(toImVec2(rowRect.getTopLeft()), toImVec2BottomRight(rowRect), manifold::ui::imgui::toU32(ImVec4(theme.panelBg.x, theme.panelBg.y, theme.panelBg.z, 0.24f)), 4.0f);
             }
@@ -409,9 +394,9 @@ void ImGuiPerfOverlayHost::renderOpenGL() {
             draw->AddText(ImVec2(static_cast<float>(rowRect.getX() + 8), static_cast<float>(rowRect.getY() + 4)), manifold::ui::imgui::toU32(theme.textMuted), row.label.c_str());
 
             const ImVec2 valueSize = ImGui::CalcTextSize(row.value.c_str());
-            const float valuePosX = static_cast<float>(std::max(valueX, rowRect.getRight() - 4 - static_cast<int>(std::ceil(valueSize.x))));
+            const float valuePosX = static_cast<float>(manifold::ui::imgui::perfOverlayValuePositionX(rowRect, valueX, valueSize.x));
             draw->AddText(ImVec2(valuePosX, static_cast<float>(rowRect.getY() + 4)), manifold::ui::imgui::toU32(theme.text), row.value.c_str());
-            rowY += kRowHeight;
+            rowY += manifold::ui::imgui::kPerfOverlayRowHeight;
         }
 
         draw->PopClipRect();

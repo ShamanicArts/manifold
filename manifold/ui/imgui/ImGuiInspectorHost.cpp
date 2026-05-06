@@ -4,6 +4,7 @@
 #include "ToolComponents.h"
 #include "WidgetPrimitives.h"
 #include "TextEditor.h"
+#include "InspectorHostStateSupport.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -65,20 +66,12 @@ void ImGuiInspectorHost::configureData(const BoundsInfo& bounds,
     rows_ = rows;
     activeProperty_ = activeProperty;
 
-    if (!activeProperty_.valid) {
-        textEditPath_.clear();
-        textEditLastSourceValue_.clear();
-        textEditBuffer_.clear();
-        return;
-    }
-
-    if (activeProperty_.editorType == "text") {
-        if (textEditPath_ != activeProperty_.path || textEditLastSourceValue_ != activeProperty_.textValue) {
-            textEditPath_ = activeProperty_.path;
-            textEditLastSourceValue_ = activeProperty_.textValue;
-            textEditBuffer_ = activeProperty_.textValue;
-        }
-    }
+    const auto nextTextState = manifold::ui::imgui::syncInspectorTextEditState(
+        activeProperty_,
+        { textEditPath_, textEditLastSourceValue_, textEditBuffer_ });
+    textEditPath_ = nextTextState.path;
+    textEditLastSourceValue_ = nextTextState.lastSourceValue;
+    textEditBuffer_ = nextTextState.buffer;
 }
 
 void ImGuiInspectorHost::configureScriptData(const ScriptInspectorData& scriptData) {
@@ -86,16 +79,23 @@ void ImGuiInspectorHost::configureScriptData(const ScriptInspectorData& scriptDa
     mode_ = Mode::ScriptInspector;
     scriptData_ = scriptData;
 
-    if (inlineTextEditor_ == nullptr || scriptData_.path.empty()) {
+    const auto update = manifold::ui::imgui::resolveInspectorInlineDocumentUpdate(
+        scriptData_,
+        inlineDocumentFile_.getFullPathName().toStdString(),
+        inlineAppliedSyncToken_);
+
+    if (inlineTextEditor_ == nullptr || update.clearState) {
         inlineDocumentFile_ = juce::File();
         inlineAppliedSyncToken_ = -1;
         return;
     }
 
-    inlineTextEditor_->SetReadOnlyEnabled(scriptData_.inlineReadOnly);
-    if (inlineAppliedSyncToken_ != scriptData_.syncToken || inlineDocumentFile_.getFullPathName().toStdString() != scriptData_.path) {
-        inlineDocumentFile_ = juce::File(scriptData_.path);
-        inlineAppliedSyncToken_ = scriptData_.syncToken;
+    if (update.setReadOnly) {
+        inlineTextEditor_->SetReadOnlyEnabled(scriptData_.inlineReadOnly);
+    }
+    if (update.reloadDocument) {
+        inlineDocumentFile_ = juce::File(update.nextPath);
+        inlineAppliedSyncToken_ = update.nextSyncToken;
         updateInlineLanguageDefinitionForPathLocked(inlineDocumentFile_);
         inlineTextEditor_->SetText(scriptData_.text);
     }
@@ -207,55 +207,23 @@ void ImGuiInspectorHost::mouseUp(const juce::MouseEvent& e) {
 void ImGuiInspectorHost::mouseExit(const juce::MouseEvent& e) {
     juce::ignoreUnused(e);
 
-    if (leftMouseDown_ || rightMouseDown_ || middleMouseDown_) {
-        return;
-    }
-
-    PendingEvent event;
-    event.type = EventType::MousePos;
-    event.x = -1.0f;
-    event.y = -1.0f;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueTextInputMouseExitIfIdle(pendingEvents, mouseButtons_);
 }
 
 void ImGuiInspectorHost::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
     queueMousePosition(e.position);
     syncModifierKeys(e.mods);
 
-    PendingEvent event;
-    event.type = EventType::MouseWheel;
-    event.x = wheel.deltaX;
-    event.y = wheel.deltaY;
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueTextInputMouseWheel(pendingEvents, wheel);
 }
 
 bool ImGuiInspectorHost::keyPressed(const juce::KeyPress& key) {
     syncModifierKeys(key.getModifiers());
 
-    if (const int imguiKey = translateKeyCodeToImGuiKey(key.getKeyCode()); imguiKey != 0) {
-        if (activeKeyCodes_.insert(key.getKeyCode()).second) {
-            PendingEvent event;
-            event.type = EventType::Key;
-            event.key = imguiKey;
-            event.down = true;
-            std::lock_guard<std::mutex> lock(inputMutex);
-            pendingEvents.push_back(std::move(event));
-        }
-    }
-
-    const auto textCharacter = key.getTextCharacter();
-    if (textCharacter >= 32 && !key.getModifiers().isCtrlDown() && !key.getModifiers().isCommandDown()) {
-        PendingEvent event;
-        event.type = EventType::Char;
-        event.codepoint = static_cast<unsigned int>(textCharacter);
-        std::lock_guard<std::mutex> lock(inputMutex);
-        pendingEvents.push_back(std::move(event));
-    }
-
+    std::lock_guard<std::mutex> lock(inputMutex);
+    manifold::ui::imgui::queueTextInputKeyPress(pendingEvents, activeKeyCodes_, key);
     return true;
 }
 
@@ -322,12 +290,12 @@ void ImGuiInspectorHost::renderOpenGL() {
         std::lock_guard<std::mutex> lock(inputMutex);
         for (const auto& event : pendingEvents) {
             switch (event.type) {
-                case EventType::MousePos: io.AddMousePosEvent(event.x, event.y); break;
-                case EventType::MouseButton: io.AddMouseButtonEvent(event.button, event.down); break;
-                case EventType::MouseWheel: io.AddMouseWheelEvent(event.x, event.y); break;
-                case EventType::Key: io.AddKeyEvent(static_cast<ImGuiKey>(event.key), event.down); break;
-                case EventType::Char: io.AddInputCharacter(event.codepoint); break;
-                case EventType::Focus: io.AddFocusEvent(event.focused); break;
+                case manifold::ui::imgui::TextInputHostEventType::MousePos: io.AddMousePosEvent(event.x, event.y); break;
+                case manifold::ui::imgui::TextInputHostEventType::MouseButton: io.AddMouseButtonEvent(event.button, event.down); break;
+                case manifold::ui::imgui::TextInputHostEventType::MouseWheel: io.AddMouseWheelEvent(event.x, event.y); break;
+                case manifold::ui::imgui::TextInputHostEventType::Key: io.AddKeyEvent(static_cast<ImGuiKey>(event.key), event.down); break;
+                case manifold::ui::imgui::TextInputHostEventType::Char: io.AddInputCharacter(event.codepoint); break;
+                case manifold::ui::imgui::TextInputHostEventType::Focus: io.AddFocusEvent(event.focused); break;
             }
         }
         pendingEvents.clear();
@@ -338,7 +306,7 @@ void ImGuiInspectorHost::renderOpenGL() {
     {
         std::lock_guard<std::mutex> lock(inputMutex);
         for (const auto& event : pendingEvents) {
-            if (event.type == EventType::MouseButton) {
+            if (event.type == manifold::ui::imgui::TextInputHostEventType::MouseButton) {
                 io.AddMouseButtonEvent(event.button, event.down);
             }
         }
@@ -545,12 +513,8 @@ void ImGuiInspectorHost::attachContextIfNeeded() {
 }
 
 void ImGuiInspectorHost::queueMousePosition(juce::Point<float> position) {
-    PendingEvent event;
-    event.type = EventType::MousePos;
-    event.x = position.x;
-    event.y = position.y;
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueTextInputMousePosition(pendingEvents, position);
 }
 
 void ImGuiInspectorHost::queueCurrentMousePosition() {
@@ -565,116 +529,33 @@ void ImGuiInspectorHost::queueCurrentMousePosition() {
 }
 
 void ImGuiInspectorHost::syncMouseButtons(const juce::ModifierKeys& mods) {
-    const bool nextLeft = mods.isLeftButtonDown();
-    const bool nextRight = mods.isRightButtonDown();
-    const bool nextMiddle = mods.isMiddleButtonDown();
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    const auto pushMouseButton = [&](bool& current, int button, bool nextState) {
-        if (current == nextState) {
-            return;
-        }
-        current = nextState;
-        PendingEvent event;
-        event.type = EventType::MouseButton;
-        event.button = button;
-        event.down = nextState;
-        pendingEvents.push_back(std::move(event));
-    };
-    pushMouseButton(leftMouseDown_, 0, nextLeft);
-    pushMouseButton(rightMouseDown_, 1, nextRight);
-    pushMouseButton(middleMouseDown_, 2, nextMiddle);
+    manifold::ui::imgui::syncTextInputMouseButtons(pendingEvents, mouseButtons_, mods);
 }
 
 void ImGuiInspectorHost::syncModifierKeys(const juce::ModifierKeys& mods) {
-    const bool nextCtrl = mods.isCtrlDown();
-    const bool nextShift = mods.isShiftDown();
-    const bool nextAlt = mods.isAltDown();
-    const bool nextSuper = mods.isCommandDown();
-
     std::lock_guard<std::mutex> lock(inputMutex);
-    const auto syncMod = [&](bool& state, int key, bool nextState) {
-        if (state == nextState) {
-            return;
-        }
-        state = nextState;
-        PendingEvent event;
-        event.type = EventType::Key;
-        event.key = key;
-        event.down = nextState;
-        pendingEvents.push_back(std::move(event));
-    };
-    syncMod(ctrlDown_, ImGuiMod_Ctrl, nextCtrl);
-    syncMod(shiftDown_, ImGuiMod_Shift, nextShift);
-    syncMod(altDown_, ImGuiMod_Alt, nextAlt);
-    syncMod(superDown_, ImGuiMod_Super, nextSuper);
+    manifold::ui::imgui::syncTextInputModifierKeys(pendingEvents, modifierKeys_, mods);
 }
 
 void ImGuiInspectorHost::releaseAllMouseButtons() {
     std::lock_guard<std::mutex> lock(inputMutex);
-    const auto releaseButton = [&](bool& current, int button) {
-        if (!current) {
-            return;
-        }
-        current = false;
-        PendingEvent event;
-        event.type = EventType::MouseButton;
-        event.button = button;
-        event.down = false;
-        pendingEvents.push_back(std::move(event));
-    };
-    releaseButton(leftMouseDown_, 0);
-    releaseButton(rightMouseDown_, 1);
-    releaseButton(middleMouseDown_, 2);
+    manifold::ui::imgui::releaseAllTextInputMouseButtons(pendingEvents, mouseButtons_);
 }
 
 void ImGuiInspectorHost::releaseInactiveKeys() {
-    if (activeKeyCodes_.empty()) {
-        return;
-    }
     std::lock_guard<std::mutex> lock(inputMutex);
-    for (auto it = activeKeyCodes_.begin(); it != activeKeyCodes_.end();) {
-        if (juce::KeyPress::isKeyCurrentlyDown(*it)) {
-            ++it;
-            continue;
-        }
-        const int imguiKey = translateKeyCodeToImGuiKey(*it);
-        if (imguiKey != 0) {
-            PendingEvent event;
-            event.type = EventType::Key;
-            event.key = imguiKey;
-            event.down = false;
-            pendingEvents.push_back(std::move(event));
-        }
-        it = activeKeyCodes_.erase(it);
-    }
+    manifold::ui::imgui::releaseInactiveTextInputKeys(pendingEvents, activeKeyCodes_);
 }
 
 void ImGuiInspectorHost::releaseAllActiveKeys() {
-    if (activeKeyCodes_.empty()) {
-        return;
-    }
     std::lock_guard<std::mutex> lock(inputMutex);
-    for (const int keyCode : activeKeyCodes_) {
-        const int imguiKey = translateKeyCodeToImGuiKey(keyCode);
-        if (imguiKey == 0) {
-            continue;
-        }
-        PendingEvent event;
-        event.type = EventType::Key;
-        event.key = imguiKey;
-        event.down = false;
-        pendingEvents.push_back(std::move(event));
-    }
-    activeKeyCodes_.clear();
+    manifold::ui::imgui::releaseAllTextInputKeys(pendingEvents, activeKeyCodes_);
 }
 
 void ImGuiInspectorHost::queueFocus(bool focused) {
-    PendingEvent event;
-    event.type = EventType::Focus;
-    event.focused = focused;
     std::lock_guard<std::mutex> lock(inputMutex);
-    pendingEvents.push_back(std::move(event));
+    manifold::ui::imgui::queueTextInputFocus(pendingEvents, focused);
 }
 
 void ImGuiInspectorHost::updateInlineLanguageDefinitionForPathLocked(const juce::File& file) {
@@ -682,60 +563,42 @@ void ImGuiInspectorHost::updateInlineLanguageDefinitionForPathLocked(const juce:
         return;
     }
 
-    const auto extension = file.getFileExtension().toLowerCase();
-    if (extension == ".lua") {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Lua);
-    } else if (extension == ".json" || extension == ".json5") {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Json);
-    } else if (extension == ".sql") {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Sql);
-    } else if (extension == ".glsl") {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Glsl);
-    } else if (extension == ".hlsl") {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Hlsl);
-    } else if (extension == ".py") {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Python);
-    } else if (extension == ".cs") {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Cs);
-    } else if (extension == ".c") {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::C);
-    } else if (extension == ".cpp" || extension == ".cxx" || extension == ".cc"
-               || extension == ".h" || extension == ".hpp" || extension == ".hh") {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Cpp);
-    } else {
-        inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::None);
+    const auto language = manifold::ui::imgui::resolveLanguageDefinitionForFile(file);
+    switch (language) {
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::Cpp:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Cpp);
+            break;
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::C:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::C);
+            break;
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::Cs:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Cs);
+            break;
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::Python:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Python);
+            break;
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::Lua:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Lua);
+            break;
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::Json:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Json);
+            break;
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::Sql:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Sql);
+            break;
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::Glsl:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Glsl);
+            break;
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::Hlsl:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::Hlsl);
+            break;
+        case manifold::ui::imgui::TextInputHostLanguageDefinition::None:
+        default:
+            inlineTextEditor_->SetLanguageDefinition(TextEditor::LanguageDefinitionId::None);
+            break;
     }
 }
 
 int ImGuiInspectorHost::translateKeyCodeToImGuiKey(int keyCode) {
-    if (keyCode == juce::KeyPress::tabKey) return ImGuiKey_Tab;
-    if (keyCode == juce::KeyPress::leftKey) return ImGuiKey_LeftArrow;
-    if (keyCode == juce::KeyPress::rightKey) return ImGuiKey_RightArrow;
-    if (keyCode == juce::KeyPress::upKey) return ImGuiKey_UpArrow;
-    if (keyCode == juce::KeyPress::downKey) return ImGuiKey_DownArrow;
-    if (keyCode == juce::KeyPress::pageUpKey) return ImGuiKey_PageUp;
-    if (keyCode == juce::KeyPress::pageDownKey) return ImGuiKey_PageDown;
-    if (keyCode == juce::KeyPress::homeKey) return ImGuiKey_Home;
-    if (keyCode == juce::KeyPress::endKey) return ImGuiKey_End;
-    if (keyCode == juce::KeyPress::insertKey) return ImGuiKey_Insert;
-    if (keyCode == juce::KeyPress::deleteKey) return ImGuiKey_Delete;
-    if (keyCode == juce::KeyPress::backspaceKey) return ImGuiKey_Backspace;
-    if (keyCode == juce::KeyPress::returnKey) return ImGuiKey_Enter;
-    if (keyCode == juce::KeyPress::escapeKey) return ImGuiKey_Escape;
-    if (keyCode == juce::KeyPress::spaceKey) return ImGuiKey_Space;
-    if (keyCode >= '0' && keyCode <= '9') return ImGuiKey_0 + (keyCode - '0');
-    if (keyCode >= 'a' && keyCode <= 'z') return ImGuiKey_A + (keyCode - 'a');
-    if (keyCode >= 'A' && keyCode <= 'Z') return ImGuiKey_A + (keyCode - 'A');
-    if (keyCode == ';') return ImGuiKey_Semicolon;
-    if (keyCode == '\'') return ImGuiKey_Apostrophe;
-    if (keyCode == ',') return ImGuiKey_Comma;
-    if (keyCode == '-') return ImGuiKey_Minus;
-    if (keyCode == '.') return ImGuiKey_Period;
-    if (keyCode == '/') return ImGuiKey_Slash;
-    if (keyCode == '=') return ImGuiKey_Equal;
-    if (keyCode == '[') return ImGuiKey_LeftBracket;
-    if (keyCode == '\\') return ImGuiKey_Backslash;
-    if (keyCode == ']') return ImGuiKey_RightBracket;
-    if (keyCode == '`') return ImGuiKey_GraveAccent;
-    return 0;
+    return manifold::ui::imgui::translateTextInputKeyCodeToImGuiKey(keyCode);
 }

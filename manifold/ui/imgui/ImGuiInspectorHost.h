@@ -1,5 +1,7 @@
 #pragma once
 
+#include "TextInputHostSupport.h"
+
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_opengl/juce_opengl.h>
 
@@ -173,26 +175,6 @@ private:
     void renderOpenGL() override;
     void openGLContextClosing() override;
 
-    enum class EventType {
-        MousePos,
-        MouseButton,
-        MouseWheel,
-        Key,
-        Char,
-        Focus,
-    };
-
-    struct PendingEvent {
-        EventType type = EventType::MousePos;
-        float x = 0.0f;
-        float y = 0.0f;
-        int button = 0;
-        bool down = false;
-        int key = 0;
-        unsigned int codepoint = 0;
-        bool focused = false;
-    };
-
     void attachContextIfNeeded();
     void queueMousePosition(juce::Point<float> position);
     void queueCurrentMousePosition();
@@ -210,7 +192,7 @@ private:
     void* imguiContext = nullptr;
 
     std::mutex inputMutex;
-    std::vector<PendingEvent> pendingEvents;
+    std::vector<manifold::ui::imgui::TextInputHostEvent> pendingEvents;
 
     mutable std::mutex dataMutex_;
     Mode mode_ = Mode::HierarchyProperties;
@@ -225,13 +207,8 @@ private:
     juce::File inlineDocumentFile_;
     int64_t inlineAppliedSyncToken_ = -1;
 
-    bool leftMouseDown_ = false;
-    bool rightMouseDown_ = false;
-    bool middleMouseDown_ = false;
-    bool ctrlDown_ = false;
-    bool shiftDown_ = false;
-    bool altDown_ = false;
-    bool superDown_ = false;
+    manifold::ui::imgui::TextInputHostButtons mouseButtons_;
+    manifold::ui::imgui::TextInputHostModifiers modifierKeys_;
     std::unordered_set<int> activeKeyCodes_;
 
     std::atomic<int> requestSelectRowIndex_{-1};

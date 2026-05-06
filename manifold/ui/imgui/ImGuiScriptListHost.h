@@ -1,5 +1,7 @@
 #pragma once
 
+#include "HierarchyHostInputSupport.h"
+
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_opengl/juce_opengl.h>
 
@@ -53,22 +55,6 @@ private:
     void renderOpenGL() override;
     void openGLContextClosing() override;
 
-    enum class EventType {
-        MousePos,
-        MouseButton,
-        MouseWheel,
-        Focus,
-    };
-
-    struct PendingEvent {
-        EventType type = EventType::MousePos;
-        float x = 0.0f;
-        float y = 0.0f;
-        int button = 0;
-        bool down = false;
-        bool focused = false;
-    };
-
     void attachContextIfNeeded();
     void queueMousePosition(juce::Point<float> position);
     void queueCurrentMousePosition();
@@ -80,14 +66,12 @@ private:
     void* imguiContext = nullptr;
 
     std::mutex inputMutex;
-    std::vector<PendingEvent> pendingEvents;
+    std::vector<manifold::ui::imgui::HierarchyHostInputEvent> pendingEvents;
 
     std::mutex rowsMutex_;
     std::vector<ScriptRow> rows_;
 
-    bool leftMouseDown_ = false;
-    bool rightMouseDown_ = false;
-    bool middleMouseDown_ = false;
+    manifold::ui::imgui::HierarchyHostMouseButtons mouseButtons_;
 
     std::atomic<int> requestSelectIndex_{-1};
     std::atomic<int> requestOpenIndex_{-1};

@@ -1,6 +1,7 @@
 #include "ToolComponents.h"
 
 #include "Theme.h"
+#include "ToolComponentSupport.h"
 #include "WidgetPrimitives.h"
 #include "imgui.h"
 #include "misc/cpp/imgui_stdlib.h"
@@ -14,41 +15,27 @@ namespace imgui {
 namespace {
 
 ImVec4 argbToImVec4(std::uint32_t argb) {
-    const float a = static_cast<float>((argb >> 24) & 0xffu) / 255.0f;
-    const float r = static_cast<float>((argb >> 16) & 0xffu) / 255.0f;
-    const float g = static_cast<float>((argb >> 8) & 0xffu) / 255.0f;
-    const float b = static_cast<float>(argb & 0xffu) / 255.0f;
-    return ImVec4(r, g, b, a);
+    return toolComponentArgbToImVec4(argb);
 }
 
 std::uint32_t imVec4ToArgb(const ImVec4& rgba) {
-    const auto clampByte = [](float v) {
-        return static_cast<std::uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f);
-    };
-    const std::uint32_t r = clampByte(rgba.x);
-    const std::uint32_t g = clampByte(rgba.y);
-    const std::uint32_t b = clampByte(rgba.z);
-    const std::uint32_t a = clampByte(rgba.w);
-    return (a << 24) | (r << 16) | (g << 8) | b;
+    return toolComponentImVec4ToArgb(rgba);
 }
 
 double resolveRuntimeStep(const ImGuiInspectorHost::RuntimeParam& param) {
-    if (param.stepValue > 0.0) {
-        return param.stepValue;
-    }
-
-    if (param.hasMin && param.hasMax) {
-        const auto span = std::abs(param.maxValue - param.minValue);
-        if (span <= 2.0) {
-            return 0.01;
-        }
-        if (span <= 20.0) {
-            return 0.1;
-        }
-        return std::max(0.01, span / 100.0);
-    }
-
-    return std::max(0.01, std::abs(param.value) * 0.05);
+    return resolveToolComponentRuntimeStep({
+        param.endpointPath,
+        param.path,
+        param.displayValue,
+        param.active,
+        param.hasValue,
+        param.value,
+        param.hasMin,
+        param.hasMax,
+        param.minValue,
+        param.maxValue,
+        param.stepValue,
+    });
 }
 
 [[maybe_unused]] juce::Rectangle<int> toLocalRect(const ImVec2& min, const ImVec2& size) {
@@ -377,44 +364,31 @@ void drawDspGraphPanel(const ImGuiInspectorHost::ScriptInspectorData& scriptData
         drawList->AddText(ImVec2(canvasMin.x + 8.0f, canvasMin.y + 28.0f),
                           toU32(theme.textMuted), "No graph parsed");
     } else {
-        const int cols = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<double>(scriptData.graphNodes.size())))));
-        const float cellW = 110.0f;
-        const float cellH = 48.0f;
-        const float nodeW = 96.0f;
-        const float nodeH = 24.0f;
-        const float originX = canvasMin.x + 12.0f + static_cast<float>(scriptData.graphPanX);
-        const float originY = canvasMin.y + 24.0f + static_cast<float>(scriptData.graphPanY);
-        std::vector<ImVec2> centers(scriptData.graphNodes.size());
-        std::vector<ImVec2> corners(scriptData.graphNodes.size());
-
-        for (std::size_t i = 0; i < scriptData.graphNodes.size(); ++i) {
-            const int col = static_cast<int>(i) % cols;
-            const int row = static_cast<int>(i) / cols;
-            const float x = originX + static_cast<float>(col) * cellW;
-            const float y = originY + static_cast<float>(row) * cellH;
-            corners[i] = ImVec2(x, y);
-            centers[i] = ImVec2(x + nodeW * 0.5f, y + nodeH * 0.5f);
-        }
+        const auto layout = buildToolComponentGraphLayout(
+            scriptData.graphNodes.size(),
+            canvasMin.x + 12.0f + static_cast<float>(scriptData.graphPanX),
+            canvasMin.y + 24.0f + static_cast<float>(scriptData.graphPanY));
 
         for (const auto& edge : scriptData.graphEdges) {
-            if (edge.fromIndex < 1 || edge.toIndex < 1) {
+            if (!toolComponentGraphEdgeIsRenderable(layout, { edge.fromIndex, edge.toIndex })) {
                 continue;
             }
             const auto fromIndex = static_cast<std::size_t>(edge.fromIndex - 1);
             const auto toIndex = static_cast<std::size_t>(edge.toIndex - 1);
-            if (fromIndex >= centers.size() || toIndex >= centers.size()) {
-                continue;
-            }
-            drawList->AddLine(centers[fromIndex], centers[toIndex], toU32(theme.panelBorder), 1.0f);
+            drawList->AddLine(ImVec2(layout.centers[fromIndex].x, layout.centers[fromIndex].y),
+                              ImVec2(layout.centers[toIndex].x, layout.centers[toIndex].y),
+                              toU32(theme.panelBorder),
+                              1.0f);
         }
 
         for (std::size_t i = 0; i < scriptData.graphNodes.size(); ++i) {
             const auto& node = scriptData.graphNodes[i];
-            const auto& corner = corners[i];
-            const ImVec2 nodeMax(corner.x + nodeW, corner.y + nodeH);
-            drawList->AddRectFilled(corner, nodeMax, toU32(theme.buttonBg), theme.frameRounding);
-            drawList->AddRect(corner, nodeMax, toU32(theme.accent), theme.frameRounding);
-            const auto label = node.var + ":" + node.prim;
+            const auto& corner = layout.corners[i];
+            const ImVec2 nodeMin(corner.x, corner.y);
+            const ImVec2 nodeMax(corner.x + layout.nodeW, corner.y + layout.nodeH);
+            drawList->AddRectFilled(nodeMin, nodeMax, toU32(theme.buttonBg), theme.frameRounding);
+            drawList->AddRect(nodeMin, nodeMax, toU32(theme.accent), theme.frameRounding);
+            const auto label = buildToolComponentGraphNodeLabel({ node.var, node.prim });
             drawList->AddText(ImVec2(corner.x + 4.0f, corner.y + 5.0f), toU32(theme.text), label.c_str());
         }
     }

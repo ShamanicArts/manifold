@@ -1155,6 +1155,24 @@ add_executable(ThemeSupportContractHarness manifold/headless/ThemeSupportContrac
 
 add_executable(HierarchyHostInputContractHarness manifold/headless/HierarchyHostInputContractHarness.cpp)
 
+add_executable(TextInputHostSupportContractHarness manifold/headless/TextInputHostSupportContractHarness.cpp)
+
+add_executable(ScriptListSupportContractHarness manifold/headless/ScriptListSupportContractHarness.cpp)
+
+add_executable(PerfOverlaySupportContractHarness manifold/headless/PerfOverlaySupportContractHarness.cpp)
+
+add_executable(ToolComponentSupportContractHarness manifold/headless/ToolComponentSupportContractHarness.cpp)
+
+add_executable(RuntimeNodeHostSupportContractHarness manifold/headless/RuntimeNodeHostSupportContractHarness.cpp)
+
+add_executable(EditorShellImGuiSupportContractHarness manifold/headless/EditorShellImGuiSupportContractHarness.cpp)
+
+add_executable(InspectorHostStateSupportContractHarness manifold/headless/InspectorHostStateSupportContractHarness.cpp)
+
+add_executable(ManifoldImGuiGlobalsContractHarness manifold/headless/ManifoldImGuiGlobalsContractHarness.cpp)
+
+add_executable(ImGuiOpenGLBackendSmokeHarness manifold/headless/ImGuiOpenGLBackendSmokeHarness.cpp)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -1505,6 +1523,135 @@ target_link_libraries(HierarchyHostInputContractHarness
         ${MANIFOLD_ML_TARGET}
         ${MANIFOLD_EXTRA_GL_LIBS})
 
+manifold_target_include_project_and_ableton(TextInputHostSupportContractHarness)
+target_link_libraries(TextInputHostSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(ScriptListSupportContractHarness)
+target_link_libraries(ScriptListSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(PerfOverlaySupportContractHarness)
+target_link_libraries(PerfOverlaySupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(ToolComponentSupportContractHarness)
+target_link_libraries(ToolComponentSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(RuntimeNodeHostSupportContractHarness)
+target_link_libraries(RuntimeNodeHostSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(EditorShellImGuiSupportContractHarness)
+target_link_libraries(EditorShellImGuiSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(InspectorHostStateSupportContractHarness)
+target_link_libraries(InspectorHostStateSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(ManifoldImGuiGlobalsContractHarness)
+target_link_libraries(ManifoldImGuiGlobalsContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
+manifold_target_include_project_and_ableton(ImGuiOpenGLBackendSmokeHarness)
+target_include_directories(ImGuiOpenGLBackendSmokeHarness
+    PRIVATE
+        ${IMGUI_DIR})
+target_link_libraries(ImGuiOpenGLBackendSmokeHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway
+        ${MANIFOLD_ML_TARGET}
+        ${MANIFOLD_EXTRA_GL_LIBS})
+
 target_include_directories(VideoSamplerHarness
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1682,6 +1829,60 @@ target_compile_definitions(ThemeSupportContractHarness
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(HierarchyHostInputContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(TextInputHostSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(ScriptListSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(PerfOverlaySupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(ToolComponentSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(RuntimeNodeHostSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(EditorShellImGuiSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(InspectorHostStateSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(ManifoldImGuiGlobalsContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(ImGuiOpenGLBackendSmokeHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
@@ -1938,6 +2139,69 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/hierarchy_host_input_contract_golden.json)
 set_tests_properties(manifold_hierarchy_host_input_contract PROPERTIES
     LABELS "manifold;imgui;hierarchy;input;contract")
+
+add_test(
+    NAME manifold_text_input_host_support_contract
+    COMMAND $<TARGET_FILE:TextInputHostSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/text_input_host_support_contract_golden.json)
+set_tests_properties(manifold_text_input_host_support_contract PROPERTIES
+    LABELS "manifold;imgui;input;support;contract")
+
+add_test(
+    NAME manifold_script_list_support_contract
+    COMMAND $<TARGET_FILE:ScriptListSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/script_list_support_contract_golden.json)
+set_tests_properties(manifold_script_list_support_contract PROPERTIES
+    LABELS "manifold;imgui;scriptlist;support;contract")
+
+add_test(
+    NAME manifold_perf_overlay_support_contract
+    COMMAND $<TARGET_FILE:PerfOverlaySupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/perf_overlay_support_contract_golden.json)
+set_tests_properties(manifold_perf_overlay_support_contract PROPERTIES
+    LABELS "manifold;imgui;perf;support;contract")
+
+add_test(
+    NAME manifold_tool_component_support_contract
+    COMMAND $<TARGET_FILE:ToolComponentSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tool_component_support_contract_golden.json)
+set_tests_properties(manifold_tool_component_support_contract PROPERTIES
+    LABELS "manifold;imgui;tools;support;contract")
+
+add_test(
+    NAME manifold_runtime_node_host_support_contract
+    COMMAND $<TARGET_FILE:RuntimeNodeHostSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/runtime_node_host_support_contract_golden.json)
+set_tests_properties(manifold_runtime_node_host_support_contract PROPERTIES
+    LABELS "manifold;imgui;runtime;support;contract")
+
+add_test(
+    NAME manifold_editor_shell_imgui_support_contract
+    COMMAND $<TARGET_FILE:EditorShellImGuiSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/editor_shell_imgui_support_contract_golden.json)
+set_tests_properties(manifold_editor_shell_imgui_support_contract PROPERTIES
+    LABELS "manifold;imgui;hierarchy;inspector;support;contract")
+
+add_test(
+    NAME manifold_inspector_host_state_support_contract
+    COMMAND $<TARGET_FILE:InspectorHostStateSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/inspector_host_state_support_contract_golden.json)
+set_tests_properties(manifold_inspector_host_state_support_contract PROPERTIES
+    LABELS "manifold;imgui;inspector;support;contract")
+
+add_test(
+    NAME manifold_imgui_globals_contract
+    COMMAND $<TARGET_FILE:ManifoldImGuiGlobalsContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/manifold_imgui_globals_contract_golden.json)
+set_tests_properties(manifold_imgui_globals_contract PROPERTIES
+    LABELS "manifold;imgui;globals;contract")
+
+add_test(
+    NAME manifold_imgui_opengl_backend_smoke
+    COMMAND $<TARGET_FILE:ImGuiOpenGLBackendSmokeHarness>)
+set_tests_properties(manifold_imgui_opengl_backend_smoke PROPERTIES
+    LABELS "manifold;imgui;opengl;smoke"
+    SKIP_RETURN_CODE 77)
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:
