@@ -171,13 +171,17 @@ local function shaderChildren()
     dropdown("shaderLayer", 96, 25, 44, 18, {"L1","L2","L3","L4","L5","L6","L7","L8"}, 1, C.sample),
     toggle("shaderEnabled", 146, 25, 44, 18, "Off", "On", true, nil, C.seg),
     dropdown("effectSelect", 196, 25, 120, 18, {"Passthrough"}, 1, C.sample),
-    label("shaderStatus", 8, 178, 310, 14, "Shader: --", C.muted, 8),
+    slider("sourceParam1", 8, 47, 104, 17, "Src1", 0, 1, 0.01, 0.5, nil, C.live),
+    slider("sourceParam2", 118, 47, 104, 17, "Src2", 0, 1, 0.01, 0.5, nil, C.seg),
+    slider("sourceParam3", 8, 67, 104, 17, "Src3", 0, 1, 0.01, 0.5, nil, C.sample),
+    slider("sourceParam4", 118, 67, 104, 17, "Src4", 0, 1, 0.01, 0.5, nil, C.pose),
+    label("shaderStatus", 8, 208, 310, 14, "Shader: --", C.muted, 8),
   }
   local grid = paramGrid("shaderParam", {
     {"P1",0,1,0.01,0.5,nil,C.live},{"P2",0,1,0.01,0.5,nil,C.seg},{"P3",0,1,0.01,0.5,nil,C.sample},
     {"P4",0,1,0.01,0.5,nil,C.bad},{"P5",0,1,0.01,0.5,nil,C.pose},{"P6",0,1,0.01,0.5,nil,C.live},
     {"P7",0,1,0.01,0.5,nil,C.warn},{"P8",0,1,0.01,0.5,nil,0xffec4899},{"P9",0,1,0.01,0.5,nil,0xff14b8a6},
-  }, 8, 51, 104, 18, 3)
+  }, 8, 91, 104, 18, 3)
   for _, child in ipairs(grid) do children[#children + 1] = child end
   return children
 end

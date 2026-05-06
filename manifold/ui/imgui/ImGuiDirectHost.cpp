@@ -1368,7 +1368,8 @@ bool ImGuiDirectHost::renderEmbeddedRuntimePanel(RuntimeNode& root,
                                           manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer)
                 : manifold::ui::imgui::RuntimeNodeRenderer::HitTestResult{};
             const bool triggerClick = releaseHit.stableId != 0 && releaseHit.stableId == state.pressedNodeStableId;
-            invokeLiveMouseUp(*pressedNode, localPosition, triggerClick, false, mods);
+            const bool triggerDoubleClick = triggerClick && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+            invokeLiveMouseUp(*pressedNode, localPosition, triggerClick, triggerDoubleClick, mods);
         }
         state.pressedNodeStableId = 0;
     }

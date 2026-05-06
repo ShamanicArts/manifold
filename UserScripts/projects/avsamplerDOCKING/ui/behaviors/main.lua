@@ -671,14 +671,30 @@ local function updateShader(ctx)
       local params = {}
       for p = 1, 9 do
         local spec = effect.params and effect.params[p]
-        if spec then params[spec.id] = L.params[p] or spec.default or 0 end
+        if spec then
+          local normalized = L.params[p] or spec.default or 0
+          local pmin = tonumber(spec.min) or 0
+          local pmax = tonumber(spec.max) or 1
+          params[spec.id] = pmin + normalized * (pmax - pmin)
+        end
       end
       layers[#layers + 1] = { enabled = true, effectId = effect.id, params = params }
     end
   end
   local source = { type = "webcam" }
   local choice = ctx.sources[ctx.shader.sourceIndex]
-  if choice and choice.kind == "generator" then source = { type = "generator", sourceId = choice.id, params = choice.params or {} } end
+  if choice and choice.kind == "generator" then
+    local sourceParams = {}
+    local specParams = choice.params or {}
+    for pi = 1, #specParams do
+      local pspec = specParams[pi]
+      local normalized = ctx.shaderSourceParams and ctx.shaderSourceParams[pspec.id] or tonumber(pspec.default) or 0
+      local pmin = tonumber(pspec.min) or 0
+      local pmax = tonumber(pspec.max) or 1
+      sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
+    end
+    source = { type = "generator", sourceId = choice.id, params = sourceParams }
+  end
   if shaders and shaders.buildPipeline then
     local ok, payload = pcall(shaders.buildPipeline, layers, "cover", source)
     if ok and payload then ctx.widgets.outputViewport.node:setCustomSurface("gpu_shader", payload) end
@@ -691,7 +707,26 @@ local function refreshShaderLists(ctx)
   if #ctx.effects == 0 then ctx.effects = { { id = "none", name = "Passthrough", params = {} } } end
   ctx.sources = { { kind = "webcam", id = "webcam", name = "Webcam", params = {} } }
   local gens = (sources and sources.list and sources.list()) or {}
-  for i = 1, #gens do ctx.sources[#ctx.sources + 1] = { kind = "generator", id = gens[i].id, name = gens[i].name or gens[i].id, params = {} } end
+  for i = 1, #gens do
+    local gen = gens[i]
+    local genParams = gen.params or {}
+    local newParams = {}
+    for pi = 1, #genParams do
+      local pspec = genParams[pi]
+      if pspec then
+        newParams[pi] = {
+          id = pspec.id,
+          name = pspec.name,
+          unit = pspec.unit,
+          min = pspec.min,
+          max = pspec.max,
+          default = pspec.default,
+          step = pspec.step,
+        }
+      end
+    end
+    ctx.sources[#ctx.sources + 1] = { kind = "generator", id = gen.id, name = gen.name or gen.id, params = newParams }
+  end
   local effectNames, sourceNames, poseNames = {}, {}, {}
   for i, source in ipairs(POSE_SOURCES) do poseNames[i] = source.label end
   for i, e in ipairs(ctx.effects) do effectNames[i] = tostring(e.name or e.id or "Effect") end
@@ -731,11 +766,16 @@ local function syncShaderEditor(ctx)
     local spec = effect.params and effect.params[p]
     if spec then
       if sl.setLabel then sl:setLabel(spec.name or spec.id or ("P" .. p)) end
-      sl._min = tonumber(spec.min) or 0
-      sl._max = tonumber(spec.max) or 1
+      local pmin = tonumber(spec.min) or 0
+      local pmax = tonumber(spec.max) or 1
+      sl._min = pmin
+      sl._max = pmax
       sl._step = tonumber(spec.step) or 0.01
       setVisible(sl, true)
-      setValueSilently(sl, L.params[p] or spec.default or 0)
+      -- L.params[p] stores [0,1] normalized; convert to display range
+      local normalized = L.params[p] or tonumber(spec.default) or 0
+      local displayVal = clamp(pmin + normalized * (pmax - pmin), pmin, pmax)
+      setValueSilently(sl, displayVal)
     else
       setVisible(sl, false)
     end
@@ -919,7 +959,7 @@ local function syncParamsFromHost(ctx)
   setCaptureButtonAppearance(ctx)
 
   local sourceIndex = math.max(1, math.min(#(ctx.sources or {}), round(readParam(NS .. "/shader/source", ctx.shader.sourceIndex))))
-  if sourceIndex ~= ctx.shader.sourceIndex then ctx.shader.sourceIndex = sourceIndex; setSelectedSilently(ctx.widgets.sourceSelect, sourceIndex); changedShader = true end
+  if sourceIndex ~= ctx.shader.sourceIndex then ctx.shader.sourceIndex = sourceIndex; setSelectedSilently(ctx.widgets.sourceSelect, sourceIndex); changedShader = true; syncShaderSourceParams(ctx) end
   local activeLayer = math.max(1, math.min(8, round(readParam(NS .. "/shader/active_layer", ctx.shader.activeLayer))))
   if activeLayer ~= ctx.shader.activeLayer then ctx.shader.activeLayer = activeLayer; syncShaderEditor(ctx) end
   for l = 1, 8 do
@@ -1095,20 +1135,59 @@ local function layoutSliceEmbed(ctx, w, h)
   setBounds(ctx.widgets.sliceHelp, pad, 50, math.max(1, w - pad * 2), math.max(42, h - 54))
 end
 
+local function syncShaderSourceParams(ctx)
+  local choice = ctx.sources[ctx.shader.sourceIndex]
+  local isGen = choice and choice.kind == "generator"
+  ctx.shaderSourceParams = ctx.shaderSourceParams or {}
+  local specParams = (isGen and choice.params) or {}
+  for pi = 1, 4 do
+    local sl = ctx.widgets["sourceParam" .. pi]
+    local pspec = specParams[pi]
+    if sl and pspec then
+      local pmin = tonumber(pspec.min) or 0
+      local pmax = tonumber(pspec.max) or 1
+      if sl.setLabel then sl:setLabel(pspec.name or pspec.id or ("SrcP" .. pi)) end
+      sl._min = pmin
+      sl._max = pmax
+      sl._step = tonumber(pspec.step) or 0.01
+      setVisible(sl, true)
+      if ctx.shaderSourceParams[pspec.id] == nil then
+        local defaultNorm = (tonumber(pspec.default) or pmin - pmin) / math.max(0.001, pmax - pmin)
+        ctx.shaderSourceParams[pspec.id] = clamp(defaultNorm, 0, 1)
+      end
+      local displayVal = pmin + ctx.shaderSourceParams[pspec.id] * (pmax - pmin)
+      setValueSilently(sl, displayVal)
+    elseif sl then
+      setVisible(sl, false)
+    end
+  end
+end
+
 local function layoutShaderEmbed(ctx, w, h)
   setBounds(ctx.widgets.shaderEmbed, 0, 0, w, h)
-  local pad, gap = 8, 6
+  local pad, gap = 8, 4
   setBounds(ctx.widgets.sourceSelect, pad, 25, 92, 18)
   setBounds(ctx.widgets.shaderLayer, 106, 25, 48, 18)
   setBounds(ctx.widgets.shaderEnabled, 160, 25, 50, 18)
   setBounds(ctx.widgets.effectSelect, 216, 25, math.max(110, w - 224), 18)
+  local srcRowY = 47
+  local srcCount = 4
+  local srcCols = 2
+  local srcColW = math.max(80, math.floor((w - pad * 2 - gap * (srcCols - 1)) / srcCols))
+  for pi = 1, srcCount do
+    local col = (pi - 1) % srcCols
+    local row = math.floor((pi - 1) / srcCols)
+    setBounds(ctx.widgets["sourceParam" .. pi], pad + col * (srcColW + gap), srcRowY + row * 22, math.max(1, srcColW - gap), 17)
+  end
+  local shaderY = srcRowY + math.ceil(srcCount / srcCols) * 22 + 2
   local cols, colW = 3, math.max(92, math.floor((w - pad * 2) / 3))
   for p = 1, 9 do
     local col = (p - 1) % cols
     local row = math.floor((p - 1) / cols)
-    setBounds(ctx.widgets["shaderParam" .. p], pad + col * colW, 51 + row * 22, math.max(1, colW - 6), 18)
+    setBounds(ctx.widgets["shaderParam" .. p], pad + col * colW, shaderY + row * 22, math.max(1, colW - 6), 18)
   end
-  setBounds(ctx.widgets.shaderStatus, pad, math.max(178, h - 18), math.max(1, w - pad * 2), 14)
+  setBounds(ctx.widgets.shaderStatus, pad, math.max(shaderY + 66, h - 18), math.max(1, w - pad * 2), 14)
+  syncShaderSourceParams(ctx)
 end
 
 local function layoutMappingEmbed(ctx, w, h)
@@ -1320,7 +1399,7 @@ local function renderParametersPanel(ctx)
   end
   imguiSpacing()
   imguiSeparatorText("Shader")
-  renderEmbeddedPanel(ctx, "shaderEmbed", layoutShaderEmbed, 202)
+  renderEmbeddedPanel(ctx, "shaderEmbed", layoutShaderEmbed, 248)
   imguiSpacing()
   imguiSeparatorText("Pose / Seg / Mapping")
   renderEmbeddedPanel(ctx, "mappingEmbed", layoutMappingEmbed, 252)
@@ -1446,6 +1525,7 @@ function M.init(ctx)
 
   refreshShaderLists(ctx)
   syncShaderEditor(ctx)
+  syncShaderSourceParams(ctx)
   updateShader(ctx)
   refreshDevices(ctx)
   refreshMidi(ctx)
@@ -1520,6 +1600,7 @@ function M.init(ctx)
   ctx.widgets.sourceSelect._onSelect = function(idx)
     ctx.shader.sourceIndex = idx
     writeParam(NS .. "/shader/source", idx)
+    syncShaderSourceParams(ctx)
     updateShader(ctx)
   end
   ctx.widgets.shaderLayer._onSelect = function(idx)
@@ -1537,13 +1618,37 @@ function M.init(ctx)
     L.effectIndex = idx
     writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/effect", idx)
     syncShaderEditor(ctx)
+    syncShaderSourceParams(ctx)
     updateShader(ctx)
   end
   for p = 1, 9 do
     ctx.widgets["shaderParam" .. p]._onChange = function(v)
-      ctx.shader.layers[ctx.shader.activeLayer].params[p] = v
-      writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/param/" .. p, v)
+      local L = ctx.shader.layers[ctx.shader.activeLayer]
+      local effect = ctx.effects[L.effectIndex] or {}
+      local spec = effect.params and effect.params[p]
+      local pmin = tonumber(spec and spec.min) or 0
+      local pmax = tonumber(spec and spec.max) or 1
+      local normalized = (v - pmin) / math.max(0.001, pmax - pmin)
+      L.params[p] = normalized
+      writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/param/" .. p, normalized)
       updateShader(ctx)
+    end
+  end
+  for pi = 1, 4 do
+    local sl = ctx.widgets["sourceParam" .. pi]
+    if sl then
+      sl._onChange = function(v)
+        local choice = ctx.sources[ctx.shader.sourceIndex]
+        local pspec = choice and choice.params and choice.params[pi] or nil
+        if pspec then
+          local pmin = tonumber(pspec.min) or 0
+          local pmax = tonumber(pspec.max) or 1
+          local normalized = (v - pmin) / math.max(0.001, pmax - pmin)
+          ctx.shaderSourceParams = ctx.shaderSourceParams or {}
+          ctx.shaderSourceParams[pspec.id] = normalized
+        end
+        updateShader(ctx)
+      end
     end
   end
 
