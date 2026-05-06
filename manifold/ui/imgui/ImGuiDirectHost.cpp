@@ -34,127 +34,6 @@
 
 using namespace juce::gl;
 
-#if JUCE_LINUX
-struct ImGuiDirectHost::EglOffscreenContext {
-    ~EglOffscreenContext() { shutdown(); }
-
-    bool initialise(int newWidth, int newHeight) {
-        if (newWidth <= 0 || newHeight <= 0) {
-            return false;
-        }
-
-        if (display != EGL_NO_DISPLAY && width == newWidth && height == newHeight) {
-            return true;
-        }
-
-        shutdown();
-
-        display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-        if (display == EGL_NO_DISPLAY) {
-            return false;
-        }
-
-        EGLint major = 0;
-        EGLint minor = 0;
-        if (!eglInitialize(display, &major, &minor)) {
-            shutdown();
-            return false;
-        }
-
-        if (!eglBindAPI(EGL_OPENGL_API)) {
-            shutdown();
-            return false;
-        }
-
-        const EGLint configAttribs[] = {
-            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-            EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-            EGL_RED_SIZE, 8,
-            EGL_GREEN_SIZE, 8,
-            EGL_BLUE_SIZE, 8,
-            EGL_ALPHA_SIZE, 8,
-            EGL_DEPTH_SIZE, 16,
-            EGL_NONE
-        };
-
-        EGLint numConfigs = 0;
-        if (!eglChooseConfig(display, configAttribs, &config, 1, &numConfigs) || numConfigs < 1) {
-            shutdown();
-            return false;
-        }
-
-        const EGLint pbufferAttribs[] = {
-            EGL_WIDTH, newWidth,
-            EGL_HEIGHT, newHeight,
-            EGL_NONE
-        };
-
-        surface = eglCreatePbufferSurface(display, config, pbufferAttribs);
-        if (surface == EGL_NO_SURFACE) {
-            shutdown();
-            return false;
-        }
-
-        context = eglCreateContext(display, config, EGL_NO_CONTEXT, nullptr);
-        if (context == EGL_NO_CONTEXT) {
-            shutdown();
-            return false;
-        }
-
-        width = newWidth;
-        height = newHeight;
-        return true;
-    }
-
-    void shutdown() {
-        if (display != EGL_NO_DISPLAY) {
-            eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        }
-        if (display != EGL_NO_DISPLAY && context != EGL_NO_CONTEXT) {
-            eglDestroyContext(display, context);
-        }
-        if (display != EGL_NO_DISPLAY && surface != EGL_NO_SURFACE) {
-            eglDestroySurface(display, surface);
-        }
-        if (display != EGL_NO_DISPLAY) {
-            eglTerminate(display);
-        }
-        display = EGL_NO_DISPLAY;
-        context = EGL_NO_CONTEXT;
-        surface = EGL_NO_SURFACE;
-        config = nullptr;
-        width = 0;
-        height = 0;
-    }
-
-    bool makeCurrent() {
-        return display != EGL_NO_DISPLAY
-            && surface != EGL_NO_SURFACE
-            && context != EGL_NO_CONTEXT
-            && eglMakeCurrent(display, surface, surface, context);
-    }
-
-    void doneCurrent() {
-        if (display != EGL_NO_DISPLAY) {
-            eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        }
-    }
-
-    bool isValid() const {
-        return display != EGL_NO_DISPLAY
-            && surface != EGL_NO_SURFACE
-            && context != EGL_NO_CONTEXT;
-    }
-
-    EGLDisplay display = EGL_NO_DISPLAY;
-    EGLConfig config = nullptr;
-    EGLContext context = EGL_NO_CONTEXT;
-    EGLSurface surface = EGL_NO_SURFACE;
-    int width = 0;
-    int height = 0;
-};
-#endif
-
 thread_local ImGuiDirectHost* ImGuiDirectHost::activeInstance_ = nullptr;
 
 namespace {
@@ -164,7 +43,12 @@ constexpr double kDeferredSurfaceBudgetMicros = 2000.0;
 #include "DirectHostGlLifecycleSupport.h"
 
 ImGuiDirectHost::ImGuiDirectHost()
-    : surfaceHostImpl_(std::make_unique<ImGuiDirectSurfaceHost>()),
+    : frameContextImpl_(std::make_unique<ImGuiDirectFrameContext>()),
+      openGLContext_(frameContextImpl_->openGLContext()),
+      eglOffscreenContext_(frameContextImpl_->eglOffscreenContext()),
+      imguiContext_(frameContextImpl_->imguiContext()),
+      contextReady_(frameContextImpl_->contextReady()),
+      surfaceHostImpl_(std::make_unique<ImGuiDirectSurfaceHost>()),
       embeddedPanelTouchedSurfaceIds_(surfaceHostImpl_->embeddedPanelTouchedSurfaceIds()),
       cachedSurfaceTextures_(surfaceHostImpl_->cachedSurfaceTextures()),
       surfaceProviders_(surfaceHostImpl_->surfaceProviders()),
@@ -196,15 +80,7 @@ ImGuiDirectHost::ImGuiDirectHost()
     setMouseClickGrabsKeyboardFocus(true);
     setInterceptsMouseClicks(true, true);
 
-    openGLContext_.setRenderer(this);
-    openGLContext_.setComponentPaintingEnabled(false);
-#ifndef __ANDROID__
-    // openGLContext_.setPersistentAttachment(true); // Requires patched JUCE
-#endif
-    openGLContext_.setContinuousRepainting(false);
-    // renderNow() runs on the message thread in direct mode. Blocking that
-    // thread on vsync makes menu/popup interaction feel like dogshit.
-    openGLContext_.setSwapInterval(0);
+    frameContextImpl_->configure(this);
 }
 
 ImGuiDirectHost::~ImGuiDirectHost() {

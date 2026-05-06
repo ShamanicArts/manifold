@@ -22,73 +22,33 @@ inline juce::Image rgbaPixelsToImage(const std::vector<std::uint8_t>& pixels, in
 } // namespace direct_host_gl_lifecycle_support
 
 bool ImGuiDirectHost::ensureEglOffscreenContext(int width, int height) {
-#if JUCE_LINUX
-    if (!eglOffscreenContext_) {
-        eglOffscreenContext_ = std::make_unique<EglOffscreenContext>();
-    }
-    if (eglOffscreenContext_->initialise(width, height)) {
-        return true;
-    }
-    eglOffscreenContext_.reset();
-#endif
-    juce::ignoreUnused(width, height);
-    return false;
+    return frameContextImpl_ != nullptr
+        ? frameContextImpl_->ensureEglOffscreenContext(width, height)
+        : false;
 }
 
 void ImGuiDirectHost::releaseEglOffscreenContext() {
-    if (eglOffscreenContext_) {
-        eglOffscreenContext_->shutdown();
-        eglOffscreenContext_.reset();
+    if (frameContextImpl_ != nullptr) {
+        frameContextImpl_->releaseEglOffscreenContext();
     }
 }
 
 bool ImGuiDirectHost::makeEglContextCurrent() {
-#if JUCE_LINUX
-    if (eglOffscreenContext_ && eglOffscreenContext_->isValid()) {
-        return eglOffscreenContext_->makeCurrent();
-    }
-#endif
-    juce::ignoreUnused(this);
-    return false;
+    return frameContextImpl_ != nullptr
+        ? frameContextImpl_->makeEglContextCurrent()
+        : false;
 }
 
 void ImGuiDirectHost::initialiseImGuiBackendIfNeeded() {
-    if (contextReady_) {
-        return;
+    if (frameContextImpl_ != nullptr) {
+        frameContextImpl_->initialiseImGuiBackendIfNeeded(fontAtlasBytes_);
     }
-
-    IMGUI_CHECKVERSION();
-    auto* context = ImGui::CreateContext();
-    imguiContext_ = context;
-    ImGui::SetCurrentContext(context);
-
-    auto& io = ImGui::GetIO();
-    io.BackendPlatformName = "manifold_juce_imgui_direct";
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    manifold::ui::imgui::configureToolFonts(io);
-    fontAtlasBytes_.store(0, std::memory_order_relaxed);
-    manifold::ui::imgui::applyToolTheme();
-#if JUCE_LINUX
-    if (!openGLContext_.isAttached() && eglOffscreenContext_ && eglOffscreenContext_->isValid()) {
-        juce::gl::loadFunctions();
-    }
-#endif
-    ImGui_ImplOpenGL3_Init("#version 150");
-    contextReady_ = true;
 }
 
 void ImGuiDirectHost::shutdownImGuiBackend() {
-    auto* context = reinterpret_cast<ImGuiContext*>(imguiContext_);
-    if (context != nullptr) {
-        ImGui::SetCurrentContext(context);
-        ImGui_ImplOpenGL3_Shutdown();
-        ImGui::DestroyContext(context);
-        imguiContext_ = nullptr;
+    if (frameContextImpl_ != nullptr) {
+        frameContextImpl_->shutdownImGuiBackend(fontAtlasBytes_, surfaceColorBytes_, surfaceDepthBytes_);
     }
-    fontAtlasBytes_.store(0, std::memory_order_relaxed);
-    surfaceColorBytes_.store(0, std::memory_order_relaxed);
-    surfaceDepthBytes_.store(0, std::memory_order_relaxed);
-    contextReady_ = false;
 }
 
 bool ImGuiDirectHost::renderFrameWithCurrentContext(float scale, bool allowSwap) {

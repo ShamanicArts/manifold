@@ -16,6 +16,7 @@
 #include <juce_core/juce_core.h>
 
 #include "RuntimeNodeRenderer.h"
+#include "ImGuiDirectFrameContext.h"
 #include "ImGuiDirectSurfaceHost.h"
 #include "../../primitives/ui/RuntimeNode.h"
 #include "../../primitives/ui/CustomSurfaceProvider.h"
@@ -184,8 +185,6 @@ public:
     void unregisterSurfaceProvider(const std::string& typeHint);
 
 private:
-    struct EglOffscreenContext;
-
     void resized() override;
     void visibilityChanged() override;
     void parentHierarchyChanged() override;
@@ -240,10 +239,12 @@ public:
     bool debugOutlinesEnabled_ = false;
     bool copyIdModeEnabled_ = false;
 
-    juce::OpenGLContext openGLContext_;
-    std::unique_ptr<EglOffscreenContext> eglOffscreenContext_;
-    void* imguiContext_ = nullptr;
-    bool contextReady_ = false;
+    std::unique_ptr<ImGuiDirectFrameContext> frameContextImpl_;
+
+    juce::OpenGLContext& openGLContext_;
+    std::unique_ptr<ImGuiDirectEglOffscreenContext>& eglOffscreenContext_;
+    void*& imguiContext_;
+    bool& contextReady_;
     GlobalKeyHandler globalKeyHandler_;
     CopyIdCallback copyIdCallback_;
 

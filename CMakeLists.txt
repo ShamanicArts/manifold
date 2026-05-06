@@ -692,6 +692,8 @@ set(MANIFOLD_CORE_SOURCES
     manifold/ui/imgui/RuntimeNodeRenderer.cpp
     manifold/ui/imgui/ImGuiRuntimeNodeHost.h
     manifold/ui/imgui/ImGuiRuntimeNodeHost.cpp
+    manifold/ui/imgui/ImGuiDirectFrameContext.h
+    manifold/ui/imgui/ImGuiDirectFrameContext.cpp
     manifold/ui/imgui/ImGuiDirectSurfaceHost.h
     manifold/ui/imgui/ImGuiDirectSurfaceHost.cpp
     manifold/ui/imgui/ImGuiDirectHost.h

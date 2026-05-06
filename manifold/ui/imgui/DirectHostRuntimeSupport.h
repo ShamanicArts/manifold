@@ -117,12 +117,8 @@ inline void ImGuiDirectHost::openGLContextClosing() {
 }
 
 inline void ImGuiDirectHost::attachContextIfNeeded() {
-    if (!isShowing()) {
-        return;
-    }
-
-    if (!openGLContext_.isAttached()) {
-        openGLContext_.attachTo(*this);
+    if (frameContextImpl_ != nullptr) {
+        frameContextImpl_->attachContextIfNeeded(*this);
     }
 }
 
