@@ -1111,6 +1111,8 @@ add_executable(StateProjectionHarness manifold/headless/StateProjectionHarness.c
 
 add_executable(PortBufferSemanticsHarness manifold/headless/PortBufferSemanticsHarness.cpp)
 
+add_executable(BehaviorCoreProjectionHarness manifold/headless/BehaviorCoreProjectionHarness.cpp)
+
 add_executable(VideoSamplerHarness
     tests/VideoSamplerHarness.cpp
     manifold/primitives/video/VideoSampler.cpp
@@ -1193,6 +1195,18 @@ target_link_libraries(CanonicalCommandHarness
 manifold_target_include_project_and_ableton(StateProjectionHarness)
 
 manifold_target_include_project_and_ableton(PortBufferSemanticsHarness)
+
+manifold_target_include_project_and_ableton(BehaviorCoreProjectionHarness)
+target_link_libraries(BehaviorCoreProjectionHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+		highway)
 
 target_include_directories(VideoSamplerHarness
     PRIVATE
@@ -1344,6 +1358,22 @@ add_test(
     COMMAND $<TARGET_FILE:VideoRetrospectiveCaptureHarness>)
 set_tests_properties(manifold_video_retrospective_capture PROPERTIES
     LABELS "manifold;video;capture;regression")
+
+add_test(
+    NAME manifold_core_state_contract
+    COMMAND $<TARGET_FILE:BehaviorCoreProjectionHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/core_state_golden.json)
+set_tests_properties(manifold_core_state_contract PROPERTIES
+    LABELS "manifold;core;contract")
+
+add_test(
+    NAME manifold_core_sniff
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e_core_sniff_test.py
+            --headless build-dev/ManifoldHeadless
+            --duration 8.0)
+set_tests_properties(manifold_core_sniff PROPERTIES
+    LABELS "manifold;core;smoke")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:

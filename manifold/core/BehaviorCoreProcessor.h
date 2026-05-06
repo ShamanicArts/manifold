@@ -325,6 +325,13 @@ public:
     // Destroy deferred DSP slot hosts (safe boundary, not inside Lua call stacks)
     void drainPendingSlotDestroy();
 
+    // Export comprehensive state contract as JSON for contract-testing harness.
+    // Captures deterministic structural state: DSP slot config, export plugin
+    // config, MIDI/Link state, memory baselines. Non-deterministic fields
+    // (frame timings, heap measurements) are excluded from byte-identical diff
+    // but included in the "diagnostics" sub-object.
+    std::string exportStateContract() const;
+
 public:
     struct ExportParamAlias {
         juce::String path;

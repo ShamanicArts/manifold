@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #if defined(__GLIBC__)
 #include <malloc.h>
@@ -62,6 +63,19 @@ struct PerfOverlayHostConfig {
     juce::Rectangle<int> bounds;
     ImGuiPerfOverlayHost::Snapshot snapshot;
 };
+
+juce::String canonicalContractPath(const juce::File& file) {
+    if (!file.exists()) {
+        return {};
+    }
+#ifdef MANIFOLD_SOURCE_DIR
+    const juce::File sourceRoot(juce::String(MANIFOLD_SOURCE_DIR));
+    if (sourceRoot.isDirectory()) {
+        return file.getRelativePathFrom(sourceRoot);
+    }
+#endif
+    return file.getFullPathName();
+}
 
 void clearRuntimeNodeLuaStateRecursive(RuntimeNode* node) {
     if (node == nullptr) {
@@ -2600,4 +2614,87 @@ void BehaviorCoreEditor::flushRamFramesToDisk(const std::string& outputDir) {
             rec.framePaths.push_back(framePath);
         }
     }
+}
+
+std::string BehaviorCoreEditor::exportStateContract() const {
+    juce::DynamicObject::Ptr root = new juce::DynamicObject();
+    root->setProperty("contractVersion", 1);
+    root->setProperty("rootMode", rootMode_ == RootMode::RuntimeNode ? "RuntimeNode" : "Canvas");
+    root->setProperty("rendererMode", runtimeRendererModeToString(runtimeRendererMode_));
+    root->setProperty("usingLuaUi", usingLuaUi);
+    root->setProperty("exportPluginUi", exportPluginUi_);
+    root->setProperty("directHostNeedsInitialFocus", directHostNeedsInitialFocus_);
+    root->setProperty("hasErrorNode", errorNode != nullptr);
+    root->setProperty("errorMessage", juce::String(errorMessage));
+    root->setProperty("uiIdleSnapshotCaptured", uiIdleSnapshotCaptured_);
+    root->setProperty("uiIdleSnapshotCountdown", uiIdleSnapshotCountdown_);
+    root->setProperty("ramFramesBytes", static_cast<double>(ramFramesBytes_));
+
+    const auto scriptFile = luaEngine.getCurrentScriptFile();
+    root->setProperty("luaScriptLoaded", canonicalContractPath(scriptFile));
+    root->setProperty("luaScriptError", juce::String(luaEngine.getLastError()));
+
+    juce::DynamicObject::Ptr shellObj = new juce::DynamicObject();
+    shellObj->setProperty("exists", false);
+    shellObj->setProperty("mode", juce::String());
+    shellObj->setProperty("leftPanelMode", juce::String());
+    shellObj->setProperty("title", juce::String());
+    shellObj->setProperty("surfaceCount", 0);
+    luaEngine.withLuaState([&](const sol::state& L) {
+        sol::object shellValue = L["_G"]["shell"];
+        if (!shellValue.valid() || !shellValue.is<sol::table>()) {
+            return;
+        }
+        shellObj->setProperty("exists", true);
+        const auto shell = shellValue.as<sol::table>();
+        shellObj->setProperty("mode", juce::String(shell["mode"].get_or(std::string{})));
+        shellObj->setProperty("leftPanelMode", juce::String(shell["leftPanelMode"].get_or(std::string{})));
+        shellObj->setProperty("title", juce::String(shell["title"].get_or(std::string{})));
+        int surfaceCount = 0;
+        sol::object surfacesValue = shell["surfaces"];
+        if (surfacesValue.valid() && surfacesValue.is<sol::table>()) {
+            const auto surfaces = surfacesValue.as<sol::table>();
+            for (const auto& _ : surfaces) {
+                juce::ignoreUnused(_);
+                ++surfaceCount;
+            }
+        }
+        shellObj->setProperty("surfaceCount", surfaceCount);
+    });
+    root->setProperty("shell", juce::var(shellObj.get()));
+
+    auto hostStateFor = [](const juce::Component& host) {
+        juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+        obj->setProperty("visible", host.isVisible());
+        obj->setProperty("x", host.getX());
+        obj->setProperty("y", host.getY());
+        obj->setProperty("w", host.getWidth());
+        obj->setProperty("h", host.getHeight());
+        return juce::var(obj.get());
+    };
+
+    juce::DynamicObject::Ptr hosts = new juce::DynamicObject();
+    hosts->setProperty("mainScriptEditor", hostStateFor(mainScriptEditorHost));
+    hosts->setProperty("scriptList", hostStateFor(scriptListHost));
+    hosts->setProperty("hierarchy", hostStateFor(hierarchyHost));
+    hosts->setProperty("inspector", hostStateFor(inspectorHost));
+    hosts->setProperty("scriptInspector", hostStateFor(scriptInspectorHost));
+    hosts->setProperty("perfOverlay", hostStateFor(perfOverlayHost));
+    hosts->setProperty("runtimeNodeDebug", hostStateFor(runtimeNodeDebugHost));
+    hosts->setProperty("directHost", hostStateFor(directHost_));
+    root->setProperty("hosts", juce::var(hosts.get()));
+
+    juce::DynamicObject::Ptr frameTimings = new juce::DynamicObject();
+    const auto& ft = luaEngine.frameTimings;
+    frameTimings->setProperty("frameCount", static_cast<double>(ft.frameCount.load(std::memory_order_relaxed)));
+    frameTimings->setProperty("totalUs", static_cast<double>(ft.total.currentUs.load(std::memory_order_relaxed)));
+    frameTimings->setProperty("pushStateUs", static_cast<double>(ft.pushState.currentUs.load(std::memory_order_relaxed)));
+    frameTimings->setProperty("eventListenersUs", static_cast<double>(ft.eventListeners.currentUs.load(std::memory_order_relaxed)));
+    frameTimings->setProperty("uiUpdateUs", static_cast<double>(ft.uiUpdate.currentUs.load(std::memory_order_relaxed)));
+    frameTimings->setProperty("paintUs", static_cast<double>(ft.paint.currentUs.load(std::memory_order_relaxed)));
+    frameTimings->setProperty("luaHeapBytes", static_cast<double>(ft.luaHeapBytes.load(std::memory_order_relaxed)));
+    frameTimings->setProperty("cpuPercent", static_cast<double>(ft.cpuPercent.load(std::memory_order_relaxed)));
+    root->setProperty("frameTimings", juce::var(frameTimings.get()));
+
+    return juce::JSON::toString(juce::var(root.get())).toStdString();
 }

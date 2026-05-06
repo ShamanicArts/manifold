@@ -38,6 +38,11 @@ public:
     void resized() override;
     bool keyPressed(const juce::KeyPress& key) override;
 
+    // Export comprehensive editor state contract as JSON for contract-testing
+    // harness. Captures root mode, renderer mode, Lua UI state, host visibility,
+    // and frame timings.
+    std::string exportStateContract() const;
+
 private:
     enum class RuntimeRendererMode {
         Canvas = 0,

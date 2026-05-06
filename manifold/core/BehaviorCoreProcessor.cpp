@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #if defined(__GLIBC__)
 #include <malloc.h>
@@ -98,6 +99,19 @@ std::string normalizeRendererModeToken(std::string mode) {
         return "imgui-direct";
     }
     return mode;
+}
+
+juce::String canonicalContractPath(const juce::File& file) {
+    if (!file.exists()) {
+        return {};
+    }
+#ifdef MANIFOLD_SOURCE_DIR
+    const juce::File sourceRoot(juce::String(MANIFOLD_SOURCE_DIR));
+    if (sourceRoot.isDirectory()) {
+        return file.getRelativePathFrom(sourceRoot);
+    }
+#endif
+    return file.getFullPathName();
 }
 
 BehaviorCoreEditor::RootMode rootModeFromEnvironmentOrState(const ControlServer& controlServer) {
@@ -4330,6 +4344,158 @@ void BehaviorCoreProcessor::drainMidiOutput(juce::MidiBuffer& outMidi) {
     while (midiOutputRing.read(status, data1, data2, timestamp)) {
         outMidi.addEvent(juce::MidiMessage(status, data1, data2), timestamp);
     }
+}
+
+std::string BehaviorCoreProcessor::exportStateContract() const {
+    juce::DynamicObject::Ptr root = new juce::DynamicObject();
+    root->setProperty("contractVersion", 1);
+
+    // Stable snapshot of the ControlServer state projection. Remove uptimeSeconds
+    // because it's wall-clock dependent and not relevant to refactor regressions.
+    auto controlState = juce::JSON::parse(const_cast<ControlServer&>(controlServer).getStateJson());
+    if (auto* stateObj = controlState.getDynamicObject()) {
+        stateObj->removeProperty("uptimeSeconds");
+    }
+    root->setProperty("controlState", controlState);
+
+    // DSP slot contract. Sort names so unordered_map iteration cannot randomize output.
+    juce::DynamicObject::Ptr dspSlotsObj = new juce::DynamicObject();
+    dspSlotsObj->setProperty("count", 1 + static_cast<int>(dspSlots.size()));
+    {
+        juce::DynamicObject::Ptr slot = new juce::DynamicObject();
+        const bool loaded = dspScriptHost && dspScriptHost->isLoaded();
+        slot->setProperty("loaded", loaded);
+        slot->setProperty("error", juce::String(dspScriptHost ? dspScriptHost->getLastError() : std::string{}));
+        slot->setProperty("scriptFile", canonicalContractPath(dspScriptHost ? dspScriptHost->getCurrentScriptFile() : juce::File{}));
+        dspSlotsObj->setProperty("default", juce::var(slot.get()));
+    }
+    std::vector<std::string> slotNames;
+    slotNames.reserve(dspSlots.size());
+    for (const auto& [name, _] : dspSlots) {
+        slotNames.push_back(name);
+    }
+    std::sort(slotNames.begin(), slotNames.end());
+    for (const auto& name : slotNames) {
+        const auto it = dspSlots.find(name);
+        if (it == dspSlots.end()) {
+            continue;
+        }
+        const auto& host = it->second;
+        juce::DynamicObject::Ptr slot = new juce::DynamicObject();
+        slot->setProperty("loaded", host && host->isLoaded());
+        slot->setProperty("error", juce::String(host ? host->getLastError() : std::string{}));
+        slot->setProperty("scriptFile", canonicalContractPath(host ? host->getCurrentScriptFile() : juce::File{}));
+        dspSlotsObj->setProperty(juce::Identifier(juce::String(name)), juce::var(slot.get()));
+    }
+    root->setProperty("dspSlots", juce::var(dspSlotsObj.get()));
+
+    juce::DynamicObject::Ptr primaryDsp = new juce::DynamicObject();
+    primaryDsp->setProperty("scriptFile", canonicalContractPath(getPrimaryDspScriptFile()));
+    primaryDsp->setProperty("scriptSizeBytes", static_cast<double>(getPrimaryDspScriptSizeBytes()));
+    primaryDsp->setProperty("lastError", juce::String(getDspScriptLastError()));
+    primaryDsp->setProperty("managedHostCount", getManagedDspHostCount());
+    root->setProperty("primaryDsp", juce::var(primaryDsp.get()));
+
+    juce::DynamicObject::Ptr exportObj = new juce::DynamicObject();
+    exportObj->setProperty("enabled", exportPluginConfig_.enabled);
+    exportObj->setProperty("compactWidth", exportPluginConfig_.compactWidth);
+    exportObj->setProperty("compactHeight", exportPluginConfig_.compactHeight);
+    exportObj->setProperty("splitWidth", exportPluginConfig_.splitWidth);
+    exportObj->setProperty("splitHeight", exportPluginConfig_.splitHeight);
+    exportObj->setProperty("defaultViewMode", exportPluginConfig_.defaultViewMode);
+    exportObj->setProperty("oscBasePort", exportPluginConfig_.oscBasePort);
+    exportObj->setProperty("oscDefaultEnabled", exportPluginConfig_.oscDefaultEnabled);
+    exportObj->setProperty("oscQueryDefaultEnabled", exportPluginConfig_.oscQueryDefaultEnabled);
+    exportObj->setProperty("viewMode", exportViewMode_.load(std::memory_order_relaxed));
+    exportObj->setProperty("editorWidth", exportEditorWidth_.load(std::memory_order_relaxed));
+    exportObj->setProperty("editorHeight", exportEditorHeight_.load(std::memory_order_relaxed));
+    exportObj->setProperty("settingsVisible", exportSettingsVisible_.load(std::memory_order_relaxed));
+    exportObj->setProperty("devVisible", exportDevVisible_.load(std::memory_order_relaxed));
+    exportObj->setProperty("oscEnabled", exportOscEnabled_.load(std::memory_order_relaxed));
+    exportObj->setProperty("oscQueryEnabled", exportOscQueryEnabled_.load(std::memory_order_relaxed));
+    exportObj->setProperty("oscInputPort", exportOscInputPort_.load(std::memory_order_relaxed));
+    exportObj->setProperty("oscQueryPort", exportOscQueryPort_.load(std::memory_order_relaxed));
+    exportObj->setProperty("xyXParam", exportXyXParam_.load(std::memory_order_relaxed));
+    exportObj->setProperty("xyYParam", exportXyYParam_.load(std::memory_order_relaxed));
+    juce::Array<juce::var> aliasArray;
+    for (const auto& alias : exportPluginConfig_.paramAliases) {
+        juce::DynamicObject::Ptr aliasObj = new juce::DynamicObject();
+        aliasObj->setProperty("path", alias.path);
+        aliasObj->setProperty("internalPath", alias.internalPath);
+        aliasObj->setProperty("type", alias.type);
+        aliasObj->setProperty("rangeMin", alias.rangeMin);
+        aliasObj->setProperty("rangeMax", alias.rangeMax);
+        aliasObj->setProperty("description", alias.description);
+        aliasObj->setProperty("defaultValue", alias.defaultValue);
+        aliasObj->setProperty("skew", alias.skew);
+        aliasObj->setProperty("hostParamId", alias.hostParamId);
+        aliasObj->setProperty("hostParamName", alias.hostParamName);
+        aliasObj->setProperty("hostParamKind", alias.hostParamKind);
+        juce::Array<juce::var> choices;
+        for (const auto& choice : alias.choices) {
+            choices.add(choice);
+        }
+        aliasObj->setProperty("choices", juce::var(choices));
+        aliasArray.add(juce::var(aliasObj.get()));
+    }
+    exportObj->setProperty("paramAliases", juce::var(aliasArray));
+    root->setProperty("exportPlugin", juce::var(exportObj.get()));
+
+    juce::DynamicObject::Ptr midiObj = new juce::DynamicObject();
+    midiObj->setProperty("inputDeviceOpen", midiInputDevice != nullptr);
+    midiObj->setProperty("outputDeviceOpen", midiOutputDevice != nullptr);
+    midiObj->setProperty("thruEnabled", midiThruEnabled);
+    midiObj->setProperty("midiManagerActive", midiManager_ != nullptr);
+    root->setProperty("midi", juce::var(midiObj.get()));
+
+    juce::DynamicObject::Ptr linkObj = new juce::DynamicObject();
+    linkObj->setProperty("enabled", isLinkEnabled());
+    linkObj->setProperty("tempoSyncEnabled", isLinkTempoSyncEnabled());
+    linkObj->setProperty("startStopSyncEnabled", isLinkStartStopSyncEnabled());
+    linkObj->setProperty("numPeers", getLinkNumPeers());
+    linkObj->setProperty("isPlaying", isLinkPlaying());
+    linkObj->setProperty("beat", getLinkBeat());
+    linkObj->setProperty("phase", getLinkPhase());
+    root->setProperty("link", juce::var(linkObj.get()));
+
+    juce::DynamicObject::Ptr runtimeObj = new juce::DynamicObject();
+    runtimeObj->setProperty("sampleRate", currentSampleRate.load(std::memory_order_relaxed));
+    runtimeObj->setProperty("blockSize", currentBlockSize.load(std::memory_order_relaxed));
+    runtimeObj->setProperty("playTimeSamples", playTimeSamples.load(std::memory_order_relaxed));
+    runtimeObj->setProperty("graphProcessingEnabled", graphProcessingEnabled.load(std::memory_order_relaxed));
+    root->setProperty("runtime", juce::var(runtimeObj.get()));
+
+    juce::DynamicObject::Ptr hostParamsObj = new juce::DynamicObject();
+    juce::Array<juce::var> hostParamsArray;
+    if (hostParams_) {
+        hostParamsObj->setProperty("numParams", hostParams_->state.getNumChildren());
+        for (int i = 0; i < hostParams_->state.getNumChildren(); ++i) {
+            const auto child = hostParams_->state.getChild(i);
+            juce::DynamicObject::Ptr paramObj = new juce::DynamicObject();
+            paramObj->setProperty("id", child.getProperty("id").toString());
+            paramObj->setProperty("value", child.getProperty("value"));
+            hostParamsArray.add(juce::var(paramObj.get()));
+        }
+    } else {
+        hostParamsObj->setProperty("numParams", 0);
+    }
+    hostParamsObj->setProperty("params", juce::var(hostParamsArray));
+    root->setProperty("hostParams", juce::var(hostParamsObj.get()));
+
+    // Save-state contract catches serialization regressions.
+    juce::MemoryBlock savedStateBlock;
+    const_cast<BehaviorCoreProcessor*>(this)->getStateInformation(savedStateBlock);
+    const juce::String savedStateText = juce::String::fromUTF8(
+        static_cast<const char*>(savedStateBlock.getData()),
+        static_cast<int>(savedStateBlock.getSize()));
+    const juce::var savedState = juce::JSON::parse(savedStateText);
+    if (!savedState.isVoid()) {
+        root->setProperty("savedState", savedState);
+    } else {
+        root->setProperty("savedStateRaw", savedStateText);
+    }
+
+    return juce::JSON::toString(juce::var(root.get())).toStdString();
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {

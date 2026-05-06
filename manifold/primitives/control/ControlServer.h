@@ -7,8 +7,10 @@
 #include <functional>
 #include <juce_core/juce_core.h>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #if !JUCE_WINDOWS
@@ -419,6 +421,35 @@ private:
   void acceptLoop();
   void clientLoop(int clientFd);
   std::string processCommand(const std::string &cmd);
+
+  // Command dispatch: prefix handlers (Stage 1 - short-circuit before parser)
+  std::optional<std::string> handleDspRun(const std::string& cmd, const std::string& upperTrimmedCmd);
+  std::optional<std::string> handlePerfReset(const std::string& upperTrimmedCmd);
+  std::optional<std::string> handleEval(const std::string& cmd, const std::string& upperTrimmedCmd);
+  std::optional<std::string> handleDirectSet(const std::string& cmd, const std::string& upperTrimmedCmd);
+
+  // Command dispatch: parsed handlers (Stage 2 - after CommandParser::parse)
+  std::string handleEnqueue(const ParseResult& result);
+  std::string handleQuery(const ParseResult& result);
+  std::string handleWatch(const ParseResult& result);
+  std::string handleInject(const ParseResult& result);
+  std::string handleInjectionStatus(const ParseResult& result);
+  std::string handleUISwitch(const ParseResult& result);
+  std::string handleUIRenderer(const ParseResult& result);
+  std::string handleScreenshot(const ParseResult& result);
+  std::string handleRecordStart(const ParseResult& result);
+  std::string handleRecordStop(const ParseResult& result);
+  std::string handleRecordStatus(const ParseResult& result);
+  std::string handleNoOpWarning(const ParseResult& result);
+  std::string handleError(const ParseResult& result);
+
+  // Dispatch maps populated during start()
+  using PrefixHandler = std::function<std::optional<std::string>(const std::string&, const std::string&)>;
+  using ParsedHandler = std::function<std::string(const ParseResult&)>;
+  void registerCommandHandlers();
+  std::vector<std::pair<std::string, PrefixHandler>> prefixHandlers;
+  std::unordered_map<ParseResult::Kind, ParsedHandler> parsedHandlers;
+
   std::string buildStateJson();
   std::string buildDiagnoseJson();
 
