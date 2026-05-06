@@ -1140,6 +1140,26 @@ local function layoutMappingEmbed(ctx, w, h)
   setBounds(ctx.widgets.mappingStatus, pad, math.max(222, h - 18), math.max(1, w - pad * 2), 14)
 end
 
+local function setDropdownOverlayRoot(dropdown, rootWidget)
+  if dropdown and dropdown.node and rootWidget and rootWidget.node then
+    dropdown._rootNode = rootWidget.node
+    dropdown._absX = nil
+    dropdown._absY = nil
+  end
+end
+
+local function fxComponentWidget(ctx, localId)
+  local widgets = ctx and ctx.allWidgets or nil
+  if type(widgets) ~= "table" then return nil end
+  return widgets["root.embedHost.fxEmbed.fx1.fx1Component." .. tostring(localId or "")]
+end
+
+local function anchorFxComponentDropdowns(ctx)
+  setDropdownOverlayRoot(fxComponentWidget(ctx, "type_dropdown"), ctx.widgets.fxEmbed)
+  setDropdownOverlayRoot(fxComponentWidget(ctx, "xy_x_dropdown"), ctx.widgets.fxEmbed)
+  setDropdownOverlayRoot(fxComponentWidget(ctx, "xy_y_dropdown"), ctx.widgets.fxEmbed)
+end
+
 local function layoutFxEmbed(ctx, w, h)
   setBounds(ctx.widgets.fxEmbed, 0, 0, w, h)
   local shellH = math.max(120, h - 44)
@@ -1148,6 +1168,7 @@ local function layoutFxEmbed(ctx, w, h)
   if ctx.widgets.fx1Component then
     relayoutManagedSubtree(ctx.widgets.fx1Component, w, math.max(1, shellH - 12))
   end
+  anchorFxComponentDropdowns(ctx)
   setBounds(ctx.widgets.fxStatus, 10, math.max(26, h - 18), math.max(1, w - 20), 16)
 end
 
@@ -1326,78 +1347,6 @@ local function renderPanel(ctx, win)
   imguiEnd()
 end
 
-local function nodeBounds(node)
-  if not (node and node.getBounds) then return 0, 0, 0, 0 end
-  local x, y, w, h = node:getBounds()
-  return math.floor(tonumber(x) or 0), math.floor(tonumber(y) or 0), math.floor(tonumber(w) or 0), math.floor(tonumber(h) or 0)
-end
-
-local function nodePosRelativeToAncestor(node, ancestor)
-  local ax, ay = 0, 0
-  local current = node
-  local guard = 0
-  while current and current ~= ancestor and guard < 128 do
-    local x, y = nodeBounds(current)
-    ax = ax + x
-    ay = ay + y
-    local ok, parent = pcall(function() return current:getParent() end)
-    if not ok or parent == nil or parent == current then
-      break
-    end
-    current = parent
-    guard = guard + 1
-  end
-  return ax, ay
-end
-
-local function collectDropdownOverlayHosts(node, out)
-  if not node then return end
-  local widgetType = node.getWidgetType and tostring(node:getWidgetType() or "") or ""
-  local visible = node.isVisible and node:isVisible() == true
-  local _, _, w, h = nodeBounds(node)
-  if widgetType == "DropdownOverlay" and visible and w > 0 and h > 0 then
-    out[#out + 1] = node
-  end
-  if node.getNumChildren and node.getChild then
-    local count = math.max(0, math.floor(tonumber(node:getNumChildren()) or 0))
-    for i = 0, count - 1 do
-      local child = node:getChild(i)
-      if child ~= nil then collectDropdownOverlayHosts(child, out) end
-    end
-  end
-end
-
-local function renderDropdownOverlays(ctx, contentX, contentY)
-  if type(imguiRetainedPanel) ~= "function" or not (ctx and ctx.root and ctx.root.node) then return end
-
-  local overlays = {}
-  collectDropdownOverlayHosts(ctx.root.node, overlays)
-  if #overlays <= 0 then return end
-
-  local flags = bor(
-    imguiWindowFlags_NoTitleBar,
-    imguiWindowFlags_NoResize,
-    imguiWindowFlags_NoMove,
-    imguiWindowFlags_NoCollapse,
-    imguiWindowFlags_NoSavedSettings,
-    imguiWindowFlags_NoScrollbar
-  )
-
-  for i = 1, #overlays do
-    local node = overlays[i]
-    local relX, relY = nodePosRelativeToAncestor(node, ctx.root.node)
-    local _, _, w, h = nodeBounds(node)
-    if w > 0 and h > 0 then
-      imguiSetNextWindowPos(contentX + relX, contentY + relY, imguiCond_Always)
-      imguiSetNextWindowSize(w, h, imguiCond_Always)
-      if imguiBegin("AVSD_DropdownOverlay###" .. tostring(node:getNodeId()) .. "_" .. tostring(i), flags) then
-        imguiRetainedPanel(node, w, h, false)
-      end
-      imguiEnd()
-    end
-  end
-end
-
 local function renderFrame(ctx)
   local x, y, w, h = projectContentBounds(ctx)
   if w < 64 or h < 64 then return end
@@ -1441,7 +1390,9 @@ local function renderFrame(ctx)
   imguiEnd()
 
   for _, win in ipairs(DOCK_WINDOWS) do renderPanel(ctx, win) end
-  renderDropdownOverlays(ctx, x, y)
+  -- Embedded retained panels already render their own dropdown overlays once the
+  -- dropdown is rooted at that panel. Doing an extra detached pass here just
+  -- duplicates popovers and creates bogus hit targets.
 end
 
 function M.init(ctx)
@@ -1477,26 +1428,20 @@ function M.init(ctx)
     end
   end
 
-  local function anchorDropdownTo(dropdown, rootWidget)
-    if dropdown and dropdown.node and rootWidget and rootWidget.node then
-      dropdown._rootNode = rootWidget.node
-      dropdown._absX = nil
-      dropdown._absY = nil
-    end
-  end
-
-  anchorDropdownTo(ctx.widgets.deviceSelect, ctx.root)
-  anchorDropdownTo(ctx.widgets.midiInput, ctx.widgets.transportEmbed)
-  anchorDropdownTo(ctx.widgets.sourceSelect, ctx.widgets.shaderEmbed)
-  anchorDropdownTo(ctx.widgets.shaderLayer, ctx.widgets.shaderEmbed)
-  anchorDropdownTo(ctx.widgets.effectSelect, ctx.widgets.shaderEmbed)
-  anchorDropdownTo(ctx.widgets.selectedSlice, ctx.widgets.sliceEmbed)
-  anchorDropdownTo(ctx.widgets.type_dropdown, ctx.widgets.fxEmbed)
-  anchorDropdownTo(ctx.widgets.xy_x_dropdown, ctx.widgets.fxEmbed)
-  anchorDropdownTo(ctx.widgets.xy_y_dropdown, ctx.widgets.fxEmbed)
+  setDropdownOverlayRoot(ctx.widgets.deviceSelect, ctx.root)
+  setDropdownOverlayRoot(ctx.widgets.midiInput, ctx.widgets.transportEmbed)
+  setDropdownOverlayRoot(ctx.widgets.sourceSelect, ctx.widgets.shaderEmbed)
+  setDropdownOverlayRoot(ctx.widgets.shaderLayer, ctx.widgets.shaderEmbed)
+  setDropdownOverlayRoot(ctx.widgets.effectSelect, ctx.widgets.shaderEmbed)
+  setDropdownOverlayRoot(ctx.widgets.selectedSlice, ctx.widgets.sliceEmbed)
+  -- FX slot dropdowns live inside a nested component runtime, so they are not in
+  -- ctx.widgets. If we don't grab the real instances from ctx.allWidgets, they
+  -- keep their default global root and the popovers get parented to the hidden
+  -- script root instead of fxEmbed.
+  anchorFxComponentDropdowns(ctx)
   for i = 1, MAX_MAPPINGS do
-    anchorDropdownTo(ctx.widgets["mapping" .. i .. "Source"], ctx.widgets.mappingEmbed)
-    anchorDropdownTo(ctx.widgets["mapping" .. i .. "Target"], ctx.widgets.mappingEmbed)
+    setDropdownOverlayRoot(ctx.widgets["mapping" .. i .. "Source"], ctx.widgets.mappingEmbed)
+    setDropdownOverlayRoot(ctx.widgets["mapping" .. i .. "Target"], ctx.widgets.mappingEmbed)
   end
 
   refreshShaderLists(ctx)

@@ -93,7 +93,11 @@ void ShaderEffectRegistry::registerBuiltinEffects() {
         return;
     }
 
+#ifdef MANIFOLD_SOURCE_DIR
+    juce::File shadersDir{juce::File{MANIFOLD_SOURCE_DIR}.getChildFile("manifold/shaders")};
+#else
     juce::File shadersDir{juce::File::getCurrentWorkingDirectory().getChildFile("manifold/shaders")};
+#endif
     if (!shadersDir.isDirectory()) {
         return;
     }

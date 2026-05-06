@@ -217,7 +217,7 @@ manifold::ui::imgui::RuntimeNodeRenderer::HitTestResult hitTestLiveTreeDetailed(
     return renderer.hitTest(liveSnapshot, position, transform, mode);
 }
 
-juce::Rectangle<float> sceneBoundsForNode(RuntimeNode* node) {
+juce::Rectangle<float> sceneBoundsForNodeWithinRoot(RuntimeNode* root, RuntimeNode* node) {
     if (node == nullptr) {
         return {};
     }
@@ -230,8 +230,19 @@ juce::Rectangle<float> sceneBoundsForNode(RuntimeNode* node) {
     } transform;
 
     std::vector<RuntimeNode*> lineage;
+    bool foundRoot = root == nullptr;
     for (RuntimeNode* current = node; current != nullptr; current = current->getParent()) {
         lineage.push_back(current);
+        if (current == root) {
+            foundRoot = true;
+            break;
+        }
+    }
+    if (!foundRoot) {
+        lineage.clear();
+        for (RuntimeNode* current = node; current != nullptr; current = current->getParent()) {
+            lineage.push_back(current);
+        }
     }
     std::reverse(lineage.begin(), lineage.end());
 
@@ -256,18 +267,24 @@ juce::Rectangle<float> sceneBoundsForNode(RuntimeNode* node) {
     return juce::Rectangle<float>(left, top, std::max(1.0f, right - left), std::max(1.0f, bottom - top));
 }
 
-juce::Point<float> localPositionForNode(RuntimeNode* node,
-                                        juce::Point<float> scenePosition) {
+juce::Point<float> localPositionForNodeWithinRoot(RuntimeNode* root,
+                                                  RuntimeNode* node,
+                                                  juce::Point<float> scenePosition) {
     if (node == nullptr) {
         return scenePosition;
     }
 
-    const auto sceneBounds = sceneBoundsForNode(node);
+    const auto sceneBounds = sceneBoundsForNodeWithinRoot(root, node);
     const auto& bounds = node->getBounds();
     const float scaleX = bounds.w > 0 ? (sceneBounds.getWidth() / static_cast<float>(bounds.w)) : 1.0f;
     const float scaleY = bounds.h > 0 ? (sceneBounds.getHeight() / static_cast<float>(bounds.h)) : 1.0f;
     return juce::Point<float>((scenePosition.x - sceneBounds.getX()) / std::max(0.0001f, scaleX),
                               (scenePosition.y - sceneBounds.getY()) / std::max(0.0001f, scaleY));
+}
+
+juce::Point<float> localPositionForNode(RuntimeNode* node,
+                                        juce::Point<float> scenePosition) {
+    return localPositionForNodeWithinRoot(nullptr, node, scenePosition);
 }
 
 ImU32 toImColor(uint32_t argb) {
@@ -347,7 +364,7 @@ bool videoBackedFitModeForNode(const RuntimeNode& node, std::string& fitModeOut)
     return false;
 }
 
-void invokeOnImGuiFrameRecursive(RuntimeNode& node) {
+void invokeOnImGuiFrameRecursive(RuntimeNode& traversalRoot, RuntimeNode& node) {
     if (!node.isVisible()) {
         return;
     }
@@ -363,9 +380,18 @@ void invokeOnImGuiFrameRecursive(RuntimeNode& node) {
         }
     }
 
+    std::vector<uint64_t> childStableIds;
+    childStableIds.reserve(node.getChildren().size());
     for (auto* child : node.getChildren()) {
         if (child != nullptr) {
-            invokeOnImGuiFrameRecursive(*child);
+            childStableIds.push_back(child->getStableId());
+        }
+    }
+
+    for (auto stableId : childStableIds) {
+        auto* child = traversalRoot.findByStableId(stableId);
+        if (child != nullptr && child->getParent() == &node) {
+            invokeOnImGuiFrameRecursive(traversalRoot, *child);
         }
     }
 }
@@ -548,7 +574,9 @@ void renderCompiledDisplayList(const manifold::ui::imgui::CompiledDisplayList& c
                     textY += 2.0f;
                 }
 
+                drawList->PushClipRect(toImVec2(rect), toImVec2BottomRight(rect), true);
                 drawList->AddText(font, fontSize, ImVec2(textX, textY), state.color, cmd.text.c_str());
+                drawList->PopClipRect();
                 break;
             }
             case manifold::ui::imgui::CompiledDrawCmd::Type::DrawImage:
@@ -1291,7 +1319,7 @@ bool ImGuiDirectHost::renderEmbeddedRuntimePanel(RuntimeNode& root,
             }
         }
         if (hit.node != nullptr) {
-            auto localPosition = localPositionForNode(const_cast<RuntimeNode*>(hit.node), hit.scenePosition);
+            auto localPosition = localPositionForNodeWithinRoot(&root, const_cast<RuntimeNode*>(hit.node), hit.scenePosition);
             invokeLiveMouseMove(const_cast<RuntimeNode&>(*hit.node), localPosition, mods);
         }
     };
@@ -1304,13 +1332,13 @@ bool ImGuiDirectHost::renderEmbeddedRuntimePanel(RuntimeNode& root,
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hit.node != nullptr) {
             state.pressedNodeStableId = hit.stableId;
             state.dragStartScenePosition = hit.scenePosition;
-            auto localPosition = localPositionForNode(const_cast<RuntimeNode*>(hit.node), hit.scenePosition);
+            auto localPosition = localPositionForNodeWithinRoot(&root, const_cast<RuntimeNode*>(hit.node), hit.scenePosition);
             setLiveFocus(hit.stableId);
             invokeLiveMouseDown(const_cast<RuntimeNode&>(*hit.node), localPosition, mods);
         }
 
         if (options.captureWheel && std::abs(ImGui::GetIO().MouseWheel) > 0.0001f && hit.node != nullptr) {
-            invokeLiveMouseWheel(const_cast<RuntimeNode&>(*hit.node), hit.scenePosition, ImGui::GetIO().MouseWheel, mods);
+            invokeLiveMouseWheel(const_cast<RuntimeNode&>(*hit.node), hit.scenePosition, ImGui::GetIO().MouseWheel, mods, &root);
         }
     } else if (state.hoveredNodeStableId != 0) {
         invokeLiveMouseExit(state.hoveredNodeStableId);
@@ -1321,7 +1349,7 @@ bool ImGuiDirectHost::renderEmbeddedRuntimePanel(RuntimeNode& root,
         if (auto* pressedNode = findLiveNodeByStableId(state.pressedNodeStableId)) {
             const auto scenePosition = juce::Point<float>((previewPosition.x - transform.offsetX) / std::max(0.0001f, transform.scale),
                                                           (previewPosition.y - transform.offsetY) / std::max(0.0001f, transform.scale));
-            const auto localPosition = localPositionForNode(pressedNode, scenePosition);
+            const auto localPosition = localPositionForNodeWithinRoot(&root, pressedNode, scenePosition);
             const auto dragDelta = juce::Point<float>(scenePosition.x - state.dragStartScenePosition.x,
                                                       scenePosition.y - state.dragStartScenePosition.y);
             invokeLiveMouseDrag(*pressedNode, localPosition, dragDelta, mods);
@@ -1334,7 +1362,7 @@ bool ImGuiDirectHost::renderEmbeddedRuntimePanel(RuntimeNode& root,
         if (auto* pressedNode = findLiveNodeByStableId(state.pressedNodeStableId)) {
             const auto scenePosition = juce::Point<float>((previewPosition.x - transform.offsetX) / std::max(0.0001f, transform.scale),
                                                           (previewPosition.y - transform.offsetY) / std::max(0.0001f, transform.scale));
-            const auto localPosition = localPositionForNode(pressedNode, scenePosition);
+            const auto localPosition = localPositionForNodeWithinRoot(&root, pressedNode, scenePosition);
             const auto releaseHit = panelHovered
                 ? hitTestLiveTreeDetailed(renderer_, &root, previewPosition, transform,
                                           manifold::ui::imgui::RuntimeNodeRenderer::HitTestMode::Pointer)
@@ -1525,7 +1553,7 @@ bool ImGuiDirectHost::renderFrameWithCurrentContext(float scale, bool allowSwap)
 
     activeInstance_ = this;
     if (liveRoot_ != nullptr) {
-        invokeOnImGuiFrameRecursive(*liveRoot_);
+        invokeOnImGuiFrameRecursive(*liveRoot_, *liveRoot_);
     }
     activeInstance_ = nullptr;
 
@@ -1739,7 +1767,7 @@ std::optional<juce::Rectangle<int>> ImGuiDirectHost::getRenderedNodeBounds(const
         return std::nullopt;
     }
 
-    const auto sceneBounds = sceneBoundsForNode(node);
+    const auto sceneBounds = sceneBoundsForNodeWithinRoot(nullptr, node);
     auto rendered = previewRect(sceneBounds, previewTransform_).getSmallestIntegerContainer();
     rendered = rendered.getIntersection(juce::Rectangle<int>(0, 0, getWidth(), getHeight()));
     if (rendered.isEmpty()) {
@@ -2369,13 +2397,14 @@ void ImGuiDirectHost::invokeLiveMouseExit(uint64_t stableId) {
 void ImGuiDirectHost::invokeLiveMouseWheel(RuntimeNode& hitNode,
                                            juce::Point<float> scenePosition,
                                            float deltaY,
-                                           const juce::ModifierKeys& mods) {
+                                           const juce::ModifierKeys& mods,
+                                           RuntimeNode* coordinateRoot) {
     auto* node = findLiveWheelTarget(&hitNode);
     if (node == nullptr) {
         return;
     }
 
-    auto localPosition = localPositionForNode(node, scenePosition);
+    auto localPosition = localPositionForNodeWithinRoot(coordinateRoot, node, scenePosition);
     auto& callbacks = node->getCallbacks();
     invokeLuaCallback(callbacks.onMouseWheel,
                       "onMouseWheel",

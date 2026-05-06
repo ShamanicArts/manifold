@@ -44,7 +44,11 @@ void TextureSourceRegistry::registerBuiltinSources() {
         return;
     }
 
+#ifdef MANIFOLD_SOURCE_DIR
+    juce::File sourcesDir{juce::File{MANIFOLD_SOURCE_DIR}.getChildFile("manifold/sources/generator")};
+#else
     juce::File sourcesDir{juce::File::getCurrentWorkingDirectory().getChildFile("manifold/sources/generator")};
+#endif
     if (!sourcesDir.isDirectory()) {
         return;
     }

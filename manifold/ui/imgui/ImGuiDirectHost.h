@@ -219,7 +219,7 @@ public:
     void invokeLiveMouseMove(RuntimeNode& node, juce::Point<float> localPosition, const juce::ModifierKeys& mods);
     void invokeLiveMouseEnter(uint64_t stableId);
     void invokeLiveMouseExit(uint64_t stableId);
-    void invokeLiveMouseWheel(RuntimeNode& node, juce::Point<float> scenePosition, float deltaY, const juce::ModifierKeys& mods);
+    void invokeLiveMouseWheel(RuntimeNode& node, juce::Point<float> scenePosition, float deltaY, const juce::ModifierKeys& mods, RuntimeNode* coordinateRoot = nullptr);
     void queueMousePosition(juce::Point<float> position);
     void queueMouseButton(int button, bool down);
     void queueMouseWheel(float deltaX, float deltaY);
