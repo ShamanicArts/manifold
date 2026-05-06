@@ -311,6 +311,69 @@ else()
     message(FATAL_ERROR "Unsupported platform for Ableton Link platform defines")
 endif()
 
+# --- TensorFlow Lite (optional ML inference) ---
+# Fetched via URL download into build/_deps/ during configure, same pattern as
+# sol2 and ableton_link. Not a git submodule — avoids JJ/git submodule friction.
+option(MANIFOLD_ENABLE_TFLITE "Build with TensorFlow Lite ML inference support" ON)
+set(MANIFOLD_TFLITE_TARGET "" CACHE INTERNAL "TFLite CMake target, set when MANIFOLD_ENABLE_TFLITE is ON")
+
+if(MANIFOLD_ENABLE_TFLITE)
+    FetchContent_Declare(
+        tensorflow
+        URL https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.18.0.tar.gz)
+
+    # TFLite's internal dependency fetching (abseil, eigen, etc.) uses a custom
+    # OverridableFetchContent module that defaults to shallow git clones. The
+    # git update step fails on these. Force URL downloads instead.
+    set(_manifold_tflite_policy_minimum "${CMAKE_POLICY_VERSION_MINIMUM}")
+    set(_manifold_tflite_warn_deprecated "${CMAKE_WARN_DEPRECATED}")
+    if(POLICY CMP0169)
+        cmake_policy(SET CMP0169 OLD)
+    endif()
+    if(POLICY CMP0135)
+        cmake_policy(SET CMP0135 OLD)
+    endif()
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+    set(CMAKE_WARN_DEPRECATED OFF)
+
+    FetchContent_GetProperties(tensorflow)
+    if(NOT tensorflow_POPULATED)
+        FetchContent_Populate(tensorflow)
+    endif()
+
+    # Tell TFLite's OverridableFetchContent to use URL downloads, not git
+    set(OVERRIDABLE_FETCH_CONTENT_USE_GIT OFF CACHE BOOL "" FORCE)
+    set(TFLITE_ENABLE_XNNPACK OFF CACHE BOOL "" FORCE)
+    set(TFLITE_ENABLE_GPU OFF CACHE BOOL "" FORCE)
+    set(TFLITE_ENABLE_NNAPI OFF CACHE BOOL "" FORCE)
+    set(TFLITE_ENABLE_RUY OFF CACHE BOOL "" FORCE)
+    add_subdirectory(
+        "${tensorflow_SOURCE_DIR}/tensorflow/lite"
+        "${tensorflow_BINARY_DIR}"
+        EXCLUDE_FROM_ALL)
+
+    set(CMAKE_WARN_DEPRECATED "${_manifold_tflite_warn_deprecated}")
+    set(CMAKE_POLICY_VERSION_MINIMUM "${_manifold_tflite_policy_minimum}")
+    unset(_manifold_tflite_warn_deprecated)
+    unset(_manifold_tflite_policy_minimum)
+
+    if(TARGET tensorflow-lite)
+        set(MANIFOLD_TFLITE_TARGET tensorflow-lite)
+
+        # ML wrapper sources — conditionally added alongside TFLite
+        set(MANIFOLD_ML_SOURCES
+            manifold/primitives/ml/MLPipeline.h
+            manifold/primitives/ml/MLPipeline.cpp)
+
+        message(STATUS "TensorFlow Lite enabled: ${MANIFOLD_TFLITE_TARGET}")
+    else()
+        message(WARNING "TensorFlow Lite requested but target not found. ML features disabled.")
+        set(MANIFOLD_ENABLE_TFLITE OFF)
+    endif()
+else()
+    message(STATUS "TensorFlow Lite disabled")
+endif()
+
 function(manifold_target_include_project_and_ableton target_name)
     target_include_directories(${target_name}
         PRIVATE
@@ -621,7 +684,8 @@ target_sources(Manifold
     PRIVATE
         ${MANIFOLD_DSP_SOURCES}
         ${MANIFOLD_RUNTIME_SOURCES}
-        ${MANIFOLD_CORE_SOURCES})
+        ${MANIFOLD_CORE_SOURCES}
+        ${MANIFOLD_ML_SOURCES})
 
 manifold_target_include_project_and_ableton(Manifold)
 
@@ -634,7 +698,10 @@ target_compile_definitions(Manifold
         SOL_ALL_SAFETIES_ON=1
         SOL_SAFE_NUMERICS=0
         MANIFOLD_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-        ${MANIFOLD_LINK_PLATFORM_DEFINE})
+        ${MANIFOLD_LINK_PLATFORM_DEFINE}
+    PRIVATE
+        $<$<BOOL:${MANIFOLD_TFLITE_TARGET}>:MANIFOLD_HAS_ML=1>
+        $<$<NOT:$<BOOL:${MANIFOLD_TFLITE_TARGET}>>:MANIFOLD_HAS_ML=0>)
 
 target_link_libraries(Manifold
     PRIVATE
@@ -648,6 +715,7 @@ target_link_libraries(Manifold
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
 		highway
+        ${MANIFOLD_TFLITE_TARGET}
         ${MANIFOLD_EXTRA_GL_LIBS}
     PUBLIC
         juce::juce_recommended_config_flags
@@ -670,7 +738,7 @@ function(manifold_add_export_lua_assets target_name comment_text)
 endfunction()
 
 function(manifold_add_export_plugin target_name)
-    cmake_parse_arguments(ARG "IS_SYNTH;NEEDS_MIDI_INPUT;NEEDS_MIDI_OUTPUT;IS_MIDI_EFFECT;FORCE_AUDIO_INPUT;NEEDS_AUDIO_SIDECHAIN" "PRODUCT_NAME;PLUGIN_CODE;PROJECT_DIR;MANIFEST_SPEC;PROJECT_MANIFEST" "FORMATS" ${ARGN})
+    cmake_parse_arguments(ARG "IS_SYNTH;NEEDS_MIDI_INPUT;NEEDS_MIDI_OUTPUT;IS_MIDI_EFFECT;FORCE_AUDIO_INPUT;NEEDS_AUDIO_SIDECHAIN;NEEDS_TFLITE" "PRODUCT_NAME;PLUGIN_CODE;PROJECT_DIR;MANIFEST_SPEC;PROJECT_MANIFEST" "FORMATS" ${ARGN})
 
     if(NOT ARG_PRODUCT_NAME)
         message(FATAL_ERROR "manifold_add_export_plugin requires PRODUCT_NAME")
@@ -762,6 +830,10 @@ function(manifold_add_export_plugin target_name)
                 MANIFOLD_EXPORT_NEEDS_SIDECHAIN=1)
     endif()
 
+    if(ARG_NEEDS_TFLITE)
+        list(APPEND MANIFOLD_EXPORT_TFLITE_LIBS ${MANIFOLD_TFLITE_TARGET})
+    endif()
+
     target_link_libraries(${target_name}
         PRIVATE
             juce::juce_audio_utils
@@ -774,6 +846,7 @@ function(manifold_add_export_plugin target_name)
             ${MANIFOLD_LUA_TARGET}
             sol2::sol2
             highway
+            ${MANIFOLD_EXPORT_TFLITE_LIBS}
             ${MANIFOLD_EXTRA_GL_LIBS}
         PUBLIC
             juce::juce_recommended_config_flags
@@ -1032,6 +1105,7 @@ target_link_libraries(ManifoldHeadless
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
 		highway
+        ${MANIFOLD_TFLITE_TARGET}
         ${MANIFOLD_EXTRA_GL_LIBS})
 
 manifold_target_include_project_and_ableton(LuaEngineMockHarness)

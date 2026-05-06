@@ -1,0 +1,11 @@
+{
+  "id": "ml_lab",
+  "name": "MLLab",
+  "description": "ML inference pipeline lab — load .tflite models, run on webcam frames",
+  "author": "shamanic",
+  "version": "0.1.0",
+  "tags": ["lab", "ml", "computer-vision"],
+  "ui": {
+    "root": "ui/main.ui.lua"
+  }
+}

@@ -32,6 +32,7 @@ extern "C" {
 #include "../../video/VideoCaptureManager.h"
 #include "../../video/VideoRetrospectiveCapture.h"
 #include "../../video/VideoSampler.h"
+#include "../../ml/MLPipeline.h"
 
 #include <juce_core/juce_core.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -2940,6 +2941,90 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         manifold::video::VideoSamplerRegistry::instance().clear();
     };
     lua["videoSampler"] = videoSamplerTable;
+
+    // ==========================================================================
+    // ml table - ML inference (TFLite) bindings
+    // ==========================================================================
+    auto mlTable = lua.create_table();
+
+#if MANIFOLD_HAS_ML
+    lua.new_usertype<manifold::ml::MLPipeline>("MLPipeline",
+        sol::no_constructor,
+        "isLoaded", &manifold::ml::MLPipeline::isLoaded,
+        "inputWidth", &manifold::ml::MLPipeline::inputWidth,
+        "inputHeight", &manifold::ml::MLPipeline::inputHeight,
+        "inputChannels", &manifold::ml::MLPipeline::inputChannels,
+        "outputElements", &manifold::ml::MLPipeline::outputElements,
+        "lastError", &manifold::ml::MLPipeline::lastError);
+
+    mlTable["load"] = [](const std::string& modelPath)
+        -> std::shared_ptr<manifold::ml::MLPipeline> {
+        auto pipeline = std::make_shared<manifold::ml::MLPipeline>();
+        if (!pipeline->load(modelPath)) {
+            return nullptr;
+        }
+        return pipeline;
+    };
+
+    // Convenience: infer from latest webcam frame
+    mlTable["infer"] = [&lua](
+        const std::shared_ptr<manifold::ml::MLPipeline>& pipeline)
+        -> sol::optional<sol::table> {
+        if (!pipeline || !pipeline->isLoaded()) return sol::nullopt;
+
+        auto frame = manifold::video::VideoCaptureManager::instance().getLatestFrameCopy();
+        if (!frame.valid()) return sol::nullopt;
+
+        std::vector<float> output;
+        if (!pipeline->infer(frame.rgba.data(), frame.width, frame.height, output))
+            return sol::nullopt;
+
+        auto result = sol::table(lua, sol::create);
+        result["width"] = pipeline->inputWidth();
+        result["height"] = pipeline->inputHeight();
+        result["size"] = static_cast<int>(output.size());
+        sol::table dataTable = sol::table(lua, sol::create);
+        for (int i = 0; i < static_cast<int>(output.size()); ++i)
+            dataTable[i + 1] = output[static_cast<std::size_t>(i)];
+        result["data"] = dataTable;
+        return result;
+    };
+
+    // Generic: infer from explicit pixel data
+    // frame Lua table: { width = int, height = int, rgba = {r0,g0,b0,a0, r1,g1,b1,a1, ...} }
+    mlTable["inferFrame"] = [&lua](
+        const std::shared_ptr<manifold::ml::MLPipeline>& pipeline,
+        sol::table frame)
+        -> sol::optional<sol::table> {
+        if (!pipeline || !pipeline->isLoaded()) return sol::nullopt;
+
+        int w = frame["width"];
+        int h = frame["height"];
+        sol::object rgbaObj = frame["rgba"];
+        if (w <= 0 || h <= 0 || !rgbaObj.is<sol::table>()) return sol::nullopt;
+
+        sol::table rgbaTable = rgbaObj.as<sol::table>();
+        std::size_t numPixels = static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4;
+        std::vector<unsigned char> rgba(numPixels);
+        for (std::size_t i = 0; i < numPixels; ++i)
+            rgba[i] = static_cast<unsigned char>(rgbaTable[static_cast<int>(i) + 1].get_or(0));
+
+        std::vector<float> output;
+        if (!pipeline->infer(rgba.data(), w, h, output)) return sol::nullopt;
+
+        auto result = sol::table(lua, sol::create);
+        result["width"] = pipeline->inputWidth();
+        result["height"] = pipeline->inputHeight();
+        result["size"] = static_cast<int>(output.size());
+        sol::table dataTable = sol::table(lua, sol::create);
+        for (int i = 0; i < static_cast<int>(output.size()); ++i)
+            dataTable[i + 1] = output[static_cast<std::size_t>(i)];
+        result["data"] = dataTable;
+        return result;
+    };
+#endif // MANIFOLD_HAS_ML
+
+    lua["ml"] = mlTable;
 
     // ==========================================================================
     // capture table - video capture hardware bindings

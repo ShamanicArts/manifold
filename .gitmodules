@@ -10,3 +10,6 @@
 [submodule "external/highway"]
 	path = external/highway
 	url = https://github.com/google/highway
+[submodule "external/tensorflow"]
+	path = external/tensorflow
+	url = https://github.com/tensorflow/tensorflow.git
