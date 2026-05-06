@@ -152,6 +152,7 @@ struct ImGuiDirectHost::EglOffscreenContext {
 thread_local ImGuiDirectHost* ImGuiDirectHost::activeInstance_ = nullptr;
 
 namespace {
+constexpr double kDeferredSurfaceBudgetMicros = 2000.0;
 
 bool isCtrlLikeDown(const juce::ModifierKeys& mods) {
     return mods.isCtrlDown() || mods.isCommandDown();
@@ -993,8 +994,9 @@ ImGuiDirectHost::ImGuiDirectHost()
             if (targetNode->getStableId() == node.getStableId()) {
                 return resolved;
             }
-            resolved.textureHandle = prepareCustomSurfaceTexture(*targetNode, width, height, timeSeconds);
+            resolved.textureHandle = prepareCustomSurfaceTextureImmediate(*targetNode, width, height, timeSeconds);
             if (resolved.textureHandle != 0) {
+                cachedSurfaceTextures_[targetNode->getStableId()].textureHandle = resolved.textureHandle;
                 if (!getVideoSurfaceInfo(targetNode->getStableId(), resolved.width, resolved.height, resolved.sequence)) {
                     resolved.width = width;
                     resolved.height = height;
@@ -1027,8 +1029,9 @@ ImGuiDirectHost::ImGuiDirectHost()
             return resolved;
         }
 
-        resolved.textureHandle = prepareCustomSurfaceTexture(*targetNode, width, height, timeSeconds);
+        resolved.textureHandle = prepareCustomSurfaceTextureImmediate(*targetNode, width, height, timeSeconds);
         if (resolved.textureHandle != 0) {
+            cachedSurfaceTextures_[targetNode->getStableId()].textureHandle = resolved.textureHandle;
             if (!getVideoSurfaceInfo(targetNode->getStableId(), resolved.width, resolved.height, resolved.sequence)) {
                 resolved.width = width;
                 resolved.height = height;
@@ -1229,10 +1232,10 @@ void ImGuiDirectHost::recalculateOwnedGpuBytes() {
                              , std::memory_order_relaxed);
 }
 
-std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& node,
-                                                            int width,
-                                                            int height,
-                                                            double timeSeconds) {
+std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTextureImmediate(const RuntimeNode& node,
+                                                                     int width,
+                                                                     int height,
+                                                                     double timeSeconds) {
     if (node.getStableId() == 0 || width <= 0 || height <= 0) {
         return 0;
     }
@@ -1247,6 +1250,17 @@ std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& n
     }
 
     return 0;
+}
+
+std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& node,
+                                                            int width,
+                                                            int height,
+                                                            double timeSeconds) {
+    return prepareCustomSurfaceTextureImmediate(node, width, height, timeSeconds);
+}
+
+void ImGuiDirectHost::processDeferredSurfaceRequests(double timeSeconds) {
+    juce::ignoreUnused(timeSeconds);
 }
 
 bool ImGuiDirectHost::getVideoSurfaceInfo(uint64_t stableId, int& width, int& height, uint64_t& sequence) const {
@@ -1512,6 +1526,8 @@ bool ImGuiDirectHost::renderFrameWithCurrentContext(float scale, bool allowSwap)
     glClearColor(theme.panelBg.x, theme.panelBg.y, theme.panelBg.z, theme.panelBg.w);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    processDeferredSurfaceRequests(juce::Time::getMillisecondCounterHiRes() * 0.001);
+
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
@@ -1556,6 +1572,13 @@ bool ImGuiDirectHost::renderFrameWithCurrentContext(float scale, bool allowSwap)
     for (auto& provider : surfaceProviders_) {
         if (provider) {
             provider->prune(touchedSurfaceIds);
+        }
+    }
+    for (auto it = cachedSurfaceTextures_.begin(); it != cachedSurfaceTextures_.end();) {
+        if (touchedSurfaceIds.find(it->first) == touchedSurfaceIds.end()) {
+            it = cachedSurfaceTextures_.erase(it);
+        } else {
+            ++it;
         }
     }
     recalculateOwnedGpuBytes();
@@ -1881,6 +1904,9 @@ void ImGuiDirectHost::shutdown() {
     wantCaptureKeyboard_.store(false, std::memory_order_relaxed);
     lastVertexCount_.store(0, std::memory_order_relaxed);
     lastIndexCount_.store(0, std::memory_order_relaxed);
+    deferredSurfaceRequests_.clear();
+    deferredSurfaceOrder_.clear();
+    cachedSurfaceTextures_.clear();
 
     if (openGLContext_.isAttached()) {
         openGLContext_.detach();
@@ -2242,6 +2268,9 @@ void ImGuiDirectHost::openGLContextClosing() {
     wantCaptureKeyboard_.store(false, std::memory_order_relaxed);
     lastVertexCount_.store(0, std::memory_order_relaxed);
     lastIndexCount_.store(0, std::memory_order_relaxed);
+    deferredSurfaceRequests_.clear();
+    deferredSurfaceOrder_.clear();
+    cachedSurfaceTextures_.clear();
 
     for (auto& provider : surfaceProviders_) {
         if (provider) {

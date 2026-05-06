@@ -821,6 +821,7 @@ end
 
 setSourceSpecForColumn = function(ctx, col, spec)
   col = tonumber(col) or 1
+  ctx.sourceSelectionCol = col
   if col == 1 then
     ctx._col1SourceSpec = cloneTable(spec)
     if spec.kind == "generator" then
@@ -1566,8 +1567,8 @@ local function layoutSliceEmbed(ctx, w, h)
 end
 
 syncShaderSourceParams = function(ctx)
-  local sel = ctx.selection
-  local spec = sourceSpecForColumn(ctx, (sel and sel.col) or 1) or { kind = "webcam" }
+  local sourceCol = tonumber(ctx.sourceSelectionCol) or 1
+  local spec = sourceSpecForColumn(ctx, sourceCol) or { kind = "webcam" }
   local specParams = {}
   local values = {}
 
@@ -1656,9 +1657,9 @@ local function layoutSourceEmbed(ctx, w, h)
   setBounds(ctx.widgets.sourceEmbed, 0, 0, w, h)
   local pad, gap = 8, 4
   local topY = 25
-  local sel = ctx.selection
-  local cd = sel and ctx._colData and ctx._colData[sel.col]
-  local viewingCol2Plus = sel and sel.col and sel.col > 1 and sel.row == 1 and cd and cd.source
+  local sourceCol = tonumber(ctx.sourceSelectionCol) or 1
+  local cd = ctx._colData and ctx._colData[sourceCol]
+  local viewingCol2Plus = sourceCol > 1 and cd and cd.source
 
   if viewingCol2Plus then
     local src = cd.source
@@ -1893,26 +1894,15 @@ local function selectGridCell(ctx, col, row)
   local clip = ctx.clips and ctx.clips[col] and ctx.clips[col][row] or nil
   if not clip or clip.empty then return end
 
+  if row <= 1 then
+    ctx.sourceSelectionCol = col
+    return
+  end
+
   ctx.selection = { col = col, row = row }
   local cd = ctx._colData and ctx._colData[col]
 
   if col == 1 then
-    -- Column 1: drive ctx.shader as before
-    if row <= 1 then
-      local nextSource = math.max(1, math.min(#(ctx.sources or {}), clip.sourceIndex or ctx.shader.sourceIndex or 1))
-      if nextSource ~= ctx.shader.sourceIndex then
-        ctx.shader.sourceIndex = nextSource
-        writeParam(NS .. "/shader/source", nextSource)
-        setSelectedSilently(ctx.widgets.sourceSelect, nextSource)
-        syncShaderSourceParams(ctx)
-        updateOutputAspect(ctx)
-        updateShader(ctx)
-      else
-        syncShaderSourceParams(ctx)
-      end
-      syncShaderEditor(ctx)
-      return
-    end
     local nextLayer = math.max(1, math.min(8, clip.layerIndex or (row - 1)))
     if nextLayer ~= ctx.shader.activeLayer then
       ctx.shader.activeLayer = nextLayer
@@ -1923,20 +1913,13 @@ local function selectGridCell(ctx, col, row)
     return
   end
 
-  -- Columns 2+: sync the colData into the inspector UI
-  if row <= 1 then
-    -- Source cell: update source inspector to match this column's source
-    syncShaderSourceParams(ctx)
+  -- Columns 2+: sync the colData into the effect inspector UI
+  local fxSlot = row - 1
+  local f = cd and cd.fx[fxSlot]
+  if f then
+    setSelectedSilently(ctx.widgets.shaderLayer, fxSlot)
+    setSelectedSilently(ctx.widgets.effectSelect, f.effectIndex)
     syncShaderEditor(ctx)
-  else
-    -- FX cell: sync effect editor to this column's FX slot
-    local fxSlot = row - 1
-    local f = cd and cd.fx[fxSlot]
-    if f then
-      setSelectedSilently(ctx.widgets.shaderLayer, fxSlot)
-      setSelectedSilently(ctx.widgets.effectSelect, f.effectIndex)
-      syncShaderEditor(ctx)
-    end
   end
 end
 
@@ -1946,8 +1929,7 @@ local function applySourceSelection(ctx, idx)
   idx = math.max(1, math.min(#(ctx.sources or {}), round(idx)))
   local choice = ctx.sources[idx]
   if not choice then return end
-  local sel = ctx.selection or { col = 1, row = 1 }
-  local col = sel.col or 1
+  local col = tonumber(ctx.sourceSelectionCol) or 1
   local spec
   if choice.kind == "webcam" then
     spec = { kind = "webcam", sourceIndex = idx }
@@ -1989,10 +1971,25 @@ local function applyShaderEnabledSelection(ctx, enabled)
     ctx.shader.layers[ctx.shader.activeLayer].enabled = v
     writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/enabled", v and 1 or 0)
     updateShader(ctx)
-  elseif cd then
+  elseif cd and sel and sel.row and sel.row > 1 then
     local fxSlot = sel.row - 1
-    if cd.fx[fxSlot] then
-      cd.fx[fxSlot].enabled = v
+    local f = cd.fx[fxSlot]
+    if not f and v and fxSlot >= 1 and fxSlot <= 8 then
+      local effectIndex = 1
+      if ctx.widgets and ctx.widgets.effectSelect and ctx.widgets.effectSelect.getSelected then
+        effectIndex = math.max(1, math.min(#(ctx.effects or {}), round(ctx.widgets.effectSelect:getSelected() or 1)))
+      end
+      local params = {}
+      local eff = ctx.effects and ctx.effects[effectIndex]
+      for p = 1, 9 do
+        local spec = eff and eff.params and eff.params[p]
+        params[p] = spec and (tonumber(spec.default) or 0.5) or 0.5
+      end
+      f = { effectIndex = effectIndex, params = params, enabled = true }
+      cd.fx[fxSlot] = f
+    end
+    if f then
+      f.enabled = v
       updateGridThumbnails(ctx)
     end
   end
@@ -2011,15 +2008,22 @@ local function applyEffectSelection(ctx, idx)
     updateShader(ctx)
   elseif cd and sel.row > 1 then
     local fxSlot = sel.row - 1
-    if cd.fx[fxSlot] then
-      cd.fx[fxSlot].effectIndex = idx
-      -- Reset params to defaults for the new effect
+    local f = cd.fx[fxSlot]
+    if not f and fxSlot >= 1 and fxSlot <= 8 then
+      f = { effectIndex = idx, params = {}, enabled = true }
+      cd.fx[fxSlot] = f
+    end
+    if f then
+      f.effectIndex = idx
       local eff = ctx.effects[idx]
+      f.params = {}
       if eff then
         for p = 1, 9 do
           local spec = eff.params and eff.params[p]
-          cd.fx[fxSlot].params[p] = spec and (tonumber(spec.default) or 0.5) or 0.5
+          f.params[p] = spec and (tonumber(spec.default) or 0.5) or 0.5
         end
+      else
+        for p = 1, 9 do f.params[p] = 0.5 end
       end
       updateGridThumbnails(ctx)
     end
@@ -2062,9 +2066,8 @@ local function applyShaderParamDisplay(ctx, p, displayValue)
 end
 
 local function applySourceParamDisplay(ctx, pi, displayValue)
-  local sel = ctx.selection or { col = 1, row = 1 }
-  if sel.row ~= 1 then return end
-  local spec = sourceSpecForColumn(ctx, sel.col)
+  local sourceCol = tonumber(ctx.sourceSelectionCol) or 1
+  local spec = sourceSpecForColumn(ctx, sourceCol)
   if not spec then return end
 
   if spec.kind == "generator" then
@@ -2090,8 +2093,8 @@ local function applySourceParamDisplay(ctx, pi, displayValue)
     return
   end
 
-  setSourceSpecForColumn(ctx, sel.col, spec)
-  if sel.col == 1 then
+  setSourceSpecForColumn(ctx, sourceCol, spec)
+  if sourceCol == 1 then
     updateShader(ctx)
   else
     updateGridThumbnails(ctx)
@@ -2139,7 +2142,7 @@ local function addColumn(ctx, sourceSpec)
     ctx._colData[id].source.tapIndex = sourceSpec.tapIndex or 0
   end
 
-  ctx.selection = { col = id, row = 1 }
+  ctx.sourceSelectionCol = id
   return id
 end
 
@@ -2151,6 +2154,9 @@ local function removeColumn(ctx, col)
   local sel = ctx.selection
   if sel and sel.col == col then
     ctx.selection = { col = 1, row = 2 }
+  end
+  if tonumber(ctx.sourceSelectionCol) == col then
+    ctx.sourceSelectionCol = 1
   end
 end
 
@@ -2213,7 +2219,7 @@ local function colRemoveFx(ctx, col, row)
   end
 end
 
-local function colSourceDescriptor(ctx, col)
+colSourceDescriptor = function(ctx, col)
   local spec = sourceSpecForColumn(ctx, col)
   if not spec then return { type = "webcam" }, nil end
   if spec.kind == "columntap" then
@@ -2222,7 +2228,7 @@ local function colSourceDescriptor(ctx, col)
   return applySourceSpecToHiddenNode(ctx, spec, "col" .. tostring(col) .. "_source")
 end
 
-local function colBuildCellPipeline(ctx, col, row)
+colBuildCellPipeline = function(ctx, col, row)
   local cd = ctx._colData and ctx._colData[col]
   if not cd or not cd.source then return nil end
   if row <= 1 then return nil end  -- source cells don't need a pipeline
@@ -2334,7 +2340,8 @@ end
 local CELL_SRC_TINT = 0xff0d2028
 local CELL_FX_TINT = 0xff0d1420
 local CELL_BORDER = 0xff1a1a22
-local CELL_SEL_BD = 0xff22d3ee
+local CELL_SRC_SEL_BD = 0xff22d3ee
+local CELL_FX_SEL_BD = 0xfff97316
 
 local function ensureGridCells(ctx)
   local parentNode = ctx.widgets and ctx.widgets.deckEmbed and ctx.widgets.deckEmbed.node
@@ -2522,7 +2529,8 @@ local function layoutClipGrid(ctx, w, h)
       local isEmpty = clip and clip.empty
       local isEnabled = (not isSource) and clip and clip.enabled
 
-      local isSelected = ctx.selection and ctx.selection.col == col and ctx.selection.row == row
+      local isSourceSelected = isSource and ((tonumber(ctx.sourceSelectionCol) or 1) == col)
+      local isEffectSelected = (not isSource) and ctx.selection and ctx.selection.col == col and ctx.selection.row == row
       local bg, borderClr, borderThick
       if isEmpty then
         bg = 0xff080c18
@@ -2530,16 +2538,16 @@ local function layoutClipGrid(ctx, w, h)
         borderThick = 1
       elseif isSource then
         bg = CELL_SRC_TINT
-        borderClr = isSelected and CELL_SEL_BD or 0xff22d3ee
-        borderThick = isSelected and 2 or 1
+        borderClr = isSourceSelected and CELL_SRC_SEL_BD or 0xff22d3ee
+        borderThick = isSourceSelected and 2 or 1
       elseif isEnabled then
         bg = CELL_FX_TINT
-        borderClr = isSelected and CELL_SEL_BD or CELL_BORDER
-        borderThick = isSelected and 2 or 1
+        borderClr = isEffectSelected and CELL_FX_SEL_BD or CELL_BORDER
+        borderThick = isEffectSelected and 2 or 1
       else
         bg = EMPTY_CELL_BG
-        borderClr = isSelected and CELL_SEL_BD or 0xff0f1520
-        borderThick = isSelected and 2 or 1
+        borderClr = isEffectSelected and CELL_FX_SEL_BD or 0xff0f1520
+        borderThick = isEffectSelected and 2 or 1
       end
 
       cell.node:setDisplayList({
@@ -2844,35 +2852,30 @@ local function renderEmbeddedPanel(ctx, widgetId, layoutFn, forcedHeight, fitToV
 end
 
 local function renderSourceInspectorWindow(ctx)
-  local sel = ctx.selection
-  local sourceSelected = sel and sel.row == 1
+  local sourceCol = tonumber(ctx.sourceSelectionCol) or 1
+  local sourceSelected = true
   local label
-  if sel and sel.col and sel.col > 1 and sel.row == 1 then
-    local cd = ctx._colData and ctx._colData[sel.col]
+  if sourceCol > 1 then
+    local cd = ctx._colData and ctx._colData[sourceCol]
     if cd and cd.source then
-      label = "Col " .. tostring(sel.col) .. ": " .. colSourceLabel(ctx, sel.col) .. " (grid)"
+      label = "Col " .. tostring(sourceCol) .. ": " .. colSourceLabel(ctx, sourceCol) .. " (grid)"
     else
-      label = "Col " .. tostring(sel.col) .. ": (grid)"
+      label = "Col " .. tostring(sourceCol) .. ": (grid)"
     end
-  elseif sourceSelected and sel and sel.col == 1 then
-    label = "Source (grid-selected)"
   else
-    label = "Source"
+    label = "Source (grid-selected)"
   end
   imguiTextColored(sourceSelected and 0xff22d3ee or 0xff94a3b8, label)
 
   -- Source picker button + nested popup (replaces flat dropdown)
-  if imguiButton("Source: " .. (sourceSelected and colSourceLabel(ctx, sel and sel.col or 1) or "---")) then
+  if imguiButton("Source: " .. colSourceLabel(ctx, sourceCol)) then
     imguiOpenPopup("##srcInspectorPicker")
   end
   imguiSameLine()
-  if sourceSelected and sel then
-    -- Show what's currently selected (column + type)
-    imguiText("Col " .. tostring(sel.col))
-  end
+  imguiText("Col " .. tostring(sourceCol))
 
   if imguiBeginPopup("##srcInspectorPicker") then
-    local targetCol = (sourceSelected and sel and sel.col) or 1
+    local targetCol = sourceCol
     if imguiMenuItem("Webcam") then
       setSourceSpecForColumn(ctx, targetCol, { kind = "webcam", sourceIndex = 1 })
       imguiCloseCurrentPopup()
@@ -2913,7 +2916,7 @@ local function renderSourceInspectorWindow(ctx)
       for colId, cd in pairs(ctx._colData or {}) do
         if cd and cd.source then
           -- Skip if it's the same column we're editing
-          if not (sel and sel.col == colId) then
+          if targetCol ~= colId then
             local clabel = "Col " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
             if imguiMenuItem(clabel .. " / Raw (T0)") then
               setSourceSpecForColumn(ctx, targetCol, { kind = "columntap", sourceCol = colId, tapIndex = 0 })
@@ -3145,16 +3148,17 @@ local function renderGridToolbar(ctx, parentW)
     imguiEndPopup()
   end
 
-  -- Delete selected column
+  -- Delete source-selected column
+  local sourceCol = tonumber(ctx.sourceSelectionCol) or 1
   local sel = ctx.selection
-  if sel and sel.col and sel.col > 1 then
+  if sourceCol > 1 then
     if imguiButton("Del") then
-      removeColumn(ctx, sel.col)
+      removeColumn(ctx, sourceCol)
     end
     imguiSameLine()
   end
 
-  -- Add FX button + popup (when a source cell or FX cell is selected)
+  -- Add FX button + popup (when an FX/add cell is selected)
   if sel and sel.col then
     local cd = ctx._colData and ctx._colData[sel.col]
     local clip = ctx.clips and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row]
@@ -3297,6 +3301,7 @@ function M.init(ctx)
   ctx._layoutPreset = "deck"
   ctx.gridAlignment = "bottom-up"
   ctx.selection = { col = 1, row = 1 + ctx.shader.activeLayer }
+  ctx.sourceSelectionCol = 1
   ctx._resizeMode = false
   ctx._dockTreeBuilt = false
   ctx._rebuildDockTree = false

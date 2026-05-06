@@ -4,6 +4,7 @@
 #include <juce_opengl/juce_opengl.h>
 
 #include <atomic>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -167,6 +168,11 @@ public:
                                               int width,
                                               int height,
                                               double timeSeconds);
+    std::uintptr_t prepareCustomSurfaceTextureImmediate(const RuntimeNode& node,
+                                                       int width,
+                                                       int height,
+                                                       double timeSeconds);
+    void processDeferredSurfaceRequests(double timeSeconds);
     bool getVideoSurfaceInfo(uint64_t stableId, int& width, int& height, uint64_t& sequence) const;
     bool renderEmbeddedRuntimePanel(RuntimeNode& root,
                                     float width,
@@ -255,10 +261,26 @@ public:
         juce::Point<float> dragStartScenePosition;
     };
 
+    struct DeferredSurfaceRequest {
+        uint64_t stableId = 0;
+        std::string nodeId;
+        std::string surfaceType;
+        juce::var payload;
+        int width = 0;
+        int height = 0;
+    };
+
+    struct CachedSurfaceTexture {
+        std::uintptr_t textureHandle = 0;
+    };
+
     manifold::ui::imgui::RuntimeNodeRenderer renderer_;
     manifold::ui::imgui::RuntimeNodeRenderer::PreviewTransform previewTransform_;
     std::unordered_map<uint64_t, EmbeddedPanelState> embeddedPanelStates_;
     std::unordered_set<uint64_t> embeddedPanelTouchedSurfaceIds_;
+    std::unordered_map<uint64_t, DeferredSurfaceRequest> deferredSurfaceRequests_;
+    std::deque<uint64_t> deferredSurfaceOrder_;
+    std::unordered_map<uint64_t, CachedSurfaceTexture> cachedSurfaceTextures_;
     PendingDragEvent pendingDragEvent_;
     double lastContinuousInputDispatchMs_ = 0.0;
     std::mutex inputMutex_;
