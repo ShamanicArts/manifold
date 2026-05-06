@@ -1133,6 +1133,12 @@ add_executable(OSCEndpointRegistryContractHarness manifold/headless/OSCEndpointR
 
 add_executable(OSCSettingsPersistenceContractHarness manifold/headless/OSCSettingsPersistenceContractHarness.cpp)
 
+add_executable(ControlServerContractHarness manifold/headless/ControlServerContractHarness.cpp)
+
+add_executable(OSCQueryServerContractHarness manifold/headless/OSCQueryServerContractHarness.cpp)
+
+add_executable(OSCServerContractHarness manifold/headless/OSCServerContractHarness.cpp)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -1353,6 +1359,36 @@ target_link_libraries(OSCSettingsPersistenceContractHarness
         juce::juce_gui_extra
         highway)
 
+manifold_target_include_project_and_ableton(ControlServerContractHarness)
+target_link_libraries(ControlServerContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        highway)
+
+manifold_target_include_project_and_ableton(OSCQueryServerContractHarness)
+target_link_libraries(OSCQueryServerContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        highway)
+
+manifold_target_include_project_and_ableton(OSCServerContractHarness)
+target_link_libraries(OSCServerContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        highway)
+
 target_include_directories(VideoSamplerHarness
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1464,6 +1500,24 @@ target_compile_definitions(DspNodeContractHarness
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(DSPHostLifecycleContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(ControlServerContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(OSCQueryServerContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(OSCServerContractHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
@@ -1643,6 +1697,27 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/osc_settings_persistence_contract_golden.json)
 set_tests_properties(manifold_osc_settings_persistence_contract PROPERTIES
     LABELS "manifold;control;osc;settings;contract")
+
+add_test(
+    NAME manifold_control_server_contract
+    COMMAND $<TARGET_FILE:ControlServerContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/control_server_contract_golden.json)
+set_tests_properties(manifold_control_server_contract PROPERTIES
+    LABELS "manifold;control;ipc;contract")
+
+add_test(
+    NAME manifold_oscquery_server_contract
+    COMMAND $<TARGET_FILE:OSCQueryServerContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/oscquery_server_contract_golden.json)
+set_tests_properties(manifold_oscquery_server_contract PROPERTIES
+    LABELS "manifold;control;oscquery;contract")
+
+add_test(
+    NAME manifold_osc_server_contract
+    COMMAND $<TARGET_FILE:OSCServerContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/osc_server_contract_golden.json)
+set_tests_properties(manifold_osc_server_contract PROPERTIES
+    LABELS "manifold;control;osc;server;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:
