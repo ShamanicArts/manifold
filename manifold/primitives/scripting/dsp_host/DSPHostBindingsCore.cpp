@@ -24,12 +24,21 @@ namespace dsp_host {
 
 void registerCoreBindings(LoadSession &session,
                           PrimitiveGraphPtr graph,
-                          sol::table &ctx,
-                          const TrackNodeFn &trackNode,
-                          PathMapperFn mapInternalToExternal) {
+                          sol::table &ctx) {
   auto &newLua = session.lua;
   lua_State *newLuaState = session.luaState;
-  auto &newNamedNodes = session.namedNodes;
+  auto newNamedNodes = session.namedNodes;
+  auto* binding = session.bindingContext.get();
+  const std::string namespaceBase = binding != nullptr ? binding->namespaceBase : std::string("/core/behavior");
+  auto trackNode = [binding](const std::shared_ptr<dsp_primitives::IPrimitiveNode> &node) {
+    if (binding == nullptr || !node || !binding->graph) {
+      return;
+    }
+    binding->graph->registerNode(node);
+    if (binding->ownedNodes) {
+      binding->ownedNodes->push_back(node);
+    }
+  };
   sol::table primitives = getOrCreateContextTable(ctx, "primitives", newLuaState);
 
   newLua.new_usertype<dsp_primitives::PlayheadNode>(
@@ -999,13 +1008,13 @@ void registerCoreBindings(LoadSession &session,
       graph->setNodeRole(node, dsp_primitives::PrimitiveGraph::NodeRole::OutputDSP);
       return true;
     };
-  graphTable["nameNode"] = [&newNamedNodes, &mapInternalToExternal](
+  graphTable["nameNode"] = [binding, newNamedNodes, namespaceBase](
       const sol::object& nodeObj, const std::string& rawPath) {
       auto node = toPrimitiveNode(nodeObj);
       if (!node) {
         return false;
       }
-      newNamedNodes[mapInternalToExternal(rawPath)] = node;
+      (*newNamedNodes)[mapInternalPathToExternal(rawPath, namespaceBase)] = node;
       return true;
     };
 

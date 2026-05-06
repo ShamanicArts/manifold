@@ -214,16 +214,16 @@ bool executeBuildPlugin(LoadSession &session,
     session.process = session.pluginTable["process"];
   }
 
-  for (const auto &entry : session.paramValues) {
-    const auto bindingIt = session.paramBindings.find(entry.first);
-    if (bindingIt != session.paramBindings.end()) {
+  for (const auto &entry : *session.paramValues) {
+    const auto bindingIt = session.paramBindings->find(entry.first);
+    if (bindingIt != session.paramBindings->end()) {
       bindingIt->second(entry.second);
     }
 
     if (session.onParamChange.valid()) {
       std::string internalPath = entry.first;
-      const auto mapIt = session.externalToInternalPath.find(entry.first);
-      if (mapIt != session.externalToInternalPath.end()) {
+      const auto mapIt = session.externalToInternalPath->find(entry.first);
+      if (mapIt != session.externalToInternalPath->end()) {
         internalPath = mapIt->second;
       }
 
@@ -371,9 +371,10 @@ void registerHostApiAndGlobals(
     ScriptableProcessor *processor,
     std::shared_ptr<dsp_primitives::PrimitiveGraph> graph,
     sol::table &ctx,
-    PathMapperFn mapInternalToExternal,
     const std::function<std::shared_ptr<dsp_primitives::IPrimitiveNode>(
         const sol::object &)> &toPrimitiveNode) {
+  auto* binding = session.bindingContext.get();
+  const std::string namespaceBase = binding != nullptr ? binding->namespaceBase : std::string("/core/behavior");
   auto hostApi = sol::state_view(session.luaState).create_table();
   hostApi["getSampleRate"] = [processor]() {
     return processor ? processor->getSampleRate() : 44100.0;
@@ -381,19 +382,19 @@ void registerHostApiAndGlobals(
   hostApi["getPlayTimeSamples"] = [processor]() {
     return processor ? processor->getPlayTimeSamples() : 0.0;
   };
-  hostApi["setParam"] = [processor, mapInternalToExternal](const std::string &path,
+  hostApi["setParam"] = [processor, namespaceBase](const std::string &path,
                                      float value) {
     if (!processor) {
       return false;
     }
-    const std::string externalPath = mapInternalToExternal(path);
+    const std::string externalPath = mapInternalPathToExternal(path, namespaceBase);
     return processor->setParamByPath(externalPath, value);
   };
-  hostApi["getParam"] = [processor, mapInternalToExternal](const std::string &path) {
+  hostApi["getParam"] = [processor, namespaceBase](const std::string &path) {
     if (!processor) {
       return 0.0f;
     }
-    const std::string externalPath = mapInternalToExternal(path);
+    const std::string externalPath = mapInternalPathToExternal(path, namespaceBase);
     return processor->getParamByPath(externalPath);
   };
   hostApi["getGraphNodeByPath"] = [processor](const std::string &path)

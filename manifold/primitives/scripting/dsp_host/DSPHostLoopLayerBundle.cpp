@@ -7,19 +7,28 @@ namespace dsp_host {
 
 void registerLoopLayerBundle(LoadSession &session,
                              PrimitiveGraphPtr graph,
-                             sol::table &ctx,
-                             const TrackNodeFn &trackNode,
-                             PathMapperFn mapInternalToExternal) {
-  auto &newLayerPlaybackNodes = session.layerPlaybackNodes;
-  auto &newLayerGateNodes = session.layerGateNodes;
-  auto &newLayerOutputNodes = session.layerOutputNodes;
-  auto &newNamedNodes = session.namedNodes;
+                             sol::table &ctx) {
+  auto newLayerPlaybackNodes = session.layerPlaybackNodes;
+  auto newLayerGateNodes = session.layerGateNodes;
+  auto newLayerOutputNodes = session.layerOutputNodes;
+  auto newNamedNodes = session.namedNodes;
+  auto* binding = session.bindingContext.get();
+  const std::string namespaceBase = binding != nullptr ? binding->namespaceBase : std::string("/core/behavior");
   lua_State *newLuaState = session.luaState;
+  auto trackNode = [binding](const std::shared_ptr<dsp_primitives::IPrimitiveNode> &node) {
+    if (binding == nullptr || !node || !binding->graph) {
+      return;
+    }
+    binding->graph->registerNode(node);
+    if (binding->ownedNodes) {
+      binding->ownedNodes->push_back(node);
+    }
+  };
 
   auto bundles = sol::state_view(newLuaState).create_table();
   {
     auto loopLayerApi = sol::state_view(newLuaState).create_table();
-    loopLayerApi["new"] = [graph, newLuaState, &newLayerPlaybackNodes, &newLayerGateNodes, &newLayerOutputNodes, &newNamedNodes, &mapInternalToExternal, trackNode](sol::optional<sol::table> options) {
+    loopLayerApi["new"] = [graph, newLuaState, newLayerPlaybackNodes, newLayerGateNodes, newLayerOutputNodes, newNamedNodes, namespaceBase, trackNode](sol::optional<sol::table> options) {
       int numChannels = 2;
       if (options.has_value()) {
         sol::table opts = options.value();
@@ -41,20 +50,20 @@ void registerLoopLayerBundle(LoadSession &session,
       auto forward = std::make_shared<dsp_primitives::ForwardCommitSchedulerNode>();
       auto transport = std::make_shared<dsp_primitives::TransportStateNode>();
 
-      newLayerPlaybackNodes.push_back(playback);
-      newLayerGateNodes.push_back(gate);
-      newLayerOutputNodes.push_back(gain);
+      newLayerPlaybackNodes->push_back(playback);
+      newLayerGateNodes->push_back(gate);
+      newLayerOutputNodes->push_back(gain);
 
-      const int layerIndex = static_cast<int>(newLayerOutputNodes.size()) - 1;
+      const int layerIndex = static_cast<int>(newLayerOutputNodes->size()) - 1;
       const std::string layerBase =
           "/core/behavior/layer/" + std::to_string(layerIndex);
-      auto registerNamedNode = [&newNamedNodes, &mapInternalToExternal](
+      auto registerNamedNode = [newNamedNodes, namespaceBase](
                                    const std::string &internalPath,
                                    const std::shared_ptr<dsp_primitives::IPrimitiveNode> &node) {
         if (!node) {
           return;
         }
-        newNamedNodes[mapInternalToExternal(internalPath)] = node;
+        (*newNamedNodes)[mapInternalPathToExternal(internalPath, namespaceBase)] = node;
       };
       registerNamedNode(layerBase + "/input", input);
       registerNamedNode(layerBase + "/output", gain);

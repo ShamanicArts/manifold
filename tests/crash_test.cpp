@@ -17,7 +17,7 @@ class MockDspProcessor : public ScriptableProcessor {
 public:
     MockDspProcessor()
         : graph_(std::make_shared<dsp_primitives::PrimitiveGraph>())
-    { endpointRegistry_.setNumLayers(2); endpointRegistry_.rebuild(); }
+    { er_.setNumLayers(2); er_.rebuild(); }
 
     std::shared_ptr<dsp_primitives::PrimitiveGraph> getPrimitiveGraph() override { return graph_; }
     void requestGraphRuntimeSwap(std::unique_ptr<dsp_primitives::GraphRuntime>) override { fprintf(stderr, "swap called\n"); }

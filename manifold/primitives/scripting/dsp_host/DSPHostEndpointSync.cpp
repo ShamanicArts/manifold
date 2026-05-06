@@ -52,8 +52,8 @@ void syncEndpoints(LoadSession& session,
       processor->getEndpointRegistry().registerCustomEndpoint(endpoint);
       registeredEndpoints.push_back(endpoint.path);
 
-      const auto valIt = session.paramValues.find(path);
-      if (valIt != session.paramValues.end()) {
+      const auto valIt = session.paramValues->find(path);
+      if (valIt != session.paramValues->end()) {
         processor->getOSCServer().setCustomValue(
             endpoint.path, {juce::var(valIt->second)});
       }

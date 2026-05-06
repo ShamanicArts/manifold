@@ -42,6 +42,8 @@ inline bool loadDefaultDspScript(DSPPluginScriptHost* dspScriptHost,
     const bool ok = dspScriptHost->loadScript(scriptFile);
     if (!ok) {
         dspScriptLastError = dspScriptHost->getLastError();
+    } else {
+        dspScriptLastError.clear();
     }
     return ok;
 }
@@ -58,6 +60,8 @@ inline bool loadDefaultDspScriptFromString(DSPPluginScriptHost* dspScriptHost,
     const bool ok = dspScriptHost->loadScriptFromString(luaCode, sourceName);
     if (!ok) {
         dspScriptLastError = dspScriptHost->getLastError();
+    } else {
+        dspScriptLastError.clear();
     }
     return ok;
 }
@@ -72,6 +76,8 @@ inline bool reloadDefaultDspScript(DSPPluginScriptHost* dspScriptHost,
     const bool ok = dspScriptHost->reloadCurrentScript();
     if (!ok) {
         dspScriptLastError = dspScriptHost->getLastError();
+    } else {
+        dspScriptLastError.clear();
     }
     return ok;
 }
@@ -95,6 +101,8 @@ inline bool loadNamedDspScript(
     const bool ok = host.loadScript(scriptFile);
     if (!ok) {
         dspScriptLastError = host.getLastError();
+    } else {
+        dspScriptLastError.clear();
     }
     return ok;
 }
@@ -116,6 +124,8 @@ inline bool loadNamedDspScriptFromString(
     const bool ok = host.loadScriptFromString(luaCode, sourceName);
     if (!ok) {
         dspScriptLastError = host.getLastError();
+    } else {
+        dspScriptLastError.clear();
     }
     return ok;
 }
@@ -138,6 +148,8 @@ inline bool reloadNamedDspScript(
     const bool ok = it->second->reloadCurrentScript();
     if (!ok) {
         dspScriptLastError = it->second->getLastError();
+    } else {
+        dspScriptLastError.clear();
     }
     return ok;
 }
@@ -180,6 +192,9 @@ inline bool isDspSlotLoaded(
 
 inline const std::string& getDspScriptLastError(const DSPPluginScriptHost* dspScriptHost,
                                                 const std::string& fallback) {
+    if (!fallback.empty()) {
+        return fallback;
+    }
     if (dspScriptHost != nullptr) {
         return dspScriptHost->getLastError();
     }

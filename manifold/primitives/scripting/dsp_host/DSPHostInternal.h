@@ -41,24 +41,47 @@ struct DspParamSpec {
 using PrimitiveNodePtr = std::shared_ptr<dsp_primitives::IPrimitiveNode>;
 using PrimitiveGraphPtr = std::shared_ptr<dsp_primitives::PrimitiveGraph>;
 using OwnedNodeList = std::vector<PrimitiveNodePtr>;
+using ParamSpecMap = std::unordered_map<std::string, DspParamSpec>;
+using ParamValueMap = std::unordered_map<std::string, float>;
+using ParamBindingMap = std::unordered_map<std::string, std::function<void(float)>>;
+using PathMap = std::unordered_map<std::string, std::string>;
+using LayerPlaybackNodeList = std::vector<std::weak_ptr<dsp_primitives::LoopPlaybackNode>>;
+using LayerGateNodeList = std::vector<std::weak_ptr<dsp_primitives::PlaybackStateGateNode>>;
+using LayerOutputNodeList = std::vector<std::weak_ptr<dsp_primitives::GainNode>>;
+using NamedNodeMap = std::unordered_map<std::string, std::weak_ptr<dsp_primitives::IPrimitiveNode>>;
 using PrimitiveNodeResolverFn = std::function<PrimitiveNodePtr(const sol::object &)>;
-using TrackNodeFn = std::function<void(PrimitiveNodePtr)>;
 using PathMapperFn = std::function<std::string(const std::string &)>;
+
+struct BindingContext {
+  PrimitiveGraphPtr graph;
+  std::string namespaceBase{"/core/behavior"};
+  std::shared_ptr<ParamSpecMap> paramSpecs = std::make_shared<ParamSpecMap>();
+  std::shared_ptr<ParamValueMap> paramValues = std::make_shared<ParamValueMap>();
+  std::shared_ptr<ParamBindingMap> paramBindings = std::make_shared<ParamBindingMap>();
+  std::shared_ptr<PathMap> externalToInternalPath = std::make_shared<PathMap>();
+  std::shared_ptr<PathMap> internalToExternalPath = std::make_shared<PathMap>();
+  std::shared_ptr<LayerPlaybackNodeList> layerPlaybackNodes = std::make_shared<LayerPlaybackNodeList>();
+  std::shared_ptr<LayerGateNodeList> layerGateNodes = std::make_shared<LayerGateNodeList>();
+  std::shared_ptr<LayerOutputNodeList> layerOutputNodes = std::make_shared<LayerOutputNodeList>();
+  std::shared_ptr<NamedNodeMap> namedNodes = std::make_shared<NamedNodeMap>();
+  std::shared_ptr<OwnedNodeList> ownedNodes = std::make_shared<OwnedNodeList>();
+};
 
 struct LoadSession {
   sol::state lua;
   lua_State *luaState = nullptr;
+  std::shared_ptr<BindingContext> bindingContext = std::make_shared<BindingContext>();
 
-  std::unordered_map<std::string, DspParamSpec> paramSpecs;
-  std::unordered_map<std::string, float> paramValues;
-  std::unordered_map<std::string, std::function<void(float)>> paramBindings;
-  std::unordered_map<std::string, std::string> externalToInternalPath;
-  std::unordered_map<std::string, std::string> internalToExternalPath;
-  std::vector<std::weak_ptr<dsp_primitives::LoopPlaybackNode>> layerPlaybackNodes;
-  std::vector<std::weak_ptr<dsp_primitives::PlaybackStateGateNode>> layerGateNodes;
-  std::vector<std::weak_ptr<dsp_primitives::GainNode>> layerOutputNodes;
-  std::unordered_map<std::string, std::weak_ptr<dsp_primitives::IPrimitiveNode>> namedNodes;
-  std::shared_ptr<OwnedNodeList> ownedNodes = std::make_shared<OwnedNodeList>();
+  std::shared_ptr<ParamSpecMap> paramSpecs = bindingContext->paramSpecs;
+  std::shared_ptr<ParamValueMap> paramValues = bindingContext->paramValues;
+  std::shared_ptr<ParamBindingMap> paramBindings = bindingContext->paramBindings;
+  std::shared_ptr<PathMap> externalToInternalPath = bindingContext->externalToInternalPath;
+  std::shared_ptr<PathMap> internalToExternalPath = bindingContext->internalToExternalPath;
+  std::shared_ptr<LayerPlaybackNodeList> layerPlaybackNodes = bindingContext->layerPlaybackNodes;
+  std::shared_ptr<LayerGateNodeList> layerGateNodes = bindingContext->layerGateNodes;
+  std::shared_ptr<LayerOutputNodeList> layerOutputNodes = bindingContext->layerOutputNodes;
+  std::shared_ptr<NamedNodeMap> namedNodes = bindingContext->namedNodes;
+  std::shared_ptr<OwnedNodeList> ownedNodes = bindingContext->ownedNodes;
 
   sol::function onParamChange;
   sol::function process;
@@ -68,6 +91,42 @@ struct LoadSession {
 float clampParamValue(const DspParamSpec &spec, float value);
 juce::String sanitizePath(const std::string &path);
 bool isRegistryOwnedCategory(const juce::String &category);
+
+inline std::string mapInternalPathToExternal(const std::string &rawPath,
+                                             const std::string &namespaceBase) {
+  juce::String internal = sanitizePath(rawPath);
+
+  if (namespaceBase == "/core/behavior") {
+    return internal.toStdString();
+  }
+
+  juce::String base(namespaceBase);
+  if (internal == "/core/behavior") {
+    return base.toStdString();
+  }
+  if (internal.startsWith("/core/behavior/")) {
+    return (base + internal.substring(14)).toStdString();
+  }
+
+  return internal.toStdString();
+}
+
+inline std::string mapExternalPathToInternal(const std::string &rawPath,
+                                             const std::string &namespaceBase) {
+  juce::String external = sanitizePath(rawPath);
+  juce::String base(namespaceBase);
+
+  if (namespaceBase != "/core/behavior") {
+    if (external == base) {
+      return std::string("/core/behavior");
+    }
+    if (external.startsWith(base + "/")) {
+      return (juce::String("/core/behavior") + external.substring(base.length())).toStdString();
+    }
+  }
+
+  return external.toStdString();
+}
 
 template <typename NodeT>
 std::shared_ptr<NodeT> tableNode(const sol::table &self) {
@@ -104,17 +163,13 @@ bool executeBuildPlugin(LoadSession &session,
                         std::string &error);
 void registerCoreBindings(LoadSession &session,
                           PrimitiveGraphPtr graph,
-                          sol::table &ctx,
-                          const TrackNodeFn &trackNode,
-                          PathMapperFn mapInternalToExternal);
+                          sol::table &ctx);
 void registerSynthBindings(LoadSession &session,
                            PrimitiveGraphPtr graph,
-                           sol::table &ctx,
-                           const TrackNodeFn &trackNode);
+                           sol::table &ctx);
 void registerFxBindings(LoadSession &session,
                         PrimitiveGraphPtr graph,
-                        sol::table &ctx,
-                        const TrackNodeFn &trackNode);
+                        sol::table &ctx);
 PrimitiveNodePtr toPrimitiveNode(const sol::object &obj);
 
 // Param registry helpers — exposed for contract testing
@@ -133,14 +188,10 @@ bool handleParamBind(
     PathMapperFn mapInternalToExternal);
 
 void registerParamsApi(LoadSession &session,
-                       sol::table &ctx,
-                       PathMapperFn mapInternalToExternal,
-                       PathMapperFn mapExternalToInternal);
+                       sol::table &ctx);
 void registerLoopLayerBundle(LoadSession &session,
                              PrimitiveGraphPtr graph,
-                             sol::table &ctx,
-                             const TrackNodeFn &trackNode,
-                             PathMapperFn mapInternalToExternal);
+                             sol::table &ctx);
 void registerMidiApi(LoadSession &session,
                      ScriptableProcessor *processor,
                      sol::table &ctx,
@@ -149,7 +200,6 @@ void registerHostApiAndGlobals(LoadSession &session,
                                  ScriptableProcessor *processor,
                                  PrimitiveGraphPtr graph,
                                  sol::table &ctx,
-                                 PathMapperFn mapInternalToExternal,
                                  const PrimitiveNodeResolverFn &toPrimitiveNode);
 
 void syncEndpoints(LoadSession &session,
@@ -168,6 +218,8 @@ struct DSPPluginScriptHost::Impl {
   ScriptableProcessor *processor = nullptr;
 
   mutable std::recursive_mutex luaMutex;
+  std::shared_ptr<dsp_host::BindingContext> bindingContext;
+  std::vector<std::shared_ptr<dsp_host::BindingContext>> retiredBindingContexts;
   sol::state lua;
   sol::function onParamChange;
   sol::function process;

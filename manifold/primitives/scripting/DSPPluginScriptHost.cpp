@@ -93,6 +93,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
   // Destroying Lua states with active shared_ptr references causes crashes.
   if (impl->lua.lua_state() != nullptr) {
     impl->retiredLuaStates.push_back(std::move(impl->lua));
+    if (impl->bindingContext) {
+      impl->retiredBindingContexts.push_back(std::move(impl->bindingContext));
+    }
   }
   // Limit retired states but destroy them safely
   while (impl->retiredLuaStates.size() > 4) {
@@ -101,6 +104,9 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
       lua_gc(oldState.lua_state(), LUA_GCCOLLECT, 0);
     }
     impl->retiredLuaStates.erase(impl->retiredLuaStates.begin());
+    if (!impl->retiredBindingContexts.empty()) {
+      impl->retiredBindingContexts.erase(impl->retiredBindingContexts.begin());
+    }
   }
 
   LoadSession session;
@@ -108,82 +114,39 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
 
   auto &newLua = session.lua;
   lua_State *newLuaState = session.luaState;
-  auto &newParamSpecs = session.paramSpecs;
-  auto &newParamValues = session.paramValues;
-  auto &newParamBindings = session.paramBindings;
-  auto &newExternalToInternalPath = session.externalToInternalPath;
-  auto &newInternalToExternalPath = session.internalToExternalPath;
-  auto &newLayerPlaybackNodes = session.layerPlaybackNodes;
-  auto &newLayerGateNodes = session.layerGateNodes;
-  auto &newLayerOutputNodes = session.layerOutputNodes;
-  auto &newNamedNodes = session.namedNodes;
+  session.bindingContext->namespaceBase = impl->namespaceBase;
+  session.bindingContext->graph = graph;
+
+  auto newParamSpecs = session.paramSpecs;
+  auto newParamValues = session.paramValues;
+  auto newParamBindings = session.paramBindings;
+  auto newExternalToInternalPath = session.externalToInternalPath;
+  auto newInternalToExternalPath = session.internalToExternalPath;
+  auto newLayerPlaybackNodes = session.layerPlaybackNodes;
+  auto newLayerGateNodes = session.layerGateNodes;
+  auto newLayerOutputNodes = session.layerOutputNodes;
+  auto newNamedNodes = session.namedNodes;
   auto newOwnedNodes = session.ownedNodes;
   auto &newOnParamChange = session.onParamChange;
   auto &newProcess = session.process;
   auto &pluginTable = session.pluginTable;
 
-  auto mapInternalToExternal = [impl](const std::string &rawPath) {
-    juce::String internal = sanitizePath(rawPath);
-
-    if (impl->namespaceBase == "/core/behavior") {
-      return internal.toStdString();
-    }
-
-    juce::String base(impl->namespaceBase);
-    if (internal == "/core/behavior") {
-      return base.toStdString();
-    }
-    if (internal.startsWith("/core/behavior/")) {
-      return (base + internal.substring(14)).toStdString();
-    }
-
-    return internal.toStdString();
-  };
-
-  auto mapExternalToInternal = [impl](const std::string &rawPath) {
-    juce::String external = sanitizePath(rawPath);
-    juce::String base(impl->namespaceBase);
-
-    if (impl->namespaceBase != "/core/behavior") {
-      if (external == base) {
-        return std::string("/core/behavior");
-      }
-      if (external.startsWith(base + "/")) {
-        return (juce::String("/core/behavior") + external.substring(base.length())).toStdString();
-      }
-    }
-
-    return external.toStdString();
-  };
-
-  auto trackNode = [graph, newOwnedNodes](std::shared_ptr<dsp_primitives::IPrimitiveNode> node) {
-    graph->registerNode(node);
-    newOwnedNodes->push_back(node);
-  };
-
-  dsp_host::TrackNodeFn trackNodeFn = trackNode;
-  dsp_host::PathMapperFn mapInternalToExternalFn = mapInternalToExternal;
-  dsp_host::PathMapperFn mapExternalToInternalFn = mapExternalToInternal;
   dsp_host::PrimitiveNodeResolverFn toPrimitiveNodeFn = dsp_host::toPrimitiveNode;
 
   auto ctx = sol::state_view(newLuaState).create_table();
   const bool minimalMidiEffectBindings = useMinimalMidiEffectBindings(scriptFile);
   if (!minimalMidiEffectBindings) {
-    dsp_host::registerCoreBindings(session, graph, ctx, trackNodeFn,
-                                   mapInternalToExternalFn);
-    dsp_host::registerSynthBindings(session, graph, ctx, trackNodeFn);
-    dsp_host::registerFxBindings(session, graph, ctx, trackNodeFn);
-    dsp_host::registerLoopLayerBundle(session, graph, ctx, trackNodeFn,
-                                      mapInternalToExternalFn);
+    dsp_host::registerCoreBindings(session, graph, ctx);
+    dsp_host::registerSynthBindings(session, graph, ctx);
+    dsp_host::registerFxBindings(session, graph, ctx);
+    dsp_host::registerLoopLayerBundle(session, graph, ctx);
   }
-  dsp_host::registerParamsApi(session, ctx, mapInternalToExternalFn,
-                              mapExternalToInternalFn);
+  dsp_host::registerParamsApi(session, ctx);
 
   if (minimalMidiEffectBindings) {
     dsp_host::registerMidiApi(session, impl->processor, ctx, true);
   } else {
     dsp_host::registerHostApiAndGlobals(session, impl->processor, graph, ctx,
-                                        mapInternalToExternalFn,
                                         toPrimitiveNodeFn);
   }
 
@@ -229,27 +192,28 @@ bool DSPPluginScriptHost::loadScriptImpl(const std::string &sourceName,
     impl->processor->requestGraphRuntimeSwap(std::move(runtime));
   }
 
-  std::map<std::string, DspParamSpec> orderedSpecs(newParamSpecs.begin(),
-                                                   newParamSpecs.end());
+  std::map<std::string, DspParamSpec> orderedSpecs(newParamSpecs->begin(),
+                                                   newParamSpecs->end());
   dsp_host::syncEndpoints(session, impl->processor, impl->registeredEndpoints,
                           orderedSpecs);
 
   {
     const std::lock_guard<std::recursive_mutex> lock(impl->luaMutex);
 
+    impl->bindingContext = session.bindingContext;
     impl->onParamChange = std::move(newOnParamChange);
     impl->process = std::move(newProcess);
     impl->pluginTable = std::move(pluginTable);
     impl->lua = std::move(newLua);
-    impl->paramSpecs = std::move(newParamSpecs);
-    impl->paramValues = std::move(newParamValues);
-    impl->paramBindings = std::move(newParamBindings);
-    impl->externalToInternalPath = std::move(newExternalToInternalPath);
-    impl->internalToExternalPath = std::move(newInternalToExternalPath);
-    impl->layerPlaybackNodes = std::move(newLayerPlaybackNodes);
-    impl->layerGateNodes = std::move(newLayerGateNodes);
-    impl->layerOutputNodes = std::move(newLayerOutputNodes);
-    impl->namedNodes = std::move(newNamedNodes);
+    impl->paramSpecs = std::move(*newParamSpecs);
+    impl->paramValues = std::move(*newParamValues);
+    impl->paramBindings = std::move(*newParamBindings);
+    impl->externalToInternalPath = std::move(*newExternalToInternalPath);
+    impl->internalToExternalPath = std::move(*newInternalToExternalPath);
+    impl->layerPlaybackNodes = std::move(*newLayerPlaybackNodes);
+    impl->layerGateNodes = std::move(*newLayerGateNodes);
+    impl->layerOutputNodes = std::move(*newLayerOutputNodes);
+    impl->namedNodes = std::move(*newNamedNodes);
     impl->ownedNodes = std::move(*newOwnedNodes);
     impl->currentScriptFile = scriptFile != nullptr ? *scriptFile : juce::File();
     impl->currentScriptSourceName = sourceName;

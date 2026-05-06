@@ -24,10 +24,19 @@ namespace dsp_host {
 
 void registerSynthBindings(LoadSession &session,
                            PrimitiveGraphPtr graph,
-                           sol::table &ctx,
-                           const TrackNodeFn &trackNode) {
+                           sol::table &ctx) {
   auto &newLua = session.lua;
   lua_State *newLuaState = session.luaState;
+  auto* binding = session.bindingContext.get();
+  auto trackNode = [binding](const std::shared_ptr<dsp_primitives::IPrimitiveNode>& node) {
+    if (binding == nullptr || !node || !binding->graph) {
+      return;
+    }
+    binding->graph->registerNode(node);
+    if (binding->ownedNodes) {
+      binding->ownedNodes->push_back(node);
+    }
+  };
   sol::table primitives = getOrCreateContextTable(ctx, "primitives", newLuaState);
 
   newLua.new_usertype<dsp_primitives::OscillatorNode>(
