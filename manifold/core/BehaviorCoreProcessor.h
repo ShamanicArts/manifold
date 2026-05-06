@@ -13,6 +13,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 
+#include "ExportPluginConfigSupport.h"
 #include "../primitives/control/ControlServer.h"
 #include "../primitives/control/OSCEndpointRegistry.h"
 #include "../primitives/control/OSCQuery.h"
@@ -333,35 +334,8 @@ public:
     std::string exportStateContract() const;
 
 public:
-    struct ExportParamAlias {
-        juce::String path;
-        juce::String internalPath;
-        juce::String type{"f"};
-        float rangeMin = 0.0f;
-        float rangeMax = 1.0f;
-        juce::String description;
-        float defaultValue = 0.0f;
-        float skew = 1.0f;
-        juce::String hostParamId;
-        juce::String hostParamName;
-        juce::String hostParamKind{"float"};
-        juce::StringArray choices;
-        std::atomic<float>* rawHostValue = nullptr;
-    };
-
-    struct ExportPluginConfig {
-        bool enabled = false;
-        juce::String headerTitle{"Plugin"};
-        int compactWidth = 236;
-        int compactHeight = 220;
-        int splitWidth = 472;
-        int splitHeight = 220;
-        int defaultViewMode = 1;
-        bool oscDefaultEnabled = false;
-        bool oscQueryDefaultEnabled = false;
-        int oscBasePort = 9010;
-        std::vector<ExportParamAlias> paramAliases;
-    };
+    using ExportParamAlias = manifold::export_plugin::ExportParamAlias;
+    using ExportPluginConfig = manifold::export_plugin::ExportPluginConfig;
 
 private:
     // juce::MidiInputCallback

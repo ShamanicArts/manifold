@@ -236,139 +236,6 @@ juce::File resolveDefaultDspScriptFromProject(const juce::File& requestedPath) {
     return resolveProjectAssetRef(requestedPath.getParentDirectory(), dspRef);
 }
 
-int readIntProperty(juce::DynamicObject* obj, const char* name, int fallback) {
-    if (obj == nullptr || !obj->hasProperty(name)) {
-        return fallback;
-    }
-    return static_cast<int>(obj->getProperty(name));
-}
-
-bool readBoolProperty(juce::DynamicObject* obj, const char* name, bool fallback) {
-    if (obj == nullptr || !obj->hasProperty(name)) {
-        return fallback;
-    }
-    return static_cast<bool>(obj->getProperty(name));
-}
-
-BehaviorCoreProcessor::ExportPluginConfig resolveExportPluginConfig(const juce::File& requestedPath) {
-    BehaviorCoreProcessor::ExportPluginConfig config;
-    if (!isProjectManifestFile(requestedPath)) {
-        return config;
-    }
-
-    const auto json = juce::JSON::parse(requestedPath);
-    if (!json.isObject()) {
-        return config;
-    }
-
-    auto* obj = json.getDynamicObject();
-    if (obj == nullptr || !obj->hasProperty("plugin")) {
-        return config;
-    }
-
-    auto pluginVar = obj->getProperty("plugin");
-    if (!pluginVar.isObject()) {
-        return config;
-    }
-
-    auto* pluginObj = pluginVar.getDynamicObject();
-    if (pluginObj == nullptr) {
-        return config;
-    }
-
-    config.enabled = true;
-    if (obj->hasProperty("name")) {
-        config.headerTitle = obj->getProperty("name").toString();
-    }
-
-    if (pluginObj->hasProperty("headerTitle")) {
-        config.headerTitle = pluginObj->getProperty("headerTitle").toString();
-    }
-
-    auto viewVar = pluginObj->getProperty("view");
-    if (viewVar.isObject()) {
-        auto* viewObj = viewVar.getDynamicObject();
-        if (viewObj != nullptr) {
-            if (viewObj->hasProperty("defaultMode")) {
-                const auto defaultMode = viewObj->getProperty("defaultMode").toString().trim().toLowerCase();
-                config.defaultViewMode = defaultMode == "compact" ? 0 : 1;
-            }
-
-            auto compactVar = viewObj->getProperty("compact");
-            if (compactVar.isObject()) {
-                auto* compactObj = compactVar.getDynamicObject();
-                config.compactWidth = readIntProperty(compactObj, "w", config.compactWidth);
-                config.compactHeight = readIntProperty(compactObj, "h", config.compactHeight);
-            }
-
-            auto splitVar = viewObj->getProperty("split");
-            if (splitVar.isObject()) {
-                auto* splitObj = splitVar.getDynamicObject();
-                config.splitWidth = readIntProperty(splitObj, "w", config.splitWidth);
-                config.splitHeight = readIntProperty(splitObj, "h", config.splitHeight);
-            }
-        }
-    }
-
-    auto oscVar = pluginObj->getProperty("osc");
-    if (oscVar.isObject()) {
-        auto* oscObj = oscVar.getDynamicObject();
-        if (oscObj != nullptr) {
-            config.oscDefaultEnabled = readBoolProperty(oscObj, "enabled", config.oscDefaultEnabled);
-            config.oscQueryDefaultEnabled = readBoolProperty(oscObj, "queryEnabled", config.oscQueryDefaultEnabled);
-            config.oscBasePort = readIntProperty(oscObj, "basePort", config.oscBasePort);
-        }
-    }
-
-    auto paramsVar = pluginObj->getProperty("params");
-    if (paramsVar.isArray()) {
-        for (const auto& item : *paramsVar.getArray()) {
-            auto* paramObj = item.getDynamicObject();
-            if (paramObj == nullptr || !paramObj->hasProperty("path") || !paramObj->hasProperty("internalPath")) {
-                continue;
-            }
-
-            BehaviorCoreProcessor::ExportParamAlias alias;
-            alias.path = paramObj->getProperty("path").toString();
-            alias.internalPath = paramObj->getProperty("internalPath").toString();
-            alias.type = paramObj->hasProperty("type") ? paramObj->getProperty("type").toString() : juce::String("f");
-            alias.rangeMin = static_cast<float>(paramObj->hasProperty("min") ? static_cast<double>(paramObj->getProperty("min")) : 0.0);
-            alias.rangeMax = static_cast<float>(paramObj->hasProperty("max") ? static_cast<double>(paramObj->getProperty("max")) : 1.0);
-            alias.defaultValue = static_cast<float>(paramObj->hasProperty("default")
-                ? static_cast<double>(paramObj->getProperty("default"))
-                : static_cast<double>(alias.rangeMin));
-            alias.skew = static_cast<float>(paramObj->hasProperty("skew")
-                ? static_cast<double>(paramObj->getProperty("skew"))
-                : 1.0);
-            alias.hostParamId = paramObj->hasProperty("hostParamId")
-                ? paramObj->getProperty("hostParamId").toString()
-                : juce::String();
-            alias.hostParamName = paramObj->hasProperty("hostParamName")
-                ? paramObj->getProperty("hostParamName").toString()
-                : alias.hostParamId;
-            alias.hostParamKind = paramObj->hasProperty("hostParamKind")
-                ? paramObj->getProperty("hostParamKind").toString()
-                : juce::String("float");
-            if (paramObj->hasProperty("choices")) {
-                auto choicesVar = paramObj->getProperty("choices");
-                if (choicesVar.isArray()) {
-                    for (const auto& choice : *choicesVar.getArray()) {
-                        alias.choices.add(choice.toString());
-                    }
-                }
-            }
-            alias.description = paramObj->hasProperty("description")
-                ? paramObj->getProperty("description").toString()
-                : alias.path;
-            if (alias.path.isNotEmpty() && alias.internalPath.isNotEmpty()) {
-                config.paramAliases.push_back(alias);
-            }
-        }
-    }
-
-    return config;
-}
-
 bool isUdpPortAvailable(int port) {
     if (port <= 0) {
         return false;
@@ -494,7 +361,7 @@ BehaviorCoreProcessor::~BehaviorCoreProcessor() {
 void BehaviorCoreProcessor::initialiseExportPluginConfig() {
     auto& settings = Settings::getInstance();
     const juce::File uiTarget(settings.getDefaultUiScript());
-    exportPluginConfig_ = resolveExportPluginConfig(uiTarget);
+    exportPluginConfig_ = manifold::export_plugin::resolveExportPluginConfig(uiTarget);
     if (!exportPluginConfig_.enabled) {
         return;
     }
@@ -904,88 +771,36 @@ void BehaviorCoreProcessor::registerExportPluginEndpoints() {
 }
 
 juce::String BehaviorCoreProcessor::resolveExportInternalPath(const juce::String& path) const {
-    for (const auto& alias : exportPluginConfig_.paramAliases) {
-        if (alias.path == path) {
-            return alias.internalPath;
-        }
-    }
-    return {};
+    return manifold::export_plugin::resolveExportInternalPath(exportPluginConfig_, path);
 }
 
 BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByPublicPath(const juce::String& path) {
-    for (auto& alias : exportPluginConfig_.paramAliases) {
-        if (alias.path == path) {
-            return &alias;
-        }
-    }
-    return nullptr;
+    return manifold::export_plugin::findExportAliasByPublicPath(exportPluginConfig_, path);
 }
 
 const BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByPublicPath(const juce::String& path) const {
-    for (const auto& alias : exportPluginConfig_.paramAliases) {
-        if (alias.path == path) {
-            return &alias;
-        }
-    }
-    return nullptr;
+    return manifold::export_plugin::findExportAliasByPublicPath(exportPluginConfig_, path);
 }
 
 BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByHostParamId(const juce::String& hostParamId) {
-    for (auto& alias : exportPluginConfig_.paramAliases) {
-        if (alias.hostParamId == hostParamId) {
-            return &alias;
-        }
-    }
-    return nullptr;
+    return manifold::export_plugin::findExportAliasByHostParamId(exportPluginConfig_, hostParamId);
 }
 
 const BehaviorCoreProcessor::ExportParamAlias* BehaviorCoreProcessor::findExportAliasByHostParamId(const juce::String& hostParamId) const {
-    for (const auto& alias : exportPluginConfig_.paramAliases) {
-        if (alias.hostParamId == hostParamId) {
-            return &alias;
-        }
-    }
-    return nullptr;
+    return manifold::export_plugin::findExportAliasByHostParamId(exportPluginConfig_, hostParamId);
 }
 
 bool BehaviorCoreProcessor::syncPublicPathToHostParameter(const juce::String& publicPath, float value) {
-    if (!hostParams_) {
-        return false;
-    }
-
-    auto* alias = findExportAliasByPublicPath(publicPath);
-    if (alias == nullptr || alias->hostParamId.isEmpty()) {
-        return false;
-    }
-
-    auto* parameter = hostParams_->getParameter(alias->hostParamId);
-    auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
-    if (ranged == nullptr) {
-        return false;
-    }
-
-    const float clamped = juce::jlimit(alias->rangeMin, alias->rangeMax, value);
-    const float current = alias->rawHostValue != nullptr ? alias->rawHostValue->load() : clamped;
-    if (std::abs(current - clamped) <= 1.0e-6f) {
-        return true;
-    }
-
-    ranged->setValueNotifyingHost(ranged->convertTo0to1(clamped));
-    return true;
+    return manifold::export_plugin::syncPublicPathToHostParameter(exportPluginConfig_, hostParams_.get(), publicPath, value);
 }
 
 void BehaviorCoreProcessor::applyHostParameterSnapshotToProcessor() {
-    if (!hostParams_) {
-        return;
-    }
-
-    for (const auto& alias : exportPluginConfig_.paramAliases) {
-        if (alias.internalPath.isEmpty() || alias.hostParamId.isEmpty()) {
-            continue;
-        }
-        const float value = alias.rawHostValue != nullptr ? alias.rawHostValue->load() : alias.defaultValue;
-        setParamByPath(alias.internalPath.toStdString(), value);
-    }
+    manifold::export_plugin::applyHostParameterSnapshotToProcessor(
+        exportPluginConfig_,
+        hostParams_.get(),
+        [this](const std::string& path, float value) {
+            setParamByPath(path, value);
+        });
 }
 
 void BehaviorCoreProcessor::parameterChanged(const juce::String& parameterID, float newValue) {
@@ -4129,24 +3944,24 @@ void BehaviorCoreProcessor::setStateInformation(const void* data, int sizeInByte
         auto pluginUiVar = obj->getProperty("pluginUi");
         auto* pluginUi = pluginUiVar.getDynamicObject();
         if (pluginUi != nullptr) {
-            exportViewMode_.store(readIntProperty(pluginUi, "viewMode", exportPluginConfig_.defaultViewMode) == 0 ? 0 : 1,
+            exportViewMode_.store(manifold::export_plugin::readIntProperty(pluginUi, "viewMode", exportPluginConfig_.defaultViewMode) == 0 ? 0 : 1,
                                   std::memory_order_relaxed);
-            exportEditorWidth_.store(std::max(1, readIntProperty(pluginUi, "editorWidth", exportEditorWidth_.load(std::memory_order_relaxed))),
+            exportEditorWidth_.store(std::max(1, manifold::export_plugin::readIntProperty(pluginUi, "editorWidth", exportEditorWidth_.load(std::memory_order_relaxed))),
                                      std::memory_order_relaxed);
-            exportEditorHeight_.store(std::max(1, readIntProperty(pluginUi, "editorHeight", exportEditorHeight_.load(std::memory_order_relaxed))),
+            exportEditorHeight_.store(std::max(1, manifold::export_plugin::readIntProperty(pluginUi, "editorHeight", exportEditorHeight_.load(std::memory_order_relaxed))),
                                       std::memory_order_relaxed);
             exportSettingsVisible_.store(false, std::memory_order_relaxed);
-            exportDevVisible_.store(readBoolProperty(pluginUi, "devVisible", exportDevVisible_.load(std::memory_order_relaxed)),
+            exportDevVisible_.store(manifold::export_plugin::readBoolProperty(pluginUi, "devVisible", exportDevVisible_.load(std::memory_order_relaxed)),
                                     std::memory_order_relaxed);
             exportOscEnabled_.store(exportPluginConfig_.oscDefaultEnabled, std::memory_order_relaxed);
             exportOscQueryEnabled_.store(exportPluginConfig_.oscQueryDefaultEnabled, std::memory_order_relaxed);
             exportOscInputPort_.store(exportPluginConfig_.oscBasePort, std::memory_order_relaxed);
             exportOscQueryPort_.store(exportPluginConfig_.oscBasePort + 1, std::memory_order_relaxed);
             exportXyXParam_.store(juce::jlimit(1, 5,
-                                              readIntProperty(pluginUi, "xyXParam", exportXyXParam_.load(std::memory_order_relaxed))),
+                                              manifold::export_plugin::readIntProperty(pluginUi, "xyXParam", exportXyXParam_.load(std::memory_order_relaxed))),
                                  std::memory_order_relaxed);
             exportXyYParam_.store(juce::jlimit(1, 5,
-                                              readIntProperty(pluginUi, "xyYParam", exportXyYParam_.load(std::memory_order_relaxed))),
+                                              manifold::export_plugin::readIntProperty(pluginUi, "xyYParam", exportXyYParam_.load(std::memory_order_relaxed))),
                                  std::memory_order_relaxed);
             applyExportOscSettings();
         }

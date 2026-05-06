@@ -1,0 +1,276 @@
+#pragma once
+
+#include <atomic>
+#include <cmath>
+#include <functional>
+#include <vector>
+
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_core/juce_core.h>
+
+namespace manifold::export_plugin {
+
+struct ExportParamAlias {
+    juce::String path;
+    juce::String internalPath;
+    juce::String type{"f"};
+    float rangeMin = 0.0f;
+    float rangeMax = 1.0f;
+    juce::String description;
+    float defaultValue = 0.0f;
+    float skew = 1.0f;
+    juce::String hostParamId;
+    juce::String hostParamName;
+    juce::String hostParamKind{"float"};
+    juce::StringArray choices;
+    std::atomic<float>* rawHostValue = nullptr;
+};
+
+struct ExportPluginConfig {
+    bool enabled = false;
+    juce::String headerTitle{"Plugin"};
+    int compactWidth = 236;
+    int compactHeight = 220;
+    int splitWidth = 472;
+    int splitHeight = 220;
+    int defaultViewMode = 1;
+    bool oscDefaultEnabled = false;
+    bool oscQueryDefaultEnabled = false;
+    int oscBasePort = 9010;
+    std::vector<ExportParamAlias> paramAliases;
+};
+
+inline bool isProjectManifestFile(const juce::File& file) {
+    return file.existsAsFile()
+        && file.getFileName().equalsIgnoreCase("manifold.project.json5");
+}
+
+inline int readIntProperty(juce::DynamicObject* obj, const char* name, int fallback) {
+    if (obj == nullptr || !obj->hasProperty(name)) {
+        return fallback;
+    }
+    return static_cast<int>(obj->getProperty(name));
+}
+
+inline bool readBoolProperty(juce::DynamicObject* obj, const char* name, bool fallback) {
+    if (obj == nullptr || !obj->hasProperty(name)) {
+        return fallback;
+    }
+    return static_cast<bool>(obj->getProperty(name));
+}
+
+inline ExportPluginConfig resolveExportPluginConfig(const juce::File& requestedPath) {
+    ExportPluginConfig config;
+    if (!isProjectManifestFile(requestedPath)) {
+        return config;
+    }
+
+    const auto json = juce::JSON::parse(requestedPath);
+    if (!json.isObject()) {
+        return config;
+    }
+
+    auto* obj = json.getDynamicObject();
+    if (obj == nullptr || !obj->hasProperty("plugin")) {
+        return config;
+    }
+
+    auto pluginVar = obj->getProperty("plugin");
+    if (!pluginVar.isObject()) {
+        return config;
+    }
+
+    auto* pluginObj = pluginVar.getDynamicObject();
+    if (pluginObj == nullptr) {
+        return config;
+    }
+
+    config.enabled = true;
+    if (obj->hasProperty("name")) {
+        config.headerTitle = obj->getProperty("name").toString();
+    }
+
+    if (pluginObj->hasProperty("headerTitle")) {
+        config.headerTitle = pluginObj->getProperty("headerTitle").toString();
+    }
+
+    auto viewVar = pluginObj->getProperty("view");
+    if (viewVar.isObject()) {
+        auto* viewObj = viewVar.getDynamicObject();
+        if (viewObj != nullptr) {
+            if (viewObj->hasProperty("defaultMode")) {
+                const auto defaultMode = viewObj->getProperty("defaultMode").toString().trim().toLowerCase();
+                config.defaultViewMode = defaultMode == "compact" ? 0 : 1;
+            }
+
+            auto compactVar = viewObj->getProperty("compact");
+            if (compactVar.isObject()) {
+                auto* compactObj = compactVar.getDynamicObject();
+                config.compactWidth = readIntProperty(compactObj, "w", config.compactWidth);
+                config.compactHeight = readIntProperty(compactObj, "h", config.compactHeight);
+            }
+
+            auto splitVar = viewObj->getProperty("split");
+            if (splitVar.isObject()) {
+                auto* splitObj = splitVar.getDynamicObject();
+                config.splitWidth = readIntProperty(splitObj, "w", config.splitWidth);
+                config.splitHeight = readIntProperty(splitObj, "h", config.splitHeight);
+            }
+        }
+    }
+
+    auto oscVar = pluginObj->getProperty("osc");
+    if (oscVar.isObject()) {
+        auto* oscObj = oscVar.getDynamicObject();
+        if (oscObj != nullptr) {
+            config.oscDefaultEnabled = readBoolProperty(oscObj, "enabled", config.oscDefaultEnabled);
+            config.oscQueryDefaultEnabled = readBoolProperty(oscObj, "queryEnabled", config.oscQueryDefaultEnabled);
+            config.oscBasePort = readIntProperty(oscObj, "basePort", config.oscBasePort);
+        }
+    }
+
+    auto paramsVar = pluginObj->getProperty("params");
+    if (paramsVar.isArray()) {
+        for (const auto& item : *paramsVar.getArray()) {
+            auto* paramObj = item.getDynamicObject();
+            if (paramObj == nullptr || !paramObj->hasProperty("path") || !paramObj->hasProperty("internalPath")) {
+                continue;
+            }
+
+            ExportParamAlias alias;
+            alias.path = paramObj->getProperty("path").toString();
+            alias.internalPath = paramObj->getProperty("internalPath").toString();
+            alias.type = paramObj->hasProperty("type") ? paramObj->getProperty("type").toString() : juce::String("f");
+            alias.rangeMin = static_cast<float>(paramObj->hasProperty("min") ? static_cast<double>(paramObj->getProperty("min")) : 0.0);
+            alias.rangeMax = static_cast<float>(paramObj->hasProperty("max") ? static_cast<double>(paramObj->getProperty("max")) : 1.0);
+            alias.defaultValue = static_cast<float>(paramObj->hasProperty("default")
+                ? static_cast<double>(paramObj->getProperty("default"))
+                : static_cast<double>(alias.rangeMin));
+            alias.skew = static_cast<float>(paramObj->hasProperty("skew")
+                ? static_cast<double>(paramObj->getProperty("skew"))
+                : 1.0);
+            alias.hostParamId = paramObj->hasProperty("hostParamId")
+                ? paramObj->getProperty("hostParamId").toString()
+                : juce::String();
+            alias.hostParamName = paramObj->hasProperty("hostParamName")
+                ? paramObj->getProperty("hostParamName").toString()
+                : alias.hostParamId;
+            alias.hostParamKind = paramObj->hasProperty("hostParamKind")
+                ? paramObj->getProperty("hostParamKind").toString()
+                : juce::String("float");
+            if (paramObj->hasProperty("choices")) {
+                auto choicesVar = paramObj->getProperty("choices");
+                if (choicesVar.isArray()) {
+                    for (const auto& choice : *choicesVar.getArray()) {
+                        alias.choices.add(choice.toString());
+                    }
+                }
+            }
+            alias.description = paramObj->hasProperty("description")
+                ? paramObj->getProperty("description").toString()
+                : alias.path;
+            if (alias.path.isNotEmpty() && alias.internalPath.isNotEmpty()) {
+                config.paramAliases.push_back(alias);
+            }
+        }
+    }
+
+    return config;
+}
+
+inline juce::String resolveExportInternalPath(const ExportPluginConfig& config,
+                                              const juce::String& path) {
+    for (const auto& alias : config.paramAliases) {
+        if (alias.path == path) {
+            return alias.internalPath;
+        }
+    }
+    return {};
+}
+
+inline ExportParamAlias* findExportAliasByPublicPath(ExportPluginConfig& config,
+                                                     const juce::String& path) {
+    for (auto& alias : config.paramAliases) {
+        if (alias.path == path) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+inline const ExportParamAlias* findExportAliasByPublicPath(const ExportPluginConfig& config,
+                                                           const juce::String& path) {
+    for (const auto& alias : config.paramAliases) {
+        if (alias.path == path) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+inline ExportParamAlias* findExportAliasByHostParamId(ExportPluginConfig& config,
+                                                      const juce::String& hostParamId) {
+    for (auto& alias : config.paramAliases) {
+        if (alias.hostParamId == hostParamId) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+inline const ExportParamAlias* findExportAliasByHostParamId(const ExportPluginConfig& config,
+                                                            const juce::String& hostParamId) {
+    for (const auto& alias : config.paramAliases) {
+        if (alias.hostParamId == hostParamId) {
+            return &alias;
+        }
+    }
+    return nullptr;
+}
+
+inline bool syncPublicPathToHostParameter(ExportPluginConfig& config,
+                                          juce::AudioProcessorValueTreeState* hostParams,
+                                          const juce::String& publicPath,
+                                          float value) {
+    if (hostParams == nullptr) {
+        return false;
+    }
+
+    auto* alias = findExportAliasByPublicPath(config, publicPath);
+    if (alias == nullptr || alias->hostParamId.isEmpty()) {
+        return false;
+    }
+
+    auto* parameter = hostParams->getParameter(alias->hostParamId);
+    auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+    if (ranged == nullptr) {
+        return false;
+    }
+
+    const float clamped = juce::jlimit(alias->rangeMin, alias->rangeMax, value);
+    const float current = alias->rawHostValue != nullptr ? alias->rawHostValue->load() : clamped;
+    if (std::abs(current - clamped) <= 1.0e-6f) {
+        return true;
+    }
+
+    ranged->setValueNotifyingHost(ranged->convertTo0to1(clamped));
+    return true;
+}
+
+inline void applyHostParameterSnapshotToProcessor(const ExportPluginConfig& config,
+                                                  juce::AudioProcessorValueTreeState* hostParams,
+                                                  const std::function<void(const std::string&, float)>& setParamByPath) {
+    if (hostParams == nullptr) {
+        return;
+    }
+
+    for (const auto& alias : config.paramAliases) {
+        if (alias.internalPath.isEmpty() || alias.hostParamId.isEmpty()) {
+            continue;
+        }
+        const float value = alias.rawHostValue != nullptr ? alias.rawHostValue->load() : alias.defaultValue;
+        setParamByPath(alias.internalPath.toStdString(), value);
+    }
+}
+
+} // namespace manifold::export_plugin
