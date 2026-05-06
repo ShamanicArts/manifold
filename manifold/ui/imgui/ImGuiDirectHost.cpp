@@ -1722,6 +1722,8 @@ void ImGuiDirectHost::mouseDown(const juce::MouseEvent& e) {
 
     if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
         grabKeyboardFocus();
+        renderNow();
+        lastContinuousInputDispatchMs_ = juce::Time::getMillisecondCounterHiRes();
         return;
     }
 
@@ -1840,6 +1842,11 @@ void ImGuiDirectHost::mouseDown(const juce::MouseEvent& e) {
 void ImGuiDirectHost::mouseDrag(const juce::MouseEvent& e) {
     queueMousePosition(e.position);
     if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        const double nowMs = juce::Time::getMillisecondCounterHiRes();
+        if (nowMs - lastContinuousInputDispatchMs_ >= (1000.0 / 60.0)) {
+            renderNow();
+            lastContinuousInputDispatchMs_ = juce::Time::getMillisecondCounterHiRes();
+        }
         return;
     }
 
@@ -1890,6 +1897,8 @@ void ImGuiDirectHost::mouseUp(const juce::MouseEvent& e) {
 
     if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
         flushPendingDrag();
+        renderNow();
+        lastContinuousInputDispatchMs_ = juce::Time::getMillisecondCounterHiRes();
         return;
     }
 
@@ -1918,6 +1927,11 @@ void ImGuiDirectHost::mouseUp(const juce::MouseEvent& e) {
 void ImGuiDirectHost::mouseMove(const juce::MouseEvent& e) {
     queueMousePosition(e.position);
     if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        const double nowMs = juce::Time::getMillisecondCounterHiRes();
+        if (nowMs - lastContinuousInputDispatchMs_ >= (1000.0 / 60.0)) {
+            renderNow();
+            lastContinuousInputDispatchMs_ = juce::Time::getMillisecondCounterHiRes();
+        }
         return;
     }
     updateHover(e.position, &e.mods);
@@ -1938,6 +1952,8 @@ void ImGuiDirectHost::mouseWheelMove(const juce::MouseEvent& e, const juce::Mous
     queueMousePosition(e.position);
     queueMouseWheel(wheel.deltaX, wheel.deltaY);
     if (wantCaptureMouse_.load(std::memory_order_relaxed)) {
+        renderNow();
+        lastContinuousInputDispatchMs_ = juce::Time::getMillisecondCounterHiRes();
         return;
     }
 

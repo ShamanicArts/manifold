@@ -10,7 +10,7 @@
 
   "ui": {
     "root": "ui/main.ui.lua",
-    "sharedShell": false
+    "sharedShell": true
   },
 
   "theme": "../Main/themes/dark.lua"

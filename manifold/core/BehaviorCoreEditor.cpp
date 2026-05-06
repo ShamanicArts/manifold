@@ -2325,16 +2325,11 @@ void BehaviorCoreEditor::timerCallback() {
     }
 
     // Reschedule from now so mouse events get processed between callbacks.
-    // When the direct ImGui host is capturing input (popups/menus), run faster
-    // from the main editor timer instead of forcing synchronous full renders
-    // on every mouse event.
+    // Do not pin the message thread at 60 Hz while ImGui is capturing input:
+    // direct-mode renders already cost ~a frame on some drivers, so the old
+    // capture-timer boost starved the event queue and made docking feel like ass.
+    // Captured input now requests redraws directly from ImGuiDirectHost.
     int nextTimerHz = exportPluginUi_ ? 20 : 30;
-    if (!exportPluginUi_ && runtimeRendererMode_ == RuntimeRendererMode::ImGuiDirect) {
-        const auto directStats = directHost_.getStatsSnapshot();
-        if (directStats.wantCaptureMouse || directStats.wantCaptureKeyboard) {
-            nextTimerHz = 60;
-        }
-    }
     // Ensure 30 FPS frame capture during recording
     if (processorRef.getControlServer().isRecording()) {
         nextTimerHz = 30;

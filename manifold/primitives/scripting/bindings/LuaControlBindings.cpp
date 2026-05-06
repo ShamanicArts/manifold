@@ -3780,6 +3780,10 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         ImGui::DockBuilderDockWindow(windowName, static_cast<ImGuiID>(nodeId));
     };
     lua["imguiDockBuilderFinish"] = [](uint32_t id) { ImGui::DockBuilderFinish(static_cast<ImGuiID>(id)); };
+    lua["imguiDockBuilderSetNodeFlags"] = [](uint32_t nodeId, int flags) {
+        auto* node = ImGui::DockBuilderGetNode(static_cast<ImGuiID>(nodeId));
+        if (node) node->LocalFlags = static_cast<ImGuiDockNodeFlags>(flags);
+    };
     lua["imguiPushID"]           = [](const char* id) { ImGui::PushID(id); };
     lua["imguiPopID"]            = []() { ImGui::PopID(); };
     lua["imguiButton"]           = [](const char* label, sol::optional<float> w, sol::optional<float> h) -> bool {
@@ -4003,6 +4007,8 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
     lua["imguiTableFlags_SizingFixedFit"] = static_cast<int>(ImGuiTableFlags_SizingFixedFit);
     lua["imguiDockNodeFlags_None"] = static_cast<int>(ImGuiDockNodeFlags_None);
     lua["imguiDockNodeFlags_DockSpace"] = static_cast<int>(ImGuiDockNodeFlags_DockSpace);
+    lua["imguiDockNodeFlags_HiddenTabBar"] = static_cast<int>(ImGuiDockNodeFlags_HiddenTabBar);
+    lua["imguiDockNodeFlags_NoTabBar"] = static_cast<int>(ImGuiDockNodeFlags_NoTabBar);
     lua["imguiDir_Left"] = static_cast<int>(ImGuiDir_Left);
     lua["imguiDir_Right"] = static_cast<int>(ImGuiDir_Right);
     lua["imguiDir_Up"] = static_cast<int>(ImGuiDir_Up);
