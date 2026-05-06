@@ -1,6 +1,13 @@
 #include "BehaviorCoreProcessor.h"
 
 #include "BehaviorCoreEditor.h"
+#include "BehaviorHousekeepingSupport.h"
+#include "BehaviorParamSupport.h"
+#include "BehaviorQuerySupport.h"
+#include "ControlCommandSupport.h"
+#include "DspSlotSupport.h"
+#include "ExportPluginPerfSupport.h"
+#include "GraphRuntimeSupport.h"
 #include "LinkSupport.h"
 #include "MidiSupport.h"
 #include "StateSerializationSupport.h"
@@ -144,27 +151,6 @@ float computeSamplesPerBar(float tempo, double sampleRate) {
     return static_cast<float>((sampleRate * 240.0) / tempo);
 }
 
-
-ScriptableLayerState toLayerState(int raw) {
-    switch (raw) {
-        case 0:
-            return ScriptableLayerState::Empty;
-        case 1:
-            return ScriptableLayerState::Playing;
-        case 2:
-            return ScriptableLayerState::Recording;
-        case 3:
-            return ScriptableLayerState::Overdubbing;
-        case 4:
-            return ScriptableLayerState::Muted;
-        case 5:
-            return ScriptableLayerState::Stopped;
-        case 6:
-            return ScriptableLayerState::Paused;
-        default:
-            return ScriptableLayerState::Unknown;
-    }
-}
 
 float computeBufferRms(const juce::AudioBuffer<float>& buffer) {
     const int numChannels = buffer.getNumChannels();
@@ -512,310 +498,9 @@ float BehaviorCoreProcessor::readExportPluginPath(const std::string& path) const
         return *value;
     }
 
-    if (auto* timings = controlServer.getFrameTimings()) {
-        if (path == "/plugin/ui/perf/frameCurrentUs") {
-            return static_cast<float>(timings->total.currentUs.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/frameAvgUs") {
-            return static_cast<float>(timings->total.getAvgUs());
-        }
-        if (path == "/plugin/ui/perf/framePeakUs") {
-            return static_cast<float>(timings->total.peakUs.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/dspCurrentUs") {
-            return static_cast<float>(timings->dsp.currentUs.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/dspAvgUs") {
-            return static_cast<float>(timings->dsp.getAvgUs());
-        }
-        if (path == "/plugin/ui/perf/dspPeakUs") {
-            return static_cast<float>(timings->dsp.peakUs.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/uiUpdateUs") {
-            return static_cast<float>(timings->uiUpdate.currentUs.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/renderUs") {
-            return static_cast<float>(timings->imguiRenderUs.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/paintUs") {
-            return static_cast<float>(timings->paint.currentUs.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/cpuPercent") {
-            return timings->cpuPercent.load(std::memory_order_relaxed);
-        }
-        if (path == "/plugin/ui/perf/pssMB") {
-            const int64_t bytes = timings->processPssBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/privateDirtyMB") {
-            const int64_t bytes = timings->privateDirtyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/pluginDeltaPssMB") {
-            const int64_t bytes = timings->pluginDeltaPssBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/pluginDeltaPrivateDirtyMB") {
-            const int64_t bytes = timings->pluginDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/pluginDeltaHeapMB") {
-            const int64_t bytes = timings->pluginDeltaHeapBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/uiDeltaPssMB") {
-            const int64_t bytes = timings->uiDeltaPssBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/uiDeltaPrivateDirtyMB") {
-            const int64_t bytes = timings->uiDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/uiDeltaHeapMB") {
-            const int64_t bytes = timings->uiDeltaHeapBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterLuaInitDeltaPssMB") {
-            const int64_t bytes = timings->afterLuaInitDeltaPssBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterLuaInitDeltaPrivateDirtyMB") {
-            const int64_t bytes = timings->afterLuaInitDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterBindingsDeltaPssMB") {
-            const int64_t bytes = timings->afterBindingsDeltaPssBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterBindingsDeltaPrivateDirtyMB") {
-            const int64_t bytes = timings->afterBindingsDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterScriptLoadDeltaPssMB") {
-            const int64_t bytes = timings->afterScriptLoadDeltaPssBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterScriptLoadDeltaPrivateDirtyMB") {
-            const int64_t bytes = timings->afterScriptLoadDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterDspDeltaPssMB") {
-            const int64_t bytes = timings->afterDspDeltaPssBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterDspDeltaPrivateDirtyMB") {
-            const int64_t bytes = timings->afterDspDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterUiOpenDeltaPssMB") {
-            const int64_t bytes = timings->afterUiOpenDeltaPssBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterUiOpenDeltaPrivateDirtyMB") {
-            const int64_t bytes = timings->afterUiOpenDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterUiIdleDeltaPssMB") {
-            const int64_t bytes = timings->afterUiIdleDeltaPssBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/afterUiIdleDeltaPrivateDirtyMB") {
-            const int64_t bytes = timings->afterUiIdleDeltaPrivateDirtyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/luaHeapMB") {
-            const int64_t bytes = timings->luaHeapBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/glibcHeapMB") {
-            const int64_t bytes = timings->glibcHeapUsedBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/glibcArenaMB") {
-            const int64_t bytes = timings->glibcArenaBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/glibcMmapMB") {
-            const int64_t bytes = timings->glibcMmapBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/glibcFreeHeldMB") {
-            const int64_t bytes = timings->glibcFreeHeldBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/glibcReleasableMB") {
-            const int64_t bytes = timings->glibcReleasableBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/glibcArenaCount") {
-            return static_cast<float>(timings->glibcArenaCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/gpuFontAtlasMB") {
-            const int64_t bytes = timings->gpuFontAtlasBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/gpuSurfaceColorMB") {
-            const int64_t bytes = timings->gpuSurfaceColorBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/gpuSurfaceDepthMB") {
-            const int64_t bytes = timings->gpuSurfaceDepthBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/gpuTotalMB") {
-            const int64_t bytes = timings->gpuTotalBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/runtimeNodeCount") {
-            return static_cast<float>(timings->runtimeNodeCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/runtimeNodeMB") {
-            const int64_t bytes = timings->runtimeNodeBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/runtimeCallbackCount") {
-            return static_cast<float>(timings->runtimeCallbackCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/runtimeUserDataEntries") {
-            return static_cast<float>(timings->runtimeUserDataEntries.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/runtimeUserDataMB") {
-            const int64_t bytes = timings->runtimeUserDataBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/runtimePayloadMB") {
-            const int64_t bytes = timings->runtimeCustomPayloadBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/displayListCount") {
-            return static_cast<float>(timings->displayListCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/displayListCommands") {
-            return static_cast<float>(timings->displayListCommandCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/displayListMB") {
-            const int64_t bytes = timings->displayListBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/renderSnapshotNodes") {
-            return static_cast<float>(timings->renderSnapshotNodeCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/renderSnapshotMB") {
-            const int64_t bytes = timings->renderSnapshotBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/customSurfaceStateMB") {
-            const int64_t bytes = timings->customSurfaceStateBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/scriptSourceKB") {
-            const int64_t bytes = timings->scriptSourceBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / 1024.0);
-        }
-        if (path == "/plugin/ui/perf/luaGlobalCount") {
-            return static_cast<float>(timings->luaGlobalCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/luaRegistryEntryCount") {
-            return static_cast<float>(timings->luaRegistryEntryCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/luaPackageLoadedCount") {
-            return static_cast<float>(timings->luaPackageLoadedCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/luaOscPathCount") {
-            return static_cast<float>(timings->luaOscPathCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/luaOscCallbackCount") {
-            return static_cast<float>(timings->luaOscCallbackCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/luaOscQueryHandlerCount") {
-            return static_cast<float>(timings->luaOscQueryHandlerCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/luaEventListenerCount") {
-            return static_cast<float>(timings->luaEventListenerCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/luaManagedDspSlotCount") {
-            return static_cast<float>(timings->luaManagedDspSlotCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/luaOverlayCacheCount") {
-            return static_cast<float>(timings->luaOverlayCacheCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/endpointTotalCount") {
-            return static_cast<float>(timings->endpointTotalCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/endpointCustomCount") {
-            return static_cast<float>(timings->endpointCustomCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/endpointPathKB") {
-            const int64_t bytes = timings->endpointPathBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / 1024.0);
-        }
-        if (path == "/plugin/ui/perf/endpointDescriptionKB") {
-            const int64_t bytes = timings->endpointDescriptionBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / 1024.0);
-        }
-        if (path == "/plugin/ui/perf/dspHostCount") {
-            return static_cast<float>(timings->dspHostCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/dspScriptSourceKB") {
-            const int64_t bytes = timings->dspScriptSourceBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / 1024.0);
-        }
-        if (path == "/plugin/ui/perf/imguiWindowCount") {
-            return static_cast<float>(timings->imguiWindowCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/imguiTableCount") {
-            return static_cast<float>(timings->imguiTableCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/imguiTabBarCount") {
-            return static_cast<float>(timings->imguiTabBarCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/imguiViewportCount") {
-            return static_cast<float>(timings->imguiViewportCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/imguiFontCount") {
-            return static_cast<float>(timings->imguiFontCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/imguiWindowStateMB") {
-            const int64_t bytes = timings->imguiWindowStateBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/imguiDrawBufferMB") {
-            const int64_t bytes = timings->imguiDrawBufferBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/imguiInternalStateMB") {
-            const int64_t bytes = timings->imguiInternalStateBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/shellScriptListRows") {
-            return static_cast<float>(timings->shellScriptListRowCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/shellScriptListMB") {
-            const int64_t bytes = timings->shellScriptListBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/shellHierarchyRows") {
-            return static_cast<float>(timings->shellHierarchyRowCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/shellHierarchyMB") {
-            const int64_t bytes = timings->shellHierarchyBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/shellInspectorRows") {
-            return static_cast<float>(timings->shellInspectorRowCount.load(std::memory_order_relaxed));
-        }
-        if (path == "/plugin/ui/perf/shellInspectorMB") {
-            const int64_t bytes = timings->shellInspectorBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/shellScriptInspectorMB") {
-            const int64_t bytes = timings->shellScriptInspectorBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / (1024.0 * 1024.0));
-        }
-        if (path == "/plugin/ui/perf/shellMainEditorTextKB") {
-            const int64_t bytes = timings->shellMainEditorTextBytes.load(std::memory_order_relaxed);
-            return static_cast<float>(bytes / 1024.0);
-        }
+    if (const auto value = manifold::export_plugin_perf::readPerfPath(
+            path, controlServer.getFrameTimings())) {
+        return *value;
     }
 
     const auto* alias = findExportAliasByPublicPath(juce::String(path));
@@ -1491,514 +1176,130 @@ bool BehaviorCoreProcessor::postControlCommand(ControlCommand::Type type,
 
 void BehaviorCoreProcessor::requestGraphRuntimeSwap(
     std::unique_ptr<dsp_primitives::GraphRuntime> runtime) {
-    if (!runtime) {
-        return;
-    }
-
-    dsp_primitives::GraphRuntime* oldPending = pendingRuntime.exchange(
-        runtime.release(), std::memory_order_release);
-    if (oldPending != nullptr) {
-        delete oldPending;
-    }
+    manifold::graph_runtime_support::requestGraphRuntimeSwap(pendingRuntime,
+                                                             std::move(runtime));
 }
 
 void BehaviorCoreProcessor::beginGraphMutation() {
-    std::unique_lock<std::mutex> lock(graphMutationMutex);
-    graphMutationPauseRequested.store(true, std::memory_order_release);
-    graphMutationRestoreEnabled = graphProcessingEnabled.exchange(false, std::memory_order_acq_rel);
-    controlServer.getAtomicState().graphEnabled.store(false, std::memory_order_relaxed);
-    graphMutationCv.wait(lock, [this]() {
-        return graphProcessDepth.load(std::memory_order_acquire) == 0;
-    });
+    manifold::graph_runtime_support::beginGraphMutation(
+        graphMutationMutex,
+        graphMutationPauseRequested,
+        graphProcessingEnabled,
+        graphMutationRestoreEnabled,
+        controlServer,
+        graphMutationCv,
+        graphProcessDepth);
 }
 
 void BehaviorCoreProcessor::endGraphMutation() {
-    {
-        std::lock_guard<std::mutex> lock(graphMutationMutex);
-        graphMutationPauseRequested.store(false, std::memory_order_release);
-        graphProcessingEnabled.store(graphMutationRestoreEnabled, std::memory_order_release);
-        controlServer.getAtomicState().graphEnabled.store(graphMutationRestoreEnabled,
-                                                          std::memory_order_relaxed);
-        graphMutationRestoreEnabled = false;
-    }
-    graphMutationCv.notify_all();
+    manifold::graph_runtime_support::endGraphMutation(
+        graphMutationMutex,
+        graphMutationPauseRequested,
+        graphProcessingEnabled,
+        graphMutationRestoreEnabled,
+        controlServer,
+        graphMutationCv);
 }
 
 DSPPluginScriptHost& BehaviorCoreProcessor::getOrCreateSlot(const std::string& slot) {
-    // "default" slot uses the legacy dspScriptHost pointer so all existing
-    // param routing, layer peaks, etc. keep working without changes.
-    if (slot == "default") {
-        return *dspScriptHost;
-    }
-    auto it = dspSlots.find(slot);
-    if (it != dspSlots.end()) {
-        return *it->second;
-    }
-    auto host = std::make_unique<DSPPluginScriptHost>();
-    host->initialise(this, "/core/slots/" + slot);
-    auto& ref = *host;
-    dspSlots[slot] = std::move(host);
-    return ref;
+    return manifold::dsp_slot_support::getOrCreateSlot(
+        dspScriptHost.get(), dspSlots, this, slot);
 }
 
 // --- Default slot (legacy compat) ---
 
 bool BehaviorCoreProcessor::loadDspScript(const juce::File& scriptFile) {
-    if (!dspScriptHost) {
-        dspScriptLastError = "DSP script host unavailable";
-        return false;
-    }
-    const bool ok = dspScriptHost->loadScript(scriptFile);
-    if (!ok) {
-        dspScriptLastError = dspScriptHost->getLastError();
-    }
-    return ok;
+    return manifold::dsp_slot_support::loadDefaultDspScript(
+        dspScriptHost.get(), scriptFile, dspScriptLastError);
 }
 
 bool BehaviorCoreProcessor::loadDspScriptFromString(const std::string& luaCode,
                                                     const std::string& sourceName) {
-    if (!dspScriptHost) {
-        dspScriptLastError = "DSP script host unavailable";
-        return false;
-    }
-    const bool ok = dspScriptHost->loadScriptFromString(luaCode, sourceName);
-    if (!ok) {
-        dspScriptLastError = dspScriptHost->getLastError();
-    }
-    return ok;
+    return manifold::dsp_slot_support::loadDefaultDspScriptFromString(
+        dspScriptHost.get(), luaCode, sourceName, dspScriptLastError);
 }
 
 bool BehaviorCoreProcessor::reloadDspScript() {
-    if (!dspScriptHost) {
-        dspScriptLastError = "DSP script host unavailable";
-        return false;
-    }
-    const bool ok = dspScriptHost->reloadCurrentScript();
-    if (!ok) {
-        dspScriptLastError = dspScriptHost->getLastError();
-    }
-    return ok;
+    return manifold::dsp_slot_support::reloadDefaultDspScript(
+        dspScriptHost.get(), dspScriptLastError);
 }
 
 bool BehaviorCoreProcessor::isDspScriptLoaded() const {
-    return dspScriptHost && dspScriptHost->isLoaded();
+    return manifold::dsp_slot_support::isDspScriptLoaded(dspScriptHost.get());
 }
 
 // --- Named slot API ---
 
 bool BehaviorCoreProcessor::loadDspScript(const juce::File& scriptFile,
                                           const std::string& slot) {
-    if (slot == "default") return loadDspScript(scriptFile);
-    auto& host = getOrCreateSlot(slot);
-    const bool ok = host.loadScript(scriptFile);
-    if (!ok) {
-        dspScriptLastError = host.getLastError();
-    }
-    return ok;
+    return manifold::dsp_slot_support::loadNamedDspScript(
+        dspScriptHost.get(), dspSlots, this, scriptFile, slot, dspScriptLastError);
 }
 
 bool BehaviorCoreProcessor::loadDspScriptFromString(const std::string& luaCode,
                                                     const std::string& sourceName,
                                                     const std::string& slot) {
-    if (slot == "default") return loadDspScriptFromString(luaCode, sourceName);
-    auto& host = getOrCreateSlot(slot);
-    const bool ok = host.loadScriptFromString(luaCode, sourceName);
-    if (!ok) {
-        dspScriptLastError = host.getLastError();
-    }
-    return ok;
+    return manifold::dsp_slot_support::loadNamedDspScriptFromString(
+        dspScriptHost.get(), dspSlots, this, luaCode, sourceName, slot,
+        dspScriptLastError);
 }
 
 bool BehaviorCoreProcessor::reloadDspScript(const std::string& slot) {
-    if (slot == "default") return reloadDspScript();
-    auto it = dspSlots.find(slot);
-    if (it == dspSlots.end()) {
-        dspScriptLastError = "no script loaded in slot: " + slot;
-        return false;
-    }
-    const bool ok = it->second->reloadCurrentScript();
-    if (!ok) {
-        dspScriptLastError = it->second->getLastError();
-    }
-    return ok;
+    return manifold::dsp_slot_support::reloadNamedDspScript(
+        dspScriptHost.get(), dspSlots, slot, dspScriptLastError);
 }
 
 bool BehaviorCoreProcessor::unloadDspSlot(const std::string& slot) {
-    if (slot == "default") {
-        return false;
-    }
-    auto it = dspSlots.find(slot);
-    if (it == dspSlots.end()) {
-        return false;
-    }
-
-    // SLOP: the comment below is giving codex. 
-
-    // Do not destroy slot hosts during runtime UI/DSP transitions.
-    // Tearing down Lua VMs has repeatedly caused crashes. Keep the host alive
-    // and unload only its nodes by loading an empty script.
-    // TODO: replace this empty-script unload + markUnloaded() split
-    // with a proper slot lifecycle model. Right now we preserve the VM/runtime
-    // for stability but lie about loaded-state so UI/project switches will
-    // force a clean reload. That is the right tactical fix, but the long-term
-    // architecture should make slot residency, script identity, and endpoint
-    // lifetime explicit instead of inferred from this shim.
-    const bool ok = it->second->loadScriptFromString(
-        "function buildPlugin(ctx) return {} end", "unload:" + slot);
-    if (ok) {
-        it->second->markUnloaded();
-    }
-    return ok;
+    return manifold::dsp_slot_support::unloadNamedDspSlot(dspSlots, slot);
 }
 
 void BehaviorCoreProcessor::drainPendingSlotDestroy() {
-    // Intentionally no-op for now; slot hosts are kept alive for stability.
+    manifold::dsp_slot_support::drainPendingSlotDestroy();
 }
 
 bool BehaviorCoreProcessor::isDspSlotLoaded(const std::string& slot) const {
-    if (slot == "default") return isDspScriptLoaded();
-    auto it = dspSlots.find(slot);
-    return it != dspSlots.end() && it->second->isLoaded();
+    return manifold::dsp_slot_support::isDspSlotLoaded(
+        dspScriptHost.get(), dspSlots, slot);
 }
 
 const std::string& BehaviorCoreProcessor::getDspScriptLastError() const {
-    if (dspScriptHost) {
-        return dspScriptHost->getLastError();
-    }
-    return dspScriptLastError;
+    return manifold::dsp_slot_support::getDspScriptLastError(
+        dspScriptHost.get(), dspScriptLastError);
 }
 
 void BehaviorCoreProcessor::drainRetiredGraphRuntimes() {
-    std::lock_guard<std::mutex> lock(retiredRuntimeDrainMutex);
-    dsp_primitives::GraphRuntime* runtime = nullptr;
-    while (retireQueue.dequeue(runtime)) {
-        delete runtime;
-    }
+    manifold::graph_runtime_support::drainRetiredGraphRuntimes(
+        retiredRuntimeDrainMutex, retireQueue);
 }
 
 std::shared_ptr<dsp_primitives::IPrimitiveNode>
 BehaviorCoreProcessor::getGraphNodeByPath(const std::string& path) {
-    if (dspScriptHost) {
-        auto node = dspScriptHost->getGraphNodeByPath(path);
-        if (node) {
-            return node;
-        }
-    }
-
-    for (auto& entry : dspSlots) {
-        auto* host = entry.second.get();
-        if (host == nullptr) {
-            continue;
-        }
-        auto node = host->getGraphNodeByPath(path);
-        if (node) {
-            return node;
-        }
-    }
-
-    return {};
+    return manifold::dsp_slot_support::getGraphNodeByPath(
+        dspScriptHost.get(), dspSlots, path);
 }
 
 bool BehaviorCoreProcessor::extractLayerParam(const std::string& path,
                                               int& layerIndex,
                                               std::string& paramSuffix) {
-    static const std::array<std::string, 3> prefixes = {
-        "/core/behavior/layer/",
-        "/manifold/layer/",
-        "/dsp/manifold/layer/",
-    };
-
-    for (const auto& prefix : prefixes) {
-        if (path.rfind(prefix, 0) != 0) {
-            continue;
-        }
-
-        const std::string rest = path.substr(prefix.size());
-        const auto slash = rest.find('/');
-        if (slash == std::string::npos) {
-            return false;
-        }
-
-        const std::string idxStr = rest.substr(0, slash);
-        const int idx = std::atoi(idxStr.c_str());
-        if (idx < 0 || idx >= MAX_LAYERS) {
-            return false;
-        }
-
-        layerIndex = idx;
-        paramSuffix = rest.substr(slash + 1);
-        return true;
-    }
-
-    return false;
+    return manifold::behavior_param_support::extractLayerParam(
+        path, MAX_LAYERS, layerIndex, paramSuffix);
 }
 
 bool BehaviorCoreProcessor::applyParamPath(const std::string& path, float value) {
-    auto& state = controlServer.getAtomicState();
-
-    if (path == "/core/behavior/tempo") {
-        const float tempo = juce::jlimit(20.0f, 300.0f, value);
-        state.tempo.store(tempo, std::memory_order_relaxed);
-        state.samplesPerBar.store(computeSamplesPerBar(
-                                    tempo,
-                                    currentSampleRate.load(std::memory_order_relaxed)),
-                                std::memory_order_relaxed);
-        // Push tempo change to Ableton Link (if Link is enabled)
-        if (linkSync.isEnabled()) {
-            linkSync.requestTempo(static_cast<double>(tempo));
-        }
-        return true;
-    }
-
-    if (path == "/core/behavior/targetbpm") {
-        state.targetBPM.store(value, std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/core/behavior/volume") {
-        state.masterVolume.store(juce::jlimit(0.0f, 2.0f, value),
-                                 std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/core/behavior/inputVolume") {
-        state.inputVolume.store(juce::jlimit(0.0f, 2.0f, value),
-                                std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/core/behavior/passthrough") {
-        state.passthroughEnabled.store(value > 0.5f, std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/core/behavior/recording") {
-        const bool recording = value > 0.5f;
-        const int activeLayer = juce::jlimit(0, MAX_LAYERS - 1,
-                                             state.activeLayer.load(std::memory_order_relaxed));
-
-        state.isRecording.store(recording, std::memory_order_relaxed);
-
-        if (recording) {
-            state.layers[activeLayer].state.store(
-                static_cast<int>(ScriptableLayerState::Recording),
-                std::memory_order_relaxed);
-            scheduleForwardCommitIfNeeded();
-            return true;
-        }
-
-        // stop recording: clear forward-arm bookkeeping only.
-        state.forwardArmed.store(false, std::memory_order_relaxed);
-        state.forwardBars.store(0.0f, std::memory_order_relaxed);
-        forwardScheduled = false;
-        forwardFireAtSample = 0.0;
-        forwardScheduledBars = 0.0f;
-        return true;
-    }
-
-    if (path == "/core/behavior/overdub") {
-        state.overdubEnabled.store(value > 0.5f, std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/core/behavior/layer") {
-        const int layer = juce::jlimit(0, MAX_LAYERS - 1, static_cast<int>(value));
-        state.activeLayer.store(layer, std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/core/behavior/mode") {
-        const int mode = juce::jlimit(0, 2, static_cast<int>(value));
-        state.recordMode.store(mode, std::memory_order_relaxed);
-        return true;
-    }
-
-    if (path == "/core/behavior/forwardArmed") {
-        const bool armed = value > 0.5f;
-        state.forwardArmed.store(armed, std::memory_order_relaxed);
-        if (!armed) {
-            forwardScheduled = false;
-            forwardFireAtSample = 0.0;
-            forwardScheduledBars = 0.0f;
-        } else {
-            scheduleForwardCommitIfNeeded();
-        }
-        return true;
-    }
-
-    if (path == "/core/behavior/forwardBars") {
-        const float bars = juce::jmax(0.0f, value);
-        state.forwardBars.store(bars, std::memory_order_relaxed);
-        if (bars <= 0.0f) {
-            state.forwardArmed.store(false, std::memory_order_relaxed);
-            forwardScheduled = false;
-            forwardFireAtSample = 0.0;
-            forwardScheduledBars = 0.0f;
-        } else {
-            forwardScheduled = false;
-            scheduleForwardCommitIfNeeded();
-        }
-        return true;
-    }
-
-    if (path == "/core/behavior/forward") {
-        const float bars = juce::jmax(0.0f, value);
-        state.forwardBars.store(bars, std::memory_order_relaxed);
-        state.forwardArmed.store(bars > 0.0f, std::memory_order_relaxed);
-        if (bars <= 0.0f) {
-            forwardScheduled = false;
-            forwardFireAtSample = 0.0;
-            forwardScheduledBars = 0.0f;
-        } else {
-            forwardScheduled = false;
-            scheduleForwardCommitIfNeeded();
-        }
-        return true;
-    }
-
-    if (path == "/core/behavior/commit") {
-        state.commitCount.fetch_add(1, std::memory_order_relaxed);
-        const int activeLayer = state.activeLayer.load(std::memory_order_relaxed);
-        if (activeLayer >= 0 && activeLayer < MAX_LAYERS) {
-            auto& ls = state.layers[activeLayer];
-            const float requestedBars = juce::jmax(0.0625f, value);
-            const int requestedSamples = std::max(1, static_cast<int>(
-                requestedBars * getSamplesPerBar()));
-
-            int effectiveSamples = requestedSamples;
-            if (dspScriptHost) {
-                const int actualLoopLength = dspScriptHost->getLayerLoopLength(activeLayer);
-                if (actualLoopLength > 0) {
-                    effectiveSamples = actualLoopLength;
-                }
-            }
-
-            ls.length.store(effectiveSamples, std::memory_order_relaxed);
-            ls.playheadPos.store(0, std::memory_order_relaxed);
-            const float spb = getSamplesPerBar();
-            ls.numBars.store(spb > 0.0f ? static_cast<float>(effectiveSamples) / spb : 0.0f,
-                             std::memory_order_relaxed);
-            ls.state.store(static_cast<int>(ScriptableLayerState::Playing),
-                           std::memory_order_relaxed);
-
-        }
-        state.forwardArmed.store(false, std::memory_order_relaxed);
-        state.forwardBars.store(0.0f, std::memory_order_relaxed);
-        forwardScheduled = false;
-        forwardFireAtSample = 0.0;
-        forwardScheduledBars = 0.0f;
-        return true;
-    }
-
-    if (path == "/core/behavior/forwardFire") {
-        if (value > 0.5f) {
-            // Lua/script policy handles the actual forward-fire commit behavior.
-            // Core only clears arm/scheduler bookkeeping.
-            state.forwardArmed.store(false, std::memory_order_relaxed);
-            state.forwardBars.store(0.0f, std::memory_order_relaxed);
-            forwardScheduled = false;
-            forwardFireAtSample = 0.0;
-            forwardScheduledBars = 0.0f;
-        }
-        return true;
-    }
-
-    if (path == "/core/behavior/transport") {
-        const int transport = static_cast<int>(value);
-        for (int i = 0; i < MAX_LAYERS; ++i) {
-            auto& ls = state.layers[i];
-            const int currentState = ls.state.load(std::memory_order_relaxed);
-            // Don't change empty layers - they stay empty
-            if (currentState == static_cast<int>(ScriptableLayerState::Empty)) {
-                continue;
-            }
-            if (transport == 0) {
-                ls.state.store(static_cast<int>(ScriptableLayerState::Stopped),
-                               std::memory_order_relaxed);
-            } else if (transport == 1) {
-                ls.state.store(static_cast<int>(ScriptableLayerState::Playing),
-                               std::memory_order_relaxed);
-            } else if (transport == 2) {
-                ls.state.store(static_cast<int>(ScriptableLayerState::Paused),
-                               std::memory_order_relaxed);
-            }
-        }
-        return true;
-    }
-
-    if (path == "/core/behavior/graph/enabled") {
-        const bool enabled = value > 0.5f;
-        graphProcessingEnabled.store(enabled, std::memory_order_relaxed);
-        state.graphEnabled.store(enabled, std::memory_order_relaxed);
-        return true;
-    }
-
-    // Ableton Link parameters
-    if (path == "/core/behavior/link/enabled") {
-        linkSync.setEnabled(value > 0.5f);
-        return true;
-    }
-    if (path == "/core/behavior/link/tempoSync") {
-        linkSync.setTempoSyncEnabled(value > 0.5f);
-        return true;
-    }
-    if (path == "/core/behavior/link/startStopSync") {
-        linkSync.setStartStopSyncEnabled(value > 0.5f);
-        return true;
-    }
-
-    int layerIndex = -1;
-    std::string suffix;
-    if (extractLayerParam(path, layerIndex, suffix)) {
-        auto& ls = state.layers[layerIndex];
-
-        if (suffix == "volume") {
-            ls.volume.store(juce::jlimit(0.0f, 2.0f, value), std::memory_order_relaxed);
-            return true;
-        }
-        if (suffix == "speed") {
-            ls.speed.store(juce::jlimit(-4.0f, 4.0f, value), std::memory_order_relaxed);
-            return true;
-        }
-        if (suffix == "reverse") {
-            ls.reversed.store(value > 0.5f, std::memory_order_relaxed);
-            return true;
-        }
-        if (suffix == "mute") {
-            ls.muted.store(value > 0.5f, std::memory_order_relaxed);
-            return true;
-        }
-        if (suffix == "play") {
-            ls.state.store(static_cast<int>(ScriptableLayerState::Playing),
-                           std::memory_order_relaxed);
-            return true;
-        }
-        if (suffix == "pause") {
-            ls.state.store(static_cast<int>(ScriptableLayerState::Paused),
-                           std::memory_order_relaxed);
-            return true;
-        }
-        if (suffix == "stop") {
-            ls.state.store(static_cast<int>(ScriptableLayerState::Stopped),
-                           std::memory_order_relaxed);
-            return true;
-        }
-        if (suffix == "clear") {
-            ls.length.store(0, std::memory_order_relaxed);
-            ls.playheadPos.store(0, std::memory_order_relaxed);
-            ls.state.store(static_cast<int>(ScriptableLayerState::Empty),
-                           std::memory_order_relaxed);
-            return true;
-        }
-        if (suffix == "seek") {
-            const int length = std::max(1, ls.length.load(std::memory_order_relaxed));
-            const int pos = static_cast<int>(juce::jlimit(0.0f, 1.0f, value) * length);
-            ls.playheadPos.store(pos, std::memory_order_relaxed);
-            return true;
-        }
-    }
-
-    return false;
+    return manifold::behavior_param_support::applyParamPath(
+        path,
+        value,
+        MAX_LAYERS,
+        controlServer,
+        currentSampleRate,
+        linkSync,
+        graphProcessingEnabled,
+        dspScriptHost.get(),
+        forwardScheduled,
+        forwardFireAtSample,
+        forwardScheduledBars,
+        [this]() { scheduleForwardCommitIfNeeded(); },
+        [this]() { return getSamplesPerBar(); });
 }
 
 bool BehaviorCoreProcessor::setParamByPath(const std::string& path, float value) {
@@ -2041,7 +1342,8 @@ bool BehaviorCoreProcessor::setParamByPath(const std::string& path, float value)
 float BehaviorCoreProcessor::getParamByPath(const std::string& path) const {
     if (exportPluginConfig_.enabled) {
         const float exportValue = readExportPluginPath(path);
-        if (path.rfind("/plugin/", 0) == 0 || resolveExportInternalPath(juce::String(path)).isNotEmpty()) {
+        if (path.rfind("/plugin/", 0) == 0 ||
+            resolveExportInternalPath(juce::String(path)).isNotEmpty()) {
             return exportValue;
         }
     }
@@ -2050,109 +1352,14 @@ float BehaviorCoreProcessor::getParamByPath(const std::string& path) const {
         return 0.0f;
     }
 
-    const auto& state = controlServer.getAtomicState();
-
-    if (path == "/core/behavior/tempo") {
-        return state.tempo.load(std::memory_order_relaxed);
-    }
-    if (path == "/core/behavior/targetbpm") {
-        return state.targetBPM.load(std::memory_order_relaxed);
-    }
-    if (path == "/core/behavior/volume") {
-        return state.masterVolume.load(std::memory_order_relaxed);
-    }
-    if (path == "/core/behavior/inputVolume") {
-        return state.inputVolume.load(std::memory_order_relaxed);
-    }
-    if (path == "/core/behavior/passthrough") {
-        return state.passthroughEnabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/core/behavior/recording") {
-        return state.isRecording.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/core/behavior/overdub") {
-        return state.overdubEnabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/core/behavior/layer") {
-        return static_cast<float>(state.activeLayer.load(std::memory_order_relaxed));
-    }
-    if (path == "/core/behavior/forwardArmed") {
-        return state.forwardArmed.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/core/behavior/forwardBars") {
-        return state.forwardBars.load(std::memory_order_relaxed);
-    }
-    if (path == "/core/behavior/mode") {
-        return static_cast<float>(state.recordMode.load(std::memory_order_relaxed));
-    }
-    if (path == "/core/behavior/graph/enabled") {
-        return graphProcessingEnabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-
-    // Ableton Link parameters
-    if (path == "/core/behavior/link/enabled") {
-        return linkSync.isEnabled() ? 1.0f : 0.0f;
-    }
-    if (path == "/core/behavior/link/tempoSync") {
-        return linkSync.getState().isTempoSyncEnabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/core/behavior/link/startStopSync") {
-        return linkSync.getState().isStartStopSyncEnabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-    }
-    if (path == "/core/behavior/link/peers") {
-        return static_cast<float>(linkSync.getNumPeers());
-    }
-    if (path == "/core/behavior/link/playing") {
-        return linkSync.getIsPlaying() ? 1.0f : 0.0f;
-    }
-    if (path == "/core/behavior/link/beat") {
-        return static_cast<float>(linkSync.getBeat());
-    }
-    if (path == "/core/behavior/link/phase") {
-        return static_cast<float>(linkSync.getPhase());
-    }
-
-    int layerIndex = -1;
-    std::string suffix;
-    if (extractLayerParam(path, layerIndex, suffix)) {
-        const auto& ls = state.layers[layerIndex];
-        if (suffix == "volume") {
-            return ls.volume.load(std::memory_order_relaxed);
-        }
-        if (suffix == "speed") {
-            return ls.speed.load(std::memory_order_relaxed);
-        }
-        if (suffix == "reverse") {
-            return ls.reversed.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
-        }
-        if (suffix == "mute") {
-            return ls.state.load(std::memory_order_relaxed) ==
-                           static_cast<int>(ScriptableLayerState::Muted)
-                       ? 1.0f
-                       : 0.0f;
-        }
-        if (suffix == "length") {
-            return static_cast<float>(ls.length.load(std::memory_order_relaxed));
-        }
-        if (suffix == "position") {
-            const int length = std::max(1, ls.length.load(std::memory_order_relaxed));
-            return static_cast<float>(ls.playheadPos.load(std::memory_order_relaxed)) /
-                   static_cast<float>(length);
-        }
-    }
-
-    if (dspScriptHost && dspScriptHost->hasParam(path)) {
-        return dspScriptHost->getParam(path);
-    }
-
-    for (const auto& entry : dspSlots) {
-        const auto* host = entry.second.get();
-        if (host != nullptr && host->hasParam(path)) {
-            return host->getParam(path);
-        }
-    }
-
-    return 0.0f;
+    return manifold::behavior_param_support::readCoreParamPath(
+        path,
+        MAX_LAYERS,
+        controlServer,
+        graphProcessingEnabled,
+        linkSync,
+        dspScriptHost.get(),
+        dspSlots);
 }
 
 bool BehaviorCoreProcessor::hasEndpoint(const std::string& path) const {
@@ -2161,7 +1368,8 @@ bool BehaviorCoreProcessor::hasEndpoint(const std::string& path) const {
     }
 
     if (exportPluginConfig_.enabled) {
-        if (path.rfind("/plugin/", 0) == 0 || resolveExportInternalPath(juce::String(path)).isNotEmpty()) {
+        if (path.rfind("/plugin/", 0) == 0 ||
+            resolveExportInternalPath(juce::String(path)).isNotEmpty()) {
             const auto endpoint = endpointRegistry.findEndpoint(juce::String(path));
             if (endpoint.path.isNotEmpty()) {
                 return true;
@@ -2169,249 +1377,102 @@ bool BehaviorCoreProcessor::hasEndpoint(const std::string& path) const {
         }
     }
 
-    if (path == "/core/behavior/graph/enabled") {
-        return true;
-    }
-
-    // Ableton Link endpoints
-    if (path.rfind("/core/behavior/link/", 0) == 0) {
-        return true;
-    }
-
-    if (dspScriptHost && dspScriptHost->hasParam(path)) {
-        return true;
-    }
-
-    for (const auto& entry : dspSlots) {
-        const auto* host = entry.second.get();
-        if (host != nullptr && host->hasParam(path)) {
-            return true;
-        }
-    }
-
-    const auto endpoint = endpointRegistry.findEndpoint(juce::String(path));
-    return endpoint.path.isNotEmpty();
+    return manifold::behavior_param_support::hasCoreEndpoint(
+        path, endpointRegistry, dspScriptHost.get(), dspSlots);
 }
 
 bool BehaviorCoreProcessor::getLayerSnapshot(int index,
                                              ScriptableLayerSnapshot& out) const {
-    if (index < 0 || index >= MAX_LAYERS) {
-        return false;
-    }
-
-    const auto& ls = controlServer.getAtomicState().layers[index];
-    out.index = index;
-    out.length = ls.length.load(std::memory_order_relaxed);
-    out.position = ls.playheadPos.load(std::memory_order_relaxed);
-    out.speed = ls.speed.load(std::memory_order_relaxed);
-    out.reversed = ls.reversed.load(std::memory_order_relaxed);
-    out.volume = ls.volume.load(std::memory_order_relaxed);
-    out.state = toLayerState(ls.state.load(std::memory_order_relaxed));
-    out.muted = ls.muted.load(std::memory_order_relaxed);
-    // Also check DSP script gate node muted state (source of truth)
-    if (dspScriptHost && index >= 0 && index < MAX_LAYERS) {
-        out.muted = dspScriptHost->isLayerMuted(index);
-    }
-    return true;
+    return manifold::behavior_query_support::getLayerSnapshot(
+        index, MAX_LAYERS, controlServer, dspScriptHost.get(), out);
 }
 
 int BehaviorCoreProcessor::getCaptureSize() const {
-    return captureBuffer.getSize();
+    return manifold::behavior_query_support::getCaptureSize(captureBuffer);
 }
 
 bool BehaviorCoreProcessor::computeLayerPeaks(int layerIndex, int numBuckets,
                                               std::vector<float>& outPeaks) const {
-    outPeaks.clear();
-    if (layerIndex < 0 || layerIndex >= MAX_LAYERS || numBuckets <= 0) {
-        return false;
-    }
-
-    if (dspScriptHost && dspScriptHost->computeLayerPeaks(layerIndex, numBuckets, outPeaks)) {
-        return true;
-    }
-
-    return false;
+    return manifold::behavior_query_support::computeLayerPeaks(
+        layerIndex, numBuckets, MAX_LAYERS, dspScriptHost.get(), outPeaks);
 }
 
 bool BehaviorCoreProcessor::computeLayerPeaksForPath(const std::string& pathBase,
                                                      int layerIndex,
                                                      int numBuckets,
                                                      std::vector<float>& outPeaks) const {
-    outPeaks.clear();
-    if (layerIndex < 0 || layerIndex >= MAX_LAYERS || numBuckets <= 0) {
-        return false;
-    }
-
-    const juce::String base(pathBase);
-    if (base.isEmpty() ||
-        base == "/core/behavior" ||
-        base.startsWith("/core/behavior/")) {
-        return computeLayerPeaks(layerIndex, numBuckets, outPeaks);
-    }
-
-    if (base.startsWith("/core/slots/")) {
-        juce::String rest = base.substring(12); // after "/core/slots/"
-        if (rest.isEmpty()) {
-            return false;
-        }
-
-        const int slash = rest.indexOfChar('/');
-        const juce::String slot = (slash >= 0) ? rest.substring(0, slash) : rest;
-        if (slot.isEmpty()) {
-            return false;
-        }
-
-        const auto it = dspSlots.find(slot.toStdString());
-        if (it == dspSlots.end() || it->second == nullptr) {
-            return false;
-        }
-
-        return it->second->computeLayerPeaks(layerIndex, numBuckets, outPeaks);
-    }
-
-    // Unknown base: preserve legacy behavior.
-    return computeLayerPeaks(layerIndex, numBuckets, outPeaks);
+    return manifold::behavior_query_support::computeLayerPeaksForPath(
+        pathBase, layerIndex, numBuckets, MAX_LAYERS, dspScriptHost.get(),
+        dspSlots, outPeaks);
 }
 
 bool BehaviorCoreProcessor::computeCapturePeaks(int startAgo, int endAgo,
                                                 int numBuckets,
                                                 std::vector<float>& outPeaks) const {
-    outPeaks.clear();
-    if (numBuckets <= 0) {
-        return false;
-    }
-
-    const int captureSize = captureBuffer.getSize();
-    if (captureSize <= 0) {
-        return false;
-    }
-
-    const int start = std::max(0, std::min(captureSize, startAgo));
-    const int end = std::max(0, std::min(captureSize, endAgo));
-    if (end <= start) {
-        return false;
-    }
-
-    const int viewSamples = end - start;
-    const int bucketSize = std::max(1, viewSamples / numBuckets);
-    outPeaks.resize(static_cast<size_t>(numBuckets), 0.0f);
-
-    float highest = 0.0f;
-    for (int x = 0; x < numBuckets; ++x) {
-        const float t = numBuckets > 1
-                            ? static_cast<float>(numBuckets - 1 - x) /
-                                  static_cast<float>(numBuckets - 1)
-                            : 0.0f;
-        const int firstAgo =
-            start + static_cast<int>(std::round(t * static_cast<float>(viewSamples - 1)));
-        if (firstAgo >= captureSize) {
-            continue;
-        }
-
-        float peak = 0.0f;
-        const int bucket = std::min(bucketSize, captureSize - firstAgo);
-        for (int i = 0; i < bucket; ++i) {
-            const float left = std::abs(captureBuffer.getSample(firstAgo + i, 0));
-            float right = left;
-            if (captureBuffer.getNumChannels() > 1) {
-                right = std::abs(captureBuffer.getSample(firstAgo + i, 1));
-            }
-            peak = std::max(peak, std::max(left, right));
-        }
-        outPeaks[static_cast<size_t>(x)] = peak;
-        highest = std::max(highest, peak);
-    }
-
-    const float rescale =
-        highest > 0.0f ? std::min(10.0f, std::max(1.0f, 1.0f / highest)) : 1.0f;
-    for (auto& peak : outPeaks) {
-        peak = std::min(1.0f, peak * rescale);
-    }
-    return true;
+    return manifold::behavior_query_support::computeCapturePeaks(
+        captureBuffer, startAgo, endAgo, numBuckets, outPeaks);
 }
 
 bool BehaviorCoreProcessor::computeSynthSamplePeaks(int numBuckets,
                                                     std::vector<float>& outPeaks) const {
-    if (dspScriptHost) {
-        return dspScriptHost->computeSynthSamplePeaks(numBuckets, outPeaks);
-    }
-    return false;
+    return manifold::behavior_query_support::computeSynthSamplePeaks(
+        dspScriptHost.get(), numBuckets, outPeaks);
 }
 
 bool BehaviorCoreProcessor::computeDynamicSamplePeaks(int slotIndex,
                                                       int numBuckets,
                                                       std::vector<float>& outPeaks) const {
-    if (dspScriptHost) {
-        return dspScriptHost->computeDynamicSamplePeaks(slotIndex, numBuckets, outPeaks);
-    }
-    return false;
+    return manifold::behavior_query_support::computeDynamicSamplePeaks(
+        dspScriptHost.get(), slotIndex, numBuckets, outPeaks);
 }
 
 std::vector<float> BehaviorCoreProcessor::getVoiceSamplePositions() const {
-    if (dspScriptHost) {
-        return dspScriptHost->getVoiceSamplePositions();
-    }
-    return {};
+    return manifold::behavior_query_support::getVoiceSamplePositions(
+        dspScriptHost.get());
 }
 
 std::vector<float> BehaviorCoreProcessor::getDynamicSampleVoicePositions(int slotIndex) const {
-    if (dspScriptHost) {
-        return dspScriptHost->getDynamicSampleVoicePositions(slotIndex);
-    }
-    return {};
+    return manifold::behavior_query_support::getDynamicSampleVoicePositions(
+        dspScriptHost.get(), slotIndex);
 }
 
 bool BehaviorCoreProcessor::getLatestSampleAnalysis(dsp_primitives::SampleAnalysis& outAnalysis) const {
-    if (dspScriptHost) {
-        return dspScriptHost->getLatestSampleAnalysis(outAnalysis);
-    }
-    return false;
+    return manifold::behavior_query_support::getLatestSampleAnalysis(
+        dspScriptHost.get(), outAnalysis);
 }
 
 bool BehaviorCoreProcessor::getLatestSamplePartials(dsp_primitives::PartialData& outPartials) const {
-    if (dspScriptHost) {
-        return dspScriptHost->getLatestSamplePartials(outPartials);
-    }
-    return false;
+    return manifold::behavior_query_support::getLatestSamplePartials(
+        dspScriptHost.get(), outPartials);
 }
 
 bool BehaviorCoreProcessor::getSampleDerivedAdditiveDebug(int voiceIndex,
                                                           SampleDerivedAdditiveDebugState& outState) const {
-    if (dspScriptHost) {
-        return dspScriptHost->getSampleDerivedAdditiveDebug(voiceIndex, outState);
-    }
-    return false;
+    return manifold::behavior_query_support::getSampleDerivedAdditiveDebug(
+        dspScriptHost.get(), voiceIndex, outState);
 }
 
 bool BehaviorCoreProcessor::refreshSampleDerivedAdditiveDebug(SampleDerivedAdditiveDebugState& outState) {
-    if (dspScriptHost) {
-        return dspScriptHost->refreshSampleDerivedAdditiveDebug(outState);
-    }
-    return false;
+    return manifold::behavior_query_support::refreshSampleDerivedAdditiveDebug(
+        dspScriptHost.get(), outState);
 }
 
 bool BehaviorCoreProcessor::ensureDynamicModuleSlot(const std::string& specId, int slotIndex) {
-    if (dspScriptHost) {
-        return dspScriptHost->ensureDynamicModuleSlot(specId, slotIndex);
-    }
-    return false;
+    return manifold::behavior_query_support::ensureDynamicModuleSlot(
+        dspScriptHost.get(), specId, slotIndex);
 }
 
 float BehaviorCoreProcessor::getTempo() const {
-    return controlServer.getAtomicState().tempo.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::getTempo(controlServer);
 }
 
 float BehaviorCoreProcessor::getTargetBPM() const {
-    return controlServer.getAtomicState().targetBPM.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::getTargetBPM(controlServer);
 }
 
 float BehaviorCoreProcessor::getSamplesPerBar() const {
-    const auto& state = controlServer.getAtomicState();
-    const float cached = state.samplesPerBar.load(std::memory_order_relaxed);
-    if (cached > 0.0f) {
-        return cached;
-    }
-    return computeSamplesPerBar(getTempo(), getSampleRate());
+    return manifold::behavior_query_support::getSamplesPerBar(
+        controlServer, currentSampleRate.load(std::memory_order_relaxed));
 }
 
 double BehaviorCoreProcessor::getSampleRate() const {
@@ -2419,322 +1480,104 @@ double BehaviorCoreProcessor::getSampleRate() const {
 }
 
 float BehaviorCoreProcessor::getMasterVolume() const {
-    return controlServer.getAtomicState().masterVolume.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::getMasterVolume(controlServer);
 }
 
 float BehaviorCoreProcessor::getInputVolume() const {
-    return controlServer.getAtomicState().inputVolume.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::getInputVolume(controlServer);
 }
 
 bool BehaviorCoreProcessor::isPassthroughEnabled() const {
-    return controlServer.getAtomicState().passthroughEnabled.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::isPassthroughEnabled(controlServer);
 }
 
 bool BehaviorCoreProcessor::isRecording() const {
-    return controlServer.getAtomicState().isRecording.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::isRecording(controlServer);
 }
 
 bool BehaviorCoreProcessor::isOverdubEnabled() const {
-    return controlServer.getAtomicState().overdubEnabled.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::isOverdubEnabled(controlServer);
 }
 
 int BehaviorCoreProcessor::getActiveLayerIndex() const {
-    return controlServer.getAtomicState().activeLayer.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::getActiveLayerIndex(controlServer);
 }
 
 bool BehaviorCoreProcessor::isForwardCommitArmed() const {
-    return controlServer.getAtomicState().forwardArmed.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::isForwardCommitArmed(controlServer);
 }
 
 float BehaviorCoreProcessor::getForwardCommitBars() const {
-    return controlServer.getAtomicState().forwardBars.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::getForwardCommitBars(controlServer);
 }
 
 int BehaviorCoreProcessor::getRecordModeIndex() const {
-    return controlServer.getAtomicState().recordMode.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::getRecordModeIndex(controlServer);
 }
 
 int BehaviorCoreProcessor::getCommitCount() const {
-    return controlServer.getAtomicState().commitCount.load(std::memory_order_relaxed);
+    return manifold::behavior_query_support::getCommitCount(controlServer);
 }
 
 std::array<float, 32> BehaviorCoreProcessor::getSpectrumData() const {
-    std::array<float, 32> out{};
-    std::array<float, 8> bands{};
-
-    auto accumulateHost = [&bands](const DSPPluginScriptHost* host) {
-        if (host == nullptr || !host->isLoaded()) {
-            return;
-        }
-        const auto current = host->getSpectrumBands();
-        for (size_t i = 0; i < bands.size(); ++i) {
-            bands[i] = std::max(bands[i], current[i]);
-        }
-    };
-
-    accumulateHost(dspScriptHost.get());
-    for (const auto& entry : dspSlots) {
-        accumulateHost(entry.second.get());
-    }
-
-    for (size_t i = 0; i < out.size(); ++i) {
-        const float pos = (static_cast<float>(i) / static_cast<float>(out.size() - 1)) * static_cast<float>(bands.size() - 1);
-        const int i0 = static_cast<int>(std::floor(pos));
-        const int i1 = std::min(static_cast<int>(bands.size() - 1), i0 + 1);
-        const float t = pos - static_cast<float>(i0);
-        out[i] = bands[static_cast<size_t>(i0)] * (1.0f - t) + bands[static_cast<size_t>(i1)] * t;
-    }
-
-    return out;
+    return manifold::behavior_query_support::getSpectrumData(dspScriptHost.get(),
+                                                             dspSlots);
 }
 
 std::string BehaviorCoreProcessor::getAndClearPendingUISwitch() {
     auto& req = controlServer.getUISwitchRequest();
-    if (!req.pending.load(std::memory_order_acquire)) {
-        return {};
-    }
-
-    std::lock_guard<std::mutex> lock(req.mutex);
-    std::string path = req.path;
-    req.path.clear();
-    req.pending.store(false, std::memory_order_release);
-    return path;
+    return manifold::behavior_housekeeping_support::takePendingString(
+        req, [](auto& request) -> std::string& { return request.path; }, true);
 }
 
 std::string BehaviorCoreProcessor::getAndClearPendingUIRendererMode() {
     auto& req = controlServer.getUIRendererRequest();
-    if (!req.pending.load(std::memory_order_acquire)) {
-        return {};
-    }
-
-    std::lock_guard<std::mutex> lock(req.mutex);
-    std::string mode = req.mode;
-    req.mode.clear();
-    req.pending.store(false, std::memory_order_release);
-    return mode;
+    return manifold::behavior_housekeeping_support::takePendingString(
+        req, [](auto& request) -> std::string& { return request.mode; }, true);
 }
 
 std::string BehaviorCoreProcessor::getAndClearPendingScreenshot() {
     auto& req = controlServer.getScreenshotRequest();
-    if (!req.pending.load(std::memory_order_acquire)) {
-        return {};
-    }
-
-    std::lock_guard<std::mutex> lock(req.mutex);
-    std::string path = req.outputPath;
-    req.pending.store(false, std::memory_order_release);
-    return path;
+    return manifold::behavior_housekeeping_support::takePendingString(
+        req,
+        [](auto& request) -> std::string& { return request.outputPath; },
+        false);
 }
 
 void BehaviorCoreProcessor::applyControlCommand(const ControlCommand& cmd) {
-    auto& state = controlServer.getAtomicState();
-    static constexpr const char* kBehaviorBase = "/core/behavior";
-
-    switch (cmd.type) {
-        case ControlCommand::Type::SetTempo:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/tempo", cmd.floatParam);
-            break;
-        case ControlCommand::Type::SetTargetBPM:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/targetbpm", cmd.floatParam);
-            break;
-        case ControlCommand::Type::SetMasterVolume:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/volume", cmd.floatParam);
-            break;
-        case ControlCommand::Type::SetInputVolume:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/inputVolume", cmd.floatParam);
-            break;
-        case ControlCommand::Type::SetPassthroughEnabled:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/passthrough", cmd.floatParam);
-            break;
-        case ControlCommand::Type::SetActiveLayer:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer", static_cast<float>(cmd.intParam));
-            break;
-        case ControlCommand::Type::SetRecordMode:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/mode", static_cast<float>(cmd.intParam));
-            break;
-        case ControlCommand::Type::StartRecording:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/recording", 1.0f);
-            break;
-        case ControlCommand::Type::StopRecording:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/recording", 0.0f);
-            break;
-        case ControlCommand::Type::ToggleOverdub:
-            state.overdubEnabled.store(!state.overdubEnabled.load(std::memory_order_relaxed),
-                                       std::memory_order_relaxed);
-            break;
-        case ControlCommand::Type::SetOverdubEnabled:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/overdub", cmd.floatParam);
-            break;
-        case ControlCommand::Type::Commit:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/commit", cmd.floatParam);
-            break;
-        case ControlCommand::Type::ForwardCommit:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/forward", cmd.floatParam);
-            break;
-        case ControlCommand::Type::GlobalStop:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/transport", 0.0f);
-            break;
-        case ControlCommand::Type::GlobalPlay:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/transport", 1.0f);
-            break;
-        case ControlCommand::Type::GlobalPause:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/transport", 2.0f);
-            break;
-        case ControlCommand::Type::LayerVolume:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(cmd.intParam) +
-                                     "/volume",
-                                 cmd.floatParam);
-            break;
-        case ControlCommand::Type::LayerSpeed:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(cmd.intParam) +
-                                     "/speed",
-                                 cmd.floatParam);
-            break;
-        case ControlCommand::Type::LayerReverse:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(cmd.intParam) +
-                                     "/reverse",
-                                 cmd.floatParam);
-            break;
-        case ControlCommand::Type::LayerMute:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(cmd.intParam) +
-                                     "/mute",
-                                 cmd.floatParam);
-            break;
-        case ControlCommand::Type::LayerPlay:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(cmd.intParam) +
-                                     "/play",
-                                 1.0f);
-            break;
-        case ControlCommand::Type::LayerPause:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(cmd.intParam) +
-                                     "/pause",
-                                 1.0f);
-            break;
-        case ControlCommand::Type::LayerStop:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(cmd.intParam) +
-                                     "/stop",
-                                 1.0f);
-            break;
-        case ControlCommand::Type::LayerClear:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(cmd.intParam) +
-                                     "/clear",
-                                 1.0f);
-            break;
-        case ControlCommand::Type::LayerSeek:
-            (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(cmd.intParam) +
-                                     "/seek",
-                                 cmd.floatParam);
-            break;
-        case ControlCommand::Type::ClearAllLayers:
-            for (int i = 0; i < MAX_LAYERS; ++i) {
-                (void)setParamByPath(std::string(kBehaviorBase) + "/layer/" + std::to_string(i) + "/clear", 1.0f);
-            }
-            break;
-        case ControlCommand::Type::UISwitch:
-            break;
-        case ControlCommand::Type::None:
-            break;
-    }
+    manifold::control_command_support::applyControlCommand(
+        *this, cmd, controlServer.getAtomicState());
 }
 
 void BehaviorCoreProcessor::processControlCommands() {
-    ControlCommand cmd;
-    auto& queue = controlServer.getCommandQueue();
-    while (queue.dequeue(cmd)) {
-        applyControlCommand(cmd);
-    }
+    manifold::control_command_support::processControlCommands(*this,
+                                                              controlServer);
 }
 
 void BehaviorCoreProcessor::checkGraphRuntimeSwap() {
-    if (pendingRetireRuntime != nullptr) {
-        if (retireQueue.enqueue(pendingRetireRuntime)) {
-            pendingRetireRuntime = nullptr;
-        }
-    }
-
-    dsp_primitives::GraphRuntime* newRuntime =
-        pendingRuntime.exchange(nullptr, std::memory_order_acq_rel);
-    if (newRuntime == nullptr) {
-        return;
-    }
-
-    dsp_primitives::GraphRuntime* oldRuntime = activeRuntime;
-    activeRuntime = newRuntime;
-
-    if (oldRuntime != nullptr) {
-        if (!retireQueue.enqueue(oldRuntime)) {
-            if (pendingRetireRuntime == nullptr) {
-                pendingRetireRuntime = oldRuntime;
-            }
-        }
-    }
+    manifold::graph_runtime_support::checkGraphRuntimeSwap(
+        pendingRetireRuntime, retireQueue, pendingRuntime, activeRuntime);
 }
 
 void BehaviorCoreProcessor::scheduleForwardCommitIfNeeded() {
-    auto& state = controlServer.getAtomicState();
-
-    const bool armed = state.forwardArmed.load(std::memory_order_relaxed);
-    const float bars = state.forwardBars.load(std::memory_order_relaxed);
-
-    if (!armed || bars <= 0.0f) {
-        forwardScheduled = false;
-        forwardFireAtSample = 0.0;
-        forwardScheduledBars = 0.0f;
-        return;
-    }
-
-    if (forwardScheduled) {
-        return;
-    }
-
-    const float samplesPerBar = state.samplesPerBar.load(std::memory_order_relaxed);
-    if (samplesPerBar <= 0.0f) {
-        return;
-    }
-
-    forwardScheduledBars = bars;
-    forwardFireAtSample = playTimeSamples.load(std::memory_order_relaxed) +
-                          static_cast<double>(bars) * static_cast<double>(samplesPerBar);
-    forwardScheduled = true;
+    manifold::behavior_housekeeping_support::scheduleForwardCommitIfNeeded(
+        controlServer,
+        playTimeSamples,
+        forwardScheduled,
+        forwardFireAtSample,
+        forwardScheduledBars);
 }
 
 void BehaviorCoreProcessor::initialiseAtomicState(double sampleRate) {
-    auto& state = controlServer.getAtomicState();
-
-    state.sampleRate.store(sampleRate, std::memory_order_relaxed);
-    state.tempo.store(kDefaultTempo, std::memory_order_relaxed);
-    state.targetBPM.store(kDefaultTargetBpm, std::memory_order_relaxed);
-    state.samplesPerBar.store(computeSamplesPerBar(kDefaultTempo, sampleRate),
-                              std::memory_order_relaxed);
-    state.captureSize.store(captureBuffer.getSize(), std::memory_order_relaxed);
-    state.captureWritePos.store(captureBuffer.getOffsetToNow(), std::memory_order_relaxed);
-    state.captureLevel.store(0.0f, std::memory_order_relaxed);
-    state.isRecording.store(false, std::memory_order_relaxed);
-    state.overdubEnabled.store(false, std::memory_order_relaxed);
-    state.forwardArmed.store(false, std::memory_order_relaxed);
-    state.forwardBars.store(0.0f, std::memory_order_relaxed);
-    state.graphEnabled.store(graphProcessingEnabled.load(std::memory_order_relaxed),
-                             std::memory_order_relaxed);
-    state.recordMode.store(0, std::memory_order_relaxed);
-    state.activeLayer.store(0, std::memory_order_relaxed);
-    state.masterVolume.store(kDefaultMasterVolume, std::memory_order_relaxed);
-    state.inputVolume.store(kDefaultInputVolume, std::memory_order_relaxed);
-    state.passthroughEnabled.store(true, std::memory_order_relaxed);
-    state.playTime.store(0.0, std::memory_order_relaxed);
-    state.commitCount.store(0, std::memory_order_relaxed);
-    state.uptimeSeconds.store(0.0, std::memory_order_relaxed);
-
-    for (int i = 0; i < MAX_LAYERS; ++i) {
-        auto& ls = state.layers[i];
-        ls.state.store(static_cast<int>(ScriptableLayerState::Empty),
-                       std::memory_order_relaxed);
-        ls.length.store(0, std::memory_order_relaxed);
-        ls.playheadPos.store(0, std::memory_order_relaxed);
-        ls.speed.store(1.0f, std::memory_order_relaxed);
-        ls.reversed.store(false, std::memory_order_relaxed);
-        ls.volume.store(1.0f, std::memory_order_relaxed);
-        ls.numBars.store(0.0f, std::memory_order_relaxed);
-    }
+    manifold::behavior_housekeeping_support::initialiseAtomicState(
+        controlServer,
+        sampleRate,
+        captureBuffer,
+        graphProcessingEnabled.load(std::memory_order_relaxed),
+        kDefaultTempo,
+        kDefaultTargetBpm,
+        kDefaultMasterVolume,
+        kDefaultInputVolume);
 }
 
 // ============================================================================
