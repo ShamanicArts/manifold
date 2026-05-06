@@ -1,0 +1,42 @@
+## Executive Summary
+
+This report presents a systematic technical analysis of Manifold, a C++17 real-time audio plugin framework on its `dev` branch. Manifold combines a lock-free compiled graph runtime, dual isolated Lua scripting virtual machines (VMs), Google Highway SIMD vectorization, and an OpenGL shader pipeline within a JUCE-based architecture. The framework demonstrates sophisticated engineering in its three-thread separation and builder-to-runtime graph compilation pipeline, yet exhibits identifiable gaps across ARM SIMD coverage, automated real-time safety verification, continuous integration (CI), graph-level optimization, and audio-visual integration.
+
+### Key Findings
+
+The analysis synthesizes findings from 10 parallel research dimensions. Ten cross-dimensional insights emerged, each representing a systemic opportunity or risk that cuts across multiple subsystems.
+
+**Table 1. Cross-dimensional insights — summary of systemic findings and remediation paths**
+
+| ID | Insight | Dimensions | Confidence | Remediation Effort | Key Citation |
+|:---|:---|:---|:---|:---|:---|
+| 1 | **Relaxed Atomics Trap**: `AtomicState` contains 20+ `memory_order_relaxed` fields; aggregate risk may exceed single-lock risk[^59^] | 01, 05, 07 | High | Medium | Refactor to SeqLock or RCU snapshot[^90^][^95^] |
+| 2 | **Compilation Inflection Point**: Builder/runtime split is sound, but lacks fusion, hoisting, and DCE that HISE and FAUST demonstrate[^17^][^19^] | 02, 04, 06 | High | Medium | Add graph-level `ControlRateScheduler`; investigate JIT prototyping |
+| 3 | **SIMD-Mobile Divergence**: Highway configured for x86-only (SSE2/3/4); ARM builds fall back to scalar, nullifying SIMD investment on mobile[^1^][^20^] | 03, 09 | High | Low (build-only) | Add `HWY_WANT_NEON`, `HWY_WANT_SVE` targets to `HighwayWrapper.h` |
+| 4 | **Hot-Reload Paradox**: UI script polling at ~30 Hz competes with OpenGL frame rendering, potentially contributing to DAW UI degradation[^421^] | 04, 10 | Medium | Low | Replace polling with event-driven file watching |
+| 5 | **Retirement Queue Cascade**: Three subsystems implement deferred destruction independently with different queue types and safety guarantees[^10^] | 01, 02, 05 | Medium | Medium | Extract unified `RetirementQueue<T>` template |
+| 6 | **Shader-Audio Bridge Built but Not Connected**: `SpectrumAnalyzerNode` FFT data never reaches `ShaderEffectRegistry`; 22 GLSL shaders could be audio-reactive with minimal wiring[^452^][^453^] | 08, 10 | High | Low | Implement `AudioTextureProvider` with 1D `GL_LUMINANCE` texture upload |
+| 7 | **Build-System Trilemma**: ARM SIMD, C++20 upgrade, and CI/tooling modernization should be decoupled by risk profile[^410^] | 03, 06, 09 | High | Low to medium | Phase: CI/tooling first, ARM SIMD second, C++20 third |
+| 8 | **Systemic Testing Blind Spot**: No RTSan, pluginval, Tracy allocation tracking, or numerical stability harness despite sophisticated architecture[^68^][^69^] | 01, 05, 08, 09 | High | Medium | Add `-fsanitize=realtime`, pluginval CI, headless fuzz harness |
+| 9 | **Parameter Smoothing Standardization Reveals Missed Optimization**: Per-node exponential smoothing duplicated 50+ times at sample rate instead of hoisted to control rate[^19^] | 02, 08 | Medium | Medium | Introduce graph-level `ControlRateParameter` at 64-sample intervals |
+| 10 | **Export System Suggests Product-Market Tension**: `manifold_add_export_plugin()` targets derivative products, but compilation pipeline stops at unoptimized C++ runtime | 02, 04, 09, 10 | Exploratory | High | Evaluate LLVM ORC / asmjit JIT path for development iteration |
+
+Manifold's foundational architecture — three-thread separation, lock-free SPSC queues across five subsystems, compiled `GraphRuntime` with pre-allocated scratch buffers, and dual Lua VM isolation — aligns with patterns from HISE scriptnode, SuperCollider SynthDef, Tracktion Graph, and CLAP[^66^][^77^][^64^]. These are the difficult structural decisions, and Manifold has made them correctly.
+
+Where gaps appear is in the next optimization layer. HISE's C++ generator fuses three addition nodes into a single `mov xmm0` instruction[^17^]; FAUST hoists control-rate expressions and selects scheduling strategies improving throughput by up to 41%[^19^][^21^]; Tracktion Graph targets multi-threaded execution with dependency-aware work distribution[^77^]; ADC 2025 demonstrated C++23 `constexpr` graph compilation[^2^]. Manifold's compiler sorts topologically and dispatches nodes in order, but does not fuse stateless nodes, eliminate dead code, or schedule control-rate computations at sub-audio intervals. These are implementation gaps, not research problems.
+
+The most consequential single fix is ARM SIMD configuration. Highway supports `HWY_NEON`, `HWY_NEON_BF16`, `HWY_SVE`, and `HWY_SVE2` natively[^1^][^3^], and Manifold's ADSR and bit-crusher nodes use portable abstractions (`SlideUpLanes`, `BroadcastLane`) requiring zero source changes for ARM. Yet `HighwayWrapper.h` guards all target macros behind an x86-only `#if`, meaning Apple Silicon and Android builds execute scalar fallback. ARM64 benchmarks show hand-written NEON achieving 3.4× speedup over scalar versus 1.095× for auto-vectorization[^20^] — a build-system-only change with immediate mobile performance impact.
+
+Equally significant is the verification gap. The framework is *designed* for real-time safety — no locks, no allocation, Lua excluded from the audio callback — but "designed for" is not "verified to achieve." RTSan (`-fsanitize=realtime`, Clang 20+, 2025) intercepts accidental `malloc` or mutex operations at compile time[^68^]; pluginval stress-tests plugins under extreme parameter automation[^68^]. Neither appears in the codebase. Modern audio frameworks treat verification as infrastructure, not afterthought.
+
+### Scope and Methodology
+
+This analysis was conducted through a three-phase methodology designed to maximize reproducibility and minimize speculative claims.
+
+**Phase 1: File-Only Codebase Extraction.** All findings derive from direct inspection of the Manifold `dev` branch. The analysis covered the core graph runtime, 50+ DSP node implementations, the lock-free inter-thread communication layer (`SPSCQueue.h`, `MidiRingBuffer.h`, `EventRing.h`, `AudioCaptureRing.h`), the dual Lua VM architecture (`LuaEngine.h`, `DSPPluginScriptHost.h`), the SIMD abstraction layer (`HighwayWrapper.h`, `ADSREnvelopeNode_Highway.h`, `BitCrusherNode_Highway.h`), the build system (`CMakeLists.txt`), and the visual/shader pipeline (`ShaderEffectRegistry.h`, `ShaderSurfaceProvider.h`, `Canvas.h`). Source-level claims reference specific file names and line-number ranges from the inspected branch.
+
+**Phase 2: External Landscape Scan.** Each subsystem was cross-referenced against conference proceedings (ADC 2020–2025, DAFX, ICMC), peer-reviewed literature, official project documentation (JUCE, Google Highway, sol2, CLAP), and established engineering references (Ross Bencina's real-time constraints, Timur Doumler's lock-free patterns, FAUST compiler documentation). Sources were prioritized by authority tier: Tier 1 (conference proceedings, official documentation) and Tier 2 (established engineering blogs, open-source project docs). Anonymous forums and content-farm material were rejected.
+
+**Phase 3: Parallel Deep-Dive Research Dimensions.** Ten independent research dimensions were executed in parallel: (1) Lock-free real-time audio architecture, (2) DSP node graph compilation, (3) SIMD vectorization in audio DSP, (4) Scripting language integration, (5) Memory management and real-time safety, (6) Modern C++ and compile-time optimization, (7) Ring buffers and lock-free data structures, (8) DSP node design and numerical stability, (9) Build systems and CI/CD for audio plugins, and (10) GPU shader pipelines and audio-reactive visualization. Each dimension involved 15+ targeted searches, yielding 150+ sources. Cross-dimensional insights were synthesized by identifying patterns across multiple dimensions with consistent evidence. Confidence levels were assigned based on source multiplicity and agreement.
+
+All quantitative claims include the value, unit, measurement context, and source. Citations follow a `[^N^]` superscript format referencing the source index from the dimension research corpus; indices are preserved from the original research reports and are not renumbered.
