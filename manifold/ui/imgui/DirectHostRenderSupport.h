@@ -1,8 +1,8 @@
 #pragma once
 
 #include "ImGuiDirectHost.h"
-#include "imgui.h"
-#include "imgui_internal.h"
+#include "external/imgui/imgui.h"
+#include "external/imgui/imgui_internal.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -13,11 +13,11 @@
 
 namespace direct_host_render_support {
 
-bool isCtrlLikeDown(const juce::ModifierKeys& mods) {
+inline bool isCtrlLikeDown(const juce::ModifierKeys& mods) {
     return mods.isCtrlDown() || mods.isCommandDown();
 }
 
-juce::ModifierKeys currentRealtimeModifiers() {
+inline juce::ModifierKeys currentRealtimeModifiers() {
     return juce::ModifierKeys::getCurrentModifiersRealtime();
 }
 
@@ -38,7 +38,7 @@ void invokeLuaCallback(sol::function& fn, const char* label, const std::string& 
     }
 }
 
-void clearFocusRecursive(RuntimeNode& node) {
+inline void clearFocusRecursive(RuntimeNode& node) {
     node.setFocused(false);
     for (auto* child : node.getChildren()) {
         if (child != nullptr) {
@@ -47,7 +47,7 @@ void clearFocusRecursive(RuntimeNode& node) {
     }
 }
 
-manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions makeDirectRenderOptions(bool debugOutlines = false) {
+inline manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions makeDirectRenderOptions(bool debugOutlines = false) {
     manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions options;
     options.leftPad = 0.0f;
     options.rightPad = 0.0f;
@@ -62,7 +62,7 @@ manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions makeDirectRenderOptions(
     return options;
 }
 
-manifold::ui::imgui::RuntimeNodeRenderer::HitTestResult hitTestLiveTreeDetailed(
+inline manifold::ui::imgui::RuntimeNodeRenderer::HitTestResult hitTestLiveTreeDetailed(
     manifold::ui::imgui::RuntimeNodeRenderer& renderer,
     RuntimeNode* root,
     juce::Point<float> position,
@@ -77,7 +77,7 @@ manifold::ui::imgui::RuntimeNodeRenderer::HitTestResult hitTestLiveTreeDetailed(
     return renderer.hitTest(liveSnapshot, position, transform, mode);
 }
 
-juce::Rectangle<float> sceneBoundsForNodeWithinRoot(RuntimeNode* root, RuntimeNode* node) {
+inline juce::Rectangle<float> sceneBoundsForNodeWithinRoot(RuntimeNode* root, RuntimeNode* node) {
     if (node == nullptr) {
         return {};
     }
@@ -127,7 +127,7 @@ juce::Rectangle<float> sceneBoundsForNodeWithinRoot(RuntimeNode* root, RuntimeNo
     return juce::Rectangle<float>(left, top, std::max(1.0f, right - left), std::max(1.0f, bottom - top));
 }
 
-juce::Point<float> localPositionForNodeWithinRoot(RuntimeNode* root,
+inline juce::Point<float> localPositionForNodeWithinRoot(RuntimeNode* root,
                                                   RuntimeNode* node,
                                                   juce::Point<float> scenePosition) {
     if (node == nullptr) {
@@ -142,12 +142,12 @@ juce::Point<float> localPositionForNodeWithinRoot(RuntimeNode* root,
                               (scenePosition.y - sceneBounds.getY()) / std::max(0.0001f, scaleY));
 }
 
-juce::Point<float> localPositionForNode(RuntimeNode* node,
+inline juce::Point<float> localPositionForNode(RuntimeNode* node,
                                         juce::Point<float> scenePosition) {
     return localPositionForNodeWithinRoot(nullptr, node, scenePosition);
 }
 
-ImU32 toImColor(uint32_t argb) {
+inline ImU32 toImColor(uint32_t argb) {
     const auto a = static_cast<ImU32>((argb >> 24) & 0xffu);
     const auto r = static_cast<ImU32>((argb >> 16) & 0xffu);
     const auto g = static_cast<ImU32>((argb >> 8) & 0xffu);
@@ -155,7 +155,7 @@ ImU32 toImColor(uint32_t argb) {
     return IM_COL32(r, g, b, a);
 }
 
-juce::Rectangle<float> previewRect(const juce::Rectangle<int>& sceneRect,
+inline juce::Rectangle<float> previewRect(const juce::Rectangle<int>& sceneRect,
                                    const ImGuiDirectHost::PreviewTransform& transform) {
     const float x1 = transform.offsetX + static_cast<float>(sceneRect.getX()) * transform.scale;
     const float y1 = transform.offsetY + static_cast<float>(sceneRect.getY()) * transform.scale;
@@ -164,7 +164,7 @@ juce::Rectangle<float> previewRect(const juce::Rectangle<int>& sceneRect,
     return juce::Rectangle<float>(x1, y1, std::max(1.0f, x2 - x1), std::max(1.0f, y2 - y1));
 }
 
-juce::Rectangle<float> previewRect(const juce::Rectangle<float>& sceneRect,
+inline juce::Rectangle<float> previewRect(const juce::Rectangle<float>& sceneRect,
                                    const ImGuiDirectHost::PreviewTransform& transform) {
     const float x1 = transform.offsetX + sceneRect.getX() * transform.scale;
     const float y1 = transform.offsetY + sceneRect.getY() * transform.scale;
@@ -177,7 +177,7 @@ juce::Rectangle<float> previewRect(const juce::Rectangle<float>& sceneRect,
     return juce::Rectangle<float>(left, top, std::max(1.0f, right - left), std::max(1.0f, bottom - top));
 }
 
-juce::Rectangle<float> containRectWithin(const juce::Rectangle<float>& bounds,
+inline juce::Rectangle<float> containRectWithin(const juce::Rectangle<float>& bounds,
                                         float contentWidth,
                                         float contentHeight) {
     if (contentWidth <= 0.0f || contentHeight <= 0.0f) {
@@ -193,7 +193,7 @@ juce::Rectangle<float> containRectWithin(const juce::Rectangle<float>& bounds,
     return juce::Rectangle<float>(drawX, drawY, drawW, drawH);
 }
 
-bool videoBackedFitModeForNode(const RuntimeNode& node, std::string& fitModeOut) {
+inline bool videoBackedFitModeForNode(const RuntimeNode& node, std::string& fitModeOut) {
     if (node.getCustomSurfaceType() == "video_input"
         || node.getCustomSurfaceType() == "ml_mask"
         || node.getCustomSurfaceType() == "ml_composite") {
@@ -224,7 +224,7 @@ bool videoBackedFitModeForNode(const RuntimeNode& node, std::string& fitModeOut)
     return false;
 }
 
-void invokeOnImGuiFrameRecursive(RuntimeNode& traversalRoot, RuntimeNode& node) {
+inline void invokeOnImGuiFrameRecursive(RuntimeNode& traversalRoot, RuntimeNode& node) {
     if (!node.isVisible()) {
         return;
     }
@@ -263,7 +263,7 @@ struct SceneTransform {
     float offsetY = 0.0f;
 };
 
-SceneTransform composeSceneTransform(const RuntimeNode& node, const SceneTransform& parent) {
+inline SceneTransform composeSceneTransform(const RuntimeNode& node, const SceneTransform& parent) {
     const auto& bounds = node.getBounds();
     const auto& transform = node.getTransform();
 
@@ -275,7 +275,7 @@ SceneTransform composeSceneTransform(const RuntimeNode& node, const SceneTransfo
     return out;
 }
 
-juce::Rectangle<float> sceneRectFromLocalRect(const juce::Rectangle<float>& localRect,
+inline juce::Rectangle<float> sceneRectFromLocalRect(const juce::Rectangle<float>& localRect,
                                               const SceneTransform& transform) {
     const float x1 = transform.offsetX + localRect.getX() * transform.scaleX;
     const float y1 = transform.offsetY + localRect.getY() * transform.scaleY;
@@ -288,7 +288,7 @@ juce::Rectangle<float> sceneRectFromLocalRect(const juce::Rectangle<float>& loca
     return juce::Rectangle<float>(left, top, std::max(0.0f, right - left), std::max(0.0f, bottom - top));
 }
 
-juce::Rectangle<float> collectSceneBoundsRecursive(const RuntimeNode& node,
+inline juce::Rectangle<float> collectSceneBoundsRecursive(const RuntimeNode& node,
                                                    const SceneTransform& parentTransform) {
     const auto& bounds = node.getBounds();
     const auto nodeTransform = composeSceneTransform(node, parentTransform);
@@ -307,7 +307,7 @@ juce::Rectangle<float> collectSceneBoundsRecursive(const RuntimeNode& node,
     return out;
 }
 
-juce::Rectangle<int> enclosingIntRect(const juce::Rectangle<float>& rect) {
+inline juce::Rectangle<int> enclosingIntRect(const juce::Rectangle<float>& rect) {
     const int x = juce::roundToInt(std::floor(rect.getX()));
     const int y = juce::roundToInt(std::floor(rect.getY()));
     const int r = juce::roundToInt(std::ceil(rect.getRight()));
@@ -315,11 +315,11 @@ juce::Rectangle<int> enclosingIntRect(const juce::Rectangle<float>& rect) {
     return juce::Rectangle<int>(x, y, std::max(0, r - x), std::max(0, b - y));
 }
 
-ImVec2 toImVec2(const juce::Rectangle<float>& rect) {
+inline ImVec2 toImVec2(const juce::Rectangle<float>& rect) {
     return ImVec2(rect.getX(), rect.getY());
 }
 
-ImVec2 toImVec2BottomRight(const juce::Rectangle<float>& rect) {
+inline ImVec2 toImVec2BottomRight(const juce::Rectangle<float>& rect) {
     return ImVec2(rect.getRight(), rect.getBottom());
 }
 
@@ -329,7 +329,7 @@ struct DrawState {
     std::vector<juce::Rectangle<int>> clipStack;
 };
 
-void popClipStackTo(ImDrawList* drawList,
+inline void popClipStackTo(ImDrawList* drawList,
                     std::vector<juce::Rectangle<int>>& clipStack,
                     std::size_t targetSize) {
     while (clipStack.size() > targetSize) {
@@ -338,7 +338,7 @@ void popClipStackTo(ImDrawList* drawList,
     }
 }
 
-void renderCompiledDisplayList(const manifold::ui::imgui::CompiledDisplayList& compiled,
+inline void renderCompiledDisplayList(const manifold::ui::imgui::CompiledDisplayList& compiled,
                                const juce::Rectangle<int>& sceneBounds,
                                ImDrawList* drawList,
                                DrawState& state,
@@ -525,7 +525,7 @@ void renderCompiledDisplayList(const manifold::ui::imgui::CompiledDisplayList& c
     popClipStackTo(drawList, state.clipStack, 0);
 }
 
-std::vector<RuntimeNode*> sortedLiveChildren(const RuntimeNode& node) {
+inline std::vector<RuntimeNode*> sortedLiveChildren(const RuntimeNode& node) {
     std::vector<RuntimeNode*> children;
     children.reserve(node.getChildren().size());
     for (auto* child : node.getChildren()) {
@@ -540,7 +540,7 @@ std::vector<RuntimeNode*> sortedLiveChildren(const RuntimeNode& node) {
     return children;
 }
 
-int buildRenderSnapshotRecursive(const RuntimeNode& node,
+inline int buildRenderSnapshotRecursive(const RuntimeNode& node,
                                  juce::Point<int> parentOffset,
                                  ImGuiDirectHost::RenderSnapshot& snapshot) {
     const auto& bounds = node.getBounds();
@@ -578,7 +578,7 @@ int buildRenderSnapshotRecursive(const RuntimeNode& node,
     return index;
 }
 
-void renderSnapshotNodeRecursive(const ImGuiDirectHost::RenderSnapshot& snapshot,
+inline void renderSnapshotNodeRecursive(const ImGuiDirectHost::RenderSnapshot& snapshot,
                                  int nodeIndex,
                                  ImDrawList* drawList,
                                  const manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions& options,
@@ -637,7 +637,7 @@ void renderSnapshotNodeRecursive(const ImGuiDirectHost::RenderSnapshot& snapshot
     }
 }
 
-[[maybe_unused]] void renderSnapshot(const ImGuiDirectHost::RenderSnapshot& snapshot,
+[[maybe_unused]] inline void renderSnapshot(const ImGuiDirectHost::RenderSnapshot& snapshot,
                     ImDrawList* drawList,
                     const manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions& options) {
     if (drawList == nullptr || !snapshot.transform.valid || snapshot.rootIndex < 0) {
@@ -648,7 +648,7 @@ void renderSnapshotNodeRecursive(const ImGuiDirectHost::RenderSnapshot& snapshot
 }
 
 
-void renderLiveNodeRecursive(ImGuiDirectHost& host,
+inline void renderLiveNodeRecursive(ImGuiDirectHost& host,
                              const RuntimeNode& node,
                              const SceneTransform& parentTransform,
                              ImDrawList* drawList,
@@ -770,7 +770,7 @@ void renderLiveNodeRecursive(ImGuiDirectHost& host,
     }
 }
 
-void renderLiveTree(ImGuiDirectHost& host,
+inline void renderLiveTree(ImGuiDirectHost& host,
                     const RuntimeNode& root,
                     ImDrawList* drawList,
                     const manifold::ui::imgui::RuntimeNodeRenderer::RenderOptions& options,

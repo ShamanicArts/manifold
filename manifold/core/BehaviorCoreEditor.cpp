@@ -1,4 +1,5 @@
 #include "BehaviorCoreEditor.h"
+#include "../ui/imgui/DirectHostRuntimeSupport.h"
 #include "BehaviorCoreProcessor.h"
 #include "EditorShellSupport.h"
 #include "../primitives/core/Settings.h"

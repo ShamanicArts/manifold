@@ -10,6 +10,8 @@
 
 #define private public
 #include "../ui/imgui/ImGuiDirectHost.h"
+#include "../ui/imgui/DirectHostRuntimeSupport.h"
+#include "../ui/imgui/DirectHostInputSupport.h"
 #undef private
 
 #include <algorithm>
