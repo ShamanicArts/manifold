@@ -23,17 +23,6 @@ local function setSelected(widget, index)
   if widget and widget.setSelected then widget:setSelected(index or 1) end
 end
 
--- Path where the model file lives (UserScripts directory)
-local function modelsDir()
-  local scriptPath = (type(getCurrentScriptPath) == "function") and getCurrentScriptPath() or ""
-  local dir = scriptPath:match("^(.*/)")
-  if dir and dir ~= "" then
-    -- Navigate up from MLLab/ui/behaviors/ to UserScripts/
-    local projects = dir:match("^(.*projects/)")
-    if projects then return projects end
-  end
-  return ""
-end
 
 local function doLoadModel(ctx, path)
   if type(ml) ~= "table" or type(ml.load) ~= "function" then
@@ -95,16 +84,23 @@ local function closeWebcam(ctx)
   setText(ctx.widgets and ctx.widgets.webcamStatus, "Webcam: closed")
 end
 
-local function loadModel(ctx)
-  local base = modelsDir()
-  if base == "" then base = "/tmp" end
+-- Resolve project root: getCurrentScriptPath returns the manifest path,
+-- strip the filename to get the project directory.
+local function projectRoot()
+  local fp = (type(getCurrentScriptPath) == "function") and getCurrentScriptPath() or ""
+  -- Strip everything after the last / to get the project directory
+  local dir = fp:match("^(.*)/[^/]+$")
+  if dir then return dir .. "/" end
+  return nil
+end
 
-  -- Try a default path relative to UserScripts
-  local defaultPath = base .. "MLLab/selfie_segmentation.tflite"
-  local path = defaultPath
+local function loadModel(ctx)
+  local root = projectRoot()
+  if not root then root = "/tmp/" end
+  local modelPath = root .. "selfie_segmentation.onnx"
 
   if type(showFileChooser) == "function" then
-    showFileChooser("Load .tflite model", base, "*.tflite;*.task", function(chosen)
+    showFileChooser("Load ONNX model", root, "*.onnx", function(chosen)
       if type(chosen) ~= "string" or chosen == "" then
         setText(ctx.widgets and ctx.widgets.modelPathLabel, "Model load cancelled")
         return
@@ -114,17 +110,18 @@ local function loadModel(ctx)
     return
   end
 
-  -- No file chooser, try default path
-  doLoadModel(ctx, defaultPath)
+  doLoadModel(ctx, modelPath)
 end
 
 -- Auto-load the bundled model from the project directory
 local function autoLoadModel(ctx)
-  -- Find us relative to the project root (we're in ui/behaviors/)
-  local scriptPath = (type(getCurrentScriptPath) == "function") and getCurrentScriptPath() or ""
-  local behaviorDir = scriptPath:match("^(.*/)ui/behaviors/")
-  if not behaviorDir then return false end
-  local modelPath = behaviorDir .. "mobilenet_v2.tflite"
+  local root = projectRoot()
+  if not root then
+    setText(ctx.widgets and ctx.widgets.modelPathLabel, "Can\'t resolve project root for model")
+    return false
+  end
+  local modelPath = root .. "selfie_segmentation.onnx"
+  setText(ctx.widgets and ctx.widgets.modelPathLabel, "Auto-loading: " .. modelPath)
   doLoadModel(ctx, modelPath)
 end
 
