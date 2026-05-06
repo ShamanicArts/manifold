@@ -1113,6 +1113,8 @@ add_executable(PortBufferSemanticsHarness manifold/headless/PortBufferSemanticsH
 
 add_executable(BehaviorCoreProjectionHarness manifold/headless/BehaviorCoreProjectionHarness.cpp)
 
+add_executable(BehaviorCoreMidiContractHarness manifold/headless/BehaviorCoreMidiContractHarness.cpp)
+
 add_executable(VideoSamplerHarness
     tests/VideoSamplerHarness.cpp
     manifold/primitives/video/VideoSampler.cpp
@@ -1198,6 +1200,18 @@ manifold_target_include_project_and_ableton(PortBufferSemanticsHarness)
 
 manifold_target_include_project_and_ableton(BehaviorCoreProjectionHarness)
 target_link_libraries(BehaviorCoreProjectionHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+		highway)
+
+manifold_target_include_project_and_ableton(BehaviorCoreMidiContractHarness)
+target_link_libraries(BehaviorCoreMidiContractHarness
     PRIVATE
         Manifold
         juce::juce_audio_processors
@@ -1300,6 +1314,12 @@ target_compile_definitions(PortBufferSemanticsHarness
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
+target_compile_definitions(BehaviorCoreMidiContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
 enable_testing()
 
 add_test(
@@ -1365,6 +1385,13 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/core_state_golden.json)
 set_tests_properties(manifold_core_state_contract PROPERTIES
     LABELS "manifold;core;contract")
+
+add_test(
+    NAME manifold_core_midi_contract
+    COMMAND $<TARGET_FILE:BehaviorCoreMidiContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/core_midi_golden.json)
+set_tests_properties(manifold_core_midi_contract PROPERTIES
+    LABELS "manifold;core;midi;contract")
 
 add_test(
     NAME manifold_core_sniff
