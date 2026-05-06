@@ -1,6 +1,6 @@
-local C = require("behaviors.avsd.constants")
-local U = require("behaviors.avsd.util")
-local ML = require("behaviors.avsd.ml")
+local C = require("behaviors.core.constants")
+local U = require("behaviors.core.util")
+local ML = require("behaviors.core.ml")
 
 local M = {}
 

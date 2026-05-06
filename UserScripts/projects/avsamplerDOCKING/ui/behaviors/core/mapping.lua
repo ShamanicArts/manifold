@@ -1,5 +1,6 @@
-local C = require("behaviors.avsd.constants")
-local U = require("behaviors.avsd.util")
+local C = require("behaviors.core.constants")
+local U = require("behaviors.core.util")
+local ML = require("behaviors.core.ml")
 
 local M = {}
 
@@ -69,6 +70,61 @@ function M.defaultMapping(track)
     max = 1.0,
     invert = false,
   }
+end
+
+function M.applyTrack(ctx, track)
+  local mapping = ctx.mappings[track]
+  if not mapping or not mapping.enabled then return nil end
+  local sourceValue = U.clamp(ML.poseSourceValue(ctx, track), 0, 1)
+  if not mapping.invert then sourceValue = 1.0 - sourceValue end
+  local target, targetIndex = M.targetSpec(mapping.target or 1)
+  local minNorm = U.clamp(mapping.min or 0, 0, 1)
+  local maxNorm = U.clamp(mapping.max or 1, 0, 1)
+  local normalizedTarget = minNorm + sourceValue * (maxNorm - minNorm)
+  local value = target.min + normalizedTarget * (target.max - target.min)
+  if target.boolean then
+    value = normalizedTarget >= 0.5 and 1 or 0
+  elseif target.integer then
+    value = U.round(value)
+  end
+  U.writeParamIfChanged(ctx, "mapping." .. track .. "." .. target.path, target.path, value, target.epsilon or 0.002)
+  return {
+    track = track,
+    sourceValue = sourceValue,
+    value = value,
+    targetIndex = targetIndex,
+    targetLabel = target.label,
+  }
+end
+
+function M.apply(ctx, deps)
+  if deps and deps.profileStart then deps.profileStart(ctx, "applyMapping") end
+  local active, firstSummary = 0, nil
+  for t = 1, C.MAX_MAPPINGS do
+    if ctx.mappings[t] and ctx.mappings[t].enabled then
+      active = active + 1
+      local summary = M.applyTrack(ctx, t)
+      if firstSummary == nil and summary ~= nil then firstSummary = summary end
+    end
+  end
+  if active <= 0 then
+    if deps and deps.profileEnd then deps.profileEnd(ctx, "applyMapping") end
+    U.setText(ctx.widgets.mappingStatus, "Mapping: disabled")
+    return
+  end
+  if firstSummary then
+    U.setText(ctx.widgets.mappingStatus, string.format(
+      "Mapping: %d active | T%d %s %.2f → %.3f",
+      active,
+      firstSummary.track,
+      firstSummary.targetLabel,
+      firstSummary.sourceValue,
+      firstSummary.value
+    ))
+  else
+    U.setText(ctx.widgets.mappingStatus, string.format("Mapping: %d active", active))
+  end
+  if deps and deps.profileEnd then deps.profileEnd(ctx, "applyMapping") end
 end
 
 return M

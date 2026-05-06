@@ -1,4 +1,4 @@
-local U = require("behaviors.avsd.util")
+local U = require("behaviors.core.util")
 
 local M = {}
 

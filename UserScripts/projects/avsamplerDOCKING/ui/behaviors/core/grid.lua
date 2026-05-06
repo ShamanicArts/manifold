@@ -1,4 +1,4 @@
-local C = require("behaviors.avsd.constants")
+local C = require("behaviors.core.constants")
 
 local M = {}
 

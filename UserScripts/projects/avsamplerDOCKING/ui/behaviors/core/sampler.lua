@@ -1,5 +1,5 @@
-local C = require("behaviors.avsd.constants")
-local U = require("behaviors.avsd.util")
+local C = require("behaviors.core.constants")
+local U = require("behaviors.core.util")
 
 local M = {}
 

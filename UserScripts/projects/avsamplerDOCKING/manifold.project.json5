@@ -1,6 +1,6 @@
 {
   "name": "AVSamplerDocking",
-  "description": "AVSampler UI skeleton using ImGui docking windows instead of retained-mode pane layout.",
+  "description": "Decomposed A/V sampler docking UI with core module architecture.",
   "author": "Agent",
   "version": "0.1.0",
 

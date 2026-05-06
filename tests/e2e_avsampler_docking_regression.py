@@ -105,7 +105,7 @@ class AvSamplerDockingHarness:
 
 INITIAL_PROJECT = "UserScripts/projects/AVSampler/manifold.project.json5"
 DOCKING_PROJECT = "UserScripts/projects/avsamplerDOCKING/manifold.project.json5"
-MIGRATION_PROJECT = "UserScripts/projects/avsamplerDOCKING_Migration/manifold.project.json5"
+MIGRATION_PROJECT = "UserScripts/projects/avsamplerDOCKING/manifold.project.json5"
 
 
 ScenarioFn = Callable[[AvSamplerDockingHarness, dict[str, Any]], None]
