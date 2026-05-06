@@ -1139,6 +1139,14 @@ add_executable(OSCQueryServerContractHarness manifold/headless/OSCQueryServerCon
 
 add_executable(OSCServerContractHarness manifold/headless/OSCServerContractHarness.cpp)
 
+add_executable(LinkSupportContractHarness manifold/headless/LinkSupportContractHarness.cpp)
+
+add_executable(GraphRuntimeSupportContractHarness manifold/headless/GraphRuntimeSupportContractHarness.cpp)
+
+add_executable(StateSerializationSupportContractHarness manifold/headless/StateSerializationSupportContractHarness.cpp)
+
+add_executable(ControlCommandSupportContractHarness manifold/headless/ControlCommandSupportContractHarness.cpp)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -1389,6 +1397,50 @@ target_link_libraries(OSCServerContractHarness
         juce::juce_gui_extra
         highway)
 
+manifold_target_include_project_and_ableton(LinkSupportContractHarness)
+target_link_libraries(LinkSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        highway)
+
+manifold_target_include_project_and_ableton(GraphRuntimeSupportContractHarness)
+target_link_libraries(GraphRuntimeSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        highway)
+
+manifold_target_include_project_and_ableton(StateSerializationSupportContractHarness)
+target_link_libraries(StateSerializationSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway)
+
+manifold_target_include_project_and_ableton(ControlCommandSupportContractHarness)
+target_link_libraries(ControlCommandSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2
+        highway)
+
 target_include_directories(VideoSamplerHarness
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1518,6 +1570,30 @@ target_compile_definitions(OSCQueryServerContractHarness
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_definitions(OSCServerContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(LinkSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(GraphRuntimeSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(StateSerializationSupportContractHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+
+target_compile_definitions(ControlCommandSupportContractHarness
     PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
@@ -1718,6 +1794,34 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/osc_server_contract_golden.json)
 set_tests_properties(manifold_osc_server_contract PROPERTIES
     LABELS "manifold;control;osc;server;contract")
+
+add_test(
+    NAME manifold_link_support_contract
+    COMMAND $<TARGET_FILE:LinkSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/link_support_contract_golden.json)
+set_tests_properties(manifold_link_support_contract PROPERTIES
+    LABELS "manifold;core;support;link;contract")
+
+add_test(
+    NAME manifold_graph_runtime_support_contract
+    COMMAND $<TARGET_FILE:GraphRuntimeSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/graph_runtime_support_contract_golden.json)
+set_tests_properties(manifold_graph_runtime_support_contract PROPERTIES
+    LABELS "manifold;core;support;graph;contract")
+
+add_test(
+    NAME manifold_state_serialization_support_contract
+    COMMAND $<TARGET_FILE:StateSerializationSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/state_serialization_support_contract_golden.json)
+set_tests_properties(manifold_state_serialization_support_contract PROPERTIES
+    LABELS "manifold;core;support;state;contract")
+
+add_test(
+    NAME manifold_control_command_support_contract
+    COMMAND $<TARGET_FILE:ControlCommandSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/control_command_support_contract_golden.json)
+set_tests_properties(manifold_control_command_support_contract PROPERTIES
+    LABELS "manifold;core;support;control;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:
