@@ -1097,7 +1097,6 @@ void OSCQueryServer::wsBroadcastLoop() {
             if (wsClients.empty()) continue;
         }
 
-        owner->getControlServer().syncOwnedStateFromLegacyMirror();
         const auto controlState = manifold::state_snapshot::captureBehaviorControlState(
             owner->getControlServer().getBehaviorControlState());
         const auto runtimeTelemetry =

@@ -38,8 +38,7 @@ inline void beginGraphMutation(std::mutex& graphMutationMutex,
     graphMutationRestoreEnabled =
         graphProcessingEnabled.exchange(false, std::memory_order_acq_rel);
     manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
-        controlServer.getBehaviorRuntimeTelemetry(),
-        &controlServer.getAtomicState())
+        controlServer.getBehaviorRuntimeTelemetry())
         .setGraphEnabled(false);
     graphMutationCv.wait(lock, [&graphProcessDepth]() {
         return graphProcessDepth.load(std::memory_order_acquire) == 0;
@@ -58,8 +57,7 @@ inline void endGraphMutation(std::mutex& graphMutationMutex,
         graphProcessingEnabled.store(graphMutationRestoreEnabled,
                                      std::memory_order_release);
         manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
-            controlServer.getBehaviorRuntimeTelemetry(),
-            &controlServer.getAtomicState())
+            controlServer.getBehaviorRuntimeTelemetry())
             .setGraphEnabled(graphMutationRestoreEnabled);
         graphMutationRestoreEnabled = false;
     }

@@ -30,33 +30,34 @@ juce::var stringVectorToVar(const std::vector<std::string>& values) {
 }
 
 void seedProcessor(BehaviorCoreProcessor& processor) {
-    auto& state = processor.getControlServer().getAtomicState();
-    state.tempo.store(133.5f);
-    state.targetBPM.store(127.25f);
-    state.samplesPerBar.store(88200.0f);
-    state.sampleRate.store(44100.0);
-    state.captureSize.store(4096);
-    state.isRecording.store(true);
-    state.overdubEnabled.store(false);
-    state.forwardArmed.store(true);
-    state.forwardBars.store(1.5f);
-    state.activeLayer.store(2);
-    state.masterVolume.store(0.78f);
-    state.inputVolume.store(0.55f);
-    state.passthroughEnabled.store(false);
-    state.playTime.store(2048.0);
-    state.commitCount.store(9);
+    auto controlState = controlStateView(processor.getControlServer());
+    auto runtimeTelemetry = runtimeTelemetryView(processor.getControlServer());
+    controlState.setTempo(133.5f);
+    runtimeTelemetry.setTempo(133.5f);
+    controlState.setTargetBpm(127.25f);
+    runtimeTelemetry.setSamplesPerBar(88200.0f);
+    runtimeTelemetry.setSampleRate(44100.0);
+    runtimeTelemetry.setCaptureSize(4096);
+    controlState.setIsRecording(true);
+    controlState.setOverdubEnabled(false);
+    controlState.setForwardArmed(true);
+    controlState.setForwardBars(1.5f);
+    controlState.setActiveLayer(2);
+    controlState.setMasterVolume(0.78f);
+    controlState.setInputVolume(0.55f);
+    controlState.setPassthroughEnabled(false);
+    runtimeTelemetry.setPlayTime(2048.0);
+    runtimeTelemetry.setCommitCount(9);
 
     for (int i = 0; i < BehaviorCoreProcessor::MAX_LAYERS; ++i) {
-        auto& layer = state.layers[i];
-        layer.length.store(1000 + i * 200);
-        layer.playheadPos.store(100 + i * 40);
-        layer.speed.store(1.0f + 0.1f * static_cast<float>(i));
-        layer.reversed.store((i % 2) == 1);
-        layer.volume.store(0.9f - 0.1f * static_cast<float>(i));
-        layer.numBars.store(2.0f + 0.5f * static_cast<float>(i));
-        layer.state.store(i == 0 ? 1 : i == 1 ? 2 : i == 2 ? 5 : 0);
-        layer.muted.store(false);
+        runtimeTelemetry.setLayerLength(i, 1000 + i * 200);
+        runtimeTelemetry.setLayerPlayheadPos(i, 100 + i * 40);
+        controlState.setLayerSpeed(i, 1.0f + 0.1f * static_cast<float>(i));
+        controlState.setLayerReversed(i, (i % 2) == 1);
+        controlState.setLayerVolume(i, 0.9f - 0.1f * static_cast<float>(i));
+        runtimeTelemetry.setLayerNumBars(i, 2.0f + 0.5f * static_cast<float>(i));
+        runtimeTelemetry.setLayerState(i, i == 0 ? 1 : i == 1 ? 2 : i == 2 ? 5 : 0);
+        controlState.setLayerMuted(i, false);
     }
 
     processor.setLinkEnabled(true);
@@ -166,10 +167,12 @@ int main(int argc, char* argv[]) {
         obj->setProperty("linkEnabled", link["enabled"].get_or(false));
         obj->setProperty("linkTempoSync", link["tempoSync"].get_or(false));
 
-        auto& atomicState = processor.getControlServer().getAtomicState();
-        atomicState.tempo.store(145.0f);
-        atomicState.activeLayer.store(1);
-        atomicState.layers[0].speed.store(1.75f);
+        auto controlState = controlStateView(processor.getControlServer());
+        auto runtimeTelemetry = runtimeTelemetryView(processor.getControlServer());
+        controlState.setTempo(145.0f);
+        runtimeTelemetry.setTempo(145.0f);
+        controlState.setActiveLayer(1);
+        controlState.setLayerSpeed(0, 1.75f);
 
         serializeStateToLuaIncremental(
             lua,
@@ -196,9 +199,11 @@ int main(int argc, char* argv[]) {
         obj->setProperty("cacheSizeAfterUpdate", static_cast<int>(cache.size()));
         obj->setProperty("tempoChangedInitially", hasPathChanged("/core/behavior/tempo", processor, cacheMutex, cache));
 
-        auto& state = processor.getControlServer().getAtomicState();
-        state.tempo.store(150.0f);
-        state.layers[0].speed.store(2.0f);
+        auto controlState = controlStateView(processor.getControlServer());
+        auto runtimeTelemetry = runtimeTelemetryView(processor.getControlServer());
+        controlState.setTempo(150.0f);
+        runtimeTelemetry.setTempo(150.0f);
+        controlState.setLayerSpeed(0, 2.0f);
 
         obj->setProperty("tempoChangedAfterMutation", hasPathChanged("/core/behavior/tempo", processor, cacheMutex, cache));
         const auto changedPaths = getChangedPathsAndUpdateCache(processor, cacheMutex, cache);

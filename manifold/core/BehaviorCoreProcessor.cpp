@@ -847,12 +847,10 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     if (linkSync.processAudio(numSamples)) {
         // Tempo was updated from Link, update atomic state and forward to DSP
         auto controlState = manifold::control_state_view::BehaviorControlStateView(
-            controlServer.getBehaviorControlState(),
-            &controlServer.getAtomicState());
+            controlServer.getBehaviorControlState());
         auto runtimeTelemetry =
             manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
-                controlServer.getBehaviorRuntimeTelemetry(),
-                &controlServer.getAtomicState());
+                controlServer.getBehaviorRuntimeTelemetry());
         const double linkTempo = linkSync.getTempo();
         controlState.setTempo(static_cast<float>(linkTempo));
         runtimeTelemetry.setTempo(static_cast<float>(linkTempo));
@@ -875,12 +873,11 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     float* outL = numChannels > 0 ? buffer.getWritePointer(0) : nullptr;
     float* outR = numChannels > 1 ? buffer.getWritePointer(1) : outL;
 
-    auto& atomicState = controlServer.getAtomicState();
     auto controlState = manifold::control_state_view::BehaviorControlStateView(
-        controlServer.getBehaviorControlState(), &atomicState);
+        controlServer.getBehaviorControlState());
     auto runtimeTelemetry =
         manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
-            controlServer.getBehaviorRuntimeTelemetry(), &atomicState);
+            controlServer.getBehaviorRuntimeTelemetry());
 
     auto mainInputBus = getBusCount(true) > 0 ? getBusBuffer(buffer, true, 0)
                                               : juce::AudioBuffer<float>();
@@ -1541,8 +1538,7 @@ std::string BehaviorCoreProcessor::getAndClearPendingScreenshot() {
 }
 
 void BehaviorCoreProcessor::applyControlCommand(const ControlCommand& cmd) {
-    manifold::control_command_support::applyControlCommand(
-        *this, cmd, controlServer.getAtomicState());
+    manifold::control_command_support::applyControlCommand(*this, cmd);
 }
 
 void BehaviorCoreProcessor::processControlCommands() {

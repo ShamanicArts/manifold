@@ -144,12 +144,10 @@ public:
     void setGraphProcessingEnabled(bool enabled) override {
         graphProcessingEnabled.store(enabled, std::memory_order_relaxed);
         manifold::control_state_view::BehaviorControlStateView(
-            controlServer.getBehaviorControlState(),
-            &controlServer.getAtomicState())
+            controlServer.getBehaviorControlState())
             .setGraphEnabled(enabled);
         manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
-            controlServer.getBehaviorRuntimeTelemetry(),
-            &controlServer.getAtomicState())
+            controlServer.getBehaviorRuntimeTelemetry())
             .setGraphEnabled(enabled);
     }
     bool isGraphProcessingEnabled() const override {

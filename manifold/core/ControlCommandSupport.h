@@ -10,9 +10,7 @@ namespace manifold {
 namespace control_command_support {
 
 inline void applyControlCommand(BehaviorCoreProcessor& processor,
-                                const ControlCommand& cmd,
-                                AtomicState& state) {
-    juce::ignoreUnused(state);
+                                const ControlCommand& cmd) {
     static constexpr const char* kBehaviorBase = "/core/behavior";
 
     switch (cmd.type) {
@@ -54,10 +52,9 @@ inline void applyControlCommand(BehaviorCoreProcessor& processor,
             break;
         case ControlCommand::Type::ToggleOverdub: {
             auto& controlServer = processor.getControlServer();
-            controlServer.syncOwnedStateFromLegacyMirror();
             const auto controlState =
                 manifold::control_state_view::BehaviorControlStateConstView(
-                    controlServer.getBehaviorControlState(), nullptr);
+                    controlServer.getBehaviorControlState());
             (void)processor.setParamByPath(
                 std::string(kBehaviorBase) + "/overdub",
                 controlState.overdubEnabled() ? 0.0f : 1.0f);
@@ -159,7 +156,7 @@ inline void processControlCommands(BehaviorCoreProcessor& processor,
     ControlCommand cmd;
     auto& queue = controlServer.getCommandQueue();
     while (queue.dequeue(cmd)) {
-        applyControlCommand(processor, cmd, controlServer.getAtomicState());
+        applyControlCommand(processor, cmd);
     }
 }
 

@@ -455,7 +455,8 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            processor.getControlServer().getAtomicState().tempo.store(140.0f);
+            contract_harness_utils::runtimeTelemetryView(processor.getControlServer())
+                .setTempo(140.0f);
             const auto secondFrame = readWsFrame(wsFd, 2500);
             if (secondFrame.has_value()) {
                 const auto packet = parseOscPacket(secondFrame->payload);

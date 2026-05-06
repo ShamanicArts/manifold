@@ -20,21 +20,23 @@ struct ProjectionSummary {
     juce::String selectedLayerState;
 };
 
-void seedSnapshotA(AtomicState& state) {
-    state.tempo.store(120.0f, std::memory_order_relaxed);
-    state.activeLayer.store(1, std::memory_order_relaxed);
-    state.forwardArmed.store(false, std::memory_order_relaxed);
-    state.forwardBars.store(0.0f, std::memory_order_relaxed);
-    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
-        auto& layer = state.layers[i];
-        layer.state.store(static_cast<int>(i == 1 ? 1 : 0), std::memory_order_relaxed);
-        layer.length.store(1000 + i, std::memory_order_relaxed);
-        layer.playheadPos.store(10 + i, std::memory_order_relaxed);
-        layer.speed.store(1.0f, std::memory_order_relaxed);
-        layer.reversed.store(false, std::memory_order_relaxed);
-        layer.volume.store(1.0f, std::memory_order_relaxed);
-        layer.numBars.store(1.0f, std::memory_order_relaxed);
-        layer.muted.store(false, std::memory_order_relaxed);
+void seedSnapshotA(ControlServer& server) {
+    auto controlState = controlStateView(server);
+    auto runtimeTelemetry = runtimeTelemetryView(server);
+    controlState.setTempo(120.0f);
+    runtimeTelemetry.setTempo(120.0f);
+    controlState.setActiveLayer(1);
+    controlState.setForwardArmed(false);
+    controlState.setForwardBars(0.0f);
+    for (int i = 0; i < manifold::BehaviorControlState::MAX_LAYERS; ++i) {
+        runtimeTelemetry.setLayerState(i, static_cast<int>(i == 1 ? 1 : 0));
+        runtimeTelemetry.setLayerLength(i, 1000 + i);
+        runtimeTelemetry.setLayerPlayheadPos(i, 10 + i);
+        controlState.setLayerSpeed(i, 1.0f);
+        controlState.setLayerReversed(i, false);
+        controlState.setLayerVolume(i, 1.0f);
+        runtimeTelemetry.setLayerNumBars(i, 1.0f);
+        controlState.setLayerMuted(i, false);
     }
 }
 
@@ -75,8 +77,7 @@ int main(int argc, char* argv[]) {
     }
 
     ControlServer server;
-    auto& state = server.getAtomicState();
-    seedSnapshotA(state);
+    seedSnapshotA(server);
 
     std::mutex phaseMutex;
     std::condition_variable phaseCv;
@@ -88,9 +89,12 @@ int main(int argc, char* argv[]) {
             phaseCv.wait(lock, [&]() { return phase == 1; });
         }
 
-        state.tempo.store(155.0f, std::memory_order_relaxed);
-        state.activeLayer.store(3, std::memory_order_relaxed);
-        state.forwardArmed.store(true, std::memory_order_relaxed);
+        auto controlState = controlStateView(server);
+        auto runtimeTelemetry = runtimeTelemetryView(server);
+        controlState.setTempo(155.0f);
+        runtimeTelemetry.setTempo(155.0f);
+        controlState.setActiveLayer(3);
+        controlState.setForwardArmed(true);
 
         {
             std::lock_guard<std::mutex> lock(phaseMutex);
@@ -103,10 +107,10 @@ int main(int argc, char* argv[]) {
             phaseCv.wait(lock, [&]() { return phase == 3; });
         }
 
-        state.forwardBars.store(4.0f, std::memory_order_relaxed);
-        state.layers[3].state.store(2, std::memory_order_relaxed);
-        state.layers[3].length.store(4096, std::memory_order_relaxed);
-        state.layers[3].numBars.store(4.0f, std::memory_order_relaxed);
+        controlState.setForwardBars(4.0f);
+        runtimeTelemetry.setLayerState(3, 2);
+        runtimeTelemetry.setLayerLength(3, 4096);
+        runtimeTelemetry.setLayerNumBars(3, 4.0f);
 
         {
             std::lock_guard<std::mutex> lock(phaseMutex);

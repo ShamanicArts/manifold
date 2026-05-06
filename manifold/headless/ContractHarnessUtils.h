@@ -7,6 +7,11 @@
 #include <iterator>
 #include <string>
 
+#include "../primitives/control/BehaviorControlStateView.h"
+#include "../primitives/control/BehaviorRuntimeTelemetryView.h"
+#include "../primitives/control/BehaviorStateSnapshot.h"
+#include "../primitives/control/ControlServer.h"
+
 #include <juce_core/juce_core.h>
 
 namespace contract_harness_utils {
@@ -112,6 +117,97 @@ inline int finishJsonContract(const HarnessOptions& opts,
             std::fprintf(stdout, "%s\n", rawContract.c_str());
             return 0;
     }
+}
+
+inline manifold::control_state_view::BehaviorControlStateView
+controlStateView(ControlServer& controlServer) {
+    return manifold::control_state_view::BehaviorControlStateView(
+        controlServer.getBehaviorControlState());
+}
+
+inline manifold::control_state_view::BehaviorControlStateConstView
+controlStateView(const ControlServer& controlServer) {
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState());
+}
+
+inline manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView
+runtimeTelemetryView(ControlServer& controlServer) {
+    return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
+        controlServer.getBehaviorRuntimeTelemetry());
+}
+
+inline manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView
+runtimeTelemetryView(const ControlServer& controlServer) {
+    return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+        controlServer.getBehaviorRuntimeTelemetry());
+}
+
+inline manifold::state_snapshot::BehaviorControlStateSnapshot
+captureControlState(const ControlServer& controlServer) {
+    return manifold::state_snapshot::captureBehaviorControlState(
+        controlServer.getBehaviorControlState());
+}
+
+inline manifold::state_snapshot::BehaviorRuntimeTelemetrySnapshot
+captureRuntimeTelemetry(const ControlServer& controlServer) {
+    return manifold::state_snapshot::captureBehaviorRuntimeTelemetry(
+        controlServer.getBehaviorRuntimeTelemetry());
+}
+
+inline juce::var legacyLayerStateToVar(
+    const manifold::state_snapshot::BehaviorControlStateSnapshot& controlState,
+    const manifold::state_snapshot::BehaviorRuntimeTelemetrySnapshot& runtimeTelemetry,
+    int index) {
+    auto* obj = new juce::DynamicObject();
+    obj->setProperty("index", index);
+    obj->setProperty("state", runtimeTelemetry.layers[index].state);
+    obj->setProperty("length", runtimeTelemetry.layers[index].length);
+    obj->setProperty("playheadPos", runtimeTelemetry.layers[index].playheadPos);
+    obj->setProperty("speed", controlState.layers[index].speed);
+    obj->setProperty("reversed", controlState.layers[index].reversed);
+    obj->setProperty("volume", controlState.layers[index].volume);
+    obj->setProperty("numBars", runtimeTelemetry.layers[index].numBars);
+    obj->setProperty("muted", controlState.layers[index].muted);
+    return juce::var(obj);
+}
+
+inline juce::var legacyStateToVar(
+    const manifold::state_snapshot::BehaviorControlStateSnapshot& controlState,
+    const manifold::state_snapshot::BehaviorRuntimeTelemetrySnapshot& runtimeTelemetry) {
+    auto* obj = new juce::DynamicObject();
+    obj->setProperty("tempo", runtimeTelemetry.effectiveTempo);
+    obj->setProperty("targetBPM", controlState.targetBPM);
+    obj->setProperty("samplesPerBar", runtimeTelemetry.samplesPerBar);
+    obj->setProperty("sampleRate", runtimeTelemetry.sampleRate);
+    obj->setProperty("captureSize", runtimeTelemetry.captureSize);
+    obj->setProperty("captureWritePos", runtimeTelemetry.captureWritePos);
+    obj->setProperty("captureLevel", runtimeTelemetry.captureLevel);
+    obj->setProperty("isRecording", controlState.isRecording);
+    obj->setProperty("overdubEnabled", controlState.overdubEnabled);
+    obj->setProperty("forwardArmed", controlState.forwardArmed);
+    obj->setProperty("forwardBars", controlState.forwardBars);
+    obj->setProperty("graphEnabled", runtimeTelemetry.effectiveGraphEnabled);
+    obj->setProperty("recordMode", controlState.recordMode);
+    obj->setProperty("activeLayer", controlState.activeLayer);
+    obj->setProperty("masterVolume", controlState.masterVolume);
+    obj->setProperty("inputVolume", controlState.inputVolume);
+    obj->setProperty("passthroughEnabled", controlState.passthroughEnabled);
+    obj->setProperty("playTime", runtimeTelemetry.playTime);
+    obj->setProperty("commitCount", runtimeTelemetry.commitCount);
+    obj->setProperty("uptimeSeconds", runtimeTelemetry.uptimeSeconds);
+
+    juce::Array<juce::var> layers;
+    for (int i = 0; i < manifold::state_snapshot::BehaviorControlStateSnapshot::MAX_LAYERS; ++i) {
+        layers.add(legacyLayerStateToVar(controlState, runtimeTelemetry, i));
+    }
+    obj->setProperty("layers", juce::var(layers));
+    return juce::var(obj);
+}
+
+inline juce::var legacyStateToVar(const ControlServer& controlServer) {
+    return legacyStateToVar(captureControlState(controlServer),
+                            captureRuntimeTelemetry(controlServer));
 }
 
 } // namespace contract_harness_utils

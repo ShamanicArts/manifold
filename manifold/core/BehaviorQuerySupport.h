@@ -39,11 +39,10 @@ inline bool getLayerSnapshot(int index,
         return false;
     }
 
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     manifold::control_state_view::BehaviorControlStateConstView controlState(
-        controlServer.getBehaviorControlState(), nullptr);
+        controlServer.getBehaviorControlState());
     manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView runtimeTelemetry(
-        controlServer.getBehaviorRuntimeTelemetry(), nullptr);
+        controlServer.getBehaviorRuntimeTelemetry());
     out.index = index;
     out.length = runtimeTelemetry.layerLength(index);
     out.position = runtimeTelemetry.layerPlayheadPos(index);
@@ -247,25 +246,22 @@ inline bool ensureDynamicModuleSlot(DSPPluginScriptHost* dspScriptHost,
 }
 
 inline float getTempo(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
-        controlServer.getBehaviorRuntimeTelemetry(), nullptr)
+        controlServer.getBehaviorRuntimeTelemetry())
         .tempo();
 }
 
 inline float getTargetBPM(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .targetBpm();
 }
 
 inline float getSamplesPerBar(const ControlServer& controlServer,
                               double sampleRate) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     const auto runtimeTelemetry =
         manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
-            controlServer.getBehaviorRuntimeTelemetry(), nullptr);
+            controlServer.getBehaviorRuntimeTelemetry());
     const float cached = runtimeTelemetry.samplesPerBar();
     if (cached > 0.0f) {
         return cached;
@@ -278,72 +274,62 @@ inline float getSamplesPerBar(const ControlServer& controlServer,
 }
 
 inline float getMasterVolume(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .masterVolume();
 }
 
 inline float getInputVolume(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .inputVolume();
 }
 
 inline bool isPassthroughEnabled(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .passthroughEnabled();
 }
 
 inline bool isRecording(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .isRecording();
 }
 
 inline bool isOverdubEnabled(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .overdubEnabled();
 }
 
 inline int getActiveLayerIndex(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .activeLayer();
 }
 
 inline bool isForwardCommitArmed(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .forwardArmed();
 }
 
 inline float getForwardCommitBars(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .forwardBars();
 }
 
 inline int getRecordModeIndex(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::control_state_view::BehaviorControlStateConstView(
-        controlServer.getBehaviorControlState(), nullptr)
+        controlServer.getBehaviorControlState())
         .recordMode();
 }
 
 inline int getCommitCount(const ControlServer& controlServer) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
-        controlServer.getBehaviorRuntimeTelemetry(), nullptr)
+        controlServer.getBehaviorRuntimeTelemetry())
         .commitCount();
 }
 

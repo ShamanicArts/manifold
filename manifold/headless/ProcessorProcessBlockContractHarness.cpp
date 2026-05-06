@@ -137,16 +137,18 @@ juce::var vectorToVar(const std::vector<float>& values) {
     return juce::var(array);
 }
 
-juce::var atomicStateToVar(const AtomicState& state) {
+juce::var stateToVar(const ControlServer& controlServer) {
+    const auto controlState = captureControlState(controlServer);
+    const auto runtimeTelemetry = captureRuntimeTelemetry(controlServer);
     auto* obj = new juce::DynamicObject();
-    obj->setProperty("graphEnabled", state.graphEnabled.load(std::memory_order_relaxed));
-    obj->setProperty("masterVolume", state.masterVolume.load(std::memory_order_relaxed));
-    obj->setProperty("inputVolume", state.inputVolume.load(std::memory_order_relaxed));
-    obj->setProperty("passthroughEnabled", state.passthroughEnabled.load(std::memory_order_relaxed));
-    obj->setProperty("captureLevel", static_cast<double>(state.captureLevel.load(std::memory_order_relaxed)));
-    obj->setProperty("captureWritePos", state.captureWritePos.load(std::memory_order_relaxed));
-    obj->setProperty("playTime", state.playTime.load(std::memory_order_relaxed));
-    obj->setProperty("uptimeSeconds", state.uptimeSeconds.load(std::memory_order_relaxed));
+    obj->setProperty("graphEnabled", runtimeTelemetry.effectiveGraphEnabled);
+    obj->setProperty("masterVolume", controlState.masterVolume);
+    obj->setProperty("inputVolume", controlState.inputVolume);
+    obj->setProperty("passthroughEnabled", controlState.passthroughEnabled);
+    obj->setProperty("captureLevel", static_cast<double>(runtimeTelemetry.captureLevel));
+    obj->setProperty("captureWritePos", runtimeTelemetry.captureWritePos);
+    obj->setProperty("playTime", runtimeTelemetry.playTime);
+    obj->setProperty("uptimeSeconds", runtimeTelemetry.uptimeSeconds);
     return juce::var(obj);
 }
 
@@ -200,7 +202,7 @@ juce::var runNoGraphPassthroughCase(std::vector<BehaviorCoreProcessor*>& owned) 
     processor.processBlock(buffer, midi);
 
     obj->setProperty("output", toVar(captureAudioSnapshot(buffer)));
-    obj->setProperty("state", atomicStateToVar(processor.getControlServer().getAtomicState()));
+    obj->setProperty("state", stateToVar(processor.getControlServer()));
     obj->setProperty("playTimeSamples", processor.getPlayTimeSamples());
     obj->setProperty("dspScriptLoaded", processor.isDspScriptLoaded());
     return juce::var(obj);
@@ -221,7 +223,7 @@ juce::var runMutedCaptureCase(std::vector<BehaviorCoreProcessor*>& owned) {
     const bool peaksOk = processor.computeCapturePeaks(0, kBlockSize, 1, capturePeaks);
 
     obj->setProperty("output", toVar(captureAudioSnapshot(buffer)));
-    obj->setProperty("state", atomicStateToVar(processor.getControlServer().getAtomicState()));
+    obj->setProperty("state", stateToVar(processor.getControlServer()));
     obj->setProperty("capturePeaksOk", peaksOk);
     obj->setProperty("capturePeaks", vectorToVar(capturePeaks));
     return juce::var(obj);
@@ -248,7 +250,7 @@ juce::var runGraphRuntimeMixCase(std::vector<BehaviorCoreProcessor*>& owned) {
     processor.processBlock(buffer, midi);
 
     obj->setProperty("output", toVar(captureAudioSnapshot(buffer)));
-    obj->setProperty("state", atomicStateToVar(processor.getControlServer().getAtomicState()));
+    obj->setProperty("state", stateToVar(processor.getControlServer()));
     obj->setProperty("playTimeSamples", processor.getPlayTimeSamples());
     return juce::var(obj);
 }
@@ -293,7 +295,7 @@ juce::var runPlayTimeCase(std::vector<BehaviorCoreProcessor*>& owned) {
     }
 
     obj->setProperty("playTimeSamples", processor.getPlayTimeSamples());
-    obj->setProperty("state", atomicStateToVar(processor.getControlServer().getAtomicState()));
+    obj->setProperty("state", stateToVar(processor.getControlServer()));
     obj->setProperty("sampleRate", processor.getSampleRate());
     return juce::var(obj);
 }

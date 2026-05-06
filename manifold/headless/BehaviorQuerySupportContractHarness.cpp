@@ -197,7 +197,7 @@ int main(int argc, char* argv[]) {
         obj->setProperty("cacheMiss", getSamplesPerBar(cs, 48000.0));
 
         // Set cached value
-        cs.getAtomicState().samplesPerBar.store(1234.0f, std::memory_order_release);
+        runtimeTelemetryView(cs).setSamplesPerBar(1234.0f);
         obj->setProperty("cacheHit", getSamplesPerBar(cs, 48000.0));
 
         // zero sample rate
@@ -206,7 +206,7 @@ int main(int argc, char* argv[]) {
             obj->setProperty("zeroSampleRate", getSamplesPerBar(cs2, 0.0));
 
             // zero tempo
-            cs2.getAtomicState().tempo.store(0.0f, std::memory_order_release);
+            runtimeTelemetryView(cs2).setTempo(0.0f);
             obj->setProperty("zeroTempo", getSamplesPerBar(cs2, 48000.0));
         }
 

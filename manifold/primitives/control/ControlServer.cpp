@@ -1,6 +1,4 @@
 #include "ControlServer.h"
-#include "BehaviorControlStateView.h"
-#include "BehaviorRuntimeTelemetryView.h"
 #include "BehaviorStateProjection.h"
 #include "BehaviorStateSnapshot.h"
 #include "CommandParser.h"
@@ -38,9 +36,7 @@
 
 #if JUCE_WINDOWS
 
-ControlServer::ControlServer() {
-    syncOwnedStateFromLegacyMirror();
-}
+ControlServer::ControlServer() = default;
 
 ControlServer::~ControlServer() {
     stop();
@@ -92,10 +88,6 @@ std::string ControlServer::getDiagnosticsJson() {
 std::string ControlServer::getEditorStateJson() const {
     return std::string{};
 }
-
-void ControlServer::syncOwnedStateFromLegacyMirror() {}
-
-void ControlServer::syncLegacyMirrorFromOwnedState() {}
 
 std::string ControlServer::buildDiagnoseJson() {
     return "{\"ok\":true,\"ipc\":\"disabled\",\"platform\":\"windows\"}\n";
@@ -298,9 +290,7 @@ static void pruneStaleManifoldSockets() {
 // ControlServer
 // ============================================================================
 
-ControlServer::ControlServer() {
-    syncOwnedStateFromLegacyMirror();
-}
+ControlServer::ControlServer() = default;
 
 ControlServer::~ControlServer() {
     stop();
@@ -817,7 +807,6 @@ std::string ControlServer::processCommand(const std::string& cmd) {
 
 // ============================================================================
 // JSON builders - publish from owned state surfaces
-// Compatibility reads from the legacy AtomicState mirror are pulled in first.
 // ============================================================================
 
 std::string ControlServer::getEditorStateJson() const {
@@ -829,105 +818,7 @@ std::string ControlServer::getEditorStateJson() const {
     return provider ? provider() : std::string{};
 }
 
-void ControlServer::syncOwnedStateFromLegacyMirror() {
-    auto controlState =
-        manifold::control_state_view::BehaviorControlStateView(behaviorControlState,
-                                                               nullptr);
-    auto runtimeTelemetry =
-        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
-            behaviorRuntimeTelemetry, nullptr);
-    const auto legacyControl =
-        manifold::control_state_view::BehaviorControlStateConstView(atomicState);
-    const auto legacyRuntime =
-        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
-            atomicState);
-
-    controlState.setTempo(legacyControl.tempo());
-    controlState.setTargetBpm(legacyControl.targetBpm());
-    controlState.setIsRecording(legacyControl.isRecording());
-    controlState.setOverdubEnabled(legacyControl.overdubEnabled());
-    controlState.setForwardArmed(legacyControl.forwardArmed());
-    controlState.setForwardBars(legacyControl.forwardBars());
-    controlState.setRecordMode(legacyControl.recordMode());
-    controlState.setActiveLayer(legacyControl.activeLayer());
-    controlState.setMasterVolume(legacyControl.masterVolume());
-    controlState.setInputVolume(legacyControl.inputVolume());
-    controlState.setPassthroughEnabled(legacyControl.passthroughEnabled());
-
-    runtimeTelemetry.setTempo(legacyControl.tempo());
-    runtimeTelemetry.setSamplesPerBar(legacyRuntime.samplesPerBar());
-    runtimeTelemetry.setSampleRate(legacyRuntime.sampleRate());
-    runtimeTelemetry.setCaptureSize(legacyRuntime.captureSize());
-    runtimeTelemetry.setCaptureWritePos(legacyRuntime.captureWritePos());
-    runtimeTelemetry.setCaptureLevel(legacyRuntime.captureLevel());
-    controlState.setGraphEnabled(legacyRuntime.graphEnabled());
-    runtimeTelemetry.setGraphEnabled(legacyRuntime.graphEnabled());
-    runtimeTelemetry.setPlayTime(legacyRuntime.playTime());
-    runtimeTelemetry.setCommitCount(legacyRuntime.commitCount());
-    runtimeTelemetry.setUptimeSeconds(legacyRuntime.uptimeSeconds());
-
-    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
-        controlState.setLayerSpeed(i, legacyControl.layerSpeed(i));
-        controlState.setLayerReversed(i, legacyControl.layerReversed(i));
-        controlState.setLayerVolume(i, legacyControl.layerVolume(i));
-        controlState.setLayerMuted(i, legacyControl.layerMuted(i));
-        runtimeTelemetry.setLayerState(i, legacyRuntime.layerState(i));
-        runtimeTelemetry.setLayerLength(i, legacyRuntime.layerLength(i));
-        runtimeTelemetry.setLayerPlayheadPos(i, legacyRuntime.layerPlayheadPos(i));
-        runtimeTelemetry.setLayerNumBars(i, legacyRuntime.layerNumBars(i));
-    }
-}
-
-void ControlServer::syncLegacyMirrorFromOwnedState() {
-    const auto controlState =
-        manifold::control_state_view::BehaviorControlStateConstView(
-            behaviorControlState, nullptr);
-    const auto runtimeTelemetry =
-        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
-            behaviorRuntimeTelemetry, nullptr);
-    auto legacyControl =
-        manifold::control_state_view::BehaviorControlStateView(atomicState);
-    auto legacyRuntime =
-        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(atomicState);
-
-    legacyControl.setTempo(controlState.tempo());
-    legacyControl.setTargetBpm(controlState.targetBpm());
-    legacyControl.setIsRecording(controlState.isRecording());
-    legacyControl.setOverdubEnabled(controlState.overdubEnabled());
-    legacyControl.setForwardArmed(controlState.forwardArmed());
-    legacyControl.setForwardBars(controlState.forwardBars());
-    legacyControl.setRecordMode(controlState.recordMode());
-    legacyControl.setActiveLayer(controlState.activeLayer());
-    legacyControl.setMasterVolume(controlState.masterVolume());
-    legacyControl.setInputVolume(controlState.inputVolume());
-    legacyControl.setPassthroughEnabled(controlState.passthroughEnabled());
-
-    legacyRuntime.setTempo(runtimeTelemetry.tempo());
-    legacyRuntime.setSamplesPerBar(runtimeTelemetry.samplesPerBar());
-    legacyRuntime.setSampleRate(runtimeTelemetry.sampleRate());
-    legacyRuntime.setCaptureSize(runtimeTelemetry.captureSize());
-    legacyRuntime.setCaptureWritePos(runtimeTelemetry.captureWritePos());
-    legacyRuntime.setCaptureLevel(runtimeTelemetry.captureLevel());
-    legacyControl.setGraphEnabled(controlState.graphEnabled());
-    legacyRuntime.setGraphEnabled(runtimeTelemetry.graphEnabled());
-    legacyRuntime.setPlayTime(runtimeTelemetry.playTime());
-    legacyRuntime.setCommitCount(runtimeTelemetry.commitCount());
-    legacyRuntime.setUptimeSeconds(runtimeTelemetry.uptimeSeconds());
-
-    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
-        legacyControl.setLayerSpeed(i, controlState.layerSpeed(i));
-        legacyControl.setLayerReversed(i, controlState.layerReversed(i));
-        legacyControl.setLayerVolume(i, controlState.layerVolume(i));
-        legacyControl.setLayerMuted(i, controlState.layerMuted(i));
-        legacyRuntime.setLayerState(i, runtimeTelemetry.layerState(i));
-        legacyRuntime.setLayerLength(i, runtimeTelemetry.layerLength(i));
-        legacyRuntime.setLayerPlayheadPos(i, runtimeTelemetry.layerPlayheadPos(i));
-        legacyRuntime.setLayerNumBars(i, runtimeTelemetry.layerNumBars(i));
-    }
-}
-
 std::string ControlServer::buildStateJson() {
-    syncOwnedStateFromLegacyMirror();
     const auto controlSnapshot =
         manifold::state_snapshot::captureBehaviorControlState(behaviorControlState);
     const auto runtimeSnapshot =
@@ -948,7 +839,6 @@ std::string ControlServer::getDiagnosticsJson() {
 }
 
 std::string ControlServer::buildDiagnoseJson() {
-    syncOwnedStateFromLegacyMirror();
     const auto runtimeSnapshot =
         manifold::state_snapshot::captureBehaviorRuntimeTelemetry(
             behaviorRuntimeTelemetry);
@@ -1343,7 +1233,6 @@ std::string ControlServer::startRecording(const std::string& format,
         recordingState.framePaths.clear();
         recordingState.options = options;
         recordingState.audioRing = std::make_unique<AudioCaptureRing>();
-        syncOwnedStateFromLegacyMirror();
         recordingState.audioSampleRate =
             manifold::state_snapshot::captureBehaviorRuntimeTelemetry(
                 behaviorRuntimeTelemetry)

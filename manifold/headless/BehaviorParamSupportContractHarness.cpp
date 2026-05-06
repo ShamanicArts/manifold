@@ -30,48 +30,48 @@ struct ApplyContext {
             dspScriptHost, forwardScheduled, forwardFireAtSample,
             forwardScheduledBars,
             [this]() { ++scheduleCount; },
-            [this, thisPtr = this]() -> float {
-                const auto& s = thisPtr->cs.getAtomicState();
-                const float cached = s.samplesPerBar.load(std::memory_order_relaxed);
+            [this]() -> float {
+                const auto runtimeTelemetry = captureRuntimeTelemetry(cs);
+                const float cached = runtimeTelemetry.samplesPerBar;
                 if (cached > 0.0f) return cached;
-                const float tempo = s.tempo.load(std::memory_order_relaxed);
+                const float tempo = runtimeTelemetry.effectiveTempo;
                 if (tempo <= 0.0f) return 0.0f;
-                return static_cast<float>(
-                    (48000.0 * 240.0) / tempo);
+                return static_cast<float>((48000.0 * 240.0) / tempo);
             });
     }
 };
 
 void addStateSnapshot(juce::DynamicObject* obj, const ControlServer& cs,
                       const std::string& prefix) {
-    auto& state = const_cast<ControlServer&>(cs).getAtomicState();
-    obj->setProperty(juce::Identifier(prefix + "tempo"), state.tempo.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "targetBPM"), state.targetBPM.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "volume"), state.masterVolume.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "inputVolume"), state.inputVolume.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "passthrough"), state.passthroughEnabled.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "recording"), state.isRecording.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "overdub"), state.overdubEnabled.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "layer"), state.activeLayer.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "recordMode"), state.recordMode.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "forwardArmed"), state.forwardArmed.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "forwardBars"), state.forwardBars.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "commitCount"), state.commitCount.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "graphEnabled"), state.graphEnabled.load(std::memory_order_relaxed));
+    const auto controlState = captureControlState(cs);
+    const auto runtimeTelemetry = captureRuntimeTelemetry(cs);
+    obj->setProperty(juce::Identifier(prefix + "tempo"), runtimeTelemetry.effectiveTempo);
+    obj->setProperty(juce::Identifier(prefix + "targetBPM"), controlState.targetBPM);
+    obj->setProperty(juce::Identifier(prefix + "volume"), controlState.masterVolume);
+    obj->setProperty(juce::Identifier(prefix + "inputVolume"), controlState.inputVolume);
+    obj->setProperty(juce::Identifier(prefix + "passthrough"), controlState.passthroughEnabled);
+    obj->setProperty(juce::Identifier(prefix + "recording"), controlState.isRecording);
+    obj->setProperty(juce::Identifier(prefix + "overdub"), controlState.overdubEnabled);
+    obj->setProperty(juce::Identifier(prefix + "layer"), controlState.activeLayer);
+    obj->setProperty(juce::Identifier(prefix + "recordMode"), controlState.recordMode);
+    obj->setProperty(juce::Identifier(prefix + "forwardArmed"), controlState.forwardArmed);
+    obj->setProperty(juce::Identifier(prefix + "forwardBars"), controlState.forwardBars);
+    obj->setProperty(juce::Identifier(prefix + "commitCount"), runtimeTelemetry.commitCount);
+    obj->setProperty(juce::Identifier(prefix + "graphEnabled"), runtimeTelemetry.effectiveGraphEnabled);
 }
 
 void addLayerSnapshot(juce::DynamicObject* obj, const ControlServer& cs,
                       int idx, const std::string& prefix) {
-    auto& state = const_cast<ControlServer&>(cs).getAtomicState();
-    auto& ls = state.layers[idx];
-    obj->setProperty(juce::Identifier(prefix + "state"), ls.state.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "volume"), ls.volume.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "speed"), ls.speed.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "reversed"), ls.reversed.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "muted"), ls.muted.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "length"), ls.length.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "playheadPos"), ls.playheadPos.load(std::memory_order_relaxed));
-    obj->setProperty(juce::Identifier(prefix + "numBars"), ls.numBars.load(std::memory_order_relaxed));
+    const auto controlState = captureControlState(cs);
+    const auto runtimeTelemetry = captureRuntimeTelemetry(cs);
+    obj->setProperty(juce::Identifier(prefix + "state"), runtimeTelemetry.layers[idx].state);
+    obj->setProperty(juce::Identifier(prefix + "volume"), controlState.layers[idx].volume);
+    obj->setProperty(juce::Identifier(prefix + "speed"), controlState.layers[idx].speed);
+    obj->setProperty(juce::Identifier(prefix + "reversed"), controlState.layers[idx].reversed);
+    obj->setProperty(juce::Identifier(prefix + "muted"), controlState.layers[idx].muted);
+    obj->setProperty(juce::Identifier(prefix + "length"), runtimeTelemetry.layers[idx].length);
+    obj->setProperty(juce::Identifier(prefix + "playheadPos"), runtimeTelemetry.layers[idx].playheadPos);
+    obj->setProperty(juce::Identifier(prefix + "numBars"), runtimeTelemetry.layers[idx].numBars);
 }
 
 } // namespace
@@ -278,7 +278,7 @@ int main(int argc, char* argv[]) {
         // recording off
         ctx.apply("/core/behavior/recording", 0.0f);
         obj->setProperty("recOff_forwardArmed",
-            ctx.cs.getAtomicState().forwardArmed.load(std::memory_order_relaxed));
+            captureControlState(ctx.cs).forwardArmed);
 
         root->setProperty("applyRecordingAndCommit", juce::var(obj));
     }
@@ -293,15 +293,15 @@ int main(int argc, char* argv[]) {
         // set all layers to playing first then transport=2 (pause)
         ctx.apply("/core/behavior/transport", 1.0f);
         obj->setProperty("transport_play_state0",
-            ctx.cs.getAtomicState().layers[0].state.load(std::memory_order_relaxed));
+            captureRuntimeTelemetry(ctx.cs).layers[0].state);
 
         ctx.apply("/core/behavior/transport", 2.0f);
         obj->setProperty("transport_pause_state0",
-            ctx.cs.getAtomicState().layers[0].state.load(std::memory_order_relaxed));
+            captureRuntimeTelemetry(ctx.cs).layers[0].state);
 
         ctx.apply("/core/behavior/transport", 0.0f);
         obj->setProperty("transport_stop_state0",
-            ctx.cs.getAtomicState().layers[0].state.load(std::memory_order_relaxed));
+            captureRuntimeTelemetry(ctx.cs).layers[0].state);
 
         root->setProperty("transport", juce::var(obj));
     }
@@ -315,43 +315,43 @@ int main(int argc, char* argv[]) {
 
         ctx.apply("/core/behavior/layer/0/volume", 1.2f);
         obj->setProperty("layer0_volume",
-            ctx.cs.getAtomicState().layers[0].volume.load(std::memory_order_relaxed));
+            captureControlState(ctx.cs).layers[0].volume);
 
         ctx.apply("/core/behavior/layer/0/speed", -2.0f);
         obj->setProperty("layer0_speed",
-            ctx.cs.getAtomicState().layers[0].speed.load(std::memory_order_relaxed));
+            captureControlState(ctx.cs).layers[0].speed);
 
         ctx.apply("/core/behavior/layer/0/reverse", 1.0f);
         obj->setProperty("layer0_reverse",
-            ctx.cs.getAtomicState().layers[0].reversed.load(std::memory_order_relaxed));
+            captureControlState(ctx.cs).layers[0].reversed);
 
         ctx.apply("/core/behavior/layer/0/mute", 1.0f);
         obj->setProperty("layer0_mute",
-            ctx.cs.getAtomicState().layers[0].muted.load(std::memory_order_relaxed));
+            captureControlState(ctx.cs).layers[0].muted);
 
         ctx.apply("/core/behavior/layer/0/play", 0.0f);
         obj->setProperty("layer0_play",
-            ctx.cs.getAtomicState().layers[0].state.load(std::memory_order_relaxed));
+            captureRuntimeTelemetry(ctx.cs).layers[0].state);
 
         ctx.apply("/core/behavior/layer/0/pause", 0.0f);
         obj->setProperty("layer0_pause",
-            ctx.cs.getAtomicState().layers[0].state.load(std::memory_order_relaxed));
+            captureRuntimeTelemetry(ctx.cs).layers[0].state);
 
         ctx.apply("/core/behavior/layer/0/stop", 0.0f);
         obj->setProperty("layer0_stop",
-            ctx.cs.getAtomicState().layers[0].state.load(std::memory_order_relaxed));
+            captureRuntimeTelemetry(ctx.cs).layers[0].state);
 
         ctx.apply("/core/behavior/layer/0/clear", 0.0f);
         obj->setProperty("layer0_clear_len",
-            ctx.cs.getAtomicState().layers[0].length.load(std::memory_order_relaxed));
+            captureRuntimeTelemetry(ctx.cs).layers[0].length);
         obj->setProperty("layer0_clear_state",
-            ctx.cs.getAtomicState().layers[0].state.load(std::memory_order_relaxed));
+            captureRuntimeTelemetry(ctx.cs).layers[0].state);
 
         // seek within committed layer
         ctx.apply("/core/behavior/commit", 8.0f);
         ctx.apply("/core/behavior/layer/0/seek", 0.5f); // 50%
         obj->setProperty("layer0_seek",
-            ctx.cs.getAtomicState().layers[0].playheadPos.load(std::memory_order_relaxed));
+            captureRuntimeTelemetry(ctx.cs).layers[0].playheadPos);
 
         root->setProperty("applyLayerSubParams", juce::var(obj));
     }

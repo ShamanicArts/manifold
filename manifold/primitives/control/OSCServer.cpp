@@ -302,7 +302,6 @@ void OSCServer::broadcastStateChanges() {
         if (configuredTargets.isEmpty()) return;
     }
 
-    owner->getControlServer().syncOwnedStateFromLegacyMirror();
     const auto controlState = manifold::state_snapshot::captureBehaviorControlState(
         owner->getControlServer().getBehaviorControlState());
     const auto runtimeTelemetry =

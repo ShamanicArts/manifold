@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../primitives/scripting/ScriptableProcessor.h"
+#include "../primitives/control/BehaviorControlStateView.h"
+#include "../primitives/control/BehaviorRuntimeTelemetryView.h"
 #include "../primitives/control/ControlServer.h"
 #include "../primitives/control/OSCQuery.h"
 #include "../primitives/control/OSCServer.h"
@@ -229,38 +231,43 @@ public:
     }
 
     void seedAtomicState() {
-        auto& state = controlServer.getAtomicState();
-        state.tempo.store(123.5f);
-        state.targetBPM.store(128.0f);
-        state.samplesPerBar.store(96000.0f);
-        state.sampleRate.store(48000.0);
-        state.captureSize.store(2048);
-        state.captureWritePos.store(321);
-        state.captureLevel.store(0.42f);
-        state.isRecording.store(true);
-        state.overdubEnabled.store(false);
-        state.forwardArmed.store(true);
-        state.forwardBars.store(2.0f);
-        state.graphEnabled.store(true);
-        state.recordMode.store(1);
-        state.activeLayer.store(2);
-        state.masterVolume.store(0.8f);
-        state.inputVolume.store(0.65f);
-        state.passthroughEnabled.store(false);
-        state.playTime.store(1536.0);
-        state.commitCount.store(7);
-        state.uptimeSeconds.store(42.5);
+        auto controlState = manifold::control_state_view::BehaviorControlStateView(
+            controlServer.getBehaviorControlState());
+        auto runtimeTelemetry =
+            manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
+                controlServer.getBehaviorRuntimeTelemetry());
 
-        for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
-            auto& layer = state.layers[i];
-            layer.state.store((i == 0) ? 1 : (i == 1) ? 2 : (i == 2) ? 5 : 0);
-            layer.length.store(1000 + i * 250);
-            layer.playheadPos.store(100 + i * 75);
-            layer.speed.store(1.0f + 0.25f * static_cast<float>(i));
-            layer.reversed.store((i % 2) == 1);
-            layer.volume.store(0.9f - 0.1f * static_cast<float>(i));
-            layer.numBars.store(1.0f + 0.5f * static_cast<float>(i));
-            layer.muted.store(false);
+        controlState.setTempo(123.5f);
+        controlState.setTargetBpm(128.0f);
+        runtimeTelemetry.setSamplesPerBar(96000.0f);
+        runtimeTelemetry.setSampleRate(48000.0);
+        runtimeTelemetry.setCaptureSize(2048);
+        runtimeTelemetry.setCaptureWritePos(321);
+        runtimeTelemetry.setCaptureLevel(0.42f);
+        controlState.setIsRecording(true);
+        controlState.setOverdubEnabled(false);
+        controlState.setForwardArmed(true);
+        controlState.setForwardBars(2.0f);
+        controlState.setGraphEnabled(true);
+        runtimeTelemetry.setGraphEnabled(true);
+        controlState.setRecordMode(1);
+        controlState.setActiveLayer(2);
+        controlState.setMasterVolume(0.8f);
+        controlState.setInputVolume(0.65f);
+        controlState.setPassthroughEnabled(false);
+        runtimeTelemetry.setPlayTime(1536.0);
+        runtimeTelemetry.setCommitCount(7);
+        runtimeTelemetry.setUptimeSeconds(42.5);
+
+        for (int i = 0; i < manifold::BehaviorControlState::MAX_LAYERS; ++i) {
+            runtimeTelemetry.setLayerState(i, (i == 0) ? 1 : (i == 1) ? 2 : (i == 2) ? 5 : 0);
+            runtimeTelemetry.setLayerLength(i, 1000 + i * 250);
+            runtimeTelemetry.setLayerPlayheadPos(i, 100 + i * 75);
+            controlState.setLayerSpeed(i, 1.0f + 0.25f * static_cast<float>(i));
+            controlState.setLayerReversed(i, (i % 2) == 1);
+            controlState.setLayerVolume(i, 0.9f - 0.1f * static_cast<float>(i));
+            runtimeTelemetry.setLayerNumBars(i, 1.0f + 0.5f * static_cast<float>(i));
+            controlState.setLayerMuted(i, false);
         }
     }
 
@@ -362,19 +369,28 @@ public:
         if (index < 0 || index >= getNumLayers()) {
             return false;
         }
-        auto& layer = controlServer.getAtomicState().layers[index];
+        const auto controlState =
+            manifold::control_state_view::BehaviorControlStateConstView(
+                controlServer.getBehaviorControlState());
+        const auto runtimeTelemetry =
+            manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+                controlServer.getBehaviorRuntimeTelemetry());
         out.index = index;
-        out.length = layer.length.load();
-        out.position = layer.playheadPos.load();
-        out.speed = layer.speed.load();
-        out.reversed = layer.reversed.load();
-        out.volume = layer.volume.load();
-        out.state = static_cast<ScriptableLayerState>(layer.state.load());
-        out.muted = layer.muted.load();
+        out.length = runtimeTelemetry.layerLength(index);
+        out.position = runtimeTelemetry.layerPlayheadPos(index);
+        out.speed = controlState.layerSpeed(index);
+        out.reversed = controlState.layerReversed(index);
+        out.volume = controlState.layerVolume(index);
+        out.state = static_cast<ScriptableLayerState>(runtimeTelemetry.layerState(index));
+        out.muted = controlState.layerMuted(index);
         return true;
     }
 
-    int getCaptureSize() const override { return controlServer.getAtomicState().captureSize.load(); }
+    int getCaptureSize() const override {
+        return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+            controlServer.getBehaviorRuntimeTelemetry())
+            .captureSize();
+    }
 
     bool computeLayerPeaks(int layerIndex,
                            int numBuckets,
@@ -397,21 +413,81 @@ public:
         return true;
     }
 
-    float getTempo() const override { return controlServer.getAtomicState().tempo.load(); }
-    float getTargetBPM() const override { return controlServer.getAtomicState().targetBPM.load(); }
-    float getSamplesPerBar() const override { return controlServer.getAtomicState().samplesPerBar.load(); }
-    double getSampleRate() const override { return controlServer.getAtomicState().sampleRate.load(); }
-    double getPlayTimeSamples() const override { return controlServer.getAtomicState().playTime.load(); }
-    float getMasterVolume() const override { return controlServer.getAtomicState().masterVolume.load(); }
-    float getInputVolume() const override { return controlServer.getAtomicState().inputVolume.load(); }
-    bool isPassthroughEnabled() const override { return controlServer.getAtomicState().passthroughEnabled.load(); }
-    bool isRecording() const override { return controlServer.getAtomicState().isRecording.load(); }
-    bool isOverdubEnabled() const override { return controlServer.getAtomicState().overdubEnabled.load(); }
-    int getActiveLayerIndex() const override { return controlServer.getAtomicState().activeLayer.load(); }
-    bool isForwardCommitArmed() const override { return controlServer.getAtomicState().forwardArmed.load(); }
-    float getForwardCommitBars() const override { return controlServer.getAtomicState().forwardBars.load(); }
-    int getRecordModeIndex() const override { return controlServer.getAtomicState().recordMode.load(); }
-    int getCommitCount() const override { return controlServer.getAtomicState().commitCount.load(); }
+    float getTempo() const override {
+        return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+            controlServer.getBehaviorRuntimeTelemetry())
+            .tempo();
+    }
+    float getTargetBPM() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .targetBpm();
+    }
+    float getSamplesPerBar() const override {
+        return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+            controlServer.getBehaviorRuntimeTelemetry())
+            .samplesPerBar();
+    }
+    double getSampleRate() const override {
+        return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+            controlServer.getBehaviorRuntimeTelemetry())
+            .sampleRate();
+    }
+    double getPlayTimeSamples() const override {
+        return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+            controlServer.getBehaviorRuntimeTelemetry())
+            .playTime();
+    }
+    float getMasterVolume() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .masterVolume();
+    }
+    float getInputVolume() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .inputVolume();
+    }
+    bool isPassthroughEnabled() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .passthroughEnabled();
+    }
+    bool isRecording() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .isRecording();
+    }
+    bool isOverdubEnabled() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .overdubEnabled();
+    }
+    int getActiveLayerIndex() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .activeLayer();
+    }
+    bool isForwardCommitArmed() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .forwardArmed();
+    }
+    float getForwardCommitBars() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .forwardBars();
+    }
+    int getRecordModeIndex() const override {
+        return manifold::control_state_view::BehaviorControlStateConstView(
+            controlServer.getBehaviorControlState())
+            .recordMode();
+    }
+    int getCommitCount() const override {
+        return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+            controlServer.getBehaviorRuntimeTelemetry())
+            .commitCount();
+    }
     std::array<float, 32> getSpectrumData() const override { return {}; }
 
     bool acceptPostedCommands = true;

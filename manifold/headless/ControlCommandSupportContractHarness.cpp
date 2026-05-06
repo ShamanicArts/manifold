@@ -53,8 +53,7 @@ int main(int argc, char* argv[]) {
 
     juce::ScopedJuceInitialiser_GUI juceInit;
     RecordingProcessor processor;
-    auto& state = processor.getControlServer().getAtomicState();
-    state.overdubEnabled.store(false, std::memory_order_relaxed);
+    controlStateView(processor.getControlServer()).setOverdubEnabled(false);
 
     auto* root = new juce::DynamicObject();
     root->setProperty("contractVersion", 1);
@@ -66,18 +65,18 @@ int main(int argc, char* argv[]) {
         auto* obj = new juce::DynamicObject();
         processor.clearWrites();
 
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetTempo, 0, 132.5f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetTargetBPM, 0, 140.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetMasterVolume, 0, 0.8f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetInputVolume, 0, 0.65f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetPassthroughEnabled, 0, 0.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetActiveLayer, 2, 0.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetRecordMode, 3, 0.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::StartRecording), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::StopRecording), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetOverdubEnabled, 0, 1.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::Commit, 0, 2.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::ForwardCommit, 0, 4.0f), state);
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetTempo, 0, 132.5f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetTargetBPM, 0, 140.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetMasterVolume, 0, 0.8f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetInputVolume, 0, 0.65f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetPassthroughEnabled, 0, 0.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetActiveLayer, 2, 0.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetRecordMode, 3, 0.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::StartRecording));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::StopRecording));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::SetOverdubEnabled, 0, 1.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::Commit, 0, 2.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::ForwardCommit, 0, 4.0f));
 
         obj->setProperty("writeCount", static_cast<int>(processor.writes.size()));
         if (!processor.writes.empty()) {
@@ -94,16 +93,16 @@ int main(int argc, char* argv[]) {
         auto* obj = new juce::DynamicObject();
         processor.clearWrites();
 
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerVolume, 1, 0.4f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerSpeed, 2, 1.5f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerReverse, 3, 1.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerMute, 0, 1.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerPlay, 1, 0.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerPause, 2, 0.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerStop, 3, 0.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerClear, 0, 0.0f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerSeek, 2, 0.33f), state);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::ClearAllLayers), state);
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerVolume, 1, 0.4f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerSpeed, 2, 1.5f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerReverse, 3, 1.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerMute, 0, 1.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerPlay, 1, 0.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerPause, 2, 0.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerStop, 3, 0.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerClear, 0, 0.0f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::LayerSeek, 2, 0.33f));
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::ClearAllLayers));
 
         obj->setProperty("writeCount", static_cast<int>(processor.writes.size()));
         if (processor.writes.size() >= 9) {
@@ -126,9 +125,10 @@ int main(int argc, char* argv[]) {
     // =====================================================================
     {
         auto* obj = new juce::DynamicObject();
-        state.overdubEnabled.store(false, std::memory_order_relaxed);
-        applyControlCommand(processor, makeCommand(ControlCommand::Type::ToggleOverdub), state);
-        obj->setProperty("overdubAfterToggle", state.overdubEnabled.load(std::memory_order_relaxed));
+        controlStateView(processor.getControlServer()).setOverdubEnabled(false);
+        applyControlCommand(processor, makeCommand(ControlCommand::Type::ToggleOverdub));
+        obj->setProperty("overdubAfterToggle",
+                         controlStateView(processor.getControlServer()).overdubEnabled());
 
         processor.clearWrites();
         auto& queue = processor.getControlServer().getCommandQueue();

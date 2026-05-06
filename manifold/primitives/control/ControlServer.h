@@ -367,14 +367,10 @@ public:
   SPSCQueue<scripting::QueueConfig::COMMAND_QUEUE_SIZE> &getCommandQueue() { return commandQueue; }
   bool enqueueCommand(const ControlCommand &command);
   void pushEvent(const char *json, int len) { eventRing.push(json, len); }
-  AtomicState &getAtomicState() { return atomicState; }
-  const AtomicState &getAtomicState() const { return atomicState; }
   manifold::BehaviorControlState &getBehaviorControlState() { return behaviorControlState; }
   const manifold::BehaviorControlState &getBehaviorControlState() const { return behaviorControlState; }
   manifold::BehaviorRuntimeTelemetry &getBehaviorRuntimeTelemetry() { return behaviorRuntimeTelemetry; }
   const manifold::BehaviorRuntimeTelemetry &getBehaviorRuntimeTelemetry() const { return behaviorRuntimeTelemetry; }
-  void syncOwnedStateFromLegacyMirror();
-  void syncLegacyMirrorFromOwnedState();
 
   // Audio injection: audio thread calls this each block to drain injected
   // audio into the CaptureBuffer. Returns number of samples injected.
@@ -492,7 +488,6 @@ private:
   EventRing<scripting::QueueConfig::EVENT_QUEUE_SIZE> eventRing;
   manifold::BehaviorControlState behaviorControlState;
   manifold::BehaviorRuntimeTelemetry behaviorRuntimeTelemetry;
-  AtomicState atomicState;
 
   // Audio injection state
   // Server thread writes a new InjectionBuffer then sets injectionActive.

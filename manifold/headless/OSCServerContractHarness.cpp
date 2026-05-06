@@ -160,23 +160,27 @@ std::optional<OscPacket> readOscPacket(int fd, int timeoutMs = 2000) {
 }
 
 void resetStateForBroadcastBaseline(MockControlProcessor& processor) {
-    auto& state = processor.getControlServer().getAtomicState();
-    state.tempo.store(120.0f);
-    state.isRecording.store(false);
-    state.overdubEnabled.store(false);
-    state.recordMode.store(0);
-    state.activeLayer.store(0);
-    state.masterVolume.store(1.0f);
+    auto controlState = contract_harness_utils::controlStateView(
+        processor.getControlServer());
+    auto runtimeTelemetry = contract_harness_utils::runtimeTelemetryView(
+        processor.getControlServer());
 
-    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
-        auto& layer = state.layers[i];
-        layer.state.store(0);
-        layer.speed.store(1.0f);
-        layer.volume.store(1.0f);
-        layer.reversed.store(false);
-        layer.playheadPos.store(0);
-        layer.length.store(0);
-        layer.numBars.store(0.0f);
+    controlState.setTempo(120.0f);
+    runtimeTelemetry.setTempo(120.0f);
+    controlState.setIsRecording(false);
+    controlState.setOverdubEnabled(false);
+    controlState.setRecordMode(0);
+    controlState.setActiveLayer(0);
+    controlState.setMasterVolume(1.0f);
+
+    for (int i = 0; i < manifold::BehaviorControlState::MAX_LAYERS; ++i) {
+        runtimeTelemetry.setLayerState(i, 0);
+        controlState.setLayerSpeed(i, 1.0f);
+        controlState.setLayerVolume(i, 1.0f);
+        controlState.setLayerReversed(i, false);
+        runtimeTelemetry.setLayerPlayheadPos(i, 0);
+        runtimeTelemetry.setLayerLength(i, 0);
+        runtimeTelemetry.setLayerNumBars(i, 0.0f);
     }
 }
 
@@ -299,7 +303,8 @@ int main(int argc, char* argv[]) {
             obj->setProperty("directPacket", oscPacketToVar(*directPacket));
         }
 
-        processor.getControlServer().getAtomicState().tempo.store(135.0f);
+        contract_harness_utils::runtimeTelemetryView(processor.getControlServer())
+            .setTempo(135.0f);
         const auto diffPacket = readOscPacket(listener.fd, 2500);
         obj->setProperty("stateDiffSeen", diffPacket.has_value());
         if (diffPacket.has_value()) {

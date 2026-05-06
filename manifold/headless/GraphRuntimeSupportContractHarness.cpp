@@ -87,7 +87,10 @@ int main(int argc, char* argv[]) {
         std::atomic<int> graphProcessDepth{1};
         bool graphMutationRestoreEnabled = false;
         ControlServer controlServer;
-        controlServer.getAtomicState().graphEnabled.store(true, std::memory_order_relaxed);
+        auto controlState = contract_harness_utils::controlStateView(controlServer);
+        auto runtimeTelemetry = contract_harness_utils::runtimeTelemetryView(controlServer);
+        controlState.setGraphEnabled(true);
+        runtimeTelemetry.setGraphEnabled(true);
 
         std::thread releaser([&]() {
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
@@ -105,7 +108,7 @@ int main(int argc, char* argv[]) {
         obj->setProperty("pauseRequestedAfterBegin", graphMutationPauseRequested.load(std::memory_order_relaxed));
         obj->setProperty("processingEnabledAfterBegin", graphProcessingEnabled.load(std::memory_order_relaxed));
         obj->setProperty("restoreEnabledAfterBegin", graphMutationRestoreEnabled);
-        obj->setProperty("atomicGraphEnabledAfterBegin", controlServer.getAtomicState().graphEnabled.load(std::memory_order_relaxed));
+        obj->setProperty("atomicGraphEnabledAfterBegin", contract_harness_utils::captureRuntimeTelemetry(controlServer).effectiveGraphEnabled);
 
         endGraphMutation(graphMutationMutex,
                          graphMutationPauseRequested,
@@ -118,7 +121,7 @@ int main(int argc, char* argv[]) {
         obj->setProperty("pauseRequestedAfterEnd", graphMutationPauseRequested.load(std::memory_order_relaxed));
         obj->setProperty("processingEnabledAfterEnd", graphProcessingEnabled.load(std::memory_order_relaxed));
         obj->setProperty("restoreEnabledAfterEnd", graphMutationRestoreEnabled);
-        obj->setProperty("atomicGraphEnabledAfterEnd", controlServer.getAtomicState().graphEnabled.load(std::memory_order_relaxed));
+        obj->setProperty("atomicGraphEnabledAfterEnd", contract_harness_utils::captureRuntimeTelemetry(controlServer).effectiveGraphEnabled);
         root->setProperty("mutationPause", juce::var(obj));
     }
 

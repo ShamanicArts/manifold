@@ -128,10 +128,11 @@ int main(int argc, char* argv[]) {
     // =====================================================================
     {
         ControlServer cs;
-        auto& state = cs.getAtomicState();
-        state.forwardArmed.store(true, std::memory_order_release);
-        state.forwardBars.store(4.0f, std::memory_order_release);
-        state.samplesPerBar.store(22050.0f, std::memory_order_release);
+        auto controlState = controlStateView(cs);
+        auto runtimeTelemetry = runtimeTelemetryView(cs);
+        controlState.setForwardArmed(true);
+        controlState.setForwardBars(4.0f);
+        runtimeTelemetry.setSamplesPerBar(22050.0f);
 
         std::atomic<double> playTime{10000.0};
         bool forwardScheduled = false;
@@ -165,43 +166,44 @@ int main(int argc, char* argv[]) {
 
         initialiseAtomicState(cs, 48000.0, buf, graphEnabled, 130.0f, 130.0f, 0.85f, 0.9f);
 
-        auto& st = cs.getAtomicState();
+        const auto controlState = captureControlState(cs);
+        const auto runtimeTelemetry = captureRuntimeTelemetry(cs);
         auto* obj = new juce::DynamicObject();
-        obj->setProperty("sampleRate", st.sampleRate.load(std::memory_order_relaxed));
-        obj->setProperty("tempo", st.tempo.load(std::memory_order_relaxed));
-        obj->setProperty("targetBPM", st.targetBPM.load(std::memory_order_relaxed));
+        obj->setProperty("sampleRate", runtimeTelemetry.sampleRate);
+        obj->setProperty("tempo", runtimeTelemetry.effectiveTempo);
+        obj->setProperty("targetBPM", controlState.targetBPM);
         obj->setProperty("samplesPerBar",
-            st.samplesPerBar.load(std::memory_order_relaxed));
+            runtimeTelemetry.samplesPerBar);
         obj->setProperty("captureSize",
-            st.captureSize.load(std::memory_order_relaxed));
+            runtimeTelemetry.captureSize);
         obj->setProperty("isRecording",
-            st.isRecording.load(std::memory_order_relaxed));
+            controlState.isRecording);
         obj->setProperty("overdubEnabled",
-            st.overdubEnabled.load(std::memory_order_relaxed));
+            controlState.overdubEnabled);
         obj->setProperty("forwardArmed",
-            st.forwardArmed.load(std::memory_order_relaxed));
+            controlState.forwardArmed);
         obj->setProperty("graphEnabled",
-            st.graphEnabled.load(std::memory_order_relaxed));
+            runtimeTelemetry.effectiveGraphEnabled);
         obj->setProperty("recordMode",
-            st.recordMode.load(std::memory_order_relaxed));
+            controlState.recordMode);
         obj->setProperty("activeLayer",
-            st.activeLayer.load(std::memory_order_relaxed));
+            controlState.activeLayer);
         obj->setProperty("masterVolume",
-            st.masterVolume.load(std::memory_order_relaxed));
+            controlState.masterVolume);
         obj->setProperty("inputVolume",
-            st.inputVolume.load(std::memory_order_relaxed));
+            controlState.inputVolume);
         obj->setProperty("passthroughEnabled",
-            st.passthroughEnabled.load(std::memory_order_relaxed));
+            controlState.passthroughEnabled);
         obj->setProperty("commitCount",
-            st.commitCount.load(std::memory_order_relaxed));
+            runtimeTelemetry.commitCount);
         obj->setProperty("layer0_speed",
-            st.layers[0].speed.load(std::memory_order_relaxed));
+            controlState.layers[0].speed);
         obj->setProperty("layer0_state",
-            st.layers[0].state.load(std::memory_order_relaxed));
+            runtimeTelemetry.layers[0].state);
         obj->setProperty("layer7_speed",
-            st.layers[7].speed.load(std::memory_order_relaxed));
+            controlState.layers[7].speed);
         obj->setProperty("layer7_state",
-            st.layers[7].state.load(std::memory_order_relaxed));
+            runtimeTelemetry.layers[7].state);
 
         root->setProperty("initialiseAtomicState", juce::var(obj));
     }

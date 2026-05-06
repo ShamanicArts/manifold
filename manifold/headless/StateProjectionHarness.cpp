@@ -1,9 +1,13 @@
+#include "ContractHarnessUtils.h"
+
 #include "../primitives/control/ControlServer.h"
 
 #include <cmath>
 #include <cstdio>
 
 namespace {
+
+using namespace contract_harness_utils;
 
 bool nearlyEqual(double left, double right, double epsilon = 0.0001) {
   return std::abs(left - right) <= epsilon;
@@ -38,30 +42,30 @@ juce::String getStringProperty(const juce::var &objectVar,
 
 int main() {
   ControlServer server;
-  auto &state = server.getAtomicState();
+  auto controlState = controlStateView(server);
+  auto runtimeTelemetry = runtimeTelemetryView(server);
 
-  state.tempo.store(133.5f);
-  state.targetBPM.store(128.25f);
-  state.samplesPerBar.store(88200.0f);
-  state.sampleRate.store(48000.0);
-  state.captureSize.store(2048);
-  state.masterVolume.store(0.73f);
-  state.activeLayer.store(2);
-  state.recordMode.store(1);
-  state.isRecording.store(true);
-  state.overdubEnabled.store(false);
-  state.forwardArmed.store(true);
-  state.forwardBars.store(1.5f);
+  controlState.setTempo(133.5f);
+  controlState.setTargetBpm(128.25f);
+  runtimeTelemetry.setSamplesPerBar(88200.0f);
+  runtimeTelemetry.setSampleRate(48000.0);
+  runtimeTelemetry.setCaptureSize(2048);
+  controlState.setMasterVolume(0.73f);
+  controlState.setActiveLayer(2);
+  controlState.setRecordMode(1);
+  controlState.setIsRecording(true);
+  controlState.setOverdubEnabled(false);
+  controlState.setForwardArmed(true);
+  controlState.setForwardBars(1.5f);
 
-  for (int index = 0; index < AtomicState::MAX_LAYERS; ++index) {
-    auto &layer = state.layers[index];
-    layer.length.store(1000 * (index + 1));
-    layer.playheadPos.store(100 * (index + 1));
-    layer.speed.store(0.5f + static_cast<float>(index));
-    layer.volume.store(0.25f + static_cast<float>(index) * 0.1f);
-    layer.reversed.store((index % 2) == 1);
-    layer.numBars.store(0.5f * static_cast<float>(index + 1));
-    layer.state.store(index % 7);
+  for (int index = 0; index < manifold::BehaviorControlState::MAX_LAYERS; ++index) {
+    runtimeTelemetry.setLayerLength(index, 1000 * (index + 1));
+    runtimeTelemetry.setLayerPlayheadPos(index, 100 * (index + 1));
+    controlState.setLayerSpeed(index, 0.5f + static_cast<float>(index));
+    controlState.setLayerVolume(index, 0.25f + static_cast<float>(index) * 0.1f);
+    controlState.setLayerReversed(index, (index % 2) == 1);
+    runtimeTelemetry.setLayerNumBars(index, 0.5f * static_cast<float>(index + 1));
+    runtimeTelemetry.setLayerState(index, index % 7);
   }
 
   const juce::String stateJson(server.getStateJson());
@@ -82,7 +86,7 @@ int main() {
 
   check(getNumberProperty(parsed, "projectionVersion") == 2.0,
         "projectionVersion is 2");
-  check(getNumberProperty(parsed, "numVoices") == AtomicState::MAX_LAYERS,
+  check(getNumberProperty(parsed, "numVoices") == manifold::BehaviorControlState::MAX_LAYERS,
         "numVoices matches layer count");
 
   const auto *rootObject = parsed.getDynamicObject();
@@ -106,7 +110,7 @@ int main() {
 
   check(paramsObject != nullptr, "params object exists");
   check(voicesArray != nullptr, "voices array exists");
-  check(static_cast<int>(voicesArray->size()) == AtomicState::MAX_LAYERS,
+  check(static_cast<int>(voicesArray->size()) == manifold::BehaviorControlState::MAX_LAYERS,
         "voices array has expected entries");
 
   check(nearlyEqual(static_cast<double>(paramsObject->getProperty("/core/behavior/tempo")),
@@ -141,7 +145,7 @@ int main() {
                     1.5),
         "params forwardBars matches atomic forwardBars");
 
-  for (int index = 0; index < AtomicState::MAX_LAYERS; ++index) {
+  for (int index = 0; index < manifold::BehaviorControlState::MAX_LAYERS; ++index) {
     const juce::var &voiceVar = (*voicesArray)[index];
 
     const juce::String prefix = "/core/behavior/layer/" + juce::String(index);

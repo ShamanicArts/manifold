@@ -42,12 +42,10 @@ inline void scheduleForwardCommitIfNeeded(ControlServer& controlServer,
                                           bool& forwardScheduled,
                                           double& forwardFireAtSample,
                                           float& forwardScheduledBars) {
-    controlServer.syncOwnedStateFromLegacyMirror();
-    auto& state = controlServer.getAtomicState();
     manifold::control_state_view::BehaviorControlStateConstView controlState(
-        controlServer.getBehaviorControlState(), &state);
+        controlServer.getBehaviorControlState());
     manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView runtimeTelemetry(
-        controlServer.getBehaviorRuntimeTelemetry(), &state);
+        controlServer.getBehaviorRuntimeTelemetry());
 
     const bool armed = controlState.forwardArmed();
     const float bars = controlState.forwardBars();
@@ -82,11 +80,10 @@ inline void initialiseAtomicState(ControlServer& controlServer,
                                   float defaultTargetBpm,
                                   float defaultMasterVolume,
                                   float defaultInputVolume) {
-    auto& state = controlServer.getAtomicState();
     manifold::control_state_view::BehaviorControlStateView controlState(
-        controlServer.getBehaviorControlState(), &state);
+        controlServer.getBehaviorControlState());
     manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView runtimeTelemetry(
-        controlServer.getBehaviorRuntimeTelemetry(), &state);
+        controlServer.getBehaviorRuntimeTelemetry());
 
     runtimeTelemetry.setSampleRate(sampleRate);
     controlState.setTempo(defaultTempo);

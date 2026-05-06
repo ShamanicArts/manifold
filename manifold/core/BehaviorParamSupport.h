@@ -81,11 +81,10 @@ inline bool applyParamPath(
     float& forwardScheduledBars,
     const std::function<void()>& scheduleForwardCommitIfNeeded,
     const std::function<float()>& getSamplesPerBar) {
-    controlServer.syncOwnedStateFromLegacyMirror();
     manifold::control_state_view::BehaviorControlStateView controlState(
-        controlServer.getBehaviorControlState(), &controlServer.getAtomicState());
+        controlServer.getBehaviorControlState());
     manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView runtimeTelemetry(
-        controlServer.getBehaviorRuntimeTelemetry(), &controlServer.getAtomicState());
+        controlServer.getBehaviorRuntimeTelemetry());
 
     if (path == "/core/behavior/tempo") {
         const float tempo = juce::jlimit(20.0f, 300.0f, value);
@@ -344,11 +343,10 @@ inline float readCoreParamPath(
     const LinkSync& linkSync,
     const DSPPluginScriptHost* dspScriptHost,
     const std::unordered_map<std::string, std::unique_ptr<DSPPluginScriptHost>>& dspSlots) {
-    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
     manifold::control_state_view::BehaviorControlStateConstView controlState(
-        controlServer.getBehaviorControlState(), nullptr);
+        controlServer.getBehaviorControlState());
     manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView runtimeTelemetry(
-        controlServer.getBehaviorRuntimeTelemetry(), nullptr);
+        controlServer.getBehaviorRuntimeTelemetry());
 
     if (path == "/core/behavior/tempo") {
         return runtimeTelemetry.tempo();

@@ -42,12 +42,12 @@ struct ApplyContext {
             forwardScheduledBars,
             [this]() { ++scheduleCount; },
             [this]() -> float {
-                const auto& state = controlServer.getAtomicState();
-                const float cached = state.samplesPerBar.load(std::memory_order_relaxed);
+                const auto runtimeTelemetry = captureRuntimeTelemetry(controlServer);
+                const float cached = runtimeTelemetry.samplesPerBar;
                 if (cached > 0.0f) {
                     return cached;
                 }
-                const float tempo = state.tempo.load(std::memory_order_relaxed);
+                const float tempo = captureRuntimeTelemetry(controlServer).effectiveTempo;
                 if (tempo <= 0.0f) {
                     return 0.0f;
                 }
@@ -56,32 +56,14 @@ struct ApplyContext {
     }
 };
 
-juce::var stateSummary(const AtomicState& state) {
-    auto* obj = new juce::DynamicObject();
-    obj->setProperty("tempo", state.tempo.load(std::memory_order_relaxed));
-    obj->setProperty("samplesPerBar", state.samplesPerBar.load(std::memory_order_relaxed));
-    obj->setProperty("isRecording", state.isRecording.load(std::memory_order_relaxed));
-    obj->setProperty("overdubEnabled", state.overdubEnabled.load(std::memory_order_relaxed));
-    obj->setProperty("forwardArmed", state.forwardArmed.load(std::memory_order_relaxed));
-    obj->setProperty("forwardBars", state.forwardBars.load(std::memory_order_relaxed));
-    obj->setProperty("activeLayer", state.activeLayer.load(std::memory_order_relaxed));
-    obj->setProperty("recordMode", state.recordMode.load(std::memory_order_relaxed));
-    obj->setProperty("graphEnabled", state.graphEnabled.load(std::memory_order_relaxed));
-    obj->setProperty("commitCount", state.commitCount.load(std::memory_order_relaxed));
-    return juce::var(obj);
+juce::var stateSummary(const ControlServer& controlServer) {
+    return legacyStateToVar(controlServer);
 }
 
-juce::var layerSummary(const AtomicLayerState& layer) {
-    auto* obj = new juce::DynamicObject();
-    obj->setProperty("state", layer.state.load(std::memory_order_relaxed));
-    obj->setProperty("length", layer.length.load(std::memory_order_relaxed));
-    obj->setProperty("playheadPos", layer.playheadPos.load(std::memory_order_relaxed));
-    obj->setProperty("speed", layer.speed.load(std::memory_order_relaxed));
-    obj->setProperty("reversed", layer.reversed.load(std::memory_order_relaxed));
-    obj->setProperty("volume", layer.volume.load(std::memory_order_relaxed));
-    obj->setProperty("numBars", layer.numBars.load(std::memory_order_relaxed));
-    obj->setProperty("muted", layer.muted.load(std::memory_order_relaxed));
-    return juce::var(obj);
+juce::var layerSummary(const ControlServer& controlServer, int index) {
+    return legacyLayerStateToVar(captureControlState(controlServer),
+                                 captureRuntimeTelemetry(controlServer),
+                                 index);
 }
 
 } // namespace
@@ -102,9 +84,9 @@ int main(int argc, char* argv[]) {
         ApplyContext ctx;
         auto* obj = new juce::DynamicObject();
         obj->setProperty("applyResult", ctx.apply("/core/behavior/tempo", 150.0f));
-        const auto& state = ctx.controlServer.getAtomicState();
-        obj->setProperty("tempo", state.tempo.load(std::memory_order_relaxed));
-        obj->setProperty("samplesPerBar", state.samplesPerBar.load(std::memory_order_relaxed));
+        const auto runtimeTelemetry = captureRuntimeTelemetry(ctx.controlServer);
+        obj->setProperty("tempo", runtimeTelemetry.effectiveTempo);
+        obj->setProperty("samplesPerBar", runtimeTelemetry.samplesPerBar);
         obj->setProperty("expectedSamplesPerBar", computeSamplesPerBar(150.0f, 48000.0));
         obj->setProperty("scheduleCount", ctx.scheduleCount);
         root->setProperty("tempoUpdatesSamplesPerBar", juce::var(obj));
@@ -119,10 +101,9 @@ int main(int argc, char* argv[]) {
         ctx.apply("/core/behavior/layer", 3.0f);
         obj->setProperty("recordingApplyResult", ctx.apply("/core/behavior/recording", 1.0f));
 
-        const auto& state = ctx.controlServer.getAtomicState();
-        obj->setProperty("state", stateSummary(state));
-        obj->setProperty("selectedLayer", layerSummary(state.layers[3]));
-        obj->setProperty("layer0", layerSummary(state.layers[0]));
+        obj->setProperty("state", stateSummary(ctx.controlServer));
+        obj->setProperty("selectedLayer", layerSummary(ctx.controlServer, 3));
+        obj->setProperty("layer0", layerSummary(ctx.controlServer, 0));
         obj->setProperty("expectedRecordingState", static_cast<int>(ScriptableLayerState::Recording));
         obj->setProperty("scheduleCount", ctx.scheduleCount);
         root->setProperty("recordingUsesActiveLayer", juce::var(obj));
@@ -137,7 +118,7 @@ int main(int argc, char* argv[]) {
         ctx.apply("/core/behavior/forward", 2.5f);
         ctx.apply("/core/behavior/recording", 1.0f);
         obj->setProperty("recordingOffApplyResult", ctx.apply("/core/behavior/recording", 0.0f));
-        obj->setProperty("state", stateSummary(ctx.controlServer.getAtomicState()));
+        obj->setProperty("state", stateSummary(ctx.controlServer));
         obj->setProperty("forwardScheduled", ctx.forwardScheduled);
         obj->setProperty("forwardFireAtSample", ctx.forwardFireAtSample);
         obj->setProperty("forwardScheduledBars", ctx.forwardScheduledBars);
@@ -154,10 +135,9 @@ int main(int argc, char* argv[]) {
         ctx.apply("/core/behavior/forward", 1.5f);
         obj->setProperty("commitApplyResult", ctx.apply("/core/behavior/commit", 1.25f));
 
-        const auto& state = ctx.controlServer.getAtomicState();
-        obj->setProperty("state", stateSummary(state));
-        obj->setProperty("selectedLayer", layerSummary(state.layers[2]));
-        obj->setProperty("otherLayer", layerSummary(state.layers[1]));
+        obj->setProperty("state", stateSummary(ctx.controlServer));
+        obj->setProperty("selectedLayer", layerSummary(ctx.controlServer, 2));
+        obj->setProperty("otherLayer", layerSummary(ctx.controlServer, 1));
         obj->setProperty("expectedLength", static_cast<int>(1.25f * 96000.0f));
         obj->setProperty("expectedBars", 1.25f);
         obj->setProperty("expectedPlayingState", static_cast<int>(ScriptableLayerState::Playing));
@@ -178,8 +158,7 @@ int main(int argc, char* argv[]) {
             ctx.forwardFireAtSample,
             ctx.forwardScheduledBars);
 
-        const auto& state = ctx.controlServer.getAtomicState();
-        obj->setProperty("state", stateSummary(state));
+        obj->setProperty("state", stateSummary(ctx.controlServer));
         obj->setProperty("forwardScheduled", ctx.forwardScheduled);
         obj->setProperty("forwardFireAtSample", ctx.forwardFireAtSample);
         obj->setProperty("forwardScheduledBars", ctx.forwardScheduledBars);
@@ -195,9 +174,8 @@ int main(int argc, char* argv[]) {
         auto* obj = new juce::DynamicObject();
         obj->setProperty("speedApplyResult", ctx.apply("/core/behavior/layer/4/speed", -2.0f));
         obj->setProperty("muteApplyResult", ctx.apply("/core/behavior/layer/4/mute", 1.0f));
-        const auto& state = ctx.controlServer.getAtomicState();
-        obj->setProperty("layer4", layerSummary(state.layers[4]));
-        obj->setProperty("layer3", layerSummary(state.layers[3]));
+        obj->setProperty("layer4", layerSummary(ctx.controlServer, 4));
+        obj->setProperty("layer3", layerSummary(ctx.controlServer, 3));
         root->setProperty("layerParamLocality", juce::var(obj));
     }
 
