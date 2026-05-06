@@ -13,6 +13,7 @@ extern "C" {
 #include "../midi/MidiManager.h"
 #include "ScriptableProcessor.h"
 #include "PrimitiveGraph.h"
+#include "ScriptPathResolver.h"
 #include "../../core/BehaviorCoreProcessor.h"
 #include "dsp/core/nodes/PrimitiveNodes.h"
 #include "bindings/LuaUIBindings.h"
@@ -41,68 +42,6 @@ extern "C" {
 #include <juce_graphics/juce_graphics.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_opengl/juce_opengl.h>
-
-// ============================================================================
-// DSP Primitive wrappers (Phase 2)
-// ============================================================================
-
-namespace dsp_primitives {
-
-void LoopBufferWrapper::setSize(int sizeSamples, int channels) {
-  length_ = sizeSamples;
-  channels_ = channels;
-}
-
-int LoopBufferWrapper::getLength() const { return length_; }
-int LoopBufferWrapper::getChannels() const { return channels_; }
-void LoopBufferWrapper::setCrossfade(float ms) { crossfadeMs_ = ms; }
-float LoopBufferWrapper::getCrossfade() const { return crossfadeMs_; }
-
-void PlayheadWrapper::setLoopLength(int length) { loopLength_ = length; }
-int PlayheadWrapper::getLoopLength() const { return loopLength_; }
-void PlayheadWrapper::setPosition(float normalized) {
-  position_ = static_cast<int>(normalized * loopLength_);
-}
-float PlayheadWrapper::getPosition() const {
-  return loopLength_ > 0 ? static_cast<float>(position_) / loopLength_ : 0.0f;
-}
-void PlayheadWrapper::setSpeed(float speed) { speed_ = speed; }
-float PlayheadWrapper::getSpeed() const { return speed_; }
-void PlayheadWrapper::setReversed(bool reversed) { reversed_ = reversed; }
-bool PlayheadWrapper::isReversed() const { return reversed_; }
-void PlayheadWrapper::play() { playing_ = true; }
-void PlayheadWrapper::pause() { playing_ = false; }
-void PlayheadWrapper::stop() { playing_ = false; position_ = 0; }
-
-void CaptureBufferWrapper::setSize(int sizeSamples, int channels) {
-  size_ = sizeSamples;
-  channels_ = channels;
-}
-int CaptureBufferWrapper::getSize() const { return size_; }
-int CaptureBufferWrapper::getChannels() const { return channels_; }
-void CaptureBufferWrapper::setRecordEnabled(bool enabled) { recordEnabled_ = enabled; }
-bool CaptureBufferWrapper::isRecordEnabled() const { return recordEnabled_; }
-void CaptureBufferWrapper::clear() { recordEnabled_ = false; }
-
-void QuantizerWrapper::setSampleRate(double sampleRate) { sampleRate_ = sampleRate; }
-void QuantizerWrapper::setTempo(float bpm) { tempo_ = bpm; }
-float QuantizerWrapper::getTempo() const { return tempo_; }
-
-int QuantizerWrapper::getQuantizedLength(int samples) const {
-  if (tempo_ <= 0.0f || sampleRate_ <= 0.0) return samples;
-  float samplesPerBeat = sampleRate_ * 60.0f / tempo_;
-  int beats = static_cast<int>(std::round(static_cast<float>(samples) / samplesPerBeat));
-  return static_cast<int>(beats * samplesPerBeat);
-}
-
-float QuantizerWrapper::getQuantizedBars(int samples) const {
-  if (tempo_ <= 0.0f || sampleRate_ <= 0.0) return 0.0f;
-  float samplesPerBeat = sampleRate_ * 60.0f / tempo_;
-  float samplesPerBar = samplesPerBeat * 4.0f;
-  return static_cast<float>(samples) / samplesPerBar;
-}
-
-} // namespace dsp_primitives
 
 using namespace juce::gl;
 
@@ -166,257 +105,6 @@ std::string luaEvalResultToString(const sol::object &value) {
   }
 
   return "[value]";
-}
-
-bool isProjectManifestFile(const juce::File& file) {
-  return file.existsAsFile() &&
-         file.getFileName().equalsIgnoreCase("manifold.project.json5");
-}
-
-bool isStructuredUiFile(const juce::File& file) {
-  return file.existsAsFile() &&
-         file.getFileName().endsWithIgnoreCase(".ui.lua");
-}
-
-struct UiLoadTarget {
-  juce::File requestedPath;
-  juce::File bootstrapPath;
-  juce::File projectRoot;
-  juce::File manifestFile;
-  juce::File structuredUiRoot;
-  juce::File dspDefaultFile;
-  juce::String displayName;
-  bool isProject = false;
-  bool isStructured = false;
-  bool isSystemProject = false;  // True if project has no DSP (UI-only/system project)
-  bool isOverlay = false;        // True if project should overlay on top of current (not replace)
-  bool useSharedShell = true;    // False requests minimal export UI in plugin hosts
-  std::string error;
-};
-
-bool shouldUseSharedShell(const UiLoadTarget& target, bool isOverlay) {
-  if (isOverlay) {
-    return false;
-  }
-
-  if (target.useSharedShell) {
-    return true;
-  }
-
-  // Export projects suppress the shared shell inside real plugin wrappers,
-  // but when the same manifest is opened in a standalone app we still need
-  // shell chrome and project tabs or the host UI tears itself apart.
-  return juce::JUCEApplicationBase::isStandaloneApp();
-}
-
-juce::String escapeLuaString(const juce::String& text) {
-  auto s = text.replace("\\", "\\\\");
-  s = s.replace("\"", "\\\"");
-  s = s.replace("\n", "\\n");
-  s = s.replace("\r", "\\r");
-  return s;
-}
-
-juce::File resolveCompiledSystemUiDir() {
-#ifdef MANIFOLD_SOURCE_DIR
-  auto sourceDir = juce::String(JUCE_STRINGIFY(MANIFOLD_SOURCE_DIR));
-  if (sourceDir.length() >= 2 && sourceDir.startsWithChar('"') && sourceDir.endsWithChar('"')) {
-    sourceDir = sourceDir.substring(1, sourceDir.length() - 1);
-  }
-  juce::File dir(sourceDir);
-  if (dir.isDirectory()) {
-    auto uiDir = dir.getChildFile("manifold").getChildFile("ui");
-    if (uiDir.isDirectory()) {
-      return uiDir;
-    }
-  }
-#endif
-  return {};
-}
-
-juce::File resolveSystemUiDir() {
-  auto& settings = Settings::getInstance();
-  auto devDir = settings.getDevScriptsDir();
-  if (devDir.isNotEmpty()) {
-    juce::File dir(devDir);
-    if (dir.isDirectory()) {
-      return dir;
-    }
-  }
-
-  auto compiledUiDir = resolveCompiledSystemUiDir();
-  if (compiledUiDir.isDirectory()) {
-    return compiledUiDir;
-  }
-
-  auto defaultUiScript = settings.getDefaultUiScript();
-  if (defaultUiScript.isNotEmpty()) {
-    juce::File script(defaultUiScript);
-    if (script.existsAsFile() && !script.getFileName().equalsIgnoreCase("manifold.project.json5")) {
-      return script.getParentDirectory();
-    }
-  }
-
-  return {};
-}
-
-juce::File resolveProjectAssetRef(const juce::File& projectRoot,
-                                  const juce::String& ref) {
-  if (ref.isEmpty()) {
-    return {};
-  }
-
-  juce::File absoluteCandidate(ref);
-  if (juce::File::isAbsolutePath(ref)) {
-    return absoluteCandidate;
-  }
-
-  auto& settings = Settings::getInstance();
-  juce::File userRoot(settings.getUserScriptsDir());
-  juce::File systemUiRoot = resolveSystemUiDir();
-  juce::File systemDspRoot(settings.getDspScriptsDir());
-
-  if (ref.startsWith("user:ui/")) {
-    return userRoot.getChildFile("ui").getChildFile(ref.fromFirstOccurrenceOf("user:ui/", false, false));
-  }
-  if (ref.startsWith("user:dsp/")) {
-    return userRoot.getChildFile("dsp").getChildFile(ref.fromFirstOccurrenceOf("user:dsp/", false, false));
-  }
-  if (ref.startsWith("system:ui/")) {
-    return systemUiRoot.getChildFile(ref.fromFirstOccurrenceOf("system:ui/", false, false));
-  }
-  if (ref.startsWith("system:dsp/")) {
-    return systemDspRoot.getChildFile(ref.fromFirstOccurrenceOf("system:dsp/", false, false));
-  }
-
-  return projectRoot.getChildFile(ref);
-}
-
-UiLoadTarget resolveUiLoadTarget(const juce::File& requestedPath) {
-  UiLoadTarget target;
-  target.requestedPath = requestedPath;
-
-  if (isProjectManifestFile(requestedPath)) {
-    auto json = juce::JSON::parse(requestedPath);
-    if (!json.isObject()) {
-      target.error = "project manifest is not valid JSON/JSON5 subset";
-      return target;
-    }
-
-    auto* obj = json.getDynamicObject();
-    if (obj == nullptr || !obj->hasProperty("ui")) {
-      target.error = "project manifest missing ui section";
-      return target;
-    }
-
-    auto uiVar = obj->getProperty("ui");
-    if (!uiVar.isObject()) {
-      target.error = "project manifest ui section is not an object";
-      return target;
-    }
-
-    auto* uiObj = uiVar.getDynamicObject();
-    if (uiObj == nullptr || !uiObj->hasProperty("root")) {
-      target.error = "project manifest missing ui.root";
-      return target;
-    }
-
-    if (uiObj->hasProperty("sharedShell")) {
-      target.useSharedShell = static_cast<bool>(uiObj->getProperty("sharedShell"));
-    }
-
-    auto rootRel = uiObj->getProperty("root").toString();
-    if (rootRel.isEmpty()) {
-      target.error = "project manifest ui.root is empty";
-      return target;
-    }
-
-    const auto projectRoot = requestedPath.getParentDirectory();
-    const auto uiRoot = resolveProjectAssetRef(projectRoot, rootRel);
-    if (!uiRoot.existsAsFile()) {
-      target.error = "project ui root does not exist: " + uiRoot.getFullPathName().toStdString();
-      return target;
-    }
-
-    if (obj->hasProperty("dsp")) {
-      auto dspVar = obj->getProperty("dsp");
-      if (dspVar.isObject()) {
-        auto* dspObj = dspVar.getDynamicObject();
-        if (dspObj != nullptr && dspObj->hasProperty("default")) {
-          auto dspRef = dspObj->getProperty("default").toString();
-          if (dspRef.isNotEmpty()) {
-            target.dspDefaultFile = resolveProjectAssetRef(projectRoot, dspRef);
-          }
-        }
-      }
-    } else {
-      // No DSP section = system/UI-only project
-      target.isSystemProject = true;
-    }
-
-    // Check for overlay flag in behavior section
-    if (obj->hasProperty("behavior")) {
-      auto behaviorVar = obj->getProperty("behavior");
-      if (behaviorVar.isObject()) {
-        auto* behaviorObj = behaviorVar.getDynamicObject();
-        if (behaviorObj != nullptr && behaviorObj->hasProperty("isOverlay")) {
-          target.isOverlay = behaviorObj->getProperty("isOverlay");
-        }
-      }
-    }
-
-    target.projectRoot = projectRoot;
-    target.manifestFile = requestedPath;
-    target.structuredUiRoot = uiRoot;
-    target.bootstrapPath = uiRoot;
-    target.displayName = obj->hasProperty("name")
-                             ? obj->getProperty("name").toString()
-                             : projectRoot.getFileName();
-    if (target.displayName.isEmpty()) {
-      target.displayName = projectRoot.getFileName();
-    }
-    target.isProject = true;
-    target.isStructured = isStructuredUiFile(uiRoot);
-    return target;
-  }
-
-  if (isStructuredUiFile(requestedPath)) {
-    target.structuredUiRoot = requestedPath;
-    target.bootstrapPath = requestedPath;
-    target.projectRoot = requestedPath.getParentDirectory();
-    target.displayName = requestedPath.getFileNameWithoutExtension();
-    target.isStructured = true;
-    return target;
-  }
-
-  target.bootstrapPath = requestedPath;
-  target.displayName = requestedPath.getFileNameWithoutExtension();
-  return target;
-}
-
-std::string makeStructuredUiBootstrap(const UiLoadTarget& target,
-                                      const juce::File& userScriptsRoot,
-                                      const juce::File& systemUiDir,
-                                      const juce::File& systemDspDir,
-                                      bool skipDspLoad = false) {
-  std::ostringstream code;
-  code << "local loader = require(\"project_loader\")\n";
-  code << "loader.install({\n";
-  code << "  requestedPath = \"" << escapeLuaString(target.requestedPath.getFullPathName()).toStdString() << "\",\n";
-  code << "  projectRoot = \"" << escapeLuaString(target.projectRoot.getFullPathName()).toStdString() << "\",\n";
-  code << "  manifestPath = \"" << escapeLuaString(target.manifestFile.getFullPathName()).toStdString() << "\",\n";
-  code << "  uiRoot = \"" << escapeLuaString(target.structuredUiRoot.getFullPathName()).toStdString() << "\",\n";
-  code << "  displayName = \"" << escapeLuaString(target.displayName).toStdString() << "\",\n";
-  code << "  userScriptsRoot = \"" << escapeLuaString(userScriptsRoot.getFullPathName()).toStdString() << "\",\n";
-  code << "  systemUiRoot = \"" << escapeLuaString(systemUiDir.getFullPathName()).toStdString() << "\",\n";
-  code << "  systemDspRoot = \"" << escapeLuaString(systemDspDir.getFullPathName()).toStdString() << "\",\n";
-  code << "})\n";
-  if (target.dspDefaultFile.existsAsFile() && !skipDspLoad) {
-    code << "if loadDspScript then loadDspScript(\""
-         << escapeLuaString(target.dspDefaultFile.getFullPathName()).toStdString()
-         << "\") end\n";
-  }
-  return code.str();
 }
 
 } // namespace
@@ -784,7 +472,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
     return false;
   }
 
-  const auto target = resolveUiLoadTarget(scriptFile);
+  const auto target = script_path_resolver::resolveUiLoadTarget(scriptFile);
   if (!target.error.empty()) {
     pImpl->lastError = target.error;
     std::fprintf(stderr, "LuaEngine: ui target resolve error: %s\n",
@@ -798,7 +486,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
   const auto packageDir = target.isStructured
                               ? target.structuredUiRoot.getParentDirectory()
                               : target.bootstrapPath.getParentDirectory();
-  const auto systemUiDir = resolveSystemUiDir();
+  const auto systemUiDir = script_path_resolver::resolveSystemUiDir();
 
   coreEngine_.setPackagePath(packageDir.getFullPathName().toStdString());
 
@@ -860,7 +548,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
     coreEngine_.getLuaState()["shell"] = sol::nil;
   }
 
-  const bool useSharedShell = shouldUseSharedShell(target, isOverlay);
+  const bool useSharedShell = script_path_resolver::shouldUseSharedShell(target, isOverlay);
 
   bool loaded = false;
   if (target.isStructured) {
@@ -881,7 +569,7 @@ bool LuaEngine::loadScript(const juce::File &scriptFile, bool skipDspLoad, bool 
       }
     }
 
-    const auto bootstrap = makeStructuredUiBootstrap(target, userScriptsRoot,
+    const auto bootstrap = script_path_resolver::makeStructuredUiBootstrap(target, userScriptsRoot,
                                                      systemUiDir, systemDspDir,
                                                      skipStructuredDspLoad);
 
@@ -1570,7 +1258,7 @@ bool LuaEngine::switchScript(const juce::File &scriptFile) {
   // }
 
   // Check if target is a system project (no DSP) - if so, don't touch DSP at all
-  const auto target = resolveUiLoadTarget(scriptFile);
+  const auto target = script_path_resolver::resolveUiLoadTarget(scriptFile);
   const bool isSystemProject = target.isSystemProject;
 
   // When entering a system project from a non-system project, remember the

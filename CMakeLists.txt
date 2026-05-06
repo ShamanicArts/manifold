@@ -576,12 +576,25 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/scripting/bindings/LuaUIBindings.cpp
     manifold/primitives/scripting/bindings/LuaRuntimeNodeBindings.h
     manifold/primitives/scripting/bindings/LuaRuntimeNodeBindings.cpp
+    manifold/primitives/scripting/ScriptPathResolver.h
+    manifold/primitives/scripting/ScriptPathResolver.cpp
     manifold/primitives/scripting/bindings/LuaControlBindings.h
     manifold/primitives/scripting/bindings/LuaControlBindings.cpp
+    manifold/primitives/scripting/bindings/LuaDspPrimitiveBindings.cpp
     manifold/primitives/scripting/bindings/LuaCommandBindings.h
     manifold/primitives/scripting/bindings/LuaCommandBindings.cpp
+    manifold/primitives/scripting/bindings/LuaDspBindings.h
+    manifold/primitives/scripting/bindings/LuaDspBindings.cpp
+    manifold/primitives/scripting/bindings/LuaEventBindings.h
+    manifold/primitives/scripting/bindings/LuaEventBindings.cpp
+    manifold/primitives/scripting/bindings/LuaGraphBindings.h
+    manifold/primitives/scripting/bindings/LuaGraphBindings.cpp
+    manifold/primitives/scripting/bindings/LuaLinkBindings.h
+    manifold/primitives/scripting/bindings/LuaLinkBindings.cpp
     manifold/primitives/scripting/bindings/LuaMidiBindings.h
     manifold/primitives/scripting/bindings/LuaMidiBindings.cpp
+    manifold/primitives/scripting/bindings/LuaOSCBindings.h
+    manifold/primitives/scripting/bindings/LuaOSCBindings.cpp
     manifold/primitives/scripting/DSPPluginScriptHost.h
     manifold/primitives/scripting/DSPPluginScriptHost.cpp
     manifold/primitives/scripting/dsp_host/DSPHostInternal.h
