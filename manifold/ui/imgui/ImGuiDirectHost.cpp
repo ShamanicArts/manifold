@@ -6,6 +6,9 @@
 #include "../../primitives/composite/CompositeSurfaceProvider.h"
 #include "../../primitives/video/VideoSurfaceProvider.h"
 #include "../../primitives/ui/CustomSurfaceProvider.h"
+#if MANIFOLD_HAS_ML
+#include "../../primitives/ml/MLMaskSurfaceProvider.h"
+#endif
 #include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -307,7 +310,9 @@ juce::Rectangle<float> containRectWithin(const juce::Rectangle<float>& bounds,
 }
 
 bool videoBackedFitModeForNode(const RuntimeNode& node, std::string& fitModeOut) {
-    if (node.getCustomSurfaceType() == "video_input") {
+    if (node.getCustomSurfaceType() == "video_input"
+        || node.getCustomSurfaceType() == "ml_mask"
+        || node.getCustomSurfaceType() == "ml_composite") {
         fitModeOut = "contain";
         const auto payload = node.getCustomRenderPayload();
         if (auto* obj = payload.getDynamicObject(); obj != nullptr) {
@@ -883,11 +888,18 @@ ImGuiDirectHost::ImGuiDirectHost()
       videoSurfaceProvider_(std::make_shared<manifold::video::VideoSurfaceProvider>()),
       generatedSourceProvider_(std::make_shared<manifold::sources::GeneratedSourceProvider>()),
       shaderSurfaceProvider_(std::make_shared<manifold::shaders::ShaderSurfaceProvider>()),
-      compositeSurfaceProvider_(std::make_shared<manifold::composite::CompositeSurfaceProvider>()) {
+      compositeSurfaceProvider_(std::make_shared<manifold::composite::CompositeSurfaceProvider>())
+#if MANIFOLD_HAS_ML
+      , mlMaskSurfaceProvider_(std::make_shared<manifold::ml::MLMaskSurfaceProvider>())
+#endif
+{
     registerSurfaceProvider(videoSurfaceProvider_);
     registerSurfaceProvider(generatedSourceProvider_);
     registerSurfaceProvider(shaderSurfaceProvider_);
     registerSurfaceProvider(compositeSurfaceProvider_);
+#if MANIFOLD_HAS_ML
+    registerSurfaceProvider(mlMaskSurfaceProvider_);
+#endif
 
     shaderSurfaceProvider_->setInputResolver([this](const std::string& sourceType,
                                                     const RuntimeNode& node,
@@ -1078,7 +1090,11 @@ ImGuiDirectHost::StatsSnapshot ImGuiDirectHost::getStatsSnapshot() const {
     }
     snapshot.customSurfaceStateBytes = (videoSurfaceProvider_ ? videoSurfaceProvider_->estimateStateBytes() : 0)
                                      + (generatedSourceProvider_ ? generatedSourceProvider_->estimateStateBytes() : 0)
-                                     + (shaderSurfaceProvider_ ? shaderSurfaceProvider_->estimateStateBytes() : 0);
+                                     + (shaderSurfaceProvider_ ? shaderSurfaceProvider_->estimateStateBytes() : 0)
+#if MANIFOLD_HAS_ML
+                                     + (mlMaskSurfaceProvider_ ? mlMaskSurfaceProvider_->estimateStateBytes() : 0)
+#endif
+                                     ;
     estimateImGuiInternalStats(reinterpret_cast<ImGuiContext*>(imguiContext_), snapshot);
     return snapshot;
 }
@@ -1102,6 +1118,10 @@ void ImGuiDirectHost::recalculateOwnedGpuBytes() {
     int64_t shaderDepthBytes = 0;
     int64_t compositeColorBytes = 0;
     int64_t compositeDepthBytes = 0;
+#if MANIFOLD_HAS_ML
+    int64_t mlColorBytes = 0;
+    int64_t mlDepthBytes = 0;
+#endif
 
     if (videoSurfaceProvider_) {
         videoSurfaceProvider_->getOwnedGpuBytes(videoColorBytes, videoDepthBytes);
@@ -1115,9 +1135,22 @@ void ImGuiDirectHost::recalculateOwnedGpuBytes() {
     if (compositeSurfaceProvider_) {
         compositeSurfaceProvider_->getOwnedGpuBytes(compositeColorBytes, compositeDepthBytes);
     }
+#if MANIFOLD_HAS_ML
+    if (mlMaskSurfaceProvider_) {
+        mlMaskSurfaceProvider_->getOwnedGpuBytes(mlColorBytes, mlDepthBytes);
+    }
+#endif
 
-    surfaceColorBytes_.store(videoColorBytes + generatedColorBytes + shaderColorBytes + compositeColorBytes, std::memory_order_relaxed);
-    surfaceDepthBytes_.store(videoDepthBytes + generatedDepthBytes + shaderDepthBytes + compositeDepthBytes, std::memory_order_relaxed);
+    surfaceColorBytes_.store(videoColorBytes + generatedColorBytes + shaderColorBytes + compositeColorBytes
+#if MANIFOLD_HAS_ML
+                             + mlColorBytes
+#endif
+                             , std::memory_order_relaxed);
+    surfaceDepthBytes_.store(videoDepthBytes + generatedDepthBytes + shaderDepthBytes + compositeDepthBytes
+#if MANIFOLD_HAS_ML
+                             + mlDepthBytes
+#endif
+                             , std::memory_order_relaxed);
 }
 
 std::uintptr_t ImGuiDirectHost::prepareCustomSurfaceTexture(const RuntimeNode& node,

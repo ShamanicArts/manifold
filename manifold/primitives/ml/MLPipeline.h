@@ -51,6 +51,9 @@ public:
     /** Convenience: single-channel mask output. Call after infer(). */
     bool getOutputAsMask(std::vector<float>& mask);
 
+    /** Set input normalization: output = resized * scale + bias. Default scale=2 bias=-1 ([-1,1]). */
+    void setNormalization(float scale, float bias);
+
     /** Last error message. */
     const std::string& lastError() const;
 

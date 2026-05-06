@@ -311,67 +311,61 @@ else()
     message(FATAL_ERROR "Unsupported platform for Ableton Link platform defines")
 endif()
 
-# --- TensorFlow Lite (optional ML inference) ---
-# Fetched via URL download into build/_deps/ during configure, same pattern as
-# sol2 and ableton_link. Not a git submodule — avoids JJ/git submodule friction.
-option(MANIFOLD_ENABLE_TFLITE "Build with TensorFlow Lite ML inference support" ON)
-set(MANIFOLD_TFLITE_TARGET "" CACHE INTERNAL "TFLite CMake target, set when MANIFOLD_ENABLE_TFLITE is ON")
+# --- ONNX Runtime (ML inference) ---
+# Prebuilt shared library from GitHub releases. No source build needed.
+# Download URL pattern: https://github.com/microsoft/onnxruntime/releases/download/v<VERSION>/onnxruntime-linux-x64-<VERSION>.tgz
+option(MANIFOLD_ENABLE_ML "Build with ONNX Runtime ML inference support" ON)
+set(MANIFOLD_ML_TARGET "" CACHE INTERNAL "ONNX Runtime CMake target, set when MANIFOLD_ENABLE_ML is ON")
+set(MANIFOLD_ML_SOURCES "" CACHE INTERNAL "ML wrapper source files")
 
-if(MANIFOLD_ENABLE_TFLITE)
+if(MANIFOLD_ENABLE_ML)
+    set(MANIFOLD_ONNX_VERSION "1.20.1" CACHE STRING "ONNX Runtime version")
+    set(MANIFOLD_ONNX_URL "https://github.com/microsoft/onnxruntime/releases/download/v${MANIFOLD_ONNX_VERSION}/onnxruntime-linux-x64-${MANIFOLD_ONNX_VERSION}.tgz" CACHE STRING "ONNX Runtime download URL")
+
+    message(STATUS "Downloading ONNX Runtime ${MANIFOLD_ONNX_VERSION}...")
+
     FetchContent_Declare(
-        tensorflow
-        URL https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.18.0.tar.gz)
+        onnxruntime
+        URL      "${MANIFOLD_ONNX_URL}"
+        URL_HASH "")
 
-    # TFLite's internal dependency fetching (abseil, eigen, etc.) uses a custom
-    # OverridableFetchContent module that defaults to shallow git clones. The
-    # git update step fails on these. Force URL downloads instead.
-    set(_manifold_tflite_policy_minimum "${CMAKE_POLICY_VERSION_MINIMUM}")
-    set(_manifold_tflite_warn_deprecated "${CMAKE_WARN_DEPRECATED}")
-    if(POLICY CMP0169)
-        cmake_policy(SET CMP0169 OLD)
-    endif()
-    if(POLICY CMP0135)
-        cmake_policy(SET CMP0135 OLD)
-    endif()
-    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-    set(CMAKE_WARN_DEPRECATED OFF)
-
-    FetchContent_GetProperties(tensorflow)
-    if(NOT tensorflow_POPULATED)
-        FetchContent_Populate(tensorflow)
+    FetchContent_GetProperties(onnxruntime)
+    if(NOT onnxruntime_POPULATED)
+        FetchContent_Populate(onnxruntime)
     endif()
 
-    # Tell TFLite's OverridableFetchContent to use URL downloads, not git
-    set(OVERRIDABLE_FETCH_CONTENT_USE_GIT OFF CACHE BOOL "" FORCE)
-    set(TFLITE_ENABLE_XNNPACK OFF CACHE BOOL "" FORCE)
-    set(TFLITE_ENABLE_GPU OFF CACHE BOOL "" FORCE)
-    set(TFLITE_ENABLE_NNAPI OFF CACHE BOOL "" FORCE)
-    set(TFLITE_ENABLE_RUY OFF CACHE BOOL "" FORCE)
-    add_subdirectory(
-        "${tensorflow_SOURCE_DIR}/tensorflow/lite"
-        "${tensorflow_BINARY_DIR}"
-        EXCLUDE_FROM_ALL)
+    if(EXISTS "${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so")
+        add_library(ONNXRuntime SHARED IMPORTED GLOBAL)
+        set_target_properties(ONNXRuntime PROPERTIES
+            IMPORTED_LOCATION "${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so"
+            INTERFACE_INCLUDE_DIRECTORIES "${onnxruntime_SOURCE_DIR}/include")
+        set(MANIFOLD_ML_TARGET ONNXRuntime)
 
-    set(CMAKE_WARN_DEPRECATED "${_manifold_tflite_warn_deprecated}")
-    set(CMAKE_POLICY_VERSION_MINIMUM "${_manifold_tflite_policy_minimum}")
-    unset(_manifold_tflite_warn_deprecated)
-    unset(_manifold_tflite_policy_minimum)
-
-    if(TARGET tensorflow-lite)
-        set(MANIFOLD_TFLITE_TARGET tensorflow-lite)
-
-        # ML wrapper sources — conditionally added alongside TFLite
+        # ML wrapper sources — conditionally added alongside ONNX Runtime
         set(MANIFOLD_ML_SOURCES
             manifold/primitives/ml/MLPipeline.h
-            manifold/primitives/ml/MLPipeline.cpp)
+            manifold/primitives/ml/MLPipeline.cpp
+            manifold/primitives/ml/MLMaskSurfaceProvider.h
+            manifold/primitives/ml/MLMaskSurfaceProvider.cpp)
 
-        message(STATUS "TensorFlow Lite enabled: ${MANIFOLD_TFLITE_TARGET}")
+        # Also need dlopen for the shared lib
+        find_library(LIBDL_LIBRARY dl)
+        if(LIBDL_LIBRARY)
+            target_link_libraries(ONNXRuntime INTERFACE ${LIBDL_LIBRARY})
+        endif()
+
+        message(STATUS "ONNX Runtime enabled: ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so")
     else()
-        message(WARNING "TensorFlow Lite requested but target not found. ML features disabled.")
-        set(MANIFOLD_ENABLE_TFLITE OFF)
+        message(WARNING "ONNX Runtime downloaded but libonnxruntime.so not found at ${onnxruntime_SOURCE_DIR}/lib/")
+        message(STATUS "Contents: ${onnxruntime_SOURCE_DIR}")
+        file(GLOB_RECURSE _onnx_files "${onnxruntime_SOURCE_DIR}/*")
+        foreach(_f IN LISTS _onnx_files)
+            message(STATUS "  ${_f}")
+        endforeach()
+        set(MANIFOLD_ENABLE_ML OFF)
     endif()
 else()
-    message(STATUS "TensorFlow Lite disabled")
+    message(STATUS "ONNX Runtime disabled")
 endif()
 
 function(manifold_target_include_project_and_ableton target_name)
@@ -700,8 +694,8 @@ target_compile_definitions(Manifold
         MANIFOLD_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         ${MANIFOLD_LINK_PLATFORM_DEFINE}
     PRIVATE
-        $<$<BOOL:${MANIFOLD_TFLITE_TARGET}>:MANIFOLD_HAS_ML=1>
-        $<$<NOT:$<BOOL:${MANIFOLD_TFLITE_TARGET}>>:MANIFOLD_HAS_ML=0>)
+        $<$<BOOL:${MANIFOLD_ML_TARGET}>:MANIFOLD_HAS_ML=1>
+        $<$<NOT:$<BOOL:${MANIFOLD_ML_TARGET}>>:MANIFOLD_HAS_ML=0>)
 
 target_link_libraries(Manifold
     PRIVATE
@@ -715,7 +709,7 @@ target_link_libraries(Manifold
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
 		highway
-        ${MANIFOLD_TFLITE_TARGET}
+        ${MANIFOLD_ML_TARGET}
         ${MANIFOLD_EXTRA_GL_LIBS}
     PUBLIC
         juce::juce_recommended_config_flags
@@ -831,7 +825,7 @@ function(manifold_add_export_plugin target_name)
     endif()
 
     if(ARG_NEEDS_TFLITE)
-        list(APPEND MANIFOLD_EXPORT_TFLITE_LIBS ${MANIFOLD_TFLITE_TARGET})
+        list(APPEND MANIFOLD_EXPORT_ML_LIBS ${MANIFOLD_ML_TARGET})
     endif()
 
     target_link_libraries(${target_name}
@@ -846,7 +840,7 @@ function(manifold_add_export_plugin target_name)
             ${MANIFOLD_LUA_TARGET}
             sol2::sol2
             highway
-            ${MANIFOLD_EXPORT_TFLITE_LIBS}
+            ${MANIFOLD_EXPORT_ML_LIBS}
             ${MANIFOLD_EXTRA_GL_LIBS}
         PUBLIC
             juce::juce_recommended_config_flags
@@ -1105,7 +1099,7 @@ target_link_libraries(ManifoldHeadless
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
 		highway
-        ${MANIFOLD_TFLITE_TARGET}
+        ${MANIFOLD_ML_TARGET}
         ${MANIFOLD_EXTRA_GL_LIBS})
 
 manifold_target_include_project_and_ableton(LuaEngineMockHarness)

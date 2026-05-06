@@ -6,4 +6,4 @@ vec3 selector = step(vec3(pivot), base.rgb);
 vec3 overlaid = mix(low, high, selector);
 vec3 contrasted = clamp((overlaid - 0.5) * contrast + 0.5, 0.0, 1.0);
 vec3 result = mix(base.rgb, contrasted, strength);
-fragColor = vec4(mix(base.rgb, result, uOpacity), max(base.a, blend.a));
+fragColor = vec4(mix(base.rgb, result, blend.a * uOpacity), max(base.a, blend.a));

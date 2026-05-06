@@ -5,6 +5,18 @@ local NUM_PARAM_SLIDERS = 9
 local NUM_SOURCE_PARAM_SLIDERS = 4
 local NUM_BLEND_PARAM_SLIDERS = 4
 
+local ML_PARAM_SPECS = {
+  { id = "gain", label = "Mask Gain", min = 0.25, max = 4.0, step = 0.05, default = 1.0, unit = "x" },
+  { id = "threshold", label = "Threshold", min = 0.0, max = 1.0, step = 0.01, default = 0.50, unit = "" },
+  { id = "feather", label = "Feather", min = 0.0, max = 1.0, step = 0.01, default = 0.15, unit = "" },
+  { id = "background", label = "Background", min = 0.0, max = 1.0, step = 0.01, default = 0.10, unit = "" },
+}
+
+local ML_TOGGLE_SPECS = {
+  { id = "useSigmoid", label = "Sigmoid", onLabel = "Sigmoid On", offLabel = "Sigmoid Off", default = true },
+  { id = "invert", label = "Invert", onLabel = "Invert On", offLabel = "Invert Off", default = false },
+}
+
 local STACK_CONFIG = {
   a = { suffix = "", label = "A", viewportId = "viewport", tapPrefix = "tapA" },
   b = { suffix = "B", label = "B", viewportId = "viewportB", tapPrefix = "tapB" },
@@ -210,6 +222,18 @@ local function createStackState()
     selectedDevice = nil,
     selectedMode = nil,
     editorMode = "source",
+    segmentation = {
+      enabled = false,
+      modelPath = nil,
+      params = {
+        gain = 1.0,
+        threshold = 0.5,
+        feather = 0.15,
+        background = 0.10,
+        useSigmoid = true,
+        invert = false,
+      },
+    },
   }
   for i = 1, NUM_LAYERS do
     stack.layers[i] = defaultLayer(i)
@@ -234,6 +258,8 @@ local function defaultPersistedStack()
     activeLayer = nil,
     editorMode = "source",
     layers = layers,
+    segEnabled = nil,
+    segParams = {},
   }
 end
 
@@ -273,25 +299,31 @@ local function loadPersistedState(ctx)
         elseif rest == "pixelFormat" then target.pixelFormat = value
         elseif rest == "activeLayer" then target.activeLayer = tonumber(value)
         elseif rest == "editorMode" then target.editorMode = value
+        elseif rest == "segEnabled" then target.segEnabled = (value == "true")
         else
           local sourceParamId = rest:match("^source%.param%.(.+)$")
           if sourceParamId then
             target.sourceParams[sourceParamId] = tonumber(value)
           else
-            local li, field = rest:match("^layer%.(%d+)%.([%w_]+)$")
-            if li and field then
-              local L = target.layers[tonumber(li)]
-              if L then
-                if field == "enabled" then L.enabled = (value == "true")
-                elseif field == "effectId" then L.effectId = value end
-              end
+            local segParamId = rest:match("^seg%.param%.(.+)$")
+            if segParamId then
+              target.segParams[segParamId] = tonumber(value)
             else
-              local lidx, effectId, paramId = rest:match("^layer%.(%d+)%.param%.([^%.]+)%.(.+)$")
-              if lidx and effectId and paramId then
-                local L = target.layers[tonumber(lidx)]
+              local li, field = rest:match("^layer%.(%d+)%.([%w_]+)$")
+              if li and field then
+                local L = target.layers[tonumber(li)]
                 if L then
-                  L.params[effectId] = L.params[effectId] or {}
-                  L.params[effectId][paramId] = tonumber(value)
+                  if field == "enabled" then L.enabled = (value == "true")
+                  elseif field == "effectId" then L.effectId = value end
+                end
+              else
+                local lidx, effectId, paramId = rest:match("^layer%.(%d+)%.param%.([^%.]+)%.(.+)$")
+                if lidx and effectId and paramId then
+                  local L = target.layers[tonumber(lidx)]
+                  if L then
+                    L.params[effectId] = L.params[effectId] or {}
+                    L.params[effectId][paramId] = tonumber(value)
+                  end
                 end
               end
             end
@@ -346,6 +378,10 @@ local function savePersistedState(ctx)
           end
         end
       end
+    end
+    lines[#lines + 1] = prefix .. "segEnabled=" .. tostring(stack.segmentation and stack.segmentation.enabled and true or false)
+    for paramId, value in pairs((stack.segmentation and stack.segmentation.params) or {}) do
+      lines[#lines + 1] = string.format("%sseg.param.%s=%s", prefix, tostring(paramId), tostring(value))
     end
   end
 
@@ -447,7 +483,9 @@ local function applyPersistedState(ctx)
     for paramId, value in pairs(persisted.sourceParams or {}) do
       stack.source.params[paramId] = value
     end
-    stack.editorMode = (persisted.editorMode == "fx") and "fx" or "source"
+    if persisted.editorMode == "fx" then stack.editorMode = "fx"
+    elseif persisted.editorMode == "ml" then stack.editorMode = "ml"
+    else stack.editorMode = "source" end
     for i = 1, NUM_LAYERS do
       local L = stack.layers[i]
       local P = persisted.layers[i]
@@ -466,6 +504,10 @@ local function applyPersistedState(ctx)
     end
     stack.activeLayer = tonumber(persisted.activeLayer) or 1
     if stack.activeLayer < 1 or stack.activeLayer > NUM_LAYERS then stack.activeLayer = 1 end
+    if persisted.segEnabled ~= nil then stack.segmentation.enabled = persisted.segEnabled end
+    for paramId, value in pairs(persisted.segParams or {}) do
+      stack.segmentation.params[paramId] = value
+    end
   end
 
   ctx._composite.bottomTarget = tostring(ctx._persisted.composite.bottomTarget or "a_stack")
@@ -541,6 +583,23 @@ end
 
 local function setNodeSurfaceWithPipeline(ctx, widget, stackKey, maxLayer)
   if not widget or not widget.node then return end
+  local stack = stackState(ctx, stackKey)
+  if maxLayer == NUM_LAYERS and stack and stack.segmentation and stack.segmentation.enabled and stack.source.kind == "webcam" then
+    local seg = stack.segmentation
+    local payload = {
+      version = 1,
+      fitMode = "contain",
+      modelPath = seg.modelPath,
+      gain = seg.params.gain,
+      useSigmoid = seg.params.useSigmoid,
+      threshold = seg.params.threshold,
+      feather = seg.params.feather,
+      invert = seg.params.invert,
+      background = seg.params.background,
+    }
+    widget.node:setCustomSurface("ml_composite", payload)
+    return
+  end
   if shaders and shaders.buildPipeline then
     local layers = buildLayerPayloadList(ctx, stackKey, maxLayer)
     local source = buildSourceDescriptor(ctx, stackKey)
@@ -668,12 +727,17 @@ local function syncEditorMode(ctx, stackKey)
   local stack = stackState(ctx, stackKey)
   if not stack then return end
   local sourceVisible = stack.editorMode == "source"
-  local fxVisible = not sourceVisible
+  local fxVisible = stack.editorMode == "fx"
+  local mlVisible = stack.editorMode == "ml"
   local selectedSource = findSourceChoice(ctx, stack.source.kind, stack.source.id)
   local isWebcam = stack.source.kind == "webcam"
 
   local tabs = stackWidget(ctx, stackKey, "editorModeTabs")
-  if tabs then setSelected(tabs, sourceVisible and 1 or 2) end
+  if tabs then
+    if sourceVisible then setSelected(tabs, 1)
+    elseif fxVisible then setSelected(tabs, 2)
+    else setSelected(tabs, 3) end
+  end
 
   setVisible(stackWidget(ctx, stackKey, "sourceTitle"), sourceVisible)
   setVisible(stackWidget(ctx, stackKey, "sourceSelect"), sourceVisible)
@@ -701,6 +765,16 @@ local function syncEditorMode(ctx, stackKey)
     local spec = stack.activeParamSpecs and stack.activeParamSpecs[i] or nil
     setVisible(slider, fxVisible and type(spec) == "table")
   end
+
+  setVisible(stackWidget(ctx, stackKey, "mlTitle"), mlVisible)
+  setVisible(stackWidget(ctx, stackKey, "mlEnabledToggle"), mlVisible)
+  for i = 1, 4 do
+    setVisible(stackWidget(ctx, stackKey, "mlParam" .. tostring(i)), mlVisible)
+  end
+  for i = 1, 2 do
+    setVisible(stackWidget(ctx, stackKey, "mlToggle" .. tostring(i)), mlVisible)
+  end
+  setVisible(stackWidget(ctx, stackKey, "mlStatus"), mlVisible)
 end
 
 local function syncSourceControls(ctx, stackKey)
@@ -804,6 +878,90 @@ local function syncLayerControls(ctx, stackKey)
 
   syncLayerTabLabels(ctx, stackKey)
   syncEditorMode(ctx, stackKey)
+end
+
+local function syncMlControls(ctx, stackKey)
+  local stack = stackState(ctx, stackKey)
+  if not stack then return end
+  local seg = stack.segmentation
+  local toggle = stackWidget(ctx, stackKey, "mlEnabledToggle")
+  if toggle and toggle.setValue then toggle:setValue(seg.enabled) end
+  for i, spec in ipairs(ML_PARAM_SPECS) do
+    local slider = stackWidget(ctx, stackKey, "mlParam" .. tostring(i))
+    if slider then
+      slider._min = spec.min
+      slider._max = spec.max
+      slider._step = spec.step
+      slider._defaultValue = spec.default
+      if slider.setLabel then slider:setLabel(spec.label) end
+      if slider.setValueFormatter then
+        slider:setValueFormatter(function(value)
+          local num = tonumber(value) or 0
+          if spec.id == "gain" then return string.format("%.2fx", num) end
+          return string.format("%.2f%s", num, spec.unit or "")
+        end)
+      end
+      if slider.setValue then slider:setValue(seg.params[spec.id]) end
+    end
+  end
+  for i, spec in ipairs(ML_TOGGLE_SPECS) do
+    local t = stackWidget(ctx, stackKey, "mlToggle" .. tostring(i))
+    if t and t.setValue then
+      if t.setOnLabel then t:setOnLabel(spec.onLabel) end
+      if t.setOffLabel then t:setOffLabel(spec.offLabel) end
+      t:setValue(seg.params[spec.id])
+    end
+  end
+  local status = stackWidget(ctx, stackKey, "mlStatus")
+  if status then
+    local text
+    if seg.enabled then
+      text = string.format("ML: enabled — gain %.2fx  threshold %.2f  feather %.2f  bg %.2f  sigmoid %s  invert %s",
+        seg.params.gain, seg.params.threshold, seg.params.feather, seg.params.background,
+        tostring(seg.params.useSigmoid), tostring(seg.params.invert))
+    else
+      text = "ML: disabled"
+    end
+    setText(status, text)
+  end
+end
+
+local function bindMlCallbacks(ctx)
+  for _, stackKey in ipairs(STACK_ORDER) do
+    local stack = stackState(ctx, stackKey)
+    local toggle = stackWidget(ctx, stackKey, "mlEnabledToggle")
+    if toggle then
+      toggle._onChange = function(value)
+        stack.segmentation.enabled = (value == true)
+        updateStackSurfaces(ctx, stackKey)
+        syncMlControls(ctx, stackKey)
+        savePersistedState(ctx)
+        syncGlobalStatus(ctx)
+      end
+    end
+    for i, spec in ipairs(ML_PARAM_SPECS) do
+      local slider = stackWidget(ctx, stackKey, "mlParam" .. tostring(i))
+      if slider then
+        slider._onChange = function(value)
+          stack.segmentation.params[spec.id] = clamp(value, spec.min, spec.max)
+          updateStackSurfaces(ctx, stackKey)
+          syncMlControls(ctx, stackKey)
+          savePersistedState(ctx)
+        end
+      end
+    end
+    for i, spec in ipairs(ML_TOGGLE_SPECS) do
+      local t = stackWidget(ctx, stackKey, "mlToggle" .. tostring(i))
+      if t then
+        t._onChange = function(value)
+          stack.segmentation.params[spec.id] = (value == true)
+          updateStackSurfaces(ctx, stackKey)
+          syncMlControls(ctx, stackKey)
+          savePersistedState(ctx)
+        end
+      end
+    end
+  end
 end
 
 local function refreshSourceRegistry(ctx)
@@ -972,19 +1130,20 @@ local function stackSummary(ctx, stackKey)
   local stack = stackState(ctx, stackKey)
   local cfg = STACK_CONFIG[stackKey]
   if not stack then return "" end
+  local segMarker = (stack.segmentation and stack.segmentation.enabled) and " [SEG]" or ""
   if stack.source.kind == "generator" then
     local choice = findSourceChoice(ctx, stack.source.kind, stack.source.id)
-    return string.format("%s:%s • FX:%s", cfg.label, tostring(choice.name or stack.source.id), layerSummary(ctx, stackKey))
+    return string.format("%s:%s%s • FX:%s", cfg.label, tostring(choice.name or stack.source.id), segMarker, layerSummary(ctx, stackKey))
   end
   local device = stack.devices[stack.selectedDevice]
   local mode = stack.modes[stack.selectedMode]
   if capture and capture.isOpen and capture.isOpen() then
     if type(device) == "table" and type(mode) == "table" then
-      return string.format("%s:%s / %s • FX:%s", cfg.label, describeDevice(device), describeMode(mode), layerSummary(ctx, stackKey))
+      return string.format("%s:%s / %s%s • FX:%s", cfg.label, describeDevice(device), describeMode(mode), segMarker, layerSummary(ctx, stackKey))
     end
-    return string.format("%s:webcam active • FX:%s", cfg.label, layerSummary(ctx, stackKey))
+    return string.format("%s:webcam active%s • FX:%s", cfg.label, segMarker, layerSummary(ctx, stackKey))
   end
-  return string.format("%s:webcam idle • FX:%s", cfg.label, layerSummary(ctx, stackKey))
+  return string.format("%s:webcam idle%s • FX:%s", cfg.label, segMarker, layerSummary(ctx, stackKey))
 end
 
 local function syncGlobalStatus(ctx)
@@ -1047,9 +1206,13 @@ end
 local function setEditorMode(ctx, stackKey, editorIndex)
   local stack = stackState(ctx, stackKey)
   if not stack then return end
-  stack.editorMode = (tonumber(editorIndex) == 2) and "fx" or "source"
+  local idx = tonumber(editorIndex) or 1
+  if idx == 2 then stack.editorMode = "fx"
+  elseif idx == 3 then stack.editorMode = "ml"
+  else stack.editorMode = "source" end
   syncSourceControls(ctx, stackKey)
   syncLayerControls(ctx, stackKey)
+  syncMlControls(ctx, stackKey)
   savePersistedState(ctx)
 end
 
@@ -1228,6 +1391,26 @@ local function layoutStack(ctx, stackKey, y, h, width)
     local sy = fxY + row * (sliderH + rowGap)
     setBounds(slider, sx, sy, sliderW, sliderH)
   end
+
+  local mlY = sectionY + 26
+  setBounds(stackWidget(ctx, stackKey, "mlTitle"), x, mlY, w, 18)
+  setBounds(stackWidget(ctx, stackKey, "mlEnabledToggle"), x + w - 170, mlY, 160, 24)
+  mlY = mlY + 30
+  local mlSliderW = math.floor((w - colGap * 2) / 3)
+  local mlSliderH = 26
+  for i = 1, 4 do
+    local slider = stackWidget(ctx, stackKey, "mlParam" .. tostring(i))
+    local col = (i - 1) % 3
+    local row = math.floor((i - 1) / 3)
+    local sx = x + col * (mlSliderW + colGap)
+    local sy = mlY + row * (mlSliderH + rowGap)
+    setBounds(slider, sx, sy, mlSliderW, mlSliderH)
+  end
+  mlY = mlY + 2 * (mlSliderH + rowGap) + 4
+  setBounds(stackWidget(ctx, stackKey, "mlToggle1"), x, mlY, 148, 28)
+  setBounds(stackWidget(ctx, stackKey, "mlToggle2"), x + 160, mlY, 148, 28)
+  mlY = mlY + 34
+  setBounds(stackWidget(ctx, stackKey, "mlStatus"), x, mlY, w, 16)
 end
 
 local function layoutUi(ctx, width, height)
@@ -1318,6 +1501,18 @@ function M.init(ctx)
   end
   refreshBlendOps(ctx)
   installParamCallbacks(ctx)
+  bindMlCallbacks(ctx)
+
+  local fp = (type(getCurrentScriptPath) == "function") and getCurrentScriptPath() or ""
+  local dir = fp:match("^(.*)/[^/]+$")
+  local modelPath = dir and (dir .. "/selfie_segmentation.onnx") or ""
+  for _, stackKey in ipairs(STACK_ORDER) do
+    stackState(ctx, stackKey).segmentation.modelPath = modelPath
+    syncMlControls(ctx, stackKey)
+  end
+  if type(ml) == "table" and type(ml.load) == "function" then
+    pcall(ml.load, modelPath)
+  end
 
   for _, stackKey in ipairs(STACK_ORDER) do
     local sourceSelect = stackWidget(ctx, stackKey, "sourceSelect")
@@ -1420,6 +1615,7 @@ function M.resized(ctx, w, h)
   for _, stackKey in ipairs(STACK_ORDER) do
     syncSourceControls(ctx, stackKey)
     syncLayerControls(ctx, stackKey)
+    syncMlControls(ctx, stackKey)
     updateFrameInfo(ctx, stackKey)
   end
   syncCompositeControls(ctx)

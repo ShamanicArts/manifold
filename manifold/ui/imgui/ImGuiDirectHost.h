@@ -34,6 +34,12 @@ namespace manifold::composite {
 class CompositeSurfaceProvider;
 }
 
+#if MANIFOLD_HAS_ML
+namespace manifold::ml {
+class MLMaskSurfaceProvider;
+}
+#endif
+
 class ImGuiDirectHost : public juce::Component,
                         private juce::OpenGLRenderer {
 public:
@@ -254,6 +260,9 @@ public:
     std::shared_ptr<manifold::sources::GeneratedSourceProvider> generatedSourceProvider_;
     std::shared_ptr<manifold::shaders::ShaderSurfaceProvider> shaderSurfaceProvider_;
     std::shared_ptr<manifold::composite::CompositeSurfaceProvider> compositeSurfaceProvider_;
+#if MANIFOLD_HAS_ML
+    std::shared_ptr<manifold::ml::MLMaskSurfaceProvider> mlMaskSurfaceProvider_;
+#endif
 
     void recalculateOwnedGpuBytes();
 

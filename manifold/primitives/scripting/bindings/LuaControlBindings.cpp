@@ -2955,6 +2955,7 @@ void LuaControlBindings::registerUtilityBindings(sol::state& lua,
         "inputHeight", &manifold::ml::MLPipeline::inputHeight,
         "inputChannels", &manifold::ml::MLPipeline::inputChannels,
         "outputElements", &manifold::ml::MLPipeline::outputElements,
+        "setNormalization", &manifold::ml::MLPipeline::setNormalization,
         "lastError", &manifold::ml::MLPipeline::lastError);
 
     mlTable["load"] = [](const std::string& modelPath)

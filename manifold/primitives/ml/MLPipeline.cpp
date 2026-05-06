@@ -4,18 +4,22 @@
 #include <algorithm>
 #include <cstdio>
 
-#include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/core/interpreter_builder.h"
+#include <onnxruntime_cxx_api.h>
 
 namespace manifold::ml {
 
 struct MLPipeline::Impl {
-    std::unique_ptr<tflite::FlatBufferModel> model;
-    tflite::ops::builtin::BuiltinOpResolver resolver;
-    std::unique_ptr<tflite::Interpreter> interpreter;
+    enum class InputLayout {
+        NHWC,
+        NCHW,
+    };
 
+    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "ManifoldML"};
+    Ort::SessionOptions opts;
+    std::unique_ptr<Ort::Session> session;
+
+    std::vector<int64_t> inputDims;
+    std::vector<int64_t> outputDims;
     int inputW = 0;
     int inputH = 0;
     int inputC = 0;
@@ -23,71 +27,114 @@ struct MLPipeline::Impl {
     bool loaded = false;
     std::string error;
 
-    // Pre-allocated resize buffer to avoid per-frame allocation
+    // Input/output names — queried from model
+    std::string inputName;
+    std::string outputName;
+    InputLayout inputLayout = InputLayout::NHWC;
+
+    // Pre-allocated resize/input buffers to avoid per-frame allocation
     std::vector<float> resizeBuf;
+    std::vector<float> inputBuf;
+    std::vector<int32_t> inputBufInt32;
+
+    float normScale = 2.0f;
+    float normBias = -1.0f;
+    ONNXTensorElementDataType inputElementType = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
 };
 
 MLPipeline::MLPipeline()
-    : pImpl_(std::make_unique<Impl>()) {}
+    : pImpl_(std::make_unique<Impl>()) {
+    pImpl_->opts.SetIntraOpNumThreads(4);
+}
 
 MLPipeline::~MLPipeline() = default;
 
 bool MLPipeline::load(const std::string& modelPath) {
     pImpl_->error.clear();
+    pImpl_->loaded = false;
 
-    pImpl_->model = tflite::FlatBufferModel::BuildFromFile(modelPath.c_str());
-    if (!pImpl_->model) {
-        pImpl_->error = "Failed to load model: " + modelPath;
+    try {
+        pImpl_->session = std::make_unique<Ort::Session>(
+            pImpl_->env, modelPath.c_str(), pImpl_->opts);
+    } catch (const Ort::Exception& e) {
+        pImpl_->error = "Failed to create session: ";
+        pImpl_->error += e.what();
         return false;
     }
 
-    pImpl_->interpreter.reset();
-    tflite::InterpreterBuilder builder(*pImpl_->model, pImpl_->resolver);
-    builder(&pImpl_->interpreter);
-    if (!pImpl_->interpreter) {
-        pImpl_->error = "Failed to create interpreter";
+    // Query input info
+    auto inputTypeInfo = pImpl_->session->GetInputTypeInfo(0);
+    auto inputTensorInfo = inputTypeInfo.GetTensorTypeAndShapeInfo();
+    pImpl_->inputDims = inputTensorInfo.GetShape();
+
+    // Handle dynamic batch dimension (-1)
+    for (auto& d : pImpl_->inputDims) {
+        if (d < 0) d = 1;
+    }
+
+    if (pImpl_->inputDims.size() != 4) {
+        pImpl_->error = "Expected 4D input (NHWC or NCHW), got " +
+                        std::to_string(pImpl_->inputDims.size()) + "D";
         return false;
     }
 
-    if (pImpl_->interpreter->AllocateTensors() != kTfLiteOk) {
-        pImpl_->error = "Failed to allocate tensors";
+    // Detect layout from tensor shape.
+    const int d1 = static_cast<int>(pImpl_->inputDims[1]);
+    const int d2 = static_cast<int>(pImpl_->inputDims[2]);
+    const int d3 = static_cast<int>(pImpl_->inputDims[3]);
+
+    if (d3 == 1 || d3 == 3 || d3 == 4) {
+        // NHWC: {batch, height, width, channels}
+        pImpl_->inputLayout = Impl::InputLayout::NHWC;
+        pImpl_->inputH = d1;
+        pImpl_->inputW = d2;
+        pImpl_->inputC = d3;
+    } else if (d1 == 1 || d1 == 3 || d1 == 4) {
+        // NCHW: {batch, channels, height, width}
+        pImpl_->inputLayout = Impl::InputLayout::NCHW;
+        pImpl_->inputC = d1;
+        pImpl_->inputH = d2;
+        pImpl_->inputW = d3;
+    } else {
+        pImpl_->error = "Unable to infer model input layout from dims [" +
+                        std::to_string(d1) + ", " +
+                        std::to_string(d2) + ", " +
+                        std::to_string(d3) + "]";
         return false;
     }
 
-    // Inspect input tensor
-    const auto* inputTensor = pImpl_->interpreter->input_tensor(0);
-    if (inputTensor == nullptr) {
-        pImpl_->error = "No input tensor found";
-        return false;
-    }
-
-    // Expect NHWC: {1, height, width, channels}
-    if (inputTensor->dims->size != 4) {
-        pImpl_->error = "Expected 4D input tensor (NHWC), got " +
-                        std::to_string(inputTensor->dims->size) + "D";
-        return false;
-    }
-
-    pImpl_->inputH = inputTensor->dims->data[1];
-    pImpl_->inputW = inputTensor->dims->data[2];
-    pImpl_->inputC = inputTensor->dims->data[3];
-
-    // Inspect output tensor
-    const auto* outputTensor = pImpl_->interpreter->output_tensor(0);
-    if (outputTensor == nullptr) {
-        pImpl_->error = "No output tensor found";
-        return false;
+    // Query output info
+    auto outputTypeInfo = pImpl_->session->GetOutputTypeInfo(0);
+    auto outputTensorInfo = outputTypeInfo.GetTensorTypeAndShapeInfo();
+    pImpl_->outputDims = outputTensorInfo.GetShape();
+    for (auto& d : pImpl_->outputDims) {
+        if (d < 0) d = 1;
     }
 
     pImpl_->outputElems = 1;
-    for (int i = 0; i < outputTensor->dims->size; ++i) {
-        pImpl_->outputElems *= outputTensor->dims->data[i];
+    for (auto d : pImpl_->outputDims) {
+        pImpl_->outputElems *= static_cast<int>(d);
     }
 
+    // Query input element type (float, int32, etc.)
+    pImpl_->inputElementType = inputTensorInfo.GetElementType();
+
+    // Get input/output names
+    auto inputNameAlloc = pImpl_->session->GetInputNameAllocated(0, Ort::AllocatorWithDefaultOptions());
+    pImpl_->inputName = inputNameAlloc.get();
+    auto outputNameAlloc = pImpl_->session->GetOutputNameAllocated(0, Ort::AllocatorWithDefaultOptions());
+    pImpl_->outputName = outputNameAlloc.get();
+
     // Pre-allocate resize buffer
-    pImpl_->resizeBuf.resize(static_cast<std::size_t>(pImpl_->inputW)
-                             * static_cast<std::size_t>(pImpl_->inputH)
-                             * static_cast<std::size_t>(pImpl_->inputC));
+    const std::size_t numInput = static_cast<std::size_t>(pImpl_->inputW)
+                               * static_cast<std::size_t>(pImpl_->inputH)
+                               * static_cast<std::size_t>(pImpl_->inputC);
+    pImpl_->resizeBuf.resize(numInput);
+    if (pImpl_->inputElementType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
+        pImpl_->inputBufInt32.resize(numInput);
+    } else {
+        pImpl_->inputBuf.resize(numInput);
+    }
 
     pImpl_->loaded = true;
     return true;
@@ -95,6 +142,11 @@ bool MLPipeline::load(const std::string& modelPath) {
 
 bool MLPipeline::isLoaded() const {
     return pImpl_->loaded;
+}
+
+void MLPipeline::setNormalization(float scale, float bias) {
+    pImpl_->normScale = scale;
+    pImpl_->normBias = bias;
 }
 
 int MLPipeline::inputWidth() const {
@@ -129,7 +181,6 @@ static void bilinearResizeRGBA(const unsigned char* src,
             int srcX1 = srcX0 + 1;
             float fracX = srcX - static_cast<float>(srcX0);
 
-            // Sample 4 rgba pixels
             const unsigned char* p00 = src + (srcY0 * srcW + srcX0) * 4;
             const unsigned char* p01 = src + (srcY0 * srcW + srcX1) * 4;
             const unsigned char* p10 = src + (srcY1 * srcW + srcX0) * 4;
@@ -148,7 +199,6 @@ static void bilinearResizeRGBA(const unsigned char* src,
                 dp[c] = v0 + (v1 - v0) * fracY;
             }
 
-            // Fill remaining channels (e.g., alpha → pad) or leave zeros
             for (int c = 3; c < dstC; ++c) {
                 dp[c] = 0.0f;
             }
@@ -165,53 +215,101 @@ bool MLPipeline::infer(const unsigned char* rgbaData,
         return false;
     }
 
-    // 1. Resize and normalize RGBA → float RGB
-    bilinearResizeRGBA(rgbaData, srcWidth, srcHeight,
-                       pImpl_->resizeBuf.data(),
-                       pImpl_->inputW, pImpl_->inputH, pImpl_->inputC);
+    try {
+        // 1. Resize and normalize RGBA → float RGB
+        bilinearResizeRGBA(rgbaData, srcWidth, srcHeight,
+                           pImpl_->resizeBuf.data(),
+                           pImpl_->inputW, pImpl_->inputH, pImpl_->inputC);
 
-    // 2. Copy to input tensor
-    float* inputTensor = pImpl_->interpreter->typed_input_tensor<float>(0);
-    if (inputTensor == nullptr) {
-        pImpl_->error = "Failed to get input tensor";
+        // 2. Normalize and pack into model layout
+        auto memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        const std::size_t numInput = static_cast<std::size_t>(pImpl_->inputW)
+                                   * static_cast<std::size_t>(pImpl_->inputH)
+                                   * static_cast<std::size_t>(pImpl_->inputC);
+
+        const float scale = pImpl_->normScale;
+        const float bias = pImpl_->normBias;
+        const bool isInt32 = pImpl_->inputElementType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+
+        // Int32 models (e.g. MoveNet) typically expect raw pixel range [0,255], not normalized.
+        // Float models (e.g. selfie segmentation) expect normalized range with custom scale/bias.
+        const float int32Mul = isInt32 ? 255.0f : 1.0f;
+        const float int32Bias = isInt32 ? 0.0f : bias;
+        const float effectiveScale = isInt32 ? 1.0f : scale;
+
+        if (pImpl_->inputLayout == Impl::InputLayout::NHWC) {
+            for (std::size_t i = 0; i < numInput; ++i) {
+                float v = pImpl_->resizeBuf[i] * effectiveScale * int32Mul + int32Bias;
+                if (isInt32) {
+                    pImpl_->inputBufInt32[i] = static_cast<int32_t>(std::clamp(std::lround(v), 0L, 255L));
+                } else {
+                    pImpl_->inputBuf[i] = v;
+                }
+            }
+        } else {
+            const std::size_t planeSize = static_cast<std::size_t>(pImpl_->inputW)
+                                        * static_cast<std::size_t>(pImpl_->inputH);
+            for (int y = 0; y < pImpl_->inputH; ++y) {
+                for (int x = 0; x < pImpl_->inputW; ++x) {
+                    const std::size_t hwcBase = (static_cast<std::size_t>(y) * static_cast<std::size_t>(pImpl_->inputW)
+                                               + static_cast<std::size_t>(x)) * static_cast<std::size_t>(pImpl_->inputC);
+                    const std::size_t pixelIndex = static_cast<std::size_t>(y) * static_cast<std::size_t>(pImpl_->inputW)
+                                                 + static_cast<std::size_t>(x);
+                    for (int c = 0; c < pImpl_->inputC; ++c) {
+                        const std::size_t chwIndex = static_cast<std::size_t>(c) * planeSize + pixelIndex;
+                        float v = pImpl_->resizeBuf[hwcBase + static_cast<std::size_t>(c)] * effectiveScale * int32Mul + int32Bias;
+                        if (isInt32) {
+                            pImpl_->inputBufInt32[chwIndex] = static_cast<int32_t>(std::clamp(std::lround(v), 0L, 255L));
+                        } else {
+                            pImpl_->inputBuf[chwIndex] = v;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Run inference
+        const char* inputNames[] = {pImpl_->inputName.c_str()};
+        const char* outputNames[] = {pImpl_->outputName.c_str()};
+
+        std::vector<Ort::Value> inputTensors;
+        if (isInt32) {
+            inputTensors.push_back(Ort::Value::CreateTensor<int32_t>(
+                memoryInfo,
+                pImpl_->inputBufInt32.data(),
+                numInput,
+                pImpl_->inputDims.data(),
+                pImpl_->inputDims.size()));
+        } else {
+            inputTensors.push_back(Ort::Value::CreateTensor<float>(
+                memoryInfo,
+                pImpl_->inputBuf.data(),
+                numInput,
+                pImpl_->inputDims.data(),
+                pImpl_->inputDims.size()));
+        }
+
+        auto outputTensors = pImpl_->session->Run(
+            Ort::RunOptions{},
+            inputNames, inputTensors.data(), 1,
+            outputNames, 1);
+
+        // 4. Read output
+        float* outputData = outputTensors[0].GetTensorMutableData<float>();
+        output.assign(outputData, outputData + pImpl_->outputElems);
+
+    } catch (const Ort::Exception& e) {
+        pImpl_->error = "Inference failed: ";
+        pImpl_->error += e.what();
         return false;
     }
-
-    // Normalize from [0,1] to [-1,1] for models that expect it
-    std::size_t numInput = static_cast<std::size_t>(pImpl_->inputW)
-                         * static_cast<std::size_t>(pImpl_->inputH)
-                         * static_cast<std::size_t>(pImpl_->inputC);
-    for (std::size_t i = 0; i < numInput; ++i) {
-        inputTensor[i] = pImpl_->resizeBuf[i] * 2.0f - 1.0f;
-    }
-
-    // 3. Run inference
-    if (pImpl_->interpreter->Invoke() != kTfLiteOk) {
-        pImpl_->error = "Inference failed";
-        return false;
-    }
-
-    // 4. Read output
-    float* outputTensor = pImpl_->interpreter->typed_output_tensor<float>(0);
-    if (outputTensor == nullptr) {
-        pImpl_->error = "Failed to get output tensor";
-        return false;
-    }
-
-    output.resize(static_cast<std::size_t>(pImpl_->outputElems));
-    std::memcpy(output.data(), outputTensor,
-                static_cast<std::size_t>(pImpl_->outputElems) * sizeof(float));
 
     return true;
 }
 
 bool MLPipeline::getOutputAsMask(std::vector<float>& mask) {
-    // Assume single-channel float output, reshape to input dims
     mask.resize(static_cast<std::size_t>(pImpl_->inputW)
               * static_cast<std::size_t>(pImpl_->inputH));
-    // infer() already filled output — this doesn't re-run
-    // The user calls infer() first, then getOutputAsMask()
-    // to interpret the output as a 2D mask.
     return true;
 }
 
