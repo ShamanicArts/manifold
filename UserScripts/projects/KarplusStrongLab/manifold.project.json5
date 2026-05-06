@@ -1,0 +1,17 @@
+{
+  "name": "KarplusStrongLab",
+  "description": "Polyphonic Karplus-Strong string synthesis lab",
+  "author": "Agent",
+  "version": "1.0.0",
+
+  "dsp": {
+    "default": "dsp/default_dsp.lua"
+  },
+
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+
+  "theme": "../Main/themes/dark.lua"
+}

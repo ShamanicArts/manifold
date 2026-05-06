@@ -44,7 +44,7 @@ ImGuiPerfOverlayHost::ImGuiPerfOverlayHost() {
     openGLContext.setRenderer(this);
     openGLContext.setComponentPaintingEnabled(false);
 #ifndef __ANDROID__
-    openGLContext.setPersistentAttachment(true);
+    // openGLContext.setPersistentAttachment(true); // Requires patched JUCE
 #endif
     openGLContext.setContinuousRepainting(true);
     openGLContext.setSwapInterval(1);

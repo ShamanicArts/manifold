@@ -958,7 +958,7 @@ ImGuiDirectHost::ImGuiDirectHost()
     openGLContext_.setRenderer(this);
     openGLContext_.setComponentPaintingEnabled(false);
 #ifndef __ANDROID__
-    openGLContext_.setPersistentAttachment(true);
+    // openGLContext_.setPersistentAttachment(true); // Requires patched JUCE
 #endif
     openGLContext_.setContinuousRepainting(false);
     // renderNow() runs on the message thread in direct mode. Blocking that
