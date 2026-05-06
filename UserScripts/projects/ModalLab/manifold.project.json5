@@ -1,0 +1,17 @@
+{
+  "name": "ModalLab",
+  "description": "Modal synthesis lab - polyphonic resonator instrument",
+  "author": "Agent",
+  "version": "1.0.0",
+
+  "dsp": {
+    "default": "dsp/default_dsp.lua"
+  },
+
+  "ui": {
+    "root": "ui/main.ui.lua",
+    "sharedShell": false
+  },
+
+  "theme": "../Main/themes/dark.lua"
+}
