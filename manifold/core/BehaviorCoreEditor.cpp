@@ -1,6 +1,7 @@
 #include "BehaviorCoreEditor.h"
 #include "../ui/imgui/DirectHostRuntimeSupport.h"
 #include "BehaviorCoreProcessor.h"
+#include "EditorBootstrapSupport.h"
 #include "EditorShellSupport.h"
 #include "../primitives/core/Settings.h"
 #include "../primitives/scripting/bindings/LuaRuntimeNodeBindings.h"
@@ -29,16 +30,7 @@ using editor_shell::InspectorHostConfig;
 using editor_shell::PerfOverlayHostConfig;
 
 juce::String canonicalContractPath(const juce::File& file) {
-    if (!file.exists()) {
-        return {};
-    }
-#ifdef MANIFOLD_SOURCE_DIR
-    const juce::File sourceRoot(juce::String(MANIFOLD_SOURCE_DIR));
-    if (sourceRoot.isDirectory()) {
-        return file.getRelativePathFrom(sourceRoot);
-    }
-#endif
-    return file.getFullPathName();
+    return editor_bootstrap::canonicalContractPath(file);
 }
 
 [[maybe_unused]] double perfElapsedMs(PerfClock::time_point start) {
@@ -46,25 +38,8 @@ juce::String canonicalContractPath(const juce::File& file) {
 }
 
 bool parseProfileWindowSizeEnv(int& widthOut, int& heightOut) {
-    const char* envValue = std::getenv("MANIFOLD_PROFILE_WINDOW_SIZE");
-    if (envValue == nullptr || *envValue == '\0') {
-        return false;
-    }
-
-    int width = 0;
-    int height = 0;
-    if (std::sscanf(envValue, "%dx%d", &width, &height) != 2
-        && std::sscanf(envValue, "%dX%d", &width, &height) != 2) {
-        return false;
-    }
-
-    if (width <= 0 || height <= 0) {
-        return false;
-    }
-
-    widthOut = width;
-    heightOut = height;
-    return true;
+    return editor_bootstrap::parseProfileWindowSizeValue(
+        std::getenv("MANIFOLD_PROFILE_WINDOW_SIZE"), widthOut, heightOut);
 }
 
 
@@ -260,25 +235,16 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
     : juce::AudioProcessorEditor(&ownerProcessor),
       processorRef(ownerProcessor),
       rootMode_(rootMode) {
-    if (const char* envRenderer = std::getenv("MANIFOLD_RENDERER")) {
-        const auto envMode = editor_renderer::runtimeRendererModeFromString(envRenderer, RuntimeRendererMode::ImGuiDirect);
-        if (envMode == RuntimeRendererMode::Canvas || envMode == RuntimeRendererMode::ImGuiOverlay || envMode == RuntimeRendererMode::ImGuiReplace) {
-            rootMode_ = RootMode::Canvas;
-        } else {
-            rootMode_ = RootMode::RuntimeNode;
-        }
-    } else {
-        switch (processorRef.getControlServer().getCurrentUIRendererMode()) {
-            case 0:
-            case 1:
-            case 2:
-                rootMode_ = RootMode::Canvas;
-                break;
-            case 3:
-            default:
-                rootMode_ = RootMode::RuntimeNode;
-                break;
-        }
+    {
+        const auto resolvedRootMode = editor_bootstrap::resolveRootMode(
+            std::getenv("MANIFOLD_RENDERER"),
+            processorRef.getControlServer().getCurrentUIRendererMode(),
+            rootMode_ == RootMode::RuntimeNode
+                ? editor_bootstrap::RootMode::RuntimeNode
+                : editor_bootstrap::RootMode::Canvas);
+        rootMode_ = resolvedRootMode == editor_bootstrap::RootMode::RuntimeNode
+            ? RootMode::RuntimeNode
+            : RootMode::Canvas;
     }
 
     exportPluginUi_ = processorRef.hasExportPluginConfig();
@@ -456,107 +422,77 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
     processorRef.getControlServer().setFrameTimings(&luaEngine.frameTimings);
     processorRef.getControlServer().setLuaEngine(&luaEngine);
 
-    if (const char* envRenderer = std::getenv("MANIFOLD_RENDERER")) {
-        runtimeRendererMode_ = editor_renderer::runtimeRendererModeFromString(envRenderer,
-                                                             rootMode_ == RootMode::RuntimeNode
-                                                                 ? RuntimeRendererMode::ImGuiDirect
-                                                                 : RuntimeRendererMode::Canvas);
-        if (runtimeRendererMode_ != RuntimeRendererMode::Canvas) {
+    {
+        const char* envRenderer = std::getenv("MANIFOLD_RENDERER");
+        const char* envMode = std::getenv("MANIFOLD_RUNTIME_NODE_DEBUG");
+        runtimeRendererMode_ = editor_bootstrap::resolveInitialRuntimeRendererMode(
+            envRenderer,
+            envMode,
+            rootMode_ == RootMode::RuntimeNode
+                ? editor_bootstrap::RootMode::RuntimeNode
+                : editor_bootstrap::RootMode::Canvas);
+        if (envRenderer != nullptr && runtimeRendererMode_ != RuntimeRendererMode::Canvas) {
             std::fprintf(stderr,
                          "BehaviorCoreEditor: renderer enabled via MANIFOLD_RENDERER=%s (%s)\n",
                          envRenderer,
                          editor_renderer::runtimeRendererModeToString(runtimeRendererMode_));
-        }
-    } else if (const char* envMode = std::getenv("MANIFOLD_RUNTIME_NODE_DEBUG")) {
-        runtimeRendererMode_ = editor_renderer::runtimeRendererModeFromString(envMode, RuntimeRendererMode::ImGuiOverlay);
-        if (runtimeRendererMode_ != RuntimeRendererMode::Canvas) {
+        } else if (envRenderer == nullptr && envMode != nullptr
+                   && runtimeRendererMode_ != RuntimeRendererMode::Canvas) {
             std::fprintf(stderr,
                          "BehaviorCoreEditor: RuntimeNode renderer enabled via MANIFOLD_RUNTIME_NODE_DEBUG=%s (%s)\n",
                          envMode,
                          editor_renderer::runtimeRendererModeToString(runtimeRendererMode_));
         }
     }
-    if (rootMode_ == RootMode::RuntimeNode
-        && (runtimeRendererMode_ == RuntimeRendererMode::Canvas
-            || runtimeRendererMode_ == RuntimeRendererMode::ImGuiOverlay)) {
-        runtimeRendererMode_ = RuntimeRendererMode::ImGuiDirect;
-    }
     processorRef.getControlServer().setCurrentUIRendererMode(static_cast<int>(runtimeRendererMode_));
 
     auto& settings = Settings::getInstance();
     const auto settingsScript = settings.getDefaultUiScript();
+    const auto devScriptsDir = settings.getDevScriptsDir();
+    const auto scriptResolution = editor_bootstrap::resolveInitialLuaUiScript(settingsScript, devScriptsDir);
 
-    // Try to load the configured UI script
-    if (settingsScript.isNotEmpty()) {
-        const juce::File scriptFile(settingsScript);
-        if (scriptFile.existsAsFile()) {
-            usingLuaUi = luaEngine.loadScript(scriptFile);
-            if (usingLuaUi) {
-                std::fprintf(stderr, "BehaviorCoreEditor: Using Lua UI from %s\n",
-                             scriptFile.getFullPathName().toRawUTF8());
-            } else {
-                std::fprintf(stderr, "BehaviorCoreEditor: Lua script failed: %s\n",
-                             luaEngine.getLastError().c_str());
-                showError("Lua UI failed to load:\n" + luaEngine.getLastError());
-            }
-        } else {
-            // Fallback to empty launcher if configured script doesn't exist
-            const auto devScriptsDir = settings.getDevScriptsDir();
-            juce::File fallbackScript;
-
-            if (devScriptsDir.isNotEmpty()) {
-                fallbackScript = juce::File(devScriptsDir).getChildFile("empty_launcher.lua");
-            }
-
-            if (fallbackScript.existsAsFile()) {
-                usingLuaUi = luaEngine.loadScript(fallbackScript);
-                if (usingLuaUi) {
+    if (scriptResolution.shouldAttemptLoad()) {
+        usingLuaUi = luaEngine.loadScript(scriptResolution.scriptFile);
+        if (usingLuaUi) {
+            switch (scriptResolution.kind) {
+                case editor_bootstrap::ScriptResolutionKind::Configured:
+                    std::fprintf(stderr, "BehaviorCoreEditor: Using Lua UI from %s\n",
+                                 scriptResolution.scriptFile.getFullPathName().toRawUTF8());
+                    break;
+                case editor_bootstrap::ScriptResolutionKind::FallbackForMissingConfigured:
                     std::fprintf(stderr,
                                  "BehaviorCoreEditor: Configured UI script not found, using fallback shell: %s\n",
-                                 fallbackScript.getFullPathName().toRawUTF8());
-                } else {
-                    std::fprintf(stderr, "BehaviorCoreEditor: Fallback shell failed to load: %s\n",
-                                 luaEngine.getLastError().c_str());
-                    showError("Fallback shell failed to load:\n" + luaEngine.getLastError());
-                }
-            } else {
-                std::fprintf(stderr,
-                             "BehaviorCoreEditor: UI script not found and no fallback available:\n"
-                             "  Configured: %s\n"
-                             "  devScriptsDir: %s\n"
-                             "  -> Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n",
-                             settingsScript.toRawUTF8(), devScriptsDir.toRawUTF8());
-                showError("UI script not found:\n"
-                          "  Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
-            }
-        }
-    } else {
-        // Fallback to empty launcher if settings.defaultUiScript is empty
-        const auto devScriptsDir = settings.getDevScriptsDir();
-        juce::File fallbackScript;
-
-        if (devScriptsDir.isNotEmpty()) {
-            fallbackScript = juce::File(devScriptsDir).getChildFile("empty_launcher.lua");
-        }
-
-        if (fallbackScript.existsAsFile()) {
-            usingLuaUi = luaEngine.loadScript(fallbackScript);
-            if (usingLuaUi) {
-                std::fprintf(stderr,
-                             "BehaviorCoreEditor: Settings.defaultUiScript is empty, using fallback shell: %s\n",
-                             fallbackScript.getFullPathName().toRawUTF8());
-            } else {
-                std::fprintf(stderr, "BehaviorCoreEditor: Fallback shell failed to load: %s\n",
-                             luaEngine.getLastError().c_str());
-                showError("Fallback shell failed to load:\n" + luaEngine.getLastError());
+                                 scriptResolution.scriptFile.getFullPathName().toRawUTF8());
+                    break;
+                case editor_bootstrap::ScriptResolutionKind::FallbackForEmptyConfigured:
+                    std::fprintf(stderr,
+                                 "BehaviorCoreEditor: Settings.defaultUiScript is empty, using fallback shell: %s\n",
+                                 scriptResolution.scriptFile.getFullPathName().toRawUTF8());
+                    break;
+                case editor_bootstrap::ScriptResolutionKind::MissingConfiguredAndFallback:
+                case editor_bootstrap::ScriptResolutionKind::MissingEmptyConfiguredAndFallback:
+                    break;
             }
         } else {
-            std::fprintf(stderr,
-                         "BehaviorCoreEditor: No UI script configured and no fallback available.\n"
-                         "  -> Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
-            showError("No UI script configured:\n"
-                      "Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
+            std::fprintf(stderr, "BehaviorCoreEditor: Lua script failed: %s\n",
+                         luaEngine.getLastError().c_str());
+            showError((scriptResolution.kind == editor_bootstrap::ScriptResolutionKind::Configured
+                       ? "Lua UI failed to load:\n"
+                       : "Fallback shell failed to load:\n") + luaEngine.getLastError());
         }
+    } else if (scriptResolution.kind == editor_bootstrap::ScriptResolutionKind::MissingConfiguredAndFallback) {
+        std::fprintf(stderr,
+                     "BehaviorCoreEditor: UI script not found and no fallback available:\n"
+                     "  Configured: %s\n"
+                     "  devScriptsDir: %s\n"
+                     "  -> Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n",
+                     settingsScript.toRawUTF8(), devScriptsDir.toRawUTF8());
+        showError(scriptResolution.errorMessage().toStdString());
+    } else {
+        std::fprintf(stderr,
+                     "BehaviorCoreEditor: No UI script configured and no fallback available.\n"
+                     "  -> Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n");
+        showError(scriptResolution.errorMessage().toStdString());
     }
 
     processorRef.captureEditorOpenSnapshot();

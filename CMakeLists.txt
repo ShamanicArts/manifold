@@ -1127,6 +1127,14 @@ add_executable(ParamRegistryContractHarness manifold/headless/ParamRegistryContr
 
 add_executable(DSPHostLifecycleContractHarness manifold/headless/DSPHostLifecycleContractHarness.cpp)
 
+add_executable(SystemPathsContractHarness manifold/headless/SystemPathsContractHarness.cpp)
+
+add_executable(SettingsContractHarness manifold/headless/SettingsContractHarness.cpp)
+
+add_executable(EditorBootstrapSupportContractHarness manifold/headless/EditorBootstrapSupportContractHarness.cpp)
+
+add_executable(ExportSupportContractHarness manifold/headless/ExportSupportContractHarness.cpp)
+
 add_executable(LuaEngineContractHarness manifold/headless/LuaEngineContractHarness.cpp)
 
 add_executable(ShaderRegistryContractHarness manifold/headless/ShaderRegistryContractHarness.cpp)
@@ -1376,6 +1384,35 @@ target_link_libraries(DSPHostLifecycleContractHarness
         ${MANIFOLD_LUA_TARGET}
         sol2::sol2
         highway)
+
+manifold_target_include_project_and_ableton(SystemPathsContractHarness)
+target_link_libraries(SystemPathsContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core)
+
+manifold_target_include_project_and_ableton(SettingsContractHarness)
+target_link_libraries(SettingsContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core)
+
+manifold_target_include_project_and_ableton(EditorBootstrapSupportContractHarness)
+target_link_libraries(EditorBootstrapSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core)
+
+manifold_target_include_project_and_ableton(ExportSupportContractHarness)
+target_link_libraries(ExportSupportContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_core
+        juce::juce_gui_basics
+        juce::juce_audio_processors
+        juce::juce_audio_utils
+        ${MANIFOLD_LUA_TARGET}
+        sol2::sol2)
 
 manifold_target_include_project_and_ableton(LuaEngineContractHarness)
 target_link_libraries(LuaEngineContractHarness
@@ -2010,6 +2047,34 @@ add_test(
     COMMAND $<TARGET_FILE:LuaEngineMockHarness>)
 set_tests_properties(manifold_lua_bindings_behavior_smoke PROPERTIES
     LABELS "manifold;lua;bindings;behavior;scripting")
+
+add_test(
+    NAME manifold_system_paths_contract
+    COMMAND $<TARGET_FILE:SystemPathsContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/system_paths_contract_golden.json)
+set_tests_properties(manifold_system_paths_contract PROPERTIES
+    LABELS "manifold;paths;contract")
+
+add_test(
+    NAME manifold_settings_contract
+    COMMAND $<TARGET_FILE:SettingsContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/settings_contract_golden.json)
+set_tests_properties(manifold_settings_contract PROPERTIES
+    LABELS "manifold;settings;contract")
+
+add_test(
+    NAME manifold_editor_bootstrap_support_contract
+    COMMAND $<TARGET_FILE:EditorBootstrapSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/editor_bootstrap_support_contract_golden.json)
+set_tests_properties(manifold_editor_bootstrap_support_contract PROPERTIES
+    LABELS "manifold;editor;support;contract")
+
+add_test(
+    NAME manifold_export_support_contract
+    COMMAND $<TARGET_FILE:ExportSupportContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/export_support_contract_golden.json)
+set_tests_properties(manifold_export_support_contract PROPERTIES
+    LABELS "manifold;export;contract")
 
 add_test(
     NAME manifold_headless_oscquery_contract

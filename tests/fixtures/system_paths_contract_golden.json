@@ -1,0 +1,23 @@
+{
+  "contractVersion": 1,
+  "systemPaths": {
+    "sysDirsRelated": true,
+    "sysProjectsAbsolutePath": true,
+    "sysProjectsExists": true,
+    "sysProjectsNonEmpty": true,
+    "sysScriptsAbsolutePath": true,
+    "sysScriptsIsDirectory": true,
+    "sysScriptsNonEmpty": true,
+    "systemProjectsDir": "/home/shamanic/dev/my-plugin/manifold/SystemScripts/projects",
+    "systemScriptsDir": "/home/shamanic/dev/my-plugin/manifold/SystemScripts",
+    "userDirsRelated": true,
+    "userProjectsAbsolutePath": true,
+    "userProjectsDir": "/home/shamanic/.config/manifold/UserScripts/projects",
+    "userProjectsExists": false,
+    "userProjectsNonEmpty": true,
+    "userScriptsAbsolutePath": true,
+    "userScriptsDir": "/home/shamanic/.config/manifold/UserScripts",
+    "userScriptsExists": false,
+    "userScriptsNonEmpty": true
+  }
+}

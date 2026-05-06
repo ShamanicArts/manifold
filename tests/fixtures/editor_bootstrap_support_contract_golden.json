@@ -1,0 +1,57 @@
+{
+  "canonicalContractPath": {
+    "missingEmpty": true,
+    "repoFileEndsWithCpp": true,
+    "repoFileRelative": "manifold/core/BehaviorCoreEditor.cpp"
+  },
+  "contractVersion": 1,
+  "profileWindowSize": {
+    "height1280x720": 720,
+    "height800X600": 600,
+    "parse1280x720": true,
+    "parse800X600": true,
+    "parseGarbage": false,
+    "parseNegative": false,
+    "parseNull": false,
+    "parseZero": false,
+    "width1280x720": 1280,
+    "width800X600": 800
+  },
+  "rootMode": {
+    "envCanvas": 0,
+    "envDirect": 1,
+    "envReplace": 0,
+    "savedMode0": 0,
+    "savedMode2": 0,
+    "savedMode3": 1
+  },
+  "runtimeRendererMode": {
+    "debugEnvUsed": 1,
+    "defaultCanvasRoot": 0,
+    "defaultRuntimeRoot": 3,
+    "envCanvasOnCanvasRoot": 0,
+    "envCanvasOnRuntimeRootCoerced": 3,
+    "envDirectOnRuntimeRoot": 3,
+    "envOverlayOnRuntimeRootCoerced": 3,
+    "envReplaceOnRuntimeRoot": 2
+  },
+  "scriptResolution": {
+    "configuredKind": 0,
+    "configuredLoads": true,
+    "configuredPath": "/tmp/manifold_editor_bootstrap_contract/configured.lua",
+    "emptyConfiguredKind": 2,
+    "emptyConfiguredLoads": true,
+    "emptyConfiguredPath": "/tmp/manifold_editor_bootstrap_contract/dev_ui/empty_launcher.lua",
+    "emptyNoFallbackError": "No UI script configured:\nConfigure defaultUiScript or devScriptsDir in .manifold.settings.json\n",
+    "emptyNoFallbackKind": 4,
+    "emptyNoFallbackLoads": false,
+    "missingConfiguredError": "",
+    "missingConfiguredKind": 1,
+    "missingConfiguredLoads": true,
+    "missingConfiguredPath": "/tmp/manifold_editor_bootstrap_contract/dev_ui/empty_launcher.lua",
+    "missingNoFallbackError": "UI script not found:\n  Configure defaultUiScript or devScriptsDir in .manifold.settings.json\n",
+    "missingNoFallbackKind": 3,
+    "missingNoFallbackLoads": false
+  }
+}
+
