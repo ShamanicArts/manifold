@@ -11,6 +11,7 @@
 #include "../ui/imgui/ImGuiPerfOverlayHost.h"
 #include "../ui/imgui/ImGuiRuntimeNodeHost.h"
 #include "../ui/imgui/ImGuiDirectHost.h"
+#include "EditorRecordingSupport.h"
 
 #include <cstddef>
 #include <memory>
@@ -98,17 +99,9 @@ private:
     bool uiIdleSnapshotCaptured_ = false;
     int uiIdleSnapshotCountdown_ = 40;
 
-    // Recording frame capture timing (30 FPS target)
-    std::chrono::steady_clock::time_point lastFrameCaptureTime_{};
-    bool firstFrameCapture_ = true;
+    // Recording frame capture
     bool wasRecording_ = false;
-
-    // RAM frame accumulation: capture to memory during recording, flush to disk after
-    std::vector<juce::Image> ramFrames_;
-    std::size_t ramFramesBytes_ = 0;
-    bool ramFramesLimitWarned_ = false;
-    std::mutex ramFramesMutex_;
-    void flushRamFramesToDisk(const std::string& outputDir);
+    editor_recording::RamFrameAccumulator recordingAccumulator_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BehaviorCoreEditor)
 };

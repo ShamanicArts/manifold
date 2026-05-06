@@ -19,8 +19,6 @@
 namespace {
 using PerfClock = std::chrono::steady_clock;
 
-bool writeTga(const juce::Image& image, const std::string& path);
-
 struct HostLayoutTraceState {
     bool initialised = false;
     bool visible = false;
@@ -1748,12 +1746,7 @@ BehaviorCoreEditor::BehaviorCoreEditor(BehaviorCoreProcessor& ownerProcessor,
 
 BehaviorCoreEditor::~BehaviorCoreEditor() {
     stopTimer();
-    {
-        std::lock_guard<std::mutex> lock(ramFramesMutex_);
-        ramFrames_.clear();
-        ramFramesBytes_ = 0;
-        ramFramesLimitWarned_ = false;
-    }
+    recordingAccumulator_.clear();
     // Shut down the direct host first (detaches GL context, clears live tree pointer)
     directHost_.shutdown();
     // Then the old debug host
@@ -1936,15 +1929,8 @@ void BehaviorCoreEditor::timerCallback() {
     // Handle recording frame capture (target 30 FPS)
     const bool isRecording = processorRef.getControlServer().isRecording();
     if (isRecording && !wasRecording_) {
-        // Recording started: clear any stale RAM frames
-        {
-            std::lock_guard<std::mutex> lock(ramFramesMutex_);
-            ramFrames_.clear();
-            ramFramesBytes_ = 0;
-            ramFramesLimitWarned_ = false;
-        }
+        recordingAccumulator_.clear();
     } else if (!isRecording && wasRecording_) {
-        // Recording stopped: flush all accumulated RAM frames to disk
         auto& rec = processorRef.getControlServer().getRecordingState();
         std::string outputDir;
         {
@@ -1952,7 +1938,8 @@ void BehaviorCoreEditor::timerCallback() {
             outputDir = rec.outputDir;
         }
         if (!outputDir.empty()) {
-            flushRamFramesToDisk(outputDir);
+            editor_recording::flushRamFramesToDisk(
+                recordingAccumulator_.takeAll(), outputDir, rec);
         }
     }
     wasRecording_ = isRecording;
@@ -2016,30 +2003,12 @@ void BehaviorCoreEditor::timerCallback() {
                             char framePath[512];
                             std::snprintf(framePath, sizeof(framePath), "%s/frame_%04d.tga",
                                           outputDir.c_str(), frameNum);
-                            if (writeTga(frame, framePath)) {
+                            if (editor_recording::writeTga(frame, framePath)) {
                                 std::lock_guard<std::mutex> lock(rec.mutex);
                                 rec.framePaths.push_back(framePath);
                             }
                         } else {
-                            constexpr std::size_t kRecordingRamFrameByteLimit = 384u * 1024u * 1024u;
-                            const auto frameBytes = static_cast<std::size_t>(frame.getWidth())
-                                                * static_cast<std::size_t>(frame.getHeight())
-                                                * 4u;
-                            bool accepted = false;
-                            {
-                                std::lock_guard<std::mutex> lock(ramFramesMutex_);
-                                if (ramFramesBytes_ + frameBytes <= kRecordingRamFrameByteLimit) {
-                                    ramFramesBytes_ += frameBytes;
-                                    ramFrames_.push_back(frame);
-                                    accepted = true;
-                                } else if (!ramFramesLimitWarned_) {
-                                    ramFramesLimitWarned_ = true;
-                                    std::fprintf(stderr,
-                                                 "BehaviorCoreEditor: recording frame RAM cap reached (%zu bytes), dropping further frames\n",
-                                                 kRecordingRamFrameByteLimit);
-                                }
-                            }
-                            if (accepted) {
+                            if (recordingAccumulator_.tryAddFrame(frame)) {
                                 rec.frameCounter.fetch_add(1, std::memory_order_relaxed);
                             }
                         }
@@ -2561,61 +2530,6 @@ void BehaviorCoreEditor::showError(const std::string& message) {
     };
 }
 
-namespace {
-bool writeTga(const juce::Image& image, const std::string& path) {
-    FILE* f = std::fopen(path.c_str(), "wb");
-    if (!f) return false;
-    const int w = image.getWidth();
-    const int h = image.getHeight();
-    std::uint8_t header[18] = {};
-    header[2] = 2;
-    header[12] = static_cast<std::uint8_t>(w & 0xFF);
-    header[13] = static_cast<std::uint8_t>((w >> 8) & 0xFF);
-    header[14] = static_cast<std::uint8_t>(h & 0xFF);
-    header[15] = static_cast<std::uint8_t>((h >> 8) & 0xFF);
-    header[16] = 32;
-    header[17] = 0x28;
-    std::fwrite(header, 1, 18, f);
-    juce::Image::BitmapData bitmap(image, juce::Image::BitmapData::readOnly);
-    for (int y = 0; y < h; ++y) {
-        const auto* src = bitmap.getLinePointer(y);
-        for (int x = 0; x < w; ++x) {
-            std::uint8_t pixel[4] = {src[x * 4 + 0], src[x * 4 + 1], src[x * 4 + 2], src[x * 4 + 3]};
-            std::fwrite(pixel, 1, 4, f);
-        }
-    }
-    std::fclose(f);
-    return true;
-}
-}
-
-void BehaviorCoreEditor::flushRamFramesToDisk(const std::string& outputDir) {
-    std::vector<juce::Image> frames;
-    {
-        std::lock_guard<std::mutex> lock(ramFramesMutex_);
-        frames = std::move(ramFrames_);
-        ramFrames_.clear();
-        ramFramesBytes_ = 0;
-        ramFramesLimitWarned_ = false;
-    }
-    if (frames.empty()) {
-        return;
-    }
-    auto& rec = processorRef.getControlServer().getRecordingState();
-    int frameNum = 0;
-    for (const auto& image : frames) {
-        ++frameNum;
-        char framePath[512];
-        std::snprintf(framePath, sizeof(framePath), "%s/frame_%04d.tga",
-                      outputDir.c_str(), frameNum);
-        writeTga(image, framePath);
-        {
-            std::lock_guard<std::mutex> lock(rec.mutex);
-            rec.framePaths.push_back(framePath);
-        }
-    }
-}
-
 std::string BehaviorCoreEditor::exportStateContract() const {
     juce::DynamicObject::Ptr root = new juce::DynamicObject();
     root->setProperty("contractVersion", 1);
@@ -2628,7 +2542,7 @@ std::string BehaviorCoreEditor::exportStateContract() const {
     root->setProperty("errorMessage", juce::String(errorMessage));
     root->setProperty("uiIdleSnapshotCaptured", uiIdleSnapshotCaptured_);
     root->setProperty("uiIdleSnapshotCountdown", uiIdleSnapshotCountdown_);
-    root->setProperty("ramFramesBytes", static_cast<double>(ramFramesBytes_));
+    root->setProperty("ramFramesBytes", static_cast<double>(recordingAccumulator_.ramFramesBytes));
 
     const auto scriptFile = luaEngine.getCurrentScriptFile();
     root->setProperty("luaScriptLoaded", canonicalContractPath(scriptFile));
