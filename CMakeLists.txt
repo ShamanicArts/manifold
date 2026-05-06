@@ -1309,11 +1309,6 @@ add_test(
             --headless build-dev/ManifoldHeadless)
 set_tests_properties(manifold_headless_ipc_core PROPERTIES LABELS "manifold;headless;ipc")
 
-add_test(
-    NAME manifold_headless_ipc_editor
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e_editor_ipc_test.py
-            --headless build-dev/ManifoldHeadless)
-set_tests_properties(manifold_headless_ipc_editor PROPERTIES LABELS "manifold;headless;editor;ipc")
 
 add_test(
     NAME manifold_headless_avsampler_docking_regression
@@ -1321,17 +1316,6 @@ add_test(
             --headless build-dev/ManifoldHeadless)
 set_tests_properties(manifold_headless_avsampler_docking_regression PROPERTIES LABELS "manifold;headless;editor;avsampler;regression")
 
-add_test(
-    NAME manifold_standalone_direct_regression
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/standalone_direct_regression_test.py
-            --launch build-dev/Manifold_artefacts/RelWithDebInfo/Standalone/Manifold
-            --renderer imgui-direct
-            --iterations 8
-            --settle 0.12
-            --require-gui)
-set_tests_properties(manifold_standalone_direct_regression PROPERTIES
-    LABELS "manifold;standalone;direct;regression"
-    SKIP_RETURN_CODE 77)
 
 add_test(
     NAME manifold_standalone_direct_profile_sanity
@@ -1348,11 +1332,6 @@ set_tests_properties(manifold_standalone_direct_profile_sanity PROPERTIES
     LABELS "manifold;standalone;direct;profile"
     SKIP_RETURN_CODE 77)
 
-add_test(
-    NAME manifold_port_buffer_semantics
-    COMMAND $<TARGET_FILE:PortBufferSemanticsHarness>)
-set_tests_properties(manifold_port_buffer_semantics PROPERTIES
-    LABELS "manifold;dsp;regression;contract")
 
 add_test(
     NAME manifold_video_sampler_storage

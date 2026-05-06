@@ -7,23 +7,17 @@
 
 namespace dsp_host {
 
-void registerParamsApi(LoadSession &session,
-                       sol::table &ctx,
-                       const PathMapperFn &mapInternalToExternal,
-                       const PathMapperFn &mapExternalToInternal) {
-  auto &newParamSpecs = session.paramSpecs;
-  auto &newParamValues = session.paramValues;
-  auto &newParamBindings = session.paramBindings;
-  auto &newExternalToInternalPath = session.externalToInternalPath;
-  auto &newInternalToExternalPath = session.internalToExternalPath;
-  lua_State *newLuaState = session.luaState;
-
-  auto paramsTable = sol::state_view(newLuaState).create_table();
-  paramsTable["register"] =
-      [&newParamSpecs, &newParamValues, &newExternalToInternalPath,
-       &newInternalToExternalPath, &mapInternalToExternal,
-       &mapExternalToInternal](const std::string &rawPath,
-                               sol::table options) {
+// ---------------------------------------------------------------------------
+// Helper: process a single parameter "register" call from Lua
+// ---------------------------------------------------------------------------
+void handleParamRegister(
+    const std::string &rawPath, sol::table options,
+    std::unordered_map<std::string, dsp_host::DspParamSpec> &newParamSpecs,
+    std::unordered_map<std::string, float> &newParamValues,
+    std::unordered_map<std::string, std::string> &newExternalToInternalPath,
+    std::unordered_map<std::string, std::string> &newInternalToExternalPath,
+    const dsp_host::PathMapperFn &mapInternalToExternal,
+    const dsp_host::PathMapperFn &mapExternalToInternal) {
         const std::string externalPath = mapInternalToExternal(rawPath);
         const std::string internalPath = mapExternalToInternal(externalPath);
         DspParamSpec spec;
@@ -58,12 +52,16 @@ void registerParamsApi(LoadSession &session,
         newParamValues[externalPath] = spec.defaultValue;
         newExternalToInternalPath[externalPath] = internalPath;
         newInternalToExternalPath[internalPath] = externalPath;
-      };
+      }
 
-  paramsTable["bind"] =
-      [&newParamBindings, &mapInternalToExternal](
-          const std::string &rawPath, const sol::object &nodeObj,
-          const std::string &method) {
+// ---------------------------------------------------------------------------
+// Helper: process a single parameter "bind" call from Lua
+// ---------------------------------------------------------------------------
+bool handleParamBind(
+    const std::string &rawPath, const sol::object &nodeObj,
+    const std::string &method,
+    std::unordered_map<std::string, std::function<void(float)>> &newParamBindings,
+    const PathMapperFn &mapInternalToExternal) {
         const std::string path = mapInternalToExternal(rawPath);
         auto node = toPrimitiveNode(nodeObj);
         if (!node) {
@@ -1032,7 +1030,37 @@ void registerParamsApi(LoadSession &session,
         }
 
         return false;
-      };
+      }
+
+
+void registerParamsApi(LoadSession &session,
+                       sol::table &ctx,
+                       const PathMapperFn &mapInternalToExternal,
+                       const PathMapperFn &mapExternalToInternal) {
+  auto &newParamSpecs = session.paramSpecs;
+  auto &newParamValues = session.paramValues;
+  auto &newParamBindings = session.paramBindings;
+  auto &newExternalToInternalPath = session.externalToInternalPath;
+  auto &newInternalToExternalPath = session.internalToExternalPath;
+  lua_State *newLuaState = session.luaState;
+
+  auto paramsTable = sol::state_view(newLuaState).create_table();
+    paramsTable["register"] = [&newParamSpecs, &newParamValues, &newExternalToInternalPath,
+       &newInternalToExternalPath, &mapInternalToExternal,
+       &mapExternalToInternal](const std::string &rawPath,
+                               sol::table options) {
+    handleParamRegister(rawPath, options, newParamSpecs, newParamValues,
+                        newExternalToInternalPath, newInternalToExternalPath,
+                        mapInternalToExternal, mapExternalToInternal);
+  };
+
+    paramsTable["bind"] =
+      [&newParamBindings, &mapInternalToExternal](
+          const std::string &rawPath, const sol::object &nodeObj,
+          const std::string &method) {
+    return handleParamBind(rawPath, nodeObj, method, newParamBindings,
+                           mapInternalToExternal);
+  };
 
   ctx["params"] = paramsTable;
 }
