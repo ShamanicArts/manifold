@@ -550,6 +550,11 @@ set(MANIFOLD_RUNTIME_SOURCES
     manifold/primitives/sync/LinkSync.cpp
     manifold/primitives/control/ControlServer.h
     manifold/primitives/control/ControlServer.cpp
+    manifold/primitives/control/BehaviorControlState.h
+    manifold/primitives/control/BehaviorRuntimeTelemetry.h
+    manifold/primitives/control/BehaviorStateSnapshot.h
+    manifold/primitives/control/BehaviorStateProjection.h
+    manifold/primitives/control/BehaviorStateProjection.cpp
     manifold/primitives/control/OSCServer.h
     manifold/primitives/control/OSCServer.cpp
     manifold/primitives/control/OSCEndpointRegistry.h

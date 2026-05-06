@@ -14,6 +14,8 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 
 #include "ExportPluginConfigSupport.h"
+#include "../primitives/control/BehaviorControlStateView.h"
+#include "../primitives/control/BehaviorRuntimeTelemetryView.h"
 #include "../primitives/control/ControlServer.h"
 #include "../primitives/control/OSCEndpointRegistry.h"
 #include "../primitives/control/OSCQuery.h"
@@ -141,8 +143,14 @@ public:
     }
     void setGraphProcessingEnabled(bool enabled) override {
         graphProcessingEnabled.store(enabled, std::memory_order_relaxed);
-        controlServer.getAtomicState().graphEnabled.store(enabled,
-                                                          std::memory_order_relaxed);
+        manifold::control_state_view::BehaviorControlStateView(
+            controlServer.getBehaviorControlState(),
+            &controlServer.getAtomicState())
+            .setGraphEnabled(enabled);
+        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
+            controlServer.getBehaviorRuntimeTelemetry(),
+            &controlServer.getAtomicState())
+            .setGraphEnabled(enabled);
     }
     bool isGraphProcessingEnabled() const override {
         return graphProcessingEnabled.load(std::memory_order_relaxed);

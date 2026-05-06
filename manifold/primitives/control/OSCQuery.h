@@ -112,8 +112,8 @@ enum class WSOpcode : uint8_t {
 // OSCQueryServer - HTTP + WebSocket server for OSCQuery protocol.
 //
 // Builds the address tree dynamically from OSCEndpointRegistry, responds to
-// HTTP GET requests with JSON, queries AtomicState for live VALUES, and
-// maintains WebSocket connections for LISTEN/IGNORE value streaming.
+// HTTP GET requests with JSON, queries live behavior values, and maintains
+// WebSocket connections for LISTEN/IGNORE value streaming.
 // ============================================================================
 
 class OSCQueryServer {

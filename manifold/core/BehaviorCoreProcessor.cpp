@@ -11,6 +11,8 @@
 #include "LinkSupport.h"
 #include "MidiSupport.h"
 #include "StateSerializationSupport.h"
+#include "../primitives/control/BehaviorControlStateView.h"
+#include "../primitives/control/BehaviorRuntimeTelemetryView.h"
 #include "../primitives/control/OSCSettingsPersistence.h"
 #include "../primitives/core/Settings.h"
 #include "../primitives/scripting/DSPPluginScriptHost.h"
@@ -844,13 +846,19 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     const int numSamples = buffer.getNumSamples();
     if (linkSync.processAudio(numSamples)) {
         // Tempo was updated from Link, update atomic state and forward to DSP
-        auto& state = controlServer.getAtomicState();
+        auto controlState = manifold::control_state_view::BehaviorControlStateView(
+            controlServer.getBehaviorControlState(),
+            &controlServer.getAtomicState());
+        auto runtimeTelemetry =
+            manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
+                controlServer.getBehaviorRuntimeTelemetry(),
+                &controlServer.getAtomicState());
         const double linkTempo = linkSync.getTempo();
-        state.tempo.store(static_cast<float>(linkTempo), std::memory_order_relaxed);
-        state.samplesPerBar.store(computeSamplesPerBar(
-                                    static_cast<float>(linkTempo),
-                                    currentSampleRate.load(std::memory_order_relaxed)),
-                                std::memory_order_relaxed);
+        controlState.setTempo(static_cast<float>(linkTempo));
+        runtimeTelemetry.setTempo(static_cast<float>(linkTempo));
+        runtimeTelemetry.setSamplesPerBar(computeSamplesPerBar(
+            static_cast<float>(linkTempo),
+            currentSampleRate.load(std::memory_order_relaxed)));
         // Forward tempo change to DSP script
         if (dspScriptHost) {
             (void)dspScriptHost->setParam("/core/behavior/tempo", static_cast<float>(linkTempo));
@@ -867,7 +875,12 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     float* outL = numChannels > 0 ? buffer.getWritePointer(0) : nullptr;
     float* outR = numChannels > 1 ? buffer.getWritePointer(1) : outL;
 
-    auto& state = controlServer.getAtomicState();
+    auto& atomicState = controlServer.getAtomicState();
+    auto controlState = manifold::control_state_view::BehaviorControlStateView(
+        controlServer.getBehaviorControlState(), &atomicState);
+    auto runtimeTelemetry =
+        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
+            controlServer.getBehaviorRuntimeTelemetry(), &atomicState);
 
     auto mainInputBus = getBusCount(true) > 0 ? getBusBuffer(buffer, true, 0)
                                               : juce::AudioBuffer<float>();
@@ -877,8 +890,8 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
    #if JucePlugin_IsMidiEffect
     {
         buffer.clear();
-        state.graphEnabled.store(false, std::memory_order_relaxed);
-        state.captureLevel.store(0.0f, std::memory_order_relaxed);
+        runtimeTelemetry.setGraphEnabled(false);
+        runtimeTelemetry.setCaptureLevel(0.0f);
 
         if (dspScriptHost && dspScriptHost->isLoaded()) {
             dspScriptHost->process(numSamples, currentSampleRate.load());
@@ -893,11 +906,10 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         const double nextPlayTime =
             playTimeSamples.load(std::memory_order_relaxed) + numSamples;
         playTimeSamples.store(nextPlayTime, std::memory_order_relaxed);
-        state.playTime.store(nextPlayTime, std::memory_order_relaxed);
+        runtimeTelemetry.setPlayTime(nextPlayTime);
 
         const double sr = currentSampleRate.load(std::memory_order_relaxed);
-        state.uptimeSeconds.store(sr > 0.0 ? nextPlayTime / sr : 0.0,
-                                  std::memory_order_relaxed);
+        runtimeTelemetry.setUptimeSeconds(sr > 0.0 ? nextPlayTime / sr : 0.0);
 
         drainMidiOutput(midiMessages);
 
@@ -911,7 +923,7 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
    #endif
 
     // Input volume controls level going into looper (capture + graph)
-    const float inputVolume = state.inputVolume.load(std::memory_order_relaxed);
+    const float inputVolume = controlState.inputVolume();
 
     // Capture-plane source comes from the main host input bus before any wet/dry mixing.
     const float* captureL = mainInputChannels > 0 ? mainInputBus.getReadPointer(0) : nullptr;
@@ -929,12 +941,12 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    state.captureSize.store(captureBuffer.getSize(), std::memory_order_relaxed);
-    state.captureWritePos.store(captureBuffer.getOffsetToNow(), std::memory_order_relaxed);
-    const float wetGain = state.masterVolume.load(std::memory_order_relaxed);
+    runtimeTelemetry.setCaptureSize(captureBuffer.getSize());
+    runtimeTelemetry.setCaptureWritePos(captureBuffer.getOffsetToNow());
+    const float wetGain = controlState.masterVolume();
 
     const bool graphEnabled = graphProcessingEnabled.load(std::memory_order_relaxed);
-    state.graphEnabled.store(graphEnabled, std::memory_order_relaxed);
+    runtimeTelemetry.setGraphEnabled(graphEnabled);
 
     const bool canProcessGraph =
         graphEnabled &&
@@ -960,7 +972,7 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
 
         // INPUT-DSP -> Monitor branch: monitor-toggle-controlled source.
-        const bool passthroughEnabled = state.passthroughEnabled.load(std::memory_order_relaxed);
+        const bool passthroughEnabled = controlState.passthroughEnabled();
         const float monitorInputGain = passthroughEnabled ? inputVolume : 0.0f;
         for (int ch = 0; ch < mainBusChannels; ++ch) {
             if (mainInputChannels > 0) {
@@ -1025,7 +1037,7 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     } else {
         // No graph enabled - passthrough toggle controls direct input monitoring.
         // When ON: hear input at inputVolume level. When OFF: silence.
-        const bool passthroughEnabled = state.passthroughEnabled.load(std::memory_order_relaxed);
+        const bool passthroughEnabled = controlState.passthroughEnabled();
         const float passthroughGain = passthroughEnabled ? inputVolume : 0.0f;
         if (outL == nullptr) {
             buffer.clear();
@@ -1051,32 +1063,30 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    state.captureLevel.store(mainInputChannels > 0 ? computeBufferRms(mainInputBus)
-                                                    : 0.0f,
-                             std::memory_order_relaxed);
+    runtimeTelemetry.setCaptureLevel(mainInputChannels > 0 ? computeBufferRms(mainInputBus)
+                                                            : 0.0f);
 
     for (int i = 0; i < MAX_LAYERS; ++i) {
-        auto& ls = state.layers[i];
         const auto layerState = static_cast<ScriptableLayerState>(
-            ls.state.load(std::memory_order_relaxed));
+            runtimeTelemetry.layerState(i));
         if (layerState != ScriptableLayerState::Playing &&
             layerState != ScriptableLayerState::Overdubbing) {
             continue;
         }
 
-        const int length = ls.length.load(std::memory_order_relaxed);
+        const int length = runtimeTelemetry.layerLength(i);
         if (length <= 0) {
             continue;
         }
 
-        const float speed = std::abs(ls.speed.load(std::memory_order_relaxed));
+        const float speed = std::abs(controlState.layerSpeed(i));
         if (speed <= 0.0001f) {
             continue;
         }
         const int delta = std::max(1, static_cast<int>(std::round(speed * numSamples)));
 
-        int pos = ls.playheadPos.load(std::memory_order_relaxed);
-        if (ls.reversed.load(std::memory_order_relaxed)) {
+        int pos = runtimeTelemetry.layerPlayheadPos(i);
+        if (controlState.layerReversed(i)) {
             pos -= delta;
             while (pos < 0) {
                 pos += length;
@@ -1088,14 +1098,14 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             }
         }
 
-        ls.playheadPos.store(pos, std::memory_order_relaxed);
+        runtimeTelemetry.setLayerPlayheadPos(i, pos);
     }
 
     const double nextPlayTime =
         playTimeSamples.load(std::memory_order_relaxed) + numSamples;
     playTimeSamples.store(nextPlayTime, std::memory_order_relaxed);
 
-    state.playTime.store(nextPlayTime, std::memory_order_relaxed);
+    runtimeTelemetry.setPlayTime(nextPlayTime);
 
     scheduleForwardCommitIfNeeded();
     if (forwardScheduled && nextPlayTime >= forwardFireAtSample) {
@@ -1106,8 +1116,7 @@ void BehaviorCoreProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
     const double sr = currentSampleRate.load(std::memory_order_relaxed);
-    state.uptimeSeconds.store(sr > 0.0 ? nextPlayTime / sr : 0.0,
-                              std::memory_order_relaxed);
+    runtimeTelemetry.setUptimeSeconds(sr > 0.0 ? nextPlayTime / sr : 0.0);
 
     // Write output to recording audio ring buffer if active
     if (controlServer.isRecording()) {

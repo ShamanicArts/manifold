@@ -4,6 +4,8 @@
 #include <mutex>
 #include <string>
 
+#include "../primitives/control/BehaviorControlStateView.h"
+#include "../primitives/control/BehaviorRuntimeTelemetryView.h"
 #include "../primitives/control/ControlServer.h"
 #include "../primitives/dsp/CaptureBuffer.h"
 
@@ -40,10 +42,15 @@ inline void scheduleForwardCommitIfNeeded(ControlServer& controlServer,
                                           bool& forwardScheduled,
                                           double& forwardFireAtSample,
                                           float& forwardScheduledBars) {
+    controlServer.syncOwnedStateFromLegacyMirror();
     auto& state = controlServer.getAtomicState();
+    manifold::control_state_view::BehaviorControlStateConstView controlState(
+        controlServer.getBehaviorControlState(), &state);
+    manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView runtimeTelemetry(
+        controlServer.getBehaviorRuntimeTelemetry(), &state);
 
-    const bool armed = state.forwardArmed.load(std::memory_order_relaxed);
-    const float bars = state.forwardBars.load(std::memory_order_relaxed);
+    const bool armed = controlState.forwardArmed();
+    const float bars = controlState.forwardBars();
 
     if (!armed || bars <= 0.0f) {
         clearForwardSchedule(forwardScheduled, forwardFireAtSample,
@@ -55,7 +62,7 @@ inline void scheduleForwardCommitIfNeeded(ControlServer& controlServer,
         return;
     }
 
-    const float samplesPerBar = state.samplesPerBar.load(std::memory_order_relaxed);
+    const float samplesPerBar = runtimeTelemetry.samplesPerBar();
     if (samplesPerBar <= 0.0f) {
         return;
     }
@@ -76,42 +83,45 @@ inline void initialiseAtomicState(ControlServer& controlServer,
                                   float defaultMasterVolume,
                                   float defaultInputVolume) {
     auto& state = controlServer.getAtomicState();
+    manifold::control_state_view::BehaviorControlStateView controlState(
+        controlServer.getBehaviorControlState(), &state);
+    manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView runtimeTelemetry(
+        controlServer.getBehaviorRuntimeTelemetry(), &state);
 
-    state.sampleRate.store(sampleRate, std::memory_order_relaxed);
-    state.tempo.store(defaultTempo, std::memory_order_relaxed);
-    state.targetBPM.store(defaultTargetBpm, std::memory_order_relaxed);
-    state.samplesPerBar.store(
+    runtimeTelemetry.setSampleRate(sampleRate);
+    controlState.setTempo(defaultTempo);
+    runtimeTelemetry.setTempo(defaultTempo);
+    controlState.setTargetBpm(defaultTargetBpm);
+    runtimeTelemetry.setSamplesPerBar(
         sampleRate > 0.0 ? static_cast<float>((sampleRate * 240.0) / defaultTempo)
-                         : 0.0f,
-        std::memory_order_relaxed);
-    state.captureSize.store(captureBuffer.getSize(), std::memory_order_relaxed);
-    state.captureWritePos.store(captureBuffer.getOffsetToNow(),
-                                std::memory_order_relaxed);
-    state.captureLevel.store(0.0f, std::memory_order_relaxed);
-    state.isRecording.store(false, std::memory_order_relaxed);
-    state.overdubEnabled.store(false, std::memory_order_relaxed);
-    state.forwardArmed.store(false, std::memory_order_relaxed);
-    state.forwardBars.store(0.0f, std::memory_order_relaxed);
-    state.graphEnabled.store(graphProcessingEnabled, std::memory_order_relaxed);
-    state.recordMode.store(0, std::memory_order_relaxed);
-    state.activeLayer.store(0, std::memory_order_relaxed);
-    state.masterVolume.store(defaultMasterVolume, std::memory_order_relaxed);
-    state.inputVolume.store(defaultInputVolume, std::memory_order_relaxed);
-    state.passthroughEnabled.store(true, std::memory_order_relaxed);
-    state.playTime.store(0.0, std::memory_order_relaxed);
-    state.commitCount.store(0, std::memory_order_relaxed);
-    state.uptimeSeconds.store(0.0, std::memory_order_relaxed);
+                         : 0.0f);
+    runtimeTelemetry.setCaptureSize(captureBuffer.getSize());
+    runtimeTelemetry.setCaptureWritePos(captureBuffer.getOffsetToNow());
+    runtimeTelemetry.setCaptureLevel(0.0f);
+    controlState.setIsRecording(false);
+    controlState.setOverdubEnabled(false);
+    controlState.setForwardArmed(false);
+    controlState.setForwardBars(0.0f);
+    controlState.setGraphEnabled(graphProcessingEnabled);
+    runtimeTelemetry.setGraphEnabled(graphProcessingEnabled);
+    controlState.setRecordMode(0);
+    controlState.setActiveLayer(0);
+    controlState.setMasterVolume(defaultMasterVolume);
+    controlState.setInputVolume(defaultInputVolume);
+    controlState.setPassthroughEnabled(true);
+    runtimeTelemetry.setPlayTime(0.0);
+    runtimeTelemetry.setCommitCount(0);
+    runtimeTelemetry.setUptimeSeconds(0.0);
 
     for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
-        auto& layer = state.layers[i];
-        layer.length.store(0, std::memory_order_relaxed);
-        layer.playheadPos.store(0, std::memory_order_relaxed);
-        layer.speed.store(1.0f, std::memory_order_relaxed);
-        layer.reversed.store(false, std::memory_order_relaxed);
-        layer.volume.store(1.0f, std::memory_order_relaxed);
-        layer.state.store(0, std::memory_order_relaxed);
-        layer.muted.store(false, std::memory_order_relaxed);
-        layer.numBars.store(0.0f, std::memory_order_relaxed);
+        runtimeTelemetry.setLayerLength(i, 0);
+        runtimeTelemetry.setLayerPlayheadPos(i, 0);
+        controlState.setLayerSpeed(i, 1.0f);
+        controlState.setLayerReversed(i, false);
+        controlState.setLayerVolume(i, 1.0f);
+        runtimeTelemetry.setLayerState(i, 0);
+        controlState.setLayerMuted(i, false);
+        runtimeTelemetry.setLayerNumBars(i, 0.0f);
     }
 }
 

@@ -1,4 +1,7 @@
 #include "OSCServer.h"
+#include "BehaviorControlStateView.h"
+#include "BehaviorRuntimeTelemetryView.h"
+#include "BehaviorStateSnapshot.h"
 #include "OSCPacketBuilder.h"
 #include "CommandParser.h"
 #include "../scripting/ScriptableProcessor.h"
@@ -269,9 +272,9 @@ void OSCServer::receiveLoop() {
 // ============================================================================
 // State-change broadcast loop
 //
-// Runs at broadcastRateHz (default 30Hz). Polls AtomicState, compares to
-// cached snapshot, broadcasts OSC messages for any changed values to all
-// configured targets.
+// Runs at broadcastRateHz (default 30Hz). Captures grouped behavior snapshots,
+// compares to the cached snapshot, and broadcasts OSC messages for any changed
+// values to all configured targets.
 // ============================================================================
 
 void OSCServer::broadcastLoop() {
@@ -299,29 +302,34 @@ void OSCServer::broadcastStateChanges() {
         if (configuredTargets.isEmpty()) return;
     }
 
-    auto& state = owner->getControlServer().getAtomicState();
+    owner->getControlServer().syncOwnedStateFromLegacyMirror();
+    const auto controlState = manifold::state_snapshot::captureBehaviorControlState(
+        owner->getControlServer().getBehaviorControlState());
+    const auto runtimeTelemetry =
+        manifold::state_snapshot::captureBehaviorRuntimeTelemetry(
+            owner->getControlServer().getBehaviorRuntimeTelemetry());
 
     // --- Global state diffs ---
 
-    float newTempo = state.tempo.load(std::memory_order_relaxed);
+    float newTempo = runtimeTelemetry.effectiveTempo;
     if (std::abs(newTempo - cachedState.tempo) > 0.01f) {
         cachedState.tempo = newTempo;
         broadcast("/core/behavior/tempo", { juce::var(newTempo) });
     }
 
-    bool newRec = state.isRecording.load(std::memory_order_relaxed);
+    bool newRec = controlState.isRecording;
     if (newRec != cachedState.isRecording) {
         cachedState.isRecording = newRec;
         broadcast("/core/behavior/recording", { juce::var(newRec ? 1 : 0) });
     }
 
-    bool newOD = state.overdubEnabled.load(std::memory_order_relaxed);
+    bool newOD = controlState.overdubEnabled;
     if (newOD != cachedState.overdubEnabled) {
         cachedState.overdubEnabled = newOD;
         broadcast("/core/behavior/overdub", { juce::var(newOD ? 1 : 0) });
     }
 
-    int newMode = state.recordMode.load(std::memory_order_relaxed);
+    int newMode = controlState.recordMode;
     if (newMode != cachedState.recordMode) {
         cachedState.recordMode = newMode;
         const char* modeStr = (newMode == 0) ? "firstLoop" :
@@ -330,13 +338,13 @@ void OSCServer::broadcastStateChanges() {
         broadcast("/core/behavior/mode", { juce::var(juce::String(modeStr)) });
     }
 
-    int newActiveLayer = state.activeLayer.load(std::memory_order_relaxed);
+    int newActiveLayer = controlState.activeLayer;
     if (newActiveLayer != cachedState.activeLayer) {
         cachedState.activeLayer = newActiveLayer;
         broadcast("/core/behavior/layer", { juce::var(newActiveLayer) });
     }
 
-    float newVol = state.masterVolume.load(std::memory_order_relaxed);
+    float newVol = controlState.masterVolume;
     if (std::abs(newVol - cachedState.masterVolume) > 0.001f) {
         cachedState.masterVolume = newVol;
         broadcast("/core/behavior/volume", { juce::var(newVol) });
@@ -344,12 +352,12 @@ void OSCServer::broadcastStateChanges() {
 
     // --- Per-layer state diffs ---
 
-    for (int i = 0; i < OSCStateSnapshot::MAX_LAYERS && i < AtomicState::MAX_LAYERS; ++i) {
-        auto& ls = state.layers[i];
+    for (int i = 0; i < OSCStateSnapshot::MAX_LAYERS &&
+                    i < manifold::state_snapshot::BehaviorControlStateSnapshot::MAX_LAYERS; ++i) {
         auto& cs = cachedState.layers[i];
         juce::String prefix = "/core/behavior/layer/" + juce::String(i) + "/";
 
-        int newState = ls.state.load(std::memory_order_relaxed);
+        int newState = runtimeTelemetry.layers[i].state;
         if (newState != cs.state) {
             cs.state = newState;
             const char* stateStr = (newState == 0) ? "empty" :
@@ -362,33 +370,35 @@ void OSCServer::broadcastStateChanges() {
             broadcast(prefix + "state", { juce::var(juce::String(stateStr)) });
         }
 
-        float newSpeed = ls.speed.load(std::memory_order_relaxed);
+        float newSpeed = controlState.layers[i].speed;
         if (std::abs(newSpeed - cs.speed) > 0.001f) {
             cs.speed = newSpeed;
             broadcast(prefix + "speed", { juce::var(newSpeed) });
         }
 
-        float newLayerVol = ls.volume.load(std::memory_order_relaxed);
+        float newLayerVol = controlState.layers[i].volume;
         if (std::abs(newLayerVol - cs.volume) > 0.001f) {
             cs.volume = newLayerVol;
             broadcast(prefix + "volume", { juce::var(newLayerVol) });
         }
 
-        bool newRev = ls.reversed.load(std::memory_order_relaxed);
+        bool newRev = controlState.layers[i].reversed;
         if (newRev != cs.reversed) {
             cs.reversed = newRev;
             broadcast(prefix + "reverse", { juce::var(newRev ? 1 : 0) });
         }
 
         // Position: normalized 0-1. Only broadcast if layer is playing and position changed meaningfully.
-        int len = ls.length.load(std::memory_order_relaxed);
-        float newPos = (len > 0) ? (float)ls.playheadPos.load(std::memory_order_relaxed) / (float)len : 0.0f;
+        int len = runtimeTelemetry.layers[i].length;
+        float newPos = (len > 0)
+                           ? (float)runtimeTelemetry.layers[i].playheadPos / (float)len
+                           : 0.0f;
         if (std::abs(newPos - cs.position) > 0.005f) {
             cs.position = newPos;
             broadcast(prefix + "position", { juce::var(newPos) });
         }
 
-        float newBars = ls.numBars.load(std::memory_order_relaxed);
+        float newBars = runtimeTelemetry.layers[i].numBars;
         if (std::abs(newBars - cs.bars) > 0.001f) {
             cs.bars = newBars;
             broadcast(prefix + "bars", { juce::var(newBars) });

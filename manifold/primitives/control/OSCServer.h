@@ -32,7 +32,7 @@ struct OSCMessage {
 };
 
 // ============================================================================
-// Cached snapshot of AtomicState for diff-based broadcasting.
+// Cached behavior snapshot for diff-based broadcasting.
 // Only includes values that make sense to broadcast over OSC.
 // ============================================================================
 
@@ -110,7 +110,7 @@ private:
 
     void sendToTargets(const juce::String& address, const std::vector<juce::var>& args);
 
-    // State-diff broadcaster: reads AtomicState, compares to snapshot, broadcasts changes
+    // State-diff broadcaster: captures behavior snapshots, compares to cache, broadcasts changes
     void broadcastStateChanges();
 
     ScriptableProcessor* owner = nullptr;

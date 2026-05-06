@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "../primitives/control/BehaviorControlStateView.h"
 #include "../primitives/control/ControlServer.h"
 #include "BehaviorCoreProcessor.h"
 
@@ -11,6 +12,7 @@ namespace control_command_support {
 inline void applyControlCommand(BehaviorCoreProcessor& processor,
                                 const ControlCommand& cmd,
                                 AtomicState& state) {
+    juce::ignoreUnused(state);
     static constexpr const char* kBehaviorBase = "/core/behavior";
 
     switch (cmd.type) {
@@ -50,11 +52,17 @@ inline void applyControlCommand(BehaviorCoreProcessor& processor,
             (void)processor.setParamByPath(std::string(kBehaviorBase) + "/recording",
                                            0.0f);
             break;
-        case ControlCommand::Type::ToggleOverdub:
-            state.overdubEnabled.store(
-                !state.overdubEnabled.load(std::memory_order_relaxed),
-                std::memory_order_relaxed);
+        case ControlCommand::Type::ToggleOverdub: {
+            auto& controlServer = processor.getControlServer();
+            controlServer.syncOwnedStateFromLegacyMirror();
+            const auto controlState =
+                manifold::control_state_view::BehaviorControlStateConstView(
+                    controlServer.getBehaviorControlState(), nullptr);
+            (void)processor.setParamByPath(
+                std::string(kBehaviorBase) + "/overdub",
+                controlState.overdubEnabled() ? 0.0f : 1.0f);
             break;
+        }
         case ControlCommand::Type::SetOverdubEnabled:
             (void)processor.setParamByPath(std::string(kBehaviorBase) + "/overdub",
                                            cmd.floatParam);

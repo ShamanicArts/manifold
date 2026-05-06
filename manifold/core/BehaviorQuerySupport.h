@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../primitives/control/BehaviorControlStateView.h"
+#include "../primitives/control/BehaviorRuntimeTelemetryView.h"
 #include "../primitives/control/ControlServer.h"
 #include "../primitives/dsp/CaptureBuffer.h"
 #include "../primitives/scripting/DSPPluginScriptHost.h"
@@ -37,15 +39,19 @@ inline bool getLayerSnapshot(int index,
         return false;
     }
 
-    const auto& ls = controlServer.getAtomicState().layers[index];
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    manifold::control_state_view::BehaviorControlStateConstView controlState(
+        controlServer.getBehaviorControlState(), nullptr);
+    manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView runtimeTelemetry(
+        controlServer.getBehaviorRuntimeTelemetry(), nullptr);
     out.index = index;
-    out.length = ls.length.load(std::memory_order_relaxed);
-    out.position = ls.playheadPos.load(std::memory_order_relaxed);
-    out.speed = ls.speed.load(std::memory_order_relaxed);
-    out.reversed = ls.reversed.load(std::memory_order_relaxed);
-    out.volume = ls.volume.load(std::memory_order_relaxed);
-    out.state = toLayerStateEnum(ls.state.load(std::memory_order_relaxed));
-    out.muted = ls.muted.load(std::memory_order_relaxed);
+    out.length = runtimeTelemetry.layerLength(index);
+    out.position = runtimeTelemetry.layerPlayheadPos(index);
+    out.speed = controlState.layerSpeed(index);
+    out.reversed = controlState.layerReversed(index);
+    out.volume = controlState.layerVolume(index);
+    out.state = toLayerStateEnum(runtimeTelemetry.layerState(index));
+    out.muted = controlState.layerMuted(index);
     if (dspScriptHost != nullptr && index >= 0 && index < maxLayers) {
         out.muted = dspScriptHost->isLayerMuted(index);
     }
@@ -241,17 +247,26 @@ inline bool ensureDynamicModuleSlot(DSPPluginScriptHost* dspScriptHost,
 }
 
 inline float getTempo(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().tempo.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+        controlServer.getBehaviorRuntimeTelemetry(), nullptr)
+        .tempo();
 }
 
 inline float getTargetBPM(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().targetBPM.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .targetBpm();
 }
 
 inline float getSamplesPerBar(const ControlServer& controlServer,
                               double sampleRate) {
-    const auto& state = controlServer.getAtomicState();
-    const float cached = state.samplesPerBar.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    const auto runtimeTelemetry =
+        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+            controlServer.getBehaviorRuntimeTelemetry(), nullptr);
+    const float cached = runtimeTelemetry.samplesPerBar();
     if (cached > 0.0f) {
         return cached;
     }
@@ -263,43 +278,73 @@ inline float getSamplesPerBar(const ControlServer& controlServer,
 }
 
 inline float getMasterVolume(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().masterVolume.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .masterVolume();
 }
 
 inline float getInputVolume(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().inputVolume.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .inputVolume();
 }
 
 inline bool isPassthroughEnabled(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().passthroughEnabled.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .passthroughEnabled();
 }
 
 inline bool isRecording(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().isRecording.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .isRecording();
 }
 
 inline bool isOverdubEnabled(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().overdubEnabled.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .overdubEnabled();
 }
 
 inline int getActiveLayerIndex(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().activeLayer.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .activeLayer();
 }
 
 inline bool isForwardCommitArmed(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().forwardArmed.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .forwardArmed();
 }
 
 inline float getForwardCommitBars(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().forwardBars.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .forwardBars();
 }
 
 inline int getRecordModeIndex(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().recordMode.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::control_state_view::BehaviorControlStateConstView(
+        controlServer.getBehaviorControlState(), nullptr)
+        .recordMode();
 }
 
 inline int getCommitCount(const ControlServer& controlServer) {
-    return controlServer.getAtomicState().commitCount.load(std::memory_order_relaxed);
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    return manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+        controlServer.getBehaviorRuntimeTelemetry(), nullptr)
+        .commitCount();
 }
 
 inline std::array<float, 32> getSpectrumData(

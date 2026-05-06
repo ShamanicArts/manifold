@@ -1,4 +1,7 @@
 #include "OSCQuery.h"
+#include "BehaviorControlStateView.h"
+#include "BehaviorRuntimeTelemetryView.h"
+#include "BehaviorStateSnapshot.h"
 #include "SHA1.h"
 #include "OSCPacketBuilder.h"
 #include "EndpointResolver.h"
@@ -1094,7 +1097,12 @@ void OSCQueryServer::wsBroadcastLoop() {
             if (wsClients.empty()) continue;
         }
 
-        auto& state = owner->getControlServer().getAtomicState();
+        owner->getControlServer().syncOwnedStateFromLegacyMirror();
+        const auto controlState = manifold::state_snapshot::captureBehaviorControlState(
+            owner->getControlServer().getBehaviorControlState());
+        const auto runtimeTelemetry =
+            manifold::state_snapshot::captureBehaviorRuntimeTelemetry(
+                owner->getControlServer().getBehaviorRuntimeTelemetry());
 
         // Snapshot connected clients, then send outside wsClientsMutex.
         std::vector<WebSocketClient*> clients;
@@ -1158,7 +1166,7 @@ void OSCQueryServer::wsBroadcastLoop() {
             // --- Global values ---
 
             if (isBehaviorListened("/tempo")) {
-                float v = state.tempo.load(std::memory_order_relaxed);
+                float v = runtimeTelemetry.effectiveTempo;
                 if (std::abs(v - cache.tempo) > 0.01f) {
                     cache.tempo = v;
                     sendValueToClient(client, "/core/behavior/tempo", { juce::var(v) });
@@ -1166,7 +1174,7 @@ void OSCQueryServer::wsBroadcastLoop() {
             }
 
             if (isBehaviorListened("/recording")) {
-                bool v = state.isRecording.load(std::memory_order_relaxed);
+                bool v = controlState.isRecording;
                 if (v != cache.isRecording) {
                     cache.isRecording = v;
                     sendValueToClient(client, "/core/behavior/recording", { juce::var(v ? 1 : 0) });
@@ -1174,7 +1182,7 @@ void OSCQueryServer::wsBroadcastLoop() {
             }
 
             if (isBehaviorListened("/overdub")) {
-                bool v = state.overdubEnabled.load(std::memory_order_relaxed);
+                bool v = controlState.overdubEnabled;
                 if (v != cache.overdubEnabled) {
                     cache.overdubEnabled = v;
                     sendValueToClient(client, "/core/behavior/overdub", { juce::var(v ? 1 : 0) });
@@ -1182,7 +1190,7 @@ void OSCQueryServer::wsBroadcastLoop() {
             }
 
             if (isBehaviorListened("/mode")) {
-                int v = state.recordMode.load(std::memory_order_relaxed);
+                int v = controlState.recordMode;
                 if (v != cache.recordMode) {
                     cache.recordMode = v;
                     const char* modeStr = (v == 0) ? "firstLoop" :
@@ -1194,7 +1202,7 @@ void OSCQueryServer::wsBroadcastLoop() {
             }
 
             if (isBehaviorListened("/layer")) {
-                int v = state.activeLayer.load(std::memory_order_relaxed);
+                int v = controlState.activeLayer;
                 if (v != cache.activeLayer) {
                     cache.activeLayer = v;
                     sendValueToClient(client, "/core/behavior/layer", { juce::var(v) });
@@ -1202,7 +1210,7 @@ void OSCQueryServer::wsBroadcastLoop() {
             }
 
             if (isBehaviorListened("/volume")) {
-                float v = state.masterVolume.load(std::memory_order_relaxed);
+                float v = controlState.masterVolume;
                 if (std::abs(v - cache.masterVolume) > 0.001f) {
                     cache.masterVolume = v;
                     sendValueToClient(client, "/core/behavior/volume", { juce::var(v) });
@@ -1211,14 +1219,13 @@ void OSCQueryServer::wsBroadcastLoop() {
 
             // --- Per-layer values ---
             for (int i = 0; i < WebSocketClient::StateCache::MAX_LAYERS &&
-                            i < AtomicState::MAX_LAYERS; ++i) {
-                auto& ls = state.layers[i];
+                            i < manifold::state_snapshot::BehaviorControlStateSnapshot::MAX_LAYERS; ++i) {
                 auto& lc = cache.layers[i];
                 const juce::String layerPrefix =
                     "/core/behavior/layer/" + juce::String(i) + "/";
 
                 if (listenPaths.count(layerPrefix + "state") > 0) {
-                    int v = ls.state.load(std::memory_order_relaxed);
+                    int v = runtimeTelemetry.layers[i].state;
                     if (v != lc.state) {
                         lc.state = v;
                         const char* stateStr = (v == 0) ? "empty" :
@@ -1234,7 +1241,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
 
                 if (listenPaths.count(layerPrefix + "speed") > 0) {
-                    float v = ls.speed.load(std::memory_order_relaxed);
+                    float v = controlState.layers[i].speed;
                     if (std::abs(v - lc.speed) > 0.001f) {
                         lc.speed = v;
                         sendValueToClient(client, layerPrefix + "speed", { juce::var(v) });
@@ -1242,7 +1249,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
 
                 if (listenPaths.count(layerPrefix + "volume") > 0) {
-                    float v = ls.volume.load(std::memory_order_relaxed);
+                    float v = controlState.layers[i].volume;
                     if (std::abs(v - lc.volume) > 0.001f) {
                         lc.volume = v;
                         sendValueToClient(client, layerPrefix + "volume", { juce::var(v) });
@@ -1250,7 +1257,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
 
                 if (listenPaths.count(layerPrefix + "reverse") > 0) {
-                    bool v = ls.reversed.load(std::memory_order_relaxed);
+                    bool v = controlState.layers[i].reversed;
                     if (v != lc.reversed) {
                         lc.reversed = v;
                         sendValueToClient(client, layerPrefix + "reverse",
@@ -1259,9 +1266,9 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
 
                 if (listenPaths.count(layerPrefix + "position") > 0) {
-                    int len = ls.length.load(std::memory_order_relaxed);
+                    int len = runtimeTelemetry.layers[i].length;
                     float v = (len > 0)
-                                  ? static_cast<float>(ls.playheadPos.load(std::memory_order_relaxed)) /
+                                  ? static_cast<float>(runtimeTelemetry.layers[i].playheadPos) /
                                         static_cast<float>(len)
                                   : 0.0f;
                     if (std::abs(v - lc.position) > 0.005f) {
@@ -1271,7 +1278,7 @@ void OSCQueryServer::wsBroadcastLoop() {
                 }
 
                 if (listenPaths.count(layerPrefix + "bars") > 0) {
-                    float v = ls.numBars.load(std::memory_order_relaxed);
+                    float v = runtimeTelemetry.layers[i].numBars;
                     if (std::abs(v - lc.bars) > 0.001f) {
                         lc.bars = v;
                         sendValueToClient(client, layerPrefix + "bars", { juce::var(v) });

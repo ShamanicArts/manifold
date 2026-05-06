@@ -1,4 +1,8 @@
 #include "ControlServer.h"
+#include "BehaviorControlStateView.h"
+#include "BehaviorRuntimeTelemetryView.h"
+#include "BehaviorStateProjection.h"
+#include "BehaviorStateSnapshot.h"
 #include "CommandParser.h"
 #include "OSCEndpointRegistry.h"
 #include "OSCQuery.h"
@@ -34,7 +38,9 @@
 
 #if JUCE_WINDOWS
 
-ControlServer::ControlServer() {}
+ControlServer::ControlServer() {
+    syncOwnedStateFromLegacyMirror();
+}
 
 ControlServer::~ControlServer() {
     stop();
@@ -86,6 +92,10 @@ std::string ControlServer::getDiagnosticsJson() {
 std::string ControlServer::getEditorStateJson() const {
     return std::string{};
 }
+
+void ControlServer::syncOwnedStateFromLegacyMirror() {}
+
+void ControlServer::syncLegacyMirrorFromOwnedState() {}
 
 std::string ControlServer::buildDiagnoseJson() {
     return "{\"ok\":true,\"ipc\":\"disabled\",\"platform\":\"windows\"}\n";
@@ -158,29 +168,6 @@ static std::string jsonNum(const std::string& key, double val) {
 
 static std::string jsonBool(const std::string& key, bool val) {
     return "\"" + key + "\":" + (val ? "true" : "false");
-}
-
-static const char* layerStateToString(int state) {
-    switch (state) {
-        case 0: return "empty";
-        case 1: return "playing";
-        case 2: return "recording";
-        case 3: return "overdubbing";
-        case 4: return "muted";
-        case 5: return "stopped";
-        case 6: return "paused";
-        default: return "unknown";
-    }
-}
-
-static const char* recordModeToString(int mode) {
-    switch (mode) {
-        case 0: return "firstLoop";
-        case 1: return "freeMode";
-        case 2: return "traditional";
-        case 3: return "retrospective";
-        default: return "unknown";
-    }
 }
 
 static std::string shellQuote(const std::string& value) {
@@ -311,7 +298,9 @@ static void pruneStaleManifoldSockets() {
 // ControlServer
 // ============================================================================
 
-ControlServer::ControlServer() {}
+ControlServer::ControlServer() {
+    syncOwnedStateFromLegacyMirror();
+}
 
 ControlServer::~ControlServer() {
     stop();
@@ -827,7 +816,8 @@ std::string ControlServer::processCommand(const std::string& cmd) {
 }
 
 // ============================================================================
-// JSON builders - read from AtomicState (lock-free)
+// JSON builders - publish from owned state surfaces
+// Compatibility reads from the legacy AtomicState mirror are pulled in first.
 // ============================================================================
 
 std::string ControlServer::getEditorStateJson() const {
@@ -839,100 +829,114 @@ std::string ControlServer::getEditorStateJson() const {
     return provider ? provider() : std::string{};
 }
 
+void ControlServer::syncOwnedStateFromLegacyMirror() {
+    auto controlState =
+        manifold::control_state_view::BehaviorControlStateView(behaviorControlState,
+                                                               nullptr);
+    auto runtimeTelemetry =
+        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
+            behaviorRuntimeTelemetry, nullptr);
+    const auto legacyControl =
+        manifold::control_state_view::BehaviorControlStateConstView(atomicState);
+    const auto legacyRuntime =
+        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+            atomicState);
+
+    controlState.setTempo(legacyControl.tempo());
+    controlState.setTargetBpm(legacyControl.targetBpm());
+    controlState.setIsRecording(legacyControl.isRecording());
+    controlState.setOverdubEnabled(legacyControl.overdubEnabled());
+    controlState.setForwardArmed(legacyControl.forwardArmed());
+    controlState.setForwardBars(legacyControl.forwardBars());
+    controlState.setRecordMode(legacyControl.recordMode());
+    controlState.setActiveLayer(legacyControl.activeLayer());
+    controlState.setMasterVolume(legacyControl.masterVolume());
+    controlState.setInputVolume(legacyControl.inputVolume());
+    controlState.setPassthroughEnabled(legacyControl.passthroughEnabled());
+
+    runtimeTelemetry.setTempo(legacyControl.tempo());
+    runtimeTelemetry.setSamplesPerBar(legacyRuntime.samplesPerBar());
+    runtimeTelemetry.setSampleRate(legacyRuntime.sampleRate());
+    runtimeTelemetry.setCaptureSize(legacyRuntime.captureSize());
+    runtimeTelemetry.setCaptureWritePos(legacyRuntime.captureWritePos());
+    runtimeTelemetry.setCaptureLevel(legacyRuntime.captureLevel());
+    controlState.setGraphEnabled(legacyRuntime.graphEnabled());
+    runtimeTelemetry.setGraphEnabled(legacyRuntime.graphEnabled());
+    runtimeTelemetry.setPlayTime(legacyRuntime.playTime());
+    runtimeTelemetry.setCommitCount(legacyRuntime.commitCount());
+    runtimeTelemetry.setUptimeSeconds(legacyRuntime.uptimeSeconds());
+
+    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
+        controlState.setLayerSpeed(i, legacyControl.layerSpeed(i));
+        controlState.setLayerReversed(i, legacyControl.layerReversed(i));
+        controlState.setLayerVolume(i, legacyControl.layerVolume(i));
+        controlState.setLayerMuted(i, legacyControl.layerMuted(i));
+        runtimeTelemetry.setLayerState(i, legacyRuntime.layerState(i));
+        runtimeTelemetry.setLayerLength(i, legacyRuntime.layerLength(i));
+        runtimeTelemetry.setLayerPlayheadPos(i, legacyRuntime.layerPlayheadPos(i));
+        runtimeTelemetry.setLayerNumBars(i, legacyRuntime.layerNumBars(i));
+    }
+}
+
+void ControlServer::syncLegacyMirrorFromOwnedState() {
+    const auto controlState =
+        manifold::control_state_view::BehaviorControlStateConstView(
+            behaviorControlState, nullptr);
+    const auto runtimeTelemetry =
+        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView(
+            behaviorRuntimeTelemetry, nullptr);
+    auto legacyControl =
+        manifold::control_state_view::BehaviorControlStateView(atomicState);
+    auto legacyRuntime =
+        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(atomicState);
+
+    legacyControl.setTempo(controlState.tempo());
+    legacyControl.setTargetBpm(controlState.targetBpm());
+    legacyControl.setIsRecording(controlState.isRecording());
+    legacyControl.setOverdubEnabled(controlState.overdubEnabled());
+    legacyControl.setForwardArmed(controlState.forwardArmed());
+    legacyControl.setForwardBars(controlState.forwardBars());
+    legacyControl.setRecordMode(controlState.recordMode());
+    legacyControl.setActiveLayer(controlState.activeLayer());
+    legacyControl.setMasterVolume(controlState.masterVolume());
+    legacyControl.setInputVolume(controlState.inputVolume());
+    legacyControl.setPassthroughEnabled(controlState.passthroughEnabled());
+
+    legacyRuntime.setTempo(runtimeTelemetry.tempo());
+    legacyRuntime.setSamplesPerBar(runtimeTelemetry.samplesPerBar());
+    legacyRuntime.setSampleRate(runtimeTelemetry.sampleRate());
+    legacyRuntime.setCaptureSize(runtimeTelemetry.captureSize());
+    legacyRuntime.setCaptureWritePos(runtimeTelemetry.captureWritePos());
+    legacyRuntime.setCaptureLevel(runtimeTelemetry.captureLevel());
+    legacyControl.setGraphEnabled(controlState.graphEnabled());
+    legacyRuntime.setGraphEnabled(runtimeTelemetry.graphEnabled());
+    legacyRuntime.setPlayTime(runtimeTelemetry.playTime());
+    legacyRuntime.setCommitCount(runtimeTelemetry.commitCount());
+    legacyRuntime.setUptimeSeconds(runtimeTelemetry.uptimeSeconds());
+
+    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
+        legacyControl.setLayerSpeed(i, controlState.layerSpeed(i));
+        legacyControl.setLayerReversed(i, controlState.layerReversed(i));
+        legacyControl.setLayerVolume(i, controlState.layerVolume(i));
+        legacyControl.setLayerMuted(i, controlState.layerMuted(i));
+        legacyRuntime.setLayerState(i, runtimeTelemetry.layerState(i));
+        legacyRuntime.setLayerLength(i, runtimeTelemetry.layerLength(i));
+        legacyRuntime.setLayerPlayheadPos(i, runtimeTelemetry.layerPlayheadPos(i));
+        legacyRuntime.setLayerNumBars(i, runtimeTelemetry.layerNumBars(i));
+    }
+}
+
 std::string ControlServer::buildStateJson() {
-    auto& s = atomicState;
-    static constexpr const char* kBehaviorBase = "/core/behavior";
-
-    std::ostringstream o;
-    o << "{";
-    o << jsonNum("projectionVersion", 2) << ",";
-    o << jsonNum("numVoices", AtomicState::MAX_LAYERS) << ",";
-    o << jsonNum("captureWritePos", s.captureWritePos.load()) << ",";
-    o << jsonNum("captureLevel", s.captureLevel.load()) << ",";
-    o << jsonNum("playTime", s.playTime.load()) << ",";
-    o << jsonNum("commitCount", s.commitCount.load()) << ",";
-    o << jsonNum("uptimeSeconds", s.uptimeSeconds.load()) << ",";
-    o << jsonStr("uiRendererMode", uiRendererModeToString(getCurrentUIRendererMode())) << ",";
-
-    o << "\"params\":{";
-    o << jsonNum(std::string(kBehaviorBase) + "/tempo", s.tempo.load()) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/targetbpm", s.targetBPM.load()) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/samplesPerBar", s.samplesPerBar.load()) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/sampleRate", s.sampleRate.load()) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/captureSize", s.captureSize.load()) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/recording", s.isRecording.load() ? 1 : 0) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/overdub", s.overdubEnabled.load() ? 1 : 0) << ",";
-    o << jsonStr(std::string(kBehaviorBase) + "/mode", recordModeToString(s.recordMode.load())) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/layer", s.activeLayer.load()) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/volume", s.masterVolume.load()) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/inputVolume", s.inputVolume.load()) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/passthrough", s.passthroughEnabled.load() ? 1 : 0) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/forwardArmed", s.forwardArmed.load() ? 1 : 0) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/forwardBars", s.forwardBars.load()) << ",";
-    o << jsonNum(std::string(kBehaviorBase) + "/graph/enabled", s.graphEnabled.load() ? 1 : 0);
-
-    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
-        auto& layer = s.layers[i];
-        const std::string prefix = std::string(kBehaviorBase) + "/layer/" + std::to_string(i);
-        const int stateValue = layer.state.load();
-        const bool muted = stateValue == 4;
-
-        o << "," << jsonNum(prefix + "/speed", layer.speed.load());
-        o << "," << jsonNum(prefix + "/volume", layer.volume.load());
-        o << "," << jsonNum(prefix + "/mute", muted ? 1 : 0);
-        o << "," << jsonBool(prefix + "/reverse", layer.reversed.load());
-        o << "," << jsonNum(prefix + "/length", layer.length.load());
-
-        const int length = layer.length.load();
-        const int position = layer.playheadPos.load();
-        const float positionNorm =
-            (length > 0) ? static_cast<float>(position) / static_cast<float>(length)
-                         : 0.0f;
-        o << "," << jsonNum(prefix + "/position", positionNorm);
-        o << "," << jsonNum(prefix + "/bars", layer.numBars.load());
-        o << "," << jsonStr(prefix + "/state", layerStateToString(stateValue));
-    }
-    o << "},";
-
-    o << "\"voices\":[";
-    for (int i = 0; i < AtomicState::MAX_LAYERS; ++i) {
-        auto& layer = s.layers[i];
-        if (i > 0) o << ",";
-
-        const int length = layer.length.load();
-        const int position = layer.playheadPos.load();
-        const int stateValue = layer.state.load();
-        const bool muted = stateValue == 4;
-        const float positionNorm =
-            (length > 0) ? static_cast<float>(position) / static_cast<float>(length)
-                         : 0.0f;
-        const float bars = layer.numBars.load();
-
-        o << "{";
-        o << jsonNum("id", i) << ",";
-        o << jsonStr("path", std::string(kBehaviorBase) + "/layer/" + std::to_string(i)) << ",";
-        o << jsonStr("state", layerStateToString(stateValue)) << ",";
-        o << jsonNum("length", length) << ",";
-        o << jsonNum("position", position) << ",";
-        o << jsonNum("positionNorm", positionNorm) << ",";
-        o << jsonNum("speed", layer.speed.load()) << ",";
-        o << jsonBool("reversed", layer.reversed.load()) << ",";
-        o << jsonNum("volume", layer.volume.load()) << ",";
-        o << jsonNum("bars", bars) << ",";
-        o << "\"params\":{";
-        o << jsonNum("speed", layer.speed.load()) << ",";
-        o << jsonNum("volume", layer.volume.load()) << ",";
-        o << jsonNum("mute", muted ? 1 : 0) << ",";
-        o << jsonNum("reverse", layer.reversed.load() ? 1 : 0) << ",";
-        o << jsonNum("length", length) << ",";
-        o << jsonNum("position", positionNorm) << ",";
-        o << jsonNum("bars", bars) << ",";
-        o << jsonStr("state", layerStateToString(stateValue));
-        o << "}";
-        o << "}";
-    }
-    o << "]}";
-    return o.str();
+    syncOwnedStateFromLegacyMirror();
+    const auto controlSnapshot =
+        manifold::state_snapshot::captureBehaviorControlState(behaviorControlState);
+    const auto runtimeSnapshot =
+        manifold::state_snapshot::captureBehaviorRuntimeTelemetry(
+            behaviorRuntimeTelemetry);
+    return manifold::behavior_state_projection::buildStateJson(
+        controlSnapshot,
+        runtimeSnapshot,
+        uiRendererModeToString(getCurrentUIRendererMode()));
 }
 
 std::string ControlServer::getStateJson() {
@@ -944,12 +948,15 @@ std::string ControlServer::getDiagnosticsJson() {
 }
 
 std::string ControlServer::buildDiagnoseJson() {
-    auto& s = atomicState;
+    syncOwnedStateFromLegacyMirror();
+    const auto runtimeSnapshot =
+        manifold::state_snapshot::captureBehaviorRuntimeTelemetry(
+            behaviorRuntimeTelemetry);
     const auto parserDiagnostics = CommandParser::getDiagnosticsSnapshot();
     std::ostringstream o;
     o << "{";
-    o << jsonNum("captureWritePos", s.captureWritePos.load()) << ",";
-    o << jsonNum("captureSize", s.captureSize.load()) << ",";
+    o << jsonNum("captureWritePos", runtimeSnapshot.captureWritePos) << ",";
+    o << jsonNum("captureSize", runtimeSnapshot.captureSize) << ",";
     o << jsonNum("commandsProcessed", commandsProcessed.load()) << ",";
     o << jsonNum("eventsDropped", eventsDropped.load()) << ",";
     o << jsonNum("warningsTotal", parserDiagnostics.warningsTotal) << ",";
@@ -1336,7 +1343,11 @@ std::string ControlServer::startRecording(const std::string& format,
         recordingState.framePaths.clear();
         recordingState.options = options;
         recordingState.audioRing = std::make_unique<AudioCaptureRing>();
-        recordingState.audioSampleRate = atomicState.sampleRate.load(std::memory_order_relaxed);
+        syncOwnedStateFromLegacyMirror();
+        recordingState.audioSampleRate =
+            manifold::state_snapshot::captureBehaviorRuntimeTelemetry(
+                behaviorRuntimeTelemetry)
+                .sampleRate;
         recordingState.audioChannels = 2;
         recordingState.audioWriter = nullptr;
     }

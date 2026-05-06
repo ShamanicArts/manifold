@@ -6,6 +6,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "../primitives/control/BehaviorControlStateView.h"
+#include "../primitives/control/BehaviorRuntimeTelemetryView.h"
 #include "../primitives/control/ControlServer.h"
 #include "../primitives/control/OSCEndpointRegistry.h"
 #include "../primitives/scripting/DSPPluginScriptHost.h"
@@ -79,15 +81,19 @@ inline bool applyParamPath(
     float& forwardScheduledBars,
     const std::function<void()>& scheduleForwardCommitIfNeeded,
     const std::function<float()>& getSamplesPerBar) {
-    auto& state = controlServer.getAtomicState();
+    controlServer.syncOwnedStateFromLegacyMirror();
+    manifold::control_state_view::BehaviorControlStateView controlState(
+        controlServer.getBehaviorControlState(), &controlServer.getAtomicState());
+    manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView runtimeTelemetry(
+        controlServer.getBehaviorRuntimeTelemetry(), &controlServer.getAtomicState());
 
     if (path == "/core/behavior/tempo") {
         const float tempo = juce::jlimit(20.0f, 300.0f, value);
-        state.tempo.store(tempo, std::memory_order_relaxed);
-        state.samplesPerBar.store(
+        controlState.setTempo(tempo);
+        runtimeTelemetry.setTempo(tempo);
+        runtimeTelemetry.setSamplesPerBar(
             computeSamplesPerBar(tempo,
-                                 currentSampleRate.load(std::memory_order_relaxed)),
-            std::memory_order_relaxed);
+                                 currentSampleRate.load(std::memory_order_relaxed)));
         if (linkSync.isEnabled()) {
             linkSync.requestTempo(static_cast<double>(tempo));
         }
@@ -95,69 +101,66 @@ inline bool applyParamPath(
     }
 
     if (path == "/core/behavior/targetbpm") {
-        state.targetBPM.store(value, std::memory_order_relaxed);
+        controlState.setTargetBpm(value);
         return true;
     }
 
     if (path == "/core/behavior/volume") {
-        state.masterVolume.store(juce::jlimit(0.0f, 2.0f, value),
-                                 std::memory_order_relaxed);
+        controlState.setMasterVolume(juce::jlimit(0.0f, 2.0f, value));
         return true;
     }
 
     if (path == "/core/behavior/inputVolume") {
-        state.inputVolume.store(juce::jlimit(0.0f, 2.0f, value),
-                                std::memory_order_relaxed);
+        controlState.setInputVolume(juce::jlimit(0.0f, 2.0f, value));
         return true;
     }
 
     if (path == "/core/behavior/passthrough") {
-        state.passthroughEnabled.store(value > 0.5f, std::memory_order_relaxed);
+        controlState.setPassthroughEnabled(value > 0.5f);
         return true;
     }
 
     if (path == "/core/behavior/recording") {
         const bool recording = value > 0.5f;
         const int activeLayer = juce::jlimit(
-            0, maxLayers - 1, state.activeLayer.load(std::memory_order_relaxed));
+            0, maxLayers - 1, controlState.activeLayer());
 
-        state.isRecording.store(recording, std::memory_order_relaxed);
+        controlState.setIsRecording(recording);
 
         if (recording) {
-            state.layers[activeLayer].state.store(
-                static_cast<int>(ScriptableLayerState::Recording),
-                std::memory_order_relaxed);
+            runtimeTelemetry.setLayerState(
+                activeLayer, static_cast<int>(ScriptableLayerState::Recording));
             scheduleForwardCommitIfNeeded();
             return true;
         }
 
-        state.forwardArmed.store(false, std::memory_order_relaxed);
-        state.forwardBars.store(0.0f, std::memory_order_relaxed);
+        controlState.setForwardArmed(false);
+        controlState.setForwardBars(0.0f);
         clearForwardSchedule(forwardScheduled, forwardFireAtSample,
                              forwardScheduledBars);
         return true;
     }
 
     if (path == "/core/behavior/overdub") {
-        state.overdubEnabled.store(value > 0.5f, std::memory_order_relaxed);
+        controlState.setOverdubEnabled(value > 0.5f);
         return true;
     }
 
     if (path == "/core/behavior/layer") {
         const int layer = juce::jlimit(0, maxLayers - 1, static_cast<int>(value));
-        state.activeLayer.store(layer, std::memory_order_relaxed);
+        controlState.setActiveLayer(layer);
         return true;
     }
 
     if (path == "/core/behavior/mode") {
         const int mode = juce::jlimit(0, 2, static_cast<int>(value));
-        state.recordMode.store(mode, std::memory_order_relaxed);
+        controlState.setRecordMode(mode);
         return true;
     }
 
     if (path == "/core/behavior/forwardArmed") {
         const bool armed = value > 0.5f;
-        state.forwardArmed.store(armed, std::memory_order_relaxed);
+        controlState.setForwardArmed(armed);
         if (!armed) {
             clearForwardSchedule(forwardScheduled, forwardFireAtSample,
                                  forwardScheduledBars);
@@ -169,9 +172,9 @@ inline bool applyParamPath(
 
     if (path == "/core/behavior/forwardBars") {
         const float bars = juce::jmax(0.0f, value);
-        state.forwardBars.store(bars, std::memory_order_relaxed);
+        controlState.setForwardBars(bars);
         if (bars <= 0.0f) {
-            state.forwardArmed.store(false, std::memory_order_relaxed);
+            controlState.setForwardArmed(false);
             clearForwardSchedule(forwardScheduled, forwardFireAtSample,
                                  forwardScheduledBars);
         } else {
@@ -183,8 +186,8 @@ inline bool applyParamPath(
 
     if (path == "/core/behavior/forward") {
         const float bars = juce::jmax(0.0f, value);
-        state.forwardBars.store(bars, std::memory_order_relaxed);
-        state.forwardArmed.store(bars > 0.0f, std::memory_order_relaxed);
+        controlState.setForwardBars(bars);
+        controlState.setForwardArmed(bars > 0.0f);
         if (bars <= 0.0f) {
             clearForwardSchedule(forwardScheduled, forwardFireAtSample,
                                  forwardScheduledBars);
@@ -196,10 +199,9 @@ inline bool applyParamPath(
     }
 
     if (path == "/core/behavior/commit") {
-        state.commitCount.fetch_add(1, std::memory_order_relaxed);
-        const int activeLayer = state.activeLayer.load(std::memory_order_relaxed);
+        runtimeTelemetry.incrementCommitCount();
+        const int activeLayer = controlState.activeLayer();
         if (activeLayer >= 0 && activeLayer < maxLayers) {
-            auto& ls = state.layers[activeLayer];
             const float requestedBars = juce::jmax(0.0625f, value);
             const int requestedSamples = std::max(
                 1, static_cast<int>(requestedBars * getSamplesPerBar()));
@@ -213,18 +215,17 @@ inline bool applyParamPath(
                 }
             }
 
-            ls.length.store(effectiveSamples, std::memory_order_relaxed);
-            ls.playheadPos.store(0, std::memory_order_relaxed);
+            runtimeTelemetry.setLayerLength(activeLayer, effectiveSamples);
+            runtimeTelemetry.setLayerPlayheadPos(activeLayer, 0);
             const float spb = getSamplesPerBar();
-            ls.numBars.store(spb > 0.0f
-                                 ? static_cast<float>(effectiveSamples) / spb
-                                 : 0.0f,
-                             std::memory_order_relaxed);
-            ls.state.store(static_cast<int>(ScriptableLayerState::Playing),
-                           std::memory_order_relaxed);
+            runtimeTelemetry.setLayerNumBars(
+                activeLayer,
+                spb > 0.0f ? static_cast<float>(effectiveSamples) / spb : 0.0f);
+            runtimeTelemetry.setLayerState(
+                activeLayer, static_cast<int>(ScriptableLayerState::Playing));
         }
-        state.forwardArmed.store(false, std::memory_order_relaxed);
-        state.forwardBars.store(0.0f, std::memory_order_relaxed);
+        controlState.setForwardArmed(false);
+        controlState.setForwardBars(0.0f);
         clearForwardSchedule(forwardScheduled, forwardFireAtSample,
                              forwardScheduledBars);
         return true;
@@ -232,8 +233,8 @@ inline bool applyParamPath(
 
     if (path == "/core/behavior/forwardFire") {
         if (value > 0.5f) {
-            state.forwardArmed.store(false, std::memory_order_relaxed);
-            state.forwardBars.store(0.0f, std::memory_order_relaxed);
+            controlState.setForwardArmed(false);
+            controlState.setForwardBars(0.0f);
             clearForwardSchedule(forwardScheduled, forwardFireAtSample,
                                  forwardScheduledBars);
         }
@@ -243,20 +244,19 @@ inline bool applyParamPath(
     if (path == "/core/behavior/transport") {
         const int transport = static_cast<int>(value);
         for (int i = 0; i < maxLayers; ++i) {
-            auto& ls = state.layers[i];
-            const int currentState = ls.state.load(std::memory_order_relaxed);
+            const int currentState = runtimeTelemetry.layerState(i);
             if (currentState == static_cast<int>(ScriptableLayerState::Empty)) {
                 continue;
             }
             if (transport == 0) {
-                ls.state.store(static_cast<int>(ScriptableLayerState::Stopped),
-                               std::memory_order_relaxed);
+                runtimeTelemetry.setLayerState(
+                    i, static_cast<int>(ScriptableLayerState::Stopped));
             } else if (transport == 1) {
-                ls.state.store(static_cast<int>(ScriptableLayerState::Playing),
-                               std::memory_order_relaxed);
+                runtimeTelemetry.setLayerState(
+                    i, static_cast<int>(ScriptableLayerState::Playing));
             } else if (transport == 2) {
-                ls.state.store(static_cast<int>(ScriptableLayerState::Paused),
-                               std::memory_order_relaxed);
+                runtimeTelemetry.setLayerState(
+                    i, static_cast<int>(ScriptableLayerState::Paused));
             }
         }
         return true;
@@ -265,7 +265,8 @@ inline bool applyParamPath(
     if (path == "/core/behavior/graph/enabled") {
         const bool enabled = value > 0.5f;
         graphProcessingEnabled.store(enabled, std::memory_order_relaxed);
-        state.graphEnabled.store(enabled, std::memory_order_relaxed);
+        controlState.setGraphEnabled(enabled);
+        runtimeTelemetry.setGraphEnabled(enabled);
         return true;
     }
 
@@ -285,53 +286,49 @@ inline bool applyParamPath(
     int layerIndex = -1;
     std::string suffix;
     if (extractLayerParam(path, maxLayers, layerIndex, suffix)) {
-        auto& ls = state.layers[layerIndex];
-
         if (suffix == "volume") {
-            ls.volume.store(juce::jlimit(0.0f, 2.0f, value),
-                            std::memory_order_relaxed);
+            controlState.setLayerVolume(layerIndex, juce::jlimit(0.0f, 2.0f, value));
             return true;
         }
         if (suffix == "speed") {
-            ls.speed.store(juce::jlimit(-4.0f, 4.0f, value),
-                           std::memory_order_relaxed);
+            controlState.setLayerSpeed(layerIndex, juce::jlimit(-4.0f, 4.0f, value));
             return true;
         }
         if (suffix == "reverse") {
-            ls.reversed.store(value > 0.5f, std::memory_order_relaxed);
+            controlState.setLayerReversed(layerIndex, value > 0.5f);
             return true;
         }
         if (suffix == "mute") {
-            ls.muted.store(value > 0.5f, std::memory_order_relaxed);
+            controlState.setLayerMuted(layerIndex, value > 0.5f);
             return true;
         }
         if (suffix == "play") {
-            ls.state.store(static_cast<int>(ScriptableLayerState::Playing),
-                           std::memory_order_relaxed);
+            runtimeTelemetry.setLayerState(
+                layerIndex, static_cast<int>(ScriptableLayerState::Playing));
             return true;
         }
         if (suffix == "pause") {
-            ls.state.store(static_cast<int>(ScriptableLayerState::Paused),
-                           std::memory_order_relaxed);
+            runtimeTelemetry.setLayerState(
+                layerIndex, static_cast<int>(ScriptableLayerState::Paused));
             return true;
         }
         if (suffix == "stop") {
-            ls.state.store(static_cast<int>(ScriptableLayerState::Stopped),
-                           std::memory_order_relaxed);
+            runtimeTelemetry.setLayerState(
+                layerIndex, static_cast<int>(ScriptableLayerState::Stopped));
             return true;
         }
         if (suffix == "clear") {
-            ls.length.store(0, std::memory_order_relaxed);
-            ls.playheadPos.store(0, std::memory_order_relaxed);
-            ls.state.store(static_cast<int>(ScriptableLayerState::Empty),
-                           std::memory_order_relaxed);
+            runtimeTelemetry.setLayerLength(layerIndex, 0);
+            runtimeTelemetry.setLayerPlayheadPos(layerIndex, 0);
+            runtimeTelemetry.setLayerState(
+                layerIndex, static_cast<int>(ScriptableLayerState::Empty));
             return true;
         }
         if (suffix == "seek") {
-            const int length = std::max(1, ls.length.load(std::memory_order_relaxed));
+            const int length = std::max(1, runtimeTelemetry.layerLength(layerIndex));
             const int pos = static_cast<int>(juce::jlimit(0.0f, 1.0f, value) *
                                              length);
-            ls.playheadPos.store(pos, std::memory_order_relaxed);
+            runtimeTelemetry.setLayerPlayheadPos(layerIndex, pos);
             return true;
         }
     }
@@ -347,43 +344,47 @@ inline float readCoreParamPath(
     const LinkSync& linkSync,
     const DSPPluginScriptHost* dspScriptHost,
     const std::unordered_map<std::string, std::unique_ptr<DSPPluginScriptHost>>& dspSlots) {
-    const auto& state = controlServer.getAtomicState();
+    const_cast<ControlServer&>(controlServer).syncOwnedStateFromLegacyMirror();
+    manifold::control_state_view::BehaviorControlStateConstView controlState(
+        controlServer.getBehaviorControlState(), nullptr);
+    manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryConstView runtimeTelemetry(
+        controlServer.getBehaviorRuntimeTelemetry(), nullptr);
 
     if (path == "/core/behavior/tempo") {
-        return state.tempo.load(std::memory_order_relaxed);
+        return runtimeTelemetry.tempo();
     }
     if (path == "/core/behavior/targetbpm") {
-        return state.targetBPM.load(std::memory_order_relaxed);
+        return controlState.targetBpm();
     }
     if (path == "/core/behavior/volume") {
-        return state.masterVolume.load(std::memory_order_relaxed);
+        return controlState.masterVolume();
     }
     if (path == "/core/behavior/inputVolume") {
-        return state.inputVolume.load(std::memory_order_relaxed);
+        return controlState.inputVolume();
     }
     if (path == "/core/behavior/passthrough") {
-        return state.passthroughEnabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+        return controlState.passthroughEnabled() ? 1.0f : 0.0f;
     }
     if (path == "/core/behavior/recording") {
-        return state.isRecording.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+        return controlState.isRecording() ? 1.0f : 0.0f;
     }
     if (path == "/core/behavior/overdub") {
-        return state.overdubEnabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+        return controlState.overdubEnabled() ? 1.0f : 0.0f;
     }
     if (path == "/core/behavior/layer") {
-        return static_cast<float>(state.activeLayer.load(std::memory_order_relaxed));
+        return static_cast<float>(controlState.activeLayer());
     }
     if (path == "/core/behavior/forwardArmed") {
-        return state.forwardArmed.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+        return controlState.forwardArmed() ? 1.0f : 0.0f;
     }
     if (path == "/core/behavior/forwardBars") {
-        return state.forwardBars.load(std::memory_order_relaxed);
+        return controlState.forwardBars();
     }
     if (path == "/core/behavior/mode") {
-        return static_cast<float>(state.recordMode.load(std::memory_order_relaxed));
+        return static_cast<float>(controlState.recordMode());
     }
     if (path == "/core/behavior/graph/enabled") {
-        return graphProcessingEnabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+        return runtimeTelemetry.graphEnabled() ? 1.0f : 0.0f;
     }
     if (path == "/core/behavior/link/enabled") {
         return linkSync.isEnabled() ? 1.0f : 0.0f;
@@ -410,28 +411,27 @@ inline float readCoreParamPath(
     int layerIndex = -1;
     std::string suffix;
     if (extractLayerParam(path, maxLayers, layerIndex, suffix)) {
-        const auto& ls = state.layers[layerIndex];
         if (suffix == "volume") {
-            return ls.volume.load(std::memory_order_relaxed);
+            return controlState.layerVolume(layerIndex);
         }
         if (suffix == "speed") {
-            return ls.speed.load(std::memory_order_relaxed);
+            return controlState.layerSpeed(layerIndex);
         }
         if (suffix == "reverse") {
-            return ls.reversed.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+            return controlState.layerReversed(layerIndex) ? 1.0f : 0.0f;
         }
         if (suffix == "mute") {
-            return ls.state.load(std::memory_order_relaxed) ==
+            return runtimeTelemetry.layerState(layerIndex) ==
                            static_cast<int>(ScriptableLayerState::Muted)
                        ? 1.0f
                        : 0.0f;
         }
         if (suffix == "length") {
-            return static_cast<float>(ls.length.load(std::memory_order_relaxed));
+            return static_cast<float>(runtimeTelemetry.layerLength(layerIndex));
         }
         if (suffix == "position") {
-            const int length = std::max(1, ls.length.load(std::memory_order_relaxed));
-            return static_cast<float>(ls.playheadPos.load(std::memory_order_relaxed)) /
+            const int length = std::max(1, runtimeTelemetry.layerLength(layerIndex));
+            return static_cast<float>(runtimeTelemetry.layerPlayheadPos(layerIndex)) /
                    static_cast<float>(length);
         }
     }

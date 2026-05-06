@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 
+#include "../primitives/control/BehaviorRuntimeTelemetryView.h"
 #include "../primitives/control/ControlServer.h"
 #include "BehaviorCoreProcessor.h"
 
@@ -36,8 +37,10 @@ inline void beginGraphMutation(std::mutex& graphMutationMutex,
     graphMutationPauseRequested.store(true, std::memory_order_release);
     graphMutationRestoreEnabled =
         graphProcessingEnabled.exchange(false, std::memory_order_acq_rel);
-    controlServer.getAtomicState().graphEnabled.store(false,
-                                                      std::memory_order_relaxed);
+    manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
+        controlServer.getBehaviorRuntimeTelemetry(),
+        &controlServer.getAtomicState())
+        .setGraphEnabled(false);
     graphMutationCv.wait(lock, [&graphProcessDepth]() {
         return graphProcessDepth.load(std::memory_order_acquire) == 0;
     });
@@ -54,8 +57,10 @@ inline void endGraphMutation(std::mutex& graphMutationMutex,
         graphMutationPauseRequested.store(false, std::memory_order_release);
         graphProcessingEnabled.store(graphMutationRestoreEnabled,
                                      std::memory_order_release);
-        controlServer.getAtomicState().graphEnabled.store(
-            graphMutationRestoreEnabled, std::memory_order_relaxed);
+        manifold::runtime_telemetry_view::BehaviorRuntimeTelemetryView(
+            controlServer.getBehaviorRuntimeTelemetry(),
+            &controlServer.getAtomicState())
+            .setGraphEnabled(graphMutationRestoreEnabled);
         graphMutationRestoreEnabled = false;
     }
     graphMutationCv.notify_all();
