@@ -7,8 +7,10 @@
 #include "VideoSampler.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace manifold::video {
@@ -73,19 +75,15 @@ struct VideoSurfaceProvider::Impl {
         int width = 0;
         int height = 0;
         uint64_t sequence = 0;
-        uint64_t stableId = 0;
+        int64_t lastPrepareStampUs = -1;
         std::string sourceSignature;
     };
 
     std::unordered_map<uint64_t, TextureState> states;
     std::unordered_map<uint64_t, uint64_t> latestStateKeyByStableId;
 
-    static uint64_t makeStateKey(uint64_t stableId, const SourceRequest& request) {
-        std::string signature = std::to_string(stableId) + "|" + request.source;
-        if (request.source == "sampler") {
-            signature += "|" + request.samplerId;
-        }
-        return hashStringToU64(signature);
+    static bool shouldShareTextureAcrossNodes(const SourceRequest& request) {
+        return request.source == "live";
     }
 
     static std::string makeSourceSignature(const SourceRequest& request) {
@@ -94,6 +92,14 @@ struct VideoSurfaceProvider::Impl {
             signature += ":" + request.samplerId;
         }
         return signature;
+    }
+
+    static uint64_t makeStateKey(uint64_t stableId, const SourceRequest& request) {
+        std::string signature = makeSourceSignature(request);
+        if (!shouldShareTextureAcrossNodes(request)) {
+            signature += "|node:" + std::to_string(stableId);
+        }
+        return hashStringToU64(signature);
     }
 
     static bool ensureTexture(TextureState& state) {
@@ -182,14 +188,26 @@ bool VideoSurfaceProvider::handlesType(const std::string& surfaceType) const {
 std::uintptr_t VideoSurfaceProvider::prepareTexture(const RuntimeNode& node,
                                                      int width,
                                                      int height,
-                                                     double) {
+                                                     double timeSeconds) {
     if (node.getStableId() == 0 || width <= 0 || height <= 0) {
         return 0;
     }
 
     const auto request = parseSourceRequest(node);
-    FrameData frame;
+    auto& impl = *pImpl_;
+    const uint64_t stateKey = Impl::makeStateKey(node.getStableId(), request);
+    auto& state = impl.states[stateKey];
+    state.sourceSignature = Impl::makeSourceSignature(request);
+    impl.latestStateKeyByStableId[node.getStableId()] = stateKey;
 
+    const auto renderStampUs = static_cast<int64_t>(std::llround(timeSeconds * 1000000.0));
+    if (Impl::shouldShareTextureAcrossNodes(request)
+        && state.texture != 0
+        && state.lastPrepareStampUs == renderStampUs) {
+        return static_cast<std::uintptr_t>(state.texture);
+    }
+
+    FrameData frame;
     if (request.source == "sampler") {
         if (request.samplerId.empty()) {
             return 0;
@@ -210,17 +228,11 @@ std::uintptr_t VideoSurfaceProvider::prepareTexture(const RuntimeNode& node,
         return 0;
     }
 
-    auto& impl = *pImpl_;
-    const uint64_t stateKey = Impl::makeStateKey(node.getStableId(), request);
-    auto& state = impl.states[stateKey];
-    state.stableId = node.getStableId();
-    state.sourceSignature = Impl::makeSourceSignature(request);
-
     if (!Impl::uploadFrame(state, frame)) {
         return 0;
     }
 
-    impl.latestStateKeyByStableId[node.getStableId()] = stateKey;
+    state.lastPrepareStampUs = renderStampUs;
     return static_cast<std::uintptr_t>(state.texture);
 }
 
@@ -248,9 +260,18 @@ bool VideoSurfaceProvider::getSurfaceInfo(uint64_t stableId,
 
 void VideoSurfaceProvider::prune(const std::unordered_set<uint64_t>& touchedStableIds) {
     auto& impl = *pImpl_;
+    std::unordered_set<uint64_t> activeStateKeys;
+    activeStateKeys.reserve(touchedStableIds.size());
+
+    for (const auto stableId : touchedStableIds) {
+        const auto it = impl.latestStateKeyByStableId.find(stableId);
+        if (it != impl.latestStateKeyByStableId.end()) {
+            activeStateKeys.insert(it->second);
+        }
+    }
 
     for (auto it = impl.states.begin(); it != impl.states.end();) {
-        if (touchedStableIds.find(it->second.stableId) == touchedStableIds.end()) {
+        if (activeStateKeys.find(it->first) == activeStateKeys.end()) {
             Impl::releaseTexture(it->second);
             it = impl.states.erase(it);
         } else {

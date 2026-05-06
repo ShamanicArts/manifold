@@ -13,6 +13,8 @@ local SEGMENT_INGEST_INTERVAL = 1.0 / 15.0
 local POSE_INTERVAL = 1.0 / 12.0
 local PLAYBACK_UI_INTERVAL = 1.0 / 20.0
 local STATUS_INTERVAL = 0.20
+local DEFAULT_CAPTURE_W = 640
+local DEFAULT_CAPTURE_H = 480
 local KEYPOINTS = {
   "nose", "left_eye", "right_eye", "left_ear", "right_ear",
   "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
@@ -125,10 +127,13 @@ end
 
 local refreshWaveform
 local updatePreviewSurface
+local ensureGridCells
+local refreshGridCells
 local updateGridThumbnails
 local resetPanelDocks
 local syncShaderSourceParams
 local layoutOutputRow
+local buildTapPipeline
 
 local POLY_PATHS, SLICE_PATHS = {}, {}
 for i = 1, MAX do
@@ -382,12 +387,43 @@ local function loadModels(ctx)
   setText(ctx.widgets.poseStatus, string.format("Models: seg=%s pose=%s", ctx._segModelPath and "OK" or "missing", ctx._poseModelPath and "OK" or "missing"))
 end
 
+local function updateOutputAspect(ctx)
+  local mode = ctx.aspectMode or "16:9"
+  if mode == "Native" then
+    local frame = (capture and capture.getFrameInfo and capture.getFrameInfo()) or {}
+    if frame.valid and tonumber(frame.width) and tonumber(frame.height) then
+      ctx.outputW = tonumber(frame.width)
+      ctx.outputH = tonumber(frame.height)
+    else
+      ctx.outputW = 1920
+      ctx.outputH = 1080
+    end
+  elseif mode == "16:9" then
+    ctx.outputW = 1920
+    ctx.outputH = 1080
+  elseif mode == "4:3" then
+    ctx.outputW = 1440
+    ctx.outputH = 1080
+  elseif mode == "1:1" then
+    ctx.outputW = 1080
+    ctx.outputH = 1080
+  end
+  local fi = ctx.widgets.frameInfo
+  if fi and fi.setText then
+    fi:setText(string.format("Frame: %dx%d (%.2f:1)", ctx.outputW, ctx.outputH, ctx.outputW / math.max(1, ctx.outputH)))
+  end
+end
+
 local function openWebcam(ctx)
   local idx = selectedDeviceIndex(ctx)
+  -- Output aspect is just presentation. Tying camera capture to 1080p blew up
+  -- the live uploads/shader passes for every viewport and thumbnail.
+  local capW, capH = DEFAULT_CAPTURE_W, DEFAULT_CAPTURE_H
   local ok = false
-  if capture and capture.open then ok = capture.open(idx, 640, 480, 30) end
-  setText(ctx.widgets.webcamStatus, ok and ("Webcam: open device " .. idx .. " @640x480") or "Webcam: open failed")
+  if capture and capture.open then ok = capture.open(idx, capW, capH, 30) end
+  setText(ctx.widgets.webcamStatus, ok and ("Webcam: open device " .. idx .. " @" .. capW .. "x" .. capH) or "Webcam: open failed")
   bindInputSurfaces(ctx)
+  updateOutputAspect(ctx)
 end
 
 local function closeWebcam(ctx)
@@ -694,7 +730,7 @@ local function buildShaderSourceDescriptor(ctx)
         local pmax = tonumber(pspec.max) or 1
         sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
       end
-      local ok, payload = pcall(shaders.buildPipeline, {}, "cover", { type = "generator", sourceId = choice.id, params = sourceParams })
+      local ok, payload = pcall(shaders.buildPipeline, {}, "contain", { type = "generator", sourceId = choice.id, params = sourceParams })
       if ok and payload then
         entry.node:setCustomSurface("gpu_shader", payload)
         return { type = "node", sourceId = entry.id }, choice
@@ -743,7 +779,7 @@ function updateShader(ctx)
   end
   local source, choice = buildShaderSourceDescriptor(ctx)
   if shaders and shaders.buildPipeline then
-    local ok, payload = pcall(shaders.buildPipeline, layers, "cover", source)
+    local ok, payload = pcall(shaders.buildPipeline, layers, "contain", source)
     if ok and payload then
       -- Build a signature to detect actual payload changes
       local sig = tostring(ctx.shader.sourceIndex) .. "|" .. tostring(#layers)
@@ -1228,10 +1264,14 @@ end
 local function layoutShaderEmbed(ctx, w, h)
   setBounds(ctx.widgets.shaderEmbed, 0, 0, w, h)
   local pad, gap = 8, 4
-  setBounds(ctx.widgets.sourceSelect, pad, 25, 92, 18)
-  setBounds(ctx.widgets.shaderLayer, 106, 25, 48, 18)
-  setBounds(ctx.widgets.shaderEnabled, 160, 25, 50, 18)
-  setBounds(ctx.widgets.effectSelect, 216, 25, math.max(110, w - 224), 18)
+  -- Row 0: source select, aspect select, layer, enabled, effect
+  setBounds(ctx.widgets.sourceSelect, pad, 25, 82, 18)
+  setBounds(ctx.widgets.aspectSelect, pad + 86, 25, 72, 18)
+  setBounds(ctx.widgets.shaderLayer, pad + 86 + 72 + gap, 25, 48, 18)
+  setBounds(ctx.widgets.shaderEnabled, pad + 86 + 72 + gap + 48 + gap, 25, 50, 18)
+  local effectX = pad + 86 + 72 + gap + 48 + gap + 50 + gap
+  setBounds(ctx.widgets.effectSelect, effectX, 25, math.max(60, w - pad - effectX), 18)
+  -- Row 1-2: source params in 2-column grid
   local srcRowY = 47
   local srcCount = 4
   local srcCols = 2
@@ -1241,7 +1281,10 @@ local function layoutShaderEmbed(ctx, w, h)
     local row = math.floor((pi - 1) / srcCols)
     setBounds(ctx.widgets["sourceParam" .. pi], pad + col * (srcColW + gap), srcRowY + row * 22, math.max(1, srcColW - gap), 17)
   end
-  local shaderY = srcRowY + math.ceil(srcCount / srcCols) * 22 + 2
+  -- Row 3: frame info label
+  setBounds(ctx.widgets.frameInfo, pad, 91, math.max(1, w - pad * 2), 14)
+  -- Rows 4+: shader params grid
+  local shaderY = 107
   local cols, colW = 3, math.max(92, math.floor((w - pad * 2) / 3))
   for p = 1, 9 do
     local col = (p - 1) % cols
@@ -1426,7 +1469,7 @@ local function buildTapPipeline(ctx, col, tapIndex)
   end
   if #layers == 0 then return nil end
   local source = buildShaderSourceDescriptor(ctx)
-  local ok, payload = pcall(shaders.buildPipeline, layers, "cover", source)
+  local ok, payload = pcall(shaders.buildPipeline, layers, "contain", source)
   if ok and payload then return payload end
   return nil
 end
@@ -1481,28 +1524,29 @@ updateGridThumbnails = function(ctx)
         local sig = tostring(col) .. "_" .. tostring(row)
         if row == 1 and clip.kind == "source" then
           sig = sig .. "|source|" .. tostring(ctx.shader.sourceIndex)
-          if ctx._gridThumbSigs[key] ~= sig then
-            ctx._gridThumbSigs[key] = sig
-            local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
-            if choice and choice.kind == "generator" then
-              local sourceParams = {}
-              local specParams = choice.params or {}
-              local srcParams = ctx.shaderSourceParams or {}
-              for pi = 1, #specParams do
-                local pspec = specParams[pi]
-                local normalized = srcParams[pspec.id] or tonumber(pspec.default) or 0
-                local pmin = tonumber(pspec.min) or 0
-                local pmax = tonumber(pspec.max) or 1
-                sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
-                sig = sig .. "|" .. tostring(pspec.id) .. "=" .. tostring(math.floor(sourceParams[pspec.id] * 1000 + 0.5))
-              end
-              local ok, payload = pcall(shaders.buildPipeline, {}, "cover", { type = "generator", sourceId = choice.id, params = sourceParams })
+          local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
+          if choice and choice.kind == "generator" then
+            local sourceParams = {}
+            local specParams = choice.params or {}
+            local srcParams = ctx.shaderSourceParams or {}
+            for pi = 1, #specParams do
+              local pspec = specParams[pi]
+              local normalized = srcParams[pspec.id] or tonumber(pspec.default) or 0
+              local pmin = tonumber(pspec.min) or 0
+              local pmax = tonumber(pspec.max) or 1
+              sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
+              sig = sig .. "|" .. tostring(pspec.id) .. "=" .. tostring(math.floor(sourceParams[pspec.id] * 1000 + 0.5))
+            end
+            if ctx._gridThumbSigs[key] ~= sig then
+              ctx._gridThumbSigs[key] = sig
+              local ok, payload = pcall(shaders.buildPipeline, {}, "contain", { type = "generator", sourceId = choice.id, params = sourceParams })
               if ok and payload then
                 thumb:setCustomSurface("gpu_shader", payload)
               end
-            else
-              thumb:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
             end
+          elseif ctx._gridThumbSigs[key] ~= sig then
+            ctx._gridThumbSigs[key] = sig
+            thumb:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
           end
         elseif clip.kind == "fx" and clip.enabled then
           sig = sig .. "|fx|" .. tostring(clip.fxId or "") .. "|" .. tostring(clip.layerIndex)
@@ -1529,12 +1573,14 @@ local EMPTY_CELL_BG = 0xff080c18
 
 local function layoutClipGrid(ctx, w, h)
   setBounds(ctx.widgets.deckEmbed, 0, 0, w, h)
+  syncClipModel(ctx)
   local pad, gap = 8, 4
   local availW = math.max(1, w - pad * 2)
   local availH = math.max(1, h - pad * 2)
 
   local numCols, numRows = ensureGridCells(ctx)
   if numCols < 1 or numRows < 1 then return end
+  updateGridThumbnails(ctx)
 
   -- Bottom-up: source row at bottom, FX stacked above, columns side by side
   local cellW = math.max(40, math.floor((availW - gap * (numCols - 1)) / numCols))
@@ -1589,7 +1635,7 @@ local function layoutClipGrid(ctx, w, h)
         })
       elseif isSource or isEnabled then
         cell.thumb:setBounds(2, 2, math.max(1, cellW - 4), math.max(1, thumbH - 2))
-        local labelText = clip and clip.name or ""
+        local labelText = clip and (clip.name or clip.fxName) or ""
         cell.label:setBounds(4, math.max(1, thumbH + 2), math.max(1, cellW - 8), labelH)
         local labelClr = isSource and 0xff22d3ee or (isEnabled and 0xff94a3b8 or 0xff334155)
         cell.label:setDisplayList({
@@ -1726,8 +1772,9 @@ local function renderStagePanel(ctx)
   if imguiBegin("Output###AVSD_output", imguiWindowFlags_NoTitleBar) then
     local av = imguiGetContentRegionAvail()
     if av.x > 4 and av.y > 4 then
-      setBounds(ctx.widgets.outputViewport, 0, 0, math.floor(av.x), math.floor(av.y))
-      imguiRetainedPanel(ctx.widgets.outputViewport.node, math.floor(av.x), math.floor(av.y), true)
+      local rw, rh = math.floor(av.x), math.floor(av.y)
+      setBounds(ctx.widgets.outputViewport, 0, 0, rw, rh)
+      imguiRetainedPanel(ctx.widgets.outputViewport.node, rw, rh, true)
     end
   end
   imguiEnd()
@@ -1736,9 +1783,10 @@ local function renderStagePanel(ctx)
   if imguiBegin("Preview###AVSD_preview", imguiWindowFlags_NoTitleBar) then
     local av = imguiGetContentRegionAvail()
     if av.x > 4 and av.y > 4 then
-      setBounds(ctx.widgets.previewStage, 0, 0, math.floor(av.x), math.floor(av.y))
-      setBounds(ctx.widgets.previewStageTag, 5, 4, math.max(1, math.floor(av.x) - 10), 12)
-      imguiRetainedPanel(ctx.widgets.previewStage.node, math.floor(av.x), math.floor(av.y), true)
+      local rw, rh = math.floor(av.x), math.floor(av.y)
+      setBounds(ctx.widgets.previewStage, 0, 0, rw, rh)
+      setBounds(ctx.widgets.previewStageTag, 5, 4, math.max(1, rw - 10), 12)
+      imguiRetainedPanel(ctx.widgets.previewStage.node, rw, rh, true)
     end
   end
   imguiEnd()
@@ -1845,7 +1893,7 @@ local function section(title, accent, lines)
   imguiSpacing()
 end
 
-local function renderEmbeddedPanel(ctx, widgetId, layoutFn, forcedHeight)
+local function renderEmbeddedPanel(ctx, widgetId, layoutFn, forcedHeight, fitToView)
   local host = ctx.widgets and ctx.widgets[widgetId]
   if not (host and host.node and type(imguiRetainedPanel) == "function") then
     imguiText("Retained panel host unavailable")
@@ -1856,7 +1904,7 @@ local function renderEmbeddedPanel(ctx, widgetId, layoutFn, forcedHeight)
   local rawH = forcedHeight ~= nil and forcedHeight or (tonumber(avail.y) or 0)
   local h = math.max(1, math.floor(math.min(rawH, tonumber(avail.y) or rawH)))
   layoutFn(ctx, w, h)
-  imguiRetainedPanel(host.node, w, h, false)
+  imguiRetainedPanel(host.node, w, h, fitToView == true)
 end
 
 local function renderParametersPanel(ctx)
@@ -1891,7 +1939,7 @@ local function renderPanel(ctx, win)
     elseif win.key == "stage" then
       renderStagePanel(ctx)
     elseif win.key == "deck" then
-      renderEmbeddedPanel(ctx, "deckEmbed", layoutClipGrid)
+      renderEmbeddedPanel(ctx, "deckEmbed", layoutClipGrid, nil, true)
     elseif win.key == "waveform" then
       renderWaveformPanel(ctx)
     end
@@ -1967,6 +2015,9 @@ function M.init(ctx)
   ctx._resizeMode = false
   ctx._dockTreeBuilt = false
   ctx._rebuildDockTree = false
+  ctx.outputW = 1920
+  ctx.outputH = 1080
+  ctx.aspectMode = "16:9"
 
   for _, w in pairs(ctx.allWidgets or {}) do
     if type(w) == "table" then
@@ -1984,6 +2035,7 @@ function M.init(ctx)
   setDropdownOverlayRoot(ctx.widgets.deviceSelect, ctx.root)
   setDropdownOverlayRoot(ctx.widgets.midiInput, ctx.widgets.transportEmbed)
   setDropdownOverlayRoot(ctx.widgets.sourceSelect, ctx.widgets.shaderEmbed)
+  setDropdownOverlayRoot(ctx.widgets.aspectSelect, ctx.widgets.shaderEmbed)
   setDropdownOverlayRoot(ctx.widgets.shaderLayer, ctx.widgets.shaderEmbed)
   setDropdownOverlayRoot(ctx.widgets.effectSelect, ctx.widgets.shaderEmbed)
   setDropdownOverlayRoot(ctx.widgets.selectedSlice, ctx.widgets.sliceEmbed)
@@ -2000,6 +2052,15 @@ function M.init(ctx)
   refreshShaderLists(ctx)
   syncShaderEditor(ctx)
   syncShaderSourceParams(ctx)
+  updateOutputAspect(ctx)
+  if ctx.widgets.aspectSelect then
+    local aspectIdx = 2
+    if ctx.aspectMode == "Native" then aspectIdx = 1
+    elseif ctx.aspectMode == "16:9" then aspectIdx = 2
+    elseif ctx.aspectMode == "4:3" then aspectIdx = 3
+    elseif ctx.aspectMode == "1:1" then aspectIdx = 4 end
+    setSelectedSilently(ctx.widgets.aspectSelect, aspectIdx)
+  end
   updateShader(ctx)
   refreshDevices(ctx)
   refreshMidi(ctx)
@@ -2075,7 +2136,13 @@ function M.init(ctx)
     ctx.shader.sourceIndex = idx
     writeParam(NS .. "/shader/source", idx)
     syncShaderSourceParams(ctx)
+    updateOutputAspect(ctx)
     updateShader(ctx)
+  end
+  ctx.widgets.aspectSelect._onSelect = function(idx)
+    local opts = {"Native","16:9","4:3","1:1"}
+    ctx.aspectMode = opts[math.max(1, math.min(#opts, round(idx)))]
+    updateOutputAspect(ctx)
   end
   ctx.widgets.shaderLayer._onSelect = function(idx)
     ctx.shader.activeLayer = math.max(1, math.min(8, round(idx)))

@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace manifold::ml {
 namespace {
@@ -145,6 +146,14 @@ float sampleMaskNearest(const std::vector<float>& mask,
     return mask[static_cast<std::size_t>(sy) * static_cast<std::size_t>(maskW) + static_cast<std::size_t>(sx)];
 }
 
+uint64_t hashStringToU64(const std::string& value) {
+    return static_cast<uint64_t>(std::hash<std::string>{}(value));
+}
+
+void appendQuantizedFloat(std::string& target, float value) {
+    target += std::to_string(static_cast<long long>(std::llround(static_cast<double>(value) * 100000.0)));
+}
+
 } // namespace
 
 struct MLMaskSurfaceProvider::Impl {
@@ -164,7 +173,6 @@ struct MLMaskSurfaceProvider::Impl {
         unsigned int texture = 0;
         int width = 0;
         int height = 0;
-        uint64_t stableId = 0;
         uint64_t sourceSequence = 0;
         uint64_t outputSequence = 0;
         std::string surfaceType;
@@ -177,6 +185,23 @@ struct MLMaskSurfaceProvider::Impl {
 
     std::unordered_map<std::string, InferenceState> inferences;
     std::unordered_map<uint64_t, TextureState> textures;
+    std::unordered_map<uint64_t, uint64_t> textureKeyByStableId;
+
+    static uint64_t makeTextureKey(const std::string& surfaceType, const Request& request) {
+        std::string signature = surfaceType;
+        signature += "|" + request.modelPath;
+        signature += request.useSigmoid ? "|sig:1" : "|sig:0";
+        signature += request.invert ? "|inv:1" : "|inv:0";
+        signature += "|gain:";
+        appendQuantizedFloat(signature, request.gain);
+        signature += "|threshold:";
+        appendQuantizedFloat(signature, request.threshold);
+        signature += "|feather:";
+        appendQuantizedFloat(signature, request.feather);
+        signature += "|background:";
+        appendQuantizedFloat(signature, request.background);
+        return hashStringToU64(signature);
+    }
 
     static bool ensureTexture(TextureState& state) {
         if (state.texture != 0) {
@@ -293,8 +318,9 @@ std::uintptr_t MLMaskSurfaceProvider::prepareTexture(const RuntimeNode& node,
         ++inference.inferenceSequence;
     }
 
-    auto& texture = pImpl_->textures[node.getStableId()];
-    texture.stableId = node.getStableId();
+    const uint64_t textureKey = Impl::makeTextureKey(surfaceType, request);
+    auto& texture = pImpl_->textures[textureKey];
+    pImpl_->textureKeyByStableId[node.getStableId()] = textureKey;
 
     const bool needsRebuild = texture.surfaceType != surfaceType
         || texture.modelPath != request.modelPath
@@ -404,7 +430,12 @@ bool MLMaskSurfaceProvider::getSurfaceInfo(uint64_t stableId,
                                            int& w,
                                            int& h,
                                            uint64_t& seq) const {
-    const auto it = pImpl_->textures.find(stableId);
+    const auto keyIt = pImpl_->textureKeyByStableId.find(stableId);
+    if (keyIt == pImpl_->textureKeyByStableId.end()) {
+        return false;
+    }
+
+    const auto it = pImpl_->textures.find(keyIt->second);
     if (it == pImpl_->textures.end()) {
         return false;
     }
@@ -417,10 +448,28 @@ bool MLMaskSurfaceProvider::getSurfaceInfo(uint64_t stableId,
 }
 
 void MLMaskSurfaceProvider::prune(const std::unordered_set<uint64_t>& touchedStableIds) {
+    std::unordered_set<uint64_t> activeTextureKeys;
+    activeTextureKeys.reserve(touchedStableIds.size());
+
+    for (const auto stableId : touchedStableIds) {
+        const auto it = pImpl_->textureKeyByStableId.find(stableId);
+        if (it != pImpl_->textureKeyByStableId.end()) {
+            activeTextureKeys.insert(it->second);
+        }
+    }
+
     for (auto it = pImpl_->textures.begin(); it != pImpl_->textures.end();) {
-        if (touchedStableIds.find(it->first) == touchedStableIds.end()) {
+        if (activeTextureKeys.find(it->first) == activeTextureKeys.end()) {
             Impl::releaseTexture(it->second);
             it = pImpl_->textures.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = pImpl_->textureKeyByStableId.begin(); it != pImpl_->textureKeyByStableId.end();) {
+        if (touchedStableIds.find(it->first) == touchedStableIds.end() || pImpl_->textures.find(it->second) == pImpl_->textures.end()) {
+            it = pImpl_->textureKeyByStableId.erase(it);
         } else {
             ++it;
         }
@@ -432,6 +481,7 @@ void MLMaskSurfaceProvider::releaseAll() {
         Impl::releaseTexture(state);
     }
     pImpl_->textures.clear();
+    pImpl_->textureKeyByStableId.clear();
     pImpl_->inferences.clear();
 }
 
