@@ -326,24 +326,18 @@ void BehaviorCoreProcessor::initialiseExportPluginConfig() {
         return;
     }
 
-    exportViewMode_.store(exportPluginConfig_.defaultViewMode, std::memory_order_relaxed);
-    exportEditorWidth_.store(exportPluginConfig_.defaultViewMode == 0
-                                 ? exportPluginConfig_.compactWidth
-                                 : exportPluginConfig_.splitWidth,
-                             std::memory_order_relaxed);
-    exportEditorHeight_.store(exportPluginConfig_.defaultViewMode == 0
-                                  ? exportPluginConfig_.compactHeight
-                                  : exportPluginConfig_.splitHeight,
-                              std::memory_order_relaxed);
-    exportSettingsVisible_.store(false, std::memory_order_relaxed);
-    exportDevVisible_.store(false, std::memory_order_relaxed);
-    exportOscEnabled_.store(exportPluginConfig_.oscDefaultEnabled, std::memory_order_relaxed);
-    exportOscQueryEnabled_.store(exportPluginConfig_.oscQueryDefaultEnabled,
-                                 std::memory_order_relaxed);
-    exportOscInputPort_.store(exportPluginConfig_.oscBasePort, std::memory_order_relaxed);
-    exportOscQueryPort_.store(exportPluginConfig_.oscBasePort + 1, std::memory_order_relaxed);
-    exportXyXParam_.store(1, std::memory_order_relaxed);
-    exportXyYParam_.store(2, std::memory_order_relaxed);
+    const auto initialState = manifold::export_plugin::makeExportUiInitialState(exportPluginConfig_);
+    exportViewMode_.store(initialState.viewMode, std::memory_order_relaxed);
+    exportEditorWidth_.store(initialState.editorWidth, std::memory_order_relaxed);
+    exportEditorHeight_.store(initialState.editorHeight, std::memory_order_relaxed);
+    exportSettingsVisible_.store(initialState.settingsVisible, std::memory_order_relaxed);
+    exportDevVisible_.store(initialState.devVisible, std::memory_order_relaxed);
+    exportOscEnabled_.store(initialState.oscEnabled, std::memory_order_relaxed);
+    exportOscQueryEnabled_.store(initialState.oscQueryEnabled, std::memory_order_relaxed);
+    exportOscInputPort_.store(initialState.oscInputPort, std::memory_order_relaxed);
+    exportOscQueryPort_.store(initialState.oscQueryPort, std::memory_order_relaxed);
+    exportXyXParam_.store(initialState.xyXParam, std::memory_order_relaxed);
+    exportXyYParam_.store(initialState.xyYParam, std::memory_order_relaxed);
 }
 
 void BehaviorCoreProcessor::initialiseHostParameters() {
@@ -361,316 +355,27 @@ void BehaviorCoreProcessor::registerExportPluginEndpoints() {
         return;
     }
 
-    const juce::StringArray uiPaths{
-        "/plugin/ui/viewMode",
-        "/plugin/ui/settingsVisible",
-        "/plugin/ui/devVisible",
-        "/plugin/ui/oscEnabled",
-        "/plugin/ui/oscQueryEnabled",
-        "/plugin/ui/oscInputPort",
-        "/plugin/ui/oscQueryPort",
-        "/plugin/ui/xyXParam",
-        "/plugin/ui/xyYParam",
-        "/plugin/ui/perf/frameCurrentUs",
-        "/plugin/ui/perf/frameAvgUs",
-        "/plugin/ui/perf/framePeakUs",
-        "/plugin/ui/perf/dspCurrentUs",
-        "/plugin/ui/perf/dspAvgUs",
-        "/plugin/ui/perf/dspPeakUs",
-        "/plugin/ui/perf/uiUpdateUs",
-        "/plugin/ui/perf/renderUs",
-        "/plugin/ui/perf/paintUs",
-        "/plugin/ui/perf/cpuPercent",
-        "/plugin/ui/perf/pssMB",
-        "/plugin/ui/perf/privateDirtyMB",
-        "/plugin/ui/perf/pluginDeltaPssMB",
-        "/plugin/ui/perf/pluginDeltaPrivateDirtyMB",
-        "/plugin/ui/perf/pluginDeltaHeapMB",
-        "/plugin/ui/perf/uiDeltaPssMB",
-        "/plugin/ui/perf/uiDeltaPrivateDirtyMB",
-        "/plugin/ui/perf/uiDeltaHeapMB",
-        "/plugin/ui/perf/afterLuaInitDeltaPssMB",
-        "/plugin/ui/perf/afterLuaInitDeltaPrivateDirtyMB",
-        "/plugin/ui/perf/afterBindingsDeltaPssMB",
-        "/plugin/ui/perf/afterBindingsDeltaPrivateDirtyMB",
-        "/plugin/ui/perf/afterScriptLoadDeltaPssMB",
-        "/plugin/ui/perf/afterScriptLoadDeltaPrivateDirtyMB",
-        "/plugin/ui/perf/afterDspDeltaPssMB",
-        "/plugin/ui/perf/afterDspDeltaPrivateDirtyMB",
-        "/plugin/ui/perf/afterUiOpenDeltaPssMB",
-        "/plugin/ui/perf/afterUiOpenDeltaPrivateDirtyMB",
-        "/plugin/ui/perf/afterUiIdleDeltaPssMB",
-        "/plugin/ui/perf/afterUiIdleDeltaPrivateDirtyMB",
-        "/plugin/ui/perf/luaHeapMB",
-        "/plugin/ui/perf/glibcHeapMB",
-        "/plugin/ui/perf/glibcArenaMB",
-        "/plugin/ui/perf/glibcMmapMB",
-        "/plugin/ui/perf/glibcFreeHeldMB",
-        "/plugin/ui/perf/glibcReleasableMB",
-        "/plugin/ui/perf/glibcArenaCount",
-        "/plugin/ui/perf/gpuFontAtlasMB",
-        "/plugin/ui/perf/gpuSurfaceColorMB",
-        "/plugin/ui/perf/gpuSurfaceDepthMB",
-        "/plugin/ui/perf/gpuTotalMB",
-        "/plugin/ui/perf/runtimeNodeCount",
-        "/plugin/ui/perf/runtimeNodeMB",
-        "/plugin/ui/perf/runtimeCallbackCount",
-        "/plugin/ui/perf/runtimeUserDataEntries",
-        "/plugin/ui/perf/runtimeUserDataMB",
-        "/plugin/ui/perf/runtimePayloadMB",
-        "/plugin/ui/perf/displayListCount",
-        "/plugin/ui/perf/displayListCommands",
-        "/plugin/ui/perf/displayListMB",
-        "/plugin/ui/perf/renderSnapshotNodes",
-        "/plugin/ui/perf/renderSnapshotMB",
-        "/plugin/ui/perf/customSurfaceStateMB",
-        "/plugin/ui/perf/scriptSourceKB",
-        "/plugin/ui/perf/luaGlobalCount",
-        "/plugin/ui/perf/luaRegistryEntryCount",
-        "/plugin/ui/perf/luaPackageLoadedCount",
-        "/plugin/ui/perf/luaOscPathCount",
-        "/plugin/ui/perf/luaOscCallbackCount",
-        "/plugin/ui/perf/luaOscQueryHandlerCount",
-        "/plugin/ui/perf/luaEventListenerCount",
-        "/plugin/ui/perf/luaManagedDspSlotCount",
-        "/plugin/ui/perf/luaOverlayCacheCount",
-        "/plugin/ui/perf/endpointTotalCount",
-        "/plugin/ui/perf/endpointCustomCount",
-        "/plugin/ui/perf/endpointPathKB",
-        "/plugin/ui/perf/endpointDescriptionKB",
-        "/plugin/ui/perf/dspHostCount",
-        "/plugin/ui/perf/dspScriptSourceKB",
-        "/plugin/ui/perf/imguiWindowCount",
-        "/plugin/ui/perf/imguiTableCount",
-        "/plugin/ui/perf/imguiTabBarCount",
-        "/plugin/ui/perf/imguiViewportCount",
-        "/plugin/ui/perf/imguiFontCount",
-        "/plugin/ui/perf/imguiWindowStateMB",
-        "/plugin/ui/perf/imguiDrawBufferMB",
-        "/plugin/ui/perf/imguiInternalStateMB",
-        "/plugin/ui/perf/shellScriptListRows",
-        "/plugin/ui/perf/shellScriptListMB",
-        "/plugin/ui/perf/shellHierarchyRows",
-        "/plugin/ui/perf/shellHierarchyMB",
-        "/plugin/ui/perf/shellInspectorRows",
-        "/plugin/ui/perf/shellInspectorMB",
-        "/plugin/ui/perf/shellScriptInspectorMB",
-        "/plugin/ui/perf/shellMainEditorTextKB"
-    };
-
-    for (const auto& path : uiPaths) {
-        endpointRegistry.unregisterCustomEndpoint(path);
+    const auto& uiSpecs = manifold::export_plugin::getExportUiEndpointSpecs();
+    for (const auto& spec : uiSpecs) {
+        endpointRegistry.unregisterCustomEndpoint(spec.path);
     }
     for (const auto& alias : exportPluginConfig_.paramAliases) {
         endpointRegistry.unregisterCustomEndpoint(alias.path);
     }
 
-    auto registerUiEndpoint = [this](const juce::String& path,
-                                     float minValue,
-                                     float maxValue,
-                                     int access,
-                                     const juce::String& description) {
+    for (const auto& spec : uiSpecs) {
         OSCEndpoint endpoint;
-        endpoint.path = path;
+        endpoint.path = spec.path;
         endpoint.type = "f";
-        endpoint.rangeMin = minValue;
-        endpoint.rangeMax = maxValue;
-        endpoint.access = access;
-        endpoint.description = description;
+        endpoint.rangeMin = spec.rangeMin;
+        endpoint.rangeMax = spec.rangeMax;
+        endpoint.access = spec.access;
+        endpoint.description = spec.description;
         endpoint.category = "plugin-ui";
         endpoint.commandType = ControlCommand::Type::None;
         endpoint.layerIndex = -1;
         endpointRegistry.registerCustomEndpoint(endpoint);
-    };
-
-    registerUiEndpoint("/plugin/ui/viewMode", 0.0f, 1.0f, 3,
-                       "Plugin export view mode (0=compact, 1=split)");
-    registerUiEndpoint("/plugin/ui/settingsVisible", 0.0f, 1.0f, 3,
-                       "Plugin export settings/dev panel visible (0/1)");
-    registerUiEndpoint("/plugin/ui/devVisible", 0.0f, 1.0f, 3,
-                       "Plugin export dev/perf detail visible (0/1)");
-    registerUiEndpoint("/plugin/ui/oscEnabled", 0.0f, 1.0f, 3,
-                       "Plugin OSC enable (0/1)");
-    registerUiEndpoint("/plugin/ui/oscQueryEnabled", 0.0f, 1.0f, 3,
-                       "Plugin OSCQuery enable (0/1)");
-    registerUiEndpoint("/plugin/ui/oscInputPort", 0.0f, 65535.0f, 1,
-                       "Active OSC UDP input port");
-    registerUiEndpoint("/plugin/ui/oscQueryPort", 0.0f, 65535.0f, 1,
-                       "Active OSCQuery HTTP port");
-    registerUiEndpoint("/plugin/ui/xyXParam", 1.0f, 5.0f, 3,
-                       "Effect XY X-axis assignment (1-5)");
-    registerUiEndpoint("/plugin/ui/xyYParam", 1.0f, 5.0f, 3,
-                       "Effect XY Y-axis assignment (1-5)");
-    registerUiEndpoint("/plugin/ui/perf/frameCurrentUs", 0.0f, 1000000.0f, 1,
-                       "Current editor frame time in microseconds");
-    registerUiEndpoint("/plugin/ui/perf/frameAvgUs", 0.0f, 1000000.0f, 1,
-                       "Average editor frame time in microseconds");
-    registerUiEndpoint("/plugin/ui/perf/framePeakUs", 0.0f, 1000000.0f, 1,
-                       "Peak editor frame time in microseconds");
-    registerUiEndpoint("/plugin/ui/perf/dspCurrentUs", 0.0f, 1000000.0f, 1,
-                       "Current DSP block time in microseconds");
-    registerUiEndpoint("/plugin/ui/perf/dspAvgUs", 0.0f, 1000000.0f, 1,
-                       "Average DSP block time in microseconds");
-    registerUiEndpoint("/plugin/ui/perf/dspPeakUs", 0.0f, 1000000.0f, 1,
-                       "Peak DSP block time in microseconds");
-    registerUiEndpoint("/plugin/ui/perf/uiUpdateUs", 0.0f, 1000000.0f, 1,
-                       "Structured UI update time in microseconds");
-    registerUiEndpoint("/plugin/ui/perf/renderUs", 0.0f, 1000000.0f, 1,
-                       "ImGui/direct render time in microseconds");
-    registerUiEndpoint("/plugin/ui/perf/paintUs", 0.0f, 1000000.0f, 1,
-                       "Canvas paint time in microseconds");
-    registerUiEndpoint("/plugin/ui/perf/cpuPercent", 0.0f, 100.0f, 1,
-                       "CPU utilization percent (0-100)");
-    registerUiEndpoint("/plugin/ui/perf/pssMB", 0.0f, 8192.0f, 1,
-                       "Process proportional set size in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/privateDirtyMB", 0.0f, 8192.0f, 1,
-                       "Process private dirty memory in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/pluginDeltaPssMB", 0.0f, 8192.0f, 1,
-                       "Plugin-attributable PSS delta from processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/pluginDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
-                       "Plugin-attributable private dirty delta from processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/pluginDeltaHeapMB", 0.0f, 8192.0f, 1,
-                       "Plugin-attributable heap delta from processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/uiDeltaPssMB", -8192.0f, 8192.0f, 1,
-                       "UI-attributable PSS delta since editor opened");
-    registerUiEndpoint("/plugin/ui/perf/uiDeltaPrivateDirtyMB", -8192.0f, 8192.0f, 1,
-                       "UI-attributable private dirty delta since editor opened");
-    registerUiEndpoint("/plugin/ui/perf/uiDeltaHeapMB", -8192.0f, 8192.0f, 1,
-                       "UI-attributable heap delta since editor opened");
-    registerUiEndpoint("/plugin/ui/perf/afterLuaInitDeltaPssMB", 0.0f, 8192.0f, 1,
-                       "PSS delta after Lua VM init relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterLuaInitDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
-                       "Private dirty delta after Lua VM init relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterBindingsDeltaPssMB", 0.0f, 8192.0f, 1,
-                       "PSS delta after binding registration relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterBindingsDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
-                       "Private dirty delta after binding registration relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterScriptLoadDeltaPssMB", 0.0f, 8192.0f, 1,
-                       "PSS delta after script load relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterScriptLoadDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
-                       "Private dirty delta after script load relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterDspDeltaPssMB", 0.0f, 8192.0f, 1,
-                       "PSS delta after DSP boot relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterDspDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
-                       "Private dirty delta after DSP boot relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterUiOpenDeltaPssMB", 0.0f, 8192.0f, 1,
-                       "PSS delta after UI open relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterUiOpenDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
-                       "Private dirty delta after UI open relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterUiIdleDeltaPssMB", 0.0f, 8192.0f, 1,
-                       "PSS delta after UI idle settle relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/afterUiIdleDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1,
-                       "Private dirty delta after UI idle settle relative to processor construction baseline");
-    registerUiEndpoint("/plugin/ui/perf/luaHeapMB", 0.0f, 512.0f, 1,
-                       "Lua VM heap in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/glibcHeapMB", 0.0f, 8192.0f, 1,
-                       "glibc heap allocated in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/glibcArenaMB", 0.0f, 8192.0f, 1,
-                       "glibc arena bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/glibcMmapMB", 0.0f, 8192.0f, 1,
-                       "glibc mmap bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/glibcFreeHeldMB", 0.0f, 8192.0f, 1,
-                       "glibc free-but-held bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/glibcReleasableMB", 0.0f, 8192.0f, 1,
-                       "glibc releasable top bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/glibcArenaCount", 0.0f, 2048.0f, 1,
-                       "glibc arena count");
-    registerUiEndpoint("/plugin/ui/perf/gpuFontAtlasMB", 0.0f, 8192.0f, 1,
-                       "Plugin-owned ImGui font atlas bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/gpuSurfaceColorMB", 0.0f, 8192.0f, 1,
-                       "Plugin-owned offscreen color surface bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/gpuSurfaceDepthMB", 0.0f, 8192.0f, 1,
-                       "Plugin-owned offscreen depth surface bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/gpuTotalMB", 0.0f, 8192.0f, 1,
-                       "Total plugin-owned GPU bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/runtimeNodeCount", 0.0f, 1000000.0f, 1,
-                       "RuntimeNode count");
-    registerUiEndpoint("/plugin/ui/perf/runtimeNodeMB", 0.0f, 8192.0f, 1,
-                       "RuntimeNode tree object/string/vector bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/runtimeCallbackCount", 0.0f, 1000000.0f, 1,
-                       "Bound RuntimeNode callback count");
-    registerUiEndpoint("/plugin/ui/perf/runtimeUserDataEntries", 0.0f, 1000000.0f, 1,
-                       "RuntimeNode userdata entry count");
-    registerUiEndpoint("/plugin/ui/perf/runtimeUserDataMB", 0.0f, 8192.0f, 1,
-                       "RuntimeNode userdata bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/runtimePayloadMB", 0.0f, 8192.0f, 1,
-                       "RuntimeNode display/custom payload bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/displayListCount", 0.0f, 1000000.0f, 1,
-                       "Compiled display list count");
-    registerUiEndpoint("/plugin/ui/perf/displayListCommands", 0.0f, 10000000.0f, 1,
-                       "Compiled display list command count");
-    registerUiEndpoint("/plugin/ui/perf/displayListMB", 0.0f, 8192.0f, 1,
-                       "Compiled display list bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/renderSnapshotNodes", 0.0f, 1000000.0f, 1,
-                       "Render snapshot node count across pending/active/gl snapshots");
-    registerUiEndpoint("/plugin/ui/perf/renderSnapshotMB", 0.0f, 8192.0f, 1,
-                       "Render snapshot bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/customSurfaceStateMB", 0.0f, 8192.0f, 1,
-                       "Custom shader surface CPU-side state bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/scriptSourceKB", 0.0f, 1048576.0f, 1,
-                       "Current loaded script file size in kilobytes");
-    registerUiEndpoint("/plugin/ui/perf/luaGlobalCount", 0.0f, 1000000.0f, 1,
-                       "Lua global table entry count");
-    registerUiEndpoint("/plugin/ui/perf/luaRegistryEntryCount", 0.0f, 10000000.0f, 1,
-                       "Lua registry entry count");
-    registerUiEndpoint("/plugin/ui/perf/luaPackageLoadedCount", 0.0f, 1000000.0f, 1,
-                       "Lua package.loaded entry count");
-    registerUiEndpoint("/plugin/ui/perf/luaOscPathCount", 0.0f, 1000000.0f, 1,
-                       "Lua OSC path count");
-    registerUiEndpoint("/plugin/ui/perf/luaOscCallbackCount", 0.0f, 1000000.0f, 1,
-                       "Lua OSC callback count");
-    registerUiEndpoint("/plugin/ui/perf/luaOscQueryHandlerCount", 0.0f, 1000000.0f, 1,
-                       "Lua OSCQuery handler count");
-    registerUiEndpoint("/plugin/ui/perf/luaEventListenerCount", 0.0f, 1000000.0f, 1,
-                       "Lua event listener count");
-    registerUiEndpoint("/plugin/ui/perf/luaManagedDspSlotCount", 0.0f, 1000000.0f, 1,
-                       "Lua managed DSP slot count");
-    registerUiEndpoint("/plugin/ui/perf/luaOverlayCacheCount", 0.0f, 1000000.0f, 1,
-                       "Lua overlay cache entry count");
-    registerUiEndpoint("/plugin/ui/perf/endpointTotalCount", 0.0f, 1000000.0f, 1,
-                       "Total endpoint count");
-    registerUiEndpoint("/plugin/ui/perf/endpointCustomCount", 0.0f, 1000000.0f, 1,
-                       "Custom endpoint count");
-    registerUiEndpoint("/plugin/ui/perf/endpointPathKB", 0.0f, 1048576.0f, 1,
-                       "Endpoint path bytes in kilobytes");
-    registerUiEndpoint("/plugin/ui/perf/endpointDescriptionKB", 0.0f, 1048576.0f, 1,
-                       "Endpoint description bytes in kilobytes");
-    registerUiEndpoint("/plugin/ui/perf/dspHostCount", 0.0f, 1000000.0f, 1,
-                       "DSP host count (default + slots)");
-    registerUiEndpoint("/plugin/ui/perf/dspScriptSourceKB", 0.0f, 1048576.0f, 1,
-                       "Primary DSP script source file size in kilobytes");
-    registerUiEndpoint("/plugin/ui/perf/imguiWindowCount", 0.0f, 1000000.0f, 1,
-                       "ImGui window count");
-    registerUiEndpoint("/plugin/ui/perf/imguiTableCount", 0.0f, 1000000.0f, 1,
-                       "ImGui table count");
-    registerUiEndpoint("/plugin/ui/perf/imguiTabBarCount", 0.0f, 1000000.0f, 1,
-                       "ImGui tab bar count");
-    registerUiEndpoint("/plugin/ui/perf/imguiViewportCount", 0.0f, 1000000.0f, 1,
-                       "ImGui viewport count");
-    registerUiEndpoint("/plugin/ui/perf/imguiFontCount", 0.0f, 1000000.0f, 1,
-                       "ImGui font count");
-    registerUiEndpoint("/plugin/ui/perf/imguiWindowStateMB", 0.0f, 8192.0f, 1,
-                       "ImGui CPU-side window/state bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/imguiDrawBufferMB", 0.0f, 8192.0f, 1,
-                       "ImGui CPU-side draw buffer bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/imguiInternalStateMB", 0.0f, 8192.0f, 1,
-                       "ImGui total CPU-side internal bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/shellScriptListRows", 0.0f, 1000000.0f, 1,
-                       "Script list row count");
-    registerUiEndpoint("/plugin/ui/perf/shellScriptListMB", 0.0f, 8192.0f, 1,
-                       "Script list retained bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/shellHierarchyRows", 0.0f, 1000000.0f, 1,
-                       "Hierarchy row count");
-    registerUiEndpoint("/plugin/ui/perf/shellHierarchyMB", 0.0f, 8192.0f, 1,
-                       "Hierarchy retained bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/shellInspectorRows", 0.0f, 1000000.0f, 1,
-                       "Inspector row count");
-    registerUiEndpoint("/plugin/ui/perf/shellInspectorMB", 0.0f, 8192.0f, 1,
-                       "Inspector retained bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/shellScriptInspectorMB", 0.0f, 8192.0f, 1,
-                       "Script inspector retained bytes in megabytes");
-    registerUiEndpoint("/plugin/ui/perf/shellMainEditorTextKB", 0.0f, 1048576.0f, 1,
-                       "Main editor text size in kilobytes");
+    }
 
     for (const auto& alias : exportPluginConfig_.paramAliases) {
         OSCEndpoint endpoint;
@@ -1163,72 +868,91 @@ void BehaviorCoreProcessor::capturePluginConstructionBaseline() {
 }
 
 void BehaviorCoreProcessor::captureLuaInitSnapshot() {
-    if (luaInitSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
-        return;
-    }
     const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
     const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
     const auto snapshot = readProcessorMemorySnapshot();
-    afterLuaInitDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
-    afterLuaInitDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+    manifold::export_plugin::captureDeltaSnapshot(
+        luaInitSnapshotCaptured_,
+        baselinePss,
+        baselinePriv,
+        snapshot.pssBytes,
+        snapshot.privateDirtyBytes,
+        afterLuaInitDeltaPssBytes_,
+        afterLuaInitDeltaPrivateDirtyBytes_);
 }
 
 void BehaviorCoreProcessor::captureBindingsSnapshot() {
-    if (bindingsSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
-        return;
-    }
     const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
     const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
     const auto snapshot = readProcessorMemorySnapshot();
-    afterBindingsDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
-    afterBindingsDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+    manifold::export_plugin::captureDeltaSnapshot(
+        bindingsSnapshotCaptured_,
+        baselinePss,
+        baselinePriv,
+        snapshot.pssBytes,
+        snapshot.privateDirtyBytes,
+        afterBindingsDeltaPssBytes_,
+        afterBindingsDeltaPrivateDirtyBytes_);
 }
 
 void BehaviorCoreProcessor::captureScriptLoadSnapshot() {
-    if (scriptLoadSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
-        return;
-    }
     const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
     const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
     const auto snapshot = readProcessorMemorySnapshot();
-    afterScriptLoadDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
-    afterScriptLoadDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+    manifold::export_plugin::captureDeltaSnapshot(
+        scriptLoadSnapshotCaptured_,
+        baselinePss,
+        baselinePriv,
+        snapshot.pssBytes,
+        snapshot.privateDirtyBytes,
+        afterScriptLoadDeltaPssBytes_,
+        afterScriptLoadDeltaPrivateDirtyBytes_);
 }
 
 void BehaviorCoreProcessor::captureDspLoadedSnapshot() {
-    if (dspLoadedSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
-        return;
-    }
     const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
     const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
     const auto snapshot = readProcessorMemorySnapshot();
-    afterDspDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
-    afterDspDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+    manifold::export_plugin::captureDeltaSnapshot(
+        dspLoadedSnapshotCaptured_,
+        baselinePss,
+        baselinePriv,
+        snapshot.pssBytes,
+        snapshot.privateDirtyBytes,
+        afterDspDeltaPssBytes_,
+        afterDspDeltaPrivateDirtyBytes_);
 }
 
 void BehaviorCoreProcessor::captureEditorOpenSnapshot() {
-    if (editorOpenSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
-        return;
-    }
     const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
     const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
     const auto snapshot = readProcessorMemorySnapshot();
-    editorOpenPssBytes_.store(snapshot.pssBytes, std::memory_order_relaxed);
-    editorOpenPrivateDirtyBytes_.store(snapshot.privateDirtyBytes, std::memory_order_relaxed);
-    editorOpenHeapBytes_.store(snapshot.heapUsedBytes, std::memory_order_relaxed);
-    afterUiOpenDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
-    afterUiOpenDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+    manifold::export_plugin::captureEditorOpenSnapshot(
+        editorOpenSnapshotCaptured_,
+        baselinePss,
+        baselinePriv,
+        snapshot.pssBytes,
+        snapshot.privateDirtyBytes,
+        snapshot.heapUsedBytes,
+        editorOpenPssBytes_,
+        editorOpenPrivateDirtyBytes_,
+        editorOpenHeapBytes_,
+        afterUiOpenDeltaPssBytes_,
+        afterUiOpenDeltaPrivateDirtyBytes_);
 }
 
 void BehaviorCoreProcessor::captureUiIdleSnapshot() {
-    if (uiIdleSnapshotCaptured_.exchange(true, std::memory_order_relaxed)) {
-        return;
-    }
     const auto baselinePss = pluginBaselinePssBytes_.load(std::memory_order_relaxed);
     const auto baselinePriv = pluginBaselinePrivateDirtyBytes_.load(std::memory_order_relaxed);
     const auto snapshot = readProcessorMemorySnapshot();
-    afterUiIdleDeltaPssBytes_.store(snapshot.pssBytes - baselinePss, std::memory_order_relaxed);
-    afterUiIdleDeltaPrivateDirtyBytes_.store(snapshot.privateDirtyBytes - baselinePriv, std::memory_order_relaxed);
+    manifold::export_plugin::captureDeltaSnapshot(
+        uiIdleSnapshotCaptured_,
+        baselinePss,
+        baselinePriv,
+        snapshot.pssBytes,
+        snapshot.privateDirtyBytes,
+        afterUiIdleDeltaPssBytes_,
+        afterUiIdleDeltaPrivateDirtyBytes_);
 }
 
 bool BehaviorCoreProcessor::hasExportPluginConfig() const {
@@ -4094,50 +3818,19 @@ std::string BehaviorCoreProcessor::exportStateContract() const {
     primaryDsp->setProperty("managedHostCount", getManagedDspHostCount());
     root->setProperty("primaryDsp", juce::var(primaryDsp.get()));
 
-    juce::DynamicObject::Ptr exportObj = new juce::DynamicObject();
-    exportObj->setProperty("enabled", exportPluginConfig_.enabled);
-    exportObj->setProperty("compactWidth", exportPluginConfig_.compactWidth);
-    exportObj->setProperty("compactHeight", exportPluginConfig_.compactHeight);
-    exportObj->setProperty("splitWidth", exportPluginConfig_.splitWidth);
-    exportObj->setProperty("splitHeight", exportPluginConfig_.splitHeight);
-    exportObj->setProperty("defaultViewMode", exportPluginConfig_.defaultViewMode);
-    exportObj->setProperty("oscBasePort", exportPluginConfig_.oscBasePort);
-    exportObj->setProperty("oscDefaultEnabled", exportPluginConfig_.oscDefaultEnabled);
-    exportObj->setProperty("oscQueryDefaultEnabled", exportPluginConfig_.oscQueryDefaultEnabled);
-    exportObj->setProperty("viewMode", exportViewMode_.load(std::memory_order_relaxed));
-    exportObj->setProperty("editorWidth", exportEditorWidth_.load(std::memory_order_relaxed));
-    exportObj->setProperty("editorHeight", exportEditorHeight_.load(std::memory_order_relaxed));
-    exportObj->setProperty("settingsVisible", exportSettingsVisible_.load(std::memory_order_relaxed));
-    exportObj->setProperty("devVisible", exportDevVisible_.load(std::memory_order_relaxed));
-    exportObj->setProperty("oscEnabled", exportOscEnabled_.load(std::memory_order_relaxed));
-    exportObj->setProperty("oscQueryEnabled", exportOscQueryEnabled_.load(std::memory_order_relaxed));
-    exportObj->setProperty("oscInputPort", exportOscInputPort_.load(std::memory_order_relaxed));
-    exportObj->setProperty("oscQueryPort", exportOscQueryPort_.load(std::memory_order_relaxed));
-    exportObj->setProperty("xyXParam", exportXyXParam_.load(std::memory_order_relaxed));
-    exportObj->setProperty("xyYParam", exportXyYParam_.load(std::memory_order_relaxed));
-    juce::Array<juce::var> aliasArray;
-    for (const auto& alias : exportPluginConfig_.paramAliases) {
-        juce::DynamicObject::Ptr aliasObj = new juce::DynamicObject();
-        aliasObj->setProperty("path", alias.path);
-        aliasObj->setProperty("internalPath", alias.internalPath);
-        aliasObj->setProperty("type", alias.type);
-        aliasObj->setProperty("rangeMin", alias.rangeMin);
-        aliasObj->setProperty("rangeMax", alias.rangeMax);
-        aliasObj->setProperty("description", alias.description);
-        aliasObj->setProperty("defaultValue", alias.defaultValue);
-        aliasObj->setProperty("skew", alias.skew);
-        aliasObj->setProperty("hostParamId", alias.hostParamId);
-        aliasObj->setProperty("hostParamName", alias.hostParamName);
-        aliasObj->setProperty("hostParamKind", alias.hostParamKind);
-        juce::Array<juce::var> choices;
-        for (const auto& choice : alias.choices) {
-            choices.add(choice);
-        }
-        aliasObj->setProperty("choices", juce::var(choices));
-        aliasArray.add(juce::var(aliasObj.get()));
-    }
-    exportObj->setProperty("paramAliases", juce::var(aliasArray));
-    root->setProperty("exportPlugin", juce::var(exportObj.get()));
+    root->setProperty("exportPlugin", manifold::export_plugin::makeExportPluginContract(
+        exportPluginConfig_,
+        exportViewMode_.load(std::memory_order_relaxed),
+        exportEditorWidth_.load(std::memory_order_relaxed),
+        exportEditorHeight_.load(std::memory_order_relaxed),
+        exportSettingsVisible_.load(std::memory_order_relaxed),
+        exportDevVisible_.load(std::memory_order_relaxed),
+        exportOscEnabled_.load(std::memory_order_relaxed),
+        exportOscQueryEnabled_.load(std::memory_order_relaxed),
+        exportOscInputPort_.load(std::memory_order_relaxed),
+        exportOscQueryPort_.load(std::memory_order_relaxed),
+        exportXyXParam_.load(std::memory_order_relaxed),
+        exportXyYParam_.load(std::memory_order_relaxed)));
 
     juce::DynamicObject::Ptr midiObj = new juce::DynamicObject();
     midiObj->setProperty("inputDeviceOpen", midiInputDevice != nullptr);

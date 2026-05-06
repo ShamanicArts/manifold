@@ -55,6 +55,28 @@ struct ExportOscRuntimeSettings {
     bool oscQueryEnabled = false;
 };
 
+struct ExportUiEndpointSpec {
+    const char* path = "";
+    float rangeMin = 0.0f;
+    float rangeMax = 1.0f;
+    int access = 1;
+    const char* description = "";
+};
+
+struct ExportUiInitialState {
+    int viewMode = 1;
+    int editorWidth = 472;
+    int editorHeight = 220;
+    bool settingsVisible = false;
+    bool devVisible = false;
+    bool oscEnabled = false;
+    bool oscQueryEnabled = false;
+    int oscInputPort = 0;
+    int oscQueryPort = 0;
+    int xyXParam = 1;
+    int xyYParam = 2;
+};
+
 inline bool isProjectManifestFile(const juce::File& file) {
     return file.existsAsFile()
         && file.getFileName().equalsIgnoreCase("manifold.project.json5");
@@ -330,6 +352,57 @@ inline void applyHostParameterSnapshotToProcessor(const ExportPluginConfig& conf
     }
 }
 
+inline ExportUiInitialState makeExportUiInitialState(const ExportPluginConfig& config) {
+    ExportUiInitialState state;
+    state.viewMode = config.defaultViewMode;
+    state.editorWidth = config.defaultViewMode == 0 ? config.compactWidth : config.splitWidth;
+    state.editorHeight = config.defaultViewMode == 0 ? config.compactHeight : config.splitHeight;
+    state.settingsVisible = false;
+    state.devVisible = false;
+    state.oscEnabled = config.oscDefaultEnabled;
+    state.oscQueryEnabled = config.oscQueryDefaultEnabled;
+    state.oscInputPort = config.oscBasePort;
+    state.oscQueryPort = config.oscBasePort + 1;
+    state.xyXParam = 1;
+    state.xyYParam = 2;
+    return state;
+}
+
+inline void captureDeltaSnapshot(std::atomic<bool>& capturedFlag,
+                                 int64_t baselinePss,
+                                 int64_t baselinePriv,
+                                 int64_t snapshotPss,
+                                 int64_t snapshotPriv,
+                                 std::atomic<int64_t>& deltaPss,
+                                 std::atomic<int64_t>& deltaPriv) {
+    if (capturedFlag.exchange(true, std::memory_order_relaxed)) {
+        return;
+    }
+    deltaPss.store(snapshotPss - baselinePss, std::memory_order_relaxed);
+    deltaPriv.store(snapshotPriv - baselinePriv, std::memory_order_relaxed);
+}
+
+inline void captureEditorOpenSnapshot(std::atomic<bool>& capturedFlag,
+                                      int64_t baselinePss,
+                                      int64_t baselinePriv,
+                                      int64_t snapshotPss,
+                                      int64_t snapshotPriv,
+                                      int64_t snapshotHeap,
+                                      std::atomic<int64_t>& editorOpenPss,
+                                      std::atomic<int64_t>& editorOpenPriv,
+                                      std::atomic<int64_t>& editorOpenHeap,
+                                      std::atomic<int64_t>& deltaPss,
+                                      std::atomic<int64_t>& deltaPriv) {
+    if (capturedFlag.exchange(true, std::memory_order_relaxed)) {
+        return;
+    }
+    editorOpenPss.store(snapshotPss, std::memory_order_relaxed);
+    editorOpenPriv.store(snapshotPriv, std::memory_order_relaxed);
+    editorOpenHeap.store(snapshotHeap, std::memory_order_relaxed);
+    deltaPss.store(snapshotPss - baselinePss, std::memory_order_relaxed);
+    deltaPriv.store(snapshotPriv - baselinePriv, std::memory_order_relaxed);
+}
+
 inline ExportOscRuntimeSettings computeExportOscRuntimeSettings(
     const ExportPluginConfig& config,
     bool oscEnabled,
@@ -401,6 +474,106 @@ inline BasicExportUiPathApplyResult applyBasicExportUiPath(std::string_view path
     return {};
 }
 
+inline const std::vector<ExportUiEndpointSpec>& getExportUiEndpointSpecs() {
+    static const std::vector<ExportUiEndpointSpec> specs{
+        {"/plugin/ui/viewMode", 0.0f, 1.0f, 3, "Plugin export view mode (0=compact, 1=split)"},
+        {"/plugin/ui/settingsVisible", 0.0f, 1.0f, 3, "Plugin export settings/dev panel visible (0/1)"},
+        {"/plugin/ui/devVisible", 0.0f, 1.0f, 3, "Plugin export dev/perf detail visible (0/1)"},
+        {"/plugin/ui/oscEnabled", 0.0f, 1.0f, 3, "Plugin OSC enable (0/1)"},
+        {"/plugin/ui/oscQueryEnabled", 0.0f, 1.0f, 3, "Plugin OSCQuery enable (0/1)"},
+        {"/plugin/ui/oscInputPort", 0.0f, 65535.0f, 1, "Active OSC UDP input port"},
+        {"/plugin/ui/oscQueryPort", 0.0f, 65535.0f, 1, "Active OSCQuery HTTP port"},
+        {"/plugin/ui/xyXParam", 1.0f, 5.0f, 3, "Effect XY X-axis assignment (1-5)"},
+        {"/plugin/ui/xyYParam", 1.0f, 5.0f, 3, "Effect XY Y-axis assignment (1-5)"},
+        {"/plugin/ui/perf/frameCurrentUs", 0.0f, 1000000.0f, 1, "Current editor frame time in microseconds"},
+        {"/plugin/ui/perf/frameAvgUs", 0.0f, 1000000.0f, 1, "Average editor frame time in microseconds"},
+        {"/plugin/ui/perf/framePeakUs", 0.0f, 1000000.0f, 1, "Peak editor frame time in microseconds"},
+        {"/plugin/ui/perf/dspCurrentUs", 0.0f, 1000000.0f, 1, "Current DSP block time in microseconds"},
+        {"/plugin/ui/perf/dspAvgUs", 0.0f, 1000000.0f, 1, "Average DSP block time in microseconds"},
+        {"/plugin/ui/perf/dspPeakUs", 0.0f, 1000000.0f, 1, "Peak DSP block time in microseconds"},
+        {"/plugin/ui/perf/uiUpdateUs", 0.0f, 1000000.0f, 1, "Structured UI update time in microseconds"},
+        {"/plugin/ui/perf/renderUs", 0.0f, 1000000.0f, 1, "ImGui/direct render time in microseconds"},
+        {"/plugin/ui/perf/paintUs", 0.0f, 1000000.0f, 1, "Canvas paint time in microseconds"},
+        {"/plugin/ui/perf/cpuPercent", 0.0f, 100.0f, 1, "CPU utilization percent (0-100)"},
+        {"/plugin/ui/perf/pssMB", 0.0f, 8192.0f, 1, "Process proportional set size in megabytes"},
+        {"/plugin/ui/perf/privateDirtyMB", 0.0f, 8192.0f, 1, "Process private dirty memory in megabytes"},
+        {"/plugin/ui/perf/pluginDeltaPssMB", 0.0f, 8192.0f, 1, "Plugin-attributable PSS delta from processor construction baseline"},
+        {"/plugin/ui/perf/pluginDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1, "Plugin-attributable private dirty delta from processor construction baseline"},
+        {"/plugin/ui/perf/pluginDeltaHeapMB", 0.0f, 8192.0f, 1, "Plugin-attributable heap delta from processor construction baseline"},
+        {"/plugin/ui/perf/uiDeltaPssMB", -8192.0f, 8192.0f, 1, "UI-attributable PSS delta since editor opened"},
+        {"/plugin/ui/perf/uiDeltaPrivateDirtyMB", -8192.0f, 8192.0f, 1, "UI-attributable private dirty delta since editor opened"},
+        {"/plugin/ui/perf/uiDeltaHeapMB", -8192.0f, 8192.0f, 1, "UI-attributable heap delta since editor opened"},
+        {"/plugin/ui/perf/afterLuaInitDeltaPssMB", 0.0f, 8192.0f, 1, "PSS delta after Lua VM init relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterLuaInitDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1, "Private dirty delta after Lua VM init relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterBindingsDeltaPssMB", 0.0f, 8192.0f, 1, "PSS delta after binding registration relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterBindingsDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1, "Private dirty delta after binding registration relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterScriptLoadDeltaPssMB", 0.0f, 8192.0f, 1, "PSS delta after script load relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterScriptLoadDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1, "Private dirty delta after script load relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterDspDeltaPssMB", 0.0f, 8192.0f, 1, "PSS delta after DSP boot relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterDspDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1, "Private dirty delta after DSP boot relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterUiOpenDeltaPssMB", 0.0f, 8192.0f, 1, "PSS delta after UI open relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterUiOpenDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1, "Private dirty delta after UI open relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterUiIdleDeltaPssMB", 0.0f, 8192.0f, 1, "PSS delta after UI idle settle relative to processor construction baseline"},
+        {"/plugin/ui/perf/afterUiIdleDeltaPrivateDirtyMB", 0.0f, 8192.0f, 1, "Private dirty delta after UI idle settle relative to processor construction baseline"},
+        {"/plugin/ui/perf/luaHeapMB", 0.0f, 512.0f, 1, "Lua VM heap in megabytes"},
+        {"/plugin/ui/perf/glibcHeapMB", 0.0f, 8192.0f, 1, "glibc heap allocated in megabytes"},
+        {"/plugin/ui/perf/glibcArenaMB", 0.0f, 8192.0f, 1, "glibc arena bytes in megabytes"},
+        {"/plugin/ui/perf/glibcMmapMB", 0.0f, 8192.0f, 1, "glibc mmap bytes in megabytes"},
+        {"/plugin/ui/perf/glibcFreeHeldMB", 0.0f, 8192.0f, 1, "glibc free-but-held bytes in megabytes"},
+        {"/plugin/ui/perf/glibcReleasableMB", 0.0f, 8192.0f, 1, "glibc releasable top bytes in megabytes"},
+        {"/plugin/ui/perf/glibcArenaCount", 0.0f, 2048.0f, 1, "glibc arena count"},
+        {"/plugin/ui/perf/gpuFontAtlasMB", 0.0f, 8192.0f, 1, "Plugin-owned ImGui font atlas bytes in megabytes"},
+        {"/plugin/ui/perf/gpuSurfaceColorMB", 0.0f, 8192.0f, 1, "Plugin-owned offscreen color surface bytes in megabytes"},
+        {"/plugin/ui/perf/gpuSurfaceDepthMB", 0.0f, 8192.0f, 1, "Plugin-owned offscreen depth surface bytes in megabytes"},
+        {"/plugin/ui/perf/gpuTotalMB", 0.0f, 8192.0f, 1, "Total plugin-owned GPU bytes in megabytes"},
+        {"/plugin/ui/perf/runtimeNodeCount", 0.0f, 1000000.0f, 1, "RuntimeNode count"},
+        {"/plugin/ui/perf/runtimeNodeMB", 0.0f, 8192.0f, 1, "RuntimeNode tree object/string/vector bytes in megabytes"},
+        {"/plugin/ui/perf/runtimeCallbackCount", 0.0f, 1000000.0f, 1, "Bound RuntimeNode callback count"},
+        {"/plugin/ui/perf/runtimeUserDataEntries", 0.0f, 1000000.0f, 1, "RuntimeNode userdata entry count"},
+        {"/plugin/ui/perf/runtimeUserDataMB", 0.0f, 8192.0f, 1, "RuntimeNode userdata bytes in megabytes"},
+        {"/plugin/ui/perf/runtimePayloadMB", 0.0f, 8192.0f, 1, "RuntimeNode display/custom payload bytes in megabytes"},
+        {"/plugin/ui/perf/displayListCount", 0.0f, 1000000.0f, 1, "Compiled display list count"},
+        {"/plugin/ui/perf/displayListCommands", 0.0f, 10000000.0f, 1, "Compiled display list command count"},
+        {"/plugin/ui/perf/displayListMB", 0.0f, 8192.0f, 1, "Compiled display list bytes in megabytes"},
+        {"/plugin/ui/perf/renderSnapshotNodes", 0.0f, 1000000.0f, 1, "Render snapshot node count across pending/active/gl snapshots"},
+        {"/plugin/ui/perf/renderSnapshotMB", 0.0f, 8192.0f, 1, "Render snapshot bytes in megabytes"},
+        {"/plugin/ui/perf/customSurfaceStateMB", 0.0f, 8192.0f, 1, "Custom shader surface CPU-side state bytes in megabytes"},
+        {"/plugin/ui/perf/scriptSourceKB", 0.0f, 1048576.0f, 1, "Current loaded script file size in kilobytes"},
+        {"/plugin/ui/perf/luaGlobalCount", 0.0f, 1000000.0f, 1, "Lua global table entry count"},
+        {"/plugin/ui/perf/luaRegistryEntryCount", 0.0f, 10000000.0f, 1, "Lua registry entry count"},
+        {"/plugin/ui/perf/luaPackageLoadedCount", 0.0f, 1000000.0f, 1, "Lua package.loaded entry count"},
+        {"/plugin/ui/perf/luaOscPathCount", 0.0f, 1000000.0f, 1, "Lua OSC path count"},
+        {"/plugin/ui/perf/luaOscCallbackCount", 0.0f, 1000000.0f, 1, "Lua OSC callback count"},
+        {"/plugin/ui/perf/luaOscQueryHandlerCount", 0.0f, 1000000.0f, 1, "Lua OSCQuery handler count"},
+        {"/plugin/ui/perf/luaEventListenerCount", 0.0f, 1000000.0f, 1, "Lua event listener count"},
+        {"/plugin/ui/perf/luaManagedDspSlotCount", 0.0f, 1000000.0f, 1, "Lua managed DSP slot count"},
+        {"/plugin/ui/perf/luaOverlayCacheCount", 0.0f, 1000000.0f, 1, "Lua overlay cache entry count"},
+        {"/plugin/ui/perf/endpointTotalCount", 0.0f, 1000000.0f, 1, "Total endpoint count"},
+        {"/plugin/ui/perf/endpointCustomCount", 0.0f, 1000000.0f, 1, "Custom endpoint count"},
+        {"/plugin/ui/perf/endpointPathKB", 0.0f, 1048576.0f, 1, "Endpoint path bytes in kilobytes"},
+        {"/plugin/ui/perf/endpointDescriptionKB", 0.0f, 1048576.0f, 1, "Endpoint description bytes in kilobytes"},
+        {"/plugin/ui/perf/dspHostCount", 0.0f, 1000000.0f, 1, "DSP host count (default + slots)"},
+        {"/plugin/ui/perf/dspScriptSourceKB", 0.0f, 1048576.0f, 1, "Primary DSP script source file size in kilobytes"},
+        {"/plugin/ui/perf/imguiWindowCount", 0.0f, 1000000.0f, 1, "ImGui window count"},
+        {"/plugin/ui/perf/imguiTableCount", 0.0f, 1000000.0f, 1, "ImGui table count"},
+        {"/plugin/ui/perf/imguiTabBarCount", 0.0f, 1000000.0f, 1, "ImGui tab bar count"},
+        {"/plugin/ui/perf/imguiViewportCount", 0.0f, 1000000.0f, 1, "ImGui viewport count"},
+        {"/plugin/ui/perf/imguiFontCount", 0.0f, 1000000.0f, 1, "ImGui font count"},
+        {"/plugin/ui/perf/imguiWindowStateMB", 0.0f, 8192.0f, 1, "ImGui CPU-side window/state bytes in megabytes"},
+        {"/plugin/ui/perf/imguiDrawBufferMB", 0.0f, 8192.0f, 1, "ImGui CPU-side draw buffer bytes in megabytes"},
+        {"/plugin/ui/perf/imguiInternalStateMB", 0.0f, 8192.0f, 1, "ImGui total CPU-side internal bytes in megabytes"},
+        {"/plugin/ui/perf/shellScriptListRows", 0.0f, 1000000.0f, 1, "Script list row count"},
+        {"/plugin/ui/perf/shellScriptListMB", 0.0f, 8192.0f, 1, "Script list retained bytes in megabytes"},
+        {"/plugin/ui/perf/shellHierarchyRows", 0.0f, 1000000.0f, 1, "Hierarchy row count"},
+        {"/plugin/ui/perf/shellHierarchyMB", 0.0f, 8192.0f, 1, "Hierarchy retained bytes in megabytes"},
+        {"/plugin/ui/perf/shellInspectorRows", 0.0f, 1000000.0f, 1, "Inspector row count"},
+        {"/plugin/ui/perf/shellInspectorMB", 0.0f, 8192.0f, 1, "Inspector retained bytes in megabytes"},
+        {"/plugin/ui/perf/shellScriptInspectorMB", 0.0f, 8192.0f, 1, "Script inspector retained bytes in megabytes"},
+        {"/plugin/ui/perf/shellMainEditorTextKB", 0.0f, 1048576.0f, 1, "Main editor text size in kilobytes"}
+    };
+    return specs;
+}
+
 inline std::optional<float> readBasicExportUiPath(std::string_view path,
                                                   int viewMode,
                                                   bool settingsVisible,
@@ -439,6 +612,65 @@ inline std::optional<float> readBasicExportUiPath(std::string_view path,
         return static_cast<float>(xyYParam);
     }
     return std::nullopt;
+}
+
+inline juce::var makeExportPluginContract(const ExportPluginConfig& config,
+                                          int viewMode,
+                                          int editorWidth,
+                                          int editorHeight,
+                                          bool settingsVisible,
+                                          bool devVisible,
+                                          bool oscEnabled,
+                                          bool oscQueryEnabled,
+                                          int oscInputPort,
+                                          int oscQueryPort,
+                                          int xyXParam,
+                                          int xyYParam) {
+    juce::DynamicObject::Ptr exportObj = new juce::DynamicObject();
+    exportObj->setProperty("enabled", config.enabled);
+    exportObj->setProperty("compactWidth", config.compactWidth);
+    exportObj->setProperty("compactHeight", config.compactHeight);
+    exportObj->setProperty("splitWidth", config.splitWidth);
+    exportObj->setProperty("splitHeight", config.splitHeight);
+    exportObj->setProperty("defaultViewMode", config.defaultViewMode);
+    exportObj->setProperty("oscBasePort", config.oscBasePort);
+    exportObj->setProperty("oscDefaultEnabled", config.oscDefaultEnabled);
+    exportObj->setProperty("oscQueryDefaultEnabled", config.oscQueryDefaultEnabled);
+    exportObj->setProperty("viewMode", viewMode);
+    exportObj->setProperty("editorWidth", editorWidth);
+    exportObj->setProperty("editorHeight", editorHeight);
+    exportObj->setProperty("settingsVisible", settingsVisible);
+    exportObj->setProperty("devVisible", devVisible);
+    exportObj->setProperty("oscEnabled", oscEnabled);
+    exportObj->setProperty("oscQueryEnabled", oscQueryEnabled);
+    exportObj->setProperty("oscInputPort", oscInputPort);
+    exportObj->setProperty("oscQueryPort", oscQueryPort);
+    exportObj->setProperty("xyXParam", xyXParam);
+    exportObj->setProperty("xyYParam", xyYParam);
+
+    juce::Array<juce::var> aliasArray;
+    for (const auto& alias : config.paramAliases) {
+        juce::DynamicObject::Ptr aliasObj = new juce::DynamicObject();
+        aliasObj->setProperty("path", alias.path);
+        aliasObj->setProperty("internalPath", alias.internalPath);
+        aliasObj->setProperty("type", alias.type);
+        aliasObj->setProperty("rangeMin", alias.rangeMin);
+        aliasObj->setProperty("rangeMax", alias.rangeMax);
+        aliasObj->setProperty("description", alias.description);
+        aliasObj->setProperty("defaultValue", alias.defaultValue);
+        aliasObj->setProperty("skew", alias.skew);
+        aliasObj->setProperty("hostParamId", alias.hostParamId);
+        aliasObj->setProperty("hostParamName", alias.hostParamName);
+        aliasObj->setProperty("hostParamKind", alias.hostParamKind);
+        juce::Array<juce::var> choices;
+        for (const auto& choice : alias.choices) {
+            choices.add(choice);
+        }
+        aliasObj->setProperty("choices", juce::var(choices));
+        aliasArray.add(juce::var(aliasObj.get()));
+    }
+    exportObj->setProperty("paramAliases", juce::var(aliasArray));
+    return juce::var(exportObj.get());
 }
 
 inline std::unique_ptr<juce::AudioProcessorValueTreeState> createHostParameterState(
