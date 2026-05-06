@@ -1089,6 +1089,7 @@ end
 local function setLayoutPreset(ctx, preset)
   ctx._layoutPreset = tostring(preset or "deck")
   ctx._rebuildDockTree = true
+  resetPanelDocks(ctx)
   syncToolbarButtons(ctx)
 end
 
@@ -1256,52 +1257,209 @@ local function layoutInputsEmbed(ctx, w, h)
   local pad, gap = 6, 6
   local y = 8
   local statusH = 46
-  local controlsH = 42
-  local viewH = math.max(36, h - y - controlsH - statusH - 8)
-  local cellW = math.max(30, math.floor((w - pad * 2 - gap * 2) / 3))
-  setBounds(ctx.widgets.liveViewport, pad, y, cellW, viewH)
-  setBounds(ctx.widgets.segViewport, pad + cellW + gap, y, cellW, viewH)
-  setBounds(ctx.widgets.poseViewport, pad + (cellW + gap) * 2, y, math.max(1, w - pad * 2 - (cellW + gap) * 2), viewH)
-  setBounds(ctx.widgets.rawTitle, 10, y + viewH + 2, 90, 12)
-  setBounds(ctx.widgets.segTitle, 146, y + viewH + 2, 90, 12)
-  setBounds(ctx.widgets.poseTitle, 282, y + viewH + 2, 90, 12)
-  local cy = y + viewH + 19
-  local sw = math.max(52, math.floor((w - pad * 2 - gap * 6) / 7))
-  setBounds(ctx.widgets.segGain, pad, cy, sw, 17)
-  setBounds(ctx.widgets.segThreshold, pad + (sw + gap), cy, sw, 17)
-  setBounds(ctx.widgets.segFeather, pad + (sw + gap) * 2, cy, sw, 17)
-  setBounds(ctx.widgets.segInvert, pad + (sw + gap) * 3, cy, sw, 18)
-  setBounds(ctx.widgets.poseConf, pad + (sw + gap) * 4, cy, sw, 17)
-  setBounds(ctx.widgets.showSkeleton, pad + (sw + gap) * 5, cy, sw, 18)
-  setBounds(ctx.widgets.loadModels, pad + (sw + gap) * 6, cy, math.max(28, w - pad * 2 - (sw + gap) * 6), 18)
-  setBounds(ctx.widgets.poseStatus, pad, cy + 23, math.max(1, w - pad * 2), 13)
-  setBounds(ctx.widgets.captureStatus, pad, cy + 37, math.max(1, w - pad * 2), 13)
-  setBounds(ctx.widgets.samplerStatus, pad, cy + 51, math.max(1, w - pad * 2), 13)
-  ensurePoseOverlay(ctx)
+  local controlsH = 74
+  local swMax = math.max(52, math.floor((w - pad * 2 - gap * 6) / 7))
+  local cy = y + 4
+  setBounds(ctx.widgets.segGain, pad, cy, swMax, 17)
+  setBounds(ctx.widgets.segThreshold, pad + (swMax + gap), cy, swMax, 17)
+  setBounds(ctx.widgets.segFeather, pad + (swMax + gap) * 2, cy, swMax, 17)
+  setBounds(ctx.widgets.segInvert, pad + (swMax + gap) * 3, cy, swMax, 18)
+  setBounds(ctx.widgets.poseConf, pad + (swMax + gap) * 4, cy, swMax, 17)
+  setBounds(ctx.widgets.showSkeleton, pad + (swMax + gap) * 5, cy, swMax, 18)
+  setBounds(ctx.widgets.loadModels, pad + (swMax + gap) * 6, cy, math.max(28, w - pad * 2 - (swMax + gap) * 6), 18)
+  local titleY = cy + 22
+  setBounds(ctx.widgets.rawTitle, 10, titleY, 90, 12)
+  setBounds(ctx.widgets.segTitle, 146, titleY, 90, 12)
+  setBounds(ctx.widgets.poseTitle, 282, titleY, 90, 12)
+  local statusY = titleY + 15
+  setBounds(ctx.widgets.poseStatus, pad, statusY, math.max(1, w - pad * 2), 13)
+  setBounds(ctx.widgets.captureStatus, pad, statusY + 14, math.max(1, w - pad * 2), 13)
+  setBounds(ctx.widgets.samplerStatus, pad, statusY + 28, math.max(1, w - pad * 2), 13)
+  -- Viewports are rendered as ImGui dock windows
+  setBounds(ctx.widgets.liveViewport, 0, 0, 0, 0)
+  setBounds(ctx.widgets.segViewport, 0, 0, 0, 0)
+  setBounds(ctx.widgets.poseViewport, 0, 0, 0, 0)
 end
 
 local function layoutWaveformEmbed(ctx, w, h)
   setBounds(ctx.widgets.waveformEmbed, 0, 0, w, h)
-  setBounds(ctx.widgets.waveform, 6, 26, math.max(1, w - 12), math.max(34, h - 48))
-  setBounds(ctx.widgets.waveformStatus, 8, math.max(26, h - 18), math.max(1, w - 16), 14)
+  setBounds(ctx.widgets.waveform, 0, 0, 0, 0)  -- rendered as ImGui dock window
+  setBounds(ctx.widgets.waveformStatus, 8, 8, math.max(1, w - 16), 14)
 end
 
 local function layoutStageEmbed(ctx, w, h)
   setBounds(ctx.widgets.stageEmbed, 0, 0, w, h)
-  local gap = 8
-  if w >= 560 then
-    local previewW = math.max(180, math.floor(w * 0.28))
-    setBounds(ctx.widgets.outputViewport, 6, 24, math.max(1, w - previewW - gap - 12), math.max(1, h - 30))
-    setBounds(ctx.widgets.previewStage, w - previewW - 6, 24, previewW, math.max(120, math.floor(h * 0.55)))
-  else
-    local previewH = math.max(120, math.floor(h * 0.32))
-    setBounds(ctx.widgets.outputViewport, 6, 24, math.max(1, w - 12), math.max(1, h - previewH - gap - 30))
-    setBounds(ctx.widgets.previewStage, 6, h - previewH - 6, math.max(1, w - 12), previewH)
-  end
-  local _, _, pw, _ = ctx.widgets.previewStage.node:getBounds()
-  setBounds(ctx.widgets.previewStageTag, 5, 4, math.max(1, pw - 10), 12)
+  -- Viewports rendered as ImGui dock windows
+  setBounds(ctx.widgets.outputViewport, 0, 0, 0, 0)
+  setBounds(ctx.widgets.previewStage, 0, 0, 0, 0)
+  -- Output row cells still position relative to outputViewport
   layoutOutputRow(ctx)
   updatePreviewSurface(ctx)
+end
+
+local function resetPanelDocks(ctx)
+  ctx._panelDocks = {}
+end
+
+local function panelSplit(t)
+  local r = imguiDockBuilderSplitNode(t.node, t.dir, t.ratio)
+  if imguiDockBuilderSetNodeFlags then
+    imguiDockBuilderSetNodeFlags(r.atDir, imguiDockNodeFlags_HiddenTabBar)
+    imguiDockBuilderSetNodeFlags(r.opposite, imguiDockNodeFlags_HiddenTabBar)
+  end
+  return r.atDir, r.opposite
+end
+
+local function renderSourcesPanel(ctx)
+  local dockspaceId = imguiGetID("AVSD_sources_ds")
+
+  if not ctx._panelDocks or not ctx._panelDocks.sources then
+    ctx._panelDocks = ctx._panelDocks or {}
+    local avail = imguiGetContentRegionAvail()
+    local pw = math.max(1, math.floor(tonumber(avail.x) or 300))
+    local ph = math.max(1, math.floor(tonumber(avail.y) or 200))
+
+    imguiDockBuilderRemoveNode(dockspaceId)
+    imguiDockBuilderAddNode(dockspaceId, imguiDockNodeFlags_DockSpace)
+    imguiDockBuilderSetNodeSize(dockspaceId, pw, ph)
+
+    local viewports, controls = panelSplit{ node = dockspaceId, dir = imguiDir_Down, ratio = 0.55 }
+    local liveArea, rest = panelSplit{ node = viewports, dir = imguiDir_Left, ratio = 0.33 }
+    local segArea, poseArea = panelSplit{ node = rest, dir = imguiDir_Left, ratio = 0.50 }
+
+    imguiDockBuilderDockWindow("Live###AVSD_live", liveArea)
+    imguiDockBuilderDockWindow("Segmented###AVSD_seg", segArea)
+    imguiDockBuilderDockWindow("Pose###AVSD_pose", poseArea)
+    imguiDockBuilderDockWindow("Controls###AVSD_src_ctrl", controls)
+
+    imguiDockBuilderFinish(dockspaceId)
+    ctx._panelDocks.sources = true
+  end
+
+  imguiDockSpace(dockspaceId, 0, 0, imguiDockNodeFlags_None)
+
+  -- Live viewport dock window
+  if imguiBegin("Live###AVSD_live", imguiWindowFlags_NoTitleBar) then
+    local av = imguiGetContentRegionAvail()
+    if av.x > 4 and av.y > 4 then
+      setBounds(ctx.widgets.liveViewport, 0, 0, math.floor(av.x), math.floor(av.y))
+      imguiRetainedPanel(ctx.widgets.liveViewport.node, math.floor(av.x), math.floor(av.y), true)
+    end
+  end
+  imguiEnd()
+
+  -- Segmented viewport dock window
+  if imguiBegin("Segmented###AVSD_seg", imguiWindowFlags_NoTitleBar) then
+    local av = imguiGetContentRegionAvail()
+    if av.x > 4 and av.y > 4 then
+      setBounds(ctx.widgets.segViewport, 0, 0, math.floor(av.x), math.floor(av.y))
+      imguiRetainedPanel(ctx.widgets.segViewport.node, math.floor(av.x), math.floor(av.y), true)
+    end
+  end
+  imguiEnd()
+
+  -- Pose viewport dock window
+  if imguiBegin("Pose###AVSD_pose", imguiWindowFlags_NoTitleBar) then
+    local av = imguiGetContentRegionAvail()
+    if av.x > 4 and av.y > 4 then
+      setBounds(ctx.widgets.poseViewport, 0, 0, math.floor(av.x), math.floor(av.y))
+      ensurePoseOverlay(ctx)
+      if ctx._poseOverlay then
+        ctx._poseOverlay:setBounds(0, 0, math.floor(av.x), math.floor(av.y))
+      end
+      imguiRetainedPanel(ctx.widgets.poseViewport.node, math.floor(av.x), math.floor(av.y), true)
+    end
+  end
+  imguiEnd()
+
+  -- Controls dock window
+  if imguiBegin("Controls###AVSD_src_ctrl", imguiWindowFlags_NoTitleBar) then
+    local av = imguiGetContentRegionAvail()
+    if av.x > 4 and av.y > 4 then
+      layoutInputsEmbed(ctx, math.floor(av.x), math.floor(av.y))
+      imguiRetainedPanel(ctx.widgets.inputsEmbed.node, math.floor(av.x), math.floor(av.y), false)
+    end
+  end
+  imguiEnd()
+end
+
+local function renderStagePanel(ctx)
+  local dockspaceId = imguiGetID("AVSD_stage_ds")
+
+  if not ctx._panelDocks or not ctx._panelDocks.stage then
+    ctx._panelDocks = ctx._panelDocks or {}
+    local avail = imguiGetContentRegionAvail()
+    local pw = math.max(1, math.floor(tonumber(avail.x) or 500))
+    local ph = math.max(1, math.floor(tonumber(avail.y) or 300))
+
+    imguiDockBuilderRemoveNode(dockspaceId)
+    imguiDockBuilderAddNode(dockspaceId, imguiDockNodeFlags_DockSpace)
+    imguiDockBuilderSetNodeSize(dockspaceId, pw, ph)
+
+    local outputArea, previewArea = panelSplit{ node = dockspaceId, dir = imguiDir_Right, ratio = 0.28 }
+
+    imguiDockBuilderDockWindow("Output###AVSD_output", outputArea)
+    imguiDockBuilderDockWindow("Preview###AVSD_preview", previewArea)
+
+    imguiDockBuilderFinish(dockspaceId)
+    ctx._panelDocks.stage = true
+  end
+
+  imguiDockSpace(dockspaceId, 0, 0, imguiDockNodeFlags_None)
+
+  -- Output viewport dock window
+  if imguiBegin("Output###AVSD_output", imguiWindowFlags_NoTitleBar) then
+    local av = imguiGetContentRegionAvail()
+    if av.x > 4 and av.y > 4 then
+      setBounds(ctx.widgets.outputViewport, 0, 0, math.floor(av.x), math.floor(av.y))
+      imguiRetainedPanel(ctx.widgets.outputViewport.node, math.floor(av.x), math.floor(av.y), true)
+    end
+  end
+  imguiEnd()
+
+  -- Preview dock window
+  if imguiBegin("Preview###AVSD_preview", imguiWindowFlags_NoTitleBar) then
+    local av = imguiGetContentRegionAvail()
+    if av.x > 4 and av.y > 4 then
+      setBounds(ctx.widgets.previewStage, 0, 0, math.floor(av.x), math.floor(av.y))
+      setBounds(ctx.widgets.previewStageTag, 5, 4, math.max(1, math.floor(av.x) - 10), 12)
+      imguiRetainedPanel(ctx.widgets.previewStage.node, math.floor(av.x), math.floor(av.y), true)
+    end
+  end
+  imguiEnd()
+end
+
+local function renderWaveformPanel(ctx)
+  local dockspaceId = imguiGetID("AVSD_waveform_ds")
+
+  if not ctx._panelDocks or not ctx._panelDocks.waveform then
+    ctx._panelDocks = ctx._panelDocks or {}
+    local avail = imguiGetContentRegionAvail()
+    local pw = math.max(1, math.floor(tonumber(avail.x) or 500))
+    local ph = math.max(1, math.floor(tonumber(avail.y) or 120))
+
+    imguiDockBuilderRemoveNode(dockspaceId)
+    imguiDockBuilderAddNode(dockspaceId, imguiDockNodeFlags_DockSpace)
+    imguiDockBuilderSetNodeSize(dockspaceId, pw, ph)
+
+    imguiDockBuilderDockWindow("Waveform###AVSD_waveform", dockspaceId)
+
+    imguiDockBuilderFinish(dockspaceId)
+    ctx._panelDocks.waveform = true
+  end
+
+  imguiDockSpace(dockspaceId, 0, 0, imguiDockNodeFlags_None)
+
+  -- Waveform viewport dock window
+  if imguiBegin("Waveform###AVSD_waveform", imguiWindowFlags_NoTitleBar) then
+    local av = imguiGetContentRegionAvail()
+    if av.x > 4 and av.y > 4 then
+      setBounds(ctx.widgets.waveform, 0, 0, math.floor(av.x), math.floor(av.y))
+      imguiRetainedPanel(ctx.widgets.waveform.node, math.floor(av.x), math.floor(av.y), true)
+    end
+  end
+  imguiEnd()
+  -- Waveform status renders as part of the waveform embed, not as its own dock
 end
 
 local function layoutDeckEmbed(ctx, w, h)
@@ -1412,15 +1570,15 @@ end
 local function renderPanel(ctx, win)
   if imguiBegin(windowName(ctx, win), imguiWindowFlags_NoCollapse) then
     if win.key == "sources" then
-      renderEmbeddedPanel(ctx, "inputsEmbed", layoutInputsEmbed)
+      renderSourcesPanel(ctx)
     elseif win.key == "params" then
       renderParametersPanel(ctx)
     elseif win.key == "stage" then
-      renderEmbeddedPanel(ctx, "stageEmbed", layoutStageEmbed)
+      renderStagePanel(ctx)
     elseif win.key == "deck" then
       renderEmbeddedPanel(ctx, "deckEmbed", layoutDeckEmbed)
     elseif win.key == "waveform" then
-      renderEmbeddedPanel(ctx, "waveformEmbed", layoutWaveformEmbed)
+      renderWaveformPanel(ctx)
     end
   end
   imguiEnd()
@@ -1481,6 +1639,7 @@ function M.init(ctx)
   ctx.poseConf = 0.3
   ctx.showSkeleton = true
   ctx._polyPlaying, ctx._polyPos, ctx._slicePlaying, ctx._slicePos = {}, {}, {}, {}
+  ctx._panelDocks = {}
   ctx._selectedSlice = math.max(1, math.min(MAX, round(readParam(NS .. "/selected_slice", 1))))
   ctx.shader = { sourceIndex = 1, activeLayer = 1, layers = {} }
   for i = 1, 8 do ctx.shader.layers[i] = { enabled = i == 1, effectIndex = 1, params = {0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5} } end
@@ -1555,7 +1714,7 @@ function M.init(ctx)
   ctx.widgets.layoutDeck._onClick = function() setLayoutPreset(ctx, "deck") end
   ctx.widgets.layoutStage._onClick = function() setLayoutPreset(ctx, "stage") end
   ctx.widgets.layoutInspector._onClick = function() setLayoutPreset(ctx, "inspector") end
-  ctx.widgets.resetLayout._onClick = function() ctx._rebuildDockTree = true end
+  ctx.widgets.resetLayout._onClick = function() ctx._rebuildDockTree = true; resetPanelDocks(ctx) end
   ctx.widgets.resizeMode._onChange = function(v) ctx._resizeMode = v == true; syncToolbarButtons(ctx) end
   ctx.widgets.midiRefresh._onClick = function() refreshMidi(ctx); if not currentMidiLabel() then openPreferredMidi(ctx) end end
   ctx.widgets.midiInput._onSelect = function(idx)
