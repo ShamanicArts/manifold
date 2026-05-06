@@ -15,6 +15,12 @@ local PLAYBACK_UI_INTERVAL = 1.0 / 20.0
 local STATUS_INTERVAL = 0.20
 local DEFAULT_CAPTURE_W = 640
 local DEFAULT_CAPTURE_H = 480
+local ML_SOURCE_PARAM_SPECS = {
+  { id = "gain", name = "Gain", min = 0.25, max = 4.0, default = 1.0, step = 0.05 },
+  { id = "threshold", name = "Thresh", min = 0.0, max = 1.0, default = 0.5, step = 0.01 },
+  { id = "feather", name = "Feather", min = 0.0, max = 1.0, default = 0.15, step = 0.01 },
+  { id = "background", name = "BG", min = 0.001, max = 0.35, default = 0.02, step = 0.005 },
+}
 local KEYPOINTS = {
   "nose", "left_eye", "right_eye", "left_ear", "right_ear",
   "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
@@ -151,6 +157,20 @@ local resetPanelDocks
 local syncShaderSourceParams
 local layoutOutputRow
 local buildTapPipeline
+local syncCol1FromShader
+local addColumn
+local removeColumn
+local colAddFx
+local colRemoveFx
+local colSourceDescriptor
+local colBuildCellPipeline
+local colSourceLabel
+local colFxLabel
+local currentCol1SourceSpec
+local sourceSpecForColumn
+local setSourceSpecForColumn
+local applySourceSpecToHiddenNode
+local buildPoseSourcePayload
 
 local POLY_PATHS, SLICE_PATHS = {}, {}
 for i = 1, MAX do
@@ -370,10 +390,41 @@ local function bindInputSurfaces(ctx)
   if ctx.widgets.liveViewport and ctx.widgets.liveViewport.node then
     ctx.widgets.liveViewport.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
   end
-  if ctx.widgets.segViewport and ctx.widgets.segViewport.node and ctx._segModelPath then
+
+  local hasModel = ctx._segModelPath ~= nil
+
+  -- Create ML source nodes as children of inputsEmbed so they render every
+  -- frame inside the Sources retained panel. ml_composite surfaces only
+  -- produce output when the node is actually drawn (unlike gpu_shader).
+  local function ensureMLSourceNode(nodeId, mlType)
+    if ctx["_mlSrcNode_" .. nodeId] then return ctx["_mlSrcNode_" .. nodeId] end
+    local parent = ctx.widgets and ctx.widgets.inputsEmbed and ctx.widgets.inputsEmbed.node
+    if not (parent and parent.createChild) then return nil end
+    local node = parent:createChild(nodeId .. "_src")
+    if node then
+      node:setNodeId(nodeId)
+      node:setBounds(0, 0, 4, 4)
+      node:setVisible(true)
+      node:setInterceptsMouse(false, false)
+      ctx["_mlSrcNode_" .. nodeId] = node
+    end
+    return node
+  end
+
+  local segNode = ensureMLSourceNode("avsd_ml_seg")
+  local poseNode = ensureMLSourceNode("avsd_ml_pose")
+
+  if segNode and hasModel then
+    segNode:setCustomSurface("ml_composite", segPayload(ctx))
+  end
+  if poseNode and hasModel then
+    poseNode:setCustomSurface("ml_composite", segPayload(ctx))
+  end
+
+  if ctx.widgets.segViewport and ctx.widgets.segViewport.node and hasModel then
     ctx.widgets.segViewport.node:setCustomSurface("ml_composite", segPayload(ctx))
   end
-  if ctx.widgets.poseViewport and ctx.widgets.poseViewport.node and ctx._segModelPath then
+  if ctx.widgets.poseViewport and ctx.widgets.poseViewport.node and hasModel then
     ctx.widgets.poseViewport.node:setCustomSurface("ml_composite", segPayload(ctx))
   end
 end
@@ -723,6 +774,234 @@ local function applyMapping(ctx)
   end
 end
 
+local function cloneTable(t)
+  if type(t) ~= "table" then return t end
+  local out = {}
+  for k, v in pairs(t) do
+    out[k] = type(v) == "table" and cloneTable(v) or v
+  end
+  return out
+end
+
+local function defaultMLSourceSpec(mlType)
+  local params = { gain = 1.0, threshold = 0.5, feather = 0.15, background = 0.02, useSigmoid = true, invert = false }
+  return { kind = "ml", mlType = mlType or "segmented", params = params }
+end
+
+local function currentCol1SourceSpec(ctx)
+  if ctx._col1SourceSpec and type(ctx._col1SourceSpec) == "table" then
+    return ctx._col1SourceSpec
+  end
+  local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
+  if choice and choice.kind == "generator" then
+    local params = {}
+    local specParams = choice.params or {}
+    local stored = ctx.shaderSourceParams or {}
+    for _, pspec in ipairs(specParams) do
+      local norm = stored[pspec.id]
+      if norm == nil then
+        local pmin = tonumber(pspec.min) or 0
+        local pmax = tonumber(pspec.max) or 1
+        norm = ((tonumber(pspec.default) or pmin) - pmin) / math.max(0.001, pmax - pmin)
+      end
+      params[pspec.id] = clamp(norm, 0, 1)
+    end
+    ctx._col1SourceSpec = { kind = "generator", sourceIndex = ctx.shader.sourceIndex, sourceId = choice.id, params = params }
+  else
+    ctx._col1SourceSpec = { kind = "webcam", sourceIndex = 1 }
+  end
+  return ctx._col1SourceSpec
+end
+
+sourceSpecForColumn = function(ctx, col)
+  if tonumber(col) == 1 then return currentCol1SourceSpec(ctx) end
+  local cd = ctx._colData and ctx._colData[col]
+  return cd and cd.source or nil
+end
+
+setSourceSpecForColumn = function(ctx, col, spec)
+  col = tonumber(col) or 1
+  if col == 1 then
+    ctx._col1SourceSpec = cloneTable(spec)
+    if spec.kind == "generator" then
+      local idx = 1
+      for i, s in ipairs(ctx.sources or {}) do
+        if s.kind == "generator" and s.id == spec.sourceId then idx = i break end
+      end
+      ctx.shader.sourceIndex = idx
+      writeParam(NS .. "/shader/source", idx)
+      ctx.shaderSourceParams = cloneTable(spec.params or {})
+    else
+      ctx.shader.sourceIndex = 1
+      if spec.kind == "webcam" then
+        writeParam(NS .. "/shader/source", 1)
+      end
+    end
+    setSelectedSilently(ctx.widgets.sourceSelect, math.max(1, ctx.shader.sourceIndex or 1))
+    syncShaderSourceParams(ctx)
+    updateOutputAspect(ctx)
+    updateShader(ctx)
+    return
+  end
+  ctx._colData = ctx._colData or {}
+  ctx._colData[col] = ctx._colData[col] or colInit(col)
+  ctx._colData[col].source = cloneTable(spec)
+  syncShaderSourceParams(ctx)
+  updateGridThumbnails(ctx)
+end
+
+local function ensureAuxSourceNode(ctx, key, nodeId)
+  ctx._auxSourceNodes = ctx._auxSourceNodes or {}
+  local existing = ctx._auxSourceNodes[key]
+  if existing and existing.node then return existing end
+  local rootNode = ctx.root and ctx.root.node
+  if not (rootNode and rootNode.createChild) then return nil end
+  local node = rootNode:createChild(nodeId)
+  if not node then return nil end
+  local entry = { id = nodeId, node = node }
+  node:setNodeId(nodeId)
+  node:setBounds(0, 0, 64, 64)
+  node:setVisible(false)
+  ctx._auxSourceNodes[key] = entry
+  return entry
+end
+
+local function buildPoseSourcePayload(ctx, baseSourceId, spec)
+  ctx._poseSourceFragment = ctx._poseSourceFragment or (function()
+    local lines = {}
+    lines[#lines + 1] = "#version 150"
+    lines[#lines + 1] = "in vec2 vUv;"
+    lines[#lines + 1] = "out vec4 fragColor;"
+    lines[#lines + 1] = "uniform sampler2D uInputTex;"
+    lines[#lines + 1] = "uniform float uPoseConf;"
+    for i = 0, 16 do lines[#lines + 1] = string.format("uniform vec3 uKp%d;", i) end
+    lines[#lines + 1] = [[
+float segDist(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a;
+  vec2 ba = b - a;
+  float h = clamp(dot(pa, ba) / max(dot(ba, ba), 0.00001), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+float lineMask(vec2 p, vec2 a, vec2 b, float r) {
+  float d = segDist(p, a, b);
+  return 1.0 - smoothstep(r, r * 1.8, d);
+}
+float pointMask(vec2 p, vec2 a, float r) {
+  float d = length(p - a);
+  return 1.0 - smoothstep(r, r * 1.8, d);
+}
+void addLine(inout vec3 rgb, vec3 a, vec3 b, vec3 col) {
+  if (a.z < uPoseConf || b.z < uPoseConf) return;
+  vec2 pa = vec2(a.x, 1.0 - a.y);
+  vec2 pb = vec2(b.x, 1.0 - b.y);
+  float m = lineMask(vUv, pa, pb, 0.008);
+  rgb = mix(rgb, col, m);
+}
+void addPoint(inout vec3 rgb, vec3 k, vec3 col) {
+  if (k.z < uPoseConf) return;
+  vec2 p = vec2(k.x, 1.0 - k.y);
+  float m = pointMask(vUv, p, 0.015);
+  rgb = mix(rgb, col, m);
+}
+void main() {
+  vec4 base = texture(uInputTex, vUv);
+  vec3 rgb = base.rgb;
+]]
+    for _, pair in ipairs(SKELETON) do
+      lines[#lines + 1] = string.format("  addLine(rgb, uKp%d, uKp%d, vec3(0.0, 1.0, 1.0));", pair[1] - 1, pair[2] - 1)
+    end
+    for i = 0, 16 do
+      local col = (i == 9 or i == 10) and "vec3(1.0, 0.36, 0.54)" or "vec3(0.13, 0.78, 0.37)"
+      lines[#lines + 1] = string.format("  addPoint(rgb, uKp%d, %s);", i, col)
+    end
+    lines[#lines + 1] = "  fragColor = vec4(rgb, 1.0);"
+    lines[#lines + 1] = "}"
+    return table.concat(lines, "\n")
+  end)()
+
+  local uniforms = { uPoseConf = ctx.poseConf or 0.3 }
+  local byName = ctx.pose and ctx.pose.byName or {}
+  for i, name in ipairs(KEYPOINTS) do
+    local kp = byName[name] or { x = 0.0, y = 0.0, conf = 0.0 }
+    uniforms["uKp" .. tostring(i - 1)] = { kp.x or 0.0, kp.y or 0.0, kp.conf or 0.0 }
+  end
+
+  return {
+    version = 1,
+    kind = "shaderQuad",
+    shaderLanguage = "glsl",
+    sourceType = "node_surface",
+    sourceId = baseSourceId,
+    fitMode = "contain",
+    passes = {
+      {
+        vertexShader = [[#version 150
+in vec2 aPos;
+in vec2 aUv;
+out vec2 vUv;
+void main(){ vUv = aUv; gl_Position = vec4(aPos, 0.0, 1.0); }
+]],
+        fragmentShader = ctx._poseSourceFragment,
+        inputTextureUniform = "uInputTex",
+        uniforms = uniforms,
+      }
+    }
+  }
+end
+
+applySourceSpecToHiddenNode = function(ctx, spec, key)
+  local kind = spec and spec.kind or "webcam"
+  if kind == "webcam" then
+    local entry = ensureAuxSourceNode(ctx, key .. "_webcam", "__" .. key .. "_webcam")
+    if entry and entry.node then
+      entry.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
+      return { type = "node", sourceId = entry.id }, nil
+    end
+    return { type = "webcam" }, nil
+  end
+  if kind == "generator" then
+    local entry = ensureAuxSourceNode(ctx, key .. "_gen", "__" .. key .. "_gen")
+    if entry and entry.node and shaders then
+      local ok, payload = pcall(shaders.buildPipeline, {}, "contain", { type = "generator", sourceId = spec.sourceId, params = spec.params or {} })
+      if ok and payload then
+        entry.node:setCustomSurface("gpu_shader", payload)
+        return { type = "node", sourceId = entry.id }, nil
+      end
+    end
+    return { type = "webcam" }, nil
+  end
+  if kind == "ml" then
+    local opaque = ensureAuxSourceNode(ctx, key .. "_ml_base", "__" .. key .. "_ml_base")
+    if opaque and opaque.node then
+      local mlp = {
+        version = 1,
+        fitMode = "contain",
+        modelPath = ctx._segModelPath or "",
+        gain = tonumber((spec.params or {}).gain) or 1.0,
+        useSigmoid = ((spec.params or {}).useSigmoid ~= false),
+        threshold = tonumber((spec.params or {}).threshold) or 0.5,
+        feather = tonumber((spec.params or {}).feather) or 0.15,
+        invert = ((spec.params or {}).invert == true),
+        background = math.max(0.001, tonumber((spec.params or {}).background) or 0.02),
+      }
+      opaque.node:setCustomSurface("ml_composite", mlp)
+      if spec.mlType == "pose" then
+        local overlay = ensureAuxSourceNode(ctx, key .. "_ml_pose", "__" .. key .. "_ml_pose")
+        if overlay and overlay.node then
+          overlay.node:setCustomSurface("gpu_shader", buildPoseSourcePayload(ctx, opaque.id, spec))
+          return { type = "node", sourceId = overlay.id }, nil
+        end
+      end
+      return { type = "node", sourceId = opaque.id }, nil
+    end
+    return { type = "webcam" }, nil
+  end
+  if kind == "columntap" then
+    return colSourceDescriptor(ctx, spec.sourceCol), nil
+  end
+  return { type = "webcam" }, nil
+end
+
 local function ensureShaderSourceNode(ctx)
   if ctx._shaderSourceNode and ctx._shaderSourceNode.node then return ctx._shaderSourceNode end
   local rootNode = ctx.root and ctx.root.node
@@ -738,44 +1017,9 @@ local function ensureShaderSourceNode(ctx)
 end
 
 local function buildShaderSourceDescriptor(ctx)
-  local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
-  local entry = ensureShaderSourceNode(ctx)
-  if entry and entry.node then
-    if choice and choice.kind == "generator" and shaders and shaders.buildPipeline then
-      local sourceParams = {}
-      local specParams = choice.params or {}
-      for pi = 1, #specParams do
-        local pspec = specParams[pi]
-        local normalized = ctx.shaderSourceParams and ctx.shaderSourceParams[pspec.id] or tonumber(pspec.default) or 0
-        local pmin = tonumber(pspec.min) or 0
-        local pmax = tonumber(pspec.max) or 1
-        sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
-      end
-      local ok, payload = pcall(shaders.buildPipeline, {}, "contain", { type = "generator", sourceId = choice.id, params = sourceParams })
-      if ok and payload then
-        entry.node:setCustomSurface("gpu_shader", payload)
-        return { type = "node", sourceId = entry.id }, choice
-      end
-    else
-      entry.node:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
-      return { type = "node", sourceId = entry.id }, choice
-    end
-  end
-
-  local source = { type = "webcam" }
-  if choice and choice.kind == "generator" then
-    local sourceParams = {}
-    local specParams = choice.params or {}
-    for pi = 1, #specParams do
-      local pspec = specParams[pi]
-      local normalized = ctx.shaderSourceParams and ctx.shaderSourceParams[pspec.id] or tonumber(pspec.default) or 0
-      local pmin = tonumber(pspec.min) or 0
-      local pmax = tonumber(pspec.max) or 1
-      sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
-    end
-    source = { type = "generator", sourceId = choice.id, params = sourceParams }
-  end
-  return source, choice
+  local spec = currentCol1SourceSpec(ctx)
+  local descriptor, choice = applySourceSpecToHiddenNode(ctx, spec, "col1_source")
+  return descriptor, choice
 end
 
 function updateShader(ctx)
@@ -803,7 +1047,14 @@ function updateShader(ctx)
     local ok, payload = pcall(shaders.buildPipeline, layers, "contain", source)
     if ok and payload then
       -- Build a signature to detect actual payload changes
-      local sig = tostring(ctx.shader.sourceIndex) .. "|" .. tostring(#layers)
+      local srcSpec = currentCol1SourceSpec(ctx) or { kind = "webcam" }
+      local sig = tostring(srcSpec.kind or "webcam") .. "|" .. tostring(srcSpec.sourceId or srcSpec.mlType or ctx.shader.sourceIndex or 1) .. "|" .. tostring(#layers)
+      for k, v in pairs(srcSpec.params or {}) do
+        sig = sig .. "|src." .. tostring(k) .. "=" .. tostring(math.floor((tonumber(v) or 0) * 10000 + 0.5))
+      end
+      if srcSpec.kind == "columntap" then
+        sig = sig .. "|srcCol=" .. tostring(srcSpec.sourceCol or 0) .. "|srcTap=" .. tostring(srcSpec.tapIndex or 0)
+      end
       for _, l in ipairs(layers) do
         sig = sig .. "|" .. tostring(l.effectId)
         for k, v in pairs(l.params or {}) do
@@ -817,7 +1068,8 @@ function updateShader(ctx)
       end
     end
   end
-  setText(ctx.widgets.shaderStatus, string.format("Shader: %s %s", choice and choice.name or "Webcam", ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1] and ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1].name or "--"))
+  local srcLabel = colSourceLabel(ctx, 1)
+  setText(ctx.widgets.shaderStatus, string.format("Shader: %s %s", srcLabel or (choice and choice.name) or "Webcam", ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1] and ctx.effects[(ctx.shader.layers[ctx.shader.activeLayer] or {}).effectIndex or 1].name or "--"))
 end
 
 local function refreshShaderLists(ctx)
@@ -874,11 +1126,46 @@ local function syncModePanels(ctx)
 end
 
 local function syncShaderEditor(ctx)
-  local L = ctx.shader.layers[ctx.shader.activeLayer]
-  setSelectedSilently(ctx.widgets.shaderLayer, ctx.shader.activeLayer)
-  setSelectedSilently(ctx.widgets.effectSelect, L.effectIndex or 1)
-  if ctx.widgets.shaderEnabled and ctx.widgets.shaderEnabled.setValue then setValueSilently(ctx.widgets.shaderEnabled, L.enabled) end
-  local effect = ctx.effects[L.effectIndex] or { params = {} }
+  local sel = ctx.selection
+  local effect, params, enabled, currentEffectIndex
+  local layerOrSlot = 1
+
+  if sel and sel.col == 1 then
+    -- Column 1: read from ctx.shader
+    local L = ctx.shader.layers[ctx.shader.activeLayer]
+    currentEffectIndex = L.effectIndex or 1
+    effect = ctx.effects[currentEffectIndex] or { params = {} }
+    params = L.params
+    enabled = L.enabled
+    layerOrSlot = ctx.shader.activeLayer
+    setSelectedSilently(ctx.widgets.shaderLayer, ctx.shader.activeLayer)
+  elseif sel and sel.col > 1 then
+    local cd = ctx._colData and ctx._colData[sel.col]
+    local fxSlot = sel.row - 1
+    if cd and cd.fx[fxSlot] then
+      local f = cd.fx[fxSlot]
+      currentEffectIndex = f.effectIndex or 1
+      effect = ctx.effects[currentEffectIndex] or { params = {} }
+      params = f.params
+      enabled = f.enabled
+      layerOrSlot = fxSlot
+      setSelectedSilently(ctx.widgets.shaderLayer, fxSlot)
+    else
+      effect = { params = {} }
+      params = {}
+      enabled = false
+      currentEffectIndex = 1
+    end
+  else
+    effect = { params = {} }
+    params = {}
+    enabled = false
+    currentEffectIndex = 1
+  end
+
+  setSelectedSilently(ctx.widgets.effectSelect, math.max(1, math.min(#(ctx.effects or {}), round(currentEffectIndex or 1))))
+  if ctx.widgets.shaderEnabled and ctx.widgets.shaderEnabled.setValue then setValueSilently(ctx.widgets.shaderEnabled, enabled == true) end
+
   for p = 1, 9 do
     local sl = ctx.widgets["shaderParam" .. p]
     local spec = effect.params and effect.params[p]
@@ -890,8 +1177,7 @@ local function syncShaderEditor(ctx)
       sl._max = pmax
       sl._step = tonumber(spec.step) or 0.01
       setVisible(sl, true)
-      -- L.params[p] stores [0,1] normalized; convert to display range
-      local normalized = L.params[p] or tonumber(spec.default) or 0
+      local normalized = params[p] or tonumber(spec.default) or 0
       local displayVal = clamp(pmin + normalized * (pmax - pmin), pmin, pmax)
       setValueSilently(sl, displayVal)
     else
@@ -1080,7 +1366,12 @@ local function syncParamsFromHost(ctx)
   if sourceIndex ~= ctx.shader.sourceIndex then
     ctx.shader.sourceIndex = sourceIndex
     setSelectedSilently(ctx.widgets.sourceSelect, sourceIndex)
-    changedShader = true
+    local col1spec = currentCol1SourceSpec(ctx)
+    if not col1spec or col1spec.kind == "webcam" or col1spec.kind == "generator" then
+      ctx._col1SourceSpec = nil
+      currentCol1SourceSpec(ctx)
+      changedShader = true
+    end
     syncShaderSourceParams(ctx)
     if ctx.selection and ctx.selection.col == 1 and ctx.selection.row == 1 then
       ctx.selection = { col = 1, row = 1 }
@@ -1275,10 +1566,24 @@ local function layoutSliceEmbed(ctx, w, h)
 end
 
 syncShaderSourceParams = function(ctx)
-  local choice = ctx.sources[ctx.shader.sourceIndex]
-  local isGen = choice and choice.kind == "generator"
-  ctx.shaderSourceParams = ctx.shaderSourceParams or {}
-  local specParams = (isGen and choice.params) or {}
+  local sel = ctx.selection
+  local spec = sourceSpecForColumn(ctx, (sel and sel.col) or 1) or { kind = "webcam" }
+  local specParams = {}
+  local values = {}
+
+  if spec.kind == "generator" then
+    for _, g in ipairs(ctx.sources or {}) do
+      if g.kind == "generator" and g.id == spec.sourceId then
+        specParams = g.params or {}
+        break
+      end
+    end
+    values = spec.params or {}
+  elseif spec.kind == "ml" then
+    specParams = ML_SOURCE_PARAM_SPECS
+    values = spec.params or {}
+  end
+
   for pi = 1, 4 do
     local sl = ctx.widgets["sourceParam" .. pi]
     local pspec = specParams[pi]
@@ -1290,11 +1595,18 @@ syncShaderSourceParams = function(ctx)
       sl._max = pmax
       sl._step = tonumber(pspec.step) or 0.01
       setVisible(sl, true)
-      if ctx.shaderSourceParams[pspec.id] == nil then
-        local defaultNorm = (tonumber(pspec.default) or pmin - pmin) / math.max(0.001, pmax - pmin)
-        ctx.shaderSourceParams[pspec.id] = clamp(defaultNorm, 0, 1)
+      local raw = values[pspec.id]
+      local displayVal
+      if spec.kind == "generator" then
+        local norm = raw
+        if norm == nil then
+          norm = ((tonumber(pspec.default) or pmin) - pmin) / math.max(0.001, pmax - pmin)
+        end
+        displayVal = clamp(pmin + norm * (pmax - pmin), pmin, pmax)
+      else
+        if raw == nil then raw = tonumber(pspec.default) or pmin end
+        displayVal = clamp(raw, pmin, pmax)
       end
-      local displayVal = pmin + ctx.shaderSourceParams[pspec.id] * (pmax - pmin)
       setValueSilently(sl, displayVal)
     elseif sl then
       setVisible(sl, false)
@@ -1302,35 +1614,127 @@ syncShaderSourceParams = function(ctx)
   end
 end
 
+colSourceLabel = function(ctx, col)
+  local cd = ctx._colData and ctx._colData[col]
+  if not cd or not cd.source then return "Add Source" end
+  local src = cd.source
+  if src.kind == "mirrored" or src.kind == "webcam" then
+    if src.kind == "webcam" then return "Webcam" end
+    local spec = currentCol1SourceSpec(ctx)
+    if spec and spec.kind == "generator" then
+      return spec.sourceId or "Generator"
+    elseif spec and spec.kind == "ml" then
+      return spec.mlType == "pose" and "Pose" or "Segmented"
+    end
+    return "Webcam"
+  end
+  if src.kind == "generator" then
+    for _, g in ipairs(ctx.sources or {}) do
+      if g.kind == "generator" and g.id == src.sourceId then return g.name or g.id end
+    end
+    return src.sourceId or "Gen"
+  end
+  if src.kind == "columntap" then
+    return "Col " .. tostring(src.sourceCol) .. " T" .. tostring(src.tapIndex or 0)
+  end
+  if src.kind == "ml" then
+    return src.mlType == "pose" and "Pose" or "Segmented"
+  end
+  return "Source"
+end
+
+colFxLabel = function(ctx, col, fxSlot)
+  local cd = ctx._colData and ctx._colData[col]
+  if not cd then return "Slot" end
+  local f = cd.fx[fxSlot]
+  if not f then return "+ Add FX" end
+  local eff = ctx.effects and ctx.effects[f.effectIndex]
+  return (eff and (eff.name or eff.id)) or ("Slot " .. fxSlot)
+end
+
 local function layoutSourceEmbed(ctx, w, h)
   setBounds(ctx.widgets.sourceEmbed, 0, 0, w, h)
   local pad, gap = 8, 4
   local topY = 25
-  local leftW = math.max(96, math.floor((w - pad * 2 - gap) * 0.58))
-  setBounds(ctx.widgets.sourceSelect, pad, topY, leftW, 18)
-  setBounds(ctx.widgets.aspectSelect, pad + leftW + gap, topY, math.max(72, w - pad - (pad + leftW + gap)), 18)
+  local sel = ctx.selection
+  local cd = sel and ctx._colData and ctx._colData[sel.col]
+  local viewingCol2Plus = sel and sel.col and sel.col > 1 and sel.row == 1 and cd and cd.source
 
-  local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex] or nil
-  local isGen = choice and choice.kind == "generator"
+  if viewingCol2Plus then
+    local src = cd.source
+    local isParamSource = (src.kind == "generator" or src.kind == "ml")
+
+    setVisible(ctx.widgets.sourceSelect, false)
+    setVisible(ctx.widgets.aspectSelect, true)
+    setBounds(ctx.widgets.aspectSelect, pad, topY, math.max(96, math.floor((w - pad * 2) * 0.42)), 18)
+
+    local showWebcamControls = (src.kind == "webcam")
+    setVisible(ctx.widgets.sourceDeviceSelect, showWebcamControls)
+    setVisible(ctx.widgets.sourceRefreshDevices, showWebcamControls)
+    setVisible(ctx.widgets.sourceOpenWebcam, showWebcamControls)
+    setVisible(ctx.widgets.sourceCloseWebcam, showWebcamControls)
+
+    local srcRowY = showWebcamControls and 69 or 47
+    if showWebcamControls then
+      local deviceW = math.max(110, w - pad * 2 - 40 - 44 - 48 - gap * 3)
+      setBounds(ctx.widgets.sourceDeviceSelect, pad, 47, deviceW, 18)
+      setBounds(ctx.widgets.sourceRefreshDevices, pad + deviceW + gap, 47, 40, 18)
+      setBounds(ctx.widgets.sourceOpenWebcam, pad + deviceW + gap + 44, 47, 44, 18)
+      setBounds(ctx.widgets.sourceCloseWebcam, pad + deviceW + gap + 44 + 48, 47, 48, 18)
+    else
+      setBounds(ctx.widgets.sourceDeviceSelect, 0, 0, 0, 0)
+      setBounds(ctx.widgets.sourceRefreshDevices, 0, 0, 0, 0)
+      setBounds(ctx.widgets.sourceOpenWebcam, 0, 0, 0, 0)
+      setBounds(ctx.widgets.sourceCloseWebcam, 0, 0, 0, 0)
+    end
+
+    if isParamSource then
+      local srcCols = 2
+      local srcColW = math.max(80, math.floor((w - pad * 2 - gap * (srcCols - 1)) / srcCols))
+      for pi = 1, 4 do
+        local col = (pi - 1) % srcCols
+        local row = math.floor((pi - 1) / srcCols)
+        setBounds(ctx.widgets["sourceParam" .. pi], pad + col * (srcColW + gap), srcRowY + row * 22, math.max(1, srcColW - gap), 17)
+      end
+    else
+      for pi = 1, 4 do setBounds(ctx.widgets["sourceParam" .. pi], 0, 0, 0, 0) end
+    end
+
+    setBounds(ctx.widgets.frameInfo, pad, math.max(srcRowY + 44, h - 18), math.max(1, w - pad * 2), 14)
+    syncShaderSourceParams(ctx)
+    return
+  end
+
+  -- Column 1 (or no col 2+ source selected)
+  setVisible(ctx.widgets.sourceSelect, false)
+  setVisible(ctx.widgets.aspectSelect, true)
+  setBounds(ctx.widgets.aspectSelect, pad, topY, math.max(96, math.floor((w - pad * 2) * 0.42)), 18)
+
+  local srcSpec = currentCol1SourceSpec(ctx)
+  local isParamSource = srcSpec and (srcSpec.kind == "generator" or srcSpec.kind == "ml")
   local deviceY = 47
-  setVisible(ctx.widgets.sourceDeviceSelect, not isGen)
-  setVisible(ctx.widgets.sourceRefreshDevices, not isGen)
-  setVisible(ctx.widgets.sourceOpenWebcam, not isGen)
-  setVisible(ctx.widgets.sourceCloseWebcam, not isGen)
-  if not isGen then
+  if isParamSource then
+    setVisible(ctx.widgets.sourceDeviceSelect, false)
+    setVisible(ctx.widgets.sourceRefreshDevices, false)
+    setVisible(ctx.widgets.sourceOpenWebcam, false)
+    setVisible(ctx.widgets.sourceCloseWebcam, false)
+    setBounds(ctx.widgets.sourceDeviceSelect, 0, 0, 0, 0)
+    setBounds(ctx.widgets.sourceRefreshDevices, 0, 0, 0, 0)
+    setBounds(ctx.widgets.sourceOpenWebcam, 0, 0, 0, 0)
+    setBounds(ctx.widgets.sourceCloseWebcam, 0, 0, 0, 0)
+  else
+    setVisible(ctx.widgets.sourceDeviceSelect, true)
+    setVisible(ctx.widgets.sourceRefreshDevices, true)
+    setVisible(ctx.widgets.sourceOpenWebcam, true)
+    setVisible(ctx.widgets.sourceCloseWebcam, true)
     local deviceW = math.max(110, w - pad * 2 - 40 - 44 - 48 - gap * 3)
     setBounds(ctx.widgets.sourceDeviceSelect, pad, deviceY, deviceW, 18)
     setBounds(ctx.widgets.sourceRefreshDevices, pad + deviceW + gap, deviceY, 40, 18)
     setBounds(ctx.widgets.sourceOpenWebcam, pad + deviceW + gap + 44, deviceY, 44, 18)
     setBounds(ctx.widgets.sourceCloseWebcam, pad + deviceW + gap + 44 + 48, deviceY, 48, 18)
-  else
-    setBounds(ctx.widgets.sourceDeviceSelect, 0, 0, 0, 0)
-    setBounds(ctx.widgets.sourceRefreshDevices, 0, 0, 0, 0)
-    setBounds(ctx.widgets.sourceOpenWebcam, 0, 0, 0, 0)
-    setBounds(ctx.widgets.sourceCloseWebcam, 0, 0, 0, 0)
   end
 
-  local srcRowY = isGen and 47 or 69
+  local srcRowY = isParamSource and 47 or 69
   local srcCols = 2
   local srcColW = math.max(80, math.floor((w - pad * 2 - gap * (srcCols - 1)) / srcCols))
   for pi = 1, 4 do
@@ -1490,47 +1894,77 @@ local function selectGridCell(ctx, col, row)
   if not clip or clip.empty then return end
 
   ctx.selection = { col = col, row = row }
+  local cd = ctx._colData and ctx._colData[col]
 
-  -- Phase 3 only has a real chain in column 1. Keep the bridge narrow and
-  -- drive the existing shader/source editor off that selected slot.
-  if col ~= 1 then return end
-
-  if row <= 1 then
-    local nextSource = math.max(1, math.min(#(ctx.sources or {}), clip.sourceIndex or ctx.shader.sourceIndex or 1))
-    if nextSource ~= ctx.shader.sourceIndex then
-      ctx.shader.sourceIndex = nextSource
-      writeParam(NS .. "/shader/source", nextSource)
-      setSelectedSilently(ctx.widgets.sourceSelect, nextSource)
-      syncShaderSourceParams(ctx)
-      updateOutputAspect(ctx)
-      updateShader(ctx)
-    else
-      syncShaderSourceParams(ctx)
+  if col == 1 then
+    -- Column 1: drive ctx.shader as before
+    if row <= 1 then
+      local nextSource = math.max(1, math.min(#(ctx.sources or {}), clip.sourceIndex or ctx.shader.sourceIndex or 1))
+      if nextSource ~= ctx.shader.sourceIndex then
+        ctx.shader.sourceIndex = nextSource
+        writeParam(NS .. "/shader/source", nextSource)
+        setSelectedSilently(ctx.widgets.sourceSelect, nextSource)
+        syncShaderSourceParams(ctx)
+        updateOutputAspect(ctx)
+        updateShader(ctx)
+      else
+        syncShaderSourceParams(ctx)
+      end
+      syncShaderEditor(ctx)
+      return
     end
+    local nextLayer = math.max(1, math.min(8, clip.layerIndex or (row - 1)))
+    if nextLayer ~= ctx.shader.activeLayer then
+      ctx.shader.activeLayer = nextLayer
+      writeParam(NS .. "/shader/active_layer", nextLayer)
+    end
+    setSelectedSilently(ctx.widgets.shaderLayer, ctx.shader.activeLayer)
     syncShaderEditor(ctx)
     return
   end
 
-  local nextLayer = math.max(1, math.min(8, clip.layerIndex or (row - 1)))
-  if nextLayer ~= ctx.shader.activeLayer then
-    ctx.shader.activeLayer = nextLayer
-    writeParam(NS .. "/shader/active_layer", nextLayer)
+  -- Columns 2+: sync the colData into the inspector UI
+  if row <= 1 then
+    -- Source cell: update source inspector to match this column's source
+    syncShaderSourceParams(ctx)
+    syncShaderEditor(ctx)
+  else
+    -- FX cell: sync effect editor to this column's FX slot
+    local fxSlot = row - 1
+    local f = cd and cd.fx[fxSlot]
+    if f then
+      setSelectedSilently(ctx.widgets.shaderLayer, fxSlot)
+      setSelectedSilently(ctx.widgets.effectSelect, f.effectIndex)
+      syncShaderEditor(ctx)
+    end
   end
-  setSelectedSilently(ctx.widgets.shaderLayer, ctx.shader.activeLayer)
-  syncShaderEditor(ctx)
 end
 
 local ASPECT_OPTIONS = { "Native", "16:9", "4:3", "1:1" }
 
 local function applySourceSelection(ctx, idx)
   idx = math.max(1, math.min(#(ctx.sources or {}), round(idx)))
-  ctx.shader.sourceIndex = idx
-  ctx.selection = { col = 1, row = 1 }
-  writeParam(NS .. "/shader/source", idx)
+  local choice = ctx.sources[idx]
+  if not choice then return end
+  local sel = ctx.selection or { col = 1, row = 1 }
+  local col = sel.col or 1
+  local spec
+  if choice.kind == "webcam" then
+    spec = { kind = "webcam", sourceIndex = idx }
+  elseif choice.kind == "generator" then
+    local params = {}
+    for _, pspec in ipairs(choice.params or {}) do
+      local pmin = tonumber(pspec.min) or 0
+      local pmax = tonumber(pspec.max) or 1
+      local defaultNorm = ((tonumber(pspec.default) or pmin) - pmin) / math.max(0.001, pmax - pmin)
+      params[pspec.id] = clamp(defaultNorm, 0, 1)
+    end
+    spec = { kind = "generator", sourceIndex = idx, sourceId = choice.id, params = params }
+  else
+    return
+  end
+  setSourceSpecForColumn(ctx, col, spec)
   setSelectedSilently(ctx.widgets.sourceSelect, idx)
-  syncShaderSourceParams(ctx)
-  updateOutputAspect(ctx)
-  updateShader(ctx)
 end
 
 local function applyAspectModeSelection(ctx, idx)
@@ -1548,108 +1982,263 @@ end
 
 local function applyShaderEnabledSelection(ctx, enabled)
   local v = enabled == true
-  ctx.shader.layers[ctx.shader.activeLayer].enabled = v
-  writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/enabled", v and 1 or 0)
+  local sel = ctx.selection
+  local cd = sel and ctx._colData and ctx._colData[sel.col]
+
+  if sel and sel.col == 1 then
+    ctx.shader.layers[ctx.shader.activeLayer].enabled = v
+    writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/enabled", v and 1 or 0)
+    updateShader(ctx)
+  elseif cd then
+    local fxSlot = sel.row - 1
+    if cd.fx[fxSlot] then
+      cd.fx[fxSlot].enabled = v
+      updateGridThumbnails(ctx)
+    end
+  end
   if ctx.widgets.shaderEnabled and ctx.widgets.shaderEnabled.setValue then setValueSilently(ctx.widgets.shaderEnabled, v) end
-  updateShader(ctx)
 end
 
 local function applyEffectSelection(ctx, idx)
-  local L = ctx.shader.layers[ctx.shader.activeLayer]
+  local sel = ctx.selection
   idx = math.max(1, math.min(#(ctx.effects or {}), round(idx)))
-  L.effectIndex = idx
-  writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/effect", idx)
+  local cd = sel and ctx._colData and ctx._colData[sel.col]
+
+  if sel and sel.col == 1 then
+    local L = ctx.shader.layers[ctx.shader.activeLayer]
+    L.effectIndex = idx
+    writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/effect", idx)
+    updateShader(ctx)
+  elseif cd and sel.row > 1 then
+    local fxSlot = sel.row - 1
+    if cd.fx[fxSlot] then
+      cd.fx[fxSlot].effectIndex = idx
+      -- Reset params to defaults for the new effect
+      local eff = ctx.effects[idx]
+      if eff then
+        for p = 1, 9 do
+          local spec = eff.params and eff.params[p]
+          cd.fx[fxSlot].params[p] = spec and (tonumber(spec.default) or 0.5) or 0.5
+        end
+      end
+      updateGridThumbnails(ctx)
+    end
+  end
   setSelectedSilently(ctx.widgets.effectSelect, idx)
   syncShaderEditor(ctx)
   syncShaderSourceParams(ctx)
-  updateShader(ctx)
 end
 
 local function applyShaderParamDisplay(ctx, p, displayValue)
-  local L = ctx.shader.layers[ctx.shader.activeLayer]
-  local effect = ctx.effects[L.effectIndex] or {}
-  local spec = effect.params and effect.params[p]
-  local pmin = tonumber(spec and spec.min) or 0
-  local pmax = tonumber(spec and spec.max) or 1
-  local normalized = (displayValue - pmin) / math.max(0.001, pmax - pmin)
-  L.params[p] = clamp(normalized, 0, 1)
-  writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/param/" .. p, L.params[p])
-  updateShader(ctx)
+  local sel = ctx.selection
+  if not sel then return end
+  local cd = ctx._colData and ctx._colData[sel.col]
+  if not cd then return end
+
+  if sel.col == 1 then
+    -- Column 1: write to ctx.shader
+    local L = ctx.shader.layers[ctx.shader.activeLayer]
+    local effect = ctx.effects[L.effectIndex] or {}
+    local spec = effect.params and effect.params[p]
+    local pmin = tonumber(spec and spec.min) or 0
+    local pmax = tonumber(spec and spec.max) or 1
+    local normalized = (displayValue - pmin) / math.max(0.001, pmax - pmin)
+    L.params[p] = clamp(normalized, 0, 1)
+    writeParam(NS .. "/shader/layer/" .. ctx.shader.activeLayer .. "/param/" .. p, L.params[p])
+    updateShader(ctx)
+  else
+    -- Columns 2+: write to colData
+    local fxSlot = sel.row - 1
+    local f = cd.fx[fxSlot]
+    if not f then return end
+    local effect = ctx.effects[f.effectIndex] or {}
+    local spec = effect.params and effect.params[p]
+    local pmin = tonumber(spec and spec.min) or 0
+    local pmax = tonumber(spec and spec.max) or 1
+    local normalized = (displayValue - pmin) / math.max(0.001, pmax - pmin)
+    f.params[p] = clamp(normalized, 0, 1)
+    updateGridThumbnails(ctx)
+  end
 end
 
 local function applySourceParamDisplay(ctx, pi, displayValue)
-  local choice = ctx.sources[ctx.shader.sourceIndex]
-  local pspec = choice and choice.params and choice.params[pi] or nil
-  if not pspec then return end
-  local pmin = tonumber(pspec.min) or 0
-  local pmax = tonumber(pspec.max) or 1
-  local normalized = (displayValue - pmin) / math.max(0.001, pmax - pmin)
-  ctx.shaderSourceParams = ctx.shaderSourceParams or {}
-  ctx.shaderSourceParams[pspec.id] = clamp(normalized, 0, 1)
-  updateShader(ctx)
+  local sel = ctx.selection or { col = 1, row = 1 }
+  if sel.row ~= 1 then return end
+  local spec = sourceSpecForColumn(ctx, sel.col)
+  if not spec then return end
+
+  if spec.kind == "generator" then
+    local pspec = nil
+    for _, g in ipairs(ctx.sources or {}) do
+      if g.kind == "generator" and g.id == spec.sourceId then
+        pspec = g.params and g.params[pi]
+        break
+      end
+    end
+    if not pspec then return end
+    local pmin = tonumber(pspec.min) or 0
+    local pmax = tonumber(pspec.max) or 1
+    local normalized = (displayValue - pmin) / math.max(0.001, pmax - pmin)
+    spec.params = spec.params or {}
+    spec.params[pspec.id] = clamp(normalized, 0, 1)
+  elseif spec.kind == "ml" then
+    local pspec = ML_SOURCE_PARAM_SPECS[pi]
+    if not pspec then return end
+    spec.params = spec.params or {}
+    spec.params[pspec.id] = clamp(displayValue, tonumber(pspec.min) or 0, tonumber(pspec.max) or 1)
+  else
+    return
+  end
+
+  setSourceSpecForColumn(ctx, sel.col, spec)
+  if sel.col == 1 then
+    updateShader(ctx)
+  else
+    updateGridThumbnails(ctx)
+  end
 end
 
-local function syncClipModel(ctx)
-  ctx.clips = ctx.clips or {}
-  -- Column 1: current processing chain
-  ctx.clips[1] = {}
-  local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
-  ctx.clips[1][1] = {
-    kind = "source",
-    sourceType = choice and choice.kind or "webcam",
-    sourceIndex = ctx.shader.sourceIndex,
-    name = (choice and choice.name) or "Webcam",
+-- Column data model for the clip grid. Column 1 mirrors ctx.shader for
+-- backward compat. Columns 2+ are independently managed with their own
+-- source and FX stacks.
+
+local function colInit(id)
+  return {
+    id = id,
+    source = nil,   -- { kind = "webcam" } | { kind = "generator", sourceId = "...", params = {...} } | { kind = "columntap", sourceCol = 1, tapIndex = 0 }
+    fx = {},        -- fx[slot] = { effectIndex, params = {[1..9]=normalized,...}, enabled }
   }
+end
+
+local function syncCol1FromShader(ctx)
+  ctx._colData = ctx._colData or {}
+  ctx._colData[1] = ctx._colData[1] or colInit(1)
+  local cd = ctx._colData[1]
+  cd.source = cloneTable(currentCol1SourceSpec(ctx))
   for i = 1, 8 do
     local L = ctx.shader.layers[i]
     local eff = L and ctx.effects and ctx.effects[L.effectIndex]
-    local enabled = L and L.enabled and eff ~= nil
-    ctx.clips[1][1 + i] = {
-      kind = "fx",
-      fxId = eff and eff.id or nil,
-      fxName = eff and (eff.name or eff.id) or ("Slot " .. i),
-      layerIndex = i,
-      enabled = enabled,
-      params = L and L.params or nil,
+    cd.fx[i] = {
+      effectIndex = L.effectIndex,
+      params = { table.unpack(L.params or {}) },
+      enabled = L.enabled and eff ~= nil,
     }
   end
-  -- Columns 2..GRID_COLS: empty placeholders
-  for col = 2, GRID_COLS do
-    ctx.clips[col] = {}
-    ctx.clips[col][1] = {
-      kind = "source",
-      sourceType = "empty",
-      name = "Add Source",
-      empty = true,
-    }
-  end
-
-  local sel = ctx.selection
-  local valid = sel and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row] and not ctx.clips[sel.col][sel.row].empty
-  if not valid then
-    local defaultRow = math.max(2, math.min(9, 1 + (ctx.shader and ctx.shader.activeLayer or 1)))
-    ctx.selection = { col = 1, row = defaultRow }
-  end
-
-  return GRID_COLS, 9  -- cols, rows per col
 end
 
-local function buildTapPipeline(ctx, col, tapIndex)
-  if tapIndex <= 1 then return nil end
-  local column = ctx.clips[col]
-  if not column then return nil end
+local function addColumn(ctx, sourceSpec)
+  ctx._colData = ctx._colData or {}
+  -- find the next available column id
+  local id = 2
+  while ctx._colData[id] do id = id + 1 end
+  ctx._colData[id] = colInit(id)
+  ctx._colData[id].source = sourceSpec
+
+  -- For columntap, default tap to raw (tap 0)
+  if sourceSpec.kind == "columntap" then
+    ctx._colData[id].source.tapIndex = sourceSpec.tapIndex or 0
+  end
+
+  ctx.selection = { col = id, row = 1 }
+  return id
+end
+
+local function removeColumn(ctx, col)
+  if col <= 1 then return end  -- can't remove column 1
+  ctx._colData = ctx._colData or {}
+  ctx._colData[col] = nil
+  -- adjust selection if needed
+  local sel = ctx.selection
+  if sel and sel.col == col then
+    ctx.selection = { col = 1, row = 2 }
+  end
+end
+
+local function colAddFx(ctx, col, effectIndex)
+  local cd = ctx._colData and ctx._colData[col]
+  if not cd then return end
+  local eff = ctx.effects and ctx.effects[effectIndex]
+  if not eff then return end
+  local params = {}
+  for p = 1, 9 do
+    local spec = eff.params and eff.params[p]
+    params[p] = spec and (tonumber(spec.default) or 0.5) or 0.5
+  end
+  local slot = #cd.fx + 1
+  cd.fx[slot] = { effectIndex = effectIndex, params = params, enabled = true }
+  if col == 1 then
+    -- mirror to ctx.shader
+    local L = ctx.shader.layers[slot]
+    if L then
+      L.effectIndex = effectIndex
+      L.params = { table.unpack(params) }
+      L.enabled = true
+      writeParam(NS .. "/shader/layer/" .. slot .. "/effect", effectIndex)
+      updateShader(ctx)
+    end
+  end
+  ctx.selection = { col = col, row = slot + 1 }
+end
+
+local function colRemoveFx(ctx, col, row)
+  local cd = ctx._colData and ctx._colData[col]
+  if not cd or row <= 1 or row > #cd.fx + 1 then return end
+  local fxSlot = row - 1
+  table.remove(cd.fx, fxSlot)
+  if col == 1 then
+    -- shift layers in ctx.shader down
+    for i = fxSlot, 7 do
+      local src = ctx.shader.layers[i + 1]
+      local dst = ctx.shader.layers[i]
+      dst.effectIndex = src.effectIndex
+      dst.params = { table.unpack(src.params or {}) }
+      dst.enabled = src.enabled
+      writeParam(NS .. "/shader/layer/" .. i .. "/effect", dst.effectIndex)
+      for p = 1, 9 do
+        writeParam(NS .. "/shader/layer/" .. i .. "/param/" .. p, dst.params[p] or 0.5)
+      end
+      writeParam(NS .. "/shader/layer/" .. i .. "/enabled", dst.enabled and 1 or 0)
+    end
+    -- clear last layer
+    local last = ctx.shader.layers[8]
+    last.effectIndex = 1
+    last.params = {0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5}
+    last.enabled = false
+    writeParam(NS .. "/shader/layer/8/enabled", 0)
+    updateShader(ctx)
+  end
+  local sel = ctx.selection
+  if sel and sel.col == col and sel.row == row then
+    ctx.selection = { col = col, row = 1 }
+  end
+end
+
+local function colSourceDescriptor(ctx, col)
+  local spec = sourceSpecForColumn(ctx, col)
+  if not spec then return { type = "webcam" }, nil end
+  if spec.kind == "columntap" then
+    return colSourceDescriptor(ctx, spec.sourceCol)
+  end
+  return applySourceSpecToHiddenNode(ctx, spec, "col" .. tostring(col) .. "_source")
+end
+
+local function colBuildCellPipeline(ctx, col, row)
+  local cd = ctx._colData and ctx._colData[col]
+  if not cd or not cd.source then return nil end
+  if row <= 1 then return nil end  -- source cells don't need a pipeline
+
+  local source, _ = colSourceDescriptor(ctx, col)
   local layers = {}
-  for i = 2, tapIndex do
-    local clip = column[i]
-    if clip and clip.kind == "fx" and clip.enabled then
-      local L = ctx.shader.layers[clip.layerIndex]
-      local eff = L and ctx.effects and ctx.effects[L.effectIndex]
-      if L and eff then
+  for i = 1, math.min(row - 1, #cd.fx) do
+    local f = cd.fx[i]
+    if f and f.enabled then
+      local eff = ctx.effects and ctx.effects[f.effectIndex]
+      if eff then
         local params = {}
         for p = 1, 9 do
           local spec = eff.params and eff.params[p]
           if spec then
-            local normalized = L.params[p] or spec.default or 0
+            local normalized = f.params[p] or tonumber(spec.default) or 0
             local pmin = tonumber(spec.min) or 0
             local pmax = tonumber(spec.max) or 1
             params[spec.id] = pmin + normalized * (pmax - pmin)
@@ -1660,10 +2249,86 @@ local function buildTapPipeline(ctx, col, tapIndex)
     end
   end
   if #layers == 0 then return nil end
-  local source = buildShaderSourceDescriptor(ctx)
   local ok, payload = pcall(shaders.buildPipeline, layers, "contain", source)
   if ok and payload then return payload end
   return nil
+end
+
+local function syncClipModel(ctx)
+  ctx.clips = ctx.clips or {}
+  ctx._colData = ctx._colData or {}
+  syncCol1FromShader(ctx)
+
+  -- Build ctx.clips from ctx._colData for ALL columns
+  for colId, cd in pairs(ctx._colData) do
+    ctx.clips[colId] = {}
+    local src = cd.source
+    if src then
+      ctx.clips[colId][1] = {
+        kind = "source",
+        sourceType = src.kind == "mirrored" and (ctx.sources[ctx.shader.sourceIndex] or {}).kind or src.kind or "webcam",
+        sourceIndex = src.sourceIndex,
+        name = colSourceLabel(ctx, colId),
+      }
+      for i = 1, 8 do
+        local f = cd.fx[i]
+        if f then
+          local eff = ctx.effects and ctx.effects[f.effectIndex]
+          ctx.clips[colId][1 + i] = {
+            kind = "fx",
+            fxId = eff and eff.id or nil,
+            fxName = (eff and (eff.name or eff.id)) or ("Slot " .. i),
+            effectIndex = f.effectIndex,
+            enabled = f.enabled and eff ~= nil,
+            params = f.params,
+          }
+        else
+          ctx.clips[colId][1 + i] = {
+            kind = "fx",
+            fxName = "+ Add FX",
+            emptyFx = true,
+            enabled = false,
+          }
+        end
+      end
+    else
+      ctx.clips[colId][1] = {
+        kind = "source",
+        sourceType = "empty",
+        name = "Add Source",
+        empty = true,
+      }
+    end
+  end
+
+  local sel = ctx.selection
+  local valid = sel and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row] and not ctx.clips[sel.col][sel.row].empty
+  if not valid then
+    local defaultRow = math.max(2, math.min(9, 1 + (ctx.shader and ctx.shader.activeLayer or 1)))
+    ctx.selection = { col = 1, row = defaultRow }
+  end
+
+  -- Fill remaining columns up to maxCols with empty placeholders
+  local colCount = 0
+  for _ in pairs(ctx._colData or {}) do colCount = colCount + 1 end
+  local maxCols = math.max(GRID_COLS, colCount + 2)
+  for col = colCount + 1, maxCols do
+    if not ctx.clips[col] then
+      ctx.clips[col] = {}
+      ctx.clips[col][1] = {
+        kind = "source",
+        sourceType = "empty",
+        name = "Add Source",
+        empty = true,
+      }
+    end
+  end
+  return maxCols, 9
+end
+
+local function buildTapPipeline(ctx, col, tapIndex)
+  if tapIndex <= 1 then return nil end
+  return colBuildCellPipeline(ctx, col, tapIndex)
 end
 
 local CELL_SRC_TINT = 0xff0d2028
@@ -1709,7 +2374,7 @@ end
 
 updateGridThumbnails = function(ctx)
   local cells = ctx._gridCells or {}
-  local numCols, numRows = GRID_COLS, 9
+  local numCols, numRows = syncClipModel(ctx)
   ctx._gridThumbSigs = ctx._gridThumbSigs or {}
   for col = 1, numCols do
     for row = 1, numRows do
@@ -1719,47 +2384,71 @@ updateGridThumbnails = function(ctx)
       local clip = ctx.clips[col] and ctx.clips[col][row]
       local thumb = cell.thumb
       if clip and not clip.empty then
-        -- Build signature for this cell
         local sig = tostring(col) .. "_" .. tostring(row)
+        local cd = ctx._colData and ctx._colData[col]
+        local src = cd and cd.source
+
         if row == 1 and clip.kind == "source" then
-          sig = sig .. "|source|" .. tostring(ctx.shader.sourceIndex)
-          local choice = ctx.sources and ctx.sources[ctx.shader.sourceIndex]
-          if choice and choice.kind == "generator" then
-            local sourceParams = {}
-            local specParams = choice.params or {}
-            local srcParams = ctx.shaderSourceParams or {}
-            for pi = 1, #specParams do
-              local pspec = specParams[pi]
-              local normalized = srcParams[pspec.id] or tonumber(pspec.default) or 0
-              local pmin = tonumber(pspec.min) or 0
-              local pmax = tonumber(pspec.max) or 1
-              sourceParams[pspec.id] = pmin + normalized * (pmax - pmin)
-              sig = sig .. "|" .. tostring(pspec.id) .. "=" .. tostring(math.floor(sourceParams[pspec.id] * 1000 + 0.5))
-            end
-            if ctx._gridThumbSigs[key] ~= sig then
-              ctx._gridThumbSigs[key] = sig
-              local ok, payload = pcall(shaders.buildPipeline, {}, "contain", { type = "generator", sourceId = choice.id, params = sourceParams })
-              if ok and payload then
-                thumb:setCustomSurface("gpu_shader", payload)
+          local srcSpec = sourceSpecForColumn(ctx, col)
+          if srcSpec then
+            sig = sig .. "|sourceKind|" .. tostring(srcSpec.kind or "webcam")
+            if srcSpec.kind == "generator" then
+              sig = sig .. "|" .. tostring(srcSpec.sourceId or "")
+              for k, v in pairs(srcSpec.params or {}) do
+                sig = sig .. "|" .. tostring(k) .. "=" .. tostring(math.floor((tonumber(v) or 0) * 10000 + 0.5))
               end
-            end
-          elseif ctx._gridThumbSigs[key] ~= sig then
-            ctx._gridThumbSigs[key] = sig
-            thumb:setCustomSurface("video_input", { version = 2, fitMode = "contain", source = "live" })
-          end
-        elseif clip.kind == "fx" and clip.enabled then
-          sig = sig .. "|fx|" .. tostring(clip.fxId or "") .. "|" .. tostring(clip.layerIndex)
-          local L = ctx.shader.layers[clip.layerIndex]
-          if L then
-            for p = 1, 9 do
-              sig = sig .. "|" .. tostring(math.floor((L.params[p] or 0) * 10000 + 0.5))
+            elseif srcSpec.kind == "ml" then
+              sig = sig .. "|" .. tostring(srcSpec.mlType or "segmented")
+              for k, v in pairs(srcSpec.params or {}) do
+                sig = sig .. "|" .. tostring(k) .. "=" .. tostring(math.floor((tonumber(v) or 0) * 10000 + 0.5))
+              end
+            elseif srcSpec.kind == "columntap" then
+              sig = sig .. "|col=" .. tostring(srcSpec.sourceCol or 0) .. "|tap=" .. tostring(srcSpec.tapIndex or 0)
             end
           end
           if ctx._gridThumbSigs[key] ~= sig then
             ctx._gridThumbSigs[key] = sig
-            local payload = buildTapPipeline(ctx, col, row)
-            if payload then
+            local descriptor = colSourceDescriptor(ctx, col)
+            local ok, payload = pcall(shaders.buildPipeline, {}, "contain", descriptor)
+            if ok and payload then
               thumb:setCustomSurface("gpu_shader", payload)
+            end
+          end
+        elseif clip.kind == "fx" and clip.enabled then
+          sig = sig .. "|fx|" .. tostring(clip.fxId or "")
+          local cd = ctx._colData and ctx._colData[col]
+          if col == 1 then
+            -- Column 1: use ctx.shader
+            sig = sig .. "|" .. tostring(clip.effectIndex or 0)
+            local fxSlot = row - 1
+            local L = fxSlot >= 1 and fxSlot <= 8 and ctx.shader.layers[fxSlot]
+            if L then
+              for p = 1, 9 do
+                sig = sig .. "|" .. tostring(math.floor((L.params[p] or 0) * 10000 + 0.5))
+              end
+            end
+            if ctx._gridThumbSigs[key] ~= sig then
+              ctx._gridThumbSigs[key] = sig
+              local payload = buildTapPipeline(ctx, col, row)
+              if payload then
+                thumb:setCustomSurface("gpu_shader", payload)
+              end
+            end
+          else
+            -- Columns 2+: use colData
+            local fxSlot = row - 1
+            local f = cd and cd.fx[fxSlot]
+            if f then
+              for p = 1, 9 do
+                sig = sig .. "|" .. tostring(math.floor((f.params[p] or 0) * 10000 + 0.5))
+              end
+            end
+            if ctx._gridThumbSigs[key] ~= sig then
+              ctx._gridThumbSigs[key] = sig
+              local payload = colBuildCellPipeline(ctx, col, row)
+              if payload then
+                thumb:setCustomSurface("gpu_shader", payload)
+              end
             end
           end
         end
@@ -2155,16 +2844,118 @@ local function renderEmbeddedPanel(ctx, widgetId, layoutFn, forcedHeight, fitToV
 end
 
 local function renderSourceInspectorWindow(ctx)
-  local sourceSelected = ctx.selection and ctx.selection.row == 1 and ctx.selection.col == 1
-  imguiTextColored(sourceSelected and 0xff22d3ee or 0xff94a3b8, sourceSelected and "Source (grid-selected)" or "Source")
+  local sel = ctx.selection
+  local sourceSelected = sel and sel.row == 1
+  local label
+  if sel and sel.col and sel.col > 1 and sel.row == 1 then
+    local cd = ctx._colData and ctx._colData[sel.col]
+    if cd and cd.source then
+      label = "Col " .. tostring(sel.col) .. ": " .. colSourceLabel(ctx, sel.col) .. " (grid)"
+    else
+      label = "Col " .. tostring(sel.col) .. ": (grid)"
+    end
+  elseif sourceSelected and sel and sel.col == 1 then
+    label = "Source (grid-selected)"
+  else
+    label = "Source"
+  end
+  imguiTextColored(sourceSelected and 0xff22d3ee or 0xff94a3b8, label)
+
+  -- Source picker button + nested popup (replaces flat dropdown)
+  if imguiButton("Source: " .. (sourceSelected and colSourceLabel(ctx, sel and sel.col or 1) or "---")) then
+    imguiOpenPopup("##srcInspectorPicker")
+  end
+  imguiSameLine()
+  if sourceSelected and sel then
+    -- Show what's currently selected (column + type)
+    imguiText("Col " .. tostring(sel.col))
+  end
+
+  if imguiBeginPopup("##srcInspectorPicker") then
+    local targetCol = (sourceSelected and sel and sel.col) or 1
+    if imguiMenuItem("Webcam") then
+      setSourceSpecForColumn(ctx, targetCol, { kind = "webcam", sourceIndex = 1 })
+      imguiCloseCurrentPopup()
+    end
+
+    if imguiBeginMenu("Generators") then
+      for i, g in ipairs(ctx.sources or {}) do
+        if g.kind == "generator" then
+          if imguiMenuItem(g.name or g.id) then
+            local params = {}
+            for _, pspec in ipairs(g.params or {}) do
+              local pmin = tonumber(pspec.min) or 0
+              local pmax = tonumber(pspec.max) or 1
+              local defaultNorm = ((tonumber(pspec.default) or pmin) - pmin) / math.max(0.001, pmax - pmin)
+              params[pspec.id] = clamp(defaultNorm, 0, 1)
+            end
+            setSourceSpecForColumn(ctx, targetCol, { kind = "generator", sourceIndex = i, sourceId = g.id, params = params })
+            imguiCloseCurrentPopup()
+          end
+        end
+      end
+      imguiEndMenu()
+    end
+
+    if imguiBeginMenu("ML") then
+      if imguiMenuItem("Segmented") then
+        setSourceSpecForColumn(ctx, targetCol, defaultMLSourceSpec("segmented"))
+        imguiCloseCurrentPopup()
+      end
+      if imguiMenuItem("Pose") then
+        setSourceSpecForColumn(ctx, targetCol, defaultMLSourceSpec("pose"))
+        imguiCloseCurrentPopup()
+      end
+      imguiEndMenu()
+    end
+
+    if imguiBeginMenu("From Column") then
+      for colId, cd in pairs(ctx._colData or {}) do
+        if cd and cd.source then
+          -- Skip if it's the same column we're editing
+          if not (sel and sel.col == colId) then
+            local clabel = "Col " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
+            if imguiMenuItem(clabel .. " / Raw (T0)") then
+              setSourceSpecForColumn(ctx, targetCol, { kind = "columntap", sourceCol = colId, tapIndex = 0 })
+              imguiCloseCurrentPopup()
+            end
+            for ti = 1, math.min(#cd.fx, 8) do
+              if cd.fx[ti] and cd.fx[ti].enabled then
+                local fxName = colFxLabel(ctx, colId, ti)
+                if imguiMenuItem(clabel .. " / " .. fxName .. " (T" .. ti .. ")") then
+                  setSourceSpecForColumn(ctx, targetCol, { kind = "columntap", sourceCol = colId, tapIndex = ti })
+                  imguiCloseCurrentPopup()
+                end
+              end
+            end
+          end
+        end
+      end
+      imguiEndMenu()
+    end
+
+    imguiEndPopup()
+  end
+
   imguiSeparator()
   local avail = imguiGetContentRegionAvail()
   renderEmbeddedPanel(ctx, "sourceEmbed", layoutSourceEmbed, math.max(120, math.floor(tonumber(avail.y) or 120) - 18))
 end
 
 local function renderEffectInspectorWindow(ctx)
-  local effectSelected = ctx.selection and ctx.selection.row and ctx.selection.row > 1 and ctx.selection.col == 1
-  imguiTextColored(effectSelected and 0xff22d3ee or 0xff94a3b8, effectSelected and "Effect (grid-selected)" or "Effect")
+  local sel = ctx.selection
+  local effectSelected = sel and sel.row and sel.row > 1
+  local label
+  if sel and sel.col and sel.col > 1 and sel.row > 1 then
+    local cd = ctx._colData and ctx._colData[sel.col]
+    local fxName = cd and cd.fx[sel.row - 1] and colFxLabel(ctx, sel.col, sel.row - 1) or ""
+    label = "Col " .. tostring(sel.col) .. " FX" .. tostring(sel.row - 1) .. ": " .. fxName .. " (grid)"
+  elseif effectSelected and sel and sel.col == 1 then
+    label = "Effect (grid-selected)"
+  else
+    label = "Effect"
+  end
+  imguiTextColored(effectSelected and 0xff22d3ee or 0xff94a3b8, label)
   imguiSeparator()
   local avail = imguiGetContentRegionAvail()
   renderEmbeddedPanel(ctx, "effectEmbed", layoutEffectEmbed, math.max(180, math.floor(tonumber(avail.y) or 180) - 18))
@@ -2257,9 +3048,10 @@ local function renderParametersPanel(ctx)
 end
 
 local function renderGridToolbar(ctx, parentW)
-  local toolbarH = 22
+  local toolbarH = 24
   imguiBeginChild("##gridToolbar", parentW, toolbarH, false, 0)
 
+  -- Alignment switcher
   local alignments = {
     { "^BU", "bottom-up", "Bottom-Up" },
     { ">LR", "left-to-right", "Left-to-Right" },
@@ -2275,11 +3067,134 @@ local function renderGridToolbar(ctx, parentW)
     imguiSameLine()
   end
 
-  local colCount = 0
-  if ctx.clips then
-    for k, _ in pairs(ctx.clips) do colCount = colCount + 1 end
+  -- Add Column button + popup
+  if imguiButton("+Col") then
+    imguiOpenPopup("##srcPicker")
   end
-  imguiText("  Cols: " .. tostring(colCount))
+  imguiSameLine()
+
+  if imguiBeginPopup("##srcPicker") then
+    if imguiMenuItem("Webcam") then
+      addColumn(ctx, { kind = "webcam" })
+      imguiCloseCurrentPopup()
+    end
+
+    if imguiBeginMenu("Generators") then
+      for _, g in ipairs(ctx.sources or {}) do
+        if g.kind == "generator" then
+          if imguiMenuItem(g.name or g.id) then
+            -- Initialize generator params from defaults
+            local params = {}
+            for _, pspec in ipairs(g.params or {}) do
+              local defaultNorm = (tonumber(pspec.default) or 0 - tonumber(pspec.min or 0)) / math.max(0.001, tonumber(pspec.max or 1) - tonumber(pspec.min or 0))
+              params[pspec.id] = clamp(defaultNorm, 0, 1)
+            end
+            addColumn(ctx, { kind = "generator", sourceId = g.id, params = params })
+            imguiCloseCurrentPopup()
+          end
+        end
+      end
+      imguiEndMenu()
+    end
+
+    -- ML sources
+    if imguiBeginMenu("ML") then
+      if imguiMenuItem("Segmented") then
+        addColumn(ctx, { kind = "ml", mlType = "segmented" })
+        imguiCloseCurrentPopup()
+      end
+      if imguiMenuItem("Pose") then
+        addColumn(ctx, { kind = "ml", mlType = "pose" })
+        imguiCloseCurrentPopup()
+      end
+      imguiEndMenu()
+    end
+
+    -- Column tap sources: reuse another column's output
+    local hasTappable = false
+    for colId, cd in pairs(ctx._colData or {}) do
+      if cd and cd.source then
+        hasTappable = true
+        break
+      end
+    end
+    if hasTappable and imguiBeginMenu("From Column") then
+      for colId, cd in pairs(ctx._colData or {}) do
+        if cd and cd.source then
+          local label = "Col " .. tostring(colId) .. " (" .. colSourceLabel(ctx, colId) .. ")"
+          -- Tap 0 (raw)
+          if imguiMenuItem(label .. " / Raw (T0)") then
+            addColumn(ctx, { kind = "columntap", sourceCol = colId, tapIndex = 0 })
+            imguiCloseCurrentPopup()
+          end
+          -- Taps 1..N
+          for ti = 1, math.min(#cd.fx, 8) do
+            if cd.fx[ti] and cd.fx[ti].enabled then
+              local fxName = colFxLabel(ctx, colId, ti)
+              if imguiMenuItem(label .. " / " .. fxName .. " (T" .. ti .. ")") then
+                addColumn(ctx, { kind = "columntap", sourceCol = colId, tapIndex = ti })
+                imguiCloseCurrentPopup()
+              end
+            end
+          end
+        end
+      end
+      imguiEndMenu()
+    end
+
+    imguiEndPopup()
+  end
+
+  -- Delete selected column
+  local sel = ctx.selection
+  if sel and sel.col and sel.col > 1 then
+    if imguiButton("Del") then
+      removeColumn(ctx, sel.col)
+    end
+    imguiSameLine()
+  end
+
+  -- Add FX button + popup (when a source cell or FX cell is selected)
+  if sel and sel.col then
+    local cd = ctx._colData and ctx._colData[sel.col]
+    local clip = ctx.clips and ctx.clips[sel.col] and ctx.clips[sel.col][sel.row]
+    if cd and cd.source and clip then
+      local isAddCell = clip.emptyFx == true
+      local isFxCell = clip.kind == "fx"
+      if isAddCell or isFxCell then
+        if imguiButton("+FX") then
+          imguiOpenPopup("##fxPicker")
+        end
+        imguiSameLine()
+
+        if imguiBeginPopup("##fxPicker") then
+          for i, eff in ipairs(ctx.effects or {}) do
+            if imguiMenuItem(eff.name or eff.id or ("Effect " .. i)) then
+              colAddFx(ctx, sel.col, i)
+              imguiCloseCurrentPopup()
+            end
+          end
+          imguiEndPopup()
+        end
+
+        if isFxCell and sel.row > 1 then
+          if imguiButton("RmFX") then
+            colRemoveFx(ctx, sel.col, sel.row)
+          end
+          imguiSameLine()
+        end
+      end
+    end
+  end
+
+  imguiText("")
+  imguiSameLine()  -- push column count to far right
+
+  local colCount = 0
+  if ctx._colData then
+    for k, _ in pairs(ctx._colData) do colCount = colCount + 1 end
+  end
+  imguiText("  " .. tostring(colCount) .. " cols")
   imguiEndChild()
   return toolbarH
 end
@@ -2388,6 +3303,7 @@ function M.init(ctx)
   ctx.outputW = 1920
   ctx.outputH = 1080
   ctx.aspectMode = "16:9"
+  ctx._colData = {}  -- column data model, populated by syncCol1FromShader on first grid render
 
   for _, w in pairs(ctx.allWidgets or {}) do
     if type(w) == "table" then
