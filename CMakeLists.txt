@@ -1129,6 +1129,10 @@ add_executable(LuaEngineContractHarness manifold/headless/LuaEngineContractHarne
 
 add_executable(ShaderRegistryContractHarness manifold/headless/ShaderRegistryContractHarness.cpp)
 
+add_executable(OSCEndpointRegistryContractHarness manifold/headless/OSCEndpointRegistryContractHarness.cpp)
+
+add_executable(OSCSettingsPersistenceContractHarness manifold/headless/OSCSettingsPersistenceContractHarness.cpp)
+
 add_executable(dsp_crash_test tests/crash_test.cpp)
 manifold_target_include_project_and_ableton(dsp_crash_test)
 target_link_libraries(dsp_crash_test
@@ -1329,6 +1333,26 @@ target_link_libraries(ShaderRegistryContractHarness
         juce::juce_gui_extra
         highway)
 
+manifold_target_include_project_and_ableton(OSCEndpointRegistryContractHarness)
+target_link_libraries(OSCEndpointRegistryContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        highway)
+
+manifold_target_include_project_and_ableton(OSCSettingsPersistenceContractHarness)
+target_link_libraries(OSCSettingsPersistenceContractHarness
+    PRIVATE
+        Manifold
+        juce::juce_audio_processors
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+        juce::juce_gui_extra
+        highway)
+
 target_include_directories(VideoSamplerHarness
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1469,6 +1493,24 @@ set_tests_properties(manifold_headless_oscquery_contract PROPERTIES
     LABELS "manifold;headless;oscquery;contract")
 
 add_test(
+    NAME manifold_command_parser
+    COMMAND $<TARGET_FILE:CanonicalCommandHarness>)
+set_tests_properties(manifold_command_parser PROPERTIES
+    LABELS "manifold;control;parser;contract")
+
+add_test(
+    NAME manifold_command_queue
+    COMMAND $<TARGET_FILE:ControlCommandQueueHarness>)
+set_tests_properties(manifold_command_queue PROPERTIES
+    LABELS "manifold;control;queue;contract")
+
+add_test(
+    NAME manifold_endpoint_resolver
+    COMMAND $<TARGET_FILE:EndpointResolverHarness>)
+set_tests_properties(manifold_endpoint_resolver PROPERTIES
+    LABELS "manifold;control;resolver;contract")
+
+add_test(
     NAME manifold_headless_ipc_core
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e_ipc_test.py
             --headless build-dev/ManifoldHeadless)
@@ -1587,6 +1629,20 @@ add_test(
             --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/shader_registry_contract_golden.json)
 set_tests_properties(manifold_shader_registry_contract PROPERTIES
     LABELS "manifold;shader;registry;contract")
+
+add_test(
+    NAME manifold_osc_endpoint_registry_contract
+    COMMAND $<TARGET_FILE:OSCEndpointRegistryContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/osc_endpoint_registry_contract_golden.json)
+set_tests_properties(manifold_osc_endpoint_registry_contract PROPERTIES
+    LABELS "manifold;control;osc;registry;contract")
+
+add_test(
+    NAME manifold_osc_settings_persistence_contract
+    COMMAND $<TARGET_FILE:OSCSettingsPersistenceContractHarness>
+            --verify-contract ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/osc_settings_persistence_contract_golden.json)
+set_tests_properties(manifold_osc_settings_persistence_contract PROPERTIES
+    LABELS "manifold;control;osc;settings;contract")
 
 # --- Test Plugin: Tempus ---
 # Minimal plugin demonstrating:
