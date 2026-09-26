@@ -1,9 +1,9 @@
-// Old C++ graph-runtime reconstruction of the Lua FX slot's Delay/Reverb switch.
+// Old C++ graph-runtime reconstruction of the Lua FX slot's Delay/SVF switch.
 // The old checkout is included and linked read-only; no Lua is loaded here.
 #include "dsp/core/nodes/ChorusNode.h"
 #include "dsp/core/nodes/GainNode.h"
 #include "dsp/core/nodes/MixerNode.h"
-#include "dsp/core/nodes/ReverbNode.h"
+#include "dsp/core/nodes/SVFNode.h"
 #include "dsp/core/nodes/PassthroughNode.h"
 #include "dsp/core/nodes/StereoDelayNode.h"
 #include "manifold/primitives/scripting/GraphRuntime.h"
@@ -38,7 +38,7 @@ using dsp_primitives::GainNode;
 using dsp_primitives::GraphRuntime;
 using dsp_primitives::IPrimitiveNode;
 using dsp_primitives::MixerNode;
-using dsp_primitives::ReverbNode;
+using dsp_primitives::SVFNode;
 using dsp_primitives::PassthroughNode;
 using dsp_primitives::PrimitiveGraph;
 using dsp_primitives::StereoDelayNode;
@@ -116,34 +116,36 @@ int main(int argc, char** argv) {
         runtime = compile(graph, runtime.get());
         std::printf("select_delay_first_visit_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
 
-        std::shared_ptr<GainNode> reverbGate;
+        std::shared_ptr<GainNode> svfGate;
         std::ofstream capture(argv[1], std::ios::binary);
         if (!capture) return 2;
         for (int offset = 0; offset < 32768; offset += 128) {
             if (offset == 8192) {
-                auto reverb = registerNode(graph, std::make_shared<ReverbNode>());
-                reverbGate = registerNode(graph, std::make_shared<GainNode>(2));
-                reverbGate->overrideHighwayImplementationTarget(-1);
-                reverb->setRoomSize(0.55f); reverb->setDamping(0.4f);
-                reverb->setWetLevel(1.0f); reverb->setDryLevel(0.0f); reverb->setWidth(1.0f);
-                reverbGate->setGain(1);
-                connect(graph, input, reverb);
-                connect(graph, reverb, reverbGate);
-                connect(graph, reverbGate, wetMixer, 14);
+                auto svf = registerNode(graph, std::make_shared<SVFNode>());
+                svfGate = registerNode(graph, std::make_shared<GainNode>(2));
+                svfGate->overrideHighwayImplementationTarget(-1);
+                svf->setMode(SVFNode::Mode::Lowpass);
+                svf->setCutoff(60.0f * std::pow(10000.0f / 60.0f, 0.5f));
+                svf->setResonance(0.08f + 0.92f * 0.4f);
+                svf->setDrive(0.6f); svf->setMix(1.0f);
+                svfGate->setGain(1);
+                connect(graph, input, svf);
+                connect(graph, svf, svfGate);
+                connect(graph, svfGate, wetMixer, 12);
                 chorusGate->setGain(0); delayGate->setGain(0); trim->setGain(1.0f);
                 runtime = compile(graph, runtime.get());
-                std::printf("select_reverb_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
+                std::printf("select_svf_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
             }
             if (offset == 16384) {
-                reverbGate->setGain(0);
+                svfGate->setGain(0);
                 delayGate->setGain(1); trim->setGain(1.1f);
                 runtime = compile(graph, runtime.get());
                 std::printf("reselect_delay_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
             }
-            if (offset == 24576) {
-                reverbGate->setGain(1); delayGate->setGain(0); trim->setGain(1.0f);
+            if (offset == 20096) {
+                svfGate->setGain(1); delayGate->setGain(0); trim->setGain(1.0f);
                 runtime = compile(graph, runtime.get());
-                std::printf("reselect_reverb_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
+                std::printf("reselect_svf_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
             }
             juce::AudioBuffer<float> block(2, 128);
             for (int frame = 0; frame < 128; ++frame) {

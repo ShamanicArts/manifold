@@ -1,25 +1,25 @@
 {
-  "sourceSha256": "5acd8f80528357fc01eba90250891b938556ab2bc3a49be1d5d2f350148bbb9e",
+  "sourceSha256": "feb5303e9857c95cb944511c526c1e05e40165a55032b2d087d4b9391e439c0c",
   "events": [
     "select_delay_first_visit_transfers=0",
-    "select_reverb_transfers=0",
+    "select_svf_transfers=0",
     "reselect_delay_transfers=1",
-    "reselect_reverb_transfers=1"
+    "reselect_svf_transfers=1"
   ],
-  "max": 2.998858690261841e-07,
-  "rms": 2.154256486882003e-08,
+  "max": 2.9802322387695312e-08,
+  "rms": 1.641639787586936e-09,
   "segments": {
     "delay": {
       "max": 2.2351741790771484e-08
     },
-    "reverb": {
-      "max": 2.998858690261841e-07
+    "svf": {
+      "max": 2.9802322387695312e-08
     },
     "returnedDelay": {
       "max": 1.4901161193847656e-08
     },
-    "returnedReverb": {
-      "max": 0.0
+    "returnedSVF": {
+      "max": 6.483452142507001e-21
     }
   },
   "boundaryLeft": {
@@ -39,17 +39,17 @@
       "old": -0.03007098287343979,
       "rust": -0.03007098287343979
     },
-    "24576": {
-      "old": 0.0,
-      "rust": 0.0
+    "20096": {
+      "old": 7.239953993121162e-05,
+      "rust": 7.239953993121162e-05
     },
-    "24577": {
-      "old": 0.0,
-      "rust": 0.0
+    "20097": {
+      "old": 6.889460200909525e-05,
+      "rust": 6.889460200909525e-05
     },
-    "25000": {
-      "old": 0.0,
-      "rust": 0.0
+    "20100": {
+      "old": 5.7123132137348875e-05,
+      "rust": 5.7123132137348875e-05
     }
   }
 }

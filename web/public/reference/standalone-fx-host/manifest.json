@@ -64,7 +64,7 @@
     {
       "id": "delay-reverb-delay-reverb",
       "label": "Delay → Reverb → Delay → Reverb · host graph switches",
-      "sourceSha256": "5991b186df5f041ce79e1d828b9654352a3d88d4185f22b76b877947d4e63e84",
+      "sourceSha256": "5acd8f80528357fc01eba90250891b938556ab2bc3a49be1d5d2f350148bbb9e",
       "before": [
         8,
         1,
@@ -90,6 +90,36 @@
       ],
       "focusFrame": 24576,
       "output": "delay-reverb-delay-reverb.f32"
+    },
+    {
+      "id": "delay-svf-delay-svf",
+      "label": "Delay → SVF → Delay → SVF · host graph switches",
+      "sourceSha256": "feb5303e9857c95cb944511c526c1e05e40165a55032b2d087d4b9391e439c0c",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          6
+        ],
+        [
+          16384,
+          8
+        ],
+        [
+          20096,
+          6
+        ]
+      ],
+      "focusFrame": 20096,
+      "output": "delay-svf-delay-svf.f32"
     }
   ]
 }
