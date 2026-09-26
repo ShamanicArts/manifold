@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "32039b795f2e32062ff619e8500e8ea3e2b1a186d013c9695c845a6734382604",
+  "sourceSha256": "97aa20852c3f7b73c22cc1d51c09cf51d15035230ce699f282091589df44827b",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "legacy-filter-cutoff",
+      "label": "FilterNode cutoff sweep",
+      "before": [
+        5,
+        0.8,
+        0.1,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        5,
+        0.8,
+        0.9,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "legacy-filter-cutoff.f32"
+    },
+    {
+      "id": "legacy-filter-resonance",
+      "label": "FilterNode resonance sweep",
+      "before": [
+        5,
+        1,
+        0.5,
+        0.0,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        5,
+        1,
+        0.5,
+        1.0,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "legacy-filter-resonance.f32"
+    },
+    {
+      "id": "svf-to-legacy-filter",
+      "label": "Switch SVF to FilterNode",
+      "before": [
+        6,
+        0.8,
+        0.5,
+        0.4,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        5,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "svf-to-legacy-filter.f32"
+    },
+    {
+      "id": "legacy-filter-to-widener",
+      "label": "Switch FilterNode to StereoWidener",
+      "before": [
+        5,
+        0.7,
+        0.5,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        4,
+        0.7,
+        0.6,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "legacy-filter-to-widener.f32"
+    },
     {
       "id": "widener-width",
       "label": "StereoWidener width sweep",

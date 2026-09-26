@@ -1,0 +1,7 @@
+# FilterNode migration boundary
+
+The original `dsp/core/nodes/FilterNode.cpp` is Standalone FX type 5. It is a two-pole resonant lowpass with feedback, separate from type 6's `SVFNode` and the exported Standalone Filter project. Rust graph kind 39 exposes cutoff `20…18000 Hz`, resonance `0…1`, and internal mix `0…1`. The [workbench project](../projects/legacy-filter/project.json) exposes all three. The [FX slot](../projects/standalone-fx-slice/project.json) maps normalized `p/0` exponentially to `80…12000 Hz` and `p/1` to resonance `0…1`, keeps internal mix fully wet, and ignores `p/2`–`p/4` as the original Lua definition does.
+
+The scalar C++ path smooths cutoff, resonance, and mix over 20 ms. Its cutoff coefficient depends on both cutoff and resonance, and feedback comes from the difference between its two one-pole states. The Rust port follows the scalar sample equations and owns two state pairs for stereo. The original scalar `reset()` is a no-op; a fresh prepared instance clears state. The v2 slot rebuilds a selected instance on type changes, discarding its old tail without callback allocation.
+
+The old default constructor enables a Highway SIMD implementation. A probe on this machine with a parameter step found a maximum scalar-to-Highway sample difference of `5.96e-8`. The eight captured C++ cases include seven default Highway cases and one explicitly scalar case. Each compares the original output to Rust/Wasm; no Highway dependency is brought into the Rust core. Full Standalone FX project routing and preset roundtrips remain separate work.

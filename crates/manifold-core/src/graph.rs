@@ -12,6 +12,7 @@ use crate::envelope_follower::EnvelopeFollower;
 use crate::eq8::{self, Eq8};
 use crate::events::{EventError, EventKind, TimedEvent};
 use crate::fft_spectrum::FftSpectrum;
+use crate::legacy_filter::{self, LegacyFilter};
 use crate::lfo::Lfo;
 use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
@@ -118,6 +119,9 @@ pub enum NodeKind {
     StereoWidener {
         params: [f32; stereo_widener::PARAM_COUNT],
     },
+    LegacyFilter {
+        params: [f32; legacy_filter::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -208,6 +212,7 @@ impl NodeKind {
             | Self::Eq8 { .. }
             | Self::WaveShaper { .. }
             | Self::StereoWidener { .. }
+            | Self::LegacyFilter { .. }
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
@@ -301,6 +306,7 @@ impl NodeKind {
             Self::Eq8 { params } => params.iter().all(|value| value.is_finite()),
             Self::WaveShaper { params } => params.iter().all(|value| value.is_finite()),
             Self::StereoWidener { params } => params.iter().all(|value| value.is_finite()),
+            Self::LegacyFilter { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -435,6 +441,7 @@ enum Kernel {
     Eq8(Eq8),
     WaveShaper(WaveShaper),
     StereoWidener(StereoWidener),
+    LegacyFilter(LegacyFilter),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -564,6 +571,9 @@ impl Kernel {
             }
             NodeKind::StereoWidener { params } => {
                 Self::StereoWidener(StereoWidener::new(sample_rate, *params))
+            }
+            NodeKind::LegacyFilter { params } => {
+                Self::LegacyFilter(LegacyFilter::new(sample_rate, *params))
             }
             NodeKind::EffectSlot {
                 selected,
@@ -704,6 +714,7 @@ impl Kernel {
             (Self::Eq8(eq), id) => return eq.set_parameter(id, value),
             (Self::WaveShaper(shaper), id) => return shaper.set_parameter(id, value),
             (Self::StereoWidener(widener), id) => return widener.set_parameter(id, value),
+            (Self::LegacyFilter(filter), id) => return filter.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1327,6 +1338,9 @@ impl ExecutionPlan {
                 }
                 Kernel::StereoWidener(widener) => {
                     widener.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::LegacyFilter(filter) => {
+                    filter.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

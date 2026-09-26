@@ -1,0 +1,27 @@
+{
+  "legacy-filter": {
+    "cases": 8,
+    "largest": {
+      "id": "mix",
+      "max": 1.19e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "cutoff": "2,339 Hz",
+    "resonance": "0.70"
+  },
+  "standalone-fx": {
+    "cases": 31,
+    "largest": {
+      "id": "filter-to-chorus",
+      "max": 9.69e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Filter",
+    "controls": [
+      "Wet mix",
+      "Cutoff",
+      "Resonance"
+    ]
+  },
+  "errors": []
+}

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Main-rack typed CV chain",
-  "sourceSha256": "c1f56492f4bbbbe8178c988a9e5a76e2d247d1625ba859e5a5943037ed5a57bf",
+  "sourceSha256": "86e9c2a34b7186dd4518eae876d278981f1cc20095edc14308a69a4c19b84d97",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 24576,

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.legacy-filter-node",
+  "name": "FilterNode",
+  "source": "Legacy FilterNode scalar and Highway paths; distinct from SVFNode",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "legacy-filter" },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "cutoff", "label": "Cutoff", "kind": "float", "min": 20, "max": 18000, "default": 1400, "unit": "Hz" },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "resonance", "label": "Resonance", "kind": "float", "min": 0, "max": 1, "default": 0.1 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "mix", "label": "Mix", "kind": "float", "min": 0, "max": 1, "default": 1 }
+  ]
+}

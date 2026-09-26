@@ -11,6 +11,7 @@ pub mod eq8;
 pub mod events;
 pub mod fft_spectrum;
 pub mod graph;
+pub mod legacy_filter;
 pub mod lfo;
 pub mod limiter;
 pub mod loop_capture;

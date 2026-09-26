@@ -1,9 +1,10 @@
-//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 6, 8, and 15.
+//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 8, and 15.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
 use crate::chorus::{self, Chorus};
 use crate::compressor::{self, Compressor};
+use crate::legacy_filter::{self, LegacyFilter};
 use crate::limiter::{self, Limiter};
 use crate::phaser::Phaser;
 use crate::stereo_delay::{self, StereoDelay};
@@ -15,6 +16,7 @@ pub const PHASER_TYPE: u32 = 1;
 pub const WAVESHAPER_TYPE: u32 = 2;
 pub const COMPRESSOR_TYPE: u32 = 3;
 pub const WIDENER_TYPE: u32 = 4;
+pub const LEGACY_FILTER_TYPE: u32 = 5;
 pub const SVF_TYPE: u32 = 6;
 pub const DELAY_TYPE: u32 = 8;
 pub const LIMITER_TYPE: u32 = 15;
@@ -24,8 +26,8 @@ pub fn supported_type(value: f32) -> Option<u32> {
         return None;
     }
     match value as u32 {
-        CHORUS_TYPE | PHASER_TYPE | WAVESHAPER_TYPE | COMPRESSOR_TYPE | WIDENER_TYPE | SVF_TYPE
-        | DELAY_TYPE | LIMITER_TYPE => Some(value as u32),
+        CHORUS_TYPE | PHASER_TYPE | WAVESHAPER_TYPE | COMPRESSOR_TYPE | WIDENER_TYPE
+        | LEGACY_FILTER_TYPE | SVF_TYPE | DELAY_TYPE | LIMITER_TYPE => Some(value as u32),
         _ => None,
     }
 }
@@ -39,6 +41,7 @@ pub struct EffectSlot {
     phaser_params: [f32; 5],
     waveshaper_params: [f32; 5],
     widener_params: [f32; 5],
+    legacy_filter_params: [f32; 5],
     svf_params: [f32; 5],
     delay_params: [f32; 5],
     compressor_params: [f32; 5],
@@ -50,6 +53,7 @@ pub struct EffectSlot {
     phaser: Phaser,
     waveshaper: WaveShaper,
     widener: StereoWidener,
+    legacy_filter: LegacyFilter,
     filter: Filter,
     delay: StereoDelay,
     compressor: Compressor,
@@ -79,6 +83,7 @@ impl EffectSlot {
             phaser_params: [0.5, 0.5, 0.4, 0.5, 0.4],
             waveshaper_params: [0.3, 0.0, 0.7, 0.5, 0.5],
             widener_params: [0.6, 0.4, 0.5, 0.5, 0.5],
+            legacy_filter_params: [0.5, 0.2, 0.5, 0.5, 0.5],
             svf_params: [0.5, 0.4, 0.1, 0.5, 0.5],
             delay_params: [0.3, 0.3, 0.5, 0.5, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
@@ -90,6 +95,7 @@ impl EffectSlot {
             phaser: Phaser::new(sample_rate, crate::phaser::defaults()),
             waveshaper: WaveShaper::new(sample_rate, waveshaper::DEFAULTS),
             widener: StereoWidener::new(sample_rate, stereo_widener::DEFAULTS),
+            legacy_filter: LegacyFilter::new(sample_rate, legacy_filter::DEFAULTS),
             filter: Filter::new(sample_rate),
             delay: StereoDelay::new(sample_rate, delay_settings),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
@@ -100,6 +106,7 @@ impl EffectSlot {
             PHASER_TYPE => &mut slot.phaser_params,
             WAVESHAPER_TYPE => &mut slot.waveshaper_params,
             WIDENER_TYPE => &mut slot.widener_params,
+            LEGACY_FILTER_TYPE => &mut slot.legacy_filter_params,
             COMPRESSOR_TYPE => &mut slot.compressor_params,
             SVF_TYPE => &mut slot.svf_params,
             DELAY_TYPE => &mut slot.delay_params,
@@ -114,6 +121,7 @@ impl EffectSlot {
         slot.rebuild_phaser();
         slot.rebuild_waveshaper();
         slot.rebuild_widener();
+        slot.rebuild_legacy_filter();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
@@ -196,6 +204,21 @@ impl EffectSlot {
     fn apply_widener(&mut self) {
         for (id, value) in self.widener_settings().into_iter().enumerate() {
             self.widener.set_parameter(id as u32, value);
+        }
+    }
+
+    fn legacy_filter_settings(&self) -> [f32; legacy_filter::PARAM_COUNT] {
+        let [cutoff, resonance, _, _, _] = self.legacy_filter_params;
+        [80.0 * 150.0_f32.powf(cutoff), resonance, 1.0]
+    }
+
+    fn rebuild_legacy_filter(&mut self) {
+        self.legacy_filter = LegacyFilter::new(self.sample_rate, self.legacy_filter_settings());
+    }
+
+    fn apply_legacy_filter(&mut self) {
+        for (id, value) in self.legacy_filter_settings().into_iter().enumerate() {
+            self.legacy_filter.set_parameter(id as u32, value);
         }
     }
 
@@ -284,6 +307,7 @@ impl EffectSlot {
                         PHASER_TYPE => self.rebuild_phaser(),
                         WAVESHAPER_TYPE => self.rebuild_waveshaper(),
                         WIDENER_TYPE => self.rebuild_widener(),
+                        LEGACY_FILTER_TYPE => self.rebuild_legacy_filter(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -305,6 +329,7 @@ impl EffectSlot {
                     PHASER_TYPE => &mut self.phaser_params,
                     WAVESHAPER_TYPE => &mut self.waveshaper_params,
                     WIDENER_TYPE => &mut self.widener_params,
+                    LEGACY_FILTER_TYPE => &mut self.legacy_filter_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -317,6 +342,7 @@ impl EffectSlot {
                     PHASER_TYPE => self.apply_phaser(),
                     WAVESHAPER_TYPE => self.apply_waveshaper(),
                     WIDENER_TYPE => self.apply_widener(),
+                    LEGACY_FILTER_TYPE => self.apply_legacy_filter(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -344,6 +370,9 @@ impl EffectSlot {
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             WIDENER_TYPE => self
                 .widener
+                .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
+            LEGACY_FILTER_TYPE => self
+                .legacy_filter
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             COMPRESSOR_TYPE => self
                 .compressor
@@ -433,7 +462,7 @@ mod tests {
     #[test]
     fn selection_rejects_unsupported_types_and_keeps_dry_path() {
         let mut slot = EffectSlot::new(48_000.0, 128, SVF_TYPE, 0.0, [0.5, 0.4, 0.1, 0.5, 0.5]);
-        assert!(!slot.set_parameter(0, 5.0));
+        assert!(!slot.set_parameter(0, 7.0));
         assert!(slot.set_parameter(0, DELAY_TYPE as f32));
         let left = [0.5, -0.2, 0.1];
         let right = [-0.4, 0.3, 0.0];

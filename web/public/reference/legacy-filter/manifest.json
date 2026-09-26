@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "reference": "legacy C++ FilterNode default Highway and scalar stereo",
+  "sourceSha256": "60eefb2a298441993a8dd73bb810443b0b4533982e82dd2f35d7308024e836b4",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "steady",
+      "label": "Steady cutoff and resonance",
+      "before": [
+        1400,
+        0.1,
+        1
+      ],
+      "after": [
+        1400,
+        0.1,
+        1
+      ],
+      "blockSize": 128,
+      "referenceMode": "Highway default",
+      "output": "steady.f32"
+    },
+    {
+      "id": "cutoff-sweep",
+      "label": "Cutoff sweep",
+      "before": [
+        200,
+        0.2,
+        1
+      ],
+      "after": [
+        8000,
+        0.2,
+        1
+      ],
+      "blockSize": 128,
+      "referenceMode": "Highway default",
+      "output": "cutoff-sweep.f32"
+    },
+    {
+      "id": "resonance",
+      "label": "Resonance sweep",
+      "before": [
+        1500,
+        0,
+        1
+      ],
+      "after": [
+        1500,
+        1,
+        1
+      ],
+      "blockSize": 128,
+      "referenceMode": "Highway default",
+      "output": "resonance.f32"
+    },
+    {
+      "id": "mix",
+      "label": "Dry to wet",
+      "before": [
+        800,
+        0.5,
+        0
+      ],
+      "after": [
+        800,
+        0.5,
+        1
+      ],
+      "blockSize": 128,
+      "referenceMode": "Highway default",
+      "output": "mix.f32"
+    },
+    {
+      "id": "high-cutoff",
+      "label": "Near maximum cutoff",
+      "before": [
+        18000,
+        0.8,
+        1
+      ],
+      "after": [
+        6000,
+        0.4,
+        1
+      ],
+      "blockSize": 128,
+      "referenceMode": "Highway default",
+      "output": "high-cutoff.f32"
+    },
+    {
+      "id": "low-cutoff",
+      "label": "Near minimum cutoff",
+      "before": [
+        20,
+        0.8,
+        1
+      ],
+      "after": [
+        120,
+        0.2,
+        1
+      ],
+      "blockSize": 128,
+      "referenceMode": "Highway default",
+      "output": "low-cutoff.f32"
+    },
+    {
+      "id": "short-block",
+      "label": "Short blocks",
+      "before": [
+        1000,
+        0.3,
+        1
+      ],
+      "after": [
+        7000,
+        0.8,
+        0.5
+      ],
+      "blockSize": 32,
+      "referenceMode": "Highway default",
+      "output": "short-block.f32"
+    },
+    {
+      "id": "scalar",
+      "label": "Scalar path with parameter change",
+      "before": [
+        1000,
+        0.2,
+        1
+      ],
+      "after": [
+        5000,
+        0.8,
+        0.7
+      ],
+      "blockSize": 128,
+      "referenceMode": "scalar",
+      "output": "scalar.f32"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust typed-CV slew patch",
-  "sourceSha256": "ba96a1e780eab18c2382496deefded5508542a6d556735ecde591899b27421d6",
+  "sourceSha256": "c292dcce92f2c2642a92ff442309c0766a8bf563687b5c58dc528679135ccb12",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 24576,

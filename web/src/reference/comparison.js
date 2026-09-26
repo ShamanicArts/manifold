@@ -278,6 +278,18 @@ function prepareStereoWidener(engine, selected) {
   });
 }
 
+function prepareLegacyFilter(engine, selected) {
+  if (engine.manifold_graph_begin(3, 2) !== 1
+    || engine.manifold_graph_node(1, 0, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 39, 0, 0) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1) throw new Error('Wasm FilterNode graph failed');
+  selected.before.forEach((value, id) => {
+    if (engine.manifold_graph_initial_parameter(2, id, value) !== 1) throw new Error(`Wasm FilterNode initial parameter ${id} failed`);
+  });
+}
+
 function prepareFxChain(engine, selected) {
   const before = selected.before;
   const nodes = [[1, 0, 0, 0], [2, 17, before[0], before[1]],
@@ -423,6 +435,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'eq8') prepareEq8(engine, selected);
   if (family === 'waveshaper') prepareWaveShaper(engine, selected);
   if (family === 'stereo-widener') prepareStereoWidener(engine, selected);
+  if (family === 'legacy-filter') prepareLegacyFilter(engine, selected);
   if (family === 'fx-chain') prepareFxChain(engine, selected);
   if (family === 'standalone-fx') prepareEffectSlot(engine, selected);
   if (family === 'loop-capture') prepareLoopCapture(engine, selected);
@@ -566,7 +579,7 @@ function renderWasm(engine, family, manifest, input, selected) {
           updated &= engine.manifold_set_node_parameter(2, id, value);
         });
       }
-      if (family === 'eq8' || family === 'waveshaper' || family === 'stereo-widener') {
+      if (family === 'eq8' || family === 'waveshaper' || family === 'stereo-widener' || family === 'legacy-filter') {
         selected.after.forEach((value, id) => {
           updated &= engine.manifold_set_node_parameter(2, id, value);
         });
@@ -864,6 +877,8 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                       ? `curve ${selected.before[0]} → ${selected.after[0]} · drive ${selected.before[1]} → ${selected.after[1]} dB · mix ${selected.before[6]} → ${selected.after[6]}`
                     : family === 'stereo-widener'
                       ? `width ${selected.before[0]} → ${selected.after[0]} · mono low ${selected.before[1]} → ${selected.after[1]} Hz · enabled ${selected.before[2]} → ${selected.after[2]}`
+                    : family === 'legacy-filter'
+                      ? `${selected.referenceMode} · cutoff ${selected.before[0]} → ${selected.after[0]} Hz · resonance ${selected.before[1]} → ${selected.after[1]} · mix ${selected.before[2]} → ${selected.after[2]}`
                     : family === 'phaser'
                       ? `rate ${selected.before[0]} → ${selected.after[0]} Hz · stages ${selected.before[2]} → ${selected.after[2]} · feedback ${selected.before[3]} → ${selected.after[3]}`
                     : family === 'chorus'
