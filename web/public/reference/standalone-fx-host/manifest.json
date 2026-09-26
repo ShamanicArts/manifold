@@ -11,7 +11,7 @@
   "cases": [
     {
       "id": "delay-chorus-delay",
-      "label": "Delay → Chorus → Delay · host graph switches",
+      "label": "Delay \u2192 Chorus \u2192 Delay \u00b7 host graph switches",
       "sourceSha256": "e6566c039e1d14d48990fe99e593eea372ad4907aab78c5c4afecf738ff44d9f",
       "before": [
         8,
@@ -37,7 +37,7 @@
     },
     {
       "id": "delay-phaser-delay",
-      "label": "Delay → Phaser → Delay · host graph switches",
+      "label": "Delay \u2192 Phaser \u2192 Delay \u00b7 host graph switches",
       "sourceSha256": "c00d6077e18980089cc30cf719831d24bdf998f36c7c64fd2d2902fc98260115",
       "before": [
         8,
@@ -63,7 +63,7 @@
     },
     {
       "id": "delay-reverb-delay-reverb",
-      "label": "Delay → Reverb → Delay → Reverb · host graph switches",
+      "label": "Delay \u2192 Reverb \u2192 Delay \u2192 Reverb \u00b7 host graph switches",
       "sourceSha256": "5acd8f80528357fc01eba90250891b938556ab2bc3a49be1d5d2f350148bbb9e",
       "before": [
         8,
@@ -93,7 +93,7 @@
     },
     {
       "id": "delay-svf-delay-svf",
-      "label": "Delay → SVF → Delay → SVF · host graph switches",
+      "label": "Delay \u2192 SVF \u2192 Delay \u2192 SVF \u00b7 host graph switches",
       "sourceSha256": "feb5303e9857c95cb944511c526c1e05e40165a55032b2d087d4b9391e439c0c",
       "before": [
         8,
@@ -123,7 +123,7 @@
     },
     {
       "id": "delay-compressor-delay-compressor",
-      "label": "Delay → Compressor → Delay → Compressor · timing refresh",
+      "label": "Delay \u2192 Compressor \u2192 Delay \u2192 Compressor \u00b7 timing refresh",
       "sourceSha256": "e28463ff8c421aa3f72dba02ae2cb209d31df2063ac1f089ef91bbdd99896153",
       "before": [
         8,
@@ -165,7 +165,7 @@
     },
     {
       "id": "delay-ring-delay-ring",
-      "label": "Delay → Ring → Delay → Ring · old silent B bus",
+      "label": "Delay \u2192 Ring \u2192 Delay \u2192 Ring \u00b7 old silent B bus",
       "sourceSha256": "ca9fde2f8959e0e55ca5c3b131dbafecb9eead10af00999f0a9e93c747c29139",
       "before": [
         8,
@@ -192,6 +192,36 @@
       ],
       "focusFrame": 11520,
       "output": "delay-ring-delay-ring.f32"
+    },
+    {
+      "id": "delay-bitcrusher-delay-bitcrusher",
+      "label": "Delay \u2192 BitCrusher \u2192 Delay \u2192 BitCrusher \u00b7 held sample reset",
+      "sourceSha256": "7a6757c147c902d631a2541060dad7e807ef62b3bd75f182a862e7466b22b3a6",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          17
+        ],
+        [
+          11008,
+          8
+        ],
+        [
+          11520,
+          17
+        ]
+      ],
+      "focusFrame": 11520,
+      "output": "delay-bitcrusher-delay-bitcrusher.f32"
     }
   ]
 }

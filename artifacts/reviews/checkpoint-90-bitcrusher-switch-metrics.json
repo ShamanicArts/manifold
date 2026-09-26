@@ -1,0 +1,47 @@
+{
+  "sourceSha256": "7a6757c147c902d631a2541060dad7e807ef62b3bd75f182a862e7466b22b3a6",
+  "events": [
+    "select_delay_first_visit_transfers=0",
+    "select_bitcrusher_transfers=0",
+    "reselect_delay_transfers=1",
+    "reselect_bitcrusher_transfers=1"
+  ],
+  "max": 2.9802322387695312e-08,
+  "rms": 3.1406836577198395e-09,
+  "segments": {
+    "delay": {
+      "max": 2.2351741790771484e-08
+    },
+    "bitcrusher": {
+      "max": 2.9802322387695312e-08
+    },
+    "returnedDelay": {
+      "max": 1.1175870895385742e-08
+    },
+    "returnedBitCrusher": {
+      "max": 2.2351741790771484e-08
+    }
+  },
+  "boundaryLeft": {
+    "8192": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "11008": {
+      "old": 0.01256471686065197,
+      "rust": 0.012564719654619694
+    },
+    "11520": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "11521": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "12000": {
+      "old": -0.01894531026482582,
+      "rust": -0.01894531399011612
+    }
+  }
+}

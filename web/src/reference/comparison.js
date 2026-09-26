@@ -1117,7 +1117,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                     : family === 'fx-chain'
                       ? `drive ${selected.before[0]} → ${selected.after[0]} · delay mix ${selected.before[6]} → ${selected.after[6]} · cutoff ${selected.before[7]} → ${selected.after[7]} Hz`
                     : family === 'standalone-fx-host'
-                      ? `Delay → ${selected.switches.map(([frame, type]) => `${({ 0: 'Chorus', 1: 'Phaser', 3: 'Compressor', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 12: 'Ring' })[type]} at ${frame}`).join(' → ')} · ${selected.changes?.length ? 'attack/release timing refreshed' : selected.switches.at(-1)[1] === 12 ? 'old empty modulator bus is silent' : selected.switches.at(-1)[1] === 7 ? 'Reverb tail cleared on return' : selected.switches.at(-1)[1] === 6 ? 'SVF state retained on return' : 'graph-reprepared gates'}`
+                      ? `Delay → ${selected.switches.map(([frame, type]) => `${({ 0: 'Chorus', 1: 'Phaser', 3: 'Compressor', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 12: 'Ring', 17: 'BitCrusher' })[type]} at ${frame}`).join(' → ')} · ${selected.changes?.length ? 'attack/release timing refreshed' : selected.switches.at(-1)[1] === 12 ? 'old empty modulator bus is silent' : selected.switches.at(-1)[1] === 17 ? 'held samples reset on reprepare' : selected.switches.at(-1)[1] === 7 ? 'Reverb tail cleared on return' : selected.switches.at(-1)[1] === 6 ? 'SVF state retained on return' : 'graph-reprepared gates'}`
                     : family === 'standalone-fx-routing'
                       ? `Delay → Chorus at ${selected.switches[0][0]} → Delay at ${selected.switches[1][0]} · visited tails keep processing`
                     : family === 'standalone-fx'

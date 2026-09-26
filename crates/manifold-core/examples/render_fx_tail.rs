@@ -43,6 +43,7 @@ fn main() -> std::io::Result<()> {
                 | "--host-svf"
                 | "--host-compressor"
                 | "--host-ring"
+                | "--host-bitcrusher"
                 | "--prepared-ring"
         )
     ) {
@@ -55,6 +56,7 @@ fn main() -> std::io::Result<()> {
                     | "--host-svf"
                     | "--host-compressor"
                     | "--host-ring"
+                    | "--host-bitcrusher"
             )
         ) {
             EffectSlot::new_host_switch
@@ -76,6 +78,7 @@ fn main() -> std::io::Result<()> {
                         Some("--host-svf") => 6.0,
                         Some("--host-compressor") => 3.0,
                         Some("--host-ring" | "--prepared-ring") => 12.0,
+                        Some("--host-bitcrusher") => 17.0,
                         _ => 0.0,
                     },
                 );
@@ -87,7 +90,12 @@ fn main() -> std::io::Result<()> {
             if offset == 11008
                 && matches!(
                     mode.as_deref(),
-                    Some("--host-compressor" | "--host-ring" | "--prepared-ring")
+                    Some(
+                        "--host-compressor"
+                            | "--host-ring"
+                            | "--host-bitcrusher"
+                            | "--prepared-ring"
+                    )
                 )
             {
                 slot.set_parameter(0, 8.0);
@@ -95,14 +103,30 @@ fn main() -> std::io::Result<()> {
             if offset == 11520 && mode.as_deref() == Some("--host-compressor") {
                 slot.set_parameter(0, 3.0);
             }
-            if offset == 11520 && matches!(mode.as_deref(), Some("--host-ring" | "--prepared-ring"))
+            if offset == 11520
+                && matches!(
+                    mode.as_deref(),
+                    Some("--host-ring" | "--host-bitcrusher" | "--prepared-ring")
+                )
             {
-                slot.set_parameter(0, 12.0);
+                slot.set_parameter(
+                    0,
+                    if mode.as_deref() == Some("--host-bitcrusher") {
+                        17.0
+                    } else {
+                        12.0
+                    },
+                );
             }
             if offset == 16384
                 && !matches!(
                     mode.as_deref(),
-                    Some("--host-compressor" | "--host-ring" | "--prepared-ring")
+                    Some(
+                        "--host-compressor"
+                            | "--host-ring"
+                            | "--host-bitcrusher"
+                            | "--prepared-ring"
+                    )
                 )
             {
                 slot.set_parameter(0, 8.0);
