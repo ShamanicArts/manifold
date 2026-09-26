@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "reference": "legacy C++ StereoWidenerNode stereo",
+  "sourceSha256": "d7a5175de9801f71a983229df69cbd126926d5c546f89e159447fb301fd59049",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default width and mono low",
+      "before": [
+        1,
+        120,
+        1
+      ],
+      "after": [
+        1,
+        120,
+        1
+      ],
+      "blockSize": 128,
+      "output": "default.f32",
+      "meterOutput": "default-meter.f32"
+    },
+    {
+      "id": "width-sweep",
+      "label": "Normal to extra wide",
+      "before": [
+        1,
+        140,
+        1
+      ],
+      "after": [
+        2,
+        140,
+        1
+      ],
+      "blockSize": 128,
+      "output": "width-sweep.f32",
+      "meterOutput": "width-sweep-meter.f32"
+    },
+    {
+      "id": "mono-to-wide",
+      "label": "Mono to wide",
+      "before": [
+        0,
+        140,
+        1
+      ],
+      "after": [
+        1.8,
+        140,
+        1
+      ],
+      "blockSize": 128,
+      "output": "mono-to-wide.f32",
+      "meterOutput": "mono-to-wide-meter.f32"
+    },
+    {
+      "id": "low-frequency",
+      "label": "Mono low crossover sweep",
+      "before": [
+        1.4,
+        40,
+        1
+      ],
+      "after": [
+        1.4,
+        320,
+        1
+      ],
+      "blockSize": 128,
+      "output": "low-frequency.f32",
+      "meterOutput": "low-frequency-meter.f32"
+    },
+    {
+      "id": "mono-low-toggle",
+      "label": "Mono low on to off",
+      "before": [
+        1.25,
+        140,
+        1
+      ],
+      "after": [
+        1.25,
+        140,
+        0
+      ],
+      "blockSize": 128,
+      "output": "mono-low-toggle.f32",
+      "meterOutput": "mono-low-toggle-meter.f32"
+    },
+    {
+      "id": "wide-to-mono",
+      "label": "Wide to mono",
+      "before": [
+        2,
+        500,
+        0
+      ],
+      "after": [
+        0,
+        500,
+        1
+      ],
+      "blockSize": 64,
+      "output": "wide-to-mono.f32",
+      "meterOutput": "wide-to-mono-meter.f32"
+    },
+    {
+      "id": "short-block",
+      "label": "Short blocks with width change",
+      "before": [
+        0.5,
+        200,
+        1
+      ],
+      "after": [
+        1.6,
+        80,
+        1
+      ],
+      "blockSize": 32,
+      "output": "short-block.f32",
+      "meterOutput": "short-block-meter.f32"
+    },
+    {
+      "id": "high-width",
+      "label": "Maximum width, low band off",
+      "before": [
+        2,
+        20,
+        0
+      ],
+      "after": [
+        2,
+        20,
+        0
+      ],
+      "blockSize": 128,
+      "output": "high-width.f32",
+      "meterOutput": "high-width-meter.f32"
+    }
+  ]
+}

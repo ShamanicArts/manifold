@@ -1,0 +1,31 @@
+{
+  "stereo-widener": {
+    "cases": 8,
+    "largest": {
+      "id": "short-block",
+      "max": 1.79e-7,
+      "detail": "48,000 Hz · 16384 frames · 32 frame blocks · width 0.5 → 1.6 · mono low 200 → 80 Hz · enabled 1 → 1 · audio max Δ 5.96e-8"
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "correlation": "+1.000",
+    "plotTitle": "Output stereo correlation · −1 to +1",
+    "width": "1.60",
+    "monoLow": "Mono low: Off"
+  },
+  "standalone-fx": {
+    "cases": 27,
+    "largest": {
+      "id": "filter-to-chorus",
+      "max": 9.69e-7,
+      "detail": "48,000 Hz · 16384 frames · 128 frame blocks · type 6 → 0 · wet mix 0.8 → 0.8 · p/0 0.5 → 0.5"
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Width",
+    "controls": [
+      "Wet mix",
+      "Width",
+      "Mono low cutoff"
+    ]
+  },
+  "errors": []
+}

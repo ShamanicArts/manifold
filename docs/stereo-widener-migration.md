@@ -1,0 +1,7 @@
+# Stereo widener migration boundary
+
+The original `dsp/core/nodes/StereoWidenerNode.cpp` is Standalone FX type 4. The Rust `StereoWidener` is graph kind 38 with physical width `0…2`, mono low cutoff `20…500 Hz`, and a mono low enable flag. The [standalone workbench](../projects/stereo-widener/project.json) exposes these controls and a read-only output correlation meter. The [FX slot](../projects/standalone-fx-slice/project.json) maps normalized `p/0` to width `0…2` and `p/1` to cutoff `40…320 Hz`, keeps mono low on, and applies the old 1.1× wet gain. Its remaining three normalized controls are unused.
+
+The processor tracks a one-pole low band in each channel. With mono low enabled, it replaces those two low bands with their average; the high bands pass through a mid/side width transform. Width and cutoff smooth over 10 ms. Correlation tracks the processed left/right products and powers with coefficient `0.001` and is read once per block. The Rust kernel owns these states and allocates no memory in `process_planar`.
+
+Eight deterministic C++ cases include default behavior, width and cutoff sweeps, mono low toggle, short blocks, and maximum width. Each captures stereo audio and one correlation value per block, then compares both to Rust/Wasm. Four additional native Rust cases cover the normalized FX slot and switching. The test oscillator is mono and naturally reports correlation near +1; the stereo C++ fixtures exercise intermediate and negative values. Legacy project-level preset and old gain/mixer envelope parity remain outside this slice.

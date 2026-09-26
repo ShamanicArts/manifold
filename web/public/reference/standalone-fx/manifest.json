@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "fbafcf7a2882775591ede1d57b7693220cc6704ebd33cae7c63a3531c1e28db9",
+  "sourceSha256": "32039b795f2e32062ff619e8500e8ea3e2b1a186d013c9695c845a6734382604",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "widener-width",
+      "label": "StereoWidener width sweep",
+      "before": [
+        4,
+        0.8,
+        0.3,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        4,
+        0.8,
+        0.9,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "widener-width.f32"
+    },
+    {
+      "id": "widener-mono-low",
+      "label": "StereoWidener bass cutoff",
+      "before": [
+        4,
+        1,
+        0.6,
+        0.1,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        4,
+        1,
+        0.6,
+        0.9,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "widener-mono-low.f32"
+    },
+    {
+      "id": "filter-to-widener",
+      "label": "Switch filter to StereoWidener",
+      "before": [
+        6,
+        0.8,
+        0.5,
+        0.4,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        4,
+        0.8,
+        0.6,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-widener.f32"
+    },
+    {
+      "id": "widener-to-waveshaper",
+      "label": "Switch StereoWidener to WaveShaper",
+      "before": [
+        4,
+        0.7,
+        0.6,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        2,
+        0.7,
+        0.3,
+        0.0,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "widener-to-waveshaper.f32"
+    },
     {
       "id": "waveshaper-drive",
       "label": "WaveShaper drive and output",

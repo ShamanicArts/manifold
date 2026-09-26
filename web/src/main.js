@@ -13,6 +13,7 @@ import phaserProject from '../../projects/phaser/project.json';
 import chorusProject from '../../projects/chorus/project.json';
 import eq8Project from '../../projects/standalone-eq8/project.json';
 import waveshaperProject from '../../projects/waveshaper/project.json';
+import widenerProject from '../../projects/stereo-widener/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -123,6 +124,12 @@ const projects = {
     description: 'The original seven curve stereo shaper, with bias, dry/wet mix, and pre/post tone filters. The legacy 1×/2×/4× setting only changes filter coefficients.',
     signal: 'Live path: input → pre filter → drive and curve → post filter → mix → output',
   },
+  'stereo-widener': {
+    project: widenerProject,
+    title: 'Stereo widener',
+    description: 'Change high-band stereo width while keeping bass centered. A bounded Rust correlation meter reports the processed stereo relationship.',
+    signal: 'Live path: input → low/high split → mono bass + mid/side width → stereo output',
+  },
   compressor: {
     project: compressorProject,
     title: 'Compressor',
@@ -144,7 +151,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, SVF Filter, Stereo Delay, and Limiter are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, SVF Filter, Stereo Delay, and Limiter are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -426,6 +433,10 @@ const audio = new BrowserAudioHost((message) => { status.textContent = message; 
     return;
   }
   if (nodeId !== 2) return;
+  if (activeFamily === 'stereo-widener') {
+    byId('correlation-value').textContent = Number.isFinite(bands[0]) ? `${bands[0] >= 0 ? '+' : ''}${bands[0].toFixed(3)}` : '—';
+    return;
+  }
   if (activeFamily === 'sample-region') {
     samplePlayhead = Number.isFinite(bands[0]) ? Math.max(0, Math.min(1, bands[0])) : 0;
     samplePlaying = bands[1] >= .5;
@@ -581,6 +592,7 @@ function updateSlotControls() {
   const labels = selected === 0 ? { 2: 'Rate', 3: 'Depth', 4: 'Feedback', 5: 'Spread', 6: 'Voices' }
     : selected === 1 ? { 2: 'Rate', 3: 'Depth', 4: 'Feedback', 5: 'Spread (legacy °)', 6: 'Stages' }
     : selected === 2 ? { 2: 'Drive', 3: 'Curve', 4: 'Output', 5: 'Bias' }
+    : selected === 4 ? { 2: 'Width', 3: 'Mono low cutoff' }
     : selected === 3
     ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
     : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
@@ -608,6 +620,8 @@ function updateSlotControls() {
       ? id === 2 ? `${(0.75 + 17.25 * value).toFixed(2)} dB`
         : id === 3 ? ['Tanh', 'Tube', 'Tape', 'Hard clip', 'Foldback', 'Sigmoid', 'Soft clip'][Math.floor(6 * value + 0.5)]
           : id === 4 ? `${(0.25 + 0.75 * value).toFixed(2)} dB` : (-0.5 + value).toFixed(2)
+      : selected === 4
+      ? id === 2 ? (2 * value).toFixed(2) : `${Math.round(40 + 280 * value)} Hz`
       : selected === 3
       ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
         : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
@@ -630,6 +644,7 @@ function updateSlotControls() {
     : selected === 3
     ? 'Compressor attack and release take effect when the effect is selected; changing them while selected needs a switch away and back. The old knee control has no effect.'
     : selected === 2 ? 'The old slot maps four normalized controls to drive, curve, output and bias. Its fifth control is unused.'
+    : selected === 4 ? 'Width and mono low cutoff are the old slot controls. Mono low is always enabled, and the wet branch has 1.1× gain.'
     : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
       : 'Values are stored separately for each effect type and restored when selected.';
 }
@@ -816,6 +831,7 @@ function renderPrimitive(family) {
     [0, [0.5, 0.5, 0.2, 0.6, 0.4]],
     [1, [0.5, 0.5, 0.4, 0.5, 0.4]],
     [2, [0.3, 0.0, 0.7, 0.5, 0.5]],
+    [4, [0.6, 0.4, 0.5, 0.5, 0.5]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
@@ -840,6 +856,8 @@ function renderPrimitive(family) {
   });
   if (family === 'fft-spectrum') { drawBandBars(byId('fft-bands'), [Array(32).fill(0)], 1, ['#9a8de8']); byId('fft-peak').textContent = 'Peak —'; }
   byId('eq-response-section').hidden = family !== 'eq8';
+  byId('correlation-section').hidden = family !== 'stereo-widener';
+  byId('correlation-value').textContent = '— · start audio';
   eqResponseSnapshot = null;
   if (family === 'eq8') {
     drawEqResponse(byId('eq-response'), null);
@@ -883,13 +901,13 @@ function renderPrimitive(family) {
   sampleActiveVoices = 0;
   if (family === 'voice' || family === 'sample-instrument') resetNoteEvents();
   if (mode) {
-    byId('modes').style.gridTemplateColumns = `repeat(${family === 'waveshaper' ? 4 : mode.choices.length}, minmax(0, 1fr))`;
+    byId('modes').style.gridTemplateColumns = `repeat(${family === 'waveshaper' || family === 'standalone-fx' ? 4 : mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, index) => {
       const value = mode.choiceValues?.[index] ?? index;
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 6: 'SVF', 8: 'Delay', 15: 'Limit' })[value] : choice;
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 6: 'SVF', 8: 'Delay', 15: 'Limit' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {
@@ -1213,7 +1231,7 @@ window.addEventListener('popstate', () => {
 
 let spectrumFrame = null;
 let meterTimer = null;
-const meterFamilies = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'sample-region', 'sample-instrument', 'cv-rack'];
+const meterFamilies = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'stereo-widener', 'sample-region', 'sample-instrument', 'cv-rack'];
 function stopMonitoring() {
   if (spectrumFrame !== null) cancelAnimationFrame(spectrumFrame);
   if (meterTimer !== null) clearInterval(meterTimer);
@@ -1246,7 +1264,7 @@ function startMonitoring() {
     };
     request();
     meterTimer = setInterval(request, 100);
-    if (activeFamily === 'sample-region' || activeFamily === 'sample-instrument' || activeFamily === 'cv-rack') animateSpectrum();
+    if (activeFamily === 'sample-region' || activeFamily === 'sample-instrument' || activeFamily === 'cv-rack' || activeFamily === 'stereo-widener') animateSpectrum();
   } else animateSpectrum();
 }
 drawLiveSpectrum(byId('live-spectrum'), null);

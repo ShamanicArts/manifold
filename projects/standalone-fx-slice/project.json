@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "manifold.standalone-fx-slice",
   "name": "Standalone FX slice",
-  "source": "Standalone_FX public type/mix/p/0..4; supported type IDs 0, 1, 2, 3, 6, 8 and 15",
+  "source": "Standalone_FX public type/mix/p/0..4; supported type IDs 0, 1, 2, 3, 4, 6, 8 and 15",
   "signal": {
     "inputs": 2,
     "outputs": 2,
@@ -22,7 +22,7 @@
     ]
   },
   "parameters": [
-    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "type", "label": "Effect type", "kind": "choice", "choices": ["Chorus", "Phaser", "WaveShaper", "Compressor", "SVF Filter", "Stereo Delay", "Limiter"], "choiceValues": [0, 1, 2, 3, 6, 8, 15], "default": 6 },
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "type", "label": "Effect type", "kind": "choice", "choices": ["Chorus", "Phaser", "WaveShaper", "Compressor", "StereoWidener", "SVF Filter", "Stereo Delay", "Limiter"], "choiceValues": [0, 1, 2, 3, 4, 6, 8, 15], "default": 6 },
     { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "mix", "label": "Wet mix", "kind": "float", "min": 0, "max": 1, "default": 0 },
     { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "p/0", "label": "Param 1", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "p/1", "label": "Param 2", "kind": "float", "min": 0, "max": 1, "default": 0.4 },

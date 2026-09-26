@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust shared-sample eight-voice instrument",
-  "sourceSha256": "21a3831fb81b972627a2fd9550116a6b2b126826f293b0030cb5c98f240c78ec",
+  "sourceSha256": "a69a1f8e966bedf35e683ab27c2273ebaeb18ba864a42fadc3f23f0fe2d2f637",
   "sampleRate": 48000,
   "sampleSourceRate": 32000,
   "sampleFrames": 4096,

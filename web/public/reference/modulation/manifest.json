@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust typed control graph",
-  "sourceSha256": "2d28ce10e3ad92a6d2070f1b5127ba3d53841ce5ccabedf960384c9700a3fdcb",
+  "sourceSha256": "da4f3a09dc5eff8249ace29bfd1de346a5fa9a0ee520b081cc0df3abd2785109",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 24576,

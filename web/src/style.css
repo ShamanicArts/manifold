@@ -52,6 +52,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .mode-switch button { height: 32px; border: 0; border-right: 1px solid #394754; background: #202b36; color: #aebbc5; font-size: 12px; }
 .mode-switch button:last-child { border-right: 0; }
 .mode-switch button[aria-pressed="true"] { background: #524c80; color: #fff; }
+.correlation-value { display: block; font: 600 24px/1.2 system-ui; color: #b4a4f0; font-variant-numeric: tabular-nums; }
 .eq-band-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; margin-bottom: 10px; }
 .eq-band-tabs button { height: 28px; padding: 0 2px; border: 1px solid #43515e; border-radius: 3px; background: #202b36; color: #bbc8d1; font-size: 10px; cursor: pointer; }
 .eq-band-tabs button[aria-selected="true"] { border-color: #a99bed; background: #524c80; color: white; }

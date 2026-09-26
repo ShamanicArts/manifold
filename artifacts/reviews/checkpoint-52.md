@@ -1,0 +1,9 @@
+# Checkpoint 52 · Stereo widener and Standalone FX type 4
+
+[Open Stereo widener](http://127.0.0.1:4173/?primitive=stereo-widener) · [Open Standalone FX](http://127.0.0.1:4173/?primitive=standalone-fx) · [Widener screenshot](checkpoint-52-stereo-widener.png) · [FX slot screenshot](checkpoint-52-standalone-fx.png) · [Browser metrics](checkpoint-52-metrics.json) · [Migration boundary](../../docs/stereo-widener-migration.md)
+
+The original Standalone FX type 4 is `StereoWidenerNode`. This checkpoint ports its smoothed width, mono low split, mid/side high band, and output correlation to an allocation-free Rust kernel. Graph kind 38 exposes width, cutoff, and mono low enable. The live browser view displays the correlation value separately from the spectrum. The Standalone FX slot now supports type 4 with its two normalized controls and the original 1.1× wet branch gain. Eight types are available in the slot.
+
+Eight cases captured from the original C++ node compare both stereo samples and correlation snapshots against Rust/Wasm. All show **Match**; the largest meter difference is `1.79e-7`, and that case's maximum audio difference is `5.96e-8`. Four new native Rust slot cases cover width, cutoff, and type changes. The expanded slot's largest difference is `9.69e-7` across 27 cases. The full workbench sweep passes **216 cases across 30 views** with zero browser page errors. All 71 Rust workspace tests and the Wasm and web builds pass. A live browser check set width to 1.6, disabled mono low, observed the output correlation meter, and switched the running slot to Width.
+
+The live test oscillator is mono, so its +1 correlation does not exercise stereo widening by itself. The C++ stereo fixtures supply different left and right signals and validate the meter. Full Standalone FX project routing and legacy preset compatibility remain separate work.
