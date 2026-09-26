@@ -180,6 +180,11 @@ pub enum NodeKind {
         mix: f32,
         params: [f32; 5],
     },
+    EffectSlotHostSwitch {
+        selected: u32,
+        mix: f32,
+        params: [f32; 5],
+    },
     LoopCapture {
         capacity_seconds: f32,
         mix: f32,
@@ -280,6 +285,7 @@ impl NodeKind {
             | Self::TransientShaper { .. }
             | Self::EffectSlot { .. }
             | Self::EffectSlotLegacy { .. }
+            | Self::EffectSlotHostSwitch { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
             | Self::FftSpectrum { .. }
@@ -391,6 +397,11 @@ impl NodeKind {
                 params,
             }
             | Self::EffectSlotLegacy {
+                selected,
+                mix,
+                params,
+            }
+            | Self::EffectSlotHostSwitch {
                 selected,
                 mix,
                 params,
@@ -718,6 +729,17 @@ impl Kernel {
                 mix,
                 params,
             } => Self::EffectSlot(EffectSlot::new_legacy(
+                sample_rate,
+                max_frames,
+                *selected,
+                *mix,
+                *params,
+            )),
+            NodeKind::EffectSlotHostSwitch {
+                selected,
+                mix,
+                params,
+            } => Self::EffectSlot(EffectSlot::new_host_switch(
                 sample_rate,
                 max_frames,
                 *selected,

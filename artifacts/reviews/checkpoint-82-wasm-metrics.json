@@ -1,0 +1,34 @@
+{
+  "reference": "Old C++ scalar FX branch GraphRuntime swaps versus Rust/Wasm host-switch graph kind 53",
+  "frames": 32768,
+  "sampleRate": 48000,
+  "blockSize": 128,
+  "segments": {
+    "beforeChorus": {
+      "max": 2.2351741790771484e-8,
+      "rms": 1.122474457602814e-9
+    },
+    "chorus": {
+      "max": 4.246830940246582e-7,
+      "rms": 5.4448546471563815e-9
+    },
+    "returnedDelay": {
+      "max": 1.4901161193847656e-8,
+      "rms": 1.3771111997415894e-9
+    }
+  },
+  "boundaryLeft": {
+    "8192": {
+      "cpp": 0,
+      "wasm": 0
+    },
+    "16384": {
+      "cpp": -0.02956055849790573,
+      "wasm": -0.02956055849790573
+    },
+    "17180": {
+      "cpp": 0.03256411850452423,
+      "wasm": 0.03256412222981453
+    }
+  }
+}

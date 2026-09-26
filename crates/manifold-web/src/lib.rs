@@ -201,7 +201,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             params[1] = b;
             NodeKind::StereoDelay { params }
         }
-        19 | 52 => {
+        19 | 52 | 53 => {
             let Some(selected) = effect_slot::supported_type(a) else {
                 return 0;
             };
@@ -229,7 +229,13 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
                 effect_slot::LIMITER_TYPE => [0.5, 0.3, 0.4, 0.4, 0.5],
                 _ => unreachable!(),
             };
-            if kind == 52 {
+            if kind == 53 {
+                NodeKind::EffectSlotHostSwitch {
+                    selected,
+                    mix: b,
+                    params,
+                }
+            } else if kind == 52 {
                 NodeKind::EffectSlotLegacy {
                     selected,
                     mix: b,
@@ -518,7 +524,9 @@ pub extern "C" fn manifold_graph_initial_parameter(
                 }
             }
             (
-                NodeKind::EffectSlot { selected, .. } | NodeKind::EffectSlotLegacy { selected, .. },
+                NodeKind::EffectSlot { selected, .. }
+                | NodeKind::EffectSlotLegacy { selected, .. }
+                | NodeKind::EffectSlotHostSwitch { selected, .. },
                 0,
             ) => {
                 let Some(kind) = effect_slot::supported_type(value) else {
@@ -526,11 +534,16 @@ pub extern "C" fn manifold_graph_initial_parameter(
                 };
                 *selected = kind;
             }
-            (NodeKind::EffectSlot { mix, .. } | NodeKind::EffectSlotLegacy { mix, .. }, 1) => {
-                *mix = value.clamp(0.0, 1.0)
-            }
             (
-                NodeKind::EffectSlot { params, .. } | NodeKind::EffectSlotLegacy { params, .. },
+                NodeKind::EffectSlot { mix, .. }
+                | NodeKind::EffectSlotLegacy { mix, .. }
+                | NodeKind::EffectSlotHostSwitch { mix, .. },
+                1,
+            ) => *mix = value.clamp(0.0, 1.0),
+            (
+                NodeKind::EffectSlot { params, .. }
+                | NodeKind::EffectSlotLegacy { params, .. }
+                | NodeKind::EffectSlotHostSwitch { params, .. },
                 id @ 2..=6,
             ) => params[id as usize - 2] = value.clamp(0.0, 1.0),
             (NodeKind::SpectrumAnalyzer { sensitivity, .. }, 0) => {
