@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "manifold.main-sample-blend-study",
   "name": "Main sample blend",
-  "source": "Authored v2 slice of Main sample_synth.lua; sample playback plus prepared Add/Morph Sine bank",
+  "source": "Authored v2 slice of Main sample_synth.lua; wave/sample base crossfade plus prepared Add/Morph Sine bank",
   "signal": {
     "inputs": 0,
     "outputs": 2,
@@ -10,6 +10,8 @@
     "nodes": [
       { "id": 2, "type": "sample-region" },
       { "id": 6, "type": "phase-vocoder" },
+      { "id": 11, "type": "oscillator", "a": 220, "b": 0 },
+      { "id": 12, "type": "crossfader", "a": 1, "b": 1 },
       { "id": 7, "type": "envelope-control", "a": 5, "b": 80 },
       { "id": 3, "type": "sine-bank" },
       { "id": 8, "type": "phrase-gain", "a": 0, "b": 0.18 },
@@ -19,7 +21,9 @@
     "connections": [
       { "from": 2, "to": 6, "inputPort": 0 },
       { "from": 2, "to": 7, "inputPort": 0 },
-      { "from": 6, "to": 4, "inputPort": 0 },
+      { "from": 11, "to": 12, "inputPort": 0 },
+      { "from": 6, "to": 12, "inputPort": 1 },
+      { "from": 12, "to": 4, "inputPort": 0 },
       { "from": 3, "to": 8, "inputPort": 0 },
       { "from": 7, "to": 8, "inputPort": 1 },
       { "from": 8, "to": 4, "inputPort": 1 },
@@ -27,7 +31,8 @@
     ],
     "initialParameters": [
       { "nodeId": 7, "id": 2, "value": 2 },
-      { "nodeId": 7, "id": 3, "value": 40 }
+      { "nodeId": 7, "id": 3, "value": 40 },
+      { "nodeId": 11, "id": 0, "value": 1 }
     ]
   },
   "partials": {
@@ -48,6 +53,10 @@
     { "id": 9, "nodeId": 6, "nodeParameterId": 3, "hostId": "pvoc-mix", "label": "Pitch engine mix", "kind": "float", "min": 0, "max": 1, "default": 0 },
     { "id": 10, "nodeId": 6, "nodeParameterId": 4, "hostId": "pvoc-order", "label": "FFT size", "kind": "select", "choices": ["512", "1024", "2048", "4096"], "choiceValues": [9, 10, 11, 12], "default": 11, "prepareOnly": true },
     { "id": 11, "nodeId": 8, "nodeParameterId": 0, "hostId": "phrase-amount", "label": "Sample phrase contour", "kind": "float", "min": 0, "max": 1, "default": 0 },
-    { "id": 12, "nodeId": 8, "nodeParameterId": 1, "hostId": "phrase-reference", "label": "Phrase reference", "kind": "float", "min": 0.05, "max": 0.6, "default": 0.18 }
+    { "id": 12, "nodeId": 8, "nodeParameterId": 1, "hostId": "phrase-reference", "label": "Phrase reference", "kind": "float", "min": 0.05, "max": 0.6, "default": 0.18 },
+    { "id": 13, "nodeId": 11, "nodeParameterId": 1, "hostId": "wave-pitch", "label": "Base wave pitch", "kind": "float", "min": 40, "max": 1600, "default": 220, "unit": "Hz", "scale": "log" },
+    { "id": 14, "nodeId": 11, "nodeParameterId": 2, "hostId": "wave-level", "label": "Base wave level", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 15, "nodeId": 11, "nodeParameterId": 0, "hostId": "wave-shape", "label": "Base wave shape", "kind": "select", "choices": ["Sine", "Saw", "Square", "Triangle", "Sine + saw"], "default": 1 },
+    { "id": 16, "nodeId": 12, "nodeParameterId": 0, "hostId": "base-blend", "label": "Base wave ↔ sample", "kind": "float", "min": -1, "max": 1, "default": 1 }
   ]
 }

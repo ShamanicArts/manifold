@@ -58,6 +58,15 @@ assert.ok(rms(both) > .01, 'composed graph must sound');
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 2, value: 0 } });
 const sampleOnly = settle();
 assert.ok(rms(sampleOnly) > .01, 'sample branch must sound alone');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 11, id: 2, value: .35 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 12, id: 0, value: -1 } });
+const waveOnly = settle();
+assert.ok(rms(waveOnly) > .02, 'base wave must sound alone');
+assert.ok(Math.max(...sampleOnly.map((value, index) => Math.abs(value - waveOnly[index]))) > .02,
+  'base crossfade must change the audible signal');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 12, id: 0, value: 0 } });
+const waveSample = settle();
+assert.ok(rms(waveSample) > .02, 'centre blend must sound');
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 1, value: 0 } });
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 2, value: 1 } });
 const additiveOnly = settle();
@@ -70,4 +79,4 @@ await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 8, count
 const phraseGain = messages.at(-1).values[0];
 assert.ok(phraseGain > 1.5 && phraseGain <= 3, `sample phrase gain ${phraseGain}`);
 assert.ok(rms(contoured) > rms(additiveOnly) * 1.5, 'sample envelope must shape additive level');
-console.log(`Main sample blend worklet: one source → ${count} Morph partials; both ${rms(both).toFixed(3)}, sample ${rms(sampleOnly).toFixed(3)}, bank ${rms(additiveOnly).toFixed(3)} RMS`);
+console.log(`Main sample blend worklet: one source → ${count} Morph partials; sample ${rms(sampleOnly).toFixed(3)}, wave ${rms(waveOnly).toFixed(3)}, centre ${rms(waveSample).toFixed(3)}, bank ${rms(additiveOnly).toFixed(3)} RMS`);

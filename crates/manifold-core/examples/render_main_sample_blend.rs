@@ -1,4 +1,4 @@
-//! Native reference for the first authored Main sample playback + Add/Morph branch.
+//! Native reference for the authored Main wave/sample base + Add/Morph branch.
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
 use manifold_core::sine_bank::DEFAULTS;
 use manifold_core::spectral_targets::{
@@ -10,8 +10,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 15 {
-        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE".into());
+    if args.len() != 19 {
+        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND".into());
     }
     let sample: Vec<f32> = std::fs::read(&args[1])?
         .chunks_exact(4)
@@ -31,6 +31,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     let phrase_amount: f32 = args[13].parse()?;
     let phrase_reference: f32 = args[14].parse()?;
+    let wave_pitch: f32 = args[15].parse()?;
+    let wave_level: f32 = args[16].parse()?;
+    let wave_shape: u32 = args[17].parse()?;
+    let base_blend: f32 = args[18].parse()?;
     let analysis = analyze_temporal_stereo(&sample, 48_000.0, 0..sample_frames, 128)
         .ok_or("source analysis failed")?;
     let source = analysis.partials_at(0.5, 0.6, 0.5);
@@ -88,6 +92,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kind: NodeKind::SineBank { params: bank },
             },
             NodeSpec {
+                id: 11,
+                kind: NodeKind::Oscillator {
+                    frequency: wave_pitch,
+                    amplitude: wave_level,
+                    waveform: wave_shape,
+                },
+            },
+            NodeSpec {
+                id: 12,
+                kind: NodeKind::Crossfader {
+                    position: base_blend,
+                    curve: 1.0,
+                    mix: 1.0,
+                },
+            },
+            NodeSpec {
                 id: 7,
                 kind: NodeKind::EnvelopeControl {
                     attack_ms: 5.0,
@@ -134,7 +154,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 input_port: 0,
             },
             Connection {
+                from: 11,
+                to: 12,
+                input_port: 0,
+            },
+            Connection {
                 from: 6,
+                to: 12,
+                input_port: 1,
+            },
+            Connection {
+                from: 12,
                 to: 4,
                 input_port: 0,
             },

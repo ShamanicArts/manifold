@@ -16,7 +16,8 @@ subprocess.run(["cargo", "build", "-p", "manifold-core", "--example", "render_ma
 runner = ROOT / "target/debug/examples/render_main_sample_blend"
 sources = [ROOT / path for path in [
     "crates/manifold-core/src/graph.rs", "crates/manifold-core/src/sample_region.rs",
-    "crates/manifold-core/src/sine_bank.rs", "crates/manifold-core/src/temporal_partials.rs",
+    "crates/manifold-core/src/sine_bank.rs", "crates/manifold-core/src/oscillator.rs",
+    "crates/manifold-core/src/temporal_partials.rs",
     "crates/manifold-core/src/phase_vocoder.rs",
     "crates/manifold-core/src/phrase_gain.rs", "crates/manifold-core/src/envelope_follower.rs",
     "crates/manifold-core/src/spectral_targets.rs", "crates/manifold-core/examples/render_main_sample_blend.rs",
@@ -40,22 +41,25 @@ subprocess.run([legacy_follower, str(sample_path),
                 "5", "5", "80", "80", "2", "2", "40", "40", "0", "0",
                 str(source_rate), str(block), str(frames // 2), str(frames)], check=True)
 cases = []
-for case_id, label, mode, sample_gain, bank_gain, pvoc, phrase in [
-    ("sample", "Sample branch alone · dry vocoder", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18]),
-    ("add", "Add branch alone", 1, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18]),
-    ("morph", "Morph branch alone", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18]),
-    ("blend", "Sample + Morph at equal gain", 2, 0.5, 0.5, [0, 0, 1, 0, 11], [0, .18]),
-    ("pvoc-bin", "Sample · bin-map +7 st", 1, 1.0, 0.0, [0, 7, 1, 1, 11], [0, .18]),
-    ("pvoc-hq", "Sample · stretch/resample +7 st", 1, 1.0, 0.0, [1, 7, 1, 1, 11], [0, .18]),
-    ("pvoc-time", "Sample · 1.5× time stretch", 1, 1.0, 0.0, [1, 0, 1.5, 1, 11], [0, .18]),
-    ("phrase-full", "Morph · full sample phrase contour", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [1, .18]),
-    ("phrase-half", "Morph · half phrase contour", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [.5, .18]),
+for case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave in [
+    ("sample", "Sample branch alone · dry vocoder", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1]),
+    ("add", "Add branch alone", 1, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1]),
+    ("morph", "Morph branch alone", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1]),
+    ("blend", "Sample + Morph at equal gain", 2, 0.5, 0.5, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1]),
+    ("pvoc-bin", "Sample · bin-map +7 st", 1, 1.0, 0.0, [0, 7, 1, 1, 11], [0, .18], [220, 0, 1, 1]),
+    ("pvoc-hq", "Sample · stretch/resample +7 st", 1, 1.0, 0.0, [1, 7, 1, 1, 11], [0, .18], [220, 0, 1, 1]),
+    ("pvoc-time", "Sample · 1.5× time stretch", 1, 1.0, 0.0, [1, 0, 1.5, 1, 11], [0, .18], [220, 0, 1, 1]),
+    ("phrase-full", "Morph · full sample phrase contour", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [1, .18], [220, 0, 1, 1]),
+    ("phrase-half", "Morph · half phrase contour", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [.5, .18], [220, 0, 1, 1]),
+    ("wave-only", "Saw wave base alone", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, .35, 1, -1]),
+    ("wave-sample-mid", "Equal-power wave/sample centre", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, .35, 1, 0]),
+    ("wave-sample-morph", "Wave/sample base plus Morph bank", 2, .7, .5, [0, 0, 1, 0, 11], [0, .18], [330, .35, 3, -.35]),
 ]:
     output, target = f"{case_id}.f32", f"{case_id}-target.f32"
     subprocess.run([runner, str(sample_path), str(OUT / output), str(OUT / target), str(mode),
-                    str(sample_gain), str(bank_gain), str(frames), *map(str, pvoc), *map(str, phrase)], check=True)
+                    str(sample_gain), str(bank_gain), str(frames), *map(str, pvoc), *map(str, phrase), *map(str, wave)], check=True)
     cases.append({"id": case_id, "label": label, "mode": mode, "sampleGain": sample_gain,
-                  "bankGain": bank_gain, "vocoder": pvoc, "phrase": phrase,
+                  "bankGain": bank_gain, "vocoder": pvoc, "phrase": phrase, "wave": wave,
                   "target": target, "output": output, "followerMeter": follower_meters,
                   "blockSize": block})
 (OUT / "manifest.json").write_text(json.dumps({

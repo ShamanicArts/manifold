@@ -270,8 +270,8 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: one loaded source feeds stereo region playback, a two-mode phase vocoder, and the Rust/Wasm partial worker. A prepared Add or Morph Sine bank follows the source phrase envelope and shares the output mixer with the sample branch.',
-    signal: 'File → sample region → vocoder / envelope control · temporal worker → prepared Sine bank → phrase gain · mixer → output',
+    description: 'An authored Main sample synth slice: a base wave and the processed sample meet in an equal-power crossfade. The sample also drives a phrase follower for the prepared Add or Morph Sine bank. Base and additive branches then share the output mixer.',
+    signal: 'Wave + file → sample region → vocoder → base crossfade · raw sample → envelope control · temporal worker → prepared Sine bank → phrase gain · mixer → output',
   },
   'reverse-delay': {
     project: reverseDelayProject,

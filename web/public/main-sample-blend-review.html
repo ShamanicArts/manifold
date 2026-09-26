@@ -4,36 +4,36 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Manifold · Main sample blend review</title>
   <style>
-    :root { color-scheme:dark; background:#111a20; color:#e4e9e7; font:14px/1.5 system-ui,sans-serif; }
+    :root { color-scheme:light; background:#f7f5f0; color:#252a28; font:14px/1.5 system-ui,sans-serif; }
     * { box-sizing:border-box; } body { margin:0; } main { max-width:960px; margin:auto; padding:30px clamp(18px,5vw,50px) 70px; }
-    a { color:#a6d9bb; } h1 { font-size:clamp(28px,4vw,40px); font-weight:600; line-height:1.13; margin:8px 0 12px; }
-    h2 { font-size:17px; font-weight:600; margin:0 0 12px; } p { max-width:720px; color:#bfcccb; }
-    .eyebrow,.small { color:#9cadb3; font-size:12px; letter-spacing:.05em; }
+    a { color:#285e4d; } h1 { font:400 clamp(34px,5vw,56px)/1.08 Georgia,serif; margin:8px 0 12px; }
+    h2 { font-size:17px; font-weight:600; margin:0 0 12px; } p { max-width:720px; color:#626b66; }
+    .eyebrow,.small { color:#626b66; font-size:12px; letter-spacing:.05em; }
     nav { display:flex; gap:18px; flex-wrap:wrap; margin:24px 0; }
-    .panel { border:1px solid #354650; background:#1a262f; border-radius:8px; padding:22px; margin:16px 0; }
+    .panel { border:1px solid #d7dcd6; background:#fffefa; padding:22px; margin:16px 0; }
     .flow { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; align-items:stretch; }
-    .flow div { border:1px solid #40525b; border-radius:5px; padding:14px; }
-    .flow strong { display:block; margin-bottom:6px; }.flow span { color:#afc0c1; font-size:12px; }
+    .flow div { border-top:2px solid #285e4d; background:#f7f5f0; padding:14px; }
+    .flow strong { display:block; margin-bottom:6px; }.flow span { color:#626b66; font-size:12px; }
     table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
-    th,td { border-bottom:1px solid #354650; padding:10px; text-align:left; }
-    th { color:#aebfc1; font-size:12px; font-weight:500; } td:nth-child(n+2),th:nth-child(n+2) { text-align:right; }
-    .pass { color:#a6d9bb; } .scope { border-left:3px solid #dcae83; padding-left:15px; }
+    th,td { border-bottom:1px solid #d7dcd6; padding:10px; text-align:left; }
+    th { color:#626b66; font-size:12px; font-weight:500; } td:nth-child(n+2),th:nth-child(n+2) { text-align:right; }
+    .pass { color:#285e4d; } .scope { border-left:3px solid #a35339; padding-left:15px; }
     @media(max-width:700px) { .flow { grid-template-columns:1fr; } .panel { padding:16px; } }
   </style>
 </head>
 <body><main>
-  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 110</div>
-  <h1>The first Main sample blend</h1>
-  <p>One decoded stereo source feeds sample playback and temporal partial analysis. Rust prepares an Add or Morph target away from the audio callback. Sample playback feeds the Phase vocoder and an envelope follower; the follower shapes the additive bank before both branches meet in the mixer.</p>
+  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 111</div>
+  <h1>Wave meets sample in the Main base path</h1>
+  <p>The Main study now crossfades a standard waveform oscillator with the processed stereo sample using the old equal-power curve. The raw sample still drives the additive phrase follower, while Rust prepares Add or Morph partials away from the audio callback.</p>
   <nav><a href="/?primitive=main-sample-blend">Play and compare the graph</a><a href="/phase-vocoder-review.html">Inspect Phase vocoder</a><a href="/spectral-target-review.html">Inspect Add / Morph recipes</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
   <section class="panel"><h2>Signal path</h2><div class="flow">
-    <div><strong>Decoded source</strong><span>48 kHz stereo fixture or a chosen audio file</span></div>
-    <div><strong>Vocoder + prepared Sine bank</strong><span>Raw sample envelope shapes the additive phrase; branch gains remain independent</span></div>
-    <div><strong>Two-bus output</strong><span>Rust graph in native and Wasm builds; AudioWorklet playback</span></div>
+    <div><strong>Base wave + decoded source</strong><span>Oscillator and vocoder output feed the equal-power crossfade. −1 is wave; +1 is sample.</span></div>
+    <div><strong>Prepared Sine bank</strong><span>Raw sample envelope shapes the Add/Morph phrase. The base and additive gains remain independent.</span></div>
+    <div><strong>Two-bus output</strong><span>Rust graph in native and Wasm builds; live controls in AudioWorklet playback.</span></div>
   </div></section>
   <section class="panel"><h2>Native Rust ↔ Rust/Wasm graph comparison</h2>
-    <p>Both runners load the same source and bounded target. Nine offline captures contain 16,384 stereo frames each at 48 kHz. Six cases including the new phrase contours match exactly; three wet vocoder cases remain within 0.000004. The original C++ follower meters also match the Wasm graph on this source.</p>
-    <table><thead><tr><th>Case</th><th>Sample gain</th><th>Bank gain</th><th>Native RMS</th><th>Max Δ</th></tr></thead><tbody>
+    <p>Both runners load the same source and bounded target. Twelve offline captures contain 16,384 stereo frames each at 48 kHz. The three new wave routes and six previous dry/phrase cases match exactly; three wet vocoder cases remain within 0.000004. The original C++ follower meters also match the Wasm graph on this source.</p>
+    <table><thead><tr><th>Case</th><th>Base gain</th><th>Bank gain</th><th>Native RMS</th><th>Max Δ</th></tr></thead><tbody>
       <tr><td>Sample only</td><td>1</td><td>0</td><td>0.1759</td><td class="pass">0</td></tr>
       <tr><td>Add only</td><td>0</td><td>1</td><td>0.1584</td><td class="pass">0</td></tr>
       <tr><td>Morph only</td><td>0</td><td>1</td><td>0.1200</td><td class="pass">0</td></tr>
@@ -43,9 +43,12 @@
       <tr><td>Vocoder 1.5× time</td><td>1</td><td>0</td><td>0.0615</td><td class="pass">3.7e−6</td></tr>
       <tr><td>Morph + full phrase</td><td>0</td><td>1</td><td>0.3580</td><td class="pass">0</td></tr>
       <tr><td>Morph + half phrase</td><td>0</td><td>1</td><td>0.2389</td><td class="pass">0</td></tr>
+      <tr><td>Saw wave only</td><td>1</td><td>0</td><td>0.1011</td><td class="pass">0</td></tr>
+      <tr><td>Wave / sample centre</td><td>1</td><td>0</td><td>0.0724</td><td class="pass">0</td></tr>
+      <tr><td>Wave / sample + Morph</td><td>0.7</td><td>0.5</td><td>0.1176</td><td class="pass">0</td></tr>
     </tbody></table>
     <p class="small">In the workbench, open “Reference comparison” to switch cases, inspect left/right output and differences, and play native or Wasm audio.</p>
   </section>
-  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save 13 graph controls, target mode and recipe, temporal position, and the source. The phrase reference starts from analyzed source RMS and can be adjusted manually. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and target preparation, then restores pitch and branch gains. The version-3 state accepts prior version-1 six-control and version-2 11-control files, supplying new control defaults; malformed audio and out-of-range controls are rejected.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
-  <section class="panel"><h2>Next reconstruction boundary</h2><p class="scope">This is an authored v2 study of the old Main sample synth's sample and additive branches. The Phase vocoder is on the sample branch. The source follower and additive phrase contour are represented, with sample-rate gain shaping. The old note ADSR envelopes, directional crossfades, polyphonic voices, and old project/preset format remain beyond these nine captures. The C++ helper recipe comparison is separate from this native-versus-Wasm graph check.</p></section>
+  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save 17 graph controls, target mode and recipe, temporal position, and the source. The phrase reference starts from analyzed source RMS and can be adjusted manually. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and target preparation, then restores pitch and branch gains. The version-4 state accepts prior version-1 six-control, version-2 11-control, and version-3 13-control files, supplying new control defaults; malformed audio and out-of-range controls are rejected.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
+  <section class="panel"><h2>Legacy boundary and next route</h2><p class="scope">The old Main voice has both mix and direction crossfaders fed by oscillator and sample, followed by a selector for FM/Sync modes. This study reconstructs the normal wave/sample base crossfade only. The old sample gain staging, FM/Sync behavior, Add branch crossfade, voice allocation, and preset format remain to be mapped. The old Main voice checks an optional ADSR field but never constructs or connects that node, so note ADSR here would be a deliberate v2 behavior rather than parity. The C++ helper recipe comparison remains separate from this native-versus-Wasm composition check.</p></section>
 </main></body></html>
