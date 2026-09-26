@@ -1,0 +1,12 @@
+[package]
+name = "manifold-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "manifold_web"
+crate-type = ["cdylib"]
+
+[dependencies]
+manifold-core = { path = "../manifold-core" }

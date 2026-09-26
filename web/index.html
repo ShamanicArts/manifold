@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d121a" />
+    <title>Manifold v2 — Standalone Filter</title>
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <div class="brand"><span class="mark">M</span><div><b>MANIFOLD</b><small>v2 / browser laboratory</small></div></div>
+        <span class="phase">FIRST PROJECT · STANDALONE FILTER</span>
+      </header>
+      <section class="hero">
+        <div class="hero-copy">
+          <span class="eyebrow">RUST AUDIO · WEB INTERFACE</span>
+          <h1>Shape sound<br /><em>at the source.</em></h1>
+          <p>The original Manifold filter rebuilt as a portable Rust signal processor. Audio runs in an AudioWorklet; this display runs on its own frame clock.</p>
+          <div class="transport"><button id="audio-toggle" type="button">Start audio</button><label>Input <select id="source"><option value="oscillator">Test oscillator</option><option value="microphone">Microphone</option></select></label></div>
+          <div id="status" role="status">Audio idle</div>
+        </div>
+        <div class="display"><div id="visualizer" aria-label="Live frequency display"></div><div class="display-foot"><span>FREQUENCY FIELD</span><span id="render-backend">INITIALIZING RENDERER</span></div></div>
+      </section>
+      <section class="controls" aria-label="Filter controls">
+        <div class="section-heading"><div><span class="eyebrow">PROJECT 001</span><h2>Standalone Filter</h2></div><span class="tag">SVF / STEREO</span></div>
+        <div class="control-grid" id="controls"></div>
+      </section>
+      <footer>DSP: Rust → Wasm · Graphics: Three.js WebGPU · Source: historical Manifold Standalone Filter</footer>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

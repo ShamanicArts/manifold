@@ -15,4 +15,6 @@ npm --prefix web run dev
 
 Open the Vite URL, click **Start audio**, and choose the test oscillator or microphone. The audio filter executes in Rust/Wasm inside an AudioWorklet. Three.js renders a frequency display on its own animation loop. If WebGPU is unavailable, Three.js can use its WebGL2 backend.
 
+For a GPU-less browser test, add `?webgl=1` to force the WebGL2 backend. The browser page works without an external audio interface; microphone mode requests browser permission.
+
 The first slice includes the original filter modes, cutoff, resonance, parameter smoothing, and a project descriptor. Host automation, preset conversion, OSC, MIDI, looper capture, and native plug-in packaging are subsequent slices. See [architecture](docs/architecture.md) and [migration map](docs/migration.md).

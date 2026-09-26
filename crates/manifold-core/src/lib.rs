@@ -1,0 +1,212 @@
+//! Platform-independent audio kernels. The prepared filter allocates nothing in process.
+
+use std::f32::consts::PI;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum FilterMode {
+    Lowpass = 0,
+    Bandpass = 1,
+    Highpass = 2,
+    Notch = 3,
+}
+
+impl FilterMode {
+    fn from_parameter(value: f32) -> Self {
+        match value.round().clamp(0.0, 3.0) as u32 {
+            1 => Self::Bandpass,
+            2 => Self::Highpass,
+            3 => Self::Notch,
+            _ => Self::Lowpass,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct ChannelState {
+    ic1eq: f32,
+    ic2eq: f32,
+}
+
+/// Port of the legacy Standalone Filter's `SVFNode` scalar path.
+/// One instance belongs to one audio stream. Parameter changes target the next sample.
+pub struct Filter {
+    sample_rate: f32,
+    mode: FilterMode,
+    cutoff: f32,
+    target_cutoff: f32,
+    resonance: f32,
+    target_resonance: f32,
+    drive: f32,
+    mix: f32,
+    cutoff_smoothing: f32,
+    resonance_smoothing: f32,
+    state: [ChannelState; 2],
+}
+
+impl Filter {
+    pub fn new(sample_rate: f32) -> Self {
+        let sample_rate = if sample_rate.is_finite() && sample_rate > 1.0 {
+            sample_rate
+        } else {
+            44_100.0
+        };
+        Self {
+            sample_rate,
+            mode: FilterMode::Lowpass,
+            cutoff: 3200.0,
+            target_cutoff: 3200.0,
+            resonance: 0.75,
+            target_resonance: 0.75,
+            drive: 1.0,
+            mix: 1.0,
+            cutoff_smoothing: (1.0 - (-1.0 / (0.020 * sample_rate)).exp()).clamp(0.0001, 1.0),
+            resonance_smoothing: (1.0 - (-1.0 / (0.010 * sample_rate)).exp()).clamp(0.0001, 1.0),
+            state: [ChannelState::default(); 2],
+        }
+    }
+
+    pub fn mode(&self) -> FilterMode {
+        self.mode
+    }
+    pub fn cutoff(&self) -> f32 {
+        self.target_cutoff
+    }
+    pub fn resonance(&self) -> f32 {
+        self.target_resonance
+    }
+
+    /// Stable project parameter IDs: 0 mode, 1 cutoff Hz, 2 resonance.
+    pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        match id {
+            0 => self.mode = FilterMode::from_parameter(value),
+            1 => self.target_cutoff = value.clamp(20.0, 20_000.0),
+            2 => self.target_resonance = value.clamp(0.06, 1.0),
+            _ => return false,
+        }
+        true
+    }
+
+    pub fn reset(&mut self) {
+        self.state = [ChannelState::default(); 2];
+    }
+
+    /// Planar stereo f32 buffers, equal lengths. No allocations, locks, or host calls.
+    pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
+        let [left_in, right_in] = input;
+        let [left_out, right_out] = output;
+        assert_eq!(left_in.len(), right_in.len());
+        assert_eq!(left_in.len(), left_out.len());
+        assert_eq!(left_in.len(), right_out.len());
+
+        for index in 0..left_in.len() {
+            self.cutoff += (self.target_cutoff - self.cutoff) * self.cutoff_smoothing;
+            self.resonance += (self.target_resonance - self.resonance) * self.resonance_smoothing;
+
+            let cutoff = self.cutoff.clamp(20.0, 0.42 * self.sample_rate);
+            let resonance = self.resonance.clamp(0.06, 1.0);
+            let g = (PI * cutoff / self.sample_rate).tan().min(8.0);
+            let k = 2.0 * (1.0 - resonance * 0.85);
+            let a1 = 1.0 / (1.0 + g * (g + k));
+            let a2 = g * a1;
+            let a3 = g * a2;
+
+            left_out[index] = self.process_sample(left_in[index], 0, k, a1, a2, a3);
+            right_out[index] = self.process_sample(right_in[index], 1, k, a1, a2, a3);
+        }
+    }
+
+    #[inline]
+    fn process_sample(
+        &mut self,
+        dry: f32,
+        channel: usize,
+        k: f32,
+        a1: f32,
+        a2: f32,
+        a3: f32,
+    ) -> f32 {
+        // Legacy input drive: x / (1 + |x| * (1 + |x| / 3)).
+        let driven = dry * self.drive;
+        let magnitude = driven.abs();
+        let input = driven / (1.0 + magnitude * (1.0 + magnitude / 3.0)) / self.drive;
+        let state = &mut self.state[channel];
+        let v3 = input - state.ic2eq;
+        let v1 = a1 * state.ic1eq + a2 * v3;
+        let v2 = state.ic2eq + a2 * state.ic1eq + a3 * v3;
+        state.ic1eq = 2.0 * v1 - state.ic1eq;
+        state.ic2eq = 2.0 * v2 - state.ic2eq;
+        if !state.ic1eq.is_finite() || !state.ic2eq.is_finite() {
+            *state = ChannelState::default();
+            return dry;
+        }
+        // Avoid subnormal state values in long silent tails.
+        if state.ic1eq.abs() < 1e-20 {
+            state.ic1eq = 0.0;
+        }
+        if state.ic2eq.abs() < 1e-20 {
+            state.ic2eq = 0.0;
+        }
+        let wet = match self.mode {
+            FilterMode::Lowpass => v2,
+            FilterMode::Bandpass => v1,
+            FilterMode::Highpass => input - k * v1 - v2,
+            FilterMode::Notch => input - k * v1,
+        };
+        let result = dry * (1.0 - self.mix) + wet * self.mix;
+        if result.is_finite() {
+            result
+        } else {
+            *state = ChannelState::default();
+            dry
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(filter: &mut Filter, input: &[f32]) -> Vec<f32> {
+        let mut left = vec![0.0; input.len()];
+        let mut right = vec![0.0; input.len()];
+        filter.process_planar([input, input], [&mut left, &mut right]);
+        assert_eq!(left, right);
+        left
+    }
+
+    #[test]
+    fn block_partition_preserves_state() {
+        let input: Vec<_> = (0..1024).map(|n| (n as f32 * 0.03).sin() * 0.4).collect();
+        let whole = run(&mut Filter::new(48_000.0), &input);
+        let mut split_filter = Filter::new(48_000.0);
+        let mut split = run(&mut split_filter, &input[..127]);
+        split.extend(run(&mut split_filter, &input[127..]));
+        assert_eq!(whole, split);
+    }
+
+    #[test]
+    fn modes_produce_distinct_finite_signals() {
+        let input: Vec<_> = (0..512).map(|n| (n as f32 * 0.19).sin() * 0.2).collect();
+        let outputs: Vec<_> = (0..4)
+            .map(|mode| {
+                let mut filter = Filter::new(48_000.0);
+                assert!(filter.set_parameter(0, mode as f32));
+                run(&mut filter, &input)
+            })
+            .collect();
+        assert!(outputs.iter().flatten().all(|value| value.is_finite()));
+        assert!(outputs.windows(2).all(|pair| pair[0] != pair[1]));
+    }
+
+    #[test]
+    fn public_resonance_range_retains_legacy_dsp_clamp() {
+        let mut filter = Filter::new(48_000.0);
+        assert!(filter.set_parameter(2, 2.0));
+        assert_eq!(filter.resonance(), 1.0);
+        assert!(!filter.set_parameter(1, f32::NAN));
+    }
+}
