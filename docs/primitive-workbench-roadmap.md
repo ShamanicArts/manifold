@@ -4,7 +4,7 @@ Status: waves 0–1 have interactive SVF, Crossfader, and Mixer views with C++ p
 
 ## Purpose
 
-Checkpoint 103 adds the legacy stereo Resonator as the first isolated sine/resonance primitive in wave 6. Its seven C++ captures run through native Rust, direct Wasm, and the AudioWorklet; the remaining partial network and media services are still open. The MIDI effect sequence through Arpeggiator is also playable in wave 2, with a seeded Random redesign and exact sample-clock output events.
+Checkpoint 103 adds the legacy stereo Resonator as the first isolated sine/resonance primitive in wave 6. Its seven C++ captures run through native Rust, direct Wasm, and the AudioWorklet; the remaining partial network and media services are still open. The [sine bank implementation map](sine-bank-design.md) traces the next route from partial analysis through Add and Morph into the Main sample project. The MIDI effect sequence through Arpeggiator is also playable in wave 2, with a seeded Random redesign and exact sample-clock output events.
 
 Make each port inspectable as a small browser instrument: manipulate a primitive, hear it, see its useful measurements, and compare the same deterministic case with the old C++/JUCE implementation. The workbench is a development surface and the beginning of the eventual project UI component library. It must not become part of the audio callback.
 
