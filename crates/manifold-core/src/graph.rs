@@ -744,6 +744,7 @@ impl ExecutionPlan {
                 Kernel::EnvelopeControl(follower) if band == 0 => Some(follower.meter()),
                 Kernel::Compressor(compressor) if band == 0 => Some(compressor.gain_reduction_db()),
                 Kernel::Limiter(limiter) if band == 0 => Some(limiter.gain_reduction_db()),
+                Kernel::SampleRegion(player) => player.meter(band),
                 _ => None,
             })
     }

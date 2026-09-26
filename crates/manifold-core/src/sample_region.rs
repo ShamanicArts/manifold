@@ -81,6 +81,18 @@ impl SampleRegion {
         }
     }
 
+    pub fn meter(&self, band: usize) -> Option<f32> {
+        match band {
+            0 => Some(if self.stereo.len() > 2 {
+                (self.position / (self.stereo.len() / 2 - 1) as f64).clamp(0.0, 1.0) as f32
+            } else {
+                0.0
+            }),
+            1 => Some(if self.playing { 1.0 } else { 0.0 }),
+            _ => None,
+        }
+    }
+
     fn trigger(&mut self) {
         if self.stereo.is_empty() {
             return;

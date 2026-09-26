@@ -32,4 +32,6 @@ const outRight = new Float32Array(128);
 processor.process([], [[outLeft, outRight]]);
 assert.deepEqual([...outLeft.slice(0, 8)], [.5, .25, 0, -.25, .5, .25, 0, -.25]);
 assert.deepEqual([...outRight.slice(0, 4)], [-.5, -.25, 0, .25]);
-console.log('Sample region worklet: upload, note trigger, stereo loop passed');
+await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 2, count: 2 } });
+assert.deepEqual(messages.at(-1), { type: 'meters', nodeId: 2, values: [0, 1] });
+console.log('Sample region worklet: upload, note trigger, stereo loop, playhead meter passed');

@@ -159,7 +159,11 @@ let values = new Map();
 let slotValuesByType = new Map();
 let loopHasTake = false;
 let loadedSample = null;
+let exampleSample = null;
+let samplePlayhead = 0;
+let samplePlaying = false;
 function demoSample() {
+  if (exampleSample) return exampleSample;
   const sourceRate = 48_000;
   const frames = 24_000;
   const stereo = new Float32Array(frames * 2);
@@ -171,11 +175,78 @@ function demoSample() {
     stereo[frame * 2] = tone;
     stereo[frame * 2 + 1] = tone * 0.85;
   }
-  return { sourceRate, stereo };
+  exampleSample = { sourceRate, stereo };
+  return exampleSample;
 }
+function samplePeaks(source) {
+  if (source.peaks) return source.peaks;
+  const peaks = new Float32Array(256 * 2);
+  const frames = source.stereo.length / 2;
+  for (let bin = 0; bin < 256; bin++) {
+    const begin = Math.floor(bin * frames / 256);
+    const end = Math.min(frames, Math.max(begin + 1, Math.floor((bin + 1) * frames / 256)));
+    for (let frame = begin; frame < end; frame++) {
+      peaks[bin * 2] = Math.max(peaks[bin * 2], Math.abs(source.stereo[frame * 2]));
+      peaks[bin * 2 + 1] = Math.max(peaks[bin * 2 + 1], Math.abs(source.stereo[frame * 2 + 1]));
+    }
+  }
+  source.peaks = peaks;
+  return peaks;
+}
+function drawSampleWaveform() {
+  if (activeFamily !== 'sample-region') return;
+  const canvas = byId('sample-waveform');
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (!width || !height) return;
+  const scale = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#111922';
+  ctx.fillRect(0, 0, width, height);
+  const source = loadedSample ?? demoSample();
+  const peaks = samplePeaks(source);
+  const loopStart = values.get(4) ?? 0;
+  const loopEnd = values.get(5) ?? 1;
+  ctx.fillStyle = 'rgba(120, 135, 160, .12)';
+  ctx.fillRect(loopStart * width, 0, Math.max(0, loopEnd - loopStart) * width, height);
+  for (let channel = 0; channel < 2; channel++) {
+    const center = height * (channel ? .75 : .25);
+    ctx.strokeStyle = channel ? '#79bdcf' : '#ab9ae7';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let bin = 0; bin < 256; bin++) {
+      const x = (bin + .5) / 256 * width;
+      const amplitude = Math.min(1, peaks[bin * 2 + channel]) * height * .21;
+      ctx.moveTo(x, center - amplitude);
+      ctx.lineTo(x, center + amplitude);
+    }
+    ctx.stroke();
+  }
+  for (const [position, color] of [[values.get(3) ?? 0, '#6ecdb6'], [loopStart, '#d4b468'], [loopEnd, '#d582a7'], [samplePlayhead, '#e3e9ed']]) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = color === '#e3e9ed' ? 2 : 1;
+    ctx.beginPath();
+    const x = Math.min(width - 1, Math.max(0, position * width));
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  byId('sample-playhead').textContent = `${samplePlaying ? 'Playing' : 'Stopped'} · ${(samplePlayhead * source.stereo.length / 2 / source.sourceRate).toFixed(2)} s / ${(source.stereo.length / 2 / source.sourceRate).toFixed(2)} s`;
+}
+window.addEventListener('resize', drawSampleWaveform);
 let envelopeHistory = [];
 const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands) => {
-  if (nodeId !== 2 || !['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(activeFamily)) return;
+  if (nodeId !== 2) return;
+  if (activeFamily === 'sample-region') {
+    samplePlayhead = Number.isFinite(bands[0]) ? Math.max(0, Math.min(1, bands[0])) : 0;
+    samplePlaying = bands[1] >= .5;
+    drawSampleWaveform();
+    return;
+  }
+  if (!['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(activeFamily)) return;
   if (activeFamily === 'compressor' || activeFamily === 'limiter') {
     const reduction = Number.isFinite(bands[0]) ? Math.max(0, activeFamily === 'compressor' ? -bands[0] : bands[0]) : 0;
     const row = byId('live-bands').firstChild;
@@ -266,6 +337,7 @@ function addSlider(parameter) {
     if (publish) audio.setParameter(parameter.id, value);
     if (publish) updateCutoffRange();
     if (publish) updateTransferCurve();
+    if (publish && activeFamily === 'sample-region') drawSampleWaveform();
   };
   wrapper.dataset.parameterId = String(parameter.id);
   if (parameter.prepareOnly) {
@@ -438,6 +510,9 @@ function renderPrimitive(family) {
   byId('keyboard-section').hidden = family !== 'voice';
   byId('midi-access-section').hidden = family !== 'voice';
   byId('sample-section').hidden = family !== 'sample-region';
+  byId('sample-file').disabled = audio.running;
+  samplePlayhead = 0;
+  samplePlaying = false;
   if (family === 'voice') resetNoteEvents();
   if (mode) {
     byId('modes').style.gridTemplateColumns = `repeat(${mode.choices.length}, minmax(0, 1fr))`;
@@ -521,6 +596,7 @@ function renderPrimitive(family) {
     byId('controls').append(label, curve);
     updateTransferCurve();
   }
+  if (family === 'sample-region') drawSampleWaveform();
   byId('source').hidden = isInstrument;
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
   document.querySelector('.measurement-hint').textContent = family === 'voice'
@@ -700,7 +776,7 @@ window.addEventListener('popstate', () => {
 
 let spectrumFrame = null;
 let meterTimer = null;
-const meterFamilies = ['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'];
+const meterFamilies = ['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'sample-region'];
 function stopMonitoring() {
   if (spectrumFrame !== null) cancelAnimationFrame(spectrumFrame);
   if (meterTimer !== null) clearInterval(meterTimer);
@@ -715,9 +791,10 @@ function startMonitoring() {
   stopMonitoring();
   if (!audio.running) return;
   if (meterFamilies.includes(activeFamily)) {
-    const request = () => audio.requestMeters(2, activeFamily === 'spectrum-analyzer' ? 8 : 1);
+    const request = () => audio.requestMeters(2, activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
     request();
     meterTimer = setInterval(request, 100);
+    if (activeFamily === 'sample-region') animateSpectrum();
   } else animateSpectrum();
 }
 drawLiveSpectrum(byId('live-spectrum'), null);
@@ -726,6 +803,7 @@ byId('sample-file').addEventListener('change', async (event) => {
   if (!file) return;
   const readout = byId('sample-source-status');
   try {
+    if (audio.running) throw new Error('Stop the instrument before changing its file.');
     if (file.size > 32 * 1024 * 1024) throw new Error('Choose a file smaller than 32 MB.');
     readout.textContent = `Decoding ${file.name}…`;
     const decoder = new OfflineAudioContext(2, 1, 48_000);
@@ -741,7 +819,10 @@ byId('sample-file').addEventListener('change', async (event) => {
       stereo[frame * 2 + 1] = right[frame];
     }
     loadedSample = { sourceRate: audioBuffer.sampleRate, stereo };
-    readout.textContent = `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ${audioBuffer.numberOfChannels} channel${audioBuffer.numberOfChannels === 1 ? '' : 's'}${audio.running ? ' · restart the instrument to load it' : ' · ready to start'}`;
+    samplePlayhead = 0;
+    samplePlaying = false;
+    drawSampleWaveform();
+    readout.textContent = `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ${audioBuffer.numberOfChannels} channel${audioBuffer.numberOfChannels === 1 ? '' : 's'} · ready to start`;
   } catch (error) {
     readout.textContent = `Sample unavailable: ${error.message ?? String(error)}`;
   }
@@ -760,6 +841,11 @@ toggle.addEventListener('click', async () => {
         for (const id of [0, 1, 2]) values.set(id, 0);
         updateLoopToggles();
       }
+      if (activeFamily === 'sample-region') {
+        samplePlayhead = 0;
+        samplePlaying = false;
+        drawSampleWaveform();
+      }
     }
     else await audio.start(byId('source').value, values, projects[activeFamily].project,
       activeFamily === 'sample-region' ? loadedSample ?? demoSample() : null);
@@ -768,6 +854,7 @@ toggle.addEventListener('click', async () => {
       ? isInstrument ? 'Stop instrument' : 'Stop audio'
       : isInstrument ? 'Start instrument' : 'Start audio';
     updatePrepareOnlyControls();
+    byId('sample-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running
       ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'voice'
