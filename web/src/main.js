@@ -31,7 +31,7 @@ import { BrowserAudioHost } from './audio/browser-host.js';
 import { BrowserMidiInput, midiAvailability } from './audio/midi-input.js';
 import { MidiHoldState } from './audio/midi-hold.js';
 import { initializeReferenceLab } from './reference/comparison.js';
-import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars } from './reference/plots.js';
+import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars, drawEqResponse } from './reference/plots.js';
 
 const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
@@ -391,6 +391,10 @@ function drawSampleWaveform() {
 }
 window.addEventListener('resize', drawSampleWaveform);
 let envelopeHistory = [];
+let eqResponseSnapshot = null;
+window.addEventListener('resize', () => {
+  if (activeFamily === 'eq8') drawEqResponse(byId('eq-response'), eqResponseSnapshot);
+});
 const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands, nodeActive) => {
   const effectiveParameter = projects[activeFamily]?.project.parameters.find((parameter) =>
     parameter.effectiveMeter && parameter.nodeId === nodeId);
@@ -456,6 +460,12 @@ const audio = new BrowserAudioHost((message) => { status.textContent = message; 
     const scale = Math.max(0.2, Math.max(...envelopeHistory) * 1.2);
     drawMeterTrace(byId('live-envelope-trace'), [envelopeHistory], scale, ['#9a8de8']);
   }
+}, (nodeId, response) => {
+  if (activeFamily !== 'eq8' || nodeId !== 2 || response.some((value) => !Number.isFinite(value))) return;
+  eqResponseSnapshot = response;
+  drawEqResponse(byId('eq-response'), response);
+  const peak = Math.max(...response);
+  byId('eq-response-status').textContent = `Current response · ${Math.min(...response).toFixed(1)} to ${peak >= 0 ? '+' : ''}${peak.toFixed(1)} dB`;
 });
 for (let band = 0; band < 8; band++) {
   const row = document.createElement('div');
@@ -811,6 +821,12 @@ function renderPrimitive(family) {
     row.removeAttribute('title');
   });
   if (family === 'fft-spectrum') { drawBandBars(byId('fft-bands'), [Array(32).fill(0)], 1, ['#9a8de8']); byId('fft-peak').textContent = 'Peak —'; }
+  byId('eq-response-section').hidden = family !== 'eq8';
+  eqResponseSnapshot = null;
+  if (family === 'eq8') {
+    drawEqResponse(byId('eq-response'), null);
+    byId('eq-response-status').textContent = 'Start audio to see the effective band response.';
+  }
   byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : family === 'compressor' || family === 'limiter' ? 'Live gain reduction in decibels' : 'Live envelope value');
   byId('live-envelope-trace').hidden = !['envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family);
   byId('live-envelope-trace').setAttribute('aria-label', family === 'compressor' || family === 'limiter' ? 'Recent gain reduction in decibels' : 'Recent envelope history');
@@ -1193,6 +1209,12 @@ const animateSpectrum = () => {
 function startMonitoring() {
   stopMonitoring();
   if (!audio.running) return;
+  if (activeFamily === 'eq8') {
+    audio.requestEqResponse(2);
+    meterTimer = setInterval(() => audio.requestEqResponse(2), 250);
+    animateSpectrum();
+    return;
+  }
   const effectiveNodes = [...new Set(projects[activeFamily].project.parameters
     .filter((parameter) => parameter.effectiveMeter).map((parameter) => parameter.nodeId))];
   if (meterFamilies.includes(activeFamily) || effectiveNodes.length) {
@@ -1276,6 +1298,7 @@ toggle.addEventListener('click', async () => {
   try {
     if (audio.running) {
       releaseAllNotes(); await audio.stop();
+      if (activeFamily === 'eq8') byId('eq-response-status').textContent = 'Last captured response · start audio to refresh.';
       if (activeFamily === 'loop-capture') {
         loopHasTake = false;
         for (const id of [0, 1, 2]) values.set(id, 0);

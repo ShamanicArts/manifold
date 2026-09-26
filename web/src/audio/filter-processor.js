@@ -14,6 +14,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     this.pendingChannel = new Uint8Array(this.eventCapacity);
     this.pendingNote = new Uint8Array(this.eventCapacity);
     this.pendingVelocity = new Uint8Array(this.eventCapacity);
+    this.eqResponse = new Float32Array(64);
     this.port.onmessage = async ({ data }) => {
       try {
         if (data.type === 'init') {
@@ -65,6 +66,12 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const values = Array.from({ length: count }, (_, band) => this.engine.manifold_get_node_meter(data.nodeId, band));
           const active = this.engine.manifold_node_active(data.nodeId) === 1;
           this.port.postMessage({ type: 'meters', nodeId: data.nodeId, values, active });
+        } else if (data.type === 'eq8-response-request' && this.engine) {
+          for (let bin = 0; bin < this.eqResponse.length; bin++) {
+            const frequency = 20 * 1000 ** (bin / (this.eqResponse.length - 1));
+            this.eqResponse[bin] = this.engine.manifold_eq8_response_db(data.nodeId, frequency);
+          }
+          this.port.postMessage({ type: 'eq8-response', nodeId: data.nodeId, values: this.eqResponse });
         } else if (data.type === 'capture-request' && this.engine) {
           const frames = this.engine.manifold_capture_length(data.nodeId);
           if (!frames) {

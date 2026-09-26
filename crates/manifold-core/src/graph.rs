@@ -984,6 +984,16 @@ impl ExecutionPlan {
             })
     }
 
+    pub fn eq8_response_db(&self, node: NodeId, frequency: f32) -> Option<f32> {
+        self.nodes
+            .iter()
+            .find(|entry| entry.id == node)
+            .and_then(|entry| match &entry.kernel {
+                Kernel::Eq8(eq) => eq.response_db_at(frequency),
+                _ => None,
+            })
+    }
+
     pub fn capture_length(&self, node: NodeId) -> Option<usize> {
         self.nodes
             .iter()

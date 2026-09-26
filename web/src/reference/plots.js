@@ -32,6 +32,22 @@ export function drawComparison(canvas, series, start, count, scale, colors) {
   });
 }
 
+export function drawEqResponse(canvas, values) {
+  const { context, width, height } = prepare(canvas);
+  context.strokeStyle = '#556673';
+  context.setLineDash([3, 4]);
+  context.beginPath(); context.moveTo(0, height / 2 + .5); context.lineTo(width, height / 2 + .5); context.stroke();
+  context.setLineDash([]);
+  if (!values?.length || values.some((value) => !Number.isFinite(value))) return;
+  context.beginPath();
+  values.forEach((value, bin) => {
+    const x = bin / (values.length - 1) * width;
+    const y = height / 2 - Math.max(-24, Math.min(24, value)) / 24 * height * .42;
+    if (bin === 0) context.moveTo(x, y); else context.lineTo(x, y);
+  });
+  context.strokeStyle = '#a99bed'; context.lineWidth = 2; context.stroke();
+}
+
 export function drawBandBars(canvas, series, scale, colors, labels = false) {
   const { context, width, height } = prepare(canvas);
   const padding = labels ? 18 : 5;

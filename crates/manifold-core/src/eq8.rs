@@ -154,6 +154,38 @@ impl Eq8 {
         }
         true
     }
+
+    /// Current effective stereo response; coefficients are shared by both channels.
+    pub fn response_db_at(&self, frequency: f32) -> Option<f32> {
+        if !frequency.is_finite() || frequency <= 0.0 || frequency >= self.sample_rate * 0.5 {
+            return None;
+        }
+        let angle = 2.0 * std::f64::consts::PI * frequency as f64 / self.sample_rate as f64;
+        let (cos1, sin1) = (angle.cos(), angle.sin());
+        let (cos2, sin2) = ((2.0 * angle).cos(), (2.0 * angle).sin());
+        let (mut real, mut imag) = (1.0f64, 0.0f64);
+        for band in 0..BAND_COUNT {
+            if !self.current[band].enabled {
+                continue;
+            }
+            let c = self.coeffs[band];
+            let nr = c.b0 as f64 + c.b1 as f64 * cos1 + c.b2 as f64 * cos2;
+            let ni = -(c.b1 as f64 * sin1 + c.b2 as f64 * sin2);
+            let dr = 1.0 + c.a1 as f64 * cos1 + c.a2 as f64 * cos2;
+            let di = -(c.a1 as f64 * sin1 + c.a2 as f64 * sin2);
+            let denom = dr * dr + di * di;
+            if denom <= 1e-24 {
+                return None;
+            }
+            let br = (nr * dr + ni * di) / denom;
+            let bi = (ni * dr - nr * di) / denom;
+            (real, imag) = (real * br - imag * bi, real * bi + imag * br);
+        }
+        let gain = 10.0f64.powf(self.output_db as f64 / 20.0);
+        real = (1.0 - self.mix as f64) + self.mix as f64 * gain * real;
+        imag *= self.mix as f64 * gain;
+        Some((20.0 * (real * real + imag * imag).sqrt().max(1e-6).log10()) as f32)
+    }
     fn coefficients(&self, band: Band) -> Coeffs {
         let f = band
             .freq
@@ -273,5 +305,25 @@ mod tests {
         assert_ne!(ol, l);
         assert_ne!(or, r);
         assert!(ol.iter().chain(or.iter()).all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn response_query_tracks_enabled_low_shelf_and_mix() {
+        let mut eq = Eq8::new(48_000.0, defaults());
+        assert!(eq.response_db_at(100.0).unwrap().abs() < 1e-5);
+        eq.set_parameter(0, 1.0);
+        eq.set_parameter(2, 150.0);
+        eq.set_parameter(3, 12.0);
+        let zero = [0.0; 1024];
+        let mut left = [0.0; 1024];
+        let mut right = [0.0; 1024];
+        eq.process_planar([&zero, &zero], [&mut left, &mut right]);
+        assert!(eq.response_db_at(40.0).unwrap() > eq.response_db_at(8000.0).unwrap() + 5.0);
+        eq.set_parameter(41, 0.0);
+        for _ in 0..8 {
+            eq.process_planar([&zero, &zero], [&mut left, &mut right]);
+        }
+        assert!(eq.response_db_at(40.0).unwrap().abs() < 0.01);
+        assert_eq!(eq.response_db_at(30_000.0), None);
     }
 }

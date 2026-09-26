@@ -1,0 +1,7 @@
+{
+  "initial": "Current response · 0.0 to +0.0 dB",
+  "changed": "Current response · -0.8 to +12.8 dB",
+  "running": "Audio running · test oscillator · 48 kHz",
+  "stopped": "Last captured response · start audio to refresh.",
+  "errors": []
+}

@@ -655,6 +655,17 @@ pub extern "C" fn manifold_get_node_meter(node_id: u32, band: u32) -> f32 {
     })
 }
 
+/// Read the prepared EQ8's effective transfer magnitude without changing DSP state.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_eq8_response_db(node_id: u32, frequency: f32) -> f32 {
+    ENGINE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|engine| engine.plan.eq8_response_db(node_id.into(), frequency))
+            .unwrap_or(f32::NAN)
+    })
+}
+
 /// A stopped loop take's frame count; zero means empty, recording, or wrong node.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_capture_length(node_id: u32) -> u32 {
