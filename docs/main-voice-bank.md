@@ -1,4 +1,4 @@
-# Main voice bank, through checkpoint 127
+# Main voice bank, through checkpoint 128
 
 The `main-voice-bank` graph node is a prepared eight-voice instrument. It is an
 authored v2 slice of `sample_synth.lua` plus the original UI voice ownership
@@ -78,6 +78,15 @@ note ownership follows the old UI's note-only policy across channels.
   exceeded the 2.667 ms interval. This is not a browser audio-thread or
   hardware underrun measurement. The raw data and method are in
   `web/public/reference/main-voice-bank/bench-node.json`.
+- `scripts/bench-main-voice-bank-browser.mjs` runs nine held-chord cases in
+  headless Chromium through the actual AudioWorklet and Wasm graph. It samples
+  Chromium's WebAudio render-capacity estimate 24 times per case after warmup.
+  The sampled p95 was 3.83% for Normal eight voices and 28.05% for vocoder
+  eight voices; the largest sampled value was 31.05%. Chromium reported a
+  512-frame output callback buffer at 48 kHz. These are sampled rolling
+  capacity estimates, not per-callback timings or physical device underrun
+  counts. The raw capture includes browser and Wasm versions in
+  `web/public/reference/main-voice-bank/bench-browser-headless.json`.
 - `scripts/verify-main-wave-voice-comparison.mjs` checks three assembled
   original C++ wave routes against native Rust and Wasm. The old compiled
   oscillator, Normal crossfade, base selector, branch mixer, and voice mixer
@@ -105,16 +114,16 @@ review is `/main-add-morph-review.html`; the timing review is
 `/main-bank-performance-review.html`, and the compiled old wave review is
 `/main-wave-route-review.html`. The compiled sample and Normal route review is
 `/main-normal-route-review.html`; the combined Ring, Normal, and raw-player
-review is `/main-ring-route-review.html`. The embedded BB browser cannot grant
+review is `/main-ring-route-review.html`. The browser capacity review is
+`/main-browser-capacity-review.html`. The embedded BB browser cannot grant
 hardware MIDI permissions yet, so the on-screen keyboard is the immediate
-input path. The in-app browser backend was unavailable for a visual smoke test
-at this checkpoint; the served pages and worklet path were checked separately.
+input path. The in-app browser backend was unavailable for the capacity run;
+the review page was visually checked in headless Chromium.
 
 ## Next integration
 
 Give the full Main project a coherent state model. Extend the assembled old
 C++ comparison to selected Add/Morph cases while keeping the envelope
-timing difference explicit. Measure sustained
-eight-voice callback cost in the actual browser and
-identify the vocoder's native/Wasm numerical variance. Host packaging remains
-a separate later stage.
+timing difference explicit. Repeat capacity measurements against a regular
+browser and physical output device, then identify the vocoder's native/Wasm
+numerical variance. Host packaging remains a separate later stage.

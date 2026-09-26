@@ -33,11 +33,14 @@ The old integration sets oscillator amplitude to `amp` and `sampleBlendGain` to 
 14. **Done, checkpoint 125 for sustained wave routes:** A compiled original C++ oscillator, Normal crossfade, base selector, three-bus branch mixer, and four-bus voice mixer agree with native Rust within 0.000004612 after frame 512 for sine, saw, and sine with a silent midpoint sample bus. Wasm is bit-exact to native Rust. Old UI envelope and sample playback are explicitly outside this fixture.
 15. **Done, checkpoint 126 for the original player and Normal route:** Five compiled C++ sample playback cases match Rust after the old center pan to at most 0.0000000195. Four assembled Normal cases combine the original player, oscillator, gain, crossfades, and mixers. After frame 512, old/Rust maximum difference is 0.000004612 and native Rust/Wasm is bit-exact. The old phase vocoder is omitted at mix zero and its UI-rate envelope is not constructed.
 16. **Done, checkpoint 127 for the Ring branch:** Four assembled C++ Ring cases combine the original sample player, oscillator, sample gain, crossed Ring nodes, crossfade, and mixers. After frame 512, old/Rust maximum difference is 0.000003263 and native Rust/Wasm is bit-exact. The old phase vocoder is omitted at mix zero and its UI-rate envelope is not constructed.
-17. Next, compare selected Add/Morph routes, measure browser audio-thread cost and underruns, and extend project state for the bank.
+17. **Done, checkpoint 128 for a browser capacity boundary:** Headless Chromium runs the actual AudioWorklet and Wasm graph through nine sustained cases. Twenty-four rolling WebAudio render-capacity samples per case give p95 of 3.83% for Normal eight voices and 28.05% for vocoder eight voices, with a largest sample of 31.05%. This virtual-output run does not measure physical device underruns or individual callback durations.
+18. Next, compare selected Add/Morph routes, repeat timing on the physical output device, and extend project state for the bank.
 
 The [Node AudioWorklet timing review](../web/public/main-bank-performance-review.html)
-provides a reproducible proxy cost for nine Main bank scenarios. It records
-the exact Wasm hash and machine; actual browser thread timing remains open.
+provides a reproducible Node/V8 proxy cost for nine Main bank scenarios. The
+[Chromium capacity review](../web/public/main-browser-capacity-review.html)
+uses WebAudio's live render-capacity metric with the actual browser worklet;
+physical output underruns remain open.
 The [assembled wave route review](../web/public/main-wave-route-review.html)
 shows compiled old C++, native Rust, and Wasm on three sustained cases with
 the onset and settled comparison windows separate.
