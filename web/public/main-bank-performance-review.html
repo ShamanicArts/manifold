@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manifold v2 · Main voice bank timing</title><meta name="description" content="Measured 128-frame callback cost for the prepared Main bank in a Node AudioWorklet proxy.">
+<style>
+:root{color-scheme:light;--bg:#f7f5f0;--paper:#fffefa;--ink:#252a28;--muted:#626b66;--line:#d7dcd6;--green:#285e4d;--rust:#a35339;--blue:#345875;--warn:#f7ece5;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;--body:system-ui,-apple-system,sans-serif;--serif:Georgia,serif}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#171d1b;--paper:#202825;--ink:#eeeae0;--muted:#b2bcb4;--line:#414c45;--green:#a0d0b2;--rust:#e7a180;--blue:#a8c5dc;--warn:#453026}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--body)}a{color:var(--green);text-underline-offset:3px}main{width:min(1060px,calc(100% - 2rem));margin:auto;padding:3rem 0 5rem}h1,h2{font-family:var(--serif);font-weight:400;line-height:1.1}h1{font-size:clamp(3rem,7vw,5.8rem);letter-spacing:-.035em;margin:.5rem 0 1rem}h2{font-size:clamp(2rem,4vw,3rem);margin:0 0 1rem}h3{margin:0 0 .4rem;font-size:1rem}p{margin:.4rem 0 1.2rem}.eyebrow,.label{font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em}.eyebrow{color:var(--rust)}header{border-top:2px solid var(--ink);padding-top:1.5rem}.lead{max-width:780px;font-size:1.2rem}.actions{display:flex;gap:.7rem;flex-wrap:wrap;margin:1.8rem 0 2.3rem}.actions a{padding:.65rem .95rem;border:1px solid var(--green);text-decoration:none;font-size:.86rem}.actions a:first-child{color:var(--paper);background:var(--green)}.metrics{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);background:var(--paper)}.metric{padding:1.25rem}.metric+.metric{border-left:1px solid var(--line)}.metric strong{display:block;font:2.8rem var(--serif);line-height:1}.metric span{color:var(--muted);font-size:.8rem}section{border-top:1px solid var(--ink);margin-top:3.6rem;padding-top:1.2rem}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.8rem}.card{background:var(--paper);border:1px solid var(--line);padding:1.1rem}.card p{font-size:.85rem;color:var(--muted);margin:0}.note{background:var(--warn);border-left:3px solid var(--rust);padding:.9rem 1.1rem;font-size:.87rem}.table-wrap{overflow:auto;border:1px solid var(--line);background:var(--paper)}table{border-collapse:collapse;width:100%;min-width:740px;font-variant-numeric:tabular-nums}th,td{padding:.72rem .85rem;text-align:right;border-bottom:1px solid var(--line);font-size:.83rem}th:first-child,td:first-child{text-align:left}th{font:11px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}tr:last-child td{border-bottom:0}.bar{height:7px;background:var(--line);width:100px;border-radius:10px;overflow:hidden;display:inline-block;vertical-align:middle}.bar span{display:block;height:100%;background:var(--green)}tr:last-child .bar span{background:var(--rust)}.meta{font:11px/1.65 var(--mono);color:var(--muted)}footer{margin-top:3.5rem;border-top:1px solid var(--line);padding-top:1rem;color:var(--muted);font:11px var(--mono)}
+@media(max-width:680px){.grid,.metrics{grid-template-columns:1fr}.metric+.metric{border-left:0;border-top:1px solid var(--line)}}
+</style></head><body><main>
+<header><div class="eyebrow">Manifold v2 / checkpoint 124 / 26 September 2026</div><h1>Eight voices fit the test interval.</h1>
+<p class="lead">A repeatable Node/V8 harness invokes the same AudioWorklet adapter and Rust/Wasm build used by the workbench. It measures callback time for sustained chords at 48 kHz and 128 frames.</p>
+<div class="actions"><a href="/?primitive=main-voice-bank">Play the Main bank</a><a href="/manifold-sitrep.html">Full sitrep</a><a href="/reference/main-voice-bank/bench-node.json">Raw measurements</a></div>
+<div class="metrics"><div class="metric"><strong>2.67 ms</strong><span>128-frame interval at 48 kHz</span></div><div class="metric"><strong>9</strong><span>voice and mode scenarios</span></div><div class="metric"><strong>0</strong><span>callbacks over interval in 6,912 measured blocks</span></div></div></header>
+<section><h2>Measured callback time</h2><p>Each scenario warms for 128 callbacks, then times 768 callbacks. The bar is p95 as a share of the 2.67 ms interval. Short spikes and platform scheduling still matter in a real audio thread.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Mode</th><th scope="col">Median</th><th scope="col">p95</th><th scope="col">p99</th><th scope="col">p95 / interval</th><th scope="col">Over interval</th></tr></thead><tbody id="results"><tr><td colspan="6">Loading measured data…</td></tr></tbody></table></div>
+<p class="meta" id="provenance"></p></section>
+<section><h2>What this tells us</h2><div class="grid"><div class="card"><h3>Polyphony cost</h3><p>Normal mode rises with active voice count. Ring, FM, and Sync stay near the eight-voice Normal range in this harness. Add/Morph and vocoder are the more expensive routes.</p></div><div class="card"><h3>Morph’s unused bank</h3><p>The old Morph route disables its Add wave oscillator. The Rust bank now avoids rendering its wave spectrum in Morph mode and keeps only the source spectrum active. All ten native/Wasm bank captures still pass.</p></div></div>
+<p class="note">This is a local Node/V8 proxy, not a measured browser AudioWorklet on the user’s audio device. The harness includes JS buffer copies, event dispatch, and Rust/Wasm processing, but excludes setup and asset uploads. Unchanged Wasm linear memory during measured blocks does not prove zero transient allocation. Browser thread timing and device underruns remain to be measured.</p></section>
+<section><h2>Next</h2><p>Capture selected assembled old Main voice output and compare it with the Rust bank. Then instrument the real browser AudioWorklet for callback timing and extend the shared project state.</p></section>
+<footer>Manifold v2 · review checkpoint 124 · local Main bank timing proxy</footer>
+</main><script type="module">
+const body = document.getElementById('results');
+try {
+  const response = await fetch('/reference/main-voice-bank/bench-node.json');
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const report = await response.json();
+  body.replaceChildren();
+  for (const row of report.results) {
+    const tr = document.createElement('tr');
+    const cell = (value) => { const td = document.createElement('td'); td.textContent = value; tr.append(td); return td; };
+    cell(row.label); cell(`${row.p50Ms.toFixed(3)} ms`); cell(`${row.p95Ms.toFixed(3)} ms`); cell(`${row.p99Ms.toFixed(3)} ms`);
+    const share = row.p95Ms / report.deadlineMs * 100;
+    const td = cell(`${share.toFixed(1)}% `);
+    const bar = document.createElement('span'); bar.className = 'bar';
+    const fill = document.createElement('span'); fill.style.width = `${Math.min(100, share)}%`; bar.append(fill); td.append(bar);
+    cell(`${row.callbacksOverDeadline} / ${report.measuredCallbacks}`);
+    body.append(tr);
+  }
+  document.getElementById('provenance').textContent = `${report.cpu} · ${report.platform}/${report.arch} · ${report.node} · ${report.capturedAt} · Wasm SHA-256 ${report.wasmSha256.slice(0, 16)}…`;
+} catch (error) {
+  body.replaceChildren();
+  const td = document.createElement('td'); td.colSpan = 6; td.textContent = `Measurements unavailable: ${error.message}`;
+  const tr = document.createElement('tr'); tr.append(td); body.append(tr);
+}
+</script></body></html>

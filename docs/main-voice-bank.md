@@ -1,4 +1,4 @@
-# Main voice bank, through checkpoint 123
+# Main voice bank, through checkpoint 124
 
 The `main-voice-bank` graph node is a prepared eight-voice instrument. It is an
 authored v2 slice of `sample_synth.lua` plus the original UI voice ownership
@@ -43,6 +43,8 @@ The Add wave source is an authored prepared recipe, while old Main uses a
 waveform oscillator on that branch. Source frames are selected manually in
 the browser and then remain fixed until another selection. This is a playable
 v2 approximation, not a claim of matching the full old spectral automation.
+Morph does not render the silent Add wave bank; the old Morph branch disables
+its corresponding oscillator.
 
 The old Main UI references an ADSR but does not construct its optional DSP
 node. Its amplitude envelope updates at UI cadence. The bank instead uses a
@@ -66,9 +68,17 @@ note ownership follows the old UI's note-only policy across channels.
   comparison lab labels that case as bounded variance.
 - Existing Main blend and phase-vocoder comparison suites pass after the node
   was added.
+- `scripts/bench-main-voice-bank-worklet.mjs` measures the real adapter and
+  Wasm process call in a Node/V8 proxy at 48 kHz / 128 frames. On the local
+  Ryzen 9 3900X run, eight-voice p95 callback time was 0.080 ms Normal,
+  0.288 ms Add, 0.198 ms Morph, and 0.749 ms vocoder. No measured block
+  exceeded the 2.667 ms interval. This is not a browser audio-thread or
+  hardware underrun measurement. The raw data and method are in
+  `web/public/reference/main-voice-bank/bench-node.json`.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint
-review is `/main-add-morph-review.html`. The embedded BB browser cannot grant
+review is `/main-add-morph-review.html`; the timing review is
+`/main-bank-performance-review.html`. The embedded BB browser cannot grant
 hardware MIDI permissions yet, so the on-screen keyboard is the immediate
 input path. The in-app browser backend was unavailable for a visual smoke test
 at this checkpoint; the served pages and worklet path were checked separately.
@@ -77,6 +87,6 @@ at this checkpoint; the served pages and worklet path were checked separately.
 
 Give the full Main project a coherent state model. Compare selected assembled old
 C++ voice output with Rust while keeping the sample-clock envelope difference
-explicit. Measure sustained eight-voice callback cost in the browser and
+explicit. Measure sustained eight-voice callback cost in the actual browser and
 identify the vocoder's native/Wasm numerical variance. Host packaging remains
 a separate later stage.

@@ -412,7 +412,17 @@ impl MainVoiceBank {
                 let sample_frequency =
                     (root_frequency * pitch.desired_sample_ratio as f64).clamp(20.0, 8000.0) as f32;
                 let morph_frequency = wave_frequency + (sample_frequency - wave_frequency) * t;
-                voice.wave_add.set_parameter(0, wave_frequency);
+                if self.direction_mode == 4 {
+                    voice.wave_add.set_parameter(0, wave_frequency);
+                    voice.wave_add.set_parameter(1, amp * 2.0);
+                    voice.wave_add.process_planar(
+                        None,
+                        [
+                            &mut self.add_wave_left[..frames],
+                            &mut self.add_wave_right[..frames],
+                        ],
+                    );
+                }
                 voice.sample_add.set_parameter(
                     0,
                     if self.direction_mode == 5 {
@@ -421,15 +431,7 @@ impl MainVoiceBank {
                         sample_frequency
                     },
                 );
-                voice.wave_add.set_parameter(1, amp * 2.0);
                 voice.sample_add.set_parameter(1, amp * 2.0);
-                voice.wave_add.process_planar(
-                    None,
-                    [
-                        &mut self.add_wave_left[..frames],
-                        &mut self.add_wave_right[..frames],
-                    ],
-                );
                 voice.sample_add.process_planar(
                     None,
                     [
@@ -437,16 +439,16 @@ impl MainVoiceBank {
                         &mut self.add_sample_right[..frames],
                     ],
                 );
-                let (add_wave_gain, add_sample_gain) = if self.direction_mode == 5 {
-                    (0.0, 1.0)
-                } else {
-                    (wave_gain, sample_gain)
-                };
                 for frame in 0..frames {
-                    self.add_left[frame] = self.add_wave_left[frame] * add_wave_gain
-                        + self.add_sample_left[frame] * add_sample_gain;
-                    self.add_right[frame] = self.add_wave_right[frame] * add_wave_gain
-                        + self.add_sample_right[frame] * add_sample_gain;
+                    if self.direction_mode == 5 {
+                        self.add_left[frame] = self.add_sample_left[frame];
+                        self.add_right[frame] = self.add_sample_right[frame];
+                    } else {
+                        self.add_left[frame] = self.add_wave_left[frame] * wave_gain
+                            + self.add_sample_left[frame] * sample_gain;
+                        self.add_right[frame] = self.add_wave_right[frame] * wave_gain
+                            + self.add_sample_right[frame] * sample_gain;
+                    }
                 }
                 voice.phrase.process_planar(
                     [&self.add_left[..frames], &self.add_right[..frames]],
