@@ -1,0 +1,14 @@
+{
+  "reference": "Old C++ scalar Chorus/Delay route versus prepared Rust/Wasm legacy EffectSlot graph kind 52",
+  "frames": 32768,
+  "sampleRate": 48000,
+  "blockSize": 128,
+  "maxDifference": 4.3213367462158203e-7,
+  "rmsDifference": 2.9543801266700565e-9,
+  "afterReturnMaxDifference": 1.862645149230957e-8,
+  "afterReturnRmsDifference": 1.2991795971101806e-9,
+  "returnTailSample": {
+    "old": 0.027741974219679832,
+    "wasm": 0.02774197794497013
+  }
+}

@@ -1,5 +1,6 @@
 //! Persistent Chorus/Delay routing probe matching tools/legacy-fx-tail-reference.cpp.
 use manifold_core::chorus::Chorus;
+use manifold_core::effect_slot::EffectSlot;
 use manifold_core::fx_routing::LegacyFxRouting;
 use manifold_core::stereo_delay::StereoDelay;
 use std::fs::File;
@@ -29,8 +30,34 @@ fn main() -> std::io::Result<()> {
     let path = args
         .next()
         .expect("usage: render_fx_tail OUTPUT.f32 [--reset-on-reselect]");
-    let reset_on_reselect = matches!(args.next().as_deref(), Some("--reset-on-reselect"));
+    let mode = args.next();
+    let reset_on_reselect = mode.as_deref() == Some("--reset-on-reselect");
     let mut output = BufWriter::new(File::create(path)?);
+    if mode.as_deref() == Some("--slot") {
+        let mut slot = EffectSlot::new_legacy(48_000.0, 128, 8, 1.0, [0.0, 0.6, 0.5, 0.5, 0.5]);
+        let mut in_l = [0.0; 128];
+        let mut in_r = [0.0; 128];
+        let mut out_l = [0.0; 128];
+        let mut out_r = [0.0; 128];
+        for offset in (0..32768).step_by(128) {
+            if offset == 8192 {
+                slot.set_parameter(0, 0.0);
+            }
+            if offset == 16384 {
+                slot.set_parameter(0, 8.0);
+            }
+            for frame in 0..128 {
+                in_l[frame] = input_sample(offset + frame, 0);
+                in_r[frame] = input_sample(offset + frame, 1);
+            }
+            slot.process_planar([&in_l, &in_r], [&mut out_l, &mut out_r]);
+            for frame in 0..128 {
+                output.write_all(&out_l[frame].to_le_bytes())?;
+                output.write_all(&out_r[frame].to_le_bytes())?;
+            }
+        }
+        return Ok(());
+    }
     let mut delay = StereoDelay::new(
         48_000.0,
         [

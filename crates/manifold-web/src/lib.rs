@@ -201,37 +201,46 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             params[1] = b;
             NodeKind::StereoDelay { params }
         }
-        19 => {
+        19 | 52 => {
             let Some(selected) = effect_slot::supported_type(a) else {
                 return 0;
             };
-            NodeKind::EffectSlot {
-                selected,
-                mix: b,
-                params: match selected {
-                    effect_slot::CHORUS_TYPE => [0.5, 0.5, 0.2, 0.6, 0.4],
-                    effect_slot::PHASER_TYPE => [0.5, 0.5, 0.4, 0.5, 0.4],
-                    effect_slot::WAVESHAPER_TYPE => [0.3, 0.0, 0.7, 0.5, 0.5],
-                    effect_slot::WIDENER_TYPE => [0.6, 0.4, 0.5, 0.5, 0.5],
-                    effect_slot::LEGACY_FILTER_TYPE => [0.5, 0.2, 0.5, 0.5, 0.5],
-                    effect_slot::REVERB_TYPE => [0.5, 0.4, 0.5, 0.5, 0.5],
-                    effect_slot::MULTITAP_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
-                    effect_slot::RING_TYPE => [0.3, 1.0, 0.2, 0.5, 0.5],
-                    effect_slot::TRANSIENT_TYPE => [0.5, 0.5, 0.5, 0.5, 0.5],
-                    effect_slot::BITCRUSHER_TYPE => [0.3, 0.12, 0.55, 0.5, 0.5],
-                    effect_slot::EQ_TYPE => [0.5; 5],
-                    effect_slot::FORMANT_TYPE => [0.0, 0.5, 0.4, 0.3, 0.5],
-                    effect_slot::REVERSE_DELAY_TYPE => [0.2, 0.25, 0.47, 0.5, 0.5],
-                    effect_slot::STUTTER_TYPE => [0.05, 0.8, 0.8, 0.25, 0.5],
-                    effect_slot::PITCH_SHIFT_TYPE => [0.5, 0.5, 0.2, 0.5, 0.5],
-                    effect_slot::GRANULATOR_TYPE => [0.3, 0.4, 0.6, 0.25, 0.5],
-                    effect_slot::SHIMMER_TYPE => [0.6, 0.75, 0.7, 0.5, 0.5],
-                    effect_slot::COMPRESSOR_TYPE => [0.4, 0.3, 0.1, 0.3, 0.5],
-                    effect_slot::SVF_TYPE => [0.5, 0.4, 0.1, 0.5, 0.5],
-                    effect_slot::DELAY_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
-                    effect_slot::LIMITER_TYPE => [0.5, 0.3, 0.4, 0.4, 0.5],
-                    _ => unreachable!(),
-                },
+            let params = match selected {
+                effect_slot::CHORUS_TYPE => [0.5, 0.5, 0.2, 0.6, 0.4],
+                effect_slot::PHASER_TYPE => [0.5, 0.5, 0.4, 0.5, 0.4],
+                effect_slot::WAVESHAPER_TYPE => [0.3, 0.0, 0.7, 0.5, 0.5],
+                effect_slot::WIDENER_TYPE => [0.6, 0.4, 0.5, 0.5, 0.5],
+                effect_slot::LEGACY_FILTER_TYPE => [0.5, 0.2, 0.5, 0.5, 0.5],
+                effect_slot::REVERB_TYPE => [0.5, 0.4, 0.5, 0.5, 0.5],
+                effect_slot::MULTITAP_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
+                effect_slot::RING_TYPE => [0.3, 1.0, 0.2, 0.5, 0.5],
+                effect_slot::TRANSIENT_TYPE => [0.5, 0.5, 0.5, 0.5, 0.5],
+                effect_slot::BITCRUSHER_TYPE => [0.3, 0.12, 0.55, 0.5, 0.5],
+                effect_slot::EQ_TYPE => [0.5; 5],
+                effect_slot::FORMANT_TYPE => [0.0, 0.5, 0.4, 0.3, 0.5],
+                effect_slot::REVERSE_DELAY_TYPE => [0.2, 0.25, 0.47, 0.5, 0.5],
+                effect_slot::STUTTER_TYPE => [0.05, 0.8, 0.8, 0.25, 0.5],
+                effect_slot::PITCH_SHIFT_TYPE => [0.5, 0.5, 0.2, 0.5, 0.5],
+                effect_slot::GRANULATOR_TYPE => [0.3, 0.4, 0.6, 0.25, 0.5],
+                effect_slot::SHIMMER_TYPE => [0.6, 0.75, 0.7, 0.5, 0.5],
+                effect_slot::COMPRESSOR_TYPE => [0.4, 0.3, 0.1, 0.3, 0.5],
+                effect_slot::SVF_TYPE => [0.5, 0.4, 0.1, 0.5, 0.5],
+                effect_slot::DELAY_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
+                effect_slot::LIMITER_TYPE => [0.5, 0.3, 0.4, 0.4, 0.5],
+                _ => unreachable!(),
+            };
+            if kind == 52 {
+                NodeKind::EffectSlotLegacy {
+                    selected,
+                    mix: b,
+                    params,
+                }
+            } else {
+                NodeKind::EffectSlot {
+                    selected,
+                    mix: b,
+                    params,
+                }
             }
         }
         20 => NodeKind::LoopCapture {
@@ -508,16 +517,22 @@ pub extern "C" fn manifold_graph_initial_parameter(
                     return 0;
                 }
             }
-            (NodeKind::EffectSlot { selected, .. }, 0) => {
+            (
+                NodeKind::EffectSlot { selected, .. } | NodeKind::EffectSlotLegacy { selected, .. },
+                0,
+            ) => {
                 let Some(kind) = effect_slot::supported_type(value) else {
                     return 0;
                 };
                 *selected = kind;
             }
-            (NodeKind::EffectSlot { mix, .. }, 1) => *mix = value.clamp(0.0, 1.0),
-            (NodeKind::EffectSlot { params, .. }, id @ 2..=6) => {
-                params[id as usize - 2] = value.clamp(0.0, 1.0)
+            (NodeKind::EffectSlot { mix, .. } | NodeKind::EffectSlotLegacy { mix, .. }, 1) => {
+                *mix = value.clamp(0.0, 1.0)
             }
+            (
+                NodeKind::EffectSlot { params, .. } | NodeKind::EffectSlotLegacy { params, .. },
+                id @ 2..=6,
+            ) => params[id as usize - 2] = value.clamp(0.0, 1.0),
             (NodeKind::SpectrumAnalyzer { sensitivity, .. }, 0) => {
                 *sensitivity = value.clamp(0.1, 8.0)
             }

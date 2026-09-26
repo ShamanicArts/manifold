@@ -1,11 +1,12 @@
 //! Standalone FX slot slice: legacy IDs 0 through 20.
-//! Only the selected kernel processes audio; all kernels are prepared before the callback.
+//! Selected-only and opt-in persistent routing modes share the same prepared kernels.
 
 use crate::Filter;
 use crate::bitcrusher::{self, BitCrusher};
 use crate::chorus::{self, Chorus};
 use crate::compressor::{self, Compressor};
 use crate::formant_filter::{self, FormantFilter};
+use crate::fx_routing::LegacyFxRouting;
 use crate::granulator::{self, Granulator};
 use crate::legacy_eq::{self, LegacyEq};
 use crate::legacy_filter::{self, LegacyFilter};
@@ -59,6 +60,26 @@ pub fn supported_type(value: f32) -> Option<u32> {
     }
 }
 
+struct EffectScratch {
+    left: Vec<f32>,
+    right: Vec<f32>,
+}
+
+impl EffectScratch {
+    fn new(max_frames: usize) -> Self {
+        Self {
+            left: vec![0.0; max_frames],
+            right: vec![0.0; max_frames],
+        }
+    }
+}
+
+struct LegacyState {
+    routing: LegacyFxRouting,
+    visited: [bool; 21],
+    scratch: Box<[EffectScratch; 21]>,
+}
+
 pub struct EffectSlot {
     selected: u32,
     mix: f32,
@@ -109,6 +130,7 @@ pub struct EffectSlot {
     granulator: Granulator,
     compressor: Compressor,
     limiter: Limiter,
+    legacy: Option<LegacyState>,
 }
 
 impl EffectSlot {
@@ -175,6 +197,7 @@ impl EffectSlot {
             granulator: Granulator::new(sample_rate, max_frames, granulator::DEFAULTS),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
             limiter: Limiter::new(sample_rate, limiter::defaults()),
+            legacy: None,
         };
         let selected_params = match selected {
             CHORUS_TYPE => &mut slot.chorus_params,
@@ -226,6 +249,26 @@ impl EffectSlot {
         slot.delay.settle();
         slot.rebuild_compressor();
         slot.rebuild_limiter();
+        slot
+    }
+
+    /// Keep every visited kernel processing behind the old smoothed gain gates.
+    /// All effect scratch and kernels are prepared before the callback.
+    pub fn new_legacy(
+        sample_rate: f32,
+        max_frames: usize,
+        selected: u32,
+        mix: f32,
+        params: [f32; 5],
+    ) -> Self {
+        let mut slot = Self::new(sample_rate, max_frames, selected, mix, params);
+        let mut visited = [false; 21];
+        visited[selected as usize] = true;
+        slot.legacy = Some(LegacyState {
+            routing: LegacyFxRouting::new(sample_rate, selected, mix).expect("validated FX slot"),
+            visited,
+            scratch: Box::new(std::array::from_fn(|_| EffectScratch::new(max_frames))),
+        });
         slot
     }
 
@@ -670,39 +713,49 @@ impl EffectSlot {
                 };
                 if self.selected != selected {
                     self.selected = selected;
-                    match selected {
-                        CHORUS_TYPE => self.rebuild_chorus(),
-                        PHASER_TYPE => self.rebuild_phaser(),
-                        WAVESHAPER_TYPE => self.rebuild_waveshaper(),
-                        WIDENER_TYPE => self.rebuild_widener(),
-                        LEGACY_FILTER_TYPE => self.rebuild_legacy_filter(),
-                        REVERB_TYPE => self.rebuild_reverb(),
-                        MULTITAP_TYPE => self.rebuild_multitap(),
-                        RING_TYPE => self.rebuild_ring(),
-                        TRANSIENT_TYPE => self.rebuild_transient(),
-                        BITCRUSHER_TYPE => self.rebuild_bitcrusher(),
-                        EQ_TYPE => self.rebuild_eq(),
-                        FORMANT_TYPE => self.rebuild_formant(),
-                        REVERSE_DELAY_TYPE => self.rebuild_reverse_delay(),
-                        STUTTER_TYPE => self.rebuild_stutter(),
-                        PITCH_SHIFT_TYPE => self.rebuild_pitch_shift(),
-                        SHIMMER_TYPE => self.rebuild_shimmer(),
-                        GRANULATOR_TYPE => self.rebuild_granulator(),
-                        COMPRESSOR_TYPE => self.rebuild_compressor(),
-                        SVF_TYPE => {
-                            self.apply_svf();
-                            self.filter.settle();
+                    if let Some(legacy) = self.legacy.as_mut() {
+                        legacy.visited[selected as usize] = true;
+                        legacy.routing.select(selected);
+                    } else {
+                        match selected {
+                            CHORUS_TYPE => self.rebuild_chorus(),
+                            PHASER_TYPE => self.rebuild_phaser(),
+                            WAVESHAPER_TYPE => self.rebuild_waveshaper(),
+                            WIDENER_TYPE => self.rebuild_widener(),
+                            LEGACY_FILTER_TYPE => self.rebuild_legacy_filter(),
+                            REVERB_TYPE => self.rebuild_reverb(),
+                            MULTITAP_TYPE => self.rebuild_multitap(),
+                            RING_TYPE => self.rebuild_ring(),
+                            TRANSIENT_TYPE => self.rebuild_transient(),
+                            BITCRUSHER_TYPE => self.rebuild_bitcrusher(),
+                            EQ_TYPE => self.rebuild_eq(),
+                            FORMANT_TYPE => self.rebuild_formant(),
+                            REVERSE_DELAY_TYPE => self.rebuild_reverse_delay(),
+                            STUTTER_TYPE => self.rebuild_stutter(),
+                            PITCH_SHIFT_TYPE => self.rebuild_pitch_shift(),
+                            SHIMMER_TYPE => self.rebuild_shimmer(),
+                            GRANULATOR_TYPE => self.rebuild_granulator(),
+                            COMPRESSOR_TYPE => self.rebuild_compressor(),
+                            SVF_TYPE => {
+                                self.apply_svf();
+                                self.filter.settle();
+                            }
+                            DELAY_TYPE => {
+                                self.apply_delay();
+                                self.delay.settle();
+                            }
+                            LIMITER_TYPE => self.rebuild_limiter(),
+                            _ => unreachable!(),
                         }
-                        DELAY_TYPE => {
-                            self.apply_delay();
-                            self.delay.settle();
-                        }
-                        LIMITER_TYPE => self.rebuild_limiter(),
-                        _ => unreachable!(),
                     }
                 }
             }
-            1 => self.target_mix = value.clamp(0.0, 1.0),
+            1 => {
+                self.target_mix = value.clamp(0.0, 1.0);
+                if let Some(legacy) = self.legacy.as_mut() {
+                    legacy.routing.set_mix(self.target_mix);
+                }
+            }
             2..=6 => {
                 let params = match self.selected {
                     CHORUS_TYPE => &mut self.chorus_params,
@@ -760,9 +813,33 @@ impl EffectSlot {
     }
 
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
+        if self.legacy.is_some() {
+            self.process_legacy(input, output);
+            return;
+        }
         let [in_l, in_r] = input;
         let [out_l, out_r] = output;
-        match self.selected {
+        self.process_kernel(self.selected, [in_l, in_r], [&mut *out_l, &mut *out_r]);
+        let wet_gain = match self.selected {
+            CHORUS_TYPE | MULTITAP_TYPE | SHIMMER_TYPE => 1.4,
+            FORMANT_TYPE => 1.5,
+            REVERSE_DELAY_TYPE => 1.2,
+            DELAY_TYPE => 1.1,
+            WIDENER_TYPE => 1.1,
+            _ => 1.0,
+        };
+        for frame in 0..in_l.len() {
+            self.mix += (self.target_mix - self.mix) * self.mix_smoothing;
+            let dry = 1.0 - self.mix;
+            let wet = self.mix * wet_gain;
+            out_l[frame] = in_l[frame] * dry + out_l[frame] * wet;
+            out_r[frame] = in_r[frame] * dry + out_r[frame] * wet;
+        }
+    }
+    fn process_kernel(&mut self, effect_type: u32, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
+        let [in_l, in_r] = input;
+        let [out_l, out_r] = output;
+        match effect_type {
             CHORUS_TYPE => self
                 .chorus
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
@@ -838,27 +915,76 @@ impl EffectSlot {
             }
             _ => unreachable!("slot type validated at graph compilation"),
         }
-        let wet_gain = match self.selected {
-            CHORUS_TYPE | MULTITAP_TYPE | SHIMMER_TYPE => 1.4,
-            FORMANT_TYPE => 1.5,
-            REVERSE_DELAY_TYPE => 1.2,
-            DELAY_TYPE => 1.1,
-            WIDENER_TYPE => 1.1,
-            _ => 1.0,
-        };
-        for frame in 0..in_l.len() {
-            self.mix += (self.target_mix - self.mix) * self.mix_smoothing;
-            let dry = 1.0 - self.mix;
-            let wet = self.mix * wet_gain;
-            out_l[frame] = in_l[frame] * dry + out_l[frame] * wet;
-            out_r[frame] = in_r[frame] * dry + out_r[frame] * wet;
+    }
+
+    fn process_legacy(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
+        let [in_l, in_r] = input;
+        let [out_l, out_r] = output;
+        let frames = in_l.len();
+        let mut state = self.legacy.take().expect("legacy routing prepared");
+        for effect_type in 0..21 {
+            if !state.visited[effect_type] {
+                continue;
+            }
+            let scratch = &mut state.scratch[effect_type];
+            debug_assert!(frames <= scratch.left.len());
+            self.process_kernel(
+                effect_type as u32,
+                [in_l, in_r],
+                [&mut scratch.left[..frames], &mut scratch.right[..frames]],
+            );
         }
+        let mut effects = [[0.0; 2]; 21];
+        for frame in 0..frames {
+            for effect_type in 0..21 {
+                if state.visited[effect_type] {
+                    effects[effect_type] = [
+                        state.scratch[effect_type].left[frame],
+                        state.scratch[effect_type].right[frame],
+                    ];
+                }
+            }
+            let mixed = state
+                .routing
+                .process_sample([in_l[frame], in_r[frame]], &effects);
+            out_l[frame] = mixed[0];
+            out_r[frame] = mixed[1];
+        }
+        self.legacy = Some(state);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_route_can_visit_every_effect_without_resetting_the_graph() {
+        let mut slot =
+            EffectSlot::new_legacy(48_000.0, 64, CHORUS_TYPE, 0.5, [0.5, 0.5, 0.2, 0.6, 0.4]);
+        let input_l = [0.03; 64];
+        let input_r = [-0.02; 64];
+        let mut output_l = [0.0; 64];
+        let mut output_r = [0.0; 64];
+        for effect_type in 0..21 {
+            assert!(slot.set_parameter(0, effect_type as f32));
+            slot.process_planar([&input_l, &input_r], [&mut output_l, &mut output_r]);
+            assert!(
+                output_l
+                    .iter()
+                    .chain(&output_r)
+                    .all(|sample| sample.is_finite())
+            );
+        }
+        assert!(
+            slot.legacy
+                .as_ref()
+                .unwrap()
+                .visited
+                .iter()
+                .all(|visited| *visited)
+        );
+    }
 
     #[test]
     fn chorus_slot_maps_normalized_controls_and_wet_gain() {

@@ -1,0 +1,11 @@
+{
+  "reference": "Old C++ scalar Chorus/Delay route versus prepared Rust EffectSlot legacy mode",
+  "frames": 32768,
+  "maxDifference": 4.470348358154297e-08,
+  "rmsDifference": 1.3870845366265592e-09,
+  "returnTailFrame": 17180,
+  "returnTailSample": {
+    "cppLeft": 0.027741974219679832,
+    "rustLeft": 0.02774197794497013
+  }
+}

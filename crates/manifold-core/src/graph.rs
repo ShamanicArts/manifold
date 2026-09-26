@@ -175,6 +175,11 @@ pub enum NodeKind {
         mix: f32,
         params: [f32; 5],
     },
+    EffectSlotLegacy {
+        selected: u32,
+        mix: f32,
+        params: [f32; 5],
+    },
     LoopCapture {
         capacity_seconds: f32,
         mix: f32,
@@ -274,6 +279,7 @@ impl NodeKind {
             | Self::MultitapDelay { .. }
             | Self::TransientShaper { .. }
             | Self::EffectSlot { .. }
+            | Self::EffectSlotLegacy { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
             | Self::FftSpectrum { .. }
@@ -380,6 +386,11 @@ impl NodeKind {
             Self::Shimmer { params } => params.iter().all(|value| value.is_finite()),
             Self::Granulator { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
+                selected,
+                mix,
+                params,
+            }
+            | Self::EffectSlotLegacy {
                 selected,
                 mix,
                 params,
@@ -696,6 +707,17 @@ impl Kernel {
                 mix,
                 params,
             } => Self::EffectSlot(EffectSlot::new(
+                sample_rate,
+                max_frames,
+                *selected,
+                *mix,
+                *params,
+            )),
+            NodeKind::EffectSlotLegacy {
+                selected,
+                mix,
+                params,
+            } => Self::EffectSlot(EffectSlot::new_legacy(
                 sample_rate,
                 max_frames,
                 *selected,

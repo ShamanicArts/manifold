@@ -78,7 +78,7 @@ export class BrowserAudioHost {
           value: values.get(parameter.id) ?? parameter.default }));
       const graph = { ...project.signal,
         initialParameters: [...(project.signal.initialParameters ?? []), ...prepareValues] };
-      const slot = project.signal.nodes.find((node) => node.type === 'effect-slot');
+      const slot = project.signal.nodes.find((node) => ['effect-slot', 'effect-slot-legacy'].includes(node.type));
       if (slot) {
         const controls = project.parameters.filter((parameter) => parameter.nodeId === slot.id);
         const type = controls.find((parameter) => parameter.nodeParameterId === 0);
