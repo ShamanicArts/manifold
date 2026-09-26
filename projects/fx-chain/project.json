@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.fx-chain",
+  "name": "FX chain",
+  "source": "Manifold v2 authored chain; legacy Standalone FX is a separate single-slot design",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "distortion", "a": 3, "b": 0.25 },
+      { "id": 3, "type": "stereo-delay", "a": 80.27, "b": 120.43 },
+      { "id": 4, "type": "svf" },
+      { "id": 5, "type": "linear-blend", "a": 0.65 },
+      { "id": 6, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 },
+      { "from": 3, "to": 4, "inputPort": 0 },
+      { "from": 3, "to": 5, "inputPort": 0 },
+      { "from": 4, "to": 5, "inputPort": 1 },
+      { "from": 5, "to": 6, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 2, "id": 2, "value": 0.8 },
+      { "nodeId": 3, "id": 2, "value": 0.35 },
+      { "nodeId": 3, "id": 7, "value": 0.4 }
+    ]
+  },
+  "parameters": [
+    { "id": 10, "nodeId": 4, "nodeParameterId": 0, "hostId": "mode", "label": "Filter mode", "kind": "choice", "choices": ["Lowpass", "Bandpass", "Highpass", "Notch"], "default": 0 },
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "drive", "label": "Drive", "kind": "float", "min": 1, "max": 30, "default": 3 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "distortionMix", "label": "Distortion mix", "kind": "float", "min": 0, "max": 1, "default": 0.25 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "output", "label": "Distortion output", "kind": "float", "min": 0, "max": 2, "default": 0.8 },
+    { "id": 3, "nodeId": 3, "nodeParameterId": 0, "hostId": "timeL", "label": "Delay left · ms", "kind": "float", "min": 1, "max": 1000, "default": 80.27 },
+    { "id": 4, "nodeId": 3, "nodeParameterId": 1, "hostId": "timeR", "label": "Delay right · ms", "kind": "float", "min": 1, "max": 1000, "default": 120.43 },
+    { "id": 5, "nodeId": 3, "nodeParameterId": 2, "hostId": "feedback", "label": "Delay feedback", "kind": "float", "min": 0, "max": 1.2, "default": 0.35 },
+    { "id": 6, "nodeId": 3, "nodeParameterId": 7, "hostId": "mix", "label": "Delay mix", "kind": "float", "min": 0, "max": 1, "default": 0.4 },
+    { "id": 7, "nodeId": 4, "nodeParameterId": 1, "hostId": "cutoff", "label": "Filter cutoff", "kind": "float", "unit": "Hz", "min": 20, "max": 20000, "default": 2500 },
+    { "id": 8, "nodeId": 4, "nodeParameterId": 2, "hostId": "resonance", "label": "Filter resonance", "kind": "float", "min": 0.06, "max": 1, "default": 0.3 },
+    { "id": 9, "nodeId": 5, "nodeParameterId": 0, "hostId": "blend", "label": "Filter blend", "kind": "float", "min": 0, "max": 1, "default": 0.65 }
+  ]
+}

@@ -10,6 +10,7 @@ import patchProject from '../../projects/synth-patch/project.json';
 import modulationProject from '../../projects/modulated-gain/project.json';
 import distortionProject from '../../projects/distortion/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
+import fxChainProject from '../../projects/fx-chain/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { BrowserMidiInput } from './audio/midi-input.js';
 import { initializeReferenceLab } from './reference/comparison.js';
@@ -78,6 +79,12 @@ const projects = {
     title: 'Distortion',
     description: 'Shape stereo audio with a smoothed drive, a dry/wet blend, and output gain. The final signal is clamped to the audio range.',
     signal: 'Live path: input → distortion → stereo output',
+  },
+  'fx-chain': {
+    project: fxChainProject,
+    title: 'FX chain',
+    description: 'An authored v2 project combining distortion, stereo delay, and a filtered branch. Each stage has its own editable mix.',
+    signal: 'Live path: input → distortion → stereo delay → filter blend → output',
   },
   'stereo-delay': {
     project: stereoDelayProject,
@@ -215,7 +222,7 @@ function renderPrimitive(family) {
   byId('controls').replaceChildren();
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   byId('keyboard-section').hidden = family !== 'voice';
   if (mode) {

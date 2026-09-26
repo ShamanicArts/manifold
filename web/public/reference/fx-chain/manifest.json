@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "reference": "native Rust authored effects chain",
+  "sourceSha256": "031eefb6672af6a73379da518d7c1b8e3d200defd04bb2cdfd007a332b91c7f7",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "gentle",
+      "label": "Gentle chain",
+      "before": [
+        3,
+        0.25,
+        0.8,
+        25.29,
+        35.43,
+        0.35,
+        0.4,
+        2500,
+        0.3,
+        0.65,
+        0
+      ],
+      "after": [
+        3,
+        0.25,
+        0.8,
+        25.29,
+        35.43,
+        0.35,
+        0.4,
+        2500,
+        0.3,
+        0.65,
+        0
+      ],
+      "blockSize": 128,
+      "output": "gentle.f32"
+    },
+    {
+      "id": "drive-delay",
+      "label": "Drive and feedback sweep",
+      "before": [
+        2,
+        0.2,
+        0.8,
+        20.27,
+        32.31,
+        0.25,
+        0.5,
+        3200,
+        0.25,
+        0.4,
+        0
+      ],
+      "after": [
+        12,
+        0.8,
+        0.65,
+        20.27,
+        32.31,
+        0.6,
+        0.75,
+        3200,
+        0.25,
+        0.4,
+        0
+      ],
+      "blockSize": 128,
+      "output": "drive-delay.f32"
+    },
+    {
+      "id": "filter-sweep",
+      "label": "Filter mode and cutoff change",
+      "before": [
+        4,
+        0.5,
+        0.7,
+        22.37,
+        37.29,
+        0.4,
+        0.4,
+        700,
+        0.2,
+        1,
+        0
+      ],
+      "after": [
+        4,
+        0.5,
+        0.7,
+        22.37,
+        37.29,
+        0.4,
+        0.4,
+        4500,
+        0.55,
+        1,
+        2
+      ],
+      "blockSize": 64,
+      "output": "filter-sweep.f32"
+    },
+    {
+      "id": "bypass-to-wet",
+      "label": "Dry chain to all wet",
+      "before": [
+        2,
+        0,
+        1,
+        18.27,
+        30.43,
+        0.3,
+        0,
+        1600,
+        0.2,
+        0,
+        0
+      ],
+      "after": [
+        8,
+        1,
+        1,
+        18.27,
+        30.43,
+        0.55,
+        1,
+        1600,
+        0.2,
+        1,
+        0
+      ],
+      "blockSize": 128,
+      "output": "bypass-to-wet.f32"
+    }
+  ]
+}
