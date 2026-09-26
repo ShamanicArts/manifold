@@ -187,8 +187,8 @@ const projects = {
   'ring-modulator': {
     project: ringProject,
     title: 'Ring modulator',
-    description: 'Multiply stereo audio by an internal oscillator with variable frequency, depth and stereo phase spread. The original node can also use a second stereo audio bus; that route is covered in the C++ comparison cases.',
-    signal: 'Live path: input × stereo oscillator → dry/wet output',
+    description: 'Multiply stereo audio by an internal oscillator or a routed stereo modulation bus. Switch the modulation input live, then compare both paths with the C++ cases below.',
+    signal: 'Live path: input × internal oscillator or stereo input copy → dry/wet output',
   },
   'transient-shaper': {
     project: transientProject,
@@ -974,15 +974,21 @@ function renderEq8Controls() {
 function renderPatchEditor(project) {
   const section = byId('patch-section');
   section.hidden = !project.patch;
+  section.refreshStatus = null;
   const rows = byId('patch-rows');
   rows.replaceChildren();
   if (!project.patch) return;
+  section.querySelector('.section-label').textContent = project.patch.label ?? 'Control patch';
+  section.querySelector('.control-help').textContent = project.patch.help ?? 'Choose a source for each typed CV input. Changes reach the running graph at the next audio block; existing node state continues.';
   byId('patch-state-file').disabled = audio.running;
   byId('patch-state-status').textContent = 'Save routes and controls for this patch.';
   const refresh = () => {
     const connected = project.patch.inputs.filter((input) => project.signal.connections.some((edge) =>
       edge.to === input.to && edge.inputPort === input.inputPort)).length;
-    byId('patch-status').textContent = `${connected} of ${project.patch.inputs.length} control inputs connected · ${audio.running ? 'live graph updated' : 'ready for next start'}`;
+    const summary = project.patch.connectedSummary && project.patch.inputs.length === 1
+      ? connected ? project.patch.connectedSummary : project.patch.disconnectedSummary
+      : `${connected} of ${project.patch.inputs.length} ${project.patch.routeKind ?? 'control'} inputs connected`;
+    byId('patch-status').textContent = `${summary} · ${audio.running ? 'live graph updated' : 'ready for next start'}`;
   };
   section.refreshStatus = refresh;
   for (const port of project.patch.inputs) {
@@ -994,7 +1000,7 @@ function renderPatchEditor(project) {
     select.setAttribute('aria-label', port.label);
     select.dataset.to = String(port.to);
     select.dataset.port = String(port.inputPort);
-    select.add(new Option('Unconnected · 0', ''));
+    select.add(new Option(project.patch.unconnectedLabel ?? 'Unconnected · 0', ''));
     for (const [nodeId, name] of port.sources) select.add(new Option(name, String(nodeId)));
     const connected = project.signal.connections.find((edge) => edge.to === port.to && edge.inputPort === port.inputPort);
     select.value = connected ? String(connected.from) : '';
@@ -1034,7 +1040,7 @@ byId('patch-state-export').addEventListener('click', () => {
     const url = URL.createObjectURL(new Blob([`${JSON.stringify(state, null, 2)}\n`], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'manifold-cv-rack-patch.json';
+    link.download = activeProject.patch.filename ?? 'manifold-cv-rack-patch.json';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     readout.textContent = `Saved ${state.routes.length} routes and ${Object.keys(state.parameters).length} controls.`;
@@ -1079,6 +1085,12 @@ function applyPatchParameterValues(project, parameters) {
       byId('modes').querySelectorAll('button').forEach((button, index) => {
         button.setAttribute('aria-pressed', String(choices[index] === value));
       });
+    } else if (parameter.kind === 'toggle') {
+      const button = byId('controls').querySelector(`[data-parameter-id="${parameter.id}"]`);
+      if (button) {
+        button.setAttribute('aria-pressed', String(value === 1));
+        button.textContent = `${parameter.label}: ${value ? 'On' : 'Off'}`;
+      }
     } else byId('controls').querySelector(`[data-parameter-id="${parameter.id}"]`)?.syncValue(value);
   }
 }
@@ -1728,6 +1740,9 @@ byId('sample-trigger').addEventListener('click', () => {
 });
 toggle.addEventListener('click', async () => {
   toggle.disabled = true;
+  const patchSelectors = [...byId('patch-rows').querySelectorAll('select')];
+  patchSelectors.forEach((select) => { select.disabled = true; });
+  byId('patch-state-file').disabled = true;
   try {
     if (audio.running) {
       releaseAllNotes(); await audio.stop();
@@ -1780,6 +1795,8 @@ toggle.addEventListener('click', async () => {
     status.textContent = String(error);
     toggle.textContent = projects[activeFamily].project.signal.inputSource === 'none' ? 'Start instrument' : 'Start audio';
   } finally {
+    patchSelectors.forEach((select) => { select.disabled = false; });
+    byId('patch-state-file').disabled = audio.running;
     toggle.disabled = false;
   }
 });

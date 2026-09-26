@@ -1131,9 +1131,6 @@ impl ExecutionPlan {
             .input_signals
             .get(port)
             .ok_or(GraphError::InvalidPort(target, port))?;
-        if expected != SignalKind::Control {
-            return Err(GraphError::RouteChangeUnavailable);
-        }
         let source_index = if let Some(source) = source {
             let index = self
                 .nodes
@@ -2167,8 +2164,8 @@ mod tests {
             Err(GraphError::SignalTypeMismatch(1, 4, 1))
         );
         assert_eq!(
-            plan.set_route(4, 0, Some(1)),
-            Err(GraphError::RouteChangeUnavailable)
+            plan.set_route(4, 0, Some(2)),
+            Err(GraphError::SignalTypeMismatch(2, 4, 0))
         );
         assert_eq!(plan.set_route(3, 0, Some(3)), Err(GraphError::Cycle));
         let [left, right] = process(&mut plan, &silence, &silence);
@@ -2184,6 +2181,52 @@ mod tests {
         assert_eq!(
             fixed.set_route(4, 1, Some(2)),
             Err(GraphError::RouteChangeUnavailable)
+        );
+    }
+
+    #[test]
+    fn patchable_ring_audio_route_switches_modulator_and_resumes_phase() {
+        let graph = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(
+                    2,
+                    NodeKind::RingModulator {
+                        params: [180.0, 1.0, 1.0, 0.0, 1.0],
+                    },
+                ),
+                node(3, NodeKind::Output),
+                node(
+                    4,
+                    NodeKind::Lfo {
+                        waveform: 0,
+                        rate: 2.0,
+                    },
+                ),
+            ],
+            connections: vec![edge(1, 2, 0), edge(2, 3, 0)],
+        };
+        let mut switched = graph.clone().compile_patchable(48_000.0, 128).unwrap();
+        let mut internal = graph.compile_patchable(48_000.0, 128).unwrap();
+        let carrier = [0.5; 128];
+        let first = process(&mut switched, &carrier, &carrier);
+        assert_eq!(first, process(&mut internal, &carrier, &carrier));
+        assert!(switched.set_route(2, 1, Some(1)).is_ok());
+        assert_eq!(
+            switched.set_route(2, 1, Some(4)),
+            Err(GraphError::SignalTypeMismatch(4, 2, 1))
+        );
+        assert_eq!(switched.set_route(2, 1, Some(2)), Err(GraphError::Cycle));
+        let [left, right] = process(&mut switched, &carrier, &carrier);
+        assert!(
+            left.iter()
+                .chain(right.iter())
+                .all(|sample| (*sample - 0.25).abs() < 1e-6)
+        );
+        assert!(switched.set_route(2, 1, None).is_ok());
+        assert_eq!(
+            process(&mut switched, &carrier, &carrier),
+            process(&mut internal, &carrier, &carrier)
         );
     }
 

@@ -4,19 +4,19 @@ function portKey(to, inputPort) { return `${to}:${inputPort}`; }
 
 export function parseControlPatchState(document, project) {
   if (document?.schemaVersion !== VERSION || document?.projectId !== project.id) {
-    throw new Error('This is not a state for this Manifold v2 control patch.');
+    throw new Error('This state belongs to a different Manifold v2 patch.');
   }
   const ports = new Map(project.patch.inputs.map((port) => [portKey(port.to, port.inputPort), port]));
   const routes = document.routes;
   if (!Array.isArray(routes) || routes.length !== ports.size) {
-    throw new Error(`State needs ${ports.size} control routes.`);
+    throw new Error(`State needs ${ports.size} routes.`);
   }
   const seen = new Set();
   const validatedRoutes = routes.map((route) => {
     const key = portKey(route?.to, route?.inputPort);
     const port = ports.get(key);
     if (!port || seen.has(key) || !(route.from === null || port.sources.some(([id]) => id === route.from))) {
-      throw new Error(`Invalid or repeated control route ${key}.`);
+      throw new Error(`Invalid or repeated route ${key}.`);
     }
     seen.add(key);
     return { to: port.to, inputPort: port.inputPort, from: route.from };
@@ -32,6 +32,7 @@ export function parseControlPatchState(document, project) {
     const valid = typeof value === 'number' && Number.isFinite(value)
       && (parameter.kind === 'choice'
         ? (parameter.choiceValues ?? parameter.choices.map((_, index) => index)).includes(value)
+        : parameter.kind === 'toggle' ? value === 0 || value === 1
         : value >= parameter.min && value <= parameter.max);
     if (!valid) throw new Error(`Invalid ${parameter.label} value.`);
     validatedParameters[parameter.hostId] = value;

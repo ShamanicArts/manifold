@@ -1,0 +1,11 @@
+# Checkpoint 89 · live stereo modulation route
+
+The [Ring Modulator workbench](http://127.0.0.1:4173/?primitive=ring-modulator) can now switch its optional modulation bus between the internal oscillator and a copy of the live stereo input without stopping audio. The [browser capture](checkpoint-89-browser.png) shows the new Modulation input control beside the existing C++ ↔ Rust/Wasm comparison. The [example patch](checkpoint-89-patch.json) selects the external bus and includes all five public controls; it can be opened in the workbench after stopping audio.
+
+The prepared Rust graph now accepts route changes on Audio as well as Control inputs. It still validates signal type and prepared order, and it recomputes reachability without allocation or kernel replacement. In the Ring path, connecting the external input freezes the internal oscillator phase; disconnecting resumes it. The C++ node comparison cases already cover the stationary internal and external routes. This checkpoint adds a live-switch test, including a rejected cycle and patch JSON roundtrip.
+
+The previous checkpoint's old Standalone FX Ring capture intentionally remains silent when its unconnected second port is represented by a zero input view. The normal v2 Ring path uses the internal oscillator when that port has no edge. This is a deliberate v2 product choice recorded in the [migration boundary](../../docs/ring-modulator-migration.md).
+
+Hardware MIDI remains optional. The Voice and Sample instrument views call `navigator.requestMIDIAccess()` from the button where available, but an embedded browser can block or leave the permission request pending without a prompt. The page gives a browser URL and the on-screen keyboard remains usable. The in-app browser was not connected for direct permission verification in this checkpoint; the Ring view was tested in local Chromium.
+
+Verification: 89 Rust tests, `cargo fmt --check`, `./scripts/build-wasm.sh`, `npm --prefix web run build`, `node scripts/verify-ring-route-worklet.mjs`, and a local Chromium test that started audio, switched both routes live, checked status and console errors, and captured the workbench. The workbench remains at 45 views and 380 offline cases (236 C++ and 144 native Rust references).

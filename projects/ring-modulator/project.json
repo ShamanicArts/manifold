@@ -6,6 +6,7 @@
   "signal": {
     "inputs": 2,
     "outputs": 2,
+    "patchable": true,
     "nodes": [
       {
         "id": 1,
@@ -31,6 +32,18 @@
         "to": 3,
         "inputPort": 0
       }
+    ]
+  },
+  "patch": {
+    "label": "Modulation input",
+    "help": "Switch between the internal oscillator and a copy of the live stereo input while audio runs. The internal oscillator resumes its phase when reselected.",
+    "routeKind": "audio",
+    "unconnectedLabel": "Internal oscillator",
+    "connectedSummary": "Live input modulates the carrier",
+    "disconnectedSummary": "Internal oscillator modulates the carrier",
+    "filename": "manifold-ring-modulator-patch.json",
+    "inputs": [
+      { "to": 2, "inputPort": 1, "label": "Modulator", "sources": [[1, "Copy live stereo input"]] }
     ]
   },
   "parameters": [
