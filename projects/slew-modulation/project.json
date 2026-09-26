@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.slew-modulation",
+  "name": "Slew modulation",
+  "source": "authored typed-CV patch using legacy slew behavior",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 1, "type": "oscillator", "a": 220, "b": 0.3 },
+      { "id": 2, "type": "lfo", "a": 8 },
+      { "id": 3, "type": "slew-control", "a": 180, "b": 900 },
+      { "id": 4, "type": "modulated-gain", "a": 0.6, "b": 0.5 },
+      { "id": 5, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 4, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 },
+      { "from": 3, "to": 4, "inputPort": 1 },
+      { "from": 4, "to": 5, "inputPort": 0 }
+    ],
+    "initialParameters": [ { "nodeId": 2, "id": 0, "value": 2 } ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "waveform", "label": "LFO waveform", "kind": "choice", "choices": ["Sine", "Triangle", "Square"], "default": 2 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "rate", "label": "Rate", "kind": "float", "min": 0.05, "max": 20, "default": 8, "unit": "Hz" },
+    { "id": 2, "nodeId": 3, "nodeParameterId": 0, "hostId": "slide-up", "label": "CV rise slide", "kind": "float", "min": 1, "max": 2400, "default": 180, "unit": "samples" },
+    { "id": 3, "nodeId": 3, "nodeParameterId": 1, "hostId": "slide-down", "label": "CV fall slide", "kind": "float", "min": 1, "max": 2400, "default": 900, "unit": "samples" },
+    { "id": 4, "nodeId": 4, "nodeParameterId": 0, "hostId": "base-gain", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 0.6 },
+    { "id": 5, "nodeId": 4, "nodeParameterId": 1, "hostId": "depth", "label": "CV depth", "kind": "float", "min": -2, "max": 2, "default": 0.5 }
+  ]
+}

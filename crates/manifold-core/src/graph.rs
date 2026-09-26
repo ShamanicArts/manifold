@@ -16,6 +16,7 @@ use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::sample_instrument::SampleInstrument;
 use crate::sample_region::SampleRegion;
+use crate::slew_limiter::SlewLimiter;
 use crate::spectrum_analyzer::SpectrumAnalyzer;
 use crate::stereo_delay::StereoDelay;
 use crate::voice::VoiceSynth;
@@ -62,6 +63,14 @@ pub enum NodeKind {
     Svf,
     ModulatedSvf {
         depth_hz: f32,
+    },
+    SlewAudio {
+        up: f32,
+        down: f32,
+    },
+    SlewControl {
+        up: f32,
+        down: f32,
     },
     Distortion {
         drive: f32,
@@ -152,6 +161,8 @@ impl NodeKind {
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. }
             | Self::Svf
+            | Self::SlewAudio { .. }
+            | Self::SlewControl { .. }
             | Self::AdsrEnvelope
             | Self::Distortion { .. }
             | Self::Compressor { .. }
@@ -168,7 +179,10 @@ impl NodeKind {
     }
 
     fn output_signal(&self) -> SignalKind {
-        if matches!(self, Self::Lfo { .. } | Self::EnvelopeControl { .. }) {
+        if matches!(
+            self,
+            Self::Lfo { .. } | Self::EnvelopeControl { .. } | Self::SlewControl { .. }
+        ) {
             SignalKind::Control
         } else {
             SignalKind::Audio
@@ -176,7 +190,9 @@ impl NodeKind {
     }
 
     fn input_signal(&self, port: usize) -> SignalKind {
-        if matches!(self, Self::ModulatedGain { .. } | Self::ModulatedSvf { .. }) && port == 1 {
+        if matches!(self, Self::SlewControl { .. })
+            || matches!(self, Self::ModulatedGain { .. } | Self::ModulatedSvf { .. }) && port == 1
+        {
             SignalKind::Control
         } else {
             SignalKind::Audio
@@ -216,6 +232,9 @@ impl NodeKind {
             Self::Lfo { waveform, rate } => *waveform <= 2 && rate.is_finite(),
             Self::ModulatedGain { base, depth } => base.is_finite() && depth.is_finite(),
             Self::ModulatedSvf { depth_hz } => depth_hz.is_finite(),
+            Self::SlewAudio { up, down } | Self::SlewControl { up, down } => {
+                up.is_finite() && down.is_finite()
+            }
             Self::Distortion { drive, mix, output } => {
                 drive.is_finite() && mix.is_finite() && output.is_finite()
             }
@@ -342,6 +361,7 @@ enum Kernel {
         filter: Filter,
         depth_hz: f32,
     },
+    Slew(SlewLimiter),
     Distortion(Distortion),
     Compressor(Compressor),
     Limiter(Limiter),
@@ -446,6 +466,9 @@ impl Kernel {
                 filter: Filter::new(sample_rate),
                 depth_hz: depth_hz.clamp(-20_000.0, 20_000.0),
             },
+            NodeKind::SlewAudio { up, down } | NodeKind::SlewControl { up, down } => {
+                Self::Slew(SlewLimiter::new(*up, *down))
+            }
             NodeKind::Distortion { drive, mix, output } => {
                 Self::Distortion(Distortion::new(sample_rate, *drive, *mix, *output))
             }
@@ -575,6 +598,7 @@ impl Kernel {
             (Self::ModulatedSvf { depth_hz, .. }, 3) => {
                 *depth_hz = value.clamp(-20_000.0, 20_000.0)
             }
+            (Self::Slew(slew), id) => return slew.set_parameter(id, value),
             (Self::Distortion(distortion), id) => return distortion.set_parameter(id, value),
             (Self::Compressor(compressor), id) => return compressor.set_parameter(id, value),
             (Self::Limiter(limiter), id) => return limiter.set_parameter(id, value),
@@ -1029,6 +1053,9 @@ impl ExecutionPlan {
                     Some(source(1, 0)),
                     *depth_hz,
                 ),
+                Kernel::Slew(slew) => {
+                    slew.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
                 Kernel::Distortion(distortion) => {
                     let from_left = source(0, 0);
                     let from_right = source(0, 1);
@@ -1490,6 +1517,48 @@ mod tests {
         assert!((left[0] - 0.5).abs() < 1e-6);
         assert!((left[25] - 0.9).abs() < 1e-5);
         assert!((left[75] - 0.1).abs() < 1e-5);
+    }
+
+    #[test]
+    fn slew_control_preserves_cv_type_and_changes_modulation_shape() {
+        let make_graph = |up, down| GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::Constant { value: 0.5 }),
+                node(
+                    2,
+                    NodeKind::Lfo {
+                        waveform: 2,
+                        rate: 20.0,
+                    },
+                ),
+                node(3, NodeKind::SlewControl { up, down }),
+                node(
+                    4,
+                    NodeKind::ModulatedGain {
+                        base: 0.5,
+                        depth: 0.5,
+                    },
+                ),
+                node(5, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 4, 0), edge(2, 3, 0), edge(3, 4, 1), edge(4, 5, 0)],
+        };
+        let mut direct = make_graph(1.0, 1.0).compile(1_000.0, 100).unwrap();
+        let mut smoothed = make_graph(12.0, 40.0).compile(1_000.0, 100).unwrap();
+        let silence = [0.0; 100];
+        let [dry, _] = process(&mut direct, &silence, &silence);
+        let [slewed, _] = process(&mut smoothed, &silence, &silence);
+        assert!(
+            dry.iter()
+                .zip(slewed.iter())
+                .any(|(a, b)| (a - b).abs() > 0.02)
+        );
+        let mut invalid = make_graph(12.0, 40.0);
+        invalid.connections[1] = edge(1, 3, 0);
+        assert!(matches!(
+            invalid.compile(1_000.0, 100),
+            Err(GraphError::SignalTypeMismatch(1, 3, 0))
+        ));
     }
 
     #[test]

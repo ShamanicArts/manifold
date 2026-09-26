@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "reference": "legacy C++ SlewLimiterNode.cpp scalar stereo",
+  "sourceSha256": "c5e8b63762a12488abbd6df1ec5d0e86c01fce41fae57501d9904e683b6ce0b0",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 8192,
+  "stepFrame": 4096,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "direct",
+      "label": "Direct slide",
+      "upBefore": 1,
+      "upAfter": 1,
+      "downBefore": 1,
+      "downAfter": 1,
+      "blockSize": 128,
+      "output": "direct.f32"
+    },
+    {
+      "id": "slow-rise",
+      "label": "Slow rise",
+      "upBefore": 256,
+      "upAfter": 256,
+      "downBefore": 1,
+      "downAfter": 1,
+      "blockSize": 128,
+      "output": "slow-rise.f32"
+    },
+    {
+      "id": "slow-fall",
+      "label": "Slow fall",
+      "upBefore": 1,
+      "upAfter": 1,
+      "downBefore": 384,
+      "downAfter": 384,
+      "blockSize": 128,
+      "output": "slow-fall.f32"
+    },
+    {
+      "id": "asymmetric",
+      "label": "Different rise and fall",
+      "upBefore": 72,
+      "upAfter": 72,
+      "downBefore": 320,
+      "downAfter": 320,
+      "blockSize": 128,
+      "output": "asymmetric.f32"
+    },
+    {
+      "id": "change",
+      "label": "Change slide at midpoint",
+      "upBefore": 8,
+      "upAfter": 300,
+      "downBefore": 256,
+      "downAfter": 12,
+      "blockSize": 128,
+      "output": "change.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame blocks",
+      "upBefore": 400,
+      "upAfter": 24,
+      "downBefore": 16,
+      "downAfter": 256,
+      "blockSize": 64,
+      "output": "small-block.f32"
+    }
+  ]
+}

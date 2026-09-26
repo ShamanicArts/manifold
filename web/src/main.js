@@ -19,6 +19,8 @@ import sampleRegionProject from '../../projects/sample-region/project.json';
 import sampleInstrumentProject from '../../projects/sample-instrument/project.json';
 import spectrumAnalyzerProject from '../../projects/spectrum-analyzer/project.json';
 import fftSpectrumProject from '../../projects/fft-spectrum/project.json';
+import slewAudioProject from '../../projects/slew-audio/project.json';
+import slewModulationProject from '../../projects/slew-modulation/project.json';
 import envelopeFollowerProject from '../../projects/envelope-follower/project.json';
 import envelopeDuckingProject from '../../projects/envelope-ducking/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
@@ -144,6 +146,18 @@ const projects = {
     title: 'FFT spectrum',
     description: 'A 2048-point Hann FFT measures 32 logarithmic frequency bands and the strongest peak in hertz. Stereo audio passes through unchanged. The meter updates every 1024 samples.',
     signal: 'Live path: input → unchanged output · FFT tap → 32 bands and peak Hz',
+  },
+  'slew-audio': {
+    project: slewAudioProject,
+    title: 'Slew limiter',
+    description: 'Limit rises and falls separately with the original Max-style slide rule. A value of 1 follows each stereo input sample directly; larger values slow the response.',
+    signal: 'Live path: input → independent left/right slew → stereo output',
+  },
+  'slew-modulation': {
+    project: slewModulationProject,
+    title: 'Slew modulation',
+    description: 'A Rust LFO passes through a typed control slew before shaping an oscillator’s gain. Rise and fall slides round abrupt CV edges independently.',
+    signal: 'Audio: oscillator → modulated gain → output · CV: LFO → slew → gain',
   },
   'envelope-follower': {
     project: envelopeFollowerProject,
@@ -751,8 +765,8 @@ function renderPrimitive(family) {
     ? 'Start the instrument, then trigger the loaded sample. Native Rust/Wasm comparisons are below.'
     : family === 'voice'
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
-    : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation'
-      ? `Start the instrument to view its spectrum. The ${family === 'patch' || family === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
+    : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation' || family === 'slew-modulation'
+      ? `Start the instrument to view its spectrum. The ${family === 'patch' || family === 'modulation' || family === 'slew-modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
     : family === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain and inspect the detector. Native Rust/Wasm comparisons are below.'
     : family === 'compressor' || family === 'limiter' ? 'Start audio to hear dynamics and view gain reduction in dB. C++ audio and meter snapshots are compared below.'
     : family === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.'

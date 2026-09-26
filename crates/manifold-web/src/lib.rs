@@ -241,6 +241,8 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             smoothing: a,
             floor_db: b,
         },
+        29 => NodeKind::SlewAudio { up: a, down: b },
+        30 => NodeKind::SlewControl { up: a, down: b },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -355,6 +357,12 @@ pub extern "C" fn manifold_graph_initial_parameter(
             }
             (NodeKind::FftSpectrum { smoothing, .. }, 0) => *smoothing = value.clamp(0.0, 0.99),
             (NodeKind::FftSpectrum { floor_db, .. }, 1) => *floor_db = value.clamp(-96.0, -24.0),
+            (NodeKind::SlewAudio { up, .. } | NodeKind::SlewControl { up, .. }, 0) => {
+                *up = value.max(1.0)
+            }
+            (NodeKind::SlewAudio { down, .. } | NodeKind::SlewControl { down, .. }, 1) => {
+                *down = value.max(1.0)
+            }
             (
                 NodeKind::EnvelopeFollower { attack_ms, .. }
                 | NodeKind::EnvelopeControl { attack_ms, .. },
