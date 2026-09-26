@@ -1,0 +1,7 @@
+# Standalone FX v2 state
+
+The browser workbench can download and reopen a versioned JSON state for the v2 [Standalone FX slice](../projects/standalone-fx-slice/project.json). This is a v2 document, not a JUCE plug-in state or Lua script. Its `projectId` is `manifold.standalone-fx-slice` and `schemaVersion` is `1`. An [example exported by the workbench](../artifacts/reviews/checkpoint-69-state.json) is available for inspection and import.
+
+`hostParameters` contains the seven public values: integer `type` from 0 through 20, normalized `mix`, and normalized `p/0` through `p/4`. `typeParameters` contains an array of five normalized values for **every** type ID from 0 through 20. The active type's remembered array is taken from the host controls when the state is parsed, so the two copies cannot disagree after import. The importer requires finite values in `0…1`, all 21 remembered arrays, and the exact project ID and version. It rejects an invalid document before changing the workbench. Import is available while audio is stopped; the next start prepares the Rust graph from the restored controls. Download is available while the view is open.
+
+The old Lua `fx_slot.lua` also remembers values per type, but the old plug-in's persisted state format and effect-tail behavior require separate research. No legacy state importer is claimed here. The Rust slot processes only the selected type and resets it on selection; see the [routing audit](standalone-fx-migration.md).

@@ -47,6 +47,7 @@ import { BrowserMidiInput, midiAvailability } from './audio/midi-input.js';
 import { MidiHoldState } from './audio/midi-hold.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars, drawEqResponse } from './reference/plots.js';
+import { captureStandaloneFxState, parseStandaloneFxState } from './state/standalone-fx.js';
 
 const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
@@ -1070,6 +1071,9 @@ function renderPrimitive(family) {
   byId('keyboard-section').hidden = !['voice', 'sample-instrument'].includes(family);
   byId('midi-access-section').hidden = !['voice', 'sample-instrument'].includes(family);
   byId('sample-section').hidden = !sampleView;
+  byId('slot-state-section').hidden = family !== 'standalone-fx';
+  byId('slot-state-file').disabled = audio.running;
+  if (family === 'standalone-fx') byId('slot-state-status').textContent = 'Save the selected type and remembered controls for all 21 effects.';
   byId('granulator-file-section').hidden = family !== 'granulator';
   byId('granulator-file').disabled = audio.running;
   byId('granulator-clear-file').disabled = audio.running;
@@ -1490,6 +1494,46 @@ byId('sample-file').addEventListener('change', async (event) => {
     readout.textContent = `Sample unavailable: ${error.message ?? String(error)}`;
   }
 });
+byId('slot-state-export').addEventListener('click', () => {
+  if (activeFamily !== 'standalone-fx') return;
+  try {
+    const state = captureStandaloneFxState(values, slotValuesByType);
+    const url = URL.createObjectURL(new Blob([`${JSON.stringify(state, null, 2)}\n`], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'manifold-standalone-fx-state.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    byId('slot-state-status').textContent = `Saved type ${state.hostParameters.type} and all 21 effect settings.`;
+  } catch (error) {
+    byId('slot-state-status').textContent = `State unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('slot-state-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('slot-state-status');
+  try {
+    if (activeFamily !== 'standalone-fx' || audio.running) throw new Error('Stop Standalone FX audio before opening a state.');
+    if (file.size > 1024 * 1024) throw new Error('State JSON must be smaller than 1 MB.');
+    const state = parseStandaloneFxState(JSON.parse(await file.text()));
+    slotValuesByType = new Map(Object.entries(state.typeParameters).map(([type, controls]) => [Number(type), controls]));
+    values.set(0, state.hostParameters.type);
+    const choices = standaloneFxProject.parameters.find((parameter) => parameter.id === 0).choiceValues;
+    byId('modes').querySelectorAll('button').forEach((button, index) => {
+      button.setAttribute('aria-pressed', String(choices[index] === state.hostParameters.type));
+    });
+    for (const [id, value] of [[1, state.hostParameters.mix], ...[2, 3, 4, 5, 6].map((id) => [id, state.hostParameters[`p/${id - 2}`]])]) {
+      byId('controls').querySelector(`[data-parameter-id="${id}"]`)?.syncValue(value);
+    }
+    updateSlotControls();
+    readout.textContent = `Opened ${file.name} · type ${state.hostParameters.type} · 21 effect settings.`;
+  } catch (error) {
+    readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    event.target.value = '';
+  }
+});
 byId('granulator-file').addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -1594,6 +1638,7 @@ toggle.addEventListener('click', async () => {
     byId('patch-section').refreshStatus?.();
     if (!audio.running) byId('controls').querySelectorAll('.has-effective').forEach((slider) => slider.setEffective(null));
     byId('sample-file').disabled = audio.running;
+    byId('slot-state-file').disabled = audio.running;
     byId('granulator-file').disabled = audio.running;
     byId('granulator-clear-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running

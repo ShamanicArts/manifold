@@ -1,0 +1,14 @@
+{
+  "download": "manifold-standalone-fx-state.json",
+  "schemaVersion": 1,
+  "projectId": "manifold.standalone-fx-slice",
+  "types": 21,
+  "selected": "Shimmer",
+  "mix": "0.70",
+  "shimmerPitch": "8.4 st",
+  "grainSize": "119 ms",
+  "rejection": "State unavailable: This is not a Manifold v2 Standalone FX state (version 1).",
+  "liveStatus": "Audio running · test oscillator · 48 kHz",
+  "importDisabled": true,
+  "errors": []
+}
