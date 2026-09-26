@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold · Main sample blend review</title>
+  <style>
+    :root { color-scheme:dark; background:#111a20; color:#e4e9e7; font:14px/1.5 system-ui,sans-serif; }
+    * { box-sizing:border-box; } body { margin:0; } main { max-width:960px; margin:auto; padding:30px clamp(18px,5vw,50px) 70px; }
+    a { color:#a6d9bb; } h1 { font-size:clamp(28px,4vw,40px); font-weight:600; line-height:1.13; margin:8px 0 12px; }
+    h2 { font-size:17px; font-weight:600; margin:0 0 12px; } p { max-width:720px; color:#bfcccb; }
+    .eyebrow,.small { color:#9cadb3; font-size:12px; letter-spacing:.05em; }
+    nav { display:flex; gap:18px; flex-wrap:wrap; margin:24px 0; }
+    .panel { border:1px solid #354650; background:#1a262f; border-radius:8px; padding:22px; margin:16px 0; }
+    .flow { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; align-items:stretch; }
+    .flow div { border:1px solid #40525b; border-radius:5px; padding:14px; }
+    .flow strong { display:block; margin-bottom:6px; }.flow span { color:#afc0c1; font-size:12px; }
+    table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+    th,td { border-bottom:1px solid #354650; padding:10px; text-align:left; }
+    th { color:#aebfc1; font-size:12px; font-weight:500; } td:nth-child(n+2),th:nth-child(n+2) { text-align:right; }
+    .pass { color:#a6d9bb; } .scope { border-left:3px solid #dcae83; padding-left:15px; }
+    @media(max-width:700px) { .flow { grid-template-columns:1fr; } .panel { padding:16px; } }
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 107</div>
+  <h1>The first Main sample blend</h1>
+  <p>One decoded stereo source feeds sample playback and temporal partial analysis. Rust prepares an Add or Morph target away from the audio callback; the fixed Sine bank and sample branch meet in a two-input mixer.</p>
+  <nav><a href="/?primitive=main-sample-blend">Play and compare the graph</a><a href="/spectral-target-review.html">Inspect Add / Morph recipes</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
+  <section class="panel"><h2>Signal path</h2><div class="flow">
+    <div><strong>Decoded source</strong><span>48 kHz stereo fixture or a chosen audio file</span></div>
+    <div><strong>Playback + prepared Sine bank</strong><span>Independent branch gains; Source, Add, and Morph controls</span></div>
+    <div><strong>Two-bus output</strong><span>Rust graph in native and Wasm builds; AudioWorklet playback</span></div>
+  </div></section>
+  <section class="panel"><h2>Native Rust ↔ Rust/Wasm graph comparison</h2>
+    <p>Both runners load the same source and bounded target. The four offline captures contain 16,384 stereo frames each at 48 kHz. Maximum sample difference is zero for these captures.</p>
+    <table><thead><tr><th>Case</th><th>Sample gain</th><th>Bank gain</th><th>Native RMS</th><th>Max Δ</th></tr></thead><tbody>
+      <tr><td>Sample only</td><td>1</td><td>0</td><td>0.1759</td><td class="pass">0</td></tr>
+      <tr><td>Add only</td><td>0</td><td>1</td><td>0.1584</td><td class="pass">0</td></tr>
+      <tr><td>Morph only</td><td>0</td><td>1</td><td>0.1200</td><td class="pass">0</td></tr>
+      <tr><td>Sample + Morph</td><td>0.5</td><td>0.5</td><td>0.1239</td><td class="pass">0</td></tr>
+    </tbody></table>
+    <p class="small">In the workbench, open “Reference comparison” to switch cases, inspect left/right output and differences, and play native or Wasm audio.</p>
+  </section>
+  <section class="panel"><h2>Next reconstruction boundary</h2><p class="scope">This is an authored v2 study of the old Main sample synth's sample and additive branches. The old phase vocoder, envelopes, directional crossfades, polyphonic voices, and saved project state are not represented by these four captures. The C++ helper recipe comparison is separate from this native-versus-Wasm graph check.</p></section>
+</main></body></html>

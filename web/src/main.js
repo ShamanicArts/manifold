@@ -29,6 +29,7 @@ import eqNodeProject from '../../projects/eq-node/project.json';
 import formantProject from '../../projects/formant/project.json';
 import resonatorProject from '../../projects/resonator/project.json';
 import sineBankProject from '../../projects/sine-bank/project.json';
+import mainSampleBlendProject from '../../projects/main-sample-blend/project.json';
 import reverseDelayProject from '../../projects/reverse-delay/project.json';
 import stutterProject from '../../projects/stutter/project.json';
 import pitchShifterProject from '../../projects/pitch-shifter/project.json';
@@ -263,6 +264,12 @@ const projects = {
     description: 'The legacy manual additive bank: 32 partial slots, up to eight unison voices, stereo spread, and four drive shapes. Edit partial levels while the Rust audio engine runs.',
     signal: 'Partial editor → bounded Wasm upload → Rust sine bank → stereo output',
   },
+  'main-sample-blend': {
+    project: mainSampleBlendProject,
+    title: 'Main sample blend',
+    description: 'An authored Main sample synth slice: one loaded source feeds stereo region playback and the Rust/Wasm partial worker. A prepared Add or Morph Sine bank shares the output mixer with the sample branch.',
+    signal: 'File → sample region + temporal partial worker → prepared Sine bank · two branch mixer → output',
+  },
   'reverse-delay': {
     project: reverseDelayProject,
     title: 'Reverse delay',
@@ -401,6 +408,9 @@ for (const button of document.querySelectorAll('.library-item')) {
 }
 const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
+function usesSineSource(family = activeFamily) {
+  return family === 'sine-bank' || family === 'main-sample-blend';
+}
 let values = new Map();
 let activeProject = null;
 const patchedSignals = new Map();
@@ -513,7 +523,7 @@ function renderSineBars(values, bars, ratio = false) {
   }
 }
 function renderSineSourceAnalysis() {
-  if (activeFamily !== 'sine-bank') return;
+  if (!usesSineSource()) return;
   const source = loadedSineSource;
   const readout = byId('sine-source-status');
   const position = byId('sine-position');
@@ -1418,8 +1428,13 @@ function renderPrimitive(family) {
   byId('modes').replaceChildren();
   byId('controls').replaceChildren();
   renderSineBankEditor();
-  byId('sine-source-section').hidden = family !== 'sine-bank';
-  if (family === 'sine-bank') renderSineSourceAnalysis();
+  byId('sine-source-section').hidden = !usesSineSource(family);
+  if (family === 'main-sample-blend' && !loadedSineSource) {
+    const demo = demoSample();
+    loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, label: 'Built-in two-tone source' };
+    requestSampleAnalysis(loadedSineSource, true);
+  }
+  if (usesSineSource(family)) renderSineSourceAnalysis();
   renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
@@ -1939,6 +1954,10 @@ byId('sample-file').addEventListener('change', async (event) => {
   }
 });
 byId('sine-use-demo').addEventListener('click', () => {
+  if (activeFamily === 'main-sample-blend' && audio.running) {
+    byId('sine-source-status').textContent = 'Stop the instrument before replacing its shared source.';
+    return;
+  }
   const demo = demoSample();
   loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, label: 'Built-in two-tone source' };
   sineTargetActive = false;
@@ -1952,6 +1971,9 @@ byId('sine-source-file').addEventListener('change', async (event) => {
   if (!file) return;
   byId('sine-source-status').textContent = `Decoding ${file.name}…`;
   try {
+    if (activeFamily === 'main-sample-blend' && audio.running) {
+      throw new Error('Stop the instrument before changing the shared sample file.');
+    }
     loadedSineSource = await decodeFileSource(file);
     sineTargetActive = false;
     byId('sine-target-bars').replaceChildren();
@@ -1965,13 +1987,13 @@ byId('sine-source-file').addEventListener('change', async (event) => {
   }
 });
 function applyPreparedSineTarget(data, mode) {
-  if (activeFamily !== 'sine-bank') return;
+  if (!usesSineSource()) return;
   const pitched = loadedSineSource.temporal.mode === 'harmonic-projection';
   const absolute = mode === 0;
   const bankRoot = absolute ? (pitched ? data.fundamental : 440) : 1;
   const pitch = pitched ? Math.max(40, Math.min(1600, loadedSineSource.temporal.fundamental)) : 440;
-  sineBankProject.partials = { nodeId: 2, fundamental: bankRoot, values: Array.from(data.values) };
-  audio.setPartials(sineBankProject.partials);
+  activeProject.partials = { nodeId: activeProject.partials.nodeId, fundamental: bankRoot, values: Array.from(data.values) };
+  audio.setPartials(activeProject.partials);
   values.set(0, pitch);
   byId('controls').querySelector('[data-parameter-id="0"]')?.syncValue(pitch);
   audio.setParameter(0, pitch);
@@ -1981,7 +2003,7 @@ function applyPreparedSineTarget(data, mode) {
 }
 function requestPreparedSineTarget() {
   const source = loadedSineSource;
-  if (activeFamily !== 'sine-bank' || !source?.temporalJobId || !sineAnalysisWorker) return;
+  if (!usesSineSource() || !source?.temporalJobId || !sineAnalysisWorker) return;
   const selectedMode = Number(byId('sine-target-mode').value);
   const mode = selectedMode === 3 ? 2 : selectedMode === 0 ? 0 : 1;
   const recipe = new Float32Array([
@@ -2020,7 +2042,7 @@ for (const id of ['sine-target-mode', 'sine-waveform', 'sine-morph-amount', 'sin
   byId(id).addEventListener('input', () => { updateSineTargetControls(); renderSineSourceAnalysis(); scheduleSineTarget(); });
 }
 byId('sine-use-frame').addEventListener('click', () => {
-  if (activeFamily !== 'sine-bank' || !loadedSineSource?.temporal) return;
+  if (!usesSineSource() || !loadedSineSource?.temporal) return;
   sineTargetActive = true;
   requestPreparedSineTarget();
 });
@@ -2154,7 +2176,8 @@ toggle.addEventListener('click', async () => {
     else {
       await audio.start(byId('source').value, values, activeProject,
         ['sample-region', 'sample-instrument'].includes(activeFamily) ? loadedSample ?? demoSample()
-          : activeFamily === 'granulator' ? loadedGranulatorSource : null);
+          : activeFamily === 'granulator' ? loadedGranulatorSource
+            : activeFamily === 'main-sample-blend' ? loadedSineSource ?? demoSample() : null);
       if (noteTarget() !== null && Number(pitchBend.value) !== 0) pitchBend.dispatchEvent(new Event('input'));
     }
     const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';

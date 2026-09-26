@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.main-sample-blend-study",
+  "name": "Main sample blend",
+  "source": "Authored v2 slice of Main sample_synth.lua; sample playback plus prepared Add/Morph Sine bank",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 2, "type": "sample-region" },
+      { "id": 3, "type": "sine-bank" },
+      { "id": 4, "type": "mixer", "a": 2, "b": 1 },
+      { "id": 5, "type": "output" }
+    ],
+    "connections": [
+      { "from": 2, "to": 4, "inputPort": 0 },
+      { "from": 3, "to": 4, "inputPort": 1 },
+      { "from": 4, "to": 5, "inputPort": 0 }
+    ]
+  },
+  "partials": {
+    "nodeId": 3,
+    "fundamental": 220,
+    "values": [220, 1, 0, 0, 440, 0.4, 0, 0]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 3, "nodeParameterId": 0, "hostId": "add-pitch", "label": "Add / Morph pitch", "kind": "float", "min": 40, "max": 1600, "default": 220, "unit": "Hz", "scale": "log" },
+    { "id": 1, "nodeId": 3, "nodeParameterId": 1, "hostId": "add-level", "label": "Add / Morph level", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 2, "nodeId": 4, "nodeParameterId": 1, "hostId": "sample-gain", "label": "Sample branch", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 3, "nodeId": 4, "nodeParameterId": 2, "hostId": "add-gain", "label": "Add / Morph branch", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 0, "hostId": "sample-speed", "label": "Sample speed", "kind": "float", "min": 0.25, "max": 2, "default": 1 },
+    { "id": 5, "nodeId": 2, "nodeParameterId": 6, "hostId": "sample-play", "label": "Play sample", "kind": "toggle", "default": 1 }
+  ]
+}

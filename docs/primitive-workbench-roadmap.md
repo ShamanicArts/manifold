@@ -12,11 +12,13 @@ Checkpoint 105 adds source-derived temporal partial frames in the Rust/Wasm work
 
 Checkpoint 106 adds Rust/Wasm prepared Source, Add, and Morph targets with a dedicated worker and playable Sine bank controls. Seventeen original C++ recipe/interpolation captures match native Rust across 108 partial slots; the worklet renders audible Add and Morph targets. Full Main sample branch routing, phase vocoder, and project state remain.
 
+Checkpoint 107 composes one authored Main sample synth slice: file-backed sample playback and a source-prepared Add/Morph Sine bank into a two-bus mixer. Four native Rust graph renders match direct Rust/Wasm sample for sample, and the AudioWorklet plays the same branch layout. This establishes a reviewable graph seam, not parity for the original Main synth's phase vocoder, envelopes, crossfade network, MIDI voices, or saved state.
+
 Make each port inspectable as a small browser instrument: manipulate a primitive, hear it, see its useful measurements, and compare the same deterministic case with the old C++/JUCE implementation. The workbench is a development surface and the beginning of the eventual project UI component library. It must not become part of the audio callback.
 
 The current Standalone Filter page proves the Rust/Wasm AudioWorklet path, but its large hero, decorative frequency bars, implementation copy, and oversized cards make it poor for comparing behavior. Replace that page with a compact task surface. The main reading order is: **project and signal path → controls → useful output → reference comparison**. A scope, filter response, spectrum, meter, or event timeline earns its place by answering a specific question; a visual effect does not.
 
-At 52 views, navigation has a direct primitive picker on both layouts. The desktop library scrolls within its own panel so choosing a lower item keeps the selected workbench in view. On narrow screens the picker replaces the long list above the active view. Selection updates the URL and browser history as well as the module and reference case, making individual checkpoints directly reviewable.
+At 53 views, navigation has a direct primitive picker on both layouts. The desktop library scrolls within its own panel so choosing a lower item keeps the selected workbench in view. On narrow screens the picker replaces the long list above the active view. Selection updates the URL and browser history as well as the module and reference case, making individual checkpoints directly reviewable.
 
 ## Visual and interaction vocabulary to translate
 
