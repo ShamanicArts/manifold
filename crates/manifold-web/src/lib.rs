@@ -113,6 +113,10 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
                 },
             }
         }
+        20 => NodeKind::LoopCapture {
+            capacity_seconds: a,
+            mix: b,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {

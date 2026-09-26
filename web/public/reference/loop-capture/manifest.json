@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "reference": "native Rust bounded loop capture",
+  "sourceSha256": "3a6f4fa8f1e3e447bf882ea3d02e660b377dc014425527ca1e21ad1903868c66",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "record-play",
+      "label": "Record, then loop",
+      "capacitySeconds": 0.25,
+      "mix": 1,
+      "blockSize": 128,
+      "events": [
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          4096,
+          0,
+          0
+        ],
+        [
+          4096,
+          1,
+          1
+        ]
+      ],
+      "output": "record-play.f32"
+    },
+    {
+      "id": "capture-wrap",
+      "label": "Keep recent audio when full",
+      "capacitySeconds": 0.05,
+      "mix": 1,
+      "blockSize": 128,
+      "events": [
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          4096,
+          0,
+          0
+        ],
+        [
+          4096,
+          1,
+          1
+        ]
+      ],
+      "output": "capture-wrap.f32"
+    },
+    {
+      "id": "reverse-speed",
+      "label": "Reverse and change speed",
+      "capacitySeconds": 0.25,
+      "mix": 1,
+      "blockSize": 128,
+      "events": [
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          4096,
+          0,
+          0
+        ],
+        [
+          4096,
+          1,
+          1
+        ],
+        [
+          8192,
+          4,
+          1
+        ],
+        [
+          12288,
+          3,
+          0.5
+        ]
+      ],
+      "output": "reverse-speed.f32"
+    },
+    {
+      "id": "overdub",
+      "label": "Overdub a second phrase",
+      "capacitySeconds": 0.25,
+      "mix": 1,
+      "blockSize": 128,
+      "events": [
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          4096,
+          0,
+          0
+        ],
+        [
+          4096,
+          1,
+          1
+        ],
+        [
+          8192,
+          2,
+          1
+        ],
+        [
+          12288,
+          2,
+          0
+        ]
+      ],
+      "output": "overdub.f32"
+    },
+    {
+      "id": "pause-resume",
+      "label": "Pause and resume playhead",
+      "capacitySeconds": 0.25,
+      "mix": 0.75,
+      "blockSize": 64,
+      "events": [
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          4096,
+          0,
+          0
+        ],
+        [
+          4096,
+          1,
+          1
+        ],
+        [
+          8192,
+          1,
+          0
+        ],
+        [
+          12288,
+          1,
+          1
+        ]
+      ],
+      "output": "pause-resume.f32"
+    }
+  ]
+}

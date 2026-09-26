@@ -191,6 +191,17 @@ function prepareEffectSlot(engine, selected) {
   });
 }
 
+function prepareLoopCapture(engine, selected) {
+  if (engine.manifold_graph_begin(3, 2) !== 1
+    || engine.manifold_graph_node(1, 0, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 20, selected.capacitySeconds, selected.mix) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1) {
+    throw new Error('Wasm loop capture graph failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
@@ -205,6 +216,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'stereo-delay') prepareStereoDelay(engine, selected);
   if (family === 'fx-chain') prepareFxChain(engine, selected);
   if (family === 'standalone-fx') prepareEffectSlot(engine, selected);
+  if (family === 'loop-capture') prepareLoopCapture(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -241,6 +253,13 @@ function renderWasm(engine, family, manifest, input, selected) {
   const rendered = new Float32Array(input.length);
   for (let offset = 0; offset < manifest.frames; offset += block) {
     const count = Math.min(block, manifest.frames - offset);
+    if (family === 'loop-capture') {
+      for (const [frame, id, value] of selected.events) {
+        if (frame === offset && engine.manifold_set_node_parameter(2, id, value) !== 1) {
+          throw new Error(`Wasm loop capture event ${id} at ${frame} failed`);
+        }
+      }
+    }
     if (family === 'adsr' && offset === selected.gateOffFrame
       && engine.manifold_set_node_parameter(2, 4, 0) !== 1) {
       throw new Error('Wasm ADSR gate-off failed');
@@ -395,7 +414,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
   };
   const draw = () => {
     if (!active) return;
-    if (currentFamily === 'stereo-delay' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx') {
+    if (currentFamily === 'stereo-delay' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || currentFamily === 'loop-capture') {
       const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames;
       const oldLeft = peakView(active.legacy, 0, span, 0);
       const newLeft = peakView(active.rust, 0, span, 0);
@@ -464,15 +483,17 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                       ? `drive ${selected.before[0]} → ${selected.after[0]} · delay mix ${selected.before[6]} → ${selected.after[6]} · cutoff ${selected.before[7]} → ${selected.after[7]} Hz`
                     : family === 'standalone-fx'
                       ? `type ${selected.before[0]} → ${selected.after[0]} · wet mix ${selected.before[1]} → ${selected.after[1]} · p/0 ${selected.before[2]} → ${selected.after[2]}`
+                    : family === 'loop-capture'
+                      ? `${selected.capacitySeconds} s capture · ${selected.events.length} control changes · mix ${selected.mix}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
-    const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation' || family === 'fx-chain' || family === 'standalone-fx';
+    const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Whole tail' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
-    byId('plot-window').querySelector('[value="start"]').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
-    byId('plot-title').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
-    document.querySelector('.legend-old').textContent = family === 'stereo-delay' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
-    document.querySelector('.legend-new').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Wasm L/R' : 'Rust/Wasm';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
+    byId('plot-window').querySelector('[value="start"]').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
+    byId('plot-title').textContent = family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
+    document.querySelector('.legend-old').textContent = family === 'stereo-delay' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
+    document.querySelector('.legend-new').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Wasm L/R' : 'Rust/Wasm';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;

@@ -7,6 +7,7 @@ use crate::effect_slot::{self, EffectSlot};
 use crate::envelope::AdsrEnvelope;
 use crate::events::{EventError, EventKind, TimedEvent};
 use crate::lfo::Lfo;
+use crate::loop_capture::LoopCapture;
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::stereo_delay::StereoDelay;
@@ -68,6 +69,10 @@ pub enum NodeKind {
         mix: f32,
         params: [f32; 5],
     },
+    LoopCapture {
+        capacity_seconds: f32,
+        mix: f32,
+    },
     VoiceSynth,
     Oscillator {
         frequency: f32,
@@ -111,6 +116,7 @@ impl NodeKind {
             | Self::Distortion { .. }
             | Self::StereoDelay { .. }
             | Self::EffectSlot { .. }
+            | Self::LoopCapture { .. }
             | Self::Output => 1,
         }
     }
@@ -176,6 +182,14 @@ impl NodeKind {
                 (*selected == effect_slot::SVF_TYPE || *selected == effect_slot::DELAY_TYPE)
                     && mix.is_finite()
                     && params.iter().all(|value| value.is_finite())
+            }
+            Self::LoopCapture {
+                capacity_seconds,
+                mix,
+            } => {
+                capacity_seconds.is_finite()
+                    && (0.05..=30.0).contains(capacity_seconds)
+                    && mix.is_finite()
             }
             _ => true,
         }
@@ -254,6 +268,7 @@ enum Kernel {
     Distortion(Distortion),
     StereoDelay(StereoDelay),
     EffectSlot(EffectSlot),
+    LoopCapture(LoopCapture),
     VoiceSynth(VoiceSynth),
     Oscillator(Oscillator),
     AdsrEnvelope(AdsrEnvelope),
@@ -357,6 +372,10 @@ impl Kernel {
                 mix,
                 params,
             } => Self::EffectSlot(EffectSlot::new(sample_rate, *selected, *mix, *params)),
+            NodeKind::LoopCapture {
+                capacity_seconds,
+                mix,
+            } => Self::LoopCapture(LoopCapture::new(sample_rate, *capacity_seconds, *mix)),
             NodeKind::VoiceSynth => Self::VoiceSynth(VoiceSynth::new(sample_rate)),
             NodeKind::Oscillator {
                 frequency,
@@ -422,6 +441,7 @@ impl Kernel {
             (Self::Distortion(distortion), id) => return distortion.set_parameter(id, value),
             (Self::StereoDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
+            (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
@@ -811,6 +831,9 @@ impl ExecutionPlan {
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::LoopCapture(loop_node) => {
+                    loop_node.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::VoiceSynth(synth) => {
                     for frame in 0..frames {

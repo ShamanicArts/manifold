@@ -1,0 +1,9 @@
+# Review checkpoint 16: bounded loop capture
+
+Date: 2026-09-26. Open the [live Loop capture workbench](http://127.0.0.1:4173/?primitive=loop-capture). The [desktop](checkpoint-16-1365.png) and [mobile](checkpoint-16-390.png) captures show record/play/overdub controls, reverse and speed, live output, and selectable native Rust versus Rust/Wasm comparisons. Start audio, record a phrase, stop recording, then turn Play on. Test oscillator input works without hardware permissions; microphone input asks the browser for its normal audio permission.
+
+`LoopCapture` owns a prepared stereo ring. Recording beyond capacity keeps the newest frames. Playback uses a fractional position with linear interpolation, reverse direction, speed smoothing, and a dry/wet mix. Overdub adds scaled input to the current loop sample and clamps to ±1. Record starts a new take; stopping it leaves the take paused until Play. The live UI disables Play and Overdub before a take exists and while recording. The callback allocates no buffers or locks.
+
+Five native Rust/Wasm cases cover record/play, buffer wrap, reverse/speed change, overdub, and pause/resume. All five show **Match**. Across fourteen views, all **75 browser cases** show Match with no page errors. `cargo test --workspace` passes **27 tests**, including record repeat, capture wrap, and reverse overdub. Live recording and playback run at 48 kHz in Chromium; desktop and 390 px mobile layouts have no horizontal overflow.
+
+This is an authored time-and-sampling study, not a port of the full Standalone Sample instrument. The old project also has file-backed sample regions, eight MIDI voices, sidechain capture, unison, and analysis. The [migration boundary](../../docs/standalone-sample-migration.md) records those remaining contracts. The current page shows output peaks from offline cases; a precise live capture waveform and playhead require a bounded state snapshot path from the worklet to the UI.

@@ -12,6 +12,7 @@ import distortionProject from '../../projects/distortion/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
 import fxChainProject from '../../projects/fx-chain/project.json';
 import standaloneFxProject from '../../projects/standalone-fx-slice/project.json';
+import loopCaptureProject from '../../projects/loop-capture/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { BrowserMidiInput } from './audio/midi-input.js';
 import { initializeReferenceLab } from './reference/comparison.js';
@@ -93,6 +94,12 @@ const projects = {
     description: 'A swappable effects slot using the original type IDs and normalized controls. SVF Filter and Stereo Delay are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
+  'loop-capture': {
+    project: loopCaptureProject,
+    title: 'Loop capture',
+    description: 'Record up to two seconds of stereo input, then play it as a loop. Reverse, change speed, or overdub new sound.',
+    signal: 'Live path: input → bounded capture / loop playback → output',
+  },
   'stereo-delay': {
     project: stereoDelayProject,
     title: 'Stereo delay',
@@ -104,6 +111,7 @@ const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
 let values = new Map();
 let slotValuesByType = new Map();
+let loopHasTake = false;
 const audio = new BrowserAudioHost((message) => { status.textContent = message; });
 
 function updateCutoffRange() {
@@ -210,15 +218,40 @@ function addToggle(parameter) {
   button.className = 'gate-button';
   button.setAttribute('aria-pressed', String(parameter.default === 1));
   const render = () => { button.textContent = `${parameter.label}: ${values.get(parameter.id) ? 'On' : 'Off'}`; };
+  button.dataset.parameterId = String(parameter.id);
   render();
   button.addEventListener('click', () => {
     const next = values.get(parameter.id) ? 0 : 1;
     values.set(parameter.id, next);
     audio.setParameter(parameter.id, next);
+    if (activeFamily === 'loop-capture' && parameter.id === 0 && next === 1) {
+      loopHasTake = false;
+      for (const id of [1, 2]) {
+        values.set(id, 0);
+        audio.setParameter(id, 0);
+      }
+    }
+    if (activeFamily === 'loop-capture' && parameter.id === 0 && next === 0) {
+      loopHasTake = audio.running;
+    }
     button.setAttribute('aria-pressed', String(next === 1));
     render();
+    if (activeFamily === 'loop-capture') updateLoopToggles();
   });
   byId('controls').appendChild(button);
+}
+
+function updateLoopToggles() {
+  if (activeFamily !== 'loop-capture') return;
+  for (const id of [0, 1, 2, 4]) {
+    const button = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (!button) continue;
+    const label = projects['loop-capture'].project.parameters.find((parameter) => parameter.id === id).label;
+    const on = Boolean(values.get(id));
+    button.textContent = `${label}: ${on ? 'On' : 'Off'}`;
+    button.setAttribute('aria-pressed', String(on));
+    button.disabled = (id === 1 || id === 2) && (Boolean(values.get(0)) || !loopHasTake);
+  }
 }
 
 function addSelect(parameter) {
@@ -247,6 +280,7 @@ function renderPrimitive(family) {
   if (family === 'standalone-fx') slotValuesByType = new Map([
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
   ]);
+  if (family === 'loop-capture') loopHasTake = false;
   byId('module-title').textContent = title;
   byId('module-description').textContent = description;
   byId('signal-path').textContent = signal;
@@ -298,6 +332,13 @@ function renderPrimitive(family) {
     else addSlider(parameter);
   }
   updateSlotControls();
+  updateLoopToggles();
+  if (family === 'loop-capture') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Start audio, record a phrase, stop recording, then turn Play on. The input remains audible while recording.';
+    byId('controls').appendChild(help);
+  }
   if (family === 'stereo-delay') {
     const help = document.createElement('p');
     help.className = 'control-help';
@@ -467,7 +508,14 @@ drawLiveSpectrum(byId('live-spectrum'), null);
 toggle.addEventListener('click', async () => {
   toggle.disabled = true;
   try {
-    if (audio.running) { releaseAllNotes(); await audio.stop(); }
+    if (audio.running) {
+      releaseAllNotes(); await audio.stop();
+      if (activeFamily === 'loop-capture') {
+        loopHasTake = false;
+        for (const id of [0, 1, 2]) values.set(id, 0);
+        updateLoopToggles();
+      }
+    }
     else await audio.start(byId('source').value, values, projects[activeFamily].project);
     const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';
     toggle.textContent = audio.running

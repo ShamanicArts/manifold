@@ -18,6 +18,8 @@ Source checkout: `/home/shamanic/dev/my-plugin` (read-only behavior oracle). Its
 
 Other build dependencies include Dear ImGui, ImGuiColorTextEdit, Boost regex, OpenGL/EGL, and Google Highway. None are foundational dependencies in v2. The old project has 28 `manifold.project.json5` descriptors; classify each as behavior to port, interface to redesign, or experiment before deletion.
 
+The first bounded [Loop capture study](../projects/loop-capture/project.json) now verifies record, wrap, reverse/speed, and overdub in native Rust and Wasm. It is distinct from the old [Standalone Sample instrument](standalone-sample-migration.md), which also needs file, region, voice, and analysis contracts.
+
 ## Migration sequence
 
 1. **Standalone Filter**: port the actual SVF algorithm and public parameters. Browser microphone/oscillator input, audible output, mode/cutoff/resonance controls, renderer detached from audio. This repository contains the first implementation. Next prove an offline/native versus Wasm fixture for each mode and parameter step.
