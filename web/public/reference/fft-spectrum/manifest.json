@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust 2048-point FFT, 32 log bands and peak Hz",
-  "sourceSha256": "9be49d47e458506860bb4aee8771677112412c2807bf7be7a652c0e93aedcfd2",
+  "sourceSha256": "a879d62ddb4622d68168399cdda40e853d57e4b2642896dd47f7cd2fc2e082f0",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,

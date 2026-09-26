@@ -1,0 +1,29 @@
+{
+  "reverse-delay": {
+    "cases": 8,
+    "largest": {
+      "id": "default",
+      "max": 0
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "delayTime": "245.0 ms"
+  },
+  "standalone-fx": {
+    "cases": 63,
+    "largest": {
+      "id": "eq-to-formant",
+      "max": 0.000125
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Reverse",
+    "wet": "0.80",
+    "delayTime": "245 ms",
+    "controls": [
+      "Wet mix",
+      "Delay time",
+      "Reverse window",
+      "Feedback"
+    ]
+  },
+  "errors": []
+}

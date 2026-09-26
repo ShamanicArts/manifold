@@ -24,6 +24,7 @@ use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::phaser::Phaser;
 use crate::reverb::{self, Reverb};
+use crate::reverse_delay::{self, ReverseDelay};
 use crate::ring_modulator::{self, RingModulator};
 use crate::sample_instrument::SampleInstrument;
 use crate::sample_region::SampleRegion;
@@ -150,6 +151,9 @@ pub enum NodeKind {
     FormantFilter {
         params: [f32; formant_filter::PARAM_COUNT],
     },
+    ReverseDelay {
+        params: [f32; reverse_delay::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -232,6 +236,7 @@ impl NodeKind {
             | Self::SlewAudio { .. }
             | Self::LegacyEq { .. }
             | Self::FormantFilter { .. }
+            | Self::ReverseDelay { .. }
             | Self::SlewControl { .. }
             | Self::AttenuverterBias { .. }
             | Self::AdsrEnvelope
@@ -349,6 +354,7 @@ impl NodeKind {
             Self::BitCrusher { params } => params.iter().all(|value| value.is_finite()),
             Self::LegacyEq { params } => params.iter().all(|value| value.is_finite()),
             Self::FormantFilter { params } => params.iter().all(|value| value.is_finite()),
+            Self::ReverseDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -491,6 +497,7 @@ enum Kernel {
     BitCrusher(BitCrusher),
     LegacyEq(LegacyEq),
     FormantFilter(FormantFilter),
+    ReverseDelay(ReverseDelay),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -641,6 +648,9 @@ impl Kernel {
             NodeKind::FormantFilter { params } => {
                 Self::FormantFilter(FormantFilter::new(sample_rate, *params))
             }
+            NodeKind::ReverseDelay { params } => {
+                Self::ReverseDelay(ReverseDelay::new(sample_rate, max_frames, *params))
+            }
             NodeKind::EffectSlot {
                 selected,
                 mix,
@@ -788,6 +798,7 @@ impl Kernel {
             (Self::BitCrusher(crusher), id) => return crusher.set_parameter(id, value),
             (Self::LegacyEq(eq), id) => return eq.set_parameter(id, value),
             (Self::FormantFilter(formant), id) => return formant.set_parameter(id, value),
+            (Self::ReverseDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1438,6 +1449,9 @@ impl ExecutionPlan {
                 }
                 Kernel::FormantFilter(formant) => {
                     formant.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::ReverseDelay(delay) => {
+                    delay.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

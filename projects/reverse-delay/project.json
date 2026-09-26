@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.reverse-delay",
+  "name": "Reverse delay",
+  "source": "Legacy ReverseDelayNode stereo window delay",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "reverse-delay" },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "time", "label": "Delay time", "kind": "float", "min": 50, "max": 2000, "default": 420, "unit": "ms" },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "window", "label": "Reverse window", "kind": "float", "min": 20, "max": 400, "default": 120, "unit": "ms" },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "feedback", "label": "Feedback", "kind": "float", "min": 0, "max": 0.95, "default": 0.35 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "mix", "label": "Wet mix", "kind": "float", "min": 0, "max": 1, "default": 0.5 }
+  ]
+}

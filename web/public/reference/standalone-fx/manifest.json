@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "02946d087f4da45c554e58bfdd74eceb22f5c11698f54131246bab579b657054",
+  "sourceSha256": "7af38876ab2fe50d6ae63e769a77a2433dd49efe2e6c0e3893f39a6d1b459b99",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "reverse-time",
+      "label": "Reverse Delay time sweep",
+      "before": [
+        19,
+        0.8,
+        0.03,
+        0.2,
+        0.4,
+        0.5,
+        0.5
+      ],
+      "after": [
+        19,
+        0.8,
+        0.3,
+        0.2,
+        0.4,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "reverse-time.f32"
+    },
+    {
+      "id": "reverse-window",
+      "label": "Reverse Delay window and feedback",
+      "before": [
+        19,
+        1,
+        0.1,
+        0,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        19,
+        1,
+        0.1,
+        0.7,
+        0.9,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "reverse-window.f32"
+    },
+    {
+      "id": "formant-to-reverse",
+      "label": "Switch Formant to Reverse Delay",
+      "before": [
+        13,
+        0.8,
+        0.2,
+        0.5,
+        0.4,
+        0.3,
+        0.5
+      ],
+      "after": [
+        19,
+        0.8,
+        0.1,
+        0.25,
+        0.47,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "formant-to-reverse.f32"
+    },
+    {
+      "id": "reverse-to-ring",
+      "label": "Switch Reverse Delay to Ring Mod",
+      "before": [
+        19,
+        0.8,
+        0.1,
+        0.25,
+        0.47,
+        0.5,
+        0.5
+      ],
+      "after": [
+        12,
+        0.8,
+        0.3,
+        1,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "reverse-to-ring.f32"
+    },
     {
       "id": "formant-vowel",
       "label": "Formant vowel sweep",

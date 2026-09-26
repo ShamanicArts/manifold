@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "reference": "legacy C++ ReverseDelayNode stereo",
+  "sourceSha256": "33b2f6a595f852df28a3f9afdbed710c45f997c35aa0dac0dde1dfe9f4575f80",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 32768,
+  "stepFrame": 16384,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default reverse window",
+      "before": [
+        420,
+        120,
+        0.35,
+        0.5
+      ],
+      "after": [
+        420,
+        120,
+        0.35,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "short-window",
+      "label": "Short 50 ms delay and 20 ms window",
+      "before": [
+        50,
+        20,
+        0.35,
+        0.7
+      ],
+      "after": [
+        50,
+        20,
+        0.35,
+        0.7
+      ],
+      "blockSize": 128,
+      "output": "short-window.f32"
+    },
+    {
+      "id": "time-sweep",
+      "label": "Delay time sweep",
+      "before": [
+        80,
+        40,
+        0.35,
+        0.8
+      ],
+      "after": [
+        260,
+        40,
+        0.35,
+        0.8
+      ],
+      "blockSize": 128,
+      "output": "time-sweep.f32"
+    },
+    {
+      "id": "window-sweep",
+      "label": "Reverse window sweep",
+      "before": [
+        250,
+        20,
+        0.35,
+        0.8
+      ],
+      "after": [
+        250,
+        200,
+        0.35,
+        0.8
+      ],
+      "blockSize": 128,
+      "output": "window-sweep.f32"
+    },
+    {
+      "id": "feedback",
+      "label": "Feedback sweep",
+      "before": [
+        150,
+        80,
+        0,
+        0.8
+      ],
+      "after": [
+        150,
+        80,
+        0.9,
+        0.8
+      ],
+      "blockSize": 128,
+      "output": "feedback.f32"
+    },
+    {
+      "id": "mix",
+      "label": "Wet mix sweep",
+      "before": [
+        120,
+        60,
+        0.4,
+        0
+      ],
+      "after": [
+        120,
+        60,
+        0.4,
+        1
+      ],
+      "blockSize": 128,
+      "output": "mix.f32"
+    },
+    {
+      "id": "dormant",
+      "label": "Dormant bypass and restart",
+      "before": [
+        120,
+        60,
+        0,
+        0
+      ],
+      "after": [
+        120,
+        60,
+        0.4,
+        0.8
+      ],
+      "blockSize": 128,
+      "output": "dormant.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame reverse windows",
+      "before": [
+        90,
+        30,
+        0.3,
+        0.8
+      ],
+      "after": [
+        180,
+        90,
+        0.6,
+        0.8
+      ],
+      "blockSize": 64,
+      "output": "small-block.f32"
+    }
+  ]
+}

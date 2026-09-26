@@ -23,6 +23,7 @@ pub mod noise;
 pub mod oscillator;
 pub mod phaser;
 pub mod reverb;
+pub mod reverse_delay;
 pub mod ring_modulator;
 pub mod sample_analysis;
 pub mod sample_instrument;

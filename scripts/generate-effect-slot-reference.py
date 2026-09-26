@@ -12,7 +12,7 @@ OUT = ROOT / "web/public/reference/standalone-fx"
 OUT.mkdir(parents=True, exist_ok=True)
 subprocess.run(["cargo", "build", "-p", "manifold-core", "--example", "render_effect_slot"], cwd=ROOT, check=True)
 runner = ROOT / "target/debug/examples/render_effect_slot"
-sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/effect_slot.rs", "crates/manifold-core/src/waveshaper.rs", "crates/manifold-core/src/stereo_widener.rs", "crates/manifold-core/src/legacy_filter.rs", "crates/manifold-core/src/reverb.rs", "crates/manifold-core/src/multitap_delay.rs", "crates/manifold-core/src/ring_modulator.rs", "crates/manifold-core/src/transient_shaper.rs", "crates/manifold-core/src/bitcrusher.rs", "crates/manifold-core/src/legacy_eq.rs", "crates/manifold-core/src/formant_filter.rs", "crates/manifold-core/src/stereo_delay.rs", "crates/manifold-core/src/chorus.rs", "crates/manifold-core/src/phaser.rs", "crates/manifold-core/src/compressor.rs", "crates/manifold-core/src/limiter.rs", "crates/manifold-core/src/lib.rs", "projects/standalone-fx-slice/project.json", "crates/manifold-core/examples/render_effect_slot.rs"]]
+sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/effect_slot.rs", "crates/manifold-core/src/waveshaper.rs", "crates/manifold-core/src/stereo_widener.rs", "crates/manifold-core/src/legacy_filter.rs", "crates/manifold-core/src/reverb.rs", "crates/manifold-core/src/multitap_delay.rs", "crates/manifold-core/src/ring_modulator.rs", "crates/manifold-core/src/transient_shaper.rs", "crates/manifold-core/src/bitcrusher.rs", "crates/manifold-core/src/legacy_eq.rs", "crates/manifold-core/src/formant_filter.rs", "crates/manifold-core/src/reverse_delay.rs", "crates/manifold-core/src/stereo_delay.rs", "crates/manifold-core/src/chorus.rs", "crates/manifold-core/src/phaser.rs", "crates/manifold-core/src/compressor.rs", "crates/manifold-core/src/limiter.rs", "crates/manifold-core/src/lib.rs", "projects/standalone-fx-slice/project.json", "crates/manifold-core/examples/render_effect_slot.rs"]]
 source_hash = hashlib.sha256(b"".join(path.read_bytes() for path in sources)).hexdigest()
 frames, sample_rate, step = 16384, 48000, 8192
 with (OUT / "input.f32").open("wb") as output:
@@ -23,8 +23,12 @@ with (OUT / "input.f32").open("wb") as output:
             left += .3 * math.sin(2 * math.pi * frame * 220 / sample_rate)
             right += .24 * math.sin(2 * math.pi * frame * 330 / sample_rate)
         output.write(struct.pack("<ff", left, right))
-# type, mix, p/0..p/4. Types 13 and 14 are FormantFilter and three-band EQNode.
+# type, mix, p/0..p/4. Types 13, 14, and 19 are Formant, EQNode, and Reverse Delay.
 specs = [
+    ("reverse-time", "Reverse Delay time sweep", [19, .8, .03, .2, .4, .5, .5], [19, .8, .3, .2, .4, .5, .5], 128),
+    ("reverse-window", "Reverse Delay window and feedback", [19, 1, .1, 0, .1, .5, .5], [19, 1, .1, .7, .9, .5, .5], 64),
+    ("formant-to-reverse", "Switch Formant to Reverse Delay", [13, .8, .2, .5, .4, .3, .5], [19, .8, .1, .25, .47, .5, .5], 128),
+    ("reverse-to-ring", "Switch Reverse Delay to Ring Mod", [19, .8, .1, .25, .47, .5, .5], [12, .8, .3, 1, .2, .5, .5], 128),
     ("formant-vowel", "Formant vowel sweep", [13, .8, 0, .5, .4, .3, .5], [13, .8, 1, .5, .4, .3, .5], 128),
     ("formant-drive", "Formant shift and drive", [13, 1, .3, .1, .3, .1, .5], [13, 1, .7, .9, .8, .9, .5], 64),
     ("eq-to-formant", "Switch EQ to Formant", [14, .8, .8, .2, .7, .5, .5], [13, .8, .2, .5, .4, .3, .5], 128),
