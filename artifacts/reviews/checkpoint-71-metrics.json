@@ -1,0 +1,17 @@
+{
+  "initialCase": "chorus-modulation",
+  "session": {
+    "selected": "Shimmer",
+    "mix": "0.70",
+    "pitch": "8.4 st",
+    "status": "Session state restored · type 18 · 21 effect settings.",
+    "referenceCase": "shimmer-size",
+    "grainSize": "119 ms"
+  },
+  "resetSelected": "Chorus",
+  "importedSelected": "Shimmer",
+  "importedCase": "shimmer-size",
+  "liveStatus": "Audio running · test oscillator · 48 kHz",
+  "importDisabled": true,
+  "errors": []
+}

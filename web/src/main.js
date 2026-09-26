@@ -324,6 +324,7 @@ let activeProject = null;
 const patchedSignals = new Map();
 const patchedParameterValues = new Map();
 let slotValuesByType = new Map();
+let slotSessionState = null;
 let loopHasTake = false;
 let loadedSample = null;
 let loadedGranulatorSource = null;
@@ -1047,6 +1048,20 @@ function applyPatchParameterValues(project, parameters) {
   }
 }
 
+function applyStandaloneFxState(state) {
+  slotValuesByType = new Map(Object.entries(state.typeParameters).map(([type, controls]) => [Number(type), controls]));
+  values.set(0, state.hostParameters.type);
+  const choices = standaloneFxProject.parameters.find((parameter) => parameter.id === 0).choiceValues;
+  byId('modes').querySelectorAll('button').forEach((button, index) => {
+    button.setAttribute('aria-pressed', String(choices[index] === state.hostParameters.type));
+  });
+  for (const [id, value] of [[1, state.hostParameters.mix], ...[2, 3, 4, 5, 6].map((id) => [id, state.hostParameters[`p/${id - 2}`]])]) {
+    byId('controls').querySelector(`[data-parameter-id="${id}"]`)?.syncValue(value);
+  }
+  updateSlotControls();
+  referenceLab?.selectEffectType(state.hostParameters.type);
+}
+
 function renderPrimitive(family) {
   midiBrowserLink.href = new URL(`?primitive=${family === 'sample-instrument' ? 'sample-instrument' : 'voice'}`, location.href).href;
   midiBrowserUrl.value = midiBrowserLink.href;
@@ -1168,6 +1183,7 @@ function renderPrimitive(family) {
         }
         values.set(mode.id, value);
         audio.setParameter(mode.id, value);
+        if (family === 'standalone-fx') referenceLab?.selectEffectType(value);
         buttons.forEach((item, itemIndex) => item.setAttribute('aria-pressed', String(itemIndex === index)));
         if (family === 'standalone-fx') {
           const restored = slotValuesByType.get(value);
@@ -1226,6 +1242,10 @@ function renderPrimitive(family) {
     help.textContent = 'Values are stored separately for each effect type and restored when selected.';
     byId('controls').appendChild(help);
     updateSlotControls();
+    if (slotSessionState) {
+      applyStandaloneFxState(slotSessionState);
+      byId('slot-state-status').textContent = `Session state restored · type ${slotSessionState.hostParameters.type} · 21 effect settings.`;
+    }
   }
   if (family === 'patch') {
     const range = document.createElement('p');
@@ -1468,6 +1488,7 @@ async function selectPrimitive(family, updateUrl = true) {
   if (activeProject?.patch) {
     patchedParameterValues.set(activeFamily, Object.fromEntries(activeProject.parameters.map((parameter) => [parameter.hostId, values.get(parameter.id)])));
   }
+  if (activeFamily === 'standalone-fx') slotSessionState = captureStandaloneFxState(values, slotValuesByType);
   renderPrimitive(family);
   if (updateUrl) {
     const url = new URL(location.href);
@@ -1475,6 +1496,7 @@ async function selectPrimitive(family, updateUrl = true) {
     history.pushState({ primitive: family }, '', url);
   }
   referenceLab?.selectFamily(family);
+  if (family === 'standalone-fx') referenceLab?.selectEffectType(values.get(0));
   drawLiveSpectrum(byId('live-spectrum'), null);
 }
 
@@ -1583,17 +1605,10 @@ byId('slot-state-file').addEventListener('change', async (event) => {
   try {
     if (activeFamily !== 'standalone-fx' || audio.running) throw new Error('Stop Standalone FX audio before opening a state.');
     if (file.size > 1024 * 1024) throw new Error('State JSON must be smaller than 1 MB.');
-    const state = parseStandaloneFxState(JSON.parse(await file.text()));
-    slotValuesByType = new Map(Object.entries(state.typeParameters).map(([type, controls]) => [Number(type), controls]));
-    values.set(0, state.hostParameters.type);
-    const choices = standaloneFxProject.parameters.find((parameter) => parameter.id === 0).choiceValues;
-    byId('modes').querySelectorAll('button').forEach((button, index) => {
-      button.setAttribute('aria-pressed', String(choices[index] === state.hostParameters.type));
-    });
-    for (const [id, value] of [[1, state.hostParameters.mix], ...[2, 3, 4, 5, 6].map((id) => [id, state.hostParameters[`p/${id - 2}`]])]) {
-      byId('controls').querySelector(`[data-parameter-id="${id}"]`)?.syncValue(value);
-    }
-    updateSlotControls();
+    const contents = await file.text();
+    if (activeFamily !== 'standalone-fx' || audio.running) throw new Error('Effect view changed while opening the state.');
+    const state = parseStandaloneFxState(JSON.parse(contents));
+    applyStandaloneFxState(state);
     readout.textContent = `Opened ${file.name} · type ${state.hostParameters.type} · 21 effect settings.`;
   } catch (error) {
     readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
@@ -1729,7 +1744,7 @@ toggle.addEventListener('click', async () => {
   }
 });
 
-initializeReferenceLab(activeFamily).then((lab) => { referenceLab = lab; referenceLab.selectFamily(activeFamily); }).catch((error) => {
+initializeReferenceLab(activeFamily, activeFamily === 'standalone-fx' ? values.get(0) : null).then((lab) => { referenceLab = lab; referenceLab.selectFamily(activeFamily); if (activeFamily === 'standalone-fx') referenceLab.selectEffectType(values.get(0)); }).catch((error) => {
   byId('reference-status').textContent = `Reference unavailable: ${String(error)}`;
   byId('reference-meta').textContent = 'Run the reference generation script to create fixture files.';
 });

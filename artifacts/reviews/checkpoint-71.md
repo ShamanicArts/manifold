@@ -1,0 +1,7 @@
+# Checkpoint 71 · Standalone FX session and comparison context
+
+Review the [Standalone FX workbench](http://127.0.0.1:4173/?primitive=standalone-fx), [browser capture](checkpoint-71-fx-session.png), [browser metrics](checkpoint-71-metrics.json), and [state contract](../../docs/standalone-fx-state.md).
+
+The browser now retains the selected effect, wet mix, and all 21 remembered control sets while visiting other primitive views in the same page session. The downloaded v2 JSON still provides explicit persistence across reloads. The offline reference selector now follows the selected Standalone FX type: it picks a same-type, non-switching comparison when one exists, while the user can still choose any case manually.
+
+The browser check set Shimmer to 0.70 wet and +8.4 st, set Granulator grain size to 119 ms, visited Voice, returned to Standalone FX, and recovered both effects' values. The initial Chorus view selected the Chorus modulation case; Shimmer selected the Shimmer size case; Granulator selected its grain size case. A reload returned to the original Chorus default, then importing the saved JSON restored Shimmer and its matching comparison. The Rust/Wasm graph started at 48 kHz, import was disabled during playback, and there were zero page errors. The web build passed. This checkpoint changes browser state and reference selection only; the **373-case** offline baseline from checkpoint 66 is unchanged.

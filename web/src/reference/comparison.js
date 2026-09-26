@@ -848,7 +848,7 @@ function measure(reference, rendered) {
   return { max, rms: Math.sqrt(sum / reference.length), difference };
 }
 
-export async function initializeReferenceLab(initialFamily = 'svf') {
+export async function initializeReferenceLab(initialFamily = 'svf', initialEffectType = null) {
   const wasmResponse = await fetch(`${import.meta.env.BASE_URL}manifold_filter.wasm`);
   if (!wasmResponse.ok) throw new Error('Wasm module missing');
   const module = await WebAssembly.compile(await wasmResponse.arrayBuffer());
@@ -862,6 +862,12 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
   let input;
   let currentFamily = null;
   let selectedFamily = initialFamily;
+  let preferredEffectType = initialEffectType;
+
+  function effectCase(type) {
+    return manifest?.cases.find((entry) => entry.before?.[0] === type && entry.after?.[0] === type)
+      ?? manifest?.cases.find((entry) => entry.before?.[0] === type);
+  }
 
   async function loadFamily(family) {
     if (!fixtures.has(family)) {
@@ -887,6 +893,10 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     byId('plot-window').querySelector('[value="stage"]').hidden = family !== 'cv-rack';
     chooser.replaceChildren();
     for (const entry of manifest.cases) chooser.add(new Option(entry.label, entry.id));
+    if (family === 'standalone-fx' && preferredEffectType !== null) {
+      const matching = effectCase(preferredEffectType);
+      if (matching) chooser.value = matching.id;
+    }
     chooser.disabled = false;
   }
 
@@ -1153,6 +1163,16 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     }).catch((error) => { byId('reference-status').textContent = String(error); });
   }
 
+  function selectEffectType(type) {
+    preferredEffectType = type;
+    if (currentFamily !== 'standalone-fx' || selectedFamily !== 'standalone-fx') return;
+    const matching = effectCase(type);
+    if (matching && chooser.value !== matching.id) {
+      chooser.value = matching.id;
+      choose().catch((error) => { byId('reference-status').textContent = String(error); });
+    }
+  }
+
   async function play(kind) {
     if (playbackSource) { playbackSource.stop(); playbackSource = null; }
     if (kind === 'stop' || !active) return;
@@ -1178,5 +1198,5 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
   }
   await loadFamily(initialFamily);
   await choose();
-  return { selectFamily };
+  return { selectFamily, selectEffectType };
 }
