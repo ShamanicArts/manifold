@@ -28,6 +28,7 @@ import envelopeFollowerProject from '../../projects/envelope-follower/project.js
 import envelopeDuckingProject from '../../projects/envelope-ducking/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { BrowserMidiInput, midiAvailability } from './audio/midi-input.js';
+import { MidiHoldState } from './audio/midi-hold.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars } from './reference/plots.js';
 
@@ -933,7 +934,8 @@ const keyboardNotes = [
 ];
 const keyButtons = new Map();
 const pressedNotes = new Set();
-const midiHeld = new Map();
+const midiHeld = new MidiHoldState();
+const keyboardDevice = Symbol('on-screen keyboard');
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const noteTarget = () => activeFamily === 'voice' ? 1 : activeFamily === 'sample-instrument' ? 2 : null;
 function resetNoteEvents() {
@@ -941,49 +943,59 @@ function resetNoteEvents() {
   placeholder.textContent = 'Play the keyboard to inspect note events.';
   byId('midi-events').replaceChildren(placeholder);
 }
-function showNoteEvent(kind, channel, note, velocity, source, forwarded) {
+function showNoteEvent(kind, channel, note, velocity, source, forwarded, detail = '') {
   const list = byId('midi-events');
   if (list.firstChild?.textContent === 'Play the keyboard to inspect note events.') list.replaceChildren();
   const item = document.createElement('li');
   const name = `${noteNames[note % 12]}${Math.floor(note / 12) - 1}`;
-  item.textContent = `${kind === 'on' ? 'On' : 'Off'} · ${name} (${note}) · ch ${channel + 1} · vel ${velocity} · ${source}${forwarded ? '' : ' · received only'}`;
+  item.textContent = `${kind === 'on' ? 'On' : 'Off'} · ${name} (${note}) · ch ${channel + 1} · vel ${velocity} · ${source}${detail ? ` · ${detail}` : forwarded ? '' : ' · received only'}`;
   list.prepend(item);
   while (list.childElementCount > 6) list.lastChild.remove();
 }
-const heldByAnotherDevice = (key, deviceId) => [...midiHeld].some(([id, notes]) => id !== deviceId && notes.has(key));
+function showPedalEvent(channel, down, forwarded) {
+  const list = byId('midi-events');
+  if (list.firstChild?.textContent === 'Play the keyboard to inspect note events.') list.replaceChildren();
+  const item = document.createElement('li');
+  item.textContent = `Sustain ${down ? 'down' : 'up'} · ch ${channel + 1} · MIDI${forwarded ? '' : ' · received only'}`;
+  list.prepend(item);
+  while (list.childElementCount > 6) list.lastChild.remove();
+}
 function noteOn(note) {
   const target = noteTarget();
   if (target === null || !audio.running || pressedNotes.has(note)) return;
   pressedNotes.add(note);
   keyButtons.get(note)?.setAttribute('aria-pressed', 'true');
-  audio.sendEvent(target, 0, note, 100, 0, 15);
-  showNoteEvent('on', 15, note, 100, 'Keyboard', true);
+  const { events } = midiHeld.note(keyboardDevice, 'on', 15, note, 100);
+  for (const event of events) {
+    audio.sendEvent(target, 0, event.note, event.velocity, 0, event.channel);
+  }
+  showNoteEvent('on', 15, note, 100, 'Keyboard', events.length > 0,
+    events.length ? '' : 'held by another input');
 }
 function noteOff(note) {
   if (!pressedNotes.delete(note)) return;
   keyButtons.get(note)?.setAttribute('aria-pressed', 'false');
-  audio.sendEvent(noteTarget(), 1, note, 0, 0, 15);
-  showNoteEvent('off', 15, note, 0, 'Keyboard', true);
+  const { events, deferred } = midiHeld.note(keyboardDevice, 'off', 15, note, 0);
+  for (const event of events) {
+    if (audio.running && noteTarget() !== null) audio.sendEvent(noteTarget(), 1, event.note, 0, 0, event.channel);
+  }
+  showNoteEvent('off', 15, note, 0, 'Keyboard', events.length > 0,
+    deferred ? 'held by sustain' : events.length ? '' : 'held by another input');
 }
 function releaseAllNotes() {
-  if ((pressedNotes.size || midiHeld.size) && audio.running && noteTarget() !== null) audio.sendEvent(noteTarget(), 2);
+  if ((pressedNotes.size || midiHeld.hasHeldNotes) && audio.running && noteTarget() !== null) audio.sendEvent(noteTarget(), 2);
   pressedNotes.clear();
   midiHeld.clear();
   for (const button of keyButtons.values()) button.setAttribute('aria-pressed', 'false');
 }
 function releaseDevice(deviceId) {
-  const held = midiHeld.get(deviceId);
-  if (!held) return;
+  const releases = midiHeld.disconnect(deviceId);
   if (audio.running && noteTarget() !== null) {
-    for (const key of held) {
-      const [channel, note] = key.split(':').map(Number);
-      if (!heldByAnotherDevice(key, deviceId)) {
-        audio.sendMidiEvent(noteTarget(), 1, note, 0, channel, performance.now());
-        showNoteEvent('off', channel, note, 0, 'MIDI disconnect', true);
-      }
+    for (const event of releases) {
+      audio.sendMidiEvent(noteTarget(), 1, event.note, 0, event.channel, performance.now());
+      showNoteEvent('off', event.channel, event.note, 0, 'MIDI disconnect', true);
     }
   }
-  midiHeld.delete(deviceId);
 }
 function receiveMidiNote(deviceId, kind, channel, note, velocity, eventTimeMs) {
   const target = noteTarget();
@@ -992,19 +1004,23 @@ function receiveMidiNote(deviceId, kind, channel, note, velocity, eventTimeMs) {
     showNoteEvent(kind, channel, note, velocity, 'MIDI', false);
     return;
   }
-  let held = midiHeld.get(deviceId);
-  if (!held) { held = new Set(); midiHeld.set(deviceId, held); }
-  const key = `${channel}:${note}`;
-  let forwarded = false;
-  if (kind === 'on' && !held.has(key)) {
-    const alreadyHeld = heldByAnotherDevice(key, deviceId);
-    held.add(key);
-    if (!alreadyHeld) { audio.sendMidiEvent(target, 0, note, velocity, channel, eventTimeMs); forwarded = true; }
-  } else if (kind === 'off' && held.delete(key)) {
-    if (!heldByAnotherDevice(key, deviceId)) { audio.sendMidiEvent(target, 1, note, 0, channel, eventTimeMs); forwarded = true; }
+  const { events, deferred } = midiHeld.note(deviceId, kind, channel, note, velocity);
+  for (const event of events) {
+    audio.sendMidiEvent(target, event.kind === 'on' ? 0 : 1, event.note, event.velocity, event.channel, eventTimeMs);
   }
-  showNoteEvent(kind, channel, note, velocity, 'MIDI', forwarded);
-  if (!held.size) midiHeld.delete(deviceId);
+  showNoteEvent(kind, channel, note, velocity, 'MIDI', events.length > 0,
+    deferred ? 'held by sustain' : events.length ? '' : 'held by another input');
+}
+function receiveMidiSustain(deviceId, channel, down, eventTimeMs) {
+  const target = noteTarget();
+  if (target === null) return;
+  if (!audio.running) { showPedalEvent(channel, down, false); return; }
+  const releases = midiHeld.sustain(deviceId, channel, down);
+  showPedalEvent(channel, down, true);
+  for (const event of releases) {
+    audio.sendMidiEvent(target, 1, event.note, 0, event.channel, eventTimeMs);
+    showNoteEvent('off', event.channel, event.note, 0, 'MIDI sustain', true);
+  }
 }
 const midiToggle = byId('midi-toggle');
 const midiBrowserLink = byId('midi-browser-link');
@@ -1012,7 +1028,7 @@ const midiBrowserUrl = byId('midi-browser-url');
 midiBrowserUrl.addEventListener('click', () => midiBrowserUrl.select());
 const midiInput = new BrowserMidiInput(receiveMidiNote, releaseDevice, (message) => {
   byId('midi-status').textContent = message;
-});
+}, receiveMidiSustain);
 const midiUnavailable = midiAvailability();
 if (midiUnavailable) {
   midiToggle.disabled = true;

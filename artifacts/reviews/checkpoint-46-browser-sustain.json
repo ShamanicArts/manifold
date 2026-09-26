@@ -1,0 +1,17 @@
+{
+  "held": {
+    "calls": 1,
+    "status": "Audio running · instrument · 48 kHz",
+    "midi": "2 MIDI inputs connected.",
+    "event": "Off · C4 (60) · ch 1 · vel 0 · MIDI · held by sustain"
+  },
+  "released": {
+    "status": "Audio running · instrument · 48 kHz",
+    "events": [
+      "Off · C4 (60) · ch 1 · vel 0 · MIDI sustain",
+      "Sustain up · ch 1 · MIDI",
+      "Off · C4 (60) · ch 1 · vel 0 · MIDI · held by sustain"
+    ]
+  },
+  "errors": []
+}

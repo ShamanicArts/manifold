@@ -10,10 +10,11 @@ export function midiAvailability() {
 }
 
 export class BrowserMidiInput {
-  constructor(onNote, onDisconnect, onStatus) {
+  constructor(onNote, onDisconnect, onStatus, onControl = () => {}) {
     this.onNote = onNote;
     this.onDisconnect = onDisconnect;
     this.onStatus = onStatus;
+    this.onControl = onControl;
     this.access = null;
     this.bound = new Map();
   }
@@ -70,6 +71,7 @@ export class BrowserMidiInput {
         if (note > 127 || velocity > 127) return;
         if (status === 0x90 && velocity > 0) this.onNote(id, 'on', channel, note, velocity, event.timeStamp);
         else if (status === 0x80 || status === 0x90 && velocity === 0) this.onNote(id, 'off', channel, note, 0, event.timeStamp);
+        else if (status === 0xb0 && note === 64) this.onControl(id, channel, velocity >= 64, event.timeStamp);
       };
       this.bound.set(id, input);
     }
