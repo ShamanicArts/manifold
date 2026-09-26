@@ -28,6 +28,7 @@ use crate::slew_limiter::SlewLimiter;
 use crate::spectrum_analyzer::SpectrumAnalyzer;
 use crate::stereo_delay::StereoDelay;
 use crate::stereo_widener::{self, StereoWidener};
+use crate::transient_shaper::{self, TransientShaper};
 use crate::voice::VoiceSynth;
 use crate::waveshaper::{self, WaveShaper};
 use std::collections::{HashMap, VecDeque};
@@ -134,6 +135,9 @@ pub enum NodeKind {
     RingModulator {
         params: [f32; ring_modulator::PARAM_COUNT],
     },
+    TransientShaper {
+        params: [f32; transient_shaper::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -228,6 +232,7 @@ impl NodeKind {
             | Self::LegacyFilter { .. }
             | Self::Reverb { .. }
             | Self::MultitapDelay { .. }
+            | Self::TransientShaper { .. }
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
@@ -325,6 +330,7 @@ impl NodeKind {
             Self::Reverb { params } => params.iter().all(|value| value.is_finite()),
             Self::MultitapDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::RingModulator { params } => params.iter().all(|value| value.is_finite()),
+            Self::TransientShaper { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -463,6 +469,7 @@ enum Kernel {
     Reverb(Reverb),
     MultitapDelay(MultitapDelay),
     RingModulator(RingModulator),
+    TransientShaper(TransientShaper),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -602,6 +609,9 @@ impl Kernel {
             }
             NodeKind::RingModulator { params } => {
                 Self::RingModulator(RingModulator::new(sample_rate, *params))
+            }
+            NodeKind::TransientShaper { params } => {
+                Self::TransientShaper(TransientShaper::new(sample_rate, *params))
             }
             NodeKind::EffectSlot {
                 selected,
@@ -746,6 +756,7 @@ impl Kernel {
             (Self::Reverb(reverb), id) => return reverb.set_parameter(id, value),
             (Self::MultitapDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::RingModulator(ring), id) => return ring.set_parameter(id, value),
+            (Self::TransientShaper(transient), id) => return transient.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1041,6 +1052,7 @@ impl ExecutionPlan {
                 Kernel::EnvelopeFollower(follower) if band == 0 => Some(follower.meter()),
                 Kernel::EnvelopeControl(follower) if band == 0 => Some(follower.meter()),
                 Kernel::Compressor(compressor) if band == 0 => Some(compressor.gain_reduction_db()),
+                Kernel::TransientShaper(transient) if band == 0 => Some(transient.meter()),
                 Kernel::Limiter(limiter) if band == 0 => Some(limiter.gain_reduction_db()),
                 Kernel::StereoWidener(widener) if band == 0 => Some(widener.correlation()),
                 Kernel::SampleRegion(player) => player.meter(band),
@@ -1382,6 +1394,9 @@ impl ExecutionPlan {
                 Kernel::RingModulator(ring) => {
                     let modulator = current.sources[1].map(|_| [source(1, 0), source(1, 1)]);
                     ring.process_planar([source(0, 0), source(0, 1)], modulator, [left, right])
+                }
+                Kernel::TransientShaper(transient) => {
+                    transient.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

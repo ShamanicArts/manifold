@@ -28,6 +28,7 @@ pub mod slew_limiter;
 pub mod spectrum_analyzer;
 pub mod stereo_delay;
 pub mod stereo_widener;
+pub mod transient_shaper;
 pub mod voice;
 pub mod waveshaper;
 

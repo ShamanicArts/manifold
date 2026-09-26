@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "reference": "legacy C++ TransientShaperNode stereo with transient meter",
+  "sourceSha256": "d249c19aefe0a929d226a9d14cb46475816e338e312cf29edf3601f76c043179",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 8192,
+  "stepFrame": 4096,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default attack and sustain",
+      "before": [
+        0.5,
+        0,
+        1,
+        1
+      ],
+      "after": [
+        0.5,
+        0,
+        1,
+        1
+      ],
+      "blockSize": 128,
+      "output": "default.f32",
+      "meterOutput": "default-meters.f32"
+    },
+    {
+      "id": "attack",
+      "label": "Attack boost to cut",
+      "before": [
+        1,
+        0,
+        2,
+        1
+      ],
+      "after": [
+        -1,
+        0,
+        2,
+        1
+      ],
+      "blockSize": 128,
+      "output": "attack.f32",
+      "meterOutput": "attack-meters.f32"
+    },
+    {
+      "id": "sustain",
+      "label": "Sustain boost to cut",
+      "before": [
+        0,
+        1,
+        2,
+        1
+      ],
+      "after": [
+        0,
+        -1,
+        2,
+        1
+      ],
+      "blockSize": 128,
+      "output": "sustain.f32",
+      "meterOutput": "sustain-meters.f32"
+    },
+    {
+      "id": "sensitivity",
+      "label": "Sensitivity sweep",
+      "before": [
+        0.8,
+        -0.5,
+        0.2,
+        1
+      ],
+      "after": [
+        0.8,
+        -0.5,
+        4,
+        1
+      ],
+      "blockSize": 64,
+      "output": "sensitivity.f32",
+      "meterOutput": "sensitivity-meters.f32"
+    },
+    {
+      "id": "mix",
+      "label": "Dry/wet change",
+      "before": [
+        1,
+        -0.5,
+        2,
+        0
+      ],
+      "after": [
+        1,
+        -0.5,
+        2,
+        1
+      ],
+      "blockSize": 128,
+      "output": "mix.f32",
+      "meterOutput": "mix-meters.f32"
+    },
+    {
+      "id": "stereo",
+      "label": "Stereo detector independence",
+      "before": [
+        0.7,
+        0.4,
+        1.5,
+        1
+      ],
+      "after": [
+        -0.4,
+        -0.7,
+        0.7,
+        0.6
+      ],
+      "blockSize": 256,
+      "output": "stereo.f32",
+      "meterOutput": "stereo-meters.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "32-frame meter blocks",
+      "before": [
+        0.6,
+        -0.3,
+        1.8,
+        1
+      ],
+      "after": [
+        0.2,
+        0.5,
+        1.2,
+        1
+      ],
+      "blockSize": 32,
+      "output": "small-block.f32",
+      "meterOutput": "small-block-meters.f32"
+    }
+  ]
+}

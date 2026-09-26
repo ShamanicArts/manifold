@@ -1,0 +1,27 @@
+{
+  "transient-shaper": {
+    "cases": 7,
+    "largest": {
+      "id": "default",
+      "max": 0
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "attack": "1.00"
+  },
+  "standalone-fx": {
+    "cases": 47,
+    "largest": {
+      "id": "filter-to-chorus",
+      "max": 9.69e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Transient",
+    "controls": [
+      "Wet mix",
+      "Attack",
+      "Sustain",
+      "Sensitivity"
+    ]
+  },
+  "errors": []
+}

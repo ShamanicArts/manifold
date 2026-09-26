@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "67c078ba6f9a6879abeccb653a6e0a05579c6187cbe74fda08efef4df83bfc3f",
+  "sourceSha256": "6d3fc71787286be333453d8fc823d5d4161c84d8627f10b58c3b7d8baaaf6ca9",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "transient-attack",
+      "label": "Transient attack sweep",
+      "before": [
+        16,
+        0.8,
+        0.1,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        16,
+        0.8,
+        0.9,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "transient-attack.f32"
+    },
+    {
+      "id": "transient-sustain",
+      "label": "Transient sustain and sensitivity",
+      "before": [
+        16,
+        1,
+        0.5,
+        0.1,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        16,
+        1,
+        0.5,
+        0.9,
+        0.9,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "transient-sustain.f32"
+    },
+    {
+      "id": "filter-to-transient",
+      "label": "Switch FilterNode to Transient",
+      "before": [
+        5,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        16,
+        0.8,
+        0.7,
+        0.3,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-transient.f32"
+    },
+    {
+      "id": "transient-to-ring",
+      "label": "Switch Transient to Ring Mod",
+      "before": [
+        16,
+        0.8,
+        0.7,
+        0.3,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "after": [
+        12,
+        0.8,
+        0.3,
+        1,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "transient-to-ring.f32"
+    },
     {
       "id": "ring-frequency",
       "label": "Ring Mod frequency sweep",

@@ -1,4 +1,4 @@
-//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, and 15.
+//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 15, and 16.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
@@ -12,6 +12,7 @@ use crate::reverb::{self, Reverb};
 use crate::ring_modulator::{self, RingModulator};
 use crate::stereo_delay::{self, StereoDelay};
 use crate::stereo_widener::{self, StereoWidener};
+use crate::transient_shaper::{self, TransientShaper};
 use crate::waveshaper::{self, WaveShaper};
 
 pub const CHORUS_TYPE: u32 = 0;
@@ -26,6 +27,7 @@ pub const DELAY_TYPE: u32 = 8;
 pub const MULTITAP_TYPE: u32 = 9;
 pub const RING_TYPE: u32 = 12;
 pub const LIMITER_TYPE: u32 = 15;
+pub const TRANSIENT_TYPE: u32 = 16;
 
 pub fn supported_type(value: f32) -> Option<u32> {
     if !value.is_finite() || value.fract() != 0.0 {
@@ -34,7 +36,7 @@ pub fn supported_type(value: f32) -> Option<u32> {
     match value as u32 {
         CHORUS_TYPE | PHASER_TYPE | WAVESHAPER_TYPE | COMPRESSOR_TYPE | WIDENER_TYPE
         | LEGACY_FILTER_TYPE | SVF_TYPE | REVERB_TYPE | DELAY_TYPE | MULTITAP_TYPE | RING_TYPE
-        | LIMITER_TYPE => Some(value as u32),
+        | LIMITER_TYPE | TRANSIENT_TYPE => Some(value as u32),
         _ => None,
     }
 }
@@ -54,6 +56,7 @@ pub struct EffectSlot {
     delay_params: [f32; 5],
     multitap_params: [f32; 5],
     ring_params: [f32; 5],
+    transient_params: [f32; 5],
     compressor_params: [f32; 5],
     limiter_params: [f32; 5],
     limiter_pre_gain: f32,
@@ -69,6 +72,7 @@ pub struct EffectSlot {
     delay: StereoDelay,
     multitap: MultitapDelay,
     ring: RingModulator,
+    transient: TransientShaper,
     compressor: Compressor,
     limiter: Limiter,
 }
@@ -102,6 +106,7 @@ impl EffectSlot {
             delay_params: [0.3, 0.3, 0.5, 0.5, 0.5],
             multitap_params: [0.3, 0.3, 0.5, 0.5, 0.5],
             ring_params: [0.3, 1.0, 0.2, 0.5, 0.5],
+            transient_params: [0.5, 0.5, 0.5, 0.5, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
             limiter_params: [0.5, 0.3, 0.4, 0.4, 0.5],
             limiter_pre_gain: 1.02,
@@ -117,6 +122,7 @@ impl EffectSlot {
             delay: StereoDelay::new(sample_rate, delay_settings),
             multitap: MultitapDelay::new(sample_rate, max_frames, multitap_delay::DEFAULTS),
             ring: RingModulator::new(sample_rate, ring_modulator::DEFAULTS),
+            transient: TransientShaper::new(sample_rate, transient_shaper::DEFAULTS),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
             limiter: Limiter::new(sample_rate, limiter::defaults()),
         };
@@ -132,6 +138,7 @@ impl EffectSlot {
             DELAY_TYPE => &mut slot.delay_params,
             MULTITAP_TYPE => &mut slot.multitap_params,
             RING_TYPE => &mut slot.ring_params,
+            TRANSIENT_TYPE => &mut slot.transient_params,
             LIMITER_TYPE => &mut slot.limiter_params,
             _ => unreachable!("slot type validated at graph compilation"),
         };
@@ -147,6 +154,7 @@ impl EffectSlot {
         slot.rebuild_reverb();
         slot.rebuild_multitap();
         slot.rebuild_ring();
+        slot.rebuild_transient();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
@@ -316,6 +324,26 @@ impl EffectSlot {
         }
     }
 
+    fn transient_settings(&self) -> [f32; transient_shaper::PARAM_COUNT] {
+        let [attack, sustain, sensitivity, _, _] = self.transient_params;
+        [
+            -1.0 + 2.0 * attack,
+            -1.0 + 2.0 * sustain,
+            0.2 + 3.8 * sensitivity,
+            1.0,
+        ]
+    }
+
+    fn rebuild_transient(&mut self) {
+        self.transient.reset_to(self.transient_settings());
+    }
+
+    fn apply_transient(&mut self) {
+        for (id, value) in self.transient_settings().into_iter().enumerate() {
+            self.transient.set_parameter(id as u32, value);
+        }
+    }
+
     fn apply_phaser(&mut self) {
         for (id, value) in self.phaser_settings().into_iter().enumerate() {
             self.phaser.set_parameter(id as u32, value);
@@ -405,6 +433,7 @@ impl EffectSlot {
                         REVERB_TYPE => self.rebuild_reverb(),
                         MULTITAP_TYPE => self.rebuild_multitap(),
                         RING_TYPE => self.rebuild_ring(),
+                        TRANSIENT_TYPE => self.rebuild_transient(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -430,6 +459,7 @@ impl EffectSlot {
                     REVERB_TYPE => &mut self.reverb_params,
                     MULTITAP_TYPE => &mut self.multitap_params,
                     RING_TYPE => &mut self.ring_params,
+                    TRANSIENT_TYPE => &mut self.transient_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -446,6 +476,7 @@ impl EffectSlot {
                     REVERB_TYPE => self.apply_reverb(),
                     MULTITAP_TYPE => self.apply_multitap(),
                     RING_TYPE => self.apply_ring(),
+                    TRANSIENT_TYPE => self.apply_transient(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -486,6 +517,9 @@ impl EffectSlot {
             RING_TYPE => self
                 .ring
                 .process_planar([in_l, in_r], None, [&mut *out_l, &mut *out_r]),
+            TRANSIENT_TYPE => self
+                .transient
+                .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             COMPRESSOR_TYPE => self
                 .compressor
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),

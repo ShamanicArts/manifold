@@ -217,6 +217,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
                     effect_slot::REVERB_TYPE => [0.5, 0.4, 0.5, 0.5, 0.5],
                     effect_slot::MULTITAP_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
                     effect_slot::RING_TYPE => [0.3, 1.0, 0.2, 0.5, 0.5],
+                    effect_slot::TRANSIENT_TYPE => [0.5, 0.5, 0.5, 0.5, 0.5],
                     effect_slot::COMPRESSOR_TYPE => [0.4, 0.3, 0.1, 0.3, 0.5],
                     effect_slot::SVF_TYPE => [0.5, 0.4, 0.1, 0.5, 0.5],
                     effect_slot::DELAY_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
@@ -308,6 +309,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         },
         42 => NodeKind::RingModulator {
             params: manifold_core::ring_modulator::DEFAULTS,
+        },
+        43 => NodeKind::TransientShaper {
+            params: manifold_core::transient_shaper::DEFAULTS,
         },
         _ => return 0,
     };
@@ -424,6 +428,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             }
             (NodeKind::RingModulator { params }, id @ 0..=4) => {
                 if !manifold_core::ring_modulator::set_value(params, id, value) {
+                    return 0;
+                }
+            }
+            (NodeKind::TransientShaper { params }, id @ 0..=3) => {
+                if !manifold_core::transient_shaper::set_value(params, id, value) {
                     return 0;
                 }
             }

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.transient-shaper",
+  "name": "Transient shaper",
+  "source": "Legacy TransientShaperNode stereo scalar and block meter",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 2,
+        "type": "transient-shaper"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "to": 2,
+        "inputPort": 0
+      },
+      {
+        "from": 2,
+        "to": 3,
+        "inputPort": 0
+      }
+    ]
+  },
+  "parameters": [
+    {
+      "id": 0,
+      "nodeId": 2,
+      "nodeParameterId": 0,
+      "hostId": "attack",
+      "label": "Attack",
+      "kind": "float",
+      "min": -1,
+      "max": 1,
+      "default": 0.5
+    },
+    {
+      "id": 1,
+      "nodeId": 2,
+      "nodeParameterId": 1,
+      "hostId": "sustain",
+      "label": "Sustain",
+      "kind": "float",
+      "min": -1,
+      "max": 1,
+      "default": 0
+    },
+    {
+      "id": 2,
+      "nodeId": 2,
+      "nodeParameterId": 2,
+      "hostId": "sensitivity",
+      "label": "Sensitivity",
+      "kind": "float",
+      "min": 0.1,
+      "max": 4,
+      "default": 1
+    },
+    {
+      "id": 3,
+      "nodeId": 2,
+      "nodeParameterId": 3,
+      "hostId": "mix",
+      "label": "Wet mix",
+      "kind": "float",
+      "min": 0,
+      "max": 1,
+      "default": 1
+    }
+  ]
+}

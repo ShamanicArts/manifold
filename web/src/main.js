@@ -18,6 +18,7 @@ import legacyFilterProject from '../../projects/legacy-filter/project.json';
 import reverbProject from '../../projects/reverb/project.json';
 import multitapProject from '../../projects/multitap/project.json';
 import ringProject from '../../projects/ring-modulator/project.json';
+import transientProject from '../../projects/transient-shaper/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -158,6 +159,12 @@ const projects = {
     description: 'Multiply stereo audio by an internal oscillator with variable frequency, depth and stereo phase spread. The original node can also use a second stereo audio bus; that route is covered in the C++ comparison cases.',
     signal: 'Live path: input × stereo oscillator → dry/wet output',
   },
+  'transient-shaper': {
+    project: transientProject,
+    title: 'Transient shaper',
+    description: 'Fast and slow stereo envelope followers distinguish attack from body. Adjust attack and sustain gain while viewing the original block transient meter.',
+    signal: 'Live path: input → dual envelope transient gain → stereo output · meter → transient strength',
+  },
   compressor: {
     project: compressorProject,
     title: 'Compressor',
@@ -179,7 +186,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, Ring Mod, and Limiter are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, Ring Mod, Limiter, and Transient Shaper are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -482,7 +489,7 @@ const audio = new BrowserAudioHost((message) => { status.textContent = message; 
     byId('fft-peak').textContent = bands[32] > 0 ? `Strongest peak · ${bands[32].toFixed(1)} Hz` : 'Peak · silent';
     return;
   }
-  if (!['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(activeFamily)) return;
+  if (!['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'transient-shaper'].includes(activeFamily)) return;
   if (activeFamily === 'compressor' || activeFamily === 'limiter') {
     const reduction = Number.isFinite(bands[0]) ? Math.max(0, activeFamily === 'compressor' ? -bands[0] : bands[0]) : 0;
     const row = byId('live-bands').firstChild;
@@ -494,14 +501,15 @@ const audio = new BrowserAudioHost((message) => { status.textContent = message; 
     return;
   }
   const scale = activeFamily === 'spectrum-analyzer'
-    ? Math.max(0.05, Math.max(...bands.filter(Number.isFinite)) * 1.2) : 1;
+    ? Math.max(0.05, Math.max(...bands.filter(Number.isFinite)) * 1.2)
+    : activeFamily === 'transient-shaper' ? Math.max(0.05, (bands[0] || 0) * 1.2) : 1;
   [...byId('live-bands').children].forEach((row, index) => {
-    const value = Number.isFinite(bands[index]) ? Math.max(0, Math.min(1, bands[index])) : 0;
+    const value = Number.isFinite(bands[index]) ? Math.max(0, activeFamily === 'transient-shaper' ? bands[index] : Math.min(1, bands[index])) : 0;
     row.querySelector('.live-band-fill').style.width = `${Math.min(100, value / scale * 100)}%`;
     row.querySelector('output').textContent = value.toFixed(3);
   });
-  if (activeFamily === 'envelope-follower' || activeFamily === 'envelope-ducking') {
-    envelopeHistory.push(Math.max(0, Math.min(1, bands[0] ?? 0)));
+  if (activeFamily === 'envelope-follower' || activeFamily === 'envelope-ducking' || activeFamily === 'transient-shaper') {
+    envelopeHistory.push(Math.max(0, activeFamily === 'transient-shaper' ? bands[0] ?? 0 : Math.min(1, bands[0] ?? 0)));
     if (envelopeHistory.length > 60) envelopeHistory.shift();
     const scale = Math.max(0.2, Math.max(...envelopeHistory) * 1.2);
     drawMeterTrace(byId('live-envelope-trace'), [envelopeHistory], scale, ['#9a8de8']);
@@ -625,6 +633,7 @@ function updateSlotControls() {
     : selected === 7 ? { 2: 'Room size', 3: 'Damping' }
     : selected === 9 ? { 2: 'Tap count', 3: 'Feedback' }
     : selected === 12 ? { 2: 'Frequency', 3: 'Depth', 4: 'Spread' }
+    : selected === 16 ? { 2: 'Attack', 3: 'Sustain', 4: 'Sensitivity' }
     : selected === 3
     ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
     : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
@@ -663,6 +672,8 @@ function updateSlotControls() {
       : selected === 12
       ? id === 2 ? `${Math.round(20 * 100 ** value).toLocaleString()} Hz`
         : id === 3 ? value.toFixed(2) : `${Math.round(180 * value)}°`
+      : selected === 16
+      ? id === 4 ? (0.2 + 3.8 * value).toFixed(2) : (-1 + 2 * value).toFixed(2)
       : selected === 3
       ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
         : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
@@ -690,6 +701,7 @@ function updateSlotControls() {
     : selected === 7 ? 'Room and damping are the old slot controls. Internal reverb is fully wet; the public slot mix blends the dry input. The other three controls are unused.'
     : selected === 9 ? 'Tap count and feedback are the old slot controls. The four assigned taps keep their authored times, gains, and pans; the remaining taps keep the node defaults. Wet gain is 1.4×.'
     : selected === 12 ? 'Frequency, depth, and spread are the old slot controls. The ring modulator uses its internal oscillator here; a second stereo audio bus is available in the standalone graph API.'
+    : selected === 16 ? 'Attack, sustain, and sensitivity are the old slot controls. Internal mix is fully wet; the last two normalized controls are unused.'
     : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
       : 'Values are stored separately for each effect type and restored when selected.';
 }
@@ -881,6 +893,7 @@ function renderPrimitive(family) {
     [7, [0.5, 0.4, 0.5, 0.5, 0.5]],
     [9, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [12, [0.3, 1.0, 0.2, 0.5, 0.5]],
+    [16, [0.5, 0.5, 0.5, 0.5, 0.5]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
@@ -889,8 +902,8 @@ function renderPrimitive(family) {
   byId('capture-transfer-section').hidden = family !== 'loop-capture';
   if (family === 'loop-capture') byId('capture-transfer-status').textContent = 'Record a take, then stop recording to send it to the sampler.';
   byId('module-title').textContent = title;
-  const analyzerView = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family);
-  document.querySelector('.measurements h2').textContent = family === 'fft-spectrum' ? 'FFT spectrum' : family === 'spectrum-analyzer' ? 'Band levels' : family === 'compressor' || family === 'limiter' ? 'Gain reduction' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
+  const analyzerView = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'transient-shaper'].includes(family);
+  document.querySelector('.measurements h2').textContent = family === 'fft-spectrum' ? 'FFT spectrum' : family === 'spectrum-analyzer' ? 'Band levels' : family === 'compressor' || family === 'limiter' ? 'Gain reduction' : family === 'transient-shaper' ? 'Transient strength' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
   envelopeHistory = [];
   document.querySelector('.scope-wrap').hidden = analyzerView;
   document.querySelector('.axis-caption').hidden = analyzerView;
@@ -912,18 +925,18 @@ function renderPrimitive(family) {
     drawEqResponse(byId('eq-response'), null);
     byId('eq-response-status').textContent = 'Start audio to see the effective band response.';
   }
-  byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : family === 'compressor' || family === 'limiter' ? 'Live gain reduction in decibels' : 'Live envelope value');
-  byId('live-envelope-trace').hidden = !['envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family);
-  byId('live-envelope-trace').setAttribute('aria-label', family === 'compressor' || family === 'limiter' ? 'Recent gain reduction in decibels' : 'Recent envelope history');
+  byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : family === 'compressor' || family === 'limiter' ? 'Live gain reduction in decibels' : family === 'transient-shaper' ? 'Live transient strength' : 'Live envelope value');
+  byId('live-envelope-trace').hidden = !['envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'transient-shaper'].includes(family);
+  byId('live-envelope-trace').setAttribute('aria-label', family === 'compressor' || family === 'limiter' ? 'Recent gain reduction in decibels' : family === 'transient-shaper' ? 'Recent transient strength' : 'Recent envelope history');
   [...byId('live-bands').children].forEach((row, index) => {
     row.hidden = family !== 'spectrum-analyzer' && index > 0;
-    row.firstChild.textContent = family === 'compressor' || family === 'limiter' ? 'GR' : family !== 'spectrum-analyzer' ? 'Env' : String(index + 1);
+    row.firstChild.textContent = family === 'compressor' || family === 'limiter' ? 'GR' : family === 'transient-shaper' ? 'Tr' : family !== 'spectrum-analyzer' ? 'Env' : String(index + 1);
     row.querySelector('output').textContent = family === 'compressor' || family === 'limiter' ? '0.0 dB' : '0.000';
     row.querySelector('.live-band-fill').style.width = '0%';
   });
   byId('module-description').textContent = description;
   byId('signal-path').textContent = signal;
-  document.querySelector('.panel-note').textContent = family === 'fft-spectrum' ? '2048 point · 32 bands' : family === 'spectrum-analyzer' ? 'Eight band meter' : family === 'compressor' || family === 'limiter' ? 'Reduction meter' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Envelope meter' : `Post ${title.toLowerCase()}`;
+  document.querySelector('.panel-note').textContent = family === 'fft-spectrum' ? '2048 point · 32 bands' : family === 'spectrum-analyzer' ? 'Eight band meter' : family === 'compressor' || family === 'limiter' ? 'Reduction meter' : family === 'transient-shaper' ? 'Transient meter' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Envelope meter' : `Post ${title.toLowerCase()}`;
   document.querySelectorAll('[data-primitive]').forEach((button) => {
     button.setAttribute('aria-current', button.dataset.primitive === family ? 'page' : 'false');
   });
@@ -956,7 +969,7 @@ function renderPrimitive(family) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 12: 'Ring Mod', 15: 'Limit' })[value] : choice;
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 12: 'Ring Mod', 15: 'Limit', 16: 'Transient' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {
@@ -1057,6 +1070,7 @@ function renderPrimitive(family) {
     : family === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain and inspect the detector. Native Rust/Wasm comparisons are below.'
     : family === 'compressor' || family === 'limiter' ? 'Start audio to hear dynamics and view gain reduction in dB. C++ audio and meter snapshots are compared below.'
     : family === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.'
+    : family === 'transient-shaper' ? 'Start audio to hear attack and sustain shaping and view transient strength. C++ audio and meter snapshots are compared below.'
     : family === 'fft-spectrum' ? 'Start audio to view 32 FFT bands and the strongest peak frequency. Native Rust/Wasm comparisons are below.'
     : analyzerView ? 'Start audio to see the original eight band meter. Bars scale to the current peak; numbers are normalized 0–1 values.'
     : 'Start audio to view the output spectrum. The reference cases below run offline.';
@@ -1280,7 +1294,7 @@ window.addEventListener('popstate', () => {
 
 let spectrumFrame = null;
 let meterTimer = null;
-const meterFamilies = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'stereo-widener', 'sample-region', 'sample-instrument', 'cv-rack'];
+const meterFamilies = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'stereo-widener', 'transient-shaper', 'sample-region', 'sample-instrument', 'cv-rack'];
 function stopMonitoring() {
   if (spectrumFrame !== null) cancelAnimationFrame(spectrumFrame);
   if (meterTimer !== null) clearInterval(meterTimer);
@@ -1412,7 +1426,7 @@ toggle.addEventListener('click', async () => {
     if (!audio.running) byId('controls').querySelectorAll('.has-effective').forEach((slider) => slider.setEffective(null));
     byId('sample-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' || activeFamily === 'sample-instrument' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'transient-shaper' ? 'Block-mean transient strength from the Rust detector.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' || activeFamily === 'sample-instrument' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'sample-instrument'
         ? 'Start the instrument, then play notes to hear the loaded sample at different pitches. Native Rust/Wasm comparisons are below.'
       : activeFamily === 'sample-region'
