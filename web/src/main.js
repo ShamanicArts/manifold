@@ -47,7 +47,7 @@ import { BrowserMidiInput, midiAvailability } from './audio/midi-input.js';
 import { MidiHoldState } from './audio/midi-hold.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars, drawEqResponse } from './reference/plots.js';
-import { captureStandaloneFxState, parseStandaloneFxState } from './state/standalone-fx.js';
+import { captureStandaloneFxState, parseStandaloneFxState, capturePersistentFxState, parsePersistentFxState } from './state/standalone-fx.js';
 import { captureControlPatchState, parseControlPatchState } from './state/control-patch.js';
 
 const byId = (id) => document.getElementById(id);
@@ -343,7 +343,7 @@ let activeProject = null;
 const patchedSignals = new Map();
 const patchedParameterValues = new Map();
 let slotValuesByType = new Map();
-let slotSessionState = null;
+const slotSessionStates = new Map();
 let loopHasTake = false;
 let loadedSample = null;
 let loadedGranulatorSource = null;
@@ -1078,7 +1078,7 @@ function applyStandaloneFxState(state) {
     byId('controls').querySelector(`[data-parameter-id="${id}"]`)?.syncValue(value);
   }
   updateSlotControls();
-  referenceLab?.selectEffectType(state.hostParameters.type);
+  if (activeFamily === 'standalone-fx') referenceLab?.selectEffectType(state.hostParameters.type);
 }
 
 function renderPrimitive(family) {
@@ -1167,9 +1167,9 @@ function renderPrimitive(family) {
   byId('keyboard-section').hidden = !['voice', 'sample-instrument'].includes(family);
   byId('midi-access-section').hidden = !['voice', 'sample-instrument'].includes(family);
   byId('sample-section').hidden = !sampleView;
-  byId('slot-state-section').hidden = family !== 'standalone-fx';
+  byId('slot-state-section').hidden = !isFxFamily(family);
   byId('slot-state-file').disabled = audio.running;
-  if (family === 'standalone-fx') byId('slot-state-status').textContent = 'Save the selected type and remembered controls for all 21 effects.';
+  if (isFxFamily(family)) byId('slot-state-status').textContent = `Save the selected type and all 21 effect settings${family === 'standalone-fx-routing' ? ' for persistent routing' : ''}.`;
   byId('granulator-file-section').hidden = family !== 'granulator';
   byId('granulator-file').disabled = audio.running;
   byId('granulator-clear-file').disabled = audio.running;
@@ -1262,9 +1262,10 @@ function renderPrimitive(family) {
     help.textContent = 'Values are stored separately for each effect type and restored when selected.';
     byId('controls').appendChild(help);
     updateSlotControls();
-    if (family === 'standalone-fx' && slotSessionState) {
-      applyStandaloneFxState(slotSessionState);
-      byId('slot-state-status').textContent = `Session state restored · type ${slotSessionState.hostParameters.type} · 21 effect settings.`;
+    const sessionState = slotSessionStates.get(family);
+    if (sessionState) {
+      applyStandaloneFxState(sessionState);
+      byId('slot-state-status').textContent = `Session state restored · type ${sessionState.hostParameters.type} · 21 effect settings.`;
     }
   }
   if (family === 'patch') {
@@ -1508,7 +1509,8 @@ async function selectPrimitive(family, updateUrl = true) {
   if (activeProject?.patch) {
     patchedParameterValues.set(activeFamily, Object.fromEntries(activeProject.parameters.map((parameter) => [parameter.hostId, values.get(parameter.id)])));
   }
-  if (activeFamily === 'standalone-fx') slotSessionState = captureStandaloneFxState(values, slotValuesByType);
+  if (isFxFamily(activeFamily)) slotSessionStates.set(activeFamily,
+    (activeFamily === 'standalone-fx-routing' ? capturePersistentFxState : captureStandaloneFxState)(values, slotValuesByType));
   renderPrimitive(family);
   if (updateUrl) {
     const url = new URL(location.href);
@@ -1604,13 +1606,14 @@ byId('sample-file').addEventListener('change', async (event) => {
   }
 });
 byId('slot-state-export').addEventListener('click', () => {
-  if (activeFamily !== 'standalone-fx') return;
+  if (!isFxFamily(activeFamily)) return;
   try {
-    const state = captureStandaloneFxState(values, slotValuesByType);
+    const routing = activeFamily === 'standalone-fx-routing';
+    const state = (routing ? capturePersistentFxState : captureStandaloneFxState)(values, slotValuesByType);
     const url = URL.createObjectURL(new Blob([`${JSON.stringify(state, null, 2)}\n`], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'manifold-standalone-fx-state.json';
+    link.download = routing ? 'manifold-standalone-fx-routing-state.json' : 'manifold-standalone-fx-state.json';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     byId('slot-state-status').textContent = `Saved type ${state.hostParameters.type} and all 21 effect settings.`;
@@ -1623,11 +1626,12 @@ byId('slot-state-file').addEventListener('change', async (event) => {
   if (!file) return;
   const readout = byId('slot-state-status');
   try {
-    if (activeFamily !== 'standalone-fx' || audio.running) throw new Error('Stop Standalone FX audio before opening a state.');
+    if (!isFxFamily(activeFamily) || audio.running) throw new Error('Stop Standalone FX audio before opening a state.');
+    const family = activeFamily;
     if (file.size > 1024 * 1024) throw new Error('State JSON must be smaller than 1 MB.');
     const contents = await file.text();
-    if (activeFamily !== 'standalone-fx' || audio.running) throw new Error('Effect view changed while opening the state.');
-    const state = parseStandaloneFxState(JSON.parse(contents));
+    if (activeFamily !== family || audio.running) throw new Error('Effect view changed while opening the state.');
+    const state = (family === 'standalone-fx-routing' ? parsePersistentFxState : parseStandaloneFxState)(JSON.parse(contents));
     applyStandaloneFxState(state);
     readout.textContent = `Opened ${file.name} · type ${state.hostParameters.type} · 21 effect settings.`;
   } catch (error) {

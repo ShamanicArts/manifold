@@ -1,4 +1,5 @@
 const PROJECT = 'manifold.standalone-fx-slice';
+const ROUTING_PROJECT = 'manifold.standalone-fx-routing';
 const TYPE_COUNT = 21;
 const NORMALIZED_COUNT = 5;
 
@@ -16,9 +17,12 @@ function controls(values, label) {
   return values.map((value, index) => unit(value, `${label}[${index}]`));
 }
 
-export function parseStandaloneFxState(document) {
-  if (document?.schemaVersion !== 1 || document?.projectId !== PROJECT) {
-    throw new Error('This is not a Manifold v2 Standalone FX state (version 1).');
+function parseState(document, routing) {
+  const schemaVersion = routing ? 2 : 1;
+  const projectId = routing ? ROUTING_PROJECT : PROJECT;
+  if (document?.schemaVersion !== schemaVersion || document?.projectId !== projectId
+    || routing && document?.routingMode !== 'persistent') {
+    throw new Error(`This is not a Manifold v2 ${routing ? 'persistent routing' : 'Standalone FX'} state (version ${schemaVersion}).`);
   }
   const host = document.hostParameters;
   if (!Number.isInteger(host?.type) || host.type < 0 || host.type >= TYPE_COUNT) {
@@ -36,17 +40,23 @@ export function parseStandaloneFxState(document) {
     typeParameters[type] = controls(perType[type], `Type ${type}`);
   }
   typeParameters[host.type] = active;
-  return { schemaVersion: 1, projectId: PROJECT, hostParameters: {
+  return { schemaVersion, projectId, ...(routing ? { routingMode: 'persistent' } : {}), hostParameters: {
     type: host.type, mix, 'p/0': active[0], 'p/1': active[1], 'p/2': active[2], 'p/3': active[3], 'p/4': active[4],
   }, typeParameters };
 }
 
-export function captureStandaloneFxState(values, typeValues) {
+function captureState(values, typeValues, routing) {
   const type = values.get(0);
   const controls = [2, 3, 4, 5, 6].map((id) => values.get(id));
   const typeParameters = Object.fromEntries(typeValues);
   typeParameters[type] = controls;
-  return parseStandaloneFxState({ schemaVersion: 1, projectId: PROJECT, hostParameters: {
+  return parseState({ schemaVersion: routing ? 2 : 1, projectId: routing ? ROUTING_PROJECT : PROJECT,
+    ...(routing ? { routingMode: 'persistent' } : {}), hostParameters: {
     type, mix: values.get(1), 'p/0': controls[0], 'p/1': controls[1], 'p/2': controls[2], 'p/3': controls[3], 'p/4': controls[4],
-  }, typeParameters });
+  }, typeParameters }, routing);
 }
+
+export const parseStandaloneFxState = (document) => parseState(document, false);
+export const captureStandaloneFxState = (values, typeValues) => captureState(values, typeValues, false);
+export const parsePersistentFxState = (document) => parseState(document, true);
+export const capturePersistentFxState = (values, typeValues) => captureState(values, typeValues, true);
