@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.distortion-workbench",
+  "name": "Distortion",
+  "source": "dsp/core/nodes/DistortionNode.cpp scalar stereo",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "distortion", "a": 4, "b": 0.7 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "drive", "label": "Drive", "kind": "float", "min": 1, "max": 30, "default": 4 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "mix", "label": "Wet mix", "kind": "float", "min": 0, "max": 1, "default": 0.7 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "output", "label": "Output gain", "kind": "float", "min": 0, "max": 2, "default": 0.8 }
+  ]
+}

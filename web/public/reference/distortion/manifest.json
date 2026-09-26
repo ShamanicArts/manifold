@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "reference": "legacy C++ DistortionNode.cpp scalar stereo",
+  "sourceSha256": "5e63c002c04cb40333cb0807368ccc987006140a086f47e09d20d0b3625de094",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 4096,
+  "stepFrame": 2048,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default drive",
+      "driveBefore": 4,
+      "driveAfter": 4,
+      "mixBefore": 0.7,
+      "mixAfter": 0.7,
+      "outputBefore": 0.8,
+      "outputAfter": 0.8,
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "dry",
+      "label": "Dry path",
+      "driveBefore": 4,
+      "driveAfter": 4,
+      "mixBefore": 0,
+      "mixAfter": 0,
+      "outputBefore": 1,
+      "outputAfter": 1,
+      "blockSize": 128,
+      "output": "dry.f32"
+    },
+    {
+      "id": "hard",
+      "label": "Hard drive",
+      "driveBefore": 20,
+      "driveAfter": 20,
+      "mixBefore": 1,
+      "mixAfter": 1,
+      "outputBefore": 1,
+      "outputAfter": 1,
+      "blockSize": 128,
+      "output": "hard.f32"
+    },
+    {
+      "id": "drive-sweep",
+      "label": "Drive and mix sweep",
+      "driveBefore": 2,
+      "driveAfter": 18,
+      "mixBefore": 0.25,
+      "mixAfter": 0.9,
+      "outputBefore": 0.8,
+      "outputAfter": 0.8,
+      "blockSize": 128,
+      "output": "drive-sweep.f32"
+    },
+    {
+      "id": "output-sweep",
+      "label": "Output sweep",
+      "driveBefore": 4,
+      "driveAfter": 4,
+      "mixBefore": 0.7,
+      "mixAfter": 0.7,
+      "outputBefore": 0.25,
+      "outputAfter": 1.5,
+      "blockSize": 64,
+      "output": "output-sweep.f32"
+    },
+    {
+      "id": "large-block",
+      "label": "512-frame blocks",
+      "driveBefore": 2,
+      "driveAfter": 18,
+      "mixBefore": 0.25,
+      "mixAfter": 0.9,
+      "outputBefore": 0.5,
+      "outputAfter": 1.5,
+      "blockSize": 512,
+      "output": "large-block.f32"
+    }
+  ]
+}

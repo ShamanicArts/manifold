@@ -8,10 +8,11 @@ import adsrProject from '../../projects/adsr/project.json';
 import noiseProject from '../../projects/noise/project.json';
 import patchProject from '../../projects/synth-patch/project.json';
 import modulationProject from '../../projects/modulated-gain/project.json';
+import distortionProject from '../../projects/distortion/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { BrowserMidiInput } from './audio/midi-input.js';
 import { initializeReferenceLab } from './reference/comparison.js';
-import { drawLiveSpectrum } from './reference/plots.js';
+import { drawLiveSpectrum, drawTransferCurve } from './reference/plots.js';
 
 const byId = (id) => document.getElementById(id);
 const status = byId('status');
@@ -71,6 +72,12 @@ const projects = {
     description: 'An audio oscillator passes through a gain controlled at sample rate by a separate bipolar LFO signal. Set the base gain and modulation depth independently.',
     signal: 'Audio: oscillator → gain → output · CV: LFO → gain depth',
   },
+  distortion: {
+    project: distortionProject,
+    title: 'Distortion',
+    description: 'Shape stereo audio with a smoothed drive, a dry/wet blend, and output gain. The final signal is clamped to the audio range.',
+    signal: 'Live path: input → distortion → stereo output',
+  },
 };
 const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
@@ -86,6 +93,12 @@ function updateCutoffRange() {
   const high = Math.min(20000, Math.round(base + depth));
   target.textContent = `Cutoff target: ${low.toLocaleString()}–${high.toLocaleString()} Hz, then 20 ms smoothing.`;
 }
+
+function updateTransferCurve() {
+  const canvas = byId('transfer-curve');
+  if (canvas) drawTransferCurve(canvas, values.get(0), values.get(1), values.get(2));
+}
+window.addEventListener('resize', updateTransferCurve);
 
 function addSlider(parameter) {
   const wrapper = document.createElement('label');
@@ -119,6 +132,7 @@ function addSlider(parameter) {
     values.set(parameter.id, value);
     if (publish) audio.setParameter(parameter.id, value);
     if (publish) updateCutoffRange();
+    if (publish) updateTransferCurve();
   };
   sync(toPosition(parameter.default), false);
   input.addEventListener('input', () => sync(Number(input.value), true));
@@ -189,6 +203,17 @@ function renderPrimitive(family) {
     range.className = 'control-help';
     byId('controls').appendChild(range);
     updateCutoffRange();
+  }
+  if (family === 'distortion') {
+    const label = document.createElement('p');
+    label.className = 'control-help';
+    label.textContent = 'Transfer curve · input −1 to +1';
+    const curve = document.createElement('canvas');
+    curve.id = 'transfer-curve';
+    curve.className = 'transfer-curve';
+    curve.setAttribute('aria-label', 'Distortion transfer curve');
+    byId('controls').append(label, curve);
+    updateTransferCurve();
   }
   byId('source').hidden = isInstrument;
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';

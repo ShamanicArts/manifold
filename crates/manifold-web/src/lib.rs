@@ -86,6 +86,11 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         },
         15 => NodeKind::ModulatedGain { base: a, depth: b },
         16 => NodeKind::ModulatedSvf { depth_hz: a },
+        17 => NodeKind::Distortion {
+            drive: a,
+            mix: b,
+            output: 0.8,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -171,6 +176,9 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::ModulatedSvf { depth_hz }, 3) => {
                 *depth_hz = value.clamp(-20_000.0, 20_000.0)
             }
+            (NodeKind::Distortion { drive, .. }, 0) => *drive = value.clamp(1.0, 30.0),
+            (NodeKind::Distortion { mix, .. }, 1) => *mix = value.clamp(0.0, 1.0),
+            (NodeKind::Distortion { output, .. }, 2) => *output = value.clamp(0.0, 2.0),
             _ => return 0,
         }
         1

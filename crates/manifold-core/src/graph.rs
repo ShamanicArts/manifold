@@ -2,6 +2,7 @@
 //! Routing is explicit: a graph without a route to Output emits silence.
 
 use crate::Filter;
+use crate::distortion::Distortion;
 use crate::envelope::AdsrEnvelope;
 use crate::events::{EventError, EventKind, TimedEvent};
 use crate::lfo::Lfo;
@@ -52,6 +53,11 @@ pub enum NodeKind {
     ModulatedSvf {
         depth_hz: f32,
     },
+    Distortion {
+        drive: f32,
+        mix: f32,
+        output: f32,
+    },
     VoiceSynth,
     Oscillator {
         frequency: f32,
@@ -89,7 +95,11 @@ impl NodeKind {
             | Self::ModulatedGain { .. }
             | Self::ModulatedSvf { .. } => 2,
             Self::Mixer { inputs, .. } => *inputs,
-            Self::Gain { .. } | Self::Svf | Self::AdsrEnvelope | Self::Output => 1,
+            Self::Gain { .. }
+            | Self::Svf
+            | Self::AdsrEnvelope
+            | Self::Distortion { .. }
+            | Self::Output => 1,
         }
     }
 
@@ -142,6 +152,9 @@ impl NodeKind {
             Self::Lfo { waveform, rate } => *waveform <= 2 && rate.is_finite(),
             Self::ModulatedGain { base, depth } => base.is_finite() && depth.is_finite(),
             Self::ModulatedSvf { depth_hz } => depth_hz.is_finite(),
+            Self::Distortion { drive, mix, output } => {
+                drive.is_finite() && mix.is_finite() && output.is_finite()
+            }
             _ => true,
         }
     }
@@ -216,6 +229,7 @@ enum Kernel {
         filter: Filter,
         depth_hz: f32,
     },
+    Distortion(Distortion),
     VoiceSynth(VoiceSynth),
     Oscillator(Oscillator),
     AdsrEnvelope(AdsrEnvelope),
@@ -308,6 +322,9 @@ impl Kernel {
                 filter: Filter::new(sample_rate),
                 depth_hz: depth_hz.clamp(-20_000.0, 20_000.0),
             },
+            NodeKind::Distortion { drive, mix, output } => {
+                Self::Distortion(Distortion::new(sample_rate, *drive, *mix, *output))
+            }
             NodeKind::VoiceSynth => Self::VoiceSynth(VoiceSynth::new(sample_rate)),
             NodeKind::Oscillator {
                 frequency,
@@ -370,6 +387,7 @@ impl Kernel {
             (Self::ModulatedSvf { depth_hz, .. }, 3) => {
                 *depth_hz = value.clamp(-20_000.0, 20_000.0)
             }
+            (Self::Distortion(distortion), id) => return distortion.set_parameter(id, value),
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
@@ -744,6 +762,16 @@ impl ExecutionPlan {
                     Some(source(1, 0)),
                     *depth_hz,
                 ),
+                Kernel::Distortion(distortion) => {
+                    let from_left = source(0, 0);
+                    let from_right = source(0, 1);
+                    for frame in 0..frames {
+                        let value =
+                            distortion.process_sample([from_left[frame], from_right[frame]]);
+                        left[frame] = value[0];
+                        right[frame] = value[1];
+                    }
+                }
                 Kernel::VoiceSynth(synth) => {
                     for frame in 0..frames {
                         let value = synth.process_sample() * std::f32::consts::FRAC_1_SQRT_2;

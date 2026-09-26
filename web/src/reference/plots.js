@@ -49,3 +49,23 @@ export function drawLiveSpectrum(canvas, analyser) {
   }
   context.stroke();
 }
+
+export function drawTransferCurve(canvas, drive, mix, output) {
+  const { context, width, height } = prepare(canvas);
+  context.beginPath();
+  context.strokeStyle = '#465766';
+  context.moveTo(width / 2, 0);
+  context.lineTo(width / 2, height);
+  context.stroke();
+  context.beginPath();
+  context.strokeStyle = '#a4d9bb';
+  context.lineWidth = 2;
+  for (let index = 0; index <= 200; index++) {
+    const input = index / 100 - 1;
+    const shaped = Math.max(-1, Math.min(1, (input * (1 - mix) + Math.tanh(input * drive) * mix) * output));
+    const x = index / 200 * width;
+    const y = height / 2 - shaped * height * .44;
+    if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
+  }
+  context.stroke();
+}

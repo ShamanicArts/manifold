@@ -132,6 +132,18 @@ function prepareModulation(engine, selected) {
   }
 }
 
+function prepareDistortion(engine, selected) {
+  if (engine.manifold_graph_begin(3, 2) !== 1
+    || engine.manifold_graph_node(1, 0, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 17, selected.driveBefore, selected.mixBefore) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1
+    || engine.manifold_graph_initial_parameter(2, 2, selected.outputBefore) !== 1) {
+    throw new Error('Wasm distortion graph failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
@@ -142,6 +154,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'noise') prepareNoise(engine, selected);
   if (family === 'patch') preparePatch(engine, selected);
   if (family === 'modulation') prepareModulation(engine, selected);
+  if (family === 'distortion') prepareDistortion(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -202,6 +215,11 @@ function renderWasm(engine, family, manifest, input, selected) {
       if (family === 'modulation') {
         updated &= engine.manifold_set_node_parameter(2, 1, selected.rateAfter);
         updated &= engine.manifold_set_node_parameter(3, 1, selected.depthAfter);
+      }
+      if (family === 'distortion') {
+        updated &= engine.manifold_set_node_parameter(2, 0, selected.driveAfter);
+        updated &= engine.manifold_set_node_parameter(2, 1, selected.mixAfter);
+        updated &= engine.manifold_set_node_parameter(2, 2, selected.outputAfter);
       }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
@@ -353,6 +371,8 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                   ? `pitch ${selected.frequencyBefore} → ${selected.frequencyAfter} Hz · noise ${selected.noiseLevelBefore} → ${selected.noiseLevelAfter} · cutoff ${selected.cutoffBefore} → ${selected.cutoffAfter} Hz · LFO ${selected.lfoRate} Hz × ${selected.cutoffDepth} Hz`
                   : family === 'modulation'
                     ? `${['sine', 'triangle', 'square'][selected.waveform]} CV · rate ${selected.rateBefore} → ${selected.rateAfter} Hz · depth ${selected.depthBefore} → ${selected.depthAfter}`
+                    : family === 'distortion'
+                      ? `drive ${selected.driveBefore} → ${selected.driveAfter} · mix ${selected.mixBefore} → ${selected.mixAfter} · output ${selected.outputBefore} → ${selected.outputAfter}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
     const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation';
