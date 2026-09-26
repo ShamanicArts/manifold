@@ -1,0 +1,14 @@
+{
+  "source": "legacy Lua export adapter and Rust AudioWorklet trace",
+  "scenario": "C#4 and E4 held in C major nearest; direction changes to up; keys released",
+  "events": [
+    { "kind": "on", "channel": 0, "note": 60, "velocity": 90 },
+    { "kind": "on", "channel": 0, "note": 64, "velocity": 100 },
+    { "kind": "off", "channel": 0, "note": 60 },
+    { "kind": "off", "channel": 0, "note": 64 },
+    { "kind": "on", "channel": 0, "note": 62, "velocity": 90 },
+    { "kind": "on", "channel": 0, "note": 64, "velocity": 100 },
+    { "kind": "off", "channel": 0, "note": 62 },
+    { "kind": "off", "channel": 0, "note": 64 }
+  ]
+}

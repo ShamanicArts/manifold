@@ -22,6 +22,7 @@ pub mod limiter;
 pub mod loop_capture;
 pub mod midi_note_filter;
 pub mod midi_note_router;
+pub mod midi_scale_quantizer;
 pub mod midi_transpose;
 pub mod multitap_delay;
 pub mod noise;

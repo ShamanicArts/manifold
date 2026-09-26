@@ -1,0 +1,7 @@
+# Checkpoint 100 — Scale Quantizer in the typed MIDI graph
+
+Open [MIDI Scale Quantizer](http://127.0.0.1:4173/?primitive=midi-scale-quantizer). Start audio and play C♯4 on the on-screen keyboard. C major nearest emits C4. Change Direction to Up while holding it: the Rust effect sends C4 off and D4 on. The input and Rust output event lists show the mapping. The keyboard needs no MIDI permission. The embedded browser may block hardware MIDI permission requests; the Hardware MIDI section shows availability and offers Copy URL for an external browser.
+
+The port adds `MidiScaleQuantizer` to the Rust core and typed MIDI graph, Wasm graph kind 57, a browser project with root/scale/direction controls, an offline native Rust audio fixture, and a comparison case. It follows the old Main rack's six scale tables, integer rounding, within-octave nearest search, eight-slot routing, and held-note retrigger. The old Lua adapter and Rust graph emit the same [eight event sequence](checkpoint-100-midi-scale-quantizer-events.json).
+
+Verification: the old Lua rack test passes (2 cases); 98 Rust core tests pass; direct Wasm and the actual AudioWorklet adapter match the native Rust 8,192-frame stereo fixture with maximum sample difference 0; the workbench comparison renderer also has maximum difference 0; the Vite build succeeds. See [metrics](checkpoint-100-midi-scale-quantizer-metrics.json) and the [migration boundary](../../docs/midi-scale-quantizer-migration.md). This is a native Rust audio reference plus a legacy Lua event reference, not a C++ audio capture.

@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.midi-scale-quantizer-workbench",
+  "name": "MIDI Scale Quantizer",
+  "source": "Old Main rack Scale Quantizer, rebuilt as a typed MIDI effect in Rust",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      {
+        "id": 3,
+        "type": "midi-input"
+      },
+      {
+        "id": 4,
+        "type": "midi-scale-quantizer",
+        "a": 0,
+        "b": 1
+      },
+      {
+        "id": 1,
+        "type": "voice-synth"
+      },
+      {
+        "id": 2,
+        "type": "output"
+      }
+    ],
+    "connections": [
+      {
+        "from": 3,
+        "to": 4,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "to": 1,
+        "inputPort": 0
+      },
+      {
+        "from": 1,
+        "to": 2,
+        "inputPort": 0
+      }
+    ]
+  },
+  "parameters": [
+    {
+      "id": 0,
+      "nodeId": 1,
+      "nodeParameterId": 0,
+      "hostId": "waveform",
+      "label": "Waveform",
+      "kind": "choice",
+      "choices": [
+        "Sine",
+        "Saw",
+        "Square",
+        "Triangle"
+      ],
+      "default": 0
+    },
+    {
+      "id": 1,
+      "nodeId": 1,
+      "nodeParameterId": 1,
+      "hostId": "attack",
+      "label": "Attack",
+      "kind": "float",
+      "min": 0.001,
+      "max": 2,
+      "default": 0.01,
+      "unit": "s"
+    },
+    {
+      "id": 2,
+      "nodeId": 1,
+      "nodeParameterId": 2,
+      "hostId": "decay",
+      "label": "Decay",
+      "kind": "float",
+      "min": 0.001,
+      "max": 2,
+      "default": 0.12,
+      "unit": "s"
+    },
+    {
+      "id": 3,
+      "nodeId": 1,
+      "nodeParameterId": 3,
+      "hostId": "sustain",
+      "label": "Sustain",
+      "kind": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.65
+    },
+    {
+      "id": 4,
+      "nodeId": 1,
+      "nodeParameterId": 4,
+      "hostId": "release",
+      "label": "Release",
+      "kind": "float",
+      "min": 0.001,
+      "max": 3,
+      "default": 0.18,
+      "unit": "s"
+    },
+    {
+      "id": 5,
+      "nodeId": 1,
+      "nodeParameterId": 5,
+      "hostId": "level",
+      "label": "Level",
+      "kind": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.25
+    },
+    {
+      "id": 6,
+      "nodeId": 4,
+      "nodeParameterId": 0,
+      "hostId": "root",
+      "label": "Root note",
+      "kind": "select",
+      "choices": [
+        "C",
+        "C\u266f",
+        "D",
+        "D\u266f",
+        "E",
+        "F",
+        "F\u266f",
+        "G",
+        "G\u266f",
+        "A",
+        "A\u266f",
+        "B"
+      ],
+      "choiceValues": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "default": 0
+    },
+    {
+      "id": 7,
+      "nodeId": 4,
+      "nodeParameterId": 1,
+      "hostId": "scale",
+      "label": "Scale",
+      "kind": "select",
+      "choices": [
+        "Major",
+        "Minor",
+        "Dorian",
+        "Mixolydian",
+        "Pentatonic",
+        "Chromatic"
+      ],
+      "choiceValues": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "default": 1
+    },
+    {
+      "id": 8,
+      "nodeId": 4,
+      "nodeParameterId": 2,
+      "hostId": "direction",
+      "label": "Direction",
+      "kind": "select",
+      "choices": [
+        "Nearest",
+        "Up",
+        "Down"
+      ],
+      "choiceValues": [
+        1,
+        2,
+        3
+      ],
+      "default": 1
+    }
+  ]
+}

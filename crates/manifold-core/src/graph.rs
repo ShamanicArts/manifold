@@ -21,6 +21,7 @@ use crate::lfo::Lfo;
 use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
 use crate::midi_note_filter::MidiNoteFilter;
+use crate::midi_scale_quantizer::MidiScaleQuantizer;
 use crate::midi_transpose::{MAX_OUTPUT_EVENTS, MidiTranspose};
 use crate::multitap_delay::{self, MultitapDelay};
 use crate::noise::NoiseGenerator;
@@ -72,6 +73,11 @@ pub enum NodeKind {
         low: f32,
         high: f32,
         mode: u32,
+    },
+    MidiScaleQuantizer {
+        root: f32,
+        scale: f32,
+        direction: f32,
     },
     InputRaw,
     InputMonitor {
@@ -280,6 +286,7 @@ impl NodeKind {
             Self::Gain { .. }
             | Self::MidiTranspose { .. }
             | Self::MidiNoteFilter { .. }
+            | Self::MidiScaleQuantizer { .. }
             | Self::VoiceSynth
             | Self::SampleRegion
             | Self::SampleInstrument
@@ -323,7 +330,10 @@ impl NodeKind {
     fn output_signal(&self) -> SignalKind {
         if matches!(
             self,
-            Self::MidiInput | Self::MidiTranspose { .. } | Self::MidiNoteFilter { .. }
+            Self::MidiInput
+                | Self::MidiTranspose { .. }
+                | Self::MidiNoteFilter { .. }
+                | Self::MidiScaleQuantizer { .. }
         ) {
             return SignalKind::Midi;
         }
@@ -347,6 +357,7 @@ impl NodeKind {
             self,
             Self::MidiTranspose { .. }
                 | Self::MidiNoteFilter { .. }
+                | Self::MidiScaleQuantizer { .. }
                 | Self::VoiceSynth
                 | Self::SampleRegion
                 | Self::SampleInstrument
@@ -374,6 +385,11 @@ impl NodeKind {
             Self::MidiNoteFilter { low, high, mode } => {
                 low.is_finite() && high.is_finite() && *mode <= 1
             }
+            Self::MidiScaleQuantizer {
+                root,
+                scale,
+                direction,
+            } => root.is_finite() && scale.is_finite() && direction.is_finite(),
             Self::InputMonitor { gain } | Self::Gain { gain } => gain.is_finite(),
             Self::Constant { value } => value.is_finite(),
             Self::Sum2 { gain_a, gain_b } => gain_a.is_finite() && gain_b.is_finite(),
@@ -544,6 +560,7 @@ enum Kernel {
     MidiInput,
     MidiTranspose(MidiTranspose),
     MidiNoteFilter(MidiNoteFilter),
+    MidiScaleQuantizer(MidiScaleQuantizer),
     InputRaw,
     InputMonitor {
         gain: f32,
@@ -648,6 +665,11 @@ impl Kernel {
             NodeKind::MidiNoteFilter { low, high, mode } => {
                 Self::MidiNoteFilter(MidiNoteFilter::new(*low, *high, *mode as f32))
             }
+            NodeKind::MidiScaleQuantizer {
+                root,
+                scale,
+                direction,
+            } => Self::MidiScaleQuantizer(MidiScaleQuantizer::new(*root, *scale, *direction)),
             NodeKind::InputRaw => Self::InputRaw,
             NodeKind::InputMonitor { gain } => Self::InputMonitor { gain: *gain },
             NodeKind::Constant { value } => Self::Constant { value: *value },
@@ -995,6 +1017,7 @@ impl Kernel {
             Self::MidiInput
                 | Self::MidiTranspose(_)
                 | Self::MidiNoteFilter(_)
+                | Self::MidiScaleQuantizer(_)
                 | Self::VoiceSynth(_)
                 | Self::SampleRegion(_)
                 | Self::SampleInstrument(_)
@@ -1341,6 +1364,14 @@ impl ExecutionPlan {
             self.record_midi_effect(index, None, &out[..count], 0);
             self.route_midi_outputs(index, &out[..count], 0);
             true
+        } else if let Kernel::MidiScaleQuantizer(effect) = &mut self.nodes[index].kernel {
+            let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+            let Some(count) = effect.set_parameter(parameter, value, &mut out) else {
+                return false;
+            };
+            self.record_midi_effect(index, None, &out[..count], 0);
+            self.route_midi_outputs(index, &out[..count], 0);
+            true
         } else {
             self.nodes[index].kernel.set_parameter(parameter, value)
         }
@@ -1390,6 +1421,7 @@ impl ExecutionPlan {
                 }
                 Kernel::MidiTranspose(effect) => effect.handle(event, &mut out),
                 Kernel::MidiNoteFilter(effect) => effect.handle(event, &mut out),
+                Kernel::MidiScaleQuantizer(effect) => effect.handle(event, &mut out),
                 kernel => {
                     kernel.send_event(event);
                     0
@@ -1397,7 +1429,9 @@ impl ExecutionPlan {
             };
             if matches!(
                 &self.nodes[index].kernel,
-                Kernel::MidiTranspose(_) | Kernel::MidiNoteFilter(_)
+                Kernel::MidiTranspose(_)
+                    | Kernel::MidiNoteFilter(_)
+                    | Kernel::MidiScaleQuantizer(_)
             ) {
                 self.record_midi_effect(index, Some(event), &out[..count], offset);
             }
@@ -1434,6 +1468,7 @@ impl ExecutionPlan {
             }
             Kernel::MidiTranspose(effect) => effect.handle(event, &mut out),
             Kernel::MidiNoteFilter(effect) => effect.handle(event, &mut out),
+            Kernel::MidiScaleQuantizer(effect) => effect.handle(event, &mut out),
             kernel => {
                 kernel.send_event(event);
                 0
@@ -1441,7 +1476,7 @@ impl ExecutionPlan {
         };
         if matches!(
             &self.nodes[index].kernel,
-            Kernel::MidiTranspose(_) | Kernel::MidiNoteFilter(_)
+            Kernel::MidiTranspose(_) | Kernel::MidiNoteFilter(_) | Kernel::MidiScaleQuantizer(_)
         ) {
             self.record_midi_effect(index, Some(event), &out[..count], offset);
         }
@@ -1544,7 +1579,10 @@ impl ExecutionPlan {
             let left = &mut left[..frames];
             let right = &mut right[..frames];
             match &mut current.kernel {
-                Kernel::MidiInput | Kernel::MidiTranspose(_) | Kernel::MidiNoteFilter(_) => {
+                Kernel::MidiInput
+                | Kernel::MidiTranspose(_)
+                | Kernel::MidiNoteFilter(_)
+                | Kernel::MidiScaleQuantizer(_) => {
                     left.fill(0.0);
                     right.fill(0.0);
                 }

@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "reference": "native Rust Scale Quantizer into VoiceSynth; legacy behavior documented at checkpoint 100",
+  "sourceSha256": "03740e50145f862079b7a2c9f19b1b4c026f565468ea69c7e0bbe0df4d97d801",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 8192,
+  "blockSize": 128,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "held-direction",
+      "label": "C#4 moves from C4 to D4 while E4 stays held",
+      "waveform": 0,
+      "attack": 0.005,
+      "decay": 0.02,
+      "sustain": 0.55,
+      "release": 0.03,
+      "level": 0.25,
+      "root": 0,
+      "scale": 1,
+      "direction": 1,
+      "events": [
+        {
+          "frame": 128,
+          "kind": 0,
+          "channel": 0,
+          "note": 61,
+          "velocity": 90
+        },
+        {
+          "frame": 512,
+          "kind": 0,
+          "channel": 0,
+          "note": 64,
+          "velocity": 100
+        },
+        {
+          "frame": 4096,
+          "kind": 1,
+          "channel": 0,
+          "note": 61,
+          "velocity": 0
+        },
+        {
+          "frame": 6144,
+          "kind": 1,
+          "channel": 0,
+          "note": 64,
+          "velocity": 0
+        }
+      ],
+      "changes": [
+        {
+          "frame": 2048,
+          "id": 2,
+          "value": 2
+        }
+      ],
+      "focusFrame": 2048,
+      "output": "held-direction.f32"
+    }
+  ]
+}
