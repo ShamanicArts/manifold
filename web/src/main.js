@@ -806,7 +806,7 @@ function updateSlotControls() {
 function updateGranulatorSourceView() {
   if (activeFamily !== 'granulator') return;
   byId('signal-path').textContent = loadedGranulatorSource
-    ? 'Live input + decoded file → grain cloud → dry/wet output'
+    ? `Live input + ${loadedGranulatorSource.origin === 'capture' ? 'captured take' : 'decoded file'} → grain cloud → dry/wet output`
     : 'Live path: input → four-second capture ring → grain cloud → dry/wet output';
   for (const id of [9, 10]) {
     const wrapper = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
@@ -871,6 +871,7 @@ function updateLoopToggles() {
     button.disabled = (id === 1 || id === 2) && (Boolean(values.get(0)) || !loopHasTake);
   }
   byId('capture-transfer').disabled = !audio.running || !loopHasTake || Boolean(values.get(0));
+  byId('capture-transfer-granulator').disabled = !audio.running || !loopHasTake || Boolean(values.get(0));
 }
 
 function addSelect(parameter) {
@@ -1016,7 +1017,7 @@ function renderPrimitive(family) {
   ]);
   if (family === 'loop-capture') loopHasTake = false;
   byId('capture-transfer-section').hidden = family !== 'loop-capture';
-  if (family === 'loop-capture') byId('capture-transfer-status').textContent = 'Record a take, then stop recording to send it to the sampler.';
+  if (family === 'loop-capture') byId('capture-transfer-status').textContent = 'Record a take, then stop recording to send it to a sample project.';
   byId('module-title').textContent = title;
   const analyzerView = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'transient-shaper'].includes(family);
   document.querySelector('.measurements h2').textContent = family === 'fft-spectrum' ? 'FFT spectrum' : family === 'spectrum-analyzer' ? 'Band levels' : family === 'compressor' || family === 'limiter' ? 'Gain reduction' : family === 'transient-shaper' ? 'Transient strength' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
@@ -1504,7 +1505,7 @@ byId('granulator-file').addEventListener('change', async (event) => {
       stereo[frame * 2] = left[frame];
       stereo[frame * 2 + 1] = right[frame];
     }
-    loadedGranulatorSource = { sourceRate: audioBuffer.sampleRate, stereo,
+    loadedGranulatorSource = { origin: 'file', sourceRate: audioBuffer.sampleRate, stereo,
       label: `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ready to start` };
     byId('granulator-clear-file').hidden = false;
     readout.textContent = loadedGranulatorSource.label;
@@ -1528,24 +1529,30 @@ byId('sample-use-root').addEventListener('click', () => {
   byId('controls').querySelector('[data-parameter-id="0"]')?.syncValue(note);
   audio.setParameter(0, note);
 });
-byId('capture-transfer').addEventListener('click', async () => {
-  const button = byId('capture-transfer');
+async function transferCapturedTake(destination) {
   const readout = byId('capture-transfer-status');
-  button.disabled = true;
+  byId('capture-transfer').disabled = true;
+  byId('capture-transfer-granulator').disabled = true;
   try {
     if (activeFamily !== 'loop-capture' || !audio.running || !loopHasTake || values.get(0)) {
       throw new Error('Record a take and stop recording before sending it.');
     }
     readout.textContent = 'Copying the stopped take…';
     const sample = await audio.captureSnapshot(2);
-    loadedSample = { ...sample, label: `Captured take · ${(sample.stereo.length / 2 / sample.sourceRate).toFixed(2)} s · ready to start` };
-    await selectPrimitive('sample-instrument');
+    const source = { ...sample, label: `Captured take · ${(sample.stereo.length / 2 / sample.sourceRate).toFixed(2)} s · ready to start` };
+    if (destination === 'granulator') {
+      loadedGranulatorSource = { ...source, origin: 'capture' };
+      byId('granulator-file').value = '';
+    } else loadedSample = source;
+    await selectPrimitive(destination);
   } catch (error) {
     readout.textContent = `Take unavailable: ${error.message ?? String(error)}`;
   } finally {
     if (activeFamily === 'loop-capture') updateLoopToggles();
   }
-});
+}
+byId('capture-transfer').addEventListener('click', () => transferCapturedTake('sample-instrument'));
+byId('capture-transfer-granulator').addEventListener('click', () => transferCapturedTake('granulator'));
 byId('sample-trigger').addEventListener('click', () => {
   if (audio.running && activeFamily === 'sample-region') audio.sendEvent(2, 0, 60, 100);
   else byId('sample-source-status').textContent = 'Start the instrument before triggering the sample.';
