@@ -9,6 +9,7 @@ import noiseProject from '../../projects/noise/project.json';
 import patchProject from '../../projects/synth-patch/project.json';
 import modulationProject from '../../projects/modulated-gain/project.json';
 import distortionProject from '../../projects/distortion/project.json';
+import stereoDelayProject from '../../projects/stereo-delay/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { BrowserMidiInput } from './audio/midi-input.js';
 import { initializeReferenceLab } from './reference/comparison.js';
@@ -77,6 +78,12 @@ const projects = {
     title: 'Distortion',
     description: 'Shape stereo audio with a smoothed drive, a dry/wet blend, and output gain. The final signal is clamped to the audio range.',
     signal: 'Live path: input → distortion → stereo output',
+  },
+  'stereo-delay': {
+    project: stereoDelayProject,
+    title: 'Stereo delay',
+    description: 'Two fractional delay taps with feedback, crossfeed, tempo divisions, a feedback lowpass, ducking, and freeze.',
+    signal: 'Live path: input → stereo delay → output · feedback recirculates in prepared buffers',
   },
 };
 const initial = new URL(location.href).searchParams.get('primitive');
@@ -157,6 +164,41 @@ function addGate(parameter) {
   byId('controls').appendChild(button);
 }
 
+function addToggle(parameter) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'gate-button';
+  button.setAttribute('aria-pressed', String(parameter.default === 1));
+  const render = () => { button.textContent = `${parameter.label}: ${values.get(parameter.id) ? 'On' : 'Off'}`; };
+  render();
+  button.addEventListener('click', () => {
+    const next = values.get(parameter.id) ? 0 : 1;
+    values.set(parameter.id, next);
+    audio.setParameter(parameter.id, next);
+    button.setAttribute('aria-pressed', String(next === 1));
+    render();
+  });
+  byId('controls').appendChild(button);
+}
+
+function addSelect(parameter) {
+  const wrapper = document.createElement('label');
+  wrapper.className = 'compact-select';
+  const title = document.createElement('span');
+  title.textContent = parameter.label;
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', parameter.label);
+  parameter.choices.forEach((choice, index) => select.add(new Option(choice, String(index))));
+  select.value = String(parameter.default);
+  select.addEventListener('change', () => {
+    const value = Number(select.value);
+    values.set(parameter.id, value);
+    audio.setParameter(parameter.id, value);
+  });
+  wrapper.append(title, select);
+  byId('controls').appendChild(wrapper);
+}
+
 function renderPrimitive(family) {
   const { project, title, description, signal } = projects[family];
   const isInstrument = project.signal.inputSource === 'none';
@@ -195,7 +237,15 @@ function renderPrimitive(family) {
   }
   for (const parameter of project.parameters.filter((item) => item.kind !== 'choice')) {
     if (parameter.kind === 'gate') addGate(parameter);
+    else if (parameter.kind === 'toggle') addToggle(parameter);
+    else if (parameter.kind === 'select') addSelect(parameter);
     else addSlider(parameter);
+  }
+  if (family === 'stereo-delay') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = '¹ The original delay exposes resonance but its feedback filter uses one pole, so resonance has no audible effect.';
+    byId('controls').appendChild(help);
   }
   if (family === 'patch') {
     const range = document.createElement('p');

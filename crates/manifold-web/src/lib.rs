@@ -2,6 +2,7 @@
 
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
+use manifold_core::stereo_delay;
 use std::cell::RefCell;
 
 struct WorkletEngine {
@@ -91,6 +92,12 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             mix: b,
             output: 0.8,
         },
+        18 => {
+            let mut params = stereo_delay::defaults();
+            params[0] = a;
+            params[1] = b;
+            NodeKind::StereoDelay { params }
+        }
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -179,6 +186,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::Distortion { drive, .. }, 0) => *drive = value.clamp(1.0, 30.0),
             (NodeKind::Distortion { mix, .. }, 1) => *mix = value.clamp(0.0, 1.0),
             (NodeKind::Distortion { output, .. }, 2) => *output = value.clamp(0.0, 2.0),
+            (NodeKind::StereoDelay { params }, id) => {
+                if !stereo_delay::set_value(params, id, value) {
+                    return 0;
+                }
+            }
             _ => return 0,
         }
         1

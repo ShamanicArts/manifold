@@ -144,6 +144,22 @@ function prepareDistortion(engine, selected) {
   }
 }
 
+function prepareStereoDelay(engine, selected) {
+  if (engine.manifold_graph_begin(3, 2) !== 1
+    || engine.manifold_graph_node(1, 0, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 18, selected.before[0], selected.before[1]) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1) {
+    throw new Error('Wasm stereo delay graph failed');
+  }
+  selected.before.forEach((value, id) => {
+    if (engine.manifold_graph_initial_parameter(2, id, value) !== 1) {
+      throw new Error(`Wasm stereo delay initial parameter ${id} failed`);
+    }
+  });
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
@@ -155,6 +171,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'patch') preparePatch(engine, selected);
   if (family === 'modulation') prepareModulation(engine, selected);
   if (family === 'distortion') prepareDistortion(engine, selected);
+  if (family === 'stereo-delay') prepareStereoDelay(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -220,6 +237,11 @@ function renderWasm(engine, family, manifest, input, selected) {
         updated &= engine.manifold_set_node_parameter(2, 0, selected.driveAfter);
         updated &= engine.manifold_set_node_parameter(2, 1, selected.mixAfter);
         updated &= engine.manifold_set_node_parameter(2, 2, selected.outputAfter);
+      }
+      if (family === 'stereo-delay') {
+        selected.after.forEach((value, id) => {
+          updated &= engine.manifold_set_node_parameter(2, id, value);
+        });
       }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
@@ -307,14 +329,14 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     }
     return reduced;
   };
-  const peakView = (samples, start, span) => {
+  const peakView = (samples, start, span, channel = 0) => {
     const count = 256;
     const reduced = new Float32Array(count * 2);
     for (let index = 0; index < count; index++) {
       const begin = start + Math.floor(index / count * span);
       const end = Math.min(manifest.frames, start + Math.floor((index + 1) / count * span));
       let peak = 0;
-      for (let frame = begin; frame < end; frame++) peak = Math.max(peak, Math.abs(samples[frame * 2]));
+      for (let frame = begin; frame < end; frame++) peak = Math.max(peak, Math.abs(samples[frame * 2 + channel]));
       reduced[index * 2] = peak;
       reduced[index * 2 + 1] = peak;
     }
@@ -322,6 +344,18 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
   };
   const draw = () => {
     if (!active) return;
+    if (currentFamily === 'stereo-delay') {
+      const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames;
+      const oldLeft = peakView(active.legacy, 0, span, 0);
+      const newLeft = peakView(active.rust, 0, span, 0);
+      const oldRight = peakView(active.legacy, 0, span, 1);
+      const newRight = peakView(active.rust, 0, span, 1);
+      const difference = peakView(active.difference, 0, span);
+      const scale = Math.max(.1, ...oldLeft, ...oldRight);
+      drawComparison(byId('comparison-wave'), [oldLeft, newLeft, oldRight, newRight], 0, 256, scale, ['#e2b084', '#9a8de8', '#d7c49d', '#80c5d5']);
+      drawComparison(byId('comparison-diff'), [difference], 0, 256, Math.max(active.max * 1.15, 1e-8), ['#a4d9bb']);
+      return;
+    }
     if (currentFamily === 'modulation') {
       const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames;
       const legacy = peakView(active.legacy, 0, span);
@@ -373,14 +407,17 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                     ? `${['sine', 'triangle', 'square'][selected.waveform]} CV · rate ${selected.rateBefore} → ${selected.rateAfter} Hz · depth ${selected.depthBefore} → ${selected.depthAfter}`
                     : family === 'distortion'
                       ? `drive ${selected.driveBefore} → ${selected.driveAfter} · mix ${selected.mixBefore} → ${selected.mixAfter} · output ${selected.outputBefore} → ${selected.outputAfter}`
+                    : family === 'stereo-delay'
+                      ? `left ${selected.before[0]} → ${selected.after[0]} ms · right ${selected.before[1]} → ${selected.after[1]} ms · feedback ${selected.before[2]} → ${selected.after[2]}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
     const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
-    byId('plot-window').querySelector('[value="start"]').textContent = family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
-    byId('plot-title').textContent = family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
-    document.querySelector('.legend-old').textContent = nativeReference ? 'Native Rust' : 'C++';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'stereo-delay' ? 'Whole tail' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
+    byId('plot-window').querySelector('[value="start"]').textContent = family === 'stereo-delay' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
+    byId('plot-title').textContent = family === 'stereo-delay' ? 'Left and right delay tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
+    document.querySelector('.legend-old').textContent = family === 'stereo-delay' ? 'C++ L/R' : nativeReference ? 'Native Rust' : 'C++';
+    document.querySelector('.legend-new').textContent = family === 'stereo-delay' ? 'Rust L/R' : 'Rust/Wasm';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;

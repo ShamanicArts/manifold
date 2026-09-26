@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.stereo-delay-workbench",
+  "name": "Stereo delay",
+  "source": "dsp/core/nodes/StereoDelayNode.cpp scalar stereo",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "stereo-delay", "a": 250, "b": 375 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 12, "nodeId": 2, "nodeParameterId": 12, "hostId": "mode", "label": "Time mode", "kind": "choice", "choices": ["Free", "Sync"], "default": 0 },
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "timeL", "label": "Left time · ms", "kind": "float", "min": 1, "max": 1000, "default": 250 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "timeR", "label": "Right time · ms", "kind": "float", "min": 1, "max": 1000, "default": 375 },
+    { "id": 13, "nodeId": 2, "nodeParameterId": 13, "hostId": "divisionL", "label": "Left division", "kind": "select", "choices": ["1/32", "1/16", "1/8", "1/4", "1/2", "1", "dotted 1/8", "dotted 1/4", "triplet 1/16", "triplet 1/8", "triplet 1/4"], "default": 3 },
+    { "id": 14, "nodeId": 2, "nodeParameterId": 14, "hostId": "divisionR", "label": "Right division", "kind": "select", "choices": ["1/32", "1/16", "1/8", "1/4", "1/2", "1", "dotted 1/8", "dotted 1/4", "triplet 1/16", "triplet 1/8", "triplet 1/4"], "default": 6 },
+    { "id": 15, "nodeId": 2, "nodeParameterId": 15, "hostId": "tempo", "label": "Tempo · BPM", "kind": "float", "min": 20, "max": 300, "default": 120 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "feedback", "label": "Feedback", "kind": "float", "min": 0, "max": 1.2, "default": 0.3 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "crossfeed", "label": "Crossfeed", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 7, "nodeId": 2, "nodeParameterId": 7, "hostId": "mix", "label": "Wet mix", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 9, "nodeId": 2, "nodeParameterId": 9, "hostId": "width", "label": "Stereo width", "kind": "float", "min": 0, "max": 1, "default": 1 },
+    { "id": 11, "nodeId": 2, "nodeParameterId": 11, "hostId": "ducking", "label": "Ducking", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "filter", "label": "Feedback lowpass", "kind": "toggle", "default": 0 },
+    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "cutoff", "label": "Filter cutoff", "kind": "float", "unit": "Hz", "min": 20, "max": 20000, "default": 4000 },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "resonance", "label": "Filter resonance¹", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 8, "nodeId": 2, "nodeParameterId": 8, "hostId": "pingpong", "label": "Swap tap times", "kind": "toggle", "default": 0 },
+    { "id": 10, "nodeId": 2, "nodeParameterId": 10, "hostId": "freeze", "label": "Freeze input", "kind": "toggle", "default": 0 }
+  ]
+}

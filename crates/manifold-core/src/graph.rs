@@ -8,6 +8,7 @@ use crate::events::{EventError, EventKind, TimedEvent};
 use crate::lfo::Lfo;
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
+use crate::stereo_delay::StereoDelay;
 use crate::voice::VoiceSynth;
 use std::collections::{HashMap, VecDeque};
 
@@ -58,6 +59,9 @@ pub enum NodeKind {
         mix: f32,
         output: f32,
     },
+    StereoDelay {
+        params: [f32; 16],
+    },
     VoiceSynth,
     Oscillator {
         frequency: f32,
@@ -99,6 +103,7 @@ impl NodeKind {
             | Self::Svf
             | Self::AdsrEnvelope
             | Self::Distortion { .. }
+            | Self::StereoDelay { .. }
             | Self::Output => 1,
         }
     }
@@ -155,6 +160,7 @@ impl NodeKind {
             Self::Distortion { drive, mix, output } => {
                 drive.is_finite() && mix.is_finite() && output.is_finite()
             }
+            Self::StereoDelay { params } => params.iter().all(|value| value.is_finite()),
             _ => true,
         }
     }
@@ -230,6 +236,7 @@ enum Kernel {
         depth_hz: f32,
     },
     Distortion(Distortion),
+    StereoDelay(StereoDelay),
     VoiceSynth(VoiceSynth),
     Oscillator(Oscillator),
     AdsrEnvelope(AdsrEnvelope),
@@ -325,6 +332,9 @@ impl Kernel {
             NodeKind::Distortion { drive, mix, output } => {
                 Self::Distortion(Distortion::new(sample_rate, *drive, *mix, *output))
             }
+            NodeKind::StereoDelay { params } => {
+                Self::StereoDelay(StereoDelay::new(sample_rate, *params))
+            }
             NodeKind::VoiceSynth => Self::VoiceSynth(VoiceSynth::new(sample_rate)),
             NodeKind::Oscillator {
                 frequency,
@@ -388,6 +398,7 @@ impl Kernel {
                 *depth_hz = value.clamp(-20_000.0, 20_000.0)
             }
             (Self::Distortion(distortion), id) => return distortion.set_parameter(id, value),
+            (Self::StereoDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
@@ -771,6 +782,9 @@ impl ExecutionPlan {
                         left[frame] = value[0];
                         right[frame] = value[1];
                     }
+                }
+                Kernel::StereoDelay(delay) => {
+                    delay.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::VoiceSynth(synth) => {
                     for frame in 0..frames {

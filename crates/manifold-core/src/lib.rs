@@ -7,6 +7,7 @@ pub mod graph;
 pub mod lfo;
 pub mod noise;
 pub mod oscillator;
+pub mod stereo_delay;
 pub mod voice;
 
 use std::f32::consts::PI;
