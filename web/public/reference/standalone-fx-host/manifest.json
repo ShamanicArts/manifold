@@ -194,9 +194,51 @@
       "output": "delay-ring-delay-ring.f32"
     },
     {
+      "id": "delay-transient-delay-transient",
+      "label": "Delay \u2192 Transient \u2192 Delay \u2192 Transient \u00b7 envelope reset",
+      "sourceSha256": "e7f539acd4b2a454bdc4deb6896858d6aaccf6056cba760e7ddabd91d7735b71",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          16
+        ],
+        [
+          11008,
+          8
+        ],
+        [
+          11520,
+          16
+        ]
+      ],
+      "changes": [
+        [
+          8192,
+          2,
+          0.8
+        ],
+        [
+          8192,
+          3,
+          0.2
+        ]
+      ],
+      "focusFrame": 11520,
+      "output": "delay-transient-delay-transient.f32"
+    },
+    {
       "id": "delay-bitcrusher-delay-bitcrusher",
       "label": "Delay \u2192 BitCrusher \u2192 Delay \u2192 BitCrusher \u00b7 held sample reset",
-      "sourceSha256": "7a6757c147c902d631a2541060dad7e807ef62b3bd75f182a862e7466b22b3a6",
+      "sourceSha256": "a3293255aeb60edf953eb77323c5bf276cffa34d5fce5bd4b8da8379bf799c47",
       "before": [
         8,
         1,

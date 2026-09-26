@@ -44,6 +44,7 @@ fn main() -> std::io::Result<()> {
                 | "--host-compressor"
                 | "--host-ring"
                 | "--host-bitcrusher"
+                | "--host-transient"
                 | "--prepared-ring"
         )
     ) {
@@ -57,6 +58,7 @@ fn main() -> std::io::Result<()> {
                     | "--host-compressor"
                     | "--host-ring"
                     | "--host-bitcrusher"
+                    | "--host-transient"
             )
         ) {
             EffectSlot::new_host_switch
@@ -79,9 +81,14 @@ fn main() -> std::io::Result<()> {
                         Some("--host-compressor") => 3.0,
                         Some("--host-ring" | "--prepared-ring") => 12.0,
                         Some("--host-bitcrusher") => 17.0,
+                        Some("--host-transient") => 16.0,
                         _ => 0.0,
                     },
                 );
+                if mode.as_deref() == Some("--host-transient") {
+                    slot.set_parameter(2, 0.8);
+                    slot.set_parameter(3, 0.2);
+                }
             }
             if offset == 10880 && mode.as_deref() == Some("--host-compressor") {
                 slot.set_parameter(4, 1.0);
@@ -94,6 +101,7 @@ fn main() -> std::io::Result<()> {
                         "--host-compressor"
                             | "--host-ring"
                             | "--host-bitcrusher"
+                            | "--host-transient"
                             | "--prepared-ring"
                     )
                 )
@@ -106,15 +114,20 @@ fn main() -> std::io::Result<()> {
             if offset == 11520
                 && matches!(
                     mode.as_deref(),
-                    Some("--host-ring" | "--host-bitcrusher" | "--prepared-ring")
+                    Some(
+                        "--host-ring"
+                            | "--host-bitcrusher"
+                            | "--host-transient"
+                            | "--prepared-ring"
+                    )
                 )
             {
                 slot.set_parameter(
                     0,
-                    if mode.as_deref() == Some("--host-bitcrusher") {
-                        17.0
-                    } else {
-                        12.0
+                    match mode.as_deref() {
+                        Some("--host-bitcrusher") => 17.0,
+                        Some("--host-transient") => 16.0,
+                        _ => 12.0,
                     },
                 );
             }
@@ -125,6 +138,7 @@ fn main() -> std::io::Result<()> {
                         "--host-compressor"
                             | "--host-ring"
                             | "--host-bitcrusher"
+                            | "--host-transient"
                             | "--prepared-ring"
                     )
                 )

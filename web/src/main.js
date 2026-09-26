@@ -71,8 +71,8 @@ hostFxProject.id = 'manifold.standalone-fx-host';
 hostFxProject.name = 'FX host switch';
 hostFxProject.signal.nodes.find((node) => node.id === 2).type = 'effect-slot-host-switch';
 const hostFxChoice = hostFxProject.parameters.find((parameter) => parameter.id === 0);
-hostFxChoice.choices = ['Chorus', 'Phaser', 'Compressor', 'SVF Filter', 'Reverb', 'Stereo Delay', 'Ring Mod', 'BitCrusher'];
-hostFxChoice.choiceValues = [0, 1, 3, 6, 7, 8, 12, 17];
+hostFxChoice.choices = ['Chorus', 'Phaser', 'Compressor', 'SVF Filter', 'Reverb', 'Stereo Delay', 'Ring Mod', 'Transient', 'BitCrusher'];
+hostFxChoice.choiceValues = [0, 1, 3, 6, 7, 8, 12, 16, 17];
 const isFxFamily = (family) => ['standalone-fx', 'standalone-fx-routing', 'standalone-fx-host'].includes(family);
 const hasFxState = (family) => family === 'standalone-fx' || family === 'standalone-fx-routing';
 const projects = {
@@ -277,7 +277,7 @@ const projects = {
   'standalone-fx-host': {
     project: hostFxProject,
     title: 'FX host switch',
-    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with seven visited effects measured from the C++ graph runtime. Ring Mod exposes the old empty-modulator-bus behavior; BitCrusher clears its held samples on reprepare.',
+    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with eight visited effects measured from the C++ graph runtime. Ring Mod exposes the old empty-modulator-bus behavior; Transient and BitCrusher clear their detector state on reprepare.',
     signal: 'Live path: input → visited effects → re-prepared wet gate → legacy gain/mix → output',
   },
   'loop-capture': {
@@ -819,6 +819,8 @@ function updateSlotControls() {
   const help = byId('slot-help');
   if (help) help.textContent = activeFamily === 'standalone-fx-host' && selected === 12
     ? 'The old graph passes a silent second bus to Ring Mod. At full depth and wet mix its output is silent. The normal Standalone FX view uses the audible internal oscillator.'
+    : activeFamily === 'standalone-fx-host' && selected === 16
+    ? 'The old graph prepares Transient Shaper again on each type switch, clearing its fast and slow envelopes and meter. The comparison changes attack and sustain before the return visit.'
     : activeFamily === 'standalone-fx-host' && selected === 17
     ? 'The old graph prepares BitCrusher again on each type switch, clearing its held samples and counters. Logic mode stays Normal; its unused second bus does not affect this slot.'
     : selected === 0

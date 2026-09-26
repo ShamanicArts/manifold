@@ -1,0 +1,47 @@
+{
+  "sourceSha256": "e7f539acd4b2a454bdc4deb6896858d6aaccf6056cba760e7ddabd91d7735b71",
+  "events": [
+    "select_delay_first_visit_transfers=0",
+    "select_transient_transfers=0",
+    "reselect_delay_transfers=1",
+    "reselect_transient_transfers=1"
+  ],
+  "max": 1.4901161193847656e-07,
+  "rms": 3.610418444499895e-09,
+  "segments": {
+    "delay": {
+      "max": 2.2351741790771484e-08
+    },
+    "transient": {
+      "max": 1.4901161193847656e-07
+    },
+    "returnedDelay": {
+      "max": 1.1175870895385742e-08
+    },
+    "returnedTransient": {
+      "max": 5.960464477539063e-08
+    }
+  },
+  "boundaryLeft": {
+    "8192": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "11008": {
+      "old": 0.01256471686065197,
+      "rust": 0.012564719654619694
+    },
+    "11520": {
+      "old": -0.09961814433336258,
+      "rust": -0.09961812943220139
+    },
+    "11521": {
+      "old": -0.10306767374277115,
+      "rust": -0.10306767374277115
+    },
+    "12000": {
+      "old": 2.5552127400047626e-15,
+      "rust": 2.5552127400047626e-15
+    }
+  }
+}

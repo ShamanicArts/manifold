@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare a delayed FX branch against a returning BitCrusher graph swap."""
+"""Compare a delayed FX branch against a returning TransientShaper graph swap."""
 from array import array
 import hashlib
 import json
@@ -14,22 +14,22 @@ BUILD = ROOT / "target/legacy-reference"
 BUILD.mkdir(parents=True, exist_ok=True)
 COMPILE_TMP = BUILD / "compiler-tmp"
 COMPILE_TMP.mkdir(parents=True, exist_ok=True)
-source = ROOT / "tools/legacy-fx-bitcrusher-switch.cpp"
+source = ROOT / "tools/legacy-fx-transient-switch.cpp"
 sources = [source, OLD / "manifold/primitives/scripting/PrimitiveGraph.cpp",
            OLD / "manifold/primitives/scripting/GraphRuntime.cpp",
            *(OLD / f"dsp/core/nodes/{name}Node.cpp" for name in
-             ("Passthrough", "Gain", "Mixer", "Chorus", "StereoDelay", "BitCrusher"))]
-binary = BUILD / "fx-bitcrusher-switch"
+             ("Passthrough", "Gain", "Mixer", "Chorus", "StereoDelay", "TransientShaper"))]
+binary = BUILD / "fx-transient-switch"
 subprocess.run(["c++", "-std=c++17", "-O2", "-pipe", "-ffunction-sections", "-fdata-sections",
                 "-Wl,--gc-sections", "-DNDEBUG=1", "-D_NDEBUG=1",
                 "-DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1", f"-I{OLD}",
                 f"-I{OLD / 'external/JUCE/modules'}", *(str(path) for path in sources),
                 "-o", str(binary), "-lhwy", "-pthread"], check=True,
                env={**os.environ, "TMPDIR": str(COMPILE_TMP)})
-old_capture = BUILD / "fx-bitcrusher-switch-old.f32"
+old_capture = BUILD / "fx-transient-switch-old.f32"
 events = subprocess.check_output([str(binary), str(old_capture)], text=True)
 subprocess.run(["cargo", "run", "-q", "-p", "manifold-core", "--example", "render_fx_tail",
-                "--", str(BUILD / "fx-bitcrusher-switch-rust.f32"), "--host-bitcrusher"],
+                "--", str(BUILD / "fx-transient-switch-rust.f32"), "--host-transient"],
                cwd=ROOT, check=True)
 
 def read(path):
@@ -40,7 +40,7 @@ def read(path):
     return data
 
 old = read(old_capture)
-rust = read(BUILD / "fx-bitcrusher-switch-rust.f32")
+rust = read(BUILD / "fx-transient-switch-rust.f32")
 diff = [a - b for a, b in zip(old, rust)]
 hash_paths = [*sources,
               OLD / "UserScripts/projects/Main/lib/fx_slot.lua",
@@ -51,14 +51,14 @@ report = {
     "max": max(map(abs, diff)),
     "rms": math.sqrt(sum(d * d for d in diff) / len(diff)),
     "segments": {name: {"max": max(abs(d) for d in diff[start * 2:end * 2])}
-                 for name, start, end in (("delay", 0, 8192), ("bitcrusher", 8192, 11008),
+                 for name, start, end in (("delay", 0, 8192), ("transient", 8192, 11008),
                                           ("returnedDelay", 11008, 11520),
-                                          ("returnedBitCrusher", 11520, 32768))},
+                                          ("returnedTransient", 11520, 32768))},
     "boundaryLeft": {str(frame): {"old": old[frame * 2], "rust": rust[frame * 2]}
                      for frame in (8192, 11008, 11520, 11521, 12000)},
 }
-out = ROOT / "artifacts/reviews/checkpoint-90-bitcrusher-switch-metrics.json"
+out = ROOT / "artifacts/reviews/checkpoint-91-transient-switch-metrics.json"
 out.write_text(json.dumps(report, indent=2) + "\n")
 print(json.dumps(report, indent=2))
 if report["max"] > 1e-5:
-    raise SystemExit("BitCrusher host switch exceeds parity gate")
+    raise SystemExit("TransientShaper host switch exceeds parity gate")

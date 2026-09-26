@@ -1,9 +1,9 @@
-// Old C++ graph-runtime reconstruction of the Lua FX slot's Delay/BitCrusher switch.
+// Old C++ graph-runtime reconstruction of the Lua FX slot's Delay/TransientShaper switch.
 // The old checkout is included and linked read-only; no Lua is loaded here.
 #include "dsp/core/nodes/ChorusNode.h"
 #include "dsp/core/nodes/GainNode.h"
 #include "dsp/core/nodes/MixerNode.h"
-#include "dsp/core/nodes/BitCrusherNode.h"
+#include "dsp/core/nodes/TransientShaperNode.h"
 #include "dsp/core/nodes/PassthroughNode.h"
 #include "dsp/core/nodes/StereoDelayNode.h"
 #include "manifold/primitives/scripting/GraphRuntime.h"
@@ -38,7 +38,7 @@ using dsp_primitives::GainNode;
 using dsp_primitives::GraphRuntime;
 using dsp_primitives::IPrimitiveNode;
 using dsp_primitives::MixerNode;
-using dsp_primitives::BitCrusherNode;
+using dsp_primitives::TransientShaperNode;
 using dsp_primitives::PassthroughNode;
 using dsp_primitives::PrimitiveGraph;
 using dsp_primitives::StereoDelayNode;
@@ -116,36 +116,37 @@ int main(int argc, char** argv) {
         runtime = compile(graph, runtime.get());
         std::printf("select_delay_first_visit_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
 
-        std::shared_ptr<GainNode> crusherGate;
-        std::shared_ptr<BitCrusherNode> crusher;
+        std::shared_ptr<GainNode> transientGate;
+        std::shared_ptr<TransientShaperNode> transient;
         std::ofstream capture(argv[1], std::ios::binary);
         if (!capture) return 2;
         for (int offset = 0; offset < 32768; offset += 128) {
             if (offset == 8192) {
-                crusher = registerNode(graph, std::make_shared<BitCrusherNode>());
-                crusherGate = registerNode(graph, std::make_shared<GainNode>(2));
-                crusherGate->overrideHighwayImplementationTarget(-1);
-                crusher->setBits(6); crusher->setRateReduction(9);
-                crusher->setMix(1); crusher->setOutput(1.2125f); crusher->setLogicMode(0);
-                crusherGate->setGain(1);
-                connect(graph, input, crusher);
-                connect(graph, crusher, crusherGate);
-                wetMixer->setInputCount(18);
-                connect(graph, crusherGate, wetMixer, 34);
+                transient = registerNode(graph, std::make_shared<TransientShaperNode>());
+                transientGate = registerNode(graph, std::make_shared<GainNode>(2));
+                transientGate->overrideHighwayImplementationTarget(-1);
+                transient->setAttack(0); transient->setSustain(0);
+                transient->setSensitivity(2.1f); transient->setMix(1);
+                transientGate->setGain(1);
+                connect(graph, input, transient);
+                connect(graph, transient, transientGate);
+                wetMixer->setInputCount(17);
+                connect(graph, transientGate, wetMixer, 32);
                 chorusGate->setGain(0); delayGate->setGain(0); trim->setGain(1.0f);
                 runtime = compile(graph, runtime.get());
-                std::printf("select_bitcrusher_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
+                transient->setAttack(0.6f); transient->setSustain(-0.6f);
+                std::printf("select_transient_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
             }
             if (offset == 11008) {
-                crusherGate->setGain(0);
+                transientGate->setGain(0);
                 delayGate->setGain(1); trim->setGain(1.1f);
                 runtime = compile(graph, runtime.get());
                 std::printf("reselect_delay_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
             }
             if (offset == 11520) {
-                crusherGate->setGain(1); delayGate->setGain(0); trim->setGain(1.0f);
+                transientGate->setGain(1); delayGate->setGain(0); trim->setGain(1.0f);
                 runtime = compile(graph, runtime.get());
-                std::printf("reselect_bitcrusher_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
+                std::printf("reselect_transient_transfers=%d\n", runtime->getExplicitContinuityTransferCount());
             }
             juce::AudioBuffer<float> block(2, 128);
             for (int frame = 0; frame < 128; ++frame) {

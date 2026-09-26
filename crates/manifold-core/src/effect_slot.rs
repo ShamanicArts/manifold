@@ -275,7 +275,7 @@ impl EffectSlot {
     }
 
     /// Reconstruct the old graph-runtime switch boundary. The gain behavior
-    /// and Chorus/Phaser/Compressor/SVF/Reverb/Delay/Ring/BitCrusher reprepare rules are captured against the old C++ host
+    /// and Chorus/Phaser/Compressor/SVF/Reverb/Delay/Ring/BitCrusher/Transient reprepare rules are captured against the old C++ host
     /// graph; other effect types remain subject to their own preparation audit.
     pub fn new_host_switch(
         sample_rate: f32,
@@ -779,7 +779,8 @@ impl EffectSlot {
                         // state; Compressor refreshes timing but retains its
                         // detector, SVF retains integrators, Ring resets its
                         // oscillator, BitCrusher resets its held samples and
-                        // counters, and Delay keeps its ring at 48 kHz.
+                        // counters, Transient clears both envelope followers,
+                        // and Delay keeps its ring at 48 kHz.
                         let visited = self
                             .legacy
                             .as_ref()
@@ -802,6 +803,9 @@ impl EffectSlot {
                         }
                         if visited[BITCRUSHER_TYPE as usize] {
                             self.rebuild_bitcrusher();
+                        }
+                        if visited[TRANSIENT_TYPE as usize] {
+                            self.rebuild_transient();
                         }
                         if visited[DELAY_TYPE as usize] {
                             self.delay.reprepare_targets_preserving_tail();
