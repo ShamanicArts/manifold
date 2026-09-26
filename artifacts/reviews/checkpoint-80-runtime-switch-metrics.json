@@ -1,0 +1,76 @@
+{
+  "reference": "Old C++ PrimitiveGraph/GraphRuntime scalar FX branches reconstructed from fx_slot.lua",
+  "sourceSha256": "e6566c039e1d14d48990fe99e593eea372ad4907aab78c5c4afecf738ff44d9f",
+  "sampleRate": 48000,
+  "frames": 32768,
+  "blockSize": 128,
+  "switches": {
+    "firstDelay": 0,
+    "toChorus": 8192,
+    "backToDelay": 16384
+  },
+  "continuityTransfers": {
+    "select_delay_first_visit_transfers": 0,
+    "select_chorus_transfers": 1,
+    "reselect_delay_transfers": 1
+  },
+  "segments": {
+    "beforeChorus": {
+      "hostVsPrepared": {
+        "max": 0.0,
+        "rms": 0.0
+      },
+      "hostVsRustSlot": {
+        "max": 2.2351741790771484e-08,
+        "rms": 1.122474457602814e-09
+      }
+    },
+    "chorus": {
+      "hostVsPrepared": {
+        "max": 0.06702829897403717,
+        "rms": 0.00733821135501992
+      },
+      "hostVsRustSlot": {
+        "max": 0.06702829897403717,
+        "rms": 0.007338211396360322
+      }
+    },
+    "returnedDelay": {
+      "hostVsPrepared": {
+        "max": 0.07606053352355957,
+        "rms": 0.00203209061424736
+      },
+      "hostVsRustSlot": {
+        "max": 0.07606053352355957,
+        "rms": 0.0020320904524115573
+      }
+    }
+  },
+  "boundaryLeft": {
+    "8192": {
+      "graph": 0.0,
+      "prepared": 0.06313271075487137,
+      "rustSlot": 0.06313271075487137
+    },
+    "8193": {
+      "graph": 0.0,
+      "prepared": 0.06174933537840843,
+      "rustSlot": 0.06174933537840843
+    },
+    "16384": {
+      "graph": -0.02956055849790573,
+      "prepared": -7.714278035564348e-05,
+      "rustSlot": -7.714278035564348e-05
+    },
+    "16385": {
+      "graph": -0.03007098287343979,
+      "prepared": -0.0001578670198796317,
+      "rustSlot": -0.00015786703443154693
+    },
+    "17180": {
+      "graph": 0.03256411850452423,
+      "prepared": 0.027741974219679832,
+      "rustSlot": 0.02774197794497013
+    }
+  }
+}
