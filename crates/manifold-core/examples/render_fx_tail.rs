@@ -33,8 +33,11 @@ fn main() -> std::io::Result<()> {
     let mode = args.next();
     let reset_on_reselect = mode.as_deref() == Some("--reset-on-reselect");
     let mut output = BufWriter::new(File::create(path)?);
-    if mode.as_deref() == Some("--slot") || mode.as_deref() == Some("--host-slot") {
-        let constructor = if mode.as_deref() == Some("--host-slot") {
+    if matches!(
+        mode.as_deref(),
+        Some("--slot" | "--host-slot" | "--host-phaser")
+    ) {
+        let constructor = if matches!(mode.as_deref(), Some("--host-slot" | "--host-phaser")) {
             EffectSlot::new_host_switch
         } else {
             EffectSlot::new_legacy
@@ -46,7 +49,14 @@ fn main() -> std::io::Result<()> {
         let mut out_r = [0.0; 128];
         for offset in (0..32768).step_by(128) {
             if offset == 8192 {
-                slot.set_parameter(0, 0.0);
+                slot.set_parameter(
+                    0,
+                    if mode.as_deref() == Some("--host-phaser") {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                );
             }
             if offset == 16384 {
                 slot.set_parameter(0, 8.0);

@@ -5,13 +5,16 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const target = path.join(root, 'web/public/reference/standalone-fx-host');
 const source = path.join(root, 'target/legacy-reference/fx-runtime-switch.f32');
+const phaserSource = path.join(root, 'target/legacy-reference/fx-phaser-switch-old.f32');
 const input = path.join(root, 'web/public/reference/standalone-fx-routing/input.f32');
 const report = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/reviews/checkpoint-80-runtime-switch-metrics.json'), 'utf8'));
-if (fs.statSync(source).size !== 32768 * 2 * 4 || fs.statSync(input).size !== 32768 * 2 * 4) {
+const phaserReport = JSON.parse(fs.readFileSync(path.join(root, 'artifacts/reviews/checkpoint-84-phaser-switch-metrics.json'), 'utf8'));
+if ([source, phaserSource, input].some((file) => fs.statSync(file).size !== 32768 * 2 * 4)) {
   throw new Error('Unexpected FX graph reference size.');
 }
 fs.mkdirSync(target, {recursive: true});
 fs.copyFileSync(source, path.join(target, 'delay-chorus-delay.f32'));
+fs.copyFileSync(phaserSource, path.join(target, 'delay-phaser-delay.f32'));
 fs.copyFileSync(input, path.join(target, 'input.f32'));
 const manifest = {
   version: 1,
@@ -21,10 +24,18 @@ const manifest = {
   input: 'input.f32',
   cases: [{
     id: 'delay-chorus-delay', label: 'Delay → Chorus → Delay · host graph switches',
+    sourceSha256: report.sourceSha256,
     before: [8, 1, 0, 0.6, 0.5, 0.5, 0.5],
     switches: [[8192, 0], [16384, 8]],
     focusFrame: 16384,
     output: 'delay-chorus-delay.f32',
+  }, {
+    id: 'delay-phaser-delay', label: 'Delay → Phaser → Delay · host graph switches',
+    sourceSha256: phaserReport.sourceSha256,
+    before: [8, 1, 0, 0.6, 0.5, 0.5, 0.5],
+    switches: [[8192, 1], [16384, 8]],
+    focusFrame: 16384,
+    output: 'delay-phaser-delay.f32',
   }],
 };
 fs.writeFileSync(path.join(target, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);

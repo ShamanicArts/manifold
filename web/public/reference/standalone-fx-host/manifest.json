@@ -12,6 +12,7 @@
     {
       "id": "delay-chorus-delay",
       "label": "Delay → Chorus → Delay · host graph switches",
+      "sourceSha256": "e6566c039e1d14d48990fe99e593eea372ad4907aab78c5c4afecf738ff44d9f",
       "before": [
         8,
         1,
@@ -33,6 +34,32 @@
       ],
       "focusFrame": 16384,
       "output": "delay-chorus-delay.f32"
+    },
+    {
+      "id": "delay-phaser-delay",
+      "label": "Delay → Phaser → Delay · host graph switches",
+      "sourceSha256": "c00d6077e18980089cc30cf719831d24bdf998f36c7c64fd2d2902fc98260115",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          1
+        ],
+        [
+          16384,
+          8
+        ]
+      ],
+      "focusFrame": 16384,
+      "output": "delay-phaser-delay.f32"
     }
   ]
 }

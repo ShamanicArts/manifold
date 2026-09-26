@@ -875,6 +875,10 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
   let preferredEffectType = initialEffectType;
 
   function effectCase(type) {
+    if (currentFamily === 'standalone-fx-host') {
+      return manifest?.cases.find((entry) => entry.switches?.[0]?.[1] === type)
+        ?? manifest?.cases[0];
+    }
     return manifest?.cases.find((entry) => entry.before?.[0] === type && entry.after?.[0] === type)
       ?? manifest?.cases.find((entry) => entry.before?.[0] === type);
   }
@@ -905,7 +909,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     if (isFxSwitchFamily(family)) byId('plot-window').value = 'tail';
     chooser.replaceChildren();
     for (const entry of manifest.cases) chooser.add(new Option(entry.label, entry.id));
-    if (family === 'standalone-fx' && preferredEffectType !== null) {
+    if ((family === 'standalone-fx' || family === 'standalone-fx-host') && preferredEffectType !== null) {
       const matching = effectCase(preferredEffectType);
       if (matching) chooser.value = matching.id;
     }
@@ -1104,7 +1108,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                     : family === 'fx-chain'
                       ? `drive ${selected.before[0]} → ${selected.after[0]} · delay mix ${selected.before[6]} → ${selected.after[6]} · cutoff ${selected.before[7]} → ${selected.after[7]} Hz`
                     : family === 'standalone-fx-host'
-                      ? `Delay → Chorus at ${selected.switches[0][0]} → Delay at ${selected.switches[1][0]} · graph-reprepared gates`
+                      ? `Delay → ${selected.switches[0][1] === 1 ? 'Phaser' : 'Chorus'} at ${selected.switches[0][0]} → Delay at ${selected.switches[1][0]} · graph-reprepared gates`
                     : family === 'standalone-fx-routing'
                       ? `Delay → Chorus at ${selected.switches[0][0]} → Delay at ${selected.switches[1][0]} · visited tails keep processing`
                     : family === 'standalone-fx'
@@ -1156,7 +1160,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     const pass = report.max <= .0002 && audioReport.max <= .0002;
     byId('comparison-result').textContent = pass ? 'Match' : 'Review';
     byId('comparison-result').className = pass ? 'pass' : 'fail';
-    byId('reference-status').textContent = `${nativeReference ? 'Rust' : 'C++'} source ${manifest.sourceSha256.slice(0, 10)} · ${selected.label}`;
+    byId('reference-status').textContent = `${nativeReference ? 'Rust' : 'C++'} source ${(selected.sourceSha256 ?? manifest.sourceSha256).slice(0, 10)} · ${selected.label}`;
     draw();
   };
   chooser.addEventListener('change', () => choose().catch((error) => { byId('reference-status').textContent = String(error); }));
@@ -1184,7 +1188,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
 
   function selectEffectType(type) {
     preferredEffectType = type;
-    if (currentFamily !== 'standalone-fx' || selectedFamily !== 'standalone-fx') return;
+    if (currentFamily !== selectedFamily || !['standalone-fx', 'standalone-fx-host'].includes(currentFamily)) return;
     const matching = effectCase(type);
     if (matching && chooser.value !== matching.id) {
       chooser.value = matching.id;
