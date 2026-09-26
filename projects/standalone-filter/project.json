@@ -3,10 +3,22 @@
   "id": "manifold.standalone-filter",
   "name": "Standalone Filter",
   "source": "UserScripts/projects/Standalone_Filter",
-  "signal": { "inputs": 2, "outputs": 2, "graph": ["host-input", "svf-filter", "host-output"] },
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "svf" },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
   "parameters": [
-    { "id": 0, "hostId": "type", "path": "/plugin/params/type", "label": "Type", "kind": "choice", "choices": ["Low Pass", "Band Pass", "High Pass", "Notch"], "default": 0 },
-    { "id": 1, "hostId": "cutoff", "path": "/plugin/params/cutoff", "label": "Cutoff", "kind": "float", "min": 80, "max": 16000, "default": 3200, "unit": "Hz" },
-    { "id": 2, "hostId": "resonance", "path": "/plugin/params/resonance", "label": "Resonance", "kind": "float", "min": 0.1, "max": 2, "default": 0.75 }
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "type", "path": "/plugin/params/type", "label": "Type", "kind": "choice", "choices": ["Low Pass", "Band Pass", "High Pass", "Notch"], "default": 0 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "cutoff", "path": "/plugin/params/cutoff", "label": "Cutoff", "kind": "float", "min": 80, "max": 16000, "default": 3200, "unit": "Hz" },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "resonance", "path": "/plugin/params/resonance", "label": "Resonance", "kind": "float", "min": 0.1, "max": 2, "default": 0.75 }
   ]
 }

@@ -1,5 +1,7 @@
 //! Platform-independent audio kernels. The prepared filter allocates nothing in process.
 
+pub mod graph;
+
 use std::f32::consts::PI;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,0 +1,558 @@
+//! Editable graph descriptions compile into a fully owned, preallocated execution plan.
+//! Routing is explicit: a graph without a route to Output emits silence.
+
+use crate::Filter;
+use std::collections::{HashMap, VecDeque};
+
+pub type NodeId = u64;
+
+#[derive(Clone, Debug)]
+pub enum NodeKind {
+    InputRaw,
+    InputMonitor { gain: f32 },
+    Constant { value: f32 },
+    Gain { gain: f32 },
+    Sum2 { gain_a: f32, gain_b: f32 },
+    LinearBlend { mix: f32 },
+    Svf,
+    Output,
+}
+
+impl NodeKind {
+    fn input_count(&self) -> usize {
+        match self {
+            Self::InputRaw | Self::InputMonitor { .. } | Self::Constant { .. } => 0,
+            Self::Sum2 { .. } | Self::LinearBlend { .. } => 2,
+            Self::Gain { .. } | Self::Svf | Self::Output => 1,
+        }
+    }
+
+    fn valid(&self) -> bool {
+        match self {
+            Self::InputMonitor { gain } | Self::Gain { gain } => gain.is_finite(),
+            Self::Constant { value } => value.is_finite(),
+            Self::Sum2 { gain_a, gain_b } => gain_a.is_finite() && gain_b.is_finite(),
+            Self::LinearBlend { mix } => mix.is_finite(),
+            _ => true,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NodeSpec {
+    pub id: NodeId,
+    pub kind: NodeKind,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Connection {
+    pub from: NodeId,
+    pub to: NodeId,
+    pub input_port: usize,
+}
+
+#[derive(Default)]
+pub struct GraphDescription {
+    pub nodes: Vec<NodeSpec>,
+    pub connections: Vec<Connection>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum GraphError {
+    InvalidPreparation,
+    DuplicateNode(NodeId),
+    MissingNode(NodeId),
+    InvalidParameter(NodeId),
+    InvalidPort(NodeId, usize),
+    OutputAsSource(NodeId),
+    OccupiedPort(NodeId, usize),
+    WrongOutputCount,
+    Cycle,
+}
+
+enum Kernel {
+    InputRaw,
+    InputMonitor {
+        gain: f32,
+    },
+    Constant {
+        value: f32,
+    },
+    Gain {
+        target: f32,
+        current: f32,
+        smoothing: f32,
+        muted: bool,
+    },
+    Sum2 {
+        gain_a: f32,
+        gain_b: f32,
+    },
+    LinearBlend {
+        mix: f32,
+    },
+    Svf(Filter),
+    Output,
+}
+
+impl Kernel {
+    fn from_kind(kind: &NodeKind, sample_rate: f32) -> Self {
+        match kind {
+            NodeKind::InputRaw => Self::InputRaw,
+            NodeKind::InputMonitor { gain } => Self::InputMonitor { gain: *gain },
+            NodeKind::Constant { value } => Self::Constant { value: *value },
+            NodeKind::Gain { gain } => {
+                let target = gain.max(0.0);
+                Self::Gain {
+                    target,
+                    current: target,
+                    smoothing: ((1.0 - (-1.0 / (0.010 * sample_rate as f64)).exp()) as f32)
+                        .clamp(0.0001, 1.0),
+                    muted: false,
+                }
+            }
+            NodeKind::Sum2 { gain_a, gain_b } => Self::Sum2 {
+                gain_a: *gain_a,
+                gain_b: *gain_b,
+            },
+            NodeKind::LinearBlend { mix } => Self::LinearBlend { mix: *mix },
+            NodeKind::Svf => Self::Svf(Filter::new(sample_rate)),
+            NodeKind::Output => Self::Output,
+        }
+    }
+
+    fn set_parameter(&mut self, parameter: u32, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        match (self, parameter) {
+            (Self::InputMonitor { gain }, 0) => *gain = value,
+            (Self::Gain { target, .. }, 0) => *target = value.max(0.0),
+            (Self::Gain { muted, .. }, 1) => *muted = value >= 0.5,
+            (Self::Constant { value: current }, 0) => *current = value,
+            (Self::Sum2 { gain_a, .. }, 0) => *gain_a = value,
+            (Self::Sum2 { gain_b, .. }, 1) => *gain_b = value,
+            (Self::LinearBlend { mix }, 0) => *mix = value.clamp(0.0, 1.0),
+            (Self::Svf(filter), id) => return filter.set_parameter(id, value),
+            _ => return false,
+        }
+        true
+    }
+}
+
+struct CompiledNode {
+    id: NodeId,
+    kernel: Kernel,
+    sources: [Option<usize>; 2],
+    scratch: Vec<f32>,
+}
+
+pub struct ExecutionPlan {
+    nodes: Vec<CompiledNode>,
+    output_index: usize,
+    max_frames: usize,
+    silence: Vec<f32>,
+}
+
+impl GraphDescription {
+    pub fn compile(
+        &self,
+        sample_rate: f32,
+        max_frames: usize,
+    ) -> Result<ExecutionPlan, GraphError> {
+        if !sample_rate.is_finite()
+            || sample_rate <= 1.0
+            || max_frames == 0
+            || max_frames.checked_mul(2).is_none()
+        {
+            return Err(GraphError::InvalidPreparation);
+        }
+        let mut index_by_id = HashMap::with_capacity(self.nodes.len());
+        let mut output = None;
+        for (index, spec) in self.nodes.iter().enumerate() {
+            if index_by_id.insert(spec.id, index).is_some() {
+                return Err(GraphError::DuplicateNode(spec.id));
+            }
+            if !spec.kind.valid() {
+                return Err(GraphError::InvalidParameter(spec.id));
+            }
+            if matches!(spec.kind, NodeKind::Output) {
+                if output.replace(index).is_some() {
+                    return Err(GraphError::WrongOutputCount);
+                }
+            }
+        }
+        let output = output.ok_or(GraphError::WrongOutputCount)?;
+        let mut sources = vec![[None; 2]; self.nodes.len()];
+        let mut children = vec![Vec::new(); self.nodes.len()];
+        let mut indegree = vec![0usize; self.nodes.len()];
+        for edge in &self.connections {
+            let from = *index_by_id
+                .get(&edge.from)
+                .ok_or(GraphError::MissingNode(edge.from))?;
+            let to = *index_by_id
+                .get(&edge.to)
+                .ok_or(GraphError::MissingNode(edge.to))?;
+            if matches!(self.nodes[from].kind, NodeKind::Output) {
+                return Err(GraphError::OutputAsSource(edge.from));
+            }
+            if edge.input_port >= self.nodes[to].kind.input_count() {
+                return Err(GraphError::InvalidPort(edge.to, edge.input_port));
+            }
+            if sources[to][edge.input_port].replace(from).is_some() {
+                return Err(GraphError::OccupiedPort(edge.to, edge.input_port));
+            }
+            children[from].push(to);
+            indegree[to] += 1;
+        }
+
+        let mut ready: VecDeque<_> = indegree
+            .iter()
+            .enumerate()
+            .filter_map(|(index, count)| (*count == 0).then_some(index))
+            .collect();
+        let mut order = Vec::with_capacity(self.nodes.len());
+        while let Some(index) = ready.pop_front() {
+            order.push(index);
+            for &child in &children[index] {
+                indegree[child] -= 1;
+                if indegree[child] == 0 {
+                    ready.push_back(child);
+                }
+            }
+        }
+        if order.len() != self.nodes.len() {
+            return Err(GraphError::Cycle);
+        }
+
+        // Keep only nodes that can reach Output. Unused sources cost nothing per block.
+        let mut live = vec![false; self.nodes.len()];
+        let mut stack = vec![output];
+        while let Some(index) = stack.pop() {
+            if live[index] {
+                continue;
+            }
+            live[index] = true;
+            for source in sources[index].into_iter().flatten() {
+                stack.push(source);
+            }
+        }
+        let mut old_to_new = vec![usize::MAX; self.nodes.len()];
+        let mut nodes = Vec::new();
+        for index in order.into_iter().filter(|index| live[*index]) {
+            old_to_new[index] = nodes.len();
+            nodes.push(CompiledNode {
+                id: self.nodes[index].id,
+                kernel: Kernel::from_kind(&self.nodes[index].kind, sample_rate),
+                sources: sources[index].map(|source| source.map(|old| old_to_new[old])),
+                scratch: vec![0.0; max_frames * 2],
+            });
+        }
+        Ok(ExecutionPlan {
+            output_index: old_to_new[output],
+            nodes,
+            max_frames,
+            silence: vec![0.0; max_frames * 2],
+        })
+    }
+}
+
+impl ExecutionPlan {
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn set_parameter(&mut self, node: NodeId, parameter: u32, value: f32) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| entry.kernel.set_parameter(parameter, value))
+    }
+
+    /// `frames` may be smaller than prepared capacity. Buffers are planar stereo.
+    pub fn process(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
+        let frames = input[0].len();
+        assert!(frames <= self.max_frames);
+        assert_eq!(frames, input[1].len());
+        assert_eq!(frames, output[0].len());
+        assert_eq!(frames, output[1].len());
+        for index in 0..self.nodes.len() {
+            let (previous, current_and_later) = self.nodes.split_at_mut(index);
+            let current = &mut current_and_later[0];
+            let source = |port: usize, channel: usize| -> &[f32] {
+                current.sources[port]
+                    .map(|source| {
+                        &previous[source].scratch
+                            [channel * self.max_frames..channel * self.max_frames + frames]
+                    })
+                    .unwrap_or(
+                        &self.silence
+                            [channel * self.max_frames..channel * self.max_frames + frames],
+                    )
+            };
+            let (left, right) = current.scratch.split_at_mut(self.max_frames);
+            let left = &mut left[..frames];
+            let right = &mut right[..frames];
+            match &mut current.kernel {
+                Kernel::InputRaw => {
+                    left.copy_from_slice(input[0]);
+                    right.copy_from_slice(input[1]);
+                }
+                Kernel::InputMonitor { gain } => {
+                    for frame in 0..frames {
+                        left[frame] = input[0][frame] * *gain;
+                        right[frame] = input[1][frame] * *gain;
+                    }
+                }
+                Kernel::Constant { value } => {
+                    left.fill(*value);
+                    right.fill(*value);
+                }
+                Kernel::Gain {
+                    target,
+                    current,
+                    smoothing,
+                    muted,
+                } => {
+                    let from_left = source(0, 0);
+                    let from_right = source(0, 1);
+                    let requested = if *muted { 0.0 } else { *target };
+                    for frame in 0..frames {
+                        *current += (requested - *current) * *smoothing;
+                        left[frame] = from_left[frame] * *current;
+                        right[frame] = from_right[frame] * *current;
+                    }
+                }
+                Kernel::Sum2 { gain_a, gain_b } => {
+                    for channel in 0..2 {
+                        let a = source(0, channel);
+                        let b = source(1, channel);
+                        let to = if channel == 0 {
+                            &mut *left
+                        } else {
+                            &mut *right
+                        };
+                        for frame in 0..frames {
+                            to[frame] = a[frame] * *gain_a + b[frame] * *gain_b;
+                        }
+                    }
+                }
+                Kernel::LinearBlend { mix } => {
+                    for channel in 0..2 {
+                        let a = source(0, channel);
+                        let b = source(1, channel);
+                        let to = if channel == 0 {
+                            &mut *left
+                        } else {
+                            &mut *right
+                        };
+                        for frame in 0..frames {
+                            to[frame] = a[frame] * (1.0 - *mix) + b[frame] * *mix;
+                        }
+                    }
+                }
+                Kernel::Svf(filter) => {
+                    filter.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::Output => {
+                    left.copy_from_slice(source(0, 0));
+                    right.copy_from_slice(source(0, 1));
+                }
+            }
+        }
+        let result = &self.nodes[self.output_index].scratch;
+        output[0].copy_from_slice(&result[..frames]);
+        output[1].copy_from_slice(&result[self.max_frames..self.max_frames + frames]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: NodeId, kind: NodeKind) -> NodeSpec {
+        NodeSpec { id, kind }
+    }
+
+    fn edge(from: NodeId, to: NodeId, input_port: usize) -> Connection {
+        Connection {
+            from,
+            to,
+            input_port,
+        }
+    }
+
+    fn process(plan: &mut ExecutionPlan, left: &[f32], right: &[f32]) -> [Vec<f32>; 2] {
+        let mut out_left = vec![0.0; left.len()];
+        let mut out_right = vec![0.0; right.len()];
+        plan.process([left, right], [&mut out_left, &mut out_right]);
+        [out_left, out_right]
+    }
+
+    #[test]
+    fn host_input_has_no_implicit_output_route() {
+        let description = GraphDescription {
+            nodes: vec![node(1, NodeKind::InputRaw), node(2, NodeKind::Output)],
+            connections: vec![],
+        };
+        let mut plan = description.compile(48_000.0, 8).unwrap();
+        assert_eq!(plan.node_count(), 1); // input is unreachable and pruned
+        assert_eq!(
+            process(&mut plan, &[1.0; 8], &[0.5; 8]),
+            [vec![0.0; 8], vec![0.0; 8]]
+        );
+    }
+
+    #[test]
+    fn monitor_input_is_an_explicit_gain_controlled_route() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(2, NodeKind::InputMonitor { gain: 0.0 }),
+                node(3, NodeKind::Output),
+            ],
+            connections: vec![edge(2, 3, 0)],
+        };
+        let mut plan = description.compile(48_000.0, 4).unwrap();
+        assert_eq!(plan.node_count(), 2); // raw input is not part of the audible path
+        assert_eq!(
+            process(&mut plan, &[0.5; 4], &[1.0; 4]),
+            [vec![0.0; 4], vec![0.0; 4]]
+        );
+        assert!(plan.set_parameter(2, 0, 0.25));
+        assert_eq!(
+            process(&mut plan, &[0.5; 4], &[1.0; 4]),
+            [vec![0.125; 4], vec![0.25; 4]]
+        );
+    }
+
+    #[test]
+    fn gain_filter_chain_matches_standalone_filter() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(9, NodeKind::Output),
+                node(3, NodeKind::Svf),
+                node(2, NodeKind::Gain { gain: 0.5 }),
+                node(1, NodeKind::InputRaw),
+            ],
+            connections: vec![edge(1, 2, 0), edge(2, 3, 0), edge(3, 9, 0)],
+        };
+        let mut plan = description.compile(48_000.0, 256).unwrap();
+        assert_eq!(plan.node_count(), 4);
+        assert!(plan.set_parameter(3, 0, 2.0));
+        assert!(plan.set_parameter(3, 1, 1500.0));
+        assert!(!plan.set_parameter(999, 0, 1.0));
+        let left: Vec<_> = (0..256).map(|i| (i as f32 * 0.21).sin()).collect();
+        let right: Vec<_> = (0..256).map(|i| (i as f32 * 0.09).cos()).collect();
+        let actual = process(&mut plan, &left, &right);
+        let scaled_left: Vec<_> = left.iter().map(|value| value * 0.5).collect();
+        let scaled_right: Vec<_> = right.iter().map(|value| value * 0.5).collect();
+        let mut expected_left = vec![0.0; 256];
+        let mut expected_right = vec![0.0; 256];
+        let mut filter = Filter::new(48_000.0);
+        filter.set_parameter(0, 2.0);
+        filter.set_parameter(1, 1500.0);
+        filter.process_planar(
+            [&scaled_left, &scaled_right],
+            [&mut expected_left, &mut expected_right],
+        );
+        assert_eq!(actual, [expected_left, expected_right]);
+    }
+
+    #[test]
+    fn gain_smooths_parameter_and_mute_changes() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(2, NodeKind::Gain { gain: 1.0 }),
+                node(3, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 2, 0), edge(2, 3, 0)],
+        };
+        let mut plan = description.compile(48_000.0, 128).unwrap();
+        assert!(plan.set_parameter(2, 0, -1.0)); // legacy Gain clamps to zero
+        let [left, right] = process(&mut plan, &[1.0; 128], &[0.5; 128]);
+        assert!(left[0] < 1.0 && left[0] > left[127] && left[127] > 0.0);
+        assert_eq!(right[0], left[0] * 0.5);
+        assert!(plan.set_parameter(2, 0, 1.0));
+        let [recovered, _] = process(&mut plan, &[1.0; 128], &[1.0; 128]);
+        assert!(recovered[0] > left[127] && recovered[127] > recovered[0]);
+        assert!(plan.set_parameter(2, 1, 1.0));
+        let [muted, _] = process(&mut plan, &[1.0; 128], &[1.0; 128]);
+        assert!(muted[127] < muted[0]);
+    }
+
+    #[test]
+    fn branch_sum_and_linear_blend_route_explicit_sources() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(2, NodeKind::Gain { gain: 0.5 }),
+                node(3, NodeKind::Constant { value: 0.25 }),
+                node(
+                    4,
+                    NodeKind::Sum2 {
+                        gain_a: 1.0,
+                        gain_b: 1.0,
+                    },
+                ),
+                node(5, NodeKind::LinearBlend { mix: 0.5 }),
+                node(6, NodeKind::Output),
+            ],
+            connections: vec![
+                edge(1, 2, 0),
+                edge(2, 4, 0),
+                edge(3, 4, 1),
+                edge(4, 5, 0),
+                edge(1, 5, 1),
+                edge(5, 6, 0),
+            ],
+        };
+        let mut plan = description.compile(48_000.0, 4).unwrap();
+        assert_eq!(
+            process(&mut plan, &[1.0; 4], &[0.0; 4]),
+            [vec![0.875; 4], vec![0.125; 4]]
+        );
+        assert!(plan.set_parameter(5, 0, 1.0));
+        assert_eq!(
+            process(&mut plan, &[1.0; 4], &[0.0; 4]),
+            [vec![1.0; 4], vec![0.0; 4]]
+        );
+    }
+
+    #[test]
+    fn rejects_cycles_and_duplicate_input_ports() {
+        let nodes = vec![
+            node(1, NodeKind::Gain { gain: 1.0 }),
+            node(2, NodeKind::Gain { gain: 1.0 }),
+            node(3, NodeKind::Output),
+        ];
+        let cyclic = GraphDescription {
+            nodes: nodes.clone(),
+            connections: vec![edge(1, 2, 0), edge(2, 1, 0), edge(2, 3, 0)],
+        };
+        assert!(matches!(
+            cyclic.compile(48_000.0, 128),
+            Err(GraphError::Cycle)
+        ));
+        let double = GraphDescription {
+            nodes,
+            connections: vec![edge(1, 3, 0), edge(2, 3, 0)],
+        };
+        assert!(matches!(
+            double.compile(48_000.0, 128),
+            Err(GraphError::OccupiedPort(3, 0))
+        ));
+        let invalid_output = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::Output),
+                node(2, NodeKind::Gain { gain: 1.0 }),
+            ],
+            connections: vec![edge(1, 2, 0)],
+        };
+        assert!(matches!(
+            invalid_output.compile(48_000.0, 128),
+            Err(GraphError::OutputAsSource(1))
+        ));
+    }
+}

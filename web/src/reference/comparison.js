@@ -61,7 +61,7 @@ export async function initializeReferenceLab() {
   const [input, module] = await Promise.all([loadFloat32(manifest.input), WebAssembly.compile(await wasmResponse.arrayBuffer())]);
   const instance = await WebAssembly.instantiate(module, {});
   const engine = instance.exports;
-  if (engine.manifold_version() !== 1) throw new Error('Incompatible Wasm ABI');
+  if (engine.manifold_version() !== 2) throw new Error('Incompatible Wasm ABI');
   if (input.length !== manifest.frames * manifest.channels) throw new Error('Invalid input fixture size');
 
   const chooser = byId('reference-case');

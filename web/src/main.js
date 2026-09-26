@@ -76,7 +76,7 @@ toggle.addEventListener('click', async () => {
   toggle.disabled = true;
   try {
     if (audio.running) await audio.stop();
-    else await audio.start(byId('source').value, values);
+    else await audio.start(byId('source').value, values, project);
     toggle.textContent = audio.running ? 'Stop audio' : 'Start audio';
     document.querySelector('.measurement-hint').textContent = audio.running
       ? 'Spectrum of the processed live input.'

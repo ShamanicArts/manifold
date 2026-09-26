@@ -26,7 +26,7 @@ The first DSP implementation is the legacy TPT state-variable filter. The origin
 
 ## Growth path
 
-The initial filter is a single prepared kernel. The general graph will have a separate editable `GraphDescription` and compiled `ExecutionPlan`. The plan owns kernels, routing, scratch buffers, and persistent DSP state. Build and validate it on a control thread. Publish a prepared plan at a block boundary, then retire the previous plan off the callback. This avoids the old builder/runtime shared-node alias that currently forces a pause during graph mutation. Stateful node migration across plans needs explicit stable node IDs and continuity hooks; it is not silently inferred from topology.
+The filter now runs inside a prepared `GraphDescription` and compiled `ExecutionPlan`. The plan owns kernels, routing, scratch buffers, and persistent DSP state. The first browser graph compiles before audio input is connected. For live topology editing, build and validate a replacement on a control thread, publish it at a block boundary, then retire the previous plan off the callback. This avoids the old builder/runtime shared-node alias that currently forces a pause during graph mutation. Stateful node migration across plans needs explicit stable node IDs and continuity hooks; it is not silently inferred from topology.
 
 Planar f32 audio buses carry samples. A timestamped event stream will carry MIDI, transport, and parameter changes with offsets within each block. Parameters have stable host IDs, physical-unit mappings, smoothing policies, and a versioned state format. The initial browser message transport is block-granular; sample-accurate automation is a later contract before native VST3 release.
 

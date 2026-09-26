@@ -7,11 +7,12 @@ export class BrowserAudioHost {
     this.analyser = null;
     this.source = null;
     this.sourceStream = null;
+    this.parameters = new Map();
   }
 
   get running() { return this.context !== null; }
 
-  async start(kind, values) {
+  async start(kind, values, project) {
     if (this.running) return;
     const context = new AudioContext({ latencyHint: 'interactive' });
     this.context = context;
@@ -21,7 +22,7 @@ export class BrowserAudioHost {
       const response = await fetch(`${import.meta.env.BASE_URL}manifold_filter.wasm`);
       if (!response.ok) throw new Error('Wasm filter missing: run ./scripts/build-wasm.sh');
       const wasmBytes = await response.arrayBuffer();
-      const processor = new AudioWorkletNode(context, 'manifold-filter', {
+      const processor = new AudioWorkletNode(context, 'manifold-project', {
         numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
       });
       this.processor = processor;
@@ -44,8 +45,9 @@ export class BrowserAudioHost {
           }
         };
       });
-      processor.port.postMessage({ type: 'init', wasmBytes }, [wasmBytes]);
+      processor.port.postMessage({ type: 'init', wasmBytes, graph: project.signal }, [wasmBytes]);
       await ready;
+      this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));
       for (const [id, value] of values) this.setParameter(id, value);
       if (kind === 'microphone') {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false }, video: false });
@@ -71,7 +73,8 @@ export class BrowserAudioHost {
   }
 
   setParameter(id, value) {
-    this.processor?.port.postMessage({ type: 'parameter', id, value });
+    const parameter = this.parameters.get(id);
+    if (parameter) this.processor?.port.postMessage({ type: 'parameter', nodeId: parameter.nodeId, id: parameter.nodeParameterId, value });
   }
 
   async stop() {
@@ -82,6 +85,7 @@ export class BrowserAudioHost {
     this.analyser?.disconnect();
     await this.context?.close();
     this.context = this.processor = this.analyser = this.source = this.sourceStream = this.oscillator = null;
+    this.parameters.clear();
     this.onStatus('Audio idle');
   }
 }

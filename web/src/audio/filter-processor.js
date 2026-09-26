@@ -1,5 +1,5 @@
-/** Audio callback adapter only. DSP is in the Rust/Wasm module. */
-class ManifoldFilterProcessor extends AudioWorkletProcessor {
+/** Audio callback adapter only. The prepared Rust/Wasm graph owns DSP. */
+class ManifoldProjectProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.engine = null;
@@ -12,15 +12,25 @@ class ManifoldFilterProcessor extends AudioWorkletProcessor {
           const module = await WebAssembly.compile(data.wasmBytes);
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
-          if (engine.manifold_version() !== 1 || engine.manifold_prepare(sampleRate, this.capacity) !== 1) {
-            throw new Error('Incompatible filter module or sample rate');
+          if (engine.manifold_version() !== 2) throw new Error('Incompatible graph module');
+          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7 };
+          const graph = data.graph;
+          if (engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) throw new Error('Graph too large');
+          for (const node of graph.nodes) {
+            if (!(node.type in kinds) || engine.manifold_graph_node(node.id, kinds[node.type], node.a ?? 0, node.b ?? 0) !== 1) {
+              throw new Error(`Invalid graph node: ${node.id}`);
+            }
           }
+          for (const edge of graph.connections) {
+            if (engine.manifold_graph_edge(edge.from, edge.to, edge.inputPort) !== 1) throw new Error('Invalid graph connection');
+          }
+          if (engine.manifold_prepare(sampleRate, this.capacity) !== 1) throw new Error('Graph preparation failed');
           this.inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), this.capacity * 2);
           this.outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), this.capacity * 2);
           this.engine = engine;
           this.port.postMessage({ type: 'ready' });
         } else if (data.type === 'parameter' && this.engine) {
-          this.engine.manifold_set_parameter(data.id, data.value);
+          this.engine.manifold_set_node_parameter(data.nodeId, data.id, data.value);
         }
       } catch (error) {
         this.port.postMessage({ type: 'error', message: String(error) });
@@ -57,4 +67,4 @@ class ManifoldFilterProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('manifold-filter', ManifoldFilterProcessor);
+registerProcessor('manifold-project', ManifoldProjectProcessor);
