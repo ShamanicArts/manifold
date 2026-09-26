@@ -1,4 +1,4 @@
-# Main voice bank, through checkpoint 128
+# Main voice bank, through checkpoint 129
 
 The `main-voice-bank` graph node is a prepared eight-voice instrument. It is an
 authored v2 slice of `sample_synth.lua` plus the original UI voice ownership
@@ -108,6 +108,13 @@ note ownership follows the old UI's note-only policy across channels.
   0.000003263 after frame 512; native Rust and Wasm are bit-exact. Depth zero
   and three wet positions are covered. The same vocoder and envelope scope
   applies.
+- `scripts/verify-main-voice-bank-state.mjs` round-trips 19 controls, separate
+  wave and source targets, and embedded or built-in source choices. It rejects
+  malformed controls, target addresses, partials, and PCM. A headless Chromium
+  workbench check opened edited embedded state, waited for source analysis,
+  downloaded identical targets and PCM, and started the restored AudioWorklet.
+  `scripts/verify-main-sample-blend-state.mjs` still passes after extracting
+  shared PCM encoding. This is v2 bank state, not old preset migration.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint
 review is `/main-add-morph-review.html`; the timing review is
@@ -115,15 +122,16 @@ review is `/main-add-morph-review.html`; the timing review is
 `/main-wave-route-review.html`. The compiled sample and Normal route review is
 `/main-normal-route-review.html`; the combined Ring, Normal, and raw-player
 review is `/main-ring-route-review.html`. The browser capacity review is
-`/main-browser-capacity-review.html`. The embedded BB browser cannot grant
+`/main-browser-capacity-review.html`; the bank state review is
+`/main-bank-state-review.html`. The embedded BB browser cannot grant
 hardware MIDI permissions yet, so the on-screen keyboard is the immediate
 input path. The in-app browser backend was unavailable for the capacity run;
 the review page was visually checked in headless Chromium.
 
 ## Next integration
 
-Give the full Main project a coherent state model. Extend the assembled old
-C++ comparison to selected Add/Morph cases while keeping the envelope
-timing difference explicit. Repeat capacity measurements against a regular
-browser and physical output device, then identify the vocoder's native/Wasm
-numerical variance. Host packaging remains a separate later stage.
+Expand the bank state into the full Main project and preset model. Extend the
+assembled old C++ comparison to selected Add/Morph cases while keeping the
+envelope timing difference explicit. Repeat capacity measurements against a
+regular browser and physical output device, then identify the vocoder's
+native/Wasm numerical variance. Host packaging remains a separate later stage.

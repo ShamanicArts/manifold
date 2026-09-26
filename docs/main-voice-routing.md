@@ -34,7 +34,8 @@ The old integration sets oscillator amplitude to `amp` and `sampleBlendGain` to 
 15. **Done, checkpoint 126 for the original player and Normal route:** Five compiled C++ sample playback cases match Rust after the old center pan to at most 0.0000000195. Four assembled Normal cases combine the original player, oscillator, gain, crossfades, and mixers. After frame 512, old/Rust maximum difference is 0.000004612 and native Rust/Wasm is bit-exact. The old phase vocoder is omitted at mix zero and its UI-rate envelope is not constructed.
 16. **Done, checkpoint 127 for the Ring branch:** Four assembled C++ Ring cases combine the original sample player, oscillator, sample gain, crossed Ring nodes, crossfade, and mixers. After frame 512, old/Rust maximum difference is 0.000003263 and native Rust/Wasm is bit-exact. The old phase vocoder is omitted at mix zero and its UI-rate envelope is not constructed.
 17. **Done, checkpoint 128 for a browser capacity boundary:** Headless Chromium runs the actual AudioWorklet and Wasm graph through nine sustained cases. Twenty-four rolling WebAudio render-capacity samples per case give p95 of 3.83% for Normal eight voices and 28.05% for vocoder eight voices, with a largest sample of 31.05%. This virtual-output run does not measure physical device underruns or individual callback durations.
-18. Next, compare selected Add/Morph routes, repeat timing on the physical output device, and extend project state for the bank.
+18. **Done, checkpoint 129 for authored bank state:** Version-1 Main bank JSON saves all 19 controls, separate prepared wave and source targets, and a built-in or bounded embedded stereo source. A browser round trip preserved edited targets after background analysis and started the restored worklet. This does not migrate old project presets.
+19. Next, compare selected Add/Morph routes, repeat timing on the physical output device, and extend the bank state into a full project and preset model.
 
 The [Node AudioWorklet timing review](../web/public/main-bank-performance-review.html)
 provides a reproducible Node/V8 proxy cost for nine Main bank scenarios. The
@@ -48,6 +49,8 @@ The [sample playback and Normal route review](../web/public/main-normal-route-re
 adds five original-player cases and four assembled Normal voice cases.
 The [assembled Ring route review](../web/public/main-ring-route-review.html)
 adds four crossed Ring cases alongside the Normal and player fixtures.
+The [Main bank state review](../web/public/main-bank-state-review.html)
+links a playable workbench and an example state document.
 
 The [Main blend review](../web/public/main-sample-blend-review.html) records the single-voice composition; the [Add/Morph review](../web/public/main-add-morph-review.html) is the current playable checkpoint. The [pitch review](../web/public/main-pitch-review.html) records the original Lua map.
 

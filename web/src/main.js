@@ -62,6 +62,7 @@ import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars, draw
 import { captureStandaloneFxState, parseStandaloneFxState, capturePersistentFxState, parsePersistentFxState } from './state/standalone-fx.js';
 import { captureControlPatchState, parseControlPatchState } from './state/control-patch.js';
 import { captureMainSampleBlendState, parseMainSampleBlendState } from './state/main-sample-blend.js';
+import { captureMainVoiceBankState, parseMainVoiceBankState } from './state/main-voice-bank.js';
 
 const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
@@ -457,6 +458,7 @@ const pendingSampleAnalyses = new Map();
 const pendingSineTargets = new Map();
 let latestSineTargetId = 0;
 let sineTargetActive = false;
+let mainBankSnapshotRestored = false;
 let sinePitchSource = null;
 let mainStateRestoring = false;
 let phraseReferenceAuto = true;
@@ -628,7 +630,7 @@ function createSampleAnalysisWorker(temporalWorker) {
     if (analyzed === loadedSineSource) {
       renderSineSourceAnalysis();
       if (data.type === 'result') useAnalyzedPhraseReference(analyzed);
-      if (sineTargetActive && analyzed.temporal) scheduleSineTarget();
+      if (sineTargetActive && analyzed.temporal && !mainBankSnapshotRestored) scheduleSineTarget();
       if (activeFamily === 'main-sample-blend' && analyzed.temporalError) finishMainStateRestore(analyzed.temporalError);
     }
   };
@@ -1455,6 +1457,7 @@ function renderPrimitive(family) {
     byId('sine-target-bars').replaceChildren();
     byId('sine-target-status').textContent = 'Select a target after analysis.';
   }
+  if (family === 'main-voice-bank') mainBankSnapshotRestored = false;
   if (isFxFamily(family)) slotValuesByType = new Map([
     [0, [0.5, 0.5, 0.2, 0.6, 0.4]],
     [1, [0.5, 0.5, 0.4, 0.5, 0.4]],
@@ -1524,7 +1527,13 @@ function renderPrimitive(family) {
   byId('controls').replaceChildren();
   renderSineBankEditor();
   byId('sine-source-section').hidden = !usesSineSource(family);
-  byId('main-state-section').hidden = family !== 'main-sample-blend';
+  byId('main-state-section').hidden = family !== 'main-sample-blend' && family !== 'main-voice-bank';
+  if (family === 'main-sample-blend' || family === 'main-voice-bank') {
+    byId('main-state-label').textContent = family === 'main-voice-bank' ? 'Main voice bank state' : 'Main blend state';
+    byId('main-state-status').textContent = family === 'main-voice-bank'
+      ? 'Saves all bank controls, both prepared targets, and the shared source. Stop audio before opening a state.'
+      : 'Saves branch levels, target controls, and the decoded source. Stop audio before opening a state.';
+  }
   byId('main-state-file').disabled = audio.running;
   if (family === 'main-sample-blend' && !loadedSineSource) {
     const demo = demoSample();
@@ -2167,6 +2176,7 @@ function applyPreparedSineTarget(data, mode) {
   byId('sine-target-status').textContent = `${name} · ${data.values.length / 4} prepared partials · ${absolute ? pitched ? `${data.fundamental.toFixed(1)} Hz pitch` : 'unpitched original frequencies' : `pitch ${values.get(0).toFixed(1)} Hz × partial ratios`}`;
 }
 function requestPreparedSineTarget() {
+  mainBankSnapshotRestored = false;
   const source = loadedSineSource;
   if (!usesSineSource() || !source?.temporalJobId || !sineAnalysisWorker) return;
   const selectedMode = Number(byId('sine-target-mode').value);
@@ -2188,6 +2198,7 @@ function requestPreparedSineTarget() {
 }
 let sineTargetRequestFrame = null;
 function scheduleSineTarget() {
+  mainBankSnapshotRestored = false;
   if (!sineTargetActive) return;
   if (sineTargetRequestFrame !== null) cancelAnimationFrame(sineTargetRequestFrame);
   sineTargetRequestFrame = requestAnimationFrame(() => {
@@ -2226,17 +2237,20 @@ function mainBlendTargetControls() {
   };
 }
 byId('main-state-export').addEventListener('click', () => {
-  if (activeFamily !== 'main-sample-blend') return;
+  if (activeFamily !== 'main-sample-blend' && activeFamily !== 'main-voice-bank') return;
   const readout = byId('main-state-status');
   try {
-    const state = captureMainSampleBlendState(activeProject, values, mainBlendTargetControls(), loadedSineSource);
+    const bank = activeFamily === 'main-voice-bank';
+    const state = bank
+      ? captureMainVoiceBankState(activeProject, values, mainBlendTargetControls(), loadedSample)
+      : captureMainSampleBlendState(activeProject, values, mainBlendTargetControls(), loadedSineSource);
     const url = URL.createObjectURL(new Blob([`${JSON.stringify(state)}\n`], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'manifold-main-sample-blend-state.json';
+    link.download = bank ? 'manifold-main-voice-bank-state.json' : 'manifold-main-sample-blend-state.json';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    readout.textContent = `Saved ${activeProject.parameters.length} controls, target settings, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
+    readout.textContent = `Saved ${activeProject.parameters.length} controls, ${bank ? 'both prepared targets' : 'target settings'}, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
   } catch (error) {
     readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
   }
@@ -2246,10 +2260,50 @@ byId('main-state-file').addEventListener('change', async (event) => {
   if (!file) return;
   const readout = byId('main-state-status');
   try {
-    if (activeFamily !== 'main-sample-blend' || audio.running) throw new Error('Stop the Main blend instrument before opening a state.');
+    if (!['main-sample-blend', 'main-voice-bank'].includes(activeFamily) || audio.running) throw new Error('Stop the Main instrument before opening a state.');
     if (file.size > 20 * 1024 * 1024) throw new Error('State JSON must be smaller than 20 MB.');
     const contents = await file.text();
-    if (activeFamily !== 'main-sample-blend' || audio.running) throw new Error('Project view changed while opening the state.');
+    if (!['main-sample-blend', 'main-voice-bank'].includes(activeFamily) || audio.running) throw new Error('Project view changed while opening the state.');
+    if (activeFamily === 'main-voice-bank') {
+      const state = parseMainVoiceBankState(JSON.parse(contents), mainVoiceBankProject);
+      pendingSineTargets.clear();
+      latestSineTargetId = 0;
+      if (sineTargetRequestFrame !== null) cancelAnimationFrame(sineTargetRequestFrame);
+      sineTargetRequestFrame = null;
+      sineTargetActive = state.targetControls.active;
+      mainBankSnapshotRestored = true;
+      applyPatchParameterValues(activeProject, state.parameters);
+      for (const [id, value] of Object.entries({
+        'sine-target-mode': state.targetControls.mode, 'sine-waveform': state.targetControls.waveform,
+        'sine-position': state.targetControls.position, 'sine-morph-amount': state.targetControls.morphAmount,
+        'sine-stretch': state.targetControls.stretch, 'sine-tilt-mode': state.targetControls.tiltMode,
+        'sine-smooth': state.targetControls.smooth, 'sine-contrast': state.targetControls.contrast,
+      })) byId(id).value = String(value);
+      updateSineTargetControls();
+      activeProject.partials = state.targets[0];
+      activeProject.extraPartials = [state.targets[1]];
+      const demo = demoSample();
+      loadedSample = state.source.kind === 'builtin'
+        ? { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' }
+        : { sourceRate: state.source.sourceRate, stereo: state.source.stereo,
+          sourceKind: 'embedded', label: state.source.label };
+      loadedSineSource = loadedSample;
+      sinePitchSource = loadedSample;
+      samplePlayhead = 0;
+      samplePlaying = false;
+      sampleVoicePositions = Array(8).fill(-1);
+      sampleActiveVoices = 0;
+      byId('sine-target-bars').replaceChildren();
+      renderSineBars(state.targets[1].values, byId('sine-target-bars'), true);
+      byId('sine-target-status').textContent = 'Both saved targets restored. Audition a new target to rebuild them from the source.';
+      drawSampleWaveform();
+      renderSampleAnalysis();
+      renderSineSourceAnalysis();
+      requestSampleAnalysis(loadedSample);
+      requestSampleAnalysis(loadedSineSource, true);
+      readout.textContent = `Opened ${file.name} · ${activeProject.parameters.length} controls, two prepared targets, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
+      return;
+    }
     const state = parseMainSampleBlendState(JSON.parse(contents), mainSampleBlendProject);
     phraseReferenceAuto = false;
     for (const parameter of mainSampleBlendProject.parameters) {

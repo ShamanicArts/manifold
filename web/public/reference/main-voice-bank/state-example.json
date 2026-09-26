@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "projectId": "manifold.main-voice-bank-study",
+  "parameters": {
+    "waveform": 0,
+    "blend": 0.25,
+    "root-note": 60,
+    "keytrack": 2,
+    "sample-pitch": 0,
+    "pitch-mode": 0,
+    "blend-mode": 5,
+    "depth": 0.65,
+    "wave-to-sample": 0.5,
+    "sample-to-wave": 0,
+    "retrigger": 1,
+    "attack": 0.005,
+    "decay": 0.08,
+    "sustain": 0.8,
+    "release": 0.16,
+    "output": 1,
+    "time-stretch": 1,
+    "phrase-amount": 0,
+    "phrase-reference": 0.2
+  },
+  "targetControls": {
+    "active": false,
+    "mode": 3,
+    "waveform": 1,
+    "position": 0.5,
+    "morphAmount": 0.5,
+    "stretch": 0,
+    "tiltMode": 0,
+    "smooth": 0,
+    "contrast": 0.5
+  },
+  "targets": [
+    {
+      "nodeId": 2,
+      "target": 0,
+      "fundamental": 1,
+      "values": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.42,
+        0,
+        0,
+        3,
+        0.2,
+        0,
+        0,
+        4,
+        0.1,
+        0,
+        0
+      ]
+    },
+    {
+      "nodeId": 2,
+      "target": 1,
+      "fundamental": 1,
+      "values": [
+        1,
+        1,
+        0,
+        0,
+        2,
+        0.38,
+        0,
+        0,
+        3,
+        0.13,
+        0,
+        0
+      ]
+    }
+  ],
+  "source": {
+    "kind": "builtin"
+  }
+}
