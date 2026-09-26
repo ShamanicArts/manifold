@@ -1,0 +1,26 @@
+{
+  "multitap": {
+    "cases": 7,
+    "largest": {
+      "id": "default",
+      "max": 0
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "taps": "8 taps"
+  },
+  "standalone-fx": {
+    "cases": 39,
+    "largest": {
+      "id": "filter-to-chorus",
+      "max": 9.69e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Multitap",
+    "controls": [
+      "Wet mix",
+      "Tap count",
+      "Feedback"
+    ]
+  },
+  "errors": []
+}

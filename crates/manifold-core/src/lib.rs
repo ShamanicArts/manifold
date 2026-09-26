@@ -15,6 +15,7 @@ pub mod legacy_filter;
 pub mod lfo;
 pub mod limiter;
 pub mod loop_capture;
+pub mod multitap_delay;
 pub mod noise;
 pub mod oscillator;
 pub mod phaser;

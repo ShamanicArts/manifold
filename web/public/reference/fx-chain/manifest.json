@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust authored effects chain",
-  "sourceSha256": "64c6c5f8db8923f6cb0f46c22af07f94d090e5add749f9aa02ae5785bb4de312",
+  "sourceSha256": "5bb956e6f4d1bd7c18eaca2a4614d21f1ae7aaff6793e1f05d2f9aa3db9c296e",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,

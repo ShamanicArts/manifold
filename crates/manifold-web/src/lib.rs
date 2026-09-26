@@ -215,6 +215,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
                     effect_slot::WIDENER_TYPE => [0.6, 0.4, 0.5, 0.5, 0.5],
                     effect_slot::LEGACY_FILTER_TYPE => [0.5, 0.2, 0.5, 0.5, 0.5],
                     effect_slot::REVERB_TYPE => [0.5, 0.4, 0.5, 0.5, 0.5],
+                    effect_slot::MULTITAP_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
                     effect_slot::COMPRESSOR_TYPE => [0.4, 0.3, 0.1, 0.3, 0.5],
                     effect_slot::SVF_TYPE => [0.5, 0.4, 0.1, 0.5, 0.5],
                     effect_slot::DELAY_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
@@ -300,6 +301,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         },
         40 => NodeKind::Reverb {
             params: manifold_core::reverb::DEFAULTS,
+        },
+        41 => NodeKind::MultitapDelay {
+            params: manifold_core::multitap_delay::DEFAULTS,
         },
         _ => return 0,
     };
@@ -409,6 +413,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::StereoWidener { params }, id @ 0..=2) => params[id as usize] = value,
             (NodeKind::LegacyFilter { params }, id @ 0..=2) => params[id as usize] = value,
             (NodeKind::Reverb { params }, id @ 0..=4) => params[id as usize] = value,
+            (NodeKind::MultitapDelay { params }, id @ 0..=26) => {
+                if !manifold_core::multitap_delay::set_value(params, id, value) {
+                    return 0;
+                }
+            }
             (NodeKind::EffectSlot { selected, .. }, 0) => {
                 let Some(kind) = effect_slot::supported_type(value) else {
                     return 0;

@@ -16,6 +16,7 @@ use crate::legacy_filter::{self, LegacyFilter};
 use crate::lfo::Lfo;
 use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
+use crate::multitap_delay::{self, MultitapDelay};
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::phaser::Phaser;
@@ -126,6 +127,9 @@ pub enum NodeKind {
     Reverb {
         params: [f32; reverb::PARAM_COUNT],
     },
+    MultitapDelay {
+        params: [f32; multitap_delay::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -218,6 +222,7 @@ impl NodeKind {
             | Self::StereoWidener { .. }
             | Self::LegacyFilter { .. }
             | Self::Reverb { .. }
+            | Self::MultitapDelay { .. }
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
@@ -313,6 +318,7 @@ impl NodeKind {
             Self::StereoWidener { params } => params.iter().all(|value| value.is_finite()),
             Self::LegacyFilter { params } => params.iter().all(|value| value.is_finite()),
             Self::Reverb { params } => params.iter().all(|value| value.is_finite()),
+            Self::MultitapDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -449,6 +455,7 @@ enum Kernel {
     StereoWidener(StereoWidener),
     LegacyFilter(LegacyFilter),
     Reverb(Reverb),
+    MultitapDelay(MultitapDelay),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -583,6 +590,9 @@ impl Kernel {
                 Self::LegacyFilter(LegacyFilter::new(sample_rate, *params))
             }
             NodeKind::Reverb { params } => Self::Reverb(Reverb::new(sample_rate, *params)),
+            NodeKind::MultitapDelay { params } => {
+                Self::MultitapDelay(MultitapDelay::new(sample_rate, max_frames, *params))
+            }
             NodeKind::EffectSlot {
                 selected,
                 mix,
@@ -724,6 +734,7 @@ impl Kernel {
             (Self::StereoWidener(widener), id) => return widener.set_parameter(id, value),
             (Self::LegacyFilter(filter), id) => return filter.set_parameter(id, value),
             (Self::Reverb(reverb), id) => return reverb.set_parameter(id, value),
+            (Self::MultitapDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1353,6 +1364,9 @@ impl ExecutionPlan {
                 }
                 Kernel::Reverb(reverb) => {
                     reverb.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::MultitapDelay(delay) => {
+                    delay.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

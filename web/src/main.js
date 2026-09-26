@@ -16,6 +16,7 @@ import waveshaperProject from '../../projects/waveshaper/project.json';
 import widenerProject from '../../projects/stereo-widener/project.json';
 import legacyFilterProject from '../../projects/legacy-filter/project.json';
 import reverbProject from '../../projects/reverb/project.json';
+import multitapProject from '../../projects/multitap/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -144,6 +145,12 @@ const projects = {
     description: 'A prepared stereo FreeVerb-style network with room size, damping, wet/dry levels, and stereo width. The reverb tail continues across audio blocks.',
     signal: 'Live path: input → stereo comb/allpass network → dry/wet output',
   },
+  multitap: {
+    project: multitapProject,
+    title: 'Multitap delay',
+    description: 'Eight independently timed and panned taps with feedback. The first two tap controls are shown here; other taps keep the original defaults and all eight are exercised by the C++ comparisons.',
+    signal: 'Live path: input → prepared eight-tap stereo delay → dry/wet output',
+  },
   compressor: {
     project: compressorProject,
     title: 'Compressor',
@@ -165,7 +172,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, and Limiter are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, and Limiter are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -550,7 +557,7 @@ function addSlider(parameter) {
     ? position < 1 ? 0 : Math.round(21 * (parameter.max / 21) ** ((position - 1) / 999))
     : isLog
     ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000) * (parameter.hostId === 'rate' ? 100 : 1)) / (parameter.hostId === 'rate' ? 100 : 1)
-    : parameter.hostId === 'root-note' || parameter.hostId === 'unison' || parameter.hostId === 'voices'
+    : parameter.hostId === 'root-note' || parameter.hostId === 'unison' || parameter.hostId === 'voices' || parameter.hostId === 'taps'
       ? Math.round(parameter.min + (parameter.max - parameter.min) * position / 1000)
       : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * precision) / precision;
   const toPosition = (value) => parameter.scale === 'log-bypass'
@@ -558,9 +565,9 @@ function addSlider(parameter) {
     : isLog
     ? 1000 * Math.log(value / parameter.min) / Math.log(parameter.max / parameter.min)
     : 1000 * (value - parameter.min) / (parameter.max - parameter.min);
-  const format = (value) => parameter.hostId === 'root-note' ? `${value} MIDI` : parameter.hostId === 'unison' || parameter.hostId === 'voices' ? `${value} voices` : parameter.unit === 'ct' ? `${Number(value).toFixed(1)} ct` : parameter.unit === 'Hz'
+  const format = (value) => parameter.hostId === 'root-note' ? `${value} MIDI` : parameter.hostId === 'taps' ? `${value} taps` : parameter.hostId === 'unison' || parameter.hostId === 'voices' ? `${value} voices` : parameter.unit === 'ct' ? `${Number(value).toFixed(1)} ct` : parameter.unit === 'Hz'
     ? parameter.hostId === 'rate' ? `${Number(value).toFixed(2)} Hz` : `${Math.round(value).toLocaleString()} Hz`
-    : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : parameter.unit === 'dB' ? `${Number(value).toFixed(1)} dB` : parameter.unit === 'degrees' ? `${Math.round(value)}°` : Number(value).toFixed(2);
+    : parameter.unit === 'ms' ? `${Number(value).toFixed(1)} ms` : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : parameter.unit === 'dB' ? `${Number(value).toFixed(1)} dB` : parameter.unit === 'degrees' ? `${Math.round(value)}°` : Number(value).toFixed(2);
   const sync = (position, publish) => {
     const value = toPhysical(position);
     input.value = String(Math.round(position));
@@ -609,6 +616,7 @@ function updateSlotControls() {
     : selected === 4 ? { 2: 'Width', 3: 'Mono low cutoff' }
     : selected === 5 ? { 2: 'Cutoff', 3: 'Resonance' }
     : selected === 7 ? { 2: 'Room size', 3: 'Damping' }
+    : selected === 9 ? { 2: 'Tap count', 3: 'Feedback' }
     : selected === 3
     ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
     : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
@@ -642,6 +650,8 @@ function updateSlotControls() {
       ? id === 2 ? `${Math.round(80 * 150 ** value).toLocaleString()} Hz` : value.toFixed(2)
       : selected === 7
       ? id === 2 ? (0.15 + 0.8 * value).toFixed(2) : value.toFixed(2)
+      : selected === 9
+      ? id === 2 ? `${Math.floor(2 + 6 * value + 0.5)} taps` : (0.95 * value).toFixed(2)
       : selected === 3
       ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
         : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
@@ -667,6 +677,7 @@ function updateSlotControls() {
     : selected === 4 ? 'Width and mono low cutoff are the old slot controls. Mono low is always enabled, and the wet branch has 1.1× gain.'
     : selected === 5 ? 'This is the original two-pole FilterNode. Cutoff uses exponential mapping; the third through fifth normalized controls are unused.'
     : selected === 7 ? 'Room and damping are the old slot controls. Internal reverb is fully wet; the public slot mix blends the dry input. The other three controls are unused.'
+    : selected === 9 ? 'Tap count and feedback are the old slot controls. The four assigned taps keep their authored times, gains, and pans; the remaining taps keep the node defaults. Wet gain is 1.4×.'
     : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
       : 'Values are stored separately for each effect type and restored when selected.';
 }
@@ -856,6 +867,7 @@ function renderPrimitive(family) {
     [4, [0.6, 0.4, 0.5, 0.5, 0.5]],
     [5, [0.5, 0.2, 0.5, 0.5, 0.5]],
     [7, [0.5, 0.4, 0.5, 0.5, 0.5]],
+    [9, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
@@ -931,7 +943,7 @@ function renderPrimitive(family) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 15: 'Limit' })[value] : choice;
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 15: 'Limit' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {
