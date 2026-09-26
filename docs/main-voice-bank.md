@@ -1,4 +1,4 @@
-# Main voice bank, through checkpoint 124
+# Main voice bank, through checkpoint 125
 
 The `main-voice-bank` graph node is a prepared eight-voice instrument. It is an
 authored v2 slice of `sample_synth.lua` plus the original UI voice ownership
@@ -75,18 +75,26 @@ note ownership follows the old UI's note-only policy across channels.
   exceeded the 2.667 ms interval. This is not a browser audio-thread or
   hardware underrun measurement. The raw data and method are in
   `web/public/reference/main-voice-bank/bench-node.json`.
+- `scripts/verify-main-wave-voice-comparison.mjs` checks three assembled
+  original C++ wave routes against native Rust and Wasm. The old compiled
+  oscillator, Normal crossfade, base selector, branch mixer, and voice mixer
+  match the Rust bank after frame 512 to at most 0.000004612. Native/Wasm is
+  bit-exact. The onset differs because the bank has a sample-clock ADSR;
+  the old UI envelope and old sample playback are outside this fixture.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint
 review is `/main-add-morph-review.html`; the timing review is
-`/main-bank-performance-review.html`. The embedded BB browser cannot grant
+`/main-bank-performance-review.html`, and the compiled old wave review is
+`/main-wave-route-review.html`. The embedded BB browser cannot grant
 hardware MIDI permissions yet, so the on-screen keyboard is the immediate
 input path. The in-app browser backend was unavailable for a visual smoke test
 at this checkpoint; the served pages and worklet path were checked separately.
 
 ## Next integration
 
-Give the full Main project a coherent state model. Compare selected assembled old
-C++ voice output with Rust while keeping the sample-clock envelope difference
-explicit. Measure sustained eight-voice callback cost in the actual browser and
+Give the full Main project a coherent state model. Extend the assembled old
+C++ comparison to sample playback, mixed branches, and selected Ring/Add/Morph
+cases while keeping the envelope timing difference explicit. Measure sustained
+eight-voice callback cost in the actual browser and
 identify the vocoder's native/Wasm numerical variance. Host packaging remains
 a separate later stage.

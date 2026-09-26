@@ -16,7 +16,7 @@
 <p class="meta" id="provenance"></p></section>
 <section><h2>What this tells us</h2><div class="grid"><div class="card"><h3>Polyphony cost</h3><p>Normal mode rises with active voice count. Ring, FM, and Sync stay near the eight-voice Normal range in this harness. Add/Morph and vocoder are the more expensive routes.</p></div><div class="card"><h3>Morph’s unused bank</h3><p>The old Morph route disables its Add wave oscillator. The Rust bank now avoids rendering its wave spectrum in Morph mode and keeps only the source spectrum active. All ten native/Wasm bank captures still pass.</p></div></div>
 <p class="note">This is a local Node/V8 proxy, not a measured browser AudioWorklet on the user’s audio device. The harness includes JS buffer copies, event dispatch, and Rust/Wasm processing, but excludes setup and asset uploads. Unchanged Wasm linear memory during measured blocks does not prove zero transient allocation. Browser thread timing and device underruns remain to be measured.</p></section>
-<section><h2>Next</h2><p>Capture selected assembled old Main voice output and compare it with the Rust bank. Then instrument the real browser AudioWorklet for callback timing and extend the shared project state.</p></section>
+<section><h2>Next</h2><p>The <a href="/main-wave-route-review.html">assembled wave-route comparison</a> now covers three compiled old C++ cases. Extend it to sample playback and mixed branches, then instrument the real browser AudioWorklet and shared project state.</p></section>
 <footer>Manifold v2 · review checkpoint 124 · local Main bank timing proxy</footer>
 </main><script type="module">
 const body = document.getElementById('results');

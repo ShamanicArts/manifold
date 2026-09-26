@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Manifold v2 · old Main wave route</title>
+<meta name="description" content="Compiled C++ Main wave graph compared with the Rust and Wasm voice bank.">
+<style>
+:root{color-scheme:light;--bg:#f7f5f0;--paper:#fffefa;--ink:#252a28;--muted:#626b66;--line:#d7dcd6;--green:#285e4d;--rust:#a35339;--blue:#345875;--warn:#f7ece5;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;--body:system-ui,-apple-system,sans-serif;--serif:Georgia,serif}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#171d1b;--paper:#202825;--ink:#eeeae0;--muted:#b2bcb4;--line:#414c45;--green:#a0d0b2;--rust:#e7a180;--blue:#a8c5dc;--warn:#453026}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--body)}a{color:var(--green);text-underline-offset:3px}main{width:min(1020px,calc(100% - 2rem));margin:auto;padding:3rem 0 5rem}h1,h2{font-family:var(--serif);font-weight:400;line-height:1.1}h1{font-size:clamp(3rem,7vw,5.8rem);letter-spacing:-.035em;margin:.5rem 0 1rem}h2{font-size:clamp(2rem,4vw,3rem);margin:0 0 1rem}h3{margin:0 0 .4rem;font-size:1rem}p{margin:.4rem 0 1.2rem}.eyebrow,.label{font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em}.eyebrow{color:var(--rust)}header{border-top:2px solid var(--ink);padding-top:1.5rem}.lead{max-width:780px;font-size:1.2rem}.actions{display:flex;gap:.7rem;flex-wrap:wrap;margin:1.8rem 0 2.3rem}.actions a{padding:.65rem .95rem;border:1px solid var(--green);text-decoration:none;font-size:.86rem}.actions a:first-child{color:var(--paper);background:var(--green)}.metrics{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);background:var(--paper)}.metric{padding:1.25rem}.metric+.metric{border-left:1px solid var(--line)}.metric strong{display:block;font:2.8rem var(--serif);line-height:1}.metric span{color:var(--muted);font-size:.8rem}section{border-top:1px solid var(--ink);margin-top:3.6rem;padding-top:1.2rem}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.8rem}.card{background:var(--paper);border:1px solid var(--line);padding:1.1rem}.card p{font-size:.85rem;color:var(--muted);margin:0}.note{background:var(--warn);border-left:3px solid var(--rust);padding:.9rem 1.1rem;font-size:.87rem}.toolbar{display:flex;gap:.7rem;flex-wrap:wrap;margin:1rem 0}.toolbar label{font:11px var(--mono);text-transform:uppercase;color:var(--muted);display:grid;gap:.25rem}.toolbar select{min-width:160px;background:var(--paper);color:var(--ink);border:1px solid var(--line);padding:.45rem;font:14px var(--body)}canvas{display:block;width:100%;height:190px;background:var(--paper);border:1px solid var(--line);margin:.45rem 0 1rem}.legend{display:flex;gap:1rem;flex-wrap:wrap;font:11px var(--mono);color:var(--muted)}.legend span::before{content:'';display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:.4rem;background:var(--blue)}.legend span:nth-child(2)::before{background:var(--green)}.legend span:nth-child(3)::before{background:var(--rust)}table{border-collapse:collapse;width:100%;background:var(--paper)}th,td{text-align:right;border-bottom:1px solid var(--line);padding:.7rem;font-variant-numeric:tabular-nums;font-size:.85rem}th:first-child,td:first-child{text-align:left}th{font:11px var(--mono);color:var(--muted);text-transform:uppercase}.meta{font:11px/1.6 var(--mono);color:var(--muted)}footer{margin-top:3.5rem;border-top:1px solid var(--line);padding-top:1rem;color:var(--muted);font:11px var(--mono)}
+@media(max-width:680px){.grid,.metrics{grid-template-columns:1fr}.metric+.metric{border-left:0;border-top:1px solid var(--line)}.metric strong{font-size:2.2rem}th,td{padding:.55rem .35rem;font-size:.75rem}}
+</style></head><body><main>
+<header><div class="eyebrow">Manifold v2 / checkpoint 125 / 26 September 2026</div><h1>The old wave route lines up.</h1>
+<p class="lead">Three sustained cases run the original compiled C++ oscillator, crossfaders, branch mixer, and voice mixer against the Rust Main bank and Wasm. The comparison isolates the wave route while making the different note onset visible.</p>
+<div class="actions"><a href="/?primitive=main-voice-bank">Play the Main bank</a><a href="/manifold-sitrep.html">Full sitrep</a><a href="/reference/main-wave-voice/manifest.json">Fixture manifest</a></div>
+<div class="metrics"><div class="metric"><strong>3</strong><span>compiled old graph cases</span></div><div class="metric"><strong>4.62e−6</strong><span>largest old/Rust difference after frame 512</span></div><div class="metric"><strong>0</strong><span>native/Wasm differing samples</span></div></div></header>
+<section><h2>Listen to the comparison with your eyes</h2><p>Select a case and switch between the note onset and a settled window. The upper plot overlays the left channel; the lower plot magnifies old minus Rust so the small difference can be seen.</p>
+<div class="toolbar"><label>Route<select id="case"><option value="sine-wave">Sine, wave endpoint</option><option value="saw-wave">Saw, wave endpoint</option><option value="sine-midpoint">Sine, midpoint with silent sample bus</option></select></label><label>Window<select id="window"><option value="onset">Onset · frames 0–384</option><option value="settled">Settled · frames 2048–2432</option></select></label></div>
+<div class="legend"><span>Original C++</span><span>Rust bank</span><span>Difference, magnified</span></div>
+<canvas id="overlay" role="img" aria-label="Original C++ and Rust left-channel waveforms"></canvas><canvas id="difference" role="img" aria-label="Magnified left-channel difference"></canvas><p class="meta" id="plot-status">Loading fixture…</p>
+<table><thead><tr><th>Route</th><th>Settled max</th><th>Settled RMS error</th><th>Onset max</th></tr></thead><tbody id="measurements"></tbody></table></section>
+<section><h2>What was assembled</h2><div class="grid"><div class="card"><h3>Original compiled nodes</h3><p>Oscillator → Normal crossfade → base selector → three-input branch mixer → fourth input of the voice mixer. The inactive sample bus is silent. All nodes are compiled from the old project’s C++ sources.</p></div><div class="card"><h3>Rust and Wasm bank</h3><p>A single allocated note uses the bank’s oscillator, sample-clock ADSR, equivalent blend and gain stages. The zero sample is loaded normally. The same Rust core renders natively and inside Wasm.</p></div></div>
+<p class="note">The old sample player, vocoder, spectral Add/Morph automation, and UI-rate envelope are outside this fixture. The v2 ADSR makes the onset differ; comparisons begin at frame 512 after it settles. This evidence supports the selected sustained wave routes, not full old Main plug-in parity.</p></section>
+<section><h2>Next</h2><p>Bring the original sample playback and processed sample branch into an assembled reference, then compare mixed wave/sample output and selected Ring/Add/Morph routes. Keep the two envelope clocks distinct in every comparison.</p></section>
+<footer>Manifold v2 · review checkpoint 125 · original C++ assembled wave route</footer>
+</main><script type="module">
+const root='/reference/main-wave-voice/';
+const selector=document.getElementById('case');
+const windowSelector=document.getElementById('window');
+const cache=new Map();
+const colors={old:'#345875',rust:'#285e4d',difference:'#a35339'};
+async function load(caseId){
+  if(cache.has(caseId))return cache.get(caseId);
+  const files=[`${caseId}-cpp.f32`,`${caseId}-rust.f32`];
+  const channels=await Promise.all(files.map(async file=>{const response=await fetch(root+file);if(!response.ok)throw new Error(`${file}: HTTP ${response.status}`);return new Float32Array(await response.arrayBuffer())}));
+  cache.set(caseId,channels);return channels;
+}
+function plot(canvas,series,start,scale){
+  const ratio=Math.min(2,devicePixelRatio||1),width=Math.max(1,canvas.clientWidth),height=canvas.clientHeight;
+  canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
+  const ctx=canvas.getContext('2d');ctx.scale(ratio,ratio);ctx.clearRect(0,0,width,height);
+  ctx.strokeStyle='#a0aaa5';ctx.globalAlpha=.5;ctx.beginPath();ctx.moveTo(0,height/2);ctx.lineTo(width,height/2);ctx.stroke();ctx.globalAlpha=1;
+  for(const [values,color] of series){ctx.strokeStyle=color;ctx.lineWidth=1.25;ctx.beginPath();
+    for(let index=0;index<384;index++){const x=index/383*width,y=height/2-values[(start+index)*2]*scale*height*.42;index?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke()}
+}
+async function redraw(){
+  const id=selector.value,start=windowSelector.value==='onset'?0:2048;
+  try{const [old,rust]=await load(id);plot(document.getElementById('overlay'),[[old,colors.old],[rust,colors.rust]],start,3);
+    const diff=new Float32Array(old.length);for(let frame=start;frame<start+384;frame++)diff[frame*2]=old[frame*2]-rust[frame*2];
+    const multiplier=start===0?160:100000;plot(document.getElementById('difference'),[[diff,colors.difference]],start,multiplier);
+    document.getElementById('plot-status').textContent=`${id} · left channel · 384 frames (${(384/48).toFixed(1)} ms) · difference magnified ×${multiplier}`;
+  }catch(error){document.getElementById('plot-status').textContent=`Fixture unavailable: ${error.message}`}
+}
+selector.addEventListener('change',redraw);windowSelector.addEventListener('change',redraw);addEventListener('resize',redraw);
+try{const response=await fetch(root+'measurements.json');if(!response.ok)throw new Error(`HTTP ${response.status}`);const report=await response.json();
+  for(const row of report.results){const tr=document.createElement('tr');for(const value of [row.id,row.settledOldVsNative.max.toExponential(2),row.settledOldVsNative.rms.toExponential(2),row.onsetOldVsNative.max.toExponential(2)]){const td=document.createElement('td');td.textContent=value;tr.append(td)}document.getElementById('measurements').append(tr)}
+}catch(error){document.getElementById('plot-status').textContent=`Measurements unavailable: ${error.message}`}
+redraw();
+</script></body></html>

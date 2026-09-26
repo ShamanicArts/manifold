@@ -1,0 +1,166 @@
+{
+  "version": 1,
+  "reference": "compiled original C++ oscillator, crossfaders and mixers against authored Rust Main bank",
+  "scope": "sustained wave route with a silent sample bus; old UI envelope and old sample player excluded",
+  "legacySourceSha256": "3b89719c3900858220864c2ac420ce98682e9b256ce66a36d567163d018ae0f8",
+  "referenceHarnessSha256": "cdd2642c0036a34be760f10503f87a93b2ebc93a6b7bda9baf85ed45b69054ee",
+  "rustSourceSha256": "079343029a5da3b962155a7d05c35e48c02dc99a8917fe99c423a45770891464",
+  "wasmSha256": "3332290fbaffff0ca31acf773057851960b3e4bd974967ad59ae7759a55d4684",
+  "sampleRate": 48000,
+  "sampleSourceRate": 48000,
+  "sampleFrames": 4096,
+  "sample": "sample.f32",
+  "channels": 2,
+  "frames": 8192,
+  "stepFrame": 4096,
+  "input": "input.f32",
+  "settledStartFrame": 512,
+  "waveTarget": [
+    1,
+    1,
+    0,
+    0,
+    2,
+    0.42,
+    0,
+    0,
+    3,
+    0.2,
+    0,
+    0,
+    4,
+    0.1,
+    0,
+    0
+  ],
+  "sourceTarget": [
+    1,
+    1,
+    0,
+    0,
+    2,
+    0.38,
+    0,
+    0,
+    3,
+    0.13,
+    0,
+    0
+  ],
+  "cases": [
+    {
+      "id": "sine-wave",
+      "label": "Normal wave route \u00b7 waveform 0 \u00b7 blend -1.0",
+      "parameters": [
+        0,
+        -1.0,
+        60,
+        2,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "sine-wave-rust.f32",
+      "legacyOutput": "sine-wave-cpp.f32"
+    },
+    {
+      "id": "saw-wave",
+      "label": "Normal wave route \u00b7 waveform 1 \u00b7 blend -1.0",
+      "parameters": [
+        1,
+        -1.0,
+        60,
+        2,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "saw-wave-rust.f32",
+      "legacyOutput": "saw-wave-cpp.f32"
+    },
+    {
+      "id": "sine-midpoint",
+      "label": "Normal wave route \u00b7 waveform 0 \u00b7 blend 0.0",
+      "parameters": [
+        0,
+        0.0,
+        60,
+        2,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "sine-midpoint-rust.f32",
+      "legacyOutput": "sine-midpoint-cpp.f32"
+    }
+  ]
+}

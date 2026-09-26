@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "settledStartFrame": 512,
+  "comparisonScope": "sustained wave route with a silent sample bus; old UI envelope and old sample player excluded",
+  "results": [
+    {
+      "id": "sine-wave",
+      "settledOldVsNative": {
+        "max": 0.00000461190938949585,
+        "rms": 0.000001953831333096092,
+        "referenceRms": 0.09790230559240315
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.0954170283257104
+      },
+      "onsetOldVsNative": {
+        "max": 0.0028413329273462296,
+        "rms": 0.0005799402500021016,
+        "referenceRms": 0.04358150805218723
+      }
+    },
+    {
+      "id": "saw-wave",
+      "settledOldVsNative": {
+        "max": 0.0000014845281839370728,
+        "rms": 8.773505086305266e-7,
+        "referenceRms": 0.07997668652274877
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.07785093939679563
+      },
+      "onsetOldVsNative": {
+        "max": 0.002764721866697073,
+        "rms": 0.0006107676177783448,
+        "referenceRms": 0.03208464693905876
+      }
+    },
+    {
+      "id": "sine-midpoint",
+      "settledOldVsNative": {
+        "max": 0.000003261258825659752,
+        "rms": 0.0000013815674818650577,
+        "referenceRms": 0.06922738369475302
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.06747002669851125
+      },
+      "onsetOldVsNative": {
+        "max": 0.002009125892072916,
+        "rms": 0.0004100796782368264,
+        "referenceRms": 0.03081677971575864
+      }
+    }
+  ]
+}

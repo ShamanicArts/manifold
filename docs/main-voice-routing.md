@@ -30,11 +30,15 @@ The old integration sets oscillator amplitude to `amp` and `sampleBlendGain` to 
 11. **Done, checkpoint 122:** Cross the wave and sample audio buses in two Ring kernels per voice, select them at the shared blend position, and expose mode 1 in the browser. The native Rust/Wasm Ring chord capture is bit-exact.
 12. **Done, checkpoint 123 for the authored bank:** Publish target 0 wave and target 1 source partials between blocks; give each voice two independent Sine banks, a sample follower, and phrase gain. Add crossfades the banks; Morph selects source and interpolates pitch. Ten bank captures compare native Rust with Wasm, with Add and Morph bit-exact. These captures do not compare assembled old C++ Main output.
 13. **Done, checkpoint 124 for a local timing proxy:** Measure nine sustained Main bank scenarios through the AudioWorklet adapter in Node/V8. Morph now skips the silent wave bank, matching the old disabled oscillator route. No scenario exceeded the 128-frame interval on this host. Actual browser thread timing is still open.
-14. Next, compare selected assembled old Main voice output, measure browser audio-thread cost and underruns, and extend project state for the bank.
+14. **Done, checkpoint 125 for sustained wave routes:** A compiled original C++ oscillator, Normal crossfade, base selector, three-bus branch mixer, and four-bus voice mixer agree with native Rust within 0.000004612 after frame 512 for sine, saw, and sine with a silent midpoint sample bus. Wasm is bit-exact to native Rust. Old UI envelope and sample playback are explicitly outside this fixture.
+15. Next, assemble old sample playback and mixed routes, measure browser audio-thread cost and underruns, and extend project state for the bank.
 
 The [Node AudioWorklet timing review](../web/public/main-bank-performance-review.html)
 provides a reproducible proxy cost for nine Main bank scenarios. It records
 the exact Wasm hash and machine; actual browser thread timing remains open.
+The [assembled wave route review](../web/public/main-wave-route-review.html)
+shows compiled old C++, native Rust, and Wasm on three sustained cases with
+the onset and settled comparison windows separate.
 
 The [Main blend review](../web/public/main-sample-blend-review.html) records the single-voice composition; the [Add/Morph review](../web/public/main-add-morph-review.html) is the current playable checkpoint. The [pitch review](../web/public/main-pitch-review.html) records the original Lua map.
 
