@@ -270,8 +270,8 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: one loaded source feeds stereo region playback, a two-mode phase vocoder, and the Rust/Wasm partial worker. A prepared Add or Morph Sine bank shares the output mixer with the sample branch.',
-    signal: 'File → sample region → phase vocoder · temporal worker → prepared Sine bank · two branch mixer → output',
+    description: 'An authored Main sample synth slice: one loaded source feeds stereo region playback, a two-mode phase vocoder, and the Rust/Wasm partial worker. A prepared Add or Morph Sine bank follows the source phrase envelope and shares the output mixer with the sample branch.',
+    signal: 'File → sample region → vocoder / envelope control · temporal worker → prepared Sine bank → phrase gain · mixer → output',
   },
   'reverse-delay': {
     project: reverseDelayProject,
@@ -446,6 +446,15 @@ let latestSineTargetId = 0;
 let sineTargetActive = false;
 let sinePitchSource = null;
 let mainStateRestoring = false;
+let phraseReferenceAuto = true;
+function useAnalyzedPhraseReference(source) {
+  if (activeFamily !== 'main-sample-blend' || !phraseReferenceAuto
+    || !Number.isFinite(source?.analysis?.rms)) return;
+  const reference = Math.round(Math.max(0.05, Math.min(0.6, source.analysis.rms)) * 100) / 100;
+  values.set(12, reference);
+  byId('controls').querySelector('[data-parameter-id="12"]')?.syncValue(reference);
+  audio.setParameter(12, reference);
+}
 function finishMainStateRestore(error = null) {
   if (!mainStateRestoring) return;
   mainStateRestoring = false;
@@ -605,6 +614,7 @@ function createSampleAnalysisWorker(temporalWorker) {
     }
     if (analyzed === loadedSineSource) {
       renderSineSourceAnalysis();
+      if (data.type === 'result') useAnalyzedPhraseReference(analyzed);
       if (sineTargetActive && analyzed.temporal) scheduleSineTarget();
       if (activeFamily === 'main-sample-blend' && analyzed.temporalError) finishMainStateRestore(analyzed.temporalError);
     }
@@ -874,6 +884,7 @@ function addSlider(parameter) {
     values.set(parameter.id, value);
     if (isFxFamily(activeFamily)) updateSlotControls();
     if (publish) audio.setParameter(parameter.id, value);
+    if (publish && activeFamily === 'main-sample-blend' && parameter.hostId === 'phrase-reference') phraseReferenceAuto = false;
     if (publish) updateCutoffRange();
     if (publish) updateTransferCurve();
     if (publish && ['sample-region', 'sample-instrument'].includes(activeFamily)) drawSampleWaveform();
@@ -1394,6 +1405,7 @@ function renderPrimitive(family) {
   primitivePicker.value = family;
   values = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
   if (family === 'main-sample-blend') {
+    phraseReferenceAuto = true;
     sineTargetActive = false;
     activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
     byId('sine-target-bars').replaceChildren();
@@ -1543,6 +1555,13 @@ function renderPrimitive(family) {
     else if (parameter.kind === 'toggle') addToggle(parameter);
     else if (parameter.kind === 'select') addSelect(parameter);
     else addSlider(parameter);
+  }
+  if (family === 'main-sample-blend') useAnalyzedPhraseReference(loadedSineSource);
+  if (family === 'main-sample-blend') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Phrase reference starts from the analyzed source level. Move its control to set a different reference; project state saves your choice.';
+    byId('controls').appendChild(help);
   }
   if (project.patch && patchedParameterValues.has(family)) {
     applyPatchParameterValues(activeProject, patchedParameterValues.get(family));
@@ -2002,6 +2021,7 @@ byId('sine-use-demo').addEventListener('click', () => {
   const demo = demoSample();
   finishMainStateRestore();
   loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' };
+  phraseReferenceAuto = true;
   sineTargetActive = false;
   if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
   byId('sine-target-bars').replaceChildren();
@@ -2020,6 +2040,7 @@ byId('sine-source-file').addEventListener('change', async (event) => {
     const decoded = await decodeFileSource(file);
     finishMainStateRestore();
     loadedSineSource = decoded;
+    phraseReferenceAuto = true;
     sineTargetActive = false;
     if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
     byId('sine-target-bars').replaceChildren();
@@ -2134,6 +2155,7 @@ byId('main-state-file').addEventListener('change', async (event) => {
     const contents = await file.text();
     if (activeFamily !== 'main-sample-blend' || audio.running) throw new Error('Project view changed while opening the state.');
     const state = parseMainSampleBlendState(JSON.parse(contents), mainSampleBlendProject);
+    phraseReferenceAuto = false;
     for (const parameter of mainSampleBlendProject.parameters) {
       const value = state.parameters[parameter.hostId];
       const control = byId('controls').querySelector(`[data-parameter-id="${parameter.id}"]`);

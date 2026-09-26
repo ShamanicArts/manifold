@@ -10,8 +10,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 13 {
-        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER".into());
+    if args.len() != 15 {
+        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE".into());
     }
     let sample: Vec<f32> = std::fs::read(&args[1])?
         .chunks_exact(4)
@@ -29,6 +29,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args[11].parse()?,
         args[12].parse()?,
     ];
+    let phrase_amount: f32 = args[13].parse()?;
+    let phrase_reference: f32 = args[14].parse()?;
     let analysis = analyze_temporal_stereo(&sample, 48_000.0, 0..sample_frames, 128)
         .ok_or("source analysis failed")?;
     let source = analysis.partials_at(0.5, 0.6, 0.5);
@@ -86,6 +88,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kind: NodeKind::SineBank { params: bank },
             },
             NodeSpec {
+                id: 7,
+                kind: NodeKind::EnvelopeControl {
+                    attack_ms: 5.0,
+                    release_ms: 80.0,
+                    sensitivity: 2.0,
+                    highpass_hz: 40.0,
+                    mode: 0,
+                },
+            },
+            NodeSpec {
+                id: 8,
+                kind: NodeKind::PhraseGain {
+                    amount: phrase_amount,
+                    reference: phrase_reference,
+                },
+            },
+            NodeSpec {
                 id: 6,
                 kind: NodeKind::PhaseVocoder { params: vocoder },
             },
@@ -110,12 +129,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 input_port: 0,
             },
             Connection {
+                from: 2,
+                to: 7,
+                input_port: 0,
+            },
+            Connection {
                 from: 6,
                 to: 4,
                 input_port: 0,
             },
             Connection {
                 from: 3,
+                to: 8,
+                input_port: 0,
+            },
+            Connection {
+                from: 7,
+                to: 8,
+                input_port: 1,
+            },
+            Connection {
+                from: 8,
                 to: 4,
                 input_port: 1,
             },

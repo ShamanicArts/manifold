@@ -608,6 +608,10 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         62 => NodeKind::PhaseVocoder {
             params: manifold_core::phase_vocoder::DEFAULTS,
         },
+        63 => NodeKind::PhraseGain {
+            amount: a,
+            reference: b,
+        },
         50 => NodeKind::Shimmer {
             params: manifold_core::shimmer::DEFAULTS,
         },
@@ -714,6 +718,8 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::Lfo { rate, .. }, 1) => *rate = value.clamp(0.05, 20.0),
             (NodeKind::ModulatedGain { base, .. }, 0) => *base = value.clamp(0.0, 2.0),
             (NodeKind::ModulatedGain { depth, .. }, 1) => *depth = value.clamp(-2.0, 2.0),
+            (NodeKind::PhraseGain { amount, .. }, 0) => *amount = value.clamp(0.0, 1.0),
+            (NodeKind::PhraseGain { reference, .. }, 1) => *reference = value.clamp(0.05, 0.6),
             (NodeKind::ModulatedSvf { depth_hz }, 3) => {
                 *depth_hz = value.clamp(-20_000.0, 20_000.0)
             }

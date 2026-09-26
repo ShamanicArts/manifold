@@ -31,6 +31,7 @@ pub mod noise;
 pub mod oscillator;
 pub mod phase_vocoder;
 pub mod phaser;
+pub mod phrase_gain;
 pub mod pitch_shifter;
 pub mod resonator;
 pub mod reverb;

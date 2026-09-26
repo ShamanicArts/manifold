@@ -32,14 +32,14 @@
   <nav class="toc" aria-label="Sections"><span>Manifold / 26.09.2026</span><a href="#architecture">Architecture</a><a href="#done">Built so far</a><a href="#proven">Evidence</a><a href="#next">In flight &amp; next</a></nav>
   <main class="main">
     <header class="hero">
-      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 109</div>
+      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 110</div>
       <h1>A portable sound engine is taking shape.</h1>
       <p class="hero-copy">The old JUCE and Lua project is being rebuilt as a Rust DSP core with a JavaScript browser workbench. The workbench is already useful for playing, inspecting, and comparing individual behaviors; the full legacy projects are still being assembled.</p>
-      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: Main sample synth reconstruction</span><span>Review scope: checkpoint 109 and the next workstream</span></div>
+      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: Main sample synth reconstruction</span><span>Review scope: checkpoint 110 and the next workstream</span></div>
       <div class="stats" aria-label="Current library figures">
         <div class="stat"><strong>54</strong><span>interactive workbench views</span><small>Many are individual primitives or small authored projects.</small></div>
-        <div class="stat"><strong>424</strong><span>checked-in offline comparison cases</span><small>424 audio cases, plus separate source-analysis and recipe captures.</small></div>
-        <div class="stat"><strong>116</strong><span>Rust tests passing</span><small>Workspace tests pass with the phase vocoder port.</small></div>
+        <div class="stat"><strong>426</strong><span>checked-in offline comparison cases</span><small>426 audio cases, plus separate source-analysis and recipe captures.</small></div>
+        <div class="stat"><strong>118</strong><span>Rust tests passing</span><small>Workspace tests pass with the Main phrase contour.</small></div>
       </div>
     </header>
 
@@ -67,7 +67,7 @@
       <div class="section-head"><span class="label">03</span><h2 id="proven-heading">What the evidence says</h2></div>
       <div class="evidence">
         <div class="evidence-row"><strong>Kernel behavior</strong><p>Checked-in comparison captures pair old C++ outputs with Rust/Wasm for isolated nodes, and native Rust with Rust/Wasm for new compositions. The workbench exposes waveform differences and case-level results.</p></div>
-        <div class="evidence-row"><strong>Latest completed slice</strong><p>The phase vocoder now has bin-map and stretch/resample modes in Rust/Wasm. Nine old C++ captures expose a stereo cursor bug in stretch mode; Rust corrects it while the workbench shows the difference. The Main sample blend now routes its sample branch through the vocoder, with seven native Rust ↔ Wasm graph captures and a version-2 state. <a href="/phase-vocoder-review.html">Inspect the vocoder review</a> or <a href="/main-sample-blend-review.html">inspect the branch review</a>.</p></div>
+        <div class="evidence-row"><strong>Latest completed slice</strong><p>The Main sample blend now derives an envelope from raw sample playback and applies the old phrase formula to its Add/Morph bank at sample rate. Original C++ follower meters match the Wasm graph for the source fixture. Nine native Rust ↔ Wasm graph cases cover sample, vocoder, and phrase paths, and version-3 state keeps both earlier study formats readable. <a href="/phase-vocoder-review.html">Inspect the vocoder review</a> or <a href="/main-sample-blend-review.html">inspect the branch review</a>.</p></div>
         <div class="evidence-row"><strong>Browser path</strong><p>The same Rust core compiles to Wasm and runs inside an AudioWorklet. Playable views, controlled offline runs, and downloadable project slices exercise this path on the served site.</p></div>
         <div class="evidence-row"><strong>Scope of claim</strong><p>The numbers establish many local behaviors and some small compositions. They do not establish parity for the complete old plug-in, its full Lua project graph, every preset, or a native plug-in host.</p></div>
       </div>
@@ -80,12 +80,13 @@
         <div class="step"><span class="label">Done · partial analysis</span><h3>Source-derived frames are reviewable</h3><p>The Rust/Wasm worker extracts bounded temporal frames with region and confidence metadata. Four C++ fixtures match; selected frames play through the Sine bank. Legacy pitch detection is still separate.</p></div>
         <div class="step"><span class="label">Done · Add and Morph targets</span><h3>Prepare and audition source-based spectra</h3><p>Wave recipes, temporal interpolation, Add, and Morph match 17 C++ cases. The browser exposes a playable prepared target, with fixed-size publication between audio blocks.</p></div>
         <div class="step"><span class="label">Done · first Main branch study</span><h3>Sample and prepared bank share one output</h3><p>One source feeds playback and prepared Add/Morph targets. Separate sample and bank gains allow branch audition, with four native-versus-Wasm graph comparisons.</p></div>
-        <div class="step"><span class="label">Done · Main blend state</span><h3>Save and reopen a source-backed study</h3><p>Versioned JSON holds the graph controls, target settings, and either the built-in source choice or bounded stereo PCM from a file. The target is rebuilt in the worker when reopened.</p></div>
+        <div class="step"><span class="label">Done · Main blend state</span><h3>Save and reopen a source-backed study</h3><p>Version-3 JSON holds 13 graph controls, target settings, and either the built-in source choice or bounded stereo PCM from a file. The target is rebuilt in the worker when reopened.</p></div>
         <div class="step"><span class="label">Done · phase vocoder</span><h3>Port both modes and expose the stereo correction</h3><p>Nine C++ captures and a playable workbench reveal where the Rust stereo clock intentionally differs. The sample branch now uses the vocoder in the Main study.</p></div>
-        <div class="step"><span class="label">Now · full sample project</span><h3>Build the remaining paths</h3><p>Reconstruct envelopes, directional crossfade routing, polyphonic voice behavior, and old/new project scenarios.</p></div>
+        <div class="step"><span class="label">Done · additive phrase contour</span><h3>Let the raw sample shape Add/Morph loudness</h3><p>A typed follower drives a prepared phrase gain node. The original C++ detector matches the Wasm graph; two new native/Wasm captures show full and half shaping. Earlier state files open with a neutral contour.</p></div>
+        <div class="step"><span class="label">Now · full sample project</span><h3>Build the remaining paths</h3><p>Reconstruct note ADSR, directional crossfade routing, polyphonic voice behavior, and old/new project scenarios.</p></div>
         <div class="step"><span class="label">Later · product surface</span><h3>Harden the shared project model and hosts</h3><p>Broaden state and preset handling, measure callback budgets in the browser, and package non-browser hosts against the same Rust engine.</p></div>
       </div>
-      <div class="actions"><a class="action primary" href="/?primitive=phase-vocoder">Play the phase vocoder</a><a class="action" href="/phase-vocoder-review.html">Inspect vocoder review</a><a class="action" href="/?primitive=main-sample-blend">Play the Main blend study</a></div>
+      <div class="actions"><a class="action primary" href="/?primitive=main-sample-blend">Play the Main blend study</a><a class="action" href="/main-sample-blend-review.html">Inspect phrase and branch review</a><a class="action" href="/?primitive=phase-vocoder">Play the phase vocoder</a></div>
     </section>
     <footer>Manifold v2 · review snapshot · the workbench continues to evolve after this page was written.</footer>
   </main>

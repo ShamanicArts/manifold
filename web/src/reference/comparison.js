@@ -634,12 +634,13 @@ function prepareSineBank(engine, selected) {
 }
 
 function prepareMainSampleBlend(engine, selected) {
-  const nodes = [[2, 26, 0, 0], [6, 62, 0, 0], [3, 61, 220, .5], [4, 9, 2, 1], [5, 7, 0, 0]];
-  const edges = [[2, 6, 0], [6, 4, 0], [3, 4, 1], [4, 5, 0]];
+  const nodes = [[2, 26, 0, 0], [6, 62, 0, 0], [7, 23, 5, 80],
+    [3, 61, 220, .5], [8, 63, ...selected.phrase], [4, 9, 2, 1], [5, 7, 0, 0]];
+  const edges = [[2, 6, 0], [2, 7, 0], [6, 4, 0], [3, 8, 0], [7, 8, 1], [8, 4, 1], [4, 5, 0]];
   if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Main blend graph begin failed');
   for (const node of nodes) if (engine.manifold_graph_node(...node) !== 1) throw new Error(`Main blend node ${node[0]} failed`);
   for (const edge of edges) if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Main blend edge failed');
-  for (const [node, id, value] of [[4, 1, selected.sampleGain], [4, 2, selected.bankGain], [3, 0, 220], [3, 1, .5], [3, 2, 1]]) {
+  for (const [node, id, value] of [[4, 1, selected.sampleGain], [4, 2, selected.bankGain], [3, 0, 220], [3, 1, .5], [3, 2, 1], [7, 2, 2], [7, 3, 40]]) {
     if (engine.manifold_graph_initial_parameter(node, id, value) !== 1) throw new Error('Main blend initial parameter failed');
   }
   selected.vocoder.forEach((value, id) => {
@@ -793,7 +794,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
   const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), block * 2);
   const outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), block * 2);
   const rendered = new Float32Array(input.length);
-  const meterCount = family === 'fft-spectrum' ? 33 : family === 'spectrum-analyzer' ? 8 : family === 'cv-rack' ? 4 : ['envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'stereo-widener', 'transient-shaper'].includes(family) ? 1 : 0;
+  const meterCount = family === 'fft-spectrum' ? 33 : family === 'spectrum-analyzer' ? 8 : family === 'cv-rack' ? 4 : ['envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'stereo-widener', 'transient-shaper'].includes(family) || family === 'main-sample-blend' && selected.followerMeter ? 1 : 0;
   const meterSnapshots = meterCount ? new Float32Array(Math.ceil(manifest.frames / block) * meterCount) : null;
   for (let offset = 0; offset < manifest.frames; offset += block) {
     const count = Math.min(block, manifest.frames - offset);
@@ -1005,7 +1006,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
     if (meterSnapshots) {
       const snapshot = offset / block * meterCount;
       for (let band = 0; band < meterCount; band++) {
-        const value = engine.manifold_get_node_meter(family === 'cv-rack' ? [4, 5, 7, 8][band] : 2, family === 'cv-rack' ? 0 : band);
+        const value = engine.manifold_get_node_meter(family === 'cv-rack' ? [4, 5, 7, 8][band] : family === 'main-sample-blend' ? 7 : 2, family === 'cv-rack' ? 0 : band);
         if (!Number.isFinite(value)) throw new Error(`Missing analyzer band ${band}`);
         meterSnapshots[snapshot + band] = value;
       }
@@ -1310,7 +1311,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                     : family === 'sample-instrument'
                       ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · root ${selected.parameters[0]} · keytrack ${selected.parameters[1]} · ${selected.events.length} note events · ${selected.changes.length} control changes`
                     : family === 'main-sample-blend'
-                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · ${selected.mode === 1 ? 'Add' : 'Morph'} target · ${selected.vocoder[3] ? `${selected.vocoder[0] ? 'HQ' : 'bin'} vocoder ${selected.vocoder[1]} st` : 'dry sample'} · sample gain ${selected.sampleGain} · bank gain ${selected.bankGain}`
+                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · ${selected.mode === 1 ? 'Add' : 'Morph'} target · ${selected.vocoder[3] ? `${selected.vocoder[0] ? 'HQ' : 'bin'} vocoder ${selected.vocoder[1]} st` : 'dry sample'} · sample gain ${selected.sampleGain} · bank gain ${selected.bankGain} · phrase contour ${selected.phrase[0]}`
                     : family === 'phase-vocoder'
                       ? `${selected.before[0] ? 'stretch + resample' : 'bin mapping'} · ${selected.before[1]} st · ${selected.before[2]}× time · ${1 << selected.before[4]} FFT · ${selected.before[3]} wet`
                     : family === 'fft-spectrum'

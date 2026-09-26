@@ -10,15 +10,24 @@
     "nodes": [
       { "id": 2, "type": "sample-region" },
       { "id": 6, "type": "phase-vocoder" },
+      { "id": 7, "type": "envelope-control", "a": 5, "b": 80 },
       { "id": 3, "type": "sine-bank" },
+      { "id": 8, "type": "phrase-gain", "a": 0, "b": 0.18 },
       { "id": 4, "type": "mixer", "a": 2, "b": 1 },
       { "id": 5, "type": "output" }
     ],
     "connections": [
       { "from": 2, "to": 6, "inputPort": 0 },
+      { "from": 2, "to": 7, "inputPort": 0 },
       { "from": 6, "to": 4, "inputPort": 0 },
-      { "from": 3, "to": 4, "inputPort": 1 },
+      { "from": 3, "to": 8, "inputPort": 0 },
+      { "from": 7, "to": 8, "inputPort": 1 },
+      { "from": 8, "to": 4, "inputPort": 1 },
       { "from": 4, "to": 5, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 7, "id": 2, "value": 2 },
+      { "nodeId": 7, "id": 3, "value": 40 }
     ]
   },
   "partials": {
@@ -37,6 +46,8 @@
     { "id": 7, "nodeId": 6, "nodeParameterId": 1, "hostId": "pvoc-pitch", "label": "Sample pitch shift", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "st" },
     { "id": 8, "nodeId": 6, "nodeParameterId": 2, "hostId": "pvoc-time", "label": "Sample time stretch", "kind": "float", "min": 0.25, "max": 4, "default": 1 },
     { "id": 9, "nodeId": 6, "nodeParameterId": 3, "hostId": "pvoc-mix", "label": "Pitch engine mix", "kind": "float", "min": 0, "max": 1, "default": 0 },
-    { "id": 10, "nodeId": 6, "nodeParameterId": 4, "hostId": "pvoc-order", "label": "FFT size", "kind": "select", "choices": ["512", "1024", "2048", "4096"], "choiceValues": [9, 10, 11, 12], "default": 11, "prepareOnly": true }
+    { "id": 10, "nodeId": 6, "nodeParameterId": 4, "hostId": "pvoc-order", "label": "FFT size", "kind": "select", "choices": ["512", "1024", "2048", "4096"], "choiceValues": [9, 10, 11, 12], "default": 11, "prepareOnly": true },
+    { "id": 11, "nodeId": 8, "nodeParameterId": 0, "hostId": "phrase-amount", "label": "Sample phrase contour", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 12, "nodeId": 8, "nodeParameterId": 1, "hostId": "phrase-reference", "label": "Phrase reference", "kind": "float", "min": 0.05, "max": 0.6, "default": 0.18 }
   ]
 }

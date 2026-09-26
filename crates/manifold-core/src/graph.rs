@@ -30,6 +30,7 @@ use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::phase_vocoder::{self, PhaseVocoder};
 use crate::phaser::Phaser;
+use crate::phrase_gain::PhraseGain;
 use crate::pitch_shifter::{self, PitchShifter};
 use crate::resonator::{self, Resonator};
 use crate::reverb::{self, Reverb};
@@ -284,6 +285,10 @@ pub enum NodeKind {
         base: f32,
         depth: f32,
     },
+    PhraseGain {
+        amount: f32,
+        reference: f32,
+    },
     Output,
 }
 
@@ -300,6 +305,7 @@ impl NodeKind {
             | Self::LinearBlend { .. }
             | Self::Crossfader { .. }
             | Self::ModulatedGain { .. }
+            | Self::PhraseGain { .. }
             | Self::ModulatedSvf { .. }
             | Self::SampleHold { .. }
             | Self::RingModulator { .. }
@@ -403,7 +409,10 @@ impl NodeKind {
                 | Self::AttenuverterBias { .. }
                 | Self::SampleHold { .. }
                 | Self::CvMix { .. }
-        ) || matches!(self, Self::ModulatedGain { .. } | Self::ModulatedSvf { .. }) && port == 1
+        ) || matches!(
+            self,
+            Self::ModulatedGain { .. } | Self::ModulatedSvf { .. } | Self::PhraseGain { .. }
+        ) && port == 1
         {
             SignalKind::Control
         } else {
@@ -458,6 +467,7 @@ impl NodeKind {
             Self::NoiseGenerator { level, color } => level.is_finite() && color.is_finite(),
             Self::Lfo { waveform, rate } => *waveform <= 2 && rate.is_finite(),
             Self::ModulatedGain { base, depth } => base.is_finite() && depth.is_finite(),
+            Self::PhraseGain { amount, reference } => amount.is_finite() && reference.is_finite(),
             Self::ModulatedSvf { depth_hz } => depth_hz.is_finite(),
             Self::SlewAudio { up, down } | Self::SlewControl { up, down } => {
                 up.is_finite() && down.is_finite()
@@ -679,6 +689,7 @@ enum Kernel {
         smoothing: f32,
         last_effective: f32,
     },
+    PhraseGain(PhraseGain),
     Output,
 }
 
@@ -964,6 +975,9 @@ impl Kernel {
                     last_effective: values[0],
                 }
             }
+            NodeKind::PhraseGain { amount, reference } => {
+                Self::PhraseGain(PhraseGain::new(sample_rate, *amount, *reference))
+            }
             NodeKind::Output => Self::Output,
         }
     }
@@ -1050,6 +1064,7 @@ impl Kernel {
                     value.clamp(-2.0, 2.0)
                 }
             }
+            (Self::PhraseGain(gain), id) => return gain.set_parameter(id, value),
             _ => return false,
         }
         true
@@ -1360,6 +1375,7 @@ impl ExecutionPlan {
                 Kernel::SampleHold(control) if band == 0 => Some(control.meter()),
                 Kernel::CvMix(control) if band == 0 => Some(control.meter()),
                 Kernel::ModulatedGain { last_effective, .. } if band == 0 => Some(*last_effective),
+                Kernel::PhraseGain(gain) if band == 0 => Some(gain.last_gain()),
                 Kernel::EnvelopeFollower(follower) if band == 0 => Some(follower.meter()),
                 Kernel::EnvelopeControl(follower) if band == 0 => Some(follower.meter()),
                 Kernel::Compressor(compressor) if band == 0 => Some(compressor.gain_reduction_db()),
@@ -2058,6 +2074,9 @@ impl ExecutionPlan {
                         left[frame] = from_left[frame] * effective;
                         right[frame] = from_right[frame] * effective;
                     }
+                }
+                Kernel::PhraseGain(gain) => {
+                    gain.process_planar([source(0, 0), source(0, 1)], source(1, 0), [left, right])
                 }
                 Kernel::Output => {
                     left.copy_from_slice(source(0, 0));

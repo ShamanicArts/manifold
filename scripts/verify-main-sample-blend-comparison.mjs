@@ -26,4 +26,9 @@ for (const selected of manifest.cases) {
   console.log(`${selected.id}: max Δ ${max.toExponential(3)}, native RMS ${rms.toFixed(4)}`);
   assert.ok(max < 2e-4, `${selected.id} diverged`);
   assert.ok(rms > .005, `${selected.id} silent`);
+  const cppMeter = floats(`${root}${selected.followerMeter}`);
+  assert.equal(wasm.meters.length, cppMeter.length);
+  const maxMeter = Math.max(...cppMeter.map((value, index) => Math.abs(value - wasm.meters[index])));
+  assert.ok(maxMeter < 2e-4, `${selected.id} C++ follower mismatch ${maxMeter}`);
+  if (selected.id === 'phrase-full') console.log(`Original C++ follower ↔ Wasm graph meter max Δ ${maxMeter.toExponential(3)}`);
 }

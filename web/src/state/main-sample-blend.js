@@ -1,6 +1,6 @@
-// Portable version-2 state for the authored Main sample blend study.
+// Portable version-3 state for the authored Main sample blend study.
 // User audio is embedded as bounded interleaved stereo float32 PCM.
-const VERSION = 2;
+const VERSION = 3;
 const MAX_FRAMES = 48_000 * 30;
 const MAX_LABEL = 200;
 
@@ -40,19 +40,20 @@ function decodePcm(encoded, frames) {
 }
 
 export function parseMainSampleBlendState(document, project) {
-  const firstStudy = document?.schemaVersion === 1;
-  if ((!firstStudy && document?.schemaVersion !== VERSION) || document?.projectId !== project.id) {
+  const savedVersion = document?.schemaVersion;
+  if (![1, 2, VERSION].includes(savedVersion) || document?.projectId !== project.id) {
     throw new Error('This state belongs to a different Manifold v2 project.');
   }
   const parameters = document.parameters;
-  const savedParameters = firstStudy ? project.parameters.filter((parameter) => parameter.id < 6) : project.parameters;
+  const savedCount = savedVersion === 1 ? 6 : savedVersion === 2 ? 11 : project.parameters.length;
+  const savedParameters = project.parameters.filter((parameter) => parameter.id < savedCount);
   if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)
     || Object.keys(parameters).length !== savedParameters.length) {
     throw new Error(`State needs ${savedParameters.length} parameter values.`);
   }
   const checkedParameters = {};
   for (const parameter of project.parameters) {
-    const value = firstStudy && parameter.id >= 6 ? parameter.default : parameters[parameter.hostId];
+    const value = parameter.id >= savedCount ? parameter.default : parameters[parameter.hostId];
     const valid = parameter.kind === 'toggle' ? value === 0 || value === 1
       : parameter.kind === 'select' || parameter.kind === 'choice'
         ? (parameter.choiceValues ?? parameter.choices.map((_, index) => index)).includes(value)

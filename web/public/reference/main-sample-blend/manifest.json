@@ -1,7 +1,8 @@
 {
   "version": 1,
   "reference": "native Rust Main sample blend study",
-  "sourceSha256": "dd99c3401bd73a5cdf79c3db4ea30eb0a9054d53849e2a3fc054e74f0b6ab998",
+  "sourceSha256": "875fb65d47414943cd96f784a61729a25854e9ece5926fdf054c7b96ec03b42b",
+  "legacyFollowerSha256": "6cfff621f1756af991de4765823a3da82ad9dc950d2008fb5e5846ceb6cb8f18",
   "sampleRate": 48000,
   "sampleSourceRate": 48000,
   "sampleFrames": 48000,
@@ -24,8 +25,13 @@
         0,
         11
       ],
+      "phrase": [
+        0,
+        0.18
+      ],
       "target": "sample-target.f32",
       "output": "sample.f32",
+      "followerMeter": "follower-meters-cpp.f32",
       "blockSize": 128
     },
     {
@@ -41,8 +47,13 @@
         0,
         11
       ],
+      "phrase": [
+        0,
+        0.18
+      ],
       "target": "add-target.f32",
       "output": "add.f32",
+      "followerMeter": "follower-meters-cpp.f32",
       "blockSize": 128
     },
     {
@@ -58,8 +69,13 @@
         0,
         11
       ],
+      "phrase": [
+        0,
+        0.18
+      ],
       "target": "morph-target.f32",
       "output": "morph.f32",
+      "followerMeter": "follower-meters-cpp.f32",
       "blockSize": 128
     },
     {
@@ -75,8 +91,13 @@
         0,
         11
       ],
+      "phrase": [
+        0,
+        0.18
+      ],
       "target": "blend-target.f32",
       "output": "blend.f32",
+      "followerMeter": "follower-meters-cpp.f32",
       "blockSize": 128
     },
     {
@@ -92,8 +113,13 @@
         1,
         11
       ],
+      "phrase": [
+        0,
+        0.18
+      ],
       "target": "pvoc-bin-target.f32",
       "output": "pvoc-bin.f32",
+      "followerMeter": "follower-meters-cpp.f32",
       "blockSize": 128
     },
     {
@@ -109,8 +135,13 @@
         1,
         11
       ],
+      "phrase": [
+        0,
+        0.18
+      ],
       "target": "pvoc-hq-target.f32",
       "output": "pvoc-hq.f32",
+      "followerMeter": "follower-meters-cpp.f32",
       "blockSize": 128
     },
     {
@@ -126,8 +157,57 @@
         1,
         11
       ],
+      "phrase": [
+        0,
+        0.18
+      ],
       "target": "pvoc-time-target.f32",
       "output": "pvoc-time.f32",
+      "followerMeter": "follower-meters-cpp.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "phrase-full",
+      "label": "Morph \u00b7 full sample phrase contour",
+      "mode": 2,
+      "sampleGain": 0.0,
+      "bankGain": 1.0,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
+      "phrase": [
+        1,
+        0.18
+      ],
+      "target": "phrase-full-target.f32",
+      "output": "phrase-full.f32",
+      "followerMeter": "follower-meters-cpp.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "phrase-half",
+      "label": "Morph \u00b7 half phrase contour",
+      "mode": 2,
+      "sampleGain": 0.0,
+      "bankGain": 1.0,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
+      "phrase": [
+        0.5,
+        0.18
+      ],
+      "target": "phrase-half-target.f32",
+      "output": "phrase-half.f32",
+      "followerMeter": "follower-meters-cpp.f32",
       "blockSize": 128
     }
   ]
