@@ -3,6 +3,7 @@ import filterProject from '../../projects/standalone-filter/project.json';
 import crossfaderProject from '../../projects/crossfader/project.json';
 import mixerProject from '../../projects/mixer/project.json';
 import voiceProject from '../../projects/voice-synth/project.json';
+import oscillatorProject from '../../projects/oscillator/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum } from './reference/plots.js';
@@ -35,6 +36,12 @@ const projects = {
     description: 'An eight voice Rust instrument with note events at audio sample offsets. Sine, saw, square and triangle share an attack, decay, sustain and release envelope.',
     signal: 'Event path: keyboard → timed note → voice synth → output',
   },
+  oscillator: {
+    project: oscillatorProject,
+    title: 'Oscillator',
+    description: 'The original standard waveform generator, ported to Rust with frequency and amplitude smoothing. This view covers five scalar modes.',
+    signal: 'Audio path: oscillator → stereo output',
+  },
 };
 const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
@@ -54,7 +61,7 @@ function addSlider(parameter) {
   input.step = '1';
   input.setAttribute('aria-label', parameter.label);
 
-  const isLog = parameter.hostId === 'cutoff';
+  const isLog = parameter.hostId === 'cutoff' || parameter.hostId === 'frequency';
   const precision = parameter.unit === 's' ? 1000 : 100;
   const toPhysical = (position) => isLog
     ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000))
@@ -82,6 +89,7 @@ function addSlider(parameter) {
 
 function renderPrimitive(family) {
   const { project, title, description, signal } = projects[family];
+  const isInstrument = project.signal.inputSource === 'none';
   activeFamily = family;
   values = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
   byId('module-title').textContent = title;
@@ -95,10 +103,11 @@ function renderPrimitive(family) {
   byId('controls').replaceChildren();
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' ? 'Waveform' : 'Mode';
-  byId('input-label').textContent = family === 'voice' ? 'Instrument' : 'Live input';
+  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' ? 'Waveform' : 'Mode';
+  byId('input-label').textContent = family === 'voice' || family === 'oscillator' ? 'Instrument' : 'Live input';
   byId('keyboard-section').hidden = family !== 'voice';
   if (mode) {
+    byId('modes').style.gridTemplateColumns = `repeat(${mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, value) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -115,10 +124,12 @@ function renderPrimitive(family) {
     });
   }
   for (const parameter of project.parameters.filter((item) => item.kind !== 'choice')) addSlider(parameter);
-  byId('source').hidden = family === 'voice';
-  toggle.textContent = family === 'voice' ? 'Start instrument' : 'Start audio';
+  byId('source').hidden = isInstrument;
+  toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
   document.querySelector('.measurement-hint').textContent = family === 'voice'
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
+    : family === 'oscillator'
+      ? 'Start the oscillator to view its spectrum. The C++ comparisons below run offline.'
     : 'Start audio to view the output spectrum. The reference cases below run offline.';
   if (family === 'svf') {
     const help = document.createElement('p');
@@ -217,19 +228,22 @@ toggle.addEventListener('click', async () => {
   try {
     if (audio.running) { releaseAllNotes(); await audio.stop(); }
     else await audio.start(byId('source').value, values, projects[activeFamily].project);
+    const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';
     toggle.textContent = audio.running
-      ? activeFamily === 'voice' ? 'Stop instrument' : 'Stop audio'
-      : activeFamily === 'voice' ? 'Start instrument' : 'Start audio';
+      ? isInstrument ? 'Stop instrument' : 'Stop audio'
+      : isInstrument ? 'Start instrument' : 'Start audio';
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' ? 'Spectrum of the oscillator.' : 'Spectrum of the processed live input.'
       : activeFamily === 'voice'
         ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
+        : activeFamily === 'oscillator'
+          ? 'Start the oscillator to view its spectrum. The C++ comparisons below run offline.'
         : 'Start audio to view the output spectrum. The reference cases below run offline.';
     if (spectrumFrame) cancelAnimationFrame(spectrumFrame);
     animateSpectrum();
   } catch (error) {
     status.textContent = String(error);
-    toggle.textContent = activeFamily === 'voice' ? 'Start instrument' : 'Start audio';
+    toggle.textContent = projects[activeFamily].project.signal.inputSource === 'none' ? 'Start instrument' : 'Start audio';
   } finally {
     toggle.disabled = false;
   }

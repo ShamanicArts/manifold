@@ -2,6 +2,7 @@
 
 pub mod events;
 pub mod graph;
+pub mod oscillator;
 pub mod voice;
 
 use std::f32::consts::PI;

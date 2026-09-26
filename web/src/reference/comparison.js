@@ -64,11 +64,22 @@ function prepareVoice(engine) {
   }
 }
 
+function prepareOscillator(engine, selected) {
+  if (engine.manifold_graph_begin(2, 1) !== 1
+    || engine.manifold_graph_node(1, 11, selected.frequencyBefore, selected.amplitudeBefore) !== 1
+    || engine.manifold_graph_node(2, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || engine.manifold_graph_initial_parameter(1, 0, selected.waveform) !== 1) {
+    throw new Error('Wasm oscillator graph failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
   if (family === 'mixer') prepareMixer(engine, selected);
   if (family === 'voice') prepareVoice(engine);
+  if (family === 'oscillator') prepareOscillator(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -93,6 +104,10 @@ function renderWasm(engine, family, manifest, input, selected) {
         for (const [id, value] of [[2, selected.gain2After], [34, selected.pan2After], [0, selected.masterAfter]]) {
           updated &= engine.manifold_set_node_parameter(3, id, value);
         }
+      }
+      if (family === 'oscillator') {
+        updated &= engine.manifold_set_node_parameter(1, 1, selected.frequencyAfter);
+        updated &= engine.manifold_set_node_parameter(1, 2, selected.amplitudeAfter);
       }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
@@ -193,7 +208,9 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
         ? `position ${selected.positionBefore} → ${selected.positionAfter} · curve ${selected.curve} · mix ${selected.mix}`
         : family === 'mixer'
           ? `${selected.buses} buses · B gain ${selected.gain2} → ${selected.gain2After} · B pan ${selected.pan2} → ${selected.pan2After} · master ${selected.master} → ${selected.masterAfter}`
-          : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
+          : family === 'oscillator'
+            ? `frequency ${selected.frequencyBefore} → ${selected.frequencyAfter} Hz · amplitude ${selected.amplitudeBefore} → ${selected.amplitudeAfter}`
+            : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
     byId('reference-title').textContent = family === 'voice' ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
     byId('plot-window').querySelector('[value="step"]').textContent = family === 'voice' ? 'Note event' : 'Parameter change';

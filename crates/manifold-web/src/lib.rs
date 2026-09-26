@@ -73,6 +73,11 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             master: b,
         },
         10 => NodeKind::VoiceSynth,
+        11 => NodeKind::Oscillator {
+            frequency: a,
+            amplitude: b,
+            waveform: 0,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -144,6 +149,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::Mixer { pans, .. }, id @ 33..=64) if (id as usize - 32) <= pans.len() => {
                 pans[id as usize - 33] = value.clamp(-1.0, 1.0)
             }
+            (NodeKind::Oscillator { waveform, .. }, 0) => {
+                *waveform = value.round().clamp(0.0, 4.0) as u32
+            }
+            (NodeKind::Oscillator { frequency, .. }, 1) => *frequency = value.clamp(1.0, 20_000.0),
+            (NodeKind::Oscillator { amplitude, .. }, 2) => *amplitude = value.clamp(0.0, 1.0),
             _ => return 0,
         }
         1

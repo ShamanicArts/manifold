@@ -3,6 +3,7 @@
 
 use crate::Filter;
 use crate::events::{EventError, EventKind, TimedEvent};
+use crate::oscillator::Oscillator;
 use crate::voice::VoiceSynth;
 use std::collections::{HashMap, VecDeque};
 
@@ -40,6 +41,11 @@ pub enum NodeKind {
     },
     Svf,
     VoiceSynth,
+    Oscillator {
+        frequency: f32,
+        amplitude: f32,
+        waveform: u32,
+    },
     Output,
 }
 
@@ -49,7 +55,8 @@ impl NodeKind {
             Self::InputRaw
             | Self::InputMonitor { .. }
             | Self::Constant { .. }
-            | Self::VoiceSynth => 0,
+            | Self::VoiceSynth
+            | Self::Oscillator { .. } => 0,
             Self::Sum2 { .. } | Self::LinearBlend { .. } | Self::Crossfader { .. } => 2,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. } | Self::Svf | Self::Output => 1,
@@ -80,6 +87,11 @@ impl NodeKind {
                     && gains.iter().all(|value| value.is_finite())
                     && pans.iter().all(|value| value.is_finite())
             }
+            Self::Oscillator {
+                frequency,
+                amplitude,
+                waveform,
+            } => frequency.is_finite() && amplitude.is_finite() && *waveform <= 4,
             _ => true,
         }
     }
@@ -150,6 +162,7 @@ enum Kernel {
     Mixer(MixerState),
     Svf(Filter),
     VoiceSynth(VoiceSynth),
+    Oscillator(Oscillator),
     Output,
 }
 
@@ -229,6 +242,16 @@ impl Kernel {
             }
             NodeKind::Svf => Self::Svf(Filter::new(sample_rate)),
             NodeKind::VoiceSynth => Self::VoiceSynth(VoiceSynth::new(sample_rate)),
+            NodeKind::Oscillator {
+                frequency,
+                amplitude,
+                waveform,
+            } => Self::Oscillator(Oscillator::new(
+                sample_rate,
+                *frequency,
+                *amplitude,
+                *waveform,
+            )),
             NodeKind::Output => Self::Output,
         }
     }
@@ -261,6 +284,7 @@ impl Kernel {
             }
             (Self::Svf(filter), id) => return filter.set_parameter(id, value),
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
+            (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             _ => return false,
         }
         true
@@ -615,6 +639,13 @@ impl ExecutionPlan {
                         right[frame] = value;
                     }
                 }
+                Kernel::Oscillator(oscillator) => {
+                    for frame in 0..frames {
+                        let value = oscillator.process_sample();
+                        left[frame] = value;
+                        right[frame] = value;
+                    }
+                }
                 Kernel::Output => {
                     left.copy_from_slice(source(0, 0));
                     right.copy_from_slice(source(0, 1));
@@ -899,6 +930,31 @@ mod tests {
             plan.process_with_events([&input, &input], [&mut left, &mut right], &invalid),
             Err(EventError::OffsetOutOfRange)
         );
+    }
+
+    #[test]
+    fn oscillator_phase_continues_across_block_boundaries() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(
+                    1,
+                    NodeKind::Oscillator {
+                        frequency: 440.0,
+                        amplitude: 0.5,
+                        waveform: 0,
+                    },
+                ),
+                node(2, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 2, 0)],
+        };
+        let mut whole = description.compile(48_000.0, 128).unwrap();
+        let mut split = description.compile(48_000.0, 128).unwrap();
+        let silence = [0.0; 128];
+        let [expected, _] = process(&mut whole, &silence, &silence);
+        let [first, _] = process(&mut split, &silence[..64], &silence[..64]);
+        let [second, _] = process(&mut split, &silence[..64], &silence[..64]);
+        assert_eq!(expected, [first, second].concat());
     }
 
     #[test]

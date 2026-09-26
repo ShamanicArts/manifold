@@ -1,0 +1,68 @@
+use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
+use std::{env, fs, process};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 11 {
+        eprintln!(
+            "usage: render_oscillator OUTPUT FREQ_BEFORE FREQ_AFTER AMP_BEFORE AMP_AFTER WAVEFORM SAMPLE_RATE BLOCK_SIZE STEP_FRAME FRAMES"
+        );
+        process::exit(2);
+    }
+    let freq_before: f32 = args[2].parse()?;
+    let freq_after: f32 = args[3].parse()?;
+    let amp_before: f32 = args[4].parse()?;
+    let amp_after: f32 = args[5].parse()?;
+    let waveform: u32 = args[6].parse()?;
+    let sample_rate: f32 = args[7].parse()?;
+    let block_size: usize = args[8].parse()?;
+    let step_frame: usize = args[9].parse()?;
+    let frames: usize = args[10].parse()?;
+    if block_size == 0 || frames == 0 || step_frame > frames || step_frame % block_size != 0 {
+        process::exit(2);
+    }
+    let description = GraphDescription {
+        nodes: vec![
+            NodeSpec {
+                id: 1,
+                kind: NodeKind::Oscillator {
+                    frequency: freq_before,
+                    amplitude: amp_before,
+                    waveform,
+                },
+            },
+            NodeSpec {
+                id: 2,
+                kind: NodeKind::Output,
+            },
+        ],
+        connections: vec![Connection {
+            from: 1,
+            to: 2,
+            input_port: 0,
+        }],
+    };
+    let mut plan = description.compile(sample_rate, block_size)?;
+    let mut output = vec![0.0f32; frames * 2];
+    for start in (0..frames).step_by(block_size) {
+        if start == step_frame {
+            plan.set_parameter(1, 1, freq_after);
+            plan.set_parameter(1, 2, amp_after);
+        }
+        let count = block_size.min(frames - start);
+        let silence = vec![0.0f32; count];
+        let mut left = vec![0.0f32; count];
+        let mut right = vec![0.0f32; count];
+        plan.process([&silence, &silence], [&mut left, &mut right]);
+        for frame in 0..count {
+            output[(start + frame) * 2] = left[frame];
+            output[(start + frame) * 2 + 1] = right[frame];
+        }
+    }
+    let mut encoded = Vec::with_capacity(output.len() * 4);
+    for sample in output {
+        encoded.extend_from_slice(&sample.to_le_bytes());
+    }
+    fs::write(&args[1], encoded)?;
+    Ok(())
+}

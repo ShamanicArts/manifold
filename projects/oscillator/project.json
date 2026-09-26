@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.oscillator-workbench",
+  "name": "Oscillator",
+  "source": "dsp/core/nodes/OscillatorNode.cpp scalar standard waveforms",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 1, "type": "oscillator", "a": 440, "b": 0.5 },
+      { "id": 2, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 1, "nodeParameterId": 0, "hostId": "waveform", "label": "Waveform", "kind": "choice", "choices": ["Sine", "Saw", "Square", "Triangle", "Blend"], "default": 0 },
+    { "id": 1, "nodeId": 1, "nodeParameterId": 1, "hostId": "frequency", "label": "Frequency", "kind": "float", "min": 20, "max": 16000, "default": 440, "unit": "Hz" },
+    { "id": 2, "nodeId": 1, "nodeParameterId": 2, "hostId": "amplitude", "label": "Amplitude", "kind": "float", "min": 0, "max": 1, "default": 0.5 }
+  ]
+}

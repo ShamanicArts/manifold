@@ -3,7 +3,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 legacy_dir="${MANIFOLD_LEGACY_DIR:-$repo_dir/../my-plugin}"
 reference_kind="${1:-svf}"
-if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" ]]; then
+if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" ]]; then
   echo "Unknown legacy reference: $reference_kind" >&2
   exit 2
 fi
@@ -13,9 +13,12 @@ if [[ "$reference_kind" == "svf" ]]; then
 elif [[ "$reference_kind" == "crossfader" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/CrossfaderNode.cpp"
   runner_file="$repo_dir/tools/legacy-crossfader-reference.cpp"
-else
+elif [[ "$reference_kind" == "mixer" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/MixerNode.cpp"
   runner_file="$repo_dir/tools/legacy-mixer-reference.cpp"
+else
+  source_file="$legacy_dir/dsp/core/nodes/OscillatorNode.cpp"
+  runner_file="$repo_dir/tools/legacy-oscillator-reference.cpp"
 fi
 if [[ ! -f "$source_file" ]]; then
   echo "Legacy Manifold source missing: $source_file" >&2
@@ -23,7 +26,7 @@ if [[ ! -f "$source_file" ]]; then
 fi
 mkdir -p "$repo_dir/target/legacy-reference"
 extra_flags=()
-if [[ "$reference_kind" == "mixer" ]]; then
+if [[ "$reference_kind" == "mixer" || "$reference_kind" == "oscillator" ]]; then
   mapfile -t extra_flags < <(pkg-config --cflags --libs libhwy | xargs -n1)
 fi
 c++ -std=c++17 -O2 -DNDEBUG=1 -D_NDEBUG=1 -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 \

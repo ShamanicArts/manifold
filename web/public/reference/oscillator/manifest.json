@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "reference": "legacy C++ OscillatorNode.cpp scalar standard waveform",
+  "sourceSha256": "1f5a246802aa9747d2aa300be8c29cc525497ac1cf08e5153bd3e55b8db77ee0",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 4096,
+  "stepFrame": 2048,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "sine",
+      "label": "Sine",
+      "waveform": 0,
+      "frequencyBefore": 440,
+      "frequencyAfter": 440,
+      "amplitudeBefore": 0.5,
+      "amplitudeAfter": 0.5,
+      "blockSize": 128,
+      "output": "sine.f32"
+    },
+    {
+      "id": "saw",
+      "label": "Saw",
+      "waveform": 1,
+      "frequencyBefore": 440,
+      "frequencyAfter": 440,
+      "amplitudeBefore": 0.5,
+      "amplitudeAfter": 0.5,
+      "blockSize": 128,
+      "output": "saw.f32"
+    },
+    {
+      "id": "square",
+      "label": "Square",
+      "waveform": 2,
+      "frequencyBefore": 440,
+      "frequencyAfter": 440,
+      "amplitudeBefore": 0.5,
+      "amplitudeAfter": 0.5,
+      "blockSize": 128,
+      "output": "square.f32"
+    },
+    {
+      "id": "triangle",
+      "label": "Triangle",
+      "waveform": 3,
+      "frequencyBefore": 440,
+      "frequencyAfter": 440,
+      "amplitudeBefore": 0.5,
+      "amplitudeAfter": 0.5,
+      "blockSize": 128,
+      "output": "triangle.f32"
+    },
+    {
+      "id": "blend",
+      "label": "Sine/saw blend",
+      "waveform": 4,
+      "frequencyBefore": 440,
+      "frequencyAfter": 440,
+      "amplitudeBefore": 0.5,
+      "amplitudeAfter": 0.5,
+      "blockSize": 128,
+      "output": "blend.f32"
+    },
+    {
+      "id": "sine-sweep",
+      "label": "Sine \u00b7 frequency/level sweep",
+      "waveform": 0,
+      "frequencyBefore": 220,
+      "frequencyAfter": 880,
+      "amplitudeBefore": 0.25,
+      "amplitudeAfter": 0.8,
+      "blockSize": 128,
+      "output": "sine-sweep.f32"
+    },
+    {
+      "id": "saw-64",
+      "label": "Saw \u00b7 64-frame blocks",
+      "waveform": 1,
+      "frequencyBefore": 220,
+      "frequencyAfter": 660,
+      "amplitudeBefore": 0.5,
+      "amplitudeAfter": 0.3,
+      "blockSize": 64,
+      "output": "saw-64.f32"
+    },
+    {
+      "id": "triangle-512",
+      "label": "Triangle \u00b7 512-frame blocks",
+      "waveform": 3,
+      "frequencyBefore": 220,
+      "frequencyAfter": 660,
+      "amplitudeBefore": 0.5,
+      "amplitudeAfter": 0.3,
+      "blockSize": 512,
+      "output": "triangle-512.f32"
+    }
+  ]
+}
