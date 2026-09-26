@@ -1,13 +1,85 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "15b06e086fe1efb8f85c01fdd62694a8880998a4be513851c5514b2453100cac",
+  "sourceSha256": "687fc3756625af1655518f72d89b128540f928083c7920486aa90e1397940846",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "chorus-modulation",
+      "label": "Chorus rate and depth",
+      "before": [
+        0,
+        0.8,
+        0.25,
+        0.2,
+        0.2,
+        0.6,
+        0.4
+      ],
+      "after": [
+        0,
+        0.8,
+        0.85,
+        0.9,
+        0.4,
+        0.8,
+        0.9
+      ],
+      "blockSize": 128,
+      "output": "chorus-modulation.f32"
+    },
+    {
+      "id": "filter-to-chorus",
+      "label": "Switch filter to chorus",
+      "before": [
+        6,
+        0.8,
+        0.5,
+        0.4,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        0,
+        0.8,
+        0.5,
+        0.5,
+        0.2,
+        0.6,
+        0.4
+      ],
+      "blockSize": 128,
+      "output": "filter-to-chorus.f32"
+    },
+    {
+      "id": "chorus-to-delay",
+      "label": "Switch chorus to delay",
+      "before": [
+        0,
+        0.8,
+        0.5,
+        0.5,
+        0.2,
+        0.6,
+        0.4
+      ],
+      "after": [
+        8,
+        0.8,
+        0.1,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "chorus-to-delay.f32"
+    },
     {
       "id": "dry-default",
       "label": "Dry default, then wet filter",

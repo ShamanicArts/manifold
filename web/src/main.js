@@ -129,7 +129,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Compressor, SVF Filter, Stereo Delay, and Limiter are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Compressor, SVF Filter, Stereo Delay, and Limiter are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -549,7 +549,8 @@ function addSlider(parameter) {
 function updateSlotControls() {
   if (activeFamily !== 'standalone-fx') return;
   const selected = values.get(0);
-  const labels = selected === 3
+  const labels = selected === 0 ? { 2: 'Rate', 3: 'Depth', 4: 'Feedback', 5: 'Spread', 6: 'Voices' }
+    : selected === 3
     ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
     : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
       : selected === 15 ? { 2: 'Threshold', 3: 'Pre gain', 4: 'Release', 5: 'Soft clip' }
@@ -562,7 +563,12 @@ function updateSlotControls() {
     const value = values.get(id);
     wrapper.querySelector('span').textContent = labels[id];
     wrapper.querySelector('input').setAttribute('aria-label', labels[id]);
-    wrapper.querySelector('output').value = selected === 3
+    wrapper.querySelector('output').value = selected === 0
+      ? id === 2 ? `${(0.08 + 2.32 * value).toFixed(2)} Hz`
+        : id === 3 ? (0.05 + 0.95 * value).toFixed(2)
+          : id === 4 ? (0.35 * value).toFixed(2)
+            : id === 5 ? value.toFixed(2) : `${Math.min(4, Math.floor(1 + 5 * value + 0.5))} voices`
+      : selected === 3
       ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
         : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
           : id === 4 ? `${(1 + 39 * value).toFixed(1)} ms`
@@ -725,6 +731,7 @@ function renderPrimitive(family) {
   primitivePicker.value = family;
   values = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
   if (family === 'standalone-fx') slotValuesByType = new Map([
+    [0, [0.5, 0.5, 0.2, 0.6, 0.4]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
@@ -792,7 +799,7 @@ function renderPrimitive(family) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 3: 'Comp', 6: 'SVF', 8: 'Delay', 15: 'Limit' })[value] : choice;
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 3: 'Comp', 6: 'SVF', 8: 'Delay', 15: 'Limit' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {

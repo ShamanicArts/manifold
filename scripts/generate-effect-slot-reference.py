@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit native Rust reference samples for Standalone FX type IDs 3, 6, 8 and 15."""
+"""Emit native Rust reference samples for Standalone FX type IDs 0, 3, 6, 8 and 15."""
 import hashlib
 import json
 import math
@@ -12,7 +12,7 @@ OUT = ROOT / "web/public/reference/standalone-fx"
 OUT.mkdir(parents=True, exist_ok=True)
 subprocess.run(["cargo", "build", "-p", "manifold-core", "--example", "render_effect_slot"], cwd=ROOT, check=True)
 runner = ROOT / "target/debug/examples/render_effect_slot"
-sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/effect_slot.rs", "crates/manifold-core/src/stereo_delay.rs", "crates/manifold-core/src/compressor.rs", "crates/manifold-core/src/limiter.rs", "crates/manifold-core/src/lib.rs", "projects/standalone-fx-slice/project.json", "crates/manifold-core/examples/render_effect_slot.rs"]]
+sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/effect_slot.rs", "crates/manifold-core/src/stereo_delay.rs", "crates/manifold-core/src/chorus.rs", "crates/manifold-core/src/compressor.rs", "crates/manifold-core/src/limiter.rs", "crates/manifold-core/src/lib.rs", "projects/standalone-fx-slice/project.json", "crates/manifold-core/examples/render_effect_slot.rs"]]
 source_hash = hashlib.sha256(b"".join(path.read_bytes() for path in sources)).hexdigest()
 frames, sample_rate, step = 16384, 48000, 8192
 with (OUT / "input.f32").open("wb") as output:
@@ -23,8 +23,11 @@ with (OUT / "input.f32").open("wb") as output:
             left += .3 * math.sin(2 * math.pi * frame * 220 / sample_rate)
             right += .24 * math.sin(2 * math.pi * frame * 330 / sample_rate)
         output.write(struct.pack("<ff", left, right))
-# type, mix, p/0..p/4. Type 3=Compressor, 6=SVF, 8=Stereo Delay, 15=Limiter.
+# type, mix, p/0..p/4. Type 0=Chorus, 3=Compressor, 6=SVF, 8=Stereo Delay, 15=Limiter.
 specs = [
+    ("chorus-modulation", "Chorus rate and depth", [0, .8, .25, .2, .2, .6, .4], [0, .8, .85, .9, .4, .8, .9], 128),
+    ("filter-to-chorus", "Switch filter to chorus", [6, .8, .5, .4, .1, .5, .5], [0, .8, .5, .5, .2, .6, .4], 128),
+    ("chorus-to-delay", "Switch chorus to delay", [0, .8, .5, .5, .2, .6, .4], [8, .8, .1, .4, .5, .5, .5], 64),
     ("dry-default", "Dry default, then wet filter", [6, 0, .5, .4, .1, .5, .5], [6, .8, .5, .4, .1, .5, .5], 128),
     ("filter-sweep", "Filter cutoff and drive", [6, .75, .25, .3, .1, .5, .5], [6, .75, .8, .7, .5, .5, .5], 128),
     ("delay-feedback", "Delay time and feedback", [8, .8, .06, .25, .5, .5, .5], [8, .8, .15, .65, .5, .5, .5], 64),

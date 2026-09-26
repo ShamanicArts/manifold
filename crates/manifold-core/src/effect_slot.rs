@@ -1,11 +1,13 @@
-//! Standalone FX slot slice: legacy IDs 3, 6, 8, and 15.
+//! Standalone FX slot slice: legacy IDs 0, 3, 6, 8, and 15.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
+use crate::chorus::{self, Chorus};
 use crate::compressor::{self, Compressor};
 use crate::limiter::{self, Limiter};
 use crate::stereo_delay::{self, StereoDelay};
 
+pub const CHORUS_TYPE: u32 = 0;
 pub const COMPRESSOR_TYPE: u32 = 3;
 pub const SVF_TYPE: u32 = 6;
 pub const DELAY_TYPE: u32 = 8;
@@ -16,7 +18,7 @@ pub fn supported_type(value: f32) -> Option<u32> {
         return None;
     }
     match value as u32 {
-        COMPRESSOR_TYPE | SVF_TYPE | DELAY_TYPE | LIMITER_TYPE => Some(value as u32),
+        CHORUS_TYPE | COMPRESSOR_TYPE | SVF_TYPE | DELAY_TYPE | LIMITER_TYPE => Some(value as u32),
         _ => None,
     }
 }
@@ -26,6 +28,7 @@ pub struct EffectSlot {
     mix: f32,
     target_mix: f32,
     mix_smoothing: f32,
+    chorus_params: [f32; 5],
     svf_params: [f32; 5],
     delay_params: [f32; 5],
     compressor_params: [f32; 5],
@@ -33,6 +36,7 @@ pub struct EffectSlot {
     limiter_pre_gain: f32,
     limiter_pre_target: f32,
     sample_rate: f32,
+    chorus: Chorus,
     filter: Filter,
     delay: StereoDelay,
     compressor: Compressor,
@@ -40,7 +44,13 @@ pub struct EffectSlot {
 }
 
 impl EffectSlot {
-    pub fn new(sample_rate: f32, selected: u32, mix: f32, params: [f32; 5]) -> Self {
+    pub fn new(
+        sample_rate: f32,
+        max_frames: usize,
+        selected: u32,
+        mix: f32,
+        params: [f32; 5],
+    ) -> Self {
         let mut delay_settings = stereo_delay::defaults();
         delay_settings[3] = 0.12;
         delay_settings[7] = 1.0;
@@ -52,6 +62,7 @@ impl EffectSlot {
             target_mix: mix.clamp(0.0, 1.0),
             mix_smoothing: ((1.0 - (-1.0 / (0.01 * sample_rate as f64)).exp()) as f32)
                 .clamp(0.0001, 1.0),
+            chorus_params: [0.5, 0.5, 0.2, 0.6, 0.4],
             svf_params: [0.5, 0.4, 0.1, 0.5, 0.5],
             delay_params: [0.3, 0.3, 0.5, 0.5, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
@@ -59,12 +70,14 @@ impl EffectSlot {
             limiter_pre_gain: 1.02,
             limiter_pre_target: 1.02,
             sample_rate,
+            chorus: Chorus::new(sample_rate, max_frames, chorus::defaults()),
             filter: Filter::new(sample_rate),
             delay: StereoDelay::new(sample_rate, delay_settings),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
             limiter: Limiter::new(sample_rate, limiter::defaults()),
         };
         let selected_params = match selected {
+            CHORUS_TYPE => &mut slot.chorus_params,
             COMPRESSOR_TYPE => &mut slot.compressor_params,
             SVF_TYPE => &mut slot.svf_params,
             DELAY_TYPE => &mut slot.delay_params,
@@ -75,12 +88,36 @@ impl EffectSlot {
             *destination = value.clamp(0.0, 1.0);
         }
         slot.apply_svf();
+        slot.rebuild_chorus();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
         slot.rebuild_compressor();
         slot.rebuild_limiter();
         slot
+    }
+
+    fn chorus_settings(&self) -> [f32; chorus::PARAM_COUNT] {
+        let [rate, depth, feedback, spread, voices] = self.chorus_params;
+        [
+            0.08 + 2.32 * rate,
+            0.05 + 0.95 * depth,
+            (1.0 + 5.0 * voices + 0.5).floor().clamp(1.0, 4.0),
+            spread,
+            0.35 * feedback,
+            0.0,
+            1.0,
+        ]
+    }
+
+    fn rebuild_chorus(&mut self) {
+        self.chorus.reconfigure(self.chorus_settings());
+    }
+
+    fn apply_chorus(&mut self) {
+        for (id, value) in self.chorus_settings().into_iter().enumerate() {
+            self.chorus.set_parameter(id as u32, value);
+        }
     }
 
     fn rebuild_limiter(&mut self) {
@@ -158,6 +195,7 @@ impl EffectSlot {
                 if self.selected != selected {
                     self.selected = selected;
                     match selected {
+                        CHORUS_TYPE => self.rebuild_chorus(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -175,6 +213,7 @@ impl EffectSlot {
             1 => self.target_mix = value.clamp(0.0, 1.0),
             2..=6 => {
                 let params = match self.selected {
+                    CHORUS_TYPE => &mut self.chorus_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -183,6 +222,7 @@ impl EffectSlot {
                 };
                 params[id as usize - 2] = value.clamp(0.0, 1.0);
                 match self.selected {
+                    CHORUS_TYPE => self.apply_chorus(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -199,6 +239,9 @@ impl EffectSlot {
         let [in_l, in_r] = input;
         let [out_l, out_r] = output;
         match self.selected {
+            CHORUS_TYPE => self
+                .chorus
+                .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             COMPRESSOR_TYPE => self
                 .compressor
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
@@ -222,10 +265,10 @@ impl EffectSlot {
             }
             _ => unreachable!("slot type validated at graph compilation"),
         }
-        let wet_gain = if self.selected == DELAY_TYPE {
-            1.1
-        } else {
-            1.0
+        let wet_gain = match self.selected {
+            CHORUS_TYPE => 1.4,
+            DELAY_TYPE => 1.1,
+            _ => 1.0,
         };
         for frame in 0..in_l.len() {
             self.mix += (self.target_mix - self.mix) * self.mix_smoothing;
@@ -242,8 +285,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn chorus_slot_maps_normalized_controls_and_wet_gain() {
+        let rate = 48_000.0;
+        let mut slot = EffectSlot::new(rate, 128, CHORUS_TYPE, 1.0, [0.5, 0.5, 0.2, 0.6, 0.4]);
+        let mut chorus = Chorus::new(rate, 128, [1.24, 0.525, 3.0, 0.6, 0.07, 0.0, 1.0]);
+        let mut input_l = [0.0; 1024];
+        let input_r = [0.0; 1024];
+        input_l[0] = 0.5;
+        let mut slot_l = [0.0; 1024];
+        let mut slot_r = [0.0; 1024];
+        let mut chorus_l = [0.0; 1024];
+        let mut chorus_r = [0.0; 1024];
+        slot.process_planar([&input_l, &input_r], [&mut slot_l, &mut slot_r]);
+        chorus.process_planar([&input_l, &input_r], [&mut chorus_l, &mut chorus_r]);
+        for (actual, wet) in slot_l.iter().zip(chorus_l.iter()) {
+            assert!((actual - wet * 1.4).abs() < 1e-6);
+        }
+        assert!(slot.set_parameter(0, SVF_TYPE as f32));
+        assert!(slot.set_parameter(0, CHORUS_TYPE as f32));
+    }
+
+    #[test]
     fn selection_rejects_unsupported_types_and_keeps_dry_path() {
-        let mut slot = EffectSlot::new(48_000.0, SVF_TYPE, 0.0, [0.5, 0.4, 0.1, 0.5, 0.5]);
+        let mut slot = EffectSlot::new(48_000.0, 128, SVF_TYPE, 0.0, [0.5, 0.4, 0.1, 0.5, 0.5]);
         assert!(!slot.set_parameter(0, 2.0));
         assert!(slot.set_parameter(0, DELAY_TYPE as f32));
         let left = [0.5, -0.2, 0.1];
@@ -257,7 +321,7 @@ mod tests {
 
     #[test]
     fn returning_to_delay_discards_its_old_tail() {
-        let mut slot = EffectSlot::new(1000.0, DELAY_TYPE, 1.0, [0.0, 0.6, 0.5, 0.5, 0.5]);
+        let mut slot = EffectSlot::new(1000.0, 128, DELAY_TYPE, 1.0, [0.0, 0.6, 0.5, 0.5, 0.5]);
         let mut pulse = [0.0; 20];
         pulse[0] = 1.0;
         let silence = [0.0; 50];
@@ -278,7 +342,7 @@ mod tests {
     fn compressor_slot_maps_normalized_controls_to_legacy_node() {
         let sample_rate = 48_000.0;
         let params = [0.2, 0.6, 0.1, 0.3, 0.5];
-        let mut slot = EffectSlot::new(sample_rate, COMPRESSOR_TYPE, 1.0, params);
+        let mut slot = EffectSlot::new(sample_rate, 128, COMPRESSOR_TYPE, 1.0, params);
         let mut settings = compressor::defaults();
         settings[0] = -40.0 + 38.0 * params[0];
         settings[1] = 1.5 + 18.5 * params[1];
@@ -303,7 +367,7 @@ mod tests {
     fn limiter_slot_applies_smoothed_pre_gain_before_peak_detection() {
         let sample_rate = 48_000.0;
         let params = [0.2, 0.7, 0.4, 0.3, 0.5];
-        let mut slot = EffectSlot::new(sample_rate, LIMITER_TYPE, 1.0, params);
+        let mut slot = EffectSlot::new(sample_rate, 128, LIMITER_TYPE, 1.0, params);
         let pre_gain = 0.6 + 1.4 * params[1];
         let mut settings = limiter::defaults();
         settings[0] = -20.0 + 19.0 * params[0];

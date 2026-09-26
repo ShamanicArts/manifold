@@ -30,6 +30,8 @@ pub struct Chorus {
     smooth: f32,
     phase: [[f32; 4]; 2],
     delay: [Vec<f32>; 2],
+    valid: Vec<u32>,
+    generation: u32,
     write_index: usize,
 }
 
@@ -56,8 +58,32 @@ impl Chorus {
             smooth: smooth.clamp(0.0001, 1.0),
             phase,
             delay: [vec![0.0; size], vec![0.0; size]],
+            valid: vec![0; size],
+            generation: 1,
             write_index: 0,
         }
+    }
+
+    /// Restart a selected slot using its prepared delay storage.
+    pub fn reconfigure(&mut self, params: [f32; PARAM_COUNT]) {
+        let mut target = DEFAULTS;
+        for (id, value) in params.into_iter().enumerate() {
+            set_value(&mut target, id as u32, value);
+        }
+        self.target = target;
+        self.current = [target[0], target[1], target[3], target[4], target[6]];
+        for channel in 0..2 {
+            for voice in 0..4 {
+                self.phase[channel][voice] =
+                    ((voice as f32 * 0.23) + if channel == 0 { 0.0 } else { 0.25 }) % 1.0;
+            }
+        }
+        self.generation = self.generation.wrapping_add(1);
+        if self.generation == 0 {
+            self.valid.fill(0);
+            self.generation = 1;
+        }
+        self.write_index = 0;
     }
 
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
@@ -76,8 +102,17 @@ impl Chorus {
         let first = position as usize;
         let next = (first + 1) % size;
         let fraction = position - first as f32;
-        let a = self.delay[channel][first];
-        a + (self.delay[channel][next] - a) * fraction
+        let a = if self.valid[first] == self.generation {
+            self.delay[channel][first]
+        } else {
+            0.0
+        };
+        let b = if self.valid[next] == self.generation {
+            self.delay[channel][next]
+        } else {
+            0.0
+        };
+        a + (b - a) * fraction
     }
 
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
@@ -139,6 +174,7 @@ impl Chorus {
                 self.delay[channel][self.write_index] =
                     input_frame[channel] + wet[channel] * self.current[3];
             }
+            self.valid[self.write_index] = self.generation;
             self.write_index += 1;
             if self.write_index >= self.delay[0].len() {
                 self.write_index = 0;
@@ -164,5 +200,29 @@ mod tests {
         assert!(chorus.set_parameter(2, 4.0));
         assert!(chorus.set_parameter(5, 1.0));
         assert!(!chorus.set_parameter(7, 0.0));
+    }
+
+    #[test]
+    fn reconfigure_discards_old_delay_without_reallocating() {
+        let mut reused = Chorus::new(48_000.0, 128, defaults());
+        let original_capacity = reused.delay[0].capacity();
+        let mut impulse = [0.0; 1024];
+        impulse[0] = 1.0;
+        let silence = [0.0; 1024];
+        let mut discarded_l = [0.0; 1024];
+        let mut discarded_r = [0.0; 1024];
+        reused.process_planar([&impulse, &silence], [&mut discarded_l, &mut discarded_r]);
+        let settings = [1.2, 0.8, 4.0, 0.5, 0.2, 1.0, 1.0];
+        reused.reconfigure(settings);
+        let mut fresh = Chorus::new(48_000.0, 128, settings);
+        let mut reused_l = [0.0; 1024];
+        let mut reused_r = [0.0; 1024];
+        let mut fresh_l = [0.0; 1024];
+        let mut fresh_r = [0.0; 1024];
+        reused.process_planar([&silence, &silence], [&mut reused_l, &mut reused_r]);
+        fresh.process_planar([&silence, &silence], [&mut fresh_l, &mut fresh_r]);
+        assert_eq!(reused_l, fresh_l);
+        assert_eq!(reused_r, fresh_r);
+        assert_eq!(reused.delay[0].capacity(), original_capacity);
     }
 }

@@ -541,7 +541,13 @@ impl Kernel {
                 selected,
                 mix,
                 params,
-            } => Self::EffectSlot(EffectSlot::new(sample_rate, *selected, *mix, *params)),
+            } => Self::EffectSlot(EffectSlot::new(
+                sample_rate,
+                max_frames,
+                *selected,
+                *mix,
+                *params,
+            )),
             NodeKind::LoopCapture {
                 capacity_seconds,
                 mix,
