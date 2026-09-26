@@ -7,6 +7,7 @@ pub mod distortion;
 pub mod effect_slot;
 pub mod envelope;
 pub mod envelope_follower;
+pub mod eq8;
 pub mod events;
 pub mod fft_spectrum;
 pub mod graph;

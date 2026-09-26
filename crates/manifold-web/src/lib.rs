@@ -282,6 +282,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             params[1] = b;
             NodeKind::Chorus { params }
         }
+        36 => NodeKind::Eq8 {
+            params: manifold_core::eq8::defaults(),
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -385,6 +388,7 @@ pub extern "C" fn manifold_graph_initial_parameter(
                     return 0;
                 }
             }
+            (NodeKind::Eq8 { params }, id @ 0..=41) => params[id as usize] = value,
             (NodeKind::EffectSlot { selected, .. }, 0) => {
                 let Some(kind) = effect_slot::supported_type(value) else {
                     return 0;

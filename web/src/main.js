@@ -11,6 +11,7 @@ import modulationProject from '../../projects/modulated-gain/project.json';
 import distortionProject from '../../projects/distortion/project.json';
 import phaserProject from '../../projects/phaser/project.json';
 import chorusProject from '../../projects/chorus/project.json';
+import eq8Project from '../../projects/standalone-eq8/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -108,6 +109,12 @@ const projects = {
     title: 'Stereo chorus',
     description: 'Blend dry stereo audio with up to four modulated delay voices. Choose a sine or triangle LFO, then set depth, spread, feedback, and mix.',
     signal: 'Live path: input → stereo chorus → output',
+  },
+  eq8: {
+    project: eq8Project,
+    title: 'Standalone EQ8',
+    description: 'Eight independently switchable bands from the original Standalone EQ project. Each band can be a bell, shelf, pass filter, notch, or band pass.',
+    signal: 'Live path: input → eight serial EQ bands → output gain / mix → stereo output',
   },
   compressor: {
     project: compressorProject,
@@ -507,7 +514,7 @@ function addSlider(parameter) {
     : 1000 * (value - parameter.min) / (parameter.max - parameter.min);
   const format = (value) => parameter.hostId === 'root-note' ? `${value} MIDI` : parameter.hostId === 'unison' || parameter.hostId === 'voices' ? `${value} voices` : parameter.unit === 'ct' ? `${Number(value).toFixed(1)} ct` : parameter.unit === 'Hz'
     ? parameter.hostId === 'rate' ? `${Number(value).toFixed(2)} Hz` : `${Math.round(value).toLocaleString()} Hz`
-    : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : parameter.unit === 'degrees' ? `${Math.round(value)}°` : Number(value).toFixed(2);
+    : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : parameter.unit === 'dB' ? `${Number(value).toFixed(1)} dB` : parameter.unit === 'degrees' ? `${Math.round(value)}°` : Number(value).toFixed(2);
   const sync = (position, publish) => {
     const value = toPhysical(position);
     input.value = String(Math.round(position));
@@ -662,6 +669,7 @@ function updateLoopToggles() {
 function addSelect(parameter) {
   const wrapper = document.createElement('label');
   wrapper.className = 'compact-select';
+  wrapper.dataset.parameterId = String(parameter.id);
   const title = document.createElement('span');
   title.textContent = parameter.label;
   const select = document.createElement('select');
@@ -675,6 +683,43 @@ function addSelect(parameter) {
   });
   wrapper.append(title, select);
   byId('controls').appendChild(wrapper);
+}
+
+function renderEq8Controls() {
+  const controls = byId('controls');
+  const tabs = document.createElement('div');
+  tabs.className = 'eq-band-tabs';
+  tabs.setAttribute('role', 'tablist');
+  tabs.setAttribute('aria-label', 'EQ band');
+  const panels = [];
+  const buttons = [];
+  for (let band = 0; band < 8; band++) {
+    const panel = document.createElement('div');
+    panel.className = 'eq-band-panel';
+    panel.id = `eq-band-${band + 1}`;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-label', `Band ${band + 1}`);
+    for (let id = band * 5; id < band * 5 + 5; id++) {
+      const control = controls.querySelector(`[data-parameter-id="${id}"]`);
+      if (control) panel.appendChild(control);
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    const frequency = eq8Project.parameters[band * 5 + 2].default;
+    button.textContent = `${band + 1} · ${frequency >= 1000 ? `${frequency / 1000}k` : frequency}`;
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', panel.id);
+    button.setAttribute('aria-label', `Band ${band + 1}, ${eq8Project.parameters[band * 5 + 2].default} hertz`);
+    button.addEventListener('click', () => {
+      panels.forEach((item, index) => { item.hidden = index !== band; });
+      buttons.forEach((item, index) => item.setAttribute('aria-selected', String(index === band)));
+    });
+    panels.push(panel);
+    buttons.push(button);
+    tabs.appendChild(button);
+  }
+  controls.prepend(tabs, ...panels);
+  buttons[0].click();
 }
 
 function renderPatchEditor(project) {
@@ -840,6 +885,7 @@ function renderPrimitive(family) {
     else if (parameter.kind === 'select') addSelect(parameter);
     else addSlider(parameter);
   }
+  if (family === 'eq8') renderEq8Controls();
   updateSlotControls();
   updateLoopToggles();
   if (family === 'loop-capture') {

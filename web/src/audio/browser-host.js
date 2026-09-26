@@ -71,7 +71,7 @@ export class BrowserAudioHost {
           }
         };
       });
-      const prepareValues = project.parameters.filter((parameter) => parameter.prepareOnly)
+      const prepareValues = project.parameters.filter((parameter) => parameter.prepareOnly || project.id === 'manifold.standalone-eq8')
         .map((parameter) => ({ nodeId: parameter.nodeId, id: parameter.nodeParameterId,
           value: values.get(parameter.id) ?? parameter.default }));
       const graph = { ...project.signal,

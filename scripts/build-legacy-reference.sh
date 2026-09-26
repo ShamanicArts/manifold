@@ -3,7 +3,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 legacy_dir="${MANIFOLD_LEGACY_DIR:-$repo_dir/../my-plugin}"
 reference_kind="${1:-svf}"
-if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" && "$reference_kind" != "limiter" && "$reference_kind" != "slew-audio" && "$reference_kind" != "phaser" && "$reference_kind" != "chorus" ]]; then
+if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" && "$reference_kind" != "limiter" && "$reference_kind" != "slew-audio" && "$reference_kind" != "phaser" && "$reference_kind" != "chorus" && "$reference_kind" != "eq8" ]]; then
   echo "Unknown legacy reference: $reference_kind" >&2
   exit 2
 fi
@@ -34,6 +34,9 @@ elif [[ "$reference_kind" == "phaser" ]]; then
 elif [[ "$reference_kind" == "chorus" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/ChorusNode.cpp"
   runner_file="$repo_dir/tools/legacy-chorus-reference.cpp"
+elif [[ "$reference_kind" == "eq8" ]]; then
+  source_file="$legacy_dir/dsp/core/nodes/EQ8Node.cpp"
+  runner_file="$repo_dir/tools/legacy-eq8-reference.cpp"
 elif [[ "$reference_kind" == "spectrum-analyzer" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/SpectrumAnalyzerNode.cpp"
   runner_file="$repo_dir/tools/legacy-spectrum-analyzer-reference.cpp"

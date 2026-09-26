@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust sample-rate envelope ducking graph",
-  "sourceSha256": "9b43fb785dc198af3bbf2e9780b60f1d892369088760799d968951286dc4093b",
+  "sourceSha256": "dfacdf7dc4e793bbf10ec00ceed3f0010bc26d15355035fb3092ac67edd3f06c",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 8192,
