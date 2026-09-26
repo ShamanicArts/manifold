@@ -10,11 +10,12 @@ export function midiAvailability() {
 }
 
 export class BrowserMidiInput {
-  constructor(onNote, onDisconnect, onStatus, onControl = () => {}) {
+  constructor(onNote, onDisconnect, onStatus, onControl = () => {}, onPitchBend = () => {}) {
     this.onNote = onNote;
     this.onDisconnect = onDisconnect;
     this.onStatus = onStatus;
     this.onControl = onControl;
+    this.onPitchBend = onPitchBend;
     this.access = null;
     this.bound = new Map();
   }
@@ -72,6 +73,7 @@ export class BrowserMidiInput {
         if (status === 0x90 && velocity > 0) this.onNote(id, 'on', channel, note, velocity, event.timeStamp);
         else if (status === 0x80 || status === 0x90 && velocity === 0) this.onNote(id, 'off', channel, note, 0, event.timeStamp);
         else if (status === 0xb0 && note === 64) this.onControl(id, channel, velocity >= 64, event.timeStamp);
+        else if (status === 0xe0) this.onPitchBend(id, channel, note | (velocity << 7), event.timeStamp);
       };
       this.bound.set(id, input);
     }

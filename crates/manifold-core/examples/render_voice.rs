@@ -4,9 +4,9 @@ use std::{env, fs, process};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    if args.len() < 11 || (args.len() - 11) % 4 != 0 {
+    if args.len() < 11 || (args.len() - 11) % 5 != 0 {
         eprintln!(
-            "usage: render_voice OUTPUT SAMPLE_RATE FRAMES BLOCK WAVEFORM ATTACK DECAY SUSTAIN RELEASE LEVEL [FRAME KIND NOTE VELOCITY]..."
+            "usage: render_voice OUTPUT SAMPLE_RATE FRAMES BLOCK WAVEFORM ATTACK DECAY SUSTAIN RELEASE LEVEL [FRAME KIND CHANNEL NOTE VELOCITY]..."
         );
         process::exit(2);
     }
@@ -21,22 +21,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|value| value.parse())
         .collect::<Result<_, _>>()?;
     let mut events = Vec::new();
-    for event in args[11..].chunks_exact(4) {
+    for event in args[11..].chunks_exact(5) {
         let frame: usize = event[0].parse()?;
         let kind: u32 = event[1].parse()?;
-        let note: u8 = event[2].parse()?;
-        let velocity: u8 = event[3].parse()?;
+        let channel: u8 = event[2].parse()?;
+        let note: u8 = event[3].parse()?;
+        let velocity: u8 = event[4].parse()?;
         if frame >= frames {
             process::exit(2);
         }
         let kind = match kind {
             0 => EventKind::NoteOn {
-                channel: 0,
+                channel,
                 note,
                 velocity,
             },
-            1 => EventKind::NoteOff { channel: 0, note },
+            1 => EventKind::NoteOff { channel, note },
             2 => EventKind::AllNotesOff,
+            3 => EventKind::PitchBend {
+                channel,
+                value: ((velocity as u16) << 7) | note as u16,
+            },
             _ => process::exit(2),
         };
         events.push(TimedEvent {

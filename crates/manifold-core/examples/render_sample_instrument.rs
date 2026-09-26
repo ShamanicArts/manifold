@@ -97,6 +97,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     1 => EventKind::NoteOff { channel, note },
                     2 => EventKind::AllNotesOff,
+                    3 => EventKind::PitchBend {
+                        channel,
+                        value: ((velocity as u16) << 7) | note as u16,
+                    },
                     _ => panic!("invalid event kind"),
                 },
             })

@@ -40,6 +40,8 @@ specs = [
     ("unison", "Detuned stereo unison", defaults[:11] + [3, 35, .75], [(0, 0, 0, 60, 127), (8192, 0, 0, 67, 100)], []),
     ("unison-change", "Unison count on next note", defaults, [(0, 0, 0, 60, 127), (8192, 0, 0, 67, 127)], [(8192, 11, 4), (8192, 12, 50), (8192, 13, 1)]),
     ("one-shot-unison", "One shot with detuned subvoices", defaults[:5] + [1] + defaults[6:11] + [4, 100, 1], [(0, 0, 0, 60, 127)], []),
+    ("bend-active", "Active sample bends one octave", defaults, [(0, 0, 0, 60, 127), (4157, 3, 0, 0, 96), (8213, 3, 0, 0, 64)], []),
+    ("bend-channel", "Bend only the addressed channel", defaults, [(0, 0, 0, 60, 127), (1, 0, 1, 67, 127), (4157, 3, 0, 0, 96), (8213, 3, 1, 0, 32)], []),
 ]
 cases = []
 for case_id, label, parameters, events, changes in specs:

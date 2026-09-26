@@ -960,6 +960,35 @@ function showPedalEvent(channel, down, forwarded) {
   list.prepend(item);
   while (list.childElementCount > 6) list.lastChild.remove();
 }
+function showBendEvent(channel, value, source, forwarded) {
+  const list = byId('midi-events');
+  if (list.firstChild?.textContent === 'Play the keyboard to inspect note events.') list.replaceChildren();
+  const item = document.createElement('li');
+  item.textContent = `Bend ${((value - 8192) * 12 / 8192).toFixed(1)} st · ch ${channel + 1} · ${source}${forwarded ? '' : ' · received only'}`;
+  list.prepend(item);
+  while (list.childElementCount > 6) list.lastChild.remove();
+}
+function sendPitchBend(channel, value, source, eventTimeMs = null) {
+  const target = noteTarget();
+  const forwarded = target !== null && audio.running;
+  if (forwarded) {
+    const lsb = value & 127;
+    const msb = value >> 7;
+    if (eventTimeMs === null) audio.sendEvent(target, 3, lsb, msb, 0, channel);
+    else audio.sendMidiEvent(target, 3, lsb, msb, channel, eventTimeMs);
+  }
+  showBendEvent(channel, value, source, forwarded);
+}
+const pitchBend = byId('pitch-bend');
+pitchBend.addEventListener('input', () => {
+  const semitones = Number(pitchBend.value);
+  byId('pitch-bend-value').textContent = `${semitones.toFixed(1)} st`;
+  sendPitchBend(15, Math.max(0, Math.min(16383, Math.round(8192 + semitones * 8192 / 12))), 'Keyboard');
+});
+byId('pitch-bend-center').addEventListener('click', () => {
+  pitchBend.value = '0';
+  pitchBend.dispatchEvent(new Event('input'));
+});
 function noteOn(note) {
   const target = noteTarget();
   if (target === null || !audio.running || pressedNotes.has(note)) return;
@@ -1028,7 +1057,9 @@ const midiBrowserUrl = byId('midi-browser-url');
 midiBrowserUrl.addEventListener('click', () => midiBrowserUrl.select());
 const midiInput = new BrowserMidiInput(receiveMidiNote, releaseDevice, (message) => {
   byId('midi-status').textContent = message;
-}, receiveMidiSustain);
+}, receiveMidiSustain, (_deviceId, channel, value, eventTimeMs) => {
+  sendPitchBend(channel, value, 'MIDI', eventTimeMs);
+});
 const midiUnavailable = midiAvailability();
 if (midiUnavailable) {
   midiToggle.disabled = true;
@@ -1212,8 +1243,11 @@ toggle.addEventListener('click', async () => {
         drawSampleWaveform();
       }
     }
-    else await audio.start(byId('source').value, values, activeProject,
-      ['sample-region', 'sample-instrument'].includes(activeFamily) ? loadedSample ?? demoSample() : null);
+    else {
+      await audio.start(byId('source').value, values, activeProject,
+        ['sample-region', 'sample-instrument'].includes(activeFamily) ? loadedSample ?? demoSample() : null);
+      if (noteTarget() !== null && Number(pitchBend.value) !== 0) pitchBend.dispatchEvent(new Event('input'));
+    }
     const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';
     toggle.textContent = audio.running
       ? isInstrument ? 'Stop instrument' : 'Stop audio'

@@ -82,6 +82,7 @@ impl SampleRegion {
         match event {
             EventKind::NoteOn { velocity, .. } if velocity > 0 => self.trigger(),
             EventKind::AllNotesOff => self.playing = false,
+            EventKind::PitchBend { .. } => {}
             _ => {}
         }
     }

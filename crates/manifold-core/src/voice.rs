@@ -48,6 +48,7 @@ impl Default for Voice {
 pub struct VoiceSynth {
     sample_rate: f32,
     voices: [Voice; MAX_VOICES],
+    bend_ratio: [f64; 16],
     serial: u64,
     waveform: u32,
     attack: f32,
@@ -62,6 +63,7 @@ impl VoiceSynth {
         Self {
             sample_rate,
             voices: [Voice::default(); MAX_VOICES],
+            bend_ratio: [1.0; 16],
             serial: 0,
             waveform: 0,
             attack: 0.010,
@@ -148,6 +150,12 @@ impl VoiceSynth {
                     }
                 }
             }
+            EventKind::PitchBend { channel, value } => {
+                if channel < 16 && value < 16384 {
+                    self.bend_ratio[channel as usize] =
+                        2.0f64.powf((value as f64 - 8192.0) / 8192.0);
+                }
+            }
         }
     }
 
@@ -213,7 +221,8 @@ impl VoiceSynth {
             };
             sum += wave * voice.velocity * voice.level;
             count += 1;
-            voice.phase += TAU * voice.frequency / self.sample_rate as f64;
+            voice.phase += TAU * voice.frequency * self.bend_ratio[voice.channel as usize]
+                / self.sample_rate as f64;
             if voice.phase >= TAU {
                 voice.phase -= TAU;
             }
@@ -268,5 +277,43 @@ mod tests {
         assert_eq!(synth.active_voices(), 8);
         assert!(!synth.voices.iter().any(|voice| voice.note == 60));
         assert!(synth.voices.iter().any(|voice| voice.note == 68));
+    }
+
+    #[test]
+    fn pitch_bend_follows_channel_and_applies_to_future_notes() {
+        let mut synth = VoiceSynth::new(48_000.0);
+        synth.event(EventKind::PitchBend {
+            channel: 1,
+            value: 12288,
+        });
+        for channel in [0, 1] {
+            synth.event(EventKind::NoteOn {
+                channel,
+                note: 69,
+                velocity: 100,
+            });
+        }
+        assert_eq!(synth.bend_ratio[0], 1.0);
+        assert!((synth.bend_ratio[1] - 2.0f64.sqrt()).abs() < 1e-12);
+        synth.process_sample();
+        let before: Vec<f64> = synth
+            .voices
+            .iter()
+            .filter(|voice| voice.stage != Stage::Off)
+            .map(|voice| voice.phase)
+            .collect();
+        assert!((before[1] / before[0] - 2.0f64.sqrt()).abs() < 1e-12);
+        synth.event(EventKind::PitchBend {
+            channel: 1,
+            value: 8192,
+        });
+        synth.process_sample();
+        let after: Vec<f64> = synth
+            .voices
+            .iter()
+            .filter(|voice| voice.stage != Stage::Off)
+            .map(|voice| voice.phase)
+            .collect();
+        assert!((after[1] - before[1] - (after[0] - before[0])).abs() < 1e-12);
     }
 }

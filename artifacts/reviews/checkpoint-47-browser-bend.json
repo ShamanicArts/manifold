@@ -1,0 +1,18 @@
+[
+  {
+    "family": "voice",
+    "slider": "Bend 6.0 st · ch 16 · Keyboard",
+    "hardware": "Bend 6.0 st · ch 2 · MIDI",
+    "centered": "Bend 0.0 st · ch 16 · Keyboard",
+    "status": "Audio running · instrument · 48 kHz",
+    "errors": []
+  },
+  {
+    "family": "sample-instrument",
+    "slider": "Bend 6.0 st · ch 16 · Keyboard",
+    "hardware": "Bend 6.0 st · ch 2 · MIDI",
+    "centered": "Bend 0.0 st · ch 16 · Keyboard",
+    "status": "Audio running · instrument · 48 kHz",
+    "errors": []
+  }
+]

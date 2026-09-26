@@ -23,6 +23,7 @@ struct VoiceSlot {
 pub struct SampleInstrument {
     players: [[SampleRegion; MAX_UNISON]; VOICES],
     slots: [VoiceSlot; VOICES],
+    bend_ratio: [f64; 16],
     serial: u64,
     output_rate: f32,
     root_note: u8,
@@ -44,6 +45,7 @@ impl SampleInstrument {
                 std::array::from_fn(|_| SampleRegion::new(sample_rate))
             }),
             slots: [VoiceSlot::default(); VOICES],
+            bend_ratio: [1.0; 16],
             serial: 0,
             output_rate: sample_rate,
             root_note: 60,
@@ -115,7 +117,12 @@ impl SampleInstrument {
                 if self.slots[index].active {
                     let count = self.slots[index].unison_count as usize;
                     for subvoice in 0..count {
-                        let speed = self.note_speed(self.slots[index].note, subvoice, count);
+                        let speed = self.note_speed(
+                            self.slots[index].channel,
+                            self.slots[index].note,
+                            subvoice,
+                            count,
+                        );
                         self.players[index][subvoice].set_parameter(0, speed);
                     }
                 }
@@ -146,9 +153,10 @@ impl SampleInstrument {
         })
     }
 
-    fn note_speed(&self, note: u8, subvoice: usize, count: usize) -> f32 {
+    fn note_speed(&self, channel: u8, note: u8, subvoice: usize, count: usize) -> f32 {
         let detune = Self::unison_offset(subvoice, count) as f64 * self.detune_cents as f64;
         (self.speed as f64
+            * self.bend_ratio[channel as usize]
             * 2.0f64.powf(
                 (note as f64 - self.root_note as f64) * self.key_track as f64 / 12.0
                     + detune / 1200.0,
@@ -200,7 +208,7 @@ impl SampleInstrument {
                     serial: self.serial,
                 };
                 for subvoice in 0..MAX_UNISON {
-                    let speed = self.note_speed(note, subvoice, self.unison_count);
+                    let speed = self.note_speed(channel, note, subvoice, self.unison_count);
                     let player = &mut self.players[index][subvoice];
                     player.set_parameter(6, 0.0);
                     if subvoice < self.unison_count {
@@ -235,6 +243,26 @@ impl SampleInstrument {
                     slot.active = false;
                     for player in group {
                         player.set_parameter(6, 0.0);
+                    }
+                }
+            }
+            EventKind::PitchBend { channel, value } => {
+                if channel < 16 && value < 16384 {
+                    self.bend_ratio[channel as usize] =
+                        2.0f64.powf((value as f64 - 8192.0) / 8192.0);
+                    for index in 0..VOICES {
+                        if self.slots[index].active && self.slots[index].channel == channel {
+                            let count = self.slots[index].unison_count as usize;
+                            for subvoice in 0..count {
+                                let speed = self.note_speed(
+                                    channel,
+                                    self.slots[index].note,
+                                    subvoice,
+                                    count,
+                                );
+                                self.players[index][subvoice].set_parameter(0, speed);
+                            }
+                        }
                     }
                 }
             }
@@ -319,6 +347,35 @@ mod tests {
         assert!(instrument.load_stereo(vec![1.0; 16], 8000.0));
         instrument.set_parameter(2, 1.0);
         instrument
+    }
+
+    #[test]
+    fn pitch_bend_retunes_only_matching_sample_channel() {
+        let mut instrument = constant_instrument();
+        for channel in [0, 1] {
+            instrument.event(EventKind::NoteOn {
+                channel,
+                note: 60,
+                velocity: 127,
+            });
+        }
+        instrument.event(EventKind::PitchBend {
+            channel: 1,
+            value: 12288,
+        });
+        instrument.process_sample();
+        let first = instrument.players[0][0].meter(0).unwrap();
+        let second = instrument.players[1][0].meter(0).unwrap();
+        assert!((second / first - 2.0f32.sqrt()).abs() < 1e-6);
+        instrument.event(EventKind::PitchBend {
+            channel: 0,
+            value: 4096,
+        });
+        instrument.process_sample();
+        let first_after = instrument.players[0][0].meter(0).unwrap();
+        let second_after = instrument.players[1][0].meter(0).unwrap();
+        assert!(((first_after - first) / first - 1.0 / 2.0f32.sqrt()).abs() < 1e-6);
+        assert!(((second_after - second) / second - 1.0).abs() < 1e-6);
     }
 
     #[test]

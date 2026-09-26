@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust shared-sample eight-voice instrument",
-  "sourceSha256": "254e14ee8560841274b48666d0b0cbb8abe1e710a3bbe27db37d88e80a6a0ec1",
+  "sourceSha256": "77c91d45c9965ce889d15735d65c4a07a5076e7294b5730dbf5f499580ee3ca9",
   "sampleRate": 48000,
   "sampleSourceRate": 32000,
   "sampleFrames": 4096,
@@ -524,6 +524,105 @@
       "changes": [],
       "blockSize": 128,
       "output": "one-shot-unison.f32"
+    },
+    {
+      "id": "bend-active",
+      "label": "Active sample bends one octave",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08,
+        0.01,
+        1,
+        0,
+        0
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          4157,
+          3,
+          0,
+          0,
+          96
+        ],
+        [
+          8213,
+          3,
+          0,
+          0,
+          64
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "bend-active.f32"
+    },
+    {
+      "id": "bend-channel",
+      "label": "Bend only the addressed channel",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08,
+        0.01,
+        1,
+        0,
+        0
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          1,
+          0,
+          1,
+          67,
+          127
+        ],
+        [
+          4157,
+          3,
+          0,
+          0,
+          96
+        ],
+        [
+          8213,
+          3,
+          1,
+          0,
+          32
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "bend-channel.f32"
     }
   ]
 }

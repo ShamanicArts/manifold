@@ -702,6 +702,10 @@ pub extern "C" fn manifold_event_push(
             note: note as u8,
         },
         2 => EventKind::AllNotesOff,
+        3 if channel <= 15 && note <= 127 && velocity <= 127 => EventKind::PitchBend {
+            channel: channel as u8,
+            value: ((velocity << 7) | note) as u16,
+        },
         _ => return 0,
     };
     ENGINE.with(|slot| {

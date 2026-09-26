@@ -583,7 +583,7 @@ function renderWasm(engine, family, manifest, input, selected) {
     if (family === 'voice') {
       for (const event of selected.events) {
         if (event.frame >= offset && event.frame < offset + count) {
-          if (engine.manifold_event_push(1, event.frame - offset, event.kind, 0, event.note, event.velocity) !== 1) {
+          if (engine.manifold_event_push(1, event.frame - offset, event.kind, event.channel ?? 0, event.note, event.velocity) !== 1) {
             throw new Error('Wasm voice event failed');
           }
         }
