@@ -1,0 +1,7 @@
+# Checkpoint 81 · native Rust host-switch slot
+
+The [native comparison](checkpoint-81-host-slot-metrics.json) now tests a third routing behavior: `EffectSlot::new_host_switch`. It runs all visited kernels like the prepared persistent mode, but type selection snaps Gain gates and wet trim as the old graph runtime does on `prepare`. Chorus resets on graph reprepare; StereoDelay retains its ring while refreshing smoothed targets. The [Rust renderer](../../crates/manifold-core/examples/render_fx_tail.rs) and [comparison script](../../scripts/verify-fx-runtime-slot.py) use the old [branch graph capture](checkpoint-80.md) as reference.
+
+Across 32,768 stereo frames, native Rust differs from the reconstructed old C++ graph by at most **`4.47e-8`**, RMS **`1.42e-9`**. The first Chorus switch sample is zero in both; the returning Delay sample at frame 16,384 is `-0.02956056` in both, and frame 17,180 retains the delayed signal. All **87 Rust workspace tests** pass.
+
+This is distinct from the earlier prepared route and from the cheaper selected-only route. Only Chorus and StereoDelay have graph-reprepare behavior verified here. The C++ reference reconstructs Lua's branch layout using the old graph compiler and scalar nodes but does not run the Lua binding or deferred worker. The new mode is native Rust only at this checkpoint; exposing it in Wasm and a separate browser comparison is next.

@@ -33,8 +33,13 @@ fn main() -> std::io::Result<()> {
     let mode = args.next();
     let reset_on_reselect = mode.as_deref() == Some("--reset-on-reselect");
     let mut output = BufWriter::new(File::create(path)?);
-    if mode.as_deref() == Some("--slot") {
-        let mut slot = EffectSlot::new_legacy(48_000.0, 128, 8, 1.0, [0.0, 0.6, 0.5, 0.5, 0.5]);
+    if mode.as_deref() == Some("--slot") || mode.as_deref() == Some("--host-slot") {
+        let constructor = if mode.as_deref() == Some("--host-slot") {
+            EffectSlot::new_host_switch
+        } else {
+            EffectSlot::new_legacy
+        };
+        let mut slot = constructor(48_000.0, 128, 8, 1.0, [0.0, 0.6, 0.5, 0.5, 0.5]);
         let mut in_l = [0.0; 128];
         let mut in_r = [0.0; 128];
         let mut out_l = [0.0; 128];

@@ -78,6 +78,7 @@ struct LegacyState {
     routing: LegacyFxRouting,
     visited: [bool; 21],
     scratch: Box<[EffectScratch; 21]>,
+    host_switch: bool,
 }
 
 pub struct EffectSlot {
@@ -268,7 +269,26 @@ impl EffectSlot {
             routing: LegacyFxRouting::new(sample_rate, selected, mix).expect("validated FX slot"),
             visited,
             scratch: Box::new(std::array::from_fn(|_| EffectScratch::new(max_frames))),
+            host_switch: false,
         });
+        slot
+    }
+
+    /// Reconstruct the old graph-runtime switch boundary. The gain behavior
+    /// and Chorus/Delay reprepare rules are captured against the old C++ host
+    /// graph; other effect types remain subject to their own preparation audit.
+    pub fn new_host_switch(
+        sample_rate: f32,
+        max_frames: usize,
+        selected: u32,
+        mix: f32,
+        params: [f32; 5],
+    ) -> Self {
+        let mut slot = Self::new_legacy(sample_rate, max_frames, selected, mix, params);
+        slot.legacy
+            .as_mut()
+            .expect("legacy routing prepared")
+            .host_switch = true;
         slot
     }
 
@@ -713,9 +733,14 @@ impl EffectSlot {
                 };
                 if self.selected != selected {
                     self.selected = selected;
+                    let host_switch = self.legacy.as_ref().is_some_and(|state| state.host_switch);
                     if let Some(legacy) = self.legacy.as_mut() {
                         legacy.visited[selected as usize] = true;
-                        legacy.routing.select(selected);
+                        if legacy.host_switch {
+                            legacy.routing.select_reprepared(selected);
+                        } else {
+                            legacy.routing.select(selected);
+                        }
                     } else {
                         match selected {
                             CHORUS_TYPE => self.rebuild_chorus(),
@@ -746,6 +771,22 @@ impl EffectSlot {
                             }
                             LIMITER_TYPE => self.rebuild_limiter(),
                             _ => unreachable!(),
+                        }
+                    }
+                    if host_switch {
+                        // The old runtime prepares every compiled node on
+                        // each type change. Chorus clears its delay and
+                        // phase; StereoDelay retains its ring at 48 kHz.
+                        let visited = &self
+                            .legacy
+                            .as_ref()
+                            .expect("legacy routing prepared")
+                            .visited;
+                        if visited[CHORUS_TYPE as usize] {
+                            self.chorus.reconfigure(self.chorus_settings());
+                        }
+                        if visited[DELAY_TYPE as usize] {
+                            self.delay.reprepare_targets_preserving_tail();
                         }
                     }
                 }

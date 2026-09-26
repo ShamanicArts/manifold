@@ -98,6 +98,12 @@ impl StereoDelay {
         self.dormant_bypass = false;
     }
 
+    /// Old StereoDelayNode::prepare refreshes smoothed values but retains an
+    /// existing delay buffer when the sample rate and buffer size are stable.
+    pub fn reprepare_targets_preserving_tail(&mut self) {
+        self.current.copy_from_slice(&self.target[..12]);
+    }
+
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let [in_l, in_r] = input;
         let [out_l, out_r] = output;

@@ -1,0 +1,36 @@
+{
+  "reference": "Old C++ scalar FX branch GraphRuntime swaps versus native Rust host-switch EffectSlot",
+  "sampleRate": 48000,
+  "frames": 32768,
+  "blockSize": 128,
+  "whole": {
+    "max": 4.470348358154297e-08,
+    "rms": 1.420437080186698e-09
+  },
+  "beforeChorus": {
+    "max": 2.2351741790771484e-08,
+    "rms": 1.122474457602814e-09
+  },
+  "chorus": {
+    "max": 4.470348358154297e-08,
+    "rms": 1.7371662482903229e-09
+  },
+  "returnedDelay": {
+    "max": 1.4901161193847656e-08,
+    "rms": 1.3771111997415894e-09
+  },
+  "boundaryLeft": {
+    "8192": {
+      "cpp": 0.0,
+      "rust": 0.0
+    },
+    "16384": {
+      "cpp": -0.02956055849790573,
+      "rust": -0.02956055849790573
+    },
+    "17180": {
+      "cpp": 0.03256411850452423,
+      "rust": 0.03256412222981453
+    }
+  }
+}

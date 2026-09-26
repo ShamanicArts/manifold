@@ -66,6 +66,18 @@ impl LegacyFxRouting {
         true
     }
 
+    /// Model a graph-runtime reprepare after a type change. Old GainNode
+    /// preparation sets each envelope's current gain to its new target.
+    pub fn select_reprepared(&mut self, effect_type: u32) -> bool {
+        if !self.select(effect_type) {
+            return false;
+        }
+        self.dry = self.dry_target;
+        self.trim = self.trim_target;
+        self.gates = self.gate_targets;
+        true
+    }
+
     pub fn set_mix(&mut self, value: f32) -> bool {
         if !value.is_finite() {
             return false;
