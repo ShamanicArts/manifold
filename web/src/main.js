@@ -4,6 +4,7 @@ import crossfaderProject from '../../projects/crossfader/project.json';
 import mixerProject from '../../projects/mixer/project.json';
 import voiceProject from '../../projects/voice-synth/project.json';
 import transposeProject from '../../projects/midi-transpose/project.json';
+import noteFilterProject from '../../projects/midi-note-filter/project.json';
 import oscillatorProject from '../../projects/oscillator/project.json';
 import adsrProject from '../../projects/adsr/project.json';
 import noiseProject from '../../projects/noise/project.json';
@@ -106,6 +107,12 @@ const projects = {
     title: 'MIDI transpose',
     description: 'The old Standalone Transpose MIDI effect now runs in Rust before an eight-voice instrument. Change semitones while holding a note to hear its output note release and restart.',
     signal: 'Event path: keyboard / MIDI → Rust transpose → timed voice events → output',
+  },
+  'midi-note-filter': {
+    project: noteFilterProject,
+    title: 'MIDI note filter',
+    description: 'Pass notes inside or outside a chosen MIDI range. Held keys are rechecked when the range changes, so moving a boundary releases or starts a note immediately.',
+    signal: 'Event path: keyboard / MIDI → Rust note filter → voice synth → output',
   },
   oscillator: {
     project: oscillatorProject,
@@ -669,19 +676,24 @@ function addSlider(parameter) {
 
   const isLog = parameter.hostId === 'cutoff' || parameter.hostId === 'frequency' || parameter.hostId === 'rate';
   const precision = parameter.unit === 's' ? 1000 : 100;
-  const toPhysical = (position) => parameter.scale === 'log-bypass'
+  const rawPhysical = (position) => parameter.scale === 'log-bypass'
     ? position < 1 ? 0 : Math.round(21 * (parameter.max / 21) ** ((position - 1) / 999))
     : isLog
     ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000) * (parameter.hostId === 'rate' ? 100 : 1)) / (parameter.hostId === 'rate' ? 100 : 1)
     : parameter.hostId === 'root-note' || parameter.hostId === 'unison' || parameter.hostId === 'voices' || parameter.hostId === 'taps'
       ? Math.round(parameter.min + (parameter.max - parameter.min) * position / 1000)
       : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * precision) / precision;
+  const toPhysical = (position) => {
+    const value = rawPhysical(position);
+    return parameter.step ? Math.max(parameter.min, Math.min(parameter.max,
+      parameter.min + Math.round((value - parameter.min) / parameter.step) * parameter.step)) : value;
+  };
   const toPosition = (value) => parameter.scale === 'log-bypass'
     ? value <= 20 ? 0 : 1 + 999 * Math.log(value / 21) / Math.log(parameter.max / 21)
     : isLog
     ? 1000 * Math.log(value / parameter.min) / Math.log(parameter.max / parameter.min)
     : 1000 * (value - parameter.min) / (parameter.max - parameter.min);
-  const format = (value) => parameter.hostId === 'root-note' ? `${value} MIDI` : parameter.hostId === 'taps' ? `${value} taps` : parameter.hostId === 'unison' || parameter.hostId === 'voices' ? `${value} voices` : parameter.unit === 'ct' ? `${Number(value).toFixed(1)} ct` : parameter.unit === 'Hz'
+  const format = (value) => parameter.hostId === 'root-note' || parameter.unit === 'MIDI' ? `${value} MIDI` : parameter.hostId === 'taps' ? `${value} taps` : parameter.hostId === 'unison' || parameter.hostId === 'voices' ? `${value} voices` : parameter.unit === 'ct' ? `${Number(value).toFixed(1)} ct` : parameter.unit === 'Hz'
     ? parameter.hostId === 'rate' ? `${Number(value).toFixed(2)} Hz` : `${Math.round(value).toLocaleString()} Hz`
     : parameter.unit === 'ms' ? `${Number(value).toFixed(1)} ms` : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : parameter.unit === 'dB' ? `${Number(value).toFixed(1)} dB` : parameter.unit === 'degrees' ? `${Math.round(value)}°` : Number(value).toFixed(2);
   const sync = (position, publish) => {
@@ -1125,7 +1137,7 @@ function applyStandaloneFxState(state) {
 }
 
 function renderPrimitive(family) {
-  midiBrowserUrl.value = new URL(`?primitive=${['sample-instrument', 'midi-transpose'].includes(family) ? family : 'voice'}`, location.href).href;
+  midiBrowserUrl.value = new URL(`?primitive=${['sample-instrument', 'midi-transpose', 'midi-note-filter'].includes(family) ? family : 'voice'}`, location.href).href;
   const { project, title, description, signal } = projects[family];
   if (project.patch && !patchedSignals.has(family)) patchedSignals.set(family, structuredClone(project.signal));
   activeProject = project.patch ? { ...project, signal: patchedSignals.get(family) } : project;
@@ -1203,11 +1215,11 @@ function renderPrimitive(family) {
   renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'midi-transpose' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : isFxFamily(family) ? 'Effect type' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : isFxFamily(family) ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   const sampleView = family === 'sample-region' || family === 'sample-instrument';
-  byId('keyboard-section').hidden = !['voice', 'midi-transpose', 'sample-instrument'].includes(family);
-  byId('midi-access-section').hidden = !['voice', 'midi-transpose', 'sample-instrument'].includes(family);
+  byId('keyboard-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'sample-instrument'].includes(family);
+  byId('midi-access-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'sample-instrument'].includes(family);
   byId('sample-section').hidden = !sampleView;
   byId('slot-state-section').hidden = !hasFxState(family);
   byId('slot-state-file').disabled = audio.running;
@@ -1227,7 +1239,7 @@ function renderPrimitive(family) {
   samplePlaying = false;
   sampleVoicePositions = Array(8).fill(-1);
   sampleActiveVoices = 0;
-  if (family === 'voice' || family === 'midi-transpose' || family === 'sample-instrument') resetNoteEvents();
+  if (family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'sample-instrument') resetNoteEvents();
   if (mode) {
     byId('modes').style.gridTemplateColumns = `repeat(${family === 'standalone-fx-host' ? 3 : isFxFamily(family) && mode.choices.length === 9 ? 3 : family === 'waveshaper' || isFxFamily(family) ? 4 : mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, index) => {
@@ -1291,6 +1303,12 @@ function renderPrimitive(family) {
     help.textContent = 'The note monitor shows incoming keys. Rust maps them to output notes; changing Transpose while a key is held sends an off/on pair. The on-screen keyboard needs no MIDI permission.';
     byId('controls').appendChild(help);
   }
+  if (family === 'midi-note-filter') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'The monitor shows incoming notes. Try C4 inside the default range, then move Low above 60 while holding C4 to hear it release. The keyboard needs no MIDI permission.';
+    byId('controls').appendChild(help);
+  }
   if (family === 'stereo-delay') {
     const help = document.createElement('p');
     help.className = 'control-help';
@@ -1347,7 +1365,7 @@ function renderPrimitive(family) {
     ? 'Start the instrument, then play notes to hear the loaded sample at different pitches. Native Rust/Wasm comparisons are below.'
     : family === 'sample-region'
     ? 'Start the instrument, then trigger the loaded sample. Native Rust/Wasm comparisons are below.'
-    : family === 'voice' || family === 'midi-transpose'
+    : family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter'
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
     : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack'
       ? `Start the instrument to view its spectrum${family === 'cv-rack' ? ' and each CV stage' : ''}. The ${family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'native Rust' : 'C++'} comparisons below run offline.`
@@ -1382,7 +1400,7 @@ const pressedNotes = new Set();
 const midiHeld = new MidiHoldState();
 const keyboardDevice = Symbol('on-screen keyboard');
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
-const noteTarget = () => activeFamily === 'midi-transpose' ? 3 : activeFamily === 'voice' ? 1 : activeFamily === 'sample-instrument' ? 2 : null;
+const noteTarget = () => activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' ? 3 : activeFamily === 'voice' ? 1 : activeFamily === 'sample-instrument' ? 2 : null;
 function resetNoteEvents() {
   const placeholder = document.createElement('li');
   placeholder.textContent = 'Play the keyboard to inspect note events.';
@@ -1809,12 +1827,12 @@ toggle.addEventListener('click', async () => {
     byId('granulator-file').disabled = audio.running;
     byId('granulator-clear-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'transient-shaper' ? 'Block-mean transient strength from the Rust detector.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' || activeFamily === 'midi-transpose' || activeFamily === 'sample-instrument' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'transient-shaper' ? 'Block-mean transient strength from the Rust detector.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' || activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' || activeFamily === 'sample-instrument' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'sample-instrument'
         ? 'Start the instrument, then play notes to hear the loaded sample at different pitches. Native Rust/Wasm comparisons are below.'
       : activeFamily === 'sample-region'
         ? 'Start the instrument, then trigger the loaded sample. Native Rust/Wasm comparisons are below.'
-      : activeFamily === 'voice' || activeFamily === 'midi-transpose'
+      : activeFamily === 'voice' || activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter'
         ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
         : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation'
           ? `Start the instrument to view its spectrum. The ${activeFamily === 'patch' || activeFamily === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`

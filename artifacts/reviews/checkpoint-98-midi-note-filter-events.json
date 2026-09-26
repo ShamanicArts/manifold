@@ -1,0 +1,17 @@
+{
+  "reference": "Old rack Note Filter gates outside notes; old exported MIDI adapter ignores the gate",
+  "sourceSha256": "398d7ecc73cd0f1f58c3a54b5a4db416f91455909c41afbea886b0e276251897",
+  "legacyExportEvents": [
+    "on,0,20,90",
+    "off,0,20",
+    "on,0,60,100",
+    "off,0,60",
+    "on,0,60,100",
+    "off,0,60"
+  ],
+  "rustEvents": [
+    "on,0,60,100",
+    "off,0,60"
+  ],
+  "decision": "Rust MIDI Note Filter follows the rack's inside/outside gate; the export's forwarded blocked notes are not preserved"
+}

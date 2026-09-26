@@ -20,6 +20,7 @@ use crate::legacy_filter::{self, LegacyFilter};
 use crate::lfo::Lfo;
 use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
+use crate::midi_note_filter::MidiNoteFilter;
 use crate::midi_transpose::{MAX_OUTPUT_EVENTS, MidiTranspose};
 use crate::multitap_delay::{self, MultitapDelay};
 use crate::noise::NoiseGenerator;
@@ -56,6 +57,11 @@ pub enum NodeKind {
     MidiInput,
     MidiTranspose {
         semitones: f32,
+    },
+    MidiNoteFilter {
+        low: f32,
+        high: f32,
+        mode: u32,
     },
     InputRaw,
     InputMonitor {
@@ -263,6 +269,7 @@ impl NodeKind {
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. }
             | Self::MidiTranspose { .. }
+            | Self::MidiNoteFilter { .. }
             | Self::VoiceSynth
             | Self::SampleRegion
             | Self::SampleInstrument
@@ -304,7 +311,10 @@ impl NodeKind {
     }
 
     fn output_signal(&self) -> SignalKind {
-        if matches!(self, Self::MidiInput | Self::MidiTranspose { .. }) {
+        if matches!(
+            self,
+            Self::MidiInput | Self::MidiTranspose { .. } | Self::MidiNoteFilter { .. }
+        ) {
             return SignalKind::Midi;
         }
         if matches!(
@@ -326,6 +336,7 @@ impl NodeKind {
         if matches!(
             self,
             Self::MidiTranspose { .. }
+                | Self::MidiNoteFilter { .. }
                 | Self::VoiceSynth
                 | Self::SampleRegion
                 | Self::SampleInstrument
@@ -350,6 +361,9 @@ impl NodeKind {
     fn valid(&self) -> bool {
         match self {
             Self::MidiTranspose { semitones } => semitones.is_finite(),
+            Self::MidiNoteFilter { low, high, mode } => {
+                low.is_finite() && high.is_finite() && *mode <= 1
+            }
             Self::InputMonitor { gain } | Self::Gain { gain } => gain.is_finite(),
             Self::Constant { value } => value.is_finite(),
             Self::Sum2 { gain_a, gain_b } => gain_a.is_finite() && gain_b.is_finite(),
@@ -519,6 +533,7 @@ impl std::error::Error for GraphError {}
 enum Kernel {
     MidiInput,
     MidiTranspose(MidiTranspose),
+    MidiNoteFilter(MidiNoteFilter),
     InputRaw,
     InputMonitor {
         gain: f32,
@@ -619,6 +634,9 @@ impl Kernel {
                 let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
                 effect.set_semitones(*semitones, &mut out);
                 Self::MidiTranspose(effect)
+            }
+            NodeKind::MidiNoteFilter { low, high, mode } => {
+                Self::MidiNoteFilter(MidiNoteFilter::new(*low, *high, *mode as f32))
             }
             NodeKind::InputRaw => Self::InputRaw,
             NodeKind::InputMonitor { gain } => Self::InputMonitor { gain: *gain },
@@ -966,6 +984,7 @@ impl Kernel {
             self,
             Self::MidiInput
                 | Self::MidiTranspose(_)
+                | Self::MidiNoteFilter(_)
                 | Self::VoiceSynth(_)
                 | Self::SampleRegion(_)
                 | Self::SampleInstrument(_)
@@ -1282,6 +1301,13 @@ impl ExecutionPlan {
             let count = effect.set_semitones(value, &mut out);
             self.route_midi_outputs(index, &out[..count]);
             true
+        } else if let Kernel::MidiNoteFilter(effect) = &mut self.nodes[index].kernel {
+            let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+            let Some(count) = effect.set_parameter(parameter, value, &mut out) else {
+                return false;
+            };
+            self.route_midi_outputs(index, &out[..count]);
+            true
         } else {
             self.nodes[index].kernel.set_parameter(parameter, value)
         }
@@ -1299,6 +1325,7 @@ impl ExecutionPlan {
                     1
                 }
                 Kernel::MidiTranspose(effect) => effect.handle(event, &mut out),
+                Kernel::MidiNoteFilter(effect) => effect.handle(event, &mut out),
                 kernel => {
                     kernel.send_event(event);
                     0
@@ -1336,6 +1363,7 @@ impl ExecutionPlan {
                 1
             }
             Kernel::MidiTranspose(effect) => effect.handle(event, &mut out),
+            Kernel::MidiNoteFilter(effect) => effect.handle(event, &mut out),
             kernel => {
                 kernel.send_event(event);
                 0
@@ -1440,7 +1468,7 @@ impl ExecutionPlan {
             let left = &mut left[..frames];
             let right = &mut right[..frames];
             match &mut current.kernel {
-                Kernel::MidiInput | Kernel::MidiTranspose(_) => {
+                Kernel::MidiInput | Kernel::MidiTranspose(_) | Kernel::MidiNoteFilter(_) => {
                     left.fill(0.0);
                     right.fill(0.0);
                 }

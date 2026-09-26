@@ -1,0 +1,6 @@
+{
+  "frames": 8192,
+  "sampleRate": 48000,
+  "nativeToWasmMax": 0,
+  "nativeToWorkletMax": 0
+}

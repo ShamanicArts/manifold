@@ -362,6 +362,11 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         },
         54 => NodeKind::MidiInput,
         55 => NodeKind::MidiTranspose { semitones: a },
+        56 => NodeKind::MidiNoteFilter {
+            low: a,
+            high: b,
+            mode: 0,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {

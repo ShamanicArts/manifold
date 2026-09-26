@@ -1,0 +1,7 @@
+# Checkpoint 98 — MIDI Note Filter and shared note ownership
+
+The new [MIDI Note Filter workbench](http://127.0.0.1:4173/?primitive=midi-note-filter) routes `MidiInput → MidiNoteFilter → VoiceSynth` through the typed Rust graph. Inside/Outside mode and the low/high MIDI note controls are editable while playing. Moving the range rechecks held keys, so a newly blocked note releases and a newly admitted note starts. The on-screen keyboard requires no MIDI permission.
+
+`MidiTranspose` and `MidiNoteFilter` now share a fixed eight-slot note router. Transpose still matches the old export's 25-event trace exactly after the refactor. The Note Filter deliberately follows the old Main rack's voice gate: the old exported MIDI adapter ignored that gate and forwarded blocked notes. The [migration note](../../docs/midi-note-filter-migration.md) and [event trace](checkpoint-98-midi-note-filter-events.json) show the source and decision.
+
+Verification: 95 Rust core tests pass. The Note Filter's 8,192-frame native Rust audio case matches the direct Wasm graph, actual AudioWorklet adapter, and actual workbench comparison renderer with maximum sample difference **0**. The existing Transpose worklet comparison still matches exactly. Vite builds, and the local server responds at the linked view. A headless Chromium screenshot attempt crashed before rendering, so visual layout still needs browser review.
