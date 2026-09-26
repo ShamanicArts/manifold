@@ -17,6 +17,7 @@ import widenerProject from '../../projects/stereo-widener/project.json';
 import legacyFilterProject from '../../projects/legacy-filter/project.json';
 import reverbProject from '../../projects/reverb/project.json';
 import multitapProject from '../../projects/multitap/project.json';
+import ringProject from '../../projects/ring-modulator/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -151,6 +152,12 @@ const projects = {
     description: 'Eight independently timed and panned taps with feedback. The first two tap controls are shown here; other taps keep the original defaults and all eight are exercised by the C++ comparisons.',
     signal: 'Live path: input → prepared eight-tap stereo delay → dry/wet output',
   },
+  'ring-modulator': {
+    project: ringProject,
+    title: 'Ring modulator',
+    description: 'Multiply stereo audio by an internal oscillator with variable frequency, depth and stereo phase spread. The original node can also use a second stereo audio bus; that route is covered in the C++ comparison cases.',
+    signal: 'Live path: input × stereo oscillator → dry/wet output',
+  },
   compressor: {
     project: compressorProject,
     title: 'Compressor',
@@ -172,7 +179,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, and Limiter are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, Ring Mod, and Limiter are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -617,6 +624,7 @@ function updateSlotControls() {
     : selected === 5 ? { 2: 'Cutoff', 3: 'Resonance' }
     : selected === 7 ? { 2: 'Room size', 3: 'Damping' }
     : selected === 9 ? { 2: 'Tap count', 3: 'Feedback' }
+    : selected === 12 ? { 2: 'Frequency', 3: 'Depth', 4: 'Spread' }
     : selected === 3
     ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
     : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
@@ -652,6 +660,9 @@ function updateSlotControls() {
       ? id === 2 ? (0.15 + 0.8 * value).toFixed(2) : value.toFixed(2)
       : selected === 9
       ? id === 2 ? `${Math.floor(2 + 6 * value + 0.5)} taps` : (0.95 * value).toFixed(2)
+      : selected === 12
+      ? id === 2 ? `${Math.round(20 * 100 ** value).toLocaleString()} Hz`
+        : id === 3 ? value.toFixed(2) : `${Math.round(180 * value)}°`
       : selected === 3
       ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
         : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
@@ -678,6 +689,7 @@ function updateSlotControls() {
     : selected === 5 ? 'This is the original two-pole FilterNode. Cutoff uses exponential mapping; the third through fifth normalized controls are unused.'
     : selected === 7 ? 'Room and damping are the old slot controls. Internal reverb is fully wet; the public slot mix blends the dry input. The other three controls are unused.'
     : selected === 9 ? 'Tap count and feedback are the old slot controls. The four assigned taps keep their authored times, gains, and pans; the remaining taps keep the node defaults. Wet gain is 1.4×.'
+    : selected === 12 ? 'Frequency, depth, and spread are the old slot controls. The ring modulator uses its internal oscillator here; a second stereo audio bus is available in the standalone graph API.'
     : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
       : 'Values are stored separately for each effect type and restored when selected.';
 }
@@ -868,6 +880,7 @@ function renderPrimitive(family) {
     [5, [0.5, 0.2, 0.5, 0.5, 0.5]],
     [7, [0.5, 0.4, 0.5, 0.5, 0.5]],
     [9, [0.3, 0.3, 0.5, 0.5, 0.5]],
+    [12, [0.3, 1.0, 0.2, 0.5, 0.5]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
@@ -943,7 +956,7 @@ function renderPrimitive(family) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 15: 'Limit' })[value] : choice;
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 12: 'Ring Mod', 15: 'Limit' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {

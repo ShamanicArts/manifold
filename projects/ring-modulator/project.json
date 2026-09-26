@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.ring-modulator",
+  "name": "Ring modulator",
+  "source": "Legacy RingModulatorNode stereo scalar path",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      {
+        "id": 1,
+        "type": "input.raw"
+      },
+      {
+        "id": 2,
+        "type": "ring-modulator"
+      },
+      {
+        "id": 3,
+        "type": "output"
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "to": 2,
+        "inputPort": 0
+      },
+      {
+        "from": 2,
+        "to": 3,
+        "inputPort": 0
+      }
+    ]
+  },
+  "parameters": [
+    {
+      "id": 0,
+      "nodeId": 2,
+      "nodeParameterId": 0,
+      "hostId": "frequency",
+      "label": "Modulation frequency",
+      "kind": "float",
+      "unit": "Hz",
+      "min": 0.1,
+      "max": 8000,
+      "default": 180
+    },
+    {
+      "id": 1,
+      "nodeId": 2,
+      "nodeParameterId": 1,
+      "hostId": "depth",
+      "label": "Depth",
+      "kind": "float",
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "id": 2,
+      "nodeId": 2,
+      "nodeParameterId": 2,
+      "hostId": "mix",
+      "label": "Wet mix",
+      "kind": "float",
+      "min": 0,
+      "max": 1,
+      "default": 1
+    },
+    {
+      "id": 3,
+      "nodeId": 2,
+      "nodeParameterId": 3,
+      "hostId": "spread",
+      "label": "Stereo spread",
+      "kind": "float",
+      "unit": "degrees",
+      "min": 0,
+      "max": 180,
+      "default": 0
+    },
+    {
+      "id": 4,
+      "nodeId": 2,
+      "nodeParameterId": 4,
+      "hostId": "enabled",
+      "label": "Enable output",
+      "kind": "toggle",
+      "default": 1
+    }
+  ]
+}

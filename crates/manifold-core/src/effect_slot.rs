@@ -1,4 +1,4 @@
-//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, and 15.
+//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, and 15.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
@@ -9,6 +9,7 @@ use crate::limiter::{self, Limiter};
 use crate::multitap_delay::{self, MultitapDelay};
 use crate::phaser::Phaser;
 use crate::reverb::{self, Reverb};
+use crate::ring_modulator::{self, RingModulator};
 use crate::stereo_delay::{self, StereoDelay};
 use crate::stereo_widener::{self, StereoWidener};
 use crate::waveshaper::{self, WaveShaper};
@@ -23,6 +24,7 @@ pub const SVF_TYPE: u32 = 6;
 pub const REVERB_TYPE: u32 = 7;
 pub const DELAY_TYPE: u32 = 8;
 pub const MULTITAP_TYPE: u32 = 9;
+pub const RING_TYPE: u32 = 12;
 pub const LIMITER_TYPE: u32 = 15;
 
 pub fn supported_type(value: f32) -> Option<u32> {
@@ -31,7 +33,7 @@ pub fn supported_type(value: f32) -> Option<u32> {
     }
     match value as u32 {
         CHORUS_TYPE | PHASER_TYPE | WAVESHAPER_TYPE | COMPRESSOR_TYPE | WIDENER_TYPE
-        | LEGACY_FILTER_TYPE | SVF_TYPE | REVERB_TYPE | DELAY_TYPE | MULTITAP_TYPE
+        | LEGACY_FILTER_TYPE | SVF_TYPE | REVERB_TYPE | DELAY_TYPE | MULTITAP_TYPE | RING_TYPE
         | LIMITER_TYPE => Some(value as u32),
         _ => None,
     }
@@ -51,6 +53,7 @@ pub struct EffectSlot {
     svf_params: [f32; 5],
     delay_params: [f32; 5],
     multitap_params: [f32; 5],
+    ring_params: [f32; 5],
     compressor_params: [f32; 5],
     limiter_params: [f32; 5],
     limiter_pre_gain: f32,
@@ -65,6 +68,7 @@ pub struct EffectSlot {
     filter: Filter,
     delay: StereoDelay,
     multitap: MultitapDelay,
+    ring: RingModulator,
     compressor: Compressor,
     limiter: Limiter,
 }
@@ -97,6 +101,7 @@ impl EffectSlot {
             svf_params: [0.5, 0.4, 0.1, 0.5, 0.5],
             delay_params: [0.3, 0.3, 0.5, 0.5, 0.5],
             multitap_params: [0.3, 0.3, 0.5, 0.5, 0.5],
+            ring_params: [0.3, 1.0, 0.2, 0.5, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
             limiter_params: [0.5, 0.3, 0.4, 0.4, 0.5],
             limiter_pre_gain: 1.02,
@@ -111,6 +116,7 @@ impl EffectSlot {
             filter: Filter::new(sample_rate),
             delay: StereoDelay::new(sample_rate, delay_settings),
             multitap: MultitapDelay::new(sample_rate, max_frames, multitap_delay::DEFAULTS),
+            ring: RingModulator::new(sample_rate, ring_modulator::DEFAULTS),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
             limiter: Limiter::new(sample_rate, limiter::defaults()),
         };
@@ -125,6 +131,7 @@ impl EffectSlot {
             SVF_TYPE => &mut slot.svf_params,
             DELAY_TYPE => &mut slot.delay_params,
             MULTITAP_TYPE => &mut slot.multitap_params,
+            RING_TYPE => &mut slot.ring_params,
             LIMITER_TYPE => &mut slot.limiter_params,
             _ => unreachable!("slot type validated at graph compilation"),
         };
@@ -139,6 +146,7 @@ impl EffectSlot {
         slot.rebuild_legacy_filter();
         slot.rebuild_reverb();
         slot.rebuild_multitap();
+        slot.rebuild_ring();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
@@ -287,6 +295,27 @@ impl EffectSlot {
         self.multitap.set_parameter(1, settings[1]);
     }
 
+    fn ring_settings(&self) -> [f32; ring_modulator::PARAM_COUNT] {
+        let [frequency, depth, spread, _, _] = self.ring_params;
+        [
+            20.0 * 100.0_f32.powf(frequency),
+            depth,
+            1.0,
+            180.0 * spread,
+            1.0,
+        ]
+    }
+
+    fn rebuild_ring(&mut self) {
+        self.ring.reset_to(self.ring_settings());
+    }
+
+    fn apply_ring(&mut self) {
+        for (id, value) in self.ring_settings().into_iter().enumerate() {
+            self.ring.set_parameter(id as u32, value);
+        }
+    }
+
     fn apply_phaser(&mut self) {
         for (id, value) in self.phaser_settings().into_iter().enumerate() {
             self.phaser.set_parameter(id as u32, value);
@@ -375,6 +404,7 @@ impl EffectSlot {
                         LEGACY_FILTER_TYPE => self.rebuild_legacy_filter(),
                         REVERB_TYPE => self.rebuild_reverb(),
                         MULTITAP_TYPE => self.rebuild_multitap(),
+                        RING_TYPE => self.rebuild_ring(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -399,6 +429,7 @@ impl EffectSlot {
                     LEGACY_FILTER_TYPE => &mut self.legacy_filter_params,
                     REVERB_TYPE => &mut self.reverb_params,
                     MULTITAP_TYPE => &mut self.multitap_params,
+                    RING_TYPE => &mut self.ring_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -414,6 +445,7 @@ impl EffectSlot {
                     LEGACY_FILTER_TYPE => self.apply_legacy_filter(),
                     REVERB_TYPE => self.apply_reverb(),
                     MULTITAP_TYPE => self.apply_multitap(),
+                    RING_TYPE => self.apply_ring(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -451,6 +483,9 @@ impl EffectSlot {
             MULTITAP_TYPE => self
                 .multitap
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
+            RING_TYPE => self
+                .ring
+                .process_planar([in_l, in_r], None, [&mut *out_l, &mut *out_r]),
             COMPRESSOR_TYPE => self
                 .compressor
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),

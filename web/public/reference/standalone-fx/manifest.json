@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "74d240d969eb93f01b49947f5e61746ca34e823e571dd03d2a534da33bb3e6b0",
+  "sourceSha256": "67c078ba6f9a6879abeccb653a6e0a05579c6187cbe74fda08efef4df83bfc3f",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "ring-frequency",
+      "label": "Ring Mod frequency sweep",
+      "before": [
+        12,
+        0.8,
+        0.1,
+        1,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "after": [
+        12,
+        0.8,
+        0.9,
+        1,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "ring-frequency.f32"
+    },
+    {
+      "id": "ring-depth-spread",
+      "label": "Ring Mod depth and spread",
+      "before": [
+        12,
+        1,
+        0.3,
+        0.2,
+        0,
+        0.5,
+        0.5
+      ],
+      "after": [
+        12,
+        1,
+        0.3,
+        1,
+        1,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "ring-depth-spread.f32"
+    },
+    {
+      "id": "filter-to-ring",
+      "label": "Switch FilterNode to Ring Mod",
+      "before": [
+        5,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        12,
+        0.8,
+        0.3,
+        1,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-ring.f32"
+    },
+    {
+      "id": "ring-to-reverb",
+      "label": "Switch Ring Mod to Reverb",
+      "before": [
+        12,
+        0.8,
+        0.3,
+        1,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "after": [
+        7,
+        0.8,
+        0.5,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "ring-to-reverb.f32"
+    },
     {
       "id": "multitap-count",
       "label": "Multitap two to eight taps",

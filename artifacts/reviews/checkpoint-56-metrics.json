@@ -1,0 +1,27 @@
+{
+  "ring-modulator": {
+    "cases": 7,
+    "largest": {
+      "id": "default",
+      "max": 2.98e-8
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "frequency": "8,000 Hz"
+  },
+  "standalone-fx": {
+    "cases": 43,
+    "largest": {
+      "id": "filter-to-chorus",
+      "max": 9.69e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Ring Mod",
+    "controls": [
+      "Wet mix",
+      "Frequency",
+      "Depth",
+      "Spread"
+    ]
+  },
+  "errors": []
+}

@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "reference": "legacy C++ RingModulatorNode stereo",
+  "sourceSha256": "08bfeef3ed56abeef105f980529ca0371ce07593d20c21703b864c44679d7b80",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Internal oscillator default",
+      "before": [
+        180,
+        1,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        180,
+        1,
+        1,
+        0,
+        1
+      ],
+      "external": false,
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "frequency",
+      "label": "Frequency sweep",
+      "before": [
+        38,
+        0.8,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        1770,
+        0.8,
+        1,
+        0,
+        1
+      ],
+      "external": false,
+      "blockSize": 128,
+      "output": "frequency.f32"
+    },
+    {
+      "id": "depth",
+      "label": "Depth sweep",
+      "before": [
+        270,
+        0.15,
+        0.9,
+        30,
+        1
+      ],
+      "after": [
+        270,
+        1,
+        0.9,
+        30,
+        1
+      ],
+      "external": false,
+      "blockSize": 64,
+      "output": "depth.f32"
+    },
+    {
+      "id": "spread",
+      "label": "Stereo phase spread",
+      "before": [
+        130,
+        1,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        130,
+        1,
+        1,
+        180,
+        1
+      ],
+      "external": false,
+      "blockSize": 128,
+      "output": "spread.f32"
+    },
+    {
+      "id": "mix",
+      "label": "Dry/wet sweep",
+      "before": [
+        300,
+        1,
+        0.1,
+        45,
+        1
+      ],
+      "after": [
+        300,
+        1,
+        1,
+        45,
+        1
+      ],
+      "external": false,
+      "blockSize": 128,
+      "output": "mix.f32"
+    },
+    {
+      "id": "enable",
+      "label": "Disabled to enabled",
+      "before": [
+        90,
+        1,
+        1,
+        0,
+        0
+      ],
+      "after": [
+        90,
+        1,
+        1,
+        0,
+        1
+      ],
+      "external": false,
+      "blockSize": 128,
+      "output": "enable.f32"
+    },
+    {
+      "id": "external",
+      "label": "Carrier as external stereo modulator",
+      "before": [
+        90,
+        1,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        90,
+        0.5,
+        0.8,
+        90,
+        1
+      ],
+      "external": true,
+      "blockSize": 64,
+      "output": "external.f32"
+    }
+  ]
+}

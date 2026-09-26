@@ -216,6 +216,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
                     effect_slot::LEGACY_FILTER_TYPE => [0.5, 0.2, 0.5, 0.5, 0.5],
                     effect_slot::REVERB_TYPE => [0.5, 0.4, 0.5, 0.5, 0.5],
                     effect_slot::MULTITAP_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
+                    effect_slot::RING_TYPE => [0.3, 1.0, 0.2, 0.5, 0.5],
                     effect_slot::COMPRESSOR_TYPE => [0.4, 0.3, 0.1, 0.3, 0.5],
                     effect_slot::SVF_TYPE => [0.5, 0.4, 0.1, 0.5, 0.5],
                     effect_slot::DELAY_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
@@ -304,6 +305,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         },
         41 => NodeKind::MultitapDelay {
             params: manifold_core::multitap_delay::DEFAULTS,
+        },
+        42 => NodeKind::RingModulator {
+            params: manifold_core::ring_modulator::DEFAULTS,
         },
         _ => return 0,
     };
@@ -415,6 +419,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::Reverb { params }, id @ 0..=4) => params[id as usize] = value,
             (NodeKind::MultitapDelay { params }, id @ 0..=26) => {
                 if !manifold_core::multitap_delay::set_value(params, id, value) {
+                    return 0;
+                }
+            }
+            (NodeKind::RingModulator { params }, id @ 0..=4) => {
+                if !manifold_core::ring_modulator::set_value(params, id, value) {
                     return 0;
                 }
             }

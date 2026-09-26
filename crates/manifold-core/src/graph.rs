@@ -21,6 +21,7 @@ use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::phaser::Phaser;
 use crate::reverb::{self, Reverb};
+use crate::ring_modulator::{self, RingModulator};
 use crate::sample_instrument::SampleInstrument;
 use crate::sample_region::SampleRegion;
 use crate::slew_limiter::SlewLimiter;
@@ -130,6 +131,9 @@ pub enum NodeKind {
     MultitapDelay {
         params: [f32; multitap_delay::PARAM_COUNT],
     },
+    RingModulator {
+        params: [f32; ring_modulator::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -202,7 +206,8 @@ impl NodeKind {
             | Self::Crossfader { .. }
             | Self::ModulatedGain { .. }
             | Self::ModulatedSvf { .. }
-            | Self::SampleHold { .. } => 2,
+            | Self::SampleHold { .. }
+            | Self::RingModulator { .. } => 2,
             Self::CvMix { .. } => 4,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. }
@@ -319,6 +324,7 @@ impl NodeKind {
             Self::LegacyFilter { params } => params.iter().all(|value| value.is_finite()),
             Self::Reverb { params } => params.iter().all(|value| value.is_finite()),
             Self::MultitapDelay { params } => params.iter().all(|value| value.is_finite()),
+            Self::RingModulator { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -456,6 +462,7 @@ enum Kernel {
     LegacyFilter(LegacyFilter),
     Reverb(Reverb),
     MultitapDelay(MultitapDelay),
+    RingModulator(RingModulator),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -592,6 +599,9 @@ impl Kernel {
             NodeKind::Reverb { params } => Self::Reverb(Reverb::new(sample_rate, *params)),
             NodeKind::MultitapDelay { params } => {
                 Self::MultitapDelay(MultitapDelay::new(sample_rate, max_frames, *params))
+            }
+            NodeKind::RingModulator { params } => {
+                Self::RingModulator(RingModulator::new(sample_rate, *params))
             }
             NodeKind::EffectSlot {
                 selected,
@@ -735,6 +745,7 @@ impl Kernel {
             (Self::LegacyFilter(filter), id) => return filter.set_parameter(id, value),
             (Self::Reverb(reverb), id) => return reverb.set_parameter(id, value),
             (Self::MultitapDelay(delay), id) => return delay.set_parameter(id, value),
+            (Self::RingModulator(ring), id) => return ring.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1367,6 +1378,10 @@ impl ExecutionPlan {
                 }
                 Kernel::MultitapDelay(delay) => {
                     delay.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::RingModulator(ring) => {
+                    let modulator = current.sources[1].map(|_| [source(1, 0), source(1, 1)]);
+                    ring.process_planar([source(0, 0), source(0, 1)], modulator, [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])
