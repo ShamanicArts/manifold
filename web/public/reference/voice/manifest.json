@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust VoiceSynth with timed note events",
-  "sourceSha256": "1cb15f2b31452cc47d2d89fc5bc6182d3a5f5912a39b35c49b32a7e566b1db15",
+  "sourceSha256": "b252cc825d3a38bc04065ae71fd8fda3e0017bd00aa13e654468df211ec90e1d",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 8192,

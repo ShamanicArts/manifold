@@ -221,7 +221,13 @@ impl VoiceSynth {
             };
             sum += wave * voice.velocity * voice.level;
             count += 1;
-            voice.phase += TAU * voice.frequency * self.bend_ratio[voice.channel as usize]
+            voice.phase += TAU
+                * voice.frequency
+                * self
+                    .bend_ratio
+                    .get(voice.channel as usize)
+                    .copied()
+                    .unwrap_or(1.0)
                 / self.sample_rate as f64;
             if voice.phase >= TAU {
                 voice.phase -= TAU;
@@ -315,5 +321,20 @@ mod tests {
             .map(|voice| voice.phase)
             .collect();
         assert!((after[1] - before[1] - (after[0] - before[0])).abs() < 1e-12);
+    }
+
+    #[test]
+    fn invalid_midi_channel_does_not_panic_in_core() {
+        let mut synth = VoiceSynth::new(48_000.0);
+        synth.event(EventKind::NoteOn {
+            channel: 255,
+            note: 69,
+            velocity: 100,
+        });
+        synth.event(EventKind::PitchBend {
+            channel: 255,
+            value: 12288,
+        });
+        assert!(synth.process_sample().is_finite());
     }
 }

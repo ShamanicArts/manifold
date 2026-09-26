@@ -156,7 +156,11 @@ impl SampleInstrument {
     fn note_speed(&self, channel: u8, note: u8, subvoice: usize, count: usize) -> f32 {
         let detune = Self::unison_offset(subvoice, count) as f64 * self.detune_cents as f64;
         (self.speed as f64
-            * self.bend_ratio[channel as usize]
+            * self
+                .bend_ratio
+                .get(channel as usize)
+                .copied()
+                .unwrap_or(1.0)
             * 2.0f64.powf(
                 (note as f64 - self.root_note as f64) * self.key_track as f64 / 12.0
                     + detune / 1200.0,
@@ -376,6 +380,21 @@ mod tests {
         let second_after = instrument.players[1][0].meter(0).unwrap();
         assert!(((first_after - first) / first - 1.0 / 2.0f32.sqrt()).abs() < 1e-6);
         assert!(((second_after - second) / second - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn invalid_midi_channel_does_not_panic_in_core() {
+        let mut instrument = constant_instrument();
+        instrument.event(EventKind::NoteOn {
+            channel: 255,
+            note: 60,
+            velocity: 127,
+        });
+        instrument.event(EventKind::PitchBend {
+            channel: 255,
+            value: 12288,
+        });
+        assert!(instrument.process_sample()[0].is_finite());
     }
 
     #[test]
