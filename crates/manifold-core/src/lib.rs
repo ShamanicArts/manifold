@@ -6,6 +6,7 @@ pub mod effect_slot;
 pub mod envelope;
 pub mod envelope_follower;
 pub mod events;
+pub mod fft_spectrum;
 pub mod graph;
 pub mod lfo;
 pub mod limiter;

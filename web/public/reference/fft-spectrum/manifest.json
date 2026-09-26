@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "reference": "native Rust 2048-point FFT, 32 log bands and peak Hz",
+  "sourceSha256": "cf34cdaa089f1f150e811bf33d874fb6c2be7d66f9d7050d664ad5911d45d3c2",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "440 Hz to 1 kHz",
+      "before": [
+        0.45,
+        -72
+      ],
+      "after": [
+        0.45,
+        -72
+      ],
+      "blockSize": 128,
+      "output": "default.f32",
+      "meterOutput": "default-meters.f32"
+    },
+    {
+      "id": "unsmoothed",
+      "label": "Instant bands",
+      "before": [
+        0,
+        -72
+      ],
+      "after": [
+        0,
+        -72
+      ],
+      "blockSize": 128,
+      "output": "unsmoothed.f32",
+      "meterOutput": "unsmoothed-meters.f32"
+    },
+    {
+      "id": "floor-change",
+      "label": "Raise floor and smoothing",
+      "before": [
+        0.2,
+        -90
+      ],
+      "after": [
+        0.8,
+        -36
+      ],
+      "blockSize": 128,
+      "output": "floor-change.f32",
+      "meterOutput": "floor-change-meters.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame blocks",
+      "before": [
+        0.5,
+        -72
+      ],
+      "after": [
+        0.15,
+        -60
+      ],
+      "blockSize": 64,
+      "output": "small-block.f32",
+      "meterOutput": "small-block-meters.f32"
+    }
+  ]
+}

@@ -237,6 +237,10 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         }
         26 => NodeKind::SampleRegion,
         27 => NodeKind::SampleInstrument,
+        28 => NodeKind::FftSpectrum {
+            smoothing: a,
+            floor_db: b,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -349,6 +353,8 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::SpectrumAnalyzer { floor_db, .. }, 2) => {
                 *floor_db = value.clamp(-96.0, -12.0)
             }
+            (NodeKind::FftSpectrum { smoothing, .. }, 0) => *smoothing = value.clamp(0.0, 0.99),
+            (NodeKind::FftSpectrum { floor_db, .. }, 1) => *floor_db = value.clamp(-96.0, -24.0),
             (
                 NodeKind::EnvelopeFollower { attack_ms, .. }
                 | NodeKind::EnvelopeControl { attack_ms, .. },

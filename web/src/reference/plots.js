@@ -35,8 +35,10 @@ export function drawComparison(canvas, series, start, count, scale, colors) {
 export function drawBandBars(canvas, series, scale, colors, labels = false) {
   const { context, width, height } = prepare(canvas);
   const padding = labels ? 18 : 5;
-  const bandWidth = width / 8;
-  for (let band = 0; band < 8; band++) {
+  const bandCount = series[0]?.length ?? 0;
+  if (!bandCount) return;
+  const bandWidth = width / bandCount;
+  for (let band = 0; band < bandCount; band++) {
     for (let index = 0; index < series.length; index++) {
       const barWidth = Math.max(2, bandWidth * 0.65 / series.length);
       const value = Math.min(1, Math.max(0, series[index][band] / scale));

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust bounded loop capture",
-  "sourceSha256": "01f1c5f41076d82911a2972d609050a38c2659bab69f8f1a274d92a26aa59938",
+  "sourceSha256": "a2a28cdea993e7b0810e1d34d4fbd657f5bb740f2dd081199ee741e1bf4ba804",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,

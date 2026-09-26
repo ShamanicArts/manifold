@@ -8,6 +8,7 @@ use crate::effect_slot::{self, EffectSlot};
 use crate::envelope::AdsrEnvelope;
 use crate::envelope_follower::EnvelopeFollower;
 use crate::events::{EventError, EventKind, TimedEvent};
+use crate::fft_spectrum::FftSpectrum;
 use crate::lfo::Lfo;
 use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
@@ -92,6 +93,10 @@ pub enum NodeKind {
         smoothing: f32,
         floor_db: f32,
     },
+    FftSpectrum {
+        smoothing: f32,
+        floor_db: f32,
+    },
     EnvelopeFollower {
         attack_ms: f32,
         release_ms: f32,
@@ -155,6 +160,7 @@ impl NodeKind {
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
+            | Self::FftSpectrum { .. }
             | Self::EnvelopeFollower { .. }
             | Self::EnvelopeControl { .. }
             | Self::Output => 1,
@@ -238,6 +244,10 @@ impl NodeKind {
                 smoothing,
                 floor_db,
             } => sensitivity.is_finite() && smoothing.is_finite() && floor_db.is_finite(),
+            Self::FftSpectrum {
+                smoothing,
+                floor_db,
+            } => smoothing.is_finite() && floor_db.is_finite(),
             Self::EnvelopeFollower {
                 attack_ms,
                 release_ms,
@@ -341,6 +351,7 @@ enum Kernel {
     SampleRegion(SampleRegion),
     SampleInstrument(SampleInstrument),
     SpectrumAnalyzer(SpectrumAnalyzer),
+    FftSpectrum(Box<FftSpectrum>),
     EnvelopeFollower(EnvelopeFollower),
     EnvelopeControl(EnvelopeFollower),
     VoiceSynth(VoiceSynth),
@@ -468,6 +479,14 @@ impl Kernel {
                 *smoothing,
                 *floor_db,
             )),
+            NodeKind::FftSpectrum {
+                smoothing,
+                floor_db,
+            } => Self::FftSpectrum(Box::new(FftSpectrum::new(
+                sample_rate,
+                *smoothing,
+                *floor_db,
+            ))),
             NodeKind::EnvelopeFollower {
                 attack_ms,
                 release_ms,
@@ -565,6 +584,7 @@ impl Kernel {
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
             (Self::SampleInstrument(instrument), id) => return instrument.set_parameter(id, value),
             (Self::SpectrumAnalyzer(analyzer), id) => return analyzer.set_parameter(id, value),
+            (Self::FftSpectrum(analyzer), id) => return analyzer.set_parameter(id, value),
             (Self::EnvelopeFollower(follower), id) => return follower.set_parameter(id, value),
             (Self::EnvelopeControl(follower), id) => return follower.set_parameter(id, value),
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
@@ -755,6 +775,7 @@ impl ExecutionPlan {
             .find(|entry| entry.id == node)
             .and_then(|entry| match &entry.kernel {
                 Kernel::SpectrumAnalyzer(analyzer) => analyzer.band(band),
+                Kernel::FftSpectrum(analyzer) => analyzer.meter(band),
                 Kernel::EnvelopeFollower(follower) if band == 0 => Some(follower.meter()),
                 Kernel::EnvelopeControl(follower) if band == 0 => Some(follower.meter()),
                 Kernel::Compressor(compressor) if band == 0 => Some(compressor.gain_reduction_db()),
@@ -1048,6 +1069,9 @@ impl ExecutionPlan {
                     }
                 }
                 Kernel::SpectrumAnalyzer(analyzer) => {
+                    analyzer.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::FftSpectrum(analyzer) => {
                     analyzer.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EnvelopeFollower(follower) => {

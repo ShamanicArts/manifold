@@ -18,12 +18,13 @@ import loopCaptureProject from '../../projects/loop-capture/project.json';
 import sampleRegionProject from '../../projects/sample-region/project.json';
 import sampleInstrumentProject from '../../projects/sample-instrument/project.json';
 import spectrumAnalyzerProject from '../../projects/spectrum-analyzer/project.json';
+import fftSpectrumProject from '../../projects/fft-spectrum/project.json';
 import envelopeFollowerProject from '../../projects/envelope-follower/project.json';
 import envelopeDuckingProject from '../../projects/envelope-ducking/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { BrowserMidiInput, midiAvailability } from './audio/midi-input.js';
 import { initializeReferenceLab } from './reference/comparison.js';
-import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace } from './reference/plots.js';
+import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars } from './reference/plots.js';
 
 const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
@@ -137,6 +138,12 @@ const projects = {
     title: 'Spectrum analyzer',
     description: 'Eight smoothed band estimates from the original Manifold analyzer. Stereo audio passes through unchanged. These bands are one-pole envelopes, not FFT bins.',
     signal: 'Live path: input → unchanged output · meter tap → eight band estimates',
+  },
+  'fft-spectrum': {
+    project: fftSpectrumProject,
+    title: 'FFT spectrum',
+    description: 'A 2048-point Hann FFT measures 32 logarithmic frequency bands and the strongest peak in hertz. Stereo audio passes through unchanged. The meter updates every 1024 samples.',
+    signal: 'Live path: input → unchanged output · FFT tap → 32 bands and peak Hz',
   },
   'envelope-follower': {
     project: envelopeFollowerProject,
@@ -351,6 +358,11 @@ const audio = new BrowserAudioHost((message) => { status.textContent = message; 
     sampleActiveVoices = Number.isFinite(bands[0]) ? Math.round(bands[0]) : 0;
     sampleVoicePositions = bands.slice(1, 9).map((position) => Number.isFinite(position) ? position : -1);
     drawSampleWaveform();
+    return;
+  }
+  if (activeFamily === 'fft-spectrum') {
+    drawBandBars(byId('fft-bands'), [bands.slice(0, 32)], 1, ['#9a8de8']);
+    byId('fft-peak').textContent = bands[32] > 0 ? `Strongest peak · ${bands[32].toFixed(1)} Hz` : 'Peak · silent';
     return;
   }
   if (!['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(activeFamily)) return;
@@ -592,12 +604,14 @@ function renderPrimitive(family) {
   byId('capture-transfer-section').hidden = family !== 'loop-capture';
   if (family === 'loop-capture') byId('capture-transfer-status').textContent = 'Record a take, then stop recording to send it to the sampler.';
   byId('module-title').textContent = title;
-  const analyzerView = ['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family);
-  document.querySelector('.measurements h2').textContent = family === 'spectrum-analyzer' ? 'Band levels' : family === 'compressor' || family === 'limiter' ? 'Gain reduction' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
+  const analyzerView = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family);
+  document.querySelector('.measurements h2').textContent = family === 'fft-spectrum' ? 'FFT spectrum' : family === 'spectrum-analyzer' ? 'Band levels' : family === 'compressor' || family === 'limiter' ? 'Gain reduction' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
   envelopeHistory = [];
   document.querySelector('.scope-wrap').hidden = analyzerView;
   document.querySelector('.axis-caption').hidden = analyzerView;
-  byId('live-bands').hidden = !analyzerView;
+  byId('live-bands').hidden = !analyzerView || family === 'fft-spectrum';
+  byId('fft-view').hidden = family !== 'fft-spectrum';
+  if (family === 'fft-spectrum') { drawBandBars(byId('fft-bands'), [Array(32).fill(0)], 1, ['#9a8de8']); byId('fft-peak').textContent = 'Peak —'; }
   byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : family === 'compressor' || family === 'limiter' ? 'Live gain reduction in decibels' : 'Live envelope value');
   byId('live-envelope-trace').hidden = !['envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family);
   byId('live-envelope-trace').setAttribute('aria-label', family === 'compressor' || family === 'limiter' ? 'Recent gain reduction in decibels' : 'Recent envelope history');
@@ -609,7 +623,7 @@ function renderPrimitive(family) {
   });
   byId('module-description').textContent = description;
   byId('signal-path').textContent = signal;
-  document.querySelector('.panel-note').textContent = family === 'spectrum-analyzer' ? 'Eight band meter' : family === 'compressor' || family === 'limiter' ? 'Reduction meter' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Envelope meter' : `Post ${title.toLowerCase()}`;
+  document.querySelector('.panel-note').textContent = family === 'fft-spectrum' ? '2048 point · 32 bands' : family === 'spectrum-analyzer' ? 'Eight band meter' : family === 'compressor' || family === 'limiter' ? 'Reduction meter' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Envelope meter' : `Post ${title.toLowerCase()}`;
   document.querySelectorAll('[data-primitive]').forEach((button) => {
     button.setAttribute('aria-current', button.dataset.primitive === family ? 'page' : 'false');
   });
@@ -741,6 +755,7 @@ function renderPrimitive(family) {
     : family === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain and inspect the detector. Native Rust/Wasm comparisons are below.'
     : family === 'compressor' || family === 'limiter' ? 'Start audio to hear dynamics and view gain reduction in dB. C++ audio and meter snapshots are compared below.'
     : family === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.'
+    : family === 'fft-spectrum' ? 'Start audio to view 32 FFT bands and the strongest peak frequency. Native Rust/Wasm comparisons are below.'
     : analyzerView ? 'Start audio to see the original eight band meter. Bars scale to the current peak; numbers are normalized 0–1 values.'
     : 'Start audio to view the output spectrum. The reference cases below run offline.';
   if (family === 'svf') {
@@ -914,7 +929,7 @@ window.addEventListener('popstate', () => {
 
 let spectrumFrame = null;
 let meterTimer = null;
-const meterFamilies = ['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'sample-region', 'sample-instrument'];
+const meterFamilies = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'sample-region', 'sample-instrument'];
 function stopMonitoring() {
   if (spectrumFrame !== null) cancelAnimationFrame(spectrumFrame);
   if (meterTimer !== null) clearInterval(meterTimer);
@@ -929,7 +944,7 @@ function startMonitoring() {
   stopMonitoring();
   if (!audio.running) return;
   if (meterFamilies.includes(activeFamily)) {
-    const request = () => audio.requestMeters(2, activeFamily === 'sample-instrument' ? 9 : activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
+    const request = () => audio.requestMeters(2, activeFamily === 'fft-spectrum' ? 33 : activeFamily === 'sample-instrument' ? 9 : activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
     request();
     meterTimer = setInterval(request, 100);
     if (activeFamily === 'sample-region' || activeFamily === 'sample-instrument') animateSpectrum();
