@@ -22,18 +22,18 @@
   </style>
 </head>
 <body><main>
-  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 112</div>
-  <h1>Two additive sources, one Main voice study</h1>
-  <p>The Main study crossfades a base oscillator with the processed stereo sample. Its additive path now has a second equal-power crossfade between separately prepared wave and source spectra, followed by the sample phrase gain. Rust prepares both partial sets away from the audio callback.</p>
+  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 113</div>
+  <h1>One depth control for both Main branches</h1>
+  <p>The Main study crossfades wave and sample in its base path, and separately prepared wave and source spectra in its additive path. The two branches now have an optional linked depth: base gain follows 1 − depth while Add gain follows depth, using the Rust mixer’s existing smoothing.</p>
   <nav><a href="/?primitive=main-sample-blend">Play and compare the graph</a><a href="/phase-vocoder-review.html">Inspect Phase vocoder</a><a href="/spectral-target-review.html">Inspect Add / Morph recipes</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
   <section class="panel"><h2>Signal path</h2><div class="flow">
     <div><strong>Base wave + decoded source</strong><span>Oscillator and vocoder output feed the equal-power crossfade. −1 is wave; +1 is sample.</span></div>
     <div><strong>Two prepared Sine banks</strong><span>Wave and source targets meet at the Add crossfade; raw sample envelope shapes the resulting phrase.</span></div>
-    <div><strong>Two-bus output</strong><span>Rust graph in native and Wasm builds; live controls in AudioWorklet playback.</span></div>
+    <div><strong>Two-bus output</strong><span>Link depth for complementary gains, or switch back to independent audition gains. The mixer changes both targets together.</span></div>
   </div></section>
   <section class="panel"><h2>Native Rust ↔ Rust/Wasm graph comparison</h2>
-    <p>Both runners load the same source and bounded targets. Fourteen offline captures contain 16,384 stereo frames each at 48 kHz. The two new additive routes, three base-wave routes, and six dry/phrase cases match native Rust and Wasm exactly; three wet vocoder cases remain within 0.000004. Relative to checkpoint 111, the new endpoint crossfade changes earlier native samples by at most 0.00000006. The original C++ follower meters also match the Wasm graph on this source.</p>
-    <table><thead><tr><th>Case</th><th>Base gain</th><th>Bank gain</th><th>Native RMS</th><th>Max Δ</th></tr></thead><tbody>
+    <p>Both runners load the same source and bounded targets. Seventeen offline captures contain 16,384 stereo frames each at 48 kHz. New linked depth 0, 0.5, and 1 cases match native Rust and Wasm exactly. Three wet vocoder cases remain within 0.000004; the original C++ follower meters also match the Wasm graph on this source. The gain columns show saved independent settings, which the linked cases override.</p>
+    <table><thead><tr><th>Case</th><th>Independent base</th><th>Independent Add</th><th>Native RMS</th><th>Max Δ</th></tr></thead><tbody>
       <tr><td>Sample only</td><td>1</td><td>0</td><td>0.1759</td><td class="pass">0</td></tr>
       <tr><td>Add only</td><td>0</td><td>1</td><td>0.1584</td><td class="pass">0</td></tr>
       <tr><td>Morph only</td><td>0</td><td>1</td><td>0.1200</td><td class="pass">0</td></tr>
@@ -48,9 +48,12 @@
       <tr><td>Wave / sample + Morph</td><td>0.7</td><td>0.5</td><td>0.1176</td><td class="pass">0</td></tr>
       <tr><td>Add wave source A</td><td>0</td><td>1</td><td>0.0795</td><td class="pass">0</td></tr>
       <tr><td>Add wave/source centre</td><td>0</td><td>1</td><td>0.1254</td><td class="pass">0</td></tr>
+      <tr><td>Linked depth 0 · base</td><td>0.25</td><td>0.75</td><td>0.1729</td><td class="pass">0</td></tr>
+      <tr><td>Linked depth 0.5 · equal</td><td>0.25</td><td>0.75</td><td>0.1178</td><td class="pass">0</td></tr>
+      <tr><td>Linked depth 1 · Add</td><td>0.25</td><td>0.75</td><td>0.1579</td><td class="pass">0</td></tr>
     </tbody></table>
     <p class="small">In the workbench, open “Reference comparison” to switch cases, inspect left/right output and differences, and play native or Wasm audio.</p>
   </section>
-  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save 18 graph controls, target mode and recipe, temporal position, and the source. The phrase reference starts from analyzed source RMS and can be adjusted manually. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and prepares both bank targets, then restores pitch and branch gains. The version-5 state accepts prior version-1 through version-4 files, supplying new control defaults; malformed audio and out-of-range controls are rejected.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
-  <section class="panel"><h2>Legacy boundary and next route</h2><p class="scope">The old Main voice has a normal base crossfade, a separate FM/Sync direction path, and an Add crossfade with wave-derived and sample-derived sources. This study now represents both normal base and Add crossfades, but its bank recipes, amplitude staging, and independent mixer gains still differ from the full old voice. Old Morph forces the Add crossfade to its source endpoint; this v2 study keeps that position manually adjustable for comparison. Depth-linked branch gains, FM/Sync behavior, voice allocation, and old presets remain. The old Main voice checks an optional ADSR field but never constructs or connects that node, so note ADSR would be a deliberate v2 behavior. The C++ helper recipe comparison is separate from this native-versus-Wasm composition check.</p></section>
+  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save 20 graph controls, target mode and recipe, temporal position, and the source. The phrase reference starts from analyzed source RMS and can be adjusted manually. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and prepares both bank targets, then restores pitch and branch gains. The version-6 state accepts prior version-1 through version-5 files; older states open with independent gains.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
+  <section class="panel"><h2>Legacy boundary and next route</h2><p class="scope">The old Main voice uses 1 − depth and depth for its base and Add gains in Add/Morph modes. That gain law is now available as a linked option, while independent audition controls remain for comparing the two branches. This is native Rust versus Wasm graph evidence; old sample/oscillator amplitude staging and full C++ Main output are not yet calibrated. FM/Sync direction behavior, voice allocation, and old presets remain. Old Morph forces the Add crossfade to its source endpoint; this v2 study keeps that position manually adjustable. The old Main voice checks an optional ADSR field but never constructs or connects that node, so note ADSR would be a deliberate v2 behavior.</p></section>
 </main></body></html>

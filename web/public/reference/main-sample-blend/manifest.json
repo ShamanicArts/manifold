@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Main sample blend study",
-  "sourceSha256": "01f95e29db886b87d6f5c9418ebebbbf4eb5bc9e7f871172bd4a379d8f7ce460",
+  "sourceSha256": "f23e006ab22c7aaba3faf44157d7c46af8a65a1ba62cc1bf766ff5d1c4fab305",
   "legacyFollowerSha256": "6cfff621f1756af991de4765823a3da82ad9dc950d2008fb5e5846ceb6cb8f18",
   "sampleRate": 48000,
   "sampleSourceRate": 48000,
@@ -37,6 +37,7 @@
         1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "sample-target.f32",
       "output": "sample.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -66,6 +67,7 @@
         1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "add-target.f32",
       "output": "add.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -95,6 +97,7 @@
         1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "morph-target.f32",
       "output": "morph.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -124,6 +127,7 @@
         1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "blend-target.f32",
       "output": "blend.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -153,6 +157,7 @@
         1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "pvoc-bin-target.f32",
       "output": "pvoc-bin.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -182,6 +187,7 @@
         1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "pvoc-hq-target.f32",
       "output": "pvoc-hq.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -211,6 +217,7 @@
         1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "pvoc-time-target.f32",
       "output": "pvoc-time.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -240,6 +247,7 @@
         1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "phrase-full-target.f32",
       "output": "phrase-full.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -269,6 +277,7 @@
         1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "phrase-half-target.f32",
       "output": "phrase-half.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -298,6 +307,7 @@
         -1
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "wave-only-target.f32",
       "output": "wave-only.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -327,6 +337,7 @@
         0
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "wave-sample-mid-target.f32",
       "output": "wave-sample-mid.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -356,6 +367,7 @@
         -0.35
       ],
       "addBlend": 1,
+      "linkedDepth": null,
       "target": "wave-sample-morph-target.f32",
       "output": "wave-sample-morph.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -385,6 +397,7 @@
         1
       ],
       "addBlend": -1,
+      "linkedDepth": null,
       "target": "add-wave-target.f32",
       "output": "add-wave.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -414,8 +427,99 @@
         1
       ],
       "addBlend": 0,
+      "linkedDepth": null,
       "target": "add-mid-target.f32",
       "output": "add-mid.f32",
+      "followerMeter": "follower-meters-cpp.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "depth-base",
+      "label": "Linked depth \u00b7 base only",
+      "mode": 1,
+      "sampleGain": 0.25,
+      "bankGain": 0.75,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
+      "phrase": [
+        0,
+        0.18
+      ],
+      "wave": [
+        220,
+        0,
+        1,
+        1
+      ],
+      "addBlend": 1,
+      "linkedDepth": 0,
+      "target": "depth-base-target.f32",
+      "output": "depth-base.f32",
+      "followerMeter": "follower-meters-cpp.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "depth-mid",
+      "label": "Linked depth \u00b7 equal branches",
+      "mode": 1,
+      "sampleGain": 0.25,
+      "bankGain": 0.75,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
+      "phrase": [
+        0,
+        0.18
+      ],
+      "wave": [
+        220,
+        0,
+        1,
+        1
+      ],
+      "addBlend": 1,
+      "linkedDepth": 0.5,
+      "target": "depth-mid-target.f32",
+      "output": "depth-mid.f32",
+      "followerMeter": "follower-meters-cpp.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "depth-add",
+      "label": "Linked depth \u00b7 Add only",
+      "mode": 1,
+      "sampleGain": 0.25,
+      "bankGain": 0.75,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
+      "phrase": [
+        0,
+        0.18
+      ],
+      "wave": [
+        220,
+        0,
+        1,
+        1
+      ],
+      "addBlend": 1,
+      "linkedDepth": 1,
+      "target": "depth-add-target.f32",
+      "output": "depth-add.f32",
       "followerMeter": "follower-meters-cpp.f32",
       "blockSize": 128
     }

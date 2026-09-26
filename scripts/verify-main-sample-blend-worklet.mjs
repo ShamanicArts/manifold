@@ -92,4 +92,17 @@ await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 8, count
 const phraseGain = messages.at(-1).values[0];
 assert.ok(phraseGain > 1.5 && phraseGain <= 3, `sample phrase gain ${phraseGain}`);
 assert.ok(rms(contoured) > rms(additiveOnly) * 1.5, 'sample envelope must shape additive level');
-console.log(`Main sample blend worklet: one source → ${count} Morph and ${waveCount} wave partials; sample ${rms(sampleOnly).toFixed(3)}, base wave ${rms(waveOnly).toFixed(3)}, additive wave ${rms(additiveWave).toFixed(3)}, additive centre ${rms(additiveCentre).toFixed(3)} RMS`);
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 8, id: 0, value: 0 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 12, id: 0, value: 1 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 65, value: 0 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 66, value: 1 } });
+const linkedBase = settle();
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 65, value: 1 } });
+const linkedAdd = settle();
+assert.ok(rms(linkedBase) > .01 && rms(linkedAdd) > .01, 'both linked depth endpoints must sound');
+assert.ok(Math.max(...linkedBase.map((value, index) => Math.abs(value - linkedAdd[index]))) > .02,
+  'linked depth must switch the audible branch');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 66, value: 0 } });
+const restoredIndependent = settle();
+assert.ok(rms(restoredIndependent) > .01, 'independent gains must resume after unlinking');
+console.log(`Main sample blend worklet: one source → ${count} Morph and ${waveCount} wave partials; sample ${rms(sampleOnly).toFixed(3)}, base wave ${rms(waveOnly).toFixed(3)}, additive wave ${rms(additiveWave).toFixed(3)}, linked base/add ${rms(linkedBase).toFixed(3)}/${rms(linkedAdd).toFixed(3)} RMS`);

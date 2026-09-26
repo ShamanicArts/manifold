@@ -271,7 +271,7 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: a base wave and the processed sample meet in an equal-power crossfade. Separately prepared wave and source spectra meet in a second crossfade, then follow the sample phrase envelope. Base and additive branches share the output mixer.',
+    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at one output. Link branch depth to use the old 1−depth/depth gain law, or audition the two branches with independent gains.',
     signal: 'Wave + file → sample region → vocoder → base crossfade · worker → wave/source Sine banks → Add crossfade → phrase gain · mixer → output',
   },
   'reverse-delay': {
@@ -841,6 +841,19 @@ function updateTransferCurve() {
 }
 window.addEventListener('resize', updateTransferCurve);
 
+function updateMainDepthControls() {
+  if (activeFamily !== 'main-sample-blend') return;
+  const linked = values.get(19) === 1;
+  for (const id of [2, 3, 18]) {
+    const control = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (!control) continue;
+    const inactive = id === 18 ? !linked : linked;
+    control.classList.toggle('inactive', inactive);
+    const input = control.querySelector('input');
+    if (input) input.disabled = inactive;
+  }
+}
+
 function addSlider(parameter) {
   const wrapper = document.createElement('label');
   wrapper.className = 'compact-slider';
@@ -1105,6 +1118,7 @@ function addToggle(parameter) {
     button.setAttribute('aria-pressed', String(next === 1));
     render();
     if (activeFamily === 'loop-capture') updateLoopToggles();
+    if (activeFamily === 'main-sample-blend' && parameter.hostId === 'linked-depth') updateMainDepthControls();
   });
   byId('controls').appendChild(button);
 }
@@ -1562,8 +1576,9 @@ function renderPrimitive(family) {
   if (family === 'main-sample-blend') {
     const help = document.createElement('p');
     help.className = 'control-help';
-    help.textContent = 'Phrase reference starts from the analyzed source level. Move its control to set a different reference; project state saves your choice.';
+    help.textContent = 'Link branch depth for base = 1 − depth and Add = depth. With linking off, the independent gains apply. Phrase reference starts from the analyzed source level; moving it saves a manual value.';
     byId('controls').appendChild(help);
+    updateMainDepthControls();
   }
   if (project.patch && patchedParameterValues.has(family)) {
     applyPatchParameterValues(activeProject, patchedParameterValues.get(family));
@@ -2174,6 +2189,7 @@ byId('main-state-file').addEventListener('change', async (event) => {
         control.textContent = `${parameter.label}: ${value ? 'On' : 'Off'}`;
       }
     }
+    updateMainDepthControls();
     for (const [id, value] of Object.entries({
       'sine-target-mode': state.target.mode, 'sine-waveform': state.target.waveform,
       'sine-position': state.target.position, 'sine-morph-amount': state.target.morphAmount,

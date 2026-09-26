@@ -10,8 +10,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 20 {
-        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND ADD_BLEND".into());
+    if args.len() != 22 {
+        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND ADD_BLEND DEPTH LINKED".into());
     }
     let sample: Vec<f32> = std::fs::read(&args[1])?
         .chunks_exact(4)
@@ -36,6 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wave_shape: u32 = args[17].parse()?;
     let base_blend: f32 = args[18].parse()?;
     let add_blend: f32 = args[19].parse()?;
+    let depth: f32 = args[20].parse()?;
+    let linked: u32 = args[21].parse()?;
     let analysis = analyze_temporal_stereo(&sample, 48_000.0, 0..sample_frames, 128)
         .ok_or("source analysis failed")?;
     let source = analysis.partials_at(0.5, 0.6, 0.5);
@@ -242,6 +244,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("source or target upload failed".into());
     }
+    assert!(plan.set_parameter(4, 65, depth));
+    assert!(plan.set_parameter(4, 66, linked as f32));
     assert!(plan.set_parameter(2, 6, 1.0));
     let mut output = Vec::with_capacity(frames * 8);
     for offset in (0..frames).step_by(128) {

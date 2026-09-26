@@ -700,12 +700,15 @@ struct CrossfaderState {
 }
 
 struct MixerState {
+    independent_gains: Vec<f32>,
     target_gains: Vec<f32>,
     gains: Vec<f32>,
     target_pans: Vec<f32>,
     pans: Vec<f32>,
     target_master: f32,
     master: f32,
+    linked_depth: f32,
+    linked_enabled: bool,
     smoothing: f32,
 }
 
@@ -780,12 +783,15 @@ impl Kernel {
                 let pans: Vec<_> = pans.iter().map(|value| value.clamp(-1.0, 1.0)).collect();
                 let master = master.clamp(0.0, 2.0);
                 Self::Mixer(MixerState {
+                    independent_gains: gains.clone(),
                     target_gains: gains.clone(),
                     gains,
                     target_pans: pans.clone(),
                     pans,
                     target_master: master,
                     master,
+                    linked_depth: 0.5,
+                    linked_enabled: false,
                     smoothing: ((1.0 - (-1.0 / (0.010 * sample_rate as f64)).exp()) as f32)
                         .clamp(0.0001, 1.0),
                 })
@@ -1003,10 +1009,30 @@ impl Kernel {
             }
             (Self::Mixer(state), 0) => state.target_master = value.clamp(0.0, 2.0),
             (Self::Mixer(state), id @ 1..=32) if (id as usize) <= state.gains.len() => {
-                state.target_gains[id as usize - 1] = value.clamp(0.0, 2.0)
+                let gain = value.clamp(0.0, 2.0);
+                state.independent_gains[id as usize - 1] = gain;
+                if !state.linked_enabled {
+                    state.target_gains[id as usize - 1] = gain;
+                }
             }
             (Self::Mixer(state), id @ 33..=64) if (id as usize - 32) <= state.pans.len() => {
                 state.target_pans[id as usize - 33] = value.clamp(-1.0, 1.0)
+            }
+            (Self::Mixer(state), 65) if state.gains.len() == 2 => {
+                state.linked_depth = value.clamp(0.0, 1.0);
+                if state.linked_enabled {
+                    state.target_gains[0] = 1.0 - state.linked_depth;
+                    state.target_gains[1] = state.linked_depth;
+                }
+            }
+            (Self::Mixer(state), 66) if state.gains.len() == 2 => {
+                state.linked_enabled = value >= 0.5;
+                if state.linked_enabled {
+                    state.target_gains[0] = 1.0 - state.linked_depth;
+                    state.target_gains[1] = state.linked_depth;
+                } else {
+                    state.target_gains.copy_from_slice(&state.independent_gains);
+                }
             }
             (Self::Svf(filter), id) => return filter.set_parameter(id, value),
             (Self::ModulatedSvf { filter, .. }, id @ 0..=2) => {
@@ -2304,7 +2330,7 @@ mod tests {
         assert!(left.iter().all(|value| (value - 1.0).abs() < 1e-6));
         assert!(right.iter().all(|value| (value - 0.25).abs() < 1e-6));
         assert!(plan.set_parameter(3, 64, 0.0));
-        assert!(!plan.set_parameter(3, 65, 0.0));
+        assert!(!plan.set_parameter(3, 65, 0.0)); // linked depth requires exactly two buses
 
         let mut invalid = description;
         invalid.connections.push(edge(1, 3, 32));
@@ -2312,6 +2338,58 @@ mod tests {
             invalid.compile(48_000.0, 4),
             Err(GraphError::InvalidPort(3, 32))
         ));
+    }
+
+    #[test]
+    fn two_bus_mixer_links_depth_and_restores_independent_gains() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(2, NodeKind::Constant { value: 0.25 }),
+                node(
+                    3,
+                    NodeKind::Mixer {
+                        inputs: 2,
+                        gains: vec![0.25, 0.75],
+                        pans: vec![0.0, 0.0],
+                        master: 1.0,
+                    },
+                ),
+                node(4, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 3, 0), edge(2, 3, 1), edge(3, 4, 0)],
+        };
+        let mut plan = description.compile(48_000.0, 128).unwrap();
+        let input = [1.0; 128];
+        let settle = |plan: &mut ExecutionPlan| {
+            let mut output = [Vec::new(), Vec::new()];
+            for _ in 0..128 {
+                output = process(plan, &input, &input);
+            }
+            output[0][127]
+        };
+        let independent = settle(&mut plan);
+        assert!(
+            (independent - (0.25 + 0.75 * 0.25) * std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-5
+        );
+        assert!(plan.set_parameter(3, 65, 0.0));
+        assert!(plan.set_parameter(3, 66, 1.0));
+        let base = settle(&mut plan);
+        assert!(
+            (base - std::f32::consts::FRAC_1_SQRT_2).abs() < 5e-5,
+            "base {base}"
+        );
+        assert!(plan.set_parameter(3, 65, 1.0));
+        let additive = settle(&mut plan);
+        assert!((additive - 0.25 * std::f32::consts::FRAC_1_SQRT_2).abs() < 5e-5);
+        assert!(plan.set_parameter(3, 1, 0.4));
+        assert!(plan.set_parameter(3, 2, 0.6));
+        assert!((settle(&mut plan) - additive).abs() < 5e-5);
+        assert!(plan.set_parameter(3, 66, 0.0));
+        assert!(
+            (settle(&mut plan) - (0.4 + 0.6 * 0.25) * std::f32::consts::FRAC_1_SQRT_2).abs() < 5e-5
+        );
+        assert!(!plan.set_parameter(3, 67, 0.5));
     }
 
     #[test]

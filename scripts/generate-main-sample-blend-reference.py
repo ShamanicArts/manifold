@@ -41,7 +41,7 @@ subprocess.run([legacy_follower, str(sample_path),
                 "5", "5", "80", "80", "2", "2", "40", "40", "0", "0",
                 str(source_rate), str(block), str(frames // 2), str(frames)], check=True)
 cases = []
-for case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave, add_blend in [
+for case in [
     ("sample", "Sample branch alone · dry vocoder", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1),
     ("add", "Add branch alone", 1, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1),
     ("morph", "Morph branch alone", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1),
@@ -56,12 +56,19 @@ for case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave, add_blend 
     ("wave-sample-morph", "Wave/sample base plus Morph bank", 2, .7, .5, [0, 0, 1, 0, 11], [0, .18], [330, .35, 3, -.35], 1),
     ("add-wave", "Wave-derived additive A", 1, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], -1),
     ("add-mid", "Wave/source additive centre", 1, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 0),
+    ("depth-base", "Linked depth · base only", 1, .25, .75, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1, 0),
+    ("depth-mid", "Linked depth · equal branches", 1, .25, .75, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1, .5),
+    ("depth-add", "Linked depth · Add only", 1, .25, .75, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1, 1),
 ]:
+    case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave, add_blend = case[:9]
+    depth = case[9] if len(case) > 9 else None
     output, target = f"{case_id}.f32", f"{case_id}-target.f32"
     subprocess.run([runner, str(sample_path), str(OUT / output), str(OUT / target), str(mode),
-                    str(sample_gain), str(bank_gain), str(frames), *map(str, pvoc), *map(str, phrase), *map(str, wave), str(add_blend)], check=True)
+                    str(sample_gain), str(bank_gain), str(frames), *map(str, pvoc), *map(str, phrase), *map(str, wave), str(add_blend),
+                    str(depth if depth is not None else .5), str(int(depth is not None))], check=True)
     cases.append({"id": case_id, "label": label, "mode": mode, "sampleGain": sample_gain,
                   "bankGain": bank_gain, "vocoder": pvoc, "phrase": phrase, "wave": wave, "addBlend": add_blend,
+                  "linkedDepth": depth,
                   "target": target, "output": output, "followerMeter": follower_meters,
                   "blockSize": block})
 (OUT / "manifest.json").write_text(json.dumps({
