@@ -3,6 +3,8 @@
   "id": "manifold.main-voice-bank-study",
   "name": "Main voice bank",
   "source": "Authored v2 polyphonic base branch from Main sample_synth.lua and voice_manager.lua",
+  "partials": { "nodeId": 2, "target": 0, "fundamental": 1, "values": [1, 1, 0, 0, 2, 0.42, 0, 0, 3, 0.2, 0, 0, 4, 0.1, 0, 0] },
+  "extraPartials": [{ "nodeId": 2, "target": 1, "fundamental": 1, "values": [1, 1, 0, 0, 2, 0.38, 0, 0, 3, 0.13, 0, 0] }],
   "signal": {
     "inputs": 0,
     "outputs": 2,
@@ -22,7 +24,7 @@
     { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "keytrack", "label": "Keytrack", "kind": "select", "choices": ["Wave", "Sample", "Both"], "default": 2 },
     { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "sample-pitch", "label": "Sample pitch", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "st" },
     { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "pitch-mode", "label": "Pitch engine", "kind": "select", "choices": ["Classic", "Vocoder", "Vocoder HQ"], "default": 0 },
-    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "blend-mode", "label": "Blend mode", "kind": "select", "choices": ["Normal", "Ring", "FM", "Sync"], "choiceValues": [0, 1, 2, 3], "default": 0 },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "blend-mode", "label": "Blend mode", "kind": "select", "choices": ["Normal", "Ring", "FM", "Sync", "Add", "Morph"], "choiceValues": [0, 1, 2, 3, 4, 5], "default": 0 },
     { "id": 7, "nodeId": 2, "nodeParameterId": 7, "hostId": "depth", "label": "Direction depth", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 8, "nodeId": 2, "nodeParameterId": 8, "hostId": "wave-to-sample", "label": "Wave to sample", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 9, "nodeId": 2, "nodeParameterId": 9, "hostId": "sample-to-wave", "label": "Sample to wave", "kind": "float", "min": 0, "max": 1, "default": 0 },
@@ -32,6 +34,8 @@
     { "id": 13, "nodeId": 2, "nodeParameterId": 13, "hostId": "sustain", "label": "Sustain", "kind": "float", "min": 0, "max": 1, "default": 0.8 },
     { "id": 14, "nodeId": 2, "nodeParameterId": 14, "hostId": "release", "label": "Release", "kind": "float", "min": 0.001, "max": 2, "default": 0.16, "unit": "s", "scale": "log" },
     { "id": 15, "nodeId": 2, "nodeParameterId": 15, "hostId": "output", "label": "Output", "kind": "float", "min": 0, "max": 2, "default": 1 },
-    { "id": 16, "nodeId": 2, "nodeParameterId": 16, "hostId": "time-stretch", "label": "Vocoder time", "kind": "float", "min": 0.25, "max": 4, "default": 1 }
+    { "id": 16, "nodeId": 2, "nodeParameterId": 16, "hostId": "time-stretch", "label": "Vocoder time", "kind": "float", "min": 0.25, "max": 4, "default": 1 },
+    { "id": 17, "nodeId": 2, "nodeParameterId": 17, "hostId": "phrase-amount", "label": "Phrase contour", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 18, "nodeId": 2, "nodeParameterId": 18, "hostId": "phrase-reference", "label": "Phrase reference", "kind": "float", "min": 0.05, "max": 0.6, "default": 0.2 }
   ]
 }

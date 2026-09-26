@@ -52,6 +52,13 @@ impl EnvelopeFollower {
         self.current = self.target;
     }
 
+    pub fn reset(&mut self) {
+        self.hp_state = [0.0; 2];
+        self.hp_input = [0.0; 2];
+        self.envelope = 0.0;
+        self.meter = 0.0;
+    }
+
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let [left, right] = input;
         let [out_left, out_right] = output;

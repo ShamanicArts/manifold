@@ -28,7 +28,10 @@ with sample_path.open("wb") as output:
         output.write(struct.pack("<ff", tone, tone * 0.8))
 frames, sample_rate, block = 8192, 48_000, 128
 (OUT / "input.f32").write_bytes(bytes(frames * 8))
-base = [0, 0, 60, 2, 0, 0, 0, .5, .5, 0, 1, .005, .08, .8, .05, 1, 1]
+base = [0, 0, 60, 2, 0, 0, 0, .5, .5, 0, 1, .005, .08, .8, .05, 1, 1, 0, .2]
+project = json.loads((ROOT / "projects/main-voice-bank/project.json").read_text())
+wave_target = project["partials"]["values"]
+source_target = project["extraPartials"][0]["values"]
 def params(**changes):
     result = base.copy()
     for id, value in changes.items():
@@ -49,6 +52,10 @@ specs = [
      [(0, 0, 0, 60, 100), (611, 0, 0, 67, 120)], []),
     ("ring-chord", "Per-voice crossed wave/sample modulation", params(**{"0": 1, "1": -.15, "6": 1, "7": .9}),
      [(0, 0, 0, 60, 100), (611, 0, 0, 67, 120)], []),
+    ("add-chord", "Two prepared additive banks per voice", params(**{"1": -.15, "6": 4, "7": .9}),
+     [(0, 0, 0, 60, 100), (611, 0, 0, 67, 120)], []),
+    ("morph-chord", "Source spectrum follows interpolated pitch with sample phrase contour", params(**{"1": .35, "6": 5, "7": .9, "17": .5}),
+     [(0, 0, 0, 60, 100), (611, 0, 0, 67, 120)], []),
     ("vocoder-chord", "Per-voice spectral pitch", params(**{"1": 1, "5": 1, "4": 7}),
      [(0, 0, 0, 60, 100), (611, 0, 0, 67, 120)], []),
     ("sync-chord", "Per-voice Sync retrigger", params(**{"1": -.2, "6": 3}),
@@ -60,7 +67,8 @@ for case_id, label, parameters, events, changes in specs:
     subprocess.run([runner, str(sample_path), str(OUT / filename), str(source_rate), str(sample_rate),
                     str(block), str(frames), ",".join(map(str, parameters)),
                     ",".join(":".join(map(str, event)) for event in events),
-                    ",".join(":".join(map(str, change)) for change in changes)], check=True)
+                    ",".join(":".join(map(str, change)) for change in changes),
+                    ",".join(map(str, wave_target)), ",".join(map(str, source_target))], check=True)
     case = {"id": case_id, "label": label, "parameters": parameters, "events": events,
             "changes": changes, "blockSize": block, "output": filename}
     if case_id == "vocoder-chord":
@@ -72,5 +80,6 @@ for case_id, label, parameters, events, changes in specs:
     "sourceSha256": source_hash, "sampleRate": sample_rate, "sampleSourceRate": source_rate,
     "sampleFrames": sample_frames, "sample": "sample.f32", "channels": 2,
     "frames": frames, "stepFrame": 4096, "input": "input.f32", "cases": cases,
+    "waveTarget": wave_target, "sourceTarget": source_target,
 }, indent=2) + "\n")
 print(f"Wrote {len(cases)} native Rust Main voice bank cases to {OUT}")

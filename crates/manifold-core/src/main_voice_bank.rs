@@ -2,14 +2,17 @@
 //! preserved; per-sample ADSR timing is an explicit v2 change from its UI tick.
 
 use crate::envelope::AdsrEnvelope;
+use crate::envelope_follower::EnvelopeFollower;
 use crate::events::EventKind;
 use crate::main_directional::MainDirectionalMotion;
 use crate::main_pitch::route_main_pitch;
 use crate::main_voice_allocator::{EnvelopePhase, MAIN_VOICE_COUNT, MainVoiceAllocator};
 use crate::oscillator::Oscillator;
 use crate::phase_vocoder::PhaseVocoder;
+use crate::phrase_gain::PhraseGain;
 use crate::ring_modulator::RingModulator;
 use crate::sample_region::SampleRegion;
+use crate::sine_bank::{DEFAULTS as SINE_DEFAULTS, PartialSet, SineBank};
 
 struct MainVoice {
     player: SampleRegion,
@@ -17,6 +20,10 @@ struct MainVoice {
     vocoder: PhaseVocoder,
     ring_sample_to_wave: RingModulator,
     ring_wave_to_sample: RingModulator,
+    wave_add: SineBank,
+    sample_add: SineBank,
+    follower: EnvelopeFollower,
+    phrase: PhraseGain,
     envelope: AdsrEnvelope,
     motion: MainDirectionalMotion,
 }
@@ -31,6 +38,13 @@ pub struct MainVoiceBank {
     wave: Vec<f32>,
     ring_left: Vec<f32>,
     ring_right: Vec<f32>,
+    add_wave_left: Vec<f32>,
+    add_wave_right: Vec<f32>,
+    add_sample_left: Vec<f32>,
+    add_sample_right: Vec<f32>,
+    add_left: Vec<f32>,
+    add_right: Vec<f32>,
+    sample_envelope: Vec<f32>,
     waveform: u32,
     blend: f32,
     root_note: f32,
@@ -61,6 +75,10 @@ impl MainVoiceBank {
                 vocoder: PhaseVocoder::new(sample_rate, [0.0, 0.0, 1.0, 0.0, order as f32]),
                 ring_sample_to_wave: RingModulator::new(sample_rate, [120.0, 0.0, 0.0, 0.0, 0.0]),
                 ring_wave_to_sample: RingModulator::new(sample_rate, [120.0, 0.0, 0.0, 0.0, 0.0]),
+                wave_add: SineBank::new(sample_rate, SINE_DEFAULTS),
+                sample_add: SineBank::new(sample_rate, SINE_DEFAULTS),
+                follower: EnvelopeFollower::new(sample_rate, 8.0, 85.0),
+                phrase: PhraseGain::new(sample_rate, 0.0, 0.2),
                 envelope,
                 motion: MainDirectionalMotion::new(sample_rate),
             }
@@ -75,6 +93,13 @@ impl MainVoiceBank {
             wave: vec![0.0; max_frames],
             ring_left: vec![0.0; max_frames],
             ring_right: vec![0.0; max_frames],
+            add_wave_left: vec![0.0; max_frames],
+            add_wave_right: vec![0.0; max_frames],
+            add_sample_left: vec![0.0; max_frames],
+            add_sample_right: vec![0.0; max_frames],
+            add_left: vec![0.0; max_frames],
+            add_right: vec![0.0; max_frames],
+            sample_envelope: vec![0.0; max_frames],
             waveform: 0,
             blend: 0.0,
             root_note: 60.0,
@@ -103,6 +128,23 @@ impl MainVoiceBank {
         true
     }
 
+    /// Target 0 is the authored wave recipe; target 1 is the analyzed source.
+    /// Uploads happen between blocks and are validated before any voice changes.
+    pub fn load_partials(&mut self, target: u32, partials: PartialSet) -> bool {
+        if target > 1 || !partials.validate() {
+            return false;
+        }
+        for voice in &mut self.voices {
+            let bank = if target == 0 {
+                &mut voice.wave_add
+            } else {
+                &mut voice.sample_add
+            };
+            bank.load_partials(partials);
+        }
+        true
+    }
+
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
         if !value.is_finite() {
             return false;
@@ -119,12 +161,17 @@ impl MainVoiceBank {
             3 => self.keytrack = value.round().clamp(0.0, 2.0) as u32,
             4 => self.sample_pitch = value.clamp(-24.0, 24.0),
             5 => self.pitch_mode = value.round().clamp(0.0, 2.0) as u32,
-            6 if (0.0..=3.0).contains(&value) && value.fract() == 0.0 => {
+            6 if (0.0..=5.0).contains(&value) && value.fract() == 0.0 => {
                 self.direction_mode = value as u32;
                 for voice in &mut self.voices {
-                    voice
-                        .motion
-                        .set_parameter(0, if value == 1.0 { 0.0 } else { value });
+                    voice.motion.set_parameter(
+                        0,
+                        if value == 2.0 || value == 3.0 {
+                            value
+                        } else {
+                            0.0
+                        },
+                    );
                     if value != 1.0 {
                         voice
                             .ring_sample_to_wave
@@ -146,6 +193,11 @@ impl MainVoiceBank {
             }
             15 => self.master = value.clamp(0.0, 2.0),
             16 => self.time_stretch = value.clamp(0.25, 4.0),
+            17..=18 => {
+                for voice in &mut self.voices {
+                    voice.phrase.set_parameter(id - 17, value);
+                }
+            }
             _ => return false,
         }
         true
@@ -161,6 +213,9 @@ impl MainVoiceBank {
                 let voice = &mut self.voices[index];
                 let frequency = (440.0_f64 * 2.0_f64.powf((note as f64 - 69.0) / 12.0)) as f32;
                 voice.envelope.reset();
+                voice.wave_add.reset();
+                voice.sample_add.reset();
+                voice.follower.reset();
                 voice.envelope.set_gate(true);
                 voice.vocoder.reset();
                 voice
@@ -196,6 +251,9 @@ impl MainVoiceBank {
         self.allocator.panic();
         for voice in &mut self.voices {
             voice.envelope.reset();
+            voice.wave_add.reset();
+            voice.sample_add.reset();
+            voice.follower.reset();
             voice.player.set_parameter(6, 0.0);
             voice.oscillator.set_parameter(2, 0.0);
             voice.motion.set_parameter(8, 0.0);
@@ -294,6 +352,9 @@ impl MainVoiceBank {
                 let sample = voice.player.process_sample();
                 self.raw_left[frame] = sample[0];
                 self.raw_right[frame] = sample[1];
+                if self.direction_mode >= 4 {
+                    self.sample_envelope[frame] = voice.follower.process_sample(sample);
+                }
             }
             voice.vocoder.process_planar(
                 [&self.raw_left[..frames], &self.raw_right[..frames]],
@@ -345,6 +406,57 @@ impl MainVoiceBank {
                     ],
                 );
             }
+            if self.direction_mode >= 4 {
+                let root_frequency =
+                    440.0_f64 * 2.0_f64.powf((self.root_note as f64 - 69.0) / 12.0);
+                let sample_frequency =
+                    (root_frequency * pitch.desired_sample_ratio as f64).clamp(20.0, 8000.0) as f32;
+                let morph_frequency = wave_frequency + (sample_frequency - wave_frequency) * t;
+                voice.wave_add.set_parameter(0, wave_frequency);
+                voice.sample_add.set_parameter(
+                    0,
+                    if self.direction_mode == 5 {
+                        morph_frequency
+                    } else {
+                        sample_frequency
+                    },
+                );
+                voice.wave_add.set_parameter(1, amp * 2.0);
+                voice.sample_add.set_parameter(1, amp * 2.0);
+                voice.wave_add.process_planar(
+                    None,
+                    [
+                        &mut self.add_wave_left[..frames],
+                        &mut self.add_wave_right[..frames],
+                    ],
+                );
+                voice.sample_add.process_planar(
+                    None,
+                    [
+                        &mut self.add_sample_left[..frames],
+                        &mut self.add_sample_right[..frames],
+                    ],
+                );
+                let (add_wave_gain, add_sample_gain) = if self.direction_mode == 5 {
+                    (0.0, 1.0)
+                } else {
+                    (wave_gain, sample_gain)
+                };
+                for frame in 0..frames {
+                    self.add_left[frame] = self.add_wave_left[frame] * add_wave_gain
+                        + self.add_sample_left[frame] * add_sample_gain;
+                    self.add_right[frame] = self.add_wave_right[frame] * add_wave_gain
+                        + self.add_sample_right[frame] * add_sample_gain;
+                }
+                voice.phrase.process_planar(
+                    [&self.add_left[..frames], &self.add_right[..frames]],
+                    &self.sample_envelope[..frames],
+                    [
+                        &mut self.add_wave_left[..frames],
+                        &mut self.add_wave_right[..frames],
+                    ],
+                );
+            }
             for frame in 0..frames {
                 let envelope = voice.envelope.process_sample();
                 let scaling = envelope * self.master * 0.5;
@@ -356,11 +468,30 @@ impl MainVoiceBank {
                         + self.ring_right[frame] * sample_gain)
                         * scaling;
                 } else {
-                    left[frame] += (self.wave[frame] * wave_gain
+                    let base_gain = if self.direction_mode >= 4 {
+                        1.0 - self.depth
+                    } else {
+                        1.0
+                    };
+                    let add_left = if self.direction_mode >= 4 {
+                        self.add_wave_left[frame] * self.depth
+                    } else {
+                        0.0
+                    };
+                    let add_right = if self.direction_mode >= 4 {
+                        self.add_wave_right[frame] * self.depth
+                    } else {
+                        0.0
+                    };
+                    left[frame] += ((self.wave[frame] * wave_gain
                         + self.pitched_left[frame] * sample_gain)
+                        * base_gain
+                        + add_left)
                         * scaling;
-                    right[frame] += (self.wave[frame] * wave_gain
+                    right[frame] += ((self.wave[frame] * wave_gain
                         + self.pitched_right[frame] * sample_gain)
+                        * base_gain
+                        + add_right)
                         * scaling;
                 }
             }
@@ -383,6 +514,72 @@ impl MainVoiceBank {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sine_bank::Partial;
+
+    fn target(harmonics: &[(f32, f32)]) -> PartialSet {
+        let mut set = PartialSet {
+            fundamental: 1.0,
+            count: harmonics.len(),
+            ..PartialSet::default()
+        };
+        for (index, &(frequency, amplitude)) in harmonics.iter().enumerate() {
+            set.partials[index] = Partial {
+                frequency,
+                amplitude,
+                phase: 0.0,
+                decay_rate: 0.0,
+            };
+        }
+        set
+    }
+
+    #[test]
+    fn add_morph_targets_are_independent_and_depth_zero_keeps_the_base() {
+        let render = |mode, depth, source: PartialSet| {
+            let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+            assert!(bank.load_stereo(vec![0.5; 8_000 * 2], 8_000.0));
+            assert!(bank.load_partials(0, target(&[(1.0, 1.0), (2.0, 0.3)])));
+            assert!(bank.load_partials(1, source));
+            assert!(!bank.load_partials(2, target(&[(1.0, 1.0)])));
+            bank.set_parameter(1, 0.0);
+            bank.set_parameter(6, mode);
+            bank.set_parameter(7, depth);
+            for note in [60, 67] {
+                bank.event(EventKind::NoteOn {
+                    channel: 0,
+                    note,
+                    velocity: 100,
+                });
+            }
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            for _ in 0..8 {
+                bank.process_planar([&mut left, &mut right]);
+            }
+            (left, right)
+        };
+        let source = target(&[(1.0, 1.0), (3.0, 0.4)]);
+        let (base, _) = render(0.0, 0.0, source);
+        let (dry_add, _) = render(4.0, 0.0, source);
+        let (add, _) = render(4.0, 1.0, source);
+        let (morph, _) = render(5.0, 1.0, source);
+        let (changed, _) = render(5.0, 1.0, target(&[(1.0, 1.0), (4.0, 0.4)]));
+        assert!(base.iter().zip(dry_add).all(|(a, b)| (a - b).abs() < 1e-6));
+        assert!(base.iter().zip(add).any(|(a, b)| (a - b).abs() > 0.01));
+        assert!(morph.iter().zip(changed).any(|(a, b)| (a - b).abs() > 0.01));
+        assert!(morph.iter().zip(base).any(|(a, b)| (a - b).abs() > 0.01));
+    }
+
+    #[test]
+    fn entering_add_or_morph_clears_previous_fm_sync_motion() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        for (previous, next) in [(2.0, 4.0), (3.0, 5.0)] {
+            assert!(bank.set_parameter(6, previous));
+            assert!(bank.voices.iter().all(|voice| voice.motion.active()));
+            assert!(bank.set_parameter(6, next));
+            assert!(bank.voices.iter().all(|voice| !voice.motion.active()));
+        }
+    }
 
     #[test]
     fn chords_release_independently_and_duplicate_notes_share_release() {

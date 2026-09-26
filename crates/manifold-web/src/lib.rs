@@ -25,7 +25,7 @@ struct WorkletEngine {
     output: Vec<f32>,
     events: Vec<TimedEvent>,
     sample_upload: Option<(u32, f32, Vec<f32>)>,
-    partial_upload: Option<(u32, PartialSet)>,
+    partial_upload: Option<(u32, u32, PartialSet)>,
 }
 
 struct AnalysisJob {
@@ -1085,6 +1085,16 @@ pub extern "C" fn manifold_sample_commit() -> u32 {
 /// frequency, amplitude, phase, and stored decay rate.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_partials_begin(node_id: u32, count: u32, fundamental: f32) -> u32 {
+    manifold_partials_begin_target(node_id, 0, count, fundamental)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_partials_begin_target(
+    node_id: u32,
+    target: u32,
+    count: u32,
+    fundamental: f32,
+) -> u32 {
     if count as usize > MAX_PARTIALS || !fundamental.is_finite() || fundamental <= 0.0 {
         return 0;
     }
@@ -1093,7 +1103,7 @@ pub extern "C" fn manifold_partials_begin(node_id: u32, count: u32, fundamental:
             let mut partials = PartialSet::default();
             partials.fundamental = fundamental;
             partials.count = count as usize;
-            engine.partial_upload = Some((node_id, partials));
+            engine.partial_upload = Some((node_id, target, partials));
             1
         })
     })
@@ -1105,7 +1115,7 @@ pub extern "C" fn manifold_partials_ptr() -> *mut f32 {
         slot.borrow_mut()
             .as_mut()
             .and_then(|engine| engine.partial_upload.as_mut())
-            .map_or(std::ptr::null_mut(), |(_, set)| {
+            .map_or(std::ptr::null_mut(), |(_, _, set)| {
                 set.partials.as_mut_ptr().cast()
             })
     })
@@ -1116,10 +1126,14 @@ pub extern "C" fn manifold_partials_ptr() -> *mut f32 {
 pub extern "C" fn manifold_partials_commit() -> u32 {
     ENGINE.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |engine| {
-            let Some((node_id, partials)) = engine.partial_upload.take() else {
+            let Some((node_id, target, partials)) = engine.partial_upload.take() else {
                 return 0;
             };
-            u32::from(engine.plan.load_partials(node_id.into(), partials))
+            u32::from(
+                engine
+                    .plan
+                    .load_partials_target(node_id.into(), target, partials),
+            )
         })
     })
 }

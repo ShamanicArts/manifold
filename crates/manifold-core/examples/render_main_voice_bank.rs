@@ -1,12 +1,13 @@
 //! Native reference for Main's eight prepared wave/sample voices.
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
+use manifold_core::sine_bank::{Partial, PartialSet};
 use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 10 {
-        return Err("usage: render_main_voice_bank SAMPLE OUTPUT SOURCE_RATE OUTPUT_RATE BLOCK FRAMES PARAMETERS EVENTS CHANGES".into());
+    if args.len() != 12 {
+        return Err("usage: render_main_voice_bank SAMPLE OUTPUT SOURCE_RATE OUTPUT_RATE BLOCK FRAMES PARAMETERS EVENTS CHANGES WAVE_PARTIALS SOURCE_PARTIALS".into());
     }
     let raw = std::fs::read(&args[1])?;
     if raw.len() % 8 != 0 {
@@ -24,8 +25,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .split(',')
         .map(str::parse)
         .collect::<Result<_, _>>()?;
-    if parameters.len() != 17 {
-        return Err("expected seventeen Main bank parameters".into());
+    if parameters.len() != 19 {
+        return Err("expected nineteen Main bank parameters".into());
     }
     let events: Vec<(usize, u32, u8, u8, u8)> = args[8]
         .split(',')
@@ -73,6 +74,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .compile(output_rate, block)?;
     if !plan.load_sample_stereo(2, sample, source_rate) {
         return Err("sample load rejected".into());
+    }
+    for (target, value) in [args[10].as_str(), args[11].as_str()]
+        .into_iter()
+        .enumerate()
+    {
+        let numbers: Vec<f32> = value.split(',').map(str::parse).collect::<Result<_, _>>()?;
+        if numbers.len() % 4 != 0 || numbers.len() > 32 * 4 {
+            return Err("invalid partial array".into());
+        }
+        let mut set = PartialSet {
+            fundamental: 1.0,
+            count: numbers.len() / 4,
+            ..PartialSet::default()
+        };
+        for (index, values) in numbers.chunks_exact(4).enumerate() {
+            set.partials[index] = Partial {
+                frequency: values[0],
+                amplitude: values[1],
+                phase: values[2],
+                decay_rate: values[3],
+            };
+        }
+        if !plan.load_partials_target(2, target as u32, set) {
+            return Err("partial target rejected".into());
+        }
     }
     for (id, value) in parameters.into_iter().enumerate() {
         assert!(plan.set_parameter(2, id as u32, value));

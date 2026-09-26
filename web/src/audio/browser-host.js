@@ -146,7 +146,7 @@ export class BrowserAudioHost {
 
   setPartials(partials) {
     if (!this.processor || !this.ready) return;
-    this.processor.port.postMessage({ type: 'partials', nodeId: partials.nodeId,
+    this.processor.port.postMessage({ type: 'partials', nodeId: partials.nodeId, target: partials.target ?? 0,
       fundamental: partials.fundamental, values: partials.values });
   }
 

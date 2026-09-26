@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Main base voice bank; not original JUCE audio",
-  "sourceSha256": "5d4ddf8a52942f17f667cf77312295b6d0dfbf20b07b7c45b91055f53b963d08",
+  "sourceSha256": "549369983df6fd25e27fd230eae8d7eaf8f449d8d5accb01558fcfc92c570845",
   "sampleRate": 48000,
   "sampleSourceRate": 32000,
   "sampleFrames": 4096,
@@ -31,7 +31,9 @@
         0.8,
         0.05,
         1,
-        1
+        1,
+        0,
+        0.2
       ],
       "events": [
         [
@@ -80,7 +82,9 @@
         0.8,
         0.05,
         1,
-        1
+        1,
+        0,
+        0.2
       ],
       "events": [
         [
@@ -129,7 +133,9 @@
         0.8,
         0.05,
         1,
-        1
+        1,
+        0,
+        0.2
       ],
       "events": [
         [
@@ -185,7 +191,9 @@
         0.8,
         0.05,
         1,
-        1
+        1,
+        0,
+        0.2
       ],
       "events": [
         [
@@ -283,7 +291,9 @@
         0.8,
         0.05,
         1,
-        1
+        1,
+        0,
+        0.2
       ],
       "events": [
         [
@@ -325,7 +335,9 @@
         0.8,
         0.05,
         1,
-        1
+        1,
+        0,
+        0.2
       ],
       "events": [
         [
@@ -348,6 +360,94 @@
       "output": "ring-chord.f32"
     },
     {
+      "id": "add-chord",
+      "label": "Two prepared additive banks per voice",
+      "parameters": [
+        0,
+        -0.15,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.005,
+        0.08,
+        0.8,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          100
+        ],
+        [
+          611,
+          0,
+          0,
+          67,
+          120
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-chord.f32"
+    },
+    {
+      "id": "morph-chord",
+      "label": "Source spectrum follows interpolated pitch with sample phrase contour",
+      "parameters": [
+        0,
+        0.35,
+        60,
+        2,
+        0,
+        0,
+        5,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.005,
+        0.08,
+        0.8,
+        0.05,
+        1,
+        1,
+        0.5,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          100
+        ],
+        [
+          611,
+          0,
+          0,
+          67,
+          120
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "morph-chord.f32"
+    },
+    {
       "id": "vocoder-chord",
       "label": "Per-voice spectral pitch",
       "parameters": [
@@ -367,7 +467,9 @@
         0.8,
         0.05,
         1,
-        1
+        1,
+        0,
+        0.2
       ],
       "events": [
         [
@@ -414,7 +516,9 @@
         0.8,
         0.05,
         1,
-        1
+        1,
+        0,
+        0.2
       ],
       "events": [
         [
@@ -436,5 +540,37 @@
       "blockSize": 128,
       "output": "sync-chord.f32"
     }
+  ],
+  "waveTarget": [
+    1,
+    1,
+    0,
+    0,
+    2,
+    0.42,
+    0,
+    0,
+    3,
+    0.2,
+    0,
+    0,
+    4,
+    0.1,
+    0,
+    0
+  ],
+  "sourceTarget": [
+    1,
+    1,
+    0,
+    0,
+    2,
+    0.38,
+    0,
+    0,
+    3,
+    0.13,
+    0,
+    0
   ]
 }

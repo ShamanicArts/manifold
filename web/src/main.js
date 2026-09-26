@@ -368,8 +368,8 @@ const projects = {
   'main-voice-bank': {
     project: mainVoiceBankProject,
     title: 'Main voice bank',
-    description: 'Eight independent Main voices share one decoded sample. Rust owns note slots, wave/sample pitch, Ring/FM/Sync modes, and sample-clock envelopes. Add, Morph, and the complete old project graph remain in progress.',
-    signal: 'MIDI → eight wave + sample + Ring/FM/Sync voices → envelopes → stereo sum',
+    description: 'Eight independent Main voices share one decoded sample. Rust owns note slots, pitch, Ring/FM/Sync, and prepared Add/Morph banks. The assembled legacy graph remains under comparison.',
+    signal: 'MIDI → eight wave + sample + prepared spectral voices → envelopes → stereo sum',
   },
   'spectrum-analyzer': {
     project: spectrumAnalyzerProject,
@@ -426,7 +426,12 @@ for (const button of document.querySelectorAll('.library-item')) {
 const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
 function usesSineSource(family = activeFamily) {
-  return family === 'sine-bank' || family === 'main-sample-blend';
+  return family === 'sine-bank' || family === 'main-sample-blend' || family === 'main-voice-bank';
+}
+function resetMainBankTargets() {
+  if (activeFamily !== 'main-voice-bank') return;
+  activeProject.partials = structuredClone(mainVoiceBankProject.partials);
+  activeProject.extraPartials = structuredClone(mainVoiceBankProject.extraPartials);
 }
 let values = new Map();
 let activeProject = null;
@@ -1526,6 +1531,11 @@ function renderPrimitive(family) {
     loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' };
     requestSampleAnalysis(loadedSineSource, true);
   }
+  if (family === 'main-voice-bank') {
+    loadedSample ??= demoSample();
+    loadedSineSource = loadedSample;
+    requestSampleAnalysis(loadedSineSource, true);
+  }
   if (usesSineSource(family)) renderSineSourceAnalysis();
   renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
@@ -1630,7 +1640,7 @@ function renderPrimitive(family) {
   if (family === 'main-voice-bank') {
     const help = document.createElement('p');
     help.className = 'control-help';
-    help.textContent = 'This is the Main wave/sample branch with eight independent notes and Ring/FM/Sync. The sample-clock ADSR is a v2 timing change; Add, Morph, and full project state are next.';
+    help.textContent = 'Add blends prepared wave and source spectra; Morph follows the source spectrum and interpolates pitch. Select a source frame below to replace both prepared targets. The sample-clock ADSR is a v2 timing change.';
     byId('controls').appendChild(help);
   }
   if (family === 'midi-transpose') {
@@ -2057,6 +2067,12 @@ byId('sample-file').addEventListener('change', async (event) => {
     if (audio.running) throw new Error('Stop the instrument before changing its file.');
     readout.textContent = `Decoding ${file.name}…`;
     loadedSample = await decodeFileSource(file);
+    if (activeFamily === 'main-voice-bank') {
+      loadedSineSource = loadedSample;
+      sineTargetActive = false;
+      resetMainBankTargets();
+      requestSampleAnalysis(loadedSineSource, true);
+    }
     samplePlayhead = 0;
     samplePlaying = false;
     drawSampleWaveform();
@@ -2068,13 +2084,18 @@ byId('sample-file').addEventListener('change', async (event) => {
   }
 });
 byId('sine-use-demo').addEventListener('click', () => {
-  if (activeFamily === 'main-sample-blend' && audio.running) {
+  if ((activeFamily === 'main-sample-blend' || activeFamily === 'main-voice-bank') && audio.running) {
     byId('sine-source-status').textContent = 'Stop the instrument before replacing its shared source.';
     return;
   }
   const demo = demoSample();
   finishMainStateRestore();
   loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' };
+  if (activeFamily === 'main-voice-bank') {
+    loadedSample = loadedSineSource;
+    resetMainBankTargets();
+    drawSampleWaveform();
+  }
   phraseReferenceAuto = true;
   sineTargetActive = false;
   if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
@@ -2089,12 +2110,17 @@ byId('sine-source-file').addEventListener('change', async (event) => {
   if (!file) return;
   byId('sine-source-status').textContent = `Decoding ${file.name}…`;
   try {
-    if (activeFamily === 'main-sample-blend' && audio.running) {
+    if ((activeFamily === 'main-sample-blend' || activeFamily === 'main-voice-bank') && audio.running) {
       throw new Error('Stop the instrument before changing the shared sample file.');
     }
     const decoded = await decodeFileSource(file);
     finishMainStateRestore();
     loadedSineSource = decoded;
+    if (activeFamily === 'main-voice-bank') {
+      loadedSample = decoded;
+      resetMainBankTargets();
+      drawSampleWaveform();
+    }
     phraseReferenceAuto = true;
     sineTargetActive = false;
     if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
@@ -2115,6 +2141,15 @@ function applyPreparedSineTarget(data, mode) {
   const absolute = mode === 0;
   const bankRoot = absolute ? (pitched ? data.fundamental : 440) : 1;
   const pitch = pitched ? Math.max(40, Math.min(1600, loadedSineSource.temporal.fundamental)) : 440;
+  if (activeFamily === 'main-voice-bank') {
+    activeProject.partials = { nodeId: 2, target: 0, fundamental: 1, values: Array.from(data.waveValues ?? []) };
+    activeProject.extraPartials = [{ nodeId: 2, target: 1, fundamental: 1, values: Array.from(data.values) }];
+    audio.setPartials(activeProject.partials);
+    audio.setPartials(activeProject.extraPartials[0]);
+    renderSineBars(data.values, byId('sine-target-bars'), true);
+    byId('sine-target-status').textContent = `Wave recipe + ${data.values.length / 4} source partials prepared for all eight voices`;
+    return;
+  }
   activeProject.partials = { nodeId: activeProject.partials.nodeId, fundamental: bankRoot, values: Array.from(data.values) };
   audio.setPartials(activeProject.partials);
   if (activeFamily === 'main-sample-blend' && data.waveValues) {
@@ -2135,7 +2170,8 @@ function requestPreparedSineTarget() {
   const source = loadedSineSource;
   if (!usesSineSource() || !source?.temporalJobId || !sineAnalysisWorker) return;
   const selectedMode = Number(byId('sine-target-mode').value);
-  const mode = selectedMode === 3 ? 2 : selectedMode === 0 ? 0 : 1;
+  const mode = activeFamily === 'main-voice-bank' ? (selectedMode === 3 ? 2 : 1)
+    : selectedMode === 3 ? 2 : selectedMode === 0 ? 0 : 1;
   const recipe = new Float32Array([
     Number(byId('sine-waveform').value), 8, 0, 0, 0.5,
     selectedMode === 2 ? 1 : 0,
@@ -2147,7 +2183,7 @@ function requestPreparedSineTarget() {
   pendingSineTargets.set(id, { source, mode: selectedMode });
   byId('sine-target-status').textContent = 'Preparing target in Rust/Wasm…';
   sineAnalysisWorker.postMessage({ type: 'prepare-target', id, sourceId: source.temporalJobId,
-    mode, includeWave: activeFamily === 'main-sample-blend', position: Number(byId('sine-position').value),
+    mode, includeWave: activeFamily === 'main-sample-blend' || activeFamily === 'main-voice-bank', position: Number(byId('sine-position').value),
     smooth: Number(byId('sine-smooth').value), contrast: Number(byId('sine-contrast').value), recipe }, [recipe.buffer]);
 }
 let sineTargetRequestFrame = null;

@@ -1886,11 +1886,21 @@ impl ExecutionPlan {
 
     /// Atomically replace a prepared sine bank's fixed partial target between blocks.
     pub fn load_partials(&mut self, node: NodeId, partials: PartialSet) -> bool {
+        self.load_partials_target(node, 0, partials)
+    }
+
+    pub fn load_partials_target(
+        &mut self,
+        node: NodeId,
+        target: u32,
+        partials: PartialSet,
+    ) -> bool {
         self.nodes
             .iter_mut()
             .find(|entry| entry.id == node)
             .is_some_and(|entry| match &mut entry.kernel {
-                Kernel::SineBank(bank) => bank.load_partials(partials),
+                Kernel::SineBank(bank) if target == 0 => bank.load_partials(partials),
+                Kernel::MainVoiceBank(bank) => bank.load_partials(target, partials),
                 _ => false,
             })
     }

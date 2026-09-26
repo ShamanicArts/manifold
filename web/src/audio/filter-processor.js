@@ -139,7 +139,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     if (!Array.isArray(values) && !(values instanceof Float32Array)) return false;
     if (values.length % 4 !== 0 || values.length > 32 * 4) return false;
     const count = values.length / 4;
-    if (this.engine.manifold_partials_begin(nodeId, count, fundamental) !== 1) return false;
+    if (this.engine.manifold_partials_begin_target(nodeId, data.target ?? 0, count, fundamental) !== 1) return false;
     const ptr = this.engine.manifold_partials_ptr();
     if (!ptr) return false;
     new Float32Array(this.engine.memory.buffer, ptr, values.length).set(values);

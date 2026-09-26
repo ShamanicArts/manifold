@@ -19,14 +19,18 @@ const graph = {
   nodes: [{ id: 2, type: 'main-voice-bank', a: 9 }, { id: 3, type: 'output' }],
   connections: [{ from: 2, to: 3, inputPort: 0 }],
 };
+const project = JSON.parse(readFileSync('projects/main-voice-bank/project.json', 'utf8'));
+const partials = [project.partials, ...project.extraPartials];
 await processor.port.onmessage({ data: {
   type: 'init', wasmBytes: readFileSync('web/dist/manifold_filter.wasm'), graph,
   sample: { nodeId: 2, sourceRate: 48_000, stereo: new Float32Array(48_000 * 2).fill(0.5) },
+  partials,
 } });
 assert.deepEqual(messages.at(-1), { type: 'ready' });
 await control.port.onmessage({ data: {
   type: 'init', wasmBytes: readFileSync('web/dist/manifold_filter.wasm'), graph,
   sample: { nodeId: 2, sourceRate: 48_000, stereo: new Float32Array(48_000 * 2).fill(0.5) },
+  partials,
 } });
 assert.deepEqual(messages.at(-1), { type: 'ready' });
 for (const [id, value] of [[1, 1], [11, 0.001], [14, 0.001]]) {
@@ -54,6 +58,22 @@ processor.process([], [[left, right]]);
 control.process([], [[controlLeft, controlRight]]);
 globalThis.currentFrame += 128;
 assert.ok(left.some((sample, frame) => Math.abs(sample - controlLeft[frame]) > 0.005));
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 6, value: 4 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 7, value: 1 } });
+processor.process([], [[left, right]]);
+control.process([], [[controlLeft, controlRight]]);
+globalThis.currentFrame += 128;
+assert.ok(left.some((sample, frame) => Math.abs(sample - controlLeft[frame]) > 0.005));
+const add = left.slice();
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 6, value: 5 } });
+processor.process([], [[left, right]]);
+control.process([], [[controlLeft, controlRight]]);
+globalThis.currentFrame += 128;
+assert.ok(left.every(Number.isFinite));
+assert.ok(left.some((sample, frame) => Math.abs(sample - add[frame]) > 0.005));
+await processor.port.onmessage({ data: { type: 'partials', ...project.extraPartials[0], target: 2 } });
+assert.equal(messages.at(-1).type, 'partials-applied');
+assert.equal(messages.at(-1).accepted, false);
 await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 2, count: 9 } });
 assert.equal(messages.at(-1).values[0], 3);
 await processor.port.onmessage({ data: { type: 'event', nodeId: 2, kind: 1, channel: 0, note: 64 } });
@@ -65,4 +85,4 @@ assert.ok(left[127] > 0.02);
 await processor.port.onmessage({ data: { type: 'event', nodeId: 2, kind: 2 } });
 processor.process([], [[left, right]]);
 assert.ok(left.every((sample) => sample === 0));
-console.log('Main voice bank worklet: shared sample, chord, live Ring mode, release, panic, nine-value meter passed');
+console.log('Main voice bank worklet: shared sample, chord, Ring/Add/Morph mode switch, target rejection, release, panic, nine-value meter passed');
