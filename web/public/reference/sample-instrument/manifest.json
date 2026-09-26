@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust shared-sample eight-voice instrument",
-  "sourceSha256": "009ef7ab910fca1411f2ef663204bfb68680cea7da4705ddc3651d5c48598fed",
+  "sourceSha256": "b4d0d5d3f2646edbf9dacb187c9438f0b5efac2d806d2476c5cd69109ec97032",
   "sampleRate": 48000,
   "sampleSourceRate": 32000,
   "sampleFrames": 4096,
@@ -24,7 +24,8 @@
         0,
         0,
         1,
-        0.08
+        0.08,
+        0.01
       ],
       "events": [
         [
@@ -59,7 +60,8 @@
         0,
         0,
         1,
-        0.08
+        0.08,
+        0.01
       ],
       "events": [
         [
@@ -108,7 +110,8 @@
         0,
         0,
         1,
-        0.08
+        0.08,
+        0.01
       ],
       "events": [
         [
@@ -157,7 +160,8 @@
         0,
         0,
         1,
-        0.08
+        0.08,
+        0.01
       ],
       "events": [
         [
@@ -255,7 +259,8 @@
         0,
         0,
         1,
-        0.08
+        0.08,
+        0.01
       ],
       "events": [
         [
@@ -290,7 +295,8 @@
         0,
         0,
         1,
-        0.08
+        0.08,
+        0.01
       ],
       "events": [
         [
@@ -315,6 +321,62 @@
       ],
       "blockSize": 128,
       "output": "keytrack-change.f32"
+    },
+    {
+      "id": "release",
+      "label": "Adjustable note release",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08,
+        0.01
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          2048,
+          1,
+          0,
+          60,
+          0
+        ],
+        [
+          8192,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          10240,
+          1,
+          0,
+          60,
+          0
+        ]
+      ],
+      "changes": [
+        [
+          8192,
+          10,
+          0.05
+        ]
+      ],
+      "blockSize": 128,
+      "output": "release.f32"
     }
   ]
 }

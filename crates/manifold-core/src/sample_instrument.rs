@@ -8,9 +8,13 @@ const VOICES: usize = 8;
 #[derive(Clone, Copy, Default)]
 struct VoiceSlot {
     active: bool,
+    releasing: bool,
     channel: u8,
     note: u8,
     velocity: f32,
+    release_gain: f32,
+    release_step: f32,
+    release_remaining: u32,
     serial: u64,
 }
 
@@ -18,10 +22,12 @@ pub struct SampleInstrument {
     players: [SampleRegion; VOICES],
     slots: [VoiceSlot; VOICES],
     serial: u64,
+    output_rate: f32,
     root_note: u8,
     key_track: f32,
     level: f32,
     speed: f32,
+    release_seconds: f32,
 }
 
 impl SampleInstrument {
@@ -30,10 +36,12 @@ impl SampleInstrument {
             players: std::array::from_fn(|_| SampleRegion::new(sample_rate)),
             slots: [VoiceSlot::default(); VOICES],
             serial: 0,
+            output_rate: sample_rate,
             root_note: 60,
             key_track: 1.0,
             level: 0.25,
             speed: 1.0,
+            release_seconds: 0.01,
         }
     }
 
@@ -59,6 +67,7 @@ impl SampleInstrument {
             1 => self.key_track = value.clamp(0.0, 1.0),
             2 => self.level = value.clamp(0.0, 1.0),
             3 => self.speed = value.clamp(0.0, 8.0),
+            10 => self.release_seconds = value.clamp(0.0, 1.0),
             4..=9 => {
                 let player_id = match id {
                     4 => 1,
@@ -104,8 +113,14 @@ impl SampleInstrument {
                 let index = self
                     .slots
                     .iter()
-                    .position(|slot| slot.active && slot.channel == channel && slot.note == note)
+                    .position(|slot| {
+                        slot.active
+                            && !slot.releasing
+                            && slot.channel == channel
+                            && slot.note == note
+                    })
                     .or_else(|| self.slots.iter().position(|slot| !slot.active))
+                    .or_else(|| self.slots.iter().position(|slot| slot.releasing))
                     .unwrap_or_else(|| {
                         self.slots
                             .iter()
@@ -117,9 +132,13 @@ impl SampleInstrument {
                 self.serial = self.serial.wrapping_add(1);
                 self.slots[index] = VoiceSlot {
                     active: true,
+                    releasing: false,
                     channel,
                     note,
                     velocity: velocity as f32 / 127.0,
+                    release_gain: 1.0,
+                    release_step: 0.0,
+                    release_remaining: 0,
                     serial: self.serial,
                 };
                 self.players[index].set_parameter(0, self.note_speed(note));
@@ -127,9 +146,20 @@ impl SampleInstrument {
             }
             EventKind::NoteOff { channel, note } => {
                 for (slot, player) in self.slots.iter_mut().zip(&mut self.players) {
-                    if slot.active && slot.channel == channel && slot.note == note {
-                        slot.active = false;
-                        player.set_parameter(6, 0.0);
+                    if slot.active
+                        && !slot.releasing
+                        && slot.channel == channel
+                        && slot.note == note
+                    {
+                        if self.release_seconds == 0.0 {
+                            slot.active = false;
+                            player.set_parameter(6, 0.0);
+                        } else {
+                            slot.releasing = true;
+                            slot.release_remaining =
+                                (self.release_seconds * self.output_rate).ceil().max(1.0) as u32;
+                            slot.release_step = 1.0 / slot.release_remaining as f32;
+                        }
                     }
                 }
             }
@@ -165,11 +195,20 @@ impl SampleInstrument {
                 continue;
             }
             let sample = player.process_sample();
-            let gain = slot.velocity * self.level;
+            let gain = slot.velocity * self.level * slot.release_gain;
             output[0] += sample[0] * gain;
             output[1] += sample[1] * gain;
-            if !player.is_playing() {
+            if slot.releasing {
+                slot.release_remaining -= 1;
+                slot.release_gain = if slot.release_remaining == 0 {
+                    0.0
+                } else {
+                    (slot.release_gain - slot.release_step).max(0.0)
+                };
+            }
+            if !player.is_playing() || slot.release_gain == 0.0 {
                 slot.active = false;
+                player.set_parameter(6, 0.0);
             }
         }
         output
@@ -206,6 +245,11 @@ mod tests {
             channel: 0,
             note: 60,
         });
+        let during_release = instrument.process_sample();
+        assert_eq!(during_release, [2.0, 2.0]);
+        for _ in 0..80 {
+            instrument.process_sample();
+        }
         assert_eq!(instrument.process_sample(), [1.0, 1.0]);
         assert_eq!(instrument.active_voices(), 1);
         instrument.event(EventKind::AllNotesOff);
@@ -249,6 +293,84 @@ mod tests {
             channel: 0,
             note: 68,
         });
+        assert_eq!(instrument.active_voices(), 8);
+        for _ in 0..80 {
+            instrument.process_sample();
+        }
         assert_eq!(instrument.active_voices(), 7);
+    }
+
+    #[test]
+    fn note_release_fades_over_configured_samples_and_can_be_disabled() {
+        let mut instrument = constant_instrument();
+        instrument.set_parameter(10, 0.001);
+        instrument.event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 127,
+        });
+        instrument.event(EventKind::NoteOff {
+            channel: 0,
+            note: 60,
+        });
+        let levels: Vec<f32> = (0..9).map(|_| instrument.process_sample()[0]).collect();
+        for (actual, expected) in levels
+            .into_iter()
+            .zip([1.0, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0])
+        {
+            assert!((actual - expected).abs() < 1e-5, "{actual} != {expected}");
+        }
+        assert_eq!(instrument.active_voices(), 0);
+        instrument.set_parameter(10, 0.0);
+        instrument.event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 127,
+        });
+        instrument.event(EventKind::NoteOff {
+            channel: 0,
+            note: 60,
+        });
+        assert_eq!(instrument.process_sample(), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn new_note_reuses_a_releasing_slot_before_stealing_a_held_note() {
+        let mut instrument = constant_instrument();
+        for note in 60..68 {
+            instrument.event(EventKind::NoteOn {
+                channel: 0,
+                note,
+                velocity: 127,
+            });
+        }
+        instrument.event(EventKind::NoteOff {
+            channel: 0,
+            note: 65,
+        });
+        instrument.event(EventKind::NoteOn {
+            channel: 0,
+            note: 72,
+            velocity: 127,
+        });
+        assert_eq!(instrument.active_voices(), 8);
+        assert!(
+            instrument
+                .slots
+                .iter()
+                .any(|slot| slot.active && slot.note == 60)
+        );
+        assert!(
+            instrument
+                .slots
+                .iter()
+                .any(|slot| slot.active && slot.note == 72)
+        );
+        assert!(
+            !instrument
+                .slots
+                .iter()
+                .any(|slot| slot.active && slot.note == 65)
+        );
     }
 }

@@ -24,8 +24,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .split(',')
         .map(str::parse)
         .collect::<Result<_, _>>()?;
-    if parameters.len() != 10 {
-        return Err("expected ten sample parameters".into());
+    if parameters.len() != 11 {
+        return Err("expected eleven sample parameters".into());
     }
     let events: Vec<(usize, u32, u8, u8, u8)> = args[8]
         .split(',')

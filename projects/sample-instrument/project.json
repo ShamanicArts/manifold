@@ -19,6 +19,7 @@
     { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "root-note", "label": "Root note", "kind": "float", "min": 36, "max": 84, "default": 60 },
     { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "key-track", "label": "Key tracking", "kind": "float", "min": 0, "max": 1, "default": 1 },
     { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "level", "label": "Output level", "kind": "float", "min": 0, "max": 0.5, "default": 0.25 },
+    { "id": 10, "nodeId": 2, "nodeParameterId": 10, "hostId": "release", "label": "Note release", "kind": "float", "min": 0, "max": 0.2, "default": 0.01, "unit": "s" },
     { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "speed", "label": "Base speed", "kind": "float", "min": 0.25, "max": 2, "default": 1 },
     { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "reverse", "label": "Reverse", "kind": "toggle", "default": 0 },
     { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "one-shot", "label": "One shot", "kind": "toggle", "default": 0 },
