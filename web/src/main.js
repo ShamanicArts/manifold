@@ -433,6 +433,7 @@ function resetMainBankTargets() {
   if (activeFamily !== 'main-voice-bank') return;
   activeProject.partials = structuredClone(mainVoiceBankProject.partials);
   activeProject.extraPartials = structuredClone(mainVoiceBankProject.extraPartials);
+  delete activeProject.temporalTargets;
 }
 let values = new Map();
 let activeProject = null;
@@ -604,7 +605,7 @@ function createSampleAnalysisWorker(temporalWorker) {
     if (target) {
       pendingSineTargets.delete(data.id);
       if (data.id === latestSineTargetId && target.source === loadedSineSource) {
-        if (data.type === 'target') applyPreparedSineTarget(data, target.mode);
+        if (data.type === 'target' || data.type === 'temporal-targets') applyPreparedSineTarget(data, target.mode);
         else byId('sine-target-status').textContent = `Target unavailable: ${data.message}`;
         if (activeFamily === 'main-sample-blend') finishMainStateRestore(data.type === 'target' ? null : data.message);
       }
@@ -1527,6 +1528,7 @@ function renderPrimitive(family) {
   byId('controls').replaceChildren();
   renderSineBankEditor();
   byId('sine-source-section').hidden = !usesSineSource(family);
+  updateSineTargetControls();
   byId('main-state-section').hidden = family !== 'main-sample-blend' && family !== 'main-voice-bank';
   if (family === 'main-sample-blend' || family === 'main-voice-bank') {
     byId('main-state-label').textContent = family === 'main-voice-bank' ? 'Main voice bank state' : 'Main blend state';
@@ -1543,6 +1545,7 @@ function renderPrimitive(family) {
   if (family === 'main-voice-bank') {
     loadedSample ??= demoSample();
     loadedSineSource = loadedSample;
+    if (activeProject.temporalTargets?.source !== loadedSample) delete activeProject.temporalTargets;
     requestSampleAnalysis(loadedSineSource, true);
   }
   if (usesSineSource(family)) renderSineSourceAnalysis();
@@ -2155,8 +2158,18 @@ function applyPreparedSineTarget(data, mode) {
     activeProject.extraPartials = [{ nodeId: 2, target: 1, fundamental: 1, values: Array.from(data.values) }];
     audio.setPartials(activeProject.partials);
     audio.setPartials(activeProject.extraPartials[0]);
+    if (data.type === 'temporal-targets') {
+      activeProject.temporalTargets = { frames: data.frames, values: data.table,
+        speed: Number(byId('sine-temporal-speed').value), source: loadedSineSource };
+      audio.setTemporalTargets(activeProject.temporalTargets);
+    } else {
+      delete activeProject.temporalTargets;
+      audio.clearTemporalTargets();
+    }
     renderSineBars(data.values, byId('sine-target-bars'), true);
-    byId('sine-target-status').textContent = `Wave recipe + ${data.values.length / 4} source partials prepared for all eight voices`;
+    byId('sine-target-status').textContent = data.type === 'temporal-targets'
+      ? `${data.frames} prepared source spectra follow each voice’s sample position`
+      : `Wave recipe + ${data.values.length / 4} source partials prepared for all eight voices`;
     return;
   }
   activeProject.partials = { nodeId: activeProject.partials.nodeId, fundamental: bankRoot, values: Array.from(data.values) };
@@ -2180,6 +2193,7 @@ function requestPreparedSineTarget() {
   const source = loadedSineSource;
   if (!usesSineSource() || !source?.temporalJobId || !sineAnalysisWorker) return;
   const selectedMode = Number(byId('sine-target-mode').value);
+  const temporal = activeFamily === 'main-voice-bank' && byId('sine-follow-playback').checked;
   const mode = activeFamily === 'main-voice-bank' ? (selectedMode === 3 ? 2 : 1)
     : selectedMode === 3 ? 2 : selectedMode === 0 ? 0 : 1;
   const recipe = new Float32Array([
@@ -2190,9 +2204,9 @@ function requestPreparedSineTarget() {
   ]);
   const id = ++sampleAnalysisSerial;
   latestSineTargetId = id;
-  pendingSineTargets.set(id, { source, mode: selectedMode });
-  byId('sine-target-status').textContent = 'Preparing target in Rust/Wasm…';
-  sineAnalysisWorker.postMessage({ type: 'prepare-target', id, sourceId: source.temporalJobId,
+  pendingSineTargets.set(id, { source, mode: selectedMode, temporal });
+  byId('sine-target-status').textContent = temporal ? 'Preparing per-voice spectra in Rust/Wasm…' : 'Preparing target in Rust/Wasm…';
+  sineAnalysisWorker.postMessage({ type: temporal ? 'prepare-temporal-targets' : 'prepare-target', id, sourceId: source.temporalJobId,
     mode, includeWave: activeFamily === 'main-sample-blend' || activeFamily === 'main-voice-bank', position: Number(byId('sine-position').value),
     smooth: Number(byId('sine-smooth').value), contrast: Number(byId('sine-contrast').value), recipe }, [recipe.buffer]);
 }
@@ -2212,9 +2226,33 @@ function updateSineTargetControls() {
   byId('sine-morph-label').hidden = mode !== 3;
   byId('sine-stretch-label').hidden = mode === 0;
   byId('sine-tilt-label').hidden = mode === 0;
+  const bank = activeFamily === 'main-voice-bank';
+  byId('sine-follow-controls').hidden = !bank;
+  byId('sine-use-frame').textContent = bank && byId('sine-follow-playback').checked
+    ? 'Prepare per-voice motion' : 'Audition prepared target';
+  byId('sine-position-label').firstChild.textContent = bank && byId('sine-follow-playback').checked
+    ? 'Preview position ' : 'Temporal position ';
 }
 updateSineTargetControls();
-byId('sine-position').addEventListener('input', () => { renderSineSourceAnalysis(); scheduleSineTarget(); });
+byId('sine-position').addEventListener('input', () => {
+  renderSineSourceAnalysis();
+  if (!byId('sine-follow-playback').checked || activeFamily !== 'main-voice-bank') scheduleSineTarget();
+});
+byId('sine-follow-playback').addEventListener('change', () => {
+  if (activeFamily !== 'main-voice-bank') return;
+  updateSineTargetControls();
+  if (!byId('sine-follow-playback').checked) {
+    delete activeProject.temporalTargets;
+    audio.clearTemporalTargets();
+  }
+  scheduleSineTarget();
+});
+byId('sine-temporal-speed').addEventListener('input', () => {
+  const speed = Number(byId('sine-temporal-speed').value);
+  byId('sine-temporal-speed-value').textContent = `${speed.toFixed(2)}×`;
+  if (activeProject?.temporalTargets) activeProject.temporalTargets.speed = speed;
+  audio.setTemporalSpeed(speed);
+});
 for (const id of ['sine-target-mode', 'sine-waveform', 'sine-morph-amount', 'sine-stretch', 'sine-tilt-mode', 'sine-smooth', 'sine-contrast']) {
   byId(id).addEventListener('input', () => { updateSineTargetControls(); renderSineSourceAnalysis(); scheduleSineTarget(); });
 }
@@ -2242,7 +2280,10 @@ byId('main-state-export').addEventListener('click', () => {
   try {
     const bank = activeFamily === 'main-voice-bank';
     const state = bank
-      ? captureMainVoiceBankState(activeProject, values, mainBlendTargetControls(), loadedSample)
+      ? captureMainVoiceBankState(activeProject, values, {
+        ...mainBlendTargetControls(), followPlayback: byId('sine-follow-playback').checked,
+        speed: Number(byId('sine-temporal-speed').value),
+      }, loadedSample)
       : captureMainSampleBlendState(activeProject, values, mainBlendTargetControls(), loadedSineSource);
     const url = URL.createObjectURL(new Blob([`${JSON.stringify(state)}\n`], { type: 'application/json' }));
     const link = document.createElement('a');
@@ -2271,7 +2312,8 @@ byId('main-state-file').addEventListener('change', async (event) => {
       if (sineTargetRequestFrame !== null) cancelAnimationFrame(sineTargetRequestFrame);
       sineTargetRequestFrame = null;
       sineTargetActive = state.targetControls.active;
-      mainBankSnapshotRestored = true;
+      mainBankSnapshotRestored = !(state.targetControls.active && state.targetControls.followPlayback);
+      delete activeProject.temporalTargets;
       applyPatchParameterValues(activeProject, state.parameters);
       for (const [id, value] of Object.entries({
         'sine-target-mode': state.targetControls.mode, 'sine-waveform': state.targetControls.waveform,
@@ -2279,6 +2321,9 @@ byId('main-state-file').addEventListener('change', async (event) => {
         'sine-stretch': state.targetControls.stretch, 'sine-tilt-mode': state.targetControls.tiltMode,
         'sine-smooth': state.targetControls.smooth, 'sine-contrast': state.targetControls.contrast,
       })) byId(id).value = String(value);
+      byId('sine-follow-playback').checked = state.targetControls.followPlayback;
+      byId('sine-temporal-speed').value = String(state.targetControls.speed);
+      byId('sine-temporal-speed-value').textContent = `${state.targetControls.speed.toFixed(2)}×`;
       updateSineTargetControls();
       activeProject.partials = state.targets[0];
       activeProject.extraPartials = [state.targets[1]];

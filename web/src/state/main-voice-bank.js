@@ -1,7 +1,7 @@
 // Portable snapshot of the eight-voice Main bank: source, two prepared targets, and controls.
 import { encodePcm, decodePcm } from './stereo-source.js';
 
-const VERSION = 1;
+const VERSION = 2;
 const MAX_FRAMES = 48_000 * 30;
 const MAX_LABEL = 200;
 const MAX_F32 = 3.4028235e38;
@@ -24,7 +24,7 @@ function checkTarget(target, index) {
     values: [...target.values] };
 }
 
-function checkTargetControls(target) {
+function checkTargetControls(target, version) {
   if (!target || typeof target.active !== 'boolean'
     || !Number.isInteger(target.mode) || target.mode < 0 || target.mode > 3
     || !Number.isInteger(target.waveform) || target.waveform < 0 || target.waveform > 7
@@ -33,15 +33,19 @@ function checkTargetControls(target) {
     || !validNumber(target.morphAmount, 0, 1)
     || !validNumber(target.stretch, 0, 1)
     || !validNumber(target.smooth, 0, 1)
-    || !validNumber(target.contrast, 0, 2)) throw new Error('Invalid target controls.');
+    || !validNumber(target.contrast, 0, 2)
+    || (version === 2 && (typeof target.followPlayback !== 'boolean'
+      || !validNumber(target.speed, 0, 4)))) throw new Error('Invalid target controls.');
   return { active: target.active, mode: target.mode, waveform: target.waveform,
     tiltMode: target.tiltMode, position: target.position,
     morphAmount: target.morphAmount, stretch: target.stretch,
-    smooth: target.smooth, contrast: target.contrast };
+    smooth: target.smooth, contrast: target.contrast,
+    followPlayback: version === 2 ? target.followPlayback : false,
+    speed: version === 2 ? target.speed : 1 };
 }
 
 export function parseMainVoiceBankState(document, project) {
-  if (document?.schemaVersion !== VERSION || document.projectId !== project.id) {
+  if (![1, VERSION].includes(document?.schemaVersion) || document.projectId !== project.id) {
     throw new Error('This state belongs to a different Manifold v2 project.');
   }
   const parameters = document.parameters;
@@ -63,7 +67,7 @@ export function parseMainVoiceBankState(document, project) {
     throw new Error('State needs wave and source targets.');
   }
   const targets = document.targets.map(checkTarget);
-  const targetControls = checkTargetControls(document.targetControls);
+  const targetControls = checkTargetControls(document.targetControls, document.schemaVersion);
   const source = document.source;
   if (source?.kind === 'builtin') {
     return { schemaVersion: VERSION, projectId: project.id,

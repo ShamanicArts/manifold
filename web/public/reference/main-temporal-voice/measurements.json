@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "scope": "256 prepared positions from Rust/Wasm source analysis; per-voice playhead selection in Add and Morph; no original C++ temporal route assertion",
+  "results": [
+    {
+      "id": "add-static",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.15333682747015717
+      }
+    },
+    {
+      "id": "add-follow",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.1464526398639593
+      }
+    },
+    {
+      "id": "add-fast",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.14523214864399933
+      }
+    },
+    {
+      "id": "morph-static",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.15843938739753954
+      }
+    },
+    {
+      "id": "morph-follow",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.15540864017981496
+      }
+    },
+    {
+      "id": "morph-fast",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.15543281428484432
+      }
+    }
+  ]
+}

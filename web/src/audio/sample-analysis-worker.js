@@ -16,6 +16,46 @@ async function engine() {
 }
 
 self.onmessage = async ({ data }) => {
+  if (data.type === 'prepare-temporal-targets') {
+    const { id, sourceId, mode, smooth, contrast, recipe } = data;
+    try {
+      if (sourceId !== activeTemporalId) throw new Error('Source analysis was replaced');
+      const wasm = await engine();
+      if (sourceId !== activeTemporalId) throw new Error('Source analysis was replaced');
+      if (!(recipe instanceof Float32Array) || recipe.length !== 11 || !recipe.every(Number.isFinite)
+        || ![1, 2].includes(mode) || !Number.isFinite(smooth) || !Number.isFinite(contrast)) {
+        throw new Error('Invalid temporal recipe');
+      }
+      new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_recipe_ptr(), 11).set(recipe);
+      if (wasm.manifold_analysis_prepare_wave_target(
+        Math.round(recipe[0]), Math.round(recipe[1]), recipe[2], recipe[3], recipe[4],
+      ) !== 1) throw new Error('Wave target rejected');
+      const waveCount = wasm.manifold_analysis_target_count();
+      const waveValues = new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_target_ptr(), waveCount * 4).slice();
+      const frames = 256;
+      const stride = 2 + 32 * 4;
+      const table = new Float32Array(frames * stride);
+      let firstValues = null;
+      for (let index = 0; index < frames; index++) {
+        if (wasm.manifold_analysis_prepare_target(mode, index / (frames - 1), smooth, contrast) !== 1) {
+          throw new Error(`Temporal target ${index} rejected`);
+        }
+        const count = wasm.manifold_analysis_target_count();
+        const offset = index * stride;
+        table[offset] = count;
+        table[offset + 1] = wasm.manifold_analysis_target_fundamental();
+        const values = new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_target_ptr(), count * 4);
+        table.set(values, offset + 2);
+        if (index === 0) firstValues = values.slice();
+      }
+      self.postMessage({ type: 'temporal-targets', id, sourceId, frames,
+        table, waveValues, values: firstValues },
+      [table.buffer, waveValues.buffer, firstValues.buffer]);
+    } catch (error) {
+      self.postMessage({ type: 'error', id, message: error.message ?? String(error) });
+    }
+    return;
+  }
   if (data.type === 'prepare-target') {
     const { id, sourceId, mode, position, smooth, contrast, recipe } = data;
     try {

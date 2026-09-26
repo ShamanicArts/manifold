@@ -1,4 +1,4 @@
-# Main voice bank, through checkpoint 130
+# Main voice bank, through checkpoint 131
 
 The `main-voice-bank` graph node is a prepared eight-voice instrument. It is an
 authored v2 slice of `sample_synth.lua` plus the original UI voice ownership
@@ -40,9 +40,13 @@ node; there is no callback-time FFT reallocation. Parameters 17–18 set phrase
 contour amount and reference.
 
 The Add wave source is an authored prepared recipe, while old Main uses a
-waveform oscillator on that branch. Source frames are selected manually in
-the browser and then remain fixed until another selection. This is a playable
-v2 approximation, not a claim of matching the full old spectral automation.
+waveform oscillator on that branch. The browser can select a fixed source
+frame or follow each voice's sample playhead. In follow mode, a background
+Rust/Wasm worker prepares 256 source spectra, and the audio callback selects
+one prepared spectrum per voice at each block. Speed zero freezes each voice
+at its current position. A new note starts its own temporal position at zero.
+This is a quantized v2 implementation, not a claim of matching the full old
+spectral automation.
 The bank now prepares its Add wave pitch smoother at 220 Hz, like the old
 `blendAddOsc`, before a note retunes it. The spectral source bank retains the
 old SineBank default 440 Hz. This initial state mattered in the assembled
@@ -61,9 +65,10 @@ note ownership follows the old UI's note-only policy across channels.
 
 ## Evidence
 
-- `cargo test --workspace`: 136 Rust tests, including timed graph chords,
+- `cargo test --workspace`: 137 Rust tests, including timed graph chords,
   independent release, duplicate-note release, oldest-slot stealing, and
-  Ring depth-zero equivalence to the base blend, and Add/Morph target routing.
+  Ring depth-zero equivalence to the base blend, Add/Morph target routing, and
+  independent temporal position for staggered voices.
 - `scripts/verify-main-voice-bank-worklet.mjs`: Wasm AudioWorklet initialization,
   shared sample and two target uploads, live Ring/Add/Morph switching, invalid
   target rejection, chord, note-off, panic, and nine-value meter.
@@ -77,16 +82,16 @@ note ownership follows the old UI's note-only policy across channels.
   was added.
 - `scripts/bench-main-voice-bank-worklet.mjs` measures the real adapter and
   Wasm process call in a Node/V8 proxy at 48 kHz / 128 frames. On the local
-  Ryzen 9 3900X run, eight-voice p95 callback time was 0.064 ms Normal,
-  0.257 ms Add, 0.168 ms Morph, and 0.692 ms vocoder. No measured block
+  Ryzen 9 3900X run, eight-voice p95 callback time was 0.077 ms Normal,
+  0.336 ms Add, 0.197 ms Morph, and 0.764 ms vocoder. No measured block
   exceeded the 2.667 ms interval. This is not a browser audio-thread or
   hardware underrun measurement. The raw data and method are in
   `web/public/reference/main-voice-bank/bench-node.json`.
 - `scripts/bench-main-voice-bank-browser.mjs` runs nine held-chord cases in
   headless Chromium through the actual AudioWorklet and Wasm graph. It samples
   Chromium's WebAudio render-capacity estimate 24 times per case after warmup.
-  The refreshed sampled p95 was 4.21% for Normal eight voices and 34.62% for vocoder
-  eight voices; the largest sampled value was 39.01%. Chromium reported a
+  The checkpoint-131 sampled p95 was 4.25% for Normal eight voices and 38.71% for vocoder
+  eight voices; the largest sampled value was 44.37%. Chromium reported a
   512-frame output callback buffer at 48 kHz. These are sampled rolling
   capacity estimates, not per-callback timings or physical device underrun
   counts. The raw capture includes browser and Wasm versions in
@@ -120,13 +125,26 @@ note ownership follows the old UI's note-only policy across channels.
   largest old/Rust sample difference is 0.000002444; native/Wasm is bit-exact.
   The fixture uses a sine wave recipe and excludes temporal source changes,
   vocoder processing, and the old UI-rate envelope.
+- `scripts/verify-main-temporal-voice-comparison.mjs` checks six analyzed
+  source captures: Add and Morph with frozen, normal, and double speed motion,
+  two notes at staggered start times. Native Rust and Wasm are bit-exact in
+  all six. The moving captures differ from the frozen control. The table
+  contains 256 prepared source spectra from the same Rust/Wasm analysis path
+  used by the browser worker. This does not assert old C++ temporal parity.
+- `scripts/verify-main-temporal-worklet.mjs` checks table upload, invalid
+  upload rejection, clear, staggered voices, and audible movement in the real
+  AudioWorklet adapter. `scripts/verify-main-temporal-browser.mjs` opens the
+  workbench in headless Chromium, enables follow, plays a note, saves v2
+  state, reopens it, rebuilds the table, and plays again.
 - `scripts/verify-main-voice-bank-state.mjs` round-trips 19 controls, separate
   wave and source targets, and embedded or built-in source choices. It rejects
   malformed controls, target addresses, partials, and PCM. A headless Chromium
   workbench check opened edited embedded state, waited for source analysis,
   downloaded identical targets and PCM, and started the restored AudioWorklet.
   `scripts/verify-main-sample-blend-state.mjs` still passes after extracting
-  shared PCM encoding. This is v2 bank state, not old preset migration.
+  shared PCM encoding. The bank state schema is version 2 with follow and
+  speed controls; a saved source rebuilds its temporal table on reopen. This
+  is bank state, not old preset migration.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint
 review is `/main-add-morph-review.html`; the timing review is
@@ -136,7 +154,8 @@ review is `/main-add-morph-review.html`; the timing review is
 review is `/main-ring-route-review.html`. The browser capacity review is
 `/main-browser-capacity-review.html`; the bank state review is
 `/main-bank-state-review.html`; the assembled Add/Morph review is
-`/main-add-morph-route-review.html`. The embedded BB browser cannot grant
+`/main-add-morph-route-review.html`; the temporal review is
+`/main-temporal-voice-review.html`. The embedded BB browser cannot grant
 hardware MIDI permissions yet, so the on-screen keyboard is the immediate
 input path. The in-app browser backend was unavailable for the capacity run;
 the review page was visually checked in headless Chromium.
@@ -144,7 +163,7 @@ the review page was visually checked in headless Chromium.
 ## Next integration
 
 Expand the bank state into the full Main project and preset model. Compare
-temporal spectra and other wave recipes with the original Add/Morph route.
+the old Main temporal controller and other wave recipes with this v2 path.
 Repeat capacity measurements against a regular browser and physical output
 device, then identify the vocoder's native/Wasm numerical variance. Host
 packaging remains a separate later stage.

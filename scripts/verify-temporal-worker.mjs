@@ -51,6 +51,17 @@ assert.equal(replies.at(-1).message.type, 'target');
 assert.ok(replies.at(-1).message.values.length >= add.values.length);
 assert.ok(replies.at(-1).message.waveValues.length > 0 && replies.at(-1).message.waveValues.every(Number.isFinite));
 assert.equal(replies.at(-1).transfer.length, 2);
+await self.onmessage({ data: { type: 'prepare-temporal-targets', id: 74, sourceId: 7,
+  mode: 1, smooth: .6, contrast: .5, recipe } });
+const table = replies.at(-1).message;
+assert.equal(table.type, 'temporal-targets');
+assert.equal(table.frames, 256);
+assert.equal(table.table.length, 256 * 130);
+assert.equal(table.table[0], table.values.length / 4);
+assert.equal(table.table[1], 1);
+assert.deepEqual(table.table.slice(2, 2 + table.values.length), table.values);
+assert.ok(table.table.every(Number.isFinite));
+assert.equal(replies.at(-1).transfer.length, 3);
 await self.onmessage({ data: { type: 'prepare-target', id: 73, sourceId: 999,
   mode: 1, position: .5, smooth: .6, contrast: .5, recipe } });
 assert.equal(replies.at(-1).message.type, 'error');

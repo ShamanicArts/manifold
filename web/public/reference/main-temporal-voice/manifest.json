@@ -1,0 +1,341 @@
+{
+  "version": 1,
+  "reference": "native Rust versus Wasm Main temporal source spectrum",
+  "scope": "256 prepared positions from Rust/Wasm source analysis; per-voice playhead selection in Add and Morph; no original C++ temporal route assertion",
+  "sourceSha256": "bfaa09b39f18170d75491893d087ef297b3df37ab89fa3895f952080487441f6",
+  "wasmSha256": "66be8f559ccf76bc83496bb8edbdd0173e20a35316e76ac0b6944e8ae0b2c306",
+  "sampleRate": 48000,
+  "sampleSourceRate": 48000,
+  "sampleFrames": 48000,
+  "sample": "sample.f32",
+  "channels": 2,
+  "frames": 32768,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "waveTarget": [
+    1.004681944847107,
+    0.31780558824539185,
+    0.23312753438949585,
+    0,
+    1.9772084951400757,
+    0.17877493798732758,
+    3.0273799896240234,
+    0,
+    3.0251083374023438,
+    0.1276882290840149,
+    -0.22234903275966644,
+    0,
+    4.010149955749512,
+    0.10056612640619278,
+    3.2767889499664307,
+    0,
+    4.939540863037109,
+    0.08356346189975739,
+    0.20959024131298065,
+    0,
+    6.068988800048828,
+    0.07182836532592773,
+    2.986616849899292,
+    0,
+    6.99672269821167,
+    0.063201904296875,
+    -0.19496482610702515,
+    0,
+    7.905340194702148,
+    0.05657138675451279,
+    3.3149678707122803,
+    0
+  ],
+  "sourceTarget": [
+    1.4199007749557495,
+    1.3865599632263184,
+    -1.5712532997131348,
+    0,
+    2.9810702800750732,
+    0.21435822546482086,
+    -1.5700453519821167,
+    0,
+    6.258658409118652,
+    0.31210100650787354,
+    -1.5722228288650513,
+    0
+  ],
+  "cases": [
+    {
+      "id": "add-static",
+      "label": "Add · static source spectrum · two staggered voices",
+      "parameters": [
+        0,
+        1,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          10240,
+          0,
+          0,
+          60,
+          100
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-static-rust.f32",
+      "temporalFile": "add-table.f32",
+      "temporalSpeed": 0
+    },
+    {
+      "id": "add-follow",
+      "label": "Add · follow source spectrum · two staggered voices",
+      "parameters": [
+        0,
+        1,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          10240,
+          0,
+          0,
+          60,
+          100
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-follow-rust.f32",
+      "temporalFile": "add-table.f32",
+      "temporalSpeed": 1
+    },
+    {
+      "id": "add-fast",
+      "label": "Add · fast source spectrum · two staggered voices",
+      "parameters": [
+        0,
+        1,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          10240,
+          0,
+          0,
+          60,
+          100
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-fast-rust.f32",
+      "temporalFile": "add-table.f32",
+      "temporalSpeed": 2
+    },
+    {
+      "id": "morph-static",
+      "label": "Morph · static source spectrum · two staggered voices",
+      "parameters": [
+        0,
+        1,
+        60,
+        2,
+        0,
+        0,
+        5,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          10240,
+          0,
+          0,
+          60,
+          100
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "morph-static-rust.f32",
+      "temporalFile": "morph-table.f32",
+      "temporalSpeed": 0
+    },
+    {
+      "id": "morph-follow",
+      "label": "Morph · follow source spectrum · two staggered voices",
+      "parameters": [
+        0,
+        1,
+        60,
+        2,
+        0,
+        0,
+        5,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          10240,
+          0,
+          0,
+          60,
+          100
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "morph-follow-rust.f32",
+      "temporalFile": "morph-table.f32",
+      "temporalSpeed": 1
+    },
+    {
+      "id": "morph-fast",
+      "label": "Morph · fast source spectrum · two staggered voices",
+      "parameters": [
+        0,
+        1,
+        60,
+        2,
+        0,
+        0,
+        5,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          10240,
+          0,
+          0,
+          60,
+          100
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "morph-fast-rust.f32",
+      "temporalFile": "morph-table.f32",
+      "temporalSpeed": 2
+    }
+  ]
+}

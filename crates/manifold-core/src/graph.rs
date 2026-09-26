@@ -1905,6 +1905,41 @@ impl ExecutionPlan {
             })
     }
 
+    /// Install prepared Main source spectra between process calls. Each voice
+    /// then follows its own sample playhead through the shared target table.
+    pub fn load_main_temporal_targets(&mut self, node: NodeId, targets: Vec<PartialSet>) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::MainVoiceBank(bank) => bank.load_temporal_source_targets(targets),
+                _ => false,
+            })
+    }
+
+    pub fn clear_main_temporal_targets(&mut self, node: NodeId) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::MainVoiceBank(bank) => {
+                    bank.clear_temporal_source_targets();
+                    true
+                }
+                _ => false,
+            })
+    }
+
+    pub fn set_main_temporal_speed(&mut self, node: NodeId, speed: f32) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::MainVoiceBank(bank) => bank.set_temporal_speed(speed),
+                _ => false,
+            })
+    }
+
     /// Events must be ordered by offset. All targets and offsets are checked before processing.
     pub fn process_with_events(
         &mut self,

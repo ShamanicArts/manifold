@@ -97,8 +97,14 @@
             <label class="sample-file">Choose audio file<input id="sine-source-file" type="file" accept="audio/*,.wav,.aiff,.mp3,.ogg,.flac"></label>
             <button id="sine-use-demo" class="gate-button" type="button">Analyze built-in tone</button>
             <p id="sine-source-status" class="control-help" role="status">Choose a source or use the built-in tone.</p>
-            <label class="sine-source-position" for="sine-position">Temporal position <output id="sine-position-value" for="sine-position">0%</output></label>
+            <label class="sine-source-position" id="sine-position-label" for="sine-position">Temporal position <output id="sine-position-value" for="sine-position">0%</output></label>
             <input id="sine-position" type="range" min="0" max="1" step="0.001" value="0" disabled>
+            <div id="sine-follow-controls" class="sine-follow-controls" hidden>
+              <label><input id="sine-follow-playback" type="checkbox"> Follow each voice’s sample position</label>
+              <label for="sine-temporal-speed">Playback-to-spectrum speed <output id="sine-temporal-speed-value" for="sine-temporal-speed">1.00×</output></label>
+              <input id="sine-temporal-speed" type="range" min="0" max="4" step="0.01" value="1">
+              <p class="control-help">Zero freezes the current spectrum. A held chord can have a different spectrum on each voice.</p>
+            </div>
             <div id="sine-source-bars" class="sine-source-bars" aria-label="Detected partials at selected position"></div>
             <div class="sine-target-controls">
               <label id="sine-target-mode-label">Target<select id="sine-target-mode"><option value="0">Source frame</option><option value="1">Add · self resynthesis</option><option value="2">Add · wave driven</option><option value="3">Morph · wave / source</option></select></label>

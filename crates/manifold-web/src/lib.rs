@@ -6,10 +6,11 @@ use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
 use manifold_core::limiter;
+use manifold_core::main_voice_bank::MAX_MAIN_TEMPORAL_TARGETS;
 use manifold_core::phaser;
 use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
 use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
-use manifold_core::sine_bank::{MAX_PARTIALS, PartialSet};
+use manifold_core::sine_bank::{MAX_PARTIALS, Partial, PartialSet};
 use manifold_core::spectral_targets::{
     AddFlavor, MorphRecipe, SpectralShape, WaveRecipe, build_wave_recipe, prepare_add_target,
     prepare_morph_target,
@@ -26,6 +27,7 @@ struct WorkletEngine {
     events: Vec<TimedEvent>,
     sample_upload: Option<(u32, f32, Vec<f32>)>,
     partial_upload: Option<(u32, u32, PartialSet)>,
+    temporal_upload: Option<(u32, Vec<f32>)>,
 }
 
 struct AnalysisJob {
@@ -1013,6 +1015,7 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
             events: Vec::with_capacity(256),
             sample_upload: None,
             partial_upload: None,
+            temporal_upload: None,
         });
     });
     1
@@ -1134,6 +1137,95 @@ pub extern "C" fn manifold_partials_commit() -> u32 {
                     .plan
                     .load_partials_target(node_id.into(), target, partials),
             )
+        })
+    })
+}
+
+/// Upload up to 256 uniformly spaced prepared Main source targets. Each frame
+/// occupies two header floats (partial count, fundamental) and 32 partials of
+/// four floats. The entire table is validated before replacing the old one.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_temporal_begin(node_id: u32, frames: u32) -> u32 {
+    if frames < 2 || frames as usize > MAX_MAIN_TEMPORAL_TARGETS {
+        return 0;
+    }
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            engine.temporal_upload =
+                Some((node_id, vec![0.0; frames as usize * (2 + MAX_PARTIALS * 4)]));
+            1
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_temporal_ptr() -> *mut f32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .and_then(|engine| engine.temporal_upload.as_mut())
+            .map_or(std::ptr::null_mut(), |(_, values)| values.as_mut_ptr())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_temporal_commit() -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            let Some((node_id, values)) = engine.temporal_upload.take() else {
+                return 0;
+            };
+            let stride = 2 + MAX_PARTIALS * 4;
+            let mut targets = Vec::with_capacity(values.len() / stride);
+            for frame in values.chunks_exact(stride) {
+                let count = frame[0];
+                if !count.is_finite()
+                    || count.fract() != 0.0
+                    || !(0.0..=MAX_PARTIALS as f32).contains(&count)
+                {
+                    return 0;
+                }
+                let mut set = PartialSet {
+                    fundamental: frame[1],
+                    count: count as usize,
+                    ..PartialSet::default()
+                };
+                for (index, partial) in frame[2..2 + set.count * 4].chunks_exact(4).enumerate() {
+                    set.partials[index] = Partial {
+                        frequency: partial[0],
+                        amplitude: partial[1],
+                        phase: partial[2],
+                        decay_rate: partial[3],
+                    };
+                }
+                if !set.validate() {
+                    return 0;
+                }
+                targets.push(set);
+            }
+            u32::from(
+                engine
+                    .plan
+                    .load_main_temporal_targets(node_id.into(), targets),
+            )
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_temporal_clear(node_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.plan.clear_main_temporal_targets(node_id.into()))
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_temporal_speed(node_id: u32, speed: f32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.plan.set_main_temporal_speed(node_id.into(), speed))
         })
     })
 }

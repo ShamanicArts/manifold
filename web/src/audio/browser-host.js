@@ -53,6 +53,7 @@ export class BrowserAudioHost {
           if (data.type === 'eq8-response') this.onEqResponse(data.nodeId, data.values);
           if (data.type === 'midi-trace') this.onMidiTrace(data.events);
           if (data.type === 'partials-applied' && !data.accepted) this.onStatus('Partial set rejected by Rust. Previous sound preserved.');
+          if (data.type === 'temporal-applied' && !data.accepted) this.onStatus('Temporal spectra rejected by Rust. Previous sound preserved.');
           if (data.type === 'route-applied') {
             const pending = this.pendingRoutes.get(data.requestId);
             if (pending) {
@@ -104,6 +105,9 @@ export class BrowserAudioHost {
       this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));
       this.parameterValues = new Map(values);
       for (const [id, value] of values) this.setParameter(id, value);
+      if (project.temporalTargets) {
+        this.setTemporalTargets(project.temporalTargets);
+      }
       if (project.signal.inputSource === 'none') {
         this.source = null;
       } else if (kind === 'microphone') {
@@ -148,6 +152,22 @@ export class BrowserAudioHost {
     if (!this.processor || !this.ready) return;
     this.processor.port.postMessage({ type: 'partials', nodeId: partials.nodeId, target: partials.target ?? 0,
       fundamental: partials.fundamental, values: partials.values });
+  }
+
+  setTemporalTargets(table) {
+    if (!this.processor || !this.ready) return;
+    const values = table.values.slice();
+    this.processor.port.postMessage({ type: 'temporal-targets', nodeId: 2,
+      frames: table.frames, values }, [values.buffer]);
+    this.processor.port.postMessage({ type: 'temporal-speed', nodeId: 2, speed: table.speed });
+  }
+
+  clearTemporalTargets() {
+    this.processor?.port.postMessage({ type: 'temporal-clear', nodeId: 2 });
+  }
+
+  setTemporalSpeed(speed) {
+    this.processor?.port.postMessage({ type: 'temporal-speed', nodeId: 2, speed });
   }
 
   setRoute(to, port, from) {

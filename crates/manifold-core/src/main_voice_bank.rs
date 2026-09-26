@@ -14,6 +14,8 @@ use crate::ring_modulator::RingModulator;
 use crate::sample_region::SampleRegion;
 use crate::sine_bank::{DEFAULTS as SINE_DEFAULTS, PartialSet, SineBank};
 
+pub const MAX_MAIN_TEMPORAL_TARGETS: usize = 256;
+
 struct MainVoice {
     player: SampleRegion,
     oscillator: Oscillator,
@@ -45,6 +47,9 @@ pub struct MainVoiceBank {
     add_left: Vec<f32>,
     add_right: Vec<f32>,
     sample_envelope: Vec<f32>,
+    temporal_source_targets: Vec<PartialSet>,
+    temporal_positions: [f32; MAIN_VOICE_COUNT],
+    temporal_speed: f32,
     waveform: u32,
     blend: f32,
     root_note: f32,
@@ -103,6 +108,9 @@ impl MainVoiceBank {
             add_left: vec![0.0; max_frames],
             add_right: vec![0.0; max_frames],
             sample_envelope: vec![0.0; max_frames],
+            temporal_source_targets: Vec::new(),
+            temporal_positions: [0.0; MAIN_VOICE_COUNT],
+            temporal_speed: 1.0,
             waveform: 0,
             blend: 0.0,
             root_note: 60.0,
@@ -127,7 +135,34 @@ impl MainVoiceBank {
         for voice in remaining {
             voice.player.share_sample_from(&first[0].player);
         }
+        self.temporal_source_targets.clear();
         self.panic();
+        true
+    }
+
+    /// A uniformly spaced, prepared source spectrum table. The control side
+    /// builds every target; processing only selects and copies one per voice.
+    pub fn load_temporal_source_targets(&mut self, targets: Vec<PartialSet>) -> bool {
+        if targets.len() < 2
+            || targets.len() > MAX_MAIN_TEMPORAL_TARGETS
+            || targets.iter().any(|target| !target.validate())
+        {
+            return false;
+        }
+        self.temporal_source_targets = targets;
+        self.temporal_positions.fill(0.0);
+        true
+    }
+
+    pub fn clear_temporal_source_targets(&mut self) {
+        self.temporal_source_targets.clear();
+    }
+
+    pub fn set_temporal_speed(&mut self, speed: f32) -> bool {
+        if !speed.is_finite() || !(0.0..=4.0).contains(&speed) {
+            return false;
+        }
+        self.temporal_speed = speed;
         true
     }
 
@@ -144,6 +179,9 @@ impl MainVoiceBank {
                 &mut voice.sample_add
             };
             bank.load_partials(partials);
+        }
+        if target == 1 {
+            self.temporal_source_targets.clear();
         }
         true
     }
@@ -213,6 +251,7 @@ impl MainVoiceBank {
             } => self.release(note),
             EventKind::NoteOn { note, velocity, .. } => {
                 let index = self.allocator.note_on(note, velocity);
+                self.temporal_positions[index] = 0.0;
                 let voice = &mut self.voices[index];
                 let frequency = (440.0_f64 * 2.0_f64.powf((note as f64 - 69.0) / 12.0)) as f32;
                 voice.envelope.reset();
@@ -323,6 +362,17 @@ impl MainVoiceBank {
                 voice.motion.set_parameter(id, value);
             }
             let position = voice.player.legacy_normalized_position();
+            if self.direction_mode >= 4 && !self.temporal_source_targets.is_empty() {
+                if self.temporal_speed > 0.001 {
+                    self.temporal_positions[index] = (position * self.temporal_speed).fract();
+                }
+                let target_index = (self.temporal_positions[index]
+                    * (self.temporal_source_targets.len() - 1) as f32)
+                    .round() as usize;
+                voice
+                    .sample_add
+                    .load_partials(self.temporal_source_targets[target_index]);
+            }
             let directional = voice
                 .motion
                 .tick_with_speed(frames, position, pitch.sample_speed);
@@ -597,6 +647,46 @@ mod tests {
         assert!(base.iter().zip(add).any(|(a, b)| (a - b).abs() > 0.01));
         assert!(morph.iter().zip(changed).any(|(a, b)| (a - b).abs() > 0.01));
         assert!(morph.iter().zip(base).any(|(a, b)| (a - b).abs() > 0.01));
+    }
+
+    #[test]
+    fn temporal_targets_follow_each_voice_and_manual_upload_disables_follow() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.load_stereo(vec![0.5; 4_096 * 2], 8_000.0));
+        assert!(bank.load_partials(1, target(&[(1.0, 1.0)])));
+        assert!(
+            bank.load_temporal_source_targets(vec![target(&[(1.0, 1.0)]), target(&[(3.0, 1.0)]),])
+        );
+        assert!(!bank.load_temporal_source_targets(vec![PartialSet::default()]));
+        assert_eq!(bank.temporal_source_targets.len(), 2);
+        assert!(bank.set_temporal_speed(1.0));
+        assert!(!bank.set_temporal_speed(f32::NAN));
+        bank.set_parameter(1, 1.0);
+        bank.set_parameter(6, 4.0);
+        bank.set_parameter(7, 1.0);
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 127,
+        });
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        for _ in 0..8 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 127,
+        });
+        for _ in 0..14 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert!(bank.temporal_positions[0] > 0.5);
+        assert!(bank.temporal_positions[1] < 0.5);
+        assert!(left.iter().any(|sample| sample.abs() > 0.01));
+        assert!(bank.load_partials(1, target(&[(2.0, 1.0)])));
+        assert!(bank.temporal_source_targets.is_empty());
     }
 
     #[test]

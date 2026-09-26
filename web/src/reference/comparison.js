@@ -784,6 +784,18 @@ export function renderWasm(engine, family, manifest, input, selected) {
         if (engine.manifold_partials_commit() !== 1) throw new Error('Main bank target commit failed');
       }
     }
+    if (family === 'main-voice-bank' && selected.temporalTable) {
+      const frames = selected.temporalTable.length / 130;
+      if (!Number.isInteger(frames) || engine.manifold_main_temporal_begin(2, frames) !== 1) {
+        throw new Error('Main temporal target begin failed');
+      }
+      new Float32Array(engine.memory.buffer, engine.manifold_main_temporal_ptr(), selected.temporalTable.length)
+        .set(selected.temporalTable);
+      if (engine.manifold_main_temporal_commit() !== 1
+        || engine.manifold_main_temporal_speed(2, selected.temporalSpeed) !== 1) {
+        throw new Error('Main temporal target commit failed');
+      }
+    }
     selected.parameters.forEach((value, id) => {
       const parameter = family === 'sample-region' && id === 6 ? 8 : id;
       if (engine.manifold_set_node_parameter(2, parameter, value) !== 1) throw new Error(`Wasm sample parameter ${id} failed`);

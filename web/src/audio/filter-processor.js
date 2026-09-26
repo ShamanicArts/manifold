@@ -88,6 +88,16 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'partials' && this.engine) {
           const accepted = this.uploadPartials(data);
           this.port.postMessage({ type: 'partials-applied', requestId: data.requestId, accepted });
+        } else if (data.type === 'temporal-targets' && this.engine) {
+          const accepted = this.uploadTemporalTargets(data);
+          this.port.postMessage({ type: 'temporal-applied', requestId: data.requestId, accepted });
+        } else if (data.type === 'temporal-clear' && this.engine) {
+          const accepted = this.engine.manifold_main_temporal_clear(data.nodeId) === 1;
+          this.port.postMessage({ type: 'temporal-applied', requestId: data.requestId, accepted });
+        } else if (data.type === 'temporal-speed' && this.engine) {
+          if (this.engine.manifold_main_temporal_speed(data.nodeId, data.speed) !== 1) {
+            throw new Error('Temporal speed rejected');
+          }
         } else if (data.type === 'route') {
           const accepted = this.engine?.manifold_set_route(data.to, data.port, data.from ?? 0) === 1;
           this.port.postMessage({ type: 'route-applied', requestId: data.requestId, accepted });
@@ -144,6 +154,22 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     if (!ptr) return false;
     new Float32Array(this.engine.memory.buffer, ptr, values.length).set(values);
     return this.engine.manifold_partials_commit() === 1;
+  }
+
+  uploadTemporalTargets(data) {
+    const { nodeId, frames, values } = data;
+    const stride = 2 + 32 * 4;
+    if (!(values instanceof Float32Array) || !Number.isInteger(frames)
+      || frames < 2 || frames > 256 || values.length !== frames * stride) return false;
+    if (this.engine.manifold_main_temporal_begin(nodeId, frames) !== 1) return false;
+    const ptr = this.engine.manifold_main_temporal_ptr();
+    if (!ptr) return false;
+    new Float32Array(this.engine.memory.buffer, ptr, values.length).set(values);
+    const accepted = this.engine.manifold_main_temporal_commit() === 1;
+    // A large table may grow Wasm memory and invalidate cached JS views.
+    this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 2);
+    this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
+    return accepted;
   }
 
   queueEvent(data) {

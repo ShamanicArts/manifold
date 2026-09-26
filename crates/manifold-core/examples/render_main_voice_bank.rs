@@ -6,8 +6,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 12 {
-        return Err("usage: render_main_voice_bank SAMPLE OUTPUT SOURCE_RATE OUTPUT_RATE BLOCK FRAMES PARAMETERS EVENTS CHANGES WAVE_PARTIALS SOURCE_PARTIALS".into());
+    if args.len() != 12 && args.len() != 14 {
+        return Err("usage: render_main_voice_bank SAMPLE OUTPUT SOURCE_RATE OUTPUT_RATE BLOCK FRAMES PARAMETERS EVENTS CHANGES WAVE_PARTIALS SOURCE_PARTIALS [TEMPORAL_TABLE TEMPORAL_SPEED]".into());
     }
     let raw = std::fs::read(&args[1])?;
     if raw.len() % 8 != 0 {
@@ -98,6 +98,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if !plan.load_partials_target(2, target as u32, set) {
             return Err("partial target rejected".into());
+        }
+    }
+    if args.len() == 14 {
+        let bytes = std::fs::read(&args[12])?;
+        const STRIDE: usize = 2 + 32 * 4;
+        if bytes.len() % (STRIDE * 4) != 0 || bytes.len() < STRIDE * 4 * 2 {
+            return Err("invalid temporal table length".into());
+        }
+        let floats: Vec<f32> = bytes
+            .chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+            .collect();
+        let mut targets = Vec::with_capacity(floats.len() / STRIDE);
+        for frame in floats.chunks_exact(STRIDE) {
+            let count = frame[0];
+            if !count.is_finite() || count.fract() != 0.0 || !(0.0..=32.0).contains(&count) {
+                return Err("invalid temporal frame count".into());
+            }
+            let mut set = PartialSet {
+                fundamental: frame[1],
+                count: count as usize,
+                ..PartialSet::default()
+            };
+            for (index, values) in frame[2..2 + set.count * 4].chunks_exact(4).enumerate() {
+                set.partials[index] = Partial {
+                    frequency: values[0],
+                    amplitude: values[1],
+                    phase: values[2],
+                    decay_rate: values[3],
+                };
+            }
+            if !set.validate() {
+                return Err("invalid temporal frame".into());
+            }
+            targets.push(set);
+        }
+        if !plan.load_main_temporal_targets(2, targets)
+            || !plan.set_main_temporal_speed(2, args[13].parse()?)
+        {
+            return Err("temporal table rejected".into());
         }
     }
     for (id, value) in parameters.into_iter().enumerate() {
