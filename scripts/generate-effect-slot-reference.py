@@ -12,7 +12,7 @@ OUT = ROOT / "web/public/reference/standalone-fx"
 OUT.mkdir(parents=True, exist_ok=True)
 subprocess.run(["cargo", "build", "-p", "manifold-core", "--example", "render_effect_slot"], cwd=ROOT, check=True)
 runner = ROOT / "target/debug/examples/render_effect_slot"
-sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/effect_slot.rs", "crates/manifold-core/src/waveshaper.rs", "crates/manifold-core/src/stereo_widener.rs", "crates/manifold-core/src/legacy_filter.rs", "crates/manifold-core/src/reverb.rs", "crates/manifold-core/src/multitap_delay.rs", "crates/manifold-core/src/ring_modulator.rs", "crates/manifold-core/src/transient_shaper.rs", "crates/manifold-core/src/bitcrusher.rs", "crates/manifold-core/src/legacy_eq.rs", "crates/manifold-core/src/formant_filter.rs", "crates/manifold-core/src/reverse_delay.rs", "crates/manifold-core/src/stutter.rs", "crates/manifold-core/src/pitch_shifter.rs", "crates/manifold-core/src/shimmer.rs", "crates/manifold-core/src/stereo_delay.rs", "crates/manifold-core/src/chorus.rs", "crates/manifold-core/src/phaser.rs", "crates/manifold-core/src/compressor.rs", "crates/manifold-core/src/limiter.rs", "crates/manifold-core/src/lib.rs", "projects/standalone-fx-slice/project.json", "crates/manifold-core/examples/render_effect_slot.rs"]]
+sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/effect_slot.rs", "crates/manifold-core/src/waveshaper.rs", "crates/manifold-core/src/stereo_widener.rs", "crates/manifold-core/src/legacy_filter.rs", "crates/manifold-core/src/reverb.rs", "crates/manifold-core/src/multitap_delay.rs", "crates/manifold-core/src/ring_modulator.rs", "crates/manifold-core/src/transient_shaper.rs", "crates/manifold-core/src/bitcrusher.rs", "crates/manifold-core/src/legacy_eq.rs", "crates/manifold-core/src/formant_filter.rs", "crates/manifold-core/src/reverse_delay.rs", "crates/manifold-core/src/stutter.rs", "crates/manifold-core/src/pitch_shifter.rs", "crates/manifold-core/src/shimmer.rs", "crates/manifold-core/src/granulator.rs", "crates/manifold-core/src/stereo_delay.rs", "crates/manifold-core/src/chorus.rs", "crates/manifold-core/src/phaser.rs", "crates/manifold-core/src/compressor.rs", "crates/manifold-core/src/limiter.rs", "crates/manifold-core/src/lib.rs", "projects/standalone-fx-slice/project.json", "crates/manifold-core/examples/render_effect_slot.rs"]]
 source_hash = hashlib.sha256(b"".join(path.read_bytes() for path in sources)).hexdigest()
 frames, sample_rate, step = 16384, 48000, 8192
 with (OUT / "input.f32").open("wb") as output:
@@ -25,6 +25,10 @@ with (OUT / "input.f32").open("wb") as output:
         output.write(struct.pack("<ff", left, right))
 # type, mix, p/0..p/4. Type 10 is Pitch Shift; others include Formant, EQNode, Reverse Delay, and Stutter.
 specs = [
+    ("granulator-size", "Granulator grain size sweep", [11, .8, .1, .4, 0, 0, .5], [11, .8, .9, .4, 0, 0, .5], 128),
+    ("granulator-density", "Granulator density and spray", [11, 1, .3, .1, 0, .1, .5], [11, 1, .3, .9, 0, .9, .5], 64),
+    ("filter-to-granulator", "Switch FilterNode to Granulator", [5, .8, .5, .2, .5, .5, .5], [11, .8, .3, .4, 0, .25, .5], 128),
+    ("granulator-to-shimmer", "Switch Granulator to Shimmer", [11, .8, .3, .4, 0, .25, .5], [18, .8, .2, .75, .7, .5, .5], 128),
     ("shimmer-size", "Shimmer size sweep", [18, .8, .1, .75, .7, .5, .5], [18, .8, .8, .75, .7, .5, .5], 128),
     ("shimmer-pitch", "Shimmer pitch and feedback", [18, 1, .2, .1, .2, .5, .5], [18, 1, .2, .9, .9, .5, .5], 64),
     ("filter-to-shimmer", "Switch FilterNode to Shimmer", [5, .8, .5, .2, .5, .5, .5], [18, .8, .2, .75, .7, .5, .5], 128),

@@ -14,6 +14,7 @@ use crate::eq8::{self, Eq8};
 use crate::events::{EventError, EventKind, TimedEvent};
 use crate::fft_spectrum::FftSpectrum;
 use crate::formant_filter::{self, FormantFilter};
+use crate::granulator::{self, Granulator};
 use crate::legacy_eq::{self, LegacyEq};
 use crate::legacy_filter::{self, LegacyFilter};
 use crate::lfo::Lfo;
@@ -166,6 +167,9 @@ pub enum NodeKind {
     Shimmer {
         params: [f32; shimmer::PARAM_COUNT],
     },
+    Granulator {
+        params: [f32; granulator::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -252,6 +256,7 @@ impl NodeKind {
             | Self::Stutter { .. }
             | Self::PitchShifter { .. }
             | Self::Shimmer { .. }
+            | Self::Granulator { .. }
             | Self::SlewControl { .. }
             | Self::AttenuverterBias { .. }
             | Self::AdsrEnvelope
@@ -373,6 +378,7 @@ impl NodeKind {
             Self::Stutter { params } => params.iter().all(|value| value.is_finite()),
             Self::PitchShifter { params } => params.iter().all(|value| value.is_finite()),
             Self::Shimmer { params } => params.iter().all(|value| value.is_finite()),
+            Self::Granulator { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -519,6 +525,7 @@ enum Kernel {
     Stutter(Stutter),
     PitchShifter(PitchShifter),
     Shimmer(Shimmer),
+    Granulator(Granulator),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -681,6 +688,9 @@ impl Kernel {
             NodeKind::Shimmer { params } => {
                 Self::Shimmer(Shimmer::new(sample_rate, max_frames, *params))
             }
+            NodeKind::Granulator { params } => {
+                Self::Granulator(Granulator::new(sample_rate, max_frames, *params))
+            }
             NodeKind::EffectSlot {
                 selected,
                 mix,
@@ -832,6 +842,7 @@ impl Kernel {
             (Self::Stutter(stutter), id) => return stutter.set_parameter(id, value),
             (Self::PitchShifter(shifter), id) => return shifter.set_parameter(id, value),
             (Self::Shimmer(shimmer), id) => return shimmer.set_parameter(id, value),
+            (Self::Granulator(granulator), id) => return granulator.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1494,6 +1505,9 @@ impl ExecutionPlan {
                 }
                 Kernel::Shimmer(shimmer) => {
                     shimmer.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::Granulator(granulator) => {
+                    granulator.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

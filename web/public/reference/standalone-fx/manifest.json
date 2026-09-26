@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "7ea8a5f8c87106996d11a1afe123581b989662a11dd17110e134dd736a2f3647",
+  "sourceSha256": "7d91b7eb3e2402e05efc2fb1934325ad845da58f83676878d2207aa39dded665",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "granulator-size",
+      "label": "Granulator grain size sweep",
+      "before": [
+        11,
+        0.8,
+        0.1,
+        0.4,
+        0,
+        0,
+        0.5
+      ],
+      "after": [
+        11,
+        0.8,
+        0.9,
+        0.4,
+        0,
+        0,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "granulator-size.f32"
+    },
+    {
+      "id": "granulator-density",
+      "label": "Granulator density and spray",
+      "before": [
+        11,
+        1,
+        0.3,
+        0.1,
+        0,
+        0.1,
+        0.5
+      ],
+      "after": [
+        11,
+        1,
+        0.3,
+        0.9,
+        0,
+        0.9,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "granulator-density.f32"
+    },
+    {
+      "id": "filter-to-granulator",
+      "label": "Switch FilterNode to Granulator",
+      "before": [
+        5,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        11,
+        0.8,
+        0.3,
+        0.4,
+        0,
+        0.25,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-granulator.f32"
+    },
+    {
+      "id": "granulator-to-shimmer",
+      "label": "Switch Granulator to Shimmer",
+      "before": [
+        11,
+        0.8,
+        0.3,
+        0.4,
+        0,
+        0.25,
+        0.5
+      ],
+      "after": [
+        18,
+        0.8,
+        0.2,
+        0.75,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "granulator-to-shimmer.f32"
+    },
     {
       "id": "shimmer-size",
       "label": "Shimmer size sweep",

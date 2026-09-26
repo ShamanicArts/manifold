@@ -26,6 +26,7 @@ import reverseDelayProject from '../../projects/reverse-delay/project.json';
 import stutterProject from '../../projects/stutter/project.json';
 import pitchShifterProject from '../../projects/pitch-shifter/project.json';
 import shimmerProject from '../../projects/shimmer/project.json';
+import granulatorProject from '../../projects/granulator/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -214,6 +215,12 @@ const projects = {
     description: 'A long stereo delay with pitched read positions, slow stereo modulation, and filtered feedback. Adjust the delay size and pitch, then listen through the wet mix.',
     signal: 'Live path: input → modulated pitched delay → filtered feedback → dry/wet output',
   },
+  granulator: {
+    project: granulatorProject,
+    title: 'Granulator',
+    description: 'The capture ring records stereo input and spawns up to 64 grains. Grain size, density, position, pitch, spray, envelope, and freeze shape the result. The first grains need time to fill the ring.',
+    signal: 'Live path: input → four-second capture ring → grain cloud → dry/wet output',
+  },
   compressor: {
     project: compressorProject,
     title: 'Compressor',
@@ -235,7 +242,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, Pitch Shift, Ring Mod, Formant, three-band EQ, Limiter, Transient Shaper, BitCrusher, Shimmer, Reverse Delay, and Stutter are available in this slice.',
+    description: 'A swappable effects slot using all 21 original type IDs and normalized controls. Each type runs a prepared Rust effect; the fifth normalized control is unused by many original definitions.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -687,6 +694,7 @@ function updateSlotControls() {
     : selected === 19 ? { 2: 'Delay time', 3: 'Reverse window', 4: 'Feedback' }
     : selected === 20 ? { 2: 'Length', 3: 'Gate', 4: 'Probability', 5: 'Filter decay' }
     : selected === 10 ? { 2: 'Pitch shift', 3: 'Head window', 4: 'Feedback' }
+    : selected === 11 ? { 2: 'Grain size', 3: 'Density', 4: 'Position', 5: 'Spray' }
     : selected === 18 ? { 2: 'Delay size', 3: 'Pitch shift', 4: 'Feedback', 5: 'Filter' }
     : selected === 16 ? { 2: 'Attack', 3: 'Sustain', 4: 'Sensitivity' }
     : selected === 17 ? { 2: 'Bits', 3: 'Sample hold', 4: 'Output gain' }
@@ -742,6 +750,9 @@ function updateSlotControls() {
       : selected === 10
       ? id === 2 ? `${(-12 + 24 * value).toFixed(1)} st`
         : id === 3 ? `${Math.round(30 + 150 * value)} ms` : (0.75 * value).toFixed(2)
+      : selected === 11
+      ? id === 2 ? `${Math.round(12 + 268 * value)} ms`
+        : id === 3 ? `${Math.round(2 + 62 * value)} /s` : value.toFixed(2)
       : selected === 18
       ? id === 2 ? (0.1 + 0.9 * value).toFixed(2)
         : id === 3 ? `${(-12 + 24 * value).toFixed(1)} st`
@@ -783,6 +794,7 @@ function updateSlotControls() {
     : selected === 19 ? 'The old slot maps delay time, reverse window, and feedback. Internal mix is fully wet, and the slot applies 1.2× wet gain; the last two controls are unused.'
     : selected === 20 ? 'The old slot maps beat length, gate, probability, and filter decay. Tempo stays at 120 BPM, all eight pattern steps are on, and pitch decay uses the node default.'
     : selected === 10 ? 'The old slot maps pitch −12…12 semitones, head window 30…180 ms, and feedback 0…0.75. Internal mix is fully wet; the last two controls are unused.'
+    : selected === 11 ? 'The old slot maps grain size, density, capture position, and spray. Pitch is fixed at 0 st and the Hann grain envelope is used; the fifth control is unused.'
     : selected === 18 ? 'The old slot maps size, pitch, feedback, and an exponential feedback filter. Internal mix is 0.5 and the slot applies 1.4× wet gain; the fifth control is unused.'
     : selected === 16 ? 'Attack, sustain, and sensitivity are the old slot controls. Internal mix is fully wet; the last two normalized controls are unused.'
     : selected === 17 ? 'Bit depth, sample hold, and output gain are the old slot controls. Logic mode is Normal and internal mix is fully wet; the last two normalized controls are unused.'
@@ -984,6 +996,7 @@ function renderPrimitive(family) {
     [19, [0.2, 0.25, 0.47, 0.5, 0.5]],
     [20, [0.05, 0.8, 0.8, 0.25, 0.5]],
     [10, [0.5, 0.5, 0.2, 0.5, 0.5]],
+    [11, [0.3, 0.4, 0.6, 0.25, 0.5]],
     [18, [0.6, 0.75, 0.7, 0.5, 0.5]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
@@ -1036,7 +1049,7 @@ function renderPrimitive(family) {
   renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   const sampleView = family === 'sample-region' || family === 'sample-instrument';
   byId('keyboard-section').hidden = !['voice', 'sample-instrument'].includes(family);
@@ -1060,7 +1073,8 @@ function renderPrimitive(family) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 10: 'Pitch', 12: 'Ring Mod', 13: 'Formant', 14: 'EQ', 15: 'Limit', 16: 'Transient', 17: 'Bits', 18: 'Shimmer', 19: 'Reverse', 20: 'Stutter' })[value] : choice;
+        : family === 'granulator' ? ['Hann', 'Tri', 'Black', 'Tukey', 'Rect'][value]
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 10: 'Pitch', 11: 'Grains', 12: 'Ring Mod', 13: 'Formant', 14: 'EQ', 15: 'Limit', 16: 'Transient', 17: 'Bits', 18: 'Shimmer', 19: 'Reverse', 20: 'Stutter' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {

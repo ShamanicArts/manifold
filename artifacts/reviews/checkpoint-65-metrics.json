@@ -1,0 +1,31 @@
+{
+  "granulator": {
+    "cases": 8,
+    "largest": {
+      "id": "size-sweep",
+      "max": 2.38e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "position": "0.05",
+    "spray": "0.75"
+  },
+  "standalone-fx": {
+    "cases": 79,
+    "largest": {
+      "id": "eq-to-formant",
+      "max": 0.000125
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Grains",
+    "wet": "0.80",
+    "pitch": "213 ms",
+    "controls": [
+      "Wet mix",
+      "Grain size",
+      "Density",
+      "Position",
+      "Spray"
+    ]
+  },
+  "errors": []
+}

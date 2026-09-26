@@ -1,0 +1,9 @@
+# Checkpoint 65 · Granulator and Standalone FX type 11
+
+Review the [Granulator workbench](http://127.0.0.1:4173/?primitive=granulator), [FX slot workbench](http://127.0.0.1:4173/?primitive=standalone-fx), [Granulator screenshot](checkpoint-65-granulator.png), [slot screenshot](checkpoint-65-standalone-fx.png), and [browser metrics](checkpoint-65-metrics.json).
+
+The original GranulatorNode capture-ring path now runs as Rust graph kind 51: up to 64 grains, five envelope shapes, grain pitch and spray, freeze, enable, and smoothed grain size, density, position, and mix. A fixed v2 seed makes nonzero spray repeatable. Standalone FX type 11 maps the old normalized grain size, density, position, and spray controls. All 21 original type IDs are now available in the slot.
+
+Eight zero-spray C++ Granulator captures show **Match** against Rust/Wasm; the largest maximum sample difference is `2.38e-7` in the size sweep. The captures exercise nontrivial wet output: RMS distance from dry input ranges from `0.335` to `1.040`. Four new native Rust slot cases cover controls and switching; all 79 slot cases show **Match**, with the largest maximum difference of `1.25e-4` in the older EQ-to-Formant switch. The full browser sweep passes **370 cases across 43 views** with zero page errors. Live checks started test audio, changed Granulator position and spray, and switched the running slot to Granulator at 80% wet. All 84 Rust workspace tests and Wasm and web builds pass.
+
+The C++ runner substitutes a constant random draw of `0.5`, and each C++ fixture sets spray to zero, because the old default-constructed JUCE RNG is not reproducible across runs. Nonzero spray is compared native Rust to Rust/Wasm in the slot. File-source loading, source-region selection, adjustable buffer duration, and full Standalone FX project routing and preset roundtrips remain separate work; see the [migration boundary](../../docs/granulator-migration.md).
