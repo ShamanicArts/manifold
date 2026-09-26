@@ -1,0 +1,27 @@
+{
+  "bitcrusher": {
+    "cases": 9,
+    "largest": {
+      "id": "mix-output",
+      "max": 1.19e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "bits": "16.00"
+  },
+  "standalone-fx": {
+    "cases": 51,
+    "largest": {
+      "id": "filter-to-chorus",
+      "max": 9.69e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Bits",
+    "controls": [
+      "Wet mix",
+      "Bits",
+      "Sample hold",
+      "Output gain"
+    ]
+  },
+  "errors": []
+}

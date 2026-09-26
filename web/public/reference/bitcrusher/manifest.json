@@ -1,0 +1,210 @@
+{
+  "version": 1,
+  "reference": "legacy C++ BitCrusherNode Highway and scalar stereo",
+  "sourceSha256": "f433dd21d7f3793a96be841ea07a16fc9ced916cca00a4bf986800dabd868aa8",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default-simd",
+      "label": "Default Highway path",
+      "before": [
+        8,
+        4,
+        1,
+        0.8,
+        0
+      ],
+      "after": [
+        8,
+        4,
+        1,
+        0.8,
+        0
+      ],
+      "external": false,
+      "referenceMode": "Highway",
+      "blockSize": 128,
+      "output": "default-simd.f32"
+    },
+    {
+      "id": "default-scalar",
+      "label": "Scalar path",
+      "before": [
+        8,
+        4,
+        1,
+        0.8,
+        0
+      ],
+      "after": [
+        8,
+        4,
+        1,
+        0.8,
+        0
+      ],
+      "external": false,
+      "referenceMode": "scalar",
+      "blockSize": 128,
+      "output": "default-scalar.f32"
+    },
+    {
+      "id": "bits",
+      "label": "Bit depth sweep",
+      "before": [
+        3,
+        8,
+        1,
+        0.8,
+        0
+      ],
+      "after": [
+        15,
+        8,
+        1,
+        0.8,
+        0
+      ],
+      "external": false,
+      "referenceMode": "Highway",
+      "blockSize": 128,
+      "output": "bits.f32"
+    },
+    {
+      "id": "rate",
+      "label": "Rate reduction sweep",
+      "before": [
+        8,
+        1,
+        1,
+        0.8,
+        0
+      ],
+      "after": [
+        8,
+        63,
+        1,
+        0.8,
+        0
+      ],
+      "external": false,
+      "referenceMode": "Highway",
+      "blockSize": 128,
+      "output": "rate.f32"
+    },
+    {
+      "id": "mix-output",
+      "label": "Dry mix and output gain",
+      "before": [
+        6,
+        8,
+        0.2,
+        0.5,
+        0
+      ],
+      "after": [
+        6,
+        8,
+        0.9,
+        1.7,
+        0
+      ],
+      "external": false,
+      "referenceMode": "Highway",
+      "blockSize": 128,
+      "output": "mix-output.f32"
+    },
+    {
+      "id": "xor",
+      "label": "XOR with external stereo bus",
+      "before": [
+        6,
+        4,
+        1,
+        0.8,
+        1
+      ],
+      "after": [
+        12,
+        8,
+        1,
+        0.8,
+        1
+      ],
+      "external": true,
+      "referenceMode": "Highway",
+      "blockSize": 128,
+      "output": "xor.f32"
+    },
+    {
+      "id": "gate",
+      "label": "Gate with external stereo bus",
+      "before": [
+        6,
+        4,
+        1,
+        0.8,
+        2
+      ],
+      "after": [
+        6,
+        8,
+        1,
+        0.8,
+        2
+      ],
+      "external": true,
+      "referenceMode": "Highway",
+      "blockSize": 128,
+      "output": "gate.f32"
+    },
+    {
+      "id": "no-bus-fallback",
+      "label": "Logic mode without bus B",
+      "before": [
+        6,
+        4,
+        1,
+        0.8,
+        1
+      ],
+      "after": [
+        6,
+        8,
+        1,
+        0.8,
+        2
+      ],
+      "external": false,
+      "referenceMode": "scalar",
+      "blockSize": 128,
+      "output": "no-bus-fallback.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame blocks",
+      "before": [
+        6,
+        8,
+        0.8,
+        1,
+        0
+      ],
+      "after": [
+        10,
+        2,
+        0.6,
+        0.5,
+        0
+      ],
+      "external": false,
+      "referenceMode": "Highway",
+      "blockSize": 64,
+      "output": "small-block.f32"
+    }
+  ]
+}

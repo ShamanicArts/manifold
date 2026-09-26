@@ -3,7 +3,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 legacy_dir="${MANIFOLD_LEGACY_DIR:-$repo_dir/../my-plugin}"
 reference_kind="${1:-svf}"
-if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" && "$reference_kind" != "limiter" && "$reference_kind" != "slew-audio" && "$reference_kind" != "phaser" && "$reference_kind" != "chorus" && "$reference_kind" != "eq8" && "$reference_kind" != "waveshaper" && "$reference_kind" != "stereo-widener" && "$reference_kind" != "filter-node" && "$reference_kind" != "reverb" && "$reference_kind" != "multitap" && "$reference_kind" != "ring-modulator" && "$reference_kind" != "transient" ]]; then
+if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" && "$reference_kind" != "limiter" && "$reference_kind" != "slew-audio" && "$reference_kind" != "phaser" && "$reference_kind" != "chorus" && "$reference_kind" != "eq8" && "$reference_kind" != "waveshaper" && "$reference_kind" != "stereo-widener" && "$reference_kind" != "filter-node" && "$reference_kind" != "reverb" && "$reference_kind" != "multitap" && "$reference_kind" != "ring-modulator" && "$reference_kind" != "transient" && "$reference_kind" != "bitcrusher" ]]; then
   echo "Unknown legacy reference: $reference_kind" >&2
   exit 2
 fi
@@ -58,6 +58,9 @@ elif [[ "$reference_kind" == "ring-modulator" ]]; then
 elif [[ "$reference_kind" == "transient" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/TransientShaperNode.cpp"
   runner_file="$repo_dir/tools/legacy-transient-reference.cpp"
+elif [[ "$reference_kind" == "bitcrusher" ]]; then
+  source_file="$legacy_dir/dsp/core/nodes/BitCrusherNode.cpp"
+  runner_file="$repo_dir/tools/legacy-bitcrusher-reference.cpp"
 elif [[ "$reference_kind" == "spectrum-analyzer" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/SpectrumAnalyzerNode.cpp"
   runner_file="$repo_dir/tools/legacy-spectrum-analyzer-reference.cpp"
@@ -83,7 +86,7 @@ if [[ ! -f "$source_file" ]]; then
 fi
 mkdir -p "$repo_dir/target/legacy-reference"
 extra_flags=()
-if [[ "$reference_kind" == "mixer" || "$reference_kind" == "oscillator" || "$reference_kind" == "adsr" || "$reference_kind" == "filter-node" ]]; then
+if [[ "$reference_kind" == "mixer" || "$reference_kind" == "oscillator" || "$reference_kind" == "adsr" || "$reference_kind" == "filter-node" || "$reference_kind" == "bitcrusher" ]]; then
   mapfile -t extra_flags < <(pkg-config --cflags --libs libhwy | xargs -n1)
 fi
 c++ -std=c++17 -O2 -DNDEBUG=1 -D_NDEBUG=1 -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 \

@@ -1,7 +1,8 @@
-//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 15, and 16.
+//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 15, 16, and 17.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
+use crate::bitcrusher::{self, BitCrusher};
 use crate::chorus::{self, Chorus};
 use crate::compressor::{self, Compressor};
 use crate::legacy_filter::{self, LegacyFilter};
@@ -28,6 +29,7 @@ pub const MULTITAP_TYPE: u32 = 9;
 pub const RING_TYPE: u32 = 12;
 pub const LIMITER_TYPE: u32 = 15;
 pub const TRANSIENT_TYPE: u32 = 16;
+pub const BITCRUSHER_TYPE: u32 = 17;
 
 pub fn supported_type(value: f32) -> Option<u32> {
     if !value.is_finite() || value.fract() != 0.0 {
@@ -36,7 +38,7 @@ pub fn supported_type(value: f32) -> Option<u32> {
     match value as u32 {
         CHORUS_TYPE | PHASER_TYPE | WAVESHAPER_TYPE | COMPRESSOR_TYPE | WIDENER_TYPE
         | LEGACY_FILTER_TYPE | SVF_TYPE | REVERB_TYPE | DELAY_TYPE | MULTITAP_TYPE | RING_TYPE
-        | LIMITER_TYPE | TRANSIENT_TYPE => Some(value as u32),
+        | LIMITER_TYPE | TRANSIENT_TYPE | BITCRUSHER_TYPE => Some(value as u32),
         _ => None,
     }
 }
@@ -57,6 +59,7 @@ pub struct EffectSlot {
     multitap_params: [f32; 5],
     ring_params: [f32; 5],
     transient_params: [f32; 5],
+    bitcrusher_params: [f32; 5],
     compressor_params: [f32; 5],
     limiter_params: [f32; 5],
     limiter_pre_gain: f32,
@@ -73,6 +76,7 @@ pub struct EffectSlot {
     multitap: MultitapDelay,
     ring: RingModulator,
     transient: TransientShaper,
+    bitcrusher: BitCrusher,
     compressor: Compressor,
     limiter: Limiter,
 }
@@ -107,6 +111,7 @@ impl EffectSlot {
             multitap_params: [0.3, 0.3, 0.5, 0.5, 0.5],
             ring_params: [0.3, 1.0, 0.2, 0.5, 0.5],
             transient_params: [0.5, 0.5, 0.5, 0.5, 0.5],
+            bitcrusher_params: [0.3, 0.12, 0.55, 0.5, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
             limiter_params: [0.5, 0.3, 0.4, 0.4, 0.5],
             limiter_pre_gain: 1.02,
@@ -123,6 +128,7 @@ impl EffectSlot {
             multitap: MultitapDelay::new(sample_rate, max_frames, multitap_delay::DEFAULTS),
             ring: RingModulator::new(sample_rate, ring_modulator::DEFAULTS),
             transient: TransientShaper::new(sample_rate, transient_shaper::DEFAULTS),
+            bitcrusher: BitCrusher::new(sample_rate, bitcrusher::DEFAULTS),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
             limiter: Limiter::new(sample_rate, limiter::defaults()),
         };
@@ -139,6 +145,7 @@ impl EffectSlot {
             MULTITAP_TYPE => &mut slot.multitap_params,
             RING_TYPE => &mut slot.ring_params,
             TRANSIENT_TYPE => &mut slot.transient_params,
+            BITCRUSHER_TYPE => &mut slot.bitcrusher_params,
             LIMITER_TYPE => &mut slot.limiter_params,
             _ => unreachable!("slot type validated at graph compilation"),
         };
@@ -155,6 +162,7 @@ impl EffectSlot {
         slot.rebuild_multitap();
         slot.rebuild_ring();
         slot.rebuild_transient();
+        slot.rebuild_bitcrusher();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
@@ -344,6 +352,27 @@ impl EffectSlot {
         }
     }
 
+    fn bitcrusher_settings(&self) -> [f32; bitcrusher::PARAM_COUNT] {
+        let [bits, reduction, output, _, _] = self.bitcrusher_params;
+        [
+            (2.0 + 14.0 * bits + 0.5).floor(),
+            (1.0 + 63.0 * reduction + 0.5).floor(),
+            1.0,
+            0.25 + 1.75 * output,
+            0.0,
+        ]
+    }
+
+    fn rebuild_bitcrusher(&mut self) {
+        self.bitcrusher.reset_to(self.bitcrusher_settings());
+    }
+
+    fn apply_bitcrusher(&mut self) {
+        for (id, value) in self.bitcrusher_settings().into_iter().enumerate() {
+            self.bitcrusher.set_parameter(id as u32, value);
+        }
+    }
+
     fn apply_phaser(&mut self) {
         for (id, value) in self.phaser_settings().into_iter().enumerate() {
             self.phaser.set_parameter(id as u32, value);
@@ -434,6 +463,7 @@ impl EffectSlot {
                         MULTITAP_TYPE => self.rebuild_multitap(),
                         RING_TYPE => self.rebuild_ring(),
                         TRANSIENT_TYPE => self.rebuild_transient(),
+                        BITCRUSHER_TYPE => self.rebuild_bitcrusher(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -460,6 +490,7 @@ impl EffectSlot {
                     MULTITAP_TYPE => &mut self.multitap_params,
                     RING_TYPE => &mut self.ring_params,
                     TRANSIENT_TYPE => &mut self.transient_params,
+                    BITCRUSHER_TYPE => &mut self.bitcrusher_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -477,6 +508,7 @@ impl EffectSlot {
                     MULTITAP_TYPE => self.apply_multitap(),
                     RING_TYPE => self.apply_ring(),
                     TRANSIENT_TYPE => self.apply_transient(),
+                    BITCRUSHER_TYPE => self.apply_bitcrusher(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -520,6 +552,10 @@ impl EffectSlot {
             TRANSIENT_TYPE => self
                 .transient
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
+            BITCRUSHER_TYPE => {
+                self.bitcrusher
+                    .process_planar([in_l, in_r], None, [&mut *out_l, &mut *out_r])
+            }
             COMPRESSOR_TYPE => self
                 .compressor
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),

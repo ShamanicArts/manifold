@@ -1,0 +1,9 @@
+# BitCrusher migration boundary
+
+The original `dsp/core/nodes/BitCrusherNode.cpp` has a scalar path and a default Highway SIMD implementation. Rust graph kind 44 ports the scalar behavior without either JUCE or Highway. The [workbench](../projects/bitcrusher/project.json) exposes bit depth, sample hold, wet mix, output gain, and logic mode. Input 0 is the stereo carrier; optional input 1 is a stereo bus used by XOR and gate modes. When input 1 is absent, those modes fall back to normal crushing as in the original node.
+
+Parameters 0–4 are bit depth (`2…16`), hold interval (`1…64` samples), wet mix (`0…1`), output gain (`0…2`), and logic mode (Normal, XOR, Gate). The first four smooth per sample over 10 ms; mode changes immediately. Each channel has its own held sample and fractional hold counter. Normal mode rounds the carrier to a bipolar quantization grid. XOR mode converts both buses to centered bipolar codes, XORs them, then converts back. Gate mode quantizes the carrier and gates it with bus B's amplitude. Processing allocates no memory.
+
+Standalone FX type 17 maps normalized `p/0` to rounded bit depth `2…16`, `p/1` to rounded hold interval `1…64`, and `p/2` to output gain `0.25…2`. It holds internal mix fully wet and logic mode at Normal. The last two normalized controls are unused by the old Lua definition.
+
+Nine checked-in C++ captures cover the default Highway path, explicit scalar path, parameter sweeps, XOR, gate, bus B fallback, and 64-frame blocks. All show **Match** against Rust/Wasm; the largest observed maximum sample difference is `1.19e-7`. A direct C++ probe found scalar and default Highway output identical for default, XOR, and gate cases, and differing by at most `1.19e-7` in a parameter sweep on this machine. Four slot cases compare native Rust with Rust/Wasm. Old project routing and preset roundtrips remain separate work.

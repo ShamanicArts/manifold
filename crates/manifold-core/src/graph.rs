@@ -2,6 +2,7 @@
 //! Routing is explicit: a graph without a route to Output emits silence.
 
 use crate::Filter;
+use crate::bitcrusher::{self, BitCrusher};
 use crate::chorus::{self, Chorus};
 use crate::compressor::{self, Compressor};
 use crate::cv_utilities::{AttenuverterBias, CvMix, SampleHold};
@@ -138,6 +139,9 @@ pub enum NodeKind {
     TransientShaper {
         params: [f32; transient_shaper::PARAM_COUNT],
     },
+    BitCrusher {
+        params: [f32; bitcrusher::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -211,7 +215,8 @@ impl NodeKind {
             | Self::ModulatedGain { .. }
             | Self::ModulatedSvf { .. }
             | Self::SampleHold { .. }
-            | Self::RingModulator { .. } => 2,
+            | Self::RingModulator { .. }
+            | Self::BitCrusher { .. } => 2,
             Self::CvMix { .. } => 4,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. }
@@ -331,6 +336,7 @@ impl NodeKind {
             Self::MultitapDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::RingModulator { params } => params.iter().all(|value| value.is_finite()),
             Self::TransientShaper { params } => params.iter().all(|value| value.is_finite()),
+            Self::BitCrusher { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -470,6 +476,7 @@ enum Kernel {
     MultitapDelay(MultitapDelay),
     RingModulator(RingModulator),
     TransientShaper(TransientShaper),
+    BitCrusher(BitCrusher),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -612,6 +619,9 @@ impl Kernel {
             }
             NodeKind::TransientShaper { params } => {
                 Self::TransientShaper(TransientShaper::new(sample_rate, *params))
+            }
+            NodeKind::BitCrusher { params } => {
+                Self::BitCrusher(BitCrusher::new(sample_rate, *params))
             }
             NodeKind::EffectSlot {
                 selected,
@@ -757,6 +767,7 @@ impl Kernel {
             (Self::MultitapDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::RingModulator(ring), id) => return ring.set_parameter(id, value),
             (Self::TransientShaper(transient), id) => return transient.set_parameter(id, value),
+            (Self::BitCrusher(crusher), id) => return crusher.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1397,6 +1408,10 @@ impl ExecutionPlan {
                 }
                 Kernel::TransientShaper(transient) => {
                     transient.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::BitCrusher(crusher) => {
+                    let bus_b = current.sources[1].map(|_| [source(1, 0), source(1, 1)]);
+                    crusher.process_planar([source(0, 0), source(0, 1)], bus_b, [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

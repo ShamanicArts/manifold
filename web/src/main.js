@@ -19,6 +19,7 @@ import reverbProject from '../../projects/reverb/project.json';
 import multitapProject from '../../projects/multitap/project.json';
 import ringProject from '../../projects/ring-modulator/project.json';
 import transientProject from '../../projects/transient-shaper/project.json';
+import bitcrusherProject from '../../projects/bitcrusher/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -165,6 +166,12 @@ const projects = {
     description: 'Fast and slow stereo envelope followers distinguish attack from body. Adjust attack and sustain gain while viewing the original block transient meter.',
     signal: 'Live path: input → dual envelope transient gain → stereo output · meter → transient strength',
   },
+  bitcrusher: {
+    project: bitcrusherProject,
+    title: 'BitCrusher',
+    description: 'Quantize and hold stereo samples, then blend them with dry audio. XOR and gate modes use a second stereo bus when one is connected; the C++ comparison includes that route.',
+    signal: 'Live path: input → quantize / hold → dry/wet output',
+  },
   compressor: {
     project: compressorProject,
     title: 'Compressor',
@@ -186,7 +193,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, Ring Mod, Limiter, and Transient Shaper are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, Ring Mod, Limiter, Transient Shaper, and BitCrusher are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -634,6 +641,7 @@ function updateSlotControls() {
     : selected === 9 ? { 2: 'Tap count', 3: 'Feedback' }
     : selected === 12 ? { 2: 'Frequency', 3: 'Depth', 4: 'Spread' }
     : selected === 16 ? { 2: 'Attack', 3: 'Sustain', 4: 'Sensitivity' }
+    : selected === 17 ? { 2: 'Bits', 3: 'Sample hold', 4: 'Output gain' }
     : selected === 3
     ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
     : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
@@ -674,6 +682,9 @@ function updateSlotControls() {
         : id === 3 ? value.toFixed(2) : `${Math.round(180 * value)}°`
       : selected === 16
       ? id === 4 ? (0.2 + 3.8 * value).toFixed(2) : (-1 + 2 * value).toFixed(2)
+      : selected === 17
+      ? id === 2 ? `${Math.floor(2 + 14 * value + 0.5)} bits`
+        : id === 3 ? `${Math.floor(1 + 63 * value + 0.5)} samples` : (0.25 + 1.75 * value).toFixed(2)
       : selected === 3
       ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
         : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
@@ -702,6 +713,7 @@ function updateSlotControls() {
     : selected === 9 ? 'Tap count and feedback are the old slot controls. The four assigned taps keep their authored times, gains, and pans; the remaining taps keep the node defaults. Wet gain is 1.4×.'
     : selected === 12 ? 'Frequency, depth, and spread are the old slot controls. The ring modulator uses its internal oscillator here; a second stereo audio bus is available in the standalone graph API.'
     : selected === 16 ? 'Attack, sustain, and sensitivity are the old slot controls. Internal mix is fully wet; the last two normalized controls are unused.'
+    : selected === 17 ? 'Bit depth, sample hold, and output gain are the old slot controls. Logic mode is Normal and internal mix is fully wet; the last two normalized controls are unused.'
     : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
       : 'Values are stored separately for each effect type and restored when selected.';
 }
@@ -894,6 +906,7 @@ function renderPrimitive(family) {
     [9, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [12, [0.3, 1.0, 0.2, 0.5, 0.5]],
     [16, [0.5, 0.5, 0.5, 0.5, 0.5]],
+    [17, [0.3, 0.12, 0.55, 0.5, 0.5]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
@@ -969,7 +982,7 @@ function renderPrimitive(family) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 12: 'Ring Mod', 15: 'Limit', 16: 'Transient' })[value] : choice;
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 12: 'Ring Mod', 15: 'Limit', 16: 'Transient', 17: 'Bits' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {

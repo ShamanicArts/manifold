@@ -340,6 +340,20 @@ function prepareTransient(engine, selected) {
   });
 }
 
+function prepareBitcrusher(engine, selected) {
+  const edges = selected.external ? 3 : 2;
+  if (engine.manifold_graph_begin(3, edges) !== 1
+    || engine.manifold_graph_node(1, 0, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 44, 0, 0) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || (selected.external && engine.manifold_graph_edge(1, 2, 1) !== 1)
+    || engine.manifold_graph_edge(2, 3, 0) !== 1) throw new Error('Wasm BitCrusher graph failed');
+  selected.before.forEach((value, id) => {
+    if (engine.manifold_graph_initial_parameter(2, id, value) !== 1) throw new Error(`Wasm BitCrusher initial parameter ${id} failed`);
+  });
+}
+
 function prepareFxChain(engine, selected) {
   const before = selected.before;
   const nodes = [[1, 0, 0, 0], [2, 17, before[0], before[1]],
@@ -490,6 +504,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'multitap') prepareMultitap(engine, selected);
   if (family === 'ring-modulator') prepareRing(engine, selected);
   if (family === 'transient-shaper') prepareTransient(engine, selected);
+  if (family === 'bitcrusher') prepareBitcrusher(engine, selected);
   if (family === 'fx-chain') prepareFxChain(engine, selected);
   if (family === 'standalone-fx') prepareEffectSlot(engine, selected);
   if (family === 'loop-capture') prepareLoopCapture(engine, selected);
@@ -633,7 +648,7 @@ function renderWasm(engine, family, manifest, input, selected) {
           updated &= engine.manifold_set_node_parameter(2, id, value);
         });
       }
-      if (family === 'eq8' || family === 'waveshaper' || family === 'stereo-widener' || family === 'legacy-filter' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'transient-shaper') {
+      if (family === 'eq8' || family === 'waveshaper' || family === 'stereo-widener' || family === 'legacy-filter' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'transient-shaper' || family === 'bitcrusher') {
         selected.after.forEach((value, id) => {
           updated &= engine.manifold_set_node_parameter(2, id, value);
         });
@@ -941,6 +956,8 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                       ? `${selected.external ? 'external stereo bus' : 'internal oscillator'} · frequency ${selected.before[0]} → ${selected.after[0]} Hz · depth ${selected.before[1]} → ${selected.after[1]} · spread ${selected.before[3]} → ${selected.after[3]}°`
                     : family === 'transient-shaper'
                       ? `attack ${selected.before[0]} → ${selected.after[0]} · sustain ${selected.before[1]} → ${selected.after[1]} · sensitivity ${selected.before[2]} → ${selected.after[2]}`
+                    : family === 'bitcrusher'
+                      ? `${selected.referenceMode} · ${selected.external ? 'bus B connected' : 'internal only'} · bits ${selected.before[0]} → ${selected.after[0]} · hold ${selected.before[1]} → ${selected.after[1]} samples · mode ${selected.before[4]} → ${selected.after[4]}`
                     : family === 'phaser'
                       ? `rate ${selected.before[0]} → ${selected.after[0]} Hz · stages ${selected.before[2]} → ${selected.after[2]} · feedback ${selected.before[3]} → ${selected.after[3]}`
                     : family === 'chorus'
@@ -975,7 +992,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
     byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Whole capture' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Whole modulation' : 'Parameter change';
     byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Before change' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
-    byId('plot-title').textContent = family === 'fft-spectrum' ? '32 FFT bands · last block' : family === 'compressor' || family === 'limiter' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'phaser' ? 'Stereo phaser output · peak level' : family === 'chorus' ? 'Stereo chorus output · peak level' : family === 'eq8' ? 'EQ8 stereo output · peak level' : family === 'reverb' ? 'Stereo reverb tail · peak level' : family === 'ring-modulator' ? 'Ring-modulated stereo output' : family === 'transient-shaper' ? 'Transient strength · mean per block' : family === 'multitap' ? 'Multitap echoes · stereo peak level' : family === 'stereo-widener' ? 'Output stereo correlation · −1 to +1' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Amplitude envelope · left channel' : 'Output waveform';
+    byId('plot-title').textContent = family === 'fft-spectrum' ? '32 FFT bands · last block' : family === 'compressor' || family === 'limiter' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'phaser' ? 'Stereo phaser output · peak level' : family === 'chorus' ? 'Stereo chorus output · peak level' : family === 'eq8' ? 'EQ8 stereo output · peak level' : family === 'reverb' ? 'Stereo reverb tail · peak level' : family === 'ring-modulator' ? 'Ring-modulated stereo output' : family === 'transient-shaper' ? 'Transient strength · mean per block' : family === 'bitcrusher' ? 'Quantized stereo output' : family === 'multitap' ? 'Multitap echoes · stereo peak level' : family === 'stereo-widener' ? 'Output stereo correlation · −1 to +1' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Amplitude envelope · left channel' : 'Output waveform';
     document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
     document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Maximum meter difference' : 'Maximum difference';
     document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'RMS meter difference' : 'RMS difference';
