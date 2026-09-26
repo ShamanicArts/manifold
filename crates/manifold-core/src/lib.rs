@@ -29,6 +29,7 @@ pub mod ring_modulator;
 pub mod sample_analysis;
 pub mod sample_instrument;
 pub mod sample_region;
+pub mod shimmer;
 pub mod slew_limiter;
 pub mod spectrum_analyzer;
 pub mod stereo_delay;

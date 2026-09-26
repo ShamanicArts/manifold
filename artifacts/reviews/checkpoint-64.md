@@ -1,0 +1,9 @@
+# Checkpoint 64 · Shimmer and Standalone FX type 18
+
+Review the [Shimmer workbench](http://127.0.0.1:4173/?primitive=shimmer), [FX slot workbench](http://127.0.0.1:4173/?primitive=standalone-fx), [Shimmer screenshot](checkpoint-64-shimmer.png), [slot screenshot](checkpoint-64-standalone-fx.png), and [browser metrics](checkpoint-64-metrics.json).
+
+The original ShimmerNode now runs as Rust graph kind 50, preserving its modulated stereo read positions, pitched read step, feedback lowpass, six smoothed parameters, and internal wet mix. Prepared generation-marked rings clear state at a type switch without audio-callback allocation. Standalone FX type 18 uses the original normalized size/pitch/feedback/filter mapping, internal mix 0.5, and 1.4× wet gain. The slot now exposes twenty of twenty-one original type IDs; Granulator is the remaining type.
+
+All eight C++ Shimmer captures show **Match** against Rust/Wasm with zero maximum sample difference in these cases. Four new native Rust slot cases cover controls and switching; all 75 slot cases show **Match**, with the largest maximum difference of `1.25e-4` in the older EQ-to-Formant switch. The full browser sweep passes **358 cases across 42 views** with zero page errors. Live checks started test audio, changed Shimmer size and pitch, and switched the running slot to Shimmer at 80% wet. All 83 Rust workspace tests and Wasm and web builds pass.
+
+The live slot check caught a missing UI default for type 18 after offline DSP comparisons passed; selecting Shimmer initially raised a page error and left its button blank. The button label, stored defaults, parameter readouts, and explanatory text are now wired and the live check reports no errors. The generic workbench accepts microphone input; full Standalone FX project routing and preset roundtrips remain future work.

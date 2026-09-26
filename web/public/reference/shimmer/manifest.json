@@ -1,0 +1,188 @@
+{
+  "version": 1,
+  "reference": "legacy C++ ShimmerNode stereo",
+  "sourceSha256": "90c33ee7500f25b445a345d06318986a5d6560b0afa14ffd24b22d0e4a45cfb9",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 65536,
+  "stepFrame": 32768,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default shimmer",
+      "before": [
+        0.6,
+        12,
+        0.65,
+        0.45,
+        0.25,
+        6000
+      ],
+      "after": [
+        0.6,
+        12,
+        0.65,
+        0.45,
+        0.25,
+        6000
+      ],
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "short-delay",
+      "label": "Short size and unison pitch",
+      "before": [
+        0,
+        0,
+        0.2,
+        1,
+        0,
+        6000
+      ],
+      "after": [
+        0,
+        0,
+        0.2,
+        1,
+        0,
+        6000
+      ],
+      "blockSize": 128,
+      "output": "short-delay.f32"
+    },
+    {
+      "id": "pitch-sweep",
+      "label": "Upward pitch sweep",
+      "before": [
+        0.2,
+        -12,
+        0.5,
+        0.8,
+        0.2,
+        5000
+      ],
+      "after": [
+        0.2,
+        12,
+        0.5,
+        0.8,
+        0.2,
+        5000
+      ],
+      "blockSize": 128,
+      "output": "pitch-sweep.f32"
+    },
+    {
+      "id": "size-sweep",
+      "label": "Delay size sweep",
+      "before": [
+        0.1,
+        7,
+        0.5,
+        0.8,
+        0.2,
+        5000
+      ],
+      "after": [
+        0.8,
+        7,
+        0.5,
+        0.8,
+        0.2,
+        5000
+      ],
+      "blockSize": 128,
+      "output": "size-sweep.f32"
+    },
+    {
+      "id": "feedback",
+      "label": "Feedback and filter sweep",
+      "before": [
+        0.2,
+        12,
+        0.1,
+        0.8,
+        0.2,
+        500
+      ],
+      "after": [
+        0.2,
+        12,
+        0.9,
+        0.8,
+        0.2,
+        10000
+      ],
+      "blockSize": 128,
+      "output": "feedback.f32"
+    },
+    {
+      "id": "modulation",
+      "label": "Stereo modulation sweep",
+      "before": [
+        0.2,
+        12,
+        0.5,
+        0.8,
+        0,
+        6000
+      ],
+      "after": [
+        0.2,
+        12,
+        0.5,
+        0.8,
+        1,
+        6000
+      ],
+      "blockSize": 128,
+      "output": "modulation.f32"
+    },
+    {
+      "id": "mix",
+      "label": "Dry to wet mix sweep",
+      "before": [
+        0.2,
+        12,
+        0.5,
+        0,
+        0.2,
+        6000
+      ],
+      "after": [
+        0.2,
+        12,
+        0.5,
+        1,
+        0.2,
+        6000
+      ],
+      "blockSize": 128,
+      "output": "mix.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame processing",
+      "before": [
+        0.2,
+        7,
+        0.4,
+        0.9,
+        0.4,
+        4000
+      ],
+      "after": [
+        0.2,
+        -7,
+        0.4,
+        0.9,
+        0.4,
+        4000
+      ],
+      "blockSize": 64,
+      "output": "small-block.f32"
+    }
+  ]
+}

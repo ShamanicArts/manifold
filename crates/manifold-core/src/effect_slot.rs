@@ -1,4 +1,4 @@
-//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 19, and 20.
+//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, and 20.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
@@ -15,6 +15,7 @@ use crate::pitch_shifter::{self, PitchShifter};
 use crate::reverb::{self, Reverb};
 use crate::reverse_delay::{self, ReverseDelay};
 use crate::ring_modulator::{self, RingModulator};
+use crate::shimmer::{self, Shimmer};
 use crate::stereo_delay::{self, StereoDelay};
 use crate::stereo_widener::{self, StereoWidener};
 use crate::stutter::{self, Stutter};
@@ -38,6 +39,7 @@ pub const EQ_TYPE: u32 = 14;
 pub const LIMITER_TYPE: u32 = 15;
 pub const TRANSIENT_TYPE: u32 = 16;
 pub const BITCRUSHER_TYPE: u32 = 17;
+pub const SHIMMER_TYPE: u32 = 18;
 pub const REVERSE_DELAY_TYPE: u32 = 19;
 pub const STUTTER_TYPE: u32 = 20;
 
@@ -49,7 +51,7 @@ pub fn supported_type(value: f32) -> Option<u32> {
         CHORUS_TYPE | PHASER_TYPE | WAVESHAPER_TYPE | COMPRESSOR_TYPE | WIDENER_TYPE
         | LEGACY_FILTER_TYPE | SVF_TYPE | REVERB_TYPE | DELAY_TYPE | MULTITAP_TYPE
         | PITCH_SHIFT_TYPE | RING_TYPE | FORMANT_TYPE | EQ_TYPE | LIMITER_TYPE | TRANSIENT_TYPE
-        | BITCRUSHER_TYPE | REVERSE_DELAY_TYPE | STUTTER_TYPE => Some(value as u32),
+        | BITCRUSHER_TYPE | SHIMMER_TYPE | REVERSE_DELAY_TYPE | STUTTER_TYPE => Some(value as u32),
         _ => None,
     }
 }
@@ -76,6 +78,7 @@ pub struct EffectSlot {
     reverse_delay_params: [f32; 5],
     stutter_params: [f32; 5],
     pitch_shift_params: [f32; 5],
+    shimmer_params: [f32; 5],
     compressor_params: [f32; 5],
     limiter_params: [f32; 5],
     limiter_pre_gain: f32,
@@ -98,6 +101,7 @@ pub struct EffectSlot {
     reverse_delay: ReverseDelay,
     stutter: Stutter,
     pitch_shift: PitchShifter,
+    shimmer: Shimmer,
     compressor: Compressor,
     limiter: Limiter,
 }
@@ -138,6 +142,7 @@ impl EffectSlot {
             reverse_delay_params: [0.2, 0.25, 0.47, 0.5, 0.5],
             stutter_params: [0.05, 0.8, 0.8, 0.25, 0.5],
             pitch_shift_params: [0.5, 0.5, 0.2, 0.5, 0.5],
+            shimmer_params: [0.6, 0.75, 0.7, 0.5, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
             limiter_params: [0.5, 0.3, 0.4, 0.4, 0.5],
             limiter_pre_gain: 1.02,
@@ -160,6 +165,7 @@ impl EffectSlot {
             reverse_delay: ReverseDelay::new(sample_rate, max_frames, reverse_delay::DEFAULTS),
             stutter: Stutter::new(sample_rate, max_frames, stutter::DEFAULTS),
             pitch_shift: PitchShifter::new(sample_rate, max_frames, pitch_shifter::DEFAULTS),
+            shimmer: Shimmer::new(sample_rate, max_frames, shimmer::DEFAULTS),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
             limiter: Limiter::new(sample_rate, limiter::defaults()),
         };
@@ -182,6 +188,7 @@ impl EffectSlot {
             REVERSE_DELAY_TYPE => &mut slot.reverse_delay_params,
             STUTTER_TYPE => &mut slot.stutter_params,
             PITCH_SHIFT_TYPE => &mut slot.pitch_shift_params,
+            SHIMMER_TYPE => &mut slot.shimmer_params,
             LIMITER_TYPE => &mut slot.limiter_params,
             _ => unreachable!("slot type validated at graph compilation"),
         };
@@ -204,6 +211,7 @@ impl EffectSlot {
         slot.rebuild_reverse_delay();
         slot.rebuild_stutter();
         slot.rebuild_pitch_shift();
+        slot.rebuild_shimmer();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
@@ -524,6 +532,28 @@ impl EffectSlot {
         }
     }
 
+    fn shimmer_settings(&self) -> [f32; shimmer::PARAM_COUNT] {
+        let [size, pitch, feedback, filter, _] = self.shimmer_params;
+        [
+            0.1 + 0.9 * size,
+            -12.0 + 24.0 * pitch,
+            0.99 * feedback,
+            0.5,
+            0.25,
+            100.0 * 120.0_f32.powf(filter),
+        ]
+    }
+
+    fn rebuild_shimmer(&mut self) {
+        self.shimmer.reset_to(self.shimmer_settings());
+    }
+
+    fn apply_shimmer(&mut self) {
+        for (id, value) in self.shimmer_settings().into_iter().enumerate() {
+            self.shimmer.set_parameter(id as u32, value);
+        }
+    }
+
     fn apply_phaser(&mut self) {
         for (id, value) in self.phaser_settings().into_iter().enumerate() {
             self.phaser.set_parameter(id as u32, value);
@@ -620,6 +650,7 @@ impl EffectSlot {
                         REVERSE_DELAY_TYPE => self.rebuild_reverse_delay(),
                         STUTTER_TYPE => self.rebuild_stutter(),
                         PITCH_SHIFT_TYPE => self.rebuild_pitch_shift(),
+                        SHIMMER_TYPE => self.rebuild_shimmer(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -652,6 +683,7 @@ impl EffectSlot {
                     REVERSE_DELAY_TYPE => &mut self.reverse_delay_params,
                     STUTTER_TYPE => &mut self.stutter_params,
                     PITCH_SHIFT_TYPE => &mut self.pitch_shift_params,
+                    SHIMMER_TYPE => &mut self.shimmer_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -675,6 +707,7 @@ impl EffectSlot {
                     REVERSE_DELAY_TYPE => self.apply_reverse_delay(),
                     STUTTER_TYPE => self.apply_stutter(),
                     PITCH_SHIFT_TYPE => self.apply_pitch_shift(),
+                    SHIMMER_TYPE => self.apply_shimmer(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -737,6 +770,9 @@ impl EffectSlot {
             PITCH_SHIFT_TYPE => self
                 .pitch_shift
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
+            SHIMMER_TYPE => self
+                .shimmer
+                .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             COMPRESSOR_TYPE => self
                 .compressor
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
@@ -761,7 +797,7 @@ impl EffectSlot {
             _ => unreachable!("slot type validated at graph compilation"),
         }
         let wet_gain = match self.selected {
-            CHORUS_TYPE | MULTITAP_TYPE => 1.4,
+            CHORUS_TYPE | MULTITAP_TYPE | SHIMMER_TYPE => 1.4,
             FORMANT_TYPE => 1.5,
             REVERSE_DELAY_TYPE => 1.2,
             DELAY_TYPE => 1.1,

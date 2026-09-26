@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "23c7a1dd795bbf5eefcbdd3acb56b5af00d491ed4c4cec7c3c8efda133134809",
+  "sourceSha256": "7ea8a5f8c87106996d11a1afe123581b989662a11dd17110e134dd736a2f3647",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "shimmer-size",
+      "label": "Shimmer size sweep",
+      "before": [
+        18,
+        0.8,
+        0.1,
+        0.75,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "after": [
+        18,
+        0.8,
+        0.8,
+        0.75,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "shimmer-size.f32"
+    },
+    {
+      "id": "shimmer-pitch",
+      "label": "Shimmer pitch and feedback",
+      "before": [
+        18,
+        1,
+        0.2,
+        0.1,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "after": [
+        18,
+        1,
+        0.2,
+        0.9,
+        0.9,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "shimmer-pitch.f32"
+    },
+    {
+      "id": "filter-to-shimmer",
+      "label": "Switch FilterNode to Shimmer",
+      "before": [
+        5,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        18,
+        0.8,
+        0.2,
+        0.75,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-shimmer.f32"
+    },
+    {
+      "id": "shimmer-to-pitch",
+      "label": "Switch Shimmer to Pitch Shift",
+      "before": [
+        18,
+        0.8,
+        0.2,
+        0.75,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "after": [
+        10,
+        0.8,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "shimmer-to-pitch.f32"
+    },
     {
       "id": "pitch-semitones",
       "label": "Pitch Shift semitone sweep",
