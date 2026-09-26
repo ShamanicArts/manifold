@@ -369,7 +369,7 @@ function drawSampleWaveform() {
 }
 window.addEventListener('resize', drawSampleWaveform);
 let envelopeHistory = [];
-const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands) => {
+const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands, nodeActive) => {
   const effectiveParameter = projects[activeFamily]?.project.parameters.find((parameter) =>
     parameter.effectiveMeter && parameter.nodeId === nodeId);
   if (effectiveParameter && Number.isFinite(bands[0])) {
@@ -379,6 +379,8 @@ const audio = new BrowserAudioHost((message) => { status.textContent = message; 
     const row = byId('cv-stages').querySelector(`[data-cv-node="${nodeId}"]`);
     if (!row || !Number.isFinite(bands[0])) return;
     const value = bands[0];
+    row.dataset.parked = String(!nodeActive);
+    row.title = nodeActive ? 'Active in the audio graph' : 'Parked by current routing; showing the last active value';
     row.querySelector('output').textContent = value.toFixed(3);
     const fill = row.querySelector('.cv-stage-fill');
     if (nodeId === 8) {
@@ -655,8 +657,9 @@ function renderPatchEditor(project) {
   const refresh = () => {
     const connected = project.patch.inputs.filter((input) => project.signal.connections.some((edge) =>
       edge.to === input.to && edge.inputPort === input.inputPort)).length;
-    byId('patch-status').textContent = `${connected} of ${project.patch.inputs.length} control inputs connected · changes take effect on next start`;
+    byId('patch-status').textContent = `${connected} of ${project.patch.inputs.length} control inputs connected · ${audio.running ? 'live graph updated' : 'ready for next start'}`;
   };
+  section.refreshStatus = refresh;
   for (const port of project.patch.inputs) {
     const row = document.createElement('label');
     row.className = 'patch-row';
@@ -670,19 +673,27 @@ function renderPatchEditor(project) {
     for (const [nodeId, name] of port.sources) select.add(new Option(name, String(nodeId)));
     const connected = project.signal.connections.find((edge) => edge.to === port.to && edge.inputPort === port.inputPort);
     select.value = connected ? String(connected.from) : '';
-    select.disabled = audio.running;
-    select.addEventListener('change', () => {
-      if (audio.running) {
-        const current = project.signal.connections.find((edge) => edge.to === port.to && edge.inputPort === port.inputPort);
-        select.value = current ? String(current.from) : '';
+    select.addEventListener('change', async () => {
+      const current = project.signal.connections.find((edge) => edge.to === port.to && edge.inputPort === port.inputPort);
+      const previous = current ? String(current.from) : '';
+      const source = select.value === '' ? null : Number(select.value);
+      if (source !== null && !port.sources.some(([id]) => id === source)) {
+        select.value = previous;
         return;
       }
-      const source = select.value === '' ? null : Number(select.value);
-      if (source !== null && !port.sources.some(([id]) => id === source)) throw new Error('Unsupported control source');
-      project.signal.connections = project.signal.connections.filter((edge) =>
-        edge.to !== port.to || edge.inputPort !== port.inputPort);
-      if (source !== null) project.signal.connections.push({ from: source, to: port.to, inputPort: port.inputPort });
-      refresh();
+      select.disabled = true;
+      try {
+        if (audio.running) await audio.setRoute(port.to, port.inputPort, source);
+        project.signal.connections = project.signal.connections.filter((edge) =>
+          edge.to !== port.to || edge.inputPort !== port.inputPort);
+        if (source !== null) project.signal.connections.push({ from: source, to: port.to, inputPort: port.inputPort });
+        refresh();
+      } catch (error) {
+        select.value = previous;
+        byId('patch-status').textContent = String(error);
+      } finally {
+        select.disabled = false;
+      }
     });
     row.append(label, select);
     rows.appendChild(row);
@@ -719,6 +730,8 @@ function renderPrimitive(family) {
   if (family === 'cv-rack') byId('cv-stages').querySelectorAll('.cv-stage').forEach((row) => {
     row.querySelector('output').textContent = '—';
     row.querySelector('.cv-stage-fill').style.width = '0%';
+    row.dataset.parked = 'false';
+    row.removeAttribute('title');
   });
   if (family === 'fft-spectrum') { drawBandBars(byId('fft-bands'), [Array(32).fill(0)], 1, ['#9a8de8']); byId('fft-peak').textContent = 'Peak —'; }
   byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : family === 'compressor' || family === 'limiter' ? 'Live gain reduction in decibels' : 'Live envelope value');
@@ -1158,7 +1171,7 @@ toggle.addEventListener('click', async () => {
       : isInstrument ? 'Start instrument' : 'Start audio';
     updatePrepareOnlyControls();
     updateLoopToggles();
-    byId('patch-rows').querySelectorAll('select').forEach((select) => { select.disabled = audio.running; });
+    byId('patch-section').refreshStatus?.();
     if (!audio.running) byId('controls').querySelectorAll('.has-effective').forEach((slider) => slider.setEffective(null));
     byId('sample-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running

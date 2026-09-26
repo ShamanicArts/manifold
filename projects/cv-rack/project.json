@@ -7,6 +7,7 @@
     "inputs": 0,
     "outputs": 2,
     "inputSource": "none",
+    "patchable": true,
     "nodes": [
       { "id": 1, "type": "oscillator", "a": 220, "b": 0.3 },
       { "id": 2, "type": "lfo", "a": 2 },

@@ -16,6 +16,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26, 'sample-instrument': 27, 'fft-spectrum': 28, 'slew-audio': 29, 'slew-control': 30, 'attenuverter-bias': 31, 'sample-hold': 32, 'cv-mix': 33 };
           const graph = data.graph;
           if (engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) throw new Error('Graph too large');
+          if (graph.patchable && engine.manifold_graph_patchable(1) !== 1) throw new Error('Patchable graph unavailable');
           for (const node of graph.nodes) {
             if (!(node.type in kinds) || engine.manifold_graph_node(node.id, kinds[node.type], node.a ?? 0, node.b ?? 0) !== 1) {
               throw new Error(`Invalid graph node: ${node.id}`);
@@ -45,6 +46,9 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'ready' });
         } else if (data.type === 'parameter' && this.engine) {
           this.engine.manifold_set_node_parameter(data.nodeId, data.id, data.value);
+        } else if (data.type === 'route') {
+          const accepted = this.engine?.manifold_set_route(data.to, data.port, data.from ?? 0) === 1;
+          this.port.postMessage({ type: 'route-applied', requestId: data.requestId, accepted });
         } else if (data.type === 'event' && this.engine) {
           const { nodeId, offset = 0, kind, channel = 0, note = 0, velocity = 0 } = data;
           if (this.engine.manifold_event_push(nodeId, offset, kind, channel, note, velocity) !== 1) {
@@ -53,7 +57,8 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'meter-request' && this.engine) {
           const count = Math.min(33, Math.max(1, data.count ?? 8));
           const values = Array.from({ length: count }, (_, band) => this.engine.manifold_get_node_meter(data.nodeId, band));
-          this.port.postMessage({ type: 'meters', nodeId: data.nodeId, values });
+          const active = this.engine.manifold_node_active(data.nodeId) === 1;
+          this.port.postMessage({ type: 'meters', nodeId: data.nodeId, values, active });
         } else if (data.type === 'capture-request' && this.engine) {
           const frames = this.engine.manifold_capture_length(data.nodeId);
           if (!frames) {

@@ -10,6 +10,9 @@ export class BrowserAudioHost {
     this.sourceStream = null;
     this.parameters = new Map();
     this.pendingCapture = null;
+    this.pendingRoutes = new Map();
+    this.nextRouteRequest = 1;
+    this.ready = false;
   }
 
   get running() { return this.context !== null; }
@@ -41,7 +44,15 @@ export class BrowserAudioHost {
           reject(new Error('AudioWorklet processor failed'));
         };
         processor.port.onmessage = ({ data }) => {
-          if (data.type === 'meters') this.onMeters(data.nodeId, data.values);
+          if (data.type === 'meters') this.onMeters(data.nodeId, data.values, data.active);
+          if (data.type === 'route-applied') {
+            const pending = this.pendingRoutes.get(data.requestId);
+            if (pending) {
+              this.pendingRoutes.delete(data.requestId);
+              clearTimeout(pending.timeout);
+              data.accepted ? pending.resolve() : pending.reject(new Error('Rust rejected this control route.'));
+            }
+          }
           if ((data.type === 'capture' || data.type === 'capture-error') && this.pendingCapture) {
             const pending = this.pendingCapture;
             this.pendingCapture = null;
@@ -76,6 +87,7 @@ export class BrowserAudioHost {
       processor.port.postMessage({ type: 'init', wasmBytes, graph, sample: upload },
         upload ? [wasmBytes, upload.stereo.buffer] : [wasmBytes]);
       await ready;
+      this.ready = true;
       this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));
       for (const [id, value] of values) this.setParameter(id, value);
       if (project.signal.inputSource === 'none') {
@@ -108,6 +120,18 @@ export class BrowserAudioHost {
     if (parameter) this.processor?.port.postMessage({ type: 'parameter', nodeId: parameter.nodeId, id: parameter.nodeParameterId, value });
   }
 
+  setRoute(to, port, from) {
+    if (!this.processor || !this.ready) return Promise.reject(new Error('Wait for audio to start before changing a live route.'));
+    return new Promise((resolve, reject) => {
+      const requestId = this.nextRouteRequest++;
+      const timeout = setTimeout(() => {
+        if (this.pendingRoutes.delete(requestId)) reject(new Error('Route update timed out.'));
+      }, 4_000);
+      this.pendingRoutes.set(requestId, { resolve, reject, timeout });
+      this.processor.port.postMessage({ type: 'route', requestId, to, port, from });
+    });
+  }
+
   sendEvent(nodeId, kind, note = 0, velocity = 0, offset = 0, channel = 0) {
     this.processor?.port.postMessage({ type: 'event', nodeId, kind, channel, note, velocity, offset });
   }
@@ -131,6 +155,12 @@ export class BrowserAudioHost {
   }
 
   async stop() {
+    for (const pending of this.pendingRoutes.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('Audio stopped during a route change.'));
+    }
+    this.pendingRoutes.clear();
+    this.ready = false;
     if (this.pendingCapture) {
       clearTimeout(this.pendingCapture.timeout);
       this.pendingCapture.reject(new Error('Audio stopped during capture export.'));

@@ -29,6 +29,7 @@ struct GraphBuilder {
     description: GraphDescription,
     expected_nodes: usize,
     expected_connections: usize,
+    patchable: bool,
 }
 
 thread_local! {
@@ -129,9 +130,23 @@ pub extern "C" fn manifold_graph_begin(node_count: u32, connection_count: u32) -
             },
             expected_nodes: node_count as usize,
             expected_connections: connection_count as usize,
+            patchable: false,
         });
     });
     1
+}
+
+/// Retain prepared kernels for bounded, allocation-free route edits after start.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_graph_patchable(enabled: u32) -> u32 {
+    GRAPH_BUILDER.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(builder) = slot.as_mut() else {
+            return 0;
+        };
+        builder.patchable = enabled != 0;
+        1
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -462,16 +477,21 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
                 if builder.description.nodes.len() == builder.expected_nodes
                     && builder.description.connections.len() == builder.expected_connections =>
             {
-                Some(builder.description)
+                Some((builder.description, builder.patchable))
             }
             Some(_) => None,
-            None => Some(fallback),
+            None => Some((fallback, false)),
         }
     });
-    let Some(description) = description else {
+    let Some((description, patchable)) = description else {
         return 0;
     };
-    let Ok(plan) = description.compile(sample_rate, capacity) else {
+    let plan = if patchable {
+        description.compile_patchable(sample_rate, capacity)
+    } else {
+        description.compile(sample_rate, capacity)
+    };
+    let Ok(plan) = plan else {
         return 0;
     };
     ENGINE.with(|slot| {
@@ -561,6 +581,36 @@ pub extern "C" fn manifold_set_node_parameter(node_id: u32, id: u32, value: f32)
         slot.borrow_mut().as_mut().map_or(0, |engine| {
             u32::from(engine.plan.set_parameter(node_id.into(), id, value))
         })
+    })
+}
+
+/// Source ID zero disconnects the target. Called between process blocks only.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_set_route(target_id: u32, port: u32, source_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .plan
+                    .set_route(
+                        target_id.into(),
+                        port as usize,
+                        (source_id != 0).then_some(source_id.into()),
+                    )
+                    .is_ok(),
+            )
+        })
+    })
+}
+
+/// 1 means reachable from Output, 0 means parked, 2 means missing.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_node_active(node_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|engine| engine.plan.node_active(node_id.into()))
+            .map_or(2, u32::from)
     })
 }
 

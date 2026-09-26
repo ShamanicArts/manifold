@@ -111,6 +111,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .cv-stages { display: grid; gap: 10px; margin-top: 18px; padding: 12px; border: 1px solid #2b3946; border-radius: 3px; background: #151e27; }
 .cv-stages[hidden] { display: none; }
 .cv-stage { display: grid; grid-template-columns: 90px minmax(0, 1fr) 48px; align-items: center; gap: 10px; color: #9fb0bb; font-size: 11px; font-variant-numeric: tabular-nums; }
+.cv-stage[data-parked="true"] { opacity: .42; }
 .cv-stage-track { position: relative; height: 11px; background: #101922; border: 1px solid #31404d; border-radius: 2px; overflow: hidden; }
 .cv-stage-track::before { content: ''; position: absolute; z-index: 1; left: 50%; height: 100%; border-left: 1px solid #687986; }
 .cv-stage-fill { position: absolute; top: 0; height: 100%; background: #9a8de8; }

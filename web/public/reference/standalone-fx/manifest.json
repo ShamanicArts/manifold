@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "6c216280f755fa51366bdb8f6c00531f84cc5c5884a00cdcba0cbd37ea01514b",
+  "sourceSha256": "873ef083992d7bc0715571ce4fda168792159a177b376f87df84ea98ac713325",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,

@@ -344,6 +344,7 @@ pub struct GraphDescription {
 #[derive(Debug, PartialEq, Eq)]
 pub enum GraphError {
     InvalidPreparation,
+    RouteChangeUnavailable,
     DuplicateNode(NodeId),
     MissingNode(NodeId),
     InvalidParameter(NodeId),
@@ -701,6 +702,9 @@ struct CompiledNode {
     id: NodeId,
     kernel: Kernel,
     sources: Vec<Option<usize>>,
+    input_signals: Vec<SignalKind>,
+    output_signal: SignalKind,
+    active: bool,
     scratch: Vec<f32>,
 }
 
@@ -709,6 +713,7 @@ pub struct ExecutionPlan {
     output_index: usize,
     max_frames: usize,
     silence: Vec<f32>,
+    patchable: bool,
 }
 
 impl GraphDescription {
@@ -716,6 +721,24 @@ impl GraphDescription {
         &self,
         sample_rate: f32,
         max_frames: usize,
+    ) -> Result<ExecutionPlan, GraphError> {
+        self.compile_inner(sample_rate, max_frames, false)
+    }
+
+    /// Retain disconnected kernels so a bounded route change can activate them later.
+    pub fn compile_patchable(
+        &self,
+        sample_rate: f32,
+        max_frames: usize,
+    ) -> Result<ExecutionPlan, GraphError> {
+        self.compile_inner(sample_rate, max_frames, true)
+    }
+
+    fn compile_inner(
+        &self,
+        sample_rate: f32,
+        max_frames: usize,
+        patchable: bool,
     ) -> Result<ExecutionPlan, GraphError> {
         if !sample_rate.is_finite()
             || sample_rate <= 1.0
@@ -809,7 +832,7 @@ impl GraphDescription {
         }
         let mut old_to_new = vec![usize::MAX; self.nodes.len()];
         let mut nodes = Vec::new();
-        for index in order.into_iter().filter(|index| live[*index]) {
+        for index in order.into_iter().filter(|index| patchable || live[*index]) {
             old_to_new[index] = nodes.len();
             nodes.push(CompiledNode {
                 id: self.nodes[index].id,
@@ -818,6 +841,11 @@ impl GraphDescription {
                     .iter()
                     .map(|source| source.map(|old| old_to_new[old]))
                     .collect(),
+                input_signals: (0..self.nodes[index].kind.input_count())
+                    .map(|port| self.nodes[index].kind.input_signal(port))
+                    .collect(),
+                output_signal: self.nodes[index].kind.output_signal(),
+                active: live[index],
                 scratch: vec![0.0; max_frames * 2],
             });
         }
@@ -826,6 +854,7 @@ impl GraphDescription {
             nodes,
             max_frames,
             silence: vec![0.0; max_frames * 2],
+            patchable,
         })
     }
 }
@@ -833,6 +862,69 @@ impl GraphDescription {
 impl ExecutionPlan {
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    pub fn node_active(&self, node: NodeId) -> Option<bool> {
+        self.nodes
+            .iter()
+            .find(|entry| entry.id == node)
+            .map(|entry| entry.active)
+    }
+
+    /// Change one prepared route between blocks. Sources must already precede the target.
+    /// Recomputes reachability without allocation; untouched kernels retain their state.
+    pub fn set_route(
+        &mut self,
+        target: NodeId,
+        port: usize,
+        source: Option<NodeId>,
+    ) -> Result<(), GraphError> {
+        if !self.patchable {
+            return Err(GraphError::RouteChangeUnavailable);
+        }
+        let target_index = self
+            .nodes
+            .iter()
+            .position(|node| node.id == target)
+            .ok_or(GraphError::MissingNode(target))?;
+        let expected = *self.nodes[target_index]
+            .input_signals
+            .get(port)
+            .ok_or(GraphError::InvalidPort(target, port))?;
+        if expected != SignalKind::Control {
+            return Err(GraphError::RouteChangeUnavailable);
+        }
+        let source_index = if let Some(source) = source {
+            let index = self
+                .nodes
+                .iter()
+                .position(|node| node.id == source)
+                .ok_or(GraphError::MissingNode(source))?;
+            if self.nodes[index].output_signal != expected {
+                return Err(GraphError::SignalTypeMismatch(source, target, port));
+            }
+            if index >= target_index {
+                return Err(GraphError::Cycle);
+            }
+            Some(index)
+        } else {
+            None
+        };
+        self.nodes[target_index].sources[port] = source_index;
+        for node in &mut self.nodes {
+            node.active = false;
+        }
+        self.nodes[self.output_index].active = true;
+        for index in (0..self.nodes.len()).rev() {
+            if self.nodes[index].active {
+                for port in 0..self.nodes[index].sources.len() {
+                    if let Some(source) = self.nodes[index].sources[port] {
+                        self.nodes[source].active = true;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Snapshot one analyzer band after a completed block. No audio-thread allocation.
@@ -971,6 +1063,9 @@ impl ExecutionPlan {
         assert_eq!(frames, output[0].len());
         assert_eq!(frames, output[1].len());
         for index in 0..self.nodes.len() {
+            if !self.nodes[index].active {
+                continue;
+            }
             let (previous, current_and_later) = self.nodes.split_at_mut(index);
             let current = &mut current_and_later[0];
             let source = |port: usize, channel: usize| -> &[f32] {
@@ -1709,6 +1804,80 @@ mod tests {
             invalid.compile(1_000.0, 100),
             Err(GraphError::SignalTypeMismatch(1, 5, 0))
         ));
+    }
+
+    #[test]
+    fn patchable_routes_preserve_kernels_and_recompute_reachability() {
+        let graph = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::Constant { value: 0.5 }),
+                node(
+                    2,
+                    NodeKind::Lfo {
+                        waveform: 0,
+                        rate: 2.0,
+                    },
+                ),
+                node(
+                    3,
+                    NodeKind::AttenuverterBias {
+                        amount: 1.0,
+                        bias: 0.0,
+                    },
+                ),
+                node(
+                    4,
+                    NodeKind::ModulatedGain {
+                        base: 0.5,
+                        depth: 0.5,
+                    },
+                ),
+                node(5, NodeKind::Output),
+                node(
+                    6,
+                    NodeKind::Lfo {
+                        waveform: 1,
+                        rate: 3.0,
+                    },
+                ),
+            ],
+            connections: vec![edge(1, 4, 0), edge(2, 3, 0), edge(3, 4, 1), edge(4, 5, 0)],
+        };
+        let mut plan = graph.compile_patchable(1_000.0, 100).unwrap();
+        assert_eq!(plan.node_count(), 6);
+        assert!(!plan.nodes.iter().find(|node| node.id == 6).unwrap().active);
+        let silence = [0.0; 100];
+        process(&mut plan, &silence, &silence);
+        let scaled = plan.node_meter(3, 0).unwrap();
+        assert!(plan.set_route(4, 1, None).is_ok());
+        assert!(!plan.nodes.iter().find(|node| node.id == 3).unwrap().active);
+        assert_eq!(plan.node_meter(3, 0), Some(scaled));
+        assert!(plan.set_route(4, 1, Some(6)).is_ok());
+        assert!(plan.nodes.iter().find(|node| node.id == 6).unwrap().active);
+        assert!(!plan.nodes.iter().find(|node| node.id == 3).unwrap().active);
+        assert_eq!(
+            plan.set_route(4, 1, Some(1)),
+            Err(GraphError::SignalTypeMismatch(1, 4, 1))
+        );
+        assert_eq!(
+            plan.set_route(4, 0, Some(1)),
+            Err(GraphError::RouteChangeUnavailable)
+        );
+        assert_eq!(plan.set_route(3, 0, Some(3)), Err(GraphError::Cycle));
+        let [left, right] = process(&mut plan, &silence, &silence);
+        assert_eq!(left, right);
+        assert!(left.iter().all(|value| value.is_finite()));
+        assert_eq!(plan.node_meter(3, 0), Some(scaled));
+        assert_eq!(plan.node_active(3), Some(false));
+        assert!(plan.set_route(4, 1, Some(3)).is_ok());
+        process(&mut plan, &silence, &silence);
+        assert_ne!(plan.node_meter(3, 0), Some(scaled));
+        assert_eq!(plan.node_active(3), Some(true));
+        let mut fixed = graph.compile(1_000.0, 100).unwrap();
+        assert_eq!(
+            fixed.set_route(4, 1, Some(2)),
+            Err(GraphError::RouteChangeUnavailable)
+        );
     }
 
     #[test]
