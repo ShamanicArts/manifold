@@ -18,6 +18,7 @@ pub mod loop_capture;
 pub mod noise;
 pub mod oscillator;
 pub mod phaser;
+pub mod reverb;
 pub mod sample_analysis;
 pub mod sample_instrument;
 pub mod sample_region;

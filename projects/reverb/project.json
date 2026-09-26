@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.reverb",
+  "name": "Reverb",
+  "source": "Legacy ReverbNode stereo FreeVerb-style path",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "reverb" },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "room-size", "label": "Room size", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "damping", "label": "Damping", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "wet", "label": "Wet", "kind": "float", "min": 0, "max": 1, "default": 0.33 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "dry", "label": "Dry", "kind": "float", "min": 0, "max": 1, "default": 0.4 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "width", "label": "Wet width", "kind": "float", "min": 0, "max": 1, "default": 1 }
+  ]
+}

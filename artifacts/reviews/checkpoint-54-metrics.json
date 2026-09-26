@@ -1,0 +1,26 @@
+{
+  "reverb": {
+    "cases": 8,
+    "largest": {
+      "id": "damping-sweep",
+      "max": 0.00000128
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "room": "0.80"
+  },
+  "standalone-fx": {
+    "cases": 35,
+    "largest": {
+      "id": "filter-to-chorus",
+      "max": 9.69e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Reverb",
+    "controls": [
+      "Wet mix",
+      "Room size",
+      "Damping"
+    ]
+  },
+  "errors": []
+}

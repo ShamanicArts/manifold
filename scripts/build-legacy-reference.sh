@@ -3,7 +3,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 legacy_dir="${MANIFOLD_LEGACY_DIR:-$repo_dir/../my-plugin}"
 reference_kind="${1:-svf}"
-if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" && "$reference_kind" != "limiter" && "$reference_kind" != "slew-audio" && "$reference_kind" != "phaser" && "$reference_kind" != "chorus" && "$reference_kind" != "eq8" && "$reference_kind" != "waveshaper" && "$reference_kind" != "stereo-widener" && "$reference_kind" != "filter-node" ]]; then
+if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" && "$reference_kind" != "limiter" && "$reference_kind" != "slew-audio" && "$reference_kind" != "phaser" && "$reference_kind" != "chorus" && "$reference_kind" != "eq8" && "$reference_kind" != "waveshaper" && "$reference_kind" != "stereo-widener" && "$reference_kind" != "filter-node" && "$reference_kind" != "reverb" ]]; then
   echo "Unknown legacy reference: $reference_kind" >&2
   exit 2
 fi
@@ -46,6 +46,9 @@ elif [[ "$reference_kind" == "stereo-widener" ]]; then
 elif [[ "$reference_kind" == "filter-node" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/FilterNode.cpp"
   runner_file="$repo_dir/tools/legacy-filter-node-reference.cpp"
+elif [[ "$reference_kind" == "reverb" ]]; then
+  source_file="$legacy_dir/dsp/core/nodes/ReverbNode.cpp"
+  runner_file="$repo_dir/tools/legacy-reverb-reference.cpp"
 elif [[ "$reference_kind" == "spectrum-analyzer" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/SpectrumAnalyzerNode.cpp"
   runner_file="$repo_dir/tools/legacy-spectrum-analyzer-reference.cpp"

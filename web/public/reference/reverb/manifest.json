@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "reference": "legacy C++ ReverbNode / JUCE Reverb stereo",
+  "sourceSha256": "422f0e353da9964b0e35ea6ec81fbd55b38d63f9a9681bc82b64627acf15bad7",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 32768,
+  "stepFrame": 16384,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default room and wet/dry",
+      "before": [
+        0.5,
+        0.5,
+        0.33,
+        0.4,
+        1
+      ],
+      "after": [
+        0.5,
+        0.5,
+        0.33,
+        0.4,
+        1
+      ],
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "room-sweep",
+      "label": "Room small to large",
+      "before": [
+        0.15,
+        0.4,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        0.95,
+        0.4,
+        1,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "room-sweep.f32"
+    },
+    {
+      "id": "damping-sweep",
+      "label": "Damping low to high",
+      "before": [
+        0.75,
+        0,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        0.75,
+        1,
+        1,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "damping-sweep.f32"
+    },
+    {
+      "id": "stereo-width",
+      "label": "Wet stereo width 0 to 1",
+      "before": [
+        0.6,
+        0.4,
+        1,
+        0,
+        0
+      ],
+      "after": [
+        0.6,
+        0.4,
+        1,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "stereo-width.f32"
+    },
+    {
+      "id": "wet-level",
+      "label": "Wet level sweep",
+      "before": [
+        0.6,
+        0.4,
+        0.2,
+        0.3,
+        1
+      ],
+      "after": [
+        0.6,
+        0.4,
+        1,
+        0.3,
+        1
+      ],
+      "blockSize": 128,
+      "output": "wet-level.f32"
+    },
+    {
+      "id": "dry-level",
+      "label": "Dry level change",
+      "before": [
+        0.6,
+        0.4,
+        1,
+        1,
+        1
+      ],
+      "after": [
+        0.6,
+        0.4,
+        1,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "dry-level.f32"
+    },
+    {
+      "id": "short-block",
+      "label": "Short blocks and parameter change",
+      "before": [
+        0.4,
+        0.2,
+        1,
+        0,
+        0.5
+      ],
+      "after": [
+        0.8,
+        0.8,
+        1,
+        0,
+        0.8
+      ],
+      "blockSize": 32,
+      "output": "short-block.f32"
+    },
+    {
+      "id": "long-block",
+      "label": "Long blocks and stereo tail",
+      "before": [
+        0.6,
+        0.4,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        0.8,
+        0.3,
+        1,
+        0,
+        1
+      ],
+      "blockSize": 512,
+      "output": "long-block.f32"
+    }
+  ]
+}

@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "97aa20852c3f7b73c22cc1d51c09cf51d15035230ce699f282091589df44827b",
+  "sourceSha256": "3666739f6bcdeae293ec30631769a5605e1857093c83bed27203e25d5339d8d7",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "reverb-room",
+      "label": "Reverb room sweep",
+      "before": [
+        7,
+        1,
+        0.1,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        7,
+        1,
+        0.9,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "reverb-room.f32"
+    },
+    {
+      "id": "reverb-damping",
+      "label": "Reverb damping sweep",
+      "before": [
+        7,
+        0.8,
+        0.5,
+        0,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        7,
+        0.8,
+        0.5,
+        1,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "reverb-damping.f32"
+    },
+    {
+      "id": "filter-to-reverb",
+      "label": "Switch FilterNode to Reverb",
+      "before": [
+        5,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        7,
+        0.8,
+        0.5,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-reverb.f32"
+    },
+    {
+      "id": "reverb-to-delay",
+      "label": "Switch Reverb to Stereo Delay",
+      "before": [
+        7,
+        0.8,
+        0.5,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        8,
+        0.8,
+        0.1,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "reverb-to-delay.f32"
+    },
     {
       "id": "legacy-filter-cutoff",
       "label": "FilterNode cutoff sweep",

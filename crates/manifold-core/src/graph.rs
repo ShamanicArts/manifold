@@ -19,6 +19,7 @@ use crate::loop_capture::LoopCapture;
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::phaser::Phaser;
+use crate::reverb::{self, Reverb};
 use crate::sample_instrument::SampleInstrument;
 use crate::sample_region::SampleRegion;
 use crate::slew_limiter::SlewLimiter;
@@ -122,6 +123,9 @@ pub enum NodeKind {
     LegacyFilter {
         params: [f32; legacy_filter::PARAM_COUNT],
     },
+    Reverb {
+        params: [f32; reverb::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -213,6 +217,7 @@ impl NodeKind {
             | Self::WaveShaper { .. }
             | Self::StereoWidener { .. }
             | Self::LegacyFilter { .. }
+            | Self::Reverb { .. }
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
@@ -307,6 +312,7 @@ impl NodeKind {
             Self::WaveShaper { params } => params.iter().all(|value| value.is_finite()),
             Self::StereoWidener { params } => params.iter().all(|value| value.is_finite()),
             Self::LegacyFilter { params } => params.iter().all(|value| value.is_finite()),
+            Self::Reverb { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -442,6 +448,7 @@ enum Kernel {
     WaveShaper(WaveShaper),
     StereoWidener(StereoWidener),
     LegacyFilter(LegacyFilter),
+    Reverb(Reverb),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -575,6 +582,7 @@ impl Kernel {
             NodeKind::LegacyFilter { params } => {
                 Self::LegacyFilter(LegacyFilter::new(sample_rate, *params))
             }
+            NodeKind::Reverb { params } => Self::Reverb(Reverb::new(sample_rate, *params)),
             NodeKind::EffectSlot {
                 selected,
                 mix,
@@ -715,6 +723,7 @@ impl Kernel {
             (Self::WaveShaper(shaper), id) => return shaper.set_parameter(id, value),
             (Self::StereoWidener(widener), id) => return widener.set_parameter(id, value),
             (Self::LegacyFilter(filter), id) => return filter.set_parameter(id, value),
+            (Self::Reverb(reverb), id) => return reverb.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1341,6 +1350,9 @@ impl ExecutionPlan {
                 }
                 Kernel::LegacyFilter(filter) => {
                     filter.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::Reverb(reverb) => {
+                    reverb.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

@@ -15,6 +15,7 @@ import eq8Project from '../../projects/standalone-eq8/project.json';
 import waveshaperProject from '../../projects/waveshaper/project.json';
 import widenerProject from '../../projects/stereo-widener/project.json';
 import legacyFilterProject from '../../projects/legacy-filter/project.json';
+import reverbProject from '../../projects/reverb/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -137,6 +138,12 @@ const projects = {
     description: 'The original two-pole lowpass FilterNode with smoothed cutoff, resonance feedback, and dry/wet mix. This is distinct from the Standalone Filter SVF.',
     signal: 'Live path: input → two-pole resonant lowpass → dry/wet mix → output',
   },
+  reverb: {
+    project: reverbProject,
+    title: 'Reverb',
+    description: 'A prepared stereo FreeVerb-style network with room size, damping, wet/dry levels, and stereo width. The reverb tail continues across audio blocks.',
+    signal: 'Live path: input → stereo comb/allpass network → dry/wet output',
+  },
   compressor: {
     project: compressorProject,
     title: 'Compressor',
@@ -158,7 +165,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Stereo Delay, and Limiter are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, and Limiter are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -601,6 +608,7 @@ function updateSlotControls() {
     : selected === 2 ? { 2: 'Drive', 3: 'Curve', 4: 'Output', 5: 'Bias' }
     : selected === 4 ? { 2: 'Width', 3: 'Mono low cutoff' }
     : selected === 5 ? { 2: 'Cutoff', 3: 'Resonance' }
+    : selected === 7 ? { 2: 'Room size', 3: 'Damping' }
     : selected === 3
     ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
     : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
@@ -632,6 +640,8 @@ function updateSlotControls() {
       ? id === 2 ? (2 * value).toFixed(2) : `${Math.round(40 + 280 * value)} Hz`
       : selected === 5
       ? id === 2 ? `${Math.round(80 * 150 ** value).toLocaleString()} Hz` : value.toFixed(2)
+      : selected === 7
+      ? id === 2 ? (0.15 + 0.8 * value).toFixed(2) : value.toFixed(2)
       : selected === 3
       ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
         : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
@@ -656,6 +666,7 @@ function updateSlotControls() {
     : selected === 2 ? 'The old slot maps four normalized controls to drive, curve, output and bias. Its fifth control is unused.'
     : selected === 4 ? 'Width and mono low cutoff are the old slot controls. Mono low is always enabled, and the wet branch has 1.1× gain.'
     : selected === 5 ? 'This is the original two-pole FilterNode. Cutoff uses exponential mapping; the third through fifth normalized controls are unused.'
+    : selected === 7 ? 'Room and damping are the old slot controls. Internal reverb is fully wet; the public slot mix blends the dry input. The other three controls are unused.'
     : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
       : 'Values are stored separately for each effect type and restored when selected.';
 }
@@ -844,6 +855,7 @@ function renderPrimitive(family) {
     [2, [0.3, 0.0, 0.7, 0.5, 0.5]],
     [4, [0.6, 0.4, 0.5, 0.5, 0.5]],
     [5, [0.5, 0.2, 0.5, 0.5, 0.5]],
+    [7, [0.5, 0.4, 0.5, 0.5, 0.5]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
@@ -913,13 +925,13 @@ function renderPrimitive(family) {
   sampleActiveVoices = 0;
   if (family === 'voice' || family === 'sample-instrument') resetNoteEvents();
   if (mode) {
-    byId('modes').style.gridTemplateColumns = `repeat(${family === 'standalone-fx' && mode.choices.length > 8 ? 3 : family === 'waveshaper' || family === 'standalone-fx' ? 4 : mode.choices.length}, minmax(0, 1fr))`;
+    byId('modes').style.gridTemplateColumns = `repeat(${family === 'standalone-fx' && mode.choices.length === 9 ? 3 : family === 'waveshaper' || family === 'standalone-fx' ? 4 : mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, index) => {
       const value = mode.choiceValues?.[index] ?? index;
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 8: 'Delay', 15: 'Limit' })[value] : choice;
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 15: 'Limit' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {
