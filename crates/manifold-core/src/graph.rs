@@ -765,6 +765,33 @@ impl ExecutionPlan {
             })
     }
 
+    pub fn capture_length(&self, node: NodeId) -> Option<usize> {
+        self.nodes
+            .iter()
+            .find(|entry| entry.id == node)
+            .and_then(|entry| match &entry.kernel {
+                Kernel::LoopCapture(loop_node) => loop_node.capture_length(),
+                _ => None,
+            })
+    }
+
+    pub fn copy_capture_interleaved(
+        &self,
+        node: NodeId,
+        start_frame: usize,
+        output: &mut [f32],
+    ) -> usize {
+        self.nodes
+            .iter()
+            .find(|entry| entry.id == node)
+            .map_or(0, |entry| match &entry.kernel {
+                Kernel::LoopCapture(loop_node) => {
+                    loop_node.copy_capture_interleaved(start_frame, output)
+                }
+                _ => 0,
+            })
+    }
+
     pub fn set_parameter(&mut self, node: NodeId, parameter: u32, value: f32) -> bool {
         self.nodes
             .iter_mut()

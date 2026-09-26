@@ -1,0 +1,9 @@
+# Review checkpoint 31: captured take into the sampler
+
+Date: 2026-09-26. Open [Loop capture](http://127.0.0.1:4173/?primitive=loop-capture), start audio with the test oscillator, turn **Record** on and off, then click **Send take to Sample instrument**. The page switches to [Sample instrument](http://127.0.0.1:4173/?primitive=sample-instrument) with the captured take as its source. Start the instrument and play the keyboard. The [captured waveform](checkpoint-31-captured-waveform.png) is a 0.46 s stereo test-oscillator take transferred during the live browser check.
+
+The Rust Loop Capture ring now exposes a stopped take oldest-to-newest in bounded stereo chunks. The Wasm ABI copies each chunk into the worklet's prepared output scratch; the worklet assembles one transferable PCM buffer in its message handler. The browser keeps that source while it closes the capture graph and prepares the sampler graph. Recording cannot be exported until stopped. Capture and transfer do not allocate in the audio `process()` callback, though the one-time JavaScript transfer may briefly occupy the worklet thread.
+
+Validation: 43 Rust tests passed. A worklet smoke exported 2,304 stereo frames across two chunks and played the result in a second Rust graph; it also rejected export while recording. All **132** offline browser comparisons still showed Match (76 C++ and 56 native Rust) with no page errors. In a 390 × 844 browser viewport, the transfer button enabled only after recording stopped, switched projects, displayed the source duration, and played the captured take from a keyboard note without horizontal overflow.
+
+This is an authored cross-project transfer from the two-second Loop Capture view. The legacy dynamic sample slot, live/sidechain capture while the sampler plays, and state transfer between graph rebuilds still need separate contracts. The test used the built-in oscillator; microphone access in the in-app browser was not verified.

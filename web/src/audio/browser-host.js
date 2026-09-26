@@ -9,6 +9,7 @@ export class BrowserAudioHost {
     this.source = null;
     this.sourceStream = null;
     this.parameters = new Map();
+    this.pendingCapture = null;
   }
 
   get running() { return this.context !== null; }
@@ -41,6 +42,13 @@ export class BrowserAudioHost {
         };
         processor.port.onmessage = ({ data }) => {
           if (data.type === 'meters') this.onMeters(data.nodeId, data.values);
+          if ((data.type === 'capture' || data.type === 'capture-error') && this.pendingCapture) {
+            const pending = this.pendingCapture;
+            this.pendingCapture = null;
+            clearTimeout(pending.timeout);
+            if (data.type === 'capture') pending.resolve({ sourceRate: data.sourceRate, stereo: data.stereo });
+            else pending.reject(new Error(data.message));
+          }
           if (data.type === 'ready' || data.type === 'error') {
             clearTimeout(timeout);
             data.type === 'ready' ? resolve() : reject(new Error(data.message));
@@ -108,7 +116,26 @@ export class BrowserAudioHost {
     this.processor?.port.postMessage({ type: 'meter-request', nodeId, count });
   }
 
+  captureSnapshot(nodeId) {
+    if (!this.processor || !this.running) return Promise.reject(new Error('Start audio before exporting a take.'));
+    if (this.pendingCapture) return Promise.reject(new Error('Capture export is already in progress.'));
+    return new Promise((resolve, reject) => {
+      const pending = { resolve, reject, timeout: null };
+      pending.timeout = setTimeout(() => {
+        if (this.pendingCapture === pending) this.pendingCapture = null;
+        reject(new Error('Capture export timed out.'));
+      }, 10_000);
+      this.pendingCapture = pending;
+      this.processor.port.postMessage({ type: 'capture-request', nodeId });
+    });
+  }
+
   async stop() {
+    if (this.pendingCapture) {
+      clearTimeout(this.pendingCapture.timeout);
+      this.pendingCapture.reject(new Error('Audio stopped during capture export.'));
+      this.pendingCapture = null;
+    }
     this.oscillator?.stop();
     this.sourceStream?.getTracks().forEach((track) => track.stop());
     this.source?.disconnect();

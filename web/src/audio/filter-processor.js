@@ -54,9 +54,24 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const count = Math.min(9, Math.max(1, data.count ?? 8));
           const values = Array.from({ length: count }, (_, band) => this.engine.manifold_get_node_meter(data.nodeId, band));
           this.port.postMessage({ type: 'meters', nodeId: data.nodeId, values });
+        } else if (data.type === 'capture-request' && this.engine) {
+          const frames = this.engine.manifold_capture_length(data.nodeId);
+          if (!frames) {
+            this.port.postMessage({ type: 'capture-error', message: 'Stop recording a take before sending it to the sampler.' });
+            return;
+          }
+          const stereo = new Float32Array(frames * 2);
+          for (let offset = 0; offset < frames;) {
+            const count = Math.min(this.capacity, frames - offset);
+            const copied = this.engine.manifold_capture_copy(data.nodeId, offset, count);
+            if (copied !== count) throw new Error('Captured take changed during export');
+            stereo.set(new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), copied * 2), offset * 2);
+            offset += copied;
+          }
+          this.port.postMessage({ type: 'capture', nodeId: data.nodeId, sourceRate: sampleRate, stereo }, [stereo.buffer]);
         }
       } catch (error) {
-        this.port.postMessage({ type: 'error', message: String(error) });
+        this.port.postMessage({ type: data.type === 'capture-request' ? 'capture-error' : 'error', message: String(error) });
       }
     };
   }

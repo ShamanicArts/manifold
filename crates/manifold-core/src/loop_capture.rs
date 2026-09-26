@@ -86,6 +86,24 @@ impl LoopCapture {
     pub fn length(&self) -> usize {
         self.length
     }
+    /// A stopped take is ordered oldest to newest, even after the ring wraps.
+    pub fn capture_length(&self) -> Option<usize> {
+        (!self.recording).then_some(self.length)
+    }
+
+    /// Copy a bounded chunk without allocating. The caller may invoke this between blocks.
+    pub fn copy_capture_interleaved(&self, start_frame: usize, output: &mut [f32]) -> usize {
+        if self.recording || start_frame >= self.length {
+            return 0;
+        }
+        let frames = (output.len() / 2).min(self.length - start_frame);
+        for frame in 0..frames {
+            let index = (self.start + start_frame + frame) % self.left.len();
+            output[frame * 2] = self.left[index];
+            output[frame * 2 + 1] = self.right[index];
+        }
+        frames
+    }
     pub fn position(&self) -> f32 {
         if self.length == 0 {
             0.0
@@ -186,6 +204,26 @@ mod tests {
         let mut played_other = [0.0; 5];
         loop_node.process_planar([&silence, &silence], [&mut played, &mut played_other]);
         assert_eq!(played, [3.0, 4.0, 5.0, 6.0, 7.0]);
+        let mut first_chunk = [0.0; 6];
+        let mut second_chunk = [0.0; 4];
+        assert_eq!(loop_node.copy_capture_interleaved(0, &mut first_chunk), 3);
+        assert_eq!(loop_node.copy_capture_interleaved(3, &mut second_chunk), 2);
+        assert_eq!(first_chunk, [3.0, 3.0, 4.0, 4.0, 5.0, 5.0]);
+        assert_eq!(second_chunk, [6.0, 6.0, 7.0, 7.0]);
+    }
+
+    #[test]
+    fn recording_take_cannot_be_exported_until_stopped() {
+        let mut loop_node = LoopCapture::new(1000.0, 0.05, 1.0);
+        loop_node.set_parameter(0, 1.0);
+        let input = [0.25, 0.5];
+        let mut left = [0.0; 2];
+        let mut right = [0.0; 2];
+        loop_node.process_planar([&input, &input], [&mut left, &mut right]);
+        assert_eq!(loop_node.capture_length(), None);
+        assert_eq!(loop_node.copy_capture_interleaved(0, &mut [0.0; 4]), 0);
+        loop_node.set_parameter(0, 0.0);
+        assert_eq!(loop_node.capture_length(), Some(2));
     }
 
     #[test]

@@ -476,6 +476,7 @@ function updateLoopToggles() {
     button.setAttribute('aria-pressed', String(on));
     button.disabled = (id === 1 || id === 2) && (Boolean(values.get(0)) || !loopHasTake);
   }
+  byId('capture-transfer').disabled = !audio.running || !loopHasTake || Boolean(values.get(0));
 }
 
 function addSelect(parameter) {
@@ -508,6 +509,8 @@ function renderPrimitive(family) {
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
   ]);
   if (family === 'loop-capture') loopHasTake = false;
+  byId('capture-transfer-section').hidden = family !== 'loop-capture';
+  if (family === 'loop-capture') byId('capture-transfer-status').textContent = 'Record a take, then stop recording to send it to the sampler.';
   byId('module-title').textContent = title;
   const analyzerView = ['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family);
   document.querySelector('.measurements h2').textContent = family === 'spectrum-analyzer' ? 'Band levels' : family === 'compressor' || family === 'limiter' ? 'Gain reduction' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
@@ -633,7 +636,10 @@ function renderPrimitive(family) {
     byId('controls').append(label, curve);
     updateTransferCurve();
   }
-  if (sampleView) drawSampleWaveform();
+  if (sampleView) {
+    byId('sample-source-status').textContent = loadedSample?.label ?? 'Built-in example loaded when you start. Choose a file up to 30 seconds to replace it.';
+    drawSampleWaveform();
+  }
   byId('source').hidden = isInstrument;
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
   document.querySelector('.measurement-hint').textContent = family === 'sample-instrument'
@@ -862,13 +868,32 @@ byId('sample-file').addEventListener('change', async (event) => {
       stereo[frame * 2] = left[frame];
       stereo[frame * 2 + 1] = right[frame];
     }
-    loadedSample = { sourceRate: audioBuffer.sampleRate, stereo };
+    const label = `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ${audioBuffer.numberOfChannels} channel${audioBuffer.numberOfChannels === 1 ? '' : 's'} · ready to start`;
+    loadedSample = { sourceRate: audioBuffer.sampleRate, stereo, label };
     samplePlayhead = 0;
     samplePlaying = false;
     drawSampleWaveform();
-    readout.textContent = `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ${audioBuffer.numberOfChannels} channel${audioBuffer.numberOfChannels === 1 ? '' : 's'} · ready to start`;
+    readout.textContent = label;
   } catch (error) {
     readout.textContent = `Sample unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('capture-transfer').addEventListener('click', async () => {
+  const button = byId('capture-transfer');
+  const readout = byId('capture-transfer-status');
+  button.disabled = true;
+  try {
+    if (activeFamily !== 'loop-capture' || !audio.running || !loopHasTake || values.get(0)) {
+      throw new Error('Record a take and stop recording before sending it.');
+    }
+    readout.textContent = 'Copying the stopped take…';
+    const sample = await audio.captureSnapshot(2);
+    loadedSample = { ...sample, label: `Captured take · ${(sample.stereo.length / 2 / sample.sourceRate).toFixed(2)} s · ready to start` };
+    await selectPrimitive('sample-instrument');
+  } catch (error) {
+    readout.textContent = `Take unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    if (activeFamily === 'loop-capture') updateLoopToggles();
   }
 });
 byId('sample-trigger').addEventListener('click', () => {
@@ -900,6 +925,7 @@ toggle.addEventListener('click', async () => {
       ? isInstrument ? 'Stop instrument' : 'Stop audio'
       : isInstrument ? 'Start instrument' : 'Start audio';
     updatePrepareOnlyControls();
+    updateLoopToggles();
     byId('sample-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running
       ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' || activeFamily === 'sample-instrument' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
