@@ -1,4 +1,4 @@
-//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, and 19.
+//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 19, and 20.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
@@ -16,6 +16,7 @@ use crate::reverse_delay::{self, ReverseDelay};
 use crate::ring_modulator::{self, RingModulator};
 use crate::stereo_delay::{self, StereoDelay};
 use crate::stereo_widener::{self, StereoWidener};
+use crate::stutter::{self, Stutter};
 use crate::transient_shaper::{self, TransientShaper};
 use crate::waveshaper::{self, WaveShaper};
 
@@ -36,6 +37,7 @@ pub const LIMITER_TYPE: u32 = 15;
 pub const TRANSIENT_TYPE: u32 = 16;
 pub const BITCRUSHER_TYPE: u32 = 17;
 pub const REVERSE_DELAY_TYPE: u32 = 19;
+pub const STUTTER_TYPE: u32 = 20;
 
 pub fn supported_type(value: f32) -> Option<u32> {
     if !value.is_finite() || value.fract() != 0.0 {
@@ -45,7 +47,7 @@ pub fn supported_type(value: f32) -> Option<u32> {
         CHORUS_TYPE | PHASER_TYPE | WAVESHAPER_TYPE | COMPRESSOR_TYPE | WIDENER_TYPE
         | LEGACY_FILTER_TYPE | SVF_TYPE | REVERB_TYPE | DELAY_TYPE | MULTITAP_TYPE | RING_TYPE
         | FORMANT_TYPE | EQ_TYPE | LIMITER_TYPE | TRANSIENT_TYPE | BITCRUSHER_TYPE
-        | REVERSE_DELAY_TYPE => Some(value as u32),
+        | REVERSE_DELAY_TYPE | STUTTER_TYPE => Some(value as u32),
         _ => None,
     }
 }
@@ -70,6 +72,7 @@ pub struct EffectSlot {
     eq_params: [f32; 5],
     formant_params: [f32; 5],
     reverse_delay_params: [f32; 5],
+    stutter_params: [f32; 5],
     compressor_params: [f32; 5],
     limiter_params: [f32; 5],
     limiter_pre_gain: f32,
@@ -90,6 +93,7 @@ pub struct EffectSlot {
     eq: LegacyEq,
     formant: FormantFilter,
     reverse_delay: ReverseDelay,
+    stutter: Stutter,
     compressor: Compressor,
     limiter: Limiter,
 }
@@ -128,6 +132,7 @@ impl EffectSlot {
             eq_params: [0.5; 5],
             formant_params: [0.0, 0.5, 0.4, 0.3, 0.5],
             reverse_delay_params: [0.2, 0.25, 0.47, 0.5, 0.5],
+            stutter_params: [0.05, 0.8, 0.8, 0.25, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
             limiter_params: [0.5, 0.3, 0.4, 0.4, 0.5],
             limiter_pre_gain: 1.02,
@@ -148,6 +153,7 @@ impl EffectSlot {
             eq: LegacyEq::new(sample_rate, legacy_eq::DEFAULTS),
             formant: FormantFilter::new(sample_rate, formant_filter::DEFAULTS),
             reverse_delay: ReverseDelay::new(sample_rate, max_frames, reverse_delay::DEFAULTS),
+            stutter: Stutter::new(sample_rate, max_frames, stutter::DEFAULTS),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
             limiter: Limiter::new(sample_rate, limiter::defaults()),
         };
@@ -168,6 +174,7 @@ impl EffectSlot {
             EQ_TYPE => &mut slot.eq_params,
             FORMANT_TYPE => &mut slot.formant_params,
             REVERSE_DELAY_TYPE => &mut slot.reverse_delay_params,
+            STUTTER_TYPE => &mut slot.stutter_params,
             LIMITER_TYPE => &mut slot.limiter_params,
             _ => unreachable!("slot type validated at graph compilation"),
         };
@@ -188,6 +195,7 @@ impl EffectSlot {
         slot.rebuild_eq();
         slot.rebuild_formant();
         slot.rebuild_reverse_delay();
+        slot.rebuild_stutter();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
@@ -464,6 +472,30 @@ impl EffectSlot {
         }
     }
 
+    fn stutter_settings(&self) -> [f32; stutter::PARAM_COUNT] {
+        let [length, gate, probability, decay, _] = self.stutter_params;
+        [
+            0.125 + 7.875 * length,
+            gate,
+            decay,
+            0.2,
+            probability,
+            255.0,
+            120.0,
+            1.0,
+        ]
+    }
+
+    fn rebuild_stutter(&mut self) {
+        self.stutter.reset_to(self.stutter_settings());
+    }
+
+    fn apply_stutter(&mut self) {
+        for (id, value) in self.stutter_settings().into_iter().enumerate() {
+            self.stutter.set_parameter(id as u32, value);
+        }
+    }
+
     fn apply_phaser(&mut self) {
         for (id, value) in self.phaser_settings().into_iter().enumerate() {
             self.phaser.set_parameter(id as u32, value);
@@ -558,6 +590,7 @@ impl EffectSlot {
                         EQ_TYPE => self.rebuild_eq(),
                         FORMANT_TYPE => self.rebuild_formant(),
                         REVERSE_DELAY_TYPE => self.rebuild_reverse_delay(),
+                        STUTTER_TYPE => self.rebuild_stutter(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -588,6 +621,7 @@ impl EffectSlot {
                     EQ_TYPE => &mut self.eq_params,
                     FORMANT_TYPE => &mut self.formant_params,
                     REVERSE_DELAY_TYPE => &mut self.reverse_delay_params,
+                    STUTTER_TYPE => &mut self.stutter_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -609,6 +643,7 @@ impl EffectSlot {
                     EQ_TYPE => self.apply_eq(),
                     FORMANT_TYPE => self.apply_formant(),
                     REVERSE_DELAY_TYPE => self.apply_reverse_delay(),
+                    STUTTER_TYPE => self.apply_stutter(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -664,6 +699,9 @@ impl EffectSlot {
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             REVERSE_DELAY_TYPE => self
                 .reverse_delay
+                .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
+            STUTTER_TYPE => self
+                .stutter
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             COMPRESSOR_TYPE => self
                 .compressor

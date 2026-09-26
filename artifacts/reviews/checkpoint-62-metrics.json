@@ -1,0 +1,30 @@
+{
+  "stutter": {
+    "cases": 8,
+    "largest": {
+      "id": "default",
+      "max": 0
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "length": "0.13"
+  },
+  "standalone-fx": {
+    "cases": 67,
+    "largest": {
+      "id": "eq-to-formant",
+      "max": 0.000125
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Stutter",
+    "wet": "0.80",
+    "length": "0.13 beats",
+    "controls": [
+      "Wet mix",
+      "Length",
+      "Gate",
+      "Probability",
+      "Filter decay"
+    ]
+  },
+  "errors": []
+}

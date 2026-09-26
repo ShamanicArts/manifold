@@ -1,0 +1,220 @@
+{
+  "version": 1,
+  "reference": "legacy C++ StutterNode with seeded juce::Random",
+  "sourceSha256": "d7e1888ba0d47755020e031fab7a1a1ac200a34984af493b2300d880cbab8a83",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 65536,
+  "stepFrame": 32768,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default seeded pattern",
+      "before": [
+        0.5,
+        0.8,
+        0.3,
+        0.2,
+        0.5,
+        255,
+        120,
+        1
+      ],
+      "after": [
+        0.5,
+        0.8,
+        0.3,
+        0.2,
+        0.5,
+        255,
+        120,
+        1
+      ],
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "always",
+      "label": "Always trigger every segment",
+      "before": [
+        0.125,
+        0.8,
+        0.3,
+        0.2,
+        1,
+        255,
+        120,
+        1
+      ],
+      "after": [
+        0.125,
+        0.8,
+        0.3,
+        0.2,
+        1,
+        255,
+        120,
+        1
+      ],
+      "blockSize": 128,
+      "output": "always.f32"
+    },
+    {
+      "id": "probability",
+      "label": "Seeded probability sweep",
+      "before": [
+        0.125,
+        0.8,
+        0.3,
+        0.2,
+        0.2,
+        255,
+        120,
+        1
+      ],
+      "after": [
+        0.125,
+        0.8,
+        0.3,
+        0.2,
+        0.9,
+        255,
+        120,
+        1
+      ],
+      "blockSize": 128,
+      "output": "probability.f32"
+    },
+    {
+      "id": "pattern",
+      "label": "Alternating pattern mask",
+      "before": [
+        0.125,
+        0.8,
+        0.3,
+        0.2,
+        1,
+        85,
+        120,
+        1
+      ],
+      "after": [
+        0.125,
+        0.8,
+        0.3,
+        0.2,
+        1,
+        170,
+        120,
+        1
+      ],
+      "blockSize": 128,
+      "output": "pattern.f32"
+    },
+    {
+      "id": "gate-decay",
+      "label": "Gate and filter decay",
+      "before": [
+        0.125,
+        0.3,
+        0,
+        0.2,
+        1,
+        255,
+        120,
+        1
+      ],
+      "after": [
+        0.125,
+        0.9,
+        1,
+        0.2,
+        1,
+        255,
+        120,
+        1
+      ],
+      "blockSize": 128,
+      "output": "gate-decay.f32"
+    },
+    {
+      "id": "pitch-tempo",
+      "label": "Pitch decay and tempo",
+      "before": [
+        0.25,
+        0.8,
+        0.3,
+        0,
+        1,
+        255,
+        120,
+        1
+      ],
+      "after": [
+        0.25,
+        0.8,
+        0.3,
+        1,
+        1,
+        255,
+        240,
+        1
+      ],
+      "blockSize": 128,
+      "output": "pitch-tempo.f32"
+    },
+    {
+      "id": "mix",
+      "label": "Wet mix sweep",
+      "before": [
+        0.125,
+        0.8,
+        0.3,
+        0.2,
+        1,
+        255,
+        120,
+        0.2
+      ],
+      "after": [
+        0.125,
+        0.8,
+        0.3,
+        0.2,
+        1,
+        255,
+        120,
+        0.8
+      ],
+      "blockSize": 128,
+      "output": "mix.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame seeded blocks",
+      "before": [
+        0.125,
+        0.75,
+        0.5,
+        0.4,
+        0.7,
+        255,
+        120,
+        0.9
+      ],
+      "after": [
+        0.25,
+        0.6,
+        0.2,
+        0.6,
+        0.3,
+        255,
+        120,
+        0.9
+      ],
+      "blockSize": 64,
+      "output": "small-block.f32"
+    }
+  ]
+}

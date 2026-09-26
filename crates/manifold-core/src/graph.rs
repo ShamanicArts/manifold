@@ -32,6 +32,7 @@ use crate::slew_limiter::SlewLimiter;
 use crate::spectrum_analyzer::SpectrumAnalyzer;
 use crate::stereo_delay::StereoDelay;
 use crate::stereo_widener::{self, StereoWidener};
+use crate::stutter::{self, Stutter};
 use crate::transient_shaper::{self, TransientShaper};
 use crate::voice::VoiceSynth;
 use crate::waveshaper::{self, WaveShaper};
@@ -154,6 +155,9 @@ pub enum NodeKind {
     ReverseDelay {
         params: [f32; reverse_delay::PARAM_COUNT],
     },
+    Stutter {
+        params: [f32; stutter::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -237,6 +241,7 @@ impl NodeKind {
             | Self::LegacyEq { .. }
             | Self::FormantFilter { .. }
             | Self::ReverseDelay { .. }
+            | Self::Stutter { .. }
             | Self::SlewControl { .. }
             | Self::AttenuverterBias { .. }
             | Self::AdsrEnvelope
@@ -355,6 +360,7 @@ impl NodeKind {
             Self::LegacyEq { params } => params.iter().all(|value| value.is_finite()),
             Self::FormantFilter { params } => params.iter().all(|value| value.is_finite()),
             Self::ReverseDelay { params } => params.iter().all(|value| value.is_finite()),
+            Self::Stutter { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -498,6 +504,7 @@ enum Kernel {
     LegacyEq(LegacyEq),
     FormantFilter(FormantFilter),
     ReverseDelay(ReverseDelay),
+    Stutter(Stutter),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -651,6 +658,9 @@ impl Kernel {
             NodeKind::ReverseDelay { params } => {
                 Self::ReverseDelay(ReverseDelay::new(sample_rate, max_frames, *params))
             }
+            NodeKind::Stutter { params } => {
+                Self::Stutter(Stutter::new(sample_rate, max_frames, *params))
+            }
             NodeKind::EffectSlot {
                 selected,
                 mix,
@@ -799,6 +809,7 @@ impl Kernel {
             (Self::LegacyEq(eq), id) => return eq.set_parameter(id, value),
             (Self::FormantFilter(formant), id) => return formant.set_parameter(id, value),
             (Self::ReverseDelay(delay), id) => return delay.set_parameter(id, value),
+            (Self::Stutter(stutter), id) => return stutter.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1452,6 +1463,9 @@ impl ExecutionPlan {
                 }
                 Kernel::ReverseDelay(delay) => {
                     delay.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::Stutter(stutter) => {
+                    stutter.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

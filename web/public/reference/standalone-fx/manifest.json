@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "7af38876ab2fe50d6ae63e769a77a2433dd49efe2e6c0e3893f39a6d1b459b99",
+  "sourceSha256": "5bb200fdde652090a28b092f3cd5066c99d3dfc7f1c59c637198e60d34e00a93",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "stutter-length",
+      "label": "Stutter beat length sweep",
+      "before": [
+        20,
+        0.8,
+        0,
+        0.8,
+        1,
+        0.25,
+        0.5
+      ],
+      "after": [
+        20,
+        0.8,
+        0.12,
+        0.8,
+        1,
+        0.25,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "stutter-length.f32"
+    },
+    {
+      "id": "stutter-gate",
+      "label": "Stutter gate and probability",
+      "before": [
+        20,
+        1,
+        0.03,
+        0.2,
+        0.2,
+        0.25,
+        0.5
+      ],
+      "after": [
+        20,
+        1,
+        0.03,
+        0.9,
+        0.9,
+        0.75,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "stutter-gate.f32"
+    },
+    {
+      "id": "reverse-to-stutter",
+      "label": "Switch Reverse Delay to Stutter",
+      "before": [
+        19,
+        0.8,
+        0.1,
+        0.25,
+        0.47,
+        0.5,
+        0.5
+      ],
+      "after": [
+        20,
+        0.8,
+        0.05,
+        0.8,
+        0.8,
+        0.25,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "reverse-to-stutter.f32"
+    },
+    {
+      "id": "stutter-to-formant",
+      "label": "Switch Stutter to Formant",
+      "before": [
+        20,
+        0.8,
+        0.05,
+        0.8,
+        0.8,
+        0.25,
+        0.5
+      ],
+      "after": [
+        13,
+        0.8,
+        0.2,
+        0.5,
+        0.4,
+        0.3,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "stutter-to-formant.f32"
+    },
     {
       "id": "reverse-time",
       "label": "Reverse Delay time sweep",
