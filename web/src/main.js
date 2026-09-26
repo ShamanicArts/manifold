@@ -271,8 +271,8 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at one output. Link branch depth to use the old 1−depth/depth gain law, or audition the two branches with independent gains.',
-    signal: 'Wave + file → sample region → vocoder → base crossfade · worker → wave/source Sine banks → Add crossfade → phrase gain · mixer → output',
+    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. Link branch depth for the old 1−depth/depth gain law; the sample stage gain represents twice the old voice amplitude.',
+    signal: 'File → sample region → vocoder → sample stage gain · wave → base crossfade · worker → two Sine banks → Add crossfade → phrase gain · branch mixer → voice mix → output',
   },
   'reverse-delay': {
     project: reverseDelayProject,
@@ -1576,7 +1576,7 @@ function renderPrimitive(family) {
   if (family === 'main-sample-blend') {
     const help = document.createElement('p');
     help.className = 'control-help';
-    help.textContent = 'Link branch depth for base = 1 − depth and Add = depth. With linking off, the independent gains apply. Phrase reference starts from the analyzed source level; moving it saves a manual value.';
+    help.textContent = 'Link branch depth for base = 1 − depth and Add = depth. With linking off, the independent gains apply. Sample stage gain is twice the old voice amp (1 corresponds to amp 0.5). Phrase reference starts from source analysis; moving it saves a manual value.';
     byId('controls').appendChild(help);
     updateMainDepthControls();
   }

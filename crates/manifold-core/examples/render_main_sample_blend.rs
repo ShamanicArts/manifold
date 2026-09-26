@@ -10,8 +10,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 22 {
-        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND ADD_BLEND DEPTH LINKED".into());
+    if args.len() != 23 {
+        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND ADD_BLEND DEPTH LINKED SAMPLE_STAGE_GAIN".into());
     }
     let sample: Vec<f32> = std::fs::read(&args[1])?
         .chunks_exact(4)
@@ -38,6 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let add_blend: f32 = args[19].parse()?;
     let depth: f32 = args[20].parse()?;
     let linked: u32 = args[21].parse()?;
+    let sample_stage_gain: f32 = args[22].parse()?;
     let analysis = analyze_temporal_stereo(&sample, 48_000.0, 0..sample_frames, 128)
         .ok_or("source analysis failed")?;
     let source = analysis.partials_at(0.5, 0.6, 0.5);
@@ -137,6 +138,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             },
             NodeSpec {
+                id: 15,
+                kind: NodeKind::Gain {
+                    gain: sample_stage_gain,
+                },
+            },
+            NodeSpec {
                 id: 12,
                 kind: NodeKind::Crossfader {
                     position: base_blend,
@@ -175,6 +182,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             },
             NodeSpec {
+                id: 16,
+                kind: NodeKind::Mixer {
+                    inputs: 4,
+                    gains: vec![0.0, 0.0, 0.0, 1.0],
+                    pans: vec![0.0; 4],
+                    master: 1.0,
+                },
+            },
+            NodeSpec {
                 id: 5,
                 kind: NodeKind::Output,
             },
@@ -197,6 +213,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             Connection {
                 from: 6,
+                to: 15,
+                input_port: 0,
+            },
+            Connection {
+                from: 15,
                 to: 12,
                 input_port: 1,
             },
@@ -232,6 +253,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             Connection {
                 from: 4,
+                to: 16,
+                input_port: 3,
+            },
+            Connection {
+                from: 16,
                 to: 5,
                 input_port: 0,
             },

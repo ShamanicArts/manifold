@@ -1,0 +1,9 @@
+# Checkpoint 114 — Main sample voice gain stages
+
+The [playable Main study](http://127.0.0.1:4173/?primitive=main-sample-blend) now exposes **Sample stage gain** before the base wave/sample crossfade. The branch mixer feeds input 4 of a four-bus voice mixer, with the other three buses muted. The [HTML comparison](http://127.0.0.1:4173/main-sample-blend-review.html) shows all 20 Main cases; the [sitrep](http://127.0.0.1:4173/manifold-sitrep.html) tracks the wider port.
+
+The old Main integration sets `sampleBlendGain` to `2 × voice amplitude`. Its base crossfade passes through `branchMixer`, then `voiceMix` input 4. Both mixers apply centre pan. A compiled C++ harness uses the original GainNode, CrossfaderNode, and MixerNode implementations with the same decoded source fixture as a native Rust graph harness. At voice amplitudes 0.25, 0.5, and 0.75, their 16,384-frame stereo outputs have maximum sample difference **zero**. The corresponding authored Main graph matches direct Rust/Wasm sample for sample. Native RMS values are 0.0622, 0.1244, and 0.1866.
+
+The 17 earlier Main cases were regenerated through the new output shell. Fourteen match native Rust and Wasm exactly; the three wet vocoder cases differ by at most 2.6e−6. The AudioWorklet test changes sample stage gain live and exercises the earlier branch controls. Version-7 state roundtrips 21 controls plus source and target; files from versions 1–6 open with stage gain 1. All 119 Rust workspace tests, reference comparisons, worklet check, state check, and production web build pass.
+
+This C++ comparison isolates the old **sample-only gain path**. It does not yet validate the complete old Main voice, oscillator amplitude, Add source amplitude, FM/Sync direction, polyphony, or old presets. Next, one voice amplitude should set oscillator gain to `amp` and sample/Add source gain to `2 × amp`, with representative full-voice comparisons against the original implementation.

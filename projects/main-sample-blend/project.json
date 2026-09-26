@@ -10,6 +10,7 @@
     "nodes": [
       { "id": 2, "type": "sample-region" },
       { "id": 6, "type": "phase-vocoder" },
+      { "id": 15, "type": "gain", "a": 1 },
       { "id": 11, "type": "oscillator", "a": 220, "b": 0 },
       { "id": 12, "type": "crossfader", "a": 1, "b": 1 },
       { "id": 7, "type": "envelope-control", "a": 5, "b": 80 },
@@ -18,26 +19,32 @@
       { "id": 14, "type": "crossfader", "a": 1, "b": 1 },
       { "id": 8, "type": "phrase-gain", "a": 0, "b": 0.18 },
       { "id": 4, "type": "mixer", "a": 2, "b": 1 },
+      { "id": 16, "type": "mixer", "a": 4, "b": 1 },
       { "id": 5, "type": "output" }
     ],
     "connections": [
       { "from": 2, "to": 6, "inputPort": 0 },
       { "from": 2, "to": 7, "inputPort": 0 },
       { "from": 11, "to": 12, "inputPort": 0 },
-      { "from": 6, "to": 12, "inputPort": 1 },
+      { "from": 6, "to": 15, "inputPort": 0 },
+      { "from": 15, "to": 12, "inputPort": 1 },
       { "from": 12, "to": 4, "inputPort": 0 },
       { "from": 13, "to": 14, "inputPort": 0 },
       { "from": 3, "to": 14, "inputPort": 1 },
       { "from": 14, "to": 8, "inputPort": 0 },
       { "from": 7, "to": 8, "inputPort": 1 },
       { "from": 8, "to": 4, "inputPort": 1 },
-      { "from": 4, "to": 5, "inputPort": 0 }
+      { "from": 4, "to": 16, "inputPort": 3 },
+      { "from": 16, "to": 5, "inputPort": 0 }
     ],
     "initialParameters": [
       { "nodeId": 7, "id": 2, "value": 2 },
       { "nodeId": 7, "id": 3, "value": 40 },
       { "nodeId": 11, "id": 0, "value": 1 },
-      { "nodeId": 13, "id": 2, "value": 1 }
+      { "nodeId": 13, "id": 2, "value": 1 },
+      { "nodeId": 16, "id": 1, "value": 0 },
+      { "nodeId": 16, "id": 2, "value": 0 },
+      { "nodeId": 16, "id": 3, "value": 0 }
     ]
   },
   "partials": {
@@ -68,6 +75,7 @@
     { "id": 16, "nodeId": 12, "nodeParameterId": 0, "hostId": "base-blend", "label": "Base wave ↔ sample", "kind": "float", "min": -1, "max": 1, "default": 1 },
     { "id": 17, "nodeId": 14, "nodeParameterId": 0, "hostId": "add-blend", "label": "Add wave ↔ source", "kind": "float", "min": -1, "max": 1, "default": 1 },
     { "id": 18, "nodeId": 4, "nodeParameterId": 65, "hostId": "branch-depth", "label": "Branch depth", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
-    { "id": 19, "nodeId": 4, "nodeParameterId": 66, "hostId": "linked-depth", "label": "Link branch depth", "kind": "toggle", "default": 0 }
+    { "id": 19, "nodeId": 4, "nodeParameterId": 66, "hostId": "linked-depth", "label": "Link branch depth", "kind": "toggle", "default": 0 },
+    { "id": 20, "nodeId": 15, "nodeParameterId": 0, "hostId": "sample-stage-gain", "label": "Sample stage gain", "kind": "float", "min": 0, "max": 2, "default": 1 }
   ]
 }

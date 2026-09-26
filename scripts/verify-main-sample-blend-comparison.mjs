@@ -31,5 +31,12 @@ for (const selected of manifest.cases) {
   assert.equal(wasm.meters.length, cppMeter.length);
   const maxMeter = Math.max(...cppMeter.map((value, index) => Math.abs(value - wasm.meters[index])));
   assert.ok(maxMeter < 2e-4, `${selected.id} C++ follower mismatch ${maxMeter}`);
+  if (selected.legacyStage) {
+    const cpp = floats(`${root}${selected.legacyStage}`);
+    assert.equal(cpp.length, native.length);
+    const maxStage = Math.max(...cpp.map((value, index) => Math.abs(value - native[index])));
+    console.log(`${selected.id}: original C++ Main gain stages ↔ native Rust max Δ ${maxStage.toExponential(3)}`);
+    assert.ok(maxStage < 2e-4, `${selected.id} old Main gain staging mismatch ${maxStage}`);
+  }
   if (selected.id === 'phrase-full') console.log(`Original C++ follower ↔ Wasm graph meter max Δ ${maxMeter.toExponential(3)}`);
 }

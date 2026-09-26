@@ -634,16 +634,16 @@ function prepareSineBank(engine, selected) {
 }
 
 function prepareMainSampleBlend(engine, selected) {
-  const nodes = [[2, 26, 0, 0], [6, 62, 0, 0], [7, 23, 5, 80],
+  const nodes = [[2, 26, 0, 0], [6, 62, 0, 0], [15, 3, selected.sampleStageGain, 0], [7, 23, 5, 80],
     [11, 11, selected.wave[0], selected.wave[1]], [12, 8, selected.wave[3], 1],
     [3, 61, 220, .5], [13, 61, 220, .5], [14, 8, selected.addBlend, 1],
-    [8, 63, ...selected.phrase], [4, 9, 2, 1], [5, 7, 0, 0]];
-  const edges = [[2, 6, 0], [2, 7, 0], [11, 12, 0], [6, 12, 1], [12, 4, 0],
-    [13, 14, 0], [3, 14, 1], [14, 8, 0], [7, 8, 1], [8, 4, 1], [4, 5, 0]];
+    [8, 63, ...selected.phrase], [4, 9, 2, 1], [16, 9, 4, 1], [5, 7, 0, 0]];
+  const edges = [[2, 6, 0], [2, 7, 0], [11, 12, 0], [6, 15, 0], [15, 12, 1], [12, 4, 0],
+    [13, 14, 0], [3, 14, 1], [14, 8, 0], [7, 8, 1], [8, 4, 1], [4, 16, 3], [16, 5, 0]];
   if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Main blend graph begin failed');
   for (const node of nodes) if (engine.manifold_graph_node(...node) !== 1) throw new Error(`Main blend node ${node[0]} failed`);
   for (const edge of edges) if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Main blend edge failed');
-  for (const [node, id, value] of [[4, 1, selected.sampleGain], [4, 2, selected.bankGain], [3, 0, 220], [3, 1, .5], [3, 2, 1], [13, 0, 220], [13, 1, .5], [13, 2, 1], [7, 2, 2], [7, 3, 40], [11, 0, selected.wave[2]]]) {
+  for (const [node, id, value] of [[4, 1, selected.sampleGain], [4, 2, selected.bankGain], [16, 1, 0], [16, 2, 0], [16, 3, 0], [3, 0, 220], [3, 1, .5], [3, 2, 1], [13, 0, 220], [13, 1, .5], [13, 2, 1], [7, 2, 2], [7, 3, 40], [11, 0, selected.wave[2]]]) {
     if (engine.manifold_graph_initial_parameter(node, id, value) !== 1) throw new Error('Main blend initial parameter failed');
   }
   selected.vocoder.forEach((value, id) => {
@@ -1325,7 +1325,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                     : family === 'sample-instrument'
                       ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · root ${selected.parameters[0]} · keytrack ${selected.parameters[1]} · ${selected.events.length} note events · ${selected.changes.length} control changes`
                     : family === 'main-sample-blend'
-                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · ${selected.mode === 1 ? 'Add' : 'Morph'} target · ${selected.vocoder[3] ? `${selected.vocoder[0] ? 'HQ' : 'bin'} vocoder ${selected.vocoder[1]} st` : 'dry sample'} · base blend ${selected.wave[3]} · additive blend ${selected.addBlend} · ${selected.linkedDepth == null ? `independent gains ${selected.sampleGain}/${selected.bankGain}` : `linked depth ${selected.linkedDepth}`} · phrase contour ${selected.phrase[0]}`
+                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · ${selected.mode === 1 ? 'Add' : 'Morph'} target · ${selected.vocoder[3] ? `${selected.vocoder[0] ? 'HQ' : 'bin'} vocoder ${selected.vocoder[1]} st` : 'dry sample'} · sample stage ${selected.sampleStageGain} · base blend ${selected.wave[3]} · additive blend ${selected.addBlend} · ${selected.linkedDepth == null ? `independent gains ${selected.sampleGain}/${selected.bankGain}` : `linked depth ${selected.linkedDepth}`} · phrase contour ${selected.phrase[0]}`
                     : family === 'phase-vocoder'
                       ? `${selected.before[0] ? 'stretch + resample' : 'bin mapping'} · ${selected.before[1]} st · ${selected.before[2]}× time · ${1 << selected.before[4]} FFT · ${selected.before[3]} wet`
                     : family === 'fft-spectrum'

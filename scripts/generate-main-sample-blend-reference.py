@@ -16,6 +16,7 @@ subprocess.run(["cargo", "build", "-p", "manifold-core", "--example", "render_ma
 runner = ROOT / "target/debug/examples/render_main_sample_blend"
 sources = [ROOT / path for path in [
     "crates/manifold-core/src/graph.rs", "crates/manifold-core/src/sample_region.rs",
+    "crates/manifold-core/examples/render_main_gain_stage.rs",
     "crates/manifold-core/src/sine_bank.rs", "crates/manifold-core/src/oscillator.rs",
     "crates/manifold-core/src/temporal_partials.rs",
     "crates/manifold-core/src/phase_vocoder.rs",
@@ -34,6 +35,8 @@ frames, block = 16_384, 128
 (OUT / "input.f32").write_bytes(bytes(frames * 8))
 legacy_follower = subprocess.check_output(["bash", str(ROOT / "scripts/build-legacy-reference.sh"),
                                            "envelope-follower"], text=True).strip()
+legacy_stage = subprocess.check_output(["bash", str(ROOT / "scripts/build-legacy-main-gain-stage-reference.sh")],
+                                       text=True).strip()
 follower_meters = "follower-meters-cpp.f32"
 subprocess.run([legacy_follower, str(sample_path),
                 str(ROOT / "target/legacy-reference/main-follower-audio.f32"),
@@ -59,21 +62,37 @@ for case in [
     ("depth-base", "Linked depth · base only", 1, .25, .75, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1, 0),
     ("depth-mid", "Linked depth · equal branches", 1, .25, .75, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1, .5),
     ("depth-add", "Linked depth · Add only", 1, .25, .75, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1, 1),
+    ("legacy-amp25", "Old sample path · voice amp .25", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1, 0, .5),
+    ("legacy-amp50", "Old sample path · voice amp .5", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1, 0, 1),
+    ("legacy-amp75", "Old sample path · voice amp .75", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1, 0, 1.5),
 ]:
     case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave, add_blend = case[:9]
     depth = case[9] if len(case) > 9 else None
+    sample_stage_gain = case[10] if len(case) > 10 else 1.0
     output, target = f"{case_id}.f32", f"{case_id}-target.f32"
     subprocess.run([runner, str(sample_path), str(OUT / output), str(OUT / target), str(mode),
                     str(sample_gain), str(bank_gain), str(frames), *map(str, pvoc), *map(str, phrase), *map(str, wave), str(add_blend),
-                    str(depth if depth is not None else .5), str(int(depth is not None))], check=True)
+                    str(depth if depth is not None else .5), str(int(depth is not None)), str(sample_stage_gain)], check=True)
+    legacy_stage_file = None
+    if case_id.startswith("legacy-amp"):
+        legacy_stage_file = f"{case_id}-cpp.f32"
+        subprocess.run([legacy_stage, str(sample_path), str(OUT / legacy_stage_file),
+                        str(sample_stage_gain / 2), "0", str(frames), str(block)], check=True)
     cases.append({"id": case_id, "label": label, "mode": mode, "sampleGain": sample_gain,
                   "bankGain": bank_gain, "vocoder": pvoc, "phrase": phrase, "wave": wave, "addBlend": add_blend,
                   "linkedDepth": depth,
+                  "sampleStageGain": sample_stage_gain, "legacyStage": legacy_stage_file,
                   "target": target, "output": output, "followerMeter": follower_meters,
                   "blockSize": block})
 (OUT / "manifest.json").write_text(json.dumps({
     "version": 1, "reference": "native Rust Main sample blend study", "sourceSha256": source_hash,
     "legacyFollowerSha256": hashlib.sha256((LEGACY / "dsp/core/nodes/EnvelopeFollowerNode.cpp").read_bytes()).hexdigest(),
+    "legacyStageSha256": hashlib.sha256(b"".join(path.read_bytes() for path in [
+        ROOT / "tools/legacy-main-gain-stage-reference.cpp",
+        LEGACY / "dsp/core/nodes/GainNode.cpp",
+        LEGACY / "dsp/core/nodes/CrossfaderNode.cpp",
+        LEGACY / "dsp/core/nodes/MixerNode.cpp",
+    ])).hexdigest(),
     "sampleRate": source_rate, "sampleSourceRate": source_rate, "sampleFrames": sample_frames,
     "sample": "source.f32", "channels": 2, "frames": frames, "stepFrame": frames // 2,
     "input": "input.f32", "waveTarget": "wave-target.f32", "cases": cases,

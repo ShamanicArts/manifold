@@ -64,6 +64,13 @@ assert.ok(rms(both) > .01, 'composed graph must sound');
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 2, value: 0 } });
 const sampleOnly = settle();
 assert.ok(rms(sampleOnly) > .01, 'sample branch must sound alone');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 15, id: 0, value: .5 } });
+const lowSampleStage = settle();
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 15, id: 0, value: 1.5 } });
+const highSampleStage = settle();
+assert.ok(rms(highSampleStage) > rms(lowSampleStage) * 2,
+  'sample gain stage must change the live voice level');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 15, id: 0, value: 1 } });
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 11, id: 2, value: .35 } });
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 12, id: 0, value: -1 } });
 const waveOnly = settle();
