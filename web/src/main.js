@@ -109,7 +109,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Compressor, SVF Filter, and Stereo Delay are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Compressor, SVF Filter, Stereo Delay, and Limiter are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -264,7 +264,8 @@ function updateSlotControls() {
   const labels = selected === 3
     ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
     : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
-      : { 2: 'Delay time', 3: 'Feedback' };
+      : selected === 15 ? { 2: 'Threshold', 3: 'Pre gain', 4: 'Release', 5: 'Soft clip' }
+        : { 2: 'Delay time', 3: 'Feedback' };
   for (let id = 2; id <= 6; id++) {
     const wrapper = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
     if (!wrapper) continue;
@@ -282,9 +283,18 @@ function updateSlotControls() {
       : selected === 6
       ? id === 2 ? `${Math.round(60 * (10000 / 60) ** value).toLocaleString()} Hz`
         : id === 3 ? (0.08 + 0.92 * value).toFixed(2) : (6 * value).toFixed(2)
+      : selected === 15
+        ? id === 2 ? `${(-20 + 19 * value).toFixed(1)} dB`
+          : id === 3 ? (0.6 + 1.4 * value).toFixed(2)
+            : id === 4 ? `${(10 + 190 * value).toFixed(1)} ms` : value.toFixed(2)
       : id === 2 ? `${Math.round(40 + 740 * value)} / ${Math.round((40 + 740 * value) * 1.5)} ms`
         : (0.92 * value).toFixed(2);
   }
+  const help = byId('slot-help');
+  if (help) help.textContent = selected === 3
+    ? 'Compressor attack and release take effect when the effect is selected; changing them while selected needs a switch away and back. The old knee control has no effect.'
+    : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
+      : 'Values are stored separately for each effect type and restored when selected.';
 }
 
 function addGate(parameter) {
@@ -372,6 +382,7 @@ function renderPrimitive(family) {
   if (family === 'standalone-fx') slotValuesByType = new Map([
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
+    [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
   ]);
   if (family === 'loop-capture') loopHasTake = false;
   byId('module-title').textContent = title;
@@ -409,7 +420,8 @@ function renderPrimitive(family) {
       const value = mode.choiceValues?.[index] ?? index;
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value] : choice;
+      button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
+        : family === 'standalone-fx' ? ({ 3: 'Comp', 6: 'SVF', 8: 'Delay', 15: 'Limit' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {
@@ -461,8 +473,9 @@ function renderPrimitive(family) {
   }
   if (family === 'standalone-fx') {
     const help = document.createElement('p');
+    help.id = 'slot-help';
     help.className = 'control-help';
-    help.textContent = 'Compressor attack and release take effect when the effect is selected; changing them while selected needs a switch away and back. The old knee control has no effect on this scalar compressor.';
+    help.textContent = 'Values are stored separately for each effect type and restored when selected.';
     byId('controls').appendChild(help);
   }
   if (family === 'patch') {

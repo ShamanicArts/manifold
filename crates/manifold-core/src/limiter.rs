@@ -53,38 +53,45 @@ impl Limiter {
         set_value(&mut self.target, id, value)
     }
 
+    pub fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
+        for id in 0..PARAM_COUNT {
+            self.current[id] += (self.target[id] - self.current[id]) * self.smooth;
+        }
+        let [threshold_db, release_ms, makeup_db, soft_clip, mix] = self.current;
+        let threshold = 10.0_f32.powf(threshold_db / 20.0);
+        let makeup = 10.0_f32.powf(makeup_db / 20.0);
+        let peak = input[0].abs().max(input[1].abs());
+        let target_gain = if peak > threshold && peak > 0.0 {
+            threshold / peak
+        } else {
+            1.0
+        };
+        let release = (-1.0 / ((release_ms * 0.001).max(0.0001) * self.sample_rate)).exp();
+        if target_gain < self.gain {
+            self.gain = target_gain;
+        } else {
+            self.gain = release * self.gain + (1.0 - release) * target_gain;
+        }
+        let mut wet = [input[0] * self.gain * makeup, input[1] * self.gain * makeup];
+        if soft_clip > 0.0001 {
+            let drive = 1.0 + soft_clip * 6.0;
+            wet[0] = (wet[0] * drive).tanh() / drive;
+            wet[1] = (wet[1] * drive).tanh() / drive;
+        }
+        [
+            input[0] * (1.0 - mix) + wet[0] * mix,
+            input[1] * (1.0 - mix) + wet[1] * mix,
+        ]
+    }
+
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let [left, right] = input;
         let [out_left, out_right] = output;
         let mut reduction = 0.0;
         for frame in 0..left.len() {
-            for id in 0..PARAM_COUNT {
-                self.current[id] += (self.target[id] - self.current[id]) * self.smooth;
-            }
-            let [threshold_db, release_ms, makeup_db, soft_clip, mix] = self.current;
-            let threshold = 10.0_f32.powf(threshold_db / 20.0);
-            let makeup = 10.0_f32.powf(makeup_db / 20.0);
-            let peak = left[frame].abs().max(right[frame].abs());
-            let target_gain = if peak > threshold && peak > 0.0 {
-                threshold / peak
-            } else {
-                1.0
-            };
-            let release = (-1.0 / ((release_ms * 0.001).max(0.0001) * self.sample_rate)).exp();
-            if target_gain < self.gain {
-                self.gain = target_gain;
-            } else {
-                self.gain = release * self.gain + (1.0 - release) * target_gain;
-            }
-            let mut wet_left = left[frame] * self.gain * makeup;
-            let mut wet_right = right[frame] * self.gain * makeup;
-            if soft_clip > 0.0001 {
-                let drive = 1.0 + soft_clip * 6.0;
-                wet_left = (wet_left * drive).tanh() / drive;
-                wet_right = (wet_right * drive).tanh() / drive;
-            }
-            out_left[frame] = left[frame] * (1.0 - mix) + wet_left * mix;
-            out_right[frame] = right[frame] * (1.0 - mix) + wet_right * mix;
+            let value = self.process_sample([left[frame], right[frame]]);
+            out_left[frame] = value[0];
+            out_right[frame] = value[1];
             reduction += -20.0 * self.gain.max(0.000001).log10();
         }
         self.reduction_db = if left.is_empty() {

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "7cb702a3001388bc31792c8c4852a017ba0a052e4b0792c79859b90140d11291",
+  "sourceSha256": "855cc06cff8bb223892b7cc0a159fbaf098e03f420b270d748caab6844292281",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
@@ -223,6 +223,102 @@
       ],
       "blockSize": 128,
       "output": "compressor-to-delay.f32"
+    },
+    {
+      "id": "limiter-pre-gain",
+      "label": "Limiter pre gain and threshold",
+      "before": [
+        15,
+        0.8,
+        0.2,
+        0.7,
+        0.4,
+        0.4,
+        0.5
+      ],
+      "after": [
+        15,
+        0.8,
+        0.1,
+        0.1,
+        0.8,
+        0.4,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "limiter-pre-gain.f32"
+    },
+    {
+      "id": "limiter-soft-clip",
+      "label": "Limiter soft clip sweep",
+      "before": [
+        15,
+        1,
+        0.5,
+        0.3,
+        0.4,
+        0,
+        0.5
+      ],
+      "after": [
+        15,
+        1,
+        0.5,
+        0.3,
+        0.4,
+        1,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "limiter-soft-clip.f32"
+    },
+    {
+      "id": "filter-to-limiter",
+      "label": "Switch filter to limiter",
+      "before": [
+        6,
+        0.8,
+        0.5,
+        0.4,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        15,
+        0.8,
+        0.2,
+        0.7,
+        0.4,
+        0.4,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-limiter.f32"
+    },
+    {
+      "id": "limiter-to-compressor",
+      "label": "Switch limiter to compressor",
+      "before": [
+        15,
+        0.8,
+        0.2,
+        0.7,
+        0.4,
+        0.4,
+        0.5
+      ],
+      "after": [
+        3,
+        0.8,
+        0.15,
+        0.75,
+        0.2,
+        0.4,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "limiter-to-compressor.f32"
     }
   ]
 }

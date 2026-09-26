@@ -108,10 +108,12 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             NodeKind::EffectSlot {
                 selected,
                 mix: b,
-                params: if selected == effect_slot::SVF_TYPE {
-                    [0.5, 0.4, 0.1, 0.5, 0.5]
-                } else {
-                    [0.3, 0.3, 0.5, 0.5, 0.5]
+                params: match selected {
+                    effect_slot::COMPRESSOR_TYPE => [0.4, 0.3, 0.1, 0.3, 0.5],
+                    effect_slot::SVF_TYPE => [0.5, 0.4, 0.1, 0.5, 0.5],
+                    effect_slot::DELAY_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
+                    effect_slot::LIMITER_TYPE => [0.5, 0.3, 0.4, 0.4, 0.5],
+                    _ => unreachable!(),
                 },
             }
         }

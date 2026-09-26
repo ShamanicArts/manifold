@@ -1,0 +1,7 @@
+# Review checkpoint 24: Standalone FX type 15
+
+Date: 2026-09-26. Open the [Standalone FX slice](http://127.0.0.1:4173/?primitive=standalone-fx) and select **Limit** (the type 15 Limiter). The live panel shows threshold, pre gain, release, and soft clip from the original normalized controls; wet mix remains separate. The full effect names are available to assistive technology through the selector's labels.
+
+The Rust slot now preserves the old `GainNode → LimiterNode` signal order for type 15. Pre gain smooths over 10 ms before the limiter's linked stereo peak detection. Four new native Rust/Wasm fixtures cover a pre gain and threshold change, a soft clip sweep, and switching into and out of Limiter. The fourth normalized control is soft clip; the fifth has no setter in the old definition and is hidden in this view.
+
+All **13 slot cases** and **118 workbench cases** show Match with no page errors (76 C++, 42 native Rust). All 34 Rust tests passed. A live browser test at 1365 px and 390 px started audio with type 15 selected, displayed the five relevant sliders including wet mix, loaded the Limiter pre gain comparison as Match, and found no horizontal overflow. The [slot migration boundary](../../docs/standalone-fx-migration.md) records the exact mappings and the remaining project-level parity work. The host Chromium screenshot failure described in [checkpoint 23](checkpoint-23.md) still prevents a new capture in this session; the served page is the review surface.
