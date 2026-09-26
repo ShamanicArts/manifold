@@ -74,12 +74,24 @@ function prepareOscillator(engine, selected) {
   }
 }
 
+function prepareAdsr(engine) {
+  if (engine.manifold_graph_begin(3, 2) !== 1
+    || engine.manifold_graph_node(1, 0, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 12, 0, 0) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1) {
+    throw new Error('Wasm ADSR graph failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
   if (family === 'mixer') prepareMixer(engine, selected);
   if (family === 'voice') prepareVoice(engine);
   if (family === 'oscillator') prepareOscillator(engine, selected);
+  if (family === 'adsr') prepareAdsr(engine);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -91,11 +103,20 @@ function renderWasm(engine, family, manifest, input, selected) {
       if (engine.manifold_set_node_parameter(1, id, value) !== 1) throw new Error(`Wasm voice parameter ${id} failed`);
     }
   }
+  if (family === 'adsr') {
+    for (const [id, value] of [selected.attack, selected.decay, selected.sustain, selected.release, 1].entries()) {
+      if (engine.manifold_set_node_parameter(2, id, value) !== 1) throw new Error(`Wasm ADSR parameter ${id} failed`);
+    }
+  }
   const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), block * 2);
   const outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), block * 2);
   const rendered = new Float32Array(input.length);
   for (let offset = 0; offset < manifest.frames; offset += block) {
     const count = Math.min(block, manifest.frames - offset);
+    if (family === 'adsr' && offset === selected.gateOffFrame
+      && engine.manifold_set_node_parameter(2, 4, 0) !== 1) {
+      throw new Error('Wasm ADSR gate-off failed');
+    }
     if (offset === manifest.stepFrame) {
       let updated = 1;
       if (family === 'svf') updated = engine.manifold_set_parameter(1, selected.cutoffAfter);
@@ -185,8 +206,27 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
   let requestId = 0;
   let playbackContext = null;
   let playbackSource = null;
+  const envelopeView = (samples, start, span) => {
+    const count = 256;
+    const reduced = new Float32Array(count * 2);
+    for (let index = 0; index < count; index++) {
+      const frame = Math.min(manifest.frames - 1, start + Math.floor(index / (count - 1) * (span - 1)));
+      reduced[index * 2] = samples[frame * 2];
+      reduced[index * 2 + 1] = samples[frame * 2 + 1];
+    }
+    return reduced;
+  };
   const draw = () => {
     if (!active) return;
+    if (currentFamily === 'adsr') {
+      const span = byId('plot-window').value === 'start' ? Math.min(4096, manifest.frames) : manifest.frames;
+      const legacy = envelopeView(active.legacy, 0, span);
+      const rust = envelopeView(active.rust, 0, span);
+      const difference = envelopeView(active.difference, 0, span);
+      drawComparison(byId('comparison-wave'), [legacy, rust], 0, 256, .5, ['#e2b084', '#9a8de8']);
+      drawComparison(byId('comparison-diff'), [difference], 0, 256, Math.max(active.max * 1.15, 1e-8), ['#a4d9bb']);
+      return;
+    }
     const start = byId('plot-window').value === 'start' ? 0 : Math.max(0, active.focusFrame - 64);
     const count = Math.min(320, manifest.frames - start);
     const amplitude = Math.max(.3, ...active.legacy.slice(start * 2, (start + count) * 2).map(Math.abs));
@@ -210,17 +250,21 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
           ? `${selected.buses} buses · B gain ${selected.gain2} → ${selected.gain2After} · B pan ${selected.pan2} → ${selected.pan2After} · master ${selected.master} → ${selected.masterAfter}`
           : family === 'oscillator'
             ? `frequency ${selected.frequencyBefore} → ${selected.frequencyAfter} Hz · amplitude ${selected.amplitudeBefore} → ${selected.amplitudeAfter}`
+            : family === 'adsr'
+              ? `attack ${selected.attack} s · decay ${selected.decay} s · sustain ${selected.sustain} · release ${selected.release} s · gate off at ${selected.gateOffFrame}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
     byId('reference-title').textContent = family === 'voice' ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'voice' ? 'Note event' : 'Parameter change';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : 'Parameter change';
+    byId('plot-window').querySelector('[value="start"]').textContent = family === 'adsr' ? 'Attack detail' : 'Start';
+    byId('plot-title').textContent = family === 'adsr' ? 'Envelope shape · left channel' : 'Output waveform';
     document.querySelector('.legend-old').textContent = family === 'voice' ? 'Native Rust' : 'C++';
     document.querySelector('[data-play="legacy"]').textContent = family === 'voice' ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;
     const rust = renderWasm(engine, family, manifest, input, selected);
     const report = measure(legacy, rust);
-    active = { legacy, rust, focusFrame: selected.focusFrame ?? manifest.stepFrame, ...report };
+    active = { legacy, rust, focusFrame: selected.focusFrame ?? selected.gateOffFrame ?? manifest.stepFrame, ...report };
     byId('max-difference').textContent = report.max.toExponential(2);
     byId('rms-difference').textContent = report.rms.toExponential(2);
     const pass = report.max <= .0002;

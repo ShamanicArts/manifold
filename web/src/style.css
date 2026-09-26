@@ -57,6 +57,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .keyboard .black-key { background: #34304e; color: #e8def8; }
 .keyboard button[aria-pressed="true"] { background: #a99bed; color: #171526; }
 .control-stack { display: grid; gap: 9px; }
+.gate-button { height: 34px; border: 1px solid #526170; border-radius: 4px; background: #263441; color: #d8e2e8; font-size: 12px; font-weight: 650; }
+.gate-button[aria-pressed="true"] { background: #514b7e; border-color: #9f93e8; color: #fff; }
 .compact-slider { height: 32px; display: flex; align-items: center; justify-content: space-between; position: relative; isolation: isolate; padding: 0 10px; border-radius: 3px; background: #27283e; overflow: hidden; color: #f1eef8; cursor: ew-resize; user-select: none; }
 .compact-slider::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--fill); background: #806fbd; z-index: -1; }
 .compact-slider span, .compact-slider output { font-size: 12px; font-weight: 600; text-shadow: 0 1px 2px #10111e; }

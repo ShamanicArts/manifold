@@ -2,6 +2,7 @@
 //! Routing is explicit: a graph without a route to Output emits silence.
 
 use crate::Filter;
+use crate::envelope::AdsrEnvelope;
 use crate::events::{EventError, EventKind, TimedEvent};
 use crate::oscillator::Oscillator;
 use crate::voice::VoiceSynth;
@@ -46,6 +47,7 @@ pub enum NodeKind {
         amplitude: f32,
         waveform: u32,
     },
+    AdsrEnvelope,
     Output,
 }
 
@@ -59,7 +61,7 @@ impl NodeKind {
             | Self::Oscillator { .. } => 0,
             Self::Sum2 { .. } | Self::LinearBlend { .. } | Self::Crossfader { .. } => 2,
             Self::Mixer { inputs, .. } => *inputs,
-            Self::Gain { .. } | Self::Svf | Self::Output => 1,
+            Self::Gain { .. } | Self::Svf | Self::AdsrEnvelope | Self::Output => 1,
         }
     }
 
@@ -163,6 +165,7 @@ enum Kernel {
     Svf(Filter),
     VoiceSynth(VoiceSynth),
     Oscillator(Oscillator),
+    AdsrEnvelope(AdsrEnvelope),
     Output,
 }
 
@@ -252,6 +255,7 @@ impl Kernel {
                 *amplitude,
                 *waveform,
             )),
+            NodeKind::AdsrEnvelope => Self::AdsrEnvelope(AdsrEnvelope::new(sample_rate)),
             NodeKind::Output => Self::Output,
         }
     }
@@ -285,6 +289,7 @@ impl Kernel {
             (Self::Svf(filter), id) => return filter.set_parameter(id, value),
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
+            (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
             _ => return false,
         }
         true
@@ -644,6 +649,15 @@ impl ExecutionPlan {
                         let value = oscillator.process_sample();
                         left[frame] = value;
                         right[frame] = value;
+                    }
+                }
+                Kernel::AdsrEnvelope(envelope) => {
+                    let from_left = source(0, 0);
+                    let from_right = source(0, 1);
+                    for frame in 0..frames {
+                        let level = envelope.process_sample();
+                        left[frame] = from_left[frame] * level;
+                        right[frame] = from_right[frame] * level;
                     }
                 }
                 Kernel::Output => {

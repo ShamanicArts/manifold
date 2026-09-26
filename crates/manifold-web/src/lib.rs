@@ -78,6 +78,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             amplitude: b,
             waveform: 0,
         },
+        12 => NodeKind::AdsrEnvelope,
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {

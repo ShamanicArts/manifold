@@ -4,6 +4,7 @@ import crossfaderProject from '../../projects/crossfader/project.json';
 import mixerProject from '../../projects/mixer/project.json';
 import voiceProject from '../../projects/voice-synth/project.json';
 import oscillatorProject from '../../projects/oscillator/project.json';
+import adsrProject from '../../projects/adsr/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum } from './reference/plots.js';
@@ -41,6 +42,12 @@ const projects = {
     title: 'Oscillator',
     description: 'The original standard waveform generator, ported to Rust with frequency and amplitude smoothing. This view covers five scalar modes.',
     signal: 'Audio path: oscillator → stereo output',
+  },
+  adsr: {
+    project: adsrProject,
+    title: 'ADSR envelope',
+    description: 'Shape a stereo signal with attack, decay, sustain and release. The Rust gate also releases during attack or decay.',
+    signal: 'Audio path: oscillator → ADSR → stereo output',
   },
 };
 const initial = new URL(location.href).searchParams.get('primitive');
@@ -87,6 +94,22 @@ function addSlider(parameter) {
   byId('controls').appendChild(wrapper);
 }
 
+function addGate(parameter) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'gate-button';
+  button.setAttribute('aria-pressed', 'false');
+  button.textContent = 'Open gate';
+  button.addEventListener('click', () => {
+    const next = values.get(parameter.id) ? 0 : 1;
+    values.set(parameter.id, next);
+    audio.setParameter(parameter.id, next);
+    button.setAttribute('aria-pressed', String(next === 1));
+    button.textContent = next ? 'Close gate' : 'Open gate';
+  });
+  byId('controls').appendChild(button);
+}
+
 function renderPrimitive(family) {
   const { project, title, description, signal } = projects[family];
   const isInstrument = project.signal.inputSource === 'none';
@@ -104,7 +127,7 @@ function renderPrimitive(family) {
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
   byId('mode-label').textContent = family === 'voice' || family === 'oscillator' ? 'Waveform' : 'Mode';
-  byId('input-label').textContent = family === 'voice' || family === 'oscillator' ? 'Instrument' : 'Live input';
+  byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   byId('keyboard-section').hidden = family !== 'voice';
   if (mode) {
     byId('modes').style.gridTemplateColumns = `repeat(${mode.choices.length}, minmax(0, 1fr))`;
@@ -123,13 +146,16 @@ function renderPrimitive(family) {
       return button;
     });
   }
-  for (const parameter of project.parameters.filter((item) => item.kind !== 'choice')) addSlider(parameter);
+  for (const parameter of project.parameters.filter((item) => item.kind !== 'choice')) {
+    if (parameter.kind === 'gate') addGate(parameter);
+    else addSlider(parameter);
+  }
   byId('source').hidden = isInstrument;
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
   document.querySelector('.measurement-hint').textContent = family === 'voice'
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
-    : family === 'oscillator'
-      ? 'Start the oscillator to view its spectrum. The C++ comparisons below run offline.'
+    : family === 'oscillator' || family === 'adsr'
+      ? 'Start the instrument to view its spectrum. The C++ comparisons below run offline.'
     : 'Start audio to view the output spectrum. The reference cases below run offline.';
   if (family === 'svf') {
     const help = document.createElement('p');
@@ -233,11 +259,11 @@ toggle.addEventListener('click', async () => {
       ? isInstrument ? 'Stop instrument' : 'Stop audio'
       : isInstrument ? 'Start instrument' : 'Start audio';
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' ? 'Spectrum of the oscillator.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'voice'
         ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
-        : activeFamily === 'oscillator'
-          ? 'Start the oscillator to view its spectrum. The C++ comparisons below run offline.'
+        : activeFamily === 'oscillator' || activeFamily === 'adsr'
+          ? 'Start the instrument to view its spectrum. The C++ comparisons below run offline.'
         : 'Start audio to view the output spectrum. The reference cases below run offline.';
     if (spectrumFrame) cancelAnimationFrame(spectrumFrame);
     animateSpectrum();

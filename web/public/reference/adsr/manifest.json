@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "reference": "legacy C++ ADSREnvelopeNode.cpp scalar gate cycle",
+  "sourceSha256": "fd63bd777a5f550ff961028c7d1d5712b72f8ed10a082800154b1dfff0167885",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default curve",
+      "attack": 0.05,
+      "decay": 0.2,
+      "sustain": 0.7,
+      "release": 0.4,
+      "gateOffFrame": 14336,
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "pluck",
+      "label": "Pluck",
+      "attack": 0.005,
+      "decay": 0.02,
+      "sustain": 0.15,
+      "release": 0.06,
+      "gateOffFrame": 8192,
+      "blockSize": 128,
+      "output": "pluck.f32"
+    },
+    {
+      "id": "pad",
+      "label": "Soft onset",
+      "attack": 0.03,
+      "decay": 0.05,
+      "sustain": 0.8,
+      "release": 0.15,
+      "gateOffFrame": 8192,
+      "blockSize": 128,
+      "output": "pad.f32"
+    },
+    {
+      "id": "short-block",
+      "label": "64-frame blocks",
+      "attack": 0.01,
+      "decay": 0.02,
+      "sustain": 0.5,
+      "release": 0.08,
+      "gateOffFrame": 8192,
+      "blockSize": 64,
+      "output": "short-block.f32"
+    },
+    {
+      "id": "long-block",
+      "label": "512-frame blocks",
+      "attack": 0.01,
+      "decay": 0.02,
+      "sustain": 0.5,
+      "release": 0.08,
+      "gateOffFrame": 8192,
+      "blockSize": 512,
+      "output": "long-block.f32"
+    }
+  ]
+}
