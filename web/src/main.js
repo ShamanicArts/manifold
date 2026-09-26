@@ -48,6 +48,7 @@ import { MidiHoldState } from './audio/midi-hold.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars, drawEqResponse } from './reference/plots.js';
 import { captureStandaloneFxState, parseStandaloneFxState } from './state/standalone-fx.js';
+import { captureControlPatchState, parseControlPatchState } from './state/control-patch.js';
 
 const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
@@ -321,6 +322,7 @@ let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
 let values = new Map();
 let activeProject = null;
 const patchedSignals = new Map();
+const patchedParameterValues = new Map();
 let slotValuesByType = new Map();
 let loopHasTake = false;
 let loadedSample = null;
@@ -939,6 +941,8 @@ function renderPatchEditor(project) {
   const rows = byId('patch-rows');
   rows.replaceChildren();
   if (!project.patch) return;
+  byId('patch-state-file').disabled = audio.running;
+  byId('patch-state-status').textContent = 'Save routes and controls for this patch.';
   const refresh = () => {
     const connected = project.patch.inputs.filter((input) => project.signal.connections.some((edge) =>
       edge.to === input.to && edge.inputPort === input.inputPort)).length;
@@ -984,6 +988,63 @@ function renderPatchEditor(project) {
     rows.appendChild(row);
   }
   refresh();
+}
+
+byId('patch-state-export').addEventListener('click', () => {
+  if (!activeProject?.patch) return;
+  const readout = byId('patch-state-status');
+  try {
+    const state = captureControlPatchState(activeProject, values);
+    const url = URL.createObjectURL(new Blob([`${JSON.stringify(state, null, 2)}\n`], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'manifold-cv-rack-patch.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    readout.textContent = `Saved ${state.routes.length} routes and ${Object.keys(state.parameters).length} controls.`;
+  } catch (error) {
+    readout.textContent = `Patch unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('patch-state-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('patch-state-status');
+  try {
+    if (!activeProject?.patch || audio.running) throw new Error('Stop the control patch before opening a state.');
+    if (file.size > 1024 * 1024) throw new Error('Patch JSON must be smaller than 1 MB.');
+    const project = activeProject;
+    const contents = await file.text();
+    if (activeProject !== project || audio.running) throw new Error('Patch view changed while opening the state.');
+    const state = parseControlPatchState(JSON.parse(contents), project);
+    const ports = new Set(activeProject.patch.inputs.map((port) => `${port.to}:${port.inputPort}`));
+    activeProject.signal.connections = activeProject.signal.connections.filter((edge) => !ports.has(`${edge.to}:${edge.inputPort}`));
+    for (const route of state.routes) {
+      if (route.from !== null) activeProject.signal.connections.push({ from: route.from, to: route.to, inputPort: route.inputPort });
+      const select = byId('patch-rows').querySelector(`select[data-to="${route.to}"][data-port="${route.inputPort}"]`);
+      if (select) select.value = route.from === null ? '' : String(route.from);
+    }
+    applyPatchParameterValues(activeProject, state.parameters);
+    byId('patch-section').refreshStatus();
+    readout.textContent = `Opened ${file.name} · ${state.routes.length} routes and ${Object.keys(state.parameters).length} controls.`;
+  } catch (error) {
+    readout.textContent = `Patch unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    event.target.value = '';
+  }
+});
+
+function applyPatchParameterValues(project, parameters) {
+  for (const parameter of project.parameters) {
+    const value = parameters[parameter.hostId];
+    values.set(parameter.id, value);
+    if (parameter.kind === 'choice') {
+      const choices = parameter.choiceValues ?? parameter.choices.map((_, index) => index);
+      byId('modes').querySelectorAll('button').forEach((button, index) => {
+        button.setAttribute('aria-pressed', String(choices[index] === value));
+      });
+    } else byId('controls').querySelector(`[data-parameter-id="${parameter.id}"]`)?.syncValue(value);
+  }
 }
 
 function renderPrimitive(family) {
@@ -1127,6 +1188,9 @@ function renderPrimitive(family) {
     else if (parameter.kind === 'toggle') addToggle(parameter);
     else if (parameter.kind === 'select') addSelect(parameter);
     else addSlider(parameter);
+  }
+  if (project.patch && patchedParameterValues.has(family)) {
+    applyPatchParameterValues(activeProject, patchedParameterValues.get(family));
   }
   if (family === 'eq8') renderEq8Controls();
   updateSlotControls();
@@ -1401,6 +1465,9 @@ async function selectPrimitive(family, updateUrl = true) {
     toggle.textContent = 'Start audio';
   }
   stopMonitoring();
+  if (activeProject?.patch) {
+    patchedParameterValues.set(activeFamily, Object.fromEntries(activeProject.parameters.map((parameter) => [parameter.hostId, values.get(parameter.id)])));
+  }
   renderPrimitive(family);
   if (updateUrl) {
     const url = new URL(location.href);
@@ -1639,6 +1706,7 @@ toggle.addEventListener('click', async () => {
     if (!audio.running) byId('controls').querySelectorAll('.has-effective').forEach((slider) => slider.setEffective(null));
     byId('sample-file').disabled = audio.running;
     byId('slot-state-file').disabled = audio.running;
+    byId('patch-state-file').disabled = audio.running;
     byId('granulator-file').disabled = audio.running;
     byId('granulator-clear-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running

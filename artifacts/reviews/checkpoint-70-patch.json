@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "projectId": "manifold.cv-rack",
+  "routes": [
+    {
+      "to": 4,
+      "inputPort": 0,
+      "from": 2
+    },
+    {
+      "to": 4,
+      "inputPort": 1,
+      "from": 3
+    },
+    {
+      "to": 5,
+      "inputPort": 0,
+      "from": 4
+    },
+    {
+      "to": 7,
+      "inputPort": 0,
+      "from": 2
+    },
+    {
+      "to": 7,
+      "inputPort": 1,
+      "from": null
+    },
+    {
+      "to": 7,
+      "inputPort": 2,
+      "from": null
+    },
+    {
+      "to": 7,
+      "inputPort": 3,
+      "from": null
+    },
+    {
+      "to": 8,
+      "inputPort": 1,
+      "from": 7
+    }
+  ],
+  "parameters": {
+    "hold-mode": 1,
+    "source-rate": 2,
+    "trigger-rate": 8,
+    "amount": -0.7,
+    "bias": 0.1,
+    "held-level": 0.8,
+    "free-level": 0.25,
+    "offset": 0.1,
+    "base": 1.5,
+    "depth": 0.5
+  }
+}

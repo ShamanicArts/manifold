@@ -1,0 +1,18 @@
+{
+  "download": "manifold-cv-rack-patch.json",
+  "routes": 8,
+  "controls": 10,
+  "restored": {
+    "mixOne": "2",
+    "mixTwo": "",
+    "mode": "Track",
+    "base": "1.50"
+  },
+  "rejection": "Patch unavailable: Invalid or repeated control route 7:0.",
+  "unchanged": "2",
+  "rememberedBase": "1.50",
+  "rememberedMixOne": "2",
+  "liveStatus": "Audio running · instrument · 48 kHz",
+  "importDisabled": true,
+  "errors": []
+}
