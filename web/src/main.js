@@ -31,6 +31,7 @@ import resonatorProject from '../../projects/resonator/project.json';
 import sineBankProject from '../../projects/sine-bank/project.json';
 import mainSampleBlendProject from '../../projects/main-sample-blend/project.json';
 const mainSampleBlendInitialPartials = structuredClone(mainSampleBlendProject.partials);
+const mainSampleBlendInitialExtraPartials = structuredClone(mainSampleBlendProject.extraPartials);
 import reverseDelayProject from '../../projects/reverse-delay/project.json';
 import stutterProject from '../../projects/stutter/project.json';
 import pitchShifterProject from '../../projects/pitch-shifter/project.json';
@@ -270,8 +271,8 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: a base wave and the processed sample meet in an equal-power crossfade. The sample also drives a phrase follower for the prepared Add or Morph Sine bank. Base and additive branches then share the output mixer.',
-    signal: 'Wave + file → sample region → vocoder → base crossfade · raw sample → envelope control · temporal worker → prepared Sine bank → phrase gain · mixer → output',
+    description: 'An authored Main sample synth slice: a base wave and the processed sample meet in an equal-power crossfade. Separately prepared wave and source spectra meet in a second crossfade, then follow the sample phrase envelope. Base and additive branches share the output mixer.',
+    signal: 'Wave + file → sample region → vocoder → base crossfade · worker → wave/source Sine banks → Add crossfade → phrase gain · mixer → output',
   },
   'reverse-delay': {
     project: reverseDelayProject,
@@ -1408,6 +1409,7 @@ function renderPrimitive(family) {
     phraseReferenceAuto = true;
     sineTargetActive = false;
     activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+    activeProject.extraPartials = structuredClone(mainSampleBlendInitialExtraPartials);
     byId('sine-target-bars').replaceChildren();
     byId('sine-target-status').textContent = 'Select a target after analysis.';
   }
@@ -2024,6 +2026,7 @@ byId('sine-use-demo').addEventListener('click', () => {
   phraseReferenceAuto = true;
   sineTargetActive = false;
   if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+  if (activeFamily === 'main-sample-blend') activeProject.extraPartials = structuredClone(mainSampleBlendInitialExtraPartials);
   byId('sine-target-bars').replaceChildren();
   byId('sine-target-status').textContent = 'Select a target after analysis.';
   renderSineSourceAnalysis();
@@ -2043,6 +2046,7 @@ byId('sine-source-file').addEventListener('change', async (event) => {
     phraseReferenceAuto = true;
     sineTargetActive = false;
     if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+    if (activeFamily === 'main-sample-blend') activeProject.extraPartials = structuredClone(mainSampleBlendInitialExtraPartials);
     byId('sine-target-bars').replaceChildren();
     byId('sine-target-status').textContent = 'Select a target after analysis.';
     renderSineSourceAnalysis();
@@ -2061,6 +2065,10 @@ function applyPreparedSineTarget(data, mode) {
   const pitch = pitched ? Math.max(40, Math.min(1600, loadedSineSource.temporal.fundamental)) : 440;
   activeProject.partials = { nodeId: activeProject.partials.nodeId, fundamental: bankRoot, values: Array.from(data.values) };
   audio.setPartials(activeProject.partials);
+  if (activeFamily === 'main-sample-blend' && data.waveValues) {
+    activeProject.extraPartials = [{ nodeId: 13, fundamental: 1, values: Array.from(data.waveValues) }];
+    audio.setPartials(activeProject.extraPartials[0]);
+  }
   if (sinePitchSource !== loadedSineSource) {
     values.set(0, pitch);
     byId('controls').querySelector('[data-parameter-id="0"]')?.syncValue(pitch);
@@ -2087,7 +2095,7 @@ function requestPreparedSineTarget() {
   pendingSineTargets.set(id, { source, mode: selectedMode });
   byId('sine-target-status').textContent = 'Preparing target in Rust/Wasm…';
   sineAnalysisWorker.postMessage({ type: 'prepare-target', id, sourceId: source.temporalJobId,
-    mode, position: Number(byId('sine-position').value),
+    mode, includeWave: activeFamily === 'main-sample-blend', position: Number(byId('sine-position').value),
     smooth: Number(byId('sine-smooth').value), contrast: Number(byId('sine-contrast').value), recipe }, [recipe.buffer]);
 }
 let sineTargetRequestFrame = null;
@@ -2179,6 +2187,7 @@ byId('main-state-file').addEventListener('change', async (event) => {
     mainStateRestoring = sineTargetActive;
     byId('audio-toggle').disabled = mainStateRestoring;
     activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+    activeProject.extraPartials = structuredClone(mainSampleBlendInitialExtraPartials);
     const demo = demoSample();
     loadedSineSource = state.source.kind === 'builtin'
       ? { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' }

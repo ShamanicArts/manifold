@@ -41,25 +41,27 @@ subprocess.run([legacy_follower, str(sample_path),
                 "5", "5", "80", "80", "2", "2", "40", "40", "0", "0",
                 str(source_rate), str(block), str(frames // 2), str(frames)], check=True)
 cases = []
-for case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave in [
-    ("sample", "Sample branch alone · dry vocoder", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1]),
-    ("add", "Add branch alone", 1, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1]),
-    ("morph", "Morph branch alone", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1]),
-    ("blend", "Sample + Morph at equal gain", 2, 0.5, 0.5, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1]),
-    ("pvoc-bin", "Sample · bin-map +7 st", 1, 1.0, 0.0, [0, 7, 1, 1, 11], [0, .18], [220, 0, 1, 1]),
-    ("pvoc-hq", "Sample · stretch/resample +7 st", 1, 1.0, 0.0, [1, 7, 1, 1, 11], [0, .18], [220, 0, 1, 1]),
-    ("pvoc-time", "Sample · 1.5× time stretch", 1, 1.0, 0.0, [1, 0, 1.5, 1, 11], [0, .18], [220, 0, 1, 1]),
-    ("phrase-full", "Morph · full sample phrase contour", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [1, .18], [220, 0, 1, 1]),
-    ("phrase-half", "Morph · half phrase contour", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [.5, .18], [220, 0, 1, 1]),
-    ("wave-only", "Saw wave base alone", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, .35, 1, -1]),
-    ("wave-sample-mid", "Equal-power wave/sample centre", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, .35, 1, 0]),
-    ("wave-sample-morph", "Wave/sample base plus Morph bank", 2, .7, .5, [0, 0, 1, 0, 11], [0, .18], [330, .35, 3, -.35]),
+for case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave, add_blend in [
+    ("sample", "Sample branch alone · dry vocoder", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1),
+    ("add", "Add branch alone", 1, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1),
+    ("morph", "Morph branch alone", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1),
+    ("blend", "Sample + Morph at equal gain", 2, 0.5, 0.5, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 1),
+    ("pvoc-bin", "Sample · bin-map +7 st", 1, 1.0, 0.0, [0, 7, 1, 1, 11], [0, .18], [220, 0, 1, 1], 1),
+    ("pvoc-hq", "Sample · stretch/resample +7 st", 1, 1.0, 0.0, [1, 7, 1, 1, 11], [0, .18], [220, 0, 1, 1], 1),
+    ("pvoc-time", "Sample · 1.5× time stretch", 1, 1.0, 0.0, [1, 0, 1.5, 1, 11], [0, .18], [220, 0, 1, 1], 1),
+    ("phrase-full", "Morph · full sample phrase contour", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [1, .18], [220, 0, 1, 1], 1),
+    ("phrase-half", "Morph · half phrase contour", 2, 0.0, 1.0, [0, 0, 1, 0, 11], [.5, .18], [220, 0, 1, 1], 1),
+    ("wave-only", "Saw wave base alone", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, .35, 1, -1], 1),
+    ("wave-sample-mid", "Equal-power wave/sample centre", 1, 1.0, 0.0, [0, 0, 1, 0, 11], [0, .18], [220, .35, 1, 0], 1),
+    ("wave-sample-morph", "Wave/sample base plus Morph bank", 2, .7, .5, [0, 0, 1, 0, 11], [0, .18], [330, .35, 3, -.35], 1),
+    ("add-wave", "Wave-derived additive A", 1, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], -1),
+    ("add-mid", "Wave/source additive centre", 1, 0.0, 1.0, [0, 0, 1, 0, 11], [0, .18], [220, 0, 1, 1], 0),
 ]:
     output, target = f"{case_id}.f32", f"{case_id}-target.f32"
     subprocess.run([runner, str(sample_path), str(OUT / output), str(OUT / target), str(mode),
-                    str(sample_gain), str(bank_gain), str(frames), *map(str, pvoc), *map(str, phrase), *map(str, wave)], check=True)
+                    str(sample_gain), str(bank_gain), str(frames), *map(str, pvoc), *map(str, phrase), *map(str, wave), str(add_blend)], check=True)
     cases.append({"id": case_id, "label": label, "mode": mode, "sampleGain": sample_gain,
-                  "bankGain": bank_gain, "vocoder": pvoc, "phrase": phrase, "wave": wave,
+                  "bankGain": bank_gain, "vocoder": pvoc, "phrase": phrase, "wave": wave, "addBlend": add_blend,
                   "target": target, "output": output, "followerMeter": follower_meters,
                   "blockSize": block})
 (OUT / "manifest.json").write_text(json.dumps({
@@ -67,6 +69,6 @@ for case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave in [
     "legacyFollowerSha256": hashlib.sha256((LEGACY / "dsp/core/nodes/EnvelopeFollowerNode.cpp").read_bytes()).hexdigest(),
     "sampleRate": source_rate, "sampleSourceRate": source_rate, "sampleFrames": sample_frames,
     "sample": "source.f32", "channels": 2, "frames": frames, "stepFrame": frames // 2,
-    "input": "input.f32", "cases": cases,
+    "input": "input.f32", "waveTarget": "wave-target.f32", "cases": cases,
 }, indent=2) + "\n")
 print(f"Wrote {len(cases)} native Rust Main sample blend cases to {OUT}")

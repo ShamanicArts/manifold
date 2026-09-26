@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Main sample blend study",
-  "sourceSha256": "551f32a4cd83194d9fd2a25d393db5928b634e23be19b7e414047a3007ccf0bb",
+  "sourceSha256": "01f95e29db886b87d6f5c9418ebebbbf4eb5bc9e7f871172bd4a379d8f7ce460",
   "legacyFollowerSha256": "6cfff621f1756af991de4765823a3da82ad9dc950d2008fb5e5846ceb6cb8f18",
   "sampleRate": 48000,
   "sampleSourceRate": 48000,
@@ -11,6 +11,7 @@
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
+  "waveTarget": "wave-target.f32",
   "cases": [
     {
       "id": "sample",
@@ -35,6 +36,7 @@
         1,
         1
       ],
+      "addBlend": 1,
       "target": "sample-target.f32",
       "output": "sample.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -63,6 +65,7 @@
         1,
         1
       ],
+      "addBlend": 1,
       "target": "add-target.f32",
       "output": "add.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -91,6 +94,7 @@
         1,
         1
       ],
+      "addBlend": 1,
       "target": "morph-target.f32",
       "output": "morph.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -119,6 +123,7 @@
         1,
         1
       ],
+      "addBlend": 1,
       "target": "blend-target.f32",
       "output": "blend.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -147,6 +152,7 @@
         1,
         1
       ],
+      "addBlend": 1,
       "target": "pvoc-bin-target.f32",
       "output": "pvoc-bin.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -175,6 +181,7 @@
         1,
         1
       ],
+      "addBlend": 1,
       "target": "pvoc-hq-target.f32",
       "output": "pvoc-hq.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -203,6 +210,7 @@
         1,
         1
       ],
+      "addBlend": 1,
       "target": "pvoc-time-target.f32",
       "output": "pvoc-time.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -231,6 +239,7 @@
         1,
         1
       ],
+      "addBlend": 1,
       "target": "phrase-full-target.f32",
       "output": "phrase-full.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -259,6 +268,7 @@
         1,
         1
       ],
+      "addBlend": 1,
       "target": "phrase-half-target.f32",
       "output": "phrase-half.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -287,6 +297,7 @@
         1,
         -1
       ],
+      "addBlend": 1,
       "target": "wave-only-target.f32",
       "output": "wave-only.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -315,6 +326,7 @@
         1,
         0
       ],
+      "addBlend": 1,
       "target": "wave-sample-mid-target.f32",
       "output": "wave-sample-mid.f32",
       "followerMeter": "follower-meters-cpp.f32",
@@ -343,8 +355,67 @@
         3,
         -0.35
       ],
+      "addBlend": 1,
       "target": "wave-sample-morph-target.f32",
       "output": "wave-sample-morph.f32",
+      "followerMeter": "follower-meters-cpp.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "add-wave",
+      "label": "Wave-derived additive A",
+      "mode": 1,
+      "sampleGain": 0.0,
+      "bankGain": 1.0,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
+      "phrase": [
+        0,
+        0.18
+      ],
+      "wave": [
+        220,
+        0,
+        1,
+        1
+      ],
+      "addBlend": -1,
+      "target": "add-wave-target.f32",
+      "output": "add-wave.f32",
+      "followerMeter": "follower-meters-cpp.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "add-mid",
+      "label": "Wave/source additive centre",
+      "mode": 1,
+      "sampleGain": 0.0,
+      "bankGain": 1.0,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
+      "phrase": [
+        0,
+        0.18
+      ],
+      "wave": [
+        220,
+        0,
+        1,
+        1
+      ],
+      "addBlend": 0,
+      "target": "add-mid-target.f32",
+      "output": "add-mid.f32",
       "followerMeter": "follower-meters-cpp.f32",
       "blockSize": 128
     }

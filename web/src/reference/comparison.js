@@ -636,12 +636,14 @@ function prepareSineBank(engine, selected) {
 function prepareMainSampleBlend(engine, selected) {
   const nodes = [[2, 26, 0, 0], [6, 62, 0, 0], [7, 23, 5, 80],
     [11, 11, selected.wave[0], selected.wave[1]], [12, 8, selected.wave[3], 1],
-    [3, 61, 220, .5], [8, 63, ...selected.phrase], [4, 9, 2, 1], [5, 7, 0, 0]];
-  const edges = [[2, 6, 0], [2, 7, 0], [11, 12, 0], [6, 12, 1], [12, 4, 0], [3, 8, 0], [7, 8, 1], [8, 4, 1], [4, 5, 0]];
+    [3, 61, 220, .5], [13, 61, 220, .5], [14, 8, selected.addBlend, 1],
+    [8, 63, ...selected.phrase], [4, 9, 2, 1], [5, 7, 0, 0]];
+  const edges = [[2, 6, 0], [2, 7, 0], [11, 12, 0], [6, 12, 1], [12, 4, 0],
+    [13, 14, 0], [3, 14, 1], [14, 8, 0], [7, 8, 1], [8, 4, 1], [4, 5, 0]];
   if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Main blend graph begin failed');
   for (const node of nodes) if (engine.manifold_graph_node(...node) !== 1) throw new Error(`Main blend node ${node[0]} failed`);
   for (const edge of edges) if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Main blend edge failed');
-  for (const [node, id, value] of [[4, 1, selected.sampleGain], [4, 2, selected.bankGain], [3, 0, 220], [3, 1, .5], [3, 2, 1], [7, 2, 2], [7, 3, 40], [11, 0, selected.wave[2]]]) {
+  for (const [node, id, value] of [[4, 1, selected.sampleGain], [4, 2, selected.bankGain], [3, 0, 220], [3, 1, .5], [3, 2, 1], [13, 0, 220], [13, 1, .5], [13, 2, 1], [7, 2, 2], [7, 3, 40], [11, 0, selected.wave[2]]]) {
     if (engine.manifold_graph_initial_parameter(node, id, value) !== 1) throw new Error('Main blend initial parameter failed');
   }
   selected.vocoder.forEach((value, id) => {
@@ -733,6 +735,9 @@ export function renderWasm(engine, family, manifest, input, selected) {
     if (engine.manifold_partials_begin(3, selected.targetData.length / 4, 1) !== 1) throw new Error('Main partial upload begin failed');
     new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), selected.targetData.length).set(selected.targetData);
     if (engine.manifold_partials_commit() !== 1) throw new Error('Main partial commit failed');
+    if (engine.manifold_partials_begin(13, manifest.waveTargetData.length / 4, 1) !== 1) throw new Error('Main wave partial upload begin failed');
+    new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), manifest.waveTargetData.length).set(manifest.waveTargetData);
+    if (engine.manifold_partials_commit() !== 1) throw new Error('Main wave partial commit failed');
     if (engine.manifold_set_node_parameter(2, 6, 1) !== 1) throw new Error('Main sample play failed');
   }
   if (family === 'granulator' && selected.source) {
@@ -1074,6 +1079,10 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
         if (next.sampleData.length !== next.sampleFrames * 2) throw new Error('Invalid sample fixture size');
       }
       if (family === 'main-sample-blend') {
+        next.waveTargetData = await loadFloat32(family, next.waveTarget);
+        if (next.waveTargetData.length === 0 || next.waveTargetData.length > 128 || next.waveTargetData.length % 4 !== 0) {
+          throw new Error('Invalid Main wave partial target');
+        }
         for (const entry of next.cases) {
           entry.targetData = await loadFloat32(family, entry.target);
           if (entry.targetData.length === 0 || entry.targetData.length > 128 || entry.targetData.length % 4 !== 0) {
@@ -1312,7 +1321,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                     : family === 'sample-instrument'
                       ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · root ${selected.parameters[0]} · keytrack ${selected.parameters[1]} · ${selected.events.length} note events · ${selected.changes.length} control changes`
                     : family === 'main-sample-blend'
-                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · ${selected.mode === 1 ? 'Add' : 'Morph'} target · ${selected.vocoder[3] ? `${selected.vocoder[0] ? 'HQ' : 'bin'} vocoder ${selected.vocoder[1]} st` : 'dry sample'} · base blend ${selected.wave[3]} · wave level ${selected.wave[1]} · base gain ${selected.sampleGain} · bank gain ${selected.bankGain} · phrase contour ${selected.phrase[0]}`
+                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · ${selected.mode === 1 ? 'Add' : 'Morph'} target · ${selected.vocoder[3] ? `${selected.vocoder[0] ? 'HQ' : 'bin'} vocoder ${selected.vocoder[1]} st` : 'dry sample'} · base blend ${selected.wave[3]} · additive blend ${selected.addBlend} · base gain ${selected.sampleGain} · bank gain ${selected.bankGain} · phrase contour ${selected.phrase[0]}`
                     : family === 'phase-vocoder'
                       ? `${selected.before[0] ? 'stretch + resample' : 'bin mapping'} · ${selected.before[1]} st · ${selected.before[2]}× time · ${1 << selected.before[4]} FFT · ${selected.before[3]} wet`
                     : family === 'fft-spectrum'

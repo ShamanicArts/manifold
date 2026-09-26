@@ -10,8 +10,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 19 {
-        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND".into());
+    if args.len() != 20 {
+        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND ADD_BLEND".into());
     }
     let sample: Vec<f32> = std::fs::read(&args[1])?
         .chunks_exact(4)
@@ -35,6 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wave_level: f32 = args[16].parse()?;
     let wave_shape: u32 = args[17].parse()?;
     let base_blend: f32 = args[18].parse()?;
+    let add_blend: f32 = args[19].parse()?;
     let analysis = analyze_temporal_stereo(&sample, 48_000.0, 0..sample_frames, 128)
         .ok_or("source analysis failed")?;
     let source = analysis.partials_at(0.5, 0.6, 0.5);
@@ -77,6 +78,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     std::fs::File::create(&args[3])?.write_all(&target_bytes)?;
+    let wave_target = build_wave_recipe(WaveRecipe {
+        waveform: 1,
+        count: 8,
+        tilt: 0.0,
+        drift: 0.0,
+        pulse_width: 0.5,
+    });
+    let mut wave_bytes = Vec::with_capacity(wave_target.count * 16);
+    for partial in &wave_target.partials[..wave_target.count] {
+        for value in [
+            partial.frequency,
+            partial.amplitude,
+            partial.phase,
+            partial.decay_rate,
+        ] {
+            wave_bytes.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+    std::fs::write(
+        std::path::Path::new(&args[3]).with_file_name("wave-target.f32"),
+        wave_bytes,
+    )?;
 
     let mut bank = DEFAULTS;
     bank[0] = 220.0;
@@ -90,6 +113,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             NodeSpec {
                 id: 3,
                 kind: NodeKind::SineBank { params: bank },
+            },
+            NodeSpec {
+                id: 13,
+                kind: NodeKind::SineBank { params: bank },
+            },
+            NodeSpec {
+                id: 14,
+                kind: NodeKind::Crossfader {
+                    position: add_blend,
+                    curve: 1.0,
+                    mix: 1.0,
+                },
             },
             NodeSpec {
                 id: 11,
@@ -169,7 +204,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 input_port: 0,
             },
             Connection {
+                from: 13,
+                to: 14,
+                input_port: 0,
+            },
+            Connection {
                 from: 3,
+                to: 14,
+                input_port: 1,
+            },
+            Connection {
+                from: 14,
                 to: 8,
                 input_port: 0,
             },
@@ -191,7 +236,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
     }
     .compile(48_000.0, 128)?;
-    if !plan.load_sample_stereo(2, sample, 48_000.0) || !plan.load_partials(3, target) {
+    if !plan.load_sample_stereo(2, sample, 48_000.0)
+        || !plan.load_partials(3, target)
+        || !plan.load_partials(13, wave_target)
+    {
         return Err("source or target upload failed".into());
     }
     assert!(plan.set_parameter(2, 6, 1.0));

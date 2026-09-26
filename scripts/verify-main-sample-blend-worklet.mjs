@@ -17,6 +17,10 @@ const { instance: { exports: analysis } } = await WebAssembly.instantiate(wasmBy
 assert.equal(analysis.manifold_analysis_begin(sourceRate, sourceRate), 1);
 new Float32Array(analysis.memory.buffer, analysis.manifold_analysis_ptr(), stereo.length).set(stereo);
 assert.equal(analysis.manifold_analysis_run_temporal(0, sourceRate, 128), 1);
+assert.equal(analysis.manifold_analysis_prepare_wave_target(1, 8, 0, 0, .5), 1);
+const waveCount = analysis.manifold_analysis_target_count();
+const wavePrepared = { nodeId: 13, fundamental: 1,
+  values: new Float32Array(analysis.memory.buffer, analysis.manifold_analysis_target_ptr(), waveCount * 4).slice() };
 new Float32Array(analysis.memory.buffer, analysis.manifold_analysis_recipe_ptr(), 11)
   .set([1, 8, .2, .3, .35, 0, .5, .7, 2, .1, 2]);
 assert.equal(analysis.manifold_analysis_prepare_target(2, .5, .6, .5), 1);
@@ -38,11 +42,13 @@ await import(pathToFileURL(resolve('web/src/audio/filter-processor.js')).href);
 
 const processor = new Processor();
 await processor.port.onmessage({ data: { type: 'init', wasmBytes, graph: project.signal,
-  sample: { nodeId: 2, sourceRate, stereo }, partials: prepared } });
+  sample: { nodeId: 2, sourceRate, stereo }, partials: [prepared, wavePrepared] } });
 assert.deepEqual(messages.at(-1), { type: 'ready' });
 for (const parameter of project.parameters) {
-  await processor.port.onmessage({ data: { type: 'parameter', nodeId: parameter.nodeId,
-    id: parameter.nodeParameterId, value: parameter.default } });
+  for (const nodeId of [parameter.nodeId, ...(parameter.mirrorNodeIds ?? [])]) {
+    await processor.port.onmessage({ data: { type: 'parameter', nodeId,
+      id: parameter.nodeParameterId, value: parameter.default } });
+  }
 }
 function render() {
   const left = new Float32Array(128), right = new Float32Array(128);
@@ -73,10 +79,17 @@ const additiveOnly = settle();
 assert.ok(rms(additiveOnly) > .01, 'Sine bank branch must sound alone');
 const difference = Math.max(...sampleOnly.map((value, index) => Math.abs(value - additiveOnly[index])));
 assert.ok(difference > .01, 'branches must differ');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 14, id: 0, value: -1 } });
+const additiveWave = settle();
+assert.ok(rms(additiveWave) > .01, `wave-derived additive source must sound (RMS ${rms(additiveWave)})`);
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 14, id: 0, value: 0 } });
+const additiveCentre = settle();
+assert.ok(rms(additiveCentre) > .01, 'wave/source additive centre must sound');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 14, id: 0, value: 1 } });
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 8, id: 0, value: 1 } });
 const contoured = settle();
 await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 8, count: 1 } });
 const phraseGain = messages.at(-1).values[0];
 assert.ok(phraseGain > 1.5 && phraseGain <= 3, `sample phrase gain ${phraseGain}`);
 assert.ok(rms(contoured) > rms(additiveOnly) * 1.5, 'sample envelope must shape additive level');
-console.log(`Main sample blend worklet: one source → ${count} Morph partials; sample ${rms(sampleOnly).toFixed(3)}, wave ${rms(waveOnly).toFixed(3)}, centre ${rms(waveSample).toFixed(3)}, bank ${rms(additiveOnly).toFixed(3)} RMS`);
+console.log(`Main sample blend worklet: one source → ${count} Morph and ${waveCount} wave partials; sample ${rms(sampleOnly).toFixed(3)}, base wave ${rms(waveOnly).toFixed(3)}, additive wave ${rms(additiveWave).toFixed(3)}, additive centre ${rms(additiveCentre).toFixed(3)} RMS`);

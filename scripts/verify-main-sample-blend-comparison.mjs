@@ -9,6 +9,7 @@ const floats = (path) => {
 };
 const manifest = JSON.parse(readFileSync(`${root}manifest.json`, 'utf8'));
 manifest.sampleData = floats(`${root}${manifest.sample}`);
+manifest.waveTargetData = floats(`${root}${manifest.waveTarget}`);
 const input = floats(`${root}${manifest.input}`);
 const wasmBytes = readFileSync('web/dist/manifold_filter.wasm');
 for (const selected of manifest.cases) {

@@ -27,13 +27,22 @@ self.onmessage = async ({ data }) => {
       const pointer = wasm.manifold_analysis_recipe_ptr();
       if (!pointer) throw new Error('Recipe storage unavailable');
       new Float32Array(wasm.memory.buffer, pointer, 11).set(recipe);
+      let waveValues = null;
+      if (data.includeWave) {
+        if (wasm.manifold_analysis_prepare_wave_target(
+          Math.round(recipe[0]), Math.round(recipe[1]), recipe[2], recipe[3], recipe[4],
+        ) !== 1) throw new Error('Wave target rejected');
+        const waveCount = wasm.manifold_analysis_target_count();
+        waveValues = new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_target_ptr(), waveCount * 4).slice();
+      }
       if (wasm.manifold_analysis_prepare_target(mode, position, smooth, contrast) !== 1) {
         throw new Error('Spectral target rejected');
       }
       const count = wasm.manifold_analysis_target_count();
       const values = new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_target_ptr(), count * 4).slice();
       self.postMessage({ type: 'target', id, sourceId,
-        fundamental: wasm.manifold_analysis_target_fundamental(), values }, [values.buffer]);
+        fundamental: wasm.manifold_analysis_target_fundamental(), values, waveValues },
+      [values.buffer, ...(waveValues ? [waveValues.buffer] : [])]);
     } catch (error) {
       self.postMessage({ type: 'error', id, message: error.message ?? String(error) });
     }

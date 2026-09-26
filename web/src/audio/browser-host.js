@@ -94,7 +94,8 @@ export class BrowserAudioHost {
             value: values.get(parameter.id) ?? parameter.default })));
       }
       const upload = sample ? { nodeId: 2, sourceRate: sample.sourceRate, stereo: sample.stereo.slice() } : null;
-      processor.port.postMessage({ type: 'init', wasmBytes, graph, sample: upload, partials: project.partials ?? null },
+      const partials = project.extraPartials?.length ? [project.partials, ...project.extraPartials] : project.partials ?? null;
+      processor.port.postMessage({ type: 'init', wasmBytes, graph, sample: upload, partials },
         upload ? [wasmBytes, upload.stereo.buffer] : [wasmBytes]);
       await ready;
       this.ready = true;
@@ -127,7 +128,10 @@ export class BrowserAudioHost {
 
   setParameter(id, value) {
     const parameter = this.parameters.get(id);
-    if (parameter) this.processor?.port.postMessage({ type: 'parameter', nodeId: parameter.nodeId, id: parameter.nodeParameterId, value });
+    if (!parameter) return;
+    for (const nodeId of [parameter.nodeId, ...(parameter.mirrorNodeIds ?? [])]) {
+      this.processor?.port.postMessage({ type: 'parameter', nodeId, id: parameter.nodeParameterId, value });
+    }
   }
 
   setPartials(partials) {

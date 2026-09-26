@@ -12,6 +12,7 @@ values.set(13, 330);
 values.set(14, .4);
 values.set(15, 3);
 values.set(16, -.5);
+values.set(17, -.25);
 const target = { active: true, mode: 3, waveform: 1, position: .47,
   morphAmount: .68, stretch: .2, tiltMode: 2, smooth: .6, contrast: 1.2 };
 const stereo = new Float32Array(4096 * 2);
@@ -32,7 +33,7 @@ const oldState = { ...builtin, schemaVersion: 1,
   parameters: Object.fromEntries(project.parameters.filter((parameter) => parameter.id < 6)
     .map((parameter) => [parameter.hostId, values.get(parameter.id)])) };
 const migrated = parseMainSampleBlendState(oldState, project);
-assert.equal(migrated.schemaVersion, 4);
+assert.equal(migrated.schemaVersion, 5);
 assert.equal(migrated.parameters['pvoc-mix'], 0);
 assert.equal(migrated.parameters['phrase-amount'], 0);
 assert.equal(migrated.parameters['wave-level'], 0);
@@ -50,8 +51,14 @@ const migratedV3 = parseMainSampleBlendState(v3State, project);
 assert.equal(migratedV3.parameters['phrase-amount'], .8);
 assert.equal(migratedV3.parameters['base-blend'], 1);
 assert.equal(migratedV3.parameters['wave-level'], 0);
+const v4State = { ...builtin, schemaVersion: 4,
+  parameters: Object.fromEntries(project.parameters.filter((parameter) => parameter.id < 17)
+    .map((parameter) => [parameter.hostId, values.get(parameter.id)])) };
+const migratedV4 = parseMainSampleBlendState(v4State, project);
+assert.equal(migratedV4.parameters['base-blend'], -.5);
+assert.equal(migratedV4.parameters['add-blend'], 1);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, projectId: 'other' }, project), /different/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, target: { ...target, position: 3 } }, project), /target/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, source: { ...embedded.source, frames: 10 } }, project), /source/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, source: { ...embedded.source, pcmF32Base64: 'bad' } }, project), /PCM/);
-console.log(`Main blend state: ${project.parameters.length} controls + target + ${stereo.length / 2} stereo frames round-trip; v1/v2/v3 migration and malformed states checked`);
+console.log(`Main blend state: ${project.parameters.length} controls + target + ${stereo.length / 2} stereo frames round-trip; v1/v2/v3/v4 migration and malformed states checked`);

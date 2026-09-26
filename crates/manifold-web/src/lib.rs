@@ -210,6 +210,41 @@ pub extern "C" fn manifold_analysis_prepare_target(
     })
 }
 
+/// Prepare an independent wave recipe target in the analysis worker. Callers
+/// must copy the target before preparing another one on the same job.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_prepare_wave_target(
+    waveform: u32,
+    count: u32,
+    tilt: f32,
+    drift: f32,
+    pulse_width: f32,
+) -> u32 {
+    if waveform > 7
+        || !(1..=MAX_PARTIALS as u32).contains(&count)
+        || !tilt.is_finite()
+        || !drift.is_finite()
+        || !pulse_width.is_finite()
+    {
+        return 0;
+    }
+    ANALYSIS.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(job) = slot.as_mut() else { return 0 };
+        if job.temporal.is_none() {
+            return 0;
+        }
+        job.target = Some(build_wave_recipe(WaveRecipe {
+            waveform: waveform as u8,
+            count: count as usize,
+            tilt,
+            drift,
+            pulse_width,
+        }));
+        1
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_analysis_target_count() -> u32 {
     ANALYSIS.with(|slot| {
