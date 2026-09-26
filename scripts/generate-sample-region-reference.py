@@ -29,11 +29,13 @@ with sample_path.open("wb") as output:
 frames, sample_rate, block = 16384, 48000, 128
 (OUT / "input.f32").write_bytes(bytes(frames * 8))
 specs = [
-    ("loop", "Forward loop across blocks", [1, 0, 0, 0, 0, 1], [(0, 8, 60)]),
-    ("one-shot", "One-shot ends in silence", [1, 0, 1, 0, 0, 1], [(0, 8, 60)]),
-    ("reverse", "Reverse playback from loop end", [1, 1, 0, 0, .1, .9], [(0, 8, 60)]),
-    ("region-speed", "Selected region and speed change", [.5, 0, 0, .2, .2, .6], [(0, 8, 60), (8192, 0, 1.5)]),
-    ("retrigger", "Timed note retriggers playback", [1, 0, 1, 0, 0, 1], [(0, 8, 60), (8192, 8, 64)]),
+    ("loop", "Forward loop across blocks", [1, 0, 0, 0, 0, 1, 0], [(0, 9, 60)]),
+    ("one-shot", "One-shot ends in silence", [1, 0, 1, 0, 0, 1, 0], [(0, 9, 60)]),
+    ("reverse", "Reverse playback from loop end", [1, 1, 0, 0, .1, .9, 0], [(0, 9, 60)]),
+    ("region-speed", "Selected region and speed change", [.5, 0, 0, .2, .2, .6, 0], [(0, 9, 60), (8192, 0, 1.5)]),
+    ("retrigger", "Timed note retriggers playback", [1, 0, 1, 0, 0, 1, 0], [(0, 9, 60), (8192, 9, 64)]),
+    ("crossfade-forward", "Equal-power forward seam", [1, 0, 0, 0, .1, .9, .2], [(0, 9, 60)]),
+    ("crossfade-reverse", "Equal-power reverse seam", [1.4, 1, 0, 0, .1, .9, .3], [(0, 9, 60)]),
 ]
 cases = []
 for case_id, label, parameters, events in specs:

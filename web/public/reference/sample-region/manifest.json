@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust file-backed sample region",
-  "sourceSha256": "784d8d5c4ae37fc7da7bb757aff0fa48f4f31430696bb7ce754cc343e7cb5fab",
+  "sourceSha256": "22ed0943e3c8480d8d967313b57447912215ed638be7803d5ac4bb14efd6afc1",
   "sampleRate": 48000,
   "sampleSourceRate": 32000,
   "sampleFrames": 4096,
@@ -20,12 +20,13 @@
         0,
         0,
         0,
-        1
+        1,
+        0
       ],
       "events": [
         [
           0,
-          8,
+          9,
           60
         ]
       ],
@@ -41,12 +42,13 @@
         1,
         0,
         0,
-        1
+        1,
+        0
       ],
       "events": [
         [
           0,
-          8,
+          9,
           60
         ]
       ],
@@ -62,12 +64,13 @@
         0,
         0,
         0.1,
-        0.9
+        0.9,
+        0
       ],
       "events": [
         [
           0,
-          8,
+          9,
           60
         ]
       ],
@@ -83,12 +86,13 @@
         0,
         0.2,
         0.2,
-        0.6
+        0.6,
+        0
       ],
       "events": [
         [
           0,
-          8,
+          9,
           60
         ],
         [
@@ -109,22 +113,67 @@
         1,
         0,
         0,
-        1
+        1,
+        0
       ],
       "events": [
         [
           0,
-          8,
+          9,
           60
         ],
         [
           8192,
-          8,
+          9,
           64
         ]
       ],
       "blockSize": 128,
       "output": "retrigger.f32"
+    },
+    {
+      "id": "crossfade-forward",
+      "label": "Equal-power forward seam",
+      "parameters": [
+        1,
+        0,
+        0,
+        0,
+        0.1,
+        0.9,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          9,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "crossfade-forward.f32"
+    },
+    {
+      "id": "crossfade-reverse",
+      "label": "Equal-power reverse seam",
+      "parameters": [
+        1.4,
+        1,
+        0,
+        0,
+        0.1,
+        0.9,
+        0.3
+      ],
+      "events": [
+        [
+          0,
+          9,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "crossfade-reverse.f32"
     }
   ]
 }

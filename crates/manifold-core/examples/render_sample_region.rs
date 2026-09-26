@@ -24,8 +24,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .split(',')
         .map(str::parse)
         .collect::<Result<_, _>>()?;
-    if parameters.len() != 6 {
-        return Err("expected six sample parameters".into());
+    if parameters.len() != 7 {
+        return Err("expected seven sample parameters".into());
     }
     let events: Vec<(usize, u32, f32)> = args[8]
         .split(',')
@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("sample load rejected".into());
     }
     for (id, value) in parameters.into_iter().enumerate() {
-        assert!(plan.set_parameter(2, id as u32, value));
+        assert!(plan.set_parameter(2, if id == 6 { 8 } else { id as u32 }, value));
     }
     let mut result = Vec::with_capacity(frames * 8);
     for offset in (0..frames).step_by(block) {
@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut timed = Vec::new();
         for &(frame, id, value) in events.iter().filter(|event| event.0 == offset) {
             debug_assert_eq!(frame, offset);
-            if id == 8 {
+            if id == 9 {
                 timed.push(TimedEvent {
                     offset: 0,
                     node: 2,

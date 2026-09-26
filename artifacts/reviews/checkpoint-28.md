@@ -1,0 +1,7 @@
+# Review checkpoint 28: loop seam crossfade
+
+Date: 2026-09-26. Open the live [Sample region workbench](http://127.0.0.1:4173/?primitive=sample-region). The **Loop crossfade** slider now sets a fade of 0–50% of the selected loop region; it defaults to 8%. Violet shading in the [waveform capture](checkpoint-28-waveform.png) marks the two overlapping segments. Set it to zero to hear the former hard seam, or shorten the region and raise it to hear the blend. The comparison selector adds **Equal-power forward seam** and **Equal-power reverse seam**.
+
+The Rust kernel blends tail and head samples with cosine/sine equal-power gains and skips the overlapped frames after wrapping. One-shot playback remains unfaded. Reverse playback blends near its active start seam. The legacy C++ source checks a tail region near `loopEnd` even in reverse, so symmetric reverse fading is an explicit v2 design choice and these fixtures compare native Rust against Rust/Wasm rather than claiming C++ parity.
+
+Validation: 37 Rust tests passed, including a seam discontinuity test in both directions. All **125** offline workbench cases showed Match with no page errors (76 C++, 49 native Rust); the seven Sample region cases include the two new seam cases. The mobile view showed the 0.08 control, tinted crossfade spans, a 332 × 108 px waveform, and no horizontal overflow. Full-page Chromium screenshot capture remains unreliable on this host; the live page and canvas capture are the review surfaces.

@@ -311,7 +311,7 @@ function renderWasm(engine, family, manifest, input, selected) {
     new Float32Array(engine.memory.buffer, engine.manifold_sample_ptr(), manifest.sampleData.length).set(manifest.sampleData);
     if (engine.manifold_sample_commit() !== 1) throw new Error('Wasm sample commit failed');
     selected.parameters.forEach((value, id) => {
-      if (engine.manifold_set_node_parameter(2, id, value) !== 1) throw new Error(`Wasm sample parameter ${id} failed`);
+      if (engine.manifold_set_node_parameter(2, id === 6 ? 8 : id, value) !== 1) throw new Error(`Wasm sample parameter ${id} failed`);
     });
   }
   if (family === 'svf') {
@@ -361,7 +361,7 @@ function renderWasm(engine, family, manifest, input, selected) {
     if (family === 'sample-region') {
       for (const [frame, id, value] of selected.events) {
         if (frame !== offset) continue;
-        const accepted = id === 8
+        const accepted = id === 9
           ? engine.manifold_event_push(2, 0, 0, 0, value, 100)
           : engine.manifold_set_node_parameter(2, id, value);
         if (accepted !== 1) throw new Error(`Wasm sample event ${id} at ${frame} failed`);
@@ -657,7 +657,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                     : family === 'loop-capture'
                       ? `${selected.capacitySeconds} s capture · ${selected.events.length} control changes · mix ${selected.mix}`
                     : family === 'sample-region'
-                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s source · speed ${selected.parameters[0]} · reverse ${Boolean(selected.parameters[1])} · one-shot ${Boolean(selected.parameters[2])} · ${selected.events.length} events`
+                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s source · speed ${selected.parameters[0]} · reverse ${Boolean(selected.parameters[1])} · one-shot ${Boolean(selected.parameters[2])} · crossfade ${selected.parameters[6]} · ${selected.events.length} events`
                     : family === 'spectrum-analyzer'
                       ? `sensitivity ${selected.sensitivityBefore} → ${selected.sensitivityAfter} · smoothing ${selected.smoothingBefore} → ${selected.smoothingAfter} · floor ${selected.floorBefore} → ${selected.floorAfter} dB`
                     : family === 'envelope-follower'

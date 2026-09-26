@@ -212,6 +212,12 @@ function drawSampleWaveform() {
   const loopEnd = values.get(5) ?? 1;
   ctx.fillStyle = 'rgba(120, 135, 160, .12)';
   ctx.fillRect(loopStart * width, 0, Math.max(0, loopEnd - loopStart) * width, height);
+  const fade = Math.max(0, loopEnd - loopStart) * (values.get(6) ?? 0);
+  if (fade > 0) {
+    ctx.fillStyle = 'rgba(141, 96, 142, .28)';
+    ctx.fillRect(loopStart * width, 0, fade * width, height);
+    ctx.fillRect((loopEnd - fade) * width, 0, fade * width, height);
+  }
   for (let channel = 0; channel < 2; channel++) {
     const center = height * (channel ? .75 : .25);
     ctx.strokeStyle = channel ? '#79bdcf' : '#ab9ae7';

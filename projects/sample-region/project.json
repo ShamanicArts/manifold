@@ -21,6 +21,7 @@
     { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "one-shot", "label": "One shot", "kind": "toggle", "default": 0 },
     { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "play-start", "label": "Play start", "kind": "float", "min": 0, "max": 1, "default": 0 },
     { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "loop-start", "label": "Loop start", "kind": "float", "min": 0, "max": 1, "default": 0 },
-    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "loop-end", "label": "Loop end", "kind": "float", "min": 0, "max": 1, "default": 1 }
+    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "loop-end", "label": "Loop end", "kind": "float", "min": 0, "max": 1, "default": 1 },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 8, "hostId": "crossfade", "label": "Loop crossfade", "kind": "float", "min": 0, "max": 0.5, "default": 0.08 }
   ]
 }

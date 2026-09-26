@@ -16,6 +16,7 @@ pub struct SampleRegion {
     play_start: f32,
     loop_start: f32,
     loop_end: f32,
+    crossfade: f32,
     playing: bool,
 }
 
@@ -32,6 +33,7 @@ impl SampleRegion {
             play_start: 0.0,
             loop_start: 0.0,
             loop_end: 1.0,
+            crossfade: 0.0,
             playing: false,
         }
     }
@@ -68,6 +70,7 @@ impl SampleRegion {
             6 => self.playing = value >= 0.5 && !self.stereo.is_empty(),
             7 if value >= 0.5 => self.trigger(),
             7 => {}
+            8 => self.crossfade = value.clamp(0.0, 0.5),
             _ => return false,
         }
         true
@@ -104,6 +107,21 @@ impl SampleRegion {
         self.playing = true;
     }
 
+    fn read_at(&self, position: f64) -> [f32; 2] {
+        let frames = self.stereo.len() / 2;
+        let position = position.clamp(0.0, (frames - 1) as f64);
+        let first = position.floor() as usize;
+        let second = (first + 1).min(frames - 1);
+        let frac = (position - first as f64) as f32;
+        let mut output = [0.0; 2];
+        for channel in 0..2 {
+            let a = self.stereo[first * 2 + channel];
+            let b = self.stereo[second * 2 + channel];
+            output[channel] = a + (b - a) * frac;
+        }
+        output
+    }
+
     pub fn process_sample(&mut self) -> [f32; 2] {
         if !self.playing || self.stereo.is_empty() {
             return [0.0; 2];
@@ -116,15 +134,36 @@ impl SampleRegion {
             return [0.0; 2];
         }
         let position = self.position.clamp(0.0, (frames - 1) as f64);
-        let first = position.floor() as usize;
-        let second = (first + 1).min(frames - 1);
-        let frac = (position - first as f64) as f32;
-        let mut output = [0.0; 2];
-        for channel in 0..2 {
-            let a = self.stereo[first * 2 + channel];
-            let b = self.stereo[second * 2 + channel];
-            output[channel] = a + (b - a) * frac;
-        }
+        let window = region_end - region_start + 1;
+        let fade = ((self.crossfade * window as f32).round() as usize).min(window - 1);
+        let seam = if self.reverse {
+            position < (region_start + fade) as f64
+        } else {
+            position >= (region_end + 1 - fade) as f64
+        };
+        let output = if !self.one_shot && fade > 0 && seam {
+            let seam_offset = if self.reverse {
+                region_start as f64 + fade as f64 - 1.0 - position
+            } else {
+                position - (region_end + 1 - fade) as f64
+            };
+            let other_position = if self.reverse {
+                region_end as f64 - seam_offset
+            } else {
+                region_start as f64 + seam_offset
+            };
+            let mix = (seam_offset / fade as f64).clamp(0.0, 1.0) as f32;
+            let tail_gain = (mix * std::f32::consts::FRAC_PI_2).cos();
+            let head_gain = (mix * std::f32::consts::FRAC_PI_2).sin();
+            let tail = self.read_at(position);
+            let head = self.read_at(other_position);
+            [
+                tail[0] * tail_gain + head[0] * head_gain,
+                tail[1] * tail_gain + head[1] * head_gain,
+            ]
+        } else {
+            self.read_at(position)
+        };
         let increment = self.speed as f64 * self.source_rate as f64 / self.output_rate as f64;
         self.position += if self.reverse { -increment } else { increment };
         if self.reverse {
@@ -133,8 +172,9 @@ impl SampleRegion {
                     self.playing = false;
                 } else {
                     self.position = region_end as f64
+                        - fade as f64
                         - (region_start as f64 - self.position - 1.0)
-                            .rem_euclid((region_end - region_start + 1) as f64);
+                            .rem_euclid((window - fade) as f64);
                 }
             }
         } else if self.position > region_end as f64 {
@@ -142,8 +182,8 @@ impl SampleRegion {
                 self.playing = false;
             } else {
                 self.position = region_start as f64
-                    + (self.position - region_end as f64 - 1.0)
-                        .rem_euclid((region_end - region_start + 1) as f64);
+                    + fade as f64
+                    + (self.position - region_end as f64 - 1.0).rem_euclid((window - fade) as f64);
             }
         }
         output
@@ -179,5 +219,23 @@ mod tests {
         assert_eq!(player.process_sample(), [1., 1.]);
         assert_eq!(player.process_sample(), [3., 3.]);
         assert_eq!(player.process_sample(), [2., 2.]);
+    }
+
+    #[test]
+    fn crossfade_blends_the_seam_and_skips_the_overlapped_head() {
+        let mut player = SampleRegion::new(8000.0);
+        assert!(player.load_stereo(vec![1., 1., 1., 1., -1., -1., -1., -1.], 8000.0));
+        player.set_parameter(8, 0.5);
+        player.trigger();
+        let forward: Vec<_> = (0..5).map(|_| player.process_sample()[0]).collect();
+        assert_eq!(forward[..3], [1., 1., -1.]);
+        assert!(forward[3].abs() < 0.0001);
+        assert_eq!(forward[4], -1.);
+        player.set_parameter(1, 1.0);
+        player.trigger();
+        let reverse: Vec<_> = (0..5).map(|_| player.process_sample()[0]).collect();
+        assert_eq!(reverse[..3], [-1., -1., 1.]);
+        assert!(reverse[3].abs() < 0.0001);
+        assert_eq!(reverse[4], 1.);
     }
 }
