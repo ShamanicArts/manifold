@@ -29,9 +29,36 @@ function prepareCrossfader(engine, manifest, selected) {
   }
 }
 
+function prepareMixer(engine, selected) {
+  const nodes = [
+    [1, 0, 0, 0],
+    [2, 2, .25, 0],
+    [3, 9, selected.buses, selected.master],
+    [4, 7, 0, 0],
+  ];
+  const edges = [[1, 3, 0], [2, 3, 1], [3, 4, 0]];
+  for (let bus = 2; bus < selected.buses; bus++) {
+    nodes.push([100 + bus, 2, .1 + .01 * (bus + 1), 0]);
+    edges.push([100 + bus, 3, bus]);
+  }
+  if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Wasm mixer graph begin failed');
+  for (const node of nodes) {
+    if (engine.manifold_graph_node(...node) !== 1) throw new Error(`Wasm mixer node ${node[0]} failed`);
+  }
+  for (const edge of edges) {
+    if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Wasm mixer edge failed');
+  }
+  const initial = [[1, selected.gain1], [2, selected.gain2], [33, selected.pan1], [34, selected.pan2]];
+  for (let bus = 3; bus <= selected.buses; bus++) initial.push([bus, .02]);
+  for (const [id, value] of initial) {
+    if (engine.manifold_graph_initial_parameter(3, id, value) !== 1) throw new Error(`Wasm mixer initial parameter ${id} failed`);
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
+  if (family === 'mixer') prepareMixer(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -43,9 +70,14 @@ function renderWasm(engine, family, manifest, input, selected) {
   const rendered = new Float32Array(input.length);
   for (let offset = 0; offset < manifest.frames; offset += block) {
     if (offset === manifest.stepFrame) {
-      const updated = family === 'svf'
-        ? engine.manifold_set_parameter(1, selected.cutoffAfter)
-        : engine.manifold_set_node_parameter(3, 0, selected.positionAfter);
+      let updated = 1;
+      if (family === 'svf') updated = engine.manifold_set_parameter(1, selected.cutoffAfter);
+      if (family === 'crossfader') updated = engine.manifold_set_node_parameter(3, 0, selected.positionAfter);
+      if (family === 'mixer') {
+        for (const [id, value] of [[2, selected.gain2After], [34, selected.pan2After], [0, selected.masterAfter]]) {
+          updated &= engine.manifold_set_node_parameter(3, id, value);
+        }
+      }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
     const count = Math.min(block, manifest.frames - offset);
@@ -133,7 +165,9 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     byId('reference-status').textContent = 'Comparing…';
     const transition = family === 'svf'
       ? `cutoff ${selected.cutoffBefore.toLocaleString()} → ${selected.cutoffAfter.toLocaleString()} Hz`
-      : `position ${selected.positionBefore} → ${selected.positionAfter} · curve ${selected.curve} · mix ${selected.mix}`;
+      : family === 'crossfader'
+        ? `position ${selected.positionBefore} → ${selected.positionAfter} · curve ${selected.curve} · mix ${selected.mix}`
+        : `${selected.buses} buses · B gain ${selected.gain2} → ${selected.gain2After} · B pan ${selected.pan2} → ${selected.pan2After} · master ${selected.master} → ${selected.masterAfter}`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;

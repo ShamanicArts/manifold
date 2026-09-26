@@ -13,7 +13,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
           if (engine.manifold_version() !== 2) throw new Error('Incompatible graph module');
-          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8 };
+          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9 };
           const graph = data.graph;
           if (engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) throw new Error('Graph too large');
           for (const node of graph.nodes) {
@@ -23,6 +23,11 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           }
           for (const edge of graph.connections) {
             if (engine.manifold_graph_edge(edge.from, edge.to, edge.inputPort) !== 1) throw new Error('Invalid graph connection');
+          }
+          for (const parameter of graph.initialParameters ?? []) {
+            if (engine.manifold_graph_initial_parameter(parameter.nodeId, parameter.id, parameter.value) !== 1) {
+              throw new Error(`Invalid initial parameter: ${parameter.nodeId}/${parameter.id}`);
+            }
           }
           if (engine.manifold_prepare(sampleRate, this.capacity) !== 1) throw new Error('Graph preparation failed');
           this.inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), this.capacity * 2);

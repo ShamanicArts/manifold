@@ -1,6 +1,7 @@
 import './style.css';
 import filterProject from '../../projects/standalone-filter/project.json';
 import crossfaderProject from '../../projects/crossfader/project.json';
+import mixerProject from '../../projects/mixer/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum } from './reference/plots.js';
@@ -20,6 +21,12 @@ const projects = {
     title: 'Crossfader',
     description: 'Move between two stereo signals. Choose linear or equal power behavior, then blend the result with the dry input.',
     signal: 'Live path: input ↘ A · input → lowpass → B · A/B → output',
+  },
+  mixer: {
+    project: mixerProject,
+    title: 'Mixer',
+    description: 'Sum stereo buses with independent gain and equal-power pan, then apply a smoothed master level. The graph supports up to 32 buses.',
+    signal: 'Live path: input → bus A · input → lowpass → bus B · mixer → output',
   },
 };
 const initial = new URL(location.href).searchParams.get('primitive');

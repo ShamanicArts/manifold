@@ -64,6 +64,12 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             curve: b,
             mix: 1.0,
         },
+        9 if a.is_finite() && a.fract() == 0.0 && (1.0..=32.0).contains(&a) => NodeKind::Mixer {
+            inputs: a as usize,
+            gains: vec![1.0; a as usize],
+            pans: vec![0.0; a as usize],
+            master: b,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -128,6 +134,13 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::Crossfader { position, .. }, 0) => *position = value.clamp(-1.0, 1.0),
             (NodeKind::Crossfader { curve, .. }, 1) => *curve = value.clamp(0.0, 1.0),
             (NodeKind::Crossfader { mix, .. }, 2) => *mix = value.clamp(0.0, 1.0),
+            (NodeKind::Mixer { master, .. }, 0) => *master = value.clamp(0.0, 2.0),
+            (NodeKind::Mixer { gains, .. }, id @ 1..=32) if (id as usize) <= gains.len() => {
+                gains[id as usize - 1] = value.clamp(0.0, 2.0)
+            }
+            (NodeKind::Mixer { pans, .. }, id @ 33..=64) if (id as usize - 32) <= pans.len() => {
+                pans[id as usize - 33] = value.clamp(-1.0, 1.0)
+            }
             _ => return 0,
         }
         1

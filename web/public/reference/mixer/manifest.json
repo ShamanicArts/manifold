@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "reference": "legacy C++ MixerNode.cpp scalar path",
+  "sourceSha256": "7faf952c7285177f94e2efe2e96c5c227293dcae10390b26a38e146251bf534e",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 4096,
+  "stepFrame": 2048,
+  "input": "input.f32",
+  "extraInputs": "bus 2 = 0.25 stereo; bus n>=3 = 0.1 + 0.01*n stereo",
+  "cases": [
+    {
+      "id": "two-bus-centre",
+      "label": "2 buses \u00b7 centre",
+      "buses": 2,
+      "gain1": 0.6,
+      "gain2": 0.4,
+      "pan1": 0,
+      "pan2": 0,
+      "master": 0.8,
+      "gain2After": 0.4,
+      "pan2After": 0,
+      "masterAfter": 0.8,
+      "blockSize": 128,
+      "output": "two-bus-centre.f32"
+    },
+    {
+      "id": "gain-pan-master-sweep",
+      "label": "2 buses \u00b7 gain/pan/master sweep",
+      "buses": 2,
+      "gain1": 0.6,
+      "gain2": 0.2,
+      "pan1": -0.4,
+      "pan2": -0.8,
+      "master": 0.8,
+      "gain2After": 1.2,
+      "pan2After": 0.9,
+      "masterAfter": 1.3,
+      "blockSize": 128,
+      "output": "gain-pan-master-sweep.f32"
+    },
+    {
+      "id": "four-bus",
+      "label": "4 buses \u00b7 stereo sum",
+      "buses": 4,
+      "gain1": 0.4,
+      "gain2": 0.3,
+      "pan1": -0.5,
+      "pan2": 0.2,
+      "master": 0.65,
+      "gain2After": 0.8,
+      "pan2After": -0.8,
+      "masterAfter": 1.1,
+      "blockSize": 128,
+      "output": "four-bus.f32"
+    },
+    {
+      "id": "thirty-two-bus",
+      "label": "32 buses \u00b7 full port range",
+      "buses": 32,
+      "gain1": 0.2,
+      "gain2": 0.15,
+      "pan1": 0,
+      "pan2": 0,
+      "master": 0.5,
+      "gain2After": 0.4,
+      "pan2After": 0.5,
+      "masterAfter": 0.8,
+      "blockSize": 64,
+      "output": "thirty-two-bus.f32"
+    }
+  ]
+}

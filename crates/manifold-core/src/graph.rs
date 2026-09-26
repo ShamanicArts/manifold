@@ -9,12 +9,33 @@ pub type NodeId = u64;
 #[derive(Clone, Debug)]
 pub enum NodeKind {
     InputRaw,
-    InputMonitor { gain: f32 },
-    Constant { value: f32 },
-    Gain { gain: f32 },
-    Sum2 { gain_a: f32, gain_b: f32 },
-    LinearBlend { mix: f32 },
-    Crossfader { position: f32, curve: f32, mix: f32 },
+    InputMonitor {
+        gain: f32,
+    },
+    Constant {
+        value: f32,
+    },
+    Gain {
+        gain: f32,
+    },
+    Sum2 {
+        gain_a: f32,
+        gain_b: f32,
+    },
+    LinearBlend {
+        mix: f32,
+    },
+    Crossfader {
+        position: f32,
+        curve: f32,
+        mix: f32,
+    },
+    Mixer {
+        inputs: usize,
+        gains: Vec<f32>,
+        pans: Vec<f32>,
+        master: f32,
+    },
     Svf,
     Output,
 }
@@ -24,6 +45,7 @@ impl NodeKind {
         match self {
             Self::InputRaw | Self::InputMonitor { .. } | Self::Constant { .. } => 0,
             Self::Sum2 { .. } | Self::LinearBlend { .. } | Self::Crossfader { .. } => 2,
+            Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. } | Self::Svf | Self::Output => 1,
         }
     }
@@ -39,6 +61,19 @@ impl NodeKind {
                 curve,
                 mix,
             } => position.is_finite() && curve.is_finite() && mix.is_finite(),
+            Self::Mixer {
+                inputs,
+                gains,
+                pans,
+                master,
+            } => {
+                (1..=32).contains(inputs)
+                    && gains.len() == *inputs
+                    && pans.len() == *inputs
+                    && master.is_finite()
+                    && gains.iter().all(|value| value.is_finite())
+                    && pans.iter().all(|value| value.is_finite())
+            }
             _ => true,
         }
     }
@@ -106,6 +141,7 @@ enum Kernel {
         mix: f32,
     },
     Crossfader(CrossfaderState),
+    Mixer(MixerState),
     Svf(Filter),
     Output,
 }
@@ -113,6 +149,16 @@ enum Kernel {
 struct CrossfaderState {
     current: [f32; 3],
     target: [f32; 3],
+    smoothing: f32,
+}
+
+struct MixerState {
+    target_gains: Vec<f32>,
+    gains: Vec<f32>,
+    target_pans: Vec<f32>,
+    pans: Vec<f32>,
+    target_master: f32,
+    master: f32,
     smoothing: f32,
 }
 
@@ -154,6 +200,26 @@ impl Kernel {
                         .clamp(0.0001, 1.0),
                 })
             }
+            NodeKind::Mixer {
+                inputs: _,
+                gains,
+                pans,
+                master,
+            } => {
+                let gains: Vec<_> = gains.iter().map(|value| value.clamp(0.0, 2.0)).collect();
+                let pans: Vec<_> = pans.iter().map(|value| value.clamp(-1.0, 1.0)).collect();
+                let master = master.clamp(0.0, 2.0);
+                Self::Mixer(MixerState {
+                    target_gains: gains.clone(),
+                    gains,
+                    target_pans: pans.clone(),
+                    pans,
+                    target_master: master,
+                    master,
+                    smoothing: ((1.0 - (-1.0 / (0.010 * sample_rate as f64)).exp()) as f32)
+                        .clamp(0.0001, 1.0),
+                })
+            }
             NodeKind::Svf => Self::Svf(Filter::new(sample_rate)),
             NodeKind::Output => Self::Output,
         }
@@ -178,6 +244,13 @@ impl Kernel {
                     value.clamp(0.0, 1.0)
                 }
             }
+            (Self::Mixer(state), 0) => state.target_master = value.clamp(0.0, 2.0),
+            (Self::Mixer(state), id @ 1..=32) if (id as usize) <= state.gains.len() => {
+                state.target_gains[id as usize - 1] = value.clamp(0.0, 2.0)
+            }
+            (Self::Mixer(state), id @ 33..=64) if (id as usize - 32) <= state.pans.len() => {
+                state.target_pans[id as usize - 33] = value.clamp(-1.0, 1.0)
+            }
             (Self::Svf(filter), id) => return filter.set_parameter(id, value),
             _ => return false,
         }
@@ -188,7 +261,7 @@ impl Kernel {
 struct CompiledNode {
     id: NodeId,
     kernel: Kernel,
-    sources: [Option<usize>; 2],
+    sources: Vec<Option<usize>>,
     scratch: Vec<f32>,
 }
 
@@ -228,7 +301,11 @@ impl GraphDescription {
             }
         }
         let output = output.ok_or(GraphError::WrongOutputCount)?;
-        let mut sources = vec![[None; 2]; self.nodes.len()];
+        let mut sources: Vec<Vec<Option<usize>>> = self
+            .nodes
+            .iter()
+            .map(|spec| vec![None; spec.kind.input_count()])
+            .collect();
         let mut children = vec![Vec::new(); self.nodes.len()];
         let mut indegree = vec![0usize; self.nodes.len()];
         for edge in &self.connections {
@@ -278,8 +355,8 @@ impl GraphDescription {
                 continue;
             }
             live[index] = true;
-            for source in sources[index].into_iter().flatten() {
-                stack.push(source);
+            for source in sources[index].iter().flatten() {
+                stack.push(*source);
             }
         }
         let mut old_to_new = vec![usize::MAX; self.nodes.len()];
@@ -289,7 +366,10 @@ impl GraphDescription {
             nodes.push(CompiledNode {
                 id: self.nodes[index].id,
                 kernel: Kernel::from_kind(&self.nodes[index].kind, sample_rate),
-                sources: sources[index].map(|source| source.map(|old| old_to_new[old])),
+                sources: sources[index]
+                    .iter()
+                    .map(|source| source.map(|old| old_to_new[old]))
+                    .collect(),
                 scratch: vec![0.0; max_frames * 2],
             });
         }
@@ -420,6 +500,26 @@ impl ExecutionPlan {
                             + (a_left[frame] * gain_a + b_left[frame] * gain_b) * mix;
                         right[frame] = a_right[frame] * dry
                             + (a_right[frame] * gain_a + b_right[frame] * gain_b) * mix;
+                    }
+                }
+                Kernel::Mixer(state) => {
+                    for frame in 0..frames {
+                        let mut out_left = 0.0;
+                        let mut out_right = 0.0;
+                        for bus in 0..state.gains.len() {
+                            state.gains[bus] +=
+                                (state.target_gains[bus] - state.gains[bus]) * state.smoothing;
+                            state.pans[bus] +=
+                                (state.target_pans[bus] - state.pans[bus]) * state.smoothing;
+                            let t = 0.5 * (state.pans[bus].clamp(-1.0, 1.0) + 1.0);
+                            let pan_left = (0.5 * std::f32::consts::PI * t).cos();
+                            let pan_right = (0.5 * std::f32::consts::PI * t).sin();
+                            out_left += source(bus, 0)[frame] * state.gains[bus] * pan_left;
+                            out_right += source(bus, 1)[frame] * state.gains[bus] * pan_right;
+                        }
+                        state.master += (state.target_master - state.master) * state.smoothing;
+                        left[frame] = out_left * state.master;
+                        right[frame] = out_right * state.master;
                     }
                 }
                 Kernel::Svf(filter) => {
@@ -619,6 +719,46 @@ mod tests {
         assert!(left[0] > left[127] && left[127] > 0.25);
         assert!(right[0] > right[127] && right[127] > 0.25);
         assert!(!plan.set_parameter(3, 3, 0.5));
+    }
+
+    #[test]
+    fn mixer_routes_first_and_last_of_thirty_two_stereo_busses() {
+        let mut gains = vec![0.0; 32];
+        gains[0] = 1.0;
+        gains[31] = 1.0;
+        let mut pans = vec![0.0; 32];
+        pans[0] = -1.0;
+        pans[31] = 1.0;
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(2, NodeKind::Constant { value: 0.25 }),
+                node(
+                    3,
+                    NodeKind::Mixer {
+                        inputs: 32,
+                        gains,
+                        pans,
+                        master: 1.0,
+                    },
+                ),
+                node(4, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 3, 0), edge(2, 3, 31), edge(3, 4, 0)],
+        };
+        let mut plan = description.compile(48_000.0, 4).unwrap();
+        let [left, right] = process(&mut plan, &[1.0; 4], &[0.5; 4]);
+        assert!(left.iter().all(|value| (value - 1.0).abs() < 1e-6));
+        assert!(right.iter().all(|value| (value - 0.25).abs() < 1e-6));
+        assert!(plan.set_parameter(3, 64, 0.0));
+        assert!(!plan.set_parameter(3, 65, 0.0));
+
+        let mut invalid = description;
+        invalid.connections.push(edge(1, 3, 32));
+        assert!(matches!(
+            invalid.compile(48_000.0, 4),
+            Err(GraphError::InvalidPort(3, 32))
+        ));
     }
 
     #[test]
