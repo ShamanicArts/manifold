@@ -6,4 +6,6 @@ The [version-1 state module](../../web/src/state/main-sample-blend.js) saves six
 
 The [state verifier](../../scripts/verify-main-sample-blend-state.mjs) roundtrips an embedded 4,096-frame source exactly, checks six controls and the recipe, and rejects malformed states. A headless Chromium open flow restored an embedded 8,192-frame source, 330 Hz pitch, 0.23 sample gain, and a Morph target with eight prepared partials, then started the AudioWorklet instrument at 48 kHz. The four native Rust versus Wasm graph cases from checkpoint 107 remain exact and the Main worklet branch verifier remains audible.
 
+While an active target is being rebuilt from a saved state, Start instrument stays disabled until the target arrives or the worker reports an error. Replacing the source or leaving the view cancels that wait, so the control cannot remain stranded.
+
 This state describes the authored v2 study. It is not a migration of old Main Lua presets or the complete old project graph. File states contain decoded PCM rather than the original compressed media; at the 30-second 48 kHz limit the JSON is about 15 MB. The next substantive work is phase vocoder playback and the old branch/crossfade network.

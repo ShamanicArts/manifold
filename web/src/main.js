@@ -438,6 +438,13 @@ const pendingSineTargets = new Map();
 let latestSineTargetId = 0;
 let sineTargetActive = false;
 let sinePitchSource = null;
+let mainStateRestoring = false;
+function finishMainStateRestore(error = null) {
+  if (!mainStateRestoring) return;
+  mainStateRestoring = false;
+  byId('audio-toggle').disabled = false;
+  if (error) byId('main-state-status').textContent = `State source unavailable: ${error}`;
+}
 function demoSample() {
   if (exampleSample) return exampleSample;
   const sourceRate = 48_000;
@@ -568,6 +575,7 @@ function createSampleAnalysisWorker(temporalWorker) {
       if (data.id === latestSineTargetId && target.source === loadedSineSource) {
         if (data.type === 'target') applyPreparedSineTarget(data, target.mode);
         else byId('sine-target-status').textContent = `Target unavailable: ${data.message}`;
+        if (activeFamily === 'main-sample-blend') finishMainStateRestore(data.type === 'target' ? null : data.message);
       }
       return;
     }
@@ -591,6 +599,7 @@ function createSampleAnalysisWorker(temporalWorker) {
     if (analyzed === loadedSineSource) {
       renderSineSourceAnalysis();
       if (sineTargetActive && analyzed.temporal) scheduleSineTarget();
+      if (activeFamily === 'main-sample-blend' && analyzed.temporalError) finishMainStateRestore(analyzed.temporalError);
     }
   };
   worker.onerror = (error) => {
@@ -605,11 +614,15 @@ function createSampleAnalysisWorker(temporalWorker) {
       pendingSineTargets.clear();
       sineAnalysisWorker = null;
       byId('sine-target-status').textContent = `Target worker unavailable: ${error.message || 'Worker failed'}`;
+      if (activeFamily === 'main-sample-blend') finishMainStateRestore(error.message || 'Worker failed');
     } else sampleAnalysisWorker = null;
     worker.terminate();
     drawSampleWaveform();
     renderSampleAnalysis();
     renderSineSourceAnalysis();
+    if (temporal && source === loadedSineSource && activeFamily === 'main-sample-blend') {
+      finishMainStateRestore(error.message || String(error));
+    }
   };
   return worker;
 }
@@ -1360,6 +1373,7 @@ function renderSineBankEditor() {
 function renderPrimitive(family) {
   midiBrowserUrl.value = new URL(`?primitive=${['sample-instrument', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(family) ? family : 'voice'}`, location.href).href;
   const { project, title, description, signal } = projects[family];
+  finishMainStateRestore();
   if (project.patch && !patchedSignals.has(family)) patchedSignals.set(family, structuredClone(project.signal));
   activeProject = project.patch ? { ...project, signal: patchedSignals.get(family) } : project;
   const isInstrument = project.signal.inputSource === 'none';
@@ -1974,6 +1988,7 @@ byId('sine-use-demo').addEventListener('click', () => {
     return;
   }
   const demo = demoSample();
+  finishMainStateRestore();
   loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' };
   sineTargetActive = false;
   if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
@@ -1990,7 +2005,9 @@ byId('sine-source-file').addEventListener('change', async (event) => {
     if (activeFamily === 'main-sample-blend' && audio.running) {
       throw new Error('Stop the instrument before changing the shared sample file.');
     }
-    loadedSineSource = await decodeFileSource(file);
+    const decoded = await decodeFileSource(file);
+    finishMainStateRestore();
+    loadedSineSource = decoded;
     sineTargetActive = false;
     if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
     byId('sine-target-bars').replaceChildren();
@@ -2125,6 +2142,8 @@ byId('main-state-file').addEventListener('change', async (event) => {
     pendingSineTargets.clear();
     latestSineTargetId = 0;
     sineTargetActive = state.target.active;
+    mainStateRestoring = sineTargetActive;
+    byId('audio-toggle').disabled = mainStateRestoring;
     activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
     const demo = demoSample();
     loadedSineSource = state.source.kind === 'builtin'
