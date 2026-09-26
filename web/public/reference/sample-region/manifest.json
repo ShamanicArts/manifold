@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "reference": "native Rust file-backed sample region",
+  "sourceSha256": "f9ba46348b81f036202909c5f66176ef72d8bc40d59c221108e6ef43d2408a6d",
+  "sampleRate": 48000,
+  "sampleSourceRate": 32000,
+  "sampleFrames": 4096,
+  "sample": "sample.f32",
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "loop",
+      "label": "Forward loop across blocks",
+      "parameters": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "events": [
+        [
+          0,
+          8,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "loop.f32"
+    },
+    {
+      "id": "one-shot",
+      "label": "One-shot ends in silence",
+      "parameters": [
+        1,
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      "events": [
+        [
+          0,
+          8,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "one-shot.f32"
+    },
+    {
+      "id": "reverse",
+      "label": "Reverse playback from loop end",
+      "parameters": [
+        1,
+        1,
+        0,
+        0,
+        0.1,
+        0.9
+      ],
+      "events": [
+        [
+          0,
+          8,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "reverse.f32"
+    },
+    {
+      "id": "region-speed",
+      "label": "Selected region and speed change",
+      "parameters": [
+        0.5,
+        0,
+        0,
+        0.2,
+        0.2,
+        0.6
+      ],
+      "events": [
+        [
+          0,
+          8,
+          60
+        ],
+        [
+          8192,
+          0,
+          1.5
+        ]
+      ],
+      "blockSize": 128,
+      "output": "region-speed.f32"
+    },
+    {
+      "id": "retrigger",
+      "label": "Timed note retriggers playback",
+      "parameters": [
+        1,
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      "events": [
+        [
+          0,
+          8,
+          60
+        ],
+        [
+          8192,
+          8,
+          64
+        ]
+      ],
+      "blockSize": 128,
+      "output": "retrigger.f32"
+    }
+  ]
+}

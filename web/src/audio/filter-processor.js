@@ -13,7 +13,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
           if (engine.manifold_version() !== 2) throw new Error('Incompatible graph module');
-          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25 };
+          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26 };
           const graph = data.graph;
           if (engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) throw new Error('Graph too large');
           for (const node of graph.nodes) {
@@ -30,6 +30,15 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             }
           }
           if (engine.manifold_prepare(sampleRate, this.capacity) !== 1) throw new Error('Graph preparation failed');
+          if (data.sample) {
+            const { nodeId, sourceRate, stereo } = data.sample;
+            const frames = stereo.length / 2;
+            if (engine.manifold_sample_begin(nodeId, frames, sourceRate) !== 1) throw new Error('Sample preparation failed');
+            const ptr = engine.manifold_sample_ptr();
+            if (!ptr) throw new Error('Sample storage unavailable');
+            new Float32Array(engine.memory.buffer, ptr, stereo.length).set(stereo);
+            if (engine.manifold_sample_commit() !== 1) throw new Error('Sample loading failed');
+          }
           this.inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), this.capacity * 2);
           this.outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), this.capacity * 2);
           this.engine = engine;

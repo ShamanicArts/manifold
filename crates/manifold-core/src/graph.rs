@@ -13,6 +13,7 @@ use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
+use crate::sample_region::SampleRegion;
 use crate::spectrum_analyzer::SpectrumAnalyzer;
 use crate::stereo_delay::StereoDelay;
 use crate::voice::VoiceSynth;
@@ -83,6 +84,7 @@ pub enum NodeKind {
         capacity_seconds: f32,
         mix: f32,
     },
+    SampleRegion,
     SpectrumAnalyzer {
         sensitivity: f32,
         smoothing: f32,
@@ -131,6 +133,7 @@ impl NodeKind {
             | Self::InputMonitor { .. }
             | Self::Constant { .. }
             | Self::VoiceSynth
+            | Self::SampleRegion
             | Self::Oscillator { .. } => 0,
             Self::NoiseGenerator { .. } | Self::Lfo { .. } => 0,
             Self::Sum2 { .. }
@@ -332,6 +335,7 @@ enum Kernel {
     StereoDelay(StereoDelay),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
+    SampleRegion(SampleRegion),
     SpectrumAnalyzer(SpectrumAnalyzer),
     EnvelopeFollower(EnvelopeFollower),
     EnvelopeControl(EnvelopeFollower),
@@ -446,6 +450,7 @@ impl Kernel {
                 capacity_seconds,
                 mix,
             } => Self::LoopCapture(LoopCapture::new(sample_rate, *capacity_seconds, *mix)),
+            NodeKind::SampleRegion => Self::SampleRegion(SampleRegion::new(sample_rate)),
             NodeKind::SpectrumAnalyzer {
                 sensitivity,
                 smoothing,
@@ -550,6 +555,7 @@ impl Kernel {
             (Self::StereoDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
+            (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
             (Self::SpectrumAnalyzer(analyzer), id) => return analyzer.set_parameter(id, value),
             (Self::EnvelopeFollower(follower), id) => return follower.set_parameter(id, value),
             (Self::EnvelopeControl(follower), id) => return follower.set_parameter(id, value),
@@ -576,12 +582,16 @@ impl Kernel {
                 synth.event(event);
                 true
             }
+            Self::SampleRegion(player) => {
+                player.event(event);
+                true
+            }
             _ => false,
         }
     }
 
     fn accepts_events(&self) -> bool {
-        matches!(self, Self::VoiceSynth(_))
+        matches!(self, Self::VoiceSynth(_) | Self::SampleRegion(_))
     }
 }
 
@@ -743,6 +753,20 @@ impl ExecutionPlan {
             .iter_mut()
             .find(|entry| entry.id == node)
             .is_some_and(|entry| entry.kernel.set_parameter(parameter, value))
+    }
+
+    /// Replace decoded sample storage between process calls. No decoding or allocation in process.
+    pub fn load_sample_stereo(&mut self, node: NodeId, stereo: Vec<f32>, source_rate: f32) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| {
+                if let Kernel::SampleRegion(player) = &mut entry.kernel {
+                    player.load_stereo(stereo, source_rate)
+                } else {
+                    false
+                }
+            })
     }
 
     /// Events must be ordered by offset. All targets and offsets are checked before processing.
@@ -966,6 +990,13 @@ impl ExecutionPlan {
                 }
                 Kernel::LoopCapture(loop_node) => {
                     loop_node.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::SampleRegion(player) => {
+                    for frame in 0..frames {
+                        let value = player.process_sample();
+                        left[frame] = value[0];
+                        right[frame] = value[1];
+                    }
                 }
                 Kernel::SpectrumAnalyzer(analyzer) => {
                     analyzer.process_planar([source(0, 0), source(0, 1)], [left, right])

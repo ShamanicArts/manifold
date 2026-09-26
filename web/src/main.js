@@ -15,6 +15,7 @@ import stereoDelayProject from '../../projects/stereo-delay/project.json';
 import fxChainProject from '../../projects/fx-chain/project.json';
 import standaloneFxProject from '../../projects/standalone-fx-slice/project.json';
 import loopCaptureProject from '../../projects/loop-capture/project.json';
+import sampleRegionProject from '../../projects/sample-region/project.json';
 import spectrumAnalyzerProject from '../../projects/spectrum-analyzer/project.json';
 import envelopeFollowerProject from '../../projects/envelope-follower/project.json';
 import envelopeDuckingProject from '../../projects/envelope-ducking/project.json';
@@ -118,6 +119,12 @@ const projects = {
     description: 'Record up to two seconds of stereo input, then play it as a loop. Reverse, change speed, or overdub new sound.',
     signal: 'Live path: input → bounded capture / loop playback → output',
   },
+  'sample-region': {
+    project: sampleRegionProject,
+    title: 'Sample region',
+    description: 'Load an audio file, select a playback region, and trigger a loop or one-shot. Decoding happens before the Rust audio callback.',
+    signal: 'File decode → prepared stereo sample → region playback → output',
+  },
   'spectrum-analyzer': {
     project: spectrumAnalyzerProject,
     title: 'Spectrum analyzer',
@@ -151,6 +158,21 @@ let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
 let values = new Map();
 let slotValuesByType = new Map();
 let loopHasTake = false;
+let loadedSample = null;
+function demoSample() {
+  const sourceRate = 48_000;
+  const frames = 24_000;
+  const stereo = new Float32Array(frames * 2);
+  for (let frame = 0; frame < frames; frame++) {
+    const time = frame / sourceRate;
+    const envelope = (1 - frame / frames) ** 2;
+    const tone = envelope * (0.48 * Math.sin(2 * Math.PI * 220 * time)
+      + 0.16 * Math.sin(2 * Math.PI * 440 * time));
+    stereo[frame * 2] = tone;
+    stereo[frame * 2 + 1] = tone * 0.85;
+  }
+  return { sourceRate, stereo };
+}
 let envelopeHistory = [];
 const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands) => {
   if (nodeId !== 2 || !['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(activeFamily)) return;
@@ -414,6 +436,8 @@ function renderPrimitive(family) {
   byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   byId('keyboard-section').hidden = family !== 'voice';
+  byId('midi-access-section').hidden = family !== 'voice';
+  byId('sample-section').hidden = family !== 'sample-region';
   if (family === 'voice') resetNoteEvents();
   if (mode) {
     byId('modes').style.gridTemplateColumns = `repeat(${mode.choices.length}, minmax(0, 1fr))`;
@@ -697,6 +721,35 @@ function startMonitoring() {
   } else animateSpectrum();
 }
 drawLiveSpectrum(byId('live-spectrum'), null);
+byId('sample-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('sample-source-status');
+  try {
+    if (file.size > 32 * 1024 * 1024) throw new Error('Choose a file smaller than 32 MB.');
+    readout.textContent = `Decoding ${file.name}…`;
+    const decoder = new OfflineAudioContext(2, 1, 48_000);
+    const audioBuffer = await decoder.decodeAudioData(await file.arrayBuffer());
+    if (audioBuffer.duration > 30 || audioBuffer.length === 0) {
+      throw new Error('Choose an audio file between 0 and 30 seconds.');
+    }
+    const stereo = new Float32Array(audioBuffer.length * 2);
+    const left = audioBuffer.getChannelData(0);
+    const right = audioBuffer.getChannelData(Math.min(1, audioBuffer.numberOfChannels - 1));
+    for (let frame = 0; frame < audioBuffer.length; frame++) {
+      stereo[frame * 2] = left[frame];
+      stereo[frame * 2 + 1] = right[frame];
+    }
+    loadedSample = { sourceRate: audioBuffer.sampleRate, stereo };
+    readout.textContent = `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ${audioBuffer.numberOfChannels} channel${audioBuffer.numberOfChannels === 1 ? '' : 's'}${audio.running ? ' · restart the instrument to load it' : ' · ready to start'}`;
+  } catch (error) {
+    readout.textContent = `Sample unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('sample-trigger').addEventListener('click', () => {
+  if (audio.running && activeFamily === 'sample-region') audio.sendEvent(2, 0, 60, 100);
+  else byId('sample-source-status').textContent = 'Start the instrument before triggering the sample.';
+});
 toggle.addEventListener('click', async () => {
   toggle.disabled = true;
   try {
@@ -708,7 +761,8 @@ toggle.addEventListener('click', async () => {
         updateLoopToggles();
       }
     }
-    else await audio.start(byId('source').value, values, projects[activeFamily].project);
+    else await audio.start(byId('source').value, values, projects[activeFamily].project,
+      activeFamily === 'sample-region' ? loadedSample ?? demoSample() : null);
     const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';
     toggle.textContent = audio.running
       ? isInstrument ? 'Stop instrument' : 'Stop audio'

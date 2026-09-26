@@ -13,7 +13,7 @@ export class BrowserAudioHost {
 
   get running() { return this.context !== null; }
 
-  async start(kind, values, project) {
+  async start(kind, values, project, sample = null) {
     if (this.running) return;
     const context = new AudioContext({ latencyHint: 'interactive' });
     this.context = context;
@@ -64,7 +64,9 @@ export class BrowserAudioHost {
           .map((parameter) => ({ nodeId: slot.id, id: parameter.nodeParameterId,
             value: values.get(parameter.id) ?? parameter.default })));
       }
-      processor.port.postMessage({ type: 'init', wasmBytes, graph }, [wasmBytes]);
+      const upload = sample ? { nodeId: 2, sourceRate: sample.sourceRate, stereo: sample.stereo.slice() } : null;
+      processor.port.postMessage({ type: 'init', wasmBytes, graph, sample: upload },
+        upload ? [wasmBytes, upload.stereo.buffer] : [wasmBytes]);
       await ready;
       this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));
       for (const [id, value] of values) this.setParameter(id, value);

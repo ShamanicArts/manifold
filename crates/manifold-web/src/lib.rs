@@ -5,6 +5,7 @@ use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
 use manifold_core::limiter;
+use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
 use manifold_core::stereo_delay;
 use std::cell::RefCell;
 
@@ -14,6 +15,7 @@ struct WorkletEngine {
     input: Vec<f32>,
     output: Vec<f32>,
     events: Vec<TimedEvent>,
+    sample_upload: Option<(u32, f32, Vec<f32>)>,
 }
 
 struct GraphBuilder {
@@ -152,6 +154,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             params[1] = b;
             NodeKind::Limiter { params }
         }
+        26 => NodeKind::SampleRegion,
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -367,6 +370,7 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
             input: vec![0.0; capacity * 2],
             output: vec![0.0; capacity * 2],
             events: Vec::with_capacity(256),
+            sample_upload: None,
         });
     });
     1
@@ -387,6 +391,51 @@ pub extern "C" fn manifold_output_ptr() -> *const f32 {
         slot.borrow()
             .as_ref()
             .map_or(std::ptr::null(), |engine| engine.output.as_ptr())
+    })
+}
+
+/// Reserve interleaved stereo storage before playback. Call commit after writing through the pointer.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_sample_begin(node_id: u32, frames: u32, source_rate: f32) -> u32 {
+    if frames == 0
+        || !source_rate.is_finite()
+        || !(8_000.0..=384_000.0).contains(&source_rate)
+        || frames as usize > (source_rate as usize).saturating_mul(MAX_SAMPLE_SECONDS)
+        || frames as usize > MAX_SAMPLE_FRAMES
+    {
+        return 0;
+    }
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            engine.sample_upload = Some((node_id, source_rate, vec![0.0; frames as usize * 2]));
+            1
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_sample_ptr() -> *mut f32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .and_then(|engine| engine.sample_upload.as_mut())
+            .map_or(std::ptr::null_mut(), |(_, _, samples)| samples.as_mut_ptr())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_sample_commit() -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            let Some((node_id, source_rate, samples)) = engine.sample_upload.take() else {
+                return 0;
+            };
+            u32::from(
+                engine
+                    .plan
+                    .load_sample_stereo(node_id.into(), samples, source_rate),
+            )
+        })
     })
 }
 

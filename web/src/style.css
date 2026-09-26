@@ -63,6 +63,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .midi-monitor { margin-top: 16px; padding-top: 14px; border-top: 1px solid #34404b; }
 .midi-monitor ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .midi-monitor li { padding: 5px 7px; border: 1px solid #34404b; border-radius: 3px; background: #111922; color: #aab8c1; font-size: 11px; font-variant-numeric: tabular-nums; }
+.sample-file { display: grid; gap: 6px; padding: 9px; border: 1px solid #526170; border-radius: 4px; background: #263441; font-size: 12px; font-weight: 650; }
+.sample-file input { width: 100%; font-size: 11px; color: #aab8c1; }
+.sample-section .gate-button { margin-top: 12px; width: 100%; }
 .control-stack { display: grid; gap: 9px; }
 .gate-button { height: 34px; border: 1px solid #526170; border-radius: 4px; background: #263441; color: #d8e2e8; font-size: 12px; font-weight: 650; }
 .gate-button[aria-pressed="true"] { background: #514b7e; border-color: #9f93e8; color: #fff; }

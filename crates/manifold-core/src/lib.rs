@@ -12,6 +12,7 @@ pub mod limiter;
 pub mod loop_capture;
 pub mod noise;
 pub mod oscillator;
+pub mod sample_region;
 pub mod spectrum_analyzer;
 pub mod stereo_delay;
 pub mod voice;
