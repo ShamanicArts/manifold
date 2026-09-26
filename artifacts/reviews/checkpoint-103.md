@@ -1,0 +1,9 @@
+# Checkpoint 103 — stereo Resonator
+
+Open [Resonator](http://127.0.0.1:4173/?primitive=resonator). Start the test oscillator or microphone, sweep Resonant frequency and Q, then use the comparison drawer to switch among seven C++ cases. Frequency and Q use logarithmic controls, including the low-Q range. The [project descriptor](../../projects/resonator/project.json) runs input → Resonator → output as a typed Rust graph.
+
+The [Rust kernel](../../crates/manifold-core/src/resonator.rs) ports the legacy Direct Form I stereo bandpass, its setter and sample-rate clamps, and block-length parameter interpolation. It retains two independent channel states. Unchanged controls reuse one coefficient set per block; changing controls computes coefficients once per stereo frame. The [migration note](../../docs/resonator-migration.md) records this boundary and the remaining wave 6 work.
+
+The seven [C++ source captures](../../web/public/reference/resonator/manifest.json) cover default sound, frequency, Q and gain sweeps, low Q, the 44.1 kHz frequency clamp, and 64-frame blocks. Native Rust graph output passes `check-resonator-parity.py`; direct Wasm [metrics](checkpoint-103-resonator-metrics.json) and the actual AudioWorklet shim both have a worst maximum absolute sample difference of 4.20e-9 against C++. Each case contains 16,384 stereo frames. The C++ runner reads the old checkout without modifying it.
+
+Verification: 107 Rust workspace tests pass; native C++ parity, direct Wasm comparison, AudioWorklet comparison, Rust formatting, and Vite build pass. The served page and manifest return HTTP 200, 51 views are listed, and the served Wasm matches the module tested. This checkpoint proves the isolated Resonator path; it does not prove a complete old spectral project, phase vocoder, or media runtime.

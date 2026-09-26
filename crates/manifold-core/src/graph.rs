@@ -30,6 +30,7 @@ use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::phaser::Phaser;
 use crate::pitch_shifter::{self, PitchShifter};
+use crate::resonator::{self, Resonator};
 use crate::reverb::{self, Reverb};
 use crate::reverse_delay::{self, ReverseDelay};
 use crate::ring_modulator::{self, RingModulator};
@@ -194,6 +195,9 @@ pub enum NodeKind {
     FormantFilter {
         params: [f32; formant_filter::PARAM_COUNT],
     },
+    Resonator {
+        params: [f32; resonator::PARAM_COUNT],
+    },
     ReverseDelay {
         params: [f32; reverse_delay::PARAM_COUNT],
     },
@@ -307,6 +311,7 @@ impl NodeKind {
             | Self::SlewAudio { .. }
             | Self::LegacyEq { .. }
             | Self::FormantFilter { .. }
+            | Self::Resonator { .. }
             | Self::ReverseDelay { .. }
             | Self::Stutter { .. }
             | Self::PitchShifter { .. }
@@ -471,6 +476,7 @@ impl NodeKind {
             Self::BitCrusher { params } => params.iter().all(|value| value.is_finite()),
             Self::LegacyEq { params } => params.iter().all(|value| value.is_finite()),
             Self::FormantFilter { params } => params.iter().all(|value| value.is_finite()),
+            Self::Resonator { params } => params.iter().all(|value| value.is_finite()),
             Self::ReverseDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::Stutter { params } => params.iter().all(|value| value.is_finite()),
             Self::PitchShifter { params } => params.iter().all(|value| value.is_finite()),
@@ -634,6 +640,7 @@ enum Kernel {
     BitCrusher(BitCrusher),
     LegacyEq(LegacyEq),
     FormantFilter(FormantFilter),
+    Resonator(Resonator),
     ReverseDelay(ReverseDelay),
     Stutter(Stutter),
     PitchShifter(PitchShifter),
@@ -812,6 +819,7 @@ impl Kernel {
             NodeKind::FormantFilter { params } => {
                 Self::FormantFilter(FormantFilter::new(sample_rate, *params))
             }
+            NodeKind::Resonator { params } => Self::Resonator(Resonator::new(sample_rate, *params)),
             NodeKind::ReverseDelay { params } => {
                 Self::ReverseDelay(ReverseDelay::new(sample_rate, max_frames, *params))
             }
@@ -996,6 +1004,7 @@ impl Kernel {
             (Self::BitCrusher(crusher), id) => return crusher.set_parameter(id, value),
             (Self::LegacyEq(eq), id) => return eq.set_parameter(id, value),
             (Self::FormantFilter(formant), id) => return formant.set_parameter(id, value),
+            (Self::Resonator(resonator), id) => return resonator.set_parameter(id, value),
             (Self::ReverseDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::Stutter(stutter), id) => return stutter.set_parameter(id, value),
             (Self::PitchShifter(shifter), id) => return shifter.set_parameter(id, value),
@@ -1899,6 +1908,9 @@ impl ExecutionPlan {
                 }
                 Kernel::FormantFilter(formant) => {
                     formant.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::Resonator(resonator) => {
+                    resonator.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::ReverseDelay(delay) => {
                     delay.process_planar([source(0, 0), source(0, 1)], [left, right])

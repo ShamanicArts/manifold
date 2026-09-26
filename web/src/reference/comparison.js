@@ -424,6 +424,18 @@ function prepareFormant(engine, selected) {
   });
 }
 
+function prepareResonator(engine, selected) {
+  if (engine.manifold_graph_begin(3, 2) !== 1
+    || engine.manifold_graph_node(1, 0, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 60, 0, 0) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1) throw new Error('Wasm Resonator graph failed');
+  selected.before.forEach((value, id) => {
+    if (engine.manifold_graph_initial_parameter(2, id, value) !== 1) throw new Error(`Wasm Resonator initial parameter ${id} failed`);
+  });
+}
+
 function prepareReverseDelay(engine, selected) {
   if (engine.manifold_graph_begin(3, 2) !== 1
     || engine.manifold_graph_node(1, 0, 0, 0) !== 1
@@ -642,6 +654,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'bitcrusher') prepareBitcrusher(engine, selected);
   if (family === 'eq-node') prepareEqNode(engine, selected);
   if (family === 'formant') prepareFormant(engine, selected);
+  if (family === 'resonator') prepareResonator(engine, selected);
   if (family === 'reverse-delay') prepareReverseDelay(engine, selected);
   if (family === 'stutter') prepareStutter(engine, selected);
   if (family === 'pitch-shifter') preparePitchShifter(engine, selected);
@@ -822,7 +835,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
           updated &= engine.manifold_set_node_parameter(2, id, value);
         });
       }
-      if (family === 'eq8' || family === 'eq-node' || family === 'formant' || family === 'reverse-delay' || family === 'stutter' || family === 'pitch-shifter' || family === 'shimmer' || family === 'granulator' || family === 'waveshaper' || family === 'stereo-widener' || family === 'legacy-filter' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'transient-shaper' || family === 'bitcrusher') {
+      if (family === 'eq8' || family === 'eq-node' || family === 'formant' || family === 'resonator' || family === 'reverse-delay' || family === 'stutter' || family === 'pitch-shifter' || family === 'shimmer' || family === 'granulator' || family === 'waveshaper' || family === 'stereo-widener' || family === 'legacy-filter' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'transient-shaper' || family === 'bitcrusher') {
         selected.after.forEach((value, id) => {
           updated &= engine.manifold_set_node_parameter(2, id, value);
         });
@@ -1194,6 +1207,8 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                       ? `low ${selected.before[0]} → ${selected.after[0]} dB · mid ${selected.before[2]} → ${selected.after[2]} dB · high ${selected.before[5]} → ${selected.after[5]} dB · mix ${selected.before[8]} → ${selected.after[8]}`
                     : family === 'formant'
                       ? `vowel ${selected.before[0]} → ${selected.after[0]} · shift ${selected.before[1]} → ${selected.after[1]} st · Q ${selected.before[2]} → ${selected.after[2]} · mix ${selected.before[4]} → ${selected.after[4]}`
+                    : family === 'resonator'
+                      ? `gain ${selected.before[0]} → ${selected.after[0]} · frequency ${selected.before[1]} → ${selected.after[1]} Hz · Q ${selected.before[2]} → ${selected.after[2]}`
                     : family === 'reverse-delay'
                       ? `time ${selected.before[0]} → ${selected.after[0]} ms · window ${selected.before[1]} → ${selected.after[1]} ms · feedback ${selected.before[2]} → ${selected.after[2]} · mix ${selected.before[3]} → ${selected.after[3]}`
                     : family === 'stutter'

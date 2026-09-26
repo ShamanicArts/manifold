@@ -1,0 +1,51 @@
+[
+  {
+    "case": "default",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 0,
+    "rms": 0
+  },
+  {
+    "case": "frequency-sweep",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 0,
+    "rms": 0
+  },
+  {
+    "case": "q-sweep",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 0,
+    "rms": 0
+  },
+  {
+    "case": "gain-sweep",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 0,
+    "rms": 0
+  },
+  {
+    "case": "low-q",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 0,
+    "rms": 0
+  },
+  {
+    "case": "nyquist-clamp",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 4.190951585769653e-9,
+    "rms": 7.178565399744234e-11
+  },
+  {
+    "case": "small-block",
+    "frames": 16384,
+    "blockSize": 64,
+    "max": 0,
+    "rms": 0
+  }
+]

@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "reference": "legacy C++ ResonatorNode stereo",
+  "sourceSha256": "661f5ca3d7ca459007106f4a757940a2cfab6acf09217eca42ceed0af127ec83",
+  "sampleRate": 44100,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "1 kHz \u00b7 Q 10",
+      "before": [
+        1,
+        1000,
+        10
+      ],
+      "after": [
+        1,
+        1000,
+        10
+      ],
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "frequency-sweep",
+      "label": "300 Hz \u2192 5 kHz",
+      "before": [
+        1,
+        300,
+        8
+      ],
+      "after": [
+        1,
+        5000,
+        8
+      ],
+      "blockSize": 128,
+      "output": "frequency-sweep.f32"
+    },
+    {
+      "id": "q-sweep",
+      "label": "Q 2 \u2192 40",
+      "before": [
+        1,
+        1600,
+        2
+      ],
+      "after": [
+        1,
+        1600,
+        40
+      ],
+      "blockSize": 128,
+      "output": "q-sweep.f32"
+    },
+    {
+      "id": "gain-sweep",
+      "label": "Gain 0.3 \u2192 2",
+      "before": [
+        0.3,
+        1200,
+        8
+      ],
+      "after": [
+        2,
+        1200,
+        8
+      ],
+      "blockSize": 128,
+      "output": "gain-sweep.f32"
+    },
+    {
+      "id": "low-q",
+      "label": "Low Q and frequency clamp",
+      "before": [
+        1,
+        20,
+        0.01
+      ],
+      "after": [
+        1,
+        20,
+        1
+      ],
+      "blockSize": 128,
+      "output": "low-q.f32"
+    },
+    {
+      "id": "nyquist-clamp",
+      "label": "High frequency \u00b7 44.1 kHz clamp",
+      "before": [
+        1,
+        19000,
+        3
+      ],
+      "after": [
+        1,
+        20000,
+        3
+      ],
+      "blockSize": 128,
+      "output": "nyquist-clamp.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame frequency and Q step",
+      "before": [
+        0.8,
+        600,
+        5
+      ],
+      "after": [
+        1.4,
+        2600,
+        20
+      ],
+      "blockSize": 64,
+      "output": "small-block.f32"
+    }
+  ]
+}

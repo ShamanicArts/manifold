@@ -1,0 +1,7 @@
+# Resonator migration boundary
+
+The original C++ `ResonatorNode` is a stereo Direct Form I bandpass. It owns separate filter state per channel and exposes gain, centre frequency, and Q. Setter limits are gain 0–4, frequency 20–20,000 Hz, and Q 0.01–500. Processing also clamps frequency to 45% of the sample rate. A parameter change is linearly interpolated across the next audio block, so the transition depends on block size. Reset clears filter history; graph preparation starts at the selected parameter targets.
+
+The [Rust kernel](../crates/manifold-core/src/resonator.rs) follows this behavior with fixed state and no callback allocations. For steady blocks it computes the same coefficients once and reuses them; transitions compute coefficients once per stereo frame. The [browser project](../projects/resonator/project.json) offers the three controls and a C++/Rust comparison. The frequency and Q controls use logarithmic sliders so the lower range can be adjusted precisely.
+
+Seven [C++ captures](../web/public/reference/resonator/manifest.json) cover defaults, frequency, Q and gain changes, low Q, high frequency, and 64-frame blocks. Native Rust graph output, direct Wasm, and the AudioWorklet adapter match the C++ samples within a maximum absolute difference of 0.0002; the measured worst case is below 0.00000001. See [checkpoint 103](../artifacts/reviews/checkpoint-103.md). This confirms the isolated node's audio contract, not any old project that used it. The broader spectral partial network, phase vocoder, and media service remain separate work.

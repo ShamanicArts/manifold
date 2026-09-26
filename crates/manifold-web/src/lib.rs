@@ -345,6 +345,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         46 => NodeKind::FormantFilter {
             params: manifold_core::formant_filter::DEFAULTS,
         },
+        60 => NodeKind::Resonator {
+            params: manifold_core::resonator::DEFAULTS,
+        },
         47 => NodeKind::ReverseDelay {
             params: manifold_core::reverse_delay::DEFAULTS,
         },
@@ -513,6 +516,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             }
             (NodeKind::FormantFilter { params }, id @ 0..=4) => {
                 if !manifold_core::formant_filter::set_value(params, id, value) {
+                    return 0;
+                }
+            }
+            (NodeKind::Resonator { params }, id @ 0..=2) => {
+                if !manifold_core::resonator::set_value(params, id, value) {
                     return 0;
                 }
             }

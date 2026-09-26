@@ -27,6 +27,7 @@ import transientProject from '../../projects/transient-shaper/project.json';
 import bitcrusherProject from '../../projects/bitcrusher/project.json';
 import eqNodeProject from '../../projects/eq-node/project.json';
 import formantProject from '../../projects/formant/project.json';
+import resonatorProject from '../../projects/resonator/project.json';
 import reverseDelayProject from '../../projects/reverse-delay/project.json';
 import stutterProject from '../../projects/stutter/project.json';
 import pitchShifterProject from '../../projects/pitch-shifter/project.json';
@@ -248,6 +249,12 @@ const projects = {
     title: 'Formant filter',
     description: 'Morph among A, E, I, O, and U with three moving resonant bands. Formant shift, resonance, drive, and wet mix follow the original node.',
     signal: 'Live path: input → drive → three parallel vowel bands → saturation / mix → output',
+  },
+  resonator: {
+    project: resonatorProject,
+    title: 'Resonator',
+    description: 'A stereo bandpass with a moving centre frequency and Q. The original node smooths parameter changes across each audio block.',
+    signal: 'Live path: stereo input → resonant bandpass → stereo output',
   },
   'reverse-delay': {
     project: reverseDelayProject,
@@ -695,12 +702,13 @@ function addSlider(parameter) {
   input.step = '1';
   input.setAttribute('aria-label', parameter.label);
 
-  const isLog = parameter.hostId === 'cutoff' || parameter.hostId === 'frequency' || parameter.hostId === 'rate';
+  const isLog = parameter.scale === 'log' || parameter.hostId === 'cutoff' || parameter.hostId === 'frequency' || parameter.hostId === 'rate';
+  const logPrecision = parameter.hostId === 'rate' || (parameter.scale === 'log' && parameter.unit !== 'Hz') ? 100 : 1;
   const precision = parameter.unit === 's' ? 1000 : 100;
   const rawPhysical = (position) => parameter.scale === 'log-bypass'
     ? position < 1 ? 0 : Math.round(21 * (parameter.max / 21) ** ((position - 1) / 999))
     : isLog
-    ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000) * (parameter.hostId === 'rate' ? 100 : 1)) / (parameter.hostId === 'rate' ? 100 : 1)
+    ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000) * logPrecision) / logPrecision
     : parameter.hostId === 'root-note' || parameter.hostId === 'unison' || parameter.hostId === 'voices' || parameter.hostId === 'taps'
       ? Math.round(parameter.min + (parameter.max - parameter.min) * position / 1000)
       : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * precision) / precision;

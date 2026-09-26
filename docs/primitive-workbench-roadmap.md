@@ -4,11 +4,13 @@ Status: waves 0–1 have interactive SVF, Crossfader, and Mixer views with C++ p
 
 ## Purpose
 
+Checkpoint 103 adds the legacy stereo Resonator as the first isolated sine/resonance primitive in wave 6. Its seven C++ captures run through native Rust, direct Wasm, and the AudioWorklet; the remaining partial network and media services are still open. The MIDI effect sequence through Arpeggiator is also playable in wave 2, with a seeded Random redesign and exact sample-clock output events.
+
 Make each port inspectable as a small browser instrument: manipulate a primitive, hear it, see its useful measurements, and compare the same deterministic case with the old C++/JUCE implementation. The workbench is a development surface and the beginning of the eventual project UI component library. It must not become part of the audio callback.
 
 The current Standalone Filter page proves the Rust/Wasm AudioWorklet path, but its large hero, decorative frequency bars, implementation copy, and oversized cards make it poor for comparing behavior. Replace that page with a compact task surface. The main reading order is: **project and signal path → controls → useful output → reference comparison**. A scope, filter response, spectrum, meter, or event timeline earns its place by answering a specific question; a visual effect does not.
 
-At forty-seven views, navigation has a direct primitive picker on both layouts. The desktop library scrolls within its own panel so choosing a lower item keeps the selected workbench in view. On narrow screens the picker replaces the long list above the active view. Selection updates the URL and browser history as well as the module and reference case, making individual checkpoints directly reviewable.
+At 51 views, navigation has a direct primitive picker on both layouts. The desktop library scrolls within its own panel so choosing a lower item keeps the selected workbench in view. On narrow screens the picker replaces the long list above the active view. Selection updates the URL and browser history as well as the module and reference case, making individual checkpoints directly reviewable.
 
 ## Visual and interaction vocabulary to translate
 
