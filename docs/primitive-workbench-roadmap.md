@@ -1,6 +1,6 @@
 # Manifold primitive workbench roadmap
 
-Status: waves 0–1 underway, 2026-09-26. SVF, Crossfader, and Mixer have interactive Rust/Wasm views and C++ parity fixtures. The next implementation wave is voice and MIDI. Source of truth for legacy behavior remains `/home/shamanic/dev/my-plugin`; the v2 implementation lives here.
+Status: waves 0–1 have interactive SVF, Crossfader, and Mixer views with C++ parity fixtures; wave 2 has a new timed-event and playable eight voice baseline with native Rust/Wasm cases. Separate oscillator, ADSR, noise, external MIDI, and the full authored MIDI Synth remain. Source of truth for legacy behavior remains `/home/shamanic/dev/my-plugin`; the v2 implementation lives here.
 
 ## Purpose
 

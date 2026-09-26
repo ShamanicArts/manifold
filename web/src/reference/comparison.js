@@ -55,20 +55,36 @@ function prepareMixer(engine, selected) {
   }
 }
 
+function prepareVoice(engine) {
+  if (engine.manifold_graph_begin(2, 1) !== 1
+    || engine.manifold_graph_node(1, 10, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1) {
+    throw new Error('Wasm voice graph failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
   if (family === 'mixer') prepareMixer(engine, selected);
+  if (family === 'voice') prepareVoice(engine);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
       if (engine.manifold_set_parameter(id, value) !== 1) throw new Error(`Wasm parameter ${id} failed`);
     }
   }
+  if (family === 'voice') {
+    for (const [id, value] of [selected.waveform, selected.attack, selected.decay, selected.sustain, selected.release, selected.level].entries()) {
+      if (engine.manifold_set_node_parameter(1, id, value) !== 1) throw new Error(`Wasm voice parameter ${id} failed`);
+    }
+  }
   const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), block * 2);
   const outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), block * 2);
   const rendered = new Float32Array(input.length);
   for (let offset = 0; offset < manifest.frames; offset += block) {
+    const count = Math.min(block, manifest.frames - offset);
     if (offset === manifest.stepFrame) {
       let updated = 1;
       if (family === 'svf') updated = engine.manifold_set_parameter(1, selected.cutoffAfter);
@@ -80,7 +96,15 @@ function renderWasm(engine, family, manifest, input, selected) {
       }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
-    const count = Math.min(block, manifest.frames - offset);
+    if (family === 'voice') {
+      for (const event of selected.events) {
+        if (event.frame >= offset && event.frame < offset + count) {
+          if (engine.manifold_event_push(1, event.frame - offset, event.kind, 0, event.note, event.velocity) !== 1) {
+            throw new Error('Wasm voice event failed');
+          }
+        }
+      }
+    }
     for (let frame = 0; frame < count; frame++) {
       inputView[frame] = input[(offset + frame) * 2];
       inputView[block + frame] = input[(offset + frame) * 2 + 1];
@@ -148,7 +172,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
   let playbackSource = null;
   const draw = () => {
     if (!active) return;
-    const start = byId('plot-window').value === 'start' ? 0 : Math.max(0, manifest.stepFrame - 64);
+    const start = byId('plot-window').value === 'start' ? 0 : Math.max(0, active.focusFrame - 64);
     const count = Math.min(320, manifest.frames - start);
     const amplitude = Math.max(.3, ...active.legacy.slice(start * 2, (start + count) * 2).map(Math.abs));
     drawComparison(byId('comparison-wave'), [active.legacy, active.rust], start, count, amplitude, ['#e2b084', '#9a8de8']);
@@ -167,19 +191,25 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
       ? `cutoff ${selected.cutoffBefore.toLocaleString()} → ${selected.cutoffAfter.toLocaleString()} Hz`
       : family === 'crossfader'
         ? `position ${selected.positionBefore} → ${selected.positionAfter} · curve ${selected.curve} · mix ${selected.mix}`
-        : `${selected.buses} buses · B gain ${selected.gain2} → ${selected.gain2After} · B pan ${selected.pan2} → ${selected.pan2After} · master ${selected.master} → ${selected.masterAfter}`;
+        : family === 'mixer'
+          ? `${selected.buses} buses · B gain ${selected.gain2} → ${selected.gain2After} · B pan ${selected.pan2} → ${selected.pan2After} · master ${selected.master} → ${selected.masterAfter}`
+          : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
+    byId('reference-title').textContent = family === 'voice' ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'voice' ? 'Note event' : 'Parameter change';
+    document.querySelector('.legend-old').textContent = family === 'voice' ? 'Native Rust' : 'C++';
+    document.querySelector('[data-play="legacy"]').textContent = family === 'voice' ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;
     const rust = renderWasm(engine, family, manifest, input, selected);
     const report = measure(legacy, rust);
-    active = { legacy, rust, ...report };
+    active = { legacy, rust, focusFrame: selected.focusFrame ?? manifest.stepFrame, ...report };
     byId('max-difference').textContent = report.max.toExponential(2);
     byId('rms-difference').textContent = report.rms.toExponential(2);
     const pass = report.max <= .0002;
     byId('comparison-result').textContent = pass ? 'Match' : 'Review';
     byId('comparison-result').className = pass ? 'pass' : 'fail';
-    byId('reference-status').textContent = `C++ source ${manifest.sourceSha256.slice(0, 10)} · ${selected.label}`;
+    byId('reference-status').textContent = `${family === 'voice' ? 'Rust' : 'C++'} source ${manifest.sourceSha256.slice(0, 10)} · ${selected.label}`;
     draw();
   };
   chooser.addEventListener('change', () => choose().catch((error) => { byId('reference-status').textContent = String(error); }));
@@ -190,6 +220,10 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     if (playbackSource) { playbackSource.stop(); playbackSource = null; }
     active = null;
     chooser.disabled = true;
+    chooser.replaceChildren();
+    byId('comparison-result').textContent = '—';
+    byId('max-difference').textContent = '—';
+    byId('rms-difference').textContent = '—';
     byId('reference-status').textContent = 'Loading comparison…';
     loadFamily(family).then(() => {
       if (selectedFamily === family) choose();

@@ -1,6 +1,8 @@
 //! Platform-independent audio kernels. The prepared filter allocates nothing in process.
 
+pub mod events;
 pub mod graph;
+pub mod voice;
 
 use std::f32::consts::PI;
 

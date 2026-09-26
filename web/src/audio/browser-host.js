@@ -49,7 +49,9 @@ export class BrowserAudioHost {
       await ready;
       this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));
       for (const [id, value] of values) this.setParameter(id, value);
-      if (kind === 'microphone') {
+      if (project.signal.inputSource === 'none') {
+        this.source = null;
+      } else if (kind === 'microphone') {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false }, video: false });
         this.sourceStream = stream;
         this.source = context.createMediaStreamSource(stream);
@@ -64,8 +66,8 @@ export class BrowserAudioHost {
         this.source = level;
         this.oscillator = oscillator;
       }
-      this.source.connect(processor);
-      this.onStatus(`Audio running · ${kind === 'microphone' ? 'microphone' : 'test oscillator'} · ${Math.round(context.sampleRate / 1000)} kHz`);
+      this.source?.connect(processor);
+      this.onStatus(`Audio running · ${project.signal.inputSource === 'none' ? 'instrument' : kind === 'microphone' ? 'microphone' : 'test oscillator'} · ${Math.round(context.sampleRate / 1000)} kHz`);
     } catch (error) {
       await this.stop();
       throw error;
@@ -75,6 +77,10 @@ export class BrowserAudioHost {
   setParameter(id, value) {
     const parameter = this.parameters.get(id);
     if (parameter) this.processor?.port.postMessage({ type: 'parameter', nodeId: parameter.nodeId, id: parameter.nodeParameterId, value });
+  }
+
+  sendEvent(nodeId, kind, note = 0, velocity = 0, offset = 0) {
+    this.processor?.port.postMessage({ type: 'event', nodeId, kind, channel: 0, note, velocity, offset });
   }
 
   async stop() {

@@ -1,0 +1,9 @@
+# Timed note event contract
+
+The voice foundation introduces `TimedEvent { offset, node, kind }` in Rust. `offset` is a zero-based frame position **inside the next block**. Events are ordered by offset, with insertion order preserved for events at the same frame. The graph validates all offsets and destinations before processing, renders each span up to an event, applies the event to its target node, then renders the remaining span. This makes an event at frame 127 distinct from one at frame 128 across 128-frame blocks.
+
+The first event kinds are note on, note off, and all notes off. A zero-velocity note on acts as note off. The voice node has eight fixed slots, retriggers the same channel and note, uses a free slot when available, and otherwise steals the oldest active slot. Note off enters release from any envelope stage. This fixes the old `MidiVoiceNode` scalar path's attack-stage note-off behavior as an intentional redesign; these voice cases are compared with native Rust, not presented as C++ parity.
+
+The Wasm ABI reserves 256 events in each prepared engine. `manifold_event_push` appends to the queue without allocating; `manifold_process` consumes and clears it. Browser keyboard messages currently arrive at offset zero of the next callback block. Offline fixtures supply arbitrary offsets to verify the timing contract. Accurate scheduling of external MIDI timestamps through Web MIDI or a native host adapter remains to be implemented. The current keyboard sends channel zero only and does not import Lua.
+
+The voice node is a playable baseline with sine, saw, square, triangle, ADSR, level, and stereo centre output. Its oscillator and envelope are integrated into one voice kernel for now. Separate patchable Oscillator, NoiseGenerator, ADSREnvelope, MidiInput, and modulation nodes, along with the fuller authored MIDI Synth project and its effects, remain to be ported or redesigned.

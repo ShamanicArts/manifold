@@ -51,6 +51,11 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .mode-switch button { height: 32px; border: 0; border-right: 1px solid #394754; background: #202b36; color: #aebbc5; font-size: 12px; }
 .mode-switch button:last-child { border-right: 0; }
 .mode-switch button[aria-pressed="true"] { background: #524c80; color: #fff; }
+.keyboard { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; height: 64px; }
+.keyboard button { padding: 0; border-radius: 2px; border: 1px solid #43515e; font-size: 9px; font-weight: 650; cursor: pointer; touch-action: none; }
+.keyboard .white-key { background: #dce2e8; color: #1b2731; }
+.keyboard .black-key { background: #34304e; color: #e8def8; }
+.keyboard button[aria-pressed="true"] { background: #a99bed; color: #171526; }
 .control-stack { display: grid; gap: 9px; }
 .compact-slider { height: 32px; display: flex; align-items: center; justify-content: space-between; position: relative; isolation: isolate; padding: 0 10px; border-radius: 3px; background: #27283e; overflow: hidden; color: #f1eef8; cursor: ew-resize; user-select: none; }
 .compact-slider::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--fill); background: #806fbd; z-index: -1; }

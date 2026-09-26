@@ -2,6 +2,7 @@ import './style.css';
 import filterProject from '../../projects/standalone-filter/project.json';
 import crossfaderProject from '../../projects/crossfader/project.json';
 import mixerProject from '../../projects/mixer/project.json';
+import voiceProject from '../../projects/voice-synth/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum } from './reference/plots.js';
@@ -28,6 +29,12 @@ const projects = {
     description: 'Sum stereo buses with independent gain and equal-power pan, then apply a smoothed master level. The graph supports up to 32 buses.',
     signal: 'Live path: input → bus A · input → lowpass → bus B · mixer → output',
   },
+  voice: {
+    project: voiceProject,
+    title: 'Voice synth',
+    description: 'An eight voice Rust instrument with note events at audio sample offsets. Sine, saw, square and triangle share an attack, decay, sustain and release envelope.',
+    signal: 'Event path: keyboard → timed note → voice synth → output',
+  },
 };
 const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
@@ -48,13 +55,16 @@ function addSlider(parameter) {
   input.setAttribute('aria-label', parameter.label);
 
   const isLog = parameter.hostId === 'cutoff';
+  const precision = parameter.unit === 's' ? 1000 : 100;
   const toPhysical = (position) => isLog
     ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000))
-    : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * 100) / 100;
+    : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * precision) / precision;
   const toPosition = (value) => isLog
     ? 1000 * Math.log(value / parameter.min) / Math.log(parameter.max / parameter.min)
     : 1000 * (value - parameter.min) / (parameter.max - parameter.min);
-  const format = (value) => parameter.unit ? `${Math.round(value).toLocaleString()} Hz` : Number(value).toFixed(2);
+  const format = (value) => parameter.unit === 'Hz'
+    ? `${Math.round(value).toLocaleString()} Hz`
+    : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : Number(value).toFixed(2);
   const sync = (position, publish) => {
     const value = toPhysical(position);
     input.value = String(Math.round(position));
@@ -85,11 +95,14 @@ function renderPrimitive(family) {
   byId('controls').replaceChildren();
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
+  byId('mode-label').textContent = family === 'voice' ? 'Waveform' : 'Mode';
+  byId('input-label').textContent = family === 'voice' ? 'Instrument' : 'Live input';
+  byId('keyboard-section').hidden = family !== 'voice';
   if (mode) {
     const buttons = mode.choices.map((choice, value) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = ['LP', 'BP', 'HP', 'Notch'][value] ?? choice;
+      button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {
@@ -102,6 +115,11 @@ function renderPrimitive(family) {
     });
   }
   for (const parameter of project.parameters.filter((item) => item.kind !== 'choice')) addSlider(parameter);
+  byId('source').hidden = family === 'voice';
+  toggle.textContent = family === 'voice' ? 'Start instrument' : 'Start audio';
+  document.querySelector('.measurement-hint').textContent = family === 'voice'
+    ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
+    : 'Start audio to view the output spectrum. The reference cases below run offline.';
   if (family === 'svf') {
     const help = document.createElement('p');
     help.className = 'control-help';
@@ -110,9 +128,61 @@ function renderPrimitive(family) {
   }
 }
 
+const keyboardNotes = [
+  ['C', 60, 'a'], ['C♯', 61, 'w'], ['D', 62, 's'], ['D♯', 63, 'e'],
+  ['E', 64, 'd'], ['F', 65, 'f'], ['F♯', 66, 't'], ['G', 67, 'g'],
+  ['G♯', 68, 'y'], ['A', 69, 'h'], ['A♯', 70, 'u'], ['B', 71, 'j'],
+];
+const keyButtons = new Map();
+const pressedNotes = new Set();
+function noteOn(note) {
+  if (activeFamily !== 'voice' || !audio.running || pressedNotes.has(note)) return;
+  pressedNotes.add(note);
+  keyButtons.get(note)?.setAttribute('aria-pressed', 'true');
+  audio.sendEvent(1, 0, note, 100);
+}
+function noteOff(note) {
+  if (!pressedNotes.delete(note)) return;
+  keyButtons.get(note)?.setAttribute('aria-pressed', 'false');
+  audio.sendEvent(1, 1, note);
+}
+function releaseAllNotes() {
+  if (pressedNotes.size && audio.running) audio.sendEvent(1, 2);
+  pressedNotes.clear();
+  for (const button of keyButtons.values()) button.setAttribute('aria-pressed', 'false');
+}
+for (const [label, note, shortcut] of keyboardNotes) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = label.includes('♯') ? 'black-key' : 'white-key';
+  button.textContent = label;
+  button.setAttribute('aria-label', `${label}4 · ${shortcut.toUpperCase()}`);
+  button.setAttribute('aria-pressed', 'false');
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    noteOn(note);
+  });
+  button.addEventListener('pointerup', () => noteOff(note));
+  button.addEventListener('pointercancel', () => noteOff(note));
+  byId('keyboard').appendChild(button);
+  keyButtons.set(note, button);
+}
+const shortcutToNote = new Map(keyboardNotes.map(([, note, shortcut]) => [shortcut, note]));
+document.addEventListener('keydown', (event) => {
+  if (event.repeat || event.target.matches('input, select')) return;
+  const note = shortcutToNote.get(event.key.toLowerCase());
+  if (note !== undefined && activeFamily === 'voice') { event.preventDefault(); noteOn(note); }
+});
+document.addEventListener('keyup', (event) => {
+  const note = shortcutToNote.get(event.key.toLowerCase());
+  if (note !== undefined && activeFamily === 'voice') noteOff(note);
+});
+
 let referenceLab;
 async function selectPrimitive(family, updateUrl = true) {
   if (!Object.hasOwn(projects, family)) return;
+  releaseAllNotes();
   if (audio.running) {
     await audio.stop();
     toggle.textContent = 'Start audio';
@@ -145,17 +215,21 @@ drawLiveSpectrum(byId('live-spectrum'), null);
 toggle.addEventListener('click', async () => {
   toggle.disabled = true;
   try {
-    if (audio.running) await audio.stop();
+    if (audio.running) { releaseAllNotes(); await audio.stop(); }
     else await audio.start(byId('source').value, values, projects[activeFamily].project);
-    toggle.textContent = audio.running ? 'Stop audio' : 'Start audio';
+    toggle.textContent = audio.running
+      ? activeFamily === 'voice' ? 'Stop instrument' : 'Stop audio'
+      : activeFamily === 'voice' ? 'Start instrument' : 'Start audio';
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? 'Spectrum of the processed live input.'
-      : 'Start audio to view the output spectrum. The reference cases below run offline.';
+      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : 'Spectrum of the processed live input.'
+      : activeFamily === 'voice'
+        ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
+        : 'Start audio to view the output spectrum. The reference cases below run offline.';
     if (spectrumFrame) cancelAnimationFrame(spectrumFrame);
     animateSpectrum();
   } catch (error) {
     status.textContent = String(error);
-    toggle.textContent = 'Start audio';
+    toggle.textContent = activeFamily === 'voice' ? 'Start instrument' : 'Start audio';
   } finally {
     toggle.disabled = false;
   }

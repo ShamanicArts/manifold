@@ -20,21 +20,23 @@
           <button class="library-item" type="button" data-primitive="svf"><span><strong>SVF filter</strong><small>4 modes · stereo</small></span><em>Ready</em></button>
           <button class="library-item" type="button" data-primitive="crossfader"><span><strong>Crossfader</strong><small>Position · curve · mix</small></span><em>Ready</em></button>
           <button class="library-item" type="button" data-primitive="mixer"><span><strong>Mixer</strong><small>32 buses · gain · pan</small></span><em>Ready</em></button>
+          <button class="library-item" type="button" data-primitive="voice"><span><strong>Voice synth</strong><small>8 voices · timed notes</small></span><em>Ready</em></button>
           <div class="library-group-label future-label">Roadmap</div>
-          <div class="library-future"><span>Oscillator, ADSR & MIDI</span><small>Next</small></div>
+          <div class="library-future"><span>Oscillator & ADSR ports</span><small>Next</small></div>
           <div class="library-future"><span>Modulation & CV</span><small>Planned</small></div>
           <div class="library-future"><span>Effects & dynamics</span><small>Planned</small></div>
           <div class="library-future"><span>Sampling & time</span><small>Planned</small></div>
           <div class="library-future"><span>Analysis & media</span><small>Planned</small></div>
-          <div class="library-progress"><strong>3</strong> interactive primitives <span>· 14 C++ comparison cases</span></div>
+          <div class="library-progress"><strong>4</strong> interactive primitives <span>· 14 C++ cases · voice timing cases</span></div>
         </nav>
         <aside class="module" aria-labelledby="module-title">
           <div class="module-heading"><div><span class="overline">Audio primitive</span><h1 id="module-title">SVF filter</h1></div><span class="module-ports" title="Stereo audio input and output">Stereo</span></div>
           <p class="module-description" id="module-description"></p>
           <div class="signal-path" id="signal-path"></div>
-          <div class="module-section" id="mode-section"><div class="section-label">Mode</div><div id="modes" class="mode-switch" role="group" aria-label="Filter mode"></div></div>
+          <div class="module-section" id="mode-section"><div class="section-label" id="mode-label">Mode</div><div id="modes" class="mode-switch" role="group" aria-label="Mode or waveform"></div></div>
           <div class="module-section"><div class="section-label">Parameters</div><div id="controls" class="control-stack"></div></div>
-          <div class="module-section input-section"><div class="section-label">Live input</div><div class="transport"><select id="source" aria-label="Input source"><option value="oscillator">Test oscillator</option><option value="microphone">Microphone</option></select><button id="audio-toggle" type="button">Start audio</button></div><div id="status" class="status" role="status">Audio idle</div></div>
+          <div class="module-section keyboard-section" id="keyboard-section" hidden><div class="section-label">Keyboard</div><div id="keyboard" class="keyboard" role="group" aria-label="Playable keyboard"></div><p class="control-help">Start the instrument, then play here or use A–K and the nearby black keys.</p></div>
+          <div class="module-section input-section"><div class="section-label" id="input-label">Live input</div><div class="transport"><select id="source" aria-label="Input source"><option value="oscillator">Test oscillator</option><option value="microphone">Microphone</option></select><button id="audio-toggle" type="button">Start audio</button></div><div id="status" class="status" role="status">Audio idle</div></div>
         </aside>
 
         <section class="measurements" aria-label="Audio measurements">

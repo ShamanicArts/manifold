@@ -1,0 +1,218 @@
+{
+  "version": 1,
+  "reference": "native Rust VoiceSynth with timed note events",
+  "sourceSha256": "41bce0a141df5b9c0ce3fbcc51f68f460a2f212c4c6c15c7983bb24a70a843bb",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "single-note",
+      "label": "Single note \u00b7 on/off",
+      "waveform": 0,
+      "attack": 0.005,
+      "decay": 0.02,
+      "sustain": 0.55,
+      "release": 0.03,
+      "level": 0.25,
+      "blockSize": 128,
+      "focusFrame": 128,
+      "events": [
+        {
+          "frame": 128,
+          "kind": 0,
+          "note": 60,
+          "velocity": 100
+        },
+        {
+          "frame": 2048,
+          "kind": 1,
+          "note": 60,
+          "velocity": 0
+        }
+      ],
+      "output": "single-note.f32"
+    },
+    {
+      "id": "release-in-attack",
+      "label": "Release during attack",
+      "waveform": 0,
+      "attack": 0.08,
+      "decay": 0.02,
+      "sustain": 0.7,
+      "release": 0.015,
+      "level": 0.3,
+      "blockSize": 128,
+      "focusFrame": 250,
+      "events": [
+        {
+          "frame": 100,
+          "kind": 0,
+          "note": 64,
+          "velocity": 110
+        },
+        {
+          "frame": 250,
+          "kind": 1,
+          "note": 64,
+          "velocity": 0
+        }
+      ],
+      "output": "release-in-attack.f32"
+    },
+    {
+      "id": "poly-overlap",
+      "label": "Three overlapping notes",
+      "waveform": 1,
+      "attack": 0.002,
+      "decay": 0.015,
+      "sustain": 0.6,
+      "release": 0.04,
+      "level": 0.18,
+      "blockSize": 128,
+      "focusFrame": 512,
+      "events": [
+        {
+          "frame": 128,
+          "kind": 0,
+          "note": 60,
+          "velocity": 90
+        },
+        {
+          "frame": 512,
+          "kind": 0,
+          "note": 64,
+          "velocity": 100
+        },
+        {
+          "frame": 1024,
+          "kind": 0,
+          "note": 67,
+          "velocity": 110
+        },
+        {
+          "frame": 2048,
+          "kind": 1,
+          "note": 60,
+          "velocity": 0
+        },
+        {
+          "frame": 2500,
+          "kind": 1,
+          "note": 64,
+          "velocity": 0
+        },
+        {
+          "frame": 3000,
+          "kind": 1,
+          "note": 67,
+          "velocity": 0
+        }
+      ],
+      "output": "poly-overlap.f32"
+    },
+    {
+      "id": "block-boundary",
+      "label": "On/off across block edges",
+      "waveform": 0,
+      "attack": 0.001,
+      "decay": 0.02,
+      "sustain": 0.8,
+      "release": 0.005,
+      "level": 0.25,
+      "blockSize": 128,
+      "focusFrame": 127,
+      "events": [
+        {
+          "frame": 127,
+          "kind": 0,
+          "note": 69,
+          "velocity": 127
+        },
+        {
+          "frame": 257,
+          "kind": 1,
+          "note": 69,
+          "velocity": 0
+        }
+      ],
+      "output": "block-boundary.f32"
+    },
+    {
+      "id": "voice-steal",
+      "label": "Ninth note steals oldest",
+      "waveform": 2,
+      "attack": 0.001,
+      "decay": 0.02,
+      "sustain": 0.65,
+      "release": 0.02,
+      "level": 0.12,
+      "blockSize": 64,
+      "focusFrame": 64,
+      "events": [
+        {
+          "frame": 64,
+          "kind": 0,
+          "note": 60,
+          "velocity": 100
+        },
+        {
+          "frame": 65,
+          "kind": 0,
+          "note": 61,
+          "velocity": 100
+        },
+        {
+          "frame": 66,
+          "kind": 0,
+          "note": 62,
+          "velocity": 100
+        },
+        {
+          "frame": 67,
+          "kind": 0,
+          "note": 63,
+          "velocity": 100
+        },
+        {
+          "frame": 68,
+          "kind": 0,
+          "note": 64,
+          "velocity": 100
+        },
+        {
+          "frame": 69,
+          "kind": 0,
+          "note": 65,
+          "velocity": 100
+        },
+        {
+          "frame": 70,
+          "kind": 0,
+          "note": 66,
+          "velocity": 100
+        },
+        {
+          "frame": 71,
+          "kind": 0,
+          "note": 67,
+          "velocity": 100
+        },
+        {
+          "frame": 72,
+          "kind": 0,
+          "note": 68,
+          "velocity": 100
+        },
+        {
+          "frame": 2048,
+          "kind": 2,
+          "note": 0,
+          "velocity": 0
+        }
+      ],
+      "output": "voice-steal.f32"
+    }
+  ]
+}

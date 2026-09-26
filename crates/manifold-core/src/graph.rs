@@ -2,6 +2,8 @@
 //! Routing is explicit: a graph without a route to Output emits silence.
 
 use crate::Filter;
+use crate::events::{EventError, EventKind, TimedEvent};
+use crate::voice::VoiceSynth;
 use std::collections::{HashMap, VecDeque};
 
 pub type NodeId = u64;
@@ -37,13 +39,17 @@ pub enum NodeKind {
         master: f32,
     },
     Svf,
+    VoiceSynth,
     Output,
 }
 
 impl NodeKind {
     fn input_count(&self) -> usize {
         match self {
-            Self::InputRaw | Self::InputMonitor { .. } | Self::Constant { .. } => 0,
+            Self::InputRaw
+            | Self::InputMonitor { .. }
+            | Self::Constant { .. }
+            | Self::VoiceSynth => 0,
             Self::Sum2 { .. } | Self::LinearBlend { .. } | Self::Crossfader { .. } => 2,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. } | Self::Svf | Self::Output => 1,
@@ -143,6 +149,7 @@ enum Kernel {
     Crossfader(CrossfaderState),
     Mixer(MixerState),
     Svf(Filter),
+    VoiceSynth(VoiceSynth),
     Output,
 }
 
@@ -221,6 +228,7 @@ impl Kernel {
                 })
             }
             NodeKind::Svf => Self::Svf(Filter::new(sample_rate)),
+            NodeKind::VoiceSynth => Self::VoiceSynth(VoiceSynth::new(sample_rate)),
             NodeKind::Output => Self::Output,
         }
     }
@@ -252,9 +260,24 @@ impl Kernel {
                 state.target_pans[id as usize - 33] = value.clamp(-1.0, 1.0)
             }
             (Self::Svf(filter), id) => return filter.set_parameter(id, value),
+            (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             _ => return false,
         }
         true
+    }
+
+    fn send_event(&mut self, event: EventKind) -> bool {
+        match self {
+            Self::VoiceSynth(synth) => {
+                synth.event(event);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn accepts_events(&self) -> bool {
+        matches!(self, Self::VoiceSynth(_))
     }
 }
 
@@ -394,6 +417,66 @@ impl ExecutionPlan {
             .is_some_and(|entry| entry.kernel.set_parameter(parameter, value))
     }
 
+    /// Events must be ordered by offset. All targets and offsets are checked before processing.
+    pub fn process_with_events(
+        &mut self,
+        input: [&[f32]; 2],
+        output: [&mut [f32]; 2],
+        events: &[TimedEvent],
+    ) -> Result<(), EventError> {
+        let frames = input[0].len();
+        let mut previous_offset = 0;
+        for event in events {
+            if event.offset >= frames {
+                return Err(EventError::OffsetOutOfRange);
+            }
+            if event.offset < previous_offset {
+                return Err(EventError::Unsorted);
+            }
+            if !self
+                .nodes
+                .iter()
+                .any(|node| node.id == event.node && node.kernel.accepts_events())
+            {
+                return Err(EventError::UnknownTarget);
+            }
+            previous_offset = event.offset;
+        }
+        let [left_in, right_in] = input;
+        let [left_out, right_out] = output;
+        let mut start = 0;
+        let mut left_out = left_out;
+        let mut right_out = right_out;
+        for event in events {
+            let count = event.offset - start;
+            if count > 0 {
+                let (segment_left, rest_left) = left_out.split_at_mut(count);
+                let (segment_right, rest_right) = right_out.split_at_mut(count);
+                self.process(
+                    [
+                        &left_in[start..event.offset],
+                        &right_in[start..event.offset],
+                    ],
+                    [segment_left, segment_right],
+                );
+                left_out = rest_left;
+                right_out = rest_right;
+            }
+            self.nodes
+                .iter_mut()
+                .find(|node| node.id == event.node)
+                .unwrap()
+                .kernel
+                .send_event(event.kind);
+            start = event.offset;
+        }
+        self.process(
+            [&left_in[start..], &right_in[start..]],
+            [left_out, right_out],
+        );
+        Ok(())
+    }
+
     /// `frames` may be smaller than prepared capacity. Buffers are planar stereo.
     pub fn process(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let frames = input[0].len();
@@ -524,6 +607,13 @@ impl ExecutionPlan {
                 }
                 Kernel::Svf(filter) => {
                     filter.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::VoiceSynth(synth) => {
+                    for frame in 0..frames {
+                        let value = synth.process_sample() * std::f32::consts::FRAC_1_SQRT_2;
+                        left[frame] = value;
+                        right[frame] = value;
+                    }
                 }
                 Kernel::Output => {
                     left.copy_from_slice(source(0, 0));
@@ -759,6 +849,56 @@ mod tests {
             invalid.compile(48_000.0, 4),
             Err(GraphError::InvalidPort(3, 32))
         ));
+    }
+
+    #[test]
+    fn note_events_take_effect_at_sample_offsets() {
+        let description = GraphDescription {
+            nodes: vec![node(1, NodeKind::VoiceSynth), node(2, NodeKind::Output)],
+            connections: vec![edge(1, 2, 0)],
+        };
+        let mut plan = description.compile(48_000.0, 128).unwrap();
+        plan.set_parameter(1, 1, 0.001);
+        plan.set_parameter(1, 4, 0.001);
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let input = [0.0; 128];
+        let events = [
+            TimedEvent {
+                offset: 10,
+                node: 1,
+                kind: EventKind::NoteOn {
+                    channel: 0,
+                    note: 69,
+                    velocity: 127,
+                },
+            },
+            TimedEvent {
+                offset: 40,
+                node: 1,
+                kind: EventKind::NoteOff {
+                    channel: 0,
+                    note: 69,
+                },
+            },
+        ];
+        plan.process_with_events([&input, &input], [&mut left, &mut right], &events)
+            .unwrap();
+        assert!(left[..10].iter().all(|value| *value == 0.0));
+        assert_eq!(left[10], 0.0); // phase and envelope both start at zero
+        assert!(left[12..40].iter().any(|value| value.abs() > 0.001));
+        assert!(left[90..].iter().all(|value| *value == 0.0));
+        assert_eq!(left, right);
+
+        let invalid = [TimedEvent {
+            offset: 128,
+            node: 1,
+            kind: EventKind::AllNotesOff,
+        }];
+        assert_eq!(
+            plan.process_with_events([&input, &input], [&mut left, &mut right], &invalid),
+            Err(EventError::OffsetOutOfRange)
+        );
     }
 
     #[test]

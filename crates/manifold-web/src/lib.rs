@@ -1,5 +1,6 @@
 //! Thin, single-instance AudioWorklet ABI. Graph and buffers are allocated only at prepare.
 
+use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
 use std::cell::RefCell;
 
@@ -8,6 +9,7 @@ struct WorkletEngine {
     capacity: usize,
     input: Vec<f32>,
     output: Vec<f32>,
+    events: Vec<TimedEvent>,
 }
 
 struct GraphBuilder {
@@ -70,6 +72,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             pans: vec![0.0; a as usize],
             master: b,
         },
+        10 => NodeKind::VoiceSynth,
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -209,6 +212,7 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
             capacity,
             input: vec![0.0; capacity * 2],
             output: vec![0.0; capacity * 2],
+            events: Vec::with_capacity(256),
         });
     });
     1
@@ -246,6 +250,52 @@ pub extern "C" fn manifold_set_node_parameter(node_id: u32, id: u32, value: f32)
     })
 }
 
+/// Queue a typed event at a frame offset in the next process block.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_event_push(
+    node_id: u32,
+    offset: u32,
+    kind: u32,
+    channel: u32,
+    note: u32,
+    velocity: u32,
+) -> u32 {
+    let kind = match kind {
+        0 if channel <= 15 && note <= 127 && velocity <= 127 => EventKind::NoteOn {
+            channel: channel as u8,
+            note: note as u8,
+            velocity: velocity as u8,
+        },
+        1 if channel <= 15 && note <= 127 => EventKind::NoteOff {
+            channel: channel as u8,
+            note: note as u8,
+        },
+        2 => EventKind::AllNotesOff,
+        _ => return 0,
+    };
+    ENGINE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(engine) = slot.as_mut() else {
+            return 0;
+        };
+        if offset >= engine.capacity as u32
+            || engine.events.len() >= 256
+            || engine
+                .events
+                .last()
+                .is_some_and(|last| last.offset > offset as usize)
+        {
+            return 0;
+        }
+        engine.events.push(TimedEvent {
+            node: node_id.into(),
+            offset: offset as usize,
+            kind,
+        });
+        1
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_process(frames: u32) -> u32 {
     ENGINE.with(|slot| {
@@ -259,10 +309,17 @@ pub extern "C" fn manifold_process(frames: u32) -> u32 {
         }
         let (left_in, right_in) = engine.input.split_at(engine.capacity);
         let (left_out, right_out) = engine.output.split_at_mut(engine.capacity);
-        engine.plan.process(
+        let result = engine.plan.process_with_events(
             [&left_in[..frames], &right_in[..frames]],
             [&mut left_out[..frames], &mut right_out[..frames]],
+            &engine.events,
         );
+        engine.events.clear();
+        if result.is_err() {
+            left_out[..frames].fill(0.0);
+            right_out[..frames].fill(0.0);
+            return 0;
+        }
         1
     })
 }

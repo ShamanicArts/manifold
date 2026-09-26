@@ -11,7 +11,7 @@ Manifold is an environment for authored audio projects, not a single filter. Pro
 ```text
 Browser: WebAudio input -> AudioWorklet -> Rust/Wasm DSP -> WebAudio output
                                     ^
-                   parameter messages / future timed events
+                   parameter messages / timed note events
 
 Main thread: DOM controls -> control adapter
              AnalyserNode -> Three.js WebGPU/WebGL2 visualizer
@@ -28,7 +28,7 @@ The first DSP implementation is the legacy TPT state-variable filter. The origin
 
 The filter now runs inside a prepared `GraphDescription` and compiled `ExecutionPlan`. The plan owns kernels, routing, scratch buffers, and persistent DSP state. The first browser graph compiles before audio input is connected. For live topology editing, build and validate a replacement on a control thread, publish it at a block boundary, then retire the previous plan off the callback. This avoids the old builder/runtime shared-node alias that currently forces a pause during graph mutation. Stateful node migration across plans needs explicit stable node IDs and continuity hooks; it is not silently inferred from topology.
 
-Planar f32 audio buses carry samples. A timestamped event stream will carry MIDI, transport, and parameter changes with offsets within each block. Parameters have stable host IDs, physical-unit mappings, smoothing policies, and a versioned state format. The initial browser message transport is block-granular; sample-accurate automation is a later contract before native VST3 release.
+Planar f32 audio buses carry samples. Timed note events now have offsets within a block, and the Rust graph processes spans between them. Parameters have stable host IDs, physical-unit mappings, and smoothing policies; a versioned state format remains to be designed. Browser keyboard messages enter at offset zero of the next callback. External MIDI timestamp mapping and sample-accurate host automation are later contracts before native VST3 release. See the [event contract](event-contract.md).
 
 The old input / monitor / output domains stay explicit. Input may be captured or analysed without becoming audible. A monitor bridge is the intentional route from input to output. No default passthrough should emerge from a disconnected node.
 
