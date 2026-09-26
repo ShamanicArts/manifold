@@ -294,6 +294,36 @@
       ],
       "focusFrame": 11520,
       "output": "delay-bitcrusher-delay-bitcrusher.f32"
+    },
+    {
+      "id": "delay-filter-delay-filter",
+      "label": "Delay \u2192 Filter \u2192 Delay \u2192 Filter \u00b7 integrator reset",
+      "sourceSha256": "15321c3845e3586cc5c9b5c6e3df7e21635a59d75a3b6f592a85acc33b7f1d9c",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          5
+        ],
+        [
+          11008,
+          8
+        ],
+        [
+          11520,
+          5
+        ]
+      ],
+      "focusFrame": 11520,
+      "output": "delay-filter-delay-filter.f32"
     }
   ]
 }

@@ -780,8 +780,8 @@ impl EffectSlot {
                         // detector, SVF retains integrators, Ring resets its
                         // oscillator, BitCrusher resets its held samples and
                         // counters, Transient clears both envelope followers,
-                        // Widener clears low bands and correlation, and Delay
-                        // keeps its ring at 48 kHz.
+                        // Widener clears low bands and correlation, Filter
+                        // clears its integrators, and Delay keeps its ring at 48 kHz.
                         let visited = self
                             .legacy
                             .as_ref()
@@ -810,6 +810,9 @@ impl EffectSlot {
                         }
                         if visited[WIDENER_TYPE as usize] {
                             self.rebuild_widener();
+                        }
+                        if visited[LEGACY_FILTER_TYPE as usize] {
+                            self.rebuild_legacy_filter();
                         }
                         if visited[DELAY_TYPE as usize] {
                             self.delay.reprepare_targets_preserving_tail();
