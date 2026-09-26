@@ -56,6 +56,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .keyboard .white-key { background: #dce2e8; color: #1b2731; }
 .keyboard .black-key { background: #34304e; color: #e8def8; }
 .keyboard button[aria-pressed="true"] { background: #a99bed; color: #171526; }
+.midi-connect { display: grid; gap: 6px; margin-top: 12px; }
+.midi-connect button { height: 32px; border: 1px solid #526170; border-radius: 4px; background: #263441; color: #e1e7ed; font-size: 12px; font-weight: 650; }
+.midi-connect span { color: #91a0aa; font-size: 11px; line-height: 1.4; }
 .control-stack { display: grid; gap: 9px; }
 .gate-button { height: 34px; border: 1px solid #526170; border-radius: 4px; background: #263441; color: #d8e2e8; font-size: 12px; font-weight: 650; }
 .gate-button[aria-pressed="true"] { background: #514b7e; border-color: #9f93e8; color: #fff; }

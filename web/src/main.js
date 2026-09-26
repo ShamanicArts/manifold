@@ -9,6 +9,7 @@ import noiseProject from '../../projects/noise/project.json';
 import patchProject from '../../projects/synth-patch/project.json';
 import modulationProject from '../../projects/modulated-gain/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
+import { BrowserMidiInput } from './audio/midi-input.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum } from './reference/plots.js';
 
@@ -211,22 +212,65 @@ const keyboardNotes = [
 ];
 const keyButtons = new Map();
 const pressedNotes = new Set();
+const midiHeld = new Map();
+const heldByAnotherDevice = (key, deviceId) => [...midiHeld].some(([id, notes]) => id !== deviceId && notes.has(key));
 function noteOn(note) {
   if (activeFamily !== 'voice' || !audio.running || pressedNotes.has(note)) return;
   pressedNotes.add(note);
   keyButtons.get(note)?.setAttribute('aria-pressed', 'true');
-  audio.sendEvent(1, 0, note, 100);
+  audio.sendEvent(1, 0, note, 100, 0, 15);
 }
 function noteOff(note) {
   if (!pressedNotes.delete(note)) return;
   keyButtons.get(note)?.setAttribute('aria-pressed', 'false');
-  audio.sendEvent(1, 1, note);
+  audio.sendEvent(1, 1, note, 0, 0, 15);
 }
 function releaseAllNotes() {
-  if (pressedNotes.size && audio.running) audio.sendEvent(1, 2);
+  if ((pressedNotes.size || midiHeld.size) && audio.running) audio.sendEvent(1, 2);
   pressedNotes.clear();
+  midiHeld.clear();
   for (const button of keyButtons.values()) button.setAttribute('aria-pressed', 'false');
 }
+function releaseDevice(deviceId) {
+  const held = midiHeld.get(deviceId);
+  if (!held) return;
+  if (audio.running && activeFamily === 'voice') {
+    for (const key of held) {
+      const [channel, note] = key.split(':').map(Number);
+      if (!heldByAnotherDevice(key, deviceId)) audio.sendEvent(1, 1, note, 0, 0, channel);
+    }
+  }
+  midiHeld.delete(deviceId);
+}
+function receiveMidiNote(deviceId, kind, channel, note, velocity) {
+  if (activeFamily !== 'voice' || !audio.running) return;
+  let held = midiHeld.get(deviceId);
+  if (!held) { held = new Set(); midiHeld.set(deviceId, held); }
+  const key = `${channel}:${note}`;
+  if (kind === 'on' && !held.has(key)) {
+    const alreadyHeld = heldByAnotherDevice(key, deviceId);
+    held.add(key);
+    if (!alreadyHeld) audio.sendEvent(1, 0, note, velocity, 0, channel);
+  } else if (kind === 'off' && held.delete(key)) {
+    if (!heldByAnotherDevice(key, deviceId)) audio.sendEvent(1, 1, note, 0, 0, channel);
+  }
+  if (!held.size) midiHeld.delete(deviceId);
+}
+const midiToggle = byId('midi-toggle');
+const midiInput = new BrowserMidiInput(receiveMidiNote, releaseDevice, (message) => {
+  byId('midi-status').textContent = message;
+});
+if (!navigator.requestMIDIAccess) {
+  midiToggle.disabled = true;
+  byId('midi-status').textContent = 'Web MIDI is unavailable in this browser. The keyboard above still works.';
+}
+midiToggle.addEventListener('click', async () => {
+  midiToggle.disabled = true;
+  if (midiInput.listening) midiInput.stop();
+  else await midiInput.connect();
+  midiToggle.textContent = midiInput.listening ? 'Stop MIDI input' : 'Connect MIDI input';
+  midiToggle.disabled = false;
+});
 for (const [label, note, shortcut] of keyboardNotes) {
   const button = document.createElement('button');
   button.type = 'button';

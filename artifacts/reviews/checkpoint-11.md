@@ -1,0 +1,9 @@
+# Review checkpoint 11: optional browser MIDI input
+
+Date: 2026-09-26. Open the [Voice synth workbench](http://127.0.0.1:4173/?primitive=voice). The [connected desktop](checkpoint-11-midi.png), [denied desktop](checkpoint-11-denied.png), and [mobile](checkpoint-11-mobile.png) captures show the new **Connect MIDI input** control and its states.
+
+The button requests Web MIDI access only after a click, using `navigator.requestMIDIAccess({ sysex: false })`. On a supporting browser that grants access, note on/off messages preserve MIDI channel, note, and velocity and enter the Rust voice event queue at the next audio block. Zero-velocity note on acts as note off. Device hotplug updates the input list and releases held notes on unplug. Multiple devices holding the same channel and note are tracked until the last device releases them. The on-screen keyboard uses channel 15 to keep its ordinary notes separate from most external MIDI input. The browser interface reports unavailable, denied, and no-device states clearly. This follows the [Web MIDI API input and permission contract](https://www.w3.org/TR/webmidi/).
+
+Verification used a **simulated MIDI access object and input device in Chromium**, not physical MIDI hardware: channel 2 note 64 at velocity 112 produced the matching worklet event, zero-velocity note on produced note off, and hot unplug released a held note. A denied `NotAllowedError` produced a readable status with no page error. The 390 px layout has no horizontal overflow. The existing 47 comparison cases still pass, and `cargo test --workspace` passes 21 tests.
+
+The in-app browser may block the permission request even though the control exists; that environment has not been configured for hardware MIDI access. Device timestamps are not yet mapped to sample offsets, and sustain pedal/controller messages are not handled. The on-screen and computer keyboard remain available without device access.

@@ -79,8 +79,8 @@ export class BrowserAudioHost {
     if (parameter) this.processor?.port.postMessage({ type: 'parameter', nodeId: parameter.nodeId, id: parameter.nodeParameterId, value });
   }
 
-  sendEvent(nodeId, kind, note = 0, velocity = 0, offset = 0) {
-    this.processor?.port.postMessage({ type: 'event', nodeId, kind, channel: 0, note, velocity, offset });
+  sendEvent(nodeId, kind, note = 0, velocity = 0, offset = 0, channel = 0) {
+    this.processor?.port.postMessage({ type: 'event', nodeId, kind, channel, note, velocity, offset });
   }
 
   async stop() {
