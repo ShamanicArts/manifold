@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.modulated-gain-workbench",
+  "name": "LFO and modulated gain",
+  "source": "Manifold v2 audio/control graph; old Lua UI-loop LFO is behavior context only",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 1, "type": "oscillator", "a": 220, "b": 0.3 },
+      { "id": 2, "type": "lfo", "a": 2 },
+      { "id": 3, "type": "modulated-gain", "a": 0.5, "b": 0.4 },
+      { "id": 4, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 3, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 1 },
+      { "from": 3, "to": 4, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "waveform", "label": "LFO waveform", "kind": "choice", "choices": ["Sine", "Triangle", "Square"], "default": 0 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "rate", "label": "Rate", "kind": "float", "min": 0.05, "max": 20, "default": 2, "unit": "Hz" },
+    { "id": 2, "nodeId": 3, "nodeParameterId": 0, "hostId": "base-gain", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 0.5 },
+    { "id": 3, "nodeId": 3, "nodeParameterId": 1, "hostId": "depth", "label": "Modulation depth", "kind": "float", "min": -2, "max": 2, "default": 0.4 }
+  ]
+}

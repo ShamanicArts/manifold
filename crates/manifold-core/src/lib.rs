@@ -3,6 +3,7 @@
 pub mod envelope;
 pub mod events;
 pub mod graph;
+pub mod lfo;
 pub mod noise;
 pub mod oscillator;
 pub mod voice;

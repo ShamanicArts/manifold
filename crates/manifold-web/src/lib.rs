@@ -80,6 +80,11 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         },
         12 => NodeKind::AdsrEnvelope,
         13 => NodeKind::NoiseGenerator { level: a, color: b },
+        14 => NodeKind::Lfo {
+            waveform: 0,
+            rate: a,
+        },
+        15 => NodeKind::ModulatedGain { base: a, depth: b },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -158,6 +163,10 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::Oscillator { amplitude, .. }, 2) => *amplitude = value.clamp(0.0, 1.0),
             (NodeKind::NoiseGenerator { level, .. }, 0) => *level = value.clamp(0.0, 1.0),
             (NodeKind::NoiseGenerator { color, .. }, 1) => *color = value.clamp(0.0, 1.0),
+            (NodeKind::Lfo { waveform, .. }, 0) => *waveform = value.round().clamp(0.0, 2.0) as u32,
+            (NodeKind::Lfo { rate, .. }, 1) => *rate = value.clamp(0.05, 20.0),
+            (NodeKind::ModulatedGain { base, .. }, 0) => *base = value.clamp(0.0, 2.0),
+            (NodeKind::ModulatedGain { depth, .. }, 1) => *depth = value.clamp(-2.0, 2.0),
             _ => return 0,
         }
         1

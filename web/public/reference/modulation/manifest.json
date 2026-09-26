@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "reference": "native Rust typed control graph",
+  "sourceSha256": "83eb865e14e04ce6bbaca50f2db7e16deff340a8c83aa204f7b3cebca4baaf46",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 24576,
+  "stepFrame": 12288,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "sine",
+      "label": "Sine CV",
+      "waveform": 0,
+      "rateBefore": 2,
+      "rateAfter": 2,
+      "base": 0.5,
+      "depthBefore": 0.4,
+      "depthAfter": 0.4,
+      "blockSize": 128,
+      "output": "sine.f32"
+    },
+    {
+      "id": "triangle",
+      "label": "Triangle CV",
+      "waveform": 1,
+      "rateBefore": 2,
+      "rateAfter": 2,
+      "base": 0.5,
+      "depthBefore": 0.4,
+      "depthAfter": 0.4,
+      "blockSize": 128,
+      "output": "triangle.f32"
+    },
+    {
+      "id": "square",
+      "label": "Square CV",
+      "waveform": 2,
+      "rateBefore": 2,
+      "rateAfter": 2,
+      "base": 0.5,
+      "depthBefore": 0.4,
+      "depthAfter": 0.4,
+      "blockSize": 128,
+      "output": "square.f32"
+    },
+    {
+      "id": "rate-sweep",
+      "label": "Rate sweep",
+      "waveform": 0,
+      "rateBefore": 1,
+      "rateAfter": 8,
+      "base": 0.5,
+      "depthBefore": 0.4,
+      "depthAfter": 0.4,
+      "blockSize": 128,
+      "output": "rate-sweep.f32"
+    },
+    {
+      "id": "depth-sweep",
+      "label": "Depth and polarity sweep",
+      "waveform": 0,
+      "rateBefore": 4,
+      "rateAfter": 4,
+      "base": 0.5,
+      "depthBefore": 0.25,
+      "depthAfter": -0.7,
+      "blockSize": 64,
+      "output": "depth-sweep.f32"
+    }
+  ]
+}

@@ -114,6 +114,24 @@ function preparePatch(engine, selected) {
   }
 }
 
+function prepareModulation(engine, selected) {
+  const nodes = [
+    [1, 11, 220, .3], [2, 14, selected.rateBefore, 0],
+    [3, 15, selected.base, selected.depthBefore], [4, 7, 0, 0],
+  ];
+  const edges = [[1, 3, 0], [2, 3, 1], [3, 4, 0]];
+  if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Wasm modulation graph begin failed');
+  for (const node of nodes) {
+    if (engine.manifold_graph_node(...node) !== 1) throw new Error(`Wasm modulation node ${node[0]} failed`);
+  }
+  for (const edge of edges) {
+    if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Wasm modulation edge failed');
+  }
+  if (engine.manifold_graph_initial_parameter(2, 0, selected.waveform) !== 1) {
+    throw new Error('Wasm modulation waveform failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
@@ -123,6 +141,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'adsr') prepareAdsr(engine);
   if (family === 'noise') prepareNoise(engine, selected);
   if (family === 'patch') preparePatch(engine, selected);
+  if (family === 'modulation') prepareModulation(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -179,6 +198,10 @@ function renderWasm(engine, family, manifest, input, selected) {
         for (const [node, id, value] of [[1, 1, selected.frequencyAfter], [2, 0, selected.noiseLevelAfter], [5, 1, selected.cutoffAfter], [4, 4, 0]]) {
           updated &= engine.manifold_set_node_parameter(node, id, value);
         }
+      }
+      if (family === 'modulation') {
+        updated &= engine.manifold_set_node_parameter(2, 1, selected.rateAfter);
+        updated &= engine.manifold_set_node_parameter(3, 1, selected.depthAfter);
       }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
@@ -266,8 +289,30 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     }
     return reduced;
   };
+  const peakView = (samples, start, span) => {
+    const count = 256;
+    const reduced = new Float32Array(count * 2);
+    for (let index = 0; index < count; index++) {
+      const begin = start + Math.floor(index / count * span);
+      const end = Math.min(manifest.frames, start + Math.floor((index + 1) / count * span));
+      let peak = 0;
+      for (let frame = begin; frame < end; frame++) peak = Math.max(peak, Math.abs(samples[frame * 2]));
+      reduced[index * 2] = peak;
+      reduced[index * 2 + 1] = peak;
+    }
+    return reduced;
+  };
   const draw = () => {
     if (!active) return;
+    if (currentFamily === 'modulation') {
+      const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames;
+      const legacy = peakView(active.legacy, 0, span);
+      const rust = peakView(active.rust, 0, span);
+      const difference = peakView(active.difference, 0, span);
+      drawComparison(byId('comparison-wave'), [legacy, rust], 0, 256, .3, ['#e2b084', '#9a8de8']);
+      drawComparison(byId('comparison-diff'), [difference], 0, 256, Math.max(active.max * 1.15, 1e-8), ['#a4d9bb']);
+      return;
+    }
     if (currentFamily === 'adsr') {
       const span = byId('plot-window').value === 'start' ? Math.min(4096, manifest.frames) : manifest.frames;
       const legacy = envelopeView(active.legacy, 0, span);
@@ -306,13 +351,15 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                 ? `level ${selected.levelBefore} → ${selected.levelAfter} · color ${selected.colorBefore} → ${selected.colorAfter}`
                 : family === 'patch'
                   ? `pitch ${selected.frequencyBefore} → ${selected.frequencyAfter} Hz · noise ${selected.noiseLevelBefore} → ${selected.noiseLevelAfter} · cutoff ${selected.cutoffBefore} → ${selected.cutoffAfter} Hz`
+                  : family === 'modulation'
+                    ? `${['sine', 'triangle', 'square'][selected.waveform]} CV · rate ${selected.rateBefore} → ${selected.rateAfter} Hz · depth ${selected.depthBefore} → ${selected.depthAfter}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
-    const nativeReference = family === 'voice' || family === 'patch';
+    const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : 'Parameter change';
-    byId('plot-window').querySelector('[value="start"]').textContent = family === 'adsr' ? 'Attack detail' : 'Start';
-    byId('plot-title').textContent = family === 'adsr' ? 'Envelope shape · left channel' : 'Output waveform';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
+    byId('plot-window').querySelector('[value="start"]').textContent = family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
+    byId('plot-title').textContent = family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
     document.querySelector('.legend-old').textContent = nativeReference ? 'Native Rust' : 'C++';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);

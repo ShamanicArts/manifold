@@ -4,12 +4,19 @@
 use crate::Filter;
 use crate::envelope::AdsrEnvelope;
 use crate::events::{EventError, EventKind, TimedEvent};
+use crate::lfo::Lfo;
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::voice::VoiceSynth;
 use std::collections::{HashMap, VecDeque};
 
 pub type NodeId = u64;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignalKind {
+    Audio,
+    Control,
+}
 
 #[derive(Clone, Debug)]
 pub enum NodeKind {
@@ -53,6 +60,14 @@ pub enum NodeKind {
         level: f32,
         color: f32,
     },
+    Lfo {
+        waveform: u32,
+        rate: f32,
+    },
+    ModulatedGain {
+        base: f32,
+        depth: f32,
+    },
     Output,
 }
 
@@ -64,10 +79,29 @@ impl NodeKind {
             | Self::Constant { .. }
             | Self::VoiceSynth
             | Self::Oscillator { .. } => 0,
-            Self::NoiseGenerator { .. } => 0,
-            Self::Sum2 { .. } | Self::LinearBlend { .. } | Self::Crossfader { .. } => 2,
+            Self::NoiseGenerator { .. } | Self::Lfo { .. } => 0,
+            Self::Sum2 { .. }
+            | Self::LinearBlend { .. }
+            | Self::Crossfader { .. }
+            | Self::ModulatedGain { .. } => 2,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. } | Self::Svf | Self::AdsrEnvelope | Self::Output => 1,
+        }
+    }
+
+    fn output_signal(&self) -> SignalKind {
+        if matches!(self, Self::Lfo { .. }) {
+            SignalKind::Control
+        } else {
+            SignalKind::Audio
+        }
+    }
+
+    fn input_signal(&self, port: usize) -> SignalKind {
+        if matches!(self, Self::ModulatedGain { .. }) && port == 1 {
+            SignalKind::Control
+        } else {
+            SignalKind::Audio
         }
     }
 
@@ -101,6 +135,8 @@ impl NodeKind {
                 waveform,
             } => frequency.is_finite() && amplitude.is_finite() && *waveform <= 4,
             Self::NoiseGenerator { level, color } => level.is_finite() && color.is_finite(),
+            Self::Lfo { waveform, rate } => *waveform <= 2 && rate.is_finite(),
+            Self::ModulatedGain { base, depth } => base.is_finite() && depth.is_finite(),
             _ => true,
         }
     }
@@ -134,6 +170,7 @@ pub enum GraphError {
     InvalidPort(NodeId, usize),
     OutputAsSource(NodeId),
     OccupiedPort(NodeId, usize),
+    SignalTypeMismatch(NodeId, NodeId, usize),
     WrongOutputCount,
     Cycle,
 }
@@ -174,6 +211,12 @@ enum Kernel {
     Oscillator(Oscillator),
     AdsrEnvelope(AdsrEnvelope),
     NoiseGenerator(NoiseGenerator),
+    Lfo(Lfo),
+    ModulatedGain {
+        current: [f32; 2],
+        target: [f32; 2],
+        smoothing: f32,
+    },
     Output,
 }
 
@@ -267,6 +310,16 @@ impl Kernel {
             NodeKind::NoiseGenerator { level, color } => {
                 Self::NoiseGenerator(NoiseGenerator::new(sample_rate, *level, *color))
             }
+            NodeKind::Lfo { waveform, rate } => Self::Lfo(Lfo::new(sample_rate, *waveform, *rate)),
+            NodeKind::ModulatedGain { base, depth } => {
+                let values = [base.clamp(0.0, 2.0), depth.clamp(-2.0, 2.0)];
+                Self::ModulatedGain {
+                    current: values,
+                    target: values,
+                    smoothing: ((1.0 - (-1.0 / (0.010 * sample_rate as f64)).exp()) as f32)
+                        .clamp(0.0001, 1.0),
+                }
+            }
             NodeKind::Output => Self::Output,
         }
     }
@@ -302,6 +355,14 @@ impl Kernel {
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
             (Self::NoiseGenerator(noise), id) => return noise.set_parameter(id, value),
+            (Self::Lfo(lfo), id) => return lfo.set_parameter(id, value),
+            (Self::ModulatedGain { target, .. }, id @ 0..=1) => {
+                target[id as usize] = if id == 0 {
+                    value.clamp(0.0, 2.0)
+                } else {
+                    value.clamp(-2.0, 2.0)
+                }
+            }
             _ => return false,
         }
         true
@@ -384,6 +445,15 @@ impl GraphDescription {
             }
             if edge.input_port >= self.nodes[to].kind.input_count() {
                 return Err(GraphError::InvalidPort(edge.to, edge.input_port));
+            }
+            if self.nodes[from].kind.output_signal()
+                != self.nodes[to].kind.input_signal(edge.input_port)
+            {
+                return Err(GraphError::SignalTypeMismatch(
+                    edge.from,
+                    edge.to,
+                    edge.input_port,
+                ));
             }
             if sources[to][edge.input_port].replace(from).is_some() {
                 return Err(GraphError::OccupiedPort(edge.to, edge.input_port));
@@ -677,6 +747,30 @@ impl ExecutionPlan {
                         let value = noise.process_sample();
                         left[frame] = value[0];
                         right[frame] = value[1];
+                    }
+                }
+                Kernel::Lfo(lfo) => {
+                    for frame in 0..frames {
+                        let value = lfo.process_sample();
+                        left[frame] = value;
+                        right[frame] = value;
+                    }
+                }
+                Kernel::ModulatedGain {
+                    current,
+                    target,
+                    smoothing,
+                } => {
+                    let from_left = source(0, 0);
+                    let from_right = source(0, 1);
+                    let cv = source(1, 0);
+                    for frame in 0..frames {
+                        for index in 0..2 {
+                            current[index] += (target[index] - current[index]) * *smoothing;
+                        }
+                        let effective = (current[0] + current[1] * cv[frame]).clamp(0.0, 2.0);
+                        left[frame] = from_left[frame] * effective;
+                        right[frame] = from_right[frame] * effective;
                     }
                 }
                 Kernel::Output => {
@@ -988,6 +1082,47 @@ mod tests {
         let [first, _] = process(&mut split, &silence[..64], &silence[..64]);
         let [second, _] = process(&mut split, &silence[..64], &silence[..64]);
         assert_eq!(expected, [first, second].concat());
+    }
+
+    #[test]
+    fn control_ports_are_typed_and_modulate_audio_per_sample() {
+        let nodes = vec![
+            node(1, NodeKind::Constant { value: 1.0 }),
+            node(
+                2,
+                NodeKind::Lfo {
+                    waveform: 0,
+                    rate: 10.0,
+                },
+            ),
+            node(
+                3,
+                NodeKind::ModulatedGain {
+                    base: 0.5,
+                    depth: 0.4,
+                },
+            ),
+            node(4, NodeKind::Output),
+        ];
+        let wrong = GraphDescription {
+            nodes: nodes.clone(),
+            connections: vec![edge(2, 4, 0)],
+        };
+        assert!(matches!(
+            wrong.compile(1_000.0, 100),
+            Err(GraphError::SignalTypeMismatch(2, 4, 0))
+        ));
+        let graph = GraphDescription {
+            nodes,
+            connections: vec![edge(1, 3, 0), edge(2, 3, 1), edge(3, 4, 0)],
+        };
+        let mut plan = graph.compile(1_000.0, 100).unwrap();
+        let input = [0.0; 100];
+        let [left, right] = process(&mut plan, &input, &input);
+        assert_eq!(left, right);
+        assert!((left[0] - 0.5).abs() < 1e-6);
+        assert!((left[25] - 0.9).abs() < 1e-5);
+        assert!((left[75] - 0.1).abs() < 1e-5);
     }
 
     #[test]
