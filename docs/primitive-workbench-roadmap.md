@@ -14,6 +14,8 @@ Checkpoint 106 adds Rust/Wasm prepared Source, Add, and Morph targets with a ded
 
 Checkpoint 107 composes one authored Main sample synth slice: file-backed sample playback and a source-prepared Add/Morph Sine bank into a two-bus mixer. Four native Rust graph renders match direct Rust/Wasm sample for sample, and the AudioWorklet plays the same branch layout. This establishes a reviewable graph seam, not parity for the original Main synth's phase vocoder, envelopes, crossfade network, MIDI voices, or saved state.
 
+Checkpoint 108 adds a versioned project-state JSON roundtrip for that Main blend study. It saves all six graph controls, target recipe and position, and either the built-in source choice or bounded decoded stereo PCM for a chosen file. Opening a state re-analyzes its source and prepares its target in the Rust/Wasm worker before playback. The full legacy Main graph and preset migration remain open.
+
 Make each port inspectable as a small browser instrument: manipulate a primitive, hear it, see its useful measurements, and compare the same deterministic case with the old C++/JUCE implementation. The workbench is a development surface and the beginning of the eventual project UI component library. It must not become part of the audio callback.
 
 The current Standalone Filter page proves the Rust/Wasm AudioWorklet path, but its large hero, decorative frequency bars, implementation copy, and oversized cards make it poor for comparing behavior. Replace that page with a compact task surface. The main reading order is: **project and signal path → controls → useful output → reference comparison**. A scope, filter response, spectrum, meter, or event timeline earns its place by answering a specific question; a visual effect does not.

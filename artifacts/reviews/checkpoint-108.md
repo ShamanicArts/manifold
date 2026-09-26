@@ -1,0 +1,9 @@
+# Checkpoint 108 — portable state for the Main blend study
+
+The [playable Main blend](http://127.0.0.1:4173/?primitive=main-sample-blend) now has **Download project state** and **Open project state**. The [review page](http://127.0.0.1:4173/main-sample-blend-review.html) explains the branch comparison and state boundary.
+
+The [version-1 state module](../../web/src/state/main-sample-blend.js) saves six authored graph parameters, target mode and waveform, temporal position, Morph amount, stretch, tilt, smoothing, and contrast. The built-in tone is saved as a source choice. A chosen file is saved as bounded, interleaved stereo float32 PCM in the JSON, so reopening does not depend on its original path or encoding. State validation checks the project ID, numerical ranges, duration, PCM length, and finite samples. Loading is allowed while the instrument is stopped; the Rust/Wasm worker re-analyzes the restored source and prepares the target again.
+
+The [state verifier](../../scripts/verify-main-sample-blend-state.mjs) roundtrips an embedded 4,096-frame source exactly, checks six controls and the recipe, and rejects malformed states. A headless Chromium open flow restored an embedded 8,192-frame source, 330 Hz pitch, 0.23 sample gain, and a Morph target with eight prepared partials, then started the AudioWorklet instrument at 48 kHz. The four native Rust versus Wasm graph cases from checkpoint 107 remain exact and the Main worklet branch verifier remains audible.
+
+This state describes the authored v2 study. It is not a migration of old Main Lua presets or the complete old project graph. File states contain decoded PCM rather than the original compressed media; at the 30-second 48 kHz limit the JSON is about 15 MB. The next substantive work is phase vocoder playback and the old branch/crossfade network.

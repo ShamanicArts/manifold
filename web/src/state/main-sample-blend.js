@@ -1,0 +1,103 @@
+// Portable version-1 state for the authored Main sample blend study.
+// User audio is embedded as bounded interleaved stereo float32 PCM.
+const VERSION = 1;
+const MAX_FRAMES = 48_000 * 30;
+const MAX_LABEL = 200;
+
+function validNumber(value, min, max) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+}
+
+function encodePcm(stereo) {
+  const bytes = new Uint8Array(stereo.length * 4);
+  const view = new DataView(bytes.buffer);
+  stereo.forEach((value, index) => view.setFloat32(index * 4, value, true));
+  const chunks = [];
+  for (let offset = 0; offset < bytes.length; offset += 8192) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 8192)));
+  }
+  return btoa(chunks.join(''));
+}
+
+function decodePcm(encoded, frames) {
+  const bytesLength = frames * 8;
+  if (typeof encoded !== 'string' || encoded.length !== 4 * Math.ceil(bytesLength / 3)
+    || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) {
+    throw new Error('Invalid embedded stereo PCM.');
+  }
+  const binary = atob(encoded);
+  if (binary.length !== bytesLength) throw new Error('Embedded PCM length does not match its frame count.');
+  const bytes = new Uint8Array(bytesLength);
+  for (let index = 0; index < bytesLength; index++) bytes[index] = binary.charCodeAt(index);
+  const view = new DataView(bytes.buffer);
+  const stereo = new Float32Array(frames * 2);
+  for (let index = 0; index < stereo.length; index++) {
+    const value = view.getFloat32(index * 4, true);
+    if (!Number.isFinite(value)) throw new Error('Embedded PCM contains a non-finite sample.');
+    stereo[index] = value;
+  }
+  return stereo;
+}
+
+export function parseMainSampleBlendState(document, project) {
+  if (document?.schemaVersion !== VERSION || document?.projectId !== project.id) {
+    throw new Error('This state belongs to a different Manifold v2 project.');
+  }
+  const parameters = document.parameters;
+  if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)
+    || Object.keys(parameters).length !== project.parameters.length) {
+    throw new Error(`State needs ${project.parameters.length} parameter values.`);
+  }
+  const checkedParameters = {};
+  for (const parameter of project.parameters) {
+    const value = parameters[parameter.hostId];
+    if (parameter.kind === 'toggle' ? value !== 0 && value !== 1
+      : !validNumber(value, parameter.min, parameter.max)) {
+      throw new Error(`Invalid ${parameter.label} value.`);
+    }
+    checkedParameters[parameter.hostId] = value;
+  }
+  const target = document.target;
+  if (!target || typeof target.active !== 'boolean'
+    || !Number.isInteger(target.mode) || target.mode < 0 || target.mode > 3
+    || !Number.isInteger(target.waveform) || target.waveform < 0 || target.waveform > 7
+    || !Number.isInteger(target.tiltMode) || target.tiltMode < 0 || target.tiltMode > 2
+    || !validNumber(target.position, 0, 1)
+    || !validNumber(target.morphAmount, 0, 1)
+    || !validNumber(target.stretch, 0, 1)
+    || !validNumber(target.smooth, 0, 1)
+    || !validNumber(target.contrast, 0, 2)) {
+    throw new Error('Invalid prepared target controls.');
+  }
+  const source = document.source;
+  if (source?.kind === 'builtin') {
+    return { schemaVersion: VERSION, projectId: project.id, parameters: checkedParameters,
+      target: { ...target }, source: { kind: 'builtin' } };
+  }
+  if (source?.kind !== 'embedded' || !Number.isInteger(source.sourceRate)
+    || source.sourceRate < 8_000 || source.sourceRate > 96_000
+    || !Number.isInteger(source.frames) || source.frames < 256 || source.frames > MAX_FRAMES
+    || source.frames > source.sourceRate * 30
+    || typeof source.label !== 'string' || source.label.length > MAX_LABEL) {
+    throw new Error('Invalid embedded audio source.');
+  }
+  const stereo = decodePcm(source.pcmF32Base64, source.frames);
+  return { schemaVersion: VERSION, projectId: project.id, parameters: checkedParameters,
+    target: { ...target }, source: { kind: 'embedded', sourceRate: source.sourceRate,
+      frames: source.frames, label: source.label, stereo } };
+}
+
+export function captureMainSampleBlendState(project, values, target, source) {
+  if (!source?.stereo || source.stereo.length % 2 !== 0) throw new Error('Choose a source before saving.');
+  const builtin = source.sourceKind === 'builtin';
+  const serializedSource = builtin ? { kind: 'builtin' } : {
+    kind: 'embedded', sourceRate: source.sourceRate, frames: source.stereo.length / 2,
+    label: source.label ?? 'Embedded audio', pcmF32Base64: encodePcm(source.stereo),
+  };
+  const document = { schemaVersion: VERSION, projectId: project.id,
+    parameters: Object.fromEntries(project.parameters.map((parameter) => [parameter.hostId, values.get(parameter.id)])),
+    target, source: serializedSource };
+  // The same validation applies to newly captured and opened states.
+  parseMainSampleBlendState(document, project);
+  return document;
+}

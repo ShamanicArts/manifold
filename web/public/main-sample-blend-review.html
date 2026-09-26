@@ -41,5 +41,6 @@
     </tbody></table>
     <p class="small">In the workbench, open “Reference comparison” to switch cases, inspect left/right output and differences, and play native or Wasm audio.</p>
   </section>
+  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save six graph controls, target mode and recipe, temporal position, and the source. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and target preparation, then restores pitch and branch gains. The state is versioned and rejects malformed audio or out-of-range controls.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
   <section class="panel"><h2>Next reconstruction boundary</h2><p class="scope">This is an authored v2 study of the old Main sample synth's sample and additive branches. The old phase vocoder, envelopes, directional crossfades, polyphonic voices, and saved project state are not represented by these four captures. The C++ helper recipe comparison is separate from this native-versus-Wasm graph check.</p></section>
 </main></body></html>

@@ -32,10 +32,10 @@
   <nav class="toc" aria-label="Sections"><span>Manifold / 26.09.2026</span><a href="#architecture">Architecture</a><a href="#done">Built so far</a><a href="#proven">Evidence</a><a href="#next">In flight &amp; next</a></nav>
   <main class="main">
     <header class="hero">
-      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 107</div>
+      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 108</div>
       <h1>A portable sound engine is taking shape.</h1>
       <p class="hero-copy">The old JUCE and Lua project is being rebuilt as a Rust DSP core with a JavaScript browser workbench. The workbench is already useful for playing, inspecting, and comparing individual behaviors; the full legacy projects are still being assembled.</p>
-      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: full sample synth branches</span><span>Review scope: checkpoint 107 and the next workstream</span></div>
+      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: full sample synth branches</span><span>Review scope: checkpoint 108 and the next workstream</span></div>
       <div class="stats" aria-label="Current library figures">
         <div class="stat"><strong>53</strong><span>interactive workbench views</span><small>Many are individual primitives or small authored projects.</small></div>
         <div class="stat"><strong>412</strong><span>checked-in offline comparison cases</span><small>412 audio cases, plus separate source-analysis and recipe captures.</small></div>
@@ -67,7 +67,7 @@
       <div class="section-head"><span class="label">03</span><h2 id="proven-heading">What the evidence says</h2></div>
       <div class="evidence">
         <div class="evidence-row"><strong>Kernel behavior</strong><p>Checked-in comparison captures pair old C++ outputs with Rust/Wasm for isolated nodes, and native Rust with Rust/Wasm for new compositions. The workbench exposes waveform differences and case-level results.</p></div>
-        <div class="evidence-row"><strong>Latest completed slice</strong><p>A first Main sample blend study connects file-backed stereo playback, worker-prepared Add/Morph targets, Sine bank, and a two-bus mixer. Four native Rust graph renders match direct Rust/Wasm sample for sample. <a href="/main-sample-blend-review.html">Inspect the branch review</a>.</p></div>
+        <div class="evidence-row"><strong>Latest completed slice</strong><p>The first Main sample blend now saves a versioned state: six graph controls, the Add/Morph recipe, and a chosen stereo source. Opening the state re-analyzes that source and prepares the target in Rust/Wasm. Four native Rust graph renders still match direct Wasm sample for sample. <a href="/main-sample-blend-review.html">Inspect the branch review</a>.</p></div>
         <div class="evidence-row"><strong>Browser path</strong><p>The same Rust core compiles to Wasm and runs inside an AudioWorklet. Playable views, controlled offline runs, and downloadable project slices exercise this path on the served site.</p></div>
         <div class="evidence-row"><strong>Scope of claim</strong><p>The numbers establish many local behaviors and some small compositions. They do not establish parity for the complete old plug-in, its full Lua project graph, every preset, or a native plug-in host.</p></div>
       </div>
@@ -80,6 +80,7 @@
         <div class="step"><span class="label">Done · partial analysis</span><h3>Source-derived frames are reviewable</h3><p>The Rust/Wasm worker extracts bounded temporal frames with region and confidence metadata. Four C++ fixtures match; selected frames play through the Sine bank. Legacy pitch detection is still separate.</p></div>
         <div class="step"><span class="label">Done · Add and Morph targets</span><h3>Prepare and audition source-based spectra</h3><p>Wave recipes, temporal interpolation, Add, and Morph match 17 C++ cases. The browser exposes a playable prepared target, with fixed-size publication between audio blocks.</p></div>
         <div class="step"><span class="label">Done · first Main branch study</span><h3>Sample and prepared bank share one output</h3><p>One source feeds playback and prepared Add/Morph targets. Separate sample and bank gains allow branch audition, with four native-versus-Wasm graph comparisons.</p></div>
+        <div class="step"><span class="label">Done · Main blend state</span><h3>Save and reopen a source-backed study</h3><p>Versioned JSON holds the six controls, target settings, and either the built-in source choice or bounded stereo PCM from a file. The target is rebuilt in the worker when reopened.</p></div>
         <div class="step"><span class="label">Now · full sample project</span><h3>Build the remaining paths and save state</h3><p>Integrate phase vocoder, envelopes, crossfade routing, voice behavior, saved state, and old/new project scenarios.</p></div>
         <div class="step"><span class="label">Later · product surface</span><h3>Harden the shared project model and hosts</h3><p>Broaden state and preset handling, measure callback budgets in the browser, and package non-browser hosts against the same Rust engine.</p></div>
       </div>

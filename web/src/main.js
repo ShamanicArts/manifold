@@ -30,6 +30,7 @@ import formantProject from '../../projects/formant/project.json';
 import resonatorProject from '../../projects/resonator/project.json';
 import sineBankProject from '../../projects/sine-bank/project.json';
 import mainSampleBlendProject from '../../projects/main-sample-blend/project.json';
+const mainSampleBlendInitialPartials = structuredClone(mainSampleBlendProject.partials);
 import reverseDelayProject from '../../projects/reverse-delay/project.json';
 import stutterProject from '../../projects/stutter/project.json';
 import pitchShifterProject from '../../projects/pitch-shifter/project.json';
@@ -57,6 +58,7 @@ import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace, drawBandBars, drawEqResponse } from './reference/plots.js';
 import { captureStandaloneFxState, parseStandaloneFxState, capturePersistentFxState, parsePersistentFxState } from './state/standalone-fx.js';
 import { captureControlPatchState, parseControlPatchState } from './state/control-patch.js';
+import { captureMainSampleBlendState, parseMainSampleBlendState } from './state/main-sample-blend.js';
 
 const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
@@ -435,6 +437,7 @@ const pendingSampleAnalyses = new Map();
 const pendingSineTargets = new Map();
 let latestSineTargetId = 0;
 let sineTargetActive = false;
+let sinePitchSource = null;
 function demoSample() {
   if (exampleSample) return exampleSample;
   const sourceRate = 48_000;
@@ -448,7 +451,7 @@ function demoSample() {
     stereo[frame * 2] = tone;
     stereo[frame * 2 + 1] = tone * 0.85;
   }
-  exampleSample = { sourceRate, stereo };
+  exampleSample = { sourceRate, stereo, sourceKind: 'builtin' };
   return exampleSample;
 }
 function samplePeaks(source) {
@@ -585,7 +588,10 @@ function createSampleAnalysisWorker(temporalWorker) {
       drawSampleWaveform();
       renderSampleAnalysis();
     }
-    if (analyzed === loadedSineSource) renderSineSourceAnalysis();
+    if (analyzed === loadedSineSource) {
+      renderSineSourceAnalysis();
+      if (sineTargetActive && analyzed.temporal) scheduleSineTarget();
+    }
   };
   worker.onerror = (error) => {
     for (const [id, { source: analyzed, temporal }] of pendingSampleAnalyses) {
@@ -1358,8 +1364,15 @@ function renderPrimitive(family) {
   activeProject = project.patch ? { ...project, signal: patchedSignals.get(family) } : project;
   const isInstrument = project.signal.inputSource === 'none';
   activeFamily = family;
+  if (usesSineSource(family)) sinePitchSource = null;
   primitivePicker.value = family;
   values = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
+  if (family === 'main-sample-blend') {
+    sineTargetActive = false;
+    activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+    byId('sine-target-bars').replaceChildren();
+    byId('sine-target-status').textContent = 'Select a target after analysis.';
+  }
   if (isFxFamily(family)) slotValuesByType = new Map([
     [0, [0.5, 0.5, 0.2, 0.6, 0.4]],
     [1, [0.5, 0.5, 0.4, 0.5, 0.4]],
@@ -1429,9 +1442,11 @@ function renderPrimitive(family) {
   byId('controls').replaceChildren();
   renderSineBankEditor();
   byId('sine-source-section').hidden = !usesSineSource(family);
+  byId('main-state-section').hidden = family !== 'main-sample-blend';
+  byId('main-state-file').disabled = audio.running;
   if (family === 'main-sample-blend' && !loadedSineSource) {
     const demo = demoSample();
-    loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, label: 'Built-in two-tone source' };
+    loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' };
     requestSampleAnalysis(loadedSineSource, true);
   }
   if (usesSineSource(family)) renderSineSourceAnalysis();
@@ -1933,7 +1948,7 @@ async function decodeFileSource(file) {
     stereo[frame * 2 + 1] = right[frame];
   }
   const label = `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ${audioBuffer.numberOfChannels} channel${audioBuffer.numberOfChannels === 1 ? '' : 's'}`;
-  return { sourceRate: audioBuffer.sampleRate, stereo, label };
+  return { sourceRate: audioBuffer.sampleRate, stereo, label, sourceKind: 'embedded' };
 }
 byId('sample-file').addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
@@ -1959,8 +1974,9 @@ byId('sine-use-demo').addEventListener('click', () => {
     return;
   }
   const demo = demoSample();
-  loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, label: 'Built-in two-tone source' };
+  loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' };
   sineTargetActive = false;
+  if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
   byId('sine-target-bars').replaceChildren();
   byId('sine-target-status').textContent = 'Select a target after analysis.';
   renderSineSourceAnalysis();
@@ -1976,6 +1992,7 @@ byId('sine-source-file').addEventListener('change', async (event) => {
     }
     loadedSineSource = await decodeFileSource(file);
     sineTargetActive = false;
+    if (activeFamily === 'main-sample-blend') activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
     byId('sine-target-bars').replaceChildren();
     byId('sine-target-status').textContent = 'Select a target after analysis.';
     renderSineSourceAnalysis();
@@ -1994,12 +2011,15 @@ function applyPreparedSineTarget(data, mode) {
   const pitch = pitched ? Math.max(40, Math.min(1600, loadedSineSource.temporal.fundamental)) : 440;
   activeProject.partials = { nodeId: activeProject.partials.nodeId, fundamental: bankRoot, values: Array.from(data.values) };
   audio.setPartials(activeProject.partials);
-  values.set(0, pitch);
-  byId('controls').querySelector('[data-parameter-id="0"]')?.syncValue(pitch);
-  audio.setParameter(0, pitch);
+  if (sinePitchSource !== loadedSineSource) {
+    values.set(0, pitch);
+    byId('controls').querySelector('[data-parameter-id="0"]')?.syncValue(pitch);
+    audio.setParameter(0, pitch);
+    sinePitchSource = loadedSineSource;
+  }
   renderSineBars(data.values, byId('sine-target-bars'), !absolute);
   const name = ['Source frame', 'Add · self', 'Add · driven', 'Morph'][mode];
-  byId('sine-target-status').textContent = `${name} · ${data.values.length / 4} prepared partials · ${absolute ? pitched ? `${data.fundamental.toFixed(1)} Hz pitch` : 'unpitched original frequencies' : `pitch ${pitch.toFixed(1)} Hz × partial ratios`}`;
+  byId('sine-target-status').textContent = `${name} · ${data.values.length / 4} prepared partials · ${absolute ? pitched ? `${data.fundamental.toFixed(1)} Hz pitch` : 'unpitched original frequencies' : `pitch ${values.get(0).toFixed(1)} Hz × partial ratios`}`;
 }
 function requestPreparedSineTarget() {
   const source = loadedSineSource;
@@ -2045,6 +2065,83 @@ byId('sine-use-frame').addEventListener('click', () => {
   if (!usesSineSource() || !loadedSineSource?.temporal) return;
   sineTargetActive = true;
   requestPreparedSineTarget();
+});
+function mainBlendTargetControls() {
+  return {
+    active: sineTargetActive,
+    mode: Number(byId('sine-target-mode').value),
+    waveform: Number(byId('sine-waveform').value),
+    position: Number(byId('sine-position').value),
+    morphAmount: Number(byId('sine-morph-amount').value),
+    stretch: Number(byId('sine-stretch').value),
+    tiltMode: Number(byId('sine-tilt-mode').value),
+    smooth: Number(byId('sine-smooth').value),
+    contrast: Number(byId('sine-contrast').value),
+  };
+}
+byId('main-state-export').addEventListener('click', () => {
+  if (activeFamily !== 'main-sample-blend') return;
+  const readout = byId('main-state-status');
+  try {
+    const state = captureMainSampleBlendState(activeProject, values, mainBlendTargetControls(), loadedSineSource);
+    const url = URL.createObjectURL(new Blob([`${JSON.stringify(state)}\n`], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'manifold-main-sample-blend-state.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    readout.textContent = `Saved six controls, target settings, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
+  } catch (error) {
+    readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('main-state-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('main-state-status');
+  try {
+    if (activeFamily !== 'main-sample-blend' || audio.running) throw new Error('Stop the Main blend instrument before opening a state.');
+    if (file.size > 20 * 1024 * 1024) throw new Error('State JSON must be smaller than 20 MB.');
+    const contents = await file.text();
+    if (activeFamily !== 'main-sample-blend' || audio.running) throw new Error('Project view changed while opening the state.');
+    const state = parseMainSampleBlendState(JSON.parse(contents), mainSampleBlendProject);
+    for (const parameter of mainSampleBlendProject.parameters) {
+      const value = state.parameters[parameter.hostId];
+      const control = byId('controls').querySelector(`[data-parameter-id="${parameter.id}"]`);
+      control?.syncValue?.(value);
+      values.set(parameter.id, value);
+      if (parameter.kind === 'toggle' && control) {
+        control.setAttribute('aria-pressed', String(value === 1));
+        control.textContent = `${parameter.label}: ${value ? 'On' : 'Off'}`;
+      }
+    }
+    for (const [id, value] of Object.entries({
+      'sine-target-mode': state.target.mode, 'sine-waveform': state.target.waveform,
+      'sine-position': state.target.position, 'sine-morph-amount': state.target.morphAmount,
+      'sine-stretch': state.target.stretch, 'sine-tilt-mode': state.target.tiltMode,
+      'sine-smooth': state.target.smooth, 'sine-contrast': state.target.contrast,
+    })) byId(id).value = String(value);
+    updateSineTargetControls();
+    pendingSineTargets.clear();
+    latestSineTargetId = 0;
+    sineTargetActive = state.target.active;
+    activeProject.partials = structuredClone(mainSampleBlendInitialPartials);
+    const demo = demoSample();
+    loadedSineSource = state.source.kind === 'builtin'
+      ? { sourceRate: demo.sourceRate, stereo: demo.stereo, sourceKind: 'builtin', label: 'Built-in two-tone source' }
+      : { sourceRate: state.source.sourceRate, stereo: state.source.stereo,
+        sourceKind: 'embedded', label: state.source.label };
+    sinePitchSource = loadedSineSource;
+    byId('sine-target-bars').replaceChildren();
+    byId('sine-target-status').textContent = sineTargetActive ? 'Rebuilding prepared target in Rust/Wasm…' : 'Source restored; select Audition prepared target.';
+    renderSineSourceAnalysis();
+    requestSampleAnalysis(loadedSineSource, true);
+    readout.textContent = `Opened ${file.name} · six controls, target settings, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
+  } catch (error) {
+    readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    event.target.value = '';
+  }
 });
 byId('slot-state-export').addEventListener('click', () => {
   if (!hasFxState(activeFamily)) return;
@@ -2190,6 +2287,7 @@ toggle.addEventListener('click', async () => {
     if (!audio.running) byId('controls').querySelectorAll('.has-effective').forEach((slider) => slider.setEffective(null));
     byId('sample-file').disabled = audio.running;
     byId('slot-state-file').disabled = audio.running;
+    byId('main-state-file').disabled = audio.running;
     byId('patch-state-file').disabled = audio.running;
     byId('granulator-file').disabled = audio.running;
     byId('granulator-clear-file').disabled = audio.running;
