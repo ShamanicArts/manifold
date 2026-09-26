@@ -12,9 +12,10 @@
       { "id": 2, "type": "noise", "a": 0.08, "b": 0.5 },
       { "id": 3, "type": "sum2", "a": 1, "b": 1 },
       { "id": 4, "type": "adsr" },
-      { "id": 5, "type": "svf" },
+      { "id": 5, "type": "modulated-svf", "a": 1200 },
       { "id": 6, "type": "gain", "a": 0.5 },
-      { "id": 7, "type": "output" }
+      { "id": 7, "type": "output" },
+      { "id": 8, "type": "lfo", "a": 2 }
     ],
     "connections": [
       { "from": 1, "to": 3, "inputPort": 0 },
@@ -22,7 +23,8 @@
       { "from": 3, "to": 4, "inputPort": 0 },
       { "from": 4, "to": 5, "inputPort": 0 },
       { "from": 5, "to": 6, "inputPort": 0 },
-      { "from": 6, "to": 7, "inputPort": 0 }
+      { "from": 6, "to": 7, "inputPort": 0 },
+      { "from": 8, "to": 5, "inputPort": 1 }
     ]
   },
   "parameters": [
@@ -38,6 +40,8 @@
     { "id": 9, "nodeId": 4, "nodeParameterId": 4, "hostId": "gate", "label": "Gate", "kind": "gate", "default": 0 },
     { "id": 10, "nodeId": 5, "nodeParameterId": 1, "hostId": "cutoff", "label": "Filter cutoff", "kind": "float", "min": 20, "max": 20000, "default": 1600, "unit": "Hz" },
     { "id": 11, "nodeId": 5, "nodeParameterId": 2, "hostId": "resonance", "label": "Resonance", "kind": "float", "min": 0, "max": 1, "default": 0.2 },
-    { "id": 12, "nodeId": 6, "nodeParameterId": 0, "hostId": "master", "label": "Output level", "kind": "float", "min": 0, "max": 1, "default": 0.5 }
+    { "id": 12, "nodeId": 6, "nodeParameterId": 0, "hostId": "master", "label": "Output level", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 13, "nodeId": 8, "nodeParameterId": 1, "hostId": "rate", "label": "Filter LFO rate", "kind": "float", "min": 0.05, "max": 20, "default": 2, "unit": "Hz" },
+    { "id": 14, "nodeId": 5, "nodeParameterId": 3, "hostId": "cutoff-depth", "label": "Cutoff depth", "kind": "float", "min": -8000, "max": 8000, "default": 1200, "unit": "Hz" }
   ]
 }

@@ -85,6 +85,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             rate: a,
         },
         15 => NodeKind::ModulatedGain { base: a, depth: b },
+        16 => NodeKind::ModulatedSvf { depth_hz: a },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -167,6 +168,9 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::Lfo { rate, .. }, 1) => *rate = value.clamp(0.05, 20.0),
             (NodeKind::ModulatedGain { base, .. }, 0) => *base = value.clamp(0.0, 2.0),
             (NodeKind::ModulatedGain { depth, .. }, 1) => *depth = value.clamp(-2.0, 2.0),
+            (NodeKind::ModulatedSvf { depth_hz }, 3) => {
+                *depth_hz = value.clamp(-20_000.0, 20_000.0)
+            }
             _ => return 0,
         }
         1

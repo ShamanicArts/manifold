@@ -104,14 +104,32 @@ impl Filter {
 
     /// Planar stereo f32 buffers, equal lengths. No allocations, locks, or host calls.
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
+        self.process_planar_with_cv(input, output, None, 0.0);
+    }
+
+    /// Optional bipolar control modulates the cutoff target in Hz per sample.
+    /// The ordinary 20 ms cutoff smoother still applies after modulation.
+    pub fn process_planar_with_cv(
+        &mut self,
+        input: [&[f32]; 2],
+        output: [&mut [f32]; 2],
+        cv: Option<&[f32]>,
+        depth_hz: f32,
+    ) {
         let [left_in, right_in] = input;
         let [left_out, right_out] = output;
         assert_eq!(left_in.len(), right_in.len());
         assert_eq!(left_in.len(), left_out.len());
         assert_eq!(left_in.len(), right_out.len());
+        if let Some(cv) = cv {
+            assert_eq!(left_in.len(), cv.len());
+        }
 
         for index in 0..left_in.len() {
-            self.cutoff += (self.target_cutoff - self.cutoff) * self.cutoff_smoothing;
+            let requested_cutoff = cv.map_or(self.target_cutoff, |cv| {
+                (self.target_cutoff + cv[index] * depth_hz).clamp(20.0, 20_000.0)
+            });
+            self.cutoff += (requested_cutoff - self.cutoff) * self.cutoff_smoothing;
             self.resonance += (self.target_resonance - self.resonance) * self.resonance_smoothing;
 
             let cutoff = self.cutoff.clamp(20.0, 0.42 * self.sample_rate);
@@ -216,5 +234,42 @@ mod tests {
         assert!(filter.set_parameter(2, 2.0));
         assert_eq!(filter.resonance(), 1.0);
         assert!(!filter.set_parameter(1, f32::NAN));
+    }
+
+    #[test]
+    fn control_cutoff_changes_filter_without_changing_unmodulated_path() {
+        let input: Vec<_> = (0..1024).map(|n| (n as f32 * 0.12).sin() * 0.3).collect();
+        let cv = vec![1.0; input.len()];
+        let mut baseline = Filter::new(48_000.0);
+        baseline.set_parameter(1, 800.0);
+        let ordinary = run(&mut baseline, &input);
+        let mut zero_depth = Filter::new(48_000.0);
+        zero_depth.set_parameter(1, 800.0);
+        let mut zero = vec![0.0; input.len()];
+        let mut zero_right = vec![0.0; input.len()];
+        zero_depth.process_planar_with_cv(
+            [&input, &input],
+            [&mut zero, &mut zero_right],
+            Some(&cv),
+            0.0,
+        );
+        assert_eq!(ordinary, zero);
+        let mut modulated = Filter::new(48_000.0);
+        modulated.set_parameter(1, 800.0);
+        let mut changed = vec![0.0; input.len()];
+        let mut changed_right = vec![0.0; input.len()];
+        modulated.process_planar_with_cv(
+            [&input, &input],
+            [&mut changed, &mut changed_right],
+            Some(&cv),
+            4000.0,
+        );
+        assert!(
+            changed
+                .iter()
+                .zip(&ordinary)
+                .any(|(a, b)| (a - b).abs() > 0.01)
+        );
+        assert_eq!(changed, changed_right);
     }
 }

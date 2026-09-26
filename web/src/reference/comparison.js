@@ -98,10 +98,10 @@ function preparePatch(engine, selected) {
   const nodes = [
     [1, 11, selected.frequencyBefore, selected.oscillatorLevel],
     [2, 13, selected.noiseLevelBefore, selected.noiseColor],
-    [3, 4, 1, 1], [4, 12, 0, 0], [5, 6, 0, 0],
-    [6, 3, selected.master, 0], [7, 7, 0, 0],
+    [3, 4, 1, 1], [4, 12, 0, 0], [5, 16, selected.cutoffDepth, 0],
+    [6, 3, selected.master, 0], [7, 7, 0, 0], [8, 14, selected.lfoRate, 0],
   ];
-  const edges = [[1, 3, 0], [2, 3, 1], [3, 4, 0], [4, 5, 0], [5, 6, 0], [6, 7, 0]];
+  const edges = [[1, 3, 0], [2, 3, 1], [3, 4, 0], [4, 5, 0], [5, 6, 0], [6, 7, 0], [8, 5, 1]];
   if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Wasm synth graph begin failed');
   for (const node of nodes) {
     if (engine.manifold_graph_node(...node) !== 1) throw new Error(`Wasm synth node ${node[0]} failed`);
@@ -350,7 +350,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
               : family === 'noise'
                 ? `level ${selected.levelBefore} → ${selected.levelAfter} · color ${selected.colorBefore} → ${selected.colorAfter}`
                 : family === 'patch'
-                  ? `pitch ${selected.frequencyBefore} → ${selected.frequencyAfter} Hz · noise ${selected.noiseLevelBefore} → ${selected.noiseLevelAfter} · cutoff ${selected.cutoffBefore} → ${selected.cutoffAfter} Hz`
+                  ? `pitch ${selected.frequencyBefore} → ${selected.frequencyAfter} Hz · noise ${selected.noiseLevelBefore} → ${selected.noiseLevelAfter} · cutoff ${selected.cutoffBefore} → ${selected.cutoffAfter} Hz · LFO ${selected.lfoRate} Hz × ${selected.cutoffDepth} Hz`
                   : family === 'modulation'
                     ? `${['sine', 'triangle', 'square'][selected.waveform]} CV · rate ${selected.rateBefore} → ${selected.rateAfter} Hz · depth ${selected.depthBefore} → ${selected.depthAfter}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;

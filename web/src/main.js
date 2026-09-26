@@ -61,8 +61,8 @@ const projects = {
   patch: {
     project: patchProject,
     title: 'Synth patch',
-    description: 'Mix a pitched oscillator with colored noise, then shape both with an envelope and lowpass filter. This is the first authored multi-primitive instrument graph.',
-    signal: 'Audio path: oscillator + noise → ADSR → SVF → output',
+    description: 'Mix a pitched oscillator with colored noise, shape both with an envelope, then sweep the lowpass filter with a Rust LFO.',
+    signal: 'Audio: oscillator + noise → ADSR → SVF → output · CV: LFO → cutoff',
   },
   modulation: {
     project: modulationProject,
@@ -75,6 +75,16 @@ const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
 let values = new Map();
 const audio = new BrowserAudioHost((message) => { status.textContent = message; });
+
+function updateCutoffRange() {
+  const target = byId('cutoff-range');
+  if (!target) return;
+  const base = values.get(10);
+  const depth = Math.abs(values.get(14));
+  const low = Math.max(20, Math.round(base - depth));
+  const high = Math.min(20000, Math.round(base + depth));
+  target.textContent = `Cutoff target: ${low.toLocaleString()}–${high.toLocaleString()} Hz, then 20 ms smoothing.`;
+}
 
 function addSlider(parameter) {
   const wrapper = document.createElement('label');
@@ -107,6 +117,7 @@ function addSlider(parameter) {
     readout.value = format(value);
     values.set(parameter.id, value);
     if (publish) audio.setParameter(parameter.id, value);
+    if (publish) updateCutoffRange();
   };
   sync(toPosition(parameter.default), false);
   input.addEventListener('input', () => sync(Number(input.value), true));
@@ -170,6 +181,13 @@ function renderPrimitive(family) {
   for (const parameter of project.parameters.filter((item) => item.kind !== 'choice')) {
     if (parameter.kind === 'gate') addGate(parameter);
     else addSlider(parameter);
+  }
+  if (family === 'patch') {
+    const range = document.createElement('p');
+    range.id = 'cutoff-range';
+    range.className = 'control-help';
+    byId('controls').appendChild(range);
+    updateCutoffRange();
   }
   byId('source').hidden = isInstrument;
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';

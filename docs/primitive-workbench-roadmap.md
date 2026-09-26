@@ -1,6 +1,6 @@
 # Manifold primitive workbench roadmap
 
-Status: waves 0–1 have interactive SVF, Crossfader, and Mixer views with C++ parity fixtures; wave 2 has a timed-event eight voice baseline and a separate standard-waveform Oscillator, patchable ADSR, and NoiseGenerator with C++ parity, plus an authored oscillator/noise → ADSR → SVF synth patch with native Rust/Wasm comparison. Wave 3 has begun with typed control ports, a Rust LFO, and a modulation view. External MIDI, additive oscillator modes, the full authored MIDI Synth, and further CV utilities remain. Source of truth for legacy behavior remains `/home/shamanic/dev/my-plugin`; the v2 implementation lives here.
+Status: waves 0–1 have interactive SVF, Crossfader, and Mixer views with C++ parity fixtures; wave 2 has a timed-event eight voice baseline and a separate standard-waveform Oscillator, patchable ADSR, and NoiseGenerator with C++ parity, plus an authored oscillator/noise → ADSR → SVF synth patch with native Rust/Wasm comparison. Wave 3 has begun with typed control ports, a Rust LFO, a modulation view, and sample-rate CV routed into the synth patch filter. External MIDI, additive oscillator modes, the full authored MIDI Synth, and further CV utilities remain. Source of truth for legacy behavior remains `/home/shamanic/dev/my-plugin`; the v2 implementation lives here.
 
 ## Purpose
 

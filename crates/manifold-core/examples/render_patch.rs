@@ -4,8 +4,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 19 {
-        return Err("usage: render_patch OUTPUT WAVEFORM FREQ_BEFORE FREQ_AFTER OSC_LEVEL NOISE_BEFORE NOISE_AFTER NOISE_COLOR ATTACK DECAY SUSTAIN RELEASE CUTOFF_BEFORE CUTOFF_AFTER RESONANCE MASTER BLOCK_SIZE FRAMES".into());
+    if args.len() != 21 {
+        return Err("usage: render_patch OUTPUT WAVEFORM FREQ_BEFORE FREQ_AFTER OSC_LEVEL NOISE_BEFORE NOISE_AFTER NOISE_COLOR ATTACK DECAY SUSTAIN RELEASE CUTOFF_BEFORE CUTOFF_AFTER RESONANCE MASTER LFO_RATE CUTOFF_DEPTH BLOCK_SIZE FRAMES".into());
     }
     let waveform: u32 = args[2].parse()?;
     let frequency_before: f32 = args[3].parse()?;
@@ -22,8 +22,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cutoff_after: f32 = args[14].parse()?;
     let resonance: f32 = args[15].parse()?;
     let master: f32 = args[16].parse()?;
-    let block: usize = args[17].parse()?;
-    let frames: usize = args[18].parse()?;
+    let lfo_rate: f32 = args[17].parse()?;
+    let cutoff_depth: f32 = args[18].parse()?;
+    let block: usize = args[19].parse()?;
+    let frames: usize = args[20].parse()?;
     let graph = GraphDescription {
         nodes: vec![
             NodeSpec {
@@ -54,7 +56,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             NodeSpec {
                 id: 5,
-                kind: NodeKind::Svf,
+                kind: NodeKind::ModulatedSvf {
+                    depth_hz: cutoff_depth,
+                },
             },
             NodeSpec {
                 id: 6,
@@ -63,6 +67,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             NodeSpec {
                 id: 7,
                 kind: NodeKind::Output,
+            },
+            NodeSpec {
+                id: 8,
+                kind: NodeKind::Lfo {
+                    waveform: 0,
+                    rate: lfo_rate,
+                },
             },
         ],
         connections: vec![
@@ -95,6 +106,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 from: 6,
                 to: 7,
                 input_port: 0,
+            },
+            Connection {
+                from: 8,
+                to: 5,
+                input_port: 1,
             },
         ],
     };

@@ -10,15 +10,15 @@ OUT = ROOT / "web/public/reference/patch"
 OUT.mkdir(parents=True, exist_ok=True)
 subprocess.run(["cargo", "build", "-p", "manifold-core", "--example", "render_patch"], cwd=ROOT, check=True)
 runner = ROOT / "target/debug/examples/render_patch"
-sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/oscillator.rs", "crates/manifold-core/src/noise.rs", "crates/manifold-core/src/envelope.rs", "crates/manifold-core/src/lib.rs", "projects/synth-patch/project.json", "crates/manifold-core/examples/render_patch.rs"]]
+sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/oscillator.rs", "crates/manifold-core/src/noise.rs", "crates/manifold-core/src/envelope.rs", "crates/manifold-core/src/lfo.rs", "crates/manifold-core/src/lib.rs", "projects/synth-patch/project.json", "crates/manifold-core/examples/render_patch.rs"]]
 source_hash = hashlib.sha256(b"".join(path.read_bytes() for path in sources)).hexdigest()
 specs = [
-    ("tone", "Tone through envelope and filter", 0, 220, 220, .4, 0, 0, .5, .02, .08, .6, .08, 1600, 1600, .2, .5, 128),
-    ("tone-noise", "Tone and colored noise", 1, 220, 220, .3, .12, .12, .7, .01, .05, .5, .1, 2400, 2400, .35, .5, 128),
-    ("sweep", "Pitch, noise and filter sweep", 0, 220, 440, .4, .04, .2, .3, .02, .04, .7, .1, 800, 4000, .1, .45, 128),
-    ("noise-only", "Noise-only transient", 0, 220, 220, 0, .3, .1, .8, .002, .02, .3, .05, 3000, 1000, .2, .5, 64),
+    ("tone", "Tone through envelope and filter", 0, 220, 220, .4, 0, 0, .5, .02, .08, .6, .08, 1600, 1600, .2, .5, 2, 0, 128),
+    ("tone-noise", "Tone, noise and filter LFO", 1, 220, 220, .3, .12, .12, .7, .01, .05, .5, .1, 2400, 2400, .35, .5, 3, 1200, 128),
+    ("sweep", "Pitch, noise and filter sweep", 0, 220, 440, .4, .04, .2, .3, .02, .04, .7, .1, 800, 4000, .1, .45, 5, 2400, 128),
+    ("noise-only", "Noise-only transient with filter LFO", 0, 220, 220, 0, .3, .1, .8, .002, .02, .3, .05, 3000, 1000, .2, .5, 8, 1000, 64),
 ]
-keys = ["waveform", "frequencyBefore", "frequencyAfter", "oscillatorLevel", "noiseLevelBefore", "noiseLevelAfter", "noiseColor", "attack", "decay", "sustain", "release", "cutoffBefore", "cutoffAfter", "resonance", "master", "blockSize"]
+keys = ["waveform", "frequencyBefore", "frequencyAfter", "oscillatorLevel", "noiseLevelBefore", "noiseLevelAfter", "noiseColor", "attack", "decay", "sustain", "release", "cutoffBefore", "cutoffAfter", "resonance", "master", "lfoRate", "cutoffDepth", "blockSize"]
 cases = []
 for case_id, label, *values in specs:
     output = f"{case_id}.f32"

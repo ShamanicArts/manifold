@@ -49,6 +49,9 @@ pub enum NodeKind {
         master: f32,
     },
     Svf,
+    ModulatedSvf {
+        depth_hz: f32,
+    },
     VoiceSynth,
     Oscillator {
         frequency: f32,
@@ -83,7 +86,8 @@ impl NodeKind {
             Self::Sum2 { .. }
             | Self::LinearBlend { .. }
             | Self::Crossfader { .. }
-            | Self::ModulatedGain { .. } => 2,
+            | Self::ModulatedGain { .. }
+            | Self::ModulatedSvf { .. } => 2,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. } | Self::Svf | Self::AdsrEnvelope | Self::Output => 1,
         }
@@ -98,7 +102,7 @@ impl NodeKind {
     }
 
     fn input_signal(&self, port: usize) -> SignalKind {
-        if matches!(self, Self::ModulatedGain { .. }) && port == 1 {
+        if matches!(self, Self::ModulatedGain { .. } | Self::ModulatedSvf { .. }) && port == 1 {
             SignalKind::Control
         } else {
             SignalKind::Audio
@@ -137,6 +141,7 @@ impl NodeKind {
             Self::NoiseGenerator { level, color } => level.is_finite() && color.is_finite(),
             Self::Lfo { waveform, rate } => *waveform <= 2 && rate.is_finite(),
             Self::ModulatedGain { base, depth } => base.is_finite() && depth.is_finite(),
+            Self::ModulatedSvf { depth_hz } => depth_hz.is_finite(),
             _ => true,
         }
     }
@@ -207,6 +212,10 @@ enum Kernel {
     Crossfader(CrossfaderState),
     Mixer(MixerState),
     Svf(Filter),
+    ModulatedSvf {
+        filter: Filter,
+        depth_hz: f32,
+    },
     VoiceSynth(VoiceSynth),
     Oscillator(Oscillator),
     AdsrEnvelope(AdsrEnvelope),
@@ -295,6 +304,10 @@ impl Kernel {
                 })
             }
             NodeKind::Svf => Self::Svf(Filter::new(sample_rate)),
+            NodeKind::ModulatedSvf { depth_hz } => Self::ModulatedSvf {
+                filter: Filter::new(sample_rate),
+                depth_hz: depth_hz.clamp(-20_000.0, 20_000.0),
+            },
             NodeKind::VoiceSynth => Self::VoiceSynth(VoiceSynth::new(sample_rate)),
             NodeKind::Oscillator {
                 frequency,
@@ -351,6 +364,12 @@ impl Kernel {
                 state.target_pans[id as usize - 33] = value.clamp(-1.0, 1.0)
             }
             (Self::Svf(filter), id) => return filter.set_parameter(id, value),
+            (Self::ModulatedSvf { filter, .. }, id @ 0..=2) => {
+                return filter.set_parameter(id, value);
+            }
+            (Self::ModulatedSvf { depth_hz, .. }, 3) => {
+                *depth_hz = value.clamp(-20_000.0, 20_000.0)
+            }
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
@@ -719,6 +738,12 @@ impl ExecutionPlan {
                 Kernel::Svf(filter) => {
                     filter.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
+                Kernel::ModulatedSvf { filter, depth_hz } => filter.process_planar_with_cv(
+                    [source(0, 0), source(0, 1)],
+                    [left, right],
+                    Some(source(1, 0)),
+                    *depth_hz,
+                ),
                 Kernel::VoiceSynth(synth) => {
                     for frame in 0..frames {
                         let value = synth.process_sample() * std::f32::consts::FRAC_1_SQRT_2;

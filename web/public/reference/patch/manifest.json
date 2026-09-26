@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust authored synth graph",
-  "sourceSha256": "af8e0aeed1a3ba374ca519ecdbc8e1d9cc47fb386c81b25dd73a41c2c03c7eee",
+  "sourceSha256": "0a07e5c00d9ac43fc1304a0bb130c9ec649b43ee67a2ec153d19f59b638e1293",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
@@ -26,12 +26,14 @@
       "cutoffAfter": 1600,
       "resonance": 0.2,
       "master": 0.5,
+      "lfoRate": 2,
+      "cutoffDepth": 0,
       "blockSize": 128,
       "output": "tone.f32"
     },
     {
       "id": "tone-noise",
-      "label": "Tone and colored noise",
+      "label": "Tone, noise and filter LFO",
       "waveform": 1,
       "frequencyBefore": 220,
       "frequencyAfter": 220,
@@ -47,6 +49,8 @@
       "cutoffAfter": 2400,
       "resonance": 0.35,
       "master": 0.5,
+      "lfoRate": 3,
+      "cutoffDepth": 1200,
       "blockSize": 128,
       "output": "tone-noise.f32"
     },
@@ -68,12 +72,14 @@
       "cutoffAfter": 4000,
       "resonance": 0.1,
       "master": 0.45,
+      "lfoRate": 5,
+      "cutoffDepth": 2400,
       "blockSize": 128,
       "output": "sweep.f32"
     },
     {
       "id": "noise-only",
-      "label": "Noise-only transient",
+      "label": "Noise-only transient with filter LFO",
       "waveform": 0,
       "frequencyBefore": 220,
       "frequencyAfter": 220,
@@ -89,6 +95,8 @@
       "cutoffAfter": 1000,
       "resonance": 0.2,
       "master": 0.5,
+      "lfoRate": 8,
+      "cutoffDepth": 1000,
       "blockSize": 64,
       "output": "noise-only.f32"
     }
