@@ -11,6 +11,7 @@ pub mod envelope_follower;
 pub mod eq8;
 pub mod events;
 pub mod fft_spectrum;
+pub mod formant_filter;
 pub mod graph;
 pub mod legacy_eq;
 pub mod legacy_filter;

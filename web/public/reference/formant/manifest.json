@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "reference": "legacy C++ FormantFilterNode stereo",
+  "sourceSha256": "75a35dee1bb12b2b59b5c42225536a3e202052148a69641dca1e061c1327988d",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default vowel A",
+      "before": [
+        0,
+        0,
+        6,
+        1.2,
+        1
+      ],
+      "after": [
+        0,
+        0,
+        6,
+        1.2,
+        1
+      ],
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "a-to-e",
+      "label": "A to E transition",
+      "before": [
+        0,
+        0,
+        7,
+        1.4,
+        1
+      ],
+      "after": [
+        1,
+        0,
+        7,
+        1.4,
+        1
+      ],
+      "blockSize": 128,
+      "output": "a-to-e.f32"
+    },
+    {
+      "id": "e-to-i",
+      "label": "E to I transition",
+      "before": [
+        1,
+        0,
+        7,
+        1.4,
+        1
+      ],
+      "after": [
+        2,
+        0,
+        7,
+        1.4,
+        1
+      ],
+      "blockSize": 128,
+      "output": "e-to-i.f32"
+    },
+    {
+      "id": "o-to-u",
+      "label": "O to U transition",
+      "before": [
+        3,
+        0,
+        7,
+        1.4,
+        1
+      ],
+      "after": [
+        4,
+        0,
+        7,
+        1.4,
+        1
+      ],
+      "blockSize": 128,
+      "output": "o-to-u.f32"
+    },
+    {
+      "id": "fractional-vowel",
+      "label": "Interpolated vowel",
+      "before": [
+        0.5,
+        0,
+        6,
+        1.2,
+        1
+      ],
+      "after": [
+        2.5,
+        0,
+        6,
+        1.2,
+        1
+      ],
+      "blockSize": 128,
+      "output": "fractional-vowel.f32"
+    },
+    {
+      "id": "shift-resonance",
+      "label": "Shift and Q sweep",
+      "before": [
+        0,
+        -8,
+        3,
+        1.4,
+        1
+      ],
+      "after": [
+        3,
+        8,
+        14,
+        1.4,
+        1
+      ],
+      "blockSize": 128,
+      "output": "shift-resonance.f32"
+    },
+    {
+      "id": "drive-mix",
+      "label": "Drive and wet mix",
+      "before": [
+        2,
+        0,
+        6,
+        0.8,
+        0.25
+      ],
+      "after": [
+        2,
+        0,
+        6,
+        4,
+        0.8
+      ],
+      "blockSize": 128,
+      "output": "drive-mix.f32"
+    },
+    {
+      "id": "dry-small-block",
+      "label": "Dry bypass to 64-frame wet blocks",
+      "before": [
+        4,
+        0,
+        6,
+        1.2,
+        0
+      ],
+      "after": [
+        4,
+        0,
+        6,
+        1.2,
+        0.7
+      ],
+      "blockSize": 64,
+      "output": "dry-small-block.f32"
+    }
+  ]
+}

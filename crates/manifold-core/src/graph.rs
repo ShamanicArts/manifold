@@ -13,6 +13,7 @@ use crate::envelope_follower::EnvelopeFollower;
 use crate::eq8::{self, Eq8};
 use crate::events::{EventError, EventKind, TimedEvent};
 use crate::fft_spectrum::FftSpectrum;
+use crate::formant_filter::{self, FormantFilter};
 use crate::legacy_eq::{self, LegacyEq};
 use crate::legacy_filter::{self, LegacyFilter};
 use crate::lfo::Lfo;
@@ -146,6 +147,9 @@ pub enum NodeKind {
     LegacyEq {
         params: [f32; legacy_eq::PARAM_COUNT],
     },
+    FormantFilter {
+        params: [f32; formant_filter::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -227,6 +231,7 @@ impl NodeKind {
             | Self::Svf
             | Self::SlewAudio { .. }
             | Self::LegacyEq { .. }
+            | Self::FormantFilter { .. }
             | Self::SlewControl { .. }
             | Self::AttenuverterBias { .. }
             | Self::AdsrEnvelope
@@ -343,6 +348,7 @@ impl NodeKind {
             Self::TransientShaper { params } => params.iter().all(|value| value.is_finite()),
             Self::BitCrusher { params } => params.iter().all(|value| value.is_finite()),
             Self::LegacyEq { params } => params.iter().all(|value| value.is_finite()),
+            Self::FormantFilter { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -484,6 +490,7 @@ enum Kernel {
     TransientShaper(TransientShaper),
     BitCrusher(BitCrusher),
     LegacyEq(LegacyEq),
+    FormantFilter(FormantFilter),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -631,6 +638,9 @@ impl Kernel {
                 Self::BitCrusher(BitCrusher::new(sample_rate, *params))
             }
             NodeKind::LegacyEq { params } => Self::LegacyEq(LegacyEq::new(sample_rate, *params)),
+            NodeKind::FormantFilter { params } => {
+                Self::FormantFilter(FormantFilter::new(sample_rate, *params))
+            }
             NodeKind::EffectSlot {
                 selected,
                 mix,
@@ -777,6 +787,7 @@ impl Kernel {
             (Self::TransientShaper(transient), id) => return transient.set_parameter(id, value),
             (Self::BitCrusher(crusher), id) => return crusher.set_parameter(id, value),
             (Self::LegacyEq(eq), id) => return eq.set_parameter(id, value),
+            (Self::FormantFilter(formant), id) => return formant.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1424,6 +1435,9 @@ impl ExecutionPlan {
                 }
                 Kernel::LegacyEq(eq) => {
                     eq.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::FormantFilter(formant) => {
+                    formant.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

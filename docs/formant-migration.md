@@ -1,0 +1,7 @@
+# FormantFilter migration boundary
+
+The original `dsp/core/nodes/FormantFilterNode.cpp` uses three parallel stereo bandpass filters. Five vowel tables (A, E, I, O, U) supply the three center frequencies; fractional vowel positions interpolate between adjacent tables. Rust graph kind 46 ports this network, the input and output `tanh` stages, per-channel filter state, and the 10 ms parameter smoothing. Coefficients update when vowel changes by more than `0.01`, shift by more than `0.02` semitones, or resonance Q by more than `0.02`.
+
+The [workbench](../projects/formant/project.json) exposes vowel position (`0…4`), shift (`−12…12` semitones), resonance (`1…20`), drive (`0.5…8`), and wet mix (`0…1`). At fully dry target and current mix, the original node copies the stereo input without advancing filters; the Rust port does the same. Eight checked-in C++ captures cover default A, A→E, E→I, O→U, fractional vowel morph, shift/Q, drive/mix, and a 64-frame dry bypass transition. All eight show **Match** against Rust/Wasm; the largest observed maximum sample difference is `4.53e-6`.
+
+Standalone FX type 13 maps normalized `p/0` to vowel position `0…4`, `p/1` to shift `−12…12`, `p/2` to resonance `2…16`, and `p/3` to drive `0.8…4`; `p/4` is unused. The old Lua slot sets internal mix fully wet and applies a separate `1.5×` wet gain before the public slot mix. Four new slot cases compare native Rust with Rust/Wasm. Old project routing and preset roundtrips remain separate work.

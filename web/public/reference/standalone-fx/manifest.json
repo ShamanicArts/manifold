@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "82b3fa649ce77a6e358756d2d46d602aca0c4ecf8e3569f5a32929f52d9c7c1d",
+  "sourceSha256": "02946d087f4da45c554e58bfdd74eceb22f5c11698f54131246bab579b657054",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "formant-vowel",
+      "label": "Formant vowel sweep",
+      "before": [
+        13,
+        0.8,
+        0,
+        0.5,
+        0.4,
+        0.3,
+        0.5
+      ],
+      "after": [
+        13,
+        0.8,
+        1,
+        0.5,
+        0.4,
+        0.3,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "formant-vowel.f32"
+    },
+    {
+      "id": "formant-drive",
+      "label": "Formant shift and drive",
+      "before": [
+        13,
+        1,
+        0.3,
+        0.1,
+        0.3,
+        0.1,
+        0.5
+      ],
+      "after": [
+        13,
+        1,
+        0.7,
+        0.9,
+        0.8,
+        0.9,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "formant-drive.f32"
+    },
+    {
+      "id": "eq-to-formant",
+      "label": "Switch EQ to Formant",
+      "before": [
+        14,
+        0.8,
+        0.8,
+        0.2,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "after": [
+        13,
+        0.8,
+        0.2,
+        0.5,
+        0.4,
+        0.3,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "eq-to-formant.f32"
+    },
+    {
+      "id": "formant-to-ring",
+      "label": "Switch Formant to Ring Mod",
+      "before": [
+        13,
+        0.8,
+        0.2,
+        0.5,
+        0.4,
+        0.3,
+        0.5
+      ],
+      "after": [
+        12,
+        0.8,
+        0.3,
+        1,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "formant-to-ring.f32"
+    },
     {
       "id": "eq-low-high",
       "label": "EQ low and high shelf sweep",

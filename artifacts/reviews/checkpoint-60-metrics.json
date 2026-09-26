@@ -1,0 +1,30 @@
+{
+  "formant": {
+    "cases": 8,
+    "largest": {
+      "id": "o-to-u",
+      "max": 0.00000453
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "vowel": "4.00"
+  },
+  "standalone-fx": {
+    "cases": 59,
+    "largest": {
+      "id": "eq-to-formant",
+      "max": 0.000125
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Formant",
+    "wet": "0.80",
+    "vowel": "U · 3.60",
+    "controls": [
+      "Wet mix",
+      "Vowel",
+      "Shift",
+      "Resonance",
+      "Drive"
+    ]
+  },
+  "errors": []
+}
