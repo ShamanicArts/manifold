@@ -1,0 +1,14 @@
+{
+  "reference": "Old C++ PrimitiveGraph and GraphRuntime swap with old Gain and StereoDelay nodes",
+  "sourceSha256": "8400042305d26a377f1f14199b76dafb99125f9b2b43a72fe316b275eb0f88f5",
+  "sampleRate": 48000,
+  "blockSize": 128,
+  "gate_closed_first": 0,
+  "gate_smooth_first": 0.00208116462,
+  "gate_after_reprepare_first": 1,
+  "before_swap_tail_peak": 0,
+  "same_topology_transfers": 1,
+  "same_topology_tail_peak": 0.48999998,
+  "changed_topology_transfers": 0,
+  "changed_topology_tail_peak": 0.238022372
+}
