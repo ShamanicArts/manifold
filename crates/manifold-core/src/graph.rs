@@ -44,6 +44,16 @@ use crate::waveshaper::{self, WaveShaper};
 use std::collections::{HashMap, VecDeque};
 
 pub type NodeId = u64;
+pub const MIDI_TRACE_CAPACITY: usize = 32;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MidiTraceEntry {
+    pub sequence: u32,
+    pub node: NodeId,
+    pub offset: usize,
+    pub kind: EventKind,
+    pub emitted: bool,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SignalKind {
@@ -1009,6 +1019,10 @@ pub struct ExecutionPlan {
     silence: Vec<f32>,
     patchable: bool,
     midi_stack: Vec<(usize, EventKind)>,
+    midi_trace: [Option<MidiTraceEntry>; MIDI_TRACE_CAPACITY],
+    midi_trace_write: usize,
+    midi_trace_count: usize,
+    midi_trace_sequence: u32,
 }
 
 impl GraphDescription {
@@ -1153,6 +1167,10 @@ impl GraphDescription {
             midi_stack: Vec::with_capacity(
                 self.nodes.len().saturating_mul(MAX_OUTPUT_EVENTS).max(1),
             ),
+            midi_trace: [None; MIDI_TRACE_CAPACITY],
+            midi_trace_write: 0,
+            midi_trace_count: 0,
+            midi_trace_sequence: 0,
         })
     }
 }
@@ -1160,6 +1178,19 @@ impl GraphDescription {
 impl ExecutionPlan {
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    pub fn midi_trace_count(&self) -> usize {
+        self.midi_trace_count
+    }
+
+    pub fn midi_trace_entry(&self, index: usize) -> Option<MidiTraceEntry> {
+        if index >= self.midi_trace_count {
+            return None;
+        }
+        let oldest = (self.midi_trace_write + MIDI_TRACE_CAPACITY - self.midi_trace_count)
+            % MIDI_TRACE_CAPACITY;
+        self.midi_trace[(oldest + index) % MIDI_TRACE_CAPACITY]
     }
 
     pub fn accepts_events(&self, node: NodeId) -> bool {
@@ -1299,14 +1330,16 @@ impl ExecutionPlan {
             }
             let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
             let count = effect.set_semitones(value, &mut out);
-            self.route_midi_outputs(index, &out[..count]);
+            self.record_midi_effect(index, None, &out[..count], 0);
+            self.route_midi_outputs(index, &out[..count], 0);
             true
         } else if let Kernel::MidiNoteFilter(effect) = &mut self.nodes[index].kernel {
             let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
             let Some(count) = effect.set_parameter(parameter, value, &mut out) else {
                 return false;
             };
-            self.route_midi_outputs(index, &out[..count]);
+            self.record_midi_effect(index, None, &out[..count], 0);
+            self.route_midi_outputs(index, &out[..count], 0);
             true
         } else {
             self.nodes[index].kernel.set_parameter(parameter, value)
@@ -1314,7 +1347,38 @@ impl ExecutionPlan {
     }
 
     /// Traverse the prepared MIDI graph without allocating in the audio callback.
-    fn route_midi_outputs(&mut self, source: usize, events: &[EventKind]) {
+    fn record_midi_effect(
+        &mut self,
+        index: usize,
+        input: Option<EventKind>,
+        events: &[EventKind],
+        offset: usize,
+    ) {
+        if events.is_empty() {
+            if let Some(kind @ (EventKind::NoteOn { .. } | EventKind::NoteOff { .. })) = input {
+                self.push_midi_trace(index, kind, false, offset);
+            }
+        } else {
+            for &kind in events {
+                self.push_midi_trace(index, kind, true, offset);
+            }
+        }
+    }
+
+    fn push_midi_trace(&mut self, index: usize, kind: EventKind, emitted: bool, offset: usize) {
+        self.midi_trace_sequence = self.midi_trace_sequence.wrapping_add(1);
+        self.midi_trace[self.midi_trace_write] = Some(MidiTraceEntry {
+            sequence: self.midi_trace_sequence,
+            node: self.nodes[index].id,
+            offset,
+            kind,
+            emitted,
+        });
+        self.midi_trace_write = (self.midi_trace_write + 1) % MIDI_TRACE_CAPACITY;
+        self.midi_trace_count = (self.midi_trace_count + 1).min(MIDI_TRACE_CAPACITY);
+    }
+
+    fn route_midi_outputs(&mut self, source: usize, events: &[EventKind], offset: usize) {
         self.midi_stack.clear();
         self.push_midi_children(source, events);
         while let Some((index, event)) = self.midi_stack.pop() {
@@ -1331,6 +1395,12 @@ impl ExecutionPlan {
                     0
                 }
             };
+            if matches!(
+                &self.nodes[index].kernel,
+                Kernel::MidiTranspose(_) | Kernel::MidiNoteFilter(_)
+            ) {
+                self.record_midi_effect(index, Some(event), &out[..count], offset);
+            }
             self.push_midi_children(index, &out[..count]);
         }
     }
@@ -1350,7 +1420,7 @@ impl ExecutionPlan {
         }
     }
 
-    fn dispatch_event(&mut self, target: NodeId, event: EventKind) {
+    fn dispatch_event(&mut self, target: NodeId, event: EventKind, offset: usize) {
         let index = self
             .nodes
             .iter()
@@ -1369,7 +1439,13 @@ impl ExecutionPlan {
                 0
             }
         };
-        self.route_midi_outputs(index, &out[..count]);
+        if matches!(
+            &self.nodes[index].kernel,
+            Kernel::MidiTranspose(_) | Kernel::MidiNoteFilter(_)
+        ) {
+            self.record_midi_effect(index, Some(event), &out[..count], offset);
+        }
+        self.route_midi_outputs(index, &out[..count], offset);
     }
 
     /// Replace decoded sample storage between process calls. No decoding or allocation in process.
@@ -1430,7 +1506,7 @@ impl ExecutionPlan {
                 left_out = rest_left;
                 right_out = rest_right;
             }
-            self.dispatch_event(event.node, event.kind);
+            self.dispatch_event(event.node, event.kind, event.offset);
             start = event.offset;
         }
         self.process(
@@ -2152,6 +2228,101 @@ mod tests {
             wrong_type.compile(48_000.0, 128),
             Err(GraphError::SignalTypeMismatch(1, 2, 0))
         ));
+    }
+
+    #[test]
+    fn midi_trace_distinguishes_suppressed_and_emitted_notes_at_their_offsets() {
+        let graph = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::MidiInput),
+                node(
+                    2,
+                    NodeKind::MidiNoteFilter {
+                        low: 36.0,
+                        high: 96.0,
+                        mode: 0,
+                    },
+                ),
+                node(3, NodeKind::VoiceSynth),
+                node(4, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 2, 0), edge(2, 3, 0), edge(3, 4, 0)],
+        };
+        let mut plan = graph.compile(48_000.0, 128).unwrap();
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let events = [
+            TimedEvent {
+                offset: 7,
+                node: 1,
+                kind: EventKind::NoteOn {
+                    channel: 0,
+                    note: 20,
+                    velocity: 90,
+                },
+            },
+            TimedEvent {
+                offset: 9,
+                node: 1,
+                kind: EventKind::NoteOn {
+                    channel: 0,
+                    note: 60,
+                    velocity: 100,
+                },
+            },
+        ];
+        plan.process_with_events([&silence, &silence], [&mut left, &mut right], &events)
+            .unwrap();
+        assert_eq!(plan.midi_trace_count(), 2);
+        assert_eq!(
+            plan.midi_trace_entry(0),
+            Some(MidiTraceEntry {
+                sequence: 1,
+                node: 2,
+                offset: 7,
+                kind: events[0].kind,
+                emitted: false,
+            })
+        );
+        assert_eq!(
+            plan.midi_trace_entry(1),
+            Some(MidiTraceEntry {
+                sequence: 2,
+                node: 2,
+                offset: 9,
+                kind: events[1].kind,
+                emitted: true,
+            })
+        );
+        assert!(plan.set_parameter(2, 2, 1.0));
+        assert_eq!(
+            plan.midi_trace_entry(2).unwrap().kind,
+            EventKind::NoteOff {
+                channel: 0,
+                note: 60
+            }
+        );
+        assert_eq!(
+            plan.midi_trace_entry(3).unwrap().kind,
+            EventKind::NoteOn {
+                channel: 0,
+                note: 20,
+                velocity: 90
+            }
+        );
+        assert_eq!(plan.midi_trace_entry(4), None);
+        for mode in (0..20).map(|index| (index % 2) as f32) {
+            assert!(plan.set_parameter(2, 2, mode));
+        }
+        assert_eq!(plan.midi_trace_count(), MIDI_TRACE_CAPACITY);
+        assert_eq!(plan.midi_trace_entry(0).unwrap().sequence, 13);
+        assert_eq!(
+            plan.midi_trace_entry(MIDI_TRACE_CAPACITY - 1)
+                .unwrap()
+                .sequence,
+            44
+        );
     }
 
     #[test]

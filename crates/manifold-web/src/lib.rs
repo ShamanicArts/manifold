@@ -768,6 +768,54 @@ pub extern "C" fn manifold_set_node_parameter(node_id: u32, id: u32, value: f32)
     })
 }
 
+/// Bounded MIDI transform trace, read from a worklet message handler between process calls.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_midi_trace_count() -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map_or(0, |engine| engine.plan.midi_trace_count() as u32)
+    })
+}
+
+/// Fields: sequence, node, frame offset, kind, channel, note/LSB, velocity/MSB, emitted.
+/// Returns u32::MAX for an invalid index or field.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_midi_trace_field(index: u32, field: u32) -> u32 {
+    ENGINE.with(|slot| {
+        let slot = slot.borrow();
+        let Some(entry) = slot
+            .as_ref()
+            .and_then(|engine| engine.plan.midi_trace_entry(index as usize))
+        else {
+            return u32::MAX;
+        };
+        let (kind, channel, note, velocity) = match entry.kind {
+            EventKind::NoteOn {
+                channel,
+                note,
+                velocity,
+            } => (0, channel as u32, note as u32, velocity as u32),
+            EventKind::NoteOff { channel, note } => (1, channel as u32, note as u32, 0),
+            EventKind::AllNotesOff => (2, 0, 0, 0),
+            EventKind::PitchBend { channel, value } => {
+                (3, channel as u32, (value & 127) as u32, (value >> 7) as u32)
+            }
+        };
+        match field {
+            0 => entry.sequence,
+            1 => entry.node as u32,
+            2 => entry.offset as u32,
+            3 => kind,
+            4 => channel,
+            5 => note,
+            6 => velocity,
+            7 => u32::from(entry.emitted),
+            _ => u32::MAX,
+        }
+    })
+}
+
 /// Source ID zero disconnects the target. Called between process blocks only.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_set_route(target_id: u32, port: u32, source_id: u32) -> u32 {

@@ -68,10 +68,20 @@ for (let offset = 0; offset < manifest.frames; offset += block) {
     }
   }
 }
+await send({ type: 'midi-trace-request' });
+const trace = messages.at(-1);
+const expectedTrace = [
+  [0, 20, false], [0, 60, true], [1, 60, true],
+  [0, 20, true], [1, 20, true], [1, 60, false],
+];
+if (trace?.type !== 'midi-trace' || JSON.stringify(trace.events.map((event) =>
+  [event.kind, event.note, event.emitted])) !== JSON.stringify(expectedTrace)) {
+  throw new Error(`Unexpected Rust MIDI output trace: ${JSON.stringify(trace)}`);
+}
 if (messages.some((message) => message.type === 'error') || wasmMax > 1e-6 || workletMax > 1e-6) {
   throw new Error(`Note filter mismatch: Wasm ${wasmMax}, worklet ${workletMax}, messages ${JSON.stringify(messages)}`);
 }
 const report = {frames: manifest.frames, sampleRate: manifest.sampleRate,
-  nativeToWasmMax: wasmMax, nativeToWorkletMax: workletMax};
-fs.writeFileSync(path.join(root, 'artifacts/reviews/checkpoint-98-midi-note-filter-metrics.json'), `${JSON.stringify(report, null, 2)}\n`);
+  nativeToWasmMax: wasmMax, nativeToWorkletMax: workletMax, traceEvents: trace.events.length};
+fs.writeFileSync(path.join(root, 'artifacts/reviews/checkpoint-99-midi-trace-metrics.json'), `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report));

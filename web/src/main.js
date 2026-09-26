@@ -628,7 +628,7 @@ const audio = new BrowserAudioHost((message) => { status.textContent = message; 
   drawEqResponse(byId('eq-response'), response);
   const peak = Math.max(...response);
   byId('eq-response-status').textContent = `Current response · ${Math.min(...response).toFixed(1)} to ${peak >= 0 ? '+' : ''}${peak.toFixed(1)} dB`;
-});
+}, showMidiTrace);
 for (let band = 0; band < 8; band++) {
   const row = document.createElement('div');
   row.className = 'live-band';
@@ -1219,6 +1219,7 @@ function renderPrimitive(family) {
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   const sampleView = family === 'sample-region' || family === 'sample-instrument';
   byId('keyboard-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'sample-instrument'].includes(family);
+  byId('midi-output-section').hidden = !['midi-transpose', 'midi-note-filter'].includes(family);
   byId('midi-access-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'sample-instrument'].includes(family);
   byId('sample-section').hidden = !sampleView;
   byId('slot-state-section').hidden = !hasFxState(family);
@@ -1400,11 +1401,33 @@ const pressedNotes = new Set();
 const midiHeld = new MidiHoldState();
 const keyboardDevice = Symbol('on-screen keyboard');
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+let lastMidiTraceSequence = 0;
 const noteTarget = () => activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter' ? 3 : activeFamily === 'voice' ? 1 : activeFamily === 'sample-instrument' ? 2 : null;
 function resetNoteEvents() {
   const placeholder = document.createElement('li');
   placeholder.textContent = 'Play the keyboard to inspect note events.';
   byId('midi-events').replaceChildren(placeholder);
+  const outputPlaceholder = document.createElement('li');
+  outputPlaceholder.textContent = 'Start the instrument to inspect transformed events.';
+  byId('midi-output-events').replaceChildren(outputPlaceholder);
+  lastMidiTraceSequence = 0;
+}
+function showMidiTrace(events) {
+  if (!['midi-transpose', 'midi-note-filter'].includes(activeFamily)) return;
+  const list = byId('midi-output-events');
+  for (const event of events) {
+    if (event.sequence <= lastMidiTraceSequence || event.nodeId !== 4) continue;
+    lastMidiTraceSequence = event.sequence;
+    if (list.firstChild?.textContent === 'Start the instrument to inspect transformed events.') list.replaceChildren();
+    const item = document.createElement('li');
+    const pitch = `${noteNames[event.note % 12]}${Math.floor(event.note / 12) - 1} (${event.note})`;
+    const action = event.emitted ? event.kind === 0 ? 'On' : event.kind === 1 ? 'Off' : event.kind === 3 ? 'Bend' : 'All off'
+      : event.kind === 0 ? 'Blocked on' : 'Blocked off';
+    item.textContent = `${action} · ${event.kind === 3 ? (event.note | event.velocity << 7) : pitch} · ch ${event.channel + 1} · +${event.offset}f`;
+    item.dataset.emitted = String(event.emitted);
+    list.prepend(item);
+    while (list.childElementCount > 8) list.lastChild.remove();
+  }
 }
 function showNoteEvent(kind, channel, note, velocity, source, forwarded, detail = '') {
   const list = byId('midi-events');
@@ -1628,6 +1651,12 @@ function startMonitoring() {
   if (activeFamily === 'eq8') {
     audio.requestEqResponse(2);
     meterTimer = setInterval(() => audio.requestEqResponse(2), 250);
+    animateSpectrum();
+    return;
+  }
+  if (activeFamily === 'midi-transpose' || activeFamily === 'midi-note-filter') {
+    audio.requestMidiTrace();
+    meterTimer = setInterval(() => audio.requestMidiTrace(), 100);
     animateSpectrum();
     return;
   }

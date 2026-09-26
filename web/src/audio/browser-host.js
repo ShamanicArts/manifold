@@ -1,10 +1,11 @@
 /** Browser devices, AudioWorklet lifecycle, and control transport. */
 import { midiFrame } from './midi-timing.js';
 export class BrowserAudioHost {
-  constructor(onStatus, onMeters = () => {}, onEqResponse = () => {}) {
+  constructor(onStatus, onMeters = () => {}, onEqResponse = () => {}, onMidiTrace = () => {}) {
     this.onStatus = onStatus;
     this.onMeters = onMeters;
     this.onEqResponse = onEqResponse;
+    this.onMidiTrace = onMidiTrace;
     this.context = null;
     this.processor = null;
     this.analyser = null;
@@ -48,6 +49,7 @@ export class BrowserAudioHost {
         processor.port.onmessage = ({ data }) => {
           if (data.type === 'meters') this.onMeters(data.nodeId, data.values, data.active);
           if (data.type === 'eq8-response') this.onEqResponse(data.nodeId, data.values);
+          if (data.type === 'midi-trace') this.onMidiTrace(data.events);
           if (data.type === 'route-applied') {
             const pending = this.pendingRoutes.get(data.requestId);
             if (pending) {
@@ -151,6 +153,10 @@ export class BrowserAudioHost {
 
   requestMeters(nodeId, count = 8) {
     this.processor?.port.postMessage({ type: 'meter-request', nodeId, count });
+  }
+
+  requestMidiTrace() {
+    this.processor?.port.postMessage({ type: 'midi-trace-request' });
   }
 
   requestEqResponse(nodeId = 2) {

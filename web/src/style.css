@@ -80,6 +80,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .bend-control button { grid-column: 2; padding: 4px 8px; border: 1px solid #526170; border-radius: 3px; background: #263441; color: #e1e7ed; cursor: pointer; }
 .midi-monitor ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .midi-monitor li { padding: 5px 7px; border: 1px solid #34404b; border-radius: 3px; background: #111922; color: #aab8c1; font-size: 11px; font-variant-numeric: tabular-nums; }
+#midi-output-events li[data-emitted="false"] { color: #d6a7a7; border-color: #664247; }
 .sample-file { display: grid; gap: 6px; padding: 9px; border: 1px solid #526170; border-radius: 4px; background: #263441; font-size: 12px; font-weight: 650; }
 .sample-file input { width: 100%; font-size: 11px; color: #aab8c1; }
 .sample-section .gate-button { margin-top: 12px; width: 100%; }

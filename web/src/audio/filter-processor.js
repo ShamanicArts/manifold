@@ -66,6 +66,14 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const values = Array.from({ length: count }, (_, band) => this.engine.manifold_get_node_meter(data.nodeId, band));
           const active = this.engine.manifold_node_active(data.nodeId) === 1;
           this.port.postMessage({ type: 'meters', nodeId: data.nodeId, values, active });
+        } else if (data.type === 'midi-trace-request' && this.engine) {
+          const count = this.engine.manifold_midi_trace_count();
+          const events = Array.from({ length: count }, (_, index) => {
+            const fields = Array.from({ length: 8 }, (_, field) => this.engine.manifold_midi_trace_field(index, field));
+            return { sequence: fields[0], nodeId: fields[1], offset: fields[2], kind: fields[3],
+              channel: fields[4], note: fields[5], velocity: fields[6], emitted: fields[7] === 1 };
+          });
+          this.port.postMessage({ type: 'midi-trace', events });
         } else if (data.type === 'eq8-response-request' && this.engine) {
           for (let bin = 0; bin < this.eqResponse.length; bin++) {
             const frequency = 20 * 1000 ** (bin / (this.eqResponse.length - 1));
