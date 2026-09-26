@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "settledStartFrame": 512,
+  "comparisonScope": "old sample player, oscillator, sample gain, crossed Ring nodes, ring crossfade, branch and voice mixers; mix-zero vocoder omitted and old UI envelope excluded",
+  "results": [
+    {
+      "id": "ring-depth-zero",
+      "settledOldVsNative": {
+        "max": 0.0000032633543014526367,
+        "rms": 0.0000013815308685107812,
+        "referenceRms": 0.07728939167231876
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.0754719642639206
+      },
+      "onsetOldVsNative": {
+        "max": 0.03999999910593033,
+        "rms": 0.0045878702583700935,
+        "referenceRms": 0.04004307929486887
+      }
+    },
+    {
+      "id": "ring-wave-heavy",
+      "settledOldVsNative": {
+        "max": 0.000001977197825908661,
+        "rms": 5.867821677001294e-7,
+        "referenceRms": 0.03178201204704448
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.03186804116252118
+      },
+      "onsetOldVsNative": {
+        "max": 0.01748058758676052,
+        "rms": 0.0023441308475900154,
+        "referenceRms": 0.033435735099088336
+      }
+    },
+    {
+      "id": "ring-center",
+      "settledOldVsNative": {
+        "max": 5.587935447692871e-7,
+        "rms": 2.0661525465439634e-7,
+        "referenceRms": 0.023650863829375295
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.024863902620475237
+      },
+      "onsetOldVsNative": {
+        "max": 0.039791759103536606,
+        "rms": 0.0038030292517745572,
+        "referenceRms": 0.03934072616656247
+      }
+    },
+    {
+      "id": "ring-sample-heavy",
+      "settledOldVsNative": {
+        "max": 9.690411388874054e-7,
+        "rms": 2.5194511239321046e-7,
+        "referenceRms": 0.013483215075422937
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.016229979128275198
+      },
+      "onsetOldVsNative": {
+        "max": 0.05379965528845787,
+        "rms": 0.005821093892270208,
+        "referenceRms": 0.03999298919539853
+      }
+    }
+  ]
+}

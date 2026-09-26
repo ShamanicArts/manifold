@@ -32,13 +32,13 @@
   <nav class="toc" aria-label="Sections"><span>Manifold / 26.09.2026</span><a href="#architecture">Architecture</a><a href="#done">Built so far</a><a href="#proven">Evidence</a><a href="#next">In flight &amp; next</a></nav>
   <main class="main">
     <header class="hero">
-      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 126</div>
+      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 127</div>
       <h1>A portable sound engine is taking shape.</h1>
       <p class="hero-copy">The old JUCE and Lua project is being rebuilt as a Rust DSP core with a JavaScript browser workbench. The workbench is already useful for playing, inspecting, and comparing individual behaviors; the full legacy projects are still being assembled.</p>
-      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: Main sample synth reconstruction</span><span>Review scope: checkpoint 126 and the next workstream</span></div>
+      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: Main sample synth reconstruction</span><span>Review scope: checkpoint 127 and the next workstream</span></div>
       <div class="stats" aria-label="Current library figures">
         <div class="stat"><strong>55</strong><span>interactive workbench views</span><small>Many are individual primitives or small authored projects.</small></div>
-        <div class="stat"><strong>499</strong><span>checked-in comparison cases</span><small>Across 60 case manifests, including audio, source-analysis, and recipe captures.</small></div>
+        <div class="stat"><strong>503</strong><span>checked-in comparison cases</span><small>Across 61 case manifests, including audio, source-analysis, and recipe captures.</small></div>
         <div class="stat"><strong>136</strong><span>Rust tests passing</span><small>Workspace tests include Add/Morph target routing, timed chords, and the original eight-slot allocation policy.</small></div>
       </div>
     </header>
@@ -70,7 +70,7 @@
         <div class="evidence-row"><strong>Latest completed slice</strong><p>The Main voice bank now routes Normal, Ring, FM, Sync, Add, and Morph across eight independent Rust voices. Nine native Rust ↔ Wasm cases are bit-exact, including the new Add and Morph chords; the vocoder chord retains bounded numerical variance (0.004962 peak, 0.000350 RMS). The separate single-voice Main blend study still saves 33 controls in version-11 state. <a href="/main-add-morph-review.html">Inspect Add and Morph</a> or <a href="/main-voice-allocation-review.html">inspect the old UI allocation trace</a>.</p></div>
         <div class="evidence-row"><strong>Browser path</strong><p>The same Rust core compiles to Wasm and runs inside an AudioWorklet. Playable views, controlled offline runs, and downloadable project slices exercise this path on the served site.</p></div>
         <div class="evidence-row"><strong>Callback cost</strong><p>The checkpoint-124 local Node/V8 AudioWorklet proxy measured 768 sustained 128-frame blocks per Main scenario. Eight-voice p95 was 0.080 ms Normal, 0.288 ms Add, 0.198 ms Morph, and 0.749 ms vocoder against a 2.667 ms block interval. <a href="/main-bank-performance-review.html">Inspect the method and all nine scenarios</a>. Actual browser audio-thread timing remains open.</p></div>
-        <div class="evidence-row"><strong>Old assembled route</strong><p>The compiled original C++ sample player now has five playback comparisons; four assembled Normal cases combine it with the oscillator, gain, crossfades, and mixers. After the first 512 frames, maximum Normal old/Rust difference is 0.000004612; native/Wasm is bit-exact. <a href="/main-normal-route-review.html">Inspect the playback and assembled waveforms</a>. The old UI envelope remains outside this fixture.</p></div>
+        <div class="evidence-row"><strong>Old assembled route</strong><p>The compiled original C++ sample player has five playback comparisons; four assembled Normal and four assembled Ring cases combine it with the original branch nodes and mixers. After the first 512 frames, maximum Ring old/Rust difference is 0.000003263; native/Wasm is bit-exact. <a href="/main-ring-route-review.html">Inspect Ring, Normal, and player waveforms</a>. The old UI envelope remains outside these fixtures.</p></div>
         <div class="evidence-row"><strong>Scope of claim</strong><p>The numbers establish many local behaviors and some small compositions. They do not establish parity for the complete old plug-in, its full Lua project graph, every preset, or a native plug-in host.</p></div>
       </div>
       <div class="caution">Hardware MIDI access in BB’s embedded browser is currently constrained by host permissions. Use the on-screen keyboard here; hardware permission can be tested in a regular browser later.</div>
@@ -101,10 +101,11 @@
         <div class="step"><span class="label">Done · Node callback proxy</span><h3>Measure the cost of sustained chords</h3><p>Nine scenarios use the same AudioWorklet adapter and Wasm build. The most costly tested route is the eight-voice vocoder; Morph now avoids rendering its silent wave bank. Browser device timing is the next measurement boundary.</p></div>
         <div class="step"><span class="label">Done · compiled wave route</span><h3>Compare old Main wave output with the Rust bank</h3><p>Sine, saw, and midpoint wave routes pass a sustained compiled C++ comparison after the v2 ADSR settles. Three new cases are bit-exact native/Wasm.</p></div>
         <div class="step"><span class="label">Done · compiled Normal route</span><h3>Compare the original sample player and assembled voice</h3><p>Five old-player cases and four assembled Normal paths agree with Rust at tiny settled differences. The old UI envelope remains a deliberate v2 timing difference.</p></div>
-        <div class="step"><span class="label">Now · full sample project</span><h3>Extend the assembled comparison</h3><p>Add old Ring and selected Add/Morph paths, measure the actual browser audio thread, and extend project and preset state for the new bank.</p></div>
+        <div class="step"><span class="label">Done · compiled Ring route</span><h3>Compare crossed Ring nodes in the assembled voice</h3><p>Four original C++ cases cover depth zero and three wet positions. Settled output agrees with the Rust bank; native Rust and Wasm are bit-exact.</p></div>
+        <div class="step"><span class="label">Now · full sample project</span><h3>Extend the assembled comparison</h3><p>Add selected old Add/Morph paths, measure the actual browser audio thread, and extend project and preset state for the new bank.</p></div>
         <div class="step"><span class="label">Later · product surface</span><h3>Harden the shared project model and hosts</h3><p>Broaden state and preset handling, measure callback budgets in the browser, and package non-browser hosts against the same Rust engine.</p></div>
       </div>
-      <div class="actions"><a class="action primary" href="/?primitive=main-voice-bank">Play the Main voice bank</a><a class="action" href="/main-normal-route-review.html">Inspect checkpoint 126</a><a class="action" href="/main-bank-performance-review.html">Callback timing</a></div>
+      <div class="actions"><a class="action primary" href="/?primitive=main-voice-bank">Play the Main voice bank</a><a class="action" href="/main-ring-route-review.html">Inspect checkpoint 127</a><a class="action" href="/main-bank-performance-review.html">Callback timing</a></div>
     </section>
     <footer>Manifold v2 · review snapshot · the workbench continues to evolve after this page was written.</footer>
   </main>
