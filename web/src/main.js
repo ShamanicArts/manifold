@@ -71,8 +71,8 @@ hostFxProject.id = 'manifold.standalone-fx-host';
 hostFxProject.name = 'FX host switch';
 hostFxProject.signal.nodes.find((node) => node.id === 2).type = 'effect-slot-host-switch';
 const hostFxChoice = hostFxProject.parameters.find((parameter) => parameter.id === 0);
-hostFxChoice.choices = ['Chorus', 'Phaser', 'Stereo Delay'];
-hostFxChoice.choiceValues = [0, 1, 8];
+hostFxChoice.choices = ['Chorus', 'Phaser', 'Reverb', 'Stereo Delay'];
+hostFxChoice.choiceValues = [0, 1, 7, 8];
 const isFxFamily = (family) => ['standalone-fx', 'standalone-fx-routing', 'standalone-fx-host'].includes(family);
 const hasFxState = (family) => family === 'standalone-fx' || family === 'standalone-fx-routing';
 const projects = {
@@ -277,7 +277,7 @@ const projects = {
   'standalone-fx-host': {
     project: hostFxProject,
     title: 'FX host switch',
-    description: 'The old graph rebuild snaps gates on each type change. Compare Delay → Chorus or Phaser → Delay with measured old C++ branch graphs; these three effect types have audited reprepare behavior.',
+    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with Chorus, Phaser, or Reverb branches measured from the old C++ graph runtime; these four effect types have audited reprepare behavior.',
     signal: 'Live path: input → visited effects → re-prepared wet gate → legacy gain/mix → output',
   },
   'loop-capture': {
@@ -1201,7 +1201,7 @@ function renderPrimitive(family) {
   sampleActiveVoices = 0;
   if (family === 'voice' || family === 'sample-instrument') resetNoteEvents();
   if (mode) {
-    byId('modes').style.gridTemplateColumns = `repeat(${family === 'standalone-fx-host' ? 3 : isFxFamily(family) && mode.choices.length === 9 ? 3 : family === 'waveshaper' || isFxFamily(family) ? 4 : mode.choices.length}, minmax(0, 1fr))`;
+    byId('modes').style.gridTemplateColumns = `repeat(${family === 'standalone-fx-host' ? 4 : isFxFamily(family) && mode.choices.length === 9 ? 3 : family === 'waveshaper' || isFxFamily(family) ? 4 : mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, index) => {
       const value = mode.choiceValues?.[index] ?? index;
       const button = document.createElement('button');

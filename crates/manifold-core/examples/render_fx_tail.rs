@@ -35,9 +35,12 @@ fn main() -> std::io::Result<()> {
     let mut output = BufWriter::new(File::create(path)?);
     if matches!(
         mode.as_deref(),
-        Some("--slot" | "--host-slot" | "--host-phaser")
+        Some("--slot" | "--host-slot" | "--host-phaser" | "--host-reverb")
     ) {
-        let constructor = if matches!(mode.as_deref(), Some("--host-slot" | "--host-phaser")) {
+        let constructor = if matches!(
+            mode.as_deref(),
+            Some("--host-slot" | "--host-phaser" | "--host-reverb")
+        ) {
             EffectSlot::new_host_switch
         } else {
             EffectSlot::new_legacy
@@ -51,15 +54,18 @@ fn main() -> std::io::Result<()> {
             if offset == 8192 {
                 slot.set_parameter(
                     0,
-                    if mode.as_deref() == Some("--host-phaser") {
-                        1.0
-                    } else {
-                        0.0
+                    match mode.as_deref() {
+                        Some("--host-phaser") => 1.0,
+                        Some("--host-reverb") => 7.0,
+                        _ => 0.0,
                     },
                 );
             }
             if offset == 16384 {
                 slot.set_parameter(0, 8.0);
+            }
+            if offset == 24576 && mode.as_deref() == Some("--host-reverb") {
+                slot.set_parameter(0, 7.0);
             }
             for frame in 0..128 {
                 in_l[frame] = input_sample(offset + frame, 0);

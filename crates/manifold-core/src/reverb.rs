@@ -68,6 +68,8 @@ impl LinearSmoother {
 
 struct Comb {
     buffer: Vec<f32>,
+    valid: Vec<u32>,
+    generation: u32,
     index: usize,
     last: f32,
 }
@@ -75,18 +77,29 @@ impl Comb {
     fn new(size: usize) -> Self {
         Self {
             buffer: vec![0.0; size.max(1)],
+            valid: vec![0; size.max(1)],
+            generation: 1,
             index: 0,
             last: 0.0,
         }
     }
     fn clear(&mut self) {
-        self.buffer.fill(0.0);
+        self.generation = self.generation.wrapping_add(1);
+        if self.generation == 0 {
+            self.valid.fill(0);
+            self.generation = 1;
+        }
         self.last = 0.0;
     }
     fn process(&mut self, input: f32, damp: f32, feedback: f32) -> f32 {
-        let output = self.buffer[self.index];
+        let output = if self.valid[self.index] == self.generation {
+            self.buffer[self.index]
+        } else {
+            0.0
+        };
         self.last = output * (1.0 - damp) + self.last * damp;
         self.buffer[self.index] = input + self.last * feedback;
+        self.valid[self.index] = self.generation;
         self.index += 1;
         if self.index == self.buffer.len() {
             self.index = 0;
@@ -96,21 +109,34 @@ impl Comb {
 }
 struct AllPass {
     buffer: Vec<f32>,
+    valid: Vec<u32>,
+    generation: u32,
     index: usize,
 }
 impl AllPass {
     fn new(size: usize) -> Self {
         Self {
             buffer: vec![0.0; size.max(1)],
+            valid: vec![0; size.max(1)],
+            generation: 1,
             index: 0,
         }
     }
     fn clear(&mut self) {
-        self.buffer.fill(0.0);
+        self.generation = self.generation.wrapping_add(1);
+        if self.generation == 0 {
+            self.valid.fill(0);
+            self.generation = 1;
+        }
     }
     fn process(&mut self, input: f32) -> f32 {
-        let buffered = self.buffer[self.index];
+        let buffered = if self.valid[self.index] == self.generation {
+            self.buffer[self.index]
+        } else {
+            0.0
+        };
         self.buffer[self.index] = input + buffered * 0.5;
+        self.valid[self.index] = self.generation;
         self.index += 1;
         if self.index == self.buffer.len() {
             self.index = 0;

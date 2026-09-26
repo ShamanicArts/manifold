@@ -275,7 +275,7 @@ impl EffectSlot {
     }
 
     /// Reconstruct the old graph-runtime switch boundary. The gain behavior
-    /// and Chorus/Phaser/Delay reprepare rules are captured against the old C++ host
+    /// and Chorus/Phaser/Reverb/Delay reprepare rules are captured against the old C++ host
     /// graph; other effect types remain subject to their own preparation audit.
     pub fn new_host_switch(
         sample_rate: f32,
@@ -775,7 +775,7 @@ impl EffectSlot {
                     }
                     if host_switch {
                         // The old runtime prepares every compiled node on
-                        // each type change. Chorus and Phaser clear their
+                        // each type change. Chorus, Phaser and Reverb clear
                         // state; StereoDelay retains its ring at 48 kHz.
                         let visited = self
                             .legacy
@@ -787,6 +787,9 @@ impl EffectSlot {
                         }
                         if visited[PHASER_TYPE as usize] {
                             self.rebuild_phaser();
+                        }
+                        if visited[REVERB_TYPE as usize] {
+                            self.rebuild_reverb();
                         }
                         if visited[DELAY_TYPE as usize] {
                             self.delay.reprepare_targets_preserving_tail();

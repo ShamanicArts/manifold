@@ -998,7 +998,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
       return;
     }
     if (currentFamily === 'stereo-delay' || currentFamily === 'phaser' || currentFamily === 'chorus' || currentFamily === 'eq8' || currentFamily === 'reverb' || currentFamily === 'multitap' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || isFxSwitchFamily(currentFamily) || currentFamily === 'loop-capture' || currentFamily === 'sample-region' || currentFamily === 'sample-instrument') {
-      const start = isFxSwitchFamily(currentFamily) && byId('plot-window').value === 'tail' ? 16384 : 0;
+      const start = isFxSwitchFamily(currentFamily) && byId('plot-window').value === 'tail' ? (active.focusFrame ?? 16384) : 0;
       const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames - start;
       const oldLeft = peakView(active.legacy, start, span, 0);
       const newLeft = peakView(active.rust, start, span, 0);
@@ -1108,7 +1108,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                     : family === 'fx-chain'
                       ? `drive ${selected.before[0]} → ${selected.after[0]} · delay mix ${selected.before[6]} → ${selected.after[6]} · cutoff ${selected.before[7]} → ${selected.after[7]} Hz`
                     : family === 'standalone-fx-host'
-                      ? `Delay → ${selected.switches[0][1] === 1 ? 'Phaser' : 'Chorus'} at ${selected.switches[0][0]} → Delay at ${selected.switches[1][0]} · graph-reprepared gates`
+                      ? `Delay → ${selected.switches.map(([frame, type]) => `${({ 0: 'Chorus', 1: 'Phaser', 7: 'Reverb', 8: 'Delay' })[type]} at ${frame}`).join(' → ')} · ${selected.switches.length === 3 ? 'Reverb tail cleared on return' : 'graph-reprepared gates'}`
                     : family === 'standalone-fx-routing'
                       ? `Delay → Chorus at ${selected.switches[0][0]} → Delay at ${selected.switches[1][0]} · visited tails keep processing`
                     : family === 'standalone-fx'
