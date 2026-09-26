@@ -21,6 +21,7 @@ import spectrumAnalyzerProject from '../../projects/spectrum-analyzer/project.js
 import fftSpectrumProject from '../../projects/fft-spectrum/project.json';
 import slewAudioProject from '../../projects/slew-audio/project.json';
 import slewModulationProject from '../../projects/slew-modulation/project.json';
+import cvRackProject from '../../projects/cv-rack/project.json';
 import envelopeFollowerProject from '../../projects/envelope-follower/project.json';
 import envelopeDuckingProject from '../../projects/envelope-ducking/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
@@ -158,6 +159,12 @@ const projects = {
     title: 'Slew modulation',
     description: 'A Rust LFO passes through a typed control slew before shaping an oscillator’s gain. Rise and fall slides round abrupt CV edges independently.',
     signal: 'Audio: oscillator → modulated gain → output · CV: LFO → slew → gain',
+  },
+  'cv-rack': {
+    project: cvRackProject,
+    title: 'CV rack slice',
+    description: 'Sample a source LFO from a square trigger, invert and bias it, blend with a free-running CV, then modulate an audio oscillator. Each stage is evaluated in Rust at sample rate.',
+    signal: 'CV: source + trigger → sample/hold → attenuverter → four-input mixer → gain · audio: oscillator → gain → output',
   },
   'envelope-follower': {
     project: envelopeFollowerProject,
@@ -361,6 +368,21 @@ function drawSampleWaveform() {
 window.addEventListener('resize', drawSampleWaveform);
 let envelopeHistory = [];
 const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands) => {
+  if (activeFamily === 'cv-rack') {
+    const row = byId('cv-stages').querySelector(`[data-cv-node="${nodeId}"]`);
+    if (!row || !Number.isFinite(bands[0])) return;
+    const value = bands[0];
+    row.querySelector('output').textContent = value.toFixed(3);
+    const fill = row.querySelector('.cv-stage-fill');
+    if (nodeId === 8) {
+      fill.style.left = '0%';
+      fill.style.width = `${Math.max(0, Math.min(100, value / 2 * 100))}%`;
+    } else {
+      fill.style.left = `${value < 0 ? 50 + value * 50 : 50}%`;
+      fill.style.width = `${Math.min(50, Math.abs(value) * 50)}%`;
+    }
+    return;
+  }
   if (nodeId !== 2) return;
   if (activeFamily === 'sample-region') {
     samplePlayhead = Number.isFinite(bands[0]) ? Math.max(0, Math.min(1, bands[0])) : 0;
@@ -626,6 +648,11 @@ function renderPrimitive(family) {
   document.querySelector('.axis-caption').hidden = analyzerView;
   byId('live-bands').hidden = !analyzerView || family === 'fft-spectrum';
   byId('fft-view').hidden = family !== 'fft-spectrum';
+  byId('cv-stages').hidden = family !== 'cv-rack';
+  if (family === 'cv-rack') byId('cv-stages').querySelectorAll('.cv-stage').forEach((row) => {
+    row.querySelector('output').textContent = '—';
+    row.querySelector('.cv-stage-fill').style.width = '0%';
+  });
   if (family === 'fft-spectrum') { drawBandBars(byId('fft-bands'), [Array(32).fill(0)], 1, ['#9a8de8']); byId('fft-peak').textContent = 'Peak —'; }
   byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : family === 'compressor' || family === 'limiter' ? 'Live gain reduction in decibels' : 'Live envelope value');
   byId('live-envelope-trace').hidden = !['envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family);
@@ -765,8 +792,8 @@ function renderPrimitive(family) {
     ? 'Start the instrument, then trigger the loaded sample. Native Rust/Wasm comparisons are below.'
     : family === 'voice'
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
-    : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation' || family === 'slew-modulation'
-      ? `Start the instrument to view its spectrum. The ${family === 'patch' || family === 'modulation' || family === 'slew-modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
+    : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack'
+      ? `Start the instrument to view its spectrum${family === 'cv-rack' ? ' and each CV stage' : ''}. The ${family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'native Rust' : 'C++'} comparisons below run offline.`
     : family === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain and inspect the detector. Native Rust/Wasm comparisons are below.'
     : family === 'compressor' || family === 'limiter' ? 'Start audio to hear dynamics and view gain reduction in dB. C++ audio and meter snapshots are compared below.'
     : family === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.'
@@ -945,7 +972,7 @@ window.addEventListener('popstate', () => {
 
 let spectrumFrame = null;
 let meterTimer = null;
-const meterFamilies = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'sample-region', 'sample-instrument'];
+const meterFamilies = ['spectrum-analyzer', 'fft-spectrum', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'sample-region', 'sample-instrument', 'cv-rack'];
 function stopMonitoring() {
   if (spectrumFrame !== null) cancelAnimationFrame(spectrumFrame);
   if (meterTimer !== null) clearInterval(meterTimer);
@@ -960,10 +987,14 @@ function startMonitoring() {
   stopMonitoring();
   if (!audio.running) return;
   if (meterFamilies.includes(activeFamily)) {
-    const request = () => audio.requestMeters(2, activeFamily === 'fft-spectrum' ? 33 : activeFamily === 'sample-instrument' ? 9 : activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
+    const request = () => {
+      if (activeFamily === 'cv-rack') {
+        for (const nodeId of [4, 5, 7, 8]) audio.requestMeters(nodeId, 1);
+      } else audio.requestMeters(2, activeFamily === 'fft-spectrum' ? 33 : activeFamily === 'sample-instrument' ? 9 : activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
+    };
     request();
     meterTimer = setInterval(request, 100);
-    if (activeFamily === 'sample-region' || activeFamily === 'sample-instrument') animateSpectrum();
+    if (activeFamily === 'sample-region' || activeFamily === 'sample-instrument' || activeFamily === 'cv-rack') animateSpectrum();
   } else animateSpectrum();
 }
 drawLiveSpectrum(byId('live-spectrum'), null);

@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "reference": "native Rust Main-rack typed CV chain",
+  "sourceSha256": "8b96ac54226444777641a86eb5daf9bcfc9fde6b3c6d93ef5f68996ec5b7d247",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 24576,
+  "stepFrame": 12288,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "sample",
+      "label": "Capture at trigger edges",
+      "before": [
+        0,
+        2,
+        8,
+        -0.7,
+        0.1,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "after": [
+        0,
+        2,
+        8,
+        -0.7,
+        0.1,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "sample.f32",
+      "meterOutput": "sample-meters.f32"
+    },
+    {
+      "id": "track",
+      "label": "Track while trigger is high",
+      "before": [
+        1,
+        2,
+        8,
+        -0.7,
+        0.1,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "after": [
+        1,
+        2,
+        8,
+        -0.7,
+        0.1,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "track.f32",
+      "meterOutput": "track-meters.f32"
+    },
+    {
+      "id": "quantized",
+      "label": "Twelve-step sample",
+      "before": [
+        2,
+        2,
+        8,
+        -0.7,
+        0.1,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "after": [
+        2,
+        2,
+        8,
+        -0.7,
+        0.1,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "quantized.f32",
+      "meterOutput": "quantized-meters.f32"
+    },
+    {
+      "id": "mode-change",
+      "label": "Sample to track",
+      "before": [
+        0,
+        2,
+        8,
+        -0.7,
+        0.1,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "after": [
+        1,
+        4,
+        12,
+        -0.7,
+        0.1,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "mode-change.f32",
+      "meterOutput": "mode-change-meters.f32"
+    },
+    {
+      "id": "invert-bias",
+      "label": "Invert and bias sweep",
+      "before": [
+        0,
+        2,
+        8,
+        -0.7,
+        0.1,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "after": [
+        0,
+        2,
+        8,
+        0.8,
+        -0.25,
+        0.8,
+        0.25,
+        0.1,
+        0.6,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "invert-bias.f32",
+      "meterOutput": "invert-bias-meters.f32"
+    },
+    {
+      "id": "mix-polarity",
+      "label": "Blend and depth polarity",
+      "before": [
+        0,
+        2,
+        8,
+        -0.7,
+        0.1,
+        0,
+        1,
+        -0.2,
+        0.6,
+        0.5
+      ],
+      "after": [
+        0,
+        2,
+        8,
+        -0.7,
+        0.1,
+        1,
+        0,
+        0.3,
+        0.6,
+        -0.7
+      ],
+      "blockSize": 64,
+      "output": "mix-polarity.f32",
+      "meterOutput": "mix-polarity-meters.f32"
+    }
+  ]
+}

@@ -243,6 +243,14 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         },
         29 => NodeKind::SlewAudio { up: a, down: b },
         30 => NodeKind::SlewControl { up: a, down: b },
+        31 => NodeKind::AttenuverterBias { amount: a, bias: b },
+        32 => NodeKind::SampleHold {
+            mode: a.round().clamp(0.0, 2.0) as u32,
+        },
+        33 => NodeKind::CvMix {
+            levels: [a, b, 0.0, 0.0],
+            offset: 0.0,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -363,6 +371,13 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::SlewAudio { down, .. } | NodeKind::SlewControl { down, .. }, 1) => {
                 *down = value.max(1.0)
             }
+            (NodeKind::AttenuverterBias { amount, .. }, 0) => *amount = value.clamp(-1.0, 1.0),
+            (NodeKind::AttenuverterBias { bias, .. }, 1) => *bias = value.clamp(-1.0, 1.0),
+            (NodeKind::SampleHold { mode }, 0) => *mode = value.round().clamp(0.0, 2.0) as u32,
+            (NodeKind::CvMix { levels, .. }, id @ 0..=3) => {
+                levels[id as usize] = value.clamp(0.0, 1.0)
+            }
+            (NodeKind::CvMix { offset, .. }, 4) => *offset = value.clamp(-1.0, 1.0),
             (
                 NodeKind::EnvelopeFollower { attack_ms, .. }
                 | NodeKind::EnvelopeControl { attack_ms, .. },

@@ -3,6 +3,7 @@
 
 use crate::Filter;
 use crate::compressor::{self, Compressor};
+use crate::cv_utilities::{AttenuverterBias, CvMix, SampleHold};
 use crate::distortion::Distortion;
 use crate::effect_slot::{self, EffectSlot};
 use crate::envelope::AdsrEnvelope;
@@ -71,6 +72,17 @@ pub enum NodeKind {
     SlewControl {
         up: f32,
         down: f32,
+    },
+    AttenuverterBias {
+        amount: f32,
+        bias: f32,
+    },
+    SampleHold {
+        mode: u32,
+    },
+    CvMix {
+        levels: [f32; 4],
+        offset: f32,
     },
     Distortion {
         drive: f32,
@@ -157,12 +169,15 @@ impl NodeKind {
             | Self::LinearBlend { .. }
             | Self::Crossfader { .. }
             | Self::ModulatedGain { .. }
-            | Self::ModulatedSvf { .. } => 2,
+            | Self::ModulatedSvf { .. }
+            | Self::SampleHold { .. } => 2,
+            Self::CvMix { .. } => 4,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. }
             | Self::Svf
             | Self::SlewAudio { .. }
             | Self::SlewControl { .. }
+            | Self::AttenuverterBias { .. }
             | Self::AdsrEnvelope
             | Self::Distortion { .. }
             | Self::Compressor { .. }
@@ -181,7 +196,12 @@ impl NodeKind {
     fn output_signal(&self) -> SignalKind {
         if matches!(
             self,
-            Self::Lfo { .. } | Self::EnvelopeControl { .. } | Self::SlewControl { .. }
+            Self::Lfo { .. }
+                | Self::EnvelopeControl { .. }
+                | Self::SlewControl { .. }
+                | Self::AttenuverterBias { .. }
+                | Self::SampleHold { .. }
+                | Self::CvMix { .. }
         ) {
             SignalKind::Control
         } else {
@@ -190,8 +210,13 @@ impl NodeKind {
     }
 
     fn input_signal(&self, port: usize) -> SignalKind {
-        if matches!(self, Self::SlewControl { .. })
-            || matches!(self, Self::ModulatedGain { .. } | Self::ModulatedSvf { .. }) && port == 1
+        if matches!(
+            self,
+            Self::SlewControl { .. }
+                | Self::AttenuverterBias { .. }
+                | Self::SampleHold { .. }
+                | Self::CvMix { .. }
+        ) || matches!(self, Self::ModulatedGain { .. } | Self::ModulatedSvf { .. }) && port == 1
         {
             SignalKind::Control
         } else {
@@ -234,6 +259,11 @@ impl NodeKind {
             Self::ModulatedSvf { depth_hz } => depth_hz.is_finite(),
             Self::SlewAudio { up, down } | Self::SlewControl { up, down } => {
                 up.is_finite() && down.is_finite()
+            }
+            Self::AttenuverterBias { amount, bias } => amount.is_finite() && bias.is_finite(),
+            Self::SampleHold { mode } => *mode <= 2,
+            Self::CvMix { levels, offset } => {
+                levels.iter().all(|value| value.is_finite()) && offset.is_finite()
             }
             Self::Distortion { drive, mix, output } => {
                 drive.is_finite() && mix.is_finite() && output.is_finite()
@@ -305,7 +335,7 @@ pub struct Connection {
     pub input_port: usize,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct GraphDescription {
     pub nodes: Vec<NodeSpec>,
     pub connections: Vec<Connection>,
@@ -362,6 +392,9 @@ enum Kernel {
         depth_hz: f32,
     },
     Slew(SlewLimiter),
+    AttenuverterBias(AttenuverterBias),
+    SampleHold(SampleHold),
+    CvMix(CvMix),
     Distortion(Distortion),
     Compressor(Compressor),
     Limiter(Limiter),
@@ -383,6 +416,7 @@ enum Kernel {
         current: [f32; 2],
         target: [f32; 2],
         smoothing: f32,
+        last_effective: f32,
     },
     Output,
 }
@@ -469,6 +503,11 @@ impl Kernel {
             NodeKind::SlewAudio { up, down } | NodeKind::SlewControl { up, down } => {
                 Self::Slew(SlewLimiter::new(*up, *down))
             }
+            NodeKind::AttenuverterBias { amount, bias } => {
+                Self::AttenuverterBias(AttenuverterBias::new(*amount, *bias))
+            }
+            NodeKind::SampleHold { mode } => Self::SampleHold(SampleHold::new(*mode)),
+            NodeKind::CvMix { levels, offset } => Self::CvMix(CvMix::new(*levels, *offset)),
             NodeKind::Distortion { drive, mix, output } => {
                 Self::Distortion(Distortion::new(sample_rate, *drive, *mix, *output))
             }
@@ -559,6 +598,7 @@ impl Kernel {
                     target: values,
                     smoothing: ((1.0 - (-1.0 / (0.010 * sample_rate as f64)).exp()) as f32)
                         .clamp(0.0001, 1.0),
+                    last_effective: values[0],
                 }
             }
             NodeKind::Output => Self::Output,
@@ -599,6 +639,9 @@ impl Kernel {
                 *depth_hz = value.clamp(-20_000.0, 20_000.0)
             }
             (Self::Slew(slew), id) => return slew.set_parameter(id, value),
+            (Self::AttenuverterBias(control), id) => return control.set_parameter(id, value),
+            (Self::SampleHold(control), id) => return control.set_parameter(id, value),
+            (Self::CvMix(control), id) => return control.set_parameter(id, value),
             (Self::Distortion(distortion), id) => return distortion.set_parameter(id, value),
             (Self::Compressor(compressor), id) => return compressor.set_parameter(id, value),
             (Self::Limiter(limiter), id) => return limiter.set_parameter(id, value),
@@ -800,6 +843,10 @@ impl ExecutionPlan {
             .and_then(|entry| match &entry.kernel {
                 Kernel::SpectrumAnalyzer(analyzer) => analyzer.band(band),
                 Kernel::FftSpectrum(analyzer) => analyzer.meter(band),
+                Kernel::AttenuverterBias(control) if band == 0 => Some(control.meter()),
+                Kernel::SampleHold(control) if band == 0 => Some(control.meter()),
+                Kernel::CvMix(control) if band == 0 => Some(control.meter()),
+                Kernel::ModulatedGain { last_effective, .. } if band == 0 => Some(*last_effective),
                 Kernel::EnvelopeFollower(follower) if band == 0 => Some(follower.meter()),
                 Kernel::EnvelopeControl(follower) if band == 0 => Some(follower.meter()),
                 Kernel::Compressor(compressor) if band == 0 => Some(compressor.gain_reduction_db()),
@@ -1056,6 +1103,36 @@ impl ExecutionPlan {
                 Kernel::Slew(slew) => {
                     slew.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
+                Kernel::AttenuverterBias(control) => {
+                    let cv = source(0, 0);
+                    for frame in 0..frames {
+                        let value = control.process_sample(cv[frame]);
+                        left[frame] = value;
+                        right[frame] = value;
+                    }
+                }
+                Kernel::SampleHold(control) => {
+                    let cv = source(0, 0);
+                    let trigger = source(1, 0);
+                    for frame in 0..frames {
+                        let value = control.process_sample(cv[frame], trigger[frame]);
+                        left[frame] = value;
+                        right[frame] = value;
+                    }
+                }
+                Kernel::CvMix(control) => {
+                    let inputs = [source(0, 0), source(1, 0), source(2, 0), source(3, 0)];
+                    for frame in 0..frames {
+                        let value = control.process_sample([
+                            inputs[0][frame],
+                            inputs[1][frame],
+                            inputs[2][frame],
+                            inputs[3][frame],
+                        ]);
+                        left[frame] = value;
+                        right[frame] = value;
+                    }
+                }
                 Kernel::Distortion(distortion) => {
                     let from_left = source(0, 0);
                     let from_right = source(0, 1);
@@ -1154,6 +1231,7 @@ impl ExecutionPlan {
                     current,
                     target,
                     smoothing,
+                    last_effective,
                 } => {
                     let from_left = source(0, 0);
                     let from_right = source(0, 1);
@@ -1163,6 +1241,7 @@ impl ExecutionPlan {
                             current[index] += (target[index] - current[index]) * *smoothing;
                         }
                         let effective = (current[0] + current[1] * cv[frame]).clamp(0.0, 2.0);
+                        *last_effective = effective;
                         left[frame] = from_left[frame] * effective;
                         right[frame] = from_right[frame] * effective;
                     }
@@ -1558,6 +1637,77 @@ mod tests {
         assert!(matches!(
             invalid.compile(1_000.0, 100),
             Err(GraphError::SignalTypeMismatch(1, 3, 0))
+        ));
+    }
+
+    #[test]
+    fn scalar_cv_chain_routes_hold_transform_and_four_input_mix() {
+        let graph = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::Constant { value: 0.5 }),
+                node(
+                    2,
+                    NodeKind::Lfo {
+                        waveform: 1,
+                        rate: 5.0,
+                    },
+                ),
+                node(
+                    3,
+                    NodeKind::Lfo {
+                        waveform: 2,
+                        rate: 10.0,
+                    },
+                ),
+                node(4, NodeKind::SampleHold { mode: 0 }),
+                node(
+                    5,
+                    NodeKind::AttenuverterBias {
+                        amount: -0.5,
+                        bias: 0.2,
+                    },
+                ),
+                node(
+                    6,
+                    NodeKind::CvMix {
+                        levels: [0.8, 0.2, 0.0, 0.0],
+                        offset: 0.1,
+                    },
+                ),
+                node(
+                    7,
+                    NodeKind::ModulatedGain {
+                        base: 0.5,
+                        depth: 0.5,
+                    },
+                ),
+                node(8, NodeKind::Output),
+            ],
+            connections: vec![
+                edge(1, 7, 0),
+                edge(2, 4, 0),
+                edge(3, 4, 1),
+                edge(4, 5, 0),
+                edge(5, 6, 0),
+                edge(2, 6, 1),
+                edge(6, 7, 1),
+                edge(7, 8, 0),
+            ],
+        };
+        let mut plan = graph.clone().compile(1_000.0, 100).unwrap();
+        let silence = [0.0; 100];
+        let [left, right] = process(&mut plan, &silence, &silence);
+        assert_eq!(left, right);
+        assert!(left.iter().all(|sample| sample.is_finite()));
+        assert!(plan.node_meter(4, 0).unwrap().abs() <= 1.0);
+        assert!(plan.node_meter(5, 0).unwrap().abs() <= 1.0);
+        assert!(plan.node_meter(6, 0).unwrap().abs() <= 1.0);
+        assert!((0.0..=2.0).contains(&plan.node_meter(7, 0).unwrap()));
+        let mut invalid = graph;
+        invalid.connections[3] = edge(1, 5, 0);
+        assert!(matches!(
+            invalid.compile(1_000.0, 100),
+            Err(GraphError::SignalTypeMismatch(1, 5, 0))
         ));
     }
 

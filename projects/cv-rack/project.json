@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.cv-rack",
+  "name": "CV rack slice",
+  "source": "Main rack scalar module formulas, redesigned as typed sample-rate Rust graph",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 1, "type": "oscillator", "a": 220, "b": 0.3 },
+      { "id": 2, "type": "lfo", "a": 2 },
+      { "id": 3, "type": "lfo", "a": 8 },
+      { "id": 4, "type": "sample-hold", "a": 0 },
+      { "id": 5, "type": "attenuverter-bias", "a": -0.7, "b": 0.1 },
+      { "id": 6, "type": "lfo", "a": 1 },
+      { "id": 7, "type": "cv-mix", "a": 0.8, "b": 0.25 },
+      { "id": 8, "type": "modulated-gain", "a": 0.6, "b": 0.5 },
+      { "id": 9, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 8, "inputPort": 0 },
+      { "from": 2, "to": 4, "inputPort": 0 },
+      { "from": 3, "to": 4, "inputPort": 1 },
+      { "from": 4, "to": 5, "inputPort": 0 },
+      { "from": 5, "to": 7, "inputPort": 0 },
+      { "from": 6, "to": 7, "inputPort": 1 },
+      { "from": 7, "to": 8, "inputPort": 1 },
+      { "from": 8, "to": 9, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 3, "id": 0, "value": 2 },
+      { "nodeId": 6, "id": 0, "value": 1 },
+      { "nodeId": 7, "id": 4, "value": 0.1 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 4, "nodeParameterId": 0, "hostId": "hold-mode", "label": "Capture mode", "kind": "choice", "choices": ["Sample", "Track", "12-step sample"], "default": 0 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "source-rate", "label": "Source LFO rate", "kind": "float", "min": 0.05, "max": 20, "default": 2, "unit": "Hz" },
+    { "id": 2, "nodeId": 3, "nodeParameterId": 1, "hostId": "trigger-rate", "label": "Trigger rate", "kind": "float", "min": 0.05, "max": 20, "default": 8, "unit": "Hz" },
+    { "id": 3, "nodeId": 5, "nodeParameterId": 0, "hostId": "amount", "label": "Amount", "kind": "float", "min": -1, "max": 1, "default": -0.7 },
+    { "id": 4, "nodeId": 5, "nodeParameterId": 1, "hostId": "bias", "label": "Bias", "kind": "float", "min": -1, "max": 1, "default": 0.1 },
+    { "id": 5, "nodeId": 7, "nodeParameterId": 0, "hostId": "held-level", "label": "Held CV level", "kind": "float", "min": 0, "max": 1, "default": 0.8 },
+    { "id": 6, "nodeId": 7, "nodeParameterId": 1, "hostId": "free-level", "label": "Free CV level", "kind": "float", "min": 0, "max": 1, "default": 0.25 },
+    { "id": 7, "nodeId": 7, "nodeParameterId": 4, "hostId": "offset", "label": "CV offset", "kind": "float", "min": -1, "max": 1, "default": 0.1 },
+    { "id": 8, "nodeId": 8, "nodeParameterId": 0, "hostId": "base", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 0.6 },
+    { "id": 9, "nodeId": 8, "nodeParameterId": 1, "hostId": "depth", "label": "CV depth", "kind": "float", "min": -2, "max": 2, "default": 0.5 }
+  ]
+}

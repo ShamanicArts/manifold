@@ -71,6 +71,34 @@ export function drawMeterTrace(canvas, series, scale, colors) {
   });
 }
 
+export function drawCvStageTraces(canvas, nativeMeters, wasmMeters) {
+  const { context, width, height } = prepare(canvas);
+  const stages = ['Sample / hold', 'Scaled CV', 'Mixed CV', 'Effective gain'];
+  const count = nativeMeters.length / 4;
+  const lane = height / 4;
+  for (let stage = 0; stage < 4; stage++) {
+    const middle = lane * (stage + .5);
+    context.strokeStyle = '#35444f';
+    context.beginPath(); context.moveTo(0, middle); context.lineTo(width, middle); context.stroke();
+    for (const [index, meters] of [nativeMeters, wasmMeters].entries()) {
+      context.beginPath();
+      context.strokeStyle = index === 0 ? '#e2b084' : '#9a8de8';
+      context.lineWidth = 1.5;
+      for (let block = 0; block < count; block++) {
+        const value = (meters[block * 4 + stage] || 0) - (stage === 3 ? 1 : 0);
+        const x = block / Math.max(1, count - 1) * width;
+        const y = middle - Math.max(-1, Math.min(1, value)) * lane * .38;
+        if (block === 0) context.moveTo(x, y); else context.lineTo(x, y);
+      }
+      context.stroke();
+    }
+    context.font = '10px system-ui';
+    context.fillStyle = '#b3c0c9';
+    context.textAlign = 'left';
+    context.fillText(stages[stage], 8, lane * stage + 12);
+  }
+}
+
 export function drawLiveSpectrum(canvas, analyser) {
   const { context, width, height } = prepare(canvas);
   if (!analyser) return;

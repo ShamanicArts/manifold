@@ -1,4 +1,4 @@
-import { drawComparison, drawBandBars, drawMeterTrace } from './plots.js';
+import { drawComparison, drawBandBars, drawMeterTrace, drawCvStageTraces } from './plots.js';
 
 const byId = (id) => document.getElementById(id);
 const asset = (family, path) => `${import.meta.env.BASE_URL}reference/${family}/${path}`;
@@ -319,6 +319,21 @@ function prepareSlewModulation(engine, selected) {
   if (engine.manifold_graph_initial_parameter(2, 0, selected.waveform) !== 1) throw new Error('Wasm slew modulation wave failed');
 }
 
+function prepareCvRack(engine, selected) {
+  const p = selected.before;
+  const nodes = [[1, 11, 220, .3], [2, 14, p[1], 0], [3, 14, p[2], 0],
+    [4, 32, p[0], 0], [5, 31, p[3], p[4]], [6, 14, 1, 0],
+    [7, 33, p[5], p[6]], [8, 15, p[8], p[9]], [9, 7, 0, 0]];
+  const edges = [[1, 8, 0], [2, 4, 0], [3, 4, 1], [4, 5, 0],
+    [5, 7, 0], [6, 7, 1], [7, 8, 1], [8, 9, 0]];
+  if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Wasm CV rack graph begin failed');
+  for (const node of nodes) if (engine.manifold_graph_node(...node) !== 1) throw new Error(`Wasm CV rack node ${node[0]} failed`);
+  for (const edge of edges) if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Wasm CV rack edge failed');
+  for (const [node, id, value] of [[3, 0, 2], [6, 0, 1], [7, 4, p[7]]]) {
+    if (engine.manifold_graph_initial_parameter(node, id, value) !== 1) throw new Error('Wasm CV rack initial value failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
@@ -344,6 +359,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'envelope-ducking') prepareEnvelopeDucking(engine, selected);
   if (family === 'slew-audio') prepareSlewAudio(engine, selected);
   if (family === 'slew-modulation') prepareSlewModulation(engine, selected);
+  if (family === 'cv-rack') prepareCvRack(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'sample-region' || family === 'sample-instrument') {
     if (engine.manifold_sample_begin(2, manifest.sampleFrames, manifest.sampleSourceRate) !== 1) {
@@ -389,7 +405,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), block * 2);
   const outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), block * 2);
   const rendered = new Float32Array(input.length);
-  const meterCount = family === 'fft-spectrum' ? 33 : family === 'spectrum-analyzer' ? 8 : ['envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family) ? 1 : 0;
+  const meterCount = family === 'fft-spectrum' ? 33 : family === 'spectrum-analyzer' ? 8 : family === 'cv-rack' ? 4 : ['envelope-follower', 'envelope-ducking', 'compressor', 'limiter'].includes(family) ? 1 : 0;
   const meterSnapshots = meterCount ? new Float32Array(Math.ceil(manifest.frames / block) * meterCount) : null;
   for (let offset = 0; offset < manifest.frames; offset += block) {
     const count = Math.min(block, manifest.frames - offset);
@@ -503,6 +519,14 @@ function renderWasm(engine, family, manifest, input, selected) {
           updated &= engine.manifold_set_node_parameter(node, id, value);
         }
       }
+      if (family === 'cv-rack') {
+        const p = selected.after;
+        for (const [node, id, value] of [[4, 0, p[0]], [2, 1, p[1]], [3, 1, p[2]],
+          [5, 0, p[3]], [5, 1, p[4]], [7, 0, p[5]], [7, 1, p[6]],
+          [7, 4, p[7]], [8, 0, p[8]], [8, 1, p[9]]]) {
+          updated &= engine.manifold_set_node_parameter(node, id, value);
+        }
+      }
       if (family === 'envelope-follower') {
         for (const [id, value] of [[0, selected.attackAfter], [1, selected.releaseAfter], [2, selected.sensitivityAfter], [3, selected.highpassAfter], [4, selected.modeAfter]]) {
           updated &= engine.manifold_set_node_parameter(2, id, value);
@@ -534,7 +558,7 @@ function renderWasm(engine, family, manifest, input, selected) {
     if (meterSnapshots) {
       const snapshot = offset / block * meterCount;
       for (let band = 0; band < meterCount; band++) {
-        const value = engine.manifold_get_node_meter(2, band);
+        const value = engine.manifold_get_node_meter(family === 'cv-rack' ? [4, 5, 7, 8][band] : 2, family === 'cv-rack' ? 0 : band);
         if (!Number.isFinite(value)) throw new Error(`Missing analyzer band ${band}`);
         meterSnapshots[snapshot + band] = value;
       }
@@ -595,6 +619,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     if (selectedFamily !== family) return;
     ({ manifest, input } = fixtures.get(family));
     currentFamily = family;
+    byId('plot-window').querySelector('[value="stage"]').hidden = family !== 'cv-rack';
     chooser.replaceChildren();
     for (const entry of manifest.cases) chooser.add(new Option(entry.label, entry.id));
     chooser.disabled = false;
@@ -629,6 +654,22 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
   };
   const draw = () => {
     if (!active) return;
+    const stageView = currentFamily === 'cv-rack' && byId('plot-window').value === 'stage';
+    byId('comparison-wave').parentElement.classList.toggle('cv-stage-plot', stageView);
+    byId('comparison-wave').setAttribute('aria-label', stageView
+      ? 'Native Rust and Rust/Wasm held, scaled, mixed, and effective gain traces'
+      : 'Overlaid reference and Rust/Wasm output waveform');
+    if (currentFamily === 'cv-rack') {
+      byId('plot-title').textContent = stageView ? 'CV stages · one snapshot per block' : 'Amplitude envelope · left channel';
+      document.querySelector('.plot-unit').textContent = stageView ? 'Maximum stage difference per block' : 'Left channel · scaled to fit';
+      if (stageView) {
+        drawCvStageTraces(byId('comparison-wave'), active.metersLegacy, active.metersRust);
+        const maxPerBlock = Array.from({ length: active.meterDifference.length / 4 }, (_, block) =>
+          Math.max(...active.meterDifference.slice(block * 4, block * 4 + 4).map(Math.abs)));
+        drawMeterTrace(byId('comparison-diff'), [maxPerBlock], Math.max(active.max * 1.15, 1e-8), ['#a4d9bb']);
+        return;
+      }
+    }
     if (currentFamily === 'envelope-follower' || currentFamily === 'envelope-ducking' || currentFamily === 'compressor' || currentFamily === 'limiter') {
       const count = byId('plot-window').value === 'start'
         ? manifest.stepFrame / active.blockSize : active.metersLegacy.length;
@@ -674,16 +715,16 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
       const difference = peakView(active.difference, 0, span);
       const scale = Math.max(.1, ...oldLeft, ...oldRight);
       drawComparison(byId('comparison-wave'), [oldLeft, newLeft, oldRight, newRight], 0, 256, scale, ['#e2b084', '#9a8de8', '#d7c49d', '#80c5d5']);
-      drawComparison(byId('comparison-diff'), [difference], 0, 256, Math.max(active.max * 1.15, 1e-8), ['#a4d9bb']);
+      drawComparison(byId('comparison-diff'), [difference], 0, 256, Math.max(active.audioMax * 1.15, 1e-8), ['#a4d9bb']);
       return;
     }
-    if (currentFamily === 'modulation' || currentFamily === 'slew-modulation') {
+    if (currentFamily === 'modulation' || currentFamily === 'slew-modulation' || currentFamily === 'cv-rack') {
       const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames;
       const legacy = peakView(active.legacy, 0, span);
       const rust = peakView(active.rust, 0, span);
       const difference = peakView(active.difference, 0, span);
       drawComparison(byId('comparison-wave'), [legacy, rust], 0, 256, .3, ['#e2b084', '#9a8de8']);
-      drawComparison(byId('comparison-diff'), [difference], 0, 256, Math.max(active.max * 1.15, 1e-8), ['#a4d9bb']);
+      drawComparison(byId('comparison-diff'), [difference], 0, 256, Math.max(active.audioMax * 1.15, 1e-8), ['#a4d9bb']);
       return;
     }
     if (currentFamily === 'adsr') {
@@ -730,6 +771,8 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                     ? `${['sine', 'triangle', 'square'][selected.waveform]} CV · rise ${selected.upBefore} → ${selected.upAfter} samples · fall ${selected.downBefore} → ${selected.downAfter} · depth ${selected.depthBefore} → ${selected.depthAfter}`
                   : family === 'slew-audio'
                     ? `rise ${selected.upBefore} → ${selected.upAfter} samples · fall ${selected.downBefore} → ${selected.downAfter} samples`
+                  : family === 'cv-rack'
+                    ? `${['sample', 'track', '12-step sample'][selected.before[0]]} → ${['sample', 'track', '12-step sample'][selected.after[0]]} · amount ${selected.before[3]} → ${selected.after[3]} · held/free ${selected.after[5]}/${selected.after[6]} · depth ${selected.before[9]} → ${selected.after[9]}`
                     : family === 'distortion'
                       ? `drive ${selected.driveBefore} → ${selected.driveAfter} · mix ${selected.mixBefore} → ${selected.mixAfter} · output ${selected.outputBefore} → ${selected.outputAfter}`
                     : family === 'stereo-delay'
@@ -758,14 +801,14 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                       ? `threshold ${selected.before[0]} → ${selected.after[0]} dB · release ${selected.before[1]} → ${selected.after[1]} ms · soft clip ${selected.before[3]} → ${selected.after[3]}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
-    const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'envelope-ducking' || family === 'fft-spectrum';
+    const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'envelope-ducking' || family === 'fft-spectrum';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'compressor' || family === 'limiter' ? 'Whole reduction' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' ? 'Whole modulation' : 'Parameter change';
-    byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'Before change' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
-    byId('plot-title').textContent = family === 'fft-spectrum' ? '32 FFT bands · last block' : family === 'compressor' || family === 'limiter' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' || family === 'slew-modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'compressor' || family === 'limiter' ? 'Whole reduction' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Whole modulation' : 'Parameter change';
+    byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'Before change' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
+    byId('plot-title').textContent = family === 'fft-spectrum' ? '32 FFT bands · last block' : family === 'compressor' || family === 'limiter' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Amplitude envelope · left channel' : 'Output waveform';
     document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
-    document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'Maximum meter difference' : 'Maximum difference';
-    document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'RMS meter difference' : 'RMS difference';
+    document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'Maximum meter difference' : 'Maximum difference';
+    document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'RMS meter difference' : 'RMS difference';
     document.querySelector('.legend-old').textContent = family === 'stereo-delay' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
     document.querySelector('.legend-new').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Wasm L/R' : 'Rust/Wasm';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
@@ -773,12 +816,12 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     if (currentRequest !== requestId) return;
     const rust = renderWasm(engine, family, manifest, input, selected);
     const audioReport = measure(legacy, rust);
-    const metersLegacy = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? await loadFloat32(family, selected.meterOutput) : null;
+    const metersLegacy = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? await loadFloat32(family, selected.meterOutput) : null;
     if (currentRequest !== requestId) return;
     const report = metersLegacy ? measure(metersLegacy, rust.meters) : audioReport;
     if (metersLegacy) byId('reference-meta').textContent += ` · audio max Δ ${audioReport.max.toExponential(2)}`;
     active = { legacy, rust, focusFrame: selected.focusFrame ?? selected.gateOffFrame ?? manifest.stepFrame,
-      ...report, difference: audioReport.difference, metersLegacy, metersRust: rust.meters,
+      ...report, audioMax: audioReport.max, difference: audioReport.difference, metersLegacy, metersRust: rust.meters,
       meterDifference: report.difference, blockSize: selected.blockSize ?? manifest.blockSize };
     byId('max-difference').textContent = report.max.toExponential(2);
     byId('rms-difference').textContent = report.rms.toExponential(2);
@@ -795,6 +838,9 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     ++requestId;
     if (playbackSource) { playbackSource.stop(); playbackSource = null; }
     active = null;
+    byId('comparison-wave').parentElement.classList.remove('cv-stage-plot');
+    byId('plot-window').value = 'step';
+    byId('plot-window').querySelector('[value="stage"]').hidden = family !== 'cv-rack';
     chooser.disabled = true;
     chooser.replaceChildren();
     byId('comparison-result').textContent = '—';
