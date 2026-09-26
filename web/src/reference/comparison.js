@@ -452,11 +452,11 @@ function prepareFxChain(engine, selected) {
   }
 }
 
-function prepareEffectSlot(engine, selected) {
+function prepareEffectSlot(engine, selected, persistent = false) {
   const before = selected.before;
   if (engine.manifold_graph_begin(3, 2) !== 1
     || engine.manifold_graph_node(1, 0, 0, 0) !== 1
-    || engine.manifold_graph_node(2, 19, before[0], before[1]) !== 1
+    || engine.manifold_graph_node(2, persistent ? 52 : 19, before[0], before[1]) !== 1
     || engine.manifold_graph_node(3, 7, 0, 0) !== 1
     || engine.manifold_graph_edge(1, 2, 0) !== 1
     || engine.manifold_graph_edge(2, 3, 0) !== 1) {
@@ -598,6 +598,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'granulator') prepareGranulator(engine, selected);
   if (family === 'fx-chain') prepareFxChain(engine, selected);
   if (family === 'standalone-fx') prepareEffectSlot(engine, selected);
+  if (family === 'standalone-fx-routing') prepareEffectSlot(engine, selected, true);
   if (family === 'loop-capture') prepareLoopCapture(engine, selected);
   if (family === 'spectrum-analyzer') prepareSpectrumAnalyzer(engine, selected);
   if (family === 'fft-spectrum') prepareFftSpectrum(engine, selected);
@@ -660,6 +661,13 @@ function renderWasm(engine, family, manifest, input, selected) {
   const meterSnapshots = meterCount ? new Float32Array(Math.ceil(manifest.frames / block) * meterCount) : null;
   for (let offset = 0; offset < manifest.frames; offset += block) {
     const count = Math.min(block, manifest.frames - offset);
+    if (family === 'standalone-fx-routing') {
+      for (const [frame, type] of selected.switches) {
+        if (frame === offset && engine.manifold_set_node_parameter(2, 0, type) !== 1) {
+          throw new Error(`Wasm effect slot switch at ${frame} failed`);
+        }
+      }
+    }
     if (family === 'loop-capture') {
       for (const [frame, id, value] of selected.events) {
         if (frame === offset && engine.manifold_set_node_parameter(2, id, value) !== 1) {
@@ -891,6 +899,8 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     ({ manifest, input } = fixtures.get(family));
     currentFamily = family;
     byId('plot-window').querySelector('[value="stage"]').hidden = family !== 'cv-rack';
+    byId('plot-window').querySelector('[value="tail"]').hidden = family !== 'standalone-fx-routing';
+    if (family === 'standalone-fx-routing') byId('plot-window').value = 'tail';
     chooser.replaceChildren();
     for (const entry of manifest.cases) chooser.add(new Option(entry.label, entry.id));
     if (family === 'standalone-fx' && preferredEffectType !== null) {
@@ -981,13 +991,14 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
       drawBandBars(byId('comparison-diff'), [difference], Math.max(active.max, 1e-8), ['#a4d9bb']);
       return;
     }
-    if (currentFamily === 'stereo-delay' || currentFamily === 'phaser' || currentFamily === 'chorus' || currentFamily === 'eq8' || currentFamily === 'reverb' || currentFamily === 'multitap' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || currentFamily === 'loop-capture' || currentFamily === 'sample-region' || currentFamily === 'sample-instrument') {
-      const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames;
-      const oldLeft = peakView(active.legacy, 0, span, 0);
-      const newLeft = peakView(active.rust, 0, span, 0);
-      const oldRight = peakView(active.legacy, 0, span, 1);
-      const newRight = peakView(active.rust, 0, span, 1);
-      const difference = peakView(active.difference, 0, span);
+    if (currentFamily === 'stereo-delay' || currentFamily === 'phaser' || currentFamily === 'chorus' || currentFamily === 'eq8' || currentFamily === 'reverb' || currentFamily === 'multitap' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || currentFamily === 'standalone-fx-routing' || currentFamily === 'loop-capture' || currentFamily === 'sample-region' || currentFamily === 'sample-instrument') {
+      const start = currentFamily === 'standalone-fx-routing' && byId('plot-window').value === 'tail' ? 16384 : 0;
+      const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames - start;
+      const oldLeft = peakView(active.legacy, start, span, 0);
+      const newLeft = peakView(active.rust, start, span, 0);
+      const oldRight = peakView(active.legacy, start, span, 1);
+      const newRight = peakView(active.rust, start, span, 1);
+      const difference = peakView(active.difference, start, span);
       const scale = Math.max(.1, ...oldLeft, ...oldRight);
       drawComparison(byId('comparison-wave'), [oldLeft, newLeft, oldRight, newRight], 0, 256, scale, ['#e2b084', '#9a8de8', '#d7c49d', '#80c5d5']);
       drawComparison(byId('comparison-diff'), [difference], 0, 256, Math.max(active.audioMax * 1.15, 1e-8), ['#a4d9bb']);
@@ -1090,6 +1101,8 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                       ? `left ${selected.before[0]} → ${selected.after[0]} ms · right ${selected.before[1]} → ${selected.after[1]} ms · feedback ${selected.before[2]} → ${selected.after[2]}`
                     : family === 'fx-chain'
                       ? `drive ${selected.before[0]} → ${selected.after[0]} · delay mix ${selected.before[6]} → ${selected.after[6]} · cutoff ${selected.before[7]} → ${selected.after[7]} Hz`
+                    : family === 'standalone-fx-routing'
+                      ? `Delay → Chorus at ${selected.switches[0][0]} → Delay at ${selected.switches[1][0]} · visited tails keep processing`
                     : family === 'standalone-fx'
                       ? `type ${selected.before[0]} → ${selected.after[0]} · wet mix ${selected.before[1]} → ${selected.after[1]} · p/0 ${selected.before[2]} → ${selected.after[2]}`
                     : family === 'loop-capture'
@@ -1114,14 +1127,14 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
     const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'envelope-ducking' || family === 'fft-spectrum';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Whole capture' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Whole modulation' : 'Parameter change';
-    byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Before change' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
-    byId('plot-title').textContent = family === 'fft-spectrum' ? '32 FFT bands · last block' : family === 'compressor' || family === 'limiter' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'phaser' ? 'Stereo phaser output · peak level' : family === 'chorus' ? 'Stereo chorus output · peak level' : family === 'eq8' ? 'EQ8 stereo output · peak level' : family === 'eq-node' ? 'Three-band EQ stereo output' : family === 'reverb' ? 'Stereo reverb tail · peak level' : family === 'ring-modulator' ? 'Ring-modulated stereo output' : family === 'transient-shaper' ? 'Transient strength · mean per block' : family === 'bitcrusher' ? 'Quantized stereo output' : family === 'multitap' ? 'Multitap echoes · stereo peak level' : family === 'stereo-widener' ? 'Output stereo correlation · −1 to +1' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Amplitude envelope · left channel' : 'Output waveform';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Whole capture' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'standalone-fx-routing' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Whole modulation' : 'Parameter change';
+    byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Before change' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'standalone-fx-routing' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
+    byId('plot-title').textContent = family === 'fft-spectrum' ? '32 FFT bands · last block' : family === 'compressor' || family === 'limiter' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'phaser' ? 'Stereo phaser output · peak level' : family === 'chorus' ? 'Stereo chorus output · peak level' : family === 'eq8' ? 'EQ8 stereo output · peak level' : family === 'eq-node' ? 'Three-band EQ stereo output' : family === 'reverb' ? 'Stereo reverb tail · peak level' : family === 'ring-modulator' ? 'Ring-modulated stereo output' : family === 'transient-shaper' ? 'Transient strength · mean per block' : family === 'bitcrusher' ? 'Quantized stereo output' : family === 'multitap' ? 'Multitap echoes · stereo peak level' : family === 'stereo-widener' ? 'Output stereo correlation · −1 to +1' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'standalone-fx-routing' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Amplitude envelope · left channel' : 'Output waveform';
     document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
     document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Maximum meter difference' : 'Maximum difference';
     document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'RMS meter difference' : 'RMS difference';
-    document.querySelector('.legend-old').textContent = family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
-    document.querySelector('.legend-new').textContent = family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Wasm L/R' : 'Rust/Wasm';
+    document.querySelector('.legend-old').textContent = family === 'standalone-fx-routing' || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
+    document.querySelector('.legend-new').textContent = family === 'standalone-fx-routing' || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Wasm L/R' : 'Rust/Wasm';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;
@@ -1152,6 +1165,8 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     byId('comparison-wave').parentElement.classList.remove('cv-stage-plot');
     byId('plot-window').value = 'step';
     byId('plot-window').querySelector('[value="stage"]').hidden = family !== 'cv-rack';
+    byId('plot-window').querySelector('[value="tail"]').hidden = family !== 'standalone-fx-routing';
+    if (family === 'standalone-fx-routing') byId('plot-window').value = 'tail';
     chooser.disabled = true;
     chooser.replaceChildren();
     byId('comparison-result').textContent = '—';

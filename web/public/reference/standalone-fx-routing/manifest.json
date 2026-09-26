@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "reference": "Isolated old C++ Gain/Mixer/Chorus/StereoDelay route; prepared gates and persistent processing",
+  "sourceSha256": "b7c12c261990632acbbd5ac9f4358f4e8bf664b23ea3559f6fb620cdadc182a4",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 32768,
+  "blockSize": 128,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "delay-chorus-delay",
+      "label": "Delay → Chorus → Delay · returning tail",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          0
+        ],
+        [
+          16384,
+          8
+        ]
+      ],
+      "focusFrame": 17180,
+      "output": "delay-chorus-delay.f32"
+    }
+  ]
+}

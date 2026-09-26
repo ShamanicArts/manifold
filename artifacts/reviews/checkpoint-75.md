@@ -1,0 +1,9 @@
+# Checkpoint 75 · playable persistent FX routing
+
+Open the [Standalone FX tails view](http://127.0.0.1:4173/?primitive=standalone-fx-routing) or inspect the [browser capture](checkpoint-75-browser.png). The separate [Standalone FX slice](http://127.0.0.1:4173/?primitive=standalone-fx) retains its selected-only behavior and JSON state format.
+
+The new project runs Wasm graph kind `52` live through the same seven public controls as the original slot. Every effect type can be selected. Once selected, its kernel keeps processing behind its closed output gate, so returning to it preserves the tail. The view starts on Delay at full wet mix and offers an isolated old C++ Delay → Chorus → Delay capture. The comparison selects the **Returning tail** window by default. The C++/Wasm maximum difference is **4.32e-7** across 32,768 stereo frames, RMS **2.95e-9**, and the result reads **Match**.
+
+The [fixture generator](../../scripts/make-fx-routing-fixture.mjs) packages the capture from `python3 scripts/probe-fx-tail.py` with the same deterministic input. In local Chromium, the direct link loaded the returning-tail plot, the C++ comparison matched, live audio started at 48 kHz, switching Chorus → Delay kept audio running, and switching back to the selected-only view retained its native Rust comparison. There were no page errors. `npm run build --prefix web` passes. The library now contains **44 views and 374 cases**: 230 C++ and 144 native Rust references.
+
+This is an opt-in compatibility project, not a version change to the selected-only project. Its isolated C++ fixture prepares both effect gates up front; the old Lua wrapper creates new gates lazily. Full plug-in graph parity, a CPU budget for every visited effect, and a shared host state format remain open. The persistent project does not expose the selected-only JSON state importer because that format has no routing-mode field.

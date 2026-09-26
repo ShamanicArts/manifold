@@ -54,6 +54,19 @@ const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
 const status = byId('status');
 const toggle = byId('audio-toggle');
+const legacyFxProject = structuredClone(standaloneFxProject);
+legacyFxProject.id = 'manifold.standalone-fx-routing';
+legacyFxProject.name = 'Standalone FX tails';
+legacyFxProject.signal.nodes.find((node) => node.id === 2).type = 'effect-slot-legacy';
+legacyFxProject.signal.nodes.find((node) => node.id === 2).a = 8;
+legacyFxProject.signal.nodes.find((node) => node.id === 2).b = 1;
+legacyFxProject.parameters.find((parameter) => parameter.id === 0).default = 8;
+legacyFxProject.parameters.find((parameter) => parameter.id === 1).default = 1;
+for (const [id, value] of [[2, 0], [3, 0.6], [4, 0.5], [5, 0.5], [6, 0.5]]) {
+  legacyFxProject.parameters.find((parameter) => parameter.id === id).default = value;
+  legacyFxProject.signal.initialParameters.find((parameter) => parameter.id === id).value = value;
+}
+const isFxFamily = (family) => family === 'standalone-fx' || family === 'standalone-fx-routing';
 const projects = {
   svf: {
     project: filterProject,
@@ -246,6 +259,12 @@ const projects = {
     title: 'Standalone FX slice',
     description: 'A swappable effects slot using all 21 original type IDs and normalized controls. Each type runs a prepared Rust effect; the fifth normalized control is unused by many original definitions.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
+  },
+  'standalone-fx-routing': {
+    project: legacyFxProject,
+    title: 'Standalone FX tails',
+    description: 'The prepared legacy route keeps every visited effect processing behind its closed output gate. Switch Delay → Chorus → Delay to hear the original returning tail; the C++ comparison captures the same switch.',
+    signal: 'Live path: input → visited effects → selected wet gate → legacy gain/mix → output',
   },
   'loop-capture': {
     project: loopCaptureProject,
@@ -650,7 +669,7 @@ function addSlider(parameter) {
     wrapper.style.setProperty('--fill', `${position / 10}%`);
     readout.value = format(value);
     values.set(parameter.id, value);
-    if (activeFamily === 'standalone-fx') updateSlotControls();
+    if (isFxFamily(activeFamily)) updateSlotControls();
     if (publish) audio.setParameter(parameter.id, value);
     if (publish) updateCutoffRange();
     if (publish) updateTransferCurve();
@@ -684,7 +703,7 @@ function addSlider(parameter) {
 }
 
 function updateSlotControls() {
-  if (activeFamily !== 'standalone-fx') return;
+  if (!isFxFamily(activeFamily)) return;
   const selected = values.get(0);
   const labels = selected === 0 ? { 2: 'Rate', 3: 'Depth', 4: 'Feedback', 5: 'Spread', 6: 'Voices' }
     : selected === 1 ? { 2: 'Rate', 3: 'Depth', 4: 'Feedback', 5: 'Spread (legacy °)', 6: 'Stages' }
@@ -1072,7 +1091,7 @@ function renderPrimitive(family) {
   activeFamily = family;
   primitivePicker.value = family;
   values = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
-  if (family === 'standalone-fx') slotValuesByType = new Map([
+  if (isFxFamily(family)) slotValuesByType = new Map([
     [0, [0.5, 0.5, 0.2, 0.6, 0.4]],
     [1, [0.5, 0.5, 0.4, 0.5, 0.4]],
     [2, [0.3, 0.0, 0.7, 0.5, 0.5]],
@@ -1094,6 +1113,7 @@ function renderPrimitive(family) {
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
   ]);
+  if (family === 'standalone-fx-routing') slotValuesByType.set(8, [0, 0.6, 0.5, 0.5, 0.5]);
   if (family === 'loop-capture') loopHasTake = false;
   byId('capture-transfer-section').hidden = family !== 'loop-capture';
   if (family === 'loop-capture') byId('capture-transfer-status').textContent = 'Record a take, then stop recording to send it to a sample project.';
@@ -1141,7 +1161,7 @@ function renderPrimitive(family) {
   renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : isFxFamily(family) ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   const sampleView = family === 'sample-region' || family === 'sample-instrument';
   byId('keyboard-section').hidden = !['voice', 'sample-instrument'].includes(family);
@@ -1167,25 +1187,25 @@ function renderPrimitive(family) {
   sampleActiveVoices = 0;
   if (family === 'voice' || family === 'sample-instrument') resetNoteEvents();
   if (mode) {
-    byId('modes').style.gridTemplateColumns = `repeat(${family === 'standalone-fx' && mode.choices.length === 9 ? 3 : family === 'waveshaper' || family === 'standalone-fx' ? 4 : mode.choices.length}, minmax(0, 1fr))`;
+    byId('modes').style.gridTemplateColumns = `repeat(${isFxFamily(family) && mode.choices.length === 9 ? 3 : family === 'waveshaper' || isFxFamily(family) ? 4 : mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, index) => {
       const value = mode.choiceValues?.[index] ?? index;
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
         : family === 'granulator' ? ['Hann', 'Tri', 'Black', 'Tukey', 'Rect'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 10: 'Pitch', 11: 'Grains', 12: 'Ring Mod', 13: 'Formant', 14: 'EQ', 15: 'Limit', 16: 'Transient', 17: 'Bits', 18: 'Shimmer', 19: 'Reverse', 20: 'Stutter' })[value] : choice;
+        : isFxFamily(family) ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 10: 'Pitch', 11: 'Grains', 12: 'Ring Mod', 13: 'Formant', 14: 'EQ', 15: 'Limit', 16: 'Transient', 17: 'Bits', 18: 'Shimmer', 19: 'Reverse', 20: 'Stutter' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {
-        if (family === 'standalone-fx') {
+        if (isFxFamily(family)) {
           slotValuesByType.set(values.get(0), [2, 3, 4, 5, 6].map((id) => values.get(id)));
         }
         values.set(mode.id, value);
         audio.setParameter(mode.id, value);
         if (family === 'standalone-fx') referenceLab?.selectEffectType(value);
         buttons.forEach((item, itemIndex) => item.setAttribute('aria-pressed', String(itemIndex === index)));
-        if (family === 'standalone-fx') {
+        if (isFxFamily(family)) {
           const restored = slotValuesByType.get(value);
           [2, 3, 4, 5, 6].forEach((id, offset) => {
             values.set(id, restored[offset]);
@@ -1235,14 +1255,14 @@ function renderPrimitive(family) {
     help.textContent = 'Attack and release are captured when audio starts; stop audio to change them. The old knee, auto makeup, mode, detector mode, and sidechain HPF controls do not affect this processing path.';
     byId('controls').appendChild(help);
   }
-  if (family === 'standalone-fx') {
+  if (isFxFamily(family)) {
     const help = document.createElement('p');
     help.id = 'slot-help';
     help.className = 'control-help';
     help.textContent = 'Values are stored separately for each effect type and restored when selected.';
     byId('controls').appendChild(help);
     updateSlotControls();
-    if (slotSessionState) {
+    if (family === 'standalone-fx' && slotSessionState) {
       applyStandaloneFxState(slotSessionState);
       byId('slot-state-status').textContent = `Session state restored · type ${slotSessionState.hostParameters.type} · 21 effect settings.`;
     }

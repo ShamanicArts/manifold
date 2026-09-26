@@ -50,7 +50,8 @@
           <button class="library-item" type="button" data-primitive="limiter"><span><strong>Limiter</strong><small>Peak clamp · release · mix</small></span><em>Ready</em></button>
           <button class="library-item" type="button" data-primitive="stereo-delay"><span><strong>Stereo delay</strong><small>Taps · feedback · tempo</small></span><em>Ready</em></button>
           <button class="library-item" type="button" data-primitive="fx-chain"><span><strong>FX chain</strong><small>Drive · delay · filter</small></span><em>Ready</em></button>
-          <button class="library-item" type="button" data-primitive="standalone-fx"><span><strong>Standalone FX slice</strong><small>19 swappable effects · wet mix</small></span><em>Ready</em></button>
+          <button class="library-item" type="button" data-primitive="standalone-fx"><span><strong>Standalone FX slice</strong><small>21 swappable effects · wet mix</small></span><em>Ready</em></button>
+          <button class="library-item" type="button" data-primitive="standalone-fx-routing"><span><strong>Standalone FX tails</strong><small>Persistent routing · C++ comparison</small></span><em>Ready</em></button>
           <button class="library-item" type="button" data-primitive="loop-capture"><span><strong>Loop capture</strong><small>Record · play · overdub</small></span><em>Ready</em></button>
           <button class="library-item" type="button" data-primitive="sample-region"><span><strong>Sample region</strong><small>File · loop · reverse</small></span><em>Ready</em></button>
           <button class="library-item" type="button" data-primitive="sample-instrument"><span><strong>Sample instrument</strong><small>8 voices · root note · MIDI</small></span><em>Ready</em></button>
@@ -101,7 +102,7 @@
           <div class="panel-heading reference-heading"><div><span class="overline">Offline comparison</span><h2 id="reference-title">C++ ↔ Rust/Wasm</h2></div><select id="reference-case" aria-label="Reference case"></select></div>
           <div class="reference-meta" id="reference-meta">Loading reference cases…</div>
           <div class="metric-row"><div><span>Maximum difference</span><strong id="max-difference">—</strong></div><div><span>RMS difference</span><strong id="rms-difference">—</strong></div><div><span>Result</span><strong id="comparison-result">—</strong></div></div>
-          <div class="plot-heading"><span id="plot-title">Output waveform</span><div class="legend"><span class="legend-old">C++</span><span class="legend-new">Rust/Wasm</span></div><select id="plot-window" aria-label="Waveform window"><option value="step">Parameter change</option><option value="start">Start</option><option value="stage" hidden>CV stages</option></select></div>
+          <div class="plot-heading"><span id="plot-title">Output waveform</span><div class="legend"><span class="legend-old">C++</span><span class="legend-new">Rust/Wasm</span></div><select id="plot-window" aria-label="Waveform window"><option value="step">Parameter change</option><option value="start">Start</option><option value="tail" hidden>Returning tail</option><option value="stage" hidden>CV stages</option></select></div>
           <div class="plot-wrap"><canvas id="comparison-wave" aria-label="Overlaid C++ and Rust output waveform"></canvas></div>
           <div class="plot-heading"><span>Difference</span><span class="plot-unit">Left channel · scaled to fit</span></div>
           <div class="plot-wrap difference-wrap"><canvas id="comparison-diff" aria-label="Difference between C++ and Rust output"></canvas></div>
