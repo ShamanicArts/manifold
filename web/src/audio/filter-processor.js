@@ -13,7 +13,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
           if (engine.manifold_version() !== 2) throw new Error('Incompatible graph module');
-          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26 };
+          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26, 'sample-instrument': 27 };
           const graph = data.graph;
           if (engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) throw new Error('Graph too large');
           for (const node of graph.nodes) {
@@ -51,7 +51,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             throw new Error('Event queue rejected note event');
           }
         } else if (data.type === 'meter-request' && this.engine) {
-          const count = Math.min(8, Math.max(1, data.count ?? 8));
+          const count = Math.min(9, Math.max(1, data.count ?? 8));
           const values = Array.from({ length: count }, (_, band) => this.engine.manifold_get_node_meter(data.nodeId, band));
           this.port.postMessage({ type: 'meters', nodeId: data.nodeId, values });
         }

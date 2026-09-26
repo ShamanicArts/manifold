@@ -18,7 +18,7 @@ Source checkout: `/home/shamanic/dev/my-plugin` (read-only behavior oracle). Its
 
 Other build dependencies include Dear ImGui, ImGuiColorTextEdit, Boost regex, OpenGL/EGL, and Google Highway. None are foundational dependencies in v2. The old project has 28 `manifold.project.json5` descriptors; classify each as behavior to port, interface to redesign, or experiment before deletion.
 
-The first bounded [Loop capture study](../projects/loop-capture/project.json) verifies record, wrap, reverse/speed, and overdub in native Rust and Wasm. A separate [Sample region study](../projects/sample-region/project.json) now decodes a file outside the audio callback and verifies region, speed, reverse, one-shot, and retriggering. The old [Standalone Sample instrument](standalone-sample-migration.md) still needs eight-voice routing, capture transfer, crossfade, unison, and analysis contracts.
+The first bounded [Loop capture study](../projects/loop-capture/project.json) verifies record, wrap, reverse/speed, and overdub in native Rust and Wasm. A separate [Sample region study](../projects/sample-region/project.json) now decodes a file outside the audio callback and verifies region, speed, reverse, one-shot, and retriggering. An authored [eight-voice sample instrument](../projects/sample-instrument/project.json) now shares one decoded buffer and routes note events in Rust. The old [Standalone Sample instrument](standalone-sample-migration.md) still needs dynamic source selection, capture transfer, phase vocoder modes, unison, and analysis contracts.
 
 ## Migration sequence
 

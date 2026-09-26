@@ -13,6 +13,7 @@ use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
+use crate::sample_instrument::SampleInstrument;
 use crate::sample_region::SampleRegion;
 use crate::spectrum_analyzer::SpectrumAnalyzer;
 use crate::stereo_delay::StereoDelay;
@@ -85,6 +86,7 @@ pub enum NodeKind {
         mix: f32,
     },
     SampleRegion,
+    SampleInstrument,
     SpectrumAnalyzer {
         sensitivity: f32,
         smoothing: f32,
@@ -134,6 +136,7 @@ impl NodeKind {
             | Self::Constant { .. }
             | Self::VoiceSynth
             | Self::SampleRegion
+            | Self::SampleInstrument
             | Self::Oscillator { .. } => 0,
             Self::NoiseGenerator { .. } | Self::Lfo { .. } => 0,
             Self::Sum2 { .. }
@@ -336,6 +339,7 @@ enum Kernel {
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
+    SampleInstrument(SampleInstrument),
     SpectrumAnalyzer(SpectrumAnalyzer),
     EnvelopeFollower(EnvelopeFollower),
     EnvelopeControl(EnvelopeFollower),
@@ -451,6 +455,9 @@ impl Kernel {
                 mix,
             } => Self::LoopCapture(LoopCapture::new(sample_rate, *capacity_seconds, *mix)),
             NodeKind::SampleRegion => Self::SampleRegion(SampleRegion::new(sample_rate)),
+            NodeKind::SampleInstrument => {
+                Self::SampleInstrument(SampleInstrument::new(sample_rate))
+            }
             NodeKind::SpectrumAnalyzer {
                 sensitivity,
                 smoothing,
@@ -556,6 +563,7 @@ impl Kernel {
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
+            (Self::SampleInstrument(instrument), id) => return instrument.set_parameter(id, value),
             (Self::SpectrumAnalyzer(analyzer), id) => return analyzer.set_parameter(id, value),
             (Self::EnvelopeFollower(follower), id) => return follower.set_parameter(id, value),
             (Self::EnvelopeControl(follower), id) => return follower.set_parameter(id, value),
@@ -586,12 +594,19 @@ impl Kernel {
                 player.event(event);
                 true
             }
+            Self::SampleInstrument(instrument) => {
+                instrument.event(event);
+                true
+            }
             _ => false,
         }
     }
 
     fn accepts_events(&self) -> bool {
-        matches!(self, Self::VoiceSynth(_) | Self::SampleRegion(_))
+        matches!(
+            self,
+            Self::VoiceSynth(_) | Self::SampleRegion(_) | Self::SampleInstrument(_)
+        )
     }
 }
 
@@ -745,6 +760,7 @@ impl ExecutionPlan {
                 Kernel::Compressor(compressor) if band == 0 => Some(compressor.gain_reduction_db()),
                 Kernel::Limiter(limiter) if band == 0 => Some(limiter.gain_reduction_db()),
                 Kernel::SampleRegion(player) => player.meter(band),
+                Kernel::SampleInstrument(instrument) => instrument.meter(band),
                 _ => None,
             })
     }
@@ -761,12 +777,10 @@ impl ExecutionPlan {
         self.nodes
             .iter_mut()
             .find(|entry| entry.id == node)
-            .is_some_and(|entry| {
-                if let Kernel::SampleRegion(player) = &mut entry.kernel {
-                    player.load_stereo(stereo, source_rate)
-                } else {
-                    false
-                }
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::SampleRegion(player) => player.load_stereo(stereo, source_rate),
+                Kernel::SampleInstrument(instrument) => instrument.load_stereo(stereo, source_rate),
+                _ => false,
             })
     }
 
@@ -995,6 +1009,13 @@ impl ExecutionPlan {
                 Kernel::SampleRegion(player) => {
                     for frame in 0..frames {
                         let value = player.process_sample();
+                        left[frame] = value[0];
+                        right[frame] = value[1];
+                    }
+                }
+                Kernel::SampleInstrument(instrument) => {
+                    for frame in 0..frames {
+                        let value = instrument.process_sample();
                         left[frame] = value[0];
                         right[frame] = value[1];
                     }

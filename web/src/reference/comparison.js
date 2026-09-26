@@ -73,6 +73,15 @@ function prepareSampleRegion(engine) {
   }
 }
 
+function prepareSampleInstrument(engine) {
+  if (engine.manifold_graph_begin(2, 1) !== 1
+    || engine.manifold_graph_node(2, 27, 0, 0) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1) {
+    throw new Error('Wasm sample instrument graph failed');
+  }
+}
+
 function prepareOscillator(engine, selected) {
   if (engine.manifold_graph_begin(2, 1) !== 1
     || engine.manifold_graph_node(1, 11, selected.frequencyBefore, selected.amplitudeBefore) !== 1
@@ -288,6 +297,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'mixer') prepareMixer(engine, selected);
   if (family === 'voice') prepareVoice(engine);
   if (family === 'sample-region') prepareSampleRegion(engine);
+  if (family === 'sample-instrument') prepareSampleInstrument(engine);
   if (family === 'oscillator') prepareOscillator(engine, selected);
   if (family === 'adsr') prepareAdsr(engine);
   if (family === 'noise') prepareNoise(engine, selected);
@@ -304,14 +314,15 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'envelope-follower') prepareEnvelopeFollower(engine, selected);
   if (family === 'envelope-ducking') prepareEnvelopeDucking(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
-  if (family === 'sample-region') {
+  if (family === 'sample-region' || family === 'sample-instrument') {
     if (engine.manifold_sample_begin(2, manifest.sampleFrames, manifest.sampleSourceRate) !== 1) {
       throw new Error('Wasm sample storage preparation failed');
     }
     new Float32Array(engine.memory.buffer, engine.manifold_sample_ptr(), manifest.sampleData.length).set(manifest.sampleData);
     if (engine.manifold_sample_commit() !== 1) throw new Error('Wasm sample commit failed');
     selected.parameters.forEach((value, id) => {
-      if (engine.manifold_set_node_parameter(2, id === 6 ? 8 : id, value) !== 1) throw new Error(`Wasm sample parameter ${id} failed`);
+      const parameter = family === 'sample-region' && id === 6 ? 8 : id;
+      if (engine.manifold_set_node_parameter(2, parameter, value) !== 1) throw new Error(`Wasm sample parameter ${id} failed`);
     });
   }
   if (family === 'svf') {
@@ -365,6 +376,19 @@ function renderWasm(engine, family, manifest, input, selected) {
           ? engine.manifold_event_push(2, 0, 0, 0, value, 100)
           : engine.manifold_set_node_parameter(2, id, value);
         if (accepted !== 1) throw new Error(`Wasm sample event ${id} at ${frame} failed`);
+      }
+    }
+    if (family === 'sample-instrument') {
+      for (const [frame, id, value] of selected.changes) {
+        if (frame === offset && engine.manifold_set_node_parameter(2, id, value) !== 1) {
+          throw new Error(`Wasm sample instrument parameter ${id} at ${frame} failed`);
+        }
+      }
+      for (const [frame, kind, channel, note, velocity] of selected.events) {
+        if (frame >= offset && frame < offset + count
+          && engine.manifold_event_push(2, frame - offset, kind, channel, note, velocity) !== 1) {
+          throw new Error(`Wasm sample instrument event at ${frame} failed`);
+        }
       }
     }
     if (family === 'adsr' && offset === selected.gateOffFrame
@@ -518,7 +542,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
       if (next.version !== 1 || next.channels !== 2) throw new Error('Unsupported reference format');
       const nextInput = await loadFloat32(family, next.input);
       if (nextInput.length !== next.frames * next.channels) throw new Error('Invalid input fixture size');
-      if (family === 'sample-region') {
+      if (family === 'sample-region' || family === 'sample-instrument') {
         next.sampleData = await loadFloat32(family, next.sample);
         if (next.sampleData.length !== next.sampleFrames * 2) throw new Error('Invalid sample fixture size');
       }
@@ -585,7 +609,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
       drawBandBars(byId('comparison-diff'), [difference], Math.max(active.max, 1e-8), ['#a4d9bb']);
       return;
     }
-    if (currentFamily === 'stereo-delay' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || currentFamily === 'loop-capture' || currentFamily === 'sample-region') {
+    if (currentFamily === 'stereo-delay' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || currentFamily === 'loop-capture' || currentFamily === 'sample-region' || currentFamily === 'sample-instrument') {
       const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames;
       const oldLeft = peakView(active.legacy, 0, span, 0);
       const newLeft = peakView(active.rust, 0, span, 0);
@@ -658,6 +682,8 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                       ? `${selected.capacitySeconds} s capture · ${selected.events.length} control changes · mix ${selected.mix}`
                     : family === 'sample-region'
                       ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s source · speed ${selected.parameters[0]} · reverse ${Boolean(selected.parameters[1])} · one-shot ${Boolean(selected.parameters[2])} · crossfade ${selected.parameters[6]} · ${selected.events.length} events`
+                    : family === 'sample-instrument'
+                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · root ${selected.parameters[0]} · keytrack ${selected.parameters[1]} · ${selected.events.length} note events · ${selected.changes.length} control changes`
                     : family === 'spectrum-analyzer'
                       ? `sensitivity ${selected.sensitivityBefore} → ${selected.sensitivityAfter} · smoothing ${selected.smoothingBefore} → ${selected.smoothingAfter} · floor ${selected.floorBefore} → ${selected.floorAfter} dB`
                     : family === 'envelope-follower'
@@ -670,7 +696,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                       ? `threshold ${selected.before[0]} → ${selected.after[0]} dB · release ${selected.before[1]} → ${selected.after[1]} ms · soft clip ${selected.before[3]} → ${selected.after[3]}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
-    const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'envelope-ducking';
+    const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'envelope-ducking';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
     byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' ? 'End of capture' : family === 'compressor' || family === 'limiter' ? 'Whole reduction' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
     byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'Before change' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
@@ -678,8 +704,8 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
     document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'Maximum meter difference' : 'Maximum difference';
     document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' ? 'RMS meter difference' : 'RMS difference';
-    document.querySelector('.legend-old').textContent = family === 'stereo-delay' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
-    document.querySelector('.legend-new').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' ? 'Wasm L/R' : 'Rust/Wasm';
+    document.querySelector('.legend-old').textContent = family === 'stereo-delay' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
+    document.querySelector('.legend-new').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Wasm L/R' : 'Rust/Wasm';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;

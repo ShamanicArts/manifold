@@ -1,0 +1,320 @@
+{
+  "version": 1,
+  "reference": "native Rust shared-sample eight-voice instrument",
+  "sourceSha256": "009ef7ab910fca1411f2ef663204bfb68680cea7da4705ddc3651d5c48598fed",
+  "sampleRate": 48000,
+  "sampleSourceRate": 32000,
+  "sampleFrames": 4096,
+  "sample": "sample.f32",
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "root",
+      "label": "Root note and note off",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          8192,
+          1,
+          0,
+          60,
+          0
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "root.f32"
+    },
+    {
+      "id": "octave",
+      "label": "Root plus octave",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          100
+        ],
+        [
+          321,
+          0,
+          0,
+          72,
+          127
+        ],
+        [
+          8192,
+          1,
+          0,
+          60,
+          0
+        ],
+        [
+          12032,
+          1,
+          0,
+          72,
+          0
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "octave.f32"
+    },
+    {
+      "id": "chord",
+      "label": "Three voices and velocities",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          100
+        ],
+        [
+          47,
+          0,
+          1,
+          64,
+          80
+        ],
+        [
+          91,
+          0,
+          0,
+          67,
+          127
+        ],
+        [
+          9216,
+          1,
+          1,
+          64,
+          0
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "chord.f32"
+    },
+    {
+      "id": "steal",
+      "label": "Ninth note steals oldest",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          100
+        ],
+        [
+          17,
+          0,
+          0,
+          61,
+          100
+        ],
+        [
+          34,
+          0,
+          0,
+          62,
+          100
+        ],
+        [
+          51,
+          0,
+          0,
+          63,
+          100
+        ],
+        [
+          68,
+          0,
+          0,
+          64,
+          100
+        ],
+        [
+          85,
+          0,
+          0,
+          65,
+          100
+        ],
+        [
+          102,
+          0,
+          0,
+          66,
+          100
+        ],
+        [
+          119,
+          0,
+          0,
+          67,
+          100
+        ],
+        [
+          136,
+          0,
+          0,
+          68,
+          100
+        ],
+        [
+          1024,
+          1,
+          0,
+          60,
+          0
+        ],
+        [
+          12288,
+          2,
+          0,
+          0,
+          0
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "steal.f32"
+    },
+    {
+      "id": "one-shot-reverse",
+      "label": "Reverse one shot",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+        0.08
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          8192,
+          0,
+          0,
+          67,
+          90
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "one-shot-reverse.f32"
+    },
+    {
+      "id": "keytrack-change",
+      "label": "Key tracking and speed change",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          72,
+          127
+        ]
+      ],
+      "changes": [
+        [
+          4096,
+          1,
+          0
+        ],
+        [
+          8192,
+          3,
+          0.5
+        ]
+      ],
+      "blockSize": 128,
+      "output": "keytrack-change.f32"
+    }
+  ]
+}

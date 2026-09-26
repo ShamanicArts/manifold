@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.sample-instrument-study",
+  "name": "Sample instrument",
+  "source": "v2 authored eight-voice slice of legacy Standalone Sample",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 2, "type": "sample-instrument" },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "root-note", "label": "Root note", "kind": "float", "min": 36, "max": 84, "default": 60 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "key-track", "label": "Key tracking", "kind": "float", "min": 0, "max": 1, "default": 1 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "level", "label": "Output level", "kind": "float", "min": 0, "max": 0.5, "default": 0.25 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "speed", "label": "Base speed", "kind": "float", "min": 0.25, "max": 2, "default": 1 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "reverse", "label": "Reverse", "kind": "toggle", "default": 0 },
+    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "one-shot", "label": "One shot", "kind": "toggle", "default": 0 },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "play-start", "label": "Play start", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 7, "nodeId": 2, "nodeParameterId": 7, "hostId": "loop-start", "label": "Loop start", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 8, "nodeId": 2, "nodeParameterId": 8, "hostId": "loop-end", "label": "Loop end", "kind": "float", "min": 0, "max": 1, "default": 1 },
+    { "id": 9, "nodeId": 2, "nodeParameterId": 9, "hostId": "crossfade", "label": "Loop crossfade", "kind": "float", "min": 0, "max": 0.5, "default": 0.08 }
+  ]
+}

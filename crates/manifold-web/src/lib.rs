@@ -155,6 +155,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             NodeKind::Limiter { params }
         }
         26 => NodeKind::SampleRegion,
+        27 => NodeKind::SampleInstrument,
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {

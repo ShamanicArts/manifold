@@ -16,6 +16,7 @@ import fxChainProject from '../../projects/fx-chain/project.json';
 import standaloneFxProject from '../../projects/standalone-fx-slice/project.json';
 import loopCaptureProject from '../../projects/loop-capture/project.json';
 import sampleRegionProject from '../../projects/sample-region/project.json';
+import sampleInstrumentProject from '../../projects/sample-instrument/project.json';
 import spectrumAnalyzerProject from '../../projects/spectrum-analyzer/project.json';
 import envelopeFollowerProject from '../../projects/envelope-follower/project.json';
 import envelopeDuckingProject from '../../projects/envelope-ducking/project.json';
@@ -125,6 +126,12 @@ const projects = {
     description: 'Load an audio file, select a playback region, and trigger a loop or one-shot. Decoding happens before the Rust audio callback.',
     signal: 'File decode → prepared stereo sample → region playback → output',
   },
+  'sample-instrument': {
+    project: sampleInstrumentProject,
+    title: 'Sample instrument',
+    description: 'Eight note voices share one loaded stereo sample. Root note and key tracking map keyboard pitch to playback speed; channel, note, and velocity stay in the Rust event path.',
+    signal: 'File decode → shared sample → eight note playheads → stereo sum',
+  },
   'spectrum-analyzer': {
     project: spectrumAnalyzerProject,
     title: 'Spectrum analyzer',
@@ -162,6 +169,8 @@ let loadedSample = null;
 let exampleSample = null;
 let samplePlayhead = 0;
 let samplePlaying = false;
+let sampleVoicePositions = Array(8).fill(-1);
+let sampleActiveVoices = 0;
 function demoSample() {
   if (exampleSample) return exampleSample;
   const sourceRate = 48_000;
@@ -194,7 +203,7 @@ function samplePeaks(source) {
   return peaks;
 }
 function drawSampleWaveform() {
-  if (activeFamily !== 'sample-region') return;
+  if (!['sample-region', 'sample-instrument'].includes(activeFamily)) return;
   const canvas = byId('sample-waveform');
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -208,11 +217,12 @@ function drawSampleWaveform() {
   ctx.fillRect(0, 0, width, height);
   const source = loadedSample ?? demoSample();
   const peaks = samplePeaks(source);
-  const loopStart = values.get(4) ?? 0;
-  const loopEnd = values.get(5) ?? 1;
+  const poly = activeFamily === 'sample-instrument';
+  const loopStart = values.get(poly ? 7 : 4) ?? 0;
+  const loopEnd = values.get(poly ? 8 : 5) ?? 1;
   ctx.fillStyle = 'rgba(120, 135, 160, .12)';
   ctx.fillRect(loopStart * width, 0, Math.max(0, loopEnd - loopStart) * width, height);
-  const fade = Math.max(0, loopEnd - loopStart) * (values.get(6) ?? 0);
+  const fade = Math.max(0, loopEnd - loopStart) * (values.get(poly ? 9 : 6) ?? 0);
   if (fade > 0) {
     ctx.fillStyle = 'rgba(141, 96, 142, .28)';
     ctx.fillRect(loopStart * width, 0, fade * width, height);
@@ -231,7 +241,10 @@ function drawSampleWaveform() {
     }
     ctx.stroke();
   }
-  for (const [position, color] of [[values.get(3) ?? 0, '#6ecdb6'], [loopStart, '#d4b468'], [loopEnd, '#d582a7'], [samplePlayhead, '#e3e9ed']]) {
+  const markers = [[values.get(poly ? 6 : 3) ?? 0, '#6ecdb6'], [loopStart, '#d4b468'], [loopEnd, '#d582a7']];
+  if (poly) markers.push(...sampleVoicePositions.filter((position) => position >= 0).map((position) => [position, '#e3e9ed']));
+  else markers.push([samplePlayhead, '#e3e9ed']);
+  for (const [position, color] of markers) {
     ctx.strokeStyle = color;
     ctx.lineWidth = color === '#e3e9ed' ? 2 : 1;
     ctx.beginPath();
@@ -240,7 +253,9 @@ function drawSampleWaveform() {
     ctx.lineTo(x, height);
     ctx.stroke();
   }
-  byId('sample-playhead').textContent = `${samplePlaying ? 'Playing' : 'Stopped'} · ${(samplePlayhead * source.stereo.length / 2 / source.sourceRate).toFixed(2)} s / ${(source.stereo.length / 2 / source.sourceRate).toFixed(2)} s`;
+  byId('sample-playhead').textContent = poly
+    ? `${sampleActiveVoices} / 8 voices · ${(source.stereo.length / 2 / source.sourceRate).toFixed(2)} s source`
+    : `${samplePlaying ? 'Playing' : 'Stopped'} · ${(samplePlayhead * source.stereo.length / 2 / source.sourceRate).toFixed(2)} s / ${(source.stereo.length / 2 / source.sourceRate).toFixed(2)} s`;
 }
 window.addEventListener('resize', drawSampleWaveform);
 let envelopeHistory = [];
@@ -249,6 +264,12 @@ const audio = new BrowserAudioHost((message) => { status.textContent = message; 
   if (activeFamily === 'sample-region') {
     samplePlayhead = Number.isFinite(bands[0]) ? Math.max(0, Math.min(1, bands[0])) : 0;
     samplePlaying = bands[1] >= .5;
+    drawSampleWaveform();
+    return;
+  }
+  if (activeFamily === 'sample-instrument') {
+    sampleActiveVoices = Number.isFinite(bands[0]) ? Math.round(bands[0]) : 0;
+    sampleVoicePositions = bands.slice(1, 9).map((position) => Number.isFinite(position) ? position : -1);
     drawSampleWaveform();
     return;
   }
@@ -326,11 +347,13 @@ function addSlider(parameter) {
   const precision = parameter.unit === 's' ? 1000 : 100;
   const toPhysical = (position) => isLog
     ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000) * (parameter.hostId === 'rate' ? 100 : 1)) / (parameter.hostId === 'rate' ? 100 : 1)
-    : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * precision) / precision;
+    : parameter.hostId === 'root-note'
+      ? Math.round(parameter.min + (parameter.max - parameter.min) * position / 1000)
+      : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * precision) / precision;
   const toPosition = (value) => isLog
     ? 1000 * Math.log(value / parameter.min) / Math.log(parameter.max / parameter.min)
     : 1000 * (value - parameter.min) / (parameter.max - parameter.min);
-  const format = (value) => parameter.unit === 'Hz'
+  const format = (value) => parameter.hostId === 'root-note' ? `${value} MIDI` : parameter.unit === 'Hz'
     ? parameter.hostId === 'rate' ? `${Number(value).toFixed(2)} Hz` : `${Math.round(value).toLocaleString()} Hz`
     : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : Number(value).toFixed(2);
   const sync = (position, publish) => {
@@ -343,7 +366,7 @@ function addSlider(parameter) {
     if (publish) audio.setParameter(parameter.id, value);
     if (publish) updateCutoffRange();
     if (publish) updateTransferCurve();
-    if (publish && activeFamily === 'sample-region') drawSampleWaveform();
+    if (publish && ['sample-region', 'sample-instrument'].includes(activeFamily)) drawSampleWaveform();
   };
   wrapper.dataset.parameterId = String(parameter.id);
   if (parameter.prepareOnly) {
@@ -513,13 +536,21 @@ function renderPrimitive(family) {
   byId('mode-section').hidden = !mode;
   byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
-  byId('keyboard-section').hidden = family !== 'voice';
-  byId('midi-access-section').hidden = family !== 'voice';
-  byId('sample-section').hidden = family !== 'sample-region';
+  const sampleView = family === 'sample-region' || family === 'sample-instrument';
+  byId('keyboard-section').hidden = !['voice', 'sample-instrument'].includes(family);
+  byId('midi-access-section').hidden = !['voice', 'sample-instrument'].includes(family);
+  byId('sample-section').hidden = !sampleView;
+  byId('sample-trigger').hidden = family !== 'sample-region';
+  byId('sample-help').textContent = family === 'sample-instrument'
+    ? 'Start the instrument, then play the keyboard or connect MIDI. Stop it before changing the file.'
+    : 'Start the instrument, then trigger. Stop the instrument before changing its file.';
+  document.querySelector('.sample-legend span:nth-child(4)').textContent = family === 'sample-instrument' ? 'Playheads' : 'Playhead';
   byId('sample-file').disabled = audio.running;
   samplePlayhead = 0;
   samplePlaying = false;
-  if (family === 'voice') resetNoteEvents();
+  sampleVoicePositions = Array(8).fill(-1);
+  sampleActiveVoices = 0;
+  if (family === 'voice' || family === 'sample-instrument') resetNoteEvents();
   if (mode) {
     byId('modes').style.gridTemplateColumns = `repeat(${mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, index) => {
@@ -602,10 +633,14 @@ function renderPrimitive(family) {
     byId('controls').append(label, curve);
     updateTransferCurve();
   }
-  if (family === 'sample-region') drawSampleWaveform();
+  if (sampleView) drawSampleWaveform();
   byId('source').hidden = isInstrument;
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
-  document.querySelector('.measurement-hint').textContent = family === 'voice'
+  document.querySelector('.measurement-hint').textContent = family === 'sample-instrument'
+    ? 'Start the instrument, then play notes to hear the loaded sample at different pitches. Native Rust/Wasm comparisons are below.'
+    : family === 'sample-region'
+    ? 'Start the instrument, then trigger the loaded sample. Native Rust/Wasm comparisons are below.'
+    : family === 'voice'
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
     : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation'
       ? `Start the instrument to view its spectrum. The ${family === 'patch' || family === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
@@ -637,6 +672,7 @@ const keyButtons = new Map();
 const pressedNotes = new Set();
 const midiHeld = new Map();
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const noteTarget = () => activeFamily === 'voice' ? 1 : activeFamily === 'sample-instrument' ? 2 : null;
 function resetNoteEvents() {
   const placeholder = document.createElement('li');
   placeholder.textContent = 'Play the keyboard to inspect note events.';
@@ -653,20 +689,21 @@ function showNoteEvent(kind, channel, note, velocity, source, forwarded) {
 }
 const heldByAnotherDevice = (key, deviceId) => [...midiHeld].some(([id, notes]) => id !== deviceId && notes.has(key));
 function noteOn(note) {
-  if (activeFamily !== 'voice' || !audio.running || pressedNotes.has(note)) return;
+  const target = noteTarget();
+  if (target === null || !audio.running || pressedNotes.has(note)) return;
   pressedNotes.add(note);
   keyButtons.get(note)?.setAttribute('aria-pressed', 'true');
-  audio.sendEvent(1, 0, note, 100, 0, 15);
+  audio.sendEvent(target, 0, note, 100, 0, 15);
   showNoteEvent('on', 15, note, 100, 'Keyboard', true);
 }
 function noteOff(note) {
   if (!pressedNotes.delete(note)) return;
   keyButtons.get(note)?.setAttribute('aria-pressed', 'false');
-  audio.sendEvent(1, 1, note, 0, 0, 15);
+  audio.sendEvent(noteTarget(), 1, note, 0, 0, 15);
   showNoteEvent('off', 15, note, 0, 'Keyboard', true);
 }
 function releaseAllNotes() {
-  if ((pressedNotes.size || midiHeld.size) && audio.running) audio.sendEvent(1, 2);
+  if ((pressedNotes.size || midiHeld.size) && audio.running && noteTarget() !== null) audio.sendEvent(noteTarget(), 2);
   pressedNotes.clear();
   midiHeld.clear();
   for (const button of keyButtons.values()) button.setAttribute('aria-pressed', 'false');
@@ -674,11 +711,11 @@ function releaseAllNotes() {
 function releaseDevice(deviceId) {
   const held = midiHeld.get(deviceId);
   if (!held) return;
-  if (audio.running && activeFamily === 'voice') {
+  if (audio.running && noteTarget() !== null) {
     for (const key of held) {
       const [channel, note] = key.split(':').map(Number);
       if (!heldByAnotherDevice(key, deviceId)) {
-        audio.sendEvent(1, 1, note, 0, 0, channel);
+        audio.sendEvent(noteTarget(), 1, note, 0, 0, channel);
         showNoteEvent('off', channel, note, 0, 'MIDI disconnect', true);
       }
     }
@@ -686,7 +723,8 @@ function releaseDevice(deviceId) {
   midiHeld.delete(deviceId);
 }
 function receiveMidiNote(deviceId, kind, channel, note, velocity) {
-  if (activeFamily !== 'voice') return;
+  const target = noteTarget();
+  if (target === null) return;
   if (!audio.running) {
     showNoteEvent(kind, channel, note, velocity, 'MIDI', false);
     return;
@@ -698,9 +736,9 @@ function receiveMidiNote(deviceId, kind, channel, note, velocity) {
   if (kind === 'on' && !held.has(key)) {
     const alreadyHeld = heldByAnotherDevice(key, deviceId);
     held.add(key);
-    if (!alreadyHeld) { audio.sendEvent(1, 0, note, velocity, 0, channel); forwarded = true; }
+    if (!alreadyHeld) { audio.sendEvent(target, 0, note, velocity, 0, channel); forwarded = true; }
   } else if (kind === 'off' && held.delete(key)) {
-    if (!heldByAnotherDevice(key, deviceId)) { audio.sendEvent(1, 1, note, 0, 0, channel); forwarded = true; }
+    if (!heldByAnotherDevice(key, deviceId)) { audio.sendEvent(target, 1, note, 0, 0, channel); forwarded = true; }
   }
   showNoteEvent(kind, channel, note, velocity, 'MIDI', forwarded);
   if (!held.size) midiHeld.delete(deviceId);
@@ -742,11 +780,11 @@ const shortcutToNote = new Map(keyboardNotes.map(([, note, shortcut]) => [shortc
 document.addEventListener('keydown', (event) => {
   if (event.repeat || event.target.matches('input, select')) return;
   const note = shortcutToNote.get(event.key.toLowerCase());
-  if (note !== undefined && activeFamily === 'voice') { event.preventDefault(); noteOn(note); }
+  if (note !== undefined && noteTarget() !== null) { event.preventDefault(); noteOn(note); }
 });
 document.addEventListener('keyup', (event) => {
   const note = shortcutToNote.get(event.key.toLowerCase());
-  if (note !== undefined && activeFamily === 'voice') noteOff(note);
+  if (note !== undefined && noteTarget() !== null) noteOff(note);
 });
 
 let referenceLab;
@@ -782,7 +820,7 @@ window.addEventListener('popstate', () => {
 
 let spectrumFrame = null;
 let meterTimer = null;
-const meterFamilies = ['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'sample-region'];
+const meterFamilies = ['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor', 'limiter', 'sample-region', 'sample-instrument'];
 function stopMonitoring() {
   if (spectrumFrame !== null) cancelAnimationFrame(spectrumFrame);
   if (meterTimer !== null) clearInterval(meterTimer);
@@ -797,10 +835,10 @@ function startMonitoring() {
   stopMonitoring();
   if (!audio.running) return;
   if (meterFamilies.includes(activeFamily)) {
-    const request = () => audio.requestMeters(2, activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
+    const request = () => audio.requestMeters(2, activeFamily === 'sample-instrument' ? 9 : activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
     request();
     meterTimer = setInterval(request, 100);
-    if (activeFamily === 'sample-region') animateSpectrum();
+    if (activeFamily === 'sample-region' || activeFamily === 'sample-instrument') animateSpectrum();
   } else animateSpectrum();
 }
 drawLiveSpectrum(byId('live-spectrum'), null);
@@ -847,14 +885,16 @@ toggle.addEventListener('click', async () => {
         for (const id of [0, 1, 2]) values.set(id, 0);
         updateLoopToggles();
       }
-      if (activeFamily === 'sample-region') {
+      if (activeFamily === 'sample-region' || activeFamily === 'sample-instrument') {
         samplePlayhead = 0;
         samplePlaying = false;
+        sampleVoicePositions = Array(8).fill(-1);
+        sampleActiveVoices = 0;
         drawSampleWaveform();
       }
     }
     else await audio.start(byId('source').value, values, projects[activeFamily].project,
-      activeFamily === 'sample-region' ? loadedSample ?? demoSample() : null);
+      ['sample-region', 'sample-instrument'].includes(activeFamily) ? loadedSample ?? demoSample() : null);
     const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';
     toggle.textContent = audio.running
       ? isInstrument ? 'Stop instrument' : 'Stop audio'
@@ -862,7 +902,11 @@ toggle.addEventListener('click', async () => {
     updatePrepareOnlyControls();
     byId('sample-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' || activeFamily === 'sample-instrument' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      : activeFamily === 'sample-instrument'
+        ? 'Start the instrument, then play notes to hear the loaded sample at different pitches. Native Rust/Wasm comparisons are below.'
+      : activeFamily === 'sample-region'
+        ? 'Start the instrument, then trigger the loaded sample. Native Rust/Wasm comparisons are below.'
       : activeFamily === 'voice'
         ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
         : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation'

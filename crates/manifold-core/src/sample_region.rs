@@ -1,14 +1,16 @@
 //! File-backed stereo region playback. Decoding and storage replacement happen before processing.
 
 use crate::events::EventKind;
+use std::sync::Arc;
 
 pub const MAX_SAMPLE_SECONDS: usize = 30;
 pub const MAX_SAMPLE_FRAMES: usize = 48_000 * MAX_SAMPLE_SECONDS;
 
+#[derive(Clone)]
 pub struct SampleRegion {
     output_rate: f32,
     source_rate: f32,
-    stereo: Vec<f32>,
+    stereo: Arc<Vec<f32>>,
     position: f64,
     speed: f32,
     reverse: bool,
@@ -25,7 +27,7 @@ impl SampleRegion {
         Self {
             output_rate,
             source_rate: output_rate,
-            stereo: Vec::new(),
+            stereo: Arc::new(Vec::new()),
             position: 0.0,
             speed: 1.0,
             reverse: false,
@@ -49,7 +51,7 @@ impl SampleRegion {
         {
             return false;
         }
-        self.stereo = stereo;
+        self.stereo = Arc::new(stereo);
         self.source_rate = source_rate;
         self.playing = false;
         self.position = 0.0;
@@ -94,6 +96,17 @@ impl SampleRegion {
             1 => Some(if self.playing { 1.0 } else { 0.0 }),
             _ => None,
         }
+    }
+
+    pub(crate) fn share_sample_from(&mut self, source: &Self) {
+        self.stereo = Arc::clone(&source.stereo);
+        self.source_rate = source.source_rate;
+        self.position = 0.0;
+        self.playing = false;
+    }
+
+    pub fn is_playing(&self) -> bool {
+        self.playing
     }
 
     fn trigger(&mut self) {
