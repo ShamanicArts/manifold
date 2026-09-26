@@ -1,6 +1,7 @@
 //! Platform-independent audio kernels. The prepared filter allocates nothing in process.
 
 pub mod distortion;
+pub mod effect_slot;
 pub mod envelope;
 pub mod events;
 pub mod graph;
@@ -48,9 +49,11 @@ pub struct Filter {
     resonance: f32,
     target_resonance: f32,
     drive: f32,
+    target_drive: f32,
     mix: f32,
     cutoff_smoothing: f32,
     resonance_smoothing: f32,
+    drive_smoothing: f32,
     state: [ChannelState; 2],
 }
 
@@ -69,9 +72,11 @@ impl Filter {
             resonance: 0.75,
             target_resonance: 0.75,
             drive: 1.0,
+            target_drive: 1.0,
             mix: 1.0,
             cutoff_smoothing: (1.0 - (-1.0 / (0.020 * sample_rate)).exp()).clamp(0.0001, 1.0),
             resonance_smoothing: (1.0 - (-1.0 / (0.010 * sample_rate)).exp()).clamp(0.0001, 1.0),
+            drive_smoothing: (1.0 - (-1.0 / (0.010 * sample_rate)).exp()).clamp(0.0001, 1.0),
             state: [ChannelState::default(); 2],
         }
     }
@@ -86,7 +91,7 @@ impl Filter {
         self.target_resonance
     }
 
-    /// Stable project parameter IDs: 0 mode, 1 cutoff Hz, 2 resonance.
+    /// Stable project parameter IDs: 0 mode, 1 cutoff Hz, 2 resonance, 3 drive.
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
         if !value.is_finite() {
             return false;
@@ -95,6 +100,7 @@ impl Filter {
             0 => self.mode = FilterMode::from_parameter(value),
             1 => self.target_cutoff = value.clamp(20.0, 20_000.0),
             2 => self.target_resonance = value.clamp(0.06, 1.0),
+            3 => self.target_drive = value.clamp(0.0, 10.0),
             _ => return false,
         }
         true
@@ -102,6 +108,14 @@ impl Filter {
 
     pub fn reset(&mut self) {
         self.state = [ChannelState::default(); 2];
+    }
+
+    /// Apply authored values before processing begins or after a slot type switch.
+    pub fn settle(&mut self) {
+        self.cutoff = self.target_cutoff;
+        self.resonance = self.target_resonance;
+        self.drive = self.target_drive;
+        self.reset();
     }
 
     /// Planar stereo f32 buffers, equal lengths. No allocations, locks, or host calls.
@@ -133,6 +147,7 @@ impl Filter {
             });
             self.cutoff += (requested_cutoff - self.cutoff) * self.cutoff_smoothing;
             self.resonance += (self.target_resonance - self.resonance) * self.resonance_smoothing;
+            self.drive += (self.target_drive - self.drive) * self.drive_smoothing;
 
             let cutoff = self.cutoff.clamp(20.0, 0.42 * self.sample_rate);
             let resonance = self.resonance.clamp(0.06, 1.0);
@@ -158,9 +173,13 @@ impl Filter {
         a3: f32,
     ) -> f32 {
         // Legacy input drive: x / (1 + |x| * (1 + |x| / 3)).
-        let driven = dry * self.drive;
-        let magnitude = driven.abs();
-        let input = driven / (1.0 + magnitude * (1.0 + magnitude / 3.0)) / self.drive;
+        let input = if self.drive > 0.0 {
+            let driven = dry * self.drive;
+            let magnitude = driven.abs();
+            driven / (1.0 + magnitude * (1.0 + magnitude / 3.0)) / self.drive.max(0.001)
+        } else {
+            dry
+        };
         let state = &mut self.state[channel];
         let v3 = input - state.ic2eq;
         let v1 = a1 * state.ic1eq + a2 * v3;

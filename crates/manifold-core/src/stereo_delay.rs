@@ -37,6 +37,8 @@ pub struct StereoDelay {
     sample_rate: f32,
     left: Vec<f32>,
     right: Vec<f32>,
+    valid: Vec<u32>,
+    generation: u32,
     write: usize,
     current: [f32; 12],
     target: [f32; 16],
@@ -60,6 +62,8 @@ impl StereoDelay {
             sample_rate,
             left: vec![0.0; size],
             right: vec![0.0; size],
+            valid: vec![0; size],
+            generation: 1,
             write: 0,
             current: initial[..12].try_into().unwrap(),
             target: initial,
@@ -76,11 +80,22 @@ impl StereoDelay {
     }
 
     pub fn reset(&mut self) {
-        self.left.fill(0.0);
-        self.right.fill(0.0);
+        // Invalidate the ring in O(1) so type switches do not clear megabytes
+        // on an AudioWorklet message or an audio callback.
+        self.generation = self.generation.wrapping_add(1);
+        if self.generation == 0 {
+            self.valid.fill(0);
+            self.generation = 1;
+        }
         self.write = 0;
         self.filter_z = [0.0; 2];
         self.duck_envelope = 1.0;
+    }
+
+    pub fn settle(&mut self) {
+        self.current.copy_from_slice(&self.target[..12]);
+        self.reset();
+        self.dormant_bypass = false;
     }
 
     pub fn process_planar(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
@@ -188,6 +203,7 @@ impl StereoDelay {
             fb_r *= self.current[2];
             self.left[self.write] = if freeze { fb_l } else { fb_l + input_l * 0.7 };
             self.right[self.write] = if freeze { fb_r } else { fb_r + input_r * 0.7 };
+            self.valid[self.write] = self.generation;
             self.write += 1;
             if self.write == size {
                 self.write = 0;
@@ -208,7 +224,17 @@ impl StereoDelay {
         let index = position as usize;
         let next = (index + 1) % buffer.len();
         let fraction = position - index as f32;
-        buffer[index] + (buffer[next] - buffer[index]) * fraction
+        let first = if self.valid[index] == self.generation {
+            buffer[index]
+        } else {
+            0.0
+        };
+        let second = if self.valid[next] == self.generation {
+            buffer[next]
+        } else {
+            0.0
+        };
+        first + (second - first) * fraction
     }
 
     fn division_samples(&self, division: f32) -> f32 {

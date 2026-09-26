@@ -11,6 +11,7 @@ import modulationProject from '../../projects/modulated-gain/project.json';
 import distortionProject from '../../projects/distortion/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
 import fxChainProject from '../../projects/fx-chain/project.json';
+import standaloneFxProject from '../../projects/standalone-fx-slice/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { BrowserMidiInput } from './audio/midi-input.js';
 import { initializeReferenceLab } from './reference/comparison.js';
@@ -86,6 +87,12 @@ const projects = {
     description: 'An authored v2 project combining distortion, stereo delay, and a filtered branch. Each stage has its own editable mix.',
     signal: 'Live path: input → distortion → stereo delay → filter blend → output',
   },
+  'standalone-fx': {
+    project: standaloneFxProject,
+    title: 'Standalone FX slice',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. SVF Filter and Stereo Delay are available in this slice.',
+    signal: 'Live path: input → selected effect → dry/wet mix → output',
+  },
   'stereo-delay': {
     project: stereoDelayProject,
     title: 'Stereo delay',
@@ -96,6 +103,7 @@ const projects = {
 const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
 let values = new Map();
+let slotValuesByType = new Map();
 const audio = new BrowserAudioHost((message) => { status.textContent = message; });
 
 function updateCutoffRange() {
@@ -144,15 +152,40 @@ function addSlider(parameter) {
     wrapper.style.setProperty('--fill', `${position / 10}%`);
     readout.value = format(value);
     values.set(parameter.id, value);
+    if (activeFamily === 'standalone-fx') updateSlotControls();
     if (publish) audio.setParameter(parameter.id, value);
     if (publish) updateCutoffRange();
     if (publish) updateTransferCurve();
   };
+  wrapper.dataset.parameterId = String(parameter.id);
+  wrapper.syncValue = (value) => sync(toPosition(value), false);
   sync(toPosition(parameter.default), false);
   input.addEventListener('input', () => sync(Number(input.value), true));
   wrapper.addEventListener('dblclick', () => sync(toPosition(parameter.default), true));
   wrapper.append(title, readout, input);
   byId('controls').appendChild(wrapper);
+}
+
+function updateSlotControls() {
+  if (activeFamily !== 'standalone-fx') return;
+  const selected = values.get(0);
+  const labels = selected === 6
+    ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
+    : { 2: 'Delay time', 3: 'Feedback' };
+  for (let id = 2; id <= 6; id++) {
+    const wrapper = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (!wrapper) continue;
+    wrapper.hidden = !Object.hasOwn(labels, id);
+    if (wrapper.hidden) continue;
+    const value = values.get(id);
+    wrapper.querySelector('span').textContent = labels[id];
+    wrapper.querySelector('input').setAttribute('aria-label', labels[id]);
+    wrapper.querySelector('output').value = selected === 6
+      ? id === 2 ? `${Math.round(60 * (10000 / 60) ** value).toLocaleString()} Hz`
+        : id === 3 ? (0.08 + 0.92 * value).toFixed(2) : (6 * value).toFixed(2)
+      : id === 2 ? `${Math.round(40 + 740 * value)} / ${Math.round((40 + 740 * value) * 1.5)} ms`
+        : (0.92 * value).toFixed(2);
+  }
 }
 
 function addGate(parameter) {
@@ -211,6 +244,9 @@ function renderPrimitive(family) {
   const isInstrument = project.signal.inputSource === 'none';
   activeFamily = family;
   values = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
+  if (family === 'standalone-fx') slotValuesByType = new Map([
+    [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
+  ]);
   byId('module-title').textContent = title;
   byId('module-description').textContent = description;
   byId('signal-path').textContent = signal;
@@ -222,21 +258,34 @@ function renderPrimitive(family) {
   byId('controls').replaceChildren();
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   byId('keyboard-section').hidden = family !== 'voice';
   if (mode) {
     byId('modes').style.gridTemplateColumns = `repeat(${mode.choices.length}, minmax(0, 1fr))`;
-    const buttons = mode.choices.map((choice, value) => {
+    const buttons = mode.choices.map((choice, index) => {
+      const value = mode.choiceValues?.[index] ?? index;
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {
+        if (family === 'standalone-fx') {
+          slotValuesByType.set(values.get(0), [2, 3, 4, 5, 6].map((id) => values.get(id)));
+        }
         values.set(mode.id, value);
         audio.setParameter(mode.id, value);
-        buttons.forEach((item, index) => item.setAttribute('aria-pressed', String(index === value)));
+        buttons.forEach((item, itemIndex) => item.setAttribute('aria-pressed', String(itemIndex === index)));
+        if (family === 'standalone-fx') {
+          const restored = slotValuesByType.get(value);
+          [2, 3, 4, 5, 6].forEach((id, offset) => {
+            values.set(id, restored[offset]);
+            byId('controls').querySelector(`[data-parameter-id="${id}"]`)?.syncValue(restored[offset]);
+            audio.setParameter(id, restored[offset]);
+          });
+          updateSlotControls();
+        }
       });
       byId('modes').appendChild(button);
       return button;
@@ -248,6 +297,7 @@ function renderPrimitive(family) {
     else if (parameter.kind === 'select') addSelect(parameter);
     else addSlider(parameter);
   }
+  updateSlotControls();
   if (family === 'stereo-delay') {
     const help = document.createElement('p');
     help.className = 'control-help';

@@ -1,0 +1,11 @@
+# Review checkpoint 15: first Standalone FX slot
+
+Date: 2026-09-26. Open the [live Standalone FX slice](http://127.0.0.1:4173/?primitive=standalone-fx). The [desktop](checkpoint-15-1365.png) and [mobile](checkpoint-15-390.png) captures show the selected Stereo Delay type, its relevant normalized controls displayed in physical units, live output, and offline comparison. The slot starts with the old project’s dry mix of zero; raise **Wet mix** to hear the effect.
+
+The new `EffectSlot` graph node preserves the old public type IDs 6 (SVF Filter) and 8 (Stereo Delay), mix, and `p/0`–`p/4` parameter paths. The UI offers only those supported types, restores each type’s normalized values when switching, and hides unused controls. The selected kernel alone processes audio. Both kernels are allocated at graph preparation; the unselected delay still occupies memory, which future off-callback plan replacement can remove. Switching types resets the new kernel and discards its old tail. Five native Rust cases compare with Rust/Wasm: dry default to wet filter, filter control sweep, delay control sweep, filter to delay, and delay to filter. All five show **Match**.
+
+Delay reset now increments a generation tag instead of clearing the five-second sample buffer on a worklet message. Reads treat samples from old generations as silence, and writes mark the current generation. The reset is constant time in ordinary operation; the rare 32-bit generation wrap clears tags. All eight C++ StereoDelay cases still match native Rust exactly. Six C++ SVF cases remain within `0.000001` maximum difference. The slot itself is compared native Rust versus Rust/Wasm; exact C++ slot-level gain staging and preset import are still open.
+
+Verification: `cargo test --workspace` passes 24 tests, including tail discard on type switch; all 70 browser cases across thirteen views show **Match** with no page errors. Live type switching runs at 48 kHz in Chromium. The 1365 px and 390 px layouts have no horizontal overflow. The in-app browser’s hardware MIDI permission remains unverified and is independent of this slot.
+
+A browser control check set the filter cutoff to 4,642 Hz, switched to delay and changed its time to 188 / 282 ms, then switched back; the filter cutoff display returned to 4,642 Hz.

@@ -1,5 +1,6 @@
 //! Thin, single-instance AudioWorklet ABI. Graph and buffers are allocated only at prepare.
 
+use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
 use manifold_core::stereo_delay;
@@ -98,6 +99,20 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             params[1] = b;
             NodeKind::StereoDelay { params }
         }
+        19 => {
+            let Some(selected) = effect_slot::supported_type(a) else {
+                return 0;
+            };
+            NodeKind::EffectSlot {
+                selected,
+                mix: b,
+                params: if selected == effect_slot::SVF_TYPE {
+                    [0.5, 0.4, 0.1, 0.5, 0.5]
+                } else {
+                    [0.3, 0.3, 0.5, 0.5, 0.5]
+                },
+            }
+        }
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -190,6 +205,16 @@ pub extern "C" fn manifold_graph_initial_parameter(
                 if !stereo_delay::set_value(params, id, value) {
                     return 0;
                 }
+            }
+            (NodeKind::EffectSlot { selected, .. }, 0) => {
+                let Some(kind) = effect_slot::supported_type(value) else {
+                    return 0;
+                };
+                *selected = kind;
+            }
+            (NodeKind::EffectSlot { mix, .. }, 1) => *mix = value.clamp(0.0, 1.0),
+            (NodeKind::EffectSlot { params, .. }, id @ 2..=6) => {
+                params[id as usize - 2] = value.clamp(0.0, 1.0)
             }
             _ => return 0,
         }
