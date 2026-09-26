@@ -6,6 +6,7 @@ use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
 use manifold_core::limiter;
+use manifold_core::midi_transpose::{MAX_OUTPUT_EVENTS, MidiTranspose};
 use manifold_core::phaser;
 use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
 use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
@@ -18,6 +19,7 @@ struct WorkletEngine {
     input: Vec<f32>,
     output: Vec<f32>,
     events: Vec<TimedEvent>,
+    midi_transpose: Option<(u32, MidiTranspose)>,
     sample_upload: Option<(u32, f32, Vec<f32>)>,
 }
 
@@ -678,6 +680,7 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
             input: vec![0.0; capacity * 2],
             output: vec![0.0; capacity * 2],
             events: Vec::with_capacity(256),
+            midi_transpose: None,
             sample_upload: None,
         });
     });
@@ -843,6 +846,62 @@ pub extern "C" fn manifold_capture_copy(node_id: u32, start_frame: u32, frames: 
     })
 }
 
+/// Attach the fixed-capacity Standalone Transpose MIDI effect to one event target.
+/// Configure after graph preparation and before starting audio.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_midi_transpose_enable(target_node: u32, semitones: f32) -> u32 {
+    if !semitones.is_finite() {
+        return 0;
+    }
+    ENGINE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(engine) = slot.as_mut() else {
+            return 0;
+        };
+        if engine.midi_transpose.is_some()
+            || !engine.events.is_empty()
+            || !engine.plan.accepts_events(target_node.into())
+        {
+            return 0;
+        }
+        let mut effect = MidiTranspose::new();
+        let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+        effect.set_semitones(semitones, &mut out);
+        engine.midi_transpose = Some((target_node, effect));
+        1
+    })
+}
+
+/// Changing transpose remaps held notes at the start of the next audio block.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_midi_transpose_set(semitones: f32) -> u32 {
+    if !semitones.is_finite() {
+        return 0;
+    }
+    ENGINE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(engine) = slot.as_mut() else {
+            return 0;
+        };
+        if engine.events.len() + MAX_OUTPUT_EVENTS > engine.events.capacity() {
+            return 0;
+        }
+        let Some((target, effect)) = engine.midi_transpose.as_mut() else {
+            return 0;
+        };
+        let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+        let count = effect.set_semitones(semitones, &mut out);
+        for kind in out.into_iter().take(count) {
+            engine.events.push(TimedEvent {
+                node: (*target).into(),
+                offset: 0,
+                kind,
+            });
+        }
+        1
+    })
+}
+
 /// Queue a typed event at a frame offset in the next process block.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_event_push(
@@ -875,8 +934,21 @@ pub extern "C" fn manifold_event_push(
         let Some(engine) = slot.as_mut() else {
             return 0;
         };
+        let required = if engine
+            .midi_transpose
+            .as_ref()
+            .is_some_and(|(target, _)| *target == node_id)
+        {
+            match kind {
+                EventKind::NoteOn { .. } => 2,
+                EventKind::AllNotesOff => MAX_OUTPUT_EVENTS / 2,
+                _ => 1,
+            }
+        } else {
+            1
+        };
         if offset >= engine.capacity as u32
-            || engine.events.len() >= 256
+            || engine.events.len() + required > engine.events.capacity()
             || engine
                 .events
                 .last()
@@ -884,11 +956,21 @@ pub extern "C" fn manifold_event_push(
         {
             return 0;
         }
-        engine.events.push(TimedEvent {
-            node: node_id.into(),
-            offset: offset as usize,
-            kind,
-        });
+        let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+        let count = match engine.midi_transpose.as_mut() {
+            Some((target, effect)) if *target == node_id => effect.handle(kind, &mut out),
+            _ => {
+                out[0] = kind;
+                1
+            }
+        };
+        for kind in out.into_iter().take(count) {
+            engine.events.push(TimedEvent {
+                node: node_id.into(),
+                offset: offset as usize,
+                kind,
+            });
+        }
         1
     })
 }

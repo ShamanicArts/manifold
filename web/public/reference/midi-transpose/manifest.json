@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "reference": "native Rust MIDI Transpose into VoiceSynth; legacy Lua event trace in checkpoint 94",
+  "sourceSha256": "16bd64a5d22e91d699c66354090c348e734f7a4f05b1de1e546b6596053aee02",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 8192,
+  "blockSize": 128,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "held-remap",
+      "label": "Held C4 moves to G4, then C3 while sounding",
+      "waveform": 0,
+      "attack": 0.005,
+      "decay": 0.02,
+      "sustain": 0.55,
+      "release": 0.03,
+      "level": 0.25,
+      "semitones": 7,
+      "events": [
+        {
+          "frame": 128,
+          "kind": 0,
+          "channel": 0,
+          "note": 60,
+          "velocity": 100
+        },
+        {
+          "frame": 4096,
+          "kind": 1,
+          "channel": 0,
+          "note": 60,
+          "velocity": 0
+        }
+      ],
+      "changes": [
+        {
+          "frame": 2048,
+          "semitones": -12
+        }
+      ],
+      "focusFrame": 2048,
+      "output": "held-remap.f32"
+    }
+  ]
+}

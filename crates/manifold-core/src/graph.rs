@@ -1104,6 +1104,12 @@ impl ExecutionPlan {
         self.nodes.len()
     }
 
+    pub fn accepts_events(&self, node: NodeId) -> bool {
+        self.nodes
+            .iter()
+            .any(|entry| entry.id == node && entry.kernel.accepts_events())
+    }
+
     pub fn node_active(&self, node: NodeId) -> Option<bool> {
         self.nodes
             .iter()

@@ -41,6 +41,10 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             }
           }
           if (engine.manifold_prepare(sampleRate, this.capacity) !== 1) throw new Error('Graph preparation failed');
+          if (graph.midiTranspose && engine.manifold_midi_transpose_enable(
+            graph.midiTranspose.targetNodeId, graph.midiTranspose.semitones ?? 0) !== 1) {
+            throw new Error('MIDI transpose preparation failed');
+          }
           if (data.sample) {
             const { nodeId, sourceRate, stereo } = data.sample;
             const frames = stereo.length / 2;
@@ -55,7 +59,11 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.engine = engine;
           this.port.postMessage({ type: 'ready' });
         } else if (data.type === 'parameter' && this.engine) {
-          this.engine.manifold_set_node_parameter(data.nodeId, data.id, data.value);
+          if (data.nodeId === 0 && data.id === 0) {
+            if (this.engine.manifold_midi_transpose_set(data.value) !== 1) throw new Error('MIDI transpose parameter rejected');
+          } else {
+            this.engine.manifold_set_node_parameter(data.nodeId, data.id, data.value);
+          }
         } else if (data.type === 'route') {
           const accepted = this.engine?.manifold_set_route(data.to, data.port, data.from ?? 0) === 1;
           this.port.postMessage({ type: 'route-applied', requestId: data.requestId, accepted });
