@@ -1,0 +1,8 @@
+{
+  "selected": "Chorus",
+  "mix": "0.00",
+  "help": "The original export starts dry. Raise Wet mix to hear Chorus; the slot applies 1.4× wet gain.",
+  "status": "Audio running · test oscillator · 48 kHz",
+  "wet": "0.80",
+  "errors": []
+}

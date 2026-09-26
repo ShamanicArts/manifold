@@ -8,7 +8,7 @@
     "outputs": 2,
     "nodes": [
       { "id": 1, "type": "input.raw" },
-      { "id": 2, "type": "effect-slot", "a": 6, "b": 0 },
+      { "id": 2, "type": "effect-slot", "a": 0, "b": 0 },
       { "id": 3, "type": "output" }
     ],
     "connections": [
@@ -17,17 +17,19 @@
     ],
     "initialParameters": [
       { "nodeId": 2, "id": 2, "value": 0.5 },
-      { "nodeId": 2, "id": 3, "value": 0.4 },
-      { "nodeId": 2, "id": 4, "value": 0.1 }
+      { "nodeId": 2, "id": 3, "value": 0.5 },
+      { "nodeId": 2, "id": 4, "value": 0.2 },
+      { "nodeId": 2, "id": 5, "value": 0.6 },
+      { "nodeId": 2, "id": 6, "value": 0.4 }
     ]
   },
   "parameters": [
-    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "type", "label": "Effect type", "kind": "choice", "choices": ["Chorus", "Phaser", "WaveShaper", "Compressor", "StereoWidener", "FilterNode", "SVF Filter", "Reverb", "Stereo Delay", "Multitap", "Pitch Shift", "Granulator", "Ring Mod", "Formant", "EQ", "Limiter", "Transient", "BitCrusher", "Shimmer", "Reverse Delay", "Stutter"], "choiceValues": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], "default": 6 },
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "type", "label": "Effect type", "kind": "choice", "choices": ["Chorus", "Phaser", "WaveShaper", "Compressor", "StereoWidener", "FilterNode", "SVF Filter", "Reverb", "Stereo Delay", "Multitap", "Pitch Shift", "Granulator", "Ring Mod", "Formant", "EQ", "Limiter", "Transient", "BitCrusher", "Shimmer", "Reverse Delay", "Stutter"], "choiceValues": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], "default": 0 },
     { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "mix", "label": "Wet mix", "kind": "float", "min": 0, "max": 1, "default": 0 },
     { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "p/0", "label": "Param 1", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
-    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "p/1", "label": "Param 2", "kind": "float", "min": 0, "max": 1, "default": 0.4 },
-    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "p/2", "label": "Param 3", "kind": "float", "min": 0, "max": 1, "default": 0.1 },
-    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "p/3", "label": "Param 4", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
-    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "p/4", "label": "Param 5", "kind": "float", "min": 0, "max": 1, "default": 0.5 }
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "p/1", "label": "Param 2", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "p/2", "label": "Param 3", "kind": "float", "min": 0, "max": 1, "default": 0.2 },
+    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "p/3", "label": "Param 4", "kind": "float", "min": 0, "max": 1, "default": 0.6 },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "p/4", "label": "Param 5", "kind": "float", "min": 0, "max": 1, "default": 0.4 }
   ]
 }

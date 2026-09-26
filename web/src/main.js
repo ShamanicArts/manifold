@@ -780,7 +780,9 @@ function updateSlotControls() {
         : (0.92 * value).toFixed(2);
   }
   const help = byId('slot-help');
-  if (help) help.textContent = selected === 1
+  if (help) help.textContent = selected === 0
+    ? 'The original export starts dry. Raise Wet mix to hear Chorus; the slot applies 1.4× wet gain.'
+    : selected === 1
     ? 'The old slot sends 0–1 directly to a spread setter measured in degrees, so its stereo movement is small. The standalone Phaser exposes 0–180°.'
     : selected === 3
     ? 'Compressor attack and release take effect when the effect is selected; changing them while selected needs a switch away and back. The old knee control has no effect.'
@@ -1155,6 +1157,7 @@ function renderPrimitive(family) {
     help.className = 'control-help';
     help.textContent = 'Values are stored separately for each effect type and restored when selected.';
     byId('controls').appendChild(help);
+    updateSlotControls();
   }
   if (family === 'patch') {
     const range = document.createElement('p');
