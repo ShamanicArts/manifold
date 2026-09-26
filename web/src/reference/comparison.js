@@ -65,6 +65,15 @@ function prepareVoice(engine) {
   }
 }
 
+function prepareMidiTranspose(engine, selected) {
+  const nodes = [[3, 54, 0, 0], [4, 55, selected.semitones, 0],
+    [1, 10, 0, 0], [2, 7, 0, 0]];
+  const edges = [[3, 4, 0], [4, 1, 0], [1, 2, 0]];
+  if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Wasm MIDI graph begin failed');
+  for (const node of nodes) if (engine.manifold_graph_node(...node) !== 1) throw new Error('Wasm MIDI graph node failed');
+  for (const edge of edges) if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Wasm MIDI graph edge failed');
+}
+
 function prepareSampleRegion(engine) {
   if (engine.manifold_graph_begin(2, 1) !== 1
     || engine.manifold_graph_node(2, 26, 0, 0) !== 1
@@ -567,7 +576,8 @@ function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
   if (family === 'mixer') prepareMixer(engine, selected);
-  if (family === 'voice' || family === 'midi-transpose') prepareVoice(engine);
+  if (family === 'voice') prepareVoice(engine);
+  if (family === 'midi-transpose') prepareMidiTranspose(engine, selected);
   if (family === 'sample-region') prepareSampleRegion(engine);
   if (family === 'sample-instrument') prepareSampleInstrument(engine);
   if (family === 'oscillator') prepareOscillator(engine, selected);
@@ -610,10 +620,6 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'slew-modulation') prepareSlewModulation(engine, selected);
   if (family === 'cv-rack') prepareCvRack(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
-  if (family === 'midi-transpose'
-    && engine.manifold_midi_transpose_enable(1, selected.semitones) !== 1) {
-    throw new Error('Wasm MIDI transpose preparation failed');
-  }
   if (family === 'granulator' && selected.source) {
     if (engine.manifold_sample_begin(2, manifest.sourceFrames, manifest.sampleRate) !== 1) throw new Error('Wasm grain source preparation failed');
     new Float32Array(engine.memory.buffer, engine.manifold_sample_ptr(), manifest.sourceData.length).set(manifest.sourceData);
@@ -826,14 +832,14 @@ function renderWasm(engine, family, manifest, input, selected) {
     if (family === 'voice' || family === 'midi-transpose') {
       if (family === 'midi-transpose') {
         for (const change of selected.changes) {
-          if (change.frame === offset && engine.manifold_midi_transpose_set(change.semitones) !== 1) {
+          if (change.frame === offset && engine.manifold_set_node_parameter(4, 0, change.semitones) !== 1) {
             throw new Error('Wasm MIDI transpose change failed');
           }
         }
       }
       for (const event of selected.events) {
         if (event.frame >= offset && event.frame < offset + count) {
-          if (engine.manifold_event_push(1, event.frame - offset, event.kind, event.channel ?? 0, event.note, event.velocity) !== 1) {
+          if (engine.manifold_event_push(family === 'midi-transpose' ? 3 : 1, event.frame - offset, event.kind, event.channel ?? 0, event.note, event.velocity) !== 1) {
             throw new Error('Wasm voice event failed');
           }
         }
@@ -882,7 +888,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
   const module = await WebAssembly.compile(await wasmResponse.arrayBuffer());
   const instance = await WebAssembly.instantiate(module, {});
   const engine = instance.exports;
-  if (engine.manifold_version() !== 2) throw new Error('Incompatible Wasm ABI');
+  if (engine.manifold_version() !== 3) throw new Error('Incompatible Wasm ABI');
 
   const chooser = byId('reference-case');
   const fixtures = new Map();

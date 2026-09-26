@@ -7,7 +7,7 @@ async function engine() {
       const response = await fetch(`${import.meta.env.BASE_URL}manifold_filter.wasm`);
       if (!response.ok) throw new Error('Analysis Wasm module unavailable');
       const { instance } = await WebAssembly.instantiate(await response.arrayBuffer(), {});
-      if (instance.exports.manifold_version() !== 2) throw new Error('Analysis module version mismatch');
+      if (instance.exports.manifold_version() !== 3) throw new Error('Analysis module version mismatch');
       return instance.exports;
     })();
   }
