@@ -1,0 +1,11 @@
+# Standalone FX routing boundary
+
+The old `fx_slot.lua` connects input to a dry Gain and to each lazily created effect. Each effect output passes through its own Gain gate into a wet Mixer; the wet Mixer passes through a trim Gain into an output Mixer, alongside the dry Gain. Selecting another effect closes the old gate and opens the new one. The created effect node stays connected to input, so its internal state can continue advancing with its gate closed. All Gains use the C++ `GainNode` 10 ms one-pole smoothing. The two Mixers use centered equal-power pan for each bus, giving a factor of about `0.7071068` per Mixer stage at pan zero.
+
+With identity effect outputs and unity Mixer bus/master gains, the internal slot output for a constant stereo input is:
+
+`output = input × 0.7071068 × dry_gain + sum(effect_output × gate_gain) × wet_trim × 0.5`
+
+The [C++ probe](../tools/legacy-fx-routing-probe.cpp) runs the original scalar Gain and Mixer nodes in that layout. The [Rust routing module](../crates/manifold-core/src/fx_routing.rs) reproduces the gain and gate envelopes, while the [probe script](../scripts/probe-fx-routing.py) compares an 8,192-frame stereo capture and draws the [result](../artifacts/reviews/checkpoint-72-routing.png). Native Rust and C++ matched exactly in this identity-effect case. A 1.4× wet trim settles at output/input `0.700`; a 1.1× wet trim settles at `0.550`. The initial dry path settles at `0.707`. The old project may have gain outside the FX slot; this measurement is explicitly at the slot boundary.
+
+The current v2 `EffectSlot` keeps the cheaper selected-only processing rule: it resets a selected kernel, blends its output with unity dry input, and does not advance unselected kernels. The new `LegacyFxRouting` does **not** yet wrap those kernels or run in the browser graph. It isolates the original wrapper's gain math so that effect state and routing can be joined with explicit resource limits. The next full-project comparison needs a C++ capture with real effect tails, continuously processed visited kernels in Rust, bounded scratch memory, and a CPU budget. Any compatibility mode exposed in browser or native host state must be versioned; existing v2 JSON states must retain their current selected-only meaning.

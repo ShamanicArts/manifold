@@ -1,0 +1,76 @@
+{
+  "reference": "Original C++ scalar GainNode and MixerNode under fx_slot.lua routing; both effect outputs are identity",
+  "sourceSha256": "d74d902976f6c7210e039e315a70c780127266ffa4798cdc7797ff63aeb5e44b",
+  "sampleRate": 48000,
+  "frames": 8192,
+  "switchFrames": {
+    "dryToWetA": 2048,
+    "wetAToWetB": 4096,
+    "wetBToWetA": 6144
+  },
+  "centerPanGain": 0.7071067811865476,
+  "drySteadyGain": 0.7071067811865476,
+  "wetASteadyGain": 0.7000000000000001,
+  "wetBSteadyGain": 0.5500000000000002,
+  "maxLeftRightNormalizedDifference": 1.9868214928830952e-07,
+  "maxAnalyticalDifference": 9.457716860783449e-07,
+  "maxNativeRustDifference": 0.0,
+  "points": [
+    {
+      "frame": 0,
+      "gain": 0.70710681
+    },
+    {
+      "frame": 2047,
+      "gain": 0.70710681
+    },
+    {
+      "frame": 2048,
+      "gain": 0.70709199
+    },
+    {
+      "frame": 2176,
+      "gain": 0.70543215
+    },
+    {
+      "frame": 3072,
+      "gain": 0.70084006
+    },
+    {
+      "frame": 4095,
+      "gain": 0.70010029
+    },
+    {
+      "frame": 4096,
+      "gain": 0.69978788
+    },
+    {
+      "frame": 4224,
+      "gain": 0.66472687
+    },
+    {
+      "frame": 5120,
+      "gain": 0.56774117
+    },
+    {
+      "frame": 6143,
+      "gain": 0.55210549
+    },
+    {
+      "frame": 6144,
+      "gain": 0.55241335
+    },
+    {
+      "frame": 6272,
+      "gain": 0.58695897
+    },
+    {
+      "frame": 7168,
+      "gain": 0.6825193
+    },
+    {
+      "frame": 8191,
+      "gain": 0.69792509
+    }
+  ]
+}
