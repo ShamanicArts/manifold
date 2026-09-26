@@ -9,6 +9,7 @@ use manifold_core::limiter;
 use manifold_core::phaser;
 use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
 use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
+use manifold_core::sine_bank::{MAX_PARTIALS, PartialSet};
 use manifold_core::stereo_delay;
 use std::cell::RefCell;
 
@@ -19,6 +20,7 @@ struct WorkletEngine {
     output: Vec<f32>,
     events: Vec<TimedEvent>,
     sample_upload: Option<(u32, f32, Vec<f32>)>,
+    partial_upload: Option<(u32, PartialSet)>,
 }
 
 struct AnalysisJob {
@@ -348,6 +350,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         60 => NodeKind::Resonator {
             params: manifold_core::resonator::DEFAULTS,
         },
+        61 => NodeKind::SineBank {
+            params: manifold_core::sine_bank::DEFAULTS,
+        },
         47 => NodeKind::ReverseDelay {
             params: manifold_core::reverse_delay::DEFAULTS,
         },
@@ -521,6 +526,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             }
             (NodeKind::Resonator { params }, id @ 0..=2) => {
                 if !manifold_core::resonator::set_value(params, id, value) {
+                    return 0;
+                }
+            }
+            (NodeKind::SineBank { params }, id @ 0..=10) => {
+                if !manifold_core::sine_bank::set_value(params, id, value) {
                     return 0;
                 }
             }
@@ -705,6 +715,7 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
             output: vec![0.0; capacity * 2],
             events: Vec::with_capacity(256),
             sample_upload: None,
+            partial_upload: None,
         });
     });
     1
@@ -769,6 +780,49 @@ pub extern "C" fn manifold_sample_commit() -> u32 {
                     .plan
                     .load_sample_stereo(node_id.into(), samples, source_rate),
             )
+        })
+    })
+}
+
+/// Begin a fixed-capacity, version-1 partial upload. Each entry is four f32s:
+/// frequency, amplitude, phase, and stored decay rate.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_partials_begin(node_id: u32, count: u32, fundamental: f32) -> u32 {
+    if count as usize > MAX_PARTIALS || !fundamental.is_finite() || fundamental <= 0.0 {
+        return 0;
+    }
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            let mut partials = PartialSet::default();
+            partials.fundamental = fundamental;
+            partials.count = count as usize;
+            engine.partial_upload = Some((node_id, partials));
+            1
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_partials_ptr() -> *mut f32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .and_then(|engine| engine.partial_upload.as_mut())
+            .map_or(std::ptr::null_mut(), |(_, set)| {
+                set.partials.as_mut_ptr().cast()
+            })
+    })
+}
+
+/// Validate the whole upload, then install it between process blocks.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_partials_commit() -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            let Some((node_id, partials)) = engine.partial_upload.take() else {
+                return 0;
+            };
+            u32::from(engine.plan.load_partials(node_id.into(), partials))
         })
     })
 }

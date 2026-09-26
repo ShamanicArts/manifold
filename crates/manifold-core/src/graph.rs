@@ -37,6 +37,7 @@ use crate::ring_modulator::{self, RingModulator};
 use crate::sample_instrument::SampleInstrument;
 use crate::sample_region::SampleRegion;
 use crate::shimmer::{self, Shimmer};
+use crate::sine_bank::{self, PartialSet, SineBank};
 use crate::slew_limiter::SlewLimiter;
 use crate::spectrum_analyzer::SpectrumAnalyzer;
 use crate::stereo_delay::StereoDelay;
@@ -198,6 +199,9 @@ pub enum NodeKind {
     Resonator {
         params: [f32; resonator::PARAM_COUNT],
     },
+    SineBank {
+        params: [f32; sine_bank::PARAM_COUNT],
+    },
     ReverseDelay {
         params: [f32; reverse_delay::PARAM_COUNT],
     },
@@ -312,6 +316,7 @@ impl NodeKind {
             | Self::LegacyEq { .. }
             | Self::FormantFilter { .. }
             | Self::Resonator { .. }
+            | Self::SineBank { .. }
             | Self::ReverseDelay { .. }
             | Self::Stutter { .. }
             | Self::PitchShifter { .. }
@@ -477,6 +482,7 @@ impl NodeKind {
             Self::LegacyEq { params } => params.iter().all(|value| value.is_finite()),
             Self::FormantFilter { params } => params.iter().all(|value| value.is_finite()),
             Self::Resonator { params } => params.iter().all(|value| value.is_finite()),
+            Self::SineBank { params } => params.iter().all(|value| value.is_finite()),
             Self::ReverseDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::Stutter { params } => params.iter().all(|value| value.is_finite()),
             Self::PitchShifter { params } => params.iter().all(|value| value.is_finite()),
@@ -641,6 +647,7 @@ enum Kernel {
     LegacyEq(LegacyEq),
     FormantFilter(FormantFilter),
     Resonator(Resonator),
+    SineBank(SineBank),
     ReverseDelay(ReverseDelay),
     Stutter(Stutter),
     PitchShifter(PitchShifter),
@@ -820,6 +827,7 @@ impl Kernel {
                 Self::FormantFilter(FormantFilter::new(sample_rate, *params))
             }
             NodeKind::Resonator { params } => Self::Resonator(Resonator::new(sample_rate, *params)),
+            NodeKind::SineBank { params } => Self::SineBank(SineBank::new(sample_rate, *params)),
             NodeKind::ReverseDelay { params } => {
                 Self::ReverseDelay(ReverseDelay::new(sample_rate, max_frames, *params))
             }
@@ -1005,6 +1013,7 @@ impl Kernel {
             (Self::LegacyEq(eq), id) => return eq.set_parameter(id, value),
             (Self::FormantFilter(formant), id) => return formant.set_parameter(id, value),
             (Self::Resonator(resonator), id) => return resonator.set_parameter(id, value),
+            (Self::SineBank(bank), id) => return bank.set_parameter(id, value),
             (Self::ReverseDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::Stutter(stutter), id) => return stutter.set_parameter(id, value),
             (Self::PitchShifter(shifter), id) => return shifter.set_parameter(id, value),
@@ -1573,6 +1582,17 @@ impl ExecutionPlan {
             })
     }
 
+    /// Atomically replace a prepared sine bank's fixed partial target between blocks.
+    pub fn load_partials(&mut self, node: NodeId, partials: PartialSet) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::SineBank(bank) => bank.load_partials(partials),
+                _ => false,
+            })
+    }
+
     /// Events must be ordered by offset. All targets and offsets are checked before processing.
     pub fn process_with_events(
         &mut self,
@@ -1911,6 +1931,10 @@ impl ExecutionPlan {
                 }
                 Kernel::Resonator(resonator) => {
                     resonator.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::SineBank(bank) => {
+                    let sync = current.sources[0].map(|_| source(0, 0));
+                    bank.process_planar(sync, [left, right])
                 }
                 Kernel::ReverseDelay(delay) => {
                     delay.process_planar([source(0, 0), source(0, 1)], [left, right])

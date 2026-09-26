@@ -1,0 +1,65 @@
+[
+  {
+    "case": "single",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 0,
+    "rms": 0
+  },
+  {
+    "case": "saw-eight",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 5.960464477539063e-8,
+    "rms": 9.365489288466485e-9
+  },
+  {
+    "case": "odd-thirty-two",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 2.9802322387695312e-8,
+    "rms": 9.387837970521444e-9
+  },
+  {
+    "case": "pitch-ramp",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 5.960464477539063e-8,
+    "rms": 9.87508321104303e-9
+  },
+  {
+    "case": "unison-spread",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 8.940696716308594e-8,
+    "rms": 1.0284798509306963e-8
+  },
+  {
+    "case": "drive-fold",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 8.344650268554688e-7,
+    "rms": 7.608594881282268e-8
+  },
+  {
+    "case": "sync",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 5.960464477539063e-8,
+    "rms": 9.521026222924728e-9
+  },
+  {
+    "case": "disabled",
+    "frames": 16384,
+    "blockSize": 128,
+    "max": 5.960464477539063e-8,
+    "rms": 6.6985641799956e-9
+  },
+  {
+    "case": "empty",
+    "frames": 16384,
+    "blockSize": 64,
+    "max": 0,
+    "rms": 0
+  }
+]

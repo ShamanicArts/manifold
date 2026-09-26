@@ -92,6 +92,15 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .sample-legend span:nth-child(4)::before { background: #e3e9ed; }
 .sample-legend span:nth-child(5)::before { background: #8d608e; }
 .control-stack { display: grid; gap: 9px; }
+.sine-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 11px 0; }
+.sine-presets button { border: 1px solid #526170; border-radius: 3px; background: #263441; color: #d8e2e8; padding: 5px 8px; font-size: 11px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.sine-presets button:hover, .sine-presets button:focus-visible { border-color: #a6d9bb; }
+.sine-partials { display: grid; gap: 5px; }
+.sine-partial { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr) 2.6rem; gap: 8px; align-items: center; font-size: 11px; color: #c8d2d9; }
+.sine-partial input { width: 100%; accent-color: #a6d9bb; }
+.sine-partial output { text-align: right; font-variant-numeric: tabular-nums; }
+#sine-bank-more { margin-top: 10px; color: #c8d2d9; font-size: 11px; }
+#sine-bank-more summary { cursor: pointer; margin-bottom: 10px; }
 .gate-button { height: 34px; border: 1px solid #526170; border-radius: 4px; background: #263441; color: #d8e2e8; font-size: 12px; font-weight: 650; }
 #capture-transfer-section .gate-button { display: block; width: 100%; margin-top: 8px; }
 #slot-state-section .gate-button { width: 100%; margin-bottom: 8px; }

@@ -28,6 +28,7 @@ import bitcrusherProject from '../../projects/bitcrusher/project.json';
 import eqNodeProject from '../../projects/eq-node/project.json';
 import formantProject from '../../projects/formant/project.json';
 import resonatorProject from '../../projects/resonator/project.json';
+import sineBankProject from '../../projects/sine-bank/project.json';
 import reverseDelayProject from '../../projects/reverse-delay/project.json';
 import stutterProject from '../../projects/stutter/project.json';
 import pitchShifterProject from '../../projects/pitch-shifter/project.json';
@@ -255,6 +256,12 @@ const projects = {
     title: 'Resonator',
     description: 'A stereo bandpass with a moving centre frequency and Q. The original node smooths parameter changes across each audio block.',
     signal: 'Live path: stereo input → resonant bandpass → stereo output',
+  },
+  'sine-bank': {
+    project: sineBankProject,
+    title: 'Sine bank',
+    description: 'The legacy manual additive bank: 32 partial slots, up to eight unison voices, stereo spread, and four drive shapes. Edit partial levels while the Rust audio engine runs.',
+    signal: 'Partial editor → bounded Wasm upload → Rust sine bank → stereo output',
   },
   'reverse-delay': {
     project: reverseDelayProject,
@@ -1165,6 +1172,71 @@ function applyStandaloneFxState(state) {
   if (activeFamily === 'standalone-fx') referenceLab?.selectEffectType(state.hostParameters.type);
 }
 
+let sineBankPublishFrame = null;
+function renderSineBankEditor() {
+  const section = byId('sine-bank-section');
+  section.hidden = activeFamily !== 'sine-bank';
+  if (section.hidden) return;
+  const levels = Array.from({ length: 32 }, (_, index) => sineBankProject.partials.values[index * 4 + 1] ?? 0);
+  const update = () => {
+    sineBankProject.partials.values = levels.flatMap((amplitude, index) => [440 * (index + 1), amplitude, 0, 0]);
+    if (sineBankPublishFrame !== null) cancelAnimationFrame(sineBankPublishFrame);
+    sineBankPublishFrame = requestAnimationFrame(() => {
+      sineBankPublishFrame = null;
+      if (activeFamily === 'sine-bank') audio.setPartials(sineBankProject.partials);
+    });
+  };
+  const first = byId('sine-bank-partials');
+  const extra = byId('sine-bank-extra');
+  first.replaceChildren();
+  extra.replaceChildren();
+  const sliders = [];
+  for (let index = 0; index < 32; index++) {
+    const row = document.createElement('label');
+    row.className = 'sine-partial';
+    const name = document.createElement('span');
+    name.textContent = `H${String(index + 1).padStart(2, '0')}`;
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '1';
+    slider.step = '0.001';
+    slider.value = String(levels[index]);
+    slider.setAttribute('aria-label', `Harmonic ${index + 1} amplitude`);
+    const readout = document.createElement('output');
+    readout.textContent = levels[index].toFixed(2);
+    slider.addEventListener('input', () => {
+      levels[index] = Number(slider.value);
+      readout.textContent = levels[index].toFixed(2);
+      update();
+    });
+    row.append(name, slider, readout);
+    (index < 8 ? first : extra).appendChild(row);
+    sliders.push({ slider, readout });
+  }
+  const presets = byId('sine-bank-presets');
+  presets.replaceChildren();
+  for (const [name, formula] of [
+    ['Sine', (harmonic) => harmonic === 1 ? 1 : 0],
+    ['Saw', (harmonic) => 1 / harmonic],
+    ['Odd', (harmonic) => harmonic % 2 ? 1 / harmonic : 0],
+    ['Bell', (harmonic) => harmonic === 1 ? 1 : harmonic === 3 ? .5 : harmonic === 6 ? .28 : harmonic === 10 ? .16 : 0],
+  ]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = name;
+    button.addEventListener('click', () => {
+      levels.forEach((_, index) => {
+        levels[index] = formula(index + 1);
+        sliders[index].slider.value = String(levels[index]);
+        sliders[index].readout.textContent = levels[index].toFixed(2);
+      });
+      update();
+    });
+    presets.appendChild(button);
+  }
+}
+
 function renderPrimitive(family) {
   midiBrowserUrl.value = new URL(`?primitive=${['sample-instrument', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(family) ? family : 'voice'}`, location.href).href;
   const { project, title, description, signal } = projects[family];
@@ -1241,10 +1313,11 @@ function renderPrimitive(family) {
   });
   byId('modes').replaceChildren();
   byId('controls').replaceChildren();
+  renderSineBankEditor();
   renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : isFxFamily(family) ? 'Effect type' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'sine-bank' ? 'Drive shape' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : isFxFamily(family) ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   const sampleView = family === 'sample-region' || family === 'sample-instrument';
   byId('keyboard-section').hidden = !['voice', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator', 'sample-instrument'].includes(family);

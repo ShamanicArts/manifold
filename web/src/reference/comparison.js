@@ -620,6 +620,19 @@ function prepareCvRack(engine, selected) {
   }
 }
 
+function prepareSineBank(engine, selected) {
+  if (engine.manifold_graph_begin(3, 2) !== 1) throw new Error('Wasm sine bank graph begin failed');
+  for (const [id, kind] of [[1, 0], [2, 61], [3, 7]]) {
+    if (engine.manifold_graph_node(id, kind, 0, 0) !== 1) throw new Error(`Wasm sine bank node ${id} failed`);
+  }
+  for (const [from, to] of [[1, 2], [2, 3]]) {
+    if (engine.manifold_graph_edge(from, to, 0) !== 1) throw new Error('Wasm sine bank edge failed');
+  }
+  selected.before.forEach((value, id) => {
+    if (engine.manifold_graph_initial_parameter(2, id, value) !== 1) throw new Error(`Wasm sine bank parameter ${id} failed`);
+  });
+}
+
 export function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
@@ -655,6 +668,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'eq-node') prepareEqNode(engine, selected);
   if (family === 'formant') prepareFormant(engine, selected);
   if (family === 'resonator') prepareResonator(engine, selected);
+  if (family === 'sine-bank') prepareSineBank(engine, selected);
   if (family === 'reverse-delay') prepareReverseDelay(engine, selected);
   if (family === 'stutter') prepareStutter(engine, selected);
   if (family === 'pitch-shifter') preparePitchShifter(engine, selected);
@@ -673,6 +687,11 @@ export function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'slew-modulation') prepareSlewModulation(engine, selected);
   if (family === 'cv-rack') prepareCvRack(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
+  if (family === 'sine-bank') {
+    if (engine.manifold_partials_begin(2, selected.partials.length / 4, 440) !== 1) throw new Error('Wasm sine bank upload begin failed');
+    new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), selected.partials.length).set(selected.partials);
+    if (engine.manifold_partials_commit() !== 1) throw new Error('Wasm sine bank partial commit failed');
+  }
   if (family === 'granulator' && selected.source) {
     if (engine.manifold_sample_begin(2, manifest.sourceFrames, manifest.sampleRate) !== 1) throw new Error('Wasm grain source preparation failed');
     new Float32Array(engine.memory.buffer, engine.manifold_sample_ptr(), manifest.sourceData.length).set(manifest.sourceData);
@@ -835,7 +854,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
           updated &= engine.manifold_set_node_parameter(2, id, value);
         });
       }
-      if (family === 'eq8' || family === 'eq-node' || family === 'formant' || family === 'resonator' || family === 'reverse-delay' || family === 'stutter' || family === 'pitch-shifter' || family === 'shimmer' || family === 'granulator' || family === 'waveshaper' || family === 'stereo-widener' || family === 'legacy-filter' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'transient-shaper' || family === 'bitcrusher') {
+      if (family === 'eq8' || family === 'eq-node' || family === 'formant' || family === 'resonator' || family === 'sine-bank' || family === 'reverse-delay' || family === 'stutter' || family === 'pitch-shifter' || family === 'shimmer' || family === 'granulator' || family === 'waveshaper' || family === 'stereo-widener' || family === 'legacy-filter' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'transient-shaper' || family === 'bitcrusher') {
         selected.after.forEach((value, id) => {
           updated &= engine.manifold_set_node_parameter(2, id, value);
         });
@@ -1113,7 +1132,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
       drawBandBars(byId('comparison-diff'), [difference], Math.max(active.max, 1e-8), ['#a4d9bb']);
       return;
     }
-    if (currentFamily === 'stereo-delay' || currentFamily === 'phaser' || currentFamily === 'chorus' || currentFamily === 'eq8' || currentFamily === 'reverb' || currentFamily === 'multitap' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || isFxSwitchFamily(currentFamily) || currentFamily === 'loop-capture' || currentFamily === 'sample-region' || currentFamily === 'sample-instrument') {
+    if (currentFamily === 'sine-bank' || currentFamily === 'stereo-delay' || currentFamily === 'phaser' || currentFamily === 'chorus' || currentFamily === 'eq8' || currentFamily === 'reverb' || currentFamily === 'multitap' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || isFxSwitchFamily(currentFamily) || currentFamily === 'loop-capture' || currentFamily === 'sample-region' || currentFamily === 'sample-instrument') {
       const svfReturn = currentFamily === 'standalone-fx-host' && chooser.value === 'delay-svf-delay-svf' && byId('plot-window').value === 'tail';
       const compressorReturn = currentFamily === 'standalone-fx-host' && chooser.value === 'delay-compressor-delay-compressor' && byId('plot-window').value === 'tail';
       const start = isFxSwitchFamily(currentFamily) && byId('plot-window').value === 'tail' ? (active.focusFrame ?? 16384) : 0;
@@ -1209,6 +1228,8 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                       ? `vowel ${selected.before[0]} → ${selected.after[0]} · shift ${selected.before[1]} → ${selected.after[1]} st · Q ${selected.before[2]} → ${selected.after[2]} · mix ${selected.before[4]} → ${selected.after[4]}`
                     : family === 'resonator'
                       ? `gain ${selected.before[0]} → ${selected.after[0]} · frequency ${selected.before[1]} → ${selected.after[1]} Hz · Q ${selected.before[2]} → ${selected.after[2]}`
+                    : family === 'sine-bank'
+                      ? `${selected.partials.length / 4} partial slots · pitch ${selected.before[0]} → ${selected.after[0]} Hz · voices ${selected.before[4]} → ${selected.after[4]}`
                     : family === 'reverse-delay'
                       ? `time ${selected.before[0]} → ${selected.after[0]} ms · window ${selected.before[1]} → ${selected.after[1]} ms · feedback ${selected.before[2]} → ${selected.after[2]} · mix ${selected.before[3]} → ${selected.after[3]}`
                     : family === 'stutter'
@@ -1270,8 +1291,8 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
     document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Maximum meter difference' : 'Maximum difference';
     document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'RMS meter difference' : 'RMS difference';
-    document.querySelector('.legend-old').textContent = isFxSwitchFamily(family) || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
-    document.querySelector('.legend-new').textContent = isFxSwitchFamily(family) || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Wasm L/R' : 'Rust/Wasm';
+    document.querySelector('.legend-old').textContent = family === 'sine-bank' || isFxSwitchFamily(family) || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
+    document.querySelector('.legend-new').textContent = family === 'sine-bank' || isFxSwitchFamily(family) || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' ? 'Wasm L/R' : 'Rust/Wasm';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;

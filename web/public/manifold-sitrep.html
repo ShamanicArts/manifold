@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold v2 · progress note</title>
+  <meta name="description" content="A reviewable snapshot of the Manifold v2 Rust and browser port.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: light; --bg:#f7f5f0; --paper:#fffefa; --ink:#252a28; --muted:#626b66; --line:#d7dcd6; --green:#285e4d; --green-soft:#e6f0e9; --rust:#a35339; --rust-soft:#f7ece5; --blue:#345875; --blue-soft:#eaf0f5; --font:'DM Sans',sans-serif; --serif:'Instrument Serif',Georgia,serif; --mono:'IBM Plex Mono',monospace; }
+    @media (prefers-color-scheme:dark) { :root { color-scheme:dark; --bg:#171d1b; --paper:#202825; --ink:#eeeae0; --muted:#b2bcb4; --line:#414c45; --green:#a0d0b2; --green-soft:#253d31; --rust:#e7a180; --rust-soft:#453026; --blue:#a8c5dc; --blue-soft:#293b49; } }
+    * { box-sizing:border-box; } html { scroll-behavior:smooth; } body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 var(--font); overflow-wrap:anywhere; } a { color:var(--green); text-underline-offset:3px; } a:hover { text-decoration-thickness:2px; } p { margin:0 0 1rem; } h1,h2,h3 { margin:0; line-height:1.12; } h1,h2 { font-family:var(--serif); font-weight:400; } h1 { font-size:clamp(3.5rem,7vw,6.4rem); letter-spacing:-.035em; } h2 { font-size:clamp(2.25rem,4vw,3.6rem); letter-spacing:-.025em; } h3 { font-size:1.03rem; }
+    .layout { display:grid; grid-template-columns:180px minmax(0,1fr); gap:clamp(2rem,5vw,5rem); max-width:1380px; margin:auto; padding:2.2rem clamp(1.2rem,4vw,4rem) 6rem; }
+    .toc { position:sticky; top:1.5rem; align-self:start; display:grid; gap:.25rem; border-top:2px solid var(--ink); padding-top:1rem; font:11px var(--mono); text-transform:uppercase; letter-spacing:.06em; } .toc span { color:var(--muted); margin-bottom:.8rem; } .toc a { display:block; padding:.55rem .3rem; text-decoration:none; border-bottom:1px solid var(--line); } .main { min-width:0; }
+    .eyebrow,.label { font:11px var(--mono); text-transform:uppercase; letter-spacing:.13em; } .eyebrow { color:var(--rust); font-weight:600; } .hero { border-top:2px solid var(--ink); padding-top:1.5rem; } .hero h1 { max-width:850px; margin:.75rem 0 1.3rem; } .hero-copy { font-size:clamp(1.12rem,2vw,1.48rem); max-width:780px; line-height:1.43; } .meta { display:flex; flex-wrap:wrap; gap:.5rem 1.3rem; margin:1.8rem 0 2.4rem; color:var(--muted); font:11px var(--mono); }
+    .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid var(--line); background:var(--paper); } .stat { padding:1.35rem 1.4rem; min-width:0; } .stat + .stat { border-left:1px solid var(--line); } .stat strong { display:block; font:400 clamp(2.1rem,4vw,3.4rem) var(--serif); line-height:1; } .stat span { display:block; color:var(--muted); font-size:.8rem; margin-top:.6rem; } .stat small { display:block; color:var(--muted); font-size:.68rem; margin-top:.3rem; }
+    section { margin-top:5rem; scroll-margin-top:1.5rem; } .section-head { display:flex; gap:1.4rem; align-items:baseline; padding-bottom:1.1rem; border-bottom:1px solid var(--ink); margin-bottom:1.5rem; } .section-head .label { color:var(--rust); min-width:2rem; }
+    .flow { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; } .flow-card { background:var(--paper); border:1px solid var(--line); padding:1.3rem; min-height:190px; position:relative; } .flow-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); } .flow-card:nth-child(2)::before { background:var(--rust); } .flow-card:nth-child(3)::before { background:var(--blue); } .flow-card .label { color:var(--muted); } .flow-card h3 { font:400 1.7rem var(--serif); margin:.65rem 0; } .flow-card p { color:var(--muted); font-size:.84rem; margin:0; } .flow-note { margin-top:1rem; color:var(--muted); font-size:.82rem; }
+    .summary-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; } .summary-card { background:var(--paper); border:1px solid var(--line); padding:1.35rem 1.5rem; } .summary-card h3 { margin-bottom:.55rem; } .summary-card p { margin:0; font-size:.88rem; color:var(--muted); } .tag { display:inline-block; font:10px var(--mono); text-transform:uppercase; letter-spacing:.07em; padding:.22rem .5rem; background:var(--green-soft); color:var(--green); margin-bottom:.7rem; } .tag.pending { background:var(--rust-soft); color:var(--rust); }
+    .evidence { background:var(--paper); border:1px solid var(--line); } .evidence-row { display:grid; grid-template-columns:180px 1fr; gap:1.5rem; padding:1.2rem 1.5rem; } .evidence-row + .evidence-row { border-top:1px solid var(--line); } .evidence-row strong { font-size:.85rem; } .evidence-row p { margin:0; color:var(--muted); font-size:.85rem; } .caution { margin-top:1rem; border-left:3px solid var(--rust); padding:.8rem 1.15rem; background:var(--rust-soft); color:var(--ink); font-size:.85rem; }
+    .timeline { border-left:1px solid var(--line); margin-left:.55rem; } .step { position:relative; padding:0 0 2rem 2rem; } .step::before { content:''; position:absolute; left:-.38rem; top:.35rem; width:.68rem; height:.68rem; background:var(--paper); border:2px solid var(--rust); border-radius:50%; } .step:last-child { padding-bottom:0; } .step:first-child::before { background:var(--rust); } .step .label { color:var(--rust); } .step h3 { margin:.35rem 0; font-size:1.06rem; } .step p { max-width:720px; margin:0; color:var(--muted); font-size:.87rem; }
+    .actions { display:flex; flex-wrap:wrap; gap:.65rem; margin-top:2rem; } .action { display:inline-block; text-decoration:none; padding:.65rem 1rem; border:1px solid var(--green); font-size:.82rem; font-weight:600; } .action.primary { background:var(--green); color:var(--paper); } footer { margin-top:5rem; border-top:1px solid var(--line); padding-top:1rem; color:var(--muted); font:11px var(--mono); }
+    @media(max-width:900px) { .layout { display:block; padding:0 1rem 4rem; } .toc { position:sticky; top:0; z-index:2; display:flex; overflow:auto; white-space:nowrap; background:var(--bg); border-top:0; border-bottom:1px solid var(--line); margin:0 -1rem 2rem; padding:.35rem 1rem; } .toc span { display:none; } .toc a { flex:none; border:0; } section { scroll-margin-top:4rem; } }
+    @media(max-width:650px) { .stats,.flow,.summary-grid { grid-template-columns:1fr; } .stat + .stat { border-left:0; border-top:1px solid var(--line); } .flow-card { min-height:0; } .evidence-row { grid-template-columns:1fr; gap:.35rem; } .section-head { gap:.6rem; } }
+    @media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <nav class="toc" aria-label="Sections"><span>Manifold / 26.09.2026</span><a href="#architecture">Architecture</a><a href="#done">Built so far</a><a href="#proven">Evidence</a><a href="#next">In flight &amp; next</a></nav>
+  <main class="main">
+    <header class="hero">
+      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 104</div>
+      <h1>A portable sound engine is taking shape.</h1>
+      <p class="hero-copy">The old JUCE and Lua project is being rebuilt as a Rust DSP core with a JavaScript browser workbench. The workbench is already useful for playing, inspecting, and comparing individual behaviors; the full legacy projects are still being assembled.</p>
+      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: source-derived partials</span><span>Review scope: checkpoint 104 and the next workstream</span></div>
+      <div class="stats" aria-label="Current library figures">
+        <div class="stat"><strong>52</strong><span>interactive workbench views</span><small>Many are individual primitives or small authored projects.</small></div>
+        <div class="stat"><strong>408</strong><span>checked-in offline comparison cases</span><small>256 legacy C++ · 152 native Rust, each compared with Wasm.</small></div>
+        <div class="stat"><strong>109</strong><span>Rust tests passing</span><small>Workspace tests pass on the manual bank checkpoint.</small></div>
+      </div>
+    </header>
+
+    <section id="architecture" aria-labelledby="architecture-heading">
+      <div class="section-head"><span class="label">01</span><h2 id="architecture-heading">The shape of the new system</h2></div>
+      <div class="flow">
+        <div class="flow-card"><span class="label">Interaction</span><h3>JavaScript workbench</h3><p>Compact controls, keyboard, file loading, project selection, plots, and review cases. Three.js and WebGPU remain the direction for richer rendering where needed.</p></div>
+        <div class="flow-card"><span class="label">Real-time bridge</span><h3>AudioWorklet</h3><p>Passes timed events and bounded parameter or asset updates into the audio thread; publishes small meter snapshots back out.</p></div>
+        <div class="flow-card"><span class="label">Sound &amp; state</span><h3>Rust core → Wasm</h3><p>Typed audio, CV, and MIDI graph; DSP kernels; sample-accurate event handling. The same core can run natively for comparison and future hosts.</p></div>
+      </div>
+      <p class="flow-note">Analysis and file preparation can run away from the audio callback. Rendering stays separate from sound processing. Legacy Lua is a behavior reference, not a v2 runtime dependency.</p>
+    </section>
+
+    <section id="done" aria-labelledby="done-heading">
+      <div class="section-head"><span class="label">02</span><h2 id="done-heading">What is built</h2></div>
+      <div class="summary-grid">
+        <div class="summary-card"><span class="tag">Playable</span><h3>Instruments and source audio</h3><p>Voice synth and MIDI transforms, sample region and sample instrument, loop capture, granulator, and file analysis. On-screen instruments work without hardware MIDI permission.</p></div>
+        <div class="summary-card"><span class="tag">Playable</span><h3>Effects and routing</h3><p>Filter, dynamics, EQ, delay, modulation, distortion, spatial, pitch, shimmer, stutter, reverse, formant, resonator, a manual 32-partial Sine bank, and an FX slot with several audited switch behaviors.</p></div>
+        <div class="summary-card"><span class="tag">Composable</span><h3>Graph and control signals</h3><p>Typed audio/CV/MIDI routes, LFO and slew, a CV rack slice, envelope ducking, timed MIDI events, bounded meters, and selected v2 JSON patch/state roundtrips.</p></div>
+        <div class="summary-card"><span class="tag pending">Still expanding</span><h3>Project reconstruction</h3><p>Existing views are proof points, not a completed port of Manifold’s old project library. Full sample synth branches, shared project state, host packaging, and broad preset migration remain ahead.</p></div>
+      </div>
+    </section>
+
+    <section id="proven" aria-labelledby="proven-heading">
+      <div class="section-head"><span class="label">03</span><h2 id="proven-heading">What the evidence says</h2></div>
+      <div class="evidence">
+        <div class="evidence-row"><strong>Kernel behavior</strong><p>Checked-in comparison captures pair old C++ outputs with Rust/Wasm for isolated nodes, and native Rust with Rust/Wasm for new compositions. The workbench exposes waveform differences and case-level results.</p></div>
+        <div class="evidence-row"><strong>Latest completed port</strong><p>Manual Sine bank: nine stereo C++ cases, 16,384 frames each; worst observed C++ vs AudioWorklet/Wasm sample difference 8.35×10⁻⁷. The checkpoint also passed 109 Rust tests and a Vite build.</p></div>
+        <div class="evidence-row"><strong>Browser path</strong><p>The same Rust core compiles to Wasm and runs inside an AudioWorklet. Playable views, controlled offline runs, and downloadable project slices exercise this path on the served site.</p></div>
+        <div class="evidence-row"><strong>Scope of claim</strong><p>The numbers establish many local behaviors and some small compositions. They do not establish parity for the complete old plug-in, its full Lua project graph, every preset, or a native plug-in host.</p></div>
+      </div>
+      <div class="caution">Hardware MIDI access in BB’s embedded browser is currently constrained by host permissions. Use the on-screen keyboard here; hardware permission can be tested in a regular browser later.</div>
+    </section>
+
+    <section id="next" aria-labelledby="next-heading">
+      <div class="section-head"><span class="label">04</span><h2 id="next-heading">In flight, then next</h2></div>
+      <div class="timeline">
+        <div class="step"><span class="label">Now · partial analysis</span><h3>Extract source-derived partial frames</h3><p>The 32-partial / 8-unison manual bank, bounded Wasm upload, live editor, and nine C++ captures are complete. Next: temporal partial frames with explicit source metadata, computed outside the audio callback.</p></div>
+        <div class="step"><span class="label">Next · Add and Morph</span><h3>Recreate the source-based target recipes</h3><p>Use the prepared source frames to build Add and Morph targets, including shaping and blend controls, with C++ review cases.</p></div>
+        <div class="step"><span class="label">Then · full sample project</span><h3>Compose the branches and save their state</h3><p>Integrate sample playback, phase vocoder, envelopes, blend routing, project controls, and old/new comparison scenarios.</p></div>
+        <div class="step"><span class="label">Later · product surface</span><h3>Harden the shared project model and hosts</h3><p>Broaden state and preset handling, measure callback budgets in the browser, and package non-browser hosts against the same Rust engine.</p></div>
+      </div>
+      <div class="actions"><a class="action primary" href="/">Open the workbench</a><a class="action" href="/?primitive=sine-bank">Hear the latest completed port</a></div>
+    </section>
+    <footer>Manifold v2 · review snapshot · the workbench continues to evolve after this page was written.</footer>
+  </main>
+</div>
+</body>
+</html>

@@ -23,7 +23,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
           if (engine.manifold_version() !== 3) throw new Error('Incompatible graph module');
-          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26, 'sample-instrument': 27, 'fft-spectrum': 28, 'slew-audio': 29, 'slew-control': 30, 'attenuverter-bias': 31, 'sample-hold': 32, 'cv-mix': 33, phaser: 34, chorus: 35, eq8: 36, waveshaper: 37, 'stereo-widener': 38, 'legacy-filter': 39, reverb: 40, multitap: 41, 'ring-modulator': 42, 'transient-shaper': 43, bitcrusher: 44, 'eq-node': 45, formant: 46, 'reverse-delay': 47, stutter: 48, 'pitch-shifter': 49, shimmer: 50, granulator: 51, 'effect-slot-legacy': 52, 'effect-slot-host-switch': 53, 'midi-input': 54, 'midi-transpose': 55, 'midi-note-filter': 56, 'midi-scale-quantizer': 57, 'midi-velocity-mapper': 58, 'midi-arpeggiator': 59, resonator: 60 };
+          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26, 'sample-instrument': 27, 'fft-spectrum': 28, 'slew-audio': 29, 'slew-control': 30, 'attenuverter-bias': 31, 'sample-hold': 32, 'cv-mix': 33, phaser: 34, chorus: 35, eq8: 36, waveshaper: 37, 'stereo-widener': 38, 'legacy-filter': 39, reverb: 40, multitap: 41, 'ring-modulator': 42, 'transient-shaper': 43, bitcrusher: 44, 'eq-node': 45, formant: 46, 'reverse-delay': 47, stutter: 48, 'pitch-shifter': 49, shimmer: 50, granulator: 51, 'effect-slot-legacy': 52, 'effect-slot-host-switch': 53, 'midi-input': 54, 'midi-transpose': 55, 'midi-note-filter': 56, 'midi-scale-quantizer': 57, 'midi-velocity-mapper': 58, 'midi-arpeggiator': 59, resonator: 60, 'sine-bank': 61 };
           const graph = data.graph;
           if (engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) throw new Error('Graph too large');
           if (graph.patchable && engine.manifold_graph_patchable(1) !== 1) throw new Error('Patchable graph unavailable');
@@ -53,9 +53,13 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), this.capacity * 2);
           this.outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), this.capacity * 2);
           this.engine = engine;
+          if (data.partials && !this.uploadPartials(data.partials)) throw new Error('Invalid initial partial set');
           this.port.postMessage({ type: 'ready' });
         } else if (data.type === 'parameter' && this.engine) {
           this.engine.manifold_set_node_parameter(data.nodeId, data.id, data.value);
+        } else if (data.type === 'partials' && this.engine) {
+          const accepted = this.uploadPartials(data);
+          this.port.postMessage({ type: 'partials-applied', requestId: data.requestId, accepted });
         } else if (data.type === 'route') {
           const accepted = this.engine?.manifold_set_route(data.to, data.port, data.from ?? 0) === 1;
           this.port.postMessage({ type: 'route-applied', requestId: data.requestId, accepted });
@@ -100,6 +104,18 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
         this.port.postMessage({ type: data.type === 'capture-request' ? 'capture-error' : 'error', message: String(error) });
       }
     };
+  }
+
+  uploadPartials(data) {
+    const { nodeId, fundamental, values } = data;
+    if (!Array.isArray(values) && !(values instanceof Float32Array)) return false;
+    if (values.length % 4 !== 0 || values.length > 32 * 4) return false;
+    const count = values.length / 4;
+    if (this.engine.manifold_partials_begin(nodeId, count, fundamental) !== 1) return false;
+    const ptr = this.engine.manifold_partials_ptr();
+    if (!ptr) return false;
+    new Float32Array(this.engine.memory.buffer, ptr, values.length).set(values);
+    return this.engine.manifold_partials_commit() === 1;
   }
 
   queueEvent(data) {

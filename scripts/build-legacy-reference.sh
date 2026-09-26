@@ -3,7 +3,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 legacy_dir="${MANIFOLD_LEGACY_DIR:-$repo_dir/../my-plugin}"
 reference_kind="${1:-svf}"
-if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "reverse-delay" && "$reference_kind" != "pitch-shifter" && "$reference_kind" != "shimmer" && "$reference_kind" != "granulator" && "$reference_kind" != "stutter" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" && "$reference_kind" != "limiter" && "$reference_kind" != "slew-audio" && "$reference_kind" != "phaser" && "$reference_kind" != "chorus" && "$reference_kind" != "eq8" && "$reference_kind" != "eq-node" && "$reference_kind" != "formant" && "$reference_kind" != "resonator" && "$reference_kind" != "waveshaper" && "$reference_kind" != "stereo-widener" && "$reference_kind" != "filter-node" && "$reference_kind" != "reverb" && "$reference_kind" != "multitap" && "$reference_kind" != "ring-modulator" && "$reference_kind" != "transient" && "$reference_kind" != "bitcrusher" ]]; then
+if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "reverse-delay" && "$reference_kind" != "pitch-shifter" && "$reference_kind" != "shimmer" && "$reference_kind" != "granulator" && "$reference_kind" != "stutter" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" && "$reference_kind" != "limiter" && "$reference_kind" != "slew-audio" && "$reference_kind" != "phaser" && "$reference_kind" != "chorus" && "$reference_kind" != "eq8" && "$reference_kind" != "eq-node" && "$reference_kind" != "formant" && "$reference_kind" != "resonator" && "$reference_kind" != "sine-bank" && "$reference_kind" != "waveshaper" && "$reference_kind" != "stereo-widener" && "$reference_kind" != "filter-node" && "$reference_kind" != "reverb" && "$reference_kind" != "multitap" && "$reference_kind" != "ring-modulator" && "$reference_kind" != "transient" && "$reference_kind" != "bitcrusher" ]]; then
   echo "Unknown legacy reference: $reference_kind" >&2
   exit 2
 fi
@@ -61,6 +61,9 @@ elif [[ "$reference_kind" == "formant" ]]; then
 elif [[ "$reference_kind" == "resonator" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/ResonatorNode.cpp"
   runner_file="$repo_dir/tools/legacy-resonator-reference.cpp"
+elif [[ "$reference_kind" == "sine-bank" ]]; then
+  source_file="$legacy_dir/dsp/core/nodes/SineBankNode.cpp"
+  runner_file="$repo_dir/tools/legacy-sine-bank-reference.cpp"
 elif [[ "$reference_kind" == "waveshaper" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/WaveShaperNode.cpp"
   runner_file="$repo_dir/tools/legacy-waveshaper-reference.cpp"

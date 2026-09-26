@@ -50,6 +50,7 @@ export class BrowserAudioHost {
           if (data.type === 'meters') this.onMeters(data.nodeId, data.values, data.active);
           if (data.type === 'eq8-response') this.onEqResponse(data.nodeId, data.values);
           if (data.type === 'midi-trace') this.onMidiTrace(data.events);
+          if (data.type === 'partials-applied' && !data.accepted) this.onStatus('Partial set rejected by Rust. Previous sound preserved.');
           if (data.type === 'route-applied') {
             const pending = this.pendingRoutes.get(data.requestId);
             if (pending) {
@@ -93,7 +94,7 @@ export class BrowserAudioHost {
             value: values.get(parameter.id) ?? parameter.default })));
       }
       const upload = sample ? { nodeId: 2, sourceRate: sample.sourceRate, stereo: sample.stereo.slice() } : null;
-      processor.port.postMessage({ type: 'init', wasmBytes, graph, sample: upload },
+      processor.port.postMessage({ type: 'init', wasmBytes, graph, sample: upload, partials: project.partials ?? null },
         upload ? [wasmBytes, upload.stereo.buffer] : [wasmBytes]);
       await ready;
       this.ready = true;
@@ -127,6 +128,12 @@ export class BrowserAudioHost {
   setParameter(id, value) {
     const parameter = this.parameters.get(id);
     if (parameter) this.processor?.port.postMessage({ type: 'parameter', nodeId: parameter.nodeId, id: parameter.nodeParameterId, value });
+  }
+
+  setPartials(partials) {
+    if (!this.processor || !this.ready) return;
+    this.processor.port.postMessage({ type: 'partials', nodeId: partials.nodeId,
+      fundamental: partials.fundamental, values: partials.values });
   }
 
   setRoute(to, port, from) {

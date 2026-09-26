@@ -30,3 +30,9 @@ The next wave 6 target is the old `SineBankNode`, which the Main sample synth us
 4. Integrate the phase vocoder branch and compare whole project scenarios before describing the Main sample synth as ported.
 
 The first playable manual bank is an entry point into this path. The completion evidence is the composed sample project behaving correctly across Add, Morph, sample playback, and phase vocoder routes, with documented intentional differences and saved state.
+
+## Manual-mode checkpoint
+
+The [manual Sine bank workbench](../projects/sine-bank/project.json) now runs the fixed-capacity Rust node in Wasm and exposes 32 harmonic amplitude slots, unison, detune, spread, and drive. A bounded partial upload validates the complete set and commits it between process blocks; a rejected upload keeps the previous sound. The browser UI currently supplies harmonic frequencies based on 440 Hz and leaves arbitrary inharmonic frequencies, phase, and decay editing for a later target editor. The old node stores decay but does not apply it in manual audio rendering.
+
+Nine [C++ manual-mode captures](../web/public/reference/sine-bank/manifest.json) compare native source output against direct Wasm and the AudioWorklet transport. They cover one, eight, and 32 partial slots; pitch movement; unison/spread; fold drive; sync; disabled state; and an empty bank. The [checkpoint 104 review](../artifacts/reviews/checkpoint-104.md) records the measured differences. This evidence is for the isolated manual bank, not for source-derived Add, Morph, temporal analysis, or the Main sample synth.

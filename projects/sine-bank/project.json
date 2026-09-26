@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.sine-bank",
+  "name": "Sine bank",
+  "source": "Legacy SineBankNode manual partial mode",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 2, "type": "sine-bank" },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ],
+    "initialParameters": [
+      { "nodeId": 2, "id": 1, "value": 0.5 }
+    ]
+  },
+  "partials": {
+    "nodeId": 2,
+    "fundamental": 440,
+    "values": [
+      440, 1, 0, 0,
+      880, 0.5, 0, 0,
+      1320, 0.33333334, 0, 0,
+      1760, 0.25, 0, 0,
+      2200, 0.2, 0, 0,
+      2640, 0.16666667, 0, 0,
+      3080, 0.14285715, 0, 0,
+      3520, 0.125, 0, 0
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "frequency", "label": "Pitch", "kind": "float", "min": 40, "max": 1600, "default": 440, "unit": "Hz", "scale": "log" },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "amplitude", "label": "Level", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "enabled", "label": "Enabled", "kind": "toggle", "default": 1 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "spread", "label": "Stereo spread", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "unison", "label": "Unison voices", "kind": "float", "min": 1, "max": 8, "step": 1, "default": 1 },
+    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "detune", "label": "Detune", "kind": "float", "min": 0, "max": 100, "default": 0, "unit": "ct" },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "drive", "label": "Drive", "kind": "float", "min": 0, "max": 20, "default": 0 },
+    { "id": 7, "nodeId": 2, "nodeParameterId": 7, "hostId": "drive-shape", "label": "Drive shape", "kind": "choice", "choices": ["Soft", "Arc", "Clip", "Fold"], "default": 0 },
+    { "id": 8, "nodeId": 2, "nodeParameterId": 8, "hostId": "bias", "label": "Drive bias", "kind": "float", "min": -1, "max": 1, "default": 0 },
+    { "id": 9, "nodeId": 2, "nodeParameterId": 9, "hostId": "drive-mix", "label": "Drive mix", "kind": "float", "min": 0, "max": 1, "default": 1 }
+  ]
+}
