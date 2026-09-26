@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold · temporal partial review</title>
+  <style>
+    :root { color-scheme: dark; font: 14px/1.5 system-ui, sans-serif; background: #101820; color: #e0e8e7; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1080px; margin: auto; padding: 30px clamp(16px, 4vw, 44px) 70px; }
+    a { color: #a6d9bb; }
+    h1 { font-size: clamp(25px, 3vw, 34px); line-height: 1.15; margin: 8px 0 12px; font-weight: 600; }
+    h2 { font-size: 17px; margin: 0 0 12px; font-weight: 600; }
+    .eyebrow, .caption { color: #9badb2; font-size: 12px; letter-spacing: .04em; }
+    .lede { max-width: 730px; color: #b9c8c9; }
+    nav { display: flex; gap: 18px; flex-wrap: wrap; margin: 24px 0; }
+    .panel { background: #19242e; border: 1px solid #354550; border-radius: 8px; padding: 20px; margin: 16px 0; }
+    .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
+    label { display: grid; gap: 6px; min-width: 220px; flex: 1; color: #b9c8c9; font-size: 12px; }
+    select, input[type=range] { width: 100%; }
+    select { background: #101820; color: #e0e8e7; border: 1px solid #51636a; border-radius: 5px; padding: 9px; font: inherit; }
+    input { accent-color: #a6d9bb; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
+    .stat { border: 1px solid #354550; border-radius: 5px; padding: 12px; }
+    .stat strong { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+    .stat span { color: #9badb2; font-size: 11px; }
+    .legend { display: flex; gap: 20px; color: #b9c8c9; font-size: 12px; margin-bottom: 10px; }
+    .swatch { display: inline-block; width: 11px; height: 3px; vertical-align: middle; margin-right: 6px; }
+    .old { background: #a6d9bb; } .new { background: #efbb86; }
+    canvas { width: 100%; height: 290px; display: block; background: #111c24; border: 1px solid #354550; border-radius: 5px; }
+    .table-wrap { overflow-x: auto; max-height: 360px; }
+    table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 12px; }
+    th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid #30404b; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: #b9c8c9; position: sticky; top: 0; background: #19242e; }
+    #status { min-height: 24px; color: #b9c8c9; }
+    #status.error { color: #f2ac9d; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 105</div>
+  <h1>Temporal partial extraction</h1>
+  <p class="lede">The original C++/JUCE extractor and the new Rust/Wasm worker analyze the same four source captures. Choose a source and move through its frames to inspect selected frequencies and levels. This comparison supplies the old extractor’s pitch decision; end-to-end legacy pitch detection is a separate task.</p>
+  <nav><a href="/?primitive=sine-bank">Open playable Sine bank</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
+  <section class="panel">
+    <div class="controls">
+      <label>Source case<select id="case"></select></label>
+      <label>Temporal frame <span id="frame-label">—</span><input id="frame" type="range" min="0" max="0" value="0"></label>
+    </div>
+    <p id="status" role="status">Loading comparison…</p>
+    <div class="stats" id="stats"></div>
+  </section>
+  <section class="panel">
+    <h2>Selected partials</h2>
+    <div class="legend"><span><i class="swatch old"></i>C++/JUCE</span><span><i class="swatch new"></i>Rust/Wasm</span></div>
+    <canvas id="spectrum" aria-label="Log frequency plot of legacy and Rust partial amplitudes"></canvas>
+    <p class="caption">Log frequency, 20 Hz–24 kHz · normalized amplitude. Matching stems overlap when results agree.</p>
+  </section>
+  <section class="panel">
+    <h2>Partial differences at this frame</h2>
+    <div class="table-wrap"><table><thead><tr><th>Slot</th><th>C++ Hz</th><th>Rust Hz</th><th>Δ Hz</th><th>C++ level</th><th>Rust level</th><th>Δ level</th></tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+</main>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const base = '/reference/temporal-partials/';
+let manifest, wasm, selected;
+function number(value, digits = 3) { return Number(value).toFixed(digits); }
+function stat(label, value) { return `<div class="stat"><strong>${value}</strong><span>${label}</span></div>`; }
+function render() {
+  if (!selected) return;
+  const index = Number($('frame').value);
+  const old = selected.legacy.frames[index], current = selected.frames[index];
+  $('frame-label').textContent = `${index + 1} / ${selected.frames.length} · ${number(current.position * 100, 0)}%`;
+  let maxHz = 0, maxLevel = 0, maxPhase = 0;
+  for (let i = 0; i < current.partials.length; i++) {
+    const [oldHz, oldLevel, oldPhase] = old.partials[i];
+    const [newHz, newLevel, newPhase] = current.partials[i];
+    maxHz = Math.max(maxHz, Math.abs(oldHz - newHz));
+    maxLevel = Math.max(maxLevel, Math.abs(oldLevel - newLevel));
+    const delta = newPhase - oldPhase;
+    maxPhase = Math.max(maxPhase, Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta))));
+  }
+  $('stats').innerHTML = stat('Matched slots', `${current.partials.length} / ${old.partials.length}`)
+    + stat('Largest frequency error', `${number(maxHz, 4)} Hz`)
+    + stat('Largest level error', number(maxLevel, 7))
+    + stat('Largest phase error', `${number(maxPhase, 5)} rad`)
+    + stat('RMS difference', number(Math.abs(old.rms - current.rms), 7));
+  $('rows').replaceChildren(...old.partials.map(([oldHz, oldLevel], i) => {
+    const [newHz, newLevel] = current.partials[i];
+    const row = document.createElement('tr');
+    for (const value of [i + 1, number(oldHz, 2), number(newHz, 2), number(newHz - oldHz, 4),
+      number(oldLevel, 5), number(newLevel, 5), number(newLevel - oldLevel, 7)]) {
+      const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
+    }
+    return row;
+  }));
+  const canvas = $('spectrum'), ratio = devicePixelRatio || 1;
+  const bounds = canvas.getBoundingClientRect();
+  canvas.width = Math.round(bounds.width * ratio); canvas.height = Math.round(bounds.height * ratio);
+  const ctx = canvas.getContext('2d'); ctx.scale(ratio, ratio);
+  const width = bounds.width, height = bounds.height;
+  const plot = { left: 42, top: 15, right: width - 16, bottom: height - 32 };
+  const x = (hz) => plot.left + (Math.log(Math.max(20, hz) / 20) / Math.log(24000 / 20)) * (plot.right - plot.left);
+  ctx.font = '11px system-ui'; ctx.fillStyle = '#8da4ac'; ctx.strokeStyle = '#354550';
+  for (const hz of [20, 100, 500, 2000, 10000, 24000]) {
+    const px = x(hz); ctx.beginPath(); ctx.moveTo(px, plot.top); ctx.lineTo(px, plot.bottom); ctx.stroke();
+    ctx.fillText(hz < 1000 ? String(hz) : `${hz / 1000}k`, px - 11, height - 11);
+  }
+  for (const [partials, color, offset] of [[old.partials, '#a6d9bb', -1.4], [current.partials, '#efbb86', 1.4]]) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    for (const [hz, amplitude] of partials) {
+      const px = x(hz) + offset, top = plot.bottom - Math.min(1, amplitude) * (plot.bottom - plot.top);
+      ctx.beginPath(); ctx.moveTo(px, plot.bottom); ctx.lineTo(px, top); ctx.stroke();
+    }
+  }
+}
+async function openCase() {
+  const item = manifest.cases.find((entry) => entry.id === $('case').value);
+  $('status').textContent = `Analyzing ${item.label}…`;
+  $('status').className = '';
+  try {
+    const [inputResponse, oldResponse] = await Promise.all([fetch(base + item.input), fetch(base + item.output)]);
+    if (!inputResponse.ok || !oldResponse.ok) throw new Error('Reference source unavailable');
+    const input = new Float32Array(await inputResponse.arrayBuffer());
+    const legacy = await oldResponse.json();
+    if (wasm.manifold_analysis_begin(item.sourceFrames, manifest.sampleRate) !== 1) throw new Error('Wasm source rejected');
+    new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_ptr(), input.length).set(input);
+    if (wasm.manifold_analysis_run_temporal(item.regionStart, item.regionEnd, item.maxFrames) !== 1) throw new Error('Wasm analysis failed');
+    const count = wasm.manifold_analysis_temporal_count();
+    const frames = Array.from({ length: count }, (_, i) => {
+      const partialCount = wasm.manifold_analysis_temporal_frame_field(i, 5);
+      const raw = new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_temporal_partials_ptr(i), partialCount * 4);
+      return { position: wasm.manifold_analysis_temporal_frame_field(i, 0),
+        rms: wasm.manifold_analysis_temporal_frame_field(i, 2),
+        partials: Array.from({ length: partialCount }, (_, slot) => Array.from(raw.slice(slot * 4, slot * 4 + 4))) };
+    });
+    if (count !== legacy.frameCount || frames.some((frame, i) => frame.partials.length !== legacy.frames[i].partials.length)) {
+      throw new Error('Frame or partial count differs from C++');
+    }
+    selected = { legacy, frames };
+    $('frame').max = Math.max(0, count - 1); $('frame').value = '0';
+    $('status').textContent = `${item.label} · ${count} frames · ${item.legacyFundamental ? 'supplied 220 Hz pitch' : 'spectral fallback'} · source region ${item.regionStart}–${item.regionEnd}`;
+    render();
+  } catch (error) { selected = null; $('status').className = 'error'; $('status').textContent = error.message || String(error); }
+}
+try {
+  const [manifestResponse, wasmResponse] = await Promise.all([fetch(base + 'manifest.json'), fetch('/manifold_filter.wasm')]);
+  if (!manifestResponse.ok || !wasmResponse.ok) throw new Error('Review assets unavailable');
+  manifest = await manifestResponse.json();
+  wasm = (await WebAssembly.instantiate(await wasmResponse.arrayBuffer(), {})).instance.exports;
+  for (const item of manifest.cases) $('case').add(new Option(item.label, item.id));
+  $('case').addEventListener('change', openCase);
+  $('frame').addEventListener('input', render);
+  window.addEventListener('resize', render);
+  await openCase();
+} catch (error) { $('status').className = 'error'; $('status').textContent = error.message || String(error); }
+</script>
+</body>
+</html>

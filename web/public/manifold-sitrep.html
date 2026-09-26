@@ -32,14 +32,14 @@
   <nav class="toc" aria-label="Sections"><span>Manifold / 26.09.2026</span><a href="#architecture">Architecture</a><a href="#done">Built so far</a><a href="#proven">Evidence</a><a href="#next">In flight &amp; next</a></nav>
   <main class="main">
     <header class="hero">
-      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 104</div>
+      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 105</div>
       <h1>A portable sound engine is taking shape.</h1>
       <p class="hero-copy">The old JUCE and Lua project is being rebuilt as a Rust DSP core with a JavaScript browser workbench. The workbench is already useful for playing, inspecting, and comparing individual behaviors; the full legacy projects are still being assembled.</p>
-      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: source-derived partials</span><span>Review scope: checkpoint 104 and the next workstream</span></div>
+      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: Add and Morph recipes</span><span>Review scope: checkpoint 105 and the next workstream</span></div>
       <div class="stats" aria-label="Current library figures">
         <div class="stat"><strong>52</strong><span>interactive workbench views</span><small>Many are individual primitives or small authored projects.</small></div>
         <div class="stat"><strong>408</strong><span>checked-in offline comparison cases</span><small>256 legacy C++ · 152 native Rust, each compared with Wasm.</small></div>
-        <div class="stat"><strong>109</strong><span>Rust tests passing</span><small>Workspace tests pass on the manual bank checkpoint.</small></div>
+        <div class="stat"><strong>112</strong><span>Rust tests passing</span><small>Workspace tests pass on the temporal partial checkpoint.</small></div>
       </div>
     </header>
 
@@ -67,7 +67,7 @@
       <div class="section-head"><span class="label">03</span><h2 id="proven-heading">What the evidence says</h2></div>
       <div class="evidence">
         <div class="evidence-row"><strong>Kernel behavior</strong><p>Checked-in comparison captures pair old C++ outputs with Rust/Wasm for isolated nodes, and native Rust with Rust/Wasm for new compositions. The workbench exposes waveform differences and case-level results.</p></div>
-        <div class="evidence-row"><strong>Latest completed port</strong><p>Manual Sine bank: nine stereo C++ cases, 16,384 frames each; worst observed C++ vs AudioWorklet/Wasm sample difference 8.35×10⁻⁷. The checkpoint also passed 109 Rust tests and a Vite build.</p></div>
+        <div class="evidence-row"><strong>Latest completed slice</strong><p>Temporal source analysis: four C++/JUCE extractor fixtures and 36 frames match all 312 ordered partials in Rust/Wasm; worst frequency error is 0.0043 Hz. The playable Sine bank can audition an extracted frame. <a href="/temporal-partials-review.html">Inspect the source comparison</a>.</p></div>
         <div class="evidence-row"><strong>Browser path</strong><p>The same Rust core compiles to Wasm and runs inside an AudioWorklet. Playable views, controlled offline runs, and downloadable project slices exercise this path on the served site.</p></div>
         <div class="evidence-row"><strong>Scope of claim</strong><p>The numbers establish many local behaviors and some small compositions. They do not establish parity for the complete old plug-in, its full Lua project graph, every preset, or a native plug-in host.</p></div>
       </div>
@@ -77,12 +77,12 @@
     <section id="next" aria-labelledby="next-heading">
       <div class="section-head"><span class="label">04</span><h2 id="next-heading">In flight, then next</h2></div>
       <div class="timeline">
-        <div class="step"><span class="label">Now · partial analysis</span><h3>Extract source-derived partial frames</h3><p>The 32-partial / 8-unison manual bank, bounded Wasm upload, live editor, and nine C++ captures are complete. Next: temporal partial frames with explicit source metadata, computed outside the audio callback.</p></div>
-        <div class="step"><span class="label">Next · Add and Morph</span><h3>Recreate the source-based target recipes</h3><p>Use the prepared source frames to build Add and Morph targets, including shaping and blend controls, with C++ review cases.</p></div>
+        <div class="step"><span class="label">Done · partial analysis</span><h3>Source-derived frames are reviewable</h3><p>The Rust/Wasm worker extracts bounded temporal frames with region and confidence metadata. Four C++ fixtures match; selected frames play through the Sine bank. Legacy pitch detection is still separate.</p></div>
+        <div class="step"><span class="label">Now · Add and Morph</span><h3>Recreate the source-based target recipes</h3><p>Use the prepared source frames to build Add and Morph targets, including shaping and blend controls, with C++ review cases.</p></div>
         <div class="step"><span class="label">Then · full sample project</span><h3>Compose the branches and save their state</h3><p>Integrate sample playback, phase vocoder, envelopes, blend routing, project controls, and old/new comparison scenarios.</p></div>
         <div class="step"><span class="label">Later · product surface</span><h3>Harden the shared project model and hosts</h3><p>Broaden state and preset handling, measure callback budgets in the browser, and package non-browser hosts against the same Rust engine.</p></div>
       </div>
-      <div class="actions"><a class="action primary" href="/">Open the workbench</a><a class="action" href="/?primitive=sine-bank">Hear the latest completed port</a></div>
+      <div class="actions"><a class="action primary" href="/">Open the workbench</a><a class="action" href="/?primitive=sine-bank">Hear the Sine bank</a><a class="action" href="/temporal-partials-review.html">Inspect partial comparison</a></div>
     </section>
     <footer>Manifold v2 · review snapshot · the workbench continues to evolve after this page was written.</footer>
   </main>

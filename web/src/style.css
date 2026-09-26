@@ -101,6 +101,14 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .sine-partial output { text-align: right; font-variant-numeric: tabular-nums; }
 #sine-bank-more { margin-top: 10px; color: #c8d2d9; font-size: 11px; }
 #sine-bank-more summary { cursor: pointer; margin-bottom: 10px; }
+#sine-source-section .sample-file { display: block; margin-top: 10px; }
+#sine-use-demo, #sine-use-frame { width: 100%; margin-top: 8px; }
+.sine-source-position { display: flex; justify-content: space-between; margin-top: 13px; color: #c8d2d9; font-size: 11px; }
+#sine-position { width: 100%; accent-color: #a6d9bb; }
+.sine-source-bars { max-height: 245px; overflow-y: auto; display: grid; gap: 4px; margin-top: 9px; }
+.sine-source-row { display: grid; grid-template-columns: 4rem minmax(0, 1fr) 2.8rem; gap: 6px; align-items: center; color: #aebdc6; font-size: 10px; font-variant-numeric: tabular-nums; }
+.sine-source-track { height: 7px; background: #293743; border-radius: 2px; overflow: hidden; }
+.sine-source-fill { display: block; height: 100%; background: #a6d9bb; }
 .gate-button { height: 34px; border: 1px solid #526170; border-radius: 4px; background: #263441; color: #d8e2e8; font-size: 12px; font-weight: 650; }
 #capture-transfer-section .gate-button { display: block; width: 100%; margin-top: 8px; }
 #slot-state-section .gate-button { width: 100%; margin-bottom: 8px; }

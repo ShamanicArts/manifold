@@ -11,6 +11,7 @@ use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
 use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
 use manifold_core::sine_bank::{MAX_PARTIALS, PartialSet};
 use manifold_core::stereo_delay;
+use manifold_core::temporal_partials::{TemporalAnalysis, analyze_temporal_stereo};
 use std::cell::RefCell;
 
 struct WorkletEngine {
@@ -27,6 +28,7 @@ struct AnalysisJob {
     source_rate: f32,
     stereo: Vec<f32>,
     result: Option<SampleSummary>,
+    temporal: Option<TemporalAnalysis>,
 }
 
 struct GraphBuilder {
@@ -63,6 +65,7 @@ pub extern "C" fn manifold_analysis_begin(frames: u32, source_rate: f32) -> u32 
             source_rate,
             stereo: vec![0.0; frames as usize * 2],
             result: None,
+            temporal: None,
         });
     });
     1
@@ -82,9 +85,126 @@ pub extern "C" fn manifold_analysis_run() -> u32 {
     ANALYSIS.with(|slot| {
         slot.borrow_mut().as_mut().map_or(0, |job| {
             job.result = analyze_stereo(&job.stereo, job.source_rate);
+            job.temporal = None;
             job.stereo = Vec::new();
             u32::from(job.result.is_some())
         })
+    })
+}
+
+/// Full source summary plus bounded source-region partial frames. Worker only.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_run_temporal(
+    region_start: u32,
+    region_end: u32,
+    max_frames: u32,
+) -> u32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |job| {
+            let Some(temporal) = analyze_temporal_stereo(
+                &job.stereo,
+                job.source_rate,
+                region_start as usize..region_end as usize,
+                max_frames as usize,
+            ) else {
+                return 0;
+            };
+            job.result = analyze_stereo(&job.stereo, job.source_rate);
+            job.temporal = Some(temporal);
+            job.stereo = Vec::new();
+            u32::from(job.result.is_some())
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_temporal_count() -> u32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.temporal.as_ref())
+            .map_or(0, |result| result.frames.len() as u32)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_temporal_global_count() -> u32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.temporal.as_ref())
+            .map_or(0, |result| result.global_partials.count as u32)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_temporal_global_ptr() -> *const f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.temporal.as_ref())
+            .map_or(std::ptr::null(), |result| {
+                result.global_partials.partials.as_ptr().cast()
+            })
+    })
+}
+
+/// source rate, source frames, region bounds, global fundamental, confidence,
+/// mode (0 harmonic, 1 peaks), window size, and hop size.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_temporal_meta(id: u32) -> f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.temporal.as_ref())
+            .map_or(f32::NAN, |result| match id {
+                0 => result.source_rate,
+                1 => result.source_frames as f32,
+                2 => result.region.start as f32,
+                3 => result.region.end as f32,
+                4 => result.global_fundamental,
+                5 => result.pitch_confidence,
+                6 => match result.mode {
+                    manifold_core::temporal_partials::ExtractionMode::HarmonicProjection => 0.0,
+                    manifold_core::temporal_partials::ExtractionMode::SpectralPeaks => 1.0,
+                },
+                7 => result.window_size as f32,
+                8 => result.hop_size as f32,
+                _ => f32::NAN,
+            })
+    })
+}
+
+/// Position, absolute source start, RMS, brightness, fundamental, count.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_temporal_frame_field(frame: u32, field: u32) -> f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.temporal.as_ref())
+            .and_then(|result| result.frames.get(frame as usize))
+            .map_or(f32::NAN, |frame| match field {
+                0 => frame.position,
+                1 => frame.source_start as f32,
+                2 => frame.rms,
+                3 => frame.brightness,
+                4 => frame.partials.fundamental,
+                5 => frame.partials.count as f32,
+                _ => f32::NAN,
+            })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_temporal_partials_ptr(frame: u32) -> *const f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.temporal.as_ref())
+            .and_then(|result| result.frames.get(frame as usize))
+            .map_or(std::ptr::null(), |frame| {
+                frame.partials.partials.as_ptr().cast()
+            })
     })
 }
 

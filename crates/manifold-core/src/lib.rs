@@ -45,6 +45,7 @@ pub mod spectrum_analyzer;
 pub mod stereo_delay;
 pub mod stereo_widener;
 pub mod stutter;
+pub mod temporal_partials;
 pub mod transient_shaper;
 pub mod voice;
 pub mod waveshaper;

@@ -410,6 +410,8 @@ const slotSessionStates = new Map();
 let loopHasTake = false;
 let loadedSample = null;
 let loadedGranulatorSource = null;
+let loadedSineSource = null;
+const sineManualLevels = Array.from({ length: 32 }, (_, index) => sineBankProject.partials.values[index * 4 + 1] ?? 0);
 let exampleSample = null;
 let samplePlayhead = 0;
 let samplePlaying = false;
@@ -478,52 +480,122 @@ function renderSampleAnalysis() {
     button.textContent = `Use ${noteNames[note % 12]}${Math.floor(note / 12) - 1} as root (${note})`;
   }
 }
-function requestSampleAnalysis(source) {
-  if (source.analysisRequested) return;
-  source.analysisRequested = true;
+function selectedSineFrame() {
+  const frames = loadedSineSource?.temporal?.frames;
+  if (!frames?.length) return null;
+  const position = Number(byId('sine-position').value);
+  return frames.reduce((nearest, frame) =>
+    Math.abs(frame.position - position) < Math.abs(nearest.position - position) ? frame : nearest);
+}
+function renderSineSourceAnalysis() {
+  if (activeFamily !== 'sine-bank') return;
+  const source = loadedSineSource;
+  const readout = byId('sine-source-status');
+  const position = byId('sine-position');
+  const audition = byId('sine-use-frame');
+  const bars = byId('sine-source-bars');
+  position.disabled = true;
+  audition.disabled = true;
+  bars.replaceChildren();
+  if (!source) {
+    readout.textContent = 'Choose a source or use the built-in tone.';
+    return;
+  }
+  if (source.temporalError) {
+    readout.textContent = `Partial analysis unavailable: ${source.temporalError}`;
+    return;
+  }
+  if (!source.temporal) {
+    readout.textContent = 'Extracting temporal partial frames in Rust/Wasm…';
+    return;
+  }
+  const result = source.temporal;
+  const frame = selectedSineFrame();
+  position.disabled = result.frames.length < 2;
+  audition.disabled = !frame?.values.length;
+  const pitchLabel = result.mode === 'harmonic-projection'
+    ? `${result.fundamental.toFixed(1)} Hz pitch · ${(result.confidence * 100).toFixed(0)}% confidence`
+    : `${result.fundamental.toFixed(1)} Hz reference peak · no reliable pitch`;
+  readout.textContent = `${source.label ?? 'Built-in tone'} · ${result.mode === 'harmonic-projection' ? 'pitched harmonic tracking' : 'spectral peak fallback'} · ${result.frames.length} frames · ${pitchLabel}`;
+  if (!frame) return;
+  byId('sine-position-value').textContent = `${Math.round(frame.position * 100)}% · ${(frame.sourceStart / result.sourceRate).toFixed(2)} s`;
+  for (let index = 0; index < frame.values.length / 4; index++) {
+    const frequency = frame.values[index * 4];
+    const amplitude = frame.values[index * 4 + 1];
+    const row = document.createElement('div');
+    row.className = 'sine-source-row';
+    const label = document.createElement('span');
+    label.textContent = `${frequency.toFixed(0)} Hz`;
+    const track = document.createElement('div');
+    track.className = 'sine-source-track';
+    const fill = document.createElement('span');
+    fill.className = 'sine-source-fill';
+    fill.style.width = `${Math.min(100, amplitude * 100)}%`;
+    track.appendChild(fill);
+    const amount = document.createElement('span');
+    amount.textContent = amplitude.toFixed(2);
+    row.append(label, track, amount);
+    bars.appendChild(row);
+  }
+}
+function requestSampleAnalysis(source, temporal = false) {
+  const requestedFlag = temporal ? 'temporalRequested' : 'analysisRequested';
+  if (source[requestedFlag]) return;
+  source[requestedFlag] = true;
+  if (temporal) source.temporalError = null;
+  else source.analysisError = null;
   try {
     if (!sampleAnalysisWorker) {
       sampleAnalysisWorker = new Worker(new URL('./audio/sample-analysis-worker.js', import.meta.url), { type: 'module' });
       sampleAnalysisWorker.onmessage = ({ data }) => {
-        const analyzed = pendingSampleAnalyses.get(data.id);
+        const pending = pendingSampleAnalyses.get(data.id);
         pendingSampleAnalyses.delete(data.id);
-        if (!analyzed) return;
+        if (!pending) return;
+        const { source: analyzed, temporal } = pending;
         if (data.type === 'result') {
           analyzed.analysis = data;
           analyzed.peaks = data.peaks;
+          if (temporal) analyzed.temporal = data.temporal;
         } else {
-          analyzed.analysisError = data.message;
-          fallbackSamplePeaks(analyzed);
+          if (temporal) { analyzed.temporalError = data.message; analyzed.temporalRequested = false; }
+          else { analyzed.analysisError = data.message; analyzed.analysisRequested = false; }
+          if (!analyzed.peaks) fallbackSamplePeaks(analyzed);
         }
         if (analyzed === (loadedSample ?? demoSample())) {
           drawSampleWaveform();
           renderSampleAnalysis();
         }
+        if (analyzed === loadedSineSource) renderSineSourceAnalysis();
       };
       sampleAnalysisWorker.onerror = (error) => {
-        for (const analyzed of pendingSampleAnalyses.values()) {
-          analyzed.analysisError = error.message || 'Worker failed';
-          fallbackSamplePeaks(analyzed);
+        for (const { source: analyzed, temporal } of pendingSampleAnalyses.values()) {
+          if (temporal) { analyzed.temporalError = error.message || 'Worker failed'; analyzed.temporalRequested = false; }
+          else { analyzed.analysisError = error.message || 'Worker failed'; analyzed.analysisRequested = false; }
+          if (!analyzed.peaks) fallbackSamplePeaks(analyzed);
         }
         pendingSampleAnalyses.clear();
         sampleAnalysisWorker?.terminate();
         sampleAnalysisWorker = null;
         drawSampleWaveform();
         renderSampleAnalysis();
+        renderSineSourceAnalysis();
       };
     }
     const id = ++sampleAnalysisSerial;
-    pendingSampleAnalyses.set(id, source);
+    pendingSampleAnalyses.set(id, { source, temporal });
     const stereo = source.stereo.slice();
-    sampleAnalysisWorker.postMessage({ id, sourceRate: source.sourceRate, stereo }, [stereo.buffer]);
+    sampleAnalysisWorker.postMessage({ id, sourceRate: source.sourceRate, stereo,
+      temporal: temporal ? { maxFrames: 128 } : null }, [stereo.buffer]);
   } catch (error) {
     for (const [id, pending] of pendingSampleAnalyses) {
-      if (pending === source) pendingSampleAnalyses.delete(id);
+      if (pending.source === source) pendingSampleAnalyses.delete(id);
     }
-    source.analysisError = error.message || String(error);
-    fallbackSamplePeaks(source);
+    if (temporal) { source.temporalError = error.message || String(error); source.temporalRequested = false; }
+    else { source.analysisError = error.message || String(error); source.analysisRequested = false; }
+    if (!source.peaks) fallbackSamplePeaks(source);
     drawSampleWaveform();
     renderSampleAnalysis();
+    renderSineSourceAnalysis();
   }
 }
 function drawSampleWaveform() {
@@ -1177,9 +1249,11 @@ function renderSineBankEditor() {
   const section = byId('sine-bank-section');
   section.hidden = activeFamily !== 'sine-bank';
   if (section.hidden) return;
-  const levels = Array.from({ length: 32 }, (_, index) => sineBankProject.partials.values[index * 4 + 1] ?? 0);
+  const levels = sineManualLevels;
   const update = () => {
+    sineBankProject.partials.fundamental = 440;
     sineBankProject.partials.values = levels.flatMap((amplitude, index) => [440 * (index + 1), amplitude, 0, 0]);
+    byId('sine-source-status').textContent = 'Manual harmonic bank active. Select Audition this frame to return to the analyzed source.';
     if (sineBankPublishFrame !== null) cancelAnimationFrame(sineBankPublishFrame);
     sineBankPublishFrame = requestAnimationFrame(() => {
       sineBankPublishFrame = null;
@@ -1314,6 +1388,8 @@ function renderPrimitive(family) {
   byId('modes').replaceChildren();
   byId('controls').replaceChildren();
   renderSineBankEditor();
+  byId('sine-source-section').hidden = family !== 'sine-bank';
+  if (family === 'sine-bank') renderSineSourceAnalysis();
   renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
@@ -1797,37 +1873,76 @@ function startMonitoring() {
   } else animateSpectrum();
 }
 drawLiveSpectrum(byId('live-spectrum'), null);
+async function decodeFileSource(file) {
+  if (file.size > 32 * 1024 * 1024) throw new Error('Choose a file smaller than 32 MB.');
+  const decoder = new OfflineAudioContext(2, 1, 48_000);
+  const audioBuffer = await decoder.decodeAudioData(await file.arrayBuffer());
+  if (audioBuffer.duration > 30 || audioBuffer.length === 0) {
+    throw new Error('Choose an audio file between 0 and 30 seconds.');
+  }
+  const stereo = new Float32Array(audioBuffer.length * 2);
+  const left = audioBuffer.getChannelData(0);
+  const right = audioBuffer.getChannelData(Math.min(1, audioBuffer.numberOfChannels - 1));
+  for (let frame = 0; frame < audioBuffer.length; frame++) {
+    stereo[frame * 2] = left[frame];
+    stereo[frame * 2 + 1] = right[frame];
+  }
+  const label = `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ${audioBuffer.numberOfChannels} channel${audioBuffer.numberOfChannels === 1 ? '' : 's'}`;
+  return { sourceRate: audioBuffer.sampleRate, stereo, label };
+}
 byId('sample-file').addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   const readout = byId('sample-source-status');
   try {
     if (audio.running) throw new Error('Stop the instrument before changing its file.');
-    if (file.size > 32 * 1024 * 1024) throw new Error('Choose a file smaller than 32 MB.');
     readout.textContent = `Decoding ${file.name}…`;
-    const decoder = new OfflineAudioContext(2, 1, 48_000);
-    const audioBuffer = await decoder.decodeAudioData(await file.arrayBuffer());
-    if (audioBuffer.duration > 30 || audioBuffer.length === 0) {
-      throw new Error('Choose an audio file between 0 and 30 seconds.');
-    }
-    const stereo = new Float32Array(audioBuffer.length * 2);
-    const left = audioBuffer.getChannelData(0);
-    const right = audioBuffer.getChannelData(Math.min(1, audioBuffer.numberOfChannels - 1));
-    for (let frame = 0; frame < audioBuffer.length; frame++) {
-      stereo[frame * 2] = left[frame];
-      stereo[frame * 2 + 1] = right[frame];
-    }
-    const label = `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ${audioBuffer.numberOfChannels} channel${audioBuffer.numberOfChannels === 1 ? '' : 's'} · ready to start`;
-    loadedSample = { sourceRate: audioBuffer.sampleRate, stereo, label };
+    loadedSample = await decodeFileSource(file);
     samplePlayhead = 0;
     samplePlaying = false;
     drawSampleWaveform();
     renderSampleAnalysis();
     requestSampleAnalysis(loadedSample);
-    readout.textContent = label;
+    readout.textContent = `${loadedSample.label} · ready to start`;
   } catch (error) {
     readout.textContent = `Sample unavailable: ${error.message ?? String(error)}`;
   }
+});
+byId('sine-use-demo').addEventListener('click', () => {
+  loadedSineSource = demoSample();
+  loadedSineSource.label = 'Built-in two-tone source';
+  renderSineSourceAnalysis();
+  requestSampleAnalysis(loadedSineSource, true);
+});
+byId('sine-source-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  byId('sine-source-status').textContent = `Decoding ${file.name}…`;
+  try {
+    loadedSineSource = await decodeFileSource(file);
+    renderSineSourceAnalysis();
+    requestSampleAnalysis(loadedSineSource, true);
+  } catch (error) {
+    byId('sine-source-status').textContent = `Source unavailable: ${error.message ?? String(error)}`;
+  } finally {
+    event.target.value = '';
+  }
+});
+byId('sine-position').addEventListener('input', renderSineSourceAnalysis);
+byId('sine-use-frame').addEventListener('click', () => {
+  if (activeFamily !== 'sine-bank') return;
+  const frame = selectedSineFrame();
+  if (!frame?.values.length || !Number.isFinite(frame.fundamental) || frame.fundamental <= 0) return;
+  const pitched = loadedSineSource.temporal.mode === 'harmonic-projection';
+  // Noise has no musical root. Keep its detected frequencies untransposed at 440 Hz.
+  const bankRoot = pitched ? frame.fundamental : 440;
+  sineBankProject.partials = { nodeId: 2, fundamental: bankRoot, values: Array.from(frame.values) };
+  audio.setPartials(sineBankProject.partials);
+  const pitch = pitched ? Math.max(40, Math.min(1600, frame.fundamental)) : 440;
+  values.set(0, pitch);
+  byId('controls').querySelector('[data-parameter-id="0"]')?.syncValue(pitch);
+  audio.setParameter(0, pitch);
+  byId('sine-source-status').textContent = `Auditioning analyzed frame (${pitched ? `pitch ${frame.fundamental.toFixed(1)} Hz` : 'unpitched, original detected frequencies'}). Move a manual slider to restore the harmonic bank.`;
 });
 byId('slot-state-export').addEventListener('click', () => {
   if (!hasFxState(activeFamily)) return;

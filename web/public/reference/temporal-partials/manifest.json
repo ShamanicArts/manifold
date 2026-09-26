@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "reference": "legacy PartialsExtractor temporal frames with supplied pitch decision",
+  "sourceSha256": "f55a71b3cfc6732a49c5119a773c4895b7565a512d0dc2e0bc51321e738acaec",
+  "sampleRate": 48000,
+  "cases": [
+    {
+      "id": "two-tone",
+      "label": "220 + 440 Hz, pitched",
+      "input": "two-tone.f32",
+      "output": "two-tone.json",
+      "sourceFrames": 48000,
+      "regionStart": 4096,
+      "regionEnd": 43904,
+      "legacyFundamental": 220,
+      "maxFrames": 12
+    },
+    {
+      "id": "broadband",
+      "label": "Seeded broadband source",
+      "input": "broadband.f32",
+      "output": "broadband.json",
+      "sourceFrames": 48000,
+      "regionStart": 0,
+      "regionEnd": 48000,
+      "legacyFundamental": 0,
+      "maxFrames": 8
+    },
+    {
+      "id": "transient",
+      "label": "Short noise burst",
+      "input": "transient.f32",
+      "output": "transient.json",
+      "sourceFrames": 48000,
+      "regionStart": 0,
+      "regionEnd": 48000,
+      "legacyFundamental": 0,
+      "maxFrames": 8
+    },
+    {
+      "id": "silence",
+      "label": "Silent source",
+      "input": "silence.f32",
+      "output": "silence.json",
+      "sourceFrames": 48000,
+      "regionStart": 0,
+      "regionEnd": 48000,
+      "legacyFundamental": 0,
+      "maxFrames": 8
+    }
+  ]
+}
