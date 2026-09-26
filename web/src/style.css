@@ -80,7 +80,14 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .status { font-size: 11px; color: #9aabb5; margin-top: 10px; min-height: 16px; }
 .measurements { padding: 18px 20px; min-width: 0; }
 .scope-wrap { height: 170px; margin-top: 18px; background: #111922; border: 1px solid #2b3946; border-radius: 3px; }
+.scope-wrap[hidden], .axis-caption[hidden] { display: none; }
 .scope-wrap canvas, .plot-wrap canvas { display: block; width: 100%; height: 100%; }
+.live-bands { display: grid; gap: 5px; margin-top: 18px; }
+.live-bands[hidden] { display: none; }
+.live-band { display: grid; grid-template-columns: 20px minmax(0, 1fr) 43px; align-items: center; gap: 9px; font-size: 10px; color: #9daeb9; font-variant-numeric: tabular-nums; }
+.live-band-track { height: 12px; background: #101922; border: 1px solid #31404d; border-radius: 2px; overflow: hidden; }
+.live-band-fill { display: block; height: 100%; width: 0; background: #9a8de8; }
+.live-band output { text-align: right; }
 .axis-caption { display: flex; justify-content: space-between; color: #81919b; font-size: 10px; margin-top: 6px; font-variant-numeric: tabular-nums; }
 .measurement-hint { font-size: 11px; color: #91a0aa; margin: 13px 0 0; }
 .reference { grid-column: 3; padding: 18px 20px 16px; min-width: 0; }

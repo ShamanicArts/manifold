@@ -32,6 +32,28 @@ export function drawComparison(canvas, series, start, count, scale, colors) {
   });
 }
 
+export function drawBandBars(canvas, series, scale, colors, labels = false) {
+  const { context, width, height } = prepare(canvas);
+  const padding = labels ? 18 : 5;
+  const bandWidth = width / 8;
+  for (let band = 0; band < 8; band++) {
+    for (let index = 0; index < series.length; index++) {
+      const barWidth = Math.max(2, bandWidth * 0.65 / series.length);
+      const value = Math.min(1, Math.max(0, series[index][band] / scale));
+      const barHeight = value * (height - padding - 7);
+      const x = band * bandWidth + bandWidth * 0.175 + index * barWidth;
+      context.fillStyle = colors[index];
+      context.fillRect(x, height - padding - barHeight, barWidth - 1, barHeight);
+    }
+    if (labels) {
+      context.fillStyle = '#8596a2';
+      context.font = '10px system-ui';
+      context.textAlign = 'center';
+      context.fillText(String(band + 1), (band + 0.5) * bandWidth, height - 4);
+    }
+  }
+}
+
 export function drawLiveSpectrum(canvas, analyser) {
   const { context, width, height } = prepare(canvas);
   if (!analyser) return;

@@ -1,4 +1,4 @@
-import { drawComparison } from './plots.js';
+import { drawComparison, drawBandBars } from './plots.js';
 
 const byId = (id) => document.getElementById(id);
 const asset = (family, path) => `${import.meta.env.BASE_URL}reference/${family}/${path}`;
@@ -202,6 +202,18 @@ function prepareLoopCapture(engine, selected) {
   }
 }
 
+function prepareSpectrumAnalyzer(engine, selected) {
+  if (engine.manifold_graph_begin(3, 2) !== 1
+    || engine.manifold_graph_node(1, 0, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 21, selected.sensitivityBefore, selected.smoothingBefore) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1
+    || engine.manifold_graph_initial_parameter(2, 2, selected.floorBefore) !== 1) {
+    throw new Error('Wasm spectrum analyzer graph failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
@@ -217,6 +229,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'fx-chain') prepareFxChain(engine, selected);
   if (family === 'standalone-fx') prepareEffectSlot(engine, selected);
   if (family === 'loop-capture') prepareLoopCapture(engine, selected);
+  if (family === 'spectrum-analyzer') prepareSpectrumAnalyzer(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -251,6 +264,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), block * 2);
   const outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), block * 2);
   const rendered = new Float32Array(input.length);
+  const meterSnapshots = family === 'spectrum-analyzer' ? new Float32Array(Math.ceil(manifest.frames / block) * 8) : null;
   for (let offset = 0; offset < manifest.frames; offset += block) {
     const count = Math.min(block, manifest.frames - offset);
     if (family === 'loop-capture') {
@@ -313,6 +327,11 @@ function renderWasm(engine, family, manifest, input, selected) {
           updated &= engine.manifold_set_node_parameter(2, id, value);
         });
       }
+      if (family === 'spectrum-analyzer') {
+        for (const [id, value] of [[0, selected.sensitivityAfter], [1, selected.smoothingAfter], [2, selected.floorAfter]]) {
+          updated &= engine.manifold_set_node_parameter(2, id, value);
+        }
+      }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
     if (family === 'voice') {
@@ -329,11 +348,20 @@ function renderWasm(engine, family, manifest, input, selected) {
       inputView[block + frame] = input[(offset + frame) * 2 + 1];
     }
     if (engine.manifold_process(count) !== 1) throw new Error('Wasm process failed');
+    if (meterSnapshots) {
+      const snapshot = offset / block * 8;
+      for (let band = 0; band < 8; band++) {
+        const value = engine.manifold_get_node_meter(2, band);
+        if (!Number.isFinite(value)) throw new Error(`Missing analyzer band ${band}`);
+        meterSnapshots[snapshot + band] = value;
+      }
+    }
     for (let frame = 0; frame < count; frame++) {
       rendered[(offset + frame) * 2] = outputView[frame];
       rendered[(offset + frame) * 2 + 1] = outputView[block + frame];
     }
   }
+  if (meterSnapshots) rendered.meters = meterSnapshots;
   return rendered;
 }
 
@@ -414,6 +442,20 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
   };
   const draw = () => {
     if (!active) return;
+    if (currentFamily === 'spectrum-analyzer') {
+      const block = active.blockSize;
+      const snapshot = byId('plot-window').value === 'start'
+        ? Math.max(0, manifest.stepFrame / block - 1)
+        : active.metersLegacy.length / 8 - 1;
+      const begin = snapshot * 8;
+      const oldBands = active.metersLegacy.slice(begin, begin + 8);
+      const newBands = active.metersRust.slice(begin, begin + 8);
+      const difference = active.meterDifference.slice(begin, begin + 8).map(Math.abs);
+      const scale = Math.max(0.05, ...oldBands, ...newBands) * 1.15;
+      drawBandBars(byId('comparison-wave'), [oldBands, newBands], scale, ['#e2b084', '#9a8de8'], true);
+      drawBandBars(byId('comparison-diff'), [difference], Math.max(active.max, 1e-8), ['#a4d9bb']);
+      return;
+    }
     if (currentFamily === 'stereo-delay' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || currentFamily === 'loop-capture') {
       const span = byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames;
       const oldLeft = peakView(active.legacy, 0, span, 0);
@@ -485,24 +527,34 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                       ? `type ${selected.before[0]} → ${selected.after[0]} · wet mix ${selected.before[1]} → ${selected.after[1]} · p/0 ${selected.before[2]} → ${selected.after[2]}`
                     : family === 'loop-capture'
                       ? `${selected.capacitySeconds} s capture · ${selected.events.length} control changes · mix ${selected.mix}`
+                    : family === 'spectrum-analyzer'
+                      ? `sensitivity ${selected.sensitivityBefore} → ${selected.sensitivityAfter} · smoothing ${selected.smoothingBefore} → ${selected.smoothingAfter} · floor ${selected.floorBefore} → ${selected.floorAfter} dB`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
     const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
-    byId('plot-window').querySelector('[value="start"]').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
-    byId('plot-title').textContent = family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' ? 'End of capture' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
+    byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' ? 'Before change' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
+    byId('plot-title').textContent = family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
+    document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
+    document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' ? 'Maximum meter difference' : 'Maximum difference';
+    document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' ? 'RMS meter difference' : 'RMS difference';
     document.querySelector('.legend-old').textContent = family === 'stereo-delay' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
     document.querySelector('.legend-new').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Wasm L/R' : 'Rust/Wasm';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;
     const rust = renderWasm(engine, family, manifest, input, selected);
-    const report = measure(legacy, rust);
-    active = { legacy, rust, focusFrame: selected.focusFrame ?? selected.gateOffFrame ?? manifest.stepFrame, ...report };
+    const audioReport = measure(legacy, rust);
+    const metersLegacy = family === 'spectrum-analyzer' ? await loadFloat32(family, selected.meterOutput) : null;
+    if (currentRequest !== requestId) return;
+    const report = metersLegacy ? measure(metersLegacy, rust.meters) : audioReport;
+    active = { legacy, rust, focusFrame: selected.focusFrame ?? selected.gateOffFrame ?? manifest.stepFrame,
+      ...report, difference: audioReport.difference, metersLegacy, metersRust: rust.meters,
+      meterDifference: report.difference, blockSize: selected.blockSize ?? manifest.blockSize };
     byId('max-difference').textContent = report.max.toExponential(2);
     byId('rms-difference').textContent = report.rms.toExponential(2);
-    const pass = report.max <= .0002;
+    const pass = report.max <= .0002 && audioReport.max <= .0002;
     byId('comparison-result').textContent = pass ? 'Match' : 'Review';
     byId('comparison-result').className = pass ? 'pass' : 'fail';
     byId('reference-status').textContent = `${nativeReference ? 'Rust' : 'C++'} source ${manifest.sourceSha256.slice(0, 10)} · ${selected.label}`;

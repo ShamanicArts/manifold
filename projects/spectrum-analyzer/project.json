@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.spectrum-analyzer",
+  "name": "Spectrum analyzer",
+  "source": "legacy SpectrumAnalyzerNode eight-band envelope estimator",
+  "signal": {
+    "inputs": 2,
+    "outputs": 2,
+    "nodes": [
+      { "id": 1, "type": "input.raw" },
+      { "id": 2, "type": "spectrum-analyzer", "a": 1, "b": 0.85 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 1, "to": 2, "inputPort": 0 },
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "sensitivity", "label": "Sensitivity", "kind": "float", "min": 0.1, "max": 8, "default": 1 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "smoothing", "label": "Smoothing", "kind": "float", "min": 0, "max": 0.999, "default": 0.85 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "floor", "label": "Floor (dB)", "kind": "float", "min": -96, "max": -12, "default": -72 }
+  ]
+}

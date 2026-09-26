@@ -117,6 +117,11 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             capacity_seconds: a,
             mix: b,
         },
+        21 => NodeKind::SpectrumAnalyzer {
+            sensitivity: a,
+            smoothing: b,
+            floor_db: -72.0,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -219,6 +224,15 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::EffectSlot { mix, .. }, 1) => *mix = value.clamp(0.0, 1.0),
             (NodeKind::EffectSlot { params, .. }, id @ 2..=6) => {
                 params[id as usize - 2] = value.clamp(0.0, 1.0)
+            }
+            (NodeKind::SpectrumAnalyzer { sensitivity, .. }, 0) => {
+                *sensitivity = value.clamp(0.1, 8.0)
+            }
+            (NodeKind::SpectrumAnalyzer { smoothing, .. }, 1) => {
+                *smoothing = value.clamp(0.0, 0.999)
+            }
+            (NodeKind::SpectrumAnalyzer { floor_db, .. }, 2) => {
+                *floor_db = value.clamp(-96.0, -12.0)
             }
             _ => return 0,
         }
@@ -323,6 +337,17 @@ pub extern "C" fn manifold_set_node_parameter(node_id: u32, id: u32, value: f32)
         slot.borrow_mut().as_mut().map_or(0, |engine| {
             u32::from(engine.plan.set_parameter(node_id.into(), id, value))
         })
+    })
+}
+
+/// Read one bounded meter value after a process block; NaN means no such meter.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_get_node_meter(node_id: u32, band: u32) -> f32 {
+    ENGINE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|engine| engine.plan.node_meter(node_id.into(), band as usize))
+            .unwrap_or(f32::NAN)
     })
 }
 

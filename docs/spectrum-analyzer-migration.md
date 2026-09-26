@@ -1,0 +1,7 @@
+# Spectrum Analyzer migration boundary
+
+The original `dsp/core/nodes/SpectrumAnalyzerNode.cpp` copies stereo input to output and estimates eight bands using seven one-pole lowpass splits at 60, 120, 250, 500, 1000, 2500, and 6000 Hz. It rectifies the stereo average, applies sensitivity, smooths each band, and normalizes against a configurable floor. The result is a legacy meter, not an FFT or a frequency-accurate spectrum. The Rust node preserves these formulas, smoothing, parameter ranges, and eight normalized readouts.
+
+The Rust graph exposes a read-only band snapshot by stable node ID after processing a block. The browser asks the worklet for eight values at about 10 Hz and draws bars on the main thread. Meter polling can skip updates without affecting sound. The local worklet response allocates a tiny eight-element JavaScript array outside the audio callback; the DSP process itself allocates nothing. If native hosts need telemetry, they should use a bounded snapshot channel with a declared lifetime and thread handoff rather than reading the live plan from another thread.
+
+Seven deterministic cases compare every block's eight C++ meter values with Rust/Wasm and confirm stereo pass-through audio. A later analyzer service should have an explicit FFT window, latency, frequency resolution, and media-worker budget. It should not silently replace the old meter semantics under the same node name.

@@ -10,6 +10,7 @@ use crate::lfo::Lfo;
 use crate::loop_capture::LoopCapture;
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
+use crate::spectrum_analyzer::SpectrumAnalyzer;
 use crate::stereo_delay::StereoDelay;
 use crate::voice::VoiceSynth;
 use std::collections::{HashMap, VecDeque};
@@ -73,6 +74,11 @@ pub enum NodeKind {
         capacity_seconds: f32,
         mix: f32,
     },
+    SpectrumAnalyzer {
+        sensitivity: f32,
+        smoothing: f32,
+        floor_db: f32,
+    },
     VoiceSynth,
     Oscillator {
         frequency: f32,
@@ -117,6 +123,7 @@ impl NodeKind {
             | Self::StereoDelay { .. }
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
+            | Self::SpectrumAnalyzer { .. }
             | Self::Output => 1,
         }
     }
@@ -191,6 +198,11 @@ impl NodeKind {
                     && (0.05..=30.0).contains(capacity_seconds)
                     && mix.is_finite()
             }
+            Self::SpectrumAnalyzer {
+                sensitivity,
+                smoothing,
+                floor_db,
+            } => sensitivity.is_finite() && smoothing.is_finite() && floor_db.is_finite(),
             _ => true,
         }
     }
@@ -269,6 +281,7 @@ enum Kernel {
     StereoDelay(StereoDelay),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
+    SpectrumAnalyzer(SpectrumAnalyzer),
     VoiceSynth(VoiceSynth),
     Oscillator(Oscillator),
     AdsrEnvelope(AdsrEnvelope),
@@ -376,6 +389,16 @@ impl Kernel {
                 capacity_seconds,
                 mix,
             } => Self::LoopCapture(LoopCapture::new(sample_rate, *capacity_seconds, *mix)),
+            NodeKind::SpectrumAnalyzer {
+                sensitivity,
+                smoothing,
+                floor_db,
+            } => Self::SpectrumAnalyzer(SpectrumAnalyzer::new(
+                sample_rate,
+                *sensitivity,
+                *smoothing,
+                *floor_db,
+            )),
             NodeKind::VoiceSynth => Self::VoiceSynth(VoiceSynth::new(sample_rate)),
             NodeKind::Oscillator {
                 frequency,
@@ -442,6 +465,7 @@ impl Kernel {
             (Self::StereoDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
+            (Self::SpectrumAnalyzer(analyzer), id) => return analyzer.set_parameter(id, value),
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
@@ -610,6 +634,20 @@ impl GraphDescription {
 impl ExecutionPlan {
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    /// Snapshot one analyzer band after a completed block. No audio-thread allocation.
+    pub fn node_meter(&self, node: NodeId, band: usize) -> Option<f32> {
+        self.nodes
+            .iter()
+            .find(|entry| entry.id == node)
+            .and_then(|entry| {
+                if let Kernel::SpectrumAnalyzer(analyzer) = &entry.kernel {
+                    analyzer.band(band)
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn set_parameter(&mut self, node: NodeId, parameter: u32, value: f32) -> bool {
@@ -834,6 +872,9 @@ impl ExecutionPlan {
                 }
                 Kernel::LoopCapture(loop_node) => {
                     loop_node.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::SpectrumAnalyzer(analyzer) => {
+                    analyzer.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::VoiceSynth(synth) => {
                     for frame in 0..frames {

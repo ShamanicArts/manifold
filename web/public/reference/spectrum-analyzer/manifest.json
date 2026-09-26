@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "reference": "legacy C++ SpectrumAnalyzerNode.cpp, stereo audio and eight band snapshots",
+  "sourceSha256": "bdf3644af969ca0537e3bbcc5016be1579ff4fb3dcf60a603b66107e340f0082",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 8192,
+  "stepFrame": 4096,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default controls",
+      "sensitivityBefore": 1,
+      "sensitivityAfter": 1,
+      "smoothingBefore": 0.85,
+      "smoothingAfter": 0.85,
+      "floorBefore": -72,
+      "floorAfter": -72,
+      "blockSize": 128,
+      "output": "default.f32",
+      "meterOutput": "default-meters.f32"
+    },
+    {
+      "id": "sensitive",
+      "label": "High sensitivity",
+      "sensitivityBefore": 4,
+      "sensitivityAfter": 4,
+      "smoothingBefore": 0.85,
+      "smoothingAfter": 0.85,
+      "floorBefore": -72,
+      "floorAfter": -72,
+      "blockSize": 128,
+      "output": "sensitive.f32",
+      "meterOutput": "sensitive-meters.f32"
+    },
+    {
+      "id": "unsmoothed",
+      "label": "No band smoothing",
+      "sensitivityBefore": 1,
+      "sensitivityAfter": 1,
+      "smoothingBefore": 0,
+      "smoothingAfter": 0,
+      "floorBefore": -72,
+      "floorAfter": -72,
+      "blockSize": 128,
+      "output": "unsmoothed.f32",
+      "meterOutput": "unsmoothed-meters.f32"
+    },
+    {
+      "id": "floor",
+      "label": "Raised floor",
+      "sensitivityBefore": 1,
+      "sensitivityAfter": 1,
+      "smoothingBefore": 0.5,
+      "smoothingAfter": 0.5,
+      "floorBefore": -24,
+      "floorAfter": -24,
+      "blockSize": 128,
+      "output": "floor.f32",
+      "meterOutput": "floor-meters.f32"
+    },
+    {
+      "id": "sweep",
+      "label": "Sensitivity and smoothing change",
+      "sensitivityBefore": 0.5,
+      "sensitivityAfter": 5,
+      "smoothingBefore": 0.95,
+      "smoothingAfter": 0.2,
+      "floorBefore": -80,
+      "floorAfter": -36,
+      "blockSize": 128,
+      "output": "sweep.f32",
+      "meterOutput": "sweep-meters.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame blocks",
+      "sensitivityBefore": 1,
+      "sensitivityAfter": 2,
+      "smoothingBefore": 0.8,
+      "smoothingAfter": 0.4,
+      "floorBefore": -72,
+      "floorAfter": -60,
+      "blockSize": 64,
+      "output": "small-block.f32",
+      "meterOutput": "small-block-meters.f32"
+    },
+    {
+      "id": "large-block",
+      "label": "256-frame blocks",
+      "sensitivityBefore": 2,
+      "sensitivityAfter": 0.5,
+      "smoothingBefore": 0.2,
+      "smoothingAfter": 0.9,
+      "floorBefore": -48,
+      "floorAfter": -80,
+      "blockSize": 256,
+      "output": "large-block.f32",
+      "meterOutput": "large-block-meters.f32"
+    }
+  ]
+}

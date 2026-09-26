@@ -1,7 +1,8 @@
 /** Browser devices, AudioWorklet lifecycle, and control transport. */
 export class BrowserAudioHost {
-  constructor(onStatus) {
+  constructor(onStatus, onMeters = () => {}) {
     this.onStatus = onStatus;
+    this.onMeters = onMeters;
     this.context = null;
     this.processor = null;
     this.analyser = null;
@@ -39,6 +40,7 @@ export class BrowserAudioHost {
           reject(new Error('AudioWorklet processor failed'));
         };
         processor.port.onmessage = ({ data }) => {
+          if (data.type === 'meters') this.onMeters(data.nodeId, data.values);
           if (data.type === 'ready' || data.type === 'error') {
             clearTimeout(timeout);
             data.type === 'ready' ? resolve() : reject(new Error(data.message));
@@ -81,6 +83,10 @@ export class BrowserAudioHost {
 
   sendEvent(nodeId, kind, note = 0, velocity = 0, offset = 0, channel = 0) {
     this.processor?.port.postMessage({ type: 'event', nodeId, kind, channel, note, velocity, offset });
+  }
+
+  requestMeters(nodeId) {
+    this.processor?.port.postMessage({ type: 'meter-request', nodeId });
   }
 
   async stop() {

@@ -1,4 +1,14 @@
 /** Optional browser MIDI input. Host events enter the next audio block. */
+export function midiAvailability() {
+  if (!globalThis.isSecureContext) return 'Web MIDI requires a secure page (HTTPS or localhost).';
+  if (!navigator.requestMIDIAccess) return 'Web MIDI is unavailable in this browser.';
+  const policy = document.permissionsPolicy ?? document.featurePolicy;
+  if (policy?.allowsFeature && !policy.allowsFeature('midi')) {
+    return 'This browser view blocks MIDI permission requests. Open this page in a browser that allows Web MIDI.';
+  }
+  return null;
+}
+
 export class BrowserMidiInput {
   constructor(onNote, onDisconnect, onStatus) {
     this.onNote = onNote;
@@ -12,8 +22,9 @@ export class BrowserMidiInput {
 
   async connect() {
     if (this.listening) return;
-    if (!navigator.requestMIDIAccess) {
-      this.onStatus('Web MIDI is unavailable in this browser.');
+    const unavailable = midiAvailability();
+    if (unavailable) {
+      this.onStatus(unavailable);
       return;
     }
     this.onStatus('Requesting MIDI access…');
@@ -24,7 +35,7 @@ export class BrowserMidiInput {
       this.syncInputs();
     } catch (error) {
       const reason = error?.name === 'NotAllowedError' || error?.name === 'SecurityError'
-        ? 'MIDI access was denied or blocked in this browser.'
+        ? 'MIDI permission was denied or blocked here. Try this page in an external browser that allows Web MIDI.'
         : `MIDI connection failed: ${error?.message ?? String(error)}`;
       this.onStatus(reason);
     }

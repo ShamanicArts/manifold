@@ -13,8 +13,9 @@ import stereoDelayProject from '../../projects/stereo-delay/project.json';
 import fxChainProject from '../../projects/fx-chain/project.json';
 import standaloneFxProject from '../../projects/standalone-fx-slice/project.json';
 import loopCaptureProject from '../../projects/loop-capture/project.json';
+import spectrumAnalyzerProject from '../../projects/spectrum-analyzer/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
-import { BrowserMidiInput } from './audio/midi-input.js';
+import { BrowserMidiInput, midiAvailability } from './audio/midi-input.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum, drawTransferCurve } from './reference/plots.js';
 
@@ -100,6 +101,12 @@ const projects = {
     description: 'Record up to two seconds of stereo input, then play it as a loop. Reverse, change speed, or overdub new sound.',
     signal: 'Live path: input → bounded capture / loop playback → output',
   },
+  'spectrum-analyzer': {
+    project: spectrumAnalyzerProject,
+    title: 'Spectrum analyzer',
+    description: 'Eight smoothed band estimates from the original Manifold analyzer. Stereo audio passes through unchanged. These bands are one-pole envelopes, not FFT bins.',
+    signal: 'Live path: input → unchanged output · meter tap → eight band estimates',
+  },
   'stereo-delay': {
     project: stereoDelayProject,
     title: 'Stereo delay',
@@ -112,7 +119,30 @@ let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
 let values = new Map();
 let slotValuesByType = new Map();
 let loopHasTake = false;
-const audio = new BrowserAudioHost((message) => { status.textContent = message; });
+const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands) => {
+  if (nodeId !== 2 || activeFamily !== 'spectrum-analyzer') return;
+  const scale = Math.max(0.05, Math.max(...bands.filter(Number.isFinite)) * 1.2);
+  [...byId('live-bands').children].forEach((row, index) => {
+    const value = Number.isFinite(bands[index]) ? Math.max(0, Math.min(1, bands[index])) : 0;
+    row.querySelector('.live-band-fill').style.width = `${Math.min(100, value / scale * 100)}%`;
+    row.querySelector('output').textContent = value.toFixed(3);
+  });
+});
+for (let band = 0; band < 8; band++) {
+  const row = document.createElement('div');
+  row.className = 'live-band';
+  const label = document.createElement('span');
+  label.textContent = String(band + 1);
+  const track = document.createElement('div');
+  track.className = 'live-band-track';
+  const fill = document.createElement('span');
+  fill.className = 'live-band-fill';
+  track.appendChild(fill);
+  const value = document.createElement('output');
+  value.textContent = '0.000';
+  row.append(label, track, value);
+  byId('live-bands').appendChild(row);
+}
 
 function updateCutoffRange() {
   const target = byId('cutoff-range');
@@ -282,9 +312,13 @@ function renderPrimitive(family) {
   ]);
   if (family === 'loop-capture') loopHasTake = false;
   byId('module-title').textContent = title;
+  const analyzerView = family === 'spectrum-analyzer';
+  document.querySelector('.scope-wrap').hidden = analyzerView;
+  document.querySelector('.axis-caption').hidden = analyzerView;
+  byId('live-bands').hidden = !analyzerView;
   byId('module-description').textContent = description;
   byId('signal-path').textContent = signal;
-  document.querySelector('.panel-note').textContent = `Post ${title.toLowerCase()}`;
+  document.querySelector('.panel-note').textContent = analyzerView ? 'Eight band meter' : `Post ${title.toLowerCase()}`;
   document.querySelectorAll('[data-primitive]').forEach((button) => {
     button.setAttribute('aria-current', button.dataset.primitive === family ? 'page' : 'false');
   });
@@ -369,6 +403,7 @@ function renderPrimitive(family) {
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
     : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation'
       ? `Start the instrument to view its spectrum. The ${family === 'patch' || family === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
+    : analyzerView ? 'Start audio to see the original eight band meter. Bars scale to the current peak; numbers are normalized 0–1 values.'
     : 'Start audio to view the output spectrum. The reference cases below run offline.';
   if (family === 'svf') {
     const help = document.createElement('p');
@@ -433,16 +468,17 @@ const midiToggle = byId('midi-toggle');
 const midiInput = new BrowserMidiInput(receiveMidiNote, releaseDevice, (message) => {
   byId('midi-status').textContent = message;
 });
-if (!navigator.requestMIDIAccess) {
+const midiUnavailable = midiAvailability();
+if (midiUnavailable) {
   midiToggle.disabled = true;
-  byId('midi-status').textContent = 'Web MIDI is unavailable in this browser. The keyboard above still works.';
+  byId('midi-status').textContent = `${midiUnavailable} The on-screen keyboard still works.`;
 }
 midiToggle.addEventListener('click', async () => {
   midiToggle.disabled = true;
   if (midiInput.listening) midiInput.stop();
   else await midiInput.connect();
   midiToggle.textContent = midiInput.listening ? 'Stop MIDI input' : 'Connect MIDI input';
-  midiToggle.disabled = false;
+  midiToggle.disabled = Boolean(midiAvailability());
 });
 for (const [label, note, shortcut] of keyboardNotes) {
   const button = document.createElement('button');
@@ -500,8 +536,15 @@ window.addEventListener('popstate', () => {
 });
 
 let spectrumFrame = null;
+let lastMeterRequest = 0;
 const animateSpectrum = () => {
-  drawLiveSpectrum(byId('live-spectrum'), audio.analyser);
+  if (activeFamily === 'spectrum-analyzer') {
+    const now = performance.now();
+    if (audio.running && now - lastMeterRequest >= 100) {
+      audio.requestMeters(2);
+      lastMeterRequest = now;
+    }
+  } else drawLiveSpectrum(byId('live-spectrum'), audio.analyser);
   spectrumFrame = audio.running ? requestAnimationFrame(animateSpectrum) : null;
 };
 drawLiveSpectrum(byId('live-spectrum'), null);
@@ -522,12 +565,12 @@ toggle.addEventListener('click', async () => {
       ? isInstrument ? 'Stop instrument' : 'Stop audio'
       : isInstrument ? 'Start instrument' : 'Start audio';
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'voice'
         ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
         : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation'
           ? `Start the instrument to view its spectrum. The ${activeFamily === 'patch' || activeFamily === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
-        : 'Start audio to view the output spectrum. The reference cases below run offline.';
+        : activeFamily === 'spectrum-analyzer' ? 'Start audio to see the original eight band meter. C++ meter snapshots are compared below.' : 'Start audio to view the output spectrum. The reference cases below run offline.';
     if (spectrumFrame) cancelAnimationFrame(spectrumFrame);
     animateSpectrum();
   } catch (error) {
