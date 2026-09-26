@@ -66,7 +66,15 @@ for (const [id, value] of [[2, 0], [3, 0.6], [4, 0.5], [5, 0.5], [6, 0.5]]) {
   legacyFxProject.parameters.find((parameter) => parameter.id === id).default = value;
   legacyFxProject.signal.initialParameters.find((parameter) => parameter.id === id).value = value;
 }
-const isFxFamily = (family) => family === 'standalone-fx' || family === 'standalone-fx-routing';
+const hostFxProject = structuredClone(legacyFxProject);
+hostFxProject.id = 'manifold.standalone-fx-host';
+hostFxProject.name = 'FX host switch';
+hostFxProject.signal.nodes.find((node) => node.id === 2).type = 'effect-slot-host-switch';
+const hostFxChoice = hostFxProject.parameters.find((parameter) => parameter.id === 0);
+hostFxChoice.choices = ['Chorus', 'Stereo Delay'];
+hostFxChoice.choiceValues = [0, 8];
+const isFxFamily = (family) => ['standalone-fx', 'standalone-fx-routing', 'standalone-fx-host'].includes(family);
+const hasFxState = (family) => family === 'standalone-fx' || family === 'standalone-fx-routing';
 const projects = {
   svf: {
     project: filterProject,
@@ -265,6 +273,12 @@ const projects = {
     title: 'Standalone FX tails',
     description: 'The prepared routing experiment keeps every visited effect processing behind its closed output gate. Switch Delay → Chorus → Delay to hear a returning tail; the isolated old C++ node comparison captures the same switch.',
     signal: 'Live path: input → visited effects → selected wet gate → legacy gain/mix → output',
+  },
+  'standalone-fx-host': {
+    project: hostFxProject,
+    title: 'FX host switch',
+    description: 'The old graph rebuild snaps gates on each type change. Compare Delay → Chorus → Delay with the measured old C++ branch graph; these two effect types have audited reprepare behavior.',
+    signal: 'Live path: input → visited effects → re-prepared wet gate → legacy gain/mix → output',
   },
   'loop-capture': {
     project: loopCaptureProject,
@@ -1113,7 +1127,7 @@ function renderPrimitive(family) {
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
   ]);
-  if (family === 'standalone-fx-routing') slotValuesByType.set(8, [0, 0.6, 0.5, 0.5, 0.5]);
+  if (family === 'standalone-fx-routing' || family === 'standalone-fx-host') slotValuesByType.set(8, [0, 0.6, 0.5, 0.5, 0.5]);
   if (family === 'loop-capture') loopHasTake = false;
   byId('capture-transfer-section').hidden = family !== 'loop-capture';
   if (family === 'loop-capture') byId('capture-transfer-status').textContent = 'Record a take, then stop recording to send it to a sample project.';
@@ -1167,7 +1181,7 @@ function renderPrimitive(family) {
   byId('keyboard-section').hidden = !['voice', 'sample-instrument'].includes(family);
   byId('midi-access-section').hidden = !['voice', 'sample-instrument'].includes(family);
   byId('sample-section').hidden = !sampleView;
-  byId('slot-state-section').hidden = !isFxFamily(family);
+  byId('slot-state-section').hidden = !hasFxState(family);
   byId('slot-state-file').disabled = audio.running;
   if (isFxFamily(family)) byId('slot-state-status').textContent = `Save the selected type and all 21 effect settings${family === 'standalone-fx-routing' ? ' for persistent routing' : ''}.`;
   byId('granulator-file-section').hidden = family !== 'granulator';
@@ -1187,7 +1201,7 @@ function renderPrimitive(family) {
   sampleActiveVoices = 0;
   if (family === 'voice' || family === 'sample-instrument') resetNoteEvents();
   if (mode) {
-    byId('modes').style.gridTemplateColumns = `repeat(${isFxFamily(family) && mode.choices.length === 9 ? 3 : family === 'waveshaper' || isFxFamily(family) ? 4 : mode.choices.length}, minmax(0, 1fr))`;
+    byId('modes').style.gridTemplateColumns = `repeat(${family === 'standalone-fx-host' ? 2 : isFxFamily(family) && mode.choices.length === 9 ? 3 : family === 'waveshaper' || isFxFamily(family) ? 4 : mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, index) => {
       const value = mode.choiceValues?.[index] ?? index;
       const button = document.createElement('button');
@@ -1509,7 +1523,7 @@ async function selectPrimitive(family, updateUrl = true) {
   if (activeProject?.patch) {
     patchedParameterValues.set(activeFamily, Object.fromEntries(activeProject.parameters.map((parameter) => [parameter.hostId, values.get(parameter.id)])));
   }
-  if (isFxFamily(activeFamily)) slotSessionStates.set(activeFamily,
+  if (hasFxState(activeFamily)) slotSessionStates.set(activeFamily,
     (activeFamily === 'standalone-fx-routing' ? capturePersistentFxState : captureStandaloneFxState)(values, slotValuesByType));
   renderPrimitive(family);
   if (updateUrl) {
@@ -1606,7 +1620,7 @@ byId('sample-file').addEventListener('change', async (event) => {
   }
 });
 byId('slot-state-export').addEventListener('click', () => {
-  if (!isFxFamily(activeFamily)) return;
+  if (!hasFxState(activeFamily)) return;
   try {
     const routing = activeFamily === 'standalone-fx-routing';
     const state = (routing ? capturePersistentFxState : captureStandaloneFxState)(values, slotValuesByType);
@@ -1626,7 +1640,7 @@ byId('slot-state-file').addEventListener('change', async (event) => {
   if (!file) return;
   const readout = byId('slot-state-status');
   try {
-    if (!isFxFamily(activeFamily) || audio.running) throw new Error('Stop Standalone FX audio before opening a state.');
+    if (!hasFxState(activeFamily) || audio.running) throw new Error('Stop Standalone FX audio before opening a state.');
     const family = activeFamily;
     if (file.size > 1024 * 1024) throw new Error('State JSON must be smaller than 1 MB.');
     const contents = await file.text();

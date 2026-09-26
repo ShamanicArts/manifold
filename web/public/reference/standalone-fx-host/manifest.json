@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "reference": "Old C++ scalar PrimitiveGraph/GraphRuntime FX branches reconstructed from fx_slot.lua",
+  "sourceSha256": "e6566c039e1d14d48990fe99e593eea372ad4907aab78c5c4afecf738ff44d9f",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 32768,
+  "blockSize": 128,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "delay-chorus-delay",
+      "label": "Delay → Chorus → Delay · host graph switches",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          0
+        ],
+        [
+          16384,
+          8
+        ]
+      ],
+      "focusFrame": 16384,
+      "output": "delay-chorus-delay.f32"
+    }
+  ]
+}
