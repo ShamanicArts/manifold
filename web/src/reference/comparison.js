@@ -94,6 +94,26 @@ function prepareNoise(engine, selected) {
   }
 }
 
+function preparePatch(engine, selected) {
+  const nodes = [
+    [1, 11, selected.frequencyBefore, selected.oscillatorLevel],
+    [2, 13, selected.noiseLevelBefore, selected.noiseColor],
+    [3, 4, 1, 1], [4, 12, 0, 0], [5, 6, 0, 0],
+    [6, 3, selected.master, 0], [7, 7, 0, 0],
+  ];
+  const edges = [[1, 3, 0], [2, 3, 1], [3, 4, 0], [4, 5, 0], [5, 6, 0], [6, 7, 0]];
+  if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Wasm synth graph begin failed');
+  for (const node of nodes) {
+    if (engine.manifold_graph_node(...node) !== 1) throw new Error(`Wasm synth node ${node[0]} failed`);
+  }
+  for (const edge of edges) {
+    if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Wasm synth edge failed');
+  }
+  if (engine.manifold_graph_initial_parameter(1, 0, selected.waveform) !== 1) {
+    throw new Error('Wasm synth waveform failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
@@ -102,6 +122,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'oscillator') prepareOscillator(engine, selected);
   if (family === 'adsr') prepareAdsr(engine);
   if (family === 'noise') prepareNoise(engine, selected);
+  if (family === 'patch') preparePatch(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -116,6 +137,16 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'adsr') {
     for (const [id, value] of [selected.attack, selected.decay, selected.sustain, selected.release, 1].entries()) {
       if (engine.manifold_set_node_parameter(2, id, value) !== 1) throw new Error(`Wasm ADSR parameter ${id} failed`);
+    }
+  }
+  if (family === 'patch') {
+    const initial = [
+      [4, 0, selected.attack], [4, 1, selected.decay], [4, 2, selected.sustain],
+      [4, 3, selected.release], [5, 0, 0], [5, 1, selected.cutoffBefore],
+      [5, 2, selected.resonance], [4, 4, 1],
+    ];
+    for (const [node, id, value] of initial) {
+      if (engine.manifold_set_node_parameter(node, id, value) !== 1) throw new Error(`Wasm synth parameter ${node}/${id} failed`);
     }
   }
   const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), block * 2);
@@ -143,6 +174,11 @@ function renderWasm(engine, family, manifest, input, selected) {
       if (family === 'noise') {
         updated &= engine.manifold_set_node_parameter(1, 0, selected.levelAfter);
         updated &= engine.manifold_set_node_parameter(1, 1, selected.colorAfter);
+      }
+      if (family === 'patch') {
+        for (const [node, id, value] of [[1, 1, selected.frequencyAfter], [2, 0, selected.noiseLevelAfter], [5, 1, selected.cutoffAfter], [4, 4, 0]]) {
+          updated &= engine.manifold_set_node_parameter(node, id, value);
+        }
       }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
@@ -268,14 +304,17 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
               ? `attack ${selected.attack} s · decay ${selected.decay} s · sustain ${selected.sustain} · release ${selected.release} s · gate off at ${selected.gateOffFrame}`
               : family === 'noise'
                 ? `level ${selected.levelBefore} → ${selected.levelAfter} · color ${selected.colorBefore} → ${selected.colorAfter}`
+                : family === 'patch'
+                  ? `pitch ${selected.frequencyBefore} → ${selected.frequencyAfter} Hz · noise ${selected.noiseLevelBefore} → ${selected.noiseLevelAfter} · cutoff ${selected.cutoffBefore} → ${selected.cutoffAfter} Hz`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
-    byId('reference-title').textContent = family === 'voice' ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
+    const nativeReference = family === 'voice' || family === 'patch';
+    byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
     byId('plot-window').querySelector('[value="step"]').textContent = family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : 'Parameter change';
     byId('plot-window').querySelector('[value="start"]').textContent = family === 'adsr' ? 'Attack detail' : 'Start';
     byId('plot-title').textContent = family === 'adsr' ? 'Envelope shape · left channel' : 'Output waveform';
-    document.querySelector('.legend-old').textContent = family === 'voice' ? 'Native Rust' : 'C++';
-    document.querySelector('[data-play="legacy"]').textContent = family === 'voice' ? 'Play native' : 'Play C++';
+    document.querySelector('.legend-old').textContent = nativeReference ? 'Native Rust' : 'C++';
+    document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;
     const rust = renderWasm(engine, family, manifest, input, selected);
@@ -286,7 +325,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     const pass = report.max <= .0002;
     byId('comparison-result').textContent = pass ? 'Match' : 'Review';
     byId('comparison-result').className = pass ? 'pass' : 'fail';
-    byId('reference-status').textContent = `${family === 'voice' ? 'Rust' : 'C++'} source ${manifest.sourceSha256.slice(0, 10)} · ${selected.label}`;
+    byId('reference-status').textContent = `${nativeReference ? 'Rust' : 'C++'} source ${manifest.sourceSha256.slice(0, 10)} · ${selected.label}`;
     draw();
   };
   chooser.addEventListener('change', () => choose().catch((error) => { byId('reference-status').textContent = String(error); }));

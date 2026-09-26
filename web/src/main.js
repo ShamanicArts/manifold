@@ -6,6 +6,7 @@ import voiceProject from '../../projects/voice-synth/project.json';
 import oscillatorProject from '../../projects/oscillator/project.json';
 import adsrProject from '../../projects/adsr/project.json';
 import noiseProject from '../../projects/noise/project.json';
+import patchProject from '../../projects/synth-patch/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum } from './reference/plots.js';
@@ -55,6 +56,12 @@ const projects = {
     title: 'Noise generator',
     description: 'Seeded stereo noise with a level control and a color filter from bright to dark.',
     signal: 'Audio path: noise → stereo output',
+  },
+  patch: {
+    project: patchProject,
+    title: 'Synth patch',
+    description: 'Mix a pitched oscillator with colored noise, then shape both with an envelope and lowpass filter. This is the first authored multi-primitive instrument graph.',
+    signal: 'Audio path: oscillator + noise → ADSR → SVF → output',
   },
 };
 const initial = new URL(location.href).searchParams.get('primitive');
@@ -133,7 +140,7 @@ function renderPrimitive(family) {
   byId('controls').replaceChildren();
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' ? 'Waveform' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' ? 'Waveform' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   byId('keyboard-section').hidden = family !== 'voice';
   if (mode) {
@@ -161,8 +168,8 @@ function renderPrimitive(family) {
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
   document.querySelector('.measurement-hint').textContent = family === 'voice'
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
-    : family === 'oscillator' || family === 'adsr' || family === 'noise'
-      ? 'Start the instrument to view its spectrum. The C++ comparisons below run offline.'
+    : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch'
+      ? `Start the instrument to view its spectrum. The ${family === 'patch' ? 'native Rust' : 'C++'} comparisons below run offline.`
     : 'Start audio to view the output spectrum. The reference cases below run offline.';
   if (family === 'svf') {
     const help = document.createElement('p');
@@ -266,11 +273,11 @@ toggle.addEventListener('click', async () => {
       ? isInstrument ? 'Stop instrument' : 'Stop audio'
       : isInstrument ? 'Start instrument' : 'Start audio';
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'voice'
         ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
-        : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise'
-          ? 'Start the instrument to view its spectrum. The C++ comparisons below run offline.'
+        : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch'
+          ? `Start the instrument to view its spectrum. The ${activeFamily === 'patch' ? 'native Rust' : 'C++'} comparisons below run offline.`
         : 'Start audio to view the output spectrum. The reference cases below run offline.';
     if (spectrumFrame) cancelAnimationFrame(spectrumFrame);
     animateSpectrum();
