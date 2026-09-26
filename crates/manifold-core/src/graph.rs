@@ -15,6 +15,7 @@ use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
+use crate::phaser::Phaser;
 use crate::sample_instrument::SampleInstrument;
 use crate::sample_region::SampleRegion;
 use crate::slew_limiter::SlewLimiter;
@@ -97,6 +98,9 @@ pub enum NodeKind {
     },
     StereoDelay {
         params: [f32; 16],
+    },
+    Phaser {
+        params: [f32; 5],
     },
     EffectSlot {
         selected: u32,
@@ -183,6 +187,7 @@ impl NodeKind {
             | Self::Compressor { .. }
             | Self::Limiter { .. }
             | Self::StereoDelay { .. }
+            | Self::Phaser { .. }
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
@@ -271,6 +276,7 @@ impl NodeKind {
             Self::Compressor { params } => params.iter().all(|value| value.is_finite()),
             Self::Limiter { params } => params.iter().all(|value| value.is_finite()),
             Self::StereoDelay { params } => params.iter().all(|value| value.is_finite()),
+            Self::Phaser { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -400,6 +406,7 @@ enum Kernel {
     Compressor(Compressor),
     Limiter(Limiter),
     StereoDelay(StereoDelay),
+    Phaser(Phaser),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -519,6 +526,7 @@ impl Kernel {
             NodeKind::StereoDelay { params } => {
                 Self::StereoDelay(StereoDelay::new(sample_rate, *params))
             }
+            NodeKind::Phaser { params } => Self::Phaser(Phaser::new(sample_rate, *params)),
             NodeKind::EffectSlot {
                 selected,
                 mix,
@@ -647,6 +655,7 @@ impl Kernel {
             (Self::Compressor(compressor), id) => return compressor.set_parameter(id, value),
             (Self::Limiter(limiter), id) => return limiter.set_parameter(id, value),
             (Self::StereoDelay(delay), id) => return delay.set_parameter(id, value),
+            (Self::Phaser(phaser), id) => return phaser.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1246,6 +1255,9 @@ impl ExecutionPlan {
                 }
                 Kernel::StereoDelay(delay) => {
                     delay.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::Phaser(phaser) => {
+                    phaser.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

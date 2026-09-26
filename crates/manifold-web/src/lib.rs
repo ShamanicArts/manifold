@@ -5,6 +5,7 @@ use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
 use manifold_core::limiter;
+use manifold_core::phaser;
 use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
 use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
 use manifold_core::stereo_delay;
@@ -266,6 +267,12 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             levels: [a, b, 0.0, 0.0],
             offset: 0.0,
         },
+        34 => {
+            let mut params = phaser::defaults();
+            params[0] = a;
+            params[1] = b;
+            NodeKind::Phaser { params }
+        }
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -356,6 +363,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             (NodeKind::Distortion { output, .. }, 2) => *output = value.clamp(0.0, 2.0),
             (NodeKind::StereoDelay { params }, id) => {
                 if !stereo_delay::set_value(params, id, value) {
+                    return 0;
+                }
+            }
+            (NodeKind::Phaser { params }, id) => {
+                if !phaser::set_value(params, id, value) {
                     return 0;
                 }
             }

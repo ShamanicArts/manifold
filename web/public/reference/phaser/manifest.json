@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "reference": "legacy C++ PhaserNode.cpp scalar stereo",
+  "sourceSha256": "6772d56ddc8389614a0dcb987b09c159d940e54b73954e91a67bbe322a3f19cf",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 24576,
+  "stepFrame": 12288,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Six-stage stereo",
+      "before": [
+        0.4,
+        0.7,
+        6,
+        0.2,
+        90
+      ],
+      "after": [
+        0.4,
+        0.7,
+        6,
+        0.2,
+        90
+      ],
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "stage-switch",
+      "label": "Six to twelve stages",
+      "before": [
+        0.4,
+        0.7,
+        6,
+        0.2,
+        90
+      ],
+      "after": [
+        0.4,
+        0.7,
+        12,
+        0.2,
+        90
+      ],
+      "blockSize": 128,
+      "output": "stage-switch.f32"
+    },
+    {
+      "id": "rate-depth",
+      "label": "Rate and depth sweep",
+      "before": [
+        1.5,
+        0.2,
+        6,
+        0.2,
+        90
+      ],
+      "after": [
+        5,
+        1,
+        6,
+        0.2,
+        90
+      ],
+      "blockSize": 128,
+      "output": "rate-depth.f32"
+    },
+    {
+      "id": "negative-feedback",
+      "label": "Feedback polarity",
+      "before": [
+        0.8,
+        0.8,
+        12,
+        0.75,
+        90
+      ],
+      "after": [
+        0.8,
+        0.8,
+        12,
+        -0.8,
+        90
+      ],
+      "blockSize": 128,
+      "output": "negative-feedback.f32"
+    },
+    {
+      "id": "spread",
+      "label": "Stereo phase spread",
+      "before": [
+        1,
+        0.7,
+        6,
+        0.2,
+        0
+      ],
+      "after": [
+        1,
+        0.7,
+        6,
+        0.2,
+        180
+      ],
+      "blockSize": 128,
+      "output": "spread.f32"
+    },
+    {
+      "id": "slow-shallow",
+      "label": "Slow shallow sweep",
+      "before": [
+        0.1,
+        0.1,
+        6,
+        0,
+        45
+      ],
+      "after": [
+        0.25,
+        0.3,
+        6,
+        0.3,
+        45
+      ],
+      "blockSize": 128,
+      "output": "slow-shallow.f32"
+    },
+    {
+      "id": "short-block",
+      "label": "64-frame block partition",
+      "before": [
+        2,
+        0.9,
+        12,
+        0.4,
+        120
+      ],
+      "after": [
+        3.5,
+        0.5,
+        12,
+        0.6,
+        30
+      ],
+      "blockSize": 64,
+      "output": "short-block.f32"
+    }
+  ]
+}

@@ -33,6 +33,8 @@ Port types now distinguish `Audio` from `Control`. `Lfo` emits a bipolar control
 
 `Distortion` is a stereo audio node with drive, wet mix, and output gain as parameters 0–2. It follows the legacy scalar tanh shaping, 10 ms smoothing, dry/wet blend, and final ±1 clamp. Six C++ fixtures cover steady modes, parameter sweeps, clipping, stereo differences, and block sizes.
 
+`Phaser` is a stereo audio node with sweep rate, depth, six/twelve-stage selection, feedback, and stereo phase spread as parameters 0–4. Its fixed twelve-stage arrays and LFO state are prepared once; the audio callback allocates nothing. Seven C++ fixtures cover stage changes, parameter sweeps, stereo separation, feedback polarity, and block sizes. See the [Phaser migration boundary](phaser-migration.md).
+
 `Compressor` is a stereo audio node with eleven legacy parameter IDs and one gain-reduction meter. It preserves the original shared envelope, including left-before-right update order. Attack and release are effective only when set before graph preparation; five other exposed legacy controls do not affect audio. Eight C++ fixtures compare stereo samples and the signed dB meter. The [migration boundary](compressor-migration.md) records these limitations.
 
 `Limiter` is a stereo audio node with threshold, release, makeup, soft clip, and wet mix as parameters 0–4. It uses a linked stereo peak, immediate gain clamp, smoothed release, and one block-averaged positive dB meter. Seven C++ fixtures compare audio and meter values. The worklet requests meter snapshots on a 100 ms timer independent of visual animation frames. See the [migration boundary](limiter-migration.md).

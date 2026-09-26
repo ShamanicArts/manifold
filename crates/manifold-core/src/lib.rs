@@ -14,6 +14,7 @@ pub mod limiter;
 pub mod loop_capture;
 pub mod noise;
 pub mod oscillator;
+pub mod phaser;
 pub mod sample_analysis;
 pub mod sample_instrument;
 pub mod sample_region;

@@ -9,6 +9,7 @@ import noiseProject from '../../projects/noise/project.json';
 import patchProject from '../../projects/synth-patch/project.json';
 import modulationProject from '../../projects/modulated-gain/project.json';
 import distortionProject from '../../projects/distortion/project.json';
+import phaserProject from '../../projects/phaser/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -93,6 +94,12 @@ const projects = {
     title: 'Distortion',
     description: 'Shape stereo audio with a smoothed drive, a dry/wet blend, and output gain. The final signal is clamped to the audio range.',
     signal: 'Live path: input → distortion → stereo output',
+  },
+  phaser: {
+    project: phaserProject,
+    title: 'Stereo phaser',
+    description: 'Sweep six or twelve all-pass stages with a shared LFO. Feedback and stereo phase spread shape the movement; the dry signal remains at half level.',
+    signal: 'Live path: input → stereo phaser → output',
   },
   compressor: {
     project: compressorProject,
@@ -492,7 +499,7 @@ function addSlider(parameter) {
     : 1000 * (value - parameter.min) / (parameter.max - parameter.min);
   const format = (value) => parameter.hostId === 'root-note' ? `${value} MIDI` : parameter.hostId === 'unison' ? `${value} voices` : parameter.unit === 'ct' ? `${Number(value).toFixed(1)} ct` : parameter.unit === 'Hz'
     ? parameter.hostId === 'rate' ? `${Number(value).toFixed(2)} Hz` : `${Math.round(value).toLocaleString()} Hz`
-    : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : Number(value).toFixed(2);
+    : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : parameter.unit === 'degrees' ? `${Math.round(value)}°` : Number(value).toFixed(2);
   const sync = (position, publish) => {
     const value = toPhysical(position);
     input.value = String(Math.round(position));
@@ -754,7 +761,7 @@ function renderPrimitive(family) {
   renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'phaser' ? 'Stages' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   const sampleView = family === 'sample-region' || family === 'sample-instrument';
   byId('keyboard-section').hidden = !['voice', 'sample-instrument'].includes(family);
