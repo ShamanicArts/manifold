@@ -1155,6 +1155,24 @@ pub extern "C" fn manifold_main_directional_parameter(id: u32, value: f32) -> u3
     })
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_pitch_configure(vocoder_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.plan.configure_main_pitch(vocoder_id.into()))
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_pitch_parameter(id: u32, value: f32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.plan.set_main_pitch_parameter(id, value))
+        })
+    })
+}
+
 /// Bounded MIDI transform trace, read from a worklet message handler between process calls.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_midi_trace_count() -> u32 {

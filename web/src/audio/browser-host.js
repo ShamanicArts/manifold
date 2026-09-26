@@ -139,6 +139,9 @@ export class BrowserAudioHost {
     if (parameter.directionalParameterId != null) {
       this.processor?.port.postMessage({ type: 'directional-parameter', id: parameter.directionalParameterId, value });
     }
+    if (parameter.pitchParameterId != null) {
+      this.processor?.port.postMessage({ type: 'pitch-parameter', id: parameter.pitchParameterId, value });
+    }
   }
 
   setPartials(partials) {

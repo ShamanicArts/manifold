@@ -6,7 +6,7 @@
 </style></head><body><main>
 <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 118</div>
 <h1>Notes become wave and sample pitch</h1>
-<p>The old Main voice splits pitch between the waveform oscillator, raw sample speed, and the phase vocoder. A small Rust mapping now reproduces those decisions across wave, sample, and both-keytrack modes. This is a reference-checked kernel; the playable Main study still uses its existing manual pitch controls until this mapping is bound to the graph.</p>
+<p>The old Main voice splits pitch between the waveform oscillator, raw sample speed, and the phase vocoder. A small Rust mapping reproduces those decisions across wave, sample, and both-keytrack modes. This checkpoint records the isolated reference trace; <a href="/main-sample-blend-review.html">checkpoint 119</a> binds it to the playable graph.</p>
 <nav><a href="/manifold-sitrep.html">Project sitrep</a><a href="/main-sample-blend-review.html">FM / Sync review</a><a href="/?primitive=main-sample-blend">Current playable Main study</a></nav>
 <section class="panel"><h2>Routing in the original voice</h2><div class="flow">
 <div><strong>Desired sample ratio</strong><span>When sample keytrack is active, compare voice note frequency with root-note frequency. Multiply by the ±24 semitone pitch knob; clamp the result to 0.05–8.</span></div>

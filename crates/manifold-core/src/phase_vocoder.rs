@@ -113,6 +113,9 @@ pub struct PhaseVocoder {
 }
 
 impl PhaseVocoder {
+    pub fn target_parameter(&self, id: usize) -> f32 {
+        self.target[id]
+    }
     pub fn new(sample_rate: f32, params: [f32; PARAM_COUNT]) -> Self {
         let mut target = DEFAULTS;
         for (id, value) in params.into_iter().enumerate() {

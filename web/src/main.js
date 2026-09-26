@@ -271,8 +271,8 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. FM and Sync now update source motion once per Rust audio block; branch depth and voice amplitude remain linkable.',
-    signal: 'File → sample region → vocoder → sample stage gain · Rust FM/Sync block motion → sample speed / wave pitch / retrigger · raw sample → optional wave sync · wave → base crossfade · worker → two Sine banks → Add crossfade → phrase gain · branch mixer → voice mix → output',
+    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. Rust maps one voice note to wave, sample, and vocoder pitch; FM and Sync update source motion once per audio block.',
+    signal: 'Voice frequency + root/keytrack → Rust pitch map → wave pitch / sample speed / vocoder · file → sample region → vocoder → sample stage gain · Rust FM/Sync motion → source rates / retrigger · raw sample → optional wave sync · wave → base crossfade · worker → two Sine banks → Add crossfade → phrase gain · branch mixer → voice mix → output',
   },
   'reverse-delay': {
     project: reverseDelayProject,
@@ -846,14 +846,17 @@ function updateMainDepthControls() {
   const linked = values.get(19) === 1;
   const voiceLinked = values.get(22) === 1;
   const directionMode = values.get(24);
-  for (const id of [2, 3, 18, 1, 14, 20, 21, 25, 26]) {
+  const mappedPitch = values.get(28) === 1;
+  for (const id of [2, 3, 18, 1, 14, 20, 21, 25, 26, 4, 6, 7, 9, 29, 30, 31, 32]) {
     const control = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
     if (!control) continue;
     const inactive = id === 18 ? !linked && directionMode === 0 : id === 21 ? !voiceLinked
       : id === 25 || id === 26 ? directionMode !== 2
+      : [4, 6, 7, 9].includes(id) ? mappedPitch
+      : [29, 30, 31, 32].includes(id) ? !mappedPitch
       : [1, 14, 20].includes(id) ? voiceLinked : linked;
     control.classList.toggle('inactive', inactive);
-    const input = control.querySelector('input');
+    const input = control.querySelector('input, select');
     if (input) input.disabled = inactive;
   }
   for (const id of [23, 27]) {
@@ -1129,7 +1132,7 @@ function addToggle(parameter) {
     button.setAttribute('aria-pressed', String(next === 1));
     render();
     if (activeFamily === 'loop-capture') updateLoopToggles();
-    if (activeFamily === 'main-sample-blend' && ['linked-depth', 'voice-amp-link'].includes(parameter.hostId)) updateMainDepthControls();
+    if (activeFamily === 'main-sample-blend' && ['linked-depth', 'voice-amp-link', 'mapped-pitch'].includes(parameter.hostId)) updateMainDepthControls();
   });
   byId('controls').appendChild(button);
 }
@@ -1588,7 +1591,7 @@ function renderPrimitive(family) {
   if (family === 'main-sample-blend') {
     const help = document.createElement('p');
     help.className = 'control-help';
-    help.textContent = 'Direction mode selects normal, FM, or Sync. FM moves sample speed with wave phase and wave pitch with sample cursor; Branch depth sets the modulation budget. Sync retriggers or resumes the sample on phase wraps and hard-syncs the wave on raw crossings when the blend favors wave. Normal mode keeps the manual hard-sync toggle. Voice amplitude links oscillator, sample, and Add levels. Phrase reference starts from source analysis; moving it saves a manual value.';
+    help.textContent = 'Direction mode selects normal, FM, or Sync. FM moves sample speed with wave phase and wave pitch with sample cursor; Branch depth sets the modulation budget. Sync retriggers or resumes the sample on phase wraps and hard-syncs the wave on raw crossings when the blend favors wave. Map Main note + sample pitch to route the voice frequency through root note, keytrack, and classic or vocoder pitch; this temporarily overrides the manual sample speed and vocoder controls. Normal mode keeps the manual hard-sync toggle. Voice amplitude links oscillator, sample, and Add levels. Phrase reference starts from source analysis; moving it saves a manual value.';
     byId('controls').appendChild(help);
     updateMainDepthControls();
   }

@@ -43,7 +43,11 @@ for (const selected of manifest.cases) {
   }
   if (selected.id === 'phrase-full') console.log(`Original C++ follower ↔ Wasm graph meter max Δ ${maxMeter.toExponential(3)}`);
 }
-for (const [left, right] of [['fm-normal', 'fm-both'], ['sync-retrigger', 'sync-play']]) {
+for (const [left, right] of [
+  ['fm-normal', 'fm-both'], ['sync-retrigger', 'sync-play'],
+  ['pitch-classic-wave', 'pitch-classic-both'],
+  ['pitch-classic-sample', 'pitch-bin'], ['pitch-bin', 'pitch-hq'],
+]) {
   const a = floats(`${root}${left}.f32`);
   const b = floats(`${root}${right}.f32`);
   const difference = Math.max(...a.map((value, index) => Math.abs(value - b[index])));

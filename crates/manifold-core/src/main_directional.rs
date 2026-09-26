@@ -57,6 +57,14 @@ impl MainDirectionalMotion {
         }
     }
 
+    pub fn base_frequency(&self) -> f32 {
+        self.base_frequency
+    }
+
+    pub fn base_speed(&self) -> f32 {
+        self.base_speed
+    }
+
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
         if !value.is_finite() {
             return false;
@@ -77,6 +85,15 @@ impl MainDirectionalMotion {
     }
 
     pub fn tick(&mut self, frames: usize, sample_position: f32) -> Option<DirectionalUpdate> {
+        self.tick_with_speed(frames, sample_position, self.base_speed)
+    }
+
+    pub fn tick_with_speed(
+        &mut self,
+        frames: usize,
+        sample_position: f32,
+        base_speed: f32,
+    ) -> Option<DirectionalUpdate> {
         if !self.gate {
             self.blend_phase = 0.0;
             self.sync_phase = 0.0;
@@ -91,7 +108,7 @@ impl MainDirectionalMotion {
         let oscillator_modulation = (self.blend_phase * TAU).sin();
         let sample_modulation = ((sample_position.clamp(0.0, 1.0) as f64) * TAU).sin();
         let mut oscillator_frequency = base_frequency;
-        let mut sample_speed = self.base_speed as f64;
+        let mut sample_speed = base_speed as f64;
         let mut sample_retrigger = false;
         let mut sample_play = false;
         if self.mode == 2 {

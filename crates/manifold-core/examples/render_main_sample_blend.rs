@@ -10,8 +10,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 29 {
-        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_SHAPE BASE_BLEND ADD_BLEND DEPTH LINKED SAMPLE_STAGE_GAIN BANK_LEVEL WAVE_SYNC DIRECTION_MODE WAVE_TO_SAMPLE SAMPLE_TO_WAVE RETRIGGER".into());
+    if args.len() != 34 {
+        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_SHAPE BASE_BLEND ADD_BLEND DEPTH LINKED SAMPLE_STAGE_GAIN BANK_LEVEL WAVE_SYNC DIRECTION_MODE WAVE_TO_SAMPLE SAMPLE_TO_WAVE RETRIGGER PITCH_ENABLED ROOT_NOTE KEYTRACK SAMPLE_PITCH PITCH_MODE".into());
     }
     let sample: Vec<f32> = std::fs::read(&args[1])?
         .chunks_exact(4)
@@ -45,6 +45,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wave_to_sample: f32 = args[26].parse()?;
     let sample_to_wave: f32 = args[27].parse()?;
     let retrigger: f32 = args[28].parse()?;
+    let pitch_controls: [f32; 5] = [
+        args[29].parse()?,
+        args[30].parse()?,
+        args[31].parse()?,
+        args[32].parse()?,
+        args[33].parse()?,
+    ];
     let analysis = analyze_temporal_stereo(&sample, 48_000.0, 0..sample_frames, 128)
         .ok_or("source analysis failed")?;
     let source = analysis.partials_at(0.5, 0.6, 0.5);
@@ -282,6 +289,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("source or target upload failed".into());
     }
     assert!(plan.configure_main_directional(11, 2));
+    assert!(plan.configure_main_pitch(6));
     for (id, value) in [
         (0, direction_mode),
         (1, wave_pitch),
@@ -293,6 +301,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (7, base_blend),
     ] {
         assert!(plan.set_main_directional_parameter(id, value));
+    }
+    for (id, value) in pitch_controls.into_iter().enumerate() {
+        assert!(plan.set_main_pitch_parameter(id as u32, value));
     }
     assert!(plan.set_parameter(4, 65, depth));
     assert!(plan.set_parameter(4, 66, linked as f32));

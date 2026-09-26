@@ -22,9 +22,9 @@
   </style>
 </head>
 <body><main>
-  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 117</div>
-  <h1>FM and Sync move the voice in Rust</h1>
-  <p>The Main study now updates wave pitch and sample speed once per audio block for FM, and resumes or retriggers sample playback on phase wraps in Sync. Wave-facing Sync also enables the raw-sample hard-sync input. The old Main Lua control function and Rust agree across 13 reference blocks; the live browser path uses Rust/Wasm.</p>
+  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 119</div>
+  <h1>Main pitch joins FM and Sync in Rust</h1>
+  <p>The Main study updates wave pitch and sample speed once per audio block for FM, then resumes or retriggers sample playback on Sync wraps. The new mapped-pitch switch routes one voice note through root-note keytrack, classic sample speed, or either phase-vocoder mode. The original Lua control and pitch helpers agree with Rust across separate bounded reference traces; the live browser path uses Rust/Wasm.</p>
   <nav><a href="/?primitive=main-sample-blend">Play and compare the graph</a><a href="/main-pitch-review.html">Inspect note / sample pitch map</a><a href="/phase-vocoder-review.html">Inspect Phase vocoder</a><a href="/spectral-target-review.html">Inspect Add / Morph recipes</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
   <section class="panel"><h2>Signal path</h2><div class="flow">
     <div><strong>Wave and sample motion</strong><span>Rust reads the previous sample cursor and advances wave phase before each block. FM moves both source rates; Sync chooses replay or retrigger.</span></div>
@@ -32,7 +32,7 @@
     <div><strong>Branch and voice mixers</strong><span>One depth budget feeds FM and optional linked base/Add gains. The branch enters the fourth voice-mixer input, retaining the old centre pan.</span></div>
   </div></section>
   <section class="panel"><h2>Native Rust ↔ Rust/Wasm graph comparison</h2>
-    <p>Both runners load the same source and bounded targets. Thirty-four offline Main captures contain 16,384 stereo frames each at 48 kHz. Seven new Normal/FM/Sync cases match native Rust and Wasm exactly. FM versus its baseline differs by up to 0.1705 per sample; Sync retrigger versus play differs by up to 0.4091. Three wet vocoder cases among the earlier captures differ from native Rust by at most 0.0000026. The isolated C++ oscillator hard-sync and sample gain-stage captures remain exact. The old C++ follower fixture is compared only for cases with fixed-speed playback.</p>
+    <p>Both runners load the same source and bounded targets. Thirty-nine offline Main captures contain 16,384 stereo frames each at 48 kHz. Five new note/keytrack/sample-pitch cases join the seven Normal/FM/Sync cases. Classic cases match native Rust and Wasm exactly; the two wet vocoder cases differ by at most 0.000005964 per sample. FM versus its baseline differs by up to 0.1705 per sample; Sync retrigger versus play differs by up to 0.4091. Three wet vocoder cases among the earlier captures differ from native Rust by at most 0.0000026. The isolated C++ oscillator hard-sync and sample gain-stage captures remain exact. The old C++ follower fixture is compared only for cases without mapped pitch or directional motion; these fixtures do not prove full old-voice audio parity.</p>
     <table><thead><tr><th>Case</th><th>Independent base</th><th>Independent Add</th><th>Native RMS</th><th>Max Δ</th></tr></thead><tbody>
       <tr><td>Sample only</td><td>1</td><td>0</td><td>0.1244</td><td class="pass">0</td></tr>
       <tr><td>Add only</td><td>0</td><td>1</td><td>0.1120</td><td class="pass">0</td></tr>
@@ -77,6 +77,15 @@
       <tr><td>Sync wave</td><td>Raw crossing reset</td><td>0.0964</td><td class="pass">0</td></tr>
     </tbody></table>
     <p class="small">The <a href="/reference/main-directional/manifest.json">legacy control trace</a> runs the original Lua function in a separate reference harness. Across 13 blocks, Rust differs by at most 0.00001172 Hz in frequency and 0.00000002186 in speed; every trigger/play count agrees.</p>
+    <h2 style="margin-top:24px">Note, keytrack, and sample pitch routing</h2>
+    <table><thead><tr><th>Case</th><th>Mapped path</th><th>Native RMS</th><th>Max Δ Wasm</th></tr></thead><tbody>
+      <tr><td>Classic sample</td><td>1.5× playback</td><td>0.1244</td><td class="pass">0</td></tr>
+      <tr><td>Classic root wave</td><td>440 Hz wave</td><td>0.1021</td><td class="pass">0</td></tr>
+      <tr><td>Classic both</td><td>660 Hz wave</td><td>0.1020</td><td class="pass">0</td></tr>
+      <tr><td>Vocoder bin</td><td>+7.02 st wet</td><td>0.0952</td><td class="pass">5.96e−6</td></tr>
+      <tr><td>Vocoder HQ</td><td>+7.02 st wet</td><td>0.0476</td><td class="pass">2.32e−6</td></tr>
+    </tbody></table>
+    <p class="small">The <a href="/reference/main-pitch/manifest.json">original Lua pitch trace</a> checks 14 mapping scenarios, with a maximum wave-frequency difference of 0.0001163 Hz. The new graph cases compare native Rust with Wasm; wave root versus both, classic sample versus bin vocoder, and bin versus HQ produce distinct audio. The live AudioWorklet test also checks manual vocoder restoration when mapping is switched off. A visual UI check could not run because in-app browser control was unavailable.</p>
     <h2 style="margin-top:24px">Original C++ sample voice gain chain</h2>
     <table><thead><tr><th>Voice amp</th><th>Sample stage (2 × amp)</th><th>Native RMS</th><th>Max Δ C++ / Wasm</th></tr></thead><tbody>
       <tr><td>0.25</td><td>0.5</td><td>0.0622</td><td class="pass">0 / 0</td></tr>
@@ -85,6 +94,6 @@
     </tbody></table>
     <p class="small">In the workbench, open “Reference comparison” to switch cases, inspect left/right output and differences, and play native or Wasm audio.</p>
   </section>
-  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save 28 graph controls, target mode and recipe, temporal position, and the source. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and prepares both bank targets, then restores its graph controls. Version-10 state accepts prior versions 1–9; older files open in Normal direction mode.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
-  <section class="panel"><h2>Legacy boundary and next route</h2><p class="scope">The 13-block legacy trace proves the original Lua control decisions for the chosen positions, levels, and mode transitions. The compiled C++ reference proves the isolated oscillator hard-sync kernel. The authored v2 Main graph does not yet reproduce the entire old voice: old keytrack and sample-pitch mappings, per-note gate and allocation, Ring mode, Add oscillator routing, Morph selection, and old presets remain. The present direction controller updates one authored voice at each Rust audio block. The old Main voice checks an optional ADSR field but never constructs or connects that node, so note ADSR would be a deliberate v2 behavior.</p></section>
+  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save 33 graph controls, target mode and recipe, temporal position, and the source. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and prepares both bank targets, then restores its graph controls. Version-11 state accepts prior versions 1–10; older files open in Normal direction mode with mapped pitch off.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
+  <section class="panel"><h2>Legacy boundary and next route</h2><p class="scope">The 13-block legacy trace proves the original Lua control decisions for the chosen positions, levels, and mode transitions. The compiled C++ reference proves the isolated oscillator hard-sync kernel. The authored v2 Main graph does not yet reproduce the entire old voice: per-note gate and allocation, Ring mode, Add oscillator routing, Morph selection, and old presets remain. The present direction and pitch controllers update one authored voice at each Rust audio block. The old Lua pitch trace validates isolated mapping decisions, while the five new audio cases validate the authored Rust/Wasm graph; the complete old Main voice is not yet compared. The old Main voice checks an optional ADSR field but never constructs or connects that node, so note ADSR would be a deliberate v2 behavior.</p></section>
 </main></body></html>

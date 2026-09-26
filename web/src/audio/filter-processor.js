@@ -54,6 +54,10 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             graph.directional.oscillatorId, graph.directional.sampleId) !== 1) {
             throw new Error('Main directional behavior preparation failed');
           }
+          if (graph.directional?.vocoderId != null && engine.manifold_main_pitch_configure(
+            graph.directional.vocoderId) !== 1) {
+            throw new Error('Main pitch behavior preparation failed');
+          }
           this.inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), this.capacity * 2);
           this.outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), this.capacity * 2);
           this.engine = engine;
@@ -66,6 +70,10 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'directional-parameter' && this.engine) {
           if (this.engine.manifold_main_directional_parameter(data.id, data.value) !== 1) {
             throw new Error('Main directional parameter rejected');
+          }
+        } else if (data.type === 'pitch-parameter' && this.engine) {
+          if (this.engine.manifold_main_pitch_parameter(data.id, data.value) !== 1) {
+            throw new Error('Main pitch parameter rejected');
           }
         } else if (data.type === 'parameter-batch' && this.engine) {
           if (!Array.isArray(data.updates) || data.updates.length > 16) throw new Error('Invalid parameter batch');

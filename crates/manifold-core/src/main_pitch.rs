@@ -10,6 +10,23 @@ pub struct MainPitchRoute {
     pub vocoder_mode: u32,
 }
 
+impl MainPitchRoute {
+    /// Apply the old post-FM wave assignment. FM still clocks from the voice
+    /// note before this keytrack choice is applied.
+    pub fn wave_after_modulation(
+        self,
+        modulated_voice_frequency: f32,
+        voice_frequency: f32,
+        keytrack: u32,
+    ) -> f32 {
+        match keytrack {
+            1 => self.wave_frequency,
+            2 => modulated_voice_frequency * self.wave_frequency / voice_frequency,
+            _ => modulated_voice_frequency,
+        }
+    }
+}
+
 /// `keytrack`: 0 wave, 1 sample, 2 both. `pitch_mode`: 0 classic, 1 vocoder,
 /// 2 high-quality vocoder. The caller clamps the voice frequency to its
 /// existing oscillator range before passing it here.

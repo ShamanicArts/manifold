@@ -21,6 +21,7 @@ use crate::lfo::Lfo;
 use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
 use crate::main_directional::{DirectionalUpdate, MainDirectionalMotion};
+use crate::main_pitch::route_main_pitch;
 use crate::midi_arpeggiator::MidiArpeggiator;
 use crate::midi_note_filter::MidiNoteFilter;
 use crate::midi_scale_quantizer::MidiScaleQuantizer;
@@ -1163,6 +1164,17 @@ struct MainDirectionalBinding {
     motion: MainDirectionalMotion,
     was_active: bool,
     manual_sync: bool,
+    pitch: Option<MainPitchBinding>,
+}
+
+struct MainPitchBinding {
+    vocoder_index: usize,
+    enabled: bool,
+    root_note: f32,
+    keytrack: u32,
+    semitones: f32,
+    mode: u32,
+    manual_vocoder: [f32; 3],
 }
 
 impl GraphDescription {
@@ -1336,7 +1348,63 @@ impl ExecutionPlan {
             motion: MainDirectionalMotion::new(self.sample_rate),
             was_active: false,
             manual_sync: false,
+            pitch: None,
         });
+        true
+    }
+
+    pub fn configure_main_pitch(&mut self, vocoder: NodeId) -> bool {
+        let Some(binding) = &mut self.main_directional else {
+            return false;
+        };
+        let Some(vocoder_index) = self.nodes.iter().position(|node| {
+            node.id == vocoder && node.active && matches!(node.kernel, Kernel::PhaseVocoder(_))
+        }) else {
+            return false;
+        };
+        let manual_vocoder = match &self.nodes[vocoder_index].kernel {
+            Kernel::PhaseVocoder(vocoder) => [
+                vocoder.target_parameter(0),
+                vocoder.target_parameter(1),
+                vocoder.target_parameter(3),
+            ],
+            _ => return false,
+        };
+        binding.pitch = Some(MainPitchBinding {
+            vocoder_index,
+            enabled: false,
+            root_note: 60.0,
+            keytrack: 0,
+            semitones: 0.0,
+            mode: 0,
+            manual_vocoder,
+        });
+        true
+    }
+
+    pub fn set_main_pitch_parameter(&mut self, id: u32, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        let Some(pitch) = self
+            .main_directional
+            .as_mut()
+            .and_then(|binding| binding.pitch.as_mut())
+        else {
+            return false;
+        };
+        match id {
+            0 if value == 0.0 || value == 1.0 => pitch.enabled = value == 1.0,
+            1 if (12.0..=96.0).contains(&value) => pitch.root_note = value,
+            2 if (0.0..=2.0).contains(&value) && value.fract() == 0.0 => {
+                pitch.keytrack = value as u32;
+            }
+            3 if (-24.0..=24.0).contains(&value) => pitch.semitones = value,
+            4 if (0.0..=2.0).contains(&value) && value.fract() == 0.0 => {
+                pitch.mode = value as u32;
+            }
+            _ => return false,
+        }
         true
     }
 
@@ -1354,9 +1422,35 @@ impl ExecutionPlan {
             Kernel::SampleRegion(sample) => sample.legacy_normalized_position(),
             _ => return,
         };
-        let update = if let Some(update) = binding.motion.tick(frames, sample_position) {
+        let voice_frequency = binding.motion.base_frequency();
+        let pitch_route = binding
+            .pitch
+            .as_ref()
+            .filter(|pitch| pitch.enabled)
+            .map(|pitch| {
+                route_main_pitch(
+                    voice_frequency,
+                    pitch.root_note,
+                    pitch.keytrack,
+                    pitch.semitones,
+                    pitch.mode,
+                )
+            });
+        let base_speed =
+            pitch_route.map_or(binding.motion.base_speed(), |route| route.sample_speed);
+        let update = if let Some(update) =
+            binding
+                .motion
+                .tick_with_speed(frames, sample_position, base_speed)
+        {
             binding.was_active = true;
             update
+        } else if pitch_route.is_some() {
+            binding.was_active = true;
+            let mut baseline = binding.motion.baseline();
+            baseline.sample_speed = base_speed;
+            baseline.sync_enabled = binding.manual_sync;
+            baseline
         } else if binding.was_active {
             binding.was_active = false;
             let mut baseline = binding.motion.baseline();
@@ -1365,6 +1459,29 @@ impl ExecutionPlan {
         } else {
             return;
         };
+        let mut update = update;
+        if let (Some(pitch), Some(route)) = (&binding.pitch, pitch_route) {
+            update.oscillator_frequency = route.wave_after_modulation(
+                update.oscillator_frequency,
+                voice_frequency,
+                pitch.keytrack,
+            );
+            if let Kernel::PhaseVocoder(vocoder) = &mut self.nodes[pitch.vocoder_index].kernel {
+                vocoder.set_parameter(0, route.vocoder_mode as f32);
+                vocoder.set_parameter(1, route.vocoder_semitones);
+                vocoder.set_parameter(3, route.vocoder_mix);
+            }
+        } else if let Some(pitch) = &binding.pitch {
+            if let Kernel::PhaseVocoder(vocoder) = &mut self.nodes[pitch.vocoder_index].kernel {
+                for (id, value) in [
+                    (0, pitch.manual_vocoder[0]),
+                    (1, pitch.manual_vocoder[1]),
+                    (3, pitch.manual_vocoder[2]),
+                ] {
+                    vocoder.set_parameter(id, value);
+                }
+            }
+        }
         Self::apply_directional_update(
             &mut self.nodes,
             binding.oscillator_index,
@@ -1498,6 +1615,7 @@ impl ExecutionPlan {
                 Kernel::StereoWidener(widener) if band == 0 => Some(widener.correlation()),
                 Kernel::SampleRegion(player) => player.meter(band),
                 Kernel::Oscillator(oscillator) => oscillator.meter(band),
+                Kernel::PhaseVocoder(vocoder) if band <= 3 => Some(vocoder.target_parameter(band)),
                 Kernel::SampleInstrument(instrument) => instrument.meter(band),
                 _ => None,
             })
@@ -1548,6 +1666,22 @@ impl ExecutionPlan {
             if let Some(binding) = &mut self.main_directional {
                 if binding.oscillator_index == index {
                     binding.manual_sync = value >= 0.5;
+                }
+            }
+        }
+        if value.is_finite() && matches!(parameter, 0 | 1 | 3) {
+            if let Some(pitch) = self
+                .main_directional
+                .as_mut()
+                .and_then(|binding| binding.pitch.as_mut())
+            {
+                if pitch.vocoder_index == index {
+                    let slot = match parameter {
+                        0 => 0,
+                        1 => 1,
+                        _ => 2,
+                    };
+                    pitch.manual_vocoder[slot] = value;
                 }
             }
         }
@@ -2348,6 +2482,75 @@ mod tests {
             Some(1.0),
             "normal mode restores manual hard sync"
         );
+    }
+
+    #[test]
+    fn main_pitch_binding_routes_note_to_wave_sample_and_vocoder_then_restores_manual_targets() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(2, NodeKind::SampleRegion),
+                node(
+                    6,
+                    NodeKind::PhaseVocoder {
+                        params: [0.0, 0.0, 1.0, 0.0, 11.0],
+                    },
+                ),
+                node(
+                    11,
+                    NodeKind::Oscillator {
+                        frequency: 330.0,
+                        amplitude: 0.5,
+                        waveform: 1,
+                    },
+                ),
+                node(
+                    12,
+                    NodeKind::Sum2 {
+                        gain_a: 1.0,
+                        gain_b: 1.0,
+                    },
+                ),
+                node(5, NodeKind::Output),
+            ],
+            connections: vec![
+                edge(2, 6, 0),
+                edge(6, 12, 0),
+                edge(11, 12, 1),
+                edge(12, 5, 0),
+            ],
+        };
+        let mut plan = description.compile(48_000.0, 128).unwrap();
+        assert!(!plan.configure_main_pitch(6));
+        assert!(plan.configure_main_directional(11, 2));
+        assert!(!plan.configure_main_pitch(11));
+        assert!(plan.configure_main_pitch(6));
+        assert!(!plan.set_main_pitch_parameter(2, -1.0));
+        assert!(plan.load_sample_stereo(2, vec![0.25; 48_000 * 2], 48_000.0));
+        assert!(plan.set_parameter(2, 6, 1.0));
+        assert!(plan.set_parameter(2, 0, 0.5));
+        assert!(plan.set_main_directional_parameter(1, 330.0));
+        assert!(plan.set_main_directional_parameter(2, 0.5));
+        for (id, value) in [(0, 1.0), (1, 69.0), (2, 2.0), (3, 12.0), (4, 2.0)] {
+            assert!(plan.set_main_pitch_parameter(id, value));
+        }
+        let silence = [0.0; 128];
+        let _ = process(&mut plan, &silence, &silence);
+        assert_eq!(plan.node_meter(11, 0), Some(660.0));
+        assert_eq!(plan.node_meter(6, 0), Some(1.0));
+        assert!((plan.node_meter(6, 1).unwrap() - 7.01955).abs() < 0.001);
+        assert_eq!(plan.node_meter(6, 3), Some(1.0));
+        let mapped_position = plan.node_meter(2, 0).unwrap();
+        assert!((mapped_position - 128.0 / 47_999.0).abs() < 1e-6);
+
+        assert!(plan.set_parameter(6, 1, 7.0));
+        assert!(plan.set_parameter(6, 3, 0.25));
+        assert!(plan.set_main_pitch_parameter(0, 0.0));
+        let _ = process(&mut plan, &silence, &silence);
+        assert_eq!(plan.node_meter(11, 0), Some(330.0));
+        assert_eq!(plan.node_meter(6, 1), Some(7.0));
+        assert_eq!(plan.node_meter(6, 3), Some(0.25));
+        let manual_delta = plan.node_meter(2, 0).unwrap() - mapped_position;
+        assert!((manual_delta - 64.0 / 47_999.0).abs() < 1e-6);
     }
 
     #[test]

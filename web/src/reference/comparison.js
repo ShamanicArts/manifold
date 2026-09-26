@@ -739,10 +739,15 @@ export function renderWasm(engine, family, manifest, input, selected) {
     new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), manifest.waveTargetData.length).set(manifest.waveTargetData);
     if (engine.manifold_partials_commit() !== 1) throw new Error('Main wave partial commit failed');
     if (engine.manifold_main_directional_configure(11, 2) !== 1) throw new Error('Main directional configuration failed');
+    if (engine.manifold_main_pitch_configure(6) !== 1) throw new Error('Main pitch configuration failed');
     for (const [id, value] of [[0, selected.directionMode], [1, selected.wave[0]], [2, 1],
       [3, selected.linkedDepth ?? .5], [4, selected.waveToSample], [5, selected.sampleToWave],
       [6, selected.sampleRetrigger], [7, selected.wave[3]]]) {
       if (engine.manifold_main_directional_parameter(id, value) !== 1) throw new Error('Main directional parameter failed');
+    }
+    for (const [id, value] of [[0, selected.pitchEnabled ?? 0], [1, selected.rootNote ?? 60],
+      [2, selected.keytrack ?? 0], [3, selected.samplePitch ?? 0], [4, selected.pitchMode ?? 0]]) {
+      if (engine.manifold_main_pitch_parameter(id, value) !== 1) throw new Error('Main pitch parameter failed');
     }
     if (engine.manifold_set_node_parameter(4, 65, selected.linkedDepth ?? .5) !== 1
       || engine.manifold_set_node_parameter(4, 66, selected.linkedDepth == null ? 0 : 1) !== 1) {

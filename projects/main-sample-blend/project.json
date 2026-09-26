@@ -7,7 +7,7 @@
     "inputs": 0,
     "outputs": 2,
     "inputSource": "none",
-    "directional": { "oscillatorId": 11, "sampleId": 2 },
+    "directional": { "oscillatorId": 11, "sampleId": 2, "vocoderId": 6 },
     "nodes": [
       { "id": 2, "type": "sample-region" },
       { "id": 6, "type": "phase-vocoder" },
@@ -71,7 +71,7 @@
     { "id": 10, "nodeId": 6, "nodeParameterId": 4, "hostId": "pvoc-order", "label": "FFT size", "kind": "select", "choices": ["512", "1024", "2048", "4096"], "choiceValues": [9, 10, 11, 12], "default": 11, "prepareOnly": true },
     { "id": 11, "nodeId": 8, "nodeParameterId": 0, "hostId": "phrase-amount", "label": "Sample phrase contour", "kind": "float", "min": 0, "max": 1, "default": 0 },
     { "id": 12, "nodeId": 8, "nodeParameterId": 1, "hostId": "phrase-reference", "label": "Phrase reference", "kind": "float", "min": 0.05, "max": 0.6, "default": 0.18 },
-    { "id": 13, "nodeId": 11, "nodeParameterId": 1, "directionalParameterId": 1, "hostId": "wave-pitch", "label": "Base wave pitch", "kind": "float", "min": 40, "max": 1600, "default": 220, "unit": "Hz", "scale": "log" },
+    { "id": 13, "nodeId": 11, "nodeParameterId": 1, "directionalParameterId": 1, "hostId": "wave-pitch", "label": "Voice note / base wave pitch", "kind": "float", "min": 40, "max": 1600, "default": 220, "unit": "Hz", "scale": "log" },
     { "id": 14, "nodeId": 11, "nodeParameterId": 2, "hostId": "wave-level", "label": "Base wave level", "kind": "float", "min": 0, "max": 1, "default": 0 },
     { "id": 15, "nodeId": 11, "nodeParameterId": 0, "hostId": "wave-shape", "label": "Base wave shape", "kind": "select", "choices": ["Sine", "Saw", "Square", "Triangle", "Sine + saw"], "default": 1 },
     { "id": 16, "nodeId": 12, "nodeParameterId": 0, "directionalParameterId": 7, "hostId": "base-blend", "label": "Base wave ↔ sample", "kind": "float", "min": -1, "max": 1, "default": 1 },
@@ -91,6 +91,11 @@
     { "id": 24, "directionalParameterId": 0, "hostId": "direction-mode", "label": "Direction mode", "kind": "select", "choices": ["Normal", "FM", "Sync"], "choiceValues": [0, 2, 3], "default": 0 },
     { "id": 25, "directionalParameterId": 4, "hostId": "wave-to-sample", "label": "Wave → sample speed", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 26, "directionalParameterId": 5, "hostId": "sample-to-wave", "label": "Sample cursor → wave pitch", "kind": "float", "min": 0, "max": 1, "default": 0 },
-    { "id": 27, "directionalParameterId": 6, "hostId": "sample-retrigger", "label": "Retrigger sample on Sync", "kind": "toggle", "default": 1 }
+    { "id": 27, "directionalParameterId": 6, "hostId": "sample-retrigger", "label": "Retrigger sample on Sync", "kind": "toggle", "default": 1 },
+    { "id": 28, "pitchParameterId": 0, "hostId": "mapped-pitch", "label": "Map Main note + sample pitch", "kind": "toggle", "default": 0 },
+    { "id": 29, "pitchParameterId": 1, "hostId": "sample-root-note", "label": "Sample root MIDI note", "kind": "float", "min": 12, "max": 96, "default": 60, "step": 1 },
+    { "id": 30, "pitchParameterId": 2, "hostId": "blend-keytrack", "label": "Keytrack", "kind": "select", "choices": ["Wave", "Sample", "Both"], "default": 0 },
+    { "id": 31, "pitchParameterId": 3, "hostId": "blend-sample-pitch", "label": "Main sample pitch", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "st" },
+    { "id": 32, "pitchParameterId": 4, "hostId": "sample-pitch-mode", "label": "Main sample engine", "kind": "select", "choices": ["Classic speed", "Vocoder", "Vocoder HQ"], "default": 0 }
   ]
 }
