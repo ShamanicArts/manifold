@@ -36,9 +36,26 @@ assert.ok(message.temporal.frames.every((frame) => frame.values.length <= 128
 assert.equal(message.temporal.regionStart, 4096);
 assert.equal(message.temporal.regionEnd, rate - 4096);
 
+const recipe = new Float32Array([1, 8, .2, .3, .35, 0, .5, .7, 2, .1, 2]);
+await self.onmessage({ data: { type: 'prepare-target', id: 71, sourceId: 7,
+  mode: 1, position: .5, smooth: .6, contrast: .5, recipe } });
+const add = replies.at(-1).message;
+assert.equal(add.type, 'target');
+assert.equal(add.id, 71);
+assert.equal(add.fundamental, 1);
+assert.ok(add.values.length > 0 && add.values.length <= 128 && add.values.every(Number.isFinite));
+assert.equal(replies.at(-1).transfer.length, 1);
+await self.onmessage({ data: { type: 'prepare-target', id: 72, sourceId: 7,
+  mode: 2, position: .5, smooth: .6, contrast: .5, recipe } });
+assert.equal(replies.at(-1).message.type, 'target');
+assert.ok(replies.at(-1).message.values.length >= add.values.length);
+await self.onmessage({ data: { type: 'prepare-target', id: 73, sourceId: 999,
+  mode: 1, position: .5, smooth: .6, contrast: .5, recipe } });
+assert.equal(replies.at(-1).message.type, 'error');
+
 await self.onmessage({ data: { id: 8, sourceRate: rate, stereo } });
 assert.equal(replies.at(-1).message.type, 'result');
 assert.equal(replies.at(-1).message.temporal, null);
 assert.equal(replies.at(-1).transfer.length, 1);
 globalThis.fetch = originalFetch;
-console.log('Temporal worker: versioned frame transport, region metadata, and existing summary mode passed');
+console.log('Temporal worker: frames, Add/Morph targets, stale-source rejection, and summary mode passed');

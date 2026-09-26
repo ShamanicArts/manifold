@@ -109,6 +109,16 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .sine-source-row { display: grid; grid-template-columns: 4rem minmax(0, 1fr) 2.8rem; gap: 6px; align-items: center; color: #aebdc6; font-size: 10px; font-variant-numeric: tabular-nums; }
 .sine-source-track { height: 7px; background: #293743; border-radius: 2px; overflow: hidden; }
 .sine-source-fill { display: block; height: 100%; background: #a6d9bb; }
+.sine-target-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 12px; }
+.sine-target-controls label { display: grid; gap: 4px; min-width: 0; color: #c8d2d9; font-size: 11px; }
+.sine-target-controls label[hidden] { display: none; }
+#sine-target-mode-label, #sine-waveform-label, #sine-tilt-label { grid-column: 1 / -1; }
+.sine-target-controls select { min-width: 0; width: 100%; border: 1px solid #526170; border-radius: 3px; background: #202c37; color: #e4ebec; padding: 5px; font: inherit; }
+.sine-target-controls input { width: 100%; accent-color: #a6d9bb; }
+.sine-recipe-detail { margin-top: 12px; color: #c8d2d9; font-size: 11px; }
+.sine-recipe-detail summary { cursor: pointer; }
+#sine-target-bars .sine-source-fill { background: #efbb86; }
+@media (max-width: 500px) { .sine-target-controls { grid-template-columns: 1fr; } }
 .gate-button { height: 34px; border: 1px solid #526170; border-radius: 4px; background: #263441; color: #d8e2e8; font-size: 12px; font-weight: 650; }
 #capture-transfer-section .gate-button { display: block; width: 100%; margin-top: 8px; }
 #slot-state-section .gate-button { width: 100%; margin-bottom: 8px; }

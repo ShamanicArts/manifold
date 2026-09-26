@@ -419,8 +419,12 @@ let sampleVoicePositions = Array(8).fill(-1);
 let sampleActiveVoices = 0;
 const emptySamplePeaks = new Float32Array(256 * 2);
 let sampleAnalysisWorker = null;
+let sineAnalysisWorker = null;
 let sampleAnalysisSerial = 0;
 const pendingSampleAnalyses = new Map();
+const pendingSineTargets = new Map();
+let latestSineTargetId = 0;
+let sineTargetActive = false;
 function demoSample() {
   if (exampleSample) return exampleSample;
   const sourceRate = 48_000;
@@ -487,6 +491,27 @@ function selectedSineFrame() {
   return frames.reduce((nearest, frame) =>
     Math.abs(frame.position - position) < Math.abs(nearest.position - position) ? frame : nearest);
 }
+function renderSineBars(values, bars, ratio = false) {
+  bars.replaceChildren();
+  for (let index = 0; index < values.length / 4; index++) {
+    const frequency = values[index * 4];
+    const amplitude = values[index * 4 + 1];
+    const row = document.createElement('div');
+    row.className = 'sine-source-row';
+    const label = document.createElement('span');
+    label.textContent = ratio ? `×${frequency.toFixed(2)}` : `${frequency.toFixed(0)} Hz`;
+    const track = document.createElement('div');
+    track.className = 'sine-source-track';
+    const fill = document.createElement('span');
+    fill.className = 'sine-source-fill';
+    fill.style.width = `${Math.min(100, amplitude * 100)}%`;
+    track.appendChild(fill);
+    const amount = document.createElement('span');
+    amount.textContent = amplitude.toFixed(2);
+    row.append(label, track, amount);
+    bars.appendChild(row);
+  }
+}
 function renderSineSourceAnalysis() {
   if (activeFamily !== 'sine-bank') return;
   const source = loadedSineSource;
@@ -512,31 +537,65 @@ function renderSineSourceAnalysis() {
   const result = source.temporal;
   const frame = selectedSineFrame();
   position.disabled = result.frames.length < 2;
-  audition.disabled = !frame?.values.length;
+  audition.disabled = !frame || (!frame.values.length && Number(byId('sine-target-mode').value) !== 3);
   const pitchLabel = result.mode === 'harmonic-projection'
     ? `${result.fundamental.toFixed(1)} Hz pitch · ${(result.confidence * 100).toFixed(0)}% confidence`
     : `${result.fundamental.toFixed(1)} Hz reference peak · no reliable pitch`;
   readout.textContent = `${source.label ?? 'Built-in tone'} · ${result.mode === 'harmonic-projection' ? 'pitched harmonic tracking' : 'spectral peak fallback'} · ${result.frames.length} frames · ${pitchLabel}`;
   if (!frame) return;
   byId('sine-position-value').textContent = `${Math.round(frame.position * 100)}% · ${(frame.sourceStart / result.sourceRate).toFixed(2)} s`;
-  for (let index = 0; index < frame.values.length / 4; index++) {
-    const frequency = frame.values[index * 4];
-    const amplitude = frame.values[index * 4 + 1];
-    const row = document.createElement('div');
-    row.className = 'sine-source-row';
-    const label = document.createElement('span');
-    label.textContent = `${frequency.toFixed(0)} Hz`;
-    const track = document.createElement('div');
-    track.className = 'sine-source-track';
-    const fill = document.createElement('span');
-    fill.className = 'sine-source-fill';
-    fill.style.width = `${Math.min(100, amplitude * 100)}%`;
-    track.appendChild(fill);
-    const amount = document.createElement('span');
-    amount.textContent = amplitude.toFixed(2);
-    row.append(label, track, amount);
-    bars.appendChild(row);
-  }
+  renderSineBars(frame.values, bars);
+}
+function createSampleAnalysisWorker(temporalWorker) {
+  const worker = new Worker(new URL('./audio/sample-analysis-worker.js', import.meta.url), { type: 'module' });
+  worker.onmessage = ({ data }) => {
+    const target = pendingSineTargets.get(data.id);
+    if (target) {
+      pendingSineTargets.delete(data.id);
+      if (data.id === latestSineTargetId && target.source === loadedSineSource) {
+        if (data.type === 'target') applyPreparedSineTarget(data, target.mode);
+        else byId('sine-target-status').textContent = `Target unavailable: ${data.message}`;
+      }
+      return;
+    }
+    const pending = pendingSampleAnalyses.get(data.id);
+    pendingSampleAnalyses.delete(data.id);
+    if (!pending) return;
+    const { source: analyzed, temporal } = pending;
+    if (data.type === 'result') {
+      analyzed.analysis = data;
+      analyzed.peaks = data.peaks;
+      if (temporal) { analyzed.temporal = data.temporal; analyzed.temporalJobId = data.id; }
+    } else {
+      if (temporal) { analyzed.temporalError = data.message; analyzed.temporalRequested = false; }
+      else { analyzed.analysisError = data.message; analyzed.analysisRequested = false; }
+      if (!analyzed.peaks) fallbackSamplePeaks(analyzed);
+    }
+    if (analyzed === (loadedSample ?? demoSample())) {
+      drawSampleWaveform();
+      renderSampleAnalysis();
+    }
+    if (analyzed === loadedSineSource) renderSineSourceAnalysis();
+  };
+  worker.onerror = (error) => {
+    for (const [id, { source: analyzed, temporal }] of pendingSampleAnalyses) {
+      if (temporal !== temporalWorker) continue;
+      if (temporal) { analyzed.temporalError = error.message || 'Worker failed'; analyzed.temporalRequested = false; }
+      else { analyzed.analysisError = error.message || 'Worker failed'; analyzed.analysisRequested = false; }
+      if (!analyzed.peaks) fallbackSamplePeaks(analyzed);
+      pendingSampleAnalyses.delete(id);
+    }
+    if (temporalWorker) {
+      pendingSineTargets.clear();
+      sineAnalysisWorker = null;
+      byId('sine-target-status').textContent = `Target worker unavailable: ${error.message || 'Worker failed'}`;
+    } else sampleAnalysisWorker = null;
+    worker.terminate();
+    drawSampleWaveform();
+    renderSampleAnalysis();
+    renderSineSourceAnalysis();
+  };
+  return worker;
 }
 function requestSampleAnalysis(source, temporal = false) {
   const requestedFlag = temporal ? 'temporalRequested' : 'analysisRequested';
@@ -545,46 +604,13 @@ function requestSampleAnalysis(source, temporal = false) {
   if (temporal) source.temporalError = null;
   else source.analysisError = null;
   try {
-    if (!sampleAnalysisWorker) {
-      sampleAnalysisWorker = new Worker(new URL('./audio/sample-analysis-worker.js', import.meta.url), { type: 'module' });
-      sampleAnalysisWorker.onmessage = ({ data }) => {
-        const pending = pendingSampleAnalyses.get(data.id);
-        pendingSampleAnalyses.delete(data.id);
-        if (!pending) return;
-        const { source: analyzed, temporal } = pending;
-        if (data.type === 'result') {
-          analyzed.analysis = data;
-          analyzed.peaks = data.peaks;
-          if (temporal) analyzed.temporal = data.temporal;
-        } else {
-          if (temporal) { analyzed.temporalError = data.message; analyzed.temporalRequested = false; }
-          else { analyzed.analysisError = data.message; analyzed.analysisRequested = false; }
-          if (!analyzed.peaks) fallbackSamplePeaks(analyzed);
-        }
-        if (analyzed === (loadedSample ?? demoSample())) {
-          drawSampleWaveform();
-          renderSampleAnalysis();
-        }
-        if (analyzed === loadedSineSource) renderSineSourceAnalysis();
-      };
-      sampleAnalysisWorker.onerror = (error) => {
-        for (const { source: analyzed, temporal } of pendingSampleAnalyses.values()) {
-          if (temporal) { analyzed.temporalError = error.message || 'Worker failed'; analyzed.temporalRequested = false; }
-          else { analyzed.analysisError = error.message || 'Worker failed'; analyzed.analysisRequested = false; }
-          if (!analyzed.peaks) fallbackSamplePeaks(analyzed);
-        }
-        pendingSampleAnalyses.clear();
-        sampleAnalysisWorker?.terminate();
-        sampleAnalysisWorker = null;
-        drawSampleWaveform();
-        renderSampleAnalysis();
-        renderSineSourceAnalysis();
-      };
-    }
+    const worker = temporal
+      ? (sineAnalysisWorker ??= createSampleAnalysisWorker(true))
+      : (sampleAnalysisWorker ??= createSampleAnalysisWorker(false));
     const id = ++sampleAnalysisSerial;
     pendingSampleAnalyses.set(id, { source, temporal });
     const stereo = source.stereo.slice();
-    sampleAnalysisWorker.postMessage({ id, sourceRate: source.sourceRate, stereo,
+    worker.postMessage({ id, sourceRate: source.sourceRate, stereo,
       temporal: temporal ? { maxFrames: 128 } : null }, [stereo.buffer]);
   } catch (error) {
     for (const [id, pending] of pendingSampleAnalyses) {
@@ -1251,9 +1277,13 @@ function renderSineBankEditor() {
   if (section.hidden) return;
   const levels = sineManualLevels;
   const update = () => {
+    sineTargetActive = false;
+    latestSineTargetId = 0;
+    pendingSineTargets.clear();
     sineBankProject.partials.fundamental = 440;
     sineBankProject.partials.values = levels.flatMap((amplitude, index) => [440 * (index + 1), amplitude, 0, 0]);
-    byId('sine-source-status').textContent = 'Manual harmonic bank active. Select Audition this frame to return to the analyzed source.';
+    byId('sine-source-status').textContent = 'Manual harmonic bank active. Select Audition prepared target to return to the analyzed source.';
+    byId('sine-target-status').textContent = 'Manual harmonic bank active.';
     if (sineBankPublishFrame !== null) cancelAnimationFrame(sineBankPublishFrame);
     sineBankPublishFrame = requestAnimationFrame(() => {
       sineBankPublishFrame = null;
@@ -1909,8 +1939,11 @@ byId('sample-file').addEventListener('change', async (event) => {
   }
 });
 byId('sine-use-demo').addEventListener('click', () => {
-  loadedSineSource = demoSample();
-  loadedSineSource.label = 'Built-in two-tone source';
+  const demo = demoSample();
+  loadedSineSource = { sourceRate: demo.sourceRate, stereo: demo.stereo, label: 'Built-in two-tone source' };
+  sineTargetActive = false;
+  byId('sine-target-bars').replaceChildren();
+  byId('sine-target-status').textContent = 'Select a target after analysis.';
   renderSineSourceAnalysis();
   requestSampleAnalysis(loadedSineSource, true);
 });
@@ -1920,6 +1953,9 @@ byId('sine-source-file').addEventListener('change', async (event) => {
   byId('sine-source-status').textContent = `Decoding ${file.name}…`;
   try {
     loadedSineSource = await decodeFileSource(file);
+    sineTargetActive = false;
+    byId('sine-target-bars').replaceChildren();
+    byId('sine-target-status').textContent = 'Select a target after analysis.';
     renderSineSourceAnalysis();
     requestSampleAnalysis(loadedSineSource, true);
   } catch (error) {
@@ -1928,21 +1964,65 @@ byId('sine-source-file').addEventListener('change', async (event) => {
     event.target.value = '';
   }
 });
-byId('sine-position').addEventListener('input', renderSineSourceAnalysis);
-byId('sine-use-frame').addEventListener('click', () => {
+function applyPreparedSineTarget(data, mode) {
   if (activeFamily !== 'sine-bank') return;
-  const frame = selectedSineFrame();
-  if (!frame?.values.length || !Number.isFinite(frame.fundamental) || frame.fundamental <= 0) return;
   const pitched = loadedSineSource.temporal.mode === 'harmonic-projection';
-  // Noise has no musical root. Keep its detected frequencies untransposed at 440 Hz.
-  const bankRoot = pitched ? frame.fundamental : 440;
-  sineBankProject.partials = { nodeId: 2, fundamental: bankRoot, values: Array.from(frame.values) };
+  const absolute = mode === 0;
+  const bankRoot = absolute ? (pitched ? data.fundamental : 440) : 1;
+  const pitch = pitched ? Math.max(40, Math.min(1600, loadedSineSource.temporal.fundamental)) : 440;
+  sineBankProject.partials = { nodeId: 2, fundamental: bankRoot, values: Array.from(data.values) };
   audio.setPartials(sineBankProject.partials);
-  const pitch = pitched ? Math.max(40, Math.min(1600, frame.fundamental)) : 440;
   values.set(0, pitch);
   byId('controls').querySelector('[data-parameter-id="0"]')?.syncValue(pitch);
   audio.setParameter(0, pitch);
-  byId('sine-source-status').textContent = `Auditioning analyzed frame (${pitched ? `pitch ${frame.fundamental.toFixed(1)} Hz` : 'unpitched, original detected frequencies'}). Move a manual slider to restore the harmonic bank.`;
+  renderSineBars(data.values, byId('sine-target-bars'), !absolute);
+  const name = ['Source frame', 'Add · self', 'Add · driven', 'Morph'][mode];
+  byId('sine-target-status').textContent = `${name} · ${data.values.length / 4} prepared partials · ${absolute ? pitched ? `${data.fundamental.toFixed(1)} Hz pitch` : 'unpitched original frequencies' : `pitch ${pitch.toFixed(1)} Hz × partial ratios`}`;
+}
+function requestPreparedSineTarget() {
+  const source = loadedSineSource;
+  if (activeFamily !== 'sine-bank' || !source?.temporalJobId || !sineAnalysisWorker) return;
+  const selectedMode = Number(byId('sine-target-mode').value);
+  const mode = selectedMode === 3 ? 2 : selectedMode === 0 ? 0 : 1;
+  const recipe = new Float32Array([
+    Number(byId('sine-waveform').value), 8, 0, 0, 0.5,
+    selectedMode === 2 ? 1 : 0,
+    Number(byId('sine-morph-amount').value), 0.7, 2,
+    Number(byId('sine-stretch').value), Number(byId('sine-tilt-mode').value),
+  ]);
+  const id = ++sampleAnalysisSerial;
+  latestSineTargetId = id;
+  pendingSineTargets.set(id, { source, mode: selectedMode });
+  byId('sine-target-status').textContent = 'Preparing target in Rust/Wasm…';
+  sineAnalysisWorker.postMessage({ type: 'prepare-target', id, sourceId: source.temporalJobId,
+    mode, position: Number(byId('sine-position').value),
+    smooth: Number(byId('sine-smooth').value), contrast: Number(byId('sine-contrast').value), recipe }, [recipe.buffer]);
+}
+let sineTargetRequestFrame = null;
+function scheduleSineTarget() {
+  if (!sineTargetActive) return;
+  if (sineTargetRequestFrame !== null) cancelAnimationFrame(sineTargetRequestFrame);
+  sineTargetRequestFrame = requestAnimationFrame(() => {
+    sineTargetRequestFrame = null;
+    if (sineTargetActive) requestPreparedSineTarget();
+  });
+}
+function updateSineTargetControls() {
+  const mode = Number(byId('sine-target-mode').value);
+  byId('sine-waveform-label').hidden = mode !== 2 && mode !== 3;
+  byId('sine-morph-label').hidden = mode !== 3;
+  byId('sine-stretch-label').hidden = mode === 0;
+  byId('sine-tilt-label').hidden = mode === 0;
+}
+updateSineTargetControls();
+byId('sine-position').addEventListener('input', () => { renderSineSourceAnalysis(); scheduleSineTarget(); });
+for (const id of ['sine-target-mode', 'sine-waveform', 'sine-morph-amount', 'sine-stretch', 'sine-tilt-mode', 'sine-smooth', 'sine-contrast']) {
+  byId(id).addEventListener('input', () => { updateSineTargetControls(); renderSineSourceAnalysis(); scheduleSineTarget(); });
+}
+byId('sine-use-frame').addEventListener('click', () => {
+  if (activeFamily !== 'sine-bank' || !loadedSineSource?.temporal) return;
+  sineTargetActive = true;
+  requestPreparedSineTarget();
 });
 byId('slot-state-export').addEventListener('click', () => {
   if (!hasFxState(activeFamily)) return;

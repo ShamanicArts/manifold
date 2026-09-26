@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold · spectral target review</title>
+  <style>
+    :root { color-scheme: dark; font: 14px/1.5 system-ui,sans-serif; background:#101820; color:#e0e8e7; }
+    * { box-sizing:border-box; } body { margin:0; } main { max-width:1000px; margin:auto; padding:30px clamp(16px,4vw,44px) 70px; }
+    a { color:#a6d9bb; } h1 { font-size:clamp(25px,3vw,34px); line-height:1.15; margin:8px 0 12px; font-weight:600; }
+    h2 { font-size:17px; margin:0 0 12px; font-weight:600; } p { max-width:720px; color:#b9c8c9; }
+    .eyebrow,.caption { color:#9badb2; font-size:12px; letter-spacing:.04em; }
+    nav { display:flex; gap:18px; flex-wrap:wrap; margin:24px 0; }
+    .panel { background:#19242e; border:1px solid #354550; border-radius:8px; padding:20px; margin:16px 0; }
+    label { display:grid; gap:6px; max-width:420px; color:#b9c8c9; font-size:12px; }
+    select { width:100%; background:#101820; color:#e0e8e7; border:1px solid #51636a; border-radius:5px; padding:9px; font:inherit; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:16px 0; }
+    .stat { border:1px solid #354550; border-radius:5px; padding:12px; }
+    .stat strong { display:block; font-size:17px; font-variant-numeric:tabular-nums; }
+    .stat span { color:#9badb2; font-size:11px; }
+    .legend { display:flex; gap:20px; color:#b9c8c9; font-size:12px; margin-bottom:10px; }
+    .swatch { display:inline-block; width:11px; height:3px; vertical-align:middle; margin-right:6px; }
+    .old { background:#a6d9bb; } .new { background:#efbb86; }
+    canvas { display:block; width:100%; height:270px; background:#111c24; border:1px solid #354550; border-radius:5px; }
+    .table-wrap { overflow-x:auto; max-height:390px; } table { border-collapse:collapse; width:100%; font-size:12px; font-variant-numeric:tabular-nums; }
+    th,td { text-align:right; padding:7px 10px; border-bottom:1px solid #30404b; white-space:nowrap; }
+    th:first-child,td:first-child { text-align:left; } th { position:sticky; top:0; background:#19242e; color:#b9c8c9; }
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 106</div>
+  <h1>Prepared Add and Morph targets</h1>
+  <p>The original C++/JUCE recipes and native Rust produce the same bounded partial sets. Compare wave recipes, sample-based Add, Morph endpoints, and temporal interpolation. The <a href="/?primitive=sine-bank">playable Sine bank</a> runs preparation through Rust/Wasm and publishes the selected target between audio blocks.</p>
+  <nav><a href="/manifold-sitrep.html">Project sitrep</a><a href="/temporal-partials-review.html">Source analysis comparison</a><a href="/?primitive=sine-bank">Play Source / Add / Morph</a></nav>
+  <section class="panel"><label>Comparison case<select id="case"></select></label><div class="stats" id="stats"></div><p id="status" role="status">Loading captures…</p></section>
+  <section class="panel"><h2>Partial levels</h2><div class="legend"><span><i class="swatch old"></i>C++/JUCE</span><span><i class="swatch new"></i>Rust</span></div><canvas id="spectrum" aria-label="Reference and Rust partial amplitudes"></canvas><p class="caption" id="axis-note"></p></section>
+  <section class="panel"><h2>Numerical comparison</h2><div class="table-wrap"><table><thead><tr><th>Slot</th><th>C++ frequency</th><th>Rust frequency</th><th>Δ frequency</th><th>C++ level</th><th>Rust level</th><th>Δ level</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+</main>
+<script type="module">
+const $ = id => document.getElementById(id);
+const base = '/reference/spectral-targets/';
+let legacy, rust;
+function fixed(value, places=5) { return Number(value).toFixed(places); }
+function card(label,value) { return `<div class="stat"><strong>${value}</strong><span>${label}</span></div>`; }
+function render() {
+  const index = Number($('case').value), old = legacy.cases[index], current = rust.cases[index];
+  if (!old || !current) return;
+  const errors = old.partials.map((partial,i) => partial.map((value,j) => Math.abs(value-current.partials[i][j])));
+  const max = column => Math.max(0,...errors.map(values => values[column]));
+  $('status').textContent = `${old.label} · ${old.partials.length} ordered partials · ${index < 8 ? 'wave recipe' : index < 10 ? 'Add recipe' : index < 13 ? 'Morph recipe' : 'temporal selection'}`;
+  $('stats').innerHTML = card('Frequency error', fixed(max(0),7)) + card('Level error',fixed(max(1),8))
+    + card('Phase error',fixed(max(2),8)) + card('Decay error',fixed(max(3),8));
+  $('rows').replaceChildren(...old.partials.map(([frequency,level],i) => {
+    const [nextFrequency,nextLevel] = current.partials[i], row = document.createElement('tr');
+    for (const value of [i+1,fixed(frequency),fixed(nextFrequency),fixed(nextFrequency-frequency,7),fixed(level),fixed(nextLevel),fixed(nextLevel-level,8)]) {
+      const cell = document.createElement('td'); cell.textContent=value; row.append(cell);
+    }
+    return row;
+  }));
+  const absolute = index >= 13, canvas = $('spectrum'), rect = canvas.getBoundingClientRect(), ratio = devicePixelRatio || 1;
+  canvas.width=Math.round(rect.width*ratio); canvas.height=Math.round(rect.height*ratio);
+  const ctx=canvas.getContext('2d'); ctx.scale(ratio,ratio);
+  const left=40,right=rect.width-17,top=16,bottom=rect.height-34;
+  const min=absolute?100:0.5,maxFrequency=absolute?1000:32;
+  const x=hz=>left+(Math.log(Math.max(min,hz)/min)/Math.log(maxFrequency/min))*(right-left);
+  ctx.strokeStyle='#354550';ctx.fillStyle='#8da4ac';ctx.font='11px system-ui';
+  const ticks=absolute?[100,200,400,800,1000]:[0.5,1,2,4,8,16,32];
+  for(const tick of ticks){const px=x(tick);ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();ctx.fillText(String(tick),px-9,rect.height-11);}
+  for(const [partials,color,offset] of [[old.partials,'#a6d9bb',-1.5],[current.partials,'#efbb86',1.5]]){
+    ctx.strokeStyle=color;ctx.lineWidth=2;
+    for(const [frequency,level] of partials){const px=x(frequency)+offset,peak=bottom-Math.min(1,level)*(bottom-top);ctx.beginPath();ctx.moveTo(px,bottom);ctx.lineTo(px,peak);ctx.stroke();}
+  }
+  $('axis-note').textContent = absolute ? 'Log frequency · Hz. Matching stems overlap.' : 'Log partial frequency ratio · × note pitch. Matching stems overlap.';
+}
+try {
+  const [oldResponse,newResponse]=await Promise.all([fetch(base+'manifest.json'),fetch(base+'rust-cases.json')]);
+  if(!oldResponse.ok || !newResponse.ok) throw new Error('Comparison captures unavailable');
+  legacy=await oldResponse.json();rust=await newResponse.json();
+  if(legacy.cases.length!==rust.cases.length) throw new Error('Case count mismatch');
+  legacy.cases.forEach(item=>$('case').add(new Option(item.label,item.id)));
+  $('case').addEventListener('change',render);window.addEventListener('resize',render);render();
+} catch(error){$('status').textContent=error.message || String(error);}
+</script></body></html>

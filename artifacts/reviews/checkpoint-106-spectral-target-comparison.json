@@ -1,0 +1,172 @@
+[
+  {
+    "id": 0,
+    "label": "Sine wave",
+    "partials": 1,
+    "worstFrequency": 0,
+    "worstAmplitude": 0,
+    "worstPhase": 0,
+    "worstDecay": 0,
+    "fundamentalError": 0
+  },
+  {
+    "id": 1,
+    "label": "Saw wave",
+    "partials": 8,
+    "worstFrequency": 2.0000000056086265e-07,
+    "worstAmplitude": 1.199999999368373e-08,
+    "worstPhase": 5.000000014021566e-08,
+    "worstDecay": 0,
+    "fundamentalError": 0
+  },
+  {
+    "id": 2,
+    "label": "Square wave",
+    "partials": 8,
+    "worstFrequency": 2.9999999995311555e-07,
+    "worstAmplitude": 6.9999999685599334e-09,
+    "worstPhase": 3.999999997894577e-09,
+    "worstDecay": 0,
+    "fundamentalError": 0
+  },
+  {
+    "id": 3,
+    "label": "Triangle wave",
+    "partials": 8,
+    "worstFrequency": 3.9999999934536845e-07,
+    "worstAmplitude": 9.999999994736442e-10,
+    "worstPhase": 4.9999999918171056e-08,
+    "worstDecay": 0,
+    "fundamentalError": 0
+  },
+  {
+    "id": 4,
+    "label": "Blend wave",
+    "partials": 9,
+    "worstFrequency": 3.399999997100167e-07,
+    "worstAmplitude": 1.0000000050247593e-08,
+    "worstPhase": 4.999999969612645e-08,
+    "worstDecay": 0,
+    "fundamentalError": 0
+  },
+  {
+    "id": 5,
+    "label": "Noise cloud",
+    "partials": 12,
+    "worstFrequency": 3.9999999934536845e-07,
+    "worstAmplitude": 2.9999999984209325e-09,
+    "worstPhase": 1.200000001588819e-07,
+    "worstDecay": 0,
+    "fundamentalError": 0
+  },
+  {
+    "id": 6,
+    "label": "Pulse wave",
+    "partials": 8,
+    "worstFrequency": 3.1999999983156613e-07,
+    "worstAmplitude": 4.999999997368221e-09,
+    "worstPhase": 7.999999995789153e-08,
+    "worstDecay": 0,
+    "fundamentalError": 0
+  },
+  {
+    "id": 7,
+    "label": "SuperSaw wave",
+    "partials": 8,
+    "worstFrequency": 3.599999995884673e-07,
+    "worstAmplitude": 3.199999998315661e-08,
+    "worstPhase": 4.000000020099037e-08,
+    "worstDecay": 0,
+    "fundamentalError": 0
+  },
+  {
+    "id": 8,
+    "label": "Self Add",
+    "partials": 5,
+    "worstFrequency": 2.0000000056086265e-07,
+    "worstAmplitude": 5.999999996841865e-09,
+    "worstPhase": 2.399999998736746e-08,
+    "worstDecay": 1.199999999368373e-08,
+    "fundamentalError": 0
+  },
+  {
+    "id": 9,
+    "label": "Driven Add",
+    "partials": 5,
+    "worstFrequency": 1.4999999997655777e-07,
+    "worstAmplitude": 3.999999997894577e-09,
+    "worstPhase": 2.399999998736746e-08,
+    "worstDecay": 1.199999999368373e-08,
+    "fundamentalError": 0
+  },
+  {
+    "id": 10,
+    "label": "Morph at 0%",
+    "partials": 8,
+    "worstFrequency": 1.0000000116860974e-07,
+    "worstAmplitude": 4.000000025650152e-09,
+    "worstPhase": 5.000000014021566e-08,
+    "worstDecay": 0,
+    "fundamentalError": 0
+  },
+  {
+    "id": 11,
+    "label": "Morph at 50%",
+    "partials": 8,
+    "worstFrequency": 1.6000000080396148e-07,
+    "worstAmplitude": 3.9999999978945766e-08,
+    "worstPhase": 4.9999999918171056e-08,
+    "worstDecay": 5.999999996841865e-09,
+    "fundamentalError": 0
+  },
+  {
+    "id": 12,
+    "label": "Morph at 100%",
+    "partials": 8,
+    "worstFrequency": 2.3000000037853852e-07,
+    "worstAmplitude": 5.000000025123796e-09,
+    "worstPhase": 1.199999999368373e-08,
+    "worstDecay": 1.199999999368373e-08,
+    "fundamentalError": 0
+  },
+  {
+    "id": 13,
+    "label": "Temporal step",
+    "partials": 3,
+    "worstFrequency": 5.000000015797923e-06,
+    "worstAmplitude": 1.2999999965401798e-08,
+    "worstPhase": 1.199999999368373e-08,
+    "worstDecay": 1.2999999965401798e-09,
+    "fundamentalError": 0
+  },
+  {
+    "id": 14,
+    "label": "Temporal smooth",
+    "partials": 3,
+    "worstFrequency": 3.999999989900971e-06,
+    "worstAmplitude": 3.0000000039720476e-08,
+    "worstPhase": 9.999999994736442e-10,
+    "worstDecay": 6.999999989376615e-10,
+    "fundamentalError": 0
+  },
+  {
+    "id": 15,
+    "label": "Temporal contrast",
+    "partials": 3,
+    "worstFrequency": 1.899999995202961e-05,
+    "worstAmplitude": 2.4999999959085528e-08,
+    "worstPhase": 3.999999997894577e-09,
+    "worstDecay": 1.2999999965401798e-09,
+    "fundamentalError": 0
+  },
+  {
+    "id": 16,
+    "label": "Temporal endpoint",
+    "partials": 3,
+    "worstFrequency": 0,
+    "worstAmplitude": 1.199999999368373e-08,
+    "worstPhase": 1.199999999368373e-08,
+    "worstDecay": 1.2999999965401798e-09,
+    "fundamentalError": 0
+  }
+]

@@ -1,5 +1,6 @@
 /** Background Rust/Wasm source analysis; never runs on the audio worklet. */
 let enginePromise;
+let activeTemporalId = null;
 
 async function engine() {
   if (!enginePromise) {
@@ -15,6 +16,29 @@ async function engine() {
 }
 
 self.onmessage = async ({ data }) => {
+  if (data.type === 'prepare-target') {
+    const { id, sourceId, mode, position, smooth, contrast, recipe } = data;
+    try {
+      if (sourceId !== activeTemporalId) throw new Error('Source analysis was replaced');
+      const wasm = await engine();
+      if (!(recipe instanceof Float32Array) || recipe.length !== 11 || !recipe.every(Number.isFinite)) {
+        throw new Error('Invalid spectral recipe');
+      }
+      const pointer = wasm.manifold_analysis_recipe_ptr();
+      if (!pointer) throw new Error('Recipe storage unavailable');
+      new Float32Array(wasm.memory.buffer, pointer, 11).set(recipe);
+      if (wasm.manifold_analysis_prepare_target(mode, position, smooth, contrast) !== 1) {
+        throw new Error('Spectral target rejected');
+      }
+      const count = wasm.manifold_analysis_target_count();
+      const values = new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_target_ptr(), count * 4).slice();
+      self.postMessage({ type: 'target', id, sourceId,
+        fundamental: wasm.manifold_analysis_target_fundamental(), values }, [values.buffer]);
+    } catch (error) {
+      self.postMessage({ type: 'error', id, message: error.message ?? String(error) });
+    }
+    return;
+  }
   const { id, sourceRate, stereo, temporal: temporalRequest } = data;
   try {
     const wasm = await engine();
@@ -31,6 +55,7 @@ self.onmessage = async ({ data }) => {
       ? wasm.manifold_analysis_run_temporal(regionStart, regionEnd, maxFrames)
       : wasm.manifold_analysis_run();
     if (accepted !== 1) throw new Error('Sample analysis failed');
+    activeTemporalId = temporal ? id : null;
     const peaks = new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_peaks_ptr(), wasm.manifold_analysis_peaks_len()).slice();
     let partialFrames = null;
     let temporalMeta = null;

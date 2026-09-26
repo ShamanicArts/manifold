@@ -40,3 +40,7 @@ Nine [C++ manual-mode captures](../web/public/reference/sine-bank/manifest.json)
 ## Temporal-analysis checkpoint
 
 The [checkpoint 105 review](../artifacts/reviews/checkpoint-105.md) and [browser comparison](../web/public/temporal-partials-review.html) cover source-derived temporal frames. A Rust/Wasm worker analyzes up to 128 frames with up to 32 partials each, and the Sine bank workbench can audition one selected frame. The original extractor's selected frequencies, levels, phases, RMS, and brightness match across tonal, broadband, transient, and silent fixtures. The C++ runner supplies a pitch decision, so this proves the extractor path given that decision; the old pitch detector and Add/Morph target recipes remain open.
+
+## Prepared-target checkpoint
+
+The [checkpoint 106 review](../artifacts/reviews/checkpoint-106.md) and [recipe comparison](../web/public/spectral-target-review.html) cover the old Add and Morph target helpers plus temporal selection. A dedicated Rust/Wasm worker prepares a target from the retained source analysis; the Sine bank workbench plays Source, Add self, Add driven, and Morph variants. Seventeen C++ cases match native Rust across 108 ordered partial slots. The old per-block source pull has deliberately become worker-side preparation and validated block-boundary publication. Full Main sample branch routing, phase vocoder, and state remain open.

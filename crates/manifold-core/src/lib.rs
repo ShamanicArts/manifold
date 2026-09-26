@@ -41,6 +41,7 @@ pub mod sample_region;
 pub mod shimmer;
 pub mod sine_bank;
 pub mod slew_limiter;
+pub mod spectral_targets;
 pub mod spectrum_analyzer;
 pub mod stereo_delay;
 pub mod stereo_widener;

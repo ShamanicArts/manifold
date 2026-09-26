@@ -10,6 +10,10 @@ use manifold_core::phaser;
 use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
 use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
 use manifold_core::sine_bank::{MAX_PARTIALS, PartialSet};
+use manifold_core::spectral_targets::{
+    AddFlavor, MorphRecipe, SpectralShape, WaveRecipe, build_wave_recipe, prepare_add_target,
+    prepare_morph_target,
+};
 use manifold_core::stereo_delay;
 use manifold_core::temporal_partials::{TemporalAnalysis, analyze_temporal_stereo};
 use std::cell::RefCell;
@@ -29,6 +33,8 @@ struct AnalysisJob {
     stereo: Vec<f32>,
     result: Option<SampleSummary>,
     temporal: Option<TemporalAnalysis>,
+    recipe: [f32; 11],
+    target: Option<PartialSet>,
 }
 
 struct GraphBuilder {
@@ -66,6 +72,8 @@ pub extern "C" fn manifold_analysis_begin(frames: u32, source_rate: f32) -> u32 
             stereo: vec![0.0; frames as usize * 2],
             result: None,
             temporal: None,
+            recipe: [1.0, 8.0, 0.0, 0.0, 0.5, 0.0, 0.5, 0.5, 2.0, 0.0, 0.0],
+            target: None,
         });
     });
     1
@@ -86,6 +94,7 @@ pub extern "C" fn manifold_analysis_run() -> u32 {
         slot.borrow_mut().as_mut().map_or(0, |job| {
             job.result = analyze_stereo(&job.stereo, job.source_rate);
             job.temporal = None;
+            job.target = None;
             job.stereo = Vec::new();
             u32::from(job.result.is_some())
         })
@@ -111,9 +120,123 @@ pub extern "C" fn manifold_analysis_run_temporal(
             };
             job.result = analyze_stereo(&job.stereo, job.source_rate);
             job.temporal = Some(temporal);
+            job.target = None;
             job.stereo = Vec::new();
             u32::from(job.result.is_some())
         })
+    })
+}
+
+/// Eleven f32 recipe fields: waveform, count, wave tilt, drift, pulse width,
+/// Add flavor, Morph amount, Morph depth, Morph curve, stretch, tilt mode.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_recipe_ptr() -> *mut f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .map_or(std::ptr::null_mut(), |job| job.recipe.as_mut_ptr())
+    })
+}
+
+/// 0 = source frame, 1 = Add, 2 = Morph. Control/worker side only.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_prepare_target(
+    mode: u32,
+    position: f32,
+    smooth: f32,
+    contrast: f32,
+) -> u32 {
+    ANALYSIS.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(job) = slot.as_mut() else { return 0 };
+        let Some(temporal) = job.temporal.as_ref() else {
+            return 0;
+        };
+        if mode > 2
+            || !position.is_finite()
+            || !smooth.is_finite()
+            || !contrast.is_finite()
+            || job.recipe.iter().any(|value| !value.is_finite())
+        {
+            return 0;
+        }
+        let source = temporal.partials_at(position, smooth, contrast);
+        let values = job.recipe;
+        let waveform = values[0].round().clamp(0.0, 7.0) as u8;
+        let shape = SpectralShape {
+            stretch: values[9],
+            tilt_mode: values[10].round().clamp(0.0, 2.0) as u8,
+        };
+        let target = match mode {
+            0 => source,
+            1 => prepare_add_target(
+                &source,
+                shape,
+                if values[5] >= 0.5 {
+                    AddFlavor::Driven {
+                        waveform,
+                        pulse_width: values[4],
+                    }
+                } else {
+                    AddFlavor::SelfResynthesis
+                },
+            ),
+            2 => {
+                let wave = build_wave_recipe(WaveRecipe {
+                    waveform,
+                    count: values[1].round().clamp(1.0, MAX_PARTIALS as f32) as usize,
+                    tilt: values[2],
+                    drift: values[3],
+                    pulse_width: values[4],
+                });
+                prepare_morph_target(
+                    &wave,
+                    &source,
+                    MorphRecipe {
+                        position: values[6],
+                        depth: values[7],
+                        curve: values[8].round().clamp(0.0, 2.0) as u8,
+                    },
+                    shape,
+                )
+            }
+            _ => unreachable!(),
+        };
+        if !target.validate() {
+            return 0;
+        }
+        job.target = Some(target);
+        1
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_target_count() -> u32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.target.as_ref())
+            .map_or(0, |target| target.count as u32)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_target_fundamental() -> f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.target.as_ref())
+            .map_or(f32::NAN, |target| target.fundamental)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_target_ptr() -> *const f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.target.as_ref())
+            .map_or(std::ptr::null(), |target| target.partials.as_ptr().cast())
     })
 }
 
