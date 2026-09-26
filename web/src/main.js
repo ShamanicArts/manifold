@@ -1125,8 +1125,7 @@ function applyStandaloneFxState(state) {
 }
 
 function renderPrimitive(family) {
-  midiBrowserLink.href = new URL(`?primitive=${['sample-instrument', 'midi-transpose'].includes(family) ? family : 'voice'}`, location.href).href;
-  midiBrowserUrl.value = midiBrowserLink.href;
+  midiBrowserUrl.value = new URL(`?primitive=${['sample-instrument', 'midi-transpose'].includes(family) ? family : 'voice'}`, location.href).href;
   const { project, title, description, signal } = projects[family];
   if (project.patch && !patchedSignals.has(family)) patchedSignals.set(family, structuredClone(project.signal));
   activeProject = project.patch ? { ...project, signal: patchedSignals.get(family) } : project;
@@ -1498,9 +1497,17 @@ function receiveMidiSustain(deviceId, channel, down, eventTimeMs) {
   }
 }
 const midiToggle = byId('midi-toggle');
-const midiBrowserLink = byId('midi-browser-link');
 const midiBrowserUrl = byId('midi-browser-url');
 midiBrowserUrl.addEventListener('click', () => midiBrowserUrl.select());
+byId('midi-copy-url').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(midiBrowserUrl.value);
+    byId('midi-copy-status').textContent = 'URL copied. Paste it into your browser address bar.';
+  } catch {
+    midiBrowserUrl.select();
+    byId('midi-copy-status').textContent = 'Select and copy this URL, then paste it into your browser address bar.';
+  }
+});
 const syncMidiToggle = () => {
   midiToggle.textContent = midiInput.pending ? 'Stop waiting for MIDI' : midiInput.listening ? 'Stop MIDI input' : 'Request MIDI access';
   midiToggle.disabled = Boolean(midiAvailability());
