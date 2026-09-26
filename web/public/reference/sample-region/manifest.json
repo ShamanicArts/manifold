@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust file-backed sample region",
-  "sourceSha256": "4a166bb752f803a65edf3b5691bc0e8e091640eef4be072e82d569e13fe51cc8",
+  "sourceSha256": "536fcaf82cb2b60934f434c0658f4ae654198331ba73051bf3d8ee4e34c37368",
   "sampleRate": 48000,
   "sampleSourceRate": 32000,
   "sampleFrames": 4096,

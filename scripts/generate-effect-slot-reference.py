@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit native Rust reference samples for Standalone FX type IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 15, 16 and 17."""
+"""Emit native Rust reference samples for supported Standalone FX type IDs."""
 import hashlib
 import json
 import math
@@ -12,7 +12,7 @@ OUT = ROOT / "web/public/reference/standalone-fx"
 OUT.mkdir(parents=True, exist_ok=True)
 subprocess.run(["cargo", "build", "-p", "manifold-core", "--example", "render_effect_slot"], cwd=ROOT, check=True)
 runner = ROOT / "target/debug/examples/render_effect_slot"
-sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/effect_slot.rs", "crates/manifold-core/src/waveshaper.rs", "crates/manifold-core/src/stereo_widener.rs", "crates/manifold-core/src/legacy_filter.rs", "crates/manifold-core/src/reverb.rs", "crates/manifold-core/src/multitap_delay.rs", "crates/manifold-core/src/ring_modulator.rs", "crates/manifold-core/src/transient_shaper.rs", "crates/manifold-core/src/bitcrusher.rs", "crates/manifold-core/src/stereo_delay.rs", "crates/manifold-core/src/chorus.rs", "crates/manifold-core/src/phaser.rs", "crates/manifold-core/src/compressor.rs", "crates/manifold-core/src/limiter.rs", "crates/manifold-core/src/lib.rs", "projects/standalone-fx-slice/project.json", "crates/manifold-core/examples/render_effect_slot.rs"]]
+sources = [ROOT / path for path in ["crates/manifold-core/src/graph.rs", "crates/manifold-core/src/effect_slot.rs", "crates/manifold-core/src/waveshaper.rs", "crates/manifold-core/src/stereo_widener.rs", "crates/manifold-core/src/legacy_filter.rs", "crates/manifold-core/src/reverb.rs", "crates/manifold-core/src/multitap_delay.rs", "crates/manifold-core/src/ring_modulator.rs", "crates/manifold-core/src/transient_shaper.rs", "crates/manifold-core/src/bitcrusher.rs", "crates/manifold-core/src/legacy_eq.rs", "crates/manifold-core/src/stereo_delay.rs", "crates/manifold-core/src/chorus.rs", "crates/manifold-core/src/phaser.rs", "crates/manifold-core/src/compressor.rs", "crates/manifold-core/src/limiter.rs", "crates/manifold-core/src/lib.rs", "projects/standalone-fx-slice/project.json", "crates/manifold-core/examples/render_effect_slot.rs"]]
 source_hash = hashlib.sha256(b"".join(path.read_bytes() for path in sources)).hexdigest()
 frames, sample_rate, step = 16384, 48000, 8192
 with (OUT / "input.f32").open("wb") as output:
@@ -23,8 +23,12 @@ with (OUT / "input.f32").open("wb") as output:
             left += .3 * math.sin(2 * math.pi * frame * 220 / sample_rate)
             right += .24 * math.sin(2 * math.pi * frame * 330 / sample_rate)
         output.write(struct.pack("<ff", left, right))
-# type, mix, p/0..p/4. Type 0=Chorus, 1=Phaser, 2=WaveShaper, 3=Compressor, 4=StereoWidener, 5=FilterNode, 6=SVF, 7=Reverb, 8=Stereo Delay, 9=Multitap, 12=Ring Mod, 15=Limiter, 16=Transient, 17=BitCrusher.
+# type, mix, p/0..p/4. Type 14=three-band EQNode.
 specs = [
+    ("eq-low-high", "EQ low and high shelf sweep", [14, .9, .1, .9, .5, .5, .5], [14, .9, .9, .1, .5, .5, .5], 128),
+    ("eq-mid", "EQ mid peak sweep", [14, 1, .5, .5, .1, .5, .5], [14, 1, .5, .5, .9, .5, .5], 64),
+    ("filter-to-eq", "Switch FilterNode to EQ", [5, .8, .5, .2, .5, .5, .5], [14, .8, .8, .2, .7, .5, .5], 128),
+    ("eq-to-reverb", "Switch EQ to Reverb", [14, .8, .8, .2, .7, .5, .5], [7, .8, .5, .4, .5, .5, .5], 128),
     ("bitcrusher-bits", "BitCrusher bit depth sweep", [17, .8, .1, .12, .55, .5, .5], [17, .8, .9, .12, .55, .5, .5], 128),
     ("bitcrusher-rate", "BitCrusher rate and output", [17, 1, .3, .05, .2, .5, .5], [17, 1, .3, .9, .9, .5, .5], 64),
     ("filter-to-bitcrusher", "Switch FilterNode to BitCrusher", [5, .8, .5, .2, .5, .5, .5], [17, .8, .3, .12, .55, .5, .5], 128),

@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "381acfe6f8f2fa5e06c5a94ca2a5d1139c07e7ee9abd61a65b030180533c6083",
+  "sourceSha256": "82b3fa649ce77a6e358756d2d46d602aca0c4ecf8e3569f5a32929f52d9c7c1d",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "eq-low-high",
+      "label": "EQ low and high shelf sweep",
+      "before": [
+        14,
+        0.9,
+        0.1,
+        0.9,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        14,
+        0.9,
+        0.9,
+        0.1,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "eq-low-high.f32"
+    },
+    {
+      "id": "eq-mid",
+      "label": "EQ mid peak sweep",
+      "before": [
+        14,
+        1,
+        0.5,
+        0.5,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        14,
+        1,
+        0.5,
+        0.5,
+        0.9,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "eq-mid.f32"
+    },
+    {
+      "id": "filter-to-eq",
+      "label": "Switch FilterNode to EQ",
+      "before": [
+        5,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        14,
+        0.8,
+        0.8,
+        0.2,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-eq.f32"
+    },
+    {
+      "id": "eq-to-reverb",
+      "label": "Switch EQ to Reverb",
+      "before": [
+        14,
+        0.8,
+        0.8,
+        0.2,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "after": [
+        7,
+        0.8,
+        0.5,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "eq-to-reverb.f32"
+    },
     {
       "id": "bitcrusher-bits",
       "label": "BitCrusher bit depth sweep",

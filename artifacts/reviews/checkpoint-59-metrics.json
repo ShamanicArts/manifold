@@ -1,0 +1,29 @@
+{
+  "eq-node": {
+    "cases": 8,
+    "largest": {
+      "id": "low-shelf",
+      "max": 0.0000622
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "lowGain": "24.0 dB"
+  },
+  "standalone-fx": {
+    "cases": 55,
+    "largest": {
+      "id": "eq-to-reverb",
+      "max": 0.000125
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "EQ",
+    "wet": "0.80",
+    "lowGain": "9.6 dB",
+    "controls": [
+      "Wet mix",
+      "Low gain",
+      "High gain",
+      "Mid gain"
+    ]
+  },
+  "errors": []
+}
