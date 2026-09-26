@@ -19,10 +19,11 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .toolbar-current { color: #b8c5ce; font-weight: 500; }
 .toolbar-context { font-size: 11px; color: #91a0aa; }
 .workspace { max-width: 1540px; margin: 0 auto; display: grid; grid-template-columns: 210px 285px minmax(0, 1fr); grid-template-rows: minmax(300px, auto) auto; gap: 18px; padding: 22px; }
-.library { grid-row: 1 / 3; align-self: start; padding: 16px 0; border: 1px solid #303c49; background: #151d26; border-radius: 6px; }
+.library { grid-row: 1 / 3; align-self: start; position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto; padding: 16px 0; border: 1px solid #303c49; background: #151d26; border-radius: 6px; }
 .library-heading { padding: 0 15px 13px; }
 .library-heading h2 { margin: 3px 0 8px; font-size: 17px; }
 .library-heading p { margin: 0; color: #97a7b2; font-size: 11px; line-height: 1.45; }
+#primitive-picker { display: block; position: sticky; top: 0; z-index: 2; width: calc(100% - 28px); height: 36px; margin: 0 14px 12px; padding: 0 9px; border: 1px solid #526170; border-radius: 4px; background: #202c37; box-shadow: 0 0 0 10px #151d26; font-size: 12px; }
 .library-group-label { padding: 11px 15px 7px; border-top: 1px solid #303c49; color: #8798a4; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .library-item { display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%; border: 0; border-left: 3px solid transparent; padding: 10px 12px; text-align: left; background: transparent; }
 .library-item:hover { background: #222e3a; }
@@ -118,5 +119,5 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .playback button:hover { background: #344353; }
 .reference-footer > span { color: #9aabb5; font-size: 11px; }
 @media (max-width: 1100px) { .workspace { grid-template-columns: 210px minmax(0, 1fr); } .library { grid-row: 1 / 3; } .module { grid-column: 2; grid-row: 1; } .measurements { grid-column: 2; grid-row: 2; } .reference { grid-column: 2; grid-row: 3; } }
-@media (max-width: 700px) { .workspace { grid-template-columns: 1fr; grid-template-rows: auto; gap: 12px; padding: 12px; } .library, .module, .measurements, .reference { grid-column: 1; grid-row: auto; } .toolbar { padding: 0 14px; } .toolbar-context { display: none; } .reference-heading { align-items: start; flex-wrap: wrap; } }
+@media (max-width: 700px) { .workspace { grid-template-columns: 1fr; grid-template-rows: auto; gap: 12px; padding: 12px; } .library, .module, .measurements, .reference { grid-column: 1; grid-row: auto; } .library { position: static; max-height: none; overflow: visible; padding: 12px 0; } .library-heading { padding-bottom: 8px; } #primitive-picker { position: static; margin-bottom: 0; box-shadow: none; } .library-group-label, .library-item, .library-future { display: none; } .library-progress { margin-top: 10px; padding-top: 7px; } .library-progress span { display: inline; } .toolbar { padding: 0 14px; } .toolbar-context { display: none; } .reference-heading { align-items: start; flex-wrap: wrap; } }
 @media (max-width: 480px) { .measurements, .reference, .module { padding: 15px; } .metric-row strong { font-size: 13px; } .metric-row > div { padding: 10px 7px; } .transport { flex-wrap: wrap; } .transport select, .transport button { flex: 1 1 120px; } }

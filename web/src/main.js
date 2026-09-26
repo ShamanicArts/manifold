@@ -22,6 +22,7 @@ import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum, drawTransferCurve, drawMeterTrace } from './reference/plots.js';
 
 const byId = (id) => document.getElementById(id);
+const primitivePicker = byId('primitive-picker');
 const status = byId('status');
 const toggle = byId('audio-toggle');
 const projects = {
@@ -128,6 +129,9 @@ const projects = {
     signal: 'Live path: input → stereo delay → output · feedback recirculates in prepared buffers',
   },
 };
+for (const button of document.querySelectorAll('.library-item')) {
+  primitivePicker.add(new Option(button.querySelector('strong').textContent, button.dataset.primitive));
+}
 const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
 let values = new Map();
@@ -328,6 +332,7 @@ function renderPrimitive(family) {
   const { project, title, description, signal } = projects[family];
   const isInstrument = project.signal.inputSource === 'none';
   activeFamily = family;
+  primitivePicker.value = family;
   values = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
   if (family === 'standalone-fx') slotValuesByType = new Map([
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
@@ -561,6 +566,9 @@ async function selectPrimitive(family, updateUrl = true) {
 renderPrimitive(activeFamily);
 document.querySelectorAll('[data-primitive]').forEach((button) => {
   button.addEventListener('click', () => selectPrimitive(button.dataset.primitive).catch((error) => { status.textContent = String(error); }));
+});
+primitivePicker.addEventListener('change', () => {
+  selectPrimitive(primitivePicker.value).catch((error) => { status.textContent = String(error); });
 });
 window.addEventListener('popstate', () => {
   const family = new URL(location.href).searchParams.get('primitive');

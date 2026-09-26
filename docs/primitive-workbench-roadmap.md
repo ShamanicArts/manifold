@@ -8,6 +8,8 @@ Make each port inspectable as a small browser instrument: manipulate a primitive
 
 The current Standalone Filter page proves the Rust/Wasm AudioWorklet path, but its large hero, decorative frequency bars, implementation copy, and oversized cards make it poor for comparing behavior. Replace that page with a compact task surface. The main reading order is: **project and signal path → controls → useful output → reference comparison**. A scope, filter response, spectrum, meter, or event timeline earns its place by answering a specific question; a visual effect does not.
 
+At seventeen views, navigation has a direct primitive picker on both layouts. The desktop library scrolls within its own panel so choosing a lower item keeps the selected workbench in view. On narrow screens the picker replaces the long list above the active view. Selection updates the URL and browser history as well as the module and reference case, making individual checkpoints directly reviewable.
+
 ## Visual and interaction vocabulary to translate
 
 These are cues from the Lua widget implementation, not pixel dimensions to copy into the browser. Preserve keyboard access, focus states, readable text, and comfortable pointer targets.
