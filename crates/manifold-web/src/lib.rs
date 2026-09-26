@@ -1,5 +1,6 @@
 //! Thin, single-instance AudioWorklet ABI. Graph and buffers are allocated only at prepare.
 
+use manifold_core::compressor;
 use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
@@ -136,6 +137,12 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             highpass_hz: 80.0,
             mode: 0,
         },
+        24 => {
+            let mut params = compressor::defaults();
+            params[0] = a;
+            params[1] = b;
+            NodeKind::Compressor { params }
+        }
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -272,6 +279,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
                 NodeKind::EnvelopeFollower { mode, .. } | NodeKind::EnvelopeControl { mode, .. },
                 4,
             ) => *mode = value.round().clamp(0.0, 2.0) as u32,
+            (NodeKind::Compressor { params }, id) => {
+                if !compressor::set_value(params, id, value) {
+                    return 0;
+                }
+            }
             _ => return 0,
         }
         1

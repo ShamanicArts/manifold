@@ -9,6 +9,7 @@ import noiseProject from '../../projects/noise/project.json';
 import patchProject from '../../projects/synth-patch/project.json';
 import modulationProject from '../../projects/modulated-gain/project.json';
 import distortionProject from '../../projects/distortion/project.json';
+import compressorProject from '../../projects/compressor/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
 import fxChainProject from '../../projects/fx-chain/project.json';
 import standaloneFxProject from '../../projects/standalone-fx-slice/project.json';
@@ -86,6 +87,12 @@ const projects = {
     description: 'Shape stereo audio with a smoothed drive, a dry/wet blend, and output gain. The final signal is clamped to the audio range.',
     signal: 'Live path: input → distortion → stereo output',
   },
+  compressor: {
+    project: compressorProject,
+    title: 'Compressor',
+    description: 'Legacy scalar stereo compression with threshold, ratio, makeup, and dry/wet mix. Gain reduction is shown below in dB.',
+    signal: 'Live path: input → compressor → stereo output · meter → gain reduction',
+  },
   'fx-chain': {
     project: fxChainProject,
     title: 'FX chain',
@@ -139,7 +146,17 @@ let slotValuesByType = new Map();
 let loopHasTake = false;
 let envelopeHistory = [];
 const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands) => {
-  if (nodeId !== 2 || !['spectrum-analyzer', 'envelope-follower', 'envelope-ducking'].includes(activeFamily)) return;
+  if (nodeId !== 2 || !['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor'].includes(activeFamily)) return;
+  if (activeFamily === 'compressor') {
+    const reduction = Number.isFinite(bands[0]) ? Math.max(0, -bands[0]) : 0;
+    const row = byId('live-bands').firstChild;
+    row.querySelector('.live-band-fill').style.width = `${Math.min(100, reduction / 24 * 100)}%`;
+    row.querySelector('output').textContent = `${reduction.toFixed(1)} dB`;
+    envelopeHistory.push(reduction);
+    if (envelopeHistory.length > 60) envelopeHistory.shift();
+    drawMeterTrace(byId('live-envelope-trace'), [envelopeHistory], Math.max(3, ...envelopeHistory) * 1.2, ['#9a8de8']);
+    return;
+  }
   const scale = activeFamily === 'spectrum-analyzer'
     ? Math.max(0.05, Math.max(...bands.filter(Number.isFinite)) * 1.2) : 1;
   [...byId('live-bands').children].forEach((row, index) => {
@@ -222,10 +239,14 @@ function addSlider(parameter) {
     if (publish) updateTransferCurve();
   };
   wrapper.dataset.parameterId = String(parameter.id);
+  if (parameter.prepareOnly) {
+    wrapper.dataset.prepareOnly = 'true';
+    input.disabled = audio.running;
+  }
   wrapper.syncValue = (value) => sync(toPosition(value), false);
   sync(toPosition(parameter.default), false);
   input.addEventListener('input', () => sync(Number(input.value), true));
-  wrapper.addEventListener('dblclick', () => sync(toPosition(parameter.default), true));
+  wrapper.addEventListener('dblclick', () => { if (!input.disabled) sync(toPosition(parameter.default), true); });
   wrapper.append(title, readout, input);
   byId('controls').appendChild(wrapper);
 }
@@ -339,21 +360,24 @@ function renderPrimitive(family) {
   ]);
   if (family === 'loop-capture') loopHasTake = false;
   byId('module-title').textContent = title;
-  const analyzerView = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking';
-  document.querySelector('.measurements h2').textContent = family === 'spectrum-analyzer' ? 'Band levels' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
+  const analyzerView = ['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor'].includes(family);
+  document.querySelector('.measurements h2').textContent = family === 'spectrum-analyzer' ? 'Band levels' : family === 'compressor' ? 'Gain reduction' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
   envelopeHistory = [];
   document.querySelector('.scope-wrap').hidden = analyzerView;
   document.querySelector('.axis-caption').hidden = analyzerView;
   byId('live-bands').hidden = !analyzerView;
-  byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : 'Live envelope value');
-  byId('live-envelope-trace').hidden = !['envelope-follower', 'envelope-ducking'].includes(family);
+  byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : family === 'compressor' ? 'Live gain reduction in decibels' : 'Live envelope value');
+  byId('live-envelope-trace').hidden = !['envelope-follower', 'envelope-ducking', 'compressor'].includes(family);
+  byId('live-envelope-trace').setAttribute('aria-label', family === 'compressor' ? 'Recent gain reduction in decibels' : 'Recent envelope history');
   [...byId('live-bands').children].forEach((row, index) => {
     row.hidden = family !== 'spectrum-analyzer' && index > 0;
-    row.firstChild.textContent = family !== 'spectrum-analyzer' ? 'Env' : String(index + 1);
+    row.firstChild.textContent = family === 'compressor' ? 'GR' : family !== 'spectrum-analyzer' ? 'Env' : String(index + 1);
+    row.querySelector('output').textContent = family === 'compressor' ? '0.0 dB' : '0.000';
+    row.querySelector('.live-band-fill').style.width = '0%';
   });
   byId('module-description').textContent = description;
   byId('signal-path').textContent = signal;
-  document.querySelector('.panel-note').textContent = family === 'spectrum-analyzer' ? 'Eight band meter' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Envelope meter' : `Post ${title.toLowerCase()}`;
+  document.querySelector('.panel-note').textContent = family === 'spectrum-analyzer' ? 'Eight band meter' : family === 'compressor' ? 'Reduction meter' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Envelope meter' : `Post ${title.toLowerCase()}`;
   document.querySelectorAll('[data-primitive]').forEach((button) => {
     button.setAttribute('aria-current', button.dataset.primitive === family ? 'page' : 'false');
   });
@@ -414,6 +438,12 @@ function renderPrimitive(family) {
     help.textContent = '¹ The original delay exposes resonance but its feedback filter uses one pole, so resonance has no audible effect.';
     byId('controls').appendChild(help);
   }
+  if (family === 'compressor') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Attack and release are captured when audio starts; stop audio to change them. The old knee, auto makeup, mode, detector mode, and sidechain HPF controls do not affect this processing path.';
+    byId('controls').appendChild(help);
+  }
   if (family === 'patch') {
     const range = document.createElement('p');
     range.id = 'cutoff-range';
@@ -439,6 +469,7 @@ function renderPrimitive(family) {
     : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation'
       ? `Start the instrument to view its spectrum. The ${family === 'patch' || family === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
     : family === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain and inspect the detector. Native Rust/Wasm comparisons are below.'
+    : family === 'compressor' ? 'Start audio to hear compression and view gain reduction in dB. C++ audio and meter snapshots are compared below.'
     : family === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.'
     : analyzerView ? 'Start audio to see the original eight band meter. Bars scale to the current peak; numbers are normalized 0–1 values.'
     : 'Start audio to view the output spectrum. The reference cases below run offline.';
@@ -447,6 +478,12 @@ function renderPrimitive(family) {
     help.className = 'control-help';
     help.textContent = 'Legacy DSP caps resonance at 1.00, although its control reaches 2.00.';
     byId('controls').appendChild(help);
+  }
+}
+
+function updatePrepareOnlyControls() {
+  for (const wrapper of document.querySelectorAll('[data-prepare-only="true"]')) {
+    wrapper.querySelector('input').disabled = audio.running;
   }
 }
 
@@ -578,7 +615,7 @@ window.addEventListener('popstate', () => {
 let spectrumFrame = null;
 let lastMeterRequest = 0;
 const animateSpectrum = () => {
-  if (['spectrum-analyzer', 'envelope-follower', 'envelope-ducking'].includes(activeFamily)) {
+  if (['spectrum-analyzer', 'envelope-follower', 'envelope-ducking', 'compressor'].includes(activeFamily)) {
     const now = performance.now();
     if (audio.running && now - lastMeterRequest >= 100) {
       audio.requestMeters(2, activeFamily === 'spectrum-analyzer' ? 8 : 1);
@@ -604,13 +641,14 @@ toggle.addEventListener('click', async () => {
     toggle.textContent = audio.running
       ? isInstrument ? 'Stop instrument' : 'Stop audio'
       : isInstrument ? 'Start instrument' : 'Start audio';
+    updatePrepareOnlyControls();
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'compressor' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'voice'
         ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
         : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation'
           ? `Start the instrument to view its spectrum. The ${activeFamily === 'patch' || activeFamily === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
-        : activeFamily === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain. Native Rust/Wasm comparisons are below.' : activeFamily === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.' : activeFamily === 'spectrum-analyzer' ? 'Start audio to see the original eight band meter. C++ meter snapshots are compared below.' : 'Start audio to view the output spectrum. The reference cases below run offline.';
+        : activeFamily === 'compressor' ? 'Start audio to hear compression and view gain reduction in dB. C++ audio and meter snapshots are compared below.' : activeFamily === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain. Native Rust/Wasm comparisons are below.' : activeFamily === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.' : activeFamily === 'spectrum-analyzer' ? 'Start audio to see the original eight band meter. C++ meter snapshots are compared below.' : 'Start audio to view the output spectrum. The reference cases below run offline.';
     if (spectrumFrame) cancelAnimationFrame(spectrumFrame);
     animateSpectrum();
   } catch (error) {

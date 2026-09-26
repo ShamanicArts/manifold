@@ -1,5 +1,6 @@
 //! Platform-independent audio kernels. The prepared filter allocates nothing in process.
 
+pub mod compressor;
 pub mod distortion;
 pub mod effect_slot;
 pub mod envelope;

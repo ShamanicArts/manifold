@@ -2,6 +2,7 @@
 //! Routing is explicit: a graph without a route to Output emits silence.
 
 use crate::Filter;
+use crate::compressor::{self, Compressor};
 use crate::distortion::Distortion;
 use crate::effect_slot::{self, EffectSlot};
 use crate::envelope::AdsrEnvelope;
@@ -62,6 +63,9 @@ pub enum NodeKind {
         drive: f32,
         mix: f32,
         output: f32,
+    },
+    Compressor {
+        params: [f32; compressor::PARAM_COUNT],
     },
     StereoDelay {
         params: [f32; 16],
@@ -135,6 +139,7 @@ impl NodeKind {
             | Self::Svf
             | Self::AdsrEnvelope
             | Self::Distortion { .. }
+            | Self::Compressor { .. }
             | Self::StereoDelay { .. }
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
@@ -197,6 +202,7 @@ impl NodeKind {
             Self::Distortion { drive, mix, output } => {
                 drive.is_finite() && mix.is_finite() && output.is_finite()
             }
+            Self::Compressor { params } => params.iter().all(|value| value.is_finite()),
             Self::StereoDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
@@ -315,6 +321,7 @@ enum Kernel {
         depth_hz: f32,
     },
     Distortion(Distortion),
+    Compressor(Compressor),
     StereoDelay(StereoDelay),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
@@ -415,6 +422,9 @@ impl Kernel {
             },
             NodeKind::Distortion { drive, mix, output } => {
                 Self::Distortion(Distortion::new(sample_rate, *drive, *mix, *output))
+            }
+            NodeKind::Compressor { params } => {
+                Self::Compressor(Compressor::new(sample_rate, *params))
             }
             NodeKind::StereoDelay { params } => {
                 Self::StereoDelay(StereoDelay::new(sample_rate, *params))
@@ -527,6 +537,7 @@ impl Kernel {
                 *depth_hz = value.clamp(-20_000.0, 20_000.0)
             }
             (Self::Distortion(distortion), id) => return distortion.set_parameter(id, value),
+            (Self::Compressor(compressor), id) => return compressor.set_parameter(id, value),
             (Self::StereoDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
@@ -712,6 +723,7 @@ impl ExecutionPlan {
                 Kernel::SpectrumAnalyzer(analyzer) => analyzer.band(band),
                 Kernel::EnvelopeFollower(follower) if band == 0 => Some(follower.meter()),
                 Kernel::EnvelopeControl(follower) if band == 0 => Some(follower.meter()),
+                Kernel::Compressor(compressor) if band == 0 => Some(compressor.gain_reduction_db()),
                 _ => None,
             })
     }
@@ -929,6 +941,9 @@ impl ExecutionPlan {
                         left[frame] = value[0];
                         right[frame] = value[1];
                     }
+                }
+                Kernel::Compressor(compressor) => {
+                    compressor.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::StereoDelay(delay) => {
                     delay.process_planar([source(0, 0), source(0, 1)], [left, right])

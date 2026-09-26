@@ -47,7 +47,12 @@ export class BrowserAudioHost {
           }
         };
       });
-      processor.port.postMessage({ type: 'init', wasmBytes, graph: project.signal }, [wasmBytes]);
+      const prepareValues = project.parameters.filter((parameter) => parameter.prepareOnly)
+        .map((parameter) => ({ nodeId: parameter.nodeId, id: parameter.nodeParameterId,
+          value: values.get(parameter.id) ?? parameter.default }));
+      const graph = { ...project.signal,
+        initialParameters: [...(project.signal.initialParameters ?? []), ...prepareValues] };
+      processor.port.postMessage({ type: 'init', wasmBytes, graph }, [wasmBytes]);
       await ready;
       this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));
       for (const [id, value] of values) this.setParameter(id, value);

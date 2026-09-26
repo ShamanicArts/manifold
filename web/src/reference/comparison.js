@@ -144,6 +144,22 @@ function prepareDistortion(engine, selected) {
   }
 }
 
+function prepareCompressor(engine, selected) {
+  if (engine.manifold_graph_begin(3, 2) !== 1
+    || engine.manifold_graph_node(1, 0, 0, 0) !== 1
+    || engine.manifold_graph_node(2, 24, selected.before[0], selected.before[1]) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1) {
+    throw new Error('Wasm compressor graph failed');
+  }
+  selected.before.forEach((value, id) => {
+    if (engine.manifold_graph_initial_parameter(2, id, value) !== 1) {
+      throw new Error(`Wasm compressor initial parameter ${id} failed`);
+    }
+  });
+}
+
 function prepareStereoDelay(engine, selected) {
   if (engine.manifold_graph_begin(3, 2) !== 1
     || engine.manifold_graph_node(1, 0, 0, 0) !== 1
@@ -252,6 +268,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'patch') preparePatch(engine, selected);
   if (family === 'modulation') prepareModulation(engine, selected);
   if (family === 'distortion') prepareDistortion(engine, selected);
+  if (family === 'compressor') prepareCompressor(engine, selected);
   if (family === 'stereo-delay') prepareStereoDelay(engine, selected);
   if (family === 'fx-chain') prepareFxChain(engine, selected);
   if (family === 'standalone-fx') prepareEffectSlot(engine, selected);
@@ -293,7 +310,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), block * 2);
   const outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), block * 2);
   const rendered = new Float32Array(input.length);
-  const meterCount = family === 'spectrum-analyzer' ? 8 : family === 'envelope-follower' || family === 'envelope-ducking' ? 1 : 0;
+  const meterCount = family === 'spectrum-analyzer' ? 8 : ['envelope-follower', 'envelope-ducking', 'compressor'].includes(family) ? 1 : 0;
   const meterSnapshots = meterCount ? new Float32Array(Math.ceil(manifest.frames / block) * meterCount) : null;
   for (let offset = 0; offset < manifest.frames; offset += block) {
     const count = Math.min(block, manifest.frames - offset);
@@ -338,6 +355,11 @@ function renderWasm(engine, family, manifest, input, selected) {
         updated &= engine.manifold_set_node_parameter(2, 0, selected.driveAfter);
         updated &= engine.manifold_set_node_parameter(2, 1, selected.mixAfter);
         updated &= engine.manifold_set_node_parameter(2, 2, selected.outputAfter);
+      }
+      if (family === 'compressor') {
+        selected.after.forEach((value, id) => {
+          updated &= engine.manifold_set_node_parameter(2, id, value);
+        });
       }
       if (family === 'stereo-delay') {
         selected.after.forEach((value, id) => {
@@ -484,11 +506,11 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
   };
   const draw = () => {
     if (!active) return;
-    if (currentFamily === 'envelope-follower' || currentFamily === 'envelope-ducking') {
+    if (currentFamily === 'envelope-follower' || currentFamily === 'envelope-ducking' || currentFamily === 'compressor') {
       const count = byId('plot-window').value === 'start'
         ? manifest.stepFrame / active.blockSize : active.metersLegacy.length;
-      const oldMeter = active.metersLegacy.slice(0, count);
-      const newMeter = active.metersRust.slice(0, count);
+      const oldMeter = active.metersLegacy.slice(0, count).map((value) => currentFamily === 'compressor' ? -value : value);
+      const newMeter = active.metersRust.slice(0, count).map((value) => currentFamily === 'compressor' ? -value : value);
       const difference = active.meterDifference.slice(0, count).map(Math.abs);
       drawMeterTrace(byId('comparison-wave'), [oldMeter, newMeter], Math.max(0.05, ...oldMeter, ...newMeter) * 1.15, ['#e2b084', '#9a8de8']);
       drawMeterTrace(byId('comparison-diff'), [difference], Math.max(active.max, 1e-8) * 1.15, ['#a4d9bb']);
@@ -585,16 +607,18 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
                       ? `${['peak', 'RMS', 'hybrid'][selected.modeBefore]} → ${['peak', 'RMS', 'hybrid'][selected.modeAfter]} · attack ${selected.attackBefore} → ${selected.attackAfter} ms · release ${selected.releaseBefore} → ${selected.releaseAfter} ms`
                     : family === 'envelope-ducking'
                       ? `detector ${['peak', 'RMS', 'hybrid'][selected.before[4]]} → ${['peak', 'RMS', 'hybrid'][selected.after[4]]} · duck depth ${selected.before[6]} → ${selected.after[6]}`
+                    : family === 'compressor'
+                      ? `threshold ${selected.before[0]} → ${selected.after[0]} dB · ratio ${selected.before[1]} → ${selected.after[1]} · attack ${selected.before[2]} ms at prepare`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
     const nativeReference = family === 'voice' || family === 'patch' || family === 'modulation' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'envelope-ducking';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' ? 'End of capture' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
-    byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' ? 'Before change' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
-    byId('plot-title').textContent = family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
-    document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
-    document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' ? 'Maximum meter difference' : 'Maximum difference';
-    document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' ? 'RMS meter difference' : 'RMS difference';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' ? 'End of capture' : family === 'compressor' ? 'Whole reduction' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' ? 'Whole modulation' : 'Parameter change';
+    byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' ? 'Before change' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
+    byId('plot-title').textContent = family === 'compressor' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' ? 'Amplitude envelope · left channel' : 'Output waveform';
+    document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
+    document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' ? 'Maximum meter difference' : 'Maximum difference';
+    document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' ? 'RMS meter difference' : 'RMS difference';
     document.querySelector('.legend-old').textContent = family === 'stereo-delay' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
     document.querySelector('.legend-new').textContent = family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' ? 'Wasm L/R' : 'Rust/Wasm';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
@@ -602,7 +626,7 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
     if (currentRequest !== requestId) return;
     const rust = renderWasm(engine, family, manifest, input, selected);
     const audioReport = measure(legacy, rust);
-    const metersLegacy = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' ? await loadFloat32(family, selected.meterOutput) : null;
+    const metersLegacy = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' ? await loadFloat32(family, selected.meterOutput) : null;
     if (currentRequest !== requestId) return;
     const report = metersLegacy ? measure(metersLegacy, rust.meters) : audioReport;
     if (metersLegacy) byId('reference-meta').textContent += ` · audio max Δ ${audioReport.max.toExponential(2)}`;

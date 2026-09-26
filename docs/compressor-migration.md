@@ -1,0 +1,9 @@
+# Compressor migration boundary
+
+The old `dsp/core/nodes/CompressorNode.cpp` is the reference for the scalar stereo port. Rust type code 24 preserves its shared detector envelope: each frame processes left, then right, and both channels update the same envelope. Threshold, ratio, makeup gain, and wet mix are read each block. The gain-reduction meter reports the *negative* envelope in dB; the workbench presents its positive magnitude.
+
+Attack and release coefficients are calculated only in `prepare()`. The old setters accept changes afterward, but those changes do not affect audio until the node is prepared again. The v2 workbench exposes attack and release before **Start audio**, then disables those sliders while running. Other old API controls—knee, auto makeup, mode, detector mode, and sidechain highpass—are accepted for comparison but unused by this scalar processing path. They are not shown as effective live controls. These are parity decisions, not endorsements of the old compressor design.
+
+Eight C++ fixtures cover default and heavy compression, dry mix with an active detector, changes to effective controls, changes to attack/release after preparation, changes to inert controls, and 64/256 frame blocks. Each compares stereo output and one gain-reduction value per block against Rust/Wasm. Fixture generation compiles the original C++ node via `scripts/build-legacy-reference.sh compressor` and runs `scripts/generate-compressor-reference.py`.
+
+The old Standalone FX type 3 uses this compressor with normalized `p/0`–`p/4` mappings. Its project-level slot routing and preset behavior are separate from this node port. A redesigned dynamics processor can use independent channel or linked detection, an effective knee, and runtime timing changes, but should get its own behavior contract so legacy presets are not silently reinterpreted.
