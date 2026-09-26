@@ -275,7 +275,7 @@ impl EffectSlot {
     }
 
     /// Reconstruct the old graph-runtime switch boundary. The gain behavior
-    /// and Chorus/Phaser/Compressor/SVF/Reverb/Delay reprepare rules are captured against the old C++ host
+    /// and Chorus/Phaser/Compressor/SVF/Reverb/Delay/Ring reprepare rules are captured against the old C++ host
     /// graph; other effect types remain subject to their own preparation audit.
     pub fn new_host_switch(
         sample_rate: f32,
@@ -777,8 +777,8 @@ impl EffectSlot {
                         // The old runtime prepares every compiled node on
                         // each type change. Chorus, Phaser and Reverb clear
                         // state; Compressor refreshes timing but retains its
-                        // detector, SVF retains integrators, and Delay keeps
-                        // its ring at 48 kHz.
+                        // detector, SVF retains integrators, Ring resets its
+                        // oscillator, and Delay keeps its ring at 48 kHz.
                         let visited = self
                             .legacy
                             .as_ref()
@@ -795,6 +795,9 @@ impl EffectSlot {
                         }
                         if visited[COMPRESSOR_TYPE as usize] {
                             self.compressor.reprepare(self.sample_rate);
+                        }
+                        if visited[RING_TYPE as usize] {
+                            self.rebuild_ring();
                         }
                         if visited[DELAY_TYPE as usize] {
                             self.delay.reprepare_targets_preserving_tail();
@@ -871,7 +874,12 @@ impl EffectSlot {
         }
         let [in_l, in_r] = input;
         let [out_l, out_r] = output;
-        self.process_kernel(self.selected, [in_l, in_r], [&mut *out_l, &mut *out_r]);
+        self.process_kernel(
+            self.selected,
+            false,
+            [in_l, in_r],
+            [&mut *out_l, &mut *out_r],
+        );
         let wet_gain = match self.selected {
             CHORUS_TYPE | MULTITAP_TYPE | SHIMMER_TYPE => 1.4,
             FORMANT_TYPE => 1.5,
@@ -888,7 +896,13 @@ impl EffectSlot {
             out_r[frame] = in_r[frame] * dry + out_r[frame] * wet;
         }
     }
-    fn process_kernel(&mut self, effect_type: u32, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
+    fn process_kernel(
+        &mut self,
+        effect_type: u32,
+        old_host_graph: bool,
+        input: [&[f32]; 2],
+        output: [&mut [f32]; 2],
+    ) {
         let [in_l, in_r] = input;
         let [out_l, out_r] = output;
         match effect_type {
@@ -913,6 +927,9 @@ impl EffectSlot {
             MULTITAP_TYPE => self
                 .multitap
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
+            RING_TYPE if old_host_graph => self
+                .ring
+                .process_planar_with_silent_external([in_l, in_r], [&mut *out_l, &mut *out_r]),
             RING_TYPE => self
                 .ring
                 .process_planar([in_l, in_r], None, [&mut *out_l, &mut *out_r]),
@@ -982,6 +999,7 @@ impl EffectSlot {
             debug_assert!(frames <= scratch.left.len());
             self.process_kernel(
                 effect_type as u32,
+                state.host_switch,
                 [in_l, in_r],
                 [&mut scratch.left[..frames], &mut scratch.right[..frames]],
             );

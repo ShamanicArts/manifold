@@ -4,7 +4,7 @@ The old C++ `CompressorNode::prepare()` recalculates attack and release coeffici
 
 Rust `Compressor::reprepare()` now refreshes the two coefficients without clearing the envelope or allocating. The [native comparison](checkpoint-87-compressor-switch-metrics.json) reports maximum difference **2.24e-8**, RMS **9.43e-10** across 32,768 stereo frames. The [Wasm comparison](checkpoint-87-compressor-wasm-metrics.json) reaches the same maximum difference. The timing change is applied through public normalized controls in both runners.
 
-The [browser view](checkpoint-87-browser.png) offers Compressor as the sixth audited host-switch type. Selecting it chooses the old C++ graph case and zooms the return window, where the C++ and Wasm stereo traces overlap. The offline result is **Match** at **2.24e-8**. Live Delay/Compressor switches keep audio running without page errors. Fourteen other effect types still need graph preparation audits.
+The [browser view](checkpoint-87-browser.png) offers Compressor as the sixth audited host-switch type. Selecting it chooses the old C++ graph case and zooms the return window, where the C++ and Wasm stereo traces overlap. The offline result is **Match** at **2.24e-8**. Live Delay/Compressor switches keep audio running without page errors. Fifteen other effect types still need graph preparation audits.
 
 This is a reconstructed old Lua branch layout running through old C++ graph/runtime nodes; it does not execute Lua or the deferred graph worker. The host-switch view still has no all-type JSON state export.
 

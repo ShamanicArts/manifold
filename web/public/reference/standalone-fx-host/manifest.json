@@ -162,6 +162,36 @@
       ],
       "focusFrame": 11520,
       "output": "delay-compressor-delay-compressor.f32"
+    },
+    {
+      "id": "delay-ring-delay-ring",
+      "label": "Delay → Ring → Delay → Ring · old silent B bus",
+      "sourceSha256": "ca9fde2f8959e0e55ca5c3b131dbafecb9eead10af00999f0a9e93c747c29139",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          12
+        ],
+        [
+          11008,
+          8
+        ],
+        [
+          11520,
+          12
+        ]
+      ],
+      "focusFrame": 11520,
+      "output": "delay-ring-delay-ring.f32"
     }
   ]
 }

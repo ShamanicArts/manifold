@@ -42,6 +42,8 @@ fn main() -> std::io::Result<()> {
                 | "--host-reverb"
                 | "--host-svf"
                 | "--host-compressor"
+                | "--host-ring"
+                | "--prepared-ring"
         )
     ) {
         let constructor = if matches!(
@@ -52,6 +54,7 @@ fn main() -> std::io::Result<()> {
                     | "--host-reverb"
                     | "--host-svf"
                     | "--host-compressor"
+                    | "--host-ring"
             )
         ) {
             EffectSlot::new_host_switch
@@ -72,6 +75,7 @@ fn main() -> std::io::Result<()> {
                         Some("--host-reverb") => 7.0,
                         Some("--host-svf") => 6.0,
                         Some("--host-compressor") => 3.0,
+                        Some("--host-ring" | "--prepared-ring") => 12.0,
                         _ => 0.0,
                     },
                 );
@@ -80,13 +84,27 @@ fn main() -> std::io::Result<()> {
                 slot.set_parameter(4, 1.0);
                 slot.set_parameter(5, 1.0);
             }
-            if offset == 11008 && mode.as_deref() == Some("--host-compressor") {
+            if offset == 11008
+                && matches!(
+                    mode.as_deref(),
+                    Some("--host-compressor" | "--host-ring" | "--prepared-ring")
+                )
+            {
                 slot.set_parameter(0, 8.0);
             }
             if offset == 11520 && mode.as_deref() == Some("--host-compressor") {
                 slot.set_parameter(0, 3.0);
             }
-            if offset == 16384 && mode.as_deref() != Some("--host-compressor") {
+            if offset == 11520 && matches!(mode.as_deref(), Some("--host-ring" | "--prepared-ring"))
+            {
+                slot.set_parameter(0, 12.0);
+            }
+            if offset == 16384
+                && !matches!(
+                    mode.as_deref(),
+                    Some("--host-compressor" | "--host-ring" | "--prepared-ring")
+                )
+            {
                 slot.set_parameter(0, 8.0);
             }
             if offset == 24576 && mode.as_deref() == Some("--host-reverb") {

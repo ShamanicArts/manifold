@@ -70,6 +70,27 @@ impl RingModulator {
         modulator: Option<[&[f32]; 2]>,
         output: [&mut [f32]; 2],
     ) {
+        self.process_planar_inner(input, modulator, false, output);
+    }
+
+    /// The old GraphRuntime supplies a silent second input view even when the
+    /// optional modulation bus has no connection. Its Ring node therefore
+    /// takes the external-bus path rather than running its oscillator.
+    pub fn process_planar_with_silent_external(
+        &mut self,
+        input: [&[f32]; 2],
+        output: [&mut [f32]; 2],
+    ) {
+        self.process_planar_inner(input, None, true, output);
+    }
+
+    fn process_planar_inner(
+        &mut self,
+        input: [&[f32]; 2],
+        modulator: Option<[&[f32]; 2]>,
+        silent_external: bool,
+        output: [&mut [f32]; 2],
+    ) {
         let [in_l, in_r] = input;
         let [out_l, out_r] = output;
         if self.target[4] < 0.5 {
@@ -85,6 +106,8 @@ impl RingModulator {
             }
             let [mod_l, mod_r] = if let Some([bus_l, bus_r]) = modulator {
                 [bus_l[frame].clamp(-1.0, 1.0), bus_r[frame].clamp(-1.0, 1.0)]
+            } else if silent_external {
+                [0.0, 0.0]
             } else {
                 self.phase += self.current[0] / self.sample_rate;
                 if self.phase >= 1.0 {
@@ -108,6 +131,31 @@ impl RingModulator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn silent_legacy_bus_differs_from_internal_oscillator() {
+        let mut internal = RingModulator::new(48_000.0, [120.0, 1.0, 1.0, 36.0, 1.0]);
+        let mut old_graph = RingModulator::new(48_000.0, [120.0, 1.0, 1.0, 36.0, 1.0]);
+        let carrier = [0.5; 128];
+        let mut internal_l = [0.0; 128];
+        let mut internal_r = [0.0; 128];
+        let mut old_l = [0.0; 128];
+        let mut old_r = [0.0; 128];
+        internal.process_planar(
+            [&carrier, &carrier],
+            None,
+            [&mut internal_l, &mut internal_r],
+        );
+        old_graph
+            .process_planar_with_silent_external([&carrier, &carrier], [&mut old_l, &mut old_r]);
+        assert!(internal_l.iter().any(|sample| sample.abs() > 0.1));
+        assert!(
+            old_l
+                .iter()
+                .chain(old_r.iter())
+                .all(|sample| *sample == 0.0)
+        );
+    }
+
     #[test]
     fn external_bus_bypasses_oscillator_and_enable_gates_output() {
         let mut node = RingModulator::new(48_000.0, [180.0, 1.0, 1.0, 0.0, 1.0]);

@@ -1,0 +1,47 @@
+{
+  "sourceSha256": "ca9fde2f8959e0e55ca5c3b131dbafecb9eead10af00999f0a9e93c747c29139",
+  "events": [
+    "select_delay_first_visit_transfers=0",
+    "select_ring_transfers=0",
+    "reselect_delay_transfers=1",
+    "reselect_ring_transfers=1"
+  ],
+  "max": 2.2351741790771484e-08,
+  "rms": 6.701661205528986e-10,
+  "segments": {
+    "delay": {
+      "max": 2.2351741790771484e-08
+    },
+    "ring": {
+      "max": 0.0
+    },
+    "returnedDelay": {
+      "max": 1.1175870895385742e-08
+    },
+    "returnedRingModulator": {
+      "max": 0.0
+    }
+  },
+  "boundaryLeft": {
+    "8192": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "11008": {
+      "old": 0.01256471686065197,
+      "rust": 0.012564719654619694
+    },
+    "11520": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "11521": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "12000": {
+      "old": 0.0,
+      "rust": 0.0
+    }
+  }
+}

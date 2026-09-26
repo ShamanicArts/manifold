@@ -71,8 +71,8 @@ hostFxProject.id = 'manifold.standalone-fx-host';
 hostFxProject.name = 'FX host switch';
 hostFxProject.signal.nodes.find((node) => node.id === 2).type = 'effect-slot-host-switch';
 const hostFxChoice = hostFxProject.parameters.find((parameter) => parameter.id === 0);
-hostFxChoice.choices = ['Chorus', 'Phaser', 'Compressor', 'SVF Filter', 'Reverb', 'Stereo Delay'];
-hostFxChoice.choiceValues = [0, 1, 3, 6, 7, 8];
+hostFxChoice.choices = ['Chorus', 'Phaser', 'Compressor', 'SVF Filter', 'Reverb', 'Stereo Delay', 'Ring Mod'];
+hostFxChoice.choiceValues = [0, 1, 3, 6, 7, 8, 12];
 const isFxFamily = (family) => ['standalone-fx', 'standalone-fx-routing', 'standalone-fx-host'].includes(family);
 const hasFxState = (family) => family === 'standalone-fx' || family === 'standalone-fx-routing';
 const projects = {
@@ -277,7 +277,7 @@ const projects = {
   'standalone-fx-host': {
     project: hostFxProject,
     title: 'FX host switch',
-    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with Chorus, Phaser, Compressor, SVF, or Reverb branches measured from the old C++ graph runtime; these six effect types have audited reprepare behavior.',
+    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with six visited effects measured from the C++ graph runtime. Ring Mod also exposes the old empty-modulator-bus behavior.',
     signal: 'Live path: input → visited effects → re-prepared wet gate → legacy gain/mix → output',
   },
   'loop-capture': {
@@ -817,7 +817,9 @@ function updateSlotControls() {
         : (0.92 * value).toFixed(2);
   }
   const help = byId('slot-help');
-  if (help) help.textContent = selected === 0
+  if (help) help.textContent = activeFamily === 'standalone-fx-host' && selected === 12
+    ? 'The old graph passes a silent second bus to Ring Mod. At full depth and wet mix its output is silent. The normal Standalone FX view uses the audible internal oscillator.'
+    : selected === 0
     ? 'The original export starts dry. Raise Wet mix to hear Chorus; the slot applies 1.4× wet gain.'
     : selected === 1
     ? 'The old slot sends 0–1 directly to a spread setter measured in degrees, so its stereo movement is small. The standalone Phaser exposes 0–180°.'
