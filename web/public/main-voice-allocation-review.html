@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manifold · Main voice allocation review</title>
+<style>
+:root{color-scheme:light;background:#f7f5f0;color:#252a28;font:14px/1.5 system-ui,sans-serif}*{box-sizing:border-box}body{margin:0}main{max-width:920px;margin:auto;padding:30px clamp(18px,5vw,50px) 70px}a{color:#285e4d}h1{font:400 clamp(34px,5vw,56px)/1.08 Georgia,serif;margin:8px 0 12px}h2{font-size:17px;font-weight:600;margin:0 0 12px}p{max-width:720px;color:#626b66}.eyebrow,.small{color:#626b66;font-size:12px;letter-spacing:.05em}nav{display:flex;gap:18px;flex-wrap:wrap;margin:24px 0}.panel{border:1px solid #d7dcd6;background:#fffefa;padding:22px;margin:16px 0}.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.flow div{border-top:2px solid #285e4d;background:#f7f5f0;padding:14px}.flow strong{display:block;margin-bottom:6px}.flow span{color:#626b66;font-size:12px}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{border-bottom:1px solid #d7dcd6;padding:10px;text-align:left}td:last-child,th:last-child{text-align:right}.pass{color:#285e4d}.scope{border-left:3px solid #a35339;padding-left:15px}@media(max-width:700px){.flow{grid-template-columns:1fr}.panel{padding:16px}}
+</style></head><body><main>
+<div class="eyebrow">MANIFOLD V2 · CHECKPOINT 120</div>
+<h1>Eight notes, eight places to play</h1>
+<p>The old Main keyboard allocates eight voice slots in its UI behavior. A different DSP module owns the eight voice graphs and receives indexed frequency, amplitude, and gate parameters. The Rust allocator now reproduces the keyboard's slot decisions; it is not yet connected to eight v2 Main audio graphs.</p>
+<nav><a href="/manifold-sitrep.html">Project sitrep</a><a href="/main-sample-blend-review.html">Current single-voice study</a><a href="/reference/main-voice-allocation/manifest.json">Allocation trace</a></nav>
+<section class="panel"><h2>How a slot is chosen</h2><div class="flow">
+<div><strong>1 · Idle slot</strong><span>Use the first inactive or idle slot. A repeated note can occupy another free slot.</span></div>
+<div><strong>2 · Quiet release</strong><span>When all eight slots are occupied, steal the releasing voice with the lowest envelope level.</span></div>
+<div><strong>3 · Oldest active</strong><span>If nothing is releasing, steal the oldest stamp. Note-off releases every active slot carrying that note.</span></div>
+</div></section>
+<section class="panel"><h2>Direct old UI ↔ Rust comparison</h2><p>Twenty-one scripted steps call the original <code>voice_manager.lua</code> and the Rust <code>MainVoiceAllocator</code> with identical note and envelope states. The trace compares chosen slot, next candidate, active/release masks, and the note assigned to every slot.</p>
+<table><thead><tr><th>Behavior</th><th>Result</th></tr></thead><tbody>
+<tr><td>Fill eight slots in order</td><td class="pass">Exact</td></tr>
+<tr><td>Steal quietest releasing slot, then oldest active</td><td class="pass">Exact</td></tr>
+<tr><td>Release duplicate notes and reuse an idle slot</td><td class="pass">Exact</td></tr>
+<tr><td>Panic clears the pool</td><td class="pass">Exact</td></tr>
+</tbody></table><p class="small">The <a href="/reference/main-voice-allocation/manifest.json">manifest</a> records both source hashes and CSV traces. Run <code>python3 scripts/check-main-voice-allocation-trace.py</code> to regenerate them. The original Lua runs only in this reference harness.</p></section>
+<section class="panel"><h2>Next boundary</h2><p class="scope">The old UI envelope computes amplitude before sending voice paths to DSP. The current playable v2 Main study has one authored graph voice controlled by a frequency slider. The next slice must prepare independent per-note source states, define audio-thread gate/envelope timing, route note events to those voices, and compare their mixed output. Slot selection alone does not make the study polyphonic.</p></section>
+</main></body></html>

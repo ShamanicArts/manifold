@@ -28,3 +28,5 @@ The old integration sets oscillator amplitude to `amp` and `sampleBlendGain` to 
 10. Next, add per-note allocation and gate semantics; compare assembled old Main voice output rather than inferring parity from isolated kernels. The old code reads `voice.adsr` conditionally but does not construct it in `createVoiceGraph`; any ADSR in v2 needs its own spec and test evidence.
 
 The [Main review](../web/public/main-sample-blend-review.html) is the current playable checkpoint; the [pitch review](../web/public/main-pitch-review.html) records the original Lua map. The next slice should reconstruct old note behavior and compare assembled output against old Main.
+
+Checkpoint 120's [note ownership boundary](main-note-routing.md) shows that the original UI chooses eight slots while DSP receives indexed frequency, amplitude, and gate paths. The fixed Rust allocator matches 21 old UI steps, but the authored Main graph still renders one voice. The next audio slice needs independent per-note source state and a defined gate/envelope route.

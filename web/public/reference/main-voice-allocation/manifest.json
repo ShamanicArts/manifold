@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "source": "original Main UI behaviors/voice_manager.lua",
+  "legacySha256": "ed8aa859c2cb48b31c08f556b3bf00aa31bed1fca80825e430ab906f1638dc55",
+  "rustSha256": "99320bd321ed161ee61dbbc42b48d2d880d58e19de68031db5c9c75f7a84dabc",
+  "scenarios": "scenarios.csv",
+  "legacy": "legacy.csv",
+  "rust": "rust.csv",
+  "steps": 21,
+  "voices": 8
+}
