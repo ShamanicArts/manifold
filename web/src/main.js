@@ -12,6 +12,7 @@ import distortionProject from '../../projects/distortion/project.json';
 import phaserProject from '../../projects/phaser/project.json';
 import chorusProject from '../../projects/chorus/project.json';
 import eq8Project from '../../projects/standalone-eq8/project.json';
+import waveshaperProject from '../../projects/waveshaper/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -116,6 +117,12 @@ const projects = {
     description: 'Eight independently switchable bands from the original Standalone EQ project. Each band can be a bell, shelf, pass filter, notch, or band pass.',
     signal: 'Live path: input → eight serial EQ bands → output gain / mix → stereo output',
   },
+  waveshaper: {
+    project: waveshaperProject,
+    title: 'WaveShaper',
+    description: 'The original seven curve stereo shaper, with bias, dry/wet mix, and pre/post tone filters. The legacy 1×/2×/4× setting only changes filter coefficients.',
+    signal: 'Live path: input → pre filter → drive and curve → post filter → mix → output',
+  },
   compressor: {
     project: compressorProject,
     title: 'Compressor',
@@ -137,7 +144,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, Compressor, SVF Filter, Stereo Delay, and Limiter are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, SVF Filter, Stereo Delay, and Limiter are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -514,12 +521,16 @@ function addSlider(parameter) {
 
   const isLog = parameter.hostId === 'cutoff' || parameter.hostId === 'frequency' || parameter.hostId === 'rate';
   const precision = parameter.unit === 's' ? 1000 : 100;
-  const toPhysical = (position) => isLog
+  const toPhysical = (position) => parameter.scale === 'log-bypass'
+    ? position < 1 ? 0 : Math.round(21 * (parameter.max / 21) ** ((position - 1) / 999))
+    : isLog
     ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000) * (parameter.hostId === 'rate' ? 100 : 1)) / (parameter.hostId === 'rate' ? 100 : 1)
     : parameter.hostId === 'root-note' || parameter.hostId === 'unison' || parameter.hostId === 'voices'
       ? Math.round(parameter.min + (parameter.max - parameter.min) * position / 1000)
       : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * precision) / precision;
-  const toPosition = (value) => isLog
+  const toPosition = (value) => parameter.scale === 'log-bypass'
+    ? value <= 20 ? 0 : 1 + 999 * Math.log(value / 21) / Math.log(parameter.max / 21)
+    : isLog
     ? 1000 * Math.log(value / parameter.min) / Math.log(parameter.max / parameter.min)
     : 1000 * (value - parameter.min) / (parameter.max - parameter.min);
   const format = (value) => parameter.hostId === 'root-note' ? `${value} MIDI` : parameter.hostId === 'unison' || parameter.hostId === 'voices' ? `${value} voices` : parameter.unit === 'ct' ? `${Number(value).toFixed(1)} ct` : parameter.unit === 'Hz'
@@ -569,6 +580,7 @@ function updateSlotControls() {
   const selected = values.get(0);
   const labels = selected === 0 ? { 2: 'Rate', 3: 'Depth', 4: 'Feedback', 5: 'Spread', 6: 'Voices' }
     : selected === 1 ? { 2: 'Rate', 3: 'Depth', 4: 'Feedback', 5: 'Spread (legacy °)', 6: 'Stages' }
+    : selected === 2 ? { 2: 'Drive', 3: 'Curve', 4: 'Output', 5: 'Bias' }
     : selected === 3
     ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
     : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
@@ -592,6 +604,10 @@ function updateSlotControls() {
         : id === 3 ? (0.05 + 0.95 * value).toFixed(2)
           : id === 4 ? (0.8 * value).toFixed(2)
             : id === 5 ? `${value.toFixed(2)}°` : `${Math.floor(2 + 10 * value + 0.5) >= 9 ? 12 : 6} stages`
+      : selected === 2
+      ? id === 2 ? `${(0.75 + 17.25 * value).toFixed(2)} dB`
+        : id === 3 ? ['Tanh', 'Tube', 'Tape', 'Hard clip', 'Foldback', 'Sigmoid', 'Soft clip'][Math.floor(6 * value + 0.5)]
+          : id === 4 ? `${(0.25 + 0.75 * value).toFixed(2)} dB` : (-0.5 + value).toFixed(2)
       : selected === 3
       ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
         : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
@@ -613,6 +629,7 @@ function updateSlotControls() {
     ? 'The old slot sends 0–1 directly to a spread setter measured in degrees, so its stereo movement is small. The standalone Phaser exposes 0–180°.'
     : selected === 3
     ? 'Compressor attack and release take effect when the effect is selected; changing them while selected needs a switch away and back. The old knee control has no effect.'
+    : selected === 2 ? 'The old slot maps four normalized controls to drive, curve, output and bias. Its fifth control is unused.'
     : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
       : 'Values are stored separately for each effect type and restored when selected.';
 }
@@ -684,7 +701,7 @@ function addSelect(parameter) {
   title.textContent = parameter.label;
   const select = document.createElement('select');
   select.setAttribute('aria-label', parameter.label);
-  parameter.choices.forEach((choice, index) => select.add(new Option(choice, String(index))));
+  parameter.choices.forEach((choice, index) => select.add(new Option(choice, String(parameter.choiceValues?.[index] ?? index))));
   select.value = String(parameter.default);
   select.addEventListener('change', () => {
     const value = Number(select.value);
@@ -798,6 +815,7 @@ function renderPrimitive(family) {
   if (family === 'standalone-fx') slotValuesByType = new Map([
     [0, [0.5, 0.5, 0.2, 0.6, 0.4]],
     [1, [0.5, 0.5, 0.4, 0.5, 0.4]],
+    [2, [0.3, 0.0, 0.7, 0.5, 0.5]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
@@ -847,7 +865,7 @@ function renderPrimitive(family) {
   renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   const sampleView = family === 'sample-region' || family === 'sample-instrument';
   byId('keyboard-section').hidden = !['voice', 'sample-instrument'].includes(family);
@@ -865,13 +883,13 @@ function renderPrimitive(family) {
   sampleActiveVoices = 0;
   if (family === 'voice' || family === 'sample-instrument') resetNoteEvents();
   if (mode) {
-    byId('modes').style.gridTemplateColumns = `repeat(${mode.choices.length}, minmax(0, 1fr))`;
+    byId('modes').style.gridTemplateColumns = `repeat(${family === 'waveshaper' ? 4 : mode.choices.length}, minmax(0, 1fr))`;
     const buttons = mode.choices.map((choice, index) => {
       const value = mode.choiceValues?.[index] ?? index;
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 3: 'Comp', 6: 'SVF', 8: 'Delay', 15: 'Limit' })[value] : choice;
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 6: 'SVF', 8: 'Delay', 15: 'Limit' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {

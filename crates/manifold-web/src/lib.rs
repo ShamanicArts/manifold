@@ -211,6 +211,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
                 params: match selected {
                     effect_slot::CHORUS_TYPE => [0.5, 0.5, 0.2, 0.6, 0.4],
                     effect_slot::PHASER_TYPE => [0.5, 0.5, 0.4, 0.5, 0.4],
+                    effect_slot::WAVESHAPER_TYPE => [0.3, 0.0, 0.7, 0.5, 0.5],
                     effect_slot::COMPRESSOR_TYPE => [0.4, 0.3, 0.1, 0.3, 0.5],
                     effect_slot::SVF_TYPE => [0.5, 0.4, 0.1, 0.5, 0.5],
                     effect_slot::DELAY_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
@@ -284,6 +285,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         }
         36 => NodeKind::Eq8 {
             params: manifold_core::eq8::defaults(),
+        },
+        37 => NodeKind::WaveShaper {
+            params: manifold_core::waveshaper::DEFAULTS,
         },
         _ => return 0,
     };
@@ -389,6 +393,7 @@ pub extern "C" fn manifold_graph_initial_parameter(
                 }
             }
             (NodeKind::Eq8 { params }, id @ 0..=41) => params[id as usize] = value,
+            (NodeKind::WaveShaper { params }, id @ 0..=7) => params[id as usize] = value,
             (NodeKind::EffectSlot { selected, .. }, 0) => {
                 let Some(kind) = effect_slot::supported_type(value) else {
                     return 0;

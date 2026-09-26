@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "f0f76b457ad5297eb82a3c7fa36d377e39d8e5d3e21284826d00039448d2f626",
+  "sourceSha256": "fbafcf7a2882775591ede1d57b7693220cc6704ebd33cae7c63a3531c1e28db9",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "waveshaper-drive",
+      "label": "WaveShaper drive and output",
+      "before": [
+        2,
+        0.8,
+        0.3,
+        0,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "after": [
+        2,
+        0.8,
+        0.9,
+        0,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "waveshaper-drive.f32"
+    },
+    {
+      "id": "waveshaper-curve",
+      "label": "WaveShaper tube to foldback",
+      "before": [
+        2,
+        1,
+        0.6,
+        0.17,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "after": [
+        2,
+        1,
+        0.6,
+        0.67,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "waveshaper-curve.f32"
+    },
+    {
+      "id": "waveshaper-bias",
+      "label": "WaveShaper bias sweep",
+      "before": [
+        2,
+        0.7,
+        0.5,
+        0.33,
+        0.7,
+        0.1,
+        0.5
+      ],
+      "after": [
+        2,
+        0.7,
+        0.5,
+        0.33,
+        0.7,
+        0.9,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "waveshaper-bias.f32"
+    },
+    {
+      "id": "filter-to-waveshaper",
+      "label": "Switch filter to WaveShaper",
+      "before": [
+        6,
+        0.8,
+        0.5,
+        0.4,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        2,
+        0.8,
+        0.3,
+        0,
+        0.7,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-waveshaper.f32"
+    },
     {
       "id": "phaser-modulation",
       "label": "Phaser feedback and stages",

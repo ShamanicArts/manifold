@@ -1,0 +1,30 @@
+{
+  "waveshaper": {
+    "cases": 11,
+    "largest": {
+      "id": "foldback",
+      "max": 4.47e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "drive": "24.0 dB",
+    "curve": "Foldback",
+    "mode": "4"
+  },
+  "standalone-fx": {
+    "cases": 23,
+    "largest": {
+      "id": "filter-to-chorus",
+      "max": 9.69e-7
+    },
+    "liveStatus": "Audio running · test oscillator · 48 kHz",
+    "selected": "Shape",
+    "controls": [
+      "Wet mix",
+      "Drive",
+      "Curve",
+      "Output",
+      "Bias"
+    ]
+  },
+  "errors": []
+}

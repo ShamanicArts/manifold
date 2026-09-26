@@ -1,4 +1,4 @@
-//! Standalone FX slot slice: legacy IDs 0, 1, 3, 6, 8, and 15.
+//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 6, 8, and 15.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
@@ -7,9 +7,11 @@ use crate::compressor::{self, Compressor};
 use crate::limiter::{self, Limiter};
 use crate::phaser::Phaser;
 use crate::stereo_delay::{self, StereoDelay};
+use crate::waveshaper::{self, WaveShaper};
 
 pub const CHORUS_TYPE: u32 = 0;
 pub const PHASER_TYPE: u32 = 1;
+pub const WAVESHAPER_TYPE: u32 = 2;
 pub const COMPRESSOR_TYPE: u32 = 3;
 pub const SVF_TYPE: u32 = 6;
 pub const DELAY_TYPE: u32 = 8;
@@ -20,9 +22,8 @@ pub fn supported_type(value: f32) -> Option<u32> {
         return None;
     }
     match value as u32 {
-        CHORUS_TYPE | PHASER_TYPE | COMPRESSOR_TYPE | SVF_TYPE | DELAY_TYPE | LIMITER_TYPE => {
-            Some(value as u32)
-        }
+        CHORUS_TYPE | PHASER_TYPE | WAVESHAPER_TYPE | COMPRESSOR_TYPE | SVF_TYPE | DELAY_TYPE
+        | LIMITER_TYPE => Some(value as u32),
         _ => None,
     }
 }
@@ -34,6 +35,7 @@ pub struct EffectSlot {
     mix_smoothing: f32,
     chorus_params: [f32; 5],
     phaser_params: [f32; 5],
+    waveshaper_params: [f32; 5],
     svf_params: [f32; 5],
     delay_params: [f32; 5],
     compressor_params: [f32; 5],
@@ -43,6 +45,7 @@ pub struct EffectSlot {
     sample_rate: f32,
     chorus: Chorus,
     phaser: Phaser,
+    waveshaper: WaveShaper,
     filter: Filter,
     delay: StereoDelay,
     compressor: Compressor,
@@ -70,6 +73,7 @@ impl EffectSlot {
                 .clamp(0.0001, 1.0),
             chorus_params: [0.5, 0.5, 0.2, 0.6, 0.4],
             phaser_params: [0.5, 0.5, 0.4, 0.5, 0.4],
+            waveshaper_params: [0.3, 0.0, 0.7, 0.5, 0.5],
             svf_params: [0.5, 0.4, 0.1, 0.5, 0.5],
             delay_params: [0.3, 0.3, 0.5, 0.5, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
@@ -79,6 +83,7 @@ impl EffectSlot {
             sample_rate,
             chorus: Chorus::new(sample_rate, max_frames, chorus::defaults()),
             phaser: Phaser::new(sample_rate, crate::phaser::defaults()),
+            waveshaper: WaveShaper::new(sample_rate, waveshaper::DEFAULTS),
             filter: Filter::new(sample_rate),
             delay: StereoDelay::new(sample_rate, delay_settings),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
@@ -87,6 +92,7 @@ impl EffectSlot {
         let selected_params = match selected {
             CHORUS_TYPE => &mut slot.chorus_params,
             PHASER_TYPE => &mut slot.phaser_params,
+            WAVESHAPER_TYPE => &mut slot.waveshaper_params,
             COMPRESSOR_TYPE => &mut slot.compressor_params,
             SVF_TYPE => &mut slot.svf_params,
             DELAY_TYPE => &mut slot.delay_params,
@@ -99,6 +105,7 @@ impl EffectSlot {
         slot.apply_svf();
         slot.rebuild_chorus();
         slot.rebuild_phaser();
+        slot.rebuild_waveshaper();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
@@ -143,6 +150,30 @@ impl EffectSlot {
 
     fn rebuild_phaser(&mut self) {
         self.phaser = Phaser::new(self.sample_rate, self.phaser_settings());
+    }
+
+    fn waveshaper_settings(&self) -> [f32; waveshaper::PARAM_COUNT] {
+        let [drive, curve, output, bias, _] = self.waveshaper_params;
+        [
+            (6.0 * curve + 0.5).floor(),
+            0.75 + 17.25 * drive,
+            0.25 + 0.75 * output,
+            0.0,
+            0.0,
+            -0.5 + bias,
+            1.0,
+            2.0,
+        ]
+    }
+
+    fn rebuild_waveshaper(&mut self) {
+        self.waveshaper = WaveShaper::new(self.sample_rate, self.waveshaper_settings());
+    }
+
+    fn apply_waveshaper(&mut self) {
+        for (id, value) in self.waveshaper_settings().into_iter().enumerate() {
+            self.waveshaper.set_parameter(id as u32, value);
+        }
     }
 
     fn apply_phaser(&mut self) {
@@ -228,6 +259,7 @@ impl EffectSlot {
                     match selected {
                         CHORUS_TYPE => self.rebuild_chorus(),
                         PHASER_TYPE => self.rebuild_phaser(),
+                        WAVESHAPER_TYPE => self.rebuild_waveshaper(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -247,6 +279,7 @@ impl EffectSlot {
                 let params = match self.selected {
                     CHORUS_TYPE => &mut self.chorus_params,
                     PHASER_TYPE => &mut self.phaser_params,
+                    WAVESHAPER_TYPE => &mut self.waveshaper_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -257,6 +290,7 @@ impl EffectSlot {
                 match self.selected {
                     CHORUS_TYPE => self.apply_chorus(),
                     PHASER_TYPE => self.apply_phaser(),
+                    WAVESHAPER_TYPE => self.apply_waveshaper(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -278,6 +312,9 @@ impl EffectSlot {
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             PHASER_TYPE => self
                 .phaser
+                .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
+            WAVESHAPER_TYPE => self
+                .waveshaper
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             COMPRESSOR_TYPE => self
                 .compressor
@@ -366,7 +403,7 @@ mod tests {
     #[test]
     fn selection_rejects_unsupported_types_and_keeps_dry_path() {
         let mut slot = EffectSlot::new(48_000.0, 128, SVF_TYPE, 0.0, [0.5, 0.4, 0.1, 0.5, 0.5]);
-        assert!(!slot.set_parameter(0, 2.0));
+        assert!(!slot.set_parameter(0, 4.0));
         assert!(slot.set_parameter(0, DELAY_TYPE as f32));
         let left = [0.5, -0.2, 0.1];
         let right = [-0.4, 0.3, 0.0];

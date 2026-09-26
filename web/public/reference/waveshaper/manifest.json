@@ -1,0 +1,298 @@
+{
+  "version": 1,
+  "reference": "legacy C++ WaveShaperNode scalar stereo",
+  "sourceSha256": "5620b70dbe602f8db6bcc1fecf6e63a12922aa29f49ed8ba43ef302bb0c524b8",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "tanh",
+      "label": "tanh \u00b7 drive, bias and output change",
+      "before": [
+        0,
+        12,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "after": [
+        0,
+        26,
+        -3,
+        0,
+        0,
+        0.2,
+        1,
+        2
+      ],
+      "blockSize": 128,
+      "output": "tanh.f32"
+    },
+    {
+      "id": "tube",
+      "label": "tube \u00b7 drive, bias and output change",
+      "before": [
+        1,
+        12,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "after": [
+        1,
+        26,
+        -3,
+        0,
+        0,
+        0.2,
+        1,
+        2
+      ],
+      "blockSize": 128,
+      "output": "tube.f32"
+    },
+    {
+      "id": "tape",
+      "label": "tape \u00b7 drive, bias and output change",
+      "before": [
+        2,
+        12,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "after": [
+        2,
+        26,
+        -3,
+        0,
+        0,
+        0.2,
+        1,
+        2
+      ],
+      "blockSize": 128,
+      "output": "tape.f32"
+    },
+    {
+      "id": "hardclip",
+      "label": "hardclip \u00b7 drive, bias and output change",
+      "before": [
+        3,
+        12,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "after": [
+        3,
+        26,
+        -3,
+        0,
+        0,
+        0.2,
+        1,
+        2
+      ],
+      "blockSize": 128,
+      "output": "hardclip.f32"
+    },
+    {
+      "id": "foldback",
+      "label": "foldback \u00b7 drive, bias and output change",
+      "before": [
+        4,
+        12,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "after": [
+        4,
+        26,
+        -3,
+        0,
+        0,
+        0.2,
+        1,
+        2
+      ],
+      "blockSize": 128,
+      "output": "foldback.f32"
+    },
+    {
+      "id": "sigmoid",
+      "label": "sigmoid \u00b7 drive, bias and output change",
+      "before": [
+        5,
+        12,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "after": [
+        5,
+        26,
+        -3,
+        0,
+        0,
+        0.2,
+        1,
+        2
+      ],
+      "blockSize": 128,
+      "output": "sigmoid.f32"
+    },
+    {
+      "id": "softclip",
+      "label": "softclip \u00b7 drive, bias and output change",
+      "before": [
+        6,
+        12,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "after": [
+        6,
+        26,
+        -3,
+        0,
+        0,
+        0.2,
+        1,
+        2
+      ],
+      "blockSize": 128,
+      "output": "softclip.f32"
+    },
+    {
+      "id": "curve-switch",
+      "label": "Tanh to foldback",
+      "before": [
+        0,
+        12,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "after": [
+        4,
+        16,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "blockSize": 64,
+      "output": "curve-switch.f32"
+    },
+    {
+      "id": "tone-filters",
+      "label": "Pre and post tone filter sweep",
+      "before": [
+        1,
+        18,
+        0,
+        9000,
+        5000,
+        0.1,
+        1,
+        2
+      ],
+      "after": [
+        1,
+        18,
+        0,
+        700,
+        1800,
+        -0.1,
+        1,
+        2
+      ],
+      "blockSize": 128,
+      "output": "tone-filters.f32"
+    },
+    {
+      "id": "mix-oversample",
+      "label": "Mix and 1x to 4x coefficient mode",
+      "before": [
+        2,
+        14,
+        1,
+        3000,
+        2500,
+        0,
+        0.3,
+        1
+      ],
+      "after": [
+        2,
+        22,
+        -2,
+        1500,
+        6000,
+        0.2,
+        0.8,
+        4
+      ],
+      "blockSize": 128,
+      "output": "mix-oversample.f32"
+    },
+    {
+      "id": "short-block",
+      "label": "Short blocks and bypass",
+      "before": [
+        6,
+        10,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2
+      ],
+      "after": [
+        6,
+        20,
+        0,
+        0,
+        0,
+        -0.2,
+        0.7,
+        2
+      ],
+      "blockSize": 32,
+      "output": "short-block.f32"
+    }
+  ]
+}
