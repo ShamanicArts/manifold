@@ -1,0 +1,268 @@
+{
+  "version": 1,
+  "reference": "compiled original C++ Main Add/Morph voice nodes versus native Rust Main bank",
+  "scope": "old sample player, oscillator, Add oscillator, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
+  "legacySourceSha256": "deaf46d884f6e2c3c2187734291b1cdf6f282b0d90335bce557ee3ea24f0492a",
+  "referenceHarnessSha256": "b3c3d147b7b9c76a6e45f0616cd19743d9fc0a67b199b65292d432a105f09a21",
+  "rustSourceSha256": "6d1fa974f59df3d0f4ee377f1ad22f71bfb43a5ef27097c87094c04dfce6ff88",
+  "wasmSha256": "1e5f9fc3151017c9bb4c6b2ce57020ff4012dd18a90c0917d5fee35dbf212f96",
+  "sampleRate": 48000,
+  "sampleSourceRate": 48000,
+  "sampleFrames": 16384,
+  "sample": "sample.f32",
+  "channels": 2,
+  "frames": 8192,
+  "stepFrame": 4096,
+  "input": "input.f32",
+  "settledStartFrame": 4096,
+  "waveTarget": [
+    1,
+    1,
+    0,
+    0
+  ],
+  "sourceTarget": [
+    1,
+    1,
+    0,
+    0,
+    2,
+    0.38,
+    0,
+    0,
+    3,
+    0.13,
+    0,
+    0
+  ],
+  "cases": [
+    {
+      "id": "add-source",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 1.0 \u00b7 depth 0.75",
+      "parameters": [
+        0,
+        1.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.75,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-source-rust.f32",
+      "legacyOutput": "add-source-cpp.f32"
+    },
+    {
+      "id": "add-center",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend 0.0 \u00b7 depth 0.75",
+      "parameters": [
+        0,
+        0.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.75,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-center-rust.f32",
+      "legacyOutput": "add-center-cpp.f32"
+    },
+    {
+      "id": "add-wave",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend -0.6 \u00b7 depth 0.75",
+      "parameters": [
+        0,
+        -0.6,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.75,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-wave-rust.f32",
+      "legacyOutput": "add-wave-cpp.f32"
+    },
+    {
+      "id": "add-wave-only",
+      "label": "Original Main Add fixed-spectrum route \u00b7 blend -1.0 \u00b7 depth 1.0",
+      "parameters": [
+        0,
+        -1.0,
+        60,
+        2,
+        0,
+        0,
+        4,
+        1.0,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "add-wave-only-rust.f32",
+      "legacyOutput": "add-wave-only-cpp.f32"
+    },
+    {
+      "id": "morph-source",
+      "label": "Original Main Morph fixed-spectrum route \u00b7 blend 1.0 \u00b7 depth 0.75",
+      "parameters": [
+        0,
+        1.0,
+        60,
+        2,
+        0,
+        0,
+        5,
+        0.75,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "morph-source-rust.f32",
+      "legacyOutput": "morph-source-cpp.f32"
+    },
+    {
+      "id": "morph-center",
+      "label": "Original Main Morph fixed-spectrum route \u00b7 blend 0.0 \u00b7 depth 0.75",
+      "parameters": [
+        0,
+        0.0,
+        60,
+        2,
+        0,
+        0,
+        5,
+        0.75,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "morph-center-rust.f32",
+      "legacyOutput": "morph-center-cpp.f32"
+    }
+  ]
+}

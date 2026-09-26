@@ -1,4 +1,4 @@
-# Main voice bank, through checkpoint 129
+# Main voice bank, through checkpoint 130
 
 The `main-voice-bank` graph node is a prepared eight-voice instrument. It is an
 authored v2 slice of `sample_synth.lua` plus the original UI voice ownership
@@ -43,6 +43,10 @@ The Add wave source is an authored prepared recipe, while old Main uses a
 waveform oscillator on that branch. Source frames are selected manually in
 the browser and then remain fixed until another selection. This is a playable
 v2 approximation, not a claim of matching the full old spectral automation.
+The bank now prepares its Add wave pitch smoother at 220 Hz, like the old
+`blendAddOsc`, before a note retunes it. The spectral source bank retains the
+old SineBank default 440 Hz. This initial state mattered in the assembled
+audio comparison even though both routes eventually reached the same pitch.
 The original sample player applies a center-pan factor before the vocoder,
 follower, and branch selection. The bank applies the same factor at that point;
 the standalone `SampleRegion` primitive still returns its raw stereo output.
@@ -73,16 +77,16 @@ note ownership follows the old UI's note-only policy across channels.
   was added.
 - `scripts/bench-main-voice-bank-worklet.mjs` measures the real adapter and
   Wasm process call in a Node/V8 proxy at 48 kHz / 128 frames. On the local
-  Ryzen 9 3900X run, eight-voice p95 callback time was 0.080 ms Normal,
-  0.288 ms Add, 0.198 ms Morph, and 0.749 ms vocoder. No measured block
+  Ryzen 9 3900X run, eight-voice p95 callback time was 0.064 ms Normal,
+  0.257 ms Add, 0.168 ms Morph, and 0.692 ms vocoder. No measured block
   exceeded the 2.667 ms interval. This is not a browser audio-thread or
   hardware underrun measurement. The raw data and method are in
   `web/public/reference/main-voice-bank/bench-node.json`.
 - `scripts/bench-main-voice-bank-browser.mjs` runs nine held-chord cases in
   headless Chromium through the actual AudioWorklet and Wasm graph. It samples
   Chromium's WebAudio render-capacity estimate 24 times per case after warmup.
-  The sampled p95 was 3.83% for Normal eight voices and 28.05% for vocoder
-  eight voices; the largest sampled value was 31.05%. Chromium reported a
+  The refreshed sampled p95 was 4.21% for Normal eight voices and 34.62% for vocoder
+  eight voices; the largest sampled value was 39.01%. Chromium reported a
   512-frame output callback buffer at 48 kHz. These are sampled rolling
   capacity estimates, not per-callback timings or physical device underrun
   counts. The raw capture includes browser and Wasm versions in
@@ -108,6 +112,14 @@ note ownership follows the old UI's note-only policy across channels.
   0.000003263 after frame 512; native Rust and Wasm are bit-exact. Depth zero
   and three wet positions are covered. The same vocoder and envelope scope
   applies.
+- `scripts/verify-main-add-morph-voice-comparison.mjs` checks six assembled
+  original C++ Add/Morph routes against native Rust and Wasm. The old
+  `SineBankNode` runs spectral Add/Morph mode from a fixed published source
+  spectrum; the original additive oscillator, sample player, crossfaders,
+  gains, branch mixer and voice mixer also render. After frame 4096, the
+  largest old/Rust sample difference is 0.000002444; native/Wasm is bit-exact.
+  The fixture uses a sine wave recipe and excludes temporal source changes,
+  vocoder processing, and the old UI-rate envelope.
 - `scripts/verify-main-voice-bank-state.mjs` round-trips 19 controls, separate
   wave and source targets, and embedded or built-in source choices. It rejects
   malformed controls, target addresses, partials, and PCM. A headless Chromium
@@ -123,15 +135,16 @@ review is `/main-add-morph-review.html`; the timing review is
 `/main-normal-route-review.html`; the combined Ring, Normal, and raw-player
 review is `/main-ring-route-review.html`. The browser capacity review is
 `/main-browser-capacity-review.html`; the bank state review is
-`/main-bank-state-review.html`. The embedded BB browser cannot grant
+`/main-bank-state-review.html`; the assembled Add/Morph review is
+`/main-add-morph-route-review.html`. The embedded BB browser cannot grant
 hardware MIDI permissions yet, so the on-screen keyboard is the immediate
 input path. The in-app browser backend was unavailable for the capacity run;
 the review page was visually checked in headless Chromium.
 
 ## Next integration
 
-Expand the bank state into the full Main project and preset model. Extend the
-assembled old C++ comparison to selected Add/Morph cases while keeping the
-envelope timing difference explicit. Repeat capacity measurements against a
-regular browser and physical output device, then identify the vocoder's
-native/Wasm numerical variance. Host packaging remains a separate later stage.
+Expand the bank state into the full Main project and preset model. Compare
+temporal spectra and other wave recipes with the original Add/Morph route.
+Repeat capacity measurements against a regular browser and physical output
+device, then identify the vocoder's native/Wasm numerical variance. Host
+packaging remains a separate later stage.

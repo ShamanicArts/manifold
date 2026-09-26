@@ -63,6 +63,9 @@ pub struct MainVoiceBank {
 impl MainVoiceBank {
     pub fn new(sample_rate: f32, max_frames: usize, fft_order: u32) -> Self {
         let order = fft_order.clamp(9, 12);
+        let mut add_wave_defaults = SINE_DEFAULTS;
+        // The original Add oscillator is prepared at 220 Hz before note-on retunes it.
+        add_wave_defaults[0] = 220.0;
         let voices = std::array::from_fn(|_| {
             let mut envelope = AdsrEnvelope::new(sample_rate);
             envelope.set_parameter(0, 0.005);
@@ -75,7 +78,7 @@ impl MainVoiceBank {
                 vocoder: PhaseVocoder::new(sample_rate, [0.0, 0.0, 1.0, 0.0, order as f32]),
                 ring_sample_to_wave: RingModulator::new(sample_rate, [120.0, 0.0, 0.0, 0.0, 0.0]),
                 ring_wave_to_sample: RingModulator::new(sample_rate, [120.0, 0.0, 0.0, 0.0, 0.0]),
-                wave_add: SineBank::new(sample_rate, SINE_DEFAULTS),
+                wave_add: SineBank::new(sample_rate, add_wave_defaults),
                 sample_add: SineBank::new(sample_rate, SINE_DEFAULTS),
                 follower: EnvelopeFollower::new(sample_rate, 8.0, 85.0),
                 phrase: PhraseGain::new(sample_rate, 0.0, 0.2),

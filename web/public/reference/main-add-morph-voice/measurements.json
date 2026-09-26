@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "settledStartFrame": 4096,
+  "comparisonScope": "old sample player, oscillator, Add oscillator, SineBank spectral Add/Morph with fixed published source spectrum, crossfaders, gains and voice mixers; temporal updates, vocoder and old UI envelope excluded",
+  "results": [
+    {
+      "id": "add-source",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 8.471453463403486e-9,
+        "referenceRms": 0.10902830572755737
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.10415190576228169
+      },
+      "onsetOldVsNative": {
+        "max": 0.017887438647449017,
+        "rms": 0.0011878863488317575,
+        "referenceRms": 0.09905620811309004
+      }
+    },
+    {
+      "id": "add-center",
+      "settledOldVsNative": {
+        "max": 0.0000017955899238586426,
+        "rms": 0.000001080321248807358,
+        "referenceRms": 0.07898467392427545
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.10190708202999527
+      },
+      "onsetOldVsNative": {
+        "max": 0.021892789751291275,
+        "rms": 0.0048481265017126995,
+        "referenceRms": 0.12154544109445617
+      }
+    },
+    {
+      "id": "add-wave",
+      "settledOldVsNative": {
+        "max": 0.0000024437904357910156,
+        "rms": 0.0000014518635347483836,
+        "referenceRms": 0.1327987314060293
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.13299588041963561
+      },
+      "onsetOldVsNative": {
+        "max": 0.029445737600326538,
+        "rms": 0.006366718255506696,
+        "referenceRms": 0.13457755648528075
+      }
+    },
+    {
+      "id": "add-wave-only",
+      "settledOldVsNative": {
+        "max": 0.0000020265579223632812,
+        "rms": 0.0000012713974829029445,
+        "referenceRms": 0.2002660609221907
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.19022897242056402
+      },
+      "onsetOldVsNative": {
+        "max": 0.04128144681453705,
+        "rms": 0.008857907586923508,
+        "referenceRms": 0.18158046382045034
+      }
+    },
+    {
+      "id": "morph-source",
+      "settledOldVsNative": {
+        "max": 5.960464477539063e-8,
+        "rms": 1.3609378333628149e-8,
+        "referenceRms": 0.10902830994189387
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.10415190322183022
+      },
+      "onsetOldVsNative": {
+        "max": 0.017887438647449017,
+        "rms": 0.001187886348474199,
+        "referenceRms": 0.09905621149153353
+      }
+    },
+    {
+      "id": "morph-center",
+      "settledOldVsNative": {
+        "max": 8.195638656616211e-7,
+        "rms": 4.370114771475591e-7,
+        "referenceRms": 0.09330456780790532
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.09378414261282622
+      },
+      "onsetOldVsNative": {
+        "max": 0.013089984655380249,
+        "rms": 0.0008783034938638825,
+        "referenceRms": 0.09427328817532979
+      }
+    }
+  ]
+}
