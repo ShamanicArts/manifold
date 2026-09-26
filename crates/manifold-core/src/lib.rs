@@ -8,6 +8,7 @@ pub mod envelope_follower;
 pub mod events;
 pub mod graph;
 pub mod lfo;
+pub mod limiter;
 pub mod loop_capture;
 pub mod noise;
 pub mod oscillator;

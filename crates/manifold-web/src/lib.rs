@@ -4,6 +4,7 @@ use manifold_core::compressor;
 use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
+use manifold_core::limiter;
 use manifold_core::stereo_delay;
 use std::cell::RefCell;
 
@@ -143,6 +144,12 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             params[1] = b;
             NodeKind::Compressor { params }
         }
+        25 => {
+            let mut params = limiter::defaults();
+            params[0] = a;
+            params[1] = b;
+            NodeKind::Limiter { params }
+        }
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -281,6 +288,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             ) => *mode = value.round().clamp(0.0, 2.0) as u32,
             (NodeKind::Compressor { params }, id) => {
                 if !compressor::set_value(params, id, value) {
+                    return 0;
+                }
+            }
+            (NodeKind::Limiter { params }, id) => {
+                if !limiter::set_value(params, id, value) {
                     return 0;
                 }
             }

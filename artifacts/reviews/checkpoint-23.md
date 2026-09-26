@@ -1,0 +1,7 @@
+# Review checkpoint 23: legacy Limiter
+
+Date: 2026-09-26. Open the [Limiter workbench](http://127.0.0.1:4173/?primitive=limiter). The page exposes threshold, release, makeup, soft clip, wet mix, and a block-averaged gain-reduction trace. The live test oscillator produced a `1.7 dB` reading in a headless browser check; the 390 px view showed Match, all 19 library options, and no horizontal overflow.
+
+The Rust graph now has Limiter type 25. Seven fixtures run the original C++ `LimiterNode.cpp` against Rust/Wasm and compare both stereo samples and one reduction value per block. The largest measured meter difference was `1.01e-4 dB` in the multi-control sweep; all seven passed the `2e-4` threshold. The full **114 browser comparison cases** show Match with no page errors (76 C++, 38 native Rust), and all 33 Rust tests passed. `node scripts/verify-limiter-worklet.mjs` also exercised the actual AudioWorklet adapter directly: it limited a `0.5 / 0.4` stereo block and reported `11.98 dB` reduction.
+
+Meter polling now uses a 100 ms timer independent of `requestAnimationFrame`; display frames may be skipped without stopping readout. A host Chromium compositor process intermittently trapped during screenshot capture in this session. The crash occurred on the unchanged SVF view too, and no OOM kill was recorded. The page, offline comparisons, and live audio path were tested without relying on a screenshot. The [migration boundary](../../docs/limiter-migration.md) records Limiter behavior and the separate Standalone FX type 15 mapping still to port.

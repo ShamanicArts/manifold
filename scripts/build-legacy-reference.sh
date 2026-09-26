@@ -3,7 +3,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 legacy_dir="${MANIFOLD_LEGACY_DIR:-$repo_dir/../my-plugin}"
 reference_kind="${1:-svf}"
-if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" ]]; then
+if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" && "$reference_kind" != "compressor" && "$reference_kind" != "limiter" ]]; then
   echo "Unknown legacy reference: $reference_kind" >&2
   exit 2
 fi
@@ -37,6 +37,9 @@ elif [[ "$reference_kind" == "envelope-follower" ]]; then
 elif [[ "$reference_kind" == "compressor" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/CompressorNode.cpp"
   runner_file="$repo_dir/tools/legacy-compressor-reference.cpp"
+elif [[ "$reference_kind" == "limiter" ]]; then
+  source_file="$legacy_dir/dsp/core/nodes/LimiterNode.cpp"
+  runner_file="$repo_dir/tools/legacy-limiter-reference.cpp"
 else
   source_file="$legacy_dir/dsp/core/nodes/DistortionNode.cpp"
   runner_file="$repo_dir/tools/legacy-distortion-reference.cpp"

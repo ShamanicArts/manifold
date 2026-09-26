@@ -9,6 +9,7 @@ use crate::envelope::AdsrEnvelope;
 use crate::envelope_follower::EnvelopeFollower;
 use crate::events::{EventError, EventKind, TimedEvent};
 use crate::lfo::Lfo;
+use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
@@ -66,6 +67,9 @@ pub enum NodeKind {
     },
     Compressor {
         params: [f32; compressor::PARAM_COUNT],
+    },
+    Limiter {
+        params: [f32; limiter::PARAM_COUNT],
     },
     StereoDelay {
         params: [f32; 16],
@@ -140,6 +144,7 @@ impl NodeKind {
             | Self::AdsrEnvelope
             | Self::Distortion { .. }
             | Self::Compressor { .. }
+            | Self::Limiter { .. }
             | Self::StereoDelay { .. }
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
@@ -203,6 +208,7 @@ impl NodeKind {
                 drive.is_finite() && mix.is_finite() && output.is_finite()
             }
             Self::Compressor { params } => params.iter().all(|value| value.is_finite()),
+            Self::Limiter { params } => params.iter().all(|value| value.is_finite()),
             Self::StereoDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
@@ -322,6 +328,7 @@ enum Kernel {
     },
     Distortion(Distortion),
     Compressor(Compressor),
+    Limiter(Limiter),
     StereoDelay(StereoDelay),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
@@ -426,6 +433,7 @@ impl Kernel {
             NodeKind::Compressor { params } => {
                 Self::Compressor(Compressor::new(sample_rate, *params))
             }
+            NodeKind::Limiter { params } => Self::Limiter(Limiter::new(sample_rate, *params)),
             NodeKind::StereoDelay { params } => {
                 Self::StereoDelay(StereoDelay::new(sample_rate, *params))
             }
@@ -538,6 +546,7 @@ impl Kernel {
             }
             (Self::Distortion(distortion), id) => return distortion.set_parameter(id, value),
             (Self::Compressor(compressor), id) => return compressor.set_parameter(id, value),
+            (Self::Limiter(limiter), id) => return limiter.set_parameter(id, value),
             (Self::StereoDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
@@ -724,6 +733,7 @@ impl ExecutionPlan {
                 Kernel::EnvelopeFollower(follower) if band == 0 => Some(follower.meter()),
                 Kernel::EnvelopeControl(follower) if band == 0 => Some(follower.meter()),
                 Kernel::Compressor(compressor) if band == 0 => Some(compressor.gain_reduction_db()),
+                Kernel::Limiter(limiter) if band == 0 => Some(limiter.gain_reduction_db()),
                 _ => None,
             })
     }
@@ -944,6 +954,9 @@ impl ExecutionPlan {
                 }
                 Kernel::Compressor(compressor) => {
                     compressor.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::Limiter(limiter) => {
+                    limiter.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::StereoDelay(delay) => {
                     delay.process_planar([source(0, 0), source(0, 1)], [left, right])
