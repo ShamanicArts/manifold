@@ -2,6 +2,7 @@
 //! Routing is explicit: a graph without a route to Output emits silence.
 
 use crate::Filter;
+use crate::chorus::{self, Chorus};
 use crate::compressor::{self, Compressor};
 use crate::cv_utilities::{AttenuverterBias, CvMix, SampleHold};
 use crate::distortion::Distortion;
@@ -102,6 +103,9 @@ pub enum NodeKind {
     Phaser {
         params: [f32; 5],
     },
+    Chorus {
+        params: [f32; chorus::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -188,6 +192,7 @@ impl NodeKind {
             | Self::Limiter { .. }
             | Self::StereoDelay { .. }
             | Self::Phaser { .. }
+            | Self::Chorus { .. }
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
@@ -277,6 +282,7 @@ impl NodeKind {
             Self::Limiter { params } => params.iter().all(|value| value.is_finite()),
             Self::StereoDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::Phaser { params } => params.iter().all(|value| value.is_finite()),
+            Self::Chorus { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -407,6 +413,7 @@ enum Kernel {
     Limiter(Limiter),
     StereoDelay(StereoDelay),
     Phaser(Phaser),
+    Chorus(Chorus),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -446,7 +453,7 @@ struct MixerState {
 }
 
 impl Kernel {
-    fn from_kind(kind: &NodeKind, sample_rate: f32) -> Self {
+    fn from_kind(kind: &NodeKind, sample_rate: f32, max_frames: usize) -> Self {
         match kind {
             NodeKind::InputRaw => Self::InputRaw,
             NodeKind::InputMonitor { gain } => Self::InputMonitor { gain: *gain },
@@ -527,6 +534,9 @@ impl Kernel {
                 Self::StereoDelay(StereoDelay::new(sample_rate, *params))
             }
             NodeKind::Phaser { params } => Self::Phaser(Phaser::new(sample_rate, *params)),
+            NodeKind::Chorus { params } => {
+                Self::Chorus(Chorus::new(sample_rate, max_frames, *params))
+            }
             NodeKind::EffectSlot {
                 selected,
                 mix,
@@ -656,6 +666,7 @@ impl Kernel {
             (Self::Limiter(limiter), id) => return limiter.set_parameter(id, value),
             (Self::StereoDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::Phaser(phaser), id) => return phaser.set_parameter(id, value),
+            (Self::Chorus(chorus), id) => return chorus.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -845,7 +856,7 @@ impl GraphDescription {
             old_to_new[index] = nodes.len();
             nodes.push(CompiledNode {
                 id: self.nodes[index].id,
-                kernel: Kernel::from_kind(&self.nodes[index].kind, sample_rate),
+                kernel: Kernel::from_kind(&self.nodes[index].kind, sample_rate, max_frames),
                 sources: sources[index]
                     .iter()
                     .map(|source| source.map(|old| old_to_new[old]))
@@ -1258,6 +1269,9 @@ impl ExecutionPlan {
                 }
                 Kernel::Phaser(phaser) => {
                     phaser.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::Chorus(chorus) => {
+                    chorus.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

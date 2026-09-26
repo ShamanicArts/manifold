@@ -1,5 +1,6 @@
 //! Thin, single-instance AudioWorklet ABI. Graph and buffers are allocated only at prepare.
 
+use manifold_core::chorus;
 use manifold_core::compressor;
 use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
@@ -273,6 +274,12 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             params[1] = b;
             NodeKind::Phaser { params }
         }
+        35 => {
+            let mut params = chorus::defaults();
+            params[0] = a;
+            params[1] = b;
+            NodeKind::Chorus { params }
+        }
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -368,6 +375,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             }
             (NodeKind::Phaser { params }, id) => {
                 if !phaser::set_value(params, id, value) {
+                    return 0;
+                }
+            }
+            (NodeKind::Chorus { params }, id) => {
+                if !chorus::set_value(params, id, value) {
                     return 0;
                 }
             }
