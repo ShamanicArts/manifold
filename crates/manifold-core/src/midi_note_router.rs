@@ -32,6 +32,14 @@ impl MidiNoteRouter {
         map: impl Fn(u8) -> Option<u8>,
         out: &mut [EventKind; MAX_OUTPUT_EVENTS],
     ) -> usize {
+        self.remap_mapped(|note, velocity| map(note).map(|note| (note, velocity)), out)
+    }
+
+    pub fn remap_mapped(
+        &mut self,
+        map: impl Fn(u8, u8) -> Option<(u8, u8)>,
+        out: &mut [EventKind; MAX_OUTPUT_EVENTS],
+    ) -> usize {
         let mut count = 0;
         for note in self.held.iter().filter(|note| note.active) {
             if let Some(output) = note.output {
@@ -44,12 +52,13 @@ impl MidiNoteRouter {
         }
         for slot in &mut self.held {
             if slot.active {
-                slot.output = map(slot.input);
-                if let Some(output) = slot.output {
+                let mapped = map(slot.input, slot.velocity).filter(|(_, velocity)| *velocity > 0);
+                slot.output = mapped.map(|(note, _)| note);
+                if let Some((output, velocity)) = mapped {
                     out[count] = EventKind::NoteOn {
                         channel: slot.channel,
                         note: output,
-                        velocity: slot.velocity,
+                        velocity,
                     };
                     count += 1;
                 }
@@ -64,12 +73,25 @@ impl MidiNoteRouter {
         map: impl Fn(u8) -> Option<u8>,
         out: &mut [EventKind; MAX_OUTPUT_EVENTS],
     ) -> usize {
+        self.handle_mapped(
+            event,
+            |note, velocity| map(note).map(|note| (note, velocity)),
+            out,
+        )
+    }
+
+    pub fn handle_mapped(
+        &mut self,
+        event: EventKind,
+        map: impl Fn(u8, u8) -> Option<(u8, u8)>,
+        out: &mut [EventKind; MAX_OUTPUT_EVENTS],
+    ) -> usize {
         match event {
             EventKind::NoteOn {
                 channel,
                 note,
                 velocity: 0,
-            } => self.handle(EventKind::NoteOff { channel, note }, map, out),
+            } => self.handle_mapped(EventKind::NoteOff { channel, note }, map, out),
             EventKind::NoteOn {
                 channel,
                 note,
@@ -98,7 +120,8 @@ impl MidiNoteRouter {
                     }
                 }
                 self.stamp = self.stamp.wrapping_add(1);
-                let output = map(note);
+                let mapped = map(note, velocity).filter(|(_, velocity)| *velocity > 0);
+                let output = mapped.map(|(note, _)| note);
                 self.held[index] = HeldNote {
                     active: true,
                     channel,
@@ -107,7 +130,7 @@ impl MidiNoteRouter {
                     velocity,
                     stamp: self.stamp,
                 };
-                if let Some(note) = output {
+                if let Some((note, velocity)) = mapped {
                     out[count] = EventKind::NoteOn {
                         channel,
                         note,

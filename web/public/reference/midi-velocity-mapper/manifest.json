@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "reference": "native Rust Velocity Mapper into VoiceSynth; rack amplitude curve deliberately applied to MIDI velocity",
+  "sourceSha256": "0bca7ca575e12f38899c905e8bb7df3b7c58a432446de2fdb49221b90885f0fd",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 8192,
+  "blockSize": 128,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "held-offset",
+      "label": "Hard curve velocities rise as offset changes",
+      "waveform": 0,
+      "attack": 0.005,
+      "decay": 0.02,
+      "sustain": 0.55,
+      "release": 0.03,
+      "level": 0.25,
+      "amount": 1,
+      "curve": 2,
+      "offset": 0,
+      "events": [
+        {
+          "frame": 128,
+          "kind": 0,
+          "channel": 0,
+          "note": 64,
+          "velocity": 64
+        },
+        {
+          "frame": 512,
+          "kind": 0,
+          "channel": 0,
+          "note": 60,
+          "velocity": 100
+        },
+        {
+          "frame": 4096,
+          "kind": 1,
+          "channel": 0,
+          "note": 64,
+          "velocity": 0
+        },
+        {
+          "frame": 6144,
+          "kind": 1,
+          "channel": 0,
+          "note": 60,
+          "velocity": 0
+        }
+      ],
+      "changes": [
+        {
+          "frame": 2048,
+          "id": 2,
+          "value": 0.5
+        }
+      ],
+      "focusFrame": 2048,
+      "output": "held-offset.f32"
+    }
+  ]
+}

@@ -372,6 +372,11 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             scale: b,
             direction: 1.0,
         },
+        58 => NodeKind::MidiVelocityMapper {
+            amount: a,
+            curve: b,
+            offset: 0.0,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {

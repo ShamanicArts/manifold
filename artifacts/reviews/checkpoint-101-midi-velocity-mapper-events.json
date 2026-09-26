@@ -1,0 +1,15 @@
+{
+  "scenario": "Note 64 at velocity 64; change Curve from Linear to Hard while held; release",
+  "legacyExport": [
+    { "kind": "on", "channel": 0, "note": 64, "velocity": 64 },
+    { "kind": "off", "channel": 0, "note": 64 },
+    { "kind": "on", "channel": 0, "note": 64, "velocity": 64 },
+    { "kind": "off", "channel": 0, "note": 64 }
+  ],
+  "rustV2": [
+    { "kind": "on", "channel": 0, "note": 64, "velocity": 64 },
+    { "kind": "off", "channel": 0, "note": 64 },
+    { "kind": "on", "channel": 0, "note": 64, "velocity": 32 },
+    { "kind": "off", "channel": 0, "note": 64 }
+  ]
+}

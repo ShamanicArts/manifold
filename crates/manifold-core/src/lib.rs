@@ -24,6 +24,7 @@ pub mod midi_note_filter;
 pub mod midi_note_router;
 pub mod midi_scale_quantizer;
 pub mod midi_transpose;
+pub mod midi_velocity_mapper;
 pub mod multitap_delay;
 pub mod noise;
 pub mod oscillator;
