@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manifold · Main pitch routing review</title>
+<style>
+:root{color-scheme:light;background:#f7f5f0;color:#252a28;font:14px/1.5 system-ui,sans-serif}*{box-sizing:border-box}body{margin:0}main{max-width:920px;margin:auto;padding:30px clamp(18px,5vw,50px) 70px}a{color:#285e4d}h1{font:400 clamp(34px,5vw,56px)/1.08 Georgia,serif;margin:8px 0 12px}h2{font-size:17px;font-weight:600;margin:0 0 12px}p{max-width:720px;color:#626b66}.eyebrow,.small{color:#626b66;font-size:12px;letter-spacing:.05em}nav{display:flex;gap:18px;flex-wrap:wrap;margin:24px 0}.panel{border:1px solid #d7dcd6;background:#fffefa;padding:22px;margin:16px 0}.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.flow div{border-top:2px solid #285e4d;background:#f7f5f0;padding:14px}.flow strong{display:block;margin-bottom:6px}.flow span{color:#626b66;font-size:12px}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{border-bottom:1px solid #d7dcd6;padding:10px;text-align:left}td:last-child,th:last-child{text-align:right}.pass{color:#285e4d}.scope{border-left:3px solid #a35339;padding-left:15px}@media(max-width:700px){.flow{grid-template-columns:1fr}.panel{padding:16px}}
+</style></head><body><main>
+<div class="eyebrow">MANIFOLD V2 · CHECKPOINT 118</div>
+<h1>Notes become wave and sample pitch</h1>
+<p>The old Main voice splits pitch between the waveform oscillator, raw sample speed, and the phase vocoder. A small Rust mapping now reproduces those decisions across wave, sample, and both-keytrack modes. This is a reference-checked kernel; the playable Main study still uses its existing manual pitch controls until this mapping is bound to the graph.</p>
+<nav><a href="/manifold-sitrep.html">Project sitrep</a><a href="/main-sample-blend-review.html">FM / Sync review</a><a href="/?primitive=main-sample-blend">Current playable Main study</a></nav>
+<section class="panel"><h2>Routing in the original voice</h2><div class="flow">
+<div><strong>Desired sample ratio</strong><span>When sample keytrack is active, compare voice note frequency with root-note frequency. Multiply by the ±24 semitone pitch knob; clamp the result to 0.05–8.</span></div>
+<div><strong>Classic sample pitch</strong><span>Send the entire desired ratio to sample playback speed. Wave pitch follows the note, stays at the root, or also receives the pitch knob according to keytrack mode.</span></div>
+<div><strong>Vocoder pitch</strong><span>Send up to ±24 semitones into the vocoder. Any remaining coarse shift goes to sample playback speed. HQ selects the second vocoder mode.</span></div>
+</div></section>
+<section class="panel"><h2>Direct original Lua ↔ Rust trace</h2><p>Fourteen scenarios call the original <code>sample_synth.lua</code> pitch helpers and wave assignment in an isolated reference harness. The Rust function receives the same note frequency, root, keytrack, pitch knob, and pitch engine mode.</p>
+<table><thead><tr><th>Compared result</th><th>Largest absolute difference</th></tr></thead><tbody>
+<tr><td>Wave frequency</td><td class="pass">0.0001163 Hz</td></tr>
+<tr><td>Desired sample ratio</td><td class="pass">0.00000003616</td></tr>
+<tr><td>Sample playback speed</td><td class="pass">0.00000003616</td></tr>
+<tr><td>Vocoder shift</td><td class="pass">0.0000003143 semitones</td></tr>
+<tr><td>Vocoder mix and HQ selection</td><td class="pass">Exact</td></tr>
+</tbody></table><p class="small">The <a href="/reference/main-pitch/manifest.json">trace manifest</a> records original and Rust source hashes and links to both CSV outputs. Run <code>python3 scripts/check-main-pitch-trace.py</code> to regenerate and check them.</p></section>
+<section class="panel"><h2>Next boundary</h2><p class="scope">The mapping runs in Rust native tests today. It does not yet receive browser note events or set the playable graph's oscillator, sample region, or vocoder parameters. The next slice binds those targets at a block boundary, adds note/root/pitch controls to Main state, and checks audible native Rust ↔ Wasm cases. Lua is used only in the reference harness and is not part of the v2 product.</p></section>
+</main></body></html>

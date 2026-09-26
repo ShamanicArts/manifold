@@ -25,7 +25,7 @@
   <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 117</div>
   <h1>FM and Sync move the voice in Rust</h1>
   <p>The Main study now updates wave pitch and sample speed once per audio block for FM, and resumes or retriggers sample playback on phase wraps in Sync. Wave-facing Sync also enables the raw-sample hard-sync input. The old Main Lua control function and Rust agree across 13 reference blocks; the live browser path uses Rust/Wasm.</p>
-  <nav><a href="/?primitive=main-sample-blend">Play and compare the graph</a><a href="/phase-vocoder-review.html">Inspect Phase vocoder</a><a href="/spectral-target-review.html">Inspect Add / Morph recipes</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
+  <nav><a href="/?primitive=main-sample-blend">Play and compare the graph</a><a href="/main-pitch-review.html">Inspect note / sample pitch map</a><a href="/phase-vocoder-review.html">Inspect Phase vocoder</a><a href="/spectral-target-review.html">Inspect Add / Morph recipes</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
   <section class="panel"><h2>Signal path</h2><div class="flow">
     <div><strong>Wave and sample motion</strong><span>Rust reads the previous sample cursor and advances wave phase before each block. FM moves both source rates; Sync chooses replay or retrigger.</span></div>
     <div><strong>Two prepared Sine banks</strong><span>The same amplitude sets both bank levels, subject to the original 1.0 clamp. Wave and source targets then meet at the Add crossfade.</span></div>

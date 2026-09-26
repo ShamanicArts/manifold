@@ -32,14 +32,14 @@
   <nav class="toc" aria-label="Sections"><span>Manifold / 26.09.2026</span><a href="#architecture">Architecture</a><a href="#done">Built so far</a><a href="#proven">Evidence</a><a href="#next">In flight &amp; next</a></nav>
   <main class="main">
     <header class="hero">
-      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 117</div>
+      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 118</div>
       <h1>A portable sound engine is taking shape.</h1>
       <p class="hero-copy">The old JUCE and Lua project is being rebuilt as a Rust DSP core with a JavaScript browser workbench. The workbench is already useful for playing, inspecting, and comparing individual behaviors; the full legacy projects are still being assembled.</p>
-      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: Main sample synth reconstruction</span><span>Review scope: checkpoint 117 and the next workstream</span></div>
+      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: Main sample synth reconstruction</span><span>Review scope: checkpoint 118 and the next workstream</span></div>
       <div class="stats" aria-label="Current library figures">
         <div class="stat"><strong>54</strong><span>interactive workbench views</span><small>Many are individual primitives or small authored projects.</small></div>
         <div class="stat"><strong>452</strong><span>checked-in offline comparison cases</span><small>452 audio cases, plus separate source-analysis and recipe captures.</small></div>
-        <div class="stat"><strong>124</strong><span>Rust tests passing</span><small>Workspace tests include FM/Sync control-block motion and graph transitions.</small></div>
+        <div class="stat"><strong>126</strong><span>Rust tests passing</span><small>Workspace tests include FM/Sync graph transitions and the isolated old Main pitch map.</small></div>
       </div>
     </header>
 
@@ -67,7 +67,7 @@
       <div class="section-head"><span class="label">03</span><h2 id="proven-heading">What the evidence says</h2></div>
       <div class="evidence">
         <div class="evidence-row"><strong>Kernel behavior</strong><p>Checked-in comparison captures pair old C++ outputs with Rust/Wasm for isolated nodes, and native Rust with Rust/Wasm for new compositions. The workbench exposes waveform differences and case-level results.</p></div>
-        <div class="evidence-row"><strong>Latest completed slice</strong><p>The Main study now runs Normal, FM, and Sync motion in the Rust graph. Thirty-four native Rust ↔ Wasm audio captures include seven new directional cases, all exact. A 13-block reference trace of the original Lua control function matches Rust trigger/play decisions; the largest pitch and speed differences are 0.00001172 Hz and 0.00000002186. Version-10 state opens all nine earlier formats. <a href="/main-sample-blend-review.html">Inspect the branch review</a>.</p></div>
+        <div class="evidence-row"><strong>Latest completed slice</strong><p>The playable Main study runs Normal, FM, and Sync motion in Rust; its 34 native Rust ↔ Wasm audio cases include seven exact directional captures. The next isolated Rust pitch map matches 14 original Lua scenarios, with at most 0.0001163 Hz wave-frequency difference. Its note/root controls are not yet wired into the graph. Version-10 state opens all nine earlier formats. <a href="/main-sample-blend-review.html">Inspect the playable branch</a> or <a href="/main-pitch-review.html">inspect the pitch-map trace</a>.</p></div>
         <div class="evidence-row"><strong>Browser path</strong><p>The same Rust core compiles to Wasm and runs inside an AudioWorklet. Playable views, controlled offline runs, and downloadable project slices exercise this path on the served site.</p></div>
         <div class="evidence-row"><strong>Scope of claim</strong><p>The numbers establish many local behaviors and some small compositions. They do not establish parity for the complete old plug-in, its full Lua project graph, every preset, or a native plug-in host.</p></div>
       </div>
@@ -90,7 +90,8 @@
         <div class="step"><span class="label">Done · linked voice amplitude</span><h3>Move all three source families together</h3><p>A bounded parameter batch sets the oscillator, sample gain, and both prepared banks from one control. Five new native/Wasm cases and live worklet checks cover wave, sample, and Add paths. Older state files open with linking off.</p></div>
         <div class="step"><span class="label">Done · sample-driven oscillator sync</span><h3>Reset wave phase on raw crossings</h3><p>The Rust oscillator has an optional audio sync input, matching the compiled C++ node exactly. Two Main graph cases and a live worklet toggle exercise the route.</p></div>
         <div class="step"><span class="label">Done · FM and Sync motion</span><h3>Move wave pitch and sample playback in Rust</h3><p>At each audio block, FM changes both source rates; Sync chooses replay or retrigger and gates hard sync by blend position. Seven new audio captures match native Rust and Wasm exactly. A separate original Lua trace checks 13 control blocks.</p></div>
-        <div class="step"><span class="label">Now · full sample project</span><h3>Finish old voice parameters and note behavior</h3><p>Port keytrack and sample-pitch mappings, then per-note gate and allocation. Compare assembled old Main voice output. Ring mode and Add/Morph routing remain. An ADSR gate would be a v2 redesign: old Main references one but does not construct it.</p></div>
+        <div class="step"><span class="label">Done · isolated Main pitch map</span><h3>Trace note and sample pitch decisions</h3><p>Fourteen original Lua scenarios match a pure Rust mapping for wave frequency, desired sample ratio, sample speed, and vocoder pitch/mix. The mapping is ready for live graph integration.</p></div>
+        <div class="step"><span class="label">Now · full sample project</span><h3>Bind pitch and build note behavior</h3><p>Wire the checked Main pitch map to the authored graph, then add per-note gate and allocation. Compare assembled old Main voice output. Ring mode and Add/Morph routing remain. An ADSR gate would be a v2 redesign: old Main references one but does not construct it.</p></div>
         <div class="step"><span class="label">Later · product surface</span><h3>Harden the shared project model and hosts</h3><p>Broaden state and preset handling, measure callback budgets in the browser, and package non-browser hosts against the same Rust engine.</p></div>
       </div>
       <div class="actions"><a class="action primary" href="/?primitive=main-sample-blend">Play the Main blend study</a><a class="action" href="/main-sample-blend-review.html">Inspect Main direction motion</a><a class="action" href="/?primitive=phase-vocoder">Play the phase vocoder</a></div>

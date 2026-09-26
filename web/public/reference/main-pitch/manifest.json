@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "source": "original Main sample_synth.lua pitch helpers and updateBlendVoiceFrame",
+  "legacySha256": "bd04765b74134a1c203bbbc556843ca28678637a1d1109f68d29105ef274d901",
+  "rustSha256": "1b60990dac3ffa12fe65d8f0d5649060a0b1698fddceb8eaf9bdb5892c8e0d36",
+  "scenarios": "scenarios.csv",
+  "legacy": "legacy.csv",
+  "rust": "rust.csv",
+  "cases": 14,
+  "maximumDifference": [
+    0.00011626721106949844,
+    3.615769039733152e-08,
+    3.615769039733152e-08,
+    3.1434612779435156e-07,
+    0.0,
+    0.0
+  ]
+}
