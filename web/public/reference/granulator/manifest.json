@@ -1,12 +1,14 @@
 {
   "version": 1,
-  "reference": "legacy C++ GranulatorNode capture ring (spray=0)",
+  "reference": "legacy C++ GranulatorNode capture ring and preloaded source (spray=0)",
   "sourceSha256": "3f3a436dc3dbee091843e0f01ff7f61c6d612cacab0996b53b6ae9eaaf1211d3",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 131072,
   "stepFrame": 65536,
   "input": "input.f32",
+  "sourceFile": "source.f32",
+  "sourceFrames": 16384,
   "cases": [
     {
       "id": "default",
@@ -231,6 +233,105 @@
       ],
       "blockSize": 64,
       "output": "mix.f32"
+    },
+    {
+      "id": "file-source",
+      "label": "Preloaded stereo source",
+      "before": [
+        80,
+        24,
+        0.5,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        80,
+        24,
+        0.5,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "source": true,
+      "output": "file-source.f32"
+    },
+    {
+      "id": "source-region",
+      "label": "Source region and position sweep",
+      "before": [
+        80,
+        24,
+        0.3,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        80,
+        24,
+        0.7,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0.2,
+        0.8
+      ],
+      "blockSize": 128,
+      "source": true,
+      "output": "source-region.f32"
+    },
+    {
+      "id": "source-pitch",
+      "label": "Source pitch and envelope",
+      "before": [
+        80,
+        24,
+        0.5,
+        -12,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1
+      ],
+      "after": [
+        80,
+        24,
+        0.5,
+        12,
+        0,
+        1,
+        0,
+        2,
+        1,
+        0,
+        1
+      ],
+      "blockSize": 64,
+      "source": true,
+      "output": "source-pitch.f32"
     }
   ]
 }

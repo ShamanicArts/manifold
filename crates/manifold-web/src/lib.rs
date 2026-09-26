@@ -503,7 +503,7 @@ pub extern "C" fn manifold_graph_initial_parameter(
                     return 0;
                 }
             }
-            (NodeKind::Granulator { params }, id @ 0..=8) => {
+            (NodeKind::Granulator { params }, id @ 0..=10) => {
                 if !manifold_core::granulator::set_value(params, id, value) {
                     return 0;
                 }

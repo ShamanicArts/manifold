@@ -1199,6 +1199,7 @@ impl ExecutionPlan {
             .is_some_and(|entry| match &mut entry.kernel {
                 Kernel::SampleRegion(player) => player.load_stereo(stereo, source_rate),
                 Kernel::SampleInstrument(instrument) => instrument.load_stereo(stereo, source_rate),
+                Kernel::Granulator(granulator) => granulator.load_stereo(stereo, source_rate),
                 _ => false,
             })
     }

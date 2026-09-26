@@ -24,7 +24,7 @@ Type 9 maps normalized `p/0` to a rounded tap count of `2…8` and `p/1` to feed
 
 Type 10 maps normalized `p/0` to pitch `−12…12` semitones, `p/1` to head window `30…180 ms`, and `p/2` to feedback `0…0.75`; `p/3`–`p/4` are unused. The original slot sets internal mix fully wet. The separate [PitchShifter comparison](pitch-shifter-migration.md) has eight C++ captures; four slot cases cover controls and switching.
 
-Type 11 maps normalized `p/0` to grain size `12…280 ms`, `p/1` to density `2…64` grains/s, `p/2` to capture position, and `p/3` to spray; `p/4` is unused. Its pitch is fixed at 0 st, envelope Hann, internal mix fully wet, and freeze off. The separate [Granulator comparison](granulator-migration.md) has eight zero-spray C++ captures and four native slot cases. File-source handoff remains separate work.
+Type 11 maps normalized `p/0` to grain size `12…280 ms`, `p/1` to density `2…64` grains/s, `p/2` to capture position, and `p/3` to spray; `p/4` is unused. Its pitch is fixed at 0 st, envelope Hann, internal mix fully wet, and freeze off. The separate [Granulator comparison](granulator-migration.md) has eleven zero-spray C++ captures, including three preloaded-source cases and four native slot cases. The standalone Granulator view also accepts a decoded file; type 11 remains a live capture effect in the slot.
 
 Type 12 maps normalized `p/0` exponentially to oscillator frequency `20…2000 Hz`, `p/1` to depth `0…1`, and `p/2` to stereo spread `0…180°`; `p/3`–`p/4` are unused. Internal mix remains fully wet, and the slot uses the oscillator rather than an external modulator bus. The separate [Ring Modulator comparison](ring-modulator-migration.md) covers both input modes with seven C++ cases; four slot cases cover controls and switching.
 

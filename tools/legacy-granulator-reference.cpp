@@ -35,7 +35,8 @@ static void apply(dsp_primitives::GranulatorNode& node, int id, float value) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 25) return 2;
+    if (argc != 25 && argc != 30) return 2;
+    const bool sourceMode = argc == 30;
     const int sampleRate = std::atoi(argv[3]);
     const int blockSize = std::atoi(argv[4]);
     const int stepFrame = std::atoi(argv[5]);
@@ -46,11 +47,30 @@ int main(int argc, char** argv) {
     if (!source) return 3;
     dsp_primitives::GranulatorNode node;
     for (int id = 0; id < 9; ++id) apply(node, id, std::strtof(argv[7 + id], nullptr));
+    if (sourceMode) node.setSourceRegion(std::strtof(argv[16], nullptr), std::strtof(argv[17], nullptr));
     node.prepare(sampleRate, blockSize);
+    if (sourceMode) {
+        std::ifstream sourceFile(argv[29], std::ios::binary | std::ios::ate);
+        if (!sourceFile) return 5;
+        const auto bytes = sourceFile.tellg();
+        if (bytes <= 0 || static_cast<size_t>(bytes) % (sizeof(float) * 2) != 0) return 5;
+        sourceFile.seekg(0);
+        std::vector<float> sourceStereo(static_cast<size_t>(bytes) / sizeof(float));
+        sourceFile.read(reinterpret_cast<char*>(sourceStereo.data()), bytes);
+        if (!sourceFile) return 5;
+        const int sourceFrames = static_cast<int>(sourceStereo.size() / 2);
+        juce::AudioBuffer<float> sourceBuffer(2, sourceFrames);
+        for (int frame = 0; frame < sourceFrames; ++frame) {
+            sourceBuffer.setSample(0, frame, sourceStereo[frame * 2]);
+            sourceBuffer.setSample(1, frame, sourceStereo[frame * 2 + 1]);
+        }
+        node.copyFromCaptureBuffer(sourceBuffer, sourceFrames, 0, sourceFrames);
+    }
     std::vector<float> result(input.size());
     for (int offset = 0; offset < frames; offset += blockSize) {
         if (offset == stepFrame) {
-            for (int id = 0; id < 9; ++id) apply(node, id, std::strtof(argv[16 + id], nullptr));
+            for (int id = 0; id < 9; ++id) apply(node, id, std::strtof(argv[(sourceMode ? 18 : 16) + id], nullptr));
+            if (sourceMode) node.setSourceRegion(std::strtof(argv[27], nullptr), std::strtof(argv[28], nullptr));
         }
         const int count = std::min(blockSize, frames - offset);
         std::vector<float> left(count), right(count), outLeft(count), outRight(count);

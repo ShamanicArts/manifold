@@ -41,7 +41,19 @@ for case_id, label, before, after, block in specs:
     name = f'{case_id}.f32'
     subprocess.run([runner, str(OUT/'input.f32'), str(OUT/name), str(sample_rate), str(block), str(step), str(frames), *(str(value) for value in before), *(str(value) for value in after)], check=True)
     cases.append({'id':case_id,'label':label,'before':before,'after':after,'blockSize':block,'output':name})
-(OUT/'manifest.json').write_text(json.dumps({'version':1,'reference':'legacy C++ GranulatorNode capture ring (spray=0)',
+source_frames = 16384
+(OUT/'source.f32').write_bytes((OUT/'input.f32').read_bytes()[:source_frames * 2 * 4])
+source_default = [80,24,.5,0,0,1,0,0,1,0,1]
+source_specs = [
+    ('file-source', 'Preloaded stereo source', source_default, source_default, 128),
+    ('source-region', 'Source region and position sweep', [80,24,.3,0,0,1,0,0,1,0,1], [80,24,.7,0,0,1,0,0,1,.2,.8], 128),
+    ('source-pitch', 'Source pitch and envelope', [80,24,.5,-12,0,1,0,0,1,0,1], [80,24,.5,12,0,1,0,2,1,0,1], 64),
+]
+for case_id, label, before, after, block in source_specs:
+    name = f'{case_id}.f32'
+    subprocess.run([runner, str(OUT/'input.f32'), str(OUT/name), str(sample_rate), str(block), str(step), str(frames), *(str(value) for value in before), *(str(value) for value in after), str(OUT/'source.f32')], check=True)
+    cases.append({'id':case_id,'label':label,'before':before,'after':after,'blockSize':block,'source':True,'output':name})
+(OUT/'manifest.json').write_text(json.dumps({'version':1,'reference':'legacy C++ GranulatorNode capture ring and preloaded source (spray=0)',
     'sourceSha256':source_hash,'sampleRate':sample_rate,'channels':2,'frames':frames,
-    'stepFrame':step,'input':'input.f32','cases':cases},indent=2)+'\n')
+    'stepFrame':step,'input':'input.f32','sourceFile':'source.f32','sourceFrames':source_frames,'cases':cases},indent=2)+'\n')
 print(f'Wrote {len(cases)} C++ Granulator cases to {OUT}')

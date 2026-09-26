@@ -1,0 +1,10 @@
+{
+  "ready": "manifold-grain-test.wav · 1.00 s · ready to start",
+  "sourceControlsVisible": true,
+  "running": "Audio running · test oscillator · 48 kHz",
+  "source": "manifold-grain-test.wav · 1.00 s · ready to start",
+  "clearDisabled": true,
+  "cleared": "Live input feeds the capture ring. Choose a file to grain from a fixed source instead.",
+  "sourceControlsHidden": true,
+  "errors": []
+}

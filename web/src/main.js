@@ -323,6 +323,7 @@ const patchedSignals = new Map();
 let slotValuesByType = new Map();
 let loopHasTake = false;
 let loadedSample = null;
+let loadedGranulatorSource = null;
 let exampleSample = null;
 let samplePlayhead = 0;
 let samplePlaying = false;
@@ -802,6 +803,17 @@ function updateSlotControls() {
       : 'Values are stored separately for each effect type and restored when selected.';
 }
 
+function updateGranulatorSourceView() {
+  if (activeFamily !== 'granulator') return;
+  byId('signal-path').textContent = loadedGranulatorSource
+    ? 'Live input + decoded file → grain cloud → dry/wet output'
+    : 'Live path: input → four-second capture ring → grain cloud → dry/wet output';
+  for (const id of [9, 10]) {
+    const wrapper = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (wrapper) wrapper.hidden = !loadedGranulatorSource;
+  }
+}
+
 function addGate(parameter) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -1055,6 +1067,11 @@ function renderPrimitive(family) {
   byId('keyboard-section').hidden = !['voice', 'sample-instrument'].includes(family);
   byId('midi-access-section').hidden = !['voice', 'sample-instrument'].includes(family);
   byId('sample-section').hidden = !sampleView;
+  byId('granulator-file-section').hidden = family !== 'granulator';
+  byId('granulator-file').disabled = audio.running;
+  byId('granulator-clear-file').disabled = audio.running;
+  byId('granulator-clear-file').hidden = !loadedGranulatorSource;
+  byId('granulator-source-status').textContent = loadedGranulatorSource?.label ?? 'Live input feeds the capture ring. Choose a file to grain from a fixed source instead.';
   byId('sample-trigger').hidden = family !== 'sample-region';
   byId('sample-help').textContent = family === 'sample-instrument'
     ? 'Start the instrument, then play the keyboard or connect MIDI. Stop it before changing the file.'
@@ -1162,6 +1179,7 @@ function renderPrimitive(family) {
     renderSampleAnalysis();
     requestSampleAnalysis(loadedSample ?? demoSample());
   }
+  updateGranulatorSourceView();
   byId('source').hidden = isInstrument;
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
   document.querySelector('.measurement-hint').textContent = family === 'sample-instrument'
@@ -1468,6 +1486,41 @@ byId('sample-file').addEventListener('change', async (event) => {
     readout.textContent = `Sample unavailable: ${error.message ?? String(error)}`;
   }
 });
+byId('granulator-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const readout = byId('granulator-source-status');
+  try {
+    if (audio.running) throw new Error('Stop audio before changing the grain source.');
+    if (file.size > 32 * 1024 * 1024) throw new Error('Choose a file smaller than 32 MB.');
+    readout.textContent = `Decoding ${file.name}…`;
+    const decoder = new OfflineAudioContext(2, 1, 48_000);
+    const audioBuffer = await decoder.decodeAudioData(await file.arrayBuffer());
+    if (audioBuffer.duration > 30 || audioBuffer.length < 2) throw new Error('Choose an audio file between 0 and 30 seconds.');
+    const left = audioBuffer.getChannelData(0);
+    const right = audioBuffer.getChannelData(Math.min(1, audioBuffer.numberOfChannels - 1));
+    const stereo = new Float32Array(audioBuffer.length * 2);
+    for (let frame = 0; frame < audioBuffer.length; frame++) {
+      stereo[frame * 2] = left[frame];
+      stereo[frame * 2 + 1] = right[frame];
+    }
+    loadedGranulatorSource = { sourceRate: audioBuffer.sampleRate, stereo,
+      label: `${file.name} · ${audioBuffer.duration.toFixed(2)} s · ready to start` };
+    byId('granulator-clear-file').hidden = false;
+    readout.textContent = loadedGranulatorSource.label;
+    updateGranulatorSourceView();
+  } catch (error) {
+    readout.textContent = `Grain source unavailable: ${error.message ?? String(error)}`;
+  }
+});
+byId('granulator-clear-file').addEventListener('click', () => {
+  if (audio.running) return;
+  loadedGranulatorSource = null;
+  byId('granulator-file').value = '';
+  byId('granulator-clear-file').hidden = true;
+  byId('granulator-source-status').textContent = 'Live input feeds the capture ring. Choose a file to grain from a fixed source instead.';
+  updateGranulatorSourceView();
+});
 byId('sample-use-root').addEventListener('click', () => {
   if (activeFamily !== 'sample-instrument') return;
   const note = samplePitchNote(loadedSample ?? demoSample());
@@ -1518,7 +1571,8 @@ toggle.addEventListener('click', async () => {
     }
     else {
       await audio.start(byId('source').value, values, activeProject,
-        ['sample-region', 'sample-instrument'].includes(activeFamily) ? loadedSample ?? demoSample() : null);
+        ['sample-region', 'sample-instrument'].includes(activeFamily) ? loadedSample ?? demoSample()
+          : activeFamily === 'granulator' ? loadedGranulatorSource : null);
       if (noteTarget() !== null && Number(pitchBend.value) !== 0) pitchBend.dispatchEvent(new Event('input'));
     }
     const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';
@@ -1530,6 +1584,8 @@ toggle.addEventListener('click', async () => {
     byId('patch-section').refreshStatus?.();
     if (!audio.running) byId('controls').querySelectorAll('.has-effective').forEach((slider) => slider.setEffective(null));
     byId('sample-file').disabled = audio.running;
+    byId('granulator-file').disabled = audio.running;
+    byId('granulator-clear-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running
       ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'transient-shaper' ? 'Block-mean transient strength from the Rust detector.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' || activeFamily === 'sample-instrument' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'sample-instrument'

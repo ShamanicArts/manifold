@@ -25,6 +25,8 @@
     { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "mix", "label": "Wet mix", "kind": "float", "min": 0, "max": 1, "default": 1 },
     { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "freeze", "label": "Freeze capture", "kind": "toggle", "default": 0 },
     { "id": 7, "nodeId": 2, "nodeParameterId": 7, "hostId": "envelope", "label": "Grain envelope", "kind": "choice", "choices": ["Hann", "Triangle", "Blackman", "Tukey", "Rectangle"], "default": 0 },
-    { "id": 8, "nodeId": 2, "nodeParameterId": 8, "hostId": "enabled", "label": "Granulator enabled", "kind": "toggle", "default": 1 }
+    { "id": 8, "nodeId": 2, "nodeParameterId": 8, "hostId": "enabled", "label": "Granulator enabled", "kind": "toggle", "default": 1 },
+    { "id": 9, "nodeId": 2, "nodeParameterId": 9, "hostId": "region-start", "label": "Source start", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 10, "nodeId": 2, "nodeParameterId": 10, "hostId": "region-end", "label": "Source end", "kind": "float", "min": 0, "max": 1, "default": 1 }
   ]
 }

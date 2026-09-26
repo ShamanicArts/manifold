@@ -607,6 +607,11 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'slew-modulation') prepareSlewModulation(engine, selected);
   if (family === 'cv-rack') prepareCvRack(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
+  if (family === 'granulator' && selected.source) {
+    if (engine.manifold_sample_begin(2, manifest.sourceFrames, manifest.sampleRate) !== 1) throw new Error('Wasm grain source preparation failed');
+    new Float32Array(engine.memory.buffer, engine.manifold_sample_ptr(), manifest.sourceData.length).set(manifest.sourceData);
+    if (engine.manifold_sample_commit() !== 1) throw new Error('Wasm grain source commit failed');
+  }
   if (family === 'sample-region' || family === 'sample-instrument') {
     if (engine.manifold_sample_begin(2, manifest.sampleFrames, manifest.sampleSourceRate) !== 1) {
       throw new Error('Wasm sample storage preparation failed');
@@ -869,6 +874,10 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
       if (family === 'sample-region' || family === 'sample-instrument') {
         next.sampleData = await loadFloat32(family, next.sample);
         if (next.sampleData.length !== next.sampleFrames * 2) throw new Error('Invalid sample fixture size');
+      }
+      if (family === 'granulator') {
+        next.sourceData = await loadFloat32(family, next.sourceFile);
+        if (next.sourceData.length !== next.sourceFrames * 2) throw new Error('Invalid grain source fixture size');
       }
       fixtures.set(family, { manifest: next, input: nextInput });
     }
