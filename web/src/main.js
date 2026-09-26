@@ -263,7 +263,7 @@ const projects = {
   'standalone-fx-routing': {
     project: legacyFxProject,
     title: 'Standalone FX tails',
-    description: 'The prepared legacy route keeps every visited effect processing behind its closed output gate. Switch Delay → Chorus → Delay to hear the original returning tail; the C++ comparison captures the same switch.',
+    description: 'The prepared routing experiment keeps every visited effect processing behind its closed output gate. Switch Delay → Chorus → Delay to hear a returning tail; the isolated old C++ node comparison captures the same switch.',
     signal: 'Live path: input → visited effects → selected wet gate → legacy gain/mix → output',
   },
   'loop-capture': {
