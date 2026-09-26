@@ -34,7 +34,7 @@ The old input / monitor / output domains stay explicit. Input may be captured or
 
 ## Rendering and cost
 
-The UI renderer has no authority over audio timing. It reads an `AnalyserNode` at animation-frame cadence; losing frames must not alter DSP. Three.js `WebGPURenderer` is used for the first visualizer, with its WebGL2 fallback. We will measure GPU and CPU time before adding shader/video surfaces. Audio and UI data exchange should be bounded summaries (meter/spectrum/control state), not per-sample messages or full graph state every frame. DSP uses contiguous preallocated planar buffers; graph scratch storage will be sized once at prepare/compile time and reused.
+The UI renderer has no authority over audio timing. The primitive workbench uses Canvas 2D for scopes and spectra and reads an `AnalyserNode` at animation-frame cadence; losing frames must not alter DSP. Three.js `WebGPURenderer` remains available for spatial and media views where it earns its cost. We will measure GPU and CPU time before adding shader/video surfaces. Audio and UI data exchange should be bounded summaries (meter/spectrum/control state), not per-sample messages or full graph state every frame. Offline comparison fixtures are intentionally separate from the live audio callback. DSP uses contiguous preallocated planar buffers; graph scratch storage will be sized once at prepare/compile time and reused.
 
 ## Native plug-in stance
 
