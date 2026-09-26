@@ -5,6 +5,7 @@ use crate::Filter;
 use crate::distortion::Distortion;
 use crate::effect_slot::{self, EffectSlot};
 use crate::envelope::AdsrEnvelope;
+use crate::envelope_follower::EnvelopeFollower;
 use crate::events::{EventError, EventKind, TimedEvent};
 use crate::lfo::Lfo;
 use crate::loop_capture::LoopCapture;
@@ -79,6 +80,13 @@ pub enum NodeKind {
         smoothing: f32,
         floor_db: f32,
     },
+    EnvelopeFollower {
+        attack_ms: f32,
+        release_ms: f32,
+        sensitivity: f32,
+        highpass_hz: f32,
+        mode: u32,
+    },
     VoiceSynth,
     Oscillator {
         frequency: f32,
@@ -124,6 +132,7 @@ impl NodeKind {
             | Self::EffectSlot { .. }
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
+            | Self::EnvelopeFollower { .. }
             | Self::Output => 1,
         }
     }
@@ -203,6 +212,19 @@ impl NodeKind {
                 smoothing,
                 floor_db,
             } => sensitivity.is_finite() && smoothing.is_finite() && floor_db.is_finite(),
+            Self::EnvelopeFollower {
+                attack_ms,
+                release_ms,
+                sensitivity,
+                highpass_hz,
+                mode,
+            } => {
+                attack_ms.is_finite()
+                    && release_ms.is_finite()
+                    && sensitivity.is_finite()
+                    && highpass_hz.is_finite()
+                    && *mode <= 2
+            }
             _ => true,
         }
     }
@@ -282,6 +304,7 @@ enum Kernel {
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SpectrumAnalyzer(SpectrumAnalyzer),
+    EnvelopeFollower(EnvelopeFollower),
     VoiceSynth(VoiceSynth),
     Oscillator(Oscillator),
     AdsrEnvelope(AdsrEnvelope),
@@ -399,6 +422,21 @@ impl Kernel {
                 *smoothing,
                 *floor_db,
             )),
+            NodeKind::EnvelopeFollower {
+                attack_ms,
+                release_ms,
+                sensitivity,
+                highpass_hz,
+                mode,
+            } => {
+                let mut follower = EnvelopeFollower::new(sample_rate, *attack_ms, *release_ms);
+                follower.set_parameter(2, *sensitivity);
+                follower.set_parameter(3, *highpass_hz);
+                follower.set_parameter(4, *mode as f32);
+                // Authored values are settled before the first block.
+                follower.settle();
+                Self::EnvelopeFollower(follower)
+            }
             NodeKind::VoiceSynth => Self::VoiceSynth(VoiceSynth::new(sample_rate)),
             NodeKind::Oscillator {
                 frequency,
@@ -466,6 +504,7 @@ impl Kernel {
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SpectrumAnalyzer(analyzer), id) => return analyzer.set_parameter(id, value),
+            (Self::EnvelopeFollower(follower), id) => return follower.set_parameter(id, value),
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
@@ -641,12 +680,10 @@ impl ExecutionPlan {
         self.nodes
             .iter()
             .find(|entry| entry.id == node)
-            .and_then(|entry| {
-                if let Kernel::SpectrumAnalyzer(analyzer) = &entry.kernel {
-                    analyzer.band(band)
-                } else {
-                    None
-                }
+            .and_then(|entry| match &entry.kernel {
+                Kernel::SpectrumAnalyzer(analyzer) => analyzer.band(band),
+                Kernel::EnvelopeFollower(follower) if band == 0 => Some(follower.meter()),
+                _ => None,
             })
     }
 
@@ -875,6 +912,9 @@ impl ExecutionPlan {
                 }
                 Kernel::SpectrumAnalyzer(analyzer) => {
                     analyzer.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::EnvelopeFollower(follower) => {
+                    follower.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::VoiceSynth(synth) => {
                     for frame in 0..frames {

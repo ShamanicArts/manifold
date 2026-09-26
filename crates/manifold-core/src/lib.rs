@@ -3,6 +3,7 @@
 pub mod distortion;
 pub mod effect_slot;
 pub mod envelope;
+pub mod envelope_follower;
 pub mod events;
 pub mod graph;
 pub mod lfo;

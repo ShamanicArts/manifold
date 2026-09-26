@@ -122,6 +122,13 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             smoothing: b,
             floor_db: -72.0,
         },
+        22 => NodeKind::EnvelopeFollower {
+            attack_ms: a,
+            release_ms: b,
+            sensitivity: 1.0,
+            highpass_hz: 80.0,
+            mode: 0,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -233,6 +240,21 @@ pub extern "C" fn manifold_graph_initial_parameter(
             }
             (NodeKind::SpectrumAnalyzer { floor_db, .. }, 2) => {
                 *floor_db = value.clamp(-96.0, -12.0)
+            }
+            (NodeKind::EnvelopeFollower { attack_ms, .. }, 0) => {
+                *attack_ms = value.clamp(0.01, 500.0)
+            }
+            (NodeKind::EnvelopeFollower { release_ms, .. }, 1) => {
+                *release_ms = value.clamp(0.1, 5000.0)
+            }
+            (NodeKind::EnvelopeFollower { sensitivity, .. }, 2) => {
+                *sensitivity = value.clamp(0.01, 16.0)
+            }
+            (NodeKind::EnvelopeFollower { highpass_hz, .. }, 3) => {
+                *highpass_hz = value.clamp(5.0, 4000.0)
+            }
+            (NodeKind::EnvelopeFollower { mode, .. }, 4) => {
+                *mode = value.round().clamp(0.0, 2.0) as u32
             }
             _ => return 0,
         }

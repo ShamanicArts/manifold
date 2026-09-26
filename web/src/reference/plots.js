@@ -54,6 +54,21 @@ export function drawBandBars(canvas, series, scale, colors, labels = false) {
   }
 }
 
+export function drawMeterTrace(canvas, series, scale, colors) {
+  const { context, width, height } = prepare(canvas);
+  series.forEach((values, index) => {
+    context.beginPath();
+    context.strokeStyle = colors[index];
+    context.lineWidth = 1.5;
+    values.forEach((value, sample) => {
+      const x = sample / Math.max(1, values.length - 1) * width;
+      const y = height - 6 - Math.max(0, value) / scale * (height - 12);
+      if (sample === 0) context.moveTo(x, y); else context.lineTo(x, y);
+    });
+    context.stroke();
+  });
+}
+
 export function drawLiveSpectrum(canvas, analyser) {
   const { context, width, height } = prepare(canvas);
   if (!analyser) return;

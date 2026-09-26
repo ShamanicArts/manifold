@@ -1,0 +1,7 @@
+# Review checkpoint 18: Envelope Follower
+
+Date: 2026-09-26. Open the [Envelope Follower workbench](http://127.0.0.1:4173/?primitive=envelope-follower). [Desktop](checkpoint-18-1365.png) and [mobile](checkpoint-18-390.png) captures show peak/RMS/hybrid selection, attack, release, sensitivity, detector highpass, a live meter and recent history, and the C++ ↔ Rust/Wasm envelope trace. Start audio with the test oscillator; MIDI access is not needed for this view.
+
+The Rust node ports the original `EnvelopeFollowerNode.cpp` detector and stereo passthrough. It reuses the bounded worklet meter request path introduced for Spectrum Analyzer, requesting one value about ten times per second. The audio callback does not post meter messages or allocate buffers. Seven C++ cases compare every block's envelope meter and all stereo samples across peak, RMS, hybrid, fast timing, highpass/sensitivity, control and mode changes, and 64-frame blocks. All seven show **Match**. The default case's meter samples are identical in the browser comparison.
+
+Across 16 views, all **89 browser comparison cases** show Match with no page errors. `cargo test --workspace` passes **29 Rust tests**. Live meters updated at 48 kHz in Chromium; desktop and 390 px layouts had no horizontal overflow. The [migration boundary](../../docs/envelope-follower-migration.md) explains why the meter readout is separate from the sample-rate CV path still needed for envelope-driven audio modulation.

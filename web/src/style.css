@@ -85,9 +85,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .live-bands { display: grid; gap: 5px; margin-top: 18px; }
 .live-bands[hidden] { display: none; }
 .live-band { display: grid; grid-template-columns: 20px minmax(0, 1fr) 43px; align-items: center; gap: 9px; font-size: 10px; color: #9daeb9; font-variant-numeric: tabular-nums; }
+.live-band[hidden] { display: none; }
 .live-band-track { height: 12px; background: #101922; border: 1px solid #31404d; border-radius: 2px; overflow: hidden; }
 .live-band-fill { display: block; height: 100%; width: 0; background: #9a8de8; }
 .live-band output { text-align: right; }
+.live-envelope-trace { display: block; width: 100%; height: 120px; margin-top: 16px; border: 1px solid #2b3946; border-radius: 3px; background: #111922; }
+.live-envelope-trace[hidden] { display: none; }
 .axis-caption { display: flex; justify-content: space-between; color: #81919b; font-size: 10px; margin-top: 6px; font-variant-numeric: tabular-nums; }
 .measurement-hint { font-size: 11px; color: #91a0aa; margin: 13px 0 0; }
 .reference { grid-column: 3; padding: 18px 20px 16px; min-width: 0; }

@@ -85,8 +85,8 @@ export class BrowserAudioHost {
     this.processor?.port.postMessage({ type: 'event', nodeId, kind, channel, note, velocity, offset });
   }
 
-  requestMeters(nodeId) {
-    this.processor?.port.postMessage({ type: 'meter-request', nodeId });
+  requestMeters(nodeId, count = 8) {
+    this.processor?.port.postMessage({ type: 'meter-request', nodeId, count });
   }
 
   async stop() {

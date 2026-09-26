@@ -3,7 +3,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 legacy_dir="${MANIFOLD_LEGACY_DIR:-$repo_dir/../my-plugin}"
 reference_kind="${1:-svf}"
-if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" ]]; then
+if [[ "$reference_kind" != "svf" && "$reference_kind" != "crossfader" && "$reference_kind" != "mixer" && "$reference_kind" != "oscillator" && "$reference_kind" != "adsr" && "$reference_kind" != "noise" && "$reference_kind" != "stereo-delay" && "$reference_kind" != "distortion" && "$reference_kind" != "spectrum-analyzer" && "$reference_kind" != "envelope-follower" ]]; then
   echo "Unknown legacy reference: $reference_kind" >&2
   exit 2
 fi
@@ -31,6 +31,9 @@ elif [[ "$reference_kind" == "stereo-delay" ]]; then
 elif [[ "$reference_kind" == "spectrum-analyzer" ]]; then
   source_file="$legacy_dir/dsp/core/nodes/SpectrumAnalyzerNode.cpp"
   runner_file="$repo_dir/tools/legacy-spectrum-analyzer-reference.cpp"
+elif [[ "$reference_kind" == "envelope-follower" ]]; then
+  source_file="$legacy_dir/dsp/core/nodes/EnvelopeFollowerNode.cpp"
+  runner_file="$repo_dir/tools/legacy-envelope-follower-reference.cpp"
 else
   source_file="$legacy_dir/dsp/core/nodes/DistortionNode.cpp"
   runner_file="$repo_dir/tools/legacy-distortion-reference.cpp"
