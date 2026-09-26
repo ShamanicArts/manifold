@@ -163,8 +163,8 @@ const projects = {
   'cv-rack': {
     project: cvRackProject,
     title: 'CV rack slice',
-    description: 'Sample a source LFO from a square trigger, invert and bias it, blend with a free-running CV, then modulate an audio oscillator. Each stage is evaluated in Rust at sample rate.',
-    signal: 'CV: source + trigger → sample/hold → attenuverter → four-input mixer → gain · audio: oscillator → gain → output',
+    description: 'Route typed control sources through sample/hold, scaling, and mixing to shape an oscillator’s gain. Each connected stage runs in Rust at sample rate.',
+    signal: 'Audio: oscillator → modulated gain → output · CV: choose sources in the patch below',
   },
   'envelope-follower': {
     project: envelopeFollowerProject,
@@ -191,6 +191,8 @@ for (const button of document.querySelectorAll('.library-item')) {
 const initial = new URL(location.href).searchParams.get('primitive');
 let activeFamily = Object.hasOwn(projects, initial) ? initial : 'svf';
 let values = new Map();
+let activeProject = null;
+const patchedSignals = new Map();
 let slotValuesByType = new Map();
 let loopHasTake = false;
 let loadedSample = null;
@@ -644,9 +646,55 @@ function addSelect(parameter) {
   byId('controls').appendChild(wrapper);
 }
 
+function renderPatchEditor(project) {
+  const section = byId('patch-section');
+  section.hidden = !project.patch;
+  const rows = byId('patch-rows');
+  rows.replaceChildren();
+  if (!project.patch) return;
+  const refresh = () => {
+    const connected = project.patch.inputs.filter((input) => project.signal.connections.some((edge) =>
+      edge.to === input.to && edge.inputPort === input.inputPort)).length;
+    byId('patch-status').textContent = `${connected} of ${project.patch.inputs.length} control inputs connected · changes take effect on next start`;
+  };
+  for (const port of project.patch.inputs) {
+    const row = document.createElement('label');
+    row.className = 'patch-row';
+    const label = document.createElement('span');
+    label.textContent = port.label;
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', port.label);
+    select.dataset.to = String(port.to);
+    select.dataset.port = String(port.inputPort);
+    select.add(new Option('Unconnected · 0', ''));
+    for (const [nodeId, name] of port.sources) select.add(new Option(name, String(nodeId)));
+    const connected = project.signal.connections.find((edge) => edge.to === port.to && edge.inputPort === port.inputPort);
+    select.value = connected ? String(connected.from) : '';
+    select.disabled = audio.running;
+    select.addEventListener('change', () => {
+      if (audio.running) {
+        const current = project.signal.connections.find((edge) => edge.to === port.to && edge.inputPort === port.inputPort);
+        select.value = current ? String(current.from) : '';
+        return;
+      }
+      const source = select.value === '' ? null : Number(select.value);
+      if (source !== null && !port.sources.some(([id]) => id === source)) throw new Error('Unsupported control source');
+      project.signal.connections = project.signal.connections.filter((edge) =>
+        edge.to !== port.to || edge.inputPort !== port.inputPort);
+      if (source !== null) project.signal.connections.push({ from: source, to: port.to, inputPort: port.inputPort });
+      refresh();
+    });
+    row.append(label, select);
+    rows.appendChild(row);
+  }
+  refresh();
+}
+
 function renderPrimitive(family) {
   midiBrowserLink.href = new URL(`?primitive=${family === 'sample-instrument' ? 'sample-instrument' : 'voice'}`, location.href).href;
   const { project, title, description, signal } = projects[family];
+  if (project.patch && !patchedSignals.has(family)) patchedSignals.set(family, structuredClone(project.signal));
+  activeProject = project.patch ? { ...project, signal: patchedSignals.get(family) } : project;
   const isInstrument = project.signal.inputSource === 'none';
   activeFamily = family;
   primitivePicker.value = family;
@@ -690,6 +738,7 @@ function renderPrimitive(family) {
   });
   byId('modes').replaceChildren();
   byId('controls').replaceChildren();
+  renderPatchEditor(activeProject);
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
   byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
@@ -1101,7 +1150,7 @@ toggle.addEventListener('click', async () => {
         drawSampleWaveform();
       }
     }
-    else await audio.start(byId('source').value, values, projects[activeFamily].project,
+    else await audio.start(byId('source').value, values, activeProject,
       ['sample-region', 'sample-instrument'].includes(activeFamily) ? loadedSample ?? demoSample() : null);
     const isInstrument = projects[activeFamily].project.signal.inputSource === 'none';
     toggle.textContent = audio.running
@@ -1109,6 +1158,7 @@ toggle.addEventListener('click', async () => {
       : isInstrument ? 'Start instrument' : 'Start audio';
     updatePrepareOnlyControls();
     updateLoopToggles();
+    byId('patch-rows').querySelectorAll('select').forEach((select) => { select.disabled = audio.running; });
     if (!audio.running) byId('controls').querySelectorAll('.has-effective').forEach((slider) => slider.setEffective(null));
     byId('sample-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running

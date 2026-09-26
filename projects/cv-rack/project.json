@@ -34,6 +34,18 @@
       { "nodeId": 7, "id": 4, "value": 0.1 }
     ]
   },
+  "patch": {
+    "inputs": [
+      { "to": 4, "inputPort": 0, "label": "Hold · source", "sources": [[2, "Source LFO"], [6, "Free LFO"]] },
+      { "to": 4, "inputPort": 1, "label": "Hold · trigger", "sources": [[3, "Trigger LFO"], [2, "Source LFO"], [6, "Free LFO"]] },
+      { "to": 5, "inputPort": 0, "label": "Scale · input", "sources": [[4, "Held CV"], [2, "Source LFO"], [6, "Free LFO"]] },
+      { "to": 7, "inputPort": 0, "label": "Mix · input 1", "sources": [[5, "Scaled CV"], [4, "Held CV"], [2, "Source LFO"], [6, "Free LFO"]] },
+      { "to": 7, "inputPort": 1, "label": "Mix · input 2", "sources": [[6, "Free LFO"], [5, "Scaled CV"], [4, "Held CV"], [2, "Source LFO"]] },
+      { "to": 7, "inputPort": 2, "label": "Mix · input 3", "sources": [[6, "Free LFO"], [5, "Scaled CV"], [4, "Held CV"], [2, "Source LFO"]] },
+      { "to": 7, "inputPort": 3, "label": "Mix · input 4", "sources": [[6, "Free LFO"], [5, "Scaled CV"], [4, "Held CV"], [2, "Source LFO"]] },
+      { "to": 8, "inputPort": 1, "label": "Gain · CV", "sources": [[7, "Mixed CV"], [5, "Scaled CV"], [4, "Held CV"], [2, "Source LFO"], [6, "Free LFO"]] }
+    ]
+  },
   "parameters": [
     { "id": 0, "nodeId": 4, "nodeParameterId": 0, "hostId": "hold-mode", "label": "Capture mode", "kind": "choice", "choices": ["Sample", "Track", "12-step sample"], "default": 0 },
     { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "source-rate", "label": "Source LFO rate", "kind": "float", "min": 0.05, "max": 20, "default": 2, "unit": "Hz" },

@@ -85,6 +85,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .compact-slider.has-effective { height: 46px; display: grid; grid-template-columns: 1fr auto; align-content: center; row-gap: 1px; }
 .compact-slider.has-effective .effective-readout { grid-column: 1 / -1; font-size: 10px; font-weight: 500; color: #e1d1a2; }
 .compact-slider.has-effective[data-live="true"]::after { content: ""; position: absolute; left: var(--effective); top: 4px; bottom: 4px; width: 2px; background: #f2d896; box-shadow: 0 0 0 1px #262539; pointer-events: none; }
+.patch-rows { display: grid; gap: 8px; margin-top: 10px; }
+.patch-row { display: grid; grid-template-columns: minmax(82px, 1fr) minmax(0, 1.4fr); align-items: center; gap: 8px; font-size: 11px; color: #c8d2d9; }
+.patch-row select { width: 100%; min-width: 0; height: 30px; padding: 0 5px; }
 .compact-select { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; border-radius: 3px; background: #27283e; color: #f1eef8; font-size: 12px; font-weight: 600; }
 .compact-select select { max-width: 56%; padding: 3px 6px; border: 1px solid #526170; border-radius: 3px; background: #1c2732; color: #f1eef8; font: inherit; }
 .control-help { font-size: 11px; color: #91a0aa; line-height: 1.45; margin: 7px 1px 0; }
