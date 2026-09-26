@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "reference": "legacy C++ PitchShifterNode stereo",
+  "sourceSha256": "3ac9b501c93728edd03248b68df3b514f56ca6e9fdea808fed5e82261a3505b2",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 32768,
+  "stepFrame": 16384,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Default unshifted overlap",
+      "before": [
+        0,
+        80,
+        0,
+        1
+      ],
+      "after": [
+        0,
+        80,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "default.f32"
+    },
+    {
+      "id": "octave-up",
+      "label": "Octave-up heads",
+      "before": [
+        12,
+        80,
+        0,
+        1
+      ],
+      "after": [
+        12,
+        80,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "octave-up.f32"
+    },
+    {
+      "id": "octave-down",
+      "label": "Octave-down heads",
+      "before": [
+        -12,
+        80,
+        0,
+        1
+      ],
+      "after": [
+        -12,
+        80,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "octave-down.f32"
+    },
+    {
+      "id": "pitch-sweep",
+      "label": "Pitch sweep",
+      "before": [
+        -7,
+        80,
+        0,
+        1
+      ],
+      "after": [
+        7,
+        80,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "pitch-sweep.f32"
+    },
+    {
+      "id": "window-sweep",
+      "label": "Window size sweep",
+      "before": [
+        5,
+        30,
+        0,
+        1
+      ],
+      "after": [
+        5,
+        180,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "window-sweep.f32"
+    },
+    {
+      "id": "feedback",
+      "label": "Feedback and wet mix",
+      "before": [
+        7,
+        80,
+        0.1,
+        0.7
+      ],
+      "after": [
+        7,
+        80,
+        0.7,
+        0.9
+      ],
+      "blockSize": 128,
+      "output": "feedback.f32"
+    },
+    {
+      "id": "dormant",
+      "label": "Dormant dry bypass to active",
+      "before": [
+        0,
+        80,
+        0,
+        0
+      ],
+      "after": [
+        12,
+        80,
+        0,
+        1
+      ],
+      "blockSize": 128,
+      "output": "dormant.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame shifting",
+      "before": [
+        4,
+        50,
+        0.2,
+        0.8
+      ],
+      "after": [
+        -4,
+        120,
+        0.2,
+        0.8
+      ],
+      "blockSize": 64,
+      "output": "small-block.f32"
+    }
+  ]
+}

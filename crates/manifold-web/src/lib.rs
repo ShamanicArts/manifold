@@ -223,6 +223,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
                     effect_slot::FORMANT_TYPE => [0.0, 0.5, 0.4, 0.3, 0.5],
                     effect_slot::REVERSE_DELAY_TYPE => [0.2, 0.25, 0.47, 0.5, 0.5],
                     effect_slot::STUTTER_TYPE => [0.05, 0.8, 0.8, 0.25, 0.5],
+                    effect_slot::PITCH_SHIFT_TYPE => [0.5, 0.5, 0.2, 0.5, 0.5],
                     effect_slot::COMPRESSOR_TYPE => [0.4, 0.3, 0.1, 0.3, 0.5],
                     effect_slot::SVF_TYPE => [0.5, 0.4, 0.1, 0.5, 0.5],
                     effect_slot::DELAY_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],
@@ -332,6 +333,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         },
         48 => NodeKind::Stutter {
             params: manifold_core::stutter::DEFAULTS,
+        },
+        49 => NodeKind::PitchShifter {
+            params: manifold_core::pitch_shifter::DEFAULTS,
         },
         _ => return 0,
     };
@@ -478,6 +482,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             }
             (NodeKind::Stutter { params }, id @ 0..=7) => {
                 if !manifold_core::stutter::set_value(params, id, value) {
+                    return 0;
+                }
+            }
+            (NodeKind::PitchShifter { params }, id @ 0..=3) => {
+                if !manifold_core::pitch_shifter::set_value(params, id, value) {
                     return 0;
                 }
             }

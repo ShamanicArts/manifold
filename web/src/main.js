@@ -24,6 +24,7 @@ import eqNodeProject from '../../projects/eq-node/project.json';
 import formantProject from '../../projects/formant/project.json';
 import reverseDelayProject from '../../projects/reverse-delay/project.json';
 import stutterProject from '../../projects/stutter/project.json';
+import pitchShifterProject from '../../projects/pitch-shifter/project.json';
 import compressorProject from '../../projects/compressor/project.json';
 import limiterProject from '../../projects/limiter/project.json';
 import stereoDelayProject from '../../projects/stereo-delay/project.json';
@@ -200,6 +201,12 @@ const projects = {
     description: 'Repeat short stereo fragments with a gate, filter and pitch decay. A seeded probability and eight-step bit mask decide which fragments stutter.',
     signal: 'Live path: input → prepared stereo ring → reverse fragment / gate → wet mix',
   },
+  'pitch-shifter': {
+    project: pitchShifterProject,
+    title: 'Pitch shifter',
+    description: 'Two overlapping delay read heads resample a stereo input with triangular windows. Adjust semitone shift, window length, feedback, and wet mix.',
+    signal: 'Live path: input → two overlapping read heads / feedback → dry/wet output',
+  },
   compressor: {
     project: compressorProject,
     title: 'Compressor',
@@ -221,7 +228,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, Ring Mod, Formant, three-band EQ, Limiter, Transient Shaper, BitCrusher, Reverse Delay, and Stutter are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Chorus, Phaser, WaveShaper, Compressor, StereoWidener, FilterNode, SVF Filter, Reverb, Stereo Delay, Multitap, Pitch Shift, Ring Mod, Formant, three-band EQ, Limiter, Transient Shaper, BitCrusher, Reverse Delay, and Stutter are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -672,6 +679,7 @@ function updateSlotControls() {
     : selected === 14 ? { 2: 'Low gain', 3: 'High gain', 4: 'Mid gain' }
     : selected === 19 ? { 2: 'Delay time', 3: 'Reverse window', 4: 'Feedback' }
     : selected === 20 ? { 2: 'Length', 3: 'Gate', 4: 'Probability', 5: 'Filter decay' }
+    : selected === 10 ? { 2: 'Pitch shift', 3: 'Head window', 4: 'Feedback' }
     : selected === 16 ? { 2: 'Attack', 3: 'Sustain', 4: 'Sensitivity' }
     : selected === 17 ? { 2: 'Bits', 3: 'Sample hold', 4: 'Output gain' }
     : selected === 3
@@ -723,6 +731,9 @@ function updateSlotControls() {
         : id === 3 ? `${Math.round(20 + 380 * value)} ms` : (0.95 * value).toFixed(2)
       : selected === 20
       ? id === 2 ? `${(0.125 + 7.875 * value).toFixed(2)} beats` : value.toFixed(2)
+      : selected === 10
+      ? id === 2 ? `${(-12 + 24 * value).toFixed(1)} st`
+        : id === 3 ? `${Math.round(30 + 150 * value)} ms` : (0.75 * value).toFixed(2)
       : selected === 16
       ? id === 4 ? (0.2 + 3.8 * value).toFixed(2) : (-1 + 2 * value).toFixed(2)
       : selected === 17
@@ -759,6 +770,7 @@ function updateSlotControls() {
     : selected === 14 ? 'The old slot maps three normalized controls to low, high, and mid gain. Band frequencies and Q use the original fixed slot values; the standalone EQNode exposes all nine controls.'
     : selected === 19 ? 'The old slot maps delay time, reverse window, and feedback. Internal mix is fully wet, and the slot applies 1.2× wet gain; the last two controls are unused.'
     : selected === 20 ? 'The old slot maps beat length, gate, probability, and filter decay. Tempo stays at 120 BPM, all eight pattern steps are on, and pitch decay uses the node default.'
+    : selected === 10 ? 'The old slot maps pitch −12…12 semitones, head window 30…180 ms, and feedback 0…0.75. Internal mix is fully wet; the last two controls are unused.'
     : selected === 16 ? 'Attack, sustain, and sensitivity are the old slot controls. Internal mix is fully wet; the last two normalized controls are unused.'
     : selected === 17 ? 'Bit depth, sample hold, and output gain are the old slot controls. Logic mode is Normal and internal mix is fully wet; the last two normalized controls are unused.'
     : selected === 15 ? 'Limiter pre gain is smoothed before peak detection. Its fifth normalized control is unused in the old slot definition.'
@@ -958,6 +970,7 @@ function renderPrimitive(family) {
     [17, [0.3, 0.12, 0.55, 0.5, 0.5]],
     [19, [0.2, 0.25, 0.47, 0.5, 0.5]],
     [20, [0.05, 0.8, 0.8, 0.25, 0.5]],
+    [10, [0.5, 0.5, 0.2, 0.5, 0.5]],
     [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
     [15, [0.5, 0.3, 0.4, 0.4, 0.5]],
@@ -1033,7 +1046,7 @@ function renderPrimitive(family) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = family === 'svf' ? ['LP', 'BP', 'HP', 'Notch'][value]
-        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 12: 'Ring Mod', 13: 'Formant', 14: 'EQ', 15: 'Limit', 16: 'Transient', 17: 'Bits', 19: 'Reverse', 20: 'Stutter' })[value] : choice;
+        : family === 'standalone-fx' ? ({ 0: 'Chorus', 1: 'Phaser', 2: 'Shape', 3: 'Comp', 4: 'Width', 5: 'Filter', 6: 'SVF', 7: 'Reverb', 8: 'Delay', 9: 'Multitap', 10: 'Pitch', 12: 'Ring Mod', 13: 'Formant', 14: 'EQ', 15: 'Limit', 16: 'Transient', 17: 'Bits', 19: 'Reverse', 20: 'Stutter' })[value] : choice;
       button.setAttribute('aria-label', choice);
       button.setAttribute('aria-pressed', String(value === mode.default));
       button.addEventListener('click', () => {

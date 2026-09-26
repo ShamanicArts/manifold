@@ -23,6 +23,7 @@ use crate::multitap_delay::{self, MultitapDelay};
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::phaser::Phaser;
+use crate::pitch_shifter::{self, PitchShifter};
 use crate::reverb::{self, Reverb};
 use crate::reverse_delay::{self, ReverseDelay};
 use crate::ring_modulator::{self, RingModulator};
@@ -158,6 +159,9 @@ pub enum NodeKind {
     Stutter {
         params: [f32; stutter::PARAM_COUNT],
     },
+    PitchShifter {
+        params: [f32; pitch_shifter::PARAM_COUNT],
+    },
     EffectSlot {
         selected: u32,
         mix: f32,
@@ -242,6 +246,7 @@ impl NodeKind {
             | Self::FormantFilter { .. }
             | Self::ReverseDelay { .. }
             | Self::Stutter { .. }
+            | Self::PitchShifter { .. }
             | Self::SlewControl { .. }
             | Self::AttenuverterBias { .. }
             | Self::AdsrEnvelope
@@ -361,6 +366,7 @@ impl NodeKind {
             Self::FormantFilter { params } => params.iter().all(|value| value.is_finite()),
             Self::ReverseDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::Stutter { params } => params.iter().all(|value| value.is_finite()),
+            Self::PitchShifter { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
                 selected,
                 mix,
@@ -505,6 +511,7 @@ enum Kernel {
     FormantFilter(FormantFilter),
     ReverseDelay(ReverseDelay),
     Stutter(Stutter),
+    PitchShifter(PitchShifter),
     EffectSlot(EffectSlot),
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
@@ -661,6 +668,9 @@ impl Kernel {
             NodeKind::Stutter { params } => {
                 Self::Stutter(Stutter::new(sample_rate, max_frames, *params))
             }
+            NodeKind::PitchShifter { params } => {
+                Self::PitchShifter(PitchShifter::new(sample_rate, max_frames, *params))
+            }
             NodeKind::EffectSlot {
                 selected,
                 mix,
@@ -810,6 +820,7 @@ impl Kernel {
             (Self::FormantFilter(formant), id) => return formant.set_parameter(id, value),
             (Self::ReverseDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::Stutter(stutter), id) => return stutter.set_parameter(id, value),
+            (Self::PitchShifter(shifter), id) => return shifter.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
@@ -1466,6 +1477,9 @@ impl ExecutionPlan {
                 }
                 Kernel::Stutter(stutter) => {
                     stutter.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::PitchShifter(shifter) => {
+                    shifter.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::EffectSlot(slot) => {
                     slot.process_planar([source(0, 0), source(0, 1)], [left, right])

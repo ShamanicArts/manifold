@@ -1,4 +1,4 @@
-//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 19, and 20.
+//! Standalone FX slot slice: legacy IDs 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 19, and 20.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
@@ -11,6 +11,7 @@ use crate::legacy_filter::{self, LegacyFilter};
 use crate::limiter::{self, Limiter};
 use crate::multitap_delay::{self, MultitapDelay};
 use crate::phaser::Phaser;
+use crate::pitch_shifter::{self, PitchShifter};
 use crate::reverb::{self, Reverb};
 use crate::reverse_delay::{self, ReverseDelay};
 use crate::ring_modulator::{self, RingModulator};
@@ -30,6 +31,7 @@ pub const SVF_TYPE: u32 = 6;
 pub const REVERB_TYPE: u32 = 7;
 pub const DELAY_TYPE: u32 = 8;
 pub const MULTITAP_TYPE: u32 = 9;
+pub const PITCH_SHIFT_TYPE: u32 = 10;
 pub const RING_TYPE: u32 = 12;
 pub const FORMANT_TYPE: u32 = 13;
 pub const EQ_TYPE: u32 = 14;
@@ -45,9 +47,9 @@ pub fn supported_type(value: f32) -> Option<u32> {
     }
     match value as u32 {
         CHORUS_TYPE | PHASER_TYPE | WAVESHAPER_TYPE | COMPRESSOR_TYPE | WIDENER_TYPE
-        | LEGACY_FILTER_TYPE | SVF_TYPE | REVERB_TYPE | DELAY_TYPE | MULTITAP_TYPE | RING_TYPE
-        | FORMANT_TYPE | EQ_TYPE | LIMITER_TYPE | TRANSIENT_TYPE | BITCRUSHER_TYPE
-        | REVERSE_DELAY_TYPE | STUTTER_TYPE => Some(value as u32),
+        | LEGACY_FILTER_TYPE | SVF_TYPE | REVERB_TYPE | DELAY_TYPE | MULTITAP_TYPE
+        | PITCH_SHIFT_TYPE | RING_TYPE | FORMANT_TYPE | EQ_TYPE | LIMITER_TYPE | TRANSIENT_TYPE
+        | BITCRUSHER_TYPE | REVERSE_DELAY_TYPE | STUTTER_TYPE => Some(value as u32),
         _ => None,
     }
 }
@@ -73,6 +75,7 @@ pub struct EffectSlot {
     formant_params: [f32; 5],
     reverse_delay_params: [f32; 5],
     stutter_params: [f32; 5],
+    pitch_shift_params: [f32; 5],
     compressor_params: [f32; 5],
     limiter_params: [f32; 5],
     limiter_pre_gain: f32,
@@ -94,6 +97,7 @@ pub struct EffectSlot {
     formant: FormantFilter,
     reverse_delay: ReverseDelay,
     stutter: Stutter,
+    pitch_shift: PitchShifter,
     compressor: Compressor,
     limiter: Limiter,
 }
@@ -133,6 +137,7 @@ impl EffectSlot {
             formant_params: [0.0, 0.5, 0.4, 0.3, 0.5],
             reverse_delay_params: [0.2, 0.25, 0.47, 0.5, 0.5],
             stutter_params: [0.05, 0.8, 0.8, 0.25, 0.5],
+            pitch_shift_params: [0.5, 0.5, 0.2, 0.5, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
             limiter_params: [0.5, 0.3, 0.4, 0.4, 0.5],
             limiter_pre_gain: 1.02,
@@ -154,6 +159,7 @@ impl EffectSlot {
             formant: FormantFilter::new(sample_rate, formant_filter::DEFAULTS),
             reverse_delay: ReverseDelay::new(sample_rate, max_frames, reverse_delay::DEFAULTS),
             stutter: Stutter::new(sample_rate, max_frames, stutter::DEFAULTS),
+            pitch_shift: PitchShifter::new(sample_rate, max_frames, pitch_shifter::DEFAULTS),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
             limiter: Limiter::new(sample_rate, limiter::defaults()),
         };
@@ -175,6 +181,7 @@ impl EffectSlot {
             FORMANT_TYPE => &mut slot.formant_params,
             REVERSE_DELAY_TYPE => &mut slot.reverse_delay_params,
             STUTTER_TYPE => &mut slot.stutter_params,
+            PITCH_SHIFT_TYPE => &mut slot.pitch_shift_params,
             LIMITER_TYPE => &mut slot.limiter_params,
             _ => unreachable!("slot type validated at graph compilation"),
         };
@@ -196,6 +203,7 @@ impl EffectSlot {
         slot.rebuild_formant();
         slot.rebuild_reverse_delay();
         slot.rebuild_stutter();
+        slot.rebuild_pitch_shift();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
@@ -496,6 +504,26 @@ impl EffectSlot {
         }
     }
 
+    fn pitch_shift_settings(&self) -> [f32; pitch_shifter::PARAM_COUNT] {
+        let [pitch, window, feedback, _, _] = self.pitch_shift_params;
+        [
+            -12.0 + 24.0 * pitch,
+            30.0 + 150.0 * window,
+            0.75 * feedback,
+            1.0,
+        ]
+    }
+
+    fn rebuild_pitch_shift(&mut self) {
+        self.pitch_shift.reset_to(self.pitch_shift_settings());
+    }
+
+    fn apply_pitch_shift(&mut self) {
+        for (id, value) in self.pitch_shift_settings().into_iter().enumerate() {
+            self.pitch_shift.set_parameter(id as u32, value);
+        }
+    }
+
     fn apply_phaser(&mut self) {
         for (id, value) in self.phaser_settings().into_iter().enumerate() {
             self.phaser.set_parameter(id as u32, value);
@@ -591,6 +619,7 @@ impl EffectSlot {
                         FORMANT_TYPE => self.rebuild_formant(),
                         REVERSE_DELAY_TYPE => self.rebuild_reverse_delay(),
                         STUTTER_TYPE => self.rebuild_stutter(),
+                        PITCH_SHIFT_TYPE => self.rebuild_pitch_shift(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -622,6 +651,7 @@ impl EffectSlot {
                     FORMANT_TYPE => &mut self.formant_params,
                     REVERSE_DELAY_TYPE => &mut self.reverse_delay_params,
                     STUTTER_TYPE => &mut self.stutter_params,
+                    PITCH_SHIFT_TYPE => &mut self.pitch_shift_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -644,6 +674,7 @@ impl EffectSlot {
                     FORMANT_TYPE => self.apply_formant(),
                     REVERSE_DELAY_TYPE => self.apply_reverse_delay(),
                     STUTTER_TYPE => self.apply_stutter(),
+                    PITCH_SHIFT_TYPE => self.apply_pitch_shift(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -702,6 +733,9 @@ impl EffectSlot {
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             STUTTER_TYPE => self
                 .stutter
+                .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
+            PITCH_SHIFT_TYPE => self
+                .pitch_shift
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             COMPRESSOR_TYPE => self
                 .compressor
@@ -793,7 +827,7 @@ mod tests {
     #[test]
     fn selection_rejects_unsupported_types_and_keeps_dry_path() {
         let mut slot = EffectSlot::new(48_000.0, 128, SVF_TYPE, 0.0, [0.5, 0.4, 0.1, 0.5, 0.5]);
-        assert!(!slot.set_parameter(0, 10.0));
+        assert!(!slot.set_parameter(0, 99.0));
         assert!(slot.set_parameter(0, DELAY_TYPE as f32));
         let left = [0.5, -0.2, 0.1];
         let right = [-0.4, 0.3, 0.0];

@@ -1,13 +1,109 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "5bb200fdde652090a28b092f3cd5066c99d3dfc7f1c59c637198e60d34e00a93",
+  "sourceSha256": "23c7a1dd795bbf5eefcbdd3acb56b5af00d491ed4c4cec7c3c8efda133134809",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "pitch-semitones",
+      "label": "Pitch Shift semitone sweep",
+      "before": [
+        10,
+        0.8,
+        0.1,
+        0.5,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "after": [
+        10,
+        0.8,
+        0.9,
+        0.5,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "pitch-semitones.f32"
+    },
+    {
+      "id": "pitch-window",
+      "label": "Pitch Shift window and feedback",
+      "before": [
+        10,
+        1,
+        0.5,
+        0.1,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        10,
+        1,
+        0.5,
+        0.9,
+        0.9,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "pitch-window.f32"
+    },
+    {
+      "id": "filter-to-pitch",
+      "label": "Switch FilterNode to Pitch Shift",
+      "before": [
+        5,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "after": [
+        10,
+        0.8,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-pitch.f32"
+    },
+    {
+      "id": "pitch-to-stutter",
+      "label": "Switch Pitch Shift to Stutter",
+      "before": [
+        10,
+        0.8,
+        0.8,
+        0.5,
+        0.2,
+        0.5,
+        0.5
+      ],
+      "after": [
+        20,
+        0.8,
+        0.05,
+        0.8,
+        0.8,
+        0.25,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "pitch-to-stutter.f32"
+    },
     {
       "id": "stutter-length",
       "label": "Stutter beat length sweep",

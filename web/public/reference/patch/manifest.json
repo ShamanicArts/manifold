@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust authored synth graph",
-  "sourceSha256": "b60291f85be221ea0c3ac24438bbd35765304340b9531686e72796cd7775697b",
+  "sourceSha256": "4975c5d18e1caea13b38cd89a6edf7b03dacf9c590eda5b8e5e9c33b699460ce",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,

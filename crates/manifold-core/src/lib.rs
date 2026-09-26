@@ -22,6 +22,7 @@ pub mod multitap_delay;
 pub mod noise;
 pub mod oscillator;
 pub mod phaser;
+pub mod pitch_shifter;
 pub mod reverb;
 pub mod reverse_delay;
 pub mod ring_modulator;
