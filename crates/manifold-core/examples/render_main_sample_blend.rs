@@ -10,8 +10,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 24 {
-        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND ADD_BLEND DEPTH LINKED SAMPLE_STAGE_GAIN BANK_LEVEL".into());
+    if args.len() != 25 {
+        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_SHAPE BASE_BLEND ADD_BLEND DEPTH LINKED SAMPLE_STAGE_GAIN BANK_LEVEL WAVE_SYNC".into());
     }
     let sample: Vec<f32> = std::fs::read(&args[1])?
         .chunks_exact(4)
@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let linked: u32 = args[21].parse()?;
     let sample_stage_gain: f32 = args[22].parse()?;
     let bank_level: f32 = args[23].parse()?;
+    let wave_sync: f32 = args[24].parse()?;
     let analysis = analyze_temporal_stereo(&sample, 48_000.0, 0..sample_frames, 128)
         .ok_or("source analysis failed")?;
     let source = analysis.partials_at(0.5, 0.6, 0.5);
@@ -208,6 +209,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 input_port: 0,
             },
             Connection {
+                from: 2,
+                to: 11,
+                input_port: 0,
+            },
+            Connection {
                 from: 11,
                 to: 12,
                 input_port: 0,
@@ -273,6 +279,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     assert!(plan.set_parameter(4, 65, depth));
     assert!(plan.set_parameter(4, 66, linked as f32));
+    assert!(plan.set_parameter(11, 3, wave_sync));
     assert!(plan.set_parameter(2, 6, 1.0));
     let mut output = Vec::with_capacity(frames * 8);
     for offset in (0..frames).step_by(128) {

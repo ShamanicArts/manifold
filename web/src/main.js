@@ -271,8 +271,8 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. Link branch depth for the old 1−depth/depth gain law; link voice amplitude to drive oscillator, sample, and Add source levels together.',
-    signal: 'File → sample region → vocoder → sample stage gain · wave → base crossfade · worker → two Sine banks → Add crossfade → phrase gain · branch mixer → voice mix → output',
+    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. Link branch depth and voice amplitude; optionally hard-sync the wave oscillator to raw sample crossings.',
+    signal: 'File → sample region → vocoder → sample stage gain · raw sample → optional wave sync · wave → base crossfade · worker → two Sine banks → Add crossfade → phrase gain · branch mixer → voice mix → output',
   },
   'reverse-delay': {
     project: reverseDelayProject,
@@ -1578,7 +1578,7 @@ function renderPrimitive(family) {
   if (family === 'main-sample-blend') {
     const help = document.createElement('p');
     help.className = 'control-help';
-    help.textContent = 'Link branch depth for base = 1 − depth and Add = depth. Link voice amplitude for oscillator = amp and sample / Add levels = 2 × amp; the banks clamp at 1 as in the original. Unlink to audition independent levels. Phrase reference starts from source analysis; moving it saves a manual value.';
+    help.textContent = 'Link branch depth for base = 1 − depth and Add = depth. Link voice amplitude for oscillator = amp and sample / Add levels = 2 × amp; the banks clamp at 1 as in the original. Unlink to audition independent levels. Sample → wave hard sync resets oscillator phase on a rising raw-sample crossing. Phrase reference starts from source analysis; moving it saves a manual value.';
     byId('controls').appendChild(help);
     updateMainDepthControls();
   }

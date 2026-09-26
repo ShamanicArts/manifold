@@ -152,4 +152,15 @@ assert.deepEqual(restoredRoutes, [
   { nodeId: 3, id: 1, value: .5 }, { nodeId: 13, id: 1, value: .5 },
   { nodeId: 11, id: 2, value: 0 }, { nodeId: 15, id: 0, value: .25 },
 ]);
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 11, id: 1, value: 330 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 11, id: 2, value: .5 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 12, id: 0, value: -1 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 1, value: 1 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 2, value: 0 } });
+const freeSyncWave = settle();
+await publishParameter(23, 1);
+const sampleSyncedWave = settle();
+assert.ok(Math.max(...freeSyncWave.map((value, index) => Math.abs(value - sampleSyncedWave[index]))) > .02,
+  'raw sample zero crossings must audibly reset the wave oscillator');
+await publishParameter(23, 0);
 console.log(`Main sample blend worklet: one source → ${count} Morph and ${waveCount} wave partials; sample ${rms(sampleOnly).toFixed(3)}, base wave ${rms(waveOnly).toFixed(3)}, additive wave ${rms(additiveWave).toFixed(3)}, linked base/add ${rms(linkedBase).toFixed(3)}/${rms(linkedAdd).toFixed(3)} RMS`);

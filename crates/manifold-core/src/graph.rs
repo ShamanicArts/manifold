@@ -298,8 +298,7 @@ impl NodeKind {
             Self::InputRaw
             | Self::InputMonitor { .. }
             | Self::Constant { .. }
-            | Self::MidiInput
-            | Self::Oscillator { .. } => 0,
+            | Self::MidiInput => 0,
             Self::NoiseGenerator { .. } | Self::Lfo { .. } => 0,
             Self::Sum2 { .. }
             | Self::LinearBlend { .. }
@@ -319,6 +318,7 @@ impl NodeKind {
             | Self::MidiScaleQuantizer { .. }
             | Self::MidiVelocityMapper { .. }
             | Self::VoiceSynth
+            | Self::Oscillator { .. }
             | Self::SampleRegion
             | Self::SampleInstrument
             | Self::Svf
@@ -2053,8 +2053,9 @@ impl ExecutionPlan {
                     }
                 }
                 Kernel::Oscillator(oscillator) => {
+                    let sync = current.sources[0].map(|_| source(0, 0));
                     for frame in 0..frames {
-                        let value = oscillator.process_sample();
+                        let value = oscillator.process_sample(sync.map(|samples| samples[frame]));
                         left[frame] = value;
                         right[frame] = value;
                     }

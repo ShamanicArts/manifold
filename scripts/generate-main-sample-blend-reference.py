@@ -70,15 +70,18 @@ for case in [
     ("voice-add25", "Linked voice amp .25 · source Add", 1, 0, 1, [0, 0, 1, 0, 11], [0, .18], [220, .25, 1, 1], 1, 1, .5, .5),
     ("voice-add75", "Linked voice amp .75 · source Add", 1, 0, 1, [0, 0, 1, 0, 11], [0, .18], [220, .75, 1, 1], 1, 1, 1.5, 1),
     ("voice-mix50", "Linked voice amp .5 · base and Add", 1, .5, .5, [0, 0, 1, 0, 11], [0, .18], [220, .5, 1, 0], 0, .5, 1, 1),
+    ("sync-off", "Raw sample sync · free wave", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, -1], 1, 0, 1, .5, 0),
+    ("sync-on", "Raw sample sync · reset wave", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, -1], 1, 0, 1, .5, 1),
 ]:
     case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave, add_blend = case[:9]
     depth = case[9] if len(case) > 9 else None
     sample_stage_gain = case[10] if len(case) > 10 else 1.0
     bank_level = case[11] if len(case) > 11 else .5
+    wave_sync = case[12] if len(case) > 12 else 0
     output, target = f"{case_id}.f32", f"{case_id}-target.f32"
     subprocess.run([runner, str(sample_path), str(OUT / output), str(OUT / target), str(mode),
                     str(sample_gain), str(bank_gain), str(frames), *map(str, pvoc), *map(str, phrase), *map(str, wave), str(add_blend),
-                    str(depth if depth is not None else .5), str(int(depth is not None)), str(sample_stage_gain), str(bank_level)], check=True)
+                    str(depth if depth is not None else .5), str(int(depth is not None)), str(sample_stage_gain), str(bank_level), str(wave_sync)], check=True)
     legacy_stage_file = None
     if case_id.startswith("legacy-amp"):
         legacy_stage_file = f"{case_id}-cpp.f32"
@@ -87,7 +90,7 @@ for case in [
     cases.append({"id": case_id, "label": label, "mode": mode, "sampleGain": sample_gain,
                   "bankGain": bank_gain, "vocoder": pvoc, "phrase": phrase, "wave": wave, "addBlend": add_blend,
                   "linkedDepth": depth,
-                  "sampleStageGain": sample_stage_gain, "bankLevel": bank_level, "legacyStage": legacy_stage_file,
+                  "sampleStageGain": sample_stage_gain, "bankLevel": bank_level, "waveSync": wave_sync, "legacyStage": legacy_stage_file,
                   "target": target, "output": output, "followerMeter": follower_meters,
                   "blockSize": block})
 (OUT / "manifest.json").write_text(json.dumps({

@@ -13,9 +13,9 @@ this_will_fail_to_link_if_some_of_your_compile_units_are_built_in_release_mode::
 }
 
 int main(int argc, char** argv) {
-    if (argc != 11) {
+    if (argc != 11 && argc != 12) {
         std::cerr << "usage: oscillator-reference OUTPUT FREQ_BEFORE FREQ_AFTER AMP_BEFORE AMP_AFTER "
-                     "WAVEFORM SAMPLE_RATE BLOCK_SIZE STEP_FRAME FRAMES\n";
+                     "WAVEFORM SAMPLE_RATE BLOCK_SIZE STEP_FRAME FRAMES [MONO_SYNC_F32]\n";
         return 2;
     }
     const float freqBefore = std::strtof(argv[2], nullptr);
@@ -36,6 +36,14 @@ int main(int argc, char** argv) {
     node.setWaveform(waveform);
     node.prepare(sampleRate, blockSize);
     node.disableSIMD();
+    std::vector<float> sync;
+    if (argc == 12) {
+        sync.resize(static_cast<size_t>(frames));
+        std::ifstream input(argv[11], std::ios::binary);
+        input.read(reinterpret_cast<char*>(sync.data()), static_cast<std::streamsize>(sync.size() * sizeof(float)));
+        if (!input || input.peek() != EOF) return 2;
+        node.setSyncEnabled(true);
+    }
     std::vector<float> result(static_cast<size_t>(frames) * 2);
     for (int offset = 0; offset < frames; offset += blockSize) {
         if (offset == stepFrame) {
@@ -48,6 +56,14 @@ int main(int argc, char** argv) {
         dsp_primitives::WritableAudioBufferView output;
         output.channelData = pointers; output.numChannels = 2; output.numSamples = count;
         std::vector<dsp_primitives::AudioBufferView> inputs;
+        const float* syncPointer = sync.empty() ? nullptr : sync.data() + offset;
+        if (syncPointer) {
+            dsp_primitives::AudioBufferView syncInput;
+            syncInput.channelData = &syncPointer;
+            syncInput.numChannels = 1;
+            syncInput.numSamples = count;
+            inputs.push_back(syncInput);
+        }
         std::vector<dsp_primitives::WritableAudioBufferView> outputs{output};
         node.process(inputs, outputs, count);
         for (int frame = 0; frame < count; ++frame) {

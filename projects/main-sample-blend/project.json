@@ -25,6 +25,7 @@
     "connections": [
       { "from": 2, "to": 6, "inputPort": 0 },
       { "from": 2, "to": 7, "inputPort": 0 },
+      { "from": 2, "to": 11, "inputPort": 0 },
       { "from": 11, "to": 12, "inputPort": 0 },
       { "from": 6, "to": 15, "inputPort": 0 },
       { "from": 15, "to": 12, "inputPort": 1 },
@@ -84,6 +85,7 @@
         { "nodeId": 13, "id": 1, "scale": 2 },
         { "nodeId": 3, "id": 1, "scale": 2 }
       ] },
-    { "id": 22, "hostId": "voice-amp-link", "label": "Link voice amplitude", "kind": "toggle", "default": 0, "enablesMacro": 21 }
+    { "id": 22, "hostId": "voice-amp-link", "label": "Link voice amplitude", "kind": "toggle", "default": 0, "enablesMacro": 21 },
+    { "id": 23, "nodeId": 11, "nodeParameterId": 3, "hostId": "wave-sync", "label": "Sample → wave hard sync", "kind": "toggle", "default": 0 }
   ]
 }
