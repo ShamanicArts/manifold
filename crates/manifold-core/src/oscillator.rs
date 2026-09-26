@@ -52,6 +52,15 @@ impl Oscillator {
         true
     }
 
+    pub fn meter(&self, band: usize) -> Option<f32> {
+        match band {
+            0 => Some(self.target_frequency),
+            1 => Some(self.target_amplitude),
+            2 => Some(f32::from(self.sync_enabled)),
+            _ => None,
+        }
+    }
+
     pub fn process_sample(&mut self, sync: Option<f32>) -> f32 {
         if self.sync_enabled {
             if let Some(sample) = sync {

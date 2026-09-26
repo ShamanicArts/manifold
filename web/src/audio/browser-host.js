@@ -136,6 +136,9 @@ export class BrowserAudioHost {
     const updates = parameterRoutes(this.parameters, this.parameterValues, id);
     if (updates.length === 1) this.processor?.port.postMessage({ type: 'parameter', ...updates[0] });
     else if (updates.length) this.processor?.port.postMessage({ type: 'parameter-batch', updates });
+    if (parameter.directionalParameterId != null) {
+      this.processor?.port.postMessage({ type: 'directional-parameter', id: parameter.directionalParameterId, value });
+    }
   }
 
   setPartials(partials) {

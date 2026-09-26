@@ -271,8 +271,8 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. Link branch depth and voice amplitude; optionally hard-sync the wave oscillator to raw sample crossings.',
-    signal: 'File → sample region → vocoder → sample stage gain · raw sample → optional wave sync · wave → base crossfade · worker → two Sine banks → Add crossfade → phrase gain · branch mixer → voice mix → output',
+    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. FM and Sync now update source motion once per Rust audio block; branch depth and voice amplitude remain linkable.',
+    signal: 'File → sample region → vocoder → sample stage gain · Rust FM/Sync block motion → sample speed / wave pitch / retrigger · raw sample → optional wave sync · wave → base crossfade · worker → two Sine banks → Add crossfade → phrase gain · branch mixer → voice mix → output',
   },
   'reverse-delay': {
     project: reverseDelayProject,
@@ -845,14 +845,23 @@ function updateMainDepthControls() {
   if (activeFamily !== 'main-sample-blend') return;
   const linked = values.get(19) === 1;
   const voiceLinked = values.get(22) === 1;
-  for (const id of [2, 3, 18, 1, 14, 20, 21]) {
+  const directionMode = values.get(24);
+  for (const id of [2, 3, 18, 1, 14, 20, 21, 25, 26]) {
     const control = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
     if (!control) continue;
-    const inactive = id === 18 ? !linked : id === 21 ? !voiceLinked
+    const inactive = id === 18 ? !linked && directionMode === 0 : id === 21 ? !voiceLinked
+      : id === 25 || id === 26 ? directionMode !== 2
       : [1, 14, 20].includes(id) ? voiceLinked : linked;
     control.classList.toggle('inactive', inactive);
     const input = control.querySelector('input');
     if (input) input.disabled = inactive;
+  }
+  for (const id of [23, 27]) {
+    const button = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
+    if (!button) continue;
+    const inactive = id === 23 ? directionMode !== 0 : directionMode !== 3;
+    button.classList.toggle('inactive', inactive);
+    button.disabled = inactive;
   }
 }
 
@@ -1159,6 +1168,7 @@ function addSelect(parameter) {
     const value = Number(select.value);
     values.set(parameter.id, value);
     audio.setParameter(parameter.id, value);
+    if (activeFamily === 'main-sample-blend' && parameter.hostId === 'direction-mode') updateMainDepthControls();
   });
   wrapper.append(title, select);
   byId('controls').appendChild(wrapper);
@@ -1578,7 +1588,7 @@ function renderPrimitive(family) {
   if (family === 'main-sample-blend') {
     const help = document.createElement('p');
     help.className = 'control-help';
-    help.textContent = 'Link branch depth for base = 1 − depth and Add = depth. Link voice amplitude for oscillator = amp and sample / Add levels = 2 × amp; the banks clamp at 1 as in the original. Unlink to audition independent levels. Sample → wave hard sync resets oscillator phase on a rising raw-sample crossing. Phrase reference starts from source analysis; moving it saves a manual value.';
+    help.textContent = 'Direction mode selects normal, FM, or Sync. FM moves sample speed with wave phase and wave pitch with sample cursor; Branch depth sets the modulation budget. Sync retriggers or resumes the sample on phase wraps and hard-syncs the wave on raw crossings when the blend favors wave. Normal mode keeps the manual hard-sync toggle. Voice amplitude links oscillator, sample, and Add levels. Phrase reference starts from source analysis; moving it saves a manual value.';
     byId('controls').appendChild(help);
     updateMainDepthControls();
   }

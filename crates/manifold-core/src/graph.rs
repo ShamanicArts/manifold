@@ -20,6 +20,7 @@ use crate::legacy_filter::{self, LegacyFilter};
 use crate::lfo::Lfo;
 use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
+use crate::main_directional::{DirectionalUpdate, MainDirectionalMotion};
 use crate::midi_arpeggiator::MidiArpeggiator;
 use crate::midi_note_filter::MidiNoteFilter;
 use crate::midi_scale_quantizer::MidiScaleQuantizer;
@@ -1142,6 +1143,8 @@ struct CompiledNode {
 
 pub struct ExecutionPlan {
     nodes: Vec<CompiledNode>,
+    main_directional: Option<MainDirectionalBinding>,
+    sample_rate: f32,
     output_index: usize,
     max_frames: usize,
     silence: Vec<f32>,
@@ -1152,6 +1155,14 @@ pub struct ExecutionPlan {
     midi_trace_count: usize,
     midi_trace_sequence: u32,
     frame_clock: u64,
+}
+
+struct MainDirectionalBinding {
+    oscillator_index: usize,
+    sample_index: usize,
+    motion: MainDirectionalMotion,
+    was_active: bool,
+    manual_sync: bool,
 }
 
 impl GraphDescription {
@@ -1290,6 +1301,8 @@ impl GraphDescription {
         Ok(ExecutionPlan {
             output_index: old_to_new[output],
             nodes,
+            main_directional: None,
+            sample_rate,
             max_frames,
             silence: vec![0.0; max_frames * 2],
             patchable,
@@ -1306,6 +1319,81 @@ impl GraphDescription {
 }
 
 impl ExecutionPlan {
+    pub fn configure_main_directional(&mut self, oscillator: NodeId, sample: NodeId) -> bool {
+        let Some(oscillator_index) = self.nodes.iter().position(|node| {
+            node.id == oscillator && node.active && matches!(node.kernel, Kernel::Oscillator(_))
+        }) else {
+            return false;
+        };
+        let Some(sample_index) = self.nodes.iter().position(|node| {
+            node.id == sample && node.active && matches!(node.kernel, Kernel::SampleRegion(_))
+        }) else {
+            return false;
+        };
+        self.main_directional = Some(MainDirectionalBinding {
+            oscillator_index,
+            sample_index,
+            motion: MainDirectionalMotion::new(self.sample_rate),
+            was_active: false,
+            manual_sync: false,
+        });
+        true
+    }
+
+    pub fn set_main_directional_parameter(&mut self, id: u32, value: f32) -> bool {
+        self.main_directional
+            .as_mut()
+            .is_some_and(|binding| binding.motion.set_parameter(id, value))
+    }
+
+    fn apply_main_directional(&mut self, frames: usize) {
+        let Some(binding) = &mut self.main_directional else {
+            return;
+        };
+        let sample_position = match &self.nodes[binding.sample_index].kernel {
+            Kernel::SampleRegion(sample) => sample.legacy_normalized_position(),
+            _ => return,
+        };
+        let update = if let Some(update) = binding.motion.tick(frames, sample_position) {
+            binding.was_active = true;
+            update
+        } else if binding.was_active {
+            binding.was_active = false;
+            let mut baseline = binding.motion.baseline();
+            baseline.sync_enabled = binding.manual_sync;
+            baseline
+        } else {
+            return;
+        };
+        Self::apply_directional_update(
+            &mut self.nodes,
+            binding.oscillator_index,
+            binding.sample_index,
+            update,
+        );
+    }
+
+    fn apply_directional_update(
+        nodes: &mut [CompiledNode],
+        oscillator: usize,
+        sample: usize,
+        update: DirectionalUpdate,
+    ) {
+        if let Kernel::SampleRegion(player) = &mut nodes[sample].kernel {
+            if update.sample_retrigger {
+                player.set_parameter(7, 1.0);
+            }
+            if update.sample_play {
+                player.set_parameter(6, 1.0);
+            }
+            player.set_parameter(0, update.sample_speed);
+        }
+        if let Kernel::Oscillator(osc) = &mut nodes[oscillator].kernel {
+            osc.set_parameter(1, update.oscillator_frequency);
+            osc.set_parameter(3, f32::from(update.sync_enabled));
+        }
+    }
+
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
@@ -1409,6 +1497,7 @@ impl ExecutionPlan {
                 Kernel::Limiter(limiter) if band == 0 => Some(limiter.gain_reduction_db()),
                 Kernel::StereoWidener(widener) if band == 0 => Some(widener.correlation()),
                 Kernel::SampleRegion(player) => player.meter(band),
+                Kernel::Oscillator(oscillator) => oscillator.meter(band),
                 Kernel::SampleInstrument(instrument) => instrument.meter(band),
                 _ => None,
             })
@@ -1455,6 +1544,13 @@ impl ExecutionPlan {
         let Some(index) = self.nodes.iter().position(|entry| entry.id == node) else {
             return false;
         };
+        if parameter == 3 && value.is_finite() {
+            if let Some(binding) = &mut self.main_directional {
+                if binding.oscillator_index == index {
+                    binding.manual_sync = value >= 0.5;
+                }
+            }
+        }
         if let Kernel::MidiTranspose(effect) = &mut self.nodes[index].kernel {
             if parameter != 0 || !value.is_finite() {
                 return false;
@@ -1671,6 +1767,7 @@ impl ExecutionPlan {
             }
             previous_offset = event.offset;
         }
+        self.apply_main_directional(frames);
         let [left_in, right_in] = input;
         let [left_out, right_out] = output;
         let mut position = 0;
@@ -2174,6 +2271,82 @@ mod tests {
         assert_eq!(
             process(&mut plan, &[0.5; 4], &[1.0; 4]),
             [vec![0.125; 4], vec![0.25; 4]]
+        );
+    }
+
+    #[test]
+    fn main_directional_updates_sample_cursor_and_sync_retrigger_before_each_block() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(2, NodeKind::SampleRegion),
+                node(
+                    11,
+                    NodeKind::Oscillator {
+                        frequency: 220.0,
+                        amplitude: 0.5,
+                        waveform: 1,
+                    },
+                ),
+                node(
+                    12,
+                    NodeKind::Sum2 {
+                        gain_a: 1.0,
+                        gain_b: 0.1,
+                    },
+                ),
+                node(5, NodeKind::Output),
+            ],
+            connections: vec![
+                edge(2, 11, 0),
+                edge(2, 12, 0),
+                edge(11, 12, 1),
+                edge(12, 5, 0),
+            ],
+        };
+        let mut plan = description.compile(48_000.0, 128).unwrap();
+        assert!(!plan.configure_main_directional(99, 2));
+        assert!(plan.configure_main_directional(11, 2));
+        assert!(plan.load_sample_stereo(2, vec![0.25; 48_000 * 2], 48_000.0));
+        assert!(plan.set_parameter(2, 6, 1.0));
+        for (id, value) in [(0, 2.0), (1, 220.0), (2, 1.0), (3, 1.0), (4, 1.0), (5, 1.0)] {
+            assert!(plan.set_main_directional_parameter(id, value));
+        }
+        let silence = [0.0; 128];
+        let _ = process(&mut plan, &silence, &silence);
+        let fm_position = plan.node_meter(2, 0).unwrap();
+        assert!(fm_position > 0.001 && fm_position < 110.0 / 47_999.0);
+
+        for (id, value) in [(0, 3.0), (1, 1000.0), (6, 1.0), (7, -0.5)] {
+            assert!(plan.set_main_directional_parameter(id, value));
+        }
+        let _ = process(&mut plan, &silence, &silence);
+        let first_cycle = plan.node_meter(2, 0).unwrap();
+        let _ = process(&mut plan, &silence, &silence);
+        let second_cycle = plan.node_meter(2, 0).unwrap();
+        assert!(
+            (first_cycle - second_cycle).abs() < 1e-6,
+            "retrigger restarts each block"
+        );
+        assert!(plan.set_main_directional_parameter(6, 0.0));
+        let _ = process(&mut plan, &silence, &silence);
+        assert!(
+            plan.node_meter(2, 0).unwrap() > second_cycle * 1.9,
+            "play resumes without resetting"
+        );
+        assert!(plan.set_parameter(11, 3, 1.0));
+        assert!(plan.set_main_directional_parameter(7, 0.5));
+        let _ = process(&mut plan, &silence, &silence);
+        assert_eq!(
+            plan.node_meter(11, 2),
+            Some(0.0),
+            "sample-facing Sync suppresses hard sync"
+        );
+        assert!(plan.set_main_directional_parameter(0, 0.0));
+        let _ = process(&mut plan, &silence, &silence);
+        assert_eq!(
+            plan.node_meter(11, 2),
+            Some(1.0),
+            "normal mode restores manual hard sync"
         );
     }
 

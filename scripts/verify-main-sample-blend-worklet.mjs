@@ -51,6 +51,8 @@ async function publishParameter(id, value) {
   parameterValues.set(id, value);
   const updates = parameterRoutes(parameters, parameterValues, id);
   if (updates.length) await processor.port.onmessage({ data: { type: 'parameter-batch', updates } });
+  const directionalId = parameters.get(id).directionalParameterId;
+  if (directionalId != null) await processor.port.onmessage({ data: { type: 'directional-parameter', id: directionalId, value } });
   return updates;
 }
 for (const parameter of project.parameters) await publishParameter(parameter.id, parameter.default);
@@ -163,4 +165,57 @@ const sampleSyncedWave = settle();
 assert.ok(Math.max(...freeSyncWave.map((value, index) => Math.abs(value - sampleSyncedWave[index]))) > .02,
   'raw sample zero crossings must audibly reset the wave oscillator');
 await publishParameter(23, 0);
-console.log(`Main sample blend worklet: one source → ${count} Morph and ${waveCount} wave partials; sample ${rms(sampleOnly).toFixed(3)}, base wave ${rms(waveOnly).toFixed(3)}, additive wave ${rms(additiveWave).toFixed(3)}, linked base/add ${rms(linkedBase).toFixed(3)}/${rms(linkedAdd).toFixed(3)} RMS`);
+const normalizedPosition = async () => {
+  await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 2, count: 1 } });
+  return messages.at(-1).values[0];
+};
+await publishParameter(16, -1);
+const normalDirectionWave = settle();
+await publishParameter(18, .8);
+await publishParameter(25, 1);
+await publishParameter(26, 1);
+await publishParameter(24, 2);
+const fmDirectionWave = settle();
+assert.ok(Math.max(...normalDirectionWave.map((value, index) => Math.abs(value - fmDirectionWave[index]))) > .02,
+  'Rust FM block motion must audibly move oscillator pitch');
+await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 11, count: 3 } });
+assert.ok(Math.abs(messages.at(-1).values[0] - 330) > .5,
+  'Rust FM block motion must set a non-base oscillator frequency target');
+await publishParameter(16, 1);
+await publishParameter(26, 0);
+let changedSpeed = false;
+for (let block = 0; block < 8; block++) {
+  const before = await normalizedPosition();
+  render();
+  const after = await normalizedPosition();
+  changedSpeed ||= Math.abs(after - before - 128 / (sourceRate - 1)) > .00015;
+}
+assert.ok(changedSpeed, 'Rust FM block motion must move the sample cursor at a non-base speed');
+await publishParameter(24, 3);
+await publishParameter(27, 1);
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 7, value: 1 } });
+const retriggerPositions = [];
+for (let block = 0; block < 8; block++) {
+  render();
+  retriggerPositions.push(await normalizedPosition());
+}
+assert.ok(retriggerPositions.some((position, index) => index && position < retriggerPositions[index - 1]),
+  'Rust Sync mode must retrigger the sample at a phase wrap');
+await publishParameter(27, 0);
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 7, value: 1 } });
+const playPositions = [];
+for (let block = 0; block < 8; block++) {
+  render();
+  playPositions.push(await normalizedPosition());
+}
+assert.ok(playPositions.every((position, index) => !index || position > playPositions[index - 1]),
+  'Sync play must leave the sample cursor running');
+await publishParameter(23, 1);
+render();
+await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 11, count: 3 } });
+assert.equal(messages.at(-1).values[2], 0, 'sample-facing Sync suppresses manual hard sync');
+await publishParameter(24, 0);
+render();
+await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 11, count: 3 } });
+assert.equal(messages.at(-1).values[2], 1, 'normal mode restores the saved manual hard sync');
+console.log(`Main sample blend worklet: one source → ${count} Morph and ${waveCount} wave partials; sample ${rms(sampleOnly).toFixed(3)}, base wave ${rms(waveOnly).toFixed(3)}, additive wave ${rms(additiveWave).toFixed(3)}, linked base/add ${rms(linkedBase).toFixed(3)}/${rms(linkedAdd).toFixed(3)} RMS; FM speed/pitch, Sync retrigger/play, and manual sync restoration checked`);

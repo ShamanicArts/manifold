@@ -27,10 +27,13 @@ for (const selected of manifest.cases) {
   console.log(`${selected.id}: max Δ ${max.toExponential(3)}, native RMS ${rms.toFixed(4)}`);
   assert.ok(max < 2e-4, `${selected.id} diverged`);
   assert.ok(rms > .005, `${selected.id} silent`);
-  const cppMeter = floats(`${root}${selected.followerMeter}`);
-  assert.equal(wasm.meters.length, cppMeter.length);
-  const maxMeter = Math.max(...cppMeter.map((value, index) => Math.abs(value - wasm.meters[index])));
-  assert.ok(maxMeter < 2e-4, `${selected.id} C++ follower mismatch ${maxMeter}`);
+  let maxMeter = null;
+  if (selected.followerMeter) {
+    const cppMeter = floats(`${root}${selected.followerMeter}`);
+    assert.equal(wasm.meters.length, cppMeter.length);
+    maxMeter = Math.max(...cppMeter.map((value, index) => Math.abs(value - wasm.meters[index])));
+    assert.ok(maxMeter < 2e-4, `${selected.id} C++ follower mismatch ${maxMeter}`);
+  }
   if (selected.legacyStage) {
     const cpp = floats(`${root}${selected.legacyStage}`);
     assert.equal(cpp.length, native.length);
@@ -39,4 +42,11 @@ for (const selected of manifest.cases) {
     assert.ok(maxStage < 2e-4, `${selected.id} old Main gain staging mismatch ${maxStage}`);
   }
   if (selected.id === 'phrase-full') console.log(`Original C++ follower ↔ Wasm graph meter max Δ ${maxMeter.toExponential(3)}`);
+}
+for (const [left, right] of [['fm-normal', 'fm-both'], ['sync-retrigger', 'sync-play']]) {
+  const a = floats(`${root}${left}.f32`);
+  const b = floats(`${root}${right}.f32`);
+  const difference = Math.max(...a.map((value, index) => Math.abs(value - b[index])));
+  assert.ok(difference > .05, `${left}/${right} must produce distinct audio`);
+  console.log(`${left} ↔ ${right}: audible maximum sample difference ${difference.toFixed(4)}`);
 }

@@ -99,6 +99,15 @@ impl SampleRegion {
         }
     }
 
+    /// Old Main's per-block modulator reads an integer playback cursor divided by sample length.
+    pub fn legacy_normalized_position(&self) -> f32 {
+        let frames = self.stereo.len() / 2;
+        if frames == 0 {
+            return 0.0;
+        }
+        self.position.floor().clamp(0.0, (frames - 1) as f64) as f32 / frames as f32
+    }
+
     pub(crate) fn share_sample_from(&mut self, source: &Self) {
         self.stereo = Arc::clone(&source.stereo);
         self.source_rate = source.source_rate;

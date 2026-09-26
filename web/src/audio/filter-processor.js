@@ -50,6 +50,10 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             new Float32Array(engine.memory.buffer, ptr, stereo.length).set(stereo);
             if (engine.manifold_sample_commit() !== 1) throw new Error('Sample loading failed');
           }
+          if (graph.directional && engine.manifold_main_directional_configure(
+            graph.directional.oscillatorId, graph.directional.sampleId) !== 1) {
+            throw new Error('Main directional behavior preparation failed');
+          }
           this.inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), this.capacity * 2);
           this.outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), this.capacity * 2);
           this.engine = engine;
@@ -59,6 +63,10 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'ready' });
         } else if (data.type === 'parameter' && this.engine) {
           this.engine.manifold_set_node_parameter(data.nodeId, data.id, data.value);
+        } else if (data.type === 'directional-parameter' && this.engine) {
+          if (this.engine.manifold_main_directional_parameter(data.id, data.value) !== 1) {
+            throw new Error('Main directional parameter rejected');
+          }
         } else if (data.type === 'parameter-batch' && this.engine) {
           if (!Array.isArray(data.updates) || data.updates.length > 16) throw new Error('Invalid parameter batch');
           for (const update of data.updates) {

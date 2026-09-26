@@ -19,6 +19,10 @@ values.set(20, 1.25);
 values.set(21, .63);
 values.set(22, 1);
 values.set(23, 1);
+values.set(24, 2);
+values.set(25, .8);
+values.set(26, .4);
+values.set(27, 0);
 const target = { active: true, mode: 3, waveform: 1, position: .47,
   morphAmount: .68, stretch: .2, tiltMode: 2, smooth: .6, contrast: 1.2 };
 const stereo = new Float32Array(4096 * 2);
@@ -39,7 +43,7 @@ const oldState = { ...builtin, schemaVersion: 1,
   parameters: Object.fromEntries(project.parameters.filter((parameter) => parameter.id < 6)
     .map((parameter) => [parameter.hostId, values.get(parameter.id)])) };
 const migrated = parseMainSampleBlendState(oldState, project);
-assert.equal(migrated.schemaVersion, 9);
+assert.equal(migrated.schemaVersion, 10);
 assert.equal(migrated.parameters['pvoc-mix'], 0);
 assert.equal(migrated.parameters['phrase-amount'], 0);
 assert.equal(migrated.parameters['wave-level'], 0);
@@ -89,8 +93,17 @@ const v8State = { ...builtin, schemaVersion: 8,
 const migratedV8 = parseMainSampleBlendState(v8State, project);
 assert.equal(migratedV8.parameters['voice-amp-link'], 1);
 assert.equal(migratedV8.parameters['wave-sync'], 0);
+const v9State = { ...builtin, schemaVersion: 9,
+  parameters: Object.fromEntries(project.parameters.filter((parameter) => parameter.id < 24)
+    .map((parameter) => [parameter.hostId, values.get(parameter.id)])) };
+const migratedV9 = parseMainSampleBlendState(v9State, project);
+assert.equal(migratedV9.parameters['wave-sync'], 1);
+assert.equal(migratedV9.parameters['direction-mode'], 0);
+assert.equal(migratedV9.parameters['wave-to-sample'], .5);
+assert.equal(migratedV9.parameters['sample-to-wave'], 0);
+assert.equal(migratedV9.parameters['sample-retrigger'], 1);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, projectId: 'other' }, project), /different/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, target: { ...target, position: 3 } }, project), /target/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, source: { ...embedded.source, frames: 10 } }, project), /source/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, source: { ...embedded.source, pcmF32Base64: 'bad' } }, project), /PCM/);
-console.log(`Main blend state: ${project.parameters.length} controls + target + ${stereo.length / 2} stereo frames round-trip; v1–v8 migration and malformed states checked`);
+console.log(`Main blend state: ${project.parameters.length} controls + target + ${stereo.length / 2} stereo frames round-trip; v1–v9 migration and malformed states checked`);

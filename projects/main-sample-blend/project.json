@@ -7,6 +7,7 @@
     "inputs": 0,
     "outputs": 2,
     "inputSource": "none",
+    "directional": { "oscillatorId": 11, "sampleId": 2 },
     "nodes": [
       { "id": 2, "type": "sample-region" },
       { "id": 6, "type": "phase-vocoder" },
@@ -61,7 +62,7 @@
     { "id": 1, "nodeId": 3, "mirrorNodeIds": [13], "nodeParameterId": 1, "hostId": "add-level", "label": "Add / Morph level", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 2, "nodeId": 4, "nodeParameterId": 1, "hostId": "sample-gain", "label": "Independent base gain", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 3, "nodeId": 4, "nodeParameterId": 2, "hostId": "add-gain", "label": "Independent Add gain", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
-    { "id": 4, "nodeId": 2, "nodeParameterId": 0, "hostId": "sample-speed", "label": "Sample speed", "kind": "float", "min": 0.25, "max": 2, "default": 1 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 0, "directionalParameterId": 2, "hostId": "sample-speed", "label": "Sample speed", "kind": "float", "min": 0.25, "max": 2, "default": 1 },
     { "id": 5, "nodeId": 2, "nodeParameterId": 6, "hostId": "sample-play", "label": "Play sample", "kind": "toggle", "default": 1 },
     { "id": 6, "nodeId": 6, "nodeParameterId": 0, "hostId": "pvoc-mode", "label": "Pitch engine", "kind": "select", "choices": ["Bin mapping", "Stretch + resample"], "default": 0 },
     { "id": 7, "nodeId": 6, "nodeParameterId": 1, "hostId": "pvoc-pitch", "label": "Sample pitch shift", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "st" },
@@ -70,12 +71,12 @@
     { "id": 10, "nodeId": 6, "nodeParameterId": 4, "hostId": "pvoc-order", "label": "FFT size", "kind": "select", "choices": ["512", "1024", "2048", "4096"], "choiceValues": [9, 10, 11, 12], "default": 11, "prepareOnly": true },
     { "id": 11, "nodeId": 8, "nodeParameterId": 0, "hostId": "phrase-amount", "label": "Sample phrase contour", "kind": "float", "min": 0, "max": 1, "default": 0 },
     { "id": 12, "nodeId": 8, "nodeParameterId": 1, "hostId": "phrase-reference", "label": "Phrase reference", "kind": "float", "min": 0.05, "max": 0.6, "default": 0.18 },
-    { "id": 13, "nodeId": 11, "nodeParameterId": 1, "hostId": "wave-pitch", "label": "Base wave pitch", "kind": "float", "min": 40, "max": 1600, "default": 220, "unit": "Hz", "scale": "log" },
+    { "id": 13, "nodeId": 11, "nodeParameterId": 1, "directionalParameterId": 1, "hostId": "wave-pitch", "label": "Base wave pitch", "kind": "float", "min": 40, "max": 1600, "default": 220, "unit": "Hz", "scale": "log" },
     { "id": 14, "nodeId": 11, "nodeParameterId": 2, "hostId": "wave-level", "label": "Base wave level", "kind": "float", "min": 0, "max": 1, "default": 0 },
     { "id": 15, "nodeId": 11, "nodeParameterId": 0, "hostId": "wave-shape", "label": "Base wave shape", "kind": "select", "choices": ["Sine", "Saw", "Square", "Triangle", "Sine + saw"], "default": 1 },
-    { "id": 16, "nodeId": 12, "nodeParameterId": 0, "hostId": "base-blend", "label": "Base wave ↔ sample", "kind": "float", "min": -1, "max": 1, "default": 1 },
+    { "id": 16, "nodeId": 12, "nodeParameterId": 0, "directionalParameterId": 7, "hostId": "base-blend", "label": "Base wave ↔ sample", "kind": "float", "min": -1, "max": 1, "default": 1 },
     { "id": 17, "nodeId": 14, "nodeParameterId": 0, "hostId": "add-blend", "label": "Add wave ↔ source", "kind": "float", "min": -1, "max": 1, "default": 1 },
-    { "id": 18, "nodeId": 4, "nodeParameterId": 65, "hostId": "branch-depth", "label": "Branch depth", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 18, "nodeId": 4, "nodeParameterId": 65, "directionalParameterId": 3, "hostId": "branch-depth", "label": "Branch depth / FM budget", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 19, "nodeId": 4, "nodeParameterId": 66, "hostId": "linked-depth", "label": "Link branch depth", "kind": "toggle", "default": 0 },
     { "id": 20, "nodeId": 15, "nodeParameterId": 0, "hostId": "sample-stage-gain", "label": "Sample stage gain", "kind": "float", "min": 0, "max": 2, "default": 1 },
     { "id": 21, "hostId": "voice-amp", "label": "Voice amplitude", "kind": "float", "min": 0, "max": 1, "default": 0.5,
@@ -86,6 +87,10 @@
         { "nodeId": 3, "id": 1, "scale": 2 }
       ] },
     { "id": 22, "hostId": "voice-amp-link", "label": "Link voice amplitude", "kind": "toggle", "default": 0, "enablesMacro": 21 },
-    { "id": 23, "nodeId": 11, "nodeParameterId": 3, "hostId": "wave-sync", "label": "Sample → wave hard sync", "kind": "toggle", "default": 0 }
+    { "id": 23, "nodeId": 11, "nodeParameterId": 3, "hostId": "wave-sync", "label": "Manual sample → wave sync", "kind": "toggle", "default": 0 },
+    { "id": 24, "directionalParameterId": 0, "hostId": "direction-mode", "label": "Direction mode", "kind": "select", "choices": ["Normal", "FM", "Sync"], "choiceValues": [0, 2, 3], "default": 0 },
+    { "id": 25, "directionalParameterId": 4, "hostId": "wave-to-sample", "label": "Wave → sample speed", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 26, "directionalParameterId": 5, "hostId": "sample-to-wave", "label": "Sample cursor → wave pitch", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 27, "directionalParameterId": 6, "hostId": "sample-retrigger", "label": "Retrigger sample on Sync", "kind": "toggle", "default": 1 }
   ]
 }

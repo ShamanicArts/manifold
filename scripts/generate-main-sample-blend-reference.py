@@ -18,6 +18,7 @@ sources = [ROOT / path for path in [
     "crates/manifold-core/src/graph.rs", "crates/manifold-core/src/sample_region.rs",
     "crates/manifold-core/examples/render_main_gain_stage.rs",
     "crates/manifold-core/src/sine_bank.rs", "crates/manifold-core/src/oscillator.rs",
+    "crates/manifold-core/src/main_directional.rs",
     "crates/manifold-core/src/temporal_partials.rs",
     "crates/manifold-core/src/phase_vocoder.rs",
     "crates/manifold-core/src/phrase_gain.rs", "crates/manifold-core/src/envelope_follower.rs",
@@ -72,16 +73,28 @@ for case in [
     ("voice-mix50", "Linked voice amp .5 · base and Add", 1, .5, .5, [0, 0, 1, 0, 11], [0, .18], [220, .5, 1, 0], 0, .5, 1, 1),
     ("sync-off", "Raw sample sync · free wave", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, -1], 1, 0, 1, .5, 0),
     ("sync-on", "Raw sample sync · reset wave", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, -1], 1, 0, 1, .5, 1),
+    ("fm-normal", "FM control · normal baseline", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, 0], 1, .8, 1, .5, 0, 0, 1, 1, 1),
+    ("fm-both", "FM · both directions", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, 0], 1, .8, 1, .5, 0, 2, 1, 1, 1),
+    ("fm-wave-to-sample", "FM · wave moves sample speed", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, 1], 1, .8, 1, .5, 0, 2, 1, 0, 1),
+    ("fm-sample-to-wave", "FM · sample cursor moves wave pitch", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, -1], 1, .8, 1, .5, 0, 2, 0, 1, 1),
+    ("sync-retrigger", "Sync · restart sample on phase wrap", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, 1], 1, 0, 1, .5, 0, 3, .5, 0, 1),
+    ("sync-play", "Sync · continue sample on phase wrap", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, 1], 1, 0, 1, .5, 0, 3, .5, 0, 0),
+    ("sync-wave", "Sync · wave-facing hard reset", 1, 1, 0, [0, 0, 1, 0, 11], [0, .18], [330, .5, 1, -1], 1, 0, 1, .5, 0, 3, .5, 0, 1),
 ]:
     case_id, label, mode, sample_gain, bank_gain, pvoc, phrase, wave, add_blend = case[:9]
     depth = case[9] if len(case) > 9 else None
     sample_stage_gain = case[10] if len(case) > 10 else 1.0
     bank_level = case[11] if len(case) > 11 else .5
     wave_sync = case[12] if len(case) > 12 else 0
+    direction_mode = case[13] if len(case) > 13 else 0
+    wave_to_sample = case[14] if len(case) > 14 else .5
+    sample_to_wave = case[15] if len(case) > 15 else 0
+    retrigger = case[16] if len(case) > 16 else 1
     output, target = f"{case_id}.f32", f"{case_id}-target.f32"
     subprocess.run([runner, str(sample_path), str(OUT / output), str(OUT / target), str(mode),
                     str(sample_gain), str(bank_gain), str(frames), *map(str, pvoc), *map(str, phrase), *map(str, wave), str(add_blend),
-                    str(depth if depth is not None else .5), str(int(depth is not None)), str(sample_stage_gain), str(bank_level), str(wave_sync)], check=True)
+                    str(depth if depth is not None else .5), str(int(depth is not None)), str(sample_stage_gain), str(bank_level), str(wave_sync),
+                    str(direction_mode), str(wave_to_sample), str(sample_to_wave), str(retrigger)], check=True)
     legacy_stage_file = None
     if case_id.startswith("legacy-amp"):
         legacy_stage_file = f"{case_id}-cpp.f32"
@@ -90,8 +103,10 @@ for case in [
     cases.append({"id": case_id, "label": label, "mode": mode, "sampleGain": sample_gain,
                   "bankGain": bank_gain, "vocoder": pvoc, "phrase": phrase, "wave": wave, "addBlend": add_blend,
                   "linkedDepth": depth,
-                  "sampleStageGain": sample_stage_gain, "bankLevel": bank_level, "waveSync": wave_sync, "legacyStage": legacy_stage_file,
-                  "target": target, "output": output, "followerMeter": follower_meters,
+                  "sampleStageGain": sample_stage_gain, "bankLevel": bank_level, "waveSync": wave_sync,
+                  "directionMode": direction_mode, "waveToSample": wave_to_sample, "sampleToWave": sample_to_wave,
+                  "sampleRetrigger": retrigger, "legacyStage": legacy_stage_file,
+                  "target": target, "output": output, "followerMeter": follower_meters if direction_mode == 0 else None,
                   "blockSize": block})
 (OUT / "manifest.json").write_text(json.dumps({
     "version": 1, "reference": "native Rust Main sample blend study", "sourceSha256": source_hash,

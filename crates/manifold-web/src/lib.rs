@@ -1133,6 +1133,28 @@ pub extern "C" fn manifold_set_node_parameter(node_id: u32, id: u32, value: f32)
     })
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_directional_configure(oscillator_id: u32, sample_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .plan
+                    .configure_main_directional(oscillator_id.into(), sample_id.into()),
+            )
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_directional_parameter(id: u32, value: f32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.plan.set_main_directional_parameter(id, value))
+        })
+    })
+}
+
 /// Bounded MIDI transform trace, read from a worklet message handler between process calls.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_midi_trace_count() -> u32 {

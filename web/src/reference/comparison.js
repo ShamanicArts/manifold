@@ -738,6 +738,12 @@ export function renderWasm(engine, family, manifest, input, selected) {
     if (engine.manifold_partials_begin(13, manifest.waveTargetData.length / 4, 1) !== 1) throw new Error('Main wave partial upload begin failed');
     new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), manifest.waveTargetData.length).set(manifest.waveTargetData);
     if (engine.manifold_partials_commit() !== 1) throw new Error('Main wave partial commit failed');
+    if (engine.manifold_main_directional_configure(11, 2) !== 1) throw new Error('Main directional configuration failed');
+    for (const [id, value] of [[0, selected.directionMode], [1, selected.wave[0]], [2, 1],
+      [3, selected.linkedDepth ?? .5], [4, selected.waveToSample], [5, selected.sampleToWave],
+      [6, selected.sampleRetrigger], [7, selected.wave[3]]]) {
+      if (engine.manifold_main_directional_parameter(id, value) !== 1) throw new Error('Main directional parameter failed');
+    }
     if (engine.manifold_set_node_parameter(4, 65, selected.linkedDepth ?? .5) !== 1
       || engine.manifold_set_node_parameter(4, 66, selected.linkedDepth == null ? 0 : 1) !== 1) {
       throw new Error('Main linked depth update failed');
@@ -1326,7 +1332,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                     : family === 'sample-instrument'
                       ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · root ${selected.parameters[0]} · keytrack ${selected.parameters[1]} · ${selected.events.length} note events · ${selected.changes.length} control changes`
                     : family === 'main-sample-blend'
-                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · ${selected.mode === 1 ? 'Add' : 'Morph'} target · ${selected.vocoder[3] ? `${selected.vocoder[0] ? 'HQ' : 'bin'} vocoder ${selected.vocoder[1]} st` : 'dry sample'} · sample stage ${selected.sampleStageGain} · bank level ${selected.bankLevel} · wave sync ${selected.waveSync ? 'on' : 'off'} · base blend ${selected.wave[3]} · additive blend ${selected.addBlend} · ${selected.linkedDepth == null ? `independent gains ${selected.sampleGain}/${selected.bankGain}` : `linked depth ${selected.linkedDepth}`} · phrase contour ${selected.phrase[0]}`
+                      ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · ${selected.mode === 1 ? 'Add' : 'Morph'} target · ${selected.vocoder[3] ? `${selected.vocoder[0] ? 'HQ' : 'bin'} vocoder ${selected.vocoder[1]} st` : 'dry sample'} · direction ${selected.directionMode} · sample stage ${selected.sampleStageGain} · bank level ${selected.bankLevel} · manual wave sync ${selected.waveSync ? 'on' : 'off'} · base blend ${selected.wave[3]} · additive blend ${selected.addBlend} · ${selected.linkedDepth == null ? `independent gains ${selected.sampleGain}/${selected.bankGain}` : `linked depth ${selected.linkedDepth}`} · phrase contour ${selected.phrase[0]}`
                     : family === 'phase-vocoder'
                       ? `${selected.before[0] ? 'stretch + resample' : 'bin mapping'} · ${selected.before[1]} st · ${selected.before[2]}× time · ${1 << selected.before[4]} FFT · ${selected.before[3]} wet`
                     : family === 'fft-spectrum'

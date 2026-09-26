@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "source": "original Main sample_synth.lua updateBlendVoiceFrame",
+  "legacySha256": "bd04765b74134a1c203bbbc556843ca28678637a1d1109f68d29105ef274d901",
+  "rustSha256": "b4fc9e977052c6e19a2d54ccb810cccac2688a8f59b63c90a46834a198b65e1b",
+  "scenarios": "scenarios.csv",
+  "legacy": "legacy.csv",
+  "rust": "rust.csv",
+  "blocks": 13,
+  "sampleRate": 48000,
+  "blockFrames": 128
+}
