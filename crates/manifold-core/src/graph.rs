@@ -4,6 +4,7 @@
 use crate::Filter;
 use crate::envelope::AdsrEnvelope;
 use crate::events::{EventError, EventKind, TimedEvent};
+use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
 use crate::voice::VoiceSynth;
 use std::collections::{HashMap, VecDeque};
@@ -48,6 +49,10 @@ pub enum NodeKind {
         waveform: u32,
     },
     AdsrEnvelope,
+    NoiseGenerator {
+        level: f32,
+        color: f32,
+    },
     Output,
 }
 
@@ -59,6 +64,7 @@ impl NodeKind {
             | Self::Constant { .. }
             | Self::VoiceSynth
             | Self::Oscillator { .. } => 0,
+            Self::NoiseGenerator { .. } => 0,
             Self::Sum2 { .. } | Self::LinearBlend { .. } | Self::Crossfader { .. } => 2,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. } | Self::Svf | Self::AdsrEnvelope | Self::Output => 1,
@@ -94,6 +100,7 @@ impl NodeKind {
                 amplitude,
                 waveform,
             } => frequency.is_finite() && amplitude.is_finite() && *waveform <= 4,
+            Self::NoiseGenerator { level, color } => level.is_finite() && color.is_finite(),
             _ => true,
         }
     }
@@ -166,6 +173,7 @@ enum Kernel {
     VoiceSynth(VoiceSynth),
     Oscillator(Oscillator),
     AdsrEnvelope(AdsrEnvelope),
+    NoiseGenerator(NoiseGenerator),
     Output,
 }
 
@@ -256,6 +264,9 @@ impl Kernel {
                 *waveform,
             )),
             NodeKind::AdsrEnvelope => Self::AdsrEnvelope(AdsrEnvelope::new(sample_rate)),
+            NodeKind::NoiseGenerator { level, color } => {
+                Self::NoiseGenerator(NoiseGenerator::new(sample_rate, *level, *color))
+            }
             NodeKind::Output => Self::Output,
         }
     }
@@ -290,6 +301,7 @@ impl Kernel {
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
+            (Self::NoiseGenerator(noise), id) => return noise.set_parameter(id, value),
             _ => return false,
         }
         true
@@ -658,6 +670,13 @@ impl ExecutionPlan {
                         let level = envelope.process_sample();
                         left[frame] = from_left[frame] * level;
                         right[frame] = from_right[frame] * level;
+                    }
+                }
+                Kernel::NoiseGenerator(noise) => {
+                    for frame in 0..frames {
+                        let value = noise.process_sample();
+                        left[frame] = value[0];
+                        right[frame] = value[1];
                     }
                 }
                 Kernel::Output => {

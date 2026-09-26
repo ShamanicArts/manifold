@@ -5,6 +5,7 @@ import mixerProject from '../../projects/mixer/project.json';
 import voiceProject from '../../projects/voice-synth/project.json';
 import oscillatorProject from '../../projects/oscillator/project.json';
 import adsrProject from '../../projects/adsr/project.json';
+import noiseProject from '../../projects/noise/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { initializeReferenceLab } from './reference/comparison.js';
 import { drawLiveSpectrum } from './reference/plots.js';
@@ -48,6 +49,12 @@ const projects = {
     title: 'ADSR envelope',
     description: 'Shape a stereo signal with attack, decay, sustain and release. The Rust gate also releases during attack or decay.',
     signal: 'Audio path: oscillator → ADSR → stereo output',
+  },
+  noise: {
+    project: noiseProject,
+    title: 'Noise generator',
+    description: 'Seeded stereo noise with a level control and a color filter from bright to dark.',
+    signal: 'Audio path: noise → stereo output',
   },
 };
 const initial = new URL(location.href).searchParams.get('primitive');
@@ -154,7 +161,7 @@ function renderPrimitive(family) {
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
   document.querySelector('.measurement-hint').textContent = family === 'voice'
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
-    : family === 'oscillator' || family === 'adsr'
+    : family === 'oscillator' || family === 'adsr' || family === 'noise'
       ? 'Start the instrument to view its spectrum. The C++ comparisons below run offline.'
     : 'Start audio to view the output spectrum. The reference cases below run offline.';
   if (family === 'svf') {
@@ -259,10 +266,10 @@ toggle.addEventListener('click', async () => {
       ? isInstrument ? 'Stop instrument' : 'Stop audio'
       : isInstrument ? 'Start instrument' : 'Start audio';
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'voice'
         ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
-        : activeFamily === 'oscillator' || activeFamily === 'adsr'
+        : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise'
           ? 'Start the instrument to view its spectrum. The C++ comparisons below run offline.'
         : 'Start audio to view the output spectrum. The reference cases below run offline.';
     if (spectrumFrame) cancelAnimationFrame(spectrumFrame);

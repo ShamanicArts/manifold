@@ -85,6 +85,15 @@ function prepareAdsr(engine) {
   }
 }
 
+function prepareNoise(engine, selected) {
+  if (engine.manifold_graph_begin(2, 1) !== 1
+    || engine.manifold_graph_node(1, 13, selected.levelBefore, selected.colorBefore) !== 1
+    || engine.manifold_graph_node(2, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(1, 2, 0) !== 1) {
+    throw new Error('Wasm noise graph failed');
+  }
+}
+
 function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
@@ -92,6 +101,7 @@ function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'voice') prepareVoice(engine);
   if (family === 'oscillator') prepareOscillator(engine, selected);
   if (family === 'adsr') prepareAdsr(engine);
+  if (family === 'noise') prepareNoise(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
   if (family === 'svf') {
     for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
@@ -129,6 +139,10 @@ function renderWasm(engine, family, manifest, input, selected) {
       if (family === 'oscillator') {
         updated &= engine.manifold_set_node_parameter(1, 1, selected.frequencyAfter);
         updated &= engine.manifold_set_node_parameter(1, 2, selected.amplitudeAfter);
+      }
+      if (family === 'noise') {
+        updated &= engine.manifold_set_node_parameter(1, 0, selected.levelAfter);
+        updated &= engine.manifold_set_node_parameter(1, 1, selected.colorAfter);
       }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
@@ -252,6 +266,8 @@ export async function initializeReferenceLab(initialFamily = 'svf') {
             ? `frequency ${selected.frequencyBefore} → ${selected.frequencyAfter} Hz · amplitude ${selected.amplitudeBefore} → ${selected.amplitudeAfter}`
             : family === 'adsr'
               ? `attack ${selected.attack} s · decay ${selected.decay} s · sustain ${selected.sustain} · release ${selected.release} s · gate off at ${selected.gateOffFrame}`
+              : family === 'noise'
+                ? `level ${selected.levelBefore} → ${selected.levelAfter} · color ${selected.colorBefore} → ${selected.colorAfter}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
     byId('reference-title').textContent = family === 'voice' ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';

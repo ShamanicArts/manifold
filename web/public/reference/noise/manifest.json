@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "reference": "legacy C++ NoiseGeneratorNode.cpp",
+  "sourceSha256": "50d65dd2464bfeb834a702a75282b1794145fdc4cab524d3d7decd615a99e4f4",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 4096,
+  "stepFrame": 2048,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "bright",
+      "label": "Bright noise",
+      "levelBefore": 0.5,
+      "levelAfter": 0.5,
+      "colorBefore": 0,
+      "colorAfter": 0,
+      "blockSize": 128,
+      "output": "bright.f32"
+    },
+    {
+      "id": "dark",
+      "label": "Dark noise",
+      "levelBefore": 0.5,
+      "levelAfter": 0.5,
+      "colorBefore": 1,
+      "colorAfter": 1,
+      "blockSize": 128,
+      "output": "dark.f32"
+    },
+    {
+      "id": "color-sweep",
+      "label": "Color sweep",
+      "levelBefore": 0.5,
+      "levelAfter": 0.5,
+      "colorBefore": 0,
+      "colorAfter": 1,
+      "blockSize": 128,
+      "output": "color-sweep.f32"
+    },
+    {
+      "id": "level-sweep",
+      "label": "Level sweep",
+      "levelBefore": 0.1,
+      "levelAfter": 0.8,
+      "colorBefore": 0.3,
+      "colorAfter": 0.3,
+      "blockSize": 128,
+      "output": "level-sweep.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame blocks",
+      "levelBefore": 0.3,
+      "levelAfter": 0.7,
+      "colorBefore": 0.2,
+      "colorAfter": 0.9,
+      "blockSize": 64,
+      "output": "small-block.f32"
+    },
+    {
+      "id": "large-block",
+      "label": "512-frame blocks",
+      "levelBefore": 0.3,
+      "levelAfter": 0.7,
+      "colorBefore": 0.2,
+      "colorAfter": 0.9,
+      "blockSize": 512,
+      "output": "large-block.f32"
+    }
+  ]
+}
