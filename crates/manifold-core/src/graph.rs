@@ -20,6 +20,7 @@ use crate::legacy_filter::{self, LegacyFilter};
 use crate::lfo::Lfo;
 use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
+use crate::midi_arpeggiator::MidiArpeggiator;
 use crate::midi_note_filter::MidiNoteFilter;
 use crate::midi_scale_quantizer::MidiScaleQuantizer;
 use crate::midi_transpose::{MAX_OUTPUT_EVENTS, MidiTranspose};
@@ -67,6 +68,10 @@ pub enum SignalKind {
 #[derive(Clone, Debug)]
 pub enum NodeKind {
     MidiInput,
+    MidiArpeggiator {
+        rate: f32,
+        mode: f32,
+    },
     MidiTranspose {
         semitones: f32,
     },
@@ -292,6 +297,7 @@ impl NodeKind {
             Self::Gain { .. }
             | Self::MidiTranspose { .. }
             | Self::MidiNoteFilter { .. }
+            | Self::MidiArpeggiator { .. }
             | Self::MidiScaleQuantizer { .. }
             | Self::MidiVelocityMapper { .. }
             | Self::VoiceSynth
@@ -340,6 +346,7 @@ impl NodeKind {
             Self::MidiInput
                 | Self::MidiTranspose { .. }
                 | Self::MidiNoteFilter { .. }
+                | Self::MidiArpeggiator { .. }
                 | Self::MidiScaleQuantizer { .. }
                 | Self::MidiVelocityMapper { .. }
         ) {
@@ -365,6 +372,7 @@ impl NodeKind {
             self,
             Self::MidiTranspose { .. }
                 | Self::MidiNoteFilter { .. }
+                | Self::MidiArpeggiator { .. }
                 | Self::MidiScaleQuantizer { .. }
                 | Self::MidiVelocityMapper { .. }
                 | Self::VoiceSynth
@@ -391,6 +399,7 @@ impl NodeKind {
     fn valid(&self) -> bool {
         match self {
             Self::MidiTranspose { semitones } => semitones.is_finite(),
+            Self::MidiArpeggiator { rate, mode } => rate.is_finite() && mode.is_finite(),
             Self::MidiNoteFilter { low, high, mode } => {
                 low.is_finite() && high.is_finite() && *mode <= 1
             }
@@ -572,6 +581,7 @@ impl std::error::Error for GraphError {}
 
 enum Kernel {
     MidiInput,
+    MidiArpeggiator(MidiArpeggiator),
     MidiTranspose(MidiTranspose),
     MidiNoteFilter(MidiNoteFilter),
     MidiScaleQuantizer(MidiScaleQuantizer),
@@ -671,6 +681,9 @@ impl Kernel {
     fn from_kind(kind: &NodeKind, sample_rate: f32, max_frames: usize) -> Self {
         match kind {
             NodeKind::MidiInput => Self::MidiInput,
+            NodeKind::MidiArpeggiator { rate, mode } => {
+                Self::MidiArpeggiator(MidiArpeggiator::new(sample_rate, *rate, *mode))
+            }
             NodeKind::MidiTranspose { semitones } => {
                 let mut effect = MidiTranspose::new();
                 let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
@@ -1035,6 +1048,7 @@ impl Kernel {
         matches!(
             self,
             Self::MidiInput
+                | Self::MidiArpeggiator(_)
                 | Self::MidiTranspose(_)
                 | Self::MidiNoteFilter(_)
                 | Self::MidiScaleQuantizer(_)
@@ -1067,6 +1081,7 @@ pub struct ExecutionPlan {
     midi_trace_write: usize,
     midi_trace_count: usize,
     midi_trace_sequence: u32,
+    frame_clock: u64,
 }
 
 impl GraphDescription {
@@ -1215,6 +1230,7 @@ impl GraphDescription {
             midi_trace_write: 0,
             midi_trace_count: 0,
             midi_trace_sequence: 0,
+            frame_clock: 0,
         })
     }
 }
@@ -1401,6 +1417,15 @@ impl ExecutionPlan {
             self.record_midi_effect(index, None, &out[..count], 0);
             self.route_midi_outputs(index, &out[..count], 0);
             true
+        } else if let Kernel::MidiArpeggiator(effect) = &mut self.nodes[index].kernel {
+            let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+            let Some(count) = effect.set_parameter(parameter, value, self.frame_clock, &mut out)
+            else {
+                return false;
+            };
+            self.record_midi_effect(index, None, &out[..count], 0);
+            self.route_midi_outputs(index, &out[..count], 0);
+            true
         } else {
             self.nodes[index].kernel.set_parameter(parameter, value)
         }
@@ -1443,6 +1468,7 @@ impl ExecutionPlan {
         self.push_midi_children(source, events);
         while let Some((index, event)) = self.midi_stack.pop() {
             let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+            let now = self.frame_clock.saturating_add(offset as u64);
             let count = match &mut self.nodes[index].kernel {
                 Kernel::MidiInput => {
                     out[0] = event;
@@ -1452,6 +1478,7 @@ impl ExecutionPlan {
                 Kernel::MidiNoteFilter(effect) => effect.handle(event, &mut out),
                 Kernel::MidiScaleQuantizer(effect) => effect.handle(event, &mut out),
                 Kernel::MidiVelocityMapper(effect) => effect.handle(event, &mut out),
+                Kernel::MidiArpeggiator(effect) => effect.handle(event, now, &mut out),
                 kernel => {
                     kernel.send_event(event);
                     0
@@ -1465,6 +1492,8 @@ impl ExecutionPlan {
                     | Kernel::MidiVelocityMapper(_)
             ) {
                 self.record_midi_effect(index, Some(event), &out[..count], offset);
+            } else if matches!(&self.nodes[index].kernel, Kernel::MidiArpeggiator(_)) && count > 0 {
+                self.record_midi_effect(index, None, &out[..count], offset);
             }
             self.push_midi_children(index, &out[..count]);
         }
@@ -1492,6 +1521,7 @@ impl ExecutionPlan {
             .position(|node| node.id == target)
             .unwrap();
         let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+        let now = self.frame_clock.saturating_add(offset as u64);
         let count = match &mut self.nodes[index].kernel {
             Kernel::MidiInput => {
                 out[0] = event;
@@ -1501,6 +1531,7 @@ impl ExecutionPlan {
             Kernel::MidiNoteFilter(effect) => effect.handle(event, &mut out),
             Kernel::MidiScaleQuantizer(effect) => effect.handle(event, &mut out),
             Kernel::MidiVelocityMapper(effect) => effect.handle(event, &mut out),
+            Kernel::MidiArpeggiator(effect) => effect.handle(event, now, &mut out),
             kernel => {
                 kernel.send_event(event);
                 0
@@ -1514,6 +1545,8 @@ impl ExecutionPlan {
                 | Kernel::MidiVelocityMapper(_)
         ) {
             self.record_midi_effect(index, Some(event), &out[..count], offset);
+        } else if matches!(&self.nodes[index].kernel, Kernel::MidiArpeggiator(_)) && count > 0 {
+            self.record_midi_effect(index, None, &out[..count], offset);
         }
         self.route_midi_outputs(index, &out[..count], offset);
     }
@@ -1558,36 +1591,77 @@ impl ExecutionPlan {
         }
         let [left_in, right_in] = input;
         let [left_out, right_out] = output;
-        let mut start = 0;
-        let mut left_out = left_out;
-        let mut right_out = right_out;
-        for event in events {
-            let count = event.offset - start;
-            if count > 0 {
-                let (segment_left, rest_left) = left_out.split_at_mut(count);
-                let (segment_right, rest_right) = right_out.split_at_mut(count);
-                self.process(
-                    [
-                        &left_in[start..event.offset],
-                        &right_in[start..event.offset],
-                    ],
-                    [segment_left, segment_right],
+        let mut position = 0;
+        let mut event_index = 0;
+        while position < frames {
+            let external = events.get(event_index).map_or(frames, |event| event.offset);
+            let internal = self
+                .next_arpeggiator_deadline()
+                .map_or(frames, |deadline| {
+                    deadline.saturating_sub(self.frame_clock).min(frames as u64) as usize
+                })
+                .max(position);
+            let at = external.min(internal).min(frames);
+            if at > position {
+                self.render_audio_span(
+                    [&left_in[position..at], &right_in[position..at]],
+                    [&mut left_out[position..at], &mut right_out[position..at]],
                 );
-                left_out = rest_left;
-                right_out = rest_right;
             }
-            self.dispatch_event(event.node, event.kind, event.offset);
-            start = event.offset;
+            position = at;
+            while event_index < events.len() && events[event_index].offset == at {
+                let event = events[event_index];
+                self.dispatch_event(event.node, event.kind, at);
+                event_index += 1;
+            }
+            if at < frames {
+                self.fire_due_arpeggiators(at);
+            }
         }
-        self.process(
-            [&left_in[start..], &right_in[start..]],
-            [left_out, right_out],
-        );
+        self.frame_clock = self.frame_clock.saturating_add(frames as u64);
         Ok(())
     }
 
     /// `frames` may be smaller than prepared capacity. Buffers are planar stereo.
     pub fn process(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
+        self.process_with_events(input, output, &[])
+            .expect("empty event list is valid");
+    }
+
+    fn next_arpeggiator_deadline(&self) -> Option<u64> {
+        self.nodes
+            .iter()
+            .filter(|node| node.active)
+            .filter_map(|node| match &node.kernel {
+                Kernel::MidiArpeggiator(arp) => arp.next_deadline(),
+                _ => None,
+            })
+            .min()
+    }
+
+    fn fire_due_arpeggiators(&mut self, offset: usize) {
+        let now = self.frame_clock.saturating_add(offset as u64);
+        for index in 0..self.nodes.len() {
+            if !self.nodes[index].active {
+                continue;
+            }
+            let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+            let count = match &mut self.nodes[index].kernel {
+                Kernel::MidiArpeggiator(arp)
+                    if arp.next_deadline().is_some_and(|deadline| deadline <= now) =>
+                {
+                    arp.fire_due(now, &mut out)
+                }
+                _ => 0,
+            };
+            if count > 0 {
+                self.record_midi_effect(index, None, &out[..count], offset);
+                self.route_midi_outputs(index, &out[..count], offset);
+            }
+        }
+    }
+
+    fn render_audio_span(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         let frames = input[0].len();
         assert!(frames <= self.max_frames);
         assert_eq!(frames, input[1].len());
@@ -1617,6 +1691,7 @@ impl ExecutionPlan {
                 Kernel::MidiInput
                 | Kernel::MidiTranspose(_)
                 | Kernel::MidiNoteFilter(_)
+                | Kernel::MidiArpeggiator(_)
                 | Kernel::MidiScaleQuantizer(_)
                 | Kernel::MidiVelocityMapper(_) => {
                     left.fill(0.0);
@@ -2302,6 +2377,119 @@ mod tests {
             wrong_type.compile(48_000.0, 128),
             Err(GraphError::SignalTypeMismatch(1, 2, 0))
         ));
+    }
+
+    #[test]
+    fn arpeggiator_deadlines_and_audio_do_not_depend_on_block_size() {
+        fn run(block: usize) -> (Vec<f32>, Vec<(usize, EventKind)>) {
+            let graph = GraphDescription {
+                nodes: vec![
+                    node(1, NodeKind::MidiInput),
+                    node(
+                        2,
+                        NodeKind::MidiArpeggiator {
+                            rate: 8.0,
+                            mode: 0.0,
+                        },
+                    ),
+                    node(3, NodeKind::VoiceSynth),
+                    node(4, NodeKind::Output),
+                ],
+                connections: vec![edge(1, 2, 0), edge(2, 3, 0), edge(3, 4, 0)],
+            };
+            let mut plan = graph.compile(48_000.0, block).unwrap();
+            let silence = vec![0.0; block];
+            let mut audio = Vec::with_capacity(12_288);
+            let mut trace = Vec::new();
+            let mut last_sequence = 0;
+            for start in (0..12_288).step_by(block) {
+                let mut events = Vec::new();
+                for (frame, kind) in [
+                    (
+                        0,
+                        EventKind::NoteOn {
+                            channel: 0,
+                            note: 60,
+                            velocity: 90,
+                        },
+                    ),
+                    (
+                        480,
+                        EventKind::NoteOn {
+                            channel: 0,
+                            note: 64,
+                            velocity: 100,
+                        },
+                    ),
+                    (9500, EventKind::AllNotesOff),
+                ] {
+                    if (start..start + block).contains(&frame) {
+                        events.push(TimedEvent {
+                            offset: frame - start,
+                            node: 1,
+                            kind,
+                        });
+                    }
+                }
+                let mut left = vec![0.0; block];
+                let mut right = vec![0.0; block];
+                plan.process_with_events([&silence, &silence], [&mut left, &mut right], &events)
+                    .unwrap();
+                audio.extend_from_slice(&left);
+                for index in 0..plan.midi_trace_count() {
+                    let entry = plan.midi_trace_entry(index).unwrap();
+                    if entry.sequence > last_sequence {
+                        assert!(
+                            entry.offset < block,
+                            "trace offset must belong to this block"
+                        );
+                        trace.push((start + entry.offset, entry.kind));
+                        last_sequence = entry.sequence;
+                    }
+                }
+            }
+            (audio, trace)
+        }
+        let expected = vec![
+            (
+                1440,
+                EventKind::NoteOn {
+                    channel: 0,
+                    note: 60,
+                    velocity: 90,
+                },
+            ),
+            (
+                5040,
+                EventKind::NoteOff {
+                    channel: 0,
+                    note: 60,
+                },
+            ),
+            (
+                7440,
+                EventKind::NoteOn {
+                    channel: 0,
+                    note: 64,
+                    velocity: 100,
+                },
+            ),
+            (
+                9500,
+                EventKind::NoteOff {
+                    channel: 0,
+                    note: 64,
+                },
+            ),
+        ];
+        let (audio, trace) = run(64);
+        assert_eq!(trace, expected);
+        assert!(audio[1500..4500].iter().any(|sample| sample.abs() > 0.001));
+        for block in [128, 256] {
+            let (other_audio, other_trace) = run(block);
+            assert_eq!(other_trace, expected);
+            assert_eq!(other_audio, audio);
+        }
     }
 
     #[test]

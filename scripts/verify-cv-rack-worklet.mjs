@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 const messages = [];
 let Processor;
 globalThis.sampleRate = 48_000;
+globalThis.currentFrame = 0;
 globalThis.AudioWorkletProcessor = class {
   constructor() { this.port = { postMessage: (message) => messages.push(message), onmessage: null }; }
 };
@@ -56,7 +57,7 @@ for (let block = 0; block < 24; block++) {
   changed ||= Math.abs(processor.engine.manifold_get_node_meter(7, 0) - .1) > .05;
 }
 assert.ok(changed);
-await processor.port.onmessage({ data: { type: 'route', requestId: 5, to: 8, port: 0, from: 1 } });
+await processor.port.onmessage({ data: { type: 'route', requestId: 5, to: 8, port: 0, from: 7 } });
 assert.deepEqual(messages.at(-1), { type: 'route-applied', requestId: 5, accepted: false });
 let requestId = 6;
 for (const port of project.patch.inputs) {

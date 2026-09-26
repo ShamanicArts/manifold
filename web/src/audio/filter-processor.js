@@ -23,7 +23,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
           if (engine.manifold_version() !== 3) throw new Error('Incompatible graph module');
-          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26, 'sample-instrument': 27, 'fft-spectrum': 28, 'slew-audio': 29, 'slew-control': 30, 'attenuverter-bias': 31, 'sample-hold': 32, 'cv-mix': 33, phaser: 34, chorus: 35, eq8: 36, waveshaper: 37, 'stereo-widener': 38, 'legacy-filter': 39, reverb: 40, multitap: 41, 'ring-modulator': 42, 'transient-shaper': 43, bitcrusher: 44, 'eq-node': 45, formant: 46, 'reverse-delay': 47, stutter: 48, 'pitch-shifter': 49, shimmer: 50, granulator: 51, 'effect-slot-legacy': 52, 'effect-slot-host-switch': 53, 'midi-input': 54, 'midi-transpose': 55, 'midi-note-filter': 56, 'midi-scale-quantizer': 57, 'midi-velocity-mapper': 58 };
+          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26, 'sample-instrument': 27, 'fft-spectrum': 28, 'slew-audio': 29, 'slew-control': 30, 'attenuverter-bias': 31, 'sample-hold': 32, 'cv-mix': 33, phaser: 34, chorus: 35, eq8: 36, waveshaper: 37, 'stereo-widener': 38, 'legacy-filter': 39, reverb: 40, multitap: 41, 'ring-modulator': 42, 'transient-shaper': 43, bitcrusher: 44, 'eq-node': 45, formant: 46, 'reverse-delay': 47, stutter: 48, 'pitch-shifter': 49, shimmer: 50, granulator: 51, 'effect-slot-legacy': 52, 'effect-slot-host-switch': 53, 'midi-input': 54, 'midi-transpose': 55, 'midi-note-filter': 56, 'midi-scale-quantizer': 57, 'midi-velocity-mapper': 58, 'midi-arpeggiator': 59 };
           const graph = data.graph;
           if (engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) throw new Error('Graph too large');
           if (graph.patchable && engine.manifold_graph_patchable(1) !== 1) throw new Error('Patchable graph unavailable');
@@ -103,10 +103,12 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
   }
 
   queueEvent(data) {
+    const offset = Number.isFinite(data.offset) ? Math.max(0, Math.trunc(data.offset)) : 0;
+    const frame = Number.isSafeInteger(data.frame) && data.frame >= 0 ? data.frame : currentFrame + offset;
     if (data.kind === 2) {
       let kept = 0;
       for (let index = 0; index < this.pendingCount; index++) {
-        if (this.pendingNode[index] === data.nodeId) continue;
+        if (this.pendingNode[index] === data.nodeId && this.pendingFrame[index] >= frame) continue;
         this.pendingFrame[kept] = this.pendingFrame[index];
         this.pendingNode[kept] = this.pendingNode[index];
         this.pendingKind[kept] = this.pendingKind[index];
@@ -119,9 +121,6 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
       if (this.pendingCount === this.eventCapacity) this.pendingCount--;
     }
     if (this.pendingCount >= this.eventCapacity) throw new Error('MIDI event queue is full');
-    const offset = Number.isFinite(data.offset) ? Math.max(0, Math.trunc(data.offset)) : 0;
-    const frame = data.kind === 2 ? currentFrame
-      : Number.isSafeInteger(data.frame) && data.frame >= 0 ? data.frame : currentFrame + offset;
     let index = this.pendingCount;
     while (index > 0 && this.pendingFrame[index - 1] > frame) {
       this.pendingFrame[index] = this.pendingFrame[index - 1];

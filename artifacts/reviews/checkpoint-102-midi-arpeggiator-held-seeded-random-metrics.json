@@ -1,0 +1,8 @@
+{
+  "case": "held-seeded-random",
+  "frames": 32768,
+  "sampleRate": 48000,
+  "nativeToWasmMax": 0,
+  "nativeToWorkletMax": 0,
+  "traceEvents": 11
+}

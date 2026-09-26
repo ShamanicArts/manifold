@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { BrowserMidiInput } from '../web/src/audio/midi-input.js';
+import { BrowserMidiInput, midiAvailability } from '../web/src/audio/midi-input.js';
 
 const keys = ['isSecureContext', 'navigator', 'document'];
 const previous = Object.fromEntries(keys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -34,7 +34,25 @@ try {
   assert.equal(midi.listening, false, 'late permission must not reconnect after stop');
   assert.deepEqual(states, [[true, false], [false, false]]);
   assert.match(statuses.at(-1), /stopped/);
-  console.log('MIDI pending-request cancellation: pass');
+
+  setGlobal('navigator', {
+    requestMIDIAccess: async () => {
+      ++requests;
+      return { inputs: new Map(), onstatechange: null };
+    },
+  });
+  await midi.connect();
+  assert.equal(requests, 2, 'a user request must call Web MIDI');
+  assert.equal(midi.listening, true);
+  assert.match(statuses.at(-1), /access granted/);
+  midi.stop();
+
+  setGlobal('document', { permissionsPolicy: { allowsFeature: () => false } });
+  assert.match(midiAvailability(), /blocks MIDI permission/);
+  await midi.connect();
+  assert.equal(requests, 2, 'blocked browser policy must not open a prompt');
+  assert.equal(midi.listening, false);
+  console.log('MIDI permission request, cancellation, and blocked-policy detection: pass');
 } finally {
   for (const [key, descriptor] of Object.entries(previous)) {
     if (descriptor === undefined) delete globalThis[key];

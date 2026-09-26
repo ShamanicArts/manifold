@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 const messages = [];
 let Processor;
 globalThis.sampleRate = 48_000;
+globalThis.currentFrame = 0;
 globalThis.AudioWorkletProcessor = class {
   constructor() {
     this.port = { postMessage: (message) => messages.push(message), onmessage: null };

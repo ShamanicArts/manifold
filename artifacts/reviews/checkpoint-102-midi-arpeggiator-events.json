@@ -1,0 +1,14 @@
+{
+  "scenario": "C4 at frame 0, E4 at frame 512, rate 8 Hz, gate 0.6, 48 kHz, 128-frame legacy callbacks",
+  "legacyCallbackEnd": [
+    { "frame": 1536, "kind": "on", "note": 60, "velocity": 90 },
+    { "frame": 5248, "kind": "off", "note": 60 },
+    { "frame": 7552, "kind": "on", "note": 64, "velocity": 100 }
+  ],
+  "rustV2SampleFrame": [
+    { "frame": 1440, "kind": "on", "note": 60, "velocity": 90 },
+    { "frame": 5040, "kind": "off", "note": 60 },
+    { "frame": 7440, "kind": "on", "note": 64, "velocity": 100 }
+  ],
+  "callbackEndMinusSampleFrame": [96, 208, 112]
+}

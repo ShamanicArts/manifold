@@ -377,6 +377,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             curve: b,
             offset: 0.0,
         },
+        59 => NodeKind::MidiArpeggiator { rate: a, mode: b },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {

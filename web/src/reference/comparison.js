@@ -101,6 +101,15 @@ function prepareMidiVelocityMapper(engine, selected) {
   for (const edge of edges) if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Wasm velocity mapper graph edge failed');
 }
 
+function prepareMidiArpeggiator(engine, selected) {
+  const nodes = [[3, 54, 0, 0], [4, 59, selected.rate, selected.mode],
+    [1, 10, 0, 0], [2, 7, 0, 0]];
+  const edges = [[3, 4, 0], [4, 1, 0], [1, 2, 0]];
+  if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Wasm arpeggiator graph begin failed');
+  for (const node of nodes) if (engine.manifold_graph_node(...node) !== 1) throw new Error('Wasm arpeggiator graph node failed');
+  for (const edge of edges) if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Wasm arpeggiator graph edge failed');
+}
+
 function prepareSampleRegion(engine) {
   if (engine.manifold_graph_begin(2, 1) !== 1
     || engine.manifold_graph_node(2, 26, 0, 0) !== 1
@@ -608,6 +617,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'midi-note-filter') prepareMidiNoteFilter(engine, selected);
   if (family === 'midi-scale-quantizer') prepareMidiScaleQuantizer(engine, selected);
   if (family === 'midi-velocity-mapper') prepareMidiVelocityMapper(engine, selected);
+  if (family === 'midi-arpeggiator') prepareMidiArpeggiator(engine, selected);
   if (family === 'sample-region') prepareSampleRegion(engine);
   if (family === 'sample-instrument') prepareSampleInstrument(engine);
   if (family === 'oscillator') prepareOscillator(engine, selected);
@@ -671,7 +681,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
       if (engine.manifold_set_parameter(id, value) !== 1) throw new Error(`Wasm parameter ${id} failed`);
     }
   }
-  if (family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper') {
+  if (family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator') {
     for (const [id, value] of [selected.waveform, selected.attack, selected.decay, selected.sustain, selected.release, selected.level].entries()) {
       if (engine.manifold_set_node_parameter(1, id, value) !== 1) throw new Error(`Wasm voice parameter ${id} failed`);
     }
@@ -681,6 +691,11 @@ export function renderWasm(engine, family, manifest, input, selected) {
   }
   if (family === 'midi-velocity-mapper' && engine.manifold_set_node_parameter(4, 2, selected.offset) !== 1) {
     throw new Error('Wasm velocity mapper offset failed');
+  }
+  if (family === 'midi-arpeggiator') {
+    for (const [id, value] of [[2, selected.octaves], [3, selected.gate], [4, selected.hold]]) {
+      if (engine.manifold_set_node_parameter(4, id, value) !== 1) throw new Error('Wasm arpeggiator parameter failed');
+    }
   }
   if (family === 'adsr') {
     for (const [id, value] of [selected.attack, selected.decay, selected.sustain, selected.release, 1].entries()) {
@@ -865,7 +880,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
       }
       if (updated !== 1) throw new Error('Wasm parameter change failed');
     }
-    if (family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper') {
+    if (family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator') {
       if (family === 'midi-transpose') {
         for (const change of selected.changes) {
           if (change.frame === offset && engine.manifold_set_node_parameter(4, 0, change.semitones) !== 1) {
@@ -894,9 +909,16 @@ export function renderWasm(engine, family, manifest, input, selected) {
           }
         }
       }
+      if (family === 'midi-arpeggiator') {
+        for (const change of selected.changes) {
+          if (change.frame === offset && engine.manifold_set_node_parameter(4, change.id, change.value) !== 1) {
+            throw new Error('Wasm MIDI arpeggiator change failed');
+          }
+        }
+      }
       for (const event of selected.events) {
         if (event.frame >= offset && event.frame < offset + count) {
-          if (engine.manifold_event_push(family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' ? 3 : 1, event.frame - offset, event.kind, event.channel ?? 0, event.note, event.velocity) !== 1) {
+          if (engine.manifold_event_push(family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' ? 3 : 1, event.frame - offset, event.kind, event.channel ?? 0, event.note, event.velocity) !== 1) {
             throw new Error('Wasm voice event failed');
           }
         }
@@ -1216,9 +1238,9 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                       ? `threshold ${selected.before[0]} → ${selected.after[0]} dB · release ${selected.before[1]} → ${selected.after[1]} ms · soft clip ${selected.before[3]} → ${selected.after[3]}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
-    const nativeReference = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'envelope-ducking' || family === 'fft-spectrum';
+    const nativeReference = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'envelope-ducking' || family === 'fft-spectrum';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Whole capture' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'midi-transpose' ? 'Held note remap' : family === 'midi-note-filter' ? 'Held range change' : family === 'midi-scale-quantizer' ? 'Held scale change' : family === 'midi-velocity-mapper' ? 'Held velocity change' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Whole modulation' : 'Parameter change';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Whole capture' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'midi-transpose' ? 'Held note remap' : family === 'midi-note-filter' ? 'Held range change' : family === 'midi-scale-quantizer' ? 'Held scale change' : family === 'midi-velocity-mapper' ? 'Held velocity change' : family === 'midi-arpeggiator' ? 'Second step' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Whole modulation' : 'Parameter change';
     byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Before change' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
     byId('plot-title').textContent = family === 'fft-spectrum' ? '32 FFT bands · last block' : family === 'compressor' || family === 'limiter' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'phaser' ? 'Stereo phaser output · peak level' : family === 'chorus' ? 'Stereo chorus output · peak level' : family === 'eq8' ? 'EQ8 stereo output · peak level' : family === 'eq-node' ? 'Three-band EQ stereo output' : family === 'reverb' ? 'Stereo reverb tail · peak level' : family === 'ring-modulator' ? 'Ring-modulated stereo output' : family === 'transient-shaper' ? 'Transient strength · mean per block' : family === 'bitcrusher' ? 'Quantized stereo output' : family === 'multitap' ? 'Multitap echoes · stereo peak level' : family === 'stereo-widener' ? 'Output stereo correlation · −1 to +1' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Amplitude envelope · left channel' : 'Output waveform';
     if (family === 'standalone-fx-host' && selected.id === 'delay-svf-delay-svf') {

@@ -20,6 +20,7 @@ pub mod legacy_filter;
 pub mod lfo;
 pub mod limiter;
 pub mod loop_capture;
+pub mod midi_arpeggiator;
 pub mod midi_note_filter;
 pub mod midi_note_router;
 pub mod midi_scale_quantizer;
