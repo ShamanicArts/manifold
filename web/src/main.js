@@ -271,7 +271,7 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. Link branch depth for the old 1−depth/depth gain law; the sample stage gain represents twice the old voice amplitude.',
+    description: 'An authored Main sample synth slice: wave/sample and additive wave/source crossfades meet at the branch mixer, then pass through the old voice-mix bus. Link branch depth for the old 1−depth/depth gain law; link voice amplitude to drive oscillator, sample, and Add source levels together.',
     signal: 'File → sample region → vocoder → sample stage gain · wave → base crossfade · worker → two Sine banks → Add crossfade → phrase gain · branch mixer → voice mix → output',
   },
   'reverse-delay': {
@@ -844,10 +844,12 @@ window.addEventListener('resize', updateTransferCurve);
 function updateMainDepthControls() {
   if (activeFamily !== 'main-sample-blend') return;
   const linked = values.get(19) === 1;
-  for (const id of [2, 3, 18]) {
+  const voiceLinked = values.get(22) === 1;
+  for (const id of [2, 3, 18, 1, 14, 20, 21]) {
     const control = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
     if (!control) continue;
-    const inactive = id === 18 ? !linked : linked;
+    const inactive = id === 18 ? !linked : id === 21 ? !voiceLinked
+      : [1, 14, 20].includes(id) ? voiceLinked : linked;
     control.classList.toggle('inactive', inactive);
     const input = control.querySelector('input');
     if (input) input.disabled = inactive;
@@ -1118,7 +1120,7 @@ function addToggle(parameter) {
     button.setAttribute('aria-pressed', String(next === 1));
     render();
     if (activeFamily === 'loop-capture') updateLoopToggles();
-    if (activeFamily === 'main-sample-blend' && parameter.hostId === 'linked-depth') updateMainDepthControls();
+    if (activeFamily === 'main-sample-blend' && ['linked-depth', 'voice-amp-link'].includes(parameter.hostId)) updateMainDepthControls();
   });
   byId('controls').appendChild(button);
 }
@@ -1576,7 +1578,7 @@ function renderPrimitive(family) {
   if (family === 'main-sample-blend') {
     const help = document.createElement('p');
     help.className = 'control-help';
-    help.textContent = 'Link branch depth for base = 1 − depth and Add = depth. With linking off, the independent gains apply. Sample stage gain is twice the old voice amp (1 corresponds to amp 0.5). Phrase reference starts from source analysis; moving it saves a manual value.';
+    help.textContent = 'Link branch depth for base = 1 − depth and Add = depth. Link voice amplitude for oscillator = amp and sample / Add levels = 2 × amp; the banks clamp at 1 as in the original. Unlink to audition independent levels. Phrase reference starts from source analysis; moving it saves a manual value.';
     byId('controls').appendChild(help);
     updateMainDepthControls();
   }

@@ -1,6 +1,6 @@
-// Portable version-7 state for the authored Main sample blend study.
+// Portable version-8 state for the authored Main sample blend study.
 // User audio is embedded as bounded interleaved stereo float32 PCM.
-const VERSION = 7;
+const VERSION = 8;
 const MAX_FRAMES = 48_000 * 30;
 const MAX_LABEL = 200;
 
@@ -41,11 +41,11 @@ function decodePcm(encoded, frames) {
 
 export function parseMainSampleBlendState(document, project) {
   const savedVersion = document?.schemaVersion;
-  if (![1, 2, 3, 4, 5, 6, VERSION].includes(savedVersion) || document?.projectId !== project.id) {
+  if (![1, 2, 3, 4, 5, 6, 7, VERSION].includes(savedVersion) || document?.projectId !== project.id) {
     throw new Error('This state belongs to a different Manifold v2 project.');
   }
   const parameters = document.parameters;
-  const savedCount = savedVersion === 1 ? 6 : savedVersion === 2 ? 11 : savedVersion === 3 ? 13 : savedVersion === 4 ? 17 : savedVersion === 5 ? 18 : savedVersion === 6 ? 20 : project.parameters.length;
+  const savedCount = savedVersion === 1 ? 6 : savedVersion === 2 ? 11 : savedVersion === 3 ? 13 : savedVersion === 4 ? 17 : savedVersion === 5 ? 18 : savedVersion === 6 ? 20 : savedVersion === 7 ? 21 : project.parameters.length;
   const savedParameters = project.parameters.filter((parameter) => parameter.id < savedCount);
   if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)
     || Object.keys(parameters).length !== savedParameters.length) {

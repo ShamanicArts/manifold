@@ -76,6 +76,14 @@
     { "id": 17, "nodeId": 14, "nodeParameterId": 0, "hostId": "add-blend", "label": "Add wave ↔ source", "kind": "float", "min": -1, "max": 1, "default": 1 },
     { "id": 18, "nodeId": 4, "nodeParameterId": 65, "hostId": "branch-depth", "label": "Branch depth", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 19, "nodeId": 4, "nodeParameterId": 66, "hostId": "linked-depth", "label": "Link branch depth", "kind": "toggle", "default": 0 },
-    { "id": 20, "nodeId": 15, "nodeParameterId": 0, "hostId": "sample-stage-gain", "label": "Sample stage gain", "kind": "float", "min": 0, "max": 2, "default": 1 }
+    { "id": 20, "nodeId": 15, "nodeParameterId": 0, "hostId": "sample-stage-gain", "label": "Sample stage gain", "kind": "float", "min": 0, "max": 2, "default": 1 },
+    { "id": 21, "hostId": "voice-amp", "label": "Voice amplitude", "kind": "float", "min": 0, "max": 1, "default": 0.5,
+      "enabledBy": 22, "overrides": [1, 14, 20], "macroTargets": [
+        { "nodeId": 11, "id": 2, "scale": 1 },
+        { "nodeId": 15, "id": 0, "scale": 2 },
+        { "nodeId": 13, "id": 1, "scale": 2 },
+        { "nodeId": 3, "id": 1, "scale": 2 }
+      ] },
+    { "id": 22, "hostId": "voice-amp-link", "label": "Link voice amplitude", "kind": "toggle", "default": 0, "enablesMacro": 21 }
   ]
 }

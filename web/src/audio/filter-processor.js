@@ -59,6 +59,16 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'ready' });
         } else if (data.type === 'parameter' && this.engine) {
           this.engine.manifold_set_node_parameter(data.nodeId, data.id, data.value);
+        } else if (data.type === 'parameter-batch' && this.engine) {
+          if (!Array.isArray(data.updates) || data.updates.length > 16) throw new Error('Invalid parameter batch');
+          for (const update of data.updates) {
+            if (!Number.isInteger(update.nodeId) || !Number.isInteger(update.id) || !Number.isFinite(update.value)) {
+              throw new Error('Invalid parameter update');
+            }
+          }
+          for (const update of data.updates) {
+            this.engine.manifold_set_node_parameter(update.nodeId, update.id, update.value);
+          }
         } else if (data.type === 'partials' && this.engine) {
           const accepted = this.uploadPartials(data);
           this.port.postMessage({ type: 'partials-applied', requestId: data.requestId, accepted });

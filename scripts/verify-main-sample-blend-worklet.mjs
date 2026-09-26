@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { parameterRoutes } from '../web/src/audio/parameter-routing.js';
 
 const project = JSON.parse(readFileSync('projects/main-sample-blend/project.json', 'utf8'));
 const wasmBytes = readFileSync('web/dist/manifold_filter.wasm');
@@ -44,12 +45,15 @@ const processor = new Processor();
 await processor.port.onmessage({ data: { type: 'init', wasmBytes, graph: project.signal,
   sample: { nodeId: 2, sourceRate, stereo }, partials: [prepared, wavePrepared] } });
 assert.deepEqual(messages.at(-1), { type: 'ready' });
-for (const parameter of project.parameters) {
-  for (const nodeId of [parameter.nodeId, ...(parameter.mirrorNodeIds ?? [])]) {
-    await processor.port.onmessage({ data: { type: 'parameter', nodeId,
-      id: parameter.nodeParameterId, value: parameter.default } });
-  }
+const parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));
+const parameterValues = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
+async function publishParameter(id, value) {
+  parameterValues.set(id, value);
+  const updates = parameterRoutes(parameters, parameterValues, id);
+  if (updates.length) await processor.port.onmessage({ data: { type: 'parameter-batch', updates } });
+  return updates;
 }
+for (const parameter of project.parameters) await publishParameter(parameter.id, parameter.default);
 function render() {
   const left = new Float32Array(128), right = new Float32Array(128);
   processor.process([[]], [[left, right]]);
@@ -112,4 +116,40 @@ assert.ok(Math.max(...linkedBase.map((value, index) => Math.abs(value - linkedAd
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 66, value: 0 } });
 const restoredIndependent = settle();
 assert.ok(rms(restoredIndependent) > .01, 'independent gains must resume after unlinking');
+const linkedRoutes = await publishParameter(22, 1);
+assert.deepEqual(linkedRoutes, [
+  { nodeId: 11, id: 2, value: .5 }, { nodeId: 15, id: 0, value: 1 },
+  { nodeId: 13, id: 1, value: 1 }, { nodeId: 3, id: 1, value: 1 },
+]);
+assert.deepEqual(await publishParameter(20, .25), [], 'manual gain stays saved while amplitude link is active');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 1, value: 1 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 2, value: 0 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 12, id: 0, value: 1 } });
+await publishParameter(21, .25);
+const linkedSampleQuiet = settle();
+await publishParameter(21, .75);
+const linkedSampleLoud = settle();
+assert.ok(rms(linkedSampleLoud) > rms(linkedSampleQuiet) * 2,
+  'one linked voice amplitude must change the sample path');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 12, id: 0, value: -1 } });
+await publishParameter(21, .15);
+const linkedWaveQuiet = settle();
+await publishParameter(21, .45);
+const linkedWaveLoud = settle();
+assert.ok(rms(linkedWaveLoud) > rms(linkedWaveQuiet) * 2,
+  'one linked voice amplitude must change the oscillator path');
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 1, value: 0 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 4, id: 2, value: 1 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 14, id: 0, value: 1 } });
+await publishParameter(21, .15);
+const linkedAddQuiet = settle();
+await publishParameter(21, .45);
+const linkedAddLoud = settle();
+assert.ok(rms(linkedAddLoud) > rms(linkedAddQuiet) * 2,
+  'one linked voice amplitude must change the prepared Add path');
+const restoredRoutes = await publishParameter(22, 0);
+assert.deepEqual(restoredRoutes, [
+  { nodeId: 3, id: 1, value: .5 }, { nodeId: 13, id: 1, value: .5 },
+  { nodeId: 11, id: 2, value: 0 }, { nodeId: 15, id: 0, value: .25 },
+]);
 console.log(`Main sample blend worklet: one source → ${count} Morph and ${waveCount} wave partials; sample ${rms(sampleOnly).toFixed(3)}, base wave ${rms(waveOnly).toFixed(3)}, additive wave ${rms(additiveWave).toFixed(3)}, linked base/add ${rms(linkedBase).toFixed(3)}/${rms(linkedAdd).toFixed(3)} RMS`);

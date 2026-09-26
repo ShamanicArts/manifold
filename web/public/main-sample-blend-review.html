@@ -22,17 +22,17 @@
   </style>
 </head>
 <body><main>
-  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 114</div>
-  <h1>Following the old Main voice gain path</h1>
-  <p>The Main study now sends its sample through an explicit gain stage, the wave/sample crossfade, linked base/Add branch mixer, and a four-bus voice mixer. These stages reproduce the old Main sample-only gain chain for three voice amplitudes while preserving the live Rust/Wasm study.</p>
+  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 115</div>
+  <h1>One voice amplitude across three sources</h1>
+  <p>Link voice amplitude in the Main study to drive the oscillator at <em>amp</em> and the sample and prepared Add sources at <em>2 × amp</em>. The Sine banks clamp at 1, matching the original node limit. Unlinking restores their independent audition levels. The sample gain path also has exact compiled C++ stage comparisons.</p>
   <nav><a href="/?primitive=main-sample-blend">Play and compare the graph</a><a href="/phase-vocoder-review.html">Inspect Phase vocoder</a><a href="/spectral-target-review.html">Inspect Add / Morph recipes</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
   <section class="panel"><h2>Signal path</h2><div class="flow">
-    <div><strong>Base wave + decoded source</strong><span>Oscillator and vocoder output feed the equal-power crossfade. The sample has a separate gain stage before that crossfade.</span></div>
-    <div><strong>Two prepared Sine banks</strong><span>Wave and source targets meet at the Add crossfade; raw sample envelope shapes the resulting phrase.</span></div>
+    <div><strong>Base wave + decoded source</strong><span>One optional voice amplitude sets oscillator level and the sample gain stage before their equal-power crossfade.</span></div>
+    <div><strong>Two prepared Sine banks</strong><span>The same amplitude sets both bank levels, subject to the original 1.0 clamp. Wave and source targets then meet at the Add crossfade.</span></div>
     <div><strong>Branch and voice mixers</strong><span>Link base/Add depth or audition independently. The branch then enters the fourth input of a voice mixer, matching the old routing and centre pan.</span></div>
   </div></section>
   <section class="panel"><h2>Native Rust ↔ Rust/Wasm graph comparison</h2>
-    <p>Both runners load the same source and bounded targets. Twenty offline captures contain 16,384 stereo frames each at 48 kHz. Seventeen existing cases match native Rust and Wasm exactly except three wet vocoder cases, whose largest sample difference is 0.0000026. The three new sample-only amplitude cases also match a compiled chain of original C++ GainNode, CrossfaderNode, three-bus branch MixerNode, and four-bus voice MixerNode sample for sample. The gain columns show saved independent settings, which linked cases override.</p>
+    <p>Both runners load the same source and bounded targets. Twenty-five offline captures contain 16,384 stereo frames each at 48 kHz. The five new linked amplitude cases match native Rust and Wasm exactly; three wet vocoder cases among the earlier captures differ by at most 0.0000026. Three sample-only amplitude cases also match a compiled chain of original C++ GainNode, CrossfaderNode, three-bus branch MixerNode, and four-bus voice MixerNode sample for sample. The gain columns show saved independent settings, which linked cases override.</p>
     <table><thead><tr><th>Case</th><th>Independent base</th><th>Independent Add</th><th>Native RMS</th><th>Max Δ</th></tr></thead><tbody>
       <tr><td>Sample only</td><td>1</td><td>0</td><td>0.1244</td><td class="pass">0</td></tr>
       <tr><td>Add only</td><td>0</td><td>1</td><td>0.1120</td><td class="pass">0</td></tr>
@@ -52,6 +52,14 @@
       <tr><td>Linked depth 0.5 · equal</td><td>0.25</td><td>0.75</td><td>0.0833</td><td class="pass">0</td></tr>
       <tr><td>Linked depth 1 · Add</td><td>0.25</td><td>0.75</td><td>0.1116</td><td class="pass">0</td></tr>
     </tbody></table>
+    <h2 style="margin-top:24px">Linked voice amplitude across the authored graph</h2>
+    <table><thead><tr><th>Path</th><th>Voice amp</th><th>Native RMS</th><th>Max Δ Wasm</th></tr></thead><tbody>
+      <tr><td>Base wave</td><td>0.25</td><td>0.0511</td><td class="pass">0</td></tr>
+      <tr><td>Base wave</td><td>0.75</td><td>0.1532</td><td class="pass">0</td></tr>
+      <tr><td>Source Add</td><td>0.25</td><td>0.1120</td><td class="pass">0</td></tr>
+      <tr><td>Source Add</td><td>0.75</td><td>0.2241</td><td class="pass">0</td></tr>
+      <tr><td>Base + Add</td><td>0.50</td><td>0.0953</td><td class="pass">0</td></tr>
+    </tbody></table>
     <h2 style="margin-top:24px">Original C++ sample voice gain chain</h2>
     <table><thead><tr><th>Voice amp</th><th>Sample stage (2 × amp)</th><th>Native RMS</th><th>Max Δ C++ / Wasm</th></tr></thead><tbody>
       <tr><td>0.25</td><td>0.5</td><td>0.0622</td><td class="pass">0 / 0</td></tr>
@@ -60,6 +68,6 @@
     </tbody></table>
     <p class="small">In the workbench, open “Reference comparison” to switch cases, inspect left/right output and differences, and play native or Wasm audio.</p>
   </section>
-  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save 21 graph controls, target mode and recipe, temporal position, and the source. The phrase reference starts from analyzed source RMS and can be adjusted manually. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and prepares both bank targets, then restores pitch and branch gains. Version-7 state accepts prior versions 1–6; older files open with sample stage gain 1.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
-  <section class="panel"><h2>Legacy boundary and next route</h2><p class="scope">The compiled C++ comparison isolates the old gain, crossfade, and two mixer stages with the same fixture source. It establishes that chain's amplitude behavior, including both centre-pan reductions; it does not prove the complete old voice output or full project presets. The next calibration couples one voice amplitude to oscillator, sample, and Add sources. FM/Sync direction behavior and voice allocation follow. Old Morph forces the Add crossfade to its source endpoint; this v2 study keeps that position manually adjustable. The old Main voice checks an optional ADSR field but never constructs or connects that node, so note ADSR would be a deliberate v2 behavior.</p></section>
+  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save 23 graph controls, target mode and recipe, temporal position, and the source. The phrase reference starts from analyzed source RMS and can be adjusted manually. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and prepares both bank targets, then restores pitch and branch gains. Version-8 state accepts prior versions 1–7; older files open with voice amplitude linking off.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
+  <section class="panel"><h2>Legacy boundary and next route</h2><p class="scope">The compiled C++ comparison isolates the old sample gain, crossfade, and two mixer stages with the same fixture source. It establishes that chain's amplitude behavior, including both centre-pan reductions. The shared voice amplitude follows the old source amplitude settings, but the wave and Add cases have native Rust versus Wasm evidence only; prepared Sine banks remain a v2 approximation of parts of the old Add voice. Full old Main output, FM/Sync direction behavior, polyphonic allocation, and old presets remain. Old Morph forces the Add crossfade to its source endpoint; this study keeps that position manually adjustable. The old Main voice checks an optional ADSR field but never constructs or connects that node, so note ADSR would be a deliberate v2 behavior.</p></section>
 </main></body></html>

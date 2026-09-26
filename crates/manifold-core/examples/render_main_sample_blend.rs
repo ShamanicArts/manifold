@@ -10,8 +10,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 23 {
-        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND ADD_BLEND DEPTH LINKED SAMPLE_STAGE_GAIN".into());
+    if args.len() != 24 {
+        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER PHRASE_AMOUNT PHRASE_REFERENCE WAVE_PITCH WAVE_LEVEL WAVE_SHAPE BASE_BLEND ADD_BLEND DEPTH LINKED SAMPLE_STAGE_GAIN BANK_LEVEL".into());
     }
     let sample: Vec<f32> = std::fs::read(&args[1])?
         .chunks_exact(4)
@@ -39,6 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let depth: f32 = args[20].parse()?;
     let linked: u32 = args[21].parse()?;
     let sample_stage_gain: f32 = args[22].parse()?;
+    let bank_level: f32 = args[23].parse()?;
     let analysis = analyze_temporal_stereo(&sample, 48_000.0, 0..sample_frames, 128)
         .ok_or("source analysis failed")?;
     let source = analysis.partials_at(0.5, 0.6, 0.5);
@@ -106,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut bank = DEFAULTS;
     bank[0] = 220.0;
-    bank[1] = 0.5;
+    bank[1] = bank_level;
     let mut plan = GraphDescription {
         nodes: vec![
             NodeSpec {

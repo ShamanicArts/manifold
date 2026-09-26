@@ -1,5 +1,6 @@
 /** Browser devices, AudioWorklet lifecycle, and control transport. */
 import { midiFrame } from './midi-timing.js';
+import { parameterRoutes } from './parameter-routing.js';
 export class BrowserAudioHost {
   constructor(onStatus, onMeters = () => {}, onEqResponse = () => {}, onMidiTrace = () => {}) {
     this.onStatus = onStatus;
@@ -12,6 +13,7 @@ export class BrowserAudioHost {
     this.source = null;
     this.sourceStream = null;
     this.parameters = new Map();
+    this.parameterValues = new Map();
     this.pendingCapture = null;
     this.pendingRoutes = new Map();
     this.nextRouteRequest = 1;
@@ -100,6 +102,7 @@ export class BrowserAudioHost {
       await ready;
       this.ready = true;
       this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));
+      this.parameterValues = new Map(values);
       for (const [id, value] of values) this.setParameter(id, value);
       if (project.signal.inputSource === 'none') {
         this.source = null;
@@ -129,9 +132,10 @@ export class BrowserAudioHost {
   setParameter(id, value) {
     const parameter = this.parameters.get(id);
     if (!parameter) return;
-    for (const nodeId of [parameter.nodeId, ...(parameter.mirrorNodeIds ?? [])]) {
-      this.processor?.port.postMessage({ type: 'parameter', nodeId, id: parameter.nodeParameterId, value });
-    }
+    this.parameterValues.set(id, value);
+    const updates = parameterRoutes(this.parameters, this.parameterValues, id);
+    if (updates.length === 1) this.processor?.port.postMessage({ type: 'parameter', ...updates[0] });
+    else if (updates.length) this.processor?.port.postMessage({ type: 'parameter-batch', updates });
   }
 
   setPartials(partials) {
