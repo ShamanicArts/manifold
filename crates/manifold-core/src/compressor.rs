@@ -39,23 +39,29 @@ pub struct Compressor {
 }
 
 impl Compressor {
+    fn timing_coefficient(sample_rate: f32, milliseconds: f32) -> f32 {
+        let seconds = milliseconds * 0.001;
+        (-1.0 / (sample_rate * seconds)).exp().clamp(0.0001, 0.9999)
+    }
+
     pub fn new(sample_rate: f32, values: [f32; PARAM_COUNT]) -> Self {
         let mut params = defaults();
         for (id, value) in values.into_iter().enumerate() {
             assert!(set_value(&mut params, id as u32, value));
         }
-        let attack_time = params[2] * 0.001;
-        let release_time = params[3] * 0.001;
         Self {
+            attack_coefficient: Self::timing_coefficient(sample_rate, params[2]),
+            release_coefficient: Self::timing_coefficient(sample_rate, params[3]),
             params,
-            attack_coefficient: (-1.0 / (sample_rate * attack_time))
-                .exp()
-                .clamp(0.0001, 0.9999),
-            release_coefficient: (-1.0 / (sample_rate * release_time))
-                .exp()
-                .clamp(0.0001, 0.9999),
             envelope: 0.0,
         }
+    }
+
+    /// Legacy graph preparation refreshes timing coefficients while retaining
+    /// the detector envelope. A public attack/release setter alone does not.
+    pub fn reprepare(&mut self, sample_rate: f32) {
+        self.attack_coefficient = Self::timing_coefficient(sample_rate, self.params[2]);
+        self.release_coefficient = Self::timing_coefficient(sample_rate, self.params[3]);
     }
 
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {

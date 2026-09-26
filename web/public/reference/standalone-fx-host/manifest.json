@@ -120,6 +120,48 @@
       ],
       "focusFrame": 20096,
       "output": "delay-svf-delay-svf.f32"
+    },
+    {
+      "id": "delay-compressor-delay-compressor",
+      "label": "Delay → Compressor → Delay → Compressor · timing refresh",
+      "sourceSha256": "e28463ff8c421aa3f72dba02ae2cb209d31df2063ac1f089ef91bbdd99896153",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          3
+        ],
+        [
+          11008,
+          8
+        ],
+        [
+          11520,
+          3
+        ]
+      ],
+      "changes": [
+        [
+          10880,
+          4,
+          1
+        ],
+        [
+          10880,
+          5,
+          1
+        ]
+      ],
+      "focusFrame": 11520,
+      "output": "delay-compressor-delay-compressor.f32"
     }
   ]
 }

@@ -670,6 +670,13 @@ function renderWasm(engine, family, manifest, input, selected) {
         }
       }
     }
+    if (family === 'standalone-fx-host') {
+      for (const [frame, id, value] of selected.changes ?? []) {
+        if (frame === offset && engine.manifold_set_node_parameter(2, id, value) !== 1) {
+          throw new Error(`Wasm host slot parameter ${id} at ${frame} failed`);
+        }
+      }
+    }
     if (family === 'loop-capture') {
       for (const [frame, id, value] of selected.events) {
         if (frame === offset && engine.manifold_set_node_parameter(2, id, value) !== 1) {
@@ -999,14 +1006,15 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     }
     if (currentFamily === 'stereo-delay' || currentFamily === 'phaser' || currentFamily === 'chorus' || currentFamily === 'eq8' || currentFamily === 'reverb' || currentFamily === 'multitap' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || isFxSwitchFamily(currentFamily) || currentFamily === 'loop-capture' || currentFamily === 'sample-region' || currentFamily === 'sample-instrument') {
       const svfReturn = currentFamily === 'standalone-fx-host' && chooser.value === 'delay-svf-delay-svf' && byId('plot-window').value === 'tail';
+      const compressorReturn = currentFamily === 'standalone-fx-host' && chooser.value === 'delay-compressor-delay-compressor' && byId('plot-window').value === 'tail';
       const start = isFxSwitchFamily(currentFamily) && byId('plot-window').value === 'tail' ? (active.focusFrame ?? 16384) : 0;
-      const span = svfReturn ? 1024 : byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames - start;
+      const span = svfReturn || compressorReturn ? 1024 : byId('plot-window').value === 'start' ? manifest.stepFrame : manifest.frames - start;
       const oldLeft = peakView(active.legacy, start, span, 0);
       const newLeft = peakView(active.rust, start, span, 0);
       const oldRight = peakView(active.legacy, start, span, 1);
       const newRight = peakView(active.rust, start, span, 1);
       const difference = peakView(active.difference, start, span);
-      const scale = svfReturn ? Math.max(1e-5, ...oldLeft, ...oldRight) * 1.15 : Math.max(.1, ...oldLeft, ...oldRight);
+      const scale = svfReturn || compressorReturn ? Math.max(svfReturn ? 1e-5 : .01, ...oldLeft, ...oldRight) * 1.15 : Math.max(.1, ...oldLeft, ...oldRight);
       drawComparison(byId('comparison-wave'), [oldLeft, newLeft, oldRight, newRight], 0, 256, scale, ['#e2b084', '#9a8de8', '#d7c49d', '#80c5d5']);
       drawComparison(byId('comparison-diff'), [difference], 0, 256, Math.max(active.audioMax * 1.15, 1e-8), ['#a4d9bb']);
       return;
@@ -1109,7 +1117,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                     : family === 'fx-chain'
                       ? `drive ${selected.before[0]} → ${selected.after[0]} · delay mix ${selected.before[6]} → ${selected.after[6]} · cutoff ${selected.before[7]} → ${selected.after[7]} Hz`
                     : family === 'standalone-fx-host'
-                      ? `Delay → ${selected.switches.map(([frame, type]) => `${({ 0: 'Chorus', 1: 'Phaser', 6: 'SVF', 7: 'Reverb', 8: 'Delay' })[type]} at ${frame}`).join(' → ')} · ${selected.switches.at(-1)[1] === 7 ? 'Reverb tail cleared on return' : selected.switches.at(-1)[1] === 6 ? 'SVF state retained on return' : 'graph-reprepared gates'}`
+                      ? `Delay → ${selected.switches.map(([frame, type]) => `${({ 0: 'Chorus', 1: 'Phaser', 3: 'Compressor', 6: 'SVF', 7: 'Reverb', 8: 'Delay' })[type]} at ${frame}`).join(' → ')} · ${selected.changes?.length ? 'attack/release timing refreshed' : selected.switches.at(-1)[1] === 7 ? 'Reverb tail cleared on return' : selected.switches.at(-1)[1] === 6 ? 'SVF state retained on return' : 'graph-reprepared gates'}`
                     : family === 'standalone-fx-routing'
                       ? `Delay → Chorus at ${selected.switches[0][0]} → Delay at ${selected.switches[1][0]} · visited tails keep processing`
                     : family === 'standalone-fx'
@@ -1141,6 +1149,9 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     byId('plot-title').textContent = family === 'fft-spectrum' ? '32 FFT bands · last block' : family === 'compressor' || family === 'limiter' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'phaser' ? 'Stereo phaser output · peak level' : family === 'chorus' ? 'Stereo chorus output · peak level' : family === 'eq8' ? 'EQ8 stereo output · peak level' : family === 'eq-node' ? 'Three-band EQ stereo output' : family === 'reverb' ? 'Stereo reverb tail · peak level' : family === 'ring-modulator' ? 'Ring-modulated stereo output' : family === 'transient-shaper' ? 'Transient strength · mean per block' : family === 'bitcrusher' ? 'Quantized stereo output' : family === 'multitap' ? 'Multitap echoes · stereo peak level' : family === 'stereo-widener' ? 'Output stereo correlation · −1 to +1' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Amplitude envelope · left channel' : 'Output waveform';
     if (family === 'standalone-fx-host' && selected.id === 'delay-svf-delay-svf') {
       byId('plot-title').textContent = 'SVF state after graph rebuild · stereo peak level';
+    }
+    if (family === 'standalone-fx-host' && selected.id === 'delay-compressor-delay-compressor') {
+      byId('plot-title').textContent = 'Compressor timing after graph rebuild · stereo peak level';
     }
     document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
     document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Maximum meter difference' : 'Maximum difference';

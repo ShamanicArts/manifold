@@ -35,11 +35,24 @@ fn main() -> std::io::Result<()> {
     let mut output = BufWriter::new(File::create(path)?);
     if matches!(
         mode.as_deref(),
-        Some("--slot" | "--host-slot" | "--host-phaser" | "--host-reverb" | "--host-svf")
+        Some(
+            "--slot"
+                | "--host-slot"
+                | "--host-phaser"
+                | "--host-reverb"
+                | "--host-svf"
+                | "--host-compressor"
+        )
     ) {
         let constructor = if matches!(
             mode.as_deref(),
-            Some("--host-slot" | "--host-phaser" | "--host-reverb" | "--host-svf")
+            Some(
+                "--host-slot"
+                    | "--host-phaser"
+                    | "--host-reverb"
+                    | "--host-svf"
+                    | "--host-compressor"
+            )
         ) {
             EffectSlot::new_host_switch
         } else {
@@ -58,11 +71,22 @@ fn main() -> std::io::Result<()> {
                         Some("--host-phaser") => 1.0,
                         Some("--host-reverb") => 7.0,
                         Some("--host-svf") => 6.0,
+                        Some("--host-compressor") => 3.0,
                         _ => 0.0,
                     },
                 );
             }
-            if offset == 16384 {
+            if offset == 10880 && mode.as_deref() == Some("--host-compressor") {
+                slot.set_parameter(4, 1.0);
+                slot.set_parameter(5, 1.0);
+            }
+            if offset == 11008 && mode.as_deref() == Some("--host-compressor") {
+                slot.set_parameter(0, 8.0);
+            }
+            if offset == 11520 && mode.as_deref() == Some("--host-compressor") {
+                slot.set_parameter(0, 3.0);
+            }
+            if offset == 16384 && mode.as_deref() != Some("--host-compressor") {
                 slot.set_parameter(0, 8.0);
             }
             if offset == 24576 && mode.as_deref() == Some("--host-reverb") {

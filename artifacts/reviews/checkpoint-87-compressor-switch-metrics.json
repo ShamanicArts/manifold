@@ -1,0 +1,51 @@
+{
+  "sourceSha256": "e28463ff8c421aa3f72dba02ae2cb209d31df2063ac1f089ef91bbdd99896153",
+  "events": [
+    "select_delay_first_visit_transfers=0",
+    "select_compressor_transfers=0",
+    "reselect_delay_transfers=1",
+    "reselect_compressor_transfers=1"
+  ],
+  "max": 2.2351741790771484e-08,
+  "rms": 9.434848530945706e-10,
+  "segments": {
+    "delay": {
+      "max": 2.2351741790771484e-08
+    },
+    "compressor": {
+      "max": 1.4901161193847656e-08
+    },
+    "returnedDelay": {
+      "max": 1.1175870895385742e-08
+    },
+    "returnedCompressor": {
+      "max": 1.4901161193847656e-08
+    }
+  },
+  "boundaryLeft": {
+    "8192": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "10880": {
+      "old": -0.034734733402729034,
+      "rust": -0.034734733402729034
+    },
+    "11008": {
+      "old": 0.01256471686065197,
+      "rust": 0.012564719654619694
+    },
+    "11520": {
+      "old": -0.04253014549612999,
+      "rust": -0.04253015294671059
+    },
+    "11521": {
+      "old": -0.04210815206170082,
+      "rust": -0.04210815578699112
+    },
+    "12000": {
+      "old": 3.5072039749730667e-16,
+      "rust": 3.5072042396708627e-16
+    }
+  }
+}

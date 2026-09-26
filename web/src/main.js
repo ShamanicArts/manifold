@@ -71,8 +71,8 @@ hostFxProject.id = 'manifold.standalone-fx-host';
 hostFxProject.name = 'FX host switch';
 hostFxProject.signal.nodes.find((node) => node.id === 2).type = 'effect-slot-host-switch';
 const hostFxChoice = hostFxProject.parameters.find((parameter) => parameter.id === 0);
-hostFxChoice.choices = ['Chorus', 'Phaser', 'SVF Filter', 'Reverb', 'Stereo Delay'];
-hostFxChoice.choiceValues = [0, 1, 6, 7, 8];
+hostFxChoice.choices = ['Chorus', 'Phaser', 'Compressor', 'SVF Filter', 'Reverb', 'Stereo Delay'];
+hostFxChoice.choiceValues = [0, 1, 3, 6, 7, 8];
 const isFxFamily = (family) => ['standalone-fx', 'standalone-fx-routing', 'standalone-fx-host'].includes(family);
 const hasFxState = (family) => family === 'standalone-fx' || family === 'standalone-fx-routing';
 const projects = {
@@ -277,7 +277,7 @@ const projects = {
   'standalone-fx-host': {
     project: hostFxProject,
     title: 'FX host switch',
-    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with Chorus, Phaser, SVF, or Reverb branches measured from the old C++ graph runtime; these five effect types have audited reprepare behavior.',
+    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with Chorus, Phaser, Compressor, SVF, or Reverb branches measured from the old C++ graph runtime; these six effect types have audited reprepare behavior.',
     signal: 'Live path: input → visited effects → re-prepared wet gate → legacy gain/mix → output',
   },
   'loop-capture': {
