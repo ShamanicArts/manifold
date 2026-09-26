@@ -14,6 +14,7 @@ globalThis.AudioWorkletProcessor = class {
 globalThis.registerProcessor = (_name, processor) => { Processor = processor; };
 await import(pathToFileURL(resolve('web/src/audio/filter-processor.js')).href);
 const processor = new Processor();
+const control = new Processor();
 const graph = {
   nodes: [{ id: 2, type: 'main-voice-bank', a: 9 }, { id: 3, type: 'output' }],
   connections: [{ from: 2, to: 3, inputPort: 0 }],
@@ -23,17 +24,36 @@ await processor.port.onmessage({ data: {
   sample: { nodeId: 2, sourceRate: 48_000, stereo: new Float32Array(48_000 * 2).fill(0.5) },
 } });
 assert.deepEqual(messages.at(-1), { type: 'ready' });
+await control.port.onmessage({ data: {
+  type: 'init', wasmBytes: readFileSync('web/dist/manifold_filter.wasm'), graph,
+  sample: { nodeId: 2, sourceRate: 48_000, stereo: new Float32Array(48_000 * 2).fill(0.5) },
+} });
+assert.deepEqual(messages.at(-1), { type: 'ready' });
+for (const [id, value] of [[1, 1], [11, 0.001], [14, 0.001]]) {
+  await control.port.onmessage({ data: { type: 'parameter', nodeId: 2, id, value } });
+}
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 1, value: 1 } });
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 11, value: 0.001 } });
 await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 14, value: 0.001 } });
 for (const note of [60, 64, 67]) {
   await processor.port.onmessage({ data: { type: 'event', nodeId: 2, kind: 0, channel: 0, note, velocity: 100 } });
+  await control.port.onmessage({ data: { type: 'event', nodeId: 2, kind: 0, channel: 0, note, velocity: 100 } });
 }
 const left = new Float32Array(128);
 const right = new Float32Array(128);
+const controlLeft = new Float32Array(128);
+const controlRight = new Float32Array(128);
 processor.process([], [[left, right]]);
+control.process([], [[controlLeft, controlRight]]);
 globalThis.currentFrame += 128;
 assert.ok(left[127] > 0.05 && right[127] > 0.05);
+assert.deepEqual(left, controlLeft);
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 6, value: 1 } });
+await processor.port.onmessage({ data: { type: 'parameter', nodeId: 2, id: 7, value: 0.9 } });
+processor.process([], [[left, right]]);
+control.process([], [[controlLeft, controlRight]]);
+globalThis.currentFrame += 128;
+assert.ok(left.some((sample, frame) => Math.abs(sample - controlLeft[frame]) > 0.005));
 await processor.port.onmessage({ data: { type: 'meter-request', nodeId: 2, count: 9 } });
 assert.equal(messages.at(-1).values[0], 3);
 await processor.port.onmessage({ data: { type: 'event', nodeId: 2, kind: 1, channel: 0, note: 64 } });
@@ -45,4 +65,4 @@ assert.ok(left[127] > 0.02);
 await processor.port.onmessage({ data: { type: 'event', nodeId: 2, kind: 2 } });
 processor.process([], [[left, right]]);
 assert.ok(left.every((sample) => sample === 0));
-console.log('Main voice bank worklet: shared sample, chord, release, panic, nine-value meter passed');
+console.log('Main voice bank worklet: shared sample, chord, live Ring mode, release, panic, nine-value meter passed');

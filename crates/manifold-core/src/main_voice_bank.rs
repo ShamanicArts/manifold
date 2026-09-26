@@ -1,4 +1,4 @@
-//! Prepared, eight-voice Main base branch. The original UI's voice ownership is
+//! Prepared, eight-voice Main wave/sample and Ring branches. The original UI's voice ownership is
 //! preserved; per-sample ADSR timing is an explicit v2 change from its UI tick.
 
 use crate::envelope::AdsrEnvelope;
@@ -8,12 +8,15 @@ use crate::main_pitch::route_main_pitch;
 use crate::main_voice_allocator::{EnvelopePhase, MAIN_VOICE_COUNT, MainVoiceAllocator};
 use crate::oscillator::Oscillator;
 use crate::phase_vocoder::PhaseVocoder;
+use crate::ring_modulator::RingModulator;
 use crate::sample_region::SampleRegion;
 
 struct MainVoice {
     player: SampleRegion,
     oscillator: Oscillator,
     vocoder: PhaseVocoder,
+    ring_sample_to_wave: RingModulator,
+    ring_wave_to_sample: RingModulator,
     envelope: AdsrEnvelope,
     motion: MainDirectionalMotion,
 }
@@ -25,6 +28,9 @@ pub struct MainVoiceBank {
     raw_right: Vec<f32>,
     pitched_left: Vec<f32>,
     pitched_right: Vec<f32>,
+    wave: Vec<f32>,
+    ring_left: Vec<f32>,
+    ring_right: Vec<f32>,
     waveform: u32,
     blend: f32,
     root_note: f32,
@@ -53,6 +59,8 @@ impl MainVoiceBank {
                 player: SampleRegion::new(sample_rate),
                 oscillator: Oscillator::new(sample_rate, 261.62555, 0.0, 0),
                 vocoder: PhaseVocoder::new(sample_rate, [0.0, 0.0, 1.0, 0.0, order as f32]),
+                ring_sample_to_wave: RingModulator::new(sample_rate, [120.0, 0.0, 0.0, 0.0, 0.0]),
+                ring_wave_to_sample: RingModulator::new(sample_rate, [120.0, 0.0, 0.0, 0.0, 0.0]),
                 envelope,
                 motion: MainDirectionalMotion::new(sample_rate),
             }
@@ -64,6 +72,9 @@ impl MainVoiceBank {
             raw_right: vec![0.0; max_frames],
             pitched_left: vec![0.0; max_frames],
             pitched_right: vec![0.0; max_frames],
+            wave: vec![0.0; max_frames],
+            ring_left: vec![0.0; max_frames],
+            ring_right: vec![0.0; max_frames],
             waveform: 0,
             blend: 0.0,
             root_note: 60.0,
@@ -108,10 +119,20 @@ impl MainVoiceBank {
             3 => self.keytrack = value.round().clamp(0.0, 2.0) as u32,
             4 => self.sample_pitch = value.clamp(-24.0, 24.0),
             5 => self.pitch_mode = value.round().clamp(0.0, 2.0) as u32,
-            6 if value == 0.0 || value == 2.0 || value == 3.0 => {
+            6 if (0.0..=3.0).contains(&value) && value.fract() == 0.0 => {
                 self.direction_mode = value as u32;
                 for voice in &mut self.voices {
-                    voice.motion.set_parameter(0, value);
+                    voice
+                        .motion
+                        .set_parameter(0, if value == 1.0 { 0.0 } else { value });
+                    if value != 1.0 {
+                        voice
+                            .ring_sample_to_wave
+                            .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
+                        voice
+                            .ring_wave_to_sample
+                            .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
+                    }
                 }
             }
             7 => self.depth = value.clamp(0.0, 1.0),
@@ -142,6 +163,12 @@ impl MainVoiceBank {
                 voice.envelope.reset();
                 voice.envelope.set_gate(true);
                 voice.vocoder.reset();
+                voice
+                    .ring_sample_to_wave
+                    .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
+                voice
+                    .ring_wave_to_sample
+                    .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
                 voice.motion.set_parameter(1, frequency);
                 voice.motion.set_parameter(8, 1.0);
                 voice
@@ -173,6 +200,12 @@ impl MainVoiceBank {
             voice.oscillator.set_parameter(2, 0.0);
             voice.motion.set_parameter(8, 0.0);
             voice.vocoder.reset();
+            voice
+                .ring_sample_to_wave
+                .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
+            voice
+                .ring_wave_to_sample
+                .reset_to([120.0, 0.0, 0.0, 0.0, 0.0]);
         }
     }
 
@@ -269,17 +302,67 @@ impl MainVoiceBank {
                     &mut self.pitched_right[..frames],
                 ],
             );
+            let amp = slot.target_amp;
+            for frame in 0..frames {
+                self.wave[frame] = voice.oscillator.process_sample(Some(self.raw_left[frame]));
+                self.pitched_left[frame] *= 2.0 * amp;
+                self.pitched_right[frame] *= 2.0 * amp;
+            }
+            if self.direction_mode == 1 {
+                let root_frequency =
+                    440.0_f64 * 2.0_f64.powf((self.root_note as f64 - 69.0) / 12.0);
+                let sample_frequency =
+                    (root_frequency * pitch.desired_sample_ratio as f64).clamp(20.0, 8000.0) as f32;
+                for (ring, frequency, spread) in [
+                    (
+                        &mut voice.ring_sample_to_wave,
+                        wave_frequency,
+                        self.wave_to_sample,
+                    ),
+                    (
+                        &mut voice.ring_wave_to_sample,
+                        sample_frequency,
+                        self.sample_to_wave,
+                    ),
+                ] {
+                    ring.set_parameter(0, frequency);
+                    ring.set_parameter(1, self.depth);
+                    ring.set_parameter(2, 1.0);
+                    ring.set_parameter(3, spread * 180.0);
+                    ring.set_parameter(4, 1.0);
+                }
+                voice.ring_sample_to_wave.process_planar(
+                    [&self.wave[..frames], &self.wave[..frames]],
+                    Some([&self.pitched_left[..frames], &self.pitched_right[..frames]]),
+                    [&mut self.raw_left[..frames], &mut self.raw_right[..frames]],
+                );
+                voice.ring_wave_to_sample.process_planar(
+                    [&self.pitched_left[..frames], &self.pitched_right[..frames]],
+                    Some([&self.wave[..frames], &self.wave[..frames]]),
+                    [
+                        &mut self.ring_left[..frames],
+                        &mut self.ring_right[..frames],
+                    ],
+                );
+            }
             for frame in 0..frames {
                 let envelope = voice.envelope.process_sample();
-                let wave = voice.oscillator.process_sample(Some(self.raw_left[frame]));
-                let amp = slot.target_amp;
                 let scaling = envelope * self.master * 0.5;
-                left[frame] += (wave * wave_gain
-                    + self.pitched_left[frame] * 2.0 * amp * sample_gain)
-                    * scaling;
-                right[frame] += (wave * wave_gain
-                    + self.pitched_right[frame] * 2.0 * amp * sample_gain)
-                    * scaling;
+                if self.direction_mode == 1 {
+                    left[frame] += (self.raw_left[frame] * wave_gain
+                        + self.ring_left[frame] * sample_gain)
+                        * scaling;
+                    right[frame] += (self.raw_right[frame] * wave_gain
+                        + self.ring_right[frame] * sample_gain)
+                        * scaling;
+                } else {
+                    left[frame] += (self.wave[frame] * wave_gain
+                        + self.pitched_left[frame] * sample_gain)
+                        * scaling;
+                    right[frame] += (self.wave[frame] * wave_gain
+                        + self.pitched_right[frame] * sample_gain)
+                        * scaling;
+                }
             }
             let phase = if voice.envelope.is_idle() {
                 EnvelopePhase::Idle
@@ -362,5 +445,55 @@ mod tests {
             note: 60,
         });
         assert!(bank.allocator.slots()[0].gate);
+    }
+
+    #[test]
+    fn ring_uses_both_live_sources_and_depth_changes_the_held_note() {
+        let render = |mode: f32, depth: f32| {
+            let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+            assert!(bank.load_stereo(vec![0.5; 8_000 * 2], 8_000.0));
+            bank.set_parameter(0, 1.0);
+            bank.set_parameter(1, 0.0);
+            bank.set_parameter(6, mode);
+            bank.set_parameter(7, depth);
+            bank.event(EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            });
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            for _ in 0..8 {
+                bank.process_planar([&mut left, &mut right]);
+            }
+            (left, right)
+        };
+        let (base_l, base_r) = render(0.0, 0.0);
+        let (dry_ring_l, dry_ring_r) = render(1.0, 0.0);
+        let (wet_ring_l, wet_ring_r) = render(1.0, 1.0);
+        assert!(
+            base_l
+                .iter()
+                .zip(&dry_ring_l)
+                .all(|(a, b)| (a - b).abs() < 1e-6)
+        );
+        assert!(
+            base_r
+                .iter()
+                .zip(&dry_ring_r)
+                .all(|(a, b)| (a - b).abs() < 1e-6)
+        );
+        assert!(
+            base_l
+                .iter()
+                .zip(&wet_ring_l)
+                .any(|(a, b)| (a - b).abs() > 0.01)
+        );
+        assert!(
+            base_r
+                .iter()
+                .zip(&wet_ring_r)
+                .any(|(a, b)| (a - b).abs() > 0.01)
+        );
     }
 }

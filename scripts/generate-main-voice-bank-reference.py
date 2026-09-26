@@ -47,6 +47,8 @@ specs = [
      [(index * 173, 0, 0, 60 + index, 100) for index in range(9)] + [(4500, 1, 0, 60, 0)], []),
     ("fm-chord", "Per-voice FM motion", params(**{"1": 0, "6": 2, "7": .9, "9": .5}),
      [(0, 0, 0, 60, 100), (611, 0, 0, 67, 120)], []),
+    ("ring-chord", "Per-voice crossed wave/sample modulation", params(**{"0": 1, "1": -.15, "6": 1, "7": .9}),
+     [(0, 0, 0, 60, 100), (611, 0, 0, 67, 120)], []),
     ("vocoder-chord", "Per-voice spectral pitch", params(**{"1": 1, "5": 1, "4": 7}),
      [(0, 0, 0, 60, 100), (611, 0, 0, 67, 120)], []),
     ("sync-chord", "Per-voice Sync retrigger", params(**{"1": -.2, "6": 3}),

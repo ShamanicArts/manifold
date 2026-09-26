@@ -368,8 +368,8 @@ const projects = {
   'main-voice-bank': {
     project: mainVoiceBankProject,
     title: 'Main voice bank',
-    description: 'Eight independent Main base voices share one decoded sample. Rust owns note slots, wave/sample pitch and motion, and sample-clock envelopes. Add, Morph, Ring, and the complete old project graph are still separate work.',
-    signal: 'MIDI → eight wave + sample + vocoder voices → envelopes → stereo sum',
+    description: 'Eight independent Main voices share one decoded sample. Rust owns note slots, wave/sample pitch, Ring/FM/Sync modes, and sample-clock envelopes. Add, Morph, and the complete old project graph remain in progress.',
+    signal: 'MIDI → eight wave + sample + Ring/FM/Sync voices → envelopes → stereo sum',
   },
   'spectrum-analyzer': {
     project: spectrumAnalyzerProject,
@@ -1630,7 +1630,7 @@ function renderPrimitive(family) {
   if (family === 'main-voice-bank') {
     const help = document.createElement('p');
     help.className = 'control-help';
-    help.textContent = 'This is the Main base wave/sample branch with eight independent notes. The sample-clock ADSR is a v2 timing change; Add, Morph, Ring, and full project state are next.';
+    help.textContent = 'This is the Main wave/sample branch with eight independent notes and Ring/FM/Sync. The sample-clock ADSR is a v2 timing change; Add, Morph, and full project state are next.';
     byId('controls').appendChild(help);
   }
   if (family === 'midi-transpose') {

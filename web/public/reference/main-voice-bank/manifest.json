@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Main base voice bank; not original JUCE audio",
-  "sourceSha256": "935cb352ec709378cef0cd642295bc4c4891d509ecef080d01b2ede891e4e217",
+  "sourceSha256": "5d4ddf8a52942f17f667cf77312295b6d0dfbf20b07b7c45b91055f53b963d08",
   "sampleRate": 48000,
   "sampleSourceRate": 32000,
   "sampleFrames": 4096,
@@ -304,6 +304,48 @@
       "changes": [],
       "blockSize": 128,
       "output": "fm-chord.f32"
+    },
+    {
+      "id": "ring-chord",
+      "label": "Per-voice crossed wave/sample modulation",
+      "parameters": [
+        1,
+        -0.15,
+        60,
+        2,
+        0,
+        0,
+        1,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.005,
+        0.08,
+        0.8,
+        0.05,
+        1,
+        1
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          100
+        ],
+        [
+          611,
+          0,
+          0,
+          67,
+          120
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "ring-chord.f32"
     },
     {
       "id": "vocoder-chord",

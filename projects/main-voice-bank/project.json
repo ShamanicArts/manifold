@@ -22,7 +22,7 @@
     { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "keytrack", "label": "Keytrack", "kind": "select", "choices": ["Wave", "Sample", "Both"], "default": 2 },
     { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "sample-pitch", "label": "Sample pitch", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "st" },
     { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "pitch-mode", "label": "Pitch engine", "kind": "select", "choices": ["Classic", "Vocoder", "Vocoder HQ"], "default": 0 },
-    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "direction", "label": "Direction", "kind": "select", "choices": ["Normal", "FM", "Sync"], "choiceValues": [0, 2, 3], "default": 0 },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "blend-mode", "label": "Blend mode", "kind": "select", "choices": ["Normal", "Ring", "FM", "Sync"], "choiceValues": [0, 1, 2, 3], "default": 0 },
     { "id": 7, "nodeId": 2, "nodeParameterId": 7, "hostId": "depth", "label": "Direction depth", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 8, "nodeId": 2, "nodeParameterId": 8, "hostId": "wave-to-sample", "label": "Wave to sample", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
     { "id": 9, "nodeId": 2, "nodeParameterId": 9, "hostId": "sample-to-wave", "label": "Sample to wave", "kind": "float", "min": 0, "max": 1, "default": 0 },
