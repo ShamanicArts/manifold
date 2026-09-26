@@ -28,6 +28,7 @@ use crate::midi_velocity_mapper::MidiVelocityMapper;
 use crate::multitap_delay::{self, MultitapDelay};
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
+use crate::phase_vocoder::{self, PhaseVocoder};
 use crate::phaser::Phaser;
 use crate::pitch_shifter::{self, PitchShifter};
 use crate::resonator::{self, Resonator};
@@ -211,6 +212,9 @@ pub enum NodeKind {
     PitchShifter {
         params: [f32; pitch_shifter::PARAM_COUNT],
     },
+    PhaseVocoder {
+        params: [f32; phase_vocoder::PARAM_COUNT],
+    },
     Shimmer {
         params: [f32; shimmer::PARAM_COUNT],
     },
@@ -320,6 +324,7 @@ impl NodeKind {
             | Self::ReverseDelay { .. }
             | Self::Stutter { .. }
             | Self::PitchShifter { .. }
+            | Self::PhaseVocoder { .. }
             | Self::Shimmer { .. }
             | Self::Granulator { .. }
             | Self::SlewControl { .. }
@@ -486,6 +491,7 @@ impl NodeKind {
             Self::ReverseDelay { params } => params.iter().all(|value| value.is_finite()),
             Self::Stutter { params } => params.iter().all(|value| value.is_finite()),
             Self::PitchShifter { params } => params.iter().all(|value| value.is_finite()),
+            Self::PhaseVocoder { params } => params.iter().all(|value| value.is_finite()),
             Self::Shimmer { params } => params.iter().all(|value| value.is_finite()),
             Self::Granulator { params } => params.iter().all(|value| value.is_finite()),
             Self::EffectSlot {
@@ -651,6 +657,7 @@ enum Kernel {
     ReverseDelay(ReverseDelay),
     Stutter(Stutter),
     PitchShifter(PitchShifter),
+    PhaseVocoder(PhaseVocoder),
     Shimmer(Shimmer),
     Granulator(Granulator),
     EffectSlot(EffectSlot),
@@ -837,6 +844,9 @@ impl Kernel {
             NodeKind::PitchShifter { params } => {
                 Self::PitchShifter(PitchShifter::new(sample_rate, max_frames, *params))
             }
+            NodeKind::PhaseVocoder { params } => {
+                Self::PhaseVocoder(PhaseVocoder::new(sample_rate, *params))
+            }
             NodeKind::Shimmer { params } => {
                 Self::Shimmer(Shimmer::new(sample_rate, max_frames, *params))
             }
@@ -1017,6 +1027,7 @@ impl Kernel {
             (Self::ReverseDelay(delay), id) => return delay.set_parameter(id, value),
             (Self::Stutter(stutter), id) => return stutter.set_parameter(id, value),
             (Self::PitchShifter(shifter), id) => return shifter.set_parameter(id, value),
+            (Self::PhaseVocoder(vocoder), id) => return vocoder.set_parameter(id, value),
             (Self::Shimmer(shimmer), id) => return shimmer.set_parameter(id, value),
             (Self::Granulator(granulator), id) => return granulator.set_parameter(id, value),
             (Self::EffectSlot(slot), id) => return slot.set_parameter(id, value),
@@ -1944,6 +1955,9 @@ impl ExecutionPlan {
                 }
                 Kernel::PitchShifter(shifter) => {
                     shifter.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::PhaseVocoder(vocoder) => {
+                    vocoder.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
                 Kernel::Shimmer(shimmer) => {
                     shimmer.process_planar([source(0, 0), source(0, 1)], [left, right])

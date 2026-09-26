@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "reference": "original JUCE PhaseVocoderNode and native Rust",
+  "sourceSha256": "999201a1277f29ca04c5378a9b1bd99b116a2beb99c588dd1a9bf8547f0d9ec0",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 16384,
+  "stepFrame": 8192,
+  "blockSize": 128,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "dry",
+      "label": "Exact dry bypass",
+      "before": [
+        0,
+        7,
+        1,
+        0,
+        11
+      ],
+      "output": "dry-cpp.f32",
+      "rustOutput": "dry-rust.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "bin-unison",
+      "label": "Bin mapping \u00b7 unison",
+      "before": [
+        0,
+        0,
+        1,
+        1,
+        11
+      ],
+      "output": "bin-unison-cpp.f32",
+      "rustOutput": "bin-unison-rust.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "bin-up",
+      "label": "Bin mapping \u00b7 +7 st",
+      "before": [
+        0,
+        7,
+        1,
+        1,
+        11
+      ],
+      "output": "bin-up-cpp.f32",
+      "rustOutput": "bin-up-rust.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "bin-down",
+      "label": "Bin mapping \u00b7 \u22127 st",
+      "before": [
+        0,
+        -7,
+        1,
+        1,
+        11
+      ],
+      "output": "bin-down-cpp.f32",
+      "rustOutput": "bin-down-rust.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "hq-unison",
+      "label": "Stretch + resample \u00b7 unison",
+      "before": [
+        1,
+        0,
+        1,
+        1,
+        11
+      ],
+      "output": "hq-unison-cpp.f32",
+      "rustOutput": "hq-unison-rust.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "hq-up",
+      "label": "Stretch + resample \u00b7 +7 st",
+      "before": [
+        1,
+        7,
+        1,
+        1,
+        11
+      ],
+      "output": "hq-up-cpp.f32",
+      "rustOutput": "hq-up-rust.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "hq-time",
+      "label": "Stretch + resample \u00b7 1.5\u00d7 time",
+      "before": [
+        1,
+        0,
+        1.5,
+        1,
+        11
+      ],
+      "output": "hq-time-cpp.f32",
+      "rustOutput": "hq-time-rust.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "bin-512",
+      "label": "Bin mapping \u00b7 512 FFT",
+      "before": [
+        0,
+        7,
+        1,
+        1,
+        9
+      ],
+      "output": "bin-512-cpp.f32",
+      "rustOutput": "bin-512-rust.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "bin-4096",
+      "label": "Bin mapping \u00b7 4096 FFT",
+      "before": [
+        0,
+        7,
+        1,
+        1,
+        12
+      ],
+      "output": "bin-4096-cpp.f32",
+      "rustOutput": "bin-4096-rust.f32",
+      "blockSize": 128
+    }
+  ]
+}

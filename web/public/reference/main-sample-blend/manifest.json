@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Main sample blend study",
-  "sourceSha256": "1ae5dc9386b2041eb0f2a14437b74bf9077e37fff86fc18ed0874c71d9ce6e60",
+  "sourceSha256": "dd99c3401bd73a5cdf79c3db4ea30eb0a9054d53849e2a3fc054e74f0b6ab998",
   "sampleRate": 48000,
   "sampleSourceRate": 48000,
   "sampleFrames": 48000,
@@ -13,10 +13,17 @@
   "cases": [
     {
       "id": "sample",
-      "label": "Sample branch alone",
+      "label": "Sample branch alone \u00b7 dry vocoder",
       "mode": 1,
       "sampleGain": 1.0,
       "bankGain": 0.0,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
       "target": "sample-target.f32",
       "output": "sample.f32",
       "blockSize": 128
@@ -27,6 +34,13 @@
       "mode": 1,
       "sampleGain": 0.0,
       "bankGain": 1.0,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
       "target": "add-target.f32",
       "output": "add.f32",
       "blockSize": 128
@@ -37,6 +51,13 @@
       "mode": 2,
       "sampleGain": 0.0,
       "bankGain": 1.0,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
       "target": "morph-target.f32",
       "output": "morph.f32",
       "blockSize": 128
@@ -47,8 +68,66 @@
       "mode": 2,
       "sampleGain": 0.5,
       "bankGain": 0.5,
+      "vocoder": [
+        0,
+        0,
+        1,
+        0,
+        11
+      ],
       "target": "blend-target.f32",
       "output": "blend.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "pvoc-bin",
+      "label": "Sample \u00b7 bin-map +7 st",
+      "mode": 1,
+      "sampleGain": 1.0,
+      "bankGain": 0.0,
+      "vocoder": [
+        0,
+        7,
+        1,
+        1,
+        11
+      ],
+      "target": "pvoc-bin-target.f32",
+      "output": "pvoc-bin.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "pvoc-hq",
+      "label": "Sample \u00b7 stretch/resample +7 st",
+      "mode": 1,
+      "sampleGain": 1.0,
+      "bankGain": 0.0,
+      "vocoder": [
+        1,
+        7,
+        1,
+        1,
+        11
+      ],
+      "target": "pvoc-hq-target.f32",
+      "output": "pvoc-hq.f32",
+      "blockSize": 128
+    },
+    {
+      "id": "pvoc-time",
+      "label": "Sample \u00b7 1.5\u00d7 time stretch",
+      "mode": 1,
+      "sampleGain": 1.0,
+      "bankGain": 0.0,
+      "vocoder": [
+        1,
+        0,
+        1.5,
+        1,
+        11
+      ],
+      "target": "pvoc-time-target.f32",
+      "output": "pvoc-time.f32",
       "blockSize": 128
     }
   ]

@@ -1,6 +1,6 @@
-// Portable version-1 state for the authored Main sample blend study.
+// Portable version-2 state for the authored Main sample blend study.
 // User audio is embedded as bounded interleaved stereo float32 PCM.
-const VERSION = 1;
+const VERSION = 2;
 const MAX_FRAMES = 48_000 * 30;
 const MAX_LABEL = 200;
 
@@ -40,19 +40,24 @@ function decodePcm(encoded, frames) {
 }
 
 export function parseMainSampleBlendState(document, project) {
-  if (document?.schemaVersion !== VERSION || document?.projectId !== project.id) {
+  const firstStudy = document?.schemaVersion === 1;
+  if ((!firstStudy && document?.schemaVersion !== VERSION) || document?.projectId !== project.id) {
     throw new Error('This state belongs to a different Manifold v2 project.');
   }
   const parameters = document.parameters;
+  const savedParameters = firstStudy ? project.parameters.filter((parameter) => parameter.id < 6) : project.parameters;
   if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)
-    || Object.keys(parameters).length !== project.parameters.length) {
-    throw new Error(`State needs ${project.parameters.length} parameter values.`);
+    || Object.keys(parameters).length !== savedParameters.length) {
+    throw new Error(`State needs ${savedParameters.length} parameter values.`);
   }
   const checkedParameters = {};
   for (const parameter of project.parameters) {
-    const value = parameters[parameter.hostId];
-    if (parameter.kind === 'toggle' ? value !== 0 && value !== 1
-      : !validNumber(value, parameter.min, parameter.max)) {
+    const value = firstStudy && parameter.id >= 6 ? parameter.default : parameters[parameter.hostId];
+    const valid = parameter.kind === 'toggle' ? value === 0 || value === 1
+      : parameter.kind === 'select' || parameter.kind === 'choice'
+        ? (parameter.choiceValues ?? parameter.choices.map((_, index) => index)).includes(value)
+        : validNumber(value, parameter.min, parameter.max);
+    if (!valid) {
       throw new Error(`Invalid ${parameter.label} value.`);
     }
     checkedParameters[parameter.hostId] = value;

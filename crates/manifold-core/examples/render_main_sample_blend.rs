@@ -10,8 +10,8 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 8 {
-        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES".into());
+    if args.len() != 13 {
+        return Err("usage: render_main_sample_blend SAMPLE OUTPUT TARGET MODE SAMPLE_GAIN BANK_GAIN FRAMES PVOC_MODE PITCH STRETCH MIX FFT_ORDER".into());
     }
     let sample: Vec<f32> = std::fs::read(&args[1])?
         .chunks_exact(4)
@@ -22,6 +22,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sample_gain: f32 = args[5].parse()?;
     let bank_gain: f32 = args[6].parse()?;
     let frames: usize = args[7].parse()?;
+    let vocoder = [
+        args[8].parse()?,
+        args[9].parse()?,
+        args[10].parse()?,
+        args[11].parse()?,
+        args[12].parse()?,
+    ];
     let analysis = analyze_temporal_stereo(&sample, 48_000.0, 0..sample_frames, 128)
         .ok_or("source analysis failed")?;
     let source = analysis.partials_at(0.5, 0.6, 0.5);
@@ -79,6 +86,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kind: NodeKind::SineBank { params: bank },
             },
             NodeSpec {
+                id: 6,
+                kind: NodeKind::PhaseVocoder { params: vocoder },
+            },
+            NodeSpec {
                 id: 4,
                 kind: NodeKind::Mixer {
                     inputs: 2,
@@ -95,6 +106,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         connections: vec![
             Connection {
                 from: 2,
+                to: 6,
+                input_port: 0,
+            },
+            Connection {
+                from: 6,
                 to: 4,
                 input_port: 0,
             },

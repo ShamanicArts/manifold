@@ -22,25 +22,28 @@
   </style>
 </head>
 <body><main>
-  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 107</div>
+  <div class="eyebrow">MANIFOLD V2 · CHECKPOINT 109</div>
   <h1>The first Main sample blend</h1>
-  <p>One decoded stereo source feeds sample playback and temporal partial analysis. Rust prepares an Add or Morph target away from the audio callback; the fixed Sine bank and sample branch meet in a two-input mixer.</p>
-  <nav><a href="/?primitive=main-sample-blend">Play and compare the graph</a><a href="/spectral-target-review.html">Inspect Add / Morph recipes</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
+  <p>One decoded stereo source feeds sample playback and temporal partial analysis. Rust prepares an Add or Morph target away from the audio callback; the sample branch then passes through the Phase vocoder before it meets the Sine bank in a two-input mixer.</p>
+  <nav><a href="/?primitive=main-sample-blend">Play and compare the graph</a><a href="/phase-vocoder-review.html">Inspect Phase vocoder</a><a href="/spectral-target-review.html">Inspect Add / Morph recipes</a><a href="/manifold-sitrep.html">Project sitrep</a></nav>
   <section class="panel"><h2>Signal path</h2><div class="flow">
     <div><strong>Decoded source</strong><span>48 kHz stereo fixture or a chosen audio file</span></div>
-    <div><strong>Playback + prepared Sine bank</strong><span>Independent branch gains; Source, Add, and Morph controls</span></div>
+    <div><strong>Sample → vocoder + prepared Sine bank</strong><span>Independent branch gains; Source, Add, and Morph controls</span></div>
     <div><strong>Two-bus output</strong><span>Rust graph in native and Wasm builds; AudioWorklet playback</span></div>
   </div></section>
   <section class="panel"><h2>Native Rust ↔ Rust/Wasm graph comparison</h2>
-    <p>Both runners load the same source and bounded target. The four offline captures contain 16,384 stereo frames each at 48 kHz. Maximum sample difference is zero for these captures.</p>
+    <p>Both runners load the same source and bounded target. Seven offline captures contain 16,384 stereo frames each at 48 kHz. The original four dry cases remain exact; three wet vocoder cases remain within 0.000004.</p>
     <table><thead><tr><th>Case</th><th>Sample gain</th><th>Bank gain</th><th>Native RMS</th><th>Max Δ</th></tr></thead><tbody>
       <tr><td>Sample only</td><td>1</td><td>0</td><td>0.1759</td><td class="pass">0</td></tr>
       <tr><td>Add only</td><td>0</td><td>1</td><td>0.1584</td><td class="pass">0</td></tr>
       <tr><td>Morph only</td><td>0</td><td>1</td><td>0.1200</td><td class="pass">0</td></tr>
       <tr><td>Sample + Morph</td><td>0.5</td><td>0.5</td><td>0.1239</td><td class="pass">0</td></tr>
+      <tr><td>Vocoder bin +7 st</td><td>1</td><td>0</td><td>0.1297</td><td class="pass">7.6e−7</td></tr>
+      <tr><td>Vocoder stretch +7 st</td><td>1</td><td>0</td><td>0.0544</td><td class="pass">3.7e−6</td></tr>
+      <tr><td>Vocoder 1.5× time</td><td>1</td><td>0</td><td>0.0615</td><td class="pass">3.7e−6</td></tr>
     </tbody></table>
     <p class="small">In the workbench, open “Reference comparison” to switch cases, inspect left/right output and differences, and play native or Wasm audio.</p>
   </section>
-  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save six graph controls, target mode and recipe, temporal position, and the source. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and target preparation, then restores pitch and branch gains. The state is versioned and rejects malformed audio or out-of-range controls.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
-  <section class="panel"><h2>Next reconstruction boundary</h2><p class="scope">This is an authored v2 study of the old Main sample synth's sample and additive branches. The old phase vocoder, envelopes, directional crossfades, polyphonic voices, and saved project state are not represented by these four captures. The C++ helper recipe comparison is separate from this native-versus-Wasm graph check.</p></section>
+  <section class="panel"><h2>Save and reopen this study</h2><p>Use “Download project state” in the workbench to save 11 graph controls, target mode and recipe, temporal position, and the source. A file source is embedded as stereo float32 PCM; the built-in tone is saved as a source choice. Opening a state while stopped re-runs Rust/Wasm analysis and target preparation, then restores pitch and branch gains. The version-2 state accepts prior version-1 six-control files and supplies vocoder defaults; malformed audio and out-of-range controls are rejected.</p><p class="small">A 30-second 48 kHz stereo source produces roughly 15 MB of base64 audio in JSON. This saves the decoded source, not the original file encoding or old Lua project state.</p></section>
+  <section class="panel"><h2>Next reconstruction boundary</h2><p class="scope">This is an authored v2 study of the old Main sample synth's sample and additive branches. The Phase vocoder is on the sample branch. The old envelopes, directional crossfades, polyphonic voices, and old project/preset format are not represented by these seven captures. The C++ helper recipe comparison is separate from this native-versus-Wasm graph check.</p></section>
 </main></body></html>

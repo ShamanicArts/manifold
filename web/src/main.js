@@ -34,6 +34,7 @@ const mainSampleBlendInitialPartials = structuredClone(mainSampleBlendProject.pa
 import reverseDelayProject from '../../projects/reverse-delay/project.json';
 import stutterProject from '../../projects/stutter/project.json';
 import pitchShifterProject from '../../projects/pitch-shifter/project.json';
+import phaseVocoderProject from '../../projects/phase-vocoder/project.json';
 import shimmerProject from '../../projects/shimmer/project.json';
 import granulatorProject from '../../projects/granulator/project.json';
 import compressorProject from '../../projects/compressor/project.json';
@@ -269,8 +270,8 @@ const projects = {
   'main-sample-blend': {
     project: mainSampleBlendProject,
     title: 'Main sample blend',
-    description: 'An authored Main sample synth slice: one loaded source feeds stereo region playback and the Rust/Wasm partial worker. A prepared Add or Morph Sine bank shares the output mixer with the sample branch.',
-    signal: 'File → sample region + temporal partial worker → prepared Sine bank · two branch mixer → output',
+    description: 'An authored Main sample synth slice: one loaded source feeds stereo region playback, a two-mode phase vocoder, and the Rust/Wasm partial worker. A prepared Add or Morph Sine bank shares the output mixer with the sample branch.',
+    signal: 'File → sample region → phase vocoder · temporal worker → prepared Sine bank · two branch mixer → output',
   },
   'reverse-delay': {
     project: reverseDelayProject,
@@ -289,6 +290,12 @@ const projects = {
     title: 'Pitch shifter',
     description: 'Two overlapping delay read heads resample a stereo input with triangular windows. Adjust semitone shift, window length, feedback, and wet mix.',
     signal: 'Live path: input → two overlapping read heads / feedback → dry/wet output',
+  },
+  'phase-vocoder': {
+    project: phaseVocoderProject,
+    title: 'Phase vocoder',
+    description: 'FFT analysis and overlap-add resynthesis with bin mapping or time stretch plus resampling. The Rust stereo read cursor corrects an old high-quality mode channel mismatch.',
+    signal: 'Live path: stereo input → windowed FFT / phase tracking → overlap-add → output',
   },
   shimmer: {
     project: shimmerProject,
@@ -1115,6 +1122,11 @@ function addSelect(parameter) {
   select.setAttribute('aria-label', parameter.label);
   parameter.choices.forEach((choice, index) => select.add(new Option(choice, String(parameter.choiceValues?.[index] ?? index))));
   select.value = String(parameter.default);
+  wrapper.syncValue = (value) => { select.value = String(value); };
+  if (parameter.prepareOnly) {
+    wrapper.dataset.prepareOnly = 'true';
+    select.disabled = audio.running;
+  }
   select.addEventListener('change', () => {
     const value = Number(select.value);
     values.set(parameter.id, value);
@@ -1657,7 +1669,7 @@ function renderPrimitive(family) {
 
 function updatePrepareOnlyControls() {
   for (const wrapper of document.querySelectorAll('[data-prepare-only="true"]')) {
-    wrapper.querySelector('input').disabled = audio.running;
+    wrapper.querySelector('input, select').disabled = audio.running;
   }
 }
 
@@ -2107,7 +2119,7 @@ byId('main-state-export').addEventListener('click', () => {
     link.download = 'manifold-main-sample-blend-state.json';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    readout.textContent = `Saved six controls, target settings, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
+    readout.textContent = `Saved ${activeProject.parameters.length} controls, target settings, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
   } catch (error) {
     readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
   }
@@ -2155,7 +2167,7 @@ byId('main-state-file').addEventListener('change', async (event) => {
     byId('sine-target-status').textContent = sineTargetActive ? 'Rebuilding prepared target in Rust/Wasm…' : 'Source restored; select Audition prepared target.';
     renderSineSourceAnalysis();
     requestSampleAnalysis(loadedSineSource, true);
-    readout.textContent = `Opened ${file.name} · six controls, target settings, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
+    readout.textContent = `Opened ${file.name} · ${activeProject.parameters.length} controls, target settings, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
   } catch (error) {
     readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
   } finally {

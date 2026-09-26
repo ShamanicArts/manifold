@@ -22,8 +22,14 @@ assert.deepEqual(restored.source.stereo, stereo);
 const builtin = captureMainSampleBlendState(project, values, target,
   { sourceKind: 'builtin', sourceRate: 48_000, stereo, label: 'Built-in two-tone source' });
 assert.deepEqual(parseMainSampleBlendState(builtin, project).source, { kind: 'builtin' });
+const oldState = { ...builtin, schemaVersion: 1,
+  parameters: Object.fromEntries(project.parameters.filter((parameter) => parameter.id < 6)
+    .map((parameter) => [parameter.hostId, values.get(parameter.id)])) };
+const migrated = parseMainSampleBlendState(oldState, project);
+assert.equal(migrated.schemaVersion, 2);
+assert.equal(migrated.parameters['pvoc-mix'], 0);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, projectId: 'other' }, project), /different/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, target: { ...target, position: 3 } }, project), /target/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, source: { ...embedded.source, frames: 10 } }, project), /source/);
 assert.throws(() => parseMainSampleBlendState({ ...embedded, source: { ...embedded.source, pcmF32Base64: 'bad' } }, project), /PCM/);
-console.log(`Main blend state: six controls + target + ${stereo.length / 2} stereo frames round-trip; malformed states rejected`);
+console.log(`Main blend state: ${project.parameters.length} controls + target + ${stereo.length / 2} stereo frames round-trip; v1 migration and malformed states checked`);

@@ -605,6 +605,9 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         49 => NodeKind::PitchShifter {
             params: manifold_core::pitch_shifter::DEFAULTS,
         },
+        62 => NodeKind::PhaseVocoder {
+            params: manifold_core::phase_vocoder::DEFAULTS,
+        },
         50 => NodeKind::Shimmer {
             params: manifold_core::shimmer::DEFAULTS,
         },
@@ -789,6 +792,11 @@ pub extern "C" fn manifold_graph_initial_parameter(
             }
             (NodeKind::PitchShifter { params }, id @ 0..=3) => {
                 if !manifold_core::pitch_shifter::set_value(params, id, value) {
+                    return 0;
+                }
+            }
+            (NodeKind::PhaseVocoder { params }, id @ 0..=4) => {
+                if !manifold_core::phase_vocoder::set_value(params, id, value) {
                     return 0;
                 }
             }

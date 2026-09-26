@@ -29,6 +29,7 @@ pub mod midi_velocity_mapper;
 pub mod multitap_delay;
 pub mod noise;
 pub mod oscillator;
+pub mod phase_vocoder;
 pub mod phaser;
 pub mod pitch_shifter;
 pub mod resonator;
