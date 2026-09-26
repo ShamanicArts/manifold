@@ -427,13 +427,13 @@ function addSlider(parameter) {
   const precision = parameter.unit === 's' ? 1000 : 100;
   const toPhysical = (position) => isLog
     ? Math.round(parameter.min * (parameter.max / parameter.min) ** (position / 1000) * (parameter.hostId === 'rate' ? 100 : 1)) / (parameter.hostId === 'rate' ? 100 : 1)
-    : parameter.hostId === 'root-note'
+    : parameter.hostId === 'root-note' || parameter.hostId === 'unison'
       ? Math.round(parameter.min + (parameter.max - parameter.min) * position / 1000)
       : Math.round((parameter.min + (parameter.max - parameter.min) * position / 1000) * precision) / precision;
   const toPosition = (value) => isLog
     ? 1000 * Math.log(value / parameter.min) / Math.log(parameter.max / parameter.min)
     : 1000 * (value - parameter.min) / (parameter.max - parameter.min);
-  const format = (value) => parameter.hostId === 'root-note' ? `${value} MIDI` : parameter.unit === 'Hz'
+  const format = (value) => parameter.hostId === 'root-note' ? `${value} MIDI` : parameter.hostId === 'unison' ? `${value} voices` : parameter.unit === 'ct' ? `${Number(value).toFixed(1)} ct` : parameter.unit === 'Hz'
     ? parameter.hostId === 'rate' ? `${Number(value).toFixed(2)} Hz` : `${Math.round(value).toLocaleString()} Hz`
     : parameter.unit === 's' ? `${Number(value).toFixed(3)} s` : Number(value).toFixed(2);
   const sync = (position, publish) => {
@@ -677,6 +677,12 @@ function renderPrimitive(family) {
     const help = document.createElement('p');
     help.className = 'control-help';
     help.textContent = 'Start audio, record a phrase, stop recording, then turn Play on. The input remains audible while recording.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'sample-instrument') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Unison count applies to new notes; detune and spread also change held notes.';
     byId('controls').appendChild(help);
   }
   if (family === 'stereo-delay') {

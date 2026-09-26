@@ -4,6 +4,7 @@ use crate::events::EventKind;
 use crate::sample_region::SampleRegion;
 
 const VOICES: usize = 8;
+const MAX_UNISON: usize = 4;
 
 #[derive(Clone, Copy, Default)]
 struct VoiceSlot {
@@ -15,11 +16,12 @@ struct VoiceSlot {
     release_gain: f32,
     release_step: f32,
     release_remaining: u32,
+    unison_count: u8,
     serial: u64,
 }
 
 pub struct SampleInstrument {
-    players: [SampleRegion; VOICES],
+    players: [[SampleRegion; MAX_UNISON]; VOICES],
     slots: [VoiceSlot; VOICES],
     serial: u64,
     output_rate: f32,
@@ -28,12 +30,19 @@ pub struct SampleInstrument {
     level: f32,
     speed: f32,
     release_seconds: f32,
+    unison_count: usize,
+    detune_cents: f32,
+    spread: f32,
+    pan_gains: [[[f32; 2]; MAX_UNISON]; MAX_UNISON + 1],
+    normalization: [f32; MAX_UNISON + 1],
 }
 
 impl SampleInstrument {
     pub fn new(sample_rate: f32) -> Self {
         Self {
-            players: std::array::from_fn(|_| SampleRegion::new(sample_rate)),
+            players: std::array::from_fn(|_| {
+                std::array::from_fn(|_| SampleRegion::new(sample_rate))
+            }),
             slots: [VoiceSlot::default(); VOICES],
             serial: 0,
             output_rate: sample_rate,
@@ -42,16 +51,28 @@ impl SampleInstrument {
             level: 0.25,
             speed: 1.0,
             release_seconds: 0.01,
+            unison_count: 1,
+            detune_cents: 0.0,
+            spread: 0.0,
+            pan_gains: Self::build_pan_gains(0.0),
+            normalization: std::array::from_fn(|count| {
+                if count == 0 {
+                    0.0
+                } else {
+                    1.0 / (count as f32).sqrt()
+                }
+            }),
         }
     }
 
     /// Decoded PCM is moved once and shared across voice cursors before audio starts.
     pub fn load_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
-        let (first, rest) = self.players.split_first_mut().unwrap();
+        let (first_voice, rest) = self.players.split_first_mut().unwrap();
+        let (first, siblings) = first_voice.split_first_mut().unwrap();
         if !first.load_stereo(stereo, source_rate) {
             return false;
         }
-        for player in rest {
+        for player in siblings.iter_mut().chain(rest.iter_mut().flatten()) {
             player.share_sample_from(first);
         }
         self.slots.fill(VoiceSlot::default());
@@ -68,6 +89,12 @@ impl SampleInstrument {
             2 => self.level = value.clamp(0.0, 1.0),
             3 => self.speed = value.clamp(0.0, 8.0),
             10 => self.release_seconds = value.clamp(0.0, 1.0),
+            11 => self.unison_count = value.round().clamp(1.0, MAX_UNISON as f32) as usize,
+            12 => self.detune_cents = value.clamp(0.0, 100.0),
+            13 => {
+                self.spread = value.clamp(0.0, 1.0);
+                self.pan_gains = Self::build_pan_gains(self.spread);
+            }
             4..=9 => {
                 let player_id = match id {
                     4 => 1,
@@ -77,25 +104,55 @@ impl SampleInstrument {
                     8 => 5,
                     _ => 8,
                 };
-                for player in &mut self.players {
+                for player in self.players.iter_mut().flatten() {
                     player.set_parameter(player_id, value);
                 }
             }
             _ => return false,
         }
-        if matches!(id, 0 | 1 | 3) {
+        if matches!(id, 0 | 1 | 3 | 12) {
             for index in 0..VOICES {
                 if self.slots[index].active {
-                    self.players[index].set_parameter(0, self.note_speed(self.slots[index].note));
+                    let count = self.slots[index].unison_count as usize;
+                    for subvoice in 0..count {
+                        let speed = self.note_speed(self.slots[index].note, subvoice, count);
+                        self.players[index][subvoice].set_parameter(0, speed);
+                    }
                 }
             }
         }
         true
     }
 
-    fn note_speed(&self, note: u8) -> f32 {
+    fn unison_offset(subvoice: usize, count: usize) -> f32 {
+        if count <= 1 {
+            return 0.0;
+        }
+        let center = (count - 1) as f32 * 0.5;
+        (subvoice as f32 - center) / center.max(1.0)
+    }
+
+    fn build_pan_gains(spread: f32) -> [[[f32; 2]; MAX_UNISON]; MAX_UNISON + 1] {
+        std::array::from_fn(|count| {
+            std::array::from_fn(|subvoice| {
+                if count <= 1 {
+                    [1.0, 1.0]
+                } else {
+                    let offset = Self::unison_offset(subvoice, count);
+                    let pan = (0.5 + offset * spread * 0.5).clamp(0.0, 1.0);
+                    [(2.0 * (1.0 - pan)).sqrt(), (2.0 * pan).sqrt()]
+                }
+            })
+        })
+    }
+
+    fn note_speed(&self, note: u8, subvoice: usize, count: usize) -> f32 {
+        let detune = Self::unison_offset(subvoice, count) as f64 * self.detune_cents as f64;
         (self.speed as f64
-            * 2.0f64.powf((note as f64 - self.root_note as f64) * self.key_track as f64 / 12.0))
+            * 2.0f64.powf(
+                (note as f64 - self.root_note as f64) * self.key_track as f64 / 12.0
+                    + detune / 1200.0,
+            ))
         .clamp(0.0, 8.0) as f32
     }
 
@@ -139,13 +196,21 @@ impl SampleInstrument {
                     release_gain: 1.0,
                     release_step: 0.0,
                     release_remaining: 0,
+                    unison_count: self.unison_count as u8,
                     serial: self.serial,
                 };
-                self.players[index].set_parameter(0, self.note_speed(note));
-                self.players[index].event(event);
+                for subvoice in 0..MAX_UNISON {
+                    let speed = self.note_speed(note, subvoice, self.unison_count);
+                    let player = &mut self.players[index][subvoice];
+                    player.set_parameter(6, 0.0);
+                    if subvoice < self.unison_count {
+                        player.set_parameter(0, speed);
+                        player.event(event);
+                    }
+                }
             }
             EventKind::NoteOff { channel, note } => {
-                for (slot, player) in self.slots.iter_mut().zip(&mut self.players) {
+                for (slot, group) in self.slots.iter_mut().zip(&mut self.players) {
                     if slot.active
                         && !slot.releasing
                         && slot.channel == channel
@@ -153,7 +218,9 @@ impl SampleInstrument {
                     {
                         if self.release_seconds == 0.0 {
                             slot.active = false;
-                            player.set_parameter(6, 0.0);
+                            for player in group {
+                                player.set_parameter(6, 0.0);
+                            }
                         } else {
                             slot.releasing = true;
                             slot.release_remaining =
@@ -164,9 +231,11 @@ impl SampleInstrument {
                 }
             }
             EventKind::AllNotesOff => {
-                for (slot, player) in self.slots.iter_mut().zip(&mut self.players) {
+                for (slot, group) in self.slots.iter_mut().zip(&mut self.players) {
                     slot.active = false;
-                    player.set_parameter(6, 0.0);
+                    for player in group {
+                        player.set_parameter(6, 0.0);
+                    }
                 }
             }
         }
@@ -180,7 +249,15 @@ impl SampleInstrument {
         match band {
             0 => Some(self.active_voices() as f32),
             1..=VOICES => Some(if self.slots[band - 1].active {
-                self.players[band - 1].meter(0).unwrap_or(0.0)
+                let count = self.slots[band - 1].unison_count as usize;
+                let group = &self.players[band - 1][..count];
+                let center = (count - 1) / 2;
+                group[center]
+                    .is_playing()
+                    .then_some(&group[center])
+                    .or_else(|| group.iter().find(|player| player.is_playing()))
+                    .and_then(|player| player.meter(0))
+                    .unwrap_or(0.0)
             } else {
                 -1.0
             }),
@@ -190,14 +267,30 @@ impl SampleInstrument {
 
     pub fn process_sample(&mut self) -> [f32; 2] {
         let mut output = [0.0; 2];
-        for (slot, player) in self.slots.iter_mut().zip(&mut self.players) {
+        let pan_gains = &self.pan_gains;
+        let normalization = &self.normalization;
+        let level = self.level;
+        for (slot, group) in self.slots.iter_mut().zip(&mut self.players) {
             if !slot.active {
                 continue;
             }
-            let sample = player.process_sample();
-            let gain = slot.velocity * self.level * slot.release_gain;
-            output[0] += sample[0] * gain;
-            output[1] += sample[1] * gain;
+            let count = slot.unison_count as usize;
+            let mut mixed = [0.0; 2];
+            let mut contributing = 0;
+            for (subvoice, player) in group[..count].iter_mut().enumerate() {
+                if !player.is_playing() {
+                    continue;
+                }
+                contributing += 1;
+                let sample = player.process_sample();
+                mixed[0] += sample[0] * pan_gains[count][subvoice][0];
+                mixed[1] += sample[1] * pan_gains[count][subvoice][1];
+            }
+            if contributing > 0 {
+                let gain = slot.velocity * level * slot.release_gain * normalization[contributing];
+                output[0] += mixed[0] * gain;
+                output[1] += mixed[1] * gain;
+            }
             if slot.releasing {
                 slot.release_remaining -= 1;
                 slot.release_gain = if slot.release_remaining == 0 {
@@ -206,9 +299,11 @@ impl SampleInstrument {
                     (slot.release_gain - slot.release_step).max(0.0)
                 };
             }
-            if !player.is_playing() || slot.release_gain == 0.0 {
+            if contributing == 0 || slot.release_gain == 0.0 {
                 slot.active = false;
-                player.set_parameter(6, 0.0);
+                for player in group {
+                    player.set_parameter(6, 0.0);
+                }
             }
         }
         output
@@ -372,5 +467,55 @@ mod tests {
                 .iter()
                 .any(|slot| slot.active && slot.note == 65)
         );
+    }
+
+    #[test]
+    fn unison_count_is_captured_at_note_on_and_detune_moves_subvoices_apart() {
+        let mut instrument = constant_instrument();
+        instrument.set_parameter(11, 2.0);
+        instrument.set_parameter(12, 100.0);
+        instrument.event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 127,
+        });
+        assert_eq!(instrument.slots[0].unison_count, 2);
+        let sample = instrument.process_sample();
+        assert!((sample[0] - std::f32::consts::SQRT_2).abs() < 1e-6);
+        let first = instrument.players[0][0].meter(0).unwrap();
+        let second = instrument.players[0][1].meter(0).unwrap();
+        assert!(first < second);
+        instrument.set_parameter(11, 4.0);
+        assert_eq!(instrument.slots[0].unison_count, 2);
+        instrument.event(EventKind::NoteOn {
+            channel: 0,
+            note: 62,
+            velocity: 127,
+        });
+        assert_eq!(instrument.slots[1].unison_count, 4);
+    }
+
+    #[test]
+    fn spread_pan_separates_detuned_subvoices_and_one_shot_waits_for_last() {
+        let mut instrument = SampleInstrument::new(8000.0);
+        assert!(instrument.load_stereo(vec![0., 0., 1., 1., -1., -1., 0.5, 0.5], 8000.0));
+        instrument.set_parameter(2, 1.0);
+        instrument.set_parameter(5, 1.0);
+        instrument.set_parameter(11, 2.0);
+        instrument.set_parameter(12, 100.0);
+        instrument.set_parameter(13, 1.0);
+        instrument.event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 127,
+        });
+        instrument.process_sample();
+        let second = instrument.process_sample();
+        assert!((second[0] - second[1]).abs() > 1e-4);
+        assert_eq!(instrument.active_voices(), 1);
+        for _ in 0..8 {
+            instrument.process_sample();
+        }
+        assert_eq!(instrument.active_voices(), 0);
     }
 }

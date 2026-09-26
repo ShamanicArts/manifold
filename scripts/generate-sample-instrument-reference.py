@@ -28,15 +28,18 @@ with sample_path.open("wb") as output:
         output.write(struct.pack("<ff", tone + (.5 if frame == 0 else 0), tone * .7 - (.4 if frame == 127 else 0)))
 frames, sample_rate, block = 16384, 48000, 128
 (OUT / "input.f32").write_bytes(bytes(frames * 8))
-defaults = [60, 1, .25, 1, 0, 0, 0, 0, 1, .08, .01]
+defaults = [60, 1, .25, 1, 0, 0, 0, 0, 1, .08, .01, 1, 0, 0]
 specs = [
     ("root", "Root note and note off", defaults, [(0, 0, 0, 60, 127), (8192, 1, 0, 60, 0)], []),
     ("octave", "Root plus octave", defaults, [(0, 0, 0, 60, 100), (321, 0, 0, 72, 127), (8192, 1, 0, 60, 0), (12032, 1, 0, 72, 0)], []),
     ("chord", "Three voices and velocities", defaults, [(0, 0, 0, 60, 100), (47, 0, 1, 64, 80), (91, 0, 0, 67, 127), (9216, 1, 1, 64, 0)], []),
     ("steal", "Ninth note steals oldest", defaults, [(i * 17, 0, 0, 60 + i, 100) for i in range(9)] + [(1024, 1, 0, 60, 0), (12288, 2, 0, 0, 0)], []),
-    ("one-shot-reverse", "Reverse one shot", [60, 1, .25, 1, 1, 1, 0, 0, 1, .08, .01], [(0, 0, 0, 60, 127), (8192, 0, 0, 67, 90)], []),
+    ("one-shot-reverse", "Reverse one shot", [60, 1, .25, 1, 1, 1, 0, 0, 1, .08, .01, 1, 0, 0], [(0, 0, 0, 60, 127), (8192, 0, 0, 67, 90)], []),
     ("keytrack-change", "Key tracking and speed change", defaults, [(0, 0, 0, 72, 127)], [(4096, 1, 0), (8192, 3, .5)]),
     ("release", "Adjustable note release", defaults, [(0, 0, 0, 60, 127), (2048, 1, 0, 60, 0), (8192, 0, 0, 60, 127), (10240, 1, 0, 60, 0)], [(8192, 10, .05)]),
+    ("unison", "Detuned stereo unison", defaults[:11] + [3, 35, .75], [(0, 0, 0, 60, 127), (8192, 0, 0, 67, 100)], []),
+    ("unison-change", "Unison count on next note", defaults, [(0, 0, 0, 60, 127), (8192, 0, 0, 67, 127)], [(8192, 11, 4), (8192, 12, 50), (8192, 13, 1)]),
+    ("one-shot-unison", "One shot with detuned subvoices", defaults[:5] + [1] + defaults[6:11] + [4, 100, 1], [(0, 0, 0, 60, 127)], []),
 ]
 cases = []
 for case_id, label, parameters, events, changes in specs:

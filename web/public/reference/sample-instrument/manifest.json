@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust shared-sample eight-voice instrument",
-  "sourceSha256": "9b12dbe206971e26190ae1d404542063bf58f261c86d703283da1f8a944caad5",
+  "sourceSha256": "5604be07eeaec02041f0dd16d913000d248286aa5565de382404d2f0770ce6f5",
   "sampleRate": 48000,
   "sampleSourceRate": 32000,
   "sampleFrames": 4096,
@@ -25,7 +25,10 @@
         0,
         1,
         0.08,
-        0.01
+        0.01,
+        1,
+        0,
+        0
       ],
       "events": [
         [
@@ -61,7 +64,10 @@
         0,
         1,
         0.08,
-        0.01
+        0.01,
+        1,
+        0,
+        0
       ],
       "events": [
         [
@@ -111,7 +117,10 @@
         0,
         1,
         0.08,
-        0.01
+        0.01,
+        1,
+        0,
+        0
       ],
       "events": [
         [
@@ -161,7 +170,10 @@
         0,
         1,
         0.08,
-        0.01
+        0.01,
+        1,
+        0,
+        0
       ],
       "events": [
         [
@@ -260,7 +272,10 @@
         0,
         1,
         0.08,
-        0.01
+        0.01,
+        1,
+        0,
+        0
       ],
       "events": [
         [
@@ -296,7 +311,10 @@
         0,
         1,
         0.08,
-        0.01
+        0.01,
+        1,
+        0,
+        0
       ],
       "events": [
         [
@@ -336,7 +354,10 @@
         0,
         1,
         0.08,
-        0.01
+        0.01,
+        1,
+        0,
+        0
       ],
       "events": [
         [
@@ -377,6 +398,132 @@
       ],
       "blockSize": 128,
       "output": "release.f32"
+    },
+    {
+      "id": "unison",
+      "label": "Detuned stereo unison",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08,
+        0.01,
+        3,
+        35,
+        0.75
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          8192,
+          0,
+          0,
+          67,
+          100
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "unison.f32"
+    },
+    {
+      "id": "unison-change",
+      "label": "Unison count on next note",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.08,
+        0.01,
+        1,
+        0,
+        0
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ],
+        [
+          8192,
+          0,
+          0,
+          67,
+          127
+        ]
+      ],
+      "changes": [
+        [
+          8192,
+          11,
+          4
+        ],
+        [
+          8192,
+          12,
+          50
+        ],
+        [
+          8192,
+          13,
+          1
+        ]
+      ],
+      "blockSize": 128,
+      "output": "unison-change.f32"
+    },
+    {
+      "id": "one-shot-unison",
+      "label": "One shot with detuned subvoices",
+      "parameters": [
+        60,
+        1,
+        0.25,
+        1,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0.08,
+        0.01,
+        4,
+        100,
+        1
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "one-shot-unison.f32"
     }
   ]
 }
