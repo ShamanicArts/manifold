@@ -22,7 +22,7 @@
   "parameters": [
     { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "waveform", "label": "LFO waveform", "kind": "choice", "choices": ["Sine", "Triangle", "Square"], "default": 0 },
     { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "rate", "label": "Rate", "kind": "float", "min": 0.05, "max": 20, "default": 2, "unit": "Hz" },
-    { "id": 2, "nodeId": 3, "nodeParameterId": 0, "hostId": "base-gain", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 0.5 },
+    { "id": 2, "nodeId": 3, "nodeParameterId": 0, "hostId": "base-gain", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 0.5, "effectiveMeter": true },
     { "id": 3, "nodeId": 3, "nodeParameterId": 1, "hostId": "depth", "label": "Modulation depth", "kind": "float", "min": -2, "max": 2, "default": 0.4 }
   ]
 }

@@ -28,7 +28,7 @@
     { "id": 2, "nodeId": 2, "nodeParameterId": 1, "hostId": "release", "label": "Release (ms)", "kind": "float", "min": 0.1, "max": 5000, "default": 120 },
     { "id": 3, "nodeId": 2, "nodeParameterId": 2, "hostId": "sensitivity", "label": "Sensitivity", "kind": "float", "min": 0.01, "max": 16, "default": 4 },
     { "id": 4, "nodeId": 2, "nodeParameterId": 3, "hostId": "highpass", "label": "Highpass (Hz)", "kind": "float", "min": 5, "max": 4000, "default": 80 },
-    { "id": 5, "nodeId": 3, "nodeParameterId": 0, "hostId": "base-gain", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 1 },
+    { "id": 5, "nodeId": 3, "nodeParameterId": 0, "hostId": "base-gain", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 1, "effectiveMeter": true },
     { "id": 6, "nodeId": 3, "nodeParameterId": 1, "hostId": "duck-depth", "label": "Duck depth", "kind": "float", "min": -2, "max": 0, "default": -1.5 }
   ]
 }

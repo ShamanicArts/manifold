@@ -27,7 +27,7 @@
     { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "rate", "label": "Rate", "kind": "float", "min": 0.05, "max": 20, "default": 8, "unit": "Hz" },
     { "id": 2, "nodeId": 3, "nodeParameterId": 0, "hostId": "slide-up", "label": "CV rise slide", "kind": "float", "min": 1, "max": 2400, "default": 180, "unit": "samples" },
     { "id": 3, "nodeId": 3, "nodeParameterId": 1, "hostId": "slide-down", "label": "CV fall slide", "kind": "float", "min": 1, "max": 2400, "default": 900, "unit": "samples" },
-    { "id": 4, "nodeId": 4, "nodeParameterId": 0, "hostId": "base-gain", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 0.6 },
+    { "id": 4, "nodeId": 4, "nodeParameterId": 0, "hostId": "base-gain", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 0.6, "effectiveMeter": true },
     { "id": 5, "nodeId": 4, "nodeParameterId": 1, "hostId": "depth", "label": "CV depth", "kind": "float", "min": -2, "max": 2, "default": 0.5 }
   ]
 }

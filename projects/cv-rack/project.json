@@ -43,7 +43,7 @@
     { "id": 5, "nodeId": 7, "nodeParameterId": 0, "hostId": "held-level", "label": "Held CV level", "kind": "float", "min": 0, "max": 1, "default": 0.8 },
     { "id": 6, "nodeId": 7, "nodeParameterId": 1, "hostId": "free-level", "label": "Free CV level", "kind": "float", "min": 0, "max": 1, "default": 0.25 },
     { "id": 7, "nodeId": 7, "nodeParameterId": 4, "hostId": "offset", "label": "CV offset", "kind": "float", "min": -1, "max": 1, "default": 0.1 },
-    { "id": 8, "nodeId": 8, "nodeParameterId": 0, "hostId": "base", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 0.6 },
+    { "id": 8, "nodeId": 8, "nodeParameterId": 0, "hostId": "base", "label": "Base gain", "kind": "float", "min": 0, "max": 2, "default": 0.6, "effectiveMeter": true },
     { "id": 9, "nodeId": 8, "nodeParameterId": 1, "hostId": "depth", "label": "CV depth", "kind": "float", "min": -2, "max": 2, "default": 0.5 }
   ]
 }

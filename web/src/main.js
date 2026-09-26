@@ -368,6 +368,11 @@ function drawSampleWaveform() {
 window.addEventListener('resize', drawSampleWaveform);
 let envelopeHistory = [];
 const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands) => {
+  const effectiveParameter = projects[activeFamily]?.project.parameters.find((parameter) =>
+    parameter.effectiveMeter && parameter.nodeId === nodeId);
+  if (effectiveParameter && Number.isFinite(bands[0])) {
+    byId('controls').querySelector(`[data-parameter-id="${effectiveParameter.id}"]`)?.setEffective(bands[0]);
+  }
   if (activeFamily === 'cv-rack') {
     const row = byId('cv-stages').querySelector(`[data-cv-node="${nodeId}"]`);
     if (!row || !Number.isFinite(bands[0])) return;
@@ -506,6 +511,20 @@ function addSlider(parameter) {
   input.addEventListener('input', () => sync(Number(input.value), true));
   wrapper.addEventListener('dblclick', () => { if (!input.disabled) sync(toPosition(parameter.default), true); });
   wrapper.append(title, readout, input);
+  if (parameter.effectiveMeter) {
+    wrapper.classList.add('has-effective');
+    const effective = document.createElement('output');
+    effective.className = 'effective-readout';
+    effective.textContent = 'Effective — · start audio';
+    wrapper.setEffective = (value) => {
+      const live = Number.isFinite(value);
+      effective.textContent = live ? `Effective ${format(value)} · live snapshot` : 'Effective — · start audio';
+      wrapper.dataset.live = String(live);
+      if (live) wrapper.style.setProperty('--effective', `${Math.round(Math.max(0, Math.min(100, (value - parameter.min) / (parameter.max - parameter.min) * 100)) * 10) / 10}%`);
+    };
+    wrapper.setEffective(null);
+    wrapper.appendChild(effective);
+  }
   byId('controls').appendChild(wrapper);
 }
 
@@ -986,11 +1005,16 @@ const animateSpectrum = () => {
 function startMonitoring() {
   stopMonitoring();
   if (!audio.running) return;
-  if (meterFamilies.includes(activeFamily)) {
+  const effectiveNodes = [...new Set(projects[activeFamily].project.parameters
+    .filter((parameter) => parameter.effectiveMeter).map((parameter) => parameter.nodeId))];
+  if (meterFamilies.includes(activeFamily) || effectiveNodes.length) {
     const request = () => {
       if (activeFamily === 'cv-rack') {
-        for (const nodeId of [4, 5, 7, 8]) audio.requestMeters(nodeId, 1);
-      } else audio.requestMeters(2, activeFamily === 'fft-spectrum' ? 33 : activeFamily === 'sample-instrument' ? 9 : activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
+        for (const nodeId of [4, 5, 7]) audio.requestMeters(nodeId, 1);
+      } else if (meterFamilies.includes(activeFamily)) {
+        audio.requestMeters(2, activeFamily === 'fft-spectrum' ? 33 : activeFamily === 'sample-instrument' ? 9 : activeFamily === 'spectrum-analyzer' ? 8 : activeFamily === 'sample-region' ? 2 : 1);
+      }
+      for (const nodeId of effectiveNodes) audio.requestMeters(nodeId, 1);
     };
     request();
     meterTimer = setInterval(request, 100);
@@ -1085,6 +1109,7 @@ toggle.addEventListener('click', async () => {
       : isInstrument ? 'Start instrument' : 'Start audio';
     updatePrepareOnlyControls();
     updateLoopToggles();
+    if (!audio.running) byId('controls').querySelectorAll('.has-effective').forEach((slider) => slider.setEffective(null));
     byId('sample-file').disabled = audio.running;
     document.querySelector('.measurement-hint').textContent = audio.running
       ? activeFamily === 'compressor' || activeFamily === 'limiter' ? 'Live gain reduction in dB; the bar shows 0–24 dB and the trace scales to recent values.' : activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' || activeFamily === 'sample-instrument' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
