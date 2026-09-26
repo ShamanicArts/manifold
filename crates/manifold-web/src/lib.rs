@@ -362,6 +362,8 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         51 => NodeKind::Granulator {
             params: manifold_core::granulator::DEFAULTS,
         },
+        54 => NodeKind::MidiInput,
+        55 => NodeKind::MidiTranspose { semitones: a },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {

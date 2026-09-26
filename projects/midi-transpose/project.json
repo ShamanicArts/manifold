@@ -9,6 +9,15 @@
     "inputSource": "none",
     "nodes": [
       {
+        "id": 3,
+        "type": "midi-input"
+      },
+      {
+        "id": 4,
+        "type": "midi-transpose",
+        "a": 0
+      },
+      {
         "id": 1,
         "type": "voice-synth"
       },
@@ -19,15 +28,21 @@
     ],
     "connections": [
       {
+        "from": 3,
+        "to": 4,
+        "inputPort": 0
+      },
+      {
+        "from": 4,
+        "to": 1,
+        "inputPort": 0
+      },
+      {
         "from": 1,
         "to": 2,
         "inputPort": 0
       }
-    ],
-    "midiTranspose": {
-      "targetNodeId": 1,
-      "semitones": 0
-    }
+    ]
   },
   "parameters": [
     {
@@ -105,7 +120,7 @@
     },
     {
       "id": 6,
-      "nodeId": 0,
+      "nodeId": 4,
       "nodeParameterId": 0,
       "hostId": "semitones",
       "label": "Transpose",

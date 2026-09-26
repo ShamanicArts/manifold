@@ -22,15 +22,15 @@ const selected = JSON.parse(fs.readFileSync(path.join(root, 'web/public/referenc
 for (const [id, value] of [selected.waveform, selected.attack, selected.decay, selected.sustain, selected.release, selected.level].entries()) {
   await send({ type: 'parameter', nodeId: 1, id, value });
 }
-await send({ type: 'parameter', nodeId: 0, id: 0, value: selected.semitones });
+await send({ type: 'parameter', nodeId: 4, id: 0, value: selected.semitones });
 let max = 0;
 for (let offset = 0; offset < 8192; offset += 128) {
   globalThis.currentFrame = offset;
   for (const change of selected.changes) {
-    if (change.frame === offset) await send({ type: 'parameter', nodeId: 0, id: 0, value: change.semitones });
+    if (change.frame === offset) await send({ type: 'parameter', nodeId: 4, id: 0, value: change.semitones });
   }
   for (const event of selected.events) {
-    if (event.frame === offset) await send({ type: 'event', nodeId: 1, kind: event.kind,
+    if (event.frame === offset) await send({ type: 'event', nodeId: 3, kind: event.kind,
       channel: event.channel, note: event.note, velocity: event.velocity, frame: event.frame });
   }
   const outL = new Float32Array(128);

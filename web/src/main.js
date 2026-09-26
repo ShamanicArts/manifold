@@ -1382,7 +1382,7 @@ const pressedNotes = new Set();
 const midiHeld = new MidiHoldState();
 const keyboardDevice = Symbol('on-screen keyboard');
 const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
-const noteTarget = () => activeFamily === 'voice' || activeFamily === 'midi-transpose' ? 1 : activeFamily === 'sample-instrument' ? 2 : null;
+const noteTarget = () => activeFamily === 'midi-transpose' ? 3 : activeFamily === 'voice' ? 1 : activeFamily === 'sample-instrument' ? 2 : null;
 function resetNoteEvents() {
   const placeholder = document.createElement('li');
   placeholder.textContent = 'Play the keyboard to inspect note events.';

@@ -20,6 +20,7 @@ use crate::legacy_filter::{self, LegacyFilter};
 use crate::lfo::Lfo;
 use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
+use crate::midi_transpose::{MAX_OUTPUT_EVENTS, MidiTranspose};
 use crate::multitap_delay::{self, MultitapDelay};
 use crate::noise::NoiseGenerator;
 use crate::oscillator::Oscillator;
@@ -47,10 +48,15 @@ pub type NodeId = u64;
 pub enum SignalKind {
     Audio,
     Control,
+    Midi,
 }
 
 #[derive(Clone, Debug)]
 pub enum NodeKind {
+    MidiInput,
+    MidiTranspose {
+        semitones: f32,
+    },
     InputRaw,
     InputMonitor {
         gain: f32,
@@ -242,9 +248,7 @@ impl NodeKind {
             Self::InputRaw
             | Self::InputMonitor { .. }
             | Self::Constant { .. }
-            | Self::VoiceSynth
-            | Self::SampleRegion
-            | Self::SampleInstrument
+            | Self::MidiInput
             | Self::Oscillator { .. } => 0,
             Self::NoiseGenerator { .. } | Self::Lfo { .. } => 0,
             Self::Sum2 { .. }
@@ -258,6 +262,10 @@ impl NodeKind {
             Self::CvMix { .. } => 4,
             Self::Mixer { inputs, .. } => *inputs,
             Self::Gain { .. }
+            | Self::MidiTranspose { .. }
+            | Self::VoiceSynth
+            | Self::SampleRegion
+            | Self::SampleInstrument
             | Self::Svf
             | Self::SlewAudio { .. }
             | Self::LegacyEq { .. }
@@ -296,6 +304,9 @@ impl NodeKind {
     }
 
     fn output_signal(&self) -> SignalKind {
+        if matches!(self, Self::MidiInput | Self::MidiTranspose { .. }) {
+            return SignalKind::Midi;
+        }
         if matches!(
             self,
             Self::Lfo { .. }
@@ -314,6 +325,16 @@ impl NodeKind {
     fn input_signal(&self, port: usize) -> SignalKind {
         if matches!(
             self,
+            Self::MidiTranspose { .. }
+                | Self::VoiceSynth
+                | Self::SampleRegion
+                | Self::SampleInstrument
+        ) && port == 0
+        {
+            return SignalKind::Midi;
+        }
+        if matches!(
+            self,
             Self::SlewControl { .. }
                 | Self::AttenuverterBias { .. }
                 | Self::SampleHold { .. }
@@ -328,6 +349,7 @@ impl NodeKind {
 
     fn valid(&self) -> bool {
         match self {
+            Self::MidiTranspose { semitones } => semitones.is_finite(),
             Self::InputMonitor { gain } | Self::Gain { gain } => gain.is_finite(),
             Self::Constant { value } => value.is_finite(),
             Self::Sum2 { gain_a, gain_b } => gain_a.is_finite() && gain_b.is_finite(),
@@ -495,6 +517,8 @@ impl std::fmt::Display for GraphError {
 impl std::error::Error for GraphError {}
 
 enum Kernel {
+    MidiInput,
+    MidiTranspose(MidiTranspose),
     InputRaw,
     InputMonitor {
         gain: f32,
@@ -589,6 +613,13 @@ struct MixerState {
 impl Kernel {
     fn from_kind(kind: &NodeKind, sample_rate: f32, max_frames: usize) -> Self {
         match kind {
+            NodeKind::MidiInput => Self::MidiInput,
+            NodeKind::MidiTranspose { semitones } => {
+                let mut effect = MidiTranspose::new();
+                let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+                effect.set_semitones(*semitones, &mut out);
+                Self::MidiTranspose(effect)
+            }
             NodeKind::InputRaw => Self::InputRaw,
             NodeKind::InputMonitor { gain } => Self::InputMonitor { gain: *gain },
             NodeKind::Constant { value } => Self::Constant { value: *value },
@@ -933,7 +964,11 @@ impl Kernel {
     fn accepts_events(&self) -> bool {
         matches!(
             self,
-            Self::VoiceSynth(_) | Self::SampleRegion(_) | Self::SampleInstrument(_)
+            Self::MidiInput
+                | Self::MidiTranspose(_)
+                | Self::VoiceSynth(_)
+                | Self::SampleRegion(_)
+                | Self::SampleInstrument(_)
         )
     }
 }
@@ -954,6 +989,7 @@ pub struct ExecutionPlan {
     max_frames: usize,
     silence: Vec<f32>,
     patchable: bool,
+    midi_stack: Vec<(usize, EventKind)>,
 }
 
 impl GraphDescription {
@@ -1095,6 +1131,9 @@ impl GraphDescription {
             max_frames,
             silence: vec![0.0; max_frames * 2],
             patchable,
+            midi_stack: Vec::with_capacity(
+                self.nodes.len().saturating_mul(MAX_OUTPUT_EVENTS).max(1),
+            ),
         })
     }
 }
@@ -1232,10 +1271,77 @@ impl ExecutionPlan {
     }
 
     pub fn set_parameter(&mut self, node: NodeId, parameter: u32, value: f32) -> bool {
-        self.nodes
-            .iter_mut()
-            .find(|entry| entry.id == node)
-            .is_some_and(|entry| entry.kernel.set_parameter(parameter, value))
+        let Some(index) = self.nodes.iter().position(|entry| entry.id == node) else {
+            return false;
+        };
+        if let Kernel::MidiTranspose(effect) = &mut self.nodes[index].kernel {
+            if parameter != 0 || !value.is_finite() {
+                return false;
+            }
+            let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+            let count = effect.set_semitones(value, &mut out);
+            self.route_midi_outputs(index, &out[..count]);
+            true
+        } else {
+            self.nodes[index].kernel.set_parameter(parameter, value)
+        }
+    }
+
+    /// Traverse the prepared MIDI graph without allocating in the audio callback.
+    fn route_midi_outputs(&mut self, source: usize, events: &[EventKind]) {
+        self.midi_stack.clear();
+        self.push_midi_children(source, events);
+        while let Some((index, event)) = self.midi_stack.pop() {
+            let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+            let count = match &mut self.nodes[index].kernel {
+                Kernel::MidiInput => {
+                    out[0] = event;
+                    1
+                }
+                Kernel::MidiTranspose(effect) => effect.handle(event, &mut out),
+                kernel => {
+                    kernel.send_event(event);
+                    0
+                }
+            };
+            self.push_midi_children(index, &out[..count]);
+        }
+    }
+
+    fn push_midi_children(&mut self, source: usize, events: &[EventKind]) {
+        for event in events.iter().rev() {
+            for index in (source + 1..self.nodes.len()).rev() {
+                let child = &self.nodes[index];
+                if child.active
+                    && child.input_signals.first() == Some(&SignalKind::Midi)
+                    && child.sources.first() == Some(&Some(source))
+                {
+                    debug_assert!(self.midi_stack.len() < self.midi_stack.capacity());
+                    self.midi_stack.push((index, *event));
+                }
+            }
+        }
+    }
+
+    fn dispatch_event(&mut self, target: NodeId, event: EventKind) {
+        let index = self
+            .nodes
+            .iter()
+            .position(|node| node.id == target)
+            .unwrap();
+        let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+        let count = match &mut self.nodes[index].kernel {
+            Kernel::MidiInput => {
+                out[0] = event;
+                1
+            }
+            Kernel::MidiTranspose(effect) => effect.handle(event, &mut out),
+            kernel => {
+                kernel.send_event(event);
+                0
+            }
+        };
+        self.route_midi_outputs(index, &out[..count]);
     }
 
     /// Replace decoded sample storage between process calls. No decoding or allocation in process.
@@ -1296,12 +1402,7 @@ impl ExecutionPlan {
                 left_out = rest_left;
                 right_out = rest_right;
             }
-            self.nodes
-                .iter_mut()
-                .find(|node| node.id == event.node)
-                .unwrap()
-                .kernel
-                .send_event(event.kind);
+            self.dispatch_event(event.node, event.kind);
             start = event.offset;
         }
         self.process(
@@ -1339,6 +1440,10 @@ impl ExecutionPlan {
             let left = &mut left[..frames];
             let right = &mut right[..frames];
             match &mut current.kernel {
+                Kernel::MidiInput | Kernel::MidiTranspose(_) => {
+                    left.fill(0.0);
+                    right.fill(0.0);
+                }
                 Kernel::InputRaw => {
                     left.copy_from_slice(input[0]);
                     right.copy_from_slice(input[1]);
@@ -1935,6 +2040,90 @@ mod tests {
             plan.process_with_events([&input, &input], [&mut left, &mut right], &invalid),
             Err(EventError::OffsetOutOfRange)
         );
+    }
+
+    #[test]
+    fn typed_midi_chain_matches_direct_timed_voice_events_and_held_remap() {
+        let routed = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::MidiInput),
+                node(2, NodeKind::MidiTranspose { semitones: 7.0 }),
+                node(3, NodeKind::VoiceSynth),
+                node(4, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 2, 0), edge(2, 3, 0), edge(3, 4, 0)],
+        };
+        let direct = GraphDescription {
+            nodes: vec![node(3, NodeKind::VoiceSynth), node(4, NodeKind::Output)],
+            connections: vec![edge(3, 4, 0)],
+        };
+        let mut routed = routed.compile(48_000.0, 128).unwrap();
+        let mut direct = direct.compile(48_000.0, 128).unwrap();
+        let silence = [0.0; 128];
+        let mut routed_audio = [0.0; 128];
+        let mut routed_right = [0.0; 128];
+        let mut direct_audio = [0.0; 128];
+        let mut direct_right = [0.0; 128];
+        for (plan, target, note, left, right) in [
+            (&mut routed, 1, 60, &mut routed_audio, &mut routed_right),
+            (&mut direct, 3, 67, &mut direct_audio, &mut direct_right),
+        ] {
+            plan.process_with_events(
+                [&silence, &silence],
+                [left, right],
+                &[TimedEvent {
+                    offset: 10,
+                    node: target,
+                    kind: EventKind::NoteOn {
+                        channel: 0,
+                        note,
+                        velocity: 100,
+                    },
+                }],
+            )
+            .unwrap();
+        }
+        assert_eq!(routed_audio, direct_audio);
+        assert_eq!(routed_right, direct_right);
+
+        assert!(routed.set_parameter(2, 0, 12.0));
+        let remap = [
+            TimedEvent {
+                offset: 0,
+                node: 3,
+                kind: EventKind::NoteOff {
+                    channel: 0,
+                    note: 67,
+                },
+            },
+            TimedEvent {
+                offset: 0,
+                node: 3,
+                kind: EventKind::NoteOn {
+                    channel: 0,
+                    note: 72,
+                    velocity: 100,
+                },
+            },
+        ];
+        direct
+            .process_with_events(
+                [&silence, &silence],
+                [&mut direct_audio, &mut direct_right],
+                &remap,
+            )
+            .unwrap();
+        routed.process([&silence, &silence], [&mut routed_audio, &mut routed_right]);
+        assert_eq!(routed_audio, direct_audio);
+
+        let wrong_type = GraphDescription {
+            nodes: vec![node(1, NodeKind::MidiInput), node(2, NodeKind::Output)],
+            connections: vec![edge(1, 2, 0)],
+        };
+        assert!(matches!(
+            wrong_type.compile(48_000.0, 128),
+            Err(GraphError::SignalTypeMismatch(1, 2, 0))
+        ));
     }
 
     #[test]

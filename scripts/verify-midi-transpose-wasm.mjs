@@ -12,12 +12,15 @@ const wasm = instance.exports;
 const required = (name, ...args) => {
   if (wasm[name](...args) !== 1) throw new Error(`${name} rejected ${args.join(', ')}`);
 };
-required('manifold_graph_begin', 2, 1);
+required('manifold_graph_begin', 4, 3);
+required('manifold_graph_node', 3, 54, 0, 0);
+required('manifold_graph_node', 4, 55, selected.semitones, 0);
 required('manifold_graph_node', 1, 10, 0, 0);
 required('manifold_graph_node', 2, 7, 0, 0);
+required('manifold_graph_edge', 3, 4, 0);
+required('manifold_graph_edge', 4, 1, 0);
 required('manifold_graph_edge', 1, 2, 0);
 required('manifold_prepare', manifest.sampleRate, block);
-required('manifold_midi_transpose_enable', 1, selected.semitones);
 for (const [id, value] of [selected.waveform, selected.attack, selected.decay, selected.sustain, selected.release, selected.level].entries()) {
   required('manifold_set_node_parameter', 1, id, value);
 }
@@ -29,11 +32,11 @@ let sumSquares = 0;
 const boundary = {};
 for (let offset = 0; offset < frames; offset += block) {
   for (const change of selected.changes) {
-    if (change.frame === offset) required('manifold_midi_transpose_set', change.semitones);
+    if (change.frame === offset) required('manifold_set_node_parameter', 4, 0, change.semitones);
   }
   for (const event of selected.events) {
     if (event.frame >= offset && event.frame < offset + block) {
-      required('manifold_event_push', 1, event.frame - offset, event.kind, event.channel, event.note, event.velocity);
+      required('manifold_event_push', 3, event.frame - offset, event.kind, event.channel, event.note, event.velocity);
     }
   }
   const memory = new Float32Array(wasm.memory.buffer);
@@ -54,10 +57,10 @@ for (let offset = 0; offset < frames; offset += block) {
   }
 }
 const report = {
-  reference: 'Native Rust MIDI Transpose into VoiceSynth versus Rust/Wasm worklet ABI',
+  reference: 'Native Rust MIDI Transpose into VoiceSynth versus typed Rust/Wasm MIDI graph',
   frames, sampleRate: manifest.sampleRate, blockSize: block,
   max, rms: Math.sqrt(sumSquares / (frames * 2)), boundaryLeft: boundary,
 };
-fs.writeFileSync(path.join(root, 'artifacts/reviews/checkpoint-94-midi-transpose-wasm-metrics.json'), `${JSON.stringify(report, null, 2)}\n`);
+fs.writeFileSync(path.join(root, 'artifacts/reviews/checkpoint-96-midi-graph-wasm-metrics.json'), `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report, null, 2));
 if (max > 1e-6) process.exitCode = 1;

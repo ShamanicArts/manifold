@@ -1,0 +1,26 @@
+{
+  "reference": "Native Rust MIDI Transpose into VoiceSynth versus typed Rust/Wasm MIDI graph",
+  "frames": 8192,
+  "sampleRate": 48000,
+  "blockSize": 128,
+  "max": 0,
+  "rms": 0,
+  "boundaryLeft": {
+    "128": {
+      "native": 0,
+      "wasm": 0
+    },
+    "2048": {
+      "native": -0.04895530641078949,
+      "wasm": -0.04895530641078949
+    },
+    "2049": {
+      "native": -0.050034135580062866,
+      "wasm": -0.050034135580062866
+    },
+    "4096": {
+      "native": -0.03744732588529587,
+      "wasm": -0.03744732588529587
+    }
+  }
+}
