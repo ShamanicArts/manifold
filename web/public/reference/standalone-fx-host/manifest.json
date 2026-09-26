@@ -92,6 +92,36 @@
       "output": "delay-reverb-delay-reverb.f32"
     },
     {
+      "id": "delay-widener-delay-widener",
+      "label": "Delay \u2192 Widener \u2192 Delay \u2192 Widener \u00b7 low band reset",
+      "sourceSha256": "648850e4a19b2018b654852d7a290ed5a785f778ed540dc195d2e05b17bc322d",
+      "before": [
+        8,
+        1,
+        0,
+        0.6,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "switches": [
+        [
+          8192,
+          4
+        ],
+        [
+          11008,
+          8
+        ],
+        [
+          11520,
+          4
+        ]
+      ],
+      "focusFrame": 11520,
+      "output": "delay-widener-delay-widener.f32"
+    },
+    {
       "id": "delay-svf-delay-svf",
       "label": "Delay \u2192 SVF \u2192 Delay \u2192 SVF \u00b7 host graph switches",
       "sourceSha256": "feb5303e9857c95cb944511c526c1e05e40165a55032b2d087d4b9391e439c0c",

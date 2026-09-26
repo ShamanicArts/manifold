@@ -10,39 +10,53 @@ export function midiAvailability() {
 }
 
 export class BrowserMidiInput {
-  constructor(onNote, onDisconnect, onStatus, onControl = () => {}, onPitchBend = () => {}) {
+  constructor(onNote, onDisconnect, onStatus, onControl = () => {}, onPitchBend = () => {}, onConnectionChange = () => {}) {
     this.onNote = onNote;
     this.onDisconnect = onDisconnect;
     this.onStatus = onStatus;
     this.onControl = onControl;
     this.onPitchBend = onPitchBend;
+    this.onConnectionChange = onConnectionChange;
     this.access = null;
     this.bound = new Map();
+    this.pending = false;
+    this.requestId = 0;
   }
 
   get listening() { return this.access !== null; }
 
   async connect() {
-    if (this.listening) return;
+    if (this.listening || this.pending) return;
     const unavailable = midiAvailability();
     if (unavailable) {
       this.onStatus(unavailable);
       return;
     }
+    this.pending = true;
+    const requestId = ++this.requestId;
+    this.onConnectionChange();
     this.onStatus('Requesting MIDI access…');
     const pendingNotice = setTimeout(() => {
-      this.onStatus('Still waiting for browser MIDI permission. If no prompt appeared, open this instrument view in an external browser.');
+      if (requestId === this.requestId && this.pending) {
+        this.onStatus('No MIDI permission prompt appeared. This browser view may block it; open the link below in an external browser. You can stop waiting here.');
+      }
     }, 4000);
     try {
       const access = await navigator.requestMIDIAccess({ sysex: false });
+      if (requestId !== this.requestId) return;
+      this.pending = false;
       this.access = access;
       access.onstatechange = () => this.syncInputs();
       this.syncInputs();
+      this.onConnectionChange();
     } catch (error) {
+      if (requestId !== this.requestId) return;
+      this.pending = false;
       const reason = error?.name === 'NotAllowedError' || error?.name === 'SecurityError'
         ? 'MIDI permission was denied or blocked here. Try this page in an external browser that allows Web MIDI.'
         : `MIDI connection failed: ${error?.message ?? String(error)}`;
       this.onStatus(reason);
+      this.onConnectionChange();
     } finally {
       clearTimeout(pendingNotice);
     }
@@ -82,6 +96,8 @@ export class BrowserMidiInput {
   }
 
   stop() {
+    ++this.requestId;
+    this.pending = false;
     for (const [id, input] of this.bound) {
       input.onmidimessage = null;
       this.onDisconnect(id);
@@ -90,5 +106,6 @@ export class BrowserMidiInput {
     if (this.access) this.access.onstatechange = null;
     this.access = null;
     this.onStatus('MIDI input stopped. Browser permission may remain granted.');
+    this.onConnectionChange();
   }
 }

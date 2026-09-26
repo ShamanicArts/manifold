@@ -1,0 +1,55 @@
+{
+  "sourceSha256": "5866c5c1337244785da9bcba2706d2a34d2366896ff9aafb9b62e8cdd31090ca",
+  "events": [
+    "select_delay_first_visit_transfers=0",
+    "select_reverb_transfers=0",
+    "reselect_delay_transfers=1",
+    "reselect_reverb_transfers=1"
+  ],
+  "max": 2.998858690261841e-07,
+  "rms": 2.154256486882003e-08,
+  "segments": {
+    "delay": {
+      "max": 2.2351741790771484e-08
+    },
+    "reverb": {
+      "max": 2.998858690261841e-07
+    },
+    "returnedDelay": {
+      "max": 1.4901161193847656e-08
+    },
+    "returnedReverb": {
+      "max": 0.0
+    }
+  },
+  "boundaryLeft": {
+    "8192": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "8193": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "16384": {
+      "old": -0.02956055849790573,
+      "rust": -0.02956055849790573
+    },
+    "16385": {
+      "old": -0.03007098287343979,
+      "rust": -0.03007098287343979
+    },
+    "24576": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "24577": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "25000": {
+      "old": 0.0,
+      "rust": 0.0
+    }
+  }
+}

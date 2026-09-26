@@ -45,6 +45,7 @@ fn main() -> std::io::Result<()> {
                 | "--host-ring"
                 | "--host-bitcrusher"
                 | "--host-transient"
+                | "--host-widener"
                 | "--prepared-ring"
         )
     ) {
@@ -59,6 +60,7 @@ fn main() -> std::io::Result<()> {
                     | "--host-ring"
                     | "--host-bitcrusher"
                     | "--host-transient"
+                    | "--host-widener"
             )
         ) {
             EffectSlot::new_host_switch
@@ -82,6 +84,7 @@ fn main() -> std::io::Result<()> {
                         Some("--host-ring" | "--prepared-ring") => 12.0,
                         Some("--host-bitcrusher") => 17.0,
                         Some("--host-transient") => 16.0,
+                        Some("--host-widener") => 4.0,
                         _ => 0.0,
                     },
                 );
@@ -102,6 +105,7 @@ fn main() -> std::io::Result<()> {
                             | "--host-ring"
                             | "--host-bitcrusher"
                             | "--host-transient"
+                            | "--host-widener"
                             | "--prepared-ring"
                     )
                 )
@@ -118,6 +122,7 @@ fn main() -> std::io::Result<()> {
                         "--host-ring"
                             | "--host-bitcrusher"
                             | "--host-transient"
+                            | "--host-widener"
                             | "--prepared-ring"
                     )
                 )
@@ -127,6 +132,7 @@ fn main() -> std::io::Result<()> {
                     match mode.as_deref() {
                         Some("--host-bitcrusher") => 17.0,
                         Some("--host-transient") => 16.0,
+                        Some("--host-widener") => 4.0,
                         _ => 12.0,
                     },
                 );
@@ -139,6 +145,7 @@ fn main() -> std::io::Result<()> {
                             | "--host-ring"
                             | "--host-bitcrusher"
                             | "--host-transient"
+                            | "--host-widener"
                             | "--prepared-ring"
                     )
                 )

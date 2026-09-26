@@ -1,0 +1,47 @@
+{
+  "sourceSha256": "648850e4a19b2018b654852d7a290ed5a785f778ed540dc195d2e05b17bc322d",
+  "events": [
+    "select_delay_first_visit_transfers=0",
+    "select_widener_transfers=0",
+    "reselect_delay_transfers=1",
+    "reselect_widener_transfers=1"
+  ],
+  "max": 3.725290298461914e-08,
+  "rms": 1.3621874042167401e-09,
+  "segments": {
+    "delay": {
+      "max": 2.2351741790771484e-08
+    },
+    "widener": {
+      "max": 2.9802322387695312e-08
+    },
+    "returnedDelay": {
+      "max": 1.1175870895385742e-08
+    },
+    "returnedWidener": {
+      "max": 3.725290298461914e-08
+    }
+  },
+  "boundaryLeft": {
+    "8192": {
+      "old": 0.0,
+      "rust": 0.0
+    },
+    "11008": {
+      "old": 0.01256471686065197,
+      "rust": 0.012564719654619694
+    },
+    "11520": {
+      "old": -0.12170480936765671,
+      "rust": -0.12170479446649551
+    },
+    "11521": {
+      "old": -0.11847402155399323,
+      "rust": -0.11847402155399323
+    },
+    "12000": {
+      "old": 0.05141989141702652,
+      "rust": 0.05141989141702652
+    }
+  }
+}

@@ -71,8 +71,8 @@ hostFxProject.id = 'manifold.standalone-fx-host';
 hostFxProject.name = 'FX host switch';
 hostFxProject.signal.nodes.find((node) => node.id === 2).type = 'effect-slot-host-switch';
 const hostFxChoice = hostFxProject.parameters.find((parameter) => parameter.id === 0);
-hostFxChoice.choices = ['Chorus', 'Phaser', 'Compressor', 'SVF Filter', 'Reverb', 'Stereo Delay', 'Ring Mod', 'Transient', 'BitCrusher'];
-hostFxChoice.choiceValues = [0, 1, 3, 6, 7, 8, 12, 16, 17];
+hostFxChoice.choices = ['Chorus', 'Phaser', 'Compressor', 'Stereo Widener', 'SVF Filter', 'Reverb', 'Stereo Delay', 'Ring Mod', 'Transient', 'BitCrusher'];
+hostFxChoice.choiceValues = [0, 1, 3, 4, 6, 7, 8, 12, 16, 17];
 const isFxFamily = (family) => ['standalone-fx', 'standalone-fx-routing', 'standalone-fx-host'].includes(family);
 const hasFxState = (family) => family === 'standalone-fx' || family === 'standalone-fx-routing';
 const projects = {
@@ -277,7 +277,7 @@ const projects = {
   'standalone-fx-host': {
     project: hostFxProject,
     title: 'FX host switch',
-    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with eight visited effects measured from the C++ graph runtime. Ring Mod exposes the old empty-modulator-bus behavior; Transient and BitCrusher clear their detector state on reprepare.',
+    description: 'The old graph rebuild snaps gates on each type change. Compare Delay with nine visited effects measured from the C++ graph runtime. Ring Mod exposes the old empty-modulator-bus behavior; Widener, Transient, and BitCrusher clear signal state on reprepare.',
     signal: 'Live path: input → visited effects → re-prepared wet gate → legacy gain/mix → output',
   },
   'loop-capture': {
@@ -819,6 +819,8 @@ function updateSlotControls() {
   const help = byId('slot-help');
   if (help) help.textContent = activeFamily === 'standalone-fx-host' && selected === 12
     ? 'The old graph passes a silent second bus to Ring Mod. At full depth and wet mix its output is silent. The normal Standalone FX view uses the audible internal oscillator.'
+    : activeFamily === 'standalone-fx-host' && selected === 4
+    ? 'The old graph prepares Stereo Widener again on each type switch, clearing its low-band filters and correlation meter. The slot applies 1.1× wet gain.'
     : activeFamily === 'standalone-fx-host' && selected === 16
     ? 'The old graph prepares Transient Shaper again on each type switch, clearing its fast and slow envelopes and meter. The comparison changes attack and sustain before the return visit.'
     : activeFamily === 'standalone-fx-host' && selected === 17
@@ -1484,22 +1486,23 @@ const midiToggle = byId('midi-toggle');
 const midiBrowserLink = byId('midi-browser-link');
 const midiBrowserUrl = byId('midi-browser-url');
 midiBrowserUrl.addEventListener('click', () => midiBrowserUrl.select());
+const syncMidiToggle = () => {
+  midiToggle.textContent = midiInput.pending ? 'Stop waiting for MIDI' : midiInput.listening ? 'Stop MIDI input' : 'Request MIDI access';
+  midiToggle.disabled = Boolean(midiAvailability());
+};
 const midiInput = new BrowserMidiInput(receiveMidiNote, releaseDevice, (message) => {
   byId('midi-status').textContent = message;
 }, receiveMidiSustain, (_deviceId, channel, value, eventTimeMs) => {
   sendPitchBend(channel, value, 'MIDI', eventTimeMs);
-});
+}, syncMidiToggle);
 const midiUnavailable = midiAvailability();
 if (midiUnavailable) {
   midiToggle.disabled = true;
   byId('midi-status').textContent = `${midiUnavailable} The on-screen keyboard still works.`;
 }
-midiToggle.addEventListener('click', async () => {
-  midiToggle.disabled = true;
-  if (midiInput.listening) midiInput.stop();
-  else await midiInput.connect();
-  midiToggle.textContent = midiInput.listening ? 'Stop MIDI input' : 'Request MIDI access';
-  midiToggle.disabled = Boolean(midiAvailability());
+midiToggle.addEventListener('click', () => {
+  if (midiInput.listening || midiInput.pending) midiInput.stop();
+  else void midiInput.connect();
 });
 for (const [label, note, shortcut] of keyboardNotes) {
   const button = document.createElement('button');
