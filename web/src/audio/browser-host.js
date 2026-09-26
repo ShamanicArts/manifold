@@ -52,6 +52,18 @@ export class BrowserAudioHost {
           value: values.get(parameter.id) ?? parameter.default }));
       const graph = { ...project.signal,
         initialParameters: [...(project.signal.initialParameters ?? []), ...prepareValues] };
+      const slot = project.signal.nodes.find((node) => node.type === 'effect-slot');
+      if (slot) {
+        const controls = project.parameters.filter((parameter) => parameter.nodeId === slot.id);
+        const type = controls.find((parameter) => parameter.nodeParameterId === 0);
+        const mix = controls.find((parameter) => parameter.nodeParameterId === 1);
+        graph.nodes = project.signal.nodes.map((node) => node.id === slot.id
+          ? { ...node, a: values.get(type.id) ?? type.default, b: values.get(mix.id) ?? mix.default }
+          : node);
+        graph.initialParameters.push(...controls.filter((parameter) => parameter.nodeParameterId >= 2)
+          .map((parameter) => ({ nodeId: slot.id, id: parameter.nodeParameterId,
+            value: values.get(parameter.id) ?? parameter.default })));
+      }
       processor.port.postMessage({ type: 'init', wasmBytes, graph }, [wasmBytes]);
       await ready;
       this.parameters = new Map(project.parameters.map((parameter) => [parameter.id, parameter]));

@@ -102,7 +102,7 @@ const projects = {
   'standalone-fx': {
     project: standaloneFxProject,
     title: 'Standalone FX slice',
-    description: 'A swappable effects slot using the original type IDs and normalized controls. SVF Filter and Stereo Delay are available in this slice.',
+    description: 'A swappable effects slot using the original type IDs and normalized controls. Compressor, SVF Filter, and Stereo Delay are available in this slice.',
     signal: 'Live path: input → selected effect → dry/wet mix → output',
   },
   'loop-capture': {
@@ -254,9 +254,10 @@ function addSlider(parameter) {
 function updateSlotControls() {
   if (activeFamily !== 'standalone-fx') return;
   const selected = values.get(0);
-  const labels = selected === 6
-    ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
-    : { 2: 'Delay time', 3: 'Feedback' };
+  const labels = selected === 3
+    ? { 2: 'Threshold', 3: 'Ratio', 4: 'Attack (at select)', 5: 'Release (at select)', 6: 'Knee (inert)' }
+    : selected === 6 ? { 2: 'Filter cutoff', 3: 'Resonance', 4: 'Filter drive' }
+      : { 2: 'Delay time', 3: 'Feedback' };
   for (let id = 2; id <= 6; id++) {
     const wrapper = byId('controls').querySelector(`[data-parameter-id="${id}"]`);
     if (!wrapper) continue;
@@ -265,7 +266,13 @@ function updateSlotControls() {
     const value = values.get(id);
     wrapper.querySelector('span').textContent = labels[id];
     wrapper.querySelector('input').setAttribute('aria-label', labels[id]);
-    wrapper.querySelector('output').value = selected === 6
+    wrapper.querySelector('output').value = selected === 3
+      ? id === 2 ? `${(-40 + 38 * value).toFixed(1)} dB`
+        : id === 3 ? (1.5 + 18.5 * value).toFixed(2)
+          : id === 4 ? `${(1 + 39 * value).toFixed(1)} ms`
+            : id === 5 ? `${(20 + 230 * value).toFixed(1)} ms`
+              : `${(12 * value).toFixed(1)} dB`
+      : selected === 6
       ? id === 2 ? `${Math.round(60 * (10000 / 60) ** value).toLocaleString()} Hz`
         : id === 3 ? (0.08 + 0.92 * value).toFixed(2) : (6 * value).toFixed(2)
       : id === 2 ? `${Math.round(40 + 740 * value)} / ${Math.round((40 + 740 * value) * 1.5)} ms`
@@ -356,6 +363,7 @@ function renderPrimitive(family) {
   primitivePicker.value = family;
   values = new Map(project.parameters.map((parameter) => [parameter.id, parameter.default]));
   if (family === 'standalone-fx') slotValuesByType = new Map([
+    [3, [0.4, 0.3, 0.1, 0.3, 0.5]],
     [6, [0.5, 0.4, 0.1, 0.5, 0.5]], [8, [0.3, 0.3, 0.5, 0.5, 0.5]],
   ]);
   if (family === 'loop-capture') loopHasTake = false;
@@ -442,6 +450,12 @@ function renderPrimitive(family) {
     const help = document.createElement('p');
     help.className = 'control-help';
     help.textContent = 'Attack and release are captured when audio starts; stop audio to change them. The old knee, auto makeup, mode, detector mode, and sidechain HPF controls do not affect this processing path.';
+    byId('controls').appendChild(help);
+  }
+  if (family === 'standalone-fx') {
+    const help = document.createElement('p');
+    help.className = 'control-help';
+    help.textContent = 'Compressor attack and release take effect when the effect is selected; changing them while selected needs a switch away and back. The old knee control has no effect on this scalar compressor.';
     byId('controls').appendChild(help);
   }
   if (family === 'patch') {

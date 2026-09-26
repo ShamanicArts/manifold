@@ -1,0 +1,7 @@
+# Review checkpoint 22: Standalone FX type 3
+
+Date: 2026-09-26. Open the [Standalone FX slice](http://127.0.0.1:4173/?primitive=standalone-fx) and select **Compressor**. The [desktop](checkpoint-22-1365.png) and [390 px mobile](checkpoint-22-390.png) captures show its five normalized controls, the live oscillator path, and a native Rust versus Wasm case. The live tests started audio with Compressor selected, showed six visible sliders including wet mix, and found no page errors or horizontal overflow.
+
+Type 3 maps `p/0`–`p/4` to the legacy threshold, ratio, attack, release, and knee ranges. The slot stores values separately for types 3, 6, and 8. Selecting Compressor constructs a fresh kernel from those stored values, so attack and release reach the legacy preparation-only coefficients. The browser also includes the chosen type and five values in graph preparation when starting audio. This is still a three-type slice of the original 21-type project, with native Rust/Wasm slot comparisons rather than full project-level C++ parity.
+
+Four new native Rust fixtures cover compressor dynamics, timing changes after selection, and switches into and out of Compressor. All nine slot cases and all **107 workbench comparison cases** show Match with no browser page errors. The scalar Compressor itself retains eight direct C++ comparison cases from [checkpoint 21](checkpoint-21.md). All 32 Rust tests passed. The [slot migration boundary](../../docs/standalone-fx-migration.md) records the control mapping and remaining work.

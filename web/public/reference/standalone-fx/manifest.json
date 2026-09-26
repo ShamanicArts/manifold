@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "249824db87af8d57fd31ccd4db4ffaf0890e0e864eef08cd6dd78ae928128d02",
+  "sourceSha256": "2853b5e1213adba1b4d8cf09273a69a653af20ea0e93cc16fb8ca2a65b83e606",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
@@ -127,6 +127,102 @@
       ],
       "blockSize": 128,
       "output": "delay-to-filter.f32"
+    },
+    {
+      "id": "compressor-dynamics",
+      "label": "Compressor threshold and ratio",
+      "before": [
+        3,
+        0.8,
+        0.4,
+        0.3,
+        0.1,
+        0.3,
+        0.5
+      ],
+      "after": [
+        3,
+        0.8,
+        0.1,
+        0.8,
+        0.1,
+        0.3,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "compressor-dynamics.f32"
+    },
+    {
+      "id": "compressor-timing",
+      "label": "Compressor timing after prepare",
+      "before": [
+        3,
+        1,
+        0.2,
+        0.6,
+        0.1,
+        0.3,
+        0.5
+      ],
+      "after": [
+        3,
+        1,
+        0.2,
+        0.6,
+        0.9,
+        0.8,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "compressor-timing.f32"
+    },
+    {
+      "id": "filter-to-compressor",
+      "label": "Switch filter to compressor",
+      "before": [
+        6,
+        0.8,
+        0.5,
+        0.4,
+        0.1,
+        0.5,
+        0.5
+      ],
+      "after": [
+        3,
+        0.8,
+        0.15,
+        0.75,
+        0.2,
+        0.4,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "filter-to-compressor.f32"
+    },
+    {
+      "id": "compressor-to-delay",
+      "label": "Switch compressor to delay",
+      "before": [
+        3,
+        0.8,
+        0.15,
+        0.75,
+        0.2,
+        0.4,
+        0.5
+      ],
+      "after": [
+        8,
+        0.8,
+        0.1,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 128,
+      "output": "compressor-to-delay.f32"
     }
   ]
 }

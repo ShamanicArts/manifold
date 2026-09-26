@@ -209,7 +209,7 @@ impl NodeKind {
                 mix,
                 params,
             } => {
-                (*selected == effect_slot::SVF_TYPE || *selected == effect_slot::DELAY_TYPE)
+                effect_slot::supported_type(*selected as f32).is_some()
                     && mix.is_finite()
                     && params.iter().all(|value| value.is_finite())
             }
