@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "reference": "native Rust sample-rate envelope ducking graph",
+  "sourceSha256": "7e0f10c07a7ac992b9f0c55dd3f91360fa3960f5459fdf684562e2bbd01b482f",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 8192,
+  "stepFrame": 4096,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "default",
+      "label": "Peak ducking",
+      "before": [
+        10,
+        120,
+        4,
+        80,
+        0,
+        1,
+        -1.5
+      ],
+      "after": [
+        10,
+        120,
+        4,
+        80,
+        0,
+        1,
+        -1.5
+      ],
+      "blockSize": 128,
+      "output": "default.f32",
+      "meterOutput": "default-meters.f32"
+    },
+    {
+      "id": "rms",
+      "label": "RMS ducking",
+      "before": [
+        10,
+        120,
+        4,
+        80,
+        1,
+        1,
+        -1.5
+      ],
+      "after": [
+        10,
+        120,
+        4,
+        80,
+        1,
+        1,
+        -1.5
+      ],
+      "blockSize": 128,
+      "output": "rms.f32",
+      "meterOutput": "rms-meters.f32"
+    },
+    {
+      "id": "hybrid",
+      "label": "Hybrid ducking",
+      "before": [
+        10,
+        120,
+        4,
+        80,
+        2,
+        1,
+        -1.5
+      ],
+      "after": [
+        10,
+        120,
+        4,
+        80,
+        2,
+        1,
+        -1.5
+      ],
+      "blockSize": 128,
+      "output": "hybrid.f32",
+      "meterOutput": "hybrid-meters.f32"
+    },
+    {
+      "id": "dry",
+      "label": "Zero duck depth",
+      "before": [
+        10,
+        120,
+        4,
+        80,
+        0,
+        1,
+        0
+      ],
+      "after": [
+        10,
+        120,
+        4,
+        80,
+        0,
+        1,
+        0
+      ],
+      "blockSize": 128,
+      "output": "dry.f32",
+      "meterOutput": "dry-meters.f32"
+    },
+    {
+      "id": "sweep",
+      "label": "Detector and depth sweep",
+      "before": [
+        20,
+        200,
+        2,
+        40,
+        0,
+        1,
+        -0.4
+      ],
+      "after": [
+        2,
+        30,
+        6,
+        600,
+        1,
+        0.8,
+        -1.9
+      ],
+      "blockSize": 128,
+      "output": "sweep.f32",
+      "meterOutput": "sweep-meters.f32"
+    },
+    {
+      "id": "small-block",
+      "label": "64-frame blocks",
+      "before": [
+        4,
+        40,
+        5,
+        100,
+        2,
+        1,
+        -1.2
+      ],
+      "after": [
+        8,
+        80,
+        3,
+        300,
+        0,
+        1.2,
+        -0.8
+      ],
+      "blockSize": 64,
+      "output": "small-block.f32",
+      "meterOutput": "small-block-meters.f32"
+    }
+  ]
+}

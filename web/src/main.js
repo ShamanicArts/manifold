@@ -15,6 +15,7 @@ import standaloneFxProject from '../../projects/standalone-fx-slice/project.json
 import loopCaptureProject from '../../projects/loop-capture/project.json';
 import spectrumAnalyzerProject from '../../projects/spectrum-analyzer/project.json';
 import envelopeFollowerProject from '../../projects/envelope-follower/project.json';
+import envelopeDuckingProject from '../../projects/envelope-ducking/project.json';
 import { BrowserAudioHost } from './audio/browser-host.js';
 import { BrowserMidiInput, midiAvailability } from './audio/midi-input.js';
 import { initializeReferenceLab } from './reference/comparison.js';
@@ -114,6 +115,12 @@ const projects = {
     description: 'Follow input level with peak, RMS, or hybrid detection. Set attack, release, sensitivity, and a highpass on the detector. Stereo audio passes through unchanged.',
     signal: 'Live path: input → unchanged output · detector tap → envelope meter',
   },
+  'envelope-ducking': {
+    project: envelopeDuckingProject,
+    title: 'Envelope ducking',
+    description: 'Use the input envelope as a sample-rate control signal for a gain stage. Loud input reduces the output level; detector attack, release, sensitivity, and duck depth are editable.',
+    signal: 'Audio: input → modulated gain → output · CV: input → envelope detector → gain',
+  },
   'stereo-delay': {
     project: stereoDelayProject,
     title: 'Stereo delay',
@@ -128,7 +135,7 @@ let slotValuesByType = new Map();
 let loopHasTake = false;
 let envelopeHistory = [];
 const audio = new BrowserAudioHost((message) => { status.textContent = message; }, (nodeId, bands) => {
-  if (nodeId !== 2 || !['spectrum-analyzer', 'envelope-follower'].includes(activeFamily)) return;
+  if (nodeId !== 2 || !['spectrum-analyzer', 'envelope-follower', 'envelope-ducking'].includes(activeFamily)) return;
   const scale = activeFamily === 'spectrum-analyzer'
     ? Math.max(0.05, Math.max(...bands.filter(Number.isFinite)) * 1.2) : 1;
   [...byId('live-bands').children].forEach((row, index) => {
@@ -136,7 +143,7 @@ const audio = new BrowserAudioHost((message) => { status.textContent = message; 
     row.querySelector('.live-band-fill').style.width = `${Math.min(100, value / scale * 100)}%`;
     row.querySelector('output').textContent = value.toFixed(3);
   });
-  if (activeFamily === 'envelope-follower') {
+  if (activeFamily === 'envelope-follower' || activeFamily === 'envelope-ducking') {
     envelopeHistory.push(Math.max(0, Math.min(1, bands[0] ?? 0)));
     if (envelopeHistory.length > 60) envelopeHistory.shift();
     const scale = Math.max(0.2, Math.max(...envelopeHistory) * 1.2);
@@ -327,20 +334,21 @@ function renderPrimitive(family) {
   ]);
   if (family === 'loop-capture') loopHasTake = false;
   byId('module-title').textContent = title;
-  const analyzerView = family === 'spectrum-analyzer' || family === 'envelope-follower';
+  const analyzerView = family === 'spectrum-analyzer' || family === 'envelope-follower' || family === 'envelope-ducking';
+  document.querySelector('.measurements h2').textContent = family === 'spectrum-analyzer' ? 'Band levels' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector level' : 'Live output';
   envelopeHistory = [];
   document.querySelector('.scope-wrap').hidden = analyzerView;
   document.querySelector('.axis-caption').hidden = analyzerView;
   byId('live-bands').hidden = !analyzerView;
-  byId('live-bands').setAttribute('aria-label', family === 'envelope-follower' ? 'Live envelope value' : 'Eight legacy analyzer bands');
-  byId('live-envelope-trace').hidden = family !== 'envelope-follower';
+  byId('live-bands').setAttribute('aria-label', family === 'spectrum-analyzer' ? 'Eight legacy analyzer bands' : 'Live envelope value');
+  byId('live-envelope-trace').hidden = !['envelope-follower', 'envelope-ducking'].includes(family);
   [...byId('live-bands').children].forEach((row, index) => {
-    row.hidden = family === 'envelope-follower' && index > 0;
-    row.firstChild.textContent = family === 'envelope-follower' ? 'Env' : String(index + 1);
+    row.hidden = family !== 'spectrum-analyzer' && index > 0;
+    row.firstChild.textContent = family !== 'spectrum-analyzer' ? 'Env' : String(index + 1);
   });
   byId('module-description').textContent = description;
   byId('signal-path').textContent = signal;
-  document.querySelector('.panel-note').textContent = family === 'spectrum-analyzer' ? 'Eight band meter' : family === 'envelope-follower' ? 'Envelope meter' : `Post ${title.toLowerCase()}`;
+  document.querySelector('.panel-note').textContent = family === 'spectrum-analyzer' ? 'Eight band meter' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Envelope meter' : `Post ${title.toLowerCase()}`;
   document.querySelectorAll('[data-primitive]').forEach((button) => {
     button.setAttribute('aria-current', button.dataset.primitive === family ? 'page' : 'false');
   });
@@ -348,7 +356,7 @@ function renderPrimitive(family) {
   byId('controls').replaceChildren();
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
-  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'envelope-follower' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
+  byId('mode-label').textContent = family === 'voice' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : family === 'standalone-fx' ? 'Effect type' : 'Mode';
   byId('input-label').textContent = isInstrument ? 'Instrument' : 'Live input';
   byId('keyboard-section').hidden = family !== 'voice';
   if (mode) {
@@ -425,6 +433,7 @@ function renderPrimitive(family) {
     ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
     : family === 'oscillator' || family === 'adsr' || family === 'noise' || family === 'patch' || family === 'modulation'
       ? `Start the instrument to view its spectrum. The ${family === 'patch' || family === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
+    : family === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain and inspect the detector. Native Rust/Wasm comparisons are below.'
     : family === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.'
     : analyzerView ? 'Start audio to see the original eight band meter. Bars scale to the current peak; numbers are normalized 0–1 values.'
     : 'Start audio to view the output spectrum. The reference cases below run offline.';
@@ -561,10 +570,10 @@ window.addEventListener('popstate', () => {
 let spectrumFrame = null;
 let lastMeterRequest = 0;
 const animateSpectrum = () => {
-  if (activeFamily === 'spectrum-analyzer' || activeFamily === 'envelope-follower') {
+  if (['spectrum-analyzer', 'envelope-follower', 'envelope-ducking'].includes(activeFamily)) {
     const now = performance.now();
     if (audio.running && now - lastMeterRequest >= 100) {
-      audio.requestMeters(2, activeFamily === 'envelope-follower' ? 1 : 8);
+      audio.requestMeters(2, activeFamily === 'spectrum-analyzer' ? 8 : 1);
       lastMeterRequest = now;
     }
   } else drawLiveSpectrum(byId('live-spectrum'), audio.analyser);
@@ -588,12 +597,12 @@ toggle.addEventListener('click', async () => {
       ? isInstrument ? 'Stop instrument' : 'Stop audio'
       : isInstrument ? 'Start instrument' : 'Start audio';
     document.querySelector('.measurement-hint').textContent = audio.running
-      ? activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
+      ? activeFamily === 'envelope-ducking' ? 'Detector drives gain at sample rate; the live meter shows its normalized control level.' : activeFamily === 'envelope-follower' ? 'Detected input envelope, normalized 0–1. Audio passes through unchanged.' : activeFamily === 'spectrum-analyzer' ? 'Legacy eight band estimates; bars scale to the current peak, numbers are normalized 0–1. Audio passes through unchanged.' : activeFamily === 'voice' ? 'Spectrum of played notes.' : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation' ? 'Spectrum of the instrument.' : 'Spectrum of the processed live input.'
       : activeFamily === 'voice'
         ? 'Start the instrument and play notes to view its output spectrum. The timing cases below run offline.'
         : activeFamily === 'oscillator' || activeFamily === 'adsr' || activeFamily === 'noise' || activeFamily === 'patch' || activeFamily === 'modulation'
           ? `Start the instrument to view its spectrum. The ${activeFamily === 'patch' || activeFamily === 'modulation' ? 'native Rust' : 'C++'} comparisons below run offline.`
-        : activeFamily === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.' : activeFamily === 'spectrum-analyzer' ? 'Start audio to see the original eight band meter. C++ meter snapshots are compared below.' : 'Start audio to view the output spectrum. The reference cases below run offline.';
+        : activeFamily === 'envelope-ducking' ? 'Start audio to hear envelope-controlled gain. Native Rust/Wasm comparisons are below.' : activeFamily === 'envelope-follower' ? 'Start audio to view the detected envelope. C++ meter snapshots are compared below.' : activeFamily === 'spectrum-analyzer' ? 'Start audio to see the original eight band meter. C++ meter snapshots are compared below.' : 'Start audio to view the output spectrum. The reference cases below run offline.';
     if (spectrumFrame) cancelAnimationFrame(spectrumFrame);
     animateSpectrum();
   } catch (error) {

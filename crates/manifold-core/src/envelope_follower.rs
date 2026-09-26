@@ -56,45 +56,44 @@ impl EnvelopeFollower {
         let [left, right] = input;
         let [out_left, out_right] = output;
         for frame in 0..left.len() {
-            for index in 0..4 {
-                self.current[index] += (self.target[index] - self.current[index]) * self.smooth;
-            }
-            let hp_coefficient =
-                (-2.0 * std::f32::consts::PI * self.current[3] / self.sample_rate).exp();
-            let attack_coefficient =
-                (-1.0 / ((self.current[0] * 0.001).max(0.0001) * self.sample_rate)).exp();
-            let release_coefficient =
-                (-1.0 / ((self.current[1] * 0.001).max(0.0001) * self.sample_rate)).exp();
-            let mut sum = 0.0;
-            for channel in 0..2 {
-                let sample = if channel == 0 {
-                    left[frame]
-                } else {
-                    right[frame]
-                };
-                let hp =
-                    hp_coefficient * (self.hp_state[channel] + sample - self.hp_input[channel]);
-                self.hp_input[channel] = sample;
-                self.hp_state[channel] = hp;
-                sum += if self.mode == 1 { hp * hp } else { hp.abs() };
-            }
-            let detector = match self.mode {
-                1 => (sum * 0.5).sqrt() * self.current[2],
-                2 => (sum * 0.5) * self.current[2] * 0.7 + self.envelope * 0.3,
-                _ => (sum * 0.5) * self.current[2],
-            };
-            let coefficient = if detector > self.envelope {
-                attack_coefficient
-            } else {
-                release_coefficient
-            };
-            self.envelope = coefficient * self.envelope + (1.0 - coefficient) * detector;
+            self.process_sample([left[frame], right[frame]]);
             out_left[frame] = left[frame];
             out_right[frame] = right[frame];
         }
-        if !left.is_empty() {
-            self.meter = self.envelope.clamp(0.0, 1.0);
+    }
+
+    /// Return the normalized detector value for a typed control edge.
+    pub fn process_sample(&mut self, input: [f32; 2]) -> f32 {
+        for index in 0..4 {
+            self.current[index] += (self.target[index] - self.current[index]) * self.smooth;
         }
+        let hp_coefficient =
+            (-2.0 * std::f32::consts::PI * self.current[3] / self.sample_rate).exp();
+        let attack_coefficient =
+            (-1.0 / ((self.current[0] * 0.001).max(0.0001) * self.sample_rate)).exp();
+        let release_coefficient =
+            (-1.0 / ((self.current[1] * 0.001).max(0.0001) * self.sample_rate)).exp();
+        let mut sum = 0.0;
+        for channel in 0..2 {
+            let sample = input[channel];
+            let hp = hp_coefficient * (self.hp_state[channel] + sample - self.hp_input[channel]);
+            self.hp_input[channel] = sample;
+            self.hp_state[channel] = hp;
+            sum += if self.mode == 1 { hp * hp } else { hp.abs() };
+        }
+        let detector = match self.mode {
+            1 => (sum * 0.5).sqrt() * self.current[2],
+            2 => (sum * 0.5) * self.current[2] * 0.7 + self.envelope * 0.3,
+            _ => (sum * 0.5) * self.current[2],
+        };
+        let coefficient = if detector > self.envelope {
+            attack_coefficient
+        } else {
+            release_coefficient
+        };
+        self.envelope = coefficient * self.envelope + (1.0 - coefficient) * detector;
+        self.meter = self.envelope.clamp(0.0, 1.0);
+        self.meter
     }
 
     pub fn meter(&self) -> f32 {

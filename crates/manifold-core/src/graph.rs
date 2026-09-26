@@ -87,6 +87,13 @@ pub enum NodeKind {
         highpass_hz: f32,
         mode: u32,
     },
+    EnvelopeControl {
+        attack_ms: f32,
+        release_ms: f32,
+        sensitivity: f32,
+        highpass_hz: f32,
+        mode: u32,
+    },
     VoiceSynth,
     Oscillator {
         frequency: f32,
@@ -133,12 +140,13 @@ impl NodeKind {
             | Self::LoopCapture { .. }
             | Self::SpectrumAnalyzer { .. }
             | Self::EnvelopeFollower { .. }
+            | Self::EnvelopeControl { .. }
             | Self::Output => 1,
         }
     }
 
     fn output_signal(&self) -> SignalKind {
-        if matches!(self, Self::Lfo { .. }) {
+        if matches!(self, Self::Lfo { .. } | Self::EnvelopeControl { .. }) {
             SignalKind::Control
         } else {
             SignalKind::Audio
@@ -213,6 +221,13 @@ impl NodeKind {
                 floor_db,
             } => sensitivity.is_finite() && smoothing.is_finite() && floor_db.is_finite(),
             Self::EnvelopeFollower {
+                attack_ms,
+                release_ms,
+                sensitivity,
+                highpass_hz,
+                mode,
+            }
+            | Self::EnvelopeControl {
                 attack_ms,
                 release_ms,
                 sensitivity,
@@ -305,6 +320,7 @@ enum Kernel {
     LoopCapture(LoopCapture),
     SpectrumAnalyzer(SpectrumAnalyzer),
     EnvelopeFollower(EnvelopeFollower),
+    EnvelopeControl(EnvelopeFollower),
     VoiceSynth(VoiceSynth),
     Oscillator(Oscillator),
     AdsrEnvelope(AdsrEnvelope),
@@ -428,6 +444,13 @@ impl Kernel {
                 sensitivity,
                 highpass_hz,
                 mode,
+            }
+            | NodeKind::EnvelopeControl {
+                attack_ms,
+                release_ms,
+                sensitivity,
+                highpass_hz,
+                mode,
             } => {
                 let mut follower = EnvelopeFollower::new(sample_rate, *attack_ms, *release_ms);
                 follower.set_parameter(2, *sensitivity);
@@ -435,7 +458,11 @@ impl Kernel {
                 follower.set_parameter(4, *mode as f32);
                 // Authored values are settled before the first block.
                 follower.settle();
-                Self::EnvelopeFollower(follower)
+                if matches!(kind, NodeKind::EnvelopeControl { .. }) {
+                    Self::EnvelopeControl(follower)
+                } else {
+                    Self::EnvelopeFollower(follower)
+                }
             }
             NodeKind::VoiceSynth => Self::VoiceSynth(VoiceSynth::new(sample_rate)),
             NodeKind::Oscillator {
@@ -505,6 +532,7 @@ impl Kernel {
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SpectrumAnalyzer(analyzer), id) => return analyzer.set_parameter(id, value),
             (Self::EnvelopeFollower(follower), id) => return follower.set_parameter(id, value),
+            (Self::EnvelopeControl(follower), id) => return follower.set_parameter(id, value),
             (Self::VoiceSynth(synth), id) => return synth.set_parameter(id, value),
             (Self::Oscillator(oscillator), id) => return oscillator.set_parameter(id, value),
             (Self::AdsrEnvelope(envelope), id) => return envelope.set_parameter(id, value),
@@ -683,6 +711,7 @@ impl ExecutionPlan {
             .and_then(|entry| match &entry.kernel {
                 Kernel::SpectrumAnalyzer(analyzer) => analyzer.band(band),
                 Kernel::EnvelopeFollower(follower) if band == 0 => Some(follower.meter()),
+                Kernel::EnvelopeControl(follower) if band == 0 => Some(follower.meter()),
                 _ => None,
             })
     }
@@ -915,6 +944,15 @@ impl ExecutionPlan {
                 }
                 Kernel::EnvelopeFollower(follower) => {
                     follower.process_planar([source(0, 0), source(0, 1)], [left, right])
+                }
+                Kernel::EnvelopeControl(follower) => {
+                    let from_left = source(0, 0);
+                    let from_right = source(0, 1);
+                    for frame in 0..frames {
+                        let value = follower.process_sample([from_left[frame], from_right[frame]]);
+                        left[frame] = value;
+                        right[frame] = value;
+                    }
                 }
                 Kernel::VoiceSynth(synth) => {
                     for frame in 0..frames {
@@ -1320,6 +1358,48 @@ mod tests {
         assert!((left[0] - 0.5).abs() < 1e-6);
         assert!((left[25] - 0.9).abs() < 1e-5);
         assert!((left[75] - 0.1).abs() < 1e-5);
+    }
+
+    #[test]
+    fn envelope_control_routes_audio_detector_to_cv_without_host_messages() {
+        let nodes = vec![
+            node(1, NodeKind::InputRaw),
+            node(
+                2,
+                NodeKind::EnvelopeControl {
+                    attack_ms: 0.1,
+                    release_ms: 20.0,
+                    sensitivity: 1.0,
+                    highpass_hz: 5.0,
+                    mode: 0,
+                },
+            ),
+            node(
+                3,
+                NodeKind::ModulatedGain {
+                    base: 1.0,
+                    depth: -1.0,
+                },
+            ),
+            node(4, NodeKind::Output),
+        ];
+        let description = GraphDescription {
+            nodes: nodes.clone(),
+            connections: vec![edge(1, 2, 0), edge(1, 3, 0), edge(2, 3, 1), edge(3, 4, 0)],
+        };
+        let mut plan = description.compile(48_000.0, 256).unwrap();
+        let [left, right] = process(&mut plan, &[0.6; 256], &[0.4; 256]);
+        assert!(left[255] < left[0]);
+        assert!(right[255] < right[0]);
+        assert!(plan.node_meter(2, 0).unwrap() > 0.0);
+        let bad = GraphDescription {
+            nodes,
+            connections: vec![edge(1, 2, 0), edge(2, 4, 0)],
+        };
+        assert_eq!(
+            bad.compile(48_000.0, 256).err(),
+            Some(GraphError::SignalTypeMismatch(2, 4, 0))
+        );
     }
 
     #[test]
