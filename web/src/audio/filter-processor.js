@@ -6,9 +6,18 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     this.inputView = null;
     this.outputView = null;
     this.capacity = 2048;
+    this.eventCapacity = 256;
+    this.pendingCount = 0;
+    this.pendingFrame = new Float64Array(this.eventCapacity);
+    this.pendingNode = new Uint32Array(this.eventCapacity);
+    this.pendingKind = new Uint8Array(this.eventCapacity);
+    this.pendingChannel = new Uint8Array(this.eventCapacity);
+    this.pendingNote = new Uint8Array(this.eventCapacity);
+    this.pendingVelocity = new Uint8Array(this.eventCapacity);
     this.port.onmessage = async ({ data }) => {
       try {
         if (data.type === 'init') {
+          this.pendingCount = 0;
           const module = await WebAssembly.compile(data.wasmBytes);
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
@@ -50,10 +59,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const accepted = this.engine?.manifold_set_route(data.to, data.port, data.from ?? 0) === 1;
           this.port.postMessage({ type: 'route-applied', requestId: data.requestId, accepted });
         } else if (data.type === 'event' && this.engine) {
-          const { nodeId, offset = 0, kind, channel = 0, note = 0, velocity = 0 } = data;
-          if (this.engine.manifold_event_push(nodeId, offset, kind, channel, note, velocity) !== 1) {
-            throw new Error('Event queue rejected note event');
-          }
+          this.queueEvent(data);
         } else if (data.type === 'meter-request' && this.engine) {
           const count = Math.min(33, Math.max(1, data.count ?? 8));
           const values = Array.from({ length: count }, (_, band) => this.engine.manifold_get_node_meter(data.nodeId, band));
@@ -81,6 +87,67 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     };
   }
 
+  queueEvent(data) {
+    if (data.kind === 2) {
+      let kept = 0;
+      for (let index = 0; index < this.pendingCount; index++) {
+        if (this.pendingNode[index] === data.nodeId) continue;
+        this.pendingFrame[kept] = this.pendingFrame[index];
+        this.pendingNode[kept] = this.pendingNode[index];
+        this.pendingKind[kept] = this.pendingKind[index];
+        this.pendingChannel[kept] = this.pendingChannel[index];
+        this.pendingNote[kept] = this.pendingNote[index];
+        this.pendingVelocity[kept] = this.pendingVelocity[index];
+        kept++;
+      }
+      this.pendingCount = kept;
+      if (this.pendingCount === this.eventCapacity) this.pendingCount--;
+    }
+    if (this.pendingCount >= this.eventCapacity) throw new Error('MIDI event queue is full');
+    const offset = Number.isFinite(data.offset) ? Math.max(0, Math.trunc(data.offset)) : 0;
+    const frame = data.kind === 2 ? currentFrame
+      : Number.isSafeInteger(data.frame) && data.frame >= 0 ? data.frame : currentFrame + offset;
+    let index = this.pendingCount;
+    while (index > 0 && this.pendingFrame[index - 1] > frame) {
+      this.pendingFrame[index] = this.pendingFrame[index - 1];
+      this.pendingNode[index] = this.pendingNode[index - 1];
+      this.pendingKind[index] = this.pendingKind[index - 1];
+      this.pendingChannel[index] = this.pendingChannel[index - 1];
+      this.pendingNote[index] = this.pendingNote[index - 1];
+      this.pendingVelocity[index] = this.pendingVelocity[index - 1];
+      index--;
+    }
+    this.pendingFrame[index] = frame;
+    this.pendingNode[index] = data.nodeId;
+    this.pendingKind[index] = data.kind;
+    this.pendingChannel[index] = data.channel ?? 0;
+    this.pendingNote[index] = data.note ?? 0;
+    this.pendingVelocity[index] = data.velocity ?? 0;
+    this.pendingCount++;
+  }
+
+  pushDueEvents(frames) {
+    const end = currentFrame + frames;
+    let due = 0;
+    while (due < this.pendingCount && this.pendingFrame[due] < end) {
+      const offset = Math.max(0, this.pendingFrame[due] - currentFrame);
+      if (this.engine.manifold_event_push(this.pendingNode[due], offset,
+        this.pendingKind[due], this.pendingChannel[due], this.pendingNote[due], this.pendingVelocity[due]) !== 1) {
+        this.port.postMessage({ type: 'error', message: 'Rust rejected a scheduled MIDI event' });
+      }
+      due++;
+    }
+    if (due) {
+      this.pendingFrame.copyWithin(0, due, this.pendingCount);
+      this.pendingNode.copyWithin(0, due, this.pendingCount);
+      this.pendingKind.copyWithin(0, due, this.pendingCount);
+      this.pendingChannel.copyWithin(0, due, this.pendingCount);
+      this.pendingNote.copyWithin(0, due, this.pendingCount);
+      this.pendingVelocity.copyWithin(0, due, this.pendingCount);
+      this.pendingCount -= due;
+    }
+  }
+
   process(inputs, outputs) {
     const output = outputs[0];
     if (!output || output.length === 0) return true;
@@ -97,6 +164,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
       buffer[frame] = left ? left[frame] : 0;
       buffer[this.capacity + frame] = right ? right[frame] : 0;
     }
+    this.pushDueEvents(frames);
     if (this.engine.manifold_process(frames) !== 1) {
       for (const channel of output) channel.fill(0);
       return true;

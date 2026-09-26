@@ -1,0 +1,13 @@
+{
+  "on": {
+    "calls": 1,
+    "status": "Audio running · instrument · 48 kHz",
+    "midi": "1 MIDI input connected.",
+    "event": "On · E4 (64) · ch 1 · vel 100 · MIDI"
+  },
+  "off": {
+    "status": "Audio running · instrument · 48 kHz",
+    "event": "Off · E4 (64) · ch 1 · vel 0 · MIDI"
+  },
+  "errors": []
+}

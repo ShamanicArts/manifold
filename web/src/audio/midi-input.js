@@ -1,4 +1,4 @@
-/** Optional browser MIDI input. Host events enter the next audio block. */
+/** Optional browser MIDI input. Event timestamps travel to the audio host. */
 export function midiAvailability() {
   if (!globalThis.isSecureContext) return 'Web MIDI requires a secure page (HTTPS or localhost).';
   if (!navigator.requestMIDIAccess) return 'Web MIDI is unavailable in this browser.';
@@ -68,8 +68,8 @@ export class BrowserMidiInput {
         const note = bytes[1];
         const velocity = bytes[2];
         if (note > 127 || velocity > 127) return;
-        if (status === 0x90 && velocity > 0) this.onNote(id, 'on', channel, note, velocity);
-        else if (status === 0x80 || status === 0x90 && velocity === 0) this.onNote(id, 'off', channel, note, 0);
+        if (status === 0x90 && velocity > 0) this.onNote(id, 'on', channel, note, velocity, event.timeStamp);
+        else if (status === 0x80 || status === 0x90 && velocity === 0) this.onNote(id, 'off', channel, note, 0, event.timeStamp);
       };
       this.bound.set(id, input);
     }

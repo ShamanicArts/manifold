@@ -1,4 +1,5 @@
 /** Browser devices, AudioWorklet lifecycle, and control transport. */
+import { midiFrame } from './midi-timing.js';
 export class BrowserAudioHost {
   constructor(onStatus, onMeters = () => {}) {
     this.onStatus = onStatus;
@@ -59,6 +60,10 @@ export class BrowserAudioHost {
             clearTimeout(pending.timeout);
             if (data.type === 'capture') pending.resolve({ sourceRate: data.sourceRate, stereo: data.stereo });
             else pending.reject(new Error(data.message));
+          }
+          if (data.type === 'error' && this.ready) {
+            this.onStatus(`Audio error: ${data.message}`);
+            return;
           }
           if (data.type === 'ready' || data.type === 'error') {
             clearTimeout(timeout);
@@ -134,6 +139,12 @@ export class BrowserAudioHost {
 
   sendEvent(nodeId, kind, note = 0, velocity = 0, offset = 0, channel = 0) {
     this.processor?.port.postMessage({ type: 'event', nodeId, kind, channel, note, velocity, offset });
+  }
+
+  sendMidiEvent(nodeId, kind, note, velocity, channel, eventTimeMs) {
+    if (!this.context || !this.processor) return;
+    const frame = midiFrame(this.context, eventTimeMs);
+    this.processor.port.postMessage({ type: 'event', nodeId, kind, channel, note, velocity, frame });
   }
 
   requestMeters(nodeId, count = 8) {

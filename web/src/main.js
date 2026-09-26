@@ -731,6 +731,7 @@ function renderPatchEditor(project) {
 
 function renderPrimitive(family) {
   midiBrowserLink.href = new URL(`?primitive=${family === 'sample-instrument' ? 'sample-instrument' : 'voice'}`, location.href).href;
+  midiBrowserUrl.value = midiBrowserLink.href;
   const { project, title, description, signal } = projects[family];
   if (project.patch && !patchedSignals.has(family)) patchedSignals.set(family, structuredClone(project.signal));
   activeProject = project.patch ? { ...project, signal: patchedSignals.get(family) } : project;
@@ -977,14 +978,14 @@ function releaseDevice(deviceId) {
     for (const key of held) {
       const [channel, note] = key.split(':').map(Number);
       if (!heldByAnotherDevice(key, deviceId)) {
-        audio.sendEvent(noteTarget(), 1, note, 0, 0, channel);
+        audio.sendMidiEvent(noteTarget(), 1, note, 0, channel, performance.now());
         showNoteEvent('off', channel, note, 0, 'MIDI disconnect', true);
       }
     }
   }
   midiHeld.delete(deviceId);
 }
-function receiveMidiNote(deviceId, kind, channel, note, velocity) {
+function receiveMidiNote(deviceId, kind, channel, note, velocity, eventTimeMs) {
   const target = noteTarget();
   if (target === null) return;
   if (!audio.running) {
@@ -998,15 +999,17 @@ function receiveMidiNote(deviceId, kind, channel, note, velocity) {
   if (kind === 'on' && !held.has(key)) {
     const alreadyHeld = heldByAnotherDevice(key, deviceId);
     held.add(key);
-    if (!alreadyHeld) { audio.sendEvent(target, 0, note, velocity, 0, channel); forwarded = true; }
+    if (!alreadyHeld) { audio.sendMidiEvent(target, 0, note, velocity, channel, eventTimeMs); forwarded = true; }
   } else if (kind === 'off' && held.delete(key)) {
-    if (!heldByAnotherDevice(key, deviceId)) { audio.sendEvent(target, 1, note, 0, 0, channel); forwarded = true; }
+    if (!heldByAnotherDevice(key, deviceId)) { audio.sendMidiEvent(target, 1, note, 0, channel, eventTimeMs); forwarded = true; }
   }
   showNoteEvent(kind, channel, note, velocity, 'MIDI', forwarded);
   if (!held.size) midiHeld.delete(deviceId);
 }
 const midiToggle = byId('midi-toggle');
 const midiBrowserLink = byId('midi-browser-link');
+const midiBrowserUrl = byId('midi-browser-url');
+midiBrowserUrl.addEventListener('click', () => midiBrowserUrl.select());
 const midiInput = new BrowserMidiInput(receiveMidiNote, releaseDevice, (message) => {
   byId('midi-status').textContent = message;
 });
