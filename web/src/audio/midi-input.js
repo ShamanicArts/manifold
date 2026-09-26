@@ -28,6 +28,9 @@ export class BrowserMidiInput {
       return;
     }
     this.onStatus('Requesting MIDI access…');
+    const pendingNotice = setTimeout(() => {
+      this.onStatus('Still waiting for browser MIDI permission. If no prompt appeared, open this instrument view in an external browser.');
+    }, 4000);
     try {
       const access = await navigator.requestMIDIAccess({ sysex: false });
       this.access = access;
@@ -38,6 +41,8 @@ export class BrowserMidiInput {
         ? 'MIDI permission was denied or blocked here. Try this page in an external browser that allows Web MIDI.'
         : `MIDI connection failed: ${error?.message ?? String(error)}`;
       this.onStatus(reason);
+    } finally {
+      clearTimeout(pendingNotice);
     }
   }
 

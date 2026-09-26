@@ -590,6 +590,7 @@ function addSelect(parameter) {
 }
 
 function renderPrimitive(family) {
+  midiBrowserLink.href = new URL(`?primitive=${family === 'sample-instrument' ? 'sample-instrument' : 'voice'}`, location.href).href;
   const { project, title, description, signal } = projects[family];
   const isInstrument = project.signal.inputSource === 'none';
   activeFamily = family;
@@ -853,6 +854,7 @@ function receiveMidiNote(deviceId, kind, channel, note, velocity) {
   if (!held.size) midiHeld.delete(deviceId);
 }
 const midiToggle = byId('midi-toggle');
+const midiBrowserLink = byId('midi-browser-link');
 const midiInput = new BrowserMidiInput(receiveMidiNote, releaseDevice, (message) => {
   byId('midi-status').textContent = message;
 });
