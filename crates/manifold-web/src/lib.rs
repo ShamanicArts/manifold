@@ -210,6 +210,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
                 mix: b,
                 params: match selected {
                     effect_slot::CHORUS_TYPE => [0.5, 0.5, 0.2, 0.6, 0.4],
+                    effect_slot::PHASER_TYPE => [0.5, 0.5, 0.4, 0.5, 0.4],
                     effect_slot::COMPRESSOR_TYPE => [0.4, 0.3, 0.1, 0.3, 0.5],
                     effect_slot::SVF_TYPE => [0.5, 0.4, 0.1, 0.5, 0.5],
                     effect_slot::DELAY_TYPE => [0.3, 0.3, 0.5, 0.5, 0.5],

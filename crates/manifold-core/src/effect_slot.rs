@@ -1,13 +1,15 @@
-//! Standalone FX slot slice: legacy IDs 0, 3, 6, 8, and 15.
+//! Standalone FX slot slice: legacy IDs 0, 1, 3, 6, 8, and 15.
 //! Only the selected kernel processes audio; all kernels are prepared before the callback.
 
 use crate::Filter;
 use crate::chorus::{self, Chorus};
 use crate::compressor::{self, Compressor};
 use crate::limiter::{self, Limiter};
+use crate::phaser::Phaser;
 use crate::stereo_delay::{self, StereoDelay};
 
 pub const CHORUS_TYPE: u32 = 0;
+pub const PHASER_TYPE: u32 = 1;
 pub const COMPRESSOR_TYPE: u32 = 3;
 pub const SVF_TYPE: u32 = 6;
 pub const DELAY_TYPE: u32 = 8;
@@ -18,7 +20,9 @@ pub fn supported_type(value: f32) -> Option<u32> {
         return None;
     }
     match value as u32 {
-        CHORUS_TYPE | COMPRESSOR_TYPE | SVF_TYPE | DELAY_TYPE | LIMITER_TYPE => Some(value as u32),
+        CHORUS_TYPE | PHASER_TYPE | COMPRESSOR_TYPE | SVF_TYPE | DELAY_TYPE | LIMITER_TYPE => {
+            Some(value as u32)
+        }
         _ => None,
     }
 }
@@ -29,6 +33,7 @@ pub struct EffectSlot {
     target_mix: f32,
     mix_smoothing: f32,
     chorus_params: [f32; 5],
+    phaser_params: [f32; 5],
     svf_params: [f32; 5],
     delay_params: [f32; 5],
     compressor_params: [f32; 5],
@@ -37,6 +42,7 @@ pub struct EffectSlot {
     limiter_pre_target: f32,
     sample_rate: f32,
     chorus: Chorus,
+    phaser: Phaser,
     filter: Filter,
     delay: StereoDelay,
     compressor: Compressor,
@@ -63,6 +69,7 @@ impl EffectSlot {
             mix_smoothing: ((1.0 - (-1.0 / (0.01 * sample_rate as f64)).exp()) as f32)
                 .clamp(0.0001, 1.0),
             chorus_params: [0.5, 0.5, 0.2, 0.6, 0.4],
+            phaser_params: [0.5, 0.5, 0.4, 0.5, 0.4],
             svf_params: [0.5, 0.4, 0.1, 0.5, 0.5],
             delay_params: [0.3, 0.3, 0.5, 0.5, 0.5],
             compressor_params: [0.4, 0.3, 0.1, 0.3, 0.5],
@@ -71,6 +78,7 @@ impl EffectSlot {
             limiter_pre_target: 1.02,
             sample_rate,
             chorus: Chorus::new(sample_rate, max_frames, chorus::defaults()),
+            phaser: Phaser::new(sample_rate, crate::phaser::defaults()),
             filter: Filter::new(sample_rate),
             delay: StereoDelay::new(sample_rate, delay_settings),
             compressor: Compressor::new(sample_rate, compressor::defaults()),
@@ -78,6 +86,7 @@ impl EffectSlot {
         };
         let selected_params = match selected {
             CHORUS_TYPE => &mut slot.chorus_params,
+            PHASER_TYPE => &mut slot.phaser_params,
             COMPRESSOR_TYPE => &mut slot.compressor_params,
             SVF_TYPE => &mut slot.svf_params,
             DELAY_TYPE => &mut slot.delay_params,
@@ -89,6 +98,7 @@ impl EffectSlot {
         }
         slot.apply_svf();
         slot.rebuild_chorus();
+        slot.rebuild_phaser();
         slot.filter.settle();
         slot.apply_delay();
         slot.delay.settle();
@@ -117,6 +127,27 @@ impl EffectSlot {
     fn apply_chorus(&mut self) {
         for (id, value) in self.chorus_settings().into_iter().enumerate() {
             self.chorus.set_parameter(id as u32, value);
+        }
+    }
+
+    fn phaser_settings(&self) -> [f32; 5] {
+        let [rate, depth, feedback, spread, stages] = self.phaser_params;
+        [
+            0.05 + 2.75 * rate,
+            0.05 + 0.95 * depth,
+            (2.0 + 10.0 * stages + 0.5).floor(),
+            0.8 * feedback,
+            spread,
+        ]
+    }
+
+    fn rebuild_phaser(&mut self) {
+        self.phaser = Phaser::new(self.sample_rate, self.phaser_settings());
+    }
+
+    fn apply_phaser(&mut self) {
+        for (id, value) in self.phaser_settings().into_iter().enumerate() {
+            self.phaser.set_parameter(id as u32, value);
         }
     }
 
@@ -196,6 +227,7 @@ impl EffectSlot {
                     self.selected = selected;
                     match selected {
                         CHORUS_TYPE => self.rebuild_chorus(),
+                        PHASER_TYPE => self.rebuild_phaser(),
                         COMPRESSOR_TYPE => self.rebuild_compressor(),
                         SVF_TYPE => {
                             self.apply_svf();
@@ -214,6 +246,7 @@ impl EffectSlot {
             2..=6 => {
                 let params = match self.selected {
                     CHORUS_TYPE => &mut self.chorus_params,
+                    PHASER_TYPE => &mut self.phaser_params,
                     COMPRESSOR_TYPE => &mut self.compressor_params,
                     SVF_TYPE => &mut self.svf_params,
                     DELAY_TYPE => &mut self.delay_params,
@@ -223,6 +256,7 @@ impl EffectSlot {
                 params[id as usize - 2] = value.clamp(0.0, 1.0);
                 match self.selected {
                     CHORUS_TYPE => self.apply_chorus(),
+                    PHASER_TYPE => self.apply_phaser(),
                     COMPRESSOR_TYPE => self.apply_compressor(),
                     SVF_TYPE => self.apply_svf(),
                     DELAY_TYPE => self.apply_delay(),
@@ -241,6 +275,9 @@ impl EffectSlot {
         match self.selected {
             CHORUS_TYPE => self
                 .chorus
+                .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
+            PHASER_TYPE => self
+                .phaser
                 .process_planar([in_l, in_r], [&mut *out_l, &mut *out_r]),
             COMPRESSOR_TYPE => self
                 .compressor
@@ -303,6 +340,27 @@ mod tests {
         }
         assert!(slot.set_parameter(0, SVF_TYPE as f32));
         assert!(slot.set_parameter(0, CHORUS_TYPE as f32));
+    }
+
+    #[test]
+    fn phaser_slot_preserves_legacy_spread_units() {
+        let rate = 48_000.0;
+        let mut slot = EffectSlot::new(rate, 128, PHASER_TYPE, 1.0, [0.5, 0.5, 0.4, 0.5, 0.4]);
+        let mut phaser = Phaser::new(rate, [1.425, 0.525, 6.0, 0.32, 0.5]);
+        let mut input_l = [0.0; 512];
+        let input_r = [0.0; 512];
+        input_l[0] = 0.5;
+        let mut slot_l = [0.0; 512];
+        let mut slot_r = [0.0; 512];
+        let mut reference_l = [0.0; 512];
+        let mut reference_r = [0.0; 512];
+        slot.process_planar([&input_l, &input_r], [&mut slot_l, &mut slot_r]);
+        phaser.process_planar([&input_l, &input_r], [&mut reference_l, &mut reference_r]);
+        for (actual, reference) in slot_l.iter().zip(reference_l.iter()) {
+            assert!((actual - reference).abs() < 1e-6);
+        }
+        assert!(slot.set_parameter(0, CHORUS_TYPE as f32));
+        assert!(slot.set_parameter(0, PHASER_TYPE as f32));
     }
 
     #[test]

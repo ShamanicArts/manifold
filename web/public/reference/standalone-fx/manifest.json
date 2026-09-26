@@ -1,13 +1,85 @@
 {
   "version": 1,
   "reference": "native Rust Standalone FX slot slice",
-  "sourceSha256": "687fc3756625af1655518f72d89b128540f928083c7920486aa90e1397940846",
+  "sourceSha256": "85a7c8f842ba5f8336ce519937df4549ba52cad088e64f3e22a7d6dad60c8e19",
   "sampleRate": 48000,
   "channels": 2,
   "frames": 16384,
   "stepFrame": 8192,
   "input": "input.f32",
   "cases": [
+    {
+      "id": "phaser-modulation",
+      "label": "Phaser feedback and stages",
+      "before": [
+        1,
+        0.8,
+        0.25,
+        0.3,
+        0.1,
+        0.5,
+        0.4
+      ],
+      "after": [
+        1,
+        0.8,
+        0.75,
+        0.9,
+        0.7,
+        0.9,
+        0.9
+      ],
+      "blockSize": 128,
+      "output": "phaser-modulation.f32"
+    },
+    {
+      "id": "chorus-to-phaser",
+      "label": "Switch chorus to phaser",
+      "before": [
+        0,
+        0.8,
+        0.5,
+        0.5,
+        0.2,
+        0.6,
+        0.4
+      ],
+      "after": [
+        1,
+        0.8,
+        0.5,
+        0.5,
+        0.4,
+        0.5,
+        0.4
+      ],
+      "blockSize": 128,
+      "output": "chorus-to-phaser.f32"
+    },
+    {
+      "id": "phaser-to-delay",
+      "label": "Switch phaser to delay",
+      "before": [
+        1,
+        0.8,
+        0.5,
+        0.5,
+        0.4,
+        0.5,
+        0.4
+      ],
+      "after": [
+        8,
+        0.8,
+        0.1,
+        0.4,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "blockSize": 64,
+      "output": "phaser-to-delay.f32"
+    },
     {
       "id": "chorus-modulation",
       "label": "Chorus rate and depth",
