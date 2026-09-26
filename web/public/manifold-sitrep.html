@@ -32,14 +32,14 @@
   <nav class="toc" aria-label="Sections"><span>Manifold / 26.09.2026</span><a href="#architecture">Architecture</a><a href="#done">Built so far</a><a href="#proven">Evidence</a><a href="#next">In flight &amp; next</a></nav>
   <main class="main">
     <header class="hero">
-      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 120</div>
+      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 121</div>
       <h1>A portable sound engine is taking shape.</h1>
       <p class="hero-copy">The old JUCE and Lua project is being rebuilt as a Rust DSP core with a JavaScript browser workbench. The workbench is already useful for playing, inspecting, and comparing individual behaviors; the full legacy projects are still being assembled.</p>
-      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: Main sample synth reconstruction</span><span>Review scope: checkpoint 120 and the next workstream</span></div>
+      <div class="meta"><span>Snapshot: 26 September 2026</span><span>Current focus: Main sample synth reconstruction</span><span>Review scope: checkpoint 121 and the next workstream</span></div>
       <div class="stats" aria-label="Current library figures">
-        <div class="stat"><strong>54</strong><span>interactive workbench views</span><small>Many are individual primitives or small authored projects.</small></div>
-        <div class="stat"><strong>457</strong><span>checked-in offline comparison cases</span><small>457 audio cases, plus separate source-analysis and recipe captures.</small></div>
-        <div class="stat"><strong>129</strong><span>Rust tests passing</span><small>Workspace tests include live Main pitch routing and the original eight-slot allocation policy.</small></div>
+        <div class="stat"><strong>55</strong><span>interactive workbench views</span><small>Many are individual primitives or small authored projects.</small></div>
+        <div class="stat"><strong>464</strong><span>checked-in offline comparison cases</span><small>464 audio cases, plus separate source-analysis and recipe captures.</small></div>
+        <div class="stat"><strong>132</strong><span>Rust tests passing</span><small>Workspace tests include timed Main chords and the original eight-slot allocation policy.</small></div>
       </div>
     </header>
 
@@ -67,7 +67,7 @@
       <div class="section-head"><span class="label">03</span><h2 id="proven-heading">What the evidence says</h2></div>
       <div class="evidence">
         <div class="evidence-row"><strong>Kernel behavior</strong><p>Checked-in comparison captures pair old C++ outputs with Rust/Wasm for isolated nodes, and native Rust with Rust/Wasm for new compositions. The workbench exposes waveform differences and case-level results.</p></div>
-        <div class="evidence-row"><strong>Latest completed slice</strong><p>The playable Main study routes one voice frequency through root/keytrack, classic or vocoder sample pitch, and Normal/FM/Sync motion in Rust. Its 39 native Rust ↔ Wasm audio cases pass. A new Rust allocator matches 21 original Lua voice-slot decisions, but is not yet connected to eight audio graphs. Version-11 state saves 33 controls and opens ten earlier formats. <a href="/main-sample-blend-review.html">Inspect the playable branch</a> or <a href="/main-voice-allocation-review.html">inspect note allocation</a>.</p></div>
+        <div class="evidence-row"><strong>Latest completed slice</strong><p>The original Main eight-slot policy now drives independent wave, sample, vocoder, and envelope states in a playable Rust graph node. Six new native Rust ↔ Wasm cases are bit-exact; a vocoder chord has bounded numerical variance (0.003883 peak, 0.000286 RMS). The separate single-voice Main blend study still saves 33 controls in version-11 state. <a href="/main-voice-bank-review.html">Inspect the polyphonic checkpoint</a> or <a href="/main-voice-allocation-review.html">inspect the old UI allocation trace</a>.</p></div>
         <div class="evidence-row"><strong>Browser path</strong><p>The same Rust core compiles to Wasm and runs inside an AudioWorklet. Playable views, controlled offline runs, and downloadable project slices exercise this path on the served site.</p></div>
         <div class="evidence-row"><strong>Scope of claim</strong><p>The numbers establish many local behaviors and some small compositions. They do not establish parity for the complete old plug-in, its full Lua project graph, every preset, or a native plug-in host.</p></div>
       </div>
@@ -92,11 +92,12 @@
         <div class="step"><span class="label">Done · FM and Sync motion</span><h3>Move wave pitch and sample playback in Rust</h3><p>At each audio block, FM changes both source rates; Sync chooses replay or retrigger and gates hard sync by blend position. Seven new audio captures match native Rust and Wasm exactly. A separate original Lua trace checks 13 control blocks.</p></div>
         <div class="step"><span class="label">Done · isolated Main pitch map</span><h3>Trace note and sample pitch decisions</h3><p>Fourteen original Lua scenarios match a pure Rust mapping for wave frequency, desired sample ratio, sample speed, and vocoder pitch/mix. The same mapping now drives one authored graph voice.</p></div>
         <div class="step"><span class="label">Done · live Main pitch route</span><h3>Drive the wave, sample, and vocoder together</h3><p>A mapping switch sets all three Rust nodes at block boundaries. Five graph cases and a live worklet check cover keytrack, classic speed, vocoder modes, and restoring manual targets.</p></div>
-        <div class="step"><span class="label">Done · eight-slot Main allocation</span><h3>Choose and release note slots in Rust</h3><p>Twenty-one original Lua steps match Rust exactly for idle slots, quiet-release and oldest-active stealing, duplicate notes, note-off, and panic. The allocator is still separate from the playable graph.</p></div>
-        <div class="step"><span class="label">Now · full sample project</span><h3>Connect slots to Main voices</h3><p>Prepare independent per-note source state and a sample-clock gate/envelope path, then compare mixed voice output. Compare assembled old Main voice output. Ring mode and Add/Morph routing remain. An ADSR gate would be a v2 redesign: old Main references one but does not construct it.</p></div>
+        <div class="step"><span class="label">Done · eight-slot Main allocation</span><h3>Choose and release note slots in Rust</h3><p>Twenty-one original Lua steps match Rust exactly for idle slots, quiet-release and oldest-active stealing, duplicate notes, note-off, and panic. The allocator now drives the playable base voice bank.</p></div>
+        <div class="step"><span class="label">Done · Main polyphonic base branch</span><h3>Play eight independent wave/sample voices</h3><p>Each voice has prepared oscillator, sample playhead, vocoder, FM/Sync motion, and ADSR state. Seven native/Wasm cases cover chords, releases, stealing, FM, Sync, and spectral pitch. Six are bit-exact; the vocoder case has bounded variance. This is a v2 sample-clock envelope redesign, not old Main envelope parity.</p></div>
+        <div class="step"><span class="label">Now · full sample project</span><h3>Connect Add, Morph, and Ring to each voice</h3><p>Combine the remaining Main source families with the bank, then compare assembled voice output against selected original C++ routes. Measure sustained polyphony cost and extend project state to include the new bank.</p></div>
         <div class="step"><span class="label">Later · product surface</span><h3>Harden the shared project model and hosts</h3><p>Broaden state and preset handling, measure callback budgets in the browser, and package non-browser hosts against the same Rust engine.</p></div>
       </div>
-      <div class="actions"><a class="action primary" href="/?primitive=main-sample-blend">Play the Main blend study</a><a class="action" href="/main-voice-allocation-review.html">Inspect Main note allocation</a><a class="action" href="/?primitive=phase-vocoder">Play the phase vocoder</a></div>
+      <div class="actions"><a class="action primary" href="/?primitive=main-voice-bank">Play the Main voice bank</a><a class="action" href="/main-voice-bank-review.html">Inspect checkpoint 121</a><a class="action" href="/?primitive=main-sample-blend">Play the Main blend study</a></div>
     </section>
     <footer>Manifold v2 · review snapshot · the workbench continues to evolve after this page was written.</footer>
   </main>

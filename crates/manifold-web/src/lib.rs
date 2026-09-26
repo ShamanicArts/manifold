@@ -647,6 +647,11 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
             amount: a,
             reference: b,
         },
+        64 if a.is_finite() && a.fract() == 0.0 && (9.0..=12.0).contains(&a) => {
+            NodeKind::MainVoiceBank {
+                fft_order: a as u32,
+            }
+        }
         50 => NodeKind::Shimmer {
             params: manifold_core::shimmer::DEFAULTS,
         },

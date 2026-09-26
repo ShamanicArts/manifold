@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold v2 · Main voice bank checkpoint</title>
+  <meta name="description" content="Review the first polyphonic Main base branch and its native Rust/Wasm evidence.">
+  <style>
+    :root { color-scheme:light; --bg:#f7f5f0; --paper:#fffefa; --ink:#252a28; --muted:#626b66; --line:#d7dcd6; --green:#285e4d; --rust:#a35339; --soft:#e6f0e9; --warn:#f7ece5; --mono:ui-monospace,SFMono-Regular,Consolas,monospace; --body:system-ui,-apple-system,sans-serif; --serif:Georgia,serif; }
+    @media(prefers-color-scheme:dark) { :root { color-scheme:dark; --bg:#171d1b; --paper:#202825; --ink:#eeeae0; --muted:#b2bcb4; --line:#414c45; --green:#a0d0b2; --rust:#e7a180; --soft:#253d31; --warn:#453026; } }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 var(--body); } a { color:var(--green); text-underline-offset:3px; } main { width:min(980px,calc(100% - 2rem)); margin:0 auto; padding:3rem 0 5rem; } h1,h2 { font-family:var(--serif); font-weight:400; line-height:1.1; } h1 { font-size:clamp(3rem,7vw,5.8rem); letter-spacing:-.035em; margin:.5rem 0 1rem; } h2 { font-size:clamp(2rem,4vw,3rem); margin:0 0 1rem; } h3 { margin:0 0 .4rem; font-size:1rem; } p { margin:.4rem 0 1.2rem; } .eyebrow,.label { font:11px var(--mono); text-transform:uppercase; letter-spacing:.1em; } .eyebrow { color:var(--rust); } header { border-top:2px solid var(--ink); padding-top:1.5rem; } .lead { max-width:770px; font-size:1.2rem; } .actions { display:flex; gap:.7rem; flex-wrap:wrap; margin:1.8rem 0 2.3rem; } .actions a { padding:.65rem .95rem; border:1px solid var(--green); text-decoration:none; font-size:.86rem; } .actions a:first-child { color:var(--paper); background:var(--green); } .metrics { display:grid; grid-template-columns:repeat(3,1fr); border:1px solid var(--line); background:var(--paper); } .metric { padding:1.25rem; } .metric + .metric { border-left:1px solid var(--line); } .metric strong { display:block; font:2.8rem var(--serif); line-height:1; } .metric span { color:var(--muted); font-size:.8rem; } section { border-top:1px solid var(--ink); margin-top:3.6rem; padding-top:1.2rem; } .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.8rem; } .card { background:var(--paper); border:1px solid var(--line); padding:1.1rem; } .card p { font-size:.85rem; color:var(--muted); margin:0; } .flow { font:12px/1.8 var(--mono); background:var(--paper); border:1px solid var(--line); padding:1rem; overflow:auto; white-space:nowrap; } table { border-collapse:collapse; width:100%; background:var(--paper); } th,td { text-align:left; padding:.68rem .8rem; border-bottom:1px solid var(--line); font-size:.85rem; } th { color:var(--muted); font:11px var(--mono); text-transform:uppercase; } .good { color:var(--green); } .bounded { color:var(--rust); } .note { background:var(--warn); border-left:3px solid var(--rust); padding:.9rem 1.1rem; font-size:.87rem; } footer { margin-top:3.5rem; border-top:1px solid var(--line); padding-top:1rem; color:var(--muted); font:11px var(--mono); }
+    @media(max-width:680px) { .grid,.metrics { grid-template-columns:1fr; } .metric + .metric { border-left:0; border-top:1px solid var(--line); } th,td { padding:.55rem .45rem; } }
+  </style>
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Manifold v2 / checkpoint 121 / 26 September 2026</div>
+    <h1>Main gets eight voices.</h1>
+    <p class="lead">The original Main note-slot decisions now drive eight independent Rust wave, sample, vocoder, and envelope states. One decoded source is shared across the playheads. The browser workbench plays chords on its on-screen keyboard.</p>
+    <div class="actions"><a href="/?primitive=main-voice-bank">Play and compare the voice bank</a><a href="/manifold-sitrep.html">Full project sitrep</a><a href="/main-voice-allocation-review.html">Original allocation trace</a></div>
+    <div class="metrics"><div class="metric"><strong>8</strong><span>prepared note voices</span></div><div class="metric"><strong>7</strong><span>native Rust ↔ Wasm audio cases</span></div><div class="metric"><strong>132</strong><span>Rust tests in the workspace</span></div></div>
+  </header>
+  <section><h2>How a note travels</h2><div class="flow">timed MIDI → original eight-slot policy → per-voice note pitch + FM/Sync → oscillator + shared-sample playhead → per-voice vocoder → wave/sample blend → sample-clock ADSR → stereo sum</div>
+    <div class="grid" style="margin-top:.8rem"><div class="card"><h3>Ownership</h3><p>An idle slot wins first; otherwise the quietest releasing slot, then the oldest active slot. Duplicate notes occupy separate slots and release together, following the original UI trace.</p></div><div class="card"><h3>Preparation</h3><p>Eight playheads share one decoded stereo buffer. Scratch audio, FFT storage, and envelopes are prepared before audio rendering. Note events only reset existing state.</p></div><div class="card"><h3>Control</h3><p>Wave shape, blend, root and keytrack, sample pitch engine, FM/Sync, and ADSR can be auditioned in the workbench. MIDI event offsets enter the Rust graph.</p></div></div>
+  </section>
+  <section><h2>What was checked</h2><p>Six captures match native Rust and Wasm sample for sample. The vocoder chord shows bounded numerical variance; it is labelled separately in the comparison lab.</p>
+    <table><thead><tr><th>Capture</th><th>Behavior</th><th>Maximum difference</th></tr></thead><tbody>
+      <tr><td>Wave chord</td><td>Three independent oscillators</td><td class="good">0</td></tr>
+      <tr><td>Sample chord</td><td>Three independent playheads</td><td class="good">0</td></tr>
+      <tr><td>Duplicate release</td><td>Shared note-off ownership</td><td class="good">0</td></tr>
+      <tr><td>Oldest steal</td><td>Ninth note replaces the oldest slot</td><td class="good">0</td></tr>
+      <tr><td>FM chord</td><td>Per-voice directional motion</td><td class="good">0</td></tr>
+      <tr><td>Sync chord</td><td>Per-voice sample retrigger</td><td class="good">0</td></tr>
+      <tr><td>Vocoder chord</td><td>Independent spectral pitch</td><td class="bounded">0.003883 peak · 0.000286 RMS</td></tr>
+    </tbody></table>
+    <p class="note">The vocoder case differs by 0.27% of the native signal RMS. A one-note capture shows a similar peak difference, so the discrepancy is present in the spectral path itself. The lab marks it “Bounded variance”; it is not presented as bit-exact. The specific numerical cause still needs isolation.</p>
+  </section>
+  <section><h2>Limits and next work</h2><p>This is the Main <strong>base wave/sample branch</strong>. Add, Morph, Ring, linked branch depth, full project state, and native plug-in packaging have not been assembled into this voice bank. The old Main UI updates its envelope at UI cadence; this bank intentionally uses a sample-clock ADSR and therefore does not claim full old-project audio parity.</p><p>The next pass will connect the remaining source families to each voice, compare assembled output with selected original C++ routes, and measure sustained polyphony cost in the browser. Hardware MIDI permissions are unavailable in BB’s embedded browser; the on-screen keyboard works.</p></section>
+  <footer>Manifold v2 · review checkpoint 121 · source captures under reference/main-voice-bank</footer>
+</main></body></html>

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "manifold.main-voice-bank-study",
+  "name": "Main voice bank",
+  "source": "Authored v2 polyphonic base branch from Main sample_synth.lua and voice_manager.lua",
+  "signal": {
+    "inputs": 0,
+    "outputs": 2,
+    "inputSource": "none",
+    "nodes": [
+      { "id": 2, "type": "main-voice-bank", "a": 9 },
+      { "id": 3, "type": "output" }
+    ],
+    "connections": [
+      { "from": 2, "to": 3, "inputPort": 0 }
+    ]
+  },
+  "parameters": [
+    { "id": 0, "nodeId": 2, "nodeParameterId": 0, "hostId": "waveform", "label": "Wave shape", "kind": "select", "choices": ["Sine", "Saw", "Square", "Triangle", "Sine + saw"], "default": 0 },
+    { "id": 1, "nodeId": 2, "nodeParameterId": 1, "hostId": "blend", "label": "Wave / sample", "kind": "float", "min": -1, "max": 1, "default": 0 },
+    { "id": 2, "nodeId": 2, "nodeParameterId": 2, "hostId": "root-note", "label": "Sample root", "kind": "float", "min": 36, "max": 84, "default": 60, "step": 1 },
+    { "id": 3, "nodeId": 2, "nodeParameterId": 3, "hostId": "keytrack", "label": "Keytrack", "kind": "select", "choices": ["Wave", "Sample", "Both"], "default": 2 },
+    { "id": 4, "nodeId": 2, "nodeParameterId": 4, "hostId": "sample-pitch", "label": "Sample pitch", "kind": "float", "min": -24, "max": 24, "default": 0, "unit": "st" },
+    { "id": 5, "nodeId": 2, "nodeParameterId": 5, "hostId": "pitch-mode", "label": "Pitch engine", "kind": "select", "choices": ["Classic", "Vocoder", "Vocoder HQ"], "default": 0 },
+    { "id": 6, "nodeId": 2, "nodeParameterId": 6, "hostId": "direction", "label": "Direction", "kind": "select", "choices": ["Normal", "FM", "Sync"], "choiceValues": [0, 2, 3], "default": 0 },
+    { "id": 7, "nodeId": 2, "nodeParameterId": 7, "hostId": "depth", "label": "Direction depth", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 8, "nodeId": 2, "nodeParameterId": 8, "hostId": "wave-to-sample", "label": "Wave to sample", "kind": "float", "min": 0, "max": 1, "default": 0.5 },
+    { "id": 9, "nodeId": 2, "nodeParameterId": 9, "hostId": "sample-to-wave", "label": "Sample to wave", "kind": "float", "min": 0, "max": 1, "default": 0 },
+    { "id": 10, "nodeId": 2, "nodeParameterId": 10, "hostId": "retrigger", "label": "Sync retrigger", "kind": "toggle", "default": 1 },
+    { "id": 11, "nodeId": 2, "nodeParameterId": 11, "hostId": "attack", "label": "Attack", "kind": "float", "min": 0.001, "max": 0.5, "default": 0.005, "unit": "s", "scale": "log" },
+    { "id": 12, "nodeId": 2, "nodeParameterId": 12, "hostId": "decay", "label": "Decay", "kind": "float", "min": 0.001, "max": 1, "default": 0.08, "unit": "s", "scale": "log" },
+    { "id": 13, "nodeId": 2, "nodeParameterId": 13, "hostId": "sustain", "label": "Sustain", "kind": "float", "min": 0, "max": 1, "default": 0.8 },
+    { "id": 14, "nodeId": 2, "nodeParameterId": 14, "hostId": "release", "label": "Release", "kind": "float", "min": 0.001, "max": 2, "default": 0.16, "unit": "s", "scale": "log" },
+    { "id": 15, "nodeId": 2, "nodeParameterId": 15, "hostId": "output", "label": "Output", "kind": "float", "min": 0, "max": 2, "default": 1 },
+    { "id": 16, "nodeId": 2, "nodeParameterId": 16, "hostId": "time-stretch", "label": "Vocoder time", "kind": "float", "min": 0.25, "max": 4, "default": 1 }
+  ]
+}

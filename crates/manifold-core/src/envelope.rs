@@ -24,6 +24,26 @@ pub struct AdsrEnvelope {
 }
 
 impl AdsrEnvelope {
+    pub fn reset(&mut self) {
+        self.gate = false;
+        self.stage = Stage::Off;
+        self.level = 0.0;
+        self.start_level = 0.0;
+        self.stage_time = 0.0;
+    }
+
+    pub fn level(&self) -> f32 {
+        self.level
+    }
+
+    pub fn is_idle(&self) -> bool {
+        self.stage == Stage::Off
+    }
+
+    pub fn is_releasing(&self) -> bool {
+        self.stage == Stage::Release
+    }
+
     pub fn new(sample_rate: f32) -> Self {
         Self {
             dt: 1.0 / sample_rate,

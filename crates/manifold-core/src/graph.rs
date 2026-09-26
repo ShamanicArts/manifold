@@ -22,6 +22,7 @@ use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
 use crate::main_directional::{DirectionalUpdate, MainDirectionalMotion};
 use crate::main_pitch::route_main_pitch;
+use crate::main_voice_bank::MainVoiceBank;
 use crate::midi_arpeggiator::MidiArpeggiator;
 use crate::midi_note_filter::MidiNoteFilter;
 use crate::midi_scale_quantizer::MidiScaleQuantizer;
@@ -245,6 +246,9 @@ pub enum NodeKind {
     },
     SampleRegion,
     SampleInstrument,
+    MainVoiceBank {
+        fft_order: u32,
+    },
     SpectrumAnalyzer {
         sensitivity: f32,
         smoothing: f32,
@@ -323,6 +327,7 @@ impl NodeKind {
             | Self::Oscillator { .. }
             | Self::SampleRegion
             | Self::SampleInstrument
+            | Self::MainVoiceBank { .. }
             | Self::Svf
             | Self::SlewAudio { .. }
             | Self::LegacyEq { .. }
@@ -401,6 +406,7 @@ impl NodeKind {
                 | Self::VoiceSynth
                 | Self::SampleRegion
                 | Self::SampleInstrument
+                | Self::MainVoiceBank { .. }
         ) && port == 0
         {
             return SignalKind::Midi;
@@ -466,6 +472,7 @@ impl NodeKind {
                 amplitude,
                 waveform,
             } => frequency.is_finite() && amplitude.is_finite() && *waveform <= 4,
+            Self::MainVoiceBank { fft_order } => (9..=12).contains(fft_order),
             Self::NoiseGenerator { level, color } => level.is_finite() && color.is_finite(),
             Self::Lfo { waveform, rate } => *waveform <= 2 && rate.is_finite(),
             Self::ModulatedGain { base, depth } => base.is_finite() && depth.is_finite(),
@@ -676,6 +683,7 @@ enum Kernel {
     LoopCapture(LoopCapture),
     SampleRegion(SampleRegion),
     SampleInstrument(SampleInstrument),
+    MainVoiceBank(Box<MainVoiceBank>),
     SpectrumAnalyzer(SpectrumAnalyzer),
     FftSpectrum(Box<FftSpectrum>),
     EnvelopeFollower(EnvelopeFollower),
@@ -913,6 +921,9 @@ impl Kernel {
             NodeKind::SampleInstrument => {
                 Self::SampleInstrument(SampleInstrument::new(sample_rate))
             }
+            NodeKind::MainVoiceBank { fft_order } => Self::MainVoiceBank(Box::new(
+                MainVoiceBank::new(sample_rate, max_frames, *fft_order),
+            )),
             NodeKind::SpectrumAnalyzer {
                 sensitivity,
                 smoothing,
@@ -1076,6 +1087,7 @@ impl Kernel {
             (Self::LoopCapture(loop_node), id) => return loop_node.set_parameter(id, value),
             (Self::SampleRegion(player), id) => return player.set_parameter(id, value),
             (Self::SampleInstrument(instrument), id) => return instrument.set_parameter(id, value),
+            (Self::MainVoiceBank(bank), id) => return bank.set_parameter(id, value),
             (Self::SpectrumAnalyzer(analyzer), id) => return analyzer.set_parameter(id, value),
             (Self::FftSpectrum(analyzer), id) => return analyzer.set_parameter(id, value),
             (Self::EnvelopeFollower(follower), id) => return follower.set_parameter(id, value),
@@ -1112,6 +1124,10 @@ impl Kernel {
                 instrument.event(event);
                 true
             }
+            Self::MainVoiceBank(bank) => {
+                bank.event(event);
+                true
+            }
             _ => false,
         }
     }
@@ -1128,6 +1144,7 @@ impl Kernel {
                 | Self::VoiceSynth(_)
                 | Self::SampleRegion(_)
                 | Self::SampleInstrument(_)
+                | Self::MainVoiceBank(_)
         )
     }
 }
@@ -1617,6 +1634,7 @@ impl ExecutionPlan {
                 Kernel::Oscillator(oscillator) => oscillator.meter(band),
                 Kernel::PhaseVocoder(vocoder) if band <= 3 => Some(vocoder.target_parameter(band)),
                 Kernel::SampleInstrument(instrument) => instrument.meter(band),
+                Kernel::MainVoiceBank(bank) => bank.meter(band),
                 _ => None,
             })
     }
@@ -1860,6 +1878,7 @@ impl ExecutionPlan {
             .is_some_and(|entry| match &mut entry.kernel {
                 Kernel::SampleRegion(player) => player.load_stereo(stereo, source_rate),
                 Kernel::SampleInstrument(instrument) => instrument.load_stereo(stereo, source_rate),
+                Kernel::MainVoiceBank(bank) => bank.load_stereo(stereo, source_rate),
                 Kernel::Granulator(granulator) => granulator.load_stereo(stereo, source_rate),
                 _ => false,
             })
@@ -2258,6 +2277,7 @@ impl ExecutionPlan {
                         right[frame] = value[1];
                     }
                 }
+                Kernel::MainVoiceBank(bank) => bank.process_planar([left, right]),
                 Kernel::SpectrumAnalyzer(analyzer) => {
                     analyzer.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
@@ -2767,6 +2787,61 @@ mod tests {
             (settle(&mut plan) - (0.4 + 0.6 * 0.25) * std::f32::consts::FRAC_1_SQRT_2).abs() < 5e-5
         );
         assert!(!plan.set_parameter(3, 67, 0.5));
+    }
+
+    #[test]
+    fn main_voice_bank_renders_timed_chord_and_releases_one_note() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::MainVoiceBank { fft_order: 9 }),
+                node(2, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 2, 0)],
+        };
+        let mut plan = description.compile(8_000.0, 128).unwrap();
+        assert!(plan.load_sample_stereo(1, vec![0.5; 8_000 * 2], 8_000.0));
+        assert!(plan.set_parameter(1, 1, 1.0));
+        assert!(plan.set_parameter(1, 11, 0.001));
+        assert!(plan.set_parameter(1, 14, 0.001));
+        let silence = [0.0; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        let events = [
+            TimedEvent {
+                offset: 10,
+                node: 1,
+                kind: EventKind::NoteOn {
+                    channel: 0,
+                    note: 60,
+                    velocity: 100,
+                },
+            },
+            TimedEvent {
+                offset: 32,
+                node: 1,
+                kind: EventKind::NoteOn {
+                    channel: 0,
+                    note: 67,
+                    velocity: 100,
+                },
+            },
+            TimedEvent {
+                offset: 64,
+                node: 1,
+                kind: EventKind::NoteOff {
+                    channel: 0,
+                    note: 60,
+                },
+            },
+        ];
+        plan.process_with_events([&silence, &silence], [&mut left, &mut right], &events)
+            .unwrap();
+        assert!(left[..10].iter().all(|value| *value == 0.0));
+        assert!(left[18..32].iter().any(|value| *value > 0.01));
+        assert!(left[40] > left[25]);
+        assert_eq!(plan.node_meter(1, 0), Some(1.0));
+        assert!(left[100] > 0.01);
+        assert_eq!(left, right);
     }
 
     #[test]

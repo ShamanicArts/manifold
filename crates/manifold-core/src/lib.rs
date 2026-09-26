@@ -23,6 +23,7 @@ pub mod loop_capture;
 pub mod main_directional;
 pub mod main_pitch;
 pub mod main_voice_allocator;
+pub mod main_voice_bank;
 pub mod midi_arpeggiator;
 pub mod midi_note_filter;
 pub mod midi_note_router;

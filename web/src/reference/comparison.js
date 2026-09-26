@@ -128,6 +128,15 @@ function prepareSampleInstrument(engine) {
   }
 }
 
+function prepareMainVoiceBank(engine) {
+  if (engine.manifold_graph_begin(2, 1) !== 1
+    || engine.manifold_graph_node(2, 64, 9, 0) !== 1
+    || engine.manifold_graph_node(3, 7, 0, 0) !== 1
+    || engine.manifold_graph_edge(2, 3, 0) !== 1) {
+    throw new Error('Wasm Main voice bank graph failed');
+  }
+}
+
 function prepareOscillator(engine, selected) {
   if (engine.manifold_graph_begin(2, 1) !== 1
     || engine.manifold_graph_node(1, 11, selected.frequencyBefore, selected.amplitudeBefore) !== 1
@@ -679,6 +688,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'midi-arpeggiator') prepareMidiArpeggiator(engine, selected);
   if (family === 'sample-region') prepareSampleRegion(engine);
   if (family === 'sample-instrument') prepareSampleInstrument(engine);
+  if (family === 'main-voice-bank') prepareMainVoiceBank(engine);
   if (family === 'oscillator') prepareOscillator(engine, selected);
   if (family === 'adsr') prepareAdsr(engine);
   if (family === 'noise') prepareNoise(engine, selected);
@@ -761,7 +771,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
     new Float32Array(engine.memory.buffer, engine.manifold_sample_ptr(), manifest.sourceData.length).set(manifest.sourceData);
     if (engine.manifold_sample_commit() !== 1) throw new Error('Wasm grain source commit failed');
   }
-  if (family === 'sample-region' || family === 'sample-instrument') {
+  if (family === 'sample-region' || family === 'sample-instrument' || family === 'main-voice-bank') {
     if (engine.manifold_sample_begin(2, manifest.sampleFrames, manifest.sampleSourceRate) !== 1) {
       throw new Error('Wasm sample storage preparation failed');
     }
@@ -850,7 +860,7 @@ export function renderWasm(engine, family, manifest, input, selected) {
         if (accepted !== 1) throw new Error(`Wasm sample event ${id} at ${frame} failed`);
       }
     }
-    if (family === 'sample-instrument') {
+    if (family === 'sample-instrument' || family === 'main-voice-bank') {
       for (const [frame, id, value] of selected.changes) {
         if (frame === offset && engine.manifold_set_node_parameter(2, id, value) !== 1) {
           throw new Error(`Wasm sample instrument parameter ${id} at ${frame} failed`);
@@ -1090,7 +1100,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
       if (next.version !== 1 || next.channels !== 2) throw new Error('Unsupported reference format');
       const nextInput = await loadFloat32(family, next.input);
       if (nextInput.length !== next.frames * next.channels) throw new Error('Invalid input fixture size');
-      if (family === 'sample-region' || family === 'sample-instrument' || family === 'main-sample-blend') {
+      if (family === 'sample-region' || family === 'sample-instrument' || family === 'main-voice-bank' || family === 'main-sample-blend') {
         next.sampleData = await loadFloat32(family, next.sample);
         if (next.sampleData.length !== next.sampleFrames * 2) throw new Error('Invalid sample fixture size');
       }
@@ -1208,7 +1218,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
       drawBandBars(byId('comparison-diff'), [difference], Math.max(active.max, 1e-8), ['#a4d9bb']);
       return;
     }
-    if (currentFamily === 'sine-bank' || currentFamily === 'phase-vocoder' || currentFamily === 'stereo-delay' || currentFamily === 'phaser' || currentFamily === 'chorus' || currentFamily === 'eq8' || currentFamily === 'reverb' || currentFamily === 'multitap' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || isFxSwitchFamily(currentFamily) || currentFamily === 'loop-capture' || currentFamily === 'sample-region' || currentFamily === 'sample-instrument' || currentFamily === 'main-sample-blend') {
+    if (currentFamily === 'sine-bank' || currentFamily === 'phase-vocoder' || currentFamily === 'stereo-delay' || currentFamily === 'phaser' || currentFamily === 'chorus' || currentFamily === 'eq8' || currentFamily === 'reverb' || currentFamily === 'multitap' || currentFamily === 'fx-chain' || currentFamily === 'standalone-fx' || isFxSwitchFamily(currentFamily) || currentFamily === 'loop-capture' || currentFamily === 'sample-region' || currentFamily === 'sample-instrument' || currentFamily === 'main-voice-bank' || currentFamily === 'main-sample-blend') {
       const svfReturn = currentFamily === 'standalone-fx-host' && chooser.value === 'delay-svf-delay-svf' && byId('plot-window').value === 'tail';
       const compressorReturn = currentFamily === 'standalone-fx-host' && chooser.value === 'delay-compressor-delay-compressor' && byId('plot-window').value === 'tail';
       const start = isFxSwitchFamily(currentFamily) && byId('plot-window').value === 'tail' ? (active.focusFrame ?? 16384) : 0;
@@ -1336,6 +1346,8 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                       ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s source · speed ${selected.parameters[0]} · reverse ${Boolean(selected.parameters[1])} · one-shot ${Boolean(selected.parameters[2])} · crossfade ${selected.parameters[6]} · ${selected.events.length} events`
                     : family === 'sample-instrument'
                       ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · root ${selected.parameters[0]} · keytrack ${selected.parameters[1]} · ${selected.events.length} note events · ${selected.changes.length} control changes`
+                    : family === 'main-voice-bank'
+                      ? `eight Main base voices · blend ${selected.parameters[1]} · direction ${selected.parameters[6]} · pitch engine ${selected.parameters[5]} · ${selected.events.length} note events`
                     : family === 'main-sample-blend'
                       ? `${(manifest.sampleFrames / manifest.sampleSourceRate).toFixed(3)} s shared source · ${selected.mode === 1 ? 'Add' : 'Morph'} target · ${selected.vocoder[3] ? `${selected.vocoder[0] ? 'HQ' : 'bin'} vocoder ${selected.vocoder[1]} st` : 'dry sample'} · direction ${selected.directionMode} · sample stage ${selected.sampleStageGain} · bank level ${selected.bankLevel} · manual wave sync ${selected.waveSync ? 'on' : 'off'} · base blend ${selected.wave[3]} · additive blend ${selected.addBlend} · ${selected.linkedDepth == null ? `independent gains ${selected.sampleGain}/${selected.bankGain}` : `linked depth ${selected.linkedDepth}`} · phrase contour ${selected.phrase[0]}`
                     : family === 'phase-vocoder'
@@ -1354,7 +1366,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                       ? `threshold ${selected.before[0]} → ${selected.after[0]} dB · release ${selected.before[1]} → ${selected.after[1]} ms · soft clip ${selected.before[3]} → ${selected.after[3]}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
-    const nativeReference = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'main-sample-blend' || family === 'envelope-ducking' || family === 'fft-spectrum';
+    const nativeReference = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'main-voice-bank' || family === 'main-sample-blend' || family === 'envelope-ducking' || family === 'fft-spectrum';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
     byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'main-sample-blend' || family === 'phase-vocoder' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Whole capture' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'midi-transpose' ? 'Held note remap' : family === 'midi-note-filter' ? 'Held range change' : family === 'midi-scale-quantizer' ? 'Held scale change' : family === 'midi-velocity-mapper' ? 'Held velocity change' : family === 'midi-arpeggiator' ? 'Second step' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Whole modulation' : 'Parameter change';
     byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Before change' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
@@ -1371,8 +1383,8 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     document.querySelector('.plot-unit').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Meter difference · scaled to fit' : 'Left channel · scaled to fit';
     document.querySelector('.metric-row span').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Maximum meter difference' : 'Maximum difference';
     document.querySelectorAll('.metric-row span')[1].textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'RMS meter difference' : 'RMS difference';
-    document.querySelector('.legend-old').textContent = family === 'sine-bank' || family === 'phase-vocoder' || isFxSwitchFamily(family) || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'main-sample-blend' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
-    document.querySelector('.legend-new').textContent = family === 'sine-bank' || family === 'phase-vocoder' || isFxSwitchFamily(family) || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'main-sample-blend' ? 'Wasm L/R' : 'Rust/Wasm';
+    document.querySelector('.legend-old').textContent = family === 'sine-bank' || family === 'phase-vocoder' || isFxSwitchFamily(family) || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' ? 'C++ L/R' : family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'main-voice-bank' || family === 'main-sample-blend' ? 'Native L/R' : nativeReference ? 'Native Rust' : 'C++';
+    document.querySelector('.legend-new').textContent = family === 'sine-bank' || family === 'phase-vocoder' || isFxSwitchFamily(family) || family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'main-voice-bank' || family === 'main-sample-blend' ? 'Wasm L/R' : 'Rust/Wasm';
     document.querySelector('[data-play="legacy"]').textContent = nativeReference ? 'Play native' : 'Play C++';
     const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;
@@ -1387,11 +1399,14 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
       meterDifference: report.difference, blockSize: selected.blockSize ?? manifest.blockSize };
     byId('max-difference').textContent = report.max.toExponential(2);
     byId('rms-difference').textContent = report.rms.toExponential(2);
-    const pass = report.max <= .0002 && audioReport.max <= .0002;
+    const tolerance = selected.comparisonTolerance;
+    const pass = report.max <= (tolerance?.max ?? .0002)
+      && audioReport.max <= (tolerance?.max ?? .0002)
+      && (!tolerance || report.rms <= tolerance.rms);
     const correctedCursor = family === 'phase-vocoder' && selected.before[0] === 1;
-    byId('comparison-result').textContent = correctedCursor ? 'Intentional change' : pass ? 'Match' : 'Review';
+    byId('comparison-result').textContent = correctedCursor ? 'Intentional change' : pass ? tolerance ? 'Bounded variance' : 'Match' : 'Review';
     byId('comparison-result').className = correctedCursor || pass ? 'pass' : 'fail';
-    byId('reference-status').textContent = `${nativeReference ? 'Rust' : 'C++'} source ${(selected.sourceSha256 ?? manifest.sourceSha256).slice(0, 10)} · ${selected.label}${correctedCursor ? ' · stereo read cursor corrected in Rust' : ''}`;
+    byId('reference-status').textContent = `${nativeReference ? 'Rust' : 'C++'} source ${(selected.sourceSha256 ?? manifest.sourceSha256).slice(0, 10)} · ${selected.label}${correctedCursor ? ' · stereo read cursor corrected in Rust' : ''}${selected.comparisonNote ? ` · ${selected.comparisonNote}` : ''}`;
     draw();
   };
   chooser.addEventListener('change', () => choose().catch((error) => { byId('reference-status').textContent = String(error); }));

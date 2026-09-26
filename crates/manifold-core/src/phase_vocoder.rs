@@ -113,6 +113,31 @@ pub struct PhaseVocoder {
 }
 
 impl PhaseVocoder {
+    /// Clear per-voice spectral history at note-on without rebuilding FFT storage.
+    pub fn reset(&mut self) {
+        for channel in &mut self.channels {
+            channel.input.fill(0.0);
+            channel.output.fill(0.0);
+            channel.stretch.fill(0.0);
+            channel.previous_phase.fill(0.0);
+            channel.synthesis_phase.fill(0.0);
+        }
+        self.real.fill(0.0);
+        self.imag.fill(0.0);
+        self.analysis_mag.fill(0.0);
+        self.analysis_freq.fill(0.0);
+        self.synthesis_mag.fill(0.0);
+        self.synthesis_freq.fill(0.0);
+        self.input_write = 0;
+        self.output_read = 0;
+        self.hop_write = 0;
+        self.stretch_write = 0;
+        self.stretch_read = 0.0;
+        self.until_hop = self.hop;
+        self.current_pitch = self.target[1];
+        self.current_mix = self.target[3];
+    }
+
     pub fn target_parameter(&self, id: usize) -> f32 {
         self.target[id]
     }

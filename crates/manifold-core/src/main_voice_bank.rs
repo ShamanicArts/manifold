@@ -1,0 +1,366 @@
+//! Prepared, eight-voice Main base branch. The original UI's voice ownership is
+//! preserved; per-sample ADSR timing is an explicit v2 change from its UI tick.
+
+use crate::envelope::AdsrEnvelope;
+use crate::events::EventKind;
+use crate::main_directional::MainDirectionalMotion;
+use crate::main_pitch::route_main_pitch;
+use crate::main_voice_allocator::{EnvelopePhase, MAIN_VOICE_COUNT, MainVoiceAllocator};
+use crate::oscillator::Oscillator;
+use crate::phase_vocoder::PhaseVocoder;
+use crate::sample_region::SampleRegion;
+
+struct MainVoice {
+    player: SampleRegion,
+    oscillator: Oscillator,
+    vocoder: PhaseVocoder,
+    envelope: AdsrEnvelope,
+    motion: MainDirectionalMotion,
+}
+
+pub struct MainVoiceBank {
+    allocator: MainVoiceAllocator,
+    voices: [MainVoice; MAIN_VOICE_COUNT],
+    raw_left: Vec<f32>,
+    raw_right: Vec<f32>,
+    pitched_left: Vec<f32>,
+    pitched_right: Vec<f32>,
+    waveform: u32,
+    blend: f32,
+    root_note: f32,
+    keytrack: u32,
+    sample_pitch: f32,
+    pitch_mode: u32,
+    direction_mode: u32,
+    depth: f32,
+    wave_to_sample: f32,
+    sample_to_wave: f32,
+    retrigger: bool,
+    master: f32,
+    time_stretch: f32,
+}
+
+impl MainVoiceBank {
+    pub fn new(sample_rate: f32, max_frames: usize, fft_order: u32) -> Self {
+        let order = fft_order.clamp(9, 12);
+        let voices = std::array::from_fn(|_| {
+            let mut envelope = AdsrEnvelope::new(sample_rate);
+            envelope.set_parameter(0, 0.005);
+            envelope.set_parameter(1, 0.08);
+            envelope.set_parameter(2, 0.8);
+            envelope.set_parameter(3, 0.16);
+            MainVoice {
+                player: SampleRegion::new(sample_rate),
+                oscillator: Oscillator::new(sample_rate, 261.62555, 0.0, 0),
+                vocoder: PhaseVocoder::new(sample_rate, [0.0, 0.0, 1.0, 0.0, order as f32]),
+                envelope,
+                motion: MainDirectionalMotion::new(sample_rate),
+            }
+        });
+        Self {
+            allocator: MainVoiceAllocator::default(),
+            voices,
+            raw_left: vec![0.0; max_frames],
+            raw_right: vec![0.0; max_frames],
+            pitched_left: vec![0.0; max_frames],
+            pitched_right: vec![0.0; max_frames],
+            waveform: 0,
+            blend: 0.0,
+            root_note: 60.0,
+            keytrack: 2,
+            sample_pitch: 0.0,
+            pitch_mode: 0,
+            direction_mode: 0,
+            depth: 0.5,
+            wave_to_sample: 0.5,
+            sample_to_wave: 0.0,
+            retrigger: true,
+            master: 1.0,
+            time_stretch: 1.0,
+        }
+    }
+
+    pub fn load_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
+        if !self.voices[0].player.load_stereo(stereo, source_rate) {
+            return false;
+        }
+        let (first, remaining) = self.voices.split_at_mut(1);
+        for voice in remaining {
+            voice.player.share_sample_from(&first[0].player);
+        }
+        self.panic();
+        true
+    }
+
+    pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        match id {
+            0 => {
+                self.waveform = value.round().clamp(0.0, 4.0) as u32;
+                for voice in &mut self.voices {
+                    voice.oscillator.set_parameter(0, self.waveform as f32);
+                }
+            }
+            1 => self.blend = value.clamp(-1.0, 1.0),
+            2 => self.root_note = value.clamp(0.0, 127.0),
+            3 => self.keytrack = value.round().clamp(0.0, 2.0) as u32,
+            4 => self.sample_pitch = value.clamp(-24.0, 24.0),
+            5 => self.pitch_mode = value.round().clamp(0.0, 2.0) as u32,
+            6 if value == 0.0 || value == 2.0 || value == 3.0 => {
+                self.direction_mode = value as u32;
+                for voice in &mut self.voices {
+                    voice.motion.set_parameter(0, value);
+                }
+            }
+            7 => self.depth = value.clamp(0.0, 1.0),
+            8 => self.wave_to_sample = value.clamp(0.0, 1.0),
+            9 => self.sample_to_wave = value.clamp(0.0, 1.0),
+            10 => self.retrigger = value >= 0.5,
+            11..=14 => {
+                for voice in &mut self.voices {
+                    voice.envelope.set_parameter(id - 11, value);
+                }
+            }
+            15 => self.master = value.clamp(0.0, 2.0),
+            16 => self.time_stretch = value.clamp(0.25, 4.0),
+            _ => return false,
+        }
+        true
+    }
+
+    pub fn event(&mut self, event: EventKind) {
+        match event {
+            EventKind::NoteOn {
+                note, velocity: 0, ..
+            } => self.release(note),
+            EventKind::NoteOn { note, velocity, .. } => {
+                let index = self.allocator.note_on(note, velocity);
+                let voice = &mut self.voices[index];
+                let frequency = (440.0_f64 * 2.0_f64.powf((note as f64 - 69.0) / 12.0)) as f32;
+                voice.envelope.reset();
+                voice.envelope.set_gate(true);
+                voice.vocoder.reset();
+                voice.motion.set_parameter(1, frequency);
+                voice.motion.set_parameter(8, 1.0);
+                voice
+                    .oscillator
+                    .set_parameter(2, self.allocator.slots()[index].target_amp);
+                voice.player.set_parameter(7, 1.0);
+            }
+            EventKind::NoteOff { note, .. } => self.release(note),
+            EventKind::AllNotesOff => self.panic(),
+            EventKind::PitchBend { .. } => {}
+        }
+    }
+
+    fn release(&mut self, note: u8) {
+        self.allocator.note_off(note);
+        for (slot, voice) in self.allocator.slots().iter().zip(&mut self.voices) {
+            if slot.active && slot.note == note && !slot.gate {
+                voice.envelope.set_gate(false);
+                voice.motion.set_parameter(8, 0.0);
+            }
+        }
+    }
+
+    fn panic(&mut self) {
+        self.allocator.panic();
+        for voice in &mut self.voices {
+            voice.envelope.reset();
+            voice.player.set_parameter(6, 0.0);
+            voice.oscillator.set_parameter(2, 0.0);
+            voice.motion.set_parameter(8, 0.0);
+            voice.vocoder.reset();
+        }
+    }
+
+    pub fn meter(&self, band: usize) -> Option<f32> {
+        match band {
+            0 => Some(
+                self.allocator
+                    .slots()
+                    .iter()
+                    .filter(|slot| slot.active)
+                    .count() as f32,
+            ),
+            1..=MAIN_VOICE_COUNT => Some(if self.allocator.slots()[band - 1].active {
+                self.voices[band - 1].player.meter(0).unwrap_or(0.0)
+            } else {
+                -1.0
+            }),
+            _ => None,
+        }
+    }
+
+    pub fn process_planar(&mut self, output: [&mut [f32]; 2]) {
+        let [left, right] = output;
+        let frames = left.len();
+        debug_assert_eq!(frames, right.len());
+        debug_assert!(frames <= self.raw_left.len());
+        left.fill(0.0);
+        right.fill(0.0);
+        let t = (self.blend + 1.0) * 0.5;
+        let wave_gain = (std::f32::consts::FRAC_PI_2 * t).cos();
+        let sample_gain = (std::f32::consts::FRAC_PI_2 * t).sin();
+        for index in 0..MAIN_VOICE_COUNT {
+            let slot = self.allocator.slots()[index];
+            if !slot.active {
+                continue;
+            }
+            let voice = &mut self.voices[index];
+            let note_frequency =
+                (440.0_f64 * 2.0_f64.powf((slot.note as f64 - 69.0) / 12.0)) as f32;
+            let pitch = route_main_pitch(
+                note_frequency,
+                self.root_note,
+                self.keytrack,
+                self.sample_pitch,
+                self.pitch_mode,
+            );
+            for (id, value) in [
+                (3, self.depth),
+                (4, self.wave_to_sample),
+                (5, self.sample_to_wave),
+                (6, f32::from(self.retrigger)),
+                (7, self.blend),
+            ] {
+                voice.motion.set_parameter(id, value);
+            }
+            let position = voice.player.legacy_normalized_position();
+            let directional = voice
+                .motion
+                .tick_with_speed(frames, position, pitch.sample_speed);
+            let wave_frequency = pitch.wave_after_modulation(
+                directional.map_or(note_frequency, |update| update.oscillator_frequency),
+                note_frequency,
+                self.keytrack,
+            );
+            voice.oscillator.set_parameter(1, wave_frequency);
+            voice
+                .oscillator
+                .set_parameter(3, f32::from(directional.is_some_and(|u| u.sync_enabled)));
+            voice.player.set_parameter(
+                0,
+                directional.map_or(pitch.sample_speed, |u| u.sample_speed),
+            );
+            if let Some(update) = directional {
+                if update.sample_retrigger {
+                    voice.player.set_parameter(7, 1.0);
+                }
+                if update.sample_play {
+                    voice.player.set_parameter(6, 1.0);
+                }
+            }
+            voice.vocoder.set_parameter(0, pitch.vocoder_mode as f32);
+            voice.vocoder.set_parameter(1, pitch.vocoder_semitones);
+            voice.vocoder.set_parameter(2, self.time_stretch);
+            voice.vocoder.set_parameter(3, pitch.vocoder_mix);
+            for frame in 0..frames {
+                let sample = voice.player.process_sample();
+                self.raw_left[frame] = sample[0];
+                self.raw_right[frame] = sample[1];
+            }
+            voice.vocoder.process_planar(
+                [&self.raw_left[..frames], &self.raw_right[..frames]],
+                [
+                    &mut self.pitched_left[..frames],
+                    &mut self.pitched_right[..frames],
+                ],
+            );
+            for frame in 0..frames {
+                let envelope = voice.envelope.process_sample();
+                let wave = voice.oscillator.process_sample(Some(self.raw_left[frame]));
+                let amp = slot.target_amp;
+                let scaling = envelope * self.master * 0.5;
+                left[frame] += (wave * wave_gain
+                    + self.pitched_left[frame] * 2.0 * amp * sample_gain)
+                    * scaling;
+                right[frame] += (wave * wave_gain
+                    + self.pitched_right[frame] * 2.0 * amp * sample_gain)
+                    * scaling;
+            }
+            let phase = if voice.envelope.is_idle() {
+                EnvelopePhase::Idle
+            } else if voice.envelope.is_releasing() {
+                EnvelopePhase::Release
+            } else {
+                EnvelopePhase::Sustain
+            };
+            self.allocator
+                .report_envelope(index, phase, voice.envelope.level());
+            if !self.allocator.slots()[index].active {
+                voice.player.set_parameter(6, 0.0);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chords_release_independently_and_duplicate_notes_share_release() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.load_stereo(vec![0.5; 8_000 * 2], 8_000.0));
+        bank.set_parameter(1, 1.0);
+        for note in [60, 64, 67] {
+            bank.event(EventKind::NoteOn {
+                channel: 0,
+                note,
+                velocity: 100,
+            });
+        }
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(bank.meter(0), Some(3.0));
+        assert!(left.iter().any(|x| *x > 0.0));
+        bank.event(EventKind::NoteOff {
+            channel: 0,
+            note: 64,
+        });
+        for _ in 0..12 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert_eq!(bank.meter(0), Some(2.0));
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 100,
+        });
+        assert_eq!(bank.meter(0), Some(3.0));
+        bank.event(EventKind::NoteOff {
+            channel: 0,
+            note: 60,
+        });
+        for _ in 0..12 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert_eq!(bank.meter(0), Some(1.0));
+        bank.event(EventKind::AllNotesOff);
+        bank.process_planar([&mut left, &mut right]);
+        assert!(left.iter().all(|x| *x == 0.0));
+    }
+
+    #[test]
+    fn ninth_note_uses_original_oldest_slot_rule() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        for note in 60..69 {
+            bank.event(EventKind::NoteOn {
+                channel: 0,
+                note,
+                velocity: 100,
+            });
+        }
+        assert_eq!(bank.meter(0), Some(8.0));
+        assert_eq!(bank.allocator.slots()[0].note, 68);
+        bank.event(EventKind::NoteOff {
+            channel: 0,
+            note: 60,
+        });
+        assert!(bank.allocator.slots()[0].gate);
+    }
+}
