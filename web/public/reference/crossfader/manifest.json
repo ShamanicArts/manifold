@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "reference": "legacy C++ CrossfaderNode.cpp scalar path",
+  "sourceSha256": "b3c338f7e27ae23231e25a45e57b1ee287c1d2aa9f29e1f737a75e99883d5e57",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 4096,
+  "blockSize": 128,
+  "stepFrame": 2048,
+  "input": "input.f32",
+  "secondInput": {
+    "kind": "constant",
+    "value": 0.25
+  },
+  "cases": [
+    {
+      "id": "equal-power-center",
+      "label": "Equal power \u00b7 centre",
+      "positionBefore": 0,
+      "positionAfter": 0,
+      "curve": 1,
+      "mix": 1,
+      "output": "equal-power-center.f32"
+    },
+    {
+      "id": "equal-power-sweep",
+      "label": "Equal power \u00b7 sweep",
+      "positionBefore": -1,
+      "positionAfter": 1,
+      "curve": 1,
+      "mix": 1,
+      "output": "equal-power-sweep.f32"
+    },
+    {
+      "id": "linear-sweep",
+      "label": "Linear \u00b7 sweep",
+      "positionBefore": -1,
+      "positionAfter": 1,
+      "curve": 0,
+      "mix": 1,
+      "output": "linear-sweep.f32"
+    },
+    {
+      "id": "blended-curve",
+      "label": "Blended curve \u00b7 75% wet",
+      "positionBefore": -0.5,
+      "positionAfter": 0.5,
+      "curve": 0.5,
+      "mix": 0.75,
+      "output": "blended-curve.f32"
+    }
+  ]
+}

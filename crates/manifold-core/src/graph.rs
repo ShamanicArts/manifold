@@ -14,6 +14,7 @@ pub enum NodeKind {
     Gain { gain: f32 },
     Sum2 { gain_a: f32, gain_b: f32 },
     LinearBlend { mix: f32 },
+    Crossfader { position: f32, curve: f32, mix: f32 },
     Svf,
     Output,
 }
@@ -22,7 +23,7 @@ impl NodeKind {
     fn input_count(&self) -> usize {
         match self {
             Self::InputRaw | Self::InputMonitor { .. } | Self::Constant { .. } => 0,
-            Self::Sum2 { .. } | Self::LinearBlend { .. } => 2,
+            Self::Sum2 { .. } | Self::LinearBlend { .. } | Self::Crossfader { .. } => 2,
             Self::Gain { .. } | Self::Svf | Self::Output => 1,
         }
     }
@@ -33,6 +34,11 @@ impl NodeKind {
             Self::Constant { value } => value.is_finite(),
             Self::Sum2 { gain_a, gain_b } => gain_a.is_finite() && gain_b.is_finite(),
             Self::LinearBlend { mix } => mix.is_finite(),
+            Self::Crossfader {
+                position,
+                curve,
+                mix,
+            } => position.is_finite() && curve.is_finite() && mix.is_finite(),
             _ => true,
         }
     }
@@ -70,6 +76,14 @@ pub enum GraphError {
     Cycle,
 }
 
+impl std::fmt::Display for GraphError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{self:?}")
+    }
+}
+
+impl std::error::Error for GraphError {}
+
 enum Kernel {
     InputRaw,
     InputMonitor {
@@ -91,8 +105,15 @@ enum Kernel {
     LinearBlend {
         mix: f32,
     },
+    Crossfader(CrossfaderState),
     Svf(Filter),
     Output,
+}
+
+struct CrossfaderState {
+    current: [f32; 3],
+    target: [f32; 3],
+    smoothing: f32,
 }
 
 impl Kernel {
@@ -116,6 +137,23 @@ impl Kernel {
                 gain_b: *gain_b,
             },
             NodeKind::LinearBlend { mix } => Self::LinearBlend { mix: *mix },
+            NodeKind::Crossfader {
+                position,
+                curve,
+                mix,
+            } => {
+                let values = [
+                    position.clamp(-1.0, 1.0),
+                    curve.clamp(0.0, 1.0),
+                    mix.clamp(0.0, 1.0),
+                ];
+                Self::Crossfader(CrossfaderState {
+                    current: values,
+                    target: values,
+                    smoothing: ((1.0 - (-1.0 / (0.010 * sample_rate as f64)).exp()) as f32)
+                        .clamp(0.0001, 1.0),
+                })
+            }
             NodeKind::Svf => Self::Svf(Filter::new(sample_rate)),
             NodeKind::Output => Self::Output,
         }
@@ -133,6 +171,13 @@ impl Kernel {
             (Self::Sum2 { gain_a, .. }, 0) => *gain_a = value,
             (Self::Sum2 { gain_b, .. }, 1) => *gain_b = value,
             (Self::LinearBlend { mix }, 0) => *mix = value.clamp(0.0, 1.0),
+            (Self::Crossfader(state), id @ 0..=2) => {
+                state.target[id as usize] = if id == 0 {
+                    value.clamp(-1.0, 1.0)
+                } else {
+                    value.clamp(0.0, 1.0)
+                }
+            }
             (Self::Svf(filter), id) => return filter.set_parameter(id, value),
             _ => return false,
         }
@@ -351,6 +396,32 @@ impl ExecutionPlan {
                         }
                     }
                 }
+                Kernel::Crossfader(state) => {
+                    let a_left = source(0, 0);
+                    let a_right = source(0, 1);
+                    let b_left = source(1, 0);
+                    let b_right = source(1, 1);
+                    for frame in 0..frames {
+                        for index in 0..3 {
+                            state.current[index] +=
+                                (state.target[index] - state.current[index]) * state.smoothing;
+                        }
+                        let t = (0.5 * (state.current[0] + 1.0)).clamp(0.0, 1.0);
+                        let linear_a = 1.0 - t;
+                        let linear_b = t;
+                        let power_a = (0.5 * std::f32::consts::PI * t).cos();
+                        let power_b = (0.5 * std::f32::consts::PI * t).sin();
+                        let curve = state.current[1].clamp(0.0, 1.0);
+                        let gain_a = linear_a * (1.0 - curve) + power_a * curve;
+                        let gain_b = linear_b * (1.0 - curve) + power_b * curve;
+                        let mix = state.current[2];
+                        let dry = 1.0 - mix;
+                        left[frame] = a_left[frame] * dry
+                            + (a_left[frame] * gain_a + b_left[frame] * gain_b) * mix;
+                        right[frame] = a_right[frame] * dry
+                            + (a_right[frame] * gain_a + b_right[frame] * gain_b) * mix;
+                    }
+                }
                 Kernel::Svf(filter) => {
                     filter.process_planar([source(0, 0), source(0, 1)], [left, right])
                 }
@@ -518,6 +589,36 @@ mod tests {
             process(&mut plan, &[1.0; 4], &[0.0; 4]),
             [vec![1.0; 4], vec![0.0; 4]]
         );
+    }
+
+    #[test]
+    fn crossfader_uses_stereo_sources_and_smooths_position() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(2, NodeKind::Constant { value: 0.25 }),
+                node(
+                    3,
+                    NodeKind::Crossfader {
+                        position: -1.0,
+                        curve: 0.0,
+                        mix: 1.0,
+                    },
+                ),
+                node(4, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 3, 0), edge(2, 3, 1), edge(3, 4, 0)],
+        };
+        let mut plan = description.compile(48_000.0, 128).unwrap();
+        assert_eq!(
+            process(&mut plan, &[1.0; 128], &[0.5; 128]),
+            [vec![1.0; 128], vec![0.5; 128]]
+        );
+        assert!(plan.set_parameter(3, 0, 1.0));
+        let [left, right] = process(&mut plan, &[1.0; 128], &[0.5; 128]);
+        assert!(left[0] > left[127] && left[127] > 0.25);
+        assert!(right[0] > right[127] && right[127] > 0.25);
+        assert!(!plan.set_parameter(3, 3, 0.5));
     }
 
     #[test]

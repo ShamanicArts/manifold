@@ -59,6 +59,11 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
         5 => NodeKind::LinearBlend { mix: a },
         6 => NodeKind::Svf,
         7 => NodeKind::Output,
+        8 => NodeKind::Crossfader {
+            position: a,
+            curve: b,
+            mix: 1.0,
+        },
         _ => return 0,
     };
     GRAPH_BUILDER.with(|slot| {
@@ -92,6 +97,39 @@ pub extern "C" fn manifold_graph_edge(from: u32, to: u32, input_port: u32) -> u3
             to: to.into(),
             input_port: input_port as usize,
         });
+        1
+    })
+}
+
+/// Set a node's authored value before graph compilation, without a smoothing ramp.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_graph_initial_parameter(
+    node_id: u32,
+    parameter: u32,
+    value: f32,
+) -> u32 {
+    if !value.is_finite() {
+        return 0;
+    }
+    GRAPH_BUILDER.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(builder) = slot.as_mut() else {
+            return 0;
+        };
+        let Some(node) = builder
+            .description
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == node_id.into())
+        else {
+            return 0;
+        };
+        match (&mut node.kind, parameter) {
+            (NodeKind::Crossfader { position, .. }, 0) => *position = value.clamp(-1.0, 1.0),
+            (NodeKind::Crossfader { curve, .. }, 1) => *curve = value.clamp(0.0, 1.0),
+            (NodeKind::Crossfader { mix, .. }, 2) => *mix = value.clamp(0.0, 1.0),
+            _ => return 0,
+        }
         1
     })
 }

@@ -1,27 +1,53 @@
 import { drawComparison } from './plots.js';
 
 const byId = (id) => document.getElementById(id);
-const asset = (path) => `${import.meta.env.BASE_URL}reference/svf/${path}`;
+const asset = (family, path) => `${import.meta.env.BASE_URL}reference/${family}/${path}`;
 
-async function loadFloat32(path) {
-  const response = await fetch(asset(path));
+async function loadFloat32(family, path) {
+  const response = await fetch(asset(family, path));
   if (!response.ok) throw new Error(`Missing fixture: ${path}`);
   const bytes = await response.arrayBuffer();
   if (bytes.byteLength % 4 !== 0) throw new Error(`Invalid float32 fixture: ${path}`);
   return new Float32Array(bytes);
 }
 
-function renderWasm(engine, manifest, input, selected) {
-  const block = selected.blockSize;
+function prepareCrossfader(engine, manifest, selected) {
+  const nodes = [
+    [1, 0, 0, 0],
+    [2, 2, manifest.secondInput.value, 0],
+    [3, 8, selected.positionBefore, selected.curve],
+    [4, 7, 0, 0],
+  ];
+  const edges = [[1, 3, 0], [2, 3, 1], [3, 4, 0]];
+  if (engine.manifold_graph_begin(nodes.length, edges.length) !== 1) throw new Error('Wasm graph begin failed');
+  for (const node of nodes) {
+    if (engine.manifold_graph_node(...node) !== 1) throw new Error(`Wasm graph node ${node[0]} failed`);
+  }
+  if (engine.manifold_graph_initial_parameter(3, 2, selected.mix) !== 1) throw new Error('Wasm initial mix failed');
+  for (const edge of edges) {
+    if (engine.manifold_graph_edge(...edge) !== 1) throw new Error('Wasm graph edge failed');
+  }
+}
+
+function renderWasm(engine, family, manifest, input, selected) {
+  const block = selected.blockSize ?? manifest.blockSize;
+  if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
-  for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
-    if (engine.manifold_set_parameter(id, value) !== 1) throw new Error(`Wasm parameter ${id} failed`);
+  if (family === 'svf') {
+    for (const [id, value] of [[0, selected.mode], [1, selected.cutoffBefore], [2, selected.resonance]]) {
+      if (engine.manifold_set_parameter(id, value) !== 1) throw new Error(`Wasm parameter ${id} failed`);
+    }
   }
   const inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), block * 2);
   const outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), block * 2);
   const rendered = new Float32Array(input.length);
   for (let offset = 0; offset < manifest.frames; offset += block) {
-    if (offset === manifest.stepFrame) engine.manifold_set_parameter(1, selected.cutoffAfter);
+    if (offset === manifest.stepFrame) {
+      const updated = family === 'svf'
+        ? engine.manifold_set_parameter(1, selected.cutoffAfter)
+        : engine.manifold_set_node_parameter(3, 0, selected.positionAfter);
+      if (updated !== 1) throw new Error('Wasm parameter change failed');
+    }
     const count = Math.min(block, manifest.frames - offset);
     for (let frame = 0; frame < count; frame++) {
       inputView[frame] = input[(offset + frame) * 2];
@@ -51,21 +77,38 @@ function measure(reference, rendered) {
   return { max, rms: Math.sqrt(sum / reference.length), difference };
 }
 
-export async function initializeReferenceLab() {
-  const manifestResponse = await fetch(asset('manifest.json'));
-  if (!manifestResponse.ok) throw new Error('Reference manifest missing');
-  const manifest = await manifestResponse.json();
-  if (manifest.version !== 1 || manifest.channels !== 2) throw new Error('Unsupported reference format');
+export async function initializeReferenceLab(initialFamily = 'svf') {
   const wasmResponse = await fetch(`${import.meta.env.BASE_URL}manifold_filter.wasm`);
   if (!wasmResponse.ok) throw new Error('Wasm module missing');
-  const [input, module] = await Promise.all([loadFloat32(manifest.input), WebAssembly.compile(await wasmResponse.arrayBuffer())]);
+  const module = await WebAssembly.compile(await wasmResponse.arrayBuffer());
   const instance = await WebAssembly.instantiate(module, {});
   const engine = instance.exports;
   if (engine.manifold_version() !== 2) throw new Error('Incompatible Wasm ABI');
-  if (input.length !== manifest.frames * manifest.channels) throw new Error('Invalid input fixture size');
 
   const chooser = byId('reference-case');
-  for (const entry of manifest.cases) chooser.add(new Option(entry.label, entry.id));
+  const fixtures = new Map();
+  let manifest;
+  let input;
+  let currentFamily = null;
+  let selectedFamily = initialFamily;
+
+  async function loadFamily(family) {
+    if (!fixtures.has(family)) {
+      const response = await fetch(asset(family, 'manifest.json'));
+      if (!response.ok) throw new Error(`Reference manifest missing: ${family}`);
+      const next = await response.json();
+      if (next.version !== 1 || next.channels !== 2) throw new Error('Unsupported reference format');
+      const nextInput = await loadFloat32(family, next.input);
+      if (nextInput.length !== next.frames * next.channels) throw new Error('Invalid input fixture size');
+      fixtures.set(family, { manifest: next, input: nextInput });
+    }
+    if (selectedFamily !== family) return;
+    ({ manifest, input } = fixtures.get(family));
+    currentFamily = family;
+    chooser.replaceChildren();
+    for (const entry of manifest.cases) chooser.add(new Option(entry.label, entry.id));
+    chooser.disabled = false;
+  }
 
   let active = null;
   let requestId = 0;
@@ -85,12 +128,16 @@ export async function initializeReferenceLab() {
 
   const choose = async () => {
     const currentRequest = ++requestId;
+    const family = selectedFamily;
     const selected = manifest.cases.find((entry) => entry.id === chooser.value);
     byId('reference-status').textContent = 'Comparing…';
-    byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize} frame blocks · cutoff ${selected.cutoffBefore.toLocaleString()} → ${selected.cutoffAfter.toLocaleString()} Hz`;
-    const legacy = await loadFloat32(selected.output);
+    const transition = family === 'svf'
+      ? `cutoff ${selected.cutoffBefore.toLocaleString()} → ${selected.cutoffAfter.toLocaleString()} Hz`
+      : `position ${selected.positionBefore} → ${selected.positionAfter} · curve ${selected.curve} · mix ${selected.mix}`;
+    byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
+    const legacy = await loadFloat32(family, selected.output);
     if (currentRequest !== requestId) return;
-    const rust = renderWasm(engine, manifest, input, selected);
+    const rust = renderWasm(engine, family, manifest, input, selected);
     const report = measure(legacy, rust);
     active = { legacy, rust, ...report };
     byId('max-difference').textContent = report.max.toExponential(2);
@@ -102,6 +149,18 @@ export async function initializeReferenceLab() {
     draw();
   };
   chooser.addEventListener('change', () => choose().catch((error) => { byId('reference-status').textContent = String(error); }));
+  function selectFamily(family) {
+    if (selectedFamily === family && currentFamily === family) return;
+    selectedFamily = family;
+    ++requestId;
+    if (playbackSource) { playbackSource.stop(); playbackSource = null; }
+    active = null;
+    chooser.disabled = true;
+    byId('reference-status').textContent = 'Loading comparison…';
+    loadFamily(family).then(() => {
+      if (selectedFamily === family) choose();
+    }).catch((error) => { byId('reference-status').textContent = String(error); });
+  }
 
   async function play(kind) {
     if (playbackSource) { playbackSource.stop(); playbackSource = null; }
@@ -126,5 +185,7 @@ export async function initializeReferenceLab() {
   for (const button of document.querySelectorAll('[data-play]')) {
     button.addEventListener('click', () => play(button.dataset.play).catch((error) => { byId('reference-status').textContent = String(error); }));
   }
+  await loadFamily(initialFamily);
   await choose();
+  return { selectFamily };
 }

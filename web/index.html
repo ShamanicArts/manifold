@@ -4,19 +4,35 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#11161d" />
-    <title>Manifold · Filter workbench</title>
+    <title>Manifold · Primitive workbench</title>
   </head>
   <body>
     <div class="app">
       <header class="toolbar">
-        <div class="identity"><span class="identity-mark" aria-hidden="true">M</span><span>Manifold</span><span class="toolbar-separator">/</span><span class="toolbar-current">Filter workbench</span></div>
-        <span class="toolbar-context">Standalone Filter · 01</span>
+        <div class="identity"><span class="identity-mark" aria-hidden="true">M</span><span>Manifold</span><span class="toolbar-separator">/</span><span class="toolbar-current">Primitive workbench</span></div>
+        <span class="toolbar-context">Rust/Wasm · browser workbench</span>
       </header>
 
       <main class="workspace">
+        <nav class="library" aria-label="Primitive library">
+          <div class="library-heading"><span class="overline">Library</span><h2>Primitives</h2><p>Explore each working primitive and compare it with its C++ source.</p></div>
+          <div class="library-group-label">Available now</div>
+          <button class="library-item" type="button" data-primitive="svf"><span><strong>SVF filter</strong><small>4 modes · stereo</small></span><em>Ready</em></button>
+          <button class="library-item" type="button" data-primitive="crossfader"><span><strong>Crossfader</strong><small>Position · curve · mix</small></span><em>Ready</em></button>
+          <div class="library-group-label future-label">Roadmap</div>
+          <div class="library-future"><span>Mixer & routing</span><small>Next</small></div>
+          <div class="library-future"><span>Oscillator, ADSR & MIDI</span><small>Planned</small></div>
+          <div class="library-future"><span>Modulation & CV</span><small>Planned</small></div>
+          <div class="library-future"><span>Effects & dynamics</span><small>Planned</small></div>
+          <div class="library-future"><span>Sampling & time</span><small>Planned</small></div>
+          <div class="library-future"><span>Analysis & media</span><small>Planned</small></div>
+          <div class="library-progress"><strong>2</strong> interactive primitives <span>· 10 C++ comparison cases</span></div>
+        </nav>
         <aside class="module" aria-labelledby="module-title">
-          <div class="module-heading"><div><span class="overline">Audio primitive</span><h1 id="module-title">SVF Filter</h1></div><span class="module-ports" title="Stereo audio input and output">2 in · 2 out</span></div>
-          <div class="module-section"><div class="section-label">Mode</div><div id="modes" class="mode-switch" role="group" aria-label="Filter mode"></div></div>
+          <div class="module-heading"><div><span class="overline">Audio primitive</span><h1 id="module-title">SVF filter</h1></div><span class="module-ports" title="Stereo audio input and output">Stereo</span></div>
+          <p class="module-description" id="module-description"></p>
+          <div class="signal-path" id="signal-path"></div>
+          <div class="module-section" id="mode-section"><div class="section-label">Mode</div><div id="modes" class="mode-switch" role="group" aria-label="Filter mode"></div></div>
           <div class="module-section"><div class="section-label">Parameters</div><div id="controls" class="control-stack"></div></div>
           <div class="module-section input-section"><div class="section-label">Live input</div><div class="transport"><select id="source" aria-label="Input source"><option value="oscillator">Test oscillator</option><option value="microphone">Microphone</option></select><button id="audio-toggle" type="button">Start audio</button></div><div id="status" class="status" role="status">Audio idle</div></div>
         </aside>
@@ -32,7 +48,7 @@
           <div class="panel-heading reference-heading"><div><span class="overline">Offline comparison</span><h2 id="reference-title">C++ ↔ Rust/Wasm</h2></div><select id="reference-case" aria-label="Reference case"></select></div>
           <div class="reference-meta" id="reference-meta">Loading reference cases…</div>
           <div class="metric-row"><div><span>Maximum difference</span><strong id="max-difference">—</strong></div><div><span>RMS difference</span><strong id="rms-difference">—</strong></div><div><span>Result</span><strong id="comparison-result">—</strong></div></div>
-          <div class="plot-heading"><span>Output waveform</span><div class="legend"><span class="legend-old">C++</span><span class="legend-new">Rust/Wasm</span></div><select id="plot-window" aria-label="Waveform window"><option value="step">Cutoff change</option><option value="start">Start</option></select></div>
+          <div class="plot-heading"><span>Output waveform</span><div class="legend"><span class="legend-old">C++</span><span class="legend-new">Rust/Wasm</span></div><select id="plot-window" aria-label="Waveform window"><option value="step">Parameter change</option><option value="start">Start</option></select></div>
           <div class="plot-wrap"><canvas id="comparison-wave" aria-label="Overlaid C++ and Rust output waveform"></canvas></div>
           <div class="plot-heading"><span>Difference</span><span class="plot-unit">Left channel · scaled to fit</span></div>
           <div class="plot-wrap difference-wrap"><canvas id="comparison-diff" aria-label="Difference between C++ and Rust output"></canvas></div>
