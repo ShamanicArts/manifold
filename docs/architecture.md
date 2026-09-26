@@ -40,6 +40,8 @@ The first Rust analyzer preserves the legacy eight-band one-pole estimator and s
 
 The first cross-project sample transfer exports a stopped Loop Capture take through a message handler. Rust copies oldest-to-newest ring frames into the worklet's prepared output scratch in bounded chunks. The handler assembles a transferable `Float32Array` outside `process()`; the browser host keeps that PCM while it closes the capture graph and prepares the Sample instrument graph. The source rate travels with the PCM. This is a host transaction between projects, not a per-sample graph edge, and the capture is rejected while recording continues.
 
+Source analysis uses a separate Web Worker with its own Rust/Wasm instance. The browser transfers a copy of decoded PCM to that worker; Rust computes 256 stereo peak bins, peak, RMS, and a bounded YIN-style pitch estimate. The result is 512 peak floats plus four scalars. The main thread draws the waveform and may offer the detected MIDI root as an explicit control action; analysis never changes pitch mapping on its own. The worker and its allocations are isolated from the live audio worklet. If workers are unavailable, the page computes waveform peaks locally and leaves the analysis readout unavailable.
+
 ## Native plug-in stance
 
 The same Rust DSP crate builds to native code and Wasm. A VST3 adapter will implement the format's processor/controller, parameter, state, bus, and event contracts directly through the VST3 SDK or a narrow binding. JUCE is not a dependency. We do not require a Wasm interpreter inside a DAW callback. This still provides a Wasm build for browser and other compatible hosts. A packaged web editor will be connected to the native controller; it cannot share the real-time thread.

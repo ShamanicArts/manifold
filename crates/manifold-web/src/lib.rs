@@ -5,6 +5,7 @@ use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
 use manifold_core::limiter;
+use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
 use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
 use manifold_core::stereo_delay;
 use std::cell::RefCell;
@@ -18,6 +19,12 @@ struct WorkletEngine {
     sample_upload: Option<(u32, f32, Vec<f32>)>,
 }
 
+struct AnalysisJob {
+    source_rate: f32,
+    stereo: Vec<f32>,
+    result: Option<SampleSummary>,
+}
+
 struct GraphBuilder {
     description: GraphDescription,
     expected_nodes: usize,
@@ -27,11 +34,85 @@ struct GraphBuilder {
 thread_local! {
     static ENGINE: RefCell<Option<WorkletEngine>> = const { RefCell::new(None) };
     static GRAPH_BUILDER: RefCell<Option<GraphBuilder>> = const { RefCell::new(None) };
+    static ANALYSIS: RefCell<Option<AnalysisJob>> = const { RefCell::new(None) };
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_version() -> u32 {
     2
+}
+
+/// Background-worker sample analysis ABI. This instance must not be the live audio worklet.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_begin(frames: u32, source_rate: f32) -> u32 {
+    if frames == 0
+        || frames as usize > MAX_SAMPLE_FRAMES
+        || !source_rate.is_finite()
+        || !(8_000.0..=384_000.0).contains(&source_rate)
+        || frames as usize > (source_rate as usize).saturating_mul(MAX_SAMPLE_SECONDS)
+    {
+        return 0;
+    }
+    ANALYSIS.with(|slot| {
+        *slot.borrow_mut() = Some(AnalysisJob {
+            source_rate,
+            stereo: vec![0.0; frames as usize * 2],
+            result: None,
+        });
+    });
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_ptr() -> *mut f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .map_or(std::ptr::null_mut(), |job| job.stereo.as_mut_ptr())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_run() -> u32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |job| {
+            job.result = analyze_stereo(&job.stereo, job.source_rate);
+            job.stereo = Vec::new();
+            u32::from(job.result.is_some())
+        })
+    })
+}
+
+/// Peak, RMS, pitch Hz (zero if unknown), confidence; NaN for invalid metric.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_metric(id: u32) -> f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.result.as_ref())
+            .map_or(f32::NAN, |result| match id {
+                0 => result.peak,
+                1 => result.rms,
+                2 => result.pitch_hz.unwrap_or(0.0),
+                3 => result.pitch_confidence,
+                _ => f32::NAN,
+            })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_peaks_ptr() -> *const f32 {
+    ANALYSIS.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|job| job.result.as_ref())
+            .map_or(std::ptr::null(), |result| result.peaks.as_ptr())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_analysis_peaks_len() -> u32 {
+    (PEAK_BINS * 2) as u32
 }
 
 /// Prepare-time graph ABI. Kind codes are versioned with manifold_version().

@@ -1,0 +1,9 @@
+# Review checkpoint 32: source analysis outside audio
+
+Date: 2026-09-26. Open [Sample instrument](http://127.0.0.1:4173/?primitive=sample-instrument). The built-in source now shows its Rust/Wasm peak, RMS, and 220 Hz A3 estimate. Click **Use A3 as root (57)** to apply that suggestion to the root-note control; the analysis does not change the instrument until clicked. The same readout appears for uploaded files and Loop Capture takes. The [waveform capture](checkpoint-32-waveform.png) is a 0.50 s mono 440 Hz WAV decoded as stereo; the workbench reported peak 0.600, RMS 0.424, and A4 at 440.0 Hz.
+
+A separate Web Worker owns a second Wasm instance for analysis. Rust computes 256 stereo peak pairs, peak, RMS, and a bounded YIN-style pitch estimate; the worker sends only that summary to the page. It chooses the strongest of mid, left, and right for pitch so opposite-phase stereo does not cancel. The waveform renderer reads the returned peak bins and does not scan the full file during normal drawing. If a worker cannot start, the waveform falls back to a local peak scan and reports analysis unavailable. Audio processing and note events remain in the separate worklet.
+
+Validation: 47 Rust tests passed. Native Rust and Wasm summaries matched for a 220 Hz tone, a transient with no pitch, and opposite-phase stereo at 330 Hz. All **132** offline browser comparisons still showed Match with no page errors. Browser checks covered the built-in A3 root action, a 440 Hz uploaded file, a captured 165 Hz E3 take, and the no-worker waveform fallback.
+
+This estimator is an authored v2 study. It does not yet reproduce the original C++ `PitchDetector` and `PartialsExtractor` confidence model or partial data. The root action appears only for a sufficiently confident pitch within the current root-note control range.

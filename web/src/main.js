@@ -171,6 +171,10 @@ let samplePlayhead = 0;
 let samplePlaying = false;
 let sampleVoicePositions = Array(8).fill(-1);
 let sampleActiveVoices = 0;
+const emptySamplePeaks = new Float32Array(256 * 2);
+let sampleAnalysisWorker = null;
+let sampleAnalysisSerial = 0;
+const pendingSampleAnalyses = new Map();
 function demoSample() {
   if (exampleSample) return exampleSample;
   const sourceRate = 48_000;
@@ -188,19 +192,95 @@ function demoSample() {
   return exampleSample;
 }
 function samplePeaks(source) {
-  if (source.peaks) return source.peaks;
+  return source.peaks ?? emptySamplePeaks;
+}
+function fallbackSamplePeaks(source) {
   const peaks = new Float32Array(256 * 2);
   const frames = source.stereo.length / 2;
-  for (let bin = 0; bin < 256; bin++) {
-    const begin = Math.floor(bin * frames / 256);
-    const end = Math.min(frames, Math.max(begin + 1, Math.floor((bin + 1) * frames / 256)));
-    for (let frame = begin; frame < end; frame++) {
-      peaks[bin * 2] = Math.max(peaks[bin * 2], Math.abs(source.stereo[frame * 2]));
-      peaks[bin * 2 + 1] = Math.max(peaks[bin * 2 + 1], Math.abs(source.stereo[frame * 2 + 1]));
-    }
+  for (let frame = 0; frame < frames; frame++) {
+    const bin = Math.floor(frame * 256 / frames);
+    peaks[bin * 2] = Math.max(peaks[bin * 2], Math.abs(source.stereo[frame * 2]));
+    peaks[bin * 2 + 1] = Math.max(peaks[bin * 2 + 1], Math.abs(source.stereo[frame * 2 + 1]));
   }
   source.peaks = peaks;
-  return peaks;
+}
+function samplePitchNote(source) {
+  const result = source.analysis;
+  if (!result || result.pitchHz <= 0 || result.confidence < 0.75) return null;
+  const midi = Math.round(69 + 12 * Math.log2(result.pitchHz / 440));
+  return midi >= 36 && midi <= 84 ? midi : null;
+}
+function renderSampleAnalysis() {
+  if (!['sample-region', 'sample-instrument'].includes(activeFamily)) return;
+  const source = loadedSample ?? demoSample();
+  const readout = byId('sample-analysis');
+  const button = byId('sample-use-root');
+  button.hidden = true;
+  if (source.analysisError) {
+    readout.textContent = `Source analysis unavailable: ${source.analysisError}`;
+    return;
+  }
+  if (!source.analysis) {
+    readout.textContent = 'Measuring peak, RMS, and pitch in Rust/Wasm…';
+    return;
+  }
+  const { peak, rms, pitchHz, confidence } = source.analysis;
+  const note = samplePitchNote(source);
+  readout.textContent = `Peak ${peak.toFixed(3)} · RMS ${rms.toFixed(3)} · ${note === null
+    ? 'no stable pitch detected'
+    : `${pitchHz.toFixed(1)} Hz · ${noteNames[note % 12]}${Math.floor(note / 12) - 1} · ${(confidence * 100).toFixed(0)}% confidence`}`;
+  if (activeFamily === 'sample-instrument' && note !== null) {
+    button.hidden = false;
+    button.textContent = `Use ${noteNames[note % 12]}${Math.floor(note / 12) - 1} as root (${note})`;
+  }
+}
+function requestSampleAnalysis(source) {
+  if (source.analysisRequested) return;
+  source.analysisRequested = true;
+  try {
+    if (!sampleAnalysisWorker) {
+      sampleAnalysisWorker = new Worker(new URL('./audio/sample-analysis-worker.js', import.meta.url), { type: 'module' });
+      sampleAnalysisWorker.onmessage = ({ data }) => {
+        const analyzed = pendingSampleAnalyses.get(data.id);
+        pendingSampleAnalyses.delete(data.id);
+        if (!analyzed) return;
+        if (data.type === 'result') {
+          analyzed.analysis = data;
+          analyzed.peaks = data.peaks;
+        } else {
+          analyzed.analysisError = data.message;
+          fallbackSamplePeaks(analyzed);
+        }
+        if (analyzed === (loadedSample ?? demoSample())) {
+          drawSampleWaveform();
+          renderSampleAnalysis();
+        }
+      };
+      sampleAnalysisWorker.onerror = (error) => {
+        for (const analyzed of pendingSampleAnalyses.values()) {
+          analyzed.analysisError = error.message || 'Worker failed';
+          fallbackSamplePeaks(analyzed);
+        }
+        pendingSampleAnalyses.clear();
+        sampleAnalysisWorker?.terminate();
+        sampleAnalysisWorker = null;
+        drawSampleWaveform();
+        renderSampleAnalysis();
+      };
+    }
+    const id = ++sampleAnalysisSerial;
+    pendingSampleAnalyses.set(id, source);
+    const stereo = source.stereo.slice();
+    sampleAnalysisWorker.postMessage({ id, sourceRate: source.sourceRate, stereo }, [stereo.buffer]);
+  } catch (error) {
+    for (const [id, pending] of pendingSampleAnalyses) {
+      if (pending === source) pendingSampleAnalyses.delete(id);
+    }
+    source.analysisError = error.message || String(error);
+    fallbackSamplePeaks(source);
+    drawSampleWaveform();
+    renderSampleAnalysis();
+  }
 }
 function drawSampleWaveform() {
   if (!['sample-region', 'sample-instrument'].includes(activeFamily)) return;
@@ -639,6 +719,8 @@ function renderPrimitive(family) {
   if (sampleView) {
     byId('sample-source-status').textContent = loadedSample?.label ?? 'Built-in example loaded when you start. Choose a file up to 30 seconds to replace it.';
     drawSampleWaveform();
+    renderSampleAnalysis();
+    requestSampleAnalysis(loadedSample ?? demoSample());
   }
   byId('source').hidden = isInstrument;
   toggle.textContent = isInstrument ? 'Start instrument' : 'Start audio';
@@ -873,10 +955,19 @@ byId('sample-file').addEventListener('change', async (event) => {
     samplePlayhead = 0;
     samplePlaying = false;
     drawSampleWaveform();
+    renderSampleAnalysis();
+    requestSampleAnalysis(loadedSample);
     readout.textContent = label;
   } catch (error) {
     readout.textContent = `Sample unavailable: ${error.message ?? String(error)}`;
   }
+});
+byId('sample-use-root').addEventListener('click', () => {
+  if (activeFamily !== 'sample-instrument') return;
+  const note = samplePitchNote(loadedSample ?? demoSample());
+  if (note === null) return;
+  byId('controls').querySelector('[data-parameter-id="0"]')?.syncValue(note);
+  audio.setParameter(0, note);
 });
 byId('capture-transfer').addEventListener('click', async () => {
   const button = byId('capture-transfer');
