@@ -350,10 +350,16 @@ impl MainVoiceBank {
             voice.vocoder.set_parameter(3, pitch.vocoder_mix);
             for frame in 0..frames {
                 let sample = voice.player.process_sample();
-                self.raw_left[frame] = sample[0];
-                self.raw_right[frame] = sample[1];
+                // The original SampleRegionPlaybackNode centers its single
+                // unison voice before the vocoder and the envelope tap.
+                let centered = [
+                    sample[0] * std::f32::consts::FRAC_1_SQRT_2,
+                    sample[1] * std::f32::consts::FRAC_1_SQRT_2,
+                ];
+                self.raw_left[frame] = centered[0];
+                self.raw_right[frame] = centered[1];
                 if self.direction_mode >= 4 {
-                    self.sample_envelope[frame] = voice.follower.process_sample(sample);
+                    self.sample_envelope[frame] = voice.follower.process_sample(centered);
                 }
             }
             voice.vocoder.process_planar(
@@ -533,6 +539,24 @@ mod tests {
             };
         }
         set
+    }
+
+    #[test]
+    fn sample_player_center_pan_precedes_the_voice_branches() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.load_stereo(vec![0.5; 8_000 * 2], 8_000.0));
+        bank.set_parameter(1, 1.0);
+        bank.event(EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 127,
+        });
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        bank.process_planar([&mut left, &mut right]);
+        let expected = 0.5 * std::f32::consts::FRAC_1_SQRT_2;
+        assert!((bank.raw_left[0] - expected).abs() < 1e-7);
+        assert!((bank.raw_right[0] - expected).abs() < 1e-7);
     }
 
     #[test]

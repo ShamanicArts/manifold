@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "settledStartFrame": 512,
+  "comparisonScope": "old sample player, oscillator, sample gain, Normal crossfades, branch and voice mixers; mix-zero vocoder omitted and old UI envelope excluded",
+  "results": [
+    {
+      "id": "sample-only",
+      "settledOldVsNative": {
+        "max": 7.450580596923828e-9,
+        "rms": 2.6413711095561565e-9,
+        "referenceRms": 0.05095840510810159
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.050925295464269826
+      },
+      "onsetOldVsNative": {
+        "max": 0.05656854063272476,
+        "rms": 0.005966445963837447,
+        "referenceRms": 0.05156104641477458
+      }
+    },
+    {
+      "id": "sine-middle",
+      "settledOldVsNative": {
+        "max": 0.0000032633543014526367,
+        "rms": 0.000001381529145297859,
+        "referenceRms": 0.07728939166688413
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.07547196426181176
+      },
+      "onsetOldVsNative": {
+        "max": 0.03999999910593033,
+        "rms": 0.004587870183718372,
+        "referenceRms": 0.0400430792498515
+      }
+    },
+    {
+      "id": "saw-middle",
+      "settledOldVsNative": {
+        "max": 0.0000010542571544647217,
+        "rms": 6.203757610848775e-7,
+        "referenceRms": 0.06759568245222851
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.06649088767954711
+      },
+      "onsetOldVsNative": {
+        "max": 0.03979187831282616,
+        "rms": 0.003809273315140734,
+        "referenceRms": 0.04739090805273992
+      }
+    },
+    {
+      "id": "wave-only",
+      "settledOldVsNative": {
+        "max": 0.00000461190938949585,
+        "rms": 0.000001953831333096092,
+        "referenceRms": 0.09790230559240315
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.0954170283257104
+      },
+      "onsetOldVsNative": {
+        "max": 0.0028413329273462296,
+        "rms": 0.0005799402500021016,
+        "referenceRms": 0.04358150805218723
+      }
+    }
+  ]
+}

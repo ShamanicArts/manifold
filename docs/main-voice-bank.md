@@ -1,4 +1,4 @@
-# Main voice bank, through checkpoint 125
+# Main voice bank, through checkpoint 126
 
 The `main-voice-bank` graph node is a prepared eight-voice instrument. It is an
 authored v2 slice of `sample_synth.lua` plus the original UI voice ownership
@@ -43,6 +43,9 @@ The Add wave source is an authored prepared recipe, while old Main uses a
 waveform oscillator on that branch. Source frames are selected manually in
 the browser and then remain fixed until another selection. This is a playable
 v2 approximation, not a claim of matching the full old spectral automation.
+The original sample player applies a center-pan factor before the vocoder,
+follower, and branch selection. The bank applies the same factor at that point;
+the standalone `SampleRegion` primitive still returns its raw stereo output.
 Morph does not render the silent Add wave bank; the old Morph branch disables
 its corresponding oscillator.
 
@@ -54,7 +57,7 @@ note ownership follows the old UI's note-only policy across channels.
 
 ## Evidence
 
-- `cargo test --workspace`: 135 Rust tests, including timed graph chords,
+- `cargo test --workspace`: 136 Rust tests, including timed graph chords,
   independent release, duplicate-note release, oldest-slot stealing, and
   Ring depth-zero equivalence to the base blend, and Add/Morph target routing.
 - `scripts/verify-main-voice-bank-worklet.mjs`: Wasm AudioWorklet initialization,
@@ -62,7 +65,7 @@ note ownership follows the old UI's note-only policy across channels.
   target rejection, chord, note-off, panic, and nine-value meter.
 - `scripts/verify-main-voice-bank-comparison.mjs`: ten checked-in native
   Rust ↔ Wasm captures. Nine are bit-exact, including Ring, Add, and Morph. The vocoder chord differs by
-  0.003883 peak and 0.000286 RMS (0.27% of native signal RMS). A single-note
+  0.004962 peak and 0.000350 RMS (0.46% of native signal RMS). A single-note
   vocoder diagnostic gave a similar peak difference, so this is not specific
   to mixing multiple voices. The numerical cause remains unisolated and the
   comparison lab labels that case as bounded variance.
@@ -81,11 +84,21 @@ note ownership follows the old UI's note-only policy across channels.
   match the Rust bank after frame 512 to at most 0.000004612. Native/Wasm is
   bit-exact. The onset differs because the bank has a sample-clock ADSR;
   the old UI envelope and old sample playback are outside this fixture.
+- `scripts/verify-main-sample-playback-comparison.mjs` checks five compiled
+  original sample-player cases, including loop speed, one-shot, and crossfade.
+  After the old center pan, the largest old/Rust difference is 0.0000000195.
+- `scripts/verify-main-normal-voice-comparison.mjs` checks four assembled
+  original C++ Normal routes using the original player, oscillator, gain,
+  crossfades, and mixers. The largest settled old/Rust difference is
+  0.000004612 after frame 512; native Rust and Wasm are bit-exact. The old
+  phase vocoder is omitted where its mix is zero; the original UI-rate
+  envelope is not constructed.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint
 review is `/main-add-morph-review.html`; the timing review is
 `/main-bank-performance-review.html`, and the compiled old wave review is
-`/main-wave-route-review.html`. The embedded BB browser cannot grant
+`/main-wave-route-review.html`. The compiled sample and Normal route review is
+`/main-normal-route-review.html`. The embedded BB browser cannot grant
 hardware MIDI permissions yet, so the on-screen keyboard is the immediate
 input path. The in-app browser backend was unavailable for a visual smoke test
 at this checkpoint; the served pages and worklet path were checked separately.
@@ -93,8 +106,8 @@ at this checkpoint; the served pages and worklet path were checked separately.
 ## Next integration
 
 Give the full Main project a coherent state model. Extend the assembled old
-C++ comparison to sample playback, mixed branches, and selected Ring/Add/Morph
-cases while keeping the envelope timing difference explicit. Measure sustained
+C++ comparison to Ring and selected Add/Morph cases while keeping the envelope
+timing difference explicit. Measure sustained
 eight-voice callback cost in the actual browser and
 identify the vocoder's native/Wasm numerical variance. Host packaging remains
 a separate later stage.

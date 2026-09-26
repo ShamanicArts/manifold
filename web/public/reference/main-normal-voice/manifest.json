@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "reference": "compiled original C++ oscillator, crossfaders and mixers against authored Rust Main bank",
-  "scope": "sustained wave route with a silent sample bus; old UI envelope and old sample player excluded",
-  "legacySourceSha256": "3b89719c3900858220864c2ac420ce98682e9b256ce66a36d567163d018ae0f8",
-  "referenceHarnessSha256": "cdd2642c0036a34be760f10503f87a93b2ebc93a6b7bda9baf85ed45b69054ee",
-  "rustSourceSha256": "623d337a97afed0b4a869e0262a02ff2ccfbe4510a69cf6ff5e277ccb93c0432",
+  "reference": "compiled original C++ Main Normal voice nodes versus native Rust Main bank",
+  "scope": "old sample player, oscillator, sample gain, Normal crossfades, branch and voice mixers; mix-zero vocoder omitted and old UI envelope excluded",
+  "legacySourceSha256": "ea3013060f61b5e196dc1daee7e725423d0d2b927263a427f2c8c8df69737859",
+  "referenceHarnessSha256": "2421f943ef7380fbe7ee512aa9ebb74ee528b1daa2821816b9052ed156c74c56",
+  "rustSourceSha256": "739f5d1d5c96448ab9cb52fbf716c1bdb9fe685af4193e0a6e03e8eaf1a00ed0",
   "wasmSha256": "f6388a4b2ee8c2fee09575aefc73a86d21639a07877c48d0a8a9519f71e1aaab",
   "sampleRate": 48000,
   "sampleSourceRate": 48000,
@@ -49,11 +49,11 @@
   ],
   "cases": [
     {
-      "id": "sine-wave",
-      "label": "Normal wave route \u00b7 waveform 0 \u00b7 blend -1.0",
+      "id": "sample-only",
+      "label": "Original Main Normal route \u00b7 waveform 0 \u00b7 blend 1.0",
       "parameters": [
         0,
-        -1.0,
+        1.0,
         60,
         2,
         0,
@@ -83,50 +83,12 @@
       ],
       "changes": [],
       "blockSize": 128,
-      "output": "sine-wave-rust.f32",
-      "legacyOutput": "sine-wave-cpp.f32"
+      "output": "sample-only-rust.f32",
+      "legacyOutput": "sample-only-cpp.f32"
     },
     {
-      "id": "saw-wave",
-      "label": "Normal wave route \u00b7 waveform 1 \u00b7 blend -1.0",
-      "parameters": [
-        1,
-        -1.0,
-        60,
-        2,
-        0,
-        0,
-        0,
-        0.5,
-        0.5,
-        0,
-        1,
-        0.001,
-        0.001,
-        1,
-        0.05,
-        1,
-        1,
-        0,
-        0.2
-      ],
-      "events": [
-        [
-          0,
-          0,
-          0,
-          60,
-          127
-        ]
-      ],
-      "changes": [],
-      "blockSize": 128,
-      "output": "saw-wave-rust.f32",
-      "legacyOutput": "saw-wave-cpp.f32"
-    },
-    {
-      "id": "sine-midpoint",
-      "label": "Normal wave route \u00b7 waveform 0 \u00b7 blend 0.0",
+      "id": "sine-middle",
+      "label": "Original Main Normal route \u00b7 waveform 0 \u00b7 blend 0.0",
       "parameters": [
         0,
         0.0,
@@ -159,8 +121,84 @@
       ],
       "changes": [],
       "blockSize": 128,
-      "output": "sine-midpoint-rust.f32",
-      "legacyOutput": "sine-midpoint-cpp.f32"
+      "output": "sine-middle-rust.f32",
+      "legacyOutput": "sine-middle-cpp.f32"
+    },
+    {
+      "id": "saw-middle",
+      "label": "Original Main Normal route \u00b7 waveform 1 \u00b7 blend 0.0",
+      "parameters": [
+        1,
+        0.0,
+        60,
+        2,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "saw-middle-rust.f32",
+      "legacyOutput": "saw-middle-cpp.f32"
+    },
+    {
+      "id": "wave-only",
+      "label": "Original Main Normal route \u00b7 waveform 0 \u00b7 blend -1.0",
+      "parameters": [
+        0,
+        -1.0,
+        60,
+        2,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "wave-only-rust.f32",
+      "legacyOutput": "wave-only-cpp.f32"
     }
   ]
 }

@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "reference": "original C++ SampleRegionPlaybackNode and native Rust SampleRegion",
+  "scope": "original player from captured stereo audio; old center pan applied before later Main voice stages",
+  "legacySourceSha256": "7c9f556ce9c4bd1d87aadb7e051dd30282be9bd55bdbcb7b242f1f4afc378252",
+  "referenceHarnessSha256": "db3ce27051f7e15d47c008b081bbeed73922d4a22f722fc329ed7c94b4938c9e",
+  "rustSourceSha256": "2962b9495a26150d51a0e5319cf652f5e46f65a633414dfd3ba3bebc9162110a",
+  "wasmSha256": "f6388a4b2ee8c2fee09575aefc73a86d21639a07877c48d0a8a9519f71e1aaab",
+  "sampleRate": 48000,
+  "sampleSourceRate": 48000,
+  "sampleFrames": 4096,
+  "sample": "sample.f32",
+  "input": "input.f32",
+  "frames": 8192,
+  "channels": 2,
+  "stepFrame": 4096,
+  "legacyCenterPanGain": 0.7071067811865476,
+  "cases": [
+    {
+      "id": "loop-unit",
+      "label": "Original sample player \u00b7 speed 1.0 \u00b7 one-shot 0 \u00b7 seam 0.0",
+      "parameters": [
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.0
+      ],
+      "events": [
+        [
+          0,
+          9,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "loop-unit-rust.f32",
+      "legacyOutput": "loop-unit-cpp.f32"
+    },
+    {
+      "id": "loop-half",
+      "label": "Original sample player \u00b7 speed 0.5 \u00b7 one-shot 0 \u00b7 seam 0.0",
+      "parameters": [
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.0
+      ],
+      "events": [
+        [
+          0,
+          9,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "loop-half-rust.f32",
+      "legacyOutput": "loop-half-cpp.f32"
+    },
+    {
+      "id": "loop-fast",
+      "label": "Original sample player \u00b7 speed 1.5 \u00b7 one-shot 0 \u00b7 seam 0.0",
+      "parameters": [
+        1.5,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.0
+      ],
+      "events": [
+        [
+          0,
+          9,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "loop-fast-rust.f32",
+      "legacyOutput": "loop-fast-cpp.f32"
+    },
+    {
+      "id": "one-shot",
+      "label": "Original sample player \u00b7 speed 1.0 \u00b7 one-shot 1 \u00b7 seam 0.0",
+      "parameters": [
+        1.0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0.0
+      ],
+      "events": [
+        [
+          0,
+          9,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "one-shot-rust.f32",
+      "legacyOutput": "one-shot-cpp.f32"
+    },
+    {
+      "id": "crossfade-20",
+      "label": "Original sample player \u00b7 speed 1.0 \u00b7 one-shot 0 \u00b7 seam 0.2",
+      "parameters": [
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          9,
+          60
+        ]
+      ],
+      "blockSize": 128,
+      "output": "crossfade-20-rust.f32",
+      "legacyOutput": "crossfade-20-cpp.f32"
+    }
+  ]
+}

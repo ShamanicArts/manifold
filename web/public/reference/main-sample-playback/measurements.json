@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "comparisonScope": "original player from captured stereo audio; old center pan applied before later Main voice stages",
+  "legacyCenterPanGain": 0.7071067811865476,
+  "results": [
+    {
+      "id": "loop-unit",
+      "oldVsNativeAfterCenterPan": {
+        "max": 1.0674641809371721e-8,
+        "rms": 3.825442358484553e-9,
+        "referenceRms": 0.127490698511837
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.18029907794466582
+      }
+    },
+    {
+      "id": "loop-half",
+      "oldVsNativeAfterCenterPan": {
+        "max": 1.1061222215946742e-8,
+        "rms": 3.840393437182159e-9,
+        "referenceRms": 0.12748363298791793
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.18028908586827028
+      }
+    },
+    {
+      "id": "loop-fast",
+      "oldVsNativeAfterCenterPan": {
+        "max": 1.1061222215946742e-8,
+        "rms": 3.8403934371821545e-9,
+        "referenceRms": 0.1274836329879183
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.1802890858682704
+      }
+    },
+    {
+      "id": "one-shot",
+      "oldVsNativeAfterCenterPan": {
+        "max": 1.0674641809371721e-8,
+        "rms": 2.7049962327226737e-9,
+        "referenceRms": 0.09014953745593
+      },
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "referenceRms": 0.12749070065635376
+      }
+    },
+    {
+      "id": "crossfade-20",
+      "oldVsNativeAfterCenterPan": {
+        "max": 1.9462914668810782e-8,
+        "rms": 3.952125232605675e-9,
+        "referenceRms": 0.13056119636026883
+      },
+      "nativeVsWasm": {
+        "max": 2.9802322387695312e-8,
+        "rms": 7.61042211355408e-10,
+        "referenceRms": 0.18464141774612725
+      }
+    }
+  ]
+}

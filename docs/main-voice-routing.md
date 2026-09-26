@@ -11,7 +11,7 @@ Source: `UserScripts/projects/Main/lib/sample_synth.lua` and `UserScripts/projec
 | Add/Morph branch | `blendAddOsc` and `morphWaveAdditiveGain` on crossfader A; `sampleAdditiveGain` on B | `addCrossfade` uses blend position for Add (mode 4), full B for Morph (mode 5). `addPhraseGain` follows it. | Checkpoint 123 connects two prepared spectral banks per allocated voice. Add uses the blend position, Morph forces B and interpolates pitch; the raw sample drives phrase gain. The Add wave recipe approximates the old waveform oscillator. |
 | Ring branch | Wave and sample stage cross into two Ring nodes as carrier/modulator in opposite directions | A Ring crossfade uses the shared blend position; the three-bus mixer selects this branch in mode 1. | Checkpoint 122 adds the crossed external-audio Ring kernels inside each prepared Main voice. A live held chord switches mode, and the new native/Wasm Ring capture is bit-exact. Full old voice audio parity remains unproven. |
 | Branch mix | Normal base, ring branch, Add/Morph branch | In Add/Morph, base gain `1 − depth` and additive gain `depth`; ring gain zero. In other modes, one branch is selected. | The single-voice study has a linked two-bus mixer; checkpoint 123 applies complementary base/Add gain in all eight bank voices. Full old assembled output parity remains unproven. |
-| Canonical output | `branchMixer` on `voiceMix` input 4 | Other direct voiceMix inputs muted; fourth gain one. | Authored study now uses a four-bus mixer with only input 4 active. C++ sample-only gain-chain captures confirm the two centre-pan stages. |
+| Canonical output | `branchMixer` on `voiceMix` input 4 | Other direct voiceMix inputs muted; fourth gain one. | Authored study now uses a four-bus mixer with only input 4 active. C++ sample-only gain-chain captures confirm the two centre-pan stages. Compiled original sample playback and the assembled Normal route agree with the Rust bank after the v2 envelope settles. |
 
 The old integration sets oscillator amplitude to `amp` and `sampleBlendGain` to `amp × 2`; sample-derived additive amplitude is also `amp × 2`. The old `MixerNode` and oscillator each have their own gain conventions, so full old-project audio comparisons require all these stages, not only matching crossfade positions.
 
@@ -31,7 +31,8 @@ The old integration sets oscillator amplitude to `amp` and `sampleBlendGain` to 
 12. **Done, checkpoint 123 for the authored bank:** Publish target 0 wave and target 1 source partials between blocks; give each voice two independent Sine banks, a sample follower, and phrase gain. Add crossfades the banks; Morph selects source and interpolates pitch. Ten bank captures compare native Rust with Wasm, with Add and Morph bit-exact. These captures do not compare assembled old C++ Main output.
 13. **Done, checkpoint 124 for a local timing proxy:** Measure nine sustained Main bank scenarios through the AudioWorklet adapter in Node/V8. Morph now skips the silent wave bank, matching the old disabled oscillator route. No scenario exceeded the 128-frame interval on this host. Actual browser thread timing is still open.
 14. **Done, checkpoint 125 for sustained wave routes:** A compiled original C++ oscillator, Normal crossfade, base selector, three-bus branch mixer, and four-bus voice mixer agree with native Rust within 0.000004612 after frame 512 for sine, saw, and sine with a silent midpoint sample bus. Wasm is bit-exact to native Rust. Old UI envelope and sample playback are explicitly outside this fixture.
-15. Next, assemble old sample playback and mixed routes, measure browser audio-thread cost and underruns, and extend project state for the bank.
+15. **Done, checkpoint 126 for the original player and Normal route:** Five compiled C++ sample playback cases match Rust after the old center pan to at most 0.0000000195. Four assembled Normal cases combine the original player, oscillator, gain, crossfades, and mixers. After frame 512, old/Rust maximum difference is 0.000004612 and native Rust/Wasm is bit-exact. The old phase vocoder is omitted at mix zero and its UI-rate envelope is not constructed.
+16. Next, compare assembled Ring and selected Add/Morph routes, measure browser audio-thread cost and underruns, and extend project state for the bank.
 
 The [Node AudioWorklet timing review](../web/public/main-bank-performance-review.html)
 provides a reproducible proxy cost for nine Main bank scenarios. It records
@@ -39,7 +40,9 @@ the exact Wasm hash and machine; actual browser thread timing remains open.
 The [assembled wave route review](../web/public/main-wave-route-review.html)
 shows compiled old C++, native Rust, and Wasm on three sustained cases with
 the onset and settled comparison windows separate.
+The [sample playback and Normal route review](../web/public/main-normal-route-review.html)
+adds five original-player cases and four assembled Normal voice cases.
 
 The [Main blend review](../web/public/main-sample-blend-review.html) records the single-voice composition; the [Add/Morph review](../web/public/main-add-morph-review.html) is the current playable checkpoint. The [pitch review](../web/public/main-pitch-review.html) records the original Lua map.
 
-Checkpoint 120's [note ownership boundary](main-note-routing.md) shows that the original UI chooses eight slots while DSP receives indexed frequency, amplitude, and gate paths. The polyphonic bank now implements independent per-note source state and all six mode selections; old assembled audio comparisons remain.
+Checkpoint 120's [note ownership boundary](main-note-routing.md) shows that the original UI chooses eight slots while DSP receives indexed frequency, amplitude, and gate paths. The polyphonic bank now implements independent per-note source state and all six mode selections; assembled Ring and Add/Morph audio comparisons remain.

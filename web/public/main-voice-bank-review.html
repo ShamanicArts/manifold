@@ -31,9 +31,9 @@
       <tr><td>Oldest steal</td><td>Ninth note replaces the oldest slot</td><td class="good">0</td></tr>
       <tr><td>FM chord</td><td>Per-voice directional motion</td><td class="good">0</td></tr>
       <tr><td>Sync chord</td><td>Per-voice sample retrigger</td><td class="good">0</td></tr>
-      <tr><td>Vocoder chord</td><td>Independent spectral pitch</td><td class="bounded">0.003883 peak · 0.000286 RMS</td></tr>
+      <tr><td>Vocoder chord</td><td>Independent spectral pitch</td><td class="bounded">0.004962 peak · 0.000350 RMS</td></tr>
     </tbody></table>
-    <p class="note">The vocoder case differs by 0.27% of the native signal RMS. A one-note capture shows a similar peak difference, so the discrepancy is present in the spectral path itself. The lab marks it “Bounded variance”; it is not presented as bit-exact. The specific numerical cause still needs isolation.</p>
+    <p class="note">The vocoder case differs by 0.46% of the native signal RMS. A one-note capture shows a similar peak difference, so the discrepancy is present in the spectral path itself. The lab marks it “Bounded variance”; it is not presented as bit-exact. The specific numerical cause still needs isolation.</p>
   </section>
   <section><h2>Limits and next work</h2><p>This is the Main <strong>base wave/sample branch</strong>. Add, Morph, Ring, linked branch depth, full project state, and native plug-in packaging have not been assembled into this voice bank. The old Main UI updates its envelope at UI cadence; this bank intentionally uses a sample-clock ADSR and therefore does not claim full old-project audio parity.</p><p>The next pass will connect the remaining source families to each voice, compare assembled output with selected original C++ routes, and measure sustained polyphony cost in the browser. Hardware MIDI permissions are unavailable in BB’s embedded browser; the on-screen keyboard works.</p></section>
   <footer>Manifold v2 · review checkpoint 121 · source captures under reference/main-voice-bank</footer>
