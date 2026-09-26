@@ -1,0 +1,26 @@
+{
+  "reference": "Isolated old C++ scalar Gain/Mixer/Chorus/StereoDelay route; Chorus prepared at start, processes after first selection",
+  "sourceSha256": "b7c12c261990632acbbd5ac9f4358f4e8bf664b23ea3559f6fb620cdadc182a4",
+  "sampleRate": 48000,
+  "frames": 32768,
+  "blockSize": 128,
+  "switchFrames": {
+    "delayToChorus": 8192,
+    "chorusToDelay": 16384
+  },
+  "hiddenDelayInputImpulseFrame": 9500,
+  "cppVsPersistentRust": {
+    "max": 4.470348358154297e-08,
+    "rms": 1.0128233668283364e-09
+  },
+  "cppVsPausedResetRustAfterReselect": {
+    "max": 0.1838594894255401,
+    "rms": 0.006544870210342363
+  },
+  "returnTailFrame": 17180,
+  "returnTailSample": {
+    "cppLeft": 0.027741974219679832,
+    "persistentRustLeft": 0.027741974219679832,
+    "pausedResetRustLeft": 3.199189357872001e-09
+  }
+}
