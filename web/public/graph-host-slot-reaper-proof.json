@@ -1,0 +1,12 @@
+{
+  "project": "graph-host-slot-browser-project.json",
+  "preset": "graph-host-slot-browser.vstpreset",
+  "slot": 42,
+  "previousSlot": 2,
+  "initialNormalized": 0.019399249926209,
+  "hostSetNormalized": 0.10000000149012,
+  "baselineFrequencyHz": 330.0245924138585,
+  "changedFrequencyHz": 1617.94328228796,
+  "peakAudioDifference": 0.4347813129425049,
+  "freshProcessRender": true
+}

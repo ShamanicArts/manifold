@@ -1,6 +1,7 @@
 import { NODE_TYPES, SAMPLE_NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
   setInputSource, setSidechainSource, captureGraphProject, parseGraphProject, parseGraphBundle, validateGraphAssets,
-  validateGraphTargets, validateGraphTemporal, defaultGraphTemporal, deriveGraphHostBindings } from './topology.js';
+  validateGraphTargets, validateGraphTemporal, defaultGraphTemporal, deriveGraphHostBindings,
+  reassignGraphHostSlot, HOST_SLOT_COUNT } from './topology.js';
 import { parseMainVoiceBankState } from '../state/main-voice-bank.js';
 import { parseProjectDocument } from '../state/project-document.js';
 import { analyzeMainSource } from './main-source.js';
@@ -61,6 +62,8 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   let revision = 0;
   let sourceRequest = 0;
   const pendingParameters = new Set();
+
+  project.graphHostBindings = deriveGraphHostBindings(project.signal, project.graphHostBindings ?? []);
 
   addType.replaceChildren(...Object.entries(NODE_TYPES).filter(([, spec]) => !spec.fixedId)
     .map(([type, spec]) => new Option(spec.label, type)));
@@ -455,7 +458,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       }
       for (const parameter of spec.parameters ?? []) {
         const entry = project.signal.initialParameters.find((item) => item.nodeId === node.id && item.id === parameter.id);
-        const row = document.createElement('label');
+        const row = document.createElement('div');
         row.className = 'graph-field';
         const text = document.createElement('span');
         text.textContent = parameter.label;
@@ -494,7 +497,40 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           catch (error) { input.value = String(project.signal.initialParameters.find((item) => item.nodeId === node.id && item.id === parameter.id)?.value ?? entry.value); fail(error); }
           finally { pendingParameters.delete(key); refreshRunning(false); }
         });
-        row.append(text, input);
+        const controls = document.createElement('span');
+        controls.className = 'graph-parameter-controls';
+        controls.append(input);
+        const binding = (project.graphHostBindings ?? []).find((item) => item.nodeId === node.id && item.id === parameter.id);
+        if (binding) {
+          const slotLabel = document.createElement('span');
+          slotLabel.className = 'graph-slot-label';
+          slotLabel.textContent = 'Host slot';
+          const slotInput = document.createElement('input');
+          slotInput.type = 'number';
+          slotInput.className = 'graph-edit graph-slot-input';
+          slotInput.min = '1';
+          slotInput.max = String(HOST_SLOT_COUNT);
+          slotInput.step = '1';
+          slotInput.value = String(binding.slot + 1);
+          slotInput.setAttribute('aria-label', `Host slot for ${spec.label} ${node.id} ${parameter.label}`);
+          slotInput.addEventListener('change', () => {
+            if (!canEdit()) return;
+            try {
+              if (slotInput.value.trim() === '') throw new Error('Enter a host slot number.');
+              const requested = Number(slotInput.value) - 1;
+              const occupied = (project.graphHostBindings ?? []).find((item) => item.slot === requested);
+              const bindings = reassignGraphHostSlot(project.signal, project.graphHostBindings ?? [], node.id, parameter.id, requested);
+              const displacedNode = project.signal.nodes.find((item) => item.id === occupied?.nodeId);
+              const displaced = NODE_TYPES[displacedNode?.type]?.parameters?.find((item) => item.id === occupied?.id);
+              const swap = occupied && occupied !== binding
+                ? `; ${NODE_TYPES[displacedNode.type].label} ${occupied.nodeId} ${displaced?.label ?? occupied.id} moved to slot ${binding.slot + 1}` : '';
+              commit(project.signal, `Assigned ${spec.label} ${node.id} ${parameter.label} to host slot ${requested + 1}${swap}. Download the graph project to use this mapping in a host.`,
+                project.graphAssets, project.graphTargets, project.graphTemporal, bindings);
+            } catch (error) { slotInput.value = String(binding.slot + 1); fail(error); }
+          });
+          controls.append(slotLabel, slotInput);
+        }
+        row.append(text, controls);
         article.appendChild(row);
       }
       nodesRoot.appendChild(article);

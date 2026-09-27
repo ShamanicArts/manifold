@@ -391,6 +391,22 @@ export function deriveGraphHostBindings(signal, previous = []) {
   return retained;
 }
 
+export function reassignGraphHostSlot(signal, previous, nodeId, id, slot) {
+  if (!Number.isInteger(slot) || slot < 0 || slot >= HOST_SLOT_COUNT) {
+    throw new Error(`Host slot must be between 1 and ${HOST_SLOT_COUNT}.`);
+  }
+  const bindings = deriveGraphHostBindings(signal, previous);
+  const current = bindings.find((entry) => entry.nodeId === nodeId && entry.id === id);
+  if (!current) throw new Error('This parameter has no available host slot.');
+  if (current.slot === slot) return bindings;
+  const occupied = bindings.find((entry) => entry.slot === slot);
+  return validateGraphHostBindings(signal, bindings.map((entry) => {
+    if (entry === current) return { ...entry, slot };
+    if (entry === occupied) return { ...entry, slot: current.slot };
+    return entry;
+  }));
+}
+
 export function captureGraphProject(signal, assets = [], targets = [], temporal = [], hostBindings = null) {
   const graph = validateTopology(signal);
   const checked = validateGraphAssets(graph, assets);

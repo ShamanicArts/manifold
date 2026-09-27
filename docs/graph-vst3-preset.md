@@ -60,4 +60,14 @@ other hosts need verification. The automated `--direct-import` probe injects
 a `File` into the input handler. The separate `--manual-picker` mode opens
 the native file chooser under isolated Xvfb, selects Tone Texture JSON, and
 checks the same saved-project audio result.
-Deliberate slot reassignment remains to build.
+The browser graph workbench can now reassign each bound parameter to a displayed
+host slot 1–128. An occupied slot swaps the two bindings; the exported JSON
+preserves the mapping through preset export and host state. Changing a binding
+can redirect existing DAW automation. The [slot assignment proof](../web/public/graph-host-slot-proof.html)
+uses browser-exported Tone Texture JSON, moves Oscillator Frequency to displayed
+slot 42, exports a VST3 preset, and loads it in isolated REAPER. REAPER reports
+the expected initial normalized value, sets slot 42 to 0.1, and saves the
+project. Fresh-process REAPER renders show the dominant tone moving from 330 to
+1618 Hz over one second of 48 kHz stereo audio. The native editor displays the
+new slot with the original compact widget; assignment within that editor is
+the next control-surface step.

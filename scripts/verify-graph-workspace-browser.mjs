@@ -1,6 +1,6 @@
 // Build, save, reopen, and play an edited Audio/CV topology in Chromium.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 
 const requireFromWeb = createRequire(new URL('../web/package.json', import.meta.url));
@@ -86,10 +86,17 @@ try {
   assert.equal(await page.locator('#graph-add-node').isDisabled(), true);
   const gain = page.locator('input[data-node="2"][data-parameter="0"]');
   assert.equal(await gain.isDisabled(), false);
+  const gainSlot = page.getByRole('spinbutton', { name: 'Host slot for Gain 2 Level' });
+  assert.equal(await gainSlot.isDisabled(), true);
   await gain.fill('0.35');
   await gain.press('Tab');
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
   await page.locator('#audio-toggle').click();
+
+  await gainSlot.fill('18');
+  await gainSlot.press('Tab');
+  assert.equal(await page.getByRole('spinbutton', { name: 'Host slot for Gain 2 Level' }).inputValue(), '18');
+  assert.match(await page.locator('#graph-status').textContent(), /host slot 18/);
 
   await page.locator('#graph-add-type').selectOption('distortion');
   await page.locator('#graph-add-node').click();
@@ -98,6 +105,10 @@ try {
   await page.locator('select[data-to="3"][data-port="0"]').selectOption('4');
   await page.locator('input[data-node="4"][data-parameter="0"]').fill('9');
   await page.locator('input[data-node="4"][data-parameter="0"]').press('Tab');
+  await page.getByRole('spinbutton', { name: 'Host slot for Gain 2 Level' }).fill('1');
+  await page.getByRole('spinbutton', { name: 'Host slot for Gain 2 Level' }).press('Tab');
+  assert.equal(await page.getByRole('spinbutton', { name: 'Host slot for Gain 2 Level' }).inputValue(), '1');
+  assert.equal(await page.getByRole('spinbutton', { name: 'Host slot for Distortion 4 Drive' }).inputValue(), '18');
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
   await page.locator('#audio-toggle').click();
@@ -124,6 +135,8 @@ try {
   assert.equal(bundle.signal.connections.length, 5);
   assert.equal(bundle.signal.initialParameters.find((entry) => entry.nodeId === 4 && entry.id === 0).value, 9);
   assert.equal(bundle.signal.initialParameters.find((entry) => entry.nodeId === 2 && entry.id === 0).value, .35);
+  assert.equal(bundle.hostBindings.find((entry) => entry.nodeId === 2 && entry.id === 0).slot, 0);
+  assert.equal(bundle.hostBindings.find((entry) => entry.nodeId === 4 && entry.id === 0).slot, 17);
   await page.locator('button[aria-label="Remove Distortion node 4"]').click();
   assert.equal(await page.locator('.graph-node').count(), 5);
   await page.locator('#graph-project-file').setInputFiles([{
@@ -131,6 +144,7 @@ try {
   }]);
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('.graph-node').count(), 6);
+  assert.equal(await page.getByRole('spinbutton', { name: 'Host slot for Distortion 4 Drive' }).inputValue(), '18');
   const invalid = structuredClone(bundle);
   invalid.signal.connections.find((edge) => edge.to === 6 && edge.inputPort === 1).from = 2;
   await page.locator('#graph-project-file').setInputFiles([{
@@ -167,11 +181,17 @@ try {
   await frequency.press('Tab');
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
   await page.locator('#audio-toggle').click();
+  const frequencySlot = page.getByRole('spinbutton', { name: 'Host slot for Oscillator 4 Frequency' });
+  await frequencySlot.fill('42');
+  await frequencySlot.press('Tab');
   const toneDownload = page.waitForEvent('download');
   await page.locator('#graph-project-export').click();
   const toneBundle = JSON.parse((await readFile(await (await toneDownload).path())).toString());
   assert.equal(toneBundle.signal.inputSource, 'none');
   assert.equal(toneBundle.signal.initialParameters.find((entry) => entry.nodeId === 4 && entry.id === 1).value, 330);
+  assert.equal(toneBundle.hostBindings.find((entry) => entry.nodeId === 4 && entry.id === 1).slot, 41);
+  await writeFile(new URL('../web/public/graph-host-slot-browser-project.json', import.meta.url),
+    `${JSON.stringify(toneBundle, null, 2)}\n`);
   await page.locator('#graph-source-mode').selectOption('external');
   assert.equal(await page.locator('#source').isDisabled(), false);
   assert.equal(await page.locator('#source').isVisible(), true);
@@ -180,6 +200,7 @@ try {
   }]);
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('#graph-source-mode').inputValue(), 'none');
+  assert.equal(await page.getByRole('spinbutton', { name: 'Host slot for Oscillator 4 Frequency' }).inputValue(), '42');
   assert.equal(await page.locator('#source').isDisabled(), true);
   await page.locator('#graph-load-note').click();
   assert.equal(await page.locator('.graph-node').count(), 6);
@@ -314,6 +335,7 @@ try {
   const regionTemplate = JSON.parse((await readFile(new URL('../projects/graph-workspace/region-voice.json', import.meta.url))).toString());
   mixed.signal.initialParameters.push(...regionTemplate.signal.initialParameters
     .filter((entry) => entry.nodeId === 5).map((entry) => ({ ...entry, nodeId: 7 })));
+  mixed.hostBindings = mixed.hostBindings.filter((entry) => entry.nodeId !== 7);
   await page.locator('#graph-project-file').setInputFiles([{
     name: 'mixed-sample-nodes.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(mixed)),
   }]);

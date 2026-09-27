@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold · Host slot assignment proof</title>
+  <style>
+    :root { color-scheme: dark; background: #10141b; color: #e9edf2; font: 15px/1.52 system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { max-width: 1100px; margin: 0 auto; padding: 42px 24px 80px; }
+    a { color: #a8d5ed; }
+    h1 { max-width: 850px; margin: 10px 0 16px; font-size: clamp(2rem, 5vw, 3.3rem); line-height: 1.05; letter-spacing: -.045em; }
+    h2 { margin: 0 0 12px; font-size: 1.2rem; }
+    p { color: #bdc9d3; margin: 0 0 14px; }
+    .eyebrow { color: #8dcab9; font-size: .73rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+    .lead { max-width: 780px; font-size: 1.14rem; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 26px 0; }
+    .metric, section { border: 1px solid #34414d; border-radius: 8px; background: #19212a; }
+    .metric { padding: 18px; }
+    .metric strong { display: block; font-size: 1.9rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
+    .metric span { color: #a9bac7; font-size: .85rem; }
+    section { padding: 22px; margin: 16px 0; }
+    .views { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 18px; align-items: start; }
+    figure { margin: 0; }
+    img { display: block; max-width: 100%; height: auto; border: 1px solid #43515f; border-radius: 5px; }
+    figcaption { color: #aebdc9; font-size: .86rem; margin: 7px 0 0; }
+    .sequence { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 17px 0 0; }
+    .sequence div { padding: 13px; border-top: 2px solid #79bba8; background: #222d36; color: #c8d5dd; font-size: .88rem; }
+    .sequence b { display: block; color: #fff; margin-bottom: 5px; }
+    .files { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+    .files a { display: inline-block; border: 1px solid #536575; border-radius: 4px; padding: 8px 11px; background: #253443; text-decoration: none; }
+    code { font: .93em ui-monospace, SFMono-Regular, monospace; color: #d0dce6; }
+    .small { font-size: .86rem; }
+    @media (max-width: 760px) { .metrics { grid-template-columns: repeat(2, 1fr); } .views { grid-template-columns: 1fr; } .sequence { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 460px) { .metrics, .sequence { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="eyebrow">Manifold v2 · browser to VST3 checkpoint</div>
+  <h1>A browser control assignment changed audio in REAPER.</h1>
+  <p class="lead">The graph workbench now lets you choose a fixed DAW slot for each control. The saved JSON carries that choice into the Rust VST3 processor; the native editor still draws the ported Manifold compact widgets.</p>
+  <div class="metrics">
+    <div class="metric"><strong>42</strong><span>host slot assigned to Oscillator Frequency</span></div>
+    <div class="metric"><strong>330 Hz</strong><span>frequency measured before host edit</span></div>
+    <div class="metric"><strong>1618 Hz</strong><span>frequency after REAPER set slot 42 to 0.1</span></div>
+    <div class="metric"><strong>48,000</strong><span>stereo frames in each fresh process render</span></div>
+  </div>
+  <section>
+    <h2>The two views of the same authored project</h2>
+    <div class="views">
+      <figure><a href="/graph-host-slot-workbench.png"><img src="/graph-host-slot-workbench-control.png" alt="Graph workbench shows Oscillator Frequency with host slot 42 and readable parameter values"></a><figcaption>The browser workbench edits the slot alongside each graph parameter. <a href="/graph-host-slot-workbench.png">Open the full workspace capture</a>.</figcaption></figure>
+      <figure><img src="/graph-host-slot-original-widgets.png" alt="Graph module shows the original compact Frequency slider labeled 42"><figcaption>The graph module preview uses the ported Manifold compact slider and dropdown renderers; Frequency appears under slot 42.</figcaption></figure>
+    </div>
+  </section>
+  <section>
+    <h2>What ran through the host</h2>
+    <div class="sequence">
+      <div><b>1 · Browser</b>The workbench exported Tone Texture JSON with Frequency bound to zero-based slot 41, displayed as slot 42.</div>
+      <div><b>2 · VST3</b>The Rust exporter validated that exact JSON and produced a standard <code>.vstpreset</code>.</div>
+      <div><b>3 · REAPER</b>REAPER loaded the preset, reported 0.019399 for slot 42, then accepted a normalized value of 0.1.</div>
+      <div><b>4 · Audio</b>Two saved REAPER projects rendered in fresh processes. The dominant tone moved from 330 to 1618 Hz.</div>
+    </div>
+    <p class="small" style="margin-top:16px">Frequency was measured from an 8,192-frame window of the left channel beginning at 0.25 seconds. The peak sample difference between the two full renders was 0.4348. This proves the mapping affects host audio; the earlier <a href="/graph-vst3-host-proof.html">VST3 host proof</a> covers native render parity and the original widget gestures.</p>
+    <div class="files"><a href="/graph-host-slot-browser-project.json">Browser project JSON</a><a href="/graph-host-slot-browser.vstpreset">VST3 preset</a><a href="/graph-host-slot-reaper-proof.json">Measured host result</a><a href="/graph-module.html">Open original widget preview</a><a href="/?primitive=graph-workspace">Open workbench</a></div>
+  </section>
+  <section>
+    <h2>Control contract and next steps</h2>
+    <p>The VST3 class keeps 128 public parameter IDs. A project only changes which graph control each ID targets. Moving a control to an occupied slot swaps the pair; existing DAW automation on either slot will then reach the new target. The workbench states this beside the assignment controls.</p>
+    <p>Next: offer assignment inside the native graph editor, exercise slot reassignment with saved automation, and extend the general graph host adapter to CLAP. Windows and macOS VST3 packaging still need validation. The current host proof is Linux REAPER.</p>
+    <p class="small">Reproduce after building the web and VST3 bundles: <code>node scripts/verify-graph-workspace-browser.mjs</code>, then run <code>python scripts/probe-reaper-graph-host-slot.py</code> with <code>DISPLAY</code> on a disposable X server and <code>MANIFOLD_ISOLATED_DISPLAY=1</code>.</p>
+  </section>
+</body>
+</html>
