@@ -141,6 +141,17 @@ fn sample_voice() -> GraphDescription {
     GraphDescription { nodes, connections }
 }
 
+fn region_voice() -> GraphDescription {
+    let mut description = sample_voice();
+    description
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == 5)
+        .unwrap()
+        .kind = NodeKind::SampleRegion;
+    description
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() != 3
@@ -151,21 +162,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "texture",
             "note-voice",
             "sample-voice",
+            "region-voice",
         ]
         .contains(&args[1].as_str())
     {
         return Err(
-            "usage: render_graph_workspace seed|distortion|cv|texture|note-voice|sample-voice OUTPUT".into(),
+            "usage: render_graph_workspace seed|distortion|cv|texture|note-voice|sample-voice|region-voice OUTPUT".into(),
         );
     }
     if args[1] == "texture" {
-        return render(tone_texture(), &args[2], false, false);
+        return render(tone_texture(), &args[2], false, false, false);
     }
     if args[1] == "note-voice" {
-        return render(note_voice(), &args[2], true, false);
+        return render(note_voice(), &args[2], true, false, false);
     }
     if args[1] == "sample-voice" {
-        return render(sample_voice(), &args[2], true, true);
+        return render(sample_voice(), &args[2], true, true, false);
+    }
+    if args[1] == "region-voice" {
+        return render(region_voice(), &args[2], true, true, true);
     }
     let distorted = args[1] != "seed";
     let cv = args[1] == "cv";
@@ -247,6 +262,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &args[2],
         false,
         false,
+        false,
     )
 }
 
@@ -255,6 +271,7 @@ fn render(
     path: &str,
     note_events: bool,
     sample_source: bool,
+    sample_region: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut plan = description.compile(48_000.0, 128)?;
     if note_events && !sample_source && !plan.set_parameter(5, 0, 7.0) {
@@ -272,7 +289,10 @@ fn render(
             .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
             .collect();
         if !plan.load_sample_stereo(5, stereo, 48_000.0) {
-            return Err("sample instrument source rejected".into());
+            return Err("graph sample source rejected".into());
+        }
+        if sample_region && !plan.set_parameter(5, 8, 0.08) {
+            return Err("sample region crossfade rejected".into());
         }
     }
     let event_schedule = [

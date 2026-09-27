@@ -1,6 +1,7 @@
 // Browser authoring contract for a subset of Rust's prepared typed graph.
 // Rust compilation remains the final authority when playback starts.
 import { encodePcm, decodePcm } from '../state/stereo-source.js';
+export const SAMPLE_NODE_TYPES = new Set(['sample-instrument', 'sample-region']);
 export const NODE_TYPES = {
   'input.raw': { label: 'Live input', code: 0, output: 'audio', inputs: [], fixedId: 1 },
   output: { label: 'Output', code: 7, output: null, inputs: ['audio'], fixedId: 3 },
@@ -54,6 +55,16 @@ export const NODE_TYPES = {
       { id: 11, label: 'Unison', min: 1, max: 4, default: 1 },
       { id: 12, label: 'Detune', min: 0, max: 100, default: 0 },
       { id: 13, label: 'Spread', min: 0, max: 1, default: 0 },
+    ] },
+  'sample-region': { label: 'Sample region', code: 26, output: 'audio', inputs: ['midi'],
+    parameters: [
+      { id: 0, label: 'Speed', min: .25, max: 2, default: 1 },
+      { id: 1, label: 'Reverse', choices: ['Forward', 'Reverse'], default: 0 },
+      { id: 2, label: 'One shot', choices: ['Loop', 'One shot'], default: 0 },
+      { id: 3, label: 'Play start', min: 0, max: 1, default: 0 },
+      { id: 4, label: 'Loop start', min: 0, max: 1, default: 0 },
+      { id: 5, label: 'Loop end', min: 0, max: 1, default: 1 },
+      { id: 8, label: 'Crossfade', min: 0, max: .5, default: .08 },
     ] },
 };
 
@@ -198,7 +209,7 @@ export function graphNoteTarget(signal) {
     }
   } while (changed);
   return signal.nodes.find((node) => node.type === 'midi-input' && reachable.has(node.id))?.id
-    ?? signal.nodes.find((node) => ['voice-synth', 'sample-instrument'].includes(node.type) && reachable.has(node.id))?.id ?? null;
+    ?? signal.nodes.find((node) => (node.type === 'voice-synth' || SAMPLE_NODE_TYPES.has(node.type)) && reachable.has(node.id))?.id ?? null;
 }
 
 export function validateGraphAssets(signal, assets) {
@@ -209,7 +220,7 @@ export function validateGraphAssets(signal, assets) {
     const frames = asset?.stereo?.length / 2;
     bytes += asset?.stereo?.byteLength ?? 0;
     if (!asset || !Number.isInteger(asset.nodeId) || seen.has(asset.nodeId)
-      || signal.nodes.find((node) => node.id === asset.nodeId)?.type !== 'sample-instrument'
+      || !SAMPLE_NODE_TYPES.has(signal.nodes.find((node) => node.id === asset.nodeId)?.type)
       || !Number.isInteger(asset.sourceRate) || asset.sourceRate < 8000 || asset.sourceRate > 384000
       || !(asset.stereo instanceof Float32Array) || !Number.isInteger(frames) || frames < 1
       || frames > Math.min(48000 * 30, asset.sourceRate * 30)

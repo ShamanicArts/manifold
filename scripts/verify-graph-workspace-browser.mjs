@@ -36,7 +36,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/?primitive=graph-workspace`);
   await page.waitForFunction(() => document.querySelector('#comparison-result').textContent === 'Match');
-  assert.equal(await page.locator('#reference-case option').count(), 6);
+  assert.equal(await page.locator('#reference-case option').count(), 7);
   assert.match(await page.locator('#reference-title').textContent(), /Native Rust/);
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   await page.locator('#reference-case').selectOption('distortion');
@@ -53,6 +53,10 @@ try {
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
   await page.locator('#reference-case').selectOption('sample-voice');
   await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('MIDI → sample voice'));
+  assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
+  assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
+  await page.locator('#reference-case').selectOption('region-voice');
+  await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('retriggered sample region'));
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   assert.equal(await page.locator('.graph-node').count(), 3);
@@ -252,8 +256,53 @@ try {
   const multiBundle = JSON.parse((await readFile(await (await multiDownload).path())).toString());
   assert.deepEqual(multiBundle.assets.map((asset) => asset.nodeId), [5, 7]);
   assert.deepEqual(multiBundle.assets.map((asset) => asset.frames), [4800, 4800]);
+  await page.locator('#graph-load-region').click();
+  assert.equal(await page.locator('.graph-node').count(), 5);
+  assert.match(await page.locator('input[aria-label="Sample region 5 audio file"]').locator('..').textContent(), /Built-in two-tone source/);
+  assert.equal(await page.locator('#keyboard-section').isVisible(), true);
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#module-title').click();
+  await page.keyboard.down('a');
+  await page.waitForFunction(() => document.querySelector('#midi-events').textContent.includes('On · C4'));
+  await page.keyboard.up('a');
+  const regionSpeed = page.locator('input[data-node="5"][data-parameter="0"]');
+  await regionSpeed.fill('1.5');
+  await regionSpeed.press('Tab');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
+  await page.locator('#audio-toggle').click();
+  const regionDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const regionBundle = JSON.parse((await readFile(await (await regionDownload).path())).toString());
+  assert.equal(regionBundle.signal.nodes.find((node) => node.id === 5).type, 'sample-region');
+  assert.equal(regionBundle.signal.initialParameters.find((entry) => entry.nodeId === 5 && entry.id === 0).value, 1.5);
+  assert.equal(regionBundle.assets[0].nodeId, 5);
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'region-voice.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(regionBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.equal(await page.locator('input[data-node="5"][data-parameter="0"]').inputValue(), '1.5');
+  assert.match(await page.locator('input[aria-label="Sample region 5 audio file"]').locator('..').textContent(), /Built-in two-tone source/);
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
+  const mixed = structuredClone(multiBundle);
+  mixed.signal.nodes.find((node) => node.id === 7).type = 'sample-region';
+  mixed.signal.initialParameters = mixed.signal.initialParameters.filter((entry) => entry.nodeId !== 7);
+  const regionTemplate = JSON.parse((await readFile(new URL('../projects/graph-workspace/region-voice.json', import.meta.url))).toString());
+  mixed.signal.initialParameters.push(...regionTemplate.signal.initialParameters
+    .filter((entry) => entry.nodeId === 5).map((entry) => ({ ...entry, nodeId: 7 })));
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'mixed-sample-nodes.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(mixed)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.equal(await page.locator('input[aria-label="Sample region 7 audio file"]').count(), 1);
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, sample voice asset playback and reopen, native/Wasm references, live controls passed');
+  console.log('Graph workspace browser: typed Audio/CV/MIDI editing, sample voice and region assets, native/Wasm references, live controls, project reopen passed');
 } finally {
   await browser.close();
 }

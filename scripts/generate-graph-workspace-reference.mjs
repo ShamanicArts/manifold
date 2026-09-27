@@ -10,6 +10,7 @@ const seed = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'u
 const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8')).signal;
 const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8')).signal;
 const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voice.json', 'utf8')).signal;
+const regionVoice = JSON.parse(readFileSync('projects/graph-workspace/region-voice.json', 'utf8')).signal;
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
 distorted = setConnection(distorted, 3, 0, 4);
@@ -51,6 +52,8 @@ const cases = [
   { id: 'texture', label: 'Oscillator + noise → SVF → CV gain', graph: texture },
   { id: 'note-voice', label: 'MIDI → +7 transpose → voice → SVF', graph: noteVoice, events: notes },
   { id: 'sample-voice', label: 'MIDI → sample voice → SVF', graph: sampleVoice, events: notes,
+    sampleNodeId: 5 },
+  { id: 'region-voice', label: 'MIDI → retriggered sample region → SVF', graph: regionVoice, events: notes,
     sampleNodeId: 5 },
 ];
 for (const entry of cases) {

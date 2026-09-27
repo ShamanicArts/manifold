@@ -20,6 +20,7 @@ const seed = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'u
 const texture = JSON.parse(readFileSync('projects/graph-workspace/tone-texture.json', 'utf8')).signal;
 const noteVoice = JSON.parse(readFileSync('projects/graph-workspace/note-voice.json', 'utf8')).signal;
 const sampleVoice = JSON.parse(readFileSync('projects/graph-workspace/sample-voice.json', 'utf8')).signal;
+const regionVoice = JSON.parse(readFileSync('projects/graph-workspace/region-voice.json', 'utf8')).signal;
 let distorted = addNode(seed, 'distortion');
 distorted = setConnection(distorted, 4, 0, 2);
 distorted = setConnection(distorted, 3, 0, 4);
@@ -32,9 +33,10 @@ cv = setConnection(cv, 3, 0, 6);
 
 const workspace = mkdtempSync(join(tmpdir(), 'manifold-graph-'));
 try {
-  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice]]) {
+  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice], ['region-voice', regionVoice]]) {
     const output = join(workspace, `${mode}.f32`);
-    const source = mode === 'sample-voice' ? readFileSync('web/public/reference/graph-workspace/sample-source.f32') : null;
+    const source = ['sample-voice', 'region-voice'].includes(mode)
+      ? readFileSync('web/public/reference/graph-workspace/sample-source.f32') : null;
     if (source) writeFileSync(join(workspace, 'sample-source.f32'), source);
     execFileSync('cargo', ['run', '--quiet', '-p', 'manifold-core', '--example',
       'render_graph_workspace', '--', mode, output], { cwd: resolve('.'), stdio: 'pipe' });
@@ -42,11 +44,11 @@ try {
     const processor = new Processor();
     await processor.port.onmessage({ data: {
       type: 'init', wasmBytes: readFileSync('web/dist/manifold_filter.wasm'), graph: signal,
-      samples: mode === 'sample-voice' ? [{ nodeId: 5, sourceRate: 48000,
+      samples: source ? [{ nodeId: 5, sourceRate: 48000,
         stereo: new Float32Array(source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength)) }] : [],
     } });
     assert.deepEqual(messages.at(-1), { type: 'ready' }, `${mode} prepared`);
-    if (mode === 'note-voice' || mode === 'sample-voice') {
+    if (['note-voice', 'sample-voice', 'region-voice'].includes(mode)) {
       for (const [frame, kind, note, velocity] of [[16, 0, 60, 100], [2048, 0, 64, 96],
         [4096, 1, 60, 0], [6144, 1, 64, 0]]) {
         await processor.port.onmessage({ data: { type: 'event', nodeId: 4, frame, kind,

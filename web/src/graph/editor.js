@@ -1,8 +1,9 @@
-import { NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
+import { NODE_TYPES, SAMPLE_NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
   setInputSource, captureGraphProject, parseGraphProject, parseGraphBundle, validateGraphAssets } from './topology.js';
 import toneTexture from '../../../projects/graph-workspace/tone-texture.json';
 import noteVoice from '../../../projects/graph-workspace/note-voice.json';
 import sampleVoice from '../../../projects/graph-workspace/sample-voice.json';
+import regionVoice from '../../../projects/graph-workspace/region-voice.json';
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
 export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemplateLoaded, decodeSample, builtinSample }) {
@@ -14,6 +15,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const loadTone = section.querySelector('#graph-load-tone');
   const loadNote = section.querySelector('#graph-load-note');
   const loadSample = section.querySelector('#graph-load-sample');
+  const loadRegion = section.querySelector('#graph-load-region');
   const fileInput = section.querySelector('#graph-project-file');
   const exportButton = section.querySelector('#graph-project-export');
   const listeners = new AbortController();
@@ -36,7 +38,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
     if (updateStatus && isActive()) status.textContent = `${project.signal.nodes.length} nodes · ${project.signal.connections.length} connections · ${isRunning() ? 'parameters update live; stop audio to edit topology' : 'start audio to compile this graph in Rust'}`;
   }
   function commit(signal, message, assets = project.graphAssets ?? []) {
-    const checked = validateGraphAssets(signal, assets.filter((asset) => signal.nodes.some((node) => node.id === asset.nodeId && node.type === 'sample-instrument')));
+    const checked = validateGraphAssets(signal, assets.filter((asset) => signal.nodes.some((node) => node.id === asset.nodeId && SAMPLE_NODE_TYPES.has(node.type))));
     project.signal = signal;
     project.graphAssets = checked;
     render();
@@ -95,7 +97,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         heading.append(remove);
       }
       article.appendChild(heading);
-      if (node.type === 'sample-instrument') {
+      if (SAMPLE_NODE_TYPES.has(node.type)) {
         const asset = project.graphAssets?.find((item) => item.nodeId === node.id);
         const source = document.createElement('label');
         source.className = 'sample-file graph-sample-file';
@@ -105,7 +107,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         input.type = 'file';
         input.accept = 'audio/*,.wav,.aiff,.aif,.flac,.mp3,.ogg';
         input.className = 'graph-edit';
-        input.setAttribute('aria-label', `Sample instrument ${node.id} audio file`);
+        input.setAttribute('aria-label', `${spec.label} ${node.id} audio file`);
         input.addEventListener('change', async () => {
           const file = input.files?.[0];
           if (!file) return;
@@ -117,7 +119,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
             const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
               { nodeId: node.id, sourceRate: decoded.sourceRate, stereo: decoded.stereo, label: decoded.label }];
             validateGraphAssets(project.signal, assets);
-            commit(project.signal, `Loaded ${file.name} into sample instrument ${node.id}. Start audio to hear it.`, assets);
+            commit(project.signal, `Loaded ${file.name} into ${spec.label.toLowerCase()} ${node.id}. Start audio to hear it.`, assets);
           } catch (error) { fail(error); }
           finally { input.value = ''; }
         });
@@ -236,6 +238,16 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       commit(signal, 'Loaded the sample voice study with a built-in source. Start the instrument, then play the keyboard.',
         [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
       onTemplateLoaded?.('sample-voice');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadRegion.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(regionVoice);
+      commit(signal, 'Loaded the sample region study. Notes retrigger one region playhead.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('region-voice');
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   exportButton.addEventListener('click', () => {
