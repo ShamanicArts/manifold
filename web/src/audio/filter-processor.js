@@ -4,6 +4,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     super();
     this.engine = null;
     this.captureCommit = null;
+    this.sampleReplace = null;
     this.freeCapture = null;
     this.inputView = null;
     this.outputView = null;
@@ -22,6 +23,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
         if (data.type === 'init') {
           this.pendingCount = 0;
           this.captureCommit = null;
+          this.sampleReplace = null;
           this.freeCapture = null;
           const module = await WebAssembly.compile(data.wasmBytes);
           const instance = await WebAssembly.instantiate(module, {});
@@ -167,6 +169,51 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             this.eqResponse[bin] = this.engine.manifold_eq8_response_db(data.nodeId, frequency);
           }
           this.port.postMessage({ type: 'eq8-response', nodeId: data.nodeId, values: this.eqResponse });
+        } else if (data.type === 'sample-replace-begin' && this.engine) {
+          const accepted = !this.sampleReplace && Number.isInteger(data.requestId)
+            && data.stereo instanceof Float32Array && data.stereo.length >= 2
+            && data.stereo.length % 2 === 0
+            && this.engine.manifold_sample_publish_begin(data.nodeId, data.stereo.length / 2, data.sourceRate) === 1;
+          if (accepted) {
+            this.sampleReplace = { requestId: data.requestId, stereo: data.stereo, offset: 0 };
+            this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
+            this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
+          }
+          this.port.postMessage({ type: accepted ? 'sample-replace-started' : 'sample-replaced',
+            requestId: data.requestId, ...(accepted ? {} : { accepted: false, message: 'Sample replacement unavailable.' }) });
+        } else if (data.type === 'sample-replace-step' && this.engine) {
+          const job = this.sampleReplace;
+          if (!job || job.requestId !== data.requestId || job.offset >= job.stereo.length / 2) {
+            throw new Error('Sample replacement step is unavailable.');
+          }
+          const count = Math.min(4096, job.stereo.length / 2 - job.offset);
+          if (this.engine.manifold_sample_publish_prepare_chunk(job.offset, count) !== 1) {
+            throw new Error('Prepared sample chunk is unavailable.');
+          }
+          const ptr = this.engine.manifold_sample_publish_ptr();
+          if (!ptr) throw new Error('Prepared sample storage disappeared.');
+          new Float32Array(this.engine.memory.buffer, ptr + job.offset * 8, count * 2)
+            .set(job.stereo.subarray(job.offset * 2, (job.offset + count) * 2));
+          if (this.engine.manifold_sample_publish_validate(job.offset, count) !== 1) {
+            throw new Error('Decoded sample contains invalid PCM.');
+          }
+          job.offset += count;
+          this.port.postMessage({ type: 'sample-replace-progress', requestId: data.requestId,
+            done: job.offset === job.stereo.length / 2 });
+        } else if (data.type === 'sample-replace-commit' && this.engine) {
+          const job = this.sampleReplace;
+          if (!job || job.requestId !== data.requestId || job.offset !== job.stereo.length / 2) {
+            throw new Error('Sample replacement has not finished copying.');
+          }
+          const accepted = this.engine.manifold_sample_publish_commit() === 1;
+          this.sampleReplace = null;
+          this.port.postMessage({ type: 'sample-replaced', requestId: data.requestId, accepted,
+            ...(accepted ? {} : { message: 'Rust rejected the decoded sample.' }) });
+        } else if (data.type === 'sample-replace-cancel' && this.engine) {
+          if (this.sampleReplace?.requestId === data.requestId) {
+            this.sampleReplace = null;
+            this.engine.manifold_sample_cancel();
+          }
         } else if (data.type === 'capture-request' && this.engine) {
           const frames = this.engine.manifold_capture_length(data.nodeId);
           if (!frames) {
@@ -286,7 +333,14 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           if (this.captureCommit?.captureId === data.captureId) this.captureCommit = null;
         }
       } catch (error) {
-        if (data.type === 'capture-free-arm') {
+        if (data.type?.startsWith('sample-replace-')) {
+          if (this.sampleReplace?.requestId === data.requestId) {
+            this.sampleReplace = null;
+            this.engine?.manifold_sample_cancel();
+          }
+          this.port.postMessage({ type: 'sample-replaced', requestId: data.requestId,
+            accepted: false, message: String(error) });
+        } else if (data.type === 'capture-free-arm') {
           this.port.postMessage({ type: 'capture-free-armed', requestId: data.requestId, accepted: false });
         } else if (data.type === 'capture-publish-live' || data.type === 'capture-publish'
           || data.type === 'capture-stage-status' || data.type === 'capture-stage-chunk' || data.type === 'capture-stage-commit'

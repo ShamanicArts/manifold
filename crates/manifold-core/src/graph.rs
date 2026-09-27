@@ -40,7 +40,7 @@ use crate::reverb::{self, Reverb};
 use crate::reverse_delay::{self, ReverseDelay};
 use crate::ring_modulator::{self, RingModulator};
 use crate::sample_instrument::SampleInstrument;
-use crate::sample_region::SampleRegion;
+use crate::sample_region::{SampleRegion, ValidatedStereo};
 use crate::shimmer::{self, Shimmer};
 use crate::sine_bank::{self, PartialSet, SineBank};
 use crate::slew_limiter::SlewLimiter;
@@ -2010,6 +2010,22 @@ impl ExecutionPlan {
             .find(|entry| entry.id == instrument)
             .is_some_and(|entry| match &mut entry.kernel {
                 Kernel::SampleInstrument(player) => player.publish_stereo(stereo, source_rate),
+                _ => false,
+            })
+    }
+
+    /// Publish a source whose complete PCM was validated in bounded control
+    /// steps. The final switch does not scan the full file on the render thread.
+    pub fn publish_validated_sample_to_instrument(
+        &mut self,
+        instrument: NodeId,
+        source: ValidatedStereo,
+    ) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == instrument)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::SampleInstrument(player) => player.publish_validated(source),
                 _ => false,
             })
     }

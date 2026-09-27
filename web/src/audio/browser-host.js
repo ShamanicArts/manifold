@@ -25,6 +25,8 @@ export class BrowserAudioHost {
     this.nextParameterRequest = 1;
     this.pendingPublishes = new Map();
     this.nextPublishRequest = 1;
+    this.pendingSampleReplace = null;
+    this.nextSampleRequest = 1;
     this.pendingFreeArm = null;
     this.ready = false;
   }
@@ -103,6 +105,19 @@ export class BrowserAudioHost {
             clearTimeout(pending.timeout);
             data.accepted ? pending.resolve({ startOffset: data.startOffset, capacity: data.capacity })
               : pending.reject(new Error('The selected retrospective source is unavailable.'));
+          }
+          if (this.pendingSampleReplace?.requestId === data.requestId) {
+            if (data.type === 'sample-replace-started'
+              || (data.type === 'sample-replace-progress' && !data.done)) {
+              processor.port.postMessage({ type: 'sample-replace-step', requestId: data.requestId });
+            } else if (data.type === 'sample-replace-progress' && data.done) {
+              processor.port.postMessage({ type: 'sample-replace-commit', requestId: data.requestId });
+            } else if (data.type === 'sample-replaced') {
+              const pending = this.pendingSampleReplace;
+              this.pendingSampleReplace = null;
+              clearTimeout(pending.timeout);
+              data.accepted ? pending.resolve() : pending.reject(new Error(data.message ?? 'Sample replacement failed.'));
+            }
           }
           if (data.type === 'capture-published') {
             const pending = this.pendingPublishes.get(data.requestId);
@@ -400,6 +415,27 @@ export class BrowserAudioHost {
     return this.publishCaptureRequest(captureId, instrumentId, false);
   }
 
+  replaceSample(nodeId, sourceRate, stereo) {
+    if (!this.processor || !this.ready) return Promise.reject(new Error('Start audio before replacing a sample.'));
+    if (this.pendingSampleReplace) return Promise.reject(new Error('A sample replacement is already in progress.'));
+    if (!(stereo instanceof Float32Array) || stereo.length < 2 || stereo.length % 2 !== 0) {
+      return Promise.reject(new Error('Choose a decoded stereo source.'));
+    }
+    const transfer = stereo.slice();
+    return new Promise((resolve, reject) => {
+      const requestId = this.nextSampleRequest++;
+      const timeout = setTimeout(() => {
+        if (this.pendingSampleReplace?.requestId !== requestId) return;
+        this.pendingSampleReplace = null;
+        this.processor?.port.postMessage({ type: 'sample-replace-cancel', requestId });
+        reject(new Error('Sample replacement timed out.'));
+      }, 20_000);
+      this.pendingSampleReplace = { requestId, resolve, reject, timeout };
+      this.processor.port.postMessage({ type: 'sample-replace-begin', requestId, nodeId, sourceRate,
+        stereo: transfer }, [transfer.buffer]);
+    });
+  }
+
   publishLiveCapture(captureId, instrumentId, window = 0) {
     return this.publishCaptureRequest(captureId, instrumentId, true, window);
   }
@@ -442,6 +478,13 @@ export class BrowserAudioHost {
   }
 
   async stop() {
+    if (this.pendingSampleReplace) {
+      const pending = this.pendingSampleReplace;
+      this.pendingSampleReplace = null;
+      clearTimeout(pending.timeout);
+      this.processor?.port.postMessage({ type: 'sample-replace-cancel', requestId: pending.requestId });
+      pending.reject(new Error('Audio stopped during sample replacement.'));
+    }
     for (const pending of this.pendingRoutes.values()) {
       clearTimeout(pending.timeout);
       pending.reject(new Error('Audio stopped during a route change.'));

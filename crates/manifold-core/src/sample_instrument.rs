@@ -1,7 +1,7 @@
 //! Eight note voices read one shared, immutable decoded sample buffer.
 
 use crate::events::EventKind;
-use crate::sample_region::SampleRegion;
+use crate::sample_region::{SampleRegion, ValidatedStereo};
 
 const VOICES: usize = 8;
 const MAX_UNISON: usize = 4;
@@ -101,10 +101,15 @@ impl SampleInstrument {
     /// each subsequent note starts from the latest source. Retired PCM is
     /// reclaimed on a later publication, never inside the render callback.
     pub fn publish_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
-        let mut next = self.source.clone();
-        if !next.load_stereo(stereo, source_rate) {
+        let Some(source) = ValidatedStereo::from_stereo(stereo, source_rate) else {
             return false;
-        }
+        };
+        self.publish_validated(source)
+    }
+
+    pub(crate) fn publish_validated(&mut self, source: ValidatedStereo) -> bool {
+        let mut next = self.source.clone();
+        next.load_validated(source);
         let previous = std::mem::replace(&mut self.source, next);
         self.retired_sources.push(previous);
         for (slot, group) in self.slots.iter().zip(&mut self.players) {

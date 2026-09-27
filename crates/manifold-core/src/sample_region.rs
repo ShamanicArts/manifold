@@ -6,6 +6,115 @@ use std::sync::Arc;
 pub const MAX_SAMPLE_SECONDS: usize = 30;
 pub const MAX_SAMPLE_FRAMES: usize = 48_000 * MAX_SAMPLE_SECONDS;
 
+/// PCM that was checked before publication. Only constructors in this module
+/// can create it, so the audio-thread source switch does not rescan the file.
+pub struct ValidatedStereo {
+    stereo: Vec<f32>,
+    source_rate: f32,
+}
+
+impl ValidatedStereo {
+    pub fn from_stereo(stereo: Vec<f32>, source_rate: f32) -> Option<Self> {
+        if !valid_shape(stereo.len(), source_rate)
+            || stereo.iter().any(|sample| !sample.is_finite())
+        {
+            return None;
+        }
+        Some(Self {
+            stereo,
+            source_rate,
+        })
+    }
+}
+
+/// Storage for a decoded source whose values arrive in bounded chunks.
+/// Validation must advance in order through every frame before publication.
+pub struct StereoSampleUpload {
+    stereo: Vec<f32>,
+    source_rate: f32,
+    total_frames: usize,
+    validated_frames: usize,
+}
+
+impl StereoSampleUpload {
+    pub fn new(frames: usize, source_rate: f32) -> Option<Self> {
+        if !valid_shape(frames.checked_mul(2)?, source_rate) {
+            return None;
+        }
+        Some(Self {
+            stereo: Vec::with_capacity(frames * 2),
+            source_rate,
+            total_frames: frames,
+            validated_frames: 0,
+        })
+    }
+
+    pub fn prepare_next(&mut self, start_frame: usize, frames: usize) -> bool {
+        let Some(end) = start_frame.checked_add(frames) else {
+            return false;
+        };
+        if frames == 0
+            || start_frame != self.validated_frames
+            || self.stereo.len() != start_frame * 2
+            || end > self.total_frames
+        {
+            return false;
+        }
+        self.stereo.resize(end * 2, 0.0);
+        true
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut f32 {
+        self.stereo.as_mut_ptr()
+    }
+
+    #[cfg(test)]
+    fn samples_mut(&mut self) -> &mut [f32] {
+        &mut self.stereo
+    }
+
+    pub fn validate_next(&mut self, start_frame: usize, frames: usize) -> bool {
+        if frames == 0
+            || start_frame != self.validated_frames
+            || start_frame
+                .checked_add(frames)
+                .is_none_or(|end| end > self.total_frames || self.stereo.len() != end * 2)
+        {
+            return false;
+        }
+        let start = start_frame * 2;
+        let end = (start_frame + frames) * 2;
+        if self.stereo[start..end]
+            .iter()
+            .any(|sample| !sample.is_finite())
+        {
+            return false;
+        }
+        self.validated_frames += frames;
+        true
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.validated_frames == self.total_frames && self.stereo.len() == self.total_frames * 2
+    }
+
+    pub fn finish(self) -> Option<ValidatedStereo> {
+        self.is_complete().then_some(ValidatedStereo {
+            stereo: self.stereo,
+            source_rate: self.source_rate,
+        })
+    }
+}
+
+fn valid_shape(sample_count: usize, source_rate: f32) -> bool {
+    sample_count >= 2
+        && sample_count % 2 == 0
+        && source_rate.is_finite()
+        && (8_000.0..=384_000.0).contains(&source_rate)
+        && sample_count / 2 <= (source_rate as usize).saturating_mul(MAX_SAMPLE_SECONDS)
+        && sample_count / 2 <= MAX_SAMPLE_FRAMES
+}
+
 #[derive(Clone)]
 pub struct SampleRegion {
     output_rate: f32,
@@ -47,21 +156,18 @@ impl SampleRegion {
     }
 
     pub fn load_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
-        if stereo.len() < 2
-            || stereo.len() % 2 != 0
-            || !source_rate.is_finite()
-            || !(8_000.0..=384_000.0).contains(&source_rate)
-            || stereo.len() / 2 > (source_rate as usize).saturating_mul(MAX_SAMPLE_SECONDS)
-            || stereo.len() / 2 > MAX_SAMPLE_FRAMES
-            || stereo.iter().any(|sample| !sample.is_finite())
-        {
+        let Some(source) = ValidatedStereo::from_stereo(stereo, source_rate) else {
             return false;
-        }
-        self.stereo = Arc::new(stereo);
-        self.source_rate = source_rate;
+        };
+        self.load_validated(source);
+        true
+    }
+
+    pub(crate) fn load_validated(&mut self, source: ValidatedStereo) {
+        self.stereo = Arc::new(source.stereo);
+        self.source_rate = source.source_rate;
         self.playing = false;
         self.position = 0.0;
-        true
     }
 
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
@@ -226,6 +332,27 @@ impl SampleRegion {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_upload_requires_ordered_finite_complete_pcm() {
+        let mut upload = StereoSampleUpload::new(4, 8000.0).unwrap();
+        assert!(!upload.prepare_next(2, 2));
+        assert!(upload.prepare_next(0, 2));
+        upload.samples_mut()[2] = f32::NAN;
+        assert!(!upload.validate_next(0, 2));
+        upload.samples_mut()[2] = 0.25;
+        assert!(upload.validate_next(0, 2));
+        assert!(!upload.is_complete());
+        assert!(upload.prepare_next(2, 2));
+        assert!(upload.validate_next(2, 2));
+        assert!(upload.is_complete());
+        let source = upload.finish().unwrap();
+        let mut player = SampleRegion::new(8000.0);
+        player.load_validated(source);
+        player.trigger();
+        assert_eq!(player.process_sample(), [0.0, 0.0]);
+        assert_eq!(player.process_sample(), [0.25, 0.0]);
+    }
 
     #[test]
     fn loops_and_plays_once_in_both_directions() {

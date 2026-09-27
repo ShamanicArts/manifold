@@ -9,7 +9,7 @@ use manifold_core::limiter;
 use manifold_core::main_voice_bank::{MAX_MAIN_TEMPORAL_TARGETS, MainTemporalRecipe};
 use manifold_core::phaser;
 use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
-use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
+use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS, StereoSampleUpload};
 use manifold_core::sine_bank::{MAX_PARTIALS, Partial, PartialSet};
 use manifold_core::spectral_targets::{
     AddFlavor, MorphRecipe, SpectralShape, WaveRecipe, build_wave_recipe, prepare_add_target,
@@ -28,6 +28,7 @@ struct WorkletEngine {
     output: Vec<f32>,
     events: Vec<TimedEvent>,
     sample_upload: Option<(u32, f32, Vec<f32>)>,
+    sample_replace_upload: Option<(u32, StereoSampleUpload)>,
     capture_publish: Option<CapturePublish>,
     partial_upload: Option<(u32, u32, PartialSet)>,
     temporal_upload: Option<(u32, Vec<f32>)>,
@@ -1032,6 +1033,7 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
             output: vec![0.0; capacity * 2],
             events: Vec::with_capacity(256),
             sample_upload: None,
+            sample_replace_upload: None,
             capture_publish: None,
             partial_upload: None,
             temporal_upload: None,
@@ -1100,6 +1102,105 @@ pub extern "C" fn manifold_sample_commit() -> u32 {
                     .plan
                     .load_sample_stereo(node_id.into(), samples, source_rate),
             )
+        })
+    })
+}
+
+/// Reserve a replacement for a running SampleInstrument. The browser fills
+/// this storage in bounded control messages before a separate publication.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_sample_publish_begin(
+    node_id: u32,
+    frames: u32,
+    source_rate: f32,
+) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            if engine.sample_replace_upload.is_some()
+                || !engine.plan.accepts_sample_instrument(node_id.into())
+            {
+                return 0;
+            }
+            let Some(upload) = StereoSampleUpload::new(frames as usize, source_rate) else {
+                return 0;
+            };
+            engine.sample_replace_upload = Some((node_id, upload));
+            1
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_sample_publish_ptr() -> *mut f32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .and_then(|engine| engine.sample_replace_upload.as_mut())
+            .map_or(std::ptr::null_mut(), |(_, upload)| upload.as_mut_ptr())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_sample_publish_prepare_chunk(start_frame: u32, frames: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            engine
+                .sample_replace_upload
+                .as_mut()
+                .map_or(0, |(_, upload)| {
+                    u32::from(upload.prepare_next(start_frame as usize, frames as usize))
+                })
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_sample_publish_validate(start_frame: u32, frames: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            engine
+                .sample_replace_upload
+                .as_mut()
+                .map_or(0, |(_, upload)| {
+                    u32::from(upload.validate_next(start_frame as usize, frames as usize))
+                })
+        })
+    })
+}
+
+/// Move a completed replacement into the instrument between process calls.
+/// Rejection leaves the current source untouched.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_sample_publish_commit() -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            if !engine
+                .sample_replace_upload
+                .as_ref()
+                .is_some_and(|(_, upload)| upload.is_complete())
+            {
+                return 0;
+            }
+            let Some((node_id, upload)) = engine.sample_replace_upload.take() else {
+                return 0;
+            };
+            let Some(source) = upload.finish() else {
+                return 0;
+            };
+            u32::from(
+                engine
+                    .plan
+                    .publish_validated_sample_to_instrument(node_id.into(), source),
+            )
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_sample_cancel() -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(engine.sample_replace_upload.take().is_some())
         })
     })
 }

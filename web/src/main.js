@@ -1605,6 +1605,7 @@ function renderPrimitive(family) {
         await audio.publishCapture(captureId, instrumentId);
         return take;
       },
+      onSampleReplace: (nodeId, sourceRate, stereo) => audio.replaceSample(nodeId, sourceRate, stereo),
       onTemplateLoaded: (caseId) => referenceLab?.selectCase(caseId),
       decodeSample: decodeFileSource,
       builtinSample: demoSample,

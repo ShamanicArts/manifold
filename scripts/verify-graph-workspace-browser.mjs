@@ -274,6 +274,28 @@ try {
   }]);
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Loaded replacement.wav'));
   assert.match(await page.locator('.graph-sample-file').textContent(), /replacement.wav/);
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  const liveFile = page.locator('input[aria-label="Sample instrument 5 audio file"]');
+  assert.equal(await liveFile.isEnabled(), true, 'instrument file replacement stays available while audio runs');
+  await liveFile.setInputFiles([{ name: 'live-replacement.wav', mimeType: 'audio/wav',
+    buffer: wavSource(4096, false) }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Held notes keep their old source'));
+  assert.match(await page.locator('.graph-sample-file').textContent(), /live-replacement.wav/);
+  await page.locator('.graph-node:has(input[aria-label="Sample instrument 5 audio file"])')
+    .screenshot({ path: 'web/public/graph-live-file-replacement.png' });
+  await page.locator('#audio-toggle').click();
+  const liveFileDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const liveFileBundle = JSON.parse((await readFile(await (await liveFileDownload).path())).toString());
+  assert.equal(liveFileBundle.assets[0].frames, 4096);
+  assert.match(liveFileBundle.assets[0].label, /live-replacement.wav/);
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'live-file-roundtrip.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(liveFileBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.match(await page.locator('.graph-sample-file').textContent(), /live-replacement.wav/);
   await page.locator('#graph-add-type').selectOption('sample-instrument');
   await page.locator('#graph-add-node').click();
   await page.locator('input[aria-label="Sample instrument 7 audio file"]').setInputFiles([{
@@ -297,7 +319,7 @@ try {
   await page.locator('#graph-project-export').click();
   const multiBundle = JSON.parse((await readFile(await (await multiDownload).path())).toString());
   assert.deepEqual(multiBundle.assets.map((asset) => asset.nodeId), [5, 7]);
-  assert.deepEqual(multiBundle.assets.map((asset) => asset.frames), [4800, 4800]);
+  assert.deepEqual(multiBundle.assets.map((asset) => asset.frames), [4096, 4800]);
   await page.locator('#graph-load-region').click();
   assert.equal(await page.locator('.graph-node').count(), 5);
   assert.match(await page.locator('input[aria-label="Sample region 5 audio file"]').locator('..').textContent(), /Built-in two-tone source/);

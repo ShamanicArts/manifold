@@ -41,7 +41,7 @@ function temporalFromMainState(nodeId, controls) {
 }
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
-export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemporalSpeed, onCapturePublish, onCaptureArm, onCaptureCancel, onTemplateLoaded, decodeSample, builtinSample }) {
+export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemporalSpeed, onCapturePublish, onCaptureArm, onCaptureCancel, onSampleReplace, onTemplateLoaded, decodeSample, builtinSample }) {
   const nodesRoot = section.querySelector('#graph-nodes');
   const status = section.querySelector('#graph-status');
   const addType = section.querySelector('#graph-add-type');
@@ -86,7 +86,9 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       }
     }
     const disabled = !canEdit();
-    section.querySelectorAll('.graph-edit').forEach((control) => { control.disabled = disabled; });
+    section.querySelectorAll('.graph-edit').forEach((control) => {
+      control.disabled = control.classList.contains('graph-live-sample') ? !canChangeParameter() : disabled;
+    });
     section.querySelectorAll('.graph-parameter').forEach((control) => {
       control.disabled = !canChangeParameter() || pendingParameters.has(`${control.dataset.node}:${control.dataset.parameter}`);
     });
@@ -211,32 +213,47 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'audio/*,.wav,.aiff,.aif,.flac,.mp3,.ogg';
-        input.className = 'graph-edit';
+        input.className = node.type === 'sample-instrument' && reachable.has(node.id)
+          ? 'graph-edit graph-live-sample' : 'graph-edit';
         input.setAttribute('aria-label', `${spec.label} ${node.id} audio file`);
         input.addEventListener('change', async () => {
           const file = input.files?.[0];
           if (!file) return;
           const startingRevision = revision;
           const request = ++sourceRequest;
+          const liveReplacement = isRunning() && node.type === 'sample-instrument' && reachable.has(node.id);
           try {
-            if (!canEdit()) throw new Error('Stop audio before loading a sample.');
+            if (!(liveReplacement ? canChangeParameter() : canEdit())) {
+              throw new Error('Sample source is unavailable while the graph changes.');
+            }
+            busy = true;
+            refreshRunning(false);
             status.textContent = `Decoding ${file.name}…`;
             const decoded = await decodeSample(file);
-            if (!canEdit() || revision !== startingRevision || request !== sourceRequest) return;
+            if (destroyed || !isActive() || isRunning() !== liveReplacement
+              || revision !== startingRevision || request !== sourceRequest) return;
             let targets = project.graphTargets ?? [];
             if (node.type === 'main-voice-bank') {
               status.textContent = `Preparing ${file.name} source spectrum in Rust/Wasm…`;
               const analyzed = await analyzeMainSource(decoded);
-              if (!canEdit() || revision !== startingRevision || request !== sourceRequest) return;
+              if (destroyed || !isActive() || isRunning() !== liveReplacement
+                || revision !== startingRevision || request !== sourceRequest) return;
               targets = targets.map((target) => target.nodeId === node.id && target.target === 1
                 ? { nodeId: node.id, target: 1, ...analyzed } : target);
             }
             const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
               { nodeId: node.id, sourceRate: decoded.sourceRate, stereo: decoded.stereo, label: decoded.label }];
             validateGraphAssets(project.signal, assets);
-            commit(project.signal, `Loaded ${file.name} into ${spec.label.toLowerCase()} ${node.id}${node.type === 'main-voice-bank' ? ' with a new prepared source target' : ''}. Start audio to hear it.`, assets, targets);
+            if (liveReplacement) {
+              status.textContent = `Publishing ${file.name} to sample instrument ${node.id} while audio runs…`;
+              await onSampleReplace(node.id, decoded.sourceRate, decoded.stereo);
+              if (destroyed || !isActive() || revision !== startingRevision || request !== sourceRequest) return;
+            }
+            commit(project.signal, liveReplacement
+              ? `Loaded ${file.name} into sample instrument ${node.id}. Held notes keep their old source; new notes use this file.`
+              : `Loaded ${file.name} into ${spec.label.toLowerCase()} ${node.id}${node.type === 'main-voice-bank' ? ' with a new prepared source target' : ''}. Start audio to hear it.`, assets, targets);
           } catch (error) { if (revision === startingRevision && request === sourceRequest) fail(error); }
-          finally { input.value = ''; }
+          finally { busy = false; input.value = ''; refreshRunning(false); }
         });
         source.append(input);
         article.appendChild(source);
