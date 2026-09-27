@@ -979,6 +979,7 @@ version = "0.1.0"
 dependencies = [
  "clap-sys",
  "crossbeam-queue",
+ "manifold-core",
  "manifold-native",
  "serde_json",
 ]

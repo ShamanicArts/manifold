@@ -1,4 +1,36 @@
-# Standalone FX CLAP host proof
+# CLAP host proof
+
+## Graph instrument checkpoint
+
+The same Linux `.clap` module now exports a second class,
+`arts.shamanic.manifold.graph`. It accepts the authored graph project JSON
+through the CLAP state stream, prepares native Rust DSP outside the audio
+callback, and exposes 128 stable normalized host slots. Its audio callback
+supports stereo input/output, sidechain input, CLAP note events, and timed
+parameter values. The browser and VST3 graph project bytes are portable to
+this class. The first default is the authored Note Voice graph.
+
+`cargo test -p manifold-clap graph_clap_note_and_automation_match_native_and_state_reopens`
+checks a note plus a parameter change at frame 32, compares both CLAP output
+channels sample for sample with `manifold-native`, then saves and reopens state.
+`scripts/probe-clap-graph.py` loads the **packaged** module in a separate
+process, discovers both classes, restores a project through CLAP state,
+renders a block, and saves it again. Successful local runs:
+
+| Project | Loaded bytes | Output peak | Saved bytes |
+| --- | ---: | ---: | ---: |
+| Note Voice | 1,153 | 0.027285 | 879 |
+| Tone Texture | 1,471 | 0.122184 | 1,091 |
+| Four-source sampler | 44,742,408 | 0.175362 | 44,742,624 |
+
+The four-source input can be reproduced with
+`python scripts/probe-reaper-graph-vst3-gui.py --emit-project /tmp/manifold-four-source-bench.json`
+followed by `python scripts/probe-clap-graph.py --project /tmp/manifold-four-source-bench.json`.
+The current Graph CLAP class has generic host controls; its custom graph editor
+bridge is the next host-format task. The Standalone FX CLAP editor described
+below is already present, and the Graph VST3 editor remains the visual reference.
+
+## Standalone FX
 
 The Linux CLAP module is the first loadable native host for the authored
 Standalone FX project. It uses the same `projects/standalone-fx-module/project.json`

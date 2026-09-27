@@ -10,5 +10,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 clap-sys = "0.5.0"
 crossbeam-queue = "0.3.14"
+manifold-core = { path = "../manifold-core" }
 manifold-native = { path = "../manifold-native" }
 serde_json = "1"

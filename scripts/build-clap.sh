@@ -12,6 +12,7 @@ case "$(uname -s)" in
     cp "$project_root/target/release/manifold-editor" "$project_root/target/clap/ManifoldFX-editor"
     mkdir -p "$project_root/target/clap/assets/assets"
     cp "$project_root/web/dist/fx-module.html" "$project_root/target/clap/assets/"
+    cp "$project_root/web/dist/graph-module.html" "$project_root/target/clap/assets/"
     cp -a "$project_root/web/dist/assets/." "$project_root/target/clap/assets/assets/"
     ;;
   Darwin)

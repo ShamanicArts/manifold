@@ -67,6 +67,10 @@ the same Standalone FX widgets in an X11 child webview owned by a separate
 editor process. CLAP GUI callbacks manage its lifecycle; IPC carries state
 snapshots and bounded gestures outside the audio callback. See the
 [CLAP host proof](clap-host.md) for tests and remaining work.
+The second CLAP class, Graph, accepts portable authored project state, 128
+stable host slots, CLAP note events, timed automation, and optional sidechain
+audio. Its process callback also uses prepared native DSP. The Graph editor
+bridge remains to be connected to the original browser widgets.
 The [native editor boundary](native-editor-plan.md) records the exact widget
 reuse, CLAP GUI lifecycle, and proposed browser process bridge.
 

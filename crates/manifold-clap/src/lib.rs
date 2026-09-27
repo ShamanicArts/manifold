@@ -1,5 +1,6 @@
 //! Loadable CLAP adapter for the authored Standalone FX project.
 
+mod graph;
 mod instance;
 
 use std::ffi::{CStr, c_char, c_void};
@@ -20,7 +21,9 @@ use clap_sys::ext::state::{CLAP_EXT_STATE, clap_plugin_state};
 use clap_sys::factory::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory};
 use clap_sys::host::clap_host;
 use clap_sys::plugin::{clap_plugin, clap_plugin_descriptor};
-use clap_sys::plugin_features::{CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_STEREO};
+use clap_sys::plugin_features::{
+    CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_STEREO,
+};
 use clap_sys::version::{CLAP_VERSION, clap_version_is_compatible};
 
 pub(crate) const SOURCE_PROJECT: &[u8] =
@@ -78,6 +81,24 @@ static DESCRIPTOR: clap_plugin_descriptor = clap_plugin_descriptor {
     version: c"0.1.0".as_ptr(),
     description: c"Standalone FX with a Rust audio engine".as_ptr(),
     features: FEATURES.0.as_ptr(),
+};
+const GRAPH_ID: &CStr = c"arts.shamanic.manifold.graph";
+static GRAPH_FEATURES: Features = Features([
+    CLAP_PLUGIN_FEATURE_INSTRUMENT.as_ptr(),
+    CLAP_PLUGIN_FEATURE_STEREO.as_ptr(),
+    null(),
+]);
+static GRAPH_DESCRIPTOR: clap_plugin_descriptor = clap_plugin_descriptor {
+    clap_version: CLAP_VERSION,
+    id: GRAPH_ID.as_ptr(),
+    name: c"Manifold Graph".as_ptr(),
+    vendor: c"Shamanic Arts".as_ptr(),
+    url: c"https://github.com/ShamanicArts/manifold".as_ptr(),
+    manual_url: c"https://github.com/ShamanicArts/manifold".as_ptr(),
+    support_url: c"https://github.com/ShamanicArts/manifold/issues".as_ptr(),
+    version: c"0.1.0".as_ptr(),
+    description: c"Portable authored graph with Rust audio engine".as_ptr(),
+    features: GRAPH_FEATURES.0.as_ptr(),
 };
 
 unsafe extern "C" fn port_count(_plugin: *const clap_plugin, _input: bool) -> u32 {
@@ -200,13 +221,17 @@ unsafe extern "C" fn plugin_extension(
 }
 
 unsafe extern "C" fn factory_count(_factory: *const clap_plugin_factory) -> u32 {
-    1
+    2
 }
 unsafe extern "C" fn factory_descriptor(
     _factory: *const clap_plugin_factory,
     index: u32,
 ) -> *const clap_plugin_descriptor {
-    if index == 0 { &DESCRIPTOR } else { null() }
+    match index {
+        0 => &DESCRIPTOR,
+        1 => &GRAPH_DESCRIPTOR,
+        _ => null(),
+    }
 }
 unsafe extern "C" fn factory_create(
     _factory: *const clap_plugin_factory,
@@ -216,12 +241,19 @@ unsafe extern "C" fn factory_create(
     if host.is_null()
         || id.is_null()
         || !clap_version_is_compatible(unsafe { (*host).clap_version })
-        || unsafe { CStr::from_ptr(id) } != ID
     {
         return null();
     }
-    let instance = Box::into_raw(instance::Instance::new(host, &DESCRIPTOR, plugin_extension));
-    unsafe { &(*instance).plugin }
+    let requested = unsafe { CStr::from_ptr(id) };
+    if requested == ID {
+        let instance = Box::into_raw(instance::Instance::new(host, &DESCRIPTOR, plugin_extension));
+        unsafe { &(*instance).plugin }
+    } else if requested == GRAPH_ID {
+        let instance = Box::into_raw(graph::Instance::new(host, &GRAPH_DESCRIPTOR));
+        unsafe { &(*instance).plugin }
+    } else {
+        null()
+    }
 }
 
 struct Factory(clap_plugin_factory);
