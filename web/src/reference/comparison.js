@@ -798,6 +798,21 @@ export function renderWasm(engine, family, manifest, input, selected) {
         throw new Error('Main temporal target commit failed');
       }
     }
+    if (family === 'main-voice-bank' && selected.rawTemporalTable) {
+      const frames = selected.rawTemporalTable[0];
+      if (!Number.isInteger(frames) || selected.rawTemporalTable.length !== 1 + frames * 131
+        || engine.manifold_main_temporal_raw_begin(2, frames) !== 1) {
+        throw new Error('Main raw temporal frame begin failed');
+      }
+      new Float32Array(engine.memory.buffer, engine.manifold_main_temporal_raw_ptr(),
+        selected.rawTemporalTable.length).set(selected.rawTemporalTable);
+      new Float32Array(engine.memory.buffer, engine.manifold_main_temporal_raw_recipe_ptr(), 10)
+        .set(selected.rawTemporalRecipe);
+      if (engine.manifold_main_temporal_raw_commit() !== 1
+        || engine.manifold_main_temporal_speed(2, selected.temporalSpeed) !== 1) {
+        throw new Error('Main raw temporal frame commit failed');
+      }
+    }
     selected.parameters.forEach((value, id) => {
       const parameter = family === 'sample-region' && id === 6 ? 8 : id;
       if (engine.manifold_set_node_parameter(2, parameter, value) !== 1) throw new Error(`Wasm sample parameter ${id} failed`);

@@ -28,6 +28,23 @@
       }
     },
     {
+      "id": "raw-old-add-static",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.15307851221146776
+      },
+      "settledOldVsNative": {
+        "max": 0.0003943443298339844,
+        "rms": 0.00018558344396172645,
+        "referenceRms": 0.15604055624573013,
+        "parity": true
+      },
+      "onsetOldVsNative": {
+        "max": 0.01817844808101654
+      }
+    },
+    {
       "id": "add-follow",
       "nativeVsWasm": {
         "max": 0,
@@ -47,6 +64,23 @@
         "rms": 0.005912967006064022,
         "referenceRms": 0.1761008744005079,
         "parity": false
+      },
+      "onsetOldVsNative": {
+        "max": 0.01817844808101654
+      }
+    },
+    {
+      "id": "raw-old-add-follow",
+      "nativeVsWasm": {
+        "max": 8.940696716308594e-8,
+        "rms": 1.0154773746880191e-8,
+        "signalRms": 0.17174708551477588
+      },
+      "settledOldVsNative": {
+        "max": 0.00036337971687316895,
+        "rms": 0.0001566833812028259,
+        "referenceRms": 0.1761008744005079,
+        "parity": true
       },
       "onsetOldVsNative": {
         "max": 0.01817844808101654
@@ -78,6 +112,23 @@
       }
     },
     {
+      "id": "raw-old-add-fast",
+      "nativeVsWasm": {
+        "max": 5.960464477539063e-8,
+        "rms": 2.6075461330111203e-9,
+        "signalRms": 0.17144957671312117
+      },
+      "settledOldVsNative": {
+        "max": 0.0003876537084579468,
+        "rms": 0.0001592752303240546,
+        "referenceRms": 0.1742635477595694,
+        "parity": true
+      },
+      "onsetOldVsNative": {
+        "max": 0.0181784275919199
+      }
+    },
+    {
       "id": "morph-static",
       "nativeVsWasm": {
         "max": 0,
@@ -87,6 +138,23 @@
     },
     {
       "id": "old-morph-static",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.12041510186788454
+      },
+      "settledOldVsNative": {
+        "max": 0.00022467970848083496,
+        "rms": 0.00009036581894923691,
+        "referenceRms": 0.1219440479236926,
+        "parity": true
+      },
+      "onsetOldVsNative": {
+        "max": 0.004511958220973611
+      }
+    },
+    {
+      "id": "raw-old-morph-static",
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
@@ -128,6 +196,23 @@
       }
     },
     {
+      "id": "raw-old-morph-follow",
+      "nativeVsWasm": {
+        "max": 7.450580596923828e-8,
+        "rms": 8.417234951312582e-9,
+        "signalRms": 0.14026354696476895
+      },
+      "settledOldVsNative": {
+        "max": 0.00020781904458999634,
+        "rms": 0.00007895692084679004,
+        "referenceRms": 0.14358892246814825,
+        "parity": true
+      },
+      "onsetOldVsNative": {
+        "max": 0.004511958220973611
+      }
+    },
+    {
       "id": "morph-fast",
       "nativeVsWasm": {
         "max": 0,
@@ -150,6 +235,23 @@
       },
       "onsetOldVsNative": {
         "max": 0.009801842272281647
+      }
+    },
+    {
+      "id": "raw-old-morph-fast",
+      "nativeVsWasm": {
+        "max": 5.960464477539063e-8,
+        "rms": 3.0971712065192705e-9,
+        "signalRms": 0.14026437752169899
+      },
+      "settledOldVsNative": {
+        "max": 0.00021132081747055054,
+        "rms": 0.00007983812663892354,
+        "referenceRms": 0.14176278930813643,
+        "parity": true
+      },
+      "onsetOldVsNative": {
+        "max": 0.004511958220973611
       }
     }
   ]

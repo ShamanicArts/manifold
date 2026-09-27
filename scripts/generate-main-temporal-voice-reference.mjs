@@ -77,6 +77,20 @@ execFileSync(temporalRunner, [
 const oldFrames = JSON.parse(readFileSync(join(root, 'old-temporal-frames.json'), 'utf8'));
 assert.ok(oldFrames.frameCount > 1 && oldFrames.frameCount <= 128);
 const oldStride = 3 + 32 * 4;
+const rustFrameCount = analysis.manifold_analysis_temporal_count();
+assert.equal(rustFrameCount, oldFrames.frameCount);
+const rustPacked = new Float32Array(1 + rustFrameCount * oldStride);
+rustPacked[0] = rustFrameCount;
+for (let index = 0; index < rustFrameCount; index++) {
+  const offset = 1 + index * oldStride;
+  const count = analysis.manifold_analysis_temporal_frame_field(index, 5);
+  rustPacked[offset] = analysis.manifold_analysis_temporal_frame_field(index, 0);
+  rustPacked[offset + 1] = analysis.manifold_analysis_temporal_frame_field(index, 4);
+  rustPacked[offset + 2] = count;
+  rustPacked.set(new Float32Array(analysis.memory.buffer,
+    analysis.manifold_analysis_temporal_partials_ptr(index), count * 4), offset + 3);
+}
+writeFileSync(join(root, 'rust-temporal-frames.f32'), bytes(rustPacked));
 const oldPacked = new Float32Array(1 + oldFrames.frameCount * oldStride);
 oldPacked[0] = oldFrames.frameCount;
 for (const [index, frame] of oldFrames.frames.entries()) {
@@ -131,6 +145,18 @@ for (const [name, mode] of [['add', 4], ['morph', 5]]) {
       parameters: params, events: oneNote, changes: [], blockSize,
       output: nativeOutput, legacyOutput: oldOutput,
       temporalFile: `${name}-table.f32`, temporalSpeed: speed });
+    const rawId = `raw-${oldId}`;
+    const rawOutput = `${rawId}-rust.f32`;
+    execFileSync('target/debug/examples/render_main_voice_bank', [
+      join(root, 'sample.f32'), join(root, rawOutput), rate, rate, blockSize, frames,
+      argsFor(params), '0:0:0:60:127', '', argsFor(waveTarget), argsFor(sourceTarget),
+      join(root, 'rust-temporal-frames.f32'), speed, 'raw',
+    ].map(String));
+    cases.push({ id: rawId, label: `Original Main ${name === 'add' ? 'Add' : 'Morph'} · ${motion} raw-frame route · one voice`,
+      parameters: params, events: oneNote, changes: [], blockSize,
+      output: rawOutput, legacyOutput: oldOutput,
+      rawTemporalFile: 'rust-temporal-frames.f32',
+      rawTemporalRecipe: [.6, .5, 0, 0, 0, 0, .5, .5, 1, 2], temporalSpeed: speed });
   }
 }
 writeFileSync(join(root, 'manifest.json'), `${JSON.stringify({
@@ -138,6 +164,7 @@ writeFileSync(join(root, 'manifest.json'), `${JSON.stringify({
   scope: `original C++ source temporal interpolation and assembled Add/Morph routing compared with 256-position v2 prepared table; old UI envelope and vocoder omitted${sourceVariant === 'rhythmic' ? '; moving-route parity gap remains open' : ''}`,
   sourceSha256: hash([
     'crates/manifold-core/src/main_voice_bank.rs', 'crates/manifold-core/src/sample_analysis.rs',
+    'crates/manifold-core/src/temporal_partials.rs', 'crates/manifold-core/src/spectral_targets.rs',
     'crates/manifold-core/src/sine_bank.rs', 'crates/manifold-core/src/graph.rs',
     'crates/manifold-core/examples/render_main_voice_bank.rs',
     'scripts/generate-main-temporal-voice-reference.mjs',

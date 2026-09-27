@@ -22,7 +22,7 @@ use crate::limiter::{self, Limiter};
 use crate::loop_capture::LoopCapture;
 use crate::main_directional::{DirectionalUpdate, MainDirectionalMotion};
 use crate::main_pitch::route_main_pitch;
-use crate::main_voice_bank::MainVoiceBank;
+use crate::main_voice_bank::{MainTemporalRecipe, MainVoiceBank};
 use crate::midi_arpeggiator::MidiArpeggiator;
 use crate::midi_note_filter::MidiNoteFilter;
 use crate::midi_scale_quantizer::MidiScaleQuantizer;
@@ -48,6 +48,7 @@ use crate::spectrum_analyzer::SpectrumAnalyzer;
 use crate::stereo_delay::StereoDelay;
 use crate::stereo_widener::{self, StereoWidener};
 use crate::stutter::{self, Stutter};
+use crate::temporal_partials::TemporalFrame;
 use crate::transient_shaper::{self, TransientShaper};
 use crate::voice::VoiceSynth;
 use crate::waveshaper::{self, WaveShaper};
@@ -1913,6 +1914,21 @@ impl ExecutionPlan {
             .find(|entry| entry.id == node)
             .is_some_and(|entry| match &mut entry.kernel {
                 Kernel::MainVoiceBank(bank) => bank.load_temporal_source_targets(targets),
+                _ => false,
+            })
+    }
+
+    pub fn load_main_temporal_frames(
+        &mut self,
+        node: NodeId,
+        frames: Vec<TemporalFrame>,
+        recipe: MainTemporalRecipe,
+    ) -> bool {
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == node)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::MainVoiceBank(bank) => bank.load_temporal_source_frames(frames, recipe),
                 _ => false,
             })
     }

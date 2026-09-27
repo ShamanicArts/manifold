@@ -74,4 +74,35 @@ assert.ok(movingLeft.every(Number.isFinite) && movingRight.every(Number.isFinite
 assert.ok(peakDifference > .05, `temporal bank did not move: ${peakDifference}`);
 await moving.port.onmessage({ data: { type: 'temporal-clear', nodeId: 2 } });
 assert.equal(messages.at(-1).accepted, true);
-console.log(`Main temporal worklet: 256 prepared targets, invalid upload preserved, staggered voices, live motion (peak Δ ${peakDifference.toFixed(3)}), clear passed`);
+const rawBank = await start();
+const rawSource = await start();
+const rawBytes = readFileSync('web/public/reference/main-temporal-rhythmic/rust-temporal-frames.f32');
+const packed = new Float32Array(rawBytes.buffer.slice(rawBytes.byteOffset,
+  rawBytes.byteOffset + rawBytes.byteLength));
+const recipe = new Float32Array([.6, .5, 0, 0, 0, 0, .5, .5, 1, 2]);
+await rawBank.port.onmessage({ data: { type: 'temporal-frames', nodeId: 2,
+  frames: packed[0], packed, recipe } });
+assert.equal(messages.at(-1).accepted, true);
+const malformed = packed.slice();
+malformed[1 + 131] = malformed[1];
+await rawBank.port.onmessage({ data: { type: 'temporal-frames', nodeId: 2,
+  frames: malformed[0], packed: malformed, recipe } });
+assert.equal(messages.at(-1).accepted, false);
+for (const processor of [rawBank, rawSource]) {
+  await processor.port.onmessage({ data: { type: 'event', nodeId: 2, kind: 0,
+    channel: 0, note: 60, velocity: 127 } });
+}
+let rawDifference = 0;
+for (let block = 0; block < 145; block++) {
+  rawBank.process([], [[movingLeft, movingRight]]);
+  rawSource.process([], [[staticLeft, staticRight]]);
+  if (block > 100) {
+    for (let index = 0; index < 128; index++) {
+      rawDifference = Math.max(rawDifference,
+        Math.abs(movingLeft[index] - staticLeft[index]));
+    }
+  }
+  globalThis.currentFrame += 128;
+}
+assert.ok(rawDifference > .01, `raw-frame source did not move: ${rawDifference}`);
+console.log(`Main temporal worklet: prepared and raw uploads, rejected replacement preserved, staggered voices, live motion (prepared Δ ${peakDifference.toFixed(3)}, raw Δ ${rawDifference.toFixed(3)}), clear passed`);

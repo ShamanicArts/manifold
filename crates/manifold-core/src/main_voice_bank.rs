@@ -13,9 +13,37 @@ use crate::phrase_gain::PhraseGain;
 use crate::ring_modulator::RingModulator;
 use crate::sample_region::SampleRegion;
 use crate::sine_bank::{DEFAULTS as SINE_DEFAULTS, PartialSet, SineBank};
+use crate::spectral_targets::{
+    AddFlavor, MorphRecipe, SpectralShape, prepare_add_target, prepare_morph_target,
+};
+use crate::temporal_partials::{MAX_TEMPORAL_FRAMES, TemporalFrame, interpolate_temporal_frames};
 use crate::wave_add_oscillator::{WaveAddOscillator, prepare_default_tables};
 
 pub const MAX_MAIN_TEMPORAL_TARGETS: usize = 256;
+
+#[derive(Clone, Copy)]
+pub struct MainTemporalRecipe {
+    pub smooth: f32,
+    pub contrast: f32,
+    pub shape: SpectralShape,
+    pub add_flavor: AddFlavor,
+    pub morph: MorphRecipe,
+}
+
+fn prepare_raw_temporal_target(
+    frames: &[TemporalFrame],
+    recipe: MainTemporalRecipe,
+    wave: &PartialSet,
+    position: f32,
+    mode: u32,
+) -> PartialSet {
+    let source = interpolate_temporal_frames(frames, position, recipe.smooth, recipe.contrast);
+    if mode == 4 {
+        prepare_add_target(&source, recipe.shape, recipe.add_flavor)
+    } else {
+        prepare_morph_target(wave, &source, recipe.morph, recipe.shape)
+    }
+}
 
 struct MainVoice {
     player: SampleRegion,
@@ -50,6 +78,9 @@ pub struct MainVoiceBank {
     add_right: Vec<f32>,
     sample_envelope: Vec<f32>,
     temporal_source_targets: Vec<PartialSet>,
+    temporal_source_frames: Vec<TemporalFrame>,
+    temporal_recipe: Option<MainTemporalRecipe>,
+    wave_target: PartialSet,
     temporal_positions: [f32; MAIN_VOICE_COUNT],
     temporal_speed: f32,
     original_add_wave: bool,
@@ -114,6 +145,9 @@ impl MainVoiceBank {
             add_right: vec![0.0; max_frames],
             sample_envelope: vec![0.0; max_frames],
             temporal_source_targets: Vec::new(),
+            temporal_source_frames: Vec::new(),
+            temporal_recipe: None,
+            wave_target: PartialSet::default(),
             temporal_positions: [0.0; MAIN_VOICE_COUNT],
             temporal_speed: 1.0,
             original_add_wave: false,
@@ -142,6 +176,8 @@ impl MainVoiceBank {
             voice.player.share_sample_from(&first[0].player);
         }
         self.temporal_source_targets.clear();
+        self.temporal_source_frames.clear();
+        self.temporal_recipe = None;
         self.panic();
         true
     }
@@ -156,12 +192,58 @@ impl MainVoiceBank {
             return false;
         }
         self.temporal_source_targets = targets;
+        self.temporal_source_frames.clear();
+        self.temporal_recipe = None;
+        self.temporal_positions.fill(0.0);
+        true
+    }
+
+    /// Publish bounded raw source frames between callbacks. Only interpolation
+    /// and recipe shaping run at the next voice block; extraction stays off-thread.
+    pub fn load_temporal_source_frames(
+        &mut self,
+        frames: Vec<TemporalFrame>,
+        recipe: MainTemporalRecipe,
+    ) -> bool {
+        if frames.len() < 2
+            || frames.len() > MAX_TEMPORAL_FRAMES
+            || !recipe.smooth.is_finite()
+            || !(0.0..=1.0).contains(&recipe.smooth)
+            || !recipe.contrast.is_finite()
+            || !(0.0..=2.0).contains(&recipe.contrast)
+            || !recipe.shape.stretch.is_finite()
+            || !(0.0..=1.0).contains(&recipe.shape.stretch)
+            || recipe.shape.tilt_mode > 2
+            || !recipe.morph.position.is_finite()
+            || !(0.0..=1.0).contains(&recipe.morph.position)
+            || !recipe.morph.depth.is_finite()
+            || !(0.0..=1.0).contains(&recipe.morph.depth)
+            || recipe.morph.curve > 2
+            || matches!(recipe.add_flavor, AddFlavor::Driven { waveform, pulse_width }
+                if waveform > 7 || !pulse_width.is_finite()
+                    || !(0.01..=0.99).contains(&pulse_width))
+            || frames.iter().any(|frame| {
+                !frame.position.is_finite()
+                    || !(0.0..=1.0).contains(&frame.position)
+                    || !frame.partials.validate()
+            })
+            || frames
+                .windows(2)
+                .any(|pair| pair[0].position >= pair[1].position)
+        {
+            return false;
+        }
+        self.temporal_source_frames = frames;
+        self.temporal_recipe = Some(recipe);
+        self.temporal_source_targets.clear();
         self.temporal_positions.fill(0.0);
         true
     }
 
     pub fn clear_temporal_source_targets(&mut self) {
         self.temporal_source_targets.clear();
+        self.temporal_source_frames.clear();
+        self.temporal_recipe = None;
     }
 
     pub fn set_temporal_speed(&mut self, speed: f32) -> bool {
@@ -178,6 +260,9 @@ impl MainVoiceBank {
         if target > 1 || !partials.validate() {
             return false;
         }
+        if target == 0 {
+            self.wave_target = partials;
+        }
         for voice in &mut self.voices {
             let bank = if target == 0 {
                 &mut voice.wave_add
@@ -188,6 +273,8 @@ impl MainVoiceBank {
         }
         if target == 1 {
             self.temporal_source_targets.clear();
+            self.temporal_source_frames.clear();
+            self.temporal_recipe = None;
         }
         true
     }
@@ -260,12 +347,26 @@ impl MainVoiceBank {
             EventKind::NoteOn { note, velocity, .. } => {
                 let index = self.allocator.note_on(note, velocity);
                 self.temporal_positions[index] = 0.0;
+                let raw_target = self
+                    .temporal_recipe
+                    .filter(|_| !self.temporal_source_frames.is_empty() && self.direction_mode >= 4)
+                    .map(|recipe| {
+                        prepare_raw_temporal_target(
+                            &self.temporal_source_frames,
+                            recipe,
+                            &self.wave_target,
+                            0.0,
+                            self.direction_mode,
+                        )
+                    });
                 let voice = &mut self.voices[index];
                 let frequency = (440.0_f64 * 2.0_f64.powf((note as f64 - 69.0) / 12.0)) as f32;
                 voice.envelope.reset();
                 voice.wave_add.reset();
                 voice.wave_add_oscillator.reset_phase();
-                if let Some(first) = self.temporal_source_targets.first() {
+                if let Some(first) = raw_target {
+                    voice.sample_add.load_partials(first);
+                } else if let Some(first) = self.temporal_source_targets.first() {
                     voice.sample_add.load_partials(*first);
                 }
                 voice.sample_add.reset();
@@ -375,16 +476,33 @@ impl MainVoiceBank {
                 voice.motion.set_parameter(id, value);
             }
             let position = voice.player.legacy_normalized_position();
-            if self.direction_mode >= 4 && !self.temporal_source_targets.is_empty() {
+            if self.direction_mode >= 4
+                && (!self.temporal_source_targets.is_empty()
+                    || !self.temporal_source_frames.is_empty())
+            {
                 if self.temporal_speed > 0.001 {
                     self.temporal_positions[index] = (position * self.temporal_speed).fract();
                 }
-                let target_index = (self.temporal_positions[index]
-                    * (self.temporal_source_targets.len() - 1) as f32)
-                    .round() as usize;
-                voice
-                    .sample_add
-                    .load_partials(self.temporal_source_targets[target_index]);
+                if let Some(recipe) = self
+                    .temporal_recipe
+                    .filter(|_| !self.temporal_source_frames.is_empty())
+                {
+                    let target = prepare_raw_temporal_target(
+                        &self.temporal_source_frames,
+                        recipe,
+                        &self.wave_target,
+                        self.temporal_positions[index],
+                        self.direction_mode,
+                    );
+                    voice.sample_add.load_partials(target);
+                } else {
+                    let target_index = (self.temporal_positions[index]
+                        * (self.temporal_source_targets.len() - 1) as f32)
+                        .round() as usize;
+                    voice
+                        .sample_add
+                        .load_partials(self.temporal_source_targets[target_index]);
+                }
             }
             let directional = voice
                 .motion

@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "method": "Headless Chromium actual AudioWorklet graph; WebAudio.getRealtimeData rolling render capacity samples",
+  "limitation": "Headless virtual output; render capacity and callback interval do not count physical device underruns",
+  "capturedAt": "2026-09-27T00:55:45.756Z",
+  "browserVersion": "152.0.7977.82",
+  "platform": "linux",
+  "arch": "x64",
+  "cpu": "AMD Ryzen 9 3900X 12-Core Processor",
+  "wasmSha256": "ef5cf4ea62d3e14666e43678c79b7079746a494bc78ab7152cde1e2526d66364",
+  "processorAsset": "filter-processor-Bp3J-OHs.js",
+  "source": "four-second deterministic stereo 220/330 Hz tone; notes 48..55 held; raw-frame scenario uses web/public/reference/main-voice-bank/raw-32x128.f32",
+  "warmupMilliseconds": 500,
+  "sampledIntervals": 24,
+  "sampleIntervalMilliseconds": 100,
+  "results": [
+    {
+      "label": "Add raw frames · 8 voices",
+      "voices": 8,
+      "mode": 4,
+      "pitchMode": 0,
+      "waveform": 0,
+      "addWaveSource": 0,
+      "rawFrames": true,
+      "activeVoices": 8,
+      "sampleRate": 48000,
+      "callbackBufferFrames": 512,
+      "baseLatencySeconds": 0.010666666666666666,
+      "outputLatencySeconds": 0.04,
+      "sampledRenderCapacity": {
+        "p50": 0.29271958666040393,
+        "p95": 0.3365339796774494,
+        "max": 0.3567815661296366
+      },
+      "callbackIntervalMeanSeconds": 0.010665936984454298,
+      "callbackIntervalVariance": 2.3006222334422858e-7,
+      "contextTimeAdvancedSeconds": 2.3253333333333335,
+      "samples": [
+        {
+          "currentTime": 0.5653333333333334,
+          "renderCapacity": 0.29271958666040393
+        },
+        {
+          "currentTime": 0.672,
+          "renderCapacity": 0.2792183389703119
+        },
+        {
+          "currentTime": 0.768,
+          "renderCapacity": 0.2942058878679918
+        },
+        {
+          "currentTime": 0.8746666666666667,
+          "renderCapacity": 0.2784175334323923
+        },
+        {
+          "currentTime": 0.9706666666666667,
+          "renderCapacity": 0.28416588124410935
+        },
+        {
+          "currentTime": 1.0746666666666667,
+          "renderCapacity": 0.2952951080347956
+        },
+        {
+          "currentTime": 1.1733333333333333,
+          "renderCapacity": 0.2922528606265241
+        },
+        {
+          "currentTime": 1.2773333333333334,
+          "renderCapacity": 0.2754423743095216
+        },
+        {
+          "currentTime": 1.376,
+          "renderCapacity": 0.3365339796774494
+        },
+        {
+          "currentTime": 1.4773333333333334,
+          "renderCapacity": 0.3184032983508246
+        },
+        {
+          "currentTime": 1.5786666666666667,
+          "renderCapacity": 0.29605814928711216
+        },
+        {
+          "currentTime": 1.6773333333333333,
+          "renderCapacity": 0.279679194255339
+        },
+        {
+          "currentTime": 1.7813333333333334,
+          "renderCapacity": 0.34280920868673687
+        },
+        {
+          "currentTime": 1.8826666666666667,
+          "renderCapacity": 0.289392088696796
+        },
+        {
+          "currentTime": 1.984,
+          "renderCapacity": 0.33148078372268275
+        },
+        {
+          "currentTime": 2.082666666666667,
+          "renderCapacity": 0.3082517482517482
+        },
+        {
+          "currentTime": 2.1866666666666665,
+          "renderCapacity": 0.3163523782718829
+        },
+        {
+          "currentTime": 2.2853333333333334,
+          "renderCapacity": 0.2915880799698227
+        },
+        {
+          "currentTime": 2.3893333333333335,
+          "renderCapacity": 0.2787773086102442
+        },
+        {
+          "currentTime": 2.488,
+          "renderCapacity": 0.30130430702824434
+        },
+        {
+          "currentTime": 2.592,
+          "renderCapacity": 0.28449808214051825
+        },
+        {
+          "currentTime": 2.688,
+          "renderCapacity": 0.3048173537421354
+        },
+        {
+          "currentTime": 2.7946666666666666,
+          "renderCapacity": 0.3567815661296366
+        },
+        {
+          "currentTime": 2.8906666666666667,
+          "renderCapacity": 0.2914634146341464
+        }
+      ]
+    }
+  ]
+}

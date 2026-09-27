@@ -20,7 +20,7 @@ try {
   await page.locator('#sine-target-mode').selectOption('1');
   await page.locator('[data-parameter-id="6"] select').selectOption('4');
   await page.locator('#sine-use-frame').click();
-  await page.waitForFunction(() => document.querySelector('#sine-target-status').textContent.includes('256 prepared'));
+  await page.waitForFunction(() => document.querySelector('#sine-target-status').textContent.includes('source frames interpolate'));
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
   await page.locator('#keyboard button').first().click();
@@ -40,16 +40,21 @@ try {
     name: 'main-temporal-state.json', mimeType: 'application/json', buffer: bytes,
   }]);
   await page.waitForFunction(() => document.querySelector('#main-state-status').textContent.startsWith('Opened'));
-  await page.waitForFunction(() => document.querySelector('#sine-target-status').textContent.includes('256 prepared'));
+  await page.waitForFunction(() => document.querySelector('#sine-target-status').textContent.includes('source frames interpolate'));
   assert.equal(await page.locator('#sine-follow-playback').isChecked(), true);
   assert.equal(await page.locator('#sine-temporal-speed').inputValue(), '1.5');
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
   await page.locator('#keyboard button').first().click();
   await page.waitForTimeout(350);
+  await page.locator('[data-parameter-id="6"] select').selectOption('5');
+  await page.locator('#sine-target-mode').selectOption('3');
+  await page.locator('#sine-use-frame').click();
+  await page.waitForFunction(() => document.querySelector('#sine-target-status').textContent.includes('source frames interpolate'));
+  await page.waitForTimeout(250);
   assert.deepEqual(errors, []);
   assert.ok((await page.locator('#status').textContent()).startsWith('Audio running'));
-  console.log('Main temporal browser: Add mode, prepared follow table, worklet note, v3 state save/reopen, automatic table restore passed');
+  console.log('Main temporal browser: raw-frame Add/Morph, worklet note, v3 state save/reopen, automatic frame restore passed');
 } finally {
   await browser.close();
 }

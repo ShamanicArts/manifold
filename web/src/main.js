@@ -605,7 +605,8 @@ function createSampleAnalysisWorker(temporalWorker) {
     if (target) {
       pendingSineTargets.delete(data.id);
       if (data.id === latestSineTargetId && target.source === loadedSineSource) {
-        if (data.type === 'target' || data.type === 'temporal-targets') applyPreparedSineTarget(data, target.mode);
+        if (data.type === 'target' || data.type === 'temporal-targets'
+          || data.type === 'temporal-frames') applyPreparedSineTarget(data, target.mode);
         else byId('sine-target-status').textContent = `Target unavailable: ${data.message}`;
         if (activeFamily === 'main-sample-blend') finishMainStateRestore(data.type === 'target' ? null : data.message);
       }
@@ -2158,8 +2159,11 @@ function applyPreparedSineTarget(data, mode) {
     activeProject.extraPartials = [{ nodeId: 2, target: 1, fundamental: 1, values: Array.from(data.values) }];
     audio.setPartials(activeProject.partials);
     audio.setPartials(activeProject.extraPartials[0]);
-    if (data.type === 'temporal-targets') {
-      activeProject.temporalTargets = { frames: data.frames, values: data.table,
+    if (data.type === 'temporal-targets' || data.type === 'temporal-frames') {
+      activeProject.temporalTargets = { frames: data.frames,
+        ...(data.type === 'temporal-frames'
+          ? { rawFrames: data.packed, rawRecipe: data.rawRecipe }
+          : { values: data.table }),
         speed: Number(byId('sine-temporal-speed').value), source: loadedSineSource };
       audio.setTemporalTargets(activeProject.temporalTargets);
     } else {
@@ -2167,7 +2171,9 @@ function applyPreparedSineTarget(data, mode) {
       audio.clearTemporalTargets();
     }
     renderSineBars(data.values, byId('sine-target-bars'), true);
-    byId('sine-target-status').textContent = data.type === 'temporal-targets'
+    byId('sine-target-status').textContent = data.type === 'temporal-frames'
+      ? `${data.frames} source frames interpolate at each voice’s sample position`
+      : data.type === 'temporal-targets'
       ? `${data.frames} prepared source spectra follow each voice’s sample position`
       : `Wave recipe + ${data.values.length / 4} source partials prepared for all eight voices`;
     return;
@@ -2206,7 +2212,7 @@ function requestPreparedSineTarget() {
   latestSineTargetId = id;
   pendingSineTargets.set(id, { source, mode: selectedMode, temporal });
   byId('sine-target-status').textContent = temporal ? 'Preparing per-voice spectra in Rust/Wasm…' : 'Preparing target in Rust/Wasm…';
-  sineAnalysisWorker.postMessage({ type: temporal ? 'prepare-temporal-targets' : 'prepare-target', id, sourceId: source.temporalJobId,
+  sineAnalysisWorker.postMessage({ type: temporal ? 'prepare-temporal-frames' : 'prepare-target', id, sourceId: source.temporalJobId,
     mode, includeWave: activeFamily === 'main-sample-blend' || activeFamily === 'main-voice-bank', position: Number(byId('sine-position').value),
     smooth: Number(byId('sine-smooth').value), contrast: Number(byId('sine-contrast').value), recipe }, [recipe.buffer]);
 }

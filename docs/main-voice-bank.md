@@ -39,14 +39,13 @@ order 9 (512 points) when authored. A different order requires re-preparing the
 node; there is no callback-time FFT reallocation. Parameters 17–18 set phrase
 contour amount and reference.
 
-The Add wave source is an authored prepared recipe, while old Main uses a
-waveform oscillator on that branch. The browser can select a fixed source
-frame or follow each voice's sample playhead. In follow mode, a background
-Rust/Wasm worker prepares 256 source spectra, and the audio callback selects
-one prepared spectrum per voice at each block. Speed zero freezes each voice
+The Add wave source is an authored recipe with the original oscillator shapes.
+The browser can select a fixed source frame or follow each voice's sample
+playhead. In follow mode, a background Rust/Wasm worker extracts bounded raw
+source frames. The audio callback interpolates their partials once per voice
+block using the original smooth/contrast recipe. The older 256-position
+prepared route remains available for comparison. Speed zero freezes each voice
 at its current position. A new note starts its own temporal position at zero.
-This is a quantized v2 implementation, not a claim of matching the full old
-spectral automation.
 The bank now prepares its Add wave pitch smoother at 220 Hz, like the old
 `blendAddOsc`, before a note retunes it. The spectral source bank retains the
 old SineBank default 440 Hz. This initial state mattered in the assembled
@@ -87,16 +86,16 @@ note ownership follows the old UI's note-only policy across channels.
   exceeded the 2.667 ms interval. This is not a browser audio-thread or
   hardware underrun measurement. The raw data and method are in
   `web/public/reference/main-voice-bank/bench-node.json`.
-- `scripts/bench-main-voice-bank-browser.mjs` runs ten held-chord cases in
+- `scripts/bench-main-voice-bank-browser.mjs` runs eleven held-chord cases in
   headless Chromium through the actual AudioWorklet and Wasm graph. It samples
   Chromium's WebAudio render-capacity estimate 24 times per case after warmup.
-  The refreshed sampled p95 was 3.20% for Normal eight voices, 8.59% for
-  original square Add eight voices, and 27.11% for vocoder eight voices; the
-  largest sampled value was 36.08%. Chromium reported a
-  512-frame output callback buffer at 48 kHz. These are sampled rolling
-  capacity estimates, not per-callback timings or physical device underrun
-  counts. The raw capture includes browser and Wasm versions in
-  `web/public/reference/main-voice-bank/bench-browser-headless.json`.
+  Raw-frame Add eight voices measured 12.83% sampled p95 in the full run and
+  11.98% in a focused repeat. Prepared Add showed a 65.43% p95 transient in
+  the full run, then 13.30% in the repeat. The checked-in synthetic
+  128-frame, 32-partial raw source measured 33.65% p95. Chromium reported a 512-frame output callback buffer at
+  48 kHz. These are rolling browser estimates, not physical device underrun
+  counts. The full, focused, and stress captures are linked from the
+  [browser capacity review](../web/public/main-browser-capacity-review.html).
 - `scripts/verify-main-wave-voice-comparison.mjs` checks three assembled
   original C++ wave routes against native Rust and Wasm. The old compiled
   oscillator, Normal crossfade, base selector, branch mixer, and voice mixer
@@ -132,33 +131,29 @@ note ownership follows the old UI's note-only policy across channels.
   The fixture excludes temporal source changes, vocoder processing, and the
   old UI-rate envelope.
 - `scripts/verify-main-temporal-voice-comparison.mjs` checks six analyzed
-  two-voice captures: Add and Morph with frozen, normal, and double speed
-  motion. Native Rust and Wasm are bit-exact in all six; motion differs from
-  the frozen control. Six more cases run the assembled original C++ route with
-  its own 45 extracted frames, temporal interpolation, SineBank, crossfaders,
-  gains, and mixers. Add uses a mixed wave/source branch; Morph uses a mixed
-  partial recipe. The largest settled original/Rust sample difference is
-  0.0005483 and the largest settled RMS difference is 0.0001365 after frame
-  4096; native/Wasm is bit-exact. The old UI-rate envelope and vocoder are
-  excluded. New Rust voices now seed the first prepared target before
-  resetting phase, which closed a large mixed-Morph onset mismatch.
+  two-voice captures and twelve assembled original C++ routes per source:
+  six use the 256-position prepared table, six evaluate the extracted raw
+  frames at each voice block. Add and Morph cover frozen, normal, and double
+  speed motion. The Rust raw-frame route applies the original smooth/contrast
+  interpolation and spectral recipe at the actual playhead position, without
+  doing source FFT work in the callback. The old UI-rate envelope and vocoder
+  remain outside these fixtures.
 - `MANIFOLD_TEMPORAL_SOURCE=rhythmic` runs the same generator and verifier
   against four harmonic bursts and changing stereo balance. Original and Rust
   extraction each yield 45 frames, with matching partial counts and amplitude
   differences under 0.00000072, checked by
-  `scripts/verify-main-temporal-source-frames.mjs`. Frozen Add/Morph routes still agree within
-  0.0004, while moving routes differ by up to 0.02538 settled peak and
-  0.005964 RMS. Native Rust/Wasm remains exact. This is a documented open
-  temporal target/rendering gap, not a parity result. Naive interpolation
-  between prepared targets reduced some rhythmic errors but caused a new
-  double-speed wraparound spike in the gradual source, so it was reverted.
+  `scripts/verify-main-temporal-source-frames.mjs`. The prepared route's
+  moving spectra differ by up to 0.02538 settled peak and 0.005964 RMS. The
+  raw-frame route reduces those to at most 0.000388 peak and 0.000160 RMS;
+  its native/Wasm difference is below 0.00000009. Naive interpolation between
+  prepared targets caused a double-speed wraparound spike and was rejected.
   The two-source [review](../web/public/main-temporal-source-review.html)
   exposes the captures and measurements.
 - `scripts/verify-main-temporal-worklet.mjs` checks table upload, invalid
   upload rejection, clear, staggered voices, and audible movement in the real
   AudioWorklet adapter. `scripts/verify-main-temporal-browser.mjs` opens the
-  workbench in headless Chromium, enables follow, plays a note, saves v3
-  state, reopens it, rebuilds the table, and plays again.
+  workbench in headless Chromium, enables raw-frame follow, plays a note,
+  saves v3 state, reopens it, rebuilds the frames, and plays again.
 - `scripts/verify-main-voice-bank-state.mjs` round-trips 20 controls, separate
   wave and source targets, and embedded or built-in source choices. It rejects
   malformed controls, target addresses, partials, and PCM. A headless Chromium
@@ -166,7 +161,7 @@ note ownership follows the old UI's note-only policy across channels.
   downloaded identical targets and PCM, and started the restored AudioWorklet.
   `scripts/verify-main-sample-blend-state.mjs` still passes after extracting
   shared PCM encoding. The bank state schema is version 3 with follow and
-  speed controls; a saved source rebuilds its temporal table on reopen. This
+  speed controls; a saved source rebuilds its temporal frames on reopen. This
   is bank state, not old preset migration.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint

@@ -1,13 +1,16 @@
 //! Native reference for Main's eight prepared wave/sample voices.
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
+use manifold_core::main_voice_bank::MainTemporalRecipe;
 use manifold_core::sine_bank::{Partial, PartialSet};
+use manifold_core::spectral_targets::{AddFlavor, MorphRecipe, SpectralShape};
+use manifold_core::temporal_partials::TemporalFrame;
 use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 12 && args.len() != 14 {
-        return Err("usage: render_main_voice_bank SAMPLE OUTPUT SOURCE_RATE OUTPUT_RATE BLOCK FRAMES PARAMETERS EVENTS CHANGES WAVE_PARTIALS SOURCE_PARTIALS [TEMPORAL_TABLE TEMPORAL_SPEED]".into());
+    if args.len() != 12 && args.len() != 14 && args.len() != 15 {
+        return Err("usage: render_main_voice_bank SAMPLE OUTPUT SOURCE_RATE OUTPUT_RATE BLOCK FRAMES PARAMETERS EVENTS CHANGES WAVE_PARTIALS SOURCE_PARTIALS [TEMPORAL_TABLE TEMPORAL_SPEED [raw]]".into());
     }
     let raw = std::fs::read(&args[1])?;
     if raw.len() % 8 != 0 {
@@ -100,7 +103,77 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("partial target rejected".into());
         }
     }
-    if args.len() == 14 {
+    if args.len() == 15 {
+        if args[14] != "raw" {
+            return Err("expected raw temporal frame mode".into());
+        }
+        let bytes = std::fs::read(&args[12])?;
+        const STRIDE: usize = 3 + 32 * 4;
+        if bytes.len() % 4 != 0 {
+            return Err("invalid raw temporal table".into());
+        }
+        let values: Vec<f32> = bytes
+            .chunks_exact(4)
+            .map(|part| f32::from_le_bytes(part.try_into().unwrap()))
+            .collect();
+        let count = values
+            .first()
+            .copied()
+            .ok_or("missing raw temporal frame count")?;
+        if !count.is_finite()
+            || count.fract() != 0.0
+            || !(2.0..=128.0).contains(&count)
+            || values.len() != 1 + count as usize * STRIDE
+        {
+            return Err("invalid raw temporal frame count".into());
+        }
+        let mut frames = Vec::with_capacity(count as usize);
+        for packed in values[1..].chunks_exact(STRIDE) {
+            let active = packed[2];
+            if !active.is_finite() || active.fract() != 0.0 || !(0.0..=32.0).contains(&active) {
+                return Err("invalid raw partial count".into());
+            }
+            let mut partials = PartialSet {
+                fundamental: packed[1],
+                count: active as usize,
+                ..PartialSet::default()
+            };
+            for (index, fields) in packed[3..3 + partials.count * 4]
+                .chunks_exact(4)
+                .enumerate()
+            {
+                partials.partials[index] = Partial {
+                    frequency: fields[0],
+                    amplitude: fields[1],
+                    phase: fields[2],
+                    decay_rate: fields[3],
+                };
+            }
+            frames.push(TemporalFrame {
+                position: packed[0],
+                source_start: 0,
+                rms: 0.0,
+                brightness: 0.0,
+                partials,
+            });
+        }
+        let recipe = MainTemporalRecipe {
+            smooth: 0.6,
+            contrast: 0.5,
+            shape: SpectralShape::default(),
+            add_flavor: AddFlavor::SelfResynthesis,
+            morph: MorphRecipe {
+                position: 0.5,
+                depth: 1.0,
+                curve: 2,
+            },
+        };
+        if !plan.load_main_temporal_frames(2, frames, recipe)
+            || !plan.set_main_temporal_speed(2, args[13].parse()?)
+        {
+            return Err("raw temporal frame upload rejected".into());
+        }
+    } else if args.len() == 14 {
         let bytes = std::fs::read(&args[12])?;
         const STRIDE: usize = 2 + 32 * 4;
         if bytes.len() % (STRIDE * 4) != 0 || bytes.len() < STRIDE * 4 * 2 {

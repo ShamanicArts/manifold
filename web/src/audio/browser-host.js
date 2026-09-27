@@ -156,9 +156,16 @@ export class BrowserAudioHost {
 
   setTemporalTargets(table) {
     if (!this.processor || !this.ready) return;
-    const values = table.values.slice();
-    this.processor.port.postMessage({ type: 'temporal-targets', nodeId: 2,
-      frames: table.frames, values }, [values.buffer]);
+    if (table.rawFrames) {
+      const packed = table.rawFrames.slice();
+      const recipe = table.rawRecipe.slice();
+      this.processor.port.postMessage({ type: 'temporal-frames', nodeId: 2,
+        frames: table.frames, packed, recipe }, [packed.buffer, recipe.buffer]);
+    } else {
+      const values = table.values.slice();
+      this.processor.port.postMessage({ type: 'temporal-targets', nodeId: 2,
+        frames: table.frames, values }, [values.buffer]);
+    }
     this.processor.port.postMessage({ type: 'temporal-speed', nodeId: 2, speed: table.speed });
   }
 

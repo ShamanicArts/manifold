@@ -91,6 +91,9 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
         } else if (data.type === 'temporal-targets' && this.engine) {
           const accepted = this.uploadTemporalTargets(data);
           this.port.postMessage({ type: 'temporal-applied', requestId: data.requestId, accepted });
+        } else if (data.type === 'temporal-frames' && this.engine) {
+          const accepted = this.uploadTemporalFrames(data);
+          this.port.postMessage({ type: 'temporal-applied', requestId: data.requestId, accepted });
         } else if (data.type === 'temporal-clear' && this.engine) {
           const accepted = this.engine.manifold_main_temporal_clear(data.nodeId) === 1;
           this.port.postMessage({ type: 'temporal-applied', requestId: data.requestId, accepted });
@@ -167,6 +170,22 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     new Float32Array(this.engine.memory.buffer, ptr, values.length).set(values);
     const accepted = this.engine.manifold_main_temporal_commit() === 1;
     // A large table may grow Wasm memory and invalidate cached JS views.
+    this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 2);
+    this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
+    return accepted;
+  }
+
+  uploadTemporalFrames(data) {
+    const { nodeId, frames, packed, recipe } = data;
+    if (!(packed instanceof Float32Array) || !(recipe instanceof Float32Array)
+      || !Number.isInteger(frames) || frames < 2 || frames > 128
+      || packed.length !== 1 + frames * 131 || recipe.length !== 10) return false;
+    if (this.engine.manifold_main_temporal_raw_begin(nodeId, frames) !== 1) return false;
+    new Float32Array(this.engine.memory.buffer,
+      this.engine.manifold_main_temporal_raw_ptr(), packed.length).set(packed);
+    new Float32Array(this.engine.memory.buffer,
+      this.engine.manifold_main_temporal_raw_recipe_ptr(), recipe.length).set(recipe);
+    const accepted = this.engine.manifold_main_temporal_raw_commit() === 1;
     this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 2);
     this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
     return accepted;

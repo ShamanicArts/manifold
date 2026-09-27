@@ -42,136 +42,147 @@ impl TemporalAnalysis {
     /// This mirrors `TemporalPartialData::interpolateAtPosition`; the result can
     /// be published as a bounded target at a later audio block boundary.
     pub fn partials_at(&self, position: f32, smooth: f32, contrast: f32) -> PartialSet {
-        let Some(first) = self.frames.first() else {
-            return PartialSet::default();
-        };
-        if self.frames.len() == 1 {
-            return first.partials;
-        }
-        let pos = position.clamp(0.0, 1.0);
-        let smooth = smooth.clamp(0.0, 1.0);
-        let contrast = contrast.clamp(0.0, 2.0);
-        let mut lo = 0;
-        let mut hi = self.frames.len() - 1;
-        for index in 0..self.frames.len() - 1 {
-            if self.frames[index + 1].position > pos {
-                lo = index;
-                hi = index + 1;
-                break;
-            }
+        interpolate_temporal_frames(&self.frames, position, smooth, contrast)
+    }
+}
+
+/// Evaluate the original temporal interpolation at one playhead position.
+/// Work is bounded by the published frame and partial counts.
+pub fn interpolate_temporal_frames(
+    frames: &[TemporalFrame],
+    position: f32,
+    smooth: f32,
+    contrast: f32,
+) -> PartialSet {
+    let Some(first) = frames.first() else {
+        return PartialSet::default();
+    };
+    if frames.len() == 1 {
+        return first.partials;
+    }
+    let pos = position.clamp(0.0, 1.0);
+    let smooth = smooth.clamp(0.0, 1.0);
+    let contrast = contrast.clamp(0.0, 2.0);
+    let mut lo = 0;
+    let mut hi = frames.len() - 1;
+    for index in 0..frames.len() - 1 {
+        if frames[index + 1].position > pos {
             lo = index;
-            hi = index;
+            hi = index + 1;
+            break;
         }
-        if lo == hi {
-            return self.frames[lo].partials;
+        lo = index;
+        hi = index;
+    }
+    if lo == hi {
+        return frames[lo].partials;
+    }
+    let a = frames[lo].partials;
+    let b = frames[hi].partials;
+    let span = frames[hi].position - frames[lo].position;
+    let raw_frac = if span > 1e-6 {
+        ((pos - frames[lo].position) / span).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let frac = if smooth <= 0.001 {
+        if raw_frac >= 0.5 { 1.0 } else { 0.0 }
+    } else {
+        let edge0 = 0.5 - 0.5 * smooth;
+        let edge1 = 0.5 + 0.5 * smooth;
+        if raw_frac <= edge0 {
+            0.0
+        } else if raw_frac >= edge1 {
+            1.0
+        } else {
+            let t = (raw_frac - edge0) / (edge1 - edge0).max(1e-6);
+            t * t * (3.0 - 2.0 * t)
         }
-        let a = self.frames[lo].partials;
-        let b = self.frames[hi].partials;
-        let span = self.frames[hi].position - self.frames[lo].position;
-        let raw_frac = if span > 1e-6 {
-            ((pos - self.frames[lo].position) / span).clamp(0.0, 1.0)
+    };
+    let mut out = PartialSet {
+        fundamental: a.fundamental + (b.fundamental - a.fundamental) * frac,
+        count: a.count.max(b.count),
+        ..PartialSet::default()
+    };
+    for index in 0..out.count {
+        let pa = if index < a.count {
+            a.partials[index]
+        } else {
+            Partial::default()
+        };
+        let pb = if index < b.count {
+            b.partials[index]
+        } else {
+            Partial::default()
+        };
+        let frequency = if pa.frequency <= 0.01 && pb.frequency <= 0.01 {
+            0.0
+        } else if pa.frequency <= 0.01 {
+            pb.frequency * frac
+        } else if pb.frequency <= 0.01 {
+            pa.frequency * (1.0 - frac)
+        } else {
+            (pa.frequency.ln() + (pb.frequency.ln() - pa.frequency.ln()) * frac).exp()
+        };
+        let raw_amplitude = pa.amplitude + (pb.amplitude - pa.amplitude) * frac;
+        let contrast_amplitude = if raw_amplitude > 0.001 {
+            raw_amplitude.powf(1.15 - contrast * 0.45) * (1.0 + contrast * 0.85)
         } else {
             0.0
         };
-        let frac = if smooth <= 0.001 {
-            if raw_frac >= 0.5 { 1.0 } else { 0.0 }
-        } else {
-            let edge0 = 0.5 - 0.5 * smooth;
-            let edge1 = 0.5 + 0.5 * smooth;
-            if raw_frac <= edge0 {
+        out.partials[index] = Partial {
+            frequency,
+            amplitude: if contrast_amplitude < 0.006 - contrast * 0.002 {
                 0.0
-            } else if raw_frac >= edge1 {
-                1.0
             } else {
-                let t = (raw_frac - edge0) / (edge1 - edge0).max(1e-6);
-                t * t * (3.0 - 2.0 * t)
-            }
+                contrast_amplitude
+            },
+            phase: pa.phase + (pb.phase - pa.phase) * frac,
+            decay_rate: pa.decay_rate + (pb.decay_rate - pa.decay_rate) * frac,
         };
-        let mut out = PartialSet {
-            fundamental: a.fundamental + (b.fundamental - a.fundamental) * frac,
-            count: a.count.max(b.count),
-            ..PartialSet::default()
-        };
-        for index in 0..out.count {
-            let pa = if index < a.count {
-                a.partials[index]
-            } else {
-                Partial::default()
-            };
-            let pb = if index < b.count {
-                b.partials[index]
-            } else {
-                Partial::default()
-            };
-            let frequency = if pa.frequency <= 0.01 && pb.frequency <= 0.01 {
-                0.0
-            } else if pa.frequency <= 0.01 {
-                pb.frequency * frac
-            } else if pb.frequency <= 0.01 {
-                pa.frequency * (1.0 - frac)
-            } else {
-                (pa.frequency.ln() + (pb.frequency.ln() - pa.frequency.ln()) * frac).exp()
-            };
-            let raw_amplitude = pa.amplitude + (pb.amplitude - pa.amplitude) * frac;
-            let contrast_amplitude = if raw_amplitude > 0.001 {
-                raw_amplitude.powf(1.15 - contrast * 0.45) * (1.0 + contrast * 0.85)
-            } else {
-                0.0
-            };
-            out.partials[index] = Partial {
-                frequency,
-                amplitude: if contrast_amplitude < 0.006 - contrast * 0.002 {
-                    0.0
-                } else {
-                    contrast_amplitude
-                },
-                phase: pa.phase + (pb.phase - pa.phase) * frac,
-                decay_rate: pa.decay_rate + (pb.decay_rate - pa.decay_rate) * frac,
-            };
-        }
-        if smooth > 0.001 {
-            let prev = self.frames[lo.saturating_sub(1)].partials;
-            let next = self.frames[(hi + 1).min(self.frames.len() - 1)].partials;
-            let smear_mix = 0.15 + smooth * 0.85;
-            for index in 0..out.count {
-                let prev_partial = if index < prev.count {
-                    prev.partials[index]
-                } else {
-                    Partial::default()
-                };
-                let next_partial = if index < next.count {
-                    next.partials[index]
-                } else {
-                    Partial::default()
-                };
-                let base = &mut out.partials[index];
-                let average_amplitude =
-                    (prev_partial.amplitude + base.amplitude + next_partial.amplitude) / 3.0;
-                let mut log_sum = 0.0;
-                let mut log_weight = 0.0;
-                for (frequency, weight) in [
-                    (prev_partial.frequency, 0.75),
-                    (base.frequency, 1.5),
-                    (next_partial.frequency, 0.75),
-                ] {
-                    if frequency > 0.01 {
-                        log_sum += frequency.ln() * weight;
-                        log_weight += weight;
-                    }
-                }
-                let average_frequency = if log_weight > 0.0 {
-                    (log_sum / log_weight).exp()
-                } else {
-                    base.frequency
-                };
-                base.amplitude += (average_amplitude - base.amplitude) * smear_mix;
-                if average_frequency > 0.01 {
-                    base.frequency += (average_frequency - base.frequency) * smear_mix;
-                }
-            }
-        }
-        out
     }
+    if smooth > 0.001 {
+        let prev = frames[lo.saturating_sub(1)].partials;
+        let next = frames[(hi + 1).min(frames.len() - 1)].partials;
+        let smear_mix = 0.15 + smooth * 0.85;
+        for index in 0..out.count {
+            let prev_partial = if index < prev.count {
+                prev.partials[index]
+            } else {
+                Partial::default()
+            };
+            let next_partial = if index < next.count {
+                next.partials[index]
+            } else {
+                Partial::default()
+            };
+            let base = &mut out.partials[index];
+            let average_amplitude =
+                (prev_partial.amplitude + base.amplitude + next_partial.amplitude) / 3.0;
+            let mut log_sum = 0.0;
+            let mut log_weight = 0.0;
+            for (frequency, weight) in [
+                (prev_partial.frequency, 0.75),
+                (base.frequency, 1.5),
+                (next_partial.frequency, 0.75),
+            ] {
+                if frequency > 0.01 {
+                    log_sum += frequency.ln() * weight;
+                    log_weight += weight;
+                }
+            }
+            let average_frequency = if log_weight > 0.0 {
+                (log_sum / log_weight).exp()
+            } else {
+                base.frequency
+            };
+            base.amplitude += (average_amplitude - base.amplitude) * smear_mix;
+            if average_frequency > 0.01 {
+                base.frequency += (average_frequency - base.frequency) * smear_mix;
+            }
+        }
+    }
+    out
 }
 
 /// Source region uses absolute frame indices in the decoded stereo buffer.

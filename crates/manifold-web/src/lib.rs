@@ -6,7 +6,7 @@ use manifold_core::effect_slot;
 use manifold_core::events::{EventKind, TimedEvent};
 use manifold_core::graph::{Connection, ExecutionPlan, GraphDescription, NodeKind, NodeSpec};
 use manifold_core::limiter;
-use manifold_core::main_voice_bank::MAX_MAIN_TEMPORAL_TARGETS;
+use manifold_core::main_voice_bank::{MAX_MAIN_TEMPORAL_TARGETS, MainTemporalRecipe};
 use manifold_core::phaser;
 use manifold_core::sample_analysis::{PEAK_BINS, SampleSummary, analyze_stereo};
 use manifold_core::sample_region::{MAX_SAMPLE_FRAMES, MAX_SAMPLE_SECONDS};
@@ -16,7 +16,9 @@ use manifold_core::spectral_targets::{
     prepare_morph_target,
 };
 use manifold_core::stereo_delay;
-use manifold_core::temporal_partials::{TemporalAnalysis, analyze_temporal_stereo};
+use manifold_core::temporal_partials::{
+    MAX_TEMPORAL_FRAMES, TemporalAnalysis, TemporalFrame, analyze_temporal_stereo,
+};
 use std::cell::RefCell;
 
 struct WorkletEngine {
@@ -28,6 +30,7 @@ struct WorkletEngine {
     sample_upload: Option<(u32, f32, Vec<f32>)>,
     partial_upload: Option<(u32, u32, PartialSet)>,
     temporal_upload: Option<(u32, Vec<f32>)>,
+    temporal_raw_upload: Option<(u32, Vec<f32>, [f32; 10])>,
 }
 
 struct AnalysisJob {
@@ -1016,6 +1019,7 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
             sample_upload: None,
             partial_upload: None,
             temporal_upload: None,
+            temporal_raw_upload: None,
         });
     });
     1
@@ -1207,6 +1211,130 @@ pub extern "C" fn manifold_main_temporal_commit() -> u32 {
                 engine
                     .plan
                     .load_main_temporal_targets(node_id.into(), targets),
+            )
+        })
+    })
+}
+
+/// Upload the extractor's original source frames. One count float precedes
+/// frames of position, fundamental, partial count and 32 four-float partials.
+/// The ten-float recipe is published separately before commit.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_temporal_raw_begin(node_id: u32, frames: u32) -> u32 {
+    if frames < 2 || frames as usize > MAX_TEMPORAL_FRAMES {
+        return 0;
+    }
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            engine.temporal_raw_upload = Some((
+                node_id,
+                vec![0.0; 1 + frames as usize * (3 + MAX_PARTIALS * 4)],
+                [0.6, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 2.0],
+            ));
+            1
+        })
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_temporal_raw_ptr() -> *mut f32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .and_then(|engine| engine.temporal_raw_upload.as_mut())
+            .map_or(std::ptr::null_mut(), |(_, values, _)| values.as_mut_ptr())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_temporal_raw_recipe_ptr() -> *mut f32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut()
+            .as_mut()
+            .and_then(|engine| engine.temporal_raw_upload.as_mut())
+            .map_or(std::ptr::null_mut(), |(_, _, recipe)| recipe.as_mut_ptr())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_main_temporal_raw_commit() -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            let Some((node_id, values, controls)) = engine.temporal_raw_upload.take() else {
+                return 0;
+            };
+            let count = (values.len() - 1) / (3 + MAX_PARTIALS * 4);
+            if values[0] != count as f32
+                || controls.iter().any(|value| !value.is_finite())
+                || controls[3].fract() != 0.0
+                || controls[4].fract() != 0.0
+                || controls[5].fract() != 0.0
+                || controls[9].fract() != 0.0
+                || !(0.0..=1.0).contains(&controls[4])
+                || !(0.0..=2.0).contains(&controls[3])
+                || !(0.0..=7.0).contains(&controls[5])
+                || !(0.0..=2.0).contains(&controls[9])
+            {
+                return 0;
+            }
+            let mut frames = Vec::with_capacity(count);
+            for packed in values[1..].chunks_exact(3 + MAX_PARTIALS * 4) {
+                let active = packed[2];
+                if !active.is_finite()
+                    || active.fract() != 0.0
+                    || !(0.0..=MAX_PARTIALS as f32).contains(&active)
+                {
+                    return 0;
+                }
+                let mut partials = PartialSet {
+                    fundamental: packed[1],
+                    count: active as usize,
+                    ..PartialSet::default()
+                };
+                for (index, fields) in packed[3..3 + partials.count * 4]
+                    .chunks_exact(4)
+                    .enumerate()
+                {
+                    partials.partials[index] = Partial {
+                        frequency: fields[0],
+                        amplitude: fields[1],
+                        phase: fields[2],
+                        decay_rate: fields[3],
+                    };
+                }
+                frames.push(TemporalFrame {
+                    position: packed[0],
+                    source_start: 0,
+                    rms: 0.0,
+                    brightness: 0.0,
+                    partials,
+                });
+            }
+            let recipe = MainTemporalRecipe {
+                smooth: controls[0],
+                contrast: controls[1],
+                shape: SpectralShape {
+                    stretch: controls[2],
+                    tilt_mode: controls[3] as u8,
+                },
+                add_flavor: if controls[4] >= 0.5 {
+                    AddFlavor::Driven {
+                        waveform: controls[5] as u8,
+                        pulse_width: controls[6],
+                    }
+                } else {
+                    AddFlavor::SelfResynthesis
+                },
+                morph: MorphRecipe {
+                    position: controls[7],
+                    depth: controls[8],
+                    curve: controls[9] as u8,
+                },
+            };
+            u32::from(
+                engine
+                    .plan
+                    .load_main_temporal_frames(node_id.into(), frames, recipe),
             )
         })
     })

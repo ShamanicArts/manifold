@@ -20,6 +20,7 @@ const manifest = JSON.parse(readFileSync(`${root}manifest.json`, 'utf8'));
 assert.equal(manifest.sourceVariant, sourceVariant);
 assert.equal(hash([
   'crates/manifold-core/src/main_voice_bank.rs', 'crates/manifold-core/src/sample_analysis.rs',
+  'crates/manifold-core/src/temporal_partials.rs', 'crates/manifold-core/src/spectral_targets.rs',
   'crates/manifold-core/src/sine_bank.rs', 'crates/manifold-core/src/graph.rs',
   'crates/manifold-core/examples/render_main_voice_bank.rs',
   'scripts/generate-main-temporal-voice-reference.mjs',
@@ -35,7 +36,8 @@ manifest.sampleData = floats(manifest.sample);
 const input = floats(manifest.input);
 const outputs = new Map(), originalOutputs = new Map(), results = [];
 for (const selected of manifest.cases) {
-  selected.temporalTable = floats(selected.temporalFile);
+  if (selected.rawTemporalFile) selected.rawTemporalTable = floats(selected.rawTemporalFile);
+  else selected.temporalTable = floats(selected.temporalFile);
   const native = floats(selected.output);
   const { instance: { exports: engine } } = await WebAssembly.instantiate(wasmBytes, {});
   const wasm = renderWasm(engine, 'main-voice-bank', manifest, input, selected);
@@ -71,7 +73,8 @@ for (const selected of manifest.cases) {
     const settledRms = Math.sqrt(oldErrorEnergy / (original.length - start));
     const oldSignalRms = Math.sqrt(oldSignalEnergy / (original.length - start));
     const parity = oldMax < .0007 && settledRms < .0002;
-    if (sourceVariant === 'rhythmic' && !selected.id.endsWith('-static')) {
+    if (sourceVariant === 'rhythmic' && !selected.id.endsWith('-static')
+      && !selected.rawTemporalFile) {
       // This source intentionally exposes the remaining interpolation gap.
       // Keep its measured limit separate from the harmonic parity gate.
       assert.ok(oldMax > .01 && oldMax < .03,
@@ -116,7 +119,17 @@ for (const name of ['add', 'morph']) {
     assert.ok(oldPeak > .01, `${name}: original ${motion} did not move`);
   }
 }
+if (sourceVariant === 'rhythmic') {
+  for (const name of ['add', 'morph']) {
+    for (const motion of ['follow', 'fast']) {
+      const prepared = results.find((row) => row.id === `old-${name}-${motion}`);
+      const raw = results.find((row) => row.id === `raw-old-${name}-${motion}`);
+      assert.ok(raw.settledOldVsNative.max * 40 < prepared.settledOldVsNative.max,
+        `${name}-${motion}: raw-frame route did not close the moving-source gap`);
+    }
+  }
+}
 if (process.argv[2]) writeFileSync(process.argv[2], `${JSON.stringify({
   schemaVersion: 1, scope: manifest.scope, results,
 }, null, 2)}\n`);
-console.log(`Main temporal ${sourceVariant}: six two-voice native/Wasm renders and six original C++ routes checked${sourceVariant === 'rhythmic' ? '; moving-route parity remains open' : ''}`);
+console.log(`Main temporal ${sourceVariant}: six two-voice native/Wasm renders, six prepared and six raw-frame original C++ routes checked`);

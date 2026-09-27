@@ -16,7 +16,7 @@ async function engine() {
 }
 
 self.onmessage = async ({ data }) => {
-  if (data.type === 'prepare-temporal-targets') {
+  if (data.type === 'prepare-temporal-targets' || data.type === 'prepare-temporal-frames') {
     const { id, sourceId, mode, smooth, contrast, recipe } = data;
     try {
       if (sourceId !== activeTemporalId) throw new Error('Source analysis was replaced');
@@ -32,6 +32,32 @@ self.onmessage = async ({ data }) => {
       ) !== 1) throw new Error('Wave target rejected');
       const waveCount = wasm.manifold_analysis_target_count();
       const waveValues = new Float32Array(wasm.memory.buffer, wasm.manifold_analysis_target_ptr(), waveCount * 4).slice();
+      if (data.type === 'prepare-temporal-frames') {
+        const frames = wasm.manifold_analysis_temporal_count();
+        const packed = new Float32Array(1 + frames * (3 + 32 * 4));
+        packed[0] = frames;
+        for (let index = 0; index < frames; index++) {
+          const offset = 1 + index * (3 + 32 * 4);
+          const count = wasm.manifold_analysis_temporal_frame_field(index, 5);
+          packed[offset] = wasm.manifold_analysis_temporal_frame_field(index, 0);
+          packed[offset + 1] = wasm.manifold_analysis_temporal_frame_field(index, 4);
+          packed[offset + 2] = count;
+          packed.set(new Float32Array(wasm.memory.buffer,
+            wasm.manifold_analysis_temporal_partials_ptr(index), count * 4), offset + 3);
+        }
+        if (wasm.manifold_analysis_prepare_target(mode, 0, smooth, contrast) !== 1) {
+          throw new Error('First temporal target rejected');
+        }
+        const count = wasm.manifold_analysis_target_count();
+        const firstValues = new Float32Array(wasm.memory.buffer,
+          wasm.manifold_analysis_target_ptr(), count * 4).slice();
+        const rawRecipe = new Float32Array([smooth, contrast, recipe[9], recipe[10], recipe[5],
+          recipe[0], recipe[4], recipe[6], recipe[7], recipe[8]]);
+        self.postMessage({ type: 'temporal-frames', id, sourceId, frames, packed,
+          rawRecipe, waveValues, values: firstValues },
+        [packed.buffer, rawRecipe.buffer, waveValues.buffer, firstValues.buffer]);
+        return;
+      }
       const frames = 256;
       const stride = 2 + 32 * 4;
       const table = new Float32Array(frames * stride);

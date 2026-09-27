@@ -3,8 +3,8 @@
   "sourceVariant": "harmonic",
   "reference": "original Main C++ temporal Add/Morph route versus native Rust and Wasm",
   "scope": "original C++ source temporal interpolation and assembled Add/Morph routing compared with 256-position v2 prepared table; old UI envelope and vocoder omitted",
-  "sourceSha256": "85684b511a128e9944faef32830f43894e8a12138206645e08360bc4043d08f6",
-  "wasmSha256": "624dbb6c0ab381285788c0a3fc2748fd400ea9272765ab9a0f1aa1ac37f17ef8",
+  "sourceSha256": "801e6448074ede68180b6ad32146cee43b8570784650db53f2604988ba4e7c69",
+  "wasmSha256": "ef5cf4ea62d3e14666e43678c79b7079746a494bc78ab7152cde1e2526d66364",
   "legacySourceSha256": "e31bdc05da5be0e6f3dee24c6dfe375b81fb89a5092e773aa5f2b0ab4acf8643",
   "oldTemporalFrames": 45,
   "sampleRate": 48000,
@@ -123,6 +123,58 @@
       "temporalSpeed": 0
     },
     {
+      "id": "raw-old-add-static",
+      "label": "Original Main Add · static raw-frame route · one voice",
+      "parameters": [
+        0,
+        0.35,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "raw-old-add-static-rust.f32",
+      "legacyOutput": "old-add-static-cpp.f32",
+      "rawTemporalFile": "rust-temporal-frames.f32",
+      "rawTemporalRecipe": [
+        0.6,
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        1,
+        2
+      ],
+      "temporalSpeed": 0
+    },
+    {
       "id": "add-follow",
       "label": "Add · follow source spectrum · two staggered voices",
       "parameters": [
@@ -206,6 +258,58 @@
       "output": "old-add-follow-rust.f32",
       "legacyOutput": "old-add-follow-cpp.f32",
       "temporalFile": "add-table.f32",
+      "temporalSpeed": 1
+    },
+    {
+      "id": "raw-old-add-follow",
+      "label": "Original Main Add · follow raw-frame route · one voice",
+      "parameters": [
+        0,
+        0.35,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "raw-old-add-follow-rust.f32",
+      "legacyOutput": "old-add-follow-cpp.f32",
+      "rawTemporalFile": "rust-temporal-frames.f32",
+      "rawTemporalRecipe": [
+        0.6,
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        1,
+        2
+      ],
       "temporalSpeed": 1
     },
     {
@@ -295,6 +399,58 @@
       "temporalSpeed": 2
     },
     {
+      "id": "raw-old-add-fast",
+      "label": "Original Main Add · fast raw-frame route · one voice",
+      "parameters": [
+        0,
+        0.35,
+        60,
+        2,
+        0,
+        0,
+        4,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "raw-old-add-fast-rust.f32",
+      "legacyOutput": "old-add-fast-cpp.f32",
+      "rawTemporalFile": "rust-temporal-frames.f32",
+      "rawTemporalRecipe": [
+        0.6,
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        1,
+        2
+      ],
+      "temporalSpeed": 2
+    },
+    {
       "id": "morph-static",
       "label": "Morph · static source spectrum · two staggered voices",
       "parameters": [
@@ -378,6 +534,58 @@
       "output": "old-morph-static-rust.f32",
       "legacyOutput": "old-morph-static-cpp.f32",
       "temporalFile": "morph-table.f32",
+      "temporalSpeed": 0
+    },
+    {
+      "id": "raw-old-morph-static",
+      "label": "Original Main Morph · static raw-frame route · one voice",
+      "parameters": [
+        0,
+        1,
+        60,
+        2,
+        0,
+        0,
+        5,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "raw-old-morph-static-rust.f32",
+      "legacyOutput": "old-morph-static-cpp.f32",
+      "rawTemporalFile": "rust-temporal-frames.f32",
+      "rawTemporalRecipe": [
+        0.6,
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        1,
+        2
+      ],
       "temporalSpeed": 0
     },
     {
@@ -467,6 +675,58 @@
       "temporalSpeed": 1
     },
     {
+      "id": "raw-old-morph-follow",
+      "label": "Original Main Morph · follow raw-frame route · one voice",
+      "parameters": [
+        0,
+        1,
+        60,
+        2,
+        0,
+        0,
+        5,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "raw-old-morph-follow-rust.f32",
+      "legacyOutput": "old-morph-follow-cpp.f32",
+      "rawTemporalFile": "rust-temporal-frames.f32",
+      "rawTemporalRecipe": [
+        0.6,
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        1,
+        2
+      ],
+      "temporalSpeed": 1
+    },
+    {
       "id": "morph-fast",
       "label": "Morph · fast source spectrum · two staggered voices",
       "parameters": [
@@ -550,6 +810,58 @@
       "output": "old-morph-fast-rust.f32",
       "legacyOutput": "old-morph-fast-cpp.f32",
       "temporalFile": "morph-table.f32",
+      "temporalSpeed": 2
+    },
+    {
+      "id": "raw-old-morph-fast",
+      "label": "Original Main Morph · fast raw-frame route · one voice",
+      "parameters": [
+        0,
+        1,
+        60,
+        2,
+        0,
+        0,
+        5,
+        0.9,
+        0.5,
+        0,
+        1,
+        0.001,
+        0.001,
+        1,
+        0.05,
+        1,
+        1,
+        0,
+        0.2
+      ],
+      "events": [
+        [
+          0,
+          0,
+          0,
+          60,
+          127
+        ]
+      ],
+      "changes": [],
+      "blockSize": 128,
+      "output": "raw-old-morph-fast-rust.f32",
+      "legacyOutput": "old-morph-fast-cpp.f32",
+      "rawTemporalFile": "rust-temporal-frames.f32",
+      "rawTemporalRecipe": [
+        0.6,
+        0.5,
+        0,
+        0,
+        0,
+        0,
+        0.5,
+        0.5,
+        1,
+        2
+      ],
       "temporalSpeed": 2
     }
   ]
