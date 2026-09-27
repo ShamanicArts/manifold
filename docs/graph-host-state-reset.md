@@ -37,6 +37,15 @@ its current frequency and level. Their tests compare a new note or signal
 against a freshly prepared instance. Neither method is wired into Graph CLAP
 until the remaining kernels have a complete reset path.
 
+The second core step adds resets for `SampleRegion`, `SampleInstrument`,
+`LoopCapture`, `Lfo`, `NoiseGenerator`, `MidiArpeggiator`, and the shared
+`MidiNoteRouter` used by the transpose, note filter, scale quantizer, and
+velocity mapper. The sample instrument retains old `Arc` sources during reset
+so the audio thread never frees a retired take; later control-side publication
+reclaims them. Loop capture clears its logical take without reallocating its
+ring. Tests check silence, source reuse, current controls, and forgotten MIDI
+ownership. Execution-plan dispatch and the full kernel audit remain next.
+
 Test with Note Voice (held note and filter), Tone Texture (oscillator phase),
 Sample Voice (active sample cursor), and a delay or reverb graph with a live
 tail. In each case compare the first post-reset block against a newly prepared

@@ -29,6 +29,10 @@ impl Lfo {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.phase = 0.0;
+    }
+
     pub fn process_sample(&mut self) -> f32 {
         let value = match self.waveform {
             1 => {
@@ -60,6 +64,20 @@ impl Lfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_restarts_phase_at_current_rate() {
+        let mut lfo = Lfo::new(1000.0, 0, 2.0);
+        assert!(lfo.set_parameter(1, 4.0));
+        for _ in 0..300 {
+            lfo.process_sample();
+        }
+        lfo.reset();
+        let mut fresh = Lfo::new(1000.0, 0, 4.0);
+        for _ in 0..100 {
+            assert_eq!(lfo.process_sample(), fresh.process_sample());
+        }
+    }
 
     #[test]
     fn phase_continues_across_calls() {

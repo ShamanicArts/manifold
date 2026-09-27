@@ -67,6 +67,22 @@ impl MidiArpeggiator {
         }
     }
 
+    /// Clear held notes and scheduled gates, preserving rate and mode controls.
+    pub fn reset(&mut self) {
+        self.pressed.fill(Note::default());
+        self.latched.fill(Note::default());
+        self.sequence.fill(Note::default());
+        self.sequence_len = 0;
+        self.lanes.fill(Lane::default());
+        self.next_lane = 0;
+        self.step_index = 0;
+        self.direction = 1;
+        self.next_step = None;
+        self.capture_pending = false;
+        self.stamp = 0;
+        self.random_state = 0x9e37_79b9_7f4a_7c15;
+    }
+
     pub fn set_parameter(
         &mut self,
         id: u32,

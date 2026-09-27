@@ -73,6 +73,17 @@ impl SampleInstrument {
         }
     }
 
+    /// Clear active voices without releasing any PCM on the audio thread.
+    /// Retired sources remain held for later control-thread reclamation.
+    pub fn reset(&mut self) {
+        self.slots.fill(VoiceSlot::default());
+        self.bend_ratio.fill(1.0);
+        self.serial = 0;
+        for player in self.players.iter_mut().flatten() {
+            player.reset();
+        }
+    }
+
     /// Decoded PCM is moved once and shared across voice cursors before audio starts.
     pub fn load_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
         if !self.source.load_stereo(stereo, source_rate) {
@@ -385,6 +396,27 @@ mod tests {
         assert!(instrument.load_stereo(vec![1.0; 16], 8000.0));
         instrument.set_parameter(2, 1.0);
         instrument
+    }
+
+    #[test]
+    fn reset_silences_voices_and_reuses_prepared_new_source() {
+        let mut instrument = constant_instrument();
+        let note = EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 127,
+        };
+        instrument.event(note);
+        assert_eq!(instrument.process_sample(), [1.0, 1.0]);
+        assert!(instrument.publish_stereo(vec![0.5; 16], 8000.0));
+        assert_eq!(instrument.process_sample(), [1.0, 1.0]);
+        let retired = instrument.retired_sources.len();
+        instrument.reset();
+        assert_eq!(instrument.active_voices(), 0);
+        assert_eq!(instrument.process_sample(), [0.0, 0.0]);
+        assert_eq!(instrument.retired_sources.len(), retired);
+        instrument.event(note);
+        assert_eq!(instrument.process_sample(), [0.5, 0.5]);
     }
 
     #[test]

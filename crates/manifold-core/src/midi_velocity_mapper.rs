@@ -11,6 +11,9 @@ pub struct MidiVelocityMapper {
 }
 
 impl MidiVelocityMapper {
+    pub fn reset(&mut self) {
+        self.router.reset();
+    }
     pub fn new(amount: f32, curve: f32, offset: f32) -> Self {
         Self {
             amount: amount.clamp(0.0, 1.0),

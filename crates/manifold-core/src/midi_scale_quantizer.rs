@@ -17,6 +17,9 @@ pub struct MidiScaleQuantizer {
 }
 
 impl MidiScaleQuantizer {
+    pub fn reset(&mut self) {
+        self.router.reset();
+    }
     pub fn new(root: f32, scale: f32, direction: f32) -> Self {
         Self {
             root: rounded(root, 0.0, 11.0),

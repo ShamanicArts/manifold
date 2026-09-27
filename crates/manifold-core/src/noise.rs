@@ -38,6 +38,13 @@ impl NoiseGenerator {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.level = self.target_level;
+        self.color = self.target_color;
+        self.rng = [0x1234_5678, 0x8765_4321];
+        self.lowpass = [0.0; 2];
+    }
+
     pub fn process_sample(&mut self) -> [f32; 2] {
         self.level += (self.target_level - self.level) * self.smooth;
         self.color += (self.target_color - self.color) * self.smooth;
@@ -62,6 +69,21 @@ impl NoiseGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_restarts_noise_at_current_level_and_color() {
+        let mut noise = NoiseGenerator::new(48_000.0, 0.1, 0.2);
+        assert!(noise.set_parameter(0, 0.7));
+        assert!(noise.set_parameter(1, 0.8));
+        for _ in 0..1024 {
+            noise.process_sample();
+        }
+        noise.reset();
+        let mut fresh = NoiseGenerator::new(48_000.0, 0.7, 0.8);
+        for _ in 0..128 {
+            assert_eq!(noise.process_sample(), fresh.process_sample());
+        }
+    }
 
     #[test]
     fn seeded_noise_is_repeatable_and_stereo_independent() {

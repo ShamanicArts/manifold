@@ -45,6 +45,19 @@ impl LoopCapture {
         }
     }
 
+    /// Discard the logical take without touching the prepared capture buffers.
+    pub fn reset(&mut self) {
+        self.write = 0;
+        self.length = 0;
+        self.start = 0;
+        self.position = 0.0;
+        self.recording = false;
+        self.playing = false;
+        self.overdub = false;
+        self.speed = self.target_speed;
+        self.mix = self.target_mix;
+    }
+
     /// 0 record, 1 play, 2 overdub, 3 speed, 4 reverse, 5 wet mix, 6 overdub level.
     pub fn set_parameter(&mut self, id: u32, value: f32) -> bool {
         if !value.is_finite() {
@@ -169,6 +182,27 @@ impl LoopCapture {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_discards_take_without_reallocating_ring_or_changing_controls() {
+        let mut loop_node = LoopCapture::new(1000.0, 0.05, 1.0);
+        let ring = loop_node.left.as_ptr();
+        assert!(loop_node.set_parameter(3, 2.0));
+        assert!(loop_node.set_parameter(0, 1.0));
+        let input = [0.5; 4];
+        let mut left = [0.0; 4];
+        let mut right = [0.0; 4];
+        loop_node.process_planar([&input, &input], [&mut left, &mut right]);
+        assert!(loop_node.set_parameter(0, 0.0));
+        assert!(loop_node.set_parameter(1, 1.0));
+        loop_node.reset();
+        assert_eq!(loop_node.left.as_ptr(), ring);
+        assert_eq!(loop_node.capture_length(), Some(0));
+        assert_eq!(loop_node.speed, 2.0);
+        loop_node.process_planar([&[0.0; 4], &[0.0; 4]], [&mut left, &mut right]);
+        assert_eq!(left, [0.0; 4]);
+        assert_eq!(right, [0.0; 4]);
+    }
 
     #[test]
     fn records_then_repeats_across_blocks() {

@@ -40,6 +40,12 @@ impl SampleRegion {
         }
     }
 
+    /// Stop playback and rewind without releasing prepared PCM or changing region controls.
+    pub fn reset(&mut self) {
+        self.position = 0.0;
+        self.playing = false;
+    }
+
     pub fn load_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
         if stereo.len() < 2
             || stereo.len() % 2 != 0

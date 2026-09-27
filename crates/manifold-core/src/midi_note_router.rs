@@ -26,6 +26,11 @@ impl MidiNoteRouter {
         Self::default()
     }
 
+    pub fn reset(&mut self) {
+        self.held.fill(HeldNote::default());
+        self.stamp = 0;
+    }
+
     /// Re-evaluate held inputs after a parameter change. All offs precede ons.
     pub fn remap(
         &mut self,

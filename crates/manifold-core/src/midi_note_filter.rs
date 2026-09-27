@@ -20,6 +20,10 @@ impl MidiNoteFilter {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.router.reset();
+    }
+
     pub fn set_parameter(
         &mut self,
         id: u32,

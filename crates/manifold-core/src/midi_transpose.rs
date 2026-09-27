@@ -28,6 +28,10 @@ impl MidiTranspose {
         self.semitones
     }
 
+    pub fn reset(&mut self) {
+        self.router.reset();
+    }
+
     /// Match the legacy floor(value + 0.5) rounding and remap held notes.
     pub fn set_semitones(&mut self, value: f32, out: &mut [EventKind; MAX_OUTPUT_EVENTS]) -> usize {
         if !value.is_finite() {
@@ -54,6 +58,39 @@ impl MidiTranspose {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_forgets_held_note_but_retains_transposition() {
+        let mut effect = MidiTranspose::new();
+        let mut out = [EventKind::AllNotesOff; MAX_OUTPUT_EVENTS];
+        assert_eq!(effect.set_semitones(7.0, &mut out), 0);
+        let on = EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 100,
+        };
+        assert_eq!(effect.handle(on, &mut out), 1);
+        effect.reset();
+        assert_eq!(
+            effect.handle(
+                EventKind::NoteOff {
+                    channel: 0,
+                    note: 60
+                },
+                &mut out
+            ),
+            0
+        );
+        assert_eq!(effect.handle(on, &mut out), 1);
+        assert_eq!(
+            out[0],
+            EventKind::NoteOn {
+                channel: 0,
+                note: 67,
+                velocity: 100
+            }
+        );
+    }
 
     #[test]
     fn held_note_remaps_and_releases_original_key() {
