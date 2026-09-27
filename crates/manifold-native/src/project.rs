@@ -98,6 +98,142 @@ impl PreparedNativeProject {
         }
         Ok(bytes)
     }
+
+    /// Build a complete replacement on the control thread. The current instance
+    /// remains usable if decoding, validation, analysis, or preparation fails.
+    pub fn prepare_sample_replacement(
+        &mut self,
+        node: u32,
+        stereo: &[f32],
+        source_rate: u32,
+        label: &str,
+        sample_rate: f32,
+        max_frames: usize,
+    ) -> Result<Self, ProjectError> {
+        let frames = stereo.len() / 2;
+        if stereo.len() % 2 != 0
+            || !(8_000..=384_000).contains(&source_rate)
+            || frames == 0
+            || frames > (source_rate as usize * 30).min(1_440_000)
+            || label.len() > 200
+            || !stereo.iter().all(|sample| sample.is_finite())
+        {
+            return Err(ProjectError::Invalid("replacement sample"));
+        }
+        self.save_state()?;
+        let mut candidate = self.document.clone();
+        let assets = candidate
+            .as_object_mut()
+            .ok_or(ProjectError::Invalid("project"))?
+            .entry("assets")
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or(ProjectError::Invalid("assets"))?;
+        let mut pcm = Vec::with_capacity(stereo.len() * 4);
+        for sample in stereo {
+            pcm.extend_from_slice(&sample.to_le_bytes());
+        }
+        let asset = serde_json::json!({
+            "nodeId": node, "sourceRate": source_rate, "frames": frames,
+            "label": label, "pcmF32Base64": STANDARD.encode(pcm),
+        });
+        if let Some(existing) = assets.iter_mut().find(|entry| entry["nodeId"] == node) {
+            *existing = asset;
+        } else {
+            assets.push(asset);
+        }
+        let bytes = serde_json::to_vec(&candidate).map_err(|_| ProjectError::Invalid("JSON"))?;
+        NativeProject::parse(&bytes)?.prepare_with_state(sample_rate, max_frames)
+    }
+
+    /// Build a replacement Main partial target without mutating the live graph.
+    pub fn prepare_target_replacement(
+        &mut self,
+        node: u32,
+        target: u32,
+        partials: &PartialSet,
+        sample_rate: f32,
+        max_frames: usize,
+    ) -> Result<Self, ProjectError> {
+        if target > 1
+            || !(1..=32).contains(&partials.count)
+            || partials.fundamental > 24_000.0
+            || !partials.validate()
+        {
+            return Err(ProjectError::Invalid("replacement target"));
+        }
+        self.save_state()?;
+        let mut candidate = self.document.clone();
+        let targets = candidate["targets"]
+            .as_array_mut()
+            .ok_or(ProjectError::Invalid("partial targets"))?;
+        let existing = targets
+            .iter_mut()
+            .find(|entry| entry["nodeId"] == node && entry["target"] == target)
+            .ok_or(ProjectError::Invalid("partial target node"))?;
+        let mut values = Vec::with_capacity(partials.count * 4);
+        for partial in &partials.partials[..partials.count] {
+            values.extend_from_slice(&[
+                partial.frequency,
+                partial.amplitude,
+                partial.phase,
+                partial.decay_rate,
+            ]);
+        }
+        *existing = serde_json::json!({
+            "nodeId": node, "target": target,
+            "fundamental": partials.fundamental, "values": values,
+        });
+        let bytes = serde_json::to_vec(&candidate).map_err(|_| ProjectError::Invalid("JSON"))?;
+        NativeProject::parse(&bytes)?.prepare_with_state(sample_rate, max_frames)
+    }
+
+    /// Build a replacement Main temporal recipe and reanalyze its saved source.
+    pub fn prepare_temporal_replacement(
+        &mut self,
+        node: u32,
+        mode: u32,
+        speed: f32,
+        smooth: f32,
+        contrast: f32,
+        recipe: [f32; 11],
+        sample_rate: f32,
+        max_frames: usize,
+    ) -> Result<Self, ProjectError> {
+        if ![speed, smooth, contrast]
+            .iter()
+            .all(|value| value.is_finite())
+            || !recipe.iter().all(|value| value.is_finite())
+        {
+            return Err(ProjectError::Invalid("replacement temporal recipe"));
+        }
+        self.save_state()?;
+        let mut candidate = self.document.clone();
+        let temporal = candidate
+            .as_object_mut()
+            .ok_or(ProjectError::Invalid("project"))?
+            .entry("temporal")
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or(ProjectError::Invalid("temporal recipes"))?;
+        let entry = serde_json::json!({
+            "nodeId": node, "mode": mode, "speed": speed,
+            "smooth": smooth, "contrast": contrast, "recipe": recipe,
+        });
+        if let Some(existing) = temporal.iter_mut().find(|entry| entry["nodeId"] == node) {
+            *existing = entry;
+        } else {
+            temporal.push(entry);
+        }
+        let bytes = serde_json::to_vec(&candidate).map_err(|_| ProjectError::Invalid("JSON"))?;
+        NativeProject::parse(&bytes)?.prepare_with_state(sample_rate, max_frames)
+    }
+
+    /// Publish a fully prepared instance at a host block boundary. The caller
+    /// must retire the returned old instance away from the audio callback.
+    pub fn publish_replacement(&mut self, next: Self) -> Self {
+        std::mem::replace(self, next)
+    }
 }
 
 fn object<'a>(
@@ -1220,6 +1356,176 @@ mod tests {
             .unwrap()
             .prepare(48_000.0, 128)
             .unwrap();
+        let replacement: Vec<f32> = (0..8192)
+            .flat_map(|i| {
+                let sample = (i as f32 * std::f32::consts::TAU * 660.0 / 48_000.0).sin() * 0.8;
+                [sample, sample]
+            })
+            .collect();
+        let next = prepared
+            .prepare_sample_replacement(5, &replacement, 48_000, "new Main source", 48_000.0, 128)
+            .unwrap();
+        let _old = prepared.publish_replacement(next);
+        let updated: Value = serde_json::from_slice(&prepared.save_state().unwrap()).unwrap();
+        assert_eq!(updated["assets"][0]["label"], "new Main source");
+        assert_ne!(
+            updated["assets"][0]["pcmF32Base64"],
+            bundle["assets"][0]["pcmF32Base64"]
+        );
+        assert_eq!(updated["temporal"], bundle["temporal"]);
+        let recipe = [0.0, 8.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.7, 2.0, 0.0, 0.0];
+        let mut invalid = recipe;
+        invalid[1] = 7.0;
+        assert!(matches!(
+            prepared.prepare_temporal_replacement(5, 1, 1.0, 0.2, 1.0, invalid, 48_000.0, 128),
+            Err(ProjectError::Invalid("temporal recipe values"))
+        ));
+        let next = prepared
+            .prepare_temporal_replacement(5, 1, 1.0, 0.2, 1.0, recipe, 48_000.0, 128)
+            .unwrap();
+        let _old = prepared.publish_replacement(next);
+        let saved: Value = serde_json::from_slice(&prepared.save_state().unwrap()).unwrap();
+        assert_eq!(saved["temporal"][0]["speed"], 1.0);
+        assert_eq!(saved["assets"][0]["label"], "new Main source");
+    }
+
+    #[test]
+    fn prepared_sample_replacement_publishes_only_after_validation() {
+        let source = include_bytes!("../../../projects/graph-workspace/sample-voice.json");
+        let mut active = NativeProject::parse(source)
+            .unwrap()
+            .prepare_with_state(48_000.0, 128)
+            .unwrap();
+        assert!(matches!(
+            active.prepare_sample_replacement(5, &[f32::NAN, 0.0], 48_000, "bad", 48_000.0, 128),
+            Err(ProjectError::Invalid("replacement sample"))
+        ));
+        let pcm: Vec<f32> = (0..4096)
+            .flat_map(|i| {
+                let value = (i as f32 * std::f32::consts::TAU * 220.0 / 48_000.0).sin() * 0.5;
+                [value, value]
+            })
+            .collect();
+        let next = active
+            .prepare_sample_replacement(5, &pcm, 48_000, "new source", 48_000.0, 128)
+            .unwrap();
+        let old = active.publish_replacement(next);
+        assert!(old.document.get("assets").is_none());
+        let saved: Value = serde_json::from_slice(&active.save_state().unwrap()).unwrap();
+        assert_eq!(saved["assets"][0]["label"], "new source");
+        assert_eq!(saved["assets"][0]["frames"], 4096);
+        let note = [TimedEvent {
+            offset: 16,
+            node: 4,
+            kind: EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            },
+        }];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        active
+            .processor
+            .process(AudioBlock {
+                main: None,
+                sidechain: None,
+                output: [&mut left, &mut right],
+                events: &note,
+            })
+            .unwrap();
+        assert!(left[16..].iter().any(|sample| sample.abs() > 0.0001));
+        NativeProject::parse(&serde_json::to_vec(&saved).unwrap())
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+    }
+
+    #[test]
+    fn prepared_main_target_replacement_changes_audio_and_saved_state() {
+        let mut bundle: Value = serde_json::from_slice(include_bytes!(
+            "../../../projects/graph-workspace/main-bank.json"
+        ))
+        .unwrap();
+        bundle["signal"]["initialParameters"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|entry| entry["nodeId"] == 5 && entry["id"] == 6)
+            .unwrap()["value"] = json!(4);
+        bundle["signal"]["initialParameters"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|entry| entry["nodeId"] == 5 && entry["id"] == 19)
+            .unwrap()["value"] = json!(0);
+        let mut active = parse(&bundle)
+            .unwrap()
+            .prepare_with_state(48_000.0, 128)
+            .unwrap();
+        let mut target = PartialSet {
+            fundamental: 1.0,
+            count: 1,
+            ..PartialSet::default()
+        };
+        target.partials[0] = Partial {
+            frequency: 1.0,
+            amplitude: 0.03,
+            phase: 0.0,
+            decay_rate: 0.0,
+        };
+        let next = active
+            .prepare_target_replacement(5, 0, &target, 48_000.0, 128)
+            .unwrap();
+        let mut old = active.publish_replacement(next);
+        let saved: Value = serde_json::from_slice(&active.save_state().unwrap()).unwrap();
+        assert_eq!(saved["targets"][0]["values"].as_array().unwrap().len(), 4);
+        assert!((saved["targets"][0]["values"][1].as_f64().unwrap() - 0.03).abs() < 1e-6);
+        NativeProject::parse(&serde_json::to_vec(&saved).unwrap())
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let note = [TimedEvent {
+            offset: 16,
+            node: 4,
+            kind: EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            },
+        }];
+        let mut difference: f32 = 0.0;
+        for block in 0..16 {
+            let mut previous = [0.0; 128];
+            let mut previous_right = [0.0; 128];
+            let mut current = [0.0; 128];
+            let mut current_right = [0.0; 128];
+            let events: &[TimedEvent] = if block == 0 { &note } else { &[] };
+            old.processor
+                .process(AudioBlock {
+                    main: None,
+                    sidechain: None,
+                    output: [&mut previous, &mut previous_right],
+                    events,
+                })
+                .unwrap();
+            active
+                .processor
+                .process(AudioBlock {
+                    main: None,
+                    sidechain: None,
+                    output: [&mut current, &mut current_right],
+                    events,
+                })
+                .unwrap();
+            for (before, after) in previous.iter().zip(current.iter()) {
+                difference = difference.max((before - after).abs());
+            }
+        }
+        assert!(
+            difference > 0.001,
+            "target replacement should change Main audio"
+        );
     }
 
     #[test]
