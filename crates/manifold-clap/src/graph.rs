@@ -1,15 +1,21 @@
 //! CLAP graph instrument. Project parsing and runtime replacement happen on the
 //! host main thread; the audio callback only uses prepared, bounded storage.
 
+#[cfg(target_os = "linux")]
+use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::{self, null, null_mut};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 
+#[cfg(target_os = "linux")]
+use crate::graph_gui::{GuiMessage, GuiMessageKind, GuiState};
 use clap_sys::audio_buffer::clap_audio_buffer;
 use clap_sys::events::{
-    CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_OFF, CLAP_EVENT_NOTE_ON, CLAP_EVENT_PARAM_VALUE,
-    clap_event_header, clap_event_note, clap_event_param_value, clap_input_events,
+    CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_OFF, CLAP_EVENT_NOTE_ON,
+    CLAP_EVENT_PARAM_GESTURE_BEGIN, CLAP_EVENT_PARAM_GESTURE_END, CLAP_EVENT_PARAM_VALUE,
+    clap_event_header, clap_event_note, clap_event_param_gesture, clap_event_param_value,
+    clap_input_events, clap_output_events,
 };
 use clap_sys::ext::audio_ports::{
     CLAP_AUDIO_PORT_IS_MAIN, CLAP_EXT_AUDIO_PORTS, CLAP_PORT_STEREO, clap_audio_port_info,
@@ -51,7 +57,7 @@ struct Runtime {
 
 pub(crate) struct Instance {
     pub plugin: clap_plugin,
-    host: *const clap_host,
+    pub(super) host: *const clap_host,
     current: AtomicPtr<Runtime>,
     pending: AtomicPtr<Runtime>,
     retired: AtomicPtr<Runtime>,
@@ -60,6 +66,12 @@ pub(crate) struct Instance {
     state: Mutex<Vec<u8>>,
     descriptors: Mutex<[Option<HostParameter>; HOST_SLOT_COUNT]>,
     normalized: [AtomicU32; HOST_SLOT_COUNT],
+    #[cfg(target_os = "linux")]
+    presentation: Mutex<serde_json::Value>,
+    #[cfg(target_os = "linux")]
+    pub(super) gui: GuiState,
+    #[cfg(target_os = "linux")]
+    gui_retry: UnsafeCell<Option<GuiMessage>>,
 }
 
 // CLAP serializes processing for an instance. The main thread owns state and
@@ -82,12 +94,41 @@ fn slots(project: &NativeProject) -> [Option<HostParameter>; HOST_SLOT_COUNT] {
     })
 }
 
+#[cfg(target_os = "linux")]
+fn build_presentation(bytes: &[u8], project: &NativeProject) -> Option<serde_json::Value> {
+    let document: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let nodes: Vec<_> = document["signal"]["nodes"]
+        .as_array()?
+        .iter()
+        .map(|node| serde_json::json!({"id":node["id"],"type":node["type"]}))
+        .collect();
+    let descriptors = slots(project);
+    let controls: Vec<_> = descriptors
+        .iter()
+        .enumerate()
+        .filter_map(|(slot, descriptor)| {
+            descriptor.map(|descriptor| {
+                serde_json::json!({
+                    "id": HOST_SLOT_BASE + slot as u32, "nodeId":descriptor.node,
+                    "parameterId":descriptor.local_id, "min":descriptor.min,
+                    "max":descriptor.max, "discrete":descriptor.discrete, "normalized":0.0,
+                })
+            })
+        })
+        .collect();
+    Some(serde_json::json!({"schemaVersion":1,"id":"manifold.graph",
+        "nodes":nodes,"controls":controls}))
+}
+
 impl Instance {
     pub(crate) fn new(
         host: *const clap_host,
         descriptor: *const clap_plugin_descriptor,
     ) -> Box<Self> {
         let parsed = NativeProject::parse(DEFAULT).expect("authored graph project");
+        #[cfg(target_os = "linux")]
+        let presentation =
+            build_presentation(DEFAULT, &parsed).expect("authored graph presentation");
         let descriptors = slots(&parsed);
         let normalized = std::array::from_fn(|slot| {
             descriptors[slot]
@@ -118,6 +159,12 @@ impl Instance {
             state: Mutex::new(DEFAULT.to_vec()),
             descriptors: Mutex::new(descriptors),
             normalized: normalized.map(|value: f32| AtomicU32::new(value.to_bits())),
+            #[cfg(target_os = "linux")]
+            presentation: Mutex::new(presentation),
+            #[cfg(target_os = "linux")]
+            gui: GuiState::new(),
+            #[cfg(target_os = "linux")]
+            gui_retry: UnsafeCell::new(None),
         });
         value.plugin.plugin_data = &mut *value as *mut Self as *mut c_void;
         value
@@ -168,9 +215,11 @@ impl Instance {
                 }
             }
         }
+        #[cfg(target_os = "linux")]
+        self.gui.request_refresh(self.host);
     }
 
-    fn state_bytes(&self) -> Option<Vec<u8>> {
+    pub(super) fn state_bytes(&self) -> Option<Vec<u8>> {
         let state = self.state.lock().ok()?;
         let descriptors = self.descriptors.lock().ok()?;
         let mut document: serde_json::Value = serde_json::from_slice(&state).ok()?;
@@ -193,6 +242,92 @@ impl Instance {
         serde_json::to_vec(&document)
             .ok()
             .filter(|bytes| bytes.len() <= MAX_STATE)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(super) fn presentation(&self) -> Option<serde_json::Value> {
+        let mut document = self.presentation.lock().ok()?.clone();
+        for control in document["controls"].as_array_mut()? {
+            let id = u32::try_from(control["id"].as_u64()?).ok()?;
+            let slot = id.checked_sub(HOST_SLOT_BASE)? as usize;
+            if slot >= HOST_SLOT_COUNT {
+                return None;
+            }
+            control["normalized"] = serde_json::Value::from(f32::from_bits(
+                self.normalized[slot].load(Ordering::Acquire),
+            ));
+        }
+        Some(document)
+    }
+
+    pub(super) fn restore(&self, bytes: Vec<u8>) -> bool {
+        let Ok(project) = NativeProject::parse(&bytes) else {
+            return false;
+        };
+        #[cfg(target_os = "linux")]
+        let Some(presentation) = build_presentation(&bytes, &project) else {
+            return false;
+        };
+        let descriptors = slots(&project);
+        let values = std::array::from_fn::<_, HOST_SLOT_COUNT, _>(|slot| {
+            descriptors[slot]
+                .and_then(|parameter| parameter.to_normalized(parameter.initial))
+                .unwrap_or(0.)
+        });
+        self.retire();
+        let config = self.configuration.lock().ok().and_then(|value| *value);
+        let prepared = if let Some((rate, max)) = config {
+            let Some(value) = Instance::prepare(&bytes, rate, max) else {
+                return false;
+            };
+            Some(value)
+        } else {
+            None
+        };
+        if prepared.is_some() && !self.pending.load(Ordering::Acquire).is_null() {
+            return false;
+        }
+        let Ok(mut state) = self.state.lock() else {
+            return false;
+        };
+        let Ok(mut bound) = self.descriptors.lock() else {
+            return false;
+        };
+        #[cfg(target_os = "linux")]
+        let Ok(mut view) = self.presentation.lock() else {
+            return false;
+        };
+        *state = bytes;
+        *bound = descriptors;
+        #[cfg(target_os = "linux")]
+        {
+            *view = presentation;
+        }
+        for (slot, value) in values.into_iter().enumerate() {
+            self.normalized[slot].store(value.to_bits(), Ordering::Release);
+        }
+        if let Some(prepared) = prepared {
+            self.pending
+                .store(Box::into_raw(prepared), Ordering::Release);
+        }
+        #[cfg(target_os = "linux")]
+        drop(view);
+        drop(bound);
+        drop(state);
+        if !self.host.is_null() {
+            if let Some(get) = unsafe { (*self.host).get_extension } {
+                let extension = unsafe { get(self.host, CLAP_EXT_PARAMS.as_ptr()) };
+                if !extension.is_null() {
+                    let params = unsafe { &*(extension as *const clap_host_params) };
+                    if let Some(rescan) = params.rescan {
+                        unsafe { rescan(self.host, CLAP_PARAM_RESCAN_ALL) }
+                    }
+                }
+            }
+        }
+        #[cfg(target_os = "linux")]
+        self.gui.request_refresh(self.host);
+        true
     }
 
     fn retire(&self) {
@@ -236,7 +371,7 @@ impl Instance {
     }
 }
 
-unsafe fn get<'a>(plugin: *const clap_plugin) -> Option<&'a Instance> {
+pub(super) unsafe fn get<'a>(plugin: *const clap_plugin) -> Option<&'a Instance> {
     if plugin.is_null() {
         return None;
     }
@@ -252,6 +387,8 @@ unsafe extern "C" fn init(plugin: *const clap_plugin) -> bool {
 }
 unsafe extern "C" fn destroy(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { get(plugin) } {
+        #[cfg(target_os = "linux")]
+        instance.gui.stop();
         instance.deactivate();
         unsafe { drop(Box::from_raw(instance as *const Instance as *mut Instance)) };
     }
@@ -299,7 +436,9 @@ unsafe extern "C" fn stop(_plugin: *const clap_plugin) {}
 unsafe extern "C" fn reset(_plugin: *const clap_plugin) {}
 unsafe extern "C" fn main_thread(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { get(plugin) } {
-        instance.retire()
+        instance.retire();
+        #[cfg(target_os = "linux")]
+        instance.gui.main_thread(instance);
     }
 }
 
@@ -308,6 +447,10 @@ unsafe extern "C" fn extension(_plugin: *const clap_plugin, id: *const c_char) -
         return null();
     }
     let id = unsafe { CStr::from_ptr(id) };
+    #[cfg(target_os = "linux")]
+    if id == clap_sys::ext::gui::CLAP_EXT_GUI {
+        return &crate::graph_gui::GUI as *const _ as *const c_void;
+    }
     if id == CLAP_EXT_AUDIO_PORTS {
         &AUDIO_PORTS as *const _ as *const c_void
     } else if id == CLAP_EXT_NOTE_PORTS {
@@ -639,6 +782,97 @@ unsafe fn out_channels(buffers: *mut clap_audio_buffer, count: u32) -> Option<[*
         }
     }))
 }
+
+#[cfg(target_os = "linux")]
+fn drain_gui(
+    instance: &Instance,
+    output: *const clap_output_events,
+    mut runtime: Option<&mut Runtime>,
+) -> bool {
+    if output.is_null() {
+        return false;
+    }
+    let Some(push) = (unsafe { (*output).try_push }) else {
+        return false;
+    };
+    let retry = unsafe { &mut *instance.gui_retry.get() };
+    let mut changed = false;
+    while let Some(message) = retry.take().or_else(|| instance.gui.events.pop()) {
+        let header = clap_event_header {
+            size: 0,
+            time: 0,
+            space_id: CLAP_CORE_EVENT_SPACE_ID,
+            type_: 0,
+            flags: 0,
+        };
+        let accepted = match message.kind {
+            GuiMessageKind::Begin | GuiMessageKind::End => {
+                let event = clap_event_param_gesture {
+                    header: clap_event_header {
+                        size: std::mem::size_of::<clap_event_param_gesture>() as u32,
+                        type_: if matches!(message.kind, GuiMessageKind::Begin) {
+                            CLAP_EVENT_PARAM_GESTURE_BEGIN
+                        } else {
+                            CLAP_EVENT_PARAM_GESTURE_END
+                        },
+                        ..header
+                    },
+                    param_id: message.id,
+                };
+                unsafe { push(output, &event.header) }
+            }
+            GuiMessageKind::Value => {
+                let event = clap_event_param_value {
+                    header: clap_event_header {
+                        size: std::mem::size_of::<clap_event_param_value>() as u32,
+                        type_: CLAP_EVENT_PARAM_VALUE,
+                        ..header
+                    },
+                    param_id: message.id,
+                    cookie: null_mut(),
+                    note_id: -1,
+                    port_index: -1,
+                    channel: -1,
+                    key: -1,
+                    value: message.value as f64,
+                };
+                unsafe { push(output, &event.header) }
+            }
+        };
+        if !accepted {
+            *retry = Some(message);
+            instance.gui.flush_retry.store(true, Ordering::Release);
+            if !instance.host.is_null() {
+                if let Some(callback) = unsafe { (*instance.host).request_callback } {
+                    unsafe { callback(instance.host) };
+                }
+            }
+            break;
+        }
+        if matches!(message.kind, GuiMessageKind::Value) {
+            let slot = (message.id - HOST_SLOT_BASE) as usize;
+            if let Some(runtime) = runtime.as_deref_mut() {
+                if let Some(index) = runtime.slot_indices[slot] {
+                    let descriptor = runtime.prepared.processor.host_parameters()[index];
+                    if let Some(physical) = descriptor.from_normalized(message.value) {
+                        let _ = runtime.prepared.processor.set_parameter(
+                            (descriptor.node as u32).into(),
+                            descriptor.local_id,
+                            physical,
+                        );
+                    }
+                }
+            } else {
+                instance.normalized[slot].store(message.value.to_bits(), Ordering::Release);
+            }
+            changed = true;
+        }
+    }
+    if changed {
+        instance.gui.request_refresh(instance.host);
+    }
+    changed
+}
 unsafe extern "C" fn process(
     plugin: *const clap_plugin,
     block: *const clap_process,
@@ -659,6 +893,8 @@ unsafe extern "C" fn process(
     if !unsafe { collect(block.in_events, block.frames_count as usize, runtime) } {
         return CLAP_PROCESS_ERROR;
     }
+    #[cfg(target_os = "linux")]
+    let gui_changed = drain_gui(instance, block.out_events, Some(runtime));
     let Some(output) = (unsafe { out_channels(block.audio_outputs, block.audio_outputs_count) })
     else {
         return CLAP_PROCESS_ERROR;
@@ -674,7 +910,16 @@ unsafe extern "C" fn process(
     if unsafe { runtime.buffers.render(&mut runtime.prepared.processor, raw) }.is_err() {
         return CLAP_PROCESS_ERROR;
     }
-    if !runtime.automation.is_empty() {
+    if !runtime.automation.is_empty() || {
+        #[cfg(target_os = "linux")]
+        {
+            gui_changed
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            false
+        }
+    } {
         instance.snapshot(runtime)
     }
     CLAP_PROCESS_CONTINUE
@@ -682,7 +927,7 @@ unsafe extern "C" fn process(
 unsafe extern "C" fn flush(
     plugin: *const clap_plugin,
     events: *const clap_input_events,
-    _out: *const clap_sys::events::clap_output_events,
+    out: *const clap_output_events,
 ) {
     let Some(instance) = (unsafe { get(plugin) }) else {
         return;
@@ -690,6 +935,8 @@ unsafe extern "C" fn flush(
     instance.publish();
     let pointer = instance.current.load(Ordering::Acquire);
     if pointer.is_null() {
+        #[cfg(target_os = "linux")]
+        let _ = drain_gui(instance, out, None);
         // Inactive flush is a main-thread call. Keep incoming host values so
         // activation and state save both start with the last automation value.
         if !events.is_null() {
@@ -736,12 +983,16 @@ unsafe extern "C" fn flush(
                 }
             }
         }
+        #[cfg(target_os = "linux")]
+        instance.gui.request_refresh(instance.host);
         return;
     }
     let runtime = unsafe { &mut *pointer };
     if !unsafe { collect(events, 0, runtime) } {
         return;
     }
+    #[cfg(target_os = "linux")]
+    let _ = drain_gui(instance, out, Some(runtime));
     let mut left = [];
     let mut right = [];
     if runtime
@@ -822,58 +1073,7 @@ unsafe extern "C" fn load(plugin: *const clap_plugin, stream: *const clap_istrea
         }
         bytes.extend_from_slice(&chunk[..count as usize]);
     }
-    let Ok(project) = NativeProject::parse(&bytes) else {
-        return false;
-    };
-    let descriptors = slots(&project);
-    let values = std::array::from_fn::<_, HOST_SLOT_COUNT, _>(|slot| {
-        descriptors[slot]
-            .and_then(|parameter| parameter.to_normalized(parameter.initial))
-            .unwrap_or(0.)
-    });
-    instance.retire();
-    let config = instance.configuration.lock().ok().and_then(|value| *value);
-    let prepared = if let Some((rate, max)) = config {
-        let Some(value) = Instance::prepare(&bytes, rate, max) else {
-            return false;
-        };
-        Some(value)
-    } else {
-        None
-    };
-    // The host may request another restore before processing resumes. Reject
-    // that load rather than discarding a prepared runtime on the audio thread.
-    if prepared.is_some() && !instance.pending.load(Ordering::Acquire).is_null() {
-        return false;
-    }
-    let Ok(mut state) = instance.state.lock() else {
-        return false;
-    };
-    let Ok(mut bound) = instance.descriptors.lock() else {
-        return false;
-    };
-    *state = bytes;
-    *bound = descriptors;
-    for (slot, value) in values.into_iter().enumerate() {
-        instance.normalized[slot].store(value.to_bits(), Ordering::Release);
-    }
-    if let Some(prepared) = prepared {
-        instance
-            .pending
-            .store(Box::into_raw(prepared), Ordering::Release);
-    }
-    if !instance.host.is_null() {
-        if let Some(get) = unsafe { (*instance.host).get_extension } {
-            let extension = unsafe { get(instance.host, CLAP_EXT_PARAMS.as_ptr()) };
-            if !extension.is_null() {
-                let params = unsafe { &*(extension as *const clap_host_params) };
-                if let Some(rescan) = params.rescan {
-                    unsafe { rescan(instance.host, CLAP_PARAM_RESCAN_ALL) }
-                }
-            }
-        }
-    }
-    true
+    instance.restore(bytes)
 }
 static STATE: clap_plugin_state = clap_plugin_state {
     save: Some(save),
@@ -894,6 +1094,23 @@ mod tests {
         index: u32,
     ) -> *const clap_event_header {
         unsafe { (&*((*events).ctx as *const Vec<*const clap_event_header>))[index as usize] }
+    }
+    #[cfg(target_os = "linux")]
+    unsafe extern "C" fn output_push(
+        output: *const clap_output_events,
+        event: *const clap_event_header,
+    ) -> bool {
+        let collected = unsafe { &mut *((*output).ctx as *mut Vec<(u16, u32, f64)>) };
+        let header = unsafe { &*event };
+        let (id, value) = if header.type_ == CLAP_EVENT_PARAM_VALUE {
+            let event = unsafe { &*(event as *const clap_event_param_value) };
+            (event.param_id, event.value)
+        } else {
+            let event = unsafe { &*(event as *const clap_event_param_gesture) };
+            (event.param_id, 0.)
+        };
+        collected.push((header.type_, id, value));
+        true
     }
     unsafe extern "C" fn write(stream: *const clap_ostream, data: *const c_void, size: u64) -> i64 {
         let out = unsafe { &mut *((*stream).ctx as *mut Vec<u8>) };
@@ -978,6 +1195,64 @@ mod tests {
             (*plugin).deactivate.unwrap()(plugin);
             (*plugin).destroy.unwrap()(plugin)
         };
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn original_graph_widget_gestures_reach_clap_and_saved_state() {
+        let host = clap_host {
+            clap_version: CLAP_VERSION,
+            host_data: null_mut(),
+            name: c"Test host".as_ptr(),
+            vendor: c"Manifold".as_ptr(),
+            url: c"https://example.test".as_ptr(),
+            version: c"1".as_ptr(),
+            get_extension: None,
+            request_restart: None,
+            request_process: None,
+            request_callback: None,
+        };
+        let plugin =
+            unsafe { crate::factory_create(&crate::FACTORY.0, &host, crate::GRAPH_ID.as_ptr()) };
+        assert!(unsafe { (*plugin).init.unwrap()(plugin) });
+        let id = HOST_SLOT_BASE + 1;
+        let instance = unsafe { get(plugin) }.unwrap();
+        for (kind, value) in [
+            (GuiMessageKind::Begin, 0.),
+            (GuiMessageKind::Value, 0.71),
+            (GuiMessageKind::End, 0.),
+        ] {
+            assert!(
+                instance
+                    .gui
+                    .enqueue(instance.host, GuiMessage { kind, id, value })
+            );
+        }
+        let mut collected: Vec<(u16, u32, f64)> = Vec::new();
+        let output = clap_output_events {
+            ctx: &mut collected as *mut _ as *mut c_void,
+            try_push: Some(output_push),
+        };
+        unsafe { PARAMS.flush.unwrap()(plugin, null(), &output) };
+        assert_eq!(
+            collected,
+            vec![
+                (CLAP_EVENT_PARAM_GESTURE_BEGIN, id, 0.),
+                (CLAP_EVENT_PARAM_VALUE, id, 0.71_f32 as f64),
+                (CLAP_EVENT_PARAM_GESTURE_END, id, 0.),
+            ]
+        );
+        let mut public = -1.;
+        assert!(unsafe { PARAMS.get_value.unwrap()(plugin, id, &mut public) });
+        assert!((public - 0.71).abs() < 1e-6);
+        let mut saved = Vec::new();
+        let stream = clap_ostream {
+            ctx: &mut saved as *mut _ as *mut c_void,
+            write: Some(write),
+        };
+        assert!(unsafe { STATE.save.unwrap()(plugin, &stream) });
+        assert!(NativeProject::parse(&saved).is_ok());
+        unsafe { (*plugin).destroy.unwrap()(plugin) };
     }
 
     #[test]

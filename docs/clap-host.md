@@ -26,9 +26,34 @@ renders a block, and saves it again. Successful local runs:
 The four-source input can be reproduced with
 `python scripts/probe-reaper-graph-vst3-gui.py --emit-project /tmp/manifold-four-source-bench.json`
 followed by `python scripts/probe-clap-graph.py --project /tmp/manifold-four-source-bench.json`.
-The current Graph CLAP class has generic host controls; its custom graph editor
-bridge is the next host-format task. The Standalone FX CLAP editor described
-below is already present, and the Graph VST3 editor remains the visual reference.
+The Graph CLAP GUI now opens the same `graph-module.html` and compact widget
+renderers as the Graph VST3 editor. Its reader accepts bounded widget gestures,
+project JSON chunks, and host slot assignments, then hands project changes to
+the main thread for validation and preparation. Automation changes are painted
+from normalized host values without reparsing a large project every frame.
+`scripts/probe-clap-graph-gui.py` runs the packaged class under isolated
+Weston/Xwayland. It imports Tone Texture through the actual editor file input,
+checks 8 nodes and 12 controls in saved CLAP state, renders the imported graph
+at a 0.122184 peak, then sends host automation to slot 2. The open compact
+Frequency slider changes from 220 to 14,402. Captures are
+`web/public/graph-clap-original-editor.png` and
+`web/public/graph-clap-host-automation.png`. The graph gesture unit test checks
+begin/value/end events reach CLAP and the changed value saves into project state.
+Physical pointer gestures in a real CLAP DAW remain a separate host gate.
+`scripts/probe-reaper-graph-clap.py` adds the Graph CLAP class to a private
+REAPER profile, saves a one-second Note Voice MIDI project, reopens it in a
+fresh REAPER process, and renders a WAV. Its 48,000 stereo frames match a
+direct native Rust render within `5.96e-8` peak error at 0.122364 peak.
+The render and metrics are in `web/public/graph-clap-reaper-note-voice.*`.
+`scripts/probe-reaper-graph-clap-editor.py` then opens the custom Graph CLAP
+editor in REAPER, imports Tone Texture through its file input, saves the DAW
+project, and renders from a fresh REAPER process. That one-second stereo render
+matches native Rust within `5.96e-8` peak error at 0.229929 peak. The REAPER
+editor capture and render are `web/public/graph-clap-reaper-editor-tone-import.png`
+and `web/public/graph-clap-reaper-editor-import.wav`. The private profile uses
+a symlink in `~/.clap`; resolving the module path before locating its companion
+assets is required for the editor to open. The same fix applies to Standalone
+FX CLAP's editor lookup.
 
 ## Standalone FX
 

@@ -814,7 +814,8 @@ fn rescan_host_values(instance: &Instance) {
 
 #[cfg(target_os = "linux")]
 fn editor_bundle() -> Option<(PathBuf, PathBuf)> {
-    let directory = PLUGIN_PATH.get()?.parent()?;
+    let module = PLUGIN_PATH.get()?.canonicalize().ok()?;
+    let directory = module.parent()?;
     let binary = directory.join("ManifoldFX-editor");
     let assets = directory.join("assets");
     (binary.is_file() && assets.join("fx-module.html").is_file()).then_some((binary, assets))

@@ -69,8 +69,11 @@ snapshots and bounded gestures outside the audio callback. See the
 [CLAP host proof](clap-host.md) for tests and remaining work.
 The second CLAP class, Graph, accepts portable authored project state, 128
 stable host slots, CLAP note events, timed automation, and optional sidechain
-audio. Its process callback also uses prepared native DSP. The Graph editor
-bridge remains to be connected to the original browser widgets.
+audio. Its process callback also uses prepared native DSP. The Linux Graph
+CLAP editor now embeds the same compact browser widgets as Graph VST3; project
+imports and slot reassignment prepare complete replacement graphs off the
+callback. Presentation snapshots cache the node and control description so
+ordinary host automation repaints do not reparse embedded audio assets.
 The [native editor boundary](native-editor-plan.md) records the exact widget
 reuse, CLAP GUI lifecycle, and proposed browser process bridge.
 

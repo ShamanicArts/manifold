@@ -1,6 +1,8 @@
 //! Loadable CLAP adapter for the authored Standalone FX project.
 
 mod graph;
+#[cfg(target_os = "linux")]
+mod graph_gui;
 mod instance;
 
 use std::ffi::{CStr, c_char, c_void};

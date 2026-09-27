@@ -1,0 +1,10 @@
+{
+  "host": "REAPER Linux CLAP",
+  "project": "note-voice.json",
+  "savedAndReopened": true,
+  "renderFrames": 48000,
+  "channels": 2,
+  "peak": 0.12236404418945312,
+  "peakErrorVsNative": 5.960464477539063e-08,
+  "render": "graph-clap-reaper-note-voice.wav"
+}

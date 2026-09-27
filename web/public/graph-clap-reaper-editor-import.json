@@ -1,0 +1,12 @@
+{
+  "host": "REAPER Linux CLAP",
+  "project": "tone-texture.json",
+  "import": "original widget editor JSON file input",
+  "savedAndReopened": true,
+  "renderFrames": 48000,
+  "channels": 2,
+  "peak": 0.2299288511276245,
+  "peakErrorVsNative": 5.960464477539063e-08,
+  "render": "graph-clap-reaper-editor-import.wav",
+  "editorScreenshot": "graph-clap-reaper-editor-tone-import.png"
+}
