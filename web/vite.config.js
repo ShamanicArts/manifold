@@ -7,6 +7,7 @@ export default defineConfig({
       input: {
         workbench: resolve(import.meta.dirname, "index.html"),
         fxModule: resolve(import.meta.dirname, "fx-module.html"),
+        graphModule: resolve(import.meta.dirname, "graph-module.html"),
       },
     },
   },

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1220" />
+    <title>Manifold · Graph</title>
+  </head>
+  <body>
+    <header class="graph-topbar"><strong>Manifold</strong><span>/</span><span>Graph</span><a href="/">Workbench ↗</a></header>
+    <main>
+      <div class="graph-heading"><div><small>Portable project / host controls</small><h1>Graph</h1></div><output id="graph-count"></output></div>
+      <div class="graph-toolbar"><label class="graph-open">Inspect project JSON<input id="graph-file" type="file" accept="application/json,.json"></label><button id="graph-note" type="button">Note voice</button><button id="graph-tone" type="button">Tone texture</button><span id="graph-source"></span></div>
+      <section id="graph-widget-root" aria-label="Graph node controls"></section>
+      <p id="graph-status" role="status">Loading the authored graph…</p>
+      <footer>Controls use the original Manifold compact slider and dropdown renderers. The host keeps the 128 automation slot IDs stable.</footer>
+    </main>
+    <script type="module" src="/src/graph-module.js"></script>
+  </body>
+</html>

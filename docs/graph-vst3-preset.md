@@ -29,7 +29,14 @@ allows an absolute `.vstpreset` path. The exporter enforces the same 45 MiB
 state bound as the VST3 stream reader and rejects projects the native engine
 cannot prepare at 48 kHz with 1,024 frame blocks.
 
-The graph class currently uses host generic parameters. A native graph editor
-with the original widget primitives and an in-editor project import path still
-needs implementation. The preset route is a usable bridge for exported browser
-projects today; the host decides how to present its preset loading action.
+The Linux graph class now has an 800×600 native `IPlugView` that uses the ported
+original compact slider and dropdown renderers. It shows each bound graph
+control beside its stable host slot number. `scripts/probe-reaper-graph-vst3-gui.py`
+opens the editor in isolated REAPER, confirms host automation changes the
+visible Semitones control, drags that widget to move REAPER's slot 0 from 0.20
+to 0.773, then loads Tone Texture through REAPER's preset API. The open editor
+rebuilds its cards for the new oscillator, noise, filter, CV gain, and LFO
+bindings. The [review](../web/public/graph-vst3-host-proof.html) shows all four
+captures. Direct JSON import inside the native editor and deliberate slot
+reassignment remain to build; host preset loading is the current project swap
+path.

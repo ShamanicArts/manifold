@@ -1,8 +1,8 @@
 //! Fixed VST3 parameter surface for arbitrary authored graph projects.
 
 use std::ffi::c_char;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use manifold_native::parameters::{HOST_SLOT_BASE, HOST_SLOT_COUNT};
 use manifold_native::project::NativeProject;
@@ -12,9 +12,76 @@ use crate::graph_contract::{DEFAULT_PROJECT, normalized_values, slot_descriptors
 use crate::util::{copy_wstring, read_stream, utf16_string};
 
 pub(crate) struct GraphController {
-    normalized: [AtomicU64; HOST_SLOT_COUNT],
+    pub(crate) shared: Arc<GraphShared>,
     defaults: [f64; HOST_SLOT_COUNT],
-    handler: Mutex<Option<ComPtr<IComponentHandler>>>,
+}
+
+pub(crate) struct GraphShared {
+    normalized: [AtomicU64; HOST_SLOT_COUNT],
+    pub handler: Mutex<Option<ComPtr<IComponentHandler>>>,
+    presentation: Mutex<serde_json::Value>,
+    version: AtomicU64,
+}
+
+impl GraphShared {
+    pub fn value(&self, id: u32) -> f64 {
+        GraphController::slot(id)
+            .map(|slot| f64::from_bits(self.normalized[slot].load(Ordering::Acquire)))
+            .unwrap_or(0.0)
+    }
+
+    pub fn set_value(&self, id: u32, value: f64) -> bool {
+        let Some(slot) = GraphController::slot(id) else {
+            return false;
+        };
+        if !value.is_finite() || !(0. ..=1.).contains(&value) {
+            return false;
+        }
+        self.normalized[slot].store(value.to_bits(), Ordering::Release);
+        self.version.fetch_add(1, Ordering::Release);
+        true
+    }
+
+    pub fn version(&self) -> u64 {
+        self.version.load(Ordering::Acquire)
+    }
+
+    pub fn snapshot(&self) -> Option<serde_json::Value> {
+        let mut presentation = self.presentation.lock().ok()?.clone();
+        for item in presentation["controls"].as_array_mut()? {
+            item["normalized"] = serde_json::Value::from(self.value(item["id"].as_u64()? as u32));
+        }
+        Some(presentation)
+    }
+}
+
+fn presentation(bytes: &[u8], project: &NativeProject) -> Option<serde_json::Value> {
+    let document: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let nodes: Vec<_> = document["signal"]["nodes"]
+        .as_array()?
+        .iter()
+        .map(|node| serde_json::json!({"id": node["id"], "type": node["type"]}))
+        .collect();
+    let descriptors = slot_descriptors(project);
+    let controls: Vec<_> = descriptors
+        .iter()
+        .enumerate()
+        .filter_map(|(slot, descriptor)| {
+            descriptor.map(|descriptor| {
+                serde_json::json!({
+                    "id": HOST_SLOT_BASE + slot as u32,
+                    "nodeId": descriptor.node,
+                    "parameterId": descriptor.local_id,
+                    "min": descriptor.min,
+                    "max": descriptor.max,
+                    "discrete": descriptor.discrete,
+                })
+            })
+        })
+        .collect();
+    Some(
+        serde_json::json!({"schemaVersion":1,"id":"manifold.graph","nodes":nodes,"controls":controls}),
+    )
 }
 
 impl GraphController {
@@ -24,9 +91,15 @@ impl GraphController {
         let project = NativeProject::parse(DEFAULT_PROJECT).expect("authored default graph");
         let defaults = normalized_values(&slot_descriptors(&project));
         Self {
-            normalized: defaults.map(|value| AtomicU64::new(value.to_bits())),
+            shared: Arc::new(GraphShared {
+                normalized: defaults.map(|value| AtomicU64::new(value.to_bits())),
+                handler: Mutex::new(None),
+                presentation: Mutex::new(
+                    presentation(DEFAULT_PROJECT, &project).expect("authored graph presentation"),
+                ),
+                version: AtomicU64::new(0),
+            }),
             defaults,
-            handler: Mutex::new(None),
         }
     }
 
@@ -58,10 +131,18 @@ impl IEditControllerTrait for GraphController {
         let Ok(project) = NativeProject::parse(&bytes) else {
             return kResultFalse;
         };
+        let Some(presentation) = presentation(&bytes, &project) else {
+            return kResultFalse;
+        };
         let values = normalized_values(&slot_descriptors(&project));
+        let Ok(mut current) = self.shared.presentation.lock() else {
+            return kResultFalse;
+        };
+        *current = presentation;
         for (slot, value) in values.iter().enumerate() {
-            self.normalized[slot].store(value.to_bits(), Ordering::Release);
+            self.shared.normalized[slot].store(value.to_bits(), Ordering::Release);
         }
+        self.shared.version.fetch_add(1, Ordering::Release);
         kResultOk
     }
 
@@ -130,28 +211,31 @@ impl IEditControllerTrait for GraphController {
         value
     }
     unsafe fn getParamNormalized(&self, id: u32) -> f64 {
-        Self::slot(id)
-            .map(|slot| f64::from_bits(self.normalized[slot].load(Ordering::Acquire)))
-            .unwrap_or(0.0)
+        self.shared.value(id)
     }
     unsafe fn setParamNormalized(&self, id: u32, value: f64) -> tresult {
-        let Some(slot) = Self::slot(id) else {
-            return kInvalidArgument;
-        };
-        if !value.is_finite() || !(0. ..=1.).contains(&value) {
-            return kInvalidArgument;
+        if self.shared.set_value(id, value) {
+            kResultOk
+        } else {
+            kInvalidArgument
         }
-        self.normalized[slot].store(value.to_bits(), Ordering::Release);
-        kResultOk
     }
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
-        let Ok(mut slot) = self.handler.lock() else {
+        let Ok(mut slot) = self.shared.handler.lock() else {
             return kResultFalse;
         };
         *slot = unsafe { ComRef::from_raw(handler) }.map(|handler| handler.to_com_ptr());
         kResultOk
     }
-    unsafe fn createView(&self, _name: *const c_char) -> *mut IPlugView {
-        std::ptr::null_mut()
+    unsafe fn createView(&self, name: *const c_char) -> *mut IPlugView {
+        #[cfg(target_os = "linux")]
+        {
+            crate::graph_editor::create_view(name, self.shared.clone())
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = name;
+            std::ptr::null_mut()
+        }
     }
 }

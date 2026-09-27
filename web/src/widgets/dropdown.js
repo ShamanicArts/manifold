@@ -188,9 +188,10 @@ export function mountDropdown(element, spec, root) {
     else return;
     event.preventDefault();
   });
-  document.addEventListener("pointerdown", (event) => {
+  const closeOnOutsidePointer = (event) => {
     if (opened && !element.contains(event.target) && !overlay.contains(event.target)) close();
-  });
+  };
+  document.addEventListener("pointerdown", closeOnOutsidePointer);
   element.dataset.value = "0";
   element.dataset.optionCount = String(options.length);
   element.setAttribute("aria-valuetext", options[0] ?? "---");
@@ -210,5 +211,9 @@ export function mountDropdown(element, spec, root) {
     selected: () => selected,
     onChange(callback) { onChange = callback; },
     close,
+    destroy() {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      overlay.remove();
+    },
   };
 }

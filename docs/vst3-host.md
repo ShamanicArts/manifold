@@ -107,6 +107,9 @@ source, actual REAPER WAV renders, plots, and machine-readable measurements.
    portable project state. A [Rust preset exporter](graph-vst3-preset.md) lets
    a DAW load browser-authored project bundles; REAPER restores Tone Texture
    and renders audio matching native Rust. Its native widget editor and direct
-   in-editor project import remain to build; see [the broader boundary map](native-vst3-boundary.md).
+   in-editor project import remains to build. Its [native graph editor](../web/public/graph-vst3-host-proof.html)
+   uses the original compact sliders and dropdowns: REAPER automation updates
+   the visible control, a pointer gesture reaches REAPER's host parameter, and
+   a preset swap rebuilds the open panel; see [the broader boundary map](native-vst3-boundary.md).
 3. Build Windows and macOS bundles and run their host validation. Audio Unit
    remains a separate host adapter.

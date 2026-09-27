@@ -15,5 +15,6 @@ cp "$project_root/target/release/libmanifold_vst3.so" "$bundle/Contents/x86_64-l
 cp "$project_root/target/release/manifold-editor" "$bundle/Contents/x86_64-linux/ManifoldFX-editor"
 mkdir -p "$bundle/Contents/Resources/assets/assets"
 cp "$project_root/web/dist/fx-module.html" "$bundle/Contents/Resources/assets/"
+cp "$project_root/web/dist/graph-module.html" "$bundle/Contents/Resources/assets/"
 cp -a "$project_root/web/dist/assets/." "$bundle/Contents/Resources/assets/assets/"
 echo "$bundle"

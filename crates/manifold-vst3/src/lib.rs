@@ -6,6 +6,8 @@ mod controller;
 mod editor;
 mod graph_contract;
 mod graph_controller;
+#[cfg(target_os = "linux")]
+mod graph_editor;
 mod graph_processor;
 mod preset;
 mod processor;
@@ -398,6 +400,15 @@ mod tests {
             kResultOk
         );
         assert_eq!(unsafe { controller.getParameterCount() }, 128);
+        let snapshot = controller.shared.snapshot().unwrap();
+        assert!(
+            snapshot["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|node| node["type"] == "input.sidechain")
+        );
+        assert!(snapshot["controls"].as_array().unwrap().is_empty());
 
         let mut setup = ProcessSetup {
             processMode: 0,

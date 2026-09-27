@@ -24,7 +24,11 @@
     .row span:first-child { color: #aeb5c0; }
     audio { display: block; width: 100%; margin: 20px 0 10px; }
     .small { font-size: .85rem; color: #9ea6b2; }
-    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } .row { grid-template-columns: 1fr; gap: 4px; } }
+    figure { margin: 18px 0 26px; }
+    figure img { display: block; width: 100%; height: auto; border: 1px solid #414955; border-radius: 4px; }
+    figcaption { margin-top: 7px; color: #aeb5c0; font-size: .85rem; }
+    .captures { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    @media (max-width: 640px) { .grid, .captures { grid-template-columns: 1fr; } .row { grid-template-columns: 1fr; gap: 4px; } }
   </style>
 </head>
 <body>
@@ -37,6 +41,16 @@
     <div class="card"><strong>48,000</strong><span>stereo frames rendered by REAPER from a MIDI note</span></div>
     <div class="card"><strong>5.96e-8</strong><span>peak sample error against direct native Rust render</span></div>
   </div>
+  <section class="panel">
+    <h2>The graph editor in REAPER</h2>
+    <p>REAPER embeds the Linux VST3 view. Its controls use the ported Manifold compact slider and dropdown renderers, with the original Standalone FX widget styles. The 128 public slot IDs stay fixed as projects change. <a href="/graph-module.html">Open the browser preview</a> to inspect the same widgets.</p>
+    <div class="captures">
+      <figure><img src="/graph-vst3-reaper-editor-initial.png" alt="REAPER hosting Manifold Graph's original compact widgets on the default note project"><figcaption>Default note project: 6 nodes and 10 bound controls.</figcaption></figure>
+      <figure><img src="/graph-vst3-reaper-editor-automated.png" alt="REAPER host automation changes the Semitones widget to minus 14"><figcaption>Host automation sets slot 0 to 0.20; the Semitones widget updates to −14.</figcaption></figure>
+      <figure><img src="/graph-vst3-reaper-editor-gesture.png" alt="A physical XTEST drag changes the Semitones widget to 13.09"><figcaption>A physical pointer drag sends a host gesture. REAPER reads slot 0 back at 0.773.</figcaption></figure>
+      <figure><img src="/graph-vst3-reaper-editor-imported.png" alt="REAPER loads the Tone Texture preset and the open editor shows oscillator, noise, filter, CV gain, and LFO controls"><figcaption>REAPER loads Tone Texture; the open editor replaces the controls with the new graph's bindings.</figcaption></figure>
+    </div>
+  </section>
   <section class="panel">
     <h2>Hear the actual REAPER render</h2>
     <p>REAPER inserted <em>Manifold Graph</em>, sent note 60 from 0.125 to 0.5 seconds, and rendered its master output at 48 kHz. The default project is <code>projects/graph-workspace/note-voice.json</code>.</p>
@@ -56,11 +70,12 @@
     <div class="row"><span>Full host render</span><span>A one second MIDI item in REAPER matches direct native Rust audio over all 48,000 stereo frames to 24-bit WAV quantization. The repeatable probe saves the WAV and measurements.</span></div>
     <div class="row"><span>Project state</span><span>The component accepts and saves a portable graph bundle. A test loads a sidechain to output route and verifies the VST3 sidechain bus produces the expected stereo samples. REAPER also loads a second authored graph via a standard preset file.</span></div>
     <div class="row"><span>Host parameters</span><span>All 128 public IDs stay fixed while project bindings change. REAPER reports 131 parameters because it adds three host controls.</span></div>
+    <div class="row"><span>Editor round trip</span><span>The packaged VST3 editor shows the original widgets. REAPER automation updates a visible slider, a physical drag reaches REAPER's parameter, and a preset change rebuilds the node controls in the open view.</span></div>
   </section>
   <section class="panel">
     <h2>Current boundary and next work</h2>
-    <p>This general graph class currently uses the host's generic controls. Its native graph editor and direct in-editor project import are next. Only the first MIDI input node receives host notes for now. The earlier <a href="/standalone-fx-reaper-proof.html">Standalone FX class</a> retains its original widget editor and independent host proof.</p>
-    <p class="small">Reproduce: <code>cargo test -p manifold-vst3</code>, <code>./scripts/build-vst3.sh</code>, <code>validator -e target/vst3/ManifoldFX.vst3</code>, then run <code>scripts/probe-reaper-graph-vst3.py</code> on an isolated Xvfb display. To export your own graph: <code>cargo run -p manifold-vst3 --example export_graph_preset -- my-graph.json my-graph.vstpreset</code>.</p>
+    <p>The native editor shows and edits the current project's bound controls. Project import in a DAW currently uses its VST3 preset loader; direct JSON import inside the editor and deliberate slot reassignment are next. Only the first MIDI input node receives host notes for now. The earlier <a href="/standalone-fx-reaper-proof.html">Standalone FX class</a> has its own original widget editor and independent host proof.</p>
+    <p class="small">Reproduce: <code>cargo test -p manifold-vst3</code>, <code>./scripts/build-vst3.sh</code>, <code>validator -e target/vst3/ManifoldFX.vst3</code>, then run <code>scripts/probe-reaper-graph-vst3.py</code> and <code>scripts/probe-reaper-graph-vst3-gui.py</code> on an isolated Xvfb display. To export your own graph: <code>cargo run -p manifold-vst3 --example export_graph_preset -- my-graph.json my-graph.vstpreset</code>.</p>
   </section>
 </body>
 </html>

@@ -53,6 +53,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("invalid X11 parent".into());
     }
     let root = fs::canonicalize(PathBuf::from(args.next().ok_or("missing assets path")?))?;
+    let graph = match args.next().as_deref() {
+        None => false,
+        Some("graph") => true,
+        Some(_) => return Err("unsupported editor surface".into()),
+    };
+    if args.next().is_some() {
+        return Err("extra editor arguments".into());
+    }
     gtk::init()?;
     let parent = Parent(parent);
     let (sender, receiver) = mpsc::channel::<String>();
@@ -71,7 +79,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let webview = WebViewBuilder::new()
-        .with_url("manifold://editor/fx-module.html?editor=1")
+        .with_url(if graph {
+            "manifold://editor/graph-module.html?editor=1"
+        } else {
+            "manifold://editor/fx-module.html?editor=1"
+        })
         .with_custom_protocol("manifold".into(), move |_, request| {
             let (status, body, content_type) = match asset(&root, request.uri().path()) {
                 Some((body, content_type)) => (200, body, content_type),
@@ -90,7 +102,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .with_bounds(wry::Rect {
             position: wry::dpi::PhysicalPosition::new(0, 0).into(),
-            size: wry::dpi::PhysicalSize::new(500, 246).into(),
+            size: if graph {
+                wry::dpi::PhysicalSize::new(800, 600).into()
+            } else {
+                wry::dpi::PhysicalSize::new(500, 246).into()
+            },
         })
         .build_as_child(&parent)?;
     write_message("{\"kind\":\"ready\"}");

@@ -10,6 +10,8 @@ import time
 assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1", "run under disposable Weston"
 assert os.environ.get("DISPLAY")
 module = Path(sys.argv[1] if len(sys.argv) > 1 else "target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX.so").resolve()
+graph = "--graph" in sys.argv
+prefix = "graph-vst3" if graph else "manifold-vst3"
 
 # The non-Windows VST3 TUID byte order is big endian per 32-bit word.
 def uid(*words):
@@ -34,7 +36,8 @@ x11.XRootWindow.restype = c.c_ulong
 x11.XCreateSimpleWindow.argtypes = [c.c_void_p, c.c_ulong, c.c_int, c.c_int, c.c_uint, c.c_uint, c.c_uint, c.c_ulong, c.c_ulong]
 x11.XCreateSimpleWindow.restype = c.c_ulong
 root = x11.XRootWindow(display, x11.XDefaultScreen(display))
-xid = x11.XCreateSimpleWindow(display, root, 24, 24, 500, 246, 0, 0, 0x2b2b2b)
+xid = x11.XCreateSimpleWindow(display, root, 24, 24,
+    800 if graph else 500, 600 if graph else 246, 0, 0, 0x2b2b2b)
 x11.XMapWindow.argtypes = [c.c_void_p, c.c_ulong]
 x11.XFlush.argtypes = [c.c_void_p]
 x11.XMapWindow(display, xid)
@@ -44,7 +47,7 @@ library = c.CDLL(str(module))
 library.GetPluginFactory.restype = c.c_void_p
 factory = library.GetPluginFactory()
 assert factory
-controller_cid = uid(0xA3D4C7B1,0x5F584B2B,0x89A3F18E,0x203AD8B7)
+controller_cid = uid(0xC5C5353D,0x6BDF4E42,0xAE535D85,0x81C0832F) if graph else uid(0xA3D4C7B1,0x5F584B2B,0x89A3F18E,0x203AD8B7)
 controller_iid = uid(0xDCD7BBE3,0x7742448D,0xA874AACC,0x979C759E)
 controller = c.c_void_p()
 result = call(factory, 6, c.c_int, c.c_char_p, c.c_char_p, c.POINTER(c.c_void_p))(
@@ -118,8 +121,10 @@ for index, function in enumerate((begin,perform,end,restart),3):
 try:
     assert call(controller, 3, c.c_int, c.c_void_p)(controller, None) == 0
     assert call(controller, 16, c.c_int, c.c_void_p)(controller, c.addressof(handler)) == 0
-    assert call(controller, 15, c.c_int, c.c_uint32, c.c_double)(controller, 0, 7./20.) == 0
-    assert call(controller, 15, c.c_int, c.c_uint32, c.c_double)(controller, 1, 0.72) == 0
+    first = 0x01000000 if graph else 0
+    second = first + 1
+    assert call(controller, 15, c.c_int, c.c_uint32, c.c_double)(controller, first, 0.7 if graph else 7./20.) == 0
+    assert call(controller, 15, c.c_int, c.c_uint32, c.c_double)(controller, second, 0.72) == 0
     view = call(controller, 17, c.c_void_p, c.c_char_p)(controller, b"editor")
     assert view, "packaged editor view unavailable"
     try:
@@ -139,13 +144,13 @@ try:
         child_ids = [children[i] for i in range(count.value)]
         if children: x11.XFree(children)
         assert child_ids, "VST3 editor did not create an X11 child"
-        output = Path("/tmp/manifold-vst3-editor-child.png")
+        output = Path(f"/tmp/{prefix}-editor-child.png")
         subprocess.run(["ffmpeg","-loglevel","error","-f","x11grab","-window_id",hex(child_ids[0]),"-i",os.environ["DISPLAY"],"-frames:v","1","-y",str(output)],check=True,timeout=15)
-        assert call(controller, 15, c.c_int, c.c_uint32, c.c_double)(controller, 1, 0.2) == 0
+        assert call(controller, 15, c.c_int, c.c_uint32, c.c_double)(controller, second, 0.2) == 0
         for _ in range(20):
             if timer: method(timer, 3, None)(timer)
             time.sleep(0.02)
-        automated = Path("/tmp/manifold-vst3-editor-automated.png")
+        automated = Path(f"/tmp/{prefix}-editor-automated.png")
         subprocess.run(["ffmpeg","-loglevel","error","-f","x11grab","-window_id",hex(child_ids[0]),"-i",os.environ["DISPLAY"],"-frames:v","1","-y",str(automated)],check=True,timeout=15)
         print(f"VST3 view attached: X11 child {child_ids[0]:#x}, initial {output}, host automation {automated}, edits={edits}",flush=True)
         if "--gesture" in sys.argv:
@@ -154,11 +159,11 @@ try:
             xtest.XTestFakeMotionEvent.restype = c.c_int
             xtest.XTestFakeButtonEvent.argtypes = [c.c_void_p,c.c_uint,c.c_int,c.c_ulong]
             xtest.XTestFakeButtonEvent.restype = c.c_int
-            assert xtest.XTestFakeMotionEvent(display,-1,340,145,0)
+            assert xtest.XTestFakeMotionEvent(display,-1,120 if graph else 340,224 if graph else 145,0)
             assert xtest.XTestFakeButtonEvent(display,1,1,0)
             x11.XFlush(display)
             time.sleep(0.1)
-            assert xtest.XTestFakeMotionEvent(display,-1,440,145,0)
+            assert xtest.XTestFakeMotionEvent(display,-1,240 if graph else 440,224 if graph else 145,0)
             x11.XFlush(display)
             time.sleep(0.1)
             assert xtest.XTestFakeButtonEvent(display,1,0,0)
@@ -171,7 +176,7 @@ try:
             changed = next(edit for edit in edits if edit[0] == "value")
             actual = call(controller,14,c.c_double,c.c_uint32)(controller,changed[1])
             assert abs(actual - [edit for edit in edits if edit[0] == "value"][-1][2]) < 1e-6
-            gesture_capture = Path("/tmp/manifold-vst3-editor-gesture.png")
+            gesture_capture = Path(f"/tmp/{prefix}-editor-gesture.png")
             subprocess.run(["ffmpeg","-loglevel","error","-f","x11grab","-window_id",hex(child_ids[0]),"-i",os.environ["DISPLAY"],"-frames:v","1","-y",str(gesture_capture)],check=True,timeout=15)
             print(f"Native VST3 pointer gesture: {edits}; controller value={actual:.3f}; capture={gesture_capture}",flush=True)
         assert call(view, 5, c.c_int)(view) == 0
