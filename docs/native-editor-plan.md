@@ -32,6 +32,12 @@ parameter messages through `window.ipc.postMessage(...)`. The current preview
 shares the full browser page bundle, although it does not start browser audio;
 the packaged native editor build still needs its own entrypoint so it can omit
 browser audio code entirely.
+Slider gestures now emit begin, value, and end messages. The CLAP side has a
+bounded preallocated event queue and an ABI host test that receives those
+messages as CLAP gesture/value output events through `process()` or `flush()`;
+a rejected host output is retained for retry. The browser and CLAP halves are
+still connected only by a test IPC shim. The companion's real IPC receiver and
+CLAP GUI window lifecycle remain to implement.
 
 ```text
 DAW main thread: CLAP GUI extension ── X11 parent ── editor companion

@@ -36,11 +36,11 @@
     <dl>
       <dt>Widget identity</dt><dd>The editor mode and browser module execute the same <code>project-ui.js</code> widget renderer. No HTML range control replaces the ported compact slider.</dd>
       <dt>Host input</dt><dd>A host project JSON snapshot restores the selected effect and all remembered controls in the editor surface.</dd>
-      <dt>Host output</dt><dd>Moving a slider produces a versioned message with stable public parameter ID and normalized value. The browser test captures and checks that message.</dd>
+      <dt>Host output</dt><dd>Moving a slider produces versioned begin, value, and end messages with a stable public parameter ID. The browser test captures their order; a CLAP host test checks their output event forms and retry behavior.</dd>
       <dt>Audio boundary</dt><dd>Editor mode does not start a browser audio context. The loadable CLAP module continues to process audio through native Rust.</dd>
     </dl>
     <h2>Next connection</h2>
-    <p class="note">This is a browser preview of the editor bridge. The CLAP module does not yet expose the GUI extension or embed the page in a DAW. The companion WebKitGTK process, host gesture/automation return path, and X11 lifecycle remain to implement and validate.</p>
+    <p class="note">This is a browser preview of the editor bridge. The CLAP module does not yet expose the GUI extension or embed the page in a DAW. The companion WebKitGTK process, real IPC receiver, and X11 lifecycle remain to implement and validate.</p>
     <p><a href="/standalone-fx-host-review.html">View the CLAP audio and state proof ↗</a></p>
   </main>
 </body>

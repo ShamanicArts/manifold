@@ -107,7 +107,9 @@ function selectType(type) {
   const previousHadGraph = hasGraph();
   typeValues.set(currentType(), [0, 1, 2, 3, 4].map(current));
   values.set(0, type);
+  if (editorMode) audio.beginGesture(0);
   audio.setParameter(0, type);
+  if (editorMode) audio.endGesture(0);
   typeValues.get(type).forEach((value, index) => {
     values.set(index + 2, value);
     if (!editorMode) audio.setParameter(index + 2, value);
@@ -313,8 +315,18 @@ ySelect.onChange((axis) => {
   drawVisuals();
 });
 for (let id = 1; id <= 6; id++) {
+  const widget = ui.element(id === 1 ? "mix_knob" : `param${id - 1}`);
   ui.control(id === 1 ? "mix_knob" : `param${id - 1}`)
     .onChange((value) => writeControl(id, value));
+  if (editorMode) {
+    widget.addEventListener("pointerdown", () => audio.beginGesture(id), true);
+    widget.addEventListener("pointerup", () => audio.endGesture(id), true);
+    widget.addEventListener("pointercancel", () => audio.endGesture(id), true);
+    widget.addEventListener("lostpointercapture", () => audio.endGesture(id), true);
+    widget.addEventListener("keydown", () => audio.beginGesture(id), true);
+    widget.addEventListener("keyup", () => audio.endGesture(id), true);
+    widget.addEventListener("blur", () => audio.endGesture(id), true);
+  }
 }
 for (const button of document.querySelectorAll("[data-view]")) {
   button.addEventListener("click", () => {

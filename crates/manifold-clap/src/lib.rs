@@ -239,15 +239,20 @@ mod tests {
     use super::*;
     use clap_sys::audio_buffer::clap_audio_buffer;
     use clap_sys::events::{
-        CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, clap_event_header,
-        clap_event_param_value, clap_input_events,
+        CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_GESTURE_BEGIN, CLAP_EVENT_PARAM_GESTURE_END,
+        CLAP_EVENT_PARAM_VALUE, clap_event_header, clap_event_param_gesture,
+        clap_event_param_value, clap_input_events, clap_output_events,
     };
+    use clap_sys::ext::params::clap_host_params;
     use clap_sys::process::{CLAP_PROCESS_CONTINUE, clap_process};
     use clap_sys::stream::{clap_istream, clap_ostream};
     use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
     use manifold_native::parameters::{HOST_SLOT_BASE, TimedAutomation};
     use manifold_native::project::NativeProject;
     use std::ptr::{null, null_mut};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::instance::{GuiMessage, GuiMessageKind};
 
     unsafe extern "C" fn event_count(_events: *const clap_input_events) -> u32 {
         1
@@ -257,6 +262,118 @@ mod tests {
         _index: u32,
     ) -> *const clap_event_header {
         unsafe { (*events).ctx as *const clap_event_header }
+    }
+
+    unsafe extern "C" fn host_request_flush(host: *const clap_host) {
+        let count = unsafe { &*((*host).host_data as *const AtomicUsize) };
+        count.fetch_add(1, Ordering::Relaxed);
+    }
+    static HOST_PARAMS: clap_host_params = clap_host_params {
+        rescan: None,
+        clear: None,
+        request_flush: Some(host_request_flush),
+    };
+    unsafe extern "C" fn host_extension(
+        _host: *const clap_host,
+        id: *const c_char,
+    ) -> *const c_void {
+        if unsafe { CStr::from_ptr(id) } == CLAP_EXT_PARAMS {
+            &HOST_PARAMS as *const _ as *const c_void
+        } else {
+            null()
+        }
+    }
+    unsafe extern "C" fn capture_output(
+        list: *const clap_output_events,
+        event: *const clap_event_header,
+    ) -> bool {
+        let captured = unsafe { &mut *((*list).ctx as *mut Vec<(u16, u32, f64)>) };
+        let header = unsafe { &*event };
+        if header.type_ == CLAP_EVENT_PARAM_VALUE {
+            let event = unsafe { &*(event as *const clap_event_param_value) };
+            captured.push((header.type_, event.param_id, event.value));
+        } else {
+            let event = unsafe { &*(event as *const clap_event_param_gesture) };
+            captured.push((header.type_, event.param_id, 0.));
+        }
+        true
+    }
+    unsafe extern "C" fn reject_output(
+        _list: *const clap_output_events,
+        _event: *const clap_event_header,
+    ) -> bool {
+        false
+    }
+
+    #[test]
+    fn gui_messages_flush_as_host_gesture_and_parameter_events() {
+        let flushes = AtomicUsize::new(0);
+        let host = clap_host {
+            clap_version: CLAP_VERSION,
+            host_data: &flushes as *const _ as *mut c_void,
+            name: c"Test host".as_ptr(),
+            vendor: c"Manifold".as_ptr(),
+            url: c"https://example.test".as_ptr(),
+            version: c"1".as_ptr(),
+            get_extension: Some(host_extension),
+            request_restart: None,
+            request_process: None,
+            request_callback: None,
+        };
+        let plugin = unsafe { factory_create(&FACTORY.0, &host, ID.as_ptr()) };
+        assert!(unsafe { (*plugin).init.unwrap()(plugin) });
+        let instance = unsafe { &*((*plugin).plugin_data as *const instance::Instance) };
+        for kind in [
+            GuiMessageKind::Begin,
+            GuiMessageKind::Value,
+            GuiMessageKind::End,
+        ] {
+            assert!(instance.enqueue_gui_message(GuiMessage {
+                kind,
+                id: 2,
+                value: 0.73
+            }));
+        }
+        assert_eq!(flushes.load(Ordering::Relaxed), 3);
+        let rejected = clap_output_events {
+            ctx: null_mut(),
+            try_push: Some(reject_output),
+        };
+        unsafe { PARAMS.flush.unwrap()(plugin, null(), &rejected) };
+        let mut current = -1.;
+        assert!(unsafe { PARAMS.get_value.unwrap()(plugin, 2, &mut current) });
+        assert_eq!(current, 0.5);
+        let mut captured: Vec<(u16, u32, f64)> = Vec::new();
+        let output = clap_output_events {
+            ctx: &mut captured as *mut _ as *mut c_void,
+            try_push: Some(capture_output),
+        };
+        unsafe { PARAMS.flush.unwrap()(plugin, null(), &output) };
+        assert_eq!(
+            captured,
+            [
+                (CLAP_EVENT_PARAM_GESTURE_BEGIN, 2, 0.),
+                (CLAP_EVENT_PARAM_VALUE, 2, 0.73_f32 as f64),
+                (CLAP_EVENT_PARAM_GESTURE_END, 2, 0.),
+            ]
+        );
+        assert!(unsafe { PARAMS.get_value.unwrap()(plugin, 2, &mut current) });
+        assert!((current - 0.73).abs() < 1e-6);
+        assert!(unsafe { (*plugin).activate.unwrap()(plugin, 48_000., 1, 128) });
+        assert!(instance.enqueue_gui_message(GuiMessage {
+            kind: GuiMessageKind::Value,
+            id: 0,
+            value: 7.,
+        }));
+        unsafe { PARAMS.flush.unwrap()(plugin, null(), &output) };
+        assert!(unsafe { PARAMS.get_value.unwrap()(plugin, 0, &mut current) });
+        assert_eq!(current, 7.);
+        assert!(unsafe { PARAMS.get_value.unwrap()(plugin, 2, &mut current) });
+        assert_eq!(current, 0.5);
+        unsafe {
+            (*plugin).deactivate.unwrap()(plugin);
+            (*plugin).destroy.unwrap()(plugin);
+        }
     }
 
     unsafe extern "C" fn write_state(

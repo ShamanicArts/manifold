@@ -122,9 +122,10 @@ try {
   const editorBox = await editorSlider.boundingBox();
   await editorSlider.click({ position: { x: editorBox.width * .7, y: editorBox.height / 2 } });
   const messages = await editor.evaluate(() => window.__ipcMessages);
-  assert.equal(messages.at(-1).kind, "parameter");
-  assert.equal(messages.at(-1).id, 2);
-  assert.ok(Math.abs(messages.at(-1).value - .7) < .02);
+  assert.deepEqual(messages.slice(-3).map(({ kind, id }) => [kind, id]), [
+    ["gesture-begin", 2], ["parameter", 2], ["gesture-end", 2],
+  ]);
+  assert.ok(Math.abs(messages.at(-2).value - .7) < .02);
   await editor.evaluate((document) => window.manifoldEditorReceive(document), hostProject);
   assert.equal(Number(await editorSlider.getAttribute("aria-valuenow")).toFixed(2), "0.83");
   await editor.screenshot({ path: "/tmp/manifold-fx-editor-mode.png" });

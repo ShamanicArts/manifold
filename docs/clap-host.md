@@ -36,6 +36,10 @@ state files remain available through the existing **Save state** action.
 - `cargo test -p manifold-native fx_host_reset_clears_reverb_tail_and_keeps_controls`
   excites a Reverb tail, calls the host reset path, and verifies silent input
   stays silent while type and mix retain their host values.
+- `cargo test -p manifold-clap gui_messages_flush_as_host_gesture_and_parameter_events`
+  drives the pending native editor message queue through the CLAP params flush
+  callback, checks begin/value/end output events and public values, and checks
+  that rejected host output can be retried.
 - The official `free-audio/clap-validator` v0.4.1 test suite loads the built
   `.clap` module. On this Linux machine it reports 44 tests run: 33 passed,
   0 failed, 0 warnings, 11 skipped. The passing tests include in-place and

@@ -1,3 +1,4 @@
+use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::{self, null, null_mut};
 use std::sync::Mutex;
@@ -5,8 +6,9 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 
 use clap_sys::audio_buffer::clap_audio_buffer;
 use clap_sys::events::{
-    CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, clap_event_param_value, clap_input_events,
-    clap_output_events,
+    CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_GESTURE_BEGIN, CLAP_EVENT_PARAM_GESTURE_END,
+    CLAP_EVENT_PARAM_VALUE, clap_event_header, clap_event_param_gesture, clap_event_param_value,
+    clap_input_events, clap_output_events,
 };
 use clap_sys::ext::params::{CLAP_EXT_PARAMS, CLAP_PARAM_RESCAN_VALUES, clap_host_params};
 use clap_sys::host::clap_host;
@@ -15,6 +17,7 @@ use clap_sys::process::{
     CLAP_PROCESS_CONTINUE, CLAP_PROCESS_ERROR, clap_process, clap_process_status,
 };
 use clap_sys::stream::{clap_istream, clap_ostream};
+use crossbeam_queue::ArrayQueue;
 use manifold_native::DEFAULT_TYPE_PARAMETERS;
 use manifold_native::host_buffers::{HostBuffers, RawHostBlock};
 use manifold_native::parameters::{HOST_SLOT_BASE, TimedAutomation};
@@ -24,6 +27,22 @@ use crate::{DEFAULTS, SOURCE_PROJECT, TYPE_LABELS};
 
 const MAX_STATE_BYTES: usize = 45 * 1024 * 1024;
 const MAX_EVENTS: usize = 1024;
+const MAX_GUI_EVENTS: usize = 256;
+
+#[derive(Clone, Copy)]
+#[allow(dead_code)] // Constructed by the editor IPC receiver in the next GUI slice.
+pub(crate) enum GuiMessageKind {
+    Begin,
+    Value,
+    End,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct GuiMessage {
+    pub kind: GuiMessageKind,
+    pub id: u32,
+    pub value: f32,
+}
 
 struct Runtime {
     prepared: PreparedNativeProject,
@@ -39,15 +58,19 @@ pub(crate) struct Instance {
     retired: AtomicPtr<Runtime>,
     active: AtomicBool,
     rescan_needed: AtomicBool,
+    flush_retry_needed: AtomicBool,
     sample_rate: Mutex<Option<(f32, usize)>>,
     state: Mutex<Vec<u8>>,
     values: [AtomicU32; 7],
     type_values: [[AtomicU32; 5]; 21],
     type_values_valid: AtomicBool,
+    gui_events: ArrayQueue<GuiMessage>,
+    gui_retry: UnsafeCell<Option<GuiMessage>>,
 }
 
 // CLAP serializes process calls per instance. Its state extension runs on the
 // main thread; Runtime is exclusively owned by the audio callback while active.
+// gui_retry is touched only by CLAP's serialized process/flush callbacks.
 unsafe impl Sync for Instance {}
 
 impl Instance {
@@ -77,12 +100,15 @@ impl Instance {
             retired: AtomicPtr::new(null_mut()),
             active: AtomicBool::new(false),
             rescan_needed: AtomicBool::new(false),
+            flush_retry_needed: AtomicBool::new(false),
             sample_rate: Mutex::new(None),
             state: Mutex::new(SOURCE_PROJECT.to_vec()),
             values: DEFAULTS.map(|value| AtomicU32::new(value.to_bits())),
             type_values: DEFAULT_TYPE_PARAMETERS
                 .map(|row| row.map(|value| AtomicU32::new(value.to_bits()))),
             type_values_valid: AtomicBool::new(true),
+            gui_events: ArrayQueue::new(MAX_GUI_EVENTS),
+            gui_retry: UnsafeCell::new(None),
         });
         instance.plugin.plugin_data = &mut *instance as *mut Self as *mut c_void;
         instance
@@ -90,6 +116,21 @@ impl Instance {
 
     fn value(&self, index: usize) -> f32 {
         f32::from_bits(self.values[index].load(Ordering::Acquire))
+    }
+
+    /// Called by the editor IPC receiver, never by the audio callback. A full
+    /// queue rejects the message; the editor can retry without losing order.
+    #[allow(dead_code)]
+    pub(crate) fn enqueue_gui_message(&self, message: GuiMessage) -> bool {
+        if message.id >= 7
+            || matches!(message.kind, GuiMessageKind::Value)
+                && physical(message.id as usize, message.value as f64).is_none()
+            || self.gui_events.push(message).is_err()
+        {
+            return false;
+        }
+        request_host_flush(self);
+        true
     }
 
     fn capture_state(&self) -> Option<Vec<u8>> {
@@ -329,6 +370,105 @@ unsafe fn append_events(
     true
 }
 
+fn drain_gui_events(
+    instance: &Instance,
+    output: *const clap_output_events,
+    mut runtime: Option<&mut Runtime>,
+) -> (bool, bool) {
+    if output.is_null() {
+        return (false, false);
+    }
+    let Some(push) = (unsafe { (*output).try_push }) else {
+        return (false, false);
+    };
+    // CLAP serializes process and flush. No other callback touches this retry
+    // slot, while producers only push into the bounded lock-free queue.
+    let retry = unsafe { &mut *instance.gui_retry.get() };
+    let mut changed = false;
+    let mut type_changed = false;
+    while let Some(message) = retry.take().or_else(|| instance.gui_events.pop()) {
+        let header = clap_event_header {
+            size: 0,
+            time: 0,
+            space_id: CLAP_CORE_EVENT_SPACE_ID,
+            type_: 0,
+            flags: 0,
+        };
+        let accepted = match message.kind {
+            GuiMessageKind::Begin | GuiMessageKind::End => {
+                let event = clap_event_param_gesture {
+                    header: clap_event_header {
+                        size: std::mem::size_of::<clap_event_param_gesture>() as u32,
+                        type_: if matches!(message.kind, GuiMessageKind::Begin) {
+                            CLAP_EVENT_PARAM_GESTURE_BEGIN
+                        } else {
+                            CLAP_EVENT_PARAM_GESTURE_END
+                        },
+                        ..header
+                    },
+                    param_id: message.id,
+                };
+                unsafe { push(output, &event.header) }
+            }
+            GuiMessageKind::Value => {
+                let event = clap_event_param_value {
+                    header: clap_event_header {
+                        size: std::mem::size_of::<clap_event_param_value>() as u32,
+                        type_: CLAP_EVENT_PARAM_VALUE,
+                        ..header
+                    },
+                    param_id: message.id,
+                    cookie: null_mut(),
+                    note_id: -1,
+                    port_index: -1,
+                    channel: -1,
+                    key: -1,
+                    value: message.value as f64,
+                };
+                unsafe { push(output, &event.header) }
+            }
+        };
+        if !accepted {
+            *retry = Some(message);
+            if instance.active.load(Ordering::Acquire) {
+                instance.flush_retry_needed.store(true, Ordering::Release);
+                if !instance.host.is_null() {
+                    if let Some(callback) = unsafe { (*instance.host).request_callback } {
+                        unsafe { callback(instance.host) };
+                    }
+                }
+            } else {
+                request_host_flush(instance);
+            }
+            break;
+        }
+        if matches!(message.kind, GuiMessageKind::Value) {
+            if let Some(active) = runtime.as_deref_mut() {
+                let applied = active.prepared.processor.set_parameter(
+                    2_u32.into(),
+                    message.id,
+                    message.value,
+                );
+                debug_assert!(applied);
+            } else {
+                let point = TimedAutomation {
+                    offset: 0,
+                    id: HOST_SLOT_BASE + message.id,
+                    normalized: if message.id == 0 {
+                        message.value / 20.
+                    } else {
+                        message.value
+                    },
+                };
+                publish_inactive_values(instance, &[point]);
+            }
+            changed = true;
+            type_changed |= message.id == 0;
+        }
+    }
+    (changed, type_changed)
+}
+
 fn publish_inactive_values(instance: &Instance, automation: &[TimedAutomation]) -> bool {
     let mut type_changed = false;
     for point in automation {
@@ -480,6 +620,8 @@ unsafe extern "C" fn plugin_process(
     } {
         return CLAP_PROCESS_ERROR;
     }
+    let (gui_changed, gui_type_changed) =
+        drain_gui_events(instance, process.out_events, Some(runtime));
     let Some(main) = (unsafe { input_channels(process.audio_inputs, process.audio_inputs_count) })
     else {
         return CLAP_PROCESS_ERROR;
@@ -506,8 +648,12 @@ unsafe extern "C" fn plugin_process(
     {
         return CLAP_PROCESS_ERROR;
     }
-    if !runtime.automation.is_empty() {
-        publish_processor_snapshot(instance, runtime, type_changed(&runtime.automation));
+    if gui_changed || !runtime.automation.is_empty() {
+        publish_processor_snapshot(
+            instance,
+            runtime,
+            gui_type_changed || type_changed(&runtime.automation),
+        );
     }
     CLAP_PROCESS_CONTINUE
 }
@@ -515,8 +661,26 @@ unsafe extern "C" fn plugin_process(
 unsafe extern "C" fn plugin_main_thread(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { instance(plugin) } {
         instance.retire_old();
+        if instance.flush_retry_needed.swap(false, Ordering::AcqRel) {
+            request_host_flush(instance);
+        }
         if instance.rescan_needed.swap(false, Ordering::AcqRel) {
             rescan_host_values(instance);
+        }
+    }
+}
+
+fn request_host_flush(instance: &Instance) {
+    if instance.host.is_null() {
+        return;
+    }
+    if let Some(get) = unsafe { (*instance.host).get_extension } {
+        let extension = unsafe { get(instance.host, CLAP_EXT_PARAMS.as_ptr()) };
+        if !extension.is_null() {
+            let params = unsafe { &*(extension as *const clap_host_params) };
+            if let Some(request) = params.request_flush {
+                unsafe { request(instance.host) };
+            }
         }
     }
 }
@@ -616,7 +780,7 @@ pub(crate) unsafe extern "C" fn text_to_param(
 pub(crate) unsafe extern "C" fn param_flush(
     plugin: *const clap_plugin,
     events: *const clap_input_events,
-    _out: *const clap_output_events,
+    out: *const clap_output_events,
 ) {
     let Some(instance) = (unsafe { instance(plugin) }) else {
         return;
@@ -627,8 +791,10 @@ pub(crate) unsafe extern "C" fn param_flush(
         // Inactive flush happens on the main thread. This allocation is outside
         // the audio callback and becomes the input to the next activation.
         let mut scratch = Vec::with_capacity(MAX_EVENTS);
+        let (_, gui_type_changed) = drain_gui_events(instance, out, None);
         if unsafe { append_events(events, 0, &mut scratch) } {
-            if publish_inactive_values(instance, &scratch) {
+            let host_type_changed = publish_inactive_values(instance, &scratch);
+            if gui_type_changed || host_type_changed {
                 rescan_host_values(instance);
             }
         }
@@ -639,6 +805,7 @@ pub(crate) unsafe extern "C" fn param_flush(
     if !unsafe { append_events(events, 0, &mut runtime.automation) } {
         return;
     }
+    let (gui_changed, gui_type_changed) = drain_gui_events(instance, out, Some(runtime));
     let mut left = [];
     let mut right = [];
     if runtime
@@ -655,8 +822,12 @@ pub(crate) unsafe extern "C" fn param_flush(
         )
         .is_ok()
     {
-        if !runtime.automation.is_empty() {
-            publish_processor_snapshot(instance, runtime, type_changed(&runtime.automation));
+        if gui_changed || !runtime.automation.is_empty() {
+            publish_processor_snapshot(
+                instance,
+                runtime,
+                gui_type_changed || type_changed(&runtime.automation),
+            );
         }
     }
 }
