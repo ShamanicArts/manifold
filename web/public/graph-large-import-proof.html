@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Manifold · Large graph import proof</title>
+  <title>Manifold · Full sample asset import proof</title>
   <style>
     :root { color-scheme: dark; background: #11151b; color: #e8edf2; font: 15px/1.55 system-ui, sans-serif; }
     * { box-sizing: border-box; }
@@ -37,15 +37,15 @@
 </head>
 <body>
   <div class="eyebrow">Manifold v2 · Graph VST3 import checkpoint</div>
-  <h1>A 15 MB browser graph reopened and rendered in REAPER.</h1>
-  <p class="lead">The native Graph VST3 editor imported project JSON containing a 30-second stereo PCM source. Rust prepared the graph outside the audio callback; REAPER saved it and a fresh process rendered audio through the original Manifold widget controls.</p>
+  <h1>32 MiB of sample audio survived a REAPER round trip.</h1>
+  <p class="lead">The native Graph VST3 editor imported four independent stereo sources in one browser-format project. Rust prepared the graph outside the audio callback; REAPER saved it, reopened it, and rendered audio through the original Manifold widget controls.</p>
   <div class="metrics">
-    <div class="metric"><strong>15,361,057</strong><span>project JSON bytes accepted by REAPER</span></div>
-    <div class="metric"><strong>1,440,000</strong><span>stereo source frames, 30 seconds at 48 kHz</span></div>
+    <div class="metric"><strong>44,742,408</strong><span>four-source project JSON bytes accepted by REAPER</span></div>
+    <div class="metric"><strong>32 MiB</strong><span>full aggregate stereo PCM allowance</span></div>
     <div class="metric"><strong>5.96e-8</strong><span>peak error against direct Rust over the host render</span></div>
   </div>
   <section>
-    <h2>Import sizes checked through the same editor path</h2>
+    <h2>Single-source import sizes checked through the same editor path</h2>
     <table>
       <thead><tr><th>Source</th><th>JSON bytes</th><th>REAPER save / reopen</th><th>Peak error vs Rust</th></tr></thead>
       <tbody>
@@ -54,7 +54,7 @@
         <tr><td>30 seconds stereo</td><td>15,361,057</td><td>Passed</td><td>5.96e-8</td></tr>
       </tbody>
     </table>
-    <p class="small">The 30-second source reaches this project's per-asset frame limit. The graph format permits a larger total project than this one asset; private-message capacity above 15.36 MB and behavior in other DAWs remain unverified.</p>
+    <p class="small">The 30-second source reaches this project's per-asset frame limit. The four-source check below reaches its 32 MiB aggregate PCM limit. Behavior in other DAWs remains unverified.</p>
   </section>
   <section>
     <h2>The actual editor and host render</h2>
@@ -81,8 +81,20 @@
     </div>
   </section>
   <section>
+    <h2>Four sources reach the aggregate asset limit</h2>
+    <p>Four 48 kHz stereo sources, each 1,048,576 frames long, fill the 32 MiB PCM allowance exactly. The 44,742,408-byte JSON stays below the 45 MiB project limit. The browser graph parser accepted all four decoded assets before the host import. Each source has its own sample instrument; three audio sums combine their outputs. REAPER imported, saved, and reopened the 11-node graph with 59 bound controls.</p>
+    <div class="review">
+      <figure><img src="/graph-vst3-reaper-editor-four-sample-secondary.png" alt="REAPER Graph VST3 editor displaying multiple original Manifold compact sample instrument widgets from the four-source project"><figcaption>The four-source Graph VST3 editor scrolled to its second and third original sample instrument panels.</figcaption></figure>
+      <div>
+        <p>The full one-second REAPER render matches direct native Rust within 5.96e-8 peak sample error. Muting each source separately changes native audio by 0.0208–0.0214 RMS, so all four contribute to the checked output. Playback later in each 21.85-second source was not measured.</p>
+        <audio controls preload="metadata" src="/graph-vst3-reaper-four-sample-import.wav"></audio>
+        <div class="files"><a href="/graph-vst3-reaper-four-sample-import.wav">Download four-source REAPER WAV</a><a href="/graph-vst3-reaper-four-sample-import.json">Four-source measurements</a></div>
+      </div>
+    </div>
+  </section>
+  <section>
     <h2>Repeat the check</h2>
-    <p>Build the Linux VST3 bundle, start an isolated X server, then run <code>python scripts/probe-reaper-graph-vst3-gui.py --max-sample-import</code> or <code>--multi-sample-import</code> with <code>MANIFOLD_ISOLATED_DISPLAY=1</code> and that server's <code>DISPLAY</code>. The 30-second case passed three runs; the two-source case passed two runs. The <a href="/graph-vst3-host-proof.html">general host proof</a> covers the smaller imports and the <a href="/graph-host-slot-proof.html">slot proof</a> covers automation and original widget gestures.</p>
+    <p>Build the Linux VST3 bundle, start an isolated X server, then run <code>python scripts/probe-reaper-graph-vst3-gui.py --max-sample-import</code>, <code>--multi-sample-import</code>, or <code>--four-sample-import</code> with <code>MANIFOLD_ISOLATED_DISPLAY=1</code> and that server's <code>DISPLAY</code>. The 30-second and four-source cases passed three runs; the two-source case passed two. The <a href="/graph-vst3-host-proof.html">general host proof</a> covers the smaller imports and the <a href="/graph-host-slot-proof.html">slot proof</a> covers automation and original widget gestures.</p>
   </section>
 </body>
 </html>

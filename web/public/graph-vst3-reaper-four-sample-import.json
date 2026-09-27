@@ -1,0 +1,24 @@
+{
+  "host": "REAPER Linux VST3",
+  "project": "sample-voice-with-source.json",
+  "projectBytes": 44742408,
+  "import": "editor JSON file input",
+  "savedAndReopened": true,
+  "browserParserAccepted": true,
+  "renderFrames": 48000,
+  "channels": 2,
+  "peak": 0.17740297317504883,
+  "reference": "native Rust",
+  "peakError": 5.960464477539063e-08,
+  "assetFrames": 1048576,
+  "assetCount": 4,
+  "totalPcmBytes": 33554432,
+  "secondAssetContributionRms": 0.021404097444717104,
+  "assetContributionRms": [
+    0.020818283881452775,
+    0.021404097444717104,
+    0.02140413213065872,
+    0.021404149059523977
+  ],
+  "render": "graph-vst3-reaper-four-sample-import.wav"
+}

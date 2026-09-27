@@ -255,12 +255,15 @@ class X11:
 
 
 def main() -> None:
+    four_sample_import = "--four-sample-import" in sys.argv
     max_sample_import = "--max-sample-import" in sys.argv
-    multi_sample_import = "--multi-sample-import" in sys.argv
+    multi_sample_import = "--multi-sample-import" in sys.argv or four_sample_import
     large_sample_import = "--large-sample-import" in sys.argv or max_sample_import or multi_sample_import
     sample_import = "--sample-import" in sys.argv or large_sample_import
-    sample_frames = 1_440_000 if max_sample_import else 480_000 if large_sample_import else 48_000
-    sample_review = ("multi-sample" if multi_sample_import else "max-sample" if max_sample_import
+    sample_frames = (1_048_576 if four_sample_import else 1_440_000 if max_sample_import
+                     else 480_000 if large_sample_import else 48_000)
+    sample_review = ("four-sample" if four_sample_import else "multi-sample" if multi_sample_import
+                     else "max-sample" if max_sample_import
                      else "large-sample" if large_sample_import else "sample")
     manual_picker = "--manual-picker" in sys.argv
     direct_import = "--direct-import" in sys.argv or sample_import or manual_picker
@@ -294,27 +297,49 @@ def main() -> None:
                                          "frames": sample_frames, "label": "440 Hz source",
                                          "pcmF32Base64": base64.b64encode(pcm.tobytes()).decode("ascii")}]
                     if multi_sample_import:
-                        second = array("f")
-                        for frame in range(sample_frames):
-                            value = 0.25 * math.sin(2 * math.pi * 660 * frame / 48_000)
-                            second.extend((value, value))
-                        bundle["assets"].append({"nodeId": 7, "sourceRate": 48_000,
-                                                 "frames": sample_frames, "label": "660 Hz source",
-                                                 "pcmF32Base64": base64.b64encode(second.tobytes()).decode("ascii")})
-                        bundle["signal"]["nodes"].extend([{"id": 7, "type": "sample-instrument"},
-                                                            {"id": 8, "type": "sum2", "a": 1, "b": 1}])
                         connections = bundle["signal"]["connections"]
                         connections.remove({"from": 6, "to": 3, "inputPort": 0})
-                        connections.extend([{"from": 4, "to": 7, "inputPort": 0},
-                                            {"from": 6, "to": 8, "inputPort": 0},
-                                            {"from": 7, "to": 8, "inputPort": 1},
-                                            {"from": 8, "to": 3, "inputPort": 0}])
-                        bundle["signal"]["initialParameters"].extend(
-                            {**entry, "nodeId": 7} for entry in
-                            bundle["signal"]["initialParameters"][:] if entry["nodeId"] == 5)
+                        first_parameters = [entry for entry in bundle["signal"]["initialParameters"]
+                                            if entry["nodeId"] == 5]
+                        previous = 6
+                        for position, frequency in enumerate(
+                                [660, 880, 1100] if four_sample_import else [660]):
+                            sampler, summed = 7 + position * 2, 8 + position * 2
+                            pcm = array("f")
+                            for frame in range(sample_frames):
+                                value = 0.25 * math.sin(2 * math.pi * frequency * frame / 48_000)
+                                pcm.extend((value, value))
+                            bundle["assets"].append({"nodeId": sampler, "sourceRate": 48_000,
+                                                     "frames": sample_frames,
+                                                     "label": f"{frequency} Hz source",
+                                                     "pcmF32Base64": base64.b64encode(pcm.tobytes()).decode("ascii")})
+                            bundle["signal"]["nodes"].extend([
+                                {"id": sampler, "type": "sample-instrument"},
+                                {"id": summed, "type": "sum2", "a": 1, "b": 1}])
+                            connections.extend([{"from": 4, "to": sampler, "inputPort": 0},
+                                                {"from": previous, "to": summed, "inputPort": 0},
+                                                {"from": sampler, "to": summed, "inputPort": 1}])
+                            bundle["signal"]["initialParameters"].extend(
+                                {**entry, "nodeId": sampler} for entry in first_parameters)
+                            previous = summed
+                        connections.append({"from": previous, "to": 3, "inputPort": 0})
                     imported_project = work / "sample-voice-with-source.json"
                     imported_project.write_text(json.dumps(bundle, separators=(",", ":")))
                     if multi_sample_import:
+                        browser_check = subprocess.run(
+                            ["node", "--input-type=module", "-e",
+                             "import {readFileSync} from 'node:fs'; "
+                             "import {parseGraphBundle} from './web/src/graph/topology.js'; "
+                             "const graph=parseGraphBundle(JSON.parse(readFileSync(process.argv[1],'utf8'))); "
+                             "console.log(JSON.stringify({nodes:graph.signal.nodes.length, "
+                             "assets:graph.assets.length, "
+                             "bytes:graph.assets.reduce((n,a)=>n+a.stereo.byteLength,0)}));",
+                             str(imported_project)],
+                            cwd=ROOT, check=True, capture_output=True, text=True, timeout=120)
+                        accepted = json.loads(browser_check.stdout)
+                        assert accepted == {"nodes": 11 if four_sample_import else 7,
+                                            "assets": 4 if four_sample_import else 2,
+                                            "bytes": sample_frames * 8 * (4 if four_sample_import else 2)}, accepted
                         subprocess.run(["cargo", "run", "-q", "-p", "manifold-native", "--example",
                                         "render_graph_midi_audio", "--", str(imported_project),
                                         str(work / "preflight.f32"), "1024", "6000", "24000", "100"],
@@ -480,11 +505,12 @@ reaper.defer(poll)
                         if manual_picker:
                             x11.choose_file(window, imported_project)
                         if large_sample_import:
-                            deadline = time.monotonic() + 120
+                            deadline = time.monotonic() + (300 if four_sample_import else 120)
                             while True:
                                 (work / "query.txt").unlink(missing_ok=True)
                                 (work / "command.txt").write_text("query")
-                                value = float(wait_for(work / "query.txt", "done", 90).split()[1])
+                                value = float(wait_for(work / "query.txt", "done",
+                                                       240 if four_sample_import else 90).split()[1])
                                 if abs(value - .5) < 1e-4:
                                     break
                                 if time.monotonic() > deadline:
@@ -501,7 +527,7 @@ reaper.defer(poll)
                         if multi_sample_import:
                             x11.scroll_down(window, 7)
                             time.sleep(.4)
-                            x11.capture(window, "graph-vst3-reaper-editor-multi-sample-secondary.png")
+                            x11.capture(window, f"graph-vst3-reaper-editor-{sample_review}-secondary.png")
                         (work / "command.txt").write_text("save")
                         wait_for(work / "save.txt", "done")
                         print(f"REAPER direct JSON import: slot 0={value:.3f}; capture: {imported}")
@@ -608,23 +634,29 @@ reaper.defer(poll)
                 peak = max(abs(value) for value in actual)
                 error = max(abs(a - b) for a, b in zip(actual, expected))
                 assert peak > 0.01 and error < 1e-7, (peak, error)
-                second_contribution = None
+                contributions = None
                 if multi_sample_import:
                     muted = json.loads(imported_project.read_text())
-                    muted["assets"][1]["pcmF32Base64"] = base64.b64encode(
-                        bytes(sample_frames * 8)).decode("ascii")
+                    contributions = []
                     muted_path = work / "second-source-muted.json"
-                    muted_path.write_text(json.dumps(muted, separators=(",", ":")))
                     muted_audio = work / "second-source-muted.f32"
-                    subprocess.run(["cargo", "run", "-q", "-p", "manifold-native", "--example",
-                                    "render_graph_midi_audio", "--", str(muted_path),
-                                    str(muted_audio), "1024", "6000", "24000", "100"],
-                                   cwd=ROOT, check=True, timeout=120)
-                    silent_second = array("f")
-                    silent_second.frombytes(muted_audio.read_bytes())
-                    second_contribution = math.sqrt(sum((a - b) ** 2 for a, b in
-                                                        zip(expected, silent_second)) / len(expected))
-                    assert second_contribution > .01, second_contribution
+                    silence = base64.b64encode(bytes(sample_frames * 8)).decode("ascii")
+                    indices = range(len(muted["assets"])) if four_sample_import else [1]
+                    for index in indices:
+                        original_pcm = muted["assets"][index]["pcmF32Base64"]
+                        muted["assets"][index]["pcmF32Base64"] = silence
+                        muted_path.write_text(json.dumps(muted, separators=(",", ":")))
+                        subprocess.run(["cargo", "run", "-q", "-p", "manifold-native", "--example",
+                                        "render_graph_midi_audio", "--", str(muted_path),
+                                        str(muted_audio), "1024", "6000", "24000", "100"],
+                                       cwd=ROOT, check=True, timeout=120)
+                        silent_source = array("f")
+                        silent_source.frombytes(muted_audio.read_bytes())
+                        contribution = math.sqrt(sum((a - b) ** 2 for a, b in
+                                                     zip(expected, silent_source)) / len(expected))
+                        assert contribution > .01, (index, contribution)
+                        contributions.append(contribution)
+                        muted["assets"][index]["pcmF32Base64"] = original_pcm
                 target = PUBLIC / (f"graph-vst3-reaper-{sample_review}-import.wav" if sample_import
                                    else "graph-vst3-reaper-direct-import.wav")
                 target.write_bytes(rendered.read_bytes())
@@ -634,10 +666,14 @@ reaper.defer(poll)
                     "project": imported_project.name if sample_import else "tone-texture.json",
                     "projectBytes": imported_project.stat().st_size,
                     "import": "editor JSON file input", "savedAndReopened": True,
+                    **({"browserParserAccepted": True} if multi_sample_import else {}),
                     "renderFrames": 48_000, "channels": 2, "peak": peak,
                     "reference": reference, "peakError": error,
                     "assetFrames": sample_frames if sample_import else 0,
-                    **({"assetCount": 2, "secondAssetContributionRms": second_contribution}
+                    **({"assetCount": 4 if four_sample_import else 2,
+                        "totalPcmBytes": sample_frames * 8 * (4 if four_sample_import else 2),
+                        "secondAssetContributionRms": contributions[1] if four_sample_import else contributions[0],
+                        **({"assetContributionRms": contributions} if four_sample_import else {})}
                        if multi_sample_import else {}),
                     "render": target.name,
                 }
