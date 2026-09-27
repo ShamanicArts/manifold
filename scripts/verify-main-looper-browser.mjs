@@ -22,6 +22,12 @@ try {
   const tabBounds = await page.locator('.tabs').boundingBox();
   assert.equal(Math.round(captureBounds.y - transportBounds.y), 52);
   assert.equal(Math.round(tabBounds.y - transportBounds.y), 182);
+  const firstCaptureStrip = await page.locator('.segment').first().boundingBox();
+  const lastCaptureStrip = await page.locator('.segment').last().boundingBox();
+  assert.equal(Math.round(firstCaptureStrip.x - captureBounds.x), 0);
+  assert.equal(Math.round(firstCaptureStrip.y - captureBounds.y), 4);
+  assert.equal(Math.round(firstCaptureStrip.width), 142);
+  assert.equal(Math.round(lastCaptureStrip.x - captureBounds.x), 1136);
   await page.locator('#source').selectOption('oscillator');
   await page.locator('#audio-button').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Running'), { timeout: 25000 });

@@ -8,6 +8,7 @@ import { mountMainFilter } from './widgets/main-filter.js';
 import { mountMainEq } from './widgets/main-eq.js';
 import { mountMainFxSlot } from './widgets/main-fx-slot.js';
 import { mountMainLfo, DEFAULT_LFO_STATE } from './widgets/main-lfo.js';
+import { mountMainCapturePlane } from './widgets/main-capture-plane.js';
 
 const $ = (id) => document.getElementById(id);
 const bars = project.segments;
@@ -320,6 +321,7 @@ function drawWave(canvas, peaks, position, color, pending = 0) {
   ctx.strokeStyle = '#334155'; ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
   ctx.strokeStyle = color; ctx.lineWidth = 1;
   for (let i = 0; i < peaks.length; i++) {
+    if (peaks[i] <= 0) continue;
     const x = Math.floor(i * w / peaks.length), y = Math.max(1, peaks[i] * h * .44);
     ctx.beginPath(); ctx.moveTo(x + .5, h / 2 - y); ctx.lineTo(x + .5, h / 2 + y); ctx.stroke();
   }
@@ -328,17 +330,6 @@ function drawWave(canvas, peaks, position, color, pending = 0) {
     ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, h); ctx.stroke();
   }
   if (pending > 0) { ctx.fillStyle = '#84cc1655'; ctx.fillRect(0, h - 3, pending * w, 3); }
-}
-
-function drawSegment(canvas, peaks) {
-  const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h); ctx.strokeStyle = '#ffffff22';
-  ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
-  ctx.strokeStyle = '#22d3ee';
-  for (let i = 0; i < peaks.length; i++) {
-    const x = 2 + i * (w - 4) / peaks.length, y = Math.max(1, peaks[i] * h * .45);
-    ctx.beginPath(); ctx.moveTo(x, h / 2 - y); ctx.lineTo(x, h / 2 + y); ctx.stroke();
-  }
 }
 
 function drawDonut(canvas, layer, selected, color) {
@@ -383,7 +374,7 @@ function makeKnob(layer, id, label, min, max, initial, color) {
   return canvas;
 }
 
-const layerElements = [], segmentElements = [], donutElements = [];
+const layerElements = [], donutElements = [];
 for (let index = 0; index < project.layers; index++) {
   const donut = document.createElement('button'); donut.className = 'donut'; donut.title = `Select layer ${index + 1}`;
   donut.innerHTML = '<canvas width="28" height="28"></canvas>';
@@ -445,15 +436,8 @@ for (let index = 0; index < project.layers; index++) {
   wave.addEventListener('pointercancel', endScrub);
   layerElements.push({ row, wave, volume, speed, mute, play });
 }
-for (let index = 0; index < bars.length; index++) {
-  const segment = document.createElement('div'); segment.className = 'segment';
-  segment.innerHTML = `<canvas width="140" height="122"></canvas><span>${labels[index]}</span>`;
-  segment.title = `${labels[index]} bars — click to ${$('mode').value === '2' ? 'arm' : 'commit'} recent audio`;
-  segment.onclick = () => command(project.commands.segment, bars[index]);
-  segment.onmouseenter = () => segmentElements.forEach((item, itemIndex) => item.classList.toggle('hovered', itemIndex >= index));
-  segment.onmouseleave = () => segmentElements.forEach(item => item.classList.remove('hovered'));
-  $('capture').append(segment); segmentElements.push(segment);
-}
+const capturePlane = mountMainCapturePlane($('capture'), bars, labels,
+  duration => command(project.commands.segment, duration));
 
 const stateNames = ['Empty', 'Playing', 'Recording', 'Stopped', 'Paused'];
 const stateColors = ['#64748b', '#34d399', '#ef4444', '#fde047', '#a78bfa'];
@@ -465,6 +449,7 @@ function render(data) {
   drawSourceGraph();
   if (document.activeElement !== $('tempo')) $('tempo').value = Math.round(data.tempo);
   if (document.activeElement !== $('mode')) $('mode').value = String(data.mode);
+  capturePlane.setMode(data.mode === 2);
   $('rec').classList.toggle('active', data.recording);
   $('rec').textContent = data.recording ? '● REC*' : '● REC';
   $('overdub').classList.toggle('active', data.overdub);
@@ -486,11 +471,7 @@ function render(data) {
     if (dragging !== ui.speed) { ui.speed.dataset.value = layer.speed; drawKnob(ui.speed, layer.speed, -4, 4, 'Speed', '#22d3ee'); }
     drawDonut(donutElements[index].querySelector('canvas'), layer, index === data.active, layerColors[index]);
   }
-  for (let index = 0; index < bars.length; index++) {
-    const segment = segmentElements[index];
-    segment.classList.toggle('armed', data.forwardBars === bars[index]);
-    drawSegment(segment.querySelector('canvas'), data.segments[index]);
-  }
+  capturePlane.render(data.segments, data.forwardBars);
 }
 
 function nextSaveChunk() {
@@ -745,7 +726,10 @@ wireSegments('sample-pitch-mode', mode => {
 $('blend-mode').onchange = () => synthParameter(synthIds.blendMode, Number($('blend-mode').value));
 wireSegments('blend-keytrack', mode => synthParameter(synthIds.keytrack, mode));
 $('pitch').onchange = () => { if (sourceNode?.frequency) sourceNode.frequency.setTargetAtTime(Math.max(60, Math.min(1200, Number($('pitch').value))), context.currentTime, .01); };
-$('mode').onchange = () => control(project.controls.mode, Number($('mode').value));
+$('mode').onchange = () => {
+  capturePlane.setMode($('mode').value === '2');
+  control(project.controls.mode, Number($('mode').value));
+};
 $('tempo').onchange = () => control(project.controls.tempo, Number($('tempo').value));
 $('target').onchange = () => control(project.controls.targetBpm, Number($('target').value));
 $('rec').onclick = () => command(latest?.recording ? project.commands.stopRecord : project.commands.record);

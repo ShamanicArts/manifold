@@ -18,4 +18,10 @@ assert.equal(bins(250).findIndex(bin => containsFirstTransient(bin, 250)), 0);
 assert.equal(bins(500).some(bin => containsFirstTransient(bin, 500)), false);
 const adjacent = captureStripBins(bars, 1, 1_000, 30_000, 500, 8);
 assert.equal(adjacent.findIndex(bin => containsFirstTransient(bin, 500)), 0);
-console.log('Main capture strips: chronological left-edge fill and age-range migration passed');
+// When an older strip first receives audio, it grows from the right edge next
+// to the younger strip. Empty space and silent PCM have no plotted waveform.
+const enteringOlder = captureStripBins(bars, 1, 1_000, 30_000, 375, 8);
+assert.deepEqual(enteringOlder.slice(0, 4), Array(4).fill(null));
+assert.deepEqual(enteringOlder.slice(4), [[343, 375], [312, 343], [281, 312], [250, 281]]);
+assert.equal(enteringOlder.at(-1)[0], 250);
+console.log('Main capture strips: newest strip starts at left; older strips receive audio at right');

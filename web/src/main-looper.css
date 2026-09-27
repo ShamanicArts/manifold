@@ -225,30 +225,38 @@ body {
   min-width:1280px;
   background:#101723;
   display:flex;
-  padding:1px 1px;
+  padding:4px 0 0;
   margin:6px 0;
-  gap:0
+  gap:0;
+  border-radius:8px
 }
 
 .segment {
   height:122px;
-  flex:1;
-  min-width:0;
+  flex:0 0 142px;
   background:#0f1b2d;
   position:relative;
   cursor:pointer;
-  border:1px solid #47556966
+  border:0
 }
 
 .segment:hover,.segment.hovered {
-  outline:1px solid #60a5fa;
-  background:#18304c
+  outline:1px solid #60a5fa
 }
 
 .segment.armed {
-  outline:2px solid #84cc16;
-  background:#203d2c
+  outline:2px solid #84cc16
 }
+
+.segment:hover::after,.segment.hovered::after,.segment.armed::after {
+  content:'';
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:#60a5fa2a
+}
+
+.segment.armed::after { background:#84cc1633 }
 
 .segment canvas {
   width:100%;

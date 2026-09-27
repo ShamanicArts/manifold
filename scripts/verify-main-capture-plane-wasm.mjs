@@ -26,16 +26,21 @@ function feed(value, total) {
 feed(.8, 500);
 feed(.1, 500);
 const samplesPerBar = e.manifold_looper_status(project.status.samplesPerBar, 0);
-const bins = captureStripBins(project.segments, 8, samplesPerBar, 8_000 * project.captureSeconds);
+const bins = captureStripBins(project.segments, 8, samplesPerBar, 8_000 * project.captureSeconds, 1_000);
 const peaks = bins.map(([start, end]) => e.manifold_looper_peak(0, 1, start, end));
-assert.equal(peaks.length, 20);
-assert.ok(peaks.slice(0, 9).every(value => Math.abs(value - .8) < .0001), `older bins: ${peaks}`);
-assert.ok(peaks.slice(11).every(value => Math.abs(value - .1) < .0001), `newer bins: ${peaks}`);
-assert.ok(captureStripBins(project.segments, 7, samplesPerBar, 8_000 * project.captureSeconds)
-  .every(([start, end]) => e.manifold_looper_peak(0, 1, start, end) === 0));
+assert.equal(peaks.length, 64);
+assert.ok(peaks.slice(0, 28).every(value => Math.abs(value - .8) < .0001), `older bins: ${peaks}`);
+assert.ok(peaks.slice(36).every(value => Math.abs(value - .1) < .0001), `newer bins: ${peaks}`);
+assert.ok(captureStripBins(project.segments, 7, samplesPerBar, 8_000 * project.captureSeconds, 1_000)
+  .every(bin => bin === null));
 assert.equal(e.manifold_looper_command(project.commands.commit, .0625), 1);
 feed(0, 128); // bounded commit publishes on the next process block
 const loopPeaks = Array.from({ length: 20 }, (_, bin) => e.manifold_looper_peak(0, 0, bin * 50, (bin + 1) * 50));
 assert.ok(loopPeaks.slice(0, 9).every(value => Math.abs(value - .8) < .0001), `loop head: ${loopPeaks}`);
 assert.ok(loopPeaks.slice(11).every(value => Math.abs(value - .1) < .0001), `loop tail: ${loopPeaks}`);
-console.log('Main capture plane: oldest audio left, newest audio right, and committed loop head/tail in source order');
+feed(.05, 250);
+const olderBins = captureStripBins(project.segments, 7, samplesPerBar,
+  8_000 * project.captureSeconds, 1_378);
+assert.ok(olderBins.slice(0, 39).every(bin => bin === null));
+assert.ok(olderBins.slice(39).every(bin => bin && Math.abs(e.manifold_looper_peak(0, 1, bin[0], bin[1]) - .8) < .0001));
+console.log('Main capture plane: chronological PCM, right-edge entry into older strip, and matching committed loop');

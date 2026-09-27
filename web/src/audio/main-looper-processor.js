@@ -1,17 +1,26 @@
 /** Main looper adapter: device buffers and messages only; Rust owns audio/state. */
 // Vite serves this AudioWorklet module as an asset, so it must be self-contained.
-// Each strip is an age range. While it fills for the first time, place its
-// available chronological audio at the left edge; empty space stays at right.
-export function captureStripBins(bars, index, samplesPerBar, captureFrames, capturedFrames, count = 20) {
+// The newest strip starts at its left edge. As audio ages out of that strip,
+// it enters the right edge of the adjacent, older strip and travels left.
+// Each bin is a fixed age range once its strip is full.
+export function captureStripBins(bars, index, samplesPerBar, captureFrames, capturedFrames, count = 64) {
   const older = Math.min(captureFrames, Math.floor(bars[index] * samplesPerBar));
   const newer = Math.min(captureFrames, Math.floor((bars[index + 1] ?? 0) * samplesPerBar));
   const span = Math.max(0, older - newer);
   const available = Math.max(0, Math.min(span, capturedFrames - newer));
-  const filled = span ? Math.min(count, Math.ceil(count * available / span)) : 0;
-  return Array.from({ length: count }, (_, bin) => bin < filled ? [
-    Math.floor(newer + available - available * (bin + 1) / filled),
-    Math.floor(newer + available - available * bin / filled),
-  ] : null);
+  if (!span || !available) return Array(count).fill(null);
+  if (index === bars.length - 1 && available < span) {
+    const filled = Math.min(count, Math.ceil(count * available / span));
+    return Array.from({ length: count }, (_, bin) => bin < filled ? [
+      Math.floor(newer + available - available * (bin + 1) / filled),
+      Math.floor(newer + available - available * bin / filled),
+    ] : null);
+  }
+  return Array.from({ length: count }, (_, bin) => {
+    const start = Math.floor(older - span * (bin + 1) / count);
+    const end = Math.floor(older - span * bin / count);
+    return start < capturedFrames && end > start ? [start, Math.min(end, capturedFrames)] : null;
+  });
 }
 let project;
 class MainLooperProcessor extends AudioWorkletProcessor {
