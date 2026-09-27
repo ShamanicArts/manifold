@@ -245,6 +245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "main-bank-add",
             "main-bank-follow-add",
             "main-bank-follow-morph",
+            "main-bank-follow-driven",
         ]
         .contains(&args[1].as_str())
     {
@@ -253,38 +254,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     if args[1] == "texture" {
-        return render(tone_texture(), &args[2], false, false, false, false, false);
+        return render(tone_texture(), &args[2], false, false, false, false, 0);
     }
     if args[1] == "note-voice" {
-        return render(note_voice(), &args[2], true, false, false, false, false);
+        return render(note_voice(), &args[2], true, false, false, false, 0);
     }
     if args[1] == "sample-voice" {
-        return render(sample_voice(), &args[2], true, true, false, false, false);
+        return render(sample_voice(), &args[2], true, true, false, false, 0);
     }
     if args[1] == "region-voice" {
-        return render(region_voice(), &args[2], true, true, true, false, false);
+        return render(region_voice(), &args[2], true, true, true, false, 0);
     }
     if args[1] == "granular-source" {
-        return render(
-            granular_source(),
-            &args[2],
-            false,
-            true,
-            false,
-            false,
-            false,
-        );
+        return render(granular_source(), &args[2], false, true, false, false, 0);
     }
     if args[1] == "granular-capture" {
-        return render(
-            granular_capture(),
-            &args[2],
-            false,
-            false,
-            false,
-            false,
-            false,
-        );
+        return render(granular_capture(), &args[2], false, false, false, false, 0);
     }
     if args[1].starts_with("main-bank") {
         return render(
@@ -293,8 +278,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             true,
             true,
             false,
-            args[1] == "main-bank-add" || args[1] == "main-bank-follow-add",
-            args[1].starts_with("main-bank-follow"),
+            args[1] == "main-bank-add"
+                || args[1] == "main-bank-follow-add"
+                || args[1] == "main-bank-follow-driven",
+            if args[1] == "main-bank-follow-driven" {
+                2
+            } else if args[1].starts_with("main-bank-follow") {
+                1
+            } else {
+                0
+            },
         );
     }
     let distorted = args[1] != "seed";
@@ -379,7 +372,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         false,
-        false,
+        0,
     )
 }
 
@@ -390,7 +383,7 @@ fn render(
     sample_source: bool,
     sample_region: bool,
     main_add: bool,
-    main_follow: bool,
+    main_follow: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut plan = description.compile(48_000.0, 2048)?;
     if note_events && !sample_source && !plan.set_parameter(5, 0, 7.0) {
@@ -412,7 +405,7 @@ fn render(
                 6,
                 if main_add {
                     4.0
-                } else if main_follow {
+                } else if main_follow != 0 {
                     5.0
                 } else {
                     0.0
@@ -462,7 +455,7 @@ fn render(
             return Err("Main bank partial target rejected".into());
         }
     }
-    if main_follow {
+    if main_follow != 0 {
         let bytes = std::fs::read(
             std::path::Path::new(path)
                 .parent()
@@ -504,11 +497,26 @@ fn render(
                 partials,
             });
         }
+        let driven = main_follow == 2;
         let recipe = MainTemporalRecipe {
-            smooth: 0.0,
-            contrast: 1.0,
-            shape: SpectralShape::default(),
-            add_flavor: AddFlavor::SelfResynthesis,
+            smooth: if driven { 0.4 } else { 0.0 },
+            contrast: if driven { 1.2 } else { 1.0 },
+            shape: if driven {
+                SpectralShape {
+                    stretch: 0.3,
+                    tilt_mode: 2,
+                }
+            } else {
+                SpectralShape::default()
+            },
+            add_flavor: if driven {
+                AddFlavor::Driven {
+                    waveform: 6,
+                    pulse_width: 0.35,
+                }
+            } else {
+                AddFlavor::SelfResynthesis
+            },
             morph: MorphRecipe {
                 position: 0.5,
                 depth: 0.7,

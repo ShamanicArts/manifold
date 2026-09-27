@@ -14,6 +14,18 @@ import mainBank from '../../../projects/graph-workspace/main-bank.json';
 
 const defaultMainTargets = (nodeId) => [mainVoiceBankProject.partials, ...mainVoiceBankProject.extraPartials]
   .map((target) => ({ ...target, nodeId }));
+const MOTION_FIELDS = [
+  { key: 'smooth', label: 'Smoothing', min: 0, max: 1, step: .01 },
+  { key: 'contrast', label: 'Contrast', min: 0, max: 2, step: .01 },
+  { index: 9, label: 'Stretch', min: 0, max: 1, step: .01 },
+  { index: 10, label: 'Spectral tilt', choices: ['Neutral', 'Brighter', 'Darker'] },
+  { index: 5, label: 'Add source', choices: ['Source partials', 'Driven wave'] },
+  { index: 0, label: 'Driven wave', choices: ['Sine', 'Saw', 'Square', 'Triangle', 'Blend', 'Noise cloud', 'Pulse', 'SuperSaw'] },
+  { index: 4, label: 'Pulse width', min: .01, max: .99, step: .01 },
+  { index: 6, label: 'Morph amount', min: 0, max: 1, step: .01 },
+  { index: 7, label: 'Morph depth', min: 0, max: 1, step: .01 },
+  { index: 8, label: 'Morph curve', choices: ['Linear', 'Cosine', 'Equal power'] },
+];
 function temporalFromMainState(nodeId, controls) {
   return { nodeId, mode: controls.mode === 3 ? 2 : 1,
     speed: controls.speed, smooth: controls.smooth, contrast: controls.contrast,
@@ -78,6 +90,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   }
 
   function render() {
+    const expanded = new Set([...nodesRoot.querySelectorAll('details[open]')].map((item) => item.dataset.key));
     sourceMode.value = project.signal.inputSource === 'none' ? 'none' : 'external';
     const reachable = new Set([3]);
     let changed;
@@ -284,11 +297,64 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           });
           speedRow.append(speedText, speed);
           article.append(speedRow);
+          const shape = document.createElement('details');
+          shape.className = 'graph-motion';
+          shape.dataset.key = `motion-${node.id}`;
+          shape.open = expanded.has(shape.dataset.key);
+          const shapeTitle = document.createElement('summary');
+          shapeTitle.textContent = 'Source shape · worker recipe';
+          shape.append(shapeTitle);
+          for (const field of MOTION_FIELDS) {
+            const current = field.key ? motion[field.key] : motion.recipe[field.index];
+            const row = document.createElement('label');
+            row.className = 'graph-field graph-motion-field';
+            const label = document.createElement('span');
+            label.textContent = field.label;
+            let input;
+            if (field.choices) {
+              input = document.createElement('select');
+              field.choices.forEach((choice, index) => input.add(new Option(choice, String(index))));
+            } else {
+              input = document.createElement('input');
+              input.type = 'range';
+              input.min = String(field.min);
+              input.max = String(field.max);
+              input.step = String(field.step);
+            }
+            input.value = String(current);
+            input.className = 'graph-edit';
+            input.setAttribute('aria-label', `Main voice bank ${node.id} ${field.label}`);
+            const control = document.createElement('span');
+            control.className = 'graph-motion-control';
+            control.append(input);
+            if (!field.choices) {
+              const readout = document.createElement('output');
+              readout.value = Number(current).toFixed(2);
+              input.addEventListener('input', () => { readout.value = Number(input.value).toFixed(2); });
+              control.append(readout);
+            }
+            input.addEventListener('change', () => {
+              if (!canEdit()) return;
+              try {
+                const updated = { ...motion, recipe: [...motion.recipe] };
+                if (field.key) updated[field.key] = Number(input.value);
+                else updated.recipe[field.index] = Number(input.value);
+                const temporal = (project.graphTemporal ?? []).map((entry) => entry.nodeId === node.id ? updated : entry);
+                commit(project.signal, `Updated Main bank ${node.id} ${field.label.toLowerCase()} source shape. Start audio to rebuild frames.`,
+                  project.graphAssets, project.graphTargets, temporal);
+              } catch (error) { input.value = String(current); fail(error); }
+            });
+            row.append(label, control);
+            shape.append(row);
+          }
+          article.append(shape);
         }
         const targets = (project.graphTargets ?? []).filter((target) => target.nodeId === node.id);
         for (const target of targets) {
           const details = document.createElement('details');
           details.className = 'graph-target';
+          details.dataset.key = `target-${node.id}-${target.target}`;
+          details.open = expanded.has(details.dataset.key);
           const summary = document.createElement('summary');
           summary.textContent = `${target.target === 0 ? 'Wave' : 'Source'} target · ${target.values.length / 4} partials`;
           const values = document.createElement('textarea');

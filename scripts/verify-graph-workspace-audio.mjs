@@ -40,7 +40,7 @@ const temporalData = new Float32Array(temporalBytes.buffer.slice(
   temporalBytes.byteOffset, temporalBytes.byteOffset + temporalBytes.byteLength));
 try {
   writeFileSync(join(workspace, 'temporal-frames.f32'), temporalBytes);
-  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice], ['region-voice', regionVoice], ['granular-source', granularSource], ['granular-capture', granularCapture], ['main-bank', mainBundle.signal], ['main-bank-add', setInitialParameter(mainBundle.signal, 5, 6, 4)], ['main-bank-follow-add', setInitialParameter(mainBundle.signal, 5, 6, 4)], ['main-bank-follow-morph', setInitialParameter(mainBundle.signal, 5, 6, 5)]]) {
+  for (const [mode, signal] of [['seed', seed], ['distortion', distorted], ['cv', cv], ['texture', texture], ['note-voice', noteVoice], ['sample-voice', sampleVoice], ['region-voice', regionVoice], ['granular-source', granularSource], ['granular-capture', granularCapture], ['main-bank', mainBundle.signal], ['main-bank-add', setInitialParameter(mainBundle.signal, 5, 6, 4)], ['main-bank-follow-add', setInitialParameter(mainBundle.signal, 5, 6, 4)], ['main-bank-follow-morph', setInitialParameter(mainBundle.signal, 5, 6, 5)], ['main-bank-follow-driven', setInitialParameter(mainBundle.signal, 5, 6, 4)]]) {
     const output = join(workspace, `${mode}.f32`);
     const source = ['sample-voice', 'region-voice', 'granular-source'].includes(mode) || mode.startsWith('main-bank')
       ? readFileSync('web/public/reference/graph-workspace/sample-source.f32') : null;
@@ -56,7 +56,9 @@ try {
       partials: mode.startsWith('main-bank') ? mainBundle.targets : [],
       temporals: mode.startsWith('main-bank-follow') ? [{ nodeId: 5,
         frames: temporalData[0], rawFrames: temporalData.slice(),
-        rawRecipe: new Float32Array([0, 1, 0, 0, 0, 0, .5, .5, .7, 2]), speed: 1 }] : [],
+        rawRecipe: new Float32Array(mode === 'main-bank-follow-driven'
+          ? [.4, 1.2, .3, 2, 1, 6, .35, .5, .7, 2]
+          : [0, 1, 0, 0, 0, 0, .5, .5, .7, 2]), speed: 1 }] : [],
     } });
     assert.deepEqual(messages.at(-1), { type: 'ready' }, `${mode} prepared`);
     if (['note-voice', 'sample-voice', 'region-voice'].includes(mode) || mode.startsWith('main-bank')) {
@@ -112,6 +114,14 @@ try {
   }
   assert.ok(movingDifference > .005, `source follow did not alter Add audio: ${movingDifference}`);
   console.log(`main-bank-follow-add versus static Add: peak change ${movingDifference.toFixed(6)}`);
+  const drivenAdd = readFileSync(join(workspace, 'main-bank-follow-driven.f32'));
+  let drivenDifference = 0;
+  for (let offset = 0; offset < movingAdd.length; offset += 4) {
+    drivenDifference = Math.max(drivenDifference,
+      Math.abs(movingAdd.readFloatLE(offset) - drivenAdd.readFloatLE(offset)));
+  }
+  assert.ok(drivenDifference > .005, `driven recipe did not alter Add audio: ${drivenDifference}`);
+  console.log(`driven versus source Add: peak change ${drivenDifference.toFixed(6)}`);
   for (const [type, spec] of Object.entries(NODE_TYPES).filter(([, entry]) => !entry.fixedId)) {
     let signal = addNode(seed, type);
     const nodeId = signal.nodes.at(-1).id;

@@ -63,6 +63,7 @@ for (let index = 0; index < temporalFrames; index++) {
 writeFileSync(resolve(directory, 'temporal-frames.f32'),
   Buffer.from(rawFrames.buffer, rawFrames.byteOffset, rawFrames.byteLength));
 const temporalRecipe = [0, 1, 0, 0, 0, 0, .5, .5, .7, 2];
+const drivenRecipe = [.4, 1.2, .3, 2, 1, 6, .35, .5, .7, 2];
 const notes = [
   { frame: 16, kind: 0, channel: 15, note: 60, velocity: 100 },
   { frame: 2048, kind: 0, channel: 15, note: 64, velocity: 96 },
@@ -95,6 +96,10 @@ const cases = [
     graph: setInitialParameter(mainBundle.signal, 5, 6, 5), events: notes,
     sampleNodeId: 5, targets: mainBundle.targets, temporalNodeId: 5,
     temporalRawFile: 'temporal-frames.f32', temporalRecipe, temporalSpeed: 1 },
+  { id: 'main-bank-follow-driven', label: 'MIDI → Main driven Add with source motion → SVF',
+    graph: setInitialParameter(mainBundle.signal, 5, 6, 4), events: notes,
+    sampleNodeId: 5, targets: mainBundle.targets, temporalNodeId: 5,
+    temporalRawFile: 'temporal-frames.f32', temporalRecipe: drivenRecipe, temporalSpeed: 1 },
 ];
 for (const entry of cases) {
   entry.output = `${entry.id}.f32`;

@@ -36,7 +36,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${process.env.MANIFOLD_SITE_URL ?? 'http://127.0.0.1:4173'}/?primitive=graph-workspace`);
   await page.waitForFunction(() => document.querySelector('#comparison-result').textContent === 'Match');
-  assert.equal(await page.locator('#reference-case option').count(), 13);
+  assert.equal(await page.locator('#reference-case option').count(), 14);
   assert.match(await page.locator('#reference-title').textContent(), /Native Rust/);
   assert.ok(Number(await page.locator('#max-difference').textContent()) < 1e-5);
   await page.locator('#reference-case').selectOption('distortion');
@@ -74,7 +74,8 @@ try {
   await page.waitForFunction(() => document.querySelector('#reference-status').textContent.includes('Add mode'));
   assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
   for (const [id, label] of [['main-bank-follow-add', 'Main Add with source motion'],
-    ['main-bank-follow-morph', 'Main Morph with source motion']]) {
+    ['main-bank-follow-morph', 'Main Morph with source motion'],
+    ['main-bank-follow-driven', 'Main driven Add with source motion']]) {
     await page.locator('#reference-case').selectOption(id);
     await page.waitForFunction((value) => document.querySelector('#reference-status').textContent.includes(value), label);
     assert.equal(await page.locator('#comparison-result').textContent(), 'Match');
@@ -429,6 +430,35 @@ try {
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
   await page.locator('#audio-toggle').click();
+  await page.locator('.graph-motion summary').click();
+  await page.locator('select[aria-label="Main voice bank 5 Add source"]').selectOption('1');
+  await page.locator('select[aria-label="Main voice bank 5 Driven wave"]').selectOption('6');
+  await page.locator('select[aria-label="Main voice bank 5 Spectral tilt"]').selectOption('2');
+  await page.locator('input[aria-label="Main voice bank 5 Pulse width"]').evaluate((input) => {
+    input.value = '.35';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  assert.equal(await page.locator('.graph-motion').getAttribute('open'), '');
+  const shapedDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const shaped = JSON.parse((await readFile(await (await shapedDownload).path())).toString());
+  assert.equal(shaped.temporal[0].recipe[5], 1);
+  assert.equal(shaped.temporal[0].recipe[0], 6);
+  assert.equal(shaped.temporal[0].recipe[10], 2);
+  assert.equal(shaped.temporal[0].recipe[4], .35);
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'main-shaped.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(shaped)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  await page.locator('.graph-motion summary').click();
+  assert.equal(await page.locator('select[aria-label="Main voice bank 5 Add source"]').inputValue(), '1');
+  assert.equal(await page.locator('select[aria-label="Main voice bank 5 Driven wave"]').inputValue(), '6');
+  assert.equal(await page.locator('input[aria-label="Main voice bank 5 Pulse width"]').inputValue(), '0.35');
+  await page.locator('select[data-node="5"][data-parameter="6"]').selectOption('4');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · instrument'));
+  await page.locator('#audio-toggle').click();
   await page.locator('.graph-target').first().locator('summary').click();
   const targetEdit = page.locator('textarea[aria-label="Main voice bank 5 wave target JSON"]');
   await targetEdit.fill(JSON.stringify({ fundamental: 1, values: [1, .8, 0, 0] }));
@@ -498,7 +528,7 @@ try {
   const disabledMotion = JSON.parse((await readFile(await (await disabledMotionDownload).path())).toString());
   assert.equal(disabledMotion.temporal, undefined);
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: typed editing, sample/region/granulator/Main nodes, source analysis and rejection, per-voice motion import/reopen/live speed, 13 native/Wasm references passed');
+  console.log('Graph workspace browser: typed editing, sample/region/granulator/Main nodes, source analysis and rejection, per-voice motion and shaping, 14 native/Wasm references passed');
 } finally {
   await browser.close();
 }
