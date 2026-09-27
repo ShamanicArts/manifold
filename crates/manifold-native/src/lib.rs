@@ -3,7 +3,9 @@
 
 use manifold_core::events::{EventError, TimedEvent};
 use manifold_core::graph::{ExecutionPlan, GraphDescription, GraphError, NodeId};
+use manifold_core::main_voice_bank::MainTemporalRecipe;
 use manifold_core::sine_bank::PartialSet;
+use manifold_core::temporal_partials::TemporalFrame;
 
 pub mod parameters;
 pub mod project;
@@ -105,6 +107,19 @@ impl NativeProcessor {
         partials: PartialSet,
     ) -> bool {
         self.plan.load_partials_target(node, target, partials)
+    }
+
+    pub fn load_main_temporal_frames(
+        &mut self,
+        node: NodeId,
+        frames: Vec<TemporalFrame>,
+        recipe: MainTemporalRecipe,
+    ) -> bool {
+        self.plan.load_main_temporal_frames(node, frames, recipe)
+    }
+
+    pub fn set_main_temporal_speed(&mut self, node: NodeId, speed: f32) -> bool {
+        self.plan.set_main_temporal_speed(node, speed)
     }
 
     /// Render one host block without allocating. Missing buses are silence.

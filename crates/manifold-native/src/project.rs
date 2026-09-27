@@ -5,7 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
+use manifold_core::main_voice_bank::MainTemporalRecipe;
 use manifold_core::sine_bank::{Partial, PartialSet};
+use manifold_core::spectral_targets::{AddFlavor, MorphRecipe, SpectralShape};
+use manifold_core::temporal_partials::analyze_temporal_stereo;
 use serde_json::Value;
 
 use crate::parameters::{HOST_SLOT_COUNT, HostBinding, HostParameter};
@@ -18,7 +21,6 @@ const MAX_ASSET_BYTES: usize = 32 * 1024 * 1024;
 pub enum ProjectError {
     Invalid(&'static str),
     UnsupportedNode(String),
-    UnsupportedFeature(&'static str),
     Prepare(NativeError),
 }
 
@@ -42,7 +44,15 @@ struct Target {
     partials: PartialSet,
 }
 
-/// A parsed v1 project; unsupported node and temporal features fail explicitly.
+struct TemporalRecipe {
+    node: u32,
+    speed: f32,
+    smooth: f32,
+    contrast: f32,
+    recipe: [f32; 11],
+}
+
+/// A parsed v1 graph project; unsupported nodes fail explicitly.
 pub struct NativeProject {
     graph: GraphDescription,
     parameters: Vec<Parameter>,
@@ -50,6 +60,7 @@ pub struct NativeProject {
     host_bindings: Vec<HostBinding>,
     assets: Vec<Asset>,
     targets: Vec<Target>,
+    temporal: Vec<TemporalRecipe>,
 }
 
 fn object<'a>(
@@ -199,13 +210,6 @@ impl NativeProject {
             || required(doc, "projectId") != "manifold.graph-workspace"
         {
             return Err(ProjectError::Invalid("project version"));
-        }
-        for key in ["temporal"] {
-            if let Some(entries) = doc.get(key) {
-                if !entries.as_array().is_some_and(Vec::is_empty) {
-                    return Err(ProjectError::UnsupportedFeature(key));
-                }
-            }
         }
         let signal = object(
             required(doc, "signal"),
@@ -609,6 +613,69 @@ impl NativeProject {
                 stereo,
             });
         }
+        let raw_temporal: &[Value] = match doc.get("temporal") {
+            None => &[],
+            Some(Value::Array(values)) => values,
+            Some(_) => return Err(ProjectError::Invalid("temporal recipes")),
+        };
+        if raw_temporal.len() > 4 {
+            return Err(ProjectError::Invalid("temporal count"));
+        }
+        let mut temporal = Vec::with_capacity(raw_temporal.len());
+        let mut temporal_nodes = BTreeSet::new();
+        for entry in raw_temporal {
+            let entry = object(
+                entry,
+                &["nodeId", "mode", "speed", "smooth", "contrast", "recipe"],
+                &[],
+            )?;
+            let node = uint(required(entry, "nodeId"), 65_535)?;
+            let mode = uint(required(entry, "mode"), 2)?;
+            if mode < 1
+                || kinds.get(&node).map(String::as_str) != Some("main-voice-bank")
+                || !asset_nodes.contains(&node)
+                || !temporal_nodes.insert(node)
+            {
+                return Err(ProjectError::Invalid("temporal node"));
+            }
+            let speed = float(required(entry, "speed"), 0., 4.)?;
+            let smooth = float(required(entry, "smooth"), 0., 1.)?;
+            let contrast = float(required(entry, "contrast"), 0., 2.)?;
+            let fields = required(entry, "recipe")
+                .as_array()
+                .ok_or(ProjectError::Invalid("temporal recipe"))?;
+            if fields.len() != 11 {
+                return Err(ProjectError::Invalid("temporal recipe length"));
+            }
+            let mut recipe = [0.0; 11];
+            for (index, field) in fields.iter().enumerate() {
+                recipe[index] = float(field, -f32::MAX, f32::MAX)?;
+            }
+            if recipe[0].fract() != 0.
+                || !(0.0..=7.0).contains(&recipe[0])
+                || recipe[1] != 8.
+                || recipe[2] != 0.
+                || recipe[3] != 0.
+                || !(0.01..=0.99).contains(&recipe[4])
+                || (recipe[5] != 0.0 && recipe[5] != 1.0)
+                || !(0.0..=1.0).contains(&recipe[6])
+                || !(0.0..=1.0).contains(&recipe[7])
+                || recipe[8].fract() != 0.
+                || !(0.0..=2.0).contains(&recipe[8])
+                || !(0.0..=1.0).contains(&recipe[9])
+                || recipe[10].fract() != 0.
+                || !(0.0..=2.0).contains(&recipe[10])
+            {
+                return Err(ProjectError::Invalid("temporal recipe values"));
+            }
+            temporal.push(TemporalRecipe {
+                node,
+                speed,
+                smooth,
+                contrast,
+                recipe,
+            });
+        }
         Ok(Self {
             graph,
             parameters: parsed_parameters,
@@ -616,6 +683,7 @@ impl NativeProject {
             host_bindings,
             assets,
             targets,
+            temporal,
         })
     }
 
@@ -633,6 +701,44 @@ impl NativeProject {
         sample_rate: f32,
         max_frames: usize,
     ) -> Result<NativeProcessor, ProjectError> {
+        let mut prepared_temporal = Vec::with_capacity(self.temporal.len());
+        for entry in &self.temporal {
+            let source = self
+                .assets
+                .iter()
+                .find(|asset| asset.node == entry.node)
+                .ok_or(ProjectError::Invalid("temporal source"))?;
+            let source_frames = source.stereo.len() / 2;
+            let analysis =
+                analyze_temporal_stereo(&source.stereo, source.rate, 0..source_frames, 128)
+                    .ok_or(ProjectError::Invalid("temporal analysis"))?;
+            if analysis.frames.len() < 2 {
+                return Err(ProjectError::Invalid("temporal frame count"));
+            }
+            let values = entry.recipe;
+            let recipe = MainTemporalRecipe {
+                smooth: entry.smooth,
+                contrast: entry.contrast,
+                shape: SpectralShape {
+                    stretch: values[9],
+                    tilt_mode: values[10] as u8,
+                },
+                add_flavor: if values[5] >= 0.5 {
+                    AddFlavor::Driven {
+                        waveform: values[0] as u8,
+                        pulse_width: values[4],
+                    }
+                } else {
+                    AddFlavor::SelfResynthesis
+                },
+                morph: MorphRecipe {
+                    position: values[6],
+                    depth: values[7],
+                    curve: values[8] as u8,
+                },
+            };
+            prepared_temporal.push((entry.node, entry.speed, analysis.frames, recipe));
+        }
         let mut processor = NativeProcessor::prepare(&self.graph, sample_rate, max_frames)
             .map_err(ProjectError::Prepare)?;
         for parameter in self.parameters {
@@ -648,6 +754,13 @@ impl NativeProject {
         for target in self.targets {
             if !processor.load_partials_target(target.node.into(), target.index, target.partials) {
                 return Err(ProjectError::Invalid("unavailable partial target"));
+            }
+        }
+        for (node, speed, frames, recipe) in prepared_temporal {
+            if !processor.load_main_temporal_frames(node.into(), frames, recipe)
+                || !processor.set_main_temporal_speed(node.into(), speed)
+            {
+                return Err(ProjectError::Invalid("unavailable temporal source"));
             }
         }
         processor.host_parameters = self.host_parameters;
@@ -845,10 +958,7 @@ mod tests {
         ));
         let mut bundle: Value = serde_json::from_slice(source).unwrap();
         bundle["temporal"] = json!([{}]);
-        assert!(matches!(
-            parse(&bundle),
-            Err(ProjectError::UnsupportedFeature("temporal"))
-        ));
+        assert!(matches!(parse(&bundle), Err(ProjectError::Invalid(_))));
     }
 
     #[test]
@@ -901,6 +1011,58 @@ mod tests {
             assert!(left.iter().all(|sample| sample.is_finite()));
         }
         assert!(audible);
+    }
+
+    #[test]
+    fn main_bank_temporal_recipe_analyzes_embedded_pcm_before_prepare() {
+        let source = include_bytes!("../../../projects/graph-workspace/main-bank.json");
+        let mut bundle: Value = serde_json::from_slice(source).unwrap();
+        let pcm: Vec<f32> = (0..8192)
+            .flat_map(|i| {
+                let sample = (i as f32 * std::f32::consts::TAU * 330.0 / 48_000.0).sin() * 0.8;
+                [sample, sample]
+            })
+            .collect();
+        let bytes: Vec<u8> = pcm.iter().flat_map(|sample| sample.to_le_bytes()).collect();
+        bundle["assets"] = json!([{ "nodeId": 5, "sourceRate": 48000, "frames": 8192,
+            "label": "moving Main source", "pcmF32Base64": STANDARD.encode(bytes) }]);
+        bundle["temporal"] = json!([{ "nodeId": 5, "mode": 1, "speed": 1,
+            "smooth": 0, "contrast": 1,
+            "recipe": [0, 8, 0, 0, 0.5, 0, 0, 0.7, 2, 0, 0] }]);
+        let mut processor = parse(&bundle).unwrap().prepare(48_000.0, 128).unwrap();
+        let note = TimedEvent {
+            offset: 16,
+            node: 4,
+            kind: EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            },
+        };
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        processor
+            .process(AudioBlock {
+                main: None,
+                sidechain: None,
+                output: [&mut left, &mut right],
+                events: &[note],
+            })
+            .unwrap();
+        assert_eq!(left[..16], [0.0; 16]);
+        assert!(left[32..].iter().any(|sample| sample.abs() > 0.0001));
+        let mut invalid = bundle;
+        invalid["temporal"][0]["recipe"][1] = json!(7);
+        assert!(matches!(
+            parse(&invalid),
+            Err(ProjectError::Invalid("temporal recipe values"))
+        ));
+        invalid["temporal"][0]["recipe"][1] = json!(8);
+        invalid.as_object_mut().unwrap().remove("assets");
+        assert!(matches!(
+            parse(&invalid),
+            Err(ProjectError::Invalid("temporal node"))
+        ));
     }
 
     #[test]
