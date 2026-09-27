@@ -24,17 +24,19 @@ try {
   assert.ok((await page.locator('#status').textContent()).startsWith('Audio running'));
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#main-state-export').click();
-  const state = JSON.parse((await readFile(await (await downloadPromise).path())).toString());
+  const bundle = JSON.parse((await readFile(await (await downloadPromise).path())).toString());
+  assert.equal(bundle.format, 'manifold.project');
+  const state = bundle.snapshot;
   assert.equal(state.schemaVersion, 3);
   assert.equal(state.parameters['add-wave-source'], 1);
   await page.locator('#audio-toggle').click();
   await page.locator('#main-state-file').setInputFiles([{
-    name: 'main-add-wave-state.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(state)),
+    name: 'main-add-wave-project.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bundle)),
   }]);
   await page.waitForFunction(() => document.querySelector('#main-state-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('[data-parameter-id="19"] select').inputValue(), '1');
   assert.deepEqual(errors, []);
-  console.log('Main Add wave browser: square original wavetable, live worklet, v3 state save/reopen passed');
+  console.log('Main Add wave browser: square original wavetable, live worklet, project bundle save/reopen passed');
 } finally {
   await browser.close();
 }

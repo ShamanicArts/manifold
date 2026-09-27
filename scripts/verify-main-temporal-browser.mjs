@@ -32,7 +32,12 @@ try {
   await page.locator('#main-state-export').click();
   const download = await downloadPromise;
   const bytes = await readFile(await download.path());
-  const state = JSON.parse(bytes.toString());
+  const bundle = JSON.parse(bytes.toString());
+  assert.equal(bundle.format, 'manifold.project');
+  assert.equal(bundle.schemaVersion, 1);
+  assert.equal(bundle.projectId, 'manifold.main-voice-bank-study');
+  assert.ok(bundle.signal.nodes.length > 0);
+  const state = bundle.snapshot;
   assert.equal(state.schemaVersion, 3);
   assert.equal(state.parameters['blend-mode'], 4);
   assert.equal(state.targetControls.followPlayback, true);
@@ -64,7 +69,8 @@ try {
   await page.locator('#main-state-export').click();
   const morphDownload = await morphDownloadPromise;
   const morphBytes = await readFile(await morphDownload.path());
-  const morphState = JSON.parse(morphBytes.toString());
+  const morphBundle = JSON.parse(morphBytes.toString());
+  const morphState = morphBundle.snapshot;
   assert.equal(morphState.targetControls.morphAmount, .25);
   assert.equal(morphState.targetControls.morphDepth, .25);
   assert.equal(morphState.targetControls.morphCurve, 0);
@@ -79,7 +85,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running'));
   assert.deepEqual(errors, []);
   assert.ok((await page.locator('#status').textContent()).startsWith('Audio running'));
-  console.log('Main temporal browser: raw Add pulse width and Morph depth/curve, worklet note, v3 state save/reopen passed');
+  console.log('Main temporal browser: raw Add pulse width and Morph depth/curve, worklet note, project bundle save/reopen passed');
 } finally {
   await browser.close();
 }

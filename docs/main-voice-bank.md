@@ -176,6 +176,14 @@ note ownership follows the old UI's note-only policy across channels.
   pulse width, Morph depth and curve controls. Earlier v3 states receive the
   former spectral defaults; a saved source rebuilds its temporal frames on reopen. This
   is bank state, not old preset migration.
+- `web/src/state/project-document.js` wraps the authored Main bank or blend
+  signal graph and its instrument snapshot in a version-1 project document.
+  Imports compare the graph with the fixed route this workbench can execute,
+  then validate the snapshot before changing the session. Earlier bare bank
+  and blend state files still open. `scripts/verify-project-document.mjs`
+  checks both projects, the old format, changed graphs, and invalid snapshots.
+  Graph replacement and the original project's preset library remain future
+  work.
 
 The playable workbench is `/?primitive=main-voice-bank`; the Add/Morph checkpoint
 review is `/main-add-morph-review.html`; the timing review is
@@ -193,7 +201,7 @@ the review page was visually checked in headless Chromium.
 
 ## Next integration
 
-Expand the bank state into the full Main project and preset model. Compare
+Expand the fixed-graph bundle into an editable Main project and preset model. Compare
 other wave recipes and broader source material with the assembled old route.
 Repeat capacity measurements against a regular browser and physical output
 device, then identify the vocoder's native/Wasm numerical variance. Host

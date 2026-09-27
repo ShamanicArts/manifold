@@ -63,6 +63,7 @@ import { captureStandaloneFxState, parseStandaloneFxState, capturePersistentFxSt
 import { captureControlPatchState, parseControlPatchState } from './state/control-patch.js';
 import { captureMainSampleBlendState, parseMainSampleBlendState } from './state/main-sample-blend.js';
 import { captureMainVoiceBankState, parseMainVoiceBankState } from './state/main-voice-bank.js';
+import { captureProjectDocument, parseProjectDocument } from './state/project-document.js';
 
 const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
@@ -1532,7 +1533,7 @@ function renderPrimitive(family) {
   updateSineTargetControls();
   byId('main-state-section').hidden = family !== 'main-sample-blend' && family !== 'main-voice-bank';
   if (family === 'main-sample-blend' || family === 'main-voice-bank') {
-    byId('main-state-label').textContent = family === 'main-voice-bank' ? 'Main voice bank state' : 'Main blend state';
+    byId('main-state-label').textContent = family === 'main-voice-bank' ? 'Main voice bank project' : 'Main blend project';
     byId('main-state-status').textContent = family === 'main-voice-bank'
       ? 'Saves all bank controls, both prepared targets, and the shared source. Stop audio before opening a state.'
       : 'Saves branch levels, target controls, and the decoded source. Stop audio before opening a state.';
@@ -2299,13 +2300,14 @@ byId('main-state-export').addEventListener('click', () => {
         speed: Number(byId('sine-temporal-speed').value),
       }, loadedSample)
       : captureMainSampleBlendState(activeProject, values, mainBlendTargetControls(), loadedSineSource);
-    const url = URL.createObjectURL(new Blob([`${JSON.stringify(state)}\n`], { type: 'application/json' }));
+    const bundle = captureProjectDocument(activeProject, state);
+    const url = URL.createObjectURL(new Blob([`${JSON.stringify(bundle)}\n`], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = bank ? 'manifold-main-voice-bank-state.json' : 'manifold-main-sample-blend-state.json';
+    link.download = bank ? 'manifold-main-voice-bank-project.json' : 'manifold-main-sample-blend-project.json';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    readout.textContent = `Saved ${activeProject.parameters.length} controls, ${bank ? 'both prepared targets' : 'target settings'}, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
+    readout.textContent = `Saved authored graph, ${activeProject.parameters.length} controls, ${bank ? 'both prepared targets' : 'target settings'}, and ${state.source.kind === 'builtin' ? 'the built-in source choice' : `${state.source.frames} source frames`}.`;
   } catch (error) {
     readout.textContent = `State unavailable: ${error.message ?? String(error)}`;
   }
@@ -2320,7 +2322,7 @@ byId('main-state-file').addEventListener('change', async (event) => {
     const contents = await file.text();
     if (!['main-sample-blend', 'main-voice-bank'].includes(activeFamily) || audio.running) throw new Error('Project view changed while opening the state.');
     if (activeFamily === 'main-voice-bank') {
-      const state = parseMainVoiceBankState(JSON.parse(contents), mainVoiceBankProject);
+      const { state } = parseProjectDocument(JSON.parse(contents), mainVoiceBankProject, parseMainVoiceBankState);
       pendingSineTargets.clear();
       latestSineTargetId = 0;
       if (sineTargetRequestFrame !== null) cancelAnimationFrame(sineTargetRequestFrame);
@@ -2365,7 +2367,7 @@ byId('main-state-file').addEventListener('change', async (event) => {
       readout.textContent = `Opened ${file.name} · ${activeProject.parameters.length} controls, two prepared targets, and ${state.source.kind === 'builtin' ? 'built-in source' : `${state.source.frames} embedded source frames`}.`;
       return;
     }
-    const state = parseMainSampleBlendState(JSON.parse(contents), mainSampleBlendProject);
+    const { state } = parseProjectDocument(JSON.parse(contents), mainSampleBlendProject, parseMainSampleBlendState);
     phraseReferenceAuto = false;
     for (const parameter of mainSampleBlendProject.parameters) {
       const value = state.parameters[parameter.hostId];
