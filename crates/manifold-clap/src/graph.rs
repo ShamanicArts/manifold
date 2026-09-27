@@ -132,7 +132,9 @@ fn build_presentation(bytes: &[u8], project: &NativeProject) -> Option<serde_jso
         })
         .collect();
     Some(serde_json::json!({"schemaVersion":1,"id":"manifold.graph",
-        "nodes":nodes,"controls":controls,"captureGesture":true}))
+        "nodes":nodes,"controls":controls,"captureGesture":true,
+        "captureSources":document["signal"]["captureSources"],
+        "selectedCaptureNodeId":document["signal"]["selectedCaptureNodeId"]}))
 }
 
 impl Instance {

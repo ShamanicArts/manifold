@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { addNode, removeNode, setConnection, setInitialParameter,
+  registerCaptureSource, renameCaptureSource,
   setInputSource, setSidechainSource, graphNoteTarget, captureGraphProject, parseGraphProject, parseGraphBundle,
   validateTopology, defaultGraphTemporal } from '../web/src/graph/topology.js';
 
@@ -31,6 +32,23 @@ assert.equal(sidechainSampler.signal.connections.find((edge) => edge.to === 6 &&
 assert.equal(setSidechainSource(sidechainSampler.signal, 'microphone').sidechainSource, 'microphone');
 assert.throws(() => setSidechainSource(sidechainSampler.signal, 'bad'), /Invalid graph/);
 assert.deepEqual(parseGraphProject(multisourceSampler), multisourceSampler.signal);
+assert.deepEqual(multisourceSampler.signal.captureSources.map(({ id, name, nodeId }) => [id, name, nodeId]),
+  [[0, 'Audio Input', 6], [1, 'Sidechain', 10]]);
+assert.throws(() => validateTopology({ ...multisourceSampler.signal, selectedCaptureSourceId: 1 }), /selected capture source/);
+assert.throws(() => validateTopology({ ...multisourceSampler.signal,
+  captureSources: [multisourceSampler.signal.captureSources[0],
+    { ...multisourceSampler.signal.captureSources[1], id: 0 }] }), /capture source/);
+assert.throws(() => validateTopology({ ...multisourceSampler.signal,
+  captureSources: [{ ...multisourceSampler.signal.captureSources[0], nodeId: 7 },
+    multisourceSampler.signal.captureSources[1]] }), /capture source/);
+const renamedSource = renameCaptureSource(multisourceSampler.signal, 10, 'Sidechain renamed');
+assert.equal(parseGraphProject(captureGraphProject(renamedSource)).captureSources[1].name, 'Sidechain renamed');
+const addedSource = addNode(multisourceSampler.signal, 'retrospective-capture');
+const thirdNode = addedSource.nodes.at(-1).id;
+const registeredSource = registerCaptureSource(addedSource, thirdNode, 'Room mic');
+assert.deepEqual(registeredSource.captureSources.at(-1),
+  { id: 2, nodeId: thirdNode, name: 'Room mic', kind: 'custom' });
+assert.equal(removeNode(registeredSource, 6).selectedCaptureSourceId, 1);
 assert.throws(() => validateTopology({ ...multisourceSampler.signal, captureWindowBars: 0 }), /Invalid graph/);
 assert.throws(() => validateTopology({ ...multisourceSampler.signal, captureWindowMode: 'beats' }), /Invalid graph/);
 const metered = { ...multisourceSampler.signal, captureTimeSignatureNumerator: 3,

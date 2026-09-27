@@ -1,4 +1,5 @@
-import { NODE_TYPES, SAMPLE_NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
+import { NODE_TYPES, SAMPLE_NODE_TYPES, addNode, removeNode, registerCaptureSource, renameCaptureSource,
+  setConnection, setInitialParameter,
   setInputSource, setSidechainSource, captureGraphProject, parseGraphProject, parseGraphBundle, validateGraphAssets,
   validateGraphTargets, validateGraphTemporal, defaultGraphTemporal, deriveGraphHostBindings,
   reassignGraphHostSlot, HOST_SLOT_COUNT } from './topology.js';
@@ -167,6 +168,39 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
         heading.append(remove);
       }
       article.appendChild(heading);
+      if (['loop-capture', 'retrospective-capture'].includes(node.type)) {
+        const entry = project.signal.captureSources?.find((source) => source.nodeId === node.id);
+        const label = document.createElement('label');
+        label.className = 'graph-capture-source-name';
+        label.textContent = entry ? `Source ${entry.id} · ${entry.kind} · name ` : 'Register source · name ';
+        const name = document.createElement('input');
+        name.type = 'text';
+        name.maxLength = 80;
+        name.className = 'graph-edit';
+        name.value = entry?.name ?? `${spec.label} ${node.id}`;
+        name.setAttribute('aria-label', `Source name for capture node ${node.id}`);
+        label.append(name);
+        if (entry) {
+          name.addEventListener('change', () => {
+            if (!canEdit()) return;
+            try { commit(renameCaptureSource(project.signal, node.id, name.value), `Source ${entry.id} renamed.`); }
+            catch (error) { fail(error); }
+          });
+        } else {
+          const register = document.createElement('button');
+          register.type = 'button';
+          register.className = 'graph-edit';
+          register.textContent = 'Register';
+          register.setAttribute('aria-label', `Register capture node ${node.id} as source`);
+          register.addEventListener('click', () => {
+            if (!canEdit()) return;
+            try { commit(registerCaptureSource(project.signal, node.id, name.value), `Capture node ${node.id} registered as a source.`); }
+            catch (error) { fail(error); }
+          });
+          label.append(register);
+        }
+        article.append(label);
+      }
       if (SAMPLE_NODE_TYPES.has(node.type)) {
         const asset = project.graphAssets?.find((item) => item.nodeId === node.id);
         const source = document.createElement('label');
@@ -241,7 +275,8 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       }
       if (node.type === 'sample-instrument') {
         const captures = project.signal.nodes.filter((item) =>
-          ['loop-capture', 'retrospective-capture'].includes(item.type) && reachable.has(item.id));
+          ['loop-capture', 'retrospective-capture'].includes(item.type) && reachable.has(item.id)
+          && (!project.signal.captureSources || project.signal.captureSources.some((source) => source.nodeId === item.id)));
         if (captures.length) {
           const row = document.createElement('div');
           row.className = 'graph-capture-controls';
@@ -249,6 +284,8 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           source.className = 'graph-capture-action';
           source.setAttribute('aria-label', `Capture source for sample instrument ${node.id}`);
           const sourceName = (capture) => {
+            const registered = project.signal.captureSources?.find((item) => item.nodeId === capture.id);
+            if (registered) return `${registered.id} · ${registered.name}`;
             if (capture.type !== 'retrospective-capture') return `Loop capture ${capture.id}`;
             let upstream = project.signal.connections.find((edge) => edge.to === capture.id)?.from;
             if (project.signal.nodes.find((item) => item.id === upstream)?.type === 'fixed-gain') {
@@ -267,7 +304,10 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
               onCaptureCancel();
               freeCaptureArmed = null;
             }
-            commit({ ...project.signal, selectedCaptureNodeId: chosen.id }, `${sourceName(chosen)} selected for the next capture.`);
+            const registered = project.signal.captureSources?.find((item) => item.nodeId === chosen.id);
+            commit({ ...project.signal, selectedCaptureNodeId: chosen.id,
+              ...(registered ? { selectedCaptureSourceId: registered.id } : {}) },
+            `${sourceName(chosen)} selected for the next capture.`);
           });
           const windowSeconds = document.createElement('input');
           windowSeconds.type = 'number';
@@ -450,6 +490,8 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
                 { nodeId: node.id, sourceRate: asset.sourceRate, stereo: asset.stereo,
                   label }];
               const signal = { ...project.signal, selectedCaptureNodeId: Number(source.value),
+                ...(project.signal.captureSources ? { selectedCaptureSourceId: project.signal.captureSources.find((item) =>
+                  item.nodeId === Number(source.value)).id } : {}),
                 ...(retrospective ? freeMode ? { captureWindowMode: 'free',
                   captureWindowSeconds: asset.frames / asset.sourceRate } : barsMode ? { captureWindowMode: 'bars', captureWindowBars: bars,
                   captureTempoBpm: tempo, captureTimeSignatureNumerator: numerator,

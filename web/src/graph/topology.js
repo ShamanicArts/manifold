@@ -127,6 +127,7 @@ const sameKeys = (value, keys) => Object.keys(value).sort().join('|') === [...ke
 export function validateTopology(signal) {
   const baseKeys = ['inputs', 'outputs', 'nodes', 'connections', 'initialParameters'];
   const allowedKeys = new Set([...baseKeys, 'inputSource', 'sidechainSource', 'selectedCaptureNodeId',
+    'captureSources', 'defaultCaptureSourceId', 'selectedCaptureSourceId',
     'captureWindowSeconds', 'captureWindowMode', 'captureWindowBars', 'captureTempoBpm',
     'captureTimeSignatureNumerator', 'captureTimeSignatureDenominator']);
   if (!signal || typeof signal !== 'object' || Array.isArray(signal)
@@ -171,6 +172,29 @@ export function validateTopology(signal) {
     && (!Number.isInteger(signal.selectedCaptureNodeId)
       || !['loop-capture', 'retrospective-capture'].includes(nodes.get(signal.selectedCaptureNodeId)?.type))) {
     throw new Error('Selected capture source is unavailable.');
+  }
+  if (signal.captureSources !== undefined || signal.defaultCaptureSourceId !== undefined
+    || signal.selectedCaptureSourceId !== undefined) {
+    if (!Array.isArray(signal.captureSources) || signal.captureSources.length < 1
+      || signal.captureSources.length > 16) throw new Error('Invalid capture sources.');
+    const ids = new Set();
+    const nodeIds = new Set();
+    for (const source of signal.captureSources) {
+      if (!source || !sameKeys(source, ['id', 'nodeId', 'name', 'kind'])
+        || !Number.isInteger(source.id) || source.id < 0 || source.id > 255
+        || ids.has(source.id) || !Number.isInteger(source.nodeId) || nodeIds.has(source.nodeId)
+        || !['loop-capture', 'retrospective-capture'].includes(nodes.get(source.nodeId)?.type)
+        || typeof source.name !== 'string' || source.name.trim() !== source.name
+        || !source.name.length || new TextEncoder().encode(source.name).length > 80
+        || !['input', 'sidechain', 'layer', 'custom'].includes(source.kind)) {
+        throw new Error('Invalid capture source.');
+      }
+      ids.add(source.id);
+      nodeIds.add(source.nodeId);
+    }
+    if (!ids.has(signal.defaultCaptureSourceId) || !ids.has(signal.selectedCaptureSourceId)
+      || signal.captureSources.find((source) => source.id === signal.selectedCaptureSourceId)?.nodeId
+        !== signal.selectedCaptureNodeId) throw new Error('Invalid selected capture source.');
   }
   if ([...nodes.values()].filter((node) => node.type === 'midi-input').length > 1) {
     throw new Error('This graph accepts one MIDI input.');
@@ -243,8 +267,46 @@ export function removeNode(signal, id) {
   const next = structuredClone(signal);
   next.nodes = next.nodes.filter((node) => node.id !== id);
   if (next.selectedCaptureNodeId === id) delete next.selectedCaptureNodeId;
+  if (next.captureSources) {
+    next.captureSources = next.captureSources.filter((source) => source.nodeId !== id);
+    if (!next.captureSources.length) {
+      delete next.captureSources;
+      delete next.defaultCaptureSourceId;
+      delete next.selectedCaptureSourceId;
+    } else {
+      if (!next.captureSources.some((source) => source.id === next.defaultCaptureSourceId)) {
+        next.defaultCaptureSourceId = next.captureSources[0].id;
+      }
+      if (!next.captureSources.some((source) => source.id === next.selectedCaptureSourceId)) {
+        next.selectedCaptureSourceId = next.defaultCaptureSourceId;
+        next.selectedCaptureNodeId = next.captureSources.find((source) => source.id === next.selectedCaptureSourceId).nodeId;
+      }
+    }
+  }
   next.connections = next.connections.filter((edge) => edge.from !== id && edge.to !== id);
   next.initialParameters = next.initialParameters.filter((entry) => entry.nodeId !== id);
+  return validateTopology(next);
+}
+
+export function registerCaptureSource(signal, nodeId, name, kind = 'custom') {
+  const next = structuredClone(signal);
+  if (next.captureSources?.some((source) => source.nodeId === nodeId)) throw new Error('Capture source already registered.');
+  const used = new Set((next.captureSources ?? []).map((source) => source.id));
+  let id = 0;
+  while (used.has(id)) id++;
+  next.captureSources ??= [];
+  next.captureSources.push({ id, nodeId, name, kind });
+  next.defaultCaptureSourceId ??= id;
+  next.selectedCaptureSourceId ??= id;
+  next.selectedCaptureNodeId = next.captureSources.find((source) => source.id === next.selectedCaptureSourceId).nodeId;
+  return validateTopology(next);
+}
+
+export function renameCaptureSource(signal, nodeId, name) {
+  const next = structuredClone(signal);
+  const source = next.captureSources?.find((entry) => entry.nodeId === nodeId);
+  if (!source) throw new Error('Capture source is not registered.');
+  source.name = name;
   return validateTopology(next);
 }
 

@@ -647,7 +647,31 @@ try {
   await page.locator('#graph-load-retrospective-multisource').click();
   assert.equal(await page.locator('.graph-node').count(), 9);
   const sourceSelect = page.locator('select[aria-label="Capture source for sample instrument 5"]');
-  assert.deepEqual(await sourceSelect.locator('option').allTextContents(), ['Audio input · 6', 'Sidechain · 10']);
+  assert.deepEqual(await sourceSelect.locator('option').allTextContents(), ['0 · Audio Input', '1 · Sidechain']);
+  const sidechainName = page.locator('input[aria-label="Source name for capture node 10"]');
+  await sidechainName.fill('Sidechain alternate');
+  await sidechainName.press('Tab');
+  assert.deepEqual(await sourceSelect.locator('option').allTextContents(), ['0 · Audio Input', '1 · Sidechain alternate']);
+  const renamedDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const renamedBundle = JSON.parse((await readFile(await (await renamedDownload).path())).toString());
+  assert.equal(renamedBundle.signal.captureSources[1].name, 'Sidechain alternate');
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'renamed-two-source.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(renamedBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.equal(await sidechainName.inputValue(), 'Sidechain alternate');
+  await sidechainName.fill('Sidechain');
+  await sidechainName.press('Tab');
+  await page.locator('#graph-add-type').selectOption('retrospective-capture');
+  await page.locator('#graph-add-node').click();
+  const thirdCapture = page.locator('input[aria-label="Source name for capture node 11"]');
+  await thirdCapture.fill('Room mic');
+  await page.locator('button[aria-label="Register capture node 11 as source"]').click();
+  assert.deepEqual(await sourceSelect.locator('option').allTextContents(),
+    ['0 · Audio Input', '1 · Sidechain', '2 · Room mic']);
+  await page.locator('button[aria-label="Remove Retrospective capture node 11"]').click();
+  assert.deepEqual(await sourceSelect.locator('option').allTextContents(), ['0 · Audio Input', '1 · Sidechain']);
   assert.equal(await page.locator('select[aria-label="Capture window unit for sample instrument 5"]').inputValue(), 'bars');
   assert.equal(await page.locator('input[aria-label="Capture length bars for sample instrument 5"]').inputValue(), '1');
   await page.locator('input[aria-label="Capture length bars for sample instrument 5"]').fill('0.1');
@@ -672,6 +696,7 @@ try {
   assert.equal(sideSourceBundle.assets[0].label, 'Recent history 10');
   assert.equal(sideSourceBundle.assets[0].frames, 9600);
   assert.equal(sideSourceBundle.signal.selectedCaptureNodeId, 10);
+  assert.equal(sideSourceBundle.signal.selectedCaptureSourceId, 1);
   assert.equal(sideSourceBundle.signal.captureWindowMode, 'bars');
   assert.equal(sideSourceBundle.signal.captureWindowBars, .1);
   assert.equal(sideSourceBundle.signal.captureTempoBpm, 120);
@@ -715,6 +740,7 @@ try {
   const freeBundle = JSON.parse((await readFile(await (await freeDownload).path())).toString());
   assert.equal(freeBundle.signal.captureWindowMode, 'free');
   assert.equal(freeBundle.signal.selectedCaptureNodeId, 10);
+  assert.equal(freeBundle.signal.selectedCaptureSourceId, 1);
   assert.equal(freeBundle.assets[0].label, 'Free capture 10');
   assert.ok(freeBundle.assets[0].frames > 1000 && freeBundle.assets[0].frames < 48_000);
   assert.ok(Math.abs(freeBundle.signal.captureWindowSeconds * freeBundle.assets[0].sourceRate

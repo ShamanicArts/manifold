@@ -45,7 +45,8 @@ function snapshotFromProject(document) {
     return { id: HOST_SLOT_BASE + slot, nodeId, parameterId: id, min, max,
       discrete: Boolean(parameter.choices), normalized: (entry.value - min) / (max - min) };
   });
-  return { schemaVersion: 1, id: 'manifold.graph', nodes, controls };
+  return { schemaVersion: 1, id: 'manifold.graph', nodes, controls,
+    captureSources: signal.captureSources, selectedCaptureNodeId: signal.selectedCaptureNodeId };
 }
 
 function paint(snapshot) {
@@ -55,7 +56,8 @@ function paint(snapshot) {
     return;
   }
   active = snapshot;
-  const nextSignature = JSON.stringify([snapshot.nodes, snapshot.controls.map(({ id, nodeId, parameterId, min, max, discrete }) =>
+  const nextSignature = JSON.stringify([snapshot.nodes, snapshot.captureSources, snapshot.selectedCaptureNodeId,
+    snapshot.controls.map(({ id, nodeId, parameterId, min, max, discrete }) =>
     [id, nodeId, parameterId, min, max, discrete])]);
   if ((captureTimer || freeCaptureArmed) && nextSignature !== signature) {
     clearInterval(captureTimer);
@@ -68,7 +70,9 @@ function paint(snapshot) {
     byId('graph-capture-go').textContent = 'Capture to instrument';
     status('Capture interrupted by a project change.');
   }
-  const sources = snapshot.nodes.filter(({ type }) => type === 'retrospective-capture' || type === 'loop-capture');
+  const sources = snapshot.nodes.filter(({ id, type }) =>
+    (type === 'retrospective-capture' || type === 'loop-capture')
+    && (!Array.isArray(snapshot.captureSources) || snapshot.captureSources.some((source) => source.nodeId === id)));
   const instrument = snapshot.nodes.find(({ type }) => type === 'sample-instrument');
   const capture = byId('graph-capture');
   capture.hidden = !(editorMode && snapshot.captureGesture && sources.length && instrument);
@@ -79,10 +83,16 @@ function paint(snapshot) {
     select.replaceChildren(...sources.map(({ id }) => {
       const option = document.createElement('option');
       option.value = String(id);
-      option.textContent = `Capture node ${id}`;
+      const source = snapshot.captureSources?.find((entry) => entry.nodeId === id);
+      option.textContent = source ? `${source.id} · ${source.name}` : `Capture node ${id}`;
       return option;
     }));
-    if (sources.some(({ id }) => id === selected)) select.value = String(selected);
+    if (nextSignature !== signature && sources.some(({ id }) => id === snapshot.selectedCaptureNodeId)) {
+      select.value = String(snapshot.selectedCaptureNodeId);
+    } else if (sources.some(({ id }) => id === selected)) select.value = String(selected);
+    else if (sources.some(({ id }) => id === snapshot.selectedCaptureNodeId)) {
+      select.value = String(snapshot.selectedCaptureNodeId);
+    }
   }
   if (nextSignature !== signature) {
     signature = nextSignature;

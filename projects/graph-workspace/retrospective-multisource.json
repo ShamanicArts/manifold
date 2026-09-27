@@ -7,6 +7,12 @@
     "outputs": 2,
     "inputSource": "external",
     "sidechainSource": "oscillator",
+    "captureSources": [
+      { "id": 0, "nodeId": 6, "name": "Audio Input", "kind": "input" },
+      { "id": 1, "nodeId": 10, "name": "Sidechain", "kind": "sidechain" }
+    ],
+    "defaultCaptureSourceId": 0,
+    "selectedCaptureSourceId": 0,
     "selectedCaptureNodeId": 6,
     "captureWindowSeconds": 2,
     "captureWindowMode": "bars",

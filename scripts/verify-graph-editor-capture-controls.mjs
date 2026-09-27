@@ -22,6 +22,11 @@ try {
     schemaVersion: 1,
     id: 'manifold.graph',
     captureGesture: true,
+    captureSources: [
+      { id: 0, nodeId: 6, name: 'Audio Input', kind: 'input' },
+      { id: 1, nodeId: 10, name: 'Sidechain', kind: 'sidechain' },
+    ],
+    selectedCaptureNodeId: 10,
     nodes: [
       { id: 5, type: 'sample-instrument' },
       { id: 6, type: 'retrospective-capture' },
@@ -31,6 +36,9 @@ try {
   }));
   assert.equal(await page.locator('#graph-capture').isVisible(), true);
   assert.equal(await page.locator('#graph-capture-source option').count(), 2);
+  assert.deepEqual(await page.locator('#graph-capture-source option').allTextContents(),
+    ['0 · Audio Input', '1 · Sidechain']);
+  assert.equal(await page.locator('#graph-capture-source').inputValue(), '10');
   await page.locator('#graph-capture-source').selectOption('10');
   await page.locator('#graph-capture-seconds').fill('0.2');
   await page.locator('#graph-capture-go').click();

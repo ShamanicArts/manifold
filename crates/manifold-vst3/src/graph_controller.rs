@@ -312,7 +312,9 @@ fn presentation(bytes: &[u8], project: &NativeProject) -> Option<serde_json::Val
         })
         .collect();
     Some(
-        serde_json::json!({"schemaVersion":1,"id":"manifold.graph","nodes":nodes,"controls":controls,"captureGesture":true}),
+        serde_json::json!({"schemaVersion":1,"id":"manifold.graph","nodes":nodes,"controls":controls,"captureGesture":true,
+            "captureSources":document["signal"]["captureSources"],
+            "selectedCaptureNodeId":document["signal"]["selectedCaptureNodeId"]}),
     )
 }
 

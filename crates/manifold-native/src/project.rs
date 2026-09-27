@@ -112,6 +112,12 @@ fn replace_sample_asset(
     }
     if let Some(capture) = capture {
         document["signal"]["selectedCaptureNodeId"] = Value::from(capture);
+        if let Some(sources) = document["signal"]["captureSources"].as_array() {
+            let selected = sources.iter().find(|source| source["nodeId"] == capture);
+            if let Some(source) = selected {
+                document["signal"]["selectedCaptureSourceId"] = source["id"].clone();
+            }
+        }
     }
     Ok(())
 }
@@ -681,6 +687,9 @@ impl NativeProject {
                 "inputSource",
                 "sidechainSource",
                 "selectedCaptureNodeId",
+                "captureSources",
+                "defaultCaptureSourceId",
+                "selectedCaptureSourceId",
                 "captureWindowSeconds",
                 "captureWindowMode",
                 "captureWindowBars",
@@ -944,6 +953,69 @@ impl NativeProject {
                 kinds.get(&id).map(String::as_str),
                 Some("loop-capture" | "retrospective-capture")
             ) {
+                return Err(ProjectError::Invalid("selected capture source"));
+            }
+        }
+        if signal.get("captureSources").is_some()
+            || signal.get("defaultCaptureSourceId").is_some()
+            || signal.get("selectedCaptureSourceId").is_some()
+        {
+            let sources = signal
+                .get("captureSources")
+                .and_then(Value::as_array)
+                .ok_or(ProjectError::Invalid("capture sources"))?;
+            if !(1..=16).contains(&sources.len()) {
+                return Err(ProjectError::Invalid("capture sources"));
+            }
+            let mut ids = BTreeSet::new();
+            let mut node_ids = BTreeSet::new();
+            let mut selected_node = None;
+            let default_id = uint(
+                signal
+                    .get("defaultCaptureSourceId")
+                    .ok_or(ProjectError::Invalid("default capture source"))?,
+                255,
+            )?;
+            let selected_id = uint(
+                signal
+                    .get("selectedCaptureSourceId")
+                    .ok_or(ProjectError::Invalid("selected capture source"))?,
+                255,
+            )?;
+            for source in sources {
+                let entry = object(source, &["id", "nodeId", "name", "kind"], &[])?;
+                let id = uint(required(entry, "id"), 255)?;
+                let node_id = uint(required(entry, "nodeId"), 65_535)?;
+                let name = required(entry, "name")
+                    .as_str()
+                    .ok_or(ProjectError::Invalid("capture source name"))?;
+                let kind = required(entry, "kind")
+                    .as_str()
+                    .ok_or(ProjectError::Invalid("capture source kind"))?;
+                if !ids.insert(id)
+                    || !node_ids.insert(node_id)
+                    || !matches!(
+                        kinds.get(&node_id).map(String::as_str),
+                        Some("loop-capture" | "retrospective-capture")
+                    )
+                    || name.is_empty()
+                    || name.trim() != name
+                    || name.len() > 80
+                    || !matches!(kind, "input" | "sidechain" | "layer" | "custom")
+                {
+                    return Err(ProjectError::Invalid("capture source"));
+                }
+                if id == selected_id {
+                    selected_node = Some(node_id);
+                }
+            }
+            if !ids.contains(&default_id)
+                || selected_node
+                    != signal
+                        .get("selectedCaptureNodeId")
+                        .and_then(Value::as_u64)
+                        .map(|id| id as u32)
+            {
                 return Err(ProjectError::Invalid("selected capture source"));
             }
         }
@@ -1625,6 +1697,24 @@ mod tests {
     }
 
     #[test]
+    fn capture_source_registry_requires_unique_ids_and_matching_selection() {
+        let mut document: Value = serde_json::from_slice(include_bytes!(
+            "../../../projects/graph-workspace/retrospective-multisource.json"
+        ))
+        .unwrap();
+        assert!(parse(&document).is_ok());
+        document["signal"]["selectedCaptureSourceId"] = serde_json::json!(1);
+        assert!(parse(&document).is_err());
+        document["signal"]["selectedCaptureNodeId"] = serde_json::json!(10);
+        assert!(parse(&document).is_ok());
+        document["signal"]["captureSources"][1]["id"] = serde_json::json!(0);
+        assert!(parse(&document).is_err());
+        document["signal"]["captureSources"][1]["id"] = serde_json::json!(1);
+        document["signal"]["captureSources"][1]["nodeId"] = serde_json::json!(9);
+        assert!(parse(&document).is_err());
+    }
+
+    #[test]
     fn retrospective_bar_timing_requires_a_bounded_complete_recipe() {
         let mut document: Value = serde_json::from_slice(include_bytes!(
             "../../../projects/graph-workspace/retrospective-multisource.json"
@@ -1710,6 +1800,7 @@ mod tests {
         let saved = replacement.save_state().unwrap();
         let document: Value = serde_json::from_slice(&saved).unwrap();
         assert_eq!(document["signal"]["selectedCaptureNodeId"], 10);
+        assert_eq!(document["signal"]["selectedCaptureSourceId"], 1);
         assert_eq!(document["signal"]["captureWindowMode"], "bars");
         assert_eq!(document["assets"][0]["frames"], 9_600);
         let encoded = document["assets"][0]["pcmF32Base64"].as_str().unwrap();
