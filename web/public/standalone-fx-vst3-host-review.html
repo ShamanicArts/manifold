@@ -55,7 +55,7 @@
         <tr><td>State</td><td>Processor and controller round-trip the authored project JSON, including the selected effect and all 21 remembered control sets.</td></tr>
         <tr><td>Native editor</td><td>The VST3 <code>IPlugView</code> embeds the same packaged slider and XY widget code as CLAP. The host run loop dispatches queued begin/value/end messages to <code>IComponentHandler</code> on its UI thread.</td></tr>
         <tr><td>Physical pointer</td><td>In an isolated Xvfb host, a drag on the Room slider produced <code>begin(2)</code>, values <code>0.26 → 0.72</code>, and <code>end(2)</code>. The controller reports 0.72 and the XY pad moves to 72%.</td></tr>
-        <tr><td>Real DAW</td><td>REAPER loaded this bundle, changed Mix while its editor was open, accepted a Room slider drag, then saved and reopened the selected Reverb and both edited values. <a href="/standalone-fx-reaper-proof.html">See the four captured stages ↗</a></td></tr>
+        <tr><td>Real DAW</td><td>REAPER loaded this bundle, changed Mix while its editor was open, accepted a Room slider drag, saved and reopened the selected Reverb and edited values, played a Mix envelope, then recorded and replayed a Room gesture. <a href="/standalone-fx-reaper-proof.html">See the seven captured stages ↗</a></td></tr>
         <tr><td>Independent validation</td><td>Steinberg's official SDK 3.8.1 validator reported 537 passed and zero failed tests on this bundle. The isolated host probe opened an X11 child and captured a visible host parameter change.</td></tr>
       </tbody>
     </table>
@@ -66,7 +66,7 @@
       <figure><img src="/standalone-fx-vst3-editor-automation.png" alt="Same native VST3 editor after host Mix changes to 0.20" /><figcaption>Same view after the host changes Mix to 0.20.</figcaption></figure>
       <figure><img src="/standalone-fx-vst3-editor-gesture.png" alt="Same native VST3 editor after a pointer drag changes Room to 0.72" /><figcaption>Pointer drag on Room: host receives begin, value, end; the widget and controller settle at 0.72.</figcaption></figure>
     </div>
-    <p class="note">The pointer traces come from disposable Xvfb sessions, including a real REAPER project save and fresh-process reopen. Recorded automation lanes, multiple instances, and editor close/reopen remain to be validated. Audio Unit and Windows/macOS bundles remain separate export steps.</p>
+    <p class="note">The pointer traces come from disposable Xvfb sessions, including a real REAPER project save, fresh-process reopen, envelope playback, and Room gesture recording and replay. Multiple instances and editor close/reopen remain to be validated. Audio Unit and Windows/macOS bundles remain separate export steps.</p>
     <p>Build locally with <code>./scripts/build-vst3.sh</code>. The resulting bundle is <code>target/vst3/ManifoldFX.vst3</code>. <a href="/standalone-fx-host-review.html">Compare the CLAP host checkpoint ↗</a></p>
   </main>
 </body>

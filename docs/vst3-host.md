@@ -71,16 +71,20 @@ the editor open, and uses a real pointer drag to change Room from 0.50 to
 approximately 0.69. REAPER reads that parameter back. After saving the
 project and launching a fresh REAPER process, the selected Reverb effect,
 Mix 0.20, and Room 0.69 reappear in both host parameter queries and the
-visible editor. Captures of all four stages are included in the review.
+visible editor. The same probe creates a five-point REAPER Mix automation
+envelope, plays the transport, and observes the host parameter and the open
+widget reach 0.80 and return to 0.20. Then it arms a Room envelope, switches
+the track to Write mode, and drags the original Room slider during transport.
+REAPER records seven points spanning 0.24–0.69. The probe switches to Read,
+replays the recorded interval, and observes the plug-in parameter traverse
+the same range. Captures of all seven stages are included in the review.
 
 ## Next host gates
 
-1. Record and replay an automation lane in REAPER; the current host edit and
-   pointer probe checks parameter changes and project state recall.
-2. Test multiple instances, editor close/reopen, and varied DAW audio
+1. Test multiple instances, editor close/reopen, and varied DAW audio
    configurations.
-3. Export the general graph through fixed 128 macro parameters, typed MIDI
+2. Export the general graph through fixed 128 macro parameters, typed MIDI
    and sidechain buses, and the authored project import path described in
    [the broader boundary map](native-vst3-boundary.md).
-4. Build Windows and macOS bundles and run their host validation. Audio Unit
+3. Build Windows and macOS bundles and run their host validation. Audio Unit
    remains a separate host adapter.

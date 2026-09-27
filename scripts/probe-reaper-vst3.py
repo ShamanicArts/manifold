@@ -104,18 +104,18 @@ class X11:
         self.lib.XFlush(self.display)
         return x, y
 
-    def drag_room(self) -> None:
+    def drag_room(self, start: int = 310, end: int = 410) -> None:
         x, y = self.raise_fx()
         test = c.CDLL("libXtst.so.6")
         test.XTestFakeMotionEvent.argtypes = [c.c_void_p, c.c_int, c.c_int, c.c_int, c.c_ulong]
         test.XTestFakeMotionEvent.restype = c.c_int
         test.XTestFakeButtonEvent.argtypes = [c.c_void_p, c.c_uint, c.c_int, c.c_ulong]
         test.XTestFakeButtonEvent.restype = c.c_int
-        assert test.XTestFakeMotionEvent(self.display, -1, x + 310, y + 150, 0)
+        assert test.XTestFakeMotionEvent(self.display, -1, x + start, y + 150, 0)
         assert test.XTestFakeButtonEvent(self.display, 1, 1, 0)
         self.lib.XFlush(self.display)
         time.sleep(0.1)
-        assert test.XTestFakeMotionEvent(self.display, -1, x + 410, y + 150, 0)
+        assert test.XTestFakeMotionEvent(self.display, -1, x + end, y + 150, 0)
         self.lib.XFlush(self.display)
         time.sleep(0.1)
         assert test.XTestFakeButtonEvent(self.display, 1, 0, 0)
@@ -222,6 +222,102 @@ local function show()
  if reaper.time_precise()-start<1 then reaper.defer(show); return end
  reaper.TrackFX_Show(tr,0,3)
  f:write('opened\\n'); f:close()
+ local running=false
+ local high=false
+ local low=false
+ local replaying=false
+ local replay_end=0
+ local replay_min,replay_max=1,0
+ local replay_samples=0
+ local function poll()
+  local input=io.open('{work}/command.txt','r')
+  if input then
+   local cmd=input:read('*a'); input:close(); os.remove('{work}/command.txt')
+   if cmd=='automation' then
+    local env=reaper.GetFXEnvelope(tr,0,1,true)
+    local point_times={{0,0.5,2.5,3,5}}
+    local point_values={{0.2,0.8,0.8,0.2,0.2}}
+    for idx=1,#point_times do
+     reaper.InsertEnvelopePointEx(env,-1,point_times[idx],point_values[idx],0,0,false,true)
+    end
+    reaper.Envelope_SortPointsEx(env,-1)
+    reaper.SetEditCurPos(0,false,false)
+    reaper.OnPlayButton()
+    running=true
+    local out=io.open('{work}/automation.txt','w')
+    out:write('done envelope with ' .. tostring(reaper.CountEnvelopePointsEx(env,-1)) .. ' points\\n')
+    out:close()
+   elseif cmd=='record' then
+    local env=reaper.GetFXEnvelope(tr,0,2,true)
+    reaper.GetSetEnvelopeInfo_String(env,'ARM','1',true)
+    reaper.GetSetEnvelopeInfo_String(env,'ACTIVE','1',true)
+    reaper.GetSetEnvelopeInfo_String(env,'VISIBLE','1',true)
+    reaper.SetTrackAutomationMode(tr,3)
+    reaper.SetEditCurPos(6,false,false)
+    reaper.OnPlayButton()
+    local out=io.open('{work}/record.txt','w')
+    out:write('done ' .. tostring(reaper.GetTrackAutomationMode(tr)) .. '\\n')
+    out:close()
+   elseif cmd=='record-stop' then
+    reaper.OnStopButton()
+    reaper.SetTrackAutomationMode(tr,1)
+    local env=reaper.GetFXEnvelope(tr,0,2,false)
+    local count=reaper.CountEnvelopePointsEx(env,-1)
+    local minimum,maximum=1,0
+    for index=0,count-1 do
+     local ok,t,value=reaper.GetEnvelopePointEx(env,-1,index)
+     if ok then minimum=math.min(minimum,value); maximum=math.max(maximum,value) end
+    end
+    reaper.Main_SaveProjectEx(0,'{project}',0)
+    local out=io.open('{work}/record-stop.txt','w')
+    out:write('done ' .. tostring(count) .. ' ' .. tostring(minimum) .. ' ' .. tostring(maximum) .. '\\n')
+    out:close()
+   elseif cmd=='replay' then
+    local env=reaper.GetFXEnvelope(tr,0,2,false)
+    local count=reaper.CountEnvelopePointsEx(env,-1)
+    local first,last=math.huge,0
+    for index=0,count-1 do
+     local ok,t=reaper.GetEnvelopePointEx(env,-1,index)
+     if ok then first=math.min(first,t); last=math.max(last,t) end
+    end
+    reaper.SetEditCurPos(math.max(0,first-0.2),false,false)
+    reaper.OnPlayButton()
+    replay_end=last+0.3
+    replay_min,replay_max,replay_samples=1,0,0
+    replaying=true
+   end
+  end
+  if running then
+   local position=reaper.GetPlayPosition()
+   if position>1.2 and not high then
+    high=true
+    local out=io.open('{work}/automation-high.txt','w')
+    out:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(tr,0,1)) .. '\\n')
+    out:close()
+   elseif position>3.4 and not low then
+    low=true
+    local out=io.open('{work}/automation-low.txt','w')
+    out:write('done ' .. tostring(reaper.TrackFX_GetParamNormalized(tr,0,1)) .. '\\n')
+    out:close()
+    reaper.OnStopButton()
+   end
+  end
+  if replaying then
+   local value=reaper.TrackFX_GetParamNormalized(tr,0,2)
+   replay_min=math.min(replay_min,value)
+   replay_max=math.max(replay_max,value)
+   replay_samples=replay_samples+1
+   if reaper.GetPlayPosition()>replay_end then
+    replaying=false
+    reaper.OnStopButton()
+    local out=io.open('{work}/replay.txt','w')
+    out:write('done ' .. tostring(replay_min) .. ' ' .. tostring(replay_max) .. ' ' .. tostring(replay_samples) .. '\\n')
+    out:close()
+   end
+  end
+  reaper.defer(poll)
+ end
+ reaper.defer(poll)
 end
 reaper.defer(show)
 """)
@@ -240,10 +336,31 @@ reaper.defer(show)
                     assert abs(values[2] - room) < 1e-5
                     time.sleep(1)
                     recalled = x11.capture("reaper-reopened.png")
+                    assert "5 points" in command(work, "automation")
+                    high = float(wait_for(work / "automation-high.txt", "done").split()[1])
+                    assert 0.75 < high < 0.85, f"high automation not applied: {high}"
+                    high_capture = x11.capture("reaper-automation-high.png")
+                    low = float(wait_for(work / "automation-low.txt", "done").split()[1])
+                    assert 0.15 < low < 0.25, f"low automation not applied: {low}"
+                    low_capture = x11.capture("reaper-automation-low.png")
+                    assert command(work, "record").split()[1] == "3"
+                    time.sleep(0.5)
+                    x11.drag_room(310, 350)
+                    time.sleep(0.5)
+                    record_capture = x11.capture("reaper-recorded-gesture.png")
+                    recorded = command(work, "record-stop").split()
+                    count, minimum, maximum = int(recorded[1]), float(recorded[2]), float(recorded[3])
+                    assert count >= 2 and minimum < 0.4 and maximum > 0.4, recorded
+                    replayed = command(work, "replay").split()
+                    replay_min, replay_max = float(replayed[1]), float(replayed[2])
+                    assert replay_min < 0.4 and replay_max > 0.4, replayed
                 finally:
                     stop_reaper(process)
             print(f"REAPER VST3: host Mix .72→.20; Room drag→{room:.3f}; saved/reopened {values}")
-            for path in (initial, automated, gesture, recalled):
+            print(f"automation envelope: Mix {high:.3f}→{low:.3f} during playback")
+            print(f"recorded Room gesture: {count} envelope points, range {minimum:.3f}–{maximum:.3f}")
+            print(f"replayed Room envelope: {replay_min:.3f}–{replay_max:.3f}")
+            for path in (initial, automated, gesture, recalled, high_capture, low_capture, record_capture):
                 print(path)
     finally:
         x11.close()
