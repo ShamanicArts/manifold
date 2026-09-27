@@ -1,5 +1,5 @@
-// Original Main Add/Morph path with one fixed, published source spectrum.
-// Temporal spectrum updates, the vocoder and the UI-rate voice envelope are excluded.
+// Original Main Add/Morph route with a published source spectrum and optional
+// temporal frames. The vocoder and UI-rate voice envelope are excluded.
 #include "dsp/core/nodes/CrossfaderNode.h"
 #include "dsp/core/nodes/GainNode.h"
 #include "dsp/core/nodes/MixerNode.h"
@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -59,8 +60,8 @@ static void crossfade(dsp_primitives::CrossfaderNode& node, int block, float pos
 }
 
 int main(int argc, char** argv) {
-    if (argc != 13) {
-        std::cerr << "usage: legacy-main-add-morph-voice-reference SAMPLE OUTPUT SAMPLE_FRAMES FREQ AMP WAVEFORM BLEND DEPTH MODE FRAMES BLOCK SOURCE_PARTIALS\n";
+    if (argc != 13 && argc != 15 && argc != 16) {
+        std::cerr << "usage: legacy-main-add-morph-voice-reference SAMPLE OUTPUT SAMPLE_FRAMES FREQ AMP WAVEFORM BLEND DEPTH MODE FRAMES BLOCK SOURCE_PARTIALS [TEMPORAL_FRAMES TEMPORAL_SPEED [MORPH_AMOUNT]]\n";
         return 2;
     }
     const int sampleFrames = std::atoi(argv[3]);
@@ -104,7 +105,53 @@ int main(int argc, char** argv) {
         spectrum.phases[i] = values[i * 4 + 2];
         spectrum.decayRates[i] = values[i * 4 + 3];
     }
-    player->publishAsyncAnalysisResult(0, {}, spectrum, {});
+    dsp_primitives::TemporalPartialData temporal;
+    const float temporalSpeed = argc >= 15 ? std::strtof(argv[14], nullptr) : 0.0f;
+    const float morphAmount = argc == 16 ? std::strtof(argv[15], nullptr) : 1.0f;
+    if (morphAmount < 0.0f || morphAmount > 1.0f) return 2;
+    if (argc >= 15) {
+        std::ifstream frameFile(argv[13], std::ios::binary | std::ios::ate);
+        if (!frameFile) return 3;
+        const auto length = frameFile.tellg();
+        constexpr int stride = 3 + dsp_primitives::PartialData::kMaxPartials * 4;
+        if (length < static_cast<std::streamoff>(sizeof(float) * (1 + stride * 2))
+            || (length % sizeof(float)) != 0) return 3;
+        std::vector<float> packed(static_cast<size_t>(length) / sizeof(float));
+        frameFile.seekg(0);
+        frameFile.read(reinterpret_cast<char*>(packed.data()), length);
+        const int count = static_cast<int>(packed[0]);
+        if (!frameFile || count < 2 || count > dsp_primitives::TemporalPartialData::kMaxFrames
+            || packed.size() != static_cast<size_t>(1 + stride * count)
+            || temporalSpeed < 0.0f || temporalSpeed > 4.0f) return 3;
+        temporal.frames.reserve(static_cast<size_t>(count));
+        temporal.frameTimes.reserve(static_cast<size_t>(count));
+        temporal.frameCount = count;
+        temporal.sampleRate = 48000.0f;
+        temporal.sampleLengthSeconds = static_cast<float>(sampleFrames) / 48000.0f;
+        temporal.globalFundamental = frequency;
+        for (int index = 0; index < count; ++index) {
+            const float* values = packed.data() + 1 + stride * index;
+            const int partials = static_cast<int>(values[2]);
+            if (!std::isfinite(values[0]) || values[0] < 0.0f || values[0] > 1.0f
+                || !std::isfinite(values[1]) || values[1] <= 0.0f
+                || values[2] != static_cast<float>(partials)
+                || partials < 0 || partials > dsp_primitives::PartialData::kMaxPartials) return 3;
+            dsp_primitives::PartialData frame;
+            frame.fundamental = values[1];
+            frame.activeCount = partials;
+            frame.sampleRate = 48000.0f;
+            for (int partial = 0; partial < partials; ++partial) {
+                const int offset = 3 + partial * 4;
+                frame.frequencies[partial] = values[offset];
+                frame.amplitudes[partial] = values[offset + 1];
+                frame.phases[partial] = values[offset + 2];
+                frame.decayRates[partial] = values[offset + 3];
+            }
+            temporal.frameTimes.push_back(values[0]);
+            temporal.frames.push_back(frame);
+        }
+    }
+    player->publishAsyncAnalysisResult(0, {}, spectrum, temporal);
     player->setSpeed(1.0f);
     player->trigger();
     dsp_primitives::OscillatorNode osc;
@@ -137,9 +184,13 @@ int main(int argc, char** argv) {
     sampleAdditive.setSpectralMode(mode == 4 ? 1 : 2);
     sampleAdditive.setSpectralSamplePlayback(player);
     sampleAdditive.setSpectralWaveform(waveform);
-    sampleAdditive.setSpectralMorphAmount(1.0f);
+    sampleAdditive.setSpectralMorphAmount(morphAmount);
     sampleAdditive.setSpectralMorphDepth(1.0f);
     sampleAdditive.setSpectralMorphCurve(2);
+    if (argc >= 15) {
+        sampleAdditive.setSpectralTemporalSmooth(0.6f);
+        sampleAdditive.setSpectralTemporalContrast(0.5f);
+    }
     sampleAdditive.prepare(48000.0, block);
     // The Main voice is prepared at the node default, then retuned on note-on.
     sampleAdditive.setFrequency(frequency);
@@ -163,8 +214,17 @@ int main(int argc, char** argv) {
     voiceMix.prepare(48000.0, block);
 
     std::vector<float> result(static_cast<size_t>(frames) * 2);
+    float temporalPosition = 0.0f;
     for (int offset = 0; offset < frames; offset += block) {
         const int count = std::min(block, frames - offset);
+        if (argc >= 15) {
+            const float samplePosition = std::clamp(player->getNormalizedPosition(), 0.0f, 1.0f);
+            if (temporalSpeed > 0.001f) {
+                const float scaled = samplePosition * temporalSpeed;
+                temporalPosition = scaled - std::floor(scaled);
+            }
+            sampleAdditive.setSpectralTemporalPosition(temporalPosition);
+        }
         Stereo raw(count), wave(count), sample(count), base(count), selected(count), addWave(count), addSample(count), gainedSample(count), addMixed(count), phrased(count), addBranch(count), zero(count), branch(count), output(count);
         run(*player, {}, raw, count);
         run(osc, {&raw}, wave, count);

@@ -1,13 +1,29 @@
 {
   "schemaVersion": 1,
-  "scope": "256 prepared positions from Rust/Wasm source analysis; per-voice playhead selection in Add and Morph; no original C++ temporal route assertion",
+  "scope": "original C++ source temporal interpolation and assembled Add/Morph routing compared with 256-position v2 prepared table; old UI envelope and vocoder omitted",
   "results": [
     {
       "id": "add-static",
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.15333682747015717
+        "signalRms": 0.2108554015955007
+      }
+    },
+    {
+      "id": "old-add-static",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.1586880550021135
+      },
+      "settledOldVsNative": {
+        "max": 0.00027623772621154785,
+        "rms": 0.00013645842965392884,
+        "referenceRms": 0.1617285773084968
+      },
+      "onsetOldVsNative": {
+        "max": 0.018170716241002083
       }
     },
     {
@@ -15,7 +31,23 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.1464526398639593
+        "signalRms": 0.2074411389280282
+      }
+    },
+    {
+      "id": "old-add-follow",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.15659849487589908
+      },
+      "settledOldVsNative": {
+        "max": 0.0005483180284500122,
+        "rms": 0.00011951776366192779,
+        "referenceRms": 0.15944765577612366
+      },
+      "onsetOldVsNative": {
+        "max": 0.018170716241002083
       }
     },
     {
@@ -23,7 +55,23 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.14523214864399933
+        "signalRms": 0.2077266879900618
+      }
+    },
+    {
+      "id": "old-add-fast",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.1572487199667646
+      },
+      "settledOldVsNative": {
+        "max": 0.0005077198147773743,
+        "rms": 0.00012417033888853705,
+        "referenceRms": 0.1602405275978182
+      },
+      "onsetOldVsNative": {
+        "max": 0.01817108504474163
       }
     },
     {
@@ -31,7 +79,23 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.15843938739753954
+        "signalRms": 0.16857097767833357
+      }
+    },
+    {
+      "id": "old-morph-static",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.12588103713633383
+      },
+      "settledOldVsNative": {
+        "max": 0.0001868605613708496,
+        "rms": 0.0000773730769780752,
+        "referenceRms": 0.12746107497411968
+      },
+      "onsetOldVsNative": {
+        "max": 0.01038910262286663
       }
     },
     {
@@ -39,7 +103,23 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.15540864017981496
+        "signalRms": 0.1655651803964879
+      }
+    },
+    {
+      "id": "old-morph-follow",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.12398522556667978
+      },
+      "settledOldVsNative": {
+        "max": 0.00040480494499206543,
+        "rms": 0.00007692514970060493,
+        "referenceRms": 0.12537803692179794
+      },
+      "onsetOldVsNative": {
+        "max": 0.01038910262286663
       }
     },
     {
@@ -47,7 +127,23 @@
       "nativeVsWasm": {
         "max": 0,
         "rms": 0,
-        "signalRms": 0.15543281428484432
+        "signalRms": 0.16577720114881767
+      }
+    },
+    {
+      "id": "old-morph-fast",
+      "nativeVsWasm": {
+        "max": 0,
+        "rms": 0,
+        "signalRms": 0.12454603828486525
+      },
+      "settledOldVsNative": {
+        "max": 0.0003878399729728699,
+        "rms": 0.00008133996192574433,
+        "referenceRms": 0.12606963188766374
+      },
+      "onsetOldVsNative": {
+        "max": 0.01038910262286663
       }
     }
   ]

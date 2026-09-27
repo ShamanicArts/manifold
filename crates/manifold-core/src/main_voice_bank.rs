@@ -256,6 +256,9 @@ impl MainVoiceBank {
                 let frequency = (440.0_f64 * 2.0_f64.powf((note as f64 - 69.0) / 12.0)) as f32;
                 voice.envelope.reset();
                 voice.wave_add.reset();
+                if let Some(first) = self.temporal_source_targets.first() {
+                    voice.sample_add.load_partials(*first);
+                }
                 voice.sample_add.reset();
                 voice.follower.reset();
                 voice.envelope.set_gate(true);

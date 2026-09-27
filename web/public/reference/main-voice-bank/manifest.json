@@ -1,7 +1,7 @@
 {
   "version": 1,
   "reference": "native Rust Main base voice bank; not original JUCE audio",
-  "sourceSha256": "2f7ea197aa6fb2e9238ace5f4d68d741b8100057927bf74d11d6dd5118dc4346",
+  "sourceSha256": "c3f1bae53f9206333cdd28ab2e8903bc7dc1e45779e14e7695c4b88a7ada560b",
   "sampleRate": 48000,
   "sampleSourceRate": 32000,
   "sampleFrames": 4096,

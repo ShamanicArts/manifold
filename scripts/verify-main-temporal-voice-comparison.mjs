@@ -21,11 +21,16 @@ assert.equal(hash([
   'crates/manifold-core/examples/render_main_voice_bank.rs',
   'scripts/generate-main-temporal-voice-reference.mjs',
 ]), manifest.sourceSha256);
+assert.equal(hash([
+  'tools/legacy-main-add-morph-voice-reference.cpp', 'tools/legacy-temporal-partials-reference.cpp',
+  '../my-plugin/dsp/core/nodes/SineBankNode.cpp', '../my-plugin/dsp/core/nodes/SampleRegionPlaybackNode.cpp',
+  '../my-plugin/dsp/core/nodes/TemporalPartialData.h', '../my-plugin/dsp/core/nodes/PartialsExtractor.h',
+]), manifest.legacySourceSha256);
 const wasmBytes = readFileSync('web/dist/manifold_filter.wasm');
 assert.equal(createHash('sha256').update(wasmBytes).digest('hex'), manifest.wasmSha256);
 manifest.sampleData = floats(manifest.sample);
 const input = floats(manifest.input);
-const outputs = new Map(), results = [];
+const outputs = new Map(), originalOutputs = new Map(), results = [];
 for (const selected of manifest.cases) {
   selected.temporalTable = floats(selected.temporalFile);
   const native = floats(selected.output);
@@ -44,8 +49,35 @@ for (const selected of manifest.cases) {
   assert.ok(signalRms > .005, `${selected.id}: output was silent`);
   assert.ok(max < 1e-6, `${selected.id}: native/Wasm max ${max}`);
   outputs.set(selected.id, native);
-  results.push({ id: selected.id, nativeVsWasm: { max, rms, signalRms } });
-  console.log(`${selected.id}: native/Wasm max ${max.toExponential(3)}, RMS ${rms.toExponential(3)}, signal RMS ${signalRms.toFixed(4)}`);
+  const row = { id: selected.id, nativeVsWasm: { max, rms, signalRms } };
+  if (selected.legacyOutput) {
+    const original = floats(selected.legacyOutput);
+    originalOutputs.set(selected.id, original);
+    assert.equal(original.length, native.length);
+    const start = 4096 * manifest.channels;
+    let oldMax = 0, oldErrorEnergy = 0, oldSignalEnergy = 0, onsetMax = 0;
+    for (let index = 0; index < original.length; index++) {
+      const delta = original[index] - native[index];
+      if (index < start) onsetMax = Math.max(onsetMax, Math.abs(delta));
+      else {
+        oldMax = Math.max(oldMax, Math.abs(delta));
+        oldErrorEnergy += delta * delta;
+        oldSignalEnergy += original[index] * original[index];
+      }
+    }
+    const settledRms = Math.sqrt(oldErrorEnergy / (original.length - start));
+    const oldSignalRms = Math.sqrt(oldSignalEnergy / (original.length - start));
+    assert.ok(oldMax < .0007, `${selected.id}: old/Rust settled max ${oldMax}`);
+    assert.ok(settledRms < .0002, `${selected.id}: old/Rust settled RMS ${settledRms}`);
+    assert.ok(oldSignalRms > .05, `${selected.id}: original route silent`);
+    assert.ok(onsetMax > .005, `${selected.id}: old UI envelope distinction missing`);
+    row.settledOldVsNative = { max: oldMax, rms: settledRms, referenceRms: oldSignalRms };
+    row.onsetOldVsNative = { max: onsetMax };
+    console.log(`${selected.id}: old/Rust settled max ${oldMax.toExponential(3)}, RMS ${settledRms.toExponential(3)}; onset ${onsetMax.toExponential(3)}; native/Wasm max ${max.toExponential(3)}`);
+  } else {
+    console.log(`${selected.id}: native/Wasm max ${max.toExponential(3)}, RMS ${rms.toExponential(3)}, signal RMS ${signalRms.toFixed(4)}`);
+  }
+  results.push(row);
 }
 for (const name of ['add', 'morph']) {
   const staticOutput = outputs.get(`${name}-static`);
@@ -61,8 +93,17 @@ for (const name of ['add', 'morph']) {
   };
   assert.ok(peak(followOutput) > .01, `${name}: following did not change the sound`);
   assert.ok(peak(fastOutput) > .01, `${name}: fast following did not change the sound`);
+  const oldStatic = originalOutputs.get(`old-${name}-static`);
+  for (const motion of ['follow', 'fast']) {
+    const oldMoving = originalOutputs.get(`old-${name}-${motion}`);
+    let oldPeak = 0;
+    for (let index = offset; index < oldMoving.length; index++) {
+      oldPeak = Math.max(oldPeak, Math.abs(oldMoving[index] - oldStatic[index]));
+    }
+    assert.ok(oldPeak > .01, `${name}: original ${motion} did not move`);
+  }
 }
 if (process.argv[2]) writeFileSync(process.argv[2], `${JSON.stringify({
   schemaVersion: 1, scope: manifest.scope, results,
 }, null, 2)}\n`);
-console.log('Main temporal bank: six native/Wasm renders and audible motion controls passed');
+console.log('Main temporal bank: six two-voice native/Wasm renders, six original C++ temporal routes, and motion controls passed');

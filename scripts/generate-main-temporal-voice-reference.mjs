@@ -31,14 +31,18 @@ writeFileSync(join(root, 'input.f32'), Buffer.alloc(frames * 8));
 assert.equal(analysis.manifold_analysis_begin(sampleFrames, rate), 1);
 new Float32Array(analysis.memory.buffer, analysis.manifold_analysis_ptr(), sample.length).set(sample);
 assert.equal(analysis.manifold_analysis_run_temporal(0, sampleFrames, 128), 1);
-const recipe = new Float32Array([1, 8, .2, .3, .35, 0, .5, .7, 2, .1, 2]);
+// Match the old Main SineBank defaults for the assembled C++ route: source
+// resynthesis in Add, full source endpoint in Morph, neutral spectral shaping.
+const recipe = new Float32Array([0, 8, 0, 0, .5, 0, 1, 1, 2, 0, 0]);
 new Float32Array(analysis.memory.buffer, analysis.manifold_analysis_recipe_ptr(), recipe.length).set(recipe);
-assert.equal(analysis.manifold_analysis_prepare_wave_target(1, 8, .2, .3, .35), 1);
+assert.equal(analysis.manifold_analysis_prepare_wave_target(0, 8, 0, 0, .5), 1);
 const waveCount = analysis.manifold_analysis_target_count();
 const waveTarget = Array.from(new Float32Array(analysis.memory.buffer,
   analysis.manifold_analysis_target_ptr(), waveCount * 4));
 const tables = new Map();
 for (const [mode, name] of [[1, 'add'], [2, 'morph']]) {
+  recipe[6] = mode === 2 ? .5 : 1;
+  new Float32Array(analysis.memory.buffer, analysis.manifold_analysis_recipe_ptr(), recipe.length).set(recipe);
   const table = new Float32Array(256 * 130);
   for (let index = 0; index < 256; index++) {
     assert.equal(analysis.manifold_analysis_prepare_target(mode, index / 255, .6, .5), 1);
@@ -51,6 +55,29 @@ for (const [mode, name] of [[1, 'add'], [2, 'morph']]) {
   writeFileSync(join(root, `${name}-table.f32`), bytes(table));
   tables.set(name, table);
 }
+const temporalRunner = execFileSync('bash', ['scripts/build-legacy-temporal-reference.sh'],
+  { encoding: 'utf8' }).trim();
+execFileSync(temporalRunner, [
+  join(root, 'old-temporal-frames.json'), join(root, 'sample.f32'),
+  sampleFrames, rate, 0, sampleFrames, 220, 128,
+].map(String));
+const oldFrames = JSON.parse(readFileSync(join(root, 'old-temporal-frames.json'), 'utf8'));
+assert.ok(oldFrames.frameCount > 1 && oldFrames.frameCount <= 128);
+const oldStride = 3 + 32 * 4;
+const oldPacked = new Float32Array(1 + oldFrames.frameCount * oldStride);
+oldPacked[0] = oldFrames.frameCount;
+for (const [index, frame] of oldFrames.frames.entries()) {
+  const offset = 1 + index * oldStride;
+  oldPacked[offset] = frame.position;
+  oldPacked[offset + 1] = frame.fundamental;
+  oldPacked[offset + 2] = frame.partials.length;
+  for (const [partial, values] of frame.partials.entries()) {
+    oldPacked.set(values, offset + 3 + partial * 4);
+  }
+}
+writeFileSync(join(root, 'old-temporal-frames.f32'), bytes(oldPacked));
+const oldVoiceRunner = execFileSync('bash', ['scripts/build-legacy-main-add-morph-voice-reference.sh'],
+  { encoding: 'utf8' }).trim();
 const sourceTarget = Array.from(tables.get('add').subarray(2, 2 + tables.get('add')[0] * 4));
 const argsFor = (values) => values.join(',');
 const parameters = (mode, blend) => [0, blend, 60, 2, 0, 0, mode, .9, .5, 0, 1,
@@ -62,7 +89,8 @@ for (const [name, mode] of [['add', 4], ['morph', 5]]) {
   for (const [motion, speed] of [['static', 0], ['follow', 1], ['fast', 2]]) {
     const id = `${name}-${motion}`;
     const output = `${id}-rust.f32`;
-    const params = parameters(mode, 1);
+    const blend = name === 'add' ? .35 : 1;
+    const params = parameters(mode, blend);
     execFileSync('target/debug/examples/render_main_voice_bank', [
       join(root, 'sample.f32'), join(root, output), rate, rate, blockSize, frames,
       argsFor(params), eventText, '', argsFor(waveTarget), argsFor(sourceTarget),
@@ -71,18 +99,42 @@ for (const [name, mode] of [['add', 4], ['morph', 5]]) {
     cases.push({ id, label: `${name === 'add' ? 'Add' : 'Morph'} · ${motion} source spectrum · two staggered voices`,
       parameters: params, events, changes: [], blockSize, output,
       temporalFile: `${name}-table.f32`, temporalSpeed: speed });
+    const oldId = `old-${id}`;
+    const oldOutput = `${oldId}-cpp.f32`;
+    const nativeOutput = `${oldId}-rust.f32`;
+    const oneNote = [[0, 0, 0, 60, 127]];
+    execFileSync('target/debug/examples/render_main_voice_bank', [
+      join(root, 'sample.f32'), join(root, nativeOutput), rate, rate, blockSize, frames,
+      argsFor(params), '0:0:0:60:127', '', argsFor(waveTarget), argsFor(sourceTarget),
+      join(root, `${name}-table.f32`), speed,
+    ].map(String));
+    execFileSync(oldVoiceRunner, [
+      join(root, 'sample.f32'), join(root, oldOutput), sampleFrames,
+      Math.fround(440 * 2 ** ((60 - 69) / 12)), .4, 0, blend, .9, mode, frames, blockSize,
+      argsFor(sourceTarget), join(root, 'old-temporal-frames.f32'), speed,
+      ...(name === 'morph' ? [.5] : []),
+    ].map(String));
+    cases.push({ id: oldId, label: `Original Main ${name === 'add' ? 'Add' : 'Morph'} · ${motion} temporal spectrum · one voice`,
+      parameters: params, events: oneNote, changes: [], blockSize,
+      output: nativeOutput, legacyOutput: oldOutput,
+      temporalFile: `${name}-table.f32`, temporalSpeed: speed });
   }
 }
 writeFileSync(join(root, 'manifest.json'), `${JSON.stringify({
-  version: 1, reference: 'native Rust versus Wasm Main temporal source spectrum',
-  scope: '256 prepared positions from Rust/Wasm source analysis; per-voice playhead selection in Add and Morph; no original C++ temporal route assertion',
+  version: 2, reference: 'original Main C++ temporal Add/Morph route versus native Rust and Wasm',
+  scope: 'original C++ source temporal interpolation and assembled Add/Morph routing compared with 256-position v2 prepared table; old UI envelope and vocoder omitted',
   sourceSha256: hash([
     'crates/manifold-core/src/main_voice_bank.rs', 'crates/manifold-core/src/sample_analysis.rs',
     'crates/manifold-core/src/sine_bank.rs', 'crates/manifold-core/src/graph.rs',
     'crates/manifold-core/examples/render_main_voice_bank.rs',
     'scripts/generate-main-temporal-voice-reference.mjs',
   ]), wasmSha256: createHash('sha256').update(wasmBytes).digest('hex'),
+  legacySourceSha256: hash([
+    'tools/legacy-main-add-morph-voice-reference.cpp', 'tools/legacy-temporal-partials-reference.cpp',
+    '../my-plugin/dsp/core/nodes/SineBankNode.cpp', '../my-plugin/dsp/core/nodes/SampleRegionPlaybackNode.cpp',
+    '../my-plugin/dsp/core/nodes/TemporalPartialData.h', '../my-plugin/dsp/core/nodes/PartialsExtractor.h',
+  ]), oldTemporalFrames: oldFrames.frameCount,
   sampleRate: rate, sampleSourceRate: rate, sampleFrames, sample: 'sample.f32',
   channels: 2, frames, stepFrame: 8192, input: 'input.f32', waveTarget, sourceTarget, cases,
 }, null, 2)}\n`);
-console.log(`Wrote ${cases.length} native temporal Main cases from analyzed source to ${root}`);
+console.log(`Wrote ${cases.length} temporal Main cases including ${oldFrames.frameCount} compiled old source frames to ${root}`);
