@@ -4,7 +4,13 @@
 use manifold_core::events::{EventError, TimedEvent};
 use manifold_core::graph::{ExecutionPlan, GraphDescription, GraphError, NodeId};
 
+pub mod parameters;
 pub mod project;
+
+use parameters::{AutomationError, HostParameter, TimedAutomation};
+
+const MAX_SPLIT_MIDI_EVENTS: usize = 1024;
+const MAX_AUTOMATION_POINTS: usize = 1024;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum NativeError {
@@ -12,6 +18,7 @@ pub enum NativeError {
     BlockTooLarge,
     ChannelLengthMismatch,
     Event(EventError),
+    Automation(AutomationError),
 }
 
 impl From<GraphError> for NativeError {
@@ -31,6 +38,8 @@ pub struct NativeProcessor {
     plan: ExecutionPlan,
     max_frames: usize,
     silence: Vec<f32>,
+    host_parameters: Vec<HostParameter>,
+    event_scratch: Vec<TimedEvent>,
 }
 
 impl NativeProcessor {
@@ -48,7 +57,13 @@ impl NativeProcessor {
             plan,
             max_frames,
             silence: vec![0.0; max_frames],
+            host_parameters: Vec::new(),
+            event_scratch: Vec::with_capacity(MAX_SPLIT_MIDI_EVENTS),
         })
+    }
+
+    pub fn host_parameters(&self) -> &[HostParameter] {
+        &self.host_parameters
     }
 
     /// Prepared parameter changes may be applied between blocks. The host must
@@ -92,6 +107,120 @@ impl NativeProcessor {
         self.plan
             .process_with_events_sidechain(input, sidechain, output, events)
             .map_err(NativeError::Event)
+    }
+
+    /// Apply normalized graph controls at exact offsets. Host IDs come from a
+    /// restored project; all queues are validated before rendering any output.
+    /// The event scratch is allocated during prepare and never grows here.
+    pub fn process_automated(
+        &mut self,
+        block: AudioBlock<'_>,
+        automation: &[TimedAutomation],
+    ) -> Result<(), NativeError> {
+        if automation.is_empty() {
+            return self.process(block);
+        }
+        let AudioBlock {
+            main,
+            sidechain,
+            output,
+            events,
+        } = block;
+        let frames = output[0].len();
+        if frames > self.max_frames {
+            return Err(NativeError::BlockTooLarge);
+        }
+        if output[1].len() != frames
+            || main.is_some_and(|bus| bus.iter().any(|channel| channel.len() != frames))
+            || sidechain.is_some_and(|bus| bus.iter().any(|channel| channel.len() != frames))
+        {
+            return Err(NativeError::ChannelLengthMismatch);
+        }
+        if events.len() > MAX_SPLIT_MIDI_EVENTS || automation.len() > MAX_AUTOMATION_POINTS {
+            return Err(NativeError::Automation(AutomationError::TooManyEvents));
+        }
+        self.plan
+            .validate_events(events, frames)
+            .map_err(NativeError::Event)?;
+        let mut previous = 0;
+        for (index, point) in automation.iter().enumerate() {
+            if point.offset >= frames && !(frames == 0 && point.offset == 0) {
+                return Err(NativeError::Automation(AutomationError::OffsetOutOfRange));
+            }
+            if index > 0 && point.offset < previous {
+                return Err(NativeError::Automation(AutomationError::Unsorted));
+            }
+            let descriptor = self
+                .host_parameters
+                .iter()
+                .find(|entry| entry.id == point.id)
+                .ok_or(NativeError::Automation(AutomationError::UnknownParameter))?;
+            if descriptor.from_normalized(point.normalized).is_none() {
+                return Err(NativeError::Automation(AutomationError::InvalidNormalized));
+            }
+            previous = point.offset;
+        }
+        if frames == 0 {
+            for point in automation {
+                let descriptor = self
+                    .host_parameters
+                    .iter()
+                    .find(|entry| entry.id == point.id)
+                    .expect("validated ID");
+                let value = descriptor
+                    .from_normalized(point.normalized)
+                    .expect("validated normalized value");
+                let applied = self
+                    .plan
+                    .set_parameter(descriptor.node, descriptor.local_id, value);
+                debug_assert!(applied);
+            }
+            return Ok(());
+        }
+        let [left_out, right_out] = output;
+        let [main_left, main_right] =
+            main.unwrap_or([&self.silence[..frames], &self.silence[..frames]]);
+        let mut start = 0;
+        let mut point_index = 0;
+        let mut event_index = 0;
+        while start < frames {
+            while point_index < automation.len() && automation[point_index].offset == start {
+                let point = automation[point_index];
+                let descriptor = self
+                    .host_parameters
+                    .iter()
+                    .find(|entry| entry.id == point.id)
+                    .expect("validated ID");
+                let value = descriptor
+                    .from_normalized(point.normalized)
+                    .expect("validated normalized value");
+                let applied = self
+                    .plan
+                    .set_parameter(descriptor.node, descriptor.local_id, value);
+                debug_assert!(applied);
+                point_index += 1;
+            }
+            let end = automation
+                .get(point_index)
+                .map_or(frames, |point| point.offset);
+            self.event_scratch.clear();
+            while event_index < events.len() && events[event_index].offset < end {
+                let mut event = events[event_index];
+                event.offset -= start;
+                self.event_scratch.push(event);
+                event_index += 1;
+            }
+            self.plan
+                .process_with_events_sidechain(
+                    [&main_left[start..end], &main_right[start..end]],
+                    sidechain.map(|[left, right]| [&left[start..end], &right[start..end]]),
+                    [&mut left_out[start..end], &mut right_out[start..end]],
+                    &self.event_scratch,
+                )
+                .map_err(NativeError::Event)?;
+            start = end;
+        }
+        Ok(())
     }
 }
 

@@ -2009,23 +2009,7 @@ impl ExecutionPlan {
             assert_eq!(left.len(), frames);
             assert_eq!(right.len(), frames);
         }
-        let mut previous_offset = 0;
-        for event in events {
-            if event.offset >= frames {
-                return Err(EventError::OffsetOutOfRange);
-            }
-            if event.offset < previous_offset {
-                return Err(EventError::Unsorted);
-            }
-            if !self
-                .nodes
-                .iter()
-                .any(|node| node.id == event.node && node.kernel.accepts_events())
-            {
-                return Err(EventError::UnknownTarget);
-            }
-            previous_offset = event.offset;
-        }
+        self.validate_events(events, frames)?;
         self.apply_main_directional(frames);
         let [left_in, right_in] = input;
         let [left_out, right_out] = output;
@@ -2058,6 +2042,28 @@ impl ExecutionPlan {
             }
         }
         self.frame_clock = self.frame_clock.saturating_add(frames as u64);
+        Ok(())
+    }
+
+    /// Validate the whole host event queue before a split block changes output.
+    pub fn validate_events(&self, events: &[TimedEvent], frames: usize) -> Result<(), EventError> {
+        let mut previous_offset = 0;
+        for event in events {
+            if event.offset >= frames {
+                return Err(EventError::OffsetOutOfRange);
+            }
+            if event.offset < previous_offset {
+                return Err(EventError::Unsorted);
+            }
+            if !self
+                .nodes
+                .iter()
+                .any(|node| node.id == event.node && node.kernel.accepts_events())
+            {
+                return Err(EventError::UnknownTarget);
+            }
+            previous_offset = event.offset;
+        }
         Ok(())
     }
 

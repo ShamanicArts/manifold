@@ -7,6 +7,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use manifold_core::graph::{Connection, GraphDescription, NodeKind, NodeSpec};
 use serde_json::Value;
 
+use crate::parameters::HostParameter;
 use crate::{NativeError, NativeProcessor};
 
 const MAX_PROJECT_BYTES: usize = 45 * 1024 * 1024;
@@ -39,6 +40,7 @@ struct Asset {
 pub struct NativeProject {
     graph: GraphDescription,
     parameters: Vec<Parameter>,
+    host_parameters: Vec<HostParameter>,
     assets: Vec<Asset>,
 }
 
@@ -282,6 +284,7 @@ impl NativeProject {
             return Err(ProjectError::Invalid("parameter count"));
         }
         let mut parsed_parameters = Vec::with_capacity(parameters.len());
+        let mut host_parameters = Vec::with_capacity(parameters.len());
         let mut seen = BTreeSet::new();
         for parameter in parameters {
             let entry = object(parameter, &["nodeId", "id", "value"], &[])?;
@@ -297,6 +300,7 @@ impl NativeProject {
                 return Err(ProjectError::Invalid("parameter value"));
             }
             parsed_parameters.push(Parameter { node, id, value });
+            host_parameters.push(HostParameter::new(node, id, min, max, discrete, value));
         }
         for (&node, kind) in &kinds {
             let count = match kind.as_str() {
@@ -390,8 +394,13 @@ impl NativeProject {
         Ok(Self {
             graph,
             parameters: parsed_parameters,
+            host_parameters,
             assets,
         })
+    }
+
+    pub fn host_parameters(&self) -> &[HostParameter] {
+        &self.host_parameters
     }
 
     /// Compile and install state on a control thread, before publishing the processor.
@@ -412,6 +421,7 @@ impl NativeProject {
                 return Err(ProjectError::Invalid("unavailable sample slot"));
             }
         }
+        processor.host_parameters = self.host_parameters;
         Ok(processor)
     }
 }
@@ -419,7 +429,8 @@ impl NativeProject {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AudioBlock;
+    use crate::parameters::{AutomationError, TimedAutomation};
+    use crate::{AudioBlock, NativeError};
     use manifold_core::events::{EventKind, TimedEvent};
     use serde_json::json;
 
@@ -472,6 +483,122 @@ mod tests {
     }
 
     #[test]
+    fn host_ids_and_normalization_are_stable_across_parameter_order() {
+        let bundle = fixture();
+        let project = parse(&bundle).unwrap();
+        let gain = project
+            .host_parameters()
+            .iter()
+            .find(|p| p.node == 9)
+            .unwrap();
+        assert_eq!(gain.id, 9 << 8);
+        assert_eq!(gain.initial, 0.25);
+        assert_eq!(gain.from_normalized(0.5), Some(1.0));
+        assert_eq!(gain.to_normalized(1.0), Some(0.5));
+        let mut shuffled = bundle;
+        shuffled["signal"]["initialParameters"]
+            .as_array_mut()
+            .unwrap()
+            .reverse();
+        let other = parse(&shuffled).unwrap();
+        assert!(
+            other
+                .host_parameters()
+                .iter()
+                .any(|p| p.id == gain.id && p.node == gain.node)
+        );
+    }
+
+    #[test]
+    fn automation_changes_gain_after_exact_offset_and_rejects_bad_queues() {
+        let mut processor = parse(&fixture()).unwrap().prepare(48_000.0, 128).unwrap();
+        let main = [1.0; 128];
+        let mut left = [9.0; 128];
+        let mut right = [9.0; 128];
+        let point = TimedAutomation {
+            offset: 64,
+            id: 9 << 8,
+            normalized: 0.5,
+        };
+        processor
+            .process_automated(
+                AudioBlock {
+                    main: Some([&main, &main]),
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events: &[],
+                },
+                &[point],
+            )
+            .unwrap();
+        assert!(left[..64].iter().all(|v| (*v - 0.25).abs() < 0.0001));
+        assert!(left[64] > 0.25 && left[127] > left[64]);
+        assert_eq!(left, right);
+        left.fill(9.0);
+        let bad = TimedEvent {
+            offset: 100,
+            node: 999,
+            kind: EventKind::AllNotesOff,
+        };
+        assert_eq!(
+            processor.process_automated(
+                AudioBlock {
+                    main: Some([&main, &main]),
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events: &[bad]
+                },
+                &[point]
+            ),
+            Err(NativeError::Event(
+                manifold_core::events::EventError::UnknownTarget
+            ))
+        );
+        assert_eq!(left, [9.0; 128]);
+        let mut empty_left = [];
+        let mut empty_right = [];
+        processor
+            .process_automated(
+                AudioBlock {
+                    main: None,
+                    sidechain: None,
+                    output: [&mut empty_left, &mut empty_right],
+                    events: &[],
+                },
+                &[TimedAutomation {
+                    offset: 0,
+                    id: 9 << 8,
+                    normalized: 0.0,
+                }],
+            )
+            .unwrap();
+        processor
+            .process(AudioBlock {
+                main: Some([&main, &main]),
+                sidechain: None,
+                output: [&mut left, &mut right],
+                events: &[],
+            })
+            .unwrap();
+        assert!(left[127] < left[0]);
+        left.fill(9.0);
+        let unknown = TimedAutomation { id: 999, ..point };
+        assert_eq!(
+            processor.process_automated(
+                AudioBlock {
+                    main: Some([&main, &main]),
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events: &[]
+                },
+                &[unknown]
+            ),
+            Err(NativeError::Automation(AutomationError::UnknownParameter))
+        );
+        assert_eq!(left, [9.0; 128]);
+    }
+
+    #[test]
     fn browser_pcm_asset_restores_and_plays_through_midi() {
         let mut bundle = fixture();
         let pcm: Vec<f32> = (0..4800)
@@ -496,12 +623,19 @@ mod tests {
             },
         };
         processor
-            .process(AudioBlock {
-                main: None,
-                sidechain: None,
-                output: [&mut left, &mut right],
-                events: &[note],
-            })
+            .process_automated(
+                AudioBlock {
+                    main: None,
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events: &[note],
+                },
+                &[TimedAutomation {
+                    offset: 12,
+                    id: 9 << 8,
+                    normalized: 0.5,
+                }],
+            )
             .unwrap();
         assert!(left[..24].iter().all(|v| *v == 0.0));
         assert!(left[30..].iter().any(|v| v.abs() > 0.01));

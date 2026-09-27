@@ -4,7 +4,7 @@ The new Manifold core: portable Rust DSP, browser and native host adapters, and 
 
 ## Native host boundary
 
-`manifold-native` prepares and renders the shared Rust graph with separate main/sidechain stereo buses, variable block sizes, and timed MIDI events. Its bounded project loader restores browser live/sidechain sampler graphs, parameter values, and embedded PCM. Run `cargo test -p manifold-native`. The VST3 factory and controller, full graph state coverage, sample-offset automation, and webview editor remain open. See the [native VST3 contract](docs/native-vst3-boundary.md) and [review page](web/public/native-project-state-review.html).
+`manifold-native` prepares and renders the shared Rust graph with separate main/sidechain stereo buses, variable block sizes, timed MIDI, and frame-offset automation. Its bounded project loader restores browser live/sidechain sampler graphs, parameter values, and embedded PCM. Run `cargo test -p manifold-native`. The VST3 factory and controller, fixed host parameter enumeration, full graph state coverage, and webview editor remain open. See the [native VST3 contract](docs/native-vst3-boundary.md) and [review page](web/public/native-automation-review.html).
 
 ## Try the primitive workbench
 
