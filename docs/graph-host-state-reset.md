@@ -91,6 +91,17 @@ node count; Note Voice's paired controls always match one complete block.
 Further host stress should cover repeated swaps and saves with large embedded
 PCM under an actual DAW; these probes do not establish every DAW's scheduling.
 
+An isolated REAPER transport now saves Note Voice eight times while playback
+advances from about 0.15 to 0.94 seconds. Decoding each DAW project shows the
+first save can retain the previous control pair before REAPER's queued edit
+reaches an audio block; the remaining seven saves alternate complete attack
+and decay pairs, with neither control mixed across blocks. A fresh REAPER
+process renders the last saved project against native Rust at 5.96e-8 peak
+error across 48,000 stereo frames. See
+`scripts/probe-reaper-graph-clap-live-state.py` and
+`web/public/graph-clap-reaper-live-state.json`. Repeated project swaps and
+large embedded-PCM live saves under DAW transport remain open.
+
 The existing [CLAP host proof](clap-host.md) covers pointer gestures, fresh
 REAPER project recall, MIDI audio, editor import, and official validator
 results.
