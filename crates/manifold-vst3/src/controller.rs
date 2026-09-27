@@ -46,6 +46,11 @@ impl Shared {
     }
 
     pub(crate) fn set_value(&self, id: usize, value: f64) {
+        let value = if id == 0 {
+            (value * 20.).round() / 20.
+        } else {
+            value
+        };
         self.normalized[id].store(value.to_bits(), Ordering::Release);
         if id == 0 {
             let selected = (value * 20.).round() as usize;

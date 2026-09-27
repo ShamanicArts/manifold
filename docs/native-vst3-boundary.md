@@ -50,6 +50,6 @@ The first adapter pins [`vst3` 0.3.0](https://github.com/coupler-rs/vst3-rs), a 
 
 ## Order of work
 
-1. Exercise physical pointer gestures, host automation, state recall, multiple instances, and editor reopen in a real DAW. The Linux `IPlugView` now renders the packaged original widgets in an isolated host, and its UI-thread gesture queue passes a mock run loop test.
+1. Exercise a recorded automation lane, multiple instances, and editor close/reopen in REAPER. The Linux `IPlugView` renders the packaged original widgets; an XTEST pointer drag reaches REAPER's parameter, and a saved project recalls that value in a fresh REAPER process. Host-originated changes also update the open editor.
 2. Implement the general graph module's fixed 128-slot controller, optional sidechain and event buses, and full browser project state. Compare Main and sampler routes against native/Wasm fixtures.
 3. Package and validate Windows/macOS bundles, then test physical devices, timing, and underrun telemetry.

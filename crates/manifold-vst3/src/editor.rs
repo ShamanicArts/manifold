@@ -80,31 +80,35 @@ impl State {
         })
     }
 
-    fn send_snapshot(&self) -> bool {
+    fn snapshot_document(&self) -> Option<serde_json::Value> {
         let values: Vec<_> = (0..7)
             .map(|id| {
                 let value = if id == 0 {
-                    self.shared.value(id) * 20.
+                    serde_json::json!((self.shared.value(id) * 20.).round() as u32)
                 } else {
-                    self.shared.value(id)
+                    serde_json::json!(self.shared.value(id))
                 };
                 serde_json::json!({"nodeId":2,"id":id,"value":value})
             })
             .collect();
-        let Ok(memories) = self.shared.memories.lock() else {
-            return false;
-        };
+        let memories = self.shared.memories.lock().ok()?;
         let rows: serde_json::Map<_, _> = memories
             .iter()
             .enumerate()
             .map(|(id, row)| (id.to_string(), serde_json::json!(row)))
             .collect();
         drop(memories);
-        let command = serde_json::json!({"kind":"state","document":{
+        Some(serde_json::json!({
             "schemaVersion":1,"id":"manifold.standalone-fx-module",
             "signal":{"initialParameters":values},"typeParameters":rows
-        }})
-        .to_string();
+        }))
+    }
+
+    fn send_snapshot(&self) -> bool {
+        let Some(document) = self.snapshot_document() else {
+            return false;
+        };
+        let command = serde_json::json!({"kind":"state","document":document}).to_string();
         self.session
             .lock()
             .ok()
@@ -150,8 +154,11 @@ impl State {
             return;
         }
         let current = self.shared.editor_version();
-        if self.last_sent.load(Ordering::Acquire) != current && self.send_snapshot() {
-            self.last_sent.store(current, Ordering::Release);
+        if self.last_sent.load(Ordering::Acquire) != current {
+            let sent = self.send_snapshot();
+            if sent {
+                self.last_sent.store(current, Ordering::Release);
+            }
         }
     }
 
@@ -386,7 +393,8 @@ impl IPlugViewTrait for View {
         let handler = ComWrapper::new(Timer(self.state.clone()))
             .to_com_ptr::<ITimerHandler>()
             .unwrap();
-        if unsafe { loop_ref.registerTimer(handler.as_ptr(), 16) } != kResultOk {
+        let registered = unsafe { loop_ref.registerTimer(handler.as_ptr(), 16) };
+        if registered != kResultOk {
             return kResultFalse;
         }
         if let Ok(mut timer) = self.timer.lock() {
@@ -523,5 +531,15 @@ mod tests {
         assert_eq!(controller.shared.value(1), 0.72);
         assert_eq!(unsafe { view.setFrame(null_mut()) }, kResultOk);
         assert!(timers.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn host_float_for_discrete_type_stays_an_integer_in_browser_snapshot() {
+        let controller = Controller::new();
+        controller.shared.set_value(0, 0.3499999940395355);
+        assert_eq!(controller.shared.value(0), 0.35);
+        let state = State::new(controller.shared);
+        let document = state.snapshot_document().unwrap();
+        assert_eq!(document["signal"]["initialParameters"][0]["value"], 7);
     }
 }

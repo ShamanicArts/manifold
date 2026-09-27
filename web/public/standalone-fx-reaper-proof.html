@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manifold · REAPER host proof</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #dce5ed; background: #0b1220; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(1100px, calc(100% - 36px)); margin: 0 auto; padding: 36px 0 80px; }
+    header { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #334155; font-size: 12px; }
+    a { color: #8fe2e7; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .eyebrow { color: #8fe2e7; text-transform: uppercase; letter-spacing: .1em; font: 11px ui-monospace, monospace; margin-top: 28px; }
+    h1 { font-size: clamp(30px, 5vw, 54px); font-weight: 500; letter-spacing: -.04em; margin: 8px 0 14px; }
+    h2 { font-size: 22px; font-weight: 500; margin: 40px 0 12px; }
+    p { color: #aebdcc; line-height: 1.6; }
+    .lead { max-width: 840px; font-size: 16px; }
+    .values { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0; }
+    .value { flex: 1 1 200px; border: 1px solid #334155; background: #111d2e; padding: 18px; }
+    .value b { display: block; color: #f1f6f8; font-size: 24px; font-weight: 500; }
+    .value span { display: block; color: #9fb1c0; font-size: 12px; line-height: 1.5; margin-top: 7px; }
+    .sequence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 30px 14px; }
+    figure { margin: 0; min-width: 0; }
+    img { display: block; width: 100%; height: auto; border: 1px solid #334155; }
+    figcaption { padding-top: 9px; color: #b8c9d5; font-size: 13px; line-height: 1.5; }
+    figcaption strong { color: #8fe2e7; font-weight: 500; padding-right: 7px; }
+    .note { border-left: 2px solid #caab77; padding: 2px 0 2px 16px; }
+    code { color: #c7e5e3; }
+    @media (max-width: 720px) { .sequence { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header><span>MANIFOLD / NATIVE HOST CHECKPOINT</span><a href="/standalone-fx-vst3-host-review.html">VST3 boundary ↗</a></header>
+    <p class="eyebrow">Standalone FX · REAPER · Linux VST3</p>
+    <h1>The authored editor inside a real DAW.</h1>
+    <p class="lead">REAPER loads the packaged Manifold VST3 and opens the same ported slider and XY widgets used by the browser and CLAP editors. This disposable host run exercised a host parameter change, a physical pointer gesture, project save, and fresh-process recall.</p>
+    <div class="values">
+      <div class="value"><b>0.72 → 0.20</b><span>Mix changed through REAPER while the editor stayed open</span></div>
+      <div class="value"><b>0.50 → 0.69</b><span>Room dragged in the editor and read back from REAPER</span></div>
+      <div class="value"><b>3 / 3</b><span>Selected effect, Mix, and Room restored after reopening the project</span></div>
+    </div>
+    <h2>Four moments from the same probe</h2>
+    <div class="sequence">
+      <figure><img src="/reaper-initial.png" alt="REAPER with Manifold Standalone FX VST3 editor showing Reverb and Mix 0.72" /><figcaption><strong>01 · Load</strong> REAPER inserts the VST3, selects Reverb, and opens its embedded editor at Mix 0.72.</figcaption></figure>
+      <figure><img src="/reaper-automated.png" alt="REAPER editor after host parameter Mix changes to 0.20" /><figcaption><strong>02 · Host edit</strong> A REAPER parameter call changes Mix to 0.20 in the still-open editor.</figcaption></figure>
+      <figure><img src="/reaper-gesture.png" alt="REAPER editor after pointer drag changes Room to 0.69" /><figcaption><strong>03 · Pointer edit</strong> XTEST drags the original Room slider. REAPER reads back 0.69 from the VST3 parameter.</figcaption></figure>
+      <figure><img src="/reaper-reopened.png" alt="Fresh REAPER process shows recalled Reverb, Mix 0.20 and Room 0.69" /><figcaption><strong>04 · Recall</strong> A fresh REAPER process opens the saved project: Reverb, Mix 0.20, Room 0.69.</figcaption></figure>
+    </div>
+    <h2>What this exposed</h2>
+    <p>REAPER supplies the discrete effect selector as a widened 32-bit float. Its normalized Reverb value is approximately <code>0.349999994</code>, not an exact <code>0.35</code>. The editor previously sent that imprecision into the browser project parser as a fractional effect index. The controller now quantizes the selector to one of 21 positions, and editor snapshots serialize its project value as an integer. The repeatable probe catches this host-specific failure.</p>
+    <p class="note">This proves host loading, visible host edits, widget gestures, and project recall in REAPER. A recorded automation lane, multiple simultaneous instances, editor close/reopen, varied bus configurations, and Windows/macOS hosts are subsequent gates.</p>
+    <p>Repeat locally with a disposable Xvfb/XTEST display: <code>DISPLAY=:88 MANIFOLD_ISOLATED_DISPLAY=1 python3 scripts/probe-reaper-vst3.py</code>. The script uses a temporary REAPER configuration and project and closes its isolated host process.</p>
+  </main>
+</body>
+</html>

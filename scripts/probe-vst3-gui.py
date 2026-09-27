@@ -148,6 +148,32 @@ try:
         automated = Path("/tmp/manifold-vst3-editor-automated.png")
         subprocess.run(["ffmpeg","-loglevel","error","-f","x11grab","-window_id",hex(child_ids[0]),"-i",os.environ["DISPLAY"],"-frames:v","1","-y",str(automated)],check=True,timeout=15)
         print(f"VST3 view attached: X11 child {child_ids[0]:#x}, initial {output}, host automation {automated}, edits={edits}",flush=True)
+        if "--gesture" in sys.argv:
+            xtest = c.CDLL("libXtst.so.6")
+            xtest.XTestFakeMotionEvent.argtypes = [c.c_void_p,c.c_int,c.c_int,c.c_int,c.c_ulong]
+            xtest.XTestFakeMotionEvent.restype = c.c_int
+            xtest.XTestFakeButtonEvent.argtypes = [c.c_void_p,c.c_uint,c.c_int,c.c_ulong]
+            xtest.XTestFakeButtonEvent.restype = c.c_int
+            assert xtest.XTestFakeMotionEvent(display,-1,340,145,0)
+            assert xtest.XTestFakeButtonEvent(display,1,1,0)
+            x11.XFlush(display)
+            time.sleep(0.1)
+            assert xtest.XTestFakeMotionEvent(display,-1,440,145,0)
+            x11.XFlush(display)
+            time.sleep(0.1)
+            assert xtest.XTestFakeButtonEvent(display,1,0,0)
+            x11.XFlush(display)
+            for _ in range(50):
+                if timer: method(timer,3,None)(timer)
+                time.sleep(0.02)
+            kinds = [edit[0] for edit in edits]
+            assert "begin" in kinds and "value" in kinds and "end" in kinds, f"no complete VST3 widget gesture: {edits}"
+            changed = next(edit for edit in edits if edit[0] == "value")
+            actual = call(controller,14,c.c_double,c.c_uint32)(controller,changed[1])
+            assert abs(actual - [edit for edit in edits if edit[0] == "value"][-1][2]) < 1e-6
+            gesture_capture = Path("/tmp/manifold-vst3-editor-gesture.png")
+            subprocess.run(["ffmpeg","-loglevel","error","-f","x11grab","-window_id",hex(child_ids[0]),"-i",os.environ["DISPLAY"],"-frames:v","1","-y",str(gesture_capture)],check=True,timeout=15)
+            print(f"Native VST3 pointer gesture: {edits}; controller value={actual:.3f}; capture={gesture_capture}",flush=True)
         assert call(view, 5, c.c_int)(view) == 0
         assert call(view, 12, c.c_int, c.c_void_p)(view, None) == 0
         assert timer is None

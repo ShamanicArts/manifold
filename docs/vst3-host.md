@@ -42,25 +42,43 @@ cargo test -p manifold-vst3
 /path/to/validator -e target/vst3/ManifoldFX.vst3
 # Under an isolated headless Weston/Xwayland display:
 MANIFOLD_ISOLATED_DISPLAY=1 python3 scripts/probe-vst3-gui.py
+# For the real pointer gate, use a disposable Xvfb display with XTEST:
+DISPLAY=:88 MANIFOLD_ISOLATED_DISPLAY=1 python3 scripts/probe-vst3-gui.py \
+  target/vst3/ManifoldFX.vst3/Contents/x86_64-linux/ManifoldFX.so --gesture
+# With REAPER installed, on the same disposable Xvfb/XTEST display:
+DISPLAY=:88 MANIFOLD_ISOLATED_DISPLAY=1 python3 scripts/probe-reaper-vst3.py
 ```
 
-The four local adapter tests create both classes via the exported factory,
+The five local adapter tests create both classes via the exported factory,
 compare a 128-frame processed block sample for sample with `NativeProject`,
 round-trip authored state through the processor and controller, and drive
-ordered widget gestures through a mock host run loop. Steinberg's
+ordered widget gestures through a mock host run loop. A regression test covers
+REAPER's widened `f32` normalized effect selector: the controller quantizes
+it and the editor snapshot sends the browser an integer effect ID. Steinberg's
 official SDK 3.8.1 validator reported **537 tests passed, 0 failed** for the
 built Linux bundle. The isolated host probe attached the packaged VST3 editor
 as a child X11 window and captured a visible Mix update from 0.72 to 0.20.
 The [visual review](../web/public/standalone-fx-vst3-host-review.html) contains
-both captures. A production DAW and a real pointer through the native VST3
-window remain untested.
+those captures. With an isolated Xvfb server and XTEST, a physical pointer
+drag on the Room slider produced `beginEdit(2)`, normalized values 0.26 and
+0.72, then `endEdit(2)` in the host. The controller and visible widget both
+settled at 0.72. The same display also delivered a full CLAP gesture.
+
+The [REAPER proof](../web/public/standalone-fx-reaper-proof.html) uses a
+private REAPER configuration and project on the disposable Xvfb display.
+It inserts the packaged VST3, changes Mix from 0.72 to 0.20 via the host with
+the editor open, and uses a real pointer drag to change Room from 0.50 to
+approximately 0.69. REAPER reads that parameter back. After saving the
+project and launching a fresh REAPER process, the selected Reverb effect,
+Mix 0.20, and Room 0.69 reappear in both host parameter queries and the
+visible editor. Captures of all four stages are included in the review.
 
 ## Next host gates
 
-1. Exercise a physical pointer gesture through `beginEdit`, `performEdit`, and
-   `endEdit` in a production VST3 host.
-2. Test multiple instances, state recall, external automation, editor
-   reopen, and varied DAW audio configurations.
+1. Record and replay an automation lane in REAPER; the current host edit and
+   pointer probe checks parameter changes and project state recall.
+2. Test multiple instances, editor close/reopen, and varied DAW audio
+   configurations.
 3. Export the general graph through fixed 128 macro parameters, typed MIDI
    and sidechain buses, and the authored project import path described in
    [the broader boundary map](native-vst3-boundary.md).
