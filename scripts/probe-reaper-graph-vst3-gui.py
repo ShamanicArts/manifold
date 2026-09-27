@@ -254,6 +254,43 @@ class X11:
         self.lib.XCloseDisplay(self.display)
 
 
+def build_sample_bundle(sample_frames: int, source_count: int) -> dict:
+    """Generate the same browser-format sample graph for host and timing probes."""
+    assert source_count in (1, 2, 4)
+    bundle = json.loads((ROOT / "projects/graph-workspace/sample-voice.json").read_text())
+    frequencies = [440, 660, 880, 1100][:source_count]
+    bundle["assets"] = []
+    if source_count > 1:
+        connections = bundle["signal"]["connections"]
+        connections.remove({"from": 6, "to": 3, "inputPort": 0})
+        first_parameters = [entry for entry in bundle["signal"]["initialParameters"]
+                            if entry["nodeId"] == 5]
+    previous = 6
+    for position, frequency in enumerate(frequencies):
+        sampler = 5 if position == 0 else 7 + (position - 1) * 2
+        pcm = array("f")
+        for frame in range(sample_frames):
+            value = 0.25 * math.sin(2 * math.pi * frequency * frame / 48_000)
+            pcm.extend((value, value))
+        bundle["assets"].append({"nodeId": sampler, "sourceRate": 48_000,
+                                 "frames": sample_frames, "label": f"{frequency} Hz source",
+                                 "pcmF32Base64": base64.b64encode(pcm.tobytes()).decode("ascii")})
+        if position:
+            summed = sampler + 1
+            bundle["signal"]["nodes"].extend([
+                {"id": sampler, "type": "sample-instrument"},
+                {"id": summed, "type": "sum2", "a": 1, "b": 1}])
+            connections.extend([{"from": 4, "to": sampler, "inputPort": 0},
+                                {"from": previous, "to": summed, "inputPort": 0},
+                                {"from": sampler, "to": summed, "inputPort": 1}])
+            bundle["signal"]["initialParameters"].extend(
+                {**entry, "nodeId": sampler} for entry in first_parameters)
+            previous = summed
+    if source_count > 1:
+        connections.append({"from": previous, "to": 3, "inputPort": 0})
+    return bundle
+
+
 def main() -> None:
     four_sample_import = "--four-sample-import" in sys.argv
     max_sample_import = "--max-sample-import" in sys.argv
@@ -272,10 +309,23 @@ def main() -> None:
     host_slot_index = 1 if slot_automation else 41
     destination = 2 if slot_automation else 42
     assert not (slot_assign and direct_import), "run slot assignment as its own host probe"
+    assert sys.byteorder == "little", "the generated PCM fixture uses little-endian floats"
+    if "--emit-project" in sys.argv:
+        index = sys.argv.index("--emit-project")
+        output = Path(sys.argv[index + 1])
+        source_count = 4 if four_sample_import else 2 if multi_sample_import else 1
+        if "--asset-frames" in sys.argv:
+            frames_index = sys.argv.index("--asset-frames")
+            sample_frames = int(sys.argv[frames_index + 1])
+        assert 1 <= sample_frames <= 1_440_000 and sample_frames * 8 * source_count <= 32 * 1024 * 1024
+        output.write_text(json.dumps(build_sample_bundle(
+            sample_frames, source_count),
+            separators=(",", ":")))
+        print(output, output.stat().st_size)
+        return
     assert os.environ.get("MANIFOLD_ISOLATED_DISPLAY") == "1"
     assert os.environ.get("DISPLAY") and os.environ["DISPLAY"] != ":0"
     assert BUNDLE.is_dir(), "build the VST3 bundle first"
-    assert sys.byteorder == "little", "the generated PCM fixture uses little-endian floats"
     x11 = X11()
     try:
         with tempfile.TemporaryDirectory(prefix="manifold-graph-editor-reaper-") as directory:
@@ -288,41 +338,8 @@ def main() -> None:
                 imported_project = picker_project
             if direct_import:
                 if sample_import:
-                    bundle = json.loads((ROOT / "projects/graph-workspace/sample-voice.json").read_text())
-                    pcm = array("f")
-                    for frame in range(sample_frames):
-                        value = 0.25 * math.sin(2 * math.pi * 440 * frame / 48_000)
-                        pcm.extend((value, value))
-                    bundle["assets"] = [{"nodeId": 5, "sourceRate": 48_000,
-                                         "frames": sample_frames, "label": "440 Hz source",
-                                         "pcmF32Base64": base64.b64encode(pcm.tobytes()).decode("ascii")}]
-                    if multi_sample_import:
-                        connections = bundle["signal"]["connections"]
-                        connections.remove({"from": 6, "to": 3, "inputPort": 0})
-                        first_parameters = [entry for entry in bundle["signal"]["initialParameters"]
-                                            if entry["nodeId"] == 5]
-                        previous = 6
-                        for position, frequency in enumerate(
-                                [660, 880, 1100] if four_sample_import else [660]):
-                            sampler, summed = 7 + position * 2, 8 + position * 2
-                            pcm = array("f")
-                            for frame in range(sample_frames):
-                                value = 0.25 * math.sin(2 * math.pi * frequency * frame / 48_000)
-                                pcm.extend((value, value))
-                            bundle["assets"].append({"nodeId": sampler, "sourceRate": 48_000,
-                                                     "frames": sample_frames,
-                                                     "label": f"{frequency} Hz source",
-                                                     "pcmF32Base64": base64.b64encode(pcm.tobytes()).decode("ascii")})
-                            bundle["signal"]["nodes"].extend([
-                                {"id": sampler, "type": "sample-instrument"},
-                                {"id": summed, "type": "sum2", "a": 1, "b": 1}])
-                            connections.extend([{"from": 4, "to": sampler, "inputPort": 0},
-                                                {"from": previous, "to": summed, "inputPort": 0},
-                                                {"from": sampler, "to": summed, "inputPort": 1}])
-                            bundle["signal"]["initialParameters"].extend(
-                                {**entry, "nodeId": sampler} for entry in first_parameters)
-                            previous = summed
-                        connections.append({"from": previous, "to": 3, "inputPort": 0})
+                    bundle = build_sample_bundle(
+                        sample_frames, 4 if four_sample_import else 2 if multi_sample_import else 1)
                     imported_project = work / "sample-voice-with-source.json"
                     imported_project.write_text(json.dumps(bundle, separators=(",", ":")))
                     if multi_sample_import:

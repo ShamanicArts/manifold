@@ -86,7 +86,7 @@
     <div class="review">
       <figure><img src="/graph-vst3-reaper-editor-four-sample-secondary.png" alt="REAPER Graph VST3 editor displaying multiple original Manifold compact sample instrument widgets from the four-source project"><figcaption>The four-source Graph VST3 editor scrolled to its second and third original sample instrument panels.</figcaption></figure>
       <div>
-        <p>The full one-second REAPER render matches direct native Rust within 5.96e-8 peak sample error. Muting each source separately changes native audio by 0.0208–0.0214 RMS, so all four contribute to the checked output. Playback later in each 21.85-second source was not measured.</p>
+        <p>The full one-second REAPER render matches direct native Rust within 5.96e-8 peak sample error. Muting each source separately changes native audio by 0.0208–0.0214 RMS, so all four contribute to the checked output. Playback later in each 21.85-second source was not measured. The <a href="/graph-asset-limit-performance.html">native callback timing review</a> measures this prepared graph with one and eight held notes.</p>
         <audio controls preload="metadata" src="/graph-vst3-reaper-four-sample-import.wav"></audio>
         <div class="files"><a href="/graph-vst3-reaper-four-sample-import.wav">Download four-source REAPER WAV</a><a href="/graph-vst3-reaper-four-sample-import.json">Four-source measurements</a></div>
       </div>

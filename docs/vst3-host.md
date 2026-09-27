@@ -113,6 +113,9 @@ source, actual REAPER WAV renders, plots, and machine-readable measurements.
    10-second sources, and four sources filling the full 32 MiB aggregate PCM
    allowance in 44.74 MB of JSON. Each survived REAPER save and reopen; its
    first-second output matched direct Rust.
+   The [full-asset timing review](../web/public/graph-asset-limit-performance.html)
+   measures the prepared native processor with that four-source graph; the
+   eight-note 128-frame case used 0.144 ms median p95 on a Ryzen 9 3900X.
    A [second-host review](../web/public/graph-element-host-proof.html) shows
    Element discovering both Manifold VST3 classes, opening the Graph editor,
    and importing Tone Texture JSON. Element session recall and audio are still

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manifold · Four-source callback timing</title>
+  <style>
+    :root { color-scheme: dark; background: #11151b; color: #e8edf2; font: 15px/1.55 system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { max-width: 1050px; margin: 0 auto; padding: 44px 24px 80px; }
+    a { color: #a8d5ed; }
+    h1 { margin: 8px 0 16px; max-width: 850px; font-size: clamp(2rem, 5vw, 3.35rem); line-height: 1.06; letter-spacing: -.045em; }
+    h2 { font-size: 1.18rem; margin: 0 0 12px; }
+    p { color: #bdc9d3; margin: 0 0 15px; }
+    .eyebrow { color: #8dcab9; font-size: .73rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+    .lead { max-width: 790px; font-size: 1.15rem; }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 26px 0; }
+    .metric, section { border: 1px solid #34414d; border-radius: 8px; background: #19212a; }
+    .metric { padding: 18px; }
+    .metric strong { display: block; font-size: 1.7rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+    .metric span { color: #a9bac7; font-size: .85rem; }
+    section { padding: 22px; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; }
+    th, td { border-bottom: 1px solid #364653; padding: 11px 8px; text-align: left; font-variant-numeric: tabular-nums; }
+    th { color: #9fb8c9; font-size: .76rem; text-transform: uppercase; letter-spacing: .07em; }
+    .load { display: flex; align-items: center; gap: 9px; min-width: 165px; }
+    .track { width: 112px; height: 9px; background: #30404d; border-radius: 10px; overflow: hidden; }
+    .fill { display: block; height: 100%; background: #65b7a5; border-radius: inherit; }
+    code { font: .93em ui-monospace, SFMono-Regular, monospace; color: #d0dce6; }
+    .small { font-size: .86rem; }
+    @media (max-width: 720px) { .metrics { grid-template-columns: 1fr; } table { font-size: .81rem; } th, td { padding: 8px 4px; } .load { min-width: 90px; } .track { width: 65px; } }
+  </style>
+</head>
+<body>
+  <div class="eyebrow">Manifold v2 · Native audio timing checkpoint</div>
+  <h1>The full sample graph stays inside the measured block budget.</h1>
+  <p class="lead">The same four-source, 32 MiB PCM graph that survived <a href="/graph-large-import-proof.html">REAPER import and reopen</a> was prepared in native Rust. Four sample instruments played one or eight held notes while 128- and 1,024-frame process calls were timed offline.</p>
+  <div class="metrics">
+    <div class="metric"><strong>0.144 ms</strong><span>128 frames, eight notes, median p95 process time</span></div>
+    <div class="metric"><strong>5.41%</strong><span>share of the 128-frame period at 48 kHz</span></div>
+    <div class="metric"><strong>32 MiB</strong><span>four prepared stereo PCM assets</span></div>
+  </div>
+  <section>
+    <h2>Prepared processor timing</h2>
+    <table>
+      <thead><tr><th>Block</th><th>Held notes</th><th>Active sample voices</th><th>Median p95</th><th>Largest observed</th><th>p95 / period</th></tr></thead>
+      <tbody>
+        <tr><td>128 frames</td><td>1</td><td>4</td><td>0.025 ms</td><td>0.090 ms</td><td><span class="load"><span class="track"><span class="fill" style="width: .94%"></span></span>0.94%</span></td></tr>
+        <tr><td>128 frames</td><td>8</td><td>32</td><td>0.144 ms</td><td>0.588 ms</td><td><span class="load"><span class="track"><span class="fill" style="width: 5.41%"></span></span>5.41%</span></td></tr>
+        <tr><td>1,024 frames</td><td>1</td><td>4</td><td>0.222 ms</td><td>0.305 ms</td><td><span class="load"><span class="track"><span class="fill" style="width: 1.04%"></span></span>1.04%</span></td></tr>
+        <tr><td>1,024 frames</td><td>8</td><td>32</td><td>1.128 ms</td><td>1.537 ms</td><td><span class="load"><span class="track"><span class="fill" style="width: 5.29%"></span></span>5.29%</span></td></tr>
+      </tbody>
+    </table>
+    <p class="small">The deadline is 2.667 ms for 128 frames and 21.333 ms for 1,024 frames at 48 kHz. These values are the median p95 across three release-build runs; the largest observed block is the maximum across those runs. Each 128-frame run timed 4,096 blocks; each 1,024-frame run timed 512 blocks. Output remained audible at the end of every case.</p>
+  </section>
+  <section>
+    <h2>What was measured</h2>
+    <p>AMD Ryzen 9 3900X, 48 kHz, release build. The harness decoded a 44,742,408-byte browser-format JSON project and prepared its four PCM assets before timing. Median parse time was about 53 ms and graph preparation about 4 ms; both occur outside the audio callback. After inserting the note-on events and warming 64 blocks, it timed only <code>NativeProcessor::process</code> with preallocated input and output buffers.</p>
+    <p>The three raw runs and a shorter-source comparison are in the <a href="/graph-asset-limit-callback.json">measurement JSON</a>. The shorter sources loop during the run, so that comparison does not isolate the effect of PCM size on callback time.</p>
+  </section>
+  <section>
+    <h2>Scope of the result</h2>
+    <p>This is an offline native processor measurement. It excludes DAW scheduling, editor activity during playback, live MIDI event insertion, operating-system audio callbacks, and physical device underruns. The host import proof establishes saved-project audio parity separately; real-host callback timing remains a follow-up.</p>
+    <p class="small">Reproduce the fixture with <code>python scripts/probe-reaper-graph-vst3-gui.py --four-sample-import --emit-project /tmp/manifold-four-source-bench.json</code>, then run <code>cargo run --release -p manifold-native --example bench_graph_callback -- /tmp/manifold-four-source-bench.json</code>.</p>
+  </section>
+</body>
+</html>

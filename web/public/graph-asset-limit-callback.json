@@ -1,0 +1,516 @@
+{
+  "host": "native Rust offline processor",
+  "cpu": "AMD Ryzen 9 3900X 12-Core Processor",
+  "sampleRate": 48000,
+  "projectBytes": 44742408,
+  "assetCount": 4,
+  "totalPcmBytes": 33554432,
+  "runCount": 3,
+  "scenarios": [
+    {
+      "frames": 128,
+      "heldNotes": 1,
+      "activeSampleVoices": 4,
+      "deadlineMs": 2.6666666666666665,
+      "medianP95Ms": 0.02516,
+      "p95RangeMs": [
+        0.0249,
+        0.0262
+      ],
+      "largestObservedBlockMs": 0.090319,
+      "medianP95DeadlinePercent": 0.9435000000000001,
+      "blockCountPerRun": 4096
+    },
+    {
+      "frames": 128,
+      "heldNotes": 8,
+      "activeSampleVoices": 32,
+      "deadlineMs": 2.6666666666666665,
+      "medianP95Ms": 0.144149,
+      "p95RangeMs": [
+        0.142938,
+        0.146818
+      ],
+      "largestObservedBlockMs": 0.588263,
+      "medianP95DeadlinePercent": 5.4055875,
+      "blockCountPerRun": 4096
+    },
+    {
+      "frames": 1024,
+      "heldNotes": 1,
+      "activeSampleVoices": 4,
+      "deadlineMs": 21.333333333333332,
+      "medianP95Ms": 0.222277,
+      "p95RangeMs": [
+        0.213528,
+        0.222758
+      ],
+      "largestObservedBlockMs": 0.304566,
+      "medianP95DeadlinePercent": 1.0419234375000002,
+      "blockCountPerRun": 512
+    },
+    {
+      "frames": 1024,
+      "heldNotes": 8,
+      "activeSampleVoices": 32,
+      "deadlineMs": 21.333333333333332,
+      "medianP95Ms": 1.127946,
+      "p95RangeMs": [
+        1.088006,
+        1.131886
+      ],
+      "largestObservedBlockMs": 1.536751,
+      "medianP95DeadlinePercent": 5.287246875,
+      "blockCountPerRun": 512
+    }
+  ],
+  "runs": [
+    {
+      "limitation": "Offline native processing timings; no DAW scheduling or physical device underruns measured",
+      "projectBytes": 44742408,
+      "scenarios": [
+        {
+          "activeSampleVoices": 4,
+          "blocks": 4096,
+          "deadlineMs": 2.6666666666666665,
+          "frames": 128,
+          "heldNotes": 1,
+          "maxMs": 0.057259000000000004,
+          "medianMs": 0.023960000000000002,
+          "outputPeakAtEnd": 0.17739123106002808,
+          "p95DeadlinePercent": 0.9825,
+          "p95Ms": 0.0262,
+          "parseMs": 55.556705,
+          "prepareMs": 5.082377,
+          "sampleRate": 48000.0
+        },
+        {
+          "activeSampleVoices": 32,
+          "blocks": 4096,
+          "deadlineMs": 2.6666666666666665,
+          "frames": 128,
+          "heldNotes": 8,
+          "maxMs": 0.21265699999999998,
+          "medianMs": 0.131748,
+          "outputPeakAtEnd": 0.2845633327960968,
+          "p95DeadlinePercent": 5.360175,
+          "p95Ms": 0.142938,
+          "parseMs": 51.867661000000005,
+          "prepareMs": 3.801633,
+          "sampleRate": 48000.0
+        },
+        {
+          "activeSampleVoices": 4,
+          "blocks": 512,
+          "deadlineMs": 21.333333333333332,
+          "frames": 1024,
+          "heldNotes": 1,
+          "maxMs": 0.304566,
+          "medianMs": 0.19102799999999998,
+          "outputPeakAtEnd": 0.17739775776863098,
+          "p95DeadlinePercent": 1.0419234375000002,
+          "p95Ms": 0.222277,
+          "parseMs": 54.667397,
+          "prepareMs": 4.567624,
+          "sampleRate": 48000.0
+        },
+        {
+          "activeSampleVoices": 32,
+          "blocks": 512,
+          "deadlineMs": 21.333333333333332,
+          "frames": 1024,
+          "heldNotes": 8,
+          "maxMs": 1.536751,
+          "medianMs": 1.0594569999999999,
+          "outputPeakAtEnd": 0.45629623532295227,
+          "p95DeadlinePercent": 5.287246875,
+          "p95Ms": 1.127946,
+          "parseMs": 53.254614,
+          "prepareMs": 3.792424,
+          "sampleRate": 48000.0
+        }
+      ]
+    },
+    {
+      "limitation": "Offline native processing timings; no DAW scheduling or physical device underruns measured",
+      "projectBytes": 44742408,
+      "scenarios": [
+        {
+          "activeSampleVoices": 4,
+          "blocks": 4096,
+          "deadlineMs": 2.6666666666666665,
+          "frames": 128,
+          "heldNotes": 1,
+          "maxMs": 0.04826999999999999,
+          "medianMs": 0.024209,
+          "outputPeakAtEnd": 0.17739123106002808,
+          "p95DeadlinePercent": 0.9337500000000001,
+          "p95Ms": 0.0249,
+          "parseMs": 54.002475000000004,
+          "prepareMs": 5.345604000000001,
+          "sampleRate": 48000.0
+        },
+        {
+          "activeSampleVoices": 32,
+          "blocks": 4096,
+          "deadlineMs": 2.6666666666666665,
+          "frames": 128,
+          "heldNotes": 8,
+          "maxMs": 0.253627,
+          "medianMs": 0.13158899999999998,
+          "outputPeakAtEnd": 0.2845633327960968,
+          "p95DeadlinePercent": 5.4055875,
+          "p95Ms": 0.144149,
+          "parseMs": 51.496195,
+          "prepareMs": 3.736164,
+          "sampleRate": 48000.0
+        },
+        {
+          "activeSampleVoices": 4,
+          "blocks": 512,
+          "deadlineMs": 21.333333333333332,
+          "frames": 1024,
+          "heldNotes": 1,
+          "maxMs": 0.271587,
+          "medianMs": 0.191007,
+          "outputPeakAtEnd": 0.17739775776863098,
+          "p95DeadlinePercent": 1.044178125,
+          "p95Ms": 0.222758,
+          "parseMs": 51.42799599999999,
+          "prepareMs": 3.7934039999999998,
+          "sampleRate": 48000.0
+        },
+        {
+          "activeSampleVoices": 32,
+          "blocks": 512,
+          "deadlineMs": 21.333333333333332,
+          "frames": 1024,
+          "heldNotes": 8,
+          "maxMs": 1.147295,
+          "medianMs": 1.0602369999999999,
+          "outputPeakAtEnd": 0.45629623532295227,
+          "p95DeadlinePercent": 5.100028125,
+          "p95Ms": 1.088006,
+          "parseMs": 51.959939,
+          "prepareMs": 3.7952429999999997,
+          "sampleRate": 48000.0
+        }
+      ]
+    },
+    {
+      "limitation": "Offline native processing timings; no DAW scheduling or physical device underruns measured",
+      "projectBytes": 44742408,
+      "scenarios": [
+        {
+          "activeSampleVoices": 4,
+          "blocks": 4096,
+          "deadlineMs": 2.6666666666666665,
+          "frames": 128,
+          "heldNotes": 1,
+          "maxMs": 0.090319,
+          "medianMs": 0.024,
+          "outputPeakAtEnd": 0.17739123106002808,
+          "p95DeadlinePercent": 0.9435000000000001,
+          "p95Ms": 0.02516,
+          "parseMs": 49.447790999999995,
+          "prepareMs": 5.158005999999999,
+          "sampleRate": 48000.0
+        },
+        {
+          "activeSampleVoices": 32,
+          "blocks": 4096,
+          "deadlineMs": 2.6666666666666665,
+          "frames": 128,
+          "heldNotes": 8,
+          "maxMs": 0.588263,
+          "medianMs": 0.13166799999999998,
+          "outputPeakAtEnd": 0.2845633327960968,
+          "p95DeadlinePercent": 5.505675,
+          "p95Ms": 0.146818,
+          "parseMs": 50.979081,
+          "prepareMs": 3.672425,
+          "sampleRate": 48000.0
+        },
+        {
+          "activeSampleVoices": 4,
+          "blocks": 512,
+          "deadlineMs": 21.333333333333332,
+          "frames": 1024,
+          "heldNotes": 1,
+          "maxMs": 0.258996,
+          "medianMs": 0.191308,
+          "outputPeakAtEnd": 0.17739775776863098,
+          "p95DeadlinePercent": 1.0009125,
+          "p95Ms": 0.213528,
+          "parseMs": 53.312512999999996,
+          "prepareMs": 3.831753,
+          "sampleRate": 48000.0
+        },
+        {
+          "activeSampleVoices": 32,
+          "blocks": 512,
+          "deadlineMs": 21.333333333333332,
+          "frames": 1024,
+          "heldNotes": 8,
+          "maxMs": 1.468142,
+          "medianMs": 1.0673869999999999,
+          "outputPeakAtEnd": 0.45629623532295227,
+          "p95DeadlinePercent": 5.305715625,
+          "p95Ms": 1.131886,
+          "parseMs": 53.322553,
+          "prepareMs": 4.824260000000001,
+          "sampleRate": 48000.0
+        }
+      ]
+    }
+  ],
+  "limitation": "Measures steady-state prepared Rust graph process calls; excludes DAW scheduling, device callback, live MIDI event insertion, and physical underruns",
+  "shortAssetComparison": {
+    "projectBytes": 2051152,
+    "totalPcmBytes": 1536000,
+    "assetFrames": 48000,
+    "runCount": 3,
+    "scenarios": [
+      {
+        "frames": 128,
+        "heldNotes": 1,
+        "medianP95Ms": 0.03585,
+        "p95RangeMs": [
+          0.0352,
+          0.03691
+        ],
+        "largestObservedBlockMs": 0.072719
+      },
+      {
+        "frames": 128,
+        "heldNotes": 8,
+        "medianP95Ms": 0.16882799999999998,
+        "p95RangeMs": [
+          0.16652799999999998,
+          0.171178
+        ],
+        "largestObservedBlockMs": 0.635692
+      },
+      {
+        "frames": 1024,
+        "heldNotes": 1,
+        "medianP95Ms": 0.283727,
+        "p95RangeMs": [
+          0.279886,
+          0.28453700000000004
+        ],
+        "largestObservedBlockMs": 0.35634499999999997
+      },
+      {
+        "frames": 1024,
+        "heldNotes": 8,
+        "medianP95Ms": 1.300854,
+        "p95RangeMs": [
+          1.3004939999999998,
+          1.308183
+        ],
+        "largestObservedBlockMs": 1.6507189999999998
+      }
+    ],
+    "runs": [
+      {
+        "limitation": "Offline native processing timings; no DAW scheduling or physical device underruns measured",
+        "projectBytes": 2051152,
+        "scenarios": [
+          {
+            "activeSampleVoices": 4,
+            "blocks": 4096,
+            "deadlineMs": 2.6666666666666665,
+            "frames": 128,
+            "heldNotes": 1,
+            "maxMs": 0.062879,
+            "medianMs": 0.024029,
+            "outputPeakAtEnd": 0.17507115006446838,
+            "p95DeadlinePercent": 1.344375,
+            "p95Ms": 0.03585,
+            "parseMs": 3.561286,
+            "prepareMs": 0.515254,
+            "sampleRate": 48000.0
+          },
+          {
+            "activeSampleVoices": 32,
+            "blocks": 4096,
+            "deadlineMs": 2.6666666666666665,
+            "frames": 128,
+            "heldNotes": 8,
+            "maxMs": 0.270837,
+            "medianMs": 0.14254799999999998,
+            "outputPeakAtEnd": 0.3416377604007721,
+            "p95DeadlinePercent": 6.419175000000001,
+            "p95Ms": 0.171178,
+            "parseMs": 3.26647,
+            "prepareMs": 0.193237,
+            "sampleRate": 48000.0
+          },
+          {
+            "activeSampleVoices": 4,
+            "blocks": 512,
+            "deadlineMs": 21.333333333333332,
+            "frames": 1024,
+            "heldNotes": 1,
+            "maxMs": 0.322436,
+            "medianMs": 0.19092699999999999,
+            "outputPeakAtEnd": 0.17739123106002808,
+            "p95DeadlinePercent": 1.3337671875000001,
+            "p95Ms": 0.28453700000000004,
+            "parseMs": 3.2335,
+            "prepareMs": 0.19128799999999999,
+            "sampleRate": 48000.0
+          },
+          {
+            "activeSampleVoices": 32,
+            "blocks": 512,
+            "deadlineMs": 21.333333333333332,
+            "frames": 1024,
+            "heldNotes": 8,
+            "maxMs": 1.6507189999999998,
+            "medianMs": 1.1429960000000001,
+            "outputPeakAtEnd": 0.5303935408592224,
+            "p95DeadlinePercent": 6.0977531250000006,
+            "p95Ms": 1.300854,
+            "parseMs": 3.312259,
+            "prepareMs": 0.191128,
+            "sampleRate": 48000.0
+          }
+        ]
+      },
+      {
+        "limitation": "Offline native processing timings; no DAW scheduling or physical device underruns measured",
+        "projectBytes": 2051152,
+        "scenarios": [
+          {
+            "activeSampleVoices": 4,
+            "blocks": 4096,
+            "deadlineMs": 2.6666666666666665,
+            "frames": 128,
+            "heldNotes": 1,
+            "maxMs": 0.072719,
+            "medianMs": 0.02401,
+            "outputPeakAtEnd": 0.17507115006446838,
+            "p95DeadlinePercent": 1.384125,
+            "p95Ms": 0.03691,
+            "parseMs": 3.534886,
+            "prepareMs": 0.48437399999999997,
+            "sampleRate": 48000.0
+          },
+          {
+            "activeSampleVoices": 32,
+            "blocks": 4096,
+            "deadlineMs": 2.6666666666666665,
+            "frames": 128,
+            "heldNotes": 8,
+            "maxMs": 0.635692,
+            "medianMs": 0.141939,
+            "outputPeakAtEnd": 0.3416377604007721,
+            "p95DeadlinePercent": 6.331049999999999,
+            "p95Ms": 0.16882799999999998,
+            "parseMs": 3.203461,
+            "prepareMs": 0.19055799999999998,
+            "sampleRate": 48000.0
+          },
+          {
+            "activeSampleVoices": 4,
+            "blocks": 512,
+            "deadlineMs": 21.333333333333332,
+            "frames": 1024,
+            "heldNotes": 1,
+            "maxMs": 0.35634499999999997,
+            "medianMs": 0.190898,
+            "outputPeakAtEnd": 0.17739123106002808,
+            "p95DeadlinePercent": 1.3119656250000002,
+            "p95Ms": 0.279886,
+            "parseMs": 3.413538,
+            "prepareMs": 0.193837,
+            "sampleRate": 48000.0
+          },
+          {
+            "activeSampleVoices": 32,
+            "blocks": 512,
+            "deadlineMs": 21.333333333333332,
+            "frames": 1024,
+            "heldNotes": 8,
+            "maxMs": 1.510412,
+            "medianMs": 1.140746,
+            "outputPeakAtEnd": 0.5303935408592224,
+            "p95DeadlinePercent": 6.1321078125,
+            "p95Ms": 1.308183,
+            "parseMs": 3.2477500000000004,
+            "prepareMs": 0.182338,
+            "sampleRate": 48000.0
+          }
+        ]
+      },
+      {
+        "limitation": "Offline native processing timings; no DAW scheduling or physical device underruns measured",
+        "projectBytes": 2051152,
+        "scenarios": [
+          {
+            "activeSampleVoices": 4,
+            "blocks": 4096,
+            "deadlineMs": 2.6666666666666665,
+            "frames": 128,
+            "heldNotes": 1,
+            "maxMs": 0.06367,
+            "medianMs": 0.02402,
+            "outputPeakAtEnd": 0.17507115006446838,
+            "p95DeadlinePercent": 1.32,
+            "p95Ms": 0.0352,
+            "parseMs": 3.546136,
+            "prepareMs": 0.480954,
+            "sampleRate": 48000.0
+          },
+          {
+            "activeSampleVoices": 32,
+            "blocks": 4096,
+            "deadlineMs": 2.6666666666666665,
+            "frames": 128,
+            "heldNotes": 8,
+            "maxMs": 0.232817,
+            "medianMs": 0.14208800000000002,
+            "outputPeakAtEnd": 0.3416377604007721,
+            "p95DeadlinePercent": 6.2448,
+            "p95Ms": 0.16652799999999998,
+            "parseMs": 3.3138989999999997,
+            "prepareMs": 0.209148,
+            "sampleRate": 48000.0
+          },
+          {
+            "activeSampleVoices": 4,
+            "blocks": 512,
+            "deadlineMs": 21.333333333333332,
+            "frames": 1024,
+            "heldNotes": 1,
+            "maxMs": 0.32479600000000003,
+            "medianMs": 0.193457,
+            "outputPeakAtEnd": 0.17739123106002808,
+            "p95DeadlinePercent": 1.3299703125000002,
+            "p95Ms": 0.283727,
+            "parseMs": 3.25867,
+            "prepareMs": 0.18576700000000002,
+            "sampleRate": 48000.0
+          },
+          {
+            "activeSampleVoices": 32,
+            "blocks": 512,
+            "deadlineMs": 21.333333333333332,
+            "frames": 1024,
+            "heldNotes": 8,
+            "maxMs": 1.568231,
+            "medianMs": 1.143996,
+            "outputPeakAtEnd": 0.5303935408592224,
+            "p95DeadlinePercent": 6.096065625,
+            "p95Ms": 1.3004939999999998,
+            "parseMs": 3.21299,
+            "prepareMs": 0.18973800000000002,
+            "sampleRate": 48000.0
+          }
+        ]
+      }
+    ]
+  }
+}
