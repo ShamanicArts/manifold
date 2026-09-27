@@ -10,6 +10,8 @@ use clap_sys::ext::audio_ports::{
     CLAP_AUDIO_PORT_IS_MAIN, CLAP_EXT_AUDIO_PORTS, CLAP_PORT_STEREO, clap_audio_port_info,
     clap_plugin_audio_ports,
 };
+#[cfg(target_os = "linux")]
+use clap_sys::ext::gui::{CLAP_EXT_GUI, clap_plugin_gui};
 use clap_sys::ext::params::{
     CLAP_EXT_PARAMS, CLAP_PARAM_IS_AUTOMATABLE, CLAP_PARAM_IS_ENUM, CLAP_PARAM_IS_STEPPED,
     clap_param_info, clap_plugin_params,
@@ -155,6 +157,24 @@ static STATE: clap_plugin_state = clap_plugin_state {
     save: Some(instance::state_save),
     load: Some(instance::state_load),
 };
+#[cfg(target_os = "linux")]
+static GUI: clap_plugin_gui = clap_plugin_gui {
+    is_api_supported: Some(instance::gui_api_supported),
+    get_preferred_api: Some(instance::gui_preferred_api),
+    create: Some(instance::gui_create),
+    destroy: Some(instance::gui_destroy),
+    set_scale: Some(instance::gui_set_scale),
+    get_size: Some(instance::gui_get_size),
+    can_resize: Some(instance::gui_can_resize),
+    get_resize_hints: None,
+    adjust_size: Some(instance::gui_adjust_size),
+    set_size: Some(instance::gui_set_size),
+    set_parent: Some(instance::gui_set_parent),
+    set_transient: None,
+    suggest_title: None,
+    show: Some(instance::gui_show),
+    hide: Some(instance::gui_hide),
+};
 
 unsafe extern "C" fn plugin_extension(
     _plugin: *const clap_plugin,
@@ -164,6 +184,10 @@ unsafe extern "C" fn plugin_extension(
         return null();
     }
     let id = unsafe { CStr::from_ptr(id) };
+    #[cfg(target_os = "linux")]
+    if id == CLAP_EXT_GUI {
+        return &GUI as *const _ as *const c_void;
+    }
     if id == CLAP_EXT_AUDIO_PORTS {
         &AUDIO_PORTS as *const _ as *const c_void
     } else if id == CLAP_EXT_PARAMS {
@@ -208,7 +232,14 @@ static FACTORY: Factory = Factory(clap_plugin_factory {
     create_plugin: Some(factory_create),
 });
 
-unsafe extern "C" fn entry_init(_path: *const c_char) -> bool {
+unsafe extern "C" fn entry_init(path: *const c_char) -> bool {
+    #[cfg(target_os = "linux")]
+    if !path.is_null() {
+        let path = unsafe { CStr::from_ptr(path) }
+            .to_string_lossy()
+            .into_owned();
+        let _ = instance::PLUGIN_PATH.set(std::path::PathBuf::from(path));
+    }
     true
 }
 unsafe extern "C" fn entry_deinit() {}

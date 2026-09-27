@@ -1,8 +1,18 @@
 use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char, c_void};
+#[cfg(target_os = "linux")]
+use std::io::{BufRead, BufReader, Write};
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
+#[cfg(target_os = "linux")]
+use std::process::{Child, Command, Stdio};
 use std::ptr::{self, null, null_mut};
 use std::sync::Mutex;
+#[cfg(target_os = "linux")]
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+#[cfg(target_os = "linux")]
+use std::thread::JoinHandle;
 
 use clap_sys::audio_buffer::clap_audio_buffer;
 use clap_sys::events::{
@@ -10,6 +20,8 @@ use clap_sys::events::{
     CLAP_EVENT_PARAM_VALUE, clap_event_header, clap_event_param_gesture, clap_event_param_value,
     clap_input_events, clap_output_events,
 };
+#[cfg(target_os = "linux")]
+use clap_sys::ext::gui::{CLAP_WINDOW_API_X11, clap_window};
 use clap_sys::ext::params::{CLAP_EXT_PARAMS, CLAP_PARAM_RESCAN_VALUES, clap_host_params};
 use clap_sys::host::clap_host;
 use clap_sys::plugin::{clap_plugin, clap_plugin_descriptor};
@@ -28,9 +40,39 @@ use crate::{DEFAULTS, SOURCE_PROJECT, TYPE_LABELS};
 const MAX_STATE_BYTES: usize = 45 * 1024 * 1024;
 const MAX_EVENTS: usize = 1024;
 const MAX_GUI_EVENTS: usize = 256;
+#[cfg(target_os = "linux")]
+pub(crate) static PLUGIN_PATH: OnceLock<PathBuf> = OnceLock::new();
+#[cfg(target_os = "linux")]
+const EDITOR_WIDTH: u32 = 500;
+#[cfg(target_os = "linux")]
+const EDITOR_HEIGHT: u32 = 246;
+
+#[cfg(target_os = "linux")]
+struct EditorSession {
+    child: Child,
+    reader: Option<JoinHandle<()>>,
+}
+
+#[cfg(target_os = "linux")]
+impl EditorSession {
+    fn send(&mut self, command: &str) -> bool {
+        self.child
+            .stdin
+            .as_mut()
+            .is_some_and(|stdin| writeln!(stdin, "{command}").is_ok() && stdin.flush().is_ok())
+    }
+
+    fn stop(mut self) {
+        let _ = self.send("{\"kind\":\"quit\"}");
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
-#[allow(dead_code)] // Constructed by the editor IPC receiver in the next GUI slice.
 pub(crate) enum GuiMessageKind {
     Begin,
     Value,
@@ -66,6 +108,12 @@ pub(crate) struct Instance {
     type_values_valid: AtomicBool,
     gui_events: ArrayQueue<GuiMessage>,
     gui_retry: UnsafeCell<Option<GuiMessage>>,
+    #[cfg(target_os = "linux")]
+    gui_created: AtomicBool,
+    #[cfg(target_os = "linux")]
+    editor_refresh_needed: AtomicBool,
+    #[cfg(target_os = "linux")]
+    editor: Mutex<Option<EditorSession>>,
 }
 
 // CLAP serializes process calls per instance. Its state extension runs on the
@@ -109,6 +157,12 @@ impl Instance {
             type_values_valid: AtomicBool::new(true),
             gui_events: ArrayQueue::new(MAX_GUI_EVENTS),
             gui_retry: UnsafeCell::new(None),
+            #[cfg(target_os = "linux")]
+            gui_created: AtomicBool::new(false),
+            #[cfg(target_os = "linux")]
+            editor_refresh_needed: AtomicBool::new(false),
+            #[cfg(target_os = "linux")]
+            editor: Mutex::new(None),
         });
         instance.plugin.plugin_data = &mut *instance as *mut Self as *mut c_void;
         instance
@@ -119,8 +173,7 @@ impl Instance {
     }
 
     /// Called by the editor IPC receiver, never by the audio callback. A full
-    /// queue rejects the message; the editor can retry without losing order.
-    #[allow(dead_code)]
+    /// queue rejects the message so the receiver can retry without reordering.
     pub(crate) fn enqueue_gui_message(&self, message: GuiMessage) -> bool {
         if message.id >= 7
             || matches!(message.kind, GuiMessageKind::Value)
@@ -208,6 +261,48 @@ impl Instance {
             *configuration = None;
         }
     }
+
+    #[cfg(target_os = "linux")]
+    fn send_editor_state(&self) {
+        // The editor only needs the seven public values and bounded per-type
+        // memory. Never pipe arbitrary host project bytes into the webview.
+        let initial_parameters: Vec<_> = (0..7)
+            .map(|id| serde_json::json!({ "nodeId": 2, "id": id, "value": self.value(id) }))
+            .collect();
+        let type_parameters: serde_json::Map<_, _> = (0..21)
+            .map(|effect_type| {
+                let values: [f32; 5] = std::array::from_fn(|index| {
+                    f32::from_bits(self.type_values[effect_type][index].load(Ordering::Acquire))
+                });
+                (effect_type.to_string(), serde_json::json!(values))
+            })
+            .collect();
+        let command = serde_json::json!({
+            "kind": "state",
+            "document": {
+                "schemaVersion": 1,
+                "id": "manifold.standalone-fx-module",
+                "signal": { "initialParameters": initial_parameters },
+                "typeParameters": type_parameters,
+            }
+        })
+        .to_string();
+        if let Ok(mut editor) = self.editor.lock() {
+            if let Some(editor) = editor.as_mut() {
+                let _ = editor.send(&command);
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn stop_editor(&self) {
+        self.gui_created.store(false, Ordering::Release);
+        if let Ok(mut editor) = self.editor.lock() {
+            if let Some(editor) = editor.take() {
+                editor.stop();
+            }
+        }
+    }
 }
 
 unsafe fn instance<'a>(plugin: *const clap_plugin) -> Option<&'a Instance> {
@@ -227,6 +322,8 @@ unsafe extern "C" fn plugin_init(plugin: *const clap_plugin) -> bool {
 }
 unsafe extern "C" fn plugin_destroy(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { instance(plugin) } {
+        #[cfg(target_os = "linux")]
+        instance.stop_editor();
         instance.deactivate();
         // SAFETY: The factory allocated this Box and transfers it here.
         unsafe {
@@ -521,6 +618,17 @@ fn publish_processor_snapshot(instance: &Instance, runtime: &Runtime, rescan: bo
         }
     }
     instance.type_values_valid.store(true, Ordering::Release);
+    #[cfg(target_os = "linux")]
+    if instance.gui_created.load(Ordering::Acquire) {
+        instance
+            .editor_refresh_needed
+            .store(true, Ordering::Release);
+        if !instance.host.is_null() {
+            if let Some(request) = unsafe { (*instance.host).request_callback } {
+                unsafe { request(instance.host) };
+            }
+        }
+    }
     if rescan && !instance.host.is_null() {
         instance.rescan_needed.store(true, Ordering::Release);
         if let Some(request) = unsafe { (*instance.host).request_callback } {
@@ -667,6 +775,10 @@ unsafe extern "C" fn plugin_main_thread(plugin: *const clap_plugin) {
         if instance.rescan_needed.swap(false, Ordering::AcqRel) {
             rescan_host_values(instance);
         }
+        #[cfg(target_os = "linux")]
+        if instance.editor_refresh_needed.swap(false, Ordering::AcqRel) {
+            instance.send_editor_state();
+        }
     }
 }
 
@@ -698,6 +810,231 @@ fn rescan_host_values(instance: &Instance) {
             }
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn editor_bundle() -> Option<(PathBuf, PathBuf)> {
+    let directory = PLUGIN_PATH.get()?.parent()?;
+    let binary = directory.join("ManifoldFX-editor");
+    let assets = directory.join("assets");
+    (binary.is_file() && assets.join("fx-module.html").is_file()).then_some((binary, assets))
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_api_supported(
+    _plugin: *const clap_plugin,
+    api: *const c_char,
+    floating: bool,
+) -> bool {
+    !floating && !api.is_null() && unsafe { CStr::from_ptr(api) } == CLAP_WINDOW_API_X11
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_preferred_api(
+    _plugin: *const clap_plugin,
+    api: *mut *const c_char,
+    floating: *mut bool,
+) -> bool {
+    if api.is_null() || floating.is_null() {
+        return false;
+    }
+    unsafe {
+        *api = CLAP_WINDOW_API_X11.as_ptr();
+        *floating = false;
+    }
+    true
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_create(
+    plugin: *const clap_plugin,
+    api: *const c_char,
+    floating: bool,
+) -> bool {
+    let Some(instance) = (unsafe { instance(plugin) }) else {
+        return false;
+    };
+    if !unsafe { gui_api_supported(plugin, api, floating) } || editor_bundle().is_none() {
+        return false;
+    }
+    instance
+        .gui_created
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_destroy(plugin: *const clap_plugin) {
+    if let Some(instance) = unsafe { instance(plugin) } {
+        instance.stop_editor();
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_set_scale(_plugin: *const clap_plugin, _scale: f64) -> bool {
+    false
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_get_size(
+    plugin: *const clap_plugin,
+    width: *mut u32,
+    height: *mut u32,
+) -> bool {
+    if unsafe { instance(plugin) }.is_none() || width.is_null() || height.is_null() {
+        return false;
+    }
+    unsafe {
+        *width = EDITOR_WIDTH;
+        *height = EDITOR_HEIGHT;
+    }
+    true
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_can_resize(_plugin: *const clap_plugin) -> bool {
+    false
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_adjust_size(
+    plugin: *const clap_plugin,
+    width: *mut u32,
+    height: *mut u32,
+) -> bool {
+    unsafe { gui_get_size(plugin, width, height) }
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_set_size(
+    _plugin: *const clap_plugin,
+    width: u32,
+    height: u32,
+) -> bool {
+    width == EDITOR_WIDTH && height == EDITOR_HEIGHT
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_set_parent(
+    plugin: *const clap_plugin,
+    window: *const clap_window,
+) -> bool {
+    let Some(instance) = (unsafe { instance(plugin) }) else {
+        return false;
+    };
+    if !instance.gui_created.load(Ordering::Acquire) || window.is_null() {
+        return false;
+    }
+    let window = unsafe { &*window };
+    if !unsafe { gui_api_supported(plugin, window.api, false) } {
+        return false;
+    }
+    let xid = unsafe { window.specific.x11 };
+    if xid == 0 {
+        return false;
+    }
+    let Some((binary, assets)) = editor_bundle() else {
+        return false;
+    };
+    let Ok(mut editor) = instance.editor.lock() else {
+        return false;
+    };
+    if editor.is_some() {
+        return false;
+    }
+    let Ok(mut child) = Command::new(binary)
+        .arg(xid.to_string())
+        .arg(assets)
+        .env("GDK_BACKEND", "x11")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+    else {
+        return false;
+    };
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        return false;
+    };
+    // The reader is joined after killing the child, before Instance is dropped.
+    let address = instance as *const Instance as usize;
+    let reader = std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else {
+                break;
+            };
+            if line.len() > 4096 {
+                continue;
+            }
+            let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            if message["version"] != 1 {
+                continue;
+            }
+            let kind = match message["kind"].as_str() {
+                Some("gesture-begin") => GuiMessageKind::Begin,
+                Some("parameter") => GuiMessageKind::Value,
+                Some("gesture-end") => GuiMessageKind::End,
+                _ => continue,
+            };
+            let Some(id) = message["id"].as_u64().and_then(|id| u32::try_from(id).ok()) else {
+                continue;
+            };
+            let value = if matches!(kind, GuiMessageKind::Value) {
+                let Some(value) = message["value"].as_f64() else {
+                    continue;
+                };
+                if physical(id as usize, value).is_none() {
+                    continue;
+                }
+                value as f32
+            } else {
+                0.
+            };
+            // SAFETY: stop_editor kills and joins this reader before Instance destruction.
+            let instance = unsafe { &*(address as *const Instance) };
+            if id >= 7 {
+                continue;
+            }
+            while instance.gui_created.load(Ordering::Acquire)
+                && !instance.enqueue_gui_message(GuiMessage { kind, id, value })
+            {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+    });
+    *editor = Some(EditorSession {
+        child,
+        reader: Some(reader),
+    });
+    drop(editor);
+    instance.send_editor_state();
+    true
+}
+
+#[cfg(target_os = "linux")]
+fn send_editor_command(plugin: *const clap_plugin, command: &str) -> bool {
+    let Some(instance) = (unsafe { instance(plugin) }) else {
+        return false;
+    };
+    instance
+        .editor
+        .lock()
+        .ok()
+        .and_then(|mut editor| editor.as_mut().map(|editor| editor.send(command)))
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_show(plugin: *const clap_plugin) -> bool {
+    send_editor_command(plugin, "{\"kind\":\"show\"}")
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) unsafe extern "C" fn gui_hide(plugin: *const clap_plugin) -> bool {
+    send_editor_command(plugin, "{\"kind\":\"hide\"}")
 }
 
 pub(crate) unsafe extern "C" fn param_value(
@@ -791,11 +1128,15 @@ pub(crate) unsafe extern "C" fn param_flush(
         // Inactive flush happens on the main thread. This allocation is outside
         // the audio callback and becomes the input to the next activation.
         let mut scratch = Vec::with_capacity(MAX_EVENTS);
-        let (_, gui_type_changed) = drain_gui_events(instance, out, None);
+        let (gui_changed, gui_type_changed) = drain_gui_events(instance, out, None);
         if unsafe { append_events(events, 0, &mut scratch) } {
             let host_type_changed = publish_inactive_values(instance, &scratch);
             if gui_type_changed || host_type_changed {
                 rescan_host_values(instance);
+            }
+            #[cfg(target_os = "linux")]
+            if gui_changed || !scratch.is_empty() {
+                instance.send_editor_state();
             }
         }
         return;
@@ -950,5 +1291,7 @@ pub(crate) unsafe extern "C" fn state_load(
     }
     instance.type_values_valid.store(true, Ordering::Release);
     rescan_host_values(instance);
+    #[cfg(target_os = "linux")]
+    instance.send_editor_state();
     true
 }

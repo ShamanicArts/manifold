@@ -9,9 +9,9 @@ fixed host slots, and processes timed automation in native Rust. It does not
 execute Lua or depend on JUCE.
 
 Build a loadable file with `./scripts/build-clap.sh`. It prints the path under
-`target/clap/ManifoldFX.clap`. This is an audio and host state proof; the
-module currently uses the host's generic parameter UI. The browser widget
-surface has not been embedded in a native editor.
+`target/clap/ManifoldFX.clap`. The bundle also contains `ManifoldFX-editor` and
+the built browser assets. The CLAP GUI extension embeds the ported widgets in
+an X11 child window; generic host parameters remain available.
 
 The browser's **Save host project** action exports the authored project JSON
 with all seven current public values and `typeParameters` for all 21 effects.
@@ -45,6 +45,14 @@ state files remain available through the existing **Save state** action.
   0 failed, 0 warnings, 11 skipped. The passing tests include in-place and
   separate buffers, sample accurate parameters, saved state reproduction,
   varied block sizes and sample rates, and repeated activation.
+- `scripts/probe-clap-gui.py` loads the actual `.clap` binary under a disposable
+  Weston/Xwayland host, loads Reverb through the CLAP state stream, creates a
+  500 × 246 native child window, captures its rendered widgets, sends host Mix
+  automation and captures the updated window, then exercises show, hide, and
+  destroy. The captures are in `web/public/standalone-fx-clap-editor.png` and
+  `web/public/standalone-fx-clap-automation.png`.
+  The validator still reports 33 successes, 11 skips, and no failures after
+  adding the GUI extension.
 
 The [CLAP specification](https://github.com/free-audio/clap) defines the C ABI
 used here. The adapter uses the raw `clap-sys` bindings. The
@@ -53,9 +61,11 @@ and test tool; no CLAP framework runs the DSP.
 
 ## Remaining host work
 
-The plug-in exposes seven generic host controls but no custom CLAP editor, so
-the browser reconstruction is not yet visible inside a DAW. The CLAP reset
-callback now clears all 21 prepared effect histories in place while preserving
+The custom editor is embedded in the disposable X11 host, but a real DAW
+gesture and automation pass remains. This isolated Xwayland compositor did
+not permit XTEST pointer injection, so the complete native pointer-to-host
+path has not been exercised. The CLAP reset callback clears all 21 prepared
+effect histories in place while preserving
 controls and visited routing. Its cost includes clearing Reverb's prepared
 delay lines, so worst-case reset timing still needs measurement.
 State load while active prepares the replacement on the main thread and swaps

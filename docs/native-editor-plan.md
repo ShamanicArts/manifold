@@ -28,16 +28,16 @@ process boundary also prevents the DSP module from requiring a GTK loop.
 A browser preview is now available at `fx-module.html?editor=1`. It mounts the
 same `project-ui.js` controls in a 500 × 246 shell, accepts a host project
 snapshot through `window.manifoldEditorReceive(...)`, and emits versioned
-parameter messages through `window.ipc.postMessage(...)`. The current preview
-shares the full browser page bundle, although it does not start browser audio;
-the packaged native editor build still needs its own entrypoint so it can omit
-browser audio code entirely.
+parameter messages through `window.ipc.postMessage(...)`. The preview and
+packaged editor share the full browser page bundle, although editor mode does
+not start browser audio. A dedicated entrypoint can later remove unused code.
 Slider gestures now emit begin, value, and end messages. The CLAP side has a
 bounded preallocated event queue and an ABI host test that receives those
 messages as CLAP gesture/value output events through `process()` or `flush()`;
-a rejected host output is retained for retry. The browser and CLAP halves are
-still connected only by a test IPC shim. The companion's real IPC receiver and
-CLAP GUI window lifecycle remain to implement.
+a rejected host output is retained for retry. The CLAP GUI extension now starts
+a separate WebKitGTK companion and serves the same built widgets from packaged
+assets. Its stdin carries host snapshots; its stdout carries gestures into the
+existing bounded CLAP queue.
 
 ```text
 DAW main thread: CLAP GUI extension ── X11 parent ── editor companion
@@ -80,4 +80,5 @@ DAW audio thread: host events → preallocated CLAP adapter → manifold-native
 
 VST3 and Audio Unit adapters can reuse the same packaged editor and stable
 project IDs, while implementing each format's own window and automation
-contract. The current CLAP audio module does not advertise a GUI extension yet.
+contract. The Linux CLAP module advertises X11 GUI support when the companion
+and assets are present. Other host APIs use the generic parameter interface.

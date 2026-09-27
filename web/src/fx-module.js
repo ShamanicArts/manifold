@@ -424,6 +424,10 @@ if (editorMode) {
       ? parseFxProjectState(document) : parseStandaloneFxState(document);
     applySavedState(state);
   };
+  if (window.__manifoldPendingState) {
+    window.manifoldEditorReceive(window.__manifoldPendingState);
+    delete window.__manifoldPendingState;
+  }
 }
 byId("open-state").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];

@@ -35,7 +35,7 @@
     <header><span>MANIFOLD / HOST CHECKPOINT</span><a href="/fx-module.html">Open the browser module ↗</a></header>
     <p class="eyebrow">Standalone FX · same authored project</p>
     <h1>From browser to a loadable plug-in.</h1>
-    <p class="lead">The Standalone FX project now opens in the browser and in a native CLAP host. Both paths run the Rust persistent effect graph. The browser draws the ported widget controls; CLAP exposes the seven host parameters and project state through a loadable plug-in.</p>
+    <p class="lead">The Standalone FX project now opens in the browser and in a native CLAP host. Both paths run the Rust persistent effect graph. The CLAP bundle now also opens the ported widget controls in an embedded X11 editor.</p>
     <div class="grid">
       <div class="card"><b>21</b><span>Authored effect type IDs in one persistent Rust FX slot</span></div>
       <div class="card"><b>7</b><span>CLAP host parameters: type, wet mix, and five normalized controls</span></div>
@@ -53,8 +53,9 @@
         <tr><td>Independent validator</td><td>CLAP validator v0.4.1 loaded the built <code>.clap</code> file and passed in-place audio, varied blocks and rates, parameter, and state tests.</td></tr>
       </tbody>
     </table>
-    <h2>Still to connect</h2>
-    <p class="note">The CLAP module currently uses the host's generic parameter editor. The browser widget surface is not embedded in a DAW yet. Reset now clears the effect histories in place; measuring its worst-case duration, coherent concurrent state snapshots, and VST3/Audio Unit adapters remain. Visual pixel parity against the running old JUCE/ImGui export is still unmeasured.</p>
+    <h2>Native editor checkpoint</h2>
+    <p><a href="/standalone-fx-editor-bridge-review.html">Inspect the actual CLAP child window capture and host state proof ↗</a></p>
+    <p class="note">The X11 editor and state loading work in an isolated CLAP host. A real DAW pointer and automation test remains. Reset cost, coherent concurrent state snapshots, VST3 and Audio Unit adapters, and pixel comparison against the running old JUCE/ImGui export remain open.</p>
     <p>Build locally with <code>./scripts/build-clap.sh</code>. The resulting file is <code>target/clap/ManifoldFX.clap</code>. <a href="/standalone-fx-module-review.html">View the widget port checkpoint ↗</a></p>
   </main>
 </body>

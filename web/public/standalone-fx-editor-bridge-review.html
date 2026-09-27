@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Manifold · Native editor bridge checkpoint</title>
+  <title>Manifold · CLAP editor checkpoint</title>
   <style>
     :root { font-family: system-ui, sans-serif; background: #0b1220; color: #dce5ed; }
     * { box-sizing: border-box; }
@@ -17,6 +17,7 @@
     p { max-width: 700px; color: #adbdcb; line-height: 1.6; }
     .lead { font-size: 16px; }
     .frame { display: inline-block; max-width: 100%; margin-top: 16px; padding: 8px; border: 1px solid #354758; background: #111b2b; }
+    .caption { margin-top: 7px; font: 12px ui-monospace, monospace; color: #91a6b6; }
     img { display: block; max-width: 100%; height: auto; }
     dl { display: grid; grid-template-columns: 150px 1fr; gap: 0 18px; max-width: 760px; }
     dt, dd { margin: 0; padding: 12px 0; border-top: 1px solid #34475a; font-size: 13px; line-height: 1.5; }
@@ -28,19 +29,24 @@
 </head>
 <body>
   <main>
-    <header><span>MANIFOLD / EDITOR BRIDGE</span><a href="/fx-module.html?editor=1">Open live editor mode ↗</a></header>
-    <h1>The same widgets inside an editor-sized surface.</h1>
-    <p class="lead">The Standalone FX browser module now has a 500 × 246 editor mode. It mounts the same authored <code>ui.json</code>, Canvas compact sliders, dropdown, XY pad, and filter graph as the full browser page. The preview receives host project state and emits versioned parameter messages through <code>window.ipc</code>.</p>
-    <div class="frame"><img src="/standalone-fx-editor-mode.png" width="500" height="246" alt="Standalone FX editor mode showing original compact widget renderer and Chorus controls" /></div>
+    <header><span>MANIFOLD / NATIVE EDITOR</span><a href="/fx-module.html?editor=1">Open live browser editor ↗</a></header>
+    <h1>The ported widgets now open inside CLAP.</h1>
+    <p class="lead">The loadable Linux CLAP module starts a separate WebKitGTK editor in the host's X11 parent window. It renders the same <code>ui.json</code> and Canvas slider and dropdown code as the browser page. This is a capture of that native child window after a CLAP state load selected Reverb with Mix 0.72, Room 0.80, and Damp 0.30.</p>
+    <div class="frame"><img src="/standalone-fx-clap-editor.png" width="500" height="246" alt="Actual CLAP X11 child editor rendering ported widgets with Reverb selected and host state values" /></div>
+    <div class="caption">CLAP state load → editor: Reverb, Mix 0.72, Room 0.80, Damp 0.30</div>
+    <div class="frame"><img src="/standalone-fx-clap-automation.png" width="500" height="246" alt="Same CLAP child editor after host automation changed Mix from 0.72 to 0.20" /></div>
+    <div class="caption">Host automation → editor: Mix changes to 0.20 without reopening the window</div>
     <h2>What is proven</h2>
     <dl>
-      <dt>Widget identity</dt><dd>The editor mode and browser module execute the same <code>project-ui.js</code> widget renderer. No HTML range control replaces the ported compact slider.</dd>
-      <dt>Host input</dt><dd>A host project JSON snapshot restores the selected effect and all remembered controls in the editor surface.</dd>
-      <dt>Host output</dt><dd>Moving a slider produces versioned begin, value, and end messages with a stable public parameter ID. The browser test captures their order; a CLAP host test checks their output event forms and retry behavior.</dd>
-      <dt>Audio boundary</dt><dd>Editor mode does not start a browser audio context. The loadable CLAP module continues to process audio through native Rust.</dd>
+      <dt>Widget identity</dt><dd>The native editor and browser module execute the same <code>project-ui.js</code> Canvas renderer for compact sliders, dropdowns, and the XY pad.</dd>
+      <dt>Host input</dt><dd>A real CLAP state stream loaded seven public controls plus 21 remembered effect sets. A subsequent CLAP parameter event changed Mix from 0.72 to 0.20 in the same native window, shown in the second capture.</dd>
+      <dt>Window lifecycle</dt><dd>A disposable X11 host exercised create, parent, show, hide, and destroy. The editor ran in a companion process; no GTK loop entered the DSP module.</dd>
+      <dt>Host output</dt><dd>The browser widget test emits begin, value, and end IPC messages. A CLAP host test checks their event forms and retry behavior. Synthetic pointer input was unavailable in the isolated Xwayland compositor, so the full physical pointer to native host chain still needs a manual DAW or Xvfb test.</dd>
+      <dt>Audio boundary</dt><dd>The CLAP audio callback continues to use prepared native Rust DSP. Editor state and IPC are handled outside it.</dd>
+      <dt>Independent validator</dt><dd>After adding the GUI extension, CLAP validator v0.4.1 still passed all 33 applicable tests, with zero failures and 11 skips. Its suite did not exercise the GUI window.</dd>
     </dl>
-    <h2>Next connection</h2>
-    <p class="note">This is a browser preview of the editor bridge. The CLAP module does not yet expose the GUI extension or embed the page in a DAW. The companion WebKitGTK process, real IPC receiver, and X11 lifecycle remain to implement and validate.</p>
+    <h2>Next proof</h2>
+    <p class="note">Open this bundle in a real CLAP DAW, move the native sliders, and verify recorded automation plus host driven UI updates. The linked preview is interactive in the browser; the screenshot is a capture of the real CLAP window. VST3 and Audio Unit still need their own host adapters.</p>
     <p><a href="/standalone-fx-host-review.html">View the CLAP audio and state proof ↗</a></p>
   </main>
 </body>

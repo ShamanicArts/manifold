@@ -56,8 +56,11 @@ state callbacks. The browser and CLAP host can exchange the authored project
 JSON with all 21 effects' remembered control sets; the native reader validates
 and prepares it before publication to the audio callback. Its audio callback
 runs prepared native Rust DSP; the browser
-still runs the Wasm build of the same core. The CLAP module has no custom editor
-yet. See the [CLAP host proof](clap-host.md) for tests and remaining work.
+still runs the Wasm build of the same core. The Linux CLAP bundle now packages
+the same Standalone FX widgets in an X11 child webview owned by a separate
+editor process. CLAP GUI callbacks manage its lifecycle; IPC carries state
+snapshots and bounded gestures outside the audio callback. See the
+[CLAP host proof](clap-host.md) for tests and remaining work.
 The [native editor boundary](native-editor-plan.md) records the exact widget
 reuse, CLAP GUI lifecycle, and proposed browser process bridge.
 
