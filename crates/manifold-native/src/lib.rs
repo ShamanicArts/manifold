@@ -4,6 +4,8 @@
 use manifold_core::events::{EventError, TimedEvent};
 use manifold_core::graph::{ExecutionPlan, GraphDescription, GraphError, NodeId};
 
+pub mod project;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum NativeError {
     Graph(GraphError),

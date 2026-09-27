@@ -47,7 +47,7 @@ The sampler prepares eight note slots with four `SampleRegion` cursors each. Cur
 
 ## Native plug-in stance
 
-The same Rust DSP crate builds to native code and Wasm. `manifold-native` now wraps the native graph with explicit main/sidechain buses, bounded variable blocks, timed MIDI events, and silent missing buses. A VST3 adapter will implement the format's processor/controller, parameter, state, bus, and event contracts through a pinned official C API binding. JUCE is not a dependency. We do not require a Wasm interpreter inside a DAW callback. This still provides a Wasm build for browser and other compatible hosts. A packaged web editor will be connected to the native controller; it cannot share the real-time thread. The [native boundary plan](native-vst3-boundary.md) lists the remaining host contracts and validation gates.
+The same Rust DSP crate builds to native code and Wasm. `manifold-native` wraps the graph with explicit main/sidechain buses, bounded variable blocks, timed MIDI events, and silent missing buses. A bounded native loader restores the browser's live and sidechain sampler project graphs, authored parameters, and embedded PCM; broader graph state remains open. A VST3 adapter will implement the format's processor/controller, parameter, state, bus, and event contracts through a pinned official C API binding. JUCE is not a dependency. We do not require a Wasm interpreter inside a DAW callback. This still provides a Wasm build for browser and other compatible hosts. A packaged web editor will be connected to the native controller; it cannot share the real-time thread. The [native boundary plan](native-vst3-boundary.md) lists the remaining host contracts and validation gates.
 
 ## Decisions to revisit
 
