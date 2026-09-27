@@ -73,7 +73,7 @@ native boundary. The core presently has channel/key note events without CLAP
 note IDs or partial wildcard filters, so a wildcard release conservatively
 clears every held note. More precise filter semantics remain host work.
 The [graph host state and reset contract](graph-host-state-reset.md) records
-the completed in-place reset and the concurrent-save gate still to implement.
+the completed in-place reset and coherent live-save implementation.
 The [Graph reset review](../web/public/graph-clap-reset-proof.html) collects
 authored graph, external CLAP, validator, and large-asset timing evidence.
 
@@ -150,10 +150,10 @@ delay lines, so worst-case reset timing still needs measurement.
 State load while active prepares the replacement on the main thread and swaps
 at the next process block; old runtime retirement stays off the callback.
 Multiple queued state loads before a process block are currently rejected.
-The CLAP state saver reads atomic public controls and per-effect memories while
-audio may be running; a save concurrent with a control-changing block can
-capture values from adjacent blocks. A coherent control-thread snapshot is
-needed before treating live saves as production-ready.
+The Graph CLAP state saver reads a complete versioned 128-slot bank under the
+same host-side locks as project state and bindings; an old runtime cannot write
+the new project's bank. Further live DAW save stress with repeated project
+swaps and large embedded samples remains to be exercised.
 
 The browser's per-effect control memory is now reflected in the live CLAP
 parameter values and its saved project state. Type switches request a host

@@ -6,7 +6,7 @@ use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::{self, null, null_mut};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 #[cfg(target_os = "linux")]
 use crate::graph_gui::{GuiMessage, GuiMessageKind, GuiState};
@@ -47,7 +47,58 @@ const MAX_AUTOMATION: usize = 4096;
 const MAX_NOTES: usize = 1024;
 const MAX_STATE: usize = 45 * 1024 * 1024;
 
+/// One graph generation's fixed host values. The active audio runtime is its
+/// only writer; inactive flushes use the same bank when processing is stopped.
+struct ValueBank {
+    sequence: AtomicU64,
+    values: [AtomicU32; HOST_SLOT_COUNT],
+}
+
+impl ValueBank {
+    fn new(values: [f32; HOST_SLOT_COUNT]) -> Self {
+        Self {
+            sequence: AtomicU64::new(0),
+            values: values.map(|value| AtomicU32::new(value.to_bits())),
+        }
+    }
+
+    fn write_all(&self, values: [f32; HOST_SLOT_COUNT]) {
+        self.sequence.fetch_add(1, Ordering::SeqCst);
+        for (slot, value) in values.into_iter().enumerate() {
+            self.values[slot].store(value.to_bits(), Ordering::SeqCst);
+        }
+        self.sequence.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn write_slot(&self, slot: usize, value: f32) {
+        self.sequence.fetch_add(1, Ordering::SeqCst);
+        self.values[slot].store(value.to_bits(), Ordering::SeqCst);
+        self.sequence.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn read_all(&self) -> [f32; HOST_SLOT_COUNT] {
+        loop {
+            let before = self.sequence.load(Ordering::SeqCst);
+            if before & 1 != 0 {
+                std::hint::spin_loop();
+                continue;
+            }
+            let values = std::array::from_fn(|slot| {
+                f32::from_bits(self.values[slot].load(Ordering::SeqCst))
+            });
+            if before == self.sequence.load(Ordering::SeqCst) {
+                return values;
+            }
+        }
+    }
+
+    fn read_slot(&self, slot: usize) -> f32 {
+        f32::from_bits(self.values[slot].load(Ordering::Acquire))
+    }
+}
+
 struct Runtime {
+    bank: usize,
     prepared: PreparedNativeProject,
     buffers: HostBuffers,
     automation: Vec<TimedAutomation>,
@@ -66,7 +117,8 @@ pub(crate) struct Instance {
     configuration: Mutex<Option<(f32, usize)>>,
     state: Mutex<Vec<u8>>,
     descriptors: Mutex<[Option<HostParameter>; HOST_SLOT_COUNT]>,
-    normalized: [AtomicU32; HOST_SLOT_COUNT],
+    value_banks: [ValueBank; 2],
+    active_bank: AtomicUsize,
     #[cfg(target_os = "linux")]
     presentation: Mutex<serde_json::Value>,
     #[cfg(target_os = "linux")]
@@ -159,7 +211,8 @@ impl Instance {
             configuration: Mutex::new(None),
             state: Mutex::new(DEFAULT.to_vec()),
             descriptors: Mutex::new(descriptors),
-            normalized: normalized.map(|value: f32| AtomicU32::new(value.to_bits())),
+            value_banks: [ValueBank::new(normalized), ValueBank::new(normalized)],
+            active_bank: AtomicUsize::new(0),
             #[cfg(target_os = "linux")]
             presentation: Mutex::new(presentation),
             #[cfg(target_os = "linux")]
@@ -171,7 +224,7 @@ impl Instance {
         value
     }
 
-    fn prepare(bytes: &[u8], rate: f32, max: usize) -> Option<Box<Runtime>> {
+    fn prepare(bytes: &[u8], rate: f32, max: usize, bank: usize) -> Option<Box<Runtime>> {
         let project = NativeProject::parse(bytes).ok()?;
         let document: serde_json::Value = serde_json::from_slice(bytes).ok()?;
         let midi_node = document["signal"]["nodes"]
@@ -197,6 +250,7 @@ impl Instance {
                 })
         });
         Some(Box::new(Runtime {
+            bank,
             prepared,
             buffers: HostBuffers::prepare(max),
             automation: Vec::with_capacity(MAX_AUTOMATION),
@@ -209,13 +263,13 @@ impl Instance {
     fn snapshot(&self, runtime: &Runtime) {
         let parameters = runtime.prepared.processor.host_parameters();
         let values = runtime.prepared.processor.current_parameter_values();
-        for (slot, index) in runtime.slot_indices.iter().enumerate() {
-            if let Some(index) = index {
-                if let Some(value) = parameters[*index].to_normalized(values[*index]) {
-                    self.normalized[slot].store(value.to_bits(), Ordering::Release);
-                }
-            }
-        }
+        let bank = &self.value_banks[runtime.bank];
+        let normalized = std::array::from_fn(|slot| {
+            runtime.slot_indices[slot]
+                .and_then(|index| parameters[index].to_normalized(values[index]))
+                .unwrap_or_else(|| bank.read_slot(slot))
+        });
+        bank.write_all(normalized);
         #[cfg(target_os = "linux")]
         self.gui.request_refresh(self.host);
     }
@@ -223,14 +277,14 @@ impl Instance {
     pub(super) fn state_bytes(&self) -> Option<Vec<u8>> {
         let state = self.state.lock().ok()?;
         let descriptors = self.descriptors.lock().ok()?;
+        let values = self.value_banks[self.active_bank.load(Ordering::Acquire)].read_all();
         let mut document: serde_json::Value = serde_json::from_slice(&state).ok()?;
         let entries = document["signal"]["initialParameters"].as_array_mut()?;
         for (slot, descriptor) in descriptors.iter().enumerate() {
             let Some(descriptor) = descriptor else {
                 continue;
             };
-            let normalized = f32::from_bits(self.normalized[slot].load(Ordering::Acquire));
-            let physical = descriptor.from_normalized(normalized)?;
+            let physical = descriptor.from_normalized(values[slot])?;
             if let Some(entry) = entries.iter_mut().find(|entry| {
                 entry["nodeId"] == descriptor.node && entry["id"] == descriptor.local_id
             }) {
@@ -247,16 +301,16 @@ impl Instance {
 
     #[cfg(target_os = "linux")]
     pub(super) fn presentation(&self) -> Option<serde_json::Value> {
-        let mut document = self.presentation.lock().ok()?.clone();
+        let view = self.presentation.lock().ok()?;
+        let mut document = view.clone();
+        let values = self.value_banks[self.active_bank.load(Ordering::Acquire)].read_all();
         for control in document["controls"].as_array_mut()? {
             let id = u32::try_from(control["id"].as_u64()?).ok()?;
             let slot = id.checked_sub(HOST_SLOT_BASE)? as usize;
             if slot >= HOST_SLOT_COUNT {
                 return None;
             }
-            control["normalized"] = serde_json::Value::from(f32::from_bits(
-                self.normalized[slot].load(Ordering::Acquire),
-            ));
+            control["normalized"] = serde_json::Value::from(values[slot]);
         }
         Some(document)
     }
@@ -277,8 +331,9 @@ impl Instance {
         });
         self.retire();
         let config = self.configuration.lock().ok().and_then(|value| *value);
+        let next_bank = 1 - self.active_bank.load(Ordering::Acquire);
         let prepared = if let Some((rate, max)) = config {
-            let Some(value) = Instance::prepare(&bytes, rate, max) else {
+            let Some(value) = Instance::prepare(&bytes, rate, max, next_bank) else {
                 return false;
             };
             Some(value)
@@ -304,9 +359,8 @@ impl Instance {
         {
             *view = presentation;
         }
-        for (slot, value) in values.into_iter().enumerate() {
-            self.normalized[slot].store(value.to_bits(), Ordering::Release);
-        }
+        self.value_banks[next_bank].write_all(values);
+        self.active_bank.store(next_bank, Ordering::Release);
         if let Some(prepared) = prepared {
             self.pending
                 .store(Box::into_raw(prepared), Ordering::Release);
@@ -409,7 +463,8 @@ unsafe extern "C" fn activate(plugin: *const clap_plugin, rate: f64, _min: u32, 
     let Some(state) = instance.state_bytes() else {
         return false;
     };
-    let Some(runtime) = Instance::prepare(&state, rate as f32, max as usize) else {
+    let bank = instance.active_bank.load(Ordering::Acquire);
+    let Some(runtime) = Instance::prepare(&state, rate as f32, max as usize, bank) else {
         return false;
     };
     instance.snapshot(&runtime);
@@ -609,7 +664,8 @@ unsafe extern "C" fn param_value(plugin: *const clap_plugin, id: u32, output: *m
     if slot >= HOST_SLOT_COUNT || output.is_null() {
         return false;
     }
-    unsafe { *output = f32::from_bits(instance.normalized[slot].load(Ordering::Acquire)) as f64 };
+    let bank = instance.active_bank.load(Ordering::Acquire);
+    unsafe { *output = instance.value_banks[bank].read_slot(slot) as f64 };
     true
 }
 unsafe extern "C" fn to_text(
@@ -891,7 +947,8 @@ fn drain_gui(
                     }
                 }
             } else {
-                instance.normalized[slot].store(message.value.to_bits(), Ordering::Release);
+                let bank = instance.active_bank.load(Ordering::Acquire);
+                instance.value_banks[bank].write_slot(slot, message.value);
             }
             changed = true;
         }
@@ -1006,8 +1063,8 @@ unsafe extern "C" fn flush(
                     && value.channel == -1
                     && value.key == -1
                 {
-                    instance.normalized[slot]
-                        .store((value.value as f32).to_bits(), Ordering::Release);
+                    let bank = instance.active_bank.load(Ordering::Acquire);
+                    instance.value_banks[bank].write_slot(slot, value.value as f32);
                 }
             }
         }
@@ -1113,6 +1170,113 @@ mod tests {
     use super::*;
     use clap_sys::events::clap_input_events;
     use clap_sys::version::CLAP_VERSION;
+
+    #[test]
+    fn fixed_value_bank_never_exposes_a_mixed_audio_snapshot() {
+        let bank = ValueBank::new([0.25; HOST_SLOT_COUNT]);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                for index in 0..20_000 {
+                    bank.write_all([if index & 1 == 0 { 0.75 } else { 0.25 }; HOST_SLOT_COUNT]);
+                }
+            });
+            for _ in 0..20_000 {
+                let values = bank.read_all();
+                assert!(values.iter().all(|value| *value == values[0]));
+            }
+        });
+    }
+
+    #[test]
+    fn live_state_saves_keep_automated_controls_from_one_block() {
+        let instance = Instance::new(null(), &crate::GRAPH_DESCRIPTOR);
+        let descriptors = *instance.descriptors.lock().unwrap();
+        let continuous: Vec<_> = descriptors
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, descriptor)| {
+                descriptor
+                    .filter(|descriptor| !descriptor.discrete)
+                    .map(|descriptor| (slot, descriptor))
+            })
+            .collect();
+        let (first_slot, first) = continuous[0];
+        let (second_slot, second) = continuous[1];
+        let initial = instance.value_banks[0].read_all();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                for index in 0..20_000 {
+                    let mut values = initial;
+                    values[first_slot] = if index & 1 == 0 { 0.2 } else { 0.8 };
+                    values[second_slot] = if index & 1 == 0 { 0.8 } else { 0.2 };
+                    instance.value_banks[0].write_all(values);
+                }
+            });
+            for _ in 0..128 {
+                let saved = instance.state_bytes().unwrap();
+                let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+                let entries = document["signal"]["initialParameters"].as_array().unwrap();
+                let physical = |descriptor: HostParameter| {
+                    entries
+                        .iter()
+                        .find(|entry| {
+                            entry["nodeId"] == descriptor.node && entry["id"] == descriptor.local_id
+                        })
+                        .unwrap()["value"]
+                        .as_f64()
+                        .unwrap()
+                };
+                let normalized_first = first.to_normalized(physical(first) as f32).unwrap();
+                let normalized_second = second.to_normalized(physical(second) as f32).unwrap();
+                // The initial pair may be read before the first publication.
+                if (normalized_first - initial[first_slot]).abs() > 1e-5
+                    || (normalized_second - initial[second_slot]).abs() > 1e-5
+                {
+                    assert!(
+                        (normalized_first + normalized_second - 1.0).abs() < 1e-5,
+                        "saved pair={normalized_first},{normalized_second}; initial pair={},{}",
+                        initial[first_slot],
+                        initial[second_slot]
+                    );
+                }
+                NativeProject::parse(&saved).unwrap();
+            }
+        });
+    }
+
+    #[test]
+    fn project_import_save_ignores_snapshots_from_the_retired_generation() {
+        let instance = Instance::new(null(), &crate::GRAPH_DESCRIPTOR);
+        *instance.configuration.lock().unwrap() = Some((48_000., 128));
+        instance.active.store(true, Ordering::Release);
+        let old_runtime = Instance::prepare(DEFAULT, 48_000., 128, 0).unwrap();
+        let running = AtomicBool::new(true);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                while running.load(Ordering::Acquire) {
+                    instance.snapshot(&old_runtime);
+                }
+            });
+            let tone = include_bytes!("../../../projects/graph-workspace/tone-texture.json");
+            assert!(instance.restore(tone.to_vec()));
+            assert!(!instance.pending.load(Ordering::Acquire).is_null());
+            for _ in 0..32 {
+                let saved = instance.state_bytes().unwrap();
+                let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+                assert!(
+                    document["signal"]["nodes"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|node| node["type"] == "oscillator")
+                );
+                let reopened = NativeProject::parse(&saved).unwrap();
+                assert_eq!(reopened.host_bindings().len(), 12);
+            }
+            running.store(false, Ordering::Release);
+        });
+        instance.deactivate();
+    }
 
     unsafe extern "C" fn event_count(events: *const clap_input_events) -> u32 {
         unsafe { (*((*events).ctx as *const Vec<*const clap_event_header>)).len() as u32 }
@@ -1285,7 +1449,7 @@ mod tests {
 
     #[test]
     fn dense_automation_and_wildcard_release_stay_inside_prepared_buffers() {
-        let mut runtime = *Instance::prepare(DEFAULT, 48_000., 128).unwrap();
+        let mut runtime = *Instance::prepare(DEFAULT, 48_000., 128, 0).unwrap();
         let id = HOST_SLOT_BASE + 1;
         let points: Vec<_> = (0..1536)
             .map(|index| clap_event_param_value {

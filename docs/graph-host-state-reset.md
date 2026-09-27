@@ -1,10 +1,9 @@
 # Graph host state and reset contract
 
 This follows the Graph CLAP pointer and saved-project proof. The Graph CLAP
-`reset` callback in `crates/manifold-clap/src/graph.rs` now calls the prepared
-graph reset. The remaining host gap is `state_bytes()`: it reads 128 atomic
-normalized slots while the audio callback may publish a new runtime or apply
-automation.
+`reset` callback in `crates/manifold-clap/src/graph.rs` calls the prepared
+graph reset. Its state saver now reads a coherent control snapshot while the
+audio callback may apply automation or publish a replacement runtime.
 
 ## Reset
 
@@ -72,27 +71,22 @@ offline measurement rather than a physical-host deadline guarantee.
 
 ## Coherent saved state
 
-`state_bytes()` currently combines the project JSON under a mutex with
-individual atomics for host slots. A concurrent audio snapshot can make a
-single save contain controls from different process blocks. A project import
-can also publish new slot values before the replacement runtime reaches an
-audio block, while the old runtime is still able to publish its snapshot.
+Each prepared runtime owns one of two fixed 128-value banks. At each block
+boundary, the audio thread writes its complete control snapshot to its bank
+between two atomic sequence increments. `state_bytes()` holds the project and
+binding locks, reads one complete bank version, then serializes JSON on the
+host thread. Import prepares the replacement into the other bank and switches
+the project, bindings, and active bank together under those locks. A late
+snapshot from the old runtime writes only its retired bank. Audio publication
+does not lock, allocate, or serialize.
 
-Treat a complete graph generation and all of its public values as one
-control-side snapshot. The audio thread may publish a prepared, fixed-size
-snapshot at a block boundary; state serialization and JSON allocation stay
-off the callback. A save should either see the complete old generation or
-the complete new one. Parameter automation at a block boundary must enter
-the same snapshot before a subsequent save. Keep a bounded, nonblocking audio
-publication path; do not hold `state` or `descriptors` mutexes in processing.
-
-Exercise this with repeated project swaps between Note Voice and Tone Texture
-while a host saves state, then reopen every captured state in a new instance.
-Check all bound slot IDs and values against one generation, with no mixed
-bindings. Repeat with dense automation and the 44.7 MB four-source project;
-save cost belongs to the host/control thread, never the audio callback.
+Tests save and parse 128 projects during 20,000 alternating paired-control
+snapshots, check the saved pair comes from one block, and reopen 32 Tone
+Texture saves while an old Note Voice runtime keeps publishing. The existing
+CLAP test covers host automation and state reopen. Further host stress should
+cover repeated swaps and saves with 44.7 MB embedded PCM under an actual DAW;
+the unit tests establish the data boundary, not every DAW's scheduling.
 
 The existing [CLAP host proof](clap-host.md) covers pointer gestures, fresh
 REAPER project recall, MIDI audio, editor import, and official validator
-results. Those proofs remain valid while these reset and concurrent-save gates
-are completed.
+results.
