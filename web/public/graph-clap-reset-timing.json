@@ -1,0 +1,11 @@
+{
+  "activeNotesBeforeEachReset": 8,
+  "audioBlockDeadlineMsAt128Frames": 2.6666666666666665,
+  "limitation": "Offline native reset timings; no DAW scheduling or physical device underruns measured",
+  "maxMs": 0.00051,
+  "medianMs": 0.00016999999999999999,
+  "outputPeak": 1.3007621765136719,
+  "p95Ms": 0.00019999999999999998,
+  "projectBytes": 44742408,
+  "resets": 512
+}

@@ -103,6 +103,12 @@ impl NativeProcessor {
         self.plan.reset_effect_slot(node)
     }
 
+    /// Audio-thread reset of prepared signal state; host controls and assets stay loaded.
+    pub fn reset_processing(&mut self) {
+        self.plan.reset_processing();
+        self.event_scratch.clear();
+    }
+
     /// Fixed public host slots; a slot may be unbound in a given project.
     pub fn bound_graph_parameter(&self, slot: u32) -> Option<u32> {
         self.slot_bindings.get(slot as usize).copied().flatten()

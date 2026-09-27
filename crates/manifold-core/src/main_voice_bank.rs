@@ -423,6 +423,20 @@ impl MainVoiceBank {
         }
     }
 
+    /// Discard active voice state while keeping sample assets, spectral targets,
+    /// temporal recipes, and the bank's current sound controls prepared.
+    pub fn reset_processing(&mut self) {
+        self.panic();
+        self.temporal_positions.fill(0.0);
+        for voice in &mut self.voices {
+            voice.player.reset();
+            voice.oscillator.set_parameter(1, 261.62555);
+            voice.oscillator.reset();
+            voice.motion.reset();
+            voice.phrase.reset();
+        }
+    }
+
     pub fn meter(&self, band: usize) -> Option<f32> {
         match band {
             0 => Some(
@@ -716,6 +730,41 @@ impl MainVoiceBank {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reset_silences_held_main_voice_and_retains_wave_controls() {
+        let mut bank = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(bank.set_parameter(0, 1.0));
+        assert!(bank.set_parameter(1, -1.0));
+        let note = EventKind::NoteOn {
+            channel: 0,
+            note: 60,
+            velocity: 100,
+        };
+        bank.event(note);
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        for _ in 0..8 {
+            bank.process_planar([&mut left, &mut right]);
+        }
+        assert!(left.iter().any(|sample| sample.abs() > 0.0));
+        bank.reset_processing();
+        assert_eq!(bank.meter(0), Some(0.0));
+        bank.process_planar([&mut left, &mut right]);
+        assert_eq!(left, [0.0; 128]);
+        assert_eq!(right, [0.0; 128]);
+        let mut fresh = MainVoiceBank::new(8_000.0, 128, 9);
+        assert!(fresh.set_parameter(0, 1.0));
+        assert!(fresh.set_parameter(1, -1.0));
+        bank.event(note);
+        fresh.event(note);
+        let mut expected_left = [0.0; 128];
+        let mut expected_right = [0.0; 128];
+        bank.process_planar([&mut left, &mut right]);
+        fresh.process_planar([&mut expected_left, &mut expected_right]);
+        assert_eq!(left, expected_left);
+        assert_eq!(right, expected_right);
+    }
     use crate::sine_bank::Partial;
 
     fn target(harmonics: &[(f32, f32)]) -> PartialSet {

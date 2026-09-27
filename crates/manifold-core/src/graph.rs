@@ -727,6 +727,87 @@ struct MixerState {
 }
 
 impl Kernel {
+    fn reset_processing(&mut self) {
+        match self {
+            Self::MidiInput
+            | Self::InputRaw
+            | Self::InputSidechain
+            | Self::InputMonitor { .. }
+            | Self::Constant { .. }
+            | Self::Sum2 { .. }
+            | Self::LinearBlend { .. }
+            | Self::Output => {}
+            Self::MidiArpeggiator(node) => node.reset(),
+            Self::MidiTranspose(node) => node.reset(),
+            Self::MidiNoteFilter(node) => node.reset(),
+            Self::MidiScaleQuantizer(node) => node.reset(),
+            Self::MidiVelocityMapper(node) => node.reset(),
+            Self::Gain {
+                target, current, ..
+            } => *current = *target,
+            Self::Crossfader(state) => state.current = state.target,
+            Self::Mixer(state) => {
+                state.gains.copy_from_slice(&state.target_gains);
+                state.pans.copy_from_slice(&state.target_pans);
+                state.master = state.target_master;
+            }
+            Self::Svf(node) => node.settle(),
+            Self::ModulatedSvf { filter, .. } => filter.settle(),
+            Self::Slew(node) => node.reset(),
+            Self::AttenuverterBias(node) => node.reset(),
+            Self::SampleHold(node) => node.reset(),
+            Self::CvMix(node) => node.reset(),
+            Self::Distortion(node) => node.reset(),
+            Self::Compressor(node) => node.reset(),
+            Self::Limiter(node) => node.reset(),
+            Self::StereoDelay(node) => node.reset(),
+            Self::Phaser(node) => node.reset(),
+            Self::Chorus(node) => node.reset(),
+            Self::Eq8(node) => node.reset(),
+            Self::WaveShaper(node) => node.reset(),
+            Self::StereoWidener(node) => node.reset(),
+            Self::LegacyFilter(node) => node.reset(),
+            Self::Reverb(node) => node.reset(),
+            Self::MultitapDelay(node) => node.reset(),
+            Self::RingModulator(node) => node.reset(),
+            Self::TransientShaper(node) => node.reset(),
+            Self::BitCrusher(node) => node.reset(),
+            Self::LegacyEq(node) => node.reset(),
+            Self::FormantFilter(node) => node.reset(),
+            Self::Resonator(node) => node.reset(),
+            Self::SineBank(node) => node.reset(),
+            Self::ReverseDelay(node) => node.reset(),
+            Self::Stutter(node) => node.reset(),
+            Self::PitchShifter(node) => node.reset(),
+            Self::PhaseVocoder(node) => node.reset(),
+            Self::Shimmer(node) => node.reset(),
+            Self::Granulator(node) => node.reset(),
+            Self::EffectSlot(node) => node.reset_processing(),
+            Self::LoopCapture(node) => node.reset(),
+            Self::SampleRegion(node) => node.reset(),
+            Self::SampleInstrument(node) => node.reset(),
+            Self::MainVoiceBank(node) => node.reset_processing(),
+            Self::SpectrumAnalyzer(node) => node.reset(),
+            Self::FftSpectrum(node) => node.reset(),
+            Self::EnvelopeFollower(node) | Self::EnvelopeControl(node) => node.reset(),
+            Self::VoiceSynth(node) => node.reset(),
+            Self::Oscillator(node) => node.reset(),
+            Self::AdsrEnvelope(node) => node.reset(),
+            Self::NoiseGenerator(node) => node.reset(),
+            Self::Lfo(node) => node.reset(),
+            Self::ModulatedGain {
+                current,
+                target,
+                last_effective,
+                ..
+            } => {
+                *current = *target;
+                *last_effective = target[0];
+            }
+            Self::PhraseGain(node) => node.reset(),
+        }
+    }
+
     fn from_kind(kind: &NodeKind, sample_rate: f32, max_frames: usize) -> Self {
         match kind {
             NodeKind::MidiInput => Self::MidiInput,
@@ -1353,6 +1434,24 @@ impl GraphDescription {
 }
 
 impl ExecutionPlan {
+    /// Clear signal history in place while retaining compiled routing, assets,
+    /// and current parameter targets. No allocation or host synchronization.
+    pub fn reset_processing(&mut self) {
+        for node in &mut self.nodes {
+            node.kernel.reset_processing();
+        }
+        if let Some(binding) = &mut self.main_directional {
+            binding.motion.reset();
+            binding.was_active = false;
+        }
+        self.midi_stack.clear();
+        self.midi_trace.fill(None);
+        self.midi_trace_write = 0;
+        self.midi_trace_count = 0;
+        self.midi_trace_sequence = 0;
+        self.frame_clock = 0;
+    }
+
     pub fn configure_main_directional(&mut self, oscillator: NodeId, sample: NodeId) -> bool {
         let Some(oscillator_index) = self.nodes.iter().position(|node| {
             node.id == oscillator && node.active && matches!(node.kernel, Kernel::Oscillator(_))
@@ -2940,6 +3039,44 @@ mod tests {
         assert_eq!(
             process(&mut plan, &[1.0; 4], &[0.0; 4]),
             [vec![1.0; 4], vec![0.0; 4]]
+        );
+    }
+
+    #[test]
+    fn prepared_graph_reset_discards_reverb_tail_and_preserves_route() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(
+                    2,
+                    NodeKind::Reverb {
+                        params: reverb::DEFAULTS,
+                    },
+                ),
+                node(3, NodeKind::Output),
+            ],
+            connections: vec![edge(1, 2, 0), edge(2, 3, 0)],
+        };
+        let mut plan = description.compile(8_000.0, 128).unwrap();
+        let mut fresh = description.compile(8_000.0, 128).unwrap();
+        let mut impulse = [0.0; 128];
+        impulse[0] = 1.0;
+        process(&mut plan, &impulse, &impulse);
+        let silence = [0.0; 128];
+        let mut tail = false;
+        for _ in 0..30 {
+            let [left, _] = process(&mut plan, &silence, &silence);
+            tail |= left.iter().any(|sample| sample.abs() > 0.000001);
+        }
+        assert!(tail);
+        plan.reset_processing();
+        assert_eq!(
+            process(&mut plan, &silence, &silence),
+            process(&mut fresh, &silence, &silence)
+        );
+        assert_eq!(
+            process(&mut plan, &impulse, &impulse),
+            process(&mut fresh, &impulse, &impulse)
         );
     }
 

@@ -82,6 +82,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--module", type=Path, default=Path("target/clap/ManifoldFX.clap"))
     parser.add_argument("--project", type=Path, default=Path("projects/graph-workspace/note-voice.json"))
+    parser.add_argument("--reset", action="store_true", help="verify external CLAP reset and retrigger")
     args = parser.parse_args()
     project = args.project.read_bytes()
     document = json.loads(project)
@@ -129,14 +130,15 @@ def main():
         channels = (c.POINTER(c.c_float) * 2)(left, right)
         output = AudioBuffer(channels, None, 2, 0, 0)
         note = Note(EventHeader(c.sizeof(Note), 0, 0, 0, 0), -1, 0, 0, 60, 0.8)
+        with_note = True
 
         @c.CFUNCTYPE(c.c_uint32, c.c_void_p)
         def event_count(_events):
-            return 1 if midi is not None else 0
+            return 1 if midi is not None and with_note else 0
 
         @c.CFUNCTYPE(c.c_void_p, c.c_void_p, c.c_uint32)
         def event_get(_events, index):
-            return c.addressof(note) if midi is not None and index == 0 else None
+            return c.addressof(note) if midi is not None and with_note and index == 0 else None
 
         events = InputEvents(None, c.cast(event_count, c.c_void_p), c.cast(event_get, c.c_void_p))
         block = Process(0, 128, None, None, c.pointer(output), 0, 1, c.pointer(events), None)
@@ -144,6 +146,28 @@ def main():
             plugin_ptr, c.byref(block)) == 1
         peak = max(abs(value) for channel in (left, right) for value in channel)
         assert peak > 0.00001 and peak < 10, peak
+        reset_metrics = {}
+        if args.reset:
+            assert midi is not None, "reset audio probe requires a MIDI instrument"
+            original = tuple(float(value) for channel in (left, right) for value in channel)
+            fn(plugin.stop, None, c.c_void_p)(plugin_ptr)
+            fn(plugin.reset, None, c.c_void_p)(plugin_ptr)
+            fn(plugin.reset, None, c.c_void_p)(plugin_ptr)
+            assert fn(plugin.start, c.c_bool, c.c_void_p)(plugin_ptr)
+            with_note = False
+            assert fn(plugin.process, c.c_int32, c.c_void_p, c.POINTER(Process))(
+                plugin_ptr, c.byref(block)) == 1
+            silence_peak = max(abs(value) for channel in (left, right) for value in channel)
+            assert silence_peak == 0.0, silence_peak
+            with_note = True
+            assert fn(plugin.process, c.c_int32, c.c_void_p, c.POINTER(Process))(
+                plugin_ptr, c.byref(block)) == 1
+            retrigger_error = max(abs(value - original[index])
+                                  for index, value in enumerate(float(sample)
+                                      for channel in (left, right) for sample in channel))
+            assert retrigger_error < 1e-7, retrigger_error
+            reset_metrics = {"reset_silence_peak": silence_peak,
+                             "retrigger_peak_error": retrigger_error}
         saved = bytearray()
 
         @c.CFUNCTYPE(c.c_int64, c.c_void_p, c.c_void_p, c.c_uint64)
@@ -155,7 +179,8 @@ def main():
         assert fn(state.save, c.c_bool, c.c_void_p, c.POINTER(Stream))(plugin_ptr, c.byref(output_stream))
         assert json.loads(saved)["projectId"] == document["projectId"]
         print(json.dumps({"factory_ids": ids, "project_bytes": len(project),
-                          "saved_bytes": len(saved), "audio_peak": peak, "midi_node": midi}))
+                          "saved_bytes": len(saved), "audio_peak": peak, "midi_node": midi,
+                          **reset_metrics}))
     finally:
         fn(plugin.stop, None, c.c_void_p)(plugin_ptr)
         fn(plugin.deactivate, None, c.c_void_p)(plugin_ptr)

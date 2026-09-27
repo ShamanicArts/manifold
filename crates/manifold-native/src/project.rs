@@ -1414,6 +1414,111 @@ mod tests {
     }
 
     #[test]
+    fn authored_graphs_reset_to_fresh_audio_without_losing_controls() {
+        let note_project = include_bytes!("../../../projects/graph-workspace/note-voice.json");
+        let mut note = NativeProject::parse(note_project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let mut fresh_note = NativeProject::parse(note_project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let on = TimedEvent {
+            offset: 0,
+            node: 4,
+            kind: EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            },
+        };
+        let render = |processor: &mut NativeProcessor, events: &[TimedEvent]| {
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            processor
+                .process(AudioBlock {
+                    main: None,
+                    sidechain: None,
+                    output: [&mut left, &mut right],
+                    events,
+                })
+                .unwrap();
+            (left, right)
+        };
+        for _ in 0..8 {
+            assert!(
+                render(&mut note, &[on])
+                    .0
+                    .iter()
+                    .any(|value| value.abs() > 0.0)
+            );
+        }
+        let controls = note.current_parameter_values().to_vec();
+        note.reset_processing();
+        assert_eq!(note.current_parameter_values(), controls);
+        assert_eq!(render(&mut note, &[]), ([0.0; 128], [0.0; 128]));
+        assert_eq!(render(&mut note, &[on]), render(&mut fresh_note, &[on]));
+        note.reset_processing();
+        fresh_note.reset_processing();
+        assert_eq!(render(&mut note, &[on]), render(&mut fresh_note, &[on]));
+
+        let tone_project = include_bytes!("../../../projects/graph-workspace/tone-texture.json");
+        let mut tone = NativeProject::parse(tone_project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let mut fresh_tone = NativeProject::parse(tone_project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        for _ in 0..8 {
+            render(&mut tone, &[]);
+        }
+        let controls = tone.current_parameter_values().to_vec();
+        tone.reset_processing();
+        assert_eq!(tone.current_parameter_values(), controls);
+        assert_eq!(render(&mut tone, &[]), render(&mut fresh_tone, &[]));
+
+        let sample_project = include_bytes!("../../../projects/graph-workspace/sample-voice.json");
+        let mut sample = NativeProject::parse(sample_project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let mut fresh_sample = NativeProject::parse(sample_project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let pcm: Vec<f32> = (0..4096)
+            .map(|index| ((index / 2) as f32 * 0.01).sin() * 0.5)
+            .collect();
+        assert!(sample.load_sample_stereo(5, pcm.clone(), 48_000.0));
+        assert!(fresh_sample.load_sample_stereo(5, pcm, 48_000.0));
+        for _ in 0..8 {
+            render(&mut sample, &[on]);
+        }
+        sample.reset_processing();
+        assert_eq!(render(&mut sample, &[]), ([0.0; 128], [0.0; 128]));
+        assert_eq!(render(&mut sample, &[on]), render(&mut fresh_sample, &[on]));
+
+        let main_project = include_bytes!("../../../projects/graph-workspace/main-bank.json");
+        let mut main = NativeProject::parse(main_project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        let mut fresh_main = NativeProject::parse(main_project)
+            .unwrap()
+            .prepare(48_000.0, 128)
+            .unwrap();
+        for _ in 0..8 {
+            render(&mut main, &[on]);
+        }
+        main.reset_processing();
+        assert_eq!(render(&mut main, &[]), ([0.0; 128], [0.0; 128]));
+        assert_eq!(render(&mut main, &[on]), render(&mut fresh_main, &[on]));
+    }
+
+    #[test]
     fn browser_main_bank_restores_both_partial_targets_and_renders_note() {
         let project = include_bytes!("../../../projects/graph-workspace/main-bank.json");
         let mut processor = NativeProject::parse(project)

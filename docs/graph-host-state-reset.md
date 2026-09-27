@@ -1,10 +1,10 @@
 # Graph host state and reset contract
 
-This is the next host boundary after the Graph CLAP pointer and saved-project
-proof. The current Graph CLAP `reset` callback in `crates/manifold-clap/src/graph.rs`
-is empty. Its `state_bytes()` reads 128 atomic normalized slots while the
-audio callback may publish a new runtime or apply automation. Those two gaps
-need separate tests and fixes.
+This follows the Graph CLAP pointer and saved-project proof. The Graph CLAP
+`reset` callback in `crates/manifold-clap/src/graph.rs` now calls the prepared
+graph reset. The remaining host gap is `state_bytes()`: it reads 128 atomic
+normalized slots while the audio callback may publish a new runtime or apply
+automation.
 
 ## Reset
 
@@ -17,25 +17,23 @@ ephemeral signal state. The next silent block must be silent for instruments
 and effect tails. Starting a new note after reset must use the controls that
 were active immediately before reset.
 
-Implement this in `manifold-core` at the prepared `ExecutionPlan` boundary,
-then expose it through `manifold-native::NativeProcessor`. The CLAP callback
-should only access its already active runtime and call that method. A reset
-must also clear its preallocated pending MIDI and automation block vectors;
-it must not replace a graph pointer or retire a runtime on the audio thread.
+The implementation sits in `manifold-core` at the prepared `ExecutionPlan`
+boundary and is exposed through `manifold-native::NativeProcessor`. The CLAP
+callback accesses only its active runtime. It also clears preallocated pending
+MIDI and automation block vectors; it does not replace a graph pointer or
+retire a runtime on the audio thread.
 
 `EventKind::AllNotesOff` alone does not meet this contract: `VoiceSynth`
 enters its release stage, so audible notes remain after the event. The graph
 reset needs explicit immediate voice clearing and kernel history reset. Existing
-`reset()` methods cover many effects, but not every graph kernel. Audit every
-`Kernel` variant, including MIDI processors and the main directional binding,
-before wiring the CLAP callback. A no-op default for an unreviewed stateful
-kernel would leave reset behavior dependent on the loaded project.
+`reset()` methods cover many effects. The exhaustive `Kernel` dispatch now
+includes MIDI processors and the main directional binding, so newly added
+variants require an explicit reset decision at compile time.
 
 The first core step now gives `VoiceSynth` an immediate, allocation-free reset
 that preserves sound controls and gives `Oscillator` a phase/smoother reset at
 its current frequency and level. Their tests compare a new note or signal
-against a freshly prepared instance. Neither method is wired into Graph CLAP
-until the remaining kernels have a complete reset path.
+against a freshly prepared instance.
 
 The second core step adds resets for `SampleRegion`, `SampleInstrument`,
 `LoopCapture`, `Lfo`, `NoiseGenerator`, `MidiArpeggiator`, and the shared
@@ -44,22 +42,33 @@ velocity mapper. The sample instrument retains old `Arc` sources during reset
 so the audio thread never frees a retired take; later control-side publication
 reclaims them. Loop capture clears its logical take without reallocating its
 ring. Tests check silence, source reuse, current controls, and forgotten MIDI
-ownership. Execution-plan dispatch and the full kernel audit remain next.
+ownership.
 
 The third core step covers control-state kernels (`SampleHold`, slew,
 attenuverter, CV mixer, phrase gain, distortion), `Chorus`, `Eq8`,
 `Resonator`, `SpectrumAnalyzer`, and `FftSpectrum`. Their resets retain target
 controls and clear phases, delay generations, biquad histories, or analysis
 rings in place. Chorus, EQ, and FFT probes check fresh-instance behavior or
-the absence of old history. The CLAP callback still awaits graph-wide dispatch.
+the absence of old history.
 
-Test with Note Voice (held note and filter), Tone Texture (oscillator phase),
-Sample Voice (active sample cursor), and a delay or reverb graph with a live
-tail. In each case compare the first post-reset block against a newly prepared
-instance with the same current controls. Include two consecutive resets and a
-host callback timing gate with the largest authored sample asset. The reset
-test must also check that the 128 public parameter values and saved project
-state remain unchanged.
+The fourth step adds an exhaustive `Kernel::reset_processing` match and
+`ExecutionPlan::reset_processing`, exposed through `NativeProcessor` and the
+Graph CLAP reset callback. `MainVoiceBank` also has an in-place reset; its
+fresh-instance comparison caught and corrected a reused oscillator frequency.
+Authored Note Voice, Tone Texture, Sample Voice, and Main Bank graph resets
+match fresh audio, while a reverb graph drops its audible tail and keeps its route. The
+packaged CLAP class passes a separate-process stop/reset/start probe with a
+silent block and exact retriggered note, plus 36/36 applicable validator cases.
+The 44.7 MB four-source graph with eight notes active before each reset has an
+offline 512-reset p95 of 0.00020 ms in the current checkpoint. Evidence is in
+`web/public/graph-clap-reset-proof.html`. Physical device timing remains open.
+
+The reset tests cover Note Voice (held note and filter), Tone Texture
+(oscillator phase), Sample Voice (active sample cursor), Main Bank, and a reverb graph
+with a live tail. They compare post-reset audio with freshly prepared graphs,
+exercise two consecutive CLAP resets, and check that the automated public
+value and saved project survive. The large-asset timing probe remains an
+offline measurement rather than a physical-host deadline guarantee.
 
 ## Coherent saved state
 

@@ -43,6 +43,11 @@ impl MainDirectionalMotion {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.blend_phase = 0.0;
+        self.sync_phase = 0.0;
+    }
+
     pub fn active(&self) -> bool {
         matches!(self.mode, 2 | 3)
     }

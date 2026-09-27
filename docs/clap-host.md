@@ -73,7 +73,9 @@ native boundary. The core presently has channel/key note events without CLAP
 note IDs or partial wildcard filters, so a wildcard release conservatively
 clears every held note. More precise filter semantics remain host work.
 The [graph host state and reset contract](graph-host-state-reset.md) records
-the callback and concurrent-save gates still to implement.
+the completed in-place reset and the concurrent-save gate still to implement.
+The [Graph reset review](../web/public/graph-clap-reset-proof.html) collects
+authored graph, external CLAP, validator, and large-asset timing evidence.
 
 ## Standalone FX
 

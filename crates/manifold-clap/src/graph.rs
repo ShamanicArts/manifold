@@ -434,7 +434,21 @@ unsafe extern "C" fn start(plugin: *const clap_plugin) -> bool {
     unsafe { get(plugin) }.is_some_and(|instance| instance.active.load(Ordering::Acquire))
 }
 unsafe extern "C" fn stop(_plugin: *const clap_plugin) {}
-unsafe extern "C" fn reset(_plugin: *const clap_plugin) {}
+unsafe extern "C" fn reset(plugin: *const clap_plugin) {
+    let Some(instance) = (unsafe { get(plugin) }) else {
+        return;
+    };
+    let pointer = instance.current.load(Ordering::Acquire);
+    if pointer.is_null() {
+        return;
+    }
+    // CLAP calls reset while process is stopped; the prepared runtime belongs
+    // to this audio thread. Keep project state, bindings, and host values.
+    let runtime = unsafe { &mut *pointer };
+    runtime.prepared.processor.reset_processing();
+    runtime.events.clear();
+    runtime.automation.clear();
+}
 unsafe extern "C" fn main_thread(plugin: *const clap_plugin) {
     if let Some(instance) = unsafe { get(plugin) } {
         instance.retire();
@@ -1423,7 +1437,7 @@ mod tests {
             latency: 0,
             constant_mask: 0,
         };
-        let block = clap_process {
+        let mut block = clap_process {
             steady_time: 0,
             frames_count: 128,
             transport: null(),
@@ -1471,6 +1485,67 @@ mod tests {
                 )
                 .unwrap()
         };
+        assert_eq!(left, expected_left);
+        assert_eq!(right, expected_right);
+
+        unsafe {
+            (*plugin).stop_processing.unwrap()(plugin);
+            (*plugin).reset.unwrap()(plugin);
+            (*plugin).reset.unwrap()(plugin);
+            assert!((*plugin).start_processing.unwrap()(plugin));
+        }
+        let empty_pointers: Vec<*const clap_event_header> = Vec::new();
+        let empty_events = clap_input_events {
+            ctx: &empty_pointers as *const _ as *mut c_void,
+            size: Some(event_count),
+            get: Some(event_get),
+        };
+        block.in_events = &empty_events;
+        assert_eq!(
+            unsafe { (*plugin).process.unwrap()(plugin, &block) },
+            CLAP_PROCESS_CONTINUE
+        );
+        assert_eq!(left, [0.0; 128]);
+        assert_eq!(right, [0.0; 128]);
+        let mut retained = -1.0;
+        assert!(unsafe { PARAMS.get_value.unwrap()(plugin, HOST_SLOT_BASE + slot, &mut retained) });
+        assert!((retained - 0.73).abs() < 0.001);
+
+        let note_pointers = vec![&note.header as *const _];
+        let note_events = clap_input_events {
+            ctx: &note_pointers as *const _ as *mut c_void,
+            size: Some(event_count),
+            get: Some(event_get),
+        };
+        block.in_events = &note_events;
+        assert_eq!(
+            unsafe { (*plugin).process.unwrap()(plugin, &block) },
+            CLAP_PROCESS_CONTINUE
+        );
+        native.reset_processing();
+        unsafe {
+            buffers
+                .render(
+                    &mut native,
+                    RawHostBlock {
+                        frames: 128,
+                        main: [null(); 2],
+                        sidechain: [null(); 2],
+                        output: [expected_left.as_mut_ptr(), expected_right.as_mut_ptr()],
+                        events: &[TimedEvent {
+                            offset: 0,
+                            node: midi,
+                            kind: EventKind::NoteOn {
+                                channel: 0,
+                                note: 60,
+                                velocity: 102,
+                            },
+                        }],
+                        automation: &[],
+                    },
+                )
+                .unwrap();
+        }
         assert_eq!(left, expected_left);
         assert_eq!(right, expected_right);
 
