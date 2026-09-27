@@ -22,8 +22,8 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           const module = await WebAssembly.compile(data.wasmBytes);
           const instance = await WebAssembly.instantiate(module, {});
           const engine = instance.exports;
-          if (engine.manifold_version() !== 3) throw new Error('Incompatible graph module');
-          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26, 'sample-instrument': 27, 'fft-spectrum': 28, 'slew-audio': 29, 'slew-control': 30, 'attenuverter-bias': 31, 'sample-hold': 32, 'cv-mix': 33, phaser: 34, chorus: 35, eq8: 36, waveshaper: 37, 'stereo-widener': 38, 'legacy-filter': 39, reverb: 40, multitap: 41, 'ring-modulator': 42, 'transient-shaper': 43, bitcrusher: 44, 'eq-node': 45, formant: 46, 'reverse-delay': 47, stutter: 48, 'pitch-shifter': 49, shimmer: 50, granulator: 51, 'effect-slot-legacy': 52, 'effect-slot-host-switch': 53, 'midi-input': 54, 'midi-transpose': 55, 'midi-note-filter': 56, 'midi-scale-quantizer': 57, 'midi-velocity-mapper': 58, 'midi-arpeggiator': 59, resonator: 60, 'sine-bank': 61, 'phase-vocoder': 62, 'phrase-gain': 63, 'main-voice-bank': 64 };
+          if (engine.manifold_version() !== 4) throw new Error('Incompatible graph module');
+          const kinds = { 'input.raw': 0, 'input.monitor': 1, constant: 2, gain: 3, sum2: 4, 'linear-blend': 5, svf: 6, output: 7, crossfader: 8, mixer: 9, 'voice-synth': 10, oscillator: 11, adsr: 12, noise: 13, lfo: 14, 'modulated-gain': 15, 'modulated-svf': 16, distortion: 17, 'stereo-delay': 18, 'effect-slot': 19, 'loop-capture': 20, 'spectrum-analyzer': 21, 'envelope-follower': 22, 'envelope-control': 23, compressor: 24, limiter: 25, 'sample-region': 26, 'sample-instrument': 27, 'fft-spectrum': 28, 'slew-audio': 29, 'slew-control': 30, 'attenuverter-bias': 31, 'sample-hold': 32, 'cv-mix': 33, phaser: 34, chorus: 35, eq8: 36, waveshaper: 37, 'stereo-widener': 38, 'legacy-filter': 39, reverb: 40, multitap: 41, 'ring-modulator': 42, 'transient-shaper': 43, bitcrusher: 44, 'eq-node': 45, formant: 46, 'reverse-delay': 47, stutter: 48, 'pitch-shifter': 49, shimmer: 50, granulator: 51, 'effect-slot-legacy': 52, 'effect-slot-host-switch': 53, 'midi-input': 54, 'midi-transpose': 55, 'midi-note-filter': 56, 'midi-scale-quantizer': 57, 'midi-velocity-mapper': 58, 'midi-arpeggiator': 59, resonator: 60, 'sine-bank': 61, 'phase-vocoder': 62, 'phrase-gain': 63, 'main-voice-bank': 64, 'input.sidechain': 65 };
           const graph = data.graph;
           const postPrepareParameters = [];
           const reachable = new Set(graph.nodes.filter((node) => node.type === 'output').map((node) => node.id));
@@ -76,7 +76,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             graph.directional.vocoderId) !== 1) {
             throw new Error('Main pitch behavior preparation failed');
           }
-          this.inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), this.capacity * 2);
+          this.inputView = new Float32Array(engine.memory.buffer, engine.manifold_input_ptr(), this.capacity * 4);
           this.outputView = new Float32Array(engine.memory.buffer, engine.manifold_output_ptr(), this.capacity * 2);
           this.engine = engine;
           for (const partials of data.partials == null ? [] : Array.isArray(data.partials) ? data.partials : [data.partials]) {
@@ -172,7 +172,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'capture', nodeId: data.nodeId, sourceRate: sampleRate, stereo }, [stereo.buffer]);
         } else if (data.type === 'capture-publish' && this.engine) {
           const accepted = this.engine.manifold_capture_publish(data.captureId, data.instrumentId) === 1;
-          this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 2);
+          this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted });
         }
@@ -205,7 +205,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     new Float32Array(this.engine.memory.buffer, ptr, values.length).set(values);
     const accepted = this.engine.manifold_main_temporal_commit() === 1;
     // A large table may grow Wasm memory and invalidate cached JS views.
-    this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 2);
+    this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
     this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
     return accepted;
   }
@@ -221,7 +221,7 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     new Float32Array(this.engine.memory.buffer,
       this.engine.manifold_main_temporal_raw_recipe_ptr(), recipe.length).set(recipe);
     const accepted = this.engine.manifold_main_temporal_raw_commit() === 1;
-    this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 2);
+    this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
     this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
     return accepted;
   }
@@ -297,10 +297,15 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
     const input = inputs[0] || [];
     const left = input[0];
     const right = input[1] || left;
+    const sidechain = inputs[1] || [];
+    const sideLeft = sidechain[0];
+    const sideRight = sidechain[1] || sideLeft;
     const buffer = this.inputView;
     for (let frame = 0; frame < frames; frame++) {
       buffer[frame] = left ? left[frame] : 0;
       buffer[this.capacity + frame] = right ? right[frame] : 0;
+      buffer[this.capacity * 2 + frame] = sideLeft ? sideLeft[frame] : 0;
+      buffer[this.capacity * 3 + frame] = sideRight ? sideRight[frame] : 0;
     }
     this.pushDueEvents(frames);
     if (this.engine.manifold_process(frames) !== 1) {

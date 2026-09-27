@@ -1176,7 +1176,7 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
   const module = await WebAssembly.compile(await wasmResponse.arrayBuffer());
   const instance = await WebAssembly.instantiate(module, {});
   const engine = instance.exports;
-  if (engine.manifold_version() !== 3) throw new Error('Incompatible Wasm ABI');
+  if (engine.manifold_version() !== 4) throw new Error('Incompatible Wasm ABI');
 
   const chooser = byId('reference-case');
   const fixtures = new Map();

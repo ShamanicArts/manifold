@@ -57,7 +57,7 @@ thread_local! {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_version() -> u32 {
-    3
+    4
 }
 
 /// Background-worker sample analysis ABI. This instance must not be the live audio worklet.
@@ -657,6 +657,7 @@ pub extern "C" fn manifold_graph_node(id: u32, kind: u32, a: f32, b: f32) -> u32
                 fft_order: a as u32,
             }
         }
+        65 => NodeKind::InputSidechain,
         50 => NodeKind::Shimmer {
             params: manifold_core::shimmer::DEFAULTS,
         },
@@ -1013,7 +1014,7 @@ pub extern "C" fn manifold_prepare(sample_rate: f32, max_frames: u32) -> u32 {
         *slot.borrow_mut() = Some(WorkletEngine {
             plan,
             capacity,
-            input: vec![0.0; capacity * 2],
+            input: vec![0.0; capacity * 4],
             output: vec![0.0; capacity * 2],
             events: Vec::with_capacity(256),
             sample_upload: None,
@@ -1619,10 +1620,13 @@ pub extern "C" fn manifold_process(frames: u32) -> u32 {
         if frames > engine.capacity {
             return 0;
         }
-        let (left_in, right_in) = engine.input.split_at(engine.capacity);
+        let (main, sidechain) = engine.input.split_at(engine.capacity * 2);
+        let (left_in, right_in) = main.split_at(engine.capacity);
+        let (side_left, side_right) = sidechain.split_at(engine.capacity);
         let (left_out, right_out) = engine.output.split_at_mut(engine.capacity);
-        let result = engine.plan.process_with_events(
+        let result = engine.plan.process_with_events_sidechain(
             [&left_in[..frames], &right_in[..frames]],
+            Some([&side_left[..frames], &side_right[..frames]]),
             [&mut left_out[..frames], &mut right_out[..frames]],
             &engine.events,
         );

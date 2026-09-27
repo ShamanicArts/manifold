@@ -12,7 +12,7 @@ const wasm = instance.exports;
 const required = (name, ...args) => {
   if (wasm[name](...args) !== 1) throw new Error(`${name} failed for ${args.join(', ')}`);
 };
-if (wasm.manifold_version() !== 3) throw new Error('Unexpected Wasm ABI version.');
+if (wasm.manifold_version() !== 4) throw new Error('Unexpected Wasm ABI version.');
 required('manifold_graph_begin', 3, 2);
 required('manifold_graph_node', 1, 0, 0, 0);
 required('manifold_graph_node', 2, 52, 8, 1);

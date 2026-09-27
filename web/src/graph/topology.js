@@ -5,6 +5,7 @@ export const SAMPLE_NODE_TYPES = new Set(['sample-instrument', 'sample-region', 
 const NOTE_NODE_TYPES = new Set(['voice-synth', 'sample-instrument', 'sample-region', 'main-voice-bank']);
 export const NODE_TYPES = {
   'input.raw': { label: 'Live input', code: 0, output: 'audio', inputs: [], fixedId: 1 },
+  'input.sidechain': { label: 'Sidechain input', code: 65, output: 'audio', inputs: [] },
   output: { label: 'Output', code: 7, output: null, inputs: ['audio'], fixedId: 3 },
   gain: { label: 'Gain', code: 3, output: 'audio', inputs: ['audio'], args: { a: .7 },
     parameters: [{ id: 0, label: 'Level', min: 0, max: 2, default: .7 }] },
@@ -122,11 +123,13 @@ const projectId = 'manifold.graph-workspace';
 const sameKeys = (value, keys) => Object.keys(value).sort().join('|') === [...keys].sort().join('|');
 
 export function validateTopology(signal) {
+  const baseKeys = ['inputs', 'outputs', 'nodes', 'connections', 'initialParameters'];
   if (!signal || typeof signal !== 'object' || Array.isArray(signal)
-    || !(sameKeys(signal, ['inputs', 'outputs', 'nodes', 'connections', 'initialParameters'])
-      || sameKeys(signal, ['inputs', 'outputs', 'inputSource', 'nodes', 'connections', 'initialParameters']))
+    || ![baseKeys, [...baseKeys, 'inputSource'], [...baseKeys, 'sidechainSource'],
+      [...baseKeys, 'inputSource', 'sidechainSource']].some((keys) => sameKeys(signal, keys))
     || signal.inputs !== 2 || signal.outputs !== 2
     || (signal.inputSource !== undefined && !['external', 'none'].includes(signal.inputSource))
+    || (signal.sidechainSource !== undefined && !['none', 'oscillator', 'microphone'].includes(signal.sidechainSource))
     || !Array.isArray(signal.nodes) || signal.nodes.length < 2 || signal.nodes.length > 64
     || !Array.isArray(signal.connections) || signal.connections.length > 256
     || !Array.isArray(signal.initialParameters)) throw new Error('Invalid graph description.');
@@ -241,6 +244,12 @@ export function setInitialParameter(signal, nodeId, id, value) {
 export function setInputSource(signal, source) {
   const next = structuredClone(signal);
   next.inputSource = source;
+  return validateTopology(next);
+}
+
+export function setSidechainSource(signal, source) {
+  const next = structuredClone(signal);
+  next.sidechainSource = source;
   return validateTopology(next);
 }
 

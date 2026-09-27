@@ -1,5 +1,5 @@
 import { NODE_TYPES, SAMPLE_NODE_TYPES, addNode, removeNode, setConnection, setInitialParameter,
-  setInputSource, captureGraphProject, parseGraphProject, parseGraphBundle, validateGraphAssets,
+  setInputSource, setSidechainSource, captureGraphProject, parseGraphProject, parseGraphBundle, validateGraphAssets,
   validateGraphTargets, validateGraphTemporal, defaultGraphTemporal } from './topology.js';
 import { parseMainVoiceBankState } from '../state/main-voice-bank.js';
 import { parseProjectDocument } from '../state/project-document.js';
@@ -12,6 +12,7 @@ import regionVoice from '../../../projects/graph-workspace/region-voice.json';
 import granularSource from '../../../projects/graph-workspace/granular-source.json';
 import mainBank from '../../../projects/graph-workspace/main-bank.json';
 import liveSampler from '../../../projects/graph-workspace/live-sampler.json';
+import sidechainSampler from '../../../projects/graph-workspace/sidechain-sampler.json';
 
 const defaultMainTargets = (nodeId) => [mainVoiceBankProject.partials, ...mainVoiceBankProject.extraPartials]
   .map((target) => ({ ...target, nodeId }));
@@ -42,6 +43,8 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const addType = section.querySelector('#graph-add-type');
   const addButton = section.querySelector('#graph-add-node');
   const sourceMode = section.querySelector('#graph-source-mode');
+  const sidechainMode = section.querySelector('#graph-sidechain-mode');
+  const sidechainRow = section.querySelector('#graph-sidechain-row');
   const loadTone = section.querySelector('#graph-load-tone');
   const loadNote = section.querySelector('#graph-load-note');
   const loadSample = section.querySelector('#graph-load-sample');
@@ -49,6 +52,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const loadGranular = section.querySelector('#graph-load-granular');
   const loadMain = section.querySelector('#graph-load-main');
   const loadLiveSampler = section.querySelector('#graph-load-live-sampler');
+  const loadSidechainSampler = section.querySelector('#graph-load-sidechain-sampler');
   const fileInput = section.querySelector('#graph-project-file');
   const exportButton = section.querySelector('#graph-project-export');
   const listeners = new AbortController();
@@ -97,6 +101,8 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   function render() {
     const expanded = new Set([...nodesRoot.querySelectorAll('details[open]')].map((item) => item.dataset.key));
     sourceMode.value = project.signal.inputSource === 'none' ? 'none' : 'external';
+    sidechainMode.value = project.signal.sidechainSource ?? 'none';
+    sidechainRow.hidden = !project.signal.nodes.some((node) => node.type === 'input.sidechain');
     const reachable = new Set([3]);
     let changed;
     do {
@@ -511,6 +517,13 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       sourceMode.value === 'none' ? 'External input off. Internal graph sources will play on the next start.' : 'External input on. Choose the test oscillator or microphone above.'); }
     catch (error) { sourceMode.value = project.signal.inputSource === 'none' ? 'none' : 'external'; fail(error); }
   }, { signal: listeners.signal });
+  sidechainMode.addEventListener('change', () => {
+    if (!canEdit()) return;
+    try {
+      commit(setSidechainSource(project.signal, sidechainMode.value),
+        `Sidechain bus: ${sidechainMode.selectedOptions[0].textContent}. Start audio to connect its separate worklet input.`);
+    } catch (error) { sidechainMode.value = project.signal.sidechainSource ?? 'none'; fail(error); }
+  }, { signal: listeners.signal });
   loadTone.addEventListener('click', () => {
     if (!canEdit()) return;
     try {
@@ -574,6 +587,16 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       commit(signal, 'Loaded the live sampler. Start audio, record a loop take, stop recording, then publish it to the sample instrument.',
         [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
       onTemplateLoaded?.('live-sampler');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadSidechainSampler.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(sidechainSampler);
+      commit(signal, 'Loaded separate main and sidechain inputs. Start audio, record Loop capture 6, stop, then publish its sidechain take to Sample instrument 5.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('sidechain-sampler');
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   exportButton.addEventListener('click', () => {

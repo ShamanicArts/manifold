@@ -556,8 +556,43 @@ try {
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · test oscillator'));
   await page.locator('#audio-toggle').click();
   await page.locator('#graph-workspace-section').screenshot({ path: 'web/public/graph-live-sampler-controls.png' });
+  await page.locator('#graph-load-sidechain-sampler').click();
+  assert.equal(await page.locator('#graph-sidechain-mode').inputValue(), 'oscillator');
+  assert.equal(await page.locator('select[data-to="6"][data-port="0"]').inputValue(), '8');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('test oscillator + oscillator sidechain'));
+  await page.locator('select[data-node="6"][data-parameter="0"]').selectOption('1');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
+  await page.waitForTimeout(220);
+  await page.locator('select[data-node="6"][data-parameter="0"]').selectOption('0');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
+  await page.locator('button[aria-label="Use stopped take for sample instrument 5"]').click();
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('now the source for new notes'));
+  const sideDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const sideBundle = JSON.parse((await readFile(await (await sideDownload).path())).toString());
+  assert.equal(sideBundle.signal.sidechainSource, 'oscillator');
+  const sideAsset = sideBundle.assets[0];
+  const pcm = Buffer.from(sideAsset.pcmF32Base64, 'base64');
+  let crossings = 0;
+  for (let frame = 1; frame < sideAsset.frames; frame++) {
+    if (pcm.readFloatLE((frame - 1) * 8) <= 0 && pcm.readFloatLE(frame * 8) > 0) crossings++;
+  }
+  const capturedHz = crossings * sideAsset.sourceRate / sideAsset.frames;
+  assert.ok(capturedHz > 290 && capturedHz < 370, `sidechain take should contain 330 Hz, got ${capturedHz}`);
+  await page.locator('#audio-toggle').click();
+  await page.locator('#graph-workspace-section').screenshot({ path: 'web/public/graph-sidechain-sampler-controls.png' });
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'sidechain-sampler.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(sideBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.equal(await page.locator('#graph-sidechain-mode').inputValue(), 'oscillator');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('test oscillator + oscillator sidechain'));
+  await page.locator('#audio-toggle').click();
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: typed editing, sample/region/granulator/Main nodes, live sampler capture publication, source analysis and rejection, per-voice motion and shaping, 14 native/Wasm references passed');
+  console.log(`Graph workspace browser: live and sidechain sampler capture (${capturedHz.toFixed(1)} Hz), source analysis and rejection, per-voice motion and shaping, 14 native/Wasm references passed`);
 } finally {
   await browser.close();
 }

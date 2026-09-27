@@ -99,6 +99,7 @@ pub enum NodeKind {
         offset: f32,
     },
     InputRaw,
+    InputSidechain,
     InputMonitor {
         gain: f32,
     },
@@ -303,6 +304,7 @@ impl NodeKind {
     fn input_count(&self) -> usize {
         match self {
             Self::InputRaw
+            | Self::InputSidechain
             | Self::InputMonitor { .. }
             | Self::Constant { .. }
             | Self::MidiInput => 0,
@@ -625,6 +627,7 @@ enum Kernel {
     MidiScaleQuantizer(MidiScaleQuantizer),
     MidiVelocityMapper(MidiVelocityMapper),
     InputRaw,
+    InputSidechain,
     InputMonitor {
         gain: f32,
     },
@@ -750,6 +753,7 @@ impl Kernel {
                 offset,
             } => Self::MidiVelocityMapper(MidiVelocityMapper::new(*amount, *curve, *offset)),
             NodeKind::InputRaw => Self::InputRaw,
+            NodeKind::InputSidechain => Self::InputSidechain,
             NodeKind::InputMonitor { gain } => Self::InputMonitor { gain: *gain },
             NodeKind::Constant { value } => Self::Constant { value: *value },
             NodeKind::Gain { gain } => {
@@ -1989,7 +1993,22 @@ impl ExecutionPlan {
         output: [&mut [f32]; 2],
         events: &[TimedEvent],
     ) -> Result<(), EventError> {
+        self.process_with_events_sidechain(input, None, output, events)
+    }
+
+    /// An optional independent stereo bus. Missing sidechain input is silence.
+    pub fn process_with_events_sidechain(
+        &mut self,
+        input: [&[f32]; 2],
+        sidechain: Option<[&[f32]; 2]>,
+        output: [&mut [f32]; 2],
+        events: &[TimedEvent],
+    ) -> Result<(), EventError> {
         let frames = input[0].len();
+        if let Some([left, right]) = sidechain {
+            assert_eq!(left.len(), frames);
+            assert_eq!(right.len(), frames);
+        }
         let mut previous_offset = 0;
         for event in events {
             if event.offset >= frames {
@@ -2024,6 +2043,7 @@ impl ExecutionPlan {
             if at > position {
                 self.render_audio_span(
                     [&left_in[position..at], &right_in[position..at]],
+                    sidechain.map(|[left, right]| [&left[position..at], &right[position..at]]),
                     [&mut left_out[position..at], &mut right_out[position..at]],
                 );
             }
@@ -2044,6 +2064,16 @@ impl ExecutionPlan {
     /// `frames` may be smaller than prepared capacity. Buffers are planar stereo.
     pub fn process(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
         self.process_with_events(input, output, &[])
+            .expect("empty event list is valid");
+    }
+
+    pub fn process_with_sidechain(
+        &mut self,
+        input: [&[f32]; 2],
+        sidechain: [&[f32]; 2],
+        output: [&mut [f32]; 2],
+    ) {
+        self.process_with_events_sidechain(input, Some(sidechain), output, &[])
             .expect("empty event list is valid");
     }
 
@@ -2080,7 +2110,12 @@ impl ExecutionPlan {
         }
     }
 
-    fn render_audio_span(&mut self, input: [&[f32]; 2], output: [&mut [f32]; 2]) {
+    fn render_audio_span(
+        &mut self,
+        input: [&[f32]; 2],
+        sidechain: Option<[&[f32]; 2]>,
+        output: [&mut [f32]; 2],
+    ) {
         let frames = input[0].len();
         assert!(frames <= self.max_frames);
         assert_eq!(frames, input[1].len());
@@ -2119,6 +2154,15 @@ impl ExecutionPlan {
                 Kernel::InputRaw => {
                     left.copy_from_slice(input[0]);
                     right.copy_from_slice(input[1]);
+                }
+                Kernel::InputSidechain => {
+                    if let Some([side_left, side_right]) = sidechain {
+                        left.copy_from_slice(side_left);
+                        right.copy_from_slice(side_right);
+                    } else {
+                        left.fill(0.0);
+                        right.fill(0.0);
+                    }
                 }
                 Kernel::InputMonitor { gain } => {
                     for frame in 0..frames {
@@ -2519,6 +2563,45 @@ mod tests {
             .unwrap();
         assert_eq!(left, [0.25; 16]);
         assert_eq!(right, left);
+    }
+
+    #[test]
+    fn sidechain_capture_reads_only_the_second_stereo_bus() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(2, NodeKind::InputSidechain),
+                node(3, NodeKind::Output),
+                node(
+                    6,
+                    NodeKind::LoopCapture {
+                        capacity_seconds: 0.05,
+                        mix: 1.0,
+                    },
+                ),
+            ],
+            connections: vec![edge(2, 6, 0), edge(6, 3, 0)],
+        };
+        let mut plan = description.compile(8_000.0, 16).unwrap();
+        let main = [0.25; 16];
+        let side_left = [0.75; 16];
+        let side_right = [-0.5; 16];
+        assert!(plan.set_parameter(6, 0, 1.0));
+        let mut left = [0.0; 16];
+        let mut right = [0.0; 16];
+        plan.process_with_sidechain(
+            [&main, &main],
+            [&side_left, &side_right],
+            [&mut left, &mut right],
+        );
+        assert_eq!(left, side_left);
+        assert_eq!(right, side_right);
+        assert!(plan.set_parameter(6, 0, 0.0));
+        let mut copied = [0.0; 32];
+        assert_eq!(plan.copy_capture_interleaved(6, 0, &mut copied), 16);
+        assert_eq!(&copied[..4], &[0.75, -0.5, 0.75, -0.5]);
+        let silent = process(&mut plan, &main, &main);
+        assert_eq!(silent[0], vec![0.0; 16]);
     }
 
     fn node(id: NodeId, kind: NodeKind) -> NodeSpec {

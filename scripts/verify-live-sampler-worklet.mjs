@@ -52,4 +52,25 @@ await send({ type: 'event', nodeId: 4, kind: 0, channel: 0, note: 64, velocity: 
 assert.equal(render()[0][0], 1.25, 'new note uses captured PCM');
 await send({ type: 'event', nodeId: 4, kind: 1, channel: 0, note: 60, velocity: 0 });
 assert.equal(render()[0][0], .25, 'new note remains after old note release');
-console.log('Live sampler worklet: 512 captured frames, held source continuity, new-note adoption and stopped-take gate passed');
+
+const sideGraph = JSON.parse(readFileSync('projects/graph-workspace/sidechain-sampler.json', 'utf8')).signal;
+const sideProcessor = new Processor();
+await sideProcessor.port.onmessage({ data: { type: 'init',
+  wasmBytes: readFileSync('web/dist/manifold_filter.wasm'), graph: sideGraph,
+} });
+assert.deepEqual(messages.at(-1), { type: 'ready' });
+await sideProcessor.port.onmessage({ data: { type: 'parameter-request', requestId: 6,
+  nodeId: 6, id: 0, value: 1 } });
+assert.equal(messages.at(-1).accepted, true);
+const main = new Float32Array(128).fill(.25);
+const side = new Float32Array(128).fill(-.5);
+const sideOut = [new Float32Array(128), new Float32Array(128)];
+sideProcessor.process([[main, main], [side, side]], [sideOut]);
+assert.ok(sideOut[0][0] < -.25, 'main and sidechain buses mix only at the authored sum');
+await sideProcessor.port.onmessage({ data: { type: 'parameter-request', requestId: 7,
+  nodeId: 6, id: 0, value: 0 } });
+await sideProcessor.port.onmessage({ data: { type: 'capture-request', nodeId: 6 } });
+assert.equal(messages.at(-1).stereo[0], -.5, 'capture reads the independent sidechain bus');
+sideProcessor.process([[main, main]], [sideOut]);
+assert.ok(sideOut[0][0] > 0 && sideOut[0][0] < .2, 'a disconnected sidechain reads silence');
+console.log('Live sampler worklet: held source continuity, new-note adoption, stopped-take gate, independent sidechain capture and silent fallback passed');

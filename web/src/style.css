@@ -61,6 +61,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .graph-workspace select, .graph-workspace input[type="number"] { min-width: 0; padding: 7px; border: 1px solid #526170; border-radius: 4px; background: #1c2a35; color: #e7edf0; font-size: 11px; }
 .graph-workspace > .gate-button, .graph-workspace > .sample-file { display: block; width: 100%; margin-top: 8px; }
 .graph-workspace > .graph-field { margin-top: 10px; }
+.graph-workspace > .graph-field[hidden] { display: none; }
 .graph-workspace > .graph-field select { width: 100%; }
 .graph-sample-file { display: block; margin: 8px 0; font-size: 10px; color: #b4c0c9; }
 .graph-target { margin: 7px 0; color: #b4c0c9; font-size: 10px; }

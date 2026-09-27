@@ -13,6 +13,9 @@ export class BrowserAudioHost {
     this.analyser = null;
     this.source = null;
     this.sourceStream = null;
+    this.sidechainSource = null;
+    this.sidechainStream = null;
+    this.sidechainOscillator = null;
     this.parameters = new Map();
     this.parameterValues = new Map();
     this.pendingCapture = null;
@@ -56,7 +59,7 @@ export class BrowserAudioHost {
         return { nodeId: entry.nodeId, ...await analyzeMainTemporal(source, entry) };
       }));
       const processor = new AudioWorkletNode(context, 'manifold-project', {
-        numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+        numberOfInputs: 2, numberOfOutputs: 1, outputChannelCount: [2],
       });
       this.processor = processor;
       const analyser = context.createAnalyser();
@@ -179,8 +182,28 @@ export class BrowserAudioHost {
         this.source = level;
         this.oscillator = oscillator;
       }
-      this.source?.connect(processor);
-      this.onStatus(`Audio running · ${project.signal.inputSource === 'none' ? 'instrument' : kind === 'microphone' ? 'microphone' : 'test oscillator'} · ${Math.round(context.sampleRate / 1000)} kHz`);
+      this.source?.connect(processor, 0, 0);
+      const sidechainKind = project.signal.sidechainSource ?? 'none';
+      if (sidechainKind === 'microphone') {
+        if (this.sourceStream) {
+          this.sidechainSource = context.createMediaStreamSource(this.sourceStream);
+        } else {
+          this.sidechainStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false }, video: false });
+          this.sidechainSource = context.createMediaStreamSource(this.sidechainStream);
+        }
+      } else if (sidechainKind === 'oscillator') {
+        const oscillator = context.createOscillator();
+        oscillator.type = 'triangle';
+        oscillator.frequency.value = 330;
+        const level = context.createGain();
+        level.gain.value = 0.16;
+        oscillator.connect(level);
+        oscillator.start();
+        this.sidechainOscillator = oscillator;
+        this.sidechainSource = level;
+      }
+      this.sidechainSource?.connect(processor, 0, 1);
+      this.onStatus(`Audio running · ${project.signal.inputSource === 'none' ? 'instrument' : kind === 'microphone' ? 'microphone' : 'test oscillator'}${sidechainKind === 'none' ? '' : ` + ${sidechainKind} sidechain`} · ${Math.round(context.sampleRate / 1000)} kHz`);
     } catch (error) {
       await this.stop();
       throw error;
@@ -326,12 +349,16 @@ export class BrowserAudioHost {
       this.pendingCapture = null;
     }
     this.oscillator?.stop();
+    this.sidechainOscillator?.stop();
     this.sourceStream?.getTracks().forEach((track) => track.stop());
+    this.sidechainStream?.getTracks().forEach((track) => track.stop());
     this.source?.disconnect();
+    this.sidechainSource?.disconnect();
     this.processor?.disconnect();
     this.analyser?.disconnect();
     await this.context?.close();
     this.context = this.processor = this.analyser = this.source = this.sourceStream = this.oscillator = null;
+    this.sidechainSource = this.sidechainStream = this.sidechainOscillator = null;
     this.parameters.clear();
     this.onStatus('Audio idle');
   }
