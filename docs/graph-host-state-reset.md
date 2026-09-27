@@ -83,9 +83,13 @@ does not lock, allocate, or serialize.
 Tests save and parse 128 projects during 20,000 alternating paired-control
 snapshots, check the saved pair comes from one block, and reopen 32 Tone
 Texture saves while an old Note Voice runtime keeps publishing. The existing
-CLAP test covers host automation and state reopen. Further host stress should
-cover repeated swaps and saves with 44.7 MB embedded PCM under an actual DAW;
-the unit tests establish the data boundary, not every DAW's scheduling.
+CLAP test covers host automation and state reopen. A separate-process host
+probe now calls CLAP state save concurrently with audio: 64 Note Voice saves
+with paired automation, 64 Tone Texture saves, and 8 saves of the 44.7 MB
+four-source project. Every saved JSON parses with the expected project and
+node count; Note Voice's paired controls always match one complete block.
+Further host stress should cover repeated swaps and saves with large embedded
+PCM under an actual DAW; these probes do not establish every DAW's scheduling.
 
 The existing [CLAP host proof](clap-host.md) covers pointer gestures, fresh
 REAPER project recall, MIDI audio, editor import, and official validator

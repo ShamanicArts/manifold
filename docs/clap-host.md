@@ -26,6 +26,10 @@ renders a block, and saves it again. Successful local runs:
 The four-source input can be reproduced with
 `python scripts/probe-reaper-graph-vst3-gui.py --emit-project /tmp/manifold-four-source-bench.json`
 followed by `python scripts/probe-clap-graph.py --project /tmp/manifold-four-source-bench.json`.
+For concurrent state saves while the packaged plug-in processes audio, add
+`--live-saves 64` for Note Voice or Tone Texture and `--live-saves 8` for the
+four-source project. Note Voice alternates two host-automated controls and
+checks each saved pair against a complete block.
 The Graph CLAP GUI now opens the same `graph-module.html` and compact widget
 renderers as the Graph VST3 editor. Its reader accepts bounded widget gestures,
 project JSON chunks, and host slot assignments, then hands project changes to
@@ -152,8 +156,11 @@ at the next process block; old runtime retirement stays off the callback.
 Multiple queued state loads before a process block are currently rejected.
 The Graph CLAP state saver reads a complete versioned 128-slot bank under the
 same host-side locks as project state and bindings; an old runtime cannot write
-the new project's bank. Further live DAW save stress with repeated project
-swaps and large embedded samples remains to be exercised.
+the new project's bank. A separate-process host probe has saved Note Voice,
+Tone Texture, and a 44.7 MB four-source project concurrently with processing;
+the Note Voice probe alternates paired host automation and verifies each save
+matches one block. Further live DAW save stress with repeated project swaps
+remains to be exercised.
 
 The browser's per-effect control memory is now reflected in the live CLAP
 parameter values and its saved project state. Type switches request a host

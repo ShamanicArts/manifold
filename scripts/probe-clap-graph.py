@@ -5,6 +5,7 @@ import argparse
 import ctypes as c
 import json
 from pathlib import Path
+import threading
 
 
 class Version(c.Structure):
@@ -62,6 +63,12 @@ class Note(c.Structure):
                 ("channel", c.c_int16), ("key", c.c_int16), ("velocity", c.c_double)]
 
 
+class ParamValue(c.Structure):
+    _fields_ = [("header", EventHeader), ("param_id", c.c_uint32), ("cookie", c.c_void_p),
+                ("note_id", c.c_int32), ("port", c.c_int16), ("channel", c.c_int16),
+                ("key", c.c_int16), ("value", c.c_double)]
+
+
 class InputEvents(c.Structure):
     _fields_ = [("ctx", c.c_void_p), ("count", c.c_void_p), ("get", c.c_void_p)]
 
@@ -83,6 +90,8 @@ def main():
     parser.add_argument("--module", type=Path, default=Path("target/clap/ManifoldFX.clap"))
     parser.add_argument("--project", type=Path, default=Path("projects/graph-workspace/note-voice.json"))
     parser.add_argument("--reset", action="store_true", help="verify external CLAP reset and retrigger")
+    parser.add_argument("--live-saves", type=int, default=0,
+                        help="save while another thread runs audio blocks")
     args = parser.parse_args()
     project = args.project.read_bytes()
     document = json.loads(project)
@@ -131,13 +140,16 @@ def main():
         output = AudioBuffer(channels, None, 2, 0, 0)
         note = Note(EventHeader(c.sizeof(Note), 0, 0, 0, 0), -1, 0, 0, 60, 0.8)
         with_note = True
+        live_events = []
 
         @c.CFUNCTYPE(c.c_uint32, c.c_void_p)
         def event_count(_events):
-            return 1 if midi is not None and with_note else 0
+            return len(live_events) if live_events else (1 if midi is not None and with_note else 0)
 
         @c.CFUNCTYPE(c.c_void_p, c.c_void_p, c.c_uint32)
         def event_get(_events, index):
+            if live_events:
+                return c.addressof(live_events[index]) if index < len(live_events) else None
             return c.addressof(note) if midi is not None and with_note and index == 0 else None
 
         events = InputEvents(None, c.cast(event_count, c.c_void_p), c.cast(event_get, c.c_void_p))
@@ -176,11 +188,84 @@ def main():
             return size
 
         output_stream = Stream(None, c.cast(write, c.c_void_p))
-        assert fn(state.save, c.c_bool, c.c_void_p, c.POINTER(Stream))(plugin_ptr, c.byref(output_stream))
-        assert json.loads(saved)["projectId"] == document["projectId"]
+        def save_state():
+            saved.clear()
+            assert fn(state.save, c.c_bool, c.c_void_p, c.POINTER(Stream))(
+                plugin_ptr, c.byref(output_stream))
+            result = json.loads(saved)
+            assert result["projectId"] == document["projectId"]
+            assert len(result["signal"]["nodes"]) == len(document["signal"]["nodes"])
+            return result
+
+        save_state()
+        live_metrics = {}
+        if args.live_saves:
+            assert args.live_saves > 0
+            with_note = False
+            voice = next((node["id"] for node in document["signal"]["nodes"]
+                          if node["type"] == "voice-synth"), None)
+            expected_pairs = None
+            if voice is not None:
+                live_events = [ParamValue(EventHeader(c.sizeof(ParamValue), 0, 0, 5, 0),
+                                          0x01000002 + slot, None, -1, -1, -1, -1, 0.)
+                               for slot in range(2)]
+
+                def saved_pair(result):
+                    entries = result["signal"]["initialParameters"]
+                    return tuple(next(float(entry["value"]) for entry in entries
+                                      if entry["nodeId"] == voice and entry["id"] == index)
+                                 for index in (1, 2))
+
+                expected_pairs = set()
+                for values in ((0.2, 0.8), (0.8, 0.2)):
+                    for event, value in zip(live_events, values):
+                        event.value = value
+                    assert fn(plugin.process, c.c_int32, c.c_void_p, c.POINTER(Process))(
+                        plugin_ptr, c.byref(block)) == 1
+                    expected_pairs.add(saved_pair(save_state()))
+                assert len(expected_pairs) == 2, expected_pairs
+
+            stop = threading.Event()
+            started = threading.Event()
+            counts = {"blocks": 0}
+            errors = []
+
+            def render_blocks():
+                try:
+                    while not stop.is_set():
+                        if live_events:
+                            values = (0.2, 0.8) if counts["blocks"] & 1 == 0 else (0.8, 0.2)
+                            for event, value in zip(live_events, values):
+                                event.value = value
+                        status = fn(plugin.process, c.c_int32, c.c_void_p, c.POINTER(Process))(
+                            plugin_ptr, c.byref(block))
+                        if status != 1:
+                            raise AssertionError(f"audio process status {status}")
+                        counts["blocks"] += 1
+                        started.set()
+                except BaseException as error:
+                    errors.append(error)
+                    started.set()
+
+            thread = threading.Thread(target=render_blocks, name="clap-audio-probe")
+            thread.start()
+            try:
+                assert started.wait(5), "audio thread did not begin"
+                for _ in range(args.live_saves):
+                    result = save_state()
+                    if expected_pairs is not None:
+                        assert saved_pair(result) in expected_pairs, saved_pair(result)
+            finally:
+                stop.set()
+                thread.join(timeout=10)
+            assert not thread.is_alive(), "audio thread did not stop"
+            assert not errors, errors
+            assert counts["blocks"] >= 2, counts
+            live_metrics = {"live_saves": args.live_saves, "live_audio_blocks": counts["blocks"],
+                            "paired_automation": expected_pairs is not None}
         print(json.dumps({"factory_ids": ids, "project_bytes": len(project),
                           "saved_bytes": len(saved), "audio_peak": peak, "midi_node": midi,
-                          **reset_metrics}))
+                          **reset_metrics, **live_metrics}))
     finally:
         fn(plugin.stop, None, c.c_void_p)(plugin_ptr)
         fn(plugin.deactivate, None, c.c_void_p)(plugin_ptr)
