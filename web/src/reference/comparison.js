@@ -1,4 +1,5 @@
 import { drawComparison, drawBandBars, drawMeterTrace, drawCvStageTraces } from './plots.js';
+import { NODE_TYPES, validateTopology } from '../graph/topology.js';
 
 const byId = (id) => document.getElementById(id);
 const asset = (family, path) => `${import.meta.env.BASE_URL}reference/${family}/${path}`;
@@ -676,8 +677,27 @@ function preparePhaseVocoder(engine, selected) {
   });
 }
 
+function prepareGraphWorkspace(engine, selected) {
+  const graph = validateTopology(selected.graph);
+  if (engine.manifold_graph_begin(graph.nodes.length, graph.connections.length) !== 1) throw new Error('Graph workspace begin failed');
+  for (const node of graph.nodes) {
+    if (engine.manifold_graph_node(node.id, NODE_TYPES[node.type].code, node.a ?? 0, node.b ?? 0) !== 1) {
+      throw new Error(`Graph workspace node ${node.id} failed`);
+    }
+  }
+  for (const edge of graph.connections) {
+    if (engine.manifold_graph_edge(edge.from, edge.to, edge.inputPort) !== 1) throw new Error('Graph workspace edge failed');
+  }
+  const deferred = [];
+  for (const parameter of graph.initialParameters) {
+    if (engine.manifold_graph_initial_parameter(parameter.nodeId, parameter.id, parameter.value) !== 1) deferred.push(parameter);
+  }
+  return deferred;
+}
+
 export function renderWasm(engine, family, manifest, input, selected) {
   const block = selected.blockSize ?? manifest.blockSize;
+  const graphDeferred = family === 'graph-workspace' ? prepareGraphWorkspace(engine, selected) : [];
   if (family === 'crossfader') prepareCrossfader(engine, manifest, selected);
   if (family === 'mixer') prepareMixer(engine, selected);
   if (family === 'voice') prepareVoice(engine);
@@ -733,6 +753,11 @@ export function renderWasm(engine, family, manifest, input, selected) {
   if (family === 'slew-modulation') prepareSlewModulation(engine, selected);
   if (family === 'cv-rack') prepareCvRack(engine, selected);
   if (engine.manifold_prepare(manifest.sampleRate, block) !== 1) throw new Error('Wasm prepare failed');
+  for (const parameter of graphDeferred) {
+    if (engine.manifold_set_node_parameter(parameter.nodeId, parameter.id, parameter.value) !== 1) {
+      throw new Error(`Graph workspace parameter ${parameter.nodeId}/${parameter.id} failed`);
+    }
+  }
   if (family === 'sine-bank') {
     if (engine.manifold_partials_begin(2, selected.partials.length / 4, 440) !== 1) throw new Error('Wasm sine bank upload begin failed');
     new Float32Array(engine.memory.buffer, engine.manifold_partials_ptr(), selected.partials.length).set(selected.partials);
@@ -1302,7 +1327,9 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
     const family = selectedFamily;
     const selected = manifest.cases.find((entry) => entry.id === chooser.value);
     byId('reference-status').textContent = 'Comparing…';
-    const transition = family === 'svf'
+    const transition = family === 'graph-workspace'
+      ? `${selected.graph.nodes.length} nodes · ${selected.graph.connections.length} typed routes`
+      : family === 'svf'
       ? `cutoff ${selected.cutoffBefore.toLocaleString()} → ${selected.cutoffAfter.toLocaleString()} Hz`
       : family === 'crossfader'
         ? `position ${selected.positionBefore} → ${selected.positionAfter} · curve ${selected.curve} · mix ${selected.mix}`
@@ -1402,9 +1429,9 @@ export async function initializeReferenceLab(initialFamily = 'svf', initialEffec
                       ? `threshold ${selected.before[0]} → ${selected.after[0]} dB · release ${selected.before[1]} → ${selected.after[1]} ms · soft clip ${selected.before[3]} → ${selected.after[3]}`
             : `${selected.events.length} timed note events · attack ${selected.attack} s · release ${selected.release} s`;
     byId('reference-meta').textContent = `${manifest.sampleRate.toLocaleString()} Hz · ${manifest.frames} frames · ${selected.blockSize ?? manifest.blockSize} frame blocks · ${transition}`;
-    const nativeReference = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'main-voice-bank' || family === 'main-sample-blend' || family === 'envelope-ducking' || family === 'fft-spectrum';
+    const nativeReference = family === 'graph-workspace' || family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'patch' || family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' || family === 'fx-chain' || family === 'standalone-fx' || family === 'loop-capture' || family === 'sample-region' || family === 'sample-instrument' || family === 'main-voice-bank' || family === 'main-sample-blend' || family === 'envelope-ducking' || family === 'fft-spectrum';
     byId('reference-title').textContent = nativeReference ? 'Native Rust ↔ Rust/Wasm' : 'C++ ↔ Rust/Wasm';
-    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'main-sample-blend' || family === 'phase-vocoder' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Whole capture' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'midi-transpose' ? 'Held note remap' : family === 'midi-note-filter' ? 'Held range change' : family === 'midi-scale-quantizer' ? 'Held scale change' : family === 'midi-velocity-mapper' ? 'Held velocity change' : family === 'midi-arpeggiator' ? 'Second step' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Whole modulation' : 'Parameter change';
+    byId('plot-window').querySelector('[value="step"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' ? 'End of capture' : family === 'graph-workspace' || family === 'main-sample-blend' || family === 'phase-vocoder' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Whole capture' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Whole envelope' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'waveshaper' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) || family === 'loop-capture' ? 'Whole capture' : family === 'voice' ? 'Note event' : family === 'midi-transpose' ? 'Held note remap' : family === 'midi-note-filter' ? 'Held range change' : family === 'midi-scale-quantizer' ? 'Held scale change' : family === 'midi-velocity-mapper' ? 'Held velocity change' : family === 'midi-arpeggiator' ? 'Second step' : family === 'adsr' ? 'Whole envelope' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Whole modulation' : 'Parameter change';
     byId('plot-window').querySelector('[value="start"]').textContent = family === 'spectrum-analyzer' || family === 'fft-spectrum' || family === 'cv-rack' || family === 'envelope-follower' || family === 'envelope-ducking' || family === 'compressor' || family === 'limiter' || family === 'stereo-widener' || family === 'transient-shaper' ? 'Before change' : family === 'stereo-delay' || family === 'phaser' || family === 'chorus' || family === 'eq8' || family === 'reverb' || family === 'multitap' || family === 'ring-modulator' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) || family === 'loop-capture' ? 'Before change' : family === 'adsr' ? 'Attack detail' : family === 'modulation' ? 'Before change' : 'Start';
     byId('plot-title').textContent = family === 'fft-spectrum' ? '32 FFT bands · last block' : family === 'compressor' || family === 'limiter' ? 'Gain reduction · dB per block' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detected envelope · one value per block' : family === 'spectrum-analyzer' ? 'Eight band estimates · last block' : family === 'loop-capture' ? 'Capture and playback · stereo peak level' : family === 'phaser' ? 'Stereo phaser output · peak level' : family === 'chorus' ? 'Stereo chorus output · peak level' : family === 'eq8' ? 'EQ8 stereo output · peak level' : family === 'eq-node' ? 'Three-band EQ stereo output' : family === 'reverb' ? 'Stereo reverb tail · peak level' : family === 'ring-modulator' ? 'Ring-modulated stereo output' : family === 'transient-shaper' ? 'Transient strength · mean per block' : family === 'bitcrusher' ? 'Quantized stereo output' : family === 'multitap' ? 'Multitap echoes · stereo peak level' : family === 'stereo-widener' ? 'Output stereo correlation · −1 to +1' : family === 'stereo-delay' || family === 'fx-chain' || family === 'standalone-fx' || isFxSwitchFamily(family) ? 'Left and right output tails · peak level' : family === 'adsr' ? 'Envelope shape · left channel' : family === 'modulation' || family === 'slew-modulation' || family === 'cv-rack' ? 'Amplitude envelope · left channel' : 'Output waveform';
     if (family === 'standalone-fx-host' && selected.id === 'delay-svf-delay-svf') {

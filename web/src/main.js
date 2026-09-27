@@ -12,6 +12,7 @@ import oscillatorProject from '../../projects/oscillator/project.json';
 import adsrProject from '../../projects/adsr/project.json';
 import noiseProject from '../../projects/noise/project.json';
 import patchProject from '../../projects/synth-patch/project.json';
+import graphWorkspaceProject from '../../projects/graph-workspace/project.json';
 import modulationProject from '../../projects/modulated-gain/project.json';
 import distortionProject from '../../projects/distortion/project.json';
 import phaserProject from '../../projects/phaser/project.json';
@@ -66,6 +67,7 @@ import { captureControlPatchState, parseControlPatchState } from './state/contro
 import { captureMainSampleBlendState, parseMainSampleBlendState } from './state/main-sample-blend.js';
 import { captureMainVoiceBankState, parseMainVoiceBankState } from './state/main-voice-bank.js';
 import { captureProjectDocument, captureProjectPreset, applyProjectPreset, parseProjectDocument } from './state/project-document.js';
+import { mountGraphEditor } from './graph/editor.js';
 
 const byId = (id) => document.getElementById(id);
 const primitivePicker = byId('primitive-picker');
@@ -170,6 +172,12 @@ const projects = {
     title: 'Synth patch',
     description: 'Mix a pitched oscillator with colored noise, shape both with an envelope, then sweep the lowpass filter with a Rust LFO.',
     signal: 'Audio: oscillator + noise → ADSR → SVF → output · CV: LFO → cutoff',
+  },
+  'graph-workspace': {
+    project: graphWorkspaceProject,
+    title: 'Graph workspace',
+    description: 'Build a stereo graph from Rust audio and CV nodes. Typed ports, cycle checks, and project JSON make topology changes inspectable before the next audio start.',
+    signal: 'Live input → editable Rust graph → stereo output',
   },
   modulation: {
     project: modulationProject,
@@ -440,6 +448,7 @@ function resetMainBankTargets() {
 }
 let values = new Map();
 let activeProject = null;
+let graphEditor = null;
 const mainProjectPresets = new Map([['main-voice-bank', []], ['main-sample-blend', []]]);
 const patchedSignals = new Map();
 const patchedParameterValues = new Map();
@@ -1447,6 +1456,8 @@ function renderSineBankEditor() {
 }
 
 function renderPrimitive(family) {
+  graphEditor?.destroy();
+  graphEditor = null;
   midiBrowserUrl.value = new URL(`?primitive=${['sample-instrument', 'main-voice-bank', 'midi-transpose', 'midi-note-filter', 'midi-scale-quantizer', 'midi-velocity-mapper', 'midi-arpeggiator'].includes(family) ? family : 'voice'}`, location.href).href;
   const { project, title, description, signal } = projects[family];
   finishMainStateRestore();
@@ -1533,6 +1544,7 @@ function renderPrimitive(family) {
   });
   byId('modes').replaceChildren();
   byId('controls').replaceChildren();
+  byId('parameter-section').hidden = family === 'graph-workspace';
   renderSineBankEditor();
   byId('sine-source-section').hidden = !usesSineSource(family);
   updateSineTargetControls();
@@ -1560,6 +1572,16 @@ function renderPrimitive(family) {
   }
   if (usesSineSource(family)) renderSineSourceAnalysis();
   renderPatchEditor(activeProject);
+  byId('graph-workspace-section').hidden = family !== 'graph-workspace';
+  if (family === 'graph-workspace') {
+    graphEditor = mountGraphEditor(byId('graph-workspace-section'), activeProject, {
+      isRunning: () => audio.running,
+      isActive: () => activeFamily === 'graph-workspace' && activeProject === graphWorkspaceProject,
+      onChange: (edited) => {
+        byId('signal-path').textContent = `${edited.nodes.length} Rust nodes · ${edited.connections.length} typed routes · stereo output`;
+      },
+    });
+  }
   const mode = project.parameters.find((parameter) => parameter.kind === 'choice');
   byId('mode-section').hidden = !mode;
   byId('mode-label').textContent = family === 'voice' || family === 'midi-transpose' || family === 'midi-note-filter' || family === 'midi-scale-quantizer' || family === 'midi-velocity-mapper' || family === 'midi-arpeggiator' || family === 'oscillator' || family === 'patch' || family === 'modulation' ? 'Waveform' : family === 'sine-bank' ? 'Drive shape' : family === 'waveshaper' ? 'Shaping curve' : family === 'phaser' ? 'Stages' : family === 'chorus' ? 'LFO waveform' : family === 'granulator' ? 'Grain envelope' : family === 'envelope-follower' || family === 'envelope-ducking' ? 'Detector' : family === 'fx-chain' ? 'Filter mode' : family === 'stereo-delay' ? 'Time mode' : isFxFamily(family) ? 'Effect type' : 'Mode';
@@ -2622,6 +2644,7 @@ byId('sample-trigger').addEventListener('click', () => {
 });
 toggle.addEventListener('click', async () => {
   toggle.disabled = true;
+  graphEditor?.setBusy(true);
   const patchSelectors = [...byId('patch-rows').querySelectorAll('select')];
   patchSelectors.forEach((select) => { select.disabled = true; });
   byId('patch-state-file').disabled = true;
@@ -2684,6 +2707,7 @@ toggle.addEventListener('click', async () => {
     patchSelectors.forEach((select) => { select.disabled = false; });
     byId('patch-state-file').disabled = audio.running;
     toggle.disabled = false;
+    graphEditor?.setBusy(false);
   }
 });
 

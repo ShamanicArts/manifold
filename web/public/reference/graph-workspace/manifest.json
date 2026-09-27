@@ -1,0 +1,235 @@
+{
+  "version": 1,
+  "reference": "native Rust authored graph topology",
+  "sourceSha256": "13707a2b686a963cd4617165f23cc9757db6379e0ccf2346bc354b249e16450f",
+  "sampleRate": 48000,
+  "channels": 2,
+  "frames": 8192,
+  "blockSize": 128,
+  "stepFrame": 4096,
+  "input": "input.f32",
+  "cases": [
+    {
+      "id": "seed",
+      "label": "Input → Gain",
+      "graph": {
+        "inputs": 2,
+        "outputs": 2,
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 2,
+            "type": "gain",
+            "a": 0.7
+          },
+          {
+            "id": 3,
+            "type": "output"
+          }
+        ],
+        "connections": [
+          {
+            "from": 1,
+            "to": 2,
+            "inputPort": 0
+          },
+          {
+            "from": 2,
+            "to": 3,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 2,
+            "id": 0,
+            "value": 0.7
+          }
+        ]
+      },
+      "output": "seed.f32"
+    },
+    {
+      "id": "distortion",
+      "label": "Input → Gain → Distortion",
+      "graph": {
+        "inputs": 2,
+        "outputs": 2,
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 2,
+            "type": "gain",
+            "a": 0.7
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "distortion",
+            "a": 4,
+            "b": 0.7
+          }
+        ],
+        "connections": [
+          {
+            "from": 1,
+            "to": 2,
+            "inputPort": 0
+          },
+          {
+            "from": 2,
+            "to": 4,
+            "inputPort": 0
+          },
+          {
+            "from": 4,
+            "to": 3,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 2,
+            "id": 0,
+            "value": 0.7
+          },
+          {
+            "nodeId": 4,
+            "id": 0,
+            "value": 9
+          },
+          {
+            "nodeId": 4,
+            "id": 1,
+            "value": 0.7
+          },
+          {
+            "nodeId": 4,
+            "id": 2,
+            "value": 0.8
+          }
+        ]
+      },
+      "output": "distortion.f32"
+    },
+    {
+      "id": "cv",
+      "label": "Input → Gain → Distortion → CV gain",
+      "graph": {
+        "inputs": 2,
+        "outputs": 2,
+        "nodes": [
+          {
+            "id": 1,
+            "type": "input.raw"
+          },
+          {
+            "id": 2,
+            "type": "gain",
+            "a": 0.7
+          },
+          {
+            "id": 3,
+            "type": "output"
+          },
+          {
+            "id": 4,
+            "type": "distortion",
+            "a": 4,
+            "b": 0.7
+          },
+          {
+            "id": 5,
+            "type": "lfo",
+            "a": 2
+          },
+          {
+            "id": 6,
+            "type": "modulated-gain",
+            "a": 0.5,
+            "b": 0.4
+          }
+        ],
+        "connections": [
+          {
+            "from": 1,
+            "to": 2,
+            "inputPort": 0
+          },
+          {
+            "from": 2,
+            "to": 4,
+            "inputPort": 0
+          },
+          {
+            "from": 4,
+            "to": 6,
+            "inputPort": 0
+          },
+          {
+            "from": 5,
+            "to": 6,
+            "inputPort": 1
+          },
+          {
+            "from": 6,
+            "to": 3,
+            "inputPort": 0
+          }
+        ],
+        "initialParameters": [
+          {
+            "nodeId": 2,
+            "id": 0,
+            "value": 0.7
+          },
+          {
+            "nodeId": 4,
+            "id": 0,
+            "value": 9
+          },
+          {
+            "nodeId": 4,
+            "id": 1,
+            "value": 0.7
+          },
+          {
+            "nodeId": 4,
+            "id": 2,
+            "value": 0.8
+          },
+          {
+            "nodeId": 5,
+            "id": 0,
+            "value": 0
+          },
+          {
+            "nodeId": 5,
+            "id": 1,
+            "value": 2
+          },
+          {
+            "nodeId": 6,
+            "id": 0,
+            "value": 0.5
+          },
+          {
+            "nodeId": 6,
+            "id": 1,
+            "value": 0.4
+          }
+        ]
+      },
+      "output": "cv.f32"
+    }
+  ]
+}

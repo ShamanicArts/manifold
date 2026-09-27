@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { addNode, removeNode, setConnection, setInitialParameter,
+  captureGraphProject, parseGraphProject, validateTopology } from '../web/src/graph/topology.js';
+
+const project = JSON.parse(readFileSync('projects/graph-workspace/project.json', 'utf8'));
+const seed = validateTopology(project.signal);
+assert.deepEqual(seed, project.signal);
+let signal = addNode(seed, 'distortion');
+assert.equal(signal.nodes.at(-1).id, 4);
+signal = setConnection(signal, 4, 0, 2);
+signal = setConnection(signal, 3, 0, 4);
+signal = setInitialParameter(signal, 4, 0, 9);
+assert.equal(signal.initialParameters.find((entry) => entry.nodeId === 4 && entry.id === 0).value, 9);
+signal = addNode(signal, 'lfo');
+signal = addNode(signal, 'modulated-gain');
+const lfo = signal.nodes.find((node) => node.type === 'lfo').id;
+const cvGain = signal.nodes.find((node) => node.type === 'modulated-gain').id;
+signal = setConnection(signal, cvGain, 0, 4);
+signal = setConnection(signal, cvGain, 1, lfo);
+signal = setConnection(signal, 3, 0, cvGain);
+assert.deepEqual(parseGraphProject(JSON.parse(JSON.stringify(captureGraphProject(signal)))), signal);
+assert.throws(() => setConnection(signal, cvGain, 1, 1), /types/);
+assert.throws(() => setConnection(signal, 4, 0, cvGain), /cycle/);
+assert.throws(() => setConnection(signal, 3, 1, 4), /input/);
+assert.throws(() => setInitialParameter(signal, lfo, 1, 200), /parameter/);
+assert.throws(() => addNode(signal, '__proto__'), /addable/);
+assert.throws(() => removeNode(signal, 3), /stay/);
+const malformed = structuredClone(signal);
+malformed.connections.push({ from: 1, to: 2, inputPort: 0 });
+assert.throws(() => validateTopology(malformed), /already connected/);
+assert.throws(() => parseGraphProject({ ...captureGraphProject(signal), projectId: 'other' }), /supported/);
+assert.throws(() => parseGraphProject({ ...captureGraphProject(signal), signal: malformed }), /already connected/);
+const removed = removeNode(signal, cvGain);
+assert.equal(removed.nodes.some((node) => node.id === cvGain), false);
+assert.equal(removed.connections.some((edge) => edge.from === cvGain || edge.to === cvGain), false);
+console.log('Graph topology: add/remove, typed audio/CV routes, cycle and occupancy rejection, parameter validation, project round-trip passed');

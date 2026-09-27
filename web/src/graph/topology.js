@@ -1,0 +1,160 @@
+// Browser authoring contract for a subset of Rust's prepared typed graph.
+// Rust compilation remains the final authority when playback starts.
+export const NODE_TYPES = {
+  'input.raw': { label: 'Live input', code: 0, output: 'audio', inputs: [], fixedId: 1 },
+  output: { label: 'Output', code: 7, output: null, inputs: ['audio'], fixedId: 3 },
+  gain: { label: 'Gain', code: 3, output: 'audio', inputs: ['audio'], args: { a: .7 },
+    parameters: [{ id: 0, label: 'Level', min: 0, max: 2, default: .7 }] },
+  distortion: { label: 'Distortion', code: 17, output: 'audio', inputs: ['audio'], args: { a: 4, b: .7 },
+    parameters: [{ id: 0, label: 'Drive', min: 1, max: 30, default: 4 },
+      { id: 1, label: 'Wet mix', min: 0, max: 1, default: .7 },
+      { id: 2, label: 'Output', min: 0, max: 2, default: .8 }] },
+  svf: { label: 'SVF filter', code: 6, output: 'audio', inputs: ['audio'],
+    parameters: [{ id: 0, label: 'Mode', choices: ['Low pass', 'Band pass', 'High pass', 'Notch'], default: 0 },
+      { id: 1, label: 'Cutoff', min: 20, max: 20000, default: 3200 },
+      { id: 2, label: 'Resonance', min: .1, max: 2, default: .75 }] },
+  sum2: { label: 'Audio sum', code: 4, output: 'audio', inputs: ['audio', 'audio'], args: { a: 1, b: 1 } },
+  oscillator: { label: 'Oscillator', code: 11, output: 'audio', inputs: ['audio'], args: { a: 220, b: .4 },
+    parameters: [{ id: 0, label: 'Waveform', choices: ['Sine', 'Saw', 'Square', 'Triangle', 'Blend'], default: 0 },
+      { id: 1, label: 'Frequency', min: 20, max: 16000, default: 220 },
+      { id: 2, label: 'Level', min: 0, max: 1, default: .4 }] },
+  noise: { label: 'Noise', code: 13, output: 'audio', inputs: [], args: { a: .08, b: .5 },
+    parameters: [{ id: 0, label: 'Level', min: 0, max: 1, default: .08 },
+      { id: 1, label: 'Color', min: 0, max: 1, default: .5 }] },
+  lfo: { label: 'LFO', code: 14, output: 'control', inputs: [], args: { a: 2 },
+    parameters: [{ id: 0, label: 'Waveform', choices: ['Sine', 'Triangle', 'Square'], default: 0 },
+      { id: 1, label: 'Rate', min: .05, max: 20, default: 2 }] },
+  'modulated-gain': { label: 'CV gain', code: 15, output: 'audio', inputs: ['audio', 'control'], args: { a: .5, b: .4 },
+    parameters: [{ id: 0, label: 'Base', min: 0, max: 2, default: .5 },
+      { id: 1, label: 'Depth', min: -2, max: 2, default: .4 }] },
+};
+
+const PROJECT_FORMAT = 'manifold.project';
+const PROJECT_VERSION = 1;
+const projectId = 'manifold.graph-workspace';
+const sameKeys = (value, keys) => Object.keys(value).sort().join('|') === [...keys].sort().join('|');
+
+export function validateTopology(signal) {
+  if (!signal || typeof signal !== 'object' || Array.isArray(signal)
+    || !sameKeys(signal, ['inputs', 'outputs', 'nodes', 'connections', 'initialParameters'])
+    || signal.inputs !== 2 || signal.outputs !== 2
+    || !Array.isArray(signal.nodes) || signal.nodes.length < 2 || signal.nodes.length > 64
+    || !Array.isArray(signal.connections) || signal.connections.length > 256
+    || !Array.isArray(signal.initialParameters)) throw new Error('Invalid graph description.');
+
+  const nodes = new Map();
+  for (const node of signal.nodes) {
+    const spec = Object.hasOwn(NODE_TYPES, node?.type) ? NODE_TYPES[node.type] : null;
+    if (!spec || !Number.isInteger(node.id) || node.id < 1 || node.id > 65535
+      || nodes.has(node.id) || !sameKeys(node, ['id', 'type', ...Object.keys(spec.args ?? {})])
+      || Object.entries(spec.args ?? {}).some(([key, value]) => node[key] !== value)
+      || (spec.fixedId && node.id !== spec.fixedId)
+      || (!spec.fixedId && [1, 3].includes(node.id))) throw new Error('Invalid graph node.');
+    nodes.set(node.id, node);
+  }
+  if (nodes.get(1)?.type !== 'input.raw' || nodes.get(3)?.type !== 'output') {
+    throw new Error('Graph needs its live input and output.');
+  }
+  const ports = new Set();
+  const dependents = new Map([...nodes.keys()].map((id) => [id, []]));
+  for (const edge of signal.connections) {
+    if (!edge || !sameKeys(edge, ['from', 'to', 'inputPort'])
+      || !Number.isInteger(edge.from) || !Number.isInteger(edge.to)
+      || !Number.isInteger(edge.inputPort) || !nodes.has(edge.from) || !nodes.has(edge.to)) {
+      throw new Error('Invalid graph connection.');
+    }
+    const from = NODE_TYPES[nodes.get(edge.from).type];
+    const to = NODE_TYPES[nodes.get(edge.to).type];
+    if (!from.output || to.inputs[edge.inputPort] === undefined
+      || from.output !== to.inputs[edge.inputPort]) throw new Error('Graph port types do not match.');
+    const port = `${edge.to}:${edge.inputPort}`;
+    if (ports.has(port)) throw new Error('Graph input already connected.');
+    ports.add(port);
+    dependents.get(edge.from).push(edge.to);
+  }
+  const visiting = new Set();
+  const visited = new Set();
+  function visit(id) {
+    if (visiting.has(id)) throw new Error('Graph contains a cycle.');
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const to of dependents.get(id)) visit(to);
+    visiting.delete(id);
+    visited.add(id);
+  }
+  for (const id of nodes.keys()) visit(id);
+
+  const parameterKeys = new Set();
+  for (const entry of signal.initialParameters) {
+    if (!entry || !sameKeys(entry, ['nodeId', 'id', 'value'])
+      || !Number.isInteger(entry.nodeId) || !Number.isInteger(entry.id)
+      || !nodes.has(entry.nodeId)) throw new Error('Invalid graph parameter.');
+    const parameter = NODE_TYPES[nodes.get(entry.nodeId).type].parameters?.find((item) => item.id === entry.id);
+    const key = `${entry.nodeId}:${entry.id}`;
+    if (!parameter || parameterKeys.has(key)
+      || typeof entry.value !== 'number' || !Number.isFinite(entry.value)
+      || (parameter.choices ? !Number.isInteger(entry.value) || entry.value < 0 || entry.value >= parameter.choices.length
+        : entry.value < parameter.min || entry.value > parameter.max)) throw new Error('Invalid graph parameter.');
+    parameterKeys.add(key);
+  }
+  for (const node of signal.nodes) {
+    for (const parameter of NODE_TYPES[node.type].parameters ?? []) {
+      if (!parameterKeys.has(`${node.id}:${parameter.id}`)) throw new Error('Graph parameter missing.');
+    }
+  }
+  return structuredClone(signal);
+}
+
+export function addNode(signal, type) {
+  const spec = Object.hasOwn(NODE_TYPES, type) ? NODE_TYPES[type] : null;
+  if (!spec || spec.fixedId) throw new Error('Choose an addable node.');
+  const next = structuredClone(signal);
+  const id = Math.max(...next.nodes.map((node) => node.id), 3) + 1;
+  next.nodes.push({ id, type, ...spec.args });
+  for (const parameter of spec.parameters ?? []) {
+    next.initialParameters.push({ nodeId: id, id: parameter.id, value: parameter.default });
+  }
+  return validateTopology(next);
+}
+
+export function removeNode(signal, id) {
+  if ([1, 3].includes(id)) throw new Error('The live input and output stay in this project.');
+  if (!signal.nodes.some((node) => node.id === id)) throw new Error('Graph node unavailable.');
+  const next = structuredClone(signal);
+  next.nodes = next.nodes.filter((node) => node.id !== id);
+  next.connections = next.connections.filter((edge) => edge.from !== id && edge.to !== id);
+  next.initialParameters = next.initialParameters.filter((entry) => entry.nodeId !== id);
+  return validateTopology(next);
+}
+
+export function setConnection(signal, to, inputPort, from) {
+  const target = signal.nodes.find((node) => node.id === to);
+  if (!target || NODE_TYPES[target.type].inputs[inputPort] === undefined) {
+    throw new Error('Graph input unavailable.');
+  }
+  const next = structuredClone(signal);
+  next.connections = next.connections.filter((edge) => edge.to !== to || edge.inputPort !== inputPort);
+  if (from !== null) next.connections.push({ from, to, inputPort });
+  return validateTopology(next);
+}
+
+export function setInitialParameter(signal, nodeId, id, value) {
+  const next = structuredClone(signal);
+  const entry = next.initialParameters.find((item) => item.nodeId === nodeId && item.id === id);
+  if (!entry) throw new Error('Graph parameter unavailable.');
+  entry.value = value;
+  return validateTopology(next);
+}
+
+export function captureGraphProject(signal) {
+  return { format: PROJECT_FORMAT, schemaVersion: PROJECT_VERSION, projectId,
+    signal: validateTopology(signal) };
+}
+
+export function parseGraphProject(document) {
+  if (document?.format !== PROJECT_FORMAT || document.schemaVersion !== PROJECT_VERSION
+    || document.projectId !== projectId || !sameKeys(document, ['format', 'schemaVersion', 'projectId', 'signal'])) {
+    throw new Error('This is not a supported graph workspace project.');
+  }
+  return validateTopology(document.signal);
+}

@@ -32,13 +32,13 @@
   <nav class="toc" aria-label="Sections"><span>Manifold / 27.09.2026</span><a href="#architecture">Architecture</a><a href="#done">Built so far</a><a href="#proven">Evidence</a><a href="#next">In flight &amp; next</a></nav>
   <main class="main">
     <header class="hero">
-      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 141</div>
+      <div class="eyebrow">Manifold v2 / project sitrep / checkpoint 142</div>
       <h1>A portable sound engine is taking shape.</h1>
       <p class="hero-copy">The old JUCE and Lua project is being rebuilt as a Rust DSP core with a JavaScript browser workbench. The workbench is already useful for playing, inspecting, and comparing individual behaviors; the full legacy projects are still being assembled.</p>
-      <div class="meta"><span>Snapshot: 27 September 2026</span><span>Current focus: Main project reconstruction</span><span>Review scope: checkpoint 141 and the next workstream</span></div>
+      <div class="meta"><span>Snapshot: 27 September 2026</span><span>Current focus: editable project topology</span><span>Review scope: checkpoint 142 and the next workstream</span></div>
       <div class="stats" aria-label="Current library figures">
         <div class="stat"><strong>55</strong><span>interactive workbench views</span><small>Many are individual primitives or small authored projects.</small></div>
-        <div class="stat"><strong>582</strong><span>checked-in comparison cases</span><small>Across 68 manifests, including audio, source-analysis, and recipe captures.</small></div>
+        <div class="stat"><strong>585</strong><span>checked-in comparison cases</span><small>Across 69 manifests, including audio, source-analysis, and recipe captures.</small></div>
         <div class="stat"><strong>137</strong><span>Rust tests passing</span><small>Workspace tests include independent per-voice temporal position, timed chords, and original eight-slot allocation.</small></div>
       </div>
     </header>
@@ -59,7 +59,7 @@
         <div class="summary-card"><span class="tag">Playable</span><h3>Instruments and source audio</h3><p>Voice synth and MIDI transforms, sample region and sample instrument, loop capture, granulator, and file analysis. On-screen instruments work without hardware MIDI permission.</p></div>
         <div class="summary-card"><span class="tag">Playable</span><h3>Effects and routing</h3><p>Filter, dynamics, EQ, delay, modulation, distortion, spatial, pitch, shimmer, stutter, reverse, formant, resonator, a manual 32-partial Sine bank, and an FX slot with several audited switch behaviors.</p></div>
         <div class="summary-card"><span class="tag">Composable</span><h3>Graph and control signals</h3><p>Typed audio/CV/MIDI routes, LFO and slew, a CV rack slice, envelope ducking, timed MIDI events, bounded meters, and selected v2 JSON patch/state roundtrips.</p></div>
-        <div class="summary-card"><span class="tag pending">Still expanding</span><h3>Project reconstruction</h3><p>The authored Main bank and blend save a bundle with fixed graph, runtime state, and named sound presets that share one source. Graph editing, full legacy project state, host packaging, and preset migration remain ahead.</p></div>
+        <div class="summary-card"><span class="tag pending">Still expanding</span><h3>Project reconstruction</h3><p>The authored Main bank and blend save a bundle with fixed graph, runtime state, and named sound presets. A separate graph workspace now edits stopped Audio/CV topology. Full legacy project state, live graph replacement, host packaging, and preset migration remain ahead.</p></div>
       </div>
     </section>
 
@@ -74,6 +74,7 @@
         <div class="evidence-row"><strong>Old assembled route</strong><p>The compiled original C++ sample player has five playback comparisons; four assembled Normal and four assembled Ring cases combine it with the original branch nodes and mixers. After the first 512 frames, maximum Ring old/Rust difference is 0.000003263; native/Wasm is bit-exact. <a href="/main-ring-route-review.html">Inspect Ring, Normal, and player waveforms</a>. The old UI envelope remains outside these fixtures.</p></div>
         <div class="evidence-row"><strong>Main project bundle</strong><p>Version-1 project JSON carries the fixed authored graph, a validated snapshot, and up to 32 named sound presets sharing its source. Bank snapshot version 3 saves 20 controls, two targets, and spectral motion. Earlier bare states open; a different graph is rejected because arbitrary topology is not executable yet. <a href="/main-bank-state-review.html">Try presets and save/reopen</a>.</p></div>
         <div class="evidence-row"><strong>Capture into Main</strong><p>A stopped Rust loop take now reaches the Main bank or blend as one shared stereo source. A browser run recorded and analyzed separate half-second test takes, prepared their targets, reopened both project bundles, and played a bank note. <a href="/main-capture-transfer-review.html">Follow the capture path</a>.</p></div>
+        <div class="evidence-row"><strong>Editable graph</strong><p>A new project can add or remove eight node types, connect typed Audio/CV ports, and reopen topology JSON. Three 8,192-frame stereo captures compare native Rust with Wasm; peak difference is at most 0.000000060. Browser checks cover a real AudioWorklet start and invalid route rejection. <a href="/graph-workspace-review.html">Edit and review the graph</a>.</p></div>
         <div class="evidence-row"><strong>Scope of claim</strong><p>The numbers establish many local behaviors and some small compositions. They do not establish parity for the complete old plug-in, its full Lua project graph, every preset, or a native plug-in host.</p></div>
       </div>
       <div class="caution">Hardware MIDI access in BB’s embedded browser is currently constrained by host permissions. Use the on-screen keyboard here; hardware permission can be tested in a regular browser later.</div>
@@ -113,10 +114,11 @@
         <div class="step"><span class="label">Done · raw temporal frame route</span><h3>Follow the original interpolation at each voice block</h3><p>The original and Rust extractors yield closely matching 45-frame sources when given the same tracked pitch. Across three source types, the raw-frame route stays below 0.00000176 settled peak against C++; the rhythmic prepared route reached 0.025610. <a href="/main-temporal-source-review.html">Inspect all sources and both renderers</a>.</p></div>
         <div class="step"><span class="label">Done · fixed-graph project bundles</span><h3>Save a Main view with named sounds</h3><p>The bank and blend save a versioned graph, current state, and up to 32 named sound presets that share one source. Browser checks store, apply, reopen, and remove presets; older bare states still open. <a href="/main-bank-state-review.html">Try the round trip</a>.</p></div>
         <div class="step"><span class="label">Done · capture to Main</span><h3>Use a stopped loop take as a Main source</h3><p>The Rust capture export feeds either Main study, where a worker analyzes the new source and the project bundle embeds it once. A browser check covered capture, target preparation, bank playback, and reopen. <a href="/main-capture-transfer-review.html">Inspect the path</a>.</p></div>
-        <div class="step"><span class="label">Now · full sample project</span><h3>Broaden source behavior and editable state</h3><p>Compare more waveform controls and source material, measure timing on a physical output device, and expand the fixed-graph bundle toward editable project topology and legacy state migration.</p></div>
+        <div class="step"><span class="label">Done · stopped graph topology</span><h3>Edit, compile, and reopen Audio/CV graphs</h3><p>The first palette adds/removes nodes and typed edges while stopped. Rust compiles the graph on start; three native/Wasm captures and a browser save/reopen pass. <a href="/graph-workspace-review.html">Try the graph workspace</a>.</p></div>
+        <div class="step"><span class="label">Now · broader project topology</span><h3>Grow editable state into an instrument</h3><p>Add useful project-level controls and a source-backed authored graph, then plan safe graph replacement and node-state migration for live editing.</p></div>
         <div class="step"><span class="label">Later · product surface</span><h3>Harden the shared project model and hosts</h3><p>Broaden state and preset handling, measure callback budgets in the browser, and package non-browser hosts against the same Rust engine.</p></div>
       </div>
-      <div class="actions"><a class="action primary" href="/?primitive=main-voice-bank">Play the Main voice bank</a><a class="action" href="/main-add-morph-route-review.html">Inspect Add wave recipes</a><a class="action" href="/main-bank-performance-review.html">Callback timing</a></div>
+      <div class="actions"><a class="action primary" href="/?primitive=graph-workspace">Edit an Audio/CV graph</a><a class="action" href="/?primitive=main-voice-bank">Play the Main voice bank</a><a class="action" href="/main-bank-performance-review.html">Callback timing</a></div>
     </section>
     <footer>Manifold v2 · review snapshot · the workbench continues to evolve after this page was written.</footer>
   </main>

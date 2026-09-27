@@ -55,6 +55,22 @@ button:focus-visible, select:focus-visible, input:focus-visible, .compact-slider
 .main-preset-row .gate-button { flex: none; padding: 0 9px; }
 .main-presets > select { width: 100%; margin-top: 6px; padding: 7px; border: 1px solid #526170; border-radius: 4px; background: #1c2a35; color: #e7edf0; }
 .main-preset-actions .gate-button { flex: 1; }
+.graph-add { display: flex; gap: 6px; margin-top: 10px; }
+.graph-add select { min-width: 0; flex: 1; }
+.graph-add .gate-button { flex: none; padding: 0 9px; }
+.graph-workspace select, .graph-workspace input[type="number"] { min-width: 0; padding: 7px; border: 1px solid #526170; border-radius: 4px; background: #1c2a35; color: #e7edf0; font-size: 11px; }
+.graph-workspace > .gate-button, .graph-workspace > .sample-file { display: block; width: 100%; margin-top: 8px; }
+.graph-nodes { display: grid; gap: 8px; margin-top: 12px; }
+.graph-node { padding: 9px; border: 1px solid #42515f; border-radius: 4px; background: #17232e; }
+.graph-node-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 11px; }
+.graph-node-heading strong { min-width: 0; flex: 1; }
+.graph-signal { font: 9px ui-monospace, monospace; text-transform: uppercase; color: #99b8c9; }
+.graph-signal-control { color: #b6a5e5; }
+.graph-signal-sink { color: #8997a2; }
+.graph-remove { border: 0; background: none; color: #bca8a3; font-size: 10px; cursor: pointer; }
+.graph-field { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: center; gap: 5px; margin-top: 5px; font-size: 10px; color: #b4c0c9; }
+.graph-field select, .graph-field input { width: 100%; }
+.graph-workspace :disabled { opacity: .55; cursor: default; }
 .section-label { margin-bottom: 10px; }
 .mode-switch { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #394754; border-radius: 4px; overflow: hidden; }
 .mode-switch button { height: 32px; border: 0; border-right: 1px solid #394754; background: #202b36; color: #aebbc5; font-size: 12px; }
