@@ -54,6 +54,11 @@ pub struct NativeProcessor {
 }
 
 impl NativeProcessor {
+    pub fn transfer_retrospective_history_from(&mut self, previous: &mut Self) -> usize {
+        self.plan
+            .transfer_retrospective_history_from(&mut previous.plan)
+    }
+
     /// Prepare all kernels and scratch outside the host's process callback.
     pub fn prepare(
         graph: &GraphDescription,

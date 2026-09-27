@@ -1463,6 +1463,34 @@ impl GraphDescription {
 }
 
 impl ExecutionPlan {
+    /// Retain compatible retrospective rings when a host publishes a prepared
+    /// replacement. This runs at a block boundary and moves only owned ring
+    /// buffers and cursors; it never compiles or allocates.
+    pub fn transfer_retrospective_history_from(&mut self, previous: &mut Self) -> usize {
+        if self.sample_rate != previous.sample_rate {
+            return 0;
+        }
+        let mut transferred = 0;
+        for node in &mut self.nodes {
+            if !node.always_active {
+                continue;
+            }
+            let Some(old) = previous
+                .nodes
+                .iter_mut()
+                .find(|old| old.id == node.id && old.always_active)
+            else {
+                continue;
+            };
+            if let (Kernel::LoopCapture(next), Kernel::LoopCapture(old)) =
+                (&mut node.kernel, &mut old.kernel)
+            {
+                transferred += usize::from(next.transfer_retrospective_history_from(old));
+            }
+        }
+        transferred
+    }
+
     /// Clear signal history in place while retaining compiled routing, assets,
     /// and current parameter targets. No allocation or host synchronization.
     pub fn reset_processing(&mut self) {

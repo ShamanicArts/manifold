@@ -186,7 +186,7 @@ impl GuiState {
                 Action::CaptureFinish(instrument) => {
                     if let Some(result) = instance.finish_capture(instrument, "DAW capture") {
                         if result {
-                            self.capture_result(true, "Captured source published. New notes use this take; capture history restarted.");
+                            self.capture_result(true, "Captured source published. New notes use this take; compatible capture history was retained.");
                         } else {
                             self.capture_result(
                                 false,

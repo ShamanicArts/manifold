@@ -51,6 +51,7 @@ const MAX_STATE: usize = 45 * 1024 * 1024;
 
 struct Runtime {
     capture_worker: Option<AudioCaptureWorker>,
+    preserve_capture_history: bool,
     bank: usize,
     prepared: PreparedNativeProject,
     buffers: HostBuffers,
@@ -206,6 +207,7 @@ impl Instance {
         });
         Some(Box::new(Runtime {
             capture_worker: None,
+            preserve_capture_history: false,
             bank,
             prepared,
             buffers: HostBuffers::prepare(max),
@@ -280,7 +282,7 @@ impl Instance {
         ) else {
             return Some(false);
         };
-        Some(self.restore(bytes))
+        Some(self.restore_with_history(bytes, true))
     }
 
     fn snapshot(&self, runtime: &Runtime) {
@@ -339,6 +341,10 @@ impl Instance {
     }
 
     pub(super) fn restore(&self, bytes: Vec<u8>) -> bool {
+        self.restore_with_history(bytes, false)
+    }
+
+    fn restore_with_history(&self, bytes: Vec<u8>, preserve_capture_history: bool) -> bool {
         let Ok(project) = NativeProject::parse(&bytes) else {
             return false;
         };
@@ -359,6 +365,7 @@ impl Instance {
             let Some(mut value) = Instance::prepare(&bytes, rate, max, next_bank) else {
                 return false;
             };
+            value.preserve_capture_history = preserve_capture_history;
             let capture = Self::attach_capture_worker(&mut value, &bytes, rate);
             Some((value, capture))
         } else {
@@ -446,6 +453,14 @@ impl Instance {
             return;
         }
         let old = self.current.swap(next, Ordering::AcqRel);
+        if !old.is_null() && unsafe { (*next).preserve_capture_history } {
+            unsafe {
+                (*next)
+                    .prepared
+                    .processor
+                    .transfer_retrospective_history_from(&mut (*old).prepared.processor)
+            };
+        }
         self.snapshot(unsafe { &*next });
         if !old.is_null() {
             self.retired.store(old, Ordering::Release);
@@ -1888,6 +1903,23 @@ mod tests {
         block.in_events = &events;
         assert_eq!(unsafe { process(plugin, &block) }, CLAP_PROCESS_CONTINUE);
         assert!(left.iter().any(|sample| *sample < -0.01));
+        block.in_events = null();
+        let mailbox = instance.capture_mailbox.lock().unwrap().clone().unwrap();
+        assert!(mailbox.request(10, 9_600));
+        let mut second = None;
+        for _ in 0..100 {
+            assert_eq!(unsafe { process(plugin, &block) }, CLAP_PROCESS_CONTINUE);
+            if let Some(result) = mailbox.take() {
+                second = Some(result.unwrap());
+                break;
+            }
+        }
+        let second = second.expect("second capture completed");
+        assert_eq!(
+            second.stereo()[0],
+            -2.0,
+            "the prior sidechain ring survived publication"
+        );
         instance.deactivate();
     }
 

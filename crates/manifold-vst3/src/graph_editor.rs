@@ -128,7 +128,7 @@ impl State {
             }),
             EditorAction::CaptureFinish { instrument } => match self.shared.capture_finish(instrument) {
                 Ok(None) => None,
-                Ok(Some(true)) => Some(("Captured source published. New notes use this take; capture history restarted.".to_owned(), Some(true))),
+                Ok(Some(true)) => Some(("Captured source published. New notes use this take; compatible capture history was retained.".to_owned(), Some(true))),
                 Ok(Some(false)) => Some(("Capture failed; the project was not changed.".to_owned(), Some(false))),
                 Err(reason) => Some((format!("Capture failed: {reason}."), Some(false))),
             },

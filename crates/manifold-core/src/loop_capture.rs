@@ -30,6 +30,26 @@ struct Staging {
 }
 
 impl LoopCapture {
+    /// Carry a retrospective ring into a replacement graph without copying or
+    /// allocating. An in-progress staged snapshot belongs to its old runtime
+    /// and prevents transfer.
+    pub(crate) fn transfer_retrospective_history_from(&mut self, previous: &mut Self) -> bool {
+        if !self.retrospective
+            || !previous.retrospective
+            || self.left.len() != previous.left.len()
+            || self.staging.is_some()
+            || previous.staging.is_some()
+        {
+            return false;
+        }
+        std::mem::swap(&mut self.left, &mut previous.left);
+        std::mem::swap(&mut self.right, &mut previous.right);
+        std::mem::swap(&mut self.write, &mut previous.write);
+        std::mem::swap(&mut self.length, &mut previous.length);
+        std::mem::swap(&mut self.start, &mut previous.start);
+        true
+    }
+
     pub fn new(sample_rate: f32, capacity_seconds: f32, mix: f32) -> Self {
         Self::new_with_mode(sample_rate, capacity_seconds, mix, false)
     }

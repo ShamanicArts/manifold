@@ -25,6 +25,7 @@ const MAX_MESSAGES: usize = 1024;
 
 struct Runtime {
     capture_worker: Option<AudioCaptureWorker>,
+    preserve_capture_history: bool,
     values: Arc<ValueBank>,
     prepared: PreparedNativeProject,
     buffers: HostBuffers,
@@ -108,6 +109,7 @@ impl GraphProcessor {
         });
         Some(Box::new(Runtime {
             capture_worker: None,
+            preserve_capture_history: false,
             values,
             prepared,
             buffers: HostBuffers::prepare(frames),
@@ -184,7 +186,7 @@ impl GraphProcessor {
         ) else {
             return Some(false);
         };
-        Some(self.restore_bytes(bytes) == kResultOk)
+        Some(self.restore_bytes_with_history(bytes, true) == kResultOk)
     }
 
     fn capture_state(&self) -> Option<Vec<u8>> {
@@ -250,6 +252,14 @@ impl GraphProcessor {
         let pending = self.pending.swap(null_mut(), Ordering::AcqRel);
         if !pending.is_null() {
             let old = self.current.swap(pending, Ordering::AcqRel);
+            if !old.is_null() && unsafe { (*pending).preserve_capture_history } {
+                unsafe {
+                    (*pending)
+                        .prepared
+                        .processor
+                        .transfer_retrospective_history_from(&mut (*old).prepared.processor)
+                };
+            }
             self.publish_snapshot(unsafe { &*pending });
             if !old.is_null() {
                 let pushed = self.retired.push(old as usize);
@@ -259,6 +269,14 @@ impl GraphProcessor {
     }
 
     fn restore_bytes(&self, bytes: Vec<u8>) -> tresult {
+        self.restore_bytes_with_history(bytes, false)
+    }
+
+    fn restore_bytes_with_history(
+        &self,
+        bytes: Vec<u8>,
+        preserve_capture_history: bool,
+    ) -> tresult {
         let Ok(project) = NativeProject::parse(&bytes) else {
             return kResultFalse;
         };
@@ -274,6 +292,7 @@ impl GraphProcessor {
             let Some(mut runtime) = Self::prepared(&bytes, rate, frames, Arc::clone(&bank)) else {
                 return kResultFalse;
             };
+            runtime.preserve_capture_history = preserve_capture_history;
             let capture = Self::attach_capture_worker(&mut runtime, &bytes, rate);
             Some((runtime, capture))
         } else {
@@ -1395,6 +1414,41 @@ mod tests {
         data.inputEvents = list.as_ptr();
         assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
         assert!(left.iter().any(|sample| *sample < -0.01));
+        data.inputEvents = null_mut();
+        let mailbox = component.capture_mailbox.lock().unwrap().clone().unwrap();
+        assert!(mailbox.request(10, 9_600));
+        let mut second = None;
+        for _ in 0..100 {
+            assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+            if let Some(result) = mailbox.take() {
+                second = Some(result.unwrap());
+                break;
+            }
+        }
+        let second = second.expect("second capture completed");
+        assert_eq!(
+            second.stereo()[0],
+            -2.0,
+            "the prior sidechain ring survived publication"
+        );
+        drop(second);
+        assert_eq!(component.restore_bytes(authored.to_vec()), kResultOk);
+        assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+        let fresh_mailbox = component.capture_mailbox.lock().unwrap().clone().unwrap();
+        assert!(fresh_mailbox.request(10, 9_600));
+        let mut fresh = None;
+        for _ in 0..100 {
+            assert_eq!(unsafe { component.process(&mut data) }, kResultOk);
+            if let Some(result) = fresh_mailbox.take() {
+                fresh = Some(result.unwrap());
+                break;
+            }
+        }
+        assert_eq!(
+            fresh.expect("import capture completed").stereo()[0],
+            0.0,
+            "a separate project import starts fresh capture history"
+        );
         assert_eq!(unsafe { component.setActive(0) }, kResultOk);
     }
 
