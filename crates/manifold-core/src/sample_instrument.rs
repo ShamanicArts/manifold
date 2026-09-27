@@ -21,6 +21,10 @@ struct VoiceSlot {
 }
 
 pub struct SampleInstrument {
+    source: SampleRegion,
+    // Keep previous PCM alive until a later control-thread publication. Voices
+    // can finish an earlier take without freeing its last Arc in process().
+    retired_sources: Vec<SampleRegion>,
     players: [[SampleRegion; MAX_UNISON]; VOICES],
     slots: [VoiceSlot; VOICES],
     bend_ratio: [f64; 16],
@@ -41,6 +45,8 @@ pub struct SampleInstrument {
 impl SampleInstrument {
     pub fn new(sample_rate: f32) -> Self {
         Self {
+            source: SampleRegion::new(sample_rate),
+            retired_sources: Vec::new(),
             players: std::array::from_fn(|_| {
                 std::array::from_fn(|_| SampleRegion::new(sample_rate))
             }),
@@ -69,15 +75,42 @@ impl SampleInstrument {
 
     /// Decoded PCM is moved once and shared across voice cursors before audio starts.
     pub fn load_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
-        let (first_voice, rest) = self.players.split_first_mut().unwrap();
-        let (first, siblings) = first_voice.split_first_mut().unwrap();
-        if !first.load_stereo(stereo, source_rate) {
+        if !self.source.load_stereo(stereo, source_rate) {
             return false;
         }
-        for player in siblings.iter_mut().chain(rest.iter_mut().flatten()) {
-            player.share_sample_from(first);
+        for player in self.players.iter_mut().flatten() {
+            player.share_sample_from(&self.source);
         }
         self.slots.fill(VoiceSlot::default());
+        self.retired_sources.clear();
+        true
+    }
+
+    /// Publish a new source between audio blocks. Held notes keep their old PCM;
+    /// each subsequent note starts from the latest source. Retired PCM is
+    /// reclaimed on a later publication, never inside the render callback.
+    pub fn publish_stereo(&mut self, stereo: Vec<f32>, source_rate: f32) -> bool {
+        let mut next = self.source.clone();
+        if !next.load_stereo(stereo, source_rate) {
+            return false;
+        }
+        let previous = std::mem::replace(&mut self.source, next);
+        self.retired_sources.push(previous);
+        for (slot, group) in self.slots.iter().zip(&mut self.players) {
+            for (index, player) in group.iter_mut().enumerate() {
+                if !slot.active || index >= slot.unison_count as usize {
+                    player.share_sample_from(&self.source);
+                }
+            }
+        }
+        self.retired_sources.retain(|old| {
+            self.slots.iter().zip(&self.players).any(|(slot, group)| {
+                slot.active
+                    && group[..slot.unison_count as usize]
+                        .iter()
+                        .any(|player| player.shares_sample_with(old))
+            })
+        });
         true
     }
 
@@ -216,6 +249,7 @@ impl SampleInstrument {
                     let player = &mut self.players[index][subvoice];
                     player.set_parameter(6, 0.0);
                     if subvoice < self.unison_count {
+                        player.share_sample_from(&self.source);
                         player.set_parameter(0, speed);
                         player.event(event);
                     }
@@ -351,6 +385,33 @@ mod tests {
         assert!(instrument.load_stereo(vec![1.0; 16], 8000.0));
         instrument.set_parameter(2, 1.0);
         instrument
+    }
+
+    #[test]
+    fn published_source_changes_new_notes_without_cutting_held_notes() {
+        let mut instrument = constant_instrument();
+        instrument.set_parameter(10, 0.0);
+        let on = |note| EventKind::NoteOn {
+            channel: 0,
+            note,
+            velocity: 127,
+        };
+        instrument.event(on(60));
+        assert_eq!(instrument.process_sample(), [1.0, 1.0]);
+        assert!(!instrument.publish_stereo(vec![f32::NAN; 16], 8000.0));
+        assert!(instrument.publish_stereo(vec![-1.0; 16], 8000.0));
+        assert_eq!(instrument.process_sample(), [1.0, 1.0]);
+        instrument.event(on(64));
+        assert_eq!(instrument.process_sample(), [0.0, 0.0]);
+        instrument.event(EventKind::NoteOff {
+            channel: 0,
+            note: 60,
+        });
+        assert_eq!(instrument.process_sample(), [-1.0, -1.0]);
+        assert_eq!(instrument.active_voices(), 1);
+        assert!(instrument.publish_stereo(vec![0.5; 16], 8000.0));
+        assert_eq!(instrument.retired_sources.len(), 1);
+        assert_eq!(instrument.process_sample(), [-1.0, -1.0]);
     }
 
     #[test]

@@ -20,6 +20,8 @@ export class BrowserAudioHost {
     this.nextRouteRequest = 1;
     this.pendingParameters = new Map();
     this.nextParameterRequest = 1;
+    this.pendingPublishes = new Map();
+    this.nextPublishRequest = 1;
     this.ready = false;
   }
 
@@ -89,6 +91,14 @@ export class BrowserAudioHost {
               this.pendingParameters.delete(data.requestId);
               clearTimeout(pending.timeout);
               data.accepted ? pending.resolve() : pending.reject(new Error('Rust rejected this node parameter.'));
+            }
+          }
+          if (data.type === 'capture-published') {
+            const pending = this.pendingPublishes.get(data.requestId);
+            if (pending) {
+              this.pendingPublishes.delete(data.requestId);
+              clearTimeout(pending.timeout);
+              data.accepted ? pending.resolve() : pending.reject(new Error('Rust rejected the capture publication. Stop recording and try again.'));
             }
           }
           if ((data.type === 'capture' || data.type === 'capture-error') && this.pendingCapture) {
@@ -281,6 +291,18 @@ export class BrowserAudioHost {
     });
   }
 
+  publishCapture(captureId, instrumentId) {
+    if (!this.processor || !this.ready) return Promise.reject(new Error('Start audio before publishing a take.'));
+    return new Promise((resolve, reject) => {
+      const requestId = this.nextPublishRequest++;
+      const timeout = setTimeout(() => {
+        if (this.pendingPublishes.delete(requestId)) reject(new Error('Capture publication timed out.'));
+      }, 10_000);
+      this.pendingPublishes.set(requestId, { resolve, reject, timeout });
+      this.processor.port.postMessage({ type: 'capture-publish', requestId, captureId, instrumentId });
+    });
+  }
+
   async stop() {
     for (const pending of this.pendingRoutes.values()) {
       clearTimeout(pending.timeout);
@@ -292,6 +314,11 @@ export class BrowserAudioHost {
       pending.reject(new Error('Audio stopped during a node parameter change.'));
     }
     this.pendingParameters.clear();
+    for (const pending of this.pendingPublishes.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('Audio stopped during capture publication.'));
+    }
+    this.pendingPublishes.clear();
     this.ready = false;
     if (this.pendingCapture) {
       clearTimeout(this.pendingCapture.timeout);

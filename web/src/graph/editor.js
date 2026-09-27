@@ -11,6 +11,7 @@ import sampleVoice from '../../../projects/graph-workspace/sample-voice.json';
 import regionVoice from '../../../projects/graph-workspace/region-voice.json';
 import granularSource from '../../../projects/graph-workspace/granular-source.json';
 import mainBank from '../../../projects/graph-workspace/main-bank.json';
+import liveSampler from '../../../projects/graph-workspace/live-sampler.json';
 
 const defaultMainTargets = (nodeId) => [mainVoiceBankProject.partials, ...mainVoiceBankProject.extraPartials]
   .map((target) => ({ ...target, nodeId }));
@@ -35,7 +36,7 @@ function temporalFromMainState(nodeId, controls) {
 }
 
 // Edits a project description outside the AudioWorklet. The next start compiles it in Rust.
-export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemporalSpeed, onTemplateLoaded, decodeSample, builtinSample }) {
+export function mountGraphEditor(section, project, { isRunning, isActive, onChange, onParameter, onTemporalSpeed, onCapturePublish, onTemplateLoaded, decodeSample, builtinSample }) {
   const nodesRoot = section.querySelector('#graph-nodes');
   const status = section.querySelector('#graph-status');
   const addType = section.querySelector('#graph-add-type');
@@ -47,6 +48,7 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
   const loadRegion = section.querySelector('#graph-load-region');
   const loadGranular = section.querySelector('#graph-load-granular');
   const loadMain = section.querySelector('#graph-load-main');
+  const loadLiveSampler = section.querySelector('#graph-load-live-sampler');
   const fileInput = section.querySelector('#graph-project-file');
   const exportButton = section.querySelector('#graph-project-export');
   const listeners = new AbortController();
@@ -66,6 +68,9 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
     section.querySelectorAll('.graph-edit').forEach((control) => { control.disabled = disabled; });
     section.querySelectorAll('.graph-parameter').forEach((control) => {
       control.disabled = !canChangeParameter() || pendingParameters.has(`${control.dataset.node}:${control.dataset.parameter}`);
+    });
+    section.querySelectorAll('.graph-capture-action').forEach((control) => {
+      control.disabled = !canChangeParameter() || !isRunning();
     });
     fileInput.disabled = disabled;
     if (updateStatus && isActive()) status.textContent = `${project.signal.nodes.length} nodes · ${project.signal.connections.length} connections · ${isRunning() ? 'parameters update live; stop audio to edit topology' : 'start audio to compile this graph in Rust'}`;
@@ -209,6 +214,40 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           } catch (error) { fail(error); }
         });
         article.appendChild(useBuiltin);
+      }
+      if (node.type === 'sample-instrument') {
+        const captures = project.signal.nodes.filter((item) => item.type === 'loop-capture' && reachable.has(item.id));
+        if (captures.length) {
+          const row = document.createElement('div');
+          row.className = 'graph-field';
+          const source = document.createElement('select');
+          source.className = 'graph-capture-action';
+          source.setAttribute('aria-label', `Capture source for sample instrument ${node.id}`);
+          for (const capture of captures) source.add(new Option(`Loop capture ${capture.id}`, String(capture.id)));
+          const publish = document.createElement('button');
+          publish.type = 'button';
+          publish.className = 'gate-button graph-capture-action';
+          publish.textContent = 'Use stopped take';
+          publish.setAttribute('aria-label', `Use stopped take for sample instrument ${node.id}`);
+          publish.addEventListener('click', async () => {
+            if (!isRunning() || !canChangeParameter()) return;
+            const startingRevision = revision;
+            busy = true;
+            refreshRunning(false);
+            status.textContent = `Publishing loop capture ${source.value} to sample instrument ${node.id}…`;
+            try {
+              const asset = await onCapturePublish(Number(source.value), node.id);
+              if (destroyed || revision !== startingRevision || !isActive() || !isRunning()) return;
+              const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
+                { nodeId: node.id, sourceRate: asset.sourceRate, stereo: asset.stereo,
+                  label: `Loop take ${source.value}` }];
+              commit(project.signal, `Loop take ${source.value} is now the source for new notes. Held notes keep their previous source; project bundle includes the take.`, assets);
+            } catch (error) { if (revision === startingRevision) fail(error); }
+            finally { busy = false; refreshRunning(false); }
+          });
+          row.append(source, publish);
+          article.append(row);
+        }
       }
       if (node.type === 'main-voice-bank') {
         const importLabel = document.createElement('label');
@@ -525,6 +564,16 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
       commit(bundle.signal, 'Loaded the Main voice bank with prepared wave/source targets. Start audio and play the keyboard.',
         [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }], bundle.targets, bundle.temporal);
       onTemplateLoaded?.('main-bank');
+    } catch (error) { fail(error); }
+  }, { signal: listeners.signal });
+  loadLiveSampler.addEventListener('click', () => {
+    if (!canEdit()) return;
+    try {
+      const source = builtinSample();
+      const signal = parseGraphProject(liveSampler);
+      commit(signal, 'Loaded the live sampler. Start audio, record a loop take, stop recording, then publish it to the sample instrument.',
+        [{ nodeId: 5, sourceRate: source.sourceRate, stereo: source.stereo, label: 'Built-in two-tone source' }]);
+      onTemplateLoaded?.('live-sampler');
     } catch (error) { fail(error); }
   }, { signal: listeners.signal });
   exportButton.addEventListener('click', () => {

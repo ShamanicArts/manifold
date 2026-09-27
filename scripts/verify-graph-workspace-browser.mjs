@@ -527,8 +527,37 @@ try {
   await page.locator('#graph-project-export').click();
   const disabledMotion = JSON.parse((await readFile(await (await disabledMotionDownload).path())).toString());
   assert.equal(disabledMotion.temporal, undefined);
+  await page.locator('#graph-load-live-sampler').click();
+  assert.equal(await page.locator('.graph-node').count(), 6);
+  assert.equal(await page.locator('#graph-source-mode').inputValue(), 'external');
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · test oscillator'));
+  await page.locator('select[data-node="6"][data-parameter="0"]').selectOption('1');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
+  await page.waitForTimeout(180);
+  await page.locator('select[data-node="6"][data-parameter="0"]').selectOption('0');
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('in Rust and project state'));
+  await page.locator('button[aria-label="Use stopped take for sample instrument 5"]').click();
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('now the source for new notes'));
+  const samplerDownload = page.waitForEvent('download');
+  await page.locator('#graph-project-export').click();
+  const samplerBundle = JSON.parse((await readFile(await (await samplerDownload).path())).toString());
+  assert.equal(samplerBundle.signal.nodes.find((node) => node.id === 6).type, 'loop-capture');
+  assert.equal(samplerBundle.assets[0].label, 'Loop take 6');
+  assert.ok(samplerBundle.assets[0].frames > 1000);
+  await page.locator('#audio-toggle').click();
+  await page.locator('#graph-load-tone').click();
+  await page.locator('#graph-project-file').setInputFiles([{
+    name: 'live-sampler.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(samplerBundle)),
+  }]);
+  await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
+  assert.match(await page.locator('input[aria-label="Sample instrument 5 audio file"]').locator('..').textContent(), /Loop take 6/);
+  await page.locator('#audio-toggle').click();
+  await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Audio running · test oscillator'));
+  await page.locator('#audio-toggle').click();
+  await page.locator('#graph-workspace-section').screenshot({ path: 'web/public/graph-live-sampler-controls.png' });
   assert.deepEqual(errors, []);
-  console.log('Graph workspace browser: typed editing, sample/region/granulator/Main nodes, source analysis and rejection, per-voice motion and shaping, 14 native/Wasm references passed');
+  console.log('Graph workspace browser: typed editing, sample/region/granulator/Main nodes, live sampler capture publication, source analysis and rejection, per-voice motion and shaping, 14 native/Wasm references passed');
 } finally {
   await browser.close();
 }

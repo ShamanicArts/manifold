@@ -1677,6 +1677,32 @@ impl ExecutionPlan {
             })
     }
 
+    /// Publish a stopped capture to a sample instrument between process calls.
+    /// The source ring is copied once; held notes retain their previous PCM.
+    pub fn publish_capture_to_instrument(&mut self, capture: NodeId, instrument: NodeId) -> bool {
+        if capture == instrument
+            || !self.nodes.iter().any(|entry| {
+                entry.id == instrument && matches!(entry.kernel, Kernel::SampleInstrument(_))
+            })
+        {
+            return false;
+        }
+        let Some(frames) = self.capture_length(capture).filter(|frames| *frames > 0) else {
+            return false;
+        };
+        let mut stereo = vec![0.0; frames * 2];
+        if self.copy_capture_interleaved(capture, 0, &mut stereo) != frames {
+            return false;
+        }
+        self.nodes
+            .iter_mut()
+            .find(|entry| entry.id == instrument)
+            .is_some_and(|entry| match &mut entry.kernel {
+                Kernel::SampleInstrument(player) => player.publish_stereo(stereo, self.sample_rate),
+                _ => false,
+            })
+    }
+
     pub fn set_parameter(&mut self, node: NodeId, parameter: u32, value: f32) -> bool {
         let Some(index) = self.nodes.iter().position(|entry| entry.id == node) else {
             return false;
@@ -2432,6 +2458,68 @@ impl ExecutionPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stopped_loop_take_publishes_to_running_instrument() {
+        let description = GraphDescription {
+            nodes: vec![
+                node(1, NodeKind::InputRaw),
+                node(3, NodeKind::Output),
+                node(4, NodeKind::MidiInput),
+                node(5, NodeKind::SampleInstrument),
+                node(
+                    6,
+                    NodeKind::LoopCapture {
+                        capacity_seconds: 0.05,
+                        mix: 1.0,
+                    },
+                ),
+                node(
+                    7,
+                    NodeKind::Sum2 {
+                        gain_a: 1.0,
+                        gain_b: 1.0,
+                    },
+                ),
+            ],
+            connections: vec![
+                edge(1, 6, 0),
+                edge(4, 5, 0),
+                edge(6, 7, 0),
+                edge(5, 7, 1),
+                edge(7, 3, 0),
+            ],
+        };
+        let mut plan = description.compile(8_000.0, 16).unwrap();
+        assert!(plan.load_sample_stereo(5, vec![1.0; 32], 8_000.0));
+        assert!(plan.set_parameter(5, 2, 1.0));
+        assert!(plan.set_parameter(5, 10, 0.0));
+        assert!(!plan.publish_capture_to_instrument(6, 5));
+        assert!(plan.set_parameter(6, 0, 1.0));
+        let input = [0.25; 16];
+        process(&mut plan, &input, &input);
+        assert!(!plan.publish_capture_to_instrument(6, 5));
+        assert!(plan.set_parameter(6, 0, 0.0));
+        assert_eq!(plan.capture_length(6), Some(16));
+        assert!(!plan.publish_capture_to_instrument(6, 3));
+        assert!(plan.publish_capture_to_instrument(6, 5));
+        let on = TimedEvent {
+            offset: 0,
+            node: 4,
+            kind: EventKind::NoteOn {
+                channel: 0,
+                note: 60,
+                velocity: 127,
+            },
+        };
+        let silence = [0.0; 16];
+        let mut left = [0.0; 16];
+        let mut right = [0.0; 16];
+        plan.process_with_events([&silence, &silence], [&mut left, &mut right], &[on])
+            .unwrap();
+        assert_eq!(left, [0.25; 16]);
+        assert_eq!(right, left);
+    }
 
     fn node(id: NodeId, kind: NodeKind) -> NodeSpec {
         NodeSpec { id, kind }

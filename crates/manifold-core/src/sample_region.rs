@@ -115,6 +115,10 @@ impl SampleRegion {
         self.playing = false;
     }
 
+    pub(crate) fn shares_sample_with(&self, source: &Self) -> bool {
+        Arc::ptr_eq(&self.stereo, &source.stereo)
+    }
+
     pub fn is_playing(&self) -> bool {
         self.playing
     }

@@ -170,6 +170,11 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
             offset += copied;
           }
           this.port.postMessage({ type: 'capture', nodeId: data.nodeId, sourceRate: sampleRate, stereo }, [stereo.buffer]);
+        } else if (data.type === 'capture-publish' && this.engine) {
+          const accepted = this.engine.manifold_capture_publish(data.captureId, data.instrumentId) === 1;
+          this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 2);
+          this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
+          this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted });
         }
       } catch (error) {
         this.port.postMessage({ type: data.type === 'capture-request' ? 'capture-error' : 'error', message: String(error) });

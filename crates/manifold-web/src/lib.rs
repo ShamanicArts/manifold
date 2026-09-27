@@ -1542,6 +1542,21 @@ pub extern "C" fn manifold_capture_copy(node_id: u32, start_frame: u32, frames: 
     })
 }
 
+/// Publish a stopped loop take to a running sample instrument between blocks.
+/// Returns zero for an empty/recording capture or a wrong destination.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_publish(capture_id: u32, instrument_id: u32) -> u32 {
+    ENGINE.with(|slot| {
+        slot.borrow_mut().as_mut().map_or(0, |engine| {
+            u32::from(
+                engine
+                    .plan
+                    .publish_capture_to_instrument(capture_id.into(), instrument_id.into()),
+            )
+        })
+    })
+}
+
 /// Queue a typed event at a frame offset in the next process block.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_event_push(

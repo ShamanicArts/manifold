@@ -1597,6 +1597,11 @@ function renderPrimitive(family) {
       },
       onParameter: (nodeId, id, value) => audio.setNodeParameter(nodeId, id, value),
       onTemporalSpeed: (nodeId, speed) => audio.setTemporalSpeed(speed, nodeId),
+      onCapturePublish: async (captureId, instrumentId) => {
+        const take = await audio.captureSnapshot(captureId);
+        await audio.publishCapture(captureId, instrumentId);
+        return take;
+      },
       onTemplateLoaded: (caseId) => referenceLab?.selectCase(caseId),
       decodeSample: decodeFileSource,
       builtinSample: demoSample,
