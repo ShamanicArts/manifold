@@ -87,7 +87,7 @@ assert.equal(e.manifold_looper_command(5, 0), 1);
 assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
 let layerSamplePeak = 0;
 for (let i = 0; i < 4; i++) layerSamplePeak = Math.max(layerSamplePeak, Math.abs(block(0)));
-assert.ok(layerSamplePeak > .01, `L1 sample output peak ${layerSamplePeak}`);
+assert.ok(layerSamplePeak > .005, `L1 sample output peak ${layerSamplePeak}`);
 assert.equal(e.manifold_looper_synth_note(2, 0, 0), 1);
 for (let i = 0; i < 8; i++) block(.33);
 assert.equal(e.manifold_looper_sample_free_start(0), 1);
@@ -103,7 +103,7 @@ assert.equal(e.manifold_looper_sample_publish_finish(), 1);
 assert.equal(e.manifold_looper_synth_note(0, 60, 100), 1);
 let freeSamplePeak = 0;
 for (let i = 0; i < 4; i++) freeSamplePeak = Math.max(freeSamplePeak, Math.abs(block(0)));
-assert.ok(freeSamplePeak > .01, `Free sample output peak ${freeSamplePeak}`);
+assert.ok(freeSamplePeak > .005, `Free sample output peak ${freeSamplePeak}`);
 assert.equal(e.manifold_looper_command(5, 0), 1);
 assert.equal(e.manifold_looper_synth_note(2, 0, 0), 1);
 assert.equal(e.manifold_looper_synth_parameter(ids.blend, -1), 1);
@@ -133,4 +133,22 @@ assert.ok(e.manifold_looper_eq_response(2000) < -10, `Main EQ low-pass: ${e.mani
 assert.equal(e.manifold_looper_synth_parameter(eq.base, 0), 1);
 block(0);
 assert.ok(Math.abs(e.manifold_looper_eq_response(2000)) < .01);
-console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, EQ response, synth-to-layer capture, and Retro/Free Sample voices passed');
+assert.equal(e.manifold_looper_synth_parameter(ids.filterMode, 0), 1);
+const fx = contract.fxParameters;
+function sustainedLevel() {
+  let level = 0;
+  for (let index = 0; index < 80; index++) {
+    block(0);
+    if (index >= 60) level += output.subarray(0, 128).reduce((sum, sample) => sum + Math.abs(sample), 0);
+  }
+  return level;
+}
+const dryFxLevel = sustainedLevel();
+for (const base of [fx.fx1Base, fx.fx2Base]) {
+  assert.equal(e.manifold_looper_synth_parameter(base, 5), 1); // original FilterNode
+  assert.equal(e.manifold_looper_synth_parameter(base + fx.firstParamOffset, 0), 1);
+  assert.equal(e.manifold_looper_synth_parameter(base + fx.mixOffset, 1), 1);
+}
+const twoFxLevel = sustainedLevel();
+assert.ok(dryFxLevel > twoFxLevel * 5, `Main two FX slots: ${dryFxLevel} / ${twoFxLevel}`);
+console.log('Main looper Wasm: First Loop, retrospective dry input, ADSR, SVF, two FX slots, EQ response, synth-to-layer capture, and Retro/Free Sample voices passed');

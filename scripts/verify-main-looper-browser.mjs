@@ -32,6 +32,7 @@ try {
   assert.equal(await page.locator('.rack-adsr').count(), 1);
   assert.equal(await page.locator('.rack-filter').count(), 1);
   assert.equal(await page.locator('.rack-eq').count(), 1);
+  assert.equal(await page.locator('.rack-fx').count(), 2);
   assert.equal(await page.locator('#adsr-attack').getAttribute('aria-valuenow'), '50');
   await page.locator('#adsr-attack').focus();
   await page.keyboard.press('ArrowRight');
@@ -51,6 +52,28 @@ try {
   await page.mouse.up();
   assert.ok(Number(await page.locator('#filter-cutoff').getAttribute('aria-valuenow')) > 1000);
   assert.ok(Number(await page.locator('#filter-resonance').getAttribute('aria-valuenow')) > .75);
+  await page.locator('#fx2-module-type').focus();
+  for (let step = 0; step < 5; step++) await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('#fx2-module-type').getAttribute('data-value'), '5');
+  assert.equal(await page.locator('#fx2-module-p0').getAttribute('aria-label'), 'Cutoff');
+  assert.equal(await page.locator('#fx2-module-p2').isVisible(), false);
+  await page.locator('#fx2-module-mix').focus();
+  await page.keyboard.press('End');
+  assert.equal(await page.locator('#fx2-module-mix').getAttribute('aria-valuenow'), '1');
+  const fxPad = await page.locator('#fx2-module .fx-pad').boundingBox();
+  await page.mouse.move(fxPad.x + fxPad.width * .25, fxPad.y + fxPad.height * .45);
+  await page.mouse.down();
+  await page.mouse.move(fxPad.x + fxPad.width * .4, fxPad.y + fxPad.height * .3, { steps: 5 });
+  await page.mouse.up();
+  assert.ok(Number(await page.locator('#fx2-module-p0').getAttribute('aria-valuenow')) > .3);
+  const fxCutoff = await page.locator('#fx2-module-p0').getAttribute('aria-valuenow');
+  await page.locator('#fx2-module-type').focus();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await page.locator('#fx2-module-p0').getAttribute('aria-valuenow'), fxCutoff);
+  await page.screenshot({ path: new URL('../web/public/main-fx-rack.png', import.meta.url).pathname, fullPage: true });
+  await page.locator('#fx2-module-mix').focus();
+  await page.keyboard.press('Home');
   const eqGraph = await page.locator('#eq-graph').boundingBox();
   await page.mouse.click(eqGraph.x + eqGraph.width * .5, eqGraph.y + eqGraph.height * .3);
   assert.ok(Number(await page.locator('#eq-freq').inputValue()) > 500);
@@ -195,5 +218,5 @@ try {
   assert.ok(lastSegment.x + lastSegment.width <= frame.x + frame.width + 1);
   assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await narrow.screenshot({ path: new URL('../web/public/main-looper-narrow.png', import.meta.url).pathname, fullPage: true });
-  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR/Source/Filter/EQ, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
+  console.log(`Main browser: original transport/capture/tab offsets, four strips, First Loop ${inferredTempo} BPM, MidiSynth ADSR/Source/Filter/FX1/FX2/EQ, Live/L1 Retro Cap, L1 Free Cap/STOP, traditional arm/fire, reverse scrub, session save/reopen, decoded file and Rust synth capture passed`);
 } finally { await browser.close(); }

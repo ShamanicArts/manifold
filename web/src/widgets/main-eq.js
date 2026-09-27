@@ -138,5 +138,9 @@ export function mountMainEq(get, parameter, ids) {
     send(selected, key, offset + 2); sync(); paint();
   }));
   sync(); paint();
-  return { paint, setResponse(values) { response = values ?? []; paint(); } };
+  return {
+    paint,
+    setResponse(values) { response = values ?? []; paint(); },
+    sendState() { bands.forEach((_, index) => sendBand(index)); },
+  };
 }

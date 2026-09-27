@@ -510,6 +510,27 @@ body {
 .filter-slider canvas { display: block; width: 100%; height: 100%; }
 #filter-cutoff { top: 42px; }
 #filter-resonance { top: 68px; }
+.rack-fx { position: absolute; top: 232px; width: 472px; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
+.rack-fx1 { left: 0; } .rack-fx2 { left: 472px; }
+.fx1-head::before { background: #22d3ee; } .fx2-head::before { background: #38bdf8; }
+.fx-module { position: relative; width: 472px; height: 208px; }
+.fx-pad { position: absolute; left: 10px; top: 10px; width: 226px; height: 188px; background: #0d1420; border: 1px solid #1a1a3a; border-radius: 6px; cursor: crosshair; touch-action: none; }
+.fx-visual-dots { position: absolute; left: 109px; top: 184px; z-index: 2; display: flex; gap: 4px; }
+.fx-visual-dots[hidden] { display: none; }
+.fx-visual-dots button { padding: 0; border: 0; background: transparent; color: #475569; font-size: 12px; cursor: pointer; }
+.fx-visual-dots button.active { color: #22d3ee; }
+.fx-type, .fx-x-drop, .fx-y-drop { position: absolute; height: 20px; cursor: pointer; }
+.fx-type { left: 242px; top: 10px; width: 220px; }
+.fx-x-label, .fx-y-label { position: absolute; top: 38px; color: #94a3b8; font-size: 10px; }
+.fx-x-label { left: 242px; } .fx-y-label { left: 354px; }
+.fx-x-drop { left: 256px; top: 36px; width: 92px; } .fx-y-drop { left: 368px; top: 36px; width: 94px; }
+.fx-type canvas, .fx-x-drop canvas, .fx-y-drop canvas { width: 100%; height: 100%; display: block; }
+.fx-mix, .fx-param { position: absolute; left: 242px; width: 220px; height: 18px; cursor: ew-resize; }
+.fx-mix { top: 64px; } .fx-param[hidden] { display: none; }
+.fx-mix canvas, .fx-param canvas { width: 100%; height: 100%; display: block; }
+.project-dropdown-overlay { position: absolute; z-index: 80; background: #1e293b; box-shadow: 0 8px 24px #0008; cursor: pointer; }
+.project-dropdown-overlay[hidden] { display: none; }
+.project-dropdown-overlay canvas { width: 100%; height: 100%; display: block; }
 .rack-eq { position: absolute; left: 944px; top: 232px; width: 236px; height: 220px; background: #121a2f; border: 1px solid #1f2b4d; }
 .eq-head::before { background: #22d3ee; }
 .eq-module { position: relative; width: 236px; height: 208px; }

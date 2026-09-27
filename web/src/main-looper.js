@@ -5,6 +5,7 @@ import { mountCompactSlider } from './widgets/compact-slider.js';
 import { mountMainAdsr } from './widgets/main-adsr.js';
 import { mountMainFilter } from './widgets/main-filter.js';
 import { mountMainEq } from './widgets/main-eq.js';
+import { mountMainFxSlot } from './widgets/main-fx-slot.js';
 
 const $ = (id) => document.getElementById(id);
 const bars = project.segments;
@@ -33,6 +34,8 @@ const synthIds = project.synthParameters;
 const adsr = mountMainAdsr($, synthParameter, synthIds);
 const filter = mountMainFilter($, synthParameter, synthIds);
 const eq = mountMainEq($, synthParameter, project.eqParameters);
+const fx1 = mountMainFxSlot($('fx1-module'), synthParameter, project.fxParameters.fx1Base);
+const fx2 = mountMainFxSlot($('fx2-module'), synthParameter, project.fxParameters.fx2Base);
 const selectedSegment = id => Number($(id).querySelector('[aria-pressed="true"]').dataset.value);
 function wireSegments(id, change) {
   const group = $(id);
@@ -182,7 +185,7 @@ for (const tab of document.querySelectorAll('[data-main-tab]')) {
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', String(selected));
     }
-    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); eq.paint(); } });
+    requestAnimationFrame(() => { sizeInstrument(); if (synth) { paintSampleSliders(); adsr.paint(); filter.paint(); fx1.paint(); fx2.paint(); eq.paint(); } });
   });
 }
 
@@ -591,6 +594,8 @@ async function start() {
     synthParameter(synthIds.sampleXfade, .1);
     adsr.sendDefaults();
     filter.sendDefaults();
+    fx1.sendDefaults(); fx2.sendDefaults();
+    eq.sendState();
     if (sourceKind === 'microphone') {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       sourceNode = context.createMediaStreamSource(stream);

@@ -1,6 +1,7 @@
 //! Main's synth-to-looper routing, with all scratch prepared before processing.
 
 use crate::Filter;
+use crate::effect_slot::{self, EffectSlot};
 use crate::eq8::{self, Eq8};
 use crate::events::EventKind;
 use crate::main_looper::LAYERS;
@@ -13,6 +14,8 @@ pub struct MainInstrument {
     looper: MainLooper,
     synth: MainVoiceBank,
     filter: Filter,
+    fx1: EffectSlot,
+    fx2: EffectSlot,
     eq: Eq8,
     sample_capture: MainSampleCapture,
     layer_taps: [Vec<f32>; LAYERS],
@@ -21,6 +24,10 @@ pub struct MainInstrument {
     synth_right: Vec<f32>,
     filtered_left: Vec<f32>,
     filtered_right: Vec<f32>,
+    fx1_left: Vec<f32>,
+    fx1_right: Vec<f32>,
+    fx2_left: Vec<f32>,
+    fx2_right: Vec<f32>,
     equalized_left: Vec<f32>,
     equalized_right: Vec<f32>,
     capture_left: Vec<f32>,
@@ -35,6 +42,20 @@ impl MainInstrument {
             looper: MainLooper::new(sample_rate),
             synth: MainVoiceBank::new(sample_rate, max_frames, 9),
             filter: Filter::new(sample_rate),
+            fx1: EffectSlot::new_legacy(
+                sample_rate,
+                max_frames,
+                0,
+                0.0,
+                effect_slot::DEFAULT_TYPE_PARAMETERS[0],
+            ),
+            fx2: EffectSlot::new_legacy(
+                sample_rate,
+                max_frames,
+                0,
+                0.0,
+                effect_slot::DEFAULT_TYPE_PARAMETERS[0],
+            ),
             eq: Eq8::new(sample_rate, eq8::defaults()),
             sample_capture: MainSampleCapture::new(sample_rate),
             layer_taps: std::array::from_fn(|_| vec![0.0; max_frames * 2]),
@@ -43,6 +64,10 @@ impl MainInstrument {
             synth_right: vec![0.0; max_frames],
             filtered_left: vec![0.0; max_frames],
             filtered_right: vec![0.0; max_frames],
+            fx1_left: vec![0.0; max_frames],
+            fx1_right: vec![0.0; max_frames],
+            fx2_left: vec![0.0; max_frames],
+            fx2_right: vec![0.0; max_frames],
             equalized_left: vec![0.0; max_frames],
             equalized_right: vec![0.0; max_frames],
             capture_left: vec![0.0; max_frames],
@@ -64,6 +89,8 @@ impl MainInstrument {
         match id {
             21..=23 => self.filter.set_parameter(id - 21, value),
             64..=105 => self.eq.set_parameter(id - 64, value),
+            128..=134 => self.fx1.set_parameter(id - 128, value),
+            136..=142 => self.fx2.set_parameter(id - 136, value),
             _ => self.synth.set_parameter(id, value),
         }
     }
@@ -156,11 +183,19 @@ impl MainInstrument {
                 &mut self.filtered_right[..frames],
             ],
         );
-        self.eq.process_planar(
+        self.fx1.process_planar(
             [
                 &self.filtered_left[..frames],
                 &self.filtered_right[..frames],
             ],
+            [&mut self.fx1_left[..frames], &mut self.fx1_right[..frames]],
+        );
+        self.fx2.process_planar(
+            [&self.fx1_left[..frames], &self.fx1_right[..frames]],
+            [&mut self.fx2_left[..frames], &mut self.fx2_right[..frames]],
+        );
+        self.eq.process_planar(
+            [&self.fx2_left[..frames], &self.fx2_right[..frames]],
             [
                 &mut self.equalized_left[..frames],
                 &mut self.equalized_right[..frames],
@@ -231,6 +266,53 @@ mod tests {
         assert!(main.set_synth_parameter(65, 3.0));
         assert!(main.set_synth_parameter(66, 120.0));
         assert!(main.set_synth_parameter(64, 1.0));
+        let dry = [0.25; 128];
+        let mut left = [0.0; 128];
+        let mut right = [0.0; 128];
+        main.process([&dry, &dry], [&mut left, &mut right]);
+        assert!(left.iter().all(|sample| (*sample - 0.25).abs() < 1e-6));
+    }
+
+    #[test]
+    fn main_fx_slots_process_in_series_before_eq_and_capture() {
+        fn level(active_slots: usize) -> (f32, f32) {
+            let mut main = MainInstrument::new(48_000.0, 128);
+            assert!(main.set_synth_parameter(0, 2.0));
+            assert!(main.set_synth_parameter(1, -1.0));
+            assert!(main.set_synth_parameter(22, 16_000.0));
+            for base in [128, 136].into_iter().take(active_slots) {
+                assert!(main.set_synth_parameter(base, 5.0)); // original FilterNode
+                assert!(main.set_synth_parameter(base + 2, 0.0)); // 80 Hz
+                assert!(main.set_synth_parameter(base + 1, 1.0));
+            }
+            main.synth_event(EventKind::NoteOn {
+                channel: 0,
+                note: 96,
+                velocity: 100,
+            });
+            let silence = [0.0; 128];
+            let mut left = [0.0; 128];
+            let mut right = [0.0; 128];
+            let mut energy = 0.0;
+            for block in 0..240 {
+                main.process([&silence, &silence], [&mut left, &mut right]);
+                if block >= 200 {
+                    energy += left.iter().map(|sample| sample.abs()).sum::<f32>();
+                }
+            }
+            (energy, main.looper().peak(0, 1, 0, 512))
+        }
+        let (dry_fx, dry_capture) = level(0);
+        let (one_fx, one_capture) = level(1);
+        let (two_fx, two_capture) = level(2);
+        assert!(dry_fx > one_fx * 3.0, "first FX: {dry_fx} / {one_fx}");
+        assert!(one_fx > two_fx * 3.0, "second FX: {one_fx} / {two_fx}");
+        assert!(dry_capture > one_capture * 3.0);
+        assert!(one_capture > two_capture * 3.0);
+        let mut main = MainInstrument::new(48_000.0, 128);
+        assert!(main.set_synth_parameter(128, 5.0));
+        assert!(main.set_synth_parameter(129, 1.0));
+        assert!(main.set_synth_parameter(130, 0.0));
         let dry = [0.25; 128];
         let mut left = [0.0; 128];
         let mut right = [0.0; 128];

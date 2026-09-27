@@ -45,6 +45,12 @@ export const VISUAL_NAMES = [
   "REVERSE DELAY",
   "STUTTER",
 ];
+export const FX_OPTIONS = [
+  'Chorus', 'Phaser', 'WaveShaper', 'Compressor', 'StereoWidener', 'Filter',
+  'SVF Filter', 'Reverb', 'Stereo Delay', 'Multitap', 'Pitch Shift', 'Granulator',
+  'Ring Mod', 'Formant', 'EQ', 'Limiter', 'Transient', 'Bitcrusher', 'Shimmer',
+  'Reverse Delay', 'Stutter',
+];
 export const DEFAULTS = [
   [.5, .5, .2, .6, .4],
   [.5, .5, .4, .5, .4],
