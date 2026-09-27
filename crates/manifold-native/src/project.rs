@@ -512,6 +512,9 @@ impl NativeProject {
                 "sidechainSource",
                 "selectedCaptureNodeId",
                 "captureWindowSeconds",
+                "captureWindowMode",
+                "captureWindowBars",
+                "captureTempoBpm",
             ],
         )?;
         if required(signal, "inputs") != 2 || required(signal, "outputs") != 2 {
@@ -528,6 +531,26 @@ impl NativeProject {
         }
         if let Some(seconds) = signal.get("captureWindowSeconds") {
             float(seconds, 0.05, 30.0)?;
+        }
+        if signal
+            .get("captureWindowMode")
+            .is_some_and(|mode| mode != "seconds" && mode != "bars")
+        {
+            return Err(ProjectError::Invalid("capture window mode"));
+        }
+        if let Some(bars) = signal.get("captureWindowBars") {
+            float(bars, 0.0625, 16.0)?;
+        }
+        if let Some(tempo) = signal.get("captureTempoBpm") {
+            float(tempo, 20.0, 300.0)?;
+        }
+        if signal
+            .get("captureWindowMode")
+            .is_some_and(|mode| mode == "bars")
+            && (signal.get("captureWindowBars").is_none()
+                || signal.get("captureTempoBpm").is_none())
+        {
+            return Err(ProjectError::Invalid("capture bar timing"));
         }
         let nodes = required(signal, "nodes")
             .as_array()
@@ -1382,6 +1405,21 @@ mod tests {
                 .prepare(48_000.0, 128)
                 .unwrap();
         }
+    }
+
+    #[test]
+    fn retrospective_bar_timing_requires_a_bounded_complete_recipe() {
+        let mut document: Value = serde_json::from_slice(include_bytes!(
+            "../../../projects/graph-workspace/retrospective-multisource.json"
+        ))
+        .unwrap();
+        document["signal"]["captureWindowBars"] = serde_json::json!(0);
+        assert!(parse(&document).is_err());
+        document["signal"]["captureWindowBars"] = serde_json::json!(1);
+        document["signal"]["captureTempoBpm"] = Value::Null;
+        assert!(parse(&document).is_err());
+        document["signal"]["captureTempoBpm"] = serde_json::json!(120);
+        assert!(parse(&document).is_ok());
     }
 
     #[test]

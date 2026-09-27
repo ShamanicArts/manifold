@@ -126,7 +126,8 @@ const sameKeys = (value, keys) => Object.keys(value).sort().join('|') === [...ke
 
 export function validateTopology(signal) {
   const baseKeys = ['inputs', 'outputs', 'nodes', 'connections', 'initialParameters'];
-  const allowedKeys = new Set([...baseKeys, 'inputSource', 'sidechainSource', 'selectedCaptureNodeId', 'captureWindowSeconds']);
+  const allowedKeys = new Set([...baseKeys, 'inputSource', 'sidechainSource', 'selectedCaptureNodeId',
+    'captureWindowSeconds', 'captureWindowMode', 'captureWindowBars', 'captureTempoBpm']);
   if (!signal || typeof signal !== 'object' || Array.isArray(signal)
     || !baseKeys.every((key) => Object.hasOwn(signal, key))
     || Object.keys(signal).some((key) => !allowedKeys.has(key))
@@ -135,6 +136,13 @@ export function validateTopology(signal) {
     || (signal.sidechainSource !== undefined && !['none', 'oscillator', 'microphone'].includes(signal.sidechainSource))
     || (signal.captureWindowSeconds !== undefined && (typeof signal.captureWindowSeconds !== 'number'
       || !Number.isFinite(signal.captureWindowSeconds) || signal.captureWindowSeconds < .05 || signal.captureWindowSeconds > 30))
+    || (signal.captureWindowMode !== undefined && !['seconds', 'bars'].includes(signal.captureWindowMode))
+    || (signal.captureWindowBars !== undefined && (typeof signal.captureWindowBars !== 'number'
+      || !Number.isFinite(signal.captureWindowBars) || signal.captureWindowBars < .0625 || signal.captureWindowBars > 16))
+    || (signal.captureTempoBpm !== undefined && (typeof signal.captureTempoBpm !== 'number'
+      || !Number.isFinite(signal.captureTempoBpm) || signal.captureTempoBpm < 20 || signal.captureTempoBpm > 300))
+    || (signal.captureWindowMode === 'bars'
+      && (signal.captureWindowBars === undefined || signal.captureTempoBpm === undefined))
     || !Array.isArray(signal.nodes) || signal.nodes.length < 2 || signal.nodes.length > 64
     || !Array.isArray(signal.connections) || signal.connections.length > 256
     || !Array.isArray(signal.initialParameters)) throw new Error('Invalid graph description.');

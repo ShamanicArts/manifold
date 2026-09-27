@@ -277,6 +277,61 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           const windowLabel = document.createElement('label');
           windowLabel.className = 'graph-capture-window';
           windowLabel.append('Recent window', windowSeconds, 'seconds');
+          const windowMode = document.createElement('select');
+          windowMode.className = 'graph-capture-action';
+          windowMode.setAttribute('aria-label', `Capture window unit for sample instrument ${node.id}`);
+          windowMode.add(new Option('Seconds', 'seconds'));
+          windowMode.add(new Option('Bars at tempo', 'bars'));
+          windowMode.value = project.signal.captureWindowMode ?? 'seconds';
+          windowMode.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            const signal = { ...project.signal, captureWindowMode: windowMode.value,
+              ...(windowMode.value === 'bars' ? { captureWindowBars: project.signal.captureWindowBars ?? 1,
+                captureTempoBpm: project.signal.captureTempoBpm ?? 120 } : {}) };
+            commit(signal, `Capture window uses ${windowMode.value === 'bars' ? 'bars at the chosen tempo' : 'seconds'}.`);
+          });
+          const windowBars = document.createElement('input');
+          windowBars.type = 'number';
+          windowBars.className = 'graph-capture-action';
+          windowBars.min = '0.0625';
+          windowBars.max = '16';
+          windowBars.step = 'any';
+          windowBars.value = String(project.signal.captureWindowBars ?? 1);
+          windowBars.setAttribute('aria-label', `Capture length bars for sample instrument ${node.id}`);
+          windowBars.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            const bars = Number(windowBars.value);
+            if (!Number.isFinite(bars) || bars < .0625 || bars > 16) {
+              windowBars.value = String(project.signal.captureWindowBars ?? 1);
+              fail(new Error('Choose a capture length from 1/16 to 16 bars.'));
+              return;
+            }
+            commit({ ...project.signal, captureWindowBars: bars }, `Recent capture window: ${bars} bars.`);
+          });
+          const barsLabel = document.createElement('label');
+          barsLabel.className = 'graph-capture-window';
+          barsLabel.append('Recent window', windowBars, 'bars');
+          const tempoBpm = document.createElement('input');
+          tempoBpm.type = 'number';
+          tempoBpm.className = 'graph-capture-action';
+          tempoBpm.min = '20';
+          tempoBpm.max = '300';
+          tempoBpm.step = '0.1';
+          tempoBpm.value = String(project.signal.captureTempoBpm ?? 120);
+          tempoBpm.setAttribute('aria-label', `Capture tempo BPM for sample instrument ${node.id}`);
+          tempoBpm.addEventListener('change', () => {
+            if (!canChangeParameter()) return;
+            const tempo = Number(tempoBpm.value);
+            if (!Number.isFinite(tempo) || tempo < 20 || tempo > 300) {
+              tempoBpm.value = String(project.signal.captureTempoBpm ?? 120);
+              fail(new Error('Choose a capture tempo from 20 to 300 BPM.'));
+              return;
+            }
+            commit({ ...project.signal, captureTempoBpm: tempo }, `Capture tempo: ${tempo} BPM.`);
+          });
+          const tempoLabel = document.createElement('label');
+          tempoLabel.className = 'graph-capture-window';
+          tempoLabel.append('Tempo', tempoBpm, 'BPM');
           const publish = document.createElement('button');
           publish.type = 'button';
           publish.className = 'gate-button graph-capture-action';
@@ -290,7 +345,11 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
           const selectedCapture = () => captures.find((item) => item.id === Number(source.value));
           const syncCaptureControls = () => {
             const retrospective = selectedCapture()?.type === 'retrospective-capture';
-            windowLabel.hidden = !retrospective;
+            const bars = windowMode.value === 'bars';
+            windowMode.hidden = !retrospective;
+            windowLabel.hidden = !retrospective || bars;
+            barsLabel.hidden = !retrospective || !bars;
+            tempoLabel.hidden = !retrospective || !bars;
             publish.hidden = retrospective;
             publishLive.textContent = retrospective ? 'Capture recent window' : 'Use current recording';
             publishLive.setAttribute('aria-label', `${retrospective ? 'Capture recent window' : 'Use current recording'} for sample instrument ${node.id}`);
@@ -302,29 +361,39 @@ export function mountGraphEditor(section, project, { isRunning, isActive, onChan
             const startingRevision = revision;
             const retrospective = selectedCapture()?.type === 'retrospective-capture';
             const seconds = retrospective ? Number(windowSeconds.value) : 0;
-            if (retrospective && (!Number.isFinite(seconds) || seconds < .05 || seconds > 30)) {
+            const barsMode = retrospective && windowMode.value === 'bars';
+            const bars = Number(windowBars.value);
+            const tempo = Number(tempoBpm.value);
+            if (retrospective && !barsMode && (!Number.isFinite(seconds) || seconds < .05 || seconds > 30)) {
               fail(new Error('Choose a capture window from 0.05 to 30 seconds.'));
+              return;
+            }
+            if (barsMode && (!Number.isFinite(bars) || bars < .0625 || bars > 16
+              || !Number.isFinite(tempo) || tempo < 20 || tempo > 300 || bars * 240 / tempo > 30)) {
+              fail(new Error('Choose 1/16–16 bars and 20–300 BPM within the 30-second source ring.'));
               return;
             }
             busy = true;
             refreshRunning(false);
             status.textContent = `Publishing ${retrospective ? 'recent history' : live ? 'recording window' : 'stopped take'} ${source.value} to sample instrument ${node.id}…`;
             try {
-              const asset = await onCapturePublish(Number(source.value), node.id, live, seconds);
+              const window = barsMode ? { windowBars: bars, tempoBpm: tempo } : seconds;
+              const asset = await onCapturePublish(Number(source.value), node.id, live, window);
               if (destroyed || revision !== startingRevision || !isActive() || !isRunning()) return;
               const label = `${retrospective ? 'Recent history' : live ? 'Recording window' : 'Loop take'} ${source.value}`;
               const assets = [...(project.graphAssets ?? []).filter((item) => item.nodeId !== node.id),
                 { nodeId: node.id, sourceRate: asset.sourceRate, stereo: asset.stereo,
                   label }];
               const signal = { ...project.signal, selectedCaptureNodeId: Number(source.value),
-                ...(retrospective ? { captureWindowSeconds: seconds } : {}) };
+                ...(retrospective ? barsMode ? { captureWindowMode: 'bars', captureWindowBars: bars,
+                  captureTempoBpm: tempo } : { captureWindowMode: 'seconds', captureWindowSeconds: seconds } : {}) };
               commit(signal, `${label} is now the source for new notes. Held notes keep their previous source; project bundle includes the take.`, assets);
             } catch (error) { if (revision === startingRevision) fail(error); }
             finally { busy = false; refreshRunning(false); }
           };
           publish.addEventListener('click', () => useCapture(false));
           publishLive.addEventListener('click', () => useCapture(true));
-          row.append(source, windowLabel, publish, publishLive);
+          row.append(source, windowMode, windowLabel, barsLabel, tempoLabel, publish, publishLive);
           article.append(row);
         }
       }

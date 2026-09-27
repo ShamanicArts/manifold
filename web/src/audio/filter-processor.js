@@ -177,9 +177,16 @@ class ManifoldProjectProcessor extends AudioWorkletProcessor {
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'capture-published', requestId: data.requestId, accepted });
         } else if (data.type === 'capture-publish-live' && this.engine) {
-          const requestedFrames = Number.isFinite(data.windowSeconds) && data.windowSeconds > 0
-            ? Math.round(Math.min(30, data.windowSeconds) * sampleRate) : 0;
-          const accepted = this.engine.manifold_capture_stage_begin(data.captureId, requestedFrames) === 1;
+          const barsRequested = data.windowBars !== undefined;
+          const requestedFrames = barsRequested
+            ? this.engine.manifold_capture_tempo_frames(sampleRate, data.tempoBpm, data.windowBars)
+            : Number.isFinite(data.windowSeconds) && data.windowSeconds > 0
+              ? Math.round(Math.min(30, data.windowSeconds) * sampleRate) : 0;
+          const validWindow = !barsRequested || (Number.isFinite(data.tempoBpm) && data.tempoBpm >= 20
+            && data.tempoBpm <= 300 && Number.isFinite(data.windowBars)
+            && data.windowBars >= .0625 && data.windowBars <= 16
+            && requestedFrames > 0 && requestedFrames <= Math.round(30 * sampleRate));
+          const accepted = validWindow && this.engine.manifold_capture_stage_begin(data.captureId, requestedFrames) === 1;
           this.inputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_input_ptr(), this.capacity * 4);
           this.outputView = new Float32Array(this.engine.memory.buffer, this.engine.manifold_output_ptr(), this.capacity * 2);
           this.port.postMessage({ type: 'capture-stage-started', requestId: data.requestId, accepted });

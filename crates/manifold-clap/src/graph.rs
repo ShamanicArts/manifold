@@ -1815,7 +1815,9 @@ mod tests {
         assert!(unsafe { STATE.save.unwrap()(plugin, &stream) });
         let document: serde_json::Value = serde_json::from_slice(&saved).unwrap();
         assert_eq!(document["signal"]["selectedCaptureNodeId"], 10);
-        assert_eq!(document["signal"]["captureWindowSeconds"], 0.2);
+        assert_eq!(document["signal"]["captureWindowMode"], "bars");
+        assert_eq!(document["signal"]["captureWindowBars"], 0.1);
+        assert_eq!(document["signal"]["captureTempoBpm"], 120);
         assert_eq!(document["assets"][0]["frames"], 9_600);
         unsafe {
             (*plugin).stop_processing.unwrap()(plugin);

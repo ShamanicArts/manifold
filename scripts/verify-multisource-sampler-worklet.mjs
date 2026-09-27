@@ -52,4 +52,18 @@ assert.equal(side.at(-2), -3);
 await send({ type: 'event', nodeId: 4, kind: 0, channel: 0, note: 64, velocity: 127 });
 const mixed = render(0, 0)[0];
 assert.ok(mixed < -.45 && mixed > -.55, `held input note keeps old PCM; new note uses sidechain: ${mixed}`);
-console.log('Two-source sampler worklet: independent input/sidechain rings, ×4 staging, silent capture, held-note source continuity passed');
+await send({ type: 'capture-publish-live', requestId: 3, captureId: 6, instrumentId: 5,
+  windowBars: .0625, tempoBpm: 120 });
+assert.equal(messages.at(-1).accepted, true, 'bar request starts staging');
+for (let block = 0; block < 64; block++) {
+  render(0, 0);
+  await send({ type: 'capture-stage-status', requestId: 3, captureId: 6 });
+  if (messages.at(-1).state === 2) break;
+}
+assert.equal(messages.at(-1).state, 2);
+assert.equal(messages.at(-1).frames, 6000, '1/16 bar at 120 BPM and 48 kHz is 6000 frames');
+await send({ type: 'capture-stage-cancel', captureId: 6 });
+await send({ type: 'capture-publish-live', requestId: 4, captureId: 6, instrumentId: 5,
+  windowBars: 16, tempoBpm: 120 });
+assert.equal(messages.at(-1).accepted, false, '32-second request exceeds the 30-second authored ring');
+console.log('Two-source sampler worklet: independent rings, ×4 staging, held-note continuity, Rust bar frames and ring limit passed');

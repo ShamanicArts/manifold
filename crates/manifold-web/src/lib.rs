@@ -1543,6 +1543,19 @@ pub extern "C" fn manifold_capture_stage_begin(node_id: u32, requested_frames: u
     })
 }
 
+/// Convert a browser tempo and bar length to the original sample-synth frame
+/// decision. Hosts with an explicit samples-per-bar value use the core helper.
+#[unsafe(no_mangle)]
+pub extern "C" fn manifold_capture_tempo_frames(
+    sample_rate: f64,
+    tempo_bpm: f64,
+    bars: f64,
+) -> u32 {
+    manifold_core::capture_timing::samples_per_bar(None, sample_rate, tempo_bpm)
+        .and_then(|samples| manifold_core::capture_timing::retrospective_frames(samples, bars))
+        .unwrap_or(0)
+}
+
 /// 0 idle/invalid, 1 copying, 2 ready.
 #[unsafe(no_mangle)]
 pub extern "C" fn manifold_capture_stage_status(node_id: u32) -> u32 {

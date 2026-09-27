@@ -648,7 +648,9 @@ try {
   assert.equal(await page.locator('.graph-node').count(), 9);
   const sourceSelect = page.locator('select[aria-label="Capture source for sample instrument 5"]');
   assert.deepEqual(await sourceSelect.locator('option').allTextContents(), ['Audio input · 6', 'Sidechain · 10']);
-  await page.locator('input[aria-label="Recent window seconds for sample instrument 5"]').fill('0.2');
+  assert.equal(await page.locator('select[aria-label="Capture window unit for sample instrument 5"]').inputValue(), 'bars');
+  assert.equal(await page.locator('input[aria-label="Capture length bars for sample instrument 5"]').inputValue(), '1');
+  await page.locator('input[aria-label="Capture length bars for sample instrument 5"]').fill('0.1');
   await page.locator('#audio-toggle').click();
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('test oscillator + oscillator sidechain'));
   await page.waitForTimeout(300);
@@ -658,17 +660,21 @@ try {
   await page.locator('#graph-project-export').click();
   const mainSourceBundle = JSON.parse((await readFile(await (await mainSourceDownload).path())).toString());
   assert.equal(mainSourceBundle.assets[0].label, 'Recent history 6');
+  assert.equal(mainSourceBundle.assets[0].frames, 9600, '0.1 bar at 120 BPM is exactly 0.2 seconds');
   await sourceSelect.selectOption('10');
   await page.locator('button[aria-label="Capture recent window for sample instrument 5"]').click();
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.includes('Recent history 10 is now the source'));
   assert.equal(await sourceSelect.inputValue(), '10', 'selected source stays visible after publication');
-  assert.equal(await page.locator('input[aria-label="Recent window seconds for sample instrument 5"]').inputValue(), '0.2');
+  assert.equal(await page.locator('input[aria-label="Capture length bars for sample instrument 5"]').inputValue(), '0.1');
   const sideSourceDownload = page.waitForEvent('download');
   await page.locator('#graph-project-export').click();
   const sideSourceBundle = JSON.parse((await readFile(await (await sideSourceDownload).path())).toString());
   assert.equal(sideSourceBundle.assets[0].label, 'Recent history 10');
+  assert.equal(sideSourceBundle.assets[0].frames, 9600);
   assert.equal(sideSourceBundle.signal.selectedCaptureNodeId, 10);
-  assert.equal(sideSourceBundle.signal.captureWindowSeconds, .2);
+  assert.equal(sideSourceBundle.signal.captureWindowMode, 'bars');
+  assert.equal(sideSourceBundle.signal.captureWindowBars, .1);
+  assert.equal(sideSourceBundle.signal.captureTempoBpm, 120);
   if (process.env.MANIFOLD_CAPTURE_FIXTURE_OUT) {
     await writeFile(process.env.MANIFOLD_CAPTURE_FIXTURE_OUT, `${JSON.stringify(sideSourceBundle)}\n`);
   }
@@ -693,7 +699,8 @@ try {
   await page.waitForFunction(() => document.querySelector('#graph-status').textContent.startsWith('Opened'));
   assert.equal(await page.locator('#graph-sidechain-mode').inputValue(), 'oscillator');
   assert.equal(await sourceSelect.inputValue(), '10');
-  assert.equal(await page.locator('input[aria-label="Recent window seconds for sample instrument 5"]').inputValue(), '0.2');
+  assert.equal(await page.locator('select[aria-label="Capture window unit for sample instrument 5"]').inputValue(), 'bars');
+  assert.equal(await page.locator('input[aria-label="Capture length bars for sample instrument 5"]').inputValue(), '0.1');
   assert.match(await page.locator('input[aria-label="Sample instrument 5 audio file"]').locator('..').textContent(), /Recent history 10/);
   assert.deepEqual(errors, []);
   console.log(`Graph workspace browser: live, sidechain (${capturedHz.toFixed(1)} Hz), retrospective and two-source sampler capture (${mainHz.toFixed(1)}/${sideHz.toFixed(1)} Hz), source analysis and 14 native/Wasm references passed`);

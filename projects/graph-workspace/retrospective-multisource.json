@@ -9,6 +9,9 @@
     "sidechainSource": "oscillator",
     "selectedCaptureNodeId": 6,
     "captureWindowSeconds": 2,
+    "captureWindowMode": "bars",
+    "captureWindowBars": 1,
+    "captureTempoBpm": 120,
     "nodes": [
       { "id": 1, "type": "input.raw" },
       { "id": 3, "type": "output" },
