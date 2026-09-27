@@ -33,4 +33,9 @@ assert.ok(peaks.slice(0, 9).every(value => Math.abs(value - .8) < .0001), `older
 assert.ok(peaks.slice(11).every(value => Math.abs(value - .1) < .0001), `newer bins: ${peaks}`);
 assert.ok(captureStripBins(project.segments, 7, samplesPerBar, 8_000 * project.captureSeconds)
   .every(([start, end]) => e.manifold_looper_peak(0, 1, start, end) === 0));
-console.log('Main capture plane: oldest audio left, newest audio right, adjacent bar region empty');
+assert.equal(e.manifold_looper_command(project.commands.commit, .0625), 1);
+feed(0, 128); // bounded commit publishes on the next process block
+const loopPeaks = Array.from({ length: 20 }, (_, bin) => e.manifold_looper_peak(0, 0, bin * 50, (bin + 1) * 50));
+assert.ok(loopPeaks.slice(0, 9).every(value => Math.abs(value - .8) < .0001), `loop head: ${loopPeaks}`);
+assert.ok(loopPeaks.slice(11).every(value => Math.abs(value - .1) < .0001), `loop tail: ${loopPeaks}`);
+console.log('Main capture plane: oldest audio left, newest audio right, and committed loop head/tail in source order');
